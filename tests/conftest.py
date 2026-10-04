@@ -37,8 +37,9 @@ SEED_YEAR = 2026
 SEED_MONTHS = (6, 7, 8, 9)
 
 
-def seed_demo(s: Session) -> None:
-    """Fill an empty DB through the project's own service layer."""
+def seed_demo(s: Session, profile_id: int | None = None) -> None:
+    """Fill a profile (default: the default profile) through the project's own
+    service layer. Seeding two profiles gives them the same account numbers."""
     from finanse.core import accounts
     from finanse.models import AccountType, Source, Transaction
     from finanse.modules.assets import service as assets
@@ -48,12 +49,16 @@ def seed_demo(s: Session) -> None:
     from finanse.modules.budget.ingestion.transfers import match_internal_transfers
     from finanse.modules.loans import service as loans
 
-    main = accounts.get_or_create_account(s, bank="mbank", iban=IBAN_MAIN, name="mKonto Test")
+    pid = profile_id
+    main = accounts.get_or_create_account(
+        s, bank="mbank", iban=IBAN_MAIN, name="mKonto Test", profile_id=pid
+    )
     eur = accounts.get_or_create_account(
-        s, bank="mbank", iban=IBAN_EUR, name="eKonto EUR Test", currency="EUR"
+        s, bank="mbank", iban=IBAN_EUR, name="eKonto EUR Test", currency="EUR", profile_id=pid
     )
     sav = accounts.get_or_create_account(
-        s, bank="erste", iban=IBAN_SAVINGS, name="Erste Test", type=AccountType.SAVINGS
+        s, bank="erste", iban=IBAN_SAVINGS, name="Erste Test", type=AccountType.SAVINGS,
+        profile_id=pid,
     )
 
     def raw(d, amount, *, ref=None, cp=None, iban=None, desc=None, currency="PLN"):
@@ -106,36 +111,37 @@ def seed_demo(s: Session) -> None:
 
     assets.add_manual_position(
         s, name="Mieszkanie Test", type=AccountType.PROPERTY, value="600000",
-        on_date=date(SEED_YEAR, 6, 1),
+        on_date=date(SEED_YEAR, 6, 1), profile_id=pid,
     )
     mortgage = assets.add_manual_position(
         s, name="Kredyt hipoteczny Test", type=AccountType.MORTGAGE, value="390000",
-        on_date=date(SEED_YEAR, 6, 1),
+        on_date=date(SEED_YEAR, 6, 1), profile_id=pid,
     )
     loans.set_loan(
         s, mortgage.id, "400000", "6.0", 300, date(2025, 1, 5),
-        origination_date=date(2024, 12, 10),
+        origination_date=date(2024, 12, 10), profile_id=pid,
     )
     assets.set_vehicle(
         s, name="Auto Test", purchase_price="80000", purchase_date=date(2025, 5, 1),
-        annual_rate="15", floor="10000",
+        annual_rate="15", floor="10000", profile_id=pid,
     )
     s.flush()
 
-    match_internal_transfers(s)
-    budget.categorize_all(s)
+    match_internal_transfers(s, profile_id=pid)
+    budget.categorize_all(s, profile_id=pid)
 
     # Move the September ATM withdrawal into the cash pool and log one cash spend.
     atm = s.exec(
         select(Transaction).where(
+            Transaction.account_id == main.id,
             Transaction.reference == "WYPLATA W BANKOMACIE TEST",
             Transaction.booking_date == date(SEED_YEAR, 9, 15),
         )
     ).one()
-    budget.set_transaction_category(s, atm.id, "cash_withdrawal")
+    budget.set_transaction_category(s, atm.id, "cash_withdrawal", profile_id=pid)
     cash.add_cash_expense(
         s, amount="40.00", title="Targ Test", category="groceries",
-        on_date=date(SEED_YEAR, 9, 16),
+        on_date=date(SEED_YEAR, 9, 16), profile_id=pid,
     )
 
 
