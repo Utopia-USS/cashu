@@ -419,7 +419,7 @@ def eb_banks(country: Annotated[str | None, typer.Option()] = None) -> None:
     table.add_column("institution")
     for a in aspsps:
         inst = institutions.from_aspsp(a.get("name"))
-        table.add_row(str(a.get("name")), str(a.get("country")), inst.id if inst else "—")
+        table.add_row(str(a.get("name")), str(a.get("country")), inst.id if inst else "-")
     cliutil.console.print(table)
 
 
@@ -487,7 +487,7 @@ def eb_login(
     institution = _sync_session(client, session_id, bank=bank, days=days, profile_id=pid)
     _save_session(slug, session_id, institution, add_session)
     cliutil.console.print(
-        f"[dim]Session saved for profile '{slug}' — re-sync later with `finanse eb resync`. "
+        f"[dim]Session saved for profile '{slug}'; re-sync later with `finanse eb resync`. "
         "After both banks, run `finanse match-transfers`.[/]"
     )
 
@@ -542,7 +542,7 @@ def eb_sessions() -> None:
         table.add_column(col)
     for e in saved:
         table.add_row(
-            institutions.display_name(e.institution), f"{e.session_id[:8]}…", e.saved_at or "—"
+            institutions.display_name(e.institution), f"{e.session_id[:8]}...", e.saved_at or "-"
         )
     cliutil.console.print(table)
 

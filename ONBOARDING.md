@@ -44,7 +44,9 @@ set `FINANSE_DATA_DIR` to use another folder). Run `pytest`: all tests should pa
 > from an earlier version, every command prints a notice and keeps using it. Run
 > `finanse migrate-data`: it copies the database, Open Banking sessions and key
 > into the data dir, keeps a timestamped backup and leaves the originals in
-> `data/` untouched (the user deletes them after checking the dashboard).
+> `data/` untouched (the user deletes them after checking the dashboard). The
+> schema upgrade (also automatic on any command) backs the database up into
+> `backups/` first and puts all existing data into one profile, `default`.
 
 ---
 
@@ -56,6 +58,18 @@ cp .env.example .env
 
 The defaults are enough to start (local DB, LLM off, Open Banking off). Nothing
 needs filling in yet — we come back to `.env` for Open Banking (step 4).
+
+> 🔀 **One person or several?** Data is kept per **profile** (a person or a
+> household). For a single user nothing is needed: the first import creates the
+> `default` profile. For several people, create one profile each and pass it to
+> every command (or set `FINANSE_PROFILE` in `.env`):
+> ```bash
+> finanse profiles add "Jan"          # -> slug jan
+> finanse profiles add "Marta" --modules budget
+> finanse --profile marta import-dir statements-marta
+> finanse profiles list
+> ```
+> The dashboard's first launch can also create the first profile (wizard).
 
 ---
 
@@ -76,7 +90,8 @@ Supported formats (verified): **mBank** (cp1250, `;`, multi-currency),
 **Erste/Santander** (UTF-8, no header, positional), **Pekao** (UTF-8, `;`).
 
 > 🔀 **A different bank?** If the user has a bank outside these three, offer to
-> write a parser — instructions in [`AGENTS.md`](AGENTS.md) → "Adding a new bank".
+> write a parser and add the bank to the registry - instructions in
+> [`AGENTS.md`](AGENTS.md) → "Adding a new bank".
 > Ask for **one sample file** and analyze the format (encoding, separator,
 > columns, where currency/IBAN/balance come from).
 
@@ -129,6 +144,10 @@ bank panel or their keys):
    ```bash
    finanse eb resync
    ```
+   Sessions are saved per profile (`finanse --profile marta eb login ...` for
+   another person; `finanse eb sessions` lists them). A new login replaces the
+   profile's session of that bank; `--add-session` keeps both (e.g. two people
+   with mBank in one household profile).
 
 > ⚠️ **Rate limits:** banks throttle PSD2 hard (`429`). Sync **~once a day**, not
 > in a loop. Sync is resilient — one account's error doesn't stop the rest.
@@ -168,13 +187,18 @@ Offer them if the user wants a full picture of their net worth:
 
 ```bash
 finanse add-position "Mieszkanie" --type property --value 730000
-finanse add-position "Kredyt hipoteczny" --type mortgage --value 680000
-finanse set-loan <id> 680000 6.27 --years 30 --start 2026-08-01   # amortization → simulator
+finanse loans add "Kredyt hipoteczny" --type mortgage --principal 680000 --rate 6.27 \
+    --years 30 --start 2026-08-01                                   # amortization → simulator
+finanse loans add "Kredyt samochodowy" --principal 60000 --rate 8.9 --months 72 --start 2025-03-01
+finanse loans set-payment 1 --text "RATA KREDYTU"                   # recognise its installments
+finanse loans set-balance 1 652000 --date 2026-09-30                # a figure from a bank statement
 finanse set-vehicle "Auto" 62500 2025-06-16 --rate 15 --floor 8000
 finanse cash-add 200 "zakupy" groceries                            # a cash expense
 ```
 
-(The values above are just format examples — the user enters their own.)
+(The values above are just format examples - the user enters their own.) A
+profile can have any number of loans (`finanse loans list`). The older
+`add-position ... --type mortgage` + `set-loan <account id> ...` pair still works.
 
 ---
 

@@ -4,7 +4,9 @@ Pulls transactions from Polish banks (**mBank**, **Erste** / former Santander,
 **Pekao**) via CSV export and optionally Open Banking, normalizes them to a common
 model, deduplicates, detects internal transfers between your own accounts,
 categorizes spending, and shows **net worth over time, monthly cashflow, recurring
-payments, loans, and asset depreciation** on a web dashboard.
+payments, loans, and asset depreciation** on a web dashboard. Data is kept per
+**profile** (you, your partner, the household), and each profile picks the
+**modules** it uses (budget, assets, loans; investments in progress).
 
 > 🔒 **Privacy.** Everything runs **locally**. Your financial data lives in a
 > SQLite file in your per-user data dir, outside the repository
@@ -59,6 +61,7 @@ cp .env.example .env         # the defaults are enough to start
 
 # 2) drop CSV statements into statements/<bank>/ (mbank | erste | pekao), then:
 finanse import-dir statements  # bank from the subdir name, idempotent
+                               # (the first import creates the "default" profile)
 finanse match-transfers        # pair internal transfers (by IBAN)
 finanse categorize             # categories (PL rules; --llm for the tail)
 
@@ -70,10 +73,16 @@ finanse serve                  # http://127.0.0.1:8500
 Full guide (including Open Banking, LLM categorization, manual positions) —
 [`ONBOARDING.md`](ONBOARDING.md).
 
+**More than one person?** `finanse profiles add "Marta"` creates a second
+profile; run commands for it with `finanse --profile marta ...` (or set
+`FINANSE_PROFILE`), and switch profiles in the dashboard header.
+
 **Upgrading from a version that kept the database in `data/`?** finanse keeps
 using it and says so on every command until you run `finanse migrate-data`, which
 copies the database (plus Open Banking sessions and key) into the data dir with a
-timestamped backup and leaves the originals untouched.
+timestamped backup and leaves the originals untouched. An existing database is
+upgraded automatically (with a backup in `backups/` first): all its data becomes
+the `default` profile, with the modules it already uses switched on.
 
 ---
 
@@ -84,12 +93,14 @@ timestamped backup and leaves the originals untouched.
   windowed/scrollable chart and a zoomable Y axis.
 - **Monthly cashflow** — income vs expenses, excluding transfers within your own
   net worth.
-- **Where the money goes** — spending categorization (23 categories, ~420 PL rules
+- **Where the money goes** - spending categorization (25 categories, ~420 PL rules
   + optional LLM), drill-down to transactions with corrections that teach the
   system.
 - **Recurring payments** — subscription detection.
-- **Loans** — annuity amortization (payment, schedule, outstanding debt, total
-  interest); the net-worth balance decreases over time.
+- **Loans** - any number per profile; annuity amortization (payment, schedule,
+  outstanding debt, total interest); the net-worth balance decreases over time,
+  and a balance from a bank statement takes over from its date. Installments are
+  recognised as loan repayments, never as subscriptions.
 - **Assets and cash** — car depreciation, manual positions, cash tracking.
 
 The dashboard has 5 tabs: **Przegląd · Wydatki · Przepływy · Subskrypcje · Kredyt**
@@ -102,8 +113,9 @@ The dashboard has 5 tabs: **Przegląd · Wydatki · Przepływy · Subskrypcje ·
 **CSV import (works right away, no API).** Arrange statements under
 `statements/<bank>/` — import takes the bank from the subdir name. Repeated import
 is idempotent (dedup by `bank_transaction_id` and by content hash). Parsers are
-thin configs on a shared engine (`src/finanse/ingestion/csv_import/`) — **adding
-another bank is easy** (see [`AGENTS.md`](AGENTS.md)).
+thin configs on a shared engine (`src/finanse/modules/budget/ingestion/csv_import/`)
+and banks are entries in a registry (`src/finanse/core/institutions.py`) -
+**adding another bank is easy** (see [`AGENTS.md`](AGENTS.md)).
 
 **Open Banking (Enable Banking, optional).** A free "Restricted Production" tier
 for live sync (~90 days, re-authorize every 90 days). The hybrid is deliberate: OB
@@ -116,12 +128,16 @@ in [`ONBOARDING.md`](ONBOARDING.md).
 
 | table | role |
 |---|---|
-| `accounts` | accounts (one physical account = one record; Santander and Erste are the same account) |
+| `profiles`, `profile_modules` | profiles (person / household) and the modules each one uses |
+| `accounts` | accounts of a profile (one physical account = one record; Santander and Erste are the same account) |
 | `transactions` | normalized signed transactions (+income / −expense), with a dedup hash and transfer group |
 | `balances` | balance snapshots over time — the basis for net worth |
+| `category_rules` | learned merchant → category rules (per profile) |
 | `import_batches` | audit of every import/sync |
 
-Plus the `Loan` (loan amortization) and `Depreciation` (asset depreciation) models.
+Plus the `Loan` (loan amortization, many per profile) and `Depreciation` (asset
+depreciation) models. Schema changes are Alembic migrations
+(`src/finanse/core/migrations/`).
 
 ---
 

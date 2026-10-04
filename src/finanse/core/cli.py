@@ -190,7 +190,7 @@ def profiles_list_cmd() -> None:
             table.add_row(
                 "*" if default is not None and p.id == default.id else "",
                 p.slug, p.name, p.base_currency, p.mcp_privacy,
-                ", ".join(profiles.enabled_modules(s, p.id)) or "—",
+                ", ".join(profiles.enabled_modules(s, p.id)) or "-",
             )
     if not rows:
         cliutil.console.print("No profiles yet. Add one: finanse profiles add NAME")
@@ -224,7 +224,7 @@ def profiles_add_cmd(
             raise typer.BadParameter(str(e)) from None
         slug, enabled = p.slug, profiles.enabled_modules(s, p.id)
     cliutil.console.print(
-        f"[green]Profile[/] '{name}' -> slug [bold]{slug}[/] (modules: {', '.join(enabled) or '—'}). "
+        f"[green]Profile[/] '{name}' -> slug [bold]{slug}[/] (modules: {', '.join(enabled) or '-'}). "
         f"Use it with: finanse --profile {slug} ..."
     )
 

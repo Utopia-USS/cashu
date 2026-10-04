@@ -38,8 +38,9 @@ language:
   category display labels — the tool targets Polish-bank users.
 - **Matching data**: CSV column headers detected in the parsers
   (`#Data operacji`, `Rachunek źródłowy`, …), the ~420 PL keyword rules in
-  `categorize/taxonomy.py`, the patterns in `engine.py`/`reclassify.py`, and the
-  LLM prompts in `local_llm.py`/`reclassify.py`. These are matched against Polish
+  `modules/budget/categorize/taxonomy.py`, the installment phrases in
+  `modules/loans/patterns.py`, the patterns in `engine.py`/`reclassify.py`, and
+  the LLM prompts in `local_llm.py`/`reclassify.py`. These are matched against Polish
   bank transaction text — translating them breaks categorization on real data.
 
 Rule of thumb: if a string is **explanation for a developer** → English. If it is
@@ -54,7 +55,9 @@ A local personal-finance tracker. It pulls transactions from Polish banks
 (**mBank**, **Erste** / former Santander, **Pekao**) via CSV export and optionally
 Open Banking (Enable Banking), normalizes them to a common model, deduplicates,
 detects internal transfers between the user's own accounts, categorizes spending,
-and computes net worth, monthly cashflow, and recurring payments. The dashboard is
+and computes net worth, monthly cashflow, and recurring payments. Data is kept
+per **profile** (a person or a household), and features come in **modules**
+(budget, assets, loans, investments) chosen per profile. The dashboard is
 FastAPI + a React SPA. Everything runs **locally**.
 
 Stack: Python 3.12+, SQLModel/SQLite, Typer (CLI), FastAPI (API),
@@ -64,48 +67,58 @@ React + Vite + TypeScript + Recharts (frontend).
 
 ## Repository map
 
+The app is a **core** plus **modules**. Core is always on (profiles, accounts,
+balances, net worth, registries, data dir, migrations, local API security); each
+module owns its tables, API router, CLI commands and blank-page setup steps and
+registers them with a `ModuleSpec`. A module never imports another module's
+internals: cross-module needs go through core (net-worth contributors, account
+types, institutions, categorization hooks).
+
 ```
 src/finanse/
-├── cli.py            # Typer CLI — all `finanse ...` commands (entry point)
+├── cli.py            # Typer root: --profile, core + module commands, `stats` (entry point)
 ├── config.py         # Settings (pydantic-settings), reads .env (FINANSE_ prefix)
-├── db.py             # SQLite engine + pragmas (WAL, busy_timeout, foreign_keys), init_db
+├── models.py         # facade: every table (scripts, Alembic env)
+├── db.py             # alias of core/db.py (`finanse.db.engine` still works)
 ├── core/
+│   ├── db.py             # SQLite engine + pragmas (WAL, busy_timeout, foreign_keys), init_db
+│   ├── models.py         # Profile, ProfileModule, Account, Balance (+ AccountType, Source)
+│   ├── profiles.py       # profiles, slugs, the default profile, module choice per profile
+│   ├── modules.py        # ModuleSpec + registry (finanse/modules/<id>/module.py)
+│   ├── account_types.py  # account type registry: sign, liquid, net-worth bucket, PL label
+│   ├── institutions.py   # bank/broker registry: CSV importer, Open Banking ASPSP names
+│   ├── accounts.py       # get_or_create_account, balances, own IBANs (per profile)
+│   ├── networth.py       # net worth per currency from module NetWorthContributors
+│   ├── api.py            # profile resolution, /api/system|modules|profiles, accounts, net worth
+│   ├── cli.py            # init-db, serve, migrate-data, accounts, set-balance, profiles, secrets
+│   ├── text.py           # IBAN / text normalization shared by all modules
 │   ├── paths.py          # per-user data dir (platformdirs, FINANSE_DATA_DIR), legacy data/ detection
 │   ├── legacy.py         # `finanse migrate-data` (copy data/ into the data dir with a backup)
-│   ├── migrations/       # Alembic: env.py + versions/ (0001_baseline = upstream schema)
+│   ├── migrations/       # Alembic: env.py + versions/ (0001 baseline = upstream schema, 0002 profiles, ...)
 │   ├── security.py       # API token + Host check middleware, token meta tag
 │   └── secrets.py        # OS keychain via keyring (`finanse secrets ...`)
-├── models.py         # SQLModel: Account, Transaction, Balance, Loan, Depreciation, ...
-├── types.py          # enums: Bank, AccountType, ...
-├── service.py        # domain logic: import, accounts, balances, categories, cash, loan
-├── analytics.py      # net worth (+ components), cashflow, spending, recurring, cash
-├── loan.py           # annuity amortization (payment, schedule, outstanding)
-├── depreciation.py   # asset depreciation (declining balance, e.g. a car)
-├── ingestion/
-│   ├── normalize.py      # RawTransaction, IBAN normalization (iban_key)
-│   ├── dedup.py          # deduplication (bank_transaction_id + content hash)
-│   ├── transfers.py      # internal-transfer matching (IBAN only)
-│   ├── csv_import/       # per-bank CSV parsers (base.py = engine, {mbank,erste,pekao}.py)
-│   └── enable_banking/   # Open Banking client, sync, callback, state (sessions)
-├── categorize/
-│   ├── taxonomy.py       # 23 categories + ~420 PL rules (apply_seed_rules)
-│   ├── engine.py         # categorization cascade (transfer→rule→seed→subscription→...)
-│   ├── rules.py          # learned rules merchant_key→category (CategoryRule)
-│   ├── llm.py            # anthropic backend (Claude Haiku) — merchant string only
-│   ├── local_llm.py      # ollama backend (offline)
-│   └── reclassify.py     # per-transaction reclassification with full context
+├── modules/
+│   ├── budget/           # bank accounts, categorization, cashflow, recurring, cash pool
+│   │   ├── module.py         # ModuleSpec (router, CLI, cash net-worth contributor, setup)
+│   │   ├── models.py         # Transaction, CategoryRule, ImportBatch
+│   │   ├── service.py        # ingestion choke point, CSV import, categorize_all
+│   │   ├── cash.py           # the cash pool (one virtual account per currency and profile)
+│   │   ├── analytics.py      # cashflow, spending, drill-down, recurring payments
+│   │   ├── api.py, cli.py, setup.py, queries.py
+│   │   ├── ingestion/        # normalize, dedup, transfers, csv_import/ (per-bank parsers), enable_banking/
+│   │   └── categorize/       # taxonomy (25 categories + ~420 PL rules), engine, rules, llm, local_llm, reclassify
+│   ├── assets/           # manual positions, vehicles (depreciation.py), net-worth contributor
+│   ├── loans/            # many loans per profile: amortization.py, valuation.py, patterns.py, api, cli
+│   └── investments/      # in progress (port of Kompas); listed in the wizard until its module.py lands
 └── api/
-    ├── app.py            # FastAPI: /api/* JSON + serves the frontend from webdist/
+    ├── app.py            # FastAPI composition: /api/p/{slug}/... + legacy /api/... aliases, SPA
     ├── static/index.html # legacy fallback (when webdist/ is absent)
     └── webdist/          # built React SPA (git-ignored, `npm run build`)
 
 frontend/                 # React + Vite + TS SPA (dashboard; UI strings are Polish)
-├── src/api.ts            # typed client + response shapes (mirror the backend)
-├── src/hooks.ts          # useAsync (fetch+reload), useWidth (callback-ref + ResizeObserver)
-├── src/format.ts         # currency/date formatters, palette, CSS-var reader
-├── src/ui.tsx            # Seg, Kpi, skeletons (Skeleton, SkeletonChart, ...)
-├── src/tabs/*            # one component per tab: Overview, Expenses, Flows, Subscriptions, Loan
-└── src/components/*      # charts and cards: NetWorthChart, ScrollableChart, SpendingDonut, CashCard, Accounts, Breakdown
+├── src/core/             # shell, profile switcher, wizard, settings, API client
+├── src/modules/<id>/     # each module's tabs and its SetupPage
+└── src/ui.tsx, format.ts, index.css   # shared primitives and tokens
 
 tests/                    # pytest — synthetic data, no real data
 data/                     # (git-ignored) legacy location of DB/keys/sessions (see migrate-data)
@@ -144,16 +157,35 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
 
 ## Data model / how the numbers work
 
+- **Profiles.** A profile is a person or a household. Every account belongs to
+  exactly one profile; learned category rules, import batches and Open Banking
+  sessions are per profile too, the seed taxonomy is global. Transactions,
+  balances, loans and depreciation belong to a profile through their account.
+  Every service function takes `profile_id` (`None` = the default profile:
+  `FINANSE_PROFILE`, else the oldest). The API is `/api/p/{slug}/...`; the old
+  `/api/...` paths are aliases for the default profile. The CLI takes
+  `finanse --profile <slug> ...`. "Own IBANs" (what counts as an internal
+  transfer) are per profile: a transfer to a partner in another profile is a real
+  outflow.
 - **Net worth is per-currency** — never sum currencies. Analytics default to PLN.
+  Core values every account from its balance snapshots; a module values the
+  accounts it owns through its `NetWorthContributor` (loans, vehicles, cash pool).
+  Sign, liquidity and chart bucket come from the account type registry.
 - **Internal transfers** (mBank↔Erste↔Pekao) are matched **by counterparty IBAN
   only** (names caused false positives). Excluded from income/expenses.
 - **Illiquid accounts** (`property`, `vehicle`, `mortgage`, `loan`) count toward
   net worth but not toward "liquid". Liabilities subtract.
-- **Loans** (`Loan`): the net-worth balance = the computed outstanding debt today
-  (amortization), not a fixed number. `outstanding` returns 0 before origination.
+- **Loans** (`Loan`, any number per profile): the net-worth balance = the computed
+  outstanding debt (amortization), not a fixed number; `outstanding` returns 0
+  before origination. A balance recorded for the loan account *after* its terms
+  were set (`finanse loans set-balance`, `set-balance`, a statement) wins from its
+  date on, reduced by the principal repaid after it. Installments are recognised
+  by phrases ("RATA KREDYTU", ...) and by each loan's lender account / title phrase
+  (`finanse loans set-payment`), so they are "Raty kredytów", never subscriptions.
 - **Asset depreciation** (`Depreciation`): a car's value decays over time.
-- **Cash**: a virtual `Bank.MANUAL`/`CASH` account; its balance is the running sum
-  of its transactions, not a snapshot. Tagging a bank withdrawal creates a mirror leg.
+- **Cash**: a virtual `manual`/`cash` account per currency and profile; its balance
+  is the running sum of its transactions, not a snapshot. Tagging a bank
+  withdrawal creates a mirror leg.
 - **Categorization** is a cascade; manual overrides (`manual_txn`) and LLM results
   (`llm_full`) survive re-categorization (`categorize_all` skips them).
 - **Migrations: Alembic.** `init_db()` (every CLI command and server start)
@@ -161,26 +193,42 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
   you change a model, add a revision from the repo root
   (`FINANSE_DATA_DIR=/tmp/x alembic revision --autogenerate -m "..."`) and use
   `op.batch_alter_table` for existing tables (SQLite rebuilds them).
-  `tests/test_migrations.py` fails when models and migrations drift.
+  `tests/test_migrations.py` fails when models and migrations drift. Before a
+  database with data is upgraded, a copy goes to `backups/` next to it.
 
 ---
 
 ## Conventions when extending
 
 **Adding a new bank (CSV parser):**
-1. New file `src/finanse/ingestion/csv_import/<bank>.py` — a thin config on top of
-   the engine in `base.py` (model it on `mbank.py`/`pekao.py`: encoding, separator,
-   columns, where currency/IBAN/balance come from). Keep the bank's Polish CSV
-   headers verbatim — they are matched against the file.
-2. Add a value to the `Bank` enum in `types.py`.
-3. Register the parser where import picks it by bank name (see `import-dir` /
-   `import-csv` in `service.py`/`cli.py`).
-4. Add a test in `tests/test_parsing.py` using a **synthetic** sample of the format.
+1. New file `src/finanse/modules/budget/ingestion/csv_import/<bank>.py` - a thin
+   config on top of the engine in `base.py` (model it on `mbank.py`/`pekao.py`:
+   encoding, separator, columns, where currency/IBAN/balance come from; set
+   `bank = "<id>"`). Keep the bank's Polish CSV headers verbatim - they are
+   matched against the file.
+2. Add one `Institution` entry to `BUILTIN` in `core/institutions.py`: id, kind
+   `bank`, display name, `csv_importer="<module path>:<Class>"` and the
+   `aspsp_patterns` that map its Enable Banking ASPSP name. Import, auto-detection,
+   `--bank` choices and `statements/<id>/` directories pick it up from there.
+3. Add a test in `tests/test_parsing.py` using a **synthetic** sample of the format.
+
+**Adding a module:** a package `src/finanse/modules/<id>/` with its tables
+(`models.py`, plus an Alembic revision), and `module.py` exporting
+`MODULE = ModuleSpec(...)`: Polish name/description (wizard), router, CLI
+`register`, optional `NetWorthContributor`, account types / buckets /
+institutions it owns, categorization hooks, `setup_status(session, profile_id)`
+(blank-page steps) and its setup skill. Add the id to `MODULE_IDS` in
+`core/modules.py`. Never import another module's internals.
 
 **Adding a dashboard feature:**
-1. Endpoint in `api/app.py` (plain JSON under `/api/...`). Every `/api/*` route
-   is behind the token + Host check automatically (`core/security.py`); in tests
-   use a `TestClient` with `base_url=security.get_config().base_url` and the
+1. Endpoint in the module's `api.py` router (plain JSON). Take the profile with a
+   `profile: CurrentProfile` parameter and pass `profile_id=profile.id` to every
+   query; the app mounts module routers under `/api/p/{slug}/...` and as legacy
+   `/api/...` aliases. Add the route to `PROFILE_GETS` in
+   `tests/test_profiles.py` (a guard test fails otherwise): it checks that two
+   profiles never see each other's data. Every `/api/*` route is behind the
+   token + Host check automatically (`core/security.py`); in tests use a
+   `TestClient` with `base_url=security.get_config().base_url` and the
    `X-Finanse-Token` header (see `tests/conftest.py`).
 2. Type + function in `frontend/src/api.ts` (mirror the JSON shape); call it
    through `j`/`jpost`/`jdel`, which send the token.
@@ -189,11 +237,16 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
 4. Line/bar charts: use `components/ScrollableChart.tsx` (window+scroll+axis
    +grid). Don't add zoom/pan plugins to Chart.js — they were removed as janky.
 
-**CLI:** commands are `@app.command(...)` in `cli.py`. Follow the existing pattern.
+**CLI:** a module's commands live in its `cli.py` and are added by `register(app)`
+(top level, upstream names) and in the module's sub-app (`finanse loans ...`).
+Resolve the profile with `core.cliutil.profile(session)` and print through
+`core.cliutil.console`. Follow the existing pattern.
 
 **Tests:** `pytest`. Always synthetic data. Never paste real statements. Point
 `FINANSE_DATA_DIR` at a temp dir (never the real data dir) and use an in-memory
-keyring backend for secrets.
+keyring backend for secrets. `conftest.seed_demo(session, profile_id=...)` seeds a
+synthetic household into any profile; `tests/upstream_db.py` builds an
+upstream-shaped database for migration tests.
 
 ---
 
@@ -204,4 +257,7 @@ keyring backend for secrets.
 - Don't run `eb resync` / `reclassify` in a loop — banks throttle PSD2 (429), and
   the local LLM is slow. Sync ~once a day.
 - Don't overwrite an existing account's type, or its name with the owner name from OB.
+- Don't query a profile-scoped table without the profile (accounts, rules,
+  transactions through their account): data of one profile must never show up in
+  another.
 - Don't commit anything from `data/` or `statements/`.
