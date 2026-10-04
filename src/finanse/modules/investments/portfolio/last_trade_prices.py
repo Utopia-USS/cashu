@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Sequence
 from decimal import Decimal
+from fractions import Fraction
 
 from ..domain import (
     AccountId,
@@ -20,6 +21,7 @@ from ..domain import (
     divided_by,
     exact,
 )
+from .split_ratio import split_fraction
 
 SPLIT_DEDUP_WINDOW_DAYS = 31
 """Split transactions of one instrument with the same ratio within this many days are one corporate
@@ -40,9 +42,11 @@ def last_trade_prices(
     Only real trade prices count (R13): a ``transfer_in`` or ``adjustment`` carries a cost price, not a
     market price, and rows with ``source = reconciliation`` are skipped too.
 
-    Later splits divide the price by their ratio (the date stays the trade date). One split is applied
-    once per instrument (R11): a split with the same ratio within :data:`SPLIT_DEDUP_WINDOW_DAYS` days of
-    an already applied one is the same corporate action booked in another account, so it is skipped.
+    Later splits divide the price by their ratio read as an exact fraction (:func:`split_fraction`; the
+    date stays the trade date). One split is applied once per instrument (R11): a split with the same
+    ratio (as a fraction, so ``0.3333333333`` and ``0.33333333333333333333`` are both 1:3) within
+    :data:`SPLIT_DEDUP_WINDOW_DAYS` days of an already applied one is the same corporate action booked in
+    another account, so it is skipped.
 
     A rename (effective at the start of its date) hands the old instrument's price to the new one when
     the new one has none yet; later rows naming the old instrument count for the new one.
@@ -64,7 +68,7 @@ def last_trade_prices(
     events.sort(key=lambda item: item[0])
 
     prices: dict[InstrumentId, DatedPrice] = {}
-    applied_splits: dict[InstrumentId, list[tuple[CalendarDate, Decimal]]] = {}
+    applied_splits: dict[InstrumentId, list[tuple[CalendarDate, Fraction]]] = {}
     redirect: dict[InstrumentId, InstrumentId] = {}
 
     def resolve(instrument_id: InstrumentId | None) -> InstrumentId | None:
@@ -93,9 +97,9 @@ def last_trade_prices(
                     date=event.trade_date, price=price, currency=event.currency
                 )
         elif event.type == TxnType.SPLIT:
-            ratio = event.split_ratio
-            if ratio is None or ratio <= 0:
+            if event.split_ratio is None or event.split_ratio <= 0:
                 continue
+            ratio = split_fraction(event.split_ratio)
             applied = applied_splits.setdefault(instrument_id, [])
             same_action = any(
                 r == ratio and abs(days_between(d, event.trade_date)) <= SPLIT_DEDUP_WINDOW_DAYS
@@ -107,6 +111,8 @@ def last_trade_prices(
             last = prices.get(instrument_id)
             if last is not None:
                 prices[instrument_id] = DatedPrice(
-                    date=last.date, price=divided_by(last.price, ratio), currency=last.currency
+                    date=last.date,
+                    price=divided_by(last.price * ratio.denominator, Decimal(ratio.numerator)),
+                    currency=last.currency,
                 )
     return prices

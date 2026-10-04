@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Context, Decimal
+from fractions import Fraction
 
 from ..domain import (
     AccountId,
@@ -30,6 +31,20 @@ from ..domain import (
     divided_by,
     exact,
 )
+from .split_ratio import decimal_places, split_fraction
+
+SPLIT_REMAINDER_TOLERANCE = Fraction(1, 10**9)
+"""Units of split dust forgiven when a sell or transfer-out meets a lot. After a split like 1:15 a lot
+can hold a quantity with no finite decimal (1000 shares -> 200/3), which a broker's decimal quantity
+never matches exactly: selling 66.6666666667 (all of it) or 0.6666666667 (cash in lieu of the fraction)
+would leave 3.3E-11 or 65.99999999996667. When what a request leaves in the lot has no finite decimal
+and is within this tolerance of a whole number of units, the lot keeps exactly that whole number (0 =
+the lot is closed; no dust lot, no :class:`HistoryGap`). Remainders with a finite decimal are never
+snapped: decimal histories are matched exactly."""
+
+QUANTITY_DIGITS = 20
+"""Significant digits of a reported quantity that has no finite decimal (7/15 ->
+0.46666666666666666667); finite quantities are reported exactly."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,8 +82,12 @@ def run_lots(
     - ``transfer_in`` and ``adjustment`` open a lot at ``price`` (cost = price * quantity); a missing or
       zero price means unknown cost (:class:`UnknownCostBasis`). Transfer fees are not part of the cost.
     - ``transfer_out`` consumes lots FIFO without realizing anything.
-    - ``split`` multiplies the open quantities of that account's lots by ``split_ratio`` (total cost is
-      unchanged, so the unit cost is divided by the ratio).
+    - ``split`` multiplies the open quantities of that account's lots by ``split_ratio`` read as an
+      exact fraction (:func:`split_fraction`: ``0.3333333333`` is 1:3); total cost is unchanged, so the
+      unit cost is divided by the ratio. Lot quantities are exact fractions inside the engine, so 30
+      shares after 1:3 are exactly 10 and a sell of 10 closes them; a quantity with no finite decimal
+      (1000 shares after 1:15) is matched by a broker's rounded decimal within
+      :data:`SPLIT_REMAINDER_TOLERANCE` and reported with :data:`QUANTITY_DIGITS` digits.
     - Selling or transferring out more than held never raises: the matched part is processed and a
       :class:`HistoryGap` records the shortfall.
     - Every transaction's ``cash_amount`` adds to the cash of (account, ``cash_currency``).
@@ -103,8 +122,37 @@ def _events(
     return [event for _, event in keyed]
 
 
+def _to_decimal(value: Fraction) -> Decimal:
+    """``value`` exactly when it has a finite decimal, else rounded to :data:`QUANTITY_DIGITS`
+    significant digits (half-up)."""
+    places = decimal_places(value)
+    if places is None:
+        return Context(prec=QUANTITY_DIGITS, rounding=ROUND_HALF_UP).divide(
+            Decimal(value.numerator), Decimal(value.denominator)
+        )
+    return Decimal(f"{value.numerator * (10**places // value.denominator)}E-{places}")
+
+
+def _rounded(value: Fraction) -> Decimal:
+    """``value`` rounded like :func:`divided_by` (half-up, 10 places): unit costs and cost shares."""
+    return divided_by(Decimal(value.numerator), Decimal(value.denominator))
+
+
+def _snapped_remainder(left: Fraction) -> int | None:
+    """The whole number of units a lot keeps when a request would leave ``left`` (negative: the request
+    exceeds the lot) and ``left`` is split dust away from it (:data:`SPLIT_REMAINDER_TOLERANCE`), else
+    None (the request is matched exactly)."""
+    if decimal_places(left) is not None:
+        return None
+    nearest = round(left)
+    if nearest < 0 or abs(left - nearest) > SPLIT_REMAINDER_TOLERANCE:
+        return None
+    return nearest
+
+
 class _Lot:
-    """A mutable lot while the engine runs. ``cost`` is the exact total cost (None = unknown)."""
+    """A mutable lot while the engine runs. ``quantity`` is exact (a fraction: splits like 1:3 have no
+    finite decimal), ``cost`` the exact total cost (None = unknown)."""
 
     __slots__ = (
         "account_id",
@@ -123,7 +171,7 @@ class _Lot:
         open_txn_id: TxnId,
         open_date: CalendarDate,
         currency: Currency,
-        quantity: Decimal,
+        quantity: Fraction,
         cost: Decimal | None,
     ) -> None:
         self.account_id = account_id
@@ -140,17 +188,21 @@ class _Lot:
             instrument_id=self.instrument_id,
             open_txn_id=self.open_txn_id,
             open_date=self.open_date,
-            quantity=self.quantity,
+            quantity=_to_decimal(self.quantity),
             currency=self.currency,
-            unit_cost=None if self.cost is None else divided_by(self.cost, self.quantity),
+            unit_cost=None if self.cost is None else _rounded(Fraction(self.cost) / self.quantity),
         )
 
 
 @dataclass(slots=True)
 class _Match:
     lot: _Lot
-    quantity: Decimal
+    quantity: Fraction
+    """Units the request matched (reported on the realized trade)."""
+    taken: Fraction
+    """Units taken from the lot: ``quantity`` except for split dust (:func:`_snapped_remainder`)."""
     cost: Decimal | None
+    """Exact cost of ``taken``."""
 
 
 class _EngineState:
@@ -246,7 +298,7 @@ class _EngineState:
                 open_txn_id=txn.id,
                 open_date=txn.trade_date,
                 currency=txn.currency,
-                quantity=quantity,
+                quantity=Fraction(quantity),
                 cost=cost,
             )
         )
@@ -265,7 +317,9 @@ class _EngineState:
         for index, match in enumerate(matches):
             is_last = index == len(matches) - 1 and shortfall == 0
             share = (
-                proceeds - allocated if is_last else divided_by(proceeds * match.quantity, quantity)
+                proceeds - allocated
+                if is_last
+                else _rounded(Fraction(proceeds) * match.quantity / Fraction(quantity))
             )
             allocated += share
             same_currency = match.lot.currency == txn.currency
@@ -277,13 +331,13 @@ class _EngineState:
                     close_txn_id=txn.id,
                     open_date=match.lot.open_date,
                     close_date=txn.trade_date,
-                    quantity=match.quantity,
+                    quantity=_to_decimal(match.quantity),
                     close_unit_price=close_unit_price,
                     currency=txn.currency,
                     cost_currency=match.lot.currency,
                     open_unit_cost=None
                     if match.cost is None
-                    else divided_by(match.cost, match.quantity),
+                    else _rounded(Fraction(match.cost) / match.taken),
                     pnl=None if match.cost is None or not same_currency else share - match.cost,
                 )
             )
@@ -310,39 +364,45 @@ class _EngineState:
         if ratio is None or ratio <= 0:
             self._invalid(txn, "missing or non-positive split ratio")
             return
+        exact_ratio = split_fraction(ratio)
         for lot in self._lots.get((txn.account_id, instrument_id), ()):
-            lot.quantity *= ratio
+            lot.quantity *= exact_ratio
 
     def _consume(
         self, txn: Transaction, instrument_id: InstrumentId, quantity: Decimal
-    ) -> tuple[list[_Match], Decimal]:
+    ) -> tuple[list[_Match], Fraction]:
         """Takes ``quantity`` units FIFO from the lots of (account, instrument); records a
-        :class:`HistoryGap` for any shortfall."""
+        :class:`HistoryGap` for any shortfall. A request that would leave split dust in a lot leaves a
+        whole number of units instead (:func:`_snapped_remainder`)."""
         queue = self._lots.get((txn.account_id, instrument_id), deque())
         matches: list[_Match] = []
-        remaining = quantity
+        remaining = Fraction(quantity)
         while remaining > 0 and queue:
             lot = queue[0]
-            take = min(lot.quantity, remaining)
+            kept = _snapped_remainder(lot.quantity - remaining)
+            if kept is not None and kept < lot.quantity:
+                matched, take = remaining, lot.quantity - kept
+            else:
+                matched = take = min(lot.quantity, remaining)
             lot_cost = lot.cost
             if lot_cost is None or take == lot.quantity:
                 cost = lot_cost
             else:
-                cost = divided_by(lot_cost * take, lot.quantity)
-            matches.append(_Match(lot=lot, quantity=take, cost=cost))
+                cost = _rounded(Fraction(lot_cost) * take / lot.quantity)
+            matches.append(_Match(lot=lot, quantity=matched, taken=take, cost=cost))
             lot.quantity -= take
             if lot_cost is not None and cost is not None:
                 lot.cost = lot_cost - cost
             if lot.quantity == 0:
                 queue.popleft()
-            remaining -= take
+            remaining -= matched
         if remaining > 0:
             self._warnings.append(
                 HistoryGap(
                     account_id=txn.account_id,
                     instrument_id=instrument_id,
                     date=txn.trade_date,
-                    shortfall=remaining,
+                    shortfall=_to_decimal(remaining),
                     txn_id=txn.id,
                 )
             )

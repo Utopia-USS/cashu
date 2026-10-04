@@ -7,12 +7,14 @@ Pipeline: ``build_snapshot`` -> ``value_portfolio`` (with a ``MarketView`` and a
 from .allocation import allocate, matches_bucket, matches_cash_bucket
 from .fx_lookup import InMemoryFxLookup, convert, fx_currencies_for
 from .last_trade_prices import SPLIT_DEDUP_WINDOW_DAYS, last_trade_prices
-from .lot_engine import LotEngineResult, run_lots
+from .lot_engine import SPLIT_REMAINDER_TOLERANCE, LotEngineResult, run_lots
 from .snapshot_builder import build_snapshot, restrict_snapshot
+from .split_ratio import split_fraction
 from .valuation import effective_valuation_mode, value_portfolio
 
 __all__ = [
     "SPLIT_DEDUP_WINDOW_DAYS",
+    "SPLIT_REMAINDER_TOLERANCE",
     "InMemoryFxLookup",
     "LotEngineResult",
     "allocate",
@@ -25,5 +27,6 @@ __all__ = [
     "matches_cash_bucket",
     "restrict_snapshot",
     "run_lots",
+    "split_fraction",
     "value_portfolio",
 ]
