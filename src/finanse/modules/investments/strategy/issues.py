@@ -49,11 +49,33 @@ class StrategyIssue:
 
 
 @dataclass(frozen=True, slots=True)
+class InactiveRule:
+    """A rule entry left out of the strategy because of its own errors (``rules[index]``)."""
+
+    index: int
+    rule_id: str | None
+    """The entry's ``id`` when it is a plain string, else None."""
+    kind: str | None
+    line: int | None = None
+    """1-based line of the entry in strategy.yaml."""
+    issues: tuple[StrategyIssue, ...] = ()
+    """The errors that made it inactive."""
+
+
+@dataclass(frozen=True, slots=True)
 class StrategyLoadResult:
-    """A ``config`` when there is no error, plus every issue (warnings may accompany a valid config)."""
+    """A ``config`` when there is no error, plus every issue (warnings may accompany a valid config).
+
+    ``partial``: when every error belongs to a rule entry (``rules[i]...``), the config built from
+    everything else and the valid rules; ``config`` stays None (the strategy is not valid) and the
+    left-out entries are listed in ``inactive_rules``. A caller may run the valid rules and report
+    the inactive ones (the daily check does).
+    """
 
     config: StrategyConfig | None = None
     issues: tuple[StrategyIssue, ...] = ()
+    partial: StrategyConfig | None = None
+    inactive_rules: tuple[InactiveRule, ...] = ()
 
     @property
     def is_valid(self) -> bool:

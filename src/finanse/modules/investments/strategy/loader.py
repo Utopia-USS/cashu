@@ -39,7 +39,7 @@ from finanse.modules.investments.rules.params import parse_currency
 
 from . import yaml_tree
 from .config import Benchmark, NotificationPolicy, StrategyConfig, WatchlistCriteria, Weekday
-from .issues import IssueSeverity, StrategyIssue, StrategyLoadResult
+from .issues import InactiveRule, IssueSeverity, StrategyIssue, StrategyLoadResult
 
 TOP_LEVEL_KEYS = (
     "version",
@@ -61,6 +61,7 @@ TARGET_SUM_TOLERANCE = 0.001
 """Allowed deviation of the ``allocation.targets`` sum from 1."""
 
 _ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
+_RULE_PATH = re.compile(r"^rules\[(\d+)\]")
 _ID_RULE = 'may only contain letters, digits, "_", "." and "-"'
 
 
@@ -164,25 +165,64 @@ class _Parse:
                 )
             )
 
-        if header is None or any(issue.is_error for issue in self._issues):
-            return StrategyLoadResult(None, tuple(self._issues))
-        config = StrategyConfig(
-            version=header.version,
-            base_currency=header.base_currency,
-            horizon_years=header.horizon_years,
-            allocation=AllocationPlan(
-                buckets=tuple(bucket.definition for bucket in buckets), targets=allocation.targets
-            ),
-            rebalance=allocation.rebalance,
-            data=data,
-            contributions=contributions,
-            rules=tuple(rules),
-            watchlist=watchlist,
-            benchmark=benchmark if isinstance(benchmark, Benchmark) else None,
-            notifications=notifications,
-            markdown=self._md,
-        )
-        return StrategyLoadResult(config, tuple(self._issues))
+        def config() -> StrategyConfig:
+            assert header is not None
+            return StrategyConfig(
+                version=header.version,
+                base_currency=header.base_currency,
+                horizon_years=header.horizon_years,
+                allocation=AllocationPlan(
+                    buckets=tuple(bucket.definition for bucket in buckets),
+                    targets=allocation.targets,
+                ),
+                rebalance=allocation.rebalance,
+                data=data,
+                contributions=contributions,
+                rules=tuple(rules),
+                watchlist=watchlist,
+                benchmark=benchmark if isinstance(benchmark, Benchmark) else None,
+                notifications=notifications,
+                markdown=self._md,
+            )
+
+        errors = [issue for issue in self._issues if issue.is_error]
+        inactive = self._inactive_rules(root, errors)
+        if header is None or errors:
+            only_rules = header is not None and all(_RULE_PATH.match(e.path) for e in errors)
+            return StrategyLoadResult(
+                None,
+                tuple(self._issues),
+                partial=config() if only_rules else None,
+                inactive_rules=inactive,
+            )
+        return StrategyLoadResult(config(), tuple(self._issues))
+
+    def _inactive_rules(
+        self, root: MappingNode, errors: list[StrategyIssue]
+    ) -> tuple[InactiveRule, ...]:
+        """Rule entries with errors of their own (``rules[i]...`` paths), in file order."""
+        by_index: dict[int, list[StrategyIssue]] = {}
+        for issue in errors:
+            match = _RULE_PATH.match(issue.path)
+            if match:
+                by_index.setdefault(int(match.group(1)), []).append(issue)
+        node = yaml_tree.get(root, "rules")
+        items = node.value if isinstance(node, SequenceNode) else []
+        out: list[InactiveRule] = []
+        for index in sorted(by_index):
+            item = items[index] if index < len(items) else None
+            raw = yaml_tree.plain_map(item) if isinstance(item, MappingNode) else {}
+            rule_id, kind = raw.get("id"), raw.get("kind")
+            out.append(
+                InactiveRule(
+                    index=index,
+                    rule_id=rule_id if isinstance(rule_id, str) else None,
+                    kind=kind if isinstance(kind, str) else None,
+                    line=yaml_tree.position(item)[0] if item is not None else None,
+                    issues=tuple(by_index[index]),
+                )
+            )
+        return tuple(out)
 
     # --- sections ------------------------------------------------------------------------------
 
