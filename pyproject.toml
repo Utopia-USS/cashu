@@ -3,23 +3,32 @@ name = "finanse"
 version = "0.1.0"
 description = "Personal finance tracker — bank transaction ingestion (mBank + Erste), net worth, spending & recurring payments"
 requires-python = ">=3.12"
+# Upper bounds stop before the next major release (0.x packages: before 1.0, sqlmodel
+# before 0.1). constraints.txt pins the exact tested set:
+#   pip install -e ".[dev]" -c constraints.txt
 dependencies = [
-    "sqlmodel>=0.0.22",
-    "httpx>=0.27",
-    "pyjwt[crypto]>=2.9",
-    "cryptography>=43.0",
-    "pydantic-settings>=2.4",
-    "typer>=0.12",
-    "rich>=13.7",
-    "python-dateutil>=2.9",
-    "fastapi>=0.115",
-    "uvicorn>=0.30",
+    "sqlmodel>=0.0.22,<0.1",
+    "sqlalchemy>=2.0.30,<2.1",
+    "alembic>=1.16,<2",
+    "httpx>=0.27,<1",
+    "pyjwt[crypto]>=2.9,<3",
+    "cryptography>=43.0,<51",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.4,<3",
+    "typer>=0.12,<1",
+    "rich>=13.7,<16",
+    "python-dateutil>=2.9,<3",
+    "fastapi>=0.115,<1",
+    "starlette>=0.40,<2",
+    "uvicorn>=0.30,<1",
+    "platformdirs>=4.3,<5",
+    "keyring>=25,<26",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3",
-    "ruff>=0.6",
+    "pytest>=8.3,<10",
+    "ruff>=0.6,<1",
 ]
 
 [project.scripts]

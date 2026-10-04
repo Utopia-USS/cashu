@@ -2,54 +2,100 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+import os
 from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 
-from sqlmodel import Session, SQLModel, create_engine
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+from sqlmodel import Session, create_engine
 
-from .config import PROJECT_ROOT, settings
+from .config import settings
+from .core import paths
 
+SQLITE_PREFIX = "sqlite:///"
 
-def _resolve_url(url: str) -> str:
-    """Make relative sqlite paths absolute w.r.t. the project root."""
-    prefix = "sqlite:///"
-    if url.startswith(prefix):
-        raw = url[len(prefix):]
-        path = PROJECT_ROOT / raw if not raw.startswith("/") else raw
-        # ensure parent dir exists
-        from pathlib import Path
-
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        return f"{prefix}{path}"
-    return url
+# Applied to every new SQLite connection (SQLite pragmas are per connection).
+SQLITE_PRAGMAS = (
+    "PRAGMA journal_mode=WAL",  # readers never block the writer (server + CLI at once)
+    "PRAGMA busy_timeout=5000",  # wait up to 5 s for a lock instead of failing at once
+    "PRAGMA foreign_keys=ON",  # enforce the declared foreign keys
+)
 
 
-engine = create_engine(_resolve_url(settings.database_url), echo=False)
+def sqlite_file(url: str) -> Path | None:
+    """Absolute path of a file-based SQLite URL, None for in-memory / other DBs.
+
+    Relative paths resolve against the repo root (the historical behaviour of
+    ``FINANSE_DATABASE_URL=sqlite:///data/...``)."""
+    if not url.startswith(SQLITE_PREFIX):
+        return None
+    raw = url[len(SQLITE_PREFIX):].split("?", 1)[0]
+    if not raw or raw == ":memory:" or raw.startswith("file:"):
+        return None
+    path = Path(raw)
+    return path if path.is_absolute() else paths.PROJECT_ROOT / path
+
+
+def resolve_database_url(explicit: str | None = None) -> str:
+    """The URL to use: ``FINANSE_DATABASE_URL`` if set, else the data-dir DB (or the
+    legacy ``<repo>/data/finanse.db`` while in legacy mode, see core.paths).
+
+    The old default ``sqlite:///data/finanse.db`` (copied from .env.example into
+    many .env files) counts as unset, so ``finanse migrate-data`` can switch it."""
+    if explicit:
+        file = sqlite_file(explicit)
+        if file is None:
+            return explicit
+        if file.resolve() != paths.legacy_db_path().resolve():
+            return f"{SQLITE_PREFIX}{file}"
+    return f"{SQLITE_PREFIX}{paths.db_path()}"
+
+
+def _apply_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+    cursor = dbapi_connection.cursor()
+    try:
+        for pragma in SQLITE_PRAGMAS:
+            cursor.execute(pragma)
+    finally:
+        cursor.close()
+
+
+def _prepare_sqlite_file(file: Path) -> None:
+    """Private parent dir (0700) and, for a new DB, an owner-only (0600) file;
+    SQLite gives its -wal/-shm files the same permissions as the DB."""
+    paths.ensure_private_dir(file.parent)
+    if not file.exists():
+        os.close(os.open(file, os.O_WRONLY | os.O_CREAT, 0o600))
+
+
+def make_engine(url: str, **kwargs) -> Engine:
+    """Create an engine; SQLite engines get the pragmas on every connection and
+    create their file on first connect (not at import)."""
+    eng = create_engine(url, **kwargs)
+    if eng.dialect.name == "sqlite":
+        event.listen(eng, "connect", _apply_sqlite_pragmas)
+        file = sqlite_file(url)
+        if file is not None:
+
+            @event.listens_for(eng, "do_connect")
+            def _prepare(_dialect, _conn_rec, _cargs, _cparams) -> None:
+                _prepare_sqlite_file(file)
+
+    return eng
+
+
+engine = make_engine(resolve_database_url(settings.database_url), echo=False)
 
 
 def init_db() -> None:
-    """Create tables if they don't exist. Imports models to register metadata."""
+    """Create or upgrade the schema to the latest Alembic revision (an existing
+    pre-Alembic database is stamped at the baseline, not recreated)."""
     from . import models  # noqa: F401  (registers tables on SQLModel.metadata)
+    from .core import migrations
 
-    SQLModel.metadata.create_all(engine)
-    _ensure_columns()
-
-
-def _ensure_columns() -> None:
-    """Lightweight additive migration (no migration framework): add columns that
-    were introduced after a DB was first created. SQLite only."""
-    if engine.dialect.name != "sqlite":
-        return
-    additions = {
-        "transactions": {"category_source": "VARCHAR"},
-        "loans": {"origination_date": "DATE"},
-    }
-    with engine.begin() as conn:
-        for table, cols in additions.items():
-            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
-            for col, decl in cols.items():
-                if col not in existing:
-                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    migrations.upgrade_to_head(engine)
 
 
 @contextmanager

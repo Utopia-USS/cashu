@@ -7,11 +7,15 @@ categorizes spending, and shows **net worth over time, monthly cashflow, recurri
 payments, loans, and asset depreciation** on a web dashboard.
 
 > 🔒 **Privacy.** Everything runs **locally**. Your financial data lives in a
-> SQLite file on your machine and **never lands in the repository** (the database,
-> statements, keys, and `.env` are git-ignored). Bank passwords never pass through
-> this code — you log in (SCA) yourself in the bank's browser. Categorization uses
-> a local offline model by default; the optional cloud mode sends **only merchant
-> names**.
+> SQLite file in your per-user data dir, outside the repository
+> (`~/Library/Application Support/finanse` on macOS, `%APPDATA%\finanse` on
+> Windows, `~/.local/share/finanse` on Linux; override with `FINANSE_DATA_DIR`),
+> so it **never lands in the repository** (statements and `.env` are git-ignored
+> too). API keys go to the OS keychain (`finanse secrets set anthropic`). The
+> dashboard listens on `127.0.0.1` only and every API call needs a per-launch
+> token. Bank passwords never pass through this code - you log in (SCA) yourself
+> in the bank's browser. Categorization uses a local offline model by default; the
+> optional cloud mode sends **only merchant names**.
 
 > 🌐 **Language.** Code, comments, and docs are in English. The **dashboard UI is
 > in Polish** and so are the categorization keywords and LLM prompts — the tool
@@ -49,8 +53,8 @@ The agent knows the safety rules and **won't commit your data**.
 ```bash
 # 1) environment
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-finanse init-db
+pip install -e ".[dev]"       # exact tested versions: add -c constraints.txt
+finanse init-db                # prints where the database lives
 cp .env.example .env         # the defaults are enough to start
 
 # 2) drop CSV statements into statements/<bank>/ (mbank | erste | pekao), then:
@@ -65,6 +69,11 @@ finanse serve                  # http://127.0.0.1:8500
 
 Full guide (including Open Banking, LLM categorization, manual positions) —
 [`ONBOARDING.md`](ONBOARDING.md).
+
+**Upgrading from a version that kept the database in `data/`?** finanse keeps
+using it and says so on every command until you run `finanse migrate-data`, which
+copies the database (plus Open Banking sessions and key) into the data dir with a
+timestamped backup and leaves the originals untouched.
 
 ---
 

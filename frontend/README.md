@@ -16,6 +16,11 @@ cd frontend && npm install && npm run dev
 ```
 
 Open the printed Vite URL (http://localhost:5173). Edits hot-reload instantly.
+The proxy adds the backend's per-launch API token, read on every request from
+`<data dir>/api-token` (written by `finanse serve`; `FINANSE_DATA_DIR` and
+`FINANSE_PORT` are honoured), so restarting the backend needs no Vite restart.
+The built app instead gets the token from a `<meta name="finanse-token">` tag
+that `finanse serve` injects into `index.html`.
 
 ## Build (production — served by `finanse serve`)
 

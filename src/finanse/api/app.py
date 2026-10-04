@@ -2,27 +2,34 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import select
 
 from .. import analytics
+from ..core import security
 from ..db import get_session, init_db
 from ..models import Account
 
 STATIC = Path(__file__).parent / "static"
 WEBDIST = Path(__file__).parent / "webdist"  # built React SPA (frontend/ → npm run build)
 
-app = FastAPI(title="finanse", docs_url="/api/docs")
 
-
-@app.on_event("startup")
-def _startup() -> None:
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
     init_db()
+    yield
+
+
+app = FastAPI(title="finanse", docs_url="/api/docs", lifespan=_lifespan)
+# Host allowlist (127.0.0.1/localhost on the serving port) + X-Finanse-Token on
+# every /api/* request; no CORS middleware on purpose. See core/security.py.
+app.add_middleware(security.LocalOnlyMiddleware)
 
 
 def _f(value: Decimal | None) -> float | None:
@@ -451,10 +458,14 @@ def loan_info() -> dict:
 
 
 @app.get("/")
-def index() -> FileResponse:
+def index() -> HTMLResponse:
     # Prefer the built React SPA; fall back to the legacy single-file dashboard.
+    # The per-launch API token rides along as a <meta> tag (the Host check makes
+    # this response readable only by the dashboard's own origin).
     spa = WEBDIST / "index.html"
-    return FileResponse(spa if spa.exists() else STATIC / "index.html")
+    page = (spa if spa.exists() else STATIC / "index.html").read_text(encoding="utf-8")
+    html = security.inject_token_meta(page, security.get_config().token)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 if (WEBDIST / "assets").is_dir():

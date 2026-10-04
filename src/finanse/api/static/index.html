@@ -266,11 +266,14 @@
 
     const pln0 = new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN", maximumFractionDigits: 0 });
     const cur = (v, c) => v == null ? "—" : new Intl.NumberFormat("pl-PL", { style: "currency", currency: c || "PLN" }).format(v);
-    const j = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error(u + " → " + r.status); return r.json(); };
+    // Per-launch API token injected by `finanse serve` as <meta name="finanse-token">.
+    const TOKEN = (document.querySelector('meta[name="finanse-token"]') || {}).content || "";
+    const auth = TOKEN ? { "X-Finanse-Token": TOKEN } : {};
+    const j = async (u) => { const r = await fetch(u, { headers: auth }); if (!r.ok) throw new Error(u + " → " + r.status); return r.json(); };
     const jpost = async (u, body) => { const r = await fetch(u, { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(u + " → " + r.status); return r.json(); };
-    const jdel = async (u) => { const r = await fetch(u, { method: "DELETE" });
+    const jdel = async (u) => { const r = await fetch(u, { method: "DELETE", headers: auth });
       if (!r.ok) throw new Error(u + " → " + r.status); return r.json(); };
     const showErr = (m) => { const e = document.getElementById("err"); e.textContent = "Błąd: " + m; e.style.display = "block"; };
     const esc = (s) => String(s == null ? "" : s).replace(/"/g, "&quot;");

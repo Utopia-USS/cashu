@@ -1,0 +1,303 @@
+"""Data dir resolution, legacy repo-dir detection and `finanse migrate-data`.
+
+Everything runs in tmp_path: the platform default data dir and the repo's
+legacy data/ dir are both redirected, so no real data is ever touched."""
+
+from __future__ import annotations
+
+import datetime as dt
+import hashlib
+import json
+import sqlite3
+import stat
+import sys
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+from sqlmodel import Session, SQLModel, create_engine
+from typer.testing import CliRunner
+
+from finanse import db
+from finanse.core import legacy, migrations, paths
+from finanse.models import Account, AccountType, Bank, Source, Transaction
+
+FIXED_NOW = dt.datetime(2026, 10, 4, 12, 30, 0, tzinfo=dt.UTC)
+
+
+@pytest.fixture
+def layout(tmp_path, monkeypatch):
+    """A fake repo checkout (with data/) and a fake platform data dir."""
+    repo = tmp_path / "repo"
+    (repo / "data").mkdir(parents=True)
+    appdata = tmp_path / "appdata" / "finanse"
+    monkeypatch.setattr(paths, "PROJECT_ROOT", repo)
+    monkeypatch.setattr(paths, "LEGACY_DIR", repo / "data")
+    monkeypatch.setattr(paths, "default_data_dir", lambda: appdata)
+    monkeypatch.delenv(paths.DATA_DIR_ENV, raising=False)
+    return repo / "data", appdata
+
+
+def _make_legacy_db(path: Path, *, wal: bool = False) -> None:
+    """A pre-Alembic database (create_all) with a couple of synthetic rows."""
+    engine = create_engine(f"sqlite:///{path}")
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        acc = Account(bank=Bank.MBANK, name="Konto Test", iban="99000000000000000000000001",
+                      type=AccountType.CHECKING)
+        s.add(acc)
+        s.commit()
+        s.add(Transaction(account_id=acc.id, booking_date=dt.date(2026, 9, 1),
+                          amount=Decimal("-12.34"), source=Source.CSV, dedup_hash="h1",
+                          reference="SKLEP TEST"))
+        s.commit()
+    engine.dispose()
+    if wal:
+        conn = sqlite3.connect(path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.close()
+
+
+def _flat(text: str) -> str:
+    """Undo rich's line wrapping."""
+    return " ".join(text.split())
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+# --------------------------------------------------------------------------- #
+# Data dir
+# --------------------------------------------------------------------------- #
+
+def test_data_dir_override(tmp_path, monkeypatch):
+    monkeypatch.setenv(paths.DATA_DIR_ENV, str(tmp_path / "custom"))
+    assert paths.data_dir() == (tmp_path / "custom").resolve()
+    assert paths.db_path() == (tmp_path / "custom").resolve() / "finanse.db"
+    assert paths.token_path().parent == paths.data_dir()
+
+
+def test_data_dir_override_expands_user(monkeypatch):
+    monkeypatch.setenv(paths.DATA_DIR_ENV, "~/finanse-test-dir")
+    assert paths.data_dir() == Path.home() / "finanse-test-dir"
+
+
+def test_default_data_dir_uses_platformdirs_without_author(monkeypatch):
+    seen = {}
+
+    def fake_user_data_dir(appname, appauthor=None, roaming=False, **_):
+        seen.update(appname=appname, appauthor=appauthor, roaming=roaming)
+        return "/somewhere/finanse"
+
+    monkeypatch.setattr(paths, "user_data_dir", fake_user_data_dir)
+    assert paths.default_data_dir() == Path("/somewhere/finanse")
+    # appauthor=False -> %APPDATA%\finanse (not finanse\finanse); roaming -> %APPDATA%
+    assert seen == {"appname": "finanse", "appauthor": False, "roaming": True}
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS location")
+def test_default_data_dir_macos():
+    assert paths.default_data_dir() == Path.home() / "Library" / "Application Support" / "finanse"
+
+
+def test_ensure_private_dir_is_owner_only(tmp_path):
+    d = paths.ensure_private_dir(tmp_path / "a" / "b")
+    assert d.is_dir()
+    if sys.platform != "win32":
+        assert stat.S_IMODE(d.stat().st_mode) == 0o700
+
+
+def test_engine_creates_private_db_file_lazily(tmp_path):
+    target = tmp_path / "lazy" / "finanse.db"
+    engine = db.make_engine(f"sqlite:///{target}")
+    assert not target.parent.exists()  # nothing created at engine construction
+    with engine.connect():
+        pass
+    assert target.exists()
+    if sys.platform != "win32":
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
+        assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700
+    engine.dispose()
+
+
+# --------------------------------------------------------------------------- #
+# Legacy detection
+# --------------------------------------------------------------------------- #
+
+def test_fresh_install_uses_data_dir(layout):
+    _legacy, appdata = layout
+    assert not paths.legacy_mode()
+    assert paths.db_path() == appdata / "finanse.db"
+    assert paths.eb_sessions_path() == appdata / "eb_sessions.json"
+    assert paths.eb_key_path() == appdata / "enablebanking_private.pem"
+    assert paths.legacy_notice() is None
+
+
+def test_legacy_db_keeps_being_used_until_migrated(layout):
+    legacy_dir, appdata = layout
+    _make_legacy_db(legacy_dir / "finanse.db")
+    assert paths.legacy_mode()
+    assert paths.db_path() == legacy_dir / "finanse.db"
+    assert paths.eb_sessions_path() == legacy_dir / "eb_sessions.json"
+    assert db.resolve_database_url() == f"sqlite:///{legacy_dir / 'finanse.db'}"
+    notice = paths.legacy_notice()
+    assert notice and "finanse migrate-data" in notice and str(appdata) in notice
+    # the API token always lives in the data dir (the Vite proxy looks there)
+    assert paths.token_path() == appdata / "api-token"
+
+
+def test_data_dir_override_never_uses_legacy_files(layout, tmp_path, monkeypatch):
+    legacy_dir, _appdata = layout
+    _make_legacy_db(legacy_dir / "finanse.db")
+    monkeypatch.setenv(paths.DATA_DIR_ENV, str(tmp_path / "explicit"))
+    assert not paths.legacy_mode()
+    assert paths.db_path() == (tmp_path / "explicit").resolve() / "finanse.db"
+    notice = paths.legacy_notice()
+    assert notice and "FINANSE_DATA_DIR" in notice
+
+
+def test_both_present_without_marker_prefers_data_dir(layout):
+    legacy_dir, appdata = layout
+    _make_legacy_db(legacy_dir / "finanse.db")
+    appdata.mkdir(parents=True)
+    _make_legacy_db(appdata / "finanse.db")
+    assert not paths.legacy_mode()
+    assert paths.db_path() == appdata / "finanse.db"
+    assert "--force" in (paths.legacy_notice() or "")
+
+
+def test_database_url_resolution(layout, tmp_path):
+    _legacy, appdata = layout
+    custom = tmp_path / "elsewhere.db"
+    assert db.resolve_database_url(f"sqlite:///{custom}") == f"sqlite:///{custom}"
+    # relative paths keep resolving against the repo root (historical behaviour)
+    assert db.resolve_database_url("sqlite:///x/y.db") == f"sqlite:///{paths.PROJECT_ROOT / 'x/y.db'}"
+    # the old .env.example default counts as unset -> data dir (or legacy mode)
+    assert db.resolve_database_url("sqlite:///data/finanse.db") == f"sqlite:///{appdata / 'finanse.db'}"
+    assert db.resolve_database_url(None) == f"sqlite:///{appdata / 'finanse.db'}"
+    assert db.resolve_database_url("sqlite://") == "sqlite://"
+    assert db.resolve_database_url("postgresql://u@h/db") == "postgresql://u@h/db"
+
+
+def test_eb_key_file_resolution(layout, tmp_path):
+    from finanse.config import Settings
+
+    _legacy, appdata = layout
+    assert Settings(_env_file=None).eb_key_file == appdata / "enablebanking_private.pem"
+    legacy_default = Settings(_env_file=None, eb_key_path="data/enablebanking_private.pem")
+    assert legacy_default.eb_key_file == appdata / "enablebanking_private.pem"
+    custom = tmp_path / "keys" / "eb.pem"
+    assert Settings(_env_file=None, eb_key_path=str(custom)).eb_key_file == custom
+
+
+def test_eb_sessions_saved_owner_only(layout):
+    from finanse.ingestion.enable_banking import state
+
+    _legacy, appdata = layout
+    state.save_session("mbank", "session-test-1")
+    path = appdata / "eb_sessions.json"
+    assert json.loads(path.read_text()) == {"mbank": "session-test-1"}
+    assert state.load_sessions() == {"mbank": "session-test-1"}
+    if sys.platform != "win32":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+# --------------------------------------------------------------------------- #
+# migrate-data
+# --------------------------------------------------------------------------- #
+
+def test_migrate_copies_db_with_backup_and_switches(layout):
+    legacy_dir, appdata = layout
+    src = legacy_dir / "finanse.db"
+    _make_legacy_db(src)
+    (legacy_dir / "eb_sessions.json").write_text('{"mbank": "session-test"}')
+    (legacy_dir / "enablebanking_private.pem").write_text("not a real key")
+    before = _sha(src)
+
+    result = legacy.migrate_legacy_data(now=FIXED_NOW)
+
+    dst = appdata / "finanse.db"
+    assert result.database == dst and dst.exists()
+    assert result.backup == appdata / "backups" / "finanse-legacy-20261004-123000.db"
+    assert legacy.table_counts(result.backup)["transactions"] == 1
+    assert result.tables["accounts"] == 1 and result.tables["transactions"] == 1
+    assert _sha(src) == before  # the original is untouched
+    # the copy was adopted by Alembic (stamped at the baseline, data kept)
+    engine = db.make_engine(f"sqlite:///{dst}")
+    assert migrations.current_revision(engine) == migrations.head_revision()
+    with engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT reference FROM transactions").scalar() == "SKLEP TEST"
+    engine.dispose()
+    # aux files copied owner-only, marker written, app switched to the data dir
+    assert {p.name for p in result.copied} == {"eb_sessions.json", "enablebanking_private.pem"}
+    if sys.platform != "win32":
+        for p in [dst, result.backup, *result.copied]:
+            assert stat.S_IMODE(p.stat().st_mode) == 0o600
+    marker = json.loads((appdata / "legacy-migration.json").read_text())
+    assert marker["source"] == str(src)
+    assert not paths.legacy_mode()
+    assert paths.db_path() == dst
+    assert paths.legacy_notice() is None
+
+
+def test_migrate_includes_uncheckpointed_wal_content(layout):
+    legacy_dir, appdata = layout
+    src = legacy_dir / "finanse.db"
+    _make_legacy_db(src, wal=True)
+    live = sqlite3.connect(src)  # a running server: last write still only in -wal
+    live.execute("PRAGMA wal_autocheckpoint=0")
+    live.execute("UPDATE transactions SET reference='ZMIANA TEST'")
+    live.commit()
+    assert Path(f"{src}-wal").stat().st_size > 0
+    try:
+        legacy.migrate_legacy_data(now=FIXED_NOW)
+    finally:
+        live.close()
+    conn = sqlite3.connect(appdata / "finanse.db")
+    assert conn.execute("SELECT reference FROM transactions").fetchone()[0] == "ZMIANA TEST"
+    conn.close()
+
+
+def test_migrate_refuses_to_overwrite_without_force(layout):
+    legacy_dir, appdata = layout
+    _make_legacy_db(legacy_dir / "finanse.db")
+    legacy.migrate_legacy_data(now=FIXED_NOW)
+    with pytest.raises(legacy.MigrationError, match="--force"):
+        legacy.migrate_legacy_data(now=FIXED_NOW)
+    later = FIXED_NOW + dt.timedelta(minutes=1)
+    result = legacy.migrate_legacy_data(force=True, now=later)
+    assert result.replaced_backup == appdata / "backups" / "finanse-replaced-20261004-123100.db"
+    assert result.replaced_backup.exists()
+
+
+def test_migrate_without_legacy_data_fails_cleanly(layout):
+    _legacy, appdata = layout
+    with pytest.raises(legacy.MigrationError, match="nothing to migrate"):
+        legacy.migrate_legacy_data()
+    assert not appdata.exists()
+
+
+def test_cli_migrate_data_and_legacy_notice(layout, monkeypatch, tmp_path):
+    from finanse.cli import app
+
+    legacy_dir, appdata = layout
+    _make_legacy_db(legacy_dir / "finanse.db")
+    engine = db.make_engine(f"sqlite:///{tmp_path / 'cli.db'}")
+    monkeypatch.setattr(db, "engine", engine)
+    runner = CliRunner()
+
+    before = runner.invoke(app, ["init-db"])
+    assert before.exit_code == 0, before.output
+    assert "Run `finanse migrate-data`" in _flat(before.stderr)
+
+    migrated = runner.invoke(app, ["migrate-data"])
+    assert migrated.exit_code == 0, migrated.output
+    assert "Migrated" in migrated.stdout and "Notice" not in migrated.stderr
+    assert (appdata / "finanse.db").exists()
+
+    after = runner.invoke(app, ["init-db"])
+    assert after.exit_code == 0 and "Notice" not in after.stderr
+    again = runner.invoke(app, ["migrate-data"])
+    assert again.exit_code == 1 and "--force" in _flat(again.stdout)
+    engine.dispose()

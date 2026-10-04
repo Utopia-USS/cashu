@@ -1,0 +1,169 @@
+"""Local API protection for the dashboard server.
+
+The API serves personal financial data on localhost, so any web page the user
+visits could try to reach it. Three layers:
+
+1. ``finanse serve`` binds 127.0.0.1 by default (``FINANSE_HOST`` / ``FINANSE_PORT``).
+2. Host allowlist: only ``127.0.0.1`` / ``localhost`` on the serving port are
+   answered. This defeats DNS rebinding (a hostile domain re-pointed at
+   127.0.0.1 still sends its own name in the Host header).
+3. A random per-launch token, required as ``X-Finanse-Token`` on every request
+   except the SPA shell and its static assets (so on every ``/api/*`` call). A
+   cross-site page can fire requests (forms, no-cors fetch) but cannot read the
+   token, and cannot add a custom header without a CORS preflight, which is
+   never granted (there is no CORS middleware).
+
+The SPA learns the token from a ``<meta name="finanse-token">`` tag injected into
+the served ``index.html``; only pages on an allowed Host can read that response.
+``finanse serve`` also writes the token to ``<data dir>/api-token`` (0600) for
+the Vite dev proxy and other local clients.
+"""
+
+from __future__ import annotations
+
+import hmac
+import os
+import re
+import secrets
+from dataclasses import dataclass
+from pathlib import Path
+
+from starlette.datastructures import Headers
+from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+from . import paths
+
+TOKEN_HEADER = "X-Finanse-Token"
+TOKEN_META = "finanse-token"
+# Hands the token to a `finanse serve --reload` worker process (dev only).
+TOKEN_ENV = "FINANSE_API_TOKEN"
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
+
+# Served without a token: the SPA shell and static files (no personal data).
+PUBLIC_PATHS = frozenset({"/"})
+PUBLIC_PREFIXES = ("/assets/", "/static/")
+
+
+@dataclass(frozen=True)
+class SecurityConfig:
+    token: str
+    port: int
+
+    @property
+    def base_url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
+    def host_allowed(self, host_header: str | None) -> bool:
+        """True for ``127.0.0.1:<port>`` / ``localhost:<port>`` (no port = 80)."""
+        if not host_header:
+            return False
+        value = host_header.strip().lower()
+        if value.startswith("["):  # IPv6 literal: never served (we bind IPv4 loopback)
+            return False
+        host, sep, port = value.partition(":")
+        return host in LOOPBACK_HOSTS and (port if sep else "80") == str(self.port)
+
+    def token_valid(self, presented: str | None) -> bool:
+        if not presented:
+            return False
+        return hmac.compare_digest(presented.encode(), self.token.encode())
+
+
+_config: SecurityConfig | None = None
+
+
+def generate_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def configure(token: str | None = None, port: int | None = None) -> SecurityConfig:
+    """Set the active config (``finanse serve`` / a desktop shell call this)."""
+    global _config
+    if port is None:
+        from ..config import settings
+
+        port = settings.port
+    _config = SecurityConfig(token=token or generate_token(), port=port)
+    return _config
+
+
+def get_config() -> SecurityConfig:
+    """The active config; created on first use (token from ``FINANSE_API_TOKEN``
+    when a reload worker inherits it, else a fresh random token)."""
+    if _config is None:
+        return configure(token=os.environ.get(TOKEN_ENV) or None)
+    return _config
+
+
+def _is_public(path: str) -> bool:
+    return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
+
+
+class LocalOnlyMiddleware:
+    """Pure ASGI middleware enforcing the Host allowlist and the API token."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+        cfg = get_config()
+        headers = Headers(scope=scope)
+        path = scope.get("path", "")
+        if not cfg.host_allowed(headers.get("host")):
+            reject = PlainTextResponse("Invalid host header", status_code=400)
+        elif not _is_public(path) and not cfg.token_valid(headers.get(TOKEN_HEADER)):
+            reject = JSONResponse({"detail": "Missing or invalid API token"}, status_code=401)
+        else:
+            await self.app(scope, receive, send)
+            return
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        await reject(scope, receive, send)
+
+
+_HEAD_TAG = re.compile(r"<head(\s[^>]*)?>", re.IGNORECASE)
+
+
+def inject_token_meta(html: str, token: str) -> str:
+    """Insert ``<meta name="finanse-token" content="...">`` right after ``<head>``.
+    The token is URL-safe base64, so it needs no HTML escaping."""
+    tag = f'<meta name="{TOKEN_META}" content="{token}" />'
+    match = _HEAD_TAG.search(html)
+    if match is None:
+        return tag + html
+    return f"{html[: match.end()]}\n    {tag}{html[match.end():]}"
+
+
+def write_token_file(token: str, path: Path | None = None) -> Path:
+    """Write the token owner-only (0600), atomically."""
+    path = path or paths.token_path()
+    paths.ensure_private_dir(path.parent)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(token)
+    if os.name == "posix":
+        os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+    return path
+
+
+def read_token_file(path: Path | None = None) -> str | None:
+    path = path or paths.token_path()
+    try:
+        return path.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def remove_token_file(token: str, path: Path | None = None) -> None:
+    """Delete the token file if it still holds ``token`` (another server may have
+    replaced it meanwhile)."""
+    path = path or paths.token_path()
+    if read_token_file(path) == token:
+        path.unlink(missing_ok=True)

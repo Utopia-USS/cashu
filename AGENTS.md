@@ -14,7 +14,10 @@ the repository or off the machine:
 1. **Never commit data.** These never go into git: `data/**` (DB, backups, keys,
    sessions), `statements/**` (CSVs), `.env`, `*.pem`. They are all in
    `.gitignore`. Before every commit, run `git status` — if you see a data file
-   staged, **stop and report it to the user**.
+   staged, **stop and report it to the user**. The DB, Open Banking sessions and
+   key, backups and the API token now live in the per-user data dir outside the
+   repo (`core/paths.py`); `data/` only holds them in older checkouts until
+   `finanse migrate-data`. Tests always set `FINANSE_DATA_DIR` to a temp dir.
 2. **Never write balances, IBANs, names, or transactions** into files that could
    land in the repo (code, tests, docs). Tests use synthetic data.
 3. **Never send data to a cloud LLM.** The `anthropic` backend sends only the
@@ -65,7 +68,13 @@ React + Vite + TypeScript + Recharts (frontend).
 src/finanse/
 ├── cli.py            # Typer CLI — all `finanse ...` commands (entry point)
 ├── config.py         # Settings (pydantic-settings), reads .env (FINANSE_ prefix)
-├── db.py             # SQLite engine, init_db, _ensure_columns (additive migrations)
+├── db.py             # SQLite engine + pragmas (WAL, busy_timeout, foreign_keys), init_db
+├── core/
+│   ├── paths.py          # per-user data dir (platformdirs, FINANSE_DATA_DIR), legacy data/ detection
+│   ├── legacy.py         # `finanse migrate-data` (copy data/ into the data dir with a backup)
+│   ├── migrations/       # Alembic: env.py + versions/ (0001_baseline = upstream schema)
+│   ├── security.py       # API token + Host check middleware, token meta tag
+│   └── secrets.py        # OS keychain via keyring (`finanse secrets ...`)
 ├── models.py         # SQLModel: Account, Transaction, Balance, Loan, Depreciation, ...
 ├── types.py          # enums: Bank, AccountType, ...
 ├── service.py        # domain logic: import, accounts, balances, categories, cash, loan
@@ -99,7 +108,7 @@ frontend/                 # React + Vite + TS SPA (dashboard; UI strings are Pol
 └── src/components/*      # charts and cards: NetWorthChart, ScrollableChart, SpendingDonut, CashCard, Accounts, Breakdown
 
 tests/                    # pytest — synthetic data, no real data
-data/                     # (git-ignored) SQLite DB, keys, sessions — empty in the repo
+data/                     # (git-ignored) legacy location of DB/keys/sessions (see migrate-data)
 statements/               # (git-ignored) drop CSV statements here — empty in the repo
 ```
 
@@ -147,8 +156,12 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
   of its transactions, not a snapshot. Tagging a bank withdrawal creates a mirror leg.
 - **Categorization** is a cascade; manual overrides (`manual_txn`) and LLM results
   (`llm_full`) survive re-categorization (`categorize_all` skips them).
-- **No migration framework** — `db._ensure_columns()` does additive `ALTER` for
-  SQLite. When you add a column to a model, add it there too.
+- **Migrations: Alembic.** `init_db()` (every CLI command and server start)
+  upgrades the DB to head; a pre-Alembic DB is stamped at `0001_baseline`. When
+  you change a model, add a revision from the repo root
+  (`FINANSE_DATA_DIR=/tmp/x alembic revision --autogenerate -m "..."`) and use
+  `op.batch_alter_table` for existing tables (SQLite rebuilds them).
+  `tests/test_migrations.py` fails when models and migrations drift.
 
 ---
 
@@ -165,8 +178,12 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
 4. Add a test in `tests/test_parsing.py` using a **synthetic** sample of the format.
 
 **Adding a dashboard feature:**
-1. Endpoint in `api/app.py` (plain JSON under `/api/...`).
-2. Type + function in `frontend/src/api.ts` (mirror the JSON shape).
+1. Endpoint in `api/app.py` (plain JSON under `/api/...`). Every `/api/*` route
+   is behind the token + Host check automatically (`core/security.py`); in tests
+   use a `TestClient` with `base_url=security.get_config().base_url` and the
+   `X-Finanse-Token` header (see `tests/conftest.py`).
+2. Type + function in `frontend/src/api.ts` (mirror the JSON shape); call it
+   through `j`/`jpost`/`jdel`, which send the token.
 3. Component in `frontend/src/components/` or a new tab in `frontend/src/tabs/`
    (UI strings stay Polish).
 4. Line/bar charts: use `components/ScrollableChart.tsx` (window+scroll+axis
@@ -174,7 +191,9 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
 
 **CLI:** commands are `@app.command(...)` in `cli.py`. Follow the existing pattern.
 
-**Tests:** `pytest`. Always synthetic data. Never paste real statements.
+**Tests:** `pytest`. Always synthetic data. Never paste real statements. Point
+`FINANSE_DATA_DIR` at a temp dir (never the real data dir) and use an in-memory
+keyring backend for secrets.
 
 ---
 

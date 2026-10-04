@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import enum
 import functools
+import os
+import sys
 from decimal import Decimal
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -12,6 +16,7 @@ from rich.table import Table
 from sqlmodel import select
 
 from .config import settings
+from .core import paths
 from .db import get_session, init_db
 from .models import Account, AccountType, Bank
 from .service import import_csv
@@ -19,8 +24,19 @@ from .service import import_csv
 app = typer.Typer(add_completion=False, help="Personal finance tracker — bank ingestion & stats.")
 eb_app = typer.Typer(help="Enable Banking (Open Banking) commands.")
 app.add_typer(eb_app, name="eb")
+secrets_app = typer.Typer(help="Secrets in the OS keychain (instead of .env).")
+app.add_typer(secrets_app, name="secrets")
 
 console = Console()
+err_console = Console(stderr=True)
+
+
+@app.callback()
+def _main(ctx: typer.Context) -> None:
+    # Data still in the legacy <repo>/data/ dir: say so on every command.
+    notice = paths.legacy_notice()
+    if notice and ctx.invoked_subcommand != "migrate-data":
+        err_console.print(f"[yellow]Notice:[/] {notice}")
 
 
 def fmt(amount: Decimal | None, currency: str = "PLN") -> str:
@@ -85,22 +101,85 @@ def _save_session_id(session_id: str | None, bank, results) -> None:
 @app.command("init-db")
 def init_db_cmd() -> None:
     """Create the SQLite database and tables."""
+    from . import db
+
     init_db()
-    console.print(f"[green]Database ready[/] at {settings.database_url}")
+    console.print(f"[green]Database ready[/] at {db.engine.url.render_as_string(hide_password=True)}")
 
 
 @app.command("serve")
 def serve_cmd(
-    host: str = typer.Option("127.0.0.1", envvar="HOST"),
-    port: int = typer.Option(8500, envvar="PORT"),
-    reload: bool = typer.Option(False, help="Auto-reload on code changes (dev)."),
+    host: Annotated[
+        str | None,
+        typer.Option(envvar="FINANSE_HOST", show_default="127.0.0.1", help="Interface to bind."),
+    ] = None,
+    port: Annotated[
+        int | None, typer.Option(envvar="FINANSE_PORT", show_default="8500", help="Port.")
+    ] = None,
+    reload: Annotated[bool, typer.Option(help="Auto-reload on code changes (dev).")] = False,
 ) -> None:
-    """Launch the web dashboard (net worth, cashflow, subscriptions)."""
+    """Launch the web dashboard (net worth, cashflow, subscriptions).
+
+    Loopback only; every API call needs the per-launch token, which the served
+    page carries and which is written to <data dir>/api-token for local tools."""
     import uvicorn
 
+    from .core import security
+
+    host = host or settings.host
+    port = port or settings.port
     init_db()
-    console.print(f"[green]Dashboard:[/] http://{host}:{port}")
-    uvicorn.run("finanse.api.app:app", host=host, port=port, reload=reload)
+    cfg = security.configure(port=port)
+    token_file = security.write_token_file(cfg.token)
+    if host not in security.LOOPBACK_HOSTS:
+        console.print(
+            f"[yellow]Binding to {host}:[/] the API only answers requests addressed to "
+            "127.0.0.1/localhost, so other machines cannot use the dashboard."
+        )
+    if reload:  # the reloader re-imports the app in a worker process
+        os.environ[security.TOKEN_ENV] = cfg.token
+        os.environ["FINANSE_PORT"] = str(port)
+    console.print(f"[green]Dashboard:[/] http://127.0.0.1:{port}")
+    console.print(f"[dim]Data dir: {paths.data_dir()} (API token: {token_file.name})[/]")
+    try:
+        uvicorn.run("finanse.api.app:app", host=host, port=port, reload=reload)
+    finally:
+        security.remove_token_file(cfg.token, token_file)
+
+
+@app.command("migrate-data")
+def migrate_data_cmd(
+    force: Annotated[
+        bool,
+        typer.Option(help="Replace a database already in the data dir (backed up first)."),
+    ] = False,
+) -> None:
+    """Copy legacy data from the repo's data/ dir into the per-user data dir.
+
+    Copies the database (with a timestamped backup), Open Banking sessions and
+    private key. The originals stay untouched; delete them after checking."""
+    from .core import legacy
+
+    try:
+        result = legacy.migrate_legacy_data(force=force)
+    except legacy.MigrationError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+    console.print(f"[green]Migrated[/] {result.source} -> {result.database}")
+    console.print(f"  backup: {result.backup}")
+    if result.replaced_backup:
+        console.print(f"  previous data-dir database backed up to {result.replaced_backup}")
+    console.print(f"  tables: {', '.join(f'{k}={v}' for k, v in sorted(result.tables.items()))}")
+    for p in result.copied:
+        console.print(f"  copied: {p}")
+    for s in result.skipped:
+        console.print(f"  [yellow]skipped:[/] {s}")
+    console.print(
+        f"The files in {result.source.parent} were not changed; delete them once the "
+        "dashboard looks right. Settings pointing at the old defaults (data/finanse.db, "
+        "data/enablebanking_private.pem) are ignored from now on. Restart `finanse serve` "
+        "if it is running."
+    )
 
 
 @app.command("accounts")
@@ -715,6 +794,71 @@ def stats_cmd(months: int = typer.Option(12, help="How many recent months to sho
         for c in cats[:15]:
             ct.add_row(c.label, fmt(c.amount))
         console.print(ct)
+
+
+# --------------------------------------------------------------------------- #
+# Secrets (OS keychain)
+# --------------------------------------------------------------------------- #
+
+class SecretName(str, enum.Enum):
+    ANTHROPIC = "anthropic"  # Anthropic API key (categorization backend `anthropic`)
+
+
+@secrets_app.command("set")
+def secrets_set_cmd(
+    name: SecretName,
+    stdin: Annotated[
+        bool, typer.Option("--stdin", help="Read the value from standard input (scripts).")
+    ] = False,
+) -> None:
+    """Store a secret in the OS keychain (asked for with hidden input)."""
+    from .core import secrets
+
+    value = sys.stdin.readline() if stdin else typer.prompt(f"{name.value}", hide_input=True)
+    value = value.strip()
+    if not value:
+        console.print("[red]Empty value, nothing stored.[/]")
+        raise typer.Exit(1)
+    try:
+        secrets.set_secret(name.value, value)
+    except secrets.SecretsError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+    console.print(f"[green]Stored[/] {name.value} in the keychain ({secrets.mask(value)}).")
+
+
+@secrets_app.command("get")
+def secrets_get_cmd(
+    name: SecretName,
+    reveal: Annotated[bool, typer.Option(help="Print the full value.")] = False,
+) -> None:
+    """Show whether a secret is stored (masked unless --reveal)."""
+    from .core import secrets
+
+    value = secrets.get_secret(name.value)
+    if value is None:
+        hint = ""
+        if name is SecretName.ANTHROPIC and settings.resolved_api_key:
+            hint = " (an environment variable fallback is set)"
+        console.print(f"{name.value}: not in the keychain{hint}")
+        raise typer.Exit(1)
+    if reveal:
+        typer.echo(value)
+    else:
+        console.print(f"{name.value}: stored in the keychain ({secrets.mask(value)})")
+
+
+@secrets_app.command("delete")
+def secrets_delete_cmd(name: SecretName) -> None:
+    """Remove a secret from the OS keychain."""
+    from .core import secrets
+
+    try:
+        removed = secrets.delete_secret(name.value)
+    except secrets.SecretsError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+    console.print(f"{name.value}: {'deleted' if removed else 'was not stored'}")
 
 
 if __name__ == "__main__":

@@ -34,8 +34,17 @@ pip install -e ".[dev]"
 finanse init-db
 ```
 
-✅ **Verify:** `finanse --help` prints the command list and `data/finanse.db`
-exists. Run `pytest` — all tests should pass (they use synthetic data).
+✅ **Verify:** `finanse --help` prints the command list and `finanse init-db`
+prints the database location in the per-user data dir (macOS:
+`~/Library/Application Support/finanse/finanse.db`; Windows: `%APPDATA%\finanse`;
+set `FINANSE_DATA_DIR` to use another folder). Run `pytest`: all tests should pass
+(they use synthetic data in temporary folders).
+
+> 🔀 **Upgrading an older checkout?** If the user already has `data/finanse.db`
+> from an earlier version, every command prints a notice and keeps using it. Run
+> `finanse migrate-data`: it copies the database, Open Banking sessions and key
+> into the data dir, keeps a timestamped backup and leaves the originals in
+> `data/` untouched (the user deletes them after checking the dashboard).
 
 ---
 
@@ -97,8 +106,9 @@ Guide the user (some steps **they do themselves** — you have no access to thei
 bank panel or their keys):
 
 1. The user creates an app at <https://enablebanking.com/cp/>, generates an RSA
-   key pair, uploads the public key, and saves the **private** key locally to
-   `data/enablebanking_private.pem` (this file is git-ignored).
+   key pair, uploads the public key, and saves the **private** key locally as
+   `enablebanking_private.pem` in the data dir (next to `finanse.db`, outside the
+   repo).
 2. In `.env` they set `FINANSE_EB_APP_ID` and (if a different path)
    `FINANSE_EB_KEY_PATH`.
 3. In the EB panel they whitelist the redirect
@@ -138,10 +148,12 @@ finanse categorize --llm          # + LLM for the tail of unknown merchants
 > 🔀 **Which LLM backend?**
 > - **Ollama (default, offline)** — nothing leaves the machine. Requires
 >   `ollama serve` + `ollama pull qwen2.5:3b` (or `:7b` for better coverage).
-> - **Anthropic (cloud)** — set `FINANSE_CATEGORIZE_LLM_BACKEND=anthropic` and
->   `FINANSE_ANTHROPIC_API_KEY`. Sends **only the merchant-name string** — never
->   IBANs, balances, or names. Confirm with the user that they accept sending
->   merchant names to the cloud before enabling it.
+> - **Anthropic (cloud)** - set `FINANSE_CATEGORIZE_LLM_BACKEND=anthropic` and let
+>   the user store the key in the OS keychain with `finanse secrets set anthropic`
+>   (hidden prompt; they type it, you never see it). `FINANSE_ANTHROPIC_API_KEY`
+>   in `.env` still works as a fallback (CI/dev). Sends **only the merchant-name
+>   string**, never IBANs, balances, or names. Confirm with the user that they
+>   accept sending merchant names to the cloud before enabling it.
 
 Corrections teach the system: `finanse set-category <merchant> <category>` creates
 a durable rule; changing a single transaction's category from the dashboard
@@ -179,8 +191,14 @@ Open it in the browser and walk the tabs: **Przegląd** (net worth + chart),
 `finanse serve` (there is a `.claude/launch.json`) and show the user a screenshot
 that it works.
 
+The server listens on `127.0.0.1` only (`FINANSE_HOST` / `FINANSE_PORT` or
+`--host` / `--port` to change it) and every `/api/*` call needs a per-launch
+token: the served page carries it, so opening an `/api/...` URL directly in the
+browser answers 401, which is expected.
+
 > Dev mode with hot-reload (to edit the dashboard): `finanse serve` plus, separately,
-> `cd frontend && npm run dev` (Vite :5173, proxies to the API).
+> `cd frontend && npm run dev` (Vite :5173, proxies to the API and adds the token
+> from `<data dir>/api-token`).
 
 ---
 

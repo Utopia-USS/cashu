@@ -1,8 +1,15 @@
 // Typed client over the FastAPI /api/* backend. No business logic here — just
 // transport + shapes mirroring the JSON the server returns.
 
+// Per-launch API token: `finanse serve` injects it into index.html as
+// <meta name="finanse-token">. Absent under `npm run dev`, where the Vite proxy
+// adds the header itself (see vite.config.ts).
+const TOKEN =
+  document.querySelector<HTMLMetaElement>('meta[name="finanse-token"]')?.content ?? "";
+const auth: Record<string, string> = TOKEN ? { "X-Finanse-Token": TOKEN } : {};
+
 export const j = async <T>(u: string): Promise<T> => {
-  const r = await fetch(u);
+  const r = await fetch(u, { headers: auth });
   if (!r.ok) throw new Error(`${u} → ${r.status}`);
   return r.json() as Promise<T>;
 };
@@ -10,7 +17,7 @@ export const j = async <T>(u: string): Promise<T> => {
 export const jpost = async <T>(u: string, body: unknown = {}): Promise<T> => {
   const r = await fetch(u, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...auth },
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`${u} → ${r.status}`);
@@ -18,7 +25,7 @@ export const jpost = async <T>(u: string, body: unknown = {}): Promise<T> => {
 };
 
 export const jdel = async <T>(u: string): Promise<T> => {
-  const r = await fetch(u, { method: "DELETE" });
+  const r = await fetch(u, { method: "DELETE", headers: auth });
   if (!r.ok) throw new Error(`${u} → ${r.status}`);
   return r.json() as Promise<T>;
 };
