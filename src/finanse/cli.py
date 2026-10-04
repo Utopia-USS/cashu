@@ -42,12 +42,13 @@ def _main(
 # command names keep working) and as a sub-app per module (`finanse loans list`).
 core_cli.register(app)
 for _spec in modules.all_modules():
-    if _spec.cli is None:
+    if _spec.cli is None and _spec.cli_module is None:
         continue
-    _spec.cli(app)
+    if _spec.cli is not None:
+        _spec.cli(app)
     _sub = typer.Typer(help=_spec.cli_help or _spec.name, no_args_is_help=True)
     (_spec.cli_module or _spec.cli)(_sub)
-    app.add_typer(_sub, name=_spec.id)
+    app.add_typer(_sub, name=_spec.cli_name or _spec.id)
 
 
 # --------------------------------------------------------------------------- #

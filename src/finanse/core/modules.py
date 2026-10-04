@@ -15,7 +15,8 @@ What a module declares:
   ``/api`` aliases of the default profile);
 - ``cli``: ``register(app)`` adding its (top-level, upstream-compatible) Typer
   commands to an app; ``cli_module``: the commands of its sub-app
-  ``finanse <id> ...`` (defaults to ``cli``);
+  ``finanse <id> ...`` (defaults to ``cli``); ``cli_name``: the sub-app's name
+  when it is not the id (``finanse invest ...``); a module may ship only a sub-app;
 - ``networth``: optional ``NetWorthContributor`` (values the accounts it owns);
 - ``account_types`` / ``networth_buckets``: registered with ``core.account_types``;
 - ``institutions``: extra institutions (e.g. brokers) for ``core.institutions``;
@@ -122,6 +123,7 @@ class ModuleSpec:
     cli: Callable[[Any], None] | None = None  # register(typer_app): top-level commands
     cli_module: Callable[[Any], None] | None = None  # commands of `finanse <id> ...` (default: cli)
     cli_help: str = ""
+    cli_name: str | None = None  # sub-app name (default: the module id)
     networth: NetWorthContributor | None = None
     account_types: tuple[account_types.AccountTypeInfo, ...] = ()
     networth_buckets: tuple[account_types.NetWorthBucket, ...] = ()
