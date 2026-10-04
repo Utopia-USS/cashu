@@ -2,12 +2,14 @@
 
 Transactions are normalized to a ``merchant_key`` that is UPPERCASE, has
 diacritics stripped (ł->L, ż->Z, ą->A, ...), and has whitespace collapsed.
-Seed rules match by plain uppercase substring against that key.
+Seed rules match by plain uppercase substring against that key (a ``word(...)``
+needle only as a whole word).
 
 The sign of the amount (income vs. expense) is handled by the engine, not
 here. Income rules are therefore kept intentionally minimal.
 """
 
+import re
 from dataclasses import dataclass
 
 
@@ -52,6 +54,17 @@ CATEGORIES: list[Category] = [
 
 CATEGORY_KEYS: list[str] = [c.key for c in CATEGORIES]
 LABELS: dict[str, str] = {c.key: c.label for c in CATEGORIES}
+
+
+class word(str):
+    """A seed needle that must match a whole word of the merchant key (short
+    needles like "PHO" would otherwise hit PHOTO, IPHONE, TELEPHONE, ...)."""
+
+    __slots__ = ()
+
+    def found_in(self, merchant_key: str) -> bool:
+        return re.search(rf"(?<![A-Z0-9]){re.escape(self)}(?![A-Z0-9])", merchant_key) is not None
+
 
 # Ordered, first-match-wins. Each tuple: (UPPERCASE substring, category_key).
 # Substrings are already uppercase + diacritics-stripped to match merchant_key.
@@ -254,8 +267,8 @@ SEED_RULES: list[tuple[str, str]] = [
     ("BAR MLECZNY", "dining"),
     ("SUSHI", "dining"),
     ("THAI", "dining"),
-    ("SEPHORA", "shopping"),  # must precede "PHO" (a substring of SEPHORA)
-    ("PHO", "dining"),
+    ("SEPHORA", "shopping"),  # listed before "PHO" (a substring of SEPHORA)
+    (word("PHO"), "dining"),  # whole word only: not PHOTO, IPHONE, TELEPHONE
     ("BROWA", "dining"),       # e.g. "PIWO SWIEZE Z BROWA..."
     ("BROWAR", "dining"),
     ("PUB ", "dining"),
@@ -604,6 +617,6 @@ def apply_seed_rules(merchant_key: str) -> str | None:
     if not merchant_key:
         return None
     for needle, cat in SEED_RULES:
-        if needle in merchant_key:
+        if needle.found_in(merchant_key) if isinstance(needle, word) else needle in merchant_key:
             return cat
     return None

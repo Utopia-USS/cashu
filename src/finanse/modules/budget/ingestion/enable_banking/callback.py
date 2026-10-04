@@ -37,7 +37,7 @@ def _self_signed_context(host: str) -> ssl.SSLContext:
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, host)])
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     cert = (
         x509.CertificateBuilder()
         .subject_name(name)
@@ -80,7 +80,7 @@ def wait_for_authorization_code(redirect_url: str, timeout: float = 300.0) -> st
     captured: dict[str, str] = {}
 
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
+        def do_GET(self):
             query = urllib.parse.urlparse(self.path).query
             params = urllib.parse.parse_qs(query)
             if "code" in params:

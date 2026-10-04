@@ -86,7 +86,7 @@ def test_internal_transfer_matching(session):
     session.commit()
     assert pairs == 1
 
-    _totals, lines = net_worth(session)  # no balances yet -> all None
+    _totals, _lines = net_worth(session)  # no balances yet -> all None
     cashflow = monthly_cashflow(session)  # internal transfer excluded
     # The transfer legs must not show up as income/expense.
     assert all(mc.income == Decimal("0.00") and mc.expense == Decimal("0.00") for mc in cashflow)
@@ -166,7 +166,7 @@ def test_credit_card_limit_not_counted_debt_is(session):
     totals, lines = net_worth(session)
     assert totals["PLN"] == Decimal("4700.00")  # 5000 − 300 debt; limit ignored
     by_id = {ln.account.id: ln for ln in lines}
-    assert by_id[limit_card.id].contribution == Decimal("0")
+    assert by_id[limit_card.id].contribution == Decimal(0)
     assert by_id[drawn_card.id].contribution == Decimal("-300.00")
 
 
@@ -214,7 +214,7 @@ def test_net_worth_series_monthly_smoothing(session):
     session.commit()
 
     monthly = net_worth_series(session, granularity="monthly")
-    assert [v for _d, v in monthly] == [Decimal("150"), Decimal("200")]  # period-end per month
+    assert [v for _d, v in monthly] == [Decimal(150), Decimal(200)]  # period-end per month
     assert len(net_worth_series(session, granularity="daily")) == 3
 
 
@@ -256,13 +256,13 @@ def test_loan_amortization():
 
     P, r, n = 680000, 6.27, 360
     m = loan.monthly_payment(P, r, n)
-    assert Decimal("4150") < m < Decimal("4250")  # ~4196 zł
+    assert Decimal(4150) < m < Decimal(4250)  # ~4196 zł
     summ = loan.summarize(P, r, n, date(2026, 7, 1), date(2026, 7, 1))
     assert summ.months_elapsed == 1
-    assert summ.outstanding < Decimal("680000")  # first payment reduced principal
+    assert summ.outstanding < Decimal(680000)  # first payment reduced principal
     assert len(summ.schedule) == 360
     assert summ.schedule[-1].balance == Decimal("0.00")
-    assert summ.total_interest > Decimal("700000")  # 30y interest is huge
+    assert summ.total_interest > Decimal(700000)  # 30y interest is huge
 
     # disbursed 2026-07-20, first installment 2026-08-17: on 07-21 nothing paid,
     # full principal owed (not 0, not "one payment made").
@@ -272,7 +272,7 @@ def test_loan_amortization():
     assert su.outstanding == Decimal("680000.00")
     assert su.paid_interest == Decimal("0.00")
     # before disbursement the loan doesn't exist yet
-    assert loan.outstanding(su.schedule, date(2026, 7, 10), date(2026, 7, 20)) == Decimal("0")
+    assert loan.outstanding(su.schedule, date(2026, 7, 10), date(2026, 7, 20)) == Decimal(0)
 
 
 def test_transaction_category_override_survives_recategorize(session):
@@ -309,8 +309,8 @@ def test_spending_by_quarter_and_year(session):
     acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
     session.commit()
     ingest_transactions(session, acc, [
-        RawTransaction(booking_date=date(2026, 5, 2), amount=Decimal("-100"), reference="NETFLIX.COM", source=Source.CSV),  # Q2
-        RawTransaction(booking_date=date(2026, 8, 2), amount=Decimal("-50"), reference="NETFLIX.COM", source=Source.CSV),   # Q3
+        RawTransaction(booking_date=date(2026, 5, 2), amount=Decimal(-100), reference="NETFLIX.COM", source=Source.CSV),  # Q2
+        RawTransaction(booking_date=date(2026, 8, 2), amount=Decimal(-50), reference="NETFLIX.COM", source=Source.CSV),   # Q3
     ], source=Source.CSV)
     session.commit()
     categorize_all(session, use_llm=False)
@@ -319,16 +319,16 @@ def test_spending_by_quarter_and_year(session):
     q2 = {c.category: c.amount for c in spending_by_category(session, year=2026, quarter=2)}
     q3 = {c.category: c.amount for c in spending_by_category(session, year=2026, quarter=3)}
     yr = {c.category: c.amount for c in spending_by_category(session, year=2026)}
-    assert q2.get("subscriptions") == Decimal("100")
-    assert q3.get("subscriptions") == Decimal("50")
-    assert yr.get("subscriptions") == Decimal("150")
+    assert q2.get("subscriptions") == Decimal(100)
+    assert q3.get("subscriptions") == Decimal(50)
+    assert yr.get("subscriptions") == Decimal(150)
 
 
 def test_fx_conversion_is_transfer(session):
     from finanse.models import Transaction
     from finanse.modules.budget.categorize import engine
 
-    t = Transaction(account_id=1, booking_date=date(2026, 1, 1), amount=Decimal("-500"),
+    t = Transaction(account_id=1, booking_date=date(2026, 1, 1), amount=Decimal(-500),
                     description="OBCIĄŻ. NATYCH. TRANSAKCJA WALUT.", dedup_hash="x", source=Source.CSV)
     cat, src = engine.categorize(t, own_ibans=set(), rules={}, subscription_keys=set())
     assert cat == "transfer" and src == "transfer"

@@ -23,7 +23,7 @@ def _dec(x) -> Decimal:
 def monthly_payment(principal, annual_rate_pct, term_months: int) -> Decimal:
     """Fixed annuity installment."""
     P = _dec(principal)
-    i = _dec(annual_rate_pct) / Decimal("100") / Decimal("12")
+    i = _dec(annual_rate_pct) / Decimal(100) / Decimal(12)
     n = term_months
     if i == 0:
         return (P / n).quantize(CENTS, ROUND_HALF_UP)
@@ -44,7 +44,7 @@ class ScheduleRow:
 def schedule(principal, annual_rate_pct, term_months: int, start_date: date) -> list[ScheduleRow]:
     """Month-by-month amortization. First payment falls on start_date."""
     P = _dec(principal)
-    i = _dec(annual_rate_pct) / Decimal("100") / Decimal("12")
+    i = _dec(annual_rate_pct) / Decimal(100) / Decimal(12)
     pay = monthly_payment(principal, annual_rate_pct, term_months)
     rows: list[ScheduleRow] = []
     bal = P
@@ -84,10 +84,10 @@ def outstanding(
     origination_date defaults to the first installment date (no gap).
     """
     if not rows:
-        return Decimal("0")
+        return Decimal(0)
     orig = origination_date or rows[0].date
     if as_of < orig:
-        return Decimal("0")
+        return Decimal(0)
     original_principal = rows[0].balance + rows[0].principal
     if as_of < rows[0].date:
         return original_principal
@@ -129,8 +129,8 @@ def summarize(
     P = _dec(principal)
     out = outstanding(rows, as_of, origination_date)
     elapsed = sum(1 for r in rows if r.date <= as_of)
-    paid_interest = sum((r.interest for r in rows if r.date <= as_of), Decimal("0"))
-    total_interest = sum((r.interest for r in rows), Decimal("0"))
+    paid_interest = sum((r.interest for r in rows if r.date <= as_of), Decimal(0))
+    total_interest = sum((r.interest for r in rows), Decimal(0))
     return LoanSummary(
         principal=P,
         annual_rate=_dec(annual_rate_pct),

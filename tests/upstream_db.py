@@ -32,32 +32,50 @@ def create_upstream_schema(path: Path) -> None:
 # One small household, the way the upstream app stored it.
 UPSTREAM_ROWS = {
     "accounts": [
-        "(1, 'MBANK', 'mKonto Test', '99114000000000000000000001', 'csv:99114000000000000000000001', "
-        "'PLN', 'CHECKING', 1, '2026-01-01 10:00:00')",
-        "(2, 'ERSTE', 'Erste Test', '99109000000000000000000003', 'csv:99109000000000000000000003', "
-        "'PLN', 'SAVINGS', 1, '2026-01-01 10:00:00')",
-        "(3, 'MANUAL', 'Mieszkanie Test', NULL, 'manual:Mieszkanie Test', 'PLN', 'PROPERTY', 1, "
-        "'2026-01-02 10:00:00')",
-        "(4, 'MANUAL', 'Kredyt hipoteczny Test', NULL, 'manual:Kredyt hipoteczny Test', 'PLN', "
-        "'MORTGAGE', 1, '2026-01-02 10:00:00')",
-        "(5, 'MANUAL', 'Auto Test', NULL, 'vehicle:Auto Test', 'PLN', 'VEHICLE', 1, "
-        "'2026-01-02 10:00:00')",
+        (
+            "(1, 'MBANK', 'mKonto Test', '99114000000000000000000001', 'csv:99114000000000000000000001', "
+            "'PLN', 'CHECKING', 1, '2026-01-01 10:00:00')"
+        ),
+        (
+            "(2, 'ERSTE', 'Erste Test', '99109000000000000000000003', 'csv:99109000000000000000000003', "
+            "'PLN', 'SAVINGS', 1, '2026-01-01 10:00:00')"
+        ),
+        (
+            "(3, 'MANUAL', 'Mieszkanie Test', NULL, 'manual:Mieszkanie Test', 'PLN', 'PROPERTY', 1, "
+            "'2026-01-02 10:00:00')"
+        ),
+        (
+            "(4, 'MANUAL', 'Kredyt hipoteczny Test', NULL, 'manual:Kredyt hipoteczny Test', 'PLN', "
+            "'MORTGAGE', 1, '2026-01-02 10:00:00')"
+        ),
+        (
+            "(5, 'MANUAL', 'Auto Test', NULL, 'vehicle:Auto Test', 'PLN', 'VEHICLE', 1, "
+            "'2026-01-02 10:00:00')"
+        ),
         "(6, 'MANUAL', 'Gotówka', NULL, 'cash:PLN', 'PLN', 'CASH', 1, '2026-01-03 10:00:00')",
     ],
     "import_batches": [
         "(1, 'CSV', 'MBANK', 1, 'mbank.csv', '2026-02-01 10:00:00', '2026-02-01 10:00:01', 3, 3, 0, NULL)",
     ],
     "transactions": [
-        "(1, 1, '2026-01-10', NULL, '9000.00', 'PLN', NULL, '99102000000000000000000777', NULL, "
-        "'WYNAGRODZENIE TEST', NULL, 'CSV', 'h1', 0, NULL, 0, 'income_salary', 'keyword', '{}', 1, "
-        "'2026-02-01 10:00:00')",
-        "(2, 1, '2026-01-12', NULL, '-120.50', 'PLN', NULL, NULL, NULL, 'BIEDRONKA 123 TEST', NULL, "
-        "'CSV', 'h2', 0, NULL, 0, 'groceries', 'keyword', '{}', 1, '2026-02-01 10:00:00')",
-        "(3, 1, '2026-01-15', NULL, '-300.00', 'PLN', NULL, NULL, NULL, 'WYPLATA W BANKOMACIE TEST', "
-        "NULL, 'CSV', 'h3', 0, NULL, 0, 'cash_withdrawal', 'manual_txn', '{}', 1, '2026-02-01 10:00:00')",
-        "(4, 6, '2026-01-15', NULL, '300.00', 'PLN', 'Wypłata gotówki', NULL, NULL, 'Wypłata gotówki', "
-        "NULL, 'MANUAL', 'cashleg:3', 0, NULL, 0, 'cash_withdrawal', 'cash_leg', "
-        "'{\"cash_leg_of\": 3}', NULL, '2026-02-01 10:00:00')",
+        (
+            "(1, 1, '2026-01-10', NULL, '9000.00', 'PLN', NULL, '99102000000000000000000777', NULL, "
+            "'WYNAGRODZENIE TEST', NULL, 'CSV', 'h1', 0, NULL, 0, 'income_salary', 'keyword', '{}', 1, "
+            "'2026-02-01 10:00:00')"
+        ),
+        (
+            "(2, 1, '2026-01-12', NULL, '-120.50', 'PLN', NULL, NULL, NULL, 'BIEDRONKA 123 TEST', NULL, "
+            "'CSV', 'h2', 0, NULL, 0, 'groceries', 'keyword', '{}', 1, '2026-02-01 10:00:00')"
+        ),
+        (
+            "(3, 1, '2026-01-15', NULL, '-300.00', 'PLN', NULL, NULL, NULL, 'WYPLATA W BANKOMACIE TEST', "
+            "NULL, 'CSV', 'h3', 0, NULL, 0, 'cash_withdrawal', 'manual_txn', '{}', 1, '2026-02-01 10:00:00')"
+        ),
+        (
+            "(4, 6, '2026-01-15', NULL, '300.00', 'PLN', 'Wypłata gotówki', NULL, NULL, 'Wypłata gotówki', "
+            "NULL, 'MANUAL', 'cashleg:3', 0, NULL, 0, 'cash_withdrawal', 'cash_leg', "
+            "'{\"cash_leg_of\": 3}', NULL, '2026-02-01 10:00:00')"
+        ),
     ],
     "balances": [
         "(1, 1, '2026-01-31', '5000.00', 'PLN', 'CSV', '2026-02-01 10:00:00')",

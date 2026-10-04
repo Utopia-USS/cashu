@@ -124,7 +124,7 @@ def add_cash_expense(
     cash = get_cash_account(session, currency, create=True, profile_id=profile_id)
     txn = Transaction(
         account_id=cash.id,
-        booking_date=on_date or date.today(),
+        booking_date=on_date or date.today(),  # noqa: DTZ011 - local dates
         amount=amt,
         currency=currency,
         counterparty_name=title,

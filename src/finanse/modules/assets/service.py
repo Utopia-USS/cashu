@@ -37,7 +37,8 @@ def add_manual_position(
     )
     session.flush()
     upsert_balance(
-        session, account, on_date or date.today(), Decimal(str(value)), source=Source.MANUAL
+        session, account, on_date or date.today(),  # noqa: DTZ011 - local dates
+        Decimal(str(value)), source=Source.MANUAL,
     )
     return account
 

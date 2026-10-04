@@ -2,6 +2,7 @@
 source/destination -> counterparty resolution."""
 
 from decimal import Decimal
+
 from finanse.modules.budget.ingestion.csv_import import detect_importer, parse_file
 
 PEKAO_CSV = """Data księgowania;Data waluty;Nadawca / Odbiorca;Adres nadawcy / odbiorcy;Rachunek źródłowy;Rachunek docelowy;Tytułem;Kwota operacji;Waluta;Numer referencyjny;Typ operacji;Kategoria

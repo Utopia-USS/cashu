@@ -102,9 +102,7 @@ def _in_period(d: date, year: int | None, month: int | None, quarter: int | None
         return False
     if month is not None and d.month != month:
         return False
-    if quarter is not None and (d.month - 1) // 3 + 1 != quarter:
-        return False
-    return True
+    return quarter is None or (d.month - 1) // 3 + 1 == quarter
 
 
 def spending_by_category(
@@ -264,7 +262,7 @@ def detect_recurring(
     """
     from .categorize import engine
     from .categorize.rules import load_rules
-    from .ingestion.normalize import iban_key, merchant_key
+    from .ingestion.normalize import merchant_key
 
     pid = profiles.scope(session, profile_id)
     own = _own_ibans(session, pid)
@@ -282,7 +280,7 @@ def detect_recurring(
         return cat in excluded
 
     groups: dict[tuple[str, str, str], list[Transaction]] = defaultdict(list)
-    q = transactions(pid, Transaction.is_internal_transfer == False)  # noqa: E712
+    q = transactions(pid, Transaction.is_internal_transfer == False)
     for t in session.exec(q).all():
         if t.amount >= 0:
             continue  # subscriptions are outflows

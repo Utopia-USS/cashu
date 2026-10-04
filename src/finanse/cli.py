@@ -7,6 +7,8 @@ dir, accounts, secrets) plus the commands of every registered module
 
 from __future__ import annotations
 
+from typing import Annotated
+
 import typer
 from rich.table import Table
 
@@ -36,22 +38,35 @@ for _spec in modules.all_modules():
 # --------------------------------------------------------------------------- #
 
 @app.command("stats")
-def stats_cmd(months: int = typer.Option(12, help="How many recent months to show.")) -> None:
-    """Print net worth, monthly cashflow, and recurring-payment candidates."""
+def stats_cmd(
+    months: Annotated[int, typer.Option(help="How many recent months to show.")] = 12,
+) -> None:
+    """Print net worth, monthly cashflow, recurring payments and spending, per currency."""
+    from sqlmodel import select
+
     from .core.networth import net_worth
+    from .core.profiles import account_ids_query
     from .modules.budget.analytics import (
         detect_recurring,
         monthly_cashflow,
         reference_date,
         spending_by_category,
     )
+    from .modules.budget.models import Transaction
 
     with get_session() as s:
-        totals, lines = net_worth(s)
-        cashflow = monthly_cashflow(s)
-        recurring = detect_recurring(s)
-        ref = reference_date(s)
-        cats = spending_by_category(s, year=ref.year, month=ref.month) if ref else []
+        pid = cliutil.profile(s, create=False).id
+        totals, lines = net_worth(s, profile_id=pid)
+        currencies = sorted(set(s.exec(
+            select(Transaction.currency).where(Transaction.account_id.in_(account_ids_query(pid)))
+        ).all()))
+        cashflow = {c: monthly_cashflow(s, currency=c, profile_id=pid) for c in currencies}
+        recurring = detect_recurring(s, profile_id=pid)
+        ref = reference_date(s, profile_id=pid)
+        cats = {
+            c: spending_by_category(s, currency=c, year=ref.year, month=ref.month, profile_id=pid)
+            for c in currencies
+        } if ref else {}
 
     nw = Table(title="Net worth")
     for col in ("account", "type", "currency", "as of", "balance"):
@@ -68,12 +83,20 @@ def stats_cmd(months: int = typer.Option(12, help="How many recent months to sho
         nw.add_row(f"[bold]TOTAL {currency}[/]", "", "", "", f"[bold]{cliutil.fmt(total, currency)}[/]")
     cliutil.console.print(nw)
 
-    cf = Table(title="Monthly cashflow (internal transfers excluded)")
-    for col in ("month", "income", "expense", "net"):
-        cf.add_column(col)
-    for mc in cashflow[-months:]:
-        cf.add_row(mc.label, cliutil.fmt(mc.income), cliutil.fmt(mc.expense), cliutil.fmt(mc.net))
-    cliutil.console.print(cf)
+    # One table per currency: amounts in different currencies are never mixed.
+    for currency in currencies:
+        rows = cashflow[currency][-months:]
+        if not rows:
+            continue
+        cf = Table(title=f"Monthly cashflow {currency} (internal transfers excluded)")
+        for col in ("month", "income", "expense", "net"):
+            cf.add_column(col)
+        for mc in rows:
+            cf.add_row(
+                mc.label, cliutil.fmt(mc.income, currency), cliutil.fmt(mc.expense, currency),
+                cliutil.fmt(mc.net, currency),
+            )
+        cliutil.console.print(cf)
 
     if recurring:
         rt = Table(title="Recurring payment candidates (likely subscriptions)")
@@ -81,17 +104,19 @@ def stats_cmd(months: int = typer.Option(12, help="How many recent months to sho
             rt.add_column(col)
         for c in recurring[:25]:
             rt.add_row(
-                c.counterparty, cliutil.fmt(c.typical_amount), str(c.occurrences),
+                c.counterparty, cliutil.fmt(c.typical_amount, c.currency), str(c.occurrences),
                 f"{c.median_gap_days}d", c.last_date.isoformat(),
             )
         cliutil.console.print(rt)
 
-    if cats:
-        ct = Table(title=f"Spending by category — {ref.year}-{ref.month:02d}")
+    for currency, spend in cats.items():
+        if not spend:
+            continue
+        ct = Table(title=f"Spending by category — {ref.year}-{ref.month:02d} ({currency})")
         ct.add_column("category")
         ct.add_column("amount", justify="right")
-        for c in cats[:15]:
-            ct.add_row(c.label, cliutil.fmt(c.amount))
+        for c in spend[:15]:
+            ct.add_row(c.label, cliutil.fmt(c.amount, currency))
         cliutil.console.print(ct)
 
 

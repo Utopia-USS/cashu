@@ -19,7 +19,7 @@ from .types import DecimalText
 
 
 def utcnow() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 class AccountType(enum.StrEnum):

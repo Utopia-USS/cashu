@@ -101,7 +101,7 @@ def test_cash_expense_draws_pool_and_counts_as_spend(session):
     balance = sum(
         (t.amount for t in session.exec(
             select(Transaction).where(Transaction.account_id == cash.id)).all()),
-        Decimal("0"),
+        Decimal(0),
     )
     assert balance == Decimal("150.00")  # 200 in - 50 out
 

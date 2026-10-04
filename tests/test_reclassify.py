@@ -30,9 +30,9 @@ def _txn(session, account_id, amount, *, cp=None, ref=None, desc=None, cat=None,
 
 def test_signature_groups_by_full_detail_not_merchant():
     # Same gateway, different embedded merchant -> DIFFERENT signatures.
-    a = Transaction(account_id=1, booking_date=date(2026, 1, 1), amount=Decimal("-10"),
+    a = Transaction(account_id=1, booking_date=date(2026, 1, 1), amount=Decimal(-10),
                     reference="PayU*Allegro /Poznan", source=Source.OPEN_BANKING, dedup_hash="a")
-    b = Transaction(account_id=1, booking_date=date(2026, 1, 1), amount=Decimal("-10"),
+    b = Transaction(account_id=1, booking_date=date(2026, 1, 1), amount=Decimal(-10),
                     reference="PayU*Steam /Lux", source=Source.OPEN_BANKING, dedup_hash="b")
     assert txn_signature(a) != txn_signature(b)
 

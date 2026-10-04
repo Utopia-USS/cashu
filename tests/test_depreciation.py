@@ -18,7 +18,7 @@ def test_value_declining_balance_and_floor():
     assert dep.value(62500, buy, 15, date(2025, 1, 1)) == Decimal("0.00")
     # ~1 year later at 15%/yr ≈ price * 0.85.
     v1 = dep.value(62500, buy, 15, date(2026, 6, 16))
-    assert Decimal("53000") < v1 < Decimal("53200")  # 62500*0.85 = 53125
+    assert Decimal(53000) < v1 < Decimal(53200)  # 62500*0.85 = 53125
     # Floor is respected far in the future.
     v_far = dep.value(62500, buy, 15, date(2045, 6, 16), floor=8000)
     assert v_far == Decimal("8000.00")
@@ -37,7 +37,7 @@ def test_vehicle_counts_as_illiquid_asset(session):
     # Total net worth includes the depreciated car value.
     totals, lines = net_worth(session)
     car_line = next(ln for ln in lines if ln.account.id == car.id)
-    assert car_line.contribution and car_line.contribution > Decimal("40000")  # ~50k now
+    assert car_line.contribution and car_line.contribution > Decimal(40000)  # ~50k now
     assert totals["PLN"] == Decimal("10000.00") + car_line.contribution
 
     # Liquid scope excludes the car; total includes it.

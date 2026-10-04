@@ -82,7 +82,10 @@ def set_balance(
     """Record a balance snapshot for an existing account (e.g. update a mortgage
     or revalue a property over time)."""
     account = get_account(session, account_id, profile_id=profile_id)
-    upsert_balance(session, account, on_date or date.today(), Decimal(str(value)), source=source)
+    upsert_balance(
+        session, account, on_date or date.today(),  # noqa: DTZ011 - local dates
+        Decimal(str(value)), source=source,
+    )
     return account
 
 

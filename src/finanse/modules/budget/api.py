@@ -98,7 +98,7 @@ def uncategorized(profile: CurrentProfile, limit: int = 30, currency: str = "PLN
             a = agg.setdefault(
                 mk,
                 {"merchant_key": mk, "sample": (t.reference or t.description or mk),
-                 "count": 0, "total": Decimal("0")},
+                 "count": 0, "total": Decimal(0)},
             )
             a["count"] += 1
             a["total"] += -t.amount
@@ -168,9 +168,9 @@ def cash(profile: CurrentProfile, currency: str = "PLN") -> dict:
             return {"exists": False, "currency": currency, "balance": 0.0,
                     "withdrawals": 0.0, "expenses": 0.0, "transactions": []}
         txns = s.exec(select(Transaction).where(Transaction.account_id == acc.id)).all()
-        balance = sum((t.amount for t in txns), Decimal("0"))
-        withdrawals = sum((t.amount for t in txns if t.amount > 0), Decimal("0"))
-        expenses = sum((-t.amount for t in txns if t.amount < 0), Decimal("0"))
+        balance = sum((t.amount for t in txns), Decimal(0))
+        withdrawals = sum((t.amount for t in txns if t.amount > 0), Decimal(0))
+        expenses = sum((-t.amount for t in txns if t.amount < 0), Decimal(0))
         rows = sorted(txns, key=lambda t: (t.booking_date, t.id or 0), reverse=True)
         return {
             "exists": True,

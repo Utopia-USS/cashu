@@ -14,6 +14,8 @@ def classify_unknown(merchants: list[str], category_keys: list[str]) -> tuple[di
     backend = (settings.categorize_llm_backend or "ollama").lower()
 
     if backend == "ollama":
+        import httpx
+
         from . import local_llm
 
         try:
@@ -23,7 +25,8 @@ def classify_unknown(merchants: list[str], category_keys: list[str]) -> tuple[di
                 model=settings.categorize_ollama_model,
                 url=settings.categorize_ollama_url,
             )
-        except Exception as e:  # connection refused etc.
+        # connection refused / timeouts (httpx, OSError) and malformed answers
+        except (httpx.HTTPError, OSError, ValueError, KeyError, TypeError, AttributeError) as e:
             return {}, f"Ollama unreachable at {settings.categorize_ollama_url} ({e})"
         if not results:
             return {}, (
