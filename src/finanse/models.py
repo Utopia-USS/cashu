@@ -10,7 +10,7 @@ Tables live with their owner: core (``Profile``, ``ProfileModule``, ``Account``,
 
 from __future__ import annotations
 
-from .core.models import Account, AccountType, Balance, Bank, Profile, ProfileModule, Source
+from .core.models import Account, AccountType, Balance, Profile, ProfileModule, Source
 from .modules.assets.models import Depreciation
 from .modules.budget.models import CategoryRule, ImportBatch, Transaction
 from .modules.loans.models import Loan
@@ -19,7 +19,6 @@ __all__ = [
     "Account",
     "AccountType",
     "Balance",
-    "Bank",
     "CategoryRule",
     "Depreciation",
     "ImportBatch",

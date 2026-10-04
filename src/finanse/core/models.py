@@ -22,14 +22,11 @@ def utcnow() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
 
-class Bank(str, enum.Enum):
-    MBANK = "mbank"
-    ERSTE = "erste"  # includes legacy "Santander Bank Polska"
-    PEKAO = "pekao"  # Bank Pekao S.A. (CSV-only, e.g. car-loan servicing account)
-    MANUAL = "manual"  # manually-tracked positions (property, mortgage, ...)
+class AccountType(enum.StrEnum):
+    """Built-in account type ids (the upstream enum values). ``accounts.type`` is a
+    plain string: modules register their types, with net-worth semantics, in
+    ``core.account_types``."""
 
-
-class AccountType(str, enum.Enum):
     CHECKING = "checking"
     SAVINGS = "savings"
     CREDIT = "credit"  # credit card (limit vs debt handled specially)
@@ -93,13 +90,13 @@ class Account(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    bank: Bank
+    bank: str  # institution id (core.institutions), e.g. "mbank", "manual"
     name: str
     iban: str | None = Field(default=None, index=True)
     # Enable Banking account uid, or a stable local key for CSV-only accounts.
     external_id: str | None = Field(default=None, index=True)
     currency: str = Field(default="PLN")
-    type: AccountType = Field(default=AccountType.CHECKING)
+    type: str = Field(default=AccountType.CHECKING)  # account type id (core.account_types)
     active: bool = Field(default=True)
     created_at: dt.datetime = Field(default_factory=utcnow)
     profile_id: int = Field(sa_column=profile_fk_column("accounts"))

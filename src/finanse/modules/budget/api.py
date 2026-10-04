@@ -255,7 +255,7 @@ def resync(profile: CurrentProfile, days: int = 90) -> dict:
     """Re-sync every saved Enable Banking session of the profile, then re-match
     transfers and re-categorize — the dashboard equivalent of `finanse eb resync`."""
     from finanse.config import settings
-    from finanse.core.models import Bank
+    from finanse.core import profiles
 
     from .ingestion.enable_banking.client import EnableBankingError
     from .ingestion.enable_banking.state import load_sessions
@@ -269,24 +269,26 @@ def resync(profile: CurrentProfile, days: int = 90) -> dict:
 
     if not settings.eb_configured:
         return {"ok": False, "error": "Enable Banking nie jest skonfigurowany (.env)."}
-    sessions = load_sessions()
+    with get_session() as s:
+        legacy_owner = profiles.legacy_owner_slug(s)
+    sessions = load_sessions(profile.slug, legacy_profile=legacy_owner)
     if not sessions:
         return {"ok": False, "error": "Brak zapisanych sesji — zaloguj się: finanse eb login."}
 
     client = _eb_client()
     errors: list[str] = []
-    # 1. Network: fetch every saved session with no DB transaction open (bank
-    #    calls can take minutes with 429 retries; a held write lock would make
-    #    every concurrent CLI/UI write fail with "database is locked").
+    # 1. Network: fetch every saved session of the profile with no DB transaction
+    #    open (bank calls can take minutes with 429 retries; a held write lock would
+    #    make every concurrent CLI/UI write fail with "database is locked").
     fetched = []
-    for bank_val, sid in sessions.items():
+    for saved in sessions:
         try:
-            fs = fetch_session(client, sid, bank=Bank(bank_val), days=days)
+            fs = fetch_session(client, saved.session_id, bank=saved.institution, days=days)
         except EnableBankingError as e:  # expired/rate-limited session — try the rest
-            errors.append(f"{bank_val}: {e}")
+            errors.append(f"{saved.institution}: {e}")
             continue
         errors.extend(fs.errors)
-        fetched.append((bank_val, fs))
+        fetched.append((saved.institution, fs))
 
     # 2. DB: one short write transaction per account.
     banks_out: list[dict] = []

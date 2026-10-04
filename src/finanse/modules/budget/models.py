@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import JSON, Field, SQLModel
 
-from finanse.core.models import Bank, Source, profile_fk_column, utcnow
+from finanse.core.models import Source, profile_fk_column, utcnow
 from finanse.core.types import DecimalText
 
 
@@ -88,7 +88,7 @@ class ImportBatch(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     source: Source
-    bank: Bank | None = None
+    bank: str | None = None  # institution id
     account_id: int | None = None
     filename: str | None = None
     started_at: dt.datetime = Field(default_factory=utcnow)

@@ -11,9 +11,9 @@ from typing import Any
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from finanse.core import profiles
+from finanse.core import institutions, profiles
 from finanse.core.accounts import get_or_create_account, upsert_balance
-from finanse.core.models import Account, AccountType, Bank, Source
+from finanse.core.models import Account, AccountType, Source
 
 from ...models import ImportBatch, Transaction
 from ...queries import transactions
@@ -25,13 +25,13 @@ from .client import EnableBankingClient
 _BALANCE_PRIORITY = {"CLBD": 0, "ITAV": 1, "XPCD": 2, "PRCD": 3, "OTHR": 4}
 
 
-def bank_from_aspsp(name: str | None) -> Bank:
-    low = (name or "").lower()
-    if "mbank" in low:
-        return Bank.MBANK
-    if "erste" in low or "santander" in low:
-        return Bank.ERSTE
-    raise ValueError(f"Cannot map ASPSP '{name}' to a known bank; pass bank explicitly.")
+def bank_from_aspsp(name: str | None) -> str:
+    """Institution id of an Enable Banking ASPSP (``aspsp_patterns`` in the
+    institution registry); ValueError when no institution matches."""
+    inst = institutions.from_aspsp(name)
+    if inst is None:
+        raise ValueError(f"Cannot map ASPSP '{name}' to a known bank; pass bank explicitly.")
+    return inst.id
 
 
 def _parse_date(value: Any) -> date | None:
@@ -188,7 +188,7 @@ class FetchedAccount:
 
 @dataclass
 class FetchedSession:
-    bank: Bank
+    bank: str  # institution id
     accounts: list[FetchedAccount]
     errors: list[str]  # accounts skipped (429 / transient failures)
 
@@ -197,7 +197,7 @@ def fetch_session(
     client: EnableBankingClient,
     session_id: str,
     *,
-    bank: Bank | None = None,
+    bank: str | None = None,
     days: int = 90,
 ) -> FetchedSession:
     """Network phase: pull accounts, transactions and balances for an authorized
@@ -234,7 +234,7 @@ def sync_session(
     client: EnableBankingClient,
     session_id: str,
     *,
-    bank: Bank | None = None,
+    bank: str | None = None,
     days: int = 90,
     account_type: AccountType = AccountType.CHECKING,
     profile_id: int | None = None,
@@ -260,7 +260,7 @@ sync_session.last_errors = []  # type: ignore[attr-defined]
 def store_account(
     db: Session,
     fetched: FetchedAccount,
-    bank: Bank,
+    bank: str,
     account_type: AccountType = AccountType.CHECKING,
     *,
     profile_id: int | None = None,

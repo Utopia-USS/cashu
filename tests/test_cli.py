@@ -183,7 +183,7 @@ def test_eb_reprocess(run, seeded_engine):
 def test_eb_resync_without_sessions(run, db_engine, monkeypatch):
     from finanse.modules.budget.ingestion.enable_banking import state
 
-    monkeypatch.setattr(state, "load_sessions", dict)
+    monkeypatch.setattr(state, "load_sessions", lambda *_a, **_k: [])
     res = run("eb", "resync", ok=False)
     assert res.exit_code == 1 and "No saved sessions" in res.output
 

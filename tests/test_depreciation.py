@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from finanse.core.accounts import get_or_create_account, upsert_balance
 from finanse.core.networth import net_worth, net_worth_series
-from finanse.models import AccountType, Bank, Source
+from finanse.models import AccountType, Source
 from finanse.modules.assets import depreciation as dep
 from finanse.modules.assets.service import set_vehicle
 
@@ -26,7 +26,7 @@ def test_value_declining_balance_and_floor():
 
 def test_vehicle_counts_as_illiquid_asset(session):
     # A bank account with a balance, plus the car.
-    acc = get_or_create_account(session, bank=Bank.MBANK, name="mBank", iban="PL10 1140 0000 0000 0000 1234")
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL10 1140 0000 0000 0000 1234")
     session.flush()
     upsert_balance(session, acc, date(2026, 1, 1), Decimal("10000.00"), source=Source.CSV)
     car = set_vehicle(session, name="Hyundai i30", purchase_price=62500,
@@ -49,7 +49,7 @@ def test_vehicle_counts_as_illiquid_asset(session):
 
 
 def test_series_declines_over_time(session):
-    acc = get_or_create_account(session, bank=Bank.MBANK, name="mBank", iban="PL10 1140 0000 0000 0000 1234")
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL10 1140 0000 0000 0000 1234")
     session.flush()
     # two balance points so the series spans purchase -> now
     upsert_balance(session, acc, date(2025, 1, 1), Decimal("10000.00"), source=Source.CSV)

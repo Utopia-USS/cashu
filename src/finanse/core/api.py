@@ -77,6 +77,9 @@ def _profile_or_404(session, slug: str) -> Profile:
 
 @platform_router.get("/system")
 def system() -> dict:
+    from ..config import settings
+    from . import secrets
+
     legacy = paths.legacy_db_path()
     detected = legacy.exists() and not paths.migration_marker_path().exists()
     return {
@@ -85,6 +88,11 @@ def system() -> dict:
         "legacy_db_detected": detected,
         "legacy_db_path": str(legacy) if detected else None,
         "worker": {"installed": False, "last_run": None},  # background worker: F3
+        # Presence only, never values: keychain entry / key file in place.
+        "secrets": {
+            "anthropic": secrets.get_secret(secrets.ANTHROPIC) is not None,
+            "enable_banking_key": settings.eb_key_file.exists(),
+        },
     }
 
 
@@ -137,6 +145,8 @@ def create_profile(body: ProfileCreate) -> dict:
                 modules_=body.modules,
                 mcp_privacy=body.mcp_privacy,
             )
+        except profiles.ProfileConflict as e:
+            raise HTTPException(status_code=409, detail=str(e)) from None
         except profiles.ProfileError as e:
             raise HTTPException(status_code=422, detail=str(e)) from None
         return profiles.as_dict(s, p)
@@ -157,6 +167,8 @@ def patch_profile(slug: str, body: ProfilePatch) -> dict:
                 s, p, name=body.name, base_currency=body.base_currency,
                 mcp_privacy=body.mcp_privacy,
             )
+        except profiles.ProfileConflict as e:
+            raise HTTPException(status_code=409, detail=str(e)) from None
         except profiles.ProfileError as e:
             raise HTTPException(status_code=422, detail=str(e)) from None
         return profiles.as_dict(s, p)
@@ -199,14 +211,14 @@ def module_setup(profile: CurrentProfile, module_id: str) -> dict:
 def account_row(acc: Account, contribution: Decimal | None, as_of) -> dict:
     return {
         "id": acc.id,
-        "bank": acc.bank.value,
+        "bank": acc.bank,
         "name": acc.name,
-        "type": acc.type.value,
+        "type": str(acc.type),
         "currency": acc.currency,
         "iban_tail": (acc.iban or "")[-4:],
         "balance": f(contribution),
         "as_of": as_of.isoformat() if as_of else None,
-        "is_liability": acc.type.value == "credit",
+        "is_liability": str(acc.type) == "credit",
     }
 
 

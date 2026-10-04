@@ -5,7 +5,8 @@ from __future__ import annotations
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from finanse.core.models import Account, Bank
+from finanse.core.institutions import MANUAL
+from finanse.core.models import Account
 from finanse.core.modules import SetupAction, SetupStatus, SetupStep, cli_prefix
 
 from .models import CategoryRule, Transaction
@@ -18,7 +19,7 @@ def _count(session: Session, stmt) -> int:
 def setup_status(session: Session, profile_id: int) -> SetupStatus:
     cli = cli_prefix(session, profile_id)
     bank_ids = select(Account.id).where(
-        Account.profile_id == profile_id, Account.bank != Bank.MANUAL
+        Account.profile_id == profile_id, Account.bank != MANUAL
     )
     n_bank_accounts = _count(session, select(func.count()).select_from(bank_ids.subquery()))
     bank_txns = select(func.count(Transaction.id)).where(Transaction.account_id.in_(bank_ids))

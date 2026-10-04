@@ -9,7 +9,7 @@ transactions in this fixed column order:
     amount, balance_after, type_code[, trailing]
 
 Dates are DD-MM-YYYY (the summary row's first field is the ISO export date).
-Legacy Santander exports share this shape and land in the same Bank.ERSTE
+Legacy Santander exports share this shape and land in the same `erste`
 account (account numbers didn't change in the rebrand).
 """
 
@@ -20,7 +20,7 @@ import io
 import re
 from pathlib import Path
 
-from finanse.core.models import Bank, Source
+from finanse.core.models import Source
 
 from ..normalize import RawTransaction
 from .base import (
@@ -34,7 +34,7 @@ from .base import (
 
 
 class ErsteImporter(DelimitedImporter):
-    bank = Bank.ERSTE
+    bank = "erste"  # institution id (core.institutions)
     encodings = ("utf-8-sig", "cp1250", "iso-8859-2", "utf-8")
     signature = ("santander bank polska", "erste bank", "bzwbk")
 

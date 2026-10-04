@@ -21,7 +21,7 @@ import io
 from collections import Counter
 from pathlib import Path
 
-from finanse.core.models import Bank, Source
+from finanse.core.models import Source
 
 from ..normalize import RawTransaction
 from .base import (
@@ -42,7 +42,7 @@ def _acct(cell: str | None) -> str | None:
 
 
 class PekaoImporter(DelimitedImporter):
-    bank = Bank.PEKAO
+    bank = "pekao"  # institution id (core.institutions)
     encodings = ("utf-8-sig", "utf-8", "cp1250", "iso-8859-2")
     delimiters = (";", ",")
     signature = ("rachunek źródłowy", "rachunek docelowy", "numer referencyjny", "typ operacji")

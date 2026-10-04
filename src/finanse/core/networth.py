@@ -246,7 +246,7 @@ def net_worth(
 ) -> tuple[dict[str, Decimal], list[NetWorthLine]]:
     """Net worth totals **per currency** (mixing PLN/EUR/NOK/HUF into one number
     would be meaningless without FX conversion, which is a later phase)."""
-    accounts = _profile_accounts(session, profile_id, Account.active == True)  # noqa: E712
+    accounts = _profile_accounts(session, profile_id, Account.active == True)
     latest = latest_balance_per_account(session, as_of, profile_id=profile_id)
     lines: list[NetWorthLine] = []
     totals: dict[str, Decimal] = {}
@@ -280,7 +280,7 @@ def net_worth_breakdown(
 ) -> NetWorthBreakdown:
     """Split net worth into assets vs liabilities (+ property / mortgage / equity)."""
     accounts = _profile_accounts(
-        session, profile_id, Account.active == True, Account.currency == currency  # noqa: E712
+        session, profile_id, Account.active == True, Account.currency == currency
     )
     latest = latest_balance_per_account(session, profile_id=profile_id)
     assets = liabilities = prop = mort = ZERO

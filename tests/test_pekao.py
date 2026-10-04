@@ -2,8 +2,6 @@
 source/destination -> counterparty resolution."""
 
 from decimal import Decimal
-
-from finanse.models import Bank
 from finanse.modules.budget.ingestion.csv_import import detect_importer, parse_file
 
 PEKAO_CSV = """Data księgowania;Data waluty;Nadawca / Odbiorca;Adres nadawcy / odbiorcy;Rachunek źródłowy;Rachunek docelowy;Tytułem;Kwota operacji;Waluta;Numer referencyjny;Typ operacji;Kategoria
@@ -17,10 +15,10 @@ def test_detect_and_parse_pekao(tmp_path):
     f = tmp_path / "Lista_operacji.csv"
     f.write_text(PEKAO_CSV, encoding="utf-8")
 
-    assert detect_importer(f).bank == Bank.PEKAO
+    assert detect_importer(f).bank == "pekao"
 
     stmt = parse_file(f)
-    assert stmt.bank == Bank.PEKAO
+    assert stmt.bank == "pekao"
     # Own account = the one common to every row (the 38124… settlement account).
     assert stmt.account_number == "10000000000000000000000002"
     assert len(stmt.transactions) == 3

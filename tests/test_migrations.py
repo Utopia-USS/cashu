@@ -3,12 +3,10 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import os
 import re
 import subprocess
 import sys
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -16,10 +14,10 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from sqlmodel import SQLModel
+from upstream_db import create_upstream_schema, make_upstream_db
 
 from finanse import db
 from finanse.core import migrations
-from upstream_db import create_upstream_schema, make_upstream_db
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -33,6 +31,34 @@ def _engine(path: Path, **kwargs):
     return db.make_engine(f"sqlite:///{path}", **kwargs)
 
 
+def _split_top_level(body: str) -> list[str]:
+    parts, depth, cur = [], 0, ""
+    for ch in body:
+        if ch == "," and depth == 0:
+            parts.append(cur.strip())
+            cur = ""
+            continue
+        depth += ch == "("
+        depth -= ch == ")"
+        cur += ch
+    return [*parts, cur.strip()] if cur.strip() else parts
+
+
+def _normalize_ddl(sql: str) -> str:
+    """Whitespace-normalized DDL; for tables also: unquoted name (a batch rebuild
+    renames the copy, which SQLite records quoted) and table constraints sorted
+    (Alembic's batch mode emits them in no fixed order). Column order is kept."""
+    ddl = re.sub(r"\s+", " ", sql).strip()
+    m = re.match(r'^CREATE TABLE "?(\w+)"? \((.*)\)$', ddl)
+    if not m:
+        return ddl
+    items = _split_top_level(m.group(2))
+    constraint = re.compile(r"^(CONSTRAINT|PRIMARY KEY|UNIQUE|FOREIGN KEY|CHECK)\b")
+    columns_ = [i for i in items if not constraint.match(i)]
+    constraints = sorted(i for i in items if constraint.match(i))
+    return f"CREATE TABLE {m.group(1)} ({', '.join(columns_ + constraints)})"
+
+
 def schema(engine) -> dict:
     """Tables, columns, indexes, unique constraints, foreign keys and normalized
     DDL of a SQLite database (Alembic's own version table excluded)."""
@@ -43,9 +69,7 @@ def schema(engine) -> dict:
             "WHERE tbl_name != 'alembic_version' ORDER BY name"
         ).fetchall()
         for typ, name, _tbl, sql in rows:
-            ddl = re.sub(r"\s+", " ", sql or "").strip()
-            # a batch rebuild renames the copy, which SQLite records as a quoted name
-            out[f"ddl:{typ}:{name}"] = re.sub(r'^CREATE TABLE "(\w+)"', r"CREATE TABLE \1", ddl)
+            out[f"ddl:{typ}:{name}"] = _normalize_ddl(sql or "")
         for t in [r[1] for r in rows if r[0] == "table"]:
             out[f"columns:{t}"] = [tuple(r) for r in c.exec_driver_sql(f"PRAGMA table_xinfo('{t}')")]
             out[f"fks:{t}"] = sorted(tuple(r) for r in c.exec_driver_sql(f"PRAGMA foreign_key_list('{t}')"))

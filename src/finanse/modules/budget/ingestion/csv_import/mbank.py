@@ -9,13 +9,11 @@ has PLN, EUR, NOK, HUF "eKonto walutowe" accounts), then a transaction table:
 
 from __future__ import annotations
 
-from finanse.core.models import Bank
-
 from .base import ColumnMap, DelimitedImporter, find_account_number
 
 
 class MBankImporter(DelimitedImporter):
-    bank = Bank.MBANK
+    bank = "mbank"  # institution id (core.institutions)
     encodings = ("cp1250", "utf-8-sig", "iso-8859-2", "utf-8")
     delimiters = (";", ",")
     signature = ("mbank s.a", "#data operacji", "elektroniczne zestawienie operacji")

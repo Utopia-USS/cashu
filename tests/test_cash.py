@@ -8,7 +8,7 @@ from sqlmodel import select
 
 from finanse.core.accounts import get_or_create_account, upsert_balance
 from finanse.core.networth import net_worth, net_worth_series
-from finanse.models import AccountType, Bank, Source, Transaction
+from finanse.models import AccountType, Source, Transaction
 from finanse.modules.budget.analytics import monthly_cashflow, spending_by_category
 from finanse.modules.budget.cash import add_cash_expense, delete_cash_transaction, get_cash_account
 from finanse.modules.budget.service import set_transaction_category
@@ -16,7 +16,7 @@ from finanse.modules.budget.service import set_transaction_category
 
 def _bank_account(session, balance="1000.00", on=date(2024, 1, 10)):
     acc = get_or_create_account(
-        session, bank=Bank.MBANK, name="mBank", iban="PL10 1140 0000 0000 0000 1234"
+        session, bank="mbank", name="mBank", iban="PL10 1140 0000 0000 0000 1234"
     )
     session.flush()
     # A balance snapshot reflects the current bank balance (post-withdrawal).
@@ -44,7 +44,7 @@ def _withdrawal(session, acc, amount="-200.00", d=date(2024, 1, 5)):
 
 def test_marking_withdrawal_feeds_pool_and_is_networth_neutral(session):
     acc = get_or_create_account(
-        session, bank=Bank.MBANK, name="mBank", iban="PL10 1140 0000 0000 0000 1234"
+        session, bank="mbank", name="mBank", iban="PL10 1140 0000 0000 0000 1234"
     )
     session.flush()
     # Pre-withdrawal state: bank holds 1200, no cash yet.

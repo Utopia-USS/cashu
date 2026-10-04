@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from finanse.core.accounts import get_or_create_account, upsert_balance
 from finanse.core.networth import net_worth, net_worth_breakdown, net_worth_series
-from finanse.models import AccountType, Bank, Source
+from finanse.models import AccountType, Source
 from finanse.modules.budget.analytics import detect_recurring, monthly_cashflow
 from finanse.modules.budget.ingestion.dedup import prepare_new_transactions
 from finanse.modules.budget.ingestion.normalize import RawTransaction
@@ -33,7 +33,7 @@ def _commit(session, account, raws, source):
 
 
 def test_cross_source_dedup(session):
-    acc = get_or_create_account(session, bank=Bank.MBANK, iban="PL10000000000000000000000005")
+    acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000005")
     session.commit()
 
     # CSV import first
@@ -47,7 +47,7 @@ def test_cross_source_dedup(session):
 
 
 def test_btid_idempotency(session):
-    acc = get_or_create_account(session, bank=Bank.ERSTE, iban="PL10000000000000000000000006")
+    acc = get_or_create_account(session, bank="erste", iban="PL10000000000000000000000006")
     session.commit()
 
     ob = _raw("-20.00", source=Source.OPEN_BANKING, btid="ABC123")
@@ -60,7 +60,7 @@ def test_btid_idempotency(session):
 
 
 def test_identical_same_day_preserved(session):
-    acc = get_or_create_account(session, bank=Bank.MBANK, iban="PL10000000000000000000000005")
+    acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000005")
     session.commit()
 
     # Two genuinely identical coffees on the same day -> both kept.
@@ -71,8 +71,8 @@ def test_identical_same_day_preserved(session):
 def test_internal_transfer_matching(session):
     mbank_iban = "PL10000000000000000000000005"
     erste_iban = "PL10000000000000000000000006"
-    mbank = get_or_create_account(session, bank=Bank.MBANK, iban=mbank_iban, name="mBank")
-    erste = get_or_create_account(session, bank=Bank.ERSTE, iban=erste_iban, name="Erste")
+    mbank = get_or_create_account(session, bank="mbank", iban=mbank_iban, name="mBank")
+    erste = get_or_create_account(session, bank="erste", iban=erste_iban, name="Erste")
     session.commit()
 
     # Outflow from mBank to Erste, inflow on Erste from mBank.
@@ -95,18 +95,18 @@ def test_internal_transfer_matching(session):
 def test_account_merges_across_iban_formats(session):
     # CSV stores a bare NRB; Open Banking returns the full IBAN with 'PL'.
     a1 = get_or_create_account(
-        session, bank=Bank.MBANK, iban="10000000000000000000000001", name="mBank główne"
+        session, bank="mbank", iban="10000000000000000000000001", name="mBank główne"
     )
     session.commit()
     a2 = get_or_create_account(
-        session, bank=Bank.MBANK, iban="PL10000000000000000000000001", external_id="eb-uid-1"
+        session, bank="mbank", iban="PL10000000000000000000000001", external_id="eb-uid-1"
     )
     session.commit()
     assert a2.id == a1.id  # merged, not duplicated
 
 
 def test_recurring_detects_monthly_subscription(session):
-    acc = get_or_create_account(session, bank=Bank.MBANK, iban="PL10000000000000000000000005")
+    acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000005")
     session.commit()
 
     d0 = date(2026, 1, 5)
@@ -144,15 +144,15 @@ def test_recurring_detects_monthly_subscription(session):
 
 def test_credit_card_limit_not_counted_debt_is(session):
     checking = get_or_create_account(
-        session, bank=Bank.ERSTE, iban="PL10000000000000000000000006",
+        session, bank="erste", iban="PL10000000000000000000000006",
         type=AccountType.CHECKING,
     )
     limit_card = get_or_create_account(
-        session, bank=Bank.ERSTE, iban="PL10000000000000000000000007",
+        session, bank="erste", iban="PL10000000000000000000000007",
         external_id="card-1", type=AccountType.CREDIT,
     )
     drawn_card = get_or_create_account(
-        session, bank=Bank.MBANK, iban="PL10000000000000000000000008",
+        session, bank="mbank", iban="PL10000000000000000000000008",
         external_id="card-2", type=AccountType.CREDIT,
     )
     session.commit()
@@ -171,8 +171,8 @@ def test_credit_card_limit_not_counted_debt_is(session):
 
 
 def test_cashflow_excludes_own_account_transfer(session):
-    a = get_or_create_account(session, bank=Bank.MBANK, iban="PL10000000000000000000000001")
-    get_or_create_account(session, bank=Bank.ERSTE, iban="PL10000000000000000000000004")
+    a = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
+    get_or_create_account(session, bank="erste", iban="PL10000000000000000000000004")
     session.commit()
     # transfer to our OWN Erste account (unmatched as a pair, but counterparty is own)
     ingest_transactions(session, a, [
@@ -188,10 +188,10 @@ def test_cashflow_excludes_own_account_transfer(session):
 
 
 def test_net_worth_breakdown_with_property_and_mortgage(session):
-    chk = get_or_create_account(session, bank=Bank.MBANK, iban="PL10000000000000000000000001")
-    prop = get_or_create_account(session, bank=Bank.MANUAL, external_id="manual:flat",
+    chk = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
+    prop = get_or_create_account(session, bank="manual", external_id="manual:flat",
                                  name="Mieszkanie", type=AccountType.PROPERTY)
-    mort = get_or_create_account(session, bank=Bank.MANUAL, external_id="manual:mort",
+    mort = get_or_create_account(session, bank="manual", external_id="manual:mort",
                                  name="Hipoteka", type=AccountType.MORTGAGE)
     session.commit()
     upsert_balance(session, chk, date(2026, 7, 1), Decimal("5000.00"), source=Source.OPEN_BANKING)
@@ -207,7 +207,7 @@ def test_net_worth_breakdown_with_property_and_mortgage(session):
 
 
 def test_net_worth_series_monthly_smoothing(session):
-    acc = get_or_create_account(session, bank=Bank.MBANK, iban="PL10000000000000000000000001")
+    acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
     session.commit()
     for d, v in [(date(2026, 1, 10), "100"), (date(2026, 1, 20), "150"), (date(2026, 2, 5), "200")]:
         upsert_balance(session, acc, d, Decimal(v), source=Source.OPEN_BANKING)
@@ -223,7 +223,7 @@ def test_categorization_and_spending(session):
     from finanse.modules.budget.ingestion.normalize import merchant_key
     from finanse.modules.budget.service import categorize_all, recategorize_merchant
 
-    acc = get_or_create_account(session, bank=Bank.MBANK, iban="PL10000000000000000000000001")
+    acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
     session.commit()
     ingest_transactions(session, acc, [
         RawTransaction(booking_date=date(2026, 5, 2), amount=Decimal("-24.47"),
@@ -281,7 +281,7 @@ def test_transaction_category_override_survives_recategorize(session):
     from finanse.models import Transaction
     from finanse.modules.budget.service import categorize_all, set_transaction_category
 
-    acc = get_or_create_account(session, bank=Bank.MBANK, iban="PL10000000000000000000000001")
+    acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
     session.commit()
     ingest_transactions(session, acc, [
         RawTransaction(booking_date=date(2026, 5, 2), amount=Decimal("-24.47"),
@@ -306,7 +306,7 @@ def test_spending_by_quarter_and_year(session):
     from finanse.modules.budget.analytics import spending_by_category
     from finanse.modules.budget.service import categorize_all
 
-    acc = get_or_create_account(session, bank=Bank.MBANK, iban="PL10000000000000000000000001")
+    acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
     session.commit()
     ingest_transactions(session, acc, [
         RawTransaction(booking_date=date(2026, 5, 2), amount=Decimal("-100"), reference="NETFLIX.COM", source=Source.CSV),  # Q2
@@ -335,7 +335,7 @@ def test_fx_conversion_is_transfer(session):
 
 
 def test_net_worth_uses_balances(session):
-    acc = get_or_create_account(session, bank=Bank.ERSTE, iban="PL10000000000000000000000006")
+    acc = get_or_create_account(session, bank="erste", iban="PL10000000000000000000000006")
     session.commit()
     upsert_balance(session, acc, date(2024, 3, 1), Decimal("1234.56"), source=Source.OPEN_BANKING)
     session.commit()

@@ -8,7 +8,8 @@ from decimal import Decimal
 from sqlmodel import Session, select
 
 from finanse.core.accounts import get_or_create_account, upsert_balance
-from finanse.core.models import Account, AccountType, Bank, Source
+from finanse.core.institutions import MANUAL
+from finanse.core.models import Account, AccountType, Source
 
 from .models import Depreciation
 
@@ -17,7 +18,7 @@ def add_manual_position(
     session: Session,
     *,
     name: str,
-    type: AccountType,
+    type: str,
     value: Decimal | float | str,
     currency: str = "PLN",
     on_date: date | None = None,
@@ -27,7 +28,7 @@ def add_manual_position(
     loan, ...) of the profile and record its current value as a balance snapshot."""
     account = get_or_create_account(
         session,
-        bank=Bank.MANUAL,
+        bank=MANUAL,
         name=name,
         external_id=f"manual:{name}",
         type=type,
@@ -56,7 +57,7 @@ def set_vehicle(
     from the purchase price). Counts as illiquid net worth, like property."""
     account = get_or_create_account(
         session,
-        bank=Bank.MANUAL,
+        bank=MANUAL,
         name=name,
         external_id=f"vehicle:{name}",
         type=AccountType.VEHICLE,

@@ -15,14 +15,14 @@ from decimal import Decimal
 from sqlmodel import Session, select
 
 from . import profiles
-from .models import Account, AccountType, Balance, Bank, Source
+from .models import Account, AccountType, Balance, Source
 from .text import iban_key, normalize_iban
 
 
 def get_or_create_account(
     session: Session,
     *,
-    bank: Bank,
+    bank: str,
     name: str | None = None,
     iban: str | None = None,
     external_id: str | None = None,
@@ -48,7 +48,7 @@ def get_or_create_account(
     if account is None:
         account = Account(
             bank=bank,
-            name=name or f"{bank.value} {iban[-4:] if iban else ''}".strip(),
+            name=name or f"{bank} {iban[-4:] if iban else ''}".strip(),
             iban=iban,
             external_id=external_id or (f"csv:{iban}" if iban else None),
             type=type,

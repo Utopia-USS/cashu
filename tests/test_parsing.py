@@ -1,7 +1,5 @@
 from datetime import date
 from decimal import Decimal
-
-from finanse.models import Bank
 from finanse.modules.budget.ingestion.csv_import import detect_importer, parse_file
 from finanse.modules.budget.ingestion.csv_import.base import parse_pl_amount, parse_pl_date
 from finanse.modules.budget.ingestion.normalize import merchant_key
@@ -44,10 +42,10 @@ def test_mbank_detection_and_parse(tmp_path):
     f.write_text(MBANK_CSV, encoding="cp1250")
 
     importer = detect_importer(f)
-    assert importer is not None and importer.bank == Bank.MBANK
+    assert importer is not None and importer.bank == "mbank"
 
     stmt = parse_file(f)
-    assert stmt.bank == Bank.MBANK
+    assert stmt.bank == "mbank"
     assert len(stmt.transactions) == 3
 
     amounts = {t.amount for t in stmt.transactions}

@@ -13,7 +13,8 @@ from decimal import Decimal
 from sqlmodel import Session, select
 
 from finanse.core import profiles
-from finanse.core.models import Account, AccountType, Bank, Source
+from finanse.core.institutions import MANUAL
+from finanse.core.models import Account, AccountType, Source
 
 from .models import Transaction
 
@@ -41,13 +42,13 @@ def get_cash_account(
     ext = f"cash:{currency}"
     acc = session.exec(
         select(Account).where(
-            Account.profile_id == pid, Account.bank == Bank.MANUAL, Account.external_id == ext
+            Account.profile_id == pid, Account.bank == MANUAL, Account.external_id == ext
         )
     ).first()
     if acc is not None or not create:
         return acc
     acc = Account(
-        bank=Bank.MANUAL,
+        bank=MANUAL,
         name="Gotówka" if currency == "PLN" else f"Gotówka ({currency})",
         external_id=ext,
         type=AccountType.CASH,

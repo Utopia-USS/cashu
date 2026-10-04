@@ -36,6 +36,10 @@ class ProfileError(ValueError):
     """Invalid profile data (message is safe to show to the user)."""
 
 
+class ProfileConflict(ProfileError):
+    """The profile clashes with an existing one (same name, ignoring case)."""
+
+
 class ProfileNotFound(LookupError):
     pass
 
@@ -119,6 +123,13 @@ def scope(session: Session, profile_id: int | None, *, create: bool = False) -> 
     return p.id if p is not None and p.id is not None else NO_PROFILE
 
 
+def legacy_owner_slug(session: Session) -> str | None:
+    """Slug of the oldest profile: the one an upstream database was migrated into
+    (it owns state that predates profiles, e.g. old Open Banking session files)."""
+    p = session.exec(select(Profile).order_by(Profile.id)).first()
+    return p.slug if p is not None else None
+
+
 def account_ids_query(profile_id: int):
     """Subquery of the profile's account ids (for ``Model.account_id.in_(...)``)."""
     return select(Account.id).where(Account.profile_id == profile_id)
@@ -142,6 +153,13 @@ def _clean_name(value: str) -> str:
     if len(name) > 80:
         raise ProfileError("name is too long (max 80 characters)")
     return name
+
+
+def _check_name_free(session: Session, name: str, *, except_id: int | None = None) -> None:
+    folded = name.casefold()
+    for p in list_profiles(session):
+        if p.id != except_id and p.name.strip().casefold() == folded:
+            raise ProfileConflict(f"a profile named '{p.name}' already exists")
 
 
 def _clean_privacy(value: str) -> str:
@@ -169,6 +187,7 @@ def create_profile(
     slug: str | None = None,
 ) -> Profile:
     name = _clean_name(name)
+    _check_name_free(session, name)
     profile = Profile(
         slug=slug or unique_slug(session, name),
         name=name,
@@ -176,7 +195,7 @@ def create_profile(
         mcp_privacy=_clean_privacy(mcp_privacy),
     )
     if get_by_slug(session, profile.slug) is not None:
-        raise ProfileError(f"profile '{profile.slug}' already exists")
+        raise ProfileConflict(f"profile '{profile.slug}' already exists")
     session.add(profile)
     session.flush()
     set_modules(session, profile, modules_)
@@ -193,6 +212,7 @@ def update_profile(
 ) -> Profile:
     if name is not None:
         profile.name = _clean_name(name)
+        _check_name_free(session, profile.name, except_id=profile.id)
     if base_currency is not None:
         profile.base_currency = _clean_currency(base_currency)
     if mcp_privacy is not None:

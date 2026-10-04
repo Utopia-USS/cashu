@@ -40,7 +40,7 @@ SEED_MONTHS = (6, 7, 8, 9)
 def seed_demo(s: Session) -> None:
     """Fill an empty DB through the project's own service layer."""
     from finanse.core import accounts
-    from finanse.models import AccountType, Bank, Source, Transaction
+    from finanse.models import AccountType, Source, Transaction
     from finanse.modules.assets import service as assets
     from finanse.modules.budget import cash
     from finanse.modules.budget import service as budget
@@ -48,12 +48,12 @@ def seed_demo(s: Session) -> None:
     from finanse.modules.budget.ingestion.transfers import match_internal_transfers
     from finanse.modules.loans import service as loans
 
-    main = accounts.get_or_create_account(s, bank=Bank.MBANK, iban=IBAN_MAIN, name="mKonto Test")
+    main = accounts.get_or_create_account(s, bank="mbank", iban=IBAN_MAIN, name="mKonto Test")
     eur = accounts.get_or_create_account(
-        s, bank=Bank.MBANK, iban=IBAN_EUR, name="eKonto EUR Test", currency="EUR"
+        s, bank="mbank", iban=IBAN_EUR, name="eKonto EUR Test", currency="EUR"
     )
     sav = accounts.get_or_create_account(
-        s, bank=Bank.ERSTE, iban=IBAN_SAVINGS, name="Erste Test", type=AccountType.SAVINGS
+        s, bank="erste", iban=IBAN_SAVINGS, name="Erste Test", type=AccountType.SAVINGS
     )
 
     def raw(d, amount, *, ref=None, cp=None, iban=None, desc=None, currency="PLN"):
@@ -274,7 +274,7 @@ def make_eb_txn():
 @pytest.fixture
 def eb_configured(monkeypatch):
     """Make the app believe Enable Banking is configured and hand it `client`
-    plus the saved `sessions` ({bank value: session id})."""
+    plus the saved `sessions` ({institution id: session id}) of the profile in use."""
     from finanse.config import settings
 
     monkeypatch.setattr(type(settings), "eb_configured", property(lambda self: True))
@@ -287,7 +287,8 @@ def eb_configured(monkeypatch):
         budget_api = importlib.import_module("finanse.modules.budget.api")
 
         monkeypatch.setattr(budget_api, "_eb_client", lambda: client)
-        monkeypatch.setattr(state, "load_sessions", lambda: dict(sessions))
+        saved = [state.SavedSession(bank, sid) for bank, sid in sessions.items()]
+        monkeypatch.setattr(state, "load_sessions", lambda *_a, **_k: list(saved))
         return client
 
     return install

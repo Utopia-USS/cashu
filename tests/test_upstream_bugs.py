@@ -73,10 +73,9 @@ def _monthly(session, account, title, amount, *, cp=None, iban=None, currency="P
 
 def _seed_recurring_mix(session):
     from finanse.core.accounts import get_or_create_account
-    from finanse.models import Bank
 
-    pln = get_or_create_account(session, bank=Bank.MBANK, iban="99114000000000000000000001")
-    eur = get_or_create_account(session, bank=Bank.MBANK, iban="99114000000000000000000002",
+    pln = get_or_create_account(session, bank="mbank", iban="99114000000000000000000001")
+    eur = get_or_create_account(session, bank="mbank", iban="99114000000000000000000002",
                                 currency="EUR")
     session.flush()
     # not subscriptions
@@ -183,10 +182,9 @@ def _ob_session(txns):
 
 
 def _sync(session, fake_eb, txns):
-    from finanse.models import Bank
     from finanse.modules.budget.ingestion.enable_banking.sync import sync_session
 
-    results = sync_session(session, fake_eb(_ob_session(txns)), "s1", bank=Bank.MBANK)
+    results = sync_session(session, fake_eb(_ob_session(txns)), "s1", bank="mbank")
     session.flush()
     return results
 
@@ -215,11 +213,10 @@ def test_b3_csv_boundary_day_is_not_duplicated(session, fake_eb, make_eb_txn):
     """CSV export taken mid-day: the CSV row and its Open Banking twin carry
     different memos, so the content hash cannot match; only the surplus counts."""
     from finanse.core.accounts import get_or_create_account
-    from finanse.models import Bank
     from finanse.modules.budget.ingestion.normalize import RawTransaction
     from finanse.modules.budget.service import ingest_transactions
 
-    acc = get_or_create_account(session, bank=Bank.MBANK, iban=_OB_IBAN)
+    acc = get_or_create_account(session, bank="mbank", iban=_OB_IBAN)
     ingest_transactions(session, acc, [RawTransaction(
         booking_date=date(2026, 9, 20), amount=Decimal("-82.54"),
         reference="LIDL TEST KRAKOW  DATA TRANSAKCJI: 2026-09-20", source=Source.CSV,

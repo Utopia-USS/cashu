@@ -58,8 +58,8 @@ def stats_cmd(months: int = typer.Option(12, help="How many recent months to sho
         nw.add_column(col)
     for ln in lines:
         nw.add_row(
-            f"{ln.account.bank.value} · {ln.account.name}",
-            ln.account.type.value,
+            f"{ln.account.bank} · {ln.account.name}",
+            str(ln.account.type),
             ln.account.currency,
             ln.as_of.isoformat() if ln.as_of else "—",
             cliutil.fmt(ln.contribution, ln.account.currency),

@@ -12,9 +12,10 @@ from rich.table import Table
 from sqlmodel import select
 
 from ..config import settings
-from . import cliutil, paths
+from . import account_types, cliutil, paths
+from .accounts import get_account
 from .db import get_session, init_db
-from .models import Account, AccountType
+from .models import Account
 
 secrets_app = typer.Typer(help="Secrets in the OS keychain (instead of .env).")
 
@@ -101,37 +102,44 @@ def migrate_data_cmd(
 
 
 def accounts_cmd() -> None:
-    """List known accounts."""
+    """List the active profile's accounts."""
     with get_session() as s:
-        rows = s.exec(select(Account)).all()
+        pid = cliutil.profile(s, create=False).id
+        rows = s.exec(select(Account).where(Account.profile_id == pid)).all()
     table = Table(title="Accounts")
     for col in ("id", "bank", "name", "iban", "type", "currency", "active"):
         table.add_column(col)
     for a in rows:
         table.add_row(
-            str(a.id), a.bank.value, a.name, a.iban or "—",
-            a.type.value, a.currency, "yes" if a.active else "no",
+            str(a.id), a.bank, a.name, a.iban or "—",
+            str(a.type), a.currency, "yes" if a.active else "no",
         )
     cliutil.console.print(table)
 
 
-def set_account_type(account_id: int, account_type: AccountType) -> None:
+def _profile_account(session, account_id: int) -> Account:
+    try:
+        return get_account(session, account_id, profile_id=cliutil.profile(session).id)
+    except ValueError:
+        raise typer.BadParameter(f"No account with id {account_id}") from None
+
+
+def set_account_type(account_id: int, account_type: str) -> None:
     """Set an account's type (checking/savings/credit/investment/...)."""
+    known = account_types.ids()
+    if account_type not in known:
+        raise typer.BadParameter(f"Unknown account type '{account_type}'. Known: {', '.join(known)}.")
     with get_session() as s:
-        acc = s.get(Account, account_id)
-        if not acc:
-            raise typer.BadParameter(f"No account with id {account_id}")
+        acc = _profile_account(s, account_id)
         acc.type = account_type
         s.add(acc)
-    cliutil.console.print(f"[green]Account {account_id} -> {account_type.value}[/]")
+    cliutil.console.print(f"[green]Account {account_id} -> {account_type}[/]")
 
 
 def set_account_name(account_id: int, name: str) -> None:
     """Give an account a human-friendly name."""
     with get_session() as s:
-        acc = s.get(Account, account_id)
-        if not acc:
-            raise typer.BadParameter(f"No account with id {account_id}")
+        acc = _profile_account(s, account_id)
         acc.name = name
         s.add(acc)
     cliutil.console.print(f"[green]Account {account_id} -> '{name}'[/]")
@@ -140,7 +148,7 @@ def set_account_name(account_id: int, name: str) -> None:
 def set_balance_cmd(
     account_id: int,
     value: float,
-    date: str = typer.Option(None, "--date", help="YYYY-MM-DD (default: today)."),
+    date: Annotated[str | None, typer.Option("--date", help="YYYY-MM-DD (default: today).")] = None,
 ) -> None:
     """Record a balance snapshot (update a mortgage, revalue a property, ...)."""
     from datetime import date as _date
@@ -150,9 +158,15 @@ def set_balance_cmd(
 
     on_date = _date.fromisoformat(date) if date else None
     with get_session() as s:
-        acc = set_balance(s, account_id, value, on_date=on_date)
-        cliutil.console.print(f"[green]{acc.name}[/] -> {cliutil.fmt(Decimal(str(value)), acc.currency)}")
-
+        try:
+            acc = set_balance(
+                s, account_id, value, on_date=on_date, profile_id=cliutil.profile(s).id
+            )
+        except ValueError as e:
+            raise typer.BadParameter(str(e)) from None
+        cliutil.console.print(
+            f"[green]{acc.name}[/] -> {cliutil.fmt(Decimal(str(value)), acc.currency)}"
+        )
 
 
 # --------------------------------------------------------------------------- #

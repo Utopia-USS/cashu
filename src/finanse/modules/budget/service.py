@@ -15,7 +15,7 @@ from sqlmodel import Session
 
 from finanse.core import profiles
 from finanse.core.accounts import get_or_create_account, own_ibans, upsert_balance
-from finanse.core.models import Account, AccountType, Bank, Source
+from finanse.core.models import Account, AccountType, Source
 
 from .cash import cash_account_ids, get_cash_account, sync_cash_leg
 from .ingestion.csv_import import parse_file
@@ -82,8 +82,8 @@ def import_csv(
     session: Session,
     path: str | Path,
     *,
-    bank: Bank | None = None,
-    account_type: AccountType = AccountType.CHECKING,
+    bank: str | None = None,
+    account_type: str = AccountType.CHECKING,
     account_name: str | None = None,
     profile_id: int | None = None,
 ) -> tuple[Account, ImportBatch]:

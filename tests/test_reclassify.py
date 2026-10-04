@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 from finanse.core.accounts import get_or_create_account
-from finanse.models import AccountType, Bank, Source, Transaction
+from finanse.models import AccountType, Source, Transaction
 from finanse.modules.budget.categorize import local_llm
 from finanse.modules.budget.categorize.reclassify import (
     _is_structural,
@@ -47,12 +47,12 @@ def test_signature_groups_by_full_detail_not_merchant():
 def test_structural_transactions_excluded(session):
     from finanse.modules.budget.ingestion.normalize import iban_key
 
-    acc = get_or_create_account(session, bank=Bank.MBANK, name="mBank",
+    acc = get_or_create_account(session, bank="mbank", name="mBank",
                                 iban="PL10 1140 0000 0000 0000 1234")
     session.flush()
     own_iban = "PL11 1400 0000 0000 0000 1234"
     own = {iban_key(own_iban)}
-    cash = get_or_create_account(session, bank=Bank.MANUAL, name="Gotówka",
+    cash = get_or_create_account(session, bank="manual", name="Gotówka",
                                  external_id="cash:PLN", type=AccountType.CASH)
     session.flush()
 
@@ -73,7 +73,7 @@ def test_structural_transactions_excluded(session):
 
 
 def test_reclassify_applies_and_sign_guardrail(session, monkeypatch):
-    acc = get_or_create_account(session, bank=Bank.MBANK, name="mBank", iban="PL99 1140 0000 0000 0000 9999")
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL99 1140 0000 0000 0000 9999")
     session.flush()
     spend = _txn(session, acc.id, "-30", ref="LIDL", cat="other", dh="spend")
     inflow = _txn(session, acc.id, "1500", ref="Jan Kowalski przelew", cat="other", dh="in")

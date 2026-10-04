@@ -16,6 +16,7 @@ What a module declares:
 - ``cli``: ``register(app)`` adding its Typer commands to an app;
 - ``networth``: optional ``NetWorthContributor`` (values the accounts it owns);
 - ``account_types`` / ``networth_buckets``: registered with ``core.account_types``;
+- ``institutions``: extra institutions (e.g. brokers) for ``core.institutions``;
 - ``setup_status(session, profile_id)``: steps of the module's blank page;
 - ``skill``: the Claude Code setup skill command (``/budget-setup``).
 """
@@ -27,7 +28,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
-from . import account_types
+from . import account_types, institutions
 
 if TYPE_CHECKING:
     from sqlmodel import Session
@@ -107,6 +108,7 @@ class ModuleSpec:
     networth: NetWorthContributor | None = None
     account_types: tuple[account_types.AccountTypeInfo, ...] = ()
     networth_buckets: tuple[account_types.NetWorthBucket, ...] = ()
+    institutions: tuple[institutions.Institution, ...] = ()  # e.g. brokers
     setup_status: Callable[[Session, int], SetupStatus] | None = None
     skill: str | None = None  # Claude Code skill command, e.g. "/budget-setup"
     extra: dict[str, Any] = field(default_factory=dict)
@@ -193,6 +195,8 @@ def _register_metadata(spec: ModuleSpec) -> None:
         account_types.register_bucket(b)
     for t in spec.account_types:
         account_types.register_type(t)
+    for inst in spec.institutions:
+        institutions.register(inst)
 
 
 def registry() -> dict[str, ModuleSpec]:

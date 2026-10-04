@@ -16,7 +16,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from finanse.core.models import Bank, Source
+from finanse.core.models import Source
 
 from ..normalize import RawTransaction
 
@@ -84,7 +84,7 @@ class ColumnMap:
 
 @dataclass
 class ParsedStatement:
-    bank: Bank
+    bank: str  # institution id
     account_number: str | None = None
     account_name: str | None = None
     currency: str = "PLN"
@@ -134,7 +134,7 @@ def _match_header(row: list[str], colmap: ColumnMap) -> dict[str, int] | None:
 class DelimitedImporter:
     """Base class: concrete importers set `bank`, `colmap`, and conventions."""
 
-    bank: Bank
+    bank: str  # institution id
     colmap: ColumnMap
     encodings: tuple[str, ...] = DEFAULT_ENCODINGS
     delimiters: tuple[str, ...] = DEFAULT_DELIMITERS
@@ -162,7 +162,7 @@ class DelimitedImporter:
                 break
         if header_idx is None or mapping is None:
             raise ValueError(
-                f"{self.bank.value}: could not locate a transaction header row in {path.name}"
+                f"{self.bank}: could not locate a transaction header row in {path.name}"
             )
 
         account_number, currency = self.extract_meta(text)

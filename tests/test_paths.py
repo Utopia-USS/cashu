@@ -195,12 +195,40 @@ def test_eb_sessions_saved_owner_only(layout):
     from finanse.modules.budget.ingestion.enable_banking import state
 
     _legacy, appdata = layout
-    state.save_session("mbank", "session-test-1")
+    state.save_session("jan", "mbank", "session-test-1")
     path = appdata / "eb_sessions.json"
-    assert json.loads(path.read_text()) == {"mbank": "session-test-1"}
-    assert state.load_sessions() == {"mbank": "session-test-1"}
+    data = json.loads(path.read_text())
+    assert data["version"] == 2
+    assert [(e["institution"], e["session_id"]) for e in data["profiles"]["jan"]] == [
+        ("mbank", "session-test-1")
+    ]
+    assert [(e.institution, e.session_id) for e in state.load_sessions("jan")] == [
+        ("mbank", "session-test-1")
+    ]
+    assert state.load_sessions("marta") == []
     if sys.platform != "win32":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_eb_sessions_upstream_file_belongs_to_the_migrated_profile(layout):
+    from finanse.modules.budget.ingestion.enable_banking import state
+
+    _legacy, appdata = layout
+    appdata.mkdir(parents=True)
+    (appdata / "eb_sessions.json").write_text(json.dumps({"mbank": "old-1", "erste": "old-2"}))
+    assert state.load_sessions("default") == []  # without an owner nobody gets them
+    legacy = state.load_sessions("default", legacy_profile="default")
+    assert [(e.institution, e.session_id) for e in legacy] == [("mbank", "old-1"), ("erste", "old-2")]
+    assert state.load_sessions("marta", legacy_profile="default") == []
+    # a re-login replaces the profile's session of that bank and rewrites the file (v2)
+    state.save_session("default", "mbank", "new-1", legacy_profile="default")
+    kept = state.load_sessions("default")
+    assert sorted((e.institution, e.session_id) for e in kept) == [("erste", "old-2"), ("mbank", "new-1")]
+    # a second login at the same bank can be kept next to the first
+    state.save_session("default", "mbank", "new-2", keep_others=True)
+    assert [e.session_id for e in state.load_sessions("default") if e.institution == "mbank"] == [
+        "new-1", "new-2"
+    ]
 
 
 # --------------------------------------------------------------------------- #
