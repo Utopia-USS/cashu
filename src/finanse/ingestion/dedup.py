@@ -45,7 +45,8 @@ def prepare_new_transactions(
         select(Transaction).where(Transaction.account_id == account_id)
     ).all()
 
-    existing_btids = {t.bank_transaction_id for t in existing if t.bank_transaction_id}
+    # bank transaction id -> content hash of the stored row carrying it
+    existing_btids = {t.bank_transaction_id: t.dedup_hash for t in existing if t.bank_transaction_id}
     existing_hash_counts: dict[str, int] = defaultdict(int)
     for t in existing:
         existing_hash_counts[t.dedup_hash] += 1
@@ -58,6 +59,10 @@ def prepare_new_transactions(
         h = base_hash(account_id, rt)
 
         if rt.bank_transaction_id and rt.bank_transaction_id in existing_btids:
+            # That stored row is accounted for: consume its content-hash slot too,
+            # or an identical same-day transaction with a new id would be taken
+            # for its duplicate and dropped.
+            used[existing_btids[rt.bank_transaction_id]] += 1
             result.num_duplicates += 1
             continue
 

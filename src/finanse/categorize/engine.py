@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..ingestion.normalize import iban_key, merchant_key
+from ..ingestion.normalize import iban_key, merchant_key, normalize_text
 from ..models import CategoryRule, Transaction
 from . import taxonomy
 
@@ -49,7 +49,14 @@ def categorize(
             return "income_salary", "keyword"
         return "income_other", "default"
 
-    # 4. Expense: seed keyword → recurring signal → uncategorized.
+    # 4. Expense: installment/rent phrase anywhere in the text → seed keyword →
+    #    recurring signal → uncategorized.
+    text = normalize_text(
+        " ".join(f for f in (txn.reference, txn.description, txn.counterparty_name) if f)
+    )
+    phrase = taxonomy.apply_text_rules(text)
+    if phrase:
+        return phrase, "keyword"
     if seed and seed not in _INCOME_KEYS:
         return seed, "keyword"
     if mk and mk in subscription_keys:

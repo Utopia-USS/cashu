@@ -23,6 +23,7 @@ export function Overview({
     .map(([c, v]) => cur(v, c))
     .join(" · ");
   const hasHome = bd.property || bd.mortgage;
+  const subsTotals = Object.entries(subs?.monthly_totals ?? {}).map(([c, v]) => `~${cur(v, c)}`).join(" · ");
 
   return (
     <>
@@ -44,7 +45,7 @@ export function Overview({
         <Kpi
           label="Subskrypcje"
           value={subs ? subs.count : 0}
-          hint={subs ? `~${cur(subs.monthly_total)} / mies` : ""}
+          hint={subsTotals ? `${subsTotals} / mies` : ""}
         />
       </div>
 

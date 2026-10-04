@@ -47,7 +47,7 @@ export function SkeletonTable({ rows = 6, title = true }: { rows?: number; title
   );
 }
 
-export function Seg<T extends string | number>({
+export function Seg<T extends string | number | null>({
   items, value, onChange,
 }: {
   items: [label: string, value: T][];

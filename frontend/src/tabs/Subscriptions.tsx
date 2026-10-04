@@ -22,7 +22,7 @@ export function Subscriptions() {
             ) : items.map((r, i) => (
               <tr key={i}>
                 <td>{r.payee} {r.active && <span className="tag live">aktywna</span>}</td>
-                <td className="num">{cur(r.amount)}</td>
+                <td className="num">{cur(r.amount, r.currency)}</td>
                 <td className="num">{r.gap_days}d</td>
                 <td className="muted">{r.last}</td>
               </tr>

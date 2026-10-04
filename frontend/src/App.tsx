@@ -47,7 +47,7 @@ export function App() {
   const loadError = summaryS.error || networthS.error || catsS.error;
   const ready = summaryS.data && networthS.data && catsS.data;
   const asof = networthS.data?.accounts
-    .map((a) => a.as_of).filter(Boolean).sort().at(-1);
+    .map((a) => a.as_of).filter(Boolean).sort().slice(-1)[0];
 
   return (
     <div className="wrap">

@@ -63,8 +63,12 @@ export function Flows() {
         />
       }
     >
-      <Bar dataKey="income" name="Przychód" fill={cssVar("--pos")} />
-      <Bar dataKey="expense" name="Wydatki" fill={cssVar("--neg")} />
+      {/* Static like the net line (and every other chart mark): an animated Bar
+          interpolates from the previous layout (first render uses a 320px fallback
+          width, then every range/resize change), so bars and line drift apart and
+          stay apart whenever animation frames are throttled. */}
+      <Bar dataKey="income" name="Przychód" fill={cssVar("--pos")} isAnimationActive={false} />
+      <Bar dataKey="expense" name="Wydatki" fill={cssVar("--neg")} isAnimationActive={false} />
       <Line type="monotone" dataKey="net" name="Wynik" stroke={cssVar("--net")} strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
     </ScrollableChart>
   );

@@ -32,7 +32,7 @@ function niceTicks(min: number, max: number, count = 5): number[] {
 export interface ScrollableChartProps {
   title: ReactNode;
   controls?: ReactNode;               // extra controls left of the range switch
-  data: Record<string, unknown>[];
+  data: object[];
   yValues: number[];                  // drives the shared domain + ticks
   yTickFormatter?: (v: number) => string;
   xAxisProps: Record<string, unknown>; // dataKey/type/scale/domain/tickFormatter/minTickGap…

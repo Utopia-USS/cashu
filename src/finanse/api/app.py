@@ -71,7 +71,11 @@ def summary() -> dict:
         cashflow = analytics.monthly_cashflow(s)
         active = analytics.active_recurring(s)
     month = cashflow[-1] if cashflow else None
-    monthly_subs = sum((c.typical_amount for c in active), Decimal("0"))
+    # Per currency, never summed across currencies. `monthly_total` stays for the
+    # legacy dashboard and is the PLN total only.
+    monthly_subs: dict[str, Decimal] = {}
+    for c in active:
+        monthly_subs[c.currency] = monthly_subs.get(c.currency, Decimal(0)) + c.typical_amount
     return {
         "networth": {cur: _f(v) for cur, v in sorted(totals.items())},
         "breakdown": _breakdown_dict(bd),
@@ -85,7 +89,11 @@ def summary() -> dict:
             if month
             else None
         ),
-        "subscriptions": {"count": len(active), "monthly_total": _f(monthly_subs)},
+        "subscriptions": {
+            "count": len(active),
+            "monthly_total": _f(monthly_subs.get("PLN", Decimal(0))),
+            "monthly_totals": {cur: _f(v) for cur, v in sorted(monthly_subs.items())},
+        },
     }
 
 
@@ -148,16 +156,17 @@ def recurring() -> dict:
     with get_session() as s:
         active = analytics.active_recurring(s)
         allrec = analytics.detect_recurring(s)
-    active_keys = {(c.counterparty, c.typical_amount) for c in active}
+    active_keys = {(c.counterparty, c.currency, c.typical_amount) for c in active}
     return {
         "items": [
             {
                 "payee": c.counterparty,
                 "amount": _f(c.typical_amount),
+                "currency": c.currency,
                 "count": c.occurrences,
                 "gap_days": c.median_gap_days,
                 "last": c.last_date.isoformat(),
-                "active": (c.counterparty, c.typical_amount) in active_keys,
+                "active": (c.counterparty, c.currency, c.typical_amount) in active_keys,
             }
             for c in allrec
         ]
@@ -369,10 +378,13 @@ def resync(days: int = 90) -> dict:
     """Re-sync every saved Enable Banking session, then re-match transfers and
     re-categorize — the dashboard equivalent of `finanse eb resync`."""
     from ..config import settings
-    from ..ingestion.enable_banking import sync_session
     from ..ingestion.enable_banking.client import EnableBankingError
     from ..ingestion.enable_banking.state import load_sessions
-    from ..ingestion.enable_banking.sync import reprocess_open_banking_fields
+    from ..ingestion.enable_banking.sync import (
+        fetch_session,
+        reprocess_open_banking_fields,
+        store_account,
+    )
     from ..ingestion.transfers import match_internal_transfers
     from ..models import Bank
     from ..service import categorize_all
@@ -384,21 +396,38 @@ def resync(days: int = 90) -> dict:
         return {"ok": False, "error": "Brak zapisanych sesji — zaloguj się: finanse eb login."}
 
     client = _eb_client()
-    banks_out: list[dict] = []
     errors: list[str] = []
+    # 1. Network: fetch every saved session with no DB transaction open (bank
+    #    calls can take minutes with 429 retries; a held write lock would make
+    #    every concurrent CLI/UI write fail with "database is locked").
+    fetched = []
+    for bank_val, sid in sessions.items():
+        try:
+            fs = fetch_session(client, sid, bank=Bank(bank_val), days=days)
+        except EnableBankingError as e:  # expired/rate-limited session — try the rest
+            errors.append(f"{bank_val}: {e}")
+            continue
+        errors.extend(fs.errors)
+        fetched.append((bank_val, fs))
+
+    # 2. DB: one short write transaction per account.
+    banks_out: list[dict] = []
     total_inserted = 0
-    with get_session() as s:
-        for bank_val, sid in sessions.items():
+    for bank_val, fs in fetched:
+        inserted = stored = 0
+        for fa in fs.accounts:
             try:
-                results = sync_session(s, client, sid, bank=Bank(bank_val), days=days)
-                inserted = sum(r.batch.num_inserted for r in results)
-                total_inserted += inserted
-                banks_out.append(
-                    {"bank": bank_val, "inserted": inserted, "accounts": len(results)}
-                )
-            except EnableBankingError as e:  # expired/rate-limited session — try the rest
-                errors.append(f"{bank_val}: {e}")
-            errors.extend(getattr(sync_session, "last_errors", []))
+                with get_session() as s:  # commits on exit
+                    n = store_account(s, fa, fs.bank).batch.num_inserted
+            except Exception as e:  # noqa: BLE001 - one bad account must not abort the rest
+                errors.append(f"{fa.uid}: {e}")
+                continue
+            inserted += n
+            stored += 1
+        total_inserted += inserted
+        banks_out.append({"bank": bank_val, "inserted": inserted, "accounts": stored})
+
+    with get_session() as s:
         reprocess_open_banking_fields(s)  # keep titles/notes readable (not the bank id)
         pairs = match_internal_transfers(s)
         categorize_all(s)

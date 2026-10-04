@@ -58,7 +58,8 @@ export interface Summary {
   networth: Record<string, number>;
   breakdown: Breakdown;
   month: { label: string; income: number; expense: number; net: number } | null;
-  subscriptions: { count: number; monthly_total: number };
+  // monthly_totals: per currency (never summed); monthly_total = PLN only (legacy)
+  subscriptions: { count: number; monthly_total: number; monthly_totals: Record<string, number> };
 }
 
 export interface NetworthResp {
@@ -89,7 +90,7 @@ export interface DrillRow {
 }
 
 export interface RecurringItem {
-  payee: string; amount: number; count: number; gap_days: number; last: string; active: boolean;
+  payee: string; amount: number; currency: string; count: number; gap_days: number; last: string; active: boolean;
 }
 
 export interface CashTxn {

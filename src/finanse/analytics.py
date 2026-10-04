@@ -513,6 +513,16 @@ class RecurringCandidate:
     months_covered: int
     median_gap_days: int
     last_date: date
+    currency: str = "PLN"
+
+
+# Monthly, same-amount outflows that are NOT subscriptions: rent and housing fees,
+# loan installments, bank fees, cash withdrawals, taxes and own-account moves.
+NOT_SUBSCRIPTION_CATEGORIES = {
+    "housing", "loans", "fees", "cash", "taxes", "transfer", "cash_withdrawal",
+}
+# Per-transaction category decisions the deterministic engine cannot reproduce.
+_TXN_DECIDED_SOURCES = {"manual_txn", "llm_full", "llm_fallback", "cash_leg"}
 
 
 def detect_recurring(
@@ -529,10 +539,27 @@ def detect_recurring(
     naturally separates it from variable spend at the same merchant (groceries).
     A group qualifies when it recurs at a roughly monthly cadence (median gap in
     [min_gap, max_gap] days). Still a heuristic; a dedicated engine comes later.
-    """
-    from .ingestion.normalize import merchant_key
 
-    groups: dict[tuple[str, str], list[Transaction]] = defaultdict(list)
+    Outflows whose category (the user's per-transaction choice, else what the
+    deterministic engine gives without the recurring signal) is rent, a loan
+    installment, a fee, cash, tax or a transfer are not subscriptions and are
+    skipped. Groups are per currency, so amounts are never mixed.
+    """
+    from .categorize import engine
+    from .categorize.rules import load_rules
+    from .ingestion.normalize import iban_key, merchant_key
+
+    own = {iban_key(a.iban) for a in session.exec(select(Account)).all() if a.iban}
+    rules = load_rules(session)
+
+    def not_a_subscription(t: Transaction) -> bool:
+        if t.category_source in _TXN_DECIDED_SOURCES and t.category:
+            cat = t.category
+        else:
+            cat, _src = engine.categorize(t, own_ibans=own, rules=rules, subscription_keys=set())
+        return cat in NOT_SUBSCRIPTION_CATEGORIES
+
+    groups: dict[tuple[str, str, str], list[Transaction]] = defaultdict(list)
     q = select(Transaction).where(
         Transaction.is_internal_transfer == False,  # noqa: E712
     )
@@ -540,12 +567,12 @@ def detect_recurring(
         if t.amount >= 0:
             continue  # subscriptions are outflows
         payee = merchant_key(t.counterparty_name, t.reference, t.description)
-        if not payee:
+        if not payee or not_a_subscription(t):
             continue
-        groups[(payee, f"{-t.amount:.2f}")].append(t)
+        groups[(payee, t.currency, f"{-t.amount:.2f}")].append(t)
 
     candidates: list[RecurringCandidate] = []
-    for (payee, amount_key), txns in groups.items():
+    for (payee, currency, amount_key), txns in groups.items():
         if len(txns) < min_occurrences:
             continue
         dates = sorted(t.booking_date for t in txns)
@@ -565,6 +592,7 @@ def detect_recurring(
                 months_covered=len(months),
                 median_gap_days=median_gap,
                 last_date=dates[-1],
+                currency=currency,
             )
         )
 

@@ -26,6 +26,8 @@ CATEGORIES: list[Category] = [
     Category("fuel", "Paliwo", "expense"),
     Category("car", "Auto", "expense"),
     Category("housing", "Mieszkanie/Czynsz", "expense"),
+    # Loan / mortgage / leasing installments (matched by TEXT_RULES below).
+    Category("loans", "Raty kredytów", "expense"),
     Category("utilities", "Media/Telekom", "expense"),
     Category("health", "Zdrowie/Apteka", "expense"),
     Category("shopping", "Zakupy", "expense"),
@@ -252,6 +254,7 @@ SEED_RULES: list[tuple[str, str]] = [
     ("BAR MLECZNY", "dining"),
     ("SUSHI", "dining"),
     ("THAI", "dining"),
+    ("SEPHORA", "shopping"),  # must precede "PHO" (a substring of SEPHORA)
     ("PHO", "dining"),
     ("BROWA", "dining"),       # e.g. "PIWO SWIEZE Z BROWA..."
     ("BROWAR", "dining"),
@@ -389,7 +392,6 @@ SEED_RULES: list[tuple[str, str]] = [
     ("ROSSMANN", "shopping"),
     ("HEBE", "shopping"),
     ("DOUGLAS", "shopping"),
-    ("SEPHORA", "shopping"),
     ("SINSAY", "shopping"),
     ("RESERVED", "shopping"),
     ("CROPP", "shopping"),
@@ -514,6 +516,7 @@ SEED_RULES: list[tuple[str, str]] = [
     ("BANKOMAT", "cash"),
     ("WYPLATA GOTOWKI", "cash"),
     ("WYPLATA W BANKOMACIE", "cash"),
+    ("WYPLATA WYNAGRODZENIA", "income_salary"),  # salary; must precede the generic "WYPLATA"
     ("WYPLATA", "cash"),
     ("EURONET", "cash"),
     ("PLANET CASH", "cash"),
@@ -562,9 +565,38 @@ SEED_RULES: list[tuple[str, str]] = [
     # ------------------------------------------------------------------
     ("WYNAGRODZENIE", "income_salary"),
     ("PENSJA", "income_salary"),
-    ("WYPLATA WYNAGRODZENIA", "income_salary"),
     ("ZWROT", "income_refund"),
 ]
+
+
+# Phrases matched against the WHOLE transaction text (title, description and
+# counterparty), not only the merchant key: a loan installment or rent is usually
+# paid to a bank or a person whose name says nothing about it. Applied to outflows
+# before the merchant seed rules and before the recurring ("subscription") signal,
+# so a monthly installment is never tagged as a subscription. Keep them specific:
+# they override the merchant. Uppercase, diacritics stripped (like merchant_key).
+TEXT_RULES: list[tuple[str, str]] = [
+    ("RATA KREDYTU", "loans"),
+    ("RATY KREDYTU", "loans"),
+    ("SPLATA KREDYTU", "loans"),
+    ("SPLATA RATY", "loans"),
+    ("RATA POZYCZKI", "loans"),
+    ("SPLATA POZYCZKI", "loans"),
+    ("RATA LEASING", "loans"),
+    ("KREDYT HIPOTECZNY", "loans"),
+    ("CZYNSZ", "housing"),
+]
+
+
+def apply_text_rules(text: str) -> str | None:
+    """Return the first TEXT_RULES category whose phrase occurs in `text`
+    (already normalized: uppercase, no diacritics), else None."""
+    if not text:
+        return None
+    for needle, cat in TEXT_RULES:
+        if needle in text:
+            return cat
+    return None
 
 
 def apply_seed_rules(merchant_key: str) -> str | None:

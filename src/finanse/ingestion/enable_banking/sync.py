@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -133,7 +134,10 @@ def _pick_balance(balances: list[dict[str, Any]]) -> tuple[date, Decimal] | None
             continue
         btype = (b.get("balance_type") or "OTHR").upper()
         prio = _BALANCE_PRIORITY.get(btype, 9)
-        ref_date = _parse_date(b.get("reference_date") or b.get("reference_time")) or date.today()
+        ref_date = (
+            _parse_date(b.get("reference_date") or b.get("reference_time"))
+            or date.today()  # noqa: DTZ011 - naive local date, like the booking dates
+        )
         cand = (prio, ref_date, amount)
         if best is None or prio < best[0]:
             best = cand
@@ -166,6 +170,59 @@ class SyncResult:
     batch: ImportBatch
 
 
+@dataclass
+class FetchedAccount:
+    """What Enable Banking returned for one account (network phase, no DB)."""
+
+    uid: str
+    details: dict[str, Any]
+    transactions: list[dict[str, Any]]
+    balances: list[dict[str, Any]]
+
+
+@dataclass
+class FetchedSession:
+    bank: Bank
+    accounts: list[FetchedAccount]
+    errors: list[str]  # accounts skipped (429 / transient failures)
+
+
+def fetch_session(
+    client: EnableBankingClient,
+    session_id: str,
+    *,
+    bank: Bank | None = None,
+    days: int = 90,
+) -> FetchedSession:
+    """Network phase: pull accounts, transactions and balances for an authorized
+    EB session. Touches no database, so callers can run it with no transaction
+    open (bank calls can take minutes with 429 retries)."""
+    eb_session = client.get_session(session_id)
+    resolved_bank = bank or bank_from_aspsp((eb_session.get("aspsp") or {}).get("name"))
+
+    date_to = date.today()  # noqa: DTZ011 - bank booking dates are local, naive dates
+    date_from = date_to - timedelta(days=days)
+
+    accounts: list[FetchedAccount] = []
+    errors: list[str] = []
+    for acc in eb_session.get("accounts", []):
+        uid, details = _account_uid(acc)
+        if not uid:
+            continue
+        try:
+            if not details:
+                details = client.get_account_details(uid)
+            txns = list(client.iter_transactions(
+                uid, date_from=date_from.isoformat(), date_to=date_to.isoformat()
+            ))
+            balances = client.get_account_balances(uid)
+        except Exception as e:  # noqa: BLE001 - a 429 / transient failure on one
+            errors.append(f"{uid}: {e}")  # account must not abort syncing the others
+            continue
+        accounts.append(FetchedAccount(uid, details, txns, balances))
+    return FetchedSession(resolved_bank, accounts, errors)
+
+
 def sync_session(
     db: Session,
     client: EnableBankingClient,
@@ -175,27 +232,16 @@ def sync_session(
     days: int = 90,
     account_type: AccountType = AccountType.CHECKING,
 ) -> list[SyncResult]:
-    """Pull accounts, transactions and balances for an authorized EB session."""
-    eb_session = client.get_session(session_id)
-    resolved_bank = bank or bank_from_aspsp((eb_session.get("aspsp") or {}).get("name"))
-
-    date_to = date.today()
-    date_from = date_to - timedelta(days=days)
-
+    """Pull accounts, transactions and balances for an authorized EB session and
+    store them in `db`. All bank calls happen before the first write."""
+    fetched = fetch_session(client, session_id, bank=bank, days=days)
     results: list[SyncResult] = []
-    errors: list[str] = []
-    for acc in eb_session.get("accounts", []):
-        uid, details = _account_uid(acc)
-        if not uid:
-            continue
+    errors = list(fetched.errors)
+    for fa in fetched.accounts:
         try:
-            results.append(
-                _sync_one_account(
-                    db, client, uid, details, resolved_bank, account_type, date_from, date_to
-                )
-            )
-        except Exception as e:  # a 429 / transient failure on one account must
-            errors.append(f"{uid}: {e}")  # not abort syncing the others
+            results.append(store_account(db, fa, fetched.bank, account_type))
+        except Exception as e:  # noqa: BLE001 - one bad account must not abort the others
+            errors.append(f"{fa.uid}: {e}")
     sync_session.last_errors = errors  # type: ignore[attr-defined]
     return results
 
@@ -203,52 +249,73 @@ def sync_session(
 sync_session.last_errors = []  # type: ignore[attr-defined]
 
 
-def _sync_one_account(
+def store_account(
     db: Session,
-    client: EnableBankingClient,
-    uid: str,
-    details: dict[str, Any],
-    resolved_bank: Bank,
-    account_type: AccountType,
-    date_from: date,
-    date_to: date,
+    fetched: FetchedAccount,
+    bank: Bank,
+    account_type: AccountType = AccountType.CHECKING,
 ) -> SyncResult:
-    if not details:
-        details = client.get_account_details(uid)
-
+    """DB phase for one fetched account: the account row, new transactions (above
+    the high-water mark) and the balance. No network calls."""
+    details = fetched.details
     iban = (details.get("account_id") or {}).get("iban") or details.get("iban")
     name = details.get("name") or details.get("product")
     currency = details.get("currency", "PLN")
 
     account = get_or_create_account(
         db,
-        bank=resolved_bank,
+        bank=bank,
         iban=iban,
-        external_id=uid,
+        external_id=fetched.uid,
         name=name,
         type=detect_account_type(details, account_type),
         currency=currency,
     )
 
     # High-water mark: CSV backfill is authoritative up to its export date, so
-    # only ingest Open Banking transactions strictly newer than what we already
-    # have for this account. Avoids the OB↔CSV overlap (which can't be perfectly
-    # deduped for card payments — different memos per source).
+    # only ingest Open Banking transactions from the newest stored day onwards.
+    # Avoids the OB↔CSV overlap (which can't be perfectly deduped for card
+    # payments - different memos per source).
     latest = db.exec(
         select(func.max(Transaction.booking_date)).where(Transaction.account_id == account.id)
     ).one()
+    # The newest stored day may be incomplete (a CSV exported, or a sync run,
+    # before the day ended): its later transactions must not be dropped, so that
+    # day is re-ingested. Open Banking rows already stored are caught by dedup
+    # (bank transaction id / content hash). Rows stored from a CSV cannot be
+    # matched that way (different memo per source), so on that day an incoming row
+    # first consumes a CSV row with the same amount (a multiset: two identical
+    # payments stay two); only the surplus is new.
+    csv_on_latest: Counter[str] = Counter()
+    if latest is not None:
+        csv_on_latest.update(
+            f"{amount:.2f}"
+            for amount in db.exec(
+                select(Transaction.amount).where(
+                    Transaction.account_id == account.id,
+                    Transaction.booking_date == latest,
+                    Transaction.source != Source.OPEN_BANKING,
+                )
+            ).all()
+        )
 
     raws: list[RawTransaction] = []
-    for t in client.iter_transactions(
-        uid, date_from=date_from.isoformat(), date_to=date_to.isoformat()
-    ):
+    for t in fetched.transactions:
         rt = eb_transaction_to_raw(t)
-        if rt is not None and (latest is None or rt.booking_date > latest):
+        if rt is None:
+            continue
+        if latest is None or rt.booking_date > latest:
             raws.append(rt)
+        elif rt.booking_date == latest:
+            key = f"{rt.amount:.2f}"
+            if csv_on_latest[key] > 0:
+                csv_on_latest[key] -= 1  # the CSV twin of this row is already stored
+            else:
+                raws.append(rt)  # stored from OB (dedup skips it) or booked later that day
 
     batch = ingest_transactions(db, account, raws, source=Source.OPEN_BANKING)
 
-    picked = _pick_balance(client.get_account_balances(uid))
+    picked = _pick_balance(fetched.balances)
     if picked is not None:
         on_date, amount = picked
         upsert_balance(db, account, on_date, amount, source=Source.OPEN_BANKING)
