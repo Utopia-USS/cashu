@@ -159,6 +159,35 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
 
 ---
 
+## Claude Code skills (guided setup over MCP)
+
+Each module ships a setup skill in `.claude/skills/<name>/SKILL.md` (plus
+`references/`). The user connects the profile's MCP server once, restarts Claude
+Code, and runs the skill as a slash command in this repo:
+
+```bash
+claude mcp add finanse-<slug> -- finanse mcp --profile <slug>   # once per profile
+```
+
+| skill | what it does |
+|---|---|
+| `/budget-setup` | ONBOARDING as a dialogue: banks, CSV vs Open Banking, categorization backend, first categorization pass |
+| `/assets-setup` | home, car (depreciation curve) and other manually valued assets |
+| `/loans-setup` | mortgages and loans, installment recognition, balances from the bank |
+| `/investments-setup` | strategy interview (goals, risk, history retrospective, strategy) and weekly check-ins |
+| `/import-builder` | converter for an unsupported broker export into the finanse import format |
+| `/extension-builder` | one custom rule (expression language) with a backtest on the profile's history |
+
+Rules every skill follows: data only through the profile's MCP tools (never raw
+exports, statements or the DB), the profile's privacy level decides what the
+agent sees (strict by default: shares and percentages, no amounts, never
+identifiers), configuration changes are proposals the owner approves in the app,
+no passwords, IBANs or account numbers, conversation in Polish and files in
+English. When you edit a skill, keep its `description` precise (it decides when
+the skill triggers) and use only tool names from the MCP server.
+
+---
+
 ## Data model / how the numbers work
 
 - **Profiles.** A profile is a person or a household. Every account belongs to

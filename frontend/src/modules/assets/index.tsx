@@ -9,7 +9,7 @@ export const assets: ModuleDef = {
   desc: "Nieruchomości, auta i inne aktywa wyceniane ręcznie. Liczą się do wartości netto, auto traci na wartości wg krzywej.",
   short: "Nieruchomości, auta i inne aktywa wyceniane ręcznie",
   intro: "Moduł trzyma ręcznie wyceniane aktywa: mieszkanie, auto, inne. Wartości wchodzą do wartości netto i wykresu.",
-  skillBlurb: "Skill {skill} zapyta o mieszkanie, auto i inne aktywa, ustawi krzywą utraty wartości auta i zapisze pozycje przez aplikację. Dane pobiera przez MCP, więc obowiązuje poziom prywatności tego profilu.",
+  skillBlurb: "Skill {skill} zapyta o mieszkanie, auto i inne aktywa, ustawi krzywą utraty wartości auta i przygotuje polecenia, które uruchomisz w swoim terminalu. Dane pobiera przez MCP, więc obowiązuje poziom prywatności tego profilu.",
   skillHint: "Kroki powyżej odświeżą się same, gdy skill zapisze pozycje w aplikacji.",
   tabs: [{ id: "list", label: "Majątek", render: (ctx) => <Assets accounts={ctx.networth.accounts} /> }],
   Facts: ({ ctx }) => {
