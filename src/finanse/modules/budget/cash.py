@@ -12,25 +12,37 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
+from finanse.core import profiles
 from finanse.core.models import Account, AccountType, Bank, Source
 
 from .models import Transaction
 
 
-def cash_account_ids(session: Session) -> set[int]:
+def cash_account_ids(session: Session, profile_id: int | None = None) -> set[int]:
+    pid = profiles.scope(session, profile_id)
     return {
         a.id
-        for a in session.exec(select(Account).where(Account.type == AccountType.CASH)).all()
+        for a in session.exec(
+            select(Account).where(Account.profile_id == pid, Account.type == AccountType.CASH)
+        ).all()
     }
 
 
 def get_cash_account(
-    session: Session, currency: str = "PLN", *, create: bool = False
+    session: Session,
+    currency: str = "PLN",
+    *,
+    create: bool = False,
+    profile_id: int | None = None,
 ) -> Account | None:
-    """The single virtual 'Gotówka' account per currency, created on first use."""
+    """The profile's single virtual 'Gotówka' account per currency, created on
+    first use."""
+    pid = profiles.scope(session, profile_id, create=create)
     ext = f"cash:{currency}"
     acc = session.exec(
-        select(Account).where(Account.bank == Bank.MANUAL, Account.external_id == ext)
+        select(Account).where(
+            Account.profile_id == pid, Account.bank == Bank.MANUAL, Account.external_id == ext
+        )
     ).first()
     if acc is not None or not create:
         return acc
@@ -40,6 +52,7 @@ def get_cash_account(
         external_id=ext,
         type=AccountType.CASH,
         currency=currency,
+        profile_id=pid,
     )
     session.add(acc)
     session.flush()
@@ -57,7 +70,8 @@ def sync_cash_leg(session: Session, bank_txn: Transaction, category: str) -> Non
     ).first()
 
     if category == "cash_withdrawal":
-        cash = get_cash_account(session, bank_txn.currency, create=True)
+        pid = session.get(Account, bank_txn.account_id).profile_id
+        cash = get_cash_account(session, bank_txn.currency, create=True, profile_id=pid)
         amount = abs(bank_txn.amount)
         if existing is None:
             session.add(
@@ -95,8 +109,10 @@ def add_cash_expense(
     category: str,
     currency: str = "PLN",
     on_date: date | None = None,
+    profile_id: int | None = None,
 ) -> Transaction:
-    """Log a manual cash expense that draws down the cash pool (a real expense)."""
+    """Log a manual cash expense that draws down the profile's cash pool (a real
+    expense)."""
     from .categorize import taxonomy
 
     if category not in taxonomy.CATEGORY_KEYS:
@@ -104,7 +120,7 @@ def add_cash_expense(
     amt = -abs(Decimal(str(amount)))
     if amt == 0:
         raise ValueError("Amount must be non-zero")
-    cash = get_cash_account(session, currency, create=True)
+    cash = get_cash_account(session, currency, create=True, profile_id=profile_id)
     txn = Transaction(
         account_id=cash.id,
         booking_date=on_date or date.today(),
@@ -125,13 +141,16 @@ def add_cash_expense(
     return txn
 
 
-def delete_cash_transaction(session: Session, txn_id: int) -> bool:
-    """Delete a cash-pool entry. Only transactions on a cash account are removable;
-    deleting a withdrawal mirror reverts its source bank transaction's category."""
+def delete_cash_transaction(
+    session: Session, txn_id: int, *, profile_id: int | None = None
+) -> bool:
+    """Delete a cash-pool entry. Only transactions on one of the profile's cash
+    accounts are removable; deleting a withdrawal mirror reverts its source bank
+    transaction's category."""
     from .service import recategorize_one
 
     t = session.get(Transaction, txn_id)
-    if t is None or t.account_id not in cash_account_ids(session):
+    if t is None or t.account_id not in cash_account_ids(session, profile_id):
         return False
     src_id = (t.raw or {}).get("cash_leg_of")
     session.delete(t)

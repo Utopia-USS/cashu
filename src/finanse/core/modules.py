@@ -112,6 +112,43 @@ class ModuleSpec:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
+def cli_prefix(session: Session, profile_id: int) -> str:
+    """``finanse --profile <slug>`` for copyable setup commands of a profile."""
+    from .models import Profile
+
+    profile = session.get(Profile, profile_id)
+    return f"finanse --profile {profile.slug}" if profile is not None else "finanse"
+
+
+def _investments_placeholder_setup(_session: Session, _profile_id: int) -> SetupStatus:
+    return SetupStatus(steps=(
+        SetupStep(
+            "broker_account",
+            "Dodaj rachunek maklerski",
+            "Rachunek = jeden broker + jedno opakowanie (zwykłe, IKE, IKZE).",
+            done=False,
+        ),
+        SetupStep(
+            "strategy",
+            "Zapisz strategię",
+            "Cel, horyzont, koszyki i reguły; najprościej przez wywiad w Claude Code.",
+            done=False,
+        ),
+        SetupStep(
+            "first_import",
+            "Pierwsza wpłata lub import",
+            "Dodaj transakcję ręcznie albo zaimportuj CSV od brokera.",
+            done=False,
+        ),
+        SetupStep(
+            "classify",
+            "Sklasyfikuj instrumenty",
+            "Klasa aktywów i koszyk dla każdego instrumentu.",
+            done=False,
+        ),
+    ))
+
+
 # Shown in the wizard before the module's own spec lands (it is built in
 # ``finanse/modules/investments/``; once that package exports ``module.MODULE``,
 # the real spec replaces this one).
@@ -124,6 +161,7 @@ _PLACEHOLDERS: dict[str, ModuleSpec] = {
             "Cotygodniowy przegląd w niedzielę."
         ),
         available=False,
+        setup_status=_investments_placeholder_setup,
         skill="/investments-setup",
     ),
 }

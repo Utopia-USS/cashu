@@ -11,8 +11,9 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
+from finanse.core import profiles
 from finanse.core.accounts import get_or_create_account, own_ibans, upsert_balance
 from finanse.core.models import Account, AccountType, Bank, Source
 
@@ -21,6 +22,7 @@ from .ingestion.csv_import import parse_file
 from .ingestion.dedup import prepare_new_transactions
 from .ingestion.normalize import RawTransaction
 from .models import ImportBatch, Transaction
+from .queries import transactions
 
 
 def _utcnow() -> datetime:
@@ -40,6 +42,7 @@ def ingest_transactions(
         bank=account.bank,
         account_id=account.id,
         filename=filename,
+        profile_id=account.profile_id,
     )
     session.add(batch)
     session.flush()
@@ -82,6 +85,7 @@ def import_csv(
     bank: Bank | None = None,
     account_type: AccountType = AccountType.CHECKING,
     account_name: str | None = None,
+    profile_id: int | None = None,
 ) -> tuple[Account, ImportBatch]:
     path = Path(path)
     stmt = parse_file(path, bank)
@@ -93,6 +97,7 @@ def import_csv(
         name=account_name,
         type=account_type,
         currency=stmt.currency,
+        profile_id=profile_id,
     )
 
     batch = ingest_transactions(
@@ -109,19 +114,23 @@ def import_csv(
 # Categorization
 # --------------------------------------------------------------------------- #
 
-def categorize_all(session: Session, *, use_llm: bool = False) -> dict:
-    """Categorize every transaction: deterministic cascade, then (opt-in) an LLM
-    pass over still-unknown expense merchants whose answers are cached as rules."""
+def categorize_all(
+    session: Session, *, use_llm: bool = False, profile_id: int | None = None
+) -> dict:
+    """Categorize every transaction of the profile: deterministic cascade, then
+    (opt-in) an LLM pass over still-unknown expense merchants whose answers are
+    cached as the profile's rules."""
     from . import analytics
     from .categorize import engine, taxonomy
     from .categorize.rules import load_rules, upsert_rule
     from .ingestion.normalize import merchant_key
 
-    own = own_ibans(session)
-    rules = load_rules(session)
-    subs = {c.counterparty for c in analytics.detect_recurring(session)}
-    txns = session.exec(select(Transaction)).all()
-    cash_ids = cash_account_ids(session)
+    pid = profiles.scope(session, profile_id)
+    own = own_ibans(session, pid)
+    rules = load_rules(session, pid)
+    subs = {c.counterparty for c in analytics.detect_recurring(session, profile_id=pid)}
+    txns = session.exec(transactions(pid)).all()
+    cash_ids = cash_account_ids(session, pid)
 
     for t in txns:
         # Preserve manual overrides and full-LLM reclassification; cash-pool
@@ -158,10 +167,10 @@ def categorize_all(session: Session, *, use_llm: bool = False) -> dict:
     for mk, res in classified.items():
         cat = res.get("category")
         if cat in taxonomy.CATEGORY_KEYS and cat != "other":
-            upsert_rule(session, mk, cat, source="llm", locked=False)
+            upsert_rule(session, mk, cat, source="llm", locked=False, profile_id=pid)
             result["llm_classified"] += 1
 
-    rules = load_rules(session)
+    rules = load_rules(session, pid)
     for t in txns:
         if t.category_source == "default":
             t.category, t.category_source = engine.categorize(
@@ -171,16 +180,29 @@ def categorize_all(session: Session, *, use_llm: bool = False) -> dict:
     return result
 
 
-def set_transaction_category(session: Session, txn_id: int, category: str) -> bool:
+def _profile_txn(session: Session, txn_id: int, profile_id: int | None) -> Transaction | None:
+    """The transaction if it belongs to the profile (default profile when None)."""
+    pid = profiles.scope(session, profile_id)
+    t = session.get(Transaction, txn_id)
+    if t is None:
+        return None
+    account = session.get(Account, t.account_id)
+    return t if account is not None and account.profile_id == pid else None
+
+
+def set_transaction_category(
+    session: Session, txn_id: int, category: str, *, profile_id: int | None = None
+) -> bool:
     """Override the category of a single transaction (survives re-categorization).
 
     Marking a bank transaction as ``cash_withdrawal`` also mirrors it as a credit
     into the cash pool (so a withdrawal is net-worth-neutral); un-marking removes
-    that mirror."""
-    t = session.get(Transaction, txn_id)
+    that mirror. A transaction of another profile is treated as missing."""
+    t = _profile_txn(session, txn_id, profile_id)
     if t is None:
         return False
-    cash = get_cash_account(session, t.currency, create=False)
+    pid = session.get(Account, t.account_id).profile_id
+    cash = get_cash_account(session, t.currency, create=False, profile_id=pid)
     on_cash_account = cash is not None and t.account_id == cash.id
     t.category = category
     t.category_source = "manual_txn"
@@ -196,21 +218,26 @@ def recategorize_one(session: Session, t: Transaction) -> None:
     from .categorize import engine
     from .categorize.rules import load_rules
 
-    subs = {c.counterparty for c in analytics.detect_recurring(session)}
+    pid = session.get(Account, t.account_id).profile_id
+    subs = {c.counterparty for c in analytics.detect_recurring(session, profile_id=pid)}
     t.category, t.category_source = engine.categorize(
-        t, own_ibans=own_ibans(session), rules=load_rules(session), subscription_keys=subs
+        t, own_ibans=own_ibans(session, pid), rules=load_rules(session, pid), subscription_keys=subs
     )
     session.add(t)
 
 
-def recategorize_merchant(session: Session, merchant_key_value: str, category: str) -> int:
-    """Pin a merchant to a category (manual, locked) and re-apply to its rows."""
+def recategorize_merchant(
+    session: Session, merchant_key_value: str, category: str, *, profile_id: int | None = None
+) -> int:
+    """Pin a merchant to a category (manual, locked) for the profile and re-apply
+    to its rows."""
     from .categorize.rules import upsert_rule
     from .ingestion.normalize import merchant_key
 
-    upsert_rule(session, merchant_key_value, category, source="manual", locked=True)
+    pid = profiles.scope(session, profile_id, create=True)
+    upsert_rule(session, merchant_key_value, category, source="manual", locked=True, profile_id=pid)
     n = 0
-    for t in session.exec(select(Transaction)).all():
+    for t in session.exec(transactions(pid)).all():
         if merchant_key(t.counterparty_name, t.reference, t.description) == merchant_key_value:
             t.category, t.category_source = category, "manual"
             session.add(t)

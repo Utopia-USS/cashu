@@ -53,23 +53,23 @@ def test_app_engine_has_the_pragma_listener():
 def test_wal_reader_sees_committed_state_during_a_write(engine, tmp_path):
     with engine.begin() as conn:
         conn.exec_driver_sql(
-            "INSERT INTO category_rules (merchant_key, category, source, locked, created_at) "
-            "VALUES ('a', 'groceries', 'manual', 0, '2026-01-01')"
+            "INSERT INTO profiles (slug, name, base_currency, mcp_privacy, created_at) "
+            "VALUES ('a', 'Profil A', 'PLN', 'strict', '2026-01-01')"
         )
     writer = engine.connect()
     reader = engine.connect()
     try:
         writer.exec_driver_sql("BEGIN IMMEDIATE")
         writer.exec_driver_sql(
-            "INSERT INTO category_rules (merchant_key, category, source, locked, created_at) "
-            "VALUES ('b', 'fuel', 'manual', 0, '2026-01-01')"
+            "INSERT INTO profiles (slug, name, base_currency, mcp_privacy, created_at) "
+            "VALUES ('b', 'Profil B', 'PLN', 'strict', '2026-01-01')"
         )
         assert Path(f"{tmp_path / 'pragmas.db'}-wal").exists()
         # the reader is not blocked and sees only committed rows
-        assert reader.exec_driver_sql("SELECT COUNT(*) FROM category_rules").scalar() == 1
+        assert reader.exec_driver_sql("SELECT COUNT(*) FROM profiles").scalar() == 1
         writer.exec_driver_sql("COMMIT")
         reader.rollback()  # end the reader's snapshot
-        assert reader.exec_driver_sql("SELECT COUNT(*) FROM category_rules").scalar() == 2
+        assert reader.exec_driver_sql("SELECT COUNT(*) FROM profiles").scalar() == 2
     finally:
         writer.close()
         reader.close()
@@ -89,8 +89,8 @@ def test_second_writer_waits_for_the_lock_instead_of_failing(engine):
         started = time.monotonic()
         with engine.begin() as conn:  # would raise "database is locked" without a busy timeout
             conn.exec_driver_sql(
-                "INSERT INTO category_rules (merchant_key, category, source, locked, created_at) "
-                "VALUES ('c', 'fuel', 'manual', 0, '2026-01-01')"
+                "INSERT INTO profiles (slug, name, base_currency, mcp_privacy, created_at) "
+                "VALUES ('c', 'Profil C', 'PLN', 'strict', '2026-01-01')"
             )
         assert time.monotonic() - started >= 0.2
     finally:
@@ -116,13 +116,14 @@ def test_foreign_keys_are_enforced(engine, tmp_path):
     bare.dispose()
 
 
-def test_service_layer_works_with_foreign_keys_on(engine, monkeypatch):
+def test_service_layer_works_with_foreign_keys_on(tmp_path, monkeypatch):
     """The whole synthetic seed (imports, balances, positions, loan, vehicle,
     transfers, categorization, cash pool) runs clean with FK enforcement."""
     from conftest import seed_demo
 
     from finanse.modules.budget import cash as cash_pool
 
+    engine = db.make_engine(f"sqlite:///{tmp_path / 'service.db'}")  # schema via migrations
     monkeypatch.setattr(db, "engine", engine)
     db.init_db()
     with db.get_session() as s:
@@ -135,3 +136,4 @@ def test_service_layer_works_with_foreign_keys_on(engine, monkeypatch):
     with engine.connect() as conn:
         assert conn.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
         assert conn.exec_driver_sql("SELECT COUNT(*) FROM transactions").scalar() > 0
+    engine.dispose()

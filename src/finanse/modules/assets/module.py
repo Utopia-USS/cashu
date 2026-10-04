@@ -8,6 +8,7 @@ from finanse.core.modules import ModuleSpec
 from . import cli
 from .models import Depreciation
 from .networth import AssetsContributor
+from .setup import setup_status
 
 MODULE = ModuleSpec(
     id="assets",
@@ -30,5 +31,6 @@ MODULE = ModuleSpec(
         AccountTypeInfo("investment", "assets", "Inwestycje"),
         AccountTypeInfo("other", "assets", "Inne"),
     ),
+    setup_status=setup_status,
     skill="/assets-setup",
 )

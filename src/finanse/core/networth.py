@@ -21,7 +21,7 @@ from typing import Protocol
 
 from sqlmodel import Session, select
 
-from . import account_types, modules
+from . import account_types, modules, profiles
 from .models import Account, Balance
 
 ZERO = Decimal("0.00")
@@ -204,12 +204,20 @@ def liability_components() -> set[str]:
 # Net worth now
 # --------------------------------------------------------------------------- #
 
+def _profile_accounts(session: Session, profile_id: int | None, *conditions) -> list[Account]:
+    pid = profiles.scope(session, profile_id)
+    return list(
+        session.exec(select(Account).where(Account.profile_id == pid, *conditions)).all()
+    )
+
+
 def latest_balance_per_account(
-    session: Session, as_of: date | None = None
+    session: Session, as_of: date | None = None, *, profile_id: int | None = None
 ) -> dict[int, tuple[date, Decimal]]:
-    """Most recent value per account as of ``as_of`` (today when None). Accounts a
-    module values (loans, vehicles, cash) get that module's value for the date."""
-    accounts = {a.id: a for a in session.exec(select(Account)).all()}
+    """Most recent value per account of the profile as of ``as_of`` (today when
+    None). Accounts a module values (loans, vehicles, cash) get that module's value
+    for the date."""
+    accounts = {a.id: a for a in _profile_accounts(session, profile_id)}
     out: dict[int, tuple[date, Decimal]] = {}
     for acc_id, v in valuations(session, accounts).items():
         entry = v.latest(as_of)
@@ -234,12 +242,12 @@ class NetWorthLine:
 
 
 def net_worth(
-    session: Session, as_of: date | None = None
+    session: Session, as_of: date | None = None, *, profile_id: int | None = None
 ) -> tuple[dict[str, Decimal], list[NetWorthLine]]:
     """Net worth totals **per currency** (mixing PLN/EUR/NOK/HUF into one number
     would be meaningless without FX conversion, which is a later phase)."""
-    accounts = session.exec(select(Account).where(Account.active == True)).all()
-    latest = latest_balance_per_account(session, as_of)
+    accounts = _profile_accounts(session, profile_id, Account.active == True)  # noqa: E712
+    latest = latest_balance_per_account(session, as_of, profile_id=profile_id)
     lines: list[NetWorthLine] = []
     totals: dict[str, Decimal] = {}
     for acc in accounts:
@@ -267,12 +275,14 @@ class NetWorthBreakdown:
         return self.property_value - self.mortgage
 
 
-def net_worth_breakdown(session: Session, currency: str = "PLN") -> NetWorthBreakdown:
+def net_worth_breakdown(
+    session: Session, currency: str = "PLN", *, profile_id: int | None = None
+) -> NetWorthBreakdown:
     """Split net worth into assets vs liabilities (+ property / mortgage / equity)."""
-    accounts = session.exec(
-        select(Account).where(Account.active == True, Account.currency == currency)
-    ).all()
-    latest = latest_balance_per_account(session)
+    accounts = _profile_accounts(
+        session, profile_id, Account.active == True, Account.currency == currency  # noqa: E712
+    )
+    latest = latest_balance_per_account(session, profile_id=profile_id)
     assets = liabilities = prop = mort = ZERO
     by_type: dict[str, Decimal] = {}
     for a in accounts:
@@ -318,6 +328,8 @@ def net_worth_component_series(
     currency: str = "PLN",
     granularity: str = "daily",
     scope: str = "total",
+    *,
+    profile_id: int | None = None,
 ) -> list[tuple[date, dict[str, Decimal]]]:
     """Net worth over time, broken into display buckets (see ``component_order``).
 
@@ -332,10 +344,7 @@ def net_worth_component_series(
     'total' (all accounts) | 'liquid' (only liquid account types).
     """
     modules.registry()
-    accounts = {
-        a.id: a
-        for a in session.exec(select(Account).where(Account.currency == currency)).all()
-    }
+    accounts = {a.id: a for a in _profile_accounts(session, profile_id, Account.currency == currency)}
     if scope == "liquid":
         accounts = {i: a for i, a in accounts.items() if account_types.get(a.type).liquid}
     if not accounts:
@@ -365,9 +374,13 @@ def net_worth_series(
     currency: str = "PLN",
     granularity: str = "daily",
     scope: str = "total",
+    *,
+    profile_id: int | None = None,
 ) -> list[tuple[date, Decimal]]:
     """Net worth total over time (sum of the component buckets)."""
     return [
         (d, sum(comps.values(), ZERO))
-        for d, comps in net_worth_component_series(session, currency, granularity, scope)
+        for d, comps in net_worth_component_series(
+            session, currency, granularity, scope, profile_id=profile_id
+        )
     ]

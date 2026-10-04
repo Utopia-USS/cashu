@@ -7,9 +7,10 @@ from datetime import date
 from fastapi import APIRouter
 from sqlmodel import select
 
-from finanse.core.api import f
+from finanse.core.api import CurrentProfile, f
 from finanse.core.db import get_session
 from finanse.core.models import Account
+from finanse.core.profiles import account_ids_query
 
 from . import amortization
 from .models import Loan
@@ -18,9 +19,11 @@ router = APIRouter()
 
 
 @router.get("/loan")
-def loan_info() -> dict:
+def loan_info(profile: CurrentProfile) -> dict:
     with get_session() as s:
-        loan = s.exec(select(Loan)).first()
+        loan = s.exec(
+            select(Loan).where(Loan.account_id.in_(account_ids_query(profile.id))).order_by(Loan.id)
+        ).first()
         if loan is None:
             return {"has_loan": False}
         acc = s.get(Account, loan.account_id)

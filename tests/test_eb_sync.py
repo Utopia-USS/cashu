@@ -6,7 +6,8 @@ from decimal import Decimal
 
 from sqlmodel import select
 
-from finanse.models import Source, Transaction
+from finanse.core.accounts import get_or_create_account
+from finanse.models import Bank, Source, Transaction
 from finanse.modules.budget.ingestion.enable_banking.sync import (
     eb_transaction_to_raw,
     reprocess_open_banking_fields,
@@ -37,9 +38,10 @@ def test_title_is_remittance_not_entry_reference():
 
 
 def test_reprocess_fixes_legacy_rows(session):
+    acc = get_or_create_account(session, bank=Bank.MBANK, iban="99114000000000000000000009")
     # Simulate a row imported by the OLD mapping (bank id stored as the title).
     t = Transaction(
-        account_id=1,
+        account_id=acc.id,
         booking_date=date(2026, 7, 22),
         amount=Decimal("-82.54"),
         currency="PLN",

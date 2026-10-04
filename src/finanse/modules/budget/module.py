@@ -8,6 +8,7 @@ from finanse.core.modules import ModuleSpec
 from . import api, cli
 from .models import CategoryRule, ImportBatch, Transaction
 from .networth import CashContributor
+from .setup import setup_status
 
 MODULE = ModuleSpec(
     id="budget",
@@ -27,5 +28,6 @@ MODULE = ModuleSpec(
         AccountTypeInfo("credit", "budget", "Karty kredytowe", sign="credit"),
         AccountTypeInfo("cash", "budget", "Gotówka"),
     ),
+    setup_status=setup_status,
     skill="/budget-setup",
 )

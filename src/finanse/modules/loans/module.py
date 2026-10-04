@@ -8,6 +8,7 @@ from finanse.core.modules import ModuleSpec
 from . import api, cli
 from .models import Loan
 from .networth import LoansContributor
+from .setup import setup_status
 
 MODULE = ModuleSpec(
     id="loans",
@@ -31,5 +32,6 @@ MODULE = ModuleSpec(
         ),
         AccountTypeInfo("loan", "loans", "Pożyczki", sign="liability", liquid=False, bucket="loan"),
     ),
+    setup_status=setup_status,
     skill="/loans-setup",
 )

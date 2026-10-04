@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # Database. Unset = <data dir>/finanse.db (see core.paths / db.resolve_database_url).
     database_url: str | None = None
 
+    # Default profile (slug) for the CLI and the legacy /api/* aliases.
+    # Unset = the oldest profile (see core.profiles).
+    profile: str | None = None  # FINANSE_PROFILE
+
     # Dashboard server (`finanse serve`). Loopback only by default.
     host: str = "127.0.0.1"  # FINANSE_HOST
     port: int = 8500  # FINANSE_PORT

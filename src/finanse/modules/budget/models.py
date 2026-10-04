@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy import Column, UniqueConstraint
 from sqlmodel import JSON, Field, SQLModel
 
-from finanse.core.models import Bank, Source, utcnow
+from finanse.core.models import Bank, Source, profile_fk_column, utcnow
 from finanse.core.types import DecimalText
 
 
@@ -61,13 +61,16 @@ class Transaction(SQLModel, table=True):
 class CategoryRule(SQLModel, table=True):
     """Learned merchant → category mapping (the categorization "model").
 
-    One row per merchant_key. Manual corrections are `locked` and win over
+    One row per (profile, merchant_key): learned rules are per profile, the seed
+    taxonomy is global. Manual corrections are `locked` and win over
     (never overwritten by) LLM/seed guesses; LLM answers are cached here so a
     given merchant is classified at most once.
     """
 
     __tablename__ = "category_rules"
-    __table_args__ = (UniqueConstraint("merchant_key", name="uq_rule_merchant"),)
+    __table_args__ = (
+        UniqueConstraint("profile_id", "merchant_key", name="uq_rule_profile_merchant"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     merchant_key: str = Field(index=True)
@@ -75,6 +78,7 @@ class CategoryRule(SQLModel, table=True):
     source: str = "manual"  # manual | llm
     locked: bool = False  # manual corrections are locked
     created_at: dt.datetime = Field(default_factory=utcnow)
+    profile_id: int = Field(sa_column=profile_fk_column("category_rules"))
 
 
 class ImportBatch(SQLModel, table=True):
@@ -93,3 +97,4 @@ class ImportBatch(SQLModel, table=True):
     num_inserted: int = 0
     num_duplicates: int = 0
     notes: str | None = None
+    profile_id: int = Field(sa_column=profile_fk_column("import_batches"))

@@ -11,16 +11,14 @@ import json
 import sqlite3
 import stat
 import sys
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
 from typer.testing import CliRunner
+from upstream_db import make_upstream_db
 
 from finanse import db
 from finanse.core import legacy, migrations, paths
-from finanse.models import Account, AccountType, Bank, Source, Transaction
 
 FIXED_NOW = dt.datetime(2026, 10, 4, 12, 30, 0, tzinfo=dt.UTC)
 
@@ -39,19 +37,21 @@ def layout(tmp_path, monkeypatch):
 
 
 def _make_legacy_db(path: Path, *, wal: bool = False) -> None:
-    """A pre-Alembic database (create_all) with a couple of synthetic rows."""
-    engine = create_engine(f"sqlite:///{path}")
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as s:
-        acc = Account(bank=Bank.MBANK, name="Konto Test", iban="99000000000000000000000001",
-                      type=AccountType.CHECKING)
-        s.add(acc)
-        s.commit()
-        s.add(Transaction(account_id=acc.id, booking_date=dt.date(2026, 9, 1),
-                          amount=Decimal("-12.34"), source=Source.CSV, dedup_hash="h1",
-                          reference="SKLEP TEST"))
-        s.commit()
-    engine.dispose()
+    """A pre-Alembic upstream database with a couple of synthetic rows."""
+    make_upstream_db(path, rows=False)
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT INTO accounts (id, bank, name, iban, currency, type, active, created_at) "
+        "VALUES (1, 'MBANK', 'Konto Test', '99000000000000000000000001', 'PLN', 'CHECKING', 1, "
+        "'2026-09-01 10:00:00')"
+    )
+    conn.execute(
+        "INSERT INTO transactions (account_id, booking_date, amount, currency, reference, source, "
+        "dedup_hash, occurrence, is_internal_transfer, created_at) "
+        "VALUES (1, '2026-09-01', '-12.34', 'PLN', 'SKLEP TEST', 'CSV', 'h1', 0, 0, '2026-09-01')"
+    )
+    conn.commit()
+    conn.close()
     if wal:
         conn = sqlite3.connect(path)
         conn.execute("PRAGMA journal_mode=WAL")

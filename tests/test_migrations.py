@@ -1,5 +1,5 @@
-"""Alembic baseline: equal to the upstream `create_all` schema; pre-Alembic
-databases are stamped, never recreated."""
+"""Alembic: the head schema equals the models' `create_all`; pre-Alembic
+(upstream) databases are adopted at the baseline, never recreated, then upgraded."""
 
 from __future__ import annotations
 
@@ -15,11 +15,11 @@ import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
-from sqlmodel import Session, SQLModel
+from sqlmodel import SQLModel
 
 from finanse import db
 from finanse.core import migrations
-from finanse.models import Account, AccountType, Bank, Source, Transaction
+from upstream_db import create_upstream_schema, make_upstream_db
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -43,7 +43,9 @@ def schema(engine) -> dict:
             "WHERE tbl_name != 'alembic_version' ORDER BY name"
         ).fetchall()
         for typ, name, _tbl, sql in rows:
-            out[f"ddl:{typ}:{name}"] = re.sub(r"\s+", " ", sql or "").strip()
+            ddl = re.sub(r"\s+", " ", sql or "").strip()
+            # a batch rebuild renames the copy, which SQLite records as a quoted name
+            out[f"ddl:{typ}:{name}"] = re.sub(r'^CREATE TABLE "(\w+)"', r"CREATE TABLE \1", ddl)
         for t in [r[1] for r in rows if r[0] == "table"]:
             out[f"columns:{t}"] = [tuple(r) for r in c.exec_driver_sql(f"PRAGMA table_xinfo('{t}')")]
             out[f"fks:{t}"] = sorted(tuple(r) for r in c.exec_driver_sql(f"PRAGMA foreign_key_list('{t}')"))
@@ -67,18 +69,10 @@ def columns(engine) -> dict[str, set]:
         }
 
 
-def _seed(engine) -> None:
-    with Session(engine) as s:
-        acc = Account(bank=Bank.ERSTE, name="Konto Test", iban="99000000000000000000000002",
-                      type=AccountType.SAVINGS)
-        s.add(acc)
-        s.commit()
-        s.add(Transaction(account_id=acc.id, booking_date=dt.date(2026, 8, 3),
-                          amount=Decimal("100.00"), source=Source.CSV, dedup_hash="m1"))
-        s.commit()
+HEAD_TABLES = migrations.BASELINE_TABLES | {"profiles", "profile_modules"}
 
 
-def test_baseline_equals_create_all(tmp_path):
+def test_head_equals_create_all(tmp_path):
     reference = _engine(tmp_path / "create_all.db")
     SQLModel.metadata.create_all(reference)
     migrated = _engine(tmp_path / "alembic.db")
@@ -87,8 +81,8 @@ def test_baseline_equals_create_all(tmp_path):
     expected, actual = schema(reference), schema(migrated)
     assert actual == expected
     tables = {k.split(":", 2)[2] for k in expected if k.startswith("ddl:table:")}
-    assert tables == migrations.BASELINE_TABLES
-    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 14
+    assert tables == HEAD_TABLES
+    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 18
     reference.dispose()
     migrated.dispose()
 
@@ -105,23 +99,26 @@ def test_models_have_no_unmigrated_changes(tmp_path):
     engine.dispose()
 
 
-def test_existing_create_all_db_is_stamped_not_recreated(tmp_path):
-    engine = _engine(tmp_path / "upstream.db")
-    SQLModel.metadata.create_all(engine)  # how the upstream created every DB
-    _seed(engine)
+def test_existing_upstream_db_is_adopted_not_recreated(tmp_path):
+    path = make_upstream_db(tmp_path / "upstream.db")  # how the upstream created every DB
+    engine = _engine(path)
+    untouched = ("transactions", "balances", "loans", "depreciations")  # 0002 keeps these
     with engine.connect() as c:
         rootpages = dict(c.exec_driver_sql("SELECT name, rootpage FROM sqlite_master").all())
-        before_rows = c.exec_driver_sql("SELECT * FROM transactions").fetchall()
+        before = {t: c.exec_driver_sql(f"SELECT * FROM {t} ORDER BY id").fetchall() for t in untouched}
     assert migrations.current_revision(engine) is None
 
     migrations.upgrade_to_head(engine)
 
-    assert migrations.current_revision(engine) == migrations.BASELINE
+    assert migrations.current_revision(engine) == migrations.head_revision()
     with engine.connect() as c:
         after = dict(c.exec_driver_sql("SELECT name, rootpage FROM sqlite_master").all())
-        assert c.exec_driver_sql("SELECT * FROM transactions").fetchall() == before_rows
-    # same b-tree root pages = the tables and indexes were not dropped and recreated
-    assert {k: v for k, v in after.items() if k in rootpages} == rootpages
+        for t in untouched:
+            assert c.exec_driver_sql(f"SELECT * FROM {t} ORDER BY id").fetchall() == before[t]
+    # same b-tree root pages = these tables and their indexes were not dropped and recreated
+    kept = {k: v for k, v in rootpages.items() if k in untouched or k.startswith(
+        tuple(f"ix_{t}_" for t in untouched))}
+    assert {k: after[k] for k in kept} == kept
     fresh = _engine(tmp_path / "fresh.db")
     migrations.upgrade_to_head(fresh)
     assert schema(engine) == schema(fresh)
@@ -130,8 +127,9 @@ def test_existing_create_all_db_is_stamped_not_recreated(tmp_path):
 
 
 def test_pre_baseline_shim_adds_missing_columns_and_tables(tmp_path):
-    engine = _engine(tmp_path / "old.db")
-    SQLModel.metadata.create_all(engine)
+    path = tmp_path / "old.db"
+    create_upstream_schema(path)
+    engine = _engine(path)
     with engine.begin() as c:  # an older upstream DB: before the two _ensure_columns columns
         c.exec_driver_sql("ALTER TABLE transactions DROP COLUMN category_source")
         c.exec_driver_sql("ALTER TABLE loans DROP COLUMN origination_date")
@@ -153,7 +151,7 @@ def test_pre_baseline_shim_adds_missing_columns_and_tables(tmp_path):
 
     migrations.upgrade_to_head(engine)
 
-    assert migrations.current_revision(engine) == migrations.BASELINE
+    assert migrations.current_revision(engine) == migrations.head_revision()
     reference = _engine(tmp_path / "ref.db")
     SQLModel.metadata.create_all(reference)
     assert columns(engine) == columns(reference)
@@ -204,7 +202,7 @@ def test_init_db_upgrades_the_app_engine(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "engine", engine)
     db.init_db()
     assert migrations.current_revision(engine) == migrations.head_revision()
-    assert set(columns(engine)) == migrations.BASELINE_TABLES
+    assert set(columns(engine)) == HEAD_TABLES
     engine.dispose()
 
 

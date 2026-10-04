@@ -7,19 +7,20 @@ from decimal import Decimal
 from fastapi import APIRouter
 from sqlmodel import select
 
-from finanse.core.api import f
+from finanse.core.api import CurrentProfile, f
 from finanse.core.db import get_session
 
 from . import analytics
 from .models import Transaction
+from .queries import transactions
 
 router = APIRouter()
 
 
 @router.get("/cashflow")
-def cashflow(currency: str = "PLN", months: int = 24) -> list[dict]:
+def cashflow(profile: CurrentProfile, currency: str = "PLN", months: int = 24) -> list[dict]:
     with get_session() as s:
-        rows = analytics.monthly_cashflow(s, currency=currency)
+        rows = analytics.monthly_cashflow(s, currency=currency, profile_id=profile.id)
     return [
         {
             "label": mc.label,
@@ -32,10 +33,10 @@ def cashflow(currency: str = "PLN", months: int = 24) -> list[dict]:
 
 
 @router.get("/recurring")
-def recurring() -> dict:
+def recurring(profile: CurrentProfile) -> dict:
     with get_session() as s:
-        active = analytics.active_recurring(s)
-        allrec = analytics.detect_recurring(s)
+        active = analytics.active_recurring(s, profile_id=profile.id)
+        allrec = analytics.detect_recurring(s, profile_id=profile.id)
     active_keys = {(c.counterparty, c.currency, c.typical_amount) for c in active}
     return {
         "items": [
@@ -55,6 +56,7 @@ def recurring() -> dict:
 
 @router.get("/categories")
 def categories() -> list[dict]:
+    """The category taxonomy (global, the same for every profile)."""
     from .categorize import taxonomy
 
     return [{"key": c.key, "label": c.label, "kind": c.kind} for c in taxonomy.CATEGORIES]
@@ -62,6 +64,7 @@ def categories() -> list[dict]:
 
 @router.get("/spending")
 def spending(
+    profile: CurrentProfile,
     year: int | None = None,
     month: int | None = None,
     quarter: int | None = None,
@@ -69,13 +72,14 @@ def spending(
 ) -> list[dict]:
     with get_session() as s:
         rows = analytics.spending_by_category(
-            s, currency=currency, year=year, month=month, quarter=quarter
+            s, currency=currency, year=year, month=month, quarter=quarter,
+            profile_id=profile.id,
         )
     return [{"category": r.category, "label": r.label, "amount": f(r.amount)} for r in rows]
 
 
 @router.get("/uncategorized")
-def uncategorized(limit: int = 30, currency: str = "PLN") -> list[dict]:
+def uncategorized(profile: CurrentProfile, limit: int = 30, currency: str = "PLN") -> list[dict]:
     """Top expense merchants we couldn't confidently categorize — for review.
 
     Filtered to a single currency (default PLN) so amounts aren't mixed across
@@ -85,7 +89,7 @@ def uncategorized(limit: int = 30, currency: str = "PLN") -> list[dict]:
 
     agg: dict[str, dict] = {}
     with get_session() as s:
-        for t in s.exec(select(Transaction).where(Transaction.currency == currency)).all():
+        for t in s.exec(transactions(profile.id, Transaction.currency == currency)).all():
             if t.amount >= 0 or t.is_internal_transfer or t.category_source != "default":
                 continue
             mk = merchant_key(t.counterparty_name, t.reference, t.description)
@@ -107,7 +111,7 @@ def uncategorized(limit: int = 30, currency: str = "PLN") -> list[dict]:
 
 
 @router.post("/merchant-category")
-def set_merchant_category(payload: dict) -> dict:
+def set_merchant_category(profile: CurrentProfile, payload: dict) -> dict:
     from .categorize import taxonomy
     from .service import recategorize_merchant
 
@@ -116,12 +120,13 @@ def set_merchant_category(payload: dict) -> dict:
     if not mk or cat not in taxonomy.CATEGORY_KEYS:
         return {"error": "invalid merchant_key or category"}
     with get_session() as s:
-        n = recategorize_merchant(s, mk, cat)
+        n = recategorize_merchant(s, mk, cat, profile_id=profile.id)
     return {"updated": n}
 
 
 @router.get("/category/{key}/transactions")
 def category_transactions(
+    profile: CurrentProfile,
     key: str,
     sort: str = "date",
     order: str = "desc",
@@ -133,13 +138,13 @@ def category_transactions(
     with get_session() as s:
         rows = analytics.category_transactions(
             s, key, currency=currency, sort=sort, order=order,
-            year=year, month=month, quarter=quarter,
+            year=year, month=month, quarter=quarter, profile_id=profile.id,
         )
     return [{**r, "amount": f(r["amount"])} for r in rows]
 
 
 @router.post("/transactions/{txn_id}/category")
-def set_transaction_category(txn_id: int, payload: dict) -> dict:
+def set_transaction_category(profile: CurrentProfile, txn_id: int, payload: dict) -> dict:
     from .categorize import taxonomy
     from .service import set_transaction_category as _set
 
@@ -147,18 +152,18 @@ def set_transaction_category(txn_id: int, payload: dict) -> dict:
     if cat not in taxonomy.CATEGORY_KEYS:
         return {"error": "invalid category"}
     with get_session() as s:
-        ok = _set(s, txn_id, cat)
+        ok = _set(s, txn_id, cat, profile_id=profile.id)
     return {"ok": ok}
 
 
 @router.get("/cash")
-def cash(currency: str = "PLN") -> dict:
+def cash(profile: CurrentProfile, currency: str = "PLN") -> dict:
     """The cash pool: balance + its transactions (withdrawals in, expenses out)."""
     from .cash import get_cash_account
     from .categorize import taxonomy
 
     with get_session() as s:
-        acc = get_cash_account(s, currency, create=False)
+        acc = get_cash_account(s, currency, create=False, profile_id=profile.id)
         if acc is None:
             return {"exists": False, "currency": currency, "balance": 0.0,
                     "withdrawals": 0.0, "expenses": 0.0, "transactions": []}
@@ -190,7 +195,7 @@ def cash(currency: str = "PLN") -> dict:
 
 
 @router.post("/cash/expense")
-def add_cash_expense_ep(payload: dict) -> dict:
+def add_cash_expense_ep(profile: CurrentProfile, payload: dict) -> dict:
     from .cash import add_cash_expense
     from .categorize import taxonomy
 
@@ -218,17 +223,17 @@ def add_cash_expense_ep(payload: dict) -> dict:
     with get_session() as s:
         t = add_cash_expense(
             s, amount=amount, title=title, category=category,
-            currency=p.get("currency", "PLN"), on_date=on_date,
+            currency=p.get("currency", "PLN"), on_date=on_date, profile_id=profile.id,
         )
         return {"ok": True, "id": t.id}
 
 
 @router.delete("/cash/transaction/{txn_id}")
-def delete_cash_txn_ep(txn_id: int) -> dict:
+def delete_cash_txn_ep(profile: CurrentProfile, txn_id: int) -> dict:
     from .cash import delete_cash_transaction
 
     with get_session() as s:
-        ok = delete_cash_transaction(s, txn_id)
+        ok = delete_cash_transaction(s, txn_id, profile_id=profile.id)
     return {"ok": ok}
 
 
@@ -246,9 +251,9 @@ def _eb_client():
 
 
 @router.post("/resync")
-def resync(days: int = 90) -> dict:
-    """Re-sync every saved Enable Banking session, then re-match transfers and
-    re-categorize — the dashboard equivalent of `finanse eb resync`."""
+def resync(profile: CurrentProfile, days: int = 90) -> dict:
+    """Re-sync every saved Enable Banking session of the profile, then re-match
+    transfers and re-categorize — the dashboard equivalent of `finanse eb resync`."""
     from finanse.config import settings
     from finanse.core.models import Bank
 
@@ -291,7 +296,7 @@ def resync(days: int = 90) -> dict:
         for fa in fs.accounts:
             try:
                 with get_session() as s:  # commits on exit
-                    n = store_account(s, fa, fs.bank).batch.num_inserted
+                    n = store_account(s, fa, fs.bank, profile_id=profile.id).batch.num_inserted
             except Exception as e:  # noqa: BLE001 - one bad account must not abort the rest
                 errors.append(f"{fa.uid}: {e}")
                 continue
@@ -301,9 +306,10 @@ def resync(days: int = 90) -> dict:
         banks_out.append({"bank": bank_val, "inserted": inserted, "accounts": stored})
 
     with get_session() as s:
-        reprocess_open_banking_fields(s)  # keep titles/notes readable (not the bank id)
-        pairs = match_internal_transfers(s)
-        categorize_all(s)
+        # keep titles/notes readable (not the bank id)
+        reprocess_open_banking_fields(s, profile_id=profile.id)
+        pairs = match_internal_transfers(s, profile_id=profile.id)
+        categorize_all(s, profile_id=profile.id)
     return {
         "ok": True,
         "inserted": total_inserted,

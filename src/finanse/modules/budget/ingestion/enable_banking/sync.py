@@ -11,10 +11,12 @@ from typing import Any
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from finanse.core import profiles
 from finanse.core.accounts import get_or_create_account, upsert_balance
 from finanse.core.models import Account, AccountType, Bank, Source
 
 from ...models import ImportBatch, Transaction
+from ...queries import transactions
 from ...service import ingest_transactions
 from ..normalize import RawTransaction
 from .client import EnableBankingClient
@@ -98,14 +100,15 @@ def eb_transaction_to_raw(t: dict[str, Any]) -> RawTransaction | None:
     )
 
 
-def reprocess_open_banking_fields(db: Session) -> int:
+def reprocess_open_banking_fields(db: Session, *, profile_id: int | None = None) -> int:
     """Re-derive display fields (title/description/counterparty) for already-synced
     Open Banking transactions from their stored raw payload.
 
     Used after changing the field mapping (e.g. moving the opaque entry_reference
     out of the title). Identity fields (amount/date/dedup/category) are untouched."""
     n = 0
-    rows = db.exec(select(Transaction).where(Transaction.source == Source.OPEN_BANKING)).all()
+    pid = profiles.scope(db, profile_id)
+    rows = db.exec(transactions(pid, Transaction.source == Source.OPEN_BANKING)).all()
     for t in rows:
         if not t.raw:
             continue
@@ -234,15 +237,17 @@ def sync_session(
     bank: Bank | None = None,
     days: int = 90,
     account_type: AccountType = AccountType.CHECKING,
+    profile_id: int | None = None,
 ) -> list[SyncResult]:
     """Pull accounts, transactions and balances for an authorized EB session and
-    store them in `db`. All bank calls happen before the first write."""
+    store them in `db` (for the profile). All bank calls happen before the first
+    write."""
     fetched = fetch_session(client, session_id, bank=bank, days=days)
     results: list[SyncResult] = []
     errors = list(fetched.errors)
     for fa in fetched.accounts:
         try:
-            results.append(store_account(db, fa, fetched.bank, account_type))
+            results.append(store_account(db, fa, fetched.bank, account_type, profile_id=profile_id))
         except Exception as e:  # noqa: BLE001 - one bad account must not abort the others
             errors.append(f"{fa.uid}: {e}")
     sync_session.last_errors = errors  # type: ignore[attr-defined]
@@ -257,9 +262,11 @@ def store_account(
     fetched: FetchedAccount,
     bank: Bank,
     account_type: AccountType = AccountType.CHECKING,
+    *,
+    profile_id: int | None = None,
 ) -> SyncResult:
-    """DB phase for one fetched account: the account row, new transactions (above
-    the high-water mark) and the balance. No network calls."""
+    """DB phase for one fetched account: the account row (of the profile), new
+    transactions (above the high-water mark) and the balance. No network calls."""
     details = fetched.details
     iban = (details.get("account_id") or {}).get("iban") or details.get("iban")
     name = details.get("name") or details.get("product")
@@ -273,6 +280,7 @@ def store_account(
         name=name,
         type=detect_account_type(details, account_type),
         currency=currency,
+        profile_id=profile_id,
     )
 
     # High-water mark: CSV backfill is authoritative up to its export date, so

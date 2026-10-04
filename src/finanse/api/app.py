@@ -1,8 +1,11 @@
 """FastAPI app serving the dashboard + JSON API over the local finance DB.
 
-The app is the composition layer: core routes (accounts, net worth) and the
-router of every registered module (``core.modules``) are mounted under ``/api``;
-cross-module views (the overview summary) live here.
+The app is the composition layer. Profile-scoped routes (core accounts and net
+worth, the overview summary, the router of every registered module) are mounted
+under ``/api/p/{slug}/...`` and again under ``/api/...``, where they act on the
+default profile so the legacy static page and existing scripts keep working.
+Platform routes (``/api/system``, ``/api/modules``, ``/api/profiles``) are not
+profile-scoped.
 """
 
 from __future__ import annotations
@@ -11,12 +14,13 @@ from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
+from fastapi import Path as PathParam
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..core import modules, networth, security
-from ..core.api import breakdown_dict, f
+from ..core.api import CurrentProfile, breakdown_dict, f, platform_router, profile_only_router
 from ..core.api import router as core_router
 from ..core.db import get_session, init_db
 from ..modules.budget import analytics as budget_analytics
@@ -40,12 +44,13 @@ shell_router = APIRouter()
 
 
 @shell_router.get("/summary")
-def summary() -> dict:
+def summary(profile: CurrentProfile) -> dict:
+    pid = profile.id
     with get_session() as s:
-        totals, _lines = networth.net_worth(s)
-        bd = networth.net_worth_breakdown(s)
-        cashflow = budget_analytics.monthly_cashflow(s)
-        active = budget_analytics.active_recurring(s)
+        totals, _lines = networth.net_worth(s, profile_id=pid)
+        bd = networth.net_worth_breakdown(s, profile_id=pid)
+        cashflow = budget_analytics.monthly_cashflow(s, profile_id=pid)
+        active = budget_analytics.active_recurring(s, profile_id=pid)
     month = cashflow[-1] if cashflow else None
     # Per currency, never summed across currencies. `monthly_total` stays for the
     # legacy dashboard and is the PLN total only.
@@ -73,10 +78,20 @@ def summary() -> dict:
     }
 
 
-_routers = [shell_router, core_router] + [
+def _profile_slug(slug: str = PathParam(description="Profile slug")) -> str:
+    """Documents and validates the ``{slug}`` of profile-scoped routes; the profile
+    itself is resolved by ``core.api.current_profile``."""
+    return slug
+
+
+PROFILE_PREFIX = "/api/p/{slug}"
+_profile_routers = [shell_router, core_router] + [
     spec.router for spec in modules.all_modules() if spec.router is not None
 ]
-for _router in _routers:
+app.include_router(platform_router, prefix="/api")
+for _router in [profile_only_router, *_profile_routers]:
+    app.include_router(_router, prefix=PROFILE_PREFIX, dependencies=[Depends(_profile_slug)])
+for _router in _profile_routers:  # legacy aliases: the default profile
     app.include_router(_router, prefix="/api")
 
 

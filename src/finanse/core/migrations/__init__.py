@@ -9,6 +9,11 @@
   existing tables and rows are never recreated;
 - versioned database -> upgrade to head (a cheap no-op when already current).
 
+Before applying revisions to a database file that holds data, a consistent copy
+is written to ``<db dir>/backups/finanse-pre-<head>-<UTC time>.db`` (SQLite DDL is
+not transactional, so a failed multi-step upgrade could leave a half-migrated
+file); ``last_backup`` holds its path.
+
 New revisions: ``alembic revision --autogenerate -m "..."`` from the repo root
 (see alembic.ini). SQLite changes to existing tables go through
 ``op.batch_alter_table`` (table rebuild); foreign-key enforcement is switched off
@@ -17,6 +22,7 @@ for the duration of a migration run so rebuilds of referenced tables work.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -114,15 +120,43 @@ def _ensure_columns(conn: Connection) -> None:
                 conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
+# Path of the backup written by the last upgrade that needed one (None: no backup).
+last_backup: Path | None = None
+
+
+def _has_data(conn: Connection, tables: set[str]) -> bool:
+    return any(
+        conn.exec_driver_sql(f'SELECT 1 FROM "{t}" LIMIT 1').first() is not None
+        for t in tables & BASELINE_TABLES
+    )
+
+
+def backup_before_upgrade(engine: Engine, head: str, *, now: dt.datetime | None = None) -> Path | None:
+    """Consistent copy of a file-based SQLite database next to it (``backups/``)."""
+    from .. import legacy
+
+    if engine.dialect.name != "sqlite" or not engine.url.database:
+        return None
+    file = Path(engine.url.database)
+    if engine.url.database == ":memory:" or not file.exists():
+        return None
+    stamp = (now or dt.datetime.now(dt.UTC)).strftime("%Y%m%d-%H%M%S")
+    return legacy.backup_sqlite(file, file.parent / "backups" / f"finanse-pre-{head}-{stamp}.db")
+
+
 def upgrade_to_head(engine: Engine) -> str:
     """Bring the database at ``engine`` to the head revision; returns the head."""
+    global last_backup
     script = script_directory()
     head = script.get_current_head()
     with engine.connect() as conn:
         tables = set(sa.inspect(conn).get_table_names())
         current = MigrationContext.configure(conn).get_current_revision()
+        has_data = _has_data(conn, tables)
     if current == head:
         return head
+    if has_data:
+        last_backup = backup_before_upgrade(engine, head)
     with migration_connection(engine) as conn, conn.begin():
         cfg = alembic_config(conn)
         if current is None and tables & BASELINE_TABLES:

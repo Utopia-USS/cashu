@@ -14,9 +14,13 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from finanse.core.models import Account
+from finanse.core import profiles
+from finanse.core.accounts import own_ibans as _own_ibans
+from finanse.core.accounts import profile_accounts
+from finanse.core.profiles import account_ids_query
 
 from .models import Transaction
+from .queries import transactions
 
 ZERO = Decimal("0.00")
 
@@ -46,15 +50,20 @@ class MonthlyCashflow:
 
 
 def monthly_cashflow(
-    session: Session, currency: str = "PLN", include_internal: bool = False
+    session: Session,
+    currency: str = "PLN",
+    include_internal: bool = False,
+    *,
+    profile_id: int | None = None,
 ) -> list[MonthlyCashflow]:
     from .ingestion.normalize import iban_key
 
-    # Every account we own — a transaction whose counterparty is one of these is
-    # a move *within* the estate, not real income/expense.
-    own_ibans = {iban_key(a.iban) for a in session.exec(select(Account)).all() if a.iban}
+    pid = profiles.scope(session, profile_id)
+    # Every account the profile owns — a transaction whose counterparty is one of
+    # these is a move *within* the profile's money, not real income/expense.
+    own_ibans = _own_ibans(session, pid)
 
-    q = select(Transaction).where(Transaction.currency == currency)
+    q = transactions(pid, Transaction.currency == currency)
     buckets: dict[tuple[int, int], MonthlyCashflow] = {}
     for t in session.exec(q).all():
         if t.category in NON_SPENDING_CATEGORIES:
@@ -104,15 +113,18 @@ def spending_by_category(
     year: int | None = None,
     month: int | None = None,
     quarter: int | None = None,
+    *,
+    profile_id: int | None = None,
 ) -> list[CategorySpend]:
     """Expense totals per category (transfers excluded), optionally for a month,
     quarter or year."""
     from .categorize import taxonomy
     from .ingestion.normalize import iban_key
 
-    own = {iban_key(a.iban) for a in session.exec(select(Account)).all() if a.iban}
+    pid = profiles.scope(session, profile_id)
+    own = _own_ibans(session, pid)
     buckets: dict[str, Decimal] = {}
-    for t in session.exec(select(Transaction).where(Transaction.currency == currency)).all():
+    for t in session.exec(transactions(pid, Transaction.currency == currency)).all():
         if t.amount >= 0 or t.is_internal_transfer or t.category in NON_SPENDING_CATEGORIES:
             continue
         cp = iban_key(t.counterparty_iban) if t.counterparty_iban else ""
@@ -154,13 +166,16 @@ def category_transactions(
     year: int | None = None,
     month: int | None = None,
     quarter: int | None = None,
+    *,
+    profile_id: int | None = None,
 ) -> list[dict]:
     """Transactions in one category (for drill-down), sortable by date or amount."""
     from .ingestion.normalize import merchant_key
 
-    accounts = {a.id: a for a in session.exec(select(Account)).all()}
+    pid = profiles.scope(session, profile_id)
+    accounts = {a.id: a for a in profile_accounts(session, pid)}
     rows: list[dict] = []
-    for t in session.exec(select(Transaction).where(Transaction.currency == currency)).all():
+    for t in session.exec(transactions(pid, Transaction.currency == currency)).all():
         if (t.category or "other") != category:
             continue
         if not _in_period(t.booking_date, year, month, quarter):
@@ -223,6 +238,7 @@ def detect_recurring(
     *,
     min_gap: int = 24,
     max_gap: int = 37,
+    profile_id: int | None = None,
 ) -> list[RecurringCandidate]:
     """Surface likely monthly subscriptions.
 
@@ -241,8 +257,9 @@ def detect_recurring(
     from .categorize.rules import load_rules
     from .ingestion.normalize import iban_key, merchant_key
 
-    own = {iban_key(a.iban) for a in session.exec(select(Account)).all() if a.iban}
-    rules = load_rules(session)
+    pid = profiles.scope(session, profile_id)
+    own = _own_ibans(session, pid)
+    rules = load_rules(session, pid)
 
     def not_a_subscription(t: Transaction) -> bool:
         if t.category_source in _TXN_DECIDED_SOURCES and t.category:
@@ -252,9 +269,7 @@ def detect_recurring(
         return cat in NOT_SUBSCRIPTION_CATEGORIES
 
     groups: dict[tuple[str, str, str], list[Transaction]] = defaultdict(list)
-    q = select(Transaction).where(
-        Transaction.is_internal_transfer == False,  # noqa: E712
-    )
+    q = transactions(pid, Transaction.is_internal_transfer == False)  # noqa: E712
     for t in session.exec(q).all():
         if t.amount >= 0:
             continue  # subscriptions are outflows
@@ -292,17 +307,26 @@ def detect_recurring(
     return candidates
 
 
-def reference_date(session: Session) -> date | None:
-    """Most recent transaction date in the DB — a proxy for 'now'."""
-    return session.exec(select(func.max(Transaction.booking_date))).one()
+def reference_date(session: Session, *, profile_id: int | None = None) -> date | None:
+    """Most recent transaction date of the profile — a proxy for 'now'."""
+    pid = profiles.scope(session, profile_id)
+    return session.exec(
+        select(func.max(Transaction.booking_date)).where(
+            Transaction.account_id.in_(account_ids_query(pid))
+        )
+    ).one()
 
 
 def active_recurring(
-    session: Session, within_days: int = 45, min_occurrences: int = 3
+    session: Session,
+    within_days: int = 45,
+    min_occurrences: int = 3,
+    *,
+    profile_id: int | None = None,
 ) -> list[RecurringCandidate]:
     """Recurring payments still seen recently (likely current subscriptions)."""
-    rec = detect_recurring(session, min_occurrences=min_occurrences)
-    ref = reference_date(session)
+    rec = detect_recurring(session, min_occurrences=min_occurrences, profile_id=profile_id)
+    ref = reference_date(session, profile_id=profile_id)
     if ref is None:
         return rec
     cutoff = ref - timedelta(days=within_days)

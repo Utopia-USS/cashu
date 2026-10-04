@@ -21,9 +21,10 @@ def add_manual_position(
     value: Decimal | float | str,
     currency: str = "PLN",
     on_date: date | None = None,
+    profile_id: int | None = None,
 ) -> Account:
     """Create/update a manually-tracked asset or liability (property, mortgage,
-    loan, ...) and record its current value as a balance snapshot."""
+    loan, ...) of the profile and record its current value as a balance snapshot."""
     account = get_or_create_account(
         session,
         bank=Bank.MANUAL,
@@ -31,6 +32,7 @@ def add_manual_position(
         external_id=f"manual:{name}",
         type=type,
         currency=currency,
+        profile_id=profile_id,
     )
     session.flush()
     upsert_balance(
@@ -48,9 +50,10 @@ def set_vehicle(
     annual_rate: Decimal | float | str,
     floor: Decimal | float | str | None = None,
     currency: str = "PLN",
+    profile_id: int | None = None,
 ) -> Account:
-    """Create/update a depreciating VEHICLE asset (declining-balance from the
-    purchase price). Counts as illiquid net worth, like property."""
+    """Create/update a depreciating VEHICLE asset of the profile (declining-balance
+    from the purchase price). Counts as illiquid net worth, like property."""
     account = get_or_create_account(
         session,
         bank=Bank.MANUAL,
@@ -58,6 +61,7 @@ def set_vehicle(
         external_id=f"vehicle:{name}",
         type=AccountType.VEHICLE,
         currency=currency,
+        profile_id=profile_id,
     )
     session.flush()
     existing = session.exec(

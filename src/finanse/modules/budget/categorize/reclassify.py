@@ -24,9 +24,12 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
+from finanse.core import profiles
+from finanse.core.accounts import own_ibans
 from finanse.core.models import Account, AccountType
 
 from ..models import Transaction
+from ..queries import transactions
 from . import taxonomy
 
 _DATES = re.compile(r"DATA TRANSAKCJI:.*$", re.IGNORECASE)
@@ -81,12 +84,6 @@ def txn_context(rep: Transaction, amounts: list[Decimal]) -> str:
     return "\n".join(lines)
 
 
-def _own_ibans(session: Session) -> set[str]:
-    from ..ingestion.normalize import iban_key
-
-    return {iban_key(a.iban) for a in session.exec(select(Account)).all() if a.iban}
-
-
 def _is_structural(t: Transaction, own_ibans: set[str], cash_ids: set[int]) -> bool:
     from ..ingestion.normalize import iban_key
 
@@ -108,6 +105,7 @@ def reclassify_all(
     date_from=None,
     date_to=None,
     progress=None,
+    profile_id: int | None = None,
 ) -> dict:
     """Reclassify every real income/expense transaction via the local LLM,
     overwriting whatever was set before (including manual). Returns stats.
@@ -121,12 +119,16 @@ def reclassify_all(
 
     model = model or settings.categorize_ollama_model
     url = url or settings.categorize_ollama_url
+    pid = profiles.scope(session, profile_id)
     cash_ids = {
-        a.id for a in session.exec(select(Account).where(Account.type == AccountType.CASH)).all()
+        a.id
+        for a in session.exec(
+            select(Account).where(Account.profile_id == pid, Account.type == AccountType.CASH)
+        ).all()
     }
-    own = _own_ibans(session)
+    own = own_ibans(session, pid)
 
-    all_txns = session.exec(select(Transaction)).all()
+    all_txns = session.exec(transactions(pid)).all()
     targets = [
         t for t in all_txns
         if not _is_structural(t, own, cash_ids)
@@ -162,7 +164,7 @@ def reclassify_all(
     )
 
     # Fallback (deterministic engine) for any group the model didn't return.
-    rules = load_rules(session)
+    rules = load_rules(session, pid)
     income_keys = {c.key for c in taxonomy.CATEGORIES if c.kind == "income"}
 
     def _sign_correct(cat: str, amount: Decimal) -> str:

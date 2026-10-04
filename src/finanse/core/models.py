@@ -1,4 +1,4 @@
-"""Core tables: accounts and their balance snapshots.
+"""Core tables: profiles, their enabled modules, accounts and balance snapshots.
 
 A single physical bank account maps to exactly one `Account` row, regardless of
 which source (Open Banking or CSV) produced the data — e.g. legacy Santander
@@ -12,7 +12,7 @@ import datetime as dt
 import enum
 from decimal import Decimal
 
-from sqlalchemy import Column, UniqueConstraint
+from sqlalchemy import Column, ForeignKey, Integer, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from .types import DecimalText
@@ -48,9 +48,49 @@ class Source(str, enum.Enum):
     MANUAL = "manual"
 
 
+def profile_fk_column(table: str) -> Column:
+    """``profile_id`` of a profile-scoped table: NOT NULL, indexed, named FK (so a
+    migration can drop it)."""
+    return Column(
+        "profile_id",
+        Integer,
+        ForeignKey("profiles.id", name=f"fk_{table}_profile_id"),
+        nullable=False,
+        index=True,
+    )
+
+
+class Profile(SQLModel, table=True):
+    """A person or household: owns accounts, learned rules and module choices."""
+
+    __tablename__ = "profiles"
+
+    id: int | None = Field(default=None, primary_key=True)
+    slug: str = Field(index=True, unique=True)  # ASCII, used in URLs and the CLI
+    name: str
+    base_currency: str = Field(default="PLN")  # for labelled converted views only
+    mcp_privacy: str = Field(default="strict")  # strict | amounts (what MCP tools may send)
+    created_at: dt.datetime = Field(default_factory=utcnow)
+
+
+class ProfileModule(SQLModel, table=True):
+    """A module chosen for a profile. Disabling keeps the row (and the data)."""
+
+    __tablename__ = "profile_modules"
+
+    profile_id: int = Field(foreign_key="profiles.id", primary_key=True)
+    module_id: str = Field(primary_key=True)
+    enabled: bool = Field(default=True)
+    enabled_at: dt.datetime = Field(default_factory=utcnow)
+
+
 class Account(SQLModel, table=True):
     __tablename__ = "accounts"
-    __table_args__ = (UniqueConstraint("bank", "external_id", name="uq_account_bank_external"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "profile_id", "bank", "external_id", name="uq_account_profile_bank_external"
+        ),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     bank: Bank
@@ -62,6 +102,7 @@ class Account(SQLModel, table=True):
     type: AccountType = Field(default=AccountType.CHECKING)
     active: bool = Field(default=True)
     created_at: dt.datetime = Field(default_factory=utcnow)
+    profile_id: int = Field(sa_column=profile_fk_column("accounts"))
 
 
 class Balance(SQLModel, table=True):

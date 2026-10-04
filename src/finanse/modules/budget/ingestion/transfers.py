@@ -15,18 +15,22 @@ from __future__ import annotations
 from collections import defaultdict
 from uuid import uuid4
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
+from finanse.core import profiles
+from finanse.core.accounts import profile_accounts
 from finanse.core.models import Account
 
 from ..models import Transaction
+from ..queries import transactions
 from .normalize import iban_key
 
 
-def reset_transfer_matches(session: Session) -> int:
-    """Clear all transfer groupings (so matching can be recomputed)."""
+def reset_transfer_matches(session: Session, *, profile_id: int | None = None) -> int:
+    """Clear the profile's transfer groupings (so matching can be recomputed)."""
+    pid = profiles.scope(session, profile_id)
     txns = session.exec(
-        select(Transaction).where(Transaction.transfer_group_id.is_not(None))  # type: ignore[union-attr]
+        transactions(pid, Transaction.transfer_group_id.is_not(None))  # type: ignore[union-attr]
     ).all()
     for t in txns:
         t.transfer_group_id = None
@@ -57,15 +61,19 @@ def _pair_score(out: Transaction, inc: Transaction, accounts: dict[int, Account]
     return None
 
 
-def match_internal_transfers(session: Session, *, max_days: int = 3) -> int:
-    """Find and flag internal-transfer pairs among currently ungrouped rows.
+def match_internal_transfers(
+    session: Session, *, max_days: int = 3, profile_id: int | None = None
+) -> int:
+    """Find and flag internal-transfer pairs among the profile's currently
+    ungrouped rows (both legs must be accounts of the same profile).
 
     Returns the number of pairs matched.
     """
-    accounts = {a.id: a for a in session.exec(select(Account)).all()}
+    pid = profiles.scope(session, profile_id)
+    accounts = {a.id: a for a in profile_accounts(session, pid)}
 
     ungrouped = session.exec(
-        select(Transaction).where(Transaction.transfer_group_id.is_(None))  # type: ignore[union-attr]
+        transactions(pid, Transaction.transfer_group_id.is_(None))  # type: ignore[union-attr]
     ).all()
 
     inflows_by_amount: dict[str, list[Transaction]] = defaultdict(list)

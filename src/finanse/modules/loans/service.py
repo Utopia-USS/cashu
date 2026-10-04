@@ -7,6 +7,8 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
+from finanse.core.accounts import get_account
+
 from .models import Loan
 
 
@@ -18,12 +20,15 @@ def set_loan(
     term_months: int,
     start_date: date,
     origination_date: date | None = None,
+    *,
+    profile_id: int | None = None,
 ) -> Loan:
-    """Create/update amortization terms for a loan account.
+    """Create/update amortization terms for a loan account of the profile.
 
     start_date = first installment date; origination_date = disbursement (debt
     exists from then). Between them the full principal is owed (no payment yet).
     """
+    get_account(session, account_id, profile_id=profile_id)  # ValueError if not ours
     existing = session.exec(select(Loan).where(Loan.account_id == account_id)).first()
     if existing is not None:
         existing.principal = Decimal(str(principal))
