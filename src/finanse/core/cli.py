@@ -18,6 +18,7 @@ from .db import get_session, init_db
 from .models import Account
 
 secrets_app = typer.Typer(help="Secrets in the OS keychain (instead of .env).")
+profiles_app = typer.Typer(help="Profiles (a person or household: accounts, modules, privacy).")
 
 
 def init_db_cmd() -> None:
@@ -170,6 +171,65 @@ def set_balance_cmd(
 
 
 # --------------------------------------------------------------------------- #
+# Profiles
+# --------------------------------------------------------------------------- #
+
+@profiles_app.command("list")
+def profiles_list_cmd() -> None:
+    """List profiles (* = the default for commands run without --profile)."""
+    from . import profiles
+
+    init_db()
+    with get_session() as s:
+        rows = profiles.list_profiles(s)
+        default = profiles.default_profile(s)
+        table = Table(title="Profiles")
+        for col in ("", "slug", "name", "currency", "agent privacy", "modules"):
+            table.add_column(col)
+        for p in rows:
+            table.add_row(
+                "*" if default is not None and p.id == default.id else "",
+                p.slug, p.name, p.base_currency, p.mcp_privacy,
+                ", ".join(profiles.enabled_modules(s, p.id)) or "—",
+            )
+    if not rows:
+        cliutil.console.print("No profiles yet. Add one: finanse profiles add NAME")
+        return
+    cliutil.console.print(table)
+
+
+@profiles_app.command("add")
+def profiles_add_cmd(
+    name: Annotated[str, typer.Argument(help="Display name, e.g. 'Jan' or 'Dom'.")],
+    currency: Annotated[str, typer.Option(help="Base currency (converted views only).")] = "PLN",
+    modules_: Annotated[
+        str,
+        typer.Option("--modules", help="Comma-separated module ids (budget,assets,loans,...)."),
+    ] = "budget,assets,loans",
+    privacy: Annotated[
+        str, typer.Option(help="What MCP tools may send: strict | amounts.")
+    ] = "strict",
+) -> None:
+    """Create a profile (its slug is derived from the name)."""
+    from . import profiles
+
+    init_db()
+    wanted = [m.strip() for m in modules_.split(",") if m.strip()]
+    with get_session() as s:
+        try:
+            p = profiles.create_profile(
+                s, name=name, base_currency=currency, modules_=wanted, mcp_privacy=privacy
+            )
+        except profiles.ProfileError as e:
+            raise typer.BadParameter(str(e)) from None
+        slug, enabled = p.slug, profiles.enabled_modules(s, p.id)
+    cliutil.console.print(
+        f"[green]Profile[/] '{name}' -> slug [bold]{slug}[/] (modules: {', '.join(enabled) or '—'}). "
+        f"Use it with: finanse --profile {slug} ..."
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Secrets (OS keychain)
 # --------------------------------------------------------------------------- #
 
@@ -243,4 +303,5 @@ def register(app: typer.Typer) -> None:
     app.command("set-account-type")(set_account_type)
     app.command("set-account-name")(set_account_name)
     app.command("set-balance")(set_balance_cmd)
+    app.add_typer(profiles_app, name="profiles")
     app.add_typer(secrets_app, name="secrets")

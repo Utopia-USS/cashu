@@ -54,7 +54,10 @@ def current_profile(request: Request) -> Profile:
                 raise HTTPException(status_code=404, detail=f"No profile '{slug}'")
             return profile
         write = request.method not in ("GET", "HEAD", "OPTIONS")
-        profile = profiles.default_profile(s, create=write)
+        try:
+            profile = profiles.default_profile(s, create=write)
+        except profiles.ProfileNotFound as e:
+            raise HTTPException(status_code=404, detail=str(e)) from None
         if profile is not None:
             return profile
     return Profile(id=profiles.NO_PROFILE, slug=profiles.DEFAULT_SLUG, name=profiles.DEFAULT_NAME)

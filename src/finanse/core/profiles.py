@@ -86,16 +86,25 @@ def configured_default_slug() -> str | None:
 
 
 def default_profile(session: Session, *, create: bool = False) -> Profile | None:
-    """``FINANSE_PROFILE`` if it names an existing profile, else the oldest one;
-    with ``create``, a fresh database gets the default profile."""
+    """The profile named by ``FINANSE_PROFILE``, else the oldest one; with
+    ``create``, a fresh database gets the default profile (slug ``default``, or the
+    configured one).
+
+    A configured slug is never silently replaced by another profile: when it names
+    no profile, reads get None and writes raise ``ProfileNotFound`` (unless the
+    database has no profile at all, then it is created under that slug)."""
     slug = configured_default_slug()
     if slug:
         p = get_by_slug(session, slug)
         if p is not None:
             return p
-    p = session.exec(select(Profile).order_by(Profile.id)).first()
-    if p is not None or not create:
-        return p
+    oldest = session.exec(select(Profile).order_by(Profile.id)).first()
+    if slug and oldest is not None:
+        if create:
+            raise ProfileNotFound(f"FINANSE_PROFILE names no profile '{slug}'")
+        return None
+    if oldest is not None or not create:
+        return oldest
     return create_profile(
         session, name=DEFAULT_NAME, slug=slug or DEFAULT_SLUG, modules_=UPSTREAM_MODULES
     )

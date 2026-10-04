@@ -20,17 +20,34 @@ app = typer.Typer(add_completion=False, help="Personal finance tracker — bank 
 
 
 @app.callback()
-def _main(ctx: typer.Context) -> None:
+def _main(
+    ctx: typer.Context,
+    profile: Annotated[
+        str | None,
+        typer.Option(
+            "--profile",
+            "-p",
+            help="Profile (slug) to work on. Default: FINANSE_PROFILE, else the oldest profile.",
+        ),
+    ] = None,
+) -> None:
+    cliutil.set_profile(profile)
     # Data still in the legacy <repo>/data/ dir: say so on every command.
     notice = paths.legacy_notice()
     if notice and ctx.invoked_subcommand != "migrate-data":
         cliutil.err_console.print(f"[yellow]Notice:[/] {notice}")
 
 
+# Core commands, then every module's commands: at the top level (the upstream
+# command names keep working) and as a sub-app per module (`finanse loans list`).
 core_cli.register(app)
 for _spec in modules.all_modules():
-    if _spec.cli is not None:
-        _spec.cli(app)
+    if _spec.cli is None:
+        continue
+    _spec.cli(app)
+    _sub = typer.Typer(help=_spec.cli_help or _spec.name, no_args_is_help=True)
+    (_spec.cli_module or _spec.cli)(_sub)
+    app.add_typer(_sub, name=_spec.id)
 
 
 # --------------------------------------------------------------------------- #
