@@ -130,7 +130,7 @@ def test_modules(api_empty):
         assert set(m) == {"id", "name", "description", "depends_on", "available"}
         assert m["depends_on"] == [] and m["name"] and m["description"]
     assert {m["id"]: m["available"] for m in mods} == {
-        "budget": True, "assets": True, "loans": True, "investments": False,
+        "budget": True, "assets": True, "loans": True, "investments": True,
     }
 
 
@@ -271,11 +271,13 @@ def test_legacy_aliases_equal_the_default_profile(api):
 
 
 def test_every_profile_route_is_in_the_isolation_list():
-    """A new profile-scoped GET route must be added to PROFILE_GETS."""
+    """A new profile-scoped GET route must be added to PROFILE_GETS. Investments routes have
+    their own list and isolation test (tests/investments/persistence/test_invp_isolation.py)."""
     templates = {
         path.removeprefix("/api/p/{slug}")
         for path, ops in app.openapi()["paths"].items()
         if path.startswith("/api/p/{slug}/") and "get" in ops
+        and not path.startswith("/api/p/{slug}/investments/")
     }
     covered = {re.sub(r"/category/[^/]+/", "/category/{key}/", p.split("?")[0]) for p in PROFILE_GETS}
     covered = {re.sub(r"/modules/[^/]+/setup", "/modules/{module_id}/setup", p) for p in covered}

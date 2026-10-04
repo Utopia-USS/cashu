@@ -26,12 +26,18 @@ def test_registry_lists_modules_in_display_order():
     assert reg["budget"].router is not None and reg["loans"].router is not None
 
 
-def test_investments_placeholder_until_its_spec_lands():
+def test_investments_spec():
     spec = modules.get("investments")
-    assert spec.available is False and spec.name == "Inwestycje"
-    assert spec.router is None and spec.cli is None
-    status = spec.setup_status(None, 0)
-    assert status.state == "empty" and len(status.steps) == 4
+    assert spec.available is True and spec.name == "Inwestycje"
+    assert spec.router is not None and spec.router.prefix == "/investments"
+    assert spec.cli is None and spec.cli_module is not None and spec.cli_name == "invest"
+    assert spec.networth is not None and spec.tables and spec.skill == "/investments-setup"
+    assert {i.id: i.kind for i in spec.institutions} == {
+        "dif": "broker", "xtb": "broker", "binance": "exchange", "zonda": "exchange",
+    }
+    assert set(institutions.ids("broker")) >= {"dif", "xtb"}
+    assert set(institutions.ids("exchange")) == {"binance", "zonda"}
+    assert "dif" not in institutions.ids("bank") and "dif" not in institutions.csv_ids()
 
 
 def test_unknown_module():
@@ -85,7 +91,7 @@ def test_account_types_carry_module_metadata():
     by_id = {t.id: t for t in account_types.all_types()}
     assert set(by_id) == {
         "checking", "savings", "credit", "cash", "property", "vehicle", "investment", "other",
-        "mortgage", "loan",
+        "mortgage", "loan", "brokerage",
     }
     assert (by_id["credit"].module, by_id["credit"].sign) == ("budget", "credit")
     assert (by_id["mortgage"].module, by_id["mortgage"].sign, by_id["mortgage"].liquid,
@@ -94,8 +100,10 @@ def test_account_types_carry_module_metadata():
         "assets", False, "vehicle"
     )
     assert by_id["investment"].liquid and by_id["investment"].bucket == "money"
+    assert (by_id["brokerage"].module, by_id["brokerage"].sign, by_id["brokerage"].liquid,
+            by_id["brokerage"].bucket) == ("investments", "asset", True, "investments")
     assert [b.id for b in account_types.buckets()] == [
-        "money", "property", "vehicle", "mortgage", "loan"
+        "money", "investments", "property", "vehicle", "mortgage", "loan"
     ]
     assert {b.id for b in account_types.buckets() if b.liability} == {"mortgage", "loan"}
 

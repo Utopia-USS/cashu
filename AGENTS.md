@@ -109,7 +109,11 @@ src/finanse/
 │   │   └── categorize/       # taxonomy (25 categories + ~420 PL rules), engine, rules, llm, local_llm, reclassify
 │   ├── assets/           # manual positions, vehicles (depreciation.py), net-worth contributor
 │   ├── loans/            # many loans per profile: amortization.py, valuation.py, patterns.py, api, cli
-│   └── investments/      # in progress (port of Kompas); listed in the wizard until its module.py lands
+│   └── investments/      # brokerage accounts, imports, portfolio, strategy + rules, signals (`finanse invest`)
+│       ├── domain/, portfolio/, market/, strategy/, rules/, importing/   # pure core (no DB, no IO)
+│       ├── models.py, store/       # inv_* tables and repositories
+│       ├── service/              # imports, daily check, strategy files, portfolio views
+│       └── module.py, api.py, cli.py, networth.py, setup.py
 └── api/
     ├── app.py            # FastAPI composition: /api/p/{slug}/... + legacy /api/... aliases, SPA
     ├── static/index.html # legacy fallback (when webdist/ is absent)
@@ -188,6 +192,17 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
   withdrawal creates a mirror leg.
 - **Categorization** is a cascade; manual overrides (`manual_txn`) and LLM results
   (`llm_full`) survive re-categorization (`categorize_all` skips them).
+- **Investments** (`modules/investments/`): a brokerage account is a core account
+  of type `brokerage`; transactions, renames, valuations, signals and the journal
+  are per profile, instruments, price bars and FX rates are shared reference data.
+  The math is the pure core (FIFO lots, valuation, allocation, rules); the
+  `store/` and `service/` layers only load and persist. Files live in the data dir:
+  `profiles/<slug>/strategy.yaml|.md` and `imports/<slug>/<sha256>.<ext>` (every
+  committed import). Imports go through the finanse format
+  ([`docs/import-format.md`](docs/import-format.md)) or a generic CSV mapping, never
+  a broker-specific parser. The daily check (`finanse invest run`) refreshes prices
+  (Yahoo/stooq) and NBP rates without holding a database transaction across the
+  network, then runs the rules per profile.
 - **Migrations: Alembic.** `init_db()` (every CLI command and server start)
   upgrades the DB to head; a pre-Alembic DB is stamped at `0001_baseline`. When
   you change a model, add a revision from the repo root
@@ -218,7 +233,8 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
 **Adding a module:** a package `src/finanse/modules/<id>/` with its tables
 (`models.py`, plus an Alembic revision), and `module.py` exporting
 `MODULE = ModuleSpec(...)`: Polish name/description (wizard), router, CLI
-`register`, optional `NetWorthContributor`, account types / buckets /
+`register` (and/or `cli_module` for its sub-app, named `cli_name` or the id),
+optional `NetWorthContributor`, account types / buckets /
 institutions it owns, categorization hooks, `setup_status(session, profile_id)`
 (blank-page steps) and its setup skill. Add the id to `MODULE_IDS` in
 `core/modules.py`. Never import another module's internals.
@@ -229,7 +245,8 @@ institutions it owns, categorization hooks, `setup_status(session, profile_id)`
    query; the app mounts module routers under `/api/p/{slug}/...` and as legacy
    `/api/...` aliases. Add the route to `PROFILE_GETS` in
    `tests/test_profiles.py` (a guard test fails otherwise): it checks that two
-   profiles never see each other's data. Every `/api/*` route is behind the
+   profiles never see each other's data. Investments routes have their own list
+   in `tests/investments/persistence/test_invp_isolation.py`. Every `/api/*` route is behind the
    token + Host check automatically (`core/security.py`); in tests use a
    `TestClient` with `base_url=security.get_config().base_url` and the
    `X-Finanse-Token` header (see `tests/conftest.py`).

@@ -6,7 +6,7 @@ model, deduplicates, detects internal transfers between your own accounts,
 categorizes spending, and shows **net worth over time, monthly cashflow, recurring
 payments, loans, and asset depreciation** on a web dashboard. Data is kept per
 **profile** (you, your partner, the household), and each profile picks the
-**modules** it uses (budget, assets, loans; investments in progress).
+**modules** it uses (budget, assets, loans, investments).
 
 > 🔒 **Privacy.** Everything runs **locally**. Your financial data lives in a
 > SQLite file in your per-user data dir, outside the repository
@@ -77,6 +77,18 @@ Full guide (including Open Banking, LLM categorization, manual positions) —
 profile; run commands for it with `finanse --profile marta ...` (or set
 `FINANSE_PROFILE`), and switch profiles in the dashboard header.
 
+**Investments?** Add a brokerage account and import your history in the finanse
+import format ([`docs/import-format.md`](docs/import-format.md)) or with a CSV
+column mapping, then write a strategy and run the rules:
+
+```bash
+finanse invest accounts add "XTB IKE" --broker xtb --wrapper ike
+finanse invest import history.csv --account 1      # --dry-run to preview
+finanse invest strategy init                       # strategy.yaml + strategy.md in the data dir
+finanse invest run                                 # prices, valuation, rules, signals
+finanse invest positions
+```
+
 **Upgrading from a version that kept the database in `data/`?** finanse keeps
 using it and says so on every command until you run `finanse migrate-data`, which
 copies the database (plus Open Banking sessions and key) into the data dir with a
@@ -105,6 +117,9 @@ name it, so deleting `data/` afterwards never loses it.
   and a balance from a bank statement takes over from its date. Installments are
   recognised as loan repayments, never as subscriptions.
 - **Assets and cash** — car depreciation, manual positions, cash tracking.
+- **Investments** - brokerage accounts, FIFO positions valued with stored prices
+  and NBP rates, allocation vs your `strategy.yaml`, rule signals and a decision
+  journal; the portfolio counts toward net worth in each account's currency.
 
 The dashboard has 5 tabs: **Przegląd · Wydatki · Przepływy · Subskrypcje · Kredyt**
 (the UI is in Polish).
@@ -139,7 +154,8 @@ in [`ONBOARDING.md`](ONBOARDING.md).
 | `import_batches` | audit of every import/sync |
 
 Plus the `Loan` (loan amortization, many per profile) and `Depreciation` (asset
-depreciation) models. Schema changes are Alembic migrations
+depreciation) models, and the investments module's `inv_*` tables (instruments,
+prices, FX rates, broker transactions, signals, decisions, theses). Schema changes are Alembic migrations
 (`src/finanse/core/migrations/`).
 
 ---
