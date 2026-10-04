@@ -48,7 +48,9 @@ def summary(profile: CurrentProfile) -> dict:
     pid = profile.id
     with get_session() as s:
         totals, _lines = networth.net_worth(s, profile_id=pid)
-        bd = networth.net_worth_breakdown(s, profile_id=pid)
+        # Headline in the profile's base currency; `networth` keeps every currency.
+        bd = networth.net_worth_breakdown(s, currency=profile.base_currency or "PLN",
+                                          profile_id=pid)
         cashflow = budget_analytics.monthly_cashflow(s, profile_id=pid)
         active = budget_analytics.active_recurring(s, profile_id=pid)
     month = cashflow[-1] if cashflow else None

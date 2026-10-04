@@ -104,9 +104,18 @@ def loans_list_cmd() -> None:
 
 
 def loans_add_cmd(
-    name: Annotated[str, typer.Argument(help="e.g. 'Hipoteka' or 'Kredyt samochodowy'.")],
     principal: Annotated[float, typer.Option(help="Amount borrowed.")],
     rate: Annotated[float, typer.Option(help="Annual interest rate in percent, e.g. 6.5.")],
+    name: Annotated[
+        str | None,
+        typer.Argument(help="New loan, e.g. 'Hipoteka' (or the exact name of an existing "
+                            "mortgage/loan account to update)."),
+    ] = None,
+    account: Annotated[
+        str | None,
+        typer.Option("--account", help="Attach to an existing mortgage/loan account (id or "
+                                       "exact name) instead of NAME."),
+    ] = None,
     years: YearsOption = None,
     months: MonthsOption = None,
     start: StartOption = None,
@@ -116,14 +125,19 @@ def loans_add_cmd(
     payment_iban: PaymentIbanOption = None,
     payment_text: PaymentTextOption = None,
 ) -> None:
-    """Add (or update, same name) a loan: its account and its terms in one step."""
+    """Add (or update, same name) a loan: its account and its terms in one step.
+
+    Terms only ever attach to a mortgage/loan account; a name already used by a
+    property or savings account is refused (use --account for an existing one)."""
+    from finanse.core.models import Account
+
     from .service import add_loan
 
     init_db()
     with get_session() as s:
         try:
             loan = add_loan(
-                s, name=name, principal=principal, annual_rate=rate,
+                s, name=name, account=account, principal=principal, annual_rate=rate,
                 term_months=_term_months(years, months),
                 start_date=_parse_date(start, _first_of_month()),
                 origination_date=_parse_date(origination), type=type, currency=currency,
@@ -133,9 +147,11 @@ def loans_add_cmd(
         except ValueError as e:
             raise typer.BadParameter(str(e)) from None
         loan_id, account_id = loan.id, loan.account_id
+        acc = s.get(Account, account_id)
+        label, cur = acc.name, acc.currency
     cliutil.console.print(
-        f"[green]Loan[/] '{name}' (loan id {loan_id}, account id {account_id}): "
-        f"{cliutil.fmt(Decimal(str(principal)), currency)} @ {rate}%"
+        f"[green]Loan[/] '{label}' (loan id {loan_id}, account id {account_id}): "
+        f"{cliutil.fmt(Decimal(str(principal)), cur)} @ {rate}%"
     )
 
 

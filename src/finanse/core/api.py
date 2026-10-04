@@ -242,7 +242,10 @@ def breakdown_dict(bd) -> dict:
 def networth_ep(profile: CurrentProfile) -> dict:
     with get_session() as s:
         totals, lines = networth.net_worth(s, profile_id=profile.id)
-        bd = networth.net_worth_breakdown(s, profile_id=profile.id)
+        # Headline in the profile's base currency; `totals` keeps every currency.
+        bd = networth.net_worth_breakdown(
+            s, currency=profile.base_currency or "PLN", profile_id=profile.id
+        )
         accounts = [account_row(ln.account, ln.contribution, ln.as_of) for ln in lines]
     return {
         "totals": {cur: f(v) for cur, v in sorted(totals.items())},
@@ -254,10 +257,13 @@ def networth_ep(profile: CurrentProfile) -> dict:
 @router.get("/networth/series")
 def networth_series(
     profile: CurrentProfile,
-    currency: str = "PLN",
+    currency: str | None = None,
     granularity: str = "daily",
     scope: str = "total",
 ) -> dict:
+    """Net worth history in one currency (default: the profile's base currency;
+    never converted or summed across currencies). The response names it."""
+    currency = currency or profile.base_currency or "PLN"
     with get_session() as s:
         series = networth.net_worth_component_series(
             s, currency=currency, granularity=granularity, scope=scope, profile_id=profile.id
@@ -274,6 +280,7 @@ def networth_series(
         for d, comps in series
     ]
     return {
+        "currency": currency,
         "points": points,
         "components": [
             {"key": k, "label": labels[k], "liability": k in liabilities}

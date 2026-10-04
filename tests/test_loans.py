@@ -151,3 +151,121 @@ def test_loans_setup_steps(api):
     assert [s["id"] for s in body["steps"]] == ["loan", "payments"]
     # the seed's installment is recognised by the built-in phrase -> payments done
     assert [s["status"] for s in body["steps"]] == ["done", "done"]
+
+
+# --- R-01: loan terms attach only to an explicitly identified mortgage/loan account ---------
+
+
+def test_a_loan_named_like_a_property_does_not_take_over_the_property(session):
+    house = add_manual_position(session, name="Dom Test", type="property", value="800000")
+    with pytest.raises(ValueError, match=rf"id {house.id}, property"):
+        add_loan(session, name="Dom Test", type="mortgage", principal="300000",
+                 annual_rate="6.0", term_months=300, start_date=dt.date(2025, 1, 5))
+    assert list_loans(session) == []
+    assert net_worth(session)[0] == {"PLN": Decimal(800000)}
+
+
+def test_add_loan_attaches_to_an_account_given_by_id_or_exact_name(session):
+    mortgage = add_manual_position(session, name="Kredyt Test", type="mortgage", value="1")
+    add_manual_position(session, name="Dom Test", type="property", value="800000")
+    loan = add_loan(session, account=mortgage.id, principal="300000", annual_rate="6.0",
+                    term_months=300, start_date=dt.date(2025, 1, 5))
+    assert loan.account_id == mortgage.id
+    again = add_loan(session, account="Kredyt Test", principal="250000", annual_rate="6.0",
+                     term_months=300, start_date=dt.date(2025, 1, 5))
+    assert again.id == loan.id and again.principal == Decimal(250000)
+    # an existing loan-type account of the same name is the one re-running updates
+    by_name = add_loan(session, name="Kredyt Test", principal="200000", annual_rate="6.0",
+                       term_months=300, start_date=dt.date(2025, 1, 5))
+    assert by_name.id == loan.id
+    assert len(list_loans(session)) == 1
+
+
+@pytest.mark.parametrize("ref", ["Dom Test", "house-id"])
+def test_add_loan_refuses_a_non_loan_account(session, ref):
+    house = add_manual_position(session, name="Dom Test", type="property", value="800000")
+    account = house.id if ref == "house-id" else ref
+    with pytest.raises(ValueError, match="mortgage/loan"):
+        add_loan(session, account=account, principal="1", annual_rate="1", term_months=12,
+                 start_date=dt.date(2025, 1, 1))
+
+
+def test_add_loan_with_an_ambiguous_name_lists_the_candidates(session):
+    manual = add_manual_position(session, name="Kredyt Test", type="loan", value="1")
+    bank = get_or_create_account(session, bank="mbank", name="Kredyt Test",
+                                 external_id="eb:kredyt-test", type="loan")
+    for kwargs in ({"name": "Kredyt Test"}, {"account": "Kredyt Test"}):
+        with pytest.raises(ValueError, match="ambiguous") as err:
+            add_loan(session, principal="1", annual_rate="1", term_months=12,
+                     start_date=dt.date(2025, 1, 1), **kwargs)
+        assert f"id {manual.id}" in str(err.value) and f"id {bank.id}" in str(err.value)
+    loan = add_loan(session, account=bank.id, principal="1", annual_rate="1", term_months=12,
+                    start_date=dt.date(2025, 1, 1))
+    assert loan.account_id == bank.id
+
+
+def test_add_loan_needs_exactly_one_of_name_and_account(session):
+    with pytest.raises(ValueError, match="NAME"):
+        add_loan(session, principal="1", annual_rate="1", term_months=12,
+                 start_date=dt.date(2025, 1, 1))
+    with pytest.raises(ValueError, match="not both"):
+        add_loan(session, name="A", account="B", principal="1", annual_rate="1",
+                 term_months=12, start_date=dt.date(2025, 1, 1))
+    with pytest.raises(ValueError, match="No account named"):
+        add_loan(session, account="Nope Test", principal="1", annual_rate="1",
+                 term_months=12, start_date=dt.date(2025, 1, 1))
+
+
+def test_set_loan_refuses_a_property_account(session):
+    house = add_manual_position(session, name="Dom Test", type="property", value="800000")
+    with pytest.raises(ValueError, match="mortgage/loan"):
+        set_loan(session, house.id, "300000", "6.0", 300, dt.date(2025, 1, 5))
+
+
+def test_net_worth_ignores_loan_terms_left_on_a_non_loan_account(session):
+    """Rows written before the fix (terms on a property) no longer replace its value."""
+    from finanse.modules.loans.models import Loan
+
+    house = add_manual_position(session, name="Dom Test", type="property", value="800000")
+    session.add(Loan(account_id=house.id, principal=Decimal(300000), annual_rate=Decimal(6),
+                     term_months=300, start_date=dt.date(2025, 1, 5)))
+    session.flush()
+    assert net_worth(session)[0] == {"PLN": Decimal(800000)}
+
+
+# --- R-11: a loan's own payment matching beats a cached (LLM) merchant rule -----------------
+
+
+def _lender_installment(session):
+    from finanse.modules.budget.categorize.rules import upsert_rule
+    from finanse.modules.budget.ingestion.normalize import merchant_key
+
+    _home, car = _two_loans(session)
+    bank = get_or_create_account(session, bank="mbank", iban="99114000000000000000000001")
+    ingest_transactions(session, bank, [RawTransaction(
+        booking_date=dt.date(2026, 6, 10), amount=Decimal("-1081.94"), reference="PRZELEW 06/2026",
+        counterparty_name="BANK TEST SA", counterparty_iban=LENDER, source=Source.CSV,
+    )], source=Source.CSV)
+    session.flush()
+    mk = merchant_key("BANK TEST SA", "PRZELEW 06/2026", None)
+    return car, mk, upsert_rule
+
+
+def test_a_cached_llm_rule_does_not_beat_the_loans_payment_account(session):
+    car, mk, upsert_rule = _lender_installment(session)
+    upsert_rule(session, mk, "subscriptions", source="llm", locked=False)  # learned upstream
+    categorize_all(session)
+    txn = session.exec(select(Transaction)).one()
+    assert (txn.category, txn.category_source) == ("loans", "keyword")
+    # the same for the loan's title phrase
+    set_payment_matching(session, car.id, iban="", text="PRZELEW 06/2026")
+    categorize_all(session)
+    assert session.exec(select(Transaction)).one().category == "loans"
+
+
+def test_a_manual_merchant_rule_still_wins_over_the_loans_payment_account(session):
+    _car, mk, upsert_rule = _lender_installment(session)
+    upsert_rule(session, mk, "housing", source="manual")  # the user's explicit choice
+    categorize_all(session)
+    txn = session.exec(select(Transaction)).one()
+    assert (txn.category, txn.category_source) == ("housing", "manual")

@@ -329,3 +329,112 @@ def test_cli_migrate_data_and_legacy_notice(layout, monkeypatch, tmp_path):
     again = runner.invoke(app, ["migrate-data"])
     assert again.exit_code == 1 and "--force" in _flat(again.stdout)
     engine.dispose()
+
+
+# --------------------------------------------------------------------------- #
+# R-10: legacy mode upgrades the repo DB in place - backup first, honest notice
+# --------------------------------------------------------------------------- #
+
+def _tables(path: Path) -> set[str]:
+    conn = sqlite3.connect(path)
+    try:
+        return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
+
+
+def test_legacy_notice_before_any_upgrade_says_it_will_be_upgraded(layout):
+    legacy_dir, appdata = layout
+    _make_legacy_db(legacy_dir / "finanse.db")
+    notice = _flat(paths.legacy_notice() or "")
+    assert "untouched" not in notice
+    assert "upgrades it in place" in notice and str(appdata / "backups") in notice
+
+
+def test_legacy_mode_upgrade_backs_up_into_the_data_dir_first(layout):
+    legacy_dir, appdata = layout
+    src = legacy_dir / "finanse.db"
+    _make_legacy_db(src)
+    upstream_tables = _tables(src)
+    engine = db.make_engine(db.resolve_database_url(None))
+    try:
+        migrations.upgrade_to_head(engine)
+    finally:
+        engine.dispose()
+    assert "profiles" in _tables(src)  # upgraded in place (what this version needs)
+    (copy,) = (appdata / "backups").glob("finanse-legacy-pre-*.db")
+    assert migrations.last_backup == copy
+    assert _tables(copy) == upstream_tables  # the pristine upstream shape
+    assert legacy.table_counts(copy)["transactions"] == 1
+    assert not (legacy_dir / "backups").exists()  # never only inside the repo's data/
+    assert paths.legacy_mode()  # a backups/ dir does not end legacy mode
+    notice = _flat(paths.legacy_notice() or "")
+    assert "untouched" not in notice and "upgraded" in notice and str(copy) in notice
+    assert "finanse migrate-data" in notice
+
+
+def test_migrate_data_after_an_in_place_upgrade_points_at_the_clean_copy(layout):
+    legacy_dir, appdata = layout
+    src = legacy_dir / "finanse.db"
+    _make_legacy_db(src)
+    engine = db.make_engine(db.resolve_database_url(None))
+    migrations.upgrade_to_head(engine)
+    engine.dispose()
+    (copy,) = (appdata / "backups").glob("finanse-legacy-pre-*.db")
+
+    result = legacy.migrate_legacy_data(now=FIXED_NOW)
+    assert result.upgraded_in_place and result.pre_upgrade_backup == copy
+
+    fresh = legacy_dir.parent / "data2"
+    fresh.mkdir()
+    _make_legacy_db(fresh / "finanse.db")
+    untouched = legacy.migrate_legacy_data(
+        legacy_dir=fresh, target_dir=appdata.parent / "other", now=FIXED_NOW
+    )
+    assert not untouched.upgraded_in_place and untouched.pre_upgrade_backup is None
+
+
+def test_migrate_data_rescues_a_clean_copy_kept_inside_the_repo(layout):
+    """Older builds wrote the pre-upgrade backup to <repo>/data/backups/, which the
+    user deletes after migrate-data: it is copied into the data dir first."""
+    legacy_dir, appdata = layout
+    src = legacy_dir / "finanse.db"
+    _make_legacy_db(src)
+    old = legacy.backup_sqlite(
+        src, legacy_dir / "backups" / "finanse-pre-0004_x-20261001-080000.db"
+    )
+    old_tables = _tables(old)
+    engine = db.make_engine(f"sqlite:///{src}")
+    with engine.begin() as conn:  # upgraded in place by an older build (no data-dir copy)
+        conn.exec_driver_sql("CREATE TABLE alembic_version (version_num VARCHAR(32))")
+    engine.dispose()
+
+    result = legacy.migrate_legacy_data(now=FIXED_NOW)
+    assert result.upgraded_in_place
+    assert result.pre_upgrade_backup is not None
+    assert result.pre_upgrade_backup.parent == appdata / "backups"
+    assert _tables(result.pre_upgrade_backup) == old_tables
+
+
+def test_cli_migrate_data_never_says_untouched_after_an_in_place_upgrade(
+    layout, monkeypatch, tmp_path
+):
+    from rich.console import Console
+
+    from finanse.cli import app
+    from finanse.core import cliutil
+
+    legacy_dir, appdata = layout
+    _make_legacy_db(legacy_dir / "finanse.db")
+    engine = db.make_engine(db.resolve_database_url(None))
+    monkeypatch.setattr(db, "engine", engine)
+    monkeypatch.setattr(cliutil, "console", Console(width=1000, color_system=None))
+    runner = CliRunner()
+    assert runner.invoke(app, ["init-db"]).exit_code == 0  # e.g. `finanse serve` first
+    (copy,) = (appdata / "backups").glob("finanse-legacy-pre-*.db")
+    out = runner.invoke(app, ["migrate-data"])
+    engine.dispose()
+    text = _flat(out.stdout)
+    assert out.exit_code == 0, out.output
+    assert "were not changed" not in text and "upgraded in place" in text
+    assert str(copy) in text

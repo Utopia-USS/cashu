@@ -65,7 +65,7 @@ class Profile(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     slug: str = Field(index=True, unique=True)  # ASCII, used in URLs and the CLI
     name: str
-    base_currency: str = Field(default="PLN")  # for labelled converted views only
+    base_currency: str = Field(default="PLN")  # net worth headline; no FX conversion yet
     mcp_privacy: str = Field(default="strict")  # strict | amounts (what MCP tools may send)
     created_at: dt.datetime = Field(default_factory=utcnow)
 

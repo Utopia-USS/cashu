@@ -119,6 +119,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* ===== F1 shell additions (design-system-notes 4.2), same idiom ===== */
 a { color: var(--nw); }
 code { font: 0.92em ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* Commands are copied and typed: no ligatures, so `--profile` never renders as a dash.
+   (After the `font` shorthand, which resets font-variant-ligatures.) */
+code, kbd, samp, pre, .code > span { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
 .lnk { background: none; border: none; color: var(--nw); font: inherit; font-size: 13px; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
 .lnk:disabled { color: var(--muted); cursor: default; text-decoration: none; }
 :focus-visible { outline: 2px solid var(--nw); outline-offset: 2px; }

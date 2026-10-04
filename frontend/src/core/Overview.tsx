@@ -21,12 +21,14 @@ const readHidden = (): Record<string, string> => {
 
 export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; enabled: ProfileModule[] }) {
   const { summary } = base;
+  // The headline is the profile's base currency (the backend builds the breakdown in
+  // it). Every other currency keeps its own total next to it: never converted, never
+  // summed into the headline, never hidden.
   const bd = summary.breakdown;
-  const others = Object.entries(summary.networth)
-    .filter(([c]) => c !== base.profile.base_currency && c !== bd.currency)
-    .filter(([, v]) => Math.abs(v) > 0.005)
-    .map(([c, v]) => cur(v, c))
-    .join(" · ");
+  const otherTotals = Object.entries(summary.networth).filter(([c]) => c !== bd.currency);
+  const others = otherTotals.length
+    ? `inne waluty (bez przeliczenia): ${otherTotals.map(([c, v]) => cur(v, c)).join(" · ")}`
+    : "";
   const hasHome = bd.property || bd.mortgage;
   const [hidden, setHidden] = useState(readHidden);
   const hide = (id: string, state: string) => {

@@ -154,6 +154,7 @@ def test_networth_series_monthly(api):
 def test_networth_series_liquid_and_other_currency(api):
     liquid = api.get("/api/networth/series", params={"granularity": "monthly", "scope": "liquid"}).json()
     assert liquid == {
+        "currency": "PLN",  # additive (R-04): the series names its currency
         "points": [{"date": "2026-09-30", "value": 29260.0, "components": {"money": 29260.0}}],
         "components": [{"key": "money", "label": "Pieniądze", "liability": False}],
     }
@@ -315,7 +316,9 @@ def test_empty_db_reads(api_empty):
     assert api_empty.get("/api/loan").json() == {"has_loan": False}
     assert api_empty.get("/api/recurring").json() == {"items": []}
     assert api_empty.get("/api/cashflow").json() == []
-    assert api_empty.get("/api/networth/series").json() == {"points": [], "components": []}
+    assert api_empty.get("/api/networth/series").json() == {
+        "currency": "PLN", "points": [], "components": [],
+    }
     summary = api_empty.get("/api/summary").json()
     assert summary["networth"] == {}
     assert summary["month"] is None

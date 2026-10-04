@@ -34,8 +34,11 @@ def set_profile(slug: str | None) -> None:
 
 def profile(session, *, create: bool = True):
     """The profile a command works on: ``--profile``, else ``FINANSE_PROFILE``, else
-    the default profile (created on a fresh database when ``create``). A named
-    profile must exist: otherwise the command exits with a message."""
+    the default profile (created on a fresh database when ``create``).
+
+    A profile named with ``--profile`` must exist, also on a fresh database:
+    profiles are created explicitly (``finanse profiles add``), a write never lands
+    in another profile. Otherwise the command exits with a message."""
     import typer
 
     from . import profiles
@@ -46,10 +49,14 @@ def profile(session, *, create: bool = True):
         # Read-only command on a fresh database: an empty placeholder (nothing created).
         return Profile(id=profiles.NO_PROFILE, slug=profiles.DEFAULT_SLUG, name=profiles.DEFAULT_NAME)
     try:
-        if slug and not profiles.list_profiles(session) and create:
-            return profiles.default_profile(session, create=True)  # fresh DB: created as `slug`
+        if not _profile_slug and slug and not profiles.list_profiles(session) and create:
+            # FINANSE_PROFILE on a fresh DB: the default profile is created under that slug.
+            return profiles.default_profile(session, create=True)
         return profiles.resolve(session, slug, create_default=create)
     except profiles.ProfileNotFound as e:
         known = ", ".join(p.slug for p in profiles.list_profiles(session)) or "none yet"
-        err_console.print(f"[red]{e}.[/] Profiles: {known} (see `finanse profiles list`).")
+        err_console.print(
+            f"[red]{e}.[/] Profiles: {known} (see `finanse profiles list`; "
+            "create one with `finanse profiles add NAME`)."
+        )
         raise typer.Exit(1) from None

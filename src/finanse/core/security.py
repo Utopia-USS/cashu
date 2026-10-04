@@ -15,6 +15,10 @@ visits could try to reach it. Three layers:
 
 The SPA learns the token from a ``<meta name="finanse-token">`` tag injected into
 the served ``index.html``; only pages on an allowed Host can read that response.
+Every response also forbids framing (``X-Frame-Options: DENY`` and CSP
+``frame-ancestors 'none'``): a hostile page could otherwise load the real
+dashboard in an iframe and steer the user's own clicks (clickjacking), which no
+token or Host check can tell apart from the user.
 ``finanse serve`` also writes the token to ``<data dir>/api-token`` (0600) for
 the Vite dev proxy and other local clients.
 """
@@ -28,9 +32,9 @@ import secrets
 from dataclasses import dataclass
 from pathlib import Path
 
-from starlette.datastructures import Headers
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.responses import JSONResponse, PlainTextResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import paths
 
@@ -43,6 +47,12 @@ LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
 # Served without a token: the SPA shell and static files (no personal data).
 PUBLIC_PATHS = frozenset({"/"})
 PUBLIC_PREFIXES = ("/assets/", "/static/")
+
+# Anti-framing headers on every HTTP response (clickjacking, see the module doc).
+FRAME_HEADERS = {
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "frame-ancestors 'none'",
+}
 
 
 @dataclass(frozen=True)
@@ -110,6 +120,8 @@ class LocalOnlyMiddleware:
         if scope["type"] not in ("http", "websocket"):
             await self.app(scope, receive, send)
             return
+        if scope["type"] == "http":
+            send = _with_frame_headers(send)
         cfg = get_config()
         headers = Headers(scope=scope)
         path = scope.get("path", "")
@@ -124,6 +136,18 @@ class LocalOnlyMiddleware:
             await send({"type": "websocket.close", "code": 1008})
             return
         await reject(scope, receive, send)
+
+
+def _with_frame_headers(send: Send) -> Send:
+    async def wrapped(message: Message) -> None:
+        if message["type"] == "http.response.start":
+            headers = MutableHeaders(scope=message)
+            for name, value in FRAME_HEADERS.items():
+                if name not in headers:
+                    headers.append(name, value)
+        await send(message)
+
+    return wrapped
 
 
 _HEAD_TAG = re.compile(r"<head(\s[^>]*)?>", re.IGNORECASE)

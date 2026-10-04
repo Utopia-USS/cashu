@@ -18,16 +18,16 @@ export function Breakdown({ bd }: { bd: BD }) {
             <div>
               <div className={`bar ${liab ? "liab" : ""}`} style={{ width: `${(Math.abs(v) / maxAbs) * 100}%` }} />
             </div>
-            <div className={`num ${liab ? "neg" : ""}`}>{cur(v)}</div>
+            <div className={`num ${liab ? "neg" : ""}`}>{cur(v, bd.currency)}</div>
           </div>
         );
       })}
       <div className="bd-sum">
-        <div><span>Aktywa</span><b className="pos">{cur(bd.assets)}</b></div>
-        <div><span>Zobowiązania</span><b className={bd.liabilities ? "neg" : ""}>{cur(bd.liabilities ? -bd.liabilities : 0)}</b></div>
-        <div><span>Net worth</span><b>{cur(bd.net)}</b></div>
+        <div><span>Aktywa</span><b className="pos">{cur(bd.assets, bd.currency)}</b></div>
+        <div><span>Zobowiązania</span><b className={bd.liabilities ? "neg" : ""}>{cur(bd.liabilities ? -bd.liabilities : 0, bd.currency)}</b></div>
+        <div><span>Net worth</span><b>{cur(bd.net, bd.currency)}</b></div>
         {(bd.property || bd.mortgage) ? (
-          <div><span>Home equity (nieruchomość − hipoteka)</span><b>{cur(bd.home_equity)}</b></div>
+          <div><span>Home equity (nieruchomość − hipoteka)</span><b>{cur(bd.home_equity, bd.currency)}</b></div>
         ) : null}
       </div>
     </section>

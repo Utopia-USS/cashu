@@ -21,6 +21,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncSt
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setError(null); // an error belongs to the run that failed, not to the next deps
     fnRef.current()
       .then((d) => alive && (setData(d), setError(null)))
       .catch((e: Error) => alive && setError(e.message))

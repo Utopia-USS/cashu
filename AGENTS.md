@@ -194,7 +194,10 @@ charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
   (`FINANSE_DATA_DIR=/tmp/x alembic revision --autogenerate -m "..."`) and use
   `op.batch_alter_table` for existing tables (SQLite rebuilds them).
   `tests/test_migrations.py` fails when models and migrations drift. Before a
-  database with data is upgraded, a copy goes to `backups/` next to it.
+  database with data is upgraded, a copy goes to `backups/` next to it (the
+  legacy `data/finanse.db`: to the data dir's `backups/`). `alembic upgrade` /
+  `downgrade` from the repo root take the same copy first; `alembic -x
+  no-backup=1 ...` skips it explicitly.
 
 ---
 

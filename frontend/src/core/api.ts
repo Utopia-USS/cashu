@@ -19,6 +19,22 @@ export class ApiError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
 }
 
+// A 401 means the token this page was served with is no longer valid: `finanse serve`
+// was restarted (new token per launch). Nothing recovers without a reload, so the
+// app shows one notice (App.tsx) instead of an error in every view.
+const authLostListeners = new Set<() => void>();
+let authLost = false;
+export function onAuthLost(cb: () => void): () => void {
+  authLostListeners.add(cb);
+  if (authLost) cb();
+  return () => { authLostListeners.delete(cb); };
+}
+function reportAuthLost() {
+  if (authLost) return;
+  authLost = true;
+  authLostListeners.forEach((cb) => cb());
+}
+
 async function request<T>(method: string, u: string, body?: unknown): Promise<T> {
   if (MOCK) {
     const { mockFetch } = await import("./mock");
@@ -30,6 +46,7 @@ async function request<T>(method: string, u: string, body?: unknown): Promise<T>
     init.body = JSON.stringify(body);
   }
   const r = await fetch(u, init);
+  if (r.status === 401) reportAuthLost();
   if (!r.ok) {
     let detail = "";
     try {
@@ -51,14 +68,18 @@ export const jdel = <T>(u: string): Promise<T> => request<T>("DELETE", u);
 export const pp = (slug: string, path: string): string => `/api/p/${encodeURIComponent(slug)}${path}`;
 
 // ---- platform shapes (system, modules, profiles, setup) --------------------
+/** Keys of `/api/system` `secrets` (presence flags, never values). The backend test
+ * `test_system_secret_keys_match_the_frontend_contract` checks this exact list. */
+export const SECRET_KEYS = ["anthropic", "enable_banking_key"] as const;
+export type SecretKey = (typeof SECRET_KEYS)[number];
+
 export interface SystemInfo {
   version: string;
   data_dir: string;
   legacy_db_detected: boolean;
   legacy_db_path: string | null;
   worker: { installed: boolean; last_run: string | null };
-  // Optional, not in the wave 2 contract: secret presence flags (never values).
-  secrets?: Record<string, boolean>;
+  secrets?: Partial<Record<SecretKey, boolean>>;
 }
 
 export interface ModuleInfo { id: string; name: string; description: string; depends_on: string[]; available: boolean }
@@ -153,7 +174,8 @@ export interface NetworthResp {
 
 export interface SeriesPoint { date: string; value: number; components: Record<string, number> }
 export interface SeriesComponent { key: string; label: string; liability: boolean }
-export interface SeriesResp { points: SeriesPoint[]; components: SeriesComponent[] }
+// currency: the one currency of the series (default: the profile's base currency).
+export interface SeriesResp { currency?: string; points: SeriesPoint[]; components: SeriesComponent[] }
 export interface Category { key: string; label: string; kind: string }
 
 export interface CashTxn {

@@ -77,7 +77,9 @@ def migrate_data_cmd(
     """Copy legacy data from the repo's data/ dir into the per-user data dir.
 
     Copies the database (with a timestamped backup), Open Banking sessions and
-    private key. The originals stay untouched; delete them after checking."""
+    private key. migrate-data does not change the originals; if this version
+    already upgraded the legacy database in place, it names the copy from before
+    that upgrade."""
     from . import legacy
 
     try:
@@ -94,11 +96,27 @@ def migrate_data_cmd(
         cliutil.console.print(f"  copied: {p}")
     for s in result.skipped:
         cliutil.console.print(f"  [yellow]skipped:[/] {s}")
+    legacy_dir = result.source.parent
+    if not result.upgraded_in_place:
+        cliutil.console.print(
+            f"The files in {legacy_dir} were not changed; delete them once the dashboard "
+            f"looks right (the backup above keeps a copy)."
+        )
+    elif result.pre_upgrade_backup is not None:
+        cliutil.console.print(
+            f"The legacy database in {legacy_dir} had already been upgraded in place by this "
+            f"version; its copy from before that upgrade is {result.pre_upgrade_backup}. "
+            f"Delete {legacy_dir} once the dashboard looks right (that copy stays)."
+        )
+    else:
+        cliutil.console.print(
+            f"[yellow]The legacy database in {legacy_dir} had already been upgraded in place "
+            "by this version and no copy from before that upgrade was found.[/] Keep "
+            f"{legacy_dir} if you may go back to the upstream version."
+        )
     cliutil.console.print(
-        f"The files in {result.source.parent} were not changed; delete them once the "
-        "dashboard looks right. Settings pointing at the old defaults (data/finanse.db, "
-        "data/enablebanking_private.pem) are ignored from now on. Restart `finanse serve` "
-        "if it is running."
+        "Settings pointing at the old defaults (data/finanse.db, data/enablebanking_private.pem) "
+        "are ignored from now on. Restart `finanse serve` if it is running."
     )
 
 
@@ -201,7 +219,11 @@ def profiles_list_cmd() -> None:
 @profiles_app.command("add")
 def profiles_add_cmd(
     name: Annotated[str, typer.Argument(help="Display name, e.g. 'Jan' or 'Dom'.")],
-    currency: Annotated[str, typer.Option(help="Base currency (converted views only).")] = "PLN",
+    currency: Annotated[
+        str,
+        typer.Option(help="Base currency: the net worth headline (other currencies are "
+                          "shown separately, not converted)."),
+    ] = "PLN",
     modules_: Annotated[
         str,
         typer.Option("--modules", help="Comma-separated module ids (budget,assets,loans,...)."),

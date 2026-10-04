@@ -26,7 +26,8 @@ def categorize(
     source ∈ {transfer, manual, llm, keyword, subscription, default}. A "default"
     source marks an expense we couldn't confidently classify — the LLM pass
     targets exactly those. ``patterns``: payments other modules own (e.g. a loan's
-    lender account), checked for outflows before the phrase and seed rules.
+    lender account or title phrase), checked for outflows before cached LLM rules
+    and the phrase and seed rules; only a manual (locked) merchant rule beats them.
     """
     # 1. Structural: a move between the user's own accounts, or an FX conversion
     #    to/from the user's own currency accounts — neither is spend/income.
@@ -40,14 +41,31 @@ def categorize(
     ):
         return "transfer", "transfer"
 
-    # 2. Learned rule (manual correction or cached LLM answer).
+    # 2. Learned rule: a manual (locked) correction wins outright.
     rule = rules.get(mk)
+    if rule is not None and rule.locked:
+        return rule.category, rule.source
+
+    # 3. A payment a module owns (a loan installment to its lender account or with
+    #    its title phrase) is explicit configuration: it beats a cached LLM answer
+    #    for the same merchant (possibly learned before the loan was configured).
+    text = normalize_text(
+        " ".join(f for f in (txn.reference, txn.description, txn.counterparty_name) if f)
+    )
+    if not txn.amount > 0:
+        for p in patterns:
+            if (p.counterparty_iban and cp and iban_key(p.counterparty_iban) == cp) or (
+                p.text and p.text in text
+            ):
+                return p.category, "keyword"
+
+    # 4. Cached LLM answer for the merchant.
     if rule is not None:
         return rule.category, rule.source
 
     seed = taxonomy.apply_seed_rules(mk)
 
-    # 3. Income (inflows) — keep separate from expense seeds.
+    # 5. Income (inflows) - keep separate from expense seeds.
     if txn.amount > 0:
         if seed and seed in _INCOME_KEYS:
             return seed, "keyword"
@@ -55,17 +73,8 @@ def categorize(
             return "income_salary", "keyword"
         return "income_other", "default"
 
-    # 4. Expense: a payment a module owns (loan installment to its lender account)
-    #    → installment/rent phrase anywhere in the text → seed keyword → recurring
-    #    signal → uncategorized.
-    text = normalize_text(
-        " ".join(f for f in (txn.reference, txn.description, txn.counterparty_name) if f)
-    )
-    for p in patterns:
-        if (p.counterparty_iban and cp and iban_key(p.counterparty_iban) == cp) or (
-            p.text and p.text in text
-        ):
-            return p.category, "keyword"
+    # 6. Expense: installment/rent phrase anywhere in the text → seed keyword →
+    #    recurring signal → uncategorized.
     phrase = taxonomy.apply_text_rules(text)
     if phrase:
         return phrase, "keyword"

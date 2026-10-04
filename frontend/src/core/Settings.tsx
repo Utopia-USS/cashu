@@ -10,6 +10,7 @@ import { moduleDef, orderModules } from "./registry";
 import { PRIVACY_PLAIN, stepsTag } from "./SetupPage";
 import { useShell } from "./context";
 import type { ThemePref } from "./theme";
+import { serialSaver } from "./util";
 import { CURRENCIES, legacySkipped, PRIVACY_OPTIONS } from "./Wizard";
 
 const SECTIONS: [id: string, label: string][] = [
@@ -103,7 +104,7 @@ function ProfileSection() {
           <select id="set-cur" value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {[...new Set([...CURRENCIES, profile.base_currency])].map((c) => <option key={c}>{c}</option>)}
           </select>
-          <span className="hint">widoki przeliczone po kursie NBP, z datą kursu</span>
+          <span className="hint">waluta nagłówka wartości netto; inne waluty są pokazywane osobno, bez przeliczania</span>
         </span>
         <span className="k">Identyfikator</span>
         <span className="v"><code>{slug}</code><span className="hint">w poleceniach CLI i MCP (<code>--profile {slug}</code>)</span></span>
@@ -128,43 +129,63 @@ function nextEnabled(id: string, on: boolean, enabled: Set<string>, all: ModuleI
 function ModulesSection() {
   const { slug, profile, modules, reloadProfiles } = useShell();
   const toast = useToast();
-  const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const enabled = new Set(profile.modules.filter((m) => m.enabled).map((m) => m.id));
+  const server = new Set(profile.modules.filter((m) => m.enabled).map((m) => m.id));
+  // The PUT replaces the whole module set, so toggles are optimistic and serialized:
+  // `wanted` is the latest set the user asked for (shown at once), the saver sends one
+  // PUT at a time and always ends with that latest set (a quick second toggle never
+  // reverts the first). Back to the server's view once the saves and reload are done.
+  const [wanted, setWanted] = useState<ReadonlySet<string> | null>(null);
+  const wantedRef = useRef<ReadonlySet<string> | null>(null);
+  const live = useRef({ reloadProfiles, toast });
+  live.current = { reloadProfiles, toast };
+  const [saver] = useState(() => serialSaver<string[]>(
+    (ids) => putProfileModules(slug, ids),
+    async (error) => {
+      if (error) setErr((error as Error).message);
+      await live.current.reloadProfiles();
+      if (saver.busy) return; // a newer toggle is being saved; its own idle call finishes up
+      wantedRef.current = null;
+      setWanted(null);
+      if (!error) live.current.toast("Zapisano");
+    },
+  ));
+  const enabled = wanted ?? server;
 
-  const toggle = async (id: string, on: boolean) => {
-    setBusy(id); setErr(null);
-    try {
-      await putProfileModules(slug, nextEnabled(id, on, enabled, modules));
-      await reloadProfiles();
-      toast("Zapisano");
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(null); }
+  const toggle = (id: string, on: boolean) => {
+    setErr(null);
+    const ids = nextEnabled(id, on, new Set(wantedRef.current ?? server), modules);
+    wantedRef.current = new Set(ids);
+    setWanted(wantedRef.current);
+    saver.push(ids);
   };
 
   return (
     <Card id="modules" title="Moduły">
-      {orderModules(modules).map((m) => (
-        <ModuleRow key={m.id} info={m} pm={profile.modules.find((x) => x.id === m.id)}
-          busy={busy === m.id} onToggle={(on) => toggle(m.id, on)} />
-      ))}
+      {orderModules(modules).map((m) => {
+        const pm = profile.modules.find((x) => x.id === m.id);
+        return (
+          <ModuleRow key={m.id} info={m} on={enabled.has(m.id)} pm={pm}
+            onToggle={(on) => toggle(m.id, on)} />
+        );
+      })}
       {err && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Nie udało się zapisać modułów: {err}</Notice>}
       <div className="foot">Wyłączenie modułu ukrywa jego zakładki i narzędzia MCP; dane zostają w bazie i wracają po włączeniu.</div>
     </Card>
   );
 }
 
-function ModuleRow({ info, pm, busy, onToggle }: { info: ModuleInfo; pm?: ProfileModule; busy: boolean; onToggle: (on: boolean) => void }) {
+function ModuleRow({ info, on, pm, onToggle }: { info: ModuleInfo; on: boolean; pm?: ProfileModule; onToggle: (on: boolean) => void }) {
   const { slug, modules, go } = useShell();
   const def = moduleDef(info.id, modules);
-  const on = !!pm?.enabled;
-  const pending = on && pm?.setup_state !== "ready";
+  const pending = on && !!pm?.enabled && pm?.setup_state !== "ready";
   const { data } = useAsync(
     () => (pending ? getSetup(slug, info.id) : Promise.resolve(null)),
     [slug, info.id, pending, pm?.setup_state],
   );
   return (
     <div className="row">
-      <Switch on={on} disabled={busy || !info.available} label={`Moduł ${def.name}`} onChange={onToggle}
+      <Switch on={on} disabled={!info.available} label={`Moduł ${def.name}`} onChange={onToggle}
         title={!info.available ? "Moduł jeszcze niedostępny" : undefined} />
       <div className="grow">
         <div className="t">
@@ -314,7 +335,7 @@ function SecretsSection() {
       </div>
       <div className="row">
         <div className="grow">
-          <div className="t">Enable Banking · klucz prywatny {presence(s?.enablebanking_key, "w katalogu danych")}</div>
+          <div className="t">Enable Banking · klucz prywatny {presence(s?.enable_banking_key, "w katalogu danych")}</div>
           <div className="d">plik .pem w katalogu danych · sesje per bank w bazie</div>
         </div>
       </div>

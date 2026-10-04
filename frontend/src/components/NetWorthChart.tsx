@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Area, Line, Tooltip } from "recharts";
 import { getSeries, type SeriesComponent } from "../core/api";
 import { useSlug } from "../core/context";
-import { cssVar, cur, dtFmt, nwColorVar } from "../format";
+import { cssVar, cur, cur0, dtFmt, nwColorVar } from "../format";
 import { useAsync } from "../hooks";
 import { Seg } from "../ui";
 import { ScrollableChart } from "./ScrollableChart";
@@ -23,7 +23,7 @@ type Row = { x: number; y: number } & Record<string, number>;
 
 /** Tooltip showing the net-worth composition at a point in time — every present
  * component (money / auto / property / − liabilities), then the total. */
-function NwTooltip({ comps }: { comps: SeriesComponent[] }) {
+function NwTooltip({ comps, currency }: { comps: SeriesComponent[]; currency: string }) {
   return function Content({ active, payload }: { active?: boolean; payload?: { payload?: Row }[] }) {
     const row = active && payload?.[0]?.payload;
     if (!row) return null;
@@ -39,13 +39,13 @@ function NwTooltip({ comps }: { comps: SeriesComponent[] }) {
                 <i style={{ width: 9, height: 9, borderRadius: 2, background: cssVar(nwColorVar[c.key] ?? "--nw") }} />
                 {c.label}
               </span>
-              <span className={c.liability ? "neg" : ""} style={{ fontVariantNumeric: "tabular-nums" }}>{cur(v)}</span>
+              <span className={c.liability ? "neg" : ""} style={{ fontVariantNumeric: "tabular-nums" }}>{cur(v, currency)}</span>
             </div>
           );
         })}
         <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTop: `1px solid ${cssVar("--border")}`, fontWeight: 600 }}>
           <span>Net worth</span>
-          <span style={{ fontVariantNumeric: "tabular-nums" }}>{cur(row.y)}</span>
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>{cur(row.y, currency)}</span>
         </div>
       </div>
     );
@@ -60,6 +60,8 @@ export function NetWorthChart() {
   const { data: resp } = useAsync(() => getSeries(slug, gran, scope), [slug, gran, scope]);
 
   const comps = resp?.components ?? [];
+  // One currency per series: the profile's base currency unless asked otherwise.
+  const currency = resp?.currency ?? "PLN";
   const points = useMemo<Row[]>(
     () =>
       (resp?.points ?? []).map((p) => {
@@ -123,7 +125,8 @@ export function NetWorthChart() {
 
   return (
     <ScrollableChart
-      title="Net worth w czasie"
+      title={`Net worth w czasie (${currency})`}
+      yTickFormatter={(v) => cur0(v, currency)}
       controls={controls}
       data={points}
       yValues={yValues}
@@ -135,7 +138,7 @@ export function NetWorthChart() {
       fullSpan={spanDays}
       yZoomable
       emptyText={resp && !resp.points.length ? "Brak danych do wykresu. Pojawią się po dodaniu kont lub pozycji." : undefined}
-      tooltip={<Tooltip cursor={{ stroke: cssVar("--muted"), strokeDasharray: "3 3" }} content={NwTooltip({ comps })} />}
+      tooltip={<Tooltip cursor={{ stroke: cssVar("--muted"), strokeDasharray: "3 3" }} content={NwTooltip({ comps, currency })} />}
     >
       {marks}
     </ScrollableChart>

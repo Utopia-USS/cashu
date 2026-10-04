@@ -15,7 +15,9 @@ not transactional, so a failed multi-step upgrade could leave a half-migrated
 file); ``last_backup`` holds its path.
 
 New revisions: ``alembic revision --autogenerate -m "..."`` from the repo root
-(see alembic.ini). SQLite changes to existing tables go through
+(see alembic.ini). ``alembic upgrade``/``downgrade`` from the CLI take the same
+backup first (``backup_for_cli``; ``-x no-backup=1`` opts out explicitly).
+SQLite changes to existing tables go through
 ``op.batch_alter_table`` (table rebuild); foreign-key enforcement is switched off
 for the duration of a migration run so rebuilds of referenced tables work.
 """
@@ -23,6 +25,7 @@ for the duration of a migration run so rebuilds of referenced tables work.
 from __future__ import annotations
 
 import datetime as dt
+import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -131,17 +134,74 @@ def _has_data(conn: Connection, tables: set[str]) -> bool:
     )
 
 
-def backup_before_upgrade(engine: Engine, head: str, *, now: dt.datetime | None = None) -> Path | None:
-    """Consistent copy of a file-based SQLite database next to it (``backups/``)."""
-    from .. import legacy
-
+def _sqlite_db_file(engine: Engine) -> Path | None:
     if engine.dialect.name != "sqlite" or not engine.url.database:
         return None
+    if engine.url.database == ":memory:":
+        return None
     file = Path(engine.url.database)
-    if engine.url.database == ":memory:" or not file.exists():
+    return file if file.exists() else None
+
+
+def backup_before_upgrade(engine: Engine, head: str, *, now: dt.datetime | None = None) -> Path | None:
+    """Consistent copy of a file-based SQLite database next to it (``backups/``).
+
+    The legacy ``<repo>/data/finanse.db`` (legacy mode, before ``migrate-data``) is
+    copied into the data dir's ``backups/`` instead: the user is told to delete the
+    repo's ``data/`` after migrating, and this copy is the only pre-upgrade one."""
+    from .. import legacy, paths
+
+    file = _sqlite_db_file(engine)
+    if file is None:
         return None
     stamp = (now or dt.datetime.now(dt.UTC)).strftime("%Y%m%d-%H%M%S")
+    if paths.is_legacy_db(file):
+        name = f"{paths.LEGACY_PRE_UPGRADE_PREFIX}{head}-{stamp}.db"
+        return legacy.backup_sqlite(file, paths.backups_dir() / name)
     return legacy.backup_sqlite(file, file.parent / "backups" / f"finanse-pre-{head}-{stamp}.db")
+
+
+def needs_backup(engine: Engine, has_data: bool) -> bool:
+    """Back up before upgrading a file that holds data, and always the legacy DB."""
+    from .. import paths
+
+    file = _sqlite_db_file(engine)
+    return file is not None and (has_data or paths.is_legacy_db(file))
+
+
+class BackupError(RuntimeError):
+    """The pre-migration copy could not be written (nothing was migrated)."""
+
+
+# Alembic CLI commands that change the schema (the others only read it or write scripts).
+SCHEMA_COMMANDS = frozenset({"upgrade", "downgrade"})
+
+
+def backup_for_cli(engine: Engine, command_name: str | None, *, skip: bool = False) -> Path | None:
+    """What the developer ``alembic`` CLI runs before touching the app's database
+    (env.py): the same copy the startup path takes, for ``upgrade``/``downgrade`` on
+    a file with data (always for the legacy repo DB). ``skip`` is the explicit
+    ``-x no-backup=1`` opt-out; a failed copy raises ``BackupError``."""
+    global last_backup
+    if skip or command_name not in SCHEMA_COMMANDS:
+        return None
+    with engine.connect() as conn:
+        tables = set(sa.inspect(conn).get_table_names())
+        current = MigrationContext.configure(conn).get_current_revision()
+        has_data = _has_data(conn, tables)
+    head = head_revision()
+    if (command_name == "upgrade" and current == head) or not needs_backup(engine, has_data):
+        return None
+    label = head if command_name == "upgrade" else f"downgrade-from-{current or 'base'}"
+    try:
+        last_backup = backup_before_upgrade(engine, label)
+    except (OSError, sqlite3.Error) as e:
+        raise BackupError(
+            f"Could not back up the database before `alembic {command_name}` ({e}); nothing "
+            "was migrated. Free the space or fix the permissions, or re-run with "
+            "`alembic -x no-backup=1 ...` to migrate without a copy."
+        ) from e
+    return last_backup
 
 
 def upgrade_to_head(engine: Engine) -> str:
@@ -155,7 +215,7 @@ def upgrade_to_head(engine: Engine) -> str:
         has_data = _has_data(conn, tables)
     if current == head:
         return head
-    if has_data:
+    if needs_backup(engine, has_data):
         last_backup = backup_before_upgrade(engine, head)
     with migration_connection(engine) as conn, conn.begin():
         cfg = alembic_config(conn)

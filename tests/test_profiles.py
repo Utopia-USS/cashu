@@ -407,3 +407,54 @@ def test_profiles_table_is_the_only_source_of_slugs(api_empty):
     api_empty.post("/api/profiles", json={"name": "Jan", "modules": []})
     with get_session() as s:
         assert [p.slug for p in s.exec(select(Profile)).all()] == ["jan"]
+
+
+# --------------------------------------------------------------------------- #
+# R-04: the overview / net worth headline uses the profile's base currency
+# --------------------------------------------------------------------------- #
+
+def test_a_eur_profile_sees_its_own_net_worth(api_empty):
+    from finanse.core.accounts import get_or_create_account, upsert_balance
+    from finanse.models import Source
+
+    api = api_empty
+    slug = api.post("/api/profiles", json={
+        "name": "Anna", "base_currency": "EUR", "modules": ["budget"],
+    }).json()["slug"]
+    with get_session() as s:
+        pid = _profile_id(slug)
+        eur = get_or_create_account(s, bank="mbank", iban="99114000000000000000000071",
+                                    currency="EUR", profile_id=pid)
+        pln = get_or_create_account(s, bank="mbank", iban="99114000000000000000000072",
+                                    profile_id=pid)
+        upsert_balance(s, eur, date(2026, 9, 30), Decimal("1200.00"), source=Source.CSV)
+        upsert_balance(s, pln, date(2026, 9, 30), Decimal("300.00"), source=Source.CSV)
+
+    summary = api.get(f"/api/p/{slug}/summary").json()
+    assert summary["breakdown"]["currency"] == "EUR"
+    assert summary["breakdown"]["net"] == 1200.0
+    # every currency keeps its own total (no conversion, no silent sum)
+    assert summary["networth"] == {"EUR": 1200.0, "PLN": 300.0}
+    networth = api.get(f"/api/p/{slug}/networth").json()
+    assert networth["breakdown"]["currency"] == "EUR"
+    assert networth["totals"] == {"EUR": 1200.0, "PLN": 300.0}
+    series = api.get(f"/api/p/{slug}/networth/series").json()
+    assert series["currency"] == "EUR"
+    assert series["points"] and series["points"][-1]["value"] == 1200.0
+    explicit = api.get(f"/api/p/{slug}/networth/series?currency=PLN").json()
+    assert explicit["currency"] == "PLN" and explicit["points"][-1]["value"] == 300.0
+    # a PLN profile is unchanged
+    assert api.get("/api/p/" + slug + "/networth/series?currency=EUR").json() == series
+
+
+def test_system_secret_keys_match_the_frontend_contract(api_empty):
+    """R-06: the SPA reads secret presence by the keys listed in `SECRET_KEYS`
+    (frontend/src/core/api.ts, which TypeScript enforces for every read); they
+    must be exactly the keys `/api/system` sends."""
+    from pathlib import Path
+
+    api_ts = Path(__file__).resolve().parents[1] / "frontend" / "src" / "core" / "api.ts"
+    m = re.search(r"SECRET_KEYS\s*=\s*\[([^\]]*)\]", api_ts.read_text(encoding="utf-8"))
+    assert m, "SECRET_KEYS not found in frontend/src/core/api.ts"
+    frontend_keys = set(re.findall(r'"([a-z_]+)"', m.group(1)))
+    assert set(api_empty.get("/api/system").json()["secrets"]) == frontend_keys

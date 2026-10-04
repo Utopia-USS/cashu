@@ -19,8 +19,25 @@ Open the printed Vite URL (http://localhost:5173). Edits hot-reload instantly.
 The proxy adds the backend's per-launch API token, read on every request from
 `<data dir>/api-token` (written by `finanse serve`; `FINANSE_DATA_DIR` and
 `FINANSE_PORT` are honoured), so restarting the backend needs no Vite restart.
+It does so only for same-origin requests from the dev page itself
+(`devProxyGuard.ts`): a request whose `Origin`, `Referer` or `Sec-Fetch-Site`
+names another site (another web page you have open, another local port) gets a
+403 from Vite and never reaches the backend, so the token cannot be borrowed for
+cross-site requests while `npm run dev` runs. Requests without any browser
+context (curl, opening `/api/...` in the address bar) still pass.
 The built app instead gets the token from a `<meta name="finanse-token">` tag
 that `finanse serve` injects into `index.html`.
+
+## Tests
+
+```bash
+cd frontend && npm test
+```
+
+Runs the unit tests of the pure helpers (`tests/*.test.mjs`: the dev proxy guard,
+the serialized module-save queue, hash decoding) with Node's built-in test runner
+(Node 23.6+ strips the TypeScript types itself; no extra dependency). Component
+behaviour (profile switch, resync, toggles) is checked in the browser.
 
 ## Build (production — served by `finanse serve`)
 

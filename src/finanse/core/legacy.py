@@ -4,7 +4,10 @@
 backup API (a consistent snapshot, WAL content included), keeps a timestamped
 backup next to it, verifies the copy, upgrades its schema, copies the Open
 Banking sessions file and private key, and writes a marker so the legacy notice
-stops. The original files are left untouched for the user to delete.
+stops. migrate-data itself never changes the legacy files; but running this
+version before migrate-data upgrades the legacy DB in place (legacy mode), after
+copying it to ``<data dir>/backups/finanse-legacy-pre-*.db``. The result says so
+and names that clean copy, so the user can delete ``data/`` without losing it.
 """
 
 from __future__ import annotations
@@ -35,6 +38,10 @@ class MigrationResult:
     tables: dict[str, int]
     copied: list[Path] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    # The legacy DB had already been upgraded in place by this version (legacy mode)...
+    upgraded_in_place: bool = False
+    # ...and this is its copy from before that upgrade, in the data dir (None: none found).
+    pre_upgrade_backup: Path | None = None
 
 
 def _chmod_private(path: Path) -> None:
@@ -80,6 +87,31 @@ def _integrity_ok(db: Path) -> bool:
         conn.close()
 
 
+def _has_alembic_version(db: Path) -> bool:
+    """An upstream database never has Alembic's table: this version upgraded it."""
+    conn = sqlite3.connect(db)
+    try:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='alembic_version'"
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def _pre_upgrade_copy(legacy_dir: Path, target: Path) -> Path | None:
+    """The oldest copy of the legacy DB from before an in-place upgrade, made to live
+    in the data dir (a copy kept under ``<repo>/data/backups`` is copied over)."""
+    copies = paths.legacy_upgrade_backups(legacy_dir, target)
+    if not copies:
+        return None
+    oldest = copies[0]
+    backups = target / "backups"
+    if oldest.parent.resolve() == backups.resolve():
+        return oldest
+    name = oldest.name.replace("finanse-pre-", paths.LEGACY_PRE_UPGRADE_PREFIX, 1)
+    return backup_sqlite(oldest, backups / name)
+
+
 def _remove_db(path: Path) -> None:
     for suffix in ("", "-wal", "-shm", "-journal"):
         Path(f"{path}{suffix}").unlink(missing_ok=True)
@@ -113,6 +145,8 @@ def migrate_legacy_data(
         replaced_backup = backup_sqlite(dst, backups / f"finanse-replaced-{stamp}.db")
 
     paths.ensure_private_dir(target)
+    upgraded_in_place = _has_alembic_version(src)
+    pre_upgrade = _pre_upgrade_copy(legacy_dir, target) if upgraded_in_place else None
     backup = backup_sqlite(src, backups / f"finanse-legacy-{stamp}.db")
     tmp = dst.with_name(dst.name + ".migrating")
     _remove_db(tmp)
@@ -134,7 +168,8 @@ def migrate_legacy_data(
         engine.dispose()
 
     result = MigrationResult(
-        source=src, database=dst, backup=backup, replaced_backup=replaced_backup, tables=counts
+        source=src, database=dst, backup=backup, replaced_backup=replaced_backup, tables=counts,
+        upgraded_in_place=upgraded_in_place, pre_upgrade_backup=pre_upgrade,
     )
     for name in AUX_FILES:
         legacy_file, new_file = legacy_dir / name, target / name
@@ -154,6 +189,8 @@ def migrate_legacy_data(
                 "source": str(src),
                 "migrated_at": (now or dt.datetime.now(dt.UTC)).isoformat(),
                 "backup": str(backup),
+                "upgraded_in_place": upgraded_in_place,
+                "pre_upgrade_backup": str(pre_upgrade) if pre_upgrade else None,
                 "copied": [p.name for p in result.copied],
             },
             indent=2,

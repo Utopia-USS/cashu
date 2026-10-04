@@ -5,6 +5,10 @@ export const pln0 = new Intl.NumberFormat("pl-PL", {
 export const cur = (v: number | null | undefined, c = "PLN"): string =>
   v == null ? "—" : new Intl.NumberFormat("pl-PL", { style: "currency", currency: c }).format(v);
 
+/** Whole units in currency `c` (chart axes): cur0(400000, "EUR") -> "400 000 €". */
+export const cur0 = (v: number, c = "PLN"): string =>
+  new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, maximumFractionDigits: 0 }).format(v);
+
 export const dtFmt = new Intl.DateTimeFormat("pl-PL", {
   day: "numeric", month: "short", year: "numeric",
 });

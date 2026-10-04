@@ -122,3 +122,45 @@ def test_module_sub_apps_mirror_the_top_level_commands(run, db_engine):
     assert "import-csv" in run("budget", "--help").output
     assert "add-position" in run("assets", "--help").output
     assert "Enable Banking" in run("budget", "eb", "--help").output
+
+
+def test_loans_add_never_takes_over_a_same_named_property(run, db_engine):
+    """R-01: a loan named like a property is refused; --account picks an account explicitly."""
+    run("profiles", "add", "Jan")
+    run("-p", "jan", "add-position", "Dom Test", "--type", "property", "--value", "800000")
+    run("-p", "jan", "add-position", "Kredyt Test", "--type", "mortgage", "--value", "1")
+    res = run("-p", "jan", "loans", "add", "Dom Test", "--type", "mortgage",
+              "--principal", "300000", "--rate", "6", ok=False)
+    assert res.exit_code == 2 and "property" in res.output
+    with Session(db_engine) as s:
+        assert s.exec(select(Loan)).all() == []
+    out = run("-p", "jan", "loans", "add", "--account", "Kredyt Test",
+              "--principal", "300000", "--rate", "6").output
+    assert "Loan 'Kredyt Test' (loan id 1, account id 2)" in out
+    res = run("-p", "jan", "loans", "add", "--account", "1", "--principal", "1", "--rate", "1",
+              ok=False)
+    assert res.exit_code == 2 and "mortgage/loan" in res.output
+
+
+def test_profile_option_on_a_fresh_db_never_writes_into_default(run, db_engine):
+    """R-02: `--profile X` names a profile that must exist; nothing is created."""
+    res = run("--profile", "marta", "add-position", "Konto Test", "--type", "savings",
+              "--value", "100", ok=False)
+    assert res.exit_code == 1
+    assert "No profile 'marta'" in res.stderr and "finanse profiles add" in res.stderr
+    with Session(db_engine) as s:
+        assert s.exec(select(Profile)).all() == []
+    assert _accounts(db_engine) == []
+    run("profiles", "add", "Marta")
+    run("--profile", "marta", "add-position", "Konto Test", "--type", "savings", "--value", "100")
+    assert _accounts(db_engine) == [("marta", "Konto Test")]
+
+
+def test_configured_default_profile_on_a_fresh_db_is_created_under_its_slug(
+    run, db_engine, monkeypatch
+):
+    from finanse.config import settings
+
+    monkeypatch.setattr(settings, "profile", "marta")
+    run("add-position", "Konto Test", "--type", "savings", "--value", "100")
+    assert _accounts(db_engine) == [("marta", "Konto Test")]

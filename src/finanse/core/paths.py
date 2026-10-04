@@ -20,6 +20,7 @@ used automatically (only reported), so tests can never touch them.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from platformdirs import user_data_dir
@@ -110,6 +111,35 @@ def migration_marker_path() -> Path:
     return data_dir() / MIGRATION_MARKER
 
 
+# Copy of the legacy repo-dir DB taken before this version upgrades it in place
+# (legacy mode); kept in the data dir, outside the repo's data/ (see legacy_notice).
+LEGACY_PRE_UPGRADE_PREFIX = "finanse-legacy-pre-"
+_STAMP = re.compile(r"(\d{8}-\d{6})\.db$")
+
+
+def is_legacy_db(file: Path) -> bool:
+    """True when ``file`` is the legacy ``<repo>/data/finanse.db``."""
+    return file.resolve() == legacy_db_path().resolve()
+
+
+def legacy_upgrade_backups(
+    legacy_dir: Path | None = None, target_dir: Path | None = None
+) -> list[Path]:
+    """Copies of the legacy DB from before this version upgraded it in place, oldest
+    first: ``<data dir>/backups/finanse-legacy-pre-*.db``, plus the
+    ``<repo>/data/backups/finanse-pre-*.db`` files earlier builds wrote."""
+    legacy_dir = legacy_dir or LEGACY_DIR
+    backups = (target_dir / "backups") if target_dir else backups_dir()
+    found = list(backups.glob(f"{LEGACY_PRE_UPGRADE_PREFIX}*.db"))
+    found += list((legacy_dir / "backups").glob("finanse-pre-*.db"))
+
+    def stamp(path: Path) -> str:
+        m = _STAMP.search(path.name)
+        return m.group(1) if m else path.name
+
+    return sorted(found, key=stamp)
+
+
 def legacy_notice() -> str | None:
     """A user-facing notice when legacy data exists and was not migrated."""
     legacy = legacy_db_path()
@@ -117,9 +147,17 @@ def legacy_notice() -> str | None:
         return None
     target = data_dir()
     if legacy_mode():
+        copies = legacy_upgrade_backups()
+        if copies:
+            return (
+                f"Using the legacy database at {legacy}; this version upgraded it in place. "
+                f"Its copy from before the upgrade is {copies[0]}. Run `finanse migrate-data` "
+                f"to copy your data to {target}."
+            )
         return (
-            f"Using the legacy database at {legacy}. Run `finanse migrate-data` to copy "
-            f"your data to {target} (the original stays untouched as a backup)."
+            f"Using the legacy database at {legacy}. Run `finanse migrate-data` to copy your "
+            f"data to {target}. Until then this version upgrades it in place on first use, "
+            f"after saving a copy of it in {backups_dir()}."
         )
     if (target / DB_FILENAME).exists():
         return (

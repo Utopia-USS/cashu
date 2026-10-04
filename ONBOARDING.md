@@ -43,10 +43,13 @@ set `FINANSE_DATA_DIR` to use another folder). Run `pytest`: all tests should pa
 > 🔀 **Upgrading an older checkout?** If the user already has `data/finanse.db`
 > from an earlier version, every command prints a notice and keeps using it. Run
 > `finanse migrate-data`: it copies the database, Open Banking sessions and key
-> into the data dir, keeps a timestamped backup and leaves the originals in
-> `data/` untouched (the user deletes them after checking the dashboard). The
-> schema upgrade (also automatic on any command) backs the database up into
-> `backups/` first and puts all existing data into one profile, `default`.
+> into the data dir and keeps a timestamped backup (the user deletes `data/`
+> after checking the dashboard). The schema upgrade (also automatic on any
+> command) backs the database up into `backups/` first and puts all existing data
+> into one profile, `default`. Run before `migrate-data`, it upgrades
+> `data/finanse.db` in place; the copy from before that upgrade goes to the data
+> dir (`backups/finanse-legacy-pre-*.db`), and the notice and `migrate-data` say
+> where it is.
 
 ---
 
@@ -222,7 +225,8 @@ browser answers 401, which is expected.
 
 > Dev mode with hot-reload (to edit the dashboard): `finanse serve` plus, separately,
 > `cd frontend && npm run dev` (Vite :5173, proxies to the API and adds the token
-> from `<data dir>/api-token`).
+> from `<data dir>/api-token`, only for same-origin requests from the dev page:
+> cross-site requests get a 403 from Vite, see `frontend/README.md`).
 
 ---
 

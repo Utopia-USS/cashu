@@ -1,5 +1,6 @@
 // Profile switcher in the header: ProfilePill + Menu (profiles with a facts line,
-// Nowy profil…, Ustawienia profilu). Facts of inactive profiles load when it opens.
+// Nowy profil…, Ustawienia profilu). Facts of inactive profiles load on every open
+// (data can change outside the app: CLI, another tab), the last ones stay meanwhile.
 import { useEffect, useState } from "react";
 import { nAccounts, nModules } from "../format";
 import { Menu, MenuHead, MenuItem, MenuSep } from "../ui";
@@ -34,10 +35,12 @@ export function ProfileMenu({ profiles, active, activeNetworth, onSelect, onNew,
 
   useEffect(() => {
     if (!open) return;
+    let alive = true;
     for (const p of profiles) {
-      if (p.slug === active.slug || facts[p.slug]) continue;
-      getNetworth(p.slug).then((nw) => setFacts((f) => ({ ...f, [p.slug]: factsOf(nw) }))).catch(() => {});
+      if (p.slug === active.slug) continue;
+      getNetworth(p.slug).then((nw) => alive && setFacts((f) => ({ ...f, [p.slug]: factsOf(nw) }))).catch(() => {});
     }
+    return () => { alive = false; };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const line = (p: Profile) => {

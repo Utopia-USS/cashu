@@ -40,7 +40,8 @@ def set_loan(
     Payment matching (``payment_iban`` / ``payment_text``) is only changed when
     given.
     """
-    get_account(session, account_id, profile_id=profile_id)  # ValueError if not ours
+    account = get_account(session, account_id, profile_id=profile_id)  # ValueError if not ours
+    _require_loan_type(account)
     loan = session.exec(select(Loan).where(Loan.account_id == account_id)).first()
     if loan is None:
         loan = Loan(account_id=account_id, principal=Decimal(0), annual_rate=Decimal(0),
@@ -60,14 +61,85 @@ def set_loan(
     return loan
 
 
+def is_loan_account(account: Account) -> bool:
+    return str(account.type) in LOAN_TYPES
+
+
+def _describe(account: Account) -> str:
+    return f"'{account.name}' (id {account.id}, {account.type}, {account.bank})"
+
+
+def _require_loan_type(account: Account) -> None:
+    if not is_loan_account(account):
+        raise ValueError(
+            f"Account {_describe(account)} is not a loan: loan terms attach only to "
+            "mortgage/loan accounts."
+        )
+
+
+def _ambiguous(label: str, candidates: list[Account]) -> ValueError:
+    listing = "; ".join(_describe(a) for a in candidates)
+    return ValueError(
+        f"'{label}' is ambiguous, several mortgage/loan accounts match: {listing}. "
+        "Pick one with --account ID."
+    )
+
+
+def _account_by_reference(session: Session, pid: int, ref: int | str) -> Account:
+    """The account a loan should attach to, named explicitly by id or exact name."""
+    text = str(ref).strip()
+    if isinstance(ref, int) or text.isdigit():
+        account = get_account(session, int(text), profile_id=pid)
+        _require_loan_type(account)
+        return account
+    named = list(session.exec(
+        select(Account).where(Account.profile_id == pid, Account.name == text).order_by(Account.id)
+    ).all())
+    if not named:
+        raise ValueError(f"No account named '{text}' in this profile.")
+    loanish = [a for a in named if is_loan_account(a)]
+    if len(loanish) > 1:
+        raise _ambiguous(text, loanish)
+    if not loanish:
+        _require_loan_type(named[0])
+    return loanish[0]
+
+
+def _account_for_new_loan(session: Session, pid: int, name: str) -> Account | None:
+    """The existing loan account a named loan updates, None when it must be created.
+
+    Only a mortgage/loan account with exactly this name qualifies; a property,
+    savings or vehicle account never does (its value would be replaced by the
+    schedule). When the manual key for this name is held by such an account, the
+    name is refused instead of reused."""
+    key = f"manual:{name}"
+    rows = session.exec(
+        select(Account).where(Account.profile_id == pid).order_by(Account.id)
+    ).all()
+    loanish = [a for a in rows if a.name == name and is_loan_account(a)]
+    if len(loanish) > 1:
+        raise _ambiguous(name, loanish)
+    if loanish:
+        return loanish[0]
+    taken = next((a for a in rows if a.bank == MANUAL and a.external_id == key), None)
+    if taken is not None:
+        raise ValueError(
+            f"An account {_describe(taken)} already uses the name '{name}'; loan terms attach "
+            "only to mortgage/loan accounts. Choose another loan name, or pass --account with "
+            "the id of a mortgage/loan account."
+        )
+    return None
+
+
 def add_loan(
     session: Session,
     *,
-    name: str,
     principal,
     annual_rate,
     term_months: int,
     start_date: date,
+    name: str | None = None,
+    account: int | str | None = None,
     origination_date: date | None = None,
     type: str = AccountType.LOAN,
     currency: str = "PLN",
@@ -75,22 +147,37 @@ def add_loan(
     payment_text: str | None = None,
     profile_id: int | None = None,
 ) -> Loan:
-    """Create (or update) a named loan in one step: its liability account plus the
-    terms. Re-running with the same name updates that loan."""
+    """Create (or update) a loan in one step: its liability account plus the terms.
+
+    ``name``: a new loan (a manual account of ``type`` is created), or the exact
+    name of the profile's one mortgage/loan account of that name (re-running
+    updates it). ``account``: attach to an existing mortgage/loan account, by id
+    or exact name. Never attaches to another account type; an ambiguous name is
+    an error that lists the candidates."""
     if str(type) not in LOAN_TYPES:
         raise ValueError(f"A loan account is 'mortgage' or 'loan', not '{type}'")
+    if (name is None) == (account is None):
+        raise ValueError(
+            "Give the loan NAME (a new loan, or an existing loan account of that name) "
+            "or --account (an existing mortgage/loan account), not both."
+            if name is not None else
+            "Give the loan NAME or --account (an existing mortgage/loan account)."
+        )
     pid = profiles.scope(session, profile_id, create=True)
-    account = get_or_create_account(
-        session,
-        bank=MANUAL,
-        name=name,
-        external_id=f"manual:{name}",
-        type=type,
-        currency=currency,
-        profile_id=pid,
-    )
+    if account is not None:
+        target = _account_by_reference(session, pid, account)
+    else:
+        target = _account_for_new_loan(session, pid, name) or get_or_create_account(
+            session,
+            bank=MANUAL,
+            name=name,
+            external_id=f"manual:{name}",
+            type=type,
+            currency=currency,
+            profile_id=pid,
+        )
     return set_loan(
-        session, account.id, principal, annual_rate, term_months, start_date, origination_date,
+        session, target.id, principal, annual_rate, term_months, start_date, origination_date,
         profile_id=pid, payment_iban=payment_iban, payment_text=payment_text,
     )
 

@@ -151,7 +151,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
               </div>
             </div>
             <div className="muted" style={{ fontSize: 12.5 }}>
-              Waluta bazowa służy tylko do widoków przeliczonych (kurs NBP z datą). Dane są przechowywane w walutach kont.
+              Waluta bazowa to waluta nagłówka wartości netto. Dane są przechowywane w walutach kont, a inne waluty są pokazywane osobno (bez przeliczania).
             </div>
           </form>
         )}

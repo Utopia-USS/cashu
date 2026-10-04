@@ -80,9 +80,12 @@ profile; run commands for it with `finanse --profile marta ...` (or set
 **Upgrading from a version that kept the database in `data/`?** finanse keeps
 using it and says so on every command until you run `finanse migrate-data`, which
 copies the database (plus Open Banking sessions and key) into the data dir with a
-timestamped backup and leaves the originals untouched. An existing database is
-upgraded automatically (with a backup in `backups/` first): all its data becomes
-the `default` profile, with the modules it already uses switched on.
+timestamped backup. An existing database is upgraded automatically (with a backup
+in `backups/` first): all its data becomes the `default` profile, with the modules
+it already uses switched on. If you run finanse before `migrate-data`, that upgrade
+happens in place on `data/finanse.db`; its copy from before the upgrade is kept in
+the data dir (`backups/finanse-legacy-pre-*.db`) and the notice and `migrate-data`
+name it, so deleting `data/` afterwards never loses it.
 
 ---
 

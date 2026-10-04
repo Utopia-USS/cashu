@@ -244,3 +244,33 @@ def test_serve_reload_hands_token_to_worker(fake_uvicorn, monkeypatch):
     assert call["reload"] is True
     assert os.environ[security.TOKEN_ENV] == call["token"]
     assert os.environ["FINANSE_PORT"] == "8633"
+
+
+# --------------------------------------------------------------------------- #
+# R-12: anti-framing headers (clickjacking) on every response
+# --------------------------------------------------------------------------- #
+
+def _assert_no_framing(response) -> None:
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+
+
+@pytest.mark.parametrize(
+    ("path", "headers", "status"),
+    [
+        ("/", {}, 200),  # the dashboard shell (carries the token meta tag)
+        ("/static/index.html", {}, 200),
+        ("/api/system", AUTH, 200),
+        ("/api/system", {}, 401),  # rejected by the middleware itself
+    ],
+)
+def test_every_response_forbids_framing(client, path, headers, status):
+    r = client.get(path, headers=headers)
+    assert r.status_code == status
+    _assert_no_framing(r)
+
+
+def test_wrong_host_response_forbids_framing_too(client):
+    r = client.get("/", headers={"Host": "attacker.example:8500"})
+    assert r.status_code == 400
+    _assert_no_framing(r)

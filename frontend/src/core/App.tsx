@@ -2,14 +2,23 @@
 // first-launch wizard (no profile yet) or the shell.
 import { useCallback, useEffect, useState } from "react";
 import { useAsync } from "../hooks";
-import { Skeleton, SkeletonChart, SkeletonKpis, ToastProvider } from "../ui";
-import { getModules, getProfiles, getSystem, type Profile } from "./api";
+import { Notice, Skeleton, SkeletonChart, SkeletonKpis, ToastProvider } from "../ui";
+import { getModules, getProfiles, getSystem, onAuthLost, type Profile } from "./api";
 import { Shell } from "./Shell";
 import { Wizard } from "./Wizard";
 
 export function App() {
+  const [authLost, setAuthLost] = useState(false);
+  useEffect(() => onAuthLost(() => setAuthLost(true)), []);
   return (
     <ToastProvider>
+      {authLost && (
+        <div className="wrap" style={{ paddingBottom: 0 }}>
+          <Notice tone="warn" action={<button className="btn primary" onClick={() => location.reload()}>Odśwież</button>}>
+            <b>Serwer finanse został uruchomiony ponownie.</b> Ta karta ma nieaktualny token dostępu - odśwież stronę, żeby dalej pracować.
+          </Notice>
+        </div>
+      )}
       <Root />
     </ToastProvider>
   );

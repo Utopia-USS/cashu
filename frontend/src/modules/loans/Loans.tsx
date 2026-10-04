@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Line, Tooltip } from "recharts";
 import { ScrollableChart } from "../../components/ScrollableChart";
 import { useSlug } from "../../core/context";
-import { cssVar, cur, dtFmt, plural } from "../../format";
+import { cssVar, cur, cur0, dtFmt, plural } from "../../format";
 import { useAsync } from "../../hooks";
 import { Empty, Kpi, SkeletonChart, SkeletonKpis, SkeletonTable } from "../../ui";
 import { getLoans, type LoanInfo, loanName } from "./api";
@@ -94,6 +94,7 @@ function LoanDetail({ loan, name }: { loan: LoanInfo; name: string }) {
         }}
         ranges={RANGES}
         fullSpan={spanDays}
+        yTickFormatter={(v) => cur0(v, c)}
         emptyText="Brak harmonogramu dla tego kredytu."
         tooltip={
           <Tooltip

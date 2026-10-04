@@ -1,7 +1,7 @@
 // The shell: header with the profile switcher, module tab groups, Ustawienia, and the
 // page of the current view. Navigation state lives in the URL hash
 // (#/{slug}/{view}) and the last view per profile is remembered.
-import { Fragment, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { nAccounts, nModules } from "../format";
 import { useAsync } from "../hooks";
 import { Notice, SkeletonChart, SkeletonKpis, useToast } from "../ui";
@@ -16,6 +16,7 @@ import { SetupPage } from "./SetupPage";
 import { pathToView, type Shell as ShellState, ShellContext, viewToPath } from "./context";
 import { useTheme } from "./theme";
 import type { ModuleCtx, View } from "./types";
+import { decodeSegment } from "./util";
 import { Wizard } from "./Wizard";
 
 const PROFILE_KEY = "finanse.profile";
@@ -30,7 +31,11 @@ const OVERVIEW: View = { kind: "tab", tab: "overview" };
 function parseHash(): { slug?: string; view: View | null } {
   const m = location.hash.match(/^#\/([^/]+)(?:\/(.*))?$/);
   if (!m) return { view: null };
-  return { slug: decodeURIComponent(m[1]), view: pathToView(m[2]) };
+  // A malformed escape (typo, truncated link) is read as "no profile in the URL"
+  // instead of throwing during render and blanking the page.
+  const slug = decodeSegment(m[1]);
+  if (slug === null) return { view: null };
+  return { slug, view: pathToView(m[2]) };
 }
 
 export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }: {
@@ -55,11 +60,14 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   });
   const [wizard, setWizard] = useState(false);
   const [nonce, setNonce] = useState(0);
-  const [syncing, setSyncing] = useState(false);
+  // Profiles whose resync is running: a sync belongs to the profile it was started for.
+  const [syncing, setSyncing] = useState<ReadonlySet<string>>(new Set());
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const profile = profiles.find((p) => p.slug === slug) ?? profiles[0];
+  const activeSlug = useRef(profile.slug);
+  activeSlug.current = profile.slug;
   const enabled = useMemo(() => orderModules(profile.modules.filter((m) => m.enabled)), [profile]);
 
   // URL hash + last view per profile follow the state.
@@ -96,14 +104,19 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
     }
   }, [initialSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Shared per-profile data. Tagged with the slug so a profile switch never renders the
-  // previous profile's numbers while the new ones load (useAsync keeps stale data).
-  const tag = <T,>(s: string, p: Promise<T>) => p.then((d) => ({ s, d }));
+  // Shared per-profile data. Results AND errors are tagged with the slug, so a profile
+  // switch never renders the previous profile's numbers or error banner while the new
+  // ones load (useAsync keeps stale data).
+  type Tagged<T> = { s: string; d: T | null; e: string | null };
+  const tag = <T,>(s: string, p: Promise<T>): Promise<Tagged<T>> =>
+    p.then((d) => ({ s, d, e: null }), (e: Error) => ({ s, d: null, e: e.message }));
   const summaryQ = useAsync(() => tag(profile.slug, getSummary(profile.slug)), [profile.slug, nonce]);
   const networthQ = useAsync(() => tag(profile.slug, getNetworth(profile.slug)), [profile.slug, nonce]);
   const catsQ = useAsync(() => tag(profile.slug, getCategories(profile.slug)), [profile.slug]);
-  const own = <T,>(q: { data: { s: string; d: T } | null; error: string | null }) =>
-    ({ data: q.data?.s === profile.slug ? q.data.d : null, error: q.error });
+  const own = <T,>(q: { data: Tagged<T> | null; error: string | null }) => {
+    const mine = q.data?.s === profile.slug ? q.data : null;
+    return { data: mine?.d ?? null, error: mine?.e ?? q.error };
+  };
   const summaryS = own(summaryQ), networthS = own(networthQ), catsS = own(catsQ);
 
   const go = useCallback((v: View) => { setView(v); window.scrollTo({ top: 0 }); }, []);
@@ -133,17 +146,30 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   const budgetOn = enabled.some((m) => m.id === "budget");
 
   const resync = async () => {
-    setSyncing(true); setErr(null); setSyncMsg(null);
+    const s = profile.slug, name = profile.name;
+    const here = () => activeSlug.current === s; // still on the profile the sync is for?
+    setSyncing((cur) => new Set(cur).add(s)); setErr(null); setSyncMsg(null);
     try {
-      const res = await postResync(profile.slug);
-      if (!res.ok) { setErr(res.error || "Synchronizacja nieudana."); return; }
-      let msg = `wgrano ${res.inserted} nowych transakcji`;
-      if (res.pairs) msg += `, ${res.pairs} przelewów wewn.`;
-      if (res.errors?.length) msg += ` · ${res.errors.length} konto/a pominięte (limit banku)`;
-      setSyncMsg(msg);
-      refresh();
-    } catch (e) { setErr((e as Error).message); } finally { setSyncing(false); }
+      const res = await postResync(s);
+      let msg: string;
+      if (!res.ok) msg = res.error || "Synchronizacja nieudana.";
+      else {
+        msg = `wgrano ${res.inserted} nowych transakcji`;
+        if (res.pairs) msg += `, ${res.pairs} przelewów wewn.`;
+        if (res.errors?.length) msg += ` · ${res.errors.length} konto/a pominięte (limit banku)`;
+      }
+      // The header shows the result only on its own profile; elsewhere a toast names it.
+      if (!here()) toast(`${name}: ${msg}`, 5000);
+      else if (!res.ok) setErr(msg);
+      else { setSyncMsg(msg); refresh(); }
+    } catch (e) {
+      if (here()) setErr((e as Error).message);
+      else toast(`${name}: ${(e as Error).message}`, 5000);
+    } finally {
+      setSyncing((cur) => { const next = new Set(cur); next.delete(s); return next; });
+    }
   };
+  const syncingHere = syncing.has(profile.slug);
 
   const asof = networthS.data?.accounts.map((a) => a.as_of).filter(Boolean).sort().slice(-1)[0];
   const modCount = nModules(enabled.length);
@@ -201,9 +227,9 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {networthS.data && <span className="tag">{nAccounts(networthS.data.accounts.length)}</span>}
             {budgetOn && (
-              <button className="btn" onClick={resync} disabled={syncing || !bankAccounts.length}
+              <button className="btn" onClick={resync} disabled={syncingHere || !bankAccounts.length}
                 title={bankAccounts.length ? "Pobierz nowe transakcje z banków (Enable Banking)" : "Brak kont bankowych do synchronizacji"}>
-                {syncing ? "Synchronizuję…" : "↻ Synchronizuj"}
+                {syncingHere ? "Synchronizuję…" : "↻ Synchronizuj"}
               </button>
             )}
           </div>
