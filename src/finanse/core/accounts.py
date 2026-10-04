@@ -15,7 +15,7 @@ from decimal import Decimal
 from sqlmodel import Session, select
 
 from . import profiles
-from .models import Account, AccountType, Balance, Source
+from .models import Account, AccountType, Balance, Source, utcnow
 from .text import iban_key, normalize_iban
 
 
@@ -104,6 +104,7 @@ def upsert_balance(
     ).first()
     if existing:
         existing.amount = amount
+        existing.created_at = utcnow()  # = when this figure was recorded (see loans)
         session.add(existing)
         return
     session.add(

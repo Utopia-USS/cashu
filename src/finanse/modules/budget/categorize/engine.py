@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+from finanse.core.modules import PaymentPattern
+
 from ..ingestion.normalize import iban_key, merchant_key, normalize_text
 from ..models import CategoryRule, Transaction
 from . import taxonomy
@@ -15,12 +19,14 @@ def categorize(
     own_ibans: set[str],
     rules: dict[str, CategoryRule],
     subscription_keys: set[str],
+    patterns: Sequence[PaymentPattern] = (),
 ) -> tuple[str, str]:
     """Return (category_key, source) for a transaction.
 
     source ∈ {transfer, manual, llm, keyword, subscription, default}. A "default"
     source marks an expense we couldn't confidently classify — the LLM pass
-    targets exactly those.
+    targets exactly those. ``patterns``: payments other modules own (e.g. a loan's
+    lender account), checked for outflows before the phrase and seed rules.
     """
     # 1. Structural: a move between the user's own accounts, or an FX conversion
     #    to/from the user's own currency accounts — neither is spend/income.
@@ -49,11 +55,17 @@ def categorize(
             return "income_salary", "keyword"
         return "income_other", "default"
 
-    # 4. Expense: installment/rent phrase anywhere in the text → seed keyword →
-    #    recurring signal → uncategorized.
+    # 4. Expense: a payment a module owns (loan installment to its lender account)
+    #    → installment/rent phrase anywhere in the text → seed keyword → recurring
+    #    signal → uncategorized.
     text = normalize_text(
         " ".join(f for f in (txn.reference, txn.description, txn.counterparty_name) if f)
     )
+    for p in patterns:
+        if (p.counterparty_iban and cp and iban_key(p.counterparty_iban) == cp) or (
+            p.text and p.text in text
+        ):
+            return p.category, "keyword"
     phrase = taxonomy.apply_text_rules(text)
     if phrase:
         return phrase, "keyword"

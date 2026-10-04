@@ -1,61 +1,35 @@
-"""Loans API routes."""
+"""Loans API routes: every loan of the profile, and the legacy single-loan view."""
 
 from __future__ import annotations
 
 from datetime import date
 
 from fastapi import APIRouter
-from sqlmodel import select
 
-from finanse.core.api import CurrentProfile, f
+from finanse.core.api import CurrentProfile
 from finanse.core.db import get_session
-from finanse.core.models import Account
-from finanse.core.profiles import account_ids_query
 
-from . import amortization
-from .models import Loan
+from .service import list_loans, loan_summary
 
 router = APIRouter()
 
 
+@router.get("/loans")
+def loans(profile: CurrentProfile) -> list[dict]:
+    """Every loan of the profile (oldest first), each in the ``/loan`` shape plus
+    ``id``, ``account_id``, ``name`` (the account name) and ``type``."""
+    today = date.today()  # noqa: DTZ011 - naive local date, like the booking dates
+    with get_session() as s:
+        return [loan_summary(s, loan, acc, today) for loan, acc in list_loans(s, profile.id)]
+
+
 @router.get("/loan")
 def loan_info(profile: CurrentProfile) -> dict:
+    """The profile's first loan (upstream shape, kept for the legacy dashboard)."""
+    today = date.today()  # noqa: DTZ011 - naive local date, like the booking dates
     with get_session() as s:
-        loan = s.exec(
-            select(Loan).where(Loan.account_id.in_(account_ids_query(profile.id))).order_by(Loan.id)
-        ).first()
-        if loan is None:
+        rows = list_loans(s, profile.id)
+        if not rows:
             return {"has_loan": False}
-        acc = s.get(Account, loan.account_id)
-        summ = amortization.summarize(
-            loan.principal, loan.annual_rate, loan.term_months, loan.start_date, date.today(),
-            origination_date=loan.origination_date,
-        )
-    return {
-        "has_loan": True,
-        "currency": acc.currency if acc else "PLN",
-        "principal": f(summ.principal),
-        "annual_rate": f(summ.annual_rate),
-        "term_months": summ.term_months,
-        "monthly_payment": f(summ.monthly_payment),
-        "start_date": summ.start_date.isoformat(),
-        "outstanding": f(summ.outstanding),
-        "months_elapsed": summ.months_elapsed,
-        "paid_principal": f(summ.paid_principal),
-        "paid_interest": f(summ.paid_interest),
-        "remaining_interest": f(summ.remaining_interest),
-        "total_interest": f(summ.total_interest),
-        "payoff_date": summ.payoff_date.isoformat(),
-        "series": [{"date": r.date.isoformat(), "balance": f(r.balance)} for r in summ.schedule],
-        "schedule": [
-            {
-                "n": r.n,
-                "date": r.date.isoformat(),
-                "payment": f(r.payment),
-                "interest": f(r.interest),
-                "principal": f(r.principal),
-                "balance": f(r.balance),
-            }
-            for r in summ.schedule
-        ],
-    }
+        loan, acc = rows[0]
+        return loan_summary(s, loan, acc, today)

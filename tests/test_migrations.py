@@ -126,10 +126,12 @@ def test_models_have_no_unmigrated_changes(tmp_path):
 def test_existing_upstream_db_is_adopted_not_recreated(tmp_path):
     path = make_upstream_db(tmp_path / "upstream.db")  # how the upstream created every DB
     engine = _engine(path)
-    untouched = ("transactions", "balances", "loans", "depreciations")  # 0002 keeps these
+    untouched = ("transactions", "balances", "depreciations")  # no revision rebuilds these
+    loan_cols = "id, account_id, principal, annual_rate, term_months, start_date, origination_date"
     with engine.connect() as c:
         rootpages = dict(c.exec_driver_sql("SELECT name, rootpage FROM sqlite_master").all())
         before = {t: c.exec_driver_sql(f"SELECT * FROM {t} ORDER BY id").fetchall() for t in untouched}
+        loans_before = c.exec_driver_sql(f"SELECT {loan_cols} FROM loans ORDER BY id").fetchall()
     assert migrations.current_revision(engine) is None
 
     migrations.upgrade_to_head(engine)
@@ -139,6 +141,7 @@ def test_existing_upstream_db_is_adopted_not_recreated(tmp_path):
         after = dict(c.exec_driver_sql("SELECT name, rootpage FROM sqlite_master").all())
         for t in untouched:
             assert c.exec_driver_sql(f"SELECT * FROM {t} ORDER BY id").fetchall() == before[t]
+        assert c.exec_driver_sql(f"SELECT {loan_cols} FROM loans ORDER BY id").fetchall() == loans_before
     # same b-tree root pages = these tables and their indexes were not dropped and recreated
     kept = {k: v for k, v in rootpages.items() if k in untouched or k.startswith(
         tuple(f"ix_{t}_" for t in untouched))}

@@ -14,7 +14,7 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from finanse.core import profiles
+from finanse.core import modules, profiles
 from finanse.core.accounts import own_ibans as _own_ibans
 from finanse.core.accounts import profile_accounts
 from finanse.core.profiles import account_ids_query
@@ -224,10 +224,19 @@ class RecurringCandidate:
 
 
 # Monthly, same-amount outflows that are NOT subscriptions: rent and housing fees,
-# loan installments, bank fees, cash withdrawals, taxes and own-account moves.
+# bank fees, cash withdrawals, taxes and own-account moves; modules add theirs
+# (``ModuleSpec.not_subscription_categories``, e.g. loans: "loans").
 NOT_SUBSCRIPTION_CATEGORIES = {
-    "housing", "loans", "fees", "cash", "taxes", "transfer", "cash_withdrawal",
+    "housing", "fees", "cash", "taxes", "transfer", "cash_withdrawal",
 }
+
+
+def not_subscription_categories() -> set[str]:
+    from finanse.core import modules
+
+    return NOT_SUBSCRIPTION_CATEGORIES | modules.not_subscription_categories()
+
+
 # Per-transaction category decisions the deterministic engine cannot reproduce.
 _TXN_DECIDED_SOURCES = {"manual_txn", "llm_full", "llm_fallback", "cash_leg"}
 
@@ -260,13 +269,17 @@ def detect_recurring(
     pid = profiles.scope(session, profile_id)
     own = _own_ibans(session, pid)
     rules = load_rules(session, pid)
+    patterns = modules.payment_patterns(session, pid)
+    excluded = not_subscription_categories()
 
     def not_a_subscription(t: Transaction) -> bool:
         if t.category_source in _TXN_DECIDED_SOURCES and t.category:
             cat = t.category
         else:
-            cat, _src = engine.categorize(t, own_ibans=own, rules=rules, subscription_keys=set())
-        return cat in NOT_SUBSCRIPTION_CATEGORIES
+            cat, _src = engine.categorize(
+                t, own_ibans=own, rules=rules, subscription_keys=set(), patterns=patterns
+            )
+        return cat in excluded
 
     groups: dict[tuple[str, str, str], list[Transaction]] = defaultdict(list)
     q = transactions(pid, Transaction.is_internal_transfer == False)  # noqa: E712

@@ -1,4 +1,6 @@
-"""Loans' net-worth contributor: a loan account is worth its amortized outstanding."""
+"""Loans' net-worth contributor: a loan account is worth what is still owed (the
+amortization schedule, anchored on balances recorded after the terms; see
+``valuation``)."""
 
 from __future__ import annotations
 
@@ -7,27 +9,17 @@ from collections.abc import Mapping
 from sqlmodel import Session, select
 
 from finanse.core.models import Account
-from finanse.core.networth import ComputedValuation, Valuation
+from finanse.core.networth import Valuation
 
-from . import amortization
 from .models import Loan
+from .valuation import loan_valuation
 
 
 class LoansContributor:
     def valuations(
         self, session: Session, accounts: Mapping[int, Account]
     ) -> dict[int, Valuation]:
-        out: dict[int, Valuation] = {}
         if not accounts:
-            return out
+            return {}
         loans = session.exec(select(Loan).where(Loan.account_id.in_(list(accounts)))).all()
-        for loan in loans:
-            rows = amortization.schedule(
-                loan.principal, loan.annual_rate, loan.term_months, loan.start_date
-            )
-            out[loan.account_id] = ComputedValuation(
-                lambda d, rows=rows, orig=loan.origination_date: amortization.outstanding(
-                    rows, d, orig
-                )
-            )
-        return out
+        return {loan.account_id: loan_valuation(session, loan) for loan in loans}

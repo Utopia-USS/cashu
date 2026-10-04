@@ -24,7 +24,7 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
-from finanse.core import profiles
+from finanse.core import modules, profiles
 from finanse.core.accounts import own_ibans
 from finanse.core.models import Account, AccountType
 
@@ -165,6 +165,7 @@ def reclassify_all(
 
     # Fallback (deterministic engine) for any group the model didn't return.
     rules = load_rules(session, pid)
+    patterns = modules.payment_patterns(session, pid)
     income_keys = {c.key for c in taxonomy.CATEGORIES if c.kind == "income"}
 
     def _sign_correct(cat: str, amount: Decimal) -> str:
@@ -192,7 +193,7 @@ def reclassify_all(
                 t.category_source = "llm_full"
             else:
                 t.category, _src = engine.categorize(
-                    t, own_ibans=own, rules=rules, subscription_keys=set()
+                    t, own_ibans=own, rules=rules, subscription_keys=set(), patterns=patterns
                 )
                 t.category_source = "llm_fallback"
             session.add(t)

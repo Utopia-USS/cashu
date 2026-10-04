@@ -13,7 +13,7 @@ from pathlib import Path
 
 from sqlmodel import Session
 
-from finanse.core import profiles
+from finanse.core import modules, profiles
 from finanse.core.accounts import get_or_create_account, own_ibans, upsert_balance
 from finanse.core.models import Account, AccountType, Source
 
@@ -128,6 +128,7 @@ def categorize_all(
     pid = profiles.scope(session, profile_id)
     own = own_ibans(session, pid)
     rules = load_rules(session, pid)
+    patterns = modules.payment_patterns(session, pid)
     subs = {c.counterparty for c in analytics.detect_recurring(session, profile_id=pid)}
     txns = session.exec(transactions(pid)).all()
     cash_ids = cash_account_ids(session, pid)
@@ -138,7 +139,7 @@ def categorize_all(
         if t.category_source in ("manual_txn", "llm_full", "llm_fallback") or t.account_id in cash_ids:
             continue
         t.category, t.category_source = engine.categorize(
-            t, own_ibans=own, rules=rules, subscription_keys=subs
+            t, own_ibans=own, rules=rules, subscription_keys=subs, patterns=patterns
         )
         session.add(t)
 
@@ -174,7 +175,7 @@ def categorize_all(
     for t in txns:
         if t.category_source == "default":
             t.category, t.category_source = engine.categorize(
-                t, own_ibans=own, rules=rules, subscription_keys=subs
+                t, own_ibans=own, rules=rules, subscription_keys=subs, patterns=patterns
             )
             session.add(t)
     return result
@@ -221,7 +222,11 @@ def recategorize_one(session: Session, t: Transaction) -> None:
     pid = session.get(Account, t.account_id).profile_id
     subs = {c.counterparty for c in analytics.detect_recurring(session, profile_id=pid)}
     t.category, t.category_source = engine.categorize(
-        t, own_ibans=own_ibans(session, pid), rules=load_rules(session, pid), subscription_keys=subs
+        t,
+        own_ibans=own_ibans(session, pid),
+        rules=load_rules(session, pid),
+        subscription_keys=subs,
+        patterns=modules.payment_patterns(session, pid),
     )
     session.add(t)
 

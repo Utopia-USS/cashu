@@ -26,7 +26,7 @@ CATEGORIES: list[Category] = [
     Category("fuel", "Paliwo", "expense"),
     Category("car", "Auto", "expense"),
     Category("housing", "Mieszkanie/Czynsz", "expense"),
-    # Loan / mortgage / leasing installments (matched by TEXT_RULES below).
+    # Loan / mortgage / leasing installments (phrases registered by the loans module).
     Category("loans", "Raty kredytów", "expense"),
     Category("utilities", "Media/Telekom", "expense"),
     Category("health", "Zdrowie/Apteka", "expense"),
@@ -570,30 +570,30 @@ SEED_RULES: list[tuple[str, str]] = [
 
 
 # Phrases matched against the WHOLE transaction text (title, description and
-# counterparty), not only the merchant key: a loan installment or rent is usually
-# paid to a bank or a person whose name says nothing about it. Applied to outflows
-# before the merchant seed rules and before the recurring ("subscription") signal,
-# so a monthly installment is never tagged as a subscription. Keep them specific:
-# they override the merchant. Uppercase, diacritics stripped (like merchant_key).
+# counterparty), not only the merchant key: rent is usually paid to a person or a
+# housing association whose name says nothing about it. Applied to outflows before
+# the merchant seed rules and before the recurring ("subscription") signal. Keep
+# them specific: they override the merchant. Uppercase, diacritics stripped (like
+# merchant_key). Other modules add their own phrases through ``ModuleSpec.text_rules``
+# (the loans module: installment phrases -> "loans"); those are checked first.
 TEXT_RULES: list[tuple[str, str]] = [
-    ("RATA KREDYTU", "loans"),
-    ("RATY KREDYTU", "loans"),
-    ("SPLATA KREDYTU", "loans"),
-    ("SPLATA RATY", "loans"),
-    ("RATA POZYCZKI", "loans"),
-    ("SPLATA POZYCZKI", "loans"),
-    ("RATA LEASING", "loans"),
-    ("KREDYT HIPOTECZNY", "loans"),
     ("CZYNSZ", "housing"),
 ]
 
 
+def all_text_rules() -> list[tuple[str, str]]:
+    """Module-registered phrases first, then the budget's own."""
+    from finanse.core import modules
+
+    return [*modules.text_rules(), *TEXT_RULES]
+
+
 def apply_text_rules(text: str) -> str | None:
-    """Return the first TEXT_RULES category whose phrase occurs in `text`
+    """Return the first text-rule category whose phrase occurs in `text`
     (already normalized: uppercase, no diacritics), else None."""
     if not text:
         return None
-    for needle, cat in TEXT_RULES:
+    for needle, cat in all_text_rules():
         if needle in text:
             return cat
     return None
