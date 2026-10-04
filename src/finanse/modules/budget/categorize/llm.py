@@ -232,7 +232,7 @@ def classify_merchants(
                 )
             except Exception as exc:  # noqa: BLE001 — skip batch, keep going
                 print(
-                    f"[finanse.categorize.llm] batch {start // batch_size} "
+                    f"[finanse.modules.budget.categorize.llm] batch {start // batch_size} "
                     f"({len(chunk)} merchants) failed, skipping: "
                     f"{type(exc).__name__}: {exc}",
                     file=sys.stderr,

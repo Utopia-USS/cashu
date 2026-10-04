@@ -9,7 +9,8 @@ has PLN, EUR, NOK, HUF "eKonto walutowe" accounts), then a transaction table:
 
 from __future__ import annotations
 
-from ...models import Bank
+from finanse.core.models import Bank
+
 from .base import ColumnMap, DelimitedImporter, find_account_number
 
 

@@ -3,8 +3,8 @@ source/destination -> counterparty resolution."""
 
 from decimal import Decimal
 
-from finanse.ingestion.csv_import import detect_importer, parse_file
 from finanse.models import Bank
+from finanse.modules.budget.ingestion.csv_import import detect_importer, parse_file
 
 PEKAO_CSV = """Data księgowania;Data waluty;Nadawca / Odbiorca;Adres nadawcy / odbiorcy;Rachunek źródłowy;Rachunek docelowy;Tytułem;Kwota operacji;Waluta;Numer referencyjny;Typ operacji;Kategoria
 14.01.2026;14.01.2026;JAN KOWALSKI;UL. X;'10000000000000000000000001;'10000000000000000000000002;KREDYT;50,00;PLN;'0AN0000009912030;PRZELEW KRAJOWY;Przelew

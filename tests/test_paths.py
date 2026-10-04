@@ -192,7 +192,7 @@ def test_eb_key_file_resolution(layout, tmp_path):
 
 
 def test_eb_sessions_saved_owner_only(layout):
-    from finanse.ingestion.enable_banking import state
+    from finanse.modules.budget.ingestion.enable_banking import state
 
     _legacy, appdata = layout
     state.save_session("mbank", "session-test-1")

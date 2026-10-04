@@ -11,8 +11,11 @@ from typing import Any
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from ...models import Account, AccountType, Bank, ImportBatch, Source, Transaction
-from ...service import get_or_create_account, ingest_transactions, upsert_balance
+from finanse.core.accounts import get_or_create_account, upsert_balance
+from finanse.core.models import Account, AccountType, Bank, Source
+
+from ...models import ImportBatch, Transaction
+from ...service import ingest_transactions
 from ..normalize import RawTransaction
 from .client import EnableBankingClient
 

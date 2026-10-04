@@ -121,17 +121,17 @@ def test_service_layer_works_with_foreign_keys_on(engine, monkeypatch):
     transfers, categorization, cash pool) runs clean with FK enforcement."""
     from conftest import seed_demo
 
-    from finanse import service
+    from finanse.modules.budget import cash as cash_pool
 
     monkeypatch.setattr(db, "engine", engine)
     db.init_db()
     with db.get_session() as s:
         seed_demo(s)
     with db.get_session() as s:
-        cash = service.add_cash_expense(
+        cash = cash_pool.add_cash_expense(
             s, amount="5.00", title="Test", category="groceries", on_date=dt.date(2026, 9, 20)
         )
-        assert service.delete_cash_transaction(s, cash.id)
+        assert cash_pool.delete_cash_transaction(s, cash.id)
     with engine.connect() as conn:
         assert conn.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
         assert conn.exec_driver_sql("SELECT COUNT(*) FROM transactions").scalar() > 0

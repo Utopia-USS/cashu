@@ -3,7 +3,7 @@ import time
 
 import httpx
 
-from finanse.ingestion.enable_banking.callback import wait_for_authorization_code
+from finanse.modules.budget.ingestion.enable_banking.callback import wait_for_authorization_code
 
 
 def _capture_via(redirect: str, verify):

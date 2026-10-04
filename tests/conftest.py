@@ -39,16 +39,20 @@ SEED_MONTHS = (6, 7, 8, 9)
 
 def seed_demo(s: Session) -> None:
     """Fill an empty DB through the project's own service layer."""
-    from finanse import service
-    from finanse.ingestion.normalize import RawTransaction
-    from finanse.ingestion.transfers import match_internal_transfers
+    from finanse.core import accounts
     from finanse.models import AccountType, Bank, Source, Transaction
+    from finanse.modules.assets import service as assets
+    from finanse.modules.budget import cash
+    from finanse.modules.budget import service as budget
+    from finanse.modules.budget.ingestion.normalize import RawTransaction
+    from finanse.modules.budget.ingestion.transfers import match_internal_transfers
+    from finanse.modules.loans import service as loans
 
-    main = service.get_or_create_account(s, bank=Bank.MBANK, iban=IBAN_MAIN, name="mKonto Test")
-    eur = service.get_or_create_account(
+    main = accounts.get_or_create_account(s, bank=Bank.MBANK, iban=IBAN_MAIN, name="mKonto Test")
+    eur = accounts.get_or_create_account(
         s, bank=Bank.MBANK, iban=IBAN_EUR, name="eKonto EUR Test", currency="EUR"
     )
-    sav = service.get_or_create_account(
+    sav = accounts.get_or_create_account(
         s, bank=Bank.ERSTE, iban=IBAN_SAVINGS, name="Erste Test", type=AccountType.SAVINGS
     )
 
@@ -91,35 +95,35 @@ def seed_demo(s: Session) -> None:
     # one merchant no rule knows -> "other"/default (feeds /api/uncategorized)
     main_rows.append(raw(date(SEED_YEAR, 8, 25), "-55.00", ref="SKLEP NIEZNANY TEST"))
 
-    service.ingest_transactions(s, main, main_rows, source=Source.CSV)
-    service.ingest_transactions(s, eur, eur_rows, source=Source.CSV)
-    service.ingest_transactions(s, sav, sav_rows, source=Source.CSV)
+    budget.ingest_transactions(s, main, main_rows, source=Source.CSV)
+    budget.ingest_transactions(s, eur, eur_rows, source=Source.CSV)
+    budget.ingest_transactions(s, sav, sav_rows, source=Source.CSV)
 
     end = date(SEED_YEAR, 9, 30)
-    service.upsert_balance(s, main, end, Decimal("5000.00"), source=Source.CSV)
-    service.upsert_balance(s, eur, end, Decimal("460.04"), source=Source.CSV)
-    service.upsert_balance(s, sav, end, Decimal("24000.00"), source=Source.CSV)
+    accounts.upsert_balance(s, main, end, Decimal("5000.00"), source=Source.CSV)
+    accounts.upsert_balance(s, eur, end, Decimal("460.04"), source=Source.CSV)
+    accounts.upsert_balance(s, sav, end, Decimal("24000.00"), source=Source.CSV)
 
-    service.add_manual_position(
+    assets.add_manual_position(
         s, name="Mieszkanie Test", type=AccountType.PROPERTY, value="600000",
         on_date=date(SEED_YEAR, 6, 1),
     )
-    mortgage = service.add_manual_position(
+    mortgage = assets.add_manual_position(
         s, name="Kredyt hipoteczny Test", type=AccountType.MORTGAGE, value="390000",
         on_date=date(SEED_YEAR, 6, 1),
     )
-    service.set_loan(
+    loans.set_loan(
         s, mortgage.id, "400000", "6.0", 300, date(2025, 1, 5),
         origination_date=date(2024, 12, 10),
     )
-    service.set_vehicle(
+    assets.set_vehicle(
         s, name="Auto Test", purchase_price="80000", purchase_date=date(2025, 5, 1),
         annual_rate="15", floor="10000",
     )
     s.flush()
 
     match_internal_transfers(s)
-    service.categorize_all(s)
+    budget.categorize_all(s)
 
     # Move the September ATM withdrawal into the cash pool and log one cash spend.
     atm = s.exec(
@@ -128,8 +132,8 @@ def seed_demo(s: Session) -> None:
             Transaction.booking_date == date(SEED_YEAR, 9, 15),
         )
     ).one()
-    service.set_transaction_category(s, atm.id, "cash_withdrawal")
-    service.add_cash_expense(
+    budget.set_transaction_category(s, atm.id, "cash_withdrawal")
+    cash.add_cash_expense(
         s, amount="40.00", title="Targ Test", category="groceries",
         on_date=date(SEED_YEAR, 9, 16),
     )
@@ -278,11 +282,11 @@ def eb_configured(monkeypatch):
     def install(client, sessions: dict[str, str]):
         import importlib
 
-        from finanse.ingestion.enable_banking import state
+        from finanse.modules.budget.ingestion.enable_banking import state
 
-        app_mod = importlib.import_module("finanse.api.app")  # the package re-exports `app`
+        budget_api = importlib.import_module("finanse.modules.budget.api")
 
-        monkeypatch.setattr(app_mod, "_eb_client", lambda: client)
+        monkeypatch.setattr(budget_api, "_eb_client", lambda: client)
         monkeypatch.setattr(state, "load_sessions", lambda: dict(sessions))
         return client
 

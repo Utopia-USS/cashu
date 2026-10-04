@@ -17,7 +17,9 @@ from uuid import uuid4
 
 from sqlmodel import Session, select
 
-from ..models import Account, Transaction
+from finanse.core.models import Account
+
+from ..models import Transaction
 from .normalize import iban_key
 
 

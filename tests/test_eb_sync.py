@@ -6,11 +6,11 @@ from decimal import Decimal
 
 from sqlmodel import select
 
-from finanse.ingestion.enable_banking.sync import (
+from finanse.models import Source, Transaction
+from finanse.modules.budget.ingestion.enable_banking.sync import (
     eb_transaction_to_raw,
     reprocess_open_banking_fields,
 )
-from finanse.models import Source, Transaction
 
 _CARD_TXN = {
     "entry_reference": "2026-07-22/99999999999/6",

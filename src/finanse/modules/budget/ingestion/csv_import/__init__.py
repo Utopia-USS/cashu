@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...models import Bank
+from finanse.core.models import Bank
+
 from .base import DelimitedImporter, ParsedStatement, _read_text
 from .erste import ErsteImporter
 from .mbank import MBankImporter

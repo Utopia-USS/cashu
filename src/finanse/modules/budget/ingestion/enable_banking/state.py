@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 
-from ...core import paths
+from finanse.core import paths
 
 
 def load_sessions() -> dict[str, str]:

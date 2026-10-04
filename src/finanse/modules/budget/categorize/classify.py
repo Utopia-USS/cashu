@@ -9,7 +9,7 @@ def classify_unknown(merchants: list[str], category_keys: list[str]) -> tuple[di
     Returns (results, error). `error` is a human-readable string when the backend
     couldn't run (e.g. missing API key / Ollama unreachable), else None.
     """
-    from ..config import settings
+    from finanse.config import settings
 
     backend = (settings.categorize_llm_backend or "ollama").lower()
 

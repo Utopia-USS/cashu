@@ -14,7 +14,9 @@ from sqlmodel import Session, select
 from typer.testing import CliRunner
 
 from finanse import cli as cli_mod
+from finanse.core import cliutil
 from finanse.models import Account, AccountType, Balance, Depreciation, Loan, Transaction
+from finanse.modules.budget import cli as budget_cli
 
 MBANK_HEADER = [
     "mBank S.A. Bankowość Detaliczna;",
@@ -44,7 +46,7 @@ def _write_mbank(path):
 @pytest.fixture
 def run(monkeypatch):
     """Invoke the CLI; rich output goes to a wide console so tables do not wrap."""
-    monkeypatch.setattr(cli_mod, "console", Console(width=200, color_system=None))
+    monkeypatch.setattr(cliutil, "console", Console(width=200, color_system=None))
     runner = CliRunner()
 
     def _run(*args, ok=True):
@@ -179,7 +181,7 @@ def test_eb_reprocess(run, seeded_engine):
 
 
 def test_eb_resync_without_sessions(run, db_engine, monkeypatch):
-    from finanse.ingestion.enable_banking import state
+    from finanse.modules.budget.ingestion.enable_banking import state
 
     monkeypatch.setattr(state, "load_sessions", dict)
     res = run("eb", "resync", ok=False)
@@ -204,6 +206,6 @@ def test_eb_sync_with_stub_client(run, seeded_engine, monkeypatch, fake_eb, make
             "balances": {"uid-main": []},
         },
     })
-    monkeypatch.setattr(cli_mod, "_client", lambda: client)
+    monkeypatch.setattr(budget_cli, "_client", lambda: client)
     out = run("eb", "sync", "sess-1").output
     assert "mbank 'mKonto Test': +1 (0 dup)" in out

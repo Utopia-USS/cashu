@@ -124,8 +124,8 @@ def migrate_legacy_data(
     _remove_db(dst)
     os.replace(tmp, dst)
 
-    from ..db import make_engine
     from . import migrations
+    from .db import make_engine
 
     engine = make_engine(f"sqlite:///{dst}")
     try:

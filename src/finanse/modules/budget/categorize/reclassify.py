@@ -24,7 +24,9 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
-from ..models import Account, AccountType, Transaction
+from finanse.core.models import Account, AccountType
+
+from ..models import Transaction
 from . import taxonomy
 
 _DATES = re.compile(r"DATA TRANSAKCJI:.*$", re.IGNORECASE)
@@ -112,7 +114,8 @@ def reclassify_all(
 
     date_from / date_to (inclusive) bound which transactions are targeted — used to
     run a stronger model on recent transactions and a faster one on the older tail."""
-    from ..config import settings
+    from finanse.config import settings
+
     from . import engine, local_llm
     from .rules import load_rules
 

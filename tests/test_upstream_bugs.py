@@ -4,9 +4,9 @@ the frontend type check). Synthetic data only."""
 from datetime import date
 from decimal import Decimal
 
-from finanse.categorize import taxonomy
-from finanse.categorize.engine import categorize
 from finanse.models import Source, Transaction
+from finanse.modules.budget.categorize import taxonomy
+from finanse.modules.budget.categorize.engine import categorize
 
 
 def _txn(amount: str, title: str, *, cp: str | None = None, iban: str | None = None,
@@ -57,8 +57,8 @@ def test_b1_sephora_is_shopping():
 # --------------------------------------------------------------------------- #
 
 def _monthly(session, account, title, amount, *, cp=None, iban=None, currency="PLN", day=5):
-    from finanse.ingestion.normalize import RawTransaction
-    from finanse.service import ingest_transactions
+    from finanse.modules.budget.ingestion.normalize import RawTransaction
+    from finanse.modules.budget.service import ingest_transactions
 
     raws = [
         RawTransaction(
@@ -72,8 +72,8 @@ def _monthly(session, account, title, amount, *, cp=None, iban=None, currency="P
 
 
 def _seed_recurring_mix(session):
+    from finanse.core.accounts import get_or_create_account
     from finanse.models import Bank
-    from finanse.service import get_or_create_account
 
     pln = get_or_create_account(session, bank=Bank.MBANK, iban="99114000000000000000000001")
     eur = get_or_create_account(session, bank=Bank.MBANK, iban="99114000000000000000000002",
@@ -113,7 +113,7 @@ def test_b2_loans_category_exists():
 
 
 def test_b2_detect_recurring_only_lists_subscriptions(session):
-    from finanse.analytics import detect_recurring
+    from finanse.modules.budget.analytics import detect_recurring
 
     _seed_recurring_mix(session)
     found = {(c.counterparty, c.currency, c.typical_amount) for c in detect_recurring(session)}
@@ -127,7 +127,7 @@ def test_b2_detect_recurring_only_lists_subscriptions(session):
 def test_b2_categorize_all_keeps_installments_out_of_subscriptions(session):
     from sqlmodel import select
 
-    from finanse.service import categorize_all
+    from finanse.modules.budget.service import categorize_all
 
     _seed_recurring_mix(session)
     categorize_all(session)
@@ -143,8 +143,8 @@ def test_b2_categorize_all_keeps_installments_out_of_subscriptions(session):
 def test_b2_manual_category_excludes_from_subscriptions(session):
     from sqlmodel import select
 
-    from finanse.analytics import detect_recurring
-    from finanse.service import set_transaction_category
+    from finanse.modules.budget.analytics import detect_recurring
+    from finanse.modules.budget.service import set_transaction_category
 
     _seed_recurring_mix(session)
     for t in session.exec(select(Transaction).where(Transaction.reference == "KLUB SPORTOWY TEST")):
@@ -183,8 +183,8 @@ def _ob_session(txns):
 
 
 def _sync(session, fake_eb, txns):
-    from finanse.ingestion.enable_banking.sync import sync_session
     from finanse.models import Bank
+    from finanse.modules.budget.ingestion.enable_banking.sync import sync_session
 
     results = sync_session(session, fake_eb(_ob_session(txns)), "s1", bank=Bank.MBANK)
     session.flush()
@@ -214,9 +214,10 @@ def test_b3_same_day_transaction_booked_after_a_sync_is_kept(session, fake_eb, m
 def test_b3_csv_boundary_day_is_not_duplicated(session, fake_eb, make_eb_txn):
     """CSV export taken mid-day: the CSV row and its Open Banking twin carry
     different memos, so the content hash cannot match; only the surplus counts."""
-    from finanse.ingestion.normalize import RawTransaction
+    from finanse.core.accounts import get_or_create_account
     from finanse.models import Bank
-    from finanse.service import get_or_create_account, ingest_transactions
+    from finanse.modules.budget.ingestion.normalize import RawTransaction
+    from finanse.modules.budget.service import ingest_transactions
 
     acc = get_or_create_account(session, bank=Bank.MBANK, iban=_OB_IBAN)
     ingest_transactions(session, acc, [RawTransaction(
@@ -250,8 +251,8 @@ def test_b3_days_before_the_newest_stored_day_are_still_skipped(session, fake_eb
 def test_b3_dedup_bank_id_match_consumes_its_content_slot(session):
     """Overlapping Open Banking windows re-send stored rows; a stored row matched
     by its bank id must not also swallow an identical new row (different id)."""
-    from finanse.ingestion.dedup import prepare_new_transactions
-    from finanse.ingestion.normalize import RawTransaction
+    from finanse.modules.budget.ingestion.dedup import prepare_new_transactions
+    from finanse.modules.budget.ingestion.normalize import RawTransaction
 
     def coffee(btid):
         return RawTransaction(booking_date=date(2026, 9, 20), amount=Decimal("-12.50"),

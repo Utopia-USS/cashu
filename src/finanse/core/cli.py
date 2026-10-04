@@ -1,0 +1,232 @@
+"""Core CLI commands: database, server, data dir, accounts, balances, secrets."""
+
+from __future__ import annotations
+
+import enum
+import os
+import sys
+from typing import Annotated
+
+import typer
+from rich.table import Table
+from sqlmodel import select
+
+from ..config import settings
+from . import cliutil, paths
+from .db import get_session, init_db
+from .models import Account, AccountType
+
+secrets_app = typer.Typer(help="Secrets in the OS keychain (instead of .env).")
+
+
+def init_db_cmd() -> None:
+    """Create the SQLite database and tables."""
+    from . import db
+
+    init_db()
+    cliutil.console.print(f"[green]Database ready[/] at {db.engine.url.render_as_string(hide_password=True)}")
+
+
+def serve_cmd(
+    host: Annotated[
+        str | None,
+        typer.Option(envvar="FINANSE_HOST", show_default="127.0.0.1", help="Interface to bind."),
+    ] = None,
+    port: Annotated[
+        int | None, typer.Option(envvar="FINANSE_PORT", show_default="8500", help="Port.")
+    ] = None,
+    reload: Annotated[bool, typer.Option(help="Auto-reload on code changes (dev).")] = False,
+) -> None:
+    """Launch the web dashboard (net worth, cashflow, subscriptions).
+
+    Loopback only; every API call needs the per-launch token, which the served
+    page carries and which is written to <data dir>/api-token for local tools."""
+    import uvicorn
+
+    from . import security
+
+    host = host or settings.host
+    port = port or settings.port
+    init_db()
+    cfg = security.configure(port=port)
+    token_file = security.write_token_file(cfg.token)
+    if host not in security.LOOPBACK_HOSTS:
+        cliutil.console.print(
+            f"[yellow]Binding to {host}:[/] the API only answers requests addressed to "
+            "127.0.0.1/localhost, so other machines cannot use the dashboard."
+        )
+    if reload:  # the reloader re-imports the app in a worker process
+        os.environ[security.TOKEN_ENV] = cfg.token
+        os.environ["FINANSE_PORT"] = str(port)
+    cliutil.console.print(f"[green]Dashboard:[/] http://127.0.0.1:{port}")
+    cliutil.console.print(f"[dim]Data dir: {paths.data_dir()} (API token: {token_file.name})[/]")
+    try:
+        uvicorn.run("finanse.api.app:app", host=host, port=port, reload=reload)
+    finally:
+        security.remove_token_file(cfg.token, token_file)
+
+
+def migrate_data_cmd(
+    force: Annotated[
+        bool,
+        typer.Option(help="Replace a database already in the data dir (backed up first)."),
+    ] = False,
+) -> None:
+    """Copy legacy data from the repo's data/ dir into the per-user data dir.
+
+    Copies the database (with a timestamped backup), Open Banking sessions and
+    private key. The originals stay untouched; delete them after checking."""
+    from . import legacy
+
+    try:
+        result = legacy.migrate_legacy_data(force=force)
+    except legacy.MigrationError as e:
+        cliutil.console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+    cliutil.console.print(f"[green]Migrated[/] {result.source} -> {result.database}")
+    cliutil.console.print(f"  backup: {result.backup}")
+    if result.replaced_backup:
+        cliutil.console.print(f"  previous data-dir database backed up to {result.replaced_backup}")
+    cliutil.console.print(f"  tables: {', '.join(f'{k}={v}' for k, v in sorted(result.tables.items()))}")
+    for p in result.copied:
+        cliutil.console.print(f"  copied: {p}")
+    for s in result.skipped:
+        cliutil.console.print(f"  [yellow]skipped:[/] {s}")
+    cliutil.console.print(
+        f"The files in {result.source.parent} were not changed; delete them once the "
+        "dashboard looks right. Settings pointing at the old defaults (data/finanse.db, "
+        "data/enablebanking_private.pem) are ignored from now on. Restart `finanse serve` "
+        "if it is running."
+    )
+
+
+def accounts_cmd() -> None:
+    """List known accounts."""
+    with get_session() as s:
+        rows = s.exec(select(Account)).all()
+    table = Table(title="Accounts")
+    for col in ("id", "bank", "name", "iban", "type", "currency", "active"):
+        table.add_column(col)
+    for a in rows:
+        table.add_row(
+            str(a.id), a.bank.value, a.name, a.iban or "—",
+            a.type.value, a.currency, "yes" if a.active else "no",
+        )
+    cliutil.console.print(table)
+
+
+def set_account_type(account_id: int, account_type: AccountType) -> None:
+    """Set an account's type (checking/savings/credit/investment/...)."""
+    with get_session() as s:
+        acc = s.get(Account, account_id)
+        if not acc:
+            raise typer.BadParameter(f"No account with id {account_id}")
+        acc.type = account_type
+        s.add(acc)
+    cliutil.console.print(f"[green]Account {account_id} -> {account_type.value}[/]")
+
+
+def set_account_name(account_id: int, name: str) -> None:
+    """Give an account a human-friendly name."""
+    with get_session() as s:
+        acc = s.get(Account, account_id)
+        if not acc:
+            raise typer.BadParameter(f"No account with id {account_id}")
+        acc.name = name
+        s.add(acc)
+    cliutil.console.print(f"[green]Account {account_id} -> '{name}'[/]")
+
+
+def set_balance_cmd(
+    account_id: int,
+    value: float,
+    date: str = typer.Option(None, "--date", help="YYYY-MM-DD (default: today)."),
+) -> None:
+    """Record a balance snapshot (update a mortgage, revalue a property, ...)."""
+    from datetime import date as _date
+    from decimal import Decimal
+
+    from .accounts import set_balance
+
+    on_date = _date.fromisoformat(date) if date else None
+    with get_session() as s:
+        acc = set_balance(s, account_id, value, on_date=on_date)
+        cliutil.console.print(f"[green]{acc.name}[/] -> {cliutil.fmt(Decimal(str(value)), acc.currency)}")
+
+
+
+# --------------------------------------------------------------------------- #
+# Secrets (OS keychain)
+# --------------------------------------------------------------------------- #
+
+class SecretName(str, enum.Enum):
+    ANTHROPIC = "anthropic"  # Anthropic API key (categorization backend `anthropic`)
+
+
+@secrets_app.command("set")
+def secrets_set_cmd(
+    name: SecretName,
+    stdin: Annotated[
+        bool, typer.Option("--stdin", help="Read the value from standard input (scripts).")
+    ] = False,
+) -> None:
+    """Store a secret in the OS keychain (asked for with hidden input)."""
+    from . import secrets
+
+    value = sys.stdin.readline() if stdin else typer.prompt(f"{name.value}", hide_input=True)
+    value = value.strip()
+    if not value:
+        cliutil.console.print("[red]Empty value, nothing stored.[/]")
+        raise typer.Exit(1)
+    try:
+        secrets.set_secret(name.value, value)
+    except secrets.SecretsError as e:
+        cliutil.console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+    cliutil.console.print(f"[green]Stored[/] {name.value} in the keychain ({secrets.mask(value)}).")
+
+
+@secrets_app.command("get")
+def secrets_get_cmd(
+    name: SecretName,
+    reveal: Annotated[bool, typer.Option(help="Print the full value.")] = False,
+) -> None:
+    """Show whether a secret is stored (masked unless --reveal)."""
+    from . import secrets
+
+    value = secrets.get_secret(name.value)
+    if value is None:
+        hint = ""
+        if name is SecretName.ANTHROPIC and settings.resolved_api_key:
+            hint = " (an environment variable fallback is set)"
+        cliutil.console.print(f"{name.value}: not in the keychain{hint}")
+        raise typer.Exit(1)
+    if reveal:
+        typer.echo(value)
+    else:
+        cliutil.console.print(f"{name.value}: stored in the keychain ({secrets.mask(value)})")
+
+
+@secrets_app.command("delete")
+def secrets_delete_cmd(name: SecretName) -> None:
+    """Remove a secret from the OS keychain."""
+    from . import secrets
+
+    try:
+        removed = secrets.delete_secret(name.value)
+    except secrets.SecretsError as e:
+        cliutil.console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+    cliutil.console.print(f"{name.value}: {'deleted' if removed else 'was not stored'}")
+
+
+def register(app: typer.Typer) -> None:
+    """Add these commands to `app` (the root CLI and/or a module sub-app)."""
+    app.command("init-db")(init_db_cmd)
+    app.command("serve")(serve_cmd)
+    app.command("migrate-data")(migrate_data_cmd)
+    app.command("accounts")(accounts_cmd)
+    app.command("set-account-type")(set_account_type)
+    app.command("set-account-name")(set_account_name)
+    app.command("set-balance")(set_balance_cmd)
+    app.add_typer(secrets_app, name="secrets")

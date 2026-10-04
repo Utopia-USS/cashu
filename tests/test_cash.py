@@ -6,21 +6,12 @@ from decimal import Decimal
 
 from sqlmodel import select
 
-from finanse.analytics import (
-    monthly_cashflow,
-    net_worth,
-    net_worth_series,
-    spending_by_category,
-)
+from finanse.core.accounts import get_or_create_account, upsert_balance
+from finanse.core.networth import net_worth, net_worth_series
 from finanse.models import AccountType, Bank, Source, Transaction
-from finanse.service import (
-    add_cash_expense,
-    delete_cash_transaction,
-    get_cash_account,
-    get_or_create_account,
-    set_transaction_category,
-    upsert_balance,
-)
+from finanse.modules.budget.analytics import monthly_cashflow, spending_by_category
+from finanse.modules.budget.cash import add_cash_expense, delete_cash_transaction, get_cash_account
+from finanse.modules.budget.service import set_transaction_category
 
 
 def _bank_account(session, balance="1000.00", on=date(2024, 1, 10)):

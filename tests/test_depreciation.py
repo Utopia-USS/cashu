@@ -3,11 +3,11 @@
 from datetime import date
 from decimal import Decimal
 
-from finanse import depreciation as dep
-from finanse.analytics import net_worth, net_worth_series
-from finanse.models import AccountType, Source
-from finanse.service import get_or_create_account, set_vehicle, upsert_balance
-from finanse.models import Bank
+from finanse.core.accounts import get_or_create_account, upsert_balance
+from finanse.core.networth import net_worth, net_worth_series
+from finanse.models import AccountType, Bank, Source
+from finanse.modules.assets import depreciation as dep
+from finanse.modules.assets.service import set_vehicle
 
 
 def test_value_declining_balance_and_floor():

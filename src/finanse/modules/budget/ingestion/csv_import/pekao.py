@@ -21,7 +21,8 @@ import io
 from collections import Counter
 from pathlib import Path
 
-from ...models import Bank, Source
+from finanse.core.models import Bank, Source
+
 from ..normalize import RawTransaction
 from .base import (
     DelimitedImporter,

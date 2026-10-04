@@ -45,9 +45,9 @@ def _today_values(seeded_engine):
     """Mortgage outstanding and car value as of today, from the library itself."""
     from sqlmodel import Session
 
-    from finanse import loan as loanmod
-    from finanse.depreciation import value_of
     from finanse.models import Depreciation, Loan
+    from finanse.modules.assets.depreciation import value_of
+    from finanse.modules.loans import amortization as loanmod
 
     with Session(seeded_engine) as s:
         ln = s.exec(select(Loan)).one()
@@ -59,15 +59,19 @@ def _today_values(seeded_engine):
         return float(summ.outstanding), float(round(value_of(dep, _today()), 2))
 
 
-def test_all_upstream_routes_exist():
-    routes = {
-        (m, r.path)
-        for r in app.routes
-        if getattr(r, "path", "").startswith("/api/")
-        for m in (getattr(r, "methods", None) or ())
-        if m != "HEAD"
+def api_routes() -> set[tuple[str, str]]:
+    """(METHOD, path) of every /api/* route, from the OpenAPI schema (FastAPI keeps
+    included routers unflattened in `app.routes`)."""
+    return {
+        (method.upper(), path)
+        for path, ops in app.openapi()["paths"].items()
+        if path.startswith("/api/")
+        for method in ops
     }
-    assert UPSTREAM_ROUTES <= routes
+
+
+def test_all_upstream_routes_exist():
+    assert UPSTREAM_ROUTES <= api_routes()
 
 
 # --------------------------------------------------------------------------- #
@@ -448,7 +452,7 @@ def test_resync_ok(api, eb_configured, fake_eb, make_eb_txn):
 
 
 def test_resync_expired_session_is_reported(api, eb_configured, fake_eb):
-    from finanse.ingestion.enable_banking.client import EnableBankingError
+    from finanse.modules.budget.ingestion.enable_banking.client import EnableBankingError
 
     class Expired(fake_eb):
         def get_session(self, session_id):

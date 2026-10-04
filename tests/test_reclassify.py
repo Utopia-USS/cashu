@@ -5,11 +5,14 @@ offline."""
 from datetime import date
 from decimal import Decimal
 
-
-from finanse.categorize import local_llm
-from finanse.categorize.reclassify import _is_structural, reclassify_all, txn_signature
+from finanse.core.accounts import get_or_create_account
 from finanse.models import AccountType, Bank, Source, Transaction
-from finanse.service import get_or_create_account
+from finanse.modules.budget.categorize import local_llm
+from finanse.modules.budget.categorize.reclassify import (
+    _is_structural,
+    reclassify_all,
+    txn_signature,
+)
 
 
 def _txn(session, account_id, amount, *, cp=None, ref=None, desc=None, cat=None, internal=False,
@@ -42,7 +45,7 @@ def test_signature_groups_by_full_detail_not_merchant():
 
 
 def test_structural_transactions_excluded(session):
-    from finanse.ingestion.normalize import iban_key
+    from finanse.modules.budget.ingestion.normalize import iban_key
 
     acc = get_or_create_account(session, bank=Bank.MBANK, name="mBank",
                                 iban="PL10 1140 0000 0000 0000 1234")
