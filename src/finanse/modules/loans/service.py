@@ -7,7 +7,6 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
-from . import amortization
 from .models import Loan
 
 
@@ -44,14 +43,3 @@ def set_loan(
     )
     session.add(loan)
     return loan
-
-
-def loan_schedules(session: Session) -> dict[int, tuple[Loan, list]]:
-    """account_id -> (Loan, amortization schedule)."""
-    out: dict[int, tuple[Loan, list]] = {}
-    for loan in session.exec(select(Loan)).all():
-        rows = amortization.schedule(
-            loan.principal, loan.annual_rate, loan.term_months, loan.start_date
-        )
-        out[loan.account_id] = (loan, rows)
-    return out

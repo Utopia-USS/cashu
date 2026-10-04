@@ -1,8 +1,8 @@
 """FastAPI app serving the dashboard + JSON API over the local finance DB.
 
-The app is the composition layer: core routes (accounts, net worth) and each
-module's router are mounted under ``/api``; cross-module views (the overview
-summary) live here.
+The app is the composition layer: core routes (accounts, net worth) and the
+router of every registered module (``core.modules``) are mounted under ``/api``;
+cross-module views (the overview summary) live here.
 """
 
 from __future__ import annotations
@@ -15,13 +15,11 @@ from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..core import networth, security
+from ..core import modules, networth, security
 from ..core.api import breakdown_dict, f
 from ..core.api import router as core_router
 from ..core.db import get_session, init_db
 from ..modules.budget import analytics as budget_analytics
-from ..modules.budget.api import router as budget_router
-from ..modules.loans.api import router as loans_router
 
 STATIC = Path(__file__).parent / "static"
 WEBDIST = Path(__file__).parent / "webdist"  # built React SPA (frontend/ → npm run build)
@@ -75,7 +73,10 @@ def summary() -> dict:
     }
 
 
-for _router in (shell_router, core_router, budget_router, loans_router):
+_routers = [shell_router, core_router] + [
+    spec.router for spec in modules.all_modules() if spec.router is not None
+]
+for _router in _routers:
     app.include_router(_router, prefix="/api")
 
 

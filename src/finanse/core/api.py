@@ -67,11 +67,13 @@ def networth_series(
         series = networth.net_worth_component_series(
             s, currency=currency, granularity=granularity, scope=scope
         )
-    present = [k for k in networth.NW_COMPONENT_ORDER if any(k in comps for _, comps in series)]
+    present = [k for k in networth.component_order() if any(k in comps for _, comps in series)]
+    labels = networth.component_labels()
+    liabilities = networth.liability_components()
     points = [
         {
             "date": d.isoformat(),
-            "value": f(sum(comps.values(), Decimal("0"))),
+            "value": f(sum(comps.values(), Decimal(0))),
             "components": {k: f(comps[k]) for k in present if k in comps},
         }
         for d, comps in series
@@ -79,7 +81,7 @@ def networth_series(
     return {
         "points": points,
         "components": [
-            {"key": k, "label": networth.NW_COMPONENT_LABELS[k], "liability": k in ("mortgage", "loan")}
+            {"key": k, "label": labels[k], "liability": k in liabilities}
             for k in present
         ],
     }

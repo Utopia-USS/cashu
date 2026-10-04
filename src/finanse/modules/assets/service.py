@@ -81,8 +81,3 @@ def set_vehicle(
             )
         )
     return account
-
-
-def depreciations(session: Session) -> dict[int, Depreciation]:
-    """account_id -> Depreciation terms (VEHICLE accounts)."""
-    return {d.account_id: d for d in session.exec(select(Depreciation)).all()}

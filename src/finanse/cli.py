@@ -1,8 +1,8 @@
 """Command-line interface for the finance tracker.
 
 The root app is the composition layer: core commands (database, server, data
-dir, accounts, secrets) plus every module's commands, and the cross-module
-``stats`` report.
+dir, accounts, secrets) plus the commands of every registered module
+(``core.modules``), and the cross-module ``stats`` report.
 """
 
 from __future__ import annotations
@@ -11,11 +11,8 @@ import typer
 from rich.table import Table
 
 from .core import cli as core_cli
-from .core import cliutil, paths
+from .core import cliutil, modules, paths
 from .core.db import get_session
-from .modules.assets import cli as assets_cli
-from .modules.budget import cli as budget_cli
-from .modules.loans import cli as loans_cli
 
 app = typer.Typer(add_completion=False, help="Personal finance tracker — bank ingestion & stats.")
 
@@ -29,9 +26,9 @@ def _main(ctx: typer.Context) -> None:
 
 
 core_cli.register(app)
-loans_cli.register(app)
-assets_cli.register(app)
-budget_cli.register(app)
+for _spec in modules.all_modules():
+    if _spec.cli is not None:
+        _spec.cli(app)
 
 
 # --------------------------------------------------------------------------- #

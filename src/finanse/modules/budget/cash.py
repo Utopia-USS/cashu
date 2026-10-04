@@ -16,8 +16,6 @@ from finanse.core.models import Account, AccountType, Bank, Source
 
 from .models import Transaction
 
-ZERO = Decimal("0.00")
-
 
 def cash_account_ids(session: Session) -> set[int]:
     return {
@@ -142,27 +140,3 @@ def delete_cash_transaction(session: Session, txn_id: int) -> bool:
         if bank_txn is not None:
             recategorize_one(session, bank_txn)
     return True
-
-
-def cash_balance_points(session: Session) -> dict[int, list[tuple[date, Decimal]]]:
-    """Running end-of-day balance per CASH account, derived from its transactions.
-
-    A cash account has no bank/OB balance feed — its balance is purely the sum of
-    withdrawals into the pool (positive) minus manually-logged cash spends
-    (negative). Returns ascending (date, running_total) points, and an empty list
-    for a cash account that has no transactions yet (so it still shows as 0)."""
-    out: dict[int, list[tuple[date, Decimal]]] = {}
-    cash_accounts = session.exec(
-        select(Account).where(Account.type == AccountType.CASH)
-    ).all()
-    for acc in cash_accounts:
-        txns = session.exec(
-            select(Transaction).where(Transaction.account_id == acc.id)
-        ).all()
-        by_date: dict[date, Decimal] = {}
-        run = ZERO
-        for t in sorted(txns, key=lambda t: (t.booking_date, t.id or 0)):
-            run += t.amount
-            by_date[t.booking_date] = run
-        out[acc.id] = sorted(by_date.items())
-    return out
