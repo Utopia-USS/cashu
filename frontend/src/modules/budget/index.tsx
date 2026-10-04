@@ -1,0 +1,55 @@
+import type { ModuleDef } from "../../core/types";
+import { cur } from "../../format";
+import { FactList, Kpi } from "../../ui";
+import { Expenses } from "./Expenses";
+import { Flows } from "./Flows";
+import { Subscriptions } from "./Subscriptions";
+
+const MPL = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+const monthLabel = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  return m ? `${MPL[m - 1]} ${y}` : ym;
+};
+
+export const budget: ModuleDef = {
+  id: "budget",
+  name: "Budżet domowy",
+  desc: "Konta bankowe, wydatki po kategoriach, przepływy i subskrypcje. Import CSV z banku (mBank, Pekao, Erste) lub Open Banking.",
+  hint: "Zawsze dostępne: przegląd wartości netto i gotówka.",
+  short: "Konta bankowe, wydatki po kategoriach, przepływy i subskrypcje",
+  intro: "Moduł łączy konta bankowe (CSV lub Open Banking), kategoryzuje transakcje i pokazuje wydatki, przepływy i subskrypcje. Co miesiąc widzisz, dokąd poszły pieniądze.",
+  skillBlurb: "Skill {skill} pomoże dodać bank i konto, wgrać pierwszy plik CSV i przejrzeć kategorie najczęstszych sprzedawców. Dane pobiera przez MCP, więc obowiązuje poziom prywatności tego profilu.",
+  skillHint: "Kroki powyżej odświeżą się same, gdy skill zapisze zmiany w aplikacji.",
+  tabs: [
+    { id: "expenses", label: "Wydatki", render: (ctx) => <Expenses categories={ctx.categories} onDataChanged={ctx.refresh} /> },
+    { id: "flows", label: "Przepływy", render: () => <Flows /> },
+    { id: "subs", label: "Subskrypcje", render: () => <Subscriptions /> },
+  ],
+  Kpis: ({ ctx }) => {
+    const m = ctx.summary.month;
+    if (ctx.state === "empty" || !m) return null;
+    return (
+      <Kpi
+        label={`Wynik ${m.label}`}
+        value={cur(m.net)}
+        hint={`+${cur(m.income)} / -${cur(m.expense)}`}
+        cls={m.net < 0 ? "neg" : "pos"}
+      />
+    );
+  },
+  Facts: ({ ctx }) => {
+    const m = ctx.summary.month;
+    const subs = ctx.summary.subscriptions;
+    const totals = Object.entries(subs?.monthly_totals ?? {}).map(([c, v]) => `~${cur(v, c)}`).join(" · ");
+    const asof = ctx.networth.accounts
+      .filter((a) => a.bank !== "manual" && a.type !== "cash")
+      .map((a) => a.as_of).filter(Boolean).sort().slice(-1)[0];
+    return (
+      <FactList facts={[
+        ...(m ? [[`Wydatki ${monthLabel(m.label)}`, cur(m.expense)] as [string, string]] : []),
+        ["Subskrypcje", subs?.count ? `${subs.count}${totals ? ` · ${totals} / mies` : ""}` : "brak"],
+        ["Ostatnie dane", asof ?? "-"],
+      ]} />
+    );
+  },
+};

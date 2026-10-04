@@ -1,4 +1,4 @@
-import type { Breakdown as BD } from "../api";
+import type { Breakdown as BD } from "../core/api";
 import { cur, TYPE_LABEL } from "../format";
 
 export function Breakdown({ bd }: { bd: BD }) {
@@ -8,7 +8,7 @@ export function Breakdown({ bd }: { bd: BD }) {
   const maxAbs = Math.max(1, ...entries.map(([, v]) => Math.abs(v)));
 
   return (
-    <div className="card chart-card">
+    <section className="card chart-card">
       <h2>Aktywa vs zobowiązania ({bd.currency})</h2>
       {entries.map(([t, v]) => {
         const liab = v < 0;
@@ -24,12 +24,12 @@ export function Breakdown({ bd }: { bd: BD }) {
       })}
       <div className="bd-sum">
         <div><span>Aktywa</span><b className="pos">{cur(bd.assets)}</b></div>
-        <div><span>Zobowiązania</span><b className="neg">{cur(-bd.liabilities)}</b></div>
+        <div><span>Zobowiązania</span><b className={bd.liabilities ? "neg" : ""}>{cur(bd.liabilities ? -bd.liabilities : 0)}</b></div>
         <div><span>Net worth</span><b>{cur(bd.net)}</b></div>
         {(bd.property || bd.mortgage) ? (
           <div><span>Home equity (nieruchomość − hipoteka)</span><b>{cur(bd.home_equity)}</b></div>
         ) : null}
       </div>
-    </div>
+    </section>
   );
 }

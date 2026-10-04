@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Account } from "../api";
+import type { Account } from "../core/api";
 import { cur, TYPE_LABEL } from "../format";
 
 const isEmpty = (a: Account) => a.balance == null || Math.abs(a.balance) < 0.005;
@@ -21,6 +21,7 @@ export function Accounts({ accounts }: { accounts: Account[] }) {
             <tr><th>Konto</th><th>Typ</th><th className="num">Saldo / wkład</th></tr>
           </thead>
           <tbody>
+            {!accounts.length && <tr><td colSpan={3} className="muted">Brak kont w tym profilu.</td></tr>}
             {visible.map((a) => (
               <tr key={a.id}>
                 <td>

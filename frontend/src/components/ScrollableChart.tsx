@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, ComposedChart, XAxis, YAxis } from "recharts";
+import { isDark } from "../core/theme";
 import { cssVar, pln0 } from "../format";
 import { useWidth } from "../hooks";
 import { Seg, Skeleton } from "../ui";
@@ -12,8 +13,7 @@ const AXIS_W = 72;
 const M_TOP = 8, M_BOTTOM = 4, M_RIGHT = 16;
 const PLOT_H = H - M_TOP - M_BOTTOM - XAXIS_H;
 
-const gridColor = () =>
-  matchMedia("(prefers-color-scheme: dark)").matches ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)";
+const gridColor = () => (isDark() ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)");
 
 function niceTicks(min: number, max: number, count = 5): number[] {
   if (!isFinite(min) || !isFinite(max)) return [0, 1];
@@ -42,6 +42,7 @@ export interface ScrollableChartProps {
   tooltip?: ReactNode;                // a <Tooltip/> element (plot only)
   stackOffset?: "none" | "sign" | "expand" | "wiggle" | "silhouette";
   yZoomable?: boolean;                // enable Y-axis zoom (⌘+scroll / pinch)
+  emptyText?: string;                 // shown instead of the skeleton once loaded with no data
   children: ReactNode;                // marks: <Line/> / <Bar/> …
 }
 
@@ -50,7 +51,7 @@ export interface ScrollableChartProps {
  * "Max" fits everything (no scroll). Gridlines are drawn explicitly from the shared
  * ticks so they stay aligned with the fixed axis. */
 export function ScrollableChart(props: ScrollableChartProps) {
-  const { title, controls, data, yValues, xAxisProps, ranges, fullSpan, tooltip, stackOffset, yZoomable, children } = props;
+  const { title, controls, data, yValues, xAxisProps, ranges, fullSpan, tooltip, stackOffset, yZoomable, emptyText, children } = props;
   const yTickFormatter = props.yTickFormatter ?? ((v: number) => pln0.format(v));
   const [range, setRange] = useState<number | null>(props.defaultRange ?? null);
   const { ref: scrollRef, width: boxWidth, node: scrollNode } = useWidth<HTMLDivElement>();
@@ -182,7 +183,9 @@ export function ScrollableChart(props: ScrollableChartProps) {
       </div>
 
       {!data.length ? (
-        <Skeleton w="100%" h={H} />
+        emptyText
+          ? <div className="empty" style={{ height: 140, display: "flex", alignItems: "center", justifyContent: "center" }}>{emptyText}</div>
+          : <Skeleton w="100%" h={H} />
       ) : (
       <div style={{ display: "flex", alignItems: "stretch", height: H + 14 }}>
         <div style={{ flex: "0 0 auto", width: AXIS_W }}>

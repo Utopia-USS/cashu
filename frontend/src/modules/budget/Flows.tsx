@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Bar, Line, Tooltip } from "recharts";
-import type { CashflowRow } from "../api";
-import { getCashflow } from "../api";
-import { ScrollableChart } from "../components/ScrollableChart";
-import { cssVar, cur } from "../format";
-import { useAsync } from "../hooks";
+import { ScrollableChart } from "../../components/ScrollableChart";
+import { useSlug } from "../../core/context";
+import { cssVar, cur } from "../../format";
+import { useAsync } from "../../hooks";
+import type { CashflowRow } from "./api";
+import { getCashflow } from "./api";
 
 type Gran = "monthly" | "quarterly" | "yearly";
 
@@ -32,7 +33,8 @@ function aggregate(rows: CashflowRow[], gran: Gran): CashflowRow[] {
 }
 
 export function Flows() {
-  const { data } = useAsync(() => getCashflow(240), []);
+  const slug = useSlug();
+  const { data } = useAsync(() => getCashflow(slug, 240), [slug]);
   const [gran, setGran] = useState<Gran>("monthly");
   const rows = aggregate(data ?? [], gran);
   const yValues = rows.flatMap((r) => [r.income, r.expense, r.net]).concat(0);

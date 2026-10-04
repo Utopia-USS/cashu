@@ -1,12 +1,14 @@
 import { useState } from "react";
-import type { Category } from "../api";
-import { deleteCashTxn, getCash, postCashExpense } from "../api";
+import type { Category } from "../core/api";
+import { deleteCashTxn, getCash, postCashExpense } from "../core/api";
+import { useSlug } from "../core/context";
 import { cur } from "../format";
 import { useAsync } from "../hooks";
 import { Skeleton } from "../ui";
 
 export function CashCard({ categories, onChanged }: { categories: Category[]; onChanged: () => void }) {
-  const { data, reload } = useAsync(getCash, []);
+  const slug = useSlug();
+  const { data, reload } = useAsync(() => getCash(slug), [slug]);
   const expenseCats = categories.filter((c) => c.kind === "expense");
   const [amount, setAmount] = useState("");
   const [title, setTitle] = useState("");
@@ -21,7 +23,7 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
     if (!(amt > 0) || !title.trim()) { setErr("Podaj kwotę i tytuł wydatku."); return; }
     setBusy(true); setErr(null);
     try {
-      const res = await postCashExpense({ amount: amt, title: title.trim(), category });
+      const res = await postCashExpense(slug, { amount: amt, title: title.trim(), category });
       if (res.error) { setErr(res.error); return; }
       setAmount(""); setTitle("");
       refresh();
@@ -29,7 +31,7 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
   };
 
   const del = async (id: number) => {
-    try { await deleteCashTxn(id); refresh(); } catch (e) { setErr((e as Error).message); }
+    try { await deleteCashTxn(slug, id); refresh(); } catch (e) { setErr((e as Error).message); }
   };
 
   const c = data?.currency || "PLN";

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import type { SpendRow } from "../api";
-import { cssVar, cur, PALETTE } from "../format";
+import { cssVar, cur, PALETTE } from "../../format";
+import type { SpendRow } from "./api";
 
 interface Slice extends SpendRow { members?: SpendRow[] }
 

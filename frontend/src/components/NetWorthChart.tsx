@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Area, Line, Tooltip } from "recharts";
-import { getSeries, type SeriesComponent } from "../api";
+import { getSeries, type SeriesComponent } from "../core/api";
+import { useSlug } from "../core/context";
 import { cssVar, cur, dtFmt, nwColorVar } from "../format";
 import { useAsync } from "../hooks";
 import { Seg } from "../ui";
@@ -55,7 +56,8 @@ export function NetWorthChart() {
   const [scope, setScope] = useState("total");
   const [gran, setGran] = useState("monthly");
   const [mode, setMode] = useState<"line" | "stacked">("line");
-  const { data: resp } = useAsync(() => getSeries(gran, scope), [gran, scope]);
+  const slug = useSlug();
+  const { data: resp } = useAsync(() => getSeries(slug, gran, scope), [slug, gran, scope]);
 
   const comps = resp?.components ?? [];
   const points = useMemo<Row[]>(
@@ -132,6 +134,7 @@ export function NetWorthChart() {
       ranges={RANGES}
       fullSpan={spanDays}
       yZoomable
+      emptyText={resp && !resp.points.length ? "Brak danych do wykresu. Pojawią się po dodaniu kont lub pozycji." : undefined}
       tooltip={<Tooltip cursor={{ stroke: cssVar("--muted"), strokeDasharray: "3 3" }} content={NwTooltip({ comps })} />}
     >
       {marks}

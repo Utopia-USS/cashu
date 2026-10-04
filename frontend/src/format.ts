@@ -33,3 +33,13 @@ export const nwColorVar: Record<string, string> = {
   money: "--nw-money", property: "--nw-property", vehicle: "--nw-vehicle",
   mortgage: "--nw-mortgage", loan: "--nw-loan",
 };
+
+/** Polish plural: plural(2, "konto", "konta", "kont") -> "2 konta". */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const n10 = n % 10, n100 = n % 100;
+  const w = n === 1 ? one : n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14) ? few : many;
+  return `${n} ${w}`;
+}
+
+export const nAccounts = (n: number) => plural(n, "konto", "konta", "kont");
+export const nModules = (n: number) => plural(n, "moduł", "moduły", "modułów");

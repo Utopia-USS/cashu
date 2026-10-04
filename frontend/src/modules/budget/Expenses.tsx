@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Category, DrillRow } from "../api";
-import { drillUrl, getCashflow, getSpending, j, postMerchantCategory, postTxnCategory } from "../api";
-import { SpendingDonut } from "../components/SpendingDonut";
-import { cur } from "../format";
-import { useAsync } from "../hooks";
-import { Seg, Skeleton } from "../ui";
+import type { Category } from "../../core/api";
+import { j } from "../../core/api";
+import { useSlug } from "../../core/context";
+import { cur } from "../../format";
+import { useAsync } from "../../hooks";
+import { Seg, Skeleton } from "../../ui";
+import type { DrillRow } from "./api";
+import { drillUrl, getCashflow, getSpending, postMerchantCategory, postTxnCategory } from "./api";
+import { SpendingDonut } from "./SpendingDonut";
 
 const MPL = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -24,7 +27,8 @@ function periodQuery(p: Period): string {
 interface Toast { text: string; action?: { label: string; run: () => void } }
 
 export function Expenses({ categories, onDataChanged }: { categories: Category[]; onDataChanged: () => void }) {
-  const { data: cashflow } = useAsync(() => getCashflow(240), []);
+  const slug = useSlug();
+  const { data: cashflow } = useAsync(() => getCashflow(slug, 240), [slug]);
   const labelFor = useMemo(() => {
     const m = new Map(categories.map((c) => [c.key, c.label]));
     return (k: string) => m.get(k) ?? k;
@@ -76,7 +80,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
   }, [mode, period]);
 
   const qs = periodQuery(period);
-  const { data: spending, reload: reloadSpending } = useAsync(() => getSpending(qs), [qs]);
+  const { data: spending, reload: reloadSpending } = useAsync(() => getSpending(slug, qs), [slug, qs]);
 
   const canNav = mode !== "all";
   const step = (d: number) => {
@@ -98,7 +102,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
   const [sort, setSort] = useState("date");
   const [order, setOrder] = useState("desc");
   const { data: drillRows, reload: reloadDrill } = useAsync(
-    () => (drill ? j<DrillRow[]>(drillUrl(drill.key, { sort, order, ...period })) : Promise.resolve([] as DrillRow[])),
+    () => (drill ? j<DrillRow[]>(drillUrl(slug, drill.key, { sort, order, ...period })) : Promise.resolve([] as DrillRow[])),
     [drill?.key, sort, order, qs],
   );
 
@@ -111,7 +115,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
 
   // Manual change affects ONLY this transaction; offer to apply to the whole merchant.
   const markCategory = async (row: DrillRow, category: string) => {
-    await postTxnCategory(row.id, category);
+    await postTxnCategory(slug, row.id, category);
     reloadDrill();
     reloadSpending();
     if (category === "cash_withdrawal") { onDataChanged(); return; }
@@ -122,7 +126,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
       action: {
         label: `Ustaw dla wszystkich: ${name}`,
         run: async () => {
-          const res = await postMerchantCategory(row.merchant_key, category);
+          const res = await postMerchantCategory(slug, row.merchant_key, category);
           reloadDrill();
           reloadSpending();
           setToast({ text: `Ustawiono „${labelFor(category)}" dla ${res.updated ?? 0} transakcji sprzedawcy.` });

@@ -53,3 +53,38 @@ export function useWidth<T extends HTMLElement>() {
   }, []);
   return { ref, width, node };
 }
+
+/** Like useAsync, but re-fetches every `ms` while the tab is visible and on window
+ * focus, keeping the last good data on screen between refreshes (no skeleton flash). */
+export function usePoll<T>(fn: () => Promise<T>, ms: number, deps: unknown[] = []): AsyncState<T> {
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [nonce, setNonce] = useState(0);
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
+
+  useEffect(() => {
+    let alive = true;
+    const run = (force = false) => {
+      if (document.hidden && !force) return;
+      fnRef.current()
+        .then((d) => alive && (setData(d), setError(null)))
+        .catch((e: Error) => alive && setError(e.message))
+        .finally(() => alive && setLoading(false));
+    };
+    const onFocus = () => run();
+    run(true);
+    const t = setInterval(run, ms);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps, ms, nonce]);
+
+  return { data, error, loading, reload };
+}
