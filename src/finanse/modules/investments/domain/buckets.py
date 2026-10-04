@@ -43,8 +43,9 @@ class BucketMatch:
 
 @dataclass(frozen=True, slots=True)
 class BucketDef:
-    """One allocation bucket. Buckets are evaluated in declaration order; the first match wins. A bucket
-    id declared twice is one bucket whose definitions are alternative matches."""
+    """One allocation bucket. Buckets are evaluated in declaration order; the first match wins. Bucket ids
+    are unique (the strategy loader rejects a duplicate id); express alternatives with list-valued match
+    criteria instead."""
 
     id: str
     """Bucket id referenced by ``allocation.targets`` (``global_equity``)."""
