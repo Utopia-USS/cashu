@@ -10,12 +10,14 @@ export interface GridItem {
   node: ReactNode;
   /** Consecutive span-1 items with the same key share one column at three columns (`.stack`). */
   stack?: string;
+  /** Two columns: a wide item placed after the pending pair of single widgets (grid.ts `defer`). */
+  defer?: boolean;
 }
 
 /** `.g3` with the two-column order applied through `--o` (index.css) and stacked single columns. */
 export function Grid({ items, className }: { items: GridItem[]; className?: string }) {
   const present = items.filter((it) => it.node != null && it.node !== false);
-  const { order, alone } = twoColumnOrder(present.map(({ id, span }) => ({ id, span })));
+  const { order, alone } = twoColumnOrder(present.map(({ id, span, defer }) => ({ id, span, defer })));
   const cell = (it: GridItem) => (
     <div key={it.id} className={`gi s${it.span}${alone.has(it.id) ? " s1-full" : ""}`} style={{ "--o": order.get(it.id) } as CSSProperties}>
       {it.node}

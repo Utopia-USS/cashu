@@ -4,7 +4,13 @@
 // left half empty unless a single widget is the last one (it then spans the row).
 
 export type Span = 1 | 2 | 3;
-export interface GridSlot { id: string; span: Span }
+export interface GridSlot {
+  id: string;
+  span: Span;
+  /** Wide slot that, at two columns, waits until a single widget waiting for its pair is placed (the
+   * research strip comes after the Alerty + Alokacja pair, research.md 1). */
+  defer?: boolean;
+}
 
 /** Order of every slot in the two-column fallback (1-based, `order` CSS values) plus the ids of single
  * widgets that end up alone in their row (rendered full width). */
@@ -13,9 +19,12 @@ export function twoColumnOrder(slots: GridSlot[]): { order: Map<string, number>;
   const alone = new Set<string>();
   let n = 0;
   let waiting: string | null = null;
+  const deferred: string[] = [];
+  const flush = () => { for (const id of deferred.splice(0)) order.set(id, ++n); };
   for (const s of slots) {
     if (s.span > 1) {
-      order.set(s.id, ++n);
+      if (s.defer && waiting != null) deferred.push(s.id);
+      else order.set(s.id, ++n);
       continue;
     }
     if (waiting == null) {
@@ -25,10 +34,12 @@ export function twoColumnOrder(slots: GridSlot[]): { order: Map<string, number>;
     order.set(waiting, ++n);
     order.set(s.id, ++n);
     waiting = null;
+    flush();
   }
   if (waiting != null) {
     order.set(waiting, ++n);
     alone.add(waiting);
   }
+  flush();
   return { order, alone };
 }
