@@ -24,6 +24,8 @@ dependencies = [
     "platformdirs>=4.3,<5",
     "keyring>=25,<26",
     "pyyaml>=6.0,<7",
+    # Official MCP SDK (v2 API: mcp.server.Server, stdio transport) for `finanse mcp`.
+    "mcp>=2.3,<3",
 ]
 
 [project.optional-dependencies]

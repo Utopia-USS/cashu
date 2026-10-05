@@ -15,6 +15,7 @@ from rich.table import Table
 from .core import cli as core_cli
 from .core import cliutil, modules, paths
 from .core.db import get_session
+from .core.mcp import cli as mcp_cli
 
 app = typer.Typer(add_completion=False, help="Personal finance tracker — bank ingestion & stats.")
 
@@ -41,6 +42,7 @@ def _main(
 # Core commands, then every module's commands: at the top level (the upstream
 # command names keep working) and as a sub-app per module (`finanse loans list`).
 core_cli.register(app)
+mcp_cli.register(app)  # finanse mcp --profile <slug>
 for _spec in modules.all_modules():
     if _spec.cli is None and _spec.cli_module is None:
         continue
