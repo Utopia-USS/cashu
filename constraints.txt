@@ -49,6 +49,7 @@ pyobjc-framework-Cocoa==12.2.2
 pyobjc-framework-Quartz==12.2.2
 pyobjc-framework-Security==12.2.2
 pyobjc-framework-UniformTypeIdentifiers==12.2.2
+pyobjc-framework-UserNotifications==12.2.2
 pyobjc-framework-WebKit==12.2.2
 pytest==9.1.1
 python-dateutil==2.9.0.post0

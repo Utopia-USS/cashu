@@ -12,6 +12,9 @@
 - Unlike ``finanse serve`` the app does not write ``<data dir>/api-token`` (the window does not need
   it, and a ``finanse serve`` running next to the app keeps its own file).
 - Closing the window (or Cmd+Q) stops the server and ends the process.
+- Links (packaged app only): ``finanse://`` URLs and clicks on the app's notifications open the
+  matching view (``notify.install_app_handlers`` + ``notify.LinkRouter``); a link that launched
+  the app is kept until the window loads the dashboard.
 - Log: ``<data dir>/logs/app.log`` (warnings and errors; no request log).
 """
 
@@ -30,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core import locks, paths, security
-from . import DEBUG_ENV
+from . import DEBUG_ENV, notify
 
 log = logging.getLogger("finanse.desktop")
 
@@ -276,8 +279,15 @@ def _import_webview():
     return webview
 
 
-def _boot(window, server: ServerThread, launch: Launch, log_file: Path | None) -> None:
-    """Runs in pywebview's worker thread once the window exists: start the server, show the app."""
+def _boot(
+    window,
+    server: ServerThread,
+    launch: Launch,
+    log_file: Path | None,
+    router: notify.LinkRouter | None = None,
+) -> None:
+    """Runs in pywebview's worker thread once the window exists: start the server, show the app
+    (on the view of a link that arrived meanwhile)."""
     try:
         server.start()
     except DesktopError as e:
@@ -289,7 +299,7 @@ def _boot(window, server: ServerThread, launch: Launch, log_file: Path | None) -
     if state.get("port") != server.port:
         state["port"] = server.port
         save_state(state)
-    window.load_url(server.url)
+    window.load_url(router.ready(window, server.url) if router is not None else server.url)
 
 
 def run(*, debug: bool = False, webview_module=None, log_file: Path | None = None) -> Launch:
@@ -316,6 +326,8 @@ def run(*, debug: bool = False, webview_module=None, log_file: Path | None = Non
             except Exception:  # noqa: BLE001 - no screen info: default size
                 screens = []
             width, height = window_size(screens)
+            router = notify.LinkRouter()
+            notify.install_app_handlers(router.open)  # Finanse.app only; before the event loop
             window = webview.create_window(
                 TITLE,
                 html=LOADING_HTML,
@@ -328,7 +340,7 @@ def run(*, debug: bool = False, webview_module=None, log_file: Path | None = Non
             try:
                 webview.start(
                     _boot,
-                    (window, server, launch, log_file),
+                    (window, server, launch, log_file, router),
                     debug=debug,
                     private_mode=False,
                     storage_path=str(paths.ensure_private_dir(paths.data_dir() / "webview")),

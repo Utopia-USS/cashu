@@ -7,8 +7,10 @@
 #     pyinstaller --noconfirm --distpath build/macos/dist --workpath build/macos/work packaging/finanse.spec
 #
 # One binary, Contents/MacOS/finanse: no arguments = the desktop window (Finder), anything else =
-# the finanse CLI (`worker run`, `mcp --profile <slug>`, ...) (see src/finanse/desktop/entry.py).
-# It never runs scripts.
+# the finanse CLI (`worker run`, `mcp --profile <slug>`, ...), `--notify-helper` = post one
+# notification for the worker (see src/finanse/desktop/entry.py). It never runs scripts.
+# The bundle registers the finanse:// URL scheme (notification clicks and links open the app on a
+# view, src/finanse/desktop/notify.py).
 # ruff: noqa
 import os
 import tomllib
@@ -51,6 +53,8 @@ hiddenimports = [
     "logging.config",
     *collect_submodules("uvicorn"),
     "webview.platforms.cocoa",
+    # Native notifications (desktop/notify.py imports it lazily, inside the helper and the shell).
+    *collect_submodules("UserNotifications"),
     # Standard library modules converter scripts commonly use (desktop/entry.py runs them with
     # the embedded interpreter); the rest of the stdlib finanse itself imports is bundled anyway.
     "csv",
@@ -100,6 +104,17 @@ info_plist = {
     "NSHumanReadableCopyright": "Copyright (c) 2026 finanse contributors. MIT License.",
     # The window loads http://127.0.0.1:<port>/ from the app's own server.
     "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
+    # finanse://signal/<profile>/<id> and friends: notification clicks and links open a view.
+    "CFBundleURLTypes": [
+        {
+            "CFBundleURLName": BUNDLE_ID,
+            "CFBundleURLSchemes": ["finanse"],
+            "CFBundleTypeRole": "Viewer",
+        }
+    ],
+    # The worker posts notifications through `finanse --notify-helper` only when the installed
+    # app declares it (core/worker/notifier_app.py), so an older build is never asked.
+    "FinanseNotificationHelper": True,
 }
 if MIN_MACOS:
     info_plist["LSMinimumSystemVersion"] = MIN_MACOS

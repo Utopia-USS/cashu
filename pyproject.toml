@@ -33,9 +33,11 @@ dev = [
     "pytest>=8.3,<10",
     "ruff>=0.6,<1",
 ]
-# `finanse app`: the dashboard in a native window (WKWebView on macOS via pyobjc).
+# `finanse app`: the dashboard in a native window (WKWebView on macOS via pyobjc); native
+# notifications through the app bundle (UserNotifications).
 desktop = [
     "pywebview>=6.2,<7",
+    "pyobjc-framework-UserNotifications>=12.2,<13; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
