@@ -64,7 +64,8 @@ class TestEvaluate:
         assert [describe(o) for o in outcomes] == ["fired r|i:i-PKN", "not_fired r|i:i-CDR"]
         fired = candidate(outcomes[0])
         assert fired.message == (
-            "PKN closed 20.0% below its 5-day high (80 on 2026-10-02 vs 100 on 2026-09-29; threshold 15.0%)."
+            "PKN: -20,0\u00a0% od szczytu z 5 sesji (zamknięcie 80 2026-10-02, szczyt 100 2026-09-29; "
+            "próg -15,0\u00a0%)."
         )
         assert abs(fired.payload["drawdown"] - 0.2) < 1e-9
         assert fired.payload["high_date"] == "2026-09-29"
@@ -106,11 +107,12 @@ class TestSkipsOnBadData:
             "skipped r|i:i-CDR",
             "skipped r|i:i-VWCE",
         ]
-        assert skip_reason(outcomes[0]) == "Only 2 of 5 bars for PKN"
+        assert skip_reason(outcomes[0]) == "Tylko 2 z 5 notowań: PKN"
         assert (
-            skip_reason(outcomes[1]) == "Price of CDR is stale (last close 2026-09-25, 7 days old)"
+            skip_reason(outcomes[1])
+            == "Nieaktualna cena: CDR (ostatnie zamknięcie 2026-09-25, 7 dni temu)"
         )
-        assert skip_reason(outcomes[2]) == "No price series for VWCE"
+        assert skip_reason(outcomes[2]) == "Brak notowań: VWCE"
 
     def test_max_price_age_days_is_respected(self):
         series = {CDR: bars(CDR, ["100", "100", "100", "100", "50"], last_date=day("2026-09-25"))}
@@ -131,7 +133,7 @@ class TestSkipsOnBadData:
             PARAMS,
         )
         assert [describe(o) for o in outcomes] == ["fired r|i:i-PKN", "skipped r|i:i-AAPL"]
-        assert skip_reason(outcomes[1]) == "No usable USD FX rate, so AAPL cannot be valued"
+        assert skip_reason(outcomes[1]) == "Brak kursu USD: nie da się wycenić AAPL"
 
     def test_holdings_valued_at_cost_or_manually_are_skipped_never_fired(self):
         bond = instrument("EDO0536", asset_class=AssetClass.TREASURY_BOND, mic=None)
@@ -155,13 +157,8 @@ class TestSkipsOnBadData:
             "skipped r|i:i-EDO0536",
             "skipped r|i:i-CLAIM",
         ]
-        assert (
-            skip_reason(outcomes[1])
-            == "EDO0536 is valued at cost, so it has no market price series"
-        )
-        assert (
-            skip_reason(outcomes[2]) == "CLAIM is valued manually, so it has no market price series"
-        )
+        assert skip_reason(outcomes[1]) == "EDO0536: wycena po koszcie, brak notowań rynkowych"
+        assert skip_reason(outcomes[2]) == "CLAIM: wycena ręczna, brak notowań rynkowych"
 
     def test_one_manually_valued_account_skips_the_whole_instrument(self):
         crash = ["100", "100", "100", "100", "50"]

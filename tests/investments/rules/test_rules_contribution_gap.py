@@ -39,7 +39,7 @@ def test_fires_when_the_gap_exceeds_period_plus_grace():
     )
     assert [describe(o) for o in outcomes] == ["fired r"]
     fired = candidate(outcomes[0])
-    assert fired.message == "No deposit for 43 days (last on 2026-08-20); the plan allows 41 days."
+    assert fired.message == "Brak wpłaty od 43 dni (ostatnia 2026-08-20); plan dopuszcza 41 dni."
     assert fired.payload["days_since_last_deposit"] == 43
 
 
@@ -57,7 +57,7 @@ def test_no_deposits_at_all_fires():
     outcomes = run(KIND, context(contributions=PLAN), ContributionGapParams())
     assert (
         candidate(outcomes[0]).message
-        == "No deposits yet, although the strategy plans 1000 PLN per month."
+        == "Brak wpłat, choć plan zakłada 1\u00a0000 PLN miesięcznie."
     )
 
 
@@ -68,4 +68,4 @@ def test_without_a_plan_it_skips():
         ContributionGapParams(),
     )
     assert [describe(o) for o in outcomes] == ["skipped r"]
-    assert skip_reason(outcomes[0]) == "The strategy has no contributions plan"
+    assert skip_reason(outcomes[0]) == "Strategia nie ma planu wpłat"

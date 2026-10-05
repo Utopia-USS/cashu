@@ -11,10 +11,11 @@ from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
 from ..polarity import SignalPolarity
-from .support import decimal_text
+from .support import days_phrase, decimal_text, format_decimal
 
 DEFAULT_PERIOD_DAYS = 31
 DEFAULT_GRACE_DAYS = 10
+NO_CONTRIBUTIONS_PLAN = "Strategia nie ma planu wpłat"
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +63,7 @@ class ContributionGapRule:
         plan = ctx.contributions
         key = signal_dedup_key(spec.id)
         if plan is None:
-            return [Skipped(spec.id, "The strategy has no contributions plan", key)]
+            return [Skipped(spec.id, NO_CONTRIBUTIONS_PLAN, key)]
         params = spec.params
         allowed_days = params.period_days + params.grace_days
         plan_details: dict[str, object] = {
@@ -86,8 +87,8 @@ class ContributionGapRule:
                             "days_since_last_deposit": None,
                         },
                         message=(
-                            f"No deposits yet, although the strategy plans {decimal_text(plan.monthly_amount)} "
-                            f"{ctx.portfolio.base_currency} per month."
+                            f"Brak wpłat, choć plan zakłada {format_decimal(plan.monthly_amount)} "
+                            f"{ctx.portfolio.base_currency} miesięcznie."
                         ),
                     )
                 )
@@ -108,7 +109,10 @@ class ContributionGapRule:
                     dedup_key=key,
                     severity=spec.severity,
                     payload=details,
-                    message=f"No deposit for {days} days (last on {last}); the plan allows {allowed_days} days.",
+                    message=(
+                        f"Brak wpłaty od {days_phrase(days)} (ostatnia {last}); plan dopuszcza "
+                        f"{days_phrase(allowed_days)}."
+                    ),
                 )
             )
         ]

@@ -170,24 +170,28 @@ def test_frozen_claim_at_zero_never_fires_price_rules():
         "skipped wipeout|i:i-FTX",
         "not_fired deposits",
     ]
-    assert skip_reason(by_scope["skipped loss|i:i-FTX"]) == (
-        "FTX is valued manually, so its change from cost is not a market result"
+    assert (
+        skip_reason(by_scope["skipped loss|i:i-FTX"])
+        == "FTX: wycena ręczna, zmiana od kosztu nie jest wynikiem rynkowym"
     )
     assert (
         skip_reason(by_scope["skipped dip|i:i-EDO"])
-        == "EDO0536 is valued at cost, so it has no market price series"
+        == "EDO0536: wycena po koszcie, brak notowań rynkowych"
     )
     assert (
-        skip_reason(by_scope["skipped dip|i:i-FTX"])
-        == "FTX is valued manually, so it has no market price series"
+        skip_reason(by_scope["skipped dip|i:i-FTX"]) == "FTX: wycena ręczna, brak notowań rynkowych"
     )
-    assert skip_reason(by_scope["skipped wipeout|i:i-FTX"]) == (
-        "FTX is valued manually, so its change from cost is not a market result"
+    assert (
+        skip_reason(by_scope["skipped wipeout|i:i-FTX"])
+        == "FTX: wycena ręczna, zmiana od kosztu nie jest wynikiem rynkowym"
     )
     fired = [o.candidate for o in outcomes if isinstance(o, Fired)]
     assert [c.message for c in fired] == [
-        "Bucket bond_etfs is underweight by 10.0 pp (0.0% vs target 10.0%, 2000 PLN below target).",
-        "Bucket cash is overweight by 5.0 pp (10.0% vs target 5.0%, 1000 PLN above target).",
+        (
+            "Koszyk bond_etfs poniżej celu o 10,0\u00a0pp (0,0\u00a0% wobec 10,0\u00a0%, "
+            "do celu brakuje 2\u00a0000 PLN)."
+        ),
+        "Koszyk cash powyżej celu o 5,0\u00a0pp (10,0\u00a0% wobec 5,0\u00a0%, 1\u00a0000 PLN ponad cel).",
     ]
 
 
@@ -200,9 +204,10 @@ def test_a_manual_claim_without_valuation_makes_weight_rules_skip():
     valued, outcomes = run_pipeline(config, txns, [VWCE, EDO, CLAIM])
     assert any(isinstance(w, MissingManualValuation) for w in valued.warnings)
     by_rule = {describe(o): o for o in outcomes}
-    assert skip_reason(by_rule["skipped drift"]).startswith("No price for 1 holding(s) (CLM)")
-    assert skip_reason(by_rule["skipped idle_cash"]).startswith("No price for 1 holding(s) (CLM)")
-    assert skip_reason(by_rule["skipped loss|i:i-CLM"]) == (
-        "CLM is valued manually, so its change from cost is not a market result"
+    assert skip_reason(by_rule["skipped drift"]).startswith("Brak ceny dla 1 pozycji (CLM)")
+    assert skip_reason(by_rule["skipped idle_cash"]).startswith("Brak ceny dla 1 pozycji (CLM)")
+    assert (
+        skip_reason(by_rule["skipped loss|i:i-CLM"])
+        == "CLM: wycena ręczna, zmiana od kosztu nie jest wynikiem rynkowym"
     )
     assert not any(isinstance(o, Fired) for o in outcomes)

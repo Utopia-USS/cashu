@@ -20,7 +20,8 @@ from .parser import Binary, Boolean, Call, Compare, Logical, Name, Node, Number,
 
 @dataclass(frozen=True, slots=True)
 class Unknown:
-    """A value that cannot be computed on the current data; ``reasons`` say why."""
+    """A value that cannot be computed on the current data; ``reasons`` say why (short Polish text, the
+    skip reason the owner sees)."""
 
     reasons: tuple[str, ...]
 
@@ -111,12 +112,12 @@ class _Evaluator:
                     return left * right
                 case _:
                     if right == 0:
-                        return Unknown((f"Division by zero at column {node.column}",))
+                        return Unknown((f"Dzielenie przez zero (kolumna {node.column})",))
                     return left / right
         except Overflow:
-            return Unknown((f"Arithmetic overflow at column {node.column}",))
+            return Unknown((f"Przepełnienie arytmetyczne (kolumna {node.column})",))
         except (InvalidOperation, DivisionByZero):
-            return Unknown((f"Invalid arithmetic at column {node.column}",))
+            return Unknown((f"Nieprawidłowe działanie (kolumna {node.column})",))
 
     def _compare(self, node: Compare) -> Value:
         left = self.eval(node.left)

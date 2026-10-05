@@ -92,10 +92,12 @@ class CashLevelRule:
             return [NotFired(spec.id, key, details)]
         if below:
             assert min_weight is not None
-            message = f"Cash is {format_pct(weight)} of the portfolio, below the minimum {format_pct(min_weight)}."
+            message = (
+                f"Gotówka: {format_pct(weight)} portfela, poniżej minimum {format_pct(min_weight)}."
+            )
         else:
             assert max_weight is not None
-            message = f"Cash is {format_pct(weight)} of the portfolio, above the maximum {format_pct(max_weight)}."
+            message = f"Gotówka: {format_pct(weight)} portfela, powyżej maksimum {format_pct(max_weight)}."
         return [
             Fired(
                 SignalCandidate(

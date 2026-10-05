@@ -36,9 +36,9 @@ class Unit(StrEnum):
     """How a numeric metric is shown in messages."""
 
     RATIO = "ratio"
-    """A fraction shown as a percentage (0.153 -> 15.3%)."""
+    """A fraction shown as a percentage (0.153 -> 15,3 %)."""
     PP = "pp"
-    """Percentage points (2.5 -> 2.5 pp)."""
+    """Percentage points (2.5 -> 2,5 pp)."""
     AMOUNT = "amount"
     """Base-currency amount (shown in whole units)."""
     PRICE = "price"

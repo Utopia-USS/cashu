@@ -1,6 +1,7 @@
 """Alert evaluation: one alert against stored prices and the valued portfolio -> one outcome, with the
 same meaning as rule outcomes (``Fired`` opens or refreshes the alert's signal, ``NotFired`` lets it
-resolve, ``Skipped`` leaves it untouched). Pure: no IO, no clock; deterministic English messages.
+resolve, ``Skipped`` leaves it untouched). Pure: no IO, no clock; deterministic Polish messages and skip
+reasons (the owner sees them), with Polish number formatting; payloads keep machine values.
 
 Data rules (like the built-in rules): a price alert never fires on a missing or stale close (older than
 ``max_price_age_days``) or on too short a series; weight alerts skip while portfolio weights are
@@ -40,13 +41,19 @@ from ..rules.kinds.support import (
     RATIO_EPSILON,
     InstrumentPosition,
     decimal_text,
+    format_decimal,
     format_pct,
+    no_allocation_problem,
     portfolio_data_problem,
+    short_series_problem,
+    stale_close_problem,
     unclassified_problem,
 )
 from .catalog import AlertKind, AlertScope
 
 ALERT_PREFIX = "alert:"
+NO_INSTRUMENT = "Alert nie ma instrumentu"
+NOT_VALUED = "Nie udało się wycenić portfela"
 
 
 def alert_rule_id(alert_id: int | str) -> str:
@@ -145,7 +152,16 @@ def _label(instrument: Instrument) -> str:
 
 
 def _price(value: Decimal) -> str:
+    """A price for the payload (exact decimal text)."""
     return decimal_text(value)
+
+
+def _shown(value: Decimal) -> str:
+    """A price for the message (Polish notation)."""
+    return format_decimal(value)
+
+
+_STATUS_TEXT = {"delisted": "wycofany z obrotu", "frozen": "zamrożony"}
 
 
 def _skip(alert: AlertDefinition, reason: str) -> AlertCheck:
@@ -188,22 +204,23 @@ def _series(alert: AlertDefinition, data: AlertData, needed: int) -> Sequence[Pr
     """The last ``needed`` bars (oldest first) or why the alert cannot be judged."""
     instrument = alert.instrument
     if instrument is None:
-        return "The alert has no instrument"
+        return NO_INSTRUMENT
     label = _label(instrument)
     if not instrument.fetches_market_data:
-        return f"{label} is {instrument.status.value}, so it has no current market prices"
+        status = instrument.status.value
+        return f"{label}: {_STATUS_TEXT.get(status, status)}, brak bieżących notowań"
     bars = [b for b in data.bars.get(instrument.id, ()) if b.date <= data.as_of]
     if not bars:
-        return f"No prices for {label} yet (the daily check fetches them)"
+        return f"Brak cen: {label} (pobierze je dzienny przebieg)"
     last = bars[-1]
     age = days_between(last.date, data.as_of)
     if age > data.max_price_age_days:
-        return f"Price of {label} is stale (last close {last.date}, {age} days old)"
+        return stale_close_problem(label, last.date, age)
     if len(bars) < needed:
-        return f"Only {len(bars)} daily closes of {label} are stored ({needed} needed)"
+        return short_series_problem(label, len(bars), needed)
     window = bars[-needed:]
     if any(b.close <= 0 for b in window):
-        return f"{label} has a non-positive close in the window"
+        return f"Nieprawidłowe ceny w oknie: {label}"
     return window
 
 
@@ -236,8 +253,8 @@ def _price_level(alert: AlertDefinition, data: AlertData) -> AlertCheck:
         return _not_fired(alert, payload, last.close)
     cur = _currency(alert.instrument, last)
     detail = (
-        f"{_label(alert.instrument)} closed at {_price(last.close)} {cur} on {last.date}, "
-        f"{'above' if above else 'below'} {_price(level)} {cur}."
+        f"{_label(alert.instrument)}: zamknięcie {_shown(last.close)} {cur} ({last.date}), "
+        f"{'powyżej' if above else 'poniżej'} {_shown(level)} {cur}."
     )
     return _fired(alert, detail, payload, last.close)
 
@@ -272,10 +289,10 @@ def _change_pct(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     }
     if not hit:
         return _not_fired(alert, payload, change)
-    verb = "rose" if change > 0 else "fell"
+    sign = "+" if change > 0 else "-"
     detail = (
-        f"{_label(alert.instrument)} {verb} {format_pct(float(abs(change)))} over {window_days} "
-        f"sessions ({_price(first.close)} on {first.date} -> {_price(last.close)} on {last.date})."
+        f"{_label(alert.instrument)}: {sign}{format_pct(float(abs(change)))} w {window_days} sesji "
+        f"({_shown(first.close)} {first.date} -> {_shown(last.close)} {last.date})."
     )
     return _fired(alert, detail, payload, change)
 
@@ -303,8 +320,8 @@ def _drawdown(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     if drawdown < threshold - Decimal(str(RATIO_EPSILON)):
         return _not_fired(alert, payload, drawdown)
     detail = (
-        f"{_label(alert.instrument)} is {format_pct(float(drawdown))} below its {window_days}-session "
-        f"high ({_price(last.close)} on {last.date}, high {_price(high.close)} on {high.date})."
+        f"{_label(alert.instrument)}: -{format_pct(float(drawdown))} od szczytu z {window_days} sesji "
+        f"(zamknięcie {_shown(last.close)} {last.date}, szczyt {_shown(high.close)} {high.date})."
     )
     return _fired(alert, detail, payload, drawdown)
 
@@ -327,8 +344,8 @@ def _new_high(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     if last.close <= previous:
         return _not_fired(alert, payload, last.close)
     detail = (
-        f"{_label(alert.instrument)} closed at a new {window_days}-session high of "
-        f"{_price(last.close)} on {last.date} (previous high {_price(previous)})."
+        f"{_label(alert.instrument)}: nowy szczyt z {window_days} sesji, {_shown(last.close)} "
+        f"({last.date}; poprzedni {_shown(previous)})."
     )
     return _fired(alert, detail, payload, last.close)
 
@@ -355,8 +372,9 @@ def _sma_cross(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     if not hit:
         return _not_fired(alert, payload, last.close)
     detail = (
-        f"{_label(alert.instrument)} closed at {_price(last.close)} on {last.date}, "
-        f"{'above' if above else 'below'} its {window_days}-session average of {sma_text}."
+        f"{_label(alert.instrument)}: zamknięcie {_shown(last.close)} ({last.date}) "
+        f"{'powyżej' if above else 'poniżej'} SMA {window_days} "
+        f"({_shown(sma.quantize(Decimal('0.0001')))})."
     )
     return _fired(alert, detail, payload, last.close)
 
@@ -369,7 +387,7 @@ def _sma_cross(alert: AlertDefinition, data: AlertData) -> AlertCheck:
 def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     ctx = data.ctx
     if ctx is None:
-        return _skip(alert, "The portfolio could not be valued")
+        return _skip(alert, NOT_VALUED)
     problem = portfolio_data_problem(ctx)
     if problem is not None:
         return _skip(alert, problem)
@@ -384,16 +402,16 @@ def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
             return _skip(alert, problem)
         allocation = next((a for a in ctx.allocations if a.bucket_id == bucket), None)
         if allocation is None:
-            return _skip(alert, f"No allocation computed for bucket {bucket} (strategy buckets?)")
+            return _skip(alert, f"{no_allocation_problem(bucket)} (czy jest w strategii?)")
         if allocation.cash_history_gap:
             return _skip(
-                alert, f"Cash history is incomplete, so bucket {bucket} has no known value"
+                alert, f"Niepełna historia gotówki: wartość koszyka {bucket} nieznana"
             )
-        weight, subject = allocation.weight, f"Bucket {bucket}"
+        weight, subject = allocation.weight, f"Koszyk {bucket}"
     else:
         instrument = alert.instrument
         if instrument is None:
-            return _skip(alert, "The alert has no instrument")
+            return _skip(alert, NO_INSTRUMENT)
         holdings = tuple(h for h in ctx.portfolio.valued if h.instrument_id == instrument.id)
         subject = _label(instrument)
         if holdings:
@@ -402,7 +420,7 @@ def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
             )
             price_problem = position.price_problem
             if price_problem is not None or position.weight is None:
-                return _skip(alert, price_problem or f"No weight for {subject}")
+                return _skip(alert, price_problem or f"Brak wagi: {subject}")
             weight = position.weight
         else:
             weight = 0.0
@@ -413,8 +431,8 @@ def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     if not hit:
         return _not_fired(alert, payload, value)
     detail = (
-        f"{subject} is {format_pct(weight)} of the portfolio "
-        f"({'above' if above else 'below'} {format_pct(threshold)})."
+        f"{subject}: {format_pct(weight)} portfela "
+        f"({'powyżej' if above else 'poniżej'} {format_pct(threshold)})."
     )
     return _fired(alert, detail, payload, value)
 
@@ -422,12 +440,12 @@ def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
 def _custom(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     ctx = data.ctx
     if ctx is None:
-        return _skip(alert, "The portfolio could not be valued")
+        return _skip(alert, NOT_VALUED)
     scope = Scope(alert.scope.value)
     expression = compile_expression(str(alert.params["expression"]), scope)
     if alert.scope == AlertScope.INSTRUMENT:
         if alert.instrument is None:
-            return _skip(alert, "The alert has no instrument")
+            return _skip(alert, NO_INSTRUMENT)
         params = CustomParams(
             expression=expression,
             scope=scope,

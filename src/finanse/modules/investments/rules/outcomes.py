@@ -25,7 +25,8 @@ class SignalCandidate:
     """Stable identity of the finding over time; build it with :func:`signal_dedup_key`."""
     severity: SignalSeverity
     message: str
-    """Short, English, deterministic (same input -> same text)."""
+    """Short, Polish (the owner sees it in notifications and the signal list), deterministic (same input
+    -> same text)."""
     instrument_id: InstrumentId | None = None
     account_id: AccountId | None = None
     payload: Mapping[str, object] = field(default_factory=dict, hash=False)
@@ -67,7 +68,8 @@ class Skipped:
 
     rule_id: str
     reason: str
-    """Short English reason (``Price of X is stale (last close 2026-09-25, 7 days old)``)."""
+    """Short Polish reason (``Nieaktualna cena: X (ostatnie zamknięcie 2026-09-25, 7 dni temu)``);
+    programming errors (an exception, a wrong params type) stay English."""
     dedup_key: str | None = None
     """Scope this outcome covers; None = the whole rule."""
 

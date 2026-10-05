@@ -56,7 +56,7 @@ class TestEvaluate:
         outcomes = run(KIND, context(portfolio_value=value), params())
         assert [describe(o) for o in outcomes] == ["fired r|i:i-PKN", "not_fired r|i:i-CDR"]
         fired = candidate(outcomes[0])
-        assert fired.message == "PKN is down 25.0% from cost (threshold 25.0%)."
+        assert fired.message == "PKN: -25,0\u00a0% od kosztu (próg -25,0\u00a0%)."
         assert fired.payload["market_value_base"] == "1500"
         assert fired.payload["cost_basis_base"] == "2000"
 
@@ -83,10 +83,12 @@ class TestSkipsOnBadData:
             "skipped r|i:i-VWCE",
             "skipped r|i:i-ZERO",
         ]
-        assert skip_reason(outcomes[0]) == "Price of PKN is stale (last close 2026-09-22)"
-        assert skip_reason(outcomes[1]) == "No price for CDR"
-        assert skip_reason(outcomes[2]).startswith("Cost basis of VWCE is unknown")
-        assert skip_reason(outcomes[3]) == "Cost basis of ZERO is zero"
+        assert skip_reason(outcomes[0]) == "Nieaktualna cena: PKN (ostatnie zamknięcie 2026-09-22)"
+        assert skip_reason(outcomes[1]) == "Brak ceny: CDR"
+        assert skip_reason(outcomes[2]) == (
+            "Nieznany koszt: VWCE (niepełna historia lub transfer bez ceny)"
+        )
+        assert skip_reason(outcomes[3]) == "Zerowy koszt: ZERO"
 
     def test_an_instrument_in_a_currency_without_fx_is_skipped(self):
         usd = instrument("AAPL", currency=Currency.USD, mic="XNAS")
@@ -96,7 +98,7 @@ class TestSkipsOnBadData:
         )
         outcomes = run(KIND, context(portfolio_value=value), params())
         assert [describe(o) for o in outcomes] == ["fired r|i:i-PKN", "skipped r|i:i-AAPL"]
-        assert skip_reason(outcomes[1]) == "No usable USD FX rate, so AAPL cannot be valued"
+        assert skip_reason(outcomes[1]) == "Brak kursu USD: nie da się wycenić AAPL"
 
     def test_a_frozen_holding_valued_manually_at_zero_is_skipped_not_fired(self):
         claim = instrument("FTX", asset_class=AssetClass.CLAIM, mic=None)
@@ -111,7 +113,7 @@ class TestSkipsOnBadData:
         assert [describe(o) for o in outcomes] == ["fired r|i:i-PKN", "skipped r|i:i-FTX"]
         assert (
             skip_reason(outcomes[1])
-            == "FTX is valued manually, so its change from cost is not a market result"
+            == "FTX: wycena ręczna, zmiana od kosztu nie jest wynikiem rynkowym"
         )
 
     def test_a_holding_valued_at_cost_is_evaluated_and_never_moves(self):

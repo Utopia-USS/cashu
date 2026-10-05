@@ -15,7 +15,7 @@ import type { CushionDraft } from "./logic";
 import { closeFor, cushionDraft, cushionPayload, monthLabel, planState, shiftMonth } from "./logic";
 
 /** What the cushion level is (backend monthclose.py, F7 R5 variant B: net transfers of the month): one text for the fact and the form. */
-const CUSHION_LEVEL = "Saldo na początek miesiąca + przelewy netto w miesiącu";
+const CUSHION_LEVEL = "Saldo na początek miesiąca plus przelewy netto, bez wydatków z innych kont";
 
 const TOP = 3;
 

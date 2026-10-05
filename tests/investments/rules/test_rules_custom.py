@@ -123,7 +123,9 @@ class TestPortfolioScope:
         fired = candidate(outcomes[0])
         assert fired.kind == "custom"
         assert fired.severity == SignalSeverity.ACTION
-        assert fired.message == "Invest the cash (cash_weight 20.0%, days_since_last_deposit 31)."
+        assert fired.message == (
+            "Invest the cash (cash_weight 20,0\u00a0%, days_since_last_deposit 31)."
+        )
         assert fired.payload == {
             "scope": "portfolio",
             "when": "cash_weight >= 15% and days_since_last_deposit <= 45",
@@ -135,7 +137,7 @@ class TestPortfolioScope:
         fired = run(KIND, context(portfolio_value=value), params("total_value >= 10000"))
         assert (
             candidate(fired[0]).message
-            == "Condition met: total_value >= 10000 (total_value 10000 PLN)."
+            == "Warunek spełniony: total_value >= 10000 (total_value 10\u00a0000 PLN)."
         )
         quiet = run(KIND, context(portfolio_value=value), params("cash_weight > 50%"))
         assert [describe(o) for o in quiet] == ["not_fired r"]
@@ -146,7 +148,9 @@ class TestPortfolioScope:
         stale = portfolio([h(ETF, value="9000", stale=True)], cash="1000")
         outcomes = run(KIND, context(portfolio_value=stale), params("cash_weight < 50%"))
         assert [describe(o) for o in outcomes] == ["skipped r"]
-        assert skip_reason(outcomes[0]) == "Stale prices cover 90.0% of the portfolio (max 5.0%)"
+        assert skip_reason(outcomes[0]) == (
+            "Nieaktualne ceny: 90,0\u00a0% portfela (maks 5,0\u00a0%)"
+        )
 
     def test_a_false_side_decides_even_with_missing_data(self):
         stale = portfolio([h(ETF, value="9000", stale=True)], cash="1000")
@@ -182,7 +186,9 @@ class TestInstrumentScope:
         assert [describe(o) for o in outcomes] == ["fired r|i:i-PKN", "not_fired r|i:i-CDR"]
         fired = candidate(outcomes[0])
         assert fired.instrument_id == "i-PKN"
-        assert fired.message == "PKN: Review the thesis (unrealized_pct -50.0%, weight 20.0%)."
+        assert fired.message == (
+            "PKN: Review the thesis (unrealized_pct -50,0\u00a0%, weight 20,0\u00a0%)."
+        )
         assert fired.payload["symbol"] == "PKN"
         assert fired.payload["values"] == {"unrealized_pct": -0.5, "weight": 0.2}
 
@@ -193,9 +199,10 @@ class TestInstrumentScope:
         )
         outcomes = run(KIND, ctx, params("drawdown_from_high(5) >= 20%", "instrument"))
         assert [describe(o) for o in outcomes] == ["fired r|i:i-VWCE", "skipped r|i:i-PKN"]
-        assert skip_reason(outcomes[1]) == "No price series for PKN"
+        assert skip_reason(outcomes[1]) == "Brak notowań: PKN"
         assert candidate(outcomes[0]).message == (
-            "VWCE: Condition met: drawdown_from_high(5) >= 20% (drawdown_from_high(5) 30.0%)."
+            "VWCE: Warunek spełniony: drawdown_from_high(5) >= 20% "
+            "(drawdown_from_high(5) 30,0\u00a0%)."
         )
 
     def test_text_metrics(self):
@@ -228,9 +235,8 @@ class TestBucketScope:
             "fired r|s:bonds",
             "not_fired r|s:cash",
         ]
-        assert (
-            candidate(outcomes[1]).message
-            == "Bucket bonds: Condition met: drift_pp <= -5 or drift_pp >= 5 (drift_pp -8.0 pp)."
+        assert candidate(outcomes[1]).message == (
+            "Koszyk bonds: Warunek spełniony: drift_pp <= -5 or drift_pp >= 5 (drift_pp -8,0\u00a0pp)."
         )
         assert candidate(outcomes[1]).payload["bucket_id"] == "bonds"
 
@@ -244,7 +250,8 @@ class TestBucketScope:
             KIND, context(portfolio_value=portfolio([h(ETF)])), params("drift_pp > 1", "bucket")
         )
         assert [describe(o) for o in none] == ["skipped r"]
-        assert skip_reason(none[0]) == "No bucket allocations were computed"
+        assert skip_reason(subset[1]) == "Brak alokacji koszyka gold"
+        assert skip_reason(none[0]) == "Brak wyliczonej alokacji koszyków"
 
     def test_bucket_scope_skips_on_unclassified_holdings(self):
         new = instrument("NEW", asset_class=AssetClass.ETF)
@@ -254,7 +261,7 @@ class TestBucketScope:
         )
         outcomes = run(KIND, ctx, params("weight > target", "bucket"))
         assert all(describe(o).startswith("skipped") for o in outcomes)
-        assert skip_reason(outcomes[0]).startswith("Holdings that match no bucket are 50.0%")
+        assert skip_reason(outcomes[0]).startswith("Pozycje bez koszyka: 50,0\u00a0%")
 
 
 def test_engine_and_lifecycle_integration():

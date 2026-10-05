@@ -78,11 +78,15 @@ class TestEvaluate:
         assert equity.severity == SignalSeverity.ACTION
         assert equity.kind == "allocation_drift"
         assert equity.message == (
-            "Bucket equity is overweight by 7.0 pp (67.0% vs target 60.0%, 7000 PLN above target)."
+            "Koszyk equity powyżej celu o 7,0\u00a0pp (67,0\u00a0% wobec 60,0\u00a0%, "
+            "7\u00a0000 PLN ponad cel)."
         )
         assert equity.payload["direction"] == "overweight"
         assert equity.payload["drift_value_base"] == "7000"
-        assert "underweight by 7.0 pp" in candidate(outcomes[1]).message
+        assert candidate(outcomes[1]).message == (
+            "Koszyk bonds poniżej celu o 7,0\u00a0pp (33,0\u00a0% wobec 40,0\u00a0%, "
+            "do celu brakuje 7\u00a0000 PLN)."
+        )
 
     def test_fires_on_the_relative_band_alone(self):
         outcomes = run(
@@ -145,14 +149,16 @@ class TestSkipsOnBadData:
         stale = portfolio([h(ETF, value="90000", stale=True), h(instrument("PKN"), value="10000")])
         outcomes = run(KIND, context(portfolio_value=stale, allocations=self.ALLOCATIONS), params())
         assert [describe(o) for o in outcomes] == ["skipped r"]
-        assert skip_reason(outcomes[0]) == "Stale prices cover 90.0% of the portfolio (max 5.0%)"
+        assert skip_reason(outcomes[0]) == (
+            "Nieaktualne ceny: 90,0\u00a0% portfela (maks 5,0\u00a0%)"
+        )
 
     def test_a_holding_without_any_price(self):
         unpriced = portfolio([h(ETF, value="100000"), h(instrument("XYZ"), value=None)])
         outcomes = run(
             KIND, context(portfolio_value=unpriced, allocations=self.ALLOCATIONS), params()
         )
-        assert "No price for 1 holding(s) (XYZ)" in skip_reason(outcomes[0])
+        assert skip_reason(outcomes[0]) == "Brak ceny dla 1 pozycji (XYZ): wagi portfela niepełne"
 
     def test_unclassified_above_the_limit_skips_naming_them(self):
         untagged = instrument("VWRL", asset_class=AssetClass.ETF)
@@ -165,8 +171,8 @@ class TestSkipsOnBadData:
         )
         assert [describe(o) for o in outcomes] == ["skipped r"]
         assert skip_reason(outcomes[0]) == (
-            "Holdings that match no bucket are 90.0% of the portfolio (max 2.0%): VWRL; "
-            "classify or tag them so they fall into a bucket"
+            "Pozycje bez koszyka: 90,0\u00a0% portfela (maks 2,0\u00a0%): VWRL; "
+            "sklasyfikuj je lub otaguj, by trafiły do koszyka"
         )
         loose = run(
             KIND,
@@ -187,8 +193,7 @@ class TestSkipsOnBadData:
         )
         assert [describe(o) for o in outcomes] == ["fired r|s:equity", "skipped r|s:cash"]
         assert skip_reason(outcomes[1]) == (
-            "Bucket cash holds negative cash (deposits missing from the imported history), "
-            "so its value is unknown"
+            "Koszyk cash: ujemna gotówka (brak wpłat w zaimportowanej historii), wartość nieznana"
         )
 
     def test_a_currency_without_a_usable_fx_rate_skips_naming_it(self):
@@ -197,15 +202,15 @@ class TestSkipsOnBadData:
         outcomes = run(KIND, context(portfolio_value=gap, allocations=self.ALLOCATIONS), params())
         assert [describe(o) for o in outcomes] == ["skipped r"]
         reason = skip_reason(outcomes[0])
-        assert reason.startswith(
-            "No usable USD/PLN FX rate on 2026-10-02 (missing or older than 10 days)"
+        assert reason == (
+            "Brak kursu USD/PLN na 2026-10-02 (brak lub starszy niż 10 dni): nie da się wycenić "
+            "1 pozycji (VT); wagi portfela niepełne"
         )
-        assert "1 holding(s) (VT)" in reason
 
     def test_an_empty_portfolio_or_missing_allocations(self):
         assert skip_reason(run(KIND, context(allocations=self.ALLOCATIONS), params())[0]) == (
-            "The portfolio has no value yet"
+            "Portfel nie ma jeszcze wartości"
         )
         assert skip_reason(run(KIND, context(portfolio_value=GOOD), params())[0]) == (
-            "No bucket allocations were computed"
+            "Brak wyliczonej alokacji koszyków"
         )

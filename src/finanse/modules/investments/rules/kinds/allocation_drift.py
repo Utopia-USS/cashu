@@ -12,11 +12,14 @@ from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, s
 from ..params import ParamErrors, ParamReader
 from ..polarity import SignalPolarity
 from .support import (
+    NO_ALLOCATIONS,
     RATIO_EPSILON,
+    bucket_cash_gap_problem,
     decimal_text,
     format_amount,
     format_pct,
     format_pp,
+    no_allocation_problem,
     portfolio_data_problem,
     unclassified_problem,
 )
@@ -105,7 +108,7 @@ class AllocationDriftRule:
         if problem is not None:
             return [Skipped(spec.id, problem)]
         if not ctx.allocations:
-            return [Skipped(spec.id, "No bucket allocations were computed")]
+            return [Skipped(spec.id, NO_ALLOCATIONS)]
         unclassified = unclassified_problem(ctx)
         if unclassified is not None:
             return [Skipped(spec.id, unclassified)]
@@ -119,19 +122,10 @@ class AllocationDriftRule:
             key = signal_dedup_key(spec.id, scope=bucket_id)
             allocation = by_id.get(bucket_id)
             if allocation is None:
-                outcomes.append(
-                    Skipped(spec.id, f"No allocation computed for bucket {bucket_id}", key)
-                )
+                outcomes.append(Skipped(spec.id, no_allocation_problem(bucket_id), key))
                 continue
             if allocation.cash_history_gap:
-                outcomes.append(
-                    Skipped(
-                        spec.id,
-                        f"Bucket {bucket_id} holds negative cash (deposits missing from the imported "
-                        "history), so its value is unknown",
-                        key,
-                    )
-                )
+                outcomes.append(Skipped(spec.id, bucket_cash_gap_problem(bucket_id), key))
                 continue
             drift_rel = allocation.drift_rel
             outside_absolute = abs(allocation.drift_pp) > bands.absolute_band_pp + RATIO_EPSILON
@@ -155,11 +149,12 @@ class AllocationDriftRule:
                 continue
             over = allocation.drift_pp > 0
             direction = "overweight" if over else "underweight"
+            amount = f"{format_amount(abs(allocation.drift_value_base))} {currency}"
+            gap = f"{amount} ponad cel" if over else f"do celu brakuje {amount}"
             message = (
-                f"Bucket {bucket_id} is {direction} by {format_pp(abs(allocation.drift_pp))} "
-                f"({format_pct(allocation.weight)} vs target {format_pct(allocation.target)}, "
-                f"{format_amount(abs(allocation.drift_value_base))} {currency} "
-                f"{'above' if over else 'below'} target)."
+                f"Koszyk {bucket_id} {'powyżej' if over else 'poniżej'} celu o "
+                f"{format_pp(abs(allocation.drift_pp))} ({format_pct(allocation.weight)} wobec "
+                f"{format_pct(allocation.target)}, {gap})."
             )
             outcomes.append(
                 Fired(

@@ -134,7 +134,7 @@ class TestPortfolioMetrics:
         ]:
             assert (
                 reasons(value(name, *args, env=env))
-                == "Stale prices cover 90.0% of the portfolio (max 5.0%)"
+                == "Nieaktualne ceny: 90,0\u00a0% portfela (maks 5,0\u00a0%)"
             )
         assert approx(value("stale_weight", env=env), "0.9")
         assert approx(value("bucket_target", "equity", env=env), "0.7"), (
@@ -151,10 +151,10 @@ class TestPortfolioMetrics:
                 )
             )
         )
-        assert reasons(value("total_value", env=no_fx)).startswith("No usable USD/PLN FX rate")
+        assert reasons(value("total_value", env=no_fx)).startswith("Brak kursu USD/PLN")
         empty = env_for(context())
         assert value("total_value", env=empty) == 0
-        assert reasons(value("cash_weight", env=empty)) == "The portfolio has no value yet"
+        assert reasons(value("cash_weight", env=empty)) == "Portfel nie ma jeszcze wartości"
         assert value("holdings_count", env=empty) == 0
 
     def test_cash_history_gap_makes_cash_metrics_unknown(self):
@@ -162,10 +162,10 @@ class TestPortfolioMetrics:
         env = env_for(
             context(portfolio_value=portfolio(SPECS, cash="1000", snapshot_warnings=(gap,)))
         )
-        assert reasons(value("cash_weight", env=env)).startswith("Cash history is incomplete")
-        assert reasons(value("cash_value", env=env)).startswith("Cash history is incomplete")
+        assert reasons(value("cash_weight", env=env)).startswith("Niepełna historia gotówki")
+        assert reasons(value("cash_value", env=env)).startswith("Niepełna historia gotówki")
         assert reasons(value("asset_class_weight", "cash", env=env)).startswith(
-            "Cash history is incomplete"
+            "Niepełna historia gotówki"
         )
         assert approx(value("asset_class_weight", "etf", env=env), "0.6")
 
@@ -173,13 +173,13 @@ class TestPortfolioMetrics:
         no_alloc = env_for(context(portfolio_value=portfolio(SPECS, cash="1000")))
         assert (
             reasons(value("bucket_weight", "equity", env=no_alloc))
-            == "No bucket allocations were computed"
+            == "Brak wyliczonej alokacji koszyków"
         )
         assert (
             reasons(value("unclassified_weight", env=no_alloc))
-            == "No bucket allocations were computed"
+            == "Brak wyliczonej alokacji koszyków"
         )
-        assert reasons(value("bucket_weight", "nope")) == "No allocation computed for bucket nope"
+        assert reasons(value("bucket_weight", "nope")) == "Brak alokacji koszyka nope"
         value_with_new = portfolio([*SPECS, h(instrument("NEW"), value="3000")], cash="1000")
         unclassified = context(
             portfolio_value=value_with_new,
@@ -188,27 +188,22 @@ class TestPortfolioMetrics:
         )
         env = env_for(unclassified)
         assert reasons(value("bucket_drift_pp", "equity", env=env)).startswith(
-            "Holdings that match no bucket are 23.1%"
+            "Pozycje bez koszyka: 23,1\u00a0%"
         )
-        assert reasons(value("tagged_weight", "core", env=env)).startswith(
-            "Holdings that match no bucket"
-        )
+        assert reasons(value("tagged_weight", "core", env=env)).startswith("Pozycje bez koszyka")
         assert approx(value("unclassified_weight", env=env), str(3000 / 13000))
         gap_alloc = context(
             portfolio_value=portfolio(SPECS, cash="1000"),
             allocations=[alloc("cash", weight=0.1, target=0.1, cash_history_gap=True)],
         )
-        assert "holds negative cash" in reasons(
-            value("bucket_weight", "cash", env=env_for(gap_alloc))
+        assert reasons(value("bucket_weight", "cash", env=env_for(gap_alloc))) == (
+            "Koszyk cash: ujemna gotówka (brak wpłat w zaimportowanej historii), wartość nieznana"
         )
 
     def test_deposit_and_plan_metrics_need_data(self):
         bare = env_for(context(portfolio_value=portfolio(SPECS)))
-        assert reasons(value("days_since_last_deposit", env=bare)) == "No deposits recorded"
-        assert (
-            reasons(value("monthly_contribution", env=bare))
-            == "The strategy has no contributions plan"
-        )
+        assert reasons(value("days_since_last_deposit", env=bare)) == "Brak zapisanych wpłat"
+        assert reasons(value("monthly_contribution", env=bare)) == "Strategia nie ma planu wpłat"
 
     def test_max_position_weight_is_unknown_when_one_position_is_stale(self):
         env = env_for(
@@ -218,7 +213,7 @@ class TestPortfolioMetrics:
         )
         assert (
             reasons(value("max_position_weight", env=env))
-            == "Price of PKN is stale (last close 2026-09-22)"
+            == "Nieaktualna cena: PKN (ostatnie zamknięcie 2026-09-22)"
         )
 
 
@@ -231,7 +226,7 @@ class TestInstrumentMetrics:
         assert value("mic", env=env) == "XETR"
         assert (
             reasons(value("mic", env=env_for(symbol="EDO0536")))
-            == "EDO0536 has no exchange code (mic)"
+            == "EDO0536: brak kodu giełdy (mic)"
         )
         assert value("holding_has_tag", "Core", env=env) is True
         assert value("holding_has_tag", "satellite", env=env) is False
@@ -251,20 +246,20 @@ class TestInstrumentMetrics:
         assert approx(value("drawdown_from_high", 2, env=env), "0")
         assert approx(value("price_change", 5, env=env), "-0.04")
         assert approx(value("price_vs_sma", 5, env=env), str(Decimal(96) / Decimal("103.2") - 1))
-        assert reasons(value("drawdown_from_high", 10, env=env)) == "Only 5 of 10 bars for VWCE"
-        assert reasons(value("price_change", 6, env=env)) == "Only 5 of 6 bars for VWCE"
+        assert reasons(value("drawdown_from_high", 10, env=env)) == "Tylko 5 z 10 notowań: VWCE"
+        assert reasons(value("price_change", 6, env=env)) == "Tylko 5 z 6 notowań: VWCE"
 
     def test_series_metrics_unknown_without_series_stale_or_at_cost(self):
-        assert reasons(value("last_close", env=env_for(symbol="PKN"))) == "No price series for PKN"
+        assert reasons(value("last_close", env=env_for(symbol="PKN"))) == "Brak notowań: PKN"
         assert reasons(value("drawdown_from_high", 5, env=env_for(symbol="EDO0536"))) == (
-            "EDO0536 is valued at cost, so it has no market price series"
+            "EDO0536: wycena po koszcie, brak notowań rynkowych"
         )
         old = context(
             portfolio_value=portfolio(SPECS, cash="1000"),
             series={ETF: bars(ETF, ["100", "90"], last_date=day("2026-09-20"))},
         )
         assert reasons(value("price_vs_sma", 2, env=env_for(old, symbol="VWCE"))) == (
-            "Price of VWCE is stale (last close 2026-09-20, 12 days old)"
+            "Nieaktualna cena: VWCE (ostatnie zamknięcie 2026-09-20, 12 dni temu)"
         )
         loose = context(
             portfolio_value=portfolio(SPECS, cash="1000"),
@@ -281,39 +276,35 @@ class TestInstrumentMetrics:
             symbol="PKN",
         )
         assert (
-            reasons(value("weight", env=stale)) == "Price of PKN is stale (last close 2026-09-22)"
+            reasons(value("weight", env=stale))
+            == "Nieaktualna cena: PKN (ostatnie zamknięcie 2026-09-22)"
         )
         assert (
             reasons(value("market_value", env=stale))
-            == "Price of PKN is stale (last close 2026-09-22)"
+            == "Nieaktualna cena: PKN (ostatnie zamknięcie 2026-09-22)"
         )
         assert (
             reasons(value("unrealized_pct", env=stale))
-            == "Price of PKN is stale (last close 2026-09-22)"
+            == "Nieaktualna cena: PKN (ostatnie zamknięcie 2026-09-22)"
         )
         assert (
             reasons(value("unrealized_value", env=stale))
-            == "Price of PKN is stale (last close 2026-09-22)"
+            == "Nieaktualna cena: PKN (ostatnie zamknięcie 2026-09-22)"
         )
         no_cost = env_for(context(portfolio_value=portfolio([h(PKN, cost=None)])), symbol="PKN")
-        assert reasons(value("cost_basis", env=no_cost)).startswith("Cost basis of PKN is unknown")
-        assert reasons(value("unrealized_pct", env=no_cost)).startswith(
-            "Cost basis of PKN is unknown"
+        assert reasons(value("cost_basis", env=no_cost)) == (
+            "Nieznany koszt: PKN (niepełna historia lub transfer bez ceny)"
         )
-        assert reasons(value("unrealized_value", env=no_cost)).startswith(
-            "Cost basis of PKN is unknown"
-        )
+        assert reasons(value("unrealized_pct", env=no_cost)).startswith("Nieznany koszt: PKN")
+        assert reasons(value("unrealized_value", env=no_cost)).startswith("Nieznany koszt: PKN")
         usd = instrument("AAPL", currency=Currency.USD, mic="XNAS")
         fx_ctx = context(
             portfolio_value=portfolio([h(usd)], missing_fx_currencies=frozenset({Currency.USD})),
             series={usd: bars(usd, ["1", "2"])},
         )
         fx = env_for(fx_ctx, symbol="AAPL")
-        assert (
-            reasons(value("last_close", env=fx))
-            == "No usable USD FX rate, so AAPL cannot be valued"
-        )
-        assert reasons(value("weight", env=fx)).startswith("No usable USD/PLN FX rate")
+        assert reasons(value("last_close", env=fx)) == "Brak kursu USD: nie da się wycenić AAPL"
+        assert reasons(value("weight", env=fx)).startswith("Brak kursu USD/PLN")
 
     def test_manual_valuations_have_no_series_and_no_market_result(self):
         frozen = instrument("FTX", asset_class=AssetClass.CLAIM, mic=None)
@@ -324,11 +315,11 @@ class TestInstrumentMetrics:
             series={frozen: bars(frozen, ["10", "10"])},
         )
         env = env_for(ctx, symbol="FTX")
-        manual = "FTX is valued manually, so its change from cost is not a market result"
+        manual = "FTX: wycena ręczna, zmiana od kosztu nie jest wynikiem rynkowym"
         assert reasons(value("unrealized_pct", env=env)) == manual
         assert reasons(value("unrealized_value", env=env)) == manual
         assert reasons(value("drawdown_from_high", 2, env=env)) == (
-            "FTX is valued manually, so it has no market price series"
+            "FTX: wycena ręczna, brak notowań rynkowych"
         )
         assert value("market_value", env=env) == 0, "the manual value itself is a known value"
         assert value("weight", env=env) == Decimal("0.0")
@@ -352,7 +343,7 @@ class TestBucketMetrics:
 
     def test_drift_rel_is_unknown_for_a_zero_target(self):
         assert reasons(value("drift_rel", env=env_for(bucket="gold"))) == (
-            "The relative drift of bucket gold is undefined (target 0)"
+            "Względny dryf koszyka gold nieokreślony (cel 0)"
         )
         assert approx(value("drift_pp", env=env_for(bucket="gold")), "2")
 
@@ -363,7 +354,7 @@ class TestBucketMetrics:
         )
         env = env_for(stale, bucket="bonds")
         for name in ("weight", "drift_pp", "drift_rel", "value", "drift_value"):
-            assert reasons(value(name, env=env)).startswith("Stale prices cover 90.0%"), name
+            assert reasons(value(name, env=env)).startswith("Nieaktualne ceny: 90,0\u00a0%"), name
         assert approx(value("target", env=env), "0.2")
 
 

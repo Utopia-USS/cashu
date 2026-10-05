@@ -1,5 +1,9 @@
 """Shared helpers of the built-in rule kinds: data-quality checks, per-instrument aggregation across
-accounts, instrument filters, deterministic formatting for messages. Pure functions, no IO."""
+accounts, instrument filters, deterministic formatting for messages. Pure functions, no IO.
+
+Signal messages and skip reasons reach the owner (notifications, the signal list, the agent), so they
+are short Polish text with Polish number formatting (``12,3 %``, ``7,5 pp``, ``3 750``); payloads keep
+machine values (``decimal_text``)."""
 
 from __future__ import annotations
 
@@ -39,7 +43,7 @@ def portfolio_data_problem(ctx: RuleContext) -> str | None:
     if problem is not None:
         return problem
     if ctx.portfolio.total_base <= 0:
-        return "The portfolio has no value yet"
+        return "Portfel nie ma jeszcze wartości"
     return None
 
 
@@ -54,14 +58,11 @@ def portfolio_value_problem(ctx: RuleContext) -> str | None:
     )
     if unpriced:
         count = sum(1 for h in portfolio.valued if h.market_value_base is None)
-        return (
-            f"No price for {count} holding(s) ({', '.join(unpriced)}), "
-            "so portfolio weights are incomplete"
-        )
+        return f"Brak ceny dla {count} pozycji ({', '.join(unpriced)}): wagi portfela niepełne"
     if portfolio.stale_weight > ctx.data.max_stale_weight + RATIO_EPSILON:
         return (
-            f"Stale prices cover {format_pct(portfolio.stale_weight)} of the portfolio "
-            f"(max {format_pct(ctx.data.max_stale_weight)})"
+            f"Nieaktualne ceny: {format_pct(portfolio.stale_weight)} portfela "
+            f"(maks {format_pct(ctx.data.max_stale_weight)})"
         )
     return None
 
@@ -82,14 +83,14 @@ def missing_fx_problem(ctx: RuleContext) -> str | None:
     cash = sum(1 for c in portfolio.cash if c.amount_base is None)
     affected = []
     if holdings:
-        affected.append(f"{len(holdings)} holding(s) ({', '.join(holdings)})")
+        affected.append(f"{len(holdings)} pozycji ({', '.join(holdings)})")
     if cash:
-        affected.append(f"{cash} cash balance(s)")
+        affected.append(f"{cash} {'salda' if cash == 1 else 'sald'} gotówki")
     names = ", ".join(sorted(str(c) for c in currencies))
     return (
-        f"No usable {names}/{portfolio.base_currency} FX rate on {portfolio.as_of} (missing or older "
-        f"than {ctx.data.max_fx_age_days} days): {' and '.join(affected) or 'some amounts'} cannot be "
-        "valued, so portfolio weights are incomplete"
+        f"Brak kursu {names}/{portfolio.base_currency} na {portfolio.as_of} (brak lub starszy niż "
+        f"{days_phrase(ctx.data.max_fx_age_days)}): nie da się wycenić "
+        f"{' i '.join(affected) or 'części kwot'}; wagi portfela niepełne"
     )
 
 
@@ -104,8 +105,25 @@ def unclassified_problem(ctx: RuleContext) -> str | None:
         return None
     names = sorted({instrument_label(h.instrument) for h in ctx.unclassified})
     return (
-        f"Holdings that match no bucket are {format_pct(share)} of the portfolio "
-        f"(max {format_pct(maximum)}): {', '.join(names)}; classify or tag them so they fall into a bucket"
+        f"Pozycje bez koszyka: {format_pct(share)} portfela (maks {format_pct(maximum)}): "
+        f"{', '.join(names)}; sklasyfikuj je lub otaguj, by trafiły do koszyka"
+    )
+
+
+NO_ALLOCATIONS = "Brak wyliczonej alokacji koszyków"
+"""Skip reason when no bucket allocations exist (no strategy buckets, or nothing to allocate)."""
+
+
+def no_allocation_problem(bucket_id: str) -> str:
+    """Why one bucket cannot be judged: no allocation was computed for it."""
+    return f"Brak alokacji koszyka {bucket_id}"
+
+
+def bucket_cash_gap_problem(bucket_id: str) -> str:
+    """Why one bucket's value is unknown: it holds negative cash (``BucketAllocation.cash_history_gap``)."""
+    return (
+        f"Koszyk {bucket_id}: ujemna gotówka (brak wpłat w zaimportowanej "
+        "historii), wartość nieznana"
     )
 
 
@@ -114,10 +132,12 @@ def cash_history_problem(ctx: RuleContext) -> str | None:
     gaps = [w for w in ctx.portfolio.snapshot.warnings if isinstance(w, CashHistoryGap)]
     if not gaps:
         return None
-    listed = ", ".join(f"{gap.amount} {gap.currency} in account {gap.account_id}" for gap in gaps)
+    listed = ", ".join(
+        f"{format_decimal(gap.amount)} {gap.currency} na koncie {gap.account_id}" for gap in gaps
+    )
     return (
-        f"Cash history is incomplete (negative cash: {listed}; deposits missing from the imported "
-        "history?), so the cash share is unknown"
+        f"Niepełna historia gotówki (ujemne saldo: {listed}; brak wpłat w zaimportowanej "
+        "historii?): udział gotówki nieznany"
     )
 
 
@@ -212,9 +232,9 @@ class InstrumentPosition:
         """Why price-history rules cannot judge this position (valued manually or at cost: no market
         price series by design), or None."""
         if self.valued_manually:
-            return f"{self.label} is valued manually, so it has no market price series"
+            return f"{self.label}: wycena ręczna, brak notowań rynkowych"
         if self.valued_at_cost:
-            return f"{self.label} is valued at cost, so it has no market price series"
+            return f"{self.label}: wycena po koszcie, brak notowań rynkowych"
         return None
 
     @property
@@ -222,9 +242,7 @@ class InstrumentPosition:
         """Why the change from cost is not a market result (a manual valuation, e.g. a frozen holding at
         0 shows -100%), or None."""
         if self.valued_manually:
-            return (
-                f"{self.label} is valued manually, so its change from cost is not a market result"
-            )
+            return f"{self.label}: wycena ręczna, zmiana od kosztu nie jest wynikiem rynkowym"
         return None
 
     @property
@@ -232,9 +250,9 @@ class InstrumentPosition:
         """Why this position cannot be valued in the base currency for lack of a usable FX rate, or None."""
         for holding in self.holdings:
             if holding.missing_fx_currency is not None:
-                return f"No usable {holding.missing_fx_currency} FX rate, so {self.label} cannot be valued"
+                return f"Brak kursu {holding.missing_fx_currency}: nie da się wycenić {self.label}"
         if self.instrument.currency in self.missing_fx_currencies:
-            return f"No usable {self.instrument.currency} FX rate, so {self.label} cannot be valued"
+            return f"Brak kursu {self.instrument.currency}: nie da się wycenić {self.label}"
         return None
 
     @property
@@ -245,12 +263,12 @@ class InstrumentPosition:
             return fx
         for holding in self.holdings:
             if holding.price is None or holding.market_value_base is None:
-                return f"No price for {self.label}"
+                return f"Brak ceny: {self.label}"
         for holding in self.holdings:
             if holding.is_stale:
                 if holding.price_date is None:
-                    return f"Price of {self.label} is stale"
-                return f"Price of {self.label} is stale (last close {holding.price_date})"
+                    return f"Nieaktualna cena: {self.label}"
+                return f"Nieaktualna cena: {self.label} (ostatnie zamknięcie {holding.price_date})"
         return None
 
     @property
@@ -276,9 +294,9 @@ class InstrumentPosition:
         """Why the unrealized result cannot be computed, or None."""
         cost = self.cost_basis_base
         if cost is None:
-            return f"Cost basis of {self.label} is unknown (incomplete history or transfer without price)"
+            return unknown_cost_problem(self.label)
         if cost <= 0:
-            return f"Cost basis of {self.label} is zero"
+            return f"Zerowy koszt: {self.label}"
         return None
 
     @property
@@ -320,22 +338,53 @@ def positions_by_instrument(
     ]
 
 
+def stale_close_problem(label: str, last_date: object, age_days: int) -> str:
+    """Why a price series cannot be used: its last close is older than ``data.max_price_age_days``."""
+    return (
+        f"Nieaktualna cena: {label} (ostatnie zamknięcie {last_date}, {days_phrase(age_days)} temu)"
+    )
+
+
+def short_series_problem(label: str, stored: int, needed: int) -> str:
+    """Why a price series cannot be used: fewer closes stored than the window needs."""
+    return f"Tylko {stored} z {needed} notowań: {label}"
+
+
+def unknown_cost_problem(label: str) -> str:
+    """Why the cost basis of ``label`` is unknown (shared by the cost rules and metrics)."""
+    return f"Nieznany koszt: {label} (niepełna historia lub transfer bez ceny)"
+
+
 # --- formatting ---------------------------------------------------------------------------------
+
+NBSP = "\u00a0"
+"""Non-breaking space before ``%`` / ``pp`` and between thousand groups (as in the dashboard)."""
 
 
 def format_pct(ratio: float, digits: int = 1) -> str:
-    """``12.3%`` (rounded half away from zero)."""
-    return f"{_round(ratio * 100, digits)}%"
+    """``12,3 %`` (Polish: decimal comma, non-breaking space; rounded half away from zero)."""
+    return f"{_polish(_round(ratio * 100, digits))}{NBSP}%"
 
 
 def format_pp(pp: float) -> str:
-    """``7.5 pp``."""
-    return f"{_round(pp, 1)} pp"
+    """``7,5 pp``."""
+    return f"{_polish(_round(pp, 1))}{NBSP}pp"
 
 
 def format_amount(amount: Decimal) -> str:
-    """Whole currency units, e.g. ``3750`` (half away from zero)."""
-    return str(amount.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    """Whole currency units with Polish grouping, e.g. ``3 750`` (half away from zero)."""
+    return _polish(str(amount.quantize(Decimal(1), rounding=ROUND_HALF_UP)))
+
+
+def format_decimal(value: Decimal) -> str:
+    """An exact decimal (a price, a planned amount) for a message: ``1 234,5``. Payloads keep
+    :func:`decimal_text`."""
+    return _polish(decimal_text(value))
+
+
+def days_phrase(days: int) -> str:
+    """``1 dzień``, ``5 dni``."""
+    return "1 dzień" if days == 1 else f"{days} dni"
 
 
 def decimal_text(value: Decimal) -> str:
@@ -344,6 +393,18 @@ def decimal_text(value: Decimal) -> str:
         return "0"
     text = format(value.normalize(), "f")
     return text
+
+
+def _polish(text: str) -> str:
+    """Plain decimal text (``-3750.5``) in Polish notation: thousand groups, decimal comma."""
+    sign = "-" if text.startswith("-") else ""
+    whole, _, fraction = text.removeprefix("-").partition(".")
+    groups = []
+    while len(whole) > 3:
+        groups.insert(0, whole[-3:])
+        whole = whole[:-3]
+    groups.insert(0, whole)
+    return sign + NBSP.join(groups) + (f",{fraction}" if fraction else "")
 
 
 def _round(value: float, digits: int) -> str:

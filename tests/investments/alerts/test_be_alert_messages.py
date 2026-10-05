@@ -23,7 +23,11 @@ def test_change_pct_carries_direction_and_size():
         "close": "8.77",
         "price_date": "2026-03-02",
     }
-    code, params = alert_message("alert:change_pct", payload, "Big move: EXA fell 12.3 %")
+    code, params = alert_message(
+        "alert:change_pct",
+        payload,
+        "Big move: EXA: -12,3\u00a0% w 5 sesji (10 2026-02-23 -> 8,77 2026-03-02).",
+    )
     assert code == "alert.change_pct"
     assert params == {
         "title": "Big move",
@@ -43,7 +47,7 @@ def test_weight_custom_and_profile_label():
     code, params = alert_message(
         "alert:weight_above",
         {"title": "Too much", "bucket_id": "stocks", "weight": 0.7, "threshold": 0.6},
-        "Too much: Bucket stocks is 70 % of the portfolio (above 60 %).",
+        "Too much: Koszyk stocks: 70,0\u00a0% portfela (powyżej 60,0\u00a0%).",
     )
     assert code == "alert.weight_above"
     assert params == {
@@ -57,10 +61,15 @@ def test_weight_custom_and_profile_label():
     _code, params = alert_message(
         "alert:weight_below",
         {"title": "Small", "symbol": "EXA", "weight": 0.0, "threshold": 0.05, "held": False},
-        "Small: EXA is 0 % of the portfolio (below 5 %).",
+        "Small: EXA: 0,0\u00a0% portfela (poniżej 5,0\u00a0%).",
         label="EXA profile view",
     )
     assert params["subject"] == "instrument" and params["label"] == "EXA profile view"
     assert params["held"] is False
-    code, params = alert_message("alert:custom", {"title": "Mine"}, "Mine: cash weight 0.2 > 0.15")
-    assert code == "alert.custom" and params["detail"] == "cash weight 0.2 > 0.15"
+    code, params = alert_message(
+        "alert:custom",
+        {"title": "Mine"},
+        "Mine: Warunek spełniony: cash_weight > 15% (cash_weight 20,0\u00a0%).",
+    )
+    assert code == "alert.custom"
+    assert params["detail"] == "Warunek spełniony: cash_weight > 15% (cash_weight 20,0\u00a0%)."

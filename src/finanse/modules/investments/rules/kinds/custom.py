@@ -22,16 +22,21 @@ from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, s
 from ..params import ParamErrors, ParamReader
 from ..polarity import SignalPolarity
 from .support import (
+    NO_ALLOCATIONS,
     InstrumentFilter,
     InstrumentPosition,
     decimal_text,
     format_amount,
+    format_decimal,
     format_pct,
     format_pp,
+    no_allocation_problem,
     positions_by_instrument,
 )
 
 MAX_MESSAGE_LENGTH = 200
+CONDITION_MET = "Warunek spełniony"
+"""Default message of a fired custom rule without ``message``: ``Warunek spełniony: <when>``."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,7 +124,7 @@ class CustomRule:
         params = spec.params
         expression = params.expression
         if expression is None:
-            return [Skipped(spec.id, "The rule's expression did not compile")]
+            return [Skipped(spec.id, "Nie udało się skompilować warunku reguły")]
         match params.scope:
             case Scope.PORTFOLIO:
                 env = MetricEnv(ctx)
@@ -138,7 +143,7 @@ class CustomRule:
                 ]
             case Scope.BUCKET:
                 if not ctx.allocations:
-                    return [Skipped(spec.id, "No bucket allocations were computed")]
+                    return [Skipped(spec.id, NO_ALLOCATIONS)]
                 bucket_ids = list(params.buckets) or [a.bucket_id for a in ctx.allocations]
                 by_id = {allocation.bucket_id: allocation for allocation in ctx.allocations}
                 outcomes: list[RuleOutcome] = []
@@ -146,9 +151,7 @@ class CustomRule:
                     key = signal_dedup_key(spec.id, scope=bucket_id)
                     allocation = by_id.get(bucket_id)
                     if allocation is None:
-                        outcomes.append(
-                            Skipped(spec.id, f"No allocation computed for bucket {bucket_id}", key)
-                        )
+                        outcomes.append(Skipped(spec.id, no_allocation_problem(bucket_id), key))
                         continue
                     env = MetricEnv(ctx, bucket_id=bucket_id, allocation=allocation)
                     outcomes.append(
@@ -180,11 +183,11 @@ class CustomRule:
         }
         if not evaluation.result:
             return NotFired(spec.id, key, details)
-        text = params.message or f"Condition met: {expression.normalized}"
+        text = params.message or f"{CONDITION_MET}: {expression.normalized}"
         if position is not None:
             text = f"{position.label}: {text}"
         elif env.bucket_id is not None:
-            text = f"Bucket {env.bucket_id}: {text}"
+            text = f"Koszyk {env.bucket_id}: {text}"
         shown = _shown_values(evaluation, str(ctx.portfolio.base_currency))
         message = f"{text} ({shown})." if shown else f"{text}."
         return Fired(
@@ -234,9 +237,9 @@ def _shown_values(evaluation: Evaluation, currency: str) -> str:
 
 def _format(label: str, value: Value, currency: str) -> str:
     if isinstance(value, Unknown):
-        return "unknown"
+        return "nieznane"
     if isinstance(value, bool):
-        return "yes" if value else "no"
+        return "tak" if value else "nie"
     if isinstance(value, str):
         return value
     match _unit(label):
@@ -249,4 +252,4 @@ def _format(label: str, value: Value, currency: str) -> str:
         case Unit.DAYS | Unit.COUNT:
             return format_amount(value)
         case _:
-            return decimal_text(value)
+            return format_decimal(value)

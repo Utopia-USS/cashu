@@ -56,9 +56,11 @@ def custom_condition(ctx: ToolContext, text: str | None, *, private: bool = Fals
 def custom_signal_message(
     ctx: ToolContext, message: str | None, when: str | None, *, private: bool = False
 ) -> L.Labelled:
-    """The message of a custom signal ("<title>: Condition met: <when> (<values>)."): in strict mode
-    the condition inside it is scrubbed like :func:`custom_condition` and every other number outside
-    dates and percentages is removed (the title and the owner's message are free text)."""
+    """The message of a custom signal ("<title>: Warunek spełniony: <when> (<values>).", the rule
+    engine's Polish text; the condition is the normalized ``when`` verbatim, so the message splits on
+    it): in strict mode the condition inside it is scrubbed like :func:`custom_condition` and every
+    other number outside dates and percentages (``12,3 %``, ``7,5 pp``) is removed (the title and the
+    owner's message are free text)."""
     if message is None or not ctx.strict:
         return L.text(message)
     from finanse.modules.investments.rules.expr.privacy import scrub_amount_literals

@@ -51,7 +51,7 @@ class TestEvaluate:
         fired = candidate(outcomes[0])
         assert (
             fired.message
-            == "Holdings tagged thematic are 15.0% of the portfolio (max 10.0%): ROBO, SPACE."
+            == "Pozycje z tagami thematic: 15,0\u00a0% portfela (maks 10,0\u00a0%): ROBO, SPACE."
         )
         assert fired.payload["instruments"] == ["ROBO", "SPACE"]
 
@@ -74,19 +74,19 @@ class TestEvaluate:
 class TestSkipsOnBadData:
     def test_stale_share_unpriced_holding_missing_fx_empty(self):
         stale = portfolio([h(SPACE, value="2000", stale=True), h(CORE, value="8000")])
-        assert "Stale prices cover 20.0%" in skip_reason(
+        assert "Nieaktualne ceny: 20,0\u00a0%" in skip_reason(
             run(KIND, context(portfolio_value=stale), PARAMS)[0]
         )
         unpriced = portfolio([h(SPACE, value=None), h(CORE, value="8000")])
-        assert "No price for 1 holding(s) (SPACE)" in skip_reason(
+        assert "Brak ceny dla 1 pozycji (SPACE)" in skip_reason(
             run(KIND, context(portfolio_value=unpriced), PARAMS)[0]
         )
         usd = instrument("ARKX", currency=Currency.USD, tags=("thematic",))
         no_fx = portfolio([h(usd), h(CORE)], missing_fx_currencies=frozenset({Currency.USD}))
         assert skip_reason(run(KIND, context(portfolio_value=no_fx), PARAMS)[0]).startswith(
-            "No usable USD/PLN"
+            "Brak kursu USD/PLN"
         )
-        assert skip_reason(run(KIND, context(), PARAMS)[0]) == "The portfolio has no value yet"
+        assert skip_reason(run(KIND, context(), PARAMS)[0]) == "Portfel nie ma jeszcze wartości"
 
     def test_unclassified_share_above_the_limit_skips(self):
         untagged = instrument("NEW", asset_class=AssetClass.ETF)
@@ -101,6 +101,4 @@ class TestSkipsOnBadData:
             PARAMS,
         )
         assert [describe(o) for o in outcomes] == ["skipped r"]
-        assert skip_reason(outcomes[0]).startswith(
-            "Holdings that match no bucket are 30.0% of the portfolio"
-        )
+        assert skip_reason(outcomes[0]).startswith("Pozycje bez koszyka: 30,0\u00a0% portfela")

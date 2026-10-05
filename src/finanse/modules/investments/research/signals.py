@@ -12,6 +12,10 @@ The signal stays open while at least one of its notes qualifies (stored, not dis
 expired): dismissing the last one resolves it with ``payload.closed_reason = "note_dismissed"``
 (restoring within the window reopens the same row), expiry resolves it with ``"notes_expired"``
 (housekeeping). ``note.signal_id`` remembers the signal a note created or joined.
+
+The signal message reaches the owner (macOS notification, signal list), so it is Polish, with the
+dashboard's labels for note kinds and thesis relations (frontend ``v2/research/logic.ts``):
+``Analiza (wiadomość, podważa tezę): <title>; siła 3/3, 2 źródła``.
 """
 
 from __future__ import annotations
@@ -43,11 +47,43 @@ from .scoring import CANDIDATE_KIND, iso_week, theme_key
 CLOSED_DISMISSED = "note_dismissed"
 CLOSED_EXPIRED = "notes_expired"
 
-_RELATION_TEXT = {
-    "invalidates": "invalidates the thesis",
-    "weakens": "weakens the thesis",
-    "supports": "supports the thesis",
+KIND_LABEL = {
+    "news": "wiadomość",
+    "earnings": "wyniki",
+    "community": "społeczność · szum",
+    "trend": "trend",
+    "macro": "makro",
+    "candidate": "kandydat",
 }
+"""Polish labels of note kinds, as in the dashboard (``KIND_LABEL`` in v2/research/logic.ts)."""
+
+RELATION_LABEL = {
+    "invalidates": "podważa tezę",
+    "weakens": "osłabia tezę",
+    "supports": "wzmacnia tezę",
+}
+"""Polish labels of the thesis relations a message names (``RELATION_LABEL`` in v2/research/logic.ts);
+``neutral`` / ``none`` are left out of the message."""
+
+
+def sources_phrase(count: int) -> str:
+    """Polish plural: 1 źródło, 2-4 źródła (not 12-14), 0 / 5+ źródeł."""
+    if count == 1:
+        return "1 źródło"
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return f"{count} źródła"
+    return f"{count} źródeł"
+
+
+def research_message(
+    kind: str, relation: str | None, title: str, strength: int, sources: int
+) -> str:
+    """The signal message of a lead note: ``Analiza (<kind>, <relation>): <title>; siła N/3, <sources>``
+    (an unknown kind shows as is; a relation outside :data:`RELATION_LABEL` is left out)."""
+    label = KIND_LABEL.get(kind, kind)
+    relation_text = RELATION_LABEL.get(relation or "")
+    head = f"{label}, {relation_text}" if relation_text else label
+    return f"Analiza ({head}): {title}; siła {strength}/3, {sources_phrase(sources)}"
 
 
 def aware(value: dt.datetime | None) -> dt.datetime | None:
@@ -135,11 +171,7 @@ def candidate_for(
     severity = severity_of(lead, at)
     assert severity is not None
     sources = len(lead.sources or [])
-    relation = _RELATION_TEXT.get(lead.thesis_relation)
-    message = (
-        f"Research ({lead.kind}{', ' + relation if relation else ''}): {lead.title}; "
-        f"strength {lead.strength}/3, {sources} source{'s' if sources != 1 else ''}"
-    )
+    message = research_message(lead.kind, lead.thesis_relation, lead.title, lead.strength, sources)
     week = key.split("|", 1)[0].removeprefix("research:")
     return SignalCandidate(
         rule_id=research_rule_id(lead.kind),

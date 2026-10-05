@@ -153,7 +153,7 @@ class TestThreeValuedLogic:
             "market_value / cost_basis > 1", market_value=Decimal(1), cost_basis=Decimal(0)
         )
         assert division.result is None
-        assert division.reasons == ("Division by zero at column 14",)
+        assert division.reasons == ("Dzielenie przez zero (kolumna 14)",)
 
     def test_metric_values_are_reported_by_label(self):
         result = run(

@@ -72,9 +72,9 @@ class PositionConcentrationRule:
             weight = position.weight
             price_problem = position.price_problem
             if price_problem is None and weight is None:
-                price_problem = f"No weight for {position.label}"
+                price_problem = f"Brak wagi: {position.label}"
             if price_problem is not None or weight is None:
-                outcomes.append(Skipped(spec.id, price_problem or "No weight", key))
+                outcomes.append(Skipped(spec.id, price_problem or "Brak wagi", key))
                 continue
             details = {**position.payload(), "weight": weight, "max_weight": max_weight}
             if weight <= max_weight + RATIO_EPSILON:
@@ -90,8 +90,8 @@ class PositionConcentrationRule:
                         instrument_id=position.id,
                         payload=details,
                         message=(
-                            f"{position.label} is {format_pct(weight)} of the portfolio "
-                            f"(max {format_pct(max_weight)})."
+                            f"{position.label}: {format_pct(weight)} portfela "
+                            f"(maks {format_pct(max_weight)})."
                         ),
                     )
                 )

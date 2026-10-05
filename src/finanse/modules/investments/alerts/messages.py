@@ -1,6 +1,6 @@
 """Stable code + params of an alert signal's message, so a UI can show it in its own language.
 
-The English ``message`` (``"<title>: <detail>"``, ``evaluate.py``) stays as is; ``alert_message`` maps
+The Polish ``message`` (``"<title>: <detail>"``, ``evaluate.py``) stays as is; ``alert_message`` maps
 the fired signal's stored payload to ``("alert.<kind>", params)``. Params are the measured facts of
 the payload (prices as decimal text, ratios as fractions, ISO dates) plus ``title`` and the
 instrument ``label``; nothing is computed here. Pure: no IO.
@@ -42,7 +42,7 @@ def alert_message(
     """``(code, params)`` of an alert signal (``kind = "alert:<kind>"``), ``(None, None)`` for any
     other signal. ``change_pct`` adds ``direction`` (up | down, from the sign) and ``change`` (its
     absolute size); weight kinds add ``subject`` (bucket | instrument); ``custom`` carries the
-    rule engine's English ``detail``."""
+    rule engine's ``detail`` (Polish, ``Warunek spełniony: <when> (<values>).``)."""
     if not signal_kind.startswith(_PREFIX):
         return None, None
     kind = signal_kind.removeprefix(_PREFIX)

@@ -121,7 +121,7 @@ def test_a_triggered_alert_becomes_a_signal_once(investor):
     (sig,) = alert_signals(pid, aid)
     assert (sig.kind, sig.dedup_key, sig.status) == ("alert:price_above", f"alert:{aid}", "active")
     assert (sig.polarity, sig.severity) == ("positive", "action")
-    assert sig.message == f"XMPL above 90: XMPL closed at 100 USD on {AS_OF}, above 90 USD."
+    assert sig.message == f"XMPL above 90: XMPL: zamknięcie 100 USD ({AS_OF}), powyżej 90 USD."
     assert sig.instrument_id == instrument_id("XMPL")
     assert len(notifications(sig.id)) == 1  # action: the default immediate policy
     assert any(x["rule_id"] == f"alert:{aid}" for x in first.new_signals)
@@ -228,7 +228,7 @@ def test_watched_instruments_join_the_refresh_and_carry_alerts(investor):
     with get_session() as s:
         assert s.exec(select(InvPriceBar).where(InvPriceBar.instrument_id == watched)).first()
     (sig,) = alert_signals(pid, aid)
-    assert sig.instrument_id == watched and "below 60 EUR" in sig.message
+    assert sig.instrument_id == watched and "poniżej 60 EUR" in sig.message
     with get_session() as s:
         rows = views.watchlist_view(s, s.get(Profile, pid), as_of=AS_OF)
     row = next(r for r in rows if r["instrument_id"] == watched)
@@ -246,9 +246,14 @@ def test_weight_bucket_and_custom_alerts(investor):
     cash = create(pid, "custom", {"expression": "cash_weight >= 10%"}, symbol=None)
     calm = create(pid, "custom", {"expression": "cash_weight >= 50%"}, symbol=None)
     run(pid)
-    assert "XMPL is 37.3% of the portfolio (above 30.0%)." in alert_signals(pid, heavy)[0].message
-    assert "Bucket stocks is 87.3% of the portfolio" in alert_signals(pid, light)[0].message
+    assert (
+        "XMPL: 37,3\u00a0% portfela (powyżej 30,0\u00a0%)." in alert_signals(pid, heavy)[0].message
+    )
+    assert "Koszyk stocks: 87,3\u00a0% portfela" in alert_signals(pid, light)[0].message
     assert alert_signals(pid, cash)[0].kind == "alert:custom"
+    assert alert_signals(pid, cash)[0].message.startswith(
+        "custom test: Warunek spełniony: cash_weight >= 10% (cash_weight "
+    )
     assert alert_signals(pid, calm) == [] and alert_row(calm).status == "active"
 
 

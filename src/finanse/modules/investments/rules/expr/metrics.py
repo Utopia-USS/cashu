@@ -1,7 +1,8 @@
 """Values of the metric catalog for one evaluation scope.
 
 Each resolver applies the same data-quality rules as the built-in kinds: a metric whose inputs are stale,
-missing or untrustworthy resolves to :class:`Unknown` with the reason the built-in rule would give.
+missing or untrustworthy resolves to :class:`Unknown` with the reason the built-in rule would give (short
+Polish text: it becomes the custom rule's skip reason, which the owner and the agent can see).
 """
 
 from __future__ import annotations
@@ -15,16 +16,20 @@ from finanse.modules.investments.domain import AssetClass, BucketAllocation, day
 
 from ..kind import RuleContext
 from ..kinds.cash_level import cash_value
-from ..kinds.contribution_gap import last_deposit_date
+from ..kinds.contribution_gap import NO_CONTRIBUTIONS_PLAN, last_deposit_date
 from ..kinds.drawdown_from_high import window_bars
 from ..kinds.support import (
+    NO_ALLOCATIONS,
     InstrumentPosition,
+    bucket_cash_gap_problem,
     cash_history_problem,
     has_all_tags,
+    no_allocation_problem,
     portfolio_data_problem,
     portfolio_value_problem,
     positions_by_instrument,
     unclassified_problem,
+    unknown_cost_problem,
 )
 from ..kinds.tagged_weight import tagged_weight
 from .catalog import METRICS
@@ -82,7 +87,7 @@ def _cash_weight(env: MetricEnv, _: tuple) -> Value:
 
 
 def _stale_weight(env: MetricEnv, _: tuple) -> Value:
-    return _ratio(env.ctx.portfolio.stale_weight, "The stale share is unknown")
+    return _ratio(env.ctx.portfolio.stale_weight, "Udział nieaktualnych cen nieznany")
 
 
 def _unclassified_weight(env: MetricEnv, _: tuple) -> Value:
@@ -91,9 +96,9 @@ def _unclassified_weight(env: MetricEnv, _: tuple) -> Value:
     if problem:
         return _unknown(problem)
     if not ctx.allocations:
-        return _unknown("No bucket allocations were computed")
+        return _unknown(NO_ALLOCATIONS)
     return _ratio(
-        sum(h.weight or 0.0 for h in ctx.unclassified), "The unclassified share is unknown"
+        sum(h.weight or 0.0 for h in ctx.unclassified), "Udział pozycji bez koszyka nieznany"
     )
 
 
@@ -107,9 +112,9 @@ def _max_position_weight(env: MetricEnv, _: tuple) -> Value:
         position_problem = position.price_problem
         weight = position.weight
         if position_problem or weight is None:
-            return _unknown(position_problem or f"No weight for {position.label}")
+            return _unknown(position_problem or f"Brak wagi: {position.label}")
         best = max(best, weight)
-    return _ratio(best, "The largest position weight is unknown")
+    return _ratio(best, "Waga największej pozycji nieznana")
 
 
 def _holdings_count(env: MetricEnv, _: tuple) -> Value:
@@ -119,14 +124,14 @@ def _holdings_count(env: MetricEnv, _: tuple) -> Value:
 def _days_since_last_deposit(env: MetricEnv, _: tuple) -> Value:
     last = last_deposit_date(env.ctx)
     if last is None:
-        return _unknown("No deposits recorded")
+        return _unknown("Brak zapisanych wpłat")
     return _count(days_between(last, env.ctx.as_of))
 
 
 def _monthly_contribution(env: MetricEnv, _: tuple) -> Value:
     plan = env.ctx.contributions
     if plan is None:
-        return _unknown("The strategy has no contributions plan")
+        return _unknown(NO_CONTRIBUTIONS_PLAN)
     return plan.monthly_amount
 
 
@@ -139,19 +144,16 @@ def _bucket(
         if problem:
             return _unknown(problem)
     if not ctx.allocations:
-        return _unknown("No bucket allocations were computed")
+        return _unknown(NO_ALLOCATIONS)
     if needs_weights:
         problem = unclassified_problem(ctx)
         if problem:
             return _unknown(problem)
     allocation = next((a for a in ctx.allocations if a.bucket_id == bucket_id), None)
     if allocation is None:
-        return _unknown(f"No allocation computed for bucket {bucket_id}")
+        return _unknown(no_allocation_problem(bucket_id))
     if needs_weights and allocation.cash_history_gap:
-        return _unknown(
-            f"Bucket {bucket_id} holds negative cash (deposits missing from the imported history), "
-            "so its value is unknown"
-        )
+        return _unknown(bucket_cash_gap_problem(bucket_id))
     return allocation
 
 
@@ -170,21 +172,15 @@ def _bucket_field(
 def _allocation_value(allocation: BucketAllocation, field_name: str) -> Value:
     match field_name:
         case "weight":
-            return _ratio(
-                allocation.weight, f"The weight of bucket {allocation.bucket_id} is unknown"
-            )
+            return _ratio(allocation.weight, f"Waga koszyka {allocation.bucket_id} nieznana")
         case "target":
-            return _ratio(
-                allocation.target, f"The target of bucket {allocation.bucket_id} is unknown"
-            )
+            return _ratio(allocation.target, f"Cel koszyka {allocation.bucket_id} nieznany")
         case "drift_pp":
-            return _ratio(
-                allocation.drift_pp, f"The drift of bucket {allocation.bucket_id} is unknown"
-            )
+            return _ratio(allocation.drift_pp, f"Dryf koszyka {allocation.bucket_id} nieznany")
         case "drift_rel":
             return _ratio(
                 allocation.drift_rel,
-                f"The relative drift of bucket {allocation.bucket_id} is undefined (target 0)",
+                f"Względny dryf koszyka {allocation.bucket_id} nieokreślony (cel 0)",
             )
         case "value":
             return allocation.value_base
@@ -198,7 +194,7 @@ def _tagged_weight(env: MetricEnv, args: tuple) -> Value:
     if problem:
         return _unknown(problem)
     weight, _labels = tagged_weight(ctx, tuple(str(arg) for arg in args))
-    return _ratio(weight, "The tagged weight is unknown")
+    return _ratio(weight, "Waga tagów nieznana")
 
 
 def _asset_class_weight(env: MetricEnv, args: tuple) -> Value:
@@ -213,7 +209,7 @@ def _asset_class_weight(env: MetricEnv, args: tuple) -> Value:
     weight = sum(
         h.weight or 0.0 for h in ctx.portfolio.valued if h.instrument.asset_class == asset_class
     )
-    return _ratio(weight, f"The weight of asset class {asset_class} is unknown")
+    return _ratio(weight, f"Waga klasy aktywów {asset_class} nieznana")
 
 
 # --- instrument ---------------------------------------------------------------------------------
@@ -239,7 +235,7 @@ def _currency(env: MetricEnv, _: tuple) -> Value:
 def _mic(env: MetricEnv, _: tuple) -> Value:
     position = _position(env)
     mic = position.instrument.mic
-    return mic.upper() if mic else _unknown(f"{position.label} has no exchange code (mic)")
+    return mic.upper() if mic else _unknown(f"{position.label}: brak kodu giełdy (mic)")
 
 
 def _weight(env: MetricEnv, args: tuple) -> Value:
@@ -255,7 +251,7 @@ def _weight(env: MetricEnv, args: tuple) -> Value:
     problem = portfolio_data_problem(env.ctx) or position.price_problem
     if problem:
         return _unknown(problem)
-    return _ratio(position.weight, f"No weight for {position.label}")
+    return _ratio(position.weight, f"Brak wagi: {position.label}")
 
 
 def _market_value(env: MetricEnv, _: tuple) -> Value:
@@ -263,7 +259,7 @@ def _market_value(env: MetricEnv, _: tuple) -> Value:
     problem = position.price_problem
     value = position.market_value_base
     if problem or value is None:
-        return _unknown(problem or f"No price for {position.label}")
+        return _unknown(problem or f"Brak ceny: {position.label}")
     return value
 
 
@@ -271,9 +267,7 @@ def _cost_basis(env: MetricEnv, _: tuple) -> Value:
     position = _position(env)
     cost = position.cost_basis_base
     if cost is None:
-        return _unknown(
-            f"Cost basis of {position.label} is unknown (incomplete history or transfer without price)"
-        )
+        return _unknown(unknown_cost_problem(position.label))
     return cost
 
 
@@ -282,7 +276,7 @@ def _unrealized_pct(env: MetricEnv, _: tuple) -> Value:
     problem = position.manual_problem or position.price_problem or position.cost_problem
     if problem:
         return _unknown(problem)
-    return _ratio(position.unrealized_pct, f"No unrealized result for {position.label}")
+    return _ratio(position.unrealized_pct, f"Brak wyniku niezrealizowanego: {position.label}")
 
 
 def _unrealized_value(env: MetricEnv, _: tuple) -> Value:
@@ -291,11 +285,9 @@ def _unrealized_value(env: MetricEnv, _: tuple) -> Value:
     cost = position.cost_basis_base
     problem = position.manual_problem or position.price_problem
     if problem or value is None:
-        return _unknown(problem or f"No price for {position.label}")
+        return _unknown(problem or f"Brak ceny: {position.label}")
     if cost is None:
-        return _unknown(
-            f"Cost basis of {position.label} is unknown (incomplete history or transfer without price)"
-        )
+        return _unknown(unknown_cost_problem(position.label))
     return value - cost
 
 

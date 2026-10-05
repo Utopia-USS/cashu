@@ -244,3 +244,23 @@ def test_tools_are_bound_to_their_profile(host):
     with get_session() as s:
         assert s.get(InvResearchNote, note_id).profile_id == pid
         assert s.get(InvResearchNote, ok.data["note_id"]).profile_id == other
+
+
+def test_research_signal_message_is_polish_and_scrubbed_in_strict_mode(host):
+    pid, _slug, mcp = host
+    # (an amount within 24 characters before "siła N" would also scrub N: the redactor's money-word rule
+    # matches its own "[amount]" placeholder, for English and Polish text alike)
+    title = "Odpis 4321,09 PLN obniża zysk banku"
+    assert mcp.call("add_research_note", note(strength=3, title=title)).ok
+    with get_session() as s:
+        (sig,) = s.exec(select(InvSignal).where(InvSignal.dedup_key.startswith("research:"))).all()
+    assert sig.message == f"Analiza (wiadomość): {title}; siła 3/3, 1 źródło"
+
+    def listed() -> str:
+        signals = mcp.call("signals", {}).data["signals"]
+        (row,) = [x for x in signals if x["kind"] == "research:news"]
+        return row["message"]
+
+    assert listed() == "Analiza (wiadomość): Odpis [amount] obniża zysk banku; siła 3/3, 1 źródło"
+    _privacy(pid, "amounts")
+    assert listed() == sig.message

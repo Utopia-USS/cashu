@@ -72,7 +72,7 @@ class _UnrealizedFromCostRule:
             problem = position.manual_problem or position.price_problem or position.cost_problem
             pct = position.unrealized_pct
             if problem is not None or pct is None:
-                outcomes.append(Skipped(spec.id, problem or "No unrealized result", key))
+                outcomes.append(Skipped(spec.id, problem or "Brak wyniku niezrealizowanego", key))
                 continue
             value = position.market_value_base
             cost = position.cost_basis_base
@@ -95,14 +95,11 @@ class _UnrealizedFromCostRule:
                 continue
             if self.IS_LOSS:
                 message = (
-                    f"{position.label} is down {format_pct(-pct)} from cost "
-                    f"(threshold {format_pct(threshold)})."
+                    f"{position.label}: -{format_pct(-pct)} od kosztu "
+                    f"(próg -{format_pct(threshold)})."
                 )
             else:
-                message = (
-                    f"{position.label} is up {format_pct(pct)} from cost "
-                    f"(threshold {format_pct(threshold)})."
-                )
+                message = f"{position.label}: +{format_pct(pct)} od kosztu (próg +{format_pct(threshold)})."
             outcomes.append(
                 Fired(
                     SignalCandidate(

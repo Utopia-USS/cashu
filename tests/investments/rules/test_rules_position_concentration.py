@@ -71,7 +71,7 @@ class TestEvaluate:
         )
         assert [describe(o) for o in outcomes] == ["fired r|i:i-PKN"]
         fired = candidate(outcomes[0])
-        assert fired.message == "PKN is 20.0% of the portfolio (max 10.0%)."
+        assert fired.message == "PKN: 20,0\u00a0% portfela (maks 10,0\u00a0%)."
         assert fired.instrument_id == "i-PKN"
         assert fired.payload["accounts"] == 2
 
@@ -127,16 +127,16 @@ class TestSkipsOnBadData:
         stale = portfolio([h(PKN, value="9000", stale=True), h(CDR, value="1000")])
         outcomes = run(KIND, context(portfolio_value=stale), params())
         assert [describe(o) for o in outcomes] == ["skipped r"]
-        assert "Stale prices cover 90.0%" in skip_reason(outcomes[0])
+        assert "Nieaktualne ceny: 90,0\u00a0%" in skip_reason(outcomes[0])
 
     def test_one_stale_instrument_is_skipped_within_the_stale_limit(self):
         value = portfolio([h(PKN, value="200", stale=True), h(CDR, value="9800")])
         outcomes = run(KIND, context(portfolio_value=value), params())
         assert [describe(o) for o in outcomes] == ["skipped r|i:i-PKN", "fired r|i:i-CDR"]
-        assert skip_reason(outcomes[0]) == "Price of PKN is stale (last close 2026-09-22)"
+        assert skip_reason(outcomes[0]) == "Nieaktualna cena: PKN (ostatnie zamknięcie 2026-09-22)"
 
     def test_missing_fx_skips_the_whole_rule(self):
         usd = instrument("AAPL", currency=Currency.USD, mic="XNAS")
         value = portfolio([h(PKN), h(usd)], missing_fx_currencies=frozenset({Currency.USD}))
         outcomes = run(KIND, context(portfolio_value=value), params())
-        assert skip_reason(outcomes[0]).startswith("No usable USD/PLN FX rate")
+        assert skip_reason(outcomes[0]).startswith("Brak kursu USD/PLN")

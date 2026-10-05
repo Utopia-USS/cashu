@@ -40,7 +40,7 @@ def test_fires_at_or_above_threshold_and_respects_asset_class_filter():
     value = portfolio([h(PKN, value="1500", cost="1000"), h(ETF, value="1600", cost="1000")])
     outcomes = run(KIND, context(portfolio_value=value), params())
     assert [describe(o) for o in outcomes] == ["fired r|i:i-PKN", "fired r|i:i-VWCE"]
-    assert candidate(outcomes[0]).message == "PKN is up 50.0% from cost (threshold 50.0%)."
+    assert candidate(outcomes[0]).message == "PKN: +50,0\u00a0% od kosztu (próg +50,0\u00a0%)."
     etf_only = run(
         KIND, context(portfolio_value=value), params(asset_classes=frozenset({AssetClass.ETF}))
     )
@@ -58,7 +58,7 @@ def test_stale_price_is_skipped_never_fired():
     value = portfolio([h(PKN, value="3000", cost="1000", stale=True)], stale_weight=0.0)
     outcomes = run(KIND, context(portfolio_value=value), params())
     assert [describe(o) for o in outcomes] == ["skipped r|i:i-PKN"]
-    assert "stale" in skip_reason(outcomes[0])
+    assert skip_reason(outcomes[0]).startswith("Nieaktualna cena: PKN")
 
 
 def test_a_manual_valuation_above_cost_is_skipped_not_fired():
@@ -70,5 +70,5 @@ def test_a_manual_valuation_above_cost_is_skipped_not_fired():
     assert [describe(o) for o in outcomes] == ["skipped r|i:i-CLAIM"]
     assert (
         skip_reason(outcomes[0])
-        == "CLAIM is valued manually, so its change from cost is not a market result"
+        == "CLAIM: wycena ręczna, zmiana od kosztu nie jest wynikiem rynkowym"
     )

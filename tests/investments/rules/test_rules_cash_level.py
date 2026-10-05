@@ -49,7 +49,7 @@ class TestEvaluate:
         )
         assert [describe(o) for o in outcomes] == ["fired r"]
         fired = candidate(outcomes[0])
-        assert fired.message == "Cash is 20.0% of the portfolio, above the maximum 15.0%."
+        assert fired.message == "Gotówka: 20,0\u00a0% portfela, powyżej maksimum 15,0\u00a0%."
         assert fired.payload["direction"] == "above_max"
         assert fired.payload["cash_base"] == "2000"
 
@@ -57,7 +57,9 @@ class TestEvaluate:
         low = run(
             KIND, context(portfolio_value=portfolio([h(ETF, value="9900")], cash="100")), PARAMS
         )
-        assert candidate(low[0]).message == "Cash is 1.0% of the portfolio, below the minimum 2.0%."
+        assert candidate(low[0]).message == (
+            "Gotówka: 1,0\u00a0% portfela, poniżej minimum 2,0\u00a0%."
+        )
         inside = run(
             KIND, context(portfolio_value=portfolio([h(ETF, value="9000")], cash="1000")), PARAMS
         )
@@ -67,14 +69,14 @@ class TestEvaluate:
 class TestSkipsOnBadData:
     def test_stale_unpriced_empty(self):
         stale = portfolio([h(ETF, value="9000", stale=True)], cash="1000")
-        assert "Stale prices cover 90.0%" in skip_reason(
+        assert "Nieaktualne ceny: 90,0\u00a0%" in skip_reason(
             run(KIND, context(portfolio_value=stale), PARAMS)[0]
         )
         unpriced = portfolio([h(ETF, value=None)], cash="1000")
-        assert "No price for 1 holding(s) (VWCE)" in skip_reason(
+        assert "Brak ceny dla 1 pozycji (VWCE)" in skip_reason(
             run(KIND, context(portfolio_value=unpriced), PARAMS)[0]
         )
-        assert skip_reason(run(KIND, context(), PARAMS)[0]) == "The portfolio has no value yet"
+        assert skip_reason(run(KIND, context(), PARAMS)[0]) == "Portfel nie ma jeszcze wartości"
 
     def test_negative_cash_in_any_account_skips(self):
         gap = CashHistoryGap(account_id=ACCOUNT_B, currency=PLN, amount=d("-30000"), as_of=AS_OF)
@@ -89,8 +91,8 @@ class TestSkipsOnBadData:
         )
         assert [describe(o) for o in outcomes] == ["skipped r"]
         assert skip_reason(outcomes[0]) == (
-            "Cash history is incomplete (negative cash: -30000 PLN in account account-b; deposits missing "
-            "from the imported history?), so the cash share is unknown"
+            "Niepełna historia gotówki (ujemne saldo: -30\u00a0000 PLN na koncie account-b; brak wpłat "
+            "w zaimportowanej historii?): udział gotówki nieznany"
         )
 
     def test_a_cash_balance_without_fx_skips(self):
@@ -105,4 +107,7 @@ class TestSkipsOnBadData:
             ),
             PARAMS,
         )
-        assert skip_reason(outcomes[0]).startswith("No usable USD/PLN FX rate")
+        assert skip_reason(outcomes[0]) == (
+            "Brak kursu USD/PLN na 2026-10-02 (brak lub starszy niż 10 dni): nie da się wycenić "
+            "części kwot; wagi portfela niepełne"
+        )

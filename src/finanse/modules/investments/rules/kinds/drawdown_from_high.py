@@ -16,8 +16,11 @@ from .support import (
     InstrumentFilter,
     InstrumentPosition,
     decimal_text,
+    format_decimal,
     format_pct,
     positions_by_instrument,
+    short_series_problem,
+    stale_close_problem,
 )
 
 DEFAULT_WINDOW_DAYS = 252
@@ -65,15 +68,15 @@ def window_bars(
         return fx_problem
     bars = ctx.market.last_bars(position.id, window_days)
     if not bars:
-        return f"No price series for {position.label}"
+        return f"Brak notowań: {position.label}"
     last = bars[-1]
     age = days_between(last.date, ctx.as_of)
     if age > ctx.data.max_price_age_days:
-        return f"Price of {position.label} is stale (last close {last.date}, {age} days old)"
+        return stale_close_problem(position.label, last.date, age)
     if len(bars) < window_days:
-        return f"Only {len(bars)} of {window_days} bars for {position.label}"
+        return short_series_problem(position.label, len(bars), window_days)
     if any(bar.close <= 0 for bar in bars):
-        return f"Invalid prices for {position.label}"
+        return f"Nieprawidłowe ceny: {position.label}"
     return WindowBars(tuple(bars))
 
 
@@ -149,10 +152,10 @@ class DrawdownFromHighRule:
                         instrument_id=position.id,
                         payload=details,
                         message=(
-                            f"{position.label} closed {format_pct(drawdown)} below its "
-                            f"{params.window_days}-day high ({decimal_text(last.close)} on {last.date} vs "
-                            f"{decimal_text(high.close)} on {high.date}; "
-                            f"threshold {format_pct(params.threshold)})."
+                            f"{position.label}: -{format_pct(drawdown)} od szczytu z "
+                            f"{params.window_days} sesji (zamknięcie {format_decimal(last.close)} "
+                            f"{last.date}, szczyt {format_decimal(high.close)} {high.date}; "
+                            f"próg -{format_pct(params.threshold)})."
                         ),
                     )
                 )

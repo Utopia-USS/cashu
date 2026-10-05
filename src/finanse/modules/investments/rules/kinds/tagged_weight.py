@@ -90,8 +90,8 @@ class TaggedWeightRule:
                     severity=spec.severity,
                     payload=details,
                     message=(
-                        f"Holdings tagged {tag_text} are {format_pct(weight)} of the portfolio "
-                        f"(max {format_pct(params.max_weight)}): {', '.join(labels)}."
+                        f"Pozycje z tagami {tag_text}: {format_pct(weight)} portfela "
+                        f"(maks {format_pct(params.max_weight)}): {', '.join(labels)}."
                     ),
                 )
             )

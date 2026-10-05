@@ -111,7 +111,7 @@ Portfolio metrics are available in every scope.
 
 ## Metric catalog
 
-Units: ratio = a fraction (0.15 = 15%, shown as a percentage in messages), pp = percentage points,
+Units: ratio = a fraction (0.15 = 15%, shown in messages as 15,0 %), pp = percentage points,
 amount = base currency, price = the instrument's currency.
 
 | metric | type | unit | scopes | meaning |
@@ -173,9 +173,10 @@ When metrics are unknown (same reasons as the built-in rules):
 
 ## Signals
 
-A fired custom rule produces a signal whose message is `message` (or `Condition met: <when>`), prefixed
-with the instrument (`PKN: ...`) or bucket (`Bucket bonds: ...`), followed by the values of every metric
-the expression uses, e.g. `PKN: Deep drop in a small position; review the thesis
-(drawdown_from_high(252) 22.0%, weight 1.8%).`. The payload carries `scope`, `when` and `values` (metric
-label -> value; ratios and percentage points as numbers, days and counts as integers, amounts
-and prices as exact decimal text, unknown as null).
+A fired custom rule produces a signal whose message is `message` (or `Warunek spełniony: <when>`),
+prefixed with the instrument (`PKN: ...`) or bucket id (`Koszyk bonds: ...`), followed by the values of
+every metric the expression uses in Polish number format, e.g. `PKN: Duży spadek małej pozycji; sprawdź
+tezę (drawdown_from_high(252) 22,0 %, weight 1,8 %).` (unknown values show as `nieznane`, flags as
+`tak` / `nie`). Skip reasons are short Polish text too (`Brak notowań: PKN`). The payload carries
+`scope`, `when` and `values` (metric label -> value; ratios and percentage points as numbers, days and
+counts as integers, amounts and prices as exact decimal text, unknown as null).
