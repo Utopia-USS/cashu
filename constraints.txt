@@ -1,12 +1,13 @@
 # Exact versions of the tested environment (Python 3.14, macOS). Install with:
-#   pip install -e ".[dev]" -c constraints.txt
+#   pip install -e ".[dev]" -c constraints.txt        (add ,desktop for `finanse app`)
 # Regenerate after changing dependencies in pyproject.toml, from a fresh venv:
-#   pip install -e ".[dev]" && pip freeze --exclude-editable > constraints.txt
+#   pip install -e ".[dev,desktop]" && pip freeze --exclude-editable > constraints.txt
 alembic==1.20.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
 attrs==26.1.0
+bottle==0.13.4
 certifi==2026.7.22
 cffi==2.1.1
 click==8.5.0
@@ -36,16 +37,24 @@ opentelemetry-api==1.45.0
 packaging==26.3
 platformdirs==4.12.3
 pluggy==1.6.0
+proxy_tools==0.1.0
 pycparser==3.0
 pydantic-settings==2.15.0
 pydantic==2.13.5
 pydantic_core==2.46.5
 Pygments==2.21.0
 PyJWT==2.15.1
+pyobjc-core==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+pyobjc-framework-Quartz==12.2.2
+pyobjc-framework-Security==12.2.2
+pyobjc-framework-UniformTypeIdentifiers==12.2.2
+pyobjc-framework-WebKit==12.2.2
 pytest==9.1.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.4
 python-multipart==0.0.32
+pywebview==6.2.1
 PyYAML==6.0.3
 referencing==0.37.0
 rich==15.0.0

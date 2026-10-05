@@ -164,6 +164,16 @@ export const getMcpCalls = async (slug: string, limit = 50): Promise<McpCall[] |
     throw e;
   }
 };
+/** GET /api/p/{slug}/mcp: the profile's MCP server lines (the packaged app points them at its own binary). */
+export interface McpInfo {
+  server_name: string;
+  command: string;
+  claude_mcp_add: string;
+  /** Claude Desktop server entry: goes under mcpServers[server_name]. */
+  claude_desktop?: { command: string; args: string[] };
+  packaged?: boolean;
+}
+export const getMcpInfo = (slug: string) => j<McpInfo>(pp(slug, "/mcp"));
 export const getModules = () => j<ModuleInfo[]>("/api/modules");
 export const getProfiles = () => j<Profile[]>("/api/profiles");
 export const createProfile = (b: { name: string; base_currency: string; modules: string[]; mcp_privacy: Privacy }) =>

@@ -68,6 +68,10 @@ def entry_point(program: str | None = None) -> list[str]:
     if explicit:
         return [str(Path(explicit).expanduser())]
     if getattr(sys, "frozen", False):  # PyInstaller app (F5): the binary handles the CLI args
+        from .. import runtime
+
+        if runtime.translocated():  # a random path per launch: the agent would break
+            raise WorkerSchedulerError(runtime.TRANSLOCATED_HINT)
         return [sys.executable]
     script = Path(sys.executable).parent / ("finanse.exe" if os.name == "nt" else "finanse")
     if script.exists():

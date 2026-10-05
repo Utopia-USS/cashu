@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useAsync } from "../hooks";
 import { Code, copyText, Notice, RadioList, Seg, Switch, Tag, useToast } from "../ui";
 import {
-  ApiError, getMcpCalls, getSetup, getSystem, mcpAddCommand, type McpCall, type ModuleInfo, patchProfile, postWorker, type Privacy,
+  ApiError, getMcpCalls, getMcpInfo, getSetup, getSystem, mcpAddCommand, type McpCall, type ModuleInfo, patchProfile, postWorker, type Privacy,
   putProfileModules, type ProfileModule, type WorkerInfo,
 } from "./api";
 import { moduleDef, orderModules } from "./registry";
@@ -206,6 +206,8 @@ const desktopJson = (slug: string) =>
 
 function AgentSection() {
   const { slug, profile, reloadProfiles } = useShell();
+  // Server-built lines (absolute path of the bundled binary in the packaged app); local fallback.
+  const { data: mcp } = useAsync(() => getMcpInfo(slug).catch(() => null), [slug]);
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -231,9 +233,13 @@ function AgentSection() {
       </Notice>
       <div className="kv" style={{ marginTop: 14 }}>
         <span className="k">Claude Code</span>
-        <span className="v block"><Code cmd={mcpAddCommand(slug)} /></span>
+        <span className="v block"><Code cmd={mcp?.claude_mcp_add ?? mcpAddCommand(slug)} /></span>
         <span className="k">Claude Desktop</span>
-        <span className="v block"><Code cmd={desktopJson(slug)} multiline /></span>
+        <span className="v block">
+          <Code cmd={mcp?.claude_desktop
+            ? JSON.stringify({ mcpServers: { [mcp.server_name]: mcp.claude_desktop } }, null, 2)
+            : desktopJson(slug)} multiline />
+        </span>
       </div>
       <AuditLog />
     </Card>

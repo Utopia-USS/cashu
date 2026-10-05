@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from .. import __version__
-from . import modules, networth, paths, profiles
+from . import modules, networth, paths, profiles, runtime
 from .db import get_session
 from .models import Account, Profile
 
@@ -204,7 +204,7 @@ def module_setup(profile: CurrentProfile, module_id: str) -> dict:
     if spec.skill:
         skill = {
             "command": spec.skill,
-            "mcp_add": f"claude mcp add finanse-{profile.slug} -- finanse mcp --profile {profile.slug}",
+            "mcp_add": runtime.claude_mcp_add(profile.slug),
         }
     return {"state": status.state, "steps": status.step_dicts(), "skill": skill}
 

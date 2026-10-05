@@ -171,7 +171,7 @@ def mcp_calls(profile: CurrentProfile, limit: int = 100) -> list[dict]:
 
 @router.get("/mcp")
 def mcp_info(profile: CurrentProfile) -> dict:
-    from . import profiles
+    from . import profiles, runtime
     from .mcp.registry import all_tools
 
     with get_session() as s:
@@ -182,9 +182,13 @@ def mcp_info(profile: CurrentProfile) -> dict:
         if t.module == "core" or t.module in enabled
     ]
     return {
-        "server_name": f"finanse-{profile.slug}",
-        "command": f"finanse mcp --profile {profile.slug}",
-        "claude_mcp_add": f"claude mcp add finanse-{profile.slug} -- finanse mcp --profile {profile.slug}",
+        # The packaged app's commands point at its bundled binary (core/runtime.py).
+        "server_name": runtime.mcp_server_name(profile.slug),
+        "command": runtime.mcp_command(profile.slug),
+        "claude_mcp_add": runtime.claude_mcp_add(profile.slug),
+        # Claude Desktop: {"mcpServers": {<server_name>: claude_desktop}} (no data-derived keys here).
+        "claude_desktop": runtime.mcp_server_entry(profile.slug),
+        "packaged": runtime.frozen(),
         "privacy": profile.mcp_privacy,
         "tools": tools,
     }
