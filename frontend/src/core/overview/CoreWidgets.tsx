@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CashCard } from "../../components/CashCard";
 import { cur, cur0s, MONTH_NOM, nModules, pctSigned, plural } from "../../format";
 import { useAsync } from "../../hooks";
+import { ck } from "../../swr";
 import { type CashflowRow, getCashflow, getMonthClose, getRecurring, type MonthClose } from "../../modules/budget/api";
 import { todayLocal } from "../../time";
 import { closedMonthNorm } from "../util";
@@ -26,24 +27,28 @@ export function previousMonth(today: string): string {
 const todayIso = () => todayLocal();
 
 function useMonthClose(slug: string) {
-  return useAsync<MonthClose | null>(() => getMonthClose(slug, previousMonth(todayIso())).catch(() => null), [slug]);
+  // A failed read keeps the last data (F7 PX2); without any, the widget falls back to the summary month.
+  const month = previousMonth(todayIso());
+  return useAsync<MonthClose>(() => getMonthClose(slug, month), [slug, month], { key: ck(slug, "budget", "monthclose", month) });
 }
 
 // The cashflow of the last 7 months, shared by the hero, Subskrypcje and Kredyty on one page (one request).
+// A failure reaches every caller (each keeps its last data, F7 PX2).
 const flowsCache = new Map<string, { at: number; p: Promise<CashflowRow[]> }>();
 function cashflow7(slug: string, currency: string): Promise<CashflowRow[]> {
   const key = `${slug}:${currency}`;
   const hit = flowsCache.get(key);
   if (hit && Date.now() - hit.at < 4000) return hit.p;
-  const p = getCashflow(slug, 7, currency).catch(() => [] as CashflowRow[]);
+  const p = getCashflow(slug, 7, currency);
   flowsCache.set(key, { at: Date.now(), p });
+  p.catch(() => flowsCache.delete(key));
   return p;
 }
 
 /** Monthly income / spending of complete months (average of up to 6 before this one) in `currency`; the
  * Przegląd ratios divide by it, never by the running month (F7 FE10). */
 export function useMonthNorm(slug: string, currency: string) {
-  const q = useAsync(() => cashflow7(slug, currency), [slug, currency]);
+  const q = useAsync(() => cashflow7(slug, currency), [slug, currency], { key: ck(slug, "budget", "cashflow", 7, currency) });
   return closedMonthNorm(q.data, todayIso());
 }
 
@@ -53,7 +58,7 @@ export const normTitle = (n: { months: number }) => `średnia z ${plural(n.month
 /** Budżet · <month>: income / spending / surplus bars, savings rate, 6-month average. */
 export function BudgetMonthWidget({ ctx }: { ctx: ModuleCtx }) {
   const mc = useMonthClose(ctx.slug);
-  const flows = useAsync(() => getCashflow(ctx.slug, 7).catch(() => []), [ctx.slug]);
+  const flows = useAsync(() => getCashflow(ctx.slug, 7), [ctx.slug], { key: ck(ctx.slug, "budget", "cashflow", 7, null) });
   const base = ctx.profile.base_currency;
   const close = mc.data?.currencies.find((c) => c.currency === base) ?? mc.data?.currencies[0] ?? null;
   const fallback = ctx.summary.month;
@@ -97,7 +102,7 @@ export function BudgetMonthWidget({ ctx }: { ctx: ModuleCtx }) {
 
 /** Subskrypcje: monthly total, charges due this week, ones to check (no charge lately). */
 export function SubscriptionsWidget({ ctx }: { ctx: ModuleCtx }) {
-  const rec = useAsync(() => getRecurring(ctx.slug).catch(() => ({ items: [] })), [ctx.slug]);
+  const rec = useAsync(() => getRecurring(ctx.slug), [ctx.slug], { key: ck(ctx.slug, "budget", "recurring") });
   const subs = ctx.summary.subscriptions;
   const base = ctx.profile.base_currency;
   const monthly = subs.monthly_totals[base] ?? Object.values(subs.monthly_totals)[0] ?? null;
@@ -173,7 +178,7 @@ export function AccountsWidget({ accounts, categories, onChanged }: { accounts: 
 /** Dashed widget of an enabled module that is not (fully) set up: progress and the next step. */
 export function PendingWidget({ def, m, onHide }: { def: ModuleDef; m: ProfileModule; onHide: () => void }) {
   const { slug, go } = useShell();
-  const { data } = useAsync(() => getSetup(slug, def.id), [slug, def.id, m.setup_state]);
+  const { data } = useAsync(() => getSetup(slug, def.id), [slug, def.id, m.setup_state], { key: ck(slug, "setup", def.id) });
   const next = data?.steps.find((s) => s.status === "on") ?? data?.steps.find((s) => s.status !== "done");
   return (
     <Widget title={def.name} ghost tags={stepsTag(data, m.setup_state)}

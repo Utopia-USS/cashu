@@ -4,6 +4,7 @@ import { j } from "../../core/api";
 import { useShell } from "../../core/context";
 import { cur } from "../../format";
 import { useAsync } from "../../hooks";
+import { ck, invalidate } from "../../swr";
 import { Seg, Skeleton } from "../../ui";
 import type { DrillRow } from "./api";
 import { drillUrl, getCashflow, getSpending, postMerchantCategory, postTxnCategory } from "./api";
@@ -36,6 +37,9 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
   const { data: cashflow } = useAsync(
     () => (bc.ready ? getCashflow(slug, 240, currency) : Promise.resolve(null)),
     [slug, bc.ready, currency],
+    // Only the month range for the navigation comes from these rows (never shown as figures): the previous
+    // currency's range while a switch loads is harmless and keeps the period (F7 PX2b opt-in).
+    { key: bc.ready ? ck(slug, "budget", "cashflow", 240, currency) : undefined, keepPrevious: true },
   );
   const labelFor = useMemo(() => {
     const m = new Map(categories.map((c) => [c.key, c.label]));
@@ -92,6 +96,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
   const { data: spent, reload: reloadSpending } = useAsync(
     () => (bc.ready ? getSpending(slug, qs, currency).then((rows) => ({ cur: shown, rows })) : Promise.resolve(null)),
     [slug, qs, bc.ready, currency],
+    { key: bc.ready ? ck(slug, "budget", "spending", qs, currency) : undefined },
   );
   const spending = spent?.rows ?? null;
 
@@ -117,6 +122,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
   const { data: drillRows, reload: reloadDrill } = useAsync(
     () => (drill ? j<DrillRow[]>(drillUrl(slug, drill.key, { sort, order, currency: currency ?? "", ...period })) : Promise.resolve([] as DrillRow[])),
     [drill?.key, sort, order, qs, currency],
+    { key: drill ? ck(slug, "budget", "drill", drill.key, sort, order, qs, currency) : undefined },
   );
 
   const [toast, setToast] = useState<Toast | null>(null);
@@ -126,11 +132,14 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
     return () => clearTimeout(t);
   }, [toast]);
 
+  // A category change moves amounts between the budget views: the other tabs read them fresh (F7 PX2); this
+  // page keeps what it shows and re-reads it.
+  const changed = () => { invalidate(ck(slug, "budget")); reloadDrill(); reloadSpending(); };
+
   // Manual change affects ONLY this transaction; offer to apply to the whole merchant.
   const markCategory = async (row: DrillRow, category: string) => {
     await postTxnCategory(slug, row.id, category);
-    reloadDrill();
-    reloadSpending();
+    changed();
     if (category === "cash_withdrawal") { onDataChanged(); return; }
     if (!row.merchant_key) return;
     const name = row.counterparty || row.merchant || row.merchant_key;
@@ -140,8 +149,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
         label: `Wszystkie od ${name}`,
         run: async () => {
           const res = await postMerchantCategory(slug, row.merchant_key, category);
-          reloadDrill();
-          reloadSpending();
+          changed();
           setToast({ text: `${labelFor(category)} · ${res.updated ?? 0} transakcji` });
         },
       },

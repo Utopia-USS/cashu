@@ -4,12 +4,13 @@ import { deleteCashTxn, getCash, postCashExpense } from "../core/api";
 import { useSlug } from "../core/context";
 import { cur } from "../format";
 import { useAsync } from "../hooks";
+import { ck } from "../swr";
 import { Skeleton } from "../ui";
 import { errorText } from "../core/messages";
 
 export function CashCard({ categories, onChanged }: { categories: Category[]; onChanged: () => void }) {
   const slug = useSlug();
-  const { data, reload } = useAsync(() => getCash(slug), [slug]);
+  const { data, reload } = useAsync(() => getCash(slug), [slug], { key: ck(slug, "cash") });
   const expenseCats = categories.filter((c) => c.kind === "expense");
   const [amount, setAmount] = useState("");
   const [title, setTitle] = useState("");

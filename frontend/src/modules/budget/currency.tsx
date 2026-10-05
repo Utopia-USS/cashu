@@ -1,8 +1,10 @@
 // The budget's currency choice, shared by the budget tabs of one profile and remembered per profile
 // (browser storage is only a convenience: it may be unavailable, the server default applies then).
 import { useEffect, useState } from "react";
+import { ApiError } from "../../core/api";
 import { useSlug } from "../../core/context";
 import { useAsync } from "../../hooks";
+import { ck } from "../../swr";
 import { Seg } from "../../ui";
 import type { BudgetCurrencies } from "./api";
 import { getBudgetCurrencies } from "./api";
@@ -35,8 +37,17 @@ export interface BudgetCurrency {
 
 export function useBudgetCurrency(): BudgetCurrency {
   const slug = useSlug();
-  const { data, error } = useAsync(() => getBudgetCurrencies(slug), [slug]);
-  const info = data && data.base ? data : null;
+  // An older server (or the dev mock) without the list answers 404: "no list" is an answer too, so a revisit
+  // does not wait for it again (F7 PX2).
+  const { data, error } = useAsync(
+    () => getBudgetCurrencies(slug).catch((e) => {
+      if (e instanceof ApiError && e.status === 404) return "none" as const;
+      throw e;
+    }),
+    [slug],
+    { key: ck(slug, "budget", "currencies") },
+  );
+  const info = data && data !== "none" && data.base ? data : null;
   const [, bump] = useState(0);
   useEffect(() => {
     const l = () => bump((n) => n + 1);
@@ -46,7 +57,7 @@ export function useBudgetCurrency(): BudgetCurrency {
   return {
     currency: pickCurrency(remembered(slug), info),
     info,
-    ready: info != null || error != null,
+    ready: data != null || error != null,
     setCurrency: (c) => remember(slug, c),
   };
 }

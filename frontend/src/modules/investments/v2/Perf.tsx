@@ -10,7 +10,7 @@ import { Seg, Skeleton } from "../../../ui";
 import { Facts, FootFacts, Widget } from "../../../widgets";
 import { dm, money0, pct, plural, pp } from "../labels";
 import { nextDeposit } from "../logic";
-import { getPerformance, type Performance, type PerfRange } from "./api";
+import { accKey, getPerformance, invKey, type Performance, type PerfRange } from "./api";
 import { benchmarkLabel, daysSince, monthlyFlows, perfNotes, planMonthsSoFar } from "./logic";
 
 const RANGES: [string, PerfRange][] = [["1M", "1m"], ["3M", "3m"], ["YTD", "ytd"], ["1R", "1y"], ["3R", "3y"], ["Max", "max"]];
@@ -31,8 +31,9 @@ export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
   const [range, setRange] = useState<PerfRange>("1y");
   const [table, setTable] = useState(false);
   // `initial` (Home's 1y series) is in the deps too: a reloaded 1y series replaces the shown one.
+  // Keyed like Home's series (same request): a range Home already read (1y, ytd, 1m) shows at once (F7 PX4).
   const q = useAsync(() => (range === "1y" && initial !== undefined ? Promise.resolve(initial) : getPerformance(slug, range, accounts)),
-    [slug, range, accounts?.join(","), nonce, range === "1y" ? initial : null]);
+    [slug, range, accounts?.join(","), nonce, range === "1y" ? initial : null], { key: invKey(slug, "perf", range, accKey(accounts)) });
   const perf = q.data;
   const pts = perf?.points ?? [];
   const bench = perf?.benchmark;

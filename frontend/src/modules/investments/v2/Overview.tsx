@@ -10,13 +10,14 @@ import { errorText } from "../../../core/messages";
 import type { ModuleCtx } from "../../../core/types";
 import { MONTH_NOM } from "../../../format";
 import { useAsync } from "../../../hooks";
+import { ck } from "../../../swr";
 import { getMonthClose, type MonthClose } from "../../budget/api";
 import { Skeleton, useToast } from "../../../ui";
 import { Fact, FootFacts, Grid, Widget } from "../../../widgets";
 import { getStrategy } from "../api";
 import { accountLabel, bucketLabel, dm, isoDate, money, money0, nInstruments, parseNum, pct, plural, pp, WEEKDAYS } from "../labels";
 import { nextDeposit } from "../logic";
-import { deletePlannedDeposit, getDigestV2, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
+import { deletePlannedDeposit, dropInv, getDigestV2, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, invKey, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
 import { allocGeneric, benchmarkLabel, changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, staleBenchmark, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "./logic";
 import { addDays, todayLocal } from "../../../time";
 import { isMissingEndpoint } from "./undoFlow";
@@ -35,13 +36,15 @@ const minusDays = (iso: string, days: number) => addDays(iso, -days);
 // ---- planned deposits (server, per profile) ---------------------------------------------------------------
 /** The profile's planned deposits; `null` data = a server without the endpoint (the button then explains). */
 export function usePlannedDeposits(slug: string, nonce = 0) {
-  const q = useAsync(() => getPlannedDeposits(slug).catch((e) => (isMissingEndpoint(e) ? null : Promise.reject(e))), [slug, nonce]);
+  const q = useAsync(() => getPlannedDeposits(slug).catch((e) => (isMissingEndpoint(e) ? null : Promise.reject(e))), [slug, nonce], { key: invKey(slug, "planned") });
   return { list: q.data?.items ?? null, plan: q.data?.plan ?? null, missing: !q.loading && q.data === null && !q.error, reload: q.reload };
 }
 
 /** Save / undo / change of the month's planned deposit, with toasts. */
-function usePlanActions(slug: string, reload: () => void) {
+function usePlanActions(slug: string, reloadPlans: () => void) {
   const toast = useToast();
+  // A plan counts against the contribution plan: the other investments views read fresh (F7 PX4).
+  const reload = () => { dropInv(slug); reloadPlans(); };
   const [busy, setBusy] = useState(false);
   const save = async (amount: number, currency: string, date: string, accountId: number | null) => {
     setBusy(true);
@@ -67,8 +70,8 @@ const planTag = (p: PlannedDeposit) => (p.status === "booked" ? `zaksięgowano $
 
 /** Hero fact on Przegląd: the portfolio value, the week's change and chances / risks. */
 export function InvestmentsHeroFact({ ctx }: { ctx: ModuleCtx }) {
-  const ov = useAsync(() => getOverviewV2(ctx.slug).catch(() => null), [ctx.slug]);
-  const perf = useAsync(() => getPerformance(ctx.slug, "1m").catch(() => null), [ctx.slug]);
+  const ov = useAsync(() => getOverviewV2(ctx.slug), [ctx.slug], { key: invKey(ctx.slug, "overview", "") });
+  const perf = useAsync(() => getPerformance(ctx.slug, "1m"), [ctx.slug], { key: invKey(ctx.slug, "perf", "1m", "") });
   const k = ov.data?.kpis;
   if (!k) return <Fact label="Inwestycje" value={<Skeleton w={90} h={16} />} />;
   const c = ov.data!.base_currency;
@@ -84,7 +87,7 @@ export function InvestmentsHeroFact({ ctx }: { ctx: ModuleCtx }) {
 
 /** Shell header tag (ia-v2.md 10): stale prices of the investments, only when there are some. */
 export function InvestmentsHeaderTag({ slug, go }: { slug: string; go: ModuleCtx["go"] }) {
-  const ov = useAsync(() => getOverviewV2(slug).catch(() => null), [slug]);
+  const ov = useAsync(() => getOverviewV2(slug), [slug], { key: invKey(slug, "overview", "") });
   const fr = ov.data?.freshness.prices;
   if (!fr?.stale_count) return null;
   const n = fr.stale_count;
@@ -102,11 +105,11 @@ export function InvestmentsHeaderTag({ slug, go }: { slug: string; go: ModuleCtx
 
 /** Inwestycje widget on Przegląd: YTD vs benchmark, chances, risks, the 12-month value line. */
 export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
-  const ov = useAsync(() => getOverviewV2(ctx.slug).catch(() => null), [ctx.slug]);
-  const ytd = useAsync(() => getPerformance(ctx.slug, "ytd").catch(() => null), [ctx.slug]);
-  const year = useAsync(() => getPerformance(ctx.slug, "1y").catch(() => null), [ctx.slug]);
-  const sig = useAsync(() => getSignalsV2(ctx.slug, "open").catch(() => []), [ctx.slug]);
-  const dig = useAsync(() => getDigestV2(ctx.slug).catch(() => null), [ctx.slug]);
+  const ov = useAsync(() => getOverviewV2(ctx.slug), [ctx.slug], { key: invKey(ctx.slug, "overview", "") });
+  const ytd = useAsync(() => getPerformance(ctx.slug, "ytd"), [ctx.slug], { key: invKey(ctx.slug, "perf", "ytd", "") });
+  const year = useAsync(() => getPerformance(ctx.slug, "1y"), [ctx.slug], { key: invKey(ctx.slug, "perf", "1y", "") });
+  const sig = useAsync(() => getSignalsV2(ctx.slug, "open"), [ctx.slug], { key: invKey(ctx.slug, "signals", "open") });
+  const dig = useAsync(() => getDigestV2(ctx.slug), [ctx.slug], { key: invKey(ctx.slug, "digest", "") });
   const open = (sig.data ?? []).filter((s) => !s.snoozed);
   const chances = open.filter((s) => polarityOf(s) === "positive");
   const risks = open.filter((s) => polarityOf(s) !== "positive");
@@ -144,11 +147,12 @@ export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
  * and one primary action that records the plan. Highlighted (`.hl`): the step the month asks for. */
 export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
   const month = prevMonth(todayIso());
-  const mc = useAsync<MonthClose | null>(() => getMonthClose(ctx.slug, month).catch(() => null), [ctx.slug]);
-  const ov = useAsync(() => getOverviewV2(ctx.slug).catch(() => null), [ctx.slug]);
-  const ytd = useAsync(() => getPerformance(ctx.slug, "ytd").catch(() => null), [ctx.slug]);
+  // Same request and key as the budget widget (core/overview/CoreWidgets useMonthClose).
+  const mc = useAsync<MonthClose>(() => getMonthClose(ctx.slug, month), [ctx.slug, month], { key: ck(ctx.slug, "budget", "monthclose", month) });
+  const ov = useAsync(() => getOverviewV2(ctx.slug), [ctx.slug], { key: invKey(ctx.slug, "overview", "") });
+  const ytd = useAsync(() => getPerformance(ctx.slug, "ytd"), [ctx.slug], { key: invKey(ctx.slug, "perf", "ytd", "") });
   // 12 months of points: the first deposit for the plan-months rule shared with the Wpłaty widget.
-  const year = useAsync(() => getPerformance(ctx.slug, "1y").catch(() => null), [ctx.slug]);
+  const year = useAsync(() => getPerformance(ctx.slug, "1y"), [ctx.slug], { key: invKey(ctx.slug, "perf", "1y", "") });
   const curMonth = todayIso().slice(0, 7);
   const plans = usePlannedDeposits(ctx.slug);
   const plan = planForMonth(plans.list, curMonth);
@@ -256,10 +260,10 @@ export function depositFacts(perf: Performance | null, today: string) {
 export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
   const { go } = useShell();
   const slug = ctx.slug;
-  const ov = useAsync(() => getOverviewV2(slug).catch(() => null), [slug]);
-  const pos = useAsync(() => getPositionsV2(slug).catch(() => null), [slug]);
-  const perf = useAsync(() => getPerformance(slug, "max").catch(() => null), [slug]);
-  const strat = useAsync(() => getStrategy(slug).catch(() => null), [slug]);
+  const ov = useAsync(() => getOverviewV2(slug), [slug], { key: invKey(slug, "overview", "") });
+  const pos = useAsync(() => getPositionsV2(slug), [slug], { key: invKey(slug, "positions", "") });
+  const perf = useAsync(() => getPerformance(slug, "max"), [slug], { key: invKey(slug, "perf", "max", "") });
+  const strat = useAsync(() => getStrategy(slug), [slug], { key: invKey(slug, "strategy") });
   const today = todayIso();
   const curMonth = today.slice(0, 7);
   const plans = usePlannedDeposits(slug);

@@ -3,6 +3,7 @@
 // focus), and how to run the module's setup skill in Claude Code.
 import { type ReactNode, useEffect } from "react";
 import { usePoll } from "../hooks";
+import { ck } from "../swr";
 import { Code, copyText, Notice, SetupSteps, Skeleton, Tag, useToast } from "../ui";
 import { getSetup, type ModuleInfo, type SetupAction, type SetupInfo, type SetupState } from "./api";
 import { moduleDef, tabKey } from "./registry";
@@ -66,7 +67,7 @@ function ActionButton({ moduleId, a }: { moduleId: string; a: SetupAction }) {
 export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupState }) {
   const { slug, profile, modules, go, reloadProfiles } = useShell();
   const def = moduleDef(moduleId, modules);
-  const { data, error } = usePoll(() => getSetup(slug, moduleId), POLL_MS, [slug, moduleId]);
+  const { data, error } = usePoll(() => getSetup(slug, moduleId), POLL_MS, [slug, moduleId], { key: ck(slug, "setup", moduleId) });
 
   // A step finished in Claude Code or the CLI can flip the module state: refresh the
   // profile list so the tab dot and the overview card follow without a reload.

@@ -4,6 +4,7 @@ import { ScrollableChart } from "../../components/ScrollableChart";
 import { useShell, useSlug } from "../../core/context";
 import { cssVar, cur, cur0, dtFmt, plural } from "../../format";
 import { useAsync } from "../../hooks";
+import { ck } from "../../swr";
 import { Empty, Kpi, SkeletonChart, SkeletonKpis, SkeletonTable } from "../../ui";
 import { getLoans, type LoanInfo, loanName } from "./api";
 
@@ -14,11 +15,12 @@ const RANGES: [string, number | null][] = [["1R", 365], ["5L", 1825], ["10L", 36
 /** Kredyty: every loan of the profile in one table, details of the selected one below. */
 export function Loans() {
   const slug = useSlug();
-  const { data, error } = useAsync(() => getLoans(slug), [slug]);
+  const { data, error } = useAsync(() => getLoans(slug), [slug], { key: ck(slug, "loans") });
   const [sel, setSel] = useState(0);
   const { go } = useShell();
 
-  if (error) return <div className="err">Błąd: {error}</div>;
+  // A failed refresh keeps the last list on screen (F7 PX2); the error alone only without data.
+  if (error && !data) return <div className="err">Błąd: {error}</div>;
   if (!data) return <><SkeletonTable rows={2} /><SkeletonKpis n={5} /><SkeletonChart /></>;
   if (!data.length) {
     return (

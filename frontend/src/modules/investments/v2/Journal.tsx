@@ -11,7 +11,7 @@ import { type AccountRow, type Decision, deleteDecision, getDecisions } from "..
 import { DECISION_ACTION, dm, money, plural, qty } from "../labels";
 import { canUndo, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
 import type { InstrumentChoice } from "./Alerts";
-import { getSignalsV2, type SignalV2 } from "./api";
+import { getSignalsV2, invKey, type SignalV2 } from "./api";
 import { localDay, parseServerTime, todayLocal } from "../../../time";
 import { groupByMonth, type JournalEntry, journalEntries, type JournalFilter, journalStats, polarityOf, signalText } from "./logic";
 
@@ -29,8 +29,9 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
 }) {
   const toast = useToast();
   const [nonce, setNonce] = useState(0);
-  const sig = useAsync(() => getSignalsV2(slug, "all"), [slug, nonce]);
-  const dec = useAsync(() => getDecisions(slug), [slug, nonce]);
+  // Keyed (F7 PX4); an undo goes through onChanged (the home's reload forgets the cached investments views).
+  const sig = useAsync(() => getSignalsV2(slug, "all"), [slug, nonce], { key: invKey(slug, "signals", "all") });
+  const dec = useAsync(() => getDecisions(slug), [slug, nonce], { key: invKey(slug, "decisions") });
   const [filter, setFilter] = useState<JournalFilter>("all");
   const [only, setOnly] = useState<string>(initialInstrument ?? "");
   const [shown, setShown] = useState(PAGE);

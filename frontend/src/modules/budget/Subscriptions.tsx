@@ -1,12 +1,13 @@
 import { useSlug } from "../../core/context";
 import { cur } from "../../format";
 import { useAsync } from "../../hooks";
+import { ck } from "../../swr";
 import { SkeletonTable } from "../../ui";
 import { getRecurring } from "./api";
 
 export function Subscriptions() {
   const slug = useSlug();
-  const { data } = useAsync(() => getRecurring(slug), [slug]);
+  const { data } = useAsync(() => getRecurring(slug), [slug], { key: ck(slug, "budget", "recurring") });
   if (!data) return <SkeletonTable rows={8} />;
   const items = data.items ?? [];
 

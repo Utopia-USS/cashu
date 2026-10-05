@@ -3,6 +3,7 @@
 // (track AL, stock/docs/fork/progress/F5-AL.md) and performance vs benchmark (track PF, F5-PF.md
 // CONTRACT). Shapes mirror service/views.py and performance/service.py; fractions stay fractions.
 import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../core/api";
+import { ck, invalidate } from "../../../swr";
 import type { Decision, Instrument, Overview, Position, Positions, ReviewDigest, Signal } from "../api";
 import { digestShown, isShownSignal } from "./logic";
 
@@ -199,6 +200,20 @@ function cached<T>(key: string, load: () => Promise<T>, ms = 4000): Promise<T> {
   cache.set(key, { at: Date.now(), p });
   p.catch(() => cache.delete(key));
   return p;
+}
+
+// ---- stale-while-revalidate keys (F7 PX4, src/swr.ts) ----------------------------------------------------------
+/** Cache key of an investments view: under `inv`, so `dropInv` forgets all of them at once. Two call sites share a
+ * key only when they fetch AND shape the data the same way (signals: the shown list, `isShownSignal` applied in
+ * the loader, so the cache never holds an unfiltered list). */
+export const invKey = (slug: string, ...parts: (string | number | boolean | null | undefined)[]) => ck(slug, "inv", ...parts);
+/** The account filter as a key part. */
+export const accKey = (accounts: number[] | null | undefined) => (accounts?.length ? accounts.join(",") : "");
+/** After an investments write that does not go through ctx.refresh: every cached investments view (the views on
+ * screen keep showing their data and re-read) and the 4 s request dedupe. */
+export function dropInv(slug: string): void {
+  cache.clear();
+  invalidate(ck(slug, "inv"));
 }
 export const dropCache = () => cache.clear();
 

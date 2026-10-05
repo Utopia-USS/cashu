@@ -9,6 +9,7 @@ import { Grid, type GridItem, Widget } from "../../../../widgets";
 import { useShortcuts } from "../../hooks";
 import { dm, hm, plural, wdm } from "../../labels";
 import { getResearch } from "./api";
+import { invKey } from "../api";
 import type { InstLike } from "../InstLabel";
 import { canRestore, useResearchActions, useResearchOverview, useWorkspace } from "./data";
 import {
@@ -217,7 +218,8 @@ function NotesList({ slug, today, nonce, scope, kind, theme, held, watchedIds, o
   const [sort, setSort] = useState<NoteSort>("date");
   const [shown, setShown] = useState(6);
   const [cursor, setCursor] = useState<number | null>(null);
-  const q = useAsync(() => getResearch(slug, { include_dismissed: true, include_expired: old }), [slug, nonce, old]);
+  const q = useAsync(() => getResearch(slug, { include_dismissed: true, include_expired: old }), [slug, nonce, old],
+    { key: invKey(slug, "research", "notes", old ? "all" : "live") });
   const actions = useResearchActions(slug, onChanged);
   const all = q.data ?? [];
   const since = all.length ? all.map((n) => n.observed_at).sort()[0] : null;

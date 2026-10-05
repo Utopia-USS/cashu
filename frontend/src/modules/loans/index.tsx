@@ -2,6 +2,7 @@ import { useSlug } from "../../core/context";
 import type { Fact, ModuleCtx, ModuleDef } from "../../core/types";
 import { cur } from "../../format";
 import { useAsync } from "../../hooks";
+import { ck } from "../../swr";
 import { FactList, Skeleton } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
 import { normTitle, useMonthNorm } from "../../core/overview/CoreWidgets";
@@ -12,7 +13,7 @@ import { Loans } from "./Loans";
 
 /** Przegląd v2: loans as compact rows (instalment, rate, end; balance and principal per month). */
 function LoansWidget({ ctx }: { ctx: ModuleCtx }) {
-  const { data } = useAsync(() => getLoans(ctx.slug), [ctx.slug]);
+  const { data } = useAsync(() => getLoans(ctx.slug), [ctx.slug], { key: ck(ctx.slug, "loans") });
   const perCur = new Map<string, number>();
   for (const l of data ?? []) if (l.monthly_payment) perCur.set(l.currency || "PLN", (perCur.get(l.currency || "PLN") ?? 0) + l.monthly_payment);
   const base = ctx.profile.base_currency;
@@ -48,7 +49,7 @@ function LoansWidget({ ctx }: { ctx: ModuleCtx }) {
 
 function LoanFacts() {
   const slug = useSlug();
-  const { data } = useAsync(() => getLoans(slug), [slug]);
+  const { data } = useAsync(() => getLoans(slug), [slug], { key: ck(slug, "loans") });
   if (!data) return <FactList facts={null} />;
   const facts: Fact[] = data.slice(0, 2).map((l, i) => [loanName(l, i), cur(l.outstanding != null ? -l.outstanding : null, l.currency || "PLN"), "neg"]);
   if (data.length > 2) facts.push(["Pozostałe", `${data.length - 2} kolejne`]);

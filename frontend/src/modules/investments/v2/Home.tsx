@@ -30,7 +30,7 @@ import { accountLabel, dm, hm, isGenericBucket, isoDate, money, money0, pct, plu
 import { runError } from "../logic";
 import { makeUndo, UNDO_WINDOW_MS, undoMessage, undoSettled } from "../undo";
 import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
-import { getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, getSignalsV2, getWatchlist, dropCache, type PerfPoint } from "./api";
+import { accKey, dropInv, getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, getSignalsV2, getWatchlist, invKey, type PerfPoint } from "./api";
 import { AssetDrawer } from "./AssetDrawer";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
@@ -101,20 +101,25 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const [note, setNote] = useStored<string>(storedKey("reviewNote", slug), "", "session");
   useEffect(() => { try { localStorage.removeItem(storedKey("reviewNote", slug)); } catch { /* ignore */ } }, [slug]);
   const [nonce, setNonce] = useState(0);
-  const reload = useCallback(() => { dropCache(); setNonce((n) => n + 1); }, []);
+  // After a write: every cached investments view is forgotten (other pages read fresh), this page re-reads and
+  // keeps showing its data meanwhile (F7 PX4).
+  const reload = useCallback(() => { dropInv(slug); setNonce((n) => n + 1); }, [slug]);
   const accountsFilter = filter == null ? null : [filter];
-  const ov = useAsync(() => getOverviewV2(slug, accountsFilter), [slug, filter, nonce]);
-  const pos = useAsync(() => getPositionsV2(slug, accountsFilter), [slug, filter, nonce]);
-  const sig = useAsync(() => getSignalsV2(slug, "open"), [slug, nonce]);
-  const alertsQ = useAsync(() => getAlerts(slug).catch(() => []), [slug, nonce]);
-  const watchQ = useAsync(() => getWatchlist(slug).catch(() => []), [slug, nonce]);
-  const strat = useAsync(() => getStrategy(slug).catch(() => null), [slug, nonce]);
-  const dig = useAsync(() => getDigestV2(slug).catch(() => null), [slug, nonce]);
-  const props = useAsync(() => getProposals(slug).catch(() => []), [slug, nonce]);
+  const acc = accKey(accountsFilter);
+  // Keyed (F7 PX4): a revisit shows the last data at once and refreshes it. A failed refresh keeps the data
+  // (the list / null fallbacks are the views' own `?? []` / `?? null`).
+  const ov = useAsync(() => getOverviewV2(slug, accountsFilter), [slug, filter, nonce], { key: invKey(slug, "overview", acc) });
+  const pos = useAsync(() => getPositionsV2(slug, accountsFilter), [slug, filter, nonce], { key: invKey(slug, "positions", acc) });
+  const sig = useAsync(() => getSignalsV2(slug, "open"), [slug, nonce], { key: invKey(slug, "signals", "open") });
+  const alertsQ = useAsync(() => getAlerts(slug, "all"), [slug, nonce], { key: invKey(slug, "alerts", "all") });
+  const watchQ = useAsync(() => getWatchlist(slug), [slug, nonce], { key: invKey(slug, "watchlist") });
+  const strat = useAsync(() => getStrategy(slug), [slug, nonce], { key: invKey(slug, "strategy") });
+  const dig = useAsync(() => getDigestV2(slug), [slug, nonce], { key: invKey(slug, "digest", "") });
+  const props = useAsync(() => getProposals(slug), [slug, nonce], { key: invKey(slug, "proposals", "pending") });
   const planned = usePlannedDeposits(slug, nonce);
-  const perf1y = useAsync(() => getPerformance(slug, "1y", accountsFilter).catch(() => null), [slug, filter, nonce]);
-  const perfYtd = useAsync(() => getPerformance(slug, "ytd", accountsFilter).catch(() => null), [slug, filter, nonce]);
-  const perf1m = useAsync(() => getPerformance(slug, "1m", accountsFilter).catch(() => null), [slug, filter, nonce]);
+  const perf1y = useAsync(() => getPerformance(slug, "1y", accountsFilter), [slug, filter, nonce], { key: invKey(slug, "perf", "1y", acc) });
+  const perfYtd = useAsync(() => getPerformance(slug, "ytd", accountsFilter), [slug, filter, nonce], { key: invKey(slug, "perf", "ytd", acc) });
+  const perf1m = useAsync(() => getPerformance(slug, "1m", accountsFilter), [slug, filter, nonce], { key: invKey(slug, "perf", "1m", acc) });
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const shellStale = useRef(false);
   const [runBusy, setRunBusy] = useState(false);
@@ -145,7 +150,9 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     if (!ls.get(lastSeenKey(slug))) save();
     return () => { window.removeEventListener("pagehide", save); document.removeEventListener("visibilitychange", onHide); save(); };
   }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
-  const reDigest = useAsync(() => (reentry ? getDigestV2(slug, localDay(reentry) ?? reentry.slice(0, 10)).catch(() => null) : Promise.resolve(null)), [slug, reentry, nonce]);
+  const reSince = reentry ? localDay(reentry) ?? reentry.slice(0, 10) : null;
+  const reDigest = useAsync(() => (reSince ? getDigestV2(slug, reSince) : Promise.resolve(null)), [slug, reSince, nonce],
+    { key: reSince ? invKey(slug, "digest", reSince) : undefined });
   const dismissReentry = () => { ls.set(reentryKey, null); ss.set(reentryKey, null); ls.set(lastSeenKey(slug), new Date().toISOString()); setReentry(null); };
 
   // ---- review strip ------------------------------------------------------------------------------------------
@@ -167,8 +174,11 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const weekday = digest?.digest_weekday ?? strategy?.facts?.notifications.digest_weekday ?? "sunday";
   const due = doneLocal ? false : !!digest?.review_due;
   const hasData = !!positions && (positions.positions.length > 0 || positions.cash.some((c) => c.amount !== 0));
-  const alerts = alertsQ.data ?? [];
-  const watch = watchQ.data ?? [];
+  // A list that never loaded reads as empty (as the old `.catch(() => [])` did); a failed refresh keeps the list.
+  const alertsList = alertsQ.data ?? (alertsQ.error ? [] : null);
+  const watchList = watchQ.data ?? (watchQ.error ? [] : null);
+  const alerts = alertsList ?? [];
+  const watch = watchList ?? [];
   const alertsById = useMemo(() => new Map(alerts.map((a) => [a.id, a])), [alerts]);
 
   // Signals scoped to the account filter (instrument signals of instruments held there; portfolio-wide stay).
@@ -494,14 +504,14 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   }
   const wSignals: GridItem = { id: "signals", span: 1, node: <SignalsRail signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} focusId={focusSignal}
     paused={!!sigDialog} onAll={(f) => setSigDialog({ filter: f ?? "all", focusId: null })} /> };
-  const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsQ.data} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
+  const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsList} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
   const wValue: GridItem = { id: "value", span: 2, node: <ValueChartWidget slug={slug} accounts={accountsFilter} nonce={nonce} initial={perf1y.loading ? undefined : perf1y.data} /> };
   // Alokacja at 2/3: the next planned contribution and what it closes (whole portfolio only).
   const next = filter == null ? nextContribution({ amount: plan?.amount ?? null, day: plan?.day ?? null, today, total: overview.allocation.total, buckets: overview.allocation.buckets }) : null;
   const wAlloc: GridItem = { id: "alloc", span: 1, node: <AllocationWidget alloc={overview.allocation} strategy={strategy ?? null} filtered={filter != null} wide next={next} /> };
   const wAssets: GridItem = { id: "assets", span: 2, node: <AssetList data={positions} accounts={accounts} signals={signals} alerts={alerts} strategy={strategy ?? null}
     onOpen={(id) => openAsset(id)} onAddTxn={() => setDrawer({ kind: "txn" })} onClassify={classify} /> };
-  const wWatch: GridItem = { id: "watch", span: 1, node: <WatchlistWidget slug={slug} items={watchQ.data} onChanged={reload} onOpen={(id) => openAsset(id)} autoAdd={route === "watch"} /> };
+  const wWatch: GridItem = { id: "watch", span: 1, node: <WatchlistWidget slug={slug} items={watchList} onChanged={reload} onOpen={(id) => openAsset(id)} autoAdd={route === "watch"} /> };
   const wDd: GridItem = { id: "dd", span: 1, node: <DrawdownWidget perf={perf1y.loading ? undefined : perf1y.data} /> };
   const wContrib = (span: 1 | 2): GridItem => ({ id: "contrib", span, node: <ContributionsWidget perf={perf1y.loading ? undefined : perf1y.data} ytd={perfYtd.loading ? undefined : perfYtd.data} plan={plan ?? fallbackPlan()} today={today} fromBudget={budgetOn} /> });
   const wAccounts: GridItem = { id: "accounts", span: 1, node: <AccountsWidget overview={overview} strategy={strategy ?? null} today={today} onAdd={() => setDrawer({ kind: "account" })}

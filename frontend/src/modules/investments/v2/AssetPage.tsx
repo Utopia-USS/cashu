@@ -16,7 +16,7 @@ import { type AccountRow, getPositionChart, getPositionDetail, type Position, ty
 import { accountLabel, bucketLabel, DECISION_ACTION, dm, dmy, ENTRY_TYPE, micName, money, money0, pct, plural, qty, txnType, wdm } from "../labels";
 import { InstLabel } from "./InstLabel";
 import { AlertRow, removeAlertWithUndo } from "./Alerts";
-import { type Alert, getSignalsV2, type WatchItem } from "./api";
+import { type Alert, getSignalsV2, invKey, type WatchItem } from "./api";
 import { ASSET_SLOTS, type AssetSlotProps, type AssetTimelineEntry, type ThesisField } from "./assetSlots";
 import { isResearchKind } from "./research/logic";
 import { averageCost, instName, isDecided, polarityOf, price as priceText, signalText, weekChange } from "./logic";
@@ -57,9 +57,11 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const [decideOpen, setDecideOpen] = useState<number | null>(null);
   const pos = positions.find((p) => String(p.instrument.id) === String(id)) ?? null;
   const w = watch.find((x) => x.instrument_id === id) ?? null;
-  const detail = useAsync(() => (pos ? getPositionDetail(slug, id) : Promise.resolve(null)), [slug, id, !!pos]);
-  const chart = useAsync(() => getPositionChart(slug, id, months).catch(() => null), [slug, id, months]);
-  const sig = useAsync(() => getSignalsV2(slug, "all").catch(() => []), [slug, id, ctx.positions]);
+  // Keyed (F7 PX4): reopening an asset shows its last detail, chart and signals at once and refreshes them.
+  const detail = useAsync(() => (pos ? getPositionDetail(slug, id) : Promise.resolve(null)), [slug, id, !!pos],
+    { key: pos ? invKey(slug, "position", id) : undefined });
+  const chart = useAsync(() => getPositionChart(slug, id, months), [slug, id, months], { key: invKey(slug, "chart", id, months) });
+  const sig = useAsync(() => getSignalsV2(slug, "all"), [slug, id, ctx.positions], { key: invKey(slug, "signals", "all") });
   const inst = pos?.instrument ?? detail.data?.instrument ?? w?.instrument ?? null;
   const name = inst ? instName(inst) : chart.data?.label ?? `instrument ${id}`;
   const mine = alerts.filter((a) => a.instrument_id === id);

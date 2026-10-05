@@ -17,7 +17,7 @@ import { useShortcuts } from "../hooks";
 import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, plural, qty } from "../labels";
 import { decisionEffect, decisionTag, nextDeposit } from "../logic";
 import { canUndo, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
-import type { Alert, PositionV2, SignalV2 } from "./api";
+import { type Alert, invKey, type PositionV2, type SignalV2 } from "./api";
 import { InstLabel } from "./InstLabel";
 import { instName, isDecided, polarityOf, railTop, signalStateKey, signalText, splitByPolarity } from "./logic";
 import { stillLocked } from "../../../inflight";
@@ -225,7 +225,10 @@ function useTheses(slug: string, list: SignalV2[], positions: PositionV2[]): Map
       if (t) out.set(id, t);
     }).catch(() => undefined)));
     return out;
-  }, [slug, ids.join(",")]);
+  }, [slug, ids.join(",")],
+  // Looked up by instrument id, so the previous set's theses stay right for their instruments while a new set
+  // loads (F7 PX2b opt-in: no thesis line flickers off when a signal comes or goes).
+  { key: invKey(slug, "theses", ids.join(",")), keepPrevious: true });
   return q.data ?? new Map();
 }
 

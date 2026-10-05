@@ -4,6 +4,7 @@
 import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { nAccounts, nModules, wdmShort } from "../format";
 import { useAsync } from "../hooks";
+import { ck, clearCache, swr } from "../swr";
 import { Notice, SkeletonChart, SkeletonKpis, useToast } from "../ui";
 import {
   getCategories, getNetworth, getSetup, getSummary, type ModuleInfo, postResync, type Profile, type SystemInfo,
@@ -108,24 +109,20 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
     }
   }, [initialSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Shared per-profile data. Results AND errors are tagged with the slug, so a profile
-  // switch never renders the previous profile's numbers or error banner while the new
-  // ones load (useAsync keeps stale data).
-  type Tagged<T> = { s: string; d: T | null; e: string | null };
-  const tag = <T,>(s: string, p: Promise<T>): Promise<Tagged<T>> =>
-    p.then((d) => ({ s, d, e: null }), (e: unknown) => ({ s, d: null, e: errorText(e) }));
-  const summaryQ = useAsync(() => tag(profile.slug, getSummary(profile.slug)), [profile.slug, nonce]);
-  const networthQ = useAsync(() => tag(profile.slug, getNetworth(profile.slug)), [profile.slug, nonce]);
-  const catsQ = useAsync(() => tag(profile.slug, getCategories(profile.slug)), [profile.slug]);
-  const own = <T,>(q: { data: Tagged<T> | null; error: string | null }) => {
-    const mine = q.data?.s === profile.slug ? q.data : null;
-    return { data: mine?.d ?? null, error: mine?.e ?? q.error };
-  };
-  const summaryS = own(summaryQ), networthS = own(networthQ), catsS = own(catsQ);
+  // The data cache (src/swr.ts) holds one profile at a time: a different slug clears it before any keyed hook
+  // of this render reads it (idempotent, so safe to run on every render).
+  swr.setScope(profile.slug);
+
+  // Shared per-profile data, keyed by the slug: a keyed useAsync only shows data and errors of its own key
+  // (never the previous profile's while the new ones load); a refresh keeps them visible while re-reading.
+  const summaryS = useAsync(() => getSummary(profile.slug), [profile.slug, nonce], { key: ck(profile.slug, "summary") });
+  const networthS = useAsync(() => getNetworth(profile.slug), [profile.slug, nonce], { key: ck(profile.slug, "networth") });
+  const catsS = useAsync(() => getCategories(profile.slug), [profile.slug], { key: ck(profile.slug, "categories") });
 
   const go = useCallback((v: View) => { setView(v); window.scrollTo({ top: 0 }); }, []);
   const askNarrow = useCallback((v: boolean) => setNarrow(v), []);
-  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  // After a write: forget every cached view (the remounted pages read fresh data), then re-read.
+  const refresh = useCallback(() => { clearCache(); setNonce((n) => n + 1); }, []);
 
   const switchProfile = (s: string) => {
     const p = profiles.find((x) => x.slug === s);
@@ -304,7 +301,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
 /** Compact reminder on the first tab of a partially set up module. */
 function PartialStrip({ moduleId, name }: { moduleId: string; name: string }) {
   const { slug, go } = useContext(ShellContext)!;
-  const { data } = useAsync(() => getSetup(slug, moduleId), [slug, moduleId]);
+  const { data } = useAsync(() => getSetup(slug, moduleId), [slug, moduleId], { key: ck(slug, "setup", moduleId) });
   const next = data?.steps.find((s) => s.status === "on") ?? data?.steps.find((s) => s.status !== "done");
   return (
     <Notice tone="warn" action={<button className="btn" onClick={() => go({ kind: "setup", module: moduleId })}>Kontynuuj</button>}>

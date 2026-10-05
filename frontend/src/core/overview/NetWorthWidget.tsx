@@ -5,6 +5,7 @@ import { LineChart, StackedChart } from "../../charts";
 import { labelIndices } from "../../chart";
 import { cur, cur0, GROUP, monthYearShort, nwColorVar, pctSigned, round0 } from "../../format";
 import { useAsync } from "../../hooks";
+import { ck } from "../../swr";
 import { Seg } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
 import { getSeries, type SeriesResp } from "../api";
@@ -31,9 +32,9 @@ export function NetWorthWidget() {
   const [scope, setScope] = useState("total");
   const [gran, setGran] = useState("monthly");
   const [range, setRange] = useState<number | null>(null);
-  const q = useAsync(() => getSeries(slug, gran, scope), [slug, gran, scope]);
-  const total = useAsync(() => getSeries(slug, "monthly", "total"), [slug]);
-  const liquid = useAsync(() => getSeries(slug, "monthly", "liquid"), [slug]);
+  const q = useAsync(() => getSeries(slug, gran, scope), [slug, gran, scope], { key: ck(slug, "series", gran, scope) });
+  const total = useAsync(() => getSeries(slug, "monthly", "total"), [slug], { key: ck(slug, "series", "monthly", "total") });
+  const liquid = useAsync(() => getSeries(slug, "monthly", "liquid"), [slug], { key: ck(slug, "series", "monthly", "liquid") });
   const resp = q.data;
   const currency = resp?.currency ?? "PLN";
   const points = useMemo(() => {

@@ -6,6 +6,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { cur, cur0s, MONTH_GEN, nAccounts, nModules, pctSigned, TYPE_LABEL } from "../format";
 import { useAsync } from "../hooks";
+import { ck } from "../swr";
 import { Empty } from "../ui";
 import { Fact, Grid, type GridItem, Widget } from "../widgets";
 import { getSeries, type ProfileModule } from "./api";
@@ -81,7 +82,7 @@ export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; en
 function NetHero({ base, mods }: { base: Omit<ModuleCtx, "state">; mods: { m: ProfileModule; def: ModuleDef; ctx: ModuleCtx }[] }) {
   const bd = base.summary.breakdown;
   const c = bd.currency;
-  const series = useAsync(() => getSeries(base.slug, "monthly", "total").catch(() => null), [base.slug]);
+  const series = useAsync(() => getSeries(base.slug, "monthly", "total"), [base.slug], { key: ck(base.slug, "series", "monthly", "total") });
   const pts = series.data?.points ?? [];
   const prev = pts.length >= 2 ? pts[pts.length - 2] : null;
   const last = pts.length ? pts[pts.length - 1] : null;

@@ -9,14 +9,16 @@ import { Skeleton, useToast } from "../../../ui";
 import { getProposals, getStrategy, postStrategyInit, postStrategyReload } from "../api";
 import { ProposalDrawer } from "../Drawers";
 import { StrategyPopover, strategyTag } from "../Header";
+import { dropInv, invKey } from "./api";
 
 export function InvestmentsStrategySettings() {
   const { slug, refresh } = useShell();
   const toast = useToast();
   const [nonce, setNonce] = useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const st = useAsync(() => getStrategy(slug).catch(() => null), [slug, nonce]);
-  const props = useAsync(() => getProposals(slug).catch(() => []), [slug, nonce]);
+  // After a strategy / proposal write: the investments views read fresh, this card re-reads (F7 PX4).
+  const reload = () => { dropInv(slug); setNonce((n) => n + 1); };
+  const st = useAsync(() => getStrategy(slug), [slug, nonce], { key: invKey(slug, "strategy") });
+  const props = useAsync(() => getProposals(slug), [slug, nonce], { key: invKey(slug, "proposals", "pending") });
   const [open, setOpen] = useState<number | null>(null);
   const s = st.data;
   const brief = s ? { state: s.state, errors: s.errors, warnings: s.warnings, inactive_rules: s.inactive_rules.length } : null;

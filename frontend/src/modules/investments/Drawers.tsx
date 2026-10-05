@@ -13,6 +13,7 @@ import {
   accountLabel, dm, dmy, ENTRY_TYPE, isoDate, money, nTxns, numInput, parseNum, plural, qty, TXN_TYPE, txnType, WRAPPER,
 } from "./labels";
 import { commitLabel, TXN_RULES, txnCash, validateTxn } from "./logic";
+import { invKey } from "./v2/api";
 
 /** The Polish label of the error's `X-Finanse-Error-Code` (core/messages.ts), else the server's detail. */
 const errText = (e: unknown) => describeError(e).text;
@@ -525,7 +526,9 @@ function DiffBlock({ title, text }: { title: string; text: string }) {
 export function TxnsDrawer({ slug, position, accounts, onClose, onAdd }: {
   slug: string; position: Position; accounts: AccountRow[]; onClose: () => void; onAdd: () => void;
 }) {
-  const t = useAsync(() => getTransactions(slug, position.instrument.id), [slug, position.instrument.id]);
+  // Keyed (F7 PX4): a reopened list shows at once; a transaction write reloads the home, which forgets it.
+  const t = useAsync(() => getTransactions(slug, position.instrument.id), [slug, position.instrument.id],
+    { key: invKey(slug, "transactions", position.instrument.id) });
   const src: Record<string, string> = { import: "import", manual: "ręcznie", reconciliation: "korekta" };
   return (
     <Drawer open title="Transakcje" tag={<Tag>{position.instrument.label}</Tag>} width={640} onClose={onClose} label="Transakcje instrumentu"

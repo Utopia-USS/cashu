@@ -8,6 +8,7 @@ import { Widget } from "../../../../widgets";
 import { dm, plural, wdm } from "../../labels";
 import { canRestore, useResearchActions } from "./data";
 import { getResearch } from "./api";
+import { invKey } from "../api";
 import {
   BOUNDARY, countsText, DIRECTION_LABEL, DIRECTION_TONE, healthOf, healthStale, isLive, lastDone, latestRun, nextSaturday, normDirection, nNotes,
   orderTheses, researchCommand, runNotes, runTag, workspacePath, acceptedAt, watchItemId, latestTitle,
@@ -163,7 +164,7 @@ export function ThemeRow({ t, sub, symOf, onOpen }: { t: ThemeSummary; sub?: Rea
 export function NotRun({ ctx, runs, cmd }: { ctx: Pick<StripCtx, "slug" | "today" | "workspace" | "onSettings">; runs: ResearchRun[]; cmd: string }) {
   const [how, setHow] = useState(false);
   const done = lastDone(runs);
-  const notesQ = useAsync(() => getResearch(ctx.slug, {}).catch(() => [] as ResearchNote[]), [ctx.slug]);
+  const notesQ = useAsync(() => getResearch(ctx.slug, {}), [ctx.slug], { key: invKey(ctx.slug, "research", "notes", "default") });
   const live = (notesQ.data ?? []).filter((n) => isLive(n, ctx.today));
   const lastExpiry = live.map((n) => n.expires_at ?? "").sort().slice(-1)[0];
   const at = done ? done.finished_at ?? done.started_at : null;

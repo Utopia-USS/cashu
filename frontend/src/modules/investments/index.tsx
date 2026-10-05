@@ -3,6 +3,7 @@ import type { Fact, ModuleDef } from "../../core/types";
 import { useAsync } from "../../hooks";
 import { FactList, Kpi } from "../../ui";
 import { getOverview } from "./api";
+import { invKey } from "./v2/api";
 import { dm, money, pct } from "./labels";
 import { InvestmentsV2 } from "./v2/Home";
 import { InvestmentsHeaderTag, InvestmentsHeroFact, InvestmentsSummaryWidget, MinimalOverview, SurplusWidget } from "./v2/Overview";
@@ -13,7 +14,9 @@ import { InvestmentsHeaderTag, InvestmentsHeroFact, InvestmentsSummaryWidget, Mi
 
 function InvestmentsKpis({ state, go }: { state: string; go: () => void }) {
   const slug = useSlug();
-  const q = useAsync(() => (state === "empty" ? Promise.resolve(null) : getOverview(slug, null).catch(() => null)), [slug, state]);
+  // Same request and key as the v2 overview views (one JSON, typed twice).
+  const q = useAsync(() => (state === "empty" ? Promise.resolve(null) : getOverview(slug, null)), [slug, state],
+    { key: state === "empty" ? undefined : invKey(slug, "overview", "") });
   const k = q.data?.kpis;
   if (!k || !k.value.total) {
     return (
@@ -31,7 +34,7 @@ function InvestmentsKpis({ state, go }: { state: string; go: () => void }) {
 
 function InvestmentsFacts() {
   const slug = useSlug();
-  const q = useAsync(() => getOverview(slug, null), [slug]);
+  const q = useAsync(() => getOverview(slug, null), [slug], { key: invKey(slug, "overview", "") });
   if (!q.data) return <FactList facts={q.error ? [] : null} />;
   const k = q.data.kpis;
   const c = q.data.base_currency;

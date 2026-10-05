@@ -4,6 +4,7 @@ import { ScrollableChart } from "../../components/ScrollableChart";
 import { useShell } from "../../core/context";
 import { cssVar, cur, cur0 } from "../../format";
 import { useAsync } from "../../hooks";
+import { ck } from "../../swr";
 import type { CashflowRow } from "./api";
 import { getCashflow } from "./api";
 import { CurrencySwitch, useBudgetCurrency } from "./currency";
@@ -44,6 +45,7 @@ export function Flows() {
   const { data: loaded } = useAsync(
     () => (bc.ready ? getCashflow(slug, 240, currency).then((rows) => ({ cur: shown, rows })) : Promise.resolve(null)),
     [slug, bc.ready, currency],
+    { key: bc.ready ? ck(slug, "budget", "flows", currency) : undefined },
   );
   const data = loaded?.rows;
   const dataCur = loaded?.cur ?? shown;

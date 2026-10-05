@@ -6,6 +6,7 @@
 // Per-launch API token: never in the served page (PK1). core/token.ts gets it from the desktop
 // bridge, the `#token=` fragment `finanse serve` prints, or this tab's sessionStorage; under
 // `npm run dev` the Vite proxy adds the header itself (see vite.config.ts).
+import { clearCache } from "../swr";
 import { apiToken, forgetToken, NO_TOKEN_TEXT } from "./token";
 
 /** The token header for a request (`{}` under `npm run dev`); throws a 401 ApiError with a Polish
@@ -42,9 +43,11 @@ function reportAuthLost() {
   authLost = true;
   authLostListeners.forEach((cb) => cb());
 }
-/** A 401 answer of any request (JSON or multipart upload): drop the token, show the one notice. */
+/** A 401 answer of any request (JSON or multipart upload): drop the token and the cached data (F7 PX2),
+ * show the one notice. */
 export function handle401(): void {
   forgetToken();
+  clearCache();
   reportAuthLost();
 }
 

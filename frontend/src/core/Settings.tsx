@@ -2,6 +2,7 @@
 // with Zapisz; switches and radios save on change with a toast.
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useAsync } from "../hooks";
+import { ck } from "../swr";
 import { parseServerTime, serverDate } from "../time";
 import { Code, copyText, Notice, RadioList, Seg, Switch, Tag, useToast } from "../ui";
 import {
@@ -189,6 +190,7 @@ function ModuleRow({ info, on, pm, onToggle }: { info: ModuleInfo; on: boolean; 
   const { data } = useAsync(
     () => (pending ? getSetup(slug, info.id) : Promise.resolve(null)),
     [slug, info.id, pending, pm?.setup_state],
+    { key: pending ? ck(slug, "setup", info.id) : undefined },
   );
   return (
     <div className="row">
@@ -213,7 +215,7 @@ const desktopJson = (slug: string) =>
 function AgentSection() {
   const { slug, profile, reloadProfiles } = useShell();
   // Server-built lines (absolute path of the bundled binary in the packaged app); local fallback.
-  const { data: mcp } = useAsync(() => getMcpInfo(slug).catch(() => null), [slug]);
+  const { data: mcp } = useAsync(() => getMcpInfo(slug), [slug], { key: ck(slug, "mcp-info") });
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -257,7 +259,7 @@ function WorkspacePanel() {
   const toast = useToast();
   const enabledKey = profile.modules.filter((m) => m.enabled).map((m) => m.id).join(",");
   // A module or privacy change updates an existing workspace on the server: re-read the status then.
-  const { data: ws, error, loading, reload } = useAsync(() => getWorkspace(slug), [slug, enabledKey, profile.mcp_privacy]);
+  const { data: ws, error, loading, reload } = useAsync(() => getWorkspace(slug), [slug, enabledKey, profile.mcp_privacy], { key: ck(slug, "workspace") });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -373,7 +375,7 @@ const timeFmt = new Intl.DateTimeFormat("pl-PL", { day: "numeric", month: "numer
 
 function AuditLog() {
   const { slug } = useShell();
-  const { data, error, loading, reload } = useAsync(() => getMcpCalls(slug, 50), [slug]);
+  const { data, error, loading, refreshing, reload } = useAsync(() => getMcpCalls(slug, 50), [slug], { key: ck(slug, "mcp-calls", 50) });
   const calls = data ?? [];
   const week = Date.now() - 7 * 86400000;
   const recent = calls.filter((c) => { const t = callTime(c); return t ? parseServerTime(t) >= week : false; }).length;
@@ -383,7 +385,7 @@ function AuditLog() {
         <strong style={{ fontSize: 14 }}>Dziennik wywołań</strong>
         <Tag>ostatnie 7 dni · {data === null ? 0 : recent}</Tag>
         <span className="spacer" />
-        {data !== null && <button className="btn" onClick={reload} disabled={loading}>Odśwież</button>}
+        {data !== null && <button className="btn" onClick={reload} disabled={loading || refreshing}>Odśwież</button>}
       </div>
       {error && <Notice tone="neg">Nie udało się pobrać dziennika: {error}</Notice>}
       <div className="scroll tall">

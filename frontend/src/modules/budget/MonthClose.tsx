@@ -1,11 +1,12 @@
 // "Zamknięcie miesiąca": what the month earned, spent and left over in the chosen currency, the
 // cushion top-up and the suggested transfer to investments vs the strategy's planned contribution.
-import { useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import type { Account } from "../../core/api";
 import { ApiError, j, pp } from "../../core/api";
 import { useShell } from "../../core/context";
 import { cur } from "../../format";
 import { useAsync } from "../../hooks";
+import { ck } from "../../swr";
 import { Notice, Seg, Skeleton, Switch, Tag } from "../../ui";
 import type { CushionState, MonthClose } from "./api";
 import { getBudgetSettings, getMonthClose, putBudgetSettings } from "./api";
@@ -29,37 +30,48 @@ export function MonthCloseCard({ bc }: { bc: BudgetCurrency }) {
       throw e;
     }),
     [slug, month],
+    { key: ck(slug, "budget", "monthclose-card", month) },
   );
   const [allCats, setAllCats] = useState(false);
   const [editing, setEditing] = useState(false);
+  // The navigable range of the last loaded month: while another month loads, the header and its arrows stay
+  // (the new month's label, no old figures; F7 PX2b).
+  const range = useRef<{ first: string | null; last: string | null } | null>(null);
+  if (loaded && loaded !== "unavailable") range.current = { first: loaded.first_month, last: loaded.last_month };
 
   if (loaded === "unavailable") return null;
-  if (error) return <Notice tone="warn">Nie wczytano zamknięcia miesiąca: {error}</Notice>;
+  // A failed refresh keeps the last month on screen (F7 PX2); the notice alone only without data.
+  if (error && !loaded) return <Notice tone="warn">Nie wczytano zamknięcia miesiąca: {error}</Notice>;
   const data = loaded;
+  const nav = (ym: string, first: string | null, last: string | null, tag?: ReactNode) => (
+    <div className="controls">
+      <strong style={{ fontSize: 14 }}>Zamknięcie miesiąca</strong>
+      {tag}
+      <span className="spacer" />
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+        <button className="btn" disabled={!!first && ym <= first} aria-label="Poprzedni miesiąc" onClick={() => setMonth(shiftMonth(ym, -1))}>‹</button>
+        <span style={{ minWidth: 96, textAlign: "center", fontSize: 13, fontWeight: 550 }}>{monthLabel(ym)}</span>
+        <button className="btn" disabled={!last || ym >= last} aria-label="Następny miesiąc" onClick={() => setMonth(shiftMonth(ym, 1))}>›</button>
+      </span>
+    </div>
+  );
   if (!data) {
-    return <section className="card chart-card"><Skeleton w={180} h={14} /><div style={{ height: 10 }} /><Skeleton h={54} /></section>;
+    return month && range.current ? (
+      <section className="card chart-card" aria-label="Zamknięcie miesiąca" aria-busy>
+        {nav(month, range.current.first, range.current.last)}
+        <Skeleton h={54} />
+      </section>
+    ) : <section className="card chart-card"><Skeleton w={180} h={14} /><div style={{ height: 10 }} /><Skeleton h={54} /></section>;
   }
   const shown = bc.currency ?? data.base_currency;
   const { main, others } = closeFor(data, shown);
-  const ym = data.month;
-  const canPrev = !data.first_month || ym > data.first_month;
-  const canNext = !!data.last_month && ym < data.last_month;
   const cats = main?.spending_by_category ?? [];
   const spendTotal = main?.spending ?? 0;
   const pct = (a: number) => (spendTotal ? Math.round((a / spendTotal) * 100) : 0);
 
   return (
     <section className="card chart-card" aria-label="Zamknięcie miesiąca">
-      <div className="controls">
-        <strong style={{ fontSize: 14 }}>Zamknięcie miesiąca</strong>
-        {!data.complete && <Tag tone="warn">w toku</Tag>}
-        <span className="spacer" />
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-          <button className="btn" disabled={!canPrev} aria-label="Poprzedni miesiąc" onClick={() => setMonth(shiftMonth(ym, -1))}>‹</button>
-          <span style={{ minWidth: 96, textAlign: "center", fontSize: 13, fontWeight: 550 }}>{monthLabel(ym)}</span>
-          <button className="btn" disabled={!canNext} aria-label="Następny miesiąc" onClick={() => setMonth(shiftMonth(ym, 1))}>›</button>
-        </span>
-      </div>
+      {nav(data.month, data.first_month, data.last_month, !data.complete && <Tag tone="warn">w toku</Tag>)}
 
       {!main ? (
         <div className="muted" style={{ fontSize: 13 }}>Brak transakcji w {shown}.</div>

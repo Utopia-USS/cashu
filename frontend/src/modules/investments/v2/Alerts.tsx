@@ -10,7 +10,7 @@ import { AgentTag, AlertStatus, FootFacts, Grid, PolarityText, Widget } from "..
 import { InstLabel } from "./InstLabel";
 import { bucketLabel, dm, dmy, DECISION_ACTION, hm, parseNum, pct, plural } from "../labels";
 import {
-  type Alert, type AlertInput, type AlertKindInfo, type AlertPatch, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, patchAlert, postAlert, restoreAlert, type SignalV2,
+  type Alert, type AlertInput, type AlertKindInfo, type AlertPatch, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, invKey, patchAlert, postAlert, restoreAlert, type SignalV2,
 } from "./api";
 import {
   alertConditionText, alertDefaultTitle, alertDistance, alertLevelText, alertNowText, alertPreview, alertWhenSuffix, instName, KIND_LABEL, orderAlerts, price, unnameBuckets,
@@ -108,8 +108,11 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
 }) {
   const toast = useToast();
   const [nonce, setNonce] = useState(0);
-  const q = useAsync(() => getAlerts(slug, "all"), [slug, nonce]);
-  const hist = useAsync(() => getSignalsV2(slug, "all").catch(() => [] as SignalV2[]), [slug, nonce]);
+  // Keyed (F7 PX4); `reload` goes through onChanged (the home's reload forgets the cached investments views).
+  const q = useAsync(() => getAlerts(slug, "all"), [slug, nonce], { key: invKey(slug, "alerts", "all") });
+  const hist = useAsync(() => getSignalsV2(slug, "all"), [slug, nonce], { key: invKey(slug, "signals", "all") });
+  // History that never loaded reads as empty (the old fallback); a failed refresh keeps it.
+  const histList: SignalV2[] | null = hist.data ?? (hist.error ? [] : null);
   const reload = () => { setNonce((n) => n + 1); onChanged(); };
   const [status, setStatus] = useState<StatusFilter>("all");
   const [source, setSource] = useState<SourceFilter>("all");
@@ -204,7 +207,7 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
               onSaved={(a, created) => { toast(created ? `Utworzono alert „${a.title}"` : "Zapisano alert", 2500); setEditing("new"); reload(); }} />
           ),
         },
-        { id: "history", span: 3, node: <TriggeredHistory signals={hist.data} alerts={all} /> },
+        { id: "history", span: 3, node: <TriggeredHistory signals={histList} alerts={all} /> },
       ]} />
     </>
   );
