@@ -39,6 +39,8 @@ from ..domain import Currency, Instrument, InstrumentId, MarketView, TxnType
 from ..market import FetchReport, FetchStatus, FxSource, MarketDataRefresher, PriceSource
 from ..models import InvRuleRun, InvSignal
 from ..portfolio import build_snapshot, fx_currencies_for
+from ..research import service as research_service
+from ..research.keys import is_research_key
 from ..rules import (
     Fired,
     NotFired,
@@ -439,10 +441,13 @@ def _evaluate(
             if r.rule_id and r.rule_id not in known
         ]
         now = convert.aware(clock())
-        # Alert signals have their own pass below (their "rules" are the alerts, not the strategy).
+        # Alert signals have their own pass below (their "rules" are the alerts, not the strategy);
+        # research signals live with their notes (research.signals, housekeeping below).
         reconciliation = reconcile_signals(
             open_signals=[
-                o for o in signals.open_signals(s, profile.id) if not is_alert_key(o.dedup_key)
+                o
+                for o in signals.open_signals(s, profile.id)
+                if not is_alert_key(o.dedup_key) and not is_research_key(o.dedup_key)
             ],
             outcomes=outcomes,
             rules=lifecycle_rules,
@@ -478,6 +483,8 @@ def _evaluate(
     )
     stats.update(alert_run.stats)
     stats["notifications"] = stats.get("notifications", 0) + len(alert_run.notified)
+    # Research (F6): resolve research signals whose notes all expired, fail runs left running.
+    stats.update(research_service.housekeeping(s, profile, now=convert.aware(clock())))
     result.new_signals = _signal_summaries(s, created + alert_run.created)
     result.escalated_signals = _signal_summaries(s, escalated + alert_run.escalated)
     if result.errors:
