@@ -43,6 +43,7 @@ from .. import labels as L
 from ..registry import ToolContext, ToolError
 from .exports import checked_local_file, checked_path, inside
 from .investments import owner_named
+from .messages import system_text
 
 MAX_BACKTEST_POINTS = 260
 MAX_MAPPING_BYTES = 256 * 1024
@@ -74,11 +75,12 @@ def _current_files(slug: str) -> tuple[str | None, str | None]:
     return yaml_text, md_text
 
 
-def _issue(i) -> dict:
+def _issue(i, ctx: ToolContext) -> dict:
     return {
         "severity": L.category(i.severity.value),
         "path": L.text(i.path),
-        "message": L.text(i.message),
+        "code": L.category(getattr(i, "code", None)),
+        "message": system_text(ctx, i.message),  # strict: numbers scrubbed (F5 R6)
         "line": L.count(i.line),
         "column": L.count(i.column),
     }
@@ -285,7 +287,7 @@ def propose_strategy(
         "state": L.category(
             "valid" if result.config else "partial" if result.partial else "invalid"
         ),
-        "issues": [_issue(i) for i in result.issues],
+        "issues": [_issue(i, ctx) for i in result.issues],
         "warnings": [
             {"code": L.category(w["code"]), "rule": L.text(w["rule_id"])} for w in warnings
         ],
@@ -673,7 +675,7 @@ def propose_custom_rule(
             {
                 "severity": L.category(i["severity"]),
                 "path": L.text(i["path"]),
-                "message": L.text(i["message"]),
+                "message": system_text(ctx, i["message"]),
                 "line": L.count(i["line"]),
                 "column": L.count(i["column"]),
             }

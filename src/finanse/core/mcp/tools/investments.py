@@ -17,6 +17,7 @@ from sqlmodel import func, select
 
 from .. import labels as L
 from ..registry import ToolContext, ToolError, ToolSpec
+from .messages import system_text
 
 # --------------------------------------------------------------------------- #
 # Shared helpers
@@ -343,7 +344,8 @@ def portfolio_overview(ctx: ToolContext) -> dict:
             },
         },
         "warnings": [
-            {"kind": L.category(w.get("kind")), "message": L.text(w.get("message"))}
+            # strict: no quantities / balances inside the text (F5 R6); the kind is the code
+            {"kind": L.category(w.get("kind")), "message": system_text(ctx, w.get("message"))}
             for w in ov.get("warnings") or []
         ],
         "accounts": _account_rows(ctx, ov.get("accounts") or []),
@@ -544,7 +546,8 @@ def strategy_status(ctx: ToolContext) -> dict:
         return {
             "severity": L.category(i.get("severity")),
             "path": L.text(i.get("path")),
-            "message": L.text(i.get("message")),
+            "code": L.category(i.get("code")),
+            "message": system_text(ctx, i.get("message")),  # strict: numbers scrubbed (F5 R6)
             "line": L.count(i.get("line")),
             "column": L.count(i.get("column")),
         }
