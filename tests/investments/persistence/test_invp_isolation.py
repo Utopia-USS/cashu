@@ -15,6 +15,9 @@ from finanse.modules.investments.service import daily, files, portfolio
 # Every investments GET route ({instrument_id} is filled per test), with the variants worth comparing.
 INVESTMENTS_GETS = [
     "/investments/overview",
+    "/investments/performance",
+    "/investments/performance?range=max",
+    "/investments/performance/attribution",
     "/investments/positions",
     "/investments/positions/{instrument_id}",
     "/investments/positions/{instrument_id}/chart",

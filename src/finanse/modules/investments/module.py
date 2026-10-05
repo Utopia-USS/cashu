@@ -6,11 +6,13 @@ from finanse.core.account_types import AccountTypeInfo, NetWorthBucket
 from finanse.core.institutions import Institution
 from finanse.core.modules import ModuleSpec
 
-from . import api, cli
+from . import api, cli, perf_api
 from .models import TABLES
 from .networth import InvestmentsContributor
 from .setup import setup_status
 from .store.transactions import BROKERAGE
+
+api.router.include_router(perf_api.router)  # /investments/performance[/attribution]
 
 MODULE = ModuleSpec(
     id="investments",

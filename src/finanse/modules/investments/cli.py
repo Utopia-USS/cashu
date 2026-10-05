@@ -420,6 +420,9 @@ def run_cmd(
 
 def register_module(app: typer.Typer) -> None:
     """Commands of the `finanse invest` sub-app."""
+    from .performance.cli import register as register_performance  # backfill, performance
+
+    register_performance(app)
     accounts_app = typer.Typer(help="Brokerage accounts.", no_args_is_help=True)
     strategy_app = typer.Typer(
         help="Strategy files (strategy.yaml + strategy.md).", no_args_is_help=True
