@@ -19,7 +19,8 @@ Weekly digest: on the profile's digest weekday, one notification per profile and
 ("N sygnałów do przeglądu", the signals waiting for a decision), recorded in the worker state
 before it is sent.
 
-Texts are Polish (UI data).
+Texts are Polish (UI data). Each notification carries a ``finanse://`` link (the signal, the
+investments view, the weekly review) that Finanse.app opens on a click.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from . import investments as inv
-from .notifier import Notification, Notifier
+from .notifier import Notification, Notifier, investments_link, review_link, signal_link
 from .state import WorkerState
 
 MAX_PER_PROFILE = 3
@@ -106,6 +107,7 @@ def deliver_pending(
                 subtitle=SEVERITY_SUBTITLE.get(item.severity, "Sygnał"),
                 message=item.message,
                 group=f"finanse-signal-{item.signal_id}",
+                url=signal_link(profile.slug, item.signal_id),
             )
         )
         if not delivery.ok:
@@ -126,6 +128,7 @@ def deliver_pending(
                     subtitle="Nowe sygnały",
                     message=f"I jeszcze {signals_phrase(len(claimed))} - szczegóły w aplikacji.",
                     group=f"finanse-signals-{profile.id}",
+                    url=investments_link(profile.slug),
                 )
             )
             if delivery.ok:
@@ -180,6 +183,7 @@ def send_digest(
             subtitle="Przegląd tygodniowy",
             message=digest_message(count),
             group=f"finanse-digest-{profile.id}",
+            url=review_link(profile.slug),
         )
     )
     if not delivery.ok:

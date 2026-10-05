@@ -12,6 +12,8 @@ def _private_launch_agents_dir(tmp_path, monkeypatch):
     """The worker's launchd agents dir points into tmp_path for every test, so nothing
     (e.g. GET /api/system) ever reads or writes the real ~/Library/LaunchAgents."""
     monkeypatch.setenv("FINANSE_LAUNCH_AGENTS_DIR", str(tmp_path / "LaunchAgents"))
+    # Never post through an installed Finanse.app (the notifier's "auto" choice).
+    monkeypatch.setenv("FINANSE_APP_BUNDLE", "none")
 
 
 @pytest.fixture
