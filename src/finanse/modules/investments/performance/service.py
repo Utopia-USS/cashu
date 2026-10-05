@@ -38,6 +38,7 @@ from ..models import (
     InvInstrument,
     InvInstrumentRename,
     InvPriceBar,
+    InvProfileInstrument,
     InvTransaction,
 )
 from ..portfolio import InMemoryFxLookup
@@ -134,7 +135,11 @@ def load(session: Session, profile: Profile, end: dt.date) -> Loaded:
     pks = set(referenced)
     if proxy is not None:
         pks.add(convert.pk(proxy.id))
-    loaded = {convert.sid(k): v for k, v in instrument_store.load(session, pks).items()}
+    # the profile's own view (valuation mode, status incl. frozen, classification overrides), like
+    # the overview
+    loaded = {
+        convert.sid(k): v for k, v in instrument_store.load(session, pks, profile_id=pid).items()
+    }
     first = min((t.trade_date for t in txns), default=end)
     since = first - dt.timedelta(days=HISTORY_MARGIN_DAYS)
     series = market.bars(session, pks, until=end, since=since)
@@ -223,6 +228,13 @@ def _profile_key(session: Session, profile: Profile, end: dt.date) -> tuple:
             )
         ).one()
     )
+    overrides = tuple(
+        session.exec(
+            select(
+                func.count(InvProfileInstrument.id), func.max(InvProfileInstrument.updated_at)
+            ).where(InvProfileInstrument.profile_id == profile.id)
+        ).one()
+    )
     digest = hashlib.sha256()
     for row in transactions.manual_valuation_rows(session, profile.id):
         digest.update(f"{row.instrument_id}|{row.as_of}|{row.unit_value}|{row.currency};".encode())
@@ -232,6 +244,7 @@ def _profile_key(session: Session, profile: Profile, end: dt.date) -> tuple:
         tuple(accounts),
         txn,
         renames,
+        overrides,
         digest.hexdigest(),
         st.sha256,
         st.state,

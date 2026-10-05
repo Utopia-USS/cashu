@@ -137,20 +137,18 @@ def test_entry_without_arguments_opens_the_app(monkeypatch):
     assert all(c["prog_name"] == "finanse" for c in calls)
 
 
-def test_entry_runs_a_converter_script_like_python_dash_i(tmp_path, monkeypatch):
+def test_entry_never_runs_scripts(tmp_path, monkeypatch):
+    """The unused ``-I <script.py>`` converter mode is gone (F6): such a call goes to the CLI, which
+    rejects it, and the script never runs."""
+    marker = tmp_path / "ran"
     script = tmp_path / "converter.py"
-    script.write_text(
-        "import sys, pathlib\n"
-        "pathlib.Path(sys.argv[2]).write_text(pathlib.Path(sys.argv[1]).read_text().upper())\n"
-        "sys.exit(0 if __name__ == '__main__' else 5)\n"
-    )
-    (tmp_path / "in.csv").write_text("a;b\n")
-    monkeypatch.setattr(sys, "argv", list(sys.argv))
-    with pytest.raises(SystemExit) as done:
-        entry.main(["-I", str(script), str(tmp_path / "in.csv"), str(tmp_path / "out.csv")])
-    assert done.value.code == 0
-    assert (tmp_path / "out.csv").read_text() == "A;B\n"
-    assert entry.is_script_call(["-I", "x.py"]) and not entry.is_script_call(["-I"])
+    script.write_text(f"import pathlib\npathlib.Path({str(marker)!r}).write_text('x')\n")
+    calls = []
+    monkeypatch.setattr("finanse.cli.app", lambda **kw: calls.append(kw))
+    entry.main(["-I", str(script), "in.csv", "out.csv"])
+    assert calls == [{"args": ["-I", str(script), "in.csv", "out.csv"], "prog_name": "finanse"}]
+    assert not marker.exists()
+    assert not hasattr(entry, "run_script") and not hasattr(entry, "is_script_call")
 
 
 # --------------------------------------------------------------------------- #

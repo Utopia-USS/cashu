@@ -1,7 +1,8 @@
 """One worker run: every profile x its enabled modules, then notifications and the digest.
 
 Order: the investments daily check (one call for all investments profiles, shares the
-``investments-daily`` lock with the in-app "run now"), the budget sync per profile (only when
+``investments-daily`` lock with the in-app "run now") followed by the incremental performance price
+backfill (online runs only, no job row), the budget sync per profile (only when
 configured and not throttled), immediate notifications, the weekly digest. A failing job is
 recorded and never stops the others. The whole run holds the ``worker`` lock, so two worker
 runs never overlap; the summary lands in the worker state (``last_run``).
@@ -170,6 +171,10 @@ def _run(notifier, offline, budget, now, as_of, sources, lock_wait, session_fact
 
     if investors:
         report.jobs += _investments(offline, as_of, sources, lock_wait)
+        if not offline:  # performance history of sold instruments + benchmark (housekeeping, F6)
+            backfilled = inv.backfill_prices(as_of=as_of, sources=sources)
+            if backfilled and (backfilled.get("error") or backfilled.get("errors")):
+                _log.warning("price backfill: %s", backfilled)
     if budgeters:
         for profile in budgeters:
             report.jobs.append(_budget(profile, budget, now, state, save, legacy_owner))

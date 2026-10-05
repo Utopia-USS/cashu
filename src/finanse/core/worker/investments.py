@@ -212,6 +212,27 @@ def prune_staged() -> dict | None:
     return None if report is None else report.stats()
 
 
+def backfill_prices(*, as_of: dt.date | None = None, sources: Any = None) -> dict | None:
+    """Incremental price backfill for performance after the daily check (F6): sold instruments and
+    the strategy's benchmark proxy, which the daily refresh does not cover; only the days after the
+    newest stored bar are fetched. Never raises: returns ``{instruments, errors, rates_written}`` or
+    ``{error}``; None when another backfill (``finanse invest backfill``) holds its lock."""
+    from finanse.modules.investments.performance import backfill
+
+    try:
+        report = backfill.run_backfill(as_of=as_of, sources=sources)
+    except backfill.BackfillBusy:
+        return None
+    except Exception as e:  # noqa: BLE001 - housekeeping: logged by the runner, never fatal
+        return {"error": f"{type(e).__name__}: {e}"[:300]}
+    return {
+        "instruments": len(report.instruments),
+        "errors": sum(1 for i in report.instruments if i.status == "error")
+        + sum(1 for b in report.benchmarks if b.status == "error"),
+        "rates_written": report.rates_written,
+    }
+
+
 def last_worker_run(session: Session) -> tuple[dt.datetime, str] | None:
     """(started_at, status) of the newest daily-check run the worker triggered, any profile."""
     from finanse.modules.investments.models import InvRuleRun

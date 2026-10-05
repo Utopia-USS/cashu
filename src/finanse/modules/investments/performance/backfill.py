@@ -202,10 +202,16 @@ def _read(
         for r in renames:
             if r.date <= as_of:
                 _earliest(needed, r.new_instrument_id, r.date)
-        loaded = instrument_store.load(session, [convert.pk(i) for i in needed])
+        loaded = instrument_store.load(
+            session, [convert.pk(i) for i in needed], profile_id=profile.id
+        )
         for pk, inst in loaded.items():
             iid = convert.sid(pk)
-            plan.instruments[iid] = inst
+            # Profiles may see a shared instrument differently (one froze it): fetch it when any
+            # profile's own view still needs market prices (like the daily check).
+            known = plan.instruments.get(iid)
+            if known is None or (inst.fetches_market_data and not known.fetches_market_data):
+                plan.instruments[iid] = inst
             _earliest(plan.need_from, iid, needed[iid])
             _earliest(plan.currencies, inst.currency, needed[iid])
             role = "held" if iid in held else "sold"

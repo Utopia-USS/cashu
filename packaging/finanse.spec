@@ -7,8 +7,8 @@
 #     pyinstaller --noconfirm --distpath build/macos/dist --workpath build/macos/work packaging/finanse.spec
 #
 # One binary, Contents/MacOS/finanse: no arguments = the desktop window (Finder), anything else =
-# the finanse CLI (`worker run`, `mcp --profile <slug>`, ...), `-I script.py ...` = a converter
-# script (see src/finanse/desktop/entry.py).
+# the finanse CLI (`worker run`, `mcp --profile <slug>`, ...) (see src/finanse/desktop/entry.py).
+# It never runs scripts.
 # ruff: noqa
 import os
 import tomllib
