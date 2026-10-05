@@ -28,6 +28,7 @@ from dataclasses import dataclass, field, replace
 from sqlmodel import Session, select
 
 from finanse.core import locks, profiles
+from finanse.core.api import utc_iso
 from finanse.core.db import get_session
 from finanse.core.models import Profile, ProfileModule, utcnow
 
@@ -138,8 +139,8 @@ class BackfillReport:
             "benchmarks": [b.to_dict() for b in self.benchmarks],
             "fx": self.fx,
             "rates_written": self.rates_written,
-            "started_at": None if self.started_at is None else self.started_at.isoformat(),
-            "finished_at": None if self.finished_at is None else self.finished_at.isoformat(),
+            "started_at": utc_iso(self.started_at),
+            "finished_at": utc_iso(self.finished_at),
         }
 
 

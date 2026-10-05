@@ -10,6 +10,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from ..agent_models import McpCall
+from ..api import utc_iso
 from ..db import get_session
 from ..models import Profile, utcnow
 
@@ -116,7 +117,7 @@ def call_dict(row: McpCall) -> dict[str, Any]:
         "id": row.id,
         "tool": row.tool,
         "privacy": row.privacy,
-        "called_at": row.called_at.isoformat() if row.called_at else None,
+        "called_at": utc_iso(row.called_at),
         "args": dict(row.args or {}),
         "outcome": row.outcome,
         "error_kind": row.error_kind,

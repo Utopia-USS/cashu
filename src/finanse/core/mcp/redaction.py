@@ -246,7 +246,11 @@ class Redactor:
                 raise UnlabelledValue(f"{path}: a flag must be a boolean")
             return value
         if label is Sensitivity.DATE:
-            if isinstance(value, (dt.date, dt.datetime)):
+            if isinstance(value, dt.datetime):
+                if value.tzinfo is None:  # naive = UTC (SQLite), never sent naive (F7 FE1)
+                    value = value.replace(tzinfo=dt.UTC)
+                return value.astimezone(dt.UTC).isoformat()
+            if isinstance(value, dt.date):
                 return value.isoformat()
             if isinstance(value, str) and _DATE_STR.match(value):
                 return value

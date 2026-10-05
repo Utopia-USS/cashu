@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from sqlmodel import Session, select
 
 from finanse.core import locks, profiles
+from finanse.core.api import utc_iso
 from finanse.core.db import get_session
 from finanse.core.models import Profile, ProfileModule, utcnow
 
@@ -129,8 +130,8 @@ class DailyCheckReport:
             "trigger": self.trigger,
             "as_of": self.as_of.isoformat(),
             "offline": self.offline,
-            "started_at": self.started_at.isoformat(),
-            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "started_at": utc_iso(self.started_at),
+            "finished_at": utc_iso(self.finished_at),
             "market": None if self.market is None else self.market.to_stats(),
             "market_errors": [] if self.market is None else self.market.error_messages,
             "market_error": self.market_error,

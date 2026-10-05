@@ -182,7 +182,9 @@ def get(session: Session, profile: Profile | int, proposal_id: int) -> Proposal:
 
 
 def _iso(value) -> str | None:
-    return None if value is None else value.isoformat()
+    from .api import utc_iso  # never naive (F7 FE1)
+
+    return utc_iso(value)
 
 
 def proposal_dict(row: Proposal) -> dict[str, Any]:

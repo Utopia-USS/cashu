@@ -8,6 +8,7 @@ as legacy aliases for the default profile, under ``/api`` (see ``current_profile
 
 from __future__ import annotations
 
+import datetime as dt
 from decimal import Decimal
 from typing import Annotated
 
@@ -31,6 +32,19 @@ profile_only_router = APIRouter()
 def f(value: Decimal | None) -> float | None:
     """Decimal -> JSON number (None stays None)."""
     return float(value) if value is not None else None
+
+
+def utc_iso(value: dt.datetime | dt.date | None) -> str | None:
+    """A timestamp for JSON: ISO 8601 in UTC with an explicit ``+00:00`` offset, never naive (a naive
+    value is UTC, as SQLite returns it; browsers read a naive string as local time). A plain date
+    stays ``YYYY-MM-DD``."""
+    if value is None:
+        return None
+    if not isinstance(value, dt.datetime):
+        return value.isoformat()
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt.UTC)
+    return value.astimezone(dt.UTC).isoformat()
 
 
 # --------------------------------------------------------------------------- #

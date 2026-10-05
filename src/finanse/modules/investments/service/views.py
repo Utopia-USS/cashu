@@ -18,7 +18,7 @@ from decimal import Decimal
 from sqlmodel import Session, select
 
 from finanse.core import institutions
-from finanse.core.api import f
+from finanse.core.api import f, utc_iso
 from finanse.core.models import Account, Profile, utcnow
 
 from ..alerts import CATALOG, alert_id_of, catalog_dicts, is_alert_key
@@ -72,7 +72,8 @@ from .imports import ImportPreview
 
 
 def iso(value: dt.date | dt.datetime | None) -> str | None:
-    return None if value is None else value.isoformat()
+    """A date as ``YYYY-MM-DD``, a timestamp as UTC with ``+00:00`` (never naive, F7 FE1)."""
+    return utc_iso(value)
 
 
 def ratio_pct(value: float | None) -> float | None:

@@ -41,7 +41,10 @@ HISTORY_DAYS = 7 * SENTIMENT_WEEKS + HEALTH_WINDOW_DAYS + 7
 
 
 def iso(value: dt.date | dt.datetime | None) -> str | None:
-    return None if value is None else value.isoformat()
+    """A date as ``YYYY-MM-DD``, a timestamp as UTC with ``+00:00`` (never naive, F7 FE1)."""
+    from finanse.core.api import utc_iso
+
+    return utc_iso(value)
 
 
 def _aware(value: dt.datetime | None) -> dt.datetime | None:
