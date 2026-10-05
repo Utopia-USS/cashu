@@ -2,8 +2,8 @@
 // labels with leaders and a hover / keyboard crosshair with a tooltip; bars with a plan line; donut with
 // surface gaps; sparkline. Colours come from CSS classes on the tokens (index.css `.chart`, `.spark`), so a
 // theme switch needs no re-render. The SVG is drawn at the measured pixel width: text keeps its size.
-import { type ReactNode, useState } from "react";
-import { areaPath, bandPath, barLayout, donutArcs, extent, linePath, linear, nearestIndex, type Pt, sparkline, stackLabels, stackLayers, ticks } from "./chart";
+import { type ReactNode, useId, useState } from "react";
+import { areaFade, areaPath, bandPath, barLayout, donutArcs, extent, fadeOpacity, linePath, linear, nearestIndex, type Pt, sparkline, stackLabels, stackLayers, ticks } from "./chart";
 import { useWidth } from "./hooks";
 
 /** 30-day style sparkline (72 x 22). `tone` overrides the first-vs-last colour ("" = muted). */
@@ -29,6 +29,23 @@ export interface LineSeries {
 export interface Level { y: number; cls: "alert" | "rule" | "cost" | "agent"; label?: string; muted?: boolean }
 
 const DOT: Record<LineSeries["cls"], string> = { main: "var(--nw)", bench: "var(--bench)", neg: "var(--neg)" };
+
+// Area fills fade out vertically (F7 PX1): the strong end at the flat fill's opacity x 1.6 (index.css
+// `.chart .area` .12, `.chart .stk` .8; capped at .35), transparent at the area's baseline. The stops take the
+// series token, so a theme switch needs no re-render.
+const AREA_FADE = fadeOpacity(0.12);
+const STACK_FADE = fadeOpacity(0.8);
+/** A per-instance gradient id usable inside url(#...) (React's useId contains colons). */
+const useGradientId = () => `g${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+
+function Fade({ id, color, strong, y1, y2 }: { id: string; color: string; strong: number; y1: number; y2: number }) {
+  return (
+    <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={0} x2={0} y1={y1} y2={y2}>
+      <stop offset={0} style={{ stopColor: color, stopOpacity: strong }} />
+      <stop offset={1} style={{ stopColor: color, stopOpacity: 0 }} />
+    </linearGradient>
+  );
+}
 
 /** Line chart. x = index (evenly sampled series); `xLabels` place date labels by index. */
 /** Roles of a chart (F7 FE14). A static chart is one image. A chart with a keyboard tooltip is a focusable
@@ -62,6 +79,7 @@ export function LineChart({
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
+  const gid = useGradientId();
   const n = Math.max(0, ...series.map((s) => s.values.length));
   const w = Math.max(width, 120), h = height;
   const left = yFmt === false ? 6 : padL, padT = 10, padB = 22;
@@ -111,9 +129,12 @@ export function LineChart({
           {series.map((s, k) => {
             const pts = s.values.map((v, i) => (v == null ? null : ([X(i), Y(v)] as Pt)));
             const solid = pts.filter((p): p is Pt => p != null);
+            const area = s.area && solid.length > 1;
+            const baseY = Y(Math.max(lo, Math.min(hi, s.areaTo ?? lo)));
             return (
               <g key={k}>
-                {s.area && solid.length > 1 && <path className={`area ${s.cls}`} d={areaPath(solid, Y(Math.max(lo, Math.min(hi, s.areaTo ?? lo))))} />}
+                {area && <defs><Fade id={`${gid}a${k}`} color={DOT[s.cls]} strong={AREA_FADE} {...areaFade(baseY, padT, h - padB)} /></defs>}
+                {area && <path className={`area ${s.cls}`} style={{ fill: `url(#${gid}a${k})`, opacity: 1 }} d={areaPath(solid, baseY)} />}
                 <path className={`ln ${s.cls}`} d={linePath(pts)} />
               </g>
             );
@@ -239,6 +260,7 @@ export function StackedChart({ rows, keys, colors, totals, xLabels = [], yFmt, h
 }) {
   const { ref, width } = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
+  const gid = useGradientId();
   const n = rows.length, w = Math.max(width, 120), h = height, padT = 10, padB = 22;
   const { layers, min, max } = stackLayers(rows, keys);
   const [lo, hi] = extent([min, max, ...totals]);
@@ -268,8 +290,12 @@ export function StackedChart({ rows, keys, colors, totals, xLabels = [], yFmt, h
           {xLabels.map((xl, k) => (
             <text key={k} className="ax" x={X(xl.i)} y={h - 6} textAnchor={xl.i === 0 ? "start" : xl.i === n - 1 ? "end" : "middle"}>{xl.text}</text>
           ))}
+          {/* Several layers keep their solid fills (they encode the categories); a single one fades like a line area. */}
+          {layers.length === 1 && (
+            <defs><Fade id={`${gid}s`} color={colors[layers[0].key] ?? "var(--nw)"} strong={STACK_FADE} {...areaFade(Y(Math.max(lo, Math.min(hi, 0))), padT, h - padB)} /></defs>
+          )}
           {layers.map((l) => (
-            <path key={l.key} className="stk" style={{ fill: colors[l.key] ?? "var(--nw)" }}
+            <path key={l.key} className="stk" style={layers.length === 1 ? { fill: `url(#${gid}s)`, opacity: 1 } : { fill: colors[l.key] ?? "var(--nw)" }}
               d={bandPath(l.hi.map((v, i) => [X(i), Y(v)] as Pt), l.lo.map((v, i) => [X(i), Y(v)] as Pt))} />
           ))}
           <path className="ln" style={{ stroke: "var(--text)", strokeWidth: 1.75 }} d={linePath(totals.map((v, i) => [X(i), Y(v)] as Pt))} />

@@ -166,3 +166,16 @@ export function stackLayers(rows: Record<string, number>[], keys: string[]): { l
   });
   return { layers, min, max };
 }
+
+/** Opacity of the strong end of an area gradient (F7 PX1): the flat fill's opacity x 1.6, capped at 0.35. */
+export function fadeOpacity(flat: number): number {
+  return Math.min(0.35, Math.round(flat * 1.6 * 1000) / 1000);
+}
+
+/** Vertical extent of an area's fade gradient (userSpaceOnUse, F7 PX1): from the plot edge away from the
+ * area's baseline (strong) to the baseline (transparent). The usual baseline is the plot bottom, so the
+ * gradient runs plot top -> plot bottom (not to the value 0: the y axis does not start at 0); an area hung
+ * from a line near the top (drawdown up to 0) fades towards that line instead. */
+export function areaFade(baseY: number, top: number, bottom: number): { y1: number; y2: number } {
+  return baseY <= (top + bottom) / 2 ? { y1: bottom, y2: baseY } : { y1: top, y2: baseY };
+}
