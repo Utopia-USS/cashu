@@ -13,7 +13,8 @@ import { useAsync } from "../../../hooks";
 import { Seg, Skeleton, useToast } from "../../../ui";
 import { FootFacts, PolDot, Widget } from "../../../widgets";
 import { type AccountRow, getPositionChart, getPositionDetail, type Position, type Thesis } from "../api";
-import { accountLabel, bucketLabel, DECISION_ACTION, dm, dmy, ENTRY_TYPE, money, money0, pct, plural, qty, txnType, wdm } from "../labels";
+import { accountLabel, bucketLabel, DECISION_ACTION, dm, dmy, ENTRY_TYPE, micName, money, money0, pct, plural, qty, txnType, wdm } from "../labels";
+import { InstLabel } from "./InstLabel";
 import { AlertRow, removeAlertWithUndo } from "./Alerts";
 import { type Alert, getSignalsV2, type WatchItem } from "./api";
 import { ASSET_SLOTS, type AssetSlotProps, type AssetTimelineEntry, type ThesisField } from "./assetSlots";
@@ -143,7 +144,10 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const head = (
     <section className="w ahead s2" aria-label={name}>
       <div>
-        <h2 className="nm">{name} <span>{[inst?.symbol !== name ? inst?.symbol : null, inst?.mic, pos?.bucket ? bucketLabel(pos.bucket) : null].filter(Boolean).join(" · ")}</span></h2>
+        <h2 className="nm">{inst ? (
+          <InstLabel density="header" inst={inst} text={name} card={false}
+            sub={[inst.symbol !== name ? inst.symbol : null, micName(inst.mic), bucketLabel(pos?.bucket)].filter(Boolean).join(" · ")} />
+        ) : name}</h2>
         <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
           {[acc ? accountLabel(acc, accounts) : pos ? `${plural(pos.accounts.length, "rachunek", "rachunki", "rachunków")}` : "obserwowany", firstLot ? `od ${dmy(firstLot.open_date)}` : null].filter(Boolean).join(" · ")}
           {mainSignal && <> · <PolDot polarity={polarityOf(mainSignal)} /> {polarityOf(mainSignal) === "positive" ? "szansa" : polarityOf(mainSignal) === "negative" ? "ryzyko" : "sygnał"}: {signalText(mainSignal).lead?.replace(/ ·$/, "") ?? signalText(mainSignal).title.toLowerCase()}</>}

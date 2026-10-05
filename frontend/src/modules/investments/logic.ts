@@ -45,7 +45,7 @@ export function signalTitle(sig: SignalLike): string {
   const inst = s(p.name) ?? sig.instrument_label ?? s(p.symbol) ?? "";
   switch (sig.kind) {
     case "drawdown_from_high": return `Spadek od szczytu ≥ ${pctTarget(n(p.threshold))}`;
-    case "allocation_drift": return `Dryf alokacji: ${bucketLabel(s(p.bucket_id))}`;
+    case "allocation_drift": { const b = bucketLabel(s(p.bucket_id)); return b ? `Dryf alokacji: ${b}` : "Dryf alokacji"; }
     case "position_concentration": return `Koncentracja: ${inst}`;
     case "contribution_gap": return "Brak wpłaty";
     case "loss_from_cost": return `Strata od kosztu ≥ ${pctTarget(n(p.threshold))}`;
@@ -144,7 +144,8 @@ export function decisionEffect(args: {
   if (quantity == null || price == null || quantity <= 0 || price <= 0) return null;
   const amount = quantity * price;
   const head = `≈ ${money(amount, args.currency)}`;
-  if (!bucket || !total || args.currency !== args.base) return head;
+  // A non-generic (the owner's own) bucket is not named in the app, nor are its target and drift (F7-generic).
+  if (!bucket || !total || args.currency !== args.base || !bucketLabel(bucket.bucket_id)) return head;
   const after = (bucket.value + (side === "buy" ? amount : -amount)) / total;
   const drift = (after - bucket.target) * 100;
   const grows = Math.abs(drift) > Math.abs(bucket.drift_pp) + 1e-9;

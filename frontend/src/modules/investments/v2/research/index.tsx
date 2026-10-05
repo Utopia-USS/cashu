@@ -40,8 +40,8 @@ export function useResearchHome(input: ResearchHomeInput) {
   const o = { ...input, since: input.digest?.since ?? null, digestResearch: (input.digest?.research ?? null) as DigestResearch | null };
   const { runs, summary, candidates } = useResearchOverview(o.slug, o.nonce);
   const ws = useWorkspace(o.slug);
-  const held = useMemo(() => new Map(o.positions.map((p) => [Number(p.instrument.id), { name: instName(p.instrument), symbol: p.instrument.symbol ?? null, weight: p.weight ?? null }])), [o.positions]);
-  const watchedIds = useMemo(() => new Map(o.watch.filter((w) => w.instrument).map((w) => [w.instrument_id, { name: instName(w.instrument!), symbol: w.instrument!.symbol ?? null }])), [o.watch]);
+  const held = useMemo(() => new Map(o.positions.map((p) => [Number(p.instrument.id), { name: instName(p.instrument), symbol: p.instrument.symbol ?? null, weight: p.weight ?? null, inst: p.instrument }])), [o.positions]);
+  const watchedIds = useMemo(() => new Map(o.watch.filter((w) => w.instrument).map((w) => [w.instrument_id, { name: instName(w.instrument!), symbol: w.instrument!.symbol ?? null, inst: w.instrument! }])), [o.watch]);
   const watched = useCallback((n: ResearchNote) => {
     const sym = (n.candidate?.symbol ?? n.instrument?.symbol)?.toUpperCase();
     const wid = watchItemId(n);

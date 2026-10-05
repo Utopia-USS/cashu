@@ -9,6 +9,7 @@ import { Grid, type GridItem, Widget } from "../../../../widgets";
 import { useShortcuts } from "../../hooks";
 import { dm, hm, plural, wdm } from "../../labels";
 import { getResearch } from "./api";
+import type { InstLike } from "../InstLabel";
 import { canRestore, useResearchActions, useResearchOverview, useWorkspace } from "./data";
 import {
   BOUNDARY, DIRECTION_LABEL, DIRECTION_TONE, healthOf, isExpired, KIND_FILTER, latestRun, nextSaturday, normDirection, normRelation,
@@ -25,8 +26,8 @@ export interface ResearchPageProps {
   slug: string;
   today: string;
   privacy: string;
-  held: Map<number, { name: string; symbol: string | null; weight: number | null }>;
-  watchedIds: Map<number, { name: string; symbol: string | null }>;
+  held: Map<number, { name: string; symbol: string | null; weight: number | null; inst?: InstLike }>;
+  watchedIds: Map<number, { name: string; symbol: string | null; inst?: InstLike }>;
   watched: (n: ResearchNote) => CandidateState | undefined;
   symOf: (id: number) => string | null;
   strategyVersion: number | null;
@@ -209,7 +210,7 @@ const REL_RANK: Record<string, number> = { invalidates: 0, weakens: 1, supports:
 
 function NotesList({ slug, today, nonce, scope, kind, theme, held, watchedIds, onClearTheme, onChanged, onOpenAsset }: {
   slug: string; today: string; nonce: number; scope: Scope; kind: string | null; theme: string | null;
-  held: Map<number, { name: string; symbol: string | null }>; watchedIds: Map<number, { name: string; symbol: string | null }>;
+  held: Map<number, { name: string; symbol: string | null; inst?: InstLike }>; watchedIds: Map<number, { name: string; symbol: string | null; inst?: InstLike }>;
   onClearTheme: () => void; onChanged: () => void; onOpenAsset: (id: number, noteId?: number) => void;
 }) {
   const [old, setOld] = useState(false);
@@ -255,7 +256,7 @@ function NotesList({ slug, today, nonce, scope, kind, theme, held, watchedIds, o
     const id = n.instrument_id;
     if (id != null) {
       const h = held.get(id) ?? watchedIds.get(id);
-      return { name: h?.name ?? n.instrument?.label ?? n.instrument?.name ?? `#${id}`, sym: h?.symbol ?? n.instrument?.symbol ?? null };
+      return { name: h?.name ?? n.instrument?.label ?? n.instrument?.name ?? `#${id}`, sym: h?.symbol ?? n.instrument?.symbol ?? null, inst: h?.inst };
     }
     return n.theme ? { name: n.theme, sym: "temat" } : null;
   };

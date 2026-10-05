@@ -14,12 +14,13 @@ import {
 } from "./logic";
 import { CandidateCard, type CandidateState, CopyCommand, HealthPill, ScheduleHow, SentimentBars } from "./primitives";
 import type { InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, ThemeSummary, Workspace } from "./types";
+import { InstLabel, type InstLike } from "../InstLabel";
 
 export interface StripCtx {
   slug: string;
   today: string;
-  /** Held instruments: id -> display name, symbol, weight. */
-  held: Map<number, { name: string; symbol: string | null; weight: number | null }>;
+  /** Held instruments: id -> display name, symbol, weight, the instrument (identity label). */
+  held: Map<number, { name: string; symbol: string | null; weight: number | null; inst?: InstLike }>;
   /** Watched instruments: instrument id or symbol -> since / agent (candidate cards show `obserwowany od`). */
   watched: (n: ResearchNote) => CandidateState | undefined;
   strategyVersion: number | null;
@@ -80,7 +81,7 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
           <div className="rsec">Tezy <span className="cnt">· sentyment 8 tyg.</span></div>
           {theses.length ? theses.slice(0, 6).map(({ s, health }) => (
             <ThesisRow key={s.instrument_id} s={s} health={health} muted={stale} name={ctx.held.get(s.instrument_id)?.name ?? s.label ?? `#${s.instrument_id}`}
-              symbol={ctx.held.get(s.instrument_id)?.symbol ?? s.symbol ?? null} onOpen={() => ctx.onOpenAsset(s.instrument_id)} />
+              symbol={ctx.held.get(s.instrument_id)?.symbol ?? s.symbol ?? null} inst={ctx.held.get(s.instrument_id)?.inst} onOpen={() => ctx.onOpenAsset(s.instrument_id)} />
           )) : <div className="empty-line">{last?.status === "running" ? "Przebieg trwa…" : "Brak notatek (30 dni)."}</div>}
           {theses.length > 6 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=positions")}>pozostałe {theses.length - 6}</button></div>}
         </div>
@@ -106,16 +107,25 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
   );
 }
 
-export function ThesisRow({ s, health, name, symbol, muted, sub, right, onOpen }: {
+export function ThesisRow({ s, health, name, symbol, inst, muted, sub, right, onOpen }: {
   s: InstrumentSummary; health: ReturnType<typeof healthOf>; name: string; symbol: string | null; muted?: boolean;
+  /** The instrument (positions, watchlist): the identity label (compact) instead of name + symbol text. */
+  inst?: InstLike;
   sub?: ReactNode; right?: ReactNode; onOpen?: () => void;
 }) {
+  const line = sub ?? latestTitle(s) ?? (s.last_researched_at ? `research ${dm(s.last_researched_at)}` : "bez notatek");
   return (
     <div className="rrow">
-      <div style={{ minWidth: 0 }}>
-        <div className="nm">{onOpen ? <button className="nm" onClick={onOpen}>{name}</button> : name}{symbol && symbol !== name && <span className="sym">{symbol}</span>}</div>
-        <div className="sub" title={latestTitle(s) ?? undefined}>{sub ?? latestTitle(s) ?? (s.last_researched_at ? `research ${dm(s.last_researched_at)}` : "bez notatek")}</div>
-      </div>
+      {inst ? (
+        <div style={{ minWidth: 0 }}>
+          <InstLabel density="compact" inst={inst} text={name} onOpen={onOpen ? () => onOpen() : undefined} sub={<span title={latestTitle(s) ?? undefined}>{line}</span>} />
+        </div>
+      ) : (
+        <div style={{ minWidth: 0 }}>
+          <div className="nm">{onOpen ? <button className="nm" onClick={onOpen}>{name}</button> : name}{symbol && symbol !== name && <span className="sym">{symbol}</span>}</div>
+          <div className="sub" title={latestTitle(s) ?? undefined}>{line}</div>
+        </div>
+      )}
       <SentimentBars values={s.sentiment_8w} />
       <div className="r">
         <HealthPill state={health} muted={muted} />

@@ -83,7 +83,7 @@ function janNotes(): ResearchNote[] {
       title: "Text: korekta sentymentu przy stabilnych przychodach",
       summary: "Kurs -31 % od szczytu 52 tyg. przy stabilnych przychodach od 4 kwartałów; sentyment społeczności negatywny (szum), wiadomości neutralne.",
       details: { entry_type: "sentiment_correction", context: "sentyment społeczności negatywny (szum) · wiadomości neutralne", criteria: [
-        { text: "-31 % od szczytu 52 tyg.", met: true, threshold: "-25 %" }, { text: "przychody stabilne 4 kwartały", met: true }, { text: "brak w portfelu, koszyk Akcje PL", met: true },
+        { text: "-31 % od szczytu 52 tyg.", met: true, threshold: "-25 %" }, { text: "przychody stabilne 4 kwartały", met: true }, { text: "brak w portfelu, koszyk Akcje", met: true },
       ] }, sources: [src("Bankier", "2026-10-01", "txt-1"), src("raport kwartalny", "2026-08-28", "txt-2")] }),
     note({ candidate: { symbol: "INRG", name: "Global Clean Energy", exchange: "XLON", currency: "GBP", key: "INRG" }, kind: "candidate", polarity: "positive", strength: 2, thesis_relation: "none", observed_at: SAT,
       title: "Global Clean Energy: napływy i siła relatywna",

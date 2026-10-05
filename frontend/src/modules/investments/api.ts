@@ -67,6 +67,8 @@ export interface AccountRow {
 
 export interface BucketRow {
   bucket_id: string;
+  /** F7-generic: a template / plain asset-class bucket (missing on older servers = generic). */
+  generic?: boolean;
   weight: Num;
   target: number;
   drift_pp: number;
@@ -88,6 +90,8 @@ export interface Allocation {
   by_asset_class: Share[];
   by_region: Share[];
   band: { absolute_band_pp: number; relative_band: number; min_trade_value: number } | null;
+  /** F7-generic: at least one bucket and every bucket generic (missing on older servers = generic). */
+  buckets_generic?: boolean;
 }
 
 export interface Overview {

@@ -18,6 +18,7 @@ import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, plural, qty } from ".
 import { decisionEffect, decisionTag, nextDeposit } from "../logic";
 import { canUndo, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
 import type { Alert, PositionV2, SignalV2 } from "./api";
+import { InstLabel } from "./InstLabel";
 import { instName, isDecided, polarityOf, railTop, signalStateKey, signalText, splitByPolarity } from "./logic";
 import { stillLocked } from "../../../inflight";
 import { isResearchKind, signalNoteId } from "./research/logic";
@@ -254,7 +255,8 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, co
   const quiet = !!decided || snoozed;
   const alert = s.alert_id != null ? ctx.alertsById.get(s.alert_id) : undefined;
   const later = nextDeposit(ctx.today, ctx.contributionDay);
-  const held = s.instrument_id != null && ctx.positions.some((p) => String(p.instrument.id) === String(s.instrument_id));
+  const pos = s.instrument_id != null ? ctx.positions.find((p) => String(p.instrument.id) === String(s.instrument_id)) ?? null : null;
+  const held = pos != null;
   const research = isResearchKind(s.kind) || s.source === "research";
   const noteId = research ? signalNoteId(s) : null;
 
@@ -316,8 +318,12 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, co
     onToggle(false);
     requestAnimationFrame(() => row.current?.querySelector<HTMLElement>(".act button:not([disabled])")?.focus());
   };
-  const title = held ? <button className="nm" onClick={() => ctx.onOpenAsset(s.instrument_id!)}>{text.title}</button>
-    : compact ? <span className="nm">{text.title}</span> : text.title;
+  // A held instrument's title is its identity label (inline: name + muted symbol, details in the hover card).
+  const title = pos ? (
+    <InstLabel density="inline" inst={pos.instrument} text={text.title} onOpen={() => ctx.onOpenAsset(s.instrument_id!)}
+      accounts={pos.accounts.map((a) => { const r = ctx.accounts.find((x) => x.id === a.account_id); return r ? accountLabel(r, ctx.accounts) : `rachunek ${a.account_id}`; })}
+      stale={pos.is_stale ? pos.price_date : null} />
+  ) : compact ? <span className="nm">{text.title}</span> : text.title;
   const metric = decided ? <><span className="tag solid pos">{decisionTag(decided)}</span>{text.bold ? <> · {text.bold}</> : null}{s.kind === "position_concentration" || s.kind === "allocation_drift" ? " · wraca w podsumowaniu" : ""}
     {rowUndo && <> · <button className="lnk" style={{ fontSize: 12 }} onClick={rowUndo}>cofnij</button></>}</>
     : snoozed ? <><span className="tag solid pos">odłożono{s.snoozed_until ? ` do ${dm(s.snoozed_until)}` : ""}</span>{text.bold ? <> · {text.lead ? `${text.lead} ` : ""}{text.bold}</> : null}</>
@@ -331,7 +337,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, co
         <div className="mn">
           <div className="t" title={[text.title, text.sym].filter(Boolean).join(" ")}>
             {title}
-            {text.sym && <span className="sym">{text.sym}</span>}
+            {!pos && text.sym && <span className="sym">{text.sym}</span>}
             {alert?.source === "agent" && <AgentTag mono text="alert agenta" />}
             {research && <AgentTag mono text="research" />}
           </div>
@@ -357,8 +363,8 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, co
       <PolDot polarity={polarityOf(s)} quiet={quiet} />
       <div>
         <div className="t">
-          {held ? <button className="nm" onClick={() => ctx.onOpenAsset(s.instrument_id!)}>{text.title}</button> : text.title}
-          {text.sym && <span className="sym">{text.sym}</span>}
+          {title}
+          {!pos && text.sym && <span className="sym">{text.sym}</span>}
           {alert?.source === "agent" && <AgentTag text="alert agenta" />}
           {research && <AgentTag text="research" />}
         </div>

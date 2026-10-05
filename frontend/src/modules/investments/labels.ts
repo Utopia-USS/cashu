@@ -156,20 +156,20 @@ export function accountLabel(a: AccountLike, all: AccountLike[] = []): string {
   return twins.length ? `${base} (${a.name})` : base;
 }
 
+/** Strategy bucket id -> Polish label, generic ids only (F7-generic contract: the ids of the shipped strategy
+ * templates and plain asset-class ids, mirroring the backend's GENERIC_BUCKET_IDS; case-sensitive). The owner's
+ * own buckets (custom ids) are internal knowledge for the agent and never named in the app. */
 const BUCKETS: Record<string, string> = {
-  global_equity: "Akcje globalne", global_equities: "Akcje globalne", world_equity: "Akcje globalne",
-  pl_equity: "Akcje PL", polish_equity: "Akcje PL", pl_equities: "Akcje PL", equity_pl: "Akcje PL",
-  us_equity: "Akcje USA", em_equity: "Rynki wschodzące", emerging: "Rynki wschodzące", emerging_markets: "Rynki wschodzące",
-  bonds: "Obligacje", bond_etfs: "ETF obligacyjne", treasury_bonds: "Obligacje skarbowe", pl_bonds: "Obligacje",
-  cash: "Gotówka", gold: "Złoto", commodities: "Surowce", crypto: "Kryptowaluty", satellite: "Satelity", other: "Inne",
+  global_equity: "Akcje globalne", bond_etfs: "ETF-y obligacyjne", treasury_bonds: "Obligacje skarbowe", cash: "Gotówka",
+  stocks: "Akcje", equity: "Akcje", equities: "Akcje", bonds: "Obligacje", fixed_income: "Obligacje", crypto: "Kryptowaluty",
+  real_estate: "Nieruchomości", reits: "Nieruchomości", commodities: "Surowce", gold: "Złoto",
 };
-/** Strategy bucket id -> Polish label (known ids), else the id made readable. */
-export function bucketLabel(id: string | null | undefined): string {
-  if (!id) return "Bez koszyka";
-  const known = BUCKETS[id.toLowerCase()];
-  if (known) return known;
-  const words = id.replace(/[_-]+/g, " ").trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
+/** Generic bucket ids (see BUCKETS). */
+export const GENERIC_BUCKET_IDS: readonly string[] = Object.keys(BUCKETS);
+export const isGenericBucket = (id: string | null | undefined): boolean => !!id && Object.prototype.hasOwnProperty.call(BUCKETS, id);
+/** Polish label of a generic bucket id; null for any other id (the caller then renders nothing). */
+export function bucketLabel(id: string | null | undefined): string | null {
+  return id && isGenericBucket(id) ? BUCKETS[id] : null;
 }
 /** Genitive of the generic bucket labels ("domyka 1,1 pp Akcji globalnych"). */
 const BUCKET_GEN: Record<string, string> = {
@@ -178,6 +178,12 @@ const BUCKET_GEN: Record<string, string> = {
 };
 export const bucketGenitive = (id: string | null | undefined): string | null => { const l = bucketLabel(id); return l ? BUCKET_GEN[l] ?? null : null; };
 
+/** Exchange (MIC) -> the name owners use; other MICs show their code (instrument card, asset header). */
+const MIC_NAME: Record<string, string> = {
+  XWAR: "GPW", XNAS: "Nasdaq", XNYS: "NYSE", ARCX: "NYSE Arca", XETR: "Xetra", XFRA: "Frankfurt", XLON: "LSE", XHKG: "HKEX",
+  XAMS: "Euronext Amsterdam", XPAR: "Euronext Paris", XMIL: "Borsa Italiana", XSWX: "SIX", XTKS: "TSE", BATS: "Cboe",
+};
+export const micName = (mic: string | null | undefined): string | null => (mic ? MIC_NAME[mic.toUpperCase()] ?? mic : null);
 
 const BUCKET_COLOR: Record<string, string> = {
   global_equity: "--inv-global", global_equities: "--inv-global", world_equity: "--inv-global",

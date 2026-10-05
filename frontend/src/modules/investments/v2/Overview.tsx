@@ -17,7 +17,7 @@ import { getStrategy } from "../api";
 import { accountLabel, bucketLabel, dm, isoDate, money, money0, nInstruments, parseNum, pct, plural, pp, WEEKDAYS } from "../labels";
 import { nextDeposit } from "../logic";
 import { deletePlannedDeposit, getDigestV2, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
-import { changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, staleBenchmark, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "./logic";
+import { allocGeneric, benchmarkLabel, changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, staleBenchmark, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "./logic";
 import { addDays, todayLocal } from "../../../time";
 import { isMissingEndpoint } from "./undoFlow";
 
@@ -73,6 +73,7 @@ export function InvestmentsHeroFact({ ctx }: { ctx: ModuleCtx }) {
   if (!k) return <Fact label="Inwestycje" value={<Skeleton w={90} h={16} />} />;
   const c = ov.data!.base_currency;
   const week = perf.data ? changeSince(perf.data.points, minusDays(perf.data.as_of, 7)).pct : null;
+  // The server's counts already leave out drift signals of non-generic buckets (F7 GB5).
   const pol = k.polarity;
   return (
     <Fact label="Inwestycje" value={money0(k.value.total, c)}
@@ -126,7 +127,7 @@ export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
       <div className="facts" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
         <Fact label="YTD" value={s?.twr != null ? pct(s.twr, true) : "-"} tone={s?.twr != null ? (s.twr >= 0 ? "pos" : "neg") : undefined}
           title={perfNotes(ytd.data).join("\n") || undefined}
-          detail={staleBenchmark(b)?.label ?? (b?.status === "ok" && b.twr != null ? `${b.id ?? "benchmark"} ${pct(b.twr, true)}` : "bez benchmarku")} />
+          detail={staleBenchmark(b)?.label ?? (b?.status === "ok" && b.twr != null ? `${benchmarkLabel(b)} ${pct(b.twr, true)}` : "bez benchmarku")} />
         <Fact label="Szanse" value={sig.data ? chances.length : "-"} detail={names(chances) || undefined} />
         <Fact label="Ryzyka" value={sig.data ? risks.length : "-"} detail={triggered ? plural(triggered, "alert wyzwolony", "alerty wyzwolone", "alertów wyzwolonych") : names(risks) || undefined} />
       </div>
@@ -174,7 +175,8 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
   const due = nextDeposit(todayIso(), day);
   const cushion = d.cushion;
   const alloc = ov.data?.allocation;
-  const under = alloc?.buckets.filter((b) => b.drift_pp < 0).sort((a, b) => a.drift_pp - b.drift_pp)[0];
+  // Bucket targets only for a generic allocation (F7-generic: the owner's own buckets are not named in the app).
+  const under = alloc && allocGeneric(alloc) ? alloc.buckets.filter((b) => b.drift_pp < 0).sort((a, b) => a.drift_pp - b.drift_pp)[0] : undefined;
   const closes = under && want && alloc?.total
     ? Math.min(Math.abs(under.drift_pp), contributionPp(want, alloc.total, Number(under.weight ?? under.target + under.drift_pp / 100)))
     : null;

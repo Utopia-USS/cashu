@@ -2,6 +2,8 @@
   --bg: #f6f7f9; --card: #ffffff; --text: #1a1d21; --muted: #6b7280;
   --border: #e5e7eb; --pos: #16a34a; --neg: #dc2626; --nw: #2563eb;
   --net: #7c3aed; --chip: #eef1f5; --chipText: #374151; --shimmer: rgba(255,255,255,0.55);
+  /* instrument ticker tile (GF9): black with light grey type in both themes */
+  --av-bg: #000; --av-fg: #e8e8e8;
   --nw-money: #2563eb; --nw-property: #0891b2; --nw-vehicle: #16a34a;
   --nw-mortgage: #dc2626; --nw-loan: #ea580c;
   /* additions (design-system-notes 4.1): data quality / rule state, never money */
@@ -317,6 +319,8 @@ th.num, td.num { white-space: nowrap; }
 .drawer .card { border: none; padding: 0; }
 .pop { position: absolute; top: calc(100% + 6px); left: 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: 0 10px 34px rgba(0,0,0,0.28); padding: 12px 14px; z-index: 50; font-size: 13px; text-align: left; white-space: normal; }
+/* a portaled popover (Pop `portal`): fixed under / above its anchor, scrolls inside when the viewport is short */
+.pop.fixed { position: fixed; overflow: auto; overscroll-behavior: contain; }
 .pop .vl, .card .vl { list-style: none; margin: 8px 0; padding: 0; }
 .pop .vl li, .card .vl li { display: flex; gap: 8px; align-items: flex-start; padding: 5px 0; border-bottom: 1px solid var(--border); }
 .pop .vl li:last-child, .card .vl li:last-child { border-bottom: none; }
@@ -395,6 +399,8 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
   /* Aktywa in ~700 px: no 30-day sparkline, no absolute result (Wynik % stays) */
   .split .main table .c-spark, .split .main table .c-abs { display: none; }
   .split .main table td:not(:first-child) { white-space: nowrap; }
+  /* Obserwowane at the 320 px rail: no sparkline (instrument-label.md 6) */
+  .split .rail table .c-spark { display: none; }
 }
 @media (max-width: 900px) {
   .split { grid-template-columns: minmax(0, 1fr); }
@@ -550,6 +556,49 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .flag.neg { border-radius: 1px; transform: rotate(45deg) scale(0.9); } .flag.neu { border-radius: 1px; }
 .flag.al { width: 8px; height: 8px; background: transparent; border: 1.5px solid var(--warn); }
 .w .scroll { overflow-x: auto; }
+
+/* ===== instrument label (design/v2/instrument-label/instrument-label.md): ticker tile + name, hover card ===== */
+.il { display: inline-flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; vertical-align: middle; }
+.w td > .il { display: flex; min-height: 31px; }
+/* the tile: one fixed width per density (tiles align in a column, 4 capitals fit), 5 characters step the type down */
+.il .av { width: 40px; height: 26px; border-radius: 6px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--av-bg); color: var(--av-fg); border: none; font-weight: 650; font-size: 10.5px; line-height: 1;
+  letter-spacing: -0.01em; font-variant-numeric: tabular-nums; user-select: none; white-space: nowrap; overflow: hidden; }
+.il .av[data-n="5"] { font-size: 9px; letter-spacing: -0.03em; }
+.il .tx { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.il .ln { display: flex; align-items: center; gap: 5px; min-width: 0; font-weight: 600; font-size: 13px; line-height: 1.25; }
+.il .ln > button.nm, .il .ln > .nmt { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.il .ln .flag { margin-left: 0; }
+.il .sub { color: var(--muted); font-size: 11.5px; line-height: 1.2; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.il.cmp { gap: 8px; } .il.cmp .av { width: 36px; height: 22px; border-radius: 5px; font-size: 9.5px; }
+.il.cmp .av[data-n="5"] { font-size: 8px; }
+.il.hd { gap: 12px; } .il.hd .av { width: 52px; height: 34px; border-radius: 7px; font-size: 13px; }
+.il.hd .av[data-n="5"] { font-size: 11.5px; }
+.il.inl { display: inline; gap: 0; } .il.inl .sym { margin-left: 5px; }
+.w th.c-inst, .w td.c-inst { width: 36%; max-width: 0; }      /* lets the name ellipsize inside an auto table (Aktywa) */
+.w td.c-inst.wide { width: 58%; }                              /* Obserwowane: name | spark | price | ✕ */
+/* the asset header: the page's h2 rules (`.ahead .nm span` = the muted detail) must not reach the label's parts */
+.ahead .nm .il, .ahead .nm .il .tx, .ahead .nm .il .ln, .ahead .nm .il .nmt { margin-left: 0; color: inherit; font-size: inherit; font-weight: inherit; }
+.ahead .nm .il .av { margin-left: 0; color: var(--av-fg); font-size: 13px; font-weight: 650; letter-spacing: -0.01em; }
+.ahead .nm .il .av[data-n="5"] { font-size: 11.5px; letter-spacing: -0.03em; }
+.ahead .nm .il .sub { color: var(--muted); font-size: 13px; font-weight: 500; margin: 0 0 0 3px; }
+/* signal row titles (rail and dialog): the inline label is the title's name part */
+.sig.cmp .t .il.inl { display: flex; align-items: baseline; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+/* hover card (a fixed portal: never clipped by the scrolling table or the dialog body) */
+.ilc { position: fixed; z-index: 80; min-width: 240px; max-width: 320px; background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.28); padding: 10px 12px; font-size: 12.5px; line-height: 1.45; pointer-events: none; color: var(--text); text-align: left; }
+.ilc .ih { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ilc .ih b { display: block; font-size: 13.5px; font-weight: 600; line-height: 1.25; }
+.ilc .ih div > span { display: block; color: var(--muted); font-size: 12px; }
+.ilc .kvl { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 3px 10px; }
+.ilc .kvl .k { color: var(--muted); }
+.ilc .st { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+/* classify icon button (replaces the `sklasyfikuj` pill) */
+.il-cls { width: 24px; height: 24px; border-radius: 6px; border: none; padding: 0; margin-left: 1px; background: transparent; color: var(--warn);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+.il-cls svg { width: 15px; height: 15px; display: block; }
+.il-cls:hover, .il-cls[aria-expanded="true"] { background: var(--warnBg); }
+.il .menu-anchor { display: inline-flex; flex: none; }
 
 /* allocation: donut + rows */
 .w .alloc { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 14px; align-items: center; height: auto; background: none; border-radius: 0; position: static; }

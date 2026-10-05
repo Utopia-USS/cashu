@@ -55,15 +55,15 @@ function fullState(): State {
       { inst: 301, acc: 22, qty: 120, cost: 412.3, price: 486.1, date: "2026-10-03", bucket: "global_equity" },
       { inst: 302, acc: 23, qty: 95, cost: 361.0, price: 504.38, date: "2026-10-03", bucket: "global_equity" },
       { inst: 303, acc: 21, qty: 250, cost: 100.0, price: 114.08, date: "2026-10-03", bucket: "treasury_bonds", mode: "cost" },
-      { inst: 304, acc: 21, qty: 320, cost: 58.2, price: 64.5, date: "2026-10-03", bucket: "pl_equity" },
-      { inst: 305, acc: 21, qty: 70, cost: 97.4, price: 142.3, date: "2026-10-03", bucket: "pl_equity" },
-      { inst: 306, acc: 21, qty: 60, cost: 125.8, price: 148.6, date: "2026-10-03", bucket: "pl_equity" },
+      { inst: 304, acc: 21, qty: 320, cost: 58.2, price: 64.5, date: "2026-10-03", bucket: "stocks" },
+      { inst: 305, acc: 21, qty: 70, cost: 97.4, price: 142.3, date: "2026-10-03", bucket: "stocks" },
+      { inst: 306, acc: 21, qty: 60, cost: 125.8, price: 148.6, date: "2026-10-03", bucket: "stocks" },
       { inst: 307, acc: 21, qty: 30, cost: 71.0, price: 74.57, date: "2026-10-01", bucket: null, stale: true },
     ],
     cash: [{ acc: 21, amount: 6355.3 }, { acc: 22, amount: 2410.2 }, { acc: 23, amount: 1113.5 }],
     signals: [
       sig(901, "dip_review", "drawdown_from_high", "action", 306, "CD Projekt", { name: "CD Projekt", symbol: "CDR", drawdown: 0.184, threshold: 0.15, window_days: 252, high_close: "182.10", last_close: "148.60" }, "2026-09-29"),
-      sig(902, "rebalance_check", "allocation_drift", "info", null, null, { bucket_id: "pl_equity", weight: 0.212, target: 0.15, drift_pp: 6.2, drift_value_base: "11600", currency: "PLN", absolute_band_pp: 5, relative_band: 0.25 }, "2026-09-15", "acknowledged"),
+      sig(902, "rebalance_check", "allocation_drift", "info", null, null, { bucket_id: "stocks", bucket_generic: true, weight: 0.212, target: 0.15, drift_pp: 6.2, drift_value_base: "11600", currency: "PLN", absolute_band_pp: 5, relative_band: 0.25 }, "2026-09-15", "acknowledged"),
       sig(903, "single_stock", "position_concentration", "info", 304, "PKN Orlen", { name: "PKN Orlen", symbol: "PKN", weight: 0.111, max_weight: 0.1 }, "2026-10-02"),
       sig(904, "missed_deposit", "contribution_gap", "info", null, null, { last_deposit: "2026-08-10", day_of_month: 10, period_days: 31, grace_days: 10, monthly_amount: "2000" }, "2026-09-21"),
     ],
@@ -117,7 +117,7 @@ function stateOf(slug: string, kind: Kind): State {
 }
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
-const TARGETS: Record<string, number> = { global_equity: 0.6, pl_equity: 0.15, treasury_bonds: 0.2, cash: 0.05 };
+const TARGETS: Record<string, number> = { global_equity: 0.6, stocks: 0.15, treasury_bonds: 0.2, cash: 0.05 };
 
 function valued(st: State, filter: number[] | null) {
   const inScope = (acc: number) => !filter || filter.includes(acc);
@@ -142,7 +142,7 @@ function allocation(st: State, filter: number[] | null) {
     const drift = (weight - target) * 100;
     const half = Math.min(band.absolute_band_pp / 100, band.relative_band * target);
     const out = Math.abs(weight - target) > half + 1e-9 && Math.abs(value - target * v.total) >= band.min_trade_value;
-    return { bucket_id: id, weight: Math.round(weight * 1e6) / 1e6, target, drift_pp: Math.round(drift * 1e4) / 1e4, value, to_target: r2(target * v.total - value), out_of_band: out, band_note: null, cash_history_gap: false, instrument_ids: v.hs.filter((h) => h.bucket === id).map((h) => h.inst) };
+    return { bucket_id: id, generic: true, weight: Math.round(weight * 1e6) / 1e6, target, drift_pp: Math.round(drift * 1e4) / 1e4, value, to_target: r2(target * v.total - value), out_of_band: out, band_note: null, cash_history_gap: false, instrument_ids: v.hs.filter((h) => h.bucket === id).map((h) => h.inst) };
   }) : [];
   const shares = (key: (h: State["holdings"][number]) => string) => {
     const m: Record<string, number> = {};
@@ -152,7 +152,7 @@ function allocation(st: State, filter: number[] | null) {
   };
   const instOf = (id: number) => st.instruments.find((i) => i.id === id)!;
   return {
-    base_currency: "PLN", total: v.total, has_strategy: hasStrategy, buckets,
+    base_currency: "PLN", total: v.total, has_strategy: hasStrategy, buckets, buckets_generic: buckets.length > 0,
     unclassified: hasStrategy ? { value: r2(unclassifiedValue), weight: v.total ? unclassifiedValue / v.total : null, instruments: v.hs.filter((h) => !h.bucket).map((h) => ({ id: h.inst, label: instOf(h.inst).label })) } : null,
     unallocated_cash: hasStrategy ? 0 : null,
     by_asset_class: shares((h) => instOf(h.inst).asset_class),
@@ -300,7 +300,7 @@ function strategy(st: State): StrategyStatus {
       notifications: { immediate: ["action"], digest_weekday: "sunday" },
       bucket_matches: [
         { id: "global_equity", asset_class: ["etf"], tags: ["global_equity"], mic: [], currency: [], instrument_ids: [] },
-        { id: "pl_equity", asset_class: ["equity"], tags: ["pl"], mic: [], currency: [], instrument_ids: [] },
+        { id: "stocks", asset_class: ["equity"], tags: ["pl"], mic: [], currency: [], instrument_ids: [] },
         { id: "treasury_bonds", asset_class: ["bond", "treasury_bond"], tags: [], mic: [], currency: [], instrument_ids: [] },
         { id: "cash", asset_class: ["cash"], tags: [], mic: [], currency: [], instrument_ids: [] },
       ],
@@ -478,7 +478,7 @@ export function investmentsMock(slug: string, kind: Kind, path: string, q: URLSe
     if (!i) throw new ApiError(404, "No instrument");
     Object.assign(i, Object.fromEntries(Object.entries(b).filter(([, v]) => v != null)), { needs_classification: false });
     const h = st.holdings.find((x) => x.inst === i.id);
-    if (h) h.bucket = i.asset_class === "etf" && i.tags.includes("global_equity") ? "global_equity" : i.asset_class === "equity" && i.tags.includes("pl") ? "pl_equity" : null;
+    if (h) h.bucket = i.asset_class === "etf" && i.tags.includes("global_equity") ? "global_equity" : i.asset_class === "equity" && i.tags.includes("pl") ? "stocks" : null;
     return i;
   }
   mm = m(/^\/investments\/instruments\/(\d+)\/theses$/);

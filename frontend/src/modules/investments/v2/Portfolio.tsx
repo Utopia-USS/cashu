@@ -3,7 +3,7 @@
 // coloured only out of band; F-10) and Rachunki (accounts with snapshot facts; data warnings in the footer).
 import { Fragment, useMemo, useState } from "react";
 import { Donut, Spark } from "../../../charts";
-import { Drawer, Pop, Seg, Tag } from "../../../ui";
+import { Drawer, Pop, Seg } from "../../../ui";
 import { FootFacts, Widget } from "../../../widgets";
 import type { AccountRow, Allocation, Instrument, Overview, StrategyStatus } from "../api";
 import {
@@ -12,7 +12,8 @@ import {
 import { ClassifyCard, WarningsCard } from "../Rail";
 import { warningItems } from "../logic";
 import type { Alert, PositionV2, PositionsV2, SignalV2 } from "./api";
-import { instName, isDecided, polarityOf, weekChange } from "./logic";
+import { ClassifyButton, InstLabel } from "./InstLabel";
+import { allocGeneric, instName, isDecided, polarityOf, subLine, weekChange } from "./logic";
 
 type Sort = "value" | "result" | "week";
 
@@ -71,7 +72,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
       <div className="scroll">
         <table>
           <thead>
-            <tr><th>Instrument</th><th className="c-spark">30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Udział</th><th className="num">Wartość</th><th className="num c-abs" title="Od kosztu (FIFO), ceny zamknięcia">Wynik</th><th className="num">Wynik %</th></tr>
+            <tr><th className="c-inst">Instrument</th><th className="c-spark">30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Udział</th><th className="num">Wartość</th><th className="num c-abs" title="Od kosztu (FIFO), ceny zamknięcia">Wynik</th><th className="num">Wynik %</th></tr>
           </thead>
           <tbody>
             {rows.map((p) => {
@@ -79,28 +80,22 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
               const i = p.instrument;
               const wk = weekChange(p.closes_30d);
               const cost = p.valuation_mode === "cost";
-              const sym = [instName(i) !== i.symbol ? i.symbol : null, i.mic, p.bucket ? bucketLabel(p.bucket) : i.needs_classification ? null : assetClass(i.asset_class)].filter(Boolean).join(" · ");
               const parts = split === "account" && p.accounts.length > 1 ? p.accounts : null;
               return (
                 <Fragment key={id}>
                   <tr className="rowlink" onClick={(e) => { if (!(e.target as HTMLElement).closest("button, a, input, select, .pop")) onOpen(i.id); }}>
-                    <td>
-                      <span className="nm">
-                        <button className="nm" onClick={() => onOpen(i.id)}>{instName(i)}</button>
-                        {cost && <> <Tag>koszt + odsetki</Tag></>}
-                        {flags(id)}
-                        {i.needs_classification && (
-                          <span className="menu-anchor" style={{ display: "inline-block", marginLeft: 6 }}>
-                            <button className="tag warn" style={{ background: "transparent", cursor: "pointer", font: "inherit", fontSize: 11 }} aria-expanded={classify === id}
-                              onClick={() => setClassify(classify === id ? null : id)}>sklasyfikuj</button>
-                            <Pop open={classify === id} onClose={() => setClassify(null)} width={460} label="Klasyfikacja">
+                    <td className="c-inst">
+                      <InstLabel inst={i} onOpen={onOpen} accounts={p.accounts.map((a) => accLabel(a.account_id))} stale={p.is_stale ? p.price_date : null}
+                        badges={flags(id)} sub={subLine({ cost, split, accounts: p.accounts, accLabel })}
+                        action={i.needs_classification && (
+                          <span className="menu-anchor">
+                            <ClassifyButton name={instName(i)} expanded={classify === id} onClick={() => setClassify(classify === id ? null : id)} />
+                            <Pop portal open={classify === id} onClose={() => setClassify(null)} width={460} label="Klasyfikacja">
                               <ClassifyCard items={[i]} positions={data.positions} strategy={strategy} accounts={accounts} highlight={false} focusId={id}
                                 onSave={async (inst, patch) => { await onClassify(inst, patch); setClassify(null); }} />
                             </Pop>
                           </span>
-                        )}
-                      </span>
-                      <span className="sym">{split === "account" && p.accounts.length === 1 ? `${sym} · ${accLabel(p.accounts[0].account_id)}` : sym || assetClass(i.asset_class)}</span>
+                        )} />
                     </td>
                     <td className="c-spark"><Spark values={(p.closes_30d ?? []).map((x) => x.close)} tone={cost ? "" : undefined} label={`${i.label}: 30 dni`} /></td>
                     <td className="num">{p.price != null ? money(p.price, p.price_currency ?? c) : "-"}{p.is_stale && <> <span className="tag warn">{dm(p.price_date)}</span></>}</td>
@@ -147,13 +142,17 @@ export function AllocationWidget({ alloc, strategy, filtered, wide, next }: {
   wide?: boolean;
   next?: { date: string; amount: number; bucket: string | null; pp: number | null } | null;
 }) {
-  const [view, setView] = useState<AllocView>(alloc.has_strategy && alloc.buckets.length ? "buckets" : "classes");
+  // F7-generic: targets, drift and `Koszyki` only for a generic allocation; the owner's own buckets stay with the
+  // agent, the widget then offers Klasy / Regiony (default Klasy).
+  const generic = allocGeneric(alloc);
+  const [chosen, setView] = useState<AllocView>(alloc.has_strategy && generic ? "buckets" : "classes");
+  const view: AllocView = chosen === "buckets" && !generic ? "classes" : chosen;
   const order = alloc.buckets.map((b) => b.bucket_id);
   const out = alloc.buckets.filter((b) => b.out_of_band).length;
   const band = alloc.band?.absolute_band_pp ?? null;
   const rows = view === "buckets"
     ? [
-      ...alloc.buckets.map((b) => ({ key: b.bucket_id, name: bucketLabel(b.bucket_id), color: bucketColor(b.bucket_id, order), w: b.weight, target: b.target as number | null, drift: b.drift_pp as number | null, out: !!b.out_of_band, value: b.value, toTarget: b.to_target as number | null })),
+      ...alloc.buckets.map((b) => ({ key: b.bucket_id, name: bucketLabel(b.bucket_id) ?? "", color: bucketColor(b.bucket_id, order), w: b.weight, target: b.target as number | null, drift: b.drift_pp as number | null, out: !!b.out_of_band, value: b.value, toTarget: b.to_target as number | null })),
       ...(alloc.unclassified && alloc.unclassified.value ? [{ key: "_none", name: "Bez koszyka", color: "var(--inv-other)", w: alloc.unclassified.weight, target: null, drift: null, out: false, value: alloc.unclassified.value, toTarget: null }] : []),
     ]
     : (view === "classes" ? alloc.by_asset_class : alloc.by_region).map((s, k) => ({
@@ -164,9 +163,9 @@ export function AllocationWidget({ alloc, strategy, filtered, wide, next }: {
   const totalK = alloc.total >= 1000 ? `${Math.round(alloc.total / 1000).toLocaleString("pl-PL")} tys.` : money0(alloc.total, alloc.base_currency);
   return (
     <Widget title="Alokacja" id="inv-alloc"
-      tags={view === "buckets" && alloc.buckets.length ? (out ? <span className="tag warn">{out === 1 ? "1 poza pasmem" : `${out} poza pasmem`}</span> : <span className="tag pos">w paśmie</span>) : undefined}
-      controls={<Seg quiet label="Podział alokacji" value={view} onChange={setView} items={[...(alloc.buckets.length ? [["Koszyki", "buckets"] as [string, AllocView]] : []), ["Klasy", "classes"], ["Regiony", "regions"]]} />}
-      footer={view === "buckets" && alloc.buckets.length ? (
+      tags={view === "buckets" ? (out ? <span className="tag warn">{out === 1 ? "1 poza pasmem" : `${out} poza pasmem`}</span> : <span className="tag pos">w paśmie</span>) : undefined}
+      controls={<Seg quiet label="Podział alokacji" value={view} onChange={setView} items={[...(generic ? [["Koszyki", "buckets"] as [string, AllocView]] : []), ["Klasy", "classes"], ["Regiony", "regions"]]} />}
+      footer={view === "buckets" ? (
         <>
           <FootFacts items={[band != null && `pasmo ±${band} pp`,
             wide ? next && <>wpłata {dm(next.date)} ({money0(next.amount, alloc.base_currency)}){next.bucket && next.pp != null && next.pp > 0 && <> domyka <b>{pp(next.pp).replace(/^\+/, "")}</b> {bucketGenitive(next.bucket) ?? bucketLabel(next.bucket)}</>}</>

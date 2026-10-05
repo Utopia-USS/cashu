@@ -1,4 +1,5 @@
-import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { attachModal, FOCUSABLE } from "./modal";
 import { dropToast, MIN_ACTION_MS, pushToast, type ToastAction, type ToastItem, toastTimers } from "./toasts";
 
@@ -387,32 +388,90 @@ export function Drawer({ open, title, tag, width = 520, footer, onClose, childre
   );
 }
 
-/** Anchored popover (`.pop`) under its `.menu-anchor` parent: closes on Esc and outside click. */
-export function Pop({ open, onClose, children, width = 420, align = "left", label }: {
-  open: boolean; onClose: () => void; children: ReactNode; width?: number; align?: "left" | "right"; label?: string;
+/** Anchored popover (`.pop`) under its `.menu-anchor` parent: closes on Esc (focus back to the anchor's button)
+ * and outside click. `portal`: rendered into `document.body` with fixed positioning from the anchor's rect, so a
+ * scrolling container (the Aktywa table) neither clips it nor scrolls for it; it flips above the anchor when there
+ * is no room below, follows scroll / resize, and Tab keeps the DOM order (anchor -> popover -> what follows the
+ * anchor; Shift+Tab from its first control returns to the anchor). */
+export function Pop({ open, onClose, children, width = 420, align = "left", label, portal }: {
+  open: boolean; onClose: () => void; children: ReactNode; width?: number; align?: "left" | "right"; label?: string; portal?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const mark = useRef<HTMLSpanElement>(null);
+  const anchorOf = () => (portal ? mark.current?.parentElement : ref.current?.parentElement) ?? null;
   useEffect(() => {
     if (!open) return;
     const el = ref.current;
     const onDown = (e: MouseEvent) => {
-      const anchor = el?.parentElement;
-      if (anchor && !anchor.contains(e.target as Node)) onClose();
+      const anchor = anchorOf();
+      const t = e.target as Node;
+      if (anchor && !anchor.contains(t) && !el?.contains(t)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      onClose();
-      (el?.parentElement?.querySelector("button") as HTMLElement | null)?.focus();
+      const anchor = anchorOf();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        (anchor?.querySelector("button") as HTMLElement | null)?.focus();
+        return;
+      }
+      if (e.key !== "Tab" || !portal || !el || !anchor) return;
+      const visible = (x: HTMLElement) => x.offsetParent !== null;
+      const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(visible);
+      if (!items.length) return;
+      const active = document.activeElement as HTMLElement | null;
+      const trigger = anchor.querySelector<HTMLElement>("button");
+      if (!e.shiftKey && active && anchor.contains(active) && !el.contains(active)) { e.preventDefault(); items[0].focus(); return; }
+      if (e.shiftKey && active === items[0] && trigger) { e.preventDefault(); trigger.focus(); return; }
+      if (!e.shiftKey && active === items[items.length - 1]) {
+        const page = [...document.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => visible(x) && !el.contains(x));
+        const next = page.slice(page.indexOf(trigger ?? anchor) + 1).find((x) => !anchor.contains(x));
+        if (next) { e.preventDefault(); next.focus(); }
+      }
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
-  }, [open, onClose]);
+  }, [open, onClose, portal]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Fixed placement under (or above) the anchor, written to the node in the layout phase (before the content's
+  // effects run, so a control that focuses itself on mount is already visible); again on scroll and resize.
+  useLayoutEffect(() => {
+    if (!open || !portal) return;
+    const update = () => {
+      const anchor = mark.current?.parentElement, el = ref.current;
+      if (!anchor || !el) return;
+      const a = anchor.getBoundingClientRect();
+      const w = el.offsetWidth, h = el.scrollHeight;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const left = Math.max(8, Math.min(align === "right" ? a.right - w : a.left, vw - w - 8));
+      const roomBelow = vh - a.bottom - 14, roomAbove = a.top - 14;
+      const below = h <= roomBelow || roomBelow >= roomAbove;
+      Object.assign(el.style, {
+        top: below ? `${a.bottom + 6}px` : "auto", bottom: below ? "auto" : `${vh - a.top + 6}px`, left: `${left}px`, right: "auto",
+        maxHeight: `${Math.max(120, below ? roomBelow : roomAbove)}px`, visibility: "visible",
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => { window.removeEventListener("scroll", update, true); window.removeEventListener("resize", update); };
+  }, [open, portal, align]);
   if (!open) return null;
+  const size = { width: `min(${width}px, calc(100vw - 32px))` };
+  if (portal) {
+    return (
+      <>
+        <span ref={mark} hidden />
+        {createPortal(
+          <div className="pop fixed" role="dialog" aria-label={label} ref={ref} style={{ ...size, visibility: "hidden" }}>{children}</div>,
+          document.body,
+        )}
+      </>
+    );
+  }
   return (
     <div className="pop" role="dialog" aria-label={label} ref={ref}
-      style={{ width: `min(${width}px, calc(100vw - 32px))`, ...(align === "right" ? { left: "auto", right: 0 } : {}) }}>
+      style={{ ...size, ...(align === "right" ? { left: "auto", right: 0 } : {}) }}>
       {children}
     </div>
   );

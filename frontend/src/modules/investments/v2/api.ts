@@ -4,6 +4,7 @@
 // CONTRACT). Shapes mirror service/views.py and performance/service.py; fractions stay fractions.
 import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../core/api";
 import type { Decision, Instrument, Overview, Position, Positions, ReviewDigest, Signal } from "../api";
+import { digestShown, isShownSignal } from "./logic";
 
 export type Polarity = "positive" | "negative" | "neutral";
 export type Num = number | null;
@@ -205,9 +206,12 @@ export const getOverviewV2 = (slug: string, accounts: number[] | null = null) =>
   cached(`ov:${slug}:${qs(accounts)}`, () => j<OverviewV2>(inv(slug, `/overview${accounts?.length ? `?${qs(accounts)}` : ""}`)));
 export const getPositionsV2 = (slug: string, accounts: number[] | null = null) =>
   j<PositionsV2>(inv(slug, `/positions${accounts?.length ? `?${qs(accounts)}` : ""}`));
-export const getSignalsV2 = (slug: string, status: "open" | "history" | "all" = "open") => j<SignalV2[]>(inv(slug, `/signals?status=${status}`));
+/** Signals as the app shows them: an allocation drift of the owner's own (non-generic) bucket never reaches a list,
+ * a count or a link (F7-generic, `isShownSignal`); the agent still sees it over MCP. */
+export const getSignalsV2 = (slug: string, status: "open" | "history" | "all" = "open") =>
+  j<SignalV2[]>(inv(slug, `/signals?status=${status}`)).then((list) => list.filter(isShownSignal));
 export const getDigestV2 = (slug: string, since?: string | null) =>
-  j<DigestV2>(inv(slug, `/review-digest${since ? `?since=${since}` : ""}`));
+  j<DigestV2>(inv(slug, `/review-digest${since ? `?since=${since}` : ""}`)).then(digestShown);
 
 /** Performance vs benchmark; null when the server has no performance endpoint yet (404). */
 export const getPerformance = (slug: string, range: PerfRange, accounts: number[] | null = null): Promise<Performance | null> =>

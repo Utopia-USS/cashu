@@ -2,7 +2,7 @@
 // (no rule ids), alert distance to level, the alert form's default title and preview sentence, weekly change
 // from 30-day closes, re-entry gap, change-log grouping, performance facts. Pure; `npm test` imports it
 // (node strips the types; imports carry their .ts extension).
-import { bucketLabel, dm, money, money0, pct, pctTarget, plural, pp, WEEKDAY_INDEX } from "../labels.ts";
+import { ASSET_CLASS, bucketLabel, dm, GENERIC_BUCKET_IDS, isGenericBucket, micName, money, money0, pct, pctTarget, plural, pp, REGION, WEEKDAY_INDEX } from "../labels.ts";
 import { isResearchKind, researchSignalText } from "./research/logic.ts";
 import { localDay, parseServerTime, serverDate } from "../../../time.ts";
 import { describePerfNote } from "../../../core/messages.ts";
@@ -43,6 +43,60 @@ export function polarityOf(sig: Pick<SigLike, "polarity" | "kind">): Polarity {
 }
 
 export const isDecided = (sig: Pick<SigLike, "decisions">) => sig.decisions.length > 0;
+
+// ---- generic allocation interface (F7-generic) -------------------------------------------------------------
+// The owner's own strategy buckets are internal knowledge for the agent: the app names, targets and signals only
+// generic buckets (template and plain asset-class ids, labels.ts). A missing server flag counts as generic; an id
+// the app cannot name counts as not generic, so no bucket id is ever rendered raw.
+
+/** Whether a signal shows anywhere in the app (lists, counts, links): every signal except an allocation drift of
+ * a non-generic bucket (`payload.bucket_generic === false`, or an id without a generic label). */
+export function isShownSignal(sig: Pick<SigLike, "kind" | "payload">): boolean {
+  if (sig.kind !== "allocation_drift") return true;
+  const id = typeof sig.payload?.bucket_id === "string" ? sig.payload.bucket_id : null;
+  return sig.payload?.bucket_generic !== false && isGenericBucket(id);
+}
+
+/** Expression bucket functions over a non-generic bucket, shown as a Polish phrase instead of the call. */
+const BUCKET_FN: Record<string, string> = { bucket_weight: "waga koszyka", bucket_target: "cel koszyka", bucket_drift_pp: "dryf koszyka", bucket_value: "wartość koszyka" };
+/** ASCII words that may follow "koszyk" in owner-written text and are never bucket ids. */
+const NOT_BUCKET_IDS = new Set(["na", "do", "od", "nad", "pod", "ponad", "w", "z", "i", "o", "za", "przy", "bez", "ma", "jest", "waga", "udzial", "akcji", "obligacji", "gotowki", "przekracza", "spada", "rosnie", "powyzej", "ponizej"]);
+const ID_LIKE = /^[A-Za-z][A-Za-z0-9]*(?:[_.-][A-Za-z0-9]+)*$/;
+let labelWords: Set<string> | null = null;
+/** First words of the generic labels (`Akcje`, `Obligacje`, `ETF-y`, ...): already a label, never an id. */
+const isLabelWord = (w: string) => (labelWords ??= new Set(GENERIC_BUCKET_IDS.map((id) => (bucketLabel(id) ?? "").split(" ")[0].toLowerCase()))).has(w.toLowerCase());
+
+/** Texts that may carry the owner's bucket ids, made safe to show (F7-generic, FE-A A2 / A3): server-built prose
+ * (`Koszyk core: ...` from a bucket-scoped custom rule, `Koszyk core` as an alert subject; any case) gets the generic
+ * label or drops the id (`Koszyk: ...`); expression text (custom-rule default messages `Warunek spełniony: <when>`,
+ * custom alert expressions) shows `bucket_drift_pp("core")` as `dryf koszyka` (likewise waga / cel / wartość
+ * koszyka) and a `bucket_id == "core"` literal as `"…"`. Generic ids stay as written; idempotent. */
+export function unnameBuckets(text: string): string {
+  return text
+    .replace(/\b(bucket_(?:weight|target|drift_pp|value))\(\s*(["'])([^"']*)\2\s*\)/g, (m, fn: string, _q: string, id: string) => (isGenericBucket(id) ? m : BUCKET_FN[fn]))
+    .replace(/\bbucket_id(\s*[!=]=\s*)(["'])([^"']*)\2/g, (m, op: string, q: string, id: string) => (isGenericBucket(id) || id === "…" ? m : `bucket_id${op}${q}…${q}`))
+    .replace(/(["'])([^"']*)\1(\s*[!=]=\s*)bucket_id\b/g, (m, q: string, id: string, op: string) => (isGenericBucket(id) || id === "…" ? m : `${q}…${q}${op}bucket_id`))
+    .replace(/\b([Kk]oszyk) ([^\s:,;()"']+)(?=([:\s,;)]|$))/g, (m, kw: string, tok: string, next: string) => {
+      if (isLabelWord(tok)) return m;
+      const id = next === ":" || (ID_LIKE.test(tok) && !NOT_BUCKET_IDS.has(tok.toLowerCase()));
+      if (!id) return m;
+      const l = bucketLabel(tok);
+      return l ? `${kw} ${l}` : kw;
+    });
+}
+
+/** Whether the allocation's buckets (targets, drift, `Koszyki`) may show: at least one bucket and every bucket
+ * generic (`buckets_generic` / `generic` from the server, a missing key = generic, plus a generic label). */
+export function allocGeneric(alloc: { buckets: { bucket_id: string; generic?: boolean | null }[]; buckets_generic?: boolean | null }): boolean {
+  return alloc.buckets.length > 0 && alloc.buckets_generic !== false && alloc.buckets.every((b) => b.generic !== false && isGenericBucket(b.bucket_id));
+}
+
+/** A review digest without the signals that never show (lists by `isShownSignal`, drift events by bucket). */
+export function digestShown<D extends { signals?: { new: SigLike[]; escalated: SigLike[]; resolved: SigLike[] } & Record<string, unknown>; events?: { kind?: string; bucket_id?: string | null }[] }>(d: D): D {
+  const sig = d.signals ? { ...d.signals, new: d.signals.new.filter(isShownSignal), escalated: d.signals.escalated.filter(isShownSignal), resolved: d.signals.resolved.filter(isShownSignal) } : d.signals;
+  const events = d.events?.filter((e) => e.kind !== "allocation_drift" || isGenericBucket(e.bucket_id ?? null));
+  return { ...d, signals: sig, ...(d.events ? { events } : {}) };
+}
 
 /** Newest first by `first_seen_at` (a missing time counts as the oldest), then action before info, then the
  * higher id (signals-rail.md 2-3: the rail's rows and the dialog's columns share this order). */
@@ -121,7 +175,8 @@ export function signalText(sig: SigLike, ctx: { total?: number | null; base?: st
       const abs = n(p.absolute_band_pp) ?? 5, rel = n(p.relative_band);
       const half = target != null && rel != null && rel > 0 ? Math.min(abs, rel * target * 100) : abs;
       const value = n(p.drift_value_base);
-      const bucket = bucketLabel(s(p.bucket_id));
+      // Only generic buckets reach the UI (isShownSignal); the fallback never names an id.
+      const bucket = bucketLabel(s(p.bucket_id)) ?? "Alokacja";
       return {
         title: drift > 0 ? `${bucket} poza pasmem` : `${bucket} poniżej celu`, sym: null, bold: pp(drift),
         tail: `${drift > 0 ? "nad celem" : "do celu"} ${pctTarget(target)} · pasmo ±${pp(half).replace(/^\+/, "")}${value != null ? ` · ≈ ${money0(Math.abs(value), s(p.currency) ?? base)}` : ""}`,
@@ -138,14 +193,14 @@ export function signalText(sig: SigLike, ctx: { total?: number | null; base?: st
     case "tagged_weight":
       return { title: `Udział: ${Array.isArray(p.tags) ? p.tags.join(", ") : "tagi"}`, sym: null, bold: pct(n(p.weight)), tail: `portfela · maks ${pctTarget(n(p.max_weight))}` };
     default:
-      return { title: sig.message || "Reguła własna", sym: null, tail: name || undefined };
+      return { title: unnameBuckets(sig.message || "") || "Reguła własna", sym: null, tail: name || undefined };
   }
 }
 
 function alertSignalText(sig: SigLike, name: string, sym: string | null): SigText {
   const p = sig.payload;
   const kind = s(p.alert_kind) ?? sig.kind.slice("alert:".length);
-  const title = name || s(p.title) || "Alert";
+  const title = name || unnameBuckets(s(p.title) ?? "") || "Alert";
   const c = s(p.currency);
   switch (kind) {
     case "price_below":
@@ -163,7 +218,7 @@ function alertSignalText(sig: SigLike, name: string, sym: string | null): SigTex
       return { title, sym, lead: `przecięcie SMA ${n(p.window_days) ?? ""} ${p.direction === "above" ? "w górę" : "w dół"} ·`, bold: price(n(p.close), c), tail: n(p.sma) != null ? `· SMA ${price(n(p.sma), c)}` : undefined };
     case "weight_above":
     case "weight_below":
-      return { title: s(p.bucket_id) ? bucketLabel(s(p.bucket_id)) : title, sym, bold: pct(n(p.weight)), tail: `portfela · ${kind === "weight_above" ? "powyżej" : "poniżej"} ${pctTarget(n(p.threshold))}` };
+      return { title: bucketLabel(s(p.bucket_id)) ?? title, sym, bold: pct(n(p.weight)), tail: `portfela · ${kind === "weight_above" ? "powyżej" : "poniżej"} ${pctTarget(n(p.threshold))}` };
     default:
       return { title: s(p.title) ?? title, sym, tail: s(p.title) && name ? name : undefined };
   }
@@ -204,7 +259,7 @@ export function alertConditionText(a: Pick<AlertLike, "kind" | "scope" | "params
     case "sma_cross": return `przecięcie średniej ${n(p.window_days) ?? 200}-dniowej ${p.direction === "above" ? "w górę" : "w dół"}`;
     case "weight_above": return a.scope === "bucket" ? "waga koszyka powyżej" : "waga powyżej";
     case "weight_below": return a.scope === "bucket" ? "waga koszyka poniżej" : "waga poniżej";
-    case "custom": return `wyrażenie: ${s(p.expression) ?? "-"}`;
+    case "custom": return `wyrażenie: ${s(p.expression) ? unnameBuckets(s(p.expression)!) : "-"}`;
     default: return a.kind;
   }
 }
@@ -631,6 +686,20 @@ export function averageCost(
   return pos.cost != null && pos.quantity > 0 ? { value: pos.cost / pos.quantity, currency: base } : null;
 }
 
+/** Display names of well-known benchmark ids (strategy `benchmark.id`, matched case-insensitively). */
+const BENCHMARK_NAME: Record<string, string> = {
+  msci_acwi: "MSCI ACWI", msci_world: "MSCI World", ftse_all_world: "FTSE All-World", sp500: "S&P 500", msci_em: "MSCI EM",
+  wig20: "WIG20", wig: "WIG", stoxx600: "STOXX 600",
+};
+
+/** The benchmark's name in the UI (F7 GF7): a strategy id is never rendered raw. A well-known index id gets its
+ * name, else the proxy instrument's display name when the payload carries one (`proxy_label`; today's server
+ * sends none), else `benchmark`. */
+export function benchmarkLabel(b: { id?: string | null; proxy_label?: string | null } | null | undefined): string {
+  const known = b?.id ? BENCHMARK_NAME[b.id.trim().toLowerCase()] : undefined;
+  return known ?? (b?.proxy_label?.trim() || "benchmark");
+}
+
 /** The benchmark figure next to the minimal hero's "od pierwszej wpłaty" (P/L over net contributions): the
  * benchmark bought with the same deposits (`simulation.pnl` over the same net contributions), so both are the
  * same measure; without a simulation the benchmark's TWR, labelled as such (F7 FE6). */
@@ -639,7 +708,7 @@ export function heroBenchmark(
   netContributions: number | null | undefined,
 ): { value: number; label: string } | null {
   if (!b || b.status !== "ok" || b.covers_range_end === false) return null;
-  const name = b.id ?? "benchmark";
+  const name = benchmarkLabel(b);
   if (b.simulation?.pnl != null && netContributions) return { value: b.simulation.pnl / netContributions, label: `${name}, te same wpłaty` };
   return b.twr != null ? { value: b.twr, label: `${name}, TWR` } : null;
 }
@@ -650,7 +719,7 @@ export function staleBenchmark(
   b: { status: string; id?: string | null; covers_range_end?: boolean | null; last_priced?: string | null } | null | undefined,
 ): { label: string; title: string } | null {
   if (!b || b.status !== "ok" || b.covers_range_end !== false) return null;
-  return { label: "benchmark nieaktualny", title: `${b.id ?? "benchmark"}: ceny do ${b.last_priced ? dm(b.last_priced) : "-"}` };
+  return { label: "benchmark nieaktualny", title: `${benchmarkLabel(b)}: ceny do ${b.last_priced ? dm(b.last_priced) : "-"}` };
 }
 
 // ---- performance caveats (F7 FE13) -------------------------------------------------------------------------
@@ -669,4 +738,65 @@ export function perfNotes(perf: {
     out.push(describePerfNote({ code: "benchmark_stale", params: { last_date: b.last_priced ?? null }, message: "benchmark ends early" }));
   }
   return [...new Set(out)];
+}
+
+// ---- instrument identity (design/v2/instrument-label/instrument-label.md) ----------------------------------
+
+export interface InstLike {
+  id: number | string; label: string; name?: string | null; symbol?: string | null; mic?: string | null;
+  isin?: string | null; asset_class?: string | null; region?: string | null; status?: string | null;
+  valuation_mode?: string | null; needs_classification?: boolean | null;
+}
+
+const QUOTE_SUFFIX = /-(USD|USDT|USDC|EUR|PLN|GBP|CHF|JPY|BTC|ETH)$/;
+
+/** The avatar's monogram: the ticker, uppercase, 2-5 characters (`CDR.WA` -> CDR, `BTC-USD` -> BTC, `EDO0535` ->
+ * EDO, `GOOGL` -> GOOG; five only for all digits `00241` or a share class `BRK-B`); no symbol: the name's initials
+ * (`Obligacje EDO` -> OE, `Lokata` -> LO); nothing: `?`. */
+export function instMono(i: Pick<InstLike, "symbol" | "name" | "label">): string {
+  let t = (i.symbol ?? "").trim().toUpperCase();
+  if (t) {
+    t = t.replace(/\.[A-Z]{1,4}$/, "").replace(QUOTE_SUFFIX, "");
+    const bond = /^([A-Z]{3})\d{4}$/.exec(t);
+    if (bond) return bond[1];
+    if (/^\d+$/.test(t)) return t.slice(0, 5);
+    if (/^[A-Z0-9]{1,3}-[A-Z]$/.test(t)) return t;
+    if (t) return t.slice(0, 4);
+  }
+  const words = (i.name || i.label || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "?";
+  const mono = words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2);
+  return mono.toUpperCase();
+}
+
+/** Instrument status words (never the backend's raw status). */
+export const INST_STATUS: Record<string, string> = { frozen: "zamrożony", delisted: "wycofany z giełdy", inactive: "nieaktywny" };
+
+/** The hover card's facts (Polish only): head = name + `symbol · exchange`, rows = klasa (+ region when known),
+ * rachunek / rachunki (positions), ISIN; status tags only for what is not normal. No bucket (F7-generic). */
+export function instCardFacts(i: InstLike, o: { accounts?: string[]; stale?: string | null } = {}): { head: [string, string]; rows: [string, string][]; status: string[] } {
+  const cls = i.asset_class ? ASSET_CLASS[i.asset_class] ?? null : null;
+  const reg = i.region && i.region.toLowerCase() !== "unknown" ? REGION[i.region.toLowerCase()] ?? null : null;
+  const rows: [string, string][] = [];
+  if (cls) rows.push(["klasa", reg ? `${cls} · ${reg}` : cls]);
+  if (o.accounts?.length) rows.push([o.accounts.length > 1 ? "rachunki" : "rachunek", o.accounts.join(", ")]);
+  if (i.isin) rows.push(["ISIN", i.isin]);
+  const status: string[] = [];
+  if (i.needs_classification) status.push("do sklasyfikowania");
+  if (i.valuation_mode === "cost") status.push("koszt + odsetki");
+  else if (i.valuation_mode === "manual") status.push("wycena ręczna");
+  if (o.stale) status.push(`cena z ${dm(o.stale)}`);
+  if (i.status && i.status !== "active") status.push(INST_STATUS[i.status] ?? "nieaktywny");
+  return { head: [instName({ label: i.label, name: i.name, symbol: i.symbol }), [i.symbol, micName(i.mic)].filter(Boolean).join(" · ")], rows, status };
+}
+
+/** One-line summary (the label's `title` where there is no hover): `INTC · Nasdaq · akcje · USA · XTB · IKE`. */
+export function instSummary(i: InstLike, o: { accounts?: string[]; stale?: string | null } = {}): string {
+  const f = instCardFacts(i, o);
+  return [f.head[1], ...f.rows.map((r) => r[1])].filter(Boolean).join(" · ");
+}
+
+/** The Aktywa row's second line: `koszt + odsetki` and / or the single account in `Per rachunek`. */
+export function subLine(o: { cost: boolean; split: "total" | "account"; accounts: { account_id: number }[]; accLabel: (id: number) => string }): string | undefined {
+  return [o.cost ? "koszt + odsetki" : null, o.split === "account" && o.accounts.length === 1 ? o.accLabel(o.accounts[0].account_id) : null].filter(Boolean).join(" · ") || undefined;
 }

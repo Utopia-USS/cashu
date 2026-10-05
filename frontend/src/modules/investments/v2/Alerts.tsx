@@ -7,12 +7,13 @@ import { describeError, errorText } from "../../../core/messages";
 import { useAsync, useInFlight } from "../../../hooks";
 import { Notice, Seg, Skeleton, useToast } from "../../../ui";
 import { AgentTag, AlertStatus, FootFacts, Grid, PolarityText, Widget } from "../../../widgets";
+import { InstLabel } from "./InstLabel";
 import { bucketLabel, dm, dmy, DECISION_ACTION, hm, parseNum, pct, plural } from "../labels";
 import {
   type Alert, type AlertInput, type AlertKindInfo, type AlertPatch, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, patchAlert, postAlert, restoreAlert, type SignalV2,
 } from "./api";
 import {
-  alertConditionText, alertDefaultTitle, alertDistance, alertLevelText, alertNowText, alertPreview, alertWhenSuffix, instName, KIND_LABEL, orderAlerts, price,
+  alertConditionText, alertDefaultTitle, alertDistance, alertLevelText, alertNowText, alertPreview, alertWhenSuffix, instName, KIND_LABEL, orderAlerts, price, unnameBuckets,
 } from "./logic";
 import { alertDeleteUndo, offerUndo, recreateInput } from "./undoFlow";
 import { alertPatch, buildParams, draftText, expiryChoice, expiryValue, formKind } from "./alertForm";
@@ -72,7 +73,7 @@ export function AlertRow({ a, onRemove, compact }: { a: Alert; onRemove?: () => 
   return (
     <div className={`al ${trig ? "trig" : ""}`}>
       <div>
-        <div className="t">{compact ? (alertLevelText(a) && (a.kind === "price_below" || a.kind === "price_above") ? `${a.kind === "price_below" ? "poniżej" : "powyżej"} ${alertLevelText(a)}` : a.title) : a.title}{a.source === "agent" && <AgentTag />}</div>
+        <div className="t">{compact ? (alertLevelText(a) && (a.kind === "price_below" || a.kind === "price_above") ? `${a.kind === "price_below" ? "poniżej" : "powyżej"} ${alertLevelText(a)}` : unnameBuckets(a.title)) : unnameBuckets(a.title)}{a.source === "agent" && <AgentTag />}</div>
         <div className="c">
           {trig ? <>wyzwolony {dm(a.last_triggered_at)}{now && <> · teraz <b>{now}</b></>}{a.cooldown_days ? ` · cooldown ${a.cooldown_days} dni` : ""}</>
             : compact ? <>{kindWord} · {a.severity === "action" ? "do działania" : "informacja"}{dist ? <> · <b>{dist.text}</b> do poziomu</> : now ? <> · teraz <b>{now}</b></> : ""}</>
@@ -170,8 +171,8 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
                         return (
                           <tr key={a.id} className={editing === a.id ? "hover" : undefined}>
                             <td><AlertStatus status={a.status} /></td>
-                            <td><span className="nm">{a.title}</span><span className="cond">{alertConditionText(a)}{a.note ? ` · ${a.note.length > 48 ? `${a.note.slice(0, 46)}…` : a.note}` : ""}{suffix ? ` · ${suffix}` : ""}</span></td>
-                            <td>{a.scope === "portfolio" ? "Portfel" : a.scope === "bucket" ? `Koszyk ${bucketLabel(String(a.params.bucket ?? ""))}` : a.instrument ? instName(a.instrument) : "-"}</td>
+                            <td><span className="nm">{unnameBuckets(a.title)}</span><span className="cond">{alertConditionText(a)}{a.note ? ` · ${a.note.length > 48 ? `${a.note.slice(0, 46)}…` : a.note}` : ""}{suffix ? ` · ${suffix}` : ""}</span></td>
+                            <td>{a.scope === "portfolio" ? "Portfel" : a.scope === "bucket" ? ["Koszyk", bucketLabel(String(a.params.bucket ?? ""))].filter(Boolean).join(" ") : a.instrument ? <InstLabel density="inline" inst={a.instrument} /> : "-"}</td>
                             <td className="num"><b>{alertNowText(a) ?? "-"}</b><span className="cond">{alertLevelText(a) ?? ""}{dist ? ` · ${a.kind.startsWith("price") ? (a.kind === "price_below" ? "-" : "+") : ""}${dist.text}` : ""}</span></td>
                             <td><PolarityText polarity={a.polarity} /><span className="cond">{a.severity === "action" ? "do działania" : "informacja"}</span></td>
                             <td>{a.source === "agent" ? <AgentTag /> : <span className="muted">ty</span>}</td>
@@ -266,7 +267,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
   const [severity, setSeverity] = useState<string>(alert?.severity ?? "info");
   const [title, setTitle] = useState(alert?.title ?? "");
   // An edited alert whose title is still the generated one keeps following the condition.
-  const titleTouched = useRef(!!alert && alert.title !== alertDefaultTitle(alert.kind, alert.params, alert.instrument?.symbol ?? alert.instrument?.label ?? (alert.scope === "bucket" ? bucketLabel(String(alert.params.bucket ?? "")) : "Portfel"), alert.instrument?.currency));
+  const titleTouched = useRef(!!alert && alert.title !== alertDefaultTitle(alert.kind, alert.params, alert.instrument?.symbol ?? alert.instrument?.label ?? (alert.scope === "bucket" ? bucketLabel(String(alert.params.bucket ?? "")) ?? "Koszyk" : "Portfel"), alert.instrument?.currency));
   const [note, setNote] = useState(alert?.note ?? "");
   // "bez pauzy" (null) stays null when editing; 14 days only for a new alert.
   const [cooldown, setCooldown] = useState<number | null>(alert ? alert.cooldown_days : 14);
@@ -292,7 +293,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const params = buildParams(kind, scope, { level, threshold, windowDays, direction, expression, bucket });
-  const subject = scope === "instrument" ? (inst?.symbol ?? inst?.label ?? "") : scope === "bucket" ? bucketLabel(bucket) : "Portfel";
+  const subject = scope === "instrument" ? (inst?.symbol ?? inst?.label ?? "") : scope === "bucket" ? bucketLabel(bucket) ?? "Koszyk" : "Portfel";
   const problems = validate(kind, scope, params, inst, bucket);
   // The title follows the condition until the owner edits it; nothing to suggest while the condition is incomplete.
   const autoTitle = problems.length ? "" : alertDefaultTitle(kind, params, subject, inst?.currency);
@@ -338,7 +339,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
       <div className="wb tight form">
         <div className="field" title={alert ? "Zakres zmienisz tylko nowym alertem." : undefined}>
           <label id="af-scope">Zakres</label>
-          <Seg quiet label="Zakres" value={scope} disabled={!!alert} onChange={(v) => !alert && setScope(v)} items={[["Instrument", "instrument"], ["Portfel", "portfolio"], ["Koszyk", "bucket"]]} />
+          <Seg quiet label="Zakres" value={scope} disabled={!!alert} onChange={(v) => !alert && setScope(v)} items={[["Instrument", "instrument"], ["Portfel", "portfolio"], ...(buckets.length || alert?.scope === "bucket" ? [["Koszyk", "bucket"] as [string, Scope]] : [])]} />
         </div>
         {scope === "instrument" && (
           <div className="field">
@@ -351,8 +352,10 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
         {scope === "bucket" && (
           <div className="field">
             <label htmlFor="af-bucket">Koszyk</label>
-            <select id="af-bucket" value={bucket} onChange={(e) => setBucket(e.target.value)} disabled={!buckets.length}>
-              {!buckets.length && <option value="">brak koszyków w strategii</option>}
+            {/* Generic buckets only (F7-generic); an agent's alert on the owner's own bucket keeps it, unnamed. */}
+            <select id="af-bucket" value={bucket} onChange={(e) => setBucket(e.target.value)} disabled={!buckets.length || (!!bucket && !bucketLabel(bucket))}>
+              {!buckets.length && !bucket && <option value="">brak koszyków w strategii</option>}
+              {!!bucket && !bucketLabel(bucket) && <option value={bucket}>-</option>}
               {buckets.map((b) => <option key={b} value={b}>{bucketLabel(b)}</option>)}
             </select>
           </div>

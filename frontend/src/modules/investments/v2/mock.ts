@@ -81,7 +81,7 @@ function janState(): V2State {
       alert(806, { kind: "sma_cross", title: "VWRA: SMA 200 w dół", instrument_id: 301, instrument: instRef(301, "Vanguard FTSE All-World", "VWRA"), params: { window_days: 200, direction: "below" }, polarity: "negative", source: "agent", created_by: "mcp", last_value: 486.1 }),
       alert(807, { kind: "price_above", title: "CDR powyżej 201,80 zł", instrument_id: 306, instrument: instRef(306, "CD Projekt", "CDR"), params: { level: 201.8 }, polarity: "neutral", last_value: 148.6, note: "Plan wyjścia z tezy." }),
       alert(808, { kind: "price_below", title: "CSPX poniżej 560,00 $", instrument_id: 401, instrument: instRef(401, "iShares Core S&P 500", "CSPX", "USD"), params: { level: 560 }, status: "snoozed", snoozed_until: "2026-11-01T00:00:00+01:00", last_triggered_at: "2026-09-18T07:02:00+02:00", last_value: 612.4 }),
-      alert(809, { kind: "weight_above", title: "Akcje PL powyżej 25 %", scope: "bucket", params: { threshold: 0.25, bucket: "pl_equity" }, unit: "ratio", polarity: "negative", status: "muted", last_triggered_at: "2026-09-14T07:02:00+02:00", last_value: 0.212 }),
+      alert(809, { kind: "weight_above", title: "Akcje powyżej 25 %", scope: "bucket", params: { threshold: 0.25, bucket: "stocks" }, unit: "ratio", polarity: "negative", status: "muted", last_triggered_at: "2026-09-14T07:02:00+02:00", last_value: 0.212 }),
     ],
     watch: [
       watchItem(9101, 401, "iShares Core S&P 500", "CSPX", "USD", 612.4, 41, 0.0015, null, "user", { live: 1, triggered: 0, nearest: { alert_id: 808, kind: "price_below", title: "CSPX poniżej 560,00 $", level: 560, distance_pct: -0.0856 } }),
@@ -92,7 +92,10 @@ function janState(): V2State {
     alertSignals: [
       { id: 951, rule_id: "alert:801", kind: "alert:price_below", dedup_key: "alert:801", severity: "action", status: "active", polarity: "positive", source: "alert", alert_id: 801, message: "EIMI poniżej 75,00 zł: closed at 74.57 PLN", instrument_id: 307, instrument_label: "iShares MSCI EM IMI", account_id: null, payload: { alert_kind: "price_below", symbol: "EIMI", level: "75", close: "74.57", currency: "PLN", title: "EIMI poniżej 75,00 zł" }, first_seen_at: "2026-10-02T07:02:00+02:00", last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
       { id: 952, rule_id: "alert:802", kind: "alert:change_pct", dedup_key: "alert:802", severity: "info", status: "active", polarity: "negative", source: "alert", alert_id: 802, message: "KGHM -10 % w 30 sesji: fell 12.4%", instrument_id: 305, instrument_label: "KGHM", account_id: null, payload: { alert_kind: "change_pct", symbol: "KGH", change: -0.124, threshold: 0.1, window_days: 30, direction: "down" }, first_seen_at: "2026-10-03T07:02:00+02:00", last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
-      { id: 905, rule_id: "global_below", kind: "allocation_drift", dedup_key: "global_below", severity: "info", status: "active", polarity: "neutral", source: "rule", alert_id: null, message: "global equity below target", instrument_id: null, instrument_label: null, account_id: null, payload: { bucket_id: "global_equity", weight: 0.57, target: 0.6, drift_pp: -3.0, drift_value_base: "-5590", currency: "PLN", absolute_band_pp: 5, relative_band: 0.05 }, first_seen_at: `${TODAY}T07:02:00+02:00`, last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
+      { id: 905, rule_id: "global_below", kind: "allocation_drift", dedup_key: "global_below", severity: "info", status: "active", polarity: "neutral", source: "rule", alert_id: null, message: "global equity below target", instrument_id: null, instrument_label: null, account_id: null, payload: { bucket_id: "global_equity", bucket_generic: true, weight: 0.57, target: 0.6, drift_pp: -3.0, drift_value_base: "-5590", currency: "PLN", absolute_band_pp: 5, relative_band: 0.05 }, first_seen_at: `${TODAY}T07:02:00+02:00`, last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
+      // F7-generic: a drift of an owner's own bucket (non-generic id): the server sends it, the app never shows it
+      // (lists, counts, links); the agent sees it over MCP.
+      { id: 906, rule_id: "own_bucket_drift", kind: "allocation_drift", dedup_key: "own_bucket_drift", severity: "action", status: "active", polarity: "negative", source: "rule", alert_id: null, message: "bucket active above target", instrument_id: null, instrument_label: null, account_id: null, payload: { bucket_id: "active", bucket_generic: false, weight: 0.31, target: 0.2, drift_pp: 11.0, drift_value_base: "20500", currency: "PLN", absolute_band_pp: 5, relative_band: 0.25 }, first_seen_at: `${TODAY}T07:02:00+02:00`, last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
     ],
   };
 }
@@ -172,7 +175,7 @@ function perfJan(range: PerfRange): Performance {
       xirr: days >= 365 ? 0.098 : null, mwr: 0.091, max_drawdown: { depth: minDd, peak: dates[Math.max(0, troughAt - 6)], trough, recovered }, days,
     },
     benchmark: {
-      status: "ok", message: null, id: "ACWI", proxy: "SSAC.L", instrument_id: 501, currency: "USD", first_priced: "2019-01-02", covers_range: true,
+      status: "ok", message: null, id: "msci_acwi", proxy: "SSAC.L", instrument_id: 501, currency: "USD", first_priced: "2019-01-02", covers_range: true,
       twr: bench[n - 1], twr_annualized: null, max_drawdown: null,
       simulation: { end_value: r2(sim[n - 1]), end_value_with_fees: r2(sim[n - 1] - 61.2), pnl: null, xirr: 0.087, mwr: null, started: dates[0], capped: false },
       excess_twr: twr[n - 1] - bench[n - 1], excess_value: r2(endValue - sim[n - 1]), excess_vs_simulation: endValue / sim[n - 1] - 1,
@@ -195,7 +198,7 @@ function perfMarta(range: PerfRange): Performance {
   return {
     as_of: TODAY, base_currency: "PLN", range, start: dates[0], end: TODAY, accounts_filter: null, step: "day", points,
     summary: { start_value: 0, end_value: 1530.4, net_contributions: 1500, deposits: 1500, withdrawals: 0, implied_funding: 0, account_fees: 0, pnl: 30.4, twr: 0.0203, twr_annualized: null, xirr: null, mwr: 0.02, max_drawdown: { depth: -0.004, peak: "2026-08-24", trough: "2026-09-07", recovered: "2026-09-10" }, days: 86 },
-    benchmark: { status: "ok", message: null, id: "ACWI", proxy: "SSAC.L", instrument_id: 501, currency: "USD", first_priced: "2019-01-02", covers_range: true, twr: 0.016, twr_annualized: null, max_drawdown: null, simulation: { end_value: 1524, end_value_with_fees: 1524, pnl: 24, xirr: null, mwr: null, started: dates[0], capped: false }, excess_twr: 0.0043, excess_value: 6.4, excess_vs_simulation: 0.004 },
+    benchmark: { status: "ok", message: null, id: "msci_acwi", proxy: "SSAC.L", instrument_id: 501, currency: "USD", first_priced: "2019-01-02", covers_range: true, twr: 0.016, twr_annualized: null, max_drawdown: null, simulation: { end_value: 1524, end_value_with_fees: 1524, pnl: 24, xirr: null, mwr: null, started: dates[0], capped: false }, excess_twr: 0.0043, excess_value: 6.4, excess_vs_simulation: 0.004 },
     data_quality: { incomplete_days: 0, end_complete: true, notes: [] },
   };
 }
@@ -241,7 +244,7 @@ function janEvents(since: string) {
     { type: "import", at: "2026-10-01T19:02:00+02:00", date: "2026-10-01", file_name: "dif_2026-10-01.csv", inserted: 6, account_id: 21 },
     { type: "signal_created", at: "2026-09-29T07:02:00+02:00", date: "2026-09-29", polarity: "positive", kind: "drawdown_from_high", instrument_label: "CD Projekt", message: "" },
     { type: "signal_created", at: "2026-09-21T07:02:00+02:00", date: "2026-09-21", polarity: "negative", kind: "contribution_gap", message: "" },
-    { type: "signal_created", at: "2026-09-15T07:02:00+02:00", date: "2026-09-15", polarity: "neutral", kind: "allocation_drift", message: "", instrument_label: null, bucket_id: "pl_equity" },
+    { type: "signal_created", at: "2026-09-15T07:02:00+02:00", date: "2026-09-15", polarity: "neutral", kind: "allocation_drift", message: "", instrument_label: null, bucket_id: "stocks" },
     { type: "decision", at: "2026-09-14T20:00:00+02:00", date: "2026-09-14", action: "held", instrument_label: null, reason: "rebalans przy wpłacie" },
     { type: "signal_resolved", at: "2026-08-24T07:02:00+02:00", date: "2026-08-24", polarity: "neutral", kind: "gain_from_cost", instrument_label: "KGHM", status: "expired", message: "" },
     { type: "deposit", at: "2026-08-10T00:00:00+02:00", date: "2026-08-10", amount: 2000, currency: "PLN", account_id: 22 },

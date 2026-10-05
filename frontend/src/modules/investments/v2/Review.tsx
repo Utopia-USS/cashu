@@ -12,7 +12,7 @@ import type { AccountRow, Proposal } from "../api";
 import { accountLabel, bucketLabel, DECISION_ACTION, dm, money, money0, nTxns, pct, plural, pp, txnType } from "../labels";
 import { runError } from "../logic";
 import type { Alert, DigestEvent, DigestV2, Performance, SignalV2 } from "./api";
-import { changeSince, digestValueLine, gapText, groupByMonth, isImportant, polarityOf, signalText } from "./logic";
+import { benchmarkLabel, changeSince, digestValueLine, gapText, groupByMonth, isImportant, polarityOf, signalText } from "./logic";
 
 // ---- review strip ---------------------------------------------------------------------------------------------
 
@@ -49,7 +49,7 @@ const KIND_PHRASE: Record<string, string> = {
 const phrase = (kind?: string, message?: string) => (kind ? KIND_PHRASE[kind] ?? (kind.startsWith("alert:") ? "alert" : message || kind) : message || "");
 /** Signal events of the change log: the instrument, or the bucket of an allocation-drift event (F6 BE
  * `bucket_id`; before it the log said "dryf alokacji" for every bucket). */
-const subject = (e: DigestEvent, inst: string) => inst || (e.kind === "allocation_drift" && e.bucket_id ? bucketLabel(e.bucket_id) : "");
+const subject = (e: DigestEvent, inst: string) => inst || (e.kind === "allocation_drift" ? bucketLabel(e.bucket_id) ?? "" : "");
 
 function Chg({ k, v, onKey }: { k: string; v: ReactNode; onKey?: () => void }) {
   return <div className="chg"><span className="k">{onKey ? <button onClick={onKey}>{k}</button> : k}</span><span className="v">{v}</span></div>;
@@ -65,7 +65,7 @@ export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names
   const v = digest.value;
   const c = v.currency;
   const since = changeSince(perf?.points ?? [], digest.since);
-  const benchName = perf?.benchmark?.id ?? "benchmark";
+  const benchName = benchmarkLabel(perf?.benchmark);
   const line = digestValueLine(v, since.pct);
   const market = line.amount;
   const marketPct = line.pct;
@@ -133,7 +133,7 @@ export function ReentryBanner({ since, days, digest, perf, alerts, proposals, de
   const monthsGap = Math.max(1, Math.round(days / 30.4));
   const depMonths = new Set(deposits.map((e) => e.date.slice(0, 7))).size;
   const imports = ev.filter((e) => e.type === "import").length;
-  const benchName = perf?.benchmark?.id ?? "benchmark";
+  const benchName = benchmarkLabel(perf?.benchmark);
   return (
     <section className="w reentry" aria-label="Powrót po przerwie">
       <div>
@@ -244,7 +244,7 @@ export function StateToday({ since, total, base, ytd, perf, signals, reviewText,
     <Widget title="Stan dziś" controls={perf?.as_of ? <span className="tag">{dm(perf.as_of)}</span> : undefined} body="tight"
       footer={<><span>przegląd tygodnia: <b>{reviewText}</b></span><span className="spacer" /><button className="lnk" onClick={onSignals}>do sygnałów</button></>}>
       <Facts items={[
-        { label: "Wartość", value: money0(total, base), detail: ys != null ? <><span className={ys >= 0 ? "pos" : "neg"}>{pct(ys, true)}</span> YTD{yb != null ? ` · ${ytd?.benchmark?.id ?? "benchmark"} ${pct(yb, true)}` : ""}</> : undefined },
+        { label: "Wartość", value: money0(total, base), detail: ys != null ? <><span className={ys >= 0 ? "pos" : "neg"}>{pct(ys, true)}</span> YTD{yb != null ? ` · ${benchmarkLabel(ytd?.benchmark)} ${pct(yb, true)}` : ""}</> : undefined },
         { label: "Od szczytu", value: pct(dd), detail: md?.peak ? `szczyt ${dm(md.peak)}` : undefined },
         { label: "Szanse", value: chances.length, detail: sigNames(chances) || undefined },
         { label: "Ryzyka", value: risks.length, detail: sigNames(risks) || undefined },
@@ -259,7 +259,7 @@ export function StateToday({ since, total, base, ytd, perf, signals, reviewText,
                 { values: pv, cls: "main", area: true, endLabel: lastP != null ? pct(lastP, true) : undefined },
               ]} />
           </div>
-          <div className="legend" style={{ marginTop: 4 }}><span><i className="main" />portfel od {dm(since)}</span><span><i className="bench" />{perf?.benchmark?.id ?? "benchmark"}</span></div>
+          <div className="legend" style={{ marginTop: 4 }}><span><i className="main" />portfel od {dm(since)}</span><span><i className="bench" />{benchmarkLabel(perf?.benchmark)}</span></div>
         </>
       )}
     </Widget>

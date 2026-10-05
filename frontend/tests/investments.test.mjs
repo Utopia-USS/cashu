@@ -37,23 +37,32 @@ test("dates: day.month in prose, weekday prefix", () => {
   assert.equal(wdm("2026-10-02"), "pt 2.10");
 });
 
-test("labels: accounts by broker and wrapper, buckets readable, never the em dash", () => {
+test("labels: accounts by broker and wrapper, generic buckets readable, other bucket ids never named, never the em dash", () => {
   const a = { id: 1, name: "DIF zwykłe", broker: "dif", broker_name: "DIF Broker", wrapper: "regular" };
   const b = { id: 2, name: "XTB IKE", broker: "xtb", broker_name: "XTB", wrapper: "ike" };
   const c = { id: 3, name: "XTB IKE 2", broker: "xtb", broker_name: "XTB", wrapper: "ike" };
   assert.equal(accountLabel(a, [a, b]), "DIF · zwykłe");
   assert.equal(accountLabel(b, [a, b, c]), "XTB · IKE (XTB IKE)");
   assert.equal(bucketLabel("global_equity"), "Akcje globalne");
-  assert.equal(bucketLabel("my_satellites"), "My satellites");
-  for (const text of [accountLabel(a), bucketLabel(null), pct(null), money(null)]) assert.ok(!text.includes("\u2014"));
+  // F7-generic: only generic ids (templates + plain asset classes) have a label; the owner's own ids are not named
+  assert.equal(bucketLabel("my_satellites"), null);
+  assert.equal(bucketLabel("stocks"), "Akcje");
+  assert.equal(bucketLabel("bonds"), "Obligacje");
+  assert.equal(bucketLabel("bond_etfs"), "ETF-y obligacyjne");
+  assert.equal(bucketLabel("Stocks"), null); // case-sensitive, as the backend's GENERIC_BUCKET_IDS
+  assert.equal(bucketLabel("core"), null);
+  assert.equal(bucketLabel("active"), null);
+  assert.equal(bucketLabel(null), null);
+  for (const text of [accountLabel(a), pct(null), money(null)]) assert.ok(!text.includes("\u2014"));
 });
 
 test("signals: Polish titles and measured vs threshold per rule kind", () => {
   const dd = sig({ kind: "drawdown_from_high", severity: "action", payload: { drawdown: 0.184, threshold: 0.15, name: "CD Projekt", symbol: "CDR" } });
   assert.equal(signalTitle(dd), `Spadek od szczytu ≥ 15${NB}%`);
   assert.deepEqual(signalFacts(dd), { measured: `-18,4${NB}%`, limit: `próg 15${NB}%` });
-  const drift = sig({ kind: "allocation_drift", payload: { bucket_id: "pl_equity", drift_pp: 6.2, drift_value_base: "11600", currency: "PLN", absolute_band_pp: 5 } });
-  assert.equal(signalTitle(drift), "Dryf alokacji: Akcje PL");
+  const drift = sig({ kind: "allocation_drift", payload: { bucket_id: "stocks", drift_pp: 6.2, drift_value_base: "11600", currency: "PLN", absolute_band_pp: 5 } });
+  assert.equal(signalTitle(drift), "Dryf alokacji: Akcje");
+  assert.equal(signalTitle(sig({ kind: "allocation_drift", payload: { bucket_id: "core", drift_pp: 6.2 } })), "Dryf alokacji");
   assert.match(signalFacts(drift).extra, /nad celem$/);
   assert.equal(signalFacts(drift).limit, `pasmo ±5,0${NB}pp`);
   const cashDrift = sig({ kind: "allocation_drift", payload: { bucket_id: "cash", drift_pp: -2.9, target: 0.1, absolute_band_pp: 5, relative_band: 0.25 } });
@@ -85,10 +94,12 @@ test("allocation: band is the narrower of absolute pp and relative, scale covers
 });
 
 test("decision effect: buying from the account's cash keeps the total, bucket share and drift move", () => {
-  const bucket = { bucket_id: "pl_equity", weight: 0.212, target: 0.15, drift_pp: 6.2, value: 39517, to_target: -11600, out_of_band: true };
+  const bucket = { bucket_id: "stocks", weight: 0.212, target: 0.15, drift_pp: 6.2, value: 39517, to_target: -11600, out_of_band: true };
   const line = decisionEffect({ side: "buy", quantity: 20, price: 148.6, currency: "PLN", bucket, total: 186401.2, base: "PLN" });
-  assert.match(line, /Akcje PL po transakcji: 22,8/);
+  assert.match(line, /Akcje po transakcji: 22,8/);
   assert.match(line, /dryf rośnie do \+7,8/);
+  // the owner's own bucket (non-generic id): only the amount, no bucket, target or drift (F7-generic)
+  assert.equal(decisionEffect({ side: "buy", quantity: 20, price: 148.6, currency: "PLN", bucket: { ...bucket, bucket_id: "core" }, total: 186401.2, base: "PLN" }), `≈ 2${"\u00a0"}972,00${"\u00a0"}zł`);
   assert.equal(decisionEffect({ side: "buy", quantity: null, price: 1, currency: "PLN", bucket, total: 1, base: "PLN" }), null);
 });
 

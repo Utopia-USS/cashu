@@ -50,6 +50,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   const mins = runMinutes(run);
   const name = (id: number, fallback?: string | null) => ctx.held.get(id)?.name ?? fallback ?? `#${id}`;
   const sym = (id: number, fallback?: string | null) => ctx.held.get(id)?.symbol ?? fallback ?? null;
+  const inst = (id: number) => ctx.held.get(id)?.inst;
   return (
     <Widget title="Co mówi research" className="rsch" id="inv-review-research"
       tags={<span className="tag">{wdm(run.started_at)} · {nNotes(digest?.notes_count ?? runNotes(run) ?? 0)} · od {dm(since)}</span>}
@@ -69,13 +70,13 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
             const from = normHealth(c.from);
             const h = healthOf(s!, ctx.today);
             return (
-              <ThesisRow key={c.instrument_id} s={s!} health={normHealth(c.to) ?? h} name={name(c.instrument_id, c.label ?? s!.label)} symbol={sym(c.instrument_id, c.symbol ?? s!.symbol)}
+              <ThesisRow key={c.instrument_id} s={s!} health={normHealth(c.to) ?? h} name={name(c.instrument_id, c.label ?? s!.label)} symbol={sym(c.instrument_id, c.symbol ?? s!.symbol)} inst={inst(c.instrument_id)}
                 sub={<>{from ? `była ${HEALTH_LABEL[from]}` : "nowa ocena"}{latestTitle(s!) ? ` · ${latestTitle(s!)}` : ""}</>}
                 right={countsText(normHealth(c.to) ?? h, c.counts ?? s!.counts, { notes: s!.notes, latestPolarity: s!.latest_polarity })}
                 onOpen={() => ctx.onOpenAsset(c.instrument_id)} />
             );
           })}
-          {rest && others.map((s) => <ThesisRow key={s.instrument_id} s={s} health={healthOf(s, ctx.today)} name={name(s.instrument_id, s.label)} symbol={sym(s.instrument_id, s.symbol)} onOpen={() => ctx.onOpenAsset(s.instrument_id)} />)}
+          {rest && others.map((s) => <ThesisRow key={s.instrument_id} s={s} health={healthOf(s, ctx.today)} name={name(s.instrument_id, s.label)} symbol={sym(s.instrument_id, s.symbol)} inst={inst(s.instrument_id)} onOpen={() => ctx.onOpenAsset(s.instrument_id)} />)}
           {others.length > 0 && !rest && (
             <div className="rrow" style={{ gridTemplateColumns: "minmax(0, 1fr) auto" }}>
               <div><div className="nm">Pozostałe {plural(others.length, "pozycja", "pozycje", "pozycji")}</div>

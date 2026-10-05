@@ -10,6 +10,7 @@ import { Skeleton, useToast } from "../../../ui";
 import { AgentTag, FootFacts, Widget } from "../../../widgets";
 import { pct, plural } from "../labels";
 import { deleteWatch, postWatch, type WatchItem } from "./api";
+import { InstLabel } from "./InstLabel";
 import { instName, price, watchMove } from "./logic";
 import { offerRecreate } from "./undoFlow";
 
@@ -103,11 +104,15 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
               const label = w.instrument ? instName(w.instrument) : `instrument ${w.instrument_id}`;
               return (
                 <tr key={w.id}>
-                  <td>
-                    <span className="nm"><button className="nm" onClick={() => onOpen(w.instrument_id)}>{label}</button>{w.source === "agent" && <> <AgentTag /></>}</span>
-                    <span className="sym">{[w.instrument?.symbol, watchSummary(w)].filter(Boolean).join(" · ")}</span>
+                  <td className="c-inst wide">
+                    {w.instrument ? (
+                      <InstLabel density="compact" inst={w.instrument} onOpen={() => onOpen(w.instrument_id)} badges={w.source === "agent" && <AgentTag mono text="agent" />} sub={watchSummary(w)} />
+                    ) : (
+                      <><span className="nm"><button className="nm" onClick={() => onOpen(w.instrument_id)}>{label}</button>{w.source === "agent" && <> <AgentTag mono text="agent" /></>}</span>
+                        <span className="sym">{watchSummary(w)}</span></>
+                    )}
                   </td>
-                  <td style={{ width: 80 }}><Spark values={(w.closes_30d ?? []).map((c) => c.close)} label={`${label}: 30 dni`} /></td>
+                  <td className="c-spark" style={{ width: 72 }}><Spark values={(w.closes_30d ?? []).map((c) => c.close)} label={`${label}: 30 dni`} /></td>
                   <td className="num">
                     {w.price ? price(w.price.close, w.price.currency) : <span className="muted">brak ceny</span>}
                     {w.price?.stale && <span className="tag warn" style={{ marginLeft: 4 }}>stara</span>}

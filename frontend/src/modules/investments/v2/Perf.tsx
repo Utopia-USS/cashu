@@ -11,7 +11,7 @@ import { Facts, FootFacts, Widget } from "../../../widgets";
 import { dm, money0, pct, plural, pp } from "../labels";
 import { nextDeposit } from "../logic";
 import { getPerformance, type Performance, type PerfRange } from "./api";
-import { daysSince, monthlyFlows, perfNotes, planMonthsSoFar } from "./logic";
+import { benchmarkLabel, daysSince, monthlyFlows, perfNotes, planMonthsSoFar } from "./logic";
 
 const RANGES: [string, PerfRange][] = [["1M", "1m"], ["3M", "3m"], ["YTD", "ytd"], ["1R", "1y"], ["3R", "3y"], ["Max", "max"]];
 const RANGE_TEXT: Record<PerfRange, string> = { "1m": "1 mies.", "3m": "3 mies.", ytd: "od początku roku", "1y": "12 mies.", "3y": "3 lata", max: "całość" };
@@ -41,7 +41,7 @@ export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
   const s = perf?.summary;
   const lastV = pts.length ? pts[pts.length - 1].value : null;
   const lastB = pts.length ? pts[pts.length - 1].simulated_value : null;
-  const benchName = bench?.id ?? bench?.proxy ?? "benchmark";
+  const benchName = benchmarkLabel(bench);
   // What the backend says about the figures (incomplete days, implied funding, stale benchmark), F7 FE13.
   const notes = perfNotes(perf);
   const xl = labelIndices(pts.length, 5).map((i) => ({ i, text: range === "1m" ? dm(pts[i].date) : monthYearShort(pts[i].date) }));

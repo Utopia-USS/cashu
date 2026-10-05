@@ -131,8 +131,10 @@ test("signal copy: plain words, no rule ids", () => {
   const below = signalText(sig({ kind: "allocation_drift", payload: { bucket_id: "global_equity", target: 0.6, drift_pp: -5.9, absolute_band_pp: 5 } }));
   assert.equal(below.title, "Akcje globalne poniżej celu");
   assert.equal(below.bold, `-5,9${NB}pp`);
-  const out = signalText(sig({ kind: "allocation_drift", payload: { bucket_id: "pl_equity", target: 0.15, drift_pp: 9.5, absolute_band_pp: 5, relative_band: 0.5 } }));
-  assert.equal(out.title, "Akcje PL poza pasmem");
+  const out = signalText(sig({ kind: "allocation_drift", payload: { bucket_id: "stocks", target: 0.15, drift_pp: 9.5, absolute_band_pp: 5, relative_band: 0.5 } }));
+  assert.equal(out.title, "Akcje poza pasmem");
+  // F7-generic: the owner's own bucket is never named (such a signal is not shown at all; the copy stays safe)
+  assert.equal(signalText(sig({ kind: "allocation_drift", payload: { bucket_id: "core", drift_pp: 9.5 } })).title, "Alokacja poza pasmem");
   const al = signalText(sig({ kind: "alert:price_below", instrument_label: "iShares MSCI EM IMI", payload: { alert_kind: "price_below", symbol: "EIMI", level: "30", close: "29.45", currency: "EUR" } }));
   assert.equal(al.title, "iShares MSCI EM IMI");
   assert.equal(al.lead, "cena poniżej");
@@ -250,7 +252,7 @@ test("F7 FE6: asset average cost over all accounts; the minimal hero compares li
     { quantity: 10, average_cost: 25, cost_currency: "EUR" }, { quantity: 10, average_cost: 140, cost_currency: "PLN" }] };
   assert.deepEqual(averageCost(mixed, "PLN"), { value: 120, currency: "PLN" });
   assert.equal(averageCost({ quantity: 0, cost: null, accounts: [] }, "PLN"), null);
-  const b = { status: "ok", id: "MSCI ACWI", twr: 0.098, simulation: { pnl: 300 } };
+  const b = { status: "ok", id: "msci_acwi", twr: 0.098, simulation: { pnl: 300 } }; // F7 GF7: named, never the id
   assert.deepEqual(heroBenchmark(b, 10000), { value: 0.03, label: "MSCI ACWI, te same wpłaty" });
   assert.deepEqual(heroBenchmark({ ...b, simulation: null }, 10000), { value: 0.098, label: "MSCI ACWI, TWR" });
   assert.equal(heroBenchmark({ ...b, status: "no_prices" }, 10000), null);
@@ -316,10 +318,10 @@ test("F2 digest value line: market_change null with change set is a value change
 
 test("F4 stale benchmark: no comparison figure on the heroes, a short label with the last priced day", async () => {
   const { heroBenchmark, staleBenchmark } = await import("../src/modules/investments/v2/logic.ts");
-  const b = { status: "ok", id: "MSCI ACWI", twr: 0.061, simulation: { pnl: 400 }, covers_range_end: false, last_priced: "2026-09-12" };
+  const b = { status: "ok", id: "msci_acwi", twr: 0.061, simulation: { pnl: 400 }, covers_range_end: false, last_priced: "2026-09-12" };
   assert.equal(heroBenchmark(b, 10000), null);
   assert.deepEqual(staleBenchmark(b), { label: "benchmark nieaktualny", title: "MSCI ACWI: ceny do 12.09" });
-  assert.equal(staleBenchmark({ ...b, id: "my_mix" }).title, "my_mix: ceny do 12.09");
+  assert.equal(staleBenchmark({ ...b, id: "my_mix" }).title, "benchmark: ceny do 12.09");
   assert.equal(staleBenchmark({ ...b, covers_range_end: true }), null);
   assert.equal(staleBenchmark({ ...b, covers_range_end: undefined }), null);
   assert.equal(staleBenchmark({ ...b, status: "missing" }), null);

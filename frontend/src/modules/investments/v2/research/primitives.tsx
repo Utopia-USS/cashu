@@ -6,7 +6,8 @@ import { Fragment, type ReactNode, useState } from "react";
 import { useWidth } from "../../../../hooks";
 import { copyText, useToast } from "../../../../ui";
 import { AgentTag } from "../../../../widgets";
-import { dm, plural } from "../../labels";
+import { dm, micName, plural } from "../../labels";
+import { InstLabel, type InstLike } from "../InstLabel";
 import {
   candidateCriteria, candidateReturn, clampStrength, criterionText, entryTypeLabel, expiryText, freshness, HEALTH_CLS, HEALTH_LABEL, isExpired,
   acceptedAt, KIND_LABEL, NOISE_SCALE, noteSubject, noteWhen, normRelation, polarityCls, watchItemId, POLARITY_WORD, RELATION_CLS, RELATION_LABEL, ROUTINE_MENU, ROUTINE_PROMPT, safeUrl, sentimentBars,
@@ -82,7 +83,7 @@ export interface NoteCardProps {
   card?: boolean;
   hl?: boolean;
   /** Instrument display name + symbol, or the theme, shown in list context. */
-  who?: { name: string; sym?: string | null } | null;
+  who?: { name: string; sym?: string | null; inst?: InstLike } | null;
   signalText?: string | null;
   onDismiss?: (n: ResearchNote) => void;
   onRestore?: (n: ResearchNote) => void;
@@ -105,7 +106,9 @@ export function NoteCard({ note: n, today, context, card, hl, who, signalText, o
     <article className={`note ${card ? "card" : ""} ${dismissed || expired ? "dim" : ""} ${hl ? "hl" : ""}`} id={`note-${n.id}`} data-note={n.id}>
       <div className="nh">
         <span className={`pd ${polarityCls(n.polarity)}`} title={`polaryzacja: ${POLARITY_WORD[n.polarity] ?? n.polarity}`} />
-        {context === "list" && who && <span className="who">{onWho ? <button className="lnk who-btn" onClick={(e) => { e.stopPropagation(); onWho(); }}>{who.name}</button> : who.name}{who.sym && <span className="sym">{who.sym}</span>}</span>}
+        {context === "list" && who && (who.inst
+          ? <span className="who"><InstLabel density="inline" inst={who.inst} text={who.name} onOpen={onWho ? () => onWho() : undefined} /></span>
+          : <span className="who">{onWho ? <button className="lnk who-btn" onClick={(e) => { e.stopPropagation(); onWho(); }}>{who.name}</button> : who.name}{who.sym && <span className="sym">{who.sym}</span>}</span>)}
         <KindTag kind={n.kind} />
         <Strength value={n.strength} />
         <RelationChip relation={n.thesis_relation} />
@@ -158,7 +161,9 @@ export function CandidateCard({ note: n, compact, today, state, busy, onWatch, o
   return (
     <div className={`cand ${dismissed ? "dim" : ""}`} data-note={n.id}>
       <div className="ch">
-        <span className="nm">{name}{sym && <span className="sym">{sym}</span>}</span>
+        <InstLabel density="compact" card={false} text={name}
+          inst={{ id: n.id, label: name, symbol: n.instrument?.symbol ?? n.candidate?.symbol ?? null, name }}
+          sub={micName(n.instrument?.mic ?? n.candidate?.exchange) ?? (sym && !(n.instrument?.symbol ?? n.candidate?.symbol) ? sym : undefined)} />
         <span className="spacer" />
         {entry && <span className="tag">{entry}</span>}
       </div>

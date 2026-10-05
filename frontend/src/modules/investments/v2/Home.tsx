@@ -26,7 +26,7 @@ import {
 } from "../api";
 import { AccountDrawer, ImportDrawer, ProposalDrawer, ThesisDrawer, TxnDrawer, TxnsDrawer } from "../Drawers";
 import { storedKey, useStored } from "../hooks";
-import { accountLabel, dm, hm, isoDate, money, money0, pct, plural, pp, RUN_STATUS, WEEKDAYS, wdm } from "../labels";
+import { accountLabel, dm, hm, isGenericBucket, isoDate, money, money0, pct, plural, pp, RUN_STATUS, WEEKDAYS, wdm } from "../labels";
 import { runError } from "../logic";
 import { makeUndo, UNDO_WINDOW_MS, undoMessage, undoSettled } from "../undo";
 import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
@@ -35,7 +35,7 @@ import { AssetDrawer } from "./AssetDrawer";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
 import {
-  daysSince, instName, isDigestDay, nextContribution, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, signalPlace, staleBenchmark,
+  benchmarkLabel, daysSince, instName, isDigestDay, nextContribution, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, signalPlace, staleBenchmark,
 } from "./logic";
 import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, DrawdownWidget, ValueChartWidget } from "./Perf";
@@ -347,7 +347,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   if (route === "alerts") {
     return (
       <>
-        <AlertsManager slug={slug} instruments={instruments} buckets={strategy?.facts?.buckets ?? overview.allocation.buckets.map((b) => b.bucket_id)}
+        <AlertsManager slug={slug} instruments={instruments} buckets={(strategy?.facts?.buckets ?? overview.allocation.buckets.map((b) => b.bucket_id)).filter(isGenericBucket)}
           digestWeekday={weekday} onBack={() => go()} initial={params} onChanged={reload} />
         {drawers}
       </>
@@ -451,7 +451,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       </div>
       <div className="hf">
         <Fact label="Od początku roku" value={ytd?.summary?.twr != null ? pct(ytd.summary.twr, true) : "-"} title={ybStale?.title}
-          detail={ybStale ? ybStale.label : yb?.twr != null ? <>{yb.id ?? "benchmark"} {pct(yb.twr, true)}{yb.excess_twr != null && <> · <span className={yb.excess_twr >= 0 ? "pos" : "neg"}>{pp(yb.excess_twr * 100)}</span></>}</> : ytd === null ? "brak historii" : undefined} />
+          detail={ybStale ? ybStale.label : yb?.twr != null ? <>{benchmarkLabel(yb)} {pct(yb.twr, true)}{yb.excess_twr != null && <> · <span className={yb.excess_twr >= 0 ? "pos" : "neg"}>{pp(yb.excess_twr * 100)}</span></>}</> : ytd === null ? "brak historii" : undefined} />
         <Fact label="Wynik niezrealizowany" value={money0(k.unrealized.amount, base, true)} detail={k.unrealized.pct != null ? `${pct(k.unrealized.pct, true)} od kosztu` : "koszt nieznany"} />
         <Fact label="Gotówka" value={pct(k.cash.weight)} detail={`${money0(k.cash.amount, base)}${cashTarget != null ? ` · cel ${Math.round(cashTarget * 100)} %` : ""}`} />
         {ddNow != null && <Fact label="Od szczytu" value={pct(ddNow)} detail={peak ? `szczyt ${dm(peak)}` : undefined} />}

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { copyText, Tag, useToast } from "../../ui";
 import { type AccountRow, type BucketMatch, type Instrument, type Position, type StrategyStatus } from "./api";
 import {
-  accountLabel, ASSET_CLASS, bucketLabel, dm, money, pct, plural, qty, REGION, region as regionLabel, VALUATION,
+  accountLabel, ASSET_CLASS, bucketLabel, dm, isGenericBucket, money, pct, plural, qty, REGION, region as regionLabel, VALUATION,
 } from "./labels";
 import { type WarningItem } from "./logic";
 
@@ -49,7 +49,9 @@ function ClassifyItem({ i, pos, strategy, accounts, onSave, focus }: {
   onSave: (i: Instrument, patch: { asset_class: string; region: string | null; valuation_mode: string; tags: string[] }) => Promise<void>; focus: boolean;
 }) {
   const toast = useToast();
-  const matches = strategy?.facts?.bucket_matches ?? [];
+  // Generic buckets only (F7-generic): the owner's own buckets are not named in the app; without a generic one
+  // the bucket row is not shown (class, region and valuation still save).
+  const matches = (strategy?.facts?.bucket_matches ?? []).filter((m) => isGenericBucket(m.id));
   const [cls, setCls] = useState(i.asset_class);
   const [reg, setReg] = useState(i.region ?? "");
   const [mode, setMode] = useState(i.valuation_mode ?? "market");
@@ -105,7 +107,7 @@ function ClassifyItem({ i, pos, strategy, accounts, onSave, focus }: {
             {Object.entries(VALUATION).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
-        <div className="fr">
+        {matches.length > 0 && <div className="fr">
           <label htmlFor={`cb-${i.id}`}>Koszyk</label>
           <select id={`cb-${i.id}`} value={bucket} onChange={(e) => pickBucket(e.target.value)} disabled={!matches.length}>
             <option value="">{matches.length ? "bez koszyka" : "brak strategii"}</option>
@@ -117,7 +119,7 @@ function ClassifyItem({ i, pos, strategy, accounts, onSave, focus }: {
           )}
           {chosen && chosen.tags.length > 0 && <span className="muted" style={{ fontSize: 12 }}>doda tag {chosen.tags.join(", ")}</span>}
           {!classOk && <span style={{ fontSize: 12, color: "var(--warn)" }}>koszyk wymaga klasy {chosen!.asset_class.map((c) => ASSET_CLASS[c] ?? c).join(" / ")}</span>}
-        </div>
+        </div>}
         <div className="fr">
           <button className="btn primary" onClick={save} disabled={busy || !classOk}>{busy ? "Zapisuję…" : "Zapisz"}</button>
           {strategy?.version != null && <button className="btn" onClick={propose} title="Kopiuje polecenie dla agenta">Zaproponuj zmianę</button>}
