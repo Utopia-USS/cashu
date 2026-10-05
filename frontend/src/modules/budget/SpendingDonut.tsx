@@ -5,7 +5,7 @@ import type { SpendRow } from "./api";
 
 interface Slice extends SpendRow { members?: SpendRow[] }
 
-export function SpendingDonut({ rows, onDrill }: { rows: SpendRow[]; onDrill: (category: string, label: string) => void }) {
+export function SpendingDonut({ rows, currency, onDrill }: { rows: SpendRow[]; currency: string; onDrill: (category: string, label: string) => void }) {
   const [showRest, setShowRest] = useState(false);
   const total = rows.reduce((s, r) => s + r.amount, 0);
   const roundPct = (a: number) => (total ? Math.round((a / total) * 100) : 0);
@@ -22,7 +22,7 @@ export function SpendingDonut({ rows, onDrill }: { rows: SpendRow[]; onDrill: (c
     <div className={`legend-row clickable ${extra || ""}`} onClick={onClick}>
       <span className="swatch" style={{ background: c }} />
       <span>{r.label}</span>
-      <span className="num">{cur(r.amount)}</span>
+      <span className="num">{cur(r.amount, currency)}</span>
       <span className="num muted">{roundPct(r.amount)}%</span>
     </div>
   );
@@ -41,7 +41,7 @@ export function SpendingDonut({ rows, onDrill }: { rows: SpendRow[]; onDrill: (c
             </Pie>
             <Tooltip
               contentStyle={{ background: cssVar("--card"), border: `1px solid ${cssVar("--border")}`, borderRadius: 8, fontSize: 13 }}
-              formatter={(v, name) => [`${cur(v as number)} (${roundPct(v as number)}%)`, name as string] as [string, string]}
+              formatter={(v, name) => [`${cur(v as number, currency)} (${roundPct(v as number)}%)`, name as string] as [string, string]}
             />
           </PieChart>
         </ResponsiveContainer>
@@ -61,7 +61,7 @@ export function SpendingDonut({ rows, onDrill }: { rows: SpendRow[]; onDrill: (c
           }
           return <Row key={r.category} r={r} c={color(r, i)} onClick={() => onDrill(r.category, r.label)} />;
         })}
-        <div className="bd-sum"><div><span>Suma wydatków</span><b>{cur(total)}</b></div></div>
+        <div className="bd-sum"><div><span>Suma wydatków</span><b>{cur(total, currency)}</b></div></div>
       </div>
     </div>
   );

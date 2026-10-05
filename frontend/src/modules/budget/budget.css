@@ -1,0 +1,19 @@
+/* Budget module: the month-close card (tokens only, both themes via index.css). */
+.mc-figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.mc-fig .l { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.mc-fig .v { font-size: 19px; font-weight: 650; margin-top: 4px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.mc-fig .v.nw { color: var(--nw); }
+.mc-fig .h { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.mc-cats { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.mc-cats b { color: var(--text); font-weight: 550; font-variant-numeric: tabular-nums; }
+.mc-cats .linkish { border: none; background: none; color: var(--nw); padding: 0; font: inherit; cursor: pointer; }
+.mc-all { margin-top: 8px; max-width: 520px; }
+.mc-all .legend-row { grid-template-columns: 1fr 120px 46px; }
+.mc-form { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.mc-form .row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
+.mc-form .field { margin-bottom: 8px; }
+.mc-form .accounts { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+.mc-form .accounts label { display: inline-flex; gap: 6px; align-items: center; }
+@media (max-width: 560px) {
+  .mc-fig .v { font-size: 17px; }
+}

@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Category } from "../../core/api";
 import { j } from "../../core/api";
-import { useSlug } from "../../core/context";
+import { useShell } from "../../core/context";
 import { cur } from "../../format";
 import { useAsync } from "../../hooks";
 import { Seg, Skeleton } from "../../ui";
 import type { DrillRow } from "./api";
 import { drillUrl, getCashflow, getSpending, postMerchantCategory, postTxnCategory } from "./api";
+import { CurrencySwitch, useBudgetCurrency } from "./currency";
+import { MPL } from "./logic";
 import { SpendingDonut } from "./SpendingDonut";
 
-const MPL = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 type Mode = "month" | "quarter" | "year" | "all";
@@ -27,8 +28,15 @@ function periodQuery(p: Period): string {
 interface Toast { text: string; action?: { label: string; run: () => void } }
 
 export function Expenses({ categories, onDataChanged }: { categories: Category[]; onDataChanged: () => void }) {
-  const slug = useSlug();
-  const { data: cashflow } = useAsync(() => getCashflow(slug, 240), [slug]);
+  const { slug, profile } = useShell();
+  const bc = useBudgetCurrency();
+  // `currency` null = the server has no currency list: ask without one (the base currency).
+  const currency = bc.currency;
+  const shown = currency ?? profile.base_currency;
+  const { data: cashflow } = useAsync(
+    () => (bc.ready ? getCashflow(slug, 240, currency) : Promise.resolve(null)),
+    [slug, bc.ready, currency],
+  );
   const labelFor = useMemo(() => {
     const m = new Map(categories.map((c) => [c.key, c.label]));
     return (k: string) => m.get(k) ?? k;
@@ -80,7 +88,12 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
   }, [mode, period]);
 
   const qs = periodQuery(period);
-  const { data: spending, reload: reloadSpending } = useAsync(() => getSpending(slug, qs), [slug, qs]);
+  // Rows carry their currency (formatting stays right while a currency switch loads).
+  const { data: spent, reload: reloadSpending } = useAsync(
+    () => (bc.ready ? getSpending(slug, qs, currency).then((rows) => ({ cur: shown, rows })) : Promise.resolve(null)),
+    [slug, qs, bc.ready, currency],
+  );
+  const spending = spent?.rows ?? null;
 
   const canNav = mode !== "all";
   const step = (d: number) => {
@@ -102,8 +115,8 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
   const [sort, setSort] = useState("date");
   const [order, setOrder] = useState("desc");
   const { data: drillRows, reload: reloadDrill } = useAsync(
-    () => (drill ? j<DrillRow[]>(drillUrl(slug, drill.key, { sort, order, ...period })) : Promise.resolve([] as DrillRow[])),
-    [drill?.key, sort, order, qs],
+    () => (drill ? j<DrillRow[]>(drillUrl(slug, drill.key, { sort, order, currency: currency ?? "", ...period })) : Promise.resolve([] as DrillRow[])),
+    [drill?.key, sort, order, qs, currency],
   );
 
   const [toast, setToast] = useState<Toast | null>(null);
@@ -146,6 +159,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
         <div className="controls">
           <strong style={{ fontSize: 14 }}>Na co idą pieniądze</strong>
           <span className="spacer" />
+          <CurrencySwitch bc={bc} />
           <Seg<Mode>
             items={[["Miesiąc", "month"], ["Kwartał", "quarter"], ["Rok", "year"], ["Wszystko", "all"]]}
             value={mode} onChange={switchMode}
@@ -157,7 +171,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
           </span>
         </div>
         {spending
-          ? <SpendingDonut rows={spending} onDrill={(key, l) => setDrill({ key, label: l })} />
+          ? <SpendingDonut rows={spending} currency={spent?.cur ?? shown} onDrill={(key, l) => setDrill({ key, label: l })} />
           : <Skeleton w="100%" h={340} />}
       </div>
 

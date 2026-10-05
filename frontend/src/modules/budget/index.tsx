@@ -3,13 +3,10 @@ import { cur } from "../../format";
 import { FactList, Kpi } from "../../ui";
 import { Expenses } from "./Expenses";
 import { Flows } from "./Flows";
+import { monthLabel } from "./logic";
 import { Subscriptions } from "./Subscriptions";
 
-const MPL = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
-const monthLabel = (ym: string) => {
-  const [y, m] = ym.split("-").map(Number);
-  return m ? `${MPL[m - 1]} ${y}` : ym;
-};
+// The overview's `summary.month` is in the profile's base currency (the server's budget default).
 
 export const budget: ModuleDef = {
   id: "budget",
@@ -28,11 +25,12 @@ export const budget: ModuleDef = {
   Kpis: ({ ctx }) => {
     const m = ctx.summary.month;
     if (ctx.state === "empty" || !m) return null;
+    const c = ctx.profile.base_currency;
     return (
       <Kpi
         label={`Wynik ${m.label}`}
-        value={cur(m.net)}
-        hint={`+${cur(m.income)} / -${cur(m.expense)}`}
+        value={cur(m.net, c)}
+        hint={`+${cur(m.income, c)} / -${cur(m.expense, c)}`}
         cls={m.net < 0 ? "neg" : "pos"}
       />
     );
@@ -46,7 +44,7 @@ export const budget: ModuleDef = {
       .map((a) => a.as_of).filter(Boolean).sort().slice(-1)[0];
     return (
       <FactList facts={[
-        ...(m ? [[`Wydatki ${monthLabel(m.label)}`, cur(m.expense)] as [string, string]] : []),
+        ...(m ? [[`Wydatki ${monthLabel(m.label)}`, cur(m.expense, ctx.profile.base_currency)] as [string, string]] : []),
         ["Subskrypcje", subs?.count ? `${subs.count}${totals ? ` · ${totals} / mies` : ""}` : "brak"],
         ["Ostatnie dane", asof ?? "-"],
       ]} />

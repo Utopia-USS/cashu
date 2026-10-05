@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Bar, Line, Tooltip } from "recharts";
 import { ScrollableChart } from "../../components/ScrollableChart";
-import { useSlug } from "../../core/context";
-import { cssVar, cur } from "../../format";
+import { useShell } from "../../core/context";
+import { cssVar, cur, cur0 } from "../../format";
 import { useAsync } from "../../hooks";
 import type { CashflowRow } from "./api";
 import { getCashflow } from "./api";
+import { CurrencySwitch, useBudgetCurrency } from "./currency";
+import { MonthCloseCard } from "./MonthClose";
 
 type Gran = "monthly" | "quarterly" | "yearly";
 
@@ -33,24 +35,39 @@ function aggregate(rows: CashflowRow[], gran: Gran): CashflowRow[] {
 }
 
 export function Flows() {
-  const slug = useSlug();
-  const { data } = useAsync(() => getCashflow(slug, 240), [slug]);
+  const { slug, profile } = useShell();
+  const bc = useBudgetCurrency();
+  const currency = bc.currency;
+  const shown = currency ?? profile.base_currency;
+  // The rows carry their currency, so the title and axis never label one currency's numbers with
+  // another while a switch is loading.
+  const { data: loaded } = useAsync(
+    () => (bc.ready ? getCashflow(slug, 240, currency).then((rows) => ({ cur: shown, rows })) : Promise.resolve(null)),
+    [slug, bc.ready, currency],
+  );
+  const data = loaded?.rows;
+  const dataCur = loaded?.cur ?? shown;
   const [gran, setGran] = useState<Gran>("monthly");
   const rows = aggregate(data ?? [], gran);
   const yValues = rows.flatMap((r) => [r.income, r.expense, r.net]).concat(0);
 
   const controls = (
+    <>
+    <CurrencySwitch bc={bc} />
     <select value={gran} onChange={(e) => setGran(e.target.value as Gran)} title="Agregacja">
       <option value="monthly">miesięcznie</option>
       <option value="quarterly">kwartalnie</option>
       <option value="yearly">rocznie</option>
     </select>
+    </>
   );
 
   return (
+    <>
+    <MonthCloseCard bc={bc} />
     <ScrollableChart
-      key={gran}
-      title="Przepływy (PLN)"
+      key={`${gran}:${dataCur}`}
+      title={`Przepływy (${dataCur})`}
       controls={controls}
       data={rows}
       yValues={yValues}
@@ -58,10 +75,11 @@ export function Flows() {
       ranges={RANGES[gran]}
       fullSpan={rows.length}
       defaultRange={DEFAULT_RANGE[gran]}
+      yTickFormatter={(v) => cur0(v, dataCur)}
       tooltip={
         <Tooltip
           contentStyle={{ background: cssVar("--card"), border: `1px solid ${cssVar("--border")}`, borderRadius: 8, fontSize: 13 }}
-          formatter={(v, name) => [cur(v as number), name as string] as [string, string]}
+          formatter={(v, name) => [cur(v as number, dataCur), name as string] as [string, string]}
         />
       }
     >
@@ -73,5 +91,6 @@ export function Flows() {
       <Bar dataKey="expense" name="Wydatki" fill={cssVar("--neg")} isAnimationActive={false} />
       <Line type="monotone" dataKey="net" name="Wynik" stroke={cssVar("--net")} strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
     </ScrollableChart>
+    </>
   );
 }
