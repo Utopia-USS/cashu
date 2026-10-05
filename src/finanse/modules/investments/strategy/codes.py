@@ -32,7 +32,8 @@ _TEMPLATES: tuple[tuple[str, str], ...] = (
     ),
     ("yaml_too_deep", r"Invalid YAML: the document is nested too deeply$"),
     ("yaml_too_deep", r"strategy\.yaml is nested too deeply \(max (?P<max>\d+) levels\)$"),
-    ("yaml_invalid", r"Invalid YAML: (?P<problem>.+)$"),
+    # the problem is the first line; PyYAML may add lines naming the stream and a position
+    ("yaml_invalid", r"Invalid YAML: (?P<problem>[^\n]+)(?s:\n.*)?$"),
     ("yaml_alias", r"YAML anchors and aliases \(& and \*\) are not supported$"),
     ("yaml_merge_key", r"YAML merge keys \(<<\) are not supported$"),
     ("yaml_tag", r"Unsupported YAML tag (?P<tag>\S+)$"),

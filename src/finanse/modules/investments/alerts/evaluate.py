@@ -40,6 +40,7 @@ from ..rules.expr import Scope, compile_expression
 from ..rules.kinds.support import (
     RATIO_EPSILON,
     InstrumentPosition,
+    bucket_named,
     decimal_text,
     format_decimal,
     format_pct,
@@ -405,9 +406,12 @@ def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
             return _skip(alert, f"{no_allocation_problem(bucket)} (czy jest w strategii?)")
         if allocation.cash_history_gap:
             return _skip(
-                alert, f"Niepełna historia gotówki: wartość koszyka {bucket} nieznana"
+                alert,
+                f"Niepełna historia gotówki: wartość {bucket_named('koszyka', bucket)} nieznana",
             )
-        weight, subject = allocation.weight, f"Koszyk {bucket}"
+        # The bucket id (no display label in the backend), only for a generic bucket: the owner's
+        # own bucket is never named in owner-facing text (the payload keeps ``bucket_id``).
+        weight, subject = allocation.weight, bucket_named("Koszyk", bucket)
     else:
         instrument = alert.instrument
         if instrument is None:

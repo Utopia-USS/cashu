@@ -21,6 +21,7 @@ from .support import (
     NO_ALLOCATIONS,
     RATIO_EPSILON,
     bucket_cash_gap_problem,
+    bucket_named,
     decimal_text,
     format_amount,
     format_pct,
@@ -159,7 +160,7 @@ class AllocationDriftRule:
             amount = f"{format_amount(abs(allocation.drift_value_base))} {currency}"
             gap = f"{amount} ponad cel" if over else f"do celu brakuje {amount}"
             message = (
-                f"Koszyk {bucket_id} {'powyżej' if over else 'poniżej'} celu o "
+                f"{bucket_named('Koszyk', bucket_id)} {'powyżej' if over else 'poniżej'} celu o "
                 f"{format_pp(abs(allocation.drift_pp))} ({format_pct(allocation.weight)} wobec "
                 f"{format_pct(allocation.target)}, {gap})."
             )

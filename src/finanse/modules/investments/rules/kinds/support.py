@@ -19,6 +19,7 @@ from finanse.modules.investments.domain import (
     InstrumentId,
     ValuedHolding,
     divided_by,
+    is_generic_bucket,
 )
 
 from ..kind import RuleContext
@@ -110,19 +111,26 @@ def unclassified_problem(ctx: RuleContext) -> str | None:
     )
 
 
+def bucket_named(word: str, bucket_id: str) -> str:
+    """``word`` plus the bucket id for a generic bucket (``Koszyk bonds``), ``word`` alone for the
+    owner's own bucket (``Koszyk``): owner-facing text (messages, skip reasons) never names a
+    non-generic bucket (F7 owner decision); payloads keep the id for the agent."""
+    return f"{word} {bucket_id}" if is_generic_bucket(bucket_id) else word
+
+
 NO_ALLOCATIONS = "Brak wyliczonej alokacji koszyków"
 """Skip reason when no bucket allocations exist (no strategy buckets, or nothing to allocate)."""
 
 
 def no_allocation_problem(bucket_id: str) -> str:
     """Why one bucket cannot be judged: no allocation was computed for it."""
-    return f"Brak alokacji koszyka {bucket_id}"
+    return f"Brak alokacji {bucket_named('koszyka', bucket_id)}"
 
 
 def bucket_cash_gap_problem(bucket_id: str) -> str:
     """Why one bucket's value is unknown: it holds negative cash (``BucketAllocation.cash_history_gap``)."""
     return (
-        f"Koszyk {bucket_id}: ujemna gotówka (brak wpłat w zaimportowanej "
+        f"{bucket_named('Koszyk', bucket_id)}: ujemna gotówka (brak wpłat w zaimportowanej "
         "historii), wartość nieznana"
     )
 

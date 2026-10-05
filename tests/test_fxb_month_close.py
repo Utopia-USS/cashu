@@ -133,3 +133,48 @@ def test_a_transfer_that_funds_spending_on_another_own_account_is_no_cushion_out
     # the account holds 6464.25 at the month end: the suggested amount leaves it at the target
     assert 5000 + 9000 - 4235.75 - 1300 - 2000 - pln["suggested_transfer"] == c["target"]
 
+
+IBAN_EUR = "99114000000000000000000002"  # the seeded own EUR account (eKonto EUR Test)
+IBAN_MAIN = "99114000000000000000000001"
+
+
+def test_a_transfer_to_an_own_account_in_another_currency_stays_an_outflow(api):
+    """F7 re-review B1 probe: 2000 PLN from the checking cushion to the own EUR account, 465 EUR spent
+    there. The EUR spending is in the EUR close, not in the PLN surplus, so nothing is added back:
+    the level drops by the 2000 and moving the suggested transfer out leaves the cushion at its target."""
+    from finanse.modules.budget import service as budget
+    from finanse.modules.budget.ingestion.normalize import RawTransaction
+    from finanse.modules.budget.ingestion.transfers import match_internal_transfers
+
+    _balance("mKonto Test", date(2026, 8, 31), "5000.00")
+    with get_session() as s:
+        main = s.exec(select(Account).where(Account.name == "mKonto Test")).one()
+        eur = s.exec(select(Account).where(Account.name == "eKonto EUR Test")).one()
+
+        def raw(day: int, amount: str, ref: str, iban: str | None, cur: str) -> RawTransaction:
+            return RawTransaction(
+                booking_date=date(2026, 9, day), amount=Decimal(amount), currency=cur,
+                counterparty_iban=iban, reference=ref, source=Source.CSV,
+            )
+
+        budget.ingest_transactions(
+            s, main, [raw(10, "-2000.00", "WYMIANA WALUT", IBAN_EUR, "PLN")], source=Source.CSV
+        )
+        budget.ingest_transactions(
+            s, eur,
+            [raw(10, "465.00", "WYMIANA WALUT", IBAN_MAIN, "EUR"),
+             raw(15, "-465.00", "HOTEL TEST", None, "EUR")],
+            source=Source.CSV,
+        )
+        match_internal_transfers(s, profile_id=main.profile_id)
+        budget.categorize_all(s, profile_id=main.profile_id)
+        s.commit()
+        main_id = main.id
+    _put(api, {"enabled": True, "target_amount": 5000, "account_ids": [main_id]})
+    close = api.get(SEPT).json()
+    c, pln = close["cushion"], _pln(close)
+    assert c["balance"] == 3740.0 - 2000.0 and c["missing"] == 3260.0
+    assert pln["surplus"] == 4724.25 and pln["cushion_top_up"] == 3260.0
+    assert pln["suggested_transfer"] == 1464.25
+    # the account holds 6464.25 at the month end: the suggested amount leaves it at the target
+    assert 5000 + 9000 - 4235.75 - 1300 - 2000 - pln["suggested_transfer"] == c["target"]

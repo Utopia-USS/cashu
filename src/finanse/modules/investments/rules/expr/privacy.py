@@ -8,7 +8,9 @@ kept only when it is clearly not money:
 - a literal inside a comparison whose metrics are all ratios, percentage points, days or counts
   (``weight < 0.03``, ``days_since_last_deposit > 45``), or prices of a public instrument (a market
   level, ``last_close > 120``), unless a literal is scaled into an amount (added to / multiplied with a
-  price, or a factor other than 1 / 100 on any metric: ``last_close * 40 > 5000``).
+  price, or a factor other than 1 / 100 on any metric: ``last_close * 40 > 5000``), or literals are
+  multiplied / divided by each other (``weight > 900 / 120000``, ``last_close > 5000 / 40``: an amount
+  over a total, a budget over a share count).
 
 Everything else is treated as an amount: a comparison with any amount metric (``cash_value``,
 ``total_value``, ``value``, ...), with an owner-named instrument's price, or without a metric. An
@@ -62,14 +64,25 @@ def _scaled(node: Node) -> bool:
     """True when a literal takes part in arithmetic that can turn the comparison into an amount
     (F7 review R7): any literal added to / multiplied with / divided by a price (``last_close * 40 >
     5000``: a position size), or a literal other than 1 / 100 multiplying or dividing any metric
-    (``weight * 120000 > 900``: the owner's total value). Conservative: false positives only scrub a
-    literal that was safe."""
+    (``weight * 120000 > 900``: the owner's total value), or literals multiplied / divided by each
+    other with no metric between them (``weight > 900 / 120000``, ``last_close > 5000 / 40``; F7
+    re-review B4) unless every one of them is 1, 100 or a percent. Conservative: false positives only
+    scrub a literal that was safe."""
     stack = [node]
     while stack:
         current = stack.pop()
         if isinstance(current, Call):
             continue
         if isinstance(current, Binary):
+            if (
+                current.op in ("*", "/")
+                and not _units(current.left)
+                and not _units(current.right)
+                and any(
+                    n.value not in _SCALE_OK and not n.text.endswith("%") for n in _numbers(current)
+                )
+            ):
+                return True
             for side, other in ((current.left, current.right), (current.right, current.left)):
                 literals, units = _numbers(side), _units(other)
                 if not literals or not units:

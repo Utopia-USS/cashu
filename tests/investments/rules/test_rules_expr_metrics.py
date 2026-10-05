@@ -179,7 +179,9 @@ class TestPortfolioMetrics:
             reasons(value("unclassified_weight", env=no_alloc))
             == "Brak wyliczonej alokacji koszyków"
         )
-        assert reasons(value("bucket_weight", "nope")) == "Brak alokacji koszyka nope"
+        # "nope" is not a generic bucket id: the reason does not name it (F7 re-review B5)
+        assert reasons(value("bucket_weight", "nope")) == "Brak alokacji koszyka"
+        assert reasons(value("bucket_weight", "crypto")) == "Brak alokacji koszyka crypto"
         value_with_new = portfolio([*SPECS, h(instrument("NEW"), value="3000")], cash="1000")
         unclassified = context(
             portfolio_value=value_with_new,

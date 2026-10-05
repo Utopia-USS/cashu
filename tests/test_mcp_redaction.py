@@ -347,3 +347,35 @@ def test_names_in_other_order_and_with_an_address():
     assert looks_like_person("ANNA NOWAK UL. POLNA 5 WARSZAWA")
     assert looks_like_person("JAN BAR")
     assert not looks_like_person("BAR MLECZNY POD ORLEM")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # the Polish price alert message (alerts/evaluate.py): the close date follows an amount
+        (
+            "IUSQ: zamknięcie 101,5 EUR (2026-10-01), powyżej 100 EUR.",
+            "IUSQ: zamknięcie [amount] (2026-10-01), powyżej [amount].",
+        ),
+        ("Cena (2026-10-01) wynosi", "Cena (2026-10-01) wynosi"),
+        (
+            "IUSQ closed at 101.5 EUR on 2026-10-01, above 100 EUR.",
+            "IUSQ closed at [amount] on 2026-10-01, above [amount].",
+        ),
+        # many protected dates (two-digit placeholder indexes) after a money word
+        (
+            "saldo 12 PLN " + " ".join(f"2025-{m:02d}-01" for m in range(1, 13)),
+            "saldo [amount] " + " ".join(f"2025-{m:02d}-01" for m in range(1, 13)),
+        ),
+    ],
+)
+def test_a_date_after_an_amount_stays_a_date_and_no_placeholder_leaks(text, expected):
+    """F7 re-review B3: the strict scrub never hands NUL / placeholder internals to the agent."""
+    out = scrub_text(text, strict=True)
+    assert out == expected
+    assert "\x00" not in out and not any("" <= ch <= "" for ch in out)
+    assert STRICT.apply({"message": L.text(text)})["message"] == expected
+
+
+def test_stray_nul_characters_never_reach_the_agent():
+    assert scrub_text("a\x00b 2026-10-01", strict=True) == "a[date]b 2026-10-01"

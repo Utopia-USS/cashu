@@ -56,6 +56,12 @@ def _privacy(pid: int, value: str) -> None:
         ("40 * last_close > 5000", "[amount] * last_close > [amount]"),
         ("weight * 100 > 5", None),  # a percent conversion keeps the ratio
         ("drawdown_from_high(252) / 2 > 0.1", "drawdown_from_high(252) / [amount] > [amount]"),
+        # F7 re-review B4: a literal fraction on the other side
+        ("weight > 900 / 120000", "weight > [amount] / [amount]"),
+        ("last_close > 5000 / 40", "last_close > [amount] / [amount]"),
+        ("weight > 5 * 0.01", "weight > [amount] * [amount]"),  # conservative
+        ("weight > 5% / 100", None),  # a percent and 1 / 100 stay
+        ("weight > 1 / 100", None),
     ],
 )
 def test_amount_literals(source, expected):

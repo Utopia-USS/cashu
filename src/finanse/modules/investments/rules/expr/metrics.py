@@ -22,6 +22,7 @@ from ..kinds.support import (
     NO_ALLOCATIONS,
     InstrumentPosition,
     bucket_cash_gap_problem,
+    bucket_named,
     cash_history_problem,
     has_all_tags,
     no_allocation_problem,
@@ -169,18 +170,22 @@ def _bucket_field(
     return resolve
 
 
+def _bucket_word(allocation: BucketAllocation) -> str:
+    return bucket_named("koszyka", allocation.bucket_id)
+
+
 def _allocation_value(allocation: BucketAllocation, field_name: str) -> Value:
     match field_name:
         case "weight":
-            return _ratio(allocation.weight, f"Waga koszyka {allocation.bucket_id} nieznana")
+            return _ratio(allocation.weight, f"Waga {_bucket_word(allocation)} nieznana")
         case "target":
-            return _ratio(allocation.target, f"Cel koszyka {allocation.bucket_id} nieznany")
+            return _ratio(allocation.target, f"Cel {_bucket_word(allocation)} nieznany")
         case "drift_pp":
-            return _ratio(allocation.drift_pp, f"Dryf koszyka {allocation.bucket_id} nieznany")
+            return _ratio(allocation.drift_pp, f"Dryf {_bucket_word(allocation)} nieznany")
         case "drift_rel":
             return _ratio(
                 allocation.drift_rel,
-                f"Względny dryf koszyka {allocation.bucket_id} nieokreślony (cel 0)",
+                f"Względny dryf {_bucket_word(allocation)} nieokreślony (cel 0)",
             )
         case "value":
             return allocation.value_base

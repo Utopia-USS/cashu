@@ -244,7 +244,9 @@ def cushion_level(
     booked after it) + the month's transfers on the account (in minus out); then, per own destination
     account outside the cushion, ``min(transferred out to it, spending booked on it in the month)`` is
     added back: that money funded the month's spending (a card repayment, a spending account, cash
-    spent from the cash pool), which the surplus already counts (F7 review R5). Without an earlier
+    spent from the cash pool), which the surplus already counts (F7 review R5). Only destinations in
+    the cushion's currency: spending in another currency is in that currency's close, not in this
+    surplus, so a transfer to an own EUR account stays an outflow of a PLN cushion. Without an earlier
     balance the start is the month-end balance minus the month's income and spending on the account.
     Moving the suggested transfer out of the cushion then leaves it at its target."""
     from .ingestion.normalize import iban_key
@@ -258,8 +260,10 @@ def cushion_level(
     at_start = networth.latest_balance_per_account(session, before, profile_id=profile_id)
     at_end = networth.latest_balance_per_account(session, month_end, profile_id=profile_id)
     cushion_ids = {a.id for a in accounts}
+    cushion_currencies = {a.currency for a in accounts}  # one: the cushion's (``_cushion_accounts``)
     profile_accounts = session.exec(select(Account).where(Account.profile_id == profile_id)).all()
     by_iban = {iban_key(a.iban): a.id for a in profile_accounts if a.iban}
+    currency_of = {a.id: a.currency for a in profile_accounts}
     sent: dict[int, Decimal] = {}
     level = ZERO
     for acc in accounts:
@@ -288,7 +292,11 @@ def cushion_level(
             if t.amount >= 0:
                 continue
             dest = _destination(session, t, by_iban)
-            if dest is not None and dest not in cushion_ids:
+            if (
+                dest is not None
+                and dest not in cushion_ids
+                and currency_of.get(dest) in cushion_currencies
+            ):
                 sent[dest] = sent.get(dest, ZERO) - t.amount
     for dest, amount in sent.items():
         spent = ZERO

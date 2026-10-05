@@ -66,13 +66,25 @@ def compose(text: str) -> Node | None:
             None if mark is None else mark.line + 1,
             None if mark is None else mark.column + 1,
         ) from None
+    except yaml.reader.ReaderError as error:  # a character YAML refuses (a control character)
+        line = column = None
+        if isinstance(error.position, int):
+            line = text.count("\n", 0, error.position) + 1
+            column = error.position - (text.rfind("\n", 0, error.position) + 1) + 1
+        raise YamlTreeError(f"Invalid YAML: {_first_line(error)}", line, column) from None
     except yaml.YAMLError as error:
-        raise YamlTreeError(f"Invalid YAML: {error}") from None
+        raise YamlTreeError(f"Invalid YAML: {_first_line(error)}") from None
     except RecursionError:
         raise YamlTreeError("Invalid YAML: the document is nested too deeply") from None
     if root is not None:
         _check(root)
     return root
+
+
+def _first_line(error: Exception) -> str:
+    """PyYAML's problem sentence: the first line of its message (the next lines name the stream and
+    a position, which the issue carries as line / column instead)."""
+    return str(error).strip().splitlines()[0] if str(error).strip() else "syntax error"
 
 
 def _prescan(text: str) -> None:

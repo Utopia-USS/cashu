@@ -8,7 +8,12 @@ from decimal import Decimal
 from sqlmodel import Session, select
 
 from finanse.core import profiles
-from finanse.core.accounts import get_account, get_or_create_account, upsert_balance
+from finanse.core.accounts import (
+    get_account,
+    get_or_create_account,
+    park_removed_key,
+    upsert_balance,
+)
 from finanse.core.institutions import MANUAL
 from finanse.core.models import Account, AccountType, Source, utcnow
 from finanse.core.text import normalize_iban
@@ -40,7 +45,7 @@ def set_loan(
     Payment matching (``payment_iban`` / ``payment_text``) is only changed when
     given.
     """
-    account = get_account(session, account_id, profile_id=profile_id)  # ValueError if not ours
+    account = _visible_account(session, account_id, profile_id)  # ValueError if not ours / removed
     _require_loan_type(account)
     loan = session.exec(select(Loan).where(Loan.account_id == account_id)).first()
     if loan is None:
@@ -63,6 +68,15 @@ def set_loan(
 
 def is_loan_account(account: Account) -> bool:
     return str(account.type) in LOAN_TYPES
+
+
+def _visible_account(session: Session, account_id: int, profile_id: int | None) -> Account:
+    """An account of the profile the owner has not removed (``removed_at``, F7 MB2: a removed account
+    is out of every view, so loan terms never attach to it); ValueError otherwise."""
+    account = get_account(session, account_id, profile_id=profile_id)
+    if account.removed_at is not None:
+        raise ValueError(f"No account with id {account_id}")
+    return account
 
 
 def _describe(account: Account) -> str:
@@ -89,11 +103,13 @@ def _account_by_reference(session: Session, pid: int, ref: int | str) -> Account
     """The account a loan should attach to, named explicitly by id or exact name."""
     text = str(ref).strip()
     if isinstance(ref, int) or text.isdigit():
-        account = get_account(session, int(text), profile_id=pid)
+        account = _visible_account(session, int(text), pid)
         _require_loan_type(account)
         return account
     named = list(session.exec(
-        select(Account).where(Account.profile_id == pid, Account.name == text).order_by(Account.id)
+        select(Account)
+        .where(Account.profile_id == pid, Account.name == text, Account.removed_at.is_(None))
+        .order_by(Account.id)
     ).all())
     if not named:
         raise ValueError(f"No account named '{text}' in this profile.")
@@ -111,10 +127,15 @@ def _account_for_new_loan(session: Session, pid: int, name: str) -> Account | No
     Only a mortgage/loan account with exactly this name qualifies; a property,
     savings or vehicle account never does (its value would be replaced by the
     schedule). When the manual key for this name is held by such an account, the
-    name is refused instead of reused."""
+    name is refused instead of reused. Removed accounts (F7 MB2) are not looked at: a removed one
+    holding the name key is parked aside, so the new loan gets a fresh account and the removed one
+    keeps its own terms for a restore."""
     key = f"manual:{name}"
+    park_removed_key(session, pid, MANUAL, key)
     rows = session.exec(
-        select(Account).where(Account.profile_id == pid).order_by(Account.id)
+        select(Account)
+        .where(Account.profile_id == pid, Account.removed_at.is_(None))
+        .order_by(Account.id)
     ).all()
     loanish = [a for a in rows if a.name == name and is_loan_account(a)]
     if len(loanish) > 1:
@@ -188,7 +209,7 @@ def get_loan(session: Session, loan_id: int, *, profile_id: int | None = None) -
     if loan is None:
         raise ValueError(f"No loan with id {loan_id}")
     try:
-        get_account(session, loan.account_id, profile_id=profile_id)
+        _visible_account(session, loan.account_id, profile_id)  # a removed account's loan is gone
     except ValueError:
         raise ValueError(f"No loan with id {loan_id}") from None
     return loan

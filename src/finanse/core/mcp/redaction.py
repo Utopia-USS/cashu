@@ -92,7 +92,15 @@ _YEAR_BEFORE = re.compile(
     r"(?i:\b(?:in|w|we|rok|roku|year|years|since|od|do|until|from|of|z|za|before|after|przed|po))\s+$"
 )
 _ISIN = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b")
-_PLACEHOLDER = "\u0000{}\u0000"
+# A protected date / ISIN is swapped for NUL + its index + NUL while the number rules run. The index is
+# written in private-use characters, not digits, so no number rule (``_MONEY_WORD`` after "[amount]",
+# a decimal, ...) can touch it (F7 re-review B3: the agent got NUL bytes instead of the date).
+_PLACEHOLDER_DIGITS = str.maketrans("0123456789", "".join(chr(0xE000 + d) for d in range(10)))
+_LEFTOVER = re.compile("\u0000[^\u0000]*\u0000|\u0000")
+
+
+def _placeholder(index: int) -> str:
+    return f"\u0000{str(index).translate(_PLACEHOLDER_DIGITS)}\u0000"
 
 
 def isin_valid(value: str) -> bool:
@@ -119,7 +127,7 @@ def _protect_dates(text: str, isins: frozenset[str] = frozenset()) -> tuple[str,
 
     def keep(m: re.Match) -> str:
         saved.append(m.group(0))
-        return _PLACEHOLDER.format(len(saved) - 1)
+        return _placeholder(len(saved) - 1)
 
     def keep_isin(m: re.Match) -> str:
         return keep(m) if m.group(0) in isins else m.group(0)
@@ -131,8 +139,9 @@ def _protect_dates(text: str, isins: frozenset[str] = frozenset()) -> tuple[str,
 
 def _restore_dates(text: str, saved: list[str]) -> str:
     for i, value in enumerate(saved):
-        text = text.replace(_PLACEHOLDER.format(i), value)
-    return text
+        text = text.replace(_placeholder(i), value)
+    # never hand placeholder internals to the agent: anything left becomes a clean "[date]"
+    return _LEFTOVER.sub("[date]", text) if "\u0000" in text else text
 
 
 def _big_int(m: re.Match) -> str:

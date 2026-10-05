@@ -12,6 +12,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from finanse.modules.investments.domain import is_generic_bucket
+
 from ..expr.catalog import METRICS, Scope, Unit
 from ..expr.checker import CompiledExpression, compile_expression
 from ..expr.evaluator import Evaluation, Unknown, Value, evaluate
@@ -183,12 +185,18 @@ class CustomRule:
         }
         if not evaluation.result:
             return NotFired(spec.id, key, details)
-        text = params.message or f"{CONDITION_MET}: {expression.normalized}"
+        # Owner-facing text never names a non-generic bucket (F7 owner decision; the payload keeps
+        # ``when``, ``values`` and ``bucket_id``): no condition text when it names one, no value of a
+        # metric naming one, and the ``Koszyk <id>: `` prefix only for a generic bucket (the id: buckets
+        # have no display label in the backend).
+        private = _private_labels(expression)
+        condition = CONDITION_MET if private else f"{CONDITION_MET}: {expression.normalized}"
+        text = params.message or condition
         if position is not None:
             text = f"{position.label}: {text}"
-        elif env.bucket_id is not None:
+        elif env.bucket_id is not None and is_generic_bucket(env.bucket_id):
             text = f"Koszyk {env.bucket_id}: {text}"
-        shown = _shown_values(evaluation, str(ctx.portfolio.base_currency))
+        shown = _shown_values(evaluation, str(ctx.portfolio.base_currency), hide=private)
         message = f"{text} ({shown})." if shown else f"{text}."
         return Fired(
             SignalCandidate(
@@ -228,10 +236,25 @@ def _json_value(label: str, value: Value) -> object:
     return decimal_text(value)
 
 
-def _shown_values(evaluation: Evaluation, currency: str) -> str:
+def _private_labels(expression: CompiledExpression) -> frozenset[str]:
+    """Labels of the metric uses that name a non-generic bucket (``bucket_weight("core")``)."""
+    private = {
+        (bucket, column)
+        for bucket, column in expression.bucket_references
+        if not is_generic_bucket(bucket)
+    }
+    return frozenset(
+        ref.label
+        for ref in expression.metrics
+        if any((arg, ref.column) in private for arg in ref.args if isinstance(arg, str))
+    )
+
+
+def _shown_values(evaluation: Evaluation, currency: str, hide: frozenset[str] = frozenset()) -> str:
     parts: list[str] = []
     for label, value in evaluation.values.items():
-        parts.append(f"{label} {_format(label, value, currency)}")
+        if label not in hide:
+            parts.append(f"{label} {_format(label, value, currency)}")
     return ", ".join(parts)
 
 

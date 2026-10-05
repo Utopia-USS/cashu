@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+import pytest
 from sqlmodel import select
 
 from finanse.core import profiles
@@ -205,3 +206,108 @@ LOAN_KEYS = ("account_id", "principal", "annual_rate", "term_months", "start_dat
 
 def _loans(api) -> list[dict]:
     return [{k: x[k] for k in LOAN_KEYS} for x in api.get("/api/loans").json()]
+
+
+def test_a_loan_under_a_removed_mortgages_name_gets_a_fresh_account(api):
+    from finanse.modules.loans import service as loans
+
+    mortgage = _by_name(api.get(MANUAL).json(), "Kredyt hipoteczny Test")
+    (original,) = _loans(api)
+    assert original["account_id"] == mortgage["id"] and original["principal"] == 400000.0
+    pln_before = api.get("/api/networth").json()["totals"]["PLN"]
+
+    assert api.delete(f"{MANUAL}/{mortgage['id']}").status_code == 200
+    assert _loans(api) == []
+    pln_removed = api.get("/api/networth").json()["totals"]["PLN"]
+    assert pln_removed > pln_before  # the mortgage debt is out of net worth
+
+    with get_session() as s:  # the /loans-setup flow (CLI service) with the same name
+        loan = loans.add_loan(
+            s,
+            principal=300000,
+            annual_rate=7.0,
+            term_months=300,
+            start_date=dt.date(2026, 1, 1),
+            name="Kredyt hipoteczny Test",
+            type="mortgage",
+        )
+        s.commit()
+        fresh_id = loan.account_id
+    assert fresh_id != mortgage["id"]
+    (new,) = _loans(api)
+    assert new["account_id"] == fresh_id and new["principal"] == 300000.0
+    assert new["annual_rate"] == 7.0 and new["start_date"] == "2026-01-01"
+    networth = api.get("/api/networth").json()
+    assert fresh_id in {a["id"] for a in networth["accounts"]}
+    assert mortgage["id"] not in {a["id"] for a in networth["accounts"]}
+    assert networth["totals"]["PLN"] < pln_removed  # the new debt counts
+
+    # restoring the old mortgage brings back ITS terms, never the new ones
+    assert api.post(f"{MANUAL}/{mortgage['id']}/restore").status_code == 200
+    restored = {x["account_id"]: x for x in _loans(api)}
+    assert restored[mortgage["id"]] == original
+    assert restored[fresh_id]["principal"] == 300000.0
+    with get_session() as s:
+        keys = {
+            a.id: a.external_id
+            for a in s.exec(select(Account).where(Account.name == "Kredyt hipoteczny Test"))
+        }
+    assert keys == {
+        fresh_id: "manual:Kredyt hipoteczny Test",
+        mortgage["id"]: f"manual:Kredyt hipoteczny Test~{mortgage['id']}",
+    }
+
+
+def test_loan_lookups_never_reach_a_removed_account(api):
+    from finanse.modules.loans import service as loans
+
+    mortgage = _by_name(api.get(MANUAL).json(), "Kredyt hipoteczny Test")
+    with get_session() as s:
+        (loan_id,) = [loan.id for loan, _ in loans.list_loans(s)]
+    api.delete(f"{MANUAL}/{mortgage['id']}")
+    with get_session() as s:
+        for call in (
+            lambda: loans.get_loan(s, loan_id),
+            lambda: loans.set_loan(s, mortgage["id"], 1, 1, 12, dt.date(2026, 1, 1)),
+            lambda: loans.add_loan(
+                s,
+                principal=1,
+                annual_rate=1,
+                term_months=12,
+                start_date=dt.date(2026, 1, 1),
+                account=mortgage["id"],
+            ),
+            lambda: loans.add_loan(
+                s,
+                principal=1,
+                annual_rate=1,
+                term_months=12,
+                start_date=dt.date(2026, 1, 1),
+                account="Kredyt hipoteczny Test",
+            ),
+        ):
+            with pytest.raises(ValueError, match="No (loan|account)"):
+                call()
+    api.post(f"{MANUAL}/{mortgage['id']}/restore")
+    with get_session() as s:
+        assert loans.get_loan(s, loan_id).principal == 400000
+
+
+def test_a_removed_property_does_not_block_a_loan_name(api):
+    """The mirror case: a removed property holding ``manual:<name>`` no longer refuses the loan name."""
+    from finanse.modules.loans import service as loans
+
+    flat = _by_name(api.get(MANUAL).json(), "Mieszkanie Test")
+    api.delete(f"{MANUAL}/{flat['id']}")
+    with get_session() as s:
+        loan = loans.add_loan(
+            s,
+            principal=1000,
+            annual_rate=5,
+            term_months=12,
+            start_date=dt.date(2026, 1, 1),
+            name="Mieszkanie Test",
+            type="loan",
+        )
+        s.commit()
+        assert loan.account_id != flat["id"]
