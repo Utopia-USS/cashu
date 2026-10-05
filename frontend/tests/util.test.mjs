@@ -61,3 +61,15 @@ test("R-09: a malformed hash segment does not throw", () => {
   assert.equal(decodeSegment("%zz"), null);
   assert.equal(decodeSegment("%E0%A4%A"), null);
 });
+
+test("F7 FE11: whole money never shows -0 and rounds instead of cutting decimals", async () => {
+  const { cur0s, round0 } = await import("../src/format.ts");
+  const { money0 } = await import("../src/modules/investments/labels.ts");
+  const nb = (s) => s.replace(/\s/g, " ");
+  assert.equal(nb(cur0s(-0.4)), "0 zł");
+  assert.equal(nb(cur0s(582986.99)), "582 987 zł");
+  assert.equal(nb(money0(-0.3)), "0 zł");
+  assert.equal(nb(money0(-0.3, "PLN", true)), "0 zł");
+  assert.equal(nb(money0(-12.6)), "-13 zł");
+  assert.ok(Object.is(round0(-0.2), 0));
+});

@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAsync } from "../../../../hooks";
 import { useToast } from "../../../../ui";
 import { errorText } from "../../../../core/messages";
-import { makeUndo, type Undo, undoMessage } from "../../undo";
+import { makeUndo, type Undo, undoMessage, undoSettled } from "../../undo";
 import { deleteWatch, postWatch } from "../api";
 import { acceptCandidate, dismissNote, getResearch, getResearchRuns, getResearchSummary, getWorkspace, restoreNote, unacceptCandidate } from "./api";
 import { isRestorable, latestRun, noteSubject } from "./logic";
@@ -99,7 +99,7 @@ export function useResearchActions(slug: string, onChanged: () => void) {
     noteUndos.set(key, u);
     const retry = () => {
       void u.undo().then((res) => {
-        if (res === "done") { noteUndos.delete(key); bumpResearch(); onChanged(); }
+        if (undoSettled(res)) { noteUndos.delete(key); bumpResearch(); onChanged(); }
         const msg = undoMessage(res, what);
         if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
       });

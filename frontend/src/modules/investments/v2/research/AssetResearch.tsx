@@ -14,6 +14,7 @@ import {
 } from "./logic";
 import { HealthPill, NoteCard, RelationChip, SentimentBars } from "./primitives";
 import type { HealthKey, ResearchNote } from "./types";
+import { localDay } from "../../../../time";
 
 const todayIso = () => {
   const t = new Date();
@@ -26,7 +27,7 @@ function useAssetHealth(p: AssetSlotProps) {
   const today = d.summary?.as_of?.slice(0, 10) ?? todayIso();
   const notes = d.notes ?? [];
   const from = windowStart(today, p.thesis?.updated_at ?? null);
-  const window = notes.filter((n) => !n.dismissed_at && !isExpired(n, today) && n.observed_at.slice(0, 10) >= from && n.kind !== "candidate");
+  const window = notes.filter((n) => !n.dismissed_at && !isExpired(n, today) && (localDay(n.observed_at) ?? "") >= from && n.kind !== "candidate");
   const researchedAt = d.row?.last_researched_at ?? null;
   const health: HealthKey = d.row?.health ? healthOf(d.row, today)
     : thesisHealth({ hasThesis: !!p.thesis, notes, today, thesisEditedAt: p.thesis?.updated_at ?? null, researchedAt });
@@ -40,7 +41,7 @@ export function AssetResearch(p: AssetSlotProps) {
   const [older, setOlder] = useState(false);
   const notes = useMemo(() => [...(r.notes ?? [])].sort((a, b) => b.observed_at.localeCompare(a.observed_at)), [r.notes]);
   const cutoff = addDays(r.today, -30);
-  const recent = notes.filter((n) => n.observed_at.slice(0, 10) >= cutoff && !isExpired(n, r.today) && (!n.dismissed_at || canRestore(n)));
+  const recent = notes.filter((n) => (localDay(n.observed_at) ?? "") >= cutoff && !isExpired(n, r.today) && (!n.dismissed_at || canRestore(n)));
   const old = notes.filter((n) => !recent.includes(n) && !n.dismissed_at);
   const hlId = p.noteId ? Number(p.noteId) : null;
 

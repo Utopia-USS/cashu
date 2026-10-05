@@ -70,7 +70,10 @@ export const MONTH_GEN = ["stycznia", "lutego", "marca", "kwietnia", "maja", "cz
 export const MONTH_NOM = ["styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec", "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień"];
 
 /** Whole money for facts: "186 401 zł". */
-export const cur0s = (v: number | null | undefined, c = "PLN"): string => (v == null || !Number.isFinite(v) ? "-" : cur0(Math.round(v), c));
+export const cur0s = (v: number | null | undefined, c = "PLN"): string => (v == null || !Number.isFinite(v) ? "-" : cur0(round0(v), c));
+
+/** Rounded to whole units without a negative zero: -0.4 -> 0 (never "-0 zł", F7 FE11). */
+export const round0 = (v: number): number => Math.round(v) || 0;
 
 /** Fraction -> "+1,2 %" (one decimal, sign for gains; the v2 fact style). */
 export function pctSigned(v: number | null | undefined, signed = true): string {

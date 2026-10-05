@@ -55,3 +55,18 @@ export function serialSaver<T>(
     },
   };
 }
+
+/** Monthly income / spending norm from complete months (F7 FE10): the average of up to `n` months before
+ * `today`'s month that have transactions. The running month is never the norm (early in the month its
+ * spending is a few days' worth and the salary may not be in). Null when no closed month has data. */
+export function closedMonthNorm(
+  rows: { label: string; income: number; expense: number }[] | null | undefined,
+  today: string,
+  n = 6,
+): { income: number; expense: number; months: number } | null {
+  const current = today.slice(0, 7);
+  const closed = (rows ?? []).filter((r) => r.label < current && (r.income !== 0 || r.expense !== 0)).slice(-n);
+  if (!closed.length) return null;
+  const avg = (f: (r: { income: number; expense: number }) => number) => closed.reduce((s, r) => s + f(r), 0) / closed.length;
+  return { income: avg((r) => r.income), expense: avg((r) => Math.abs(r.expense)), months: closed.length };
+}

@@ -177,7 +177,7 @@ function annuity(name: string, id: number, principal: number, rate: number, term
     schedule.push({ n, date, payment: r2(princ + interest), interest, principal: princ, balance: bal });
   }
   return {
-    id, name, has_loan: true, currency: "PLN", principal, annual_rate: rate, monthly_payment: pay,
+    id, name, has_loan: true, currency: "PLN", principal, annual_rate: r2(rate * 100), monthly_payment: pay, // percent, as the API
     outstanding: r2(outstanding), total_interest: r2(totalInterest), paid_interest: r2(paidInterest),
     payoff_date: schedule[schedule.length - 1].date, months_elapsed: elapsed,
     series: schedule.map((s) => ({ date: s.date, balance: s.balance })), schedule,

@@ -11,7 +11,7 @@ import { Facts, FootFacts, Widget } from "../../../widgets";
 import { dm, money0, pct, plural, pp } from "../labels";
 import { nextDeposit } from "../logic";
 import { getPerformance, type Performance, type PerfRange } from "./api";
-import { daysSince, monthlyFlows } from "./logic";
+import { daysSince, monthlyFlows, perfNotes, planMonthsSoFar } from "./logic";
 
 const RANGES: [string, PerfRange][] = [["1M", "1m"], ["3M", "3m"], ["YTD", "ytd"], ["1R", "1y"], ["3R", "3y"], ["Max", "max"]];
 const RANGE_TEXT: Record<PerfRange, string> = { "1m": "1 mies.", "3m": "3 mies.", ytd: "od początku roku", "1y": "12 mies.", "3y": "3 lata", max: "całość" };
@@ -23,10 +23,16 @@ const BENCH_NOTE: Record<string, string> = {
   proxy_not_found: "benchmark: nie znaleziono instrumentu", no_prices: "benchmark: brak notowań (finanse invest backfill)",
 };
 
-export function ValueChartWidget({ slug, accounts, initial }: { slug: string; accounts: number[] | null; initial?: Performance | null }) {
+export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
+  slug: string; accounts: number[] | null; initial?: Performance | null;
+  /** The page's reload counter: a reload (run, import, decision) re-reads the shown range (F7 FE7). */
+  nonce?: number;
+}) {
   const [range, setRange] = useState<PerfRange>("1y");
   const [table, setTable] = useState(false);
-  const q = useAsync(() => (range === "1y" && initial !== undefined ? Promise.resolve(initial) : getPerformance(slug, range, accounts)), [slug, range, accounts?.join(",")]);
+  // `initial` (Home's 1y series) is in the deps too: a reloaded 1y series replaces the shown one.
+  const q = useAsync(() => (range === "1y" && initial !== undefined ? Promise.resolve(initial) : getPerformance(slug, range, accounts)),
+    [slug, range, accounts?.join(","), nonce, range === "1y" ? initial : null]);
   const perf = q.data;
   const pts = perf?.points ?? [];
   const bench = perf?.benchmark;
@@ -36,6 +42,8 @@ export function ValueChartWidget({ slug, accounts, initial }: { slug: string; ac
   const lastV = pts.length ? pts[pts.length - 1].value : null;
   const lastB = pts.length ? pts[pts.length - 1].simulated_value : null;
   const benchName = bench?.id ?? bench?.proxy ?? "benchmark";
+  // What the backend says about the figures (incomplete days, implied funding, stale benchmark), F7 FE13.
+  const notes = perfNotes(perf);
   const xl = labelIndices(pts.length, 5).map((i) => ({ i, text: range === "1m" ? dm(pts[i].date) : monthYearShort(pts[i].date) }));
   const tip = (i: number) => {
     const p = pts[i];
@@ -92,6 +100,7 @@ export function ValueChartWidget({ slug, accounts, initial }: { slug: string; ac
           ]}
           tooltip={tip} />
       )}
+      {notes.length > 0 && <div className="muted dq" role="note" style={{ fontSize: 12, marginTop: 6 }}><b>Uwaga:</b> {notes.join(" · ")}</div>}
     </Widget>
   );
 }
@@ -133,8 +142,7 @@ export function ContributionsWidget({ perf, ytd, plan, today, fromBudget }: {
   // The plan counts from January or from the first deposit, whichever is later (a profile that started in
   // July has no "missed" months before it).
   const firstFlow = (perf?.points ?? []).find((p) => (p.flow ?? 0) > 0)?.date ?? null;
-  const fromMonth = firstFlow && firstFlow.slice(0, 4) === today.slice(0, 4) ? Number(firstFlow.slice(5, 7)) : 1;
-  const monthsSoFar = Math.max(1, Number(today.slice(5, 7)) - fromMonth + 1);
+  const monthsSoFar = planMonthsSoFar(firstFlow, today);
   const planYtd = plan ? plan.amount * monthsSoFar : null;
   const missed = plan ? months.slice(-monthsSoFar, curDone ? undefined : -1).filter((m) => m.value <= 0).length : 0;
   const next = nextDeposit(today, plan?.day ?? null);

@@ -18,7 +18,8 @@ import { AlertRow, removeAlertWithUndo } from "./Alerts";
 import { type Alert, getSignalsV2, type WatchItem } from "./api";
 import { ASSET_SLOTS, type AssetSlotProps, type AssetTimelineEntry, type ThesisField } from "./assetSlots";
 import { isResearchKind } from "./research/logic";
-import { instName, isDecided, polarityOf, price as priceText, signalText, weekChange } from "./logic";
+import { averageCost, instName, isDecided, polarityOf, price as priceText, signalText, weekChange } from "./logic";
+import { todayLocal } from "../../../time";
 import { SignalItem, type SignalsCtx } from "./Signals";
 
 const MONTHS: [string, number][] = [["6M", 6], ["1R", 12], ["2R", 24], ["Max", 120]];
@@ -135,7 +136,9 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   // Phone width: room for the level labels and fewer date labels under the chart.
   const small = typeof window !== "undefined" && window.matchMedia?.("(max-width: 640px)").matches;
   const lastTrig = mine.map((a) => a.last_triggered_at).filter(Boolean).sort().slice(-1)[0] ?? null;
-  const yearNow = new Date().toISOString().slice(0, 4);
+  const yearNow = todayLocal().slice(0, 4);
+  // All accounts, not the first one (F7 FE6); per-account cost stays in "Per rachunek".
+  const avgCost = pos ? averageCost(pos, ctx.base) : null;
 
   const head = (
     <section className="w ahead s2" aria-label={name}>
@@ -158,7 +161,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
           <div className="sep" aria-hidden />
           <div className="hfx">
             <div className="fact"><div className="l">Ilość</div><div className="v sm">{qty(pos.quantity)}</div></div>
-            <div className="fact"><div className="l">Śr. koszt</div><div className="v sm">{pos.accounts[0]?.average_cost != null ? money(pos.accounts[0].average_cost, pos.accounts[0].cost_currency) : "-"}</div></div>
+            <div className="fact"><div className="l">Śr. koszt</div><div className="v sm">{avgCost ? money(avgCost.value, avgCost.currency) : "-"}</div></div>
             <div className="fact"><div className="l">Wartość</div><div className="v sm">{money(pos.value, ctx.base)}</div>{pctOf != null && <div className="d">{pct(pctOf)} portfela</div>}</div>
             <div className="fact"><div className="l">Wynik</div><div className={`v sm ${(pos.unrealized ?? 0) >= 0 ? "pos" : "neg"}`}>{money0(pos.unrealized, ctx.base, true)}</div>
               <div className="d">{pct(pos.unrealized_pct, true)}{dividends.length ? ` · dywidendy ${dividends.map(([k, v]) => money0(v, k)).join(", ")}` : ""}</div></div>

@@ -4,13 +4,13 @@
 // ModuleDef.overview / HeroFact; a profile with only the investments module gets that module's minimal view
 // in the narrow frame. Every currency other than the base one keeps its own total (never converted).
 import { type ReactNode, useEffect, useState } from "react";
-import { cur, MONTH_GEN, nAccounts, nModules, pctSigned, TYPE_LABEL } from "../format";
+import { cur, cur0s, MONTH_GEN, nAccounts, nModules, pctSigned, TYPE_LABEL } from "../format";
 import { useAsync } from "../hooks";
 import { Empty } from "../ui";
 import { Fact, Grid, type GridItem, Widget } from "../widgets";
 import { getSeries, type ProfileModule } from "./api";
 import { useShell } from "./context";
-import { AccountsWidget, BudgetMonthWidget, PendingWidget, SubscriptionsWidget } from "./overview/CoreWidgets";
+import { AccountsWidget, BudgetMonthWidget, normTitle, PendingWidget, SubscriptionsWidget, useMonthNorm } from "./overview/CoreWidgets";
 import { NetWorthWidget } from "./overview/NetWorthWidget";
 import { moduleDef } from "./registry";
 import type { ModuleCtx, ModuleDef } from "./types";
@@ -20,8 +20,8 @@ const readHidden = (): Record<string, string> => {
   try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || "{}"); } catch { return {}; }
 };
 const LIQUID = new Set(["checking", "savings", "cash"]);
-/** Whole units for hero facts ("582 986 zł"). */
-const whole = (v: number, c: string) => cur(v, c).replace(/,\d\d(?=\s)/, "");
+/** Whole units for hero facts, rounded (582 986,99 -> "582 987 zł"; no "-0", F7 FE11). */
+const whole = (v: number, c: string) => cur0s(v, c);
 
 export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; enabled: ProfileModule[] }) {
   const { setNarrow } = useShell();
@@ -94,7 +94,9 @@ function NetHero({ base, mods }: { base: Omit<ModuleCtx, "state">; mods: { m: Pr
   const liabilities = accounts.filter((a) => a.is_liability && (a.balance ?? 0) !== 0 && a.currency === c);
   const liabNames = [...new Set(liabilities.map((a) => (TYPE_LABEL[a.type] ?? a.type).toLowerCase()))].slice(0, 2).join(", ");
   const liquid = accounts.filter((a) => LIQUID.has(a.type) && a.currency === c).reduce((s, a) => s + (a.balance ?? 0), 0);
-  const spend = base.summary.month?.expense ?? null;
+  // Months of spending over complete months, never the running one (F7 FE10).
+  const norm = useMonthNorm(base.slug, c);
+  const spend = norm?.expense ?? null;
   const hasHome = bd.property || bd.mortgage;
   const delta: ReactNode = change != null && prev ? (
     <>
@@ -114,7 +116,7 @@ function NetHero({ base, mods }: { base: Omit<ModuleCtx, "state">; mods: { m: Pr
         {bd.liabilities > 0 && <Fact label="Zobowiązania" value={whole(-bd.liabilities, c)} detail={liabNames || undefined} />}
         {hasHome ? <Fact label="Home equity" value={whole(bd.home_equity, c)} detail="nieruchomość - hipoteka" /> : null}
         {mods.filter(({ m, def }) => def.HeroFact && m.setup_state !== "empty").map(({ def, ctx }) => def.HeroFact && <def.HeroFact key={def.id} ctx={ctx} />)}
-        <Fact label="Płynne" value={whole(liquid, c)}
+        <Fact label="Płynne" value={whole(liquid, c)} title={spend && norm ? normTitle(norm) : undefined}
           detail={spend ? `${(liquid / spend).toLocaleString("pl-PL", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} mies. wydatków` : "konta i gotówka"} />
       </div>
       {others.length > 0 && (

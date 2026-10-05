@@ -4,6 +4,8 @@
 // (node strips the types; imports carry their .ts extension).
 import { bucketLabel, dm, money, money0, pct, pctTarget, plural, pp, WEEKDAY_INDEX } from "../labels.ts";
 import { isResearchKind, researchSignalText } from "./research/logic.ts";
+import { localDay, parseServerTime, serverDate } from "../../../time.ts";
+import { describePerfNote } from "../../../core/messages.ts";
 
 export type Polarity = "positive" | "negative" | "neutral";
 
@@ -317,15 +319,33 @@ export function weekChange(closes: { date: string; close: number }[] | null | un
   return null;
 }
 
+/** The move shown on a watchlist row: the week from 30-day closes, else the last session labelled "1 d."
+ * (never a daily move under "tydz.", F7 FE8). */
+export function watchMove(closes: { date: string; close: number }[] | null | undefined, change1d: number | null | undefined): { value: number; label: string } | null {
+  const wk = weekChange(closes);
+  if (wk != null) return { value: wk, label: "tydz." };
+  return change1d != null && Number.isFinite(change1d) ? { value: change1d, label: "1 d." } : null;
+}
+
 // ---- re-entry and change log ---------------------------------------------------------------------------
 
 export const REENTRY_DAYS = 21;
 
 /** Whole days between two instants (local calendar days). */
 export function daysSince(fromIso: string, toIso: string): number {
-  const a = new Date(fromIso), b = new Date(toIso);
+  const a = serverDate(fromIso) ?? new Date(NaN), b = serverDate(toIso) ?? new Date(NaN);
   const da = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate()), db = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
   return Math.round((db - da) / 86400000);
+}
+
+/** The re-entry baseline (F7 FE17): a pending baseline (kept in localStorage until "Wszystko jasne") wins;
+ * else the last visit when it is at least REENTRY_DAYS old, which becomes pending (`store`). `advance` says
+ * whether leaving the page may move the last-visit mark to now: never while a baseline is pending, so closing
+ * the window or switching tabs before "Wszystko jasne" keeps the catch-up view for the next window. */
+export function reentryBaseline(pending: string | null, lastSeen: string | null, now: string): { baseline: string | null; store: boolean; advance: boolean } {
+  if (pending) return { baseline: pending, store: false, advance: false };
+  if (lastSeen && daysSince(lastSeen, now) >= REENTRY_DAYS) return { baseline: lastSeen, store: true, advance: false };
+  return { baseline: null, store: false, advance: true };
 }
 
 /** "Wracasz po 11 tygodniach" / "po 4 miesiącach" / "po 25 dniach" (locative plural). */
@@ -366,19 +386,48 @@ export function groupByMonth<T extends EventLike>(events: T[], today: string): {
 export interface PointLike { date: string; value: number | null; twr: number | null; benchmark: number | null; simulated_value: number | null; flow: number | null; drawdown: number | null }
 
 /** Change from the newest point on/before `since` to the last point: TWR ratio (contributions-neutral),
- * the value change in money, and the benchmark's change over the same days. */
+ * the market change in money (value change minus the deposits / withdrawals in between, F7 FE6, as the
+ * hero's week move), and the benchmark's change over the same days. */
 export function changeSince(points: PointLike[], since: string): { pct: number | null; money: number | null; bench: number | null; from: string | null } {
   if (points.length < 2) return { pct: null, money: null, bench: null, from: null };
   let k = 0;
   for (let i = 0; i < points.length; i++) if (points[i].date <= since) k = i;
   const a = points[k], b = points[points.length - 1];
   const ratio = (x: number | null, y: number | null) => (x == null || y == null || 1 + x === 0 ? null : (1 + y) / (1 + x) - 1);
+  const flows = points.slice(k + 1).reduce((acc, p) => acc + (p.flow ?? 0), 0);
   return {
     pct: ratio(a.twr, b.twr),
-    money: a.value != null && b.value != null ? b.value - a.value : null,
+    money: a.value != null && b.value != null ? b.value - a.value - flows : null,
     bench: ratio(a.benchmark, b.benchmark),
     from: a.date,
   };
+}
+
+// ---- surplus -> contribution (Przegląd card, F7 FE5) -------------------------------------------------------
+
+/** Months of this year the monthly plan counts: from January, or from the month of the first deposit when
+ * that falls in this year (a profile that started in July has no missed months before it). Shared by the
+ * Wpłaty widget and the surplus card. */
+export function planMonthsSoFar(firstDeposit: string | null, today: string): number {
+  const fromMonth = firstDeposit && firstDeposit.slice(0, 4) === today.slice(0, 4) ? Number(firstDeposit.slice(5, 7)) : 1;
+  return Math.max(1, Number(today.slice(5, 7)) - fromMonth + 1);
+}
+
+/** Percentage points a contribution adds to a bucket at weight `w` (fraction) of a portfolio worth `total`:
+ * (w * T + a) / (T + a) - w = a * (1 - w) / (T + a). */
+export function contributionPp(amount: number, total: number, weight: number): number {
+  if (!(amount > 0) || !(total + amount > 0)) return 0;
+  return (amount * (1 - Math.min(1, Math.max(0, weight)))) / (total + amount) * 100;
+}
+
+/** The card's flow from the month close of one currency: what is left for investing after the cushion top-up
+ * (`suggested_transfer`, the budget card's "Na inwestycje"), what stays or is missing against the planned
+ * contribution, and the primary button amount = min(plan, available) (none when nothing is available). */
+export function surplusFlow(close: { surplus: number; cushion_top_up: number; suggested_transfer: number }, want: number | null) {
+  const available = Math.max(0, close.suggested_transfer);
+  const stays = want != null ? available - want : null;
+  const primary = want != null && want > 0 && available > 0 ? Math.min(want, available) : null;
+  return { available, topUp: close.cushion_top_up, stays, primary };
 }
 
 /** Deposits per calendar month (positive flows) for the last `months` months ending at `today`'s month. */
@@ -469,7 +518,7 @@ export function journalStats<
   S extends { first_seen_at: string | null; closed_at?: string | null; status: string; decisions: { created_at: string | null }[] },
   D extends { action: string; created_at: string | null },
 >(signals: S[], decisions: D[], year: string) {
-  const inYear = (iso: string | null | undefined) => !!iso && iso.slice(0, 4) === year;
+  const inYear = (iso: string | null | undefined) => !!iso && (localDay(iso) ?? "").slice(0, 4) === year;
   const ds = decisions.filter((d) => inYear(d.created_at));
   const byAction: Record<string, number> = {};
   for (const d of ds) byAction[d.action] = (byAction[d.action] ?? 0) + 1;
@@ -478,7 +527,7 @@ export function journalStats<
   const expired = seen.filter((s) => s.status === "expired" && !s.decisions.length).length;
   const days = decided.map((s) => {
     const first = s.decisions.map((d) => d.created_at).filter(Boolean).sort()[0] as string | undefined;
-    return first && s.first_seen_at ? Math.max(0, (Date.parse(first) - Date.parse(s.first_seen_at)) / 86400000) : null;
+    return first && s.first_seen_at ? Math.max(0, (parseServerTime(first) - parseServerTime(s.first_seen_at)) / 86400000) : null;
   }).filter((x): x is number => x != null).sort((a, b) => a - b);
   const median = days.length ? (days.length % 2 ? days[(days.length - 1) / 2] : (days[days.length / 2 - 1] + days[days.length / 2]) / 2) : null;
   return { decisions: ds.length, byAction, signals: seen.length, decided: decided.length, expired, medianDays: median };
@@ -502,4 +551,52 @@ export function signalLinkTarget<S extends { id: number; instrument_id: number |
   if (!s) return null;
   if (s.status === "active" || s.status === "acknowledged") return { kind: "open", id };
   return s.instrument_id != null ? { kind: "asset", id, instrumentId: s.instrument_id, status: s.status } : { kind: "journal", id, status: s.status };
+}
+
+// ---- asset header (F7 FE6) -----------------------------------------------------------------------------------
+
+/** The instrument's average cost over all its accounts: the quantity-weighted per-account average when every
+ * account keeps cost in the same currency, else the total cost in the base currency over the quantity. */
+export function averageCost(
+  pos: { quantity: number; cost: number | null; accounts: { quantity: number; average_cost: number | null; cost_currency: string }[] },
+  base: string,
+): { value: number; currency: string } | null {
+  const accs = pos.accounts.filter((a) => a.quantity > 0);
+  const cur = accs[0]?.cost_currency;
+  if (accs.length && accs.every((a) => a.average_cost != null && a.cost_currency === cur)) {
+    const q = accs.reduce((s, a) => s + a.quantity, 0);
+    if (q > 0) return { value: accs.reduce((s, a) => s + a.average_cost! * a.quantity, 0) / q, currency: cur! };
+  }
+  return pos.cost != null && pos.quantity > 0 ? { value: pos.cost / pos.quantity, currency: base } : null;
+}
+
+/** The benchmark figure next to the minimal hero's "od pierwszej wpłaty" (P/L over net contributions): the
+ * benchmark bought with the same deposits (`simulation.pnl` over the same net contributions), so both are the
+ * same measure; without a simulation the benchmark's TWR, labelled as such (F7 FE6). */
+export function heroBenchmark(
+  b: { status: string; id: string | null; twr: number | null; simulation: { pnl: number | null } | null } | null | undefined,
+  netContributions: number | null | undefined,
+): { value: number; label: string } | null {
+  if (!b || b.status !== "ok") return null;
+  const name = b.id ?? "benchmark";
+  if (b.simulation?.pnl != null && netContributions) return { value: b.simulation.pnl / netContributions, label: `${name}, te same wpłaty` };
+  return b.twr != null ? { value: b.twr, label: `${name}, TWR` } : null;
+}
+
+// ---- performance caveats (F7 FE13) -------------------------------------------------------------------------
+
+/** The caveats of a performance range in Polish (`data_quality.notes`), plus a stale benchmark tail flagged by
+ * `covers_range_end === false` when the server sent no `benchmark_stale` note. */
+export function perfNotes(perf: {
+  data_quality?: { notes?: { code: string; params?: Record<string, unknown> | null; message: string }[] } | null;
+  benchmark?: { status: string; covers_range_end?: boolean | null; last_priced?: string | null } | null;
+} | null | undefined): string[] {
+  if (!perf) return [];
+  const notes = perf.data_quality?.notes ?? [];
+  const out = notes.map((n) => describePerfNote(n)).filter(Boolean);
+  const b = perf.benchmark;
+  if (b?.status === "ok" && b.covers_range_end === false && !notes.some((n) => n.code === "benchmark_stale")) {
+    out.push(describePerfNote({ code: "benchmark_stale", params: { last_date: b.last_priced ?? null }, message: "benchmark ends early" }));
+  }
+  return [...new Set(out)];
 }

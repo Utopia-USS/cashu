@@ -12,6 +12,7 @@ import { ResearchPage } from "./Page";
 import { ReviewResearch, researchChanges, researchEffectLine } from "./ReviewBlock";
 import { ResearchStrip, type StripCtx } from "./Strip";
 import type { DigestResearch, ResearchNote } from "./types";
+import { localDay } from "../../../../time";
 
 export { AssetResearch, ResearchHeaderNote, ThesisFieldChip, ThesisHealth, useResearchTimeline } from "./AssetResearch";
 export { insertAfterAttention } from "./logic";
@@ -74,7 +75,7 @@ export function useResearchHome(input: ResearchHomeInput) {
   const changesRow = researchChanges({ digest: o.digestResearch, held, onJump: () => document.getElementById("inv-review-research")?.scrollIntoView({ behavior: "smooth", block: "start" }) });
 
   /** Review step 1 label `✓ Zmiany i research` when a run happened in the period. */
-  const ranInPeriod = o.digestResearch?.ran_in_period ?? (!!last && !!o.since && last.status !== "running" && last.started_at.slice(0, 10) >= o.since);
+  const ranInPeriod = o.digestResearch?.ran_in_period ?? (!!last && !!o.since && last.status !== "running" && (localDay(last.started_at) ?? "") >= o.since);
 
   /** Decision form line for an instrument with research since the last review. */
   const effect = (instrumentId: number): ReactNode => {

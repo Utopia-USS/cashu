@@ -2,17 +2,18 @@
 // retries a failed request, says "za późno" after the 15-minute window; and the alert delete undo through
 // BE's restore endpoint (F6 owner decision 2: delete with undo, the restore keeps the id). Pure apart from
 // the API calls passed in (tested in tests/investments-f6.test.mjs).
-import { makeUndo, type Undo, undoMessage } from "../undo.ts";
+import { makeUndo, type Undo, undoMessage, undoSettled } from "../undo.ts";
 
 type Toast = (text: string, ms?: number, action?: { label: string; onClick: () => void }) => void;
 
-/** Toast `text` with "Cofnij" for `u`; after the undo: `onDone` and "Cofnięto: what" (a failed request
- * offers "Cofnij" again, an expired one says it stays). */
-export function offerUndo(toast: Toast, text: string, u: Undo, what: string, onDone: () => void, ms = 10000): void {
+/** Toast `text` with "Cofnij" for `u`; after the undo: `onDone` and "Cofnięto: what" (+ `note()` when it
+ * returns a line; a failed request offers "Cofnij" again, an expired, gone or refused one does not). */
+export function offerUndo(toast: Toast, text: string, u: Undo, what: string, onDone: () => void, ms = 10000, note?: () => string | null): void {
   const retry = () => {
     void u.undo().then((res) => {
-      if (res === "done") onDone();
-      const msg = undoMessage(res, what);
+      if (undoSettled(res)) onDone();
+      const extra = res === "done" ? note?.() ?? null : null;
+      const msg = extra ? `${undoMessage(res, what)} · ${extra}` : undoMessage(res, what);
       if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
     });
   };

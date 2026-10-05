@@ -5,6 +5,7 @@ import { useSlug } from "../core/context";
 import { cur } from "../format";
 import { useAsync } from "../hooks";
 import { Skeleton } from "../ui";
+import { errorText } from "../core/messages";
 
 export function CashCard({ categories, onChanged }: { categories: Category[]; onChanged: () => void }) {
   const slug = useSlug();
@@ -27,11 +28,11 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
       if (res.error) { setErr(res.error); return; }
       setAmount(""); setTitle("");
       refresh();
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { setErr(errorText(e)); } finally { setBusy(false); }
   };
 
   const del = async (id: number) => {
-    try { await deleteCashTxn(slug, id); refresh(); } catch (e) { setErr((e as Error).message); }
+    try { await deleteCashTxn(slug, id); refresh(); } catch (e) { setErr(errorText(e)); }
   };
 
   const c = data?.currency || "PLN";

@@ -92,7 +92,11 @@ export interface SystemInfo {
   secrets?: Partial<Record<SecretKey, boolean>>;
 }
 
-export interface WorkerJob { job: string; module: string | null; status: string; detail: string | null; last_run?: string | null }
+export interface WorkerJob {
+  job: string; module: string | null; status: string; detail: string | null; last_run?: string | null;
+  /** F7: stable outcome code (`worker.<code>` in messages.ts) + params; `profile` = slug of the first problem. */
+  code?: string | null; params?: Record<string, unknown> | null; profile?: string | null;
+}
 export interface WorkerInfo {
   installed: boolean;
   last_run: string | null;
@@ -107,6 +111,15 @@ export interface WorkerInfo {
   job_path?: string | null;
   program?: string[] | null;
   jobs?: WorkerJob[];
+  /** F7 PK11: the worker / MCP config points at a program that moved or is gone (null = fine). */
+  relocation?: WorkerRelocation | null;
+}
+export interface WorkerRelocation {
+  /** missing: the configured program is gone; other_program: it points at another install; null: worker fine. */
+  worker: "missing" | "other_program" | null;
+  expected_program?: string | null;
+  app_moved_from?: string | null;
+  actions: string[];
 }
 
 export interface ModuleInfo { id: string; name: string; description: string; depends_on: string[]; available: boolean }

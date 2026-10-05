@@ -2,6 +2,7 @@
 // unit-tested with `npm test`. UI copy rules: Polish, sentence case, regular hyphens only,
 // percentages with one decimal and a space before "%", percentage points as "pp".
 import { cur, GROUP } from "../../format.ts";
+import { hmLocal, localIsoDate, serverDate } from "../../time.ts";
 
 const NBSP = " ";
 
@@ -41,8 +42,9 @@ export function money(v: number | null | undefined, c = "PLN", signed = false): 
 /** Whole money for hints: "11 600 zł". */
 export function money0(v: number | null | undefined, c = "PLN", signed = false): string {
   if (v == null || !Number.isFinite(v)) return "-";
-  const text = new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, maximumFractionDigits: 0, ...GROUP }).format(Math.round(v));
-  return signed && Math.round(v) > 0 ? `+${text}` : text;
+  const r = Math.round(v) || 0; // no negative zero: -0.3 zł is "0 zł", not "-0 zł" (F7 FE11)
+  const text = new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, maximumFractionDigits: 0, ...GROUP }).format(r);
+  return signed && r > 0 ? `+${text}` : text;
 }
 
 /** Quantity without trailing zeros: 120, 0,5, 1,234567. */
@@ -74,9 +76,9 @@ export const WEEKDAY_INDEX: Record<string, number> = {
 export function dateParts(iso: string): { y: number; m: number; d: number } | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return null;
-  if (iso.length > 10 && /T/.test(iso)) {
-    const t = new Date(iso);
-    if (!Number.isNaN(t.getTime())) return { y: t.getFullYear(), m: t.getMonth() + 1, d: t.getDate() };
+  if (iso.length > 10 && /[T ]\d/.test(iso)) {
+    const t = serverDate(iso);
+    if (t) return { y: t.getFullYear(), m: t.getMonth() + 1, d: t.getDate() };
   }
   return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
 }
@@ -100,16 +102,11 @@ export function wdm(iso: string | null | undefined): string {
   return `${WEEKDAY_SHORT[new Date(p.y, p.m - 1, p.d).getDay()]} ${dm(iso)}`;
 }
 
-/** "17:35" from an ISO datetime (local time). */
-export function hm(iso: string | null | undefined): string {
-  if (!iso || !/T/.test(iso)) return "";
-  const t = new Date(iso);
-  return Number.isNaN(t.getTime()) ? "" : `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
-}
+/** "17:35" from a server datetime (local time; a naive server value is UTC, see time.ts). */
+export const hm = hmLocal;
 
 /** Local calendar date "YYYY-MM-DD" of a Date. */
-export const isoDate = (t: Date): string =>
-  `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+export const isoDate = localIsoDate;
 
 // ---- Polish plurals ------------------------------------------------------------
 export function plural(n: number, one: string, few: string, many: string): string {

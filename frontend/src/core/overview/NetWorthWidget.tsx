@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { LineChart, StackedChart } from "../../charts";
 import { labelIndices } from "../../chart";
-import { cur, cur0, GROUP, monthYearShort, nwColorVar, pctSigned } from "../../format";
+import { cur, cur0, GROUP, monthYearShort, nwColorVar, pctSigned, round0 } from "../../format";
 import { useAsync } from "../../hooks";
 import { Seg } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
@@ -72,7 +72,7 @@ export function NetWorthWidget() {
       footer={
         <>
           <FootFacts items={[
-            y && <>12 mies. <b className={y.abs >= 0 ? "pos" : "neg"}>{y.abs >= 0 ? "+" : ""}{cur0(Math.round(y.abs), currency)}{y.pct != null ? ` (${pctSigned(y.pct)})` : ""}</b></>,
+            y && <>12 mies. <b className={y.abs >= 0 ? "pos" : "neg"}>{round0(y.abs) > 0 ? "+" : ""}{cur0(round0(y.abs), currency)}{y.pct != null ? ` (${pctSigned(y.pct)})` : ""}</b></>,
             yl && yl.pct != null && <>bez nieruchomości <b className={yl.pct >= 0 ? "pos" : "neg"}>{pctSigned(yl.pct)}</b></>,
           ]} />
           <span className="spacer" />

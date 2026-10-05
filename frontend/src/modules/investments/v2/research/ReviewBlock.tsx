@@ -13,6 +13,7 @@ import {
 import { CandidateCard } from "./primitives";
 import { NotRun, type StripCtx, ThemeRow, ThesisRow, themeSub } from "./Strip";
 import type { DigestResearch, ResearchNote, ResearchRun, ResearchSummary } from "./types";
+import { localDay } from "../../../../time";
 
 export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, onSettings }: {
   ctx: StripCtx; runs: ResearchRun[]; summary: ResearchSummary | null | undefined; candidates: ResearchNote[] | null | undefined;
@@ -22,7 +23,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   const actions = useResearchActions(ctx.slug, ctx.onChanged);
   const tag = runTag(runs, ctx.today);
   const last = latestRun(runs);
-  const ranInPeriod = digest?.ran_in_period ?? (!!last && last.started_at.slice(0, 10) >= since);
+  const ranInPeriod = digest?.ran_in_period ?? (!!last && (localDay(last.started_at) ?? "") >= since);
   if (!ranInPeriod) {
     const n = last ? runNotes(last) : null;
     return (
@@ -43,7 +44,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   const themes = (summary?.themes ?? []).filter((t) => themesChanged.some((c) => c.theme === t.theme));
   const restThemes = (summary?.themes ?? []).filter((t) => !themesChanged.some((c) => c.theme === t.theme));
   const candIds = new Set(digest?.candidates ?? []);
-  const cands = (candidates ?? []).filter((n) => candIds.size ? candIds.has(n.id) : n.observed_at.slice(0, 10) >= since);
+  const cands = (candidates ?? []).filter((n) => candIds.size ? candIds.has(n.id) : (localDay(n.observed_at) ?? "") >= since);
   const newC = cands.filter((n) => !n.dismissed_at).length, dismissedC = cands.filter((n) => n.dismissed_at).length;
   const run = digest?.run ?? last!;
   const mins = runMinutes(run);
@@ -140,7 +141,7 @@ export function researchEffectLine(o: {
     : c.weakens ? `${plural(c.weakens, "notatka osłabia", "notatki osłabiają", "notatek osłabia")} tezę`
     : c.supports ? `${plural(c.supports, "notatka wzmacnia", "notatki wzmacniają", "notatek wzmacnia")} tezę` : null;
   if (!rel && !changed) return null;
-  const day = new Date(`${last.started_at.slice(0, 10)}T12:00:00`).getDay();
+  const day = new Date(`${localDay(last.started_at)}T12:00:00`).getDay();
   const weekday = day === 6 ? "z soboty" : `z ${dm(last.started_at)}`;
   return { text: `research ${weekday}: ${rel ?? "bez zmian"}${latestTitle(row) ? ` (${latestTitle(row)})` : ""}`, weekday };
 }

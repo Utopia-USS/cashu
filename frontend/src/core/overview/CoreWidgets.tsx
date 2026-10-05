@@ -5,7 +5,9 @@ import { useState } from "react";
 import { CashCard } from "../../components/CashCard";
 import { cur, cur0s, MONTH_NOM, nModules, pctSigned, plural } from "../../format";
 import { useAsync } from "../../hooks";
-import { getCashflow, getMonthClose, getRecurring, type MonthClose } from "../../modules/budget/api";
+import { type CashflowRow, getCashflow, getMonthClose, getRecurring, type MonthClose } from "../../modules/budget/api";
+import { todayLocal } from "../../time";
+import { closedMonthNorm } from "../util";
 import { Drawer, Skeleton } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
 import type { Account, Category, ProfileModule } from "../api";
@@ -20,11 +22,33 @@ export function previousMonth(today: string): string {
   const d = new Date(y, m - 2, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
-const todayIso = () => new Date().toISOString().slice(0, 10);
+/** Local calendar date (the UTC date is yesterday between 00:00 and 02:00 in Poland, F7 FE11). */
+const todayIso = () => todayLocal();
 
 function useMonthClose(slug: string) {
   return useAsync<MonthClose | null>(() => getMonthClose(slug, previousMonth(todayIso())).catch(() => null), [slug]);
 }
+
+// The cashflow of the last 7 months, shared by the hero, Subskrypcje and Kredyty on one page (one request).
+const flowsCache = new Map<string, { at: number; p: Promise<CashflowRow[]> }>();
+function cashflow7(slug: string, currency: string): Promise<CashflowRow[]> {
+  const key = `${slug}:${currency}`;
+  const hit = flowsCache.get(key);
+  if (hit && Date.now() - hit.at < 4000) return hit.p;
+  const p = getCashflow(slug, 7, currency).catch(() => [] as CashflowRow[]);
+  flowsCache.set(key, { at: Date.now(), p });
+  return p;
+}
+
+/** Monthly income / spending of complete months (average of up to 6 before this one) in `currency`; the
+ * Przegląd ratios divide by it, never by the running month (F7 FE10). */
+export function useMonthNorm(slug: string, currency: string) {
+  const q = useAsync(() => cashflow7(slug, currency), [slug, currency]);
+  return closedMonthNorm(q.data, todayIso());
+}
+
+/** Tooltip of a ratio over the norm. */
+export const normTitle = (n: { months: number }) => `średnia z ${plural(n.months, "zamkniętego miesiąca", "zamkniętych miesięcy", "zamkniętych miesięcy")}`;
 
 /** Budżet · <month>: income / spending / surplus bars, savings rate, 6-month average. */
 export function BudgetMonthWidget({ ctx }: { ctx: ModuleCtx }) {
@@ -78,7 +102,8 @@ export function SubscriptionsWidget({ ctx }: { ctx: ModuleCtx }) {
   const base = ctx.profile.base_currency;
   const monthly = subs.monthly_totals[base] ?? Object.values(subs.monthly_totals)[0] ?? null;
   const monthlyCur = subs.monthly_totals[base] != null ? base : Object.keys(subs.monthly_totals)[0] ?? base;
-  const share = monthly != null && ctx.summary.month?.expense ? monthly / ctx.summary.month.expense : null;
+  const norm = useMonthNorm(ctx.slug, monthlyCur);
+  const share = monthly != null && norm?.expense ? monthly / norm.expense : null;
   const items = rec.data?.items ?? [];
   const now = Date.now();
   const soon = items.filter((i) => {
@@ -94,7 +119,7 @@ export function SubscriptionsWidget({ ctx }: { ctx: ModuleCtx }) {
       footer={stale.length ? <span className="warn">{plural(stale.length, "subskrypcja", "subskrypcje", "subskrypcji")} do sprawdzenia: brak obciążenia</span> : <span>wykryte z historii obciążeń</span>}>
       <div className="facts" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div className="fact"><div className="l">Miesięcznie</div><div className="v">{monthly != null ? cur0s(monthly, monthlyCur) : "-"}</div>
-          {share != null && <div className="d">{pctSigned(share, false)} wydatków</div>}</div>
+          {share != null && norm && <div className="d" title={normTitle(norm)}>{pctSigned(share, false)} wydatków</div>}</div>
         <div className="fact"><div className="l">W tym tygodniu</div><div className="v">{rec.data ? soon.length : "-"}</div>
           {soon.length > 0 && <div className="d">{soon.slice(0, 3).map((i) => i.payee).join(", ")}</div>}</div>
       </div>

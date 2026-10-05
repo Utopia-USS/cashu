@@ -16,9 +16,11 @@ import { changeSince, gapText, groupByMonth, isImportant, polarityOf, signalText
 
 // ---- review strip ---------------------------------------------------------------------------------------------
 
-export function ReviewStrip({ digest, step, onStep, decided, total, note, onNote, onDone, researchRan }: {
+export function ReviewStrip({ digest, step, onStep, decided, total, note, onNote, onDone, busy, researchRan }: {
   digest: DigestV2; step: number; onStep: (k: number) => void; decided: number; total: number;
   note: string; onNote: (v: string) => void; onDone: () => void;
+  /** The review is being saved (F7 FE2). */
+  busy?: boolean;
   /** A research run happened in the period: step 1 reads `Zmiany i research` (F6 research layer). */
   researchRan?: boolean;
 }) {
@@ -27,15 +29,15 @@ export function ReviewStrip({ digest, step, onStep, decided, total, note, onNote
   return (
     <section className="w review hl" aria-label="Przegląd tygodnia">
       <div className="title">Przegląd tygodnia <span className="muted" style={{ fontWeight: 500 }}>· {dm(digest.since)} - {dm(digest.as_of)}</span></div>
-      <div className="rsteps" role="tablist" aria-label="Kroki przeglądu">
-        <button role="tab" aria-selected={step === 0} className={step > 0 ? "done" : step === 0 ? "on" : ""} onClick={() => onStep(0)}>{step > 0 ? "✓" : "1"} {researchRan ? "Zmiany i research" : "Zmiany"}</button>
-        <button role="tab" aria-selected={step === 1} className={step > 1 ? "done" : step === 1 ? "on" : ""} onClick={() => onStep(1)}>{step > 1 ? "✓" : "2"} Sygnały <b>{decided} z {total}</b></button>
-        <button role="tab" aria-selected={step === 2} className={step === 2 ? "on" : ""} onClick={() => onStep(2)}>3 Zamknij</button>
+      <div className="rsteps" role="group" aria-label="Kroki przeglądu">
+        <button aria-current={step === 0 ? "step" : undefined} className={step > 0 ? "done" : step === 0 ? "on" : ""} onClick={() => onStep(0)}>{step > 0 ? "✓" : "1"} {researchRan ? "Zmiany i research" : "Zmiany"}</button>
+        <button aria-current={step === 1 ? "step" : undefined} className={step > 1 ? "done" : step === 1 ? "on" : ""} onClick={() => onStep(1)}>{step > 1 ? "✓" : "2"} Sygnały <b>{decided} z {total}</b></button>
+        <button aria-current={step === 2 ? "step" : undefined} className={step === 2 ? "on" : ""} onClick={() => onStep(2)}>3 Zamknij</button>
       </div>
       {last && <span className="muted" style={{ fontSize: 12 }}>poprzedni: {dm(last.done_at)}{minutes ? ` · ${minutes} min` : ""}</span>}
       <span style={{ flex: 1 }} />
-      <input id="inv-review-note" value={note} onChange={(e) => onNote(e.target.value)} placeholder="Notatka z przeglądu (opcjonalnie)" aria-label="Notatka z przeglądu" />
-      <button className="btn primary" onClick={onDone}>Zamknij przegląd</button>
+      <input id="inv-review-note" value={note} onChange={(e) => onNote(e.target.value)} placeholder="Notatka" aria-label="Notatka z przeglądu" />
+      <button className="btn primary" onClick={onDone} disabled={busy}>Zamknij przegląd</button>
     </section>
   );
 }
@@ -84,6 +86,10 @@ export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names
           <b className={market >= 0 ? "pos" : "neg"}>{money(market, c, true)}</b>{marketPct != null && <b> ({pct(marketPct, true)})</b>}
           <span className="s">{v.contributions ? ` · bez wpłat ${money0(v.contributions, c)}` : ""}{since.bench != null ? ` · ${benchName} ${pct(since.bench, true)}` : ""}{since.bench != null && since.pct != null ? <> · <b>{pp((since.pct - since.bench) * 100)}</b></> : ""}</span>
         </> : <><b>{money(v.now, c)}</b> <span className="s">· brak wyceny z początku okresu</span></>} />
+        {(!!v.transfers || !!v.implied_funding) && <Chg k="Przeniesienia" v={<>
+          {!!v.transfers && <b>{money(v.transfers, c, true)}</b>}
+          {!!v.implied_funding && <span className="s">{v.transfers ? " · " : ""}brakujące wpłaty {money0(v.implied_funding, c)}</span>}
+        </>} />}
         <Chg k="Sygnały" onKey={onSignals} v={sg.new.length || sg.resolved.length ? <>
           <b>{[sg.new.length && plural(sg.new.length, "nowy", "nowe", "nowych"), sg.resolved.length && plural(sg.resolved.length, "wygasł", "wygasły", "wygasło")].filter(Boolean).join(", ")}</b>
           {sg.new.length > 0 && <span className="s"> · nowe: {sigNames(sg.new as SignalV2[])}</span>}

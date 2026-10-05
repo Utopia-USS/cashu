@@ -9,9 +9,10 @@ import { Seg, Skeleton, useToast } from "../../../ui";
 import { FootFacts, Grid, PolarityText, PolDot, Widget } from "../../../widgets";
 import { type AccountRow, type Decision, deleteDecision, getDecisions } from "../api";
 import { DECISION_ACTION, dm, money, plural, qty } from "../labels";
-import { canUndo, makeUndo, type Undo, undoMessage } from "../undo";
+import { canUndo, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
 import type { InstrumentChoice } from "./Alerts";
 import { getSignalsV2, type SignalV2 } from "./api";
+import { localDay, parseServerTime, todayLocal } from "../../../time";
 import { groupByMonth, type JournalEntry, journalEntries, type JournalFilter, journalStats, polarityOf, signalText } from "./logic";
 
 const STATUS: Record<string, string> = { active: "otwarty", acknowledged: "potwierdzony", resolved: "rozwiązany", expired: "wygasł" };
@@ -34,7 +35,7 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
   const [only, setOnly] = useState<string>(initialInstrument ?? "");
   const [shown, setShown] = useState(PAGE);
   const undos = useRef(new Map<number, Undo>());
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const year = today.slice(0, 4);
 
   const names = useMemo(() => {
@@ -47,16 +48,16 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
   const decisions = dec.data ?? [];
   const entries = journalEntries(signals, decisions, filter, only || null);
   const stats = journalStats(signals, decisions, year);
-  const groups = groupByMonth(entries.slice(0, shown).map((e) => ({ ...e, date: e.at.slice(0, 10) })), today);
+  const groups = groupByMonth(entries.slice(0, shown).map((e) => ({ ...e, date: localDay(e.at) ?? e.at.slice(0, 10) })), today);
   const sigRows = signals.filter((s) => !only || String(s.instrument_id) === only).sort((a, b) => (b.first_seen_at ?? "").localeCompare(a.first_seen_at ?? ""));
 
   const undo = (d: Decision) => {
     let u = undos.current.get(d.id);
-    if (!u) { u = makeUndo(Date.parse(d.created_at ?? "") || Date.now(), () => deleteDecision(slug, d.id)); undos.current.set(d.id, u); }
+    if (!u) { u = makeUndo(parseServerTime(d.created_at) || Date.now(), () => deleteDecision(slug, d.id)); undos.current.set(d.id, u); }
     void u.undo().then((res) => {
       const msg = undoMessage(res, "decyzja");
       if (msg) toast(msg, res === "failed" ? 6000 : 3000);
-      if (res === "done") { setNonce((n) => n + 1); onChanged(); }
+      if (undoSettled(res)) { setNonce((n) => n + 1); onChanged(); }
     });
   };
 

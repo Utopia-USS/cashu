@@ -3,7 +3,7 @@
 // each with its own undo). Run with `npm test`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canUndo, isExpired, makeUndo, UNDO_WINDOW_MS, undoMessage } from "../src/modules/investments/undo.ts";
+import { canUndo, isExpired, makeUndo, UNDO_WINDOW_MS, undoFailure, undoMessage, undoSettled } from "../src/modules/investments/undo.ts";
 import { dropToast, MAX_TOASTS, pushToast } from "../src/toasts.ts";
 
 test("an undo runs the server request at most once", async () => {
@@ -50,6 +50,27 @@ test("a 409 from the server means too late; other failures can be retried", asyn
   assert.equal(undoMessage("already", "x"), null);
 });
 
+test("F7 FE15: a 404 means already undone (no Cofnij again), other 4xx are final, network / 5xx retry", async () => {
+  const err = (status) => Object.assign(new Error("x"), { status });
+  let calls = 0;
+  const gone = makeUndo(0, async () => { calls += 1; throw err(404); }, () => 0);
+  assert.equal(await gone.undo(), "gone");
+  assert.equal(gone.state, "done");
+  assert.equal(await gone.undo(), "already");
+  assert.equal(calls, 1);
+  assert.equal(undoMessage("gone", "decyzja"), "Już cofnięte: decyzja");
+  assert.ok(undoSettled("gone") && undoSettled("done") && !undoSettled("failed") && !undoSettled("refused"));
+  const refused = makeUndo(0, async () => { calls += 1; throw err(401); }, () => 0);
+  assert.equal(await refused.undo(), "refused");
+  assert.equal(await refused.undo(), "refused");
+  assert.equal(calls, 2);
+  assert.equal(undoMessage("refused", "przegląd"), "Nie da się cofnąć: przegląd");
+  assert.deepEqual([404, 410, 400, 403, 422, 408, 429, 500, 503].map((s) => undoFailure(err(s))),
+    ["gone", "gone", "refused", "refused", "refused", "retry", "retry", "retry", "retry"]);
+  assert.equal(undoFailure(new TypeError("Failed to fetch")), "retry");
+  assert.equal(undoFailure(err(409)), "expired");
+});
+
 test("toasts stack: a new toast never removes another one's undo", () => {
   const undo = (id) => ({ id, text: `Zapisano ${id}`, action: { label: "Cofnij", onClick: () => {} } });
   let list = [];
@@ -75,4 +96,31 @@ test("the undo link shows only for a saved decision inside the window", () => {
   assert.ok(!canUndo(d, saved + UNDO_WINDOW_MS + 1));
   assert.ok(!canUndo({ id: -7, created_at: d.created_at }, saved)); // a decision still being saved
   assert.ok(!canUndo({ id: 7, created_at: null }, saved));
+});
+
+test("F7 FE14: toast timers pause while the owner is on the stack and resume with the time left", async () => {
+  const { toastTimers } = await import("../src/toasts.ts");
+  let t = 0;
+  const pending = new Map();
+  let seq = 0;
+  const schedule = (fn, ms) => { const h = ++seq; pending.set(h, { fn, at: t + ms }); return h; };
+  const cancel = (h) => pending.delete(h);
+  const advance = (ms) => { t += ms; for (const [h, p] of [...pending]) if (p.at <= t) { pending.delete(h); p.fn(); } };
+  const expired = [];
+  const timers = toastTimers((id) => expired.push(id), schedule, cancel, () => t);
+  timers.start(1, 10000);
+  advance(4000);
+  timers.pause();
+  advance(60000); // the owner reads the toast for a minute
+  assert.deepEqual(expired, []);
+  assert.equal(timers.left(1), 6000);
+  timers.resume();
+  advance(5999);
+  assert.deepEqual(expired, []);
+  advance(1);
+  assert.deepEqual(expired, [1]);
+  timers.start(2, 1000);
+  timers.stop(2);
+  advance(5000);
+  assert.deepEqual(expired, [1]);
 });

@@ -5,7 +5,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../core/api";
 import { errorText } from "../../../core/messages";
-import { useAsync } from "../../../hooks";
+import { useAsync, useInFlight } from "../../../hooks";
 import { Seg, useToast } from "../../../ui";
 import { AgentTag, PolDot, Widget } from "../../../widgets";
 import {
@@ -14,10 +14,11 @@ import {
 import { useShortcuts } from "../hooks";
 import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, plural, qty } from "../labels";
 import { decisionEffect, decisionTag, nextDeposit } from "../logic";
-import { canUndo, makeUndo, type Undo, undoMessage } from "../undo";
+import { canUndo, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
 import type { Alert, PositionV2, SignalV2 } from "./api";
 import { cursorOrder, instName, isDecided, polarityOf, signalText, splitByPolarity } from "./logic";
 import { isResearchKind, signalNoteId } from "./research/logic";
+import { localDay, parseServerTime } from "../../../time";
 
 type Act = "none" | "buy" | "sell" | "later";
 const ACTION: Record<Act, string> = { none: "held", buy: "bought", sell: "sold", later: "other" };
@@ -41,7 +42,7 @@ export interface SignalsCtx {
   researchEffect?: (instrumentId: number) => ReactNode;
 }
 
-const ageText = (iso: string | null, today: string) => (!iso ? "" : iso.slice(0, 10) === today ? "dziś" : `od ${dm(iso)}`);
+const ageText = (iso: string | null, today: string) => (!iso ? "" : localDay(iso) === today ? "dziś" : `od ${dm(iso)}`);
 
 export function SignalsWidget({ signals, ctx, hl, review, expired, onHistory, focusId }: {
   signals: SignalV2[] | null;
@@ -61,8 +62,8 @@ export function SignalsWidget({ signals, ctx, hl, review, expired, onHistory, fo
   const [cursor, setCursor] = useState<number | null>(null);
   const theses = useTheses(ctx.slug, list, ctx.positions);
   const decided = list.filter(isDecided).length;
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-  const decidedWeek = list.filter((s) => s.decisions.some((d) => (d.created_at ?? "") >= weekAgo)).length;
+  const weekAgo = Date.now() - 7 * 86400000;
+  const decidedWeek = list.filter((s) => s.decisions.some((d) => parseServerTime(d.created_at) >= weekAgo)).length;
   const order = cursorOrder(list);
   const move = (d: number) => {
     if (!order.length) return;
@@ -151,6 +152,8 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
   s: SignalV2; ctx: SignalsCtx; thesis: Thesis | null; open: boolean; cursor: boolean; primary: boolean; onToggle: (open: boolean) => void;
 }) {
   const toast = useToast();
+  // One request at a time per signal (F7 FE2): a double click must not record two decisions.
+  const flight = useInFlight();
   const names = new Map(ctx.positions.map((p) => [Number(p.instrument.id), instName(p.instrument)]));
   const text = signalText(s, { total: ctx.total, base: ctx.base, names });
   const decided = isDecided(s) ? s.decisions[s.decisions.length - 1] : null;
@@ -166,7 +169,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
   const runUndo = async (u: Undo, what: string, retry: () => void) => {
     const res = await u.undo();
     const msg = undoMessage(res, what);
-    if (res === "done") ctx.onChanged();
+    if (undoSettled(res)) ctx.onChanged();
     if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
   };
   const offerUndo = (decisionId: number, text: string, what: string) => {
@@ -174,15 +177,15 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
     const retry = () => { void runUndo(u, what, retry); };
     toast(text, 10000, { label: "Cofnij", onClick: retry });
   };
-  const decide = async (input: DecisionInput, label: string) => {
+  const decide = (input: DecisionInput, label: string) => flight.run(async () => {
     try {
       const r = await postDecision(ctx.slug, s.id, input);
       onToggle(false);
       ctx.onChanged();
       offerUndo(r.decision.id, `Zapisano decyzję · ${label.replace("decyzja: ", "")}`, "decyzja");
     } catch (e) { toast(`Nie zapisano decyzji: ${errorText(e)}`, 5000); }
-  };
-  const ack = async (reason?: string) => {
+  });
+  const ackNow = async (reason?: string) => {
     try {
       const r = await postAcknowledge(ctx.slug, s.id, reason);
       onToggle(false);
@@ -190,7 +193,8 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
       offerUndo(r.decision.id, "Potwierdzone bez zmian", "potwierdzenie");
     } catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 5000); }
   };
-  const snooze = async (until: string) => {
+  const ack = (reason?: string) => flight.run(() => ackNow(reason));
+  const snooze = (until: string) => flight.run(async () => {
     try {
       await postSnooze(ctx.slug, s.id, until);
       ctx.onChanged();
@@ -199,12 +203,12 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
       toast(`Odłożone do ${dm(until)}`, 10000, { label: "Cofnij", onClick: retry });
     } catch (e) {
       // Older servers without the snooze endpoint: the v1 behaviour (acknowledge with a note).
-      if (e instanceof ApiError && e.status === 404 && /not found/i.test(e.message)) await ack(`odłożone do ${until}`);
+      if (e instanceof ApiError && e.status === 404 && /not found/i.test(e.message)) await ackNow(`odłożone do ${until}`);
       else toast(`Nie odłożono: ${errorText(e)}`, 5000);
     }
-  };
+  });
   const rowUndo = decided && canUndo(decided) ? () => {
-    const u = undoFor(decided.id, Date.parse(decided.created_at!), () => deleteDecision(ctx.slug, decided.id));
+    const u = undoFor(decided.id, parseServerTime(decided.created_at), () => deleteDecision(ctx.slug, decided.id));
     const retry = () => { void runUndo(u, "decyzja", retry); };
     retry();
   } : null;
@@ -228,12 +232,12 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
           <div className="th"><b>Teza ({thesis.created_at ? `${thesis.created_at.slice(5, 7)}.${thesis.created_at.slice(0, 4)}` : "-"})</b> {thesisLine(thesis) || thesis.thesis}</div>
         )}
         {!quiet && (open ? (
-          <DecisionForm s={s} ctx={ctx} onCollapse={() => onToggle(false)} onDecide={decide} onAck={ack} />
+          <DecisionForm s={s} ctx={ctx} pending={flight.busy} onCollapse={() => onToggle(false)} onDecide={decide} onAck={ack} />
         ) : (
           <div className="act">
             <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)}>Zanotuj decyzję</button>
-            <button className="btn sm" onClick={() => ack()}>Potwierdź</button>
-            {s.kind === "contribution_gap" && <button className="btn sm" onClick={() => snooze(later)}>Odłóż do {dm(later)}</button>}
+            <button className="btn sm" disabled={flight.busy} onClick={() => ack()}>Potwierdź</button>
+            {s.kind === "contribution_gap" && <button className="btn sm" disabled={flight.busy} onClick={() => snooze(later)}>Odłóż do {dm(later)}</button>}
             {research && ctx.onOpenNote && <button className="lnk" style={{ fontSize: 12 }} onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.theme === "string" ? s.payload.theme : null)}>notatka</button>}
           </div>
         ))}
@@ -261,8 +265,10 @@ function defaultAct(s: SignalV2): Act {
   }
 }
 
-export function DecisionForm({ s, ctx, onCollapse, onDecide, onAck }: {
-  s: SignalV2; ctx: SignalsCtx; onCollapse: () => void; onDecide: (input: DecisionInput, label: string) => void; onAck: (reason?: string) => void;
+export function DecisionForm({ s, ctx, pending, onCollapse, onDecide, onAck }: {
+  s: SignalV2; ctx: SignalsCtx; onCollapse: () => void; onDecide: (input: DecisionInput, label: string) => Promise<unknown> | void; onAck: (reason?: string) => void;
+  /** A decision / acknowledgement of this signal is being saved (F7 FE2). */
+  pending?: boolean;
 }) {
   const pos = s.instrument_id != null ? ctx.positions.find((p) => String(p.instrument.id) === String(s.instrument_id)) ?? null : null;
   const [act, setAct] = useState<Act>(() => defaultAct(s));
@@ -316,8 +322,8 @@ export function DecisionForm({ s, ctx, onCollapse, onDecide, onAck }: {
       )}
       <textarea rows={2} placeholder="Dlaczego? Jedno-dwa zdania, trafią do dziennika." value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Powód decyzji" />
       <div className="fr">
-        <button className="btn primary" onClick={save} disabled={invalid || busy}>Zapisz decyzję</button>
-        <button className="btn" onClick={() => onAck(reason.trim() || undefined)}>Potwierdź bez zmian</button>
+        <button className="btn primary" onClick={save} disabled={invalid || busy || pending}>Zapisz decyzję</button>
+        <button className="btn" disabled={busy || pending} onClick={() => onAck(reason.trim() || undefined)}>Potwierdź</button>
         <span style={{ flex: 1 }} />
         <button className="lnk" onClick={onCollapse}>Zwiń</button>
       </div>

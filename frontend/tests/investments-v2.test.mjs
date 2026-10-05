@@ -135,11 +135,87 @@ test("performance: change since a date (TWR ratio, money, benchmark), monthly de
   assert.equal(c.from, "2026-07-19");
   assert.ok(Math.abs(c.pct - 0.1) < 1e-9);
   assert.ok(Math.abs(c.bench - 0.03) < 1e-9);
-  assert.equal(c.money, 2110);
+  assert.equal(c.money, 110); // 2 110 value change minus the 2 000 deposit (F7 FE6)
   const m = monthlyFlows([{ date: "2026-08-10", flow: 2000 }, { date: "2026-09-10", flow: 500 }, { date: "2026-09-12", flow: -100 }, { date: "2025-01-01", flow: 9 }], "2026-10-04", 3);
   assert.deepEqual(m.map((x) => [x.label, x.value]), [["sie", 2000], ["wrz", 500], ["paź", 0]]);
   assert.equal(nextWeekday("2026-10-04", "sunday"), "2026-10-11");
   assert.equal(nextWeekday("2026-10-01", "sunday"), "2026-10-04");
   assert.equal(isDigestDay("2026-10-04", "sunday"), true);
   assert.equal(isDigestDay("2026-10-05", "sunday"), false);
+});
+
+test("F7 FE5: surplus card uses the transfer after the cushion top-up; pp a contribution closes; plan months", async () => {
+  const { contributionPp, planMonthsSoFar, surplusFlow } = await import("../src/modules/investments/v2/logic.ts");
+  // surplus 3 000, cushion top-up 2 000 -> 1 000 for investing; plan 2 000 -> 1 000 short, primary 1 000.
+  assert.deepEqual(surplusFlow({ surplus: 3000, cushion_top_up: 2000, suggested_transfer: 1000 }, 2000), { available: 1000, topUp: 2000, stays: -1000, primary: 1000 });
+  assert.deepEqual(surplusFlow({ surplus: 3000, cushion_top_up: 0, suggested_transfer: 3000 }, 2000), { available: 3000, topUp: 0, stays: 1000, primary: 2000 });
+  assert.equal(surplusFlow({ surplus: -200, cushion_top_up: 0, suggested_transfer: 0 }, 2000).primary, null);
+  assert.equal(surplusFlow({ surplus: 500, cushion_top_up: 0, suggested_transfer: 500 }, null).stays, null);
+  // portfolio 100 000, bucket at 55 %, contribution 2 000: +0,88 pp (not 2,0 pp)
+  assert.ok(Math.abs(contributionPp(2000, 100000, 0.55) - 0.882) < 0.001);
+  assert.equal(contributionPp(0, 100000, 0.5), 0);
+  assert.equal(planMonthsSoFar(null, "2026-10-05"), 10);
+  assert.equal(planMonthsSoFar("2026-07-03", "2026-10-05"), 4);
+  assert.equal(planMonthsSoFar("2025-11-03", "2026-10-05"), 10);
+});
+
+test("F7 FE6: the change since a date is the market move (deposits in between removed)", async () => {
+  const { changeSince } = await import("../src/modules/investments/v2/logic.ts");
+  const pt = (date, value, flow, twr) => ({ date, value, flow, twr, benchmark: null, simulated_value: null, drawdown: null });
+  const pts = [pt("2026-09-01", 100000, 0, 0), pt("2026-09-15", 103000, 2000, 0.01), pt("2026-10-01", 106400, 3000, 0.014)];
+  const r = changeSince(pts, "2026-09-01");
+  assert.equal(r.money, 1400);
+  assert.ok(Math.abs(r.pct - 0.014) < 1e-9);
+});
+
+test("F7 FE6: asset average cost over all accounts; the minimal hero compares like with like", async () => {
+  const { averageCost, heroBenchmark } = await import("../src/modules/investments/v2/logic.ts");
+  const pos = { quantity: 20, cost: 2400, accounts: [
+    { quantity: 10, average_cost: 100, cost_currency: "PLN" }, { quantity: 10, average_cost: 140, cost_currency: "PLN" }] };
+  assert.deepEqual(averageCost(pos, "PLN"), { value: 120, currency: "PLN" });
+  const mixed = { quantity: 20, cost: 2400, accounts: [
+    { quantity: 10, average_cost: 25, cost_currency: "EUR" }, { quantity: 10, average_cost: 140, cost_currency: "PLN" }] };
+  assert.deepEqual(averageCost(mixed, "PLN"), { value: 120, currency: "PLN" });
+  assert.equal(averageCost({ quantity: 0, cost: null, accounts: [] }, "PLN"), null);
+  const b = { status: "ok", id: "MSCI ACWI", twr: 0.098, simulation: { pnl: 300 } };
+  assert.deepEqual(heroBenchmark(b, 10000), { value: 0.03, label: "MSCI ACWI, te same wpłaty" });
+  assert.deepEqual(heroBenchmark({ ...b, simulation: null }, 10000), { value: 0.098, label: "MSCI ACWI, TWR" });
+  assert.equal(heroBenchmark({ ...b, status: "no_prices" }, 10000), null);
+});
+
+test("F7 FE8: a watchlist row without a week of closes shows the session move as 1 d., not tydz.", async () => {
+  const { watchMove } = await import("../src/modules/investments/v2/logic.ts");
+  const closes = [{ date: "2026-09-25", close: 100 }, { date: "2026-10-02", close: 110 }];
+  assert.deepEqual(watchMove(closes, 0.01), { value: 0.10000000000000009, label: "tydz." });
+  assert.deepEqual(watchMove([{ date: "2026-10-01", close: 100 }, { date: "2026-10-02", close: 101 }], 0.014), { value: 0.014, label: "1 d." });
+  assert.equal(watchMove(null, null), null);
+});
+
+test("F7 FE17: the re-entry baseline stays pending until Wszystko jasne; the last visit does not move meanwhile", async () => {
+  const { reentryBaseline } = await import("../src/modules/investments/v2/logic.ts");
+  const now = "2026-10-05T08:00:00Z";
+  // six weeks away: the old visit becomes the pending baseline, leaving must not advance it
+  assert.deepEqual(reentryBaseline(null, "2026-08-20T18:00:00Z", now), { baseline: "2026-08-20T18:00:00Z", store: true, advance: false });
+  // the app was closed and reopened in the evening: the pending baseline is still there
+  assert.deepEqual(reentryBaseline("2026-08-20T18:00:00Z", "2026-08-20T18:00:00Z", "2026-10-05T19:00:00Z"), { baseline: "2026-08-20T18:00:00Z", store: false, advance: false });
+  // a recent visit: no banner, leaving records the visit
+  assert.deepEqual(reentryBaseline(null, "2026-10-01T18:00:00Z", now), { baseline: null, store: false, advance: true });
+  assert.deepEqual(reentryBaseline(null, null, now), { baseline: null, store: false, advance: true });
+});
+
+test("F7 FE13: performance caveats read in Polish; a stale benchmark tail is flagged", async () => {
+  const { perfNotes } = await import("../src/modules/investments/v2/logic.ts");
+  const perf = {
+    data_quality: { notes: [{ code: "incomplete_days", params: { days: 2 }, message: "2 days" }, { code: "implied_funding", params: {}, message: "x" }] },
+    benchmark: { status: "ok", covers_range_end: false, last_priced: "2026-09-30" },
+  };
+  assert.deepEqual(perfNotes(perf), [
+    "niepełna wycena: 2 dni",
+    "ujemna gotówka liczona jako wpłata: sprawdź, czy w historii nie brakuje wpłaty",
+    "benchmark: ceny tylko do 30.09.2026, bez porównania",
+  ]);
+  const withNote = { data_quality: { notes: [{ code: "benchmark_stale", params: { last_date: "2026-09-30" }, message: "x" }] }, benchmark: { status: "ok", covers_range_end: false, last_priced: "2026-09-30" } };
+  assert.equal(perfNotes(withNote).length, 1);
+  assert.deepEqual(perfNotes({ data_quality: null, benchmark: { status: "ok", covers_range_end: true } }), []);
+  assert.deepEqual(perfNotes(null), []);
 });

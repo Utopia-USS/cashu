@@ -12,10 +12,11 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../../core/api";
 import { useShell } from "../../../core/context";
-import { errorText } from "../../../core/messages";
+import { errorText, label } from "../../../core/messages";
 import { PRIVACY_PLAIN } from "../../../core/SetupPage";
 import type { ModuleCtx } from "../../../core/types";
-import { useAsync } from "../../../hooks";
+import { useAsync, useInFlight } from "../../../hooks";
+import { addDays, localDay } from "../../../time";
 import { Code, Notice, SetupSteps, type SetupStepItem, Seg, Skeleton, Tag, useToast } from "../../../ui";
 import { Fact, Grid, type GridItem, Widget } from "../../../widgets";
 import {
@@ -26,13 +27,13 @@ import { AccountDrawer, ImportDrawer, ProposalDrawer, ThesisDrawer, TxnDrawer, T
 import { storedKey, useStored } from "../hooks";
 import { accountLabel, dm, hm, isoDate, money, money0, pct, plural, pp, RUN_STATUS, WEEKDAYS, wdm } from "../labels";
 import { runError } from "../logic";
-import { makeUndo, undoMessage } from "../undo";
+import { makeUndo, UNDO_WINDOW_MS, undoMessage, undoSettled } from "../undo";
 import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
 import { getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, getSignalsV2, getWatchlist, dropCache, type PerfPoint } from "./api";
 import { AssetDrawer } from "./AssetDrawer";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
-import { daysSince, instName, isDigestDay, nextWeekday, planForMonth, REENTRY_DAYS, reviewAutoOpen, signalLinkTarget } from "./logic";
+import { daysSince, instName, isDigestDay, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget } from "./logic";
 import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, DrawdownWidget, ValueChartWidget } from "./Perf";
 import { AccountsWidget, AllocationWidget, AssetList } from "./Portfolio";
@@ -55,14 +56,14 @@ const ss = {
 };
 const ls = {
   get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
-  set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
+  set: (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* ignore */ } },
 };
 const lastSeenKey = (slug: string) => `finanse.lastSeen.${slug}`;
 
 /** Market change over the last 7 days: money without the flows in between, TWR ratio for the percent. */
 function weekMove(points: PerfPoint[], asOf: string): { money: number; pct: number | null } | null {
   if (points.length < 2) return null;
-  const from = new Date(new Date(`${asOf}T12:00:00`).getTime() - 7 * 86400000).toISOString().slice(0, 10);
+  const from = addDays(asOf, -7);
   let k = 0;
   for (let i = 0; i < points.length; i++) if (points[i].date <= from) k = i;
   const a = points[k], b = points[points.length - 1];
@@ -93,7 +94,9 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const openJournal = useCallback((instrument?: number | string | null) => go(instrument != null ? `journal?instrument=${instrument}` : "journal"), [go]);
 
   const [filter, setFilter] = useStored<number | null>(storedKey("filter", slug), null);
-  const [note, setNote] = useStored<string>(storedKey("reviewNote", slug), "");
+  // The review note draft stays in this window only (it may hold amounts); an old localStorage copy is dropped.
+  const [note, setNote] = useStored<string>(storedKey("reviewNote", slug), "", "session");
+  useEffect(() => { try { localStorage.removeItem(storedKey("reviewNote", slug)); } catch { /* ignore */ } }, [slug]);
   const [nonce, setNonce] = useState(0);
   const reload = useCallback(() => { dropCache(); setNonce((n) => n + 1); }, []);
   const accountsFilter = filter == null ? null : [filter];
@@ -117,29 +120,30 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   // A remembered filter that no longer names one of this profile's accounts falls back to all accounts.
   useEffect(() => {
     if (filter == null) return;
-    const gone = ov.error ? /brokerage account|account id/i.test(ov.error) : ov.data ? !ov.data.accounts.some((a) => a.id === filter) : false;
+    // useAsync keeps the Polish label of a coded error (404 `not_found`), else the English detail.
+    const gone = ov.error ? ov.error === label("error.not_found") || /brokerage account|account id/i.test(ov.error) : ov.data ? !ov.data.accounts.some((a) => a.id === filter) : false;
     if (gone) setFilter(null);
   }, [ov.error, ov.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- re-entry: compare the last visit on open, remember this visit when leaving -----------------------------
+  // The pending baseline lives in localStorage until "Wszystko jasne" (F7 FE17): leaving the page, closing the
+  // window or a new window keeps it, and the last-visit mark does not move while it is pending.
   const reentryKey = `finanse.inv.reentry.${slug}`;
   const [reentry, setReentry] = useState<string | null>(() => {
-    const kept = ss.get(reentryKey);
-    if (kept) return kept;
-    const prev = ls.get(lastSeenKey(slug));
-    if (prev && daysSince(prev, new Date().toISOString()) >= REENTRY_DAYS) { ss.set(reentryKey, prev); return prev; }
-    return null;
+    const r = reentryBaseline(ls.get(reentryKey) ?? ss.get(reentryKey), ls.get(lastSeenKey(slug)), new Date().toISOString());
+    if (r.baseline) { ls.set(reentryKey, r.baseline); ss.set(reentryKey, null); }
+    return r.baseline;
   });
   useEffect(() => {
-    const save = () => ls.set(lastSeenKey(slug), new Date().toISOString());
+    const save = () => { if (!ls.get(reentryKey)) ls.set(lastSeenKey(slug), new Date().toISOString()); };
     const onHide = () => { if (document.visibilityState === "hidden") save(); };
     window.addEventListener("pagehide", save);
     document.addEventListener("visibilitychange", onHide);
     if (!ls.get(lastSeenKey(slug))) save();
     return () => { window.removeEventListener("pagehide", save); document.removeEventListener("visibilitychange", onHide); save(); };
-  }, [slug]);
-  const reDigest = useAsync(() => (reentry ? getDigestV2(slug, reentry.slice(0, 10)).catch(() => null) : Promise.resolve(null)), [slug, reentry, nonce]);
-  const dismissReentry = () => { ss.set(reentryKey, null); ls.set(lastSeenKey(slug), new Date().toISOString()); setReentry(null); };
+  }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reDigest = useAsync(() => (reentry ? getDigestV2(slug, localDay(reentry) ?? reentry.slice(0, 10)).catch(() => null) : Promise.resolve(null)), [slug, reentry, nonce]);
+  const dismissReentry = () => { ls.set(reentryKey, null); ss.set(reentryKey, null); ls.set(lastSeenKey(slug), new Date().toISOString()); setReentry(null); };
 
   // ---- review strip ------------------------------------------------------------------------------------------
   const reviewKey = `finanse.inv.reviewOpen.${slug}`;
@@ -263,7 +267,17 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     if (k === 1) setTimeout(() => scrollTo("inv-signals"), 30);
     if (k === 2) document.getElementById("inv-review-note")?.focus();
   };
-  const markDone = async () => {
+  // One review per click (F7 FE2): a double click on "Zamknij przegląd" must not store two reviews.
+  const doneFlight = useInFlight();
+  // The review undo also sits next to "Przegląd zrobiony" for the server's 15 minutes, not only in the toast
+  // (F7 FE14: keyboard and screen-reader owners can reach it).
+  const [reviewUndo, setReviewUndo] = useState<(() => void) | null>(null);
+  useEffect(() => {
+    if (!reviewUndo) return;
+    const t = setTimeout(() => setReviewUndo(null), UNDO_WINDOW_MS);
+    return () => clearTimeout(t);
+  }, [reviewUndo]);
+  const markDone = () => doneFlight.run(async () => {
     const minutes = started.current ? Math.max(1, Math.round((Date.now() - started.current) / 60000)) : null;
     const text = note.trim() || null;
     try {
@@ -278,15 +292,17 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
         if (!u) return;
         void u.undo().then((res) => {
           const msg = undoMessage(res, "przegląd");
-          if (res === "done") { setDoneLocal(null); setReviewOpen(true); setNote(text ?? ""); reload(); }
+          if (res !== "failed" && res !== "busy") setReviewUndo(null);
+          if (undoSettled(res)) { setDoneLocal(null); setReviewOpen(true); setNote(text ?? ""); reload(); }
           if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
         });
       };
+      setReviewUndo(u ? () => retry : null);
       toast(`Przegląd zapisany · następny ${dm(nextWeekday(today, weekday))}`, 10000, u ? { label: "Cofnij", onClick: retry } : undefined);
     } catch (e) {
       toast(e instanceof ApiError && e.status === 404 ? "Serwer nie zapisuje jeszcze przeglądów (brak /reviews)." : `Nie zapisano przeglądu: ${errorText(e)}`, 5000);
     }
-  };
+  });
 
   const names = new Map((positions?.positions ?? []).map((p) => [Number(p.instrument.id), instName(p.instrument)] as [number, string]));
   for (const w of watch) if (w.instrument) names.set(w.instrument_id, instName(w.instrument));
@@ -386,6 +402,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
           {doneLocal && !due ? `Przegląd zrobiony ${dm(doneLocal)}` : `Przegląd tygodnia · ${isDigestDay(today, weekday) ? "dziś" : WEEKDAYS[weekday] ?? weekday}`}
         </button>
       )}
+      {hasData && !reviewOpen && doneLocal && !due && reviewUndo && <button className="lnk" style={{ fontSize: 12 }} onClick={reviewUndo}>cofnij</button>}
     </div>
   );
 
@@ -409,7 +426,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const agentAlerts = alerts.filter((a) => a.source === "agent" && (a.status === "active" || a.status === "triggered")).length;
   const last = k.last_run;
   const runAt = last ? (last.finished_at ?? last.started_at) : null;
-  const runDay = runAt ? (isoDate(new Date(runAt)) === today ? "dziś" : dm(runAt)) : null;
+  const runDay = runAt ? (localDay(runAt) === today ? "dziś" : dm(runAt)) : null;
   const cashTarget = strategy?.facts?.targets?.cash;
   const lastReview = doneLocal ?? digest?.last_review?.done_at ?? null;
   const hero = (
@@ -452,7 +469,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       reviewText={due ? "dziś" : WEEKDAYS[weekday] ?? weekday} onSignals={() => scrollTo("inv-signals")} /> });
   }
   if (reviewOpen && digest) {
-    items.push({ id: "review", span: 3, node: <ReviewStrip digest={digest} step={step} onStep={onStep} decided={decided} total={signals.length} note={note} onNote={setNote} onDone={markDone} researchRan={research.ranInPeriod} /> });
+    items.push({ id: "review", span: 3, node: <ReviewStrip digest={digest} step={step} onStep={onStep} decided={decided} total={signals.length} note={note} onNote={setNote} onDone={markDone} busy={doneFlight.busy} researchRan={research.ranInPeriod} /> });
     items.push({ id: "changes", span: 3, node: <ChangesWidget digest={digest} perf={perf1y.data} alerts={alerts} proposals={props.data ?? []} accounts={accounts} names={names}
       onSignals={() => onStep(1)} onProposal={(id) => setDrawer({ kind: "proposal", id })} onJournal={() => openJournal()} research={research.changesRow} /> });
     const rr = research.review(digest.since);
@@ -464,7 +481,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   }
   const wSignals: GridItem = { id: "signals", span: 2, node: <SignalsWidget signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} review={reviewOpen} expired={expired} onHistory={() => openJournal()} focusId={focusSignal} /> };
   const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsQ.data} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
-  const wValue: GridItem = { id: "value", span: 2, node: <ValueChartWidget slug={slug} accounts={accountsFilter} initial={perf1y.loading ? undefined : perf1y.data} /> };
+  const wValue: GridItem = { id: "value", span: 2, node: <ValueChartWidget slug={slug} accounts={accountsFilter} nonce={nonce} initial={perf1y.loading ? undefined : perf1y.data} /> };
   const wAlloc: GridItem = { id: "alloc", span: 1, node: <AllocationWidget alloc={overview.allocation} strategy={strategy ?? null} filtered={filter != null} /> };
   const wAssets: GridItem = { id: "assets", span: 2, node: <AssetList data={positions} accounts={accounts} signals={signals} alerts={alerts} strategy={strategy ?? null}
     onOpen={(id) => openAsset(id)} onAddTxn={() => setDrawer({ kind: "txn" })} onClassify={classify} /> };
@@ -525,7 +542,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       case "proposal":
         return (
           <ProposalDrawer slug={slug} id={drawer.id} version={strategy?.version ?? null} onClose={close} onChanged={reload}
-            onDone={(ok, v) => { close(); toast(ok ? `Zatwierdzono propozycję${v ? ` · strategia v${v}` : ""}` : "Odrzucono propozycję", 3000); reload(); }} />
+            onDone={(ok, v) => { if (ok) shellStale.current = true; close(); toast(ok ? `Zatwierdzono propozycję${v ? ` · strategia v${v}` : ""}` : "Odrzucono propozycję", 3000); reload(); }} />
         );
       case "txns":
         return <TxnsDrawer slug={slug} position={drawer.position} accounts={accounts} onClose={close} onAdd={() => setDrawer({ kind: "txn", instrumentId: drawer.position.instrument.id })} />;

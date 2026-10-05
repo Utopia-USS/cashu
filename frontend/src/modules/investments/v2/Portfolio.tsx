@@ -45,8 +45,8 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
     const ring = alerts.some((a) => String(a.instrument_id) === id && (a.status === "active" || a.status === "triggered"));
     return (
       <>
-        {pols.map((p) => <span key={p} className={`flag ${p === "positive" ? "pos" : p === "negative" ? "neg" : "neu"}`} title={p === "positive" ? "szansa" : p === "negative" ? "ryzyko" : "sygnał"} aria-label={p === "positive" ? "szansa" : p === "negative" ? "ryzyko" : "sygnał"} />)}
-        {ring && <span className="flag al" title="alert" aria-label="alert" />}
+        {pols.map((p) => <span key={p} role="img" className={`flag ${p === "positive" ? "pos" : p === "negative" ? "neg" : "neu"}`} title={p === "positive" ? "szansa" : p === "negative" ? "ryzyko" : "sygnał"} aria-label={p === "positive" ? "szansa" : p === "negative" ? "ryzyko" : "sygnał"} />)}
+        {ring && <span role="img" className="flag al" title="alert" aria-label="alert" />}
       </>
     );
   };

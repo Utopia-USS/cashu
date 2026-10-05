@@ -2,20 +2,23 @@
 // keyboard shortcuts. (Undo of saved changes: undo.ts, F5 R4.)
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const read = (key: string): string | null => { try { return localStorage.getItem(key); } catch { return null; } };
-const write = (key: string, v: string | null) => {
-  try { if (v == null) localStorage.removeItem(key); else localStorage.setItem(key, v); } catch { /* private mode */ }
+type Where = "local" | "session";
+const store = (where: Where): Storage | null => { try { return where === "session" ? sessionStorage : localStorage; } catch { return null; } };
+const read = (key: string, where: Where = "local"): string | null => { try { return store(where)?.getItem(key) ?? null; } catch { return null; } };
+const write = (key: string, v: string | null, where: Where = "local") => {
+  try { const s = store(where); if (v == null) s?.removeItem(key); else s?.setItem(key, v); } catch { /* private mode */ }
 };
 
-/** A value remembered in localStorage under a profile-scoped key (`finanse.inv.<name>.<slug>`).
- * The key includes the slug, so another profile never sees it. */
-export function useStored<T>(key: string, initial: T): [T, (v: T) => void] {
+/** A value remembered under a profile-scoped key (`finanse.inv.<name>.<slug>`); the key includes the slug,
+ * so another profile never sees it. `session`: this window only (free text that may hold amounts, F7 PK8:
+ * the desktop WebView keeps localStorage outside the data dir). */
+export function useStored<T>(key: string, initial: T, where: Where = "local"): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
-    const raw = read(key);
+    const raw = read(key, where);
     if (raw == null) return initial;
     try { return JSON.parse(raw) as T; } catch { return initial; }
   });
-  const set = useCallback((v: T) => { setValue(v); write(key, v == null ? null : JSON.stringify(v)); }, [key]);
+  const set = useCallback((v: T) => { setValue(v); write(key, v == null ? null : JSON.stringify(v), where); }, [key, where]);
   return [value, set];
 }
 

@@ -19,6 +19,7 @@ import { useTheme } from "./theme";
 import type { ModuleCtx, View } from "./types";
 import { decodeSegment } from "./util";
 import { Wizard } from "./Wizard";
+import { errorText } from "./messages";
 
 const PROFILE_KEY = "finanse.profile";
 const lastViewKey = (slug: string) => `finanse.lastView.${slug}`;
@@ -112,7 +113,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   // ones load (useAsync keeps stale data).
   type Tagged<T> = { s: string; d: T | null; e: string | null };
   const tag = <T,>(s: string, p: Promise<T>): Promise<Tagged<T>> =>
-    p.then((d) => ({ s, d, e: null }), (e: Error) => ({ s, d: null, e: e.message }));
+    p.then((d) => ({ s, d, e: null }), (e: unknown) => ({ s, d: null, e: errorText(e) }));
   const summaryQ = useAsync(() => tag(profile.slug, getSummary(profile.slug)), [profile.slug, nonce]);
   const networthQ = useAsync(() => tag(profile.slug, getNetworth(profile.slug)), [profile.slug, nonce]);
   const catsQ = useAsync(() => tag(profile.slug, getCategories(profile.slug)), [profile.slug]);
@@ -167,8 +168,8 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
       else if (!res.ok) setErr(msg);
       else { setSyncMsg(msg); refresh(); }
     } catch (e) {
-      if (here()) setErr((e as Error).message);
-      else toast(`${name}: ${(e as Error).message}`, 5000);
+      if (here()) setErr(errorText(e));
+      else toast(`${name}: ${errorText(e)}`, 5000);
     } finally {
       setSyncing((cur) => { const next = new Set(cur); next.delete(s); return next; });
     }
@@ -183,7 +184,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
 
   const shell: ShellState = {
     slug: profile.slug, profile, profiles, system, modules, view: resolved, go,
-    reloadProfiles, openWizard: () => setWizard(true), setNarrow: askNarrow,
+    reloadProfiles, openWizard: () => setWizard(true), setNarrow: askNarrow, refresh,
   };
 
   // Przegląd (widget grid) and workspace tabs (investments) use the wide page; everything else keeps

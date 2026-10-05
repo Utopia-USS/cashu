@@ -82,3 +82,29 @@ test("Polish plurals and no em dash anywhere in the copy", () => {
     assert.ok(!sample.includes("\u2014"), code); // no em dash
   }
 });
+
+test("F7: performance data-quality notes and worker job codes read in Polish; unknown codes keep the English text", async () => {
+  const { describePerfNote, describeJob } = await import("../src/core/messages.ts");
+  assert.equal(describePerfNote({ code: "incomplete_days", params: { days: 3 }, message: "3 days" }), "niepełna wycena: 3 dni");
+  assert.equal(describePerfNote({ code: "benchmark_stale", params: { last_date: "2026-09-30" }, message: "x" }), "benchmark: ceny tylko do 30.09.2026, bez porównania");
+  assert.equal(describePerfNote({ code: "benchmark_partial", params: { first_date: "2026-02-01" } }), "benchmark: ceny dopiero od 01.02.2026");
+  assert.match(describePerfNote({ code: "implied_funding", params: {} }), /ujemna gotówka/);
+  assert.equal(describePerfNote({ code: "something_new", message: "Something new" }), "Something new");
+  assert.equal(describeJob({ code: "eb_not_configured", params: {}, detail: "Enable Banking not configured" }), "Enable Banking nie jest skonfigurowany");
+  assert.equal(describeJob({ code: "rule_inactive", params: { rule: "dca" }, detail: "x" }), "reguła dca nieaktywna (błąd w strategy.yaml)");
+  assert.equal(describeJob({ code: "prices_failed", params: {}, detail: "prices failed" }), "prices failed");
+  assert.equal(describeJob({ code: null, detail: "legacy detail" }), "legacy detail");
+  assert.equal(describeJob({ code: null, detail: null }), null);
+  const prev = process.env.TZ;
+  process.env.TZ = "Europe/Warsaw";
+  try { assert.equal(describeJob({ code: "throttled", params: { until: "2026-10-05T10:00:00Z" } }), "limit banku do 5.10 12:00"); }
+  finally { if (prev === undefined) delete process.env.TZ; else process.env.TZ = prev; }
+});
+
+test("F7 PK11: a moved app / stale worker reads as one Polish line; all fine = nothing", async () => {
+  const { describeRelocation } = await import("../src/core/messages.ts");
+  assert.equal(describeRelocation(null), null);
+  assert.equal(describeRelocation({ worker: "missing", app_moved_from: null, actions: ["worker_reinstall"] }), "Praca w tle wskazuje program, którego już nie ma");
+  assert.equal(describeRelocation({ worker: null, app_moved_from: "/Applications/Old.app", actions: ["mcp_readd"] }), "Aplikacja została przeniesiona z /Applications/Old.app");
+  assert.equal(describeRelocation({ worker: "other_program", app_moved_from: "/x", actions: [] }), "Praca w tle wskazuje inną kopię aplikacji · Aplikacja została przeniesiona z /x");
+});

@@ -14,6 +14,7 @@ import {
 } from "./logic";
 import type { HealthKey, ResearchNote } from "./types";
 import "./research.css";
+import { localDay } from "../../../../time";
 
 export function HealthPill({ state, muted, title }: { state: HealthKey; muted?: boolean; title?: string }) {
   return <span className={`health ${HEALTH_CLS[state]} ${muted ? "muted" : ""}`} title={title ?? `teza: ${HEALTH_LABEL[state]}`}><i aria-hidden />{HEALTH_LABEL[state]}</span>;
@@ -110,7 +111,7 @@ export function NoteCard({ note: n, today, context, card, hl, who, signalText, o
         <RelationChip relation={n.thesis_relation} />
         <span className="right">
           {n.created_by === "agent" && <AgentTag text="research" />}
-          <span className={`when ${fresh !== "fresh" ? "old" : ""}`} title={n.observed_at.slice(0, 10)}>{noteWhen(n.observed_at, today)}</span>
+          <span className={`when ${fresh !== "fresh" ? "old" : ""}`} title={localDay(n.observed_at) ?? undefined}>{noteWhen(n.observed_at, today)}</span>
           {onDismiss && !dismissed && <button className="icon-btn" title="Odrzuć notatkę" aria-label={`Odrzuć notatkę: ${n.title}`} onClick={() => onDismiss(n)}>✕</button>}
         </span>
       </div>

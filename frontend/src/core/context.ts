@@ -16,6 +16,9 @@ export interface Shell {
   openWizard: () => void;
   /** The page asks for the narrow frame (1120 px, header included): the minimal profile view. */
   setNarrow: (narrow: boolean) => void;
+  /** Re-read the shared summary / net worth (and remount the module pages; Settings stays): after a change
+   * made outside a module page, e.g. an import proposal approved in Ustawienia > Agent AI (F7 FE7). */
+  refresh?: () => void;
 }
 
 export const ShellContext = createContext<Shell | null>(null);

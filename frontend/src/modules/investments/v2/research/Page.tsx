@@ -17,6 +17,7 @@ import {
 import { CandidateCard, type CandidateState, CopyCommand, NoteCard, ScheduleHow, SentimentBars } from "./primitives";
 import { themeSymbols } from "./Strip";
 import type { ResearchNote, ResearchRun, ResearchSummary, ThemeSummary, Workspace } from "./types";
+import { localDay } from "../../../../time";
 
 type Scope = "all" | "positions" | "watched" | "candidates" | "themes";
 
@@ -100,7 +101,7 @@ function RunStrip({ runs, summary, candidates, today, strategyVersion, privacy, 
   const last = latestRun(runs)!;
   const tag = runTag(runs, today);
   const at = last.finished_at ?? last.started_at;
-  const day = new Date(`${last.started_at.slice(0, 10)}T12:00:00`).getDay();
+  const day = new Date(`${localDay(last.started_at)}T12:00:00`).getDay();
   const dayName = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"][day];
   const mins = runMinutes(last);
   const inst = (summary?.instruments ?? []).map((s) => ({ s, h: healthOf(s, today) }));
@@ -310,7 +311,7 @@ function RunsTable({ runs, symOf }: { runs: ResearchRun[]; symOf: (id: number) =
             const st = r.status === "done" ? ["zakończony", "pos"] : r.status === "running" ? ["trwa", "info"] : ["przerwany", "neg"];
             return (
               <tr key={r.id}>
-                <td className="tnum" style={{ paddingLeft: 16 }}>{r.started_at.slice(0, 10)} {hm(r.started_at)}</td>
+                <td className="tnum" style={{ paddingLeft: 16 }}>{localDay(r.started_at)} {hm(r.started_at)}</td>
                 <td><span className="polt" style={{ color: "var(--text)" }}><i className={`pd ${st[1] === "info" ? "" : st[1]}`} style={st[1] === "info" ? { background: "var(--info)" } : undefined} aria-hidden /> {st[0]}</span></td>
                 <td>{scopeText(r.scope, symOf)}{r.scheduled === false && r.scope && !Array.isArray(r.scope) && !(r.scope as { held?: boolean }).held ? " (na żądanie)" : ""}</td>
                 <td className="num">{runNotes(r) ?? "-"}</td>

@@ -3,6 +3,7 @@
 // candidate criteria, research signal copy, run state tags, the commands the UI copies, and where the strip
 // sits in the home grid. Pure; `npm test` imports it (node strips the types; imports carry .ts).
 import { dm, ENTRY_TYPE, plural, wdm } from "../../labels.ts";
+import { hmLocal, localDay, parseServerTime } from "../../../../time.ts";
 import type {
   Criterion, Direction, HealthKey, InstrumentSummary, NoteSource, Relation, RelationCounts, ResearchNote, ResearchRun,
 } from "./types.ts";
@@ -89,7 +90,9 @@ export function normDirection(v: string | null | undefined): Direction {
 // ---- dates and freshness (research.md 3) ----------------------------------------------------------------
 
 const DAY = 86400000;
-const dayStart = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).getTime();
+/** Local calendar day of a date or a server datetime (a naive server value is UTC, time.ts). */
+const day = (iso: string) => localDay(iso) ?? iso.slice(0, 10);
+const dayStart = (iso: string) => new Date(`${day(iso)}T12:00:00`).getTime();
 /** Whole calendar days from `a` to `b` (ISO dates or datetimes; local calendar dates). */
 export const daysBetween = (a: string, b: string) => Math.round((dayStart(b) - dayStart(a)) / DAY);
 export const addDays = (iso: string, n: number) => {
@@ -113,7 +116,7 @@ export function freshness(observedAt: string, today: string): "fresh" | "muted" 
   return d <= 7 ? "fresh" : d <= 21 ? "muted" : "old";
 }
 
-export const isExpired = (n: Pick<ResearchNote, "expires_at"> & { expired?: boolean }, today: string) => n.expired === true || (!!n.expires_at && n.expires_at.slice(0, 10) < today);
+export const isExpired = (n: Pick<ResearchNote, "expires_at"> & { expired?: boolean }, today: string) => n.expired === true || (!!n.expires_at && day(n.expires_at) < today);
 
 // ---- note accessors (RS CONTRACT 2) ---------------------------------------------------------------------
 
@@ -130,7 +133,7 @@ export const watchItemId = (n: Pick<ResearchNote, "candidate">) => n.candidate?.
 /** `przywróć` / `Cofnij` window: `restorable_until` from the server, else 15 minutes after the dismissal. */
 export function isRestorable(n: Pick<ResearchNote, "dismissed_at" | "restorable_until">, now = Date.now()): boolean {
   if (!n.dismissed_at) return false;
-  const until = n.restorable_until ? Date.parse(n.restorable_until) : Date.parse(n.dismissed_at) + 15 * 60000;
+  const until = n.restorable_until ? parseServerTime(n.restorable_until) : parseServerTime(n.dismissed_at) + 15 * 60000;
   return Number.isFinite(until) && now <= until;
 }
 /** Latest note title of a summary row. */
@@ -175,7 +178,7 @@ export function weekScore(notes: Pick<ResearchNote, "polarity" | "strength" | "k
 export function weekStart(iso: string): string {
   const t = new Date(dayStart(iso));
   const dow = (t.getDay() + 6) % 7; // Monday = 0
-  return addDays(iso.slice(0, 10), -dow);
+  return addDays(day(iso), -dow);
 }
 
 /** The 8 week starts ending with the current week, oldest first. */
@@ -186,7 +189,7 @@ export function sentiment8w(notes: Pick<ResearchNote, "polarity" | "strength" | 
   const weeks = weekStarts(today);
   return weeks.map((w, i) => {
     const end = i + 1 < weeks.length ? weeks[i + 1] : addDays(w, 7);
-    return weekScore(notes.filter((n) => n.observed_at.slice(0, 10) >= w && n.observed_at.slice(0, 10) < end));
+    return weekScore(notes.filter((n) => day(n.observed_at) >= w && day(n.observed_at) < end));
   });
 }
 
@@ -259,19 +262,19 @@ export function thesisHealth(o: {
 }): HealthKey {
   if (!o.hasThesis) return "no_thesis";
   const from = windowStart(o.today, o.thesisEditedAt);
-  const win = o.notes.filter((n) => isLive(n, o.today) && n.observed_at.slice(0, 10) >= from);
+  const win = o.notes.filter((n) => isLive(n, o.today) && day(n.observed_at) >= from);
   const c = relationCounts(win);
   if (c.invalidates) return "inv";
   if (c.weakens) return "weak";
   if (c.supports) return "sup";
-  const covered = win.length > 0 || (!!o.researchedAt && o.researchedAt.slice(0, 10) >= addDays(o.today, -30));
+  const covered = win.length > 0 || (!!o.researchedAt && day(o.researchedAt) >= addDays(o.today, -30));
   return covered ? "ok" : "no_research";
 }
 
 /** First day of the health window: 30 days back, or the thesis edit day when later. */
 export function windowStart(today: string, thesisEditedAt?: string | null): string {
   const d30 = addDays(today, -30);
-  const edit = thesisEditedAt ? thesisEditedAt.slice(0, 10) : null;
+  const edit = thesisEditedAt ? day(thesisEditedAt) : null;
   return edit && edit > d30 ? edit : d30;
 }
 
@@ -283,7 +286,7 @@ export function healthOf(s: Pick<InstrumentSummary, "health" | "counts" | "has_t
   if (s.counts.invalidates) return "inv";
   if (s.counts.weakens) return "weak";
   if (s.counts.supports) return "sup";
-  return s.last_researched_at && s.last_researched_at.slice(0, 10) >= addDays(today, -30) ? "ok" : "no_research";
+  return s.last_researched_at && day(s.last_researched_at) >= addDays(today, -30) ? "ok" : "no_research";
 }
 
 const verb = (n: number, one: string, few: string) => plural(n, one, few, one);
@@ -408,11 +411,7 @@ export const lastDone = (runs: ResearchRun[]): ResearchRun | null =>
 
 export const nNotes = (n: number) => plural(n, "notatka", "notatki", "notatek");
 
-const hmOf = (iso: string | null | undefined) => {
-  if (!iso || !/T/.test(iso)) return "";
-  const t = new Date(iso);
-  return Number.isNaN(t.getTime()) ? "" : `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
-};
+const hmOf = hmLocal;
 
 export interface RunTag { text: string; tone: "" | "warn" | "info" | "neg"; state: "none" | "fresh" | "stale" | "running" | "failed" }
 
@@ -446,7 +445,7 @@ export function nextSaturday(today: string): string {
 
 /** Run duration in minutes. */
 export const runMinutes = (r: Pick<ResearchRun, "started_at" | "finished_at">) =>
-  r.finished_at ? Math.max(1, Math.round((Date.parse(r.finished_at) - Date.parse(r.started_at)) / 60000)) : null;
+  r.finished_at ? Math.max(1, Math.round((parseServerTime(r.finished_at) - parseServerTime(r.started_at)) / 60000)) : null;
 
 // ---- commands (research.md 7; design answer 3: the app copies, never spawns) ---------------------------------
 

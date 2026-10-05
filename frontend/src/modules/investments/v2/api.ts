@@ -148,7 +148,9 @@ export interface DigestEvent {
 export interface DigestV2 extends ReviewDigest {
   events?: DigestEvent[];
   events_total?: number;
-  value: ReviewDigest["value"] & { contributions?: Num; market_change?: Num; market_change_pct?: Num };
+  /** F7 (V4): `market_change` excludes `transfers` (units moved in / out, adjustments, cash transfers) and
+   * `implied_funding`; both reported separately (base currency, null when they cannot be valued). */
+  value: ReviewDigest["value"] & { contributions?: Num; market_change?: Num; market_change_pct?: Num; transfers?: Num; implied_funding?: Num };
 }
 
 // ---- performance (PF) -----------------------------------------------------------------------------
@@ -172,11 +174,14 @@ export interface Performance {
     status: "ok" | "no_strategy" | "not_configured" | "proxy_not_found" | "no_prices" | string;
     message: string | null; id: string | null; proxy: string | null; instrument_id: number | null; currency: string | null;
     first_priced: string | null; covers_range: boolean | null;
+    /** F7: the benchmark's last priced day and whether it reaches the range end (false: excess_* are null). */
+    last_priced?: string | null; covers_range_end?: boolean | null;
     twr: Num; twr_annualized: Num; max_drawdown: { depth: Num; peak: string | null; trough: string | null; recovered: string | null } | null;
     simulation: { end_value: Num; end_value_with_fees: Num; pnl: Num; xirr: Num; mwr: Num; started: string | null; capped: boolean | null } | null;
     excess_twr: Num; excess_value: Num; excess_vs_simulation: Num;
   } | null;
-  data_quality: { incomplete_days: number; end_complete: boolean; notes: { code: string; message: string }[] } | null;
+  /** Caveats of the figures (`code` + `params`, Polish labels `perf.<code>` in core/messages.ts). */
+  data_quality: { incomplete_days: number; end_complete: boolean; notes: { code: string; params?: Record<string, unknown> | null; message: string }[] } | null;
 }
 
 // ---- endpoints ------------------------------------------------------------------------------------
@@ -224,7 +229,7 @@ export const deleteAlert = (slug: string, id: number) => jdel<{ deleted: number 
 export const restoreAlert = (slug: string, id: number) => jpost<Alert>(inv(slug, `/alerts/${id}/restore`));
 
 export const getWatchlist = (slug: string) => j<WatchItem[]>(inv(slug, "/watchlist"));
-export const postWatch = (slug: string, b: { symbol_or_isin?: string; instrument_id?: number; note?: string | null; currency?: string | null }) =>
+export const postWatch = (slug: string, b: { symbol_or_isin?: string; instrument_id?: number; note?: string | null; currency?: string | null; tags?: string[] | null }) =>
   jpost<WatchItem & { created_instrument: boolean; warnings: string[]; warning_codes?: { code: string; params: Record<string, unknown> | null; message: string }[] }>(inv(slug, "/watchlist"), b);
 export const deleteWatch = (slug: string, id: number) => jdel<{ deleted: number }>(inv(slug, `/watchlist/${id}`));
 

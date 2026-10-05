@@ -122,6 +122,24 @@ test("offerUndo: one toast with Cofnij, onDone after the undo, a failed undo off
   assert.equal(done, 1);
 });
 
+test("F7 FE3/FE15: a re-created alert says so; a 404 on the restore stops offering Cofnij", async () => {
+  const toasts = [];
+  const toast = (text, ms, action) => toasts.push({ text, action });
+  let recreated = false;
+  const u = alertDeleteUndo(async () => { throw apiError(404, "Not Found"); }, async () => { recreated = true; });
+  offerUndo(toast, "Usunięto alert", u, "usunięcie alertu", () => {}, 10000, () => (recreated ? "wraca jako nowy alert" : null));
+  toasts[0].action.onClick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(toasts[1].text, "Cofnięto: usunięcie alertu · wraca jako nowy alert");
+  const t2 = [];
+  const gone = alertDeleteUndo(async () => { throw apiError(404, "alert not found", "not_found"); }, async () => {});
+  offerUndo((text, ms, action) => t2.push({ text, action }), "Usunięto alert", gone, "usunięcie alertu", () => {});
+  t2[0].action.onClick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(t2[1].text, "Już cofnięte: usunięcie alertu");
+  assert.equal(t2[1].action, undefined);
+});
+
 test("owner decision 1: allocation drift is neutral unless the server says otherwise", () => {
   assert.equal(polarityOf({ kind: "allocation_drift" }), "neutral");
   assert.equal(polarityOf({ kind: "allocation_drift", polarity: "negative" }), "negative");

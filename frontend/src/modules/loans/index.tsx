@@ -4,7 +4,10 @@ import { cur } from "../../format";
 import { useAsync } from "../../hooks";
 import { FactList, Skeleton } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
+import { normTitle, useMonthNorm } from "../../core/overview/CoreWidgets";
+import { todayLocal } from "../../time";
 import { getLoans, loanName } from "./api";
+import { incomeShare, rateText } from "./logic";
 import { Loans } from "./Loans";
 
 /** Przegląd v2: loans as compact rows (instalment, rate, end; balance and principal per month). */
@@ -13,21 +16,22 @@ function LoansWidget({ ctx }: { ctx: ModuleCtx }) {
   const perCur = new Map<string, number>();
   for (const l of data ?? []) if (l.monthly_payment) perCur.set(l.currency || "PLN", (perCur.get(l.currency || "PLN") ?? 0) + l.monthly_payment);
   const base = ctx.profile.base_currency;
-  const income = ctx.summary.month?.income ?? null;
-  const share = income && perCur.get(base) ? (perCur.get(base)! / income) : null;
-  const today = new Date().toISOString().slice(0, 10);
+  // Income of complete months, never the running one (F7 FE10).
+  const norm = useMonthNorm(ctx.slug, base);
+  const share = incomeShare(perCur.get(base), norm?.income);
+  const today = todayLocal();
   return (
     <Widget title="Kredyty" count={data?.length || undefined}
       controls={<button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: "loans.list" })}>Kredyty</button>}
       body="flush tight"
-      footer={perCur.size ? <FootFacts items={[<>raty <b>{[...perCur].map(([c, v]) => cur(v, c)).join(" · ")}</b> / mies.{share != null ? ` · ${Math.round(share * 100)} % przychodów` : ""}</>]} /> : undefined}>
+      footer={perCur.size ? <FootFacts items={[<>raty <b>{[...perCur].map(([c, v]) => cur(v, c)).join(" · ")}</b> / mies.{share != null && norm ? <span title={normTitle(norm)}> · {Math.round(share * 100)} % przychodów</span> : ""}</>]} /> : undefined}>
       {!data ? <div style={{ padding: "0 16px" }}><Skeleton h={40} /></div> : !data.length ? <div className="empty">Brak kredytów.</div> : (
         <table>
           <tbody>
             {data.map((l, i) => {
               const c = l.currency || "PLN";
               const next = l.schedule?.find((r) => r.date >= today);
-              const meta = [l.monthly_payment ? `rata ${cur(l.monthly_payment, c)}` : null, l.annual_rate != null ? `${(l.annual_rate * (l.annual_rate < 1 ? 100 : 1)).toLocaleString("pl-PL", { maximumFractionDigits: 2 })} %` : null, l.payoff_date ? `do ${l.payoff_date.slice(0, 4)}` : null].filter(Boolean).join(" · ");
+              const meta = [l.monthly_payment ? `rata ${cur(l.monthly_payment, c)}` : null, rateText(l.annual_rate), l.payoff_date ? `do ${l.payoff_date.slice(0, 4)}` : null].filter(Boolean).join(" · ");
               return (
                 <tr key={l.id ?? i}>
                   <td><span className="nm">{loanName(l, i)}</span><span className="sym">{meta}</span></td>

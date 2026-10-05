@@ -530,6 +530,8 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .wbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--muted); }
 .flag { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 5px; vertical-align: middle; }
 .flag.pos { background: var(--pos); } .flag.neg { background: var(--neg); } .flag.neu { background: var(--muted); }
+/* Shape as well as colour (F7 FE14): chance = dot, risk = diamond, neutral = square, alert = ring. */
+.flag.neg { border-radius: 1px; transform: rotate(45deg) scale(0.9); } .flag.neu { border-radius: 1px; }
 .flag.al { width: 8px; height: 8px; background: transparent; border: 1.5px solid var(--warn); }
 .w .scroll { overflow-x: auto; }
 

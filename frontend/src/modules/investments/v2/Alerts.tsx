@@ -4,17 +4,20 @@
 // agent items are badged and removable. Alerts are conditions on hard data, never forecasts.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { describeError, errorText } from "../../../core/messages";
-import { useAsync } from "../../../hooks";
+import { useAsync, useInFlight } from "../../../hooks";
 import { Notice, Seg, Skeleton, useToast } from "../../../ui";
 import { AgentTag, AlertStatus, FootFacts, Grid, PolarityText, Widget } from "../../../widgets";
-import { bucketLabel, dm, dmy, DECISION_ACTION, hm, numInput, parseNum, pct, plural } from "../labels";
+import { bucketLabel, dm, dmy, DECISION_ACTION, hm, parseNum, pct, plural } from "../labels";
 import {
-  type Alert, type AlertInput, type AlertKindInfo, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, patchAlert, postAlert, restoreAlert, type SignalV2,
+  type Alert, type AlertInput, type AlertKindInfo, type AlertPatch, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, patchAlert, postAlert, restoreAlert, type SignalV2,
 } from "./api";
 import {
   alertConditionText, alertDefaultTitle, alertDistance, alertLevelText, alertNowText, alertPreview, alertWhenSuffix, instName, KIND_LABEL, orderAlerts, price,
 } from "./logic";
 import { alertDeleteUndo, offerUndo, recreateInput } from "./undoFlow";
+import { alertPatch, buildParams, draftText, expiryChoice, expiryValue, formKind } from "./alertForm";
+import { csvLine } from "../../../csv";
+import { addDays, localDay, parseServerTime, todayLocal } from "../../../time";
 
 export interface InstrumentChoice { id: number; label: string; symbol: string | null; venue: string | null; currency: string; price: number | null; held: boolean }
 
@@ -31,8 +34,12 @@ export async function removeAlertWithUndo(slug: string, a: Alert, toast: (t: str
     return false;
   }
   onChanged();
-  const u = alertDeleteUndo(() => restoreAlert(slug, a.id), () => postAlert(slug, recreateInput(a) as AlertInput));
-  offerUndo(toast, `Usunięto alert „${a.title}"`, u, "usunięcie alertu", onChanged);
+  // The restore keeps the id, the agent source and the history (BE soft delete). Only a server without the
+  // restore endpoint re-creates the alert, which then comes back as a new alert of the owner: say so.
+  let recreated = false;
+  const u = alertDeleteUndo(() => restoreAlert(slug, a.id), () => { recreated = true; return postAlert(slug, recreateInput(a) as AlertInput); });
+  offerUndo(toast, `Usunięto alert „${a.title}"`, u, "usunięcie alertu", onChanged, 10000,
+    () => (recreated ? (a.source === "agent" ? "wraca jako Twój nowy alert" : "wraca jako nowy alert") : null));
   return true;
 }
 
@@ -44,7 +51,8 @@ export function AlertsWidget({ slug, alerts, onManage, onNew, onChanged }: {
   const toast = useToast();
   const live = orderAlerts((alerts ?? []).filter((a) => a.status === "active" || a.status === "triggered"));
   const triggered = live.filter((a) => a.status === "triggered").length;
-  const remove = (a: Alert) => { void removeAlertWithUndo(slug, a, toast, onChanged); };
+  const flight = useInFlight();
+  const remove = (a: Alert) => { void flight.run(() => removeAlertWithUndo(slug, a, toast, onChanged)); };
   return (
     <Widget title="Alerty" count={live.length || undefined} controls={<button className="btn sm" onClick={onNew}>+ Nowy</button>} body="tight"
       footer={<><FootFacts items={[<><b>{live.length - triggered}</b> aktywne</>, triggered > 0 && <><b>{triggered}</b> wyzwolone</>]} /><span className="spacer" />
@@ -118,7 +126,9 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
   const agentLive = all.filter((a) => a.source === "agent" && isLive(a)).length;
   const editAlert = typeof editing === "number" ? all.find((a) => a.id === editing) ?? null : null;
 
-  const act = async (a: Alert, what: "mute" | "unmute" | "delete") => {
+  // One mute / delete request at a time (F7 FE2): a double click must not send a second delete.
+  const flight = useInFlight();
+  const act = (a: Alert, what: "mute" | "unmute" | "delete") => flight.run(async () => {
     try {
       if (what === "delete") {
         if (await removeAlertWithUndo(slug, a, toast, reload) && editing === a.id) setEditing("new");
@@ -129,7 +139,7 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
       }
       reload();
     } catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 5000); }
-  };
+  });
 
   return (
     <>
@@ -173,7 +183,7 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
                                   ? <button className="icon-btn quiet" title="Włącz" aria-label={`Włącz alert ${a.title}`} onClick={() => act(a, "unmute")}>●</button>
                                   : <button className="icon-btn quiet" title="Wycisz" aria-label={`Wycisz alert ${a.title}`} onClick={() => act(a, "mute")} disabled={a.status === "expired"}>◌</button>}
                                 <button className="icon-btn quiet" title="Edytuj" aria-label={`Edytuj alert ${a.title}`} onClick={() => setEditing(a.id)}>✎</button>
-                                <button className="icon-btn" title="Usuń" aria-label={`Usuń alert ${a.title}`} onClick={() => act(a, "delete")}>✕</button>
+                                <button className="icon-btn" title="Usuń" aria-label={`Usuń alert ${a.title}`} disabled={flight.busy} onClick={() => act(a, "delete")}>✕</button>
                               </div>
                             </td>
                           </tr>
@@ -227,7 +237,8 @@ const DEFAULT_POLARITY: Record<string, string> = {
 const COOLDOWNS: [string, number | null][] = [["bez pauzy", null], ["7 dni", 7], ["14 dni", 14], ["30 dni", 30], ["90 dni", 90]];
 
 function endOfYear(): string { return `${new Date().getFullYear()}-12-31`; }
-function inDays(days: number): string { return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10); }
+/** Local calendar day `days` from today (never the UTC date). */
+function inDays(days: number): string { return addDays(todayLocal(), days); }
 
 export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, presetInstrument, onCancel, onSaved }: {
   slug: string; alert: Alert | null; instruments: InstrumentChoice[]; buckets: string[]; digestWeekday: string;
@@ -235,20 +246,22 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
 }) {
   const kinds = useAsync(() => getAlertKinds(slug).catch(() => null), [slug]);
   const catalog: Record<string, string[]> = useMemo(() => (kinds.data ? Object.fromEntries(kinds.data.kinds.map((k: AlertKindInfo) => [k.kind, k.scopes])) : STATIC_KINDS), [kinds.data]);
-  const p0 = alert?.params ?? {};
+  // The stored values as lossless texts (F7 FE4); `initial` is what the untouched form would build.
+  const t0 = useMemo(() => draftText(alert?.params, buckets[0] ?? ""), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [scope, setScope] = useState<Scope>((alert?.scope as Scope) ?? (presetInstrument != null || instruments.length ? "instrument" : "portfolio"));
   const [instId, setInstId] = useState<number | null>(alert?.instrument_id ?? presetInstrument ?? null);
   const inst = instruments.find((i) => i.id === instId) ?? null;
   const [instText, setInstText] = useState(inst ? choiceText(inst) : alert?.instrument?.label ?? "");
-  const [bucket, setBucket] = useState<string>(String(p0.bucket ?? buckets[0] ?? ""));
+  const [bucket, setBucket] = useState<string>(t0.bucket);
   const [card, setCard] = useState<KindCard>(() => (alert ? (alert.kind.startsWith("weight") ? "weight" : (alert.kind as KindCard)) : "price_below"));
   const [above, setAbove] = useState(alert?.kind === "weight_above" || (!alert && false));
-  const kind = card === "weight" ? (above ? "weight_above" : "weight_below") : card;
-  const [level, setLevel] = useState(numInput(typeof p0.level === "number" ? p0.level : null));
-  const [threshold, setThreshold] = useState(typeof p0.threshold === "number" ? String(Math.round(p0.threshold * 1000) / 10).replace(".", ",") : "");
-  const [windowDays, setWindowDays] = useState(typeof p0.window_days === "number" ? String(p0.window_days) : "");
-  const [direction, setDirection] = useState<string>(String(p0.direction ?? ""));
-  const [expression, setExpression] = useState(String(p0.expression ?? ""));
+  // An edit keeps the stored kind: the direction of a weight alert cannot change by PATCH (F7 FE12).
+  const kind = formKind(card, above, alert?.kind ?? null);
+  const [level, setLevel] = useState(t0.level);
+  const [threshold, setThreshold] = useState(t0.threshold);
+  const [windowDays, setWindowDays] = useState(t0.windowDays);
+  const [direction, setDirection] = useState<string>(t0.direction);
+  const [expression, setExpression] = useState(t0.expression);
   const [polarity, setPolarity] = useState<string>(alert?.polarity ?? DEFAULT_POLARITY[kind] ?? "neutral");
   const polarityTouched = useRef(!!alert);
   const [severity, setSeverity] = useState<string>(alert?.severity ?? "info");
@@ -256,8 +269,9 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
   // An edited alert whose title is still the generated one keeps following the condition.
   const titleTouched = useRef(!!alert && alert.title !== alertDefaultTitle(alert.kind, alert.params, alert.instrument?.symbol ?? alert.instrument?.label ?? (alert.scope === "bucket" ? bucketLabel(String(alert.params.bucket ?? "")) : "Portfel"), alert.instrument?.currency));
   const [note, setNote] = useState(alert?.note ?? "");
-  const [cooldown, setCooldown] = useState<number | null>(alert?.cooldown_days ?? 14);
-  const [expiry, setExpiry] = useState<string>(alert?.expires_at ? alert.expires_at.slice(0, 10) : "");
+  // "bez pauzy" (null) stays null when editing; 14 days only for a new alert.
+  const [cooldown, setCooldown] = useState<number | null>(alert ? alert.cooldown_days : 14);
+  const [expiry, setExpiry] = useState<string>(expiryChoice(alert?.expires_at));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ref = useRef<HTMLElement>(null);
@@ -278,18 +292,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
     if (!cardOk(cur)) setCard((CARDS.find(cardOk)?.card ?? "custom") as KindCard);
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const params: Record<string, unknown> = (() => {
-    const lv = parseNum(level), th = parseNum(threshold), wd = windowDays ? Number(windowDays) : null;
-    switch (kind) {
-      case "price_above": case "price_below": return { level: lv };
-      case "change_pct": return { window_days: wd, threshold: th != null ? th / 100 : null, direction: direction || "any" };
-      case "drawdown_from_high": return { window_days: wd ?? 252, threshold: th != null ? th / 100 : null };
-      case "new_high": return { window_days: wd ?? 252 };
-      case "sma_cross": return { window_days: wd ?? 200, direction: direction || "below" };
-      case "weight_above": case "weight_below": return { threshold: th != null ? th / 100 : null, ...(scope === "bucket" ? { bucket } : {}) };
-      default: return { expression: expression.trim(), ...(scope === "bucket" ? { bucket } : {}) };
-    }
-  })();
+  const params = buildParams(kind, scope, { level, threshold, windowDays, direction, expression, bucket });
   const subject = scope === "instrument" ? (inst?.symbol ?? inst?.label ?? "") : scope === "bucket" ? bucketLabel(bucket) : "Portfel";
   const problems = validate(kind, scope, params, inst, bucket);
   // The title follows the condition until the owner edits it; nothing to suggest while the condition is incomplete.
@@ -303,12 +306,16 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
     setBusy(true); setErr(null);
     const body: AlertInput = {
       kind, title: title.trim() || alertDefaultTitle(kind, params, subject, inst?.currency), params, scope, instrument_id: scope === "instrument" ? instId : null, polarity, severity,
-      note: note.trim() || null, cooldown_days: cooldown, expires_at: expiry ? `${expiry}T23:59:00` : null,
+      note: note.trim() || null, cooldown_days: cooldown, expires_at: expiry ? expiryValue(expiry) : null,
     };
     try {
       if (alert) {
-        const { kind: _k, instrument_id: _i, scope: _s, ...patch } = body;
-        onSaved(await patchAlert(slug, alert.id, { ...patch, expires_at: patch.expires_at ?? null }), false);
+        // Only what the owner changed; untouched values go back exactly as stored (F7 FE4).
+        const patch = alertPatch(alert, {
+          title: body.title, params, initialParams: buildParams(alert.kind, alert.scope, t0), polarity, severity,
+          note: body.note ?? null, cooldown_days: cooldown, expiry,
+        });
+        onSaved(Object.keys(patch).length ? await patchAlert(slug, alert.id, patch as AlertPatch) : alert, false);
       } else onSaved(await postAlert(slug, body), true);
     } catch (e) {
       const d = describeError(e);
@@ -330,10 +337,9 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
         {alert && <button className="icon-btn quiet" aria-label="Zamknij edycję" title="Zamknij (Esc)" onClick={onCancel}>✕</button>}
       </div>
       <div className="wb tight form">
-        <div className="field">
+        <div className="field" title={alert ? "Zakres zmienisz tylko nowym alertem." : undefined}>
           <label id="af-scope">Zakres</label>
-          <Seg quiet label="Zakres" value={scope} onChange={(v) => !alert && setScope(v)} items={[["Instrument", "instrument"], ["Portfel", "portfolio"], ["Koszyk", "bucket"]]} />
-          {alert && <span className="sub">zakres i instrument zmienisz, tworząc nowy alert</span>}
+          <Seg quiet label="Zakres" value={scope} disabled={!!alert} onChange={(v) => !alert && setScope(v)} items={[["Instrument", "instrument"], ["Portfel", "portfolio"], ["Koszyk", "bucket"]]} />
         </div>
         {scope === "instrument" && (
           <div className="field">
@@ -393,7 +399,8 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
         {card === "weight" && (
           <div className="frow">
             <div className="field"><label>Kierunek</label>
-              <Seg quiet label="Kierunek wagi" value={above ? "above" : "below"} onChange={(v) => setAbove(v === "above")} items={[["powyżej", "above"], ["poniżej", "below"]]} /></div>
+              <Seg quiet label="Kierunek wagi" value={kind === "weight_above" ? "above" : "below"} disabled={!!alert}
+                title={alert ? "Kierunek zmienisz tylko nowym alertem." : undefined} onChange={(v) => !alert && setAbove(v === "above")} items={[["powyżej", "above"], ["poniżej", "below"]]} /></div>
             <div className="field"><label htmlFor="af-wth">Próg (% portfela)</label>
               <input id="af-wth" className="num" inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} /></div>
           </div>
@@ -417,6 +424,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
           <div className="field"><label htmlFor="af-cool">Cooldown</label>
             <select id="af-cool" value={cooldown ?? ""} onChange={(e) => setCooldown(e.target.value ? Number(e.target.value) : null)}>
               {COOLDOWNS.map(([l, v]) => <option key={l} value={v ?? ""}>{l}</option>)}
+              {cooldown != null && !COOLDOWNS.some(([, v]) => v === cooldown) && <option value={cooldown}>{plural(cooldown, "dzień", "dni", "dni")}</option>}
             </select></div>
           <div className="field"><label htmlFor="af-exp">Wygasa</label>
             <select id="af-exp" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
@@ -448,8 +456,9 @@ export function validate(kind: string, scope: string, params: Record<string, unk
   const num = (k: string) => (typeof params[k] === "number" && Number.isFinite(params[k] as number) ? (params[k] as number) : null);
   if ((kind === "price_above" || kind === "price_below") && !(num("level")! > 0)) out.push("Podaj poziom ceny większy od zera.");
   if ("window_days" in params) {
-    const w = num("window_days");
-    if (w == null || w < 1 || w > 260 || !Number.isInteger(w)) out.push("Okno: liczba sesji od 1 do 260.");
+    // The catalog wants at least 2 sessions for drawdown / new high / SMA (alerts/catalog.py), 1 for a change.
+    const w = num("window_days"), min = kind === "change_pct" ? 1 : 2;
+    if (w == null || w < min || w > 260 || !Number.isInteger(w)) out.push(`Okno: liczba sesji od ${min} do 260.`);
   }
   if (kind === "change_pct" && !(num("threshold")! > 0)) out.push("Podaj próg zmiany w procentach.");
   if (kind === "drawdown_from_high" && !(num("threshold")! > 0 && num("threshold")! < 1)) out.push("Próg spadku: od 0 do 100 %.");
@@ -461,8 +470,8 @@ export function validate(kind: string, scope: string, params: Record<string, unk
 // ---- triggered history ------------------------------------------------------------------------------------
 
 function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; alerts: Alert[] }) {
-  const since = new Date(Date.now() - 365 * 86400000).toISOString();
-  const rows = (signals ?? []).filter((s) => (s.source === "alert" || s.rule_id.startsWith("alert:")) && (s.first_seen_at ?? "") >= since)
+  const since = Date.now() - 365 * 86400000;
+  const rows = (signals ?? []).filter((s) => (s.source === "alert" || s.rule_id.startsWith("alert:")) && parseServerTime(s.first_seen_at) >= since)
     .sort((a, b) => (b.first_seen_at ?? "").localeCompare(a.first_seen_at ?? ""));
   const byId = new Map(alerts.map((a) => [a.id, a]));
   const value = (s: SignalV2) => {
@@ -489,9 +498,9 @@ function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; ale
   };
   const title = (s: SignalV2) => byId.get(s.alert_id ?? -1)?.title ?? (typeof s.payload.title === "string" ? s.payload.title : s.instrument_label ?? "Alert");
   const exportCsv = () => {
-    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-    const lines = [["data", "alert", "wartość", "typ", "źródło", "co dalej", "decyzja"].join(";"),
-      ...rows.map((s) => [s.first_seen_at?.slice(0, 10) ?? "", title(s), value(s), s.polarity ?? "", byId.get(s.alert_id ?? -1)?.source ?? "", next(s), decision(s)].map(esc).join(";"))];
+    // Formula prefixes in agent-written titles / reasons are neutralised (csv.ts, F7 FE16).
+    const lines = [csvLine(["data", "alert", "wartość", "typ", "źródło", "co dalej", "decyzja"]),
+      ...rows.map((s) => csvLine([localDay(s.first_seen_at) ?? "", title(s), value(s), s.polarity ?? "", byId.get(s.alert_id ?? -1)?.source ?? "", next(s), decision(s)]))];
     const url = URL.createObjectURL(new Blob([`﻿${lines.join("\n")}`], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url; a.download = "alerty-historia.csv"; a.click();
@@ -508,7 +517,7 @@ function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; ale
                 const a = byId.get(s.alert_id ?? -1);
                 return (
                   <tr key={s.id}>
-                    <td className="tnum">{s.first_seen_at?.slice(0, 10)}</td>
+                    <td className="tnum">{localDay(s.first_seen_at)}</td>
                     <td>{title(s)}</td>
                     <td className="num">{value(s)}</td>
                     <td><PolarityText polarity={s.polarity ?? "neutral"} /></td>

@@ -2,12 +2,14 @@
 // with Zapisz; switches and radios save on change with a toast.
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useAsync } from "../hooks";
+import { parseServerTime, serverDate } from "../time";
 import { Code, copyText, Notice, RadioList, Seg, Switch, Tag, useToast } from "../ui";
 import {
   ApiError, getMcpCalls, getMcpInfo, getSetup, getSystem, mcpAddCommand, type McpCall, type ModuleInfo, patchProfile, postWorker, type Privacy,
   putProfileModules, type ProfileModule, type WorkerInfo,
 } from "./api";
 import { moduleDef, orderModules } from "./registry";
+import { describeJob, describeRelocation, errorText, label } from "./messages";
 import { PRIVACY_PLAIN, stepsTag } from "./SetupPage";
 import { useShell } from "./context";
 import type { ThemePref } from "./theme";
@@ -97,7 +99,7 @@ function ProfileSection() {
       await patchProfile(slug, { name: n, base_currency: currency });
       await reloadProfiles();
       toast("Zapisano");
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { setErr(errorText(e)); } finally { setBusy(false); }
   };
 
   return (
@@ -223,7 +225,7 @@ function AgentSection() {
       await patchProfile(slug, { mcp_privacy: v });
       await reloadProfiles();
       toast("Zapisano");
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { setErr(errorText(e)); } finally { setBusy(false); }
   };
   return (
     <Card id="agent" title="Agent AI (MCP)">
@@ -386,7 +388,7 @@ function AuditLog() {
   const { data, error, loading, reload } = useAsync(() => getMcpCalls(slug, 50), [slug]);
   const calls = data ?? [];
   const week = Date.now() - 7 * 86400000;
-  const recent = calls.filter((c) => { const t = callTime(c); return t ? new Date(t).getTime() >= week : false; }).length;
+  const recent = calls.filter((c) => { const t = callTime(c); return t ? parseServerTime(t) >= week : false; }).length;
   return (
     <>
       <div className="controls" style={{ margin: "14px 0 6px" }}>
@@ -408,7 +410,7 @@ function AuditLog() {
               const privacy = c.privacy ?? c.privacy_level ?? "";
               return (
                 <tr key={c.id ?? k}>
-                  <td style={{ whiteSpace: "nowrap" }}>{t ? timeFmt.format(new Date(t)) : "-"}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>{serverDate(t) ? timeFmt.format(serverDate(t)!) : "-"}</td>
                   <td><code>{c.tool}</code></td>
                   <td className="muted" style={{ fontSize: 12.5 }}>{args || "-"}</td>
                   <td>{PRIVACY_SHORT[privacy] ?? privacy ?? "-"}</td>
@@ -464,17 +466,10 @@ const JOB_LABEL: Record<string, [string, string]> = {
 const JOB_STATUS: Record<string, [string, "pos" | "neg" | "warn" | undefined]> = {
   ok: ["ok", "pos"], partial: ["częściowy", "warn"], failed: ["błąd", "neg"], skipped: ["pominięte", undefined],
 };
-const when = (iso: string | null | undefined) => (iso ? timeFmt.format(new Date(iso)) : "-");
-/** Worker job details come from the backend in English; the common ones read in Polish. */
-function jobDetail(detail: string): string {
-  return detail
-    .replace(/Enable Banking not configured/i, "Enable Banking nie jest skonfigurowany")
-    .replace(/rule (\S+) inactive:.*$/i, "reguła $1 nieaktywna (błąd w strategy.yaml)")
-    .replace(/throttled until/i, "limit banku do");
-}
+const when = (iso: string | null | undefined) => { const t = serverDate(iso); return t ? timeFmt.format(t) : "-"; };
 
 function WorkerSection() {
-  const { system, profile } = useShell();
+  const { system, profile, slug } = useShell();
   const toast = useToast();
   const [w, setW] = useState<WorkerInfo | null>(system?.worker ?? null);
   const [time, setTime] = useState(system?.worker?.schedule ?? "07:30");
@@ -497,7 +492,7 @@ function WorkerSection() {
       else toast(action === "install" ? "Praca w tle zainstalowana" : "Praca w tle odinstalowana");
     } catch (e) {
       const status = e instanceof ApiError ? e.status : 0;
-      setErr(status === 409 ? "Praca w tle właśnie działa - spróbuj za chwilę." : status === 501 ? "Ten system nie ma obsługiwanego harmonogramu zadań." : (e as Error).message);
+      setErr(status === 409 ? "Praca w tle właśnie działa - spróbuj za chwilę." : status === 501 ? "Ten system nie ma obsługiwanego harmonogramu zadań." : errorText(e));
     } finally { setBusy(null); }
   };
   const on = (id: string) => profile.modules.some((m) => m.id === id && m.enabled);
@@ -508,8 +503,17 @@ function WorkerSection() {
     { job: "notifications", module: null, status: "", detail: null },
     { job: "digest", module: null, status: "", detail: null },
   ];
+  const reloc = w?.relocation ?? null;
+  const relocText = describeRelocation(reloc);
   return (
     <Card id="worker" title="Praca w tle">
+      {reloc && relocText && (
+        <Notice tone="warn" style={{ margin: "0 0 10px" }} action={reloc.actions.includes("worker_reinstall")
+          ? <button className="btn primary" disabled={!known || busy != null} onClick={() => act("install", { time: w?.schedule ?? time })}>{busy === "install" ? "Instaluję…" : "Zainstaluj ponownie"}</button>
+          : undefined}>
+          <b>{relocText}.</b>{reloc.actions.includes("mcp_readd") ? ` ${label("relocation.mcp_readd")}` : ""}
+        </Notice>
+      )}
       <div className="row" style={{ paddingTop: 0 }}>
         <Switch on={!!w?.installed} disabled={!known || !supported || busy != null} label={`Codziennie o ${w?.schedule ?? time} w tle`}
           title={!known ? "Serwer nie obsługuje jeszcze instalacji z aplikacji" : !supported ? "Ten system nie ma obsługiwanego harmonogramu zadań" : undefined}
@@ -554,7 +558,7 @@ function WorkerSection() {
               return (
                 <tr key={j.job} className={st ? "" : "muted"}>
                   <td>{label}</td><td>{mod}</td><td>{sched}</td><td>{"last_run" in j && j.last_run ? when(j.last_run) : st ? when(w?.last_run) : "-"}</td>
-                  <td>{st ? <><Tag tone={tone}>{st}</Tag>{j.detail ? <span className="hint"> {jobDetail(j.detail)}</span> : null}</> : "-"}</td>
+                  <td>{st ? <><Tag tone={tone}>{st}</Tag>{describeJob(j) ? <span className="hint"> {j.profile && j.profile !== slug ? `${j.profile}: ` : ""}{describeJob(j)}</span> : null}</> : "-"}</td>
                 </tr>
               );
             })}

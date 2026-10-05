@@ -70,11 +70,11 @@ export function Widget({ title, count, tags, controls, footer, hl, ghost, body, 
   );
 }
 
-export interface FactItem { label: ReactNode; value: ReactNode; detail?: ReactNode; tone?: "pos" | "neg" | "warn"; small?: boolean }
+export interface FactItem { label: ReactNode; value: ReactNode; detail?: ReactNode; tone?: "pos" | "neg" | "warn"; small?: boolean; title?: string }
 
-export function Fact({ label, value, detail, tone, small }: FactItem) {
+export function Fact({ label, value, detail, tone, small, title }: FactItem) {
   return (
-    <div className="fact">
+    <div className="fact" title={title}>
       <div className="l">{label}</div>
       <div className={`v ${small ? "sm" : ""} ${tone ?? ""}`}>{value}</div>
       {detail != null && detail !== "" && <div className="d">{detail}</div>}

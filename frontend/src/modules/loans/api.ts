@@ -10,6 +10,7 @@ export interface LoanInfo {
   has_loan?: boolean;
   currency?: string;
   principal?: number;
+  /** Percent per year (7.25 = 7,25 %), never a fraction. */
   annual_rate?: number;
   monthly_payment?: number;
   outstanding?: number;

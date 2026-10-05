@@ -9,6 +9,7 @@ import { createProfile, type ModuleInfo, type Privacy, type Profile, type System
 import { moduleDef, orderModules } from "./registry";
 import { ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, workspaceErrorText } from "./workspace";
 import { getWorkspaceDefault, postWorkspace } from "./workspaceApi";
+import { errorText } from "./messages";
 
 export const CURRENCIES = ["PLN", "EUR", "USD", "CHF", "GBP"];
 const LEGACY_SKIP_KEY = "finanse.legacySkipped";
@@ -119,7 +120,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
         });
         setCreated(p);
       } catch (e) {
-        setErr((e as Error).message);
+        setErr(errorText(e));
         setBusy(false);
         return;
       }

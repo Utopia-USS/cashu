@@ -6,6 +6,10 @@ import { Notice, Skeleton, SkeletonChart, SkeletonKpis, ToastProvider } from "..
 import { getModules, getProfiles, getSystem, onAuthLost, type Profile } from "./api";
 import { Shell } from "./Shell";
 import { Wizard } from "./Wizard";
+import { errorText } from "./messages";
+
+/** The pywebview desktop window (finanse app), not a browser tab. */
+const inDesktop = () => typeof window !== "undefined" && "pywebview" in window;
 
 export function App() {
   const [authLost, setAuthLost] = useState(false);
@@ -14,9 +18,14 @@ export function App() {
     <ToastProvider>
       {authLost && (
         <div className="wrap" style={{ paddingBottom: 0 }}>
-          <Notice tone="warn" action={<button className="btn primary" onClick={() => location.reload()}>Odśwież</button>}>
-            <b>Serwer finanse został uruchomiony ponownie.</b> Ta karta ma nieaktualny token dostępu - odśwież stronę, żeby dalej pracować.
-          </Notice>
+          {/* The desktop window gets the new token on reload; a browser tab needs the new #token= URL (PK1). */}
+          {inDesktop() ? (
+            <Notice tone="warn" action={<button className="btn primary" onClick={() => location.reload()}>Odśwież</button>}>
+              <b>Serwer uruchomiony ponownie.</b> Odśwież stronę.
+            </Notice>
+          ) : (
+            <Notice tone="warn"><b>Serwer uruchomiony ponownie.</b> Otwórz nowy adres z <code>finanse serve</code>.</Notice>
+          )}
         </div>
       )}
       <Root />
@@ -36,7 +45,7 @@ function Root() {
       setProfiles(await getProfiles());
       setErr(null);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(errorText(e));
     }
   }, []);
   useEffect(() => { void reloadProfiles(); }, [reloadProfiles]);

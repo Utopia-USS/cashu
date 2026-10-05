@@ -17,18 +17,20 @@ import { getStrategy } from "../api";
 import { accountLabel, bucketLabel, dm, isoDate, money, money0, nInstruments, parseNum, pct, plural, pp, WEEKDAYS } from "../labels";
 import { nextDeposit } from "../logic";
 import { deletePlannedDeposit, getDigestV2, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
-import { changeSince, isDigestDay, monthlyFlows, planForMonth, polarityOf } from "./logic";
+import { changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "./logic";
+import { addDays, todayLocal } from "../../../time";
 import { isMissingEndpoint } from "./undoFlow";
 
 const MONTH_ADJ = ["styczniowa", "lutowa", "marcowa", "kwietniowa", "majowa", "czerwcowa", "lipcowa", "sierpniowa", "wrześniowa", "październikowa", "listopadowa", "grudniowa"];
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-const todayIso = () => new Date().toISOString().slice(0, 10);
+/** Local calendar date (the UTC date is yesterday between 00:00 and 02:00 in Poland, F7 FE11). */
+const todayIso = () => todayLocal();
 const prevMonth = (today: string) => {
   const [y, m] = today.split("-").map(Number);
   const d = new Date(y, m - 2, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
-const minusDays = (iso: string, days: number) => new Date(new Date(`${iso}T12:00:00`).getTime() - days * 86400000).toISOString().slice(0, 10);
+const minusDays = (iso: string, days: number) => addDays(iso, -days);
 
 // ---- planned deposits (server, per profile) ---------------------------------------------------------------
 /** The profile's planned deposits; `null` data = a server without the endpoint (the button then explains). */
@@ -123,6 +125,7 @@ export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
         <span>{last ? <>reguły {last.status === "ok" ? "ok" : last.status === "partial" ? "częściowo" : "błąd"} · <b>{dm(last.finished_at ?? last.started_at)}</b></> : "reguły jeszcze nie działały"}</span></>}>
       <div className="facts" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
         <Fact label="YTD" value={s?.twr != null ? pct(s.twr, true) : "-"} tone={s?.twr != null ? (s.twr >= 0 ? "pos" : "neg") : undefined}
+          title={perfNotes(ytd.data).join("\n") || undefined}
           detail={b?.status === "ok" && b.twr != null ? `${b.id ?? "benchmark"} ${pct(b.twr, true)}` : "bez benchmarku"} />
         <Fact label="Szanse" value={sig.data ? chances.length : "-"} detail={names(chances) || undefined} />
         <Fact label="Ryzyka" value={sig.data ? risks.length : "-"} detail={triggered ? plural(triggered, "alert wyzwolony", "alerty wyzwolone", "alertów wyzwolonych") : names(risks) || undefined} />
@@ -143,6 +146,8 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
   const mc = useAsync<MonthClose | null>(() => getMonthClose(ctx.slug, month).catch(() => null), [ctx.slug]);
   const ov = useAsync(() => getOverviewV2(ctx.slug).catch(() => null), [ctx.slug]);
   const ytd = useAsync(() => getPerformance(ctx.slug, "ytd").catch(() => null), [ctx.slug]);
+  // 12 months of points: the first deposit for the plan-months rule shared with the Wpłaty widget.
+  const year = useAsync(() => getPerformance(ctx.slug, "1y").catch(() => null), [ctx.slug]);
   const curMonth = todayIso().slice(0, 7);
   const plans = usePlannedDeposits(ctx.slug);
   const plan = planForMonth(plans.list, curMonth);
@@ -162,16 +167,21 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
   }
   const amount = planned && planned.currency === c ? planned.amount : null;
   const want = plan?.amount ?? amount;
-  const stays = want != null ? close.surplus - want : null;
+  // What is left for investing after the cushion top-up (month close `suggested_transfer`), F7 FE5.
+  const flow = surplusFlow(close, want);
+  const stays = flow.stays;
   const day = planned?.day_of_month ?? null;
   const due = nextDeposit(todayIso(), day);
   const cushion = d.cushion;
   const alloc = ov.data?.allocation;
   const under = alloc?.buckets.filter((b) => b.drift_pp < 0).sort((a, b) => a.drift_pp - b.drift_pp)[0];
-  const closes = under && want && alloc?.total ? Math.min(Math.abs(under.drift_pp), (want / (alloc.total + want)) * 100) : null;
+  const closes = under && want && alloc?.total
+    ? Math.min(Math.abs(under.drift_pp), contributionPp(want, alloc.total, Number(under.weight ?? under.target + under.drift_pp / 100)))
+    : null;
   const monthIdx = Number(month.slice(5, 7)) - 1;
   const deposits = ytd.data?.summary?.deposits ?? null;
-  const ytdPlan = amount != null ? amount * Number(curMonth.slice(5, 7)) : null;
+  const firstDeposit = (year.data?.points ?? []).find((p) => (p.flow ?? 0) > 0)?.date ?? null;
+  const ytdPlan = amount != null ? amount * planMonthsSoFar(firstDeposit, todayIso()) : null;
   const accountId = ov.data?.accounts.length === 1 ? ov.data.accounts[0].id : null;
   const save = (value: number) => { setOther(null); void acts.save(value, c, due, accountId); };
   const otherNum = other != null ? parseNum(other) : null;
@@ -190,7 +200,8 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
         <span className="spacer" /><span>{plan?.status === "booked" ? "wpłata zaksięgowana z importu" : plan ? "import wpłaty zaksięguje plan" : "import wpłaty potwierdzi plan"}</span>
       </>}>
       <div className="flow">
-        <Fact label={`Nadwyżka ${ROMAN[monthIdx]}`} value={money0(close.surplus, c)} tone={close.surplus < 0 ? "neg" : undefined} />
+        <Fact label={`Nadwyżka ${ROMAN[monthIdx]}`} value={money0(close.surplus, c)} tone={close.surplus < 0 ? "neg" : undefined}
+          detail={flow.topUp > 0 ? `na inwestycje ${money0(flow.available, c)} po poduszce` : undefined} />
         <span className="arrow" aria-hidden>→</span>
         <Fact label="Plan wpłaty" value={want != null ? money0(want, c) : "-"} detail={want == null ? "brak planu w strategii" : day ? `do ${day}. dnia` : undefined} />
         <span className="arrow" aria-hidden>→</span>
@@ -210,7 +221,7 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
           <span className="tag solid pos">{planTag(plan)}</span>
         ) : other == null ? (
           <>
-            {want != null && <button className="btn primary" disabled={acts.busy || plans.list === null && !plans.missing} onClick={() => save(want)}>Zaplanuj wpłatę {money0(want, c)}</button>}
+            {flow.primary != null && <button className="btn primary" disabled={acts.busy || plans.list === null && !plans.missing} onClick={() => save(flow.primary!)}>Zaplanuj {money0(flow.primary, c)}</button>}
             <button className="btn" onClick={() => setOther(want != null ? String(Math.round(want)) : "")}>Inna kwota</button>
           </>
         ) : (
@@ -257,6 +268,7 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
   const c = ov.data?.base_currency ?? ctx.profile.base_currency;
   const s = perf.data?.summary;
   const dep = depositFacts(perf.data, today);
+  const bench = heroBenchmark(perf.data?.benchmark, s?.net_contributions);
   const contrib = strat.data?.facts?.contributions ?? null;
   const planAmount = contrib?.monthly_amount ?? dep.same ?? dep.last?.amount ?? null;
   const day = contrib?.day_of_month ?? (dep.last ? Number(dep.last.date.slice(8, 10)) : null);
@@ -288,8 +300,8 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
             <div className="hf">
               <Fact label="Wpłacono" value={s?.net_contributions != null ? money0(s.net_contributions, c) : "-"}
                 detail={dep.flows.length ? (dep.same ? `${plural(dep.flows.length, "wpłata", "wpłaty", "wpłat")} po ${money0(dep.same, c)}` : plural(dep.flows.length, "wpłata", "wpłaty", "wpłat")) : undefined} />
-              <Fact label="Benchmark" value={perf.data?.benchmark?.status === "ok" && perf.data.benchmark.twr != null ? pct(perf.data.benchmark.twr, true) : "-"}
-                detail={perf.data?.benchmark?.status === "ok" ? `${perf.data.benchmark.id ?? "benchmark"}, te same wpłaty` : "ustaw w strategii"} />
+              <Fact label="Benchmark" value={bench ? pct(bench.value, true) : "-"} title={perfNotes(perf.data).join("\n") || undefined}
+                detail={bench ? bench.label : perf.data?.benchmark?.status === "ok" ? undefined : "ustaw w strategii"} />
               <Fact label="Następna wpłata" value={dm(due)} detail={[planAmount != null ? money0(planAmount, c) : null, acc].filter(Boolean).join(" · ") || undefined} />
             </div>
             <div className="hr">

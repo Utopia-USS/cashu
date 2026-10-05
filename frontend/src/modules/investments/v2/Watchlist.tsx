@@ -5,11 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../core/api";
 import { describeIssue, errorText } from "../../../core/messages";
 import { Spark } from "../../../charts";
+import { useInFlight } from "../../../hooks";
 import { Skeleton, useToast } from "../../../ui";
 import { AgentTag, FootFacts, Widget } from "../../../widgets";
 import { pct, plural } from "../labels";
 import { deleteWatch, postWatch, type WatchItem } from "./api";
-import { instName, price, weekChange } from "./logic";
+import { instName, price, watchMove } from "./logic";
+import { makeUndo } from "../undo";
+import { offerUndo } from "./undoFlow";
 
 const KIND_WORD: Record<string, string> = {
   price_below: "poniżej", price_above: "powyżej", sma_cross: "SMA", new_high: "nowy szczyt", drawdown_from_high: "spadek od szczytu",
@@ -62,15 +65,18 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
       setErr(e instanceof ApiError && e.status === 409 && !e.code ? "Ten instrument już jest na liście." : errorText(e));
     } finally { setBusy(false); }
   };
-  const remove = async (w: WatchItem) => {
+  const flight = useInFlight();
+  const remove = (w: WatchItem) => flight.run(async () => {
     try {
       await deleteWatch(slug, w.id);
       onChanged();
-      toast(`Usunięto ${w.instrument?.label ?? "instrument"} z obserwowanych`, 6000, {
-        label: "Cofnij", onClick: () => { void postWatch(slug, { instrument_id: w.instrument_id, note: w.note }).then(onChanged); },
-      });
+      // The undo re-adds the item with its note and tags; failures get a toast (F7 FE8). An agent's item comes
+      // back as the owner's (the API has no restore for the watchlist).
+      const u = makeUndo(Date.now(), () => postWatch(slug, { instrument_id: w.instrument_id, note: w.note, tags: w.tags?.length ? w.tags : null }));
+      offerUndo(toast, `Usunięto ${w.instrument?.label ?? "instrument"} z obserwowanych`, u, "usunięcie z obserwowanych", onChanged, 10000,
+        () => (w.source === "agent" ? "wraca jako Twoja pozycja" : null));
     } catch (e) { toast(`Nie usunięto: ${errorText(e)}`, 4000); }
-  };
+  });
   return (
     <Widget title="Obserwowane" count={list.length || undefined} id="inv-watch"
       controls={<button className="btn sm" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>+ Dodaj</button>}
@@ -92,7 +98,8 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
         <table>
           <tbody>
             {list.map((w) => {
-              const wk = weekChange(w.closes_30d) ?? w.price?.change_1d ?? null;
+              const mv = watchMove(w.closes_30d, w.price?.change_1d);
+              const wk = mv?.value ?? null;
               const label = w.instrument ? instName(w.instrument) : `instrument ${w.instrument_id}`;
               return (
                 <tr key={w.id}>
@@ -104,10 +111,10 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
                   <td className="num">
                     {w.price ? price(w.price.close, w.price.currency) : <span className="muted">brak ceny</span>}
                     {w.price?.stale && <span className="tag warn" style={{ marginLeft: 4 }}>stara</span>}
-                    <span className={`sym ${wk == null ? "" : wk >= 0 ? "pos" : "neg"}`}>{wk != null ? `${pct(wk, true)} tydz.` : ""}</span>
+                    <span className={`sym ${wk == null ? "" : wk >= 0 ? "pos" : "neg"}`}>{mv ? `${pct(mv.value, true)} ${mv.label}` : ""}</span>
                   </td>
                   <td style={{ width: 28, paddingLeft: 0 }}>
-                    <button className="icon-btn" title="Przestań obserwować" aria-label={`Przestań obserwować ${label}`} onClick={() => remove(w)}>✕</button>
+                    <button className="icon-btn" title="Przestań obserwować" aria-label={`Przestań obserwować ${label}`} disabled={flight.busy} onClick={() => remove(w)}>✕</button>
                   </td>
                 </tr>
               );

@@ -31,6 +31,16 @@ export interface Level { y: number; cls: "alert" | "rule" | "cost" | "agent"; la
 const DOT: Record<LineSeries["cls"], string> = { main: "var(--nw)", bench: "var(--bench)", neg: "var(--neg)" };
 
 /** Line chart. x = index (evenly sampled series); `xLabels` place date labels by index. */
+/** Roles of a chart (F7 FE14). A static chart is one image. A chart with a keyboard tooltip is a focusable
+ * group: the SVG inside is the image, and the tooltip (role="status") is a sibling the screen reader announces
+ * (inside role="img" its children would be presentational). */
+function chartRoles(label: string | undefined, interactive: boolean) {
+  return interactive
+    ? { role: "group", "aria-roledescription": "wykres", "aria-label": label ? `${label} (strzałki: wartości)` : "Wykres (strzałki: wartości)" }
+    : { role: "img", "aria-label": label };
+}
+const svgRoles = (label: string | undefined, interactive: boolean) => (interactive ? { role: "img", "aria-label": label } : { "aria-hidden": true });
+
 export function LineChart({
   series, levels = [], xLabels = [], yFmt, yTicks = 4, ymin, ymax, height = 230, padL = 56, padR = 64, markers = [], tooltip, label,
 }: {
@@ -84,9 +94,9 @@ export function LineChart({
   const tipY = hover != null ? Math.min(...series.map((s) => (s.values[hover] != null ? Y(s.values[hover]!) : h)).filter(Number.isFinite)) : 0;
   return (
     <div className="chart" ref={ref} style={{ height: h }} tabIndex={tooltip ? 0 : undefined} onKeyDown={onKey}
-      onBlur={() => setHover(null)} aria-label={label} role="img">
+      onBlur={() => setHover(null)} {...chartRoles(label, !!tooltip)}>
       {width > 0 && (
-        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} onPointerMove={onMove} onPointerLeave={() => setHover(null)} {...svgRoles(label, !!tooltip)}>
           {tickVals.map((v, k) => (
             <g key={k}>
               <line className="gl" x1={left} x2={w - padR + 6} y1={Y(v)} y2={Y(v)} />
@@ -151,6 +161,13 @@ export function LineChart({
   );
 }
 
+/** The accessible name of a bar chart with its values ("Wpłaty: sie 2 000 zł, wrz 500 zł, paź brak"), F7 FE14:
+ * a screen reader gets the numbers, not only the title. */
+function barsText(label: string, values: number[], labels?: (string | null)[], valueLabels?: (string | null)[]): string {
+  const parts = values.map((v, i) => `${labels?.[i] ?? i + 1} ${valueLabels?.[i] ?? (v ? v.toLocaleString("pl-PL", { maximumFractionDigits: 0 }) : "brak")}`);
+  return parts.length ? `${label}: ${parts.join(", ")}` : label;
+}
+
 /** Monthly bars with an optional dashed plan line (label on the left) and value labels. */
 export function Bars({ values, labels, plan, planLabel, cls, valueLabels, height = 120, label }: {
   values: number[];
@@ -167,9 +184,9 @@ export function Bars({ values, labels, plan, planLabel, cls, valueLabels, height
   const w = Math.max(width, 120), h = height;
   const { boxes, y } = barLayout(values.map((v, i) => (cls?.[i] === "plan" && plan ? plan : v)), w, h, { plan });
   return (
-    <div className="chart" ref={ref} style={{ height: h }} role="img" aria-label={label}>
+    <div className="chart" ref={ref} style={{ height: h }} role="img" aria-label={barsText(label, values, labels, valueLabels)}>
       {width > 0 && (
-        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden>
           <line className="gl" x1={0} x2={w} y1={y(0)} y2={y(0)} />
           {boxes.map((b, i) => (
             <g key={i}>
@@ -233,14 +250,14 @@ export function StackedChart({ rows, keys, colors, totals, xLabels = [], yFmt, h
   };
   const hx = hover != null ? X(hover) : 0;
   return (
-    <div className="chart" ref={ref} style={{ height: h }} role="img" aria-label={label} tabIndex={tooltip ? 0 : undefined}
+    <div className="chart" ref={ref} style={{ height: h }} {...chartRoles(label, !!tooltip)} tabIndex={tooltip ? 0 : undefined}
       onKeyDown={(e) => {
         if (!tooltip || n < 2 || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
         e.preventDefault();
         setHover((c) => Math.max(0, Math.min(n - 1, (c ?? n - 1) + (e.key === "ArrowRight" ? 1 : -1))));
       }} onBlur={() => setHover(null)}>
       {width > 0 && (
-        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} onPointerMove={onMove} onPointerLeave={() => setHover(null)} {...svgRoles(label, !!tooltip)}>
           {ticks(lo, hi, 4).map((v, k) => (
             <g key={k}>
               <line className="gl" x1={padL} x2={w - padR} y1={Y(v)} y2={Y(v)} />

@@ -1,5 +1,5 @@
 import { createContext, type CSSProperties, Fragment, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { dropToast, pushToast, type ToastAction, type ToastItem } from "./toasts";
+import { dropToast, MIN_ACTION_MS, pushToast, type ToastAction, type ToastItem, toastTimers } from "./toasts";
 
 export function Skeleton({ w = "100%", h = 14, r = 8, style }: {
   w?: number | string; h?: number | string; r?: number; style?: CSSProperties;
@@ -49,7 +49,7 @@ export function SkeletonTable({ rows = 6, title = true }: { rows?: number; title
 }
 
 export function Seg<T extends string | number | null>({
-  items, value, onChange, quiet, label,
+  items, value, onChange, quiet, label, disabled, title,
 }: {
   items: [label: string, value: T][];
   value: T;
@@ -58,11 +58,14 @@ export function Seg<T extends string | number | null>({
   quiet?: boolean;
   /** Accessible name of the group. */
   label?: string;
+  /** The whole group is read-only (e.g. a field an edit cannot change); `title` says why. */
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
-    <span className={`seg ${quiet ? "quiet" : ""}`} role="group" aria-label={label}>
+    <span className={`seg ${quiet ? "quiet" : ""}`} role="group" aria-label={label} title={title}>
       {items.map(([text, v]) => (
-        <button key={String(v)} type="button" className={v === value ? "on" : ""} aria-pressed={v === value} onClick={() => onChange(v)}>
+        <button key={String(v)} type="button" className={v === value ? "on" : ""} aria-pressed={v === value} disabled={disabled} onClick={() => onChange(v)}>
           {text}
         </button>
       ))}
@@ -282,31 +285,47 @@ export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
-  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const seq = useRef(0);
+  const timers = useRef<ReturnType<typeof toastTimers> | null>(null);
+  timers.current ??= toastTimers((id) => setItems((cur) => dropToast(cur, id)));
   const close = useCallback((id: number) => {
-    clearTimeout(timers.current.get(id));
-    timers.current.delete(id);
+    timers.current!.stop(id);
     setItems((cur) => dropToast(cur, id));
   }, []);
   const show = useCallback<ShowToast>((text, ms = 2000, action) => {
     const id = ++seq.current;
     setItems((cur) => pushToast(cur, { id, text, action }));
-    timers.current.set(id, setTimeout(() => close(id), ms));
-  }, [close]);
-  useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
+    // An undo stays long enough to reach it with the keyboard; every timer pauses while the owner is on the
+    // stack (hover, focus) or away from the window (F7 FE14).
+    timers.current!.start(id, action ? Math.max(ms, MIN_ACTION_MS) : ms);
+  }, []);
+  const hover = useRef(false), focus = useRef(false);
+  const sync = useCallback(() => {
+    if (hover.current || focus.current || document.hidden) timers.current!.pause(); else timers.current!.resume();
+  }, []);
+  useEffect(() => {
+    document.addEventListener("visibilitychange", sync);
+    return () => { document.removeEventListener("visibilitychange", sync); timers.current?.clear(); };
+  }, [sync]);
+  // The stack unmounts when empty (no mouseleave / blur then): reset the pause state.
+  useEffect(() => { if (!items.length) { hover.current = false; focus.current = false; sync(); } }, [items.length, sync]);
   return (
     <ToastCtx.Provider value={show}>
       {children}
       {items.length > 0 && (
-        <div className="toasts" role="status" aria-live="polite">
-          {items.map((t) => (
-            <div className="toast" key={t.id}>
-              <span className="txt">{t.text}</span>
-              {t.action && <button className="btn" onClick={() => { close(t.id); t.action!.onClick(); }}>{t.action.label}</button>}
-              {t.action && <button className="icon-btn" aria-label="Zamknij" onClick={() => close(t.id)}>✕</button>}
-            </div>
-          ))}
+        <div className="toasts" role="region" aria-label="Powiadomienia"
+          onMouseEnter={() => { hover.current = true; sync(); }} onMouseLeave={() => { hover.current = false; sync(); }}
+          onFocus={() => { focus.current = true; sync(); }}
+          onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { focus.current = false; sync(); } }}>
+          <div role="status" aria-live="polite" style={{ display: "contents" }}>
+            {items.map((t) => (
+              <div className="toast" key={t.id}>
+                <span className="txt">{t.text}</span>
+                {t.action && <button className="btn" onClick={() => { close(t.id); t.action!.onClick(); }}>{t.action.label}</button>}
+                {t.action && <button className="icon-btn" aria-label="Zamknij" onClick={() => close(t.id)}>✕</button>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </ToastCtx.Provider>

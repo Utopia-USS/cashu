@@ -3,7 +3,10 @@
 // (`summary_code` = the kind + `summary_params`) and proposal errors (`result.error_code`).
 // The server text stays English; an unknown code, or a template whose params are missing, falls back
 // to that English text. Pure module (no React, no DOM): tested in tests/messages.test.mjs, and the
-// backend test tests/test_message_codes.py checks that every backend code has a label here.
+// backend test tests/test_message_codes.py checks that every backend code has a label here. Also the
+// performance data-quality notes (`perf.<code>`) and worker job outcomes (`worker.<code>`).
+
+import { serverDate } from "../time.ts";
 
 export type Params = Record<string, unknown>;
 /** A template ("{key}" placeholders) or a function; null from a function = fall back to English. */
@@ -33,6 +36,17 @@ const cur = (v: unknown, c?: unknown) => {
 const frac = (v: unknown) => {
   const n = Math.abs(Number(v)) * 100;
   return Number.isFinite(n) ? `${n.toLocaleString("pl-PL", { maximumFractionDigits: 1 })} %` : String(v);
+};
+
+/** "2026-10-05" -> "05.10.2026" (dates in params are calendar days). */
+const dmyText = (v: unknown) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v));
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(v);
+};
+/** A server datetime in params -> "5.10 14:30" in local time (time.ts reads a missing offset as UTC). */
+const whenText = (v: unknown) => {
+  const t = serverDate(String(v));
+  return t ? `${t.getDate()}.${String(t.getMonth() + 1).padStart(2, "0")} ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}` : String(v);
 };
 
 /** Polish plural: plural(5, "reguła", "reguły", "reguł") -> "5 reguł". */
@@ -210,6 +224,36 @@ export const LABELS: Record<string, Label> = {
   // ---- watchlist warnings (`warning_codes` of POST watchlist) -----------------------------------------
   "watchlist.guessed_price_symbol": (p) => `symbol ceny zgadnięty${p.price_symbol ? ` (${p.price_symbol})` : ""}: sprawdź, czy przyjdą notowania`,
   "watchlist.no_price_symbol": "brak symbolu ceny: notowania nie przyjdą, dopóki nie dodasz aliasu Yahoo w klasyfikacji",
+
+  // ---- performance data quality (`data_quality.notes[] {code, params}` of GET investments/performance) -------
+  "perf.incomplete_days": (p) => has(p, "days") ? `niepełna wycena: ${plural(Number(p.days), "dzień", "dni", "dni")}` : "niepełna wycena części dni",
+  "perf.implied_funding": "ujemna gotówka liczona jako wpłata: sprawdź, czy w historii nie brakuje wpłaty",
+  "perf.price_scale_inferred": (p) => has(p, "instruments")
+    ? `ceny przeskalowane (niezaksięgowany split?): ${plural(Number(p.instruments), "instrument", "instrumenty", "instrumentów")}`
+    : "ceny przeskalowane (niezaksięgowany split?)",
+  "perf.unknown_flows": (p) => has(p, "flows") ? `przepływy bez wyceny liczone jako 0: ${p.flows}` : "przepływy bez wyceny liczone jako 0",
+  "perf.benchmark_partial": (p) => has(p, "first_date") ? `benchmark: ceny dopiero od ${dmyText(p.first_date)}` : "benchmark: ceny tylko od części zakresu",
+  "perf.benchmark_stale": (p) => has(p, "last_date") ? `benchmark: ceny tylko do ${dmyText(p.last_date)}, bez porównania` : "benchmark: nieaktualne ceny, bez porównania",
+
+  // ---- worker jobs (`code` + `params` of GET /api/system worker.jobs[]; `detail` is the English fallback) ----
+  "worker.eb_not_configured": "Enable Banking nie jest skonfigurowany",
+  "worker.no_bank_sessions": "brak sesji bankowych",
+  "worker.throttled": (p) => (has(p, "until") ? `limit banku do ${whenText(p.until)}` : "limit banku"),
+  "worker.disabled_for_run": "wyłączone w tym przebiegu",
+  "worker.busy": "inny przebieg w toku",
+  "worker.notifier_none": "bez powiadomień",
+  "worker.digest_already_sent": "już wysłane dziś",
+  "worker.rule_inactive": "reguła {rule} nieaktywna (błąd w strategy.yaml)",
+  "worker.strategy_invalid": "strategia z błędem, reguły nie ruszyły",
+  "worker.market_failed": "notowania niedostępne",
+  "worker.prices_failed": "brak notowań {instrument}",
+  "worker.fx_failed": "brak kursu {currency}",
+
+  // ---- moved app (GET /api/system worker.relocation, F7 PK11) ----------------------------------------------
+  "relocation.missing": "Praca w tle wskazuje program, którego już nie ma",
+  "relocation.other_program": "Praca w tle wskazuje inną kopię aplikacji",
+  "relocation.moved": "Aplikacja została przeniesiona z {path}",
+  "relocation.mcp_readd": "Dodaj ponownie serwer MCP w Claude Code (polecenie w Agent AI).",
 };
 
 /** Fill "{name}" placeholders; null when a placeholder has no value (the caller falls back). */
@@ -284,3 +328,20 @@ export function describeError(e: unknown): Described {
 
 /** One line for a toast: the Polish label of the error code, else the English detail. */
 export const errorText = (e: unknown): string => describeError(e).text;
+
+/** A performance data-quality note (`{code, params, message}`): the Polish label, else the English message. */
+export function describePerfNote(n: { code?: string | null; params?: Params | null; message?: string | null }): string {
+  return label(n.code ? `perf.${n.code}` : null, n.params) ?? n.message ?? n.code ?? "";
+}
+
+/** A worker job's outcome (`code` + `params`, F7): the Polish label, else the English `detail`. */
+export function describeJob(j: { code?: string | null; params?: Params | null; detail?: string | null }): string | null {
+  return label(j.code ? `worker.${j.code}` : null, j.params) ?? j.detail ?? null;
+}
+
+/** One line about a moved app / stale worker config (F7 PK11), or null when all is fine. */
+export function describeRelocation(r: { worker: string | null; app_moved_from?: string | null } | null | undefined): string | null {
+  if (!r) return null;
+  const parts = [r.worker ? label(`relocation.${r.worker}`) : null, r.app_moved_from ? label("relocation.moved", { path: r.app_moved_from }) : null];
+  return parts.filter(Boolean).join(" · ") || null;
+}

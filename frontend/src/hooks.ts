@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { errorText } from "./core/messages";
+import { type InFlight, singleFlight } from "./inflight";
 
 interface AsyncState<T> {
   data: T | null;
@@ -24,7 +26,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncSt
     setError(null); // an error belongs to the run that failed, not to the next deps
     fnRef.current()
       .then((d) => alive && (setData(d), setError(null)))
-      .catch((e: Error) => alive && setError(e.message))
+      .catch((e: unknown) => alive && setError(errorText(e)))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
@@ -72,7 +74,7 @@ export function usePoll<T>(fn: () => Promise<T>, ms: number, deps: unknown[] = [
       if (document.hidden && !force) return;
       fnRef.current()
         .then((d) => alive && (setData(d), setError(null)))
-        .catch((e: Error) => alive && setError(e.message))
+        .catch((e: unknown) => alive && setError(errorText(e)))
         .finally(() => alive && setLoading(false));
     };
     const onFocus = () => run();
@@ -88,4 +90,13 @@ export function usePoll<T>(fn: () => Promise<T>, ms: number, deps: unknown[] = [
   }, [...deps, ms, nonce]);
 
   return { data, error, loading, reload };
+}
+
+/** In-flight guard of a submit button (F7 FE2): `busy` disables it, `run` skips a second click while the
+ * first request runs (see inflight.ts). */
+export function useInFlight(): { busy: boolean; run: InFlight["run"] } {
+  const [busy, setBusy] = useState(false);
+  const guard = useRef<InFlight | null>(null);
+  guard.current ??= singleFlight(setBusy);
+  return { busy, run: guard.current.run.bind(guard.current) };
 }
