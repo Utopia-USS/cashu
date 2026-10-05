@@ -747,6 +747,7 @@ def import_commit(profile: CurrentProfile, body: CommitBody) -> dict:
         "status_changes": result.status_changes,
         "corrections": result.corrections,
         "archive_path": result.archive_path,
+        "planned_booked": result.planned_booked,
     }
 
 
@@ -835,6 +836,75 @@ def run_list(profile: CurrentProfile, limit: int = 20) -> list[dict]:
 
     with get_session() as s:
         return [views.run_dict(r) for r in signals.runs(s, profile.id, max(1, min(limit, 100)))]
+
+
+# --------------------------------------------------------------------------- #
+# Planned deposits (F6)
+# --------------------------------------------------------------------------- #
+
+
+class PlannedBody(BaseModel):
+    amount: float | str
+    planned_date: dt.date
+    currency: str | None = None
+    account_id: int | None = None
+    note: str | None = None
+
+
+@router.get("/planned-deposits")
+def planned_list(
+    profile: CurrentProfile, status: str | None = None, month: str | None = None
+) -> dict:
+    """Planned deposits (``status`` = ``planned,booked`` by default, ``all`` or a comma list), newest
+    planned date first, plus ``plan``: the month's contribution-plan progress in the base currency
+    (``month`` = YYYY-MM, default this month). Planned deposits are never cash or value."""
+    from .service import planned
+
+    try:
+        statuses = planned.parse_statuses(status)
+        with get_session() as s:
+            return {
+                "items": [
+                    planned.planned_dict(r)
+                    for r in planned.planned_deposits(s, profile.id, statuses)
+                ],
+                "plan": planned.month_plan(s, profile, month),
+            }
+    except planned.PlannedError as e:
+        raise _coded(422, str(e), "planned_invalid") from None
+
+
+@router.post("/planned-deposits", status_code=201)
+def planned_create(profile: CurrentProfile, body: PlannedBody) -> dict:
+    """Plan a deposit ("Zaplanuj wpłatę"): counted against the contribution plan, never cash until a
+    matching deposit is imported (it may already be: then the answer is ``booked``). Currency
+    defaults to the account's, else the base currency."""
+    from .service import planned
+
+    with get_session() as s:
+        try:
+            row = planned.create(s, profile, planned.PlannedInput(**body.model_dump()))
+        except planned.PlannedNotFound as e:
+            raise _coded(404, str(e), "not_found") from None
+        except planned.PlannedError as e:
+            raise _coded(422, str(e), "planned_invalid") from None
+        return planned.planned_dict(row)
+
+
+@router.delete("/planned-deposits/{planned_id}")
+def planned_cancel(profile: CurrentProfile, planned_id: int) -> dict:
+    """Cancel a planned deposit (kept with status ``cancelled``); 409 ``planned_booked`` once a
+    deposit booked it, 404 ``not_found`` for another profile's."""
+    from .service import planned
+
+    with get_session() as s:
+        try:
+            row = planned.cancel(s, profile, planned_id)
+        except planned.PlannedNotFound as e:
+            raise _coded(404, str(e), "not_found") from None
+        except planned.PlannedBooked as e:
+            raise _coded(409, str(e), "planned_booked") from None
+        return {"deleted": planned_id, "status": row.status}
 
 
 # --------------------------------------------------------------------------- #

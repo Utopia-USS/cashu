@@ -1,12 +1,12 @@
 """F6 backend integration endpoints: alert soft delete + restore (15 minutes, same id, the closed
-signal re-opened), instrument labels, coded messages, digest bucket ids."""
+signal re-opened), planned deposits, instrument labels, coded messages, digest bucket ids."""
 
 from __future__ import annotations
 
 import datetime as dt
 
 import pytest
-from invp_support import AS_OF, STRATEGY_YAML, canonical_csv, sources
+from invp_support import AS_OF, HEADER, STRATEGY_YAML, canonical_csv, sources
 from sqlmodel import select
 
 from finanse.core.db import get_session
@@ -272,3 +272,138 @@ def test_import_preview_warnings_carry_a_code(client):
     ).json()
     problems = preview["warnings"] + preview["errors"]
     assert problems and all(p["code"] == f"import.{p['kind']}" for p in problems)
+
+
+PLAN_STRATEGY = STRATEGY_YAML + "contributions:\n  monthly_amount: 1500\n  day_of_month: 10\n"
+DEPOSIT_ROW = "1,txn,{date},,deposit,{ref},,,,,,,PLN,,,,{amount},,,,"
+
+
+def _import_rows(client, slug: str, account: int, *rows: str) -> dict:
+    content = ("\n".join([HEADER, *rows]) + "\n").encode()
+    preview = client.post(
+        f"/api/p/{slug}/investments/import/preview",
+        files={"file": ("more.csv", content, "text/csv")},
+        data={"account_id": str(account)},
+    ).json()
+    r = client.post(
+        f"/api/p/{slug}/investments/import/commit",
+        json={"file_id": preview["file_id"], "file_name": "more.csv", "account_id": account},
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_planned_deposits_lifecycle_and_month_plan(client):
+    slug, account = household(client)
+    other, _ = household(client, "Basia")
+    files.write_text_private(files.strategy_yaml_path(slug), PLAN_STRATEGY)
+    base = f"/api/p/{slug}/investments"
+    cash_before = client.get(f"{base}/overview").json()["kpis"]["cash"]
+
+    for bad, code in (
+        ({"amount": 0, "planned_date": "2026-03-10"}, 422),
+        ({"amount": "x", "planned_date": "2026-03-10"}, 422),
+        ({"amount": 10, "planned_date": "2025-01-10"}, 422),  # more than a month back
+        ({"amount": 10, "planned_date": "2026-03-10", "currency": "zloty"}, 422),
+        ({"amount": 10, "planned_date": "2026-03-10", "account_id": 9999}, 404),
+    ):
+        r = client.post(f"{base}/planned-deposits", json=bad)
+        assert r.status_code == code, (bad, r.text)
+        expected = "planned_invalid" if code == 422 else "not_found"
+        assert r.headers["X-Finanse-Error-Code"] == expected
+
+    r = client.post(
+        f"{base}/planned-deposits",
+        json={
+            "amount": 1000,
+            "planned_date": "2026-03-05",
+            "account_id": account,
+            "note": "marzec",
+        },
+    )
+    assert r.status_code == 201, r.text
+    plan = r.json()
+    assert (plan["status"], plan["amount"], plan["currency"]) == ("planned", 1000.0, "PLN")
+    later = client.post(
+        f"{base}/planned-deposits", json={"amount": 300, "planned_date": "2026-03-25"}
+    ).json()
+    assert later["account_id"] is None and later["currency"] == "PLN"  # base currency
+
+    listed = client.get(f"{base}/planned-deposits").json()
+    assert [p["id"] for p in listed["items"]] == [later["id"], plan["id"]]
+    assert listed["plan"] == {
+        "month": "2026-03",
+        "currency": "PLN",
+        "monthly_amount": 1500.0,
+        "day_of_month": 10,
+        "deposited": 0.0,
+        "planned": 1300.0,
+        "remaining": 200.0,
+        "covered": False,
+        "planned_count": 2,
+    }
+    # never cash or value until booked
+    assert client.get(f"{base}/overview").json()["kpis"]["cash"] == cash_before
+    assert client.get(f"/api/p/{other}/investments/planned-deposits").json()["items"] == []
+    assert (
+        client.delete(f"/api/p/{other}/investments/planned-deposits/{plan['id']}").status_code
+        == 404
+    )
+
+    # an imported deposit within the window and 10 % of the amount books the plan
+    committed = _import_rows(
+        client, slug, account, DEPOSIT_ROW.format(date="2026-03-02", ref="P-1", amount="980.00")
+    )
+    assert committed["planned_booked"] == [plan["id"]]
+    items = {p["id"]: p for p in client.get(f"{base}/planned-deposits").json()["items"]}
+    booked = items[plan["id"]]
+    assert booked["status"] == "booked" and booked["booked_txn_id"] is not None
+    assert items[later["id"]]["status"] == "planned"  # 300 does not match a 980 deposit
+    month = client.get(f"{base}/planned-deposits").json()["plan"]
+    assert (month["deposited"], month["planned"], month["remaining"]) == (980.0, 300.0, 220.0)
+    r = client.delete(f"{base}/planned-deposits/{plan['id']}")
+    assert r.status_code == 409 and r.headers["X-Finanse-Error-Code"] == "planned_booked"
+
+    assert client.delete(f"{base}/planned-deposits/{later['id']}").json() == {
+        "deleted": later["id"],
+        "status": "cancelled",
+    }
+    assert later["id"] not in [
+        p["id"] for p in client.get(f"{base}/planned-deposits").json()["items"]
+    ]
+    every = client.get(f"{base}/planned-deposits?status=all").json()["items"]
+    assert {p["status"] for p in every} == {"booked", "cancelled"}
+    assert client.get(f"{base}/planned-deposits?status=nope").status_code == 422
+    assert client.get(f"{base}/planned-deposits?month=2026-13").status_code == 422
+
+
+def test_a_plan_for_a_deposit_already_made_is_booked_at_once_and_once_only(client):
+    slug, account = household(client)
+    base = f"/api/p/{slug}/investments"
+    _import_rows(
+        client, slug, account, DEPOSIT_ROW.format(date="2026-02-27", ref="P-2", amount="500.00")
+    )
+    first = client.post(
+        f"{base}/planned-deposits", json={"amount": 500, "planned_date": "2026-03-01"}
+    ).json()
+    assert first["status"] == "booked"
+    # the same deposit cannot book a second plan
+    second = client.post(
+        f"{base}/planned-deposits", json={"amount": 500, "planned_date": "2026-03-01"}
+    ).json()
+    assert second["status"] == "planned"
+    # a manual deposit books it
+    r = client.post(
+        f"{base}/transactions",
+        json={
+            "account_id": account,
+            "type": "deposit",
+            "trade_date": "2026-03-02",
+            "cash_amount": 510,
+            "currency": "PLN",
+        },
+    )
+    assert r.status_code == 201, r.text
+    items = {p["id"]: p for p in client.get(f"{base}/planned-deposits").json()["items"]}
+    assert items[second["id"]]["status"] == "booked"
+    assert items[second["id"]]["booked_txn_id"] != items[first["id"]]["booked_txn_id"]

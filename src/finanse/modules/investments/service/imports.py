@@ -71,6 +71,7 @@ from ..models import (
 from ..portfolio import build_snapshot
 from ..store import convert, instruments, transactions
 from . import files
+from . import planned as planned_service
 
 AUTO = "auto"
 IMPORTER_CHOICES = (AUTO, "finanse", GENERIC_CSV_BROKER_ID)
@@ -137,6 +138,8 @@ class CommitResult:
     archive_path: str
     instrument_map: dict[InstrumentId, int] = field(default_factory=dict)
     """Planned instrument id -> stored instrument key."""
+    planned_booked: list[int] = field(default_factory=list)
+    """Planned deposits (``service.planned``) booked by this file's deposits."""
 
 
 # --------------------------------------------------------------------------- #
@@ -507,6 +510,9 @@ def commit(
         settings.updated_at = now
         s.add(settings)
 
+        # 7. Planned deposits this file's deposits book (F6; never cash until then).
+        booked = planned_service.book_matching(s, profile.id, now=now) if inserted else []
+
         batch.txn_count, batch.duplicate_count = inserted, duplicates
         batch.rename_count, batch.status_change_count = renames, len(plan.status_changes)
         batch.instrument_count, batch.correction_count = len(new_ids), applied
@@ -523,6 +529,7 @@ def commit(
             corrections=applied,
             archive_path=files.relative_to_data_dir(archive),
             instrument_map=mapping,
+            planned_booked=booked,
         )
 
 

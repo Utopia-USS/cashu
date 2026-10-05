@@ -40,6 +40,7 @@ INVESTMENTS_GETS = [
     "/investments/alerts?status=live",
     "/investments/alert-kinds",
     "/investments/watchlist",
+    "/investments/planned-deposits",
 ]
 VOLATILE = {
     "id",

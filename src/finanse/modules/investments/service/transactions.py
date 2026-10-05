@@ -415,6 +415,10 @@ def add_manual(
     )
     session.add(stored)
     session.flush()
+    if txn_type == TxnType.DEPOSIT:  # a deposit booked by hand books a matching plan too (F6)
+        from . import planned
+
+        planned.book_matching(session, profile.id, now=created_at)
     return ManualTxnResult(
         transaction=convert.transaction(stored),
         account=account,
