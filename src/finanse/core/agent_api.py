@@ -3,7 +3,7 @@ or rejects, weekly reviews, the MCP call audit log and the MCP connection snippe
 
 - ``GET  /proposals?status=&limit=``             list (newest first, no payload)
 - ``GET  /proposals/{id}``                       payload + detail (strategy diff, rule backtest, import
-  preview summary and converter script with its sha256)
+  preview summary)
 - ``POST /proposals/{id}/approve``               apply it (409 not pending or busy, 422 cannot apply:
   then ``failed`` with ``result.error``)
 - ``POST /proposals/{id}/reject``  ``{note?}``   (409 not pending, or busy while an approval runs)

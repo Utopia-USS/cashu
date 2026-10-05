@@ -1,7 +1,7 @@
 """Proposals end to end: created by the MCP write tools, listed / inspected / approved / rejected through
 the app API. Strategy (files + version, refused when the files changed meanwhile), custom rule (compiler
 column, dry run, backtest, merged into strategy.yaml keeping comments), import (preview, commit on
-approval) and converter scripts (run only after approval, hash-pinned)."""
+approval) and the refusal of scripts (the app never runs agent-written code, F5 R1)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import pytest
 from mcp_support import (
     STRATEGY_YAML,
     TODAY,
-    write_converter,
     write_export_csv,
 )
 from sqlmodel import select
@@ -209,6 +208,13 @@ def test_merge_rule_variants():
 # --------------------------------------------------------------------------- #
 
 
+NEW_DEPOSIT = (
+    "format_version,record,date,time,type,external_ref,symbol,isin,name,exchange,quantity,price,"
+    "currency,gross_amount,fee,tax,cash_amount,cash_currency,fx_rate,split_ratio,source\n"
+    "1,txn,2026-01-05,,deposit,N-1,,,,,,,PLN,,,,1000.00,,,,\n"
+)
+
+
 def _txn_count(pid: int) -> int:
     from finanse.modules.investments.store.transactions import brokerage_accounts
 
@@ -219,13 +225,8 @@ def _txn_count(pid: int) -> int:
 
 def test_import_proposal_previews_and_commits_on_approval(setup, tmp_path):
     pid, slug, host, api = setup
-    extra = (
-        "format_version,record,date,time,type,external_ref,symbol,isin,name,exchange,quantity,price,"
-        "currency,gross_amount,fee,tax,cash_amount,cash_currency,fx_rate,split_ratio,source\n"
-        "1,txn,2026-01-05,,deposit,N-1,,,,,,,PLN,,,,1000.00,,,,\n"
-    )
     path = tmp_path / "new.csv"
-    path.write_text(extra)
+    path.write_text(NEW_DEPOSIT)
     label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
     result = host.call("propose_import", {"path": str(path), "account": label}).data
     assert result["stored"] and result["preview"]["new"] == 1
@@ -248,66 +249,83 @@ def test_import_with_blocking_errors_is_not_stored(setup, tmp_path):
     assert api.get(f"/api/p/{slug}/proposals").json() == []
 
 
-def test_converter_runs_only_after_approval_and_is_hash_pinned(setup, tmp_path):
-    pid, slug, host, api = setup
-    export = write_export_csv(tmp_path)
-    script = write_converter(slug)
-    label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
-    not_yet = host.call("validate_import", {"path": str(export), "converter": "broker_x"})
-    assert not not_yet.ok and not_yet.error_kind == "not_approved"
-    first = host.call(
-        "propose_import", {"path": str(export), "account": label, "converter": "broker_x"}
-    ).data
-    assert first["stored"] and first["preview"] is None
-    assert first["converter"] == {"name": "broker_x", "approved_before": False}
-    detail = api.get(f"/api/p/{slug}/proposals/{first['proposal_id']}").json()
-    assert detail["converter"]["source"] == script.read_text()
-    assert len(detail["converter"]["sha256"]) == 64 and detail["converter"]["changed"] is False
-    before = _txn_count(pid)
-    approved = api.post(f"/api/p/{slug}/proposals/{first['proposal_id']}/approve").json()
-    assert approved["status"] == "approved", approved
-    assert approved["result"]["converter"] == "broker_x"
-    assert _txn_count(pid) == before + approved["result"]["inserted"]
-    # Approved hash: the converter now runs for validation and previews right away.
-    checked = host.call("validate_import", {"path": str(export), "converter": "broker_x"}).data
-    assert checked["ok"] and checked["transactions"] == 6
-    second = host.call(
-        "propose_import", {"path": str(export), "account": label, "converter": "broker_x"}
-    ).data
-    assert second["converter"]["approved_before"] and second["preview"]["duplicates"] == 6
-    # A changed script is not run until approved again; a pending proposal pinned to the old hash fails.
-    write_converter(slug, body=script.read_text() + "\n# changed\n")
-    stale = host.call("validate_import", {"path": str(export), "converter": "broker_x"})
-    assert not stale.ok and stale.error_kind == "not_approved"
-    response = api.post(f"/api/p/{slug}/proposals/{second['proposal_id']}/approve")
-    assert response.status_code == 422 and "changed" in response.json()["detail"]
+# --------------------------------------------------------------------------- #
+# No agent-written code in the app (F5 R1)
+# --------------------------------------------------------------------------- #
+
+MARKER_SCRIPT = (
+    "import pathlib, sys\npathlib.Path(sys.argv[0]).with_suffix('.ran').write_text('ran')\n"
+)
 
 
-def test_failing_converter_marks_the_proposal_failed(setup, tmp_path):
+def test_converter_argument_is_refused_with_a_clear_error(setup, tmp_path):
     _pid, slug, host, api = setup
     export = write_export_csv(tmp_path)
-    write_converter(slug, "broken", body="import sys\nsys.exit(3)\n")
     label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
-    stored = host.call(
-        "propose_import", {"path": str(export), "account": label, "converter": "broken"}
-    ).data
-    response = api.post(f"/api/p/{slug}/proposals/{stored['proposal_id']}/approve")
-    assert response.status_code == 422 and "exit code 3" in response.json()["detail"]
+    for tool, args in (
+        ("validate_import", {"path": str(export), "converter": "broker_x"}),
+        ("propose_import", {"path": str(export), "account": label, "converter": "broker_x"}),
+    ):
+        result = host.call(tool, args)
+        assert not result.ok and result.error_kind == "invalid_arguments", (tool, result)
+        assert "never runs scripts" in result.error and "python3" in result.error
+    assert api.get(f"/api/p/{slug}/proposals").json() == []
+
+
+def test_script_paths_are_refused_and_never_run(setup, tmp_path):
+    _pid, slug, host, api = setup
+    label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
+    script = tmp_path / "import_broker.py"
+    script.write_text(MARKER_SCRIPT)
+    for suffix in (".py", ".sh", ".js"):
+        path = script.with_suffix(suffix)
+        path.write_text(MARKER_SCRIPT)
+        for tool, args in (
+            ("validate_import", {"path": str(path)}),
+            ("propose_import", {"path": str(path), "account": label}),
+            ("validate_import", {"path": str(write_export_csv(tmp_path)), "mapping": str(path)}),
+        ):
+            result = host.call(tool, args)
+            assert not result.ok and result.error_kind == "script_refused", (tool, suffix)
+            assert "never runs scripts" in result.error
+    assert not list(tmp_path.glob("*.ran"))
+    assert api.get(f"/api/p/{slug}/proposals").json() == []
+
+
+def test_import_tools_have_no_converter_argument():
+    from finanse.core.mcp.registry import all_tools
+
+    tools = all_tools()
+    for name in ("validate_import", "propose_import"):
+        assert "converter" not in tools[name].input_schema["properties"]
+        assert "converter" in tools[name].refused
+    with pytest.raises(ModuleNotFoundError):
+        __import__("finanse.core.mcp.tools.converters")
+
+
+def test_stored_converter_proposal_cannot_be_approved(setup, tmp_path):
+    """A pending import stored before F5 R1 (with a converter) is never run: approving fails with
+    a code, and its stored export is removed."""
+    from finanse.core import paths
+
+    pid, slug, host, api = setup
+    label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
+    path = tmp_path / "new.csv"
+    path.write_text(NEW_DEPOSIT)
+    stored = host.call("propose_import", {"path": str(path), "account": label}).data
     with get_session() as s:
-        assert s.get(Proposal, stored["proposal_id"]).status == "failed"
-    bad_name = host.call(
-        "propose_import", {"path": str(export), "account": label, "converter": "../x"}
-    )
-    assert not bad_name.ok
-
-
-def test_converter_environment_is_empty(setup, tmp_path, monkeypatch):
-    from finanse.core.mcp.tools import converters
-
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-real")
-    body = b"import os, sys\nopen(sys.argv[2], 'w').write(repr(sorted(os.environ)))\n"
-    out = converters.run(body, "in.csv", b"x")
-    assert b"ANTHROPIC_API_KEY" not in out and b"HOME" not in out
+        row = s.get(Proposal, stored["proposal_id"])
+        row.payload = dict(row.payload) | {"converter": {"name": "broker_x", "sha256": "0" * 64}}
+        s.add(row)
+        staged = paths.data_dir() / row.payload["staged"]
+    detail = api.get(f"/api/p/{slug}/proposals/{stored['proposal_id']}").json()
+    assert detail["converter_unsupported"] is True and "no longer runs" in detail["detail_error"]
+    before = _txn_count(pid)
+    response = api.post(f"/api/p/{slug}/proposals/{stored['proposal_id']}/approve")
+    assert response.status_code == 422
+    assert response.headers["X-Finanse-Error-Code"] == "converter_unsupported"
+    assert _txn_count(pid) == before
+    assert not staged.exists()
 
 
 def test_proposal_kinds_registered():
@@ -318,12 +336,10 @@ def test_rejected_import_removes_the_stored_export(setup, tmp_path):
     from finanse.core import paths
 
     _pid, slug, host, api = setup
-    export = write_export_csv(tmp_path)
-    write_converter(slug)
+    path = tmp_path / "new.csv"
+    path.write_text(NEW_DEPOSIT)
     label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
-    stored = host.call(
-        "propose_import", {"path": str(export), "account": label, "converter": "broker_x"}
-    ).data
+    stored = host.call("propose_import", {"path": str(path), "account": label}).data
     with get_session() as s:
         staged = paths.data_dir() / s.get(Proposal, stored["proposal_id"]).payload["staged"]
     assert staged.is_file() and staged.stat().st_mode & 0o077 == 0

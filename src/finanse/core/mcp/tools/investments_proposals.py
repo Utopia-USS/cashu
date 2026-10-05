@@ -9,9 +9,11 @@ MCP write tools that create them and ``validate_import``.
   strategy.yaml text (comments kept; appended to the ``rules:`` block), the merged file is validated,
   and the rule is backtested: evaluated as of weekly (longer histories: evenly spaced, at most 260)
   dates over the profile's history. Approving merges it into the then-current file the same way.
-- ``propose_import``: previews the file (finanse format, generic CSV + mapping, or the output of an
-  approved converter script) and stores the export in ``<data dir>/imports/<slug>/.proposals/``.
-  Approving re-runs the preview (and the converter, hash-checked) and commits it.
+- ``propose_import``: previews the file (finanse format, or generic CSV + mapping) and stores it in
+  ``<data dir>/imports/<slug>/.proposals/``. Approving re-runs the preview and commits it. The app
+  never runs agent-written code (F5 R1): an export in another format is converted by the agent
+  itself, under its own permission prompts, and the converted file is what these tools take; a
+  script path or a ``converter`` argument is refused with a clear error.
 
 What the agent gets back is labelled like any tool answer: counts, kinds, rows and dates; the diff of
 the owner's files is shown only in the app (``detail``), the agent gets line counts.
@@ -39,13 +41,20 @@ from finanse.core.proposals import ProposalError, ProposalKind, Staged
 
 from .. import labels as L
 from ..registry import ToolContext, ToolError
-from . import converters
 from .exports import checked_local_file, checked_path, inside
 from .investments import owner_named
 
 MAX_BACKTEST_POINTS = 260
 MAX_MAPPING_BYTES = 256 * 1024
 STRATEGY_LOCK_WAIT = 30.0  # seconds an approval waits for a running daily check (then busy)
+NO_SCRIPTS = (
+    "the app never runs scripts: run your converter yourself (python3 <script> <export> "
+    "<output.csv>) and pass the finanse-format output file"
+)
+SCRIPT_EXTENSIONS = frozenset(
+    ("py", "pyw", "pyc", "pyz", "sh", "bash", "zsh", "command", "js", "mjs", "cjs", "ts")
+    + ("rb", "pl", "php", "ps1", "bat", "cmd", "exe", "jar", "applescript", "scpt")
+)
 
 # --------------------------------------------------------------------------- #
 # Shared
@@ -795,23 +804,17 @@ def _mapping_text(raw: str | None, slug: str) -> str | None:
     return raw
 
 
-def _converter(ctx_session: Session, profile_id: int, slug: str, name: str) -> dict:
-    try:
-        _path, data, sha = converters.read_script(slug, name)
-    except converters.ConverterError as e:
-        raise ToolError(str(e), "converter") from None
-    clean = converters.clean_name(name)
-    return {
-        "name": clean,
-        "sha256": sha,
-        "bytes": data,
-        "approved": sha in converters.approved_hashes(ctx_session, profile_id, clean),
-    }
+def refuse_scripts(raw: str | None, what: str) -> None:
+    """A script given where a data file belongs is refused before anything reads it."""
+    if (
+        raw
+        and "\n" not in raw
+        and Path(raw.strip()).suffix.lower().lstrip(".") in SCRIPT_EXTENSIONS
+    ):
+        raise ToolError(f"{what} is a script; {NO_SCRIPTS}", "script_refused")
 
 
-def validate_file(
-    ctx: ToolContext, path: str, *, mapping: str | None = None, converter: str | None = None
-) -> dict:
+def validate_file(ctx: ToolContext, path: str, *, mapping: str | None = None) -> dict:
     from finanse.modules.investments.importing import (
         CsvMapping,
         CsvMappingError,
@@ -820,26 +823,14 @@ def validate_file(
         validate_import,
     )
 
+    refuse_scripts(path, "path")
+    refuse_scripts(mapping, "mapping")
     p = checked_path(path, ctx.profile.slug)
     content = p.read_bytes()
     name = p.name
     importer = None
     used = "finanse"
-    if converter:
-        conv = _converter(ctx.session, ctx.profile_id, ctx.profile.slug, converter)
-        if not conv["approved"]:
-            raise ToolError(
-                "converter not approved yet (this exact version): propose_import with it so the owner "
-                "can approve it, or run it locally and validate its output file",
-                "not_approved",
-            )
-        try:
-            content = converters.run(conv["bytes"], name, content)
-        except converters.ConverterError as e:
-            raise ToolError(str(e), "converter") from None
-        name = "converted.csv"
-        used = f"converter {conv['name']}"
-    elif mapping:
+    if mapping:
         try:
             importer = GenericCsvImporter(
                 CsvMapping.from_yaml(_mapping_text(mapping, ctx.profile.slug))
@@ -949,52 +940,34 @@ def propose_import(
     account: str,
     *,
     mapping: str | None = None,
-    converter: str | None = None,
     importer: str = "auto",
     reason: str | None = None,
 ) -> dict:
     from finanse.modules.investments.importing import ImportFile
     from finanse.modules.investments.service import imports
 
+    refuse_scripts(path, "path")
+    refuse_scripts(mapping, "mapping")
     account_id = _brokerage_account(ctx, account)
     p = checked_path(path, ctx.profile.slug)
     content = p.read_bytes()
     sha = hashlib.sha256(content).hexdigest()
     mapping_yaml = _mapping_text(mapping, ctx.profile.slug)
-    conv = None
-    preview_content, preview_name, preview_importer = content, p.name, importer
-    if converter:
-        conv = _converter(ctx.session, ctx.profile_id, ctx.profile.slug, converter)
-        if conv["approved"]:
-            try:
-                preview_content = converters.run(conv["bytes"], p.name, content)
-            except converters.ConverterError as e:
-                raise ToolError(str(e), "converter") from None
-            preview_name, preview_importer, mapping_yaml = "converted.csv", "finanse", None
-    pv = None
-    if conv is None or conv["approved"]:
-        try:
-            pv = imports.preview(
-                ctx.session,
-                ctx.profile,
-                imports.ImportRequest(
-                    ImportFile(preview_name, preview_content),
-                    account_id,
-                    preview_importer,
-                    mapping_yaml,
-                ),
-            )
-        except imports.ImportFailure as e:
-            raise ToolError(_value_free(str(e))) from None
-        summary = _preview_summary(pv)
-        if not pv.can_commit:
-            return {
-                "stored": L.flag(False),
-                "preview": _summary_labelled(summary, pv),
-                "note": L.text("not stored: the preview has blocking errors (by kind above)"),
-            }
-    else:
-        summary = None
+    try:
+        pv = imports.preview(
+            ctx.session,
+            ctx.profile,
+            imports.ImportRequest(ImportFile(p.name, content), account_id, importer, mapping_yaml),
+        )
+    except imports.ImportFailure as e:
+        raise ToolError(_value_free(str(e))) from None
+    summary = _preview_summary(pv)
+    if not pv.can_commit:
+        return {
+            "stored": L.flag(False),
+            "preview": _summary_labelled(summary, pv),
+            "note": L.text("not stored: the preview has blocking errors (by kind above)"),
+        }
     staged = _stage(ctx.profile.slug, sha, p.name, content)
     label = ctx.account_labels.get(account_id)
     payload = {
@@ -1004,46 +977,38 @@ def propose_import(
         "file_sha256": sha,
         "staged": staged,
         "importer": importer,
-        "mapping_yaml": None if conv else mapping_yaml,
-        "converter": None if conv is None else {"name": conv["name"], "sha256": conv["sha256"]},
+        "mapping_yaml": mapping_yaml,
         "preview": summary,
     }
-    what = f"converter {conv['name']}" if conv else (summary or {}).get("importer") or importer
+    what = summary.get("importer") or importer
     row = proposals.create(
         ctx.session,
         ctx.profile,
         "import",
         payload,
-        summary=f"Import into {label} ({what})"
-        + (f": {summary['new']} new rows" if summary else ": converter awaiting approval"),
+        summary=f"Import into {label} ({what}): {summary['new']} new rows",
         summary_params={
             "account": label,
-            "importer": (summary or {}).get("importer"),
-            "converter": conv["name"] if conv else None,
-            "new": (summary or {}).get("new"),
-            "duplicates": (summary or {}).get("duplicates"),
+            "importer": summary.get("importer"),
+            "new": summary.get("new"),
+            "duplicates": summary.get("duplicates"),
         },
         reason=reason,
     )
-    out: dict[str, Any] = {
+    return {
         "stored": L.flag(True),
         "proposal_id": L.ref(row.id),
         "account": L.account(label),
         "file": L.identifier(p.name),
-        "preview": _summary_labelled(summary, pv) if pv is not None else None,
-        "converter": None
-        if conv is None
-        else {"name": L.text(conv["name"]), "approved_before": L.flag(conv["approved"])},
-        "note": L.text(
-            "stored as a pending import; the owner reviews and commits it in the app"
-            + (
-                ""
-                if conv is None or conv["approved"]
-                else " (the converter script runs only after the owner approves it there)"
-            )
-        ),
+        "preview": _summary_labelled(summary, pv),
+        "note": L.text("stored as a pending import; the owner reviews and commits it in the app"),
     }
-    return out
+
+
+CONVERTER_UNSUPPORTED = (
+    "this import needs a converter script, and the app no longer runs scripts; ask the agent to run "
+    "the converter itself and propose the converted file"
+)
 
 
 def _import_detail(session: Session, profile: Profile, row: Proposal) -> dict:
@@ -1053,20 +1018,10 @@ def _import_detail(session: Session, profile: Profile, row: Proposal) -> dict:
         "file_name": p.get("file_name"),
         "preview": p.get("preview"),
     }
-    conv = p.get("converter")
-    if conv:
-        info: dict[str, Any] = {"name": conv.get("name"), "sha256": conv.get("sha256")}
-        try:
-            _path, data, sha = converters.read_script(profile.slug, conv["name"])
-            info["changed"] = sha != conv.get("sha256")
-            info["source"] = data.decode("utf-8", errors="replace") if not info["changed"] else None
-        except converters.ConverterError as e:
-            info["changed"] = True
-            info["error"] = str(e)
-        info["approved_before"] = conv.get("sha256") in converters.approved_hashes(
-            session, profile.id, conv.get("name") or ""
-        )
-        out["converter"] = info
+    if p.get("converter"):
+        # Stored before F5 R1: such an import needs a script the app no longer runs.
+        out["converter_unsupported"] = True
+        out["detail_error"] = CONVERTER_UNSUPPORTED
     return out
 
 
@@ -1075,6 +1030,8 @@ def _import_apply(profile: Profile, row: Proposal) -> dict:
     from finanse.modules.investments.service import imports
 
     p = row.payload or {}
+    if p.get("converter"):
+        raise ProposalError(CONVERTER_UNSUPPORTED, "converter_unsupported")
     staged = _staged_file(p.get("staged") or "")
     if not staged.is_file():
         raise ProposalError(
@@ -1090,22 +1047,6 @@ def _import_apply(profile: Profile, row: Proposal) -> dict:
         p.get("importer") or "auto",
         p.get("mapping_yaml"),
     )
-    conv = p.get("converter")
-    if conv:
-        try:
-            _path, data, sha = converters.read_script(profile.slug, conv["name"])
-        except converters.ConverterError as e:
-            raise ProposalError(str(e), "converter_missing") from None
-        if sha != conv.get("sha256"):
-            raise ProposalError(
-                "the converter script changed since it was proposed; ask for a new proposal",
-                "converter_changed",
-            )
-        try:
-            content = converters.run(data, name, content)
-        except converters.ConverterError as e:
-            raise ProposalError(str(e), "converter_failed") from None
-        name, importer, mapping_yaml = "converted.csv", "finanse", None
     with get_session() as s:
         fresh = s.get(Profile, profile.id)
         try:
@@ -1132,7 +1073,6 @@ def _import_apply(profile: Profile, row: Proposal) -> dict:
         "duplicates": result.duplicates,
         "positions": result.positions,
         "new_instruments": len(result.new_instrument_ids),
-        "converter": conv.get("name") if conv else None,
     }
 
 

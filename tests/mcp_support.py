@@ -495,53 +495,6 @@ def write_canonical(folder: Path, name: str = "converted.csv") -> Path:
     return path
 
 
-CONVERTER = '''\
-"""Synthetic converter: export.csv (semicolon, preamble) -> finanse format."""
-import csv
-import sys
-
-HEADER = "{header}"
-
-
-def main(src, dst):
-    with open(src, encoding="utf-8") as f:
-        lines = f.read().splitlines()
-    start = next(i for i, ln in enumerate(lines) if ln.startswith("Data;"))
-    out = [HEADER]
-    kinds = {{"Wplata": "deposit", "Kupno": "buy", "Sprzedaz": "sell"}}
-    for n, row in enumerate(csv.reader(lines[start + 1:], delimiter=";")):
-        day, kind, symbol, isin, qty, price, amount = row[:7]
-        d, m, y = day.split(".")
-        amount = amount.replace(" ", "").replace(",", ".")
-        price = price.replace(",", ".")
-        t = kinds[kind]
-        if t == "deposit":
-            out.append(f"1,txn,{{y}}-{{m}}-{{d}},,deposit,C-{{n}},,,,,,,PLN,,,,{{amount}},,,,")
-        else:
-            gross = f"{{abs(float(amount)):.2f}}"
-            out.append(
-                f"1,txn,{{y}}-{{m}}-{{d}},,{{t}},C-{{n}},{{symbol}},{{isin}},{{symbol}},XWAR,{{qty}},{{price}},PLN,"
-                f"{{gross}},,,{{amount}},,,,"
-            )
-    with open(dst, "w", encoding="utf-8") as f:
-        f.write("\\n".join(out) + "\\n")
-
-
-if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
-'''
-
-
-def write_converter(slug: str, name: str = "broker_x", body: str | None = None) -> Path:
-    from finanse.core.mcp.tools.converters import converters_dir
-
-    folder = converters_dir(slug)
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{name}.py"
-    path.write_text(body or CONVERTER.format(header=HEADER), encoding="utf-8")
-    return path
-
-
 # --------------------------------------------------------------------------- #
 # Leak assertions
 # --------------------------------------------------------------------------- #

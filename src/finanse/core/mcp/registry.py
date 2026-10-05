@@ -50,6 +50,9 @@ class ToolSpec:
     properties: dict[str, dict] = field(default_factory=dict)
     required: tuple[str, ...] = ()
     write: bool = False
+    refused: dict[str, str] = field(default_factory=dict)
+    """Arguments that do not exist (any more), with the message telling the agent what to do
+    instead (e.g. ``converter``: the app never runs scripts). Not part of the schema."""
 
     @property
     def input_schema(self) -> dict[str, Any]:
@@ -115,6 +118,8 @@ def validate_arguments(spec: ToolSpec, arguments: dict[str, Any] | None) -> dict
     """Check the arguments against the spec (names, types, enums, lengths); defaults filled in.
     Messages name the argument, never echo its value."""
     args = dict(arguments or {})
+    for name in sorted(set(args) & set(spec.refused)):
+        raise ToolError(spec.refused[name], "invalid_arguments")
     unknown = sorted(set(args) - set(spec.properties))
     if unknown:
         raise ToolError(

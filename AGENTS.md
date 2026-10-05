@@ -177,13 +177,15 @@ claude mcp add finanse-<slug> -- finanse mcp --profile <slug>   # once per profi
 | `/assets-setup` | home, car (depreciation curve) and other manually valued assets |
 | `/loans-setup` | mortgages and loans, installment recognition, balances from the bank |
 | `/investments-setup` | strategy interview (goals, risk, history retrospective, strategy) and weekly check-ins |
-| `/import-builder` | converter for an unsupported broker export into the finanse import format |
+| `/import-builder` | converter for an unsupported broker export into the finanse import format (the agent runs it locally; the app takes only the converted file) |
 | `/extension-builder` | one custom rule (expression language) with a backtest on the profile's history |
 
 Rules every skill follows: data only through the profile's MCP tools (never raw
 exports, statements or the DB), the profile's privacy level decides what the
 agent sees (strict by default: shares and percentages, no amounts, never
 identifiers), configuration changes are proposals the owner approves in the app,
+the app never runs code an agent writes (a converter runs in Claude Code under its
+own permission prompts; `validate_import` / `propose_import` refuse scripts),
 no passwords, IBANs or account numbers, conversation in Polish and files in
 English. When you edit a skill, keep its `description` precise (it decides when
 the skill triggers) and use only tool names from the MCP server.

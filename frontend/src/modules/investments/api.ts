@@ -370,7 +370,8 @@ export interface Review { id?: number; module: string; done_at: string; notes: s
  * import), status (pending | approved | rejected | failed), summary, reason, source, created_at,
  * reviewed_at, result. Detail adds payload plus per kind: strategy `diff {yaml, md}`, `base_changed`;
  * custom_rule `rule_yaml`, `backtest`, `diff {yaml}`; import `account`, `file_name`, `preview`
- * (counts), `converter {name, sha256, changed, source, approved_before}`. */
+ * (counts); `converter_unsupported` for an import stored with a converter script (the app never runs
+ * scripts: such a proposal cannot be approved). */
 export interface Proposal {
   id: number;
   kind: string;
@@ -392,7 +393,7 @@ export interface Proposal {
   account?: string | null;
   file_name?: string | null;
   preview?: Record<string, number | boolean | string> | null;
-  converter?: { name: string; sha256: string; changed?: boolean; source?: string | null; approved_before?: boolean; error?: string } | null;
+  converter_unsupported?: boolean;
   detail_error?: string;
 }
 export interface Backtest {

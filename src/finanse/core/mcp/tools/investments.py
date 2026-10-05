@@ -786,12 +786,10 @@ def inspect_export(ctx: ToolContext, path: str, max_samples: int = 5) -> dict:
     return inspect(path, max_samples=max_samples, slug=ctx.profile.slug)
 
 
-def validate_import(
-    ctx: ToolContext, path: str, mapping: str | None = None, converter: str | None = None
-) -> dict:
+def validate_import(ctx: ToolContext, path: str, mapping: str | None = None) -> dict:
     from .investments_proposals import validate_file
 
-    return validate_file(ctx, path, mapping=mapping, converter=converter)
+    return validate_file(ctx, path, mapping=mapping)
 
 
 # --------------------------------------------------------------------------- #
@@ -890,15 +888,12 @@ def propose_import(
     path: str,
     account: str,
     mapping: str | None = None,
-    converter: str | None = None,
     importer: str = "auto",
     reason: str | None = None,
 ) -> dict:
     from .investments_proposals import propose_import as propose
 
-    return propose(
-        ctx, path, account, mapping=mapping, converter=converter, importer=importer, reason=reason
-    )
+    return propose(ctx, path, account, mapping=mapping, importer=importer, reason=reason)
 
 
 def accounts_hint(ctx: ToolContext) -> list[dict]:
@@ -923,10 +918,11 @@ _MAPPING = {
     "maxLength": 64_000,
     "description": "generic CSV mapping: YAML text or a path to a .yaml/.yml file",
 }
-_CONVERTER = {
-    "type": "string",
-    "maxLength": 41,
-    "description": "name of an approved converter script in the profile's extensions/importers folder",
+# The app never runs agent-written code (F5 R1): a converter is run by the agent itself, under
+# its own permission prompts, and the finanse-format file it writes is what these tools take.
+_NO_SCRIPTS = {
+    "converter": "the app never runs scripts: run your converter yourself (python3 <script> "
+    "<export> <output.csv>) and pass the finanse-format output file as path"
 }
 _TEXT = {"type": "string", "maxLength": 4000}
 
@@ -992,11 +988,12 @@ TOOLS = (
     ToolSpec(
         "validate_import",
         "investments",
-        "Validate a finanse-format file (or a CSV with a mapping, or an export through an approved "
-        "converter): counts and errors by kind with row numbers, no values.",
+        "Validate a finanse-format file (or a CSV with a mapping): counts and errors by kind with "
+        "row numbers, no values. The app never runs scripts: convert other exports yourself first.",
         validate_import,
-        properties={"path": _PATH, "mapping": _MAPPING, "converter": _CONVERTER},
+        properties={"path": _PATH, "mapping": _MAPPING},
         required=("path",),
+        refused=_NO_SCRIPTS,
     ),
     ToolSpec(
         "record_decision",
@@ -1068,14 +1065,13 @@ TOOLS = (
         "propose_import",
         "investments",
         "Propose importing a file into a brokerage account (account: the generated label or id from "
-        "portfolio_overview). Runs the preview and stores a pending import the owner commits in the "
-        "app. With converter: the script runs out of process only once the owner approved it.",
+        "portfolio_overview). path: a finanse-format file or a CSV with a mapping (the app never "
+        "runs scripts). Runs the preview and stores a pending import the owner commits in the app.",
         propose_import,
         properties={
             "path": _PATH,
             "account": {"type": "string", "maxLength": 80},
             "mapping": _MAPPING,
-            "converter": _CONVERTER,
             "importer": {
                 "type": "string",
                 "enum": ["auto", "finanse", "generic_csv"],
@@ -1085,5 +1081,6 @@ TOOLS = (
         },
         required=("path", "account"),
         write=True,
+        refused=_NO_SCRIPTS,
     ),
 )

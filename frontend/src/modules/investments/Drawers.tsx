@@ -461,14 +461,14 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
   const mdDiff = typeof data?.diff === "object" && data?.diff ? data.diff.md ?? null : null;
   const bt = data?.backtest;
   const pv = data?.preview;
-  const conv = data?.converter;
+  const unsupported = !!data?.converter_unsupported; // stored before the app stopped running scripts
   return (
     <Drawer open title="Propozycja agenta" tag={data ? <Tag tone="info">{kindLabel}</Tag> : undefined}
       width={600} onClose={onClose} label="Propozycja agenta"
       footer={data?.status === "pending" ? <>
         <button className="btn" disabled={busy} onClick={() => act(false)}>Odrzuć</button>
         <span style={{ flex: 1 }} />
-        <button className="btn primary" disabled={busy || !!conv?.changed} onClick={() => act(true)}>{isImport ? "Zatwierdź import" : `Zatwierdź jako v${(version ?? 0) + 1}`}</button>
+        <button className="btn primary" disabled={busy || unsupported} onClick={() => act(true)}>{isImport ? "Zatwierdź import" : `Zatwierdź jako v${(version ?? 0) + 1}`}</button>
       </> : undefined}>
       {err && <Notice tone="neg">{failure ? <span title={failure.detail ?? undefined}>{failure.text}</span> : err}</Notice>}
       {!err && data?.status === "failed" && failure && <Notice tone="neg"><span title={failure.detail ?? undefined}>{failure.text}</span></Notice>}
@@ -481,7 +481,8 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
             {data.created_at ? `zgłoszona ${dmy(data.created_at)}` : ""}
             {data.status !== "pending" ? ` · ${({ approved: "zatwierdzona", rejected: "odrzucona", failed: "nie udało się zastosować" } as Record<string, string>)[data.status] ?? data.status}` : ""}
           </div>
-          {data.detail_error && <Notice tone="warn">{data.detail_error}</Notice>}
+          {data.detail_error && !unsupported && <Notice tone="warn">{data.detail_error}</Notice>}
+          {unsupported && <Notice tone="warn">Ten import wymaga skryptu konwertera, a aplikacja nie uruchamia skryptów. Poproś agenta, żeby sam uruchomił konwerter i zaproponował gotowy plik w formacie finanse.</Notice>}
           {data.base_changed && <Notice tone="warn">Pliki strategii zmieniły się od czasu propozycji - zatwierdzenie może się nie udać; poproś agenta o nową propozycję.</Notice>}
           {data.reason && <div className="thesis" style={{ marginBottom: 12 }}><b>Uzasadnienie agenta:</b> {data.reason}</div>}
           {yamlDiff && <DiffBlock title="Zmiana w strategy.yaml" text={yamlDiff} />}
@@ -501,17 +502,6 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
                 <span className="k">Rachunek</span><span className="v">{data.account ?? "-"}</span>
                 {pv && <><span className="k">Podgląd</span><span className="v">{plural(Number(pv.new ?? 0), "nowy wiersz", "nowe wiersze", "nowych wierszy")} · {plural(Number(pv.duplicates ?? 0), "duplikat", "duplikaty", "duplikatów")}{Number(pv.reconciliation_mismatches ?? 0) ? ` · ${plural(Number(pv.reconciliation_mismatches), "różnica", "różnice", "różnic")} ze snapshotem` : ""}{Number(pv.errors ?? 0) ? ` · ${plural(Number(pv.errors), "błąd", "błędy", "błędów")}` : ""}</span></>}
               </div>
-              {conv && (
-                <>
-                  <div className="controls" style={{ margin: "6px 0" }}>
-                    <strong style={{ fontSize: 13 }}>Skrypt konwertera <code>{conv.name}</code></strong>
-                    {conv.approved_before ? <Tag tone="pos">zatwierdzony wcześniej</Tag> : <Tag tone="warn">nowy - przeczytaj przed zatwierdzeniem</Tag>}
-                    {conv.changed && <Tag tone="neg">zmieniony od propozycji</Tag>}
-                  </div>
-                  {conv.source && <pre className="diff">{conv.source}</pre>}
-                  <div className="hint">sha256 {conv.sha256.slice(0, 16)}… · uruchamiany poza aplikacją, bez sieci i bez zmiennych środowiska</div>
-                </>
-              )}
             </>
           )}
           <div className="foot">Zapis przez agenta to zawsze propozycja: zatwierdzenie tworzy nową wersję strategii (albo wykonuje import), odrzucenie niczego nie zmienia.</div>
