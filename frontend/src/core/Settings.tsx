@@ -13,6 +13,10 @@ import { useShell } from "./context";
 import type { ThemePref } from "./theme";
 import { serialSaver } from "./util";
 import { CURRENCIES, legacySkipped, PRIVACY_OPTIONS } from "./Wizard";
+import {
+  changesToast, needsForce, outdatedLabel, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, workspaceErrorText, workspaceSummary,
+} from "./workspace";
+import { getWorkspace, postWorkspace } from "./workspaceApi";
 import { InvestmentsStrategySettings } from "../modules/investments/v2/StrategySettings";
 
 const SECTIONS: [id: string, label: string][] = [
@@ -232,6 +236,7 @@ function AgentSection() {
           : PRIVACY_PLAIN.amounts}
         {" "}Zapis przez agenta (reguła, decyzja, zmiana strategii) to zawsze propozycja, którą zatwierdzasz w aplikacji.
       </Notice>
+      <WorkspacePanel />
       <div className="kv" style={{ marginTop: 14 }}>
         <span className="k">Claude Code</span>
         <span className="v block"><Code cmd={mcp?.claude_mcp_add ?? mcpAddCommand(slug)} /></span>
@@ -245,6 +250,125 @@ function AgentSection() {
       {profile.modules.some((m) => m.id === "investments" && m.enabled) && <InvestmentsStrategySettings />}
       <AuditLog />
     </Card>
+  );
+}
+
+// ---- Agent AI: the profile's agent workspace (GET/POST /api/p/{slug}/workspace) ---------------
+
+function WorkspacePanel() {
+  const { slug, profile } = useShell();
+  const toast = useToast();
+  const enabledKey = profile.modules.filter((m) => m.enabled).map((m) => m.id).join(",");
+  // A module or privacy change updates an existing workspace on the server: re-read the status then.
+  const { data: ws, error, loading, reload } = useAsync(() => getWorkspace(slug), [slug, enabledKey, profile.mcp_privacy]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [path, setPath] = useState("");
+  const investments = profile.modules.some((m) => m.id === "investments" && m.enabled);
+  const summary = workspaceSummary(ws);
+
+  const run = async (body: { path?: string | null; force?: boolean; routine_permissions?: boolean }) => {
+    const creating = !ws?.exists;
+    setBusy(true); setErr(null);
+    try {
+      const res = await postWorkspace(slug, body);
+      toast(changesToast(res, creating));
+      setEditing(false);
+      reload();
+    } catch (e) { setErr(workspaceErrorText(e)); } finally { setBusy(false); }
+  };
+  const newPath = editing ? path.trim() || null : null;
+
+  return (
+    <div style={{ margin: "14px 0 0" }}>
+      <div className="controls" style={{ margin: "0 0 6px" }}>
+        <strong style={{ fontSize: 14 }}>Workspace agenta</strong>
+        {ws && <Tag tone={summary.tone}>{summary.text}</Tag>}
+        <span className="spacer" />
+        {ws?.exists && (
+          <button className="btn" onClick={() => run({})} disabled={busy}>{busy ? "Aktualizuję…" : "Aktualizuj workspace"}</button>
+        )}
+        {ws && !ws.exists && (
+          <button className="btn primary" onClick={() => run({ path: newPath })} disabled={busy}>{busy ? "Tworzę…" : "Utwórz workspace"}</button>
+        )}
+      </div>
+      <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
+        Folder, w którym uruchamiasz Claude Code dla tego profilu: CLAUDE.md z kontekstem, tylko serwer MCP tego profilu, skille włączonych modułów i blokada odczytu katalogu danych (dane wyłącznie przez MCP).
+      </div>
+      {error && <Notice tone="neg">Nie udało się sprawdzić workspace: {error}</Notice>}
+      {loading && !ws && <div className="muted" style={{ fontSize: 13 }}>Sprawdzam…</div>}
+      {ws && (
+        <div className="kv">
+          <span className="k">Folder</span>
+          <span className="v">
+            <code>{ws.path}</code>
+            {ws.custom && <Tag>własny</Tag>}
+            <button className="lnk" onClick={() => { setEditing(!editing); setPath(ws.path); }} disabled={busy}>
+              {editing ? "Anuluj" : "Zmień folder"}
+            </button>
+          </span>
+          {editing && (
+            <>
+              <span className="k"><label htmlFor="set-ws-path">Nowy folder</label></span>
+              <span className="v">
+                <input id="set-ws-path" value={path} autoComplete="off" spellCheck={false} style={{ flex: 1, minWidth: 220 }}
+                  onChange={(e) => setPath(e.target.value)} disabled={busy} />
+                {ws.exists && (
+                  <button className="btn" onClick={() => run({ path: path.trim() })} disabled={busy || !path.trim()}>Przenieś</button>
+                )}
+              </span>
+            </>
+          )}
+          {ws.exists && (
+            <>
+              <span className="k">Otwórz w Claude Code</span>
+              <span className="v block"><Code cmd={ws.claude_command} /></span>
+              <span className="k">Zarządzane</span>
+              <span className="v" style={{ fontSize: 13 }}>
+                finanse {ws.managed_version ?? "-"} · skille: {ws.skills.filter((x) => x.state !== "extra").map((x) => `/${x.name}`).join(", ") || "brak"}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      {ws?.conflict && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Ten folder jest workspace innego profilu. Wybierz inny folder.</Notice>}
+      {ws?.exists && ws.outdated.length > 0 && (
+        <Notice tone="warn" style={{ margin: "10px 0 0" }} action={needsForce(ws)
+          ? <button className="btn" onClick={() => run({ force: true })} disabled={busy}>Zastąp zmienione</button>
+          : undefined}>
+          Do aktualizacji:
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+            {ws.outdated.map((i) => <li key={`${i.kind}:${i.name}`}>{outdatedLabel(i)}</li>)}
+          </ul>
+          {needsForce(ws) && (
+            <div style={{ fontSize: 12.5, marginTop: 4 }}>
+              Zmienione przez Ciebie skille zostają, dopóki ich nie zastąpisz; poprzednia wersja trafia wtedy do .claude/finanse-backup/.
+            </div>
+          )}
+        </Notice>
+      )}
+      {investments && ws && (
+        <div style={{ margin: "12px 0 0" }}>
+          <div className="controls" style={{ margin: "0 0 4px", fontSize: 13 }}>
+            <Switch on={ws.routine_permissions} label={ROUTINE_PERMISSIONS_LABEL} disabled={busy || !ws.exists}
+              title={!ws.exists ? "Najpierw utwórz workspace" : undefined} onChange={(v) => run({ routine_permissions: v })} />
+            <span>{ROUTINE_PERMISSIONS_LABEL}</span>
+          </div>
+          <div className="muted" style={{ fontSize: 12.5 }}>{ROUTINE_PERMISSIONS_HINT}</div>
+          {ws.exists && (
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+              Sobotni research działa lokalnie (rutyny w chmurze nie widzą serwera MCP na tym komputerze): aplikacja Claude &gt; Code &gt; Routines &gt; New routine &gt; Local, co tydzień w sobotę 07:00, folder = ten workspace, polecenie <code>/market-research rutyna</code>. Z terminala, przez LaunchAgent instalowany samodzielnie:
+              <Code cmd={ws.routine_command} />
+            </div>
+          )}
+        </div>
+      )}
+      {err && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Nie udało się zapisać workspace. {err}</Notice>}
+      <div className="foot">
+        „Aktualizuj workspace” odświeża sekcje finanse w CLAUDE.md, .mcp.json, uprawnienia i skille włączonych modułów; Twoje pliki zostają. Włączenie lub wyłączenie modułu aktualizuje istniejący workspace samo.
+      </div>
+    </div>
   );
 }
 
