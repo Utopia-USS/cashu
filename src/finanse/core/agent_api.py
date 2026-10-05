@@ -8,6 +8,7 @@ or rejects, weekly reviews, the MCP call audit log and the MCP connection snippe
   then ``failed`` with ``result.error``)
 - ``POST /proposals/{id}/reject``  ``{note?}``   (409 not pending, or busy while an approval runs)
 - ``GET  /reviews?module=&limit=``, ``POST /reviews`` ``{module, notes?}`` (201)
+- ``DELETE /reviews/{id}``                       undo within 15 minutes (409 ``undo_expired``)
 - ``GET  /mcp/calls?limit=``                     audit rows (argument names and types only)
 - ``GET  /mcp``                                  server name, ``claude mcp add`` command, privacy, tools
 """
@@ -137,6 +138,22 @@ def create_review(profile: CurrentProfile, body: ReviewBody) -> dict:
         except reviews.ReviewError as e:
             raise _422(e) from None
         return reviews.review_dict(row)
+
+
+@router.delete("/reviews/{review_id}")
+def undo_review(profile: CurrentProfile, review_id: int) -> dict:
+    """The app's "Cofnij" after "Oznacz przegląd jako zrobiony" (F5 R4): the save is immediate, the
+    undo deletes it within 15 minutes."""
+    with get_session() as s:
+        try:
+            reviews.undo(s, profile, review_id)
+        except reviews.ReviewNotFound as e:
+            raise _404(e) from None
+        except reviews.ReviewUndoExpired as e:
+            raise HTTPException(
+                status_code=409, detail=str(e), headers={"X-Finanse-Error-Code": "undo_expired"}
+            ) from None
+    return {"deleted": review_id}
 
 
 # --------------------------------------------------------------------------- #
