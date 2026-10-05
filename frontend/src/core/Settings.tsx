@@ -1,6 +1,6 @@
 // Ustawienia: sticky section nav (scroll-spy) + stacked cards. Profile fields save
 // with Zapisz; switches and radios save on change with a toast.
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useAsync } from "../hooks";
 import { ck } from "../swr";
 import { parseServerTime, serverDate } from "../time";
@@ -27,9 +27,15 @@ const SECTIONS: [id: string, label: string][] = [
   ["worker", "Praca w tle"], ["secrets", "Sekrety"], ["app", "Aplikacja"],
 ];
 
+// A write that changes /api/system bumps this and Praca w tle re-reads the status: a workspace update rewrites
+// .mcp.json and clears `relocation.mcp`, the ack and a worker install change it too (F7 FIX2 A5).
+const SystemChanged = createContext<{ tick: number; changed: () => void }>({ tick: 0, changed: () => {} });
+
 export function Settings({ section, theme, setTheme }: { section?: string; theme: ThemePref; setTheme: (t: ThemePref) => void }) {
   const [active, setActive] = useState(section && SECTIONS.some(([id]) => id === section) ? section : "profile");
   const root = useRef<HTMLDivElement>(null);
+  const [sysTick, setSysTick] = useState(0);
+  const systemChanged = useCallback(() => setSysTick((n) => n + 1), []);
 
   // Jump to the requested section (e.g. from the SetupPage privacy notice).
   useEffect(() => {
@@ -57,15 +63,17 @@ export function Settings({ section, theme, setTheme }: { section?: string; theme
           </button>
         ))}
       </nav>
-      <div>
-        <ProfileSection />
-        <ModulesSection />
-        <AgentSection />
-        <DataSection />
-        <WorkerSection />
-        <SecretsSection />
-        <AppSection theme={theme} setTheme={setTheme} />
-      </div>
+      <SystemChanged.Provider value={{ tick: sysTick, changed: systemChanged }}>
+        <div>
+          <ProfileSection />
+          <ModulesSection />
+          <AgentSection />
+          <DataSection />
+          <WorkerSection />
+          <SecretsSection />
+          <AppSection theme={theme} setTheme={setTheme} />
+        </div>
+      </SystemChanged.Provider>
     </div>
   );
 }
@@ -80,7 +88,7 @@ function Card({ id, title, children }: { id: string; title: string; children: Re
 }
 
 function ProfileSection() {
-  const { slug, profile, profiles, reloadProfiles } = useShell();
+  const { slug, profile, profiles, reloadProfiles, refresh } = useShell();
   const toast = useToast();
   const [name, setName] = useState(profile.name);
   const [currency, setCurrency] = useState(profile.base_currency);
@@ -97,8 +105,12 @@ function ProfileSection() {
     }
     setBusy(true); setErr(null);
     try {
+      const currencyChanged = currency !== profile.base_currency;
       await patchProfile(slug, { name: n, base_currency: currency });
       await reloadProfiles();
+      // Every figure in the base currency (summary, net worth, month close, investments) is cached in the old one:
+      // forget the cache and re-read the shell's data (F7 FIX2 audit).
+      if (currencyChanged) refresh?.();
       toast("Zapisano");
     } catch (e) { setErr(errorText(e)); } finally { setBusy(false); }
   };
@@ -136,7 +148,7 @@ function nextEnabled(id: string, on: boolean, enabled: Set<string>, all: ModuleI
 }
 
 function ModulesSection() {
-  const { slug, profile, modules, reloadProfiles } = useShell();
+  const { slug, profile, modules, reloadProfiles, refresh } = useShell();
   const toast = useToast();
   const [err, setErr] = useState<string | null>(null);
   const server = new Set(profile.modules.filter((m) => m.enabled).map((m) => m.id));
@@ -146,8 +158,8 @@ function ModulesSection() {
   // reverts the first). Back to the server's view once the saves and reload are done.
   const [wanted, setWanted] = useState<ReadonlySet<string> | null>(null);
   const wantedRef = useRef<ReadonlySet<string> | null>(null);
-  const live = useRef({ reloadProfiles, toast });
-  live.current = { reloadProfiles, toast };
+  const live = useRef({ reloadProfiles, toast, refresh });
+  live.current = { reloadProfiles, toast, refresh };
   const [saver] = useState(() => serialSaver<string[]>(
     (ids) => putProfileModules(slug, ids),
     async (error) => {
@@ -156,6 +168,9 @@ function ModulesSection() {
       if (saver.busy) return; // a newer toggle is being saved; its own idle call finishes up
       wantedRef.current = null;
       setWanted(null);
+      // The month close carries the investments plan only while that module is on (and summaries follow the
+      // module set): forget the cached views (F7 FIX2 audit).
+      live.current.refresh?.();
       if (!error) live.current.toast("Zapisano");
     },
   ));
@@ -260,6 +275,7 @@ function WorkspacePanel() {
   const enabledKey = profile.modules.filter((m) => m.enabled).map((m) => m.id).join(",");
   // A module or privacy change updates an existing workspace on the server: re-read the status then.
   const { data: ws, error, loading, reload } = useAsync(() => getWorkspace(slug), [slug, enabledKey, profile.mcp_privacy], { key: ck(slug, "workspace") });
+  const system = useContext(SystemChanged);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -275,6 +291,7 @@ function WorkspacePanel() {
       toast(changesToast(res, creating));
       setEditing(false);
       reload();
+      system.changed(); // a rewritten .mcp.json clears the moved-app MCP notice under Praca w tle
     } catch (e) { setErr(workspaceErrorText(e)); } finally { setBusy(false); }
   };
   const newPath = editing ? path.trim() || null : null;
@@ -463,12 +480,20 @@ function WorkerSection() {
   const [busy, setBusy] = useState<null | "install" | "uninstall" | "run">(null);
   const [err, setErr] = useState<string | null>(null);
   const [acking, setAcking] = useState(false);
-  // Fresh status on open (the shell loads /api/system once per page load).
+  const sys = useContext(SystemChanged);
+  // Fresh status on open (the shell loads /api/system once per page load) and after a write that changes it
+  // (the time field keeps what the owner typed after the first read).
+  const first = useRef(true);
   useEffect(() => {
     let alive = true;
-    getSystem().then((s) => { if (alive) { setW(s.worker); setTime(s.worker?.schedule ?? "07:30"); } }).catch(() => {});
+    getSystem().then((s) => {
+      if (!alive) return;
+      setW(s.worker);
+      if (first.current) setTime(s.worker?.schedule ?? "07:30");
+      first.current = false;
+    }).catch(() => {});
     return () => { alive = false; };
-  }, []);
+  }, [sys.tick]);
   const known = !!w && "schedule" in w; // older servers: only installed + last_run
   const supported = w?.supported !== false;
   const act = async (action: "install" | "uninstall" | "run", body: { time?: string } = {}) => {
@@ -476,6 +501,7 @@ function WorkerSection() {
     try {
       const r = await postWorker(action, body);
       if (r.worker) setW(r.worker);
+      sys.changed();
       if (action === "run") toast(`Przebieg zakończony · ${JOB_STATUS[r.run?.status ?? ""]?.[0] ?? r.run?.status ?? "ok"}`, 3000);
       else toast(action === "install" ? "Praca w tle zainstalowana" : "Praca w tle odinstalowana");
     } catch (e) {
@@ -497,6 +523,7 @@ function WorkerSection() {
     try {
       const r = await postRelocationAck();
       if (r.worker) setW(r.worker);
+      sys.changed();
     } catch (e) { setErr(`Nie zapisano: ${errorText(e)}`); } finally { setAcking(false); }
   };
   return (

@@ -145,3 +145,56 @@ test("hook state without a key keeps the old useAsync behaviour", () => {
   st = swrFail(c, st, undefined, "e");
   assert.deepEqual(swrView(c, st, undefined), { data: 1, error: "e", loading: false, refreshing: false });
 });
+
+// ---- request dedupe below the cache (F7 FIX2 B4) ----------------------------------------------------------
+import { clearCache, createDedupe, dedupe, invalidate as invalidateApp } from "../src/swr.ts";
+
+test("dedupe: one promise per key within the ttl; a failed one is dropped; the ttl ends it", async () => {
+  let t = 0;
+  const c = createCache();
+  const d = createDedupe(c, 4000, () => t);
+  let loads = 0;
+  const load = () => { loads += 1; return Promise.resolve(loads); };
+  const a = d.get("jan:PLN", load), b = d.get("jan:PLN", load);
+  assert.equal(a, b);
+  assert.equal(loads, 1);
+  t = 4001;
+  assert.notEqual(d.get("jan:PLN", load), a);
+  assert.equal(loads, 2);
+  const failing = d.get("x", () => Promise.reject(new Error("boom")));
+  await assert.rejects(failing);
+  assert.notEqual(d.get("x", load), failing);
+  d.clear();
+  d.get("jan:PLN", load);
+  assert.equal(loads, 4);
+});
+
+test("dedupe: a promise begun before a cache clear or an invalidate is never handed out after it", () => {
+  const c = createCache();
+  const d = createDedupe(c);
+  let loads = 0;
+  const load = () => { loads += 1; return new Promise(() => {}); };
+  const before = d.get("jan:PLN", load);
+  c.clear(); // ctx.refresh after a write, a profile switch, a 401
+  const afterClear = d.get("jan:PLN", load);
+  assert.notEqual(afterClear, before);
+  c.invalidate(ck("jan", "budget"));
+  assert.notEqual(d.get("jan:PLN", load), afterClear);
+  c.setScope("ola");
+  d.get("jan:PLN", load);
+  assert.equal(loads, 4);
+});
+
+test("dedupe of the app cache: clearCache and invalidate reset it", () => {
+  const d = dedupe();
+  let loads = 0;
+  const load = () => { loads += 1; return new Promise(() => {}); };
+  const p = d.get("k", load);
+  assert.equal(d.get("k", load), p);
+  clearCache();
+  const q = d.get("k", load);
+  assert.notEqual(q, p);
+  invalidateApp(ck("jan", "inv"));
+  assert.notEqual(d.get("k", load), q);
+  assert.equal(loads, 3);
+});

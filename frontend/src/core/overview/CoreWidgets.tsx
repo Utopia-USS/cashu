@@ -5,7 +5,7 @@ import { useState } from "react";
 import { CashCard } from "../../components/CashCard";
 import { cur, cur0s, MONTH_NOM, nModules, pctSigned, plural } from "../../format";
 import { useAsync } from "../../hooks";
-import { ck } from "../../swr";
+import { ck, dedupe } from "../../swr";
 import { type CashflowRow, getCashflow, getMonthClose, getRecurring, type MonthClose } from "../../modules/budget/api";
 import { todayLocal } from "../../time";
 import { closedMonthNorm } from "../util";
@@ -33,17 +33,11 @@ function useMonthClose(slug: string) {
 }
 
 // The cashflow of the last 7 months, shared by the hero, Subskrypcje and Kredyty on one page (one request).
-// A failure reaches every caller (each keeps its last data, F7 PX2).
-const flowsCache = new Map<string, { at: number; p: Promise<CashflowRow[]> }>();
-function cashflow7(slug: string, currency: string): Promise<CashflowRow[]> {
-  const key = `${slug}:${currency}`;
-  const hit = flowsCache.get(key);
-  if (hit && Date.now() - hit.at < 4000) return hit.p;
-  const p = getCashflow(slug, 7, currency);
-  flowsCache.set(key, { at: Date.now(), p });
-  p.catch(() => flowsCache.delete(key));
-  return p;
-}
+// A failure reaches every caller (each keeps its last data, F7 PX2); the dedupe resets with every cache clear
+// or invalidate, so a refresh after a write never gets a pre-write promise (F7 FIX2 B4).
+const flows = dedupe();
+const cashflow7 = (slug: string, currency: string): Promise<CashflowRow[]> =>
+  flows.get(`${slug}:${currency}`, () => getCashflow(slug, 7, currency));
 
 /** Monthly income / spending of complete months (average of up to 6 before this one) in `currency`; the
  * Przegląd ratios divide by it, never by the running month (F7 FE10). */

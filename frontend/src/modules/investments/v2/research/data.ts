@@ -5,6 +5,7 @@
 // the review block read the same runs / summary), and every action bumps a version so all of them re-read.
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAsync } from "../../../../hooks";
+import { dedupe } from "../../../../swr";
 import { useToast } from "../../../../ui";
 import { errorText } from "../../../../core/messages";
 import { makeUndo, type Undo, undoMessage, undoSettled } from "../../undo";
@@ -18,22 +19,20 @@ export const POLL_MS = 30000;
 // ---- shared read cache + change version -------------------------------------------------------------------
 let version = 0;
 const subs = new Set<() => void>();
-const cache = new Map<string, { at: number; p: Promise<unknown> }>();
+// 4 s request dedupe; it also resets with every cache clear / invalidate (F7 FIX2 B4).
+const cache = dedupe();
 /** After a research change (dismiss, restore, accept): drop the cache and let every reader re-read; with the
  * profile also the cached investments views (signals and the watchlist change too, F7 PX4). */
 export function bumpResearch(slug?: string) { version++; cache.clear(); if (slug) dropInv(slug); subs.forEach((f) => f()); }
 const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
 export const useResearchVersion = () => useSyncExternalStore(subscribe, () => version);
-function cached<T>(key: string, load: () => Promise<T>, ms = 4000): Promise<T> {
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < ms) return hit.p as Promise<T>;
-  const p = load();
-  cache.set(key, { at: Date.now(), p });
-  p.catch(() => cache.delete(key));
-  return p;
-}
-const runsOf = (slug: string) => cached(`runs:${slug}`, () => getResearchRuns(slug).catch(() => [] as ResearchRun[]));
-const summaryOf = (slug: string) => cached(`sum:${slug}`, () => getResearchSummary(slug).catch(() => null));
+const cached = <T,>(key: string, load: () => Promise<T>): Promise<T> => cache.get(key, load);
+// The loaders reject on a failure (an older server without research already reads as empty / null in api.ts): a
+// failed refresh keeps the cached data (F7 FIX2 B3); a failed first load reads as empty at the hook's output.
+const runsOf = (slug: string) => cached(`runs:${slug}`, () => getResearchRuns(slug));
+const summaryOf = (slug: string) => cached(`sum:${slug}`, () => getResearchSummary(slug));
+/** A list that never loaded reads as empty (the old fallback); while loading null. */
+const listOr = <T,>(q: { data: T[] | null; error: string | null }): T[] | null => q.data ?? (q.error ? [] : null);
 
 /** A counter that ticks every 30 s while the latest run is running; `finish_research_run` flips the state
  * and the last tick refetches the summary once. */
@@ -61,13 +60,13 @@ export function useResearchOverview(slug: string, nonce: number) {
   const finishedKey = runsQ.data ? runsQ.data.map((r) => `${r.id}:${r.status}`).join(",") : "";
   const summaryQ = useAsync(() => (ran ? summaryOf(slug) : Promise.resolve(null)), [slug, nonce, ran, finishedKey, tick, v],
     { key: ran ? invKey(slug, "research", "summary") : undefined });
-  const candQ = useAsync(() => (ran ? cached(`cand:${slug}`, () => getResearch(slug, { kind: "candidate", include_dismissed: true }).catch(() => [] as ResearchNote[])) : Promise.resolve([] as ResearchNote[])), [slug, nonce, ran, tick, v],
+  const candQ = useAsync(() => (ran ? cached(`cand:${slug}`, () => getResearch(slug, { kind: "candidate", include_dismissed: true })) : Promise.resolve([] as ResearchNote[])), [slug, nonce, ran, tick, v],
     { key: ran ? invKey(slug, "research", "candidates") : undefined });
-  return { runs: runsQ.data, summary: summaryQ.data, candidates: candQ.data, loading: runsQ.loading, reloadRuns: runsQ.reload };
+  return { runs: listOr(runsQ), summary: summaryQ.data, candidates: listOr(candQ), loading: runsQ.loading, reloadRuns: runsQ.reload };
 }
 
 export function useWorkspace(slug: string) {
-  return useAsync(() => getWorkspace(slug).catch(() => null), [slug], { key: invKey(slug, "research", "workspace") });
+  return useAsync(() => getWorkspace(slug), [slug], { key: invKey(slug, "research", "workspace") });
 }
 
 /** Notes of one instrument (incl. dismissed, for restore within the window); polled while a run is live. */
@@ -76,11 +75,11 @@ export function useInstrumentNotes(slug: string, instrumentId: number, nonce = 0
   const runsQ = useAsync(() => runsOf(slug), [slug, nonce, v], { key: invKey(slug, "research", "runs") });
   const tick = useRunPoll(runsQ.data);
   useEffect(() => { if (tick) cache.clear(); }, [tick]);
-  const notesQ = useAsync(() => cached(`inst:${slug}:${instrumentId}`, () => getResearch(slug, { instrument: instrumentId, include_dismissed: true, include_expired: true }).catch(() => [] as ResearchNote[])), [slug, instrumentId, nonce, tick, v],
+  const notesQ = useAsync(() => cached(`inst:${slug}:${instrumentId}`, () => getResearch(slug, { instrument: instrumentId, include_dismissed: true, include_expired: true })), [slug, instrumentId, nonce, tick, v],
     { key: invKey(slug, "research", "instrument", instrumentId) });
   const summaryQ = useAsync(() => summaryOf(slug), [slug, nonce, tick, v], { key: invKey(slug, "research", "summary") });
   const row = useMemo(() => summaryQ.data?.instruments.find((x) => x.instrument_id === instrumentId) ?? null, [summaryQ.data, instrumentId]);
-  return { runs: runsQ.data, notes: notesQ.data, summary: summaryQ.data, row, loading: notesQ.loading };
+  return { runs: listOr(runsQ), notes: listOr(notesQ), summary: summaryQ.data, row, loading: notesQ.loading };
 }
 
 /** Dismissed within the server's restore window (15 minutes). */

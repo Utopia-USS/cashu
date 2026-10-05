@@ -3,9 +3,10 @@
 // (track AL, stock/docs/fork/progress/F5-AL.md) and performance vs benchmark (track PF, F5-PF.md
 // CONTRACT). Shapes mirror service/views.py and performance/service.py; fractions stay fractions.
 import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../core/api";
-import { ck, invalidate } from "../../../swr";
+import { ck, dedupe, invalidate } from "../../../swr";
 import type { Decision, Instrument, Overview, Position, Positions, ReviewDigest, Signal } from "../api";
 import { digestShown, isShownSignal } from "./logic";
+import { monthCloseStale } from "../../budget/logic";
 
 export type Polarity = "positive" | "negative" | "neutral";
 export type Num = number | null;
@@ -191,16 +192,11 @@ const inv = (slug: string, path: string) => pp(slug, `/investments${path}`);
 const qs = (accounts: number[] | null) => (accounts && accounts.length ? `accounts=${accounts.join(",")}` : "");
 
 // The overview is read by the Przegląd hero, the Inwestycje widget and the surplus card on one page:
-// one request per profile and filter within a few seconds.
-const cache = new Map<string, { at: number; p: Promise<unknown> }>();
-function cached<T>(key: string, load: () => Promise<T>, ms = 4000): Promise<T> {
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < ms) return hit.p as Promise<T>;
-  const p = load();
-  cache.set(key, { at: Date.now(), p });
-  p.catch(() => cache.delete(key));
-  return p;
-}
+// one request per profile and filter within a few seconds. The dedupe resets with every cache clear or
+// invalidate (F7 FIX2 B4: a refresh after a write never gets a pre-write promise).
+const requests = dedupe();
+const cached = <T,>(key: string, load: () => Promise<T>, ms = 4000): Promise<T> => requests.get(key, load, ms);
+export const dropCache = () => requests.clear();
 
 // ---- stale-while-revalidate keys (F7 PX4, src/swr.ts) ----------------------------------------------------------
 /** Cache key of an investments view: under `inv`, so `dropInv` forgets all of them at once. Two call sites share a
@@ -210,12 +206,13 @@ export const invKey = (slug: string, ...parts: (string | number | boolean | null
 /** The account filter as a key part. */
 export const accKey = (accounts: number[] | null | undefined) => (accounts?.length ? accounts.join(",") : "");
 /** After an investments write that does not go through ctx.refresh: every cached investments view (the views on
- * screen keep showing their data and re-read) and the 4 s request dedupe. */
+ * screen keep showing their data and re-read; the request dedupe resets with it), and the month close, whose
+ * `investing` part is the strategy's contribution plan (F7 FIX2 B1 audit). */
 export function dropInv(slug: string): void {
-  cache.clear();
+  requests.clear();
   invalidate(ck(slug, "inv"));
+  monthCloseStale(slug);
 }
-export const dropCache = () => cache.clear();
 
 export const getOverviewV2 = (slug: string, accounts: number[] | null = null) =>
   cached(`ov:${slug}:${qs(accounts)}`, () => j<OverviewV2>(inv(slug, `/overview${accounts?.length ? `?${qs(accounts)}` : ""}`)));

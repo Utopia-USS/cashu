@@ -4,12 +4,12 @@ import { j } from "../../core/api";
 import { useShell } from "../../core/context";
 import { cur } from "../../format";
 import { useAsync } from "../../hooks";
-import { ck, invalidate } from "../../swr";
+import { ck } from "../../swr";
 import { Seg, Skeleton } from "../../ui";
 import type { DrillRow } from "./api";
 import { drillUrl, getCashflow, getSpending, postMerchantCategory, postTxnCategory } from "./api";
 import { CurrencySwitch, useBudgetCurrency } from "./currency";
-import { MPL } from "./logic";
+import { MPL, recategorized } from "./logic";
 import { SpendingDonut } from "./SpendingDonut";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -133,8 +133,9 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
   }, [toast]);
 
   // A category change moves amounts between the budget views: the other tabs read them fresh (F7 PX2); this
-  // page keeps what it shows and re-reads it.
-  const changed = () => { invalidate(ck(slug, "budget")); reloadDrill(); reloadSpending(); };
+  // page keeps what it shows and re-reads it. The cash pool counts the "Wypłata gotówki" transactions, so a
+  // change from (or, for a merchant's other rows, to) that category moves it too (F7 FIX2 B2).
+  const changed = () => { recategorized(slug); reloadDrill(); reloadSpending(); };
 
   // Manual change affects ONLY this transaction; offer to apply to the whole merchant.
   const markCategory = async (row: DrillRow, category: string) => {

@@ -321,6 +321,7 @@ function profileApi(p: MockProfile, path: string, q: URLSearchParams, method: st
     return investmentsV2Mock(p.slug, p.kind, path, q, method, body);
   }
   if (path === "/mcp/calls") return mcpCallsMock(p.kind);
+  if (path === "/workspace" && RELOC_MCP) return workspaceMock(p.slug, method);
   // `?assets=legacy`: a server without the endpoint (the widget's read-only net-worth fallback).
   if ((path === "/assets/manual" || path.startsWith("/assets/manual/")) && new URLSearchParams(location.search).get("assets") !== "legacy") {
     return manualAssetsMock(baseAccountsOf(p), path, method, body);
@@ -338,6 +339,23 @@ const worker = {
   // mcp: {reason: "app_moved", app_moved_from, moved_at, actions: ["mcp_readd"]}).
   relocation: { worker: null, mcp: null } as { worker: Record<string, unknown> | null; mcp: Record<string, unknown> | null },
 };
+// `?reloc=mcp`: the app was moved (F7 R8 / FIX2 A5): the MCP notice under Praca w tle and a workspace whose .mcp.json
+// names the old program; "Aktualizuj" (POST /workspace) rewrites it and clears `relocation.mcp`, as the backend does.
+const RELOC_MCP = new URLSearchParams(location.search).get("reloc") === "mcp";
+if (RELOC_MCP) worker.relocation.mcp = { reason: "app_moved", app_moved_from: "/Applications/finanse-stara.app", moved_at: "2026-10-04T08:00:00+02:00", actions: ["mcp_readd"] };
+let wsStale = RELOC_MCP;
+function workspaceMock(slug: string, method: string): unknown {
+  if (method === "POST") { wsStale = false; worker.relocation = { ...worker.relocation, mcp: null }; }
+  const path = `~/finanse-agent/${slug}`;
+  const status = {
+    path, default_path: path, configured: true, custom: false, exists: true, folder_exists: true, conflict: null,
+    managed_version: "1", current_version: "1", updated_at: "2026-10-01T09:00:00+02:00", up_to_date: !wsStale,
+    outdated: wsStale ? [{ kind: "file", name: ".mcp.json", reason: "outdated" }] : [], skills: [], skills_source: true,
+    claude_command: `cd ${path} && claude`, routine_command: `cd ${path} && claude -p '/market-research rutyna'`,
+    routine_permissions: false, mcp_command_stale: wsStale,
+  };
+  return method === "POST" ? { ...status, changes: [{ kind: "file", name: ".mcp.json", action: "updated" }], moved_from: null } : status;
+}
 
 function route(method: string, url: string, body: unknown): unknown {
   const u = new URL(url, location.origin);

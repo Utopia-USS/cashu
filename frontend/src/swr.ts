@@ -28,6 +28,8 @@ export interface Ticket { readonly epoch: number; readonly seq: number }
 
 export interface SwrCache {
   readonly size: number;
+  /** Bumped by every clear and invalidate: what was started before belongs to the old data. */
+  readonly epoch: number;
   /** The cached data of a key without touching the LRU order (render). */
   peek<T>(key: string): { data: T } | undefined;
   /** The cached data of a key, marked as recently used. */
@@ -50,6 +52,7 @@ export function createCache(max = SWR_MAX): SwrCache {
   const inScope = (key: string) => scope === null || scopeOf(key) === scope;
   const cache: SwrCache = {
     get size() { return map.size; },
+    get epoch() { return epoch; },
     peek<T>(key: string) {
       const e = inScope(key) ? map.get(key) : undefined;
       return e ? { data: e.data as T } : undefined;
@@ -86,12 +89,39 @@ export function createCache(max = SWR_MAX): SwrCache {
   return cache;
 }
 
+/** A request dedupe below the cache (F7 FIX2 B4): views on one page that read the same endpoint share one
+ * promise for a few seconds. An entry belongs to the cache epoch it was started in, so after any clear
+ * (refresh after a write, profile switch, 401) or invalidate a mount never gets a promise begun before it (its
+ * answer would pass the new epoch's ticket and be stored as fresh). A failed promise is dropped at once. */
+export interface Dedupe {
+  get<T>(key: string, load: () => Promise<T>, ms?: number): Promise<T>;
+  clear(): void;
+}
+
+export function createDedupe(cache: Pick<SwrCache, "epoch">, ttl = 4000, now: () => number = Date.now): Dedupe {
+  const m = new Map<string, { at: number; epoch: number; p: Promise<unknown> }>();
+  return {
+    get<T>(key: string, load: () => Promise<T>, ms = ttl): Promise<T> {
+      const hit = m.get(key);
+      if (hit && hit.epoch === cache.epoch && now() - hit.at < ms) return hit.p as Promise<T>;
+      const p = load();
+      const entry = { at: now(), epoch: cache.epoch, p };
+      m.set(key, entry);
+      p.catch(() => { if (m.get(key) === entry) m.delete(key); });
+      return p;
+    },
+    clear() { m.clear(); },
+  };
+}
+
 /** The app's one cache (hooks.ts, core/api.ts on 401, the shell). */
 export const swr = createCache();
 /** Forget all cached data (401, refresh after writes). */
 export const clearCache = (): void => swr.clear();
 /** Forget the cached data under a key prefix, e.g. after a write that changes one area. */
 export const invalidate = (prefix: string): number => swr.invalidate(prefix);
+/** A request dedupe tied to the app's cache (reset by every clear / invalidate). */
+export const dedupe = (ttl = 4000): Dedupe => createDedupe(swr, ttl);
 
 // ---- hook state (pure reducers; hooks.ts keeps one SwrState per hook) ---------------------------
 

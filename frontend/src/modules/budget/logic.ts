@@ -1,6 +1,25 @@
 // Pure helpers of the budget module (no React, no DOM): currency choice, months, the month-close
 // view and the cushion form. Tested in tests/budget.test.mjs.
 import type { BudgetCurrencies, CushionSettings, InvestingLink, MonthClose } from "./api";
+import { ck, invalidate } from "../../swr.ts";
+
+// ---- cached views a budget write makes stale (F7 FIX2 B1 / B2; src/swr.ts) ---------------------------------
+/** The month close is cached under the card's keys (`budget/monthclose-card/<month>`) and the Przegląd widgets'
+ * keys (`budget/monthclose/<month>`: the budget widget and the surplus card). Also stale after a strategy write
+ * (its `investing` part is the contribution plan). */
+export function monthCloseStale(slug: string): void {
+  invalidate(ck(slug, "budget", "monthclose"));
+  invalidate(ck(slug, "budget", "monthclose-card"));
+}
+/** A cushion save: the cushion top-up and the transfer of every month close, and the budget views around them. */
+export function cushionSaved(slug: string): void {
+  invalidate(ck(slug, "budget"));
+}
+/** A transaction's category change: the budget views and the cash pool (it counts "Wypłata gotówki"). */
+export function recategorized(slug: string): void {
+  invalidate(ck(slug, "budget"));
+  invalidate(ck(slug, "cash"));
+}
 
 export const MPL = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
 
