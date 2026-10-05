@@ -189,6 +189,8 @@ def mcp_info(profile: CurrentProfile) -> dict:
         # Claude Desktop: {"mcpServers": {<server_name>: claude_desktop}} (no data-derived keys here).
         "claude_desktop": runtime.mcp_server_entry(profile.slug),
         "packaged": runtime.frozen(),
+        # macOS App Translocation: the snippets are placeholders until the app is moved (PK3)
+        "translocated": runtime.translocated(),
         "privacy": profile.mcp_privacy,
         "tools": tools,
     }

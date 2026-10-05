@@ -14,8 +14,11 @@ under ``sys._MEIPASS``); only files outside the package (the Claude Code skills)
 
 from __future__ import annotations
 
+import json
+import os
 import shlex
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import paths
@@ -66,6 +69,12 @@ TRANSLOCATED_HINT = (
     "Finanse.app runs from a temporary location chosen by macOS (App Translocation). "
     "Move Finanse.app to the Applications folder, open it from there, and try again."
 )
+# What the MCP snippets show instead of a command while translocated (PK3): a shell comment, so a
+# copied line does nothing, and the UI text says what to do (Polish: shown in the app as is).
+TRANSLOCATED_SNIPPET = (
+    "# Finanse.app działa z tymczasowej lokalizacji macOS. Przenieś Finanse.app do folderu "
+    "Programy, otwórz ją stamtąd i skopiuj to polecenie ponownie."
+)
 
 
 def cli_program() -> list[str]:
@@ -89,19 +98,30 @@ def mcp_args(slug: str) -> list[str]:
 
 
 def mcp_command(slug: str) -> str:
-    """``finanse mcp --profile <slug>`` (the bundled binary's absolute path when packaged)."""
+    """``finanse mcp --profile <slug>`` (the bundled binary's absolute path when packaged).
+    While the app is translocated: :data:`TRANSLOCATED_SNIPPET` (the path would break on the
+    next launch)."""
+    if translocated():
+        return TRANSLOCATED_SNIPPET
     return shlex.join([*cli_program(), *mcp_args(slug)])
 
 
 def claude_mcp_add(slug: str) -> str:
-    """The ``claude mcp add`` line that registers the profile's MCP server in Claude Code."""
+    """The ``claude mcp add`` line that registers the profile's MCP server in Claude Code
+    (:data:`TRANSLOCATED_SNIPPET` while translocated)."""
+    if translocated():
+        return TRANSLOCATED_SNIPPET
     return shlex.join(
         ["claude", "mcp", "add", mcp_server_name(slug), "--", *cli_program(), *mcp_args(slug)]
     )
 
 
 def mcp_server_entry(slug: str) -> dict:
-    """``{"command": ..., "args": [...]}``: how an MCP client starts the profile's server."""
+    """``{"command": ..., "args": [...]}``: how an MCP client starts the profile's server. While
+    translocated the command is empty and ``error`` says why (an MCP client then fails at once
+    instead of working until the next launch)."""
+    if translocated():
+        return {"command": "", "args": mcp_args(slug), "error": TRANSLOCATED_SNIPPET[2:]}
     program = cli_program()
     return {"command": program[0], "args": [*program[1:], *mcp_args(slug)]}
 
@@ -123,3 +143,70 @@ def skills_dir() -> Path | None:
         base / BUNDLED_SKILLS if base is not None else paths.PROJECT_ROOT / ".claude" / "skills"
     )
     return candidate if candidate.is_dir() else None
+
+
+# --------------------------------------------------------------------------- #
+# Moved / renamed app (PK11)
+# --------------------------------------------------------------------------- #
+
+APP_LOCATION_FILE = "app-location.json"
+
+
+def app_location_path() -> Path:
+    return paths.data_dir() / APP_LOCATION_FILE
+
+
+def _read_location() -> dict:
+    try:
+        data = json.loads(app_location_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_location(data: dict) -> None:
+    path = app_location_path()
+    paths.ensure_private_dir(path.parent)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+
+
+def note_app_location() -> str | None:
+    """Called by the desktop app on every launch: remember where Finanse.app runs from. When it
+    ran from somewhere else before (moved, renamed "Finanse 2.app", reinstalled elsewhere), keep
+    that previous location as ``moved_from`` until the configs written with the old path are
+    fixed (:func:`clear_app_move`). Nothing is rewritten here. Returns ``moved_from``. A
+    translocated launch is not recorded (its path is random)."""
+    bundle = app_bundle()
+    if bundle is None or translocated():
+        return None
+    data = _read_location()
+    current = str(bundle)
+    previous = data.get("bundle")
+    if isinstance(previous, str) and previous != current:
+        data["moved_from"] = previous
+        data["moved_at"] = datetime.now(UTC).replace(microsecond=0).isoformat()
+    if previous != current or not app_location_path().exists():
+        data["bundle"] = current
+        _write_location(data)
+    moved = data.get("moved_from")
+    return moved if isinstance(moved, str) and moved != current else None
+
+
+def app_moved_from() -> str | None:
+    """The previous location of Finanse.app when it was moved since configs were last fixed
+    (None from source, or when nothing moved)."""
+    data = _read_location()
+    moved, bundle = data.get("moved_from"), data.get("bundle")
+    return moved if isinstance(moved, str) and moved != bundle else None
+
+
+def clear_app_move() -> None:
+    """The fix was applied (worker re-installed, MCP lines re-added): forget the old location."""
+    data = _read_location()
+    if data.pop("moved_from", None) is not None:
+        data.pop("moved_at", None)
+        _write_location(data)

@@ -44,7 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from ..core import locks, paths, security
+from ..core import locks, paths, runtime, security
 from . import DEBUG_ENV, notify
 
 log = logging.getLogger("finanse.desktop")
@@ -452,8 +452,8 @@ def _boot(
 
 
 def _remember(port: int) -> None:
-    """Best effort: the port for the next launch. A read-only or full disk must not keep the window
-    from opening."""
+    """Best effort: the port for the next launch, and where the app runs from (PK11). A read-only
+    or full disk must not keep the window from opening."""
     try:
         state = load_state()
         if state.get("port") != port:
@@ -461,6 +461,10 @@ def _remember(port: int) -> None:
             save_state(state)
     except OSError as e:
         log.warning("could not remember the port: %s", e)
+    try:
+        runtime.note_app_location()
+    except OSError as e:
+        log.warning("could not record the app location: %s", e)
 
 
 def run(*, debug: bool = False, webview_module=None, log_file: Path | None = None) -> Launch:

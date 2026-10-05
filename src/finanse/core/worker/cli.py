@@ -141,3 +141,22 @@ def status_cmd(
         detail = f" - {job['detail']}" if job.get("detail") else ""
         typer.echo(f"    {job['job']}: {job['status']}{detail}")
     typer.echo(f"  log: {info['log_path']}")
+    _echo_relocation(info.get("relocation"))
+
+
+def _echo_relocation(rel: dict | None) -> None:
+    """Stale paths after a moved / renamed app (PK11) and how to fix them; nothing is rewritten."""
+    if not rel:
+        return
+    if rel.get("worker") == "missing":
+        typer.echo("  STALE: the scheduled job's program no longer exists (the app was moved,")
+        typer.echo("         renamed or deleted); the job fails without writing to the log.")
+    elif rel.get("worker") == "other_program":
+        typer.echo("  STALE: the scheduled job runs another finanse install than this one.")
+    if rel.get("worker"):
+        expected = " ".join(rel.get("expected_program") or []) or "-"
+        typer.echo(f"         Fix: `finanse worker install` (it will run {expected}).")
+    if rel.get("app_moved_from"):
+        typer.echo(f"  STALE: Finanse.app was moved from {rel['app_moved_from']}.")
+        typer.echo("         MCP servers added before still point there: re-add them with the")
+        typer.echo("         lines from Settings > Agent AI, then run `finanse worker install`.")

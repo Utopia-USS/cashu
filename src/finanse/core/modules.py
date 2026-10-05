@@ -138,11 +138,18 @@ class ModuleSpec:
 
 
 def cli_prefix(session: Session, profile_id: int) -> str:
-    """``finanse --profile <slug>`` for copyable setup commands of a profile."""
+    """``finanse --profile <slug>`` for copyable setup commands of a profile; in the packaged app
+    the bundled binary's absolute path (there is no ``finanse`` on PATH), quoted for the shell."""
+    import shlex
+
+    from . import runtime
     from .models import Profile
 
     profile = session.get(Profile, profile_id)
-    return f"finanse --profile {profile.slug}" if profile is not None else "finanse"
+    program = runtime.cli_program()
+    if profile is None:
+        return shlex.join(program)
+    return shlex.join([*program, "--profile", profile.slug])
 
 
 def _investments_placeholder_setup(_session: Session, _profile_id: int) -> SetupStatus:

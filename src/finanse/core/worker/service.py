@@ -7,6 +7,7 @@ calls launchctl or a notifier unless asked to install, uninstall or run.
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 from typing import Any
 
 from ..db import get_session
@@ -73,6 +74,43 @@ def last_run() -> dict:
     return out
 
 
+def relocation(installed_program: list[str] | None) -> dict | None:
+    """Stale paths after Finanse.app was moved or renamed, or after another install took over
+    (PK11). None when nothing is stale. Nothing is rewritten: the fix is a re-install
+    (``finanse worker install`` / POST /api/system/worker/install), which also clears the
+    app-moved note, plus re-adding the MCP lines from Settings > Agent AI.
+
+    - ``worker``: "missing" (the job's program no longer exists: launchd fails every day without
+      a line in worker.log) or "other_program" (the job runs another install than this one, e.g.
+      the old app path or the dev venv); None when the job is fine or not installed;
+    - ``expected_program``: what a re-install would write (None when it cannot, e.g. translocated);
+    - ``app_moved_from``: where Finanse.app ran from before (MCP configs made then point there);
+    - ``actions``: "worker_reinstall", "mcp_readd"."""
+    from .. import runtime
+
+    try:
+        expected = sched.entry_point()
+    except sched.WorkerSchedulerError:
+        expected = None
+    worker = None
+    if installed_program:
+        program = installed_program[0]
+        if Path(program).is_absolute() and not Path(program).exists():
+            worker = "missing"
+        elif expected is not None and program != expected[0]:
+            worker = "other_program"
+    moved_from = runtime.app_moved_from()
+    if worker is None and moved_from is None:
+        return None
+    actions = (["worker_reinstall"] if worker else []) + (["mcp_readd"] if moved_from else [])
+    return {
+        "worker": worker,
+        "expected_program": expected,
+        "app_moved_from": moved_from,
+        "actions": actions,
+    }
+
+
 def status(*, now: dt.datetime | None = None) -> dict:
     """The ``worker`` object of ``GET /api/system`` (and ``finanse worker status``)."""
     sch = get_scheduler().status()
@@ -94,6 +132,7 @@ def status(*, now: dt.datetime | None = None) -> dict:
         "job_path": sch.job_path,
         "program": sch.program or None,
         "jobs": last["jobs"],
+        "relocation": relocation(sch.program if sch.installed else None),
     }
 
 
@@ -104,6 +143,9 @@ def install(schedule: Schedule | None = None, program: str | None = None) -> dic
     current = scheduler.status()
     schedule = schedule or current.schedule or DEFAULT_SCHEDULE
     scheduler.install(schedule, sched.entry_point(program))
+    from .. import runtime
+
+    runtime.clear_app_move()  # the re-install is the fix action of a moved app (PK11)
     return status()
 
 

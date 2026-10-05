@@ -241,6 +241,7 @@ def test_setup_endpoint_shape(api_empty):
     assert body["skill"] == {
         "command": "/budget-setup",
         "mcp_add": "claude mcp add finanse-jan -- finanse mcp --profile jan",
+        "translocated": False,
     }
 
 

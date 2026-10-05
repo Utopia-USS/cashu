@@ -232,6 +232,8 @@ def module_setup(profile: CurrentProfile, module_id: str) -> dict:
         skill = {
             "command": spec.skill,
             "mcp_add": runtime.claude_mcp_add(profile.slug),
+            # macOS App Translocation: the snippet is a placeholder; the UI says to move the app
+            "translocated": runtime.translocated(),
         }
     return {"state": status.state, "steps": status.step_dicts(), "skill": skill}
 
