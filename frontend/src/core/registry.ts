@@ -1,4 +1,5 @@
-// Frontend module registry, in navigation order (Przegląd | budget | Kredyty | Majątek | Inwestycje).
+// Frontend module registry, in navigation order (Przegląd | budget | Kredyty | Inwestycje; Majątek lives on
+// Przegląd: a module without tabs contributes only its overview widget, F7 merge).
 // A backend module without a frontend half still gets a tab with its SetupPage.
 import { assets } from "../modules/assets";
 import { budget } from "../modules/budget";

@@ -17,10 +17,12 @@ export interface ModuleCtx {
   categories: Category[];
   /** This module's setup state for the active profile. */
   state: SetupState;
-  go: (v: View) => void;
+  /** Navigate; scrolls to the top unless `scroll: false` (a redirect that keeps its place, F7 merge). */
+  go: (v: View, opts?: { scroll?: boolean }) => void;
   /** Reload the shell's shared data (summary, net worth) and remount the page. */
   refresh: () => void;
-  /** Page inside the tab ("alerts", "assets/306"); undefined = the tab's home. */
+  /** Page inside the tab ("alerts", "assets/306"); on Przegląd the module whose widget to focus ("assets");
+   * undefined = the tab's home. */
   sub?: string;
 }
 

@@ -2,7 +2,7 @@
 // Node >= 23.6 strips the TypeScript types itself, no extra dependency).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decodeSegment, serialSaver } from "../src/core/util.ts";
+import { decodeSegment, resolveView, serialSaver } from "../src/core/util.ts";
 
 /** A save function whose calls resolve only when the test says so. */
 function controlledSave() {
@@ -72,4 +72,22 @@ test("F7 FE11: whole money never shows -0 and rounds instead of cutting decimals
   assert.equal(nb(money0(-0.3, "PLN", true)), "0 zł");
   assert.equal(nb(money0(-12.6)), "-13 zł");
   assert.ok(Object.is(round0(-0.2), 0));
+});
+
+test("resolveView: a tab route of a module that lives on Przegląd focuses its widget there (F7 merge)", () => {
+  const TABS = { budget: ["expenses", "flows", "subs"], loans: ["list"], assets: [], investments: ["portfolio"] };
+  const tabsOf = (id) => TABS[id] ?? ["main"];
+  const on = [{ id: "budget" }, { id: "loans" }, { id: "assets" }];
+  const OV = { kind: "tab", tab: "overview" };
+  assert.deepEqual(resolveView(OV, on, tabsOf), OV);
+  assert.deepEqual(resolveView({ kind: "tab", tab: "overview", sub: "assets" }, on, tabsOf), { kind: "tab", tab: "overview", sub: "assets" });
+  assert.deepEqual(resolveView({ kind: "settings", section: "agent" }, on, tabsOf), { kind: "settings", section: "agent" });
+  assert.deepEqual(resolveView({ kind: "setup", module: "assets" }, on, tabsOf), { kind: "setup", module: "assets" });
+  assert.deepEqual(resolveView({ kind: "setup", module: "investments" }, on, tabsOf), OV); // module off
+  assert.deepEqual(resolveView({ kind: "tab", tab: "assets.list" }, on, tabsOf), { kind: "tab", tab: "overview", sub: "assets" });
+  assert.deepEqual(resolveView({ kind: "tab", tab: "assets.anything", sub: "x" }, on, tabsOf), { kind: "tab", tab: "overview", sub: "assets" });
+  assert.deepEqual(resolveView({ kind: "tab", tab: "assets.list" }, [{ id: "budget" }], tabsOf), OV); // assets off
+  assert.deepEqual(resolveView({ kind: "tab", tab: "loans.nope" }, on, tabsOf), OV);
+  assert.deepEqual(resolveView({ kind: "tab", tab: "loans.list" }, on, tabsOf), { kind: "tab", tab: "loans.list" });
+  assert.deepEqual(resolveView({ kind: "tab", tab: "investments.portfolio", sub: "alerts" }, on, tabsOf), OV); // investments off
 });

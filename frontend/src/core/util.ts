@@ -1,4 +1,22 @@
 // Pure helpers (no React, no DOM), unit-tested with `npm test` (frontend/tests).
+import type { View } from "./types";
+
+const OVERVIEW: View = { kind: "tab", tab: "overview" };
+
+/** The view the shell shows for `view` (F7 merge): settings as is; the setup page of an enabled module as is;
+ * Przegląd as is; a tab `<module>.<tab>` of a module that is off -> Przegląd, of an enabled module without tabs
+ * (it lives on Przegląd, e.g. assets) -> Przegląd with that module's widget focused (`sub` = the module id),
+ * of an unknown tab -> Przegląd; else the view. `tabsOf(id)` = the module's tab ids. */
+export function resolveView(view: View, enabled: { id: string }[], tabsOf: (id: string) => string[]): View {
+  if (view.kind === "settings") return view;
+  if (view.kind === "setup") return enabled.some((m) => m.id === view.module) ? view : OVERVIEW;
+  if (view.tab === "overview") return view;
+  const [mid, tid] = view.tab.split(".");
+  if (!enabled.some((m) => m.id === mid)) return OVERVIEW;
+  const tabs = tabsOf(mid);
+  if (!tabs.length) return { kind: "tab", tab: "overview", sub: mid };
+  return tabs.includes(tid) ? view : OVERVIEW;
+}
 
 /** decodeURIComponent that returns null instead of throwing on a malformed escape
  * (a typo or truncated link like `#/%zz/overview` must not blank the page). */

@@ -60,6 +60,8 @@ const ACCOUNTS = [
   { id: 8, bank: "manual", name: "Hipoteka", type: "mortgage", currency: "PLN", iban_tail: "", balance: -338912.45, as_of: TODAY, is_liability: true },
   { id: 9, bank: "pekao", name: "Kredyt samochodowy", type: "loan", currency: "PLN", iban_tail: "3317", balance: -24105.6, as_of: TODAY, is_liability: true },
   { id: 10, bank: "erste", name: "Konto walutowe EUR", type: "savings", currency: "EUR", iban_tail: "5520", balance: 1250, as_of: "2026-10-03", is_liability: false },
+  // a claim valued long ago: the Majątek widget marks a valuation older than a year (F7 merge)
+  { id: 11, bank: "manual", name: "Kaucja za najem", type: "other", currency: "PLN", iban_tail: "", balance: 6000, as_of: "2025-03-03", is_liability: false },
 ];
 
 function breakdown(accounts: typeof ACCOUNTS) {
@@ -87,7 +89,11 @@ function totals(accounts: typeof ACCOUNTS) {
 const MARTA_ACCOUNTS = [
   { id: 101, bank: "manual", name: "Gotówka", type: "cash", currency: "PLN", iban_tail: "", balance: 350, as_of: TODAY, is_liability: false },
 ];
-const accountsOf = (p: MockProfile) => (p.kind === "full" ? ACCOUNTS : p.slug === "marta" ? MARTA_ACCOUNTS : []);
+const baseAccountsOf = (p: MockProfile) => (p.kind === "full" ? ACCOUNTS : p.slug === "marta" ? MARTA_ACCOUNTS : []);
+// Removed manual positions (F7 merge DELETE /assets/manual/{id}): gone from net worth and lists until restored.
+// `?assets=empty`: Jan starts with every manual position removed (the widget's empty state).
+const REMOVED = new Set<number>(new URLSearchParams(location.search).get("assets") === "empty" ? [6, 7, 11] : []);
+const accountsOf = (p: MockProfile) => baseAccountsOf(p).filter((a) => !REMOVED.has(a.id));
 
 function months(from: string, n: number): string[] {
   const [y0, m0] = from.split("-").map(Number);
@@ -315,6 +321,10 @@ function profileApi(p: MockProfile, path: string, q: URLSearchParams, method: st
     return investmentsV2Mock(p.slug, p.kind, path, q, method, body);
   }
   if (path === "/mcp/calls") return mcpCallsMock(p.kind);
+  // `?assets=legacy`: a server without the endpoint (the widget's read-only net-worth fallback).
+  if ((path === "/assets/manual" || path.startsWith("/assets/manual/")) && new URLSearchParams(location.search).get("assets") !== "legacy") {
+    return manualAssetsMock(baseAccountsOf(p), path, method, body);
+  }
   throw new ApiError(404, `mock: brak ${method} ${path}`);
 }
 
@@ -398,4 +408,59 @@ function route(method: string, url: string, body: unknown): unknown {
 export async function mockFetch(method: string, url: string, body?: unknown): Promise<unknown> {
   await new Promise((r) => setTimeout(r, 120 + Math.random() * 120));
   return structuredClone(route(method, url, body));
+}
+
+// ---- manual assets (F7 OB5: GET / POST / PATCH /assets/manual, note max 500, one line) ----------------------
+const ASSET_NOTES = new Map<number, string>([[6, "wycena wg ofert z okolicy, 09.2026"]]);
+// A vehicle's depreciation terms (F7 merge contract: annual_rate is a fraction).
+const DEPRECIATION = new Map<number, { purchase_price: number; purchase_date: string; annual_rate: number; floor: number | null }>([
+  [7, { purchase_price: 89000, purchase_date: "2023-04-14", annual_rate: 0.15, floor: 8000 }],
+]);
+
+function manualAssetsMock(accounts: typeof ACCOUNTS, path: string, method: string, body: unknown): unknown {
+  const isManual = (a: (typeof ACCOUNTS)[number]) => a.bank === "manual" && a.type !== "cash";
+  const row = (a: (typeof ACCOUNTS)[number]) => ({
+    ...a, kind: a.type === "vehicle" ? "vehicle" : "manual", note: ASSET_NOTES.get(a.id) ?? null,
+    depreciation: a.type === "vehicle" ? DEPRECIATION.get(a.id) ?? null : null,
+  });
+  const restore = path.match(/^\/assets\/manual\/(\d+)\/restore$/);
+  if (restore && method === "POST") {
+    const r = accounts.find((x) => x.id === Number(restore[1]) && isManual(x));
+    if (!r) throw new ApiError(404, "No manual position with this id in the profile", "not_found");
+    REMOVED.delete(r.id);
+    return row(r);
+  }
+  const fold = (t: unknown) => (typeof t === "string" ? t.split(/\s+/).filter(Boolean).join(" ") : "") || null;
+  const b = (body ?? {}) as { name?: string; type?: string; value?: number; currency?: string; note?: string | null; on_date?: string };
+  if (b.note && b.note.length > 500) throw new ApiError(422, "note: at most 500 characters");
+  if (path === "/assets/manual" && method === "GET") {
+    return accounts.filter((a) => isManual(a) && !REMOVED.has(a.id)).map(row).sort((x, y) => Math.abs(y.balance) - Math.abs(x.balance));
+  }
+  if (path === "/assets/manual" && method === "POST") {
+    const name = fold(b.name);
+    if (!name) throw new ApiError(422, "name is required (max 120 characters)");
+    if (accounts.some((a) => isManual(a) && !REMOVED.has(a.id) && a.name === name)) throw new ApiError(409, "A manual position with this name already exists", "name_taken");
+    const a = { id: 900 + accounts.length, bank: "manual", name, type: b.type ?? "other", currency: b.currency ?? "PLN", iban_tail: "", balance: Number(b.value ?? 0), as_of: b.on_date ?? TODAY, is_liability: false };
+    accounts.push(a);
+    const note = fold(b.note);
+    if (note) ASSET_NOTES.set(a.id, note);
+    return row(a);
+  }
+  const m = path.match(/^\/assets\/manual\/(\d+)$/);
+  const a = m ? accounts.find((x) => x.id === Number(m[1]) && isManual(x)) : undefined;
+  if (m && method === "DELETE") {
+    if (!a) throw new ApiError(404, "No manual position with this id in the profile", "not_found");
+    REMOVED.add(a.id);
+    return { id: a.id, removed: true };
+  }
+  if (m && method === "PATCH") {
+    if (!a) throw new ApiError(404, "No manual position with this id in the profile", "not_found");
+    if ("note" in b) { const note = fold(b.note); if (note) ASSET_NOTES.set(a.id, note); else ASSET_NOTES.delete(a.id); }
+    if (b.value != null) {
+      if (a.type === "vehicle") throw new ApiError(422, "a vehicle's value follows its depreciation terms");
+      Object.assign(a, { balance: Number(b.value), as_of: b.on_date ?? TODAY });
+    }
+    return row(a);
+  }
+  throw new ApiError(404, `mock: brak ${method} ${path}`);
 }

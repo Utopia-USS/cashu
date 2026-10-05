@@ -3,7 +3,7 @@
 // net worth over time, loans and assets, accounts, subscriptions. Modules contribute widgets through
 // ModuleDef.overview / HeroFact; a profile with only the investments module gets that module's minimal view
 // in the narrow frame. Every currency other than the base one keeps its own total (never converted).
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cur, cur0s, MONTH_GEN, nAccounts, nModules, pctSigned, TYPE_LABEL } from "../format";
 import { useAsync } from "../hooks";
 import { ck } from "../swr";
@@ -34,6 +34,23 @@ export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; en
     return () => setNarrow(false);
   }, [minimal, setNarrow]);
   const [hidden, setHidden] = useState(readHidden);
+
+  // `#/<slug>/overview/<module>` (a tab route of a module that lives here, F7 merge): scroll its widget into view,
+  // ring it for 2.4 s and normalise the URL (and the remembered view) to plain Przegląd.
+  const focusMod = base.sub ? mods.find(({ m, def }) => def.id === base.sub && m.setup_state !== "empty" && def.overview?.length) : undefined;
+  const focusId = focusMod ? `${focusMod.def.id}.${focusMod.def.overview![0].id}` : null;
+  const [flash, setFlash] = useState<string | null>(focusId);
+  const flashTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
+  useEffect(() => {
+    if (!focusId) return;
+    setFlash(focusId);
+    document.querySelector(`[data-slot="${focusId}"]`)?.scrollIntoView({ block: "center" });
+    base.go({ kind: "tab", tab: "overview" }, { scroll: false });
+    window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(null), 2400);
+  }, [focusId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (minimal && only?.def.MinimalOverview) return <only.def.MinimalOverview ctx={only.ctx} />;
 
   const hide = (id: string, state: string) => {
@@ -74,7 +91,7 @@ export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; en
       ),
     });
   }
-  return <Grid items={items} />;
+  return <Grid items={items} flash={flash} />;
 }
 
 /** Hero: net worth with the change since last month; assets, liabilities, home equity, module facts,

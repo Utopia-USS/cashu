@@ -27,7 +27,8 @@ export const PRIVACY_PLAIN: Record<string, ReactNode> = {
 };
 
 /** Target of a "view"/"tab" action -> View. Accepts a view path (see pathToView; "module/tab" and
- * "module:tab" are read as "module.tab"), a tab id of this module, or a module id (its first tab). */
+ * "module:tab" are read as "module.tab"), a tab id of this module, or a module id (its first tab; a module
+ * without tabs lives on Przegląd: Przegląd with its widget focused, F7 merge). */
 export function actionView(moduleId: string, target: string, modules: ModuleInfo[]): View | null {
   const t = target.trim().replace(/^([a-z_]+)[/:]([a-z_]+)$/, (m, a: string, b: string) => (a === "settings" || a === "setup" ? m : `${a}.${b}`));
   if (!t) return null;
@@ -35,7 +36,7 @@ export function actionView(moduleId: string, target: string, modules: ModuleInfo
   const own = moduleDef(moduleId, modules);
   if (own.tabs.some((x) => x.id === t)) return { kind: "tab", tab: tabKey(moduleId, t) };
   const other = moduleDef(t, modules);
-  return other.tabs[0] ? { kind: "tab", tab: tabKey(t, other.tabs[0].id) } : null;
+  return other.tabs[0] ? { kind: "tab", tab: tabKey(t, other.tabs[0].id) } : { kind: "tab", tab: "overview", sub: t };
 }
 
 /** A setup step action. Known kinds: view|tab (see actionView), settings (section id),
@@ -88,7 +89,9 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
         {error && <Notice tone="neg">Nie udało się pobrać stanu: {error}</Notice>}
         {data?.state === "ready" && (
           <Notice tone="pos" style={{ margin: "10px 0 0" }}
-            action={firstTab && <button className="btn" onClick={() => go({ kind: "tab", tab: tabKey(moduleId, firstTab.id) })}>{firstTab.label} →</button>}>
+            action={firstTab
+              ? <button className="btn" onClick={() => go({ kind: "tab", tab: tabKey(moduleId, firstTab.id) })}>{firstTab.label} →</button>
+              : <button className="btn" onClick={() => go({ kind: "tab", tab: "overview", sub: moduleId })}>Przegląd →</button>}>
             Skonfigurowany.
           </Notice>
         )}

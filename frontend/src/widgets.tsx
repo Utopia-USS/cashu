@@ -15,11 +15,17 @@ export interface GridItem {
 }
 
 /** `.g3` with the two-column order applied through `--o` (index.css) and stacked single columns. */
-export function Grid({ items, className }: { items: GridItem[]; className?: string }) {
+export function Grid({ items, className, flash }: {
+  items: GridItem[];
+  className?: string;
+  /** Slot id to ring once (a redirect focused it, F7 merge); every cell carries `data-slot` = its id. */
+  flash?: string | null;
+}) {
   const present = items.filter((it) => it.node != null && it.node !== false);
   const { order, alone } = twoColumnOrder(present.map(({ id, span, defer }) => ({ id, span, defer })));
   const cell = (it: GridItem) => (
-    <div key={it.id} className={`gi s${it.span}${alone.has(it.id) ? " s1-full" : ""}`} style={{ "--o": order.get(it.id) } as CSSProperties}>
+    <div key={it.id} data-slot={it.id} className={`gi s${it.span}${alone.has(it.id) ? " s1-full" : ""}${flash === it.id ? " flash" : ""}`}
+      style={{ "--o": order.get(it.id) } as CSSProperties}>
       {it.node}
     </div>
   );

@@ -18,7 +18,7 @@ import { SetupPage } from "./SetupPage";
 import { pathToView, type Shell as ShellState, ShellContext, viewToPath } from "./context";
 import { useTheme } from "./theme";
 import type { ModuleCtx, View } from "./types";
-import { decodeSegment } from "./util";
+import { decodeSegment, resolveView } from "./util";
 import { Wizard } from "./Wizard";
 import { errorText } from "./messages";
 
@@ -119,7 +119,10 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   const networthS = useAsync(() => getNetworth(profile.slug), [profile.slug, nonce], { key: ck(profile.slug, "networth") });
   const catsS = useAsync(() => getCategories(profile.slug), [profile.slug], { key: ck(profile.slug, "categories") });
 
-  const go = useCallback((v: View) => { setView(v); window.scrollTo({ top: 0 }); }, []);
+  const go = useCallback((v: View, opts?: { scroll?: boolean }) => {
+    setView(v);
+    if (opts?.scroll !== false) window.scrollTo({ top: 0 });
+  }, []);
   const askNarrow = useCallback((v: boolean) => setNarrow(v), []);
   // After a write: forget every cached view (the remounted pages read fresh data), then re-read.
   const refresh = useCallback(() => { clearCache(); setNonce((n) => n + 1); }, []);
@@ -133,16 +136,10 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
     toast(`Profil: ${p.name}`);
   };
 
-  // Fall back to Przegląd when the view points at a module that is off or unknown.
-  const resolved: View = (() => {
-    if (view.kind === "settings") return view;
-    if (view.kind === "setup") return enabled.some((m) => m.id === view.module) ? view : OVERVIEW;
-    if (view.tab === "overview") return view;
-    const [mid, tid] = view.tab.split(".");
-    const pm = enabled.find((m) => m.id === mid);
-    if (!pm || !moduleDef(mid, modules).tabs.some((t) => t.id === tid)) return OVERVIEW;
-    return view;
-  })();
+  // Przegląd when the view points at a module that is off or unknown; a tab route of a module that lives on
+  // Przegląd (no tabs, e.g. assets) -> Przegląd with its widget focused (core/util.ts resolveView).
+  const resolved: View = resolveView(view, enabled, (id) => moduleDef(id, modules).tabs.map((t) => t.id));
+  const tabless = (id: string) => !moduleDef(id, modules).tabs.length;
 
   const bankAccounts = (networthS.data?.accounts ?? []).filter((a) => a.bank !== "manual" && a.type !== "cash");
   const budgetOn = enabled.some((m) => m.id === "budget");
@@ -252,8 +249,10 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
         {(err || loadError) && <div className="err">Błąd: {err || loadError}</div>}
 
         <nav className="tabbar" aria-label="Moduły">
-          <button className={`tabbtn ${resolved.kind === "tab" && resolved.tab === "overview" ? "on" : ""}`} onClick={() => go(OVERVIEW)}>Przegląd</button>
-          {enabled.map((m) => {
+          {/* The setup page of a module that lives on Przegląd keeps Przegląd lit. */}
+          <button className={`tabbtn ${(resolved.kind === "tab" && resolved.tab === "overview") || (resolved.kind === "setup" && tabless(resolved.module)) ? "on" : ""}`}
+            onClick={() => go(OVERVIEW)}>Przegląd</button>
+          {enabled.filter((m) => !tabless(m.id)).map((m) => {
             const def = moduleDef(m.id, modules);
             const pending = m.setup_state !== "ready";
             return (

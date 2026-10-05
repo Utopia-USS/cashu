@@ -207,6 +207,7 @@ export const LABELS: Record<string, Label> = {
   "error.planned_booked": "Ta wpłata jest już zaksięgowana z importu; planu nie można zmienić",
   "error.research_conflict": "Notatka już obsłużona (obserwowana albo odrzucona)",
   "error.research_invalid": "Nieprawidłowe dane notatki researchu",
+  "error.name_taken": "Pozycja o tej nazwie już istnieje",
 
   // ---- alert signal facts (`message_code` + `message_params` on alert signals; the subject is added by the UI) --
   "alert.price_below": (p) => has(p, "close", "level") ? `cena ${cur(p.close, p.currency)} poniżej ${cur(p.level, p.currency)}` : null,

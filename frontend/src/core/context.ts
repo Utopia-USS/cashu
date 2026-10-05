@@ -10,7 +10,8 @@ export interface Shell {
   system: SystemInfo | null;
   modules: ModuleInfo[];
   view: View;
-  go: (v: View) => void;
+  /** Navigate; scrolls to the top unless `scroll: false`. */
+  go: (v: View, opts?: { scroll?: boolean }) => void;
   /** Re-read /api/profiles (module states, names). */
   reloadProfiles: () => Promise<void>;
   openWizard: () => void;
@@ -33,8 +34,9 @@ export function useShell(): Shell {
 export const useSlug = (): string => useShell().slug;
 
 /** View <-> path used in the URL hash (#/{slug}/{path}) and by setup actions of kind "view":
- * "overview", "<module>.<tab>", "<module>.<tab>/<sub>" (a page inside a tab, e.g.
- * "investments.portfolio/alerts" or ".../assets/306"), "setup/<module>", "settings" or "settings/<section>". */
+ * "overview", "overview/<module>" (Przegląd with that module's widget focused, F7 merge), "<module>.<tab>",
+ * "<module>.<tab>/<sub>" (a page inside a tab, e.g. "investments.portfolio/alerts" or ".../assets/306"),
+ * "setup/<module>", "settings" or "settings/<section>". */
 export function viewToPath(v: View): string {
   if (v.kind === "settings") return v.section ? `settings/${v.section}` : "settings";
   if (v.kind === "setup") return `setup/${v.module}`;
