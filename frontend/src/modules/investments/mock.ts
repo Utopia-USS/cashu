@@ -76,7 +76,8 @@ function fullState(): State {
     }],
     reviews: [{ id: 1, module: "investments", done_at: "2026-09-27T11:41:00+02:00", notes: "Bez zmian w strategii.", stats: { minutes: 41 } }],
     proposals: [{
-      id: 71, kind: "custom_rule", status: "pending", summary: "reguła turnover (maks. 4 transakcje na miesiąc)", reason: "Ograniczenie nadmiernego handlu po rozmowie o strategii.",
+      id: 71, kind: "custom_rule", status: "pending", summary: "Rule turnover (custom): fired 2x in backtest",
+      summary_code: "custom_rule", summary_params: { rule_id: "turnover", rule_kind: "custom", episodes: 2, evaluated: 104 }, reason: "Ograniczenie nadmiernego handlu po rozmowie o strategii.",
       created_at: "2026-10-03T20:14:00+02:00",
       diff: { yaml: "  rules:\n    - id: dip_review\n      kind: drawdown_from_high\n      params: { threshold: 0.15 }\n+   - id: turnover\n+     kind: custom\n+     params:\n+       scope: portfolio\n+       when: 'trades_30d > 4'\n+       message: Więcej niż 4 transakcje w 30 dni" },
       backtest: { evaluated: 104, step_days: 7, from: "2024-10-07", to: "2026-10-04", points_fired: 3, episodes: 2, first_fired: "2025-03-17", last_fired: "2026-01-12", instruments: [] },
@@ -285,8 +286,9 @@ function strategy(st: State): StrategyStatus {
     state: "partial", version: v, changed: false, errors: 0, warnings: 1,
     files: { yaml: "~/Library/Application Support/finanse/profiles/jan/strategy.yaml", md: "~/Library/Application Support/finanse/profiles/jan/strategy.md", yaml_exists: true, md_exists: true },
     read_error: null,
-    issues: [{ severity: "warning", path: "buckets", message: "Instrument EIMI matches no bucket (buckets[].match)", line: null, column: null }],
-    inactive_rules: [{ index: 4, rule_id: "cash_floor", kind: "cash_level", line: 41, issues: [{ severity: "error", path: "rules[4].params", message: "Missing parameter min_weight", line: 41, column: 7 }] }],
+    // issues as the real loader reports them (code + params, F7 D1): a typo warning and a rule left inactive
+    issues: [{ severity: "warning", path: "rules[1].cooldown_dyas", message: 'Unknown key "cooldown_dyas" (did you mean "cooldown_days"?); it is ignored', line: 24, column: 5, code: "strategy.unknown_key", params: { key: "cooldown_dyas", suggestion: "cooldown_days" } }],
+    inactive_rules: [{ index: 4, rule_id: "cash_floor", kind: "cash_level", line: 41, issues: [{ severity: "error", path: "rules[4].params", message: "cash_level needs min_weight, max_weight or both", line: 43, column: 13, code: "strategy.cash_level_needs_bound", params: {} }] }],
     facts: {
       base_currency: "PLN", buckets: Object.keys(TARGETS), targets: TARGETS,
       rules: [

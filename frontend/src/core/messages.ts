@@ -14,9 +14,10 @@ type Label = string | ((p: Params) => string | null);
 
 const q = (v: unknown) => `„${String(v)}"`;
 const hint = (p: Params) => (p.suggestion ? ` (czy chodziło o ${q(p.suggestion)}?)` : "");
-/** Values the server describes in English (`got a mapping`). */
+/** Values the server describes in English (`got a mapping`); a quoted text value gets Polish quotes. */
 const val = (v: unknown) =>
-  ({ "a mapping": "mapą", "a list": "listą", true: "true", false: "false" } as Record<string, string>)[String(v)] ?? String(v);
+  ({ "a mapping": "mapą", "a list": "listą", true: "true", false: "false" } as Record<string, string>)[String(v)]
+  ?? String(v).replace(/^"(.*)"$/s, (_m, t: string) => q(t));
 const range = (r: unknown) =>
   String(r)
     .replace(/greater than/g, "większe niż")
@@ -56,6 +57,130 @@ export function plural(n: number, one: string, few: string, many: string): strin
   return `${n} ${w}`;
 }
 
+// ---- English sentences inside params: a custom rule's condition error (`strategy.expression_invalid`
+// {detail}, from rules/expr lexer.py / parser.py / checker.py) and the YAML parser's problem
+// (`strategy.yaml_invalid` {problem}, PyYAML). Each pattern matches one whole sentence; a sentence no pattern
+// knows is dropped (the label keeps its Polish part and the UI its line), never shown in English.
+type Sentence = [RegExp, (m: string[]) => string | null];
+const ART: Record<string, [string, string]> = { "a number": ["liczbą", "liczbę"], "a condition (true/false)": ["warunkiem", "warunek"], text: ["tekstem", "tekst"] };
+const A = String.raw`(a number|a condition \(true/false\)|text)`;
+const HINT = String.raw`(?: \(did you mean "([^"]*)"\?\))?`;
+const RANGE = String.raw`(?: between (\S+) and (\S+)| of at least (\S+))?`;
+const dym = (s?: string) => (s ? ` (czy chodziło o ${q(s)}?)` : "");
+const rangePl = (a?: string, b?: string, c?: string) => (a ? ` od ${a} do ${b}` : c ? ` co najmniej ${c}` : "");
+/** An expression part the checker names: a metric, a number, "text", or "the part at column N". */
+const shown = (s: string) => {
+  const col = /^the part at column (\d+)$/.exec(s);
+  return col ? `część z kolumny ${col[1]}` : s.replace(/^"(.*)"$/, (_m, t: string) => q(t));
+};
+const token = (s: string) => (s === "the end of the expression" ? "koniec warunku" : s);
+const NEEDS: Record<string, string> = { "a condition": "warunku", "a number": "liczby", "numbers on both sides": "liczb po obu stronach", "conditions on both sides": "warunków po obu stronach" };
+const rx = (src: string, f: Sentence[1]): Sentence => [new RegExp(`^${src}$`), f];
+
+const EXPR_FIXED: Record<string, string> = {
+  "Powers are not supported": "potęgowanie nie jest obsługiwane",
+  "Integer division is not supported; use '/'": "dzielenie całkowite nie jest obsługiwane; użyj '/'",
+  "Use '!=' to compare for inequality": "użyj '!=' (różne od)",
+  "Use '>=' for 'greater than or equal'": "użyj '>=' (większe lub równe)",
+  "Use '<=' for 'less than or equal'": "użyj '<=' (mniejsze lub równe)",
+  "Use '==' to compare; assignment is not supported": "do porównania użyj '=='; przypisanie nie jest obsługiwane",
+  "'%' must directly follow a number (5% = 0.05); the modulo operator is not supported": "'%' musi stać tuż za liczbą (5% = 0.05); modulo nie jest obsługiwane",
+  "Attribute access is not supported": "odwołania przez kropkę nie są obsługiwane",
+  "Indexing and lists are not supported": "indeksy i listy nie są obsługiwane",
+  "Braces are not supported": "nawiasy klamrowe nie są obsługiwane",
+  "Powers and bit operations are not supported": "potęgi i operacje bitowe nie są obsługiwane",
+  "Bit operations are not supported": "operacje bitowe nie są obsługiwane",
+  "The '@' operator is not supported": "operator '@' nie jest obsługiwany",
+  "Only one expression is allowed; ';' is not supported": "dozwolony jest jeden warunek; ';' nie jest obsługiwane",
+  "Backslashes are not supported": "znak '\\' nie jest obsługiwany",
+  "Comments are not supported": "komentarze nie są obsługiwane",
+  "Backticks are not supported": "znak '`' nie jest obsługiwany",
+  "A decimal point must be followed by digits (e.g. 0.5)": "po kropce dziesiętnej muszą być cyfry (np. 0.5)",
+  "A number can have only one decimal point": "liczba może mieć tylko jedną kropkę",
+  "Scientific notation is not supported; write the number out": "zapis wykładniczy nie jest obsługiwany; wpisz pełną liczbę",
+  "Text must end on the same line (missing closing quote)": "tekst musi kończyć się w tej samej linii (brak cudzysłowu zamykającego)",
+  "Backslash escapes are not supported in text": "znak '\\' w tekście nie jest obsługiwany",
+  "Expression is empty": "warunek jest pusty",
+  "Chained comparisons are not supported; combine them with 'and'": "porównania łańcuchowe nie są obsługiwane; połącz je przez 'and'",
+  "'not' must be put in parentheses here, e.g. 1 + (not x)": "tu 'not' musi być w nawiasie, np. 1 + (not x)",
+  "Expression ended unexpectedly; expected a value": "warunek urywa się; brakuje wartości",
+  "The expression uses no metric, so it would always give the same answer": "warunek nie używa żadnej metryki, więc zawsze da ten sam wynik",
+};
+const EXPR_RX: Sentence[] = [
+  rx(String.raw`'(.)' is not supported`, (m) => `znak '${m[1]}' nie jest obsługiwany`),
+  rx(String.raw`Use '(.+)' instead of '(.+)'`, (m) => `użyj '${m[1]}' zamiast '${m[2]}'`),
+  rx(String.raw`Expression is too long \((\d+) characters, max (\d+)\)`, (m) => `warunek za długi (${m[1]} znaków, maks. ${m[2]})`),
+  rx(String.raw`Expression has too many parts \(max (\d+) tokens\)`, (m) => `warunek ma za dużo elementów (maks. ${m[1]})`),
+  rx(String.raw`Expression is nested too deeply \(max (\d+) levels\)`, (m) => `warunek zagnieżdżony zbyt głęboko (maks. ${m[1]} poziomów)`),
+  rx("Unexpected character (.+) in text", (m) => `niedozwolony znak ${m[1]} w tekście`),
+  rx("Unexpected character (.+)", (m) => `niedozwolony znak ${m[1]}`),
+  rx(String.raw`(Number|Name|Text) is too long \(max (\d+) characters\)`, (m) => `${{ Number: "liczba", Name: "nazwa", Text: "tekst" }[m[1]]} za ${m[1] === "Text" ? "długi" : "długa"} (maks. ${m[2]} znaków)`),
+  rx('Invalid number "(.*)"', (m) => `nieprawidłowa liczba ${q(m[1])}`),
+  rx(String.raw`Names cannot start with "_" \(got "(.*)"\)`, (m) => `nazwa nie może zaczynać się od "_" (${q(m[1])})`),
+  rx("Missing closing quote (.)", (m) => `brak cudzysłowu zamykającego ${m[1]}`),
+  rx("Unexpected (.+) after a complete expression", (m) => `nadmiarowe ${token(m[1])} po pełnym warunku`),
+  rx(String.raw`Missing '\)' for the '\(' at column (\d+); found (.+)`, (m) => `brak ')' do '(' z kolumny ${m[1]}; jest ${token(m[2])}`),
+  rx(String.raw`Missing '\)' to close (\S+)\( at column (\d+); found (.+)`, (m) => `brak ')' zamykającego ${m[1]}( z kolumny ${m[2]}; jest ${token(m[3])}`),
+  rx("Expected a value, found (.+)", (m) => `brakuje wartości, jest ${token(m[1])}`),
+  rx(String.raw`Too many arguments for (\S+?)(?: \(max (\d+)\))?`, (m) => `za dużo argumentów w ${m[1]}${m[2] ? ` (maks. ${m[2]})` : ""}`),
+  rx(String.raw`The expression must be a condition \(true or false\), e\.g\. weight > 10%; this one gives ${A}`,
+    (m) => `warunek musi dawać prawdę albo fałsz, np. weight > 10%; ten daje ${ART[m[1]][1]}`),
+  rx(`'(.+?)' needs (${Object.keys(NEEDS).join("|")}); (.+) is ${A}`, (m) => `'${m[1]}' wymaga ${NEEDS[m[2]]}; ${shown(m[3])} jest ${ART[m[4]][0]}`),
+  rx(`'(.+?)' compares values of the same type; (.+) is ${A}, (.+) is ${A}`,
+    (m) => `'${m[1]}' porównuje wartości tego samego typu; ${shown(m[2])} jest ${ART[m[3]][0]}, ${shown(m[4])} jest ${ART[m[5]][0]}`),
+  rx(`'(.+?)' compares numbers; (.+) is ${A}`, (m) => `'${m[1]}' porównuje liczby; ${shown(m[2])} jest ${ART[m[3]][0]}`),
+  rx('Write "(.+)" in lowercase', (m) => `pisz ${q(m[1])} małymi literami`),
+  rx(`Unknown name "([^"]*)"${HINT}; see the metric catalog for scope (\\w+)`, (m) => `nieznana nazwa ${q(m[1])}${dym(m[2])} w scope ${m[3]}`),
+  rx(String.raw`(\S+) is not available in scope (\w+) \(available in: (.+)\)`, (m) => `${m[1]} nie działa w scope ${m[2]} (działa w: ${m[3]})`),
+  rx("(\\S+) is a function; call it with arguments: (.+)", (m) => `${m[1]} to funkcja; użycie: ${m[2]}`),
+  rx("(\\S+) is not a function; write it without parentheses", (m) => `${m[1]} to nie funkcja; zapisz bez nawiasów`),
+  rx(String.raw`(\S+) takes (?:(at least )?(\d+) argument\(s\)|no arguments); usage: (.+)`,
+    (m) => `${m[1]}: zła liczba argumentów (${m[3] ? `${m[2] ? "co najmniej " : ""}${m[3]}` : "0"}); użycie: ${m[4]}`),
+  rx("(\\S+) lists the same value twice", (m) => `${m[1]}: ta sama wartość dwa razy`),
+  rx(`(\\S+) of (\\S+) must be a whole number${RANGE}, written as a literal`,
+    (m) => `${m[1]} w ${m[2]} musi być liczbą całkowitą${rangePl(m[3], m[4], m[5])} wpisaną wprost`),
+  rx("(\\S+) of (\\S+) must be a whole number, got (.+)", (m) => `${m[1]} w ${m[2]} musi być liczbą całkowitą, jest ${m[3]}`),
+  rx(`(\\S+) of (\\S+) must be${RANGE}, got (.+)`, (m) => `${m[1]} w ${m[2]} musi być${rangePl(m[3], m[4], m[5])}, jest ${m[6]}`),
+  rx("(\\S+) of (\\S+) must be text in quotes, e\\.g\\. (.+)", (m) => `${m[1]} w ${m[2]} musi być tekstem w cudzysłowie, np. ${m[3]}`),
+  rx("(\\S+) of (\\S+) must not be empty", (m) => `${m[1]} w ${m[2]} nie może być puste`),
+  rx(`Unknown (\\S+) "([^"]*)"${HINT}; known: (.+)`, (m) => `nieznana wartość ${q(m[2])} dla ${m[1]}${dym(m[3])}; dostępne: ${m[4]}`),
+  rx(`(\\S+) is never "([^"]*)"${HINT}; known: (.+)`, (m) => `${m[1]} nigdy nie jest ${q(m[2])}${dym(m[3])}; dostępne: ${m[4]}`),
+];
+/** PyYAML problems (the "(while parsing ...)" context is dropped). */
+const YAML_FIXED: Record<string, string> = {
+  "mapping values are not allowed here": "dwukropek w złym miejscu (sprawdź wcięcia i cudzysłowy)",
+  "could not find expected ':'": "brak dwukropka po kluczu",
+  "found unexpected end of stream": "plik urywa się (niezamknięty cudzysłów?)",
+  "sequence entries are not allowed here": "element listy (-) w złym miejscu",
+  "mapping keys are not allowed here": "klucz w złym miejscu",
+  "invalid indentation or unclosed '[' or '{'": "złe wcięcie albo niezamknięty '[' lub '{'",
+  "but found another document": "więcej niż jeden dokument (---)",
+  "found unexpected document separator": "nieoczekiwany separator dokumentu (---)",
+};
+const YAML_RX: Sentence[] = [
+  rx("found character '\\\\t' that cannot start any token", () => "tabulator zamiast spacji we wcięciu"),
+  rx("found character (.+) that cannot start any token", (m) => `znak ${m[1]} nie może tu stać`),
+  rx("expected <block end>, but found (.+)", () => "złe wcięcie"),
+  rx("expected ',' or '\\]', but got (.+)", () => "niezamknięta lista: brak ',' albo ']'"),
+  rx("expected ',' or '\\}', but got (.+)", () => "niezamknięta mapa: brak ',' albo '}'"),
+  rx("expected the node content, but found (.+)", () => "brak wartości"),
+  rx("found unknown escape character (.+)", (m) => `nieznany znak po '\\': ${m[1]}`),
+];
+function sentence(text: unknown, fixed: Record<string, string>, patterns: Sentence[]): string | null {
+  const s = String(text ?? "");
+  if (Object.prototype.hasOwnProperty.call(fixed, s)) return fixed[s];
+  for (const [re, f] of patterns) {
+    const m = re.exec(s);
+    if (m) return f(Array.from(m, (g) => g ?? ""));
+  }
+  return null;
+}
+/** The Polish form of a condition error's English `detail`, or null for an unknown sentence. */
+export const exprDetail = (detail: unknown) => sentence(detail, EXPR_FIXED, EXPR_RX);
+/** The Polish form of a PyYAML problem (its "(while ...)" / "(expected ...)" context dropped), or null. */
+export const yamlProblem = (problem: unknown) =>
+  sentence(String(problem ?? "").replace(/ \((?:while|expected) [^()]*\)$/, ""), YAML_FIXED, YAML_RX);
+
 const ID_WHAT: Record<string, string> = { Bucket: "koszyka", Rule: "reguły", Benchmark: "benchmarku", bucket: "koszyka", rule: "reguły" };
 
 export const LABELS: Record<string, Label> = {
@@ -63,7 +188,7 @@ export const LABELS: Record<string, Label> = {
   "strategy.yaml_too_large": "Plik strategy.yaml jest za duży ({chars} znaków, maks. {max})",
   "strategy.yaml_duplicate_key": "Błędny YAML: klucz „{key}\" się powtarza (pierwszy raz w linii {first_line})",
   "strategy.yaml_too_deep": "Plik strategy.yaml jest zagnieżdżony zbyt głęboko",
-  "strategy.yaml_invalid": "Błędny YAML: {problem}",
+  "strategy.yaml_invalid": (p) => { const pl = yamlProblem(p.problem); return pl ? `Błędny YAML: ${pl}` : "Błędny YAML"; },
   "strategy.yaml_alias": "Kotwice i aliasy YAML (& i *) nie są obsługiwane",
   "strategy.yaml_merge_key": "Klucze scalania YAML (<<) nie są obsługiwane",
   "strategy.yaml_tag": "Nieobsługiwany tag YAML {tag}",
@@ -107,7 +232,7 @@ export const LABELS: Record<string, Label> = {
   "strategy.unknown_bucket": (p) => has(p, "bucket") ? `Nieznany koszyk ${q(p.bucket)}${hint(p)}${p.column ? ` (kolumna ${p.column} warunku)` : ""}` : null,
   "strategy.contribution_gap_needs_plan": "contribution_gap wymaga planu contributions; bez niego reguła jest zawsze pomijana",
   "strategy.when_required": "Brak when: warunku, np. „weight > 10%\"",
-  "strategy.expression_invalid": "Błąd w warunku (kolumna {column}): {detail}",
+  "strategy.expression_invalid": (p) => { const pl = exprDetail(p.detail); return has(p, "column") ? `Błąd w warunku (kolumna ${p.column})${pl ? `: ${pl}` : ""}` : null; },
   "strategy.message_empty": "message nie może być puste",
   "strategy.message_too_long": "message musi być jedną linią, maks. {max} znaków",
   "strategy.scope_only": "{key} dotyczy tylko scope {scope}",
@@ -164,9 +289,10 @@ export const LABELS: Record<string, Label> = {
     ? `Nowa strategia: ${plural(Number(p.rules), "reguła", "reguły", "reguł")}, ${plural(Number(p.buckets), "koszyk", "koszyki", "koszyków")}`
       + (Number(p.inactive_rules) ? `, ${plural(Number(p.inactive_rules), "nieaktywna reguła", "nieaktywne reguły", "nieaktywnych reguł")}` : "")
     : null,
-  "proposal.custom_rule": (p) => has(p, "rule_id", "rule_kind")
-    ? `Reguła ${p.rule_id} (${p.rule_kind})` + (p.episodes != null ? `: w teście wstecznym ${plural(Number(p.episodes), "epizod", "epizody", "epizodów")}` : "")
-    : null,
+  // never the raw rule id or kind (F7 D2); a custom_rule proposal always adds a rule (an existing id = rule_exists),
+  // and its params carry no condition text. No params (older proposal) = still Polish, not the English summary.
+  "proposal.custom_rule": (p) => (p.rule_kind === "custom" ? "Nowa reguła własna" : "Nowa reguła")
+    + (p.episodes != null ? `: w teście wstecznym ${plural(Number(p.episodes), "epizod", "epizody", "epizodów")}` : ""),
   "proposal.import": (p) => has(p, "account")
     ? `Import do ${p.account}` + (p.converter ? ` (konwerter ${p.converter})` : p.importer ? ` (${p.importer})` : "")
       + (p.new != null ? `: ${plural(Number(p.new), "nowy wiersz", "nowe wiersze", "nowych wierszy")}` : ": konwerter czeka na zatwierdzenie")
@@ -244,7 +370,8 @@ export const LABELS: Record<string, Label> = {
   "worker.busy": "inny przebieg w toku",
   "worker.notifier_none": "bez powiadomień",
   "worker.digest_already_sent": "już wysłane dziś",
-  "worker.rule_inactive": "reguła {rule} nieaktywna (błąd w strategy.yaml)",
+  // params {rule} = the raw rule id (or index): never shown; the payload carries no kind for a Polish label
+  "worker.rule_inactive": "reguła nieaktywna (błąd w strategy.yaml)",
   "worker.strategy_invalid": "strategia z błędem, reguły nie ruszyły",
   "worker.market_failed": "notowania niedostępne",
   "worker.prices_failed": "brak notowań {instrument}",
