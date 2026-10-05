@@ -169,6 +169,42 @@ minimal page that says how to build the frontend.
 
 ---
 
+## Demo data and e2e
+
+`scripts/demo_data.py` fills a data dir with two invented profiles ("Demo Anna",
+"Demo Piotr") through the service layer: budget with categorised transactions,
+transfers and subscriptions, a loan, assets, a brokerage account imported through
+the import path with about two years of synthetic prices and FX rates (no network),
+a strategy, alerts (owner and agent), watchlist, a finished research run, a planned
+deposit, a decision and (Anna) a pending agent import proposal. Dates follow today.
+`--data-dir` is required; the real data dir is refused unless `--force`; a second
+run changes nothing.
+
+```bash
+.venv/bin/python scripts/demo_data.py --data-dir /tmp/finanse-demo
+FINANSE_DATA_DIR=/tmp/finanse-demo finanse serve      # open the printed #token= URL
+pytest -q tests/test_demo_data.py                     # the script twice on a temp dir
+```
+
+The browser smoke suite lives in `frontend/e2e/` (Playwright test runner with the
+system Chrome, `channel: "chrome"`; install with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+npm install`). It never builds: run `npm run build` first. The global setup seeds a
+temp data dir with the demo script, starts `e2e/serve_offline.py` (`finanse serve`
+with the synthetic market sources and outbound HTTP refused) on a free port, reads
+the token from the printed URL, and removes everything afterwards. Specs run one
+after another (some change the data), browser timezone Europe/Warsaw; artifacts go
+to `frontend/e2e/output/` (git-ignored).
+
+```bash
+cd frontend && npm run build && npm run e2e
+npm run e2e -- specs/05-alerts.spec.ts               # one spec
+```
+
+When you change UI copy or structure, keep the specs on roles, labels and aria
+names rather than long texts, and update the matching spec in the same change.
+
+---
+
 ## Claude Code skills (guided setup over MCP)
 
 Each module ships a setup skill in `.claude/skills/<name>/SKILL.md` (plus
