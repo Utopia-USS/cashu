@@ -40,16 +40,14 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
         SetupStep(
             "bank_account",
             "Dodaj bank i konto",
-            "Konto pojawia się po pierwszym imporcie wyciągu CSV albo po połączeniu przez "
-            "Open Banking. Konto = jeden rachunek w jednym banku.",
+            "Powstaje przy pierwszym imporcie CSV albo przez Open Banking.",
             done=n_bank_accounts > 0,
             actions=(SetupAction("cli", "Kopiuj polecenie", f"{cli} import-csv WYCIAG.csv"),),
         ),
         SetupStep(
             "first_import",
-            "Wgraj pierwszy CSV lub połącz Open Banking",
-            "Eksport CSV z banku (mBank, Erste, Pekao) albo połączenie przez Enable Banking; "
-            "kolejne wyciągi nie dublują transakcji.",
+            "Pierwszy import",
+            "CSV z banku (mBank, Erste, Pekao) albo Enable Banking.",
             done=n_txns > 0,
             actions=(
                 SetupAction("cli", "Import katalogu", f"{cli} import-dir statements/"),
@@ -58,16 +56,15 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
         ),
         SetupStep(
             "categories",
-            "Sprawdź kategorie (10 najczęstszych sprzedawców)",
-            "Popraw kategorię w zakładce Wydatki; reguła zapamięta sprzedawcę dla tego profilu.",
+            "Sprawdź kategorie",
+            "W zakładce Wydatki; reguła zapamięta sprzedawcę.",
             done=n_txns > 0 and (n_manual > 0 or n_uncategorized == 0),
             actions=(SetupAction("tab", "Wydatki", "expenses"),),
         ),
         SetupStep(
             "transfers",
             "Oznacz przelewy wewnętrzne",
-            "Przelewy między własnymi kontami są dopasowywane po IBAN, żeby nie liczyły się "
-            "jako wydatki ani przychody.",
+            "Dopasowanie po IBAN; nie liczą się jako wydatki.",
             done=n_txns > 0 and (n_transfers > 0 or n_bank_accounts < 2),
             actions=(SetupAction("cli", "Kopiuj polecenie", f"{cli} match-transfers"),),
         ),

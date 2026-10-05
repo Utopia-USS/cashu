@@ -105,6 +105,15 @@ def run_daily_check(
     )
 
 
+def error_code(message: str | None) -> tuple[str | None, dict]:
+    """Stable ``(code, params)`` of a daily-check run error (``service.daily.error_code``)."""
+    if not message:
+        return None, {}
+    from finanse.modules.investments.service import daily
+
+    return daily.error_code(message)
+
+
 def busy_error() -> type[Exception]:
     from finanse.modules.investments.service import daily
 

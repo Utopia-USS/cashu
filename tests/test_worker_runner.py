@@ -230,7 +230,7 @@ def test_many_pending_entries_are_capped_with_one_summary(db_engine):
     result = notifications.deliver_pending(profile, fake, now=MONDAY, session_factory=get_session)
     assert result.stats() == {"delivered": 3, "summarized": 2, "skipped": 1, "failed": 0}
     assert [n.message for n in fake.sent[:3]] == [f"Synthetic signal {i}" for i in range(3)]
-    assert fake.sent[3].message == "I jeszcze 2 sygnały - szczegóły w aplikacji."
+    assert fake.sent[3].message == "Jeszcze 2 sygnały"
     channels = [r.channel for r in log_rows(pid)]
     assert channels == ["fake"] * 3 + ["fake:summary"] * 2 + ["skipped:closed"]
 
@@ -470,3 +470,57 @@ def test_nothing_to_do(db_engine):
     assert report.jobs == [] and report.status == "ok"
     assert worker_state.load().last_run["status"] == "ok"
     assert worker_state.state_path().stat().st_mode & 0o777 == 0o600
+
+
+# --------------------------------------------------------------------------- #
+# Stable job codes (F7 copy sweep decision 1)
+# --------------------------------------------------------------------------- #
+
+
+def test_known_job_details_carry_stable_codes(household, eb_configured, fake_eb, make_eb_txn):
+    eb_configured(fake_eb(eb_session(make_eb_txn)), {"mbank": "sess-1"})
+    work(RecordingNotifier())
+    second = work(RecordingNotifier(), now=MONDAY + dt.timedelta(hours=3))
+    (job,) = jobs(second, runner.BUDGET_SYNC)
+    assert job.code == "throttled" and job.params == {"until": "2026-03-03T03:30+01:00"}
+    assert job.to_dict()["code"] == "throttled"
+    (summary,) = [j for j in second.job_summary() if j["job"] == runner.BUDGET_SYNC]
+    assert summary["code"] == "throttled" and summary["params"] == job.params
+    assert summary["profile"] == household[1]
+    stored = worker_state.load().last_run["jobs"]
+    assert any(j["code"] == "throttled" for j in stored)
+
+    disabled = work(RecordingNotifier(), now=MONDAY + dt.timedelta(days=2), budget=False)
+    assert jobs(disabled, runner.BUDGET_SYNC)[0].code == "disabled_for_run"
+
+
+def test_budget_precheck_codes(household, monkeypatch):
+    from finanse.config import settings
+
+    monkeypatch.setattr(type(settings), "eb_configured", property(lambda self: False))
+    (job,) = jobs(work(RecordingNotifier()), runner.BUDGET_SYNC)
+    assert (job.code, job.params) == ("eb_not_configured", {})
+
+
+def test_daily_check_error_codes():
+    assert daily.error_code("rule drift_1 inactive: unknown kind 'x'") == (
+        "rule_inactive",
+        {"rule": "drift_1"},
+    )
+    assert daily.error_code("strategy invalid, rules not run: bad yaml") == (
+        "strategy_invalid",
+        {},
+    )
+    assert daily.error_code("market refresh failed: boom") == ("market_failed", {})
+    assert daily.error_code("prices ABC: no data") == ("prices_failed", {"instrument": "ABC"})
+    assert daily.error_code("fx EUR: timeout") == ("fx_failed", {"currency": "EUR"})
+    assert daily.error_code("RuntimeError: synthetic") == (None, {})
+    assert inv.error_code(None) == (None, {})
+
+
+def test_busy_and_notifier_codes(investor):
+    with locks.run_lock(daily.LOCK_NAME):
+        report = work(None, daily_lock_wait=0)
+    (check,) = jobs(report, runner.INVESTMENTS_DAILY)
+    assert check.code == "busy"
+    assert all(j.code == "notifier_none" for j in jobs(report, runner.NOTIFICATIONS))

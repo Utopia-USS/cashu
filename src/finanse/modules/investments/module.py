@@ -18,10 +18,7 @@ api.router.include_router(research_api.router)  # /investments/research[/summary
 MODULE = ModuleSpec(
     id="investments",
     name="Inwestycje",
-    description=(
-        "Rachunki maklerskie, alokacja vs strategia, sygnały z reguł i dziennik decyzji. "
-        "Cotygodniowy przegląd w niedzielę."
-    ),
+    description="Rachunki maklerskie, alokacja vs strategia, sygnały, dziennik decyzji",
     available=True,
     tables=TABLES,
     router=api.router,

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from collections.abc import Callable, Collection
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
@@ -300,6 +301,26 @@ def _unpack(sources) -> tuple[PriceSource, FxSource, Callable[[], None]]:
     if callable(sources) and not isinstance(sources, MarketSources):
         sources = sources()
     return sources.prices, sources.fx, sources.close
+
+
+# Stable codes of the run error templates above and below (``worker.<code>`` in the UI, F7): the
+# English strings stay the stored / CLI form, the code + params are what the app labels.
+_ERROR_CODES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^rule (?P<rule>\S+) inactive: "), "rule_inactive"),
+    (re.compile(r"^strategy invalid, rules not run: "), "strategy_invalid"),
+    (re.compile(r"^market refresh failed: "), "market_failed"),
+    (re.compile(r"^prices (?P<instrument>.+?): "), "prices_failed"),
+    (re.compile(r"^fx (?P<currency>[A-Z]{3}): "), "fx_failed"),
+)
+
+
+def error_code(message: str) -> tuple[str | None, dict]:
+    """``(code, params)`` of a run error produced by this module (None for anything else)."""
+    for pattern, code in _ERROR_CODES:
+        m = pattern.match(message)
+        if m:
+            return code, m.groupdict()
+    return None, {}
 
 
 def _market_errors_for(needs: _Needs, report: DailyCheckReport) -> list[str]:

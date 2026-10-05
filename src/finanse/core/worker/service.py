@@ -64,6 +64,9 @@ def last_run() -> dict:
                     "module": "investments",
                     "status": rr_status,
                     "detail": None,
+                    "code": None,
+                    "params": {},
+                    "profile": None,
                     "last_run": rr_started.isoformat(),
                 }
             ]

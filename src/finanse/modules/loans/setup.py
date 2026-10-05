@@ -19,8 +19,8 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
     return SetupStatus(steps=(
         SetupStep(
             "loan",
-            "Dodaj kredyt (kwota, oprocentowanie, rata, start)",
-            "Hipoteka, kredyt samochodowy lub gotówkowy. Wiele kredytów na profil.",
+            "Dodaj kredyt",
+            "Kwota, oprocentowanie, rata, data startu.",
             done=bool(loans),
             actions=(SetupAction(
                 "cli", "Kopiuj polecenie",
@@ -30,9 +30,8 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
         ),
         SetupStep(
             "payments",
-            "Wskaż konto, z którego schodzi rata",
-            "Podaj rachunek banku, na który idą raty, albo frazę z tytułu raty; raty są "
-            "wtedy rozpoznawane w Budżecie jako spłata kredytu, nie subskrypcja.",
+            "Wskaż konto raty",
+            "IBAN albo fraza z tytułu raty; raty liczą się jako spłata, nie subskrypcja.",
             done=bool(loans) and (
                 any(loan.payment_iban or loan.payment_text for loan in loans)
                 or _has_categorized_installments(session, profile_id)

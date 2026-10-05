@@ -286,7 +286,7 @@ def resync(profile: CurrentProfile, days: int = 90) -> dict:
         legacy_owner = profiles.legacy_owner_slug(s)
     sessions = load_sessions(profile.slug, legacy_profile=legacy_owner)
     if not sessions:
-        return {"ok": False, "error": "Brak zapisanych sesji — zaloguj się: finanse eb login."}
+        return {"ok": False, "error": "Brak sesji Enable Banking: zaloguj się: finanse eb login"}
 
     client = _eb_client()
     errors: list[str] = []

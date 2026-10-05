@@ -150,13 +150,13 @@ def _investments_placeholder_setup(_session: Session, _profile_id: int) -> Setup
         SetupStep(
             "broker_account",
             "Dodaj rachunek maklerski",
-            "Rachunek = jeden broker + jedno opakowanie (zwykłe, IKE, IKZE).",
+            "Broker + opakowanie (zwykłe, IKE, IKZE).",
             done=False,
         ),
         SetupStep(
             "strategy",
             "Zapisz strategię",
-            "Cel, horyzont, koszyki i reguły; najprościej przez wywiad w Claude Code.",
+            "strategy.yaml i strategy.md; wywiad w Claude Code albo szablon.",
             done=False,
         ),
         SetupStep(
@@ -181,10 +181,7 @@ _PLACEHOLDERS: dict[str, ModuleSpec] = {
     "investments": ModuleSpec(
         id="investments",
         name="Inwestycje",
-        description=(
-            "Rachunki maklerskie, alokacja vs strategia, sygnały z reguł i dziennik decyzji. "
-            "Cotygodniowy przegląd w niedzielę."
-        ),
+        description="Rachunki maklerskie, alokacja vs strategia, sygnały, dziennik decyzji",
         available=False,
         setup_status=_investments_placeholder_setup,
         skill="/investments-setup",

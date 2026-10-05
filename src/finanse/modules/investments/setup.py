@@ -37,7 +37,7 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
             SetupStep(
                 "broker_account",
                 "Dodaj rachunek maklerski",
-                "Rachunek = jeden broker + jedno opakowanie (zwykłe, IKE, IKZE).",
+                "Broker + opakowanie (zwykłe, IKE, IKZE).",
                 done=has_account,
                 actions=(
                     SetupAction(
@@ -50,15 +50,14 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
             SetupStep(
                 "strategy",
                 "Zapisz strategię",
-                "Cel, horyzont, koszyki i reguły w strategy.yaml, opis w strategy.md; najprościej "
-                "przez wywiad w Claude Code albo z szablonu.",
+                "strategy.yaml i strategy.md; wywiad w Claude Code albo szablon.",
                 done=has_strategy,
                 actions=(SetupAction("cli", "Utwórz z szablonu", f"{cli} invest strategy init"),),
             ),
             SetupStep(
                 "first_import",
                 "Pierwsza wpłata lub import",
-                "Zaimportuj plik od brokera: format finanse albo CSV z mapowaniem kolumn.",
+                "Plik od brokera (format finanse albo CSV).",
                 done=has_txn,
                 actions=(
                     SetupAction(
@@ -71,7 +70,7 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
             SetupStep(
                 "first_run",
                 "Pierwszy przebieg reguł",
-                "Wycena pozycji, alokacja względem strategii i sygnały z reguł.",
+                "Wycena, alokacja, sygnały.",
                 done=has_run,
                 actions=(SetupAction("cli", "Kopiuj polecenie", f"{cli} invest run"),),
             ),

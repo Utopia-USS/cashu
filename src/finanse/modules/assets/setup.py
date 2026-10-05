@@ -26,7 +26,7 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
         SetupStep(
             "position",
             "Dodaj pozycję",
-            "Mieszkanie, działka lub inne aktywo wyceniane ręcznie: nazwa, wartość i waluta.",
+            "Nazwa, wartość, waluta.",
             done=bool(positions),
             actions=(SetupAction(
                 "cli", "Kopiuj polecenie",
@@ -35,8 +35,8 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
         ),
         SetupStep(
             "vehicle",
-            "Ustaw krzywą utraty wartości (auto)",
-            "Cena zakupu, data i roczny spadek wartości; bez auta ten krok jest zaliczony.",
+            "Krzywa utraty wartości auta",
+            "Cena zakupu, data, roczny spadek.",
             done=bool(positions) and (not vehicles or n_depreciating == len(vehicles)),
             actions=(SetupAction(
                 "cli", "Kopiuj polecenie",

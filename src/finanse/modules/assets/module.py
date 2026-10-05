@@ -13,10 +13,7 @@ from .setup import setup_status
 MODULE = ModuleSpec(
     id="assets",
     name="Majątek",
-    description=(
-        "Nieruchomości, auta i inne aktywa wyceniane ręcznie. Liczą się do wartości "
-        "netto, auto traci na wartości wg krzywej."
-    ),
+    description="Nieruchomości, auta i inne aktywa wyceniane ręcznie",
     tables=(Depreciation,),
     cli=cli.register,
     cli_help="Assets: manually valued positions and depreciating vehicles.",

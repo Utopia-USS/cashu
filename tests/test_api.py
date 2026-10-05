@@ -425,7 +425,7 @@ def test_resync_not_configured(api, monkeypatch):
 def test_resync_no_sessions(api, eb_configured, fake_eb):
     eb_configured(fake_eb({}), {})
     assert api.post("/api/resync").json() == {
-        "ok": False, "error": "Brak zapisanych sesji — zaloguj się: finanse eb login.",
+        "ok": False, "error": "Brak sesji Enable Banking: zaloguj się: finanse eb login",
     }
 
 

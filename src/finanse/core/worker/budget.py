@@ -30,6 +30,9 @@ class SyncOutcome:
     status: str  # ok | partial | failed | skipped
     detail: str | None = None
     stats: dict[str, Any] = field(default_factory=dict)
+    code: str | None = None
+    """Stable code of a known ``detail`` (``worker.<code>`` in the UI); None for free text."""
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 def _parse(value: Any) -> dt.datetime | None:
@@ -83,12 +86,15 @@ def _rate_limited(errors: list[str]) -> bool:
 def precheck(profile, book: dict, now: dt.datetime, legacy_owner: str | None) -> SyncOutcome | None:
     """A ``skipped`` outcome when the profile must not be synced now, else None."""
     if not configured():
-        return SyncOutcome("skipped", "Enable Banking not configured")
+        return SyncOutcome("skipped", "Enable Banking not configured", code="eb_not_configured")
     if not saved_sessions(profile, legacy_owner):
-        return SyncOutcome("skipped", "no saved bank sessions")
+        return SyncOutcome("skipped", "no saved bank sessions", code="no_bank_sessions")
     until = blocked_until(book, now)
     if until is not None:
-        return SyncOutcome("skipped", f"throttled until {until.isoformat(timespec='minutes')}")
+        stamp = until.isoformat(timespec="minutes")
+        return SyncOutcome(
+            "skipped", f"throttled until {stamp}", code="throttled", params={"until": stamp}
+        )
     return None
 
 

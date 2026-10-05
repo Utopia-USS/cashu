@@ -14,10 +14,7 @@ from .setup import setup_status
 MODULE = ModuleSpec(
     id="loans",
     name="Kredyty",
-    description=(
-        "Hipoteka i inne kredyty: harmonogram, odsetki, saldo w czasie. "
-        "Wiele kredytów na profil."
-    ),
+    description="Hipoteka i kredyty: harmonogram, odsetki, saldo w czasie",
     tables=(Loan,),
     router=api.router,
     cli=cli.register,

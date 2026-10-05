@@ -126,7 +126,7 @@ def deliver_pending(
                 Notification(
                     title=title(profile),
                     subtitle="Nowe sygnały",
-                    message=f"I jeszcze {signals_phrase(len(claimed))} - szczegóły w aplikacji.",
+                    message=f"Jeszcze {signals_phrase(len(claimed))}",
                     group=f"finanse-signals-{profile.id}",
                     url=investments_link(profile.slug),
                 )

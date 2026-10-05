@@ -13,10 +13,7 @@ from .setup import setup_status
 MODULE = ModuleSpec(
     id="budget",
     name="Budżet domowy",
-    description=(
-        "Konta bankowe, wydatki po kategoriach, przepływy i subskrypcje. "
-        "Import CSV z banku (mBank, Erste, Pekao) lub Open Banking."
-    ),
+    description="Konta, wydatki, przepływy, subskrypcje · CSV lub Open Banking",
     tables=(Transaction, CategoryRule, ImportBatch),
     router=api.router,
     cli=cli.register,

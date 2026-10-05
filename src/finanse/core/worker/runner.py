@@ -54,6 +54,10 @@ class JobResult:
     profile: str | None = None
     detail: str | None = None
     stats: dict[str, Any] = field(default_factory=dict)
+    code: str | None = None
+    """Stable code of a known ``detail`` (the UI labels ``worker.<code>`` with ``params``); the
+    English ``detail`` stays the CLI / log form and the fallback for free-text errors (F7)."""
+    params: dict[str, Any] = field(default_factory=dict)
 
     @property
     def module(self) -> str:
@@ -66,6 +70,8 @@ class JobResult:
             "profile": self.profile,
             "status": self.status,
             "detail": self.detail,
+            "code": self.code,
+            "params": self.params,
             "stats": self.stats,
         }
 
@@ -92,12 +98,22 @@ class WorkerReport:
         out: dict[str, dict] = {}
         for j in self.jobs:
             entry = out.setdefault(
-                j.job, {"job": j.job, "module": j.module, "status": j.status, "detail": None}
+                j.job,
+                {
+                    "job": j.job,
+                    "module": j.module,
+                    "status": j.status,
+                    "detail": None,
+                    "code": None,
+                    "params": {},
+                    "profile": None,
+                },
             )
             if _RANK[j.status] > _RANK[entry["status"]]:
                 entry["status"] = j.status
             if entry["detail"] is None and j.detail and j.status != "ok":
                 entry["detail"] = f"{j.profile}: {j.detail}" if j.profile else j.detail
+                entry["code"], entry["params"], entry["profile"] = j.code, j.params, j.profile
         return list(out.values())
 
     def to_dict(self) -> dict:
@@ -202,18 +218,22 @@ def _investments(offline: bool, as_of, sources: Any, lock_wait: float) -> list[J
             offline=offline, as_of=as_of, sources=sources, lock_wait=lock_wait
         )
     except inv.busy_error() as e:
-        return [JobResult(INVESTMENTS_DAILY, "skipped", detail=f"busy: {e}")]
+        return [JobResult(INVESTMENTS_DAILY, "skipped", detail=f"busy: {e}", code="busy")]
     except Exception as e:  # noqa: BLE001 - recorded, the other jobs still run
         _log.exception("investments daily check failed")
         return [JobResult(INVESTMENTS_DAILY, "failed", detail=f"{type(e).__name__}: {e}")]
     jobs = []
     for run in daily_report.profiles:
+        first = run.errors[0] if run.errors else None
+        code, params = inv.error_code(first)
         jobs.append(
             JobResult(
                 INVESTMENTS_DAILY,
                 run.status,
                 profile=run.slug,
-                detail=run.errors[0] if run.errors else None,
+                detail=first,
+                code=code,
+                params=params,
                 stats={
                     "run_id": run.run_id,
                     "strategy": run.strategy,
@@ -224,18 +244,31 @@ def _investments(offline: bool, as_of, sources: Any, lock_wait: float) -> list[J
             )
         )
     if daily_report.market_error and not jobs:
-        jobs.append(JobResult(INVESTMENTS_DAILY, "failed", detail=daily_report.market_error))
+        jobs.append(
+            JobResult(
+                INVESTMENTS_DAILY, "failed", detail=daily_report.market_error, code="market_failed"
+            )
+        )
     return jobs
 
 
 def _budget(profile, enabled: bool, now, state, save, legacy_owner) -> JobResult:
     if not enabled:
-        return JobResult(BUDGET_SYNC, "skipped", profile.slug, "disabled for this run")
+        return JobResult(
+            BUDGET_SYNC, "skipped", profile.slug, "disabled for this run", code="disabled_for_run"
+        )
     book = state.budget.setdefault(str(profile.id), {})
     try:
         skip = budget_glue.precheck(profile, book, now, legacy_owner)
         if skip is not None:
-            return JobResult(BUDGET_SYNC, skip.status, profile.slug, skip.detail)
+            return JobResult(
+                BUDGET_SYNC,
+                skip.status,
+                profile.slug,
+                skip.detail,
+                code=skip.code,
+                params=skip.params,
+            )
         book["last_attempt"] = now.isoformat()
         save(state)  # recorded before any network call: a crash never becomes a retry loop
         outcome = budget_glue.sync(profile, book, now)
@@ -249,7 +282,9 @@ def _budget(profile, enabled: bool, now, state, save, legacy_owner) -> JobResult
 
 def _notify(profile, notifier, now, session_factory) -> JobResult:
     if notifier is None:
-        return JobResult(NOTIFICATIONS, "skipped", profile.slug, "notifier: none")
+        return JobResult(
+            NOTIFICATIONS, "skipped", profile.slug, "notifier: none", code="notifier_none"
+        )
     try:
         result = notifications.deliver_pending(
             profile, notifier, now=now, session_factory=session_factory
@@ -285,4 +320,5 @@ def _digest(profile, notifier, today, state, save, session_factory) -> JobResult
         return None
     status = {"sent": "ok", "already_sent": "skipped", "failed": "failed"}[result.status]
     detail = {"already_sent": "already sent today", "failed": result.error}.get(result.status)
-    return JobResult(DIGEST, status, profile.slug, detail, {"signals": result.count})
+    code = "digest_already_sent" if result.status == "already_sent" else None
+    return JobResult(DIGEST, status, profile.slug, detail, {"signals": result.count}, code=code)
