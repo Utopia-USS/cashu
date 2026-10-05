@@ -1,13 +1,16 @@
 """Packaged-app paths (F7 FXP): MCP snippets on a translocated app (PK3), setup-page commands with
-the bundled binary (PK10), a moved / renamed app flagged for the worker and the MCP configs (PK11).
+the bundled binary (PK10), a moved / renamed app flagged for the worker and the MCP configs (PK11),
+and static checks of the signing inputs (PK4) and the build's dependency pinning (PK13).
 No real app bundle, no launchctl, no network."""
 
 from __future__ import annotations
 
 import json
 import plistlib
+import re
 import shlex
 import sys
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -16,6 +19,7 @@ from finanse.core import paths, runtime
 from finanse.core.worker import scheduler as sched
 from finanse.core.worker import service
 
+ROOT = Path(__file__).resolve().parents[1]
 APP_EXE = "/Applications/Finanse.app/Contents/MacOS/finanse"
 MOVED_EXE = "/private/var/folders/x/T/AppTranslocation/ABC/d/Finanse.app/Contents/MacOS/finanse"
 
@@ -216,6 +220,53 @@ def _cli():
     from finanse.cli import app
 
     return app
+
+
+# --------------------------------------------------------------------------- #
+# PK4: entitlements; PK13: hash-pinned build dependencies, pinned pip
+# --------------------------------------------------------------------------- #
+
+
+def test_entitlements_are_the_documented_minimum():
+    ent = plistlib.loads((ROOT / "packaging" / "entitlements.plist").read_bytes())
+    assert ent == {}  # no hardened-runtime exception is shown to be needed (packaging/README.md)
+    forbidden = (
+        "com.apple.security.cs.disable-library-validation",
+        "com.apple.security.cs.allow-dyld-environment-variables",
+        "com.apple.security.cs.allow-jit",
+        "com.apple.security.get-task-allow",
+    )
+    text = (ROOT / "packaging" / "entitlements.plist").read_text()
+    for key in forbidden:
+        assert f"<key>{key}</key>" not in text
+
+
+def test_build_script_hygiene():
+    script = (ROOT / "scripts" / "build_macos.sh").read_text()
+    assert "set -euo pipefail" in script and not re.search(r"^\s*set -x", script, re.MULTILINE)
+    assert "--upgrade pip\n" not in script and not re.search(r"install[^\n]*--upgrade pip(\s|$)", script)
+    pinned = re.search(r'^PIP_VERSION="(\d+\.\d+(?:\.\d+)?)"$', script, re.MULTILINE)  # pinned pip
+    assert pinned
+    lock = (ROOT / "packaging" / "requirements-build.lock").read_text()
+    assert f"\npip=={pinned.group(1)} \\\n" in lock  # ... and hashed in the lock
+    assert "--require-hashes" in script and "--no-build-isolation" in script
+    assert "constraints.txt" not in script  # the lock replaces the unhashed constraints
+    assert "--keychain-profile" in script
+    for line in script.splitlines():
+        if re.match(r"\s*sign\(\)", line):
+            assert "--options runtime" in line and "--timestamp" in line
+
+
+def test_build_lock_is_hash_pinned():
+    lock = (ROOT / "packaging" / "requirements-build.lock").read_text()
+    reqs = [ln for ln in re.split(r"(?<!\\)\n", lock) if ln.strip() and not ln.lstrip().startswith("#")]
+    assert len(reqs) > 20
+    for req in reqs:
+        assert "==" in req and "--hash=sha256:" in req, req.splitlines()[0]
+    names = {re.split(r"[=\s\[]", r.strip(), maxsplit=1)[0].lower() for r in reqs}
+    for needed in ("pyinstaller", "pywebview", "fastapi", "uvicorn", "sqlmodel", "typer"):
+        assert needed in names, needed
+    assert "finanse" not in names  # the app itself is installed from the checkout, no deps
 
 
 def test_paths_module_is_untouched_by_runtime_state(data_dir):

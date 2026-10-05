@@ -1,7 +1,14 @@
 # Build-only tools for scripts/build_macos.sh (not runtime dependencies), tested set.
 # Runtime dependencies come from pyproject.toml (+ the desktop extra) pinned by constraints.txt.
+# Both are compiled into packaging/requirements-build.lock (exact versions + sha256 hashes),
+# which is what the build installs; regenerate it after changing either (packaging/README.md).
+pip==26.2.1
 pyinstaller==6.22.3
 pyinstaller-hooks-contrib==2026.8
 altgraph==0.17.5
 macholib==1.16.4
 setuptools==84.0.0
+# Build backend of the editable `finanse` install and what it needs for an editable build
+# (installed with --no-build-isolation, so no unpinned backend is fetched at build time).
+hatchling==1.32.4
+editables==0.6

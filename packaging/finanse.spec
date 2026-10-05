@@ -55,14 +55,6 @@ hiddenimports = [
     "webview.platforms.cocoa",
     # Native notifications (desktop/notify.py imports it lazily, inside the helper and the shell).
     *collect_submodules("UserNotifications"),
-    # Standard library modules converter scripts commonly use (desktop/entry.py runs them with
-    # the embedded interpreter); the rest of the stdlib finanse itself imports is bundled anyway.
-    "csv",
-    "zipfile",
-    "xml.etree.ElementTree",
-    "statistics",
-    "unicodedata",
-    "argparse",
 ]
 try:
     hiddenimports += collect_submodules("rich._unicode_data")  # loaded by name at runtime

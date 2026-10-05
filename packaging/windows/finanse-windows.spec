@@ -23,9 +23,16 @@
 #      window (desktop/shell.py focus_process) is macOS-only, a second launch just prints a message.
 #   6. Signing: signtool with an Authenticode certificate (env vars, like the macOS script);
 #      unsigned builds trigger SmartScreen.
-#   7. Build: on Windows, in a venv with `pip install -e ".[desktop]" -c constraints.txt` and
-#      `pip install -r packaging/requirements-build.txt`, after `npm ci && npm run build` in
-#      frontend/:  pyinstaller --noconfirm packaging/windows/finanse-windows.spec
+#   7. Build: on Windows, in a venv with the hash-pinned lock (like scripts/build_macos.sh):
+#      `pip install --require-hashes --no-deps -r packaging/requirements-build.lock` and
+#      `pip install --no-deps -e .`, after `npm ci && npm run build` in frontend/:
+#      pyinstaller --noconfirm packaging/windows/finanse-windows.spec. The lock is resolved on
+#      macOS: regenerate it on Windows (packaging/README.md) if a wheel is missing.
+#   8. Security checks before shipping: desktop/shell.py bind_loopback never sets SO_REUSEADDR on
+#      Windows (socket_options: SO_EXCLUSIVEADDRUSE, so no other process can bind the port and
+#      receive the window's token header); install_navigation_guard only covers the macOS
+#      backend, pin the EdgeChromium window to the app origin too; the token bridge
+#      (window.pywebview.api.token) works the same on WebView2.
 # ruff: noqa
 import os
 from pathlib import Path

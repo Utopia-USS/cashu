@@ -78,13 +78,30 @@ for size in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o "$BUILD/icon/Finanse.icns"
 
-# --- 3. Build venv: runtime deps (+ desktop extra) pinned by constraints.txt, PyInstaller pinned
-#        by packaging/requirements-build.txt. finanse itself is installed editable (from src/).
+# --- 3. Build venv from packaging/requirements-build.lock: every package (runtime deps + the
+#        desktop extra, PyInstaller, the hatchling build backend, pip itself) at an exact version
+#        with sha256 hashes, so a re-uploaded or compromised wheel cannot reach the signed bundle.
+#        pip is pinned there too (PIP_VERSION below must match). finanse itself is installed
+#        editable from src/ without dependencies and without build isolation (no unpinned
+#        download at build time).
+PIP_VERSION="26.2.1"
+LOCK="$ROOT/packaging/requirements-build.lock"
 say "Preparing the build venv ($BUILD/venv)"
 [[ -x "$BUILD/venv/bin/python" ]] || "$PYTHON" -m venv "$BUILD/venv"
-"$BUILD/venv/bin/python" -m pip install --quiet --upgrade pip
-"$BUILD/venv/bin/python" -m pip install --quiet -c "$ROOT/constraints.txt" \
-  -e "$ROOT[desktop]" -r "$ROOT/packaging/requirements-build.txt"
+grep -q "^pip==$PIP_VERSION " "$LOCK" || die "PIP_VERSION $PIP_VERSION is not the pip pinned in $LOCK."
+# First pip and setuptools (their hashed entries of the lock): the one sdist-only package in the
+# lock is then built with this setuptools instead of an isolated, unpinned build environment.
+BOOTSTRAP="$BUILD/bootstrap.lock"
+awk '/^[A-Za-z]/ { keep = ($1 ~ /^(pip|setuptools)==/) } keep && !/^[[:space:]]*#/' "$LOCK" > "$BOOTSTRAP"
+"$BUILD/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+  --require-hashes --no-deps -r "$BOOTSTRAP"
+"$BUILD/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+  --require-hashes --no-deps --no-build-isolation -r "$LOCK"
+"$BUILD/venv/bin/python" -m pip --version | grep -q "^pip $PIP_VERSION " \
+  || die "the build venv does not run pip $PIP_VERSION"
+"$BUILD/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+  --no-deps --no-build-isolation -e "$ROOT"
+"$BUILD/venv/bin/python" -m pip check >/dev/null || die "the build venv has inconsistent packages (pip check)."
 
 # Minimum macOS = what the bundled Python library was built for (LC_BUILD_VERSION minos).
 PYLIB="$("$BUILD/venv/bin/python" - <<'PY'
