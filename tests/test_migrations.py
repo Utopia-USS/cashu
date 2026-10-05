@@ -100,7 +100,7 @@ HEAD_TABLES = migrations.BASELINE_TABLES | {"profiles", "profile_modules"} | {
     "inv_signals", "inv_notification_log", "inv_decisions", "inv_theses",
 } | {"proposals", "mcp_calls", "reviews"} | {
     "alerts", "watchlist_items", "inv_profile_instruments",
-}
+} | {"inv_planned_deposits", "research_runs", "research_notes"}
 
 
 def test_head_equals_create_all(tmp_path):
@@ -114,7 +114,8 @@ def test_head_equals_create_all(tmp_path):
     tables = {k.split(":", 2)[2] for k in expected if k.startswith("ddl:table:")}
     assert tables == HEAD_TABLES
     # 18 + 22 investments + 3 agent (proposals, mcp_calls, reviews) + 6 overrides / alerts / watchlist
-    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 49
+    # + 7 planned deposits / research
+    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 56
     reference.dispose()
     migrated.dispose()
 

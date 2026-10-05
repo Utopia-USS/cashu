@@ -4,7 +4,7 @@ Shared reference data (every profile sees the same rows): instruments, their ali
 and FX rates. Everything else belongs to one profile, through its brokerage account (transactions,
 broker position snapshots, account settings) or a ``profile_id`` (renames, manual valuations, strategy
 versions, rule runs, signals, notifications, decisions, theses, import batches, the profile's overrides
-of shared instruments, alerts, watchlist items).
+of shared instruments, alerts, watchlist items, planned deposits, research runs and notes).
 
 Money and quantities are exact decimal text (``DecimalText``), enum values are their wire names
 (``finanse.modules.investments.domain`` enums). The pure domain uses ``str`` ids; the persistence layer
@@ -442,6 +442,11 @@ class InvAlert(SQLModel, table=True):
     last_value: str | None = None  # measured value at the last check (decimal text)
     created_at: dt.datetime = Field(default_factory=utcnow)
     updated_at: dt.datetime = Field(default_factory=utcnow)
+    # Added by 0008 (ALTER TABLE ADD COLUMN appends it, so it stays the last column): soft delete.
+    # A deleted alert is never listed or evaluated; `POST alerts/{id}/restore` brings it back with the
+    # same id within ``service.alerts.RESTORE_WINDOW`` of the deletion. The row is never purged, so
+    # its id is never handed to a new alert.
+    deleted_at: dt.datetime | None = None
 
 
 class InvWatchlistItem(SQLModel, table=True):
@@ -460,6 +465,87 @@ class InvWatchlistItem(SQLModel, table=True):
     tags: list[str] = _json_list()
     source: str = Field(default="user")  # user | agent
     added_at: dt.datetime = Field(default_factory=utcnow)
+
+
+# --------------------------------------------------------------------------- #
+# Planned deposits, the research layer (F6)
+# --------------------------------------------------------------------------- #
+
+
+class InvPlannedDeposit(SQLModel, table=True):
+    """A deposit the owner plans to make ("Zaplanuj wpłatę"). Counted against the contribution plan,
+    never as cash or value until booked: an imported deposit that matches it (``service.planned``)
+    books it (``status`` booked, ``booked_txn_id`` = that transaction)."""
+
+    __tablename__ = "inv_planned_deposits"
+
+    id: int | None = Field(default=None, primary_key=True)
+    profile_id: int = Field(sa_column=profile_fk_column("inv_planned_deposits"))
+    account_id: int | None = Field(default=None, foreign_key="accounts.id", index=True)
+    amount: Decimal = _decimal(nullable=False)  # > 0, in ``currency``
+    currency: str
+    planned_date: dt.date
+    note: str | None = None
+    status: str = Field(default="planned")  # PLANNED_DEPOSIT_STATUSES
+    booked_txn_id: int | None = Field(default=None, foreign_key="inv_transactions.id")
+    booked_at: dt.datetime | None = None
+    created_at: dt.datetime = Field(default_factory=utcnow)
+    updated_at: dt.datetime = Field(default_factory=utcnow)
+
+
+class InvResearchRun(SQLModel, table=True):
+    """One research pass by the agent (the Saturday routine or on demand): what it covered (``scope``)
+    and what it produced (``counts``). Written through MCP (``start_research_run`` /
+    ``finish_research_run``)."""
+
+    __tablename__ = "research_runs"
+
+    id: int | None = Field(default=None, primary_key=True)
+    profile_id: int = Field(sa_column=profile_fk_column("research_runs"))
+    started_at: dt.datetime = Field(default_factory=utcnow)
+    finished_at: dt.datetime | None = None
+    status: str = Field(default="running")  # RESEARCH_RUN_STATUSES
+    scope: dict = _json_dict()
+    counts: dict = _json_dict()
+    created_by: str = Field(default="agent")  # RESEARCH_CREATORS
+
+
+class InvResearchNote(SQLModel, table=True):
+    """A sourced fact or sentiment reading about a held, watched or candidate instrument, or a sector /
+    macro theme. Facts and sentiment only: no recommendation, no price prediction, no amounts.
+
+    ``details`` carries structured data of candidate notes (criteria met / unmet vs the strategy's
+    thresholds, entry type); ``thesis_field`` names the thesis field the note bears on. Dismissal sets
+    ``dismissed_at`` (a restore within ``RESEARCH_RESTORE_MINUTES`` clears it); a dismissed candidate
+    gets ``cooldown_until`` = dismissal + ``RESEARCH_CANDIDATE_COOLDOWN_DAYS`` and is not re-proposed
+    before then (matched by ``instrument_id`` or ``candidate_key``). ``signal_id`` is the research
+    signal the note created or joined (dismissing the note resolves it)."""
+
+    __tablename__ = "research_notes"
+
+    id: int | None = Field(default=None, primary_key=True)
+    profile_id: int = Field(sa_column=profile_fk_column("research_notes"))
+    run_id: int | None = Field(default=None, foreign_key="research_runs.id", index=True)
+    instrument_id: int | None = Field(default=None, foreign_key="inv_instruments.id", index=True)
+    theme: str | None = None  # sector or macro topic
+    kind: str  # RESEARCH_NOTE_KINDS
+    polarity: str = Field(default="neutral")  # RESEARCH_POLARITIES
+    strength: int = Field(default=1)  # 1-3
+    thesis_relation: str = Field(default="none")  # RESEARCH_THESIS_RELATIONS
+    thesis_field: str | None = None  # RESEARCH_THESIS_FIELDS
+    title: str  # <= RESEARCH_TITLE_MAX
+    summary: str  # Polish, <= RESEARCH_SUMMARY_MAX
+    sources: list[dict] = _json_list()  # [{title, url, publisher, published_at}], at least one
+    details: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    candidate_key: str | None = Field(default=None, index=True)  # upper-case ISIN or symbol
+    signal_id: int | None = Field(default=None, foreign_key="inv_signals.id")
+    observed_at: dt.datetime = Field(default_factory=utcnow)
+    expires_at: dt.datetime  # default observed_at + RESEARCH_NOTE_TTL_DAYS (set by the service)
+    created_by: str = Field(default="agent")  # RESEARCH_CREATORS
+    dismissed_at: dt.datetime | None = None
+    cooldown_until: dt.datetime | None = None
+    created_at: dt.datetime = Field(default_factory=utcnow)
+    updated_at: dt.datetime = Field(default_factory=utcnow)
 
 
 TABLES: tuple[type[SQLModel], ...] = (
@@ -482,6 +568,24 @@ TABLES: tuple[type[SQLModel], ...] = (
     InvProfileInstrument,
     InvAlert,
     InvWatchlistItem,
+    InvPlannedDeposit,
+    InvResearchRun,
+    InvResearchNote,
 )
 
 THESIS_ENTRY_TYPES = ("sentiment_correction", "trend", "special_situation")
+
+PLANNED_DEPOSIT_STATUSES = ("planned", "booked", "cancelled")
+
+# Research layer contract (F6-wave.md "Research layer"); validation lives in the research service.
+RESEARCH_RUN_STATUSES = ("running", "done", "failed")
+RESEARCH_NOTE_KINDS = ("news", "earnings", "community", "trend", "macro", "candidate")
+RESEARCH_POLARITIES = ("positive", "negative", "neutral")
+RESEARCH_THESIS_RELATIONS = ("supports", "weakens", "invalidates", "neutral", "none")
+RESEARCH_THESIS_FIELDS = ("entry_type", "thesis", "invalidation", "exit_plan", "size_plan")
+RESEARCH_CREATORS = ("agent", "user")
+RESEARCH_TITLE_MAX = 120
+RESEARCH_SUMMARY_MAX = 1200
+RESEARCH_NOTE_TTL_DAYS = 30
+RESEARCH_RESTORE_MINUTES = 15
+RESEARCH_CANDIDATE_COOLDOWN_DAYS = 90

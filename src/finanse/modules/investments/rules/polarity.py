@@ -13,8 +13,8 @@ from enum import StrEnum
 class SignalPolarity(StrEnum):
     """``positive``: an opportunity per the owner's own rules (a dip tranche reached on a core holding,
     a gain target met, a price back above a level); ``negative``: a risk or something to review (a loss
-    from cost, concentration, cash or deposit gaps, drift out of band, an alert breach); ``neutral``:
-    information."""
+    from cost, concentration, cash or deposit gaps, an alert breach); ``neutral``: information or a
+    plain review item (allocation drift out of band)."""
 
     POSITIVE = "positive"
     NEGATIVE = "negative"

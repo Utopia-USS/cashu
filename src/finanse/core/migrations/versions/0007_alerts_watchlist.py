@@ -42,10 +42,10 @@ depends_on: str | Sequence[str] | None = None
 TABLES = ("inv_profile_instruments", "alerts", "watchlist_items")
 
 # Default polarity of the built-in rule kinds when this revision was written (the kinds declare it in
-# code; copied here so the migration never changes with the code). Other kinds stay neutral.
+# code; copied here so the migration never changes with the code). Other kinds stay neutral
+# (``allocation_drift`` included: owner decision F6, drift is a neutral review item).
 _KIND_POLARITY = {
     "negative": (
-        "allocation_drift",
         "position_concentration",
         "loss_from_cost",
         "cash_level",

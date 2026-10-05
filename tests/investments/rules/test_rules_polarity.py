@@ -21,7 +21,7 @@ from finanse.modules.investments.rules import (
 from finanse.modules.investments.strategy import IssueSeverity, load_strategy
 
 EXPECTED = {
-    "allocation_drift": SignalPolarity.NEGATIVE,
+    "allocation_drift": SignalPolarity.NEUTRAL,
     "position_concentration": SignalPolarity.NEGATIVE,
     "loss_from_cost": SignalPolarity.NEGATIVE,
     "gain_from_cost": SignalPolarity.POSITIVE,

@@ -135,11 +135,14 @@ def test_downgrade_refuses_with_data_and_round_trips_when_empty(tmp_path):
             "updated_at) VALUES (?, 900, 'frozen', '2026-10-01', '2026-10-01')"
         ),
     }
+    # refuse from 0007 itself: on SQLite the DDL of a later revision's downgrade (0008) is not rolled
+    # back when an earlier one refuses (the backup covers that, see core.migrations)
+    _to(engine, "0007_alerts_watchlist", down=True)
     for table, sql in inserts.items():
         _sql(path, sql, profile_id)
         with pytest.raises(RuntimeError, match="hold data"):
             _to(engine, "0006_agent", down=True)
-        assert migrations.current_revision(engine) == migrations.head_revision(), table
+        assert migrations.current_revision(engine) == "0007_alerts_watchlist", table
         _sql(path, f"DELETE FROM {table}")
     _to(engine, "0006_agent", down=True)
     assert migrations.current_revision(engine) == "0006_agent"

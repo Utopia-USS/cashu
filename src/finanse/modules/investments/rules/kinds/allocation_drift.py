@@ -80,7 +80,8 @@ class AllocationDriftRule:
     """
 
     KIND = "allocation_drift"
-    DEFAULT_POLARITY = SignalPolarity.NEGATIVE  # drift out of band: review the allocation
+    # Owner decision (F6): drift below or above target is neither good nor bad news, just a review.
+    DEFAULT_POLARITY = SignalPolarity.NEUTRAL
 
     @property
     def kind(self) -> str:
