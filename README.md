@@ -89,6 +89,15 @@ finanse invest run                                 # prices, valuation, rules, s
 finanse invest positions
 ```
 
+**In the background:** `finanse worker install` schedules a daily run (launchd on
+macOS, default 07:30, `--time HH:MM`) of `finanse worker run`: the rules check of
+every profile with investments, the bank sync of budget profiles with saved Open
+Banking sessions (at most once a day, backing off after a bank rate limit), a
+notification for each new signal of the severities your strategy lists under
+`notifications.immediate`, and a weekly digest on `notifications.digest_weekday`.
+`finanse worker status` shows the last and next run; the log is
+`<data dir>/logs/worker.log`.
+
 **Upgrading from a version that kept the database in `data/`?** finanse keeps
 using it and says so on every command until you run `finanse migrate-data`, which
 copies the database (plus Open Banking sessions and key) into the data dir with a

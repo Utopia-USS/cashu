@@ -126,7 +126,9 @@ def test_system(api_empty, tmp_path):
     }
     assert body["data_dir"] == str((tmp_path / "data").resolve())
     assert body["legacy_db_detected"] is False and body["legacy_db_path"] is None
-    assert body["worker"] == {"installed": False, "last_run": None}
+    worker = body["worker"]  # shape: tests/test_worker_api.py
+    assert worker["installed"] is False and worker["last_run"] is None
+    assert worker["last_status"] is None and worker["next_run"] is None
     assert body["secrets"] == {"anthropic": False, "enable_banking_key": False}
 
 
@@ -286,10 +288,10 @@ def test_every_profile_route_is_in_the_isolation_list():
         for path, ops in app.openapi()["paths"].items()
         if path.startswith("/api/p/{slug}/") and "get" in ops
         and not path.startswith("/api/p/{slug}/investments/")
-    }
-    covered = {re.sub(r"/category/[^/]+/", "/category/{key}/", p.split("?")[0]) for p in PROFILE_GETS}
         # a proposal by id: cross-profile 404s in tests/test_proposals.py
         and path != "/api/p/{slug}/proposals/{proposal_id}"
+    }
+    covered = {re.sub(r"/category/[^/]+/", "/category/{key}/", p.split("?")[0]) for p in PROFILE_GETS}
     covered = {re.sub(r"/modules/[^/]+/setup", "/modules/{module_id}/setup", p) for p in covered}
     assert templates <= covered, templates - covered
 

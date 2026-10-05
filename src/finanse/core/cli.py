@@ -327,3 +327,7 @@ def register(app: typer.Typer) -> None:
     app.command("set-balance")(set_balance_cmd)
     app.add_typer(profiles_app, name="profiles")
     app.add_typer(secrets_app, name="secrets")
+
+    from .worker.cli import worker_app
+
+    app.add_typer(worker_app, name="worker")

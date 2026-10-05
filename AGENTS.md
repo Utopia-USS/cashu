@@ -96,7 +96,9 @@ src/finanse/
 │   ├── legacy.py         # `finanse migrate-data` (copy data/ into the data dir with a backup)
 │   ├── migrations/       # Alembic: env.py + versions/ (0001 baseline = upstream schema, 0002 profiles, ...)
 │   ├── security.py       # API token + Host check middleware, token meta tag
-│   └── secrets.py        # OS keychain via keyring (`finanse secrets ...`)
+│   ├── secrets.py        # OS keychain via keyring (`finanse secrets ...`)
+│   └── worker/           # `finanse worker run|install|uninstall|status`: daily jobs for every profile,
+│                         #   notifications, weekly digest, launchd agent (state + log in the data dir)
 ├── modules/
 │   ├── budget/           # bank accounts, categorization, cashflow, recurring, cash pool
 │   │   ├── module.py         # ModuleSpec (router, CLI, cash net-worth contributor, setup)

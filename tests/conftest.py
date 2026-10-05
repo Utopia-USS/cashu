@@ -7,6 +7,13 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from finanse import models  # noqa: F401  (register tables)
 
 
+@pytest.fixture(autouse=True)
+def _private_launch_agents_dir(tmp_path, monkeypatch):
+    """The worker's launchd agents dir points into tmp_path for every test, so nothing
+    (e.g. GET /api/system) ever reads or writes the real ~/Library/LaunchAgents."""
+    monkeypatch.setenv("FINANSE_LAUNCH_AGENTS_DIR", str(tmp_path / "LaunchAgents"))
+
+
 @pytest.fixture
 def session():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False})

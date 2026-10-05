@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     eb_redirect_url: str = "https://localhost:8000/eb/callback"
     eb_country: str = "PL"
 
+    # Background worker (`finanse worker install`): the finanse executable the scheduled
+    # job runs. Unset = the packaged app binary, else the venv's `finanse` script.
+    worker_program: str | None = None  # FINANSE_WORKER_PROGRAM
+
     @property
     def eb_key_file(self) -> Path:
         """Absolute path to the Enable Banking private key PEM.

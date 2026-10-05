@@ -82,6 +82,7 @@ def _profile_or_404(session, slug: str) -> Profile:
 def system() -> dict:
     from ..config import settings
     from . import secrets
+    from .worker import service as worker
 
     legacy = paths.legacy_db_path()
     detected = legacy.exists() and not paths.migration_marker_path().exists()
@@ -90,7 +91,8 @@ def system() -> dict:
         "data_dir": str(paths.data_dir()),
         "legacy_db_detected": detected,
         "legacy_db_path": str(legacy) if detected else None,
-        "worker": {"installed": False, "last_run": None},  # background worker: F3
+        # Background worker: launchd agent, schedule, last / next run (core/worker).
+        "worker": worker.status(),
         # Presence only, never values: keychain entry / key file in place.
         "secrets": {
             "anthropic": secrets.get_secret(secrets.ANTHROPIC) is not None,
@@ -205,6 +207,16 @@ def module_setup(profile: CurrentProfile, module_id: str) -> dict:
             "mcp_add": f"claude mcp add finanse-{profile.slug} -- finanse mcp --profile {profile.slug}",
         }
     return {"state": status.state, "steps": status.step_dicts(), "skill": skill}
+
+
+def _include_worker_routes() -> None:
+    """POST /api/system/worker/install|uninstall|run (core/worker/api.py)."""
+    from .worker.api import router as worker_router
+
+    platform_router.include_router(worker_router)
+
+
+_include_worker_routes()
 
 
 # --------------------------------------------------------------------------- #
