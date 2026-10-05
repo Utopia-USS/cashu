@@ -154,14 +154,17 @@ def compute_range(
     # a stale tail (the proxy's newest close older than the price age limit at the range end): the
     # benchmark stops at its last priced day while the portfolio runs to the end, so no excess figure
     # compares the two (F6 review V2)
+    # The same-cash-flow simulation's end figures are comparison figures too (its end value is the
+    # benchmark side of excess_vs_simulation), so a stale tail drops them as well; the benchmark's own
+    # TWR stays, annualized over the days it covers (F7 review R4).
     covers_end = prices[-1] is not None
-    sim_end = sim.values[-1]
-    sim_fees_end = sim.with_fees[-1]
+    sim_end = sim.values[-1] if covers_end else None
+    sim_fees_end = sim.with_fees[-1] if covers_end else None
     sim_solved = None if sim_end is None else returns.xirr([*cashflows, (ds[-1], sim_end)])
     metrics.benchmark = {
         "twr": btwr,
         "twr_annualized": returns.annualized(
-            btwr, (ds[-1] - first_priced).days if first_priced else 0
+            btwr, (last_priced - first_priced).days if first_priced and last_priced else 0
         ),
         "max_drawdown": returns.max_drawdown(ds, bindex),
         "first_priced": first_priced,
@@ -276,7 +279,8 @@ def per_year(
         a, b = _last_known(twr_full, j), _last_known(twr_full, i, j)
         portfolio = None if a is None or b is None or a <= 0 else b / a - 1
         bench = None
-        if bench_full is not None:
+        # a year whose end day has no usable benchmark close (a stale tail) compares nothing (R4)
+        if bench_full is not None and bench_full[i] is not None:
             ba = next((bench_full[k] for k in range(j, i + 1) if bench_full[k] is not None), None)
             bb = _last_known(bench_full, i, j)
             if ba is not None and bb is not None and ba > 0:

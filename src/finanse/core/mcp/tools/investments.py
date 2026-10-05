@@ -54,7 +54,15 @@ def owner_named(
     return asset_class in PRIVATE_CLASSES or (valuation_mode == "manual" and not isin)
 
 
-def _instrument_fields(inst: dict | None) -> dict:
+def public_label(ctx: ToolContext | None, label):
+    """In strict mode the shared market name instead of the profile's display-name override of a
+    market instrument (F7 review R6); amounts mode and other labels unchanged."""
+    if ctx is None or not ctx.strict or not isinstance(label, str):
+        return label
+    return ctx.guard.public_name(label)
+
+
+def _instrument_fields(inst: dict | None, ctx: ToolContext | None = None) -> dict:
     if not inst:
         return {"symbol": L.symbol(None), "name": L.text(None)}
     private = owner_named(inst.get("asset_class"), inst.get("valuation_mode"), inst.get("isin"))
@@ -62,7 +70,9 @@ def _instrument_fields(inst: dict | None) -> dict:
         "instrument_id": L.ref(inst["id"]) if isinstance(inst.get("id"), int) else L.ref(None),
         "symbol": L.identifier(inst.get("symbol")) if private else L.symbol(inst.get("symbol")),
         "isin": L.symbol(inst.get("isin")),
-        "name": L.identifier(inst.get("name")) if private else L.text(inst.get("name")),
+        "name": L.identifier(inst.get("name"))
+        if private
+        else L.text(public_label(ctx, inst.get("name"))),
         "owner_named": L.flag(private),
         "asset_class": L.category(inst.get("asset_class")),
         "currency": L.category(inst.get("currency")),
@@ -205,9 +215,11 @@ def owner_named_ids(ctx: ToolContext) -> set[int]:
     return {r.id for r in rows if owner_named(r.asset_class, r.valuation_mode, r.isin)}
 
 
-def _instrument_label(owned: set[int], instrument_id, label) -> L.Labelled:
+def _instrument_label(
+    owned: set[int], instrument_id, label, ctx: ToolContext | None = None
+) -> L.Labelled:
     """An instrument label (symbol or name): an identifier for owner-named instruments."""
-    return L.identifier(label) if instrument_id in owned else L.text(label)
+    return L.identifier(label) if instrument_id in owned else L.text(public_label(ctx, label))
 
 
 def strong_names(session, profile_id: int) -> set[str]:
@@ -314,7 +326,7 @@ def portfolio_overview(ctx: ToolContext) -> dict:
         "unclassified": {
             "weight": L.pct(unclassified.get("weight")),
             "instruments": [
-                _instrument_label(owned, i.get("id"), i.get("label"))
+                _instrument_label(owned, i.get("id"), i.get("label"), ctx)
                 for i in unclassified.get("instruments") or []
             ],
             "value": L.amount(unclassified.get("value")),
@@ -360,7 +372,7 @@ def portfolio_overview(ctx: ToolContext) -> dict:
             "stale_weight": L.pct(fresh["prices"]["stale_weight"]),
             "stale": [
                 {
-                    "label": _instrument_label(owned, x.get("instrument_id"), x.get("label")),
+                    "label": _instrument_label(owned, x.get("instrument_id"), x.get("label"), ctx),
                     "price_date": L.date(x.get("price_date")),
                 }
                 for x in fresh["prices"]["stale"]
@@ -402,7 +414,7 @@ def positions(ctx: ToolContext) -> dict:
                 sum(q * (today - d).days for q, d in quantities if d is not None) / total_q
             )
         rows.append(
-            _instrument_fields(p["instrument"])
+            _instrument_fields(p["instrument"], ctx)
             | {
                 "bucket": L.category(p.get("bucket")),
                 "weight": L.pct(p.get("weight")),
@@ -539,7 +551,7 @@ def signals(ctx: ToolContext, status: str = "open") -> dict:
                 else L.symbol(payload.get("symbol")),
                 "label": L.identifier(r.get("instrument_label"))
                 if private
-                else L.text(r.get("instrument_label")),
+                else L.text(public_label(ctx, r.get("instrument_label"))),
             }
         elif payload.get("bucket_id"):
             scope = {"type": L.category("bucket"), "bucket": L.category(payload.get("bucket_id"))}
@@ -680,7 +692,7 @@ def theses(ctx: ToolContext, instrument: str | None = None) -> dict:
             {
                 "thesis_id": L.ref(r.id),
                 "instrument_id": L.ref(r.instrument_id),
-                **_thesis_instrument(insts.get(r.instrument_id)),
+                **_thesis_instrument(insts.get(r.instrument_id), ctx),
                 "entry_type": L.category(r.entry_type),
                 "thesis": L.text(r.thesis),
                 "invalidation": L.text(r.invalidation),
@@ -695,13 +707,13 @@ def theses(ctx: ToolContext, instrument: str | None = None) -> dict:
     }
 
 
-def _thesis_instrument(inst) -> dict:
+def _thesis_instrument(inst, ctx: ToolContext | None = None) -> dict:
     if inst is None:
         return {"symbol": L.symbol(None), "name": L.text(None)}
     mode = inst.valuation_mode.value if inst.valuation_mode else None
     if owner_named(inst.asset_class.value, mode, inst.isin):
         return {"symbol": L.identifier(inst.symbol), "name": L.identifier(inst.name)}
-    return {"symbol": L.symbol(inst.symbol), "name": L.text(inst.name)}
+    return {"symbol": L.symbol(inst.symbol), "name": L.text(public_label(ctx, inst.name))}
 
 
 def history_metrics(ctx: ToolContext) -> dict:

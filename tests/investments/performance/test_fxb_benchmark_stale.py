@@ -73,6 +73,18 @@ def test_rolling_windows_ending_on_a_stale_benchmark_tail_compare_nothing():
     assert windows[-1].benchmark is None and windows[-1].excess is None
 
 
+def test_a_year_ending_on_a_stale_benchmark_tail_has_no_benchmark_return():
+    ds = days("2024-01-01", "2025-03-31")
+    n = len(ds)
+    twr = [1.0] * n
+    stale_from = ds.index(dt.date(2025, 3, 10))
+    bench = [100.0] * stale_from + [None] * (n - stale_from)
+    years = report.per_year(ds, twr, bench)
+    assert years[0].year == 2024 and years[0].benchmark == pytest.approx(0.0)
+    assert years[-1].year == 2025 and years[-1].benchmark is None
+    assert years[-1].portfolio == pytest.approx(0.0)
+
+
 def test_stale_benchmark_tail_is_flagged_and_drops_the_excess(client):
     pid, slug, _ = household("Anna")
     backfill.run_backfill(profile_ids=[pid], as_of=AS_OF, sources=sources())
@@ -80,7 +92,11 @@ def test_stale_benchmark_tail_is_flagged_and_drops_the_excess(client):
     assert fresh["benchmark"]["covers_range_end"] is True
     assert fresh["benchmark"]["last_priced"] == AS_OF.isoformat()
     assert fresh["benchmark"]["excess_twr"] is not None
+    assert fresh["benchmark"]["simulation"]["end_value"] is not None
+    assert fresh["benchmark"]["simulation"]["mwr"] is not None
     assert [n["code"] for n in fresh["data_quality"]["notes"]] == []
+    fresh_attr = client.get(f"/api/p/{slug}/investments/performance/attribution?range=max").json()
+    assert fresh_attr["concentration"]["benchmark_pnl_pct_of_contributions"] is not None
 
     with get_session() as s:
         s.exec(
@@ -100,6 +116,21 @@ def test_stale_benchmark_tail_is_flagged_and_drops_the_excess(client):
     assert b["twr"] is not None  # the benchmark's own figures, up to its last priced day
     assert b["excess_twr"] is None and b["excess_value"] is None
     assert b["excess_vs_simulation"] is None
+    # F7 review R4: the same-cash-flow simulation is a comparison figure as well
+    sim = b["simulation"]
+    assert sim["end_value"] is None and sim["end_value_with_fees"] is None
+    assert sim["pnl"] is None and sim["xirr"] is None and sim["mwr"] is None
+    # the benchmark's own TWR is annualized over the days it covers, not to the range end
+    first, last = dt.date.fromisoformat(b["first_priced"]), dt.date.fromisoformat(b["last_priced"])
+    assert b["twr_annualized"] == pytest.approx(
+        report.returns.annualized(b["twr"], (last - first).days), abs=1e-6
+    )
+    attribution = client.get(f"/api/p/{slug}/investments/performance/attribution?range=max")
+    assert attribution.status_code == 200, attribution.text
+    concentration = attribution.json()["concentration"]
+    assert concentration["benchmark_pnl"] is None
+    assert concentration["benchmark_pnl_pct_of_contributions"] is None
+    assert concentration["pnl_pct_of_contributions"] is not None
     notes = {n["code"]: n for n in d["data_quality"]["notes"]}
     assert notes["benchmark_stale"]["params"] == {"last_date": LAST_BAR.isoformat()}
     assert d["data_quality"]["benchmark_newest_price"] == LAST_BAR.isoformat()
@@ -110,6 +141,11 @@ def test_stale_benchmark_tail_is_flagged_and_drops_the_excess(client):
     assert result.ok, result.error
     bench = result.data["performance"]["benchmark"]
     assert bench["covers_to_date"] is False and bench["excess_twr"] is None
+    assert bench["last_priced"] == "2025-09-05"
+    assert bench["simulation_money_weighted"] is None and bench["simulation_xirr"] is None
+    profit = result.data["performance"]["profit_concentration"]
+    assert profit["benchmark_pnl_pct_of_contributions"] is None
+    assert profit["pnl_pct_of_contributions"] is not None
 
 
 def test_worker_post_run_backfill_refreshes_the_benchmark_proxy(client):

@@ -23,7 +23,7 @@ from typing import Any
 
 from .. import labels as L
 from ..registry import ToolContext, ToolError, ToolSpec
-from .investments import owner_named_ids
+from .investments import owner_named_ids, public_label
 
 _KINDS = ["news", "earnings", "community", "trend", "macro", "candidate"]
 _RELATIONS = ["supports", "weakens", "invalidates", "neutral", "none"]
@@ -58,7 +58,7 @@ def _errors(error: Exception) -> ToolError:
     return ToolError(str(error))
 
 
-def _instrument(inst: dict | None, owned: set[int]) -> dict:
+def _instrument(inst: dict | None, owned: set[int], ctx: ToolContext | None = None) -> dict:
     if not inst:
         return {"instrument_id": L.ref(None)}
     iid = inst.get("id") if isinstance(inst.get("id"), int) else None
@@ -67,7 +67,9 @@ def _instrument(inst: dict | None, owned: set[int]) -> dict:
         "instrument_id": L.ref(iid),
         "symbol": L.identifier(inst.get("symbol")) if private else L.symbol(inst.get("symbol")),
         "isin": L.symbol(inst.get("isin")),
-        "name": L.identifier(inst.get("name")) if private else L.text(inst.get("name")),
+        "name": L.identifier(inst.get("name"))
+        if private
+        else L.text(public_label(ctx, inst.get("name"))),
         "asset_class": L.category(inst.get("asset_class")),
         "currency": L.category(inst.get("currency")),
     }
@@ -100,7 +102,7 @@ def _research_fields(item: dict | None) -> dict:
     }
 
 
-def _note(row: dict, owned: set[int]) -> dict:
+def _note(row: dict, owned: set[int], ctx: ToolContext | None = None) -> dict:
     details = row.get("details") or {}
     candidate = row.get("candidate")
     inst = row.get("instrument")
@@ -114,7 +116,7 @@ def _note(row: dict, owned: set[int]) -> dict:
         "thesis_field": L.category(row.get("thesis_field")),
         "title": L.text(row["title"]),
         "summary": L.text(row["summary"]),
-        "instrument": _instrument(inst, owned) if inst else None,
+        "instrument": _instrument(inst, owned, ctx) if inst else None,
         "theme": L.text(row.get("theme")),
         "candidate": None
         if candidate is None
@@ -277,7 +279,7 @@ def research_context(ctx: ToolContext) -> dict:
         if not isinstance(iid, int) or iid not in by_id or iid in owned:
             continue  # owner-named / cash: never researched
         held_rows.append(
-            _instrument(inst, owned)
+            _instrument(inst, owned, ctx)
             | {
                 "bucket": L.category(p.get("bucket")),
                 "weight": L.pct(p.get("weight")),
@@ -296,7 +298,7 @@ def research_context(ctx: ToolContext) -> dict:
         if iid in held_ids or iid not in by_id or iid in owned:
             continue
         watch_rows.append(
-            _instrument(by_id[iid]["instrument"], owned)
+            _instrument(by_id[iid]["instrument"], owned, ctx)
             | {
                 "item_id": L.ref(item.id),
                 "source": L.category(item.source),
@@ -441,7 +443,7 @@ def research_notes(
     owned = owner_named_ids(ctx)
     return {
         "since": L.date(moment),
-        "notes": [_note(r, owned) for r in views.notes_view(ctx.session, ctx.profile, rows)],
+        "notes": [_note(r, owned, ctx) for r in views.notes_view(ctx.session, ctx.profile, rows)],
         "note": L.text(
             "newest observation first; dismissed notes were rejected by the owner: do not add them "
             "again; a dismissed candidate is in cooldown (see research_context)"

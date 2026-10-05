@@ -49,6 +49,13 @@ def _privacy(pid: int, value: str) -> None:
         ("total_value - cash_value < -50", "total_value - cash_value < -[amount]"),
         ("cash_value >", "cash_value >"),  # does not parse: bare numbers only, none here
         ("broken ( 500 and 5%", "broken ( [amount] and 5%"),
+        # F7 review R7: a literal scaled into an amount
+        ("last_close * 40 > 5000", "last_close * [amount] > [amount]"),
+        ("weight * 120000 > 900", "weight * [amount] > [amount]"),
+        ("last_close + 15 > 120", "last_close + [amount] > [amount]"),
+        ("40 * last_close > 5000", "[amount] * last_close > [amount]"),
+        ("weight * 100 > 5", None),  # a percent conversion keeps the ratio
+        ("drawdown_from_high(252) / 2 > 0.1", "drawdown_from_high(252) / [amount] > [amount]"),
     ],
 )
 def test_amount_literals(source, expected):
@@ -146,3 +153,58 @@ def test_display_name_override_never_reaches_the_agent_in_strict_mode(host):
     _privacy(pid, "amounts")
     shown = json.dumps(mcp.call("positions", {}).data, ensure_ascii=False)
     assert LABEL in shown  # amounts mode: the owner's own label
+
+
+# F7 review R6: labels with a number (a goal year, a target amount) must be swapped too; the strict
+# number scrub used to rewrite them before the alias swap looked for the owner's label.
+DIGIT_LABELS = [
+    "Wesele 45000 Kasi",
+    "IKE Oli 2030",
+    "Mieszkanie 300 000 Oli",
+    "Studia Ani 1 200 zł",
+    "Cel 50k Tomek",
+]
+
+
+@pytest.mark.parametrize("label", DIGIT_LABELS)
+def test_scrub_text_swaps_aliases_with_numbers_before_the_number_scrub(label):
+    from finanse.core.mcp.names import NameGuard
+    from finanse.core.mcp.redaction import scrub_text
+
+    guard = NameGuard(1, strict_aliases=((label, "Public Market Name"),))
+    out = scrub_text(f"Pozycja {label} spadła o 5%", strict=True, guard=guard)
+    assert out == "Pozycja Public Market Name spadła o 5%"
+    assert guard.public_name(f"  {label.upper()} ") == "Public Market Name"
+    assert guard.public_name("Inna nazwa") == "Inna nazwa"
+    # amounts mode keeps the owner's label
+    assert label in scrub_text(f"Pozycja {label}", strict=False, guard=guard)
+
+
+@pytest.mark.parametrize("label", ["Wesele 45000 Kasi", "IKE Oli 2030"])
+def test_digit_label_override_never_reaches_the_agent_in_strict_mode(host, label):
+    pid, mcp = host
+    _iid, market_name = _rename(pid, "PKO", label)
+    created = mcp.call(
+        "add_alert",
+        {
+            "kind": "price_above",
+            "params": {"level": 10},
+            "instrument": "PKO",
+            "polarity": "positive",
+            "severity": "action",
+            "title": "PKO above 10",
+        },
+    )
+    assert created.ok, created.error
+    daily.run_daily_check("manual", as_of=TODAY, sources=sources())
+    person = label.split()[1] if label.startswith("IKE") else label.split()[-1]
+    purpose = label.split()[0]
+    for tool in ("positions", "alerts", "signals", "watchlist"):
+        result = mcp.call(tool, {})
+        if not result.ok:
+            continue
+        text = json.dumps(result.data, ensure_ascii=False)
+        assert person not in text and purpose not in text, tool
+    positions = mcp.call("positions", {}).data
+    (row,) = [p for p in positions["positions"] if p.get("symbol") == "PKO"]
+    assert row["name"] == market_name

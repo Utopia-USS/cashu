@@ -237,8 +237,9 @@ def test_cushion_with_chosen_accounts_and_currency(api):
     _put(api, {"enabled": True, "target_amount": 6000, "account_ids": [main]})
     c = api.get(SEPT).json()["cushion"]
     # the income account as the cushion (F6 review V7): no balance before September, so its level
-    # is the month-end 5000 minus September's income and spending booked on it (9000 - 4235.75)
-    assert c["balance"] == 235.75 and [a["id"] for a in c["accounts"]] == [main]
+    # is the month-end 5000 minus September's income and spending booked on it (9000 - 4235.75),
+    # plus the 40 of the ATM withdrawal spent from the cash pool (F7 review R5)
+    assert c["balance"] == 275.75 and [a["id"] for a in c["accounts"]] == [main]
 
     eur = _account_id("eKonto EUR Test")
     _put(api, {"enabled": True, "currency": "eur", "target_amount": 1000, "account_ids": [eur]})

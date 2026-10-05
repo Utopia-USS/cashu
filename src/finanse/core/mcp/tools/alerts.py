@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from .. import labels as L
 from ..registry import ToolContext, ToolError, ToolSpec
-from .investments import owner_named, owner_named_ids
+from .investments import owner_named, owner_named_ids, public_label
 from .messages import custom_condition, custom_signal_message
 
 _TEXT = {"type": "string", "maxLength": 2000}
@@ -37,7 +37,7 @@ def _services():
     return alerts, views, watchlist
 
 
-def _instrument(inst: dict | None, owned: set[int]) -> dict:
+def _instrument(inst: dict | None, owned: set[int], ctx: ToolContext | None = None) -> dict:
     if not inst:
         return {"instrument_id": L.ref(None)}
     iid = inst.get("id") if isinstance(inst.get("id"), int) else None
@@ -49,7 +49,7 @@ def _instrument(inst: dict | None, owned: set[int]) -> dict:
         "instrument_id": L.ref(iid),
         "symbol": L.identifier(inst.get("symbol")) if private else L.symbol(inst.get("symbol")),
         "isin": L.symbol(inst.get("isin")),
-        "label": L.identifier(label) if private else L.text(label),
+        "label": L.identifier(label) if private else L.text(public_label(ctx, label)),
         "currency": L.category(inst.get("currency")),
         "owner_named": L.flag(private),
     }
@@ -77,7 +77,7 @@ def _params(ctx: ToolContext, kind: str, params: dict, private: bool) -> dict:
 
 
 def _alert(ctx: ToolContext, row: dict, owned: set[int]) -> dict:
-    instrument = _instrument(row.get("instrument"), owned)
+    instrument = _instrument(row.get("instrument"), owned, ctx)
     private = bool(instrument.get("owner_named") and instrument["owner_named"].value)
     unit = row.get("unit")
     last = row.get("last_value")
@@ -225,8 +225,8 @@ def mute_alert(ctx: ToolContext, id: int) -> dict:
     return {"alert_id": L.ref(row.id), "status": L.category(row.status)}
 
 
-def _watch_row(row: dict, owned: set[int]) -> dict:
-    instrument = _instrument(row.get("instrument"), owned)
+def _watch_row(row: dict, owned: set[int], ctx: ToolContext | None = None) -> dict:
+    instrument = _instrument(row.get("instrument"), owned, ctx)
     private = bool(instrument["owner_named"].value) if "owner_named" in instrument else False
     price = row.get("price") or {}
     nearest = (row.get("alerts") or {}).get("nearest")
@@ -266,7 +266,7 @@ def watchlist(ctx: ToolContext) -> dict:
     _alerts, views, _watch = _services()
     owned = owner_named_ids(ctx)
     return {
-        "items": [_watch_row(r, owned) for r in views.watchlist_view(ctx.session, ctx.profile)],
+        "items": [_watch_row(r, owned, ctx) for r in views.watchlist_view(ctx.session, ctx.profile)],
         "note": L.text(
             "watched instruments join the daily price refresh; changes and distances are fractions "
             "(0.05 = 5%) from stored closes, never forecasts"
@@ -307,7 +307,7 @@ def add_to_watchlist(
         r for r in views.watchlist_view(ctx.session, ctx.profile) if r["id"] == result.item.id
     )
     return {
-        "item": _watch_row(row, owned),
+        "item": _watch_row(row, owned, ctx),
         "created_instrument": L.flag(result.created_instrument),
         "warnings": [L.text(w) for w in result.warnings],
     }

@@ -7,7 +7,8 @@ kept only when it is clearly not money:
 - a literal argument of a metric function (a window length, ``drawdown_from_high(252)``);
 - a literal inside a comparison whose metrics are all ratios, percentage points, days or counts
   (``weight < 0.03``, ``days_since_last_deposit > 45``), or prices of a public instrument (a market
-  level, ``last_close > 120``).
+  level, ``last_close > 120``), unless a literal is scaled into an amount (added to / multiplied with a
+  price, or a factor other than 1 / 100 on any metric: ``last_close * 40 > 5000``).
 
 Everything else is treated as an amount: a comparison with any amount metric (``cash_value``,
 ``total_value``, ``value``, ...), with an owner-named instrument's price, or without a metric. An
@@ -20,7 +21,7 @@ import re
 
 from .catalog import METRICS, Unit
 from .lexer import ExpressionError
-from .parser import Call, Compare, Name, Node, Number, children, parse
+from .parser import Binary, Call, Compare, Name, Node, Number, children, parse
 
 AMOUNT_PLACEHOLDER = "[amount]"
 _NON_MONEY = frozenset({Unit.RATIO, Unit.PP, Unit.DAYS, Unit.COUNT, Unit.FLAG, Unit.TEXT})
@@ -53,6 +54,36 @@ def _numbers(node: Node) -> list[Number]:
     return out
 
 
+_SCALE_OK = frozenset({1, 100})
+"""Literal factors that keep a non-price metric in its unit (``weight * 100 > 5``)."""
+
+
+def _scaled(node: Node) -> bool:
+    """True when a literal takes part in arithmetic that can turn the comparison into an amount
+    (F7 review R7): any literal added to / multiplied with / divided by a price (``last_close * 40 >
+    5000``: a position size), or a literal other than 1 / 100 multiplying or dividing any metric
+    (``weight * 120000 > 900``: the owner's total value). Conservative: false positives only scrub a
+    literal that was safe."""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, Call):
+            continue
+        if isinstance(current, Binary):
+            for side, other in ((current.left, current.right), (current.right, current.left)):
+                literals, units = _numbers(side), _units(other)
+                if not literals or not units:
+                    continue
+                if Unit.PRICE in units:
+                    return True
+                if current.op in ("*", "/") and any(
+                    n.value not in _SCALE_OK and not n.text.endswith("%") for n in literals
+                ):
+                    return True
+        stack.extend(children(current))
+    return False
+
+
 def _safe(units: list[Unit | None], private_prices: bool) -> bool:
     if not units:
         return False
@@ -76,7 +107,7 @@ def amount_literals(source: str, *, private_prices: bool = False) -> list[Number
     while stack:
         node, in_compare = stack.pop()
         if isinstance(node, Compare):
-            safe = _safe(_units(node), private_prices)
+            safe = _safe(_units(node), private_prices) and not _scaled(node)
             flagged.extend(n for n in _numbers(node) if not safe and not n.text.endswith("%"))
             continue
         if isinstance(node, Number) and not in_compare and not node.text.endswith("%"):

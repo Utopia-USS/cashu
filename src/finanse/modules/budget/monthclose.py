@@ -13,8 +13,13 @@ Definition (the same filters as the cashflow and spending views, so every number
 - cushion level = the cushion accounts' balance as of the month start plus the month's transfers on
   them (internal / own-account / structural moves, in minus out), so the month's own income and
   spending booked on a cushion account (the income account kept as the cushion) are never counted
-  twice: they are the surplus (F6 review V7). An account without a balance before the month falls back
-  to its month-end balance minus the month's income and spending booked on it;
+  twice: they are the surplus (F6 review V7). A transfer out to another own account that funded the
+  month's spending there (a card repayment, a spending account, a cash withdrawal spent from the cash
+  pool) is not a cushion outflow either: per destination account outside the cushion,
+  ``min(transferred out to it, spending booked on it in the month)`` is added back (F7 review R5), so
+  moving the suggested transfer out leaves the cushion at its target. An account without a balance
+  before the month falls back to its month-end balance minus the month's income and spending booked
+  on it;
 - suggested transfer = surplus - cushion top-up, never below 0;
 - planned contribution: the investments strategy's ``contributions.monthly_amount`` (in the
   strategy's base currency), read only when the investments module is enabled for the profile; the
@@ -205,13 +210,45 @@ def _average_spending(
     return (sum((r.expense for r in rows), ZERO) / len(rows)).quantize(Decimal("0.01"))
 
 
+def _destination(session: Session, t: Transaction, by_iban: dict[str, int]) -> int | None:
+    """The profile's own account that received the money of an outgoing transfer ``t``: the other leg
+    of a matched internal transfer, the cash pool for a withdrawal mirrored into it, or the own account
+    named by the counterparty IBAN; None for money that left the profile's accounts."""
+    from .ingestion.normalize import iban_key
+
+    if t.transfer_group_id:
+        other = session.exec(
+            select(Transaction.account_id).where(
+                Transaction.transfer_group_id == t.transfer_group_id,
+                Transaction.account_id != t.account_id,
+            )
+        ).first()
+        if other is not None:
+            return other
+    leg = session.exec(
+        select(Transaction.account_id).where(Transaction.dedup_hash == f"cashleg:{t.id}")
+    ).first()
+    if leg is not None:
+        return leg
+    if t.counterparty_iban:
+        return by_iban.get(iban_key(t.counterparty_iban))
+    return None
+
+
 def cushion_level(
     session: Session, profile_id: int, accounts: list[Account], year: int, month: int
 ) -> Decimal:
-    """The cushion accounts' level for the close of ``year-month`` (see the module doc): balance as of
-    the day before the month (the newest snapshot then plus the transactions booked after it) plus
-    the month's transfers on the account; without an earlier balance, the month-end balance minus the
-    month's income and spending on the account."""
+    """The cushion accounts' level for the close of ``year-month`` (see the module doc).
+
+    level = balance as of the day before the month (the newest snapshot then plus the transactions
+    booked after it) + the month's transfers on the account (in minus out); then, per own destination
+    account outside the cushion, ``min(transferred out to it, spending booked on it in the month)`` is
+    added back: that money funded the month's spending (a card repayment, a spending account, cash
+    spent from the cash pool), which the surplus already counts (F7 review R5). Without an earlier
+    balance the start is the month-end balance minus the month's income and spending on the account.
+    Moving the suggested transfer out of the cushion then leaves it at its target."""
+    from .ingestion.normalize import iban_key
+
     month_start = date(year, month, 1)
     before = date.fromordinal(month_start.toordinal() - 1)
     month_end = date(year, month, calendar.monthrange(year, month)[1])
@@ -220,6 +257,10 @@ def cushion_level(
     own = own_ibans(session, profile_id)
     at_start = networth.latest_balance_per_account(session, before, profile_id=profile_id)
     at_end = networth.latest_balance_per_account(session, month_end, profile_id=profile_id)
+    cushion_ids = {a.id for a in accounts}
+    profile_accounts = session.exec(select(Account).where(Account.profile_id == profile_id)).all()
+    by_iban = {iban_key(a.iban): a.id for a in profile_accounts if a.iban}
+    sent: dict[int, Decimal] = {}
     level = ZERO
     for acc in accounts:
         rows = session.exec(
@@ -228,13 +269,14 @@ def cushion_level(
             )
         ).all()
         in_month = [t for t in rows if t.booking_date >= month_start]
+        moves = [t for t in in_month if not _is_flow(t, own)]
         start = at_start.get(acc.id)
         if start is not None:
             snapshot_day, amount = start
             amount += sum(
                 (t.amount for t in rows if snapshot_day < t.booking_date <= before), ZERO
             )
-            amount += sum((t.amount for t in in_month if not _is_flow(t, own)), ZERO)
+            amount += sum((t.amount for t in moves), ZERO)
         else:
             end = at_end.get(acc.id)
             if end is None:
@@ -242,6 +284,24 @@ def cushion_level(
             amount = end[1] - sum((t.amount for t in in_month if _is_flow(t, own)), ZERO)
         value = networth.contribution(acc, amount)
         level += value if value is not None else ZERO
+        for t in moves:
+            if t.amount >= 0:
+                continue
+            dest = _destination(session, t, by_iban)
+            if dest is not None and dest not in cushion_ids:
+                sent[dest] = sent.get(dest, ZERO) - t.amount
+    for dest, amount in sent.items():
+        spent = ZERO
+        for t in session.exec(
+            select(Transaction).where(
+                Transaction.account_id == dest,
+                Transaction.booking_date >= month_start,
+                Transaction.booking_date <= month_end,
+            )
+        ).all():
+            if t.amount < 0 and _is_flow(t, own):
+                spent -= t.amount
+        level += min(amount, spent)
     return level
 
 

@@ -149,6 +149,10 @@ def scrub_text(text: str | None, *, strict: bool, guard: NameGuard | None = None
     if text is None:
         return None
     text = str(text)
+    if strict and guard is not None:
+        # first, before any rewriting: an alias with a number ("IKE Oli 2030") must still match
+        # the owner's label as typed (F7 review R6)
+        text = guard.swap_aliases(text)
     text, dates = _protect_dates(text)
     text = _IBAN.sub("[iban]", text)
     text = _LONG_DIGITS.sub("[number]", text)
@@ -165,8 +169,6 @@ def scrub_text(text: str | None, *, strict: bool, guard: NameGuard | None = None
         text = _BIG_INT.sub(_big_int, text)
     text = _restore_dates(text, dates)
     if guard is not None:
-        if strict:
-            text = guard.swap_aliases(text)
         text = guard.mask(text)
     return text
 

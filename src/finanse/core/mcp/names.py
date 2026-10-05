@@ -188,6 +188,18 @@ class NameGuard:
             text = re.sub(pattern, lambda _m, public=public: public, text, flags=re.IGNORECASE)
         return text
 
+    def public_name(self, label: str | None) -> str | None:
+        """The shared market name when ``label`` is (exactly, ignoring case and outer spaces) one
+        of the owner-typed aliases, else ``label`` (F7 review R6: structured name fields carry
+        the market name in strict mode, not only free text)."""
+        if not label or not self.strict_aliases:
+            return label
+        key = label.strip().casefold()
+        for alias, public in self.strict_aliases:
+            if alias.strip().casefold() == key:
+                return public
+        return label
+
     def is_private(self, merchant: str) -> bool:
         key = normalize(merchant)
         if key in self.private_payees:
