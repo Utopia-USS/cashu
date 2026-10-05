@@ -17,7 +17,7 @@ from sqlmodel import func, select
 
 from .. import labels as L
 from ..registry import ToolContext, ToolError, ToolSpec
-from .messages import system_text
+from .messages import custom_condition, custom_signal_message, system_text
 
 # --------------------------------------------------------------------------- #
 # Shared helpers
@@ -160,6 +160,39 @@ def name_sources(session, profile_id: int) -> tuple[set[str], set[str]]:
     }
     rows += [shared[r.id] for r in rows if r.id in shared]
     return {r.name for r in rows if r.name} | {r.symbol for r in rows if r.symbol}, set()
+
+
+def strict_aliases(session, profile_id: int) -> list[tuple[str, str]]:
+    """(display-name override, shared market name) of the profile's market instruments: in strict
+    mode the redactor swaps the owner's label for the public name in every text (F6 review V6). An
+    owner-named instrument is masked as an identifier instead (``name_sources``)."""
+    from sqlalchemy import inspect as sa_inspect
+
+    if "inv_profile_instruments" not in sa_inspect(session.get_bind()).get_table_names():
+        return []
+    from finanse.modules.investments.models import InvInstrument
+    from finanse.modules.investments.store.instruments import overrides, profile_rows
+
+    named = {k: o for k, o in overrides(session, profile_id).items() if o.name}
+    if not named:
+        return []
+    view = {r.id: r for r in profile_rows(session, profile_id, named)}
+    shared = {
+        r.id: r
+        for r in session.exec(select(InvInstrument).where(InvInstrument.id.in_(named))).all()
+    }
+    out: list[tuple[str, str]] = []
+    for iid, o in named.items():
+        mine, market = view.get(iid), shared.get(iid)
+        if mine is None or market is None:
+            continue
+        if owner_named(mine.asset_class, mine.valuation_mode, mine.isin):
+            continue
+        public = market.name or market.symbol or market.isin or "instrument"
+        alias = o.name.strip()
+        if alias and alias.casefold() != public.casefold():
+            out.append((alias, public))
+    return out
 
 
 def owner_named_ids(ctx: ToolContext) -> set[int]:
@@ -431,7 +464,7 @@ _MEASURES: dict[str, tuple[str, str, str]] = {
 }
 
 
-def _measure(kind: str, payload: dict) -> dict:
+def _measure(ctx: ToolContext, kind: str, payload: dict, private: bool = False) -> dict:
     if kind in _MEASURES:
         measured, threshold, unit = _MEASURES[kind]
         return {
@@ -455,7 +488,7 @@ def _measure(kind: str, payload: dict) -> dict:
             "threshold": L.count(allowed or None),
             "unit": L.category("days"),
         }
-    if kind == "custom":
+    if kind in ("custom", "alert:custom"):
         from finanse.modules.investments.rules.expr.catalog import METRICS, Unit
 
         values = []
@@ -482,7 +515,10 @@ def _measure(kind: str, payload: dict) -> dict:
                 values.append(
                     {"metric": L.text(label), "measured": L.flag(value), "unit": L.category("flag")}
                 )
-        return {"condition": L.text(payload.get("when")), "values": values}
+        return {
+            "condition": custom_condition(ctx, payload.get("when"), private=private),
+            "values": values,
+        }
     return {}
 
 
@@ -520,9 +556,16 @@ def signals(ctx: ToolContext, status: str = "open") -> dict:
                 "source": L.category(r.get("source")),
                 "snoozed_until": L.date(r.get("snoozed_until")),
                 "scope": scope,
-                **_measure(r["kind"], payload),
+                **_measure(ctx, r["kind"], payload, private=r.get("instrument_id") in owned),
                 "direction": L.category(payload.get("direction")),
-                "message": L.text(r.get("message")),
+                "message": custom_signal_message(
+                    ctx,
+                    r.get("message"),
+                    payload.get("when"),
+                    private=r.get("instrument_id") in owned,
+                )
+                if r["kind"] in ("custom", "alert:custom")
+                else L.text(r.get("message")),
                 "first_seen": L.date(r.get("first_seen_at")),
                 "last_seen": L.date(r.get("last_seen_at")),
                 "age_days": L.count((ctx.today - first).days if first else None),

@@ -14,6 +14,7 @@ from __future__ import annotations
 from .. import labels as L
 from ..registry import ToolContext, ToolError, ToolSpec
 from .investments import owner_named, owner_named_ids
+from .messages import custom_condition, custom_signal_message
 
 _TEXT = {"type": "string", "maxLength": 2000}
 _KINDS = [
@@ -58,7 +59,7 @@ def _price(value, private: bool) -> L.Labelled:
     return L.amount(value) if private else L.level(value)
 
 
-def _params(kind: str, params: dict, private: bool) -> dict:
+def _params(ctx: ToolContext, kind: str, params: dict, private: bool) -> dict:
     out: dict = {}
     if "level" in params:
         out["level"] = _price(params.get("level"), private)
@@ -71,11 +72,11 @@ def _params(kind: str, params: dict, private: bool) -> dict:
     if "bucket" in params:
         out["bucket"] = L.category(params.get("bucket"))
     if "expression" in params:
-        out["expression"] = L.text(params.get("expression"))
+        out["expression"] = custom_condition(ctx, params.get("expression"), private=private)
     return out
 
 
-def _alert(row: dict, owned: set[int]) -> dict:
+def _alert(ctx: ToolContext, row: dict, owned: set[int]) -> dict:
     instrument = _instrument(row.get("instrument"), owned)
     private = bool(instrument.get("owner_named") and instrument["owner_named"].value)
     unit = row.get("unit")
@@ -92,7 +93,7 @@ def _alert(row: dict, owned: set[int]) -> dict:
         "kind": L.category(row["kind"]),
         "scope": L.category(row["scope"]),
         "instrument": instrument,
-        "params": _params(row["kind"], row.get("params") or {}, private),
+        "params": _params(ctx, row["kind"], row.get("params") or {}, private),
         "unit": L.category(unit),
         "polarity": L.category(row["polarity"]),
         "severity": L.category(row["severity"]),
@@ -113,7 +114,14 @@ def _alert(row: dict, owned: set[int]) -> dict:
         else {
             "signal_id": L.ref(signal.get("id")),
             "status": L.category(signal.get("status")),
-            "message": L.text(signal.get("message")),
+            "message": custom_signal_message(
+                ctx,
+                signal.get("message"),
+                (row.get("params") or {}).get("expression"),
+                private=private,
+            )
+            if row["kind"] == "custom"
+            else L.text(signal.get("message")),
         },
     }
 
@@ -137,7 +145,7 @@ def alerts(ctx: ToolContext, status: str = "live") -> dict:
     owned = owner_named_ids(ctx)
     rows = views.alerts_view(ctx.session, ctx.profile, statuses)
     return {
-        "alerts": [_alert(r, owned) for r in rows],
+        "alerts": [_alert(ctx, r, owned) for r in rows],
         "limits": _limits(ctx),
         "kinds": [L.category(k) for k in _KINDS],
         "note": L.text(
@@ -195,7 +203,9 @@ def add_alert(
     except alert_service.AlertError as e:
         raise ToolError(str(e)) from None
     return {
-        "alert": _alert(views.one_alert(ctx.session, ctx.profile, row), owner_named_ids(ctx)),
+        "alert": _alert(
+            ctx, views.one_alert(ctx.session, ctx.profile, row), owner_named_ids(ctx)
+        ),
         "limits": _limits(ctx),
         "note": L.text(
             "created as active (source agent); the daily run checks it, the owner sees it badged in "

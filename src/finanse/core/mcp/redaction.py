@@ -165,6 +165,8 @@ def scrub_text(text: str | None, *, strict: bool, guard: NameGuard | None = None
         text = _BIG_INT.sub(_big_int, text)
     text = _restore_dates(text, dates)
     if guard is not None:
+        if strict:
+            text = guard.swap_aliases(text)
         text = guard.mask(text)
     return text
 

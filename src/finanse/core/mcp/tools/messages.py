@@ -39,3 +39,34 @@ def system_text(ctx: ToolContext, text: str | None) -> L.Labelled:
     if text is None or not ctx.strict:
         return L.text(text)
     return L.text(scrub_numbers(text))
+
+
+def custom_condition(ctx: ToolContext, text: str | None, *, private: bool = False) -> L.Labelled:
+    """A custom condition (alert ``expression``, custom signal ``when``) as text: in strict mode its
+    number literals compared with amounts (or with an owner-named instrument's price) become
+    ``[amount]``; percentages, ratios, day counts, window arguments and public price levels stay
+    (F6 review V3)."""
+    if text is None or not ctx.strict:
+        return L.text(text)
+    from finanse.modules.investments.rules.expr.privacy import scrub_amount_literals
+
+    return L.text(scrub_amount_literals(str(text), private_prices=private))
+
+
+def custom_signal_message(
+    ctx: ToolContext, message: str | None, when: str | None, *, private: bool = False
+) -> L.Labelled:
+    """The message of a custom signal ("<title>: Condition met: <when> (<values>)."): in strict mode
+    the condition inside it is scrubbed like :func:`custom_condition` and every other number outside
+    dates and percentages is removed (the title and the owner's message are free text)."""
+    if message is None or not ctx.strict:
+        return L.text(message)
+    from finanse.modules.investments.rules.expr.privacy import scrub_amount_literals
+
+    text = str(message)
+    if when:
+        normalized = " ".join(str(when).split())
+        scrubbed = scrub_amount_literals(normalized, private_prices=private)
+        parts = text.split(normalized)
+        return L.text(scrubbed.join(scrub_numbers(p) for p in parts))
+    return L.text(scrub_numbers(text))

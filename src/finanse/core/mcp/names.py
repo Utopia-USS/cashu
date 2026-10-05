@@ -174,6 +174,19 @@ class NameGuard:
     private_payees: frozenset[str] = frozenset()
     """Normalized merchant keys treated as private persons."""
     _secret: bytes | None = field(default=None, repr=False)
+    strict_aliases: tuple[tuple[str, str], ...] = ()
+    """(owner-typed label, public replacement) pairs swapped in free text in strict mode only: a
+    profile's display-name override of a market instrument becomes its shared market name (F6 V6)."""
+
+    def swap_aliases(self, text: str) -> str:
+        """``text`` with every owner-typed alias replaced by its public name (case-insensitive,
+        whole words, longest first)."""
+        if not text or not self.strict_aliases:
+            return text
+        for alias, public in sorted(self.strict_aliases, key=lambda a: len(a[0]), reverse=True):
+            pattern = r"(?<![\w])" + re.escape(alias) + r"(?![\w])"
+            text = re.sub(pattern, lambda _m, public=public: public, text, flags=re.IGNORECASE)
+        return text
 
     def is_private(self, merchant: str) -> bool:
         key = normalize(merchant)
@@ -262,6 +275,7 @@ def collect(session: Session, profile: Profile) -> NameGuard:
     ).all():
         names |= _name_terms(account_name or "", tokens=False)
     payees: set[str] = set()
+    aliases: list[tuple[str, str]] = []
     for provider in NAME_PROVIDERS:
         module = importlib.import_module(provider)
         for strong in getattr(module, "strong_names", lambda *_: set())(session, profile.id):
@@ -276,5 +290,8 @@ def collect(session: Session, profile: Profile) -> NameGuard:
         for p in private:
             if looks_like_person(p):
                 names |= _name_terms(" ".join(person_part(p)), tokens=False)
+        aliases.extend(getattr(module, "strict_aliases", lambda *_: [])(session, profile.id))
     names = {n for n in names if fold(n) not in BUSINESS_MARKERS}
-    return NameGuard(profile.id, frozenset(names), frozenset(payees))
+    return NameGuard(
+        profile.id, frozenset(names), frozenset(payees), strict_aliases=tuple(aliases)
+    )
