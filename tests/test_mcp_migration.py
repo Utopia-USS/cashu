@@ -58,7 +58,7 @@ def test_0006_on_a_copy_of_a_0005_database(tmp_path):
     before = legacy.table_counts(path)
     engine = db.make_engine(f"sqlite:///{path}")
     assert migrations.current_revision(engine) == "0005_investments"
-    assert migrations.upgrade_to_head(engine) == migrations.head_revision() == "0006_agent"
+    assert migrations.upgrade_to_head(engine) == migrations.head_revision()
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
     assert legacy.table_counts(backup) == before and not (_tables(backup) & AGENT_TABLES)
@@ -99,5 +99,6 @@ def test_downgrade_refuses_with_data_and_round_trips_when_empty(tmp_path, monkey
         reviews.mark_done(s, pid, "budget", "x")
     with pytest.raises(RuntimeError, match="hold data"):
         _to(engine, "0005_investments", down=True)
-    assert migrations.current_revision(engine) == "0006_agent"
+    # the refused downgrade is rolled back as a whole (later revisions included)
+    assert migrations.current_revision(engine) == migrations.head_revision()
     engine.dispose()

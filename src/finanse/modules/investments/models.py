@@ -3,7 +3,8 @@
 Shared reference data (every profile sees the same rows): instruments, their aliases, daily price bars
 and FX rates. Everything else belongs to one profile, through its brokerage account (transactions,
 broker position snapshots, account settings) or a ``profile_id`` (renames, manual valuations, strategy
-versions, rule runs, signals, notifications, decisions, theses, import batches).
+versions, rule runs, signals, notifications, decisions, theses, import batches, the profile's overrides
+of shared instruments, alerts, watchlist items).
 
 Money and quantities are exact decimal text (``DecimalText``), enum values are their wire names
 (``finanse.modules.investments.domain`` enums). The pure domain uses ``str`` ids; the persistence layer
@@ -321,6 +322,11 @@ class InvSignal(SQLModel, table=True):
     last_run_id: int | None = Field(default=None, foreign_key="inv_rule_runs.id")
     acknowledged_at: dt.datetime | None = None
     closed_at: dt.datetime | None = None  # resolved or expired
+    # Added by 0007 (ALTER TABLE ADD COLUMN appends it, so it stays the last column): positive |
+    # negative | neutral (``rules.SignalPolarity``), from the rule / kind default or the alert.
+    polarity: str = Field(default="neutral", sa_column_kwargs={"server_default": "neutral"})
+    # Added by 0007: "Odłóż do" - hidden from the attention list and not notified until then.
+    snoozed_until: dt.datetime | None = None
 
 
 class InvNotification(SQLModel, table=True):
@@ -377,6 +383,85 @@ class InvThesis(SQLModel, table=True):
     updated_at: dt.datetime = Field(default_factory=utcnow)
 
 
+# --------------------------------------------------------------------------- #
+# Profile overrides of shared instruments, alerts, the watchlist (F5)
+# --------------------------------------------------------------------------- #
+
+
+class InvProfileInstrument(SQLModel, table=True):
+    """One profile's own view of a shared instrument: the owner-editable attributes it changed
+    (classification, display name, valuation mode, status incl. frozen / delisted, reviewed flag).
+    ``None`` = the shared default on ``inv_instruments``; an empty text clears a text attribute for
+    this profile. Market identity (symbol, ISIN, currency, MIC, price aliases) stays shared."""
+
+    __tablename__ = "inv_profile_instruments"
+    __table_args__ = (
+        UniqueConstraint("profile_id", "instrument_id", name="uq_inv_profile_instrument"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    profile_id: int = Field(sa_column=profile_fk_column("inv_profile_instruments"))
+    instrument_id: int = Field(foreign_key="inv_instruments.id", index=True)
+    name: str | None = None
+    asset_class: str | None = None
+    tags: list[str] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    region: str | None = None
+    sector: str | None = None
+    valuation_mode: str | None = None
+    status: str | None = None
+    needs_classification: bool | None = None
+    created_at: dt.datetime = Field(default_factory=utcnow)
+    updated_at: dt.datetime = Field(default_factory=utcnow)
+
+
+class InvAlert(SQLModel, table=True):
+    """A condition on hard market or portfolio data from a fixed catalog (``alerts.catalog``), set by
+    the owner or an agent. Evaluated in the daily check; a triggered alert becomes a signal
+    (``rule_id = dedup_key = "alert:<id>"``, ``kind = "alert:<kind>"``). Never a price prediction."""
+
+    __tablename__ = "alerts"
+
+    id: int | None = Field(default=None, primary_key=True)
+    profile_id: int = Field(sa_column=profile_fk_column("alerts"))
+    instrument_id: int | None = Field(default=None, foreign_key="inv_instruments.id", index=True)
+    scope: str  # instrument | portfolio | bucket
+    kind: str  # alerts.catalog kind (price_above, change_pct, ..., custom)
+    params: dict = _json_dict()  # normalized params of the kind
+    polarity: str = Field(default="neutral")  # positive | negative | neutral
+    severity: str = Field(default="info")  # info | action
+    title: str
+    note: str | None = None
+    source: str = Field(default="user")  # user | agent
+    created_by: str = Field(default="app")  # app | cli | mcp
+    status: str = Field(default="active")  # active | triggered | snoozed | muted | expired
+    cooldown_days: int | None = None
+    expires_at: dt.datetime | None = None
+    snoozed_until: dt.datetime | None = None
+    last_triggered_at: dt.datetime | None = None
+    last_checked_at: dt.datetime | None = None
+    last_value: str | None = None  # measured value at the last check (decimal text)
+    created_at: dt.datetime = Field(default_factory=utcnow)
+    updated_at: dt.datetime = Field(default_factory=utcnow)
+
+
+class InvWatchlistItem(SQLModel, table=True):
+    """An instrument the profile watches without (necessarily) holding it; joins the daily price
+    refresh and can carry alerts."""
+
+    __tablename__ = "watchlist_items"
+    __table_args__ = (
+        UniqueConstraint("profile_id", "instrument_id", name="uq_watchlist_profile_instrument"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    profile_id: int = Field(sa_column=profile_fk_column("watchlist_items"))
+    instrument_id: int = Field(foreign_key="inv_instruments.id", index=True)
+    note: str | None = None
+    tags: list[str] = _json_list()
+    source: str = Field(default="user")  # user | agent
+    added_at: dt.datetime = Field(default_factory=utcnow)
+
+
 TABLES: tuple[type[SQLModel], ...] = (
     InvInstrument,
     InvInstrumentAlias,
@@ -394,6 +479,9 @@ TABLES: tuple[type[SQLModel], ...] = (
     InvNotification,
     InvDecision,
     InvThesis,
+    InvProfileInstrument,
+    InvAlert,
+    InvWatchlistItem,
 )
 
 THESIS_ENTRY_TYPES = ("sentiment_correction", "trend", "special_situation")
