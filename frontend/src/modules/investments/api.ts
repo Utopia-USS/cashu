@@ -251,7 +251,8 @@ export interface Signal {
   decisions: Decision[];
 }
 
-export interface StrategyIssue { severity: string; path: string; message: string; line: number | null; column: number | null }
+/** `code` + `params`: stable code of the message for the Polish label (core/messages.ts); `message` stays English. */
+export interface StrategyIssue { severity: string; path: string; message: string; line: number | null; column: number | null; code?: string; params?: Record<string, string> }
 export interface BucketMatch { id: string; asset_class: string[]; tags: string[]; mic: string[]; currency: string[]; instrument_ids: (number | string)[] }
 export interface StrategyStatus extends Omit<StrategyBrief, "inactive_rules"> {
   files: { yaml: string; md: string; yaml_exists: boolean; md_exists: boolean };
@@ -272,7 +273,8 @@ export interface StrategyStatus extends Omit<StrategyBrief, "inactive_rules"> {
   versions: { version: number; state: string; created_at: string | null; sha256: string; issues: number }[];
 }
 
-export interface ImportWarning { message: string; row: number | null; kind: string; blocking: boolean }
+/** `kind` is the stable code (label `import.<kind>` in core/messages.ts); `code` when the server sends it. */
+export interface ImportWarning { message: string; row: number | null; kind: string; blocking: boolean; code?: string }
 export interface PreviewRow {
   row: number;
   date: string;
@@ -374,6 +376,9 @@ export interface Proposal {
   kind: string;
   status: string;
   summary?: string | null;
+  /** The kind, and the summary's values, for the Polish line (core/messages.ts proposalSummary). */
+  summary_code?: string | null;
+  summary_params?: Record<string, unknown> | null;
   reason?: string | null;
   source?: string | null;
   created_at: string | null;

@@ -1,6 +1,7 @@
 // Workspace header row: account filter, freshness, NBP date, strategy pill + popover, and the
 // three actions (Uruchom reguły, Import, Przegląd tygodnia).
 import { useState } from "react";
+import { describeIssue, proposalSummary } from "../../core/messages";
 import { copyText, Pop, Seg, Tag, useToast } from "../../ui";
 import type { AccountRow, Overview, Proposal, StrategyStatus } from "./api";
 import { accountLabel, dm, dmy, money0, nBuckets, nChanges, nRules, plural, wdm } from "./labels";
@@ -136,11 +137,11 @@ function StrategyPopover({ st, proposals, onProposal, onInit, onReload }: {
       {st.read_error && <div className="muted" style={{ fontSize: 12.5, color: "var(--neg)" }}>Nie udało się odczytać pliku: {st.read_error}</div>}
       {(st.issues.length > 0 || st.inactive_rules.length > 0 || st.base_currency_note) && (
         <ul className="vl">
-          {errors.map((i, k) => <li key={`e${k}`}><span className="sev action" /><span><b>Błąd:</b> {i.message} <code>{i.path}</code>{line(i.line)}</span></li>)}
-          {warnings.map((i, k) => <li key={`w${k}`}><span className="sev review" /><span><b>Ostrzeżenie:</b> {i.message}{i.path ? <> <code>{i.path}</code></> : null}{line(i.line)}</span></li>)}
+          {errors.map((i, k) => <li key={`e${k}`}><span className="sev action" /><span title={i.message}><b>Błąd:</b> {describeIssue(i).text} <code>{i.path}</code>{line(i.line)}</span></li>)}
+          {warnings.map((i, k) => <li key={`w${k}`}><span className="sev review" /><span title={i.message}><b>Ostrzeżenie:</b> {describeIssue(i).text}{i.path ? <> <code>{i.path}</code></> : null}{line(i.line)}</span></li>)}
           {st.inactive_rules.map((r) => (
             <li key={`r${r.index}`}><span className="sev resolved" />
-              <span>Reguła <code>{r.rule_id ?? `#${r.index + 1}`}</code> nieaktywna: {r.issues.map((i) => i.message).join("; ")}{line(r.line)} - traktowana jak pominięta.</span>
+              <span>Reguła <code>{r.rule_id ?? `#${r.index + 1}`}</code> nieaktywna: {r.issues.map((i) => describeIssue(i).text).join("; ")}{line(r.line)} - traktowana jak pominięta.</span>
             </li>
           ))}
           {st.base_currency_note && <li><span className="sev review" /><span>Waluta strategii różni się od waluty profilu.</span></li>}
@@ -170,7 +171,7 @@ function StrategyPopover({ st, proposals, onProposal, onInit, onReload }: {
 
 function ProposalNotice({ proposals, version, onProposal }: { proposals: Proposal[]; version: number | null; onProposal: (id: number) => void }) {
   const first = proposals[0];
-  const what = first.summary ?? (first.kind === "strategy" ? "zmiana strategii" : first.kind === "custom_rule" || first.kind === "rule" ? "nowa reguła" : first.kind === "import" ? "import do zatwierdzenia" : first.kind);
+  const what = proposalSummary(first) ?? (first.kind === "strategy" ? "zmiana strategii" : first.kind === "custom_rule" || first.kind === "rule" ? "nowa reguła" : first.kind === "import" ? "import do zatwierdzenia" : first.kind);
   return (
     <div className="notice info" style={{ margin: "8px 0" }}>
       <span className="grow">

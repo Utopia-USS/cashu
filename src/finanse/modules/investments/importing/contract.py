@@ -244,6 +244,11 @@ class ImportWarning:
     """Stable machine-readable category for grouping in UIs and reports (an
     :class:`ImportWarningKind` value; importers may use their own snake_case kinds)."""
 
+    @property
+    def code(self) -> str:
+        """Stable machine-readable code for a translated label: ``import.<kind>``."""
+        return f"import.{self.kind or 'other'}"
+
     def __str__(self) -> str:
         prefix = "" if self.row is None else f"row {self.row}: "
         return f"{prefix}{self.message}{' (blocking)' if self.blocking else ''}"

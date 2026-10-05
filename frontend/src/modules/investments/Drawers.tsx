@@ -2,6 +2,7 @@
 // thesis, agent proposal, signal history + decision journal, an instrument's transactions.
 import { useMemo, useRef, useState } from "react";
 import { ApiError } from "../../core/api";
+import { describeImportWarning, proposalError, proposalSummary } from "../../core/messages";
 import { useAsync } from "../../hooks";
 import { Drawer, Notice, RadioList, Seg, Skeleton, Stepper, Tag, useToast } from "../../ui";
 import {
@@ -14,6 +15,12 @@ import {
 import { commitLabel, decisionTag, signalTitle, TXN_RULES, txnCash, validateTxn } from "./logic";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** One import warning: "wiersz N: " + the Polish label of its kind, the English detail next to it. */
+function WarningText({ w }: { w: { row: number | null; kind: string; message: string; code?: string } }) {
+  const d = describeImportWarning(w);
+  return <>{w.row != null ? `wiersz ${w.row}: ` : ""}{d.text}{d.detail && <span className="muted" style={{ fontSize: 12 }}> ({d.detail})</span>}</>;
+}
 
 // ---- import ------------------------------------------------------------------------------
 
@@ -134,7 +141,7 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
           </div>
           {preview.errors.length > 0 && (
             <Notice tone="neg"><b>Plik ma błędy - nic nie zostanie zaimportowane, dopóki ich nie poprawisz.</b>
-              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{preview.errors.slice(0, 6).map((e, k) => <li key={k}>{e.row != null ? `wiersz ${e.row}: ` : ""}{e.message}</li>)}</ul>
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{preview.errors.slice(0, 6).map((e, k) => <li key={k}><WarningText w={e} /></li>)}</ul>
             </Notice>
           )}
           {preview.previous_imports.length > 0 && <Notice tone="warn">Ten sam plik był już importowany ({dm(preview.previous_imports[0].at)}). Wiersze z tamtego importu są oznaczone jako duplikaty.</Notice>}
@@ -161,7 +168,7 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
               ))}
               {skipped.map((w, k) => (
                 <tr key={`s${k}`}>
-                  <td colSpan={4} className="muted">wiersz {w.row}: {w.message}</td><td className="num">-</td>
+                  <td colSpan={4} className="muted"><WarningText w={w} /></td><td className="num">-</td>
                   <td><Tag tone="warn">pominięty</Tag> <button className="lnk" style={{ fontSize: 12 }} onClick={onManual}>dodaj ręcznie</button></td>
                 </tr>
               ))}
@@ -448,6 +455,7 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
     } finally { setBusy(false); }
   };
   const isImport = data?.kind === "import";
+  const failure = proposalError(data?.result); // why applying failed (stable error_code -> Polish)
   const kindLabel = !data ? "" : isImport ? "import" : data.kind === "strategy" ? "strategia" : "reguła";
   const yamlDiff = typeof data?.diff === "string" ? data.diff : data?.diff?.yaml ?? null;
   const mdDiff = typeof data?.diff === "object" && data?.diff ? data.diff.md ?? null : null;
@@ -462,12 +470,13 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
         <span style={{ flex: 1 }} />
         <button className="btn primary" disabled={busy || !!conv?.changed} onClick={() => act(true)}>{isImport ? "Zatwierdź import" : `Zatwierdź jako v${(version ?? 0) + 1}`}</button>
       </> : undefined}>
-      {err && <Notice tone="neg">{err}</Notice>}
+      {err && <Notice tone="neg">{failure ? <span title={failure.detail ?? undefined}>{failure.text}</span> : err}</Notice>}
+      {!err && data?.status === "failed" && failure && <Notice tone="neg"><span title={failure.detail ?? undefined}>{failure.text}</span></Notice>}
       {p.error && <Notice tone="neg">Nie udało się wczytać propozycji: {p.error}</Notice>}
       {!data && !p.error && <Skeleton h={160} />}
       {data && (
         <>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>{data.summary ?? "Propozycja zmiany"}</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>{proposalSummary(data) ?? "Propozycja zmiany"}</div>
           <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
             {data.created_at ? `zgłoszona ${dmy(data.created_at)}` : ""}
             {data.status !== "pending" ? ` · ${({ approved: "zatwierdzona", rejected: "odrzucona", failed: "nie udało się zastosować" } as Record<string, string>)[data.status] ?? data.status}` : ""}

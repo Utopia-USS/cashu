@@ -106,6 +106,8 @@ def issue_dict(issue: StrategyIssue) -> dict:
         "message": issue.message,
         "line": issue.line,
         "column": issue.column,
+        "code": issue.code,  # stable code + params: the app shows a translated label
+        "params": dict(issue.params or {}),
     }
 
 

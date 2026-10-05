@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING
+
+from .codes import classify
 
 if TYPE_CHECKING:
     from .config import StrategyConfig
@@ -31,6 +33,20 @@ class StrategyIssue:
     """1-based line in strategy.yaml, None when the issue has no YAML location."""
     column: int | None = None
     """1-based column in strategy.yaml, None when the issue has no YAML location."""
+    code: str = field(default="", compare=False)
+    """Stable machine-readable code (``strategy.<name>``, see ``codes.py``) for a translated label;
+    derived from ``message`` when not given. ``strategy.other`` = no template matched."""
+    params: dict[str, str] | None = field(default=None, compare=False, hash=False)
+    """The variable parts of ``message`` by name (bucket, key, value, suggestion, ...)."""
+
+    def __post_init__(self) -> None:
+        if not self.code:
+            code, params = classify(self.message)
+            object.__setattr__(self, "code", code)
+            if self.params is None:
+                object.__setattr__(self, "params", params)
+        elif self.params is None:
+            object.__setattr__(self, "params", {})
 
     @property
     def is_error(self) -> bool:
