@@ -14,6 +14,8 @@ export interface Shell {
   /** Re-read /api/profiles (module states, names). */
   reloadProfiles: () => Promise<void>;
   openWizard: () => void;
+  /** The page asks for the narrow frame (1120 px, header included): the minimal profile view. */
+  setNarrow: (narrow: boolean) => void;
 }
 
 export const ShellContext = createContext<Shell | null>(null);
@@ -28,17 +30,21 @@ export function useShell(): Shell {
 export const useSlug = (): string => useShell().slug;
 
 /** View <-> path used in the URL hash (#/{slug}/{path}) and by setup actions of kind "view":
- * "overview", "<module>.<tab>", "setup/<module>", "settings" or "settings/<section>". */
+ * "overview", "<module>.<tab>", "<module>.<tab>/<sub>" (a page inside a tab, e.g.
+ * "investments.portfolio/alerts" or ".../assets/306"), "setup/<module>", "settings" or "settings/<section>". */
 export function viewToPath(v: View): string {
   if (v.kind === "settings") return v.section ? `settings/${v.section}` : "settings";
   if (v.kind === "setup") return `setup/${v.module}`;
-  return v.tab;
+  return v.sub ? `${v.tab}/${v.sub}` : v.tab;
 }
 
 export function pathToView(path: string | undefined): View | null {
   if (!path) return null;
-  const [head, arg] = path.split("/");
+  const [head, ...rest] = path.split("/");
+  const arg = rest[0];
   if (head === "settings") return { kind: "settings", section: arg || undefined };
   if (head === "setup" && arg) return { kind: "setup", module: arg };
-  return head ? { kind: "tab", tab: head } : null;
+  if (!head) return null;
+  const sub = rest.join("/");
+  return sub ? { kind: "tab", tab: head, sub } : { kind: "tab", tab: head };
 }

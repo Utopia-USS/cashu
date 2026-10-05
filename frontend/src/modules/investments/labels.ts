@@ -1,13 +1,13 @@
 // Polish labels and number/date formatting of the investments workspace. Pure (no React, no DOM),
 // unit-tested with `npm test`. UI copy rules: Polish, sentence case, regular hyphens only,
 // percentages with one decimal and a space before "%", percentage points as "pp".
-import { cur } from "../../format.ts";
+import { cur, GROUP } from "../../format.ts";
 
 const NBSP = " ";
 
 const num1 = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const num0 = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0 });
-const qtyFmt = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 6 });
+const qtyFmt = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 6, ...GROUP });
 
 /** Fraction -> "21,2 %" (one decimal). `signed` adds "+" to positive values. */
 export function pct(v: number | null | undefined, signed = false): string {
@@ -41,7 +41,7 @@ export function money(v: number | null | undefined, c = "PLN", signed = false): 
 /** Whole money for hints: "11 600 zł". */
 export function money0(v: number | null | undefined, c = "PLN", signed = false): string {
   if (v == null || !Number.isFinite(v)) return "-";
-  const text = new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, maximumFractionDigits: 0 }).format(Math.round(v));
+  const text = new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, maximumFractionDigits: 0, ...GROUP }).format(Math.round(v));
   return signed && Math.round(v) > 0 ? `+${text}` : text;
 }
 

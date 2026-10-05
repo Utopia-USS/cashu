@@ -85,7 +85,7 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
               <tr key={t.id}>
                 <td>{t.date}</td>
                 <td>{t.kind === "withdrawal" ? "⬇︎ " : ""}{t.title}</td>
-                <td className="muted">{t.category_label || "—"}</td>
+                <td className="muted">{t.category_label || "-"}</td>
                 <td className={`num ${t.amount < 0 ? "neg" : "pos"}`}>{cur(t.amount, c)}</td>
                 <td className="num"><button className="icon-btn" title="Usuń" onClick={() => del(t.id)}>✕</button></td>
               </tr>

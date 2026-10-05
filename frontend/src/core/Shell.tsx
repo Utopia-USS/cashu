@@ -2,12 +2,13 @@
 // page of the current view. Navigation state lives in the URL hash
 // (#/{slug}/{view}) and the last view per profile is remembered.
 import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { nAccounts, nModules } from "../format";
+import { nAccounts, nModules, wdmShort } from "../format";
 import { useAsync } from "../hooks";
 import { Notice, SkeletonChart, SkeletonKpis, useToast } from "../ui";
 import {
   getCategories, getNetworth, getSetup, getSummary, type ModuleInfo, postResync, type Profile, type SystemInfo,
 } from "./api";
+import { Brand } from "./Brand";
 import { Overview } from "./Overview";
 import { ProfileMenu } from "./ProfileMenu";
 import { moduleDef, orderModules, tabKey } from "./registry";
@@ -60,6 +61,8 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   });
   const [wizard, setWizard] = useState(false);
   const [nonce, setNonce] = useState(0);
+  // A page can ask for the narrow frame (minimal profile); reset whenever the page changes.
+  const [narrow, setNarrow] = useState(false);
   // Profiles whose resync is running: a sync belongs to the profile it was started for.
   const [syncing, setSyncing] = useState<ReadonlySet<string>>(new Set());
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
@@ -120,6 +123,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   const summaryS = own(summaryQ), networthS = own(networthQ), catsS = own(catsQ);
 
   const go = useCallback((v: View) => { setView(v); window.scrollTo({ top: 0 }); }, []);
+  const askNarrow = useCallback((v: boolean) => setNarrow(v), []);
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
 
   const switchProfile = (s: string) => {
@@ -175,16 +179,18 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   const modCount = nModules(enabled.length);
   const sub = syncMsg ? `${syncMsg} · odświeżono`
     : !networthS.data ? "ładowanie…"
-    : asof ? `ostatnie dane: ${asof} · ${modCount}` : `brak danych · ${modCount}`;
+    : asof ? `dane: ${wdmShort(asof)} · ${modCount}` : `brak danych · ${modCount}`;
 
   const shell: ShellState = {
     slug: profile.slug, profile, profiles, system, modules, view: resolved, go,
-    reloadProfiles, openWizard: () => setWizard(true),
+    reloadProfiles, openWizard: () => setWizard(true), setNarrow: askNarrow,
   };
 
-  // A workspace tab (investments) uses the wide page; everything else keeps Kuba's 1120 px.
+  // Przegląd (widget grid) and workspace tabs (investments) use the wide page; everything else keeps
+  // Kuba's 1120 px; a page may ask for the narrow frame (minimal profile).
   const wide = (() => {
-    if (resolved.kind !== "tab" || resolved.tab === "overview") return false;
+    if (resolved.kind !== "tab") return false;
+    if (resolved.tab === "overview") return true;
     const [mid, tid] = resolved.tab.split(".");
     return !!moduleDef(mid, modules).tabs.find((t) => t.id === tid)?.wide;
   })();
@@ -197,6 +203,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
     if (!ready) return <><SkeletonKpis /><SkeletonChart /></>;
     const base: Omit<ModuleCtx, "state"> = {
       slug: profile.slug, profile, summary: summaryS.data!, networth: networthS.data!, categories: catsS.data!, go, refresh,
+      sub: resolved.kind === "tab" ? resolved.sub : undefined,
     };
     if (resolved.kind === "tab" && resolved.tab === "overview") return <Overview base={base} enabled={enabled} />;
     if (resolved.kind === "setup") {
@@ -220,18 +227,16 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
 
   return (
     <ShellContext.Provider value={shell}>
-      <div className={`wrap ${wide ? "wide" : ""}`} aria-hidden={wizard || undefined}>
-        <header>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <h1>finanse</h1>
-              <ProfileMenu profiles={profiles} active={profile} activeNetworth={networthS.data}
-                onSelect={switchProfile} onNew={() => setWizard(true)}
-                onSettings={() => go({ kind: "settings", section: "profile" })} />
-            </div>
-            <div className="sub">{sub}</div>
+      <div className={`wrap ${narrow ? "narrow" : wide ? "wide" : ""}`} aria-hidden={wizard || undefined}>
+        <header className="shell">
+          <div className="brand">
+            <Brand />
+            <ProfileMenu profiles={profiles} active={profile} activeNetworth={networthS.data}
+              onSelect={switchProfile} onNew={() => setWizard(true)}
+              onSettings={() => go({ kind: "settings", section: "profile" })} />
+            <span className="sub">{sub}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="hdr-right">
             {networthS.data && <span className="tag">{nAccounts(networthS.data.accounts.length)}</span>}
             {budgetOn && (
               <button className="btn" onClick={resync} disabled={syncingHere || !bankAccounts.length}

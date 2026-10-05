@@ -49,17 +49,21 @@ export function SkeletonTable({ rows = 6, title = true }: { rows?: number; title
 }
 
 export function Seg<T extends string | number | null>({
-  items, value, onChange,
+  items, value, onChange, quiet, label,
 }: {
   items: [label: string, value: T][];
   value: T;
   onChange: (v: T) => void;
+  /** v2 quiet variant: the selected item on the chip colour instead of the accent. */
+  quiet?: boolean;
+  /** Accessible name of the group. */
+  label?: string;
 }) {
   return (
-    <span className="seg">
-      {items.map(([label, v]) => (
-        <button key={String(v)} className={v === value ? "on" : ""} onClick={() => onChange(v)}>
-          {label}
+    <span className={`seg ${quiet ? "quiet" : ""}`} role="group" aria-label={label}>
+      {items.map(([text, v]) => (
+        <button key={String(v)} type="button" className={v === value ? "on" : ""} aria-pressed={v === value} onClick={() => onChange(v)}>
+          {text}
         </button>
       ))}
     </span>

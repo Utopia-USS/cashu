@@ -128,6 +128,8 @@ src/finanse/
 frontend/                 # React + Vite + TS SPA (dashboard; UI strings are Polish)
 ├── src/core/             # shell, profile switcher, wizard, settings, API client
 ├── src/modules/<id>/     # each module's tabs and its SetupPage
+├── src/widgets.tsx, grid.ts           # v2 widget grid on thirds (Grid, Widget, Facts, Hero, badges)
+├── src/charts.tsx, chart.ts           # v2 SVG charts (line + benchmark + levels, bars, donut, sparkline)
 └── src/ui.tsx, format.ts, index.css   # shared primitives and tokens
 
 packaging/                # PyInstaller spec, entitlements, icon (macOS); windows/ = documented stub
@@ -300,8 +302,9 @@ institutions it owns, categorization hooks, `setup_status(session, profile_id)`
    through `j`/`jpost`/`jdel`, which send the token.
 3. Component in `frontend/src/components/` or a new tab in `frontend/src/tabs/`
    (UI strings stay Polish).
-4. Line/bar charts: use `components/ScrollableChart.tsx` (window+scroll+axis
-   +grid). Don't add zoom/pan plugins to Chart.js — they were removed as janky.
+4. Line/bar charts: widgets on Przegląd / Inwestycje use `charts.tsx` (SVG drawn at the measured width,
+   colours from the CSS tokens, geometry tested in `chart.ts`); the budget and loan pages use
+   `components/ScrollableChart.tsx` (window+scroll+axis+grid). Don't add zoom/pan plugins to Chart.js — they were removed as janky.
 
 **CLI:** a module's commands live in its `cli.py` and are added by `register(app)`
 (top level, upstream names) and in the module's sub-app (`finanse loans ...`).

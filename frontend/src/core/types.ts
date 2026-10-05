@@ -4,7 +4,7 @@ import type { Category, NetworthResp, Profile, SetupState, Summary } from "./api
 
 /** What the shell shows below the tabbar. Tab keys: "overview" or "<module>.<tab>". */
 export type View =
-  | { kind: "tab"; tab: string }
+  | { kind: "tab"; tab: string; sub?: string }
   | { kind: "setup"; module: string }
   | { kind: "settings"; section?: string };
 
@@ -20,6 +20,8 @@ export interface ModuleCtx {
   go: (v: View) => void;
   /** Reload the shell's shared data (summary, net worth) and remount the page. */
   refresh: () => void;
+  /** Page inside the tab ("alerts", "assets/306"); undefined = the tab's home. */
+  sub?: string;
 }
 
 export interface ModuleTab {
@@ -56,4 +58,23 @@ export interface ModuleDef {
   /** Overview widgets: KPIs added to the core row, and facts for the module card (ready state). */
   Kpis?: ComponentType<{ ctx: ModuleCtx }>;
   Facts?: ComponentType<{ ctx: ModuleCtx }>;
+  /** v2 Przegląd: widgets of a set-up module in the grid, placed by `order` among the core widgets
+   * (budget month 10, surplus 20, investments 30, net worth 40, side stack 50-60, accounts 70, subscriptions 80). */
+  overview?: OverviewSlot[];
+  /** v2 Przegląd hero: one fact (`<Fact>` from widgets.tsx) of a set-up module. */
+  HeroFact?: ComponentType<{ ctx: ModuleCtx }>;
+  /** v2 Przegląd of a profile that has only this module (zero start): everything below the tabbar. */
+  MinimalOverview?: ComponentType<{ ctx: ModuleCtx }>;
+}
+
+/** One widget a module contributes to the v2 Przegląd grid. */
+export interface OverviewSlot {
+  id: string;
+  span: 1 | 2 | 3;
+  order: number;
+  /** Consecutive span-1 slots with the same key share one column (`.stack`). */
+  stack?: string;
+  /** Other modules that must be enabled too (e.g. the surplus card needs the budget). */
+  needs?: string[];
+  Widget: ComponentType<{ ctx: ModuleCtx }>;
 }
