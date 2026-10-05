@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAsync } from "../../hooks";
 import { copyText, Seg, Tag, useToast } from "../../ui";
 import {
-  type AccountRow, type BucketMatch, type BucketRow, type DecisionInput, getPositionDetail, type Instrument, type Position, type Signal,
-  type StrategyStatus,
+  type AccountRow, type BucketMatch, type BucketRow, type Decision, type DecisionInput, getPositionDetail, type Instrument, type Position,
+  type Signal, type StrategyStatus,
 } from "./api";
 import {
   accountLabel, ASSET_CLASS, bucketLabel, dm, dmy, money, numInput, parseNum, pct, plural, qty, REGION, region as regionLabel, VALUATION,
@@ -13,6 +13,7 @@ import {
 import {
   decisionEffect, decisionTag, nextDeposit, signalFacts, signalInstrument, signalTitle, signalTone, type WarningItem,
 } from "./logic";
+import { canUndo } from "./undo";
 
 type Act = "none" | "buy" | "sell" | "later";
 const ACTION: Record<Act, string> = { none: "held", buy: "bought", sell: "sold", later: "other" };
@@ -33,6 +34,8 @@ export interface SignalsProps {
   onToggle: (id: number | null) => void;
   onDecide: (s: Signal, input: DecisionInput, label: string) => void;
   onAck: (s: Signal, reason?: string) => void;
+  /** Undo a saved decision within 15 minutes (F5 R4); the link shows on the decided signal. */
+  onUndo?: (s: Signal, d: Decision) => void;
   onHistory: () => void;
 }
 
@@ -60,7 +63,7 @@ export function SignalsCard(props: SignalsProps) {
   );
 }
 
-function SignalItem({ s, openId, cursorId, onToggle, onAck, today, contributionDay, base, ...rest }: SignalsProps & { s: Signal }) {
+function SignalItem({ s, openId, cursorId, onToggle, onAck, onUndo, today, contributionDay, base, ...rest }: SignalsProps & { s: Signal }) {
   const tone = signalTone(s);
   const facts = signalFacts(s, base);
   const inst = signalInstrument(s);
@@ -75,6 +78,9 @@ function SignalItem({ s, openId, cursorId, onToggle, onAck, today, contributionD
         <span className="grow">{signalTitle(s)}</span>
         {decided ? <Tag tone="pos">{decisionTag(decided)}</Tag>
           : <Tag tone={tone === "action" ? "neg" : "warn"}>{tone === "action" ? "do działania" : "do przeglądu"}</Tag>}
+        {decided && onUndo && canUndo(decided) && (
+          <button className="lnk" style={{ fontSize: 12 }} title="Decyzję można cofnąć przez 15 minut od zapisu" onClick={() => onUndo(s, decided)}>cofnij</button>
+        )}
         {isNew && !decided && <Tag tone="info">nowy</Tag>}
       </div>
       <div className="sm">

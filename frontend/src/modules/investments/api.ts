@@ -2,7 +2,7 @@
 // contract endpoints the workspace uses: weekly reviews and agent proposals (track M). Shapes mirror
 // service/views.py; money is a JSON number next to its currency, weights are fractions (0.213),
 // drift is in percentage points.
-import { ApiError, j, jpatch, jpost, pp } from "../../core/api";
+import { ApiError, j, jdel, jpatch, jpost, pp } from "../../core/api";
 
 export type Num = number | null;
 
@@ -248,6 +248,9 @@ export interface Signal {
   last_seen_at: string | null;
   acknowledged_at: string | null;
   closed_at: string | null;
+  /** "Odłóż do" (track AL, F5 R7): hidden from the to-do list while `snoozed`. */
+  snoozed_until?: string | null;
+  snoozed?: boolean;
   decisions: Decision[];
 }
 
@@ -442,6 +445,12 @@ export const postDecision = (slug: string, signalId: number, b: DecisionInput) =
   jpost<{ decision: Decision; signal: Signal }>(inv(slug, `/signals/${signalId}/decision`), b);
 export const postAcknowledge = (slug: string, signalId: number, reason?: string) =>
   jpost<{ decision: Decision; signal: Signal }>(inv(slug, `/signals/${signalId}/acknowledge`), { reason: reason ?? null });
+/** Undo a decision / acknowledgement within 15 minutes (track AL, F5 R4; 409 after that). */
+export const deleteDecision = (slug: string, decisionId: number) =>
+  jdel<{ deleted: number; signal: Signal | null }>(inv(slug, `/decisions/${decisionId}`));
+/** "Odłóż do": hide an open signal until a date (`until: null` brings it back now; track AL, F5 R7). */
+export const postSnooze = (slug: string, signalId: number, until: string | null) =>
+  jpost<Signal>(inv(slug, `/signals/${signalId}/snooze`), { until });
 
 export interface ClassifyInput {
   asset_class?: string | null; tags?: string[] | null; valuation_mode?: string | null; region?: string | null;
@@ -512,6 +521,8 @@ export const getReviews = (slug: string) => j<Review[] | { items: Review[] }>(pp
   .then((r) => (Array.isArray(r) ? r : r.items ?? []));
 export const postReview = (slug: string, notes: string | null, stats?: Record<string, unknown>) =>
   jpost<Review>(pp(slug, "/reviews"), { module: "investments", notes, stats });
+/** Undo "review done" within 15 minutes (core/agent_api.py, F5 R4; 409 after that). */
+export const deleteReview = (slug: string, reviewId: number) => jdel<{ deleted: number }>(pp(slug, `/reviews/${reviewId}`));
 
 /** Pending (or other) proposals; an absent endpoint (track M not landed) reads as "none". */
 export const getProposals = async (slug: string, status = "pending"): Promise<Proposal[]> => {

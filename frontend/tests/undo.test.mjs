@@ -1,0 +1,78 @@
+// Immediate save + server-side undo (F5 R4): one undo per saved change, the 15-minute window, a 409
+// from the server read as "too late", a failed request retryable; and the toast stack (several toasts,
+// each with its own undo). Run with `npm test`.
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { canUndo, isExpired, makeUndo, UNDO_WINDOW_MS, undoMessage } from "../src/modules/investments/undo.ts";
+import { dropToast, MAX_TOASTS, pushToast } from "../src/toasts.ts";
+
+test("an undo runs the server request at most once", async () => {
+  let calls = 0;
+  const undo = makeUndo(1000, async () => { calls += 1; }, () => 2000);
+  assert.equal(undo.state, "ready");
+  assert.equal(await undo.undo(), "done");
+  assert.equal(await undo.undo(), "already");
+  assert.equal(calls, 1);
+  assert.equal(undo.state, "done");
+});
+
+test("a second click while the request runs does not send another one", async () => {
+  let release;
+  let calls = 0;
+  const undo = makeUndo(0, () => { calls += 1; return new Promise((r) => { release = r; }); }, () => 0);
+  const first = undo.undo();
+  assert.equal(await undo.undo(), "busy");
+  release();
+  assert.equal(await first, "done");
+  assert.equal(calls, 1);
+});
+
+test("after 15 minutes the undo is not sent at all", async () => {
+  let calls = 0;
+  const undo = makeUndo(0, async () => { calls += 1; }, () => UNDO_WINDOW_MS + 1);
+  assert.equal(await undo.undo(), "expired");
+  assert.equal(calls, 0);
+  assert.match(undoMessage("expired", "decyzja"), /Za późno na cofnięcie \(15 minut/);
+});
+
+test("a 409 from the server means too late; other failures can be retried", async () => {
+  const late = makeUndo(0, async () => { throw Object.assign(new Error("undo_expired"), { status: 409 }); }, () => 0);
+  assert.equal(await late.undo(), "expired");
+  assert.equal(late.state, "expired");
+  let attempts = 0;
+  const flaky = makeUndo(0, async () => { attempts += 1; if (attempts === 1) throw Object.assign(new Error("offline"), { status: 0 }); }, () => 0);
+  assert.equal(await flaky.undo(), "failed");
+  assert.equal(flaky.state, "ready");
+  assert.equal(await flaky.undo(), "done");
+  assert.equal(attempts, 2);
+  assert.ok(isExpired({ status: 409 }) && !isExpired({ status: 500 }) && !isExpired(null));
+  assert.equal(undoMessage("done", "przegląd"), "Cofnięto: przegląd");
+  assert.equal(undoMessage("already", "x"), null);
+});
+
+test("toasts stack: a new toast never removes another one's undo", () => {
+  const undo = (id) => ({ id, text: `Zapisano ${id}`, action: { label: "Cofnij", onClick: () => {} } });
+  let list = [];
+  list = pushToast(list, undo(1));
+  list = pushToast(list, undo(2));
+  assert.deepEqual(list.map((t) => t.id), [1, 2]);
+  list = pushToast(list, { id: 3, text: "Skopiowano" });
+  list = pushToast(list, undo(4));
+  assert.equal(list.length, MAX_TOASTS);
+  // over the limit the oldest toast without an action goes first
+  list = pushToast(list, undo(5));
+  assert.deepEqual(list.map((t) => t.id), [1, 2, 4, 5]);
+  // all with an action: the oldest goes
+  list = pushToast(list, undo(6));
+  assert.deepEqual(list.map((t) => t.id), [2, 4, 5, 6]);
+  assert.deepEqual(dropToast(list, 4).map((t) => t.id), [2, 5, 6]);
+});
+
+test("the undo link shows only for a saved decision inside the window", () => {
+  const saved = Date.parse("2026-10-05T03:13:11.439831+00:00");
+  const d = { id: 7, created_at: "2026-10-05T03:13:11.439831+00:00" };
+  assert.ok(canUndo(d, saved + 60_000));
+  assert.ok(!canUndo(d, saved + UNDO_WINDOW_MS + 1));
+  assert.ok(!canUndo({ id: -7, created_at: d.created_at }, saved)); // a decision still being saved
+  assert.ok(!canUndo({ id: 7, created_at: null }, saved));
+});

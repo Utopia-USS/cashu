@@ -405,3 +405,11 @@ tr.warnrow > td { background: var(--warnBg); }
   .changes li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 }
 tr.detail .btn, .signal.open .btn:not(.primary) { background: var(--card); }
+
+/* ===== F5 R4: toast stack (several toasts, each with its own undo) ===== */
+.toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 100;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 92vw; pointer-events: none; }
+.toasts .toast { position: static; transform: none; left: auto; bottom: auto; pointer-events: auto;
+  animation: toast-stack-in 0.16s ease-out; }
+@keyframes toast-stack-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toasts .toast { animation: none; } }

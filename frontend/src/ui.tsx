@@ -1,4 +1,5 @@
 import { createContext, type CSSProperties, Fragment, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { dropToast, pushToast, type ToastAction, type ToastItem } from "./toasts";
 
 export function Skeleton({ w = "100%", h = 14, r = 8, style }: {
   w?: number | string; h?: number | string; r?: number; style?: CSSProperties;
@@ -268,31 +269,40 @@ export function Empty({ title, hint, action }: { title: ReactNode; hint?: ReactN
   );
 }
 
-// ---- toast (one short message at a time, bottom centre) ---------------------
+// ---- toasts (a stack at the bottom centre; each with its own timer and action, F5 R4) ----------
 
-/** One optional action in a toast (e.g. `Cofnij`); the toast closes when it is clicked. */
-export interface ToastAction { label: string; onClick: () => void }
+export type { ToastAction } from "./toasts";
 type ShowToast = (text: string, ms?: number, action?: ToastAction) => void;
 const ToastCtx = createContext<ShowToast>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [msg, setMsg] = useState<{ text: string; id: number; action?: ToastAction } | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
-  const show = useCallback<ShowToast>((text, ms = 2000, action) => {
-    clearTimeout(timer.current);
-    setMsg({ text, id: Date.now(), action });
-    timer.current = setTimeout(() => setMsg(null), ms);
+  const [items, setItems] = useState<ToastItem[]>([]);
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const seq = useRef(0);
+  const close = useCallback((id: number) => {
+    clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
+    setItems((cur) => dropToast(cur, id));
   }, []);
-  const close = () => { clearTimeout(timer.current); setMsg(null); };
+  const show = useCallback<ShowToast>((text, ms = 2000, action) => {
+    const id = ++seq.current;
+    setItems((cur) => pushToast(cur, { id, text, action }));
+    timers.current.set(id, setTimeout(() => close(id), ms));
+  }, [close]);
+  useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
   return (
     <ToastCtx.Provider value={show}>
       {children}
-      {msg && (
-        <div className="toast" key={msg.id} role="status">
-          <span className="txt">{msg.text}</span>
-          {msg.action && <button className="btn" onClick={() => { msg.action!.onClick(); close(); }}>{msg.action.label}</button>}
-          {msg.action && <button className="icon-btn" aria-label="Zamknij" onClick={close}>✕</button>}
+      {items.length > 0 && (
+        <div className="toasts" role="status" aria-live="polite">
+          {items.map((t) => (
+            <div className="toast" key={t.id}>
+              <span className="txt">{t.text}</span>
+              {t.action && <button className="btn" onClick={() => { close(t.id); t.action!.onClick(); }}>{t.action.label}</button>}
+              {t.action && <button className="icon-btn" aria-label="Zamknij" onClick={() => close(t.id)}>✕</button>}
+            </div>
+          ))}
         </div>
       )}
     </ToastCtx.Provider>
