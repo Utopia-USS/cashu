@@ -9,7 +9,11 @@ Phases (never a database transaction across network IO):
 2. network: ``MarketDataRefresher`` over the DB ``StoredMarketData`` (one short read per question);
 3. one write transaction: the fetched bars and rates (a split re-fetch replaces the stored window);
 4. per profile, one transaction: snapshot -> valuation -> allocation -> rules ->
-   ``reconcile_signals`` applied -> rule run (``ok`` / ``partial`` / ``failed``, stats, errors).
+   ``reconcile_signals`` applied -> alerts (``service.alerts``: their own lifecycle pass over the open
+   alert signals) -> rule run (``ok`` / ``partial`` / ``failed``, stats, errors).
+
+Watched instruments (watchlist) and the instruments of live alerts join the market refresh; their
+fetch errors are reported in the run stats (``watched_price_errors``), not as run errors.
 
 A missing strategy means valuation only (no rules, status ok); an invalid one leaves every open
 signal untouched (status partial); a partial one runs the valid rules and leaves the signals of the
@@ -30,6 +34,7 @@ from finanse.core import locks, profiles
 from finanse.core.db import get_session
 from finanse.core.models import Profile, ProfileModule, utcnow
 
+from ..alerts import LIVE_STATUSES, is_alert_key
 from ..domain import Currency, Instrument, InstrumentId, MarketView, TxnType
 from ..market import FetchReport, FetchStatus, FxSource, MarketDataRefresher, PriceSource
 from ..models import InvRuleRun, InvSignal
@@ -43,7 +48,10 @@ from ..rules import (
     Skipped,
     reconcile_signals,
 )
+from ..store import alerts as alert_store
 from ..store import convert, instruments, market, signals, transactions
+from ..strategy import NotificationPolicy
+from . import alerts as alert_service
 from . import portfolio
 from . import strategy as strategy_files
 
@@ -136,6 +144,8 @@ class _Needs:
     profile: Profile
     state: strategy_files.StrategyState
     instruments: dict[InstrumentId, Instrument] = field(default_factory=dict)
+    watched: dict[InstrumentId, Instrument] = field(default_factory=dict)
+    """Watchlist and live-alert instruments that are not held (prices only, no FX)."""
     currencies: set[Currency] = field(default_factory=set)
     fx_history_from: dict[Currency, dt.date] = field(default_factory=dict)
     split_dates: dict[InstrumentId, dt.date] = field(default_factory=dict)
@@ -163,6 +173,13 @@ def _needs(session: Session, profile: Profile, as_of: dt.date) -> _Needs:
     held = {convert.pk(h.instrument_id) for h in snapshot.holdings}
     needs.instruments = {
         convert.sid(k): v for k, v in instruments.load(session, held, profile_id=profile.id).items()
+    }
+    watched = alert_store.watched_instrument_ids(session, profile.id) | (
+        alert_store.alert_instrument_ids(session, profile.id, [s.value for s in LIVE_STATUSES])
+    )
+    needs.watched = {
+        convert.sid(k): v
+        for k, v in instruments.load(session, watched - held, profile_id=profile.id).items()
     }
     grouped: dict[InstrumentId, list] = {}
     for valuation in transactions.manual_valuations(session, profile.id, held):
@@ -230,7 +247,7 @@ def _run(trigger, profile_ids, as_of, offline, sources, clock, session_factory) 
         for needs in checked:
             # Profiles may see a shared instrument differently (one froze it): fetch it when any
             # profile still needs market prices for it.
-            for iid, inst in needs.instruments.items():
+            for iid, inst in (needs.watched | needs.instruments).items():
                 if iid not in held or (
                     inst.fetches_market_data and not held[iid].fetches_market_data
                 ):
@@ -297,6 +314,16 @@ def _market_errors_for(needs: _Needs, report: DailyCheckReport) -> list[str]:
     return errors
 
 
+def _watch_errors_for(needs: _Needs, report: DailyCheckReport) -> list[str]:
+    if report.market is None:
+        return []
+    return [
+        f"prices {item.label}: {item.message}"
+        for item in report.market.instruments
+        if item.status == FetchStatus.ERROR and item.instrument_id in needs.watched
+    ]
+
+
 def _evaluate_profile(
     needs: _Needs,
     report: DailyCheckReport,
@@ -322,6 +349,7 @@ def _evaluate_profile(
             s.add(run)
             s.flush()
             outcome = _evaluate(s, needs, run, as_of, clock, errors)
+            outcome.stats["watched_price_errors"] = _watch_errors_for(needs, report)
             run.status = outcome.status
             run.stats, run.errors = outcome.stats, outcome.errors
             run.report = {
@@ -378,6 +406,21 @@ def _evaluate(
         "missing_fx": sorted(str(c) for c in valued.missing_fx_currencies),
     }
     result = ProfileRun(profile.id, profile.slug, run.id, "ok", state.state, stats, list(errors))
+    ctx = RuleContext.build(
+        profile_id=convert.sid(profile.id),
+        as_of=as_of,
+        portfolio=valued,
+        market=pstate.market,
+        allocation=pstate.allocation,
+        data=config.data if config is not None else None,
+        contributions=config.contributions if config is not None else None,
+    )
+    created: list[int] = []
+    escalated: list[int] = []
+    # Snoozed signals whose date passed come back first (active, notified per the policy).
+    policy = config.notifications if config is not None else NotificationPolicy()
+    woken = signals.wake_snoozed(s, profile.id, now=convert.aware(clock()), notify=policy.immediate)
+    stats["signals_woken"] = len(woken)
     if config is None:
         stats["rules"] = 0
         if state.state == "invalid":
@@ -386,15 +429,6 @@ def _evaluate(
             )
             result.errors.append(f"strategy invalid, rules not run: {first}")
     else:
-        ctx = RuleContext.build(
-            profile_id=convert.sid(profile.id),
-            as_of=as_of,
-            portfolio=valued,
-            market=pstate.market,
-            allocation=pstate.allocation,
-            data=config.data,
-            contributions=config.contributions,
-        )
         outcomes = RulesEngine(config.rules).evaluate(ctx)
         # Inactive rules are known to the lifecycle (so their open signals are not expired) but are
         # never evaluated (so those signals stay untouched).
@@ -405,8 +439,11 @@ def _evaluate(
             if r.rule_id and r.rule_id not in known
         ]
         now = convert.aware(clock())
+        # Alert signals have their own pass below (their "rules" are the alerts, not the strategy).
         reconciliation = reconcile_signals(
-            open_signals=signals.open_signals(s, profile.id),
+            open_signals=[
+                o for o in signals.open_signals(s, profile.id) if not is_alert_key(o.dedup_key)
+            ],
             outcomes=outcomes,
             rules=lifecycle_rules,
             clock=lambda: now,
@@ -426,11 +463,23 @@ def _evaluate(
                 "notifications": len(applied.notified),
             }
         )
-        result.new_signals = _signal_summaries(s, applied.created)
-        result.escalated_signals = _signal_summaries(s, applied.escalated)
+        created, escalated = list(applied.created), list(applied.escalated)
         for inactive in state.inactive_rules:
             reason = inactive.issues[0].message if inactive.issues else "invalid"
             result.errors.append(f"rule {inactive.rule_id or inactive.index} inactive: {reason}")
+    alert_run = alert_service.evaluate_profile(
+        s,
+        profile,
+        as_of=as_of,
+        now=convert.aware(clock()),
+        ctx=ctx,
+        config=config,
+        run_id=run.id,
+    )
+    stats.update(alert_run.stats)
+    stats["notifications"] = stats.get("notifications", 0) + len(alert_run.notified)
+    result.new_signals = _signal_summaries(s, created + alert_run.created)
+    result.escalated_signals = _signal_summaries(s, escalated + alert_run.escalated)
     if result.errors:
         result.status = "partial"
     return result
@@ -441,6 +490,12 @@ def _signal_summaries(s: Session, ids: list[int]) -> list[dict]:
         return []
     rows = s.exec(select(InvSignal).where(InvSignal.id.in_(ids)).order_by(InvSignal.id)).all()
     return [
-        {"id": r.id, "rule_id": r.rule_id, "severity": r.severity, "message": r.message}
+        {
+            "id": r.id,
+            "rule_id": r.rule_id,
+            "severity": r.severity,
+            "polarity": r.polarity,
+            "message": r.message,
+        }
         for r in rows
     ]

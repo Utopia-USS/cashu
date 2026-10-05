@@ -88,6 +88,7 @@ class AppliedSignals:
 def _fill(row: InvSignal, candidate: SignalCandidate) -> None:
     row.kind = candidate.kind
     row.severity = candidate.severity.value
+    row.polarity = candidate.polarity.value
     row.message = candidate.message
     row.instrument_id = convert.maybe_pk(candidate.instrument_id)
     row.account_id = convert.maybe_pk(candidate.account_id)
@@ -157,7 +158,7 @@ def apply_reconciliation(
                     row.acknowledged_at = None
                 session.add(row)
                 applied.escalated.append(row.id)
-                if candidate.severity in notify:
+                if candidate.severity in notify and not is_snoozed(row, at):
                     session.flush()
                     if _notify(session, profile_id, row, at):
                         applied.notified.append(row.id)
@@ -202,6 +203,53 @@ def _notify(session: Session, profile_id: int, row: InvSignal, at: dt.datetime) 
         )
     )
     return True
+
+
+# --------------------------------------------------------------------------- #
+# Snooze ("Odłóż do")
+# --------------------------------------------------------------------------- #
+
+
+def is_snoozed(row: InvSignal, at: dt.datetime) -> bool:
+    """True while ``row`` is snoozed (its ``snoozed_until`` is after ``at``)."""
+    return row.snoozed_until is not None and convert.aware(row.snoozed_until) > convert.aware(at)
+
+
+def snooze(session: Session, row: InvSignal, until: dt.datetime | None) -> InvSignal:
+    """Hide an open signal until ``until`` (None: back now): it leaves the attention list and gets no
+    notification meanwhile (its pending, unsent notification entries are dropped); the daily check
+    brings it back afterwards (:func:`wake_snoozed`)."""
+    row.snoozed_until = None if until is None else convert.aware(until)
+    session.add(row)
+    if until is not None:
+        for entry in session.exec(
+            select(InvNotification).where(
+                InvNotification.signal_id == row.id, InvNotification.sent_at.is_(None)
+            )
+        ).all():
+            session.delete(entry)
+    session.flush()
+    return row
+
+
+def wake_snoozed(
+    session: Session, profile_id: int, *, now: dt.datetime, notify: frozenset[SignalSeverity]
+) -> list[int]:
+    """Open signals whose snooze passed come back: active again (not acknowledged) and, when the
+    policy notifies their severity and they were not notified yet, one notification entry."""
+    woken: list[int] = []
+    for row in open_signal_rows(session, profile_id):
+        if row.snoozed_until is None or is_snoozed(row, now):
+            continue
+        row.snoozed_until = None
+        row.status, row.acknowledged_at = SignalStatus.ACTIVE.value, None
+        session.add(row)
+        session.flush()
+        if SignalSeverity(row.severity) in notify:
+            _notify(session, profile_id, row, now)
+        woken.append(row.id)
+    session.flush()
+    return woken
 
 
 def last_run(session: Session, profile_id: int) -> InvRuleRun | None:
