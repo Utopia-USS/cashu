@@ -78,8 +78,26 @@ export interface SystemInfo {
   data_dir: string;
   legacy_db_detected: boolean;
   legacy_db_path: string | null;
-  worker: { installed: boolean; last_run: string | null };
+  /** Background worker (track W contract; older servers send only installed + last_run). */
+  worker: WorkerInfo;
   secrets?: Partial<Record<SecretKey, boolean>>;
+}
+
+export interface WorkerJob { job: string; module: string | null; status: string; detail: string | null; last_run?: string | null }
+export interface WorkerInfo {
+  installed: boolean;
+  last_run: string | null;
+  label?: string | null;
+  /** Daily run time "HH:MM" (local); the default the install would use when not installed. */
+  schedule?: string | null;
+  last_status?: string | null;
+  next_run?: string | null;
+  log_path?: string | null;
+  platform?: string | null;
+  supported?: boolean;
+  job_path?: string | null;
+  program?: string[] | null;
+  jobs?: WorkerJob[];
 }
 
 export interface ModuleInfo { id: string; name: string; description: string; depends_on: string[]; available: boolean }
@@ -111,6 +129,41 @@ export interface SetupInfo {
 }
 
 export const getSystem = () => j<SystemInfo>("/api/system");
+/** Background worker actions (track W): install / uninstall the launchd agent, run once now. */
+export const postWorker = (action: "install" | "uninstall" | "run", body: { time?: string; offline?: boolean } = {}) =>
+  jpost<{ worker: WorkerInfo; run?: { status: string; summary?: WorkerJob[] } }>(`/api/system/worker/${action}`, body);
+
+/** One MCP tool call of a profile (track M audit log, Settings > Agent AI): `{id, tool, privacy,
+ * called_at, args (names + JSON types only), outcome ok|error|refused, error_kind, duration_ms}`.
+ * Older field names are read too (`at`, `privacy_level`, `status`). */
+export interface McpCall {
+  id?: number;
+  called_at?: string | null;
+  outcome?: string | null;
+  error_kind?: string | null;
+  args?: Record<string, unknown> | null;
+  at?: string | null;
+  created_at?: string | null;
+  tool: string;
+  privacy?: string | null;
+  privacy_level?: string | null;
+  args_summary?: string | null;
+  arguments?: string | null;
+  status?: string | null;
+  result?: string | null;
+  result_summary?: string | null;
+  duration_ms?: number | null;
+  error?: string | null;
+}
+export const getMcpCalls = async (slug: string, limit = 50): Promise<McpCall[] | null> => {
+  try {
+    const r = await j<McpCall[] | { items: McpCall[] }>(pp(slug, `/mcp/calls?limit=${limit}`));
+    return Array.isArray(r) ? r : r.items ?? [];
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null; // track M not landed: no log yet
+    throw e;
+  }
+};
 export const getModules = () => j<ModuleInfo[]>("/api/modules");
 export const getProfiles = () => j<Profile[]>("/api/profiles");
 export const createProfile = (b: { name: string; base_currency: string; modules: string[]; mcp_privacy: Privacy }) =>

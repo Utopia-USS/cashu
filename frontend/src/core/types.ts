@@ -26,6 +26,8 @@ export interface ModuleTab {
   id: string;
   label: string;
   render: (ctx: ModuleCtx) => ReactNode;
+  /** Wide page (`.wrap.wide`, 1440 px): a workspace with a side rail (investments). */
+  wide?: boolean;
 }
 
 /** One overview fact row: label, value, optional value class (pos/neg). */
@@ -48,6 +50,9 @@ export interface ModuleDef {
   tabs: ModuleTab[];
   /** First tab shows the SetupPage while the module is `partial` too (not only `empty`). */
   setupUntilReady?: boolean;
+  /** The first tab renders its own empty / setup state (e.g. an empty workspace with setup steps in
+   * place of the data): the shell shows neither the SetupPage nor the partial-setup strip. */
+  ownSetup?: boolean;
   /** Overview widgets: KPIs added to the core row, and facts for the module card (ready state). */
   Kpis?: ComponentType<{ ctx: ModuleCtx }>;
   Facts?: ComponentType<{ ctx: ModuleCtx }>;

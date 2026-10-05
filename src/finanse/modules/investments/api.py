@@ -26,6 +26,7 @@ from .models import InvImportBatch, InvInstrument
 from .service import accounts as account_service
 from .service import daily, files, imports, views
 from .service import strategy as strategy_files
+from .service import transactions as manual_transactions
 from .store import instruments, journal, transactions
 
 router = APIRouter(prefix="/investments")
@@ -59,9 +60,12 @@ def _decimal(value: Any, name: str) -> Decimal | None:
     if value is None or value == "":
         return None
     try:
-        return Decimal(str(value))
+        number = Decimal(str(value))
     except (InvalidOperation, ValueError):
         raise _422(f"{name} must be a number") from None
+    if not number.is_finite():
+        raise _422(f"{name} must be a number")
+    return number
 
 
 # --------------------------------------------------------------------------- #
@@ -92,6 +96,17 @@ def position_detail(profile: CurrentProfile, instrument_id: int) -> dict:
         return views.position_detail(s, profile, instrument_id)
 
 
+@router.get("/positions/{instrument_id}/chart")
+def position_chart(profile: CurrentProfile, instrument_id: int, months: int = 24) -> dict:
+    """Closes of the last ``months`` months (1..120), the 52-week high, the average cost and the
+    price levels of the strategy's drawdown / cost rules for this instrument, buy / sell markers."""
+    if not 1 <= months <= 120:
+        raise _422("months must be between 1 and 120")
+    with get_session() as s:
+        _instrument(s, profile, instrument_id)
+        return views.position_chart(s, profile, instrument_id, months=months)
+
+
 @router.get("/transactions")
 def transaction_list(
     profile: CurrentProfile, account_id: int | None = None, instrument_id: int | None = None
@@ -115,6 +130,75 @@ def transaction_list(
             row["account_name"] = acc.name if acc else None
             out.append(row)
         return out
+
+
+class InstrumentBody(BaseModel):
+    symbol: str | None = None
+    isin: str | None = None
+    name: str | None = None
+    currency: str | None = None
+    exchange: str | None = None
+    asset_class: str | None = None
+
+
+class ManualTransactionBody(BaseModel):
+    account_id: int
+    type: str  # domain.TxnType value
+    trade_date: dt.date
+    instrument_id: int | None = None
+    instrument: InstrumentBody | None = None
+    quantity: float | str | None = None
+    price: float | str | None = None
+    gross_amount: float | str | None = None
+    fee: float | str | None = None
+    tax: float | str | None = None
+    cash_amount: float | str | None = None
+    fx_rate: float | str | None = None
+    split_ratio: float | str | None = None
+    currency: str | None = None
+    cash_currency: str | None = None
+    note: str | None = None
+
+
+_MANUAL_NUMBERS = (
+    "quantity",
+    "price",
+    "gross_amount",
+    "fee",
+    "tax",
+    "cash_amount",
+    "fx_rate",
+    "split_ratio",
+)
+
+
+@router.post("/transactions", status_code=201)
+def transaction_add(profile: CurrentProfile, body: ManualTransactionBody) -> dict:
+    """Book one transaction by hand (``source = manual``), checked with the per-type rules of the
+    import format: instrument by ``instrument_id`` or described by ``instrument`` (found by ISIN or
+    symbol, else created with ``needs_classification``), amounts derived like an import, cash sign
+    errors as 422 and unusual signs as ``warnings``."""
+    data = manual_transactions.ManualTxnInput(
+        account_id=body.account_id,
+        type=body.type,
+        trade_date=body.trade_date,
+        instrument_id=body.instrument_id,
+        instrument=None
+        if body.instrument is None
+        else manual_transactions.InstrumentInput(**body.instrument.model_dump()),
+        currency=body.currency,
+        cash_currency=body.cash_currency,
+        note=body.note,
+        **{name: _decimal(getattr(body, name), name) for name in _MANUAL_NUMBERS},
+    )
+    with get_session() as s:
+        try:
+            result = manual_transactions.add_manual(s, profile, data)
+        except manual_transactions.ManualTxnNotFound as e:
+            raise _404(str(e)) from None
+        except manual_transactions.ManualTxnError as e:
+            raise _422(str(e)) from None
+        return views.manual_txn_dict(result)
 
 
 # --------------------------------------------------------------------------- #
@@ -207,6 +291,15 @@ def decision_list(profile: CurrentProfile, instrument_id: int | None = None) -> 
             views.decision_dict(d)
             for d in journal.decisions(s, profile.id, instrument_id=instrument_id)
         ]
+
+
+@router.get("/review-digest")
+def review_digest(profile: CurrentProfile) -> dict:
+    """Changes since the last weekly review (``baseline: review``) or the last 7 days
+    (``default_7d``): value then / now, new / escalated / resolved signals, imports, transactions,
+    decisions, dividends, larger price moves, warnings, strategy changes; ``review_due``."""
+    with get_session() as s:
+        return views.review_digest(s, profile)
 
 
 # --------------------------------------------------------------------------- #

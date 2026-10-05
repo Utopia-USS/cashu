@@ -4,7 +4,8 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useAsync } from "../hooks";
 import { Code, copyText, Notice, RadioList, Seg, Switch, Tag, useToast } from "../ui";
 import {
-  getSetup, mcpAddCommand, type ModuleInfo, patchProfile, type Privacy, putProfileModules, type ProfileModule,
+  ApiError, getMcpCalls, getSetup, getSystem, mcpAddCommand, type McpCall, type ModuleInfo, patchProfile, postWorker, type Privacy,
+  putProfileModules, type ProfileModule, type WorkerInfo,
 } from "./api";
 import { moduleDef, orderModules } from "./registry";
 import { PRIVACY_PLAIN, stepsTag } from "./SetupPage";
@@ -234,19 +235,64 @@ function AgentSection() {
         <span className="k">Claude Desktop</span>
         <span className="v block"><Code cmd={desktopJson(slug)} multiline /></span>
       </div>
+      <AuditLog />
+    </Card>
+  );
+}
+
+// ---- Agent AI: audit log of MCP calls (track M: GET /api/p/{slug}/mcp/calls) -----------------
+
+const OUTCOME: Record<string, [string, "pos" | "neg" | "warn" | undefined]> = {
+  ok: ["ok", "pos"], error: ["błąd", "neg"], refused: ["odmowa", "warn"],
+};
+const PRIVACY_SHORT: Record<string, string> = { strict: "ścisły", amounts: "z kwotami" };
+const callTime = (c: McpCall) => c.called_at ?? c.at ?? c.created_at ?? null;
+const timeFmt = new Intl.DateTimeFormat("pl-PL", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+
+function AuditLog() {
+  const { slug } = useShell();
+  const { data, error, loading, reload } = useAsync(() => getMcpCalls(slug, 50), [slug]);
+  const calls = data ?? [];
+  const week = Date.now() - 7 * 86400000;
+  const recent = calls.filter((c) => { const t = callTime(c); return t ? new Date(t).getTime() >= week : false; }).length;
+  return (
+    <>
       <div className="controls" style={{ margin: "14px 0 6px" }}>
         <strong style={{ fontSize: 14 }}>Dziennik wywołań</strong>
-        <Tag>ostatnie 7 dni · 0</Tag>
+        <Tag>ostatnie 7 dni · {data === null ? 0 : recent}</Tag>
+        <span className="spacer" />
+        {data !== null && <button className="btn" onClick={reload} disabled={loading}>Odśwież</button>}
       </div>
-      <div className="scroll">
+      {error && <Notice tone="neg">Nie udało się pobrać dziennika: {error}</Notice>}
+      <div className="scroll tall">
         <table>
-          <thead><tr><th>Czas</th><th>Narzędzie</th><th>Poziom</th><th>Wynik</th></tr></thead>
+          <thead><tr><th>Czas</th><th>Narzędzie</th><th>Argumenty</th><th>Poziom</th><th>Wynik</th></tr></thead>
           <tbody>
-            <tr><td colSpan={4} className="muted">Brak wywołań. Dziennik zacznie się zapełniać po podłączeniu serwera MCP.</td></tr>
+            {calls.map((c, k) => {
+              const t = callTime(c);
+              const outcome = c.outcome ?? c.status ?? c.result ?? "";
+              const [label, tone] = OUTCOME[outcome] ?? [outcome || "-", undefined];
+              const args = c.args ? Object.keys(c.args).join(", ") : c.args_summary ?? c.arguments ?? "";
+              const privacy = c.privacy ?? c.privacy_level ?? "";
+              return (
+                <tr key={c.id ?? k}>
+                  <td style={{ whiteSpace: "nowrap" }}>{t ? timeFmt.format(new Date(t)) : "-"}</td>
+                  <td><code>{c.tool}</code></td>
+                  <td className="muted" style={{ fontSize: 12.5 }}>{args || "-"}</td>
+                  <td>{PRIVACY_SHORT[privacy] ?? privacy ?? "-"}</td>
+                  <td><Tag tone={tone}>{label}</Tag>{c.error_kind ? <span className="hint"> {c.error_kind}</span> : null}{c.duration_ms != null ? <span className="hint"> · {c.duration_ms} ms</span> : null}</td>
+                </tr>
+              );
+            })}
+            {!loading && !calls.length && (
+              <tr><td colSpan={5} className="muted">{data === null ? "Serwer nie prowadzi jeszcze dziennika. " : "Brak wywołań. "}Dziennik zacznie się zapełniać po podłączeniu serwera MCP.</td></tr>
+            )}
+            {loading && !calls.length && <tr><td colSpan={5} className="muted">Wczytuję…</td></tr>}
           </tbody>
         </table>
       </div>
-    </Card>
+      <div className="foot">Dziennik zapisuje narzędzie, czas, poziom prywatności i nazwy argumentów - nigdy ich wartości.</div>
+    </>
   );
 }
 
@@ -277,37 +323,109 @@ function DataSection() {
   );
 }
 
+// ---- Praca w tle (track W: worker status in /api/system, install / uninstall / run) ---------
+
+const JOB_LABEL: Record<string, [string, string]> = {
+  "investments.daily": ["Sprawdzenie reguł", "Inwestycje"], "budget.sync": ["Synchronizacja banków", "Budżet"],
+  notifications: ["Powiadomienia", "wszystkie"], digest: ["Podsumowanie tygodnia", "wszystkie"],
+};
+const JOB_STATUS: Record<string, [string, "pos" | "neg" | "warn" | undefined]> = {
+  ok: ["ok", "pos"], partial: ["częściowy", "warn"], failed: ["błąd", "neg"], skipped: ["pominięte", undefined],
+};
+const when = (iso: string | null | undefined) => (iso ? timeFmt.format(new Date(iso)) : "-");
+/** Worker job details come from the backend in English; the common ones read in Polish. */
+function jobDetail(detail: string): string {
+  return detail
+    .replace(/Enable Banking not configured/i, "Enable Banking nie jest skonfigurowany")
+    .replace(/rule (\S+) inactive:.*$/i, "reguła $1 nieaktywna (błąd w strategy.yaml)")
+    .replace(/throttled until/i, "limit banku do");
+}
+
 function WorkerSection() {
   const { system, profile } = useShell();
-  const w = system?.worker;
+  const toast = useToast();
+  const [w, setW] = useState<WorkerInfo | null>(system?.worker ?? null);
+  const [time, setTime] = useState(system?.worker?.schedule ?? "07:30");
+  const [busy, setBusy] = useState<null | "install" | "uninstall" | "run">(null);
+  const [err, setErr] = useState<string | null>(null);
+  // Fresh status on open (the shell loads /api/system once per page load).
+  useEffect(() => {
+    let alive = true;
+    getSystem().then((s) => { if (alive) { setW(s.worker); setTime(s.worker?.schedule ?? "07:30"); } }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const known = !!w && "schedule" in w; // older servers: only installed + last_run
+  const supported = w?.supported !== false;
+  const act = async (action: "install" | "uninstall" | "run", body: { time?: string } = {}) => {
+    setBusy(action); setErr(null);
+    try {
+      const r = await postWorker(action, body);
+      if (r.worker) setW(r.worker);
+      if (action === "run") toast(`Przebieg zakończony · ${JOB_STATUS[r.run?.status ?? ""]?.[0] ?? r.run?.status ?? "ok"}`, 3000);
+      else toast(action === "install" ? "Praca w tle zainstalowana" : "Praca w tle odinstalowana");
+    } catch (e) {
+      const status = e instanceof ApiError ? e.status : 0;
+      setErr(status === 409 ? "Praca w tle właśnie działa - spróbuj za chwilę." : status === 501 ? "Ten system nie ma obsługiwanego harmonogramu zadań." : (e as Error).message);
+    } finally { setBusy(null); }
+  };
   const on = (id: string) => profile.modules.some((m) => m.id === id && m.enabled);
-  const jobs: [string, string, string][] = [
-    ...(on("investments") ? [["Sprawdzenie reguł", "Inwestycje", "codziennie 07:00"] as [string, string, string]] : []),
-    ...(on("budget") ? [["Synchronizacja banków", "Budżet", "co 6 h (limit banku)"] as [string, string, string]] : []),
-    ["Podsumowanie tygodnia", "wszystkie", "niedziela 08:00"],
+  const schedule = w?.schedule ? `codziennie ${w.schedule}` : "codziennie";
+  const jobs = w?.jobs?.length ? w.jobs : [
+    ...(on("investments") ? [{ job: "investments.daily", module: "investments", status: "", detail: null }] : []),
+    ...(on("budget") ? [{ job: "budget.sync", module: "budget", status: "", detail: null }] : []),
+    { job: "notifications", module: null, status: "", detail: null },
+    { job: "digest", module: null, status: "", detail: null },
   ];
   return (
     <Card id="worker" title="Praca w tle">
       <div className="row" style={{ paddingTop: 0 }}>
-        <Switch on={!!w?.installed} disabled onChange={() => {}} label="Uruchamiaj w tle po zalogowaniu" title="Instalacja z aplikacji pojawi się w kolejnej wersji" />
+        <Switch on={!!w?.installed} disabled={!known || !supported || busy != null} label="Uruchamiaj w tle po zalogowaniu"
+          title={!known ? "Serwer nie obsługuje jeszcze instalacji z aplikacji" : !supported ? "Ten system nie ma obsługiwanego harmonogramu zadań" : undefined}
+          onChange={(v) => act(v ? "install" : "uninstall", v ? { time } : {})} />
         <div className="grow">
           <div className="t">Uruchamiaj w tle po zalogowaniu {w?.installed ? <Tag tone="pos">działa</Tag> : <Tag>nie zainstalowano</Tag>}</div>
           <div className="d">
-            launchd · ten sam program co aplikacja
-            {w?.installed ? ` · ostatni przebieg ${w.last_run ?? "-"}` : " · instalacja z aplikacji pojawi się w kolejnej wersji"}
+            {w?.platform === "launchd" || !w?.platform ? "launchd" : w.platform} · {schedule}
+            {w?.installed && w.next_run ? ` · następny przebieg ${when(w.next_run)}` : ""}
+            {w?.last_run ? ` · ostatni ${when(w.last_run)}${w.last_status ? ` (${JOB_STATUS[w.last_status]?.[0] ?? w.last_status})` : ""}` : " · jeszcze nie uruchomiono"}
           </div>
         </div>
-        <button className="btn" disabled title="Dostępne wkrótce">Zainstaluj (launchd)</button>
+        <button className="btn" disabled={!known || busy != null} onClick={() => act("run")}
+          title="Jeden przebieg teraz: reguły inwestycji, synchronizacja banków (jeśli skonfigurowana), powiadomienia">
+          {busy === "run" ? "Uruchamiam…" : "Uruchom teraz"}
+        </button>
       </div>
+      {known && (
+        <div className="kv" style={{ margin: "10px 0" }}>
+          <label className="k" htmlFor="set-worker-time">Godzina przebiegu</label>
+          <span className="v">
+            <input id="set-worker-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 110 }} />
+            {w?.installed && time !== w.schedule && <button className="btn primary" disabled={busy != null} onClick={() => act("install", { time })}>Zapisz godzinę</button>}
+            <span className="hint">czas lokalny; laptop uśpiony o tej porze nadrobi przebieg po wybudzeniu</span>
+          </span>
+          {w?.log_path && <>
+            <span className="k">Dziennik</span>
+            <span className="v"><code style={{ fontSize: 12.5, overflowWrap: "anywhere" }}>{w.log_path}</code>
+              <button className="btn" onClick={() => copyText(w.log_path!).then(() => toast("Skopiowano", 1500))}>Kopiuj</button></span>
+          </>}
+        </div>
+      )}
+      {err && <Notice tone="neg">{err}</Notice>}
       <div className="scroll">
         <table style={{ marginTop: 6 }}>
           <thead><tr><th>Zadanie</th><th>Moduł</th><th>Harmonogram</th><th>Ostatnio</th><th>Status</th></tr></thead>
           <tbody>
-            {jobs.map(([job, mod, when]) => (
-              <tr key={job} className="muted">
-                <td>{job}</td><td>{mod}</td><td>{when}</td><td>-</td><td>-</td>
-              </tr>
-            ))}
+            {jobs.map((j) => {
+              const [label, mod] = JOB_LABEL[j.job] ?? [j.job, j.module ?? "-"];
+              const [st, tone] = JOB_STATUS[j.status] ?? [null, undefined];
+              const sched = j.job === "digest" ? "dzień podsumowania ze strategii" : j.job === "budget.sync" ? `${schedule} (limit banku)` : schedule;
+              return (
+                <tr key={j.job} className={st ? "" : "muted"}>
+                  <td>{label}</td><td>{mod}</td><td>{sched}</td><td>{"last_run" in j && j.last_run ? when(j.last_run) : st ? when(w?.last_run) : "-"}</td>
+                  <td>{st ? <><Tag tone={tone}>{st}</Tag>{j.detail ? <span className="hint"> {jobDetail(j.detail)}</span> : null}</> : "-"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

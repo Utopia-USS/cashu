@@ -7,8 +7,10 @@ ids are the integer row keys.
 
 from __future__ import annotations
 
+import calendar
 import datetime as dt
-from collections import defaultdict
+import importlib
+from collections import Counter, defaultdict
 from collections.abc import Iterable
 from decimal import Decimal
 
@@ -16,15 +18,20 @@ from sqlmodel import Session, select
 
 from finanse.core import institutions
 from finanse.core.api import f
-from finanse.core.models import Account, Profile
+from finanse.core.models import Account, Profile, utcnow
 
 from ..domain import (
+    BucketDef,
     Instrument,
     InstrumentId,
     PortfolioWarning,
     SignalSeverity,
+    TxnSource,
     TxnType,
+    ValuationMode,
     ValuedHolding,
+    divided_by,
+    ratio,
 )
 from ..importing import ImportWarning
 from ..models import (
@@ -36,10 +43,14 @@ from ..models import (
     InvStrategyVersion,
     InvThesis,
 )
+from ..portfolio import effective_valuation_mode
 from ..rules import (
     AllocationDriftParams,
     AllocationDriftRule,
+    DrawdownFromHighRule,
     Fired,
+    GainFromCostRule,
+    LossFromCostRule,
     NotFired,
     RuleContext,
     RuleSpec,
@@ -616,6 +627,18 @@ def txn_dict(t, state: portfolio.PortfolioState | None = None) -> dict:
     }
 
 
+def manual_txn_dict(result) -> dict:
+    """Response of a manual transaction (``service.transactions.ManualTxnResult``)."""
+    row = txn_dict(result.transaction)
+    row["account_name"] = result.account.name
+    return {
+        "transaction": row,
+        "instrument": None if result.instrument is None else instrument_dict(result.instrument),
+        "new_instrument": result.new_instrument,
+        "warnings": list(result.warnings),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Signals, journal
 # --------------------------------------------------------------------------- #
@@ -725,6 +748,22 @@ def version_dict(v: InvStrategyVersion) -> dict:
     }
 
 
+def bucket_match_dict(bucket: BucketDef) -> dict:
+    """One bucket's ``match`` criteria (sorted lists; empty = any), so a client can classify an
+    instrument (asset class + tags) to fit a chosen bucket."""
+    match = bucket.match
+    keys = [convert.maybe_pk(i) for i in match.instrument_ids]
+    return {
+        "id": bucket.id,
+        "asset_class": sorted(a.value for a in match.asset_classes),
+        "tags": sorted(match.tags),
+        "mic": sorted(match.mics),
+        "currency": sorted(str(c) for c in match.currencies),
+        "instrument_ids": sorted(k for k in keys if k is not None)
+        + sorted(i for i in match.instrument_ids if convert.maybe_pk(i) is None),
+    }
+
+
 def strategy_status(session: Session, profile: Profile) -> dict:
     st = strategy_files.load(session, profile)
     config = st.config
@@ -754,6 +793,7 @@ def strategy_status(session: Session, profile: Profile) -> dict:
                 "immediate": sorted(s.value for s in config.notifications.immediate),
                 "digest_weekday": config.notifications.digest_weekday.value,
             },
+            "bucket_matches": [bucket_match_dict(b) for b in config.allocation.buckets],
         }
     mismatch = None
     if config is not None and str(config.base_currency) != profile.base_currency:
@@ -937,4 +977,370 @@ def batch_dict(b: InvImportBatch) -> dict:
         "corrections": b.correction_count,
         "warnings": len(b.warnings or []),
         "created_at": iso(b.created_at),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Position chart
+# --------------------------------------------------------------------------- #
+
+CHART_RULE_KINDS = (DrawdownFromHighRule.KIND, LossFromCostRule.KIND, GainFromCostRule.KIND)
+
+
+def _months_before(day: dt.date, months: int) -> dt.date:
+    """The same day ``months`` calendar months earlier (clamped to the month's last day)."""
+    year, month = divmod(day.year * 12 + day.month - 1 - months, 12)
+    month += 1
+    return dt.date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def _average_cost(held: list[ValuedHolding], currency: str) -> Decimal | None:
+    """Cost per unit across the holdings (total cost / total quantity) when every holding's lots are
+    in ``currency`` with known costs; None otherwise."""
+    cost = Decimal(0)
+    quantity = Decimal(0)
+    for v in held:
+        basis = v.holding.cost_basis
+        if basis is None or str(v.holding.currency) != currency:
+            return None
+        cost += basis
+        quantity += v.holding.quantity
+    if not quantity:
+        return None
+    return divided_by(cost, quantity)
+
+
+def position_chart(
+    session: Session, profile: Profile, instrument_id: int, *, months: int = 24
+) -> dict:
+    """Closes of the last ``months`` months with the price levels at which the strategy's active
+    per-instrument rules fire, plus buy / sell markers.
+
+    Threshold levels: ``drawdown_from_high`` -> max close of the rule's last ``window_days`` bars times
+    (1 - threshold); ``loss_from_cost`` / ``gain_from_cost`` -> average cost per unit times
+    (1 -/+ threshold). The cost rules themselves compare value and cost in the base currency across
+    accounts, so with moving FX rates the cost lines are an approximation in the price currency.
+    """
+    from ..store import instruments as instrument_store
+
+    st = strategy_files.load(session, profile)
+    config = st.config
+    state = portfolio.build(session, profile, strategy=config)
+    key = convert.sid(instrument_id)
+    inst = state.instruments.get(key) or instrument_store.load_one(session, instrument_id)
+    as_of = state.as_of
+    since = _months_before(as_of, months)
+    bars = market.bars(session, [instrument_id], until=as_of).get(key, ())
+    reported = [b.currency for b in bars if b.currency is not None]
+    currency = str(reported[-1]) if reported else (str(inst.currency) if inst else None)
+    window = [b.close for b in bars[-252:]]
+    held = [v for v in state.valued.valued if v.instrument_id == key]
+    average = _average_cost(held, currency) if held and currency else None
+
+    thresholds = []
+    for rule in config.rules if config is not None else ():
+        if rule.kind not in CHART_RULE_KINDS:
+            continue
+        params = rule.params
+        rule_filter = getattr(params, "filter", None)
+        if inst is None or (rule_filter is not None and not rule_filter.accepts(inst)):
+            continue
+        fraction = Decimal(str(params.threshold))
+        if rule.kind == DrawdownFromHighRule.KIND:
+            closes = [b.close for b in bars[-params.window_days :]]
+            if not closes:
+                continue
+            basis, window_days, level = "high", params.window_days, max(closes) * (1 - fraction)
+        elif average is None:
+            continue
+        elif rule.kind == LossFromCostRule.KIND:
+            basis, window_days, level = "cost", None, average * (1 - fraction)
+        else:
+            basis, window_days, level = "cost", None, average * (1 + fraction)
+        thresholds.append(
+            {
+                "rule_id": rule.id,
+                "kind": rule.kind,
+                "threshold": float(params.threshold),
+                "basis": basis,
+                "window_days": window_days,
+                "y": f(level),
+            }
+        )
+
+    markers = [
+        {
+            "date": iso(t.trade_date),
+            "type": t.type.value,
+            "quantity": f(t.quantity),
+            "price": f(t.price),
+            "currency": str(t.currency),
+            "account_id": convert.maybe_pk(t.account_id),
+        }
+        for t in state.txns
+        if t.instrument_id == key
+        and t.type in (TxnType.BUY, TxnType.SELL)
+        and since <= t.trade_date <= as_of
+    ]
+    last = bars[-1] if bars else None
+    return {
+        "instrument_id": instrument_id,
+        "label": inst.label if inst else str(instrument_id),
+        "currency": currency,
+        "valuation_mode": effective_valuation_mode(inst).value if inst else None,
+        "as_of": iso(as_of),
+        "series": [{"date": iso(b.date), "close": f(b.close)} for b in bars if b.date >= since],
+        "high_52w": f(max(window)) if window else None,
+        "last": None if last is None else {"date": iso(last.date), "close": f(last.close)},
+        "cost": None if not held else {"average": f(average), "currency": currency},
+        "thresholds": thresholds,
+        "markers": markers,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Weekly review digest
+# --------------------------------------------------------------------------- #
+
+REVIEW_MODULE = "investments"
+DEFAULT_DIGEST_DAYS = 7
+PRICE_MOVE_MIN = 0.05
+"""Price moves smaller than this (5 %) since the baseline are left out of the digest."""
+
+
+def last_review(session: Session, profile: Profile) -> dict | None:
+    """The profile's last weekly review of the investments module as
+    ``{"done_at": aware datetime, "notes": str | None, "stats": dict}``, or None.
+
+    Reads ``finanse.core.reviews.last`` (owned by core; optional: missing module, another
+    signature or any error means "no review"). Tried as ``last(profile, "investments")``, then, on a
+    ``TypeError``, as ``last(session, profile.id, "investments")``. The record may be an object or a
+    dict with ``done_at`` (datetime or ISO text), ``notes`` and ``stats``. The module is looked up per
+    call, so it can appear (or be replaced in tests) at runtime. Adjust only this helper when the
+    reviews contract changes.
+    """
+    try:
+        reviews = importlib.import_module("finanse.core.reviews")
+    except ImportError:
+        return None
+    lookup = getattr(reviews, "last", None)
+    if not callable(lookup):
+        return None
+    try:
+        try:
+            record = lookup(profile, REVIEW_MODULE)
+        except TypeError:
+            record = lookup(session, profile.id, REVIEW_MODULE)
+    except Exception:  # noqa: BLE001 - an optional dependency must never break the digest
+        return None
+    if record is None:
+        return None
+
+    def get(name: str):
+        if isinstance(record, dict):
+            return record.get(name)
+        return getattr(record, name, None)
+
+    done_at = get("done_at")
+    if isinstance(done_at, str):
+        try:
+            done_at = dt.datetime.fromisoformat(done_at)
+        except ValueError:
+            return None
+    if not isinstance(done_at, dt.datetime):
+        return None
+    stats = get("stats")
+    notes = get("notes")
+    return {
+        "done_at": convert.aware(done_at),
+        "notes": None if notes is None else str(notes),
+        "stats": dict(stats) if isinstance(stats, dict) else {},
+    }
+
+
+def _last_weekday(day: dt.date, iso_weekday: int) -> dt.date:
+    """The latest date on/before ``day`` falling on ``iso_weekday`` (Monday = 1)."""
+    return day - dt.timedelta(days=(day.isoweekday() - iso_weekday) % 7)
+
+
+def _at_or_after(value: dt.datetime | None, since_at: dt.datetime) -> bool:
+    return value is not None and convert.aware(value) >= since_at
+
+
+def _price_moves(session: Session, state: portfolio.PortfolioState, since: dt.date) -> list[dict]:
+    """Held market-valued instruments whose newest close moved at least ``PRICE_MOVE_MIN`` from the
+    close on/before ``since``, largest move first."""
+    held: dict[InstrumentId, Instrument] = {}
+    for v in state.valued.valued:
+        if v.valuation_mode == ValuationMode.MARKET:
+            held.setdefault(v.instrument_id, v.instrument)
+    series = market.bars(
+        session,
+        [convert.pk(i) for i in held],
+        until=state.as_of,
+        since=since - dt.timedelta(days=31),
+    )
+    moves = []
+    for instrument_id, inst in held.items():
+        bars = series.get(instrument_id, ())
+        start = next((b for b in reversed(bars) if b.date <= since), None)
+        if start is None or not bars or start.close <= 0:
+            continue
+        end = bars[-1]
+        change = ratio(end.close - start.close, start.close)
+        if change is None or abs(change) < PRICE_MOVE_MIN:
+            continue
+        moves.append(
+            {
+                "instrument_id": convert.maybe_pk(instrument_id),
+                "label": inst.label,
+                "currency": str(end.currency or inst.currency),
+                "from_date": iso(start.date),
+                "from": f(start.close),
+                "to_date": iso(end.date),
+                "to": f(end.close),
+                "change_pct": ratio_pct(change),
+            }
+        )
+    moves.sort(key=lambda m: -abs(m["change_pct"]))
+    return moves
+
+
+def review_digest(session: Session, profile: Profile) -> dict:
+    """What changed since the last weekly review (or the last 7 days without one): value, signals,
+    imports, transactions, decisions, dividends, larger price moves, current warnings, strategy.
+
+    Timestamps (``*_at``) compare with the baseline instant ``since_at``; dates (dividends, the
+    value then, price moves) with its local calendar date ``since`` (never after ``as_of``).
+    """
+    st = strategy_files.load(session, profile)
+    config = st.config
+    state = portfolio.build(session, profile, strategy=config)
+    as_of = state.as_of
+    now = utcnow()
+    review = last_review(session, profile)
+    since_at = review["done_at"] if review else now - dt.timedelta(days=DEFAULT_DIGEST_DAYS)
+    since = min(since_at.astimezone().date(), as_of)
+    weekday = config.notifications.digest_weekday if config is not None else None
+    digest_weekday = weekday.value if weekday is not None else "sunday"
+    last_digest_day = _last_weekday(as_of, weekday.iso_number if weekday is not None else 7)
+    review_due = review is None or last_digest_day > review["done_at"].astimezone().date()
+
+    # Value then and now (base currency).
+    total = state.valued.total_base
+    then_total: Decimal | None = None
+    if any(t.trade_date <= since for t in state.txns):
+        then = portfolio.build(session, profile, as_of=since, strategy=config, base=state.base)
+        then_total = then.valued.total_base
+    change = None if then_total is None else total - then_total
+
+    # Signals.
+    from ..store import instruments as instrument_store
+
+    rows = list(
+        session.exec(
+            select(InvSignal)
+            .where(InvSignal.profile_id == profile.id)
+            .order_by(InvSignal.id.desc())
+        ).all()
+    )
+    decisions = journal.decisions(session, profile.id)
+    by_signal: dict[int, list[InvDecision]] = defaultdict(list)
+    for d in decisions:
+        if d.signal_id is not None:
+            by_signal[d.signal_id].append(d)
+    labels = {
+        k: v.label
+        for k, v in instrument_store.load(
+            session, {r.instrument_id for r in rows if r.instrument_id}
+        ).items()
+    }
+    new_rows = [r for r in rows if _at_or_after(r.first_seen_at, since_at)]
+    new_ids = {r.id for r in new_rows}
+    escalated_ids: set[int] = set()
+    for run in session.exec(select(InvRuleRun).where(InvRuleRun.profile_id == profile.id)).all():
+        if _at_or_after(run.started_at, since_at):
+            escalated_ids |= {int(i) for i in (run.report or {}).get("escalated", [])}
+    escalated = [r for r in rows if r.id in escalated_ids and r.id not in new_ids]
+    resolved = [
+        r
+        for r in rows
+        if r.status in signals.CLOSED_STATUSES and _at_or_after(r.closed_at, since_at)
+    ]
+    open_rows = [r for r in rows if r.status in signals.OPEN_STATUSES]
+
+    def signal_rows(found: list[InvSignal]) -> list[dict]:
+        return [signal_dict(r, by_signal.get(r.id, []), labels) for r in found]
+
+    # Imports, transactions, decisions since the baseline.
+    names = {a.id: a.name for a in transactions.brokerage_accounts(session, profile.id)}
+    batches = session.exec(
+        select(InvImportBatch)
+        .where(InvImportBatch.profile_id == profile.id)
+        .order_by(InvImportBatch.created_at.desc(), InvImportBatch.id.desc())
+    ).all()
+    imports_since = []
+    for b in batches:
+        if _at_or_after(b.created_at, since_at):
+            row = batch_dict(b)
+            row["account_name"] = names.get(b.account_id)
+            imports_since.append(row)
+    created = [
+        t
+        for t in transactions.transaction_rows(session, profile.id)
+        if _at_or_after(t.created_at, since_at)
+    ]
+    dividends: dict[str, Decimal] = defaultdict(Decimal)
+    for t in state.txns:
+        if t.type == TxnType.DIVIDEND and t.trade_date >= since:
+            dividends[str(t.cash_currency)] += t.cash_amount
+
+    return {
+        "as_of": iso(as_of),
+        "since": iso(since),
+        "since_at": iso(since_at),
+        "until_at": iso(now),
+        "baseline": "review" if review else "default_7d",
+        "last_review": None
+        if review is None
+        else {
+            "done_at": iso(review["done_at"]),
+            "notes": review["notes"],
+            "stats": review["stats"],
+        },
+        "digest_weekday": digest_weekday,
+        "review_due": review_due,
+        "value": {
+            "currency": str(state.base),
+            "then": f(then_total),
+            "now": f(total),
+            "change": f(change),
+            "change_pct": ratio_pct(ratio(change, then_total)) if change is not None else None,
+        },
+        "signals": {
+            "new": signal_rows(new_rows),
+            "escalated": signal_rows(escalated),
+            "resolved": signal_rows(resolved),
+            "open": len(open_rows),
+            "undecided": sum(1 for r in open_rows if not by_signal.get(r.id)),
+        },
+        "imports": imports_since,
+        "transactions": {
+            "count": len(created),
+            "by_type": dict(sorted(Counter(t.type for t in created).items())),
+            "manual": sum(1 for t in created if t.source == TxnSource.MANUAL.value),
+        },
+        "decisions": [decision_dict(d) for d in decisions if _at_or_after(d.created_at, since_at)],
+        "dividends": {cur: f(amount) for cur, amount in sorted(dividends.items())},
+        "price_moves": _price_moves(session, state, since),
+        "warnings": [warning_dict(w) for w in state.valued.all_warnings],
+        "stale_count": sum(1 for v in state.valued.valued if v.is_stale),
+        "strategy": {
+            "version": st.version.version if st.version is not None else None,
+            "state": st.state,
+            "changed_since": any(
+                _at_or_after(v.created_at, since_at)
+                for v in strategy_files.versions(session, profile.id)
+            ),
+        },
     }

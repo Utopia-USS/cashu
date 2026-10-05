@@ -17,11 +17,13 @@ INVESTMENTS_GETS = [
     "/investments/overview",
     "/investments/positions",
     "/investments/positions/{instrument_id}",
+    "/investments/positions/{instrument_id}/chart",
     "/investments/transactions",
     "/investments/signals",
     "/investments/signals?status=history",
     "/investments/signals?status=all",
     "/investments/decisions",
+    "/investments/review-digest",
     "/investments/instruments",
     "/investments/instruments?unclassified=true",
     "/investments/instruments/{instrument_id}/theses",
@@ -156,6 +158,8 @@ def test_two_profiles_with_the_same_history_do_not_leak(client):
     ):
         assert e[path] == [], path
     assert e["/investments/strategy"]["state"] == "missing"
+    digest = e["/investments/review-digest"]
+    assert digest["imports"] == [] and digest["decisions"] == [] and digest["signals"]["new"] == []
 
     # the same history in a second profile: both see exactly the reference
     b_slug, _, b_xmpl = household(client, "Bartek")
@@ -164,6 +168,8 @@ def test_two_profiles_with_the_same_history_do_not_leak(client):
     # the batch of the second import found the instruments already stored
     for snap in (a_now, b_now, reference):
         for batch in snap["/investments/imports"]:
+            batch.pop("new_instruments")
+        for batch in snap["/investments/review-digest"]["imports"]:
             batch.pop("new_instruments")
     assert a_now == reference
     assert b_now == reference

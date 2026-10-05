@@ -5,6 +5,7 @@
 //
 // Scenarios via the query string: ?mock=first (no profile, legacy DB found),
 // ?mock=one (one full profile), ?mock=two (default: full profile + a new one).
+import { investmentsMock, mcpCallsMock } from "../modules/investments/mock";
 import {
   ApiError, type ModuleInfo, type Profile, type ProfileModule, type SetupInfo, type SetupState, type SetupStep,
 } from "./api";
@@ -248,7 +249,7 @@ function findProfile(slug: string): MockProfile {
   return p;
 }
 
-function profileApi(p: MockProfile, path: string, q: URLSearchParams, method: string): unknown {
+function profileApi(p: MockProfile, path: string, q: URLSearchParams, method: string, body?: unknown): unknown {
   const accounts = accountsOf(p);
   const full = p.kind === "full";
   const bd = breakdown(accounts);
@@ -305,8 +306,21 @@ function profileApi(p: MockProfile, path: string, q: URLSearchParams, method: st
   if (path === "/merchant-category") return { updated: 5 };
   if (path === "/cash/expense") return { ok: true, id: 599 };
   if (path.startsWith("/cash/transaction/")) return { ok: true };
+  // F3: investments workspace + track M contract (reviews, proposals, MCP audit log).
+  if (path.startsWith("/investments") || path.startsWith("/reviews") || path.startsWith("/proposals")) {
+    return investmentsMock(p.slug, p.kind, path, q, method, body);
+  }
+  if (path === "/mcp/calls") return mcpCallsMock(p.kind);
   throw new ApiError(404, `mock: brak ${method} ${path}`);
 }
+
+// F3: background worker (track W contract), kept in memory.
+const worker = {
+  installed: false, label: "io.finanse.worker", schedule: "07:30", last_run: null as string | null,
+  last_status: null as string | null, next_run: null as string | null, log_path: "~/Library/Application Support/finanse/logs/worker.log",
+  platform: "launchd", supported: true, job_path: "~/Library/LaunchAgents/io.finanse.worker.plist", program: null as string[] | null,
+  jobs: [] as { job: string; module: string | null; status: string; detail: string | null; last_run: string | null }[],
+};
 
 function route(method: string, url: string, body: unknown): unknown {
   const u = new URL(url, location.origin);
@@ -315,8 +329,26 @@ function route(method: string, url: string, body: unknown): unknown {
     return {
       version: "0.2.0-dev (demo)", data_dir: "~/Library/Application Support/finanse",
       legacy_db_detected: db.legacy, legacy_db_path: db.legacy ? "data/finanse.db" : null,
-      worker: { installed: false, last_run: null },
+      worker: { ...worker },
     };
+  }
+  const wk = path.match(/^\/api\/system\/worker\/(install|uninstall|run)$/);
+  if (wk && method === "POST") {
+    const b = (body ?? {}) as { time?: string };
+    if (wk[1] === "install") Object.assign(worker, { installed: true, schedule: b.time || worker.schedule, next_run: `2026-10-05T${b.time || worker.schedule}:00+02:00`, program: ["finanse", "worker", "run"] });
+    if (wk[1] === "uninstall") Object.assign(worker, { installed: false, next_run: null, program: null });
+    if (wk[1] === "run") {
+      const at = new Date().toISOString();
+      worker.jobs = [
+        { job: "investments.daily", module: "investments", status: "partial", detail: "jan: stooq: 1 źródło cen nie odpowiedziało", last_run: at },
+        { job: "budget.sync", module: "budget", status: "skipped", detail: "jan: limit banku do 13:10", last_run: at },
+        { job: "notifications", module: null, status: "ok", detail: null, last_run: at },
+        { job: "digest", module: null, status: "skipped", detail: null, last_run: at },
+      ];
+      Object.assign(worker, { last_run: at, last_status: "partial" });
+      return { run: { status: "partial", summary: worker.jobs }, worker: { ...worker } };
+    }
+    return { worker: { ...worker } };
   }
   if (path === "/api/modules") return MODULES;
   if (path === "/api/profiles" && method === "GET") return db.profiles.map(publicProfile);
@@ -347,7 +379,7 @@ function route(method: string, url: string, body: unknown): unknown {
     }
   }
   const scoped = path.match(/^\/api\/p\/([^/]+)(\/.*)$/);
-  if (scoped) return profileApi(findProfile(decodeURIComponent(scoped[1])), scoped[2], u.searchParams, method);
+  if (scoped) return profileApi(findProfile(decodeURIComponent(scoped[1])), scoped[2], u.searchParams, method, body);
   throw new ApiError(404, `mock: brak ${method} ${path}`);
 }
 

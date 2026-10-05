@@ -65,12 +65,14 @@ export function Seg<T extends string | number | null>({
   );
 }
 
-export function Kpi({ label, value, hint, cls }: { label: string; value: ReactNode; hint?: ReactNode; cls?: string }) {
+export function Kpi({ label, value, hint, cls, hintCls }: {
+  label: string; value: ReactNode; hint?: ReactNode; cls?: string; hintCls?: "pos" | "neg" | "warn";
+}) {
   return (
     <div className="card kpi">
       <div className="label">{label}</div>
       <div className={`value ${cls || ""}`}>{value}</div>
-      <div className="hint">{hint || ""}</div>
+      <div className={`hint ${hintCls ?? ""}`}>{hint || ""}</div>
     </div>
   );
 }
@@ -268,21 +270,31 @@ export function Empty({ title, hint, action }: { title: ReactNode; hint?: ReactN
 
 // ---- toast (one short message at a time, bottom centre) ---------------------
 
-const ToastCtx = createContext<(text: string, ms?: number) => void>(() => {});
+/** One optional action in a toast (e.g. `Cofnij`); the toast closes when it is clicked. */
+export interface ToastAction { label: string; onClick: () => void }
+type ShowToast = (text: string, ms?: number, action?: ToastAction) => void;
+const ToastCtx = createContext<ShowToast>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [msg, setMsg] = useState<{ text: string; id: number } | null>(null);
+  const [msg, setMsg] = useState<{ text: string; id: number; action?: ToastAction } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
-  const show = useCallback((text: string, ms = 2000) => {
+  const show = useCallback<ShowToast>((text, ms = 2000, action) => {
     clearTimeout(timer.current);
-    setMsg({ text, id: Date.now() });
+    setMsg({ text, id: Date.now(), action });
     timer.current = setTimeout(() => setMsg(null), ms);
   }, []);
+  const close = () => { clearTimeout(timer.current); setMsg(null); };
   return (
     <ToastCtx.Provider value={show}>
       {children}
-      {msg && <div className="toast" key={msg.id} role="status"><span className="txt">{msg.text}</span></div>}
+      {msg && (
+        <div className="toast" key={msg.id} role="status">
+          <span className="txt">{msg.text}</span>
+          {msg.action && <button className="btn" onClick={() => { msg.action!.onClick(); close(); }}>{msg.action.label}</button>}
+          {msg.action && <button className="icon-btn" aria-label="Zamknij" onClick={close}>✕</button>}
+        </div>
+      )}
     </ToastCtx.Provider>
   );
 }
@@ -298,4 +310,127 @@ export function FactList({ facts }: { facts: [ReactNode, ReactNode, string?][] |
       ))}
     </div>
   );
+}
+
+// ---- F3 workspace primitives (design-system-notes 4.2) ----------------------
+
+// history.back() calls made by a closing drawer itself: the popstate they cause is not a "back" press.
+// One global listener, so such an event is consumed even after the drawer unmounted.
+let ownBacks = 0;
+const backHandlers = new Set<() => void>();
+window.addEventListener("popstate", () => {
+  if (ownBacks > 0) { ownBacks--; return; }
+  backHandlers.forEach((h) => h());
+});
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Right side panel over a scrim. Esc, the scrim, ✕ and the browser back button close it; focus is
+ * trapped inside while it is open and returns to the opener afterwards. */
+export function Drawer({ open, title, tag, width = 520, footer, onClose, children, label }: {
+  open: boolean; title: ReactNode; tag?: ReactNode; width?: number; footer?: ReactNode;
+  onClose: () => void; children: ReactNode; label?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const el = ref.current;
+    (el?.querySelector<HTMLElement>("[data-autofocus]") ?? el?.querySelector<HTMLElement>(".db " + FOCUSABLE) ?? el)?.focus();
+    // Back button closes the drawer: one history entry per open drawer (same URL).
+    history.pushState({ ...(history.state ?? {}), finanseDrawer: true }, "");
+    let viaBack = false;
+    const onPop = () => { viaBack = true; close.current(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close.current(); return; }
+      if (e.key !== "Tab" || !el) return;
+      const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    backHandlers.add(onPop);
+    document.addEventListener("keydown", onKey, true);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      backHandlers.delete(onPop);
+      document.removeEventListener("keydown", onKey, true);
+      document.body.style.overflow = prev;
+      if (!viaBack && history.state?.finanseDrawer) { ownBacks++; history.back(); }
+      opener?.focus?.();
+    };
+  }, [open]);
+  if (!open) return null;
+  return (
+    <>
+      <div className="scrim" onClick={onClose} aria-hidden />
+      <div className="drawer" role="dialog" aria-modal="true" aria-label={label} ref={ref} tabIndex={-1} style={{ width: `min(${width}px, 100vw)` }}>
+        <div className="dh">
+          <strong>{title}</strong>
+          {tag}
+          <span style={{ flex: 1 }} />
+          <button className="icon-btn" title="Zamknij (Esc)" aria-label="Zamknij" onClick={onClose}>✕</button>
+        </div>
+        <div className="db">{children}</div>
+        {footer && <div className="df">{footer}</div>}
+      </div>
+    </>
+  );
+}
+
+/** Anchored popover (`.pop`) under its `.menu-anchor` parent: closes on Esc and outside click. */
+export function Pop({ open, onClose, children, width = 420, align = "left", label }: {
+  open: boolean; onClose: () => void; children: ReactNode; width?: number; align?: "left" | "right"; label?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const el = ref.current;
+    const onDown = (e: MouseEvent) => {
+      const anchor = el?.parentElement;
+      if (anchor && !anchor.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onClose();
+      (el?.parentElement?.querySelector("button") as HTMLElement | null)?.focus();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="pop" role="dialog" aria-label={label} ref={ref}
+      style={{ width: `min(${width}px, calc(100vw - 32px))`, ...(align === "right" ? { left: "auto", right: 0 } : {}) }}>
+      {children}
+    </div>
+  );
+}
+
+/** Allocation bar: current share as the fill, target tick, band shading; all values are fractions
+ * of the bar scale `max` (e.g. 0.6 of a 0.8 scale). */
+export function AllocBar({ current, target, band, max, color, height, mutedTarget }: {
+  current: number; target?: number | null; band?: [lo: number, hi: number] | null; max: number; color: string; height?: number;
+  /** Grey target tick: the target applies to a different scope (e.g. the whole portfolio while filtered). */
+  mutedTarget?: boolean;
+}) {
+  const at = (v: number) => `${Math.max(0, Math.min(100, (v / max) * 100))}%`;
+  return (
+    <div className={`alloc ${mutedTarget ? "muted-tgt" : ""}`} style={height ? { height } : undefined} aria-hidden>
+      {band && <div className="band" style={{ left: at(band[0]), width: `calc(${at(band[1])} - ${at(band[0])})` }} />}
+      <div className="fill" style={{ width: at(current), background: color, minWidth: current > 0 ? 4 : 0 }} />
+      {target != null && <div className="tgt" style={{ left: at(target) }} />}
+    </div>
+  );
+}
+
+/** Dashed placeholder panel describing what will appear there (empty workspace). */
+export function Ghost({ title, children }: { title: ReactNode; children: ReactNode }) {
+  return <div className="ghost"><b>{title}</b>{children}</div>;
 }

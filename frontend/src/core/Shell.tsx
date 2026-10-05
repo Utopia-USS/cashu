@@ -182,6 +182,13 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
     reloadProfiles, openWizard: () => setWizard(true),
   };
 
+  // A workspace tab (investments) uses the wide page; everything else keeps Kuba's 1120 px.
+  const wide = (() => {
+    if (resolved.kind !== "tab" || resolved.tab === "overview") return false;
+    const [mid, tid] = resolved.tab.split(".");
+    return !!moduleDef(mid, modules).tabs.find((t) => t.id === tid)?.wide;
+  })();
+
   const loadError = summaryS.error || networthS.error || catsS.error;
   const ready = summaryS.data && networthS.data && catsS.data;
 
@@ -203,17 +210,17 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
     // An enabled module with no data yet: its first tab is the blank page (SetupPage).
     // A partial module shows its data with a strip that leads back to the remaining steps.
     const first = tab === def.tabs[0];
-    if (first && (pm.setup_state === "empty" || (def.setupUntilReady && pm.setup_state !== "ready"))) {
+    if (first && !def.ownSetup && (pm.setup_state === "empty" || (def.setupUntilReady && pm.setup_state !== "ready"))) {
       return <SetupPage moduleId={mid} state={pm.setup_state} />;
     }
     const body = tab.render({ ...base, state: pm.setup_state });
     if (body == null) return <SetupPage moduleId={mid} state={pm.setup_state} />;
-    return <>{first && pm.setup_state === "partial" && <PartialStrip moduleId={mid} name={def.name} />}{body}</>;
+    return <>{first && !def.ownSetup && pm.setup_state === "partial" && <PartialStrip moduleId={mid} name={def.name} />}{body}</>;
   })();
 
   return (
     <ShellContext.Provider value={shell}>
-      <div className="wrap" aria-hidden={wizard || undefined}>
+      <div className={`wrap ${wide ? "wide" : ""}`} aria-hidden={wizard || undefined}>
         <header>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
