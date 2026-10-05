@@ -31,14 +31,18 @@ def cash_account_ids(session: Session, profile_id: int | None = None) -> set[int
 
 def get_cash_account(
     session: Session,
-    currency: str = "PLN",
+    currency: str | None = None,
     *,
     create: bool = False,
     profile_id: int | None = None,
 ) -> Account | None:
-    """The profile's single virtual 'Gotówka' account per currency, created on
-    first use."""
+    """The profile's single virtual 'Gotówka' account per currency (default: the
+    profile's base currency), created on first use."""
+    from .analytics import base_currency
+
     pid = profiles.scope(session, profile_id, create=create)
+    base = base_currency(session, pid)
+    currency = currency or base
     ext = f"cash:{currency}"
     acc = session.exec(
         select(Account).where(
@@ -49,7 +53,7 @@ def get_cash_account(
         return acc
     acc = Account(
         bank=MANUAL,
-        name="Gotówka" if currency == "PLN" else f"Gotówka ({currency})",
+        name="Gotówka" if currency == base else f"Gotówka ({currency})",
         external_id=ext,
         type=AccountType.CASH,
         currency=currency,
@@ -108,7 +112,7 @@ def add_cash_expense(
     amount: Decimal | float | str,
     title: str,
     category: str,
-    currency: str = "PLN",
+    currency: str | None = None,
     on_date: date | None = None,
     profile_id: int | None = None,
 ) -> Transaction:
@@ -126,7 +130,7 @@ def add_cash_expense(
         account_id=cash.id,
         booking_date=on_date or date.today(),  # noqa: DTZ011 - local dates
         amount=amt,
-        currency=currency,
+        currency=cash.currency,
         counterparty_name=title,
         description=title,
         reference=title,

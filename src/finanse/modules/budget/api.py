@@ -1,16 +1,23 @@
-"""Budget API routes: cashflow, spending, categories, recurring, cash pool, resync."""
+"""Budget API routes: cashflow, spending, categories, recurring, cash pool, resync, month close,
+budget settings.
+
+Every currency parameter defaults to the profile's base currency (no PLN assumption); amounts of
+different currencies are never summed. ``GET /budget/currencies`` lists the currencies the profile has
+data in (the UI's currency picker).
+"""
 
 from __future__ import annotations
 
 from decimal import Decimal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from sqlmodel import select
 
 from finanse.core.api import CurrentProfile, f
 from finanse.core.db import get_session
 
-from . import analytics
+from . import analytics, monthclose
+from . import settings as budget_settings
 from .models import Transaction
 from .queries import transactions
 
@@ -18,7 +25,9 @@ router = APIRouter()
 
 
 @router.get("/cashflow")
-def cashflow(profile: CurrentProfile, currency: str = "PLN", months: int = 24) -> list[dict]:
+def cashflow(
+    profile: CurrentProfile, currency: str | None = None, months: int = 24
+) -> list[dict]:
     with get_session() as s:
         rows = analytics.monthly_cashflow(s, currency=currency, profile_id=profile.id)
     return [
@@ -68,7 +77,7 @@ def spending(
     year: int | None = None,
     month: int | None = None,
     quarter: int | None = None,
-    currency: str = "PLN",
+    currency: str | None = None,
 ) -> list[dict]:
     with get_session() as s:
         rows = analytics.spending_by_category(
@@ -79,16 +88,19 @@ def spending(
 
 
 @router.get("/uncategorized")
-def uncategorized(profile: CurrentProfile, limit: int = 30, currency: str = "PLN") -> list[dict]:
+def uncategorized(
+    profile: CurrentProfile, limit: int = 30, currency: str | None = None
+) -> list[dict]:
     """Top expense merchants we couldn't confidently categorize — for review.
 
-    Filtered to a single currency (default PLN) so amounts aren't mixed across
-    HUF/EUR/NOK accounts and mislabeled.
+    Filtered to a single currency (default: the profile's base currency) so
+    amounts aren't mixed across HUF/EUR/NOK accounts and mislabeled.
     """
     from .ingestion.normalize import merchant_key
 
     agg: dict[str, dict] = {}
     with get_session() as s:
+        currency = currency or analytics.base_currency(s, profile.id)
         for t in s.exec(transactions(profile.id, Transaction.currency == currency)).all():
             if t.amount >= 0 or t.is_internal_transfer or t.category_source != "default":
                 continue
@@ -130,7 +142,7 @@ def category_transactions(
     key: str,
     sort: str = "date",
     order: str = "desc",
-    currency: str = "PLN",
+    currency: str | None = None,
     year: int | None = None,
     month: int | None = None,
     quarter: int | None = None,
@@ -157,12 +169,13 @@ def set_transaction_category(profile: CurrentProfile, txn_id: int, payload: dict
 
 
 @router.get("/cash")
-def cash(profile: CurrentProfile, currency: str = "PLN") -> dict:
+def cash(profile: CurrentProfile, currency: str | None = None) -> dict:
     """The cash pool: balance + its transactions (withdrawals in, expenses out)."""
     from .cash import get_cash_account
     from .categorize import taxonomy
 
     with get_session() as s:
+        currency = currency or analytics.base_currency(s, profile.id)
         acc = get_cash_account(s, currency, create=False, profile_id=profile.id)
         if acc is None:
             return {"exists": False, "currency": currency, "balance": 0.0,
@@ -223,7 +236,7 @@ def add_cash_expense_ep(profile: CurrentProfile, payload: dict) -> dict:
     with get_session() as s:
         t = add_cash_expense(
             s, amount=amount, title=title, category=category,
-            currency=p.get("currency", "PLN"), on_date=on_date, profile_id=profile.id,
+            currency=p.get("currency") or None, on_date=on_date, profile_id=profile.id,
         )
         return {"ok": True, "id": t.id}
 
@@ -319,3 +332,89 @@ def resync(profile: CurrentProfile, days: int = 90) -> dict:
         "pairs": pairs,
         "errors": errors,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Currencies, month close, budget settings
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/budget/currencies")
+def budget_currencies(profile: CurrentProfile) -> dict:
+    """Currencies with budget data (base currency first, then by use) and the default one."""
+    with get_session() as s:
+        base = analytics.base_currency(s, profile.id)
+        rows = analytics.budget_currencies(s, profile_id=profile.id)
+    codes = [r.currency for r in rows]
+    return {
+        "base": base,
+        "default": base if base in codes or not codes else codes[0],
+        "currencies": [
+            {
+                "currency": r.currency,
+                "transactions": r.transactions,
+                "first": r.first.isoformat(),
+                "last": r.last.isoformat(),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/budget/month-close")
+def month_close(profile: CurrentProfile, month: str | None = None) -> dict:
+    """Income, spending by category and surplus of one month per currency, the cushion top-up
+    and the suggested transfer to investments, compared with the strategy's planned contribution
+    (``month`` = YYYY-MM; default: the newest closed month with data). See ``monthclose``."""
+    year = mon = None
+    if month:
+        try:
+            year, mon = monthclose.parse_month(month)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="month must be YYYY-MM") from None
+    stored = budget_settings.load(profile.slug) if profile.id else budget_settings.BudgetSettings()
+    with get_session() as s:
+        close = monthclose.month_close(s, profile, stored, year=year, month=mon)
+        return monthclose.as_dict(close)
+
+
+@router.get("/budget/settings")
+def get_budget_settings(profile: CurrentProfile) -> dict:
+    """The profile's budget settings (cushion rule; defaults when never saved)."""
+    stored = budget_settings.load(profile.slug) if profile.id else budget_settings.BudgetSettings()
+    return budget_settings.to_dict(stored)
+
+
+@router.put("/budget/settings")
+def put_budget_settings(profile: CurrentProfile, payload: dict) -> dict:
+    """Replace the budget settings (422 with the reason when invalid). Cushion account ids must
+    be the profile's accounts in the cushion currency."""
+    try:
+        parsed = budget_settings.parse(payload)
+    except budget_settings.SettingsError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    cushion = parsed.cushion
+    if cushion.account_ids:
+        from finanse.core.models import Account
+
+        with get_session() as s:
+            currency = cushion.currency or analytics.base_currency(s, profile.id)
+            rows = s.exec(
+                select(Account).where(
+                    Account.profile_id == profile.id, Account.id.in_(cushion.account_ids)
+                )
+            ).all()
+        found = {a.id: a for a in rows}
+        missing = [i for i in cushion.account_ids if i not in found]
+        if missing:
+            raise HTTPException(
+                status_code=422, detail=f"unknown account id(s): {', '.join(map(str, missing))}"
+            )
+        wrong = [a.name for a in rows if a.currency != currency]
+        if wrong:
+            raise HTTPException(
+                status_code=422,
+                detail=f"cushion accounts must be in {currency}: {', '.join(wrong)}",
+            )
+    budget_settings.save(profile.slug, parsed)
+    return budget_settings.to_dict(parsed)

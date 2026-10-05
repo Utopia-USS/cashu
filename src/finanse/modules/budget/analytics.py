@@ -29,6 +29,44 @@ ZERO = Decimal("0.00")
 NON_SPENDING_CATEGORIES = {"transfer", "cash_withdrawal"}
 
 
+def base_currency(session: Session, profile_id: int) -> str:
+    """The profile's base currency: the default currency of every budget view (no
+    PLN assumption). ``profile_id`` is an already scoped id; "PLN" only for the
+    empty placeholder before any profile exists (it has no data anyway)."""
+    from finanse.core.models import Profile
+
+    profile = session.get(Profile, profile_id) if profile_id else None
+    return (profile.base_currency if profile is not None else "") or "PLN"
+
+
+@dataclass
+class CurrencyUse:
+    currency: str
+    transactions: int
+    first: date
+    last: date
+
+
+def budget_currencies(session: Session, *, profile_id: int | None = None) -> list[CurrencyUse]:
+    """Currencies the profile has budget transactions in: the base currency first
+    (when it has data), then by number of transactions. Never mixed or converted."""
+    pid = profiles.scope(session, profile_id)
+    rows = session.exec(
+        select(
+            Transaction.currency,
+            func.count(Transaction.id),
+            func.min(Transaction.booking_date),
+            func.max(Transaction.booking_date),
+        )
+        .where(Transaction.account_id.in_(account_ids_query(pid)))
+        .group_by(Transaction.currency)
+    ).all()
+    base = base_currency(session, pid)
+    out = [CurrencyUse(cur, n, first, last) for cur, n, first, last in rows if cur]
+    out.sort(key=lambda c: (c.currency != base, -c.transactions, c.currency))
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Monthly cashflow
 # --------------------------------------------------------------------------- #
@@ -51,7 +89,7 @@ class MonthlyCashflow:
 
 def monthly_cashflow(
     session: Session,
-    currency: str = "PLN",
+    currency: str | None = None,
     include_internal: bool = False,
     *,
     profile_id: int | None = None,
@@ -59,6 +97,7 @@ def monthly_cashflow(
     from .ingestion.normalize import iban_key
 
     pid = profiles.scope(session, profile_id)
+    currency = currency or base_currency(session, pid)
     # Every account the profile owns — a transaction whose counterparty is one of
     # these is a move *within* the profile's money, not real income/expense.
     own_ibans = _own_ibans(session, pid)
@@ -107,7 +146,7 @@ def _in_period(d: date, year: int | None, month: int | None, quarter: int | None
 
 def spending_by_category(
     session: Session,
-    currency: str = "PLN",
+    currency: str | None = None,
     year: int | None = None,
     month: int | None = None,
     quarter: int | None = None,
@@ -120,6 +159,7 @@ def spending_by_category(
     from .ingestion.normalize import iban_key
 
     pid = profiles.scope(session, profile_id)
+    currency = currency or base_currency(session, pid)
     own = _own_ibans(session, pid)
     buckets: dict[str, Decimal] = {}
     for t in session.exec(transactions(pid, Transaction.currency == currency)).all():
@@ -158,7 +198,7 @@ def _txn_details(t: Transaction, primary: str | None) -> str | None:
 def category_transactions(
     session: Session,
     category: str,
-    currency: str = "PLN",
+    currency: str | None = None,
     sort: str = "date",
     order: str = "desc",
     year: int | None = None,
@@ -171,6 +211,7 @@ def category_transactions(
     from .ingestion.normalize import merchant_key
 
     pid = profiles.scope(session, profile_id)
+    currency = currency or base_currency(session, pid)
     accounts = {a.id: a for a in profile_accounts(session, pid)}
     rows: list[dict] = []
     for t in session.exec(transactions(pid, Transaction.currency == currency)).all():

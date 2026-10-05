@@ -181,12 +181,21 @@ def categorize_cmd(
             )
 
 
-def cash_cmd() -> None:
+def cash_cmd(
+    currency: Annotated[
+        str | None, typer.Option(help="Cash pool currency (default: the profile's base currency).")
+    ] = None,
+) -> None:
     """Show the physical-cash pool (withdrawals in, manual expenses out)."""
     from .cash import get_cash_account
 
     with get_session() as s:
-        acc = get_cash_account(s, create=False, profile_id=cliutil.profile(s, create=False).id)
+        acc = get_cash_account(
+            s,
+            currency.upper() if currency else None,
+            create=False,
+            profile_id=cliutil.profile(s, create=False).id,
+        )
         if acc is None:
             cliutil.console.print(
                 "[yellow]No cash pool.[/] Mark a withdrawal as "
@@ -217,6 +226,9 @@ def cash_add_cmd(
     title: Annotated[str, typer.Argument(help="Title, e.g. 'Lunch'.")],
     category: Annotated[str, typer.Argument(help="Category key, e.g. 'dining'.")],
     date: Annotated[str | None, typer.Option("--date", help="YYYY-MM-DD (default: today).")] = None,
+    currency: Annotated[
+        str | None, typer.Option(help="Currency (default: the profile's base currency).")
+    ] = None,
 ) -> None:
     """Log a manual cash expense (draws down the cash pool)."""
     from datetime import date as _date
@@ -231,7 +243,7 @@ def cash_add_cmd(
     with get_session() as s:
         add_cash_expense(
             s, amount=amount, title=title, category=category, on_date=on_date,
-            profile_id=cliutil.profile(s).id,
+            currency=currency.upper() if currency else None, profile_id=cliutil.profile(s).id,
         )
     cliutil.console.print(f"[green]Cash expense[/] −{amount:.2f}: {title} ({category})")
 
@@ -588,6 +600,159 @@ def eb_resync(days: DaysOption = 90) -> None:
             )
         except EnableBankingError as e:  # expired/rate-limited session — try the rest
             cliutil.console.print(f"[yellow]  {saved.institution}: {e}[/]")
+
+
+# --------------------------------------------------------------------------- #
+# Month close and the cushion rule (sub-app only: `finanse budget month-close`)
+# --------------------------------------------------------------------------- #
+
+def month_close_cmd(
+    month: Annotated[
+        str | None,
+        typer.Option(help="YYYY-MM (default: the newest closed month with data)."),
+    ] = None,
+) -> None:
+    """Close a month: income, spending, surplus per currency, the cushion top-up and the
+    suggested transfer to investments (vs the strategy's planned contribution)."""
+    from . import monthclose
+    from . import settings as budget_settings
+
+    year = mon = None
+    if month:
+        try:
+            year, mon = monthclose.parse_month(month)
+        except ValueError as e:
+            raise typer.BadParameter(str(e)) from None
+    with get_session() as s:
+        p = cliutil.profile(s, create=False)
+        stored = budget_settings.load(p.slug) if p.id else budget_settings.BudgetSettings()
+        out = monthclose.as_dict(monthclose.month_close(s, p, stored, year=year, month=mon))
+    state = "" if out["complete"] else " (month in progress)"
+    cliutil.console.print(f"[bold]Month close {out['month']}[/]{state}")
+    if not out["currencies"]:
+        cliutil.console.print("[yellow]No income or spending in this month.[/]")
+    table = Table()
+    for col in ("currency", "income", "spending", "surplus", "cushion", "suggested transfer"):
+        table.add_column(col, justify="left" if col == "currency" else "right")
+    for c in out["currencies"]:
+        cur = c["currency"]
+        table.add_row(
+            cur,
+            cliutil.fmt(Decimal(str(c["income"])), cur),
+            cliutil.fmt(Decimal(str(c["spending"])), cur),
+            cliutil.fmt(Decimal(str(c["surplus"])), cur),
+            cliutil.fmt(Decimal(str(c["cushion_top_up"])), cur),
+            cliutil.fmt(Decimal(str(c["suggested_transfer"])), cur),
+        )
+    if out["currencies"]:
+        cliutil.console.print(table)
+        for c in out["currencies"]:
+            top = ", ".join(
+                f"{r['label']} {cliutil.fmt(Decimal(str(r['amount'])), c['currency'])}"
+                for r in c["spending_by_category"][:5]
+            )
+            if top:
+                cliutil.console.print(f"  {c['currency']} top spending: {top}")
+    cushion = out["cushion"]
+    if cushion:
+        cur = cushion["currency"]
+        target = "no spending history" if cushion["target"] is None else cliutil.fmt(
+            Decimal(str(cushion["target"])), cur
+        )
+        cliutil.console.print(
+            f"Cushion: {cliutil.fmt(Decimal(str(cushion['balance'])), cur)} of {target}, "
+            f"top-up {cliutil.fmt(Decimal(str(cushion['top_up'])), cur)}"
+        )
+    inv = out["investing"]
+    if inv:
+        planned, cmp_ = inv["planned"], inv["comparison"]
+        if planned is None:
+            cliutil.console.print(
+                f"Investments: no contributions plan in the strategy ({inv['strategy_state']})."
+            )
+        else:
+            cur = planned["currency"]
+            cliutil.console.print(
+                f"Planned contribution: {cliutil.fmt(Decimal(str(planned['amount'])), cur)}; "
+                f"suggested transfer {cliutil.fmt(Decimal(str(cmp_['suggested_transfer'])), cur)} "
+                f"({'covers the plan' if cmp_['status'] == 'covered' else 'short of the plan'}, "
+                f"{cliutil.fmt(Decimal(str(cmp_['difference'])), cur)})"
+            )
+
+
+def cushion_cmd(
+    target: Annotated[
+        float | None, typer.Option(help="Target amount of the cushion.")
+    ] = None,
+    months: Annotated[
+        int | None, typer.Option(help="Target as months of average spending.")
+    ] = None,
+    currency: Annotated[
+        str | None, typer.Option(help="Cushion currency (default: the base currency).")
+    ] = None,
+    account: Annotated[
+        list[int] | None,
+        typer.Option("--account", help="Account id holding the cushion (repeatable; "
+                     "default: the savings accounts in the currency)."),
+    ] = None,
+    monthly_max: Annotated[
+        float | None, typer.Option(help="Upper limit of one month's top-up.")
+    ] = None,
+    off: Annotated[bool, typer.Option("--off", help="Turn the cushion rule off.")] = False,
+) -> None:
+    """Show or set the cushion (emergency fund) rule of the month close."""
+    from . import settings as budget_settings
+
+    init_db()
+    with get_session() as s:
+        p = cliutil.profile(s, create=False)
+        slug, pid = p.slug, p.id
+    if not pid:
+        cliutil.console.print("[yellow]No profile yet.[/]")
+        raise typer.Exit(1)
+    current = budget_settings.load(slug).cushion
+    changing = off or any(v is not None for v in (target, months, currency, account, monthly_max))
+    if changing:
+        raw = budget_settings.to_dict(budget_settings.BudgetSettings(current))["cushion"]
+        if off:
+            raw["enabled"] = False
+        else:
+            raw["enabled"] = True
+            if target is not None:
+                raw["target_amount"], raw["target_months"] = target, None
+            if months is not None:
+                raw["target_months"], raw["target_amount"] = months, None
+            if currency is not None:
+                raw["currency"] = currency
+            if account is not None:
+                raw["account_ids"] = account
+            if monthly_max is not None:
+                raw["monthly_max"] = monthly_max
+        try:
+            parsed = budget_settings.parse({"cushion": raw})
+        except budget_settings.SettingsError as e:
+            raise typer.BadParameter(str(e)) from None
+        budget_settings.save(slug, parsed)
+        current = parsed.cushion
+    if not current.enabled:
+        cliutil.console.print("Cushion rule: off")
+        return
+    target_text = (
+        f"{current.target_amount}" if current.target_amount is not None
+        else f"{current.target_months} months of average spending"
+    )
+    cliutil.console.print(
+        f"Cushion rule: on, target {target_text}, currency {current.currency or 'base'}, "
+        f"accounts {list(current.account_ids) or 'savings accounts'}, "
+        f"monthly max {current.monthly_max if current.monthly_max is not None else 'none'}"
+    )
+
+
+def register_module(app: typer.Typer) -> None:
+    """The `finanse budget ...` sub-app: every top-level budget command plus the month close."""
+    register(app)
+    app.command("month-close")(month_close_cmd)
+    app.command("cushion")(cushion_cmd)
 
 
 def register(app: typer.Typer) -> None:

@@ -20,7 +20,8 @@ MODULE = ModuleSpec(
     tables=(Transaction, CategoryRule, ImportBatch),
     router=api.router,
     cli=cli.register,
-    cli_help="Budget: statement import, categories, cash pool, Open Banking.",
+    cli_module=cli.register_module,
+    cli_help="Budget: statement import, categories, cash pool, month close, Open Banking.",
     networth=CashContributor(),
     account_types=(
         AccountTypeInfo("checking", "budget", "Konta osobiste"),
