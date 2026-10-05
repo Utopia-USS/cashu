@@ -13,8 +13,21 @@ visits could try to reach it. Three layers:
    token, and cannot add a custom header without a CORS preflight, which is
    never granted (there is no CORS middleware).
 
-The SPA learns the token from a ``<meta name="finanse-token">`` tag injected into
-the served ``index.html``; only pages on an allowed Host can read that response.
+Nothing is served with the token: an unauthenticated ``GET /`` must not hand it out,
+because any local process (another macOS user, a browser extension, an app with network
+access) can open a TCP connection to 127.0.0.1 and send an allowed Host header. The SPA gets
+the token out of band (``frontend/src/core/token.ts``):
+
+- desktop window (``finanse app``): from the pywebview bridge
+  ``window.pywebview.api.token()`` (``desktop/shell.py``), reachable only from inside the window;
+- browser (``finanse serve``): from the one-time URL ``http://127.0.0.1:<port>/#token=<token>``
+  that the command prints; the fragment never reaches the server, the SPA moves it to
+  ``sessionStorage`` and strips it from the address bar;
+- ``npm run dev``: the Vite proxy adds the header itself (from ``<data dir>/api-token``).
+
+``FINANSE_DEV_EMBED_TOKEN=1`` restores the old ``<meta name="finanse-token">`` injection into
+``/`` for development only (logged as a warning on every launch).
+
 Every response also forbids framing (``X-Frame-Options: DENY`` and CSP
 ``frame-ancestors 'none'``): a hostile page could otherwise load the real
 dashboard in an iframe and steer the user's own clicks (clickjacking), which no
@@ -42,6 +55,10 @@ TOKEN_HEADER = "X-Finanse-Token"
 TOKEN_META = "finanse-token"
 # Hands the token to a `finanse serve --reload` worker process (dev only).
 TOKEN_ENV = "FINANSE_API_TOKEN"
+# Development only: embed the token into ``/`` as a meta tag again (see the module doc).
+DEV_EMBED_ENV = "FINANSE_DEV_EMBED_TOKEN"
+# The fragment of the one-time URL ``finanse serve`` prints (frontend/src/core/token.ts reads it).
+TOKEN_FRAGMENT = "token"
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost"})
 
 # Served without a token: the SPA shell and static files (no personal data).
@@ -63,6 +80,16 @@ class SecurityConfig:
     @property
     def base_url(self) -> str:
         return f"http://127.0.0.1:{self.port}"
+
+    @property
+    def origin(self) -> str:
+        """The dashboard's own origin (what the desktop window may show)."""
+        return self.base_url
+
+    def token_url(self) -> str:
+        """The one-time browser URL: the token rides in the fragment, which browsers never send
+        to the server (so it is not in any request line or access log)."""
+        return f"{self.base_url}/#{TOKEN_FRAGMENT}={self.token}"
 
     def host_allowed(self, host_header: str | None) -> bool:
         """True for ``127.0.0.1:<port>`` / ``localhost:<port>`` (no port = 80)."""
@@ -104,6 +131,11 @@ def get_config() -> SecurityConfig:
     if _config is None:
         return configure(token=os.environ.get(TOKEN_ENV) or None)
     return _config
+
+
+def embed_token_enabled() -> bool:
+    """True only in the explicit dev mode ``FINANSE_DEV_EMBED_TOKEN=1``."""
+    return os.environ.get(DEV_EMBED_ENV) == "1"
 
 
 def _is_public(path: str) -> bool:
@@ -154,7 +186,7 @@ _HEAD_TAG = re.compile(r"<head(\s[^>]*)?>", re.IGNORECASE)
 
 
 def inject_token_meta(html: str, token: str) -> str:
-    """Insert ``<meta name="finanse-token" content="...">`` right after ``<head>``.
+    """Dev mode only (:func:`embed_token_enabled`). Insert ``<meta name="finanse-token" content="...">`` right after ``<head>``.
     The token is URL-safe base64, so it needs no HTML escaping."""
     tag = f'<meta name="{TOKEN_META}" content="{token}" />'
     match = _HEAD_TAG.search(html)

@@ -10,6 +10,7 @@ profile-scoped.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
@@ -111,13 +112,29 @@ for _router in _profile_routers:  # legacy aliases: the default profile
 
 @app.get("/")
 def index() -> HTMLResponse:
-    # Prefer the built React SPA; fall back to the legacy single-file dashboard.
-    # The per-launch API token rides along as a <meta> tag (the Host check makes
-    # this response readable only by the dashboard's own origin).
+    # Prefer the built React SPA; fall back to the minimal "build the frontend" page.
+    # The page never carries the API token (PK1: any local process can GET /); the SPA gets
+    # it from the desktop bridge or the `#token=` fragment (core/security.py, frontend
+    # core/token.ts). FINANSE_DEV_EMBED_TOKEN=1 embeds it again, for development only.
     spa = WEBDIST / "index.html"
-    page = (spa if spa.exists() else STATIC / "index.html").read_text(encoding="utf-8")
-    html = security.inject_token_meta(page, security.get_config().token)
+    html = (spa if spa.exists() else STATIC / "index.html").read_text(encoding="utf-8")
+    if security.embed_token_enabled():
+        _warn_embedded_token()
+        html = security.inject_token_meta(html, security.get_config().token)
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+_embed_warned = False
+
+
+def _warn_embedded_token() -> None:
+    global _embed_warned
+    if not _embed_warned:
+        _embed_warned = True
+        logging.getLogger("finanse.security").warning(
+            "%s=1: the API token is embedded into / and readable by any local client "
+            "(development only)", security.DEV_EMBED_ENV
+        )
 
 
 if (WEBDIST / "assets").is_dir():

@@ -67,7 +67,7 @@ finanse categorize             # categories (PL rules; --llm for the tail)
 
 # 3) dashboard
 cd frontend && npm install && npm run build && cd ..
-finanse serve                  # http://127.0.0.1:8500
+finanse serve                  # open the printed http://127.0.0.1:8500/#token=... URL
 ```
 
 Full guide (including Open Banking, LLM categorization, manual positions) —

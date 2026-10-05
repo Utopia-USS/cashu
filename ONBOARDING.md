@@ -209,7 +209,7 @@ profile can have any number of loans (`finanse loans list`). The older
 
 ```bash
 cd frontend && npm install && npm run build && cd ..
-finanse serve                     # http://127.0.0.1:8500
+finanse serve                     # prints http://127.0.0.1:8500/#token=...
 ```
 
 Open it in the browser and walk the tabs: **Przegląd** (net worth + chart),
@@ -220,8 +220,12 @@ that it works.
 
 The server listens on `127.0.0.1` only (`FINANSE_HOST` / `FINANSE_PORT` or
 `--host` / `--port` to change it) and every `/api/*` call needs a per-launch
-token: the served page carries it, so opening an `/api/...` URL directly in the
-browser answers 401, which is expected.
+token. `finanse serve` prints a one-time address with it,
+`Dashboard: http://127.0.0.1:<port>/#token=...`: open that one (the page keeps the
+token for the tab and removes it from the address bar). A plain
+`http://127.0.0.1:8500` without the token, or an `/api/...` URL opened directly in
+the browser, answers 401, which is expected. The desktop app gets the token on its
+own.
 
 > Dev mode with hot-reload (to edit the dashboard): `finanse serve` plus, separately,
 > `cd frontend && npm run dev` (Vite :5173, proxies to the API and adds the token

@@ -3,12 +3,18 @@
 // endpoints live under /api/p/{slug}/...; module endpoints are in
 // modules/<id>/api.ts and use the same transport.
 
-// Per-launch API token: `finanse serve` injects it into index.html as
-// <meta name="finanse-token">. Absent under `npm run dev`, where the Vite proxy
-// adds the header itself (see vite.config.ts).
-const TOKEN =
-  document.querySelector<HTMLMetaElement>('meta[name="finanse-token"]')?.content ?? "";
-const auth: Record<string, string> = TOKEN ? { "X-Finanse-Token": TOKEN } : {};
+// Per-launch API token: never in the served page (PK1). core/token.ts gets it from the desktop
+// bridge, the `#token=` fragment `finanse serve` prints, or this tab's sessionStorage; under
+// `npm run dev` the Vite proxy adds the header itself (see vite.config.ts).
+import { apiToken, forgetToken, NO_TOKEN_TEXT } from "./token";
+
+/** The token header for a request (`{}` under `npm run dev`); throws a 401 ApiError with a Polish
+ * explanation when this page has no token at all. Multipart uploads use it too. */
+export async function authHeaders(): Promise<Record<string, string>> {
+  const token = await apiToken();
+  if (token === null) throw new ApiError(401, NO_TOKEN_TEXT, "auth.no_token");
+  return token ? { "X-Finanse-Token": token } : {};
+}
 
 // Dev-only demo backend (`VITE_MOCK=1 npm run dev`). Off by default; the mock
 // module is only loaded when the flag is set at build time.
@@ -21,9 +27,9 @@ export class ApiError extends Error {
   constructor(readonly status: number, message: string, readonly code: string | null = null) { super(message); }
 }
 
-// A 401 means the token this page was served with is no longer valid: `finanse serve`
-// was restarted (new token per launch). Nothing recovers without a reload, so the
-// app shows one notice (App.tsx) instead of an error in every view.
+// A 401 means this page's token is no longer valid: `finanse serve` was restarted (new token
+// per launch). The stale token is dropped (core/token.ts) and the app shows one notice (App.tsx)
+// instead of an error in every view; the browser then needs the new URL `finanse serve` printed.
 const authLostListeners = new Set<() => void>();
 let authLost = false;
 export function onAuthLost(cb: () => void): () => void {
@@ -42,13 +48,14 @@ async function request<T>(method: string, u: string, body?: unknown): Promise<T>
     const { mockFetch } = await import("./mock");
     return mockFetch(method, u, body) as Promise<T>;
   }
+  const auth = await authHeaders();
   const init: RequestInit = { method, headers: { ...auth } };
   if (body !== undefined) {
     init.headers = { "Content-Type": "application/json", ...auth };
     init.body = JSON.stringify(body);
   }
   const r = await fetch(u, init);
-  if (r.status === 401) reportAuthLost();
+  if (r.status === 401) { forgetToken(); reportAuthLost(); }
   if (!r.ok) {
     let detail = "";
     try {

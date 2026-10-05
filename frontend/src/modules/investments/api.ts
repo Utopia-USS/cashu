@@ -2,7 +2,7 @@
 // contract endpoints the workspace uses: weekly reviews and agent proposals (track M). Shapes mirror
 // service/views.py; money is a JSON number next to its currency, weights are fractions (0.213),
 // drift is in percentage points.
-import { ApiError, j, jdel, jpatch, jpost, pp } from "../../core/api";
+import { ApiError, authHeaders, j, jdel, jpatch, jpost, pp } from "../../core/api";
 
 export type Num = number | null;
 
@@ -508,12 +508,12 @@ async function upload<T>(u: string, body: FormData): Promise<T> {
     const { mockFetch } = await import("../../core/mock");
     return mockFetch("POST", u, body) as Promise<T>;
   }
-  const token = document.querySelector<HTMLMetaElement>('meta[name="finanse-token"]')?.content ?? "";
-  const r = await fetch(u, { method: "POST", body, headers: token ? { "X-Finanse-Token": token } : {} });
+  // The token from core/token.ts (PK1: never read from the page), as every JSON request.
+  const r = await fetch(u, { method: "POST", body, headers: await authHeaders() });
   if (!r.ok) {
     let detail = "";
     try { const d = (await r.json())?.detail; detail = typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => x?.msg ?? "").join("; ") : ""; } catch { /* not JSON */ }
-    throw new ApiError(r.status, detail || `${u} → ${r.status}`);
+    throw new ApiError(r.status, detail || `${u} → ${r.status}`, r.headers.get("X-Finanse-Error-Code"));
   }
   return r.json() as Promise<T>;
 }

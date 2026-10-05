@@ -4,6 +4,7 @@ server thread serves a tiny ASGI app behind the real security middleware."""
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
 import sys
@@ -256,16 +257,38 @@ def test_debug_server_thread_logs_requests(data_dir, caplog):
     assert not any(cfg.token in line for line in lines)  # the header never reaches the log
 
 
+class FakeEvent:
+    def __init__(self):
+        self.handlers = []
+
+    def __iadd__(self, handler):
+        self.handlers.append(handler)
+        return self
+
+    def fire(self):
+        for handler in self.handlers:
+            handler()
+
+
 class FakeWindow:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.loaded: list[tuple[str, str]] = []
+        self.exposed: dict = {}
+        self.events = SimpleNamespace(closing=FakeEvent())
 
     def load_url(self, url):
         self.loaded.append(("url", url))
 
     def load_html(self, page):
         self.loaded.append(("html", page))
+
+    def expose(self, *functions):
+        self.exposed.update({f.__name__: f for f in functions})
+
+    def get_current_url(self):
+        kind, value = self.loaded[-1] if self.loaded else ("html", "")
+        return value if kind == "url" else "about:blank"
 
 
 class FakeWebview:
@@ -312,13 +335,17 @@ def test_run_opens_the_window_on_the_server_and_stops_it(data_dir, monkeypatch):
             f"{url}api/x", headers={security.TOKEN_HEADER: token}
         ).status_code
         seen["lock_pid"] = shell.running_pid()
+        seen["bridge"] = fake.window.exposed["token"]()
+        seen["token"] = token
+        # PK1: a plain local client gets the page, but no token with it.
+        assert token not in httpx.get(url).text
 
     fake = FakeWebview(check)
     assert not data_dir.exists()
     launch = shell.run(webview_module=fake)
     assert stat.S_IMODE(data_dir.stat().st_mode) == 0o700  # first launch creates it private
     assert launch.error is None and launch.port
-    assert seen == {
+    assert {k: seen[k] for k in ("url", "status", "lock_pid")} == {
         "url": f"http://127.0.0.1:{launch.port}/",
         "status": 200,
         "lock_pid": os.getpid(),
@@ -328,7 +355,13 @@ def test_run_opens_the_window_on_the_server_and_stops_it(data_dir, monkeypatch):
     assert (w["width"], w["height"]) == (1432, 902)  # 1512 x 982 screen minus the margin
     assert w["html"] == shell.LOADING_HTML and w["text_select"] is True
     assert fake.start_kwargs["private_mode"] is False and fake.start_kwargs["debug"] is False
+    assert "storage_path" not in fake.start_kwargs  # ignored by pywebview on macOS (PK8)
+    assert not (data_dir / "webview").exists()
     assert fake.settings["ALLOW_DOWNLOADS"] is True
+    assert fake.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] is True
+    assert fake.settings["ALLOW_FILE_URLS"] is False  # PK5
+    assert fake.settings["OPEN_DEVTOOLS_IN_DEBUG"] is False
+    assert seen["bridge"] == seen["token"]  # the window's page gets the token from the bridge
     # The port is remembered for the next launch; nothing else is written to the data dir.
     assert shell.load_state() == {"port": launch.port}
     assert not (data_dir / "api-token").exists()
@@ -357,6 +390,178 @@ def test_run_shows_an_error_page_when_the_server_fails(data_dir, monkeypatch):
     assert launch.error == "The local server did not start: boom"
     kind, page = fake.window.loaded[-1]
     assert kind == "html" and "boom" in page and "app.log" in page
+
+
+def test_token_bridge_answers_only_the_apps_own_page():
+    cfg = security.SecurityConfig(token="tok", port=50111)
+    window = FakeWindow()
+    token = shell.token_bridge(window, cfg)
+    assert token.__name__ == "token"  # window.pywebview.api.token()
+    window.loaded.append(("url", "http://127.0.0.1:50111/#/jan/overview"))
+    assert token() == "tok"
+    for foreign in (
+        "https://evil.example/",
+        "http://127.0.0.1:50112/",
+        "http://localhost.evil.example:50111/",
+        "http://127.0.0.1:501110/",
+        "file:///tmp/x.html",
+    ):
+        window.loaded.append(("url", foreign))
+        assert token() is None, foreign
+    window.loaded.append(("html", "<p>loading</p>"))  # about:blank
+    assert token() is None
+
+    class Broken(FakeWindow):
+        def get_current_url(self):
+            raise RuntimeError("gone")
+
+    assert shell.token_bridge(Broken(), cfg)() is None
+
+
+def test_navigation_is_pinned_to_the_app_origin():
+    origin = "http://127.0.0.1:50111"
+    allow, external, block = shell.ALLOW, shell.EXTERNAL, shell.BLOCK
+    cases = {
+        "http://127.0.0.1:50111/": allow,
+        "http://127.0.0.1:50111/#/jan/signals": allow,
+        "about:blank": allow,
+        "blob:http://127.0.0.1:50111/5b1c-uuid": allow,  # the CSV export
+        "blob:https://evil.example/x": block,
+        "http://127.0.0.1:50112/": external,
+        "http://localhost:50111/": external,  # another origin for WebKit
+        "https://www.gpw.pl/": external,
+        "file:///etc/passwd": block,
+        "javascript:alert(1)": block,
+        "finanse://signal/jan/1": block,
+        "x-apple.systempreferences:": block,
+        "": block,
+    }
+    for url, expected in cases.items():
+        assert shell.navigation_decision(url, origin) == expected, url
+
+
+def test_navigation_guard_wraps_the_cocoa_delegate(monkeypatch):
+    if sys.platform != "darwin":
+        assert shell.install_navigation_guard("http://127.0.0.1:1") is False
+        return
+    pytest.importorskip("webview.platforms.cocoa")
+    from webview.platforms import cocoa
+
+    original = cocoa.BrowserView.BrowserDelegate
+    monkeypatch.setitem(shell._guard, "installed", False)
+    monkeypatch.setattr(cocoa.BrowserView, "BrowserDelegate", original)
+    if original.__name__ == "FinanseBrowserDelegate":  # installed by an earlier test run
+        original = original.__bases__[0]
+        monkeypatch.setattr(cocoa.BrowserView, "BrowserDelegate", original)
+    assert shell.install_navigation_guard("http://127.0.0.1:50111") is True
+    pinned = cocoa.BrowserView.BrowserDelegate
+    assert pinned is not original and issubclass(pinned, original)
+    assert shell._guard["origin"] == "http://127.0.0.1:50111"
+
+
+def test_cmd_q_stops_the_server_before_the_process_exits(data_dir, monkeypatch):
+    """PK6: Cmd+Q ends in terminate: -> exit() without returning from webview.start; pywebview
+    fires the window's `closing` event first (applicationShouldTerminate_), which stops the
+    server."""
+    _patch_server_app(monkeypatch)
+    seen = {}
+
+    def quit_app(fake):
+        port = int(fake.window.loaded[-1][1].rsplit(":", 1)[1].strip("/"))
+        assert httpx.get(f"http://127.0.0.1:{port}/").status_code in (200, 401)
+        fake.window.events.closing.fire()  # what Cmd+Q triggers before exit()
+        with pytest.raises(httpx.ConnectError):
+            httpx.get(f"http://127.0.0.1:{port}/", timeout=1)
+        seen["stopped"] = True
+
+    shell.run(webview_module=FakeWebview(quit_app))
+    assert seen == {"stopped": True}
+
+
+def test_boot_failures_are_logged_and_shown(data_dir, monkeypatch, caplog):
+    """PK7: anything failing in _boot ends on the error page with a log line, never a window
+    stuck on the loading page. The port memo is best effort."""
+
+    class Server:
+        port = 50999
+        url = "http://127.0.0.1:50999/"
+
+        def start(self):
+            pass
+
+    def unwritable(state, path=None):
+        raise PermissionError("read-only disk")
+
+    monkeypatch.setattr(shell, "save_state", unwritable)
+    window = FakeWindow()
+    launch = shell.Launch()
+    with caplog.at_level("WARNING", logger="finanse.desktop"):
+        shell._boot(window, Server(), launch, data_dir / "app.log")
+    assert window.loaded == [("url", Server.url)] and launch.error is None
+    assert any("could not remember the port" in r.getMessage() for r in caplog.records)
+
+    class BrokenWindow(FakeWindow):
+        def load_url(self, url):
+            raise RuntimeError("webview gone")
+
+    window = BrokenWindow()
+    launch = shell.Launch()
+    caplog.clear()
+    with caplog.at_level("ERROR", logger="finanse.desktop"):
+        shell._boot(window, Server(), launch, data_dir / "app.log")
+    kind, page = window.loaded[-1]
+    assert kind == "html" and "webview gone" in page and "app.log" in page
+    assert "webview gone" in launch.error
+    assert any(r.exc_info for r in caplog.records)  # the traceback is in app.log
+
+
+def test_rotated_app_log_stays_owner_only(data_dir, monkeypatch):
+    """PK9: RotatingFileHandler reopens app.log with open() after a rollover (umask: 0644)."""
+    root = logging.getLogger()
+    before = list(root.handlers)
+    old_umask = os.umask(0o022)
+    try:
+        path = shell.setup_logging()
+        handler = next(h for h in root.handlers if h not in before)
+        logging.getLogger("finanse.desktop").warning("before rotation")
+        handler.doRollover()
+        logging.getLogger("finanse.desktop").warning("after rotation")
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(path.with_name("app.log.1").stat().st_mode) == 0o600
+        assert "after rotation" in path.read_text()
+        # a file left with a wider mode is narrowed on open
+        handler.close()
+        root.removeHandler(handler)
+        os.chmod(path, 0o644)
+        shell.setup_logging()
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    finally:
+        os.umask(old_umask)
+        for h in [h for h in root.handlers if h not in before]:
+            h.close()
+            root.removeHandler(h)
+
+
+def test_socket_options_never_share_the_port_on_windows():
+    """PK12: SO_REUSEADDR on Windows lets another process bind the same port."""
+    import socket
+
+    assert shell.socket_options("posix") == [(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)]
+    windows = shell.socket_options("nt")
+    assert all(opt != socket.SO_REUSEADDR for _lvl, opt, _v in windows)
+    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+        assert windows == [(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)]
+    else:
+        assert windows == []
+
+
+def test_bind_loopback_ignores_finanse_host(monkeypatch):
+    monkeypatch.setenv("FINANSE_HOST", "0.0.0.0")
+    sock = shell.bind_loopback()
+    try:
+        assert sock.getsockname()[0] == "127.0.0.1"
+    finally:
+        sock.close()
 
 
 def test_second_instance_is_refused_and_focuses_the_first(data_dir, monkeypatch):

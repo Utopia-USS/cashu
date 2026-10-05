@@ -3,6 +3,7 @@ loopback-only `finanse serve` (FINANSE_HOST / FINANSE_PORT, not HOST / PORT)."""
 
 from __future__ import annotations
 
+import importlib
 import stat
 import sys
 
@@ -131,12 +132,40 @@ def test_host_allowed_rules():
 # SPA token meta tag
 # --------------------------------------------------------------------------- #
 
-def test_index_carries_token_meta_for_valid_host(client):
+def test_index_never_carries_the_token(client, monkeypatch):
+    """PK1: any local process can GET / (other users, extensions, apps with network access);
+    the page must not hand out the token. The SPA gets it from the desktop bridge or the
+    one-time `#token=` URL (frontend core/token.ts)."""
+    monkeypatch.delenv(security.DEV_EMBED_ENV, raising=False)
     r = client.get("/")
     assert r.status_code == 200
-    assert f'<meta name="finanse-token" content="{TOKEN}" />' in r.text
+    assert TOKEN not in r.text and security.TOKEN_META not in r.text
     assert r.headers["cache-control"] == "no-store"
     assert r.headers["content-type"].startswith("text/html")
+    # ... and the page alone gets a plain client nowhere.
+    assert client.get("/api/summary").status_code == 401
+    assert client.get("/api/profiles").status_code == 401
+
+
+def test_dev_embed_env_restores_the_meta_tag_with_a_warning(client, monkeypatch, caplog):
+    module = importlib.import_module("finanse.api.app")  # the module (finanse.api re-exports app)
+    monkeypatch.setattr(module, "_embed_warned", False)
+    monkeypatch.setenv(security.DEV_EMBED_ENV, "1")
+    with caplog.at_level("WARNING", logger="finanse.security"):
+        r = client.get("/")
+        client.get("/")
+    assert f'<meta name="finanse-token" content="{TOKEN}" />' in r.text
+    warnings = [rec for rec in caplog.records if rec.name == "finanse.security"]
+    assert len(warnings) == 1 and security.DEV_EMBED_ENV in warnings[0].getMessage()
+    assert TOKEN not in warnings[0].getMessage()
+    monkeypatch.setenv(security.DEV_EMBED_ENV, "0")  # only "1" counts
+    assert TOKEN not in client.get("/").text
+
+
+def test_token_url_puts_the_token_in_the_fragment():
+    cfg = security.SecurityConfig(token=TOKEN, port=8611)
+    assert cfg.token_url() == f"http://127.0.0.1:8611/#token={TOKEN}"
+    assert cfg.origin == "http://127.0.0.1:8611"
 
 
 def test_static_files_are_public_but_host_checked(client):
@@ -210,6 +239,9 @@ def test_serve_binds_loopback_and_ignores_generic_host_port(fake_uvicorn, monkey
     assert call["token_file"] == call["token"]  # written before the server starts
     assert len(call["token"]) >= 40
     assert not paths.token_path().exists()  # removed on shutdown
+    # PK1: the one-time URL with the token in the fragment, printed once.
+    out = "".join(result.stdout.split())
+    assert out.count(f"http://127.0.0.1:8500/#token={call['token']}") == 1
 
 
 def test_serve_reads_finanse_host_and_port(fake_uvicorn, monkeypatch):

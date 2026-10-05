@@ -1,5 +1,5 @@
 """The legacy single-file dashboard is gone: without a built SPA, `/` serves a minimal page that says
-how to build the frontend (still carrying the token meta tag and the security headers)."""
+how to build the frontend (with the security headers, without the token)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def test_without_webdist_the_shell_explains_how_to_build(api_empty, monkeypatch,
     r = api_empty.get("/")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
     assert "npm run build" in r.text and "Interfejs nie jest zbudowany" in r.text
-    assert f'<meta name="{security.TOKEN_META}" content="{security.get_config().token}" />' in r.text
+    assert security.get_config().token not in r.text  # never in the page (PK1)
     assert r.headers["X-Frame-Options"] == "DENY"
 
 

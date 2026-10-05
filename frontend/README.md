@@ -25,8 +25,11 @@ names another site (another web page you have open, another local port) gets a
 403 from Vite and never reaches the backend, so the token cannot be borrowed for
 cross-site requests while `npm run dev` runs. Requests without any browser
 context (curl, opening `/api/...` in the address bar) still pass.
-The built app instead gets the token from a `<meta name="finanse-token">` tag
-that `finanse serve` injects into `index.html`.
+The built app gets the token without it ever being embedded in the page:
+`finanse serve` prints a one-time URL `http://127.0.0.1:<port>/#token=<token>`;
+the SPA moves the fragment token to `sessionStorage` (this tab only) and strips it
+from the address bar (`core/token.ts`). The desktop app (`finanse app`) hands the
+token to the window over the pywebview bridge (`window.pywebview.api.token()`).
 
 ## Tests
 

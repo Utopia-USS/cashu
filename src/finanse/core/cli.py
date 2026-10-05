@@ -41,8 +41,9 @@ def serve_cmd(
 ) -> None:
     """Launch the web dashboard (net worth, cashflow, subscriptions).
 
-    Loopback only; every API call needs the per-launch token, which the served
-    page carries and which is written to <data dir>/api-token for local tools."""
+    Loopback only; every API call needs the per-launch token. Open the printed
+    one-time URL (the token rides in its #fragment, which the page keeps for this
+    tab only); local tools read it from <data dir>/api-token (0600)."""
     import uvicorn
 
     from . import security
@@ -60,7 +61,13 @@ def serve_cmd(
     if reload:  # the reloader re-imports the app in a worker process
         os.environ[security.TOKEN_ENV] = cfg.token
         os.environ["FINANSE_PORT"] = str(port)
-    cliutil.console.print(f"[green]Dashboard:[/] http://127.0.0.1:{port}")
+    if security.embed_token_enabled():
+        cliutil.console.print(
+            f"[yellow]{security.DEV_EMBED_ENV}=1:[/] the token is embedded into the page "
+            "(development only: any local client can read it)."
+        )
+    # Printed once: the token is in the fragment, never sent to the server (core/security.py).
+    cliutil.console.print(f"[green]Dashboard:[/] {cfg.token_url()}", soft_wrap=True)
     cliutil.console.print(f"[dim]Data dir: {paths.data_dir()} (API token: {token_file.name})[/]")
     try:
         uvicorn.run("finanse.api.app:app", host=host, port=port, reload=reload)
