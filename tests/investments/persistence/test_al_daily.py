@@ -381,3 +381,62 @@ def test_the_watchlist_is_bounded(investor, monkeypatch):
         watch_service.add(s, profile, "BBB.DE")
         with pytest.raises(watch_service.WatchlistError, match="at most 2 instruments"):
             watch_service.add(s, profile, "CCC.DE")
+
+
+def test_a_snoozed_alert_wakes_without_inheriting_its_cooldown(investor):
+    """F6 review V5: snooze 1 day with a 7-day cooldown; the condition still holds when it wakes."""
+    pid, _ = investor
+    aid = create(pid, "price_above", {"level": 90}, cooldown_days=7)
+    run(pid)
+    with get_session() as s:
+        alert_service.update(
+            s, s.get(Profile, pid), aid, {"status": "snoozed", "snooze_days": 1}, now=T0
+        )
+    (closed,) = alert_signals(pid, aid)
+    assert closed.status == "expired" and closed.payload["closed_by"] == "snooze"
+    woke = run(pid, at=T0 + dt.timedelta(days=2))
+    assert woke.stats["alerts_woken"] == 1 and woke.stats["alert_signals_suppressed"] == 0
+    assert [x.status for x in alert_signals(pid, aid)] == ["expired", "active"]
+    assert alert_row(aid).status == "triggered"
+
+
+def test_a_rearmed_muted_alert_does_not_inherit_its_cooldown(investor):
+    pid, _ = investor
+    aid = create(pid, "price_above", {"level": 90}, cooldown_days=7)
+    run(pid)
+    with get_session() as s:
+        alert_service.mute(s, s.get(Profile, pid), aid, now=T0)
+    with get_session() as s:
+        alert_service.update(
+            s, s.get(Profile, pid), aid, {"status": "active"}, now=T0 + dt.timedelta(hours=2)
+        )
+    again = run(pid, at=T0 + dt.timedelta(days=1))
+    assert again.stats["alert_signals_suppressed"] == 0
+    assert [x.status for x in alert_signals(pid, aid)] == ["expired", "active"]
+
+
+def test_a_real_resolution_still_starts_the_cooldown_after_a_snooze(investor):
+    pid, _ = investor
+    aid = create(pid, "price_above", {"level": 90}, cooldown_days=7)
+    run(pid)
+    run(pid, at=T0 + dt.timedelta(days=1), prices={"XMPL": Decimal(80)})  # resolved
+    with get_session() as s:
+        alert_service.update(
+            s, s.get(Profile, pid), aid, {"status": "snoozed", "snooze_days": 1},
+            now=T0 + dt.timedelta(days=1, hours=1),
+        )
+    later = run(pid, at=T0 + dt.timedelta(days=3), prices={"XMPL": Decimal(100)})
+    assert later.stats["alert_signals_suppressed"] == 1  # cooldown from the resolution on day 1
+    assert [x.status for x in alert_signals(pid, aid)] == ["resolved"]
+
+
+def test_a_restored_alert_signal_loses_the_closed_by_mark(investor):
+    pid, _ = investor
+    aid = create(pid, "price_above", {"level": 90}, cooldown_days=7)
+    run(pid)
+    with get_session() as s:
+        alert_service.delete(s, s.get(Profile, pid), aid, now=T0)
+    with get_session() as s:
+        alert_service.restore(s, s.get(Profile, pid), aid, now=T0 + dt.timedelta(minutes=1))
+    (sig,) = alert_signals(pid, aid)
+    assert sig.status == "active" and "closed_by" not in sig.payload

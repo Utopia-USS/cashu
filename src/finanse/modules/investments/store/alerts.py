@@ -73,10 +73,22 @@ def open_alert_signals(session: Session, profile_id: int) -> dict[int, InvSignal
     return out
 
 
+CLOSED_BY_KEY = "closed_by"
+"""Payload key of an alert signal the owner's action closed (``snooze``, ``mute``, ``delete``) or the
+alert's own expiry (``alert_expired``): such a close is no resolution of the condition, so it never
+starts the alert's cooldown (F6 review V5)."""
+
+
 def close_open_signal(
-    session: Session, profile_id: int, alert_id: int, *, now: dt.datetime | None = None
+    session: Session,
+    profile_id: int,
+    alert_id: int,
+    *,
+    now: dt.datetime | None = None,
+    reason: str = "owner",
 ) -> InvSignal | None:
-    """Expire the alert's open signal (muted, snoozed or deleted alerts stop speaking at once)."""
+    """Expire the alert's open signal (muted, snoozed or deleted alerts stop speaking at once),
+    marked with ``reason`` under :data:`CLOSED_BY_KEY`."""
     row = session.exec(
         select(InvSignal).where(
             InvSignal.profile_id == profile_id,
@@ -88,6 +100,7 @@ def close_open_signal(
         return None
     row.status = SignalStatus.EXPIRED.value
     row.closed_at = convert.aware(now or utcnow())
+    row.payload = {**(row.payload or {}), CLOSED_BY_KEY: reason}
     session.add(row)
     session.flush()
     return row
@@ -128,6 +141,7 @@ def reopen_signal_closed_at(
     acknowledged = row.acknowledged_at is not None
     row.status = (SignalStatus.ACKNOWLEDGED if acknowledged else SignalStatus.ACTIVE).value
     row.closed_at = None
+    row.payload = {k: v for k, v in (row.payload or {}).items() if k != CLOSED_BY_KEY}
     session.add(row)
     session.flush()
     return row

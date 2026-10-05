@@ -8,9 +8,13 @@ Definition (the same filters as the cashflow and spending views, so every number
   ``cash_withdrawal``) are excluded; each currency on its own, never summed or converted;
 - surplus = income - spending;
 - cushion top-up (only in the cushion currency, only when the profile turned the rule on in the
-  budget settings): ``min(target - cushion balance at the month end, surplus, monthly_max)``, never
-  below 0; the target is a fixed amount or N months of average spending (up to 6 months ending with
-  the closed month);
+  budget settings): ``min(target - cushion level, surplus, monthly_max)``, never below 0; the target
+  is a fixed amount or N months of average spending (up to 6 months ending with the closed month);
+- cushion level = the cushion accounts' balance as of the month start plus the month's transfers on
+  them (internal / own-account / structural moves, in minus out), so the month's own income and
+  spending booked on a cushion account (the income account kept as the cushion) are never counted
+  twice: they are the surplus (F6 review V7). An account without a balance before the month falls back
+  to its month-end balance minus the month's income and spending booked on it;
 - suggested transfer = surplus - cushion top-up, never below 0;
 - planned contribution: the investments strategy's ``contributions.monthly_amount`` (in the
   strategy's base currency), read only when the investments module is enabled for the profile; the
@@ -139,22 +143,27 @@ def _label(d: date | None) -> str | None:
     return None if d is None else f"{d.year}-{d.month:02d}"
 
 
+def _is_flow(t: Transaction, own: set[str]) -> bool:
+    """True when ``t`` is income or spending (the cashflow filters), False for a transfer."""
+    from .ingestion.normalize import iban_key
+
+    if t.category in NON_SPENDING_CATEGORIES or t.is_internal_transfer:
+        return False
+    cp = iban_key(t.counterparty_iban) if t.counterparty_iban else ""
+    return not (cp and cp in own)
+
+
 def month_flows(
     session: Session, profile_id: int, year: int, month: int
 ) -> dict[str, CurrencyClose]:
     """Income and spending of one month per currency (filters as ``monthly_cashflow``)."""
-    from .ingestion.normalize import iban_key
-
     start = date(year, month, 1)
     end = date(year, month, calendar.monthrange(year, month)[1])
     own = own_ibans(session, profile_id)
     out: dict[str, CurrencyClose] = {}
     q = transactions(profile_id, Transaction.booking_date >= start, Transaction.booking_date <= end)
     for t in session.exec(q).all():
-        if t.category in NON_SPENDING_CATEGORIES or t.is_internal_transfer:
-            continue
-        cp = iban_key(t.counterparty_iban) if t.counterparty_iban else ""
-        if cp and cp in own:
+        if not _is_flow(t, own):
             continue
         cc = out.get(t.currency)
         if cc is None:
@@ -196,6 +205,46 @@ def _average_spending(
     return (sum((r.expense for r in rows), ZERO) / len(rows)).quantize(Decimal("0.01"))
 
 
+def cushion_level(
+    session: Session, profile_id: int, accounts: list[Account], year: int, month: int
+) -> Decimal:
+    """The cushion accounts' level for the close of ``year-month`` (see the module doc): balance as of
+    the day before the month (the newest snapshot then plus the transactions booked after it) plus
+    the month's transfers on the account; without an earlier balance, the month-end balance minus the
+    month's income and spending on the account."""
+    month_start = date(year, month, 1)
+    before = date.fromordinal(month_start.toordinal() - 1)
+    month_end = date(year, month, calendar.monthrange(year, month)[1])
+    if not accounts:
+        return ZERO
+    own = own_ibans(session, profile_id)
+    at_start = networth.latest_balance_per_account(session, before, profile_id=profile_id)
+    at_end = networth.latest_balance_per_account(session, month_end, profile_id=profile_id)
+    level = ZERO
+    for acc in accounts:
+        rows = session.exec(
+            select(Transaction).where(
+                Transaction.account_id == acc.id, Transaction.booking_date <= month_end
+            )
+        ).all()
+        in_month = [t for t in rows if t.booking_date >= month_start]
+        start = at_start.get(acc.id)
+        if start is not None:
+            snapshot_day, amount = start
+            amount += sum(
+                (t.amount for t in rows if snapshot_day < t.booking_date <= before), ZERO
+            )
+            amount += sum((t.amount for t in in_month if not _is_flow(t, own)), ZERO)
+        else:
+            end = at_end.get(acc.id)
+            if end is None:
+                continue
+            amount = end[1] - sum((t.amount for t in in_month if _is_flow(t, own)), ZERO)
+        value = networth.contribution(acc, amount)
+        level += value if value is not None else ZERO
+    return level
+
+
 def cushion_state(
     session: Session,
     profile: Profile,
@@ -205,14 +254,8 @@ def cushion_state(
     surplus: Decimal,
 ) -> CushionState:
     currency = cushion.currency or analytics.base_currency(session, profile.id)
-    month_end = date(year, month, calendar.monthrange(year, month)[1])
     accounts = _cushion_accounts(session, profile.id, cushion, currency)
-    latest = networth.latest_balance_per_account(session, month_end, profile_id=profile.id)
-    balance = ZERO
-    for acc in accounts:
-        entry = latest.get(acc.id)
-        value = networth.contribution(acc, entry[1] if entry else None)
-        balance += value if value is not None else ZERO
+    balance = cushion_level(session, profile.id, accounts, year, month)
     average = None
     if cushion.target_amount is not None:
         target, source = cushion.target_amount, "amount"

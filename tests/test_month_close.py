@@ -236,12 +236,15 @@ def test_cushion_with_chosen_accounts_and_currency(api):
     main = _account_id("mKonto Test")
     _put(api, {"enabled": True, "target_amount": 6000, "account_ids": [main]})
     c = api.get(SEPT).json()["cushion"]
-    assert c["balance"] == 5000.0 and [a["id"] for a in c["accounts"]] == [main]
+    # the income account as the cushion (F6 review V7): no balance before September, so its level
+    # is the month-end 5000 minus September's income and spending booked on it (9000 - 4235.75)
+    assert c["balance"] == 235.75 and [a["id"] for a in c["accounts"]] == [main]
 
     eur = _account_id("eKonto EUR Test")
     _put(api, {"enabled": True, "currency": "eur", "target_amount": 1000, "account_ids": [eur]})
     close = api.get(SEPT).json()
-    assert close["cushion"]["currency"] == "EUR" and close["cushion"]["balance"] == 460.04
+    # month-end 460.04 without September's 9.99 of spending on it (that is the EUR surplus, V7)
+    assert close["cushion"]["currency"] == "EUR" and close["cushion"]["balance"] == 470.03
     assert close["cushion"]["top_up"] == 0.0  # EUR surplus is negative: nothing to set aside
     assert _pln(close)["cushion_top_up"] == 0.0
 

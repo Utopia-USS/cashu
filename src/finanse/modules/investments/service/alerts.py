@@ -343,10 +343,10 @@ def _set_status(
     if status == AlertStatus.SNOOZED.value:
         until = _snooze_until(changes, now)
         row.status, row.snoozed_until = status, until
-        alert_store.close_open_signal(session, profile.id, row.id, now=now)
+        alert_store.close_open_signal(session, profile.id, row.id, now=now, reason="snooze")
     elif status == AlertStatus.MUTED.value:
         row.status, row.snoozed_until = status, None
-        alert_store.close_open_signal(session, profile.id, row.id, now=now)
+        alert_store.close_open_signal(session, profile.id, row.id, now=now, reason="mute")
     else:
         if row.expires_at is not None and convert.aware(row.expires_at) <= now:
             raise AlertError(
@@ -391,7 +391,7 @@ def delete(session: Session, profile: Profile, alert_id: int, *, now=None) -> In
     row = alert_store.alert(session, profile.id, alert_id)
     if row is None:
         raise AlertNotFound(f"No alert {alert_id}")
-    alert_store.close_open_signal(session, profile.id, alert_id, now=now)
+    alert_store.close_open_signal(session, profile.id, alert_id, now=now, reason="delete")
     row.deleted_at = now
     session.add(row)
     session.flush()
@@ -478,7 +478,9 @@ def housekeeping(session: Session, profile_id: int, now: dt.datetime) -> dict[st
     ):
         if row.expires_at is not None and convert.aware(row.expires_at) <= now:
             row.status, row.snoozed_until, row.updated_at = AlertStatus.EXPIRED.value, None, now
-            alert_store.close_open_signal(session, profile_id, row.id, now=now)
+            alert_store.close_open_signal(
+                session, profile_id, row.id, now=now, reason="alert_expired"
+            )
             expired += 1
         elif (
             row.status == AlertStatus.SNOOZED.value
@@ -536,8 +538,12 @@ def evaluate_profile(
             )
         )
     open_alert = [o for o in signals.open_signals(session, profile.id) if is_alert_key(o.dedup_key)]
+    # Cooldowns count from a resolution of the condition only: a signal closed by a snooze, mute,
+    # delete or the alert's expiry does not start one (F6 review V5).
     closed_alert = [
-        c for c in signals.closed_signals(session, profile.id) if is_alert_key(c.dedup_key)
+        c
+        for c in signals.closed_signals(session, profile.id, skip_closed_by=True)
+        if is_alert_key(c.dedup_key)
     ]
     reconciliation = reconcile_signals(
         open_signals=open_alert,

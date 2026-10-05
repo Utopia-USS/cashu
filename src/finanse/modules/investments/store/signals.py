@@ -54,8 +54,26 @@ def open_signals(session: Session, profile_id: int) -> list[OpenSignal]:
     ]
 
 
-def closed_signals(session: Session, profile_id: int) -> list[ClosedSignal]:
-    """The newest closed (resolved / expired) signal of each dedup key (for cooldowns)."""
+def closed_signals(
+    session: Session, profile_id: int, *, skip_closed_by: bool = False
+) -> list[ClosedSignal]:
+    """The newest closed (resolved / expired) signal of each dedup key (for cooldowns).
+    ``skip_closed_by``: ignore signals the owner's action closed (payload ``closed_by``, alerts)."""
+    if skip_closed_by:
+        newest: dict[str, dt.datetime] = {}
+        for key, closed_at, payload in session.exec(
+            select(InvSignal.dedup_key, InvSignal.closed_at, InvSignal.payload).where(
+                InvSignal.profile_id == profile_id,
+                InvSignal.status.in_(CLOSED_STATUSES),
+                InvSignal.closed_at.is_not(None),
+            )
+        ).all():
+            if isinstance(payload, dict) and payload.get("closed_by"):
+                continue
+            at = convert.aware(closed_at)
+            if key not in newest or at > newest[key]:
+                newest[key] = at
+        return [ClosedSignal(dedup_key=k, resolved_at=v) for k, v in newest.items()]
     rows = session.exec(
         select(InvSignal.dedup_key, func.max(InvSignal.closed_at))
         .where(
