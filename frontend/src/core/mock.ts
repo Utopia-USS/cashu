@@ -5,7 +5,8 @@
 //
 // Scenarios via the query string: ?mock=first (no profile, legacy DB found),
 // ?mock=one (one full profile), ?mock=two (default: full profile + a new one).
-import { investmentsMock, mcpCallsMock } from "../modules/investments/mock";
+import { mcpCallsMock } from "../modules/investments/mock";
+import { investmentsV2Mock, martaIsMinimal } from "../modules/investments/v2/mock";
 import {
   ApiError, type ModuleInfo, type Profile, type ProfileModule, type SetupInfo, type SetupState, type SetupStep,
 } from "./api";
@@ -27,11 +28,13 @@ const mods = (s: Record<string, SetupState | null>): ProfileModule[] =>
 
 const JAN: MockProfile = {
   slug: "jan", name: "Jan", base_currency: "PLN", mcp_privacy: "strict", kind: "full",
-  modules: mods({ budget: "ready", loans: "ready", assets: "ready", investments: "partial" }),
+  // v2 design: the history profile is fully set up (?marta=empty keeps the F3 partial state too).
+  modules: mods({ budget: "ready", loans: "ready", assets: "ready", investments: martaIsMinimal() ? "ready" : "partial" }),
 };
+// v2 design: Marta is the zero-start profile with only the investments module (?marta=empty: the F3 empty one).
 const MARTA: MockProfile = {
   slug: "marta", name: "Marta", base_currency: "PLN", mcp_privacy: "strict", kind: "empty",
-  modules: mods({ budget: "empty", investments: "partial" }),
+  modules: martaIsMinimal() ? mods({ investments: "ready" }) : mods({ budget: "empty", investments: "partial" }),
 };
 
 const scenario = new URLSearchParams(location.search).get("mock") ?? "two";
@@ -306,9 +309,10 @@ function profileApi(p: MockProfile, path: string, q: URLSearchParams, method: st
   if (path === "/merchant-category") return { updated: 5 };
   if (path === "/cash/expense") return { ok: true, id: 599 };
   if (path.startsWith("/cash/transaction/")) return { ok: true };
-  // F3: investments workspace + track M contract (reviews, proposals, MCP audit log).
-  if (path.startsWith("/investments") || path.startsWith("/reviews") || path.startsWith("/proposals")) {
-    return investmentsMock(p.slug, p.kind, path, q, method, body);
+  // F3: investments workspace + track M contract (reviews, proposals, MCP audit log); F5 v2 endpoints
+  // (alerts, watchlist, performance, digest events) and the budget month close are layered on top.
+  if (path.startsWith("/investments") || path.startsWith("/reviews") || path.startsWith("/proposals") || path === "/budget/month-close") {
+    return investmentsV2Mock(p.slug, p.kind, path, q, method, body);
   }
   if (path === "/mcp/calls") return mcpCallsMock(p.kind);
   throw new ApiError(404, `mock: brak ${method} ${path}`);

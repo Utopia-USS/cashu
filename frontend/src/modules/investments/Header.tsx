@@ -1,10 +1,10 @@
-// Workspace header row: account filter, freshness, NBP date, strategy pill + popover, and the
-// three actions (Uruchom reguły, Import, Przegląd tygodnia).
+// Strategy status pieces (the tag and the details: validation, inactive rules, versions, pending proposals),
+// shown in Ustawienia > Agent AI since v2 (no strategy pill on the investments page).
 import { useState } from "react";
 import { describeIssue, proposalSummary } from "../../core/messages";
-import { copyText, Pop, Seg, Tag, useToast } from "../../ui";
-import type { AccountRow, Overview, Proposal, StrategyStatus } from "./api";
-import { accountLabel, dm, dmy, money0, nBuckets, nChanges, nRules, plural, wdm } from "./labels";
+import { copyText, Tag, useToast } from "../../ui";
+import type { Proposal, StrategyStatus } from "./api";
+import { dmy, money0, nBuckets, nRules, plural } from "./labels";
 
 export function strategyTag(st: { state: string; errors: number; warnings: number; inactive_rules: number } | null) {
   if (!st || st.state === "missing") return <Tag tone="warn">brak</Tag>;
@@ -14,81 +14,7 @@ export function strategyTag(st: { state: string; errors: number; warnings: numbe
   return w ? <Tag tone="warn">{plural(w, "ostrzeżenie", "ostrzeżenia", "ostrzeżeń")}</Tag> : <Tag tone="pos">OK</Tag>;
 }
 
-export function WorkspaceHeader(p: {
-  accounts: AccountRow[];
-  filter: number | null;
-  onFilter: (id: number | null) => void;
-  overview: Overview | null;
-  hasData: boolean;
-  strategy: StrategyStatus | null;
-  proposals: Proposal[];
-  runBusy: boolean;
-  canRun: boolean;
-  onRun: () => void;
-  onImport: () => void;
-  onAddTxn: () => void;
-  review: { open: boolean; due: boolean; changes: number; doneToday: string | null };
-  onReview: () => void;
-  onProposal: (id: number) => void;
-  onStrategyInit: () => void;
-  onStrategyReload: () => void;
-  onWarnings: () => void;
-}) {
-  const [pop, setPop] = useState(false);
-  const fr = p.overview?.freshness;
-  const stale = fr?.prices.stale_count ?? 0;
-  const brief = p.strategy ?? fr?.strategy ?? null;
-  const inactive = p.strategy ? p.strategy.inactive_rules.length : fr?.strategy.inactive_rules ?? 0;
-  const tagBrief = brief ? { state: brief.state, errors: brief.errors, warnings: brief.warnings, inactive_rules: inactive } : null;
-  const staleNames = fr?.prices.stale.map((s) => `${s.label}: ${s.price_date ? `ostatnie notowanie ${dm(s.price_date)}` : "brak notowań"}`).join("\n");
-  return (
-    <div className="wshead">
-      <h2>Inwestycje</h2>
-      {p.accounts.length > 0 && (
-        <Seg<number | null> items={[["Wszystkie", null], ...p.accounts.map((a) => [accountLabel(a, p.accounts), a.id] as [string, number])]}
-          value={p.filter} onChange={p.onFilter} />
-      )}
-      {!p.hasData || !fr?.prices.newest_bar ? (
-        <Tag>{p.hasData ? "brak notowań - uruchom reguły" : "brak cen - brak pozycji"}</Tag>
-      ) : (
-        <button className={`tag ${stale ? "warn" : ""} clickable`} style={{ background: "transparent", font: "inherit", fontSize: 11 }}
-          title={staleNames || "Wszystkie ceny aktualne"} onClick={p.onWarnings}>
-          ceny: {wdm(fr.prices.newest_bar)}{stale ? ` · ${stale} nieaktualne` : ""}
-        </button>
-      )}
-      {p.hasData && fr?.fx.newest_rate && <Tag title="Najnowszy kurs NBP w bazie">NBP: {dm(fr.fx.newest_rate)}</Tag>}
-      <div className="menu-anchor">
-        <button className={`btn ${pop ? "on" : ""}`} style={{ display: "inline-flex", gap: 8, alignItems: "center" }} aria-expanded={pop} aria-haspopup="dialog"
-          onClick={() => setPop((v) => !v)}>
-          Strategia{brief?.version != null ? ` v${brief.version}` : ""} {strategyTag(tagBrief)}
-          {p.proposals.length > 0 && <Tag tone="info">{plural(p.proposals.length, "propozycja", "propozycje", "propozycji")}</Tag>}
-        </button>
-        <Pop open={pop} onClose={() => setPop(false)} label="Strategia">
-          <StrategyPopover st={p.strategy} proposals={p.proposals} onProposal={(id) => { setPop(false); p.onProposal(id); }}
-            onInit={() => { setPop(false); p.onStrategyInit(); }} onReload={p.onStrategyReload} />
-        </Pop>
-      </div>
-      <span className="spacer" />
-      <button className="btn" onClick={p.onRun} disabled={p.runBusy || !p.canRun}
-        title={p.canRun ? "Wycena, alokacja i reguły teraz (współdzieli blokadę z pracą w tle)" : "Reguły wymagają strategii i co najmniej jednej wyceny"}>
-        {p.runBusy ? "Uruchamiam…" : "Uruchom reguły"}
-      </button>
-      <button className="btn" onClick={p.onImport} title="Import transakcji (i)">Import</button>
-      {!p.hasData ? (
-        <button className="btn" onClick={p.onAddTxn}>Dodaj transakcję</button>
-      ) : (
-        <>
-          {p.review.doneToday && !p.review.open && <Tag tone="pos">zrobiony {dm(p.review.doneToday)}</Tag>}
-          <button className={`btn ${p.review.open || p.review.due ? "primary" : ""}`} onClick={p.onReview} title="Tryb przeglądu tygodnia (r)">
-            {p.review.open ? "Zamknij tryb przeglądu" : p.review.due && p.review.changes > 0 ? `Przegląd tygodnia · ${nChanges(p.review.changes)}` : "Przegląd tygodnia"}
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-function StrategyPopover({ st, proposals, onProposal, onInit, onReload }: {
+export function StrategyPopover({ st, proposals, onProposal, onInit, onReload }: {
   st: StrategyStatus | null; proposals: Proposal[]; onProposal: (id: number) => void; onInit: () => void; onReload: () => void;
 }) {
   const toast = useToast();

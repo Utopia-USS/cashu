@@ -426,25 +426,3 @@ export function Pop({ open, onClose, children, width = 420, align = "left", labe
     </div>
   );
 }
-
-/** Allocation bar: current share as the fill, target tick, band shading; all values are fractions
- * of the bar scale `max` (e.g. 0.6 of a 0.8 scale). */
-export function AllocBar({ current, target, band, max, color, height, mutedTarget }: {
-  current: number; target?: number | null; band?: [lo: number, hi: number] | null; max: number; color: string; height?: number;
-  /** Grey target tick: the target applies to a different scope (e.g. the whole portfolio while filtered). */
-  mutedTarget?: boolean;
-}) {
-  const at = (v: number) => `${Math.max(0, Math.min(100, (v / max) * 100))}%`;
-  return (
-    <div className={`alloc ${mutedTarget ? "muted-tgt" : ""}`} style={height ? { height } : undefined} aria-hidden>
-      {band && <div className="band" style={{ left: at(band[0]), width: `calc(${at(band[1])} - ${at(band[0])})` }} />}
-      <div className="fill" style={{ width: at(current), background: color, minWidth: current > 0 ? 4 : 0 }} />
-      {target != null && <div className="tgt" style={{ left: at(target) }} />}
-    </div>
-  );
-}
-
-/** Dashed placeholder panel describing what will appear there (empty workspace). */
-export function Ghost({ title, children }: { title: ReactNode; children: ReactNode }) {
-  return <div className="ghost"><b>{title}</b>{children}</div>;
-}

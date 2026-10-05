@@ -4,11 +4,12 @@ import { useAsync } from "../../hooks";
 import { FactList, Kpi } from "../../ui";
 import { getOverview } from "./api";
 import { dm, money, pct } from "./labels";
-import { Workspace } from "./Workspace";
+import { InvestmentsV2 } from "./v2/Home";
+import { InvestmentsHeroFact, InvestmentsSummaryWidget, MinimalOverview, SurplusWidget } from "./v2/Overview";
 
-// Frontend half of the investments module: the F3 workspace (one tab, wide page). The workspace
-// renders its own empty state with setup steps in place of the data (design W4), so the shell's
-// SetupPage is only reached through Przegląd / the setup view.
+// Frontend half of the investments module: the v2 home (widget grid on thirds, one tab, wide page) with
+// its sub-pages (alerts manager, asset page). The home renders its own first steps for an empty
+// portfolio, so the shell's SetupPage is only reached through Przegląd / the setup view.
 
 function InvestmentsKpis({ state, go }: { state: string; go: () => void }) {
   const slug = useSlug();
@@ -49,10 +50,16 @@ export const investments: ModuleDef = {
   hint: "Z Budżetem: wartość portfela liczy się do wartości netto. Konfiguracja przez skill w Claude Code.",
   short: "Rachunki maklerskie, alokacja vs strategia, sygnały i dziennik decyzji",
   intro: "Moduł zbiera transakcje z rachunków maklerskich, wycenia pozycje po kursach i porównuje alokację ze strategią zapisaną w pliku. Co tydzień pokazuje, co się zmieniło i które reguły zadziałały, a decyzje trafiają do dziennika.",
-  skillBlurb: "Skill {skill} przeprowadzi wywiad o celach i horyzoncie, zaproponuje koszyki i reguły i prześle strategię jako propozycję, którą zatwierdzasz w aplikacji (Inwestycje → Strategia). Dane pobiera przez MCP, więc obowiązuje poziom prywatności tego profilu.",
+  skillBlurb: "Skill {skill} przeprowadzi wywiad o celach i horyzoncie, zaproponuje koszyki i reguły i prześle strategię jako propozycję, którą zatwierdzasz w aplikacji (Ustawienia → Agent AI). Dane pobiera przez MCP, więc obowiązuje poziom prywatności tego profilu.",
   skillHint: "Wywiad trwa ok. 1,5-2 h i można go rozłożyć na kilka posiedzeń. Strategia pojawi się w krokach powyżej jako propozycja do zatwierdzenia.",
   ownSetup: true,
-  tabs: [{ id: "portfolio", label: "Inwestycje", wide: true, render: (ctx) => <Workspace ctx={ctx} /> }],
+  tabs: [{ id: "portfolio", label: "Inwestycje", wide: true, render: (ctx) => <InvestmentsV2 ctx={ctx} /> }],
   Kpis: ({ ctx }) => <InvestmentsKpis state={ctx.state} go={() => ctx.go({ kind: "tab", tab: "investments.portfolio" })} />,
   Facts: InvestmentsFacts,
+  overview: [
+    { id: "surplus", span: 1, order: 20, needs: ["budget"], Widget: SurplusWidget },
+    { id: "summary", span: 1, order: 30, Widget: InvestmentsSummaryWidget },
+  ],
+  HeroFact: InvestmentsHeroFact,
+  MinimalOverview,
 };

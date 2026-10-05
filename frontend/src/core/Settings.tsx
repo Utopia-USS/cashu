@@ -13,6 +13,7 @@ import { useShell } from "./context";
 import type { ThemePref } from "./theme";
 import { serialSaver } from "./util";
 import { CURRENCIES, legacySkipped, PRIVACY_OPTIONS } from "./Wizard";
+import { InvestmentsStrategySettings } from "../modules/investments/v2/StrategySettings";
 
 const SECTIONS: [id: string, label: string][] = [
   ["profile", "Profil"], ["modules", "Moduły"], ["agent", "Agent AI (MCP)"], ["data", "Dane"],
@@ -241,6 +242,7 @@ function AgentSection() {
             : desktopJson(slug)} multiline />
         </span>
       </div>
+      {profile.modules.some((m) => m.id === "investments" && m.enabled) && <InvestmentsStrategySettings />}
       <AuditLog />
     </Card>
   );
