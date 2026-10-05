@@ -28,6 +28,7 @@ PROVIDERS = (
     "finanse.core.mcp.tools.loans",
     "finanse.core.mcp.tools.investments",
     "finanse.core.mcp.tools.alerts",
+    "finanse.core.mcp.tools.research",
 )
 
 MAX_STRING = 200_000  # strategy YAML / markdown are the longest arguments

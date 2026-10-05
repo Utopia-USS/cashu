@@ -7,6 +7,7 @@ never. Every registered tool is exercised (the test fails when a new tool is not
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 
 import pytest
@@ -70,6 +71,23 @@ def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
     from finanse.modules.investments.service import daily
 
     daily.run_daily_check("manual", as_of=TODAY, sources=sources())
+    # Research (F6): a run in progress; notes below carry names / amounts / an IBAN in free text.
+    started = host.call(
+        "start_research_run", {"scope": {"themes": [f"Banki {PERSON_P2P}"], "scheduled": True}}
+    )
+    assert started.ok, started.error
+    run_id = started.data["run_id"]
+
+    def source(n: int) -> list[dict]:
+        return [
+            {
+                "url": f"https://example.com/news/1234567890{n}/artykul",
+                "publisher": f"Portal {PERSON_P2P}",
+                "published_at": TODAY.isoformat(),
+                "title": note[:150],
+            }
+        ]
+
     return [
         ("profile_overview", {}),
         ("setup_status", {"module": "investments"}),
@@ -106,6 +124,68 @@ def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
         ),
         ("theses", {}),
         ("theses", {"instrument": "US0378331005"}),
+        ("research_context", {}),
+        (
+            "add_research_note",
+            {
+                "run_id": run_id,
+                "kind": "news",
+                "polarity": "negative",
+                "strength": 3,
+                "instrument": "PKO",
+                "thesis_relation": "invalidates",
+                "thesis_field": "invalidation",
+                "title": f"Bank {PERSON_P2P} 4321.09 PLN",
+                "summary": note,
+                "sources": source(1),
+                "details": {
+                    "event": "wyniki Q3",
+                    "event_date": (TODAY + dt.timedelta(days=20)).isoformat(),
+                    "context": note,
+                },
+            },
+        ),
+        (
+            "add_research_note",
+            {
+                "kind": "community",
+                "polarity": "positive",
+                "strength": 2,
+                "theme": f"Banki {PERSON_P2P}",
+                "title": "Forum o bankach",
+                "summary": note,
+                "sources": source(2),
+                "details": {"scale": "small"},
+            },
+        ),
+        (
+            "add_research_note",
+            {
+                "kind": "candidate",
+                "polarity": "positive",
+                "strength": 2,
+                "title": f"Kandydat Newco {PERSON_P2P}",
+                "summary": note,
+                "sources": source(3),
+                "candidate": {"symbol_or_isin": "NEWCO.WA", "name": f"Newco {PERSON_P2P}"},
+                "details": {
+                    "entry_type": "trend",
+                    "criteria": [
+                        {"text": f"C/Z 9,8 {PERSON_P2P}", "met": True, "threshold": "max 15"}
+                    ],
+                    "bucket": "stocks",
+                    "context": note,
+                },
+            },
+        ),
+        ("research_notes", {}),
+        ("research_notes", {"since": TODAY.isoformat(), "kind": "candidate"}),
+        (
+            "finish_research_run",
+            {"run_id": run_id, "counts": {"sources_checked": 12}, "reason": note},
+        ),
+        ("start_research_run", {"scope": {"held": False, "themes": ["Energia"]}}),
+        ("research_context", {}),
         ("signals", {"status": "open"}),
         ("set_merchant_category", {"merchant": "SKLEP NIEZNANY TEST", "category": "groceries"}),
         ("mark_review_done", {"notes": note}),
