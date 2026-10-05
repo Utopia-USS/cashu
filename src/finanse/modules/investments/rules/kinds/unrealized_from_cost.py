@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
+from ..polarity import SignalPolarity
 from .support import (
     RATIO_EPSILON,
     InstrumentFilter,
@@ -122,6 +123,7 @@ class LossFromCostRule(_UnrealizedFromCostRule):
     """Fires when (value - cost) / cost <= -threshold (``threshold: 0.25`` = a 25% loss, 0 < t < 1)."""
 
     KIND = "loss_from_cost"
+    DEFAULT_POLARITY = SignalPolarity.NEGATIVE  # a loss from cost to review
     IS_LOSS = True
     MAX_THRESHOLD = 1.0
 
@@ -130,5 +132,6 @@ class GainFromCostRule(_UnrealizedFromCostRule):
     """Fires when (value - cost) / cost >= threshold (``threshold: 0.5`` = a 50% gain; > 1 allowed)."""
 
     KIND = "gain_from_cost"
+    DEFAULT_POLARITY = SignalPolarity.POSITIVE  # a gain target met
     IS_LOSS = False
     MAX_THRESHOLD = None

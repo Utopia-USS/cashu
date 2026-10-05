@@ -10,6 +10,7 @@ from finanse.modules.investments.domain import PriceBar, days_between, divided_b
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
+from ..polarity import SignalPolarity
 from .support import (
     RATIO_EPSILON,
     InstrumentFilter,
@@ -88,6 +89,7 @@ class DrawdownFromHighRule:
     """
 
     KIND = "drawdown_from_high"
+    DEFAULT_POLARITY = SignalPolarity.POSITIVE  # a dip: a tranche per the plan on a core holding
 
     @property
     def kind(self) -> str:

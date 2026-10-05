@@ -22,6 +22,7 @@ from finanse.modules.investments.domain import (
 
 from .outcomes import RuleOutcome
 from .params import ParamErrors
+from .polarity import SignalPolarity
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,10 +38,16 @@ class RuleSpec[P]:
     cooldown_days: int | None = None
     """YAML ``cooldown_days``: a resolved signal of the same key does not come back within this many
     days."""
+    polarity: SignalPolarity | None = None
+    """YAML ``polarity``: overrides the kind's ``DEFAULT_POLARITY`` for the signals this rule fires
+    (None = the kind's default)."""
 
 
 class RuleKind[P](Protocol):
-    """One kind of rule from the fixed catalog (``allocation_drift``, ``custom``...) with typed params."""
+    """One kind of rule from the fixed catalog (``allocation_drift``, ``custom``...) with typed params.
+
+    A kind may declare a class attribute ``DEFAULT_POLARITY`` (:class:`SignalPolarity`, neutral when
+    absent): the polarity of its signals unless the rule sets ``polarity:``."""
 
     @property
     def kind(self) -> str:

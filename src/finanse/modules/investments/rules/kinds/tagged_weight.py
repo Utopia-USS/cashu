@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
+from ..polarity import SignalPolarity
 from .support import (
     RATIO_EPSILON,
     format_pct,
@@ -45,6 +46,7 @@ class TaggedWeightRule:
     ``data.max_unclassified_weight``: such fresh imports usually lack tags, so the sum would be too low."""
 
     KIND = "tagged_weight"
+    DEFAULT_POLARITY = SignalPolarity.NEGATIVE  # a tagged group out of its weight range
 
     @property
     def kind(self) -> str:

@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 
 from finanse.modules.investments.domain import AccountId, InstrumentId, SignalSeverity
 
+from .polarity import SignalPolarity
+
 
 @dataclass(frozen=True, slots=True)
 class SignalCandidate:
@@ -28,6 +30,9 @@ class SignalCandidate:
     account_id: AccountId | None = None
     payload: Mapping[str, object] = field(default_factory=dict, hash=False)
     """JSON-encodable measured values, thresholds and context."""
+    polarity: SignalPolarity = SignalPolarity.NEUTRAL
+    """Opportunity / risk / information; the engine sets it from the rule (``polarity:``) or the kind's
+    default."""
 
 
 @dataclass(frozen=True, slots=True)

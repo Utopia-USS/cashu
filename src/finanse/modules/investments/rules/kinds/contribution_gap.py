@@ -10,6 +10,7 @@ from finanse.modules.investments.domain import CalendarDate, days_between
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
+from ..polarity import SignalPolarity
 from .support import decimal_text
 
 DEFAULT_PERIOD_DAYS = 31
@@ -36,6 +37,7 @@ class ContributionGapRule:
     strategy's ``contributions:`` plan: without one it skips (the loader warns about that)."""
 
     KIND = "contribution_gap"
+    DEFAULT_POLARITY = SignalPolarity.NEGATIVE  # a deposit gap
 
     @property
     def kind(self) -> str:

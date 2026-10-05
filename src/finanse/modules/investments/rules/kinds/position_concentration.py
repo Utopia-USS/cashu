@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
+from ..polarity import SignalPolarity
 from .support import (
     RATIO_EPSILON,
     InstrumentFilter,
@@ -33,6 +34,7 @@ class PositionConcentrationRule:
     """
 
     KIND = "position_concentration"
+    DEFAULT_POLARITY = SignalPolarity.NEGATIVE  # concentration risk
 
     @property
     def kind(self) -> str:

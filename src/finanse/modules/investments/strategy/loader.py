@@ -32,6 +32,7 @@ from finanse.modules.investments.rules import (
     RebalancePolicy,
     RuleCatalog,
     RuleSpec,
+    SignalPolarity,
     did_you_mean,
 )
 from finanse.modules.investments.rules.expr import Scope
@@ -449,6 +450,11 @@ class _Parse:
                     "severity", SignalSeverity, fallback=SignalSeverity.INFO
                 )
                 cooldown_days = reader.optional_integer("cooldown_days", minimum=0)
+                polarity = (  # optional override of the kind's default polarity
+                    reader.enum_value("polarity", SignalPolarity, fallback=SignalPolarity.NEUTRAL)
+                    if reader.has("polarity")
+                    else None
+                )
                 reader.has("params")
                 reader.finish()
                 if rule_id is None:
@@ -498,6 +504,7 @@ class _Parse:
                     params=params,
                     severity=severity,
                     cooldown_days=cooldown_days,
+                    polarity=polarity,
                 )
                 base = params_node if isinstance(params_node, MappingNode) else item
                 self._report(param_errors.issues, base, f"{path}.params")

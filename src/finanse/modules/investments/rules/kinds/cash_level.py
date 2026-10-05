@@ -11,6 +11,7 @@ from finanse.modules.investments.domain import AssetClass
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
+from ..polarity import SignalPolarity
 from .support import (
     RATIO_EPSILON,
     cash_history_problem,
@@ -46,6 +47,7 @@ class CashLevelRule:
     has negative cash (``CashHistoryGap``: the real cash balance is unknown)."""
 
     KIND = "cash_level"
+    DEFAULT_POLARITY = SignalPolarity.NEGATIVE  # a cash gap: idle cash or too little of it
 
     @property
     def kind(self) -> str:

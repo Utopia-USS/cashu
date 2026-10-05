@@ -10,6 +10,7 @@ from decimal import Decimal
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
+from ..polarity import SignalPolarity
 from .support import (
     RATIO_EPSILON,
     decimal_text,
@@ -79,6 +80,7 @@ class AllocationDriftRule:
     """
 
     KIND = "allocation_drift"
+    DEFAULT_POLARITY = SignalPolarity.NEGATIVE  # drift out of band: review the allocation
 
     @property
     def kind(self) -> str:

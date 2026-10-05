@@ -20,6 +20,7 @@ from ..expr.metrics import MetricEnv
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
+from ..polarity import SignalPolarity
 from .support import (
     InstrumentFilter,
     InstrumentPosition,
@@ -58,6 +59,7 @@ class CustomRule:
     answer depends on missing data (Kleene logic, see the evaluator)."""
 
     KIND = "custom"
+    DEFAULT_POLARITY = SignalPolarity.NEUTRAL  # the owner sets polarity per rule
 
     @property
     def kind(self) -> str:

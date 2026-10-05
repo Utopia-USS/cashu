@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from dataclasses import replace
 
 from .catalog import RuleCatalog
 from .kind import RuleContext, RuleSpec
-from .outcomes import NotFired, RuleOutcome, Skipped
+from .outcomes import Fired, NotFired, RuleOutcome, Skipped
+from .polarity import default_polarity
 
 _log = logging.getLogger("finanse.investments.rules")
 
@@ -30,6 +32,7 @@ class RulesEngine:
         - A rule that returns no outcome at all (nothing to check, e.g. no holdings) yields one whole-rule
           :class:`NotFired`, so its open signals resolve.
         - Outcomes carrying another rule's id are a programming error and turn the rule into Skipped.
+        - Every Fired candidate carries the rule's ``polarity`` (else the kind's ``DEFAULT_POLARITY``).
         """
         outcomes: list[RuleOutcome] = []
         for spec in self.rules:
@@ -58,4 +61,10 @@ class RulesEngine:
         foreign = [outcome.rule_id for outcome in outcomes if outcome.rule_id != spec.id]
         if foreign:
             return [Skipped(spec.id, f'Rule returned an outcome for rule "{foreign[0]}"')]
-        return outcomes
+        polarity = spec.polarity or default_polarity(kind)
+        return [
+            Fired(replace(outcome.candidate, polarity=polarity))
+            if isinstance(outcome, Fired)
+            else outcome
+            for outcome in outcomes
+        ]

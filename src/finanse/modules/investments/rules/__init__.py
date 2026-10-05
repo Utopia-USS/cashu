@@ -55,6 +55,7 @@ from .outcomes import (
     signal_dedup_key,
 )
 from .params import ParamErrors, ParamIssue, ParamReader
+from .polarity import SignalPolarity, default_polarity, polarity_rank
 
 __all__ = [
     "BUILT_IN_KINDS",
@@ -96,6 +97,7 @@ __all__ = [
     "RulesEngine",
     "SignalAction",
     "SignalCandidate",
+    "SignalPolarity",
     "SignalReconciliation",
     "Skipped",
     "SuppressCandidate",
@@ -103,8 +105,10 @@ __all__ = [
     "TaggedWeightRule",
     "UnrealizedThresholdParams",
     "closest_match",
+    "default_polarity",
     "did_you_mean",
     "outcome_scope",
+    "polarity_rank",
     "reconcile_signals",
     "signal_dedup_key",
 ]
