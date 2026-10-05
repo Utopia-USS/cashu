@@ -2,7 +2,7 @@
 helpers below); the redaction layer decides per label and privacy level what may be sent. A raw
 (unlabelled) leaf in a tool's result is a programming error and the call fails closed.
 
-Labels (contract F4, plus ``count``, ``ref``, ``flag`` and ``account``):
+Labels (contract F4, plus ``count``, ``ref``, ``flag``, ``account`` and ``level`` (F5)):
 
 | label | strict | amounts |
 |---|---|---|
@@ -10,6 +10,7 @@ Labels (contract F4, plus ``count``, ``ref``, ``flag`` and ``account``):
 | ``amount`` (money values, quantities, prices x quantity) | dropped | sent |
 | ``merchant`` (payee names; private persons -> opaque ref) | sent | sent |
 | ``percent``, ``date``, ``category``, ``symbol`` (public tickers / ISINs) | sent | sent |
+| ``level`` (a market price level of a public instrument: an alert level, a close) | sent | sent |
 | ``text`` (scrubbed: identifiers always, money amounts in strict) | sent | sent |
 | ``count`` (non-money integers: counts, days, row numbers) | sent | sent |
 | ``ref`` (local row ids the write tools take back) | sent | sent |
@@ -42,6 +43,7 @@ class Sensitivity(StrEnum):
     REF = "ref"
     FLAG = "flag"
     ACCOUNT = "account"
+    LEVEL = "level"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +100,14 @@ def flag(value: bool | None) -> Labelled:
 
 def account(value: str | None) -> Labelled:
     return Labelled(value, Sensitivity.ACCOUNT)
+
+
+def level(value: Decimal | float | None) -> Labelled:
+    """A market price level of a public instrument (per unit, never times a quantity): not a
+    personal amount, sent in both modes. Owner-named instruments' prices stay ``amount``."""
+    if value is not None:
+        value = float(value)
+    return Labelled(value, Sensitivity.LEVEL)
 
 
 def share(part: Decimal | float | None, base: Decimal | float | None) -> Labelled:

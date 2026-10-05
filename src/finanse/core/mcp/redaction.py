@@ -9,7 +9,7 @@
   runs of 10+ digits (account / card / phone numbers), e-mail addresses and known person names always;
   money amounts (numbers next to a currency, grouped thousands, decimals, integers of 4+ digits that are
   not years) in ``strict``;
-- ``percent`` / ``count`` / ``ref`` / ``flag`` / ``date`` -> type-checked and sent.
+- ``percent`` / ``level`` / ``count`` / ``ref`` / ``flag`` / ``date`` -> type-checked and sent.
 
 A raw (unlabelled) leaf raises :class:`UnlabelledValue`: the call fails closed. After redaction,
 ``leak_check`` scans the result once more (IBAN-like strings and long digit runs in any mode; in
@@ -233,7 +233,7 @@ class Redactor:
             return _DROP if self.strict else _number(value, path)
         if value is None:
             return None
-        if label is Sensitivity.PERCENT:
+        if label in (Sensitivity.PERCENT, Sensitivity.LEVEL):
             return _number(value, path)
         if label is Sensitivity.COUNT:
             if isinstance(value, bool) or not isinstance(value, int):

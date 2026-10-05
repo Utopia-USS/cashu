@@ -49,6 +49,27 @@ def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
     signals = host.call("signals", {}).data["signals"]
     label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
     note = f"Rozmowa: {PERSON_P2P}, kwota 4321.09 PLN, konto PL61109010140000071219812874"
+    # Alerts / watchlist (F5): an agent alert and a watched instrument, then a daily run checks them.
+    added = host.call(
+        "add_alert",
+        {
+            "kind": "price_above",
+            "params": {"level": 10},
+            "instrument": "PKO",
+            "polarity": "positive",
+            "severity": "action",
+            "title": "PKO above 10",
+            "note": note,
+        },
+    )
+    assert added.ok, added.error
+    watched = host.call("add_to_watchlist", {"symbol_or_isin": "CDR.WA", "note": note})
+    assert watched.ok, watched.error
+    from mcp_support import sources
+
+    from finanse.modules.investments.service import daily
+
+    daily.run_daily_check("manual", as_of=TODAY, sources=sources())
     return [
         ("profile_overview", {}),
         ("setup_status", {"module": "investments"}),
@@ -113,6 +134,25 @@ def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
             },
         ),
         ("propose_import", {"path": str(canonical), "account": label, "reason": note}),
+        ("alerts", {}),
+        ("alerts", {"status": "all"}),
+        ("watchlist", {}),
+        (
+            "add_alert",
+            {
+                "kind": "custom",
+                "params": {"expression": "cash_weight >= 5%"},
+                "polarity": "negative",
+                "severity": "info",
+                "title": f"Gotowka {PERSON_P2P}",
+                "note": note,
+                "expires_in_days": 30,
+            },
+        ),
+        ("add_to_watchlist", {"symbol_or_isin": "AAPL", "note": note}),
+        ("mute_alert", {"id": added.data["alert"]["alert_id"]}),
+        ("remove_from_watchlist", {"id": watched.data["item"]["item_id"]}),
+        ("signals", {"status": "all"}),
         ("profile_overview", {}),
     ]
 
