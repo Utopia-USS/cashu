@@ -726,6 +726,8 @@ def _performance_metrics(ctx: ToolContext) -> dict:
             "proxy": L.symbol(meta["proxy"]),
             "status": L.category(meta["status"]),
             "covers_history": L.flag(b.get("covers_range")),
+            "covers_to_date": L.flag(b.get("covers_range_end")),
+            "last_priced": L.date(b.get("last_priced")),
             "twr": _safe_pct(b.get("twr")),
             "twr_annualized": _safe_pct(b.get("twr_annualized")),
             "simulation_xirr": _safe_pct(b.get("simulation_xirr")),

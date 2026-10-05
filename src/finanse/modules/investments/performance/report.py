@@ -150,6 +150,11 @@ def compute_range(
     metrics.simulation = sim
     btwr = returns.period_return(bindex)
     first_priced = next((ds[i] for i, p in enumerate(prices) if p is not None), None)
+    last_priced = next((ds[i] for i in range(len(ds) - 1, -1, -1) if prices[i] is not None), None)
+    # a stale tail (the proxy's newest close older than the price age limit at the range end): the
+    # benchmark stops at its last priced day while the portfolio runs to the end, so no excess figure
+    # compares the two (F6 review V2)
+    covers_end = prices[-1] is not None
     sim_end = sim.values[-1]
     sim_fees_end = sim.with_fees[-1]
     sim_solved = None if sim_end is None else returns.xirr([*cashflows, (ds[-1], sim_end)])
@@ -161,6 +166,8 @@ def compute_range(
         "max_drawdown": returns.max_drawdown(ds, bindex),
         "first_priced": first_priced,
         "covers_range": first_priced is not None and first_priced <= ds[0],
+        "last_priced": last_priced,
+        "covers_range_end": covers_end,
         "simulation_end_value": sim_end,
         "simulation_end_value_with_fees": sim_fees_end,
         "simulation_pnl": None if sim_end is None else sim_end - start_value - net_flows,
@@ -168,9 +175,11 @@ def compute_range(
         "simulation_mwr": None if sim_solved is None else sim_solved.period,
         "simulation_started": sim.started,
         "simulation_capped": sim.capped,
-        "excess_twr": None if twr is None or btwr is None else twr - btwr,
-        "excess_value": None if sim_end is None else end_value - sim_end,
-        "excess_vs_simulation": None if not sim_end else (end_value - sim_end) / sim_end,
+        "excess_twr": None if not covers_end or twr is None or btwr is None else twr - btwr,
+        "excess_value": None if not covers_end or sim_end is None else end_value - sim_end,
+        "excess_vs_simulation": None
+        if not covers_end or not sim_end
+        else (end_value - sim_end) / sim_end,
     }
     return metrics
 
@@ -224,8 +233,8 @@ def rolling(
             continue
         portfolio = b / a - 1
         bench = None
-        if bench_full is not None:
-            ba, bb = _last_known(bench_full, j), _last_known(bench_full, i, j)
+        if bench_full is not None and bench_full[i] is not None:  # no excess over a stale tail
+            ba, bb = _last_known(bench_full, j), bench_full[i]
             if ba is not None and bb is not None and ba > 0:
                 bench = bb / ba - 1
         out.append(

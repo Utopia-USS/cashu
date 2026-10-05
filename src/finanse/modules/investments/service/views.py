@@ -10,6 +10,7 @@ from __future__ import annotations
 import calendar
 import datetime as dt
 import importlib
+import logging
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from decimal import Decimal
@@ -1741,6 +1742,59 @@ def _net_contributions(
     return total
 
 
+_UNIT_FLOWS = (TxnType.TRANSFER_IN, TxnType.TRANSFER_OUT, TxnType.ADJUSTMENT)
+_log = logging.getLogger("finanse.investments.views")
+
+
+def _other_flows(
+    session: Session,
+    profile: Profile,
+    state: portfolio.PortfolioState,
+    *,
+    after: dt.date,
+    until: dt.date,
+) -> tuple[Decimal | None, Decimal]:
+    """External flows other than deposits / withdrawals dated after ``after`` up to ``until``, like
+    the performance engine counts them (F6 review V4): ``(transfers, implied_funding)``.
+
+    ``transfers``: units moved in / out and adjustments at the day's unit value the performance
+    series used, cash-only transfers at the trade-date rate; None when one cannot be valued.
+    ``implied_funding``: cash gaps filled by unrecorded money (negative cash and its reversal)."""
+    window = [
+        t for t in state.txns if t.type in _UNIT_FLOWS and after < t.trade_date <= until
+    ]
+    unit_moves = [t for t in window if t.instrument_id is not None and t.quantity]
+    transfers: Decimal | None = Decimal(0)
+    for t in window:
+        if t in unit_moves:
+            continue
+        converted = fx_convert(state.fx, t.cash_amount, t.cash_currency, state.base, t.trade_date)
+        if converted is None:
+            return None, Decimal(0)
+        transfers += converted
+    implied = Decimal(0)
+    try:
+        from ..performance import service as perf
+
+        computed = perf.compute(session, profile, as_of=until)
+    except Exception:  # noqa: BLE001 - the digest still answers; the split is then unknown
+        _log.exception("review digest: performance flows failed")
+        return (None if unit_moves else transfers), implied
+    if not computed.has_history:
+        return (None if unit_moves else transfers), implied
+    series = computed.series
+    for t in unit_moves:
+        value = series.txn_values.get(t.id)
+        if value is None:
+            return None, implied
+        transfers += -value if t.type == TxnType.TRANSFER_OUT else value
+    combined = computed.combined()
+    for day, gap in zip(series.dates, combined.implied, strict=True):
+        if after < day <= until and gap:
+            implied += Decimal(str(gap))
+    return transfers, implied
+
+
 def review_digest(session: Session, profile: Profile, since_date: dt.date | None = None) -> dict:
     """What changed since the last weekly review (or the last 7 days without one, or since
     ``since_date`` when given: baseline ``since``): value, signals, imports, transactions, decisions,
@@ -1775,7 +1829,15 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
     contributions = (
         None if then_total is None else _net_contributions(state, after=since, until=as_of)
     )
-    market_change = None if change is None or contributions is None else change - contributions
+    transfers: Decimal | None = None
+    implied = Decimal(0)
+    if then_total is not None:
+        transfers, implied = _other_flows(session, profile, state, after=since, until=as_of)
+    market_change = (
+        None
+        if change is None or contributions is None or transfers is None
+        else change - contributions - transfers - implied
+    )
 
     # Signals.
     from ..store import instruments as instrument_store
@@ -1851,7 +1913,7 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
         labels=labels,
         batches=[b for b in batches if _at_or_after(b.created_at, since_at)],
         decisions=[d for d in decisions if _at_or_after(d.created_at, since_at)],
-        txns=[t for t in state.txns if since <= t.trade_date <= as_of],
+        txns=[t for t in state.txns if since < t.trade_date <= as_of],  # like contributions
         runs=runs_since,
     )
     return {
@@ -1877,8 +1939,12 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
             "now": f(total),
             "change": f(change),
             "change_pct": ratio_pct(ratio(change, then_total)) if change is not None else None,
-            # change = contributions (net deposits - withdrawals) + market_change (the market part)
+            # change = contributions (net deposits - withdrawals) + transfers (units moved in / out,
+            # adjustments, cash transfers) + implied_funding (cash gaps filled by unrecorded money)
+            # + market_change (the market part), like the performance engine's external flows
             "contributions": f(contributions),
+            "transfers": f(transfers),
+            "implied_funding": f(implied) if then_total is not None else None,
             "market_change": f(market_change),
             "market_change_pct": ratio_pct(ratio(market_change, then_total))
             if market_change is not None

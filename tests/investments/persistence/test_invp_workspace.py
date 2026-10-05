@@ -524,6 +524,8 @@ def test_invp_review_digest_of_an_empty_profile(client):
         "change": None,
         "change_pct": None,
         "contributions": None,
+        "transfers": None,
+        "implied_funding": None,
         "market_change": None,
         "market_change_pct": None,
     }

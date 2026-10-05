@@ -452,10 +452,12 @@ def _data_quality(computed: Computed, metrics: report.RangeMetrics, bench: dict)
     held = {iid for (_a, iid) in s.captures.get(computed.end, {})}
     newest = [s.last_bar_dates[i] for i in held if i in s.last_bar_dates]
     notes: list[dict] = []
+    # every note: a stable ``code`` with its ``params`` (the UI labels it) and an English ``message``
     if summary["incomplete_days"]:
         notes.append(
             {
                 "code": "incomplete_days",
+                "params": {"days": summary["incomplete_days"]},
                 "message": f"{summary['incomplete_days']} day(s) could not be valued in full (a "
                 "price, an FX rate or a manual valuation is missing); returns link over them.",
             }
@@ -464,6 +466,7 @@ def _data_quality(computed: Computed, metrics: report.RangeMetrics, bench: dict)
         notes.append(
             {
                 "code": "implied_funding",
+                "params": {},
                 "message": "A cash balance went negative (deposits missing from the history): the "
                 "shortfall is counted as a contribution.",
             }
@@ -472,6 +475,7 @@ def _data_quality(computed: Computed, metrics: report.RangeMetrics, bench: dict)
         notes.append(
             {
                 "code": "price_scale_inferred",
+                "params": {"instruments": len(s.price_scales)},
                 "message": "Some trade prices sit at a clean multiple of the stored closes (a split "
                 "the history does not book); the closes before those trades were scaled.",
             }
@@ -480,6 +484,7 @@ def _data_quality(computed: Computed, metrics: report.RangeMetrics, bench: dict)
         notes.append(
             {
                 "code": "unknown_flows",
+                "params": {"flows": len(s.unknown_flows)},
                 "message": f"{len(s.unknown_flows)} transfer(s) or deposit(s) could not be valued "
                 "(no FX rate or price) and count as 0.",
             }
@@ -488,8 +493,24 @@ def _data_quality(computed: Computed, metrics: report.RangeMetrics, bench: dict)
         notes.append(
             {
                 "code": "benchmark_partial",
+                "params": {"first_date": bench.get("first_priced")},
                 "message": "The benchmark's stored prices start after the range start; the "
                 "simulation starts on its first priced day.",
+            }
+        )
+    bench_newest = _iso(
+        computed.loaded.benchmark_bars[-1].date if computed.loaded.benchmark_bars else None
+    )
+    if bench.get("status") == "ok" and bench.get("covers_range_end") is False:
+        # the last day both the proxy close and its FX rate were usable, at most the newest bar
+        known = [d for d in (bench_newest, bench.get("last_priced")) if d]
+        last = min(known) if known else None
+        notes.append(
+            {
+                "code": "benchmark_stale",
+                "params": {"last_date": last},
+                "message": f"The benchmark's newest stored price is from {last}: its figures stop "
+                "there and no comparison with the portfolio is made for the range.",
             }
         )
     return {
@@ -507,9 +528,7 @@ def _data_quality(computed: Computed, metrics: report.RangeMetrics, bench: dict)
         ],
         "price_mismatches": len(s.price_mismatches),
         "newest_price": _iso(max(newest) if newest else None),
-        "benchmark_newest_price": _iso(
-            computed.loaded.benchmark_bars[-1].date if computed.loaded.benchmark_bars else None
-        ),
+        "benchmark_newest_price": bench_newest,
         "notes": notes,
     }
 
@@ -540,6 +559,8 @@ def _benchmark_dict(meta: dict, metrics: report.RangeMetrics | None) -> dict:
         out.update(
             first_priced=None,
             covers_range=None,
+            last_priced=None,
+            covers_range_end=None,
             twr=None,
             twr_annualized=None,
             max_drawdown=None,
@@ -552,6 +573,8 @@ def _benchmark_dict(meta: dict, metrics: report.RangeMetrics | None) -> dict:
     out.update(
         first_priced=_iso(b["first_priced"]),
         covers_range=b["covers_range"],
+        last_priced=_iso(b["last_priced"]),
+        covers_range_end=b["covers_range_end"],
         twr=_ratio(b["twr"]),
         twr_annualized=_ratio(b["twr_annualized"]),
         max_drawdown=_drawdown(b["max_drawdown"]),

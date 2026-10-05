@@ -96,13 +96,14 @@ def simulate(
             pending += flows[i]
             pending_fees += fee_list[i]
         price = prices[i]
-        if price is not None and price > 0:
+        priced = price is not None and price > 0
+        if priced:
             last_price = price
         if last_price is None:
             values.append(None)
             with_fees.append(None)
             continue
-        if pending or pending_fees:
+        if priced and (pending or pending_fees):
             units += pending / last_price
             units_fees += (pending - pending_fees) / last_price
             pending = pending_fees = 0.0
@@ -112,6 +113,7 @@ def simulate(
             units, capped = 0.0, True
         if units_fees < 0:
             units_fees, capped = 0.0, True
-        values.append(units * last_price)
-        with_fees.append(units_fees * last_price)
+        # a flow waiting for the next priced day is held as cash meanwhile
+        values.append(units * last_price + pending)
+        with_fees.append(units_fees * last_price + pending - pending_fees)
     return Simulation(values, with_fees, started, capped)
