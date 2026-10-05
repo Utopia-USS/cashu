@@ -35,7 +35,7 @@ from finanse.core import proposals
 from finanse.core.agent_models import Proposal
 from finanse.core.db import get_session
 from finanse.core.models import Profile
-from finanse.core.proposals import ProposalError, ProposalKind
+from finanse.core.proposals import ProposalError, ProposalKind, Staged
 
 from .. import labels as L
 from ..registry import ToolContext, ToolError
@@ -45,6 +45,7 @@ from .investments import owner_named
 
 MAX_BACKTEST_POINTS = 260
 MAX_MAPPING_BYTES = 256 * 1024
+STRATEGY_LOCK_WAIT = 30.0  # seconds an approval waits for a running daily check (then busy)
 
 # --------------------------------------------------------------------------- #
 # Shared
@@ -98,16 +99,115 @@ def _unified(old: str | None, new: str | None, name: str) -> str:
     )
 
 
-def _write_strategy(profile: Profile, yaml_text: str, md_text: str | None) -> dict:
+def _strategy_change(
+    profile: Profile,
+    base: tuple[str | None, str | None],
+    yaml_text: str,
+    md_text: str | None,
+    result: dict,
+) -> Staged:
+    """Approving a strategy change (F5 R8): the new version is recorded in the transaction that marks
+    the proposal approved (``record``), the files are replaced only after that commit, both written to
+    temp names first and renamed together (``publish``); a failed write removes the version again
+    (``undo``) and leaves the old files. Held under the daily-check lock, so the daily check never
+    reads the files between the version and the write. ``md_text`` None keeps strategy.md."""
     from finanse.modules.investments.service import files
-    from finanse.modules.investments.service import strategy as strategy_files
+    from finanse.modules.investments.service.daily import LOCK_NAME
 
-    files.write_text_private(files.strategy_yaml_path(profile.slug), yaml_text)
-    if md_text is not None:
-        files.write_text_private(files.strategy_md_path(profile.slug), md_text)
-    with get_session() as s:
-        st = strategy_files.load(s, s.get(Profile, profile.id), record=True)
-        return {"version": st.version.version if st.version else None, "state": st.state}
+    base_yaml, base_md = base
+    md_final = md_text if md_text is not None else base_md
+    created: list[int] = []
+
+    def record(session: Session) -> dict:
+        current_yaml, current_md, err = _read_quiet(profile.slug)
+        if err is not None or _digest(current_yaml, current_md) != _digest(base_yaml, base_md):
+            raise ProposalError(
+                "the strategy files changed while approving; ask for a new proposal",
+                "base_changed",
+            )
+        row, new = _record_version(session, profile.id, yaml_text, md_final)
+        if new:
+            created.append(row.id)
+        return {"version": row.version, "state": row.state}
+
+    def publish() -> None:
+        writes = [(files.strategy_yaml_path(profile.slug), yaml_text, base_yaml)]
+        if md_text is not None:
+            writes.append((files.strategy_md_path(profile.slug), md_text, base_md))
+        replace_files(writes)
+
+    def undo(session: Session) -> None:
+        from finanse.modules.investments.models import InvStrategyVersion
+
+        for version_id in created:
+            row = session.get(InvStrategyVersion, version_id)
+            if row is not None:
+                session.delete(row)
+        session.flush()
+
+    return Staged(
+        result,
+        record=record,
+        publish=publish,
+        undo=undo,
+        lock=LOCK_NAME,
+        lock_wait=STRATEGY_LOCK_WAIT,
+    )
+
+
+def _record_version(session: Session, profile_id: int, yaml_text: str, md_text: str | None):
+    """(version row, created): a new ``inv_strategy_versions`` row for the text, unless the newest one
+    already holds it. Same digest and state as ``service.strategy.load(record=True)``."""
+    from finanse.modules.investments.models import InvStrategyVersion
+    from finanse.modules.investments.service import strategy as strategy_files
+    from finanse.modules.investments.strategy import load_strategy
+
+    digest = _digest(yaml_text, md_text)
+    latest = strategy_files.latest_version(session, profile_id)
+    if latest is not None and latest.sha256 == digest:
+        return latest, False
+    result = load_strategy(yaml_text, md_text)
+    row = InvStrategyVersion(
+        profile_id=profile_id,
+        version=(latest.version + 1) if latest is not None else 1,
+        sha256=digest,
+        yaml_text=yaml_text,
+        md_text=md_text,
+        state="valid" if result.config else "partial" if result.partial else "invalid",
+        issues=[strategy_files.issue_dict(i) for i in result.issues],
+    )
+    session.add(row)
+    session.flush()
+    return row, True
+
+
+def replace_files(writes: list[tuple[Path, str, str | None]]) -> None:
+    """Replace several owner files together: each ``(path, new text, old text)`` is written to a temp
+    file first (0600), then they are renamed in order. A failure removes the temp files and puts any
+    file already replaced back to its old text (or removes it when it did not exist), then raises."""
+    from finanse.modules.investments.service import files
+
+    temps: list[tuple[Path, Path, str | None]] = []
+    done: list[tuple[Path, str | None]] = []
+    try:
+        for path, text, old in writes:
+            files.ensure_dir(path.parent)
+            tmp = path.with_name(f".{path.name}.approving")
+            tmp.write_bytes(text.encode("utf-8"))
+            tmp.chmod(0o600)
+            temps.append((tmp, path, old))
+        for tmp, path, old in temps:
+            tmp.replace(path)
+            done.append((path, old))
+    except BaseException:
+        for tmp, _path, _old in temps:
+            tmp.unlink(missing_ok=True)
+        for path, old in reversed(done):
+            if old is None:
+                path.unlink(missing_ok=True)
+            else:
+                files.write_text_private(path, old)
+        raise
 
 
 def _inactive_ids(result) -> set[str]:
@@ -263,7 +363,9 @@ def _strategy_apply(profile: Profile, row: Proposal) -> dict:
     before = load_strategy(current_yaml, current_md) if current_yaml is not None else None
     md = p.get("md") if p.get("md") is not None else current_md
     warnings = check_resulting(load_strategy(p.get("yaml") or "", md), before)
-    return _write_strategy(profile, p["yaml"], p.get("md")) | {"warnings": warnings}
+    return _strategy_change(
+        profile, (current_yaml, current_md), p["yaml"], p.get("md"), {"warnings": warnings}
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -640,10 +742,13 @@ def _rule_apply(profile: Profile, row: Proposal) -> dict:
         load_strategy(current_yaml, current_md),
         new_rule_id=entry.get("id"),
     )
-    return _write_strategy(profile, merged, None) | {
-        "rule_id": entry.get("id"),
-        "warnings": warnings,
-    }
+    return _strategy_change(
+        profile,
+        (current_yaml, current_md),
+        merged,
+        None,
+        {"rule_id": entry.get("id"), "warnings": warnings},
+    )
 
 
 # --------------------------------------------------------------------------- #

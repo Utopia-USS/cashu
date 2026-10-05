@@ -19,7 +19,8 @@ from sqlmodel import Field, SQLModel
 
 from .models import profile_fk_column, utcnow
 
-PROPOSAL_STATUSES = ("pending", "approved", "rejected", "failed")
+# ``applying``: an approval is applying it right now (core.proposals; under the approval lock).
+PROPOSAL_STATUSES = ("pending", "applying", "approved", "rejected", "failed")
 
 
 def _json_dict() -> Any:
@@ -34,7 +35,7 @@ class Proposal(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     profile_id: int = Field(sa_column=profile_fk_column("proposals"))
     kind: str  # strategy | custom_rule | import (core.proposals kinds)
-    status: str = Field(default="pending")  # pending | approved | rejected | failed
+    status: str = Field(default="pending")  # pending | applying | approved | rejected | failed
     summary: str = Field(default="")  # one line for lists
     reason: str | None = None  # why the agent proposes it (agent text)
     payload: dict = _json_dict()  # kind-specific (validated when created)

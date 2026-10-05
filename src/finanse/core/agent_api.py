@@ -4,9 +4,9 @@ or rejects, weekly reviews, the MCP call audit log and the MCP connection snippe
 - ``GET  /proposals?status=&limit=``             list (newest first, no payload)
 - ``GET  /proposals/{id}``                       payload + detail (strategy diff, rule backtest, import
   preview summary and converter script with its sha256)
-- ``POST /proposals/{id}/approve``               apply it (409 not pending, 422 cannot apply: then
-  ``failed`` with ``result.error``)
-- ``POST /proposals/{id}/reject``  ``{note?}``
+- ``POST /proposals/{id}/approve``               apply it (409 not pending or busy, 422 cannot apply:
+  then ``failed`` with ``result.error``)
+- ``POST /proposals/{id}/reject``  ``{note?}``   (409 not pending, or busy while an approval runs)
 - ``GET  /reviews?module=&limit=``, ``POST /reviews`` ``{module, notes?}`` (201)
 - ``GET  /mcp/calls?limit=``                     audit rows (argument names and types only)
 - ``GET  /mcp``                                  server name, ``claude mcp add`` command, privacy, tools
@@ -73,7 +73,7 @@ def approve_proposal(profile: CurrentProfile, proposal_id: int) -> dict:
         row = proposals.approve(profile, proposal_id)
     except proposals.ProposalNotFound as e:
         raise _404(e) from None
-    except proposals.ProposalConflict as e:
+    except (proposals.ProposalConflict, proposals.ProposalBusy) as e:
         raise HTTPException(status_code=409, detail=str(e), headers=_code(e)) from None
     except proposals.ProposalError as e:
         raise _422(e) from None
@@ -94,14 +94,14 @@ class RejectBody(BaseModel):
 def reject_proposal(
     profile: CurrentProfile, proposal_id: int, body: RejectBody | None = None
 ) -> dict:
-    with get_session() as s:
-        try:
-            row = proposals.reject(s, profile, proposal_id, body.note if body else None)
-        except proposals.ProposalNotFound as e:
-            raise _404(e) from None
-        except proposals.ProposalConflict as e:
-            raise HTTPException(status_code=409, detail=str(e), headers=_code(e)) from None
-        return proposals.proposal_dict(row)
+    # Takes the approval lock itself (F5 R3): no session is held open around it.
+    try:
+        row = proposals.reject(profile, proposal_id, body.note if body else None)
+    except proposals.ProposalNotFound as e:
+        raise _404(e) from None
+    except (proposals.ProposalConflict, proposals.ProposalBusy) as e:
+        raise HTTPException(status_code=409, detail=str(e), headers=_code(e)) from None
+    return proposals.proposal_dict(row)
 
 
 # --------------------------------------------------------------------------- #

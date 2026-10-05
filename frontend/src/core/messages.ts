@@ -165,6 +165,7 @@ export const LABELS: Record<string, Label> = {
   "proposal.error.converter_failed": "Konwerter nie zadziałał",
   "proposal.error.import_failed": "Import się nie udał",
   "proposal.error.import_blocked": "Tego pliku nie da się teraz zaimportować",
+  "proposal.error.interrupted": "Zatwierdzanie zostało przerwane (aplikacja się zamknęła); sprawdź wynik, zanim poprosisz o nową propozycję",
   "proposal.error.converter_unsupported": "Ten import wymaga skryptu konwertera, a aplikacja nie uruchamia już skryptów; poproś agenta o przekonwertowany plik",
   "proposal.error.apply_failed": "Zatwierdzenie nie powiodło się (szczegóły w logu aplikacji)",
   "proposal.error.write_failed": "Nie udało się zapisać plików; nic nie zostało zmienione",
