@@ -5,8 +5,8 @@ from __future__ import annotations
 from finanse.core.account_types import AccountTypeInfo, NetWorthBucket
 from finanse.core.modules import ModuleSpec
 
-from . import cli
-from .models import Depreciation
+from . import api, cli
+from .models import AssetDetails, Depreciation
 from .networth import AssetsContributor
 from .setup import setup_status
 
@@ -14,7 +14,8 @@ MODULE = ModuleSpec(
     id="assets",
     name="Majątek",
     description="Nieruchomości, auta i inne aktywa wyceniane ręcznie",
-    tables=(Depreciation,),
+    tables=(Depreciation, AssetDetails),
+    router=api.router,
     cli=cli.register,
     cli_help="Assets: manually valued positions and depreciating vehicles.",
     networth=AssetsContributor(),

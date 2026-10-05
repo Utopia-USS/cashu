@@ -100,6 +100,10 @@ class Account(SQLModel, table=True):
     active: bool = Field(default=True)
     created_at: dt.datetime = Field(default_factory=utcnow)
     profile_id: int = Field(sa_column=profile_fk_column("accounts"))
+    # Added by 0010 (ALTER TABLE ADD COLUMN appends it, so it stays the last column): set when the
+    # owner removes a manual position (assets module, ``DELETE /assets/manual/{id}``). The row and its
+    # balances stay for a restore; every view and net worth (current and history) leave it out.
+    removed_at: dt.datetime | None = None
 
 
 class Balance(SQLModel, table=True):

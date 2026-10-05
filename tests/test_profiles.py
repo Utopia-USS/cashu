@@ -51,6 +51,7 @@ PROFILE_GETS = [
     "/budget/settings",
     "/loan",
     "/loans",
+    "/assets/manual",
     "/modules/budget/setup",
     "/modules/assets/setup",
     "/modules/loans/setup",

@@ -100,7 +100,7 @@ HEAD_TABLES = migrations.BASELINE_TABLES | {"profiles", "profile_modules"} | {
     "inv_signals", "inv_notification_log", "inv_decisions", "inv_theses",
 } | {"proposals", "mcp_calls", "reviews"} | {
     "alerts", "watchlist_items", "inv_profile_instruments",
-} | {"inv_planned_deposits", "research_runs", "research_notes"}
+} | {"inv_planned_deposits", "research_runs", "research_notes"} | {"asset_details"}
 
 
 def test_head_equals_create_all(tmp_path):
@@ -114,8 +114,8 @@ def test_head_equals_create_all(tmp_path):
     tables = {k.split(":", 2)[2] for k in expected if k.startswith("ddl:table:")}
     assert tables == HEAD_TABLES
     # 18 + 22 investments + 3 agent (proposals, mcp_calls, reviews) + 6 overrides / alerts / watchlist
-    # + 7 planned deposits / research
-    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 56
+    # + 7 planned deposits / research + 1 asset details (F7 OB5)
+    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 57
     reference.dispose()
     migrated.dispose()
 
@@ -263,4 +263,34 @@ def test_alembic_cli_uses_the_finanse_database(tmp_path):
     assert check.returncode == 0, check.stderr
     engine = _engine(created)
     assert migrations.current_revision(engine) == migrations.head_revision()
+    engine.dispose()
+
+
+def test_0010_downgrade_refuses_while_a_position_is_removed(tmp_path):
+    """F7 MB2: dropping accounts.removed_at would bring removed positions back."""
+    engine = _engine(tmp_path / "removed.db")
+    migrations.upgrade_to_head(engine)
+    with engine.begin() as c:
+        c.exec_driver_sql(
+            "INSERT INTO profiles (id, slug, name, base_currency, mcp_privacy, created_at) "
+            "VALUES (1, 'test', 'Test', 'PLN', 'strict', '2026-01-01 00:00:00')"
+        )
+        c.exec_driver_sql(
+            "INSERT INTO accounts (id, bank, name, external_id, currency, type, active, created_at, "
+            "profile_id, removed_at) VALUES (1, 'manual', 'Działka Test', 'manual:Działka Test', "
+            "'PLN', 'property', 1, '2026-01-01 00:00:00', 1, '2026-10-05 10:00:00')"
+        )
+
+    def downgrade() -> None:
+        with migrations.migration_connection(engine) as conn, conn.begin():
+            command.downgrade(migrations.alembic_config(conn), "0009_asset_details")
+
+    with pytest.raises(RuntimeError, match="removed positions would reappear"):
+        downgrade()
+    assert "removed_at" in {col[0] for col in columns(engine)["accounts"]}
+    with engine.begin() as c:
+        c.exec_driver_sql("UPDATE accounts SET removed_at = NULL")
+    downgrade()
+    assert "removed_at" not in {col[0] for col in columns(engine)["accounts"]}
+    assert migrations.current_revision(engine) == "0009_asset_details"
     engine.dispose()

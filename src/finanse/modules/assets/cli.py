@@ -22,19 +22,25 @@ def add_position_cmd(
     ],
     value: Annotated[float, typer.Option(help="Current value / outstanding balance.")],
     currency: Annotated[str, typer.Option()] = "PLN",
+    note: Annotated[
+        str | None, typer.Option(help="Optional one-line note (max 500 characters).")
+    ] = None,
 ) -> None:
     """Add a manually-tracked asset or liability (property, mortgage, loan, ...)."""
-    from .service import add_manual_position
+    from .service import AssetError, add_manual_position
 
     known = account_types.ids()
     if type not in known:
         raise typer.BadParameter(f"Unknown account type '{type}'. Known: {', '.join(known)}.")
     init_db()
     with get_session() as s:
-        acc = add_manual_position(
-            s, name=name, type=type, value=value, currency=currency,
-            profile_id=cliutil.profile(s).id,
-        )
+        try:
+            acc = add_manual_position(
+                s, name=name, type=type, value=value, currency=currency,
+                profile_id=cliutil.profile(s).id, note=note,
+            )
+        except AssetError as e:
+            raise typer.BadParameter(str(e)) from None
         cliutil.console.print(
             f"[green]{acc.type}[/] '{acc.name}' = "
             f"{cliutil.fmt(Decimal(str(value)), currency)} (account id {acc.id})"

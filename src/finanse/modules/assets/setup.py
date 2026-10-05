@@ -16,7 +16,11 @@ POSITION_TYPES = (AccountType.PROPERTY, AccountType.VEHICLE, AccountType.INVESTM
 def setup_status(session: Session, profile_id: int) -> SetupStatus:
     cli = cli_prefix(session, profile_id)
     positions = session.exec(
-        select(Account).where(Account.profile_id == profile_id, Account.type.in_(POSITION_TYPES))
+        select(Account).where(
+            Account.profile_id == profile_id,
+            Account.type.in_(POSITION_TYPES),
+            Account.removed_at.is_(None),  # a removed position does not count (F7 MB2)
+        )
     ).all()
     vehicles = [a.id for a in positions if a.type == AccountType.VEHICLE]
     n_depreciating = int(session.exec(

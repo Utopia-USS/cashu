@@ -213,11 +213,16 @@ def set_payment_matching(
 
 
 def list_loans(session: Session, profile_id: int | None = None) -> list[tuple[Loan, Account]]:
-    """The profile's loans with their accounts, oldest first."""
+    """The profile's loans with their accounts, oldest first (an account the owner removed as a
+    manual position, ``removed_at`` set, is left out like in net worth)."""
     pid = profiles.scope(session, profile_id)
     rows = session.exec(
         select(Loan, Account)
-        .where(Loan.account_id == Account.id, Account.profile_id == pid)
+        .where(
+            Loan.account_id == Account.id,
+            Account.profile_id == pid,
+            Account.removed_at.is_(None),
+        )
         .order_by(Loan.id)
     ).all()
     return [(loan, account) for loan, account in rows]

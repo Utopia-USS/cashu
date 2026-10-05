@@ -205,9 +205,15 @@ def liability_components() -> set[str]:
 # --------------------------------------------------------------------------- #
 
 def _profile_accounts(session: Session, profile_id: int | None, *conditions) -> list[Account]:
+    """The profile's accounts matching ``conditions``; a removed position (``removed_at`` set) is
+    never part of net worth, now or in the history."""
     pid = profiles.scope(session, profile_id)
     return list(
-        session.exec(select(Account).where(Account.profile_id == pid, *conditions)).all()
+        session.exec(
+            select(Account).where(
+                Account.profile_id == pid, Account.removed_at.is_(None), *conditions
+            )
+        ).all()
     )
 
 

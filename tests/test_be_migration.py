@@ -110,7 +110,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     engine = db.make_engine(f"sqlite:///{path}")
     assert migrations.current_revision(engine) == "0007_alerts_watchlist"
     assert (
-        migrations.upgrade_to_head(engine) == migrations.head_revision() == "0008_research_planned"
+        migrations.upgrade_to_head(engine) == migrations.head_revision() == "0010_account_removed"
     )
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
@@ -122,6 +122,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     assert _sql(path, "SELECT title, deleted_at FROM alerts") == [("Example level", None)]
     # appended by ALTER TABLE ADD COLUMN: the last column, no rebuild
     assert [r[1] for r in _sql(path, "PRAGMA table_info('alerts')")][-1] == "deleted_at"
+    assert [r[1] for r in _sql(path, "PRAGMA table_info('accounts')")][-1] == "removed_at"  # 0010
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     engine.dispose()

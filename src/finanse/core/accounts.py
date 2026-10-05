@@ -141,3 +141,42 @@ def own_ibans(session: Session, profile_id: int | None = None) -> set[str]:
     income/expense. Per profile: a transfer to a partner's account in another
     profile is a real outflow here."""
     return {iban_key(a.iban) for a in profile_accounts(session, profile_id) if a.iban}
+
+
+# --- removed accounts: name keys (F7 MB2) -------------------------------------------------------
+# An account the owner removed (``removed_at`` set; the assets module's DELETE) keeps its row. Its
+# ``external_id`` (``manual:<name>``) is unique per profile and bank, so before a new account takes that
+# key the removed one is parked aside as ``<key>~<id>``; a restore takes the key back when it is free.
+
+
+def _key_holder(session: Session, profile_id: int, bank: str, key: str) -> Account | None:
+    return session.exec(
+        select(Account).where(
+            Account.profile_id == profile_id, Account.bank == bank, Account.external_id == key
+        )
+    ).first()
+
+
+def park_removed_key(session: Session, profile_id: int | None, bank: str, key: str) -> None:
+    """Move a removed account holding ``key`` aside (``<key>~<id>``) so ``key`` can name a fresh
+    account: a new position or loan of a removed one's name never revives its history or terms."""
+    pid = profiles.scope(session, profile_id, create=True)
+    holder = _key_holder(session, pid, bank, key)
+    if holder is not None and holder.removed_at is not None:
+        holder.external_id = f"{key}~{holder.id}"
+        session.add(holder)
+        session.flush()
+
+
+def unpark_key(session: Session, account: Account) -> None:
+    """On a restore: take the parked key (``<key>~<id>``) back unless a visible account holds it now (a
+    removed holder is parked aside); otherwise the account keeps its parked key."""
+    parked, suffix = account.external_id or "", f"~{account.id}"
+    if not parked.endswith(suffix):
+        return
+    key = parked[: -len(suffix)]
+    park_removed_key(session, account.profile_id, account.bank, key)
+    if _key_holder(session, account.profile_id, account.bank, key) is None:
+        account.external_id = key
+        session.add(account)
+        session.flush()

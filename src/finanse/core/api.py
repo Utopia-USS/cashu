@@ -343,5 +343,7 @@ def networth_series(
 @router.get("/accounts")
 def accounts(profile: CurrentProfile) -> list[dict]:
     with get_session() as s:
-        rows = s.exec(select(Account).where(Account.profile_id == profile.id)).all()
+        rows = s.exec(
+            select(Account).where(Account.profile_id == profile.id, Account.removed_at.is_(None))
+        ).all()
         return [account_row(a, None, None) | {"active": a.active} for a in rows]
