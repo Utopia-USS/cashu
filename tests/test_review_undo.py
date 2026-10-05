@@ -51,3 +51,34 @@ def test_review_undo_expires_after_15_minutes(setup):
         now = dt.datetime.now(dt.UTC)
         with pytest.raises(reviews.ReviewUndoExpired):
             reviews.undo(s, s.get(Review, review_id).profile_id, review_id, now=now)
+
+
+def test_a_review_can_be_recorded_for_a_past_day(setup):
+    """F7 OB3: an imported check-in keeps its own day (not in the future); its undo window still
+    counts from saving it."""
+    (a, _b), api = setup
+    past = (_today() - dt.timedelta(days=10)).isoformat()
+    saved = api.post(f"/api/p/{a}/reviews", json={"module": "investments", "done_at": past})
+    assert saved.status_code == 201, saved.text
+    body = saved.json()
+    assert body["done_at"] == f"{past}T12:00:00+00:00"
+    assert api.get(f"/api/p/{a}/reviews?module=investments").json()[0]["done_at"].startswith(past)
+    with get_session() as s:
+        assert reviews.last(s, s.get(Review, body["id"]).profile_id, "investments").id == body["id"]
+    assert api.delete(f"/api/p/{a}/reviews/{body['id']}").status_code == 200  # just saved
+
+    today = api.post(
+        f"/api/p/{a}/reviews",
+        json={"module": "investments", "done_at": _today().isoformat()},
+    ).json()
+    assert "recorded_at" not in today["stats"]  # today: saved now, as without done_at
+
+    future = (_today() + dt.timedelta(days=1)).isoformat()
+    r = api.post(f"/api/p/{a}/reviews", json={"module": "investments", "done_at": future})
+    assert r.status_code == 422 and "future" in r.json()["detail"]
+    r = api.post(f"/api/p/{a}/reviews", json={"module": "investments", "done_at": "05.10.2026"})
+    assert r.status_code == 422
+
+
+def _today() -> dt.date:
+    return dt.date.today()  # noqa: DTZ011 - the service compares with the local calendar day

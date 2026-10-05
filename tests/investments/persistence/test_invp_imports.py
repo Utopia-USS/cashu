@@ -254,6 +254,28 @@ def test_generic_csv_mapping_is_remembered(setup):
     assert again.importer_id == "genbroker" and again.plan.duplicate_count == 2
 
 
+def test_a_positions_only_file_keeps_the_remembered_importer(setup):
+    """F7 OB4: a positions-only (or corporate-action-only) canonical file must not replace the
+    account's export importer and mapping; a file with transactions still does."""
+    from invp_support import position_rows
+
+    pid, _slug, aid = setup
+    content = b"date,type,symbol,exchange,qty,price,ccy,cash\n2026-01-05,DEP,,,,,PLN,1000\n2026-01-06,BUY,ABC,XWAR,2,50,PLN,-100\n"
+    imports.commit(
+        preview(pid, aid, content, name="gen.csv", importer="generic_csv", mapping_yaml=GENERIC)
+    )
+    snapshot = ("\n".join([HEADER, *position_rows()[:1]]) + "\n").encode()
+    p = preview(pid, aid, snapshot, name="positions.csv")
+    assert p.importer_id == "finanse" and not p.plan.rows and p.plan.positions
+    imports.commit(p, corrections=())
+    with get_session() as s:
+        settings = s.get(InvAccountSettings, aid)
+        assert settings.importer == "genbroker" and settings.mapping_yaml == GENERIC
+    imports.commit(preview(pid, aid, canonical_csv(positions=False)))
+    with get_session() as s:
+        assert s.get(InvAccountSettings, aid).importer == "finanse"
+
+
 def test_errors_are_reported_not_raised(setup):
     pid, _slug, aid = setup
     p = preview(pid, aid, b"not,an,export\n1,2,3\n", name="x.csv")

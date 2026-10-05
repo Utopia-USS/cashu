@@ -411,9 +411,10 @@ def _benchmark_meta(computed: Computed) -> dict:
     elif proxy is None:
         meta.update(
             status="proxy_not_found",
-            message=f"No stored instrument for the benchmark proxy {bench.proxy}: run "
-            "`finanse invest backfill` (a Yahoo symbol is added automatically; an ISIN must be "
-            "an instrument already known).",
+            message=f"The benchmark proxy {bench.proxy} could not be resolved: use a market "
+            "symbol with its market suffix (e.g. IUSQ.DE, VWCE.DE), which is registered as a "
+            "reference instrument automatically, or the ISIN of an instrument already known; a "
+            "symbol without a suffix is probed by `finanse invest backfill`.",
         )
     elif computed.bench_prices is None:
         meta.update(

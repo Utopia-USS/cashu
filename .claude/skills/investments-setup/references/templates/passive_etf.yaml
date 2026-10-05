@@ -130,7 +130,7 @@ rules:
     params:
       scope: portfolio
       when: 'bucket_drift_pp("global_equity") <= -3 and cash_weight >= 5%'
-      message: Global equities are below target and cash is waiting to be invested
+      message: Akcje globalne poniżej celu, a gotówka czeka na zainwestowanie
 
 # Screening criteria for watchlist ideas (used by a later stage; any numeric criterion is kept).
 watchlist:

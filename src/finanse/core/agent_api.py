@@ -7,7 +7,8 @@ or rejects, weekly reviews, the MCP call audit log and the MCP connection snippe
 - ``POST /proposals/{id}/approve``               apply it (409 not pending or busy, 422 cannot apply:
   then ``failed`` with ``result.error``)
 - ``POST /proposals/{id}/reject``  ``{note?}``   (409 not pending, or busy while an approval runs)
-- ``GET  /reviews?module=&limit=``, ``POST /reviews`` ``{module, notes?}`` (201)
+- ``GET  /reviews?module=&limit=``, ``POST /reviews`` ``{module, notes?, done_at?}`` (201;
+  ``done_at`` a past or today's date YYYY-MM-DD, 422 when in the future)
 - ``DELETE /reviews/{id}``                       undo within 15 minutes (409 ``undo_expired``)
 - ``GET  /mcp/calls?limit=``                     audit rows (argument names and types only)
 - ``GET  /mcp``                                  server name, ``claude mcp add`` command, privacy, tools
@@ -119,6 +120,7 @@ def list_reviews(profile: CurrentProfile, module: str | None = None, limit: int 
 class ReviewBody(BaseModel):
     module: str
     notes: str | None = None
+    done_at: str | None = None  # YYYY-MM-DD, not in the future (F7 OB3); default: now
 
 
 def _module_stats(session, profile_id: int, module: str) -> dict[str, Any]:
@@ -134,7 +136,9 @@ def create_review(profile: CurrentProfile, body: ReviewBody) -> dict:
     with get_session() as s:
         try:
             stats = _module_stats(s, profile.id, body.module) if body.module else {}
-            row = reviews.mark_done(s, profile, body.module, body.notes, stats)
+            row = reviews.mark_done(
+                s, profile, body.module, body.notes, stats, done_at=body.done_at or None
+            )
         except reviews.ReviewError as e:
             raise _422(e) from None
         return reviews.review_dict(row)

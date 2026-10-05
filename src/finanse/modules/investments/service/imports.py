@@ -500,15 +500,18 @@ def commit(
             ]
             applied = _apply_corrections(s, profile, account, positions, wanted, now, batch.id)
 
-        # 6. Remember the importer for this account.
-        settings = s.get(InvAccountSettings, account.id) or InvAccountSettings(
-            account_id=account.id
-        )
-        settings.importer = preview_.importer_id
-        if preview_.importer_id == GENERIC_CSV_BROKER_ID or request.mapping_yaml:
-            settings.mapping_yaml = request.mapping_yaml or settings.mapping_yaml
-        settings.updated_at = now
-        s.add(settings)
+        # 6. Remember the importer for this account: only a file with transactions (the broker's
+        #    statement export); a positions-only / corporate-action-only file (often the canonical
+        #    format) must not replace the account's export importer (F7 OB4).
+        if plan.rows:
+            settings = s.get(InvAccountSettings, account.id) or InvAccountSettings(
+                account_id=account.id
+            )
+            settings.importer = preview_.importer_id
+            if preview_.importer_id == GENERIC_CSV_BROKER_ID or request.mapping_yaml:
+                settings.mapping_yaml = request.mapping_yaml or settings.mapping_yaml
+            settings.updated_at = now
+            s.add(settings)
 
         # 7. Planned deposits this file's deposits book (F6; never cash until then).
         booked = planned_service.book_matching(s, profile.id, now=now) if inserted else []

@@ -139,6 +139,11 @@ def load(session: Session, profile: Profile, *, record: bool = False) -> Strateg
         session.add(latest)
         session.flush()
         changed = False
+    if record and result.config is not None and result.config.benchmark is not None:
+        # a benchmark proxy nobody holds or watches still needs an instrument row (F7 owner fix)
+        from ..performance.proxy import ensure_quietly
+
+        ensure_quietly(session, result.config.benchmark.proxy)
     return StrategyState(state, yaml_path, md_path, result, digest, latest, changed)
 
 

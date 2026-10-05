@@ -48,23 +48,55 @@ def _module(module: str) -> str:
     return module
 
 
+RECORDED_AT = "recorded_at"
+"""Stats key of a backdated review: when it was saved (the undo window counts from it)."""
+
+
+def _done_at(done_on: dt.date | str | None, now: dt.datetime) -> dt.datetime:
+    """``now`` for today / None; a past calendar day is stored at 12:00 UTC (the same calendar day
+    in Europe and the Americas). A future day is refused."""
+    if done_on is None:
+        return now
+    if isinstance(done_on, str):
+        try:
+            done_on = dt.date.fromisoformat(done_on.strip())
+        except ValueError:
+            raise ReviewError("done_at must be a date (YYYY-MM-DD)") from None
+    if isinstance(done_on, dt.datetime):
+        done_on = done_on.date()
+    today = dt.date.today()  # noqa: DTZ011 - local calendar day, like booking dates
+    if done_on > today:
+        raise ReviewError("done_at cannot be in the future")
+    if done_on == today:
+        return now
+    return dt.datetime.combine(done_on, dt.time(12, 0), tzinfo=dt.UTC)
+
+
 def mark_done(
     session: Session,
     profile: Profile | int,
     module: str,
     notes: str | None = None,
     stats: dict[str, Any] | None = None,
+    *,
+    done_at: dt.date | str | None = None,
 ) -> Review:
-    """Record a review of ``module`` done now."""
+    """Record a review of ``module`` done now, or on ``done_at`` (a past day, e.g. an imported
+    check-in; F7 OB3)."""
     text = (notes or "").strip() or None
     if text is not None and len(text) > MAX_NOTES:
         raise ReviewError(f"notes are too long (max {MAX_NOTES} characters)")
+    now = utcnow()
+    done = _done_at(done_at, now)
+    stats = dict(stats or {})
+    if done != now:
+        stats[RECORDED_AT] = now.isoformat()
     row = Review(
         profile_id=_pid(profile),
         module=_module(module),
-        done_at=utcnow(),
+        done_at=done,
         notes=text,
-        stats=dict(stats or {}),
+        stats=stats,
     )
     session.add(row)
     session.flush()
@@ -106,6 +138,13 @@ def undo(
     """Delete a review saved less than ``UNDO_WINDOW`` ago (``ReviewUndoExpired`` after that)."""
     row = get(session, profile, review_id)
     done = row.done_at.replace(tzinfo=dt.UTC) if row.done_at.tzinfo is None else row.done_at
+    recorded = (row.stats or {}).get(RECORDED_AT)
+    if isinstance(recorded, str):  # a backdated review: the window counts from saving it
+        try:
+            saved = dt.datetime.fromisoformat(recorded)
+            done = saved.replace(tzinfo=dt.UTC) if saved.tzinfo is None else saved
+        except ValueError:
+            pass
     if (now or utcnow()) - done > UNDO_WINDOW:
         minutes = int(UNDO_WINDOW.total_seconds() // 60)
         raise ReviewUndoExpired(f"A review can be undone for {minutes} minutes after it is saved")

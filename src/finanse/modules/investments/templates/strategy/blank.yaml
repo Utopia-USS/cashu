@@ -78,7 +78,7 @@ rules: []
 #     params:
 #       scope: instrument
 #       when: 'drawdown_from_high(252) >= 20% and weight < 3%'
-#       message: Deep drop in a small position; review the thesis
+#       message: Duży spadek małej pozycji; sprawdź tezę
 
 # Screening criteria for watchlist ideas (later stage), e.g. max_pe, min_dividend_yield.
 # watchlist:

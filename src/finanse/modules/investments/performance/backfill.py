@@ -48,12 +48,14 @@ from ..market import (
     QuoteCurrencyMismatchException,
     SourceException,
 )
+from ..models import InvInstrument
 from ..portfolio import build_snapshot
 from ..service import daily
 from ..service import portfolio as portfolio_service
 from ..service import strategy as strategy_files
 from ..store import convert, market, transactions
 from ..store import instruments as instrument_store
+from .proxy import ensure_proxy, is_reference_only
 from .service import find_proxy, is_isin
 
 LOCK_NAME = "investments-backfill"
@@ -154,7 +156,10 @@ class _Plan:
     split_dates: dict[InstrumentId, dt.date] = field(default_factory=dict)
     currencies: dict[Currency, dt.date] = field(default_factory=dict)
     proxies: list[tuple[str, str, dt.date, Currency]] = field(default_factory=list)
-    """(profile slug, proxy, need from, currency guess) of proxies with no stored instrument."""
+    """(profile slug, proxy, need from, currency guess) of proxies with no stored instrument (or a
+    reference proxy without bars yet)."""
+    added_proxies: set[str] = field(default_factory=set)
+    """Proxies (upper-case) this run registered as reference instruments."""
 
 
 def _earliest(target: dict, key, value: dt.date) -> None:
@@ -224,9 +229,15 @@ def _read(
         bench = st.config.benchmark if st.config is not None else None
         if bench is None:
             continue
-        proxy = find_proxy(session, bench.proxy)
-        if proxy is None:
-            plan.proxies.append((profile.slug, bench.proxy, first, bench.currency))
+        proxy, status = ensure_proxy(session, bench.proxy)  # registers a market symbol offline
+        if status == "added":
+            plan.added_proxies.add(bench.proxy.strip().upper())
+        if proxy is None or is_reference_only(session, proxy.id):
+            # unknown, or a reference proxy without bars yet: probe it at the source (settles the
+            # quote currency the market default only guessed)
+            plan.proxies.append(
+                (profile.slug, bench.proxy, first, proxy.currency if proxy else bench.currency)
+            )
             continue
         report.benchmarks.append(
             BenchmarkResult(profile.slug, bench.proxy, "found", convert.maybe_pk(proxy.id))
@@ -390,18 +401,34 @@ def _resolve_proxies(
         if key not in probed:
             probed[key] = _probe_proxy(prices, key, guess, as_of)
         planned, error = probed[key]
-        if planned is None:
-            report.benchmarks.append(BenchmarkResult(slug, proxy, "error", message=error))
-            continue
         with session_factory() as s:
             existing = find_proxy(s, key)
-            if existing is None:
+            if planned is None:
+                report.benchmarks.append(BenchmarkResult(slug, proxy, "error", message=error))
+                if existing is None:
+                    continue
+                stored, status = existing, None  # registered offline: its other aliases may work
+            elif existing is None:
                 row = instrument_store.insert(s, planned)
                 stored = instrument_store.load_one(s, row.id)
                 status = "added"
             else:
-                stored, status = existing, "found"
+                stored, status = existing, "added" if key in plan.added_proxies else "found"
+                if planned.currency != existing.currency and is_reference_only(s, existing.id):
+                    # a reference proxy registered with the market's usual currency: the source
+                    # quotes it in another one (nothing references it yet, so it is safe to fix)
+                    row = s.get(InvInstrument, convert.pk(existing.id))
+                    row.currency = str(planned.currency)
+                    s.add(row)
+                    s.flush()
+                    stored = instrument_store.load_one(s, row.id)
         assert stored is not None
+        if status is None:
+            plan.instruments.setdefault(stored.id, stored)
+            _earliest(plan.need_from, stored.id, first)
+            plan.roles.setdefault(stored.id, "benchmark")
+            _earliest(plan.currencies, stored.currency, first)
+            continue
         report.benchmarks.append(BenchmarkResult(slug, proxy, status, convert.maybe_pk(stored.id)))
         plan.instruments.setdefault(stored.id, stored)
         _earliest(plan.need_from, stored.id, first)

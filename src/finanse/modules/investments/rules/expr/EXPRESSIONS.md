@@ -15,7 +15,7 @@ rules:
       scope: instrument            # portfolio (default) | instrument | bucket
       tags: [satellite]            # optional filters (scope instrument): asset_class, tags, instrument_ids
       when: 'drawdown_from_high(252) >= 20% and weight < 3%'
-      message: Deep drop in a small position; review the thesis   # optional, one line, <= 200 chars
+      message: Duży spadek małej pozycji; sprawdź tezę   # optional, one line, <= 200 chars
 ```
 
 Quote the expression in YAML when it contains `:` or `#`, or starts with a quote (single quotes outside,

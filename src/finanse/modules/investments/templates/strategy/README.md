@@ -74,7 +74,7 @@ Errors name the column of the expression; unknown names get a "did you mean" hin
     scope: instrument
     tags: [satellite]
     when: 'drawdown_from_high(252) >= 20% and weight < 3%'
-    message: Deep drop in a small position; review the thesis
+    message: Duży spadek małej pozycji; sprawdź tezę
 ```
 
 When a metric's data is missing or stale, the rule only fires if the condition is true whatever the
