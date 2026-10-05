@@ -20,6 +20,9 @@ from sqlmodel import Session, select
 MODULE_ID = "investments"
 DAILY_LOCK_WAIT = 120.0  # seconds to wait for an in-app "run now" to finish
 OPEN_STATUSES = ("active", "acknowledged")
+# Only an active signal is notified: acknowledged / decided / resolved / expired ones are closed out at
+# delivery, snoozed ones wait (F5 R5).
+DELIVERABLE_STATUS = "active"
 ISO_WEEKDAYS = {
     "monday": 1,
     "tuesday": 2,
@@ -52,6 +55,21 @@ class PendingNotification:
     rule_id: str
     message: str
     created_at: dt.datetime | None
+    decided: bool = False
+    """The owner recorded a decision on the signal after this entry was written."""
+    snoozed_until: dt.datetime | None = None
+    """Aware UTC; the signal is postponed until then (``inv_signals.snoozed_until``, once it exists)."""
+
+    def snoozed(self, now: dt.datetime) -> bool:
+        if self.signal_status == "snoozed":
+            return True
+        return self.snoozed_until is not None and self.snoozed_until > now
+
+
+def _utc(value: dt.datetime | None) -> dt.datetime | None:
+    if value is None:
+        return None
+    return value.replace(tzinfo=dt.UTC) if value.tzinfo is None else value
 
 
 def policy(session: Session, profile) -> Policy:
@@ -94,8 +112,11 @@ def busy_error() -> type[Exception]:
 
 
 def pending(session: Session, profile_id: int) -> list[PendingNotification]:
-    """Notification-log entries of the profile not delivered yet, oldest first."""
-    from finanse.modules.investments.models import InvNotification, InvSignal
+    """Notification-log entries of the profile not delivered yet, oldest first, with what the
+    owner did since: the signal's current status, a newer decision, a snooze."""
+    from sqlalchemy import func
+
+    from finanse.modules.investments.models import InvDecision, InvNotification, InvSignal
 
     rows = session.exec(
         select(InvNotification, InvSignal)
@@ -103,6 +124,23 @@ def pending(session: Session, profile_id: int) -> list[PendingNotification]:
         .where(InvNotification.profile_id == profile_id, InvNotification.sent_at.is_(None))
         .order_by(InvNotification.created_at, InvNotification.id)
     ).all()
+    signal_ids = {sig.id for _log, sig in rows}
+    last_decision = (
+        dict(
+            session.exec(
+                select(InvDecision.signal_id, func.max(InvDecision.created_at))
+                .where(InvDecision.signal_id.in_(signal_ids))
+                .group_by(InvDecision.signal_id)
+            ).all()
+        )
+        if signal_ids
+        else {}
+    )
+
+    def decided(log, sig) -> bool:
+        at, created = _utc(last_decision.get(sig.id)), _utc(log.created_at)
+        return at is not None and (created is None or at >= created)
+
     return [
         PendingNotification(
             log_id=log.id,
@@ -113,6 +151,8 @@ def pending(session: Session, profile_id: int) -> list[PendingNotification]:
             rule_id=sig.rule_id,
             message=sig.message,
             created_at=log.created_at,
+            decided=decided(log, sig),
+            snoozed_until=_utc(getattr(sig, "snoozed_until", None)),
         )
         for log, sig in rows
     ]
@@ -149,18 +189,19 @@ def release(session_factory: Callable, log_id: int) -> None:
 
 
 def review_count(session: Session, profile_id: int) -> int:
-    """Signals waiting for a decision (status ``active``): the weekly digest's number."""
-    from sqlalchemy import func
+    """Signals waiting for a decision (status ``active``, not snoozed): the weekly digest's number."""
+    from sqlalchemy import func, or_
 
     from finanse.modules.investments.models import InvSignal
 
-    return int(
-        session.exec(
-            select(func.count(InvSignal.id)).where(
-                InvSignal.profile_id == profile_id, InvSignal.status == "active"
-            )
-        ).one()
+    query = select(func.count(InvSignal.id)).where(
+        InvSignal.profile_id == profile_id, InvSignal.status == "active"
     )
+    snoozed_until = getattr(InvSignal, "snoozed_until", None)  # F5 R7 (AL), once the column exists
+    if snoozed_until is not None:
+        now = dt.datetime.now(dt.UTC)
+        query = query.where(or_(snoozed_until.is_(None), snoozed_until <= now))
+    return int(session.exec(query).one())
 
 
 def prune_staged() -> dict | None:
