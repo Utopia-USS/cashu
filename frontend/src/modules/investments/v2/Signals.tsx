@@ -338,7 +338,8 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, co
       <div ref={row} className={`sig cmp ${quiet ? "quiet" : ""} ${cursor && !open ? "cur" : ""} ${open ? "open" : ""}`} data-signal={s.id}>
         <PolDot polarity={polarityOf(s)} quiet={quiet} />
         <div className="mn">
-          <div className="t" title={[text.title, text.sym].filter(Boolean).join(" ")}>
+          {/* A held instrument's title carries the hover card: no native tooltip next to it (FE-A A4). */}
+          <div className="t" title={pos ? undefined : [text.title, text.sym].filter(Boolean).join(" ")}>
             {title}
             {!pos && text.sym && <span className="sym">{text.sym}</span>}
             {alert?.source === "agent" && <AgentTag mono text="alert agenta" />}

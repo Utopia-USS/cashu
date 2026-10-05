@@ -5,6 +5,7 @@ import { describeIssue, proposalSummary } from "../../core/messages";
 import { copyText, Tag, useToast } from "../../ui";
 import type { Proposal, StrategyStatus } from "./api";
 import { dmy, money0, nBuckets, nRules, plural } from "./labels";
+import { ruleKindLabel } from "./v2/logic";
 
 export function strategyTag(st: { state: string; errors: number; warnings: number; inactive_rules: number } | null) {
   if (!st || st.state === "missing") return <Tag tone="warn">brak</Tag>;
@@ -63,7 +64,8 @@ export function StrategyPopover({ st, proposals, onProposal, onInit, onReload }:
           {warnings.map((i, k) => <li key={`w${k}`}><span className="sev review" /><span title={i.message}><b>Ostrzeżenie:</b> {describeIssue(i).text}{i.path ? <> <code>{i.path}</code></> : null}{line(i.line)}</span></li>)}
           {st.inactive_rules.map((r) => (
             <li key={`r${r.index}`}><span className="sev resolved" />
-              <span>Reguła <code>{r.rule_id ?? `#${r.index + 1}`}</code> nieaktywna: {r.issues.map((i) => describeIssue(i).text).join("; ")}{line(r.line)}</span>
+              {/* The rule's position and kind (and its YAML line), never its strategy id (FE-A A6). */}
+              <span>Reguła {r.index + 1} ({ruleKindLabel(r.kind)}) nieaktywna: {r.issues.map((i) => describeIssue(i).text).join("; ")}{line(r.line)}</span>
             </li>
           ))}
           {st.base_currency_note && <li><span className="sev review" /><span>Waluta strategii różni się od waluty profilu.</span></li>}

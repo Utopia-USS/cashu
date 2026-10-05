@@ -85,6 +85,14 @@ export function unnameBuckets(text: string): string {
     });
 }
 
+/** Rule kinds in Polish (a rule's strategy id never reaches the UI, FE-A A6). */
+export const RULE_KIND_LABEL: Record<string, string> = {
+  drawdown_from_high: "transza spadkowa", gain_from_cost: "zysk od kosztu", loss_from_cost: "strata od kosztu", allocation_drift: "dryf alokacji",
+  position_concentration: "koncentracja", contribution_gap: "brak wpłaty", cash_level: "poziom gotówki", tagged_weight: "udział tagów",
+  custom: "reguła własna",
+};
+export const ruleKindLabel = (kind: string | null | undefined): string => (kind ? RULE_KIND_LABEL[kind] ?? (kind.startsWith("alert:") ? "alert" : "reguła") : "reguła");
+
 /** Whether the allocation's buckets (targets, drift, `Koszyki`) may show: at least one bucket and every bucket
  * generic (`buckets_generic` / `generic` from the server, a missing key = generic, plus a generic label). */
 export function allocGeneric(alloc: { buckets: { bucket_id: string; generic?: boolean | null }[]; buckets_generic?: boolean | null }): boolean {

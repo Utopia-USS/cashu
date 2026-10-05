@@ -13,7 +13,7 @@ import { ClassifyCard, WarningsCard } from "../Rail";
 import { warningItems } from "../logic";
 import type { Alert, PositionV2, PositionsV2, SignalV2 } from "./api";
 import { ClassifyButton, InstLabel } from "./InstLabel";
-import { allocGeneric, instName, isDecided, polarityOf, subLine, weekChange } from "./logic";
+import { allocGeneric, instName, isDecided, polarityOf, ruleKindLabel, subLine, weekChange } from "./logic";
 
 type Sort = "value" | "result" | "week";
 
@@ -230,9 +230,10 @@ export function AccountsWidget({ overview, strategy, onAdd, onReconcile, onAlias
         <>
           {fr.fx.newest_rate && <span>NBP {dm(fr.fx.newest_rate)}</span>}
           {fr.prices.stale.slice(0, 2).map((s) => <span key={s.instrument_id} className="warn">{s.label}: cena z {dm(s.price_date)}</span>)}
-          {inactive.slice(0, 1).map((r) => (
-            <span key={r.index} className="warn">reguła {r.rule_id ?? `#${r.index + 1}`} nieaktywna · <button className="lnk" style={{ fontSize: 12 }} onClick={onSettings}>napraw w Ustawieniach</button></span>
-          ))}
+          {/* Rule kinds, never the strategy's rule ids (FE-A A6). */}
+          {inactive.length > 0 && (
+            <span className="warn" title={inactive.map((r) => ruleKindLabel(r.kind)).join(", ")}>{plural(inactive.length, "reguła nieaktywna", "reguły nieaktywne", "reguł nieaktywnych")} · <button className="lnk" style={{ fontSize: 12 }} onClick={onSettings}>napraw w Ustawieniach</button></span>
+          )}
           {strategy?.state === "invalid" && <span className="warn">błąd w strategii · <button className="lnk" style={{ fontSize: 12 }} onClick={onSettings}>Ustawienia</button></span>}
           {warnings.length > 0 && <><span className="spacer" /><button className="lnk" onClick={() => setOpen(true)}>ostrzeżenia danych ({warnings.length})</button></>}
         </>

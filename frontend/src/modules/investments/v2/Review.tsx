@@ -12,7 +12,7 @@ import type { AccountRow, Proposal } from "../api";
 import { accountLabel, bucketLabel, DECISION_ACTION, dm, money, money0, nTxns, pct, plural, pp, txnType } from "../labels";
 import { runError } from "../logic";
 import type { Alert, DigestEvent, DigestV2, Performance, SignalV2 } from "./api";
-import { benchmarkLabel, changeSince, digestValueLine, gapText, groupByMonth, isImportant, polarityOf, signalText } from "./logic";
+import { benchmarkLabel, changeSince, digestValueLine, gapText, groupByMonth, isImportant, polarityOf, ruleKindLabel, signalText, staleBenchmark, unnameBuckets } from "./logic";
 
 // ---- review strip ---------------------------------------------------------------------------------------------
 
@@ -46,7 +46,11 @@ const KIND_PHRASE: Record<string, string> = {
   drawdown_from_high: "transza spadkowa", allocation_drift: "dryf alokacji", position_concentration: "koncentracja", contribution_gap: "brak wpłaty",
   gain_from_cost: "zysk od kosztu", loss_from_cost: "strata od kosztu", cash_level: "poziom gotówki", tagged_weight: "udział tagów",
 };
-const phrase = (kind?: string, message?: string) => (kind ? KIND_PHRASE[kind] ?? (kind.startsWith("alert:") ? "alert" : message || kind) : message || "");
+// Messages of custom rules can carry the owner's bucket ids (`Koszyk core: ...`, FE-A A2): unnamed; never a raw kind.
+const phrase = (kind?: string, message?: string) => {
+  const msg = message ? unnameBuckets(message) : "";
+  return kind ? KIND_PHRASE[kind] ?? (kind.startsWith("alert:") ? "alert" : msg || ruleKindLabel(kind)) : msg;
+};
 /** Signal events of the change log: the instrument, or the bucket of an allocation-drift event (F6 BE
  * `bucket_id`; before it the log said "dryf alokacji" for every bucket). */
 const subject = (e: DigestEvent, inst: string) => inst || (e.kind === "allocation_drift" ? bucketLabel(e.bucket_id) ?? "" : "");
@@ -66,6 +70,8 @@ export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names
   const c = v.currency;
   const since = changeSince(perf?.points ?? [], digest.since);
   const benchName = benchmarkLabel(perf?.benchmark);
+  // A benchmark whose prices stop early is not compared (F4; FE-A A1): the short label, the last priced day in its title.
+  const benchStale = staleBenchmark(perf?.benchmark);
   const line = digestValueLine(v, since.pct);
   const market = line.amount;
   const marketPct = line.pct;
@@ -85,7 +91,7 @@ export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names
       <div className="changes">
         <Chg k="Wartość" v={market != null ? <>
           <b className={market >= 0 ? "pos" : "neg"}>{money(market, c, true)}</b>{marketPct != null && <b> ({pct(marketPct, true)})</b>}
-          <span className="s">{line.kind === "value" ? " · z przeniesieniami" : ""}{line.contributions ? ` · bez wpłat ${money0(line.contributions, c)}` : ""}{line.kind === "market" && since.bench != null ? ` · ${benchName} ${pct(since.bench, true)}` : ""}{line.kind === "market" && since.bench != null && since.pct != null ? <> · <b>{pp((since.pct - since.bench) * 100)}</b></> : ""}</span>
+          <span className="s">{line.kind === "value" ? " · z przeniesieniami" : ""}{line.contributions ? ` · bez wpłat ${money0(line.contributions, c)}` : ""}{line.kind === "market" && benchStale ? <span title={benchStale.title}> · {benchStale.label}</span> : null}{line.kind === "market" && !benchStale && since.bench != null ? ` · ${benchName} ${pct(since.bench, true)}` : ""}{line.kind === "market" && !benchStale && since.bench != null && since.pct != null ? <> · <b>{pp((since.pct - since.bench) * 100)}</b></> : ""}</span>
         </> : <><b>{money(v.now, c)}</b> <span className="s">· brak wyceny z początku okresu</span></>} />
         {(!!v.transfers || !!v.implied_funding || line.transfersUnvalued) && <Chg k="Przeniesienia" v={<>
           {!!v.transfers && <b>{money(v.transfers, c, true)}</b>}
@@ -134,13 +140,14 @@ export function ReentryBanner({ since, days, digest, perf, alerts, proposals, de
   const depMonths = new Set(deposits.map((e) => e.date.slice(0, 7))).size;
   const imports = ev.filter((e) => e.type === "import").length;
   const benchName = benchmarkLabel(perf?.benchmark);
+  const benchStale = staleBenchmark(perf?.benchmark);
   return (
     <section className="w reentry" aria-label="Powrót po przerwie">
       <div>
         <div className="t">{gapText(days)} <span>ostatnio {dm(since)} · od tego czasu:</span></div>
         <div className="row">
           <div className="fact"><div className="l">Wartość</div><div className={`v ${ch.pct == null ? "" : ch.pct >= 0 ? "pos" : "neg"}`}>{ch.pct != null ? pct(ch.pct, true) : "-"}</div>
-            <div className="d">{ch.money != null ? money0(ch.money, c, true) : ""}{ch.bench != null ? ` · ${benchName} ${pct(ch.bench, true)}` : ""}</div></div>
+            <div className="d">{ch.money != null ? money0(ch.money, c, true) : ""}{benchStale ? <span title={benchStale.title}> · {benchStale.label}</span> : ch.bench != null ? ` · ${benchName} ${pct(ch.bench, true)}` : ""}</div></div>
           <div className="fact"><div className="l">Sygnały</div><div className="v">{created}</div><div className="d">{expired ? `${expired} wygasły bez decyzji` : "żaden nie wygasł"}</div></div>
           <div className="fact"><div className="l">Alerty</div><div className="v">{trig.length}</div><div className="d">wyzwolone{agentTrig ? ` · ${agentTrig} od agenta` : ""}</div></div>
           {depositPlan && <div className="fact"><div className="l">Wpłaty</div><div className="v">{depMonths} z {monthsGap}</div><div className="d">{depMonths >= monthsGap ? "zgodnie z planem" : `${plural(monthsGap - depMonths, "miesiąc", "miesiące", "miesięcy")} bez wpłaty`}</div></div>}
@@ -165,7 +172,7 @@ function eventView(e: LogEvent, accounts: AccountRow[], alerts: Alert[], names?:
     case "alert_triggered": {
       // The alert's own title, then the Polish fact of the coded message (F6 BE `message_code`), e.g. "cena 138,20 zł poniżej 140,00 zł".
       const fact = label(e.message_code, e.message_params);
-      return { dot: pol, head: e.agent ? "Alert agenta wyzwolony" : "Alert wyzwolony", main: alerts.find((a) => a.id === e.alert_id)?.title ?? (typeof e.message_params?.title === "string" ? e.message_params.title : inst),
+      return { dot: pol, head: e.agent ? "Alert agenta wyzwolony" : "Alert wyzwolony", main: unnameBuckets(alerts.find((a) => a.id === e.alert_id)?.title ?? (typeof e.message_params?.title === "string" ? e.message_params.title : inst)),
         tail: [fact, e.status === "active" || !e.status ? "sygnał otwarty" : null].filter(Boolean).join(" · ") || undefined };
     }
     case "signal_created": return { dot: pol, head: e.polarity === "positive" ? "Szansa" : e.polarity === "negative" ? "Ryzyko" : "Sygnał", main: [subject(e, inst), phrase(e.kind, e.message)].filter(Boolean).join(" · ") };
@@ -240,11 +247,13 @@ export function StateToday({ since, total, base, ytd, perf, signals, reviewText,
   const dd = perf?.points.length ? perf.points[perf.points.length - 1].drawdown : null;
   const md = perf?.summary?.max_drawdown;
   const ys = ytd?.summary?.twr, yb = ytd?.benchmark?.twr;
+  // Stale benchmark (prices stop before the range end): no comparison, as on the other heroes (F4; FE-A A1).
+  const ybStale = staleBenchmark(ytd?.benchmark), chartStale = staleBenchmark(perf?.benchmark);
   return (
     <Widget title="Stan dziś" controls={perf?.as_of ? <span className="tag">{dm(perf.as_of)}</span> : undefined} body="tight"
       footer={<><span>przegląd tygodnia: <b>{reviewText}</b></span><span className="spacer" /><button className="lnk" onClick={onSignals}>do sygnałów</button></>}>
       <Facts items={[
-        { label: "Wartość", value: money0(total, base), detail: ys != null ? <><span className={ys >= 0 ? "pos" : "neg"}>{pct(ys, true)}</span> YTD{yb != null ? ` · ${benchmarkLabel(ytd?.benchmark)} ${pct(yb, true)}` : ""}</> : undefined },
+        { label: "Wartość", value: money0(total, base), detail: ys != null ? <><span className={ys >= 0 ? "pos" : "neg"}>{pct(ys, true)}</span> YTD{ybStale ? <span title={ybStale.title}> · {ybStale.label}</span> : yb != null ? ` · ${benchmarkLabel(ytd?.benchmark)} ${pct(yb, true)}` : ""}</> : undefined },
         { label: "Od szczytu", value: pct(dd), detail: md?.peak ? `szczyt ${dm(md.peak)}` : undefined },
         { label: "Szanse", value: chances.length, detail: sigNames(chances) || undefined },
         { label: "Ryzyka", value: risks.length, detail: sigNames(risks) || undefined },
@@ -255,11 +264,12 @@ export function StateToday({ since, total, base, ytd, perf, signals, reviewText,
             <LineChart label={`Portfel od ${dm(since)} i benchmark`} height={120} padL={34} padR={58} yTicks={2} yFmt={(v) => `${Math.round(v * 100)} %`}
               xLabels={labelIndices(pts.length, 3).map((i) => ({ i, text: dm(pts[i].date) }))}
               series={[
-                { values: bv, cls: "bench", endLabel: lastB != null ? pct(lastB, true) : undefined },
+                ...(chartStale ? [] : [{ values: bv, cls: "bench" as const, endLabel: lastB != null ? pct(lastB, true) : undefined }]),
                 { values: pv, cls: "main", area: true, endLabel: lastP != null ? pct(lastP, true) : undefined },
               ]} />
           </div>
-          <div className="legend" style={{ marginTop: 4 }}><span><i className="main" />portfel od {dm(since)}</span><span><i className="bench" />{benchmarkLabel(perf?.benchmark)}</span></div>
+          <div className="legend" style={{ marginTop: 4 }}><span><i className="main" />portfel od {dm(since)}</span>
+            {chartStale ? <span title={chartStale.title}>{chartStale.label}</span> : <span><i className="bench" />{benchmarkLabel(perf?.benchmark)}</span>}</div>
         </>
       )}
     </Widget>

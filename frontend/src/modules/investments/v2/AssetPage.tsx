@@ -94,7 +94,9 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
       }
     }
     for (const t of chart.data?.thresholds ?? []) {
-      out.push({ y: t.y, cls: "rule", muted: true, label: `${t.rule_id} ${t.kind === "gain_from_cost" ? "+" : "-"}${Math.round(t.threshold * 100)} % od ${t.basis === "cost" ? "kosztu" : "szczytu"} · ${t.y.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` });
+      // By rule kind, never the strategy's rule id (FE-A A6): "transza -15 % od szczytu", "zysk +60 % od kosztu".
+      const word = ({ drawdown_from_high: "transza", loss_from_cost: "strata", gain_from_cost: "zysk" } as Record<string, string>)[t.kind] ?? "reguła";
+      out.push({ y: t.y, cls: "rule", muted: true, label: `${word} ${t.kind === "gain_from_cost" ? "+" : "-"}${Math.round(t.threshold * 100)} % od ${t.basis === "cost" ? "kosztu" : "szczytu"} · ${t.y.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` });
     }
     if (high != null) out.push({ y: high, cls: "rule", muted: true, label: `szczyt 52 tyg. · ${high.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` });
     const cost = chart.data?.cost?.average;

@@ -35,7 +35,7 @@ import { AssetDrawer } from "./AssetDrawer";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
 import {
-  benchmarkLabel, daysSince, instName, isDigestDay, nextContribution, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, signalPlace, staleBenchmark,
+  benchmarkLabel, daysSince, instName, isDigestDay, nextContribution, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, signalPlace, signalText, staleBenchmark,
 } from "./logic";
 import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, DrawdownWidget, ValueChartWidget } from "./Perf";
@@ -480,7 +480,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const planAmount = strategy?.facts?.contributions?.monthly_amount ?? null;
   const plan = planAmount != null ? { amount: planAmount, day: strategy?.facts?.contributions?.day_of_month ?? null } : null;
   const budgetOn = ctx.profile.modules.some((m) => m.id === "budget" && m.enabled);
-  const expired = (digest?.signals.resolved ?? []).filter((s) => s.status === "expired").map((s) => ({ title: s.instrument_label ?? s.rule_id }));
+  // Named by the signal's own title (instrument, bucket label, rule message), never the strategy's rule id (FE-A A6).
+  const expired = (digest?.signals.resolved ?? []).filter((s) => s.status === "expired").map((s) => ({ title: s.instrument_label ?? signalText(s).title }));
   const items: (GridItem | false)[] = [];
   if (reentry) {
     const days = daysSince(reentry, new Date().toISOString());

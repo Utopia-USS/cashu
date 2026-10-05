@@ -162,7 +162,7 @@ test("import + data warnings copy", () => {
 });
 
 test("rule run errors read in Polish", () => {
-  assert.equal(runError("rule cash_floor inactive: cash_level needs min_weight"), "reguła cash_floor nieaktywna (błąd w strategy.yaml)");
+  assert.equal(runError("rule cash_floor inactive: cash_level needs min_weight"), "reguła nieaktywna (błąd w strategy.yaml)"); // never the rule id (FE-A A6)
   assert.equal(runError("stooq: HTTP 503"), "źródło cen lub kursów nie odpowiedziało");
   assert.equal(runError(null), "");
 });

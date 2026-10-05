@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  alertConditionText, allocGeneric, benchmarkLabel, digestShown, instCardFacts, instMono, instSummary, isShownSignal, signalText, subLine,
+  alertConditionText, allocGeneric, benchmarkLabel, digestShown, instCardFacts, instMono, instSummary, isShownSignal, ruleKindLabel, signalText, subLine,
   unnameBuckets,
 } from "../src/modules/investments/v2/logic.ts";
 import { bucketGenitive, bucketLabel, GENERIC_BUCKET_IDS, isGenericBucket, micName } from "../src/modules/investments/labels.ts";
@@ -151,6 +151,15 @@ test("FE-A A3: ids in any case, ids inside expressions, owner words and labels k
   assert.equal(signalText({ id: 1, rule_id: "r", kind: "custom", severity: "info", status: "active", message: 'Warunek spełniony: bucket_drift_pp("core") > 5', instrument_id: null, instrument_label: null, payload: {}, first_seen_at: null, decisions: [] }).title,
     "Warunek spełniony: dryf koszyka > 5");
   assert.equal(alertConditionText({ kind: "custom", scope: "portfolio", params: { expression: 'bucket_weight("active") > 0.3' } }), "wyrażenie: waga koszyka > 0.3");
+});
+
+test("FE-A A6: rule kinds in Polish, never a rule id", () => {
+  assert.equal(ruleKindLabel("drawdown_from_high"), "transza spadkowa");
+  assert.equal(ruleKindLabel("cash_level"), "poziom gotówki");
+  assert.equal(ruleKindLabel("custom"), "reguła własna");
+  assert.equal(ruleKindLabel("alert:price_below"), "alert");
+  assert.equal(ruleKindLabel("some_new_kind"), "reguła");
+  assert.equal(ruleKindLabel(null), "reguła");
 });
 
 test("GF7: a benchmark is named, never its strategy id", () => {

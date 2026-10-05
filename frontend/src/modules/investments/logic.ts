@@ -52,7 +52,7 @@ export function signalTitle(sig: SignalLike): string {
     case "gain_from_cost": return `Zysk od kosztu ≥ ${pctTarget(n(p.threshold))}`;
     case "cash_level": return p.direction === "above_max" ? "Za dużo gotówki" : "Za mało gotówki";
     case "tagged_weight": return `Udział tagów: ${Array.isArray(p.tags) ? p.tags.join(", ") : ""}`;
-    default: return sig.message || sig.rule_id;
+    default: return sig.message || "Reguła własna"; // never the strategy's rule id (FE-A A6)
   }
 }
 
@@ -416,8 +416,8 @@ export { assetClass };
 /** A rule run error (backend, English) -> short Polish text for the Reguły KPI. */
 export function runError(msg: string | null | undefined): string {
   if (!msg) return "";
-  const inactive = /^rule (\S+) inactive/i.exec(msg);
-  if (inactive) return `reguła ${inactive[1]} nieaktywna (błąd w strategy.yaml)`;
+  // Never the strategy's rule id (FE-A A6 sweep).
+  if (/^rule (\S+) inactive/i.test(msg)) return "reguła nieaktywna (błąd w strategy.yaml)";
   if (/stooq|yahoo|nbp|price source|timed? ?out|connect|network|http/i.test(msg)) return "źródło cen lub kursów nie odpowiedziało";
   if (/strategy/i.test(msg)) return "problem ze strategią";
   return msg.length > 80 ? `${msg.slice(0, 77)}…` : msg;

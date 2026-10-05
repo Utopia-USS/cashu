@@ -11,7 +11,7 @@ import { Facts, FootFacts, Widget } from "../../../widgets";
 import { dm, money0, pct, plural, pp } from "../labels";
 import { nextDeposit } from "../logic";
 import { accKey, getPerformance, invKey, type Performance, type PerfRange } from "./api";
-import { benchmarkLabel, daysSince, monthlyFlows, perfNotes, planMonthsSoFar } from "./logic";
+import { benchmarkLabel, daysSince, monthlyFlows, perfNotes, planMonthsSoFar, staleBenchmark } from "./logic";
 
 const RANGES: [string, PerfRange][] = [["1M", "1m"], ["3M", "3m"], ["YTD", "ytd"], ["1R", "1y"], ["3R", "3y"], ["Max", "max"]];
 const RANGE_TEXT: Record<PerfRange, string> = { "1m": "1 mies.", "3m": "3 mies.", ytd: "od początku roku", "1y": "12 mies.", "3y": "3 lata", max: "całość" };
@@ -66,8 +66,10 @@ export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
         <>
           <FootFacts items={[
             <>{RANGE_TEXT[range]} TWR <b>{pct(s.twr, true)}</b></>,
-            benchOk && bench?.twr != null && <>benchmark <b>{pct(bench.twr, true)}</b></>,
-            benchOk && bench?.excess_twr != null && <>różnica <b className={bench.excess_twr >= 0 ? "pos" : "neg"}>{pp(bench.excess_twr * 100)}</b></>,
+            // A benchmark whose prices stop early: the short label instead of its figure (F4; FE-A A1 sweep).
+            benchOk && staleBenchmark(bench) && <span title={staleBenchmark(bench)!.title}>{staleBenchmark(bench)!.label}</span>,
+            benchOk && !staleBenchmark(bench) && bench?.twr != null && <>benchmark <b>{pct(bench.twr, true)}</b></>,
+            benchOk && !staleBenchmark(bench) && bench?.excess_twr != null && <>różnica <b className={bench.excess_twr >= 0 ? "pos" : "neg"}>{pp(bench.excess_twr * 100)}</b></>,
             s.xirr != null && <>XIRR <b>{pct(s.xirr)}</b></>,
             s.net_contributions != null && <>wpłaty {RANGE_TEXT[range]} <b>{money0(s.net_contributions, c)}</b></>,
             !benchOk && bench && (BENCH_NOTE[bench.status] ?? "benchmark niedostępny"),
