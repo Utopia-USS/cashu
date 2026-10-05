@@ -187,6 +187,7 @@ claude mcp add finanse-<slug> -- finanse mcp --profile <slug>   # once per profi
 | `/investments-setup` | strategy interview (goals, risk, history retrospective, strategy) and weekly check-ins |
 | `/import-builder` | converter for an unsupported broker export into the finanse import format (the agent runs it locally; the app takes only the converted file) |
 | `/extension-builder` | one custom rule (expression language) with a backtest on the profile's history |
+| `/market-research` | weekly research as a local Saturday routine in the profile's workspace (or on demand for one instrument or theme): dated facts, community sentiment flagged as noise and trend data as Polish notes with sources linked to positions and theses; never recommendations or price predictions |
 
 Rules every skill follows: data only through the profile's MCP tools (never raw
 exports, statements or the DB), the profile's privacy level decides what the
