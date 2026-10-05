@@ -379,11 +379,11 @@ function WorkerSection() {
   return (
     <Card id="worker" title="Praca w tle">
       <div className="row" style={{ paddingTop: 0 }}>
-        <Switch on={!!w?.installed} disabled={!known || !supported || busy != null} label="Uruchamiaj w tle po zalogowaniu"
+        <Switch on={!!w?.installed} disabled={!known || !supported || busy != null} label={`Codziennie o ${w?.schedule ?? time} w tle`}
           title={!known ? "Serwer nie obsługuje jeszcze instalacji z aplikacji" : !supported ? "Ten system nie ma obsługiwanego harmonogramu zadań" : undefined}
           onChange={(v) => act(v ? "install" : "uninstall", v ? { time } : {})} />
         <div className="grow">
-          <div className="t">Uruchamiaj w tle po zalogowaniu {w?.installed ? <Tag tone="pos">działa</Tag> : <Tag>nie zainstalowano</Tag>}</div>
+          <div className="t">Codziennie o {w?.schedule ?? time} w tle {w?.installed ? <Tag tone="pos">działa</Tag> : <Tag>nie zainstalowano</Tag>}</div>
           <div className="d">
             {w?.platform === "launchd" || !w?.platform ? "launchd" : w.platform} · {schedule}
             {w?.installed && w.next_run ? ` · następny przebieg ${when(w.next_run)}` : ""}
@@ -401,7 +401,7 @@ function WorkerSection() {
           <span className="v">
             <input id="set-worker-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 110 }} />
             {w?.installed && time !== w.schedule && <button className="btn primary" disabled={busy != null} onClick={() => act("install", { time })}>Zapisz godzinę</button>}
-            <span className="hint">czas lokalny; laptop uśpiony o tej porze nadrobi przebieg po wybudzeniu</span>
+            <span className="hint">czas lokalny, raz dziennie (nie przy logowaniu); uśpiony Mac nadrobi przebieg po wybudzeniu, wyłączony o tej porze pominie ten dzień</span>
           </span>
           {w?.log_path && <>
             <span className="k">Dziennik</span>
