@@ -24,6 +24,7 @@ from ..core.agent_api import router as agent_router
 from ..core.api import CurrentProfile, breakdown_dict, f, platform_router, profile_only_router
 from ..core.api import router as core_router
 from ..core.db import get_session, init_db
+from ..core.workspace import api as workspace_api
 from ..modules.budget import analytics as budget_analytics
 
 STATIC = Path(__file__).parent / "static"
@@ -100,8 +101,9 @@ _profile_routers = [shell_router, core_router] + [
     spec.router for spec in modules.all_modules() if spec.router is not None
 ]
 app.include_router(platform_router, prefix="/api")
-# agent_router: proposals, reviews, MCP audit (profile-only, no legacy alias).
-for _router in [profile_only_router, agent_router, *_profile_routers]:
+app.include_router(workspace_api.platform_router, prefix="/api")
+# agent_router: proposals, reviews, MCP audit; workspace (profile-only, no legacy alias).
+for _router in [profile_only_router, agent_router, workspace_api.router, *_profile_routers]:
     app.include_router(_router, prefix=PROFILE_PREFIX, dependencies=[Depends(_profile_slug)])
 for _router in _profile_routers:  # legacy aliases: the default profile
     app.include_router(_router, prefix="/api")

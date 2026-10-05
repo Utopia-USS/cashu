@@ -16,6 +16,13 @@ def _private_launch_agents_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("FINANSE_APP_BUNDLE", "none")
 
 
+@pytest.fixture(autouse=True)
+def _private_workspaces_dir(tmp_path, monkeypatch):
+    """Agent workspaces default into tmp_path for every test (core/workspace), never the real
+    ~/Documents/finanse."""
+    monkeypatch.setenv("FINANSE_WORKSPACES_DIR", str(tmp_path / "workspaces"))
+
+
 @pytest.fixture
 def session():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False})

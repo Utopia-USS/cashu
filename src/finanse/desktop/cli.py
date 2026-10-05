@@ -84,8 +84,12 @@ def skills_install_cmd(
         bool, typer.Option(help="Replace a skill of the same name that differs from this version.")
     ] = False,
 ) -> None:
-    """Copy the setup skills (/budget-setup, /investments-setup, ...) into a Claude Code skills
-    folder, so they work outside a finanse checkout (e.g. with the packaged app)."""
+    """Copy all shipped skills (/budget-setup, /investments-setup, ...) into one Claude Code skills
+    folder (default: your personal skills, for every folder you open).
+
+    Per profile, prefer `finanse workspace init --profile <slug>`: a workspace folder with only the
+    enabled modules' skills, the profile's MCP server and rules that keep Claude Code out of the
+    finanse data. Each skill folder is self-contained (its references travel with it)."""
     source = runtime.skills_dir()
     if source is None:
         cliutil.err_console.print("[red]No skills found in this installation.[/]")
@@ -111,7 +115,9 @@ def skills_install_cmd(
             )
     cliutil.console.print(
         "Restart Claude Code to pick up new skills. Each skill talks to a profile's MCP server: "
-        "see Settings > Agent AI in the app for the `claude mcp add` line."
+        "see Settings > Agent AI in the app for the `claude mcp add` line, or create the "
+        "profile's agent workspace (server, skills and permissions in one folder): "
+        "`finanse workspace init --profile <slug>`."
     )
     if skipped:
         raise typer.Exit(1)

@@ -61,9 +61,10 @@ PROFILE_GETS = [
     "/reviews?module=investments",
     "/mcp/calls",
     "/mcp",
+    "/workspace",
 ]
 # profile-only routes (no /api alias)
-LEGACY_LESS = ("/modules/", "/proposals", "/reviews", "/mcp")
+LEGACY_LESS = ("/modules/", "/proposals", "/reviews", "/mcp", "/workspace")
 ID_KEYS = {"id", "account_id"}
 
 

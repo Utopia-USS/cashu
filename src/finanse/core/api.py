@@ -176,7 +176,10 @@ def patch_profile(slug: str, body: ProfilePatch) -> dict:
             raise HTTPException(status_code=409, detail=str(e)) from None
         except profiles.ProfileError as e:
             raise HTTPException(status_code=422, detail=str(e)) from None
-        return profiles.as_dict(s, p)
+        result = profiles.as_dict(s, p)
+    if body.mcp_privacy is not None or body.base_currency is not None:
+        _refresh_workspace(slug)
+    return result
 
 
 @platform_router.put("/profiles/{slug}/modules")
@@ -188,7 +191,17 @@ def put_profile_modules(slug: str, body: ProfileModules) -> dict:
             profiles.set_modules(s, p, body.modules)
         except profiles.ProfileError as e:
             raise HTTPException(status_code=422, detail=str(e)) from None
-        return profiles.as_dict(s, p)
+        result = profiles.as_dict(s, p)
+    _refresh_workspace(slug)
+    return result
+
+
+def _refresh_workspace(slug: str) -> None:
+    """After the commit: an agent workspace created through finanse follows the module set
+    (skills, tools) and the privacy level (core/workspace). Best effort, never fails the change."""
+    from .workspace.service import refresh_if_present
+
+    refresh_if_present(slug)
 
 
 @profile_only_router.get("/modules/{module_id}/setup")
