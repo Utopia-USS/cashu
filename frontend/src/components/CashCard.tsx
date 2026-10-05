@@ -40,7 +40,7 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
   return (
     <section className="card chart-card">
       <div className="controls">
-        <strong style={{ fontSize: 14 }}>💵 Gotówka</strong>
+        <strong style={{ fontSize: 14 }} title="Wpłata do puli = kategoria „Wypłata gotówki” w Wydatkach. Nie wpływa na wartość netto.">Gotówka</strong>
         {data
           ? <span style={{ fontSize: 15, fontWeight: 650 }} className={data.balance < 0 ? "neg" : ""}>{cur(data.balance, c)}</span>
           : <Skeleton w={90} h={18} />}
@@ -53,20 +53,15 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 14 }}>
         <input type="number" step="0.01" min="0" placeholder="Kwota" style={{ width: 110 }}
           value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <input type="text" placeholder="Tytuł (np. Obiad)" style={{ flex: 1, minWidth: 140 }}
+        <input type="text" placeholder="Tytuł" style={{ flex: 1, minWidth: 140 }}
           value={title} onChange={(e) => setTitle(e.target.value)} />
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
           {expenseCats.map((cat) => <option key={cat.key} value={cat.key}>{cat.label}</option>)}
         </select>
-        <button className="btn primary" onClick={add} disabled={busy}>Dodaj wydatek</button>
+        <button className="btn primary" onClick={add} disabled={busy}>Dodaj</button>
       </div>
 
       {err && <div className="err" style={{ marginBottom: 10 }}>{err}</div>}
-
-      <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-        Wpłaty do puli: oznacz wypłatę z konta jako „Wypłata gotówki" w zakładce <b>Wydatki</b>
-        {" "}(kategoria „Gotówka" → wybierz w wierszu). Nie wpływa na net worth.
-      </div>
 
       <div className="scroll tall">
         <table>
@@ -81,7 +76,7 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
                 ))}</tr>
               ))
             ) : !data.transactions.length ? (
-              <tr><td colSpan={5} className="muted">Pusto. Oznacz wypłatę jako „Wypłata gotówki" lub dodaj wydatek.</td></tr>
+              <tr><td colSpan={5} className="muted">Brak wydatków gotówkowych.</td></tr>
             ) : data.transactions.map((t) => (
               <tr key={t.id}>
                 <td>{t.date}</td>

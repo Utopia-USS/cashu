@@ -58,7 +58,7 @@ export function AlertsWidget({ slug, alerts, onManage, onNew, onChanged }: {
       footer={<><FootFacts items={[<><b>{live.length - triggered}</b> aktywne</>, triggered > 0 && <><b>{triggered}</b> wyzwolone</>]} /><span className="spacer" />
         <button className="lnk" onClick={onManage}>zarządzaj</button></>}>
       {!alerts ? <Skeleton h={120} /> : !live.length ? (
-        <div className="empty">Brak aktywnych alertów. Alert to Twój poziom („dokupię poniżej 140 zł"); agent też może je dodawać.</div>
+        <div className="empty">Brak alertów.</div>
       ) : live.slice(0, 6).map((a) => <AlertRow key={a.id} a={a} onRemove={a.source === "agent" ? () => remove(a) : undefined} />)}
       {live.length > 6 && <div className="muted" style={{ fontSize: 12, paddingTop: 6 }}>i {plural(live.length - 6, "kolejny", "kolejne", "kolejnych")} · <button className="lnk" onClick={onManage}>wszystkie</button></div>}
     </Widget>
@@ -152,15 +152,15 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
         ]} />
         <Seg quiet label="Źródło" value={source} onChange={setSource} items={[["Wszystkie", "all"], ["Moje", "user"], [`Agenta · ${agentCount}`, "agent"]]} />
         <span className="spacer" />
-        <span className="muted" style={{ fontSize: 12 }}>sprawdzane codziennie po odświeżeniu cen{lastCheck ? ` · ostatnio ${dm(lastCheck)} ${hm(lastCheck)}` : ""}</span>
+        <span className="muted" style={{ fontSize: 12 }}>{lastCheck ? `sprawdzone ${dm(lastCheck)} ${hm(lastCheck)}` : ""}</span>
       </div>
       <Grid items={[
         {
           id: "list", span: 2, node: (
             <Widget title={null} label="Lista alertów" body="flush"
               footer={<><FootFacts items={[<><b>{all.length}</b> {all.length === 1 ? "alert" : "alertów"}</>, <>limit agenta: <b>{agentLive} z 50</b></>]} />
-                <span className="spacer" /><span>wyzwolony alert staje się sygnałem; cooldown i wygaśnięcie wg schematu</span></>}>
-              {!q.data ? <div style={{ padding: "0 16px" }}><Skeleton h={160} /></div> : !list.length ? <div className="empty">Brak alertów w tym widoku.</div> : (
+</>}>
+              {!q.data ? <div style={{ padding: "0 16px" }}><Skeleton h={160} /></div> : !list.length ? <div className="empty">Brak alertów.</div> : (
                 <div className="scroll">
                   <table>
                     <thead><tr><th>Status</th><th>Alert</th><th>Zakres</th><th className="num">Teraz / poziom</th><th>Typ</th><th>Źródło</th><th>Ostatnio</th><th><span className="sr-only">Akcje</span></th></tr></thead>
@@ -346,7 +346,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
             <label htmlFor="af-inst">Instrument</label>
             <input id="af-inst" list="af-inst-list" value={instText} onChange={(e) => pickInstrument(e.target.value)} disabled={!!alert} placeholder="nazwa lub symbol" autoComplete="off" />
             <datalist id="af-inst-list">{instruments.map((i) => <option key={i.id} value={choiceText(i)} />)}</datalist>
-            <span className="sub">posiadane i obserwowane{instruments.length ? "" : " · najpierw dodaj instrument do obserwowanych"}</span>
+            {!instruments.length && <span className="sub">najpierw dodaj do obserwowanych</span>}
           </div>
         )}
         {scope === "bucket" && (
@@ -407,8 +407,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
         )}
         {kind === "custom" && (
           <div className="field"><label htmlFor="af-expr">Wyrażenie</label>
-            <textarea id="af-expr" rows={2} value={expression} onChange={(e) => setExpression(e.target.value)} placeholder={scope === "portfolio" ? "cash_weight < 4%" : "weight > 10%"} />
-            <span className="sub">język wyrażeń strategii, np. „weight &gt; 10%", „cash_weight &gt;= 5%"</span></div>
+            <textarea id="af-expr" rows={2} value={expression} onChange={(e) => setExpression(e.target.value)} placeholder={scope === "portfolio" ? "cash_weight < 4%" : "weight > 10%"} /></div>
         )}
         <div className="frow">
           <div className="field"><label>Typ</label>
@@ -419,7 +418,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
         <div className="field"><label htmlFor="af-title">Tytuł</label>
           <input id="af-title" value={title} maxLength={120} onChange={(e) => { titleTouched.current = true; setTitle(e.target.value); }} /></div>
         <div className="field"><label htmlFor="af-note">Notatka</label>
-          <textarea id="af-note" rows={2} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder="Dlaczego ten poziom? Trafi obok sygnału." /></div>
+          <textarea id="af-note" rows={2} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder="Dlaczego ten poziom?" /></div>
         <div className="frow">
           <div className="field"><label htmlFor="af-cool">Cooldown</label>
             <select id="af-cool" value={cooldown ?? ""} onChange={(e) => setCooldown(e.target.value ? Number(e.target.value) : null)}>
@@ -436,7 +435,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
         {preview && <div className="preview" aria-live="polite">{preview}</div>}
         {err && <Notice tone="neg">{err}</Notice>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn primary" onClick={save} disabled={busy}>{busy ? "Zapisuję…" : alert ? "Zapisz zmiany" : "Utwórz alert"}</button>
+          <button className="btn primary" onClick={save} disabled={busy}>{busy ? "Zapisuję…" : alert ? "Zapisz" : "Utwórz"}</button>
           {alert && <button className="btn" onClick={onCancel}>Anuluj</button>}
           <span className="spacer" style={{ flex: 1 }} />
           <span className="sub">bez prognoz: tylko warunki na danych</span>
@@ -451,7 +450,7 @@ const choiceText = (i: InstrumentChoice) => [i.label, i.symbol, i.venue].filter(
 /** Client-side checks before the server's catalog validation (Polish messages). */
 export function validate(kind: string, scope: string, params: Record<string, unknown>, inst: InstrumentChoice | null, bucket: string): string[] {
   const out: string[] = [];
-  if (scope === "instrument" && !inst) out.push("Wybierz instrument z listy (posiadane i obserwowane).");
+  if (scope === "instrument" && !inst) out.push("Wybierz instrument z listy.");
   if (scope === "bucket" && !bucket) out.push("Wybierz koszyk.");
   const num = (k: string) => (typeof params[k] === "number" && Number.isFinite(params[k] as number) ? (params[k] as number) : null);
   if ((kind === "price_above" || kind === "price_below") && !(num("level")! > 0)) out.push("Podaj poziom ceny większy od zera.");
@@ -508,7 +507,7 @@ function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; ale
   };
   return (
     <Widget title="Historia wyzwoleń" count={`12 mies. · ${rows.length}`} controls={rows.length ? <button className="lnk" onClick={exportCsv}>eksport CSV</button> : undefined} body="flush tight">
-      {!signals ? <div style={{ padding: "0 16px" }}><Skeleton h={80} /></div> : !rows.length ? <div className="empty">W ostatnich 12 miesiącach żaden alert się nie wyzwolił.</div> : (
+      {!signals ? <div style={{ padding: "0 16px" }}><Skeleton h={80} /></div> : !rows.length ? <div className="empty">Brak wyzwoleń.</div> : (
         <div className="scroll">
           <table>
             <thead><tr><th>Data</th><th>Alert</th><th className="num">Wartość</th><th>Typ</th><th>Źródło</th><th>Co dalej</th><th>Decyzja</th></tr></thead>

@@ -14,7 +14,6 @@ const generic = (info: ModuleInfo): ModuleDef => ({
   name: info.name || info.id,
   desc: info.description,
   short: info.description,
-  intro: info.description,
   tabs: [{ id: "main", label: info.name || info.id, render: () => null }],
 });
 

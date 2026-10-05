@@ -116,9 +116,9 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
         {
           id: "log", span: 2, node: (
             <Widget title="Zapis" count={loading ? undefined : entries.length || undefined} body="tight"
-              footer={<><span>decyzję można cofnąć przez 15 minut</span><span className="spacer" />{entries.length > shown && <button className="lnk" onClick={() => setShown((n) => n + PAGE)}>pokaż {Math.min(PAGE, entries.length - shown)} kolejnych</button>}</>}>
+              footer={<><span className="spacer" />{entries.length > shown && <button className="lnk" onClick={() => setShown((n) => n + PAGE)}>pokaż {Math.min(PAGE, entries.length - shown)} kolejnych</button>}</>}>
               {loading ? <Skeleton h={160} /> : !entries.length ? (
-                <div className="empty">{filter === "decisions" ? "Brak decyzji. Decyzje zapisujesz przy sygnałach („Zanotuj decyzję\") albo w przeglądzie tygodnia." : "Brak wpisów."}</div>
+                <div className="empty">{filter === "decisions" ? "Brak decyzji." : "Brak wpisów."}</div>
               ) : (
                 <div className="tl wide">
                   {groups.map((g) => (
@@ -134,7 +134,7 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
         },
         {
           id: "stats", span: 1, node: (
-            <Widget title={`W liczbach · ${year}`} body="tight" footer={<FootFacts items={["sygnały z reguł i alertów", "bez decyzji wygasają po terminie reguły"]} />}>
+            <Widget title={`W liczbach · ${year}`} body="tight">
               {loading ? <Skeleton h={120} /> : (
                 <div className="facts" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
                   <div className="fact"><div className="l">Decyzje</div><div className="v">{stats.decisions}</div>{acts && <div className="d">{acts}</div>}</div>

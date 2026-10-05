@@ -2,7 +2,7 @@
 // decision effect line, allocation bands and scale, manual transaction rules. Unit-tested with
 // `npm test` (node --test strips the types; imports carry their .ts extension for that).
 import {
-  accountLabel, type AccountLike, assetClass, bucketLabel, dm, money, money0, nInstruments, nSignals, nTxns, pct,
+  accountLabel, type AccountLike, assetClass, bucketLabel, dm, money, money0, nInstruments, nTxns, pct,
   pctTarget, plural, pp, qty, txnType, WEEKDAY_INDEX,
 } from "./labels.ts";
 
@@ -265,12 +265,6 @@ export function changeCount(dg: DigestLike): number {
     + (dg.strategy.changed_since ? 1 : 0);
 }
 
-export const resolvedText = (decided: number, total: number) =>
-  `${decided} z ${total} ${total === 1 ? "sygnału" : "sygnałów"} ${decided === 1 ? "rozstrzygnięty" : "rozstrzygniętych"}`;
-
-export const undecidedHint = (k: number) =>
-  `${nSignals(k)} bez decyzji - możesz zamknąć mimo to, ${k === 1 ? "wróci" : "wrócą"} w podsumowaniu.`;
-
 // ---- warnings --------------------------------------------------------------------
 export interface WarningItem { key: string; tone: "review" | "resolved"; title: string; hint: string; action?: "snapshot" | "alias" | "classify" | "import" }
 
@@ -382,13 +376,13 @@ export function validateTxn(v: TxnFormValues, today: string): Record<string, str
   const e: Record<string, string> = {};
   if (!r) return { type: "Wybierz typ transakcji." };
   if (!v.date) e.date = "Podaj datę.";
-  else if (v.date > today) e.date = "Data z przyszłości - transakcje zapisujemy po fakcie.";
+  else if (v.date > today) e.date = "Data z przyszłości.";
   if (r.instrument === "required" && !v.hasInstrument) e.instrument = "Wybierz instrument albo wpisz symbol.";
   if (r.quantity === "required" && !(v.quantity != null && v.quantity > 0)) e.quantity = "Ilość musi być większa od zera.";
   if (r.quantity === "optional" && v.quantity != null && v.quantity < 0) e.quantity = "Ilość nie może być ujemna.";
   if (r.price === "required" && !(v.price != null && v.price > 0)) e.price = "Podaj cenę za sztukę.";
   if (r.price === "optional" && v.price != null && v.price < 0) e.price = "Cena nie może być ujemna.";
-  if (r.amount === "required" && !(v.amount != null && v.amount > 0)) e.amount = "Podaj kwotę (bez znaku - kierunek wynika z typu).";
+  if (r.amount === "required" && !(v.amount != null && v.amount > 0)) e.amount = "Podaj kwotę (bez znaku).";
   if (v.fee != null && v.fee < 0) e.fee = "Prowizja nie może być ujemna.";
   if (r.split && !(v.split != null && v.split > 0)) e.split = "Podaj współczynnik splitu (1:4 = 4).";
   return e;

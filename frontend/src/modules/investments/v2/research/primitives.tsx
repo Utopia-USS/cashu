@@ -188,8 +188,8 @@ export function CandidateCard({ note: n, compact, today, state, busy, onWatch, o
           {state?.agent ? <span className="tag agent"><i aria-hidden>A</i>dodany przez agenta</span>
             : watched ? <span className="tag solid muted">obserwowany od {dm(state?.watchedSince ?? acceptedAt(n) ?? today)}</span>
             : <>
-              <button className="btn sm primary" disabled={busy} onClick={() => onWatch?.(n)}>Obserwuj</button>
-              <button className="btn sm" disabled={busy} onClick={() => onDismiss?.(n)}>Odrzuć</button>
+              <button className="btn sm primary" disabled={busy} onClick={() => onWatch?.(n)} title="Dodaje do Obserwowanych z wersją roboczą tezy">Obserwuj</button>
+              <button className="btn sm" disabled={busy} onClick={() => onDismiss?.(n)} title="Wraca po 90 dniach">Odrzuć</button>
             </>}
           <span className="spacer" />
           <span className="src">{srcLine}</span>
@@ -200,14 +200,14 @@ export function CandidateCard({ note: n, compact, today, state, busy, onWatch, o
 }
 
 /** Monospace command + `Kopiuj polecenie` (the app copies, Claude Code runs it; design answer 3). */
-export function CopyCommand({ cmd, label = "Kopiuj polecenie", primary = true, showCmd = true, sm, done = "Polecenie skopiowane · wklej w Claude Code" }: {
-  cmd: string; label?: string; primary?: boolean; showCmd?: boolean; sm?: boolean; done?: string;
+export function CopyCommand({ cmd, label = "Kopiuj polecenie", primary = true, showCmd = true, sm, done = "Skopiowano · wklej w Claude Code", title }: {
+  cmd: string; label?: string; primary?: boolean; showCmd?: boolean; sm?: boolean; done?: string; title?: string;
 }) {
   const toast = useToast();
   return (
     <>
       {showCmd && <code className="cmd" title={cmd}>{cmd}</code>}
-      <button className={`btn ${primary ? "primary" : ""} ${sm ? "sm" : ""}`} onClick={() => copyText(cmd).then(() => toast(done, 3000))}>{label}</button>
+      <button className={`btn ${primary ? "primary" : ""} ${sm ? "sm" : ""}`} title={title} onClick={() => copyText(cmd).then(() => toast(done, 3000))}>{label}</button>
     </>
   );
 }
@@ -217,14 +217,12 @@ export function CopyCommand({ cmd, label = "Kopiuj polecenie", primary = true, s
 export function ScheduleHow({ path, onSettings }: { path: string; onSettings?: () => void }) {
   return (
     <div className="sched">
-      <div>Rutyna działa lokalnie w aplikacji Claude na tym Macu, w folderze workspace profilu, więc ma dostęp do lokalnego serwera MCP finanse:</div>
       <div><b>{ROUTINE_MENU}</b>: sobota 07:00, folder <code className="cmd wrap">{path}</code>, polecenie <code className="cmd">{ROUTINE_PROMPT}</code></div>
       <div className="acts">
-        <CopyCommand cmd={ROUTINE_PROMPT} label="Kopiuj polecenie rutyny" primary={false} showCmd={false} sm done="Polecenie rutyny skopiowane · wklej w aplikacji Claude" />
-        <CopyCommand cmd={path} label="Kopiuj folder" primary={false} showCmd={false} sm done="Ścieżka workspace skopiowana" />
+        <CopyCommand cmd={ROUTINE_PROMPT} label="Kopiuj polecenie rutyny" primary={false} showCmd={false} sm done="Skopiowano · wklej w aplikacji Claude" title="Rutyna lokalna: tylko ona widzi serwer MCP na tym Macu." />
+        <CopyCommand cmd={path} label="Kopiuj folder" primary={false} showCmd={false} sm done="Skopiowano" />
         {onSettings && <button className="lnk" onClick={onSettings}>Szczegóły: Ustawienia › Agent AI</button>}
       </div>
-      <div>Wynik pojawi się tu i w niedzielnym przeglądzie.</div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { Account } from "../../core/api";
+import { useShell } from "../../core/context";
 import { cur, plural, TYPE_LABEL } from "../../format";
 import { Empty } from "../../ui";
 
@@ -7,6 +8,7 @@ export const isAsset = (a: Account) =>
   a.type === "property" || a.type === "vehicle" || (a.bank === "manual" && a.type === "other" && !a.is_liability);
 
 export function Assets({ accounts }: { accounts: Account[] }) {
+  const { go } = useShell();
   const items = accounts.filter(isAsset).sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
   return (
     <section className="card chart-card">
@@ -15,7 +17,7 @@ export function Assets({ accounts }: { accounts: Account[] }) {
         <span className="tag">{plural(items.length, "pozycja", "pozycje", "pozycji")}</span>
       </div>
       {!items.length ? (
-        <Empty title="Brak pozycji majątku." hint="Mieszkanie, auto i inne aktywa wyceniane ręcznie pojawią się tutaj i w wartości netto." />
+        <Empty title="Brak pozycji." action={<button className="btn" onClick={() => go({ kind: "setup", module: "assets" })}>Konfiguracja</button>} />
       ) : (
         <div className="scroll">
           <table>
@@ -35,7 +37,6 @@ export function Assets({ accounts }: { accounts: Account[] }) {
           </table>
         </div>
       )}
-      <div className="foot">Wartości liczą się do wartości netto; auto traci na wartości według krzywej.</div>
     </section>
   );
 }

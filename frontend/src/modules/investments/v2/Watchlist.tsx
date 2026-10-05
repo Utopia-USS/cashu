@@ -59,7 +59,7 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
       const label = r.instrument ? instName(r.instrument) : v;
       // Coded warnings (F6 BE `warning_codes`) in Polish; an older server's English warning: one Polish line.
       const coded = r.warning_codes?.map((w) => describeIssue({ code: w.code, params: w.params, message: w.message }).text) ?? [];
-      toast(coded.length ? `Obserwujesz ${label} · ${coded[0]}` : r.created_instrument && r.warnings?.length ? `Obserwujesz ${label} · symbol ceny zgadnięty, sprawdź, czy przyjdą notowania` : `Obserwujesz ${label} · ceny przy następnym odświeżeniu`, 6000);
+      toast(coded.length ? `Obserwujesz ${label} · ${coded[0]}` : r.created_instrument && r.warnings?.length ? `Obserwujesz ${label} · symbol ceny zgadnięty, sprawdź, czy przyjdą notowania` : `Obserwujesz ${label}`, 6000);
       onChanged();
     } catch (e) {
       setErr(e instanceof ApiError && e.status === 409 && !e.code ? "Ten instrument już jest na liście." : errorText(e));
@@ -81,19 +81,19 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
     <Widget title="Obserwowane" count={list.length || undefined} id="inv-watch"
       controls={<button className="btn sm" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>+ Dodaj</button>}
       body="flush tight"
-      footer={<FootFacts items={[alerts > 0 && <><b>{alerts}</b> {alerts === 1 ? "alert" : "alerty"}</>, "ceny odświeżane z portfelem"]} />}>
+      footer={<FootFacts items={[alerts > 0 && <><b>{alerts}</b> {alerts === 1 ? "alert" : "alerty"}</>]} />}>
       {adding && (
         <div className="inline-add">
-          <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="symbol lub ISIN, np. CSPX.L, ALE.WA" aria-label="Symbol lub ISIN"
+          <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="symbol lub ISIN" aria-label="Symbol lub ISIN"
             onKeyDown={(e) => { if (e.key === "Enter") void add(); if (e.key === "Escape") { e.stopPropagation(); setAdding(false); } }} />
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="notatka (opcjonalnie)" aria-label="Notatka" style={{ flex: "1 1 120px" }}
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="notatka" aria-label="Notatka" style={{ flex: "1 1 120px" }}
             onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
           <button className="btn primary sm" onClick={add} disabled={busy || !text.trim()}>{busy ? "Dodaję…" : "Dodaj"}</button>
           {err && <span className="neg" style={{ fontSize: 12, flexBasis: "100%" }} role="alert">{err}</span>}
         </div>
       )}
       {!items ? <div style={{ padding: "8px 16px" }}><Skeleton h={80} /></div> : !list.length ? (
-        <div className="empty">Nic nie obserwujesz. Dodaj instrument, którego nie masz, żeby śledzić cenę i ustawić alert.</div>
+        <div className="empty">Brak obserwowanych.</div>
       ) : (
         <table>
           <tbody>

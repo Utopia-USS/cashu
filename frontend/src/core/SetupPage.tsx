@@ -1,4 +1,4 @@
-// Module blank page (SetupPage pattern): what the module does, its setup steps with
+// Module blank page (SetupPage pattern): its setup steps with
 // live status from GET /api/p/{slug}/modules/{id}/setup (polled every 5 s and on
 // focus), and how to run the module's setup skill in Claude Code.
 import { type ReactNode, useEffect } from "react";
@@ -20,8 +20,8 @@ export const stepsTag = (info: SetupInfo | null, state?: SetupState): ReactNode 
 };
 
 export const PRIVACY_PLAIN: Record<string, ReactNode> = {
-  strict: <><b>Poziom prywatności: ścisły.</b> Agent widzi udziały procentowe, kategorie i daty, nie widzi kwot ani numerów kont.</>,
-  amounts: <><b>Poziom prywatności: z kwotami.</b> Agent widzi też kwoty w walucie konta, nie widzi numerów kont, IBAN-ów ani danych osobowych.</>,
+  strict: <><b>Poziom ścisły:</b> udziały, kategorie, daty; bez kwot i numerów kont.</>,
+  amounts: <><b>Poziom z kwotami:</b> także kwoty; bez numerów kont, IBAN-ów i danych osobowych.</>,
 };
 
 /** Target of a "view"/"tab" action -> View. Accepts a view path (see pathToView; "module/tab" and
@@ -74,9 +74,6 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
   }, [data?.state, state, reloadProfiles]);
 
   const skill = data?.skill;
-  const blurb = def.skillBlurb ?? "Skill {skill} przeprowadzi konfigurację modułu i zapisze wynik przez aplikację. Dane pobiera przez MCP, więc obowiązuje poziom prywatności tego profilu.";
-  const skillName = skill?.command.replace(/^\//, "") ?? "";
-  const [pre, post] = blurb.split("{skill}");
   const firstTab = def.tabs[0];
 
   return (
@@ -85,15 +82,12 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
         <div className="controls" style={{ marginBottom: 6 }}>
           <h2 style={{ margin: 0 }}>{def.name} · konfiguracja</h2>
           {stepsTag(data, data?.state)}
-          <span className="spacer" />
-          <span className="muted" style={{ fontSize: 12 }}>status odświeża się na żywo</span>
         </div>
-        <p style={{ margin: "0 0 6px", maxWidth: "78ch" }}>{def.intro}</p>
-        {error && <Notice tone="neg">Nie udało się pobrać stanu konfiguracji: {error}. Próbuję ponownie co 5 s.</Notice>}
+        {error && <Notice tone="neg">Nie udało się pobrać stanu: {error}</Notice>}
         {data?.state === "ready" && (
           <Notice tone="pos" style={{ margin: "10px 0 0" }}
             action={firstTab && <button className="btn" onClick={() => go({ kind: "tab", tab: tabKey(moduleId, firstTab.id) })}>{firstTab.label} →</button>}>
-            Moduł jest skonfigurowany.
+            Skonfigurowany.
           </Notice>
         )}
         {!data && !error ? (
@@ -109,21 +103,18 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
               status: s.status,
               actions: s.actions.length ? s.actions.map((a, i) => <ActionButton key={i} moduleId={moduleId} a={a} />) : undefined,
             }))} />
-          ) : <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>Moduł nie podał jeszcze kroków konfiguracji.</div>
+          ) : <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>Brak kroków konfiguracji.</div>
         )}
       </section>
 
       {skill && (
         <section className="card chart-card">
           <h2>Z pomocą Claude Code</h2>
-          <p style={{ margin: "0 0 10px", maxWidth: "78ch" }}>
-            {pre}{post !== undefined && <><code>{skillName}</code>{post}</>}
-          </p>
           <SetupSteps steps={[
             {
               key: "mcp", status: "on", title: "Podłącz MCP do Claude Code", tag: <Tag>raz na profil</Tag>,
               body: <Code cmd={skill.mcp_add} />,
-              hint: "Claude Desktop: konfiguracja JSON jest w Ustawieniach → Agent AI.",
+              hint: "Claude Desktop: Ustawienia › Agent AI.",
             },
             {
               key: "skill", status: "todo", title: "Uruchom skill w Claude Code",
@@ -133,7 +124,7 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
           ]} />
           <Notice tone="info" style={{ margin: "12px 0 0" }}
             action={<button className="btn" onClick={() => go({ kind: "settings", section: "agent" })}>Ustawienia</button>}>
-            {PRIVACY_PLAIN[profile.mcp_privacy] ?? PRIVACY_PLAIN.strict} Zmień w Ustawieniach → Agent AI.
+            {PRIVACY_PLAIN[profile.mcp_privacy] ?? PRIVACY_PLAIN.strict}
           </Notice>
         </section>
       )}

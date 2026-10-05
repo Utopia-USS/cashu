@@ -213,12 +213,12 @@ export function ChoiceCard({ checked, title, desc, hint, tag, disabled, onChange
 
 export function RadioList<T extends string>({ name, value, onChange, options, disabled }: {
   name: string; value: T; onChange: (v: T) => void; disabled?: boolean;
-  options: { value: T; title: ReactNode; desc?: ReactNode; tag?: ReactNode }[];
+  options: { value: T; title: ReactNode; desc?: ReactNode; tag?: ReactNode; tooltip?: string }[];
 }) {
   return (
     <div className="radios" role="radiogroup">
       {options.map((o) => (
-        <label key={o.value} className={o.value === value ? "on" : ""}>
+        <label key={o.value} className={o.value === value ? "on" : ""} title={o.tooltip}>
           <input type="radio" name={name} value={o.value} checked={o.value === value} disabled={disabled} onChange={() => onChange(o.value)} />
           <div>
             <div className="t">{o.title} {o.tag}</div>

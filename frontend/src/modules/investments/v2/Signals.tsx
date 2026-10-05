@@ -101,28 +101,27 @@ export function SignalsWidget({ signals, ctx, hl, review, expired, onHistory, fo
   return (
     <Widget title="Sygnały" id="inv-signals" hl={hl} count={list.length || undefined}
       tags={review && decided > 0 ? <span className="tag solid pos">{plural(decided, "rozstrzygnięty", "rozstrzygnięte", "rozstrzygniętych")}</span> : undefined}
-      controls={review ? <span className="muted" style={{ fontSize: 12 }}>j / k: następny · Enter: decyzja</span> : <button className="lnk" onClick={onHistory}>historia i dziennik decyzji</button>}
+      controls={review ? <span className="muted" style={{ fontSize: 12 }}>j / k: następny · Enter: decyzja</span> : <button className="lnk" onClick={onHistory}>dziennik</button>}
       body="tight"
       footer={review ? (
-        <><span>bez decyzji: <b>{undecided}</b>{undecided ? " · można zamknąć, wrócą w podsumowaniu" : ""}</span><span className="spacer" /><span>Esc zwija formularz</span></>
+        <span>bez decyzji: <b>{undecided}</b></span>
       ) : (
         <>
           <span>decyzje: <b>{decidedWeek} z {list.length}</b> w tym tygodniu</span>
           {expired && expired.length > 0 && <span>{plural(expired.length, "sygnał wygasł", "sygnały wygasły", "sygnałów wygasło")} ({expired.slice(0, 2).map((e) => e.title).join(", ")})</span>}
-          <span className="spacer" /><span>{ctx.researchOn ? "sygnały z reguł, alertów i researchu" : "sygnały z reguł i wyzwolonych alertów"}</span>
         </>
       )}>
       {!signals ? <div className="skeleton" style={{ height: 140 }} /> : !list.length ? (
-        <div className="empty">Brak otwartych sygnałów. Reguły i alerty sprawdzają portfel przy każdym przebiegu.</div>
+        <div className="empty">Brak otwartych sygnałów.</div>
       ) : (
         <div className="pol2">
           <div>
             <div className="polh"><PolDot polarity="positive" />Szanse <span className="cnt">{positive.length}</span></div>
-            {positive.length ? col(positive) : <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Brak szans według Twoich reguł.</div>}
+            {positive.length ? col(positive) : <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Brak</div>}
           </div>
           <div>
             <div className="polh"><PolDot polarity="negative" />Ryzyka i przegląd <span className="cnt">{negative.length}</span></div>
-            {negative.length ? col(negative) : <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Brak ryzyk do przejrzenia.</div>}
+            {negative.length ? col(negative) : <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Brak</div>}
           </div>
         </div>
       )}
@@ -301,8 +300,8 @@ export function DecisionForm({ s, ctx, pending, onCollapse, onDecide, onAck }: {
   };
   return (
     <div className="decide" ref={ref} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCollapse(); } }}>
-      <div className="fr"><label>Co robię?</label>
-        <Seg<Act> label="Co robię?" items={[["Nic", "none"], ["Dokupuję", "buy"], ["Sprzedaję", "sell"], ["Odkładam", "later"]]} value={act} onChange={setAct} /></div>
+      <div className="fr"><label>Decyzja</label>
+        <Seg<Act> label="Decyzja" items={[["Nic", "none"], ["Dokupuję", "buy"], ["Sprzedaję", "sell"], ["Odkładam", "later"]]} value={act} onChange={setAct} /></div>
       {s.instrument_id != null && ctx.researchEffect?.(s.instrument_id) && <div className="eff">{ctx.researchEffect(s.instrument_id)}</div>}
       {trade && pos && (
         <>
@@ -320,14 +319,14 @@ export function DecisionForm({ s, ctx, pending, onCollapse, onDecide, onAck }: {
           {pos.quantity > 0 && act === "sell" && qn != null && qn > pos.quantity && <div className="eff warn">Masz {qty(pos.quantity)} szt.</div>}
         </>
       )}
-      <textarea rows={2} placeholder="Dlaczego? Jedno-dwa zdania, trafią do dziennika." value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Powód decyzji" />
+      <textarea rows={2} placeholder="Dlaczego?" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Powód decyzji" />
       <div className="fr">
         <button className="btn primary" onClick={save} disabled={invalid || busy || pending}>Zapisz decyzję</button>
         <button className="btn" disabled={busy || pending} onClick={() => onAck(reason.trim() || undefined)}>Potwierdź</button>
         <span style={{ flex: 1 }} />
         <button className="lnk" onClick={onCollapse}>Zwiń</button>
       </div>
-      {trade && pos && <div className="eff">Decyzja trafia do dziennika; transakcję zapiszesz po wykonaniu (import albo ręcznie).</div>}
+      {trade && pos && <div className="eff">Aplikacja nie składa zleceń: transakcję zapiszesz po wykonaniu.</div>}
     </div>
   );
 }

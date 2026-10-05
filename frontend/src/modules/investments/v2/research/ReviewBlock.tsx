@@ -53,7 +53,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   return (
     <Widget title="Co mówi research" className="rsch" id="inv-review-research"
       tags={<span className="tag">{wdm(run.started_at)} · {nNotes(digest?.notes_count ?? runNotes(run) ?? 0)} · od {dm(since)}</span>}
-      controls={<button className="lnk" onClick={() => ctx.onOpenResearch()}>wszystkie notatki i tematy</button>} body="tight"
+      controls={<button className="lnk" onClick={() => ctx.onOpenResearch()}>wszystkie</button>} body="tight"
       footer={<>
         <span>{wdm(run.started_at)} {hm(run.started_at)}{mins ? ` · ${mins} min` : ""}</span>
         <span><b>{digest?.notes_count ?? runNotes(run) ?? 0}</b> notatek</span>
@@ -64,7 +64,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
       </>}>
       <div className="rsch3">
         <div>
-          <div className="rsec">Tezy <span className="cnt">· {changedRows.length ? `${plural(changedRows.length, "zmiana", "zmiany", "zmian")} od ostatniego przeglądu` : "bez zmian od ostatniego przeglądu"}</span></div>
+          <div className="rsec">Tezy <span className="cnt">· {changedRows.length ? plural(changedRows.length, "zmiana", "zmiany", "zmian") : "bez zmian"}</span></div>
           {changedRows.map(({ c, s }) => {
             const from = normHealth(c.from);
             const h = healthOf(s!, ctx.today);
@@ -100,7 +100,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
             <CandidateCard key={n.id} note={n} today={ctx.today} state={ctx.watched(n)} busy={actions.busy === n.id}
               onWatch={actions.watch} onDismiss={actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)} />
           ))}
-          {!newC && <div className="empty-line">Brak nowych kandydatów{ctx.strategyVersion != null ? ` · kryteria strategii v${ctx.strategyVersion}` : ""}</div>}
+          {!newC && <div className="empty-line">Brak nowych kandydatów</div>}
         </div>
       </div>
     </Widget>

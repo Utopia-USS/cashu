@@ -49,7 +49,7 @@ export function MonthCloseCard({ bc }: { bc: BudgetCurrency }) {
     <section className="card chart-card" aria-label="Zamknięcie miesiąca">
       <div className="controls">
         <strong style={{ fontSize: 14 }}>Zamknięcie miesiąca</strong>
-        {!data.complete && <Tag tone="warn">miesiąc w toku</Tag>}
+        {!data.complete && <Tag tone="warn">w toku</Tag>}
         <span className="spacer" />
         <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
           <button className="btn" disabled={!canPrev} aria-label="Poprzedni miesiąc" onClick={() => setMonth(shiftMonth(ym, -1))}>‹</button>
@@ -59,7 +59,7 @@ export function MonthCloseCard({ bc }: { bc: BudgetCurrency }) {
       </div>
 
       {!main ? (
-        <div className="muted" style={{ fontSize: 13 }}>Brak przychodów i wydatków w {shown} w tym miesiącu.</div>
+        <div className="muted" style={{ fontSize: 13 }}>Brak transakcji w {shown}.</div>
       ) : (
         <>
           <div className="mc-figs">
@@ -104,7 +104,7 @@ export function MonthCloseCard({ bc }: { bc: BudgetCurrency }) {
         <PlanFact close={data} />
         {others.length > 0 && (
           <div>
-            <span>Inne waluty (bez przeliczenia)</span>
+            <span>Inne waluty</span>
             <b style={{ fontWeight: 550 }}>{others.map((o) => `${o.currency} ${cur(o.surplus, o.currency)}`).join(" · ")}</b>
           </div>
         )}
@@ -141,7 +141,8 @@ function CushionFact({ cushion, editing, onEdit }: { cushion: CushionState | nul
     : cushion.reached
       ? `osiągnięta (${cur(cushion.balance, c)})`
       : `${cur(cushion.balance, c)} z ${cur(cushion.target, c)} · dopłata ${cur(cushion.top_up, c)}`;
-  return <div><span>Poduszka finansowa</span><b style={{ fontWeight: 550 }}>{text}</b>{edit}</div>;
+  // The level is the balance at the month start plus the month's transfers to the cushion (F7 FXB V7).
+  return <div><span>Poduszka finansowa</span><b style={{ fontWeight: 550 }} title="Saldo na początek miesiąca + przelewy w miesiącu">{text}</b>{edit}</div>;
 }
 
 function PlanFact({ close }: { close: MonthClose }) {
@@ -154,7 +155,7 @@ function PlanFact({ close }: { close: MonthClose }) {
   const c = plan.currency;
   return (
     <div>
-      <span>Plan wpłat (strategia)</span>
+      <span>Plan wpłat</span>
       <b style={{ fontWeight: 550 }}>{cur(plan.planned, c)} / mies.</b>{" "}
       {plan.kind === "covered"
         ? <Tag tone="pos">pokrywa plan{plan.difference > 0 ? ` (+${cur(plan.difference, c)})` : ""}</Tag>
@@ -194,8 +195,9 @@ function CushionForm({ currencies, baseCurrency, onClose, onSaved }: {
   return (
     <div className="mc-form">
       <div className="controls" style={{ marginBottom: 8 }}>
-        <Switch on={draft.enabled} onChange={(v) => set({ enabled: v })} label="Odkładaj na poduszkę przed inwestowaniem" />
-        <span style={{ fontSize: 13 }}>Najpierw dopłać do poduszki, resztę nadwyżki przelej na inwestycje</span>
+        <Switch on={draft.enabled} onChange={(v) => set({ enabled: v })} label="Poduszka przed inwestycjami"
+          title="Najpierw dopłać do poduszki, resztę nadwyżki przelej na inwestycje" />
+        <span style={{ fontSize: 13 }} title="Najpierw dopłać do poduszki, resztę nadwyżki przelej na inwestycje">Poduszka przed inwestycjami</span>
       </div>
       {draft.enabled && (
         <div className="row">
@@ -210,7 +212,7 @@ function CushionForm({ currencies, baseCurrency, onClose, onSaved }: {
             </div>
           ) : (
             <div className="field">
-              <label htmlFor="mc-months">Średnich miesięcy wydatków</label>
+              <label htmlFor="mc-months">Miesięcy wydatków</label>
               <input id="mc-months" inputMode="numeric" value={draft.months} onChange={(e) => set({ months: e.target.value })} style={{ width: 80 }} />
             </div>
           )}
@@ -223,14 +225,14 @@ function CushionForm({ currencies, baseCurrency, onClose, onSaved }: {
             </div>
           )}
           <div className="field">
-            <label htmlFor="mc-max">Maks. dopłata / mies. (opcjonalnie)</label>
+            <label htmlFor="mc-max">Maks. dopłata / mies.</label>
             <input id="mc-max" inputMode="decimal" value={draft.monthlyMax} onChange={(e) => set({ monthlyMax: e.target.value })} style={{ width: 130 }} />
           </div>
         </div>
       )}
       {draft.enabled && (
         <div className="field">
-          <label>Konta poduszki</label>
+          <label title={`Domyślnie konta oszczędnościowe w ${draft.currency}; saldo na koniec miesiąca.`}>Konta</label>
           {choices.length ? (
             <div className="accounts">
               {choices.map((a) => (
@@ -242,7 +244,6 @@ function CushionForm({ currencies, baseCurrency, onClose, onSaved }: {
               ))}
             </div>
           ) : <span className="hint">Brak kont w {draft.currency}.</span>}
-          <span className="hint">Bez zaznaczenia: konta oszczędnościowe w {draft.currency}. Saldo liczone na koniec miesiąca.</span>
         </div>
       )}
       {err && <Notice tone="neg">{err}</Notice>}

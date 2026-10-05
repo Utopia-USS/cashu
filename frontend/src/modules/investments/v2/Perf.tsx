@@ -79,7 +79,7 @@ export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
         {benchOk && <span><i className="bench" />{benchName} w {c}, te same wpłaty</span>}
       </div>
       {q.loading && !perf ? <Skeleton h={230} /> : !perf || pts.length < 2 ? (
-        <div className="empty">{perf === null ? "Wykres pojawi się, gdy serwer policzy historię wartości (finanse invest backfill)." : "Za mało historii w tym zakresie."}</div>
+        <div className="empty">{perf === null ? <>Brak historii: uruchom <code>finanse invest backfill</code>.</> : "Za mało historii."}</div>
       ) : table ? (
         <div className="ctable">
           <table>
@@ -114,7 +114,7 @@ export function DrawdownWidget({ perf }: { perf: Performance | null | undefined 
   const xl = labelIndices(pts.length, 3).map((i) => ({ i, text: monthYearShort(pts[i].date) }));
   return (
     <Widget title="Obsunięcie od szczytu" id="inv-dd" controls={<span className="tag">12 mies.</span>} body="tight">
-      {perf === undefined ? <Skeleton h={150} /> : !pts.length ? <div className="empty">Pojawi się z historią wartości portfela.</div> : (
+      {perf === undefined ? <Skeleton h={150} /> : !pts.length ? <div className="empty">Brak historii.</div> : (
         <>
           <Facts style={{ marginBottom: 6 }} items={[
             { label: "Teraz", value: pct(now) },
@@ -158,7 +158,7 @@ export function ContributionsWidget({ perf, ytd, plan, today, fromBudget }: {
             <Bars label="Wpłaty w ostatnich 12 miesiącach" height={120} values={months.map((m) => m.value)} labels={months.map((m) => m.label)}
               cls={months.map((m, i) => (i === months.length - 1 && !m.value && plan ? "plan" : "main"))}
               plan={plan?.amount ?? null} planLabel={plan ? `plan ${money0(plan.amount, c)}` : undefined} />
-          ) : <div className="empty">Brak wpłat w ostatnich 12 miesiącach.</div>}
+          ) : <div className="empty">Brak wpłat.</div>}
         </>
       )}
     </Widget>

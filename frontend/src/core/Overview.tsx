@@ -67,9 +67,8 @@ export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; en
     items.splice(1, 0, {
       id: "nomods", span: 3, node: (
         <Widget title="Moduły">
-          <Empty title="Brak włączonych modułów."
-            hint="Przegląd pokazuje wartość netto i gotówkę. Budżet, kredyty, majątek i inwestycje włączysz w Ustawieniach."
-            action={<button className="btn" onClick={() => base.go({ kind: "settings", section: "modules" })}>Ustawienia → Moduły</button>} />
+          <Empty title="Brak modułów."
+            action={<button className="btn" onClick={() => base.go({ kind: "settings", section: "modules" })}>Włącz moduły</button>} />
         </Widget>
       ),
     });

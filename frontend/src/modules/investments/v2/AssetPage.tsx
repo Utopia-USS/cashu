@@ -172,7 +172,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
       <div className="hdr-right">
         <button className="btn" onClick={onNewAlert}>+ Alert</button>
         {pos && <button className="btn" onClick={onAddTxn}>Dodaj transakcję</button>}
-        <button className="btn primary" disabled={!undecided.length} title={undecided.length ? undefined : "Brak otwartego sygnału dla tego aktywa"}
+        <button className="btn primary" disabled={!undecided.length} title={undecided.length ? undefined : "Brak otwartego sygnału"}
           onClick={() => { setDecideOpen(undecided[0]?.id ?? null); document.getElementById(`asset-signals-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>Zanotuj decyzję</button>
       </div>
     </section>
@@ -196,7 +196,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
         {markers.some((m) => m.cls === "sell") && <span><i className="dots" />sprzedaże</span>}
       </div>
       {chart.loading && !chart.data ? <Skeleton h={mode === "drawer" ? 260 : 300} /> : series.length < 2 ? (
-        <div className="empty">{pos?.valuation_mode === "cost" ? "Wycena po koszcie + odsetki: instrument bez notowań, progi cenowe nie dotyczą." : pos?.valuation_mode === "manual" ? "Wycena ręczna: brak notowań rynkowych." : "Za mało notowań, żeby narysować wykres."}</div>
+        <div className="empty">{pos?.valuation_mode === "cost" ? "Wycena po koszcie: bez notowań." : pos?.valuation_mode === "manual" ? "Wycena ręczna: bez notowań." : "Za mało notowań."}</div>
       ) : (
         <LineChart label={`${name}: cena z poziomami alertów i reguł`} height={mode === "drawer" ? 260 : 300} padL={small ? 36 : 46} padR={small ? 150 : 200} yTicks={5}
           yFmt={(v) => v.toLocaleString("pl-PL", { maximumFractionDigits: v >= 100 ? 0 : 2 })}
@@ -218,15 +218,15 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
           {thesis.exit_plan && <p><b>Plan wyjścia</b>{thesis.exit_plan}{chip("exit")}</p>}
           {thesis.size_plan && <p><b>Wielkość i dokupienia</b>{thesis.size_plan}{chip("size")}</p>}
         </div>
-      ) : <div className="muted" style={{ fontSize: 13 }}>Brak tezy. Zapisz, dlaczego to masz i kiedy wyjdziesz: teza pokaże się obok sygnałów.</div>}
+      ) : <div className="muted" style={{ fontSize: 13 }}>Brak tezy.</div>}
     </Widget>
   );
 
   const alertsW = (
-    <Widget title={`Alerty dla ${inst?.symbol ?? name}`} count={live.length || undefined} controls={<button className="btn sm" onClick={onNewAlert}>+ Nowy</button>} body="tight"
+    <Widget title="Alerty" count={live.length || undefined} controls={<button className="btn sm" onClick={onNewAlert}>+ Nowy</button>} body="tight"
       footer={<><span>ostatnio wyzwolony: <b>{lastTrig ? dm(lastTrig) : "brak"}</b></span>
         <span className="spacer" /><button className="lnk" onClick={onAlerts}>wszystkie alerty</button></>}>
-      {!live.length ? <div className="muted" style={{ fontSize: 13 }}>Brak alertów dla tego aktywa.</div>
+      {!live.length ? <div className="muted" style={{ fontSize: 13 }}>Brak alertów.</div>
         : live.map((a) => <AlertRow key={a.id} a={a} compact onRemove={a.source === "agent" ? () => removeAlert(a) : undefined} />)}
     </Widget>
   );

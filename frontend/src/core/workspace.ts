@@ -99,16 +99,19 @@ export function changesToast(res: WorkspaceResult, created: boolean): string {
 }
 
 /** Copy of the opt-in routine permissions switch (wizard and Settings). */
-export const ROUTINE_PERMISSIONS_LABEL = "Pozwól sobotniej rutynie wyszukiwać w sieci i zapisywać notatki bez pytania";
+export const ROUTINE_PERMISSIONS_LABEL = "Rutyna bez pytań o zgodę";
 export const ROUTINE_PERMISSIONS_HINT =
-  "Bez tego rutyna uruchomiona bez nadzoru zatrzyma się przy pierwszym pytaniu o zgodę; z tym Claude w tym folderze przeszukuje sieć i zapisuje pliki w research/ i notes/ bez pytania (dane finansowe nadal tylko przez MCP).";
+  "Sobotni research przeszukuje sieć i zapisuje w research/ i notes/ bez pytania. Dane finansowe nadal tylko przez MCP.";
+
+/** The proposal-safety line (wizard and Settings share it). */
+export const PROPOSAL_NOTE = "Zapis przez agenta to zawsze propozycja do zatwierdzenia w aplikacji.";
 
 const ERRORS: Record<string, string> = {
   path_required: "Podaj folder.",
   path_relative: "Podaj pełną ścieżkę folderu (od / albo od ~).",
   path_is_file: "Pod tą ścieżką jest plik, nie folder.",
   path_home: "Wybierz osobny folder, nie cały katalog domowy ani dysk.",
-  path_hidden: "Folder nie może leżeć w ukrytym katalogu (narzędzia importu nie czytają plików z ukrytych katalogów).",
+  path_hidden: "Folder nie może leżeć w ukrytym katalogu.",
   path_data_dir: "Workspace musi leżeć poza katalogiem danych finanse i nie może go zawierać.",
   path_checkout: "Workspace nie może leżeć w katalogu z kodem finanse.",
   workspace_taken: "Ten folder jest (albo zawiera) workspace innego profilu.",

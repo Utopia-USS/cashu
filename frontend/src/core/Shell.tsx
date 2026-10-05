@@ -268,7 +268,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
                   const dot = pending && i === 0;
                   return (
                     <button key={key} className={`tabbtn ${on ? "on" : ""}`} onClick={() => go({ kind: "tab", tab: key })}
-                      title={dot ? "Moduł włączony, ale nieskonfigurowany" : undefined}>
+                      title={dot ? "Nieskonfigurowany" : undefined}>
                       {t.label}{dot && <span className="dot" aria-label="nieskonfigurowany" />}
                     </button>
                   );
@@ -307,8 +307,8 @@ function PartialStrip({ moduleId, name }: { moduleId: string; name: string }) {
   const { data } = useAsync(() => getSetup(slug, moduleId), [slug, moduleId]);
   const next = data?.steps.find((s) => s.status === "on") ?? data?.steps.find((s) => s.status !== "done");
   return (
-    <Notice tone="warn" action={<button className="btn" onClick={() => go({ kind: "setup", module: moduleId })}>Kontynuuj konfigurację</button>}>
-      <b>{name}: konfiguracja niedokończona.</b>{next ? ` Następny krok: ${next.title.charAt(0).toLowerCase()}${next.title.slice(1)}.` : ""}
+    <Notice tone="warn" action={<button className="btn" onClick={() => go({ kind: "setup", module: moduleId })}>Kontynuuj</button>}>
+      <b>{name}</b>{next ? ` · następny krok: ${next.title.charAt(0).toLowerCase()}${next.title.slice(1)}` : ""}
     </Notice>
   );
 }

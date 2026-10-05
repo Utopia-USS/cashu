@@ -197,8 +197,8 @@ export function ChangeLog({ since, digest, alerts, proposals, accounts, today, n
     <Widget title={`Co się zmieniło od ${dm(since)}`} id="inv-changelog"
       controls={<Seg quiet label="Filtr zmian" value={filter} onChange={setFilter} items={[["Ważne", "important"], [`Wszystko (${events.length})`, "all"]]} />}
       body="tight"
-      footer={<><span>zmiany bez Twojej decyzji są oznaczone szaro</span><span className="spacer" /><button className="lnk" onClick={onJournal}>pełny dziennik</button></>}>
-      {!digest ? <div className="skeleton" style={{ height: 120 }} /> : !shown.length ? <div className="empty">Nic ważnego się nie wydarzyło.</div> : (
+      footer={<><span className="spacer" /><button className="lnk" onClick={onJournal}>pełny dziennik</button></>}>
+      {!digest ? <div className="skeleton" style={{ height: 120 }} /> : !shown.length ? <div className="empty">Brak ważnych zmian.</div> : (
         <div className="tl">
           {groups.map((g) => (
             <div key={g.key} style={{ display: "contents" }}>

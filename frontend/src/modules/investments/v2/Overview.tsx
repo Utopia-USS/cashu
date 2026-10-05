@@ -52,7 +52,7 @@ function usePlanActions(slug: string, reload: () => void) {
         label: "Cofnij", onClick: () => { void deletePlannedDeposit(slug, p.id).then(() => { reload(); toast("Cofnięto: plan wpłaty", 2500); }, (e) => toast(`Nie cofnięto: ${errorText(e)}`, 5000)); },
       });
     } catch (e) {
-      toast(isMissingEndpoint(e) ? "Ten serwer nie zapisuje jeszcze planowanych wpłat (zaktualizuj aplikację)" : `Nie zapisano planu: ${errorText(e)}`, 5000);
+      toast(isMissingEndpoint(e) ? "Serwer nie obsługuje planów wpłat: zaktualizuj aplikację." : `Nie zapisano planu: ${errorText(e)}`, 5000);
     } finally { setBusy(false); }
   };
   const drop = async (p: PlannedDeposit) => {
@@ -161,7 +161,7 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
   if (!d || !close) {
     return (
       <Widget title="Nadwyżka → wpłata" body="tight">
-        {mc.loading ? <Skeleton h={70} /> : <div className="muted" style={{ fontSize: 13 }}>Zamknięcie miesiąca pojawi się, gdy budżet będzie miał transakcje z poprzedniego miesiąca.</div>}
+        {mc.loading ? <Skeleton h={70} /> : <div className="muted" style={{ fontSize: 13 }}>Brak zamknięcia miesiąca.</div>}
       </Widget>
     );
   }
@@ -197,7 +197,7 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
             ? <>{MONTH_NOM[Number(curMonth.slice(5, 7)) - 1]}: <b>plan pokryty</b></>
             : plans.plan.remaining != null ? <>{MONTH_NOM[Number(curMonth.slice(5, 7)) - 1]}: brakuje <b>{money0(plans.plan.remaining, plans.plan.currency)}</b></> : null),
         ]} />
-        <span className="spacer" /><span>{plan?.status === "booked" ? "wpłata zaksięgowana z importu" : plan ? "import wpłaty zaksięguje plan" : "import wpłaty potwierdzi plan"}</span>
+        <span className="spacer" /><span>{plan?.status === "booked" ? "zaksięgowana z importu" : "do zaksięgowania importem"}</span>
       </>}>
       <div className="flow">
         <Fact label={`Nadwyżka ${ROMAN[monthIdx]}`} value={money0(close.surplus, c)} tone={close.surplus < 0 ? "neg" : undefined}
@@ -206,7 +206,7 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
         <Fact label="Plan wpłaty" value={want != null ? money0(want, c) : "-"} detail={want == null ? "brak planu w strategii" : day ? `do ${day}. dnia` : undefined} />
         <span className="arrow" aria-hidden>→</span>
         <Fact label={stays != null && stays < 0 ? "Brakuje" : "Zostaje"} value={stays != null ? money0(Math.abs(stays), c) : "-"} tone={stays != null && stays < 0 ? "warn" : undefined}
-          detail={stays != null && stays >= 0 ? (cushion?.accounts[0] ? `na ${cushion.accounts[0].name.toLowerCase()}` : "na koncie") : undefined} />
+          detail={stays != null && stays >= 0 ? "na koncie" : undefined} />
       </div>
       <div className="checks">
         {cushion?.enabled && (cushion.reached
@@ -214,7 +214,6 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
           : <><span className="no">!</span> poduszka: brakuje {money0(cushion.missing, cushion.currency)}</>)}
         {cushion?.enabled && under && closes != null ? " · " : ""}
         {under && closes != null && <>{bucketLabel(under.bucket_id)} poniżej celu: wpłata domyka {pp(closes).replace(/^\+/, "")}</>}
-        {!cushion?.enabled && !(under && closes != null) && <>sprawdzane: poduszka finansowa (ustaw w Przepływach) i koszyk poniżej celu</>}
       </div>
       <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {plan ? (
@@ -284,7 +283,6 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
   const quiet = [alertsLive ? plural(alertsLive, "alert", "alerty", "alertów") : "bez alertów", pol && pol.positive + pol.negative + pol.neutral ? plural(pol.positive + pol.negative + pol.neutral, "sygnał", "sygnały", "sygnałów") : "bez sygnałów"].join(" · ");
   const savePlan = () => { if (planAmount != null) void acts.save(planAmount, c, due, accounts.length === 1 ? accounts[0].id : null); };
   const toInv = (sub?: string) => go({ kind: "tab", tab: "investments.portfolio", sub });
-  const historyMonths = dep.monthsSince;
   return (
     <Grid items={[
       {
@@ -313,12 +311,10 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
       },
       {
         id: "deposits", span: 2, node: (
-          <Widget title="Wpłaty" count="6 mies." controls={planAmount != null ? <span className="muted" style={{ fontSize: 12 }}>plan: {money0(planAmount, c)}{day ? ` do ${day}. każdego miesiąca` : " co miesiąc"}</span> : undefined}
+          <Widget title="Wpłaty" count="6 mies." controls={planAmount != null ? <span className="muted" style={{ fontSize: 12 }}>plan {money0(planAmount, c)}{day ? ` · do ${day}.` : ""}</span> : undefined}
             body="tight"
             footer={<>
               <FootFacts items={[dep.monthsSince > 0 && <>regularność <b>{dep.withDeposit} z {dep.monthsSince}</b></>]} />
-              <span className="spacer" />
-              {historyMonths < 6 && <span>wykres wartości pojawi się po 6 miesiącach</span>}
             </>}>
             {perf.data ? (
               <Bars label="Wpłaty w ostatnich 6 miesiącach" height={150} values={months.map((m) => m.value)} labels={months.map((m) => m.label)}
@@ -331,7 +327,7 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
       {
         id: "month", span: 1, node: (
           <Widget title="Na ten miesiąc" body="tight"
-            footer={<span>chcesz więcej? <button className="lnk" onClick={() => toInv("alerts?new=1")}>dodaj alert</button> · <button className="lnk" onClick={() => toInv("watch")}>obserwuj instrument</button></span>}>
+            footer={<span><button className="lnk" onClick={() => toInv("alerts?new=1")}>dodaj alert</button> · <button className="lnk" onClick={() => toInv("watch")}>obserwuj instrument</button></span>}>
             <div className="steps-v">
               {lastPrev && (
                 <div className="step done"><b className="n" aria-label="zrobione">✓</b><div>Wpłata {MONTH_ADJ[Number(lastPrev.date.slice(5, 7)) - 1]}<div className="h">{money0(lastPrev.amount, c)} · {dm(lastPrev.date)}</div></div><span /></div>

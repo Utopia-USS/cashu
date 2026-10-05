@@ -46,7 +46,7 @@ export const THESIS_FIELD_LABEL: Record<string, string> = {
 export const normField = (f: string | null | undefined): string | null =>
   !f ? null : ({ entry: "thesis", exit: "exit_plan", size: "size_plan", type: "entry_type" } as Record<string, string>)[f] ?? f;
 
-export const BOUNDARY = "fakty i sentyment ze źródłami · bez rekomendacji i prognoz";
+export const BOUNDARY = "bez rekomendacji i prognoz";
 export const RESEARCH_SKILL = "/market-research";
 /** Prompt of the Saturday routine (the skill reads `rutyna` as a scheduled run). */
 export const ROUTINE_PROMPT = "/market-research rutyna";

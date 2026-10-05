@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Line, Tooltip } from "recharts";
 import { ScrollableChart } from "../../components/ScrollableChart";
-import { useSlug } from "../../core/context";
+import { useShell, useSlug } from "../../core/context";
 import { cssVar, cur, cur0, dtFmt, plural } from "../../format";
 import { useAsync } from "../../hooks";
 import { Empty, Kpi, SkeletonChart, SkeletonKpis, SkeletonTable } from "../../ui";
@@ -16,6 +16,7 @@ export function Loans() {
   const slug = useSlug();
   const { data, error } = useAsync(() => getLoans(slug), [slug]);
   const [sel, setSel] = useState(0);
+  const { go } = useShell();
 
   if (error) return <div className="err">Błąd: {error}</div>;
   if (!data) return <><SkeletonTable rows={2} /><SkeletonKpis n={5} /><SkeletonChart /></>;
@@ -23,7 +24,7 @@ export function Loans() {
     return (
       <section className="card chart-card">
         <h2>Kredyty</h2>
-        <Empty title="Brak kredytów w tym profilu." hint="Kredyt dodany w module pojawi się tutaj z harmonogramem i saldem w czasie." />
+        <Empty title="Brak kredytów." action={<button className="btn" onClick={() => go({ kind: "setup", module: "loans" })}>Konfiguracja</button>} />
       </section>
     );
   }
@@ -78,14 +79,14 @@ function LoanDetail({ loan, name }: { loan: LoanInfo; name: string }) {
     <>
       <div className="kpis">
         <Kpi label="Rata miesięczna" value={cur(loan.monthly_payment, c)} />
-        <Kpi label="Pozostało do spłaty" value={cur(loan.outstanding, c)} cls="neg" />
+        <Kpi label="Pozostało" value={cur(loan.outstanding, c)} cls="neg" />
         <Kpi label="Odsetki łącznie" value={cur(loan.total_interest, c)} />
         <Kpi label="Spłacone odsetki" value={cur(loan.paid_interest, c)} />
         <Kpi label="Data spłaty" value={loan.payoff_date || "-"} hint={loan.months_elapsed != null ? `${loan.months_elapsed} rat spłaconych` : ""} />
       </div>
 
       <ScrollableChart
-        title={`Pozostałe saldo w czasie · ${name}`}
+        title={`Saldo · ${name}`}
         data={series}
         yValues={series.map((s) => s.y)}
         xAxisProps={{
@@ -95,7 +96,7 @@ function LoanDetail({ loan, name }: { loan: LoanInfo; name: string }) {
         ranges={RANGES}
         fullSpan={spanDays}
         yTickFormatter={(v) => cur0(v, c)}
-        emptyText="Brak harmonogramu dla tego kredytu."
+        emptyText="Brak harmonogramu."
         tooltip={
           <Tooltip
             contentStyle={{ background: cssVar("--card"), border: `1px solid ${cssVar("--border")}`, borderRadius: 8, fontSize: 13 }}
@@ -110,7 +111,7 @@ function LoanDetail({ loan, name }: { loan: LoanInfo; name: string }) {
 
       {/* section.card: same small uppercase heading as every other titled card (design decision 13) */}
       <section className="card chart-card">
-        <h2>Harmonogram spłat</h2>
+        <h2>Harmonogram</h2>
         <div className="scroll tall">
           <table>
             <thead>

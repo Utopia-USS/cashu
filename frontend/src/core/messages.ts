@@ -70,7 +70,7 @@ export const LABELS: Record<string, Label> = {
   "strategy.yaml_key_not_text": "Klucze w YAML muszą być zwykłym tekstem",
   "strategy.empty": "Plik strategy.yaml jest pusty; potrzebuje co najmniej version i base_currency",
   "strategy.not_mapping": "strategy.yaml musi być mapą kluczy (version, base_currency, ...)",
-  "strategy.md_empty": "Plik strategy.md jest pusty; zapisz w nim swoje cele, żeby raporty miały kontekst",
+  "strategy.md_empty": "Plik strategy.md jest pusty: zapisz w nim cele",
   // ---- header -----------------------------------------------------------------------------------
   "strategy.version_unsupported": "Nieobsługiwana wersja {version} (obsługiwane: {supported})",
   "strategy.base_currency_required": "Brak base_currency (np. PLN)",
@@ -191,8 +191,8 @@ export const LABELS: Record<string, Label> = {
   "proposal.error.converter_failed": "Konwerter nie zadziałał",
   "proposal.error.import_failed": "Import się nie udał",
   "proposal.error.import_blocked": "Tego pliku nie da się teraz zaimportować",
-  "proposal.error.interrupted": "Zatwierdzanie zostało przerwane (aplikacja się zamknęła); sprawdź wynik, zanim poprosisz o nową propozycję",
-  "proposal.error.converter_unsupported": "Ten import wymaga skryptu konwertera, a aplikacja nie uruchamia już skryptów; poproś agenta o przekonwertowany plik",
+  "proposal.error.interrupted": "Zatwierdzanie przerwane (aplikacja się zamknęła): sprawdź wynik przed nową propozycją",
+  "proposal.error.converter_unsupported": "Aplikacja nie uruchamia skryptów konwertera: poproś agenta o przekonwertowany plik",
   "proposal.error.apply_failed": "Zatwierdzenie nie powiodło się (szczegóły w logu aplikacji)",
   "proposal.error.write_failed": "Nie udało się zapisać plików; nic nie zostało zmienione",
 
@@ -205,7 +205,7 @@ export const LABELS: Record<string, Label> = {
   "error.busy": "Trwa inna operacja; spróbuj za chwilę",
   "error.planned_invalid": "Nieprawidłowy plan wpłaty: sprawdź kwotę, datę i rachunek",
   "error.planned_booked": "Ta wpłata jest już zaksięgowana z importu; planu nie można zmienić",
-  "error.research_conflict": "Tego nie da się teraz zrobić z tą notatką (np. kandydat już obserwowany albo odrzucony)",
+  "error.research_conflict": "Notatka już obsłużona (obserwowana albo odrzucona)",
   "error.research_invalid": "Nieprawidłowe dane notatki researchu",
 
   // ---- alert signal facts (`message_code` + `message_params` on alert signals; the subject is added by the UI) --
@@ -223,7 +223,7 @@ export const LABELS: Record<string, Label> = {
 
   // ---- watchlist warnings (`warning_codes` of POST watchlist) -----------------------------------------
   "watchlist.guessed_price_symbol": (p) => `symbol ceny zgadnięty${p.price_symbol ? ` (${p.price_symbol})` : ""}: sprawdź, czy przyjdą notowania`,
-  "watchlist.no_price_symbol": "brak symbolu ceny: notowania nie przyjdą, dopóki nie dodasz aliasu Yahoo w klasyfikacji",
+  "watchlist.no_price_symbol": "brak symbolu ceny: dodaj alias Yahoo w klasyfikacji",
 
   // ---- performance data quality (`data_quality.notes[] {code, params}` of GET investments/performance) -------
   "perf.incomplete_days": (p) => has(p, "days") ? `niepełna wycena: ${plural(Number(p.days), "dzień", "dni", "dni")}` : "niepełna wycena części dni",

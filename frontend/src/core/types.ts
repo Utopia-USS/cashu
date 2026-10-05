@@ -44,10 +44,7 @@ export interface ModuleDef {
   hint?: string;
   /** One line for Settings > Moduły. */
   short: string;
-  /** Two sentences at the top of the SetupPage. */
-  intro: string;
-  /** Claude Code card: what the setup skill does ("{skill}" is replaced by its name), and a hint under the run command. */
-  skillBlurb?: string;
+  /** Claude Code card: a hint under the skill's run command. */
   skillHint?: string;
   tabs: ModuleTab[];
   /** First tab shows the SetupPage while the module is `partial` too (not only `empty`). */

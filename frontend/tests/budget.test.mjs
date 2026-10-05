@@ -63,7 +63,7 @@ test("cushion form: draft from settings and back, with Polish validation", () =>
   assert.deepEqual(d, { enabled: false, mode: "amount", amount: "", months: "6", currency: "EUR", accountIds: [], monthlyMax: "" });
   // turning it on without a target is refused before the request
   assert.deepEqual(cushionPayload({ ...d, enabled: true }, "EUR"),
-    { ok: false, error: "Podaj docelową kwotę poduszki (większą od zera)." });
+    { ok: false, error: "Podaj kwotę większą od zera." });
   assert.deepEqual(cushionPayload({ ...d, enabled: true, amount: "30 000,50", monthlyMax: "1000" }, "EUR"), {
     ok: true,
     value: { enabled: true, currency: null, target_amount: 30000.5, target_months: null, account_ids: [], monthly_max: 1000 },

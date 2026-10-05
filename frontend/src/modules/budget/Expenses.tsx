@@ -135,14 +135,14 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
     if (!row.merchant_key) return;
     const name = row.counterparty || row.merchant || row.merchant_key;
     setToast({
-      text: `Zmieniono na „${labelFor(category)}" (ta transakcja).`,
+      text: `Zmieniono: ${labelFor(category)}`,
       action: {
-        label: `Ustaw dla wszystkich: ${name}`,
+        label: `Wszystkie od ${name}`,
         run: async () => {
           const res = await postMerchantCategory(slug, row.merchant_key, category);
           reloadDrill();
           reloadSpending();
-          setToast({ text: `Ustawiono „${labelFor(category)}" dla ${res.updated ?? 0} transakcji sprzedawcy.` });
+          setToast({ text: `${labelFor(category)} · ${res.updated ?? 0} transakcji` });
         },
       },
     });
@@ -150,14 +150,14 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
 
   const drillOpts = [
     ...categories.filter((c) => c.kind !== "transfer"),
-    { key: "cash_withdrawal", label: "💵 Wypłata gotówki (do puli)", kind: "transfer" },
+    { key: "cash_withdrawal", label: "Wypłata gotówki", kind: "transfer" },
   ];
 
   return (
     <>
       <div className="card chart-card">
         <div className="controls">
-          <strong style={{ fontSize: 14 }}>Na co idą pieniądze</strong>
+          <strong style={{ fontSize: 14 }}>Wydatki</strong>
           <span className="spacer" />
           <CurrencySwitch bc={bc} />
           <Seg<Mode>
@@ -178,11 +178,10 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
       {drill && (
         <div className="card chart-card">
           <div className="controls">
-            <strong style={{ fontSize: 14 }}>Transakcje — {drill.label}</strong>
+            <strong style={{ fontSize: 14 }}>Transakcje · {drill.label}</strong>
             <span className="spacer" />
-            <span className="muted" style={{ fontSize: 12 }}>sortuj:</span>
-            <Seg items={[["Data", "date"], ["Kwota", "amount"]]} value={sort} onChange={setSort} />
-            <Seg items={[["malejąco", "desc"], ["rosnąco", "asc"]]} value={order} onChange={setOrder} />
+            <Seg label="Sortowanie" items={[["Data", "date"], ["Kwota", "amount"]]} value={sort} onChange={setSort} />
+            <Seg label="Kolejność" items={[["malejąco", "desc"], ["rosnąco", "asc"]]} value={order} onChange={setOrder} />
             <button className="btn" onClick={() => setDrill(null)}>✕</button>
           </div>
           <div className="scroll">
@@ -203,10 +202,10 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
                   <tr key={r.id}>
                     <td>{r.date}</td>
                     <td>
-                      {r.merchant || "—"}
+                      {r.merchant || "-"}
                       {r.details && <div className="muted" style={{ fontSize: 12 }}>{r.details}</div>}
                     </td>
-                    <td className="muted">{r.account || "—"}</td>
+                    <td className="muted">{r.account || "-"}</td>
                     <td className={`num ${r.amount < 0 ? "neg" : ""}`}>{cur(r.amount, r.currency)}</td>
                     <td>
                       <select value={r.category} onChange={(e) => markCategory(r, e.target.value)}>

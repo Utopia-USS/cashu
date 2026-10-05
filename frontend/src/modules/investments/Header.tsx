@@ -25,13 +25,9 @@ export function StrategyPopover({ st, proposals, onProposal, onInit, onReload }:
     return (
       <>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}><strong>Strategia</strong><Tag tone="warn">brak</Tag></div>
-        <div className="muted" style={{ fontSize: 12.5 }}>
-          Cel, horyzont, koszyki i reguły zapisujesz w <code>strategy.yaml</code>, opis słowny w <code>strategy.md</code>. Najprościej przez wywiad
-          w Claude Code (<code>/investments-setup</code>) albo z szablonu.
-        </div>
         <div className="controls" style={{ margin: "10px 0 0" }}>
           <button className="btn primary" onClick={onInit}>Utwórz z szablonu</button>
-          <button className="btn" onClick={() => copyText("/investments-setup").then(() => toast("Skopiowano polecenie skilla", 2000))}>Kopiuj /investments-setup</button>
+          <button className="btn" onClick={() => copyText("/investments-setup").then(() => toast("Skopiowano", 2000))}>Kopiuj /investments-setup</button>
         </div>
         {proposals.length > 0 && <ProposalNotice proposals={proposals} version={null} onProposal={onProposal} />}
       </>
@@ -53,7 +49,7 @@ export function StrategyPopover({ st, proposals, onProposal, onInit, onReload }:
   return (
     <>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
-        <strong>Strategia{st.version != null ? ` · wersja ${st.version}` : " · bez zapisanej wersji"}</strong>
+        <strong>Strategia{st.version != null ? ` · v${st.version}` : " · bez wersji"}</strong>
         {errors.length || st.state === "invalid" ? <Tag tone="neg">{plural(errors.length || 1, "błąd", "błędy", "błędów")}</Tag> : <Tag tone="pos">YAML poprawny</Tag>}
         {st.state === "partial" && st.inactive_rules.length > 0 && <Tag tone="warn">{plural(st.inactive_rules.length, "reguła nieaktywna", "reguły nieaktywne", "reguł nieaktywnych")}</Tag>}
         <span style={{ flex: 1 }} />
@@ -67,7 +63,7 @@ export function StrategyPopover({ st, proposals, onProposal, onInit, onReload }:
           {warnings.map((i, k) => <li key={`w${k}`}><span className="sev review" /><span title={i.message}><b>Ostrzeżenie:</b> {describeIssue(i).text}{i.path ? <> <code>{i.path}</code></> : null}{line(i.line)}</span></li>)}
           {st.inactive_rules.map((r) => (
             <li key={`r${r.index}`}><span className="sev resolved" />
-              <span>Reguła <code>{r.rule_id ?? `#${r.index + 1}`}</code> nieaktywna: {r.issues.map((i) => describeIssue(i).text).join("; ")}{line(r.line)} - traktowana jak pominięta.</span>
+              <span>Reguła <code>{r.rule_id ?? `#${r.index + 1}`}</code> nieaktywna: {r.issues.map((i) => describeIssue(i).text).join("; ")}{line(r.line)}</span>
             </li>
           ))}
           {st.base_currency_note && <li><span className="sev review" /><span>Waluta strategii różni się od waluty profilu.</span></li>}
@@ -75,7 +71,7 @@ export function StrategyPopover({ st, proposals, onProposal, onInit, onReload }:
       )}
       {proposals.length > 0 && <ProposalNotice proposals={proposals} version={st.version} onProposal={onProposal} />}
       <div className="controls" style={{ margin: "6px 0 0" }}>
-        <button className="btn" onClick={() => copyPath(st.files.yaml, "strategy.yaml")} title={st.files.yaml}>Kopiuj ścieżkę strategy.yaml</button>
+        <button className="btn" onClick={() => copyPath(st.files.yaml, "strategy.yaml")} title={st.files.yaml}>strategy.yaml</button>
         <button className="btn" onClick={() => copyPath(st.files.md, "strategy.md")} title={st.files.md} disabled={!st.files.md_exists}>strategy.md</button>
         <button className="btn" onClick={onReload} title="Wczytaj pliki ponownie i sprawdź">Przeładuj</button>
         <span className="spacer" />
@@ -101,8 +97,7 @@ function ProposalNotice({ proposals, version, onProposal }: { proposals: Proposa
   return (
     <div className="notice info" style={{ margin: "8px 0" }}>
       <span className="grow">
-        <b>{plural(proposals.length, "propozycja", "propozycje", "propozycji")} od agenta {proposals.length === 1 ? "czeka" : "czekają"}:</b> {what}.
-        {first.kind !== "import" && version != null ? ` Zatwierdzenie tworzy wersję ${version + 1}.` : ""}
+        <b>{proposals.length > 1 ? `Propozycje agenta (${proposals.length})` : "Propozycja agenta"}:</b> {what}
       </span>
       <button className="btn primary" onClick={() => onProposal(first.id)}>Zobacz</button>
     </div>

@@ -7,7 +7,7 @@ import { nModules } from "../format";
 import { ChoiceCard, Code, Notice, RadioList, Stepper, Switch, Tag } from "../ui";
 import { createProfile, type ModuleInfo, type Privacy, type Profile, type SystemInfo } from "./api";
 import { moduleDef, orderModules } from "./registry";
-import { ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, workspaceErrorText } from "./workspace";
+import { PROPOSAL_NOTE, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, workspaceErrorText } from "./workspace";
 import { getWorkspaceDefault, postWorkspace } from "./workspaceApi";
 import { errorText } from "./messages";
 
@@ -18,16 +18,16 @@ export const legacySkipped = (): boolean => {
   try { return localStorage.getItem(LEGACY_SKIP_KEY) === "1"; } catch { return false; }
 };
 
-export const PRIVACY_OPTIONS: { value: Privacy; title: string; desc: string; short: string; tag?: boolean }[] = [
+export const PRIVACY_OPTIONS: { value: Privacy; title: string; desc: string; example: string; tag?: boolean }[] = [
   {
     value: "strict", title: "Ścisły", tag: true,
-    desc: "Agent widzi udziały procentowe, kategorie, daty i nazwy instrumentów. Nie widzi kwot, numerów kont ani nazwisk. Przykład: zamiast „CD Projekt: 12 400 zł\" dostaje „CD Projekt: 6,7 % portfela\".",
-    short: "Agent widzi udziały procentowe, kategorie, daty i nazwy. Nie widzi kwot, numerów kont ani nazwisk.",
+    desc: "Udziały procentowe, kategorie, daty, nazwy instrumentów. Bez kwot, numerów kont i nazwisk.",
+    example: "Przykład: zamiast „CD Projekt: 12 400 zł\" agent dostaje „CD Projekt: 6,7 % portfela\".",
   },
   {
     value: "amounts", title: "Z kwotami",
-    desc: "Agent widzi też kwoty w walucie konta. Nadal nie widzi numerów kont, IBAN-ów ani danych osobowych. Przydatne, gdy chcesz pytać „ile wydałam na jedzenie we wrześniu\".",
-    short: "Agent widzi też kwoty w walucie konta. Nadal nie widzi numerów kont, IBAN-ów ani danych osobowych.",
+    desc: "Także kwoty w walucie konta. Bez numerów kont, IBAN-ów i danych osobowych.",
+    example: "Przykład: pytanie „ile wydałam na jedzenie we wrześniu\".",
   },
 ];
 
@@ -140,11 +140,9 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
   const pickedNames = ordered.filter((m) => picked.has(m.id)).map((m) => moduleDef(m.id, modules).name);
   const title = step === 0 ? (firstLaunch ? "Witaj w finanse" : "Nowy profil") : `Nowy profil: ${trimmed}`;
   const lead = [
-    firstLaunch
-      ? "Wszystko działa lokalnie na tym komputerze. Zacznij od profilu: konta, dane i ustawienia należą do profilu."
-      : "Nowy profil ma własne konta, dane i ustawienia. Moduły i prywatność wybierzesz w kolejnych krokach.",
-    "Które moduły włączyć? Można to zmienić w każdej chwili w Ustawieniach; dane modułu zostają po wyłączeniu.",
-    "Co może zobaczyć agent AI? Dotyczy tylko narzędzi MCP dla Claude Code i Claude Desktop. Analizy w aplikacji zawsze widzą wszystko i nie wychodzą z komputera.",
+    firstLaunch ? "Wszystko działa lokalnie na tym komputerze." : null,
+    "Do zmiany później w Ustawieniach.",
+    "Dotyczy tylko narzędzi MCP (Claude Code, Claude Desktop). Dane nie wychodzą z komputera.",
   ][step];
   const showLegacy = firstLaunch && step === 0 && system?.legacy_db_detected && !skipLegacy;
 
@@ -152,7 +150,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
     <div className="wizard" role={firstLaunch ? undefined : "dialog"} aria-modal={firstLaunch ? undefined : true} aria-label="Nowy profil">
       {!firstLaunch && onCancel && <button className="icon-btn close" title="Zamknij (Esc)" aria-label="Zamknij" onClick={cancel}>✕</button>}
       <h1>{title}</h1>
-      <p className="lead">{lead}</p>
+      {lead && <p className="lead">{lead}</p>}
       <Stepper steps={["Profil", "Moduły", "Prywatność"]} current={step} />
 
       <div className="card">
@@ -165,8 +163,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
                   try { localStorage.setItem(LEGACY_SKIP_KEY, "1"); } catch { /* ignore */ }
                 }}>Pomiń</button>
               }>
-                Znaleziono dane z poprzedniej wersji (<code>{system?.legacy_db_path || "data/finanse.db"}</code>).
-                {" "}Żeby przenieść je do katalogu danych z kopią zapasową, zamknij aplikację i uruchom w terminalu:
+                Dane z poprzedniej wersji: <code>{system?.legacy_db_path || "data/finanse.db"}</code>. Zamknij aplikację i uruchom:
                 <Code cmd="finanse migrate-data" />
               </Notice>
             )}
@@ -178,14 +175,11 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
                 {nameErr && <span className="fe">{nameErr}</span>}
               </div>
               <div className="field">
-                <label htmlFor="wz-cur">Waluta bazowa</label>
+                <label htmlFor="wz-cur" title="Waluta nagłówka wartości netto; inne waluty osobno, bez przeliczania.">Waluta bazowa</label>
                 <select id="wz-cur" value={currency} onChange={(e) => setCurrency(e.target.value)}>
                   {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </div>
-            </div>
-            <div className="muted" style={{ fontSize: 12.5 }}>
-              Waluta bazowa to waluta nagłówka wartości netto. Dane są przechowywane w walutach kont, a inne waluty są pokazywane osobno (bez przeliczania).
             </div>
           </form>
         )}
@@ -209,18 +203,14 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
         {step === 2 && (
           <>
             <RadioList<Privacy> name="wz-privacy" value={privacy} onChange={setPrivacy}
-              options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tag: o.tag ? <Tag>domyślny</Tag> : undefined }))} />
-            <div className="muted" style={{ fontSize: 12.5, margin: "4px 0 16px" }}>
-              Każde wywołanie MCP trafia do dziennika w Ustawieniach (narzędzie, poziom, czas). Zapis przez agenta to zawsze tylko propozycja do zatwierdzenia w aplikacji.
-            </div>
+              options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example, tag: o.tag ? <Tag>domyślny</Tag> : undefined }))} />
+            <div className="muted" style={{ fontSize: 12.5, margin: "4px 0 16px" }}>{PROPOSAL_NOTE}</div>
             <section style={{ margin: "0 0 16px" }} aria-labelledby="wz-ws-h">
               <div className="controls" style={{ margin: "0 0 6px" }}>
                 <Switch on={wsOn} label="Utwórz workspace agenta" onChange={setWsOn} disabled={busy} />
-                <strong id="wz-ws-h" style={{ fontSize: 14 }}>Workspace agenta (Claude Code)</strong>
+                <strong id="wz-ws-h" style={{ fontSize: 14 }} title="CLAUDE.md z kontekstem profilu, tylko serwer MCP tego profilu, skille włączonych modułów, blokada odczytu katalogu danych. Twoje pliki zostają przy aktualizacjach.">Workspace agenta (Claude Code)</strong>
               </div>
-              <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-                Folder, w którym uruchamiasz Claude Code dla tego profilu: CLAUDE.md z kontekstem profilu, tylko serwer MCP tego profilu, skille włączonych modułów i blokada odczytu katalogu danych. Twoje pliki w nim zostają przy aktualizacjach.
-              </div>
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>Folder dla Claude Code: CLAUDE.md, serwer MCP profilu, skille modułów. Dane tylko przez MCP.</div>
               {wsOn ? (
                 <>
                   <div className="field">
@@ -239,14 +229,14 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
                   )}
                 </>
               ) : (
-                <div className="muted" style={{ fontSize: 12.5 }}>Pominięto. Workspace utworzysz później w Ustawieniach, w sekcji Agent AI.</div>
+                <div className="muted" style={{ fontSize: 12.5 }}>Do utworzenia później: Ustawienia › Agent AI.</div>
               )}
             </section>
             <section className="summary">
               <h2 style={{ marginBottom: 8 }}>Podsumowanie</h2>
               <div className="kv">
                 <span className="k">Profil</span><span className="v">{trimmed} · {currency}</span>
-                <span className="k">Moduły</span><span className="v">{pickedNames.length ? pickedNames.join(", ") : "tylko przegląd wartości netto i gotówka"}</span>
+                <span className="k">Moduły</span><span className="v">{pickedNames.length ? pickedNames.join(", ") : "wartość netto i gotówka"}</span>
                 <span className="k">Agent AI</span>
                 <span className="v">
                   {privacy === "strict" ? <>poziom ścisły · <span className="muted">udziały procentowe, nie kwoty</span></> : <>poziom z kwotami · <span className="muted">kwoty bez numerów kont</span></>}
@@ -261,7 +251,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
               <Notice tone="warn" style={{ margin: "14px 0 0" }} action={
                 <button type="button" className="btn" onClick={() => onCreated(created)} disabled={busy}>Pomiń</button>
               }>
-                Profil utworzony, ale nie udało się utworzyć workspace. {wsErr} Popraw folder i spróbuj ponownie albo pomiń (workspace utworzysz później w Ustawieniach, w sekcji Agent AI).
+                Profil utworzony, workspace nie: {wsErr}
               </Notice>
             )}
           </>
@@ -273,7 +263,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
             Krok {step + 1} z 3{step === 1 && ` · wybrano ${nModules(picked.size)}`}
           </span>
           <span className="spacer" />
-          {step === 1 && !picked.size && <span className="muted" style={{ fontSize: 12 }}>Bez modułów: tylko przegląd wartości netto i gotówka.</span>}
+          {step === 1 && !picked.size && <span className="muted" style={{ fontSize: 12 }}>Bez modułów: tylko wartość netto i gotówka.</span>}
           {step === 0 && <button className="btn primary" type="submit" form="wz-step">Dalej →</button>}
           {step === 1 && <button className="btn primary" onClick={() => setStep(2)}>Dalej →</button>}
           {step === 2 && (

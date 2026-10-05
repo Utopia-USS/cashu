@@ -115,7 +115,7 @@ export function Hero({ label, value, delta, facts, right, meta, ariaLabel }: {
 
 /** Agent-created item badge (`A agent` / `A alert agenta`). */
 export function AgentTag({ text = "agent" }: { text?: string }) {
-  return <span className="tag agent" title="Dodane przez agenta (Claude, MCP); możesz je usunąć"><i aria-hidden>A</i>{text}</span>;
+  return <span className="tag agent" title="Dodane przez agenta"><i aria-hidden>A</i>{text}</span>;
 }
 
 export type Polarity = "positive" | "negative" | "neutral";

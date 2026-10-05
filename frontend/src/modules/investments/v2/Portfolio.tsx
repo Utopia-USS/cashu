@@ -60,18 +60,18 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
         <>
           <Seg quiet label="Podział" value={split} onChange={setSplit} items={[["Razem", "total"], ["Per rachunek", "account"]]} />
           <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sortowanie">
-            <option value="value">sortuj: wartość</option>
-            <option value="result">sortuj: wynik %</option>
-            <option value="week">sortuj: tydzień</option>
+            <option value="value">wartość</option>
+            <option value="result">wynik %</option>
+            <option value="week">tydzień</option>
           </select>
         </>
       }
       body="flush tight"
-      footer={<><span>ceny zamknięcia · wynik od kosztu (FIFO)</span><span className="spacer" /><button className="lnk" onClick={onAddTxn}>+ transakcja</button></>}>
+      footer={<><span className="spacer" /><button className="lnk" onClick={onAddTxn}>+ transakcja</button></>}>
       <div className="scroll">
         <table>
           <thead>
-            <tr><th>Instrument</th><th>30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Udział</th><th className="num">Wartość</th><th className="num">Wynik</th><th className="num">Wynik %</th></tr>
+            <tr><th>Instrument</th><th>30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Udział</th><th className="num">Wartość</th><th className="num" title="Od kosztu (FIFO), ceny zamknięcia">Wynik</th><th className="num">Wynik %</th></tr>
           </thead>
           <tbody>
             {rows.map((p) => {
@@ -165,8 +165,8 @@ export function AllocationWidget({ alloc, strategy, filtered }: { alloc: Allocat
           <FootFacts items={[band != null && `pasmo ±${band} pp`, worst && <>do celu: <b>{money0(worst.to_target, alloc.base_currency, true)}</b> {bucketLabel(worst.bucket_id)}</>, filtered && "cel dotyczy całego portfela"]} />
           <span className="spacer" />{strategy?.version != null && <span>v{strategy.version}</span>}
         </>
-      ) : <span>{alloc.has_strategy ? "udziały w wartości portfela" : "bez strategii: koszyki i cele po zapisaniu strategy.yaml"}</span>}>
-      {!rows.length ? <div className="empty">Brak pozycji do podziału.</div> : (
+      ) : alloc.has_strategy ? undefined : <span>bez strategii</span>}>
+      {!rows.length ? <div className="empty">Brak pozycji.</div> : (
         <div className="alloc">
           <Donut size={112} label={`Alokacja: ${rows.map((r) => `${r.name} ${pct(r.w)}`).join(", ")}`} segments={rows.map((r) => ({ value: Math.max(0, r.value), color: r.color }))}>
             <b>{totalK}</b><span>{view === "buckets" ? nBuckets(alloc.buckets.length) : plural(rows.length, "pozycja", "pozycje", "pozycji")}</span>

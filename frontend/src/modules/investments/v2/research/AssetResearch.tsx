@@ -9,7 +9,7 @@ import type { AssetSlotProps, AssetTimelineEntry, ThesisField } from "../assetSl
 import { dm } from "../../labels";
 import { canRestore, useInstrumentNotes, useResearchActions } from "./data";
 import {
-  addDays, chipsFromFields, countsText, direction, DIRECTION_LABEL, DIRECTION_TONE, fieldChips, healthOf, healthStale, isExpired, lastNonEmpty, latestRun, nNotes,
+  addDays, BOUNDARY, chipsFromFields, countsText, direction, DIRECTION_LABEL, DIRECTION_TONE, fieldChips, healthOf, healthStale, isExpired, lastNonEmpty, latestRun, nNotes,
   normField, normRelation, POLARITY_WORD, signalWord, RELATION_LABEL, relationCounts, runTag, sentiment8w, thesisHealth, weekLabels, weekStarts, windowStart,
 } from "./logic";
 import { HealthPill, NoteCard, RelationChip, SentimentBars } from "./primitives";
@@ -56,8 +56,8 @@ export function AssetResearch(p: AssetSlotProps) {
   const title = <>Research</>;
   if (!r.ran) {
     return (
-      <Widget title={title} tags={<span className="tag">jeszcze nie działał</span>} body="tight" footer={<span>fakty i sentyment ze źródłami · bez rekomendacji i prognoz</span>}>
-        <div className="muted" style={{ fontSize: 13 }}>Notatki ze źródłami o {p.symbol ?? p.name} pojawią się tu po pierwszym researchu (sobotnia rutyna w Claude Code).</div>
+      <Widget title={title} tags={<span className="tag">jeszcze nie działał</span>} body="tight" footer={<span>{BOUNDARY}</span>}>
+        <div className="muted" style={{ fontSize: 13 }}>Brak notatek.</div>
       </Widget>
     );
   }
@@ -78,7 +78,7 @@ export function AssetResearch(p: AssetSlotProps) {
       tags={<span className={`tag ${tag.state === "fresh" ? "" : tag.tone}`}>{tag.state === "fresh" && last ? `${tag.text.split(" · ")[0]} · ${nNotes(inLast)}` : tag.text}</span>}
       controls={notes.length > recent.length ? <button className="lnk" onClick={() => setOlder((v) => !v)}>{older ? "tylko 30 dni" : `wszystkie (${notes.filter((n) => !n.dismissed_at).length})`}</button> : undefined}
       body="tight"
-      footer={<><span>fakty i sentyment ze źródłami</span><span>bez rekomendacji i prognoz</span><span className="spacer" /><span>notatki wygasają po 30 dniach</span></>}>
+      footer={<span>{BOUNDARY}</span>}>
       <div className="hsum">
         <div className="facts">
           <div className="fact"><div className="l">Teza</div><div className="v sm" style={{ marginTop: 3 }}><HealthPill state={r.health} muted={muted} /></div>
@@ -91,7 +91,7 @@ export function AssetResearch(p: AssetSlotProps) {
           <SentimentBars values={values} labels={weekLabels(weeks)} size="lg" />
         </div>
       </div>
-      {!recent.length && !older ? <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>Brak notatek z ostatnich 30 dni{r.row?.last_researched_at ? ` · ostatni research ${dm(r.row.last_researched_at)}` : ""}.</div> : null}
+      {!recent.length && !older ? <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>Brak notatek (30 dni){r.row?.last_researched_at ? ` · research ${dm(r.row.last_researched_at)}` : ""}</div> : null}
       {(older ? [...recent, ...old] : recent).map((n) => (
         <NoteCard key={n.id} note={n} today={r.today} context="instrument" hl={hlId === n.id} onDismiss={actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)}
           signalText={signalWord(n)} />

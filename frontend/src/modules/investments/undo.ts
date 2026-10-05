@@ -80,7 +80,7 @@ export const undoSettled = (r: UndoResult): boolean => r === "done" || r === "go
 export function undoMessage(result: UndoResult, what: string): string | null {
   switch (result) {
     case "done": return `Cofnięto: ${what}`;
-    case "expired": return `Za późno na cofnięcie (${UNDO_WINDOW_MS / 60000} minut minęło) - ${what} zostaje zapisane`;
+    case "expired": return `Za późno na cofnięcie: minęło ${UNDO_WINDOW_MS / 60000} minut`;
     case "failed": return `Nie udało się cofnąć: ${what} - spróbuj jeszcze raz`;
     case "gone": return `Już cofnięte: ${what}`;
     case "refused": return `Nie da się cofnąć: ${what}`;

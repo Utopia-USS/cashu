@@ -11,12 +11,8 @@ import { Subscriptions } from "./Subscriptions";
 export const budget: ModuleDef = {
   id: "budget",
   name: "Budżet domowy",
-  desc: "Konta bankowe, wydatki po kategoriach, przepływy i subskrypcje. Import CSV z banku (mBank, Pekao, Erste) lub Open Banking.",
-  hint: "Zawsze dostępne: przegląd wartości netto i gotówka.",
+  desc: "Konta, wydatki, przepływy, subskrypcje · CSV lub Open Banking",
   short: "Konta bankowe, wydatki po kategoriach, przepływy i subskrypcje",
-  intro: "Moduł łączy konta bankowe (CSV lub Open Banking), kategoryzuje transakcje i pokazuje wydatki, przepływy i subskrypcje. Co miesiąc widzisz, dokąd poszły pieniądze.",
-  skillBlurb: "Skill {skill} pomoże dodać bank i konto, wgrać pierwszy plik CSV i przejrzeć kategorie najczęstszych sprzedawców. Dane pobiera przez MCP, więc obowiązuje poziom prywatności tego profilu.",
-  skillHint: "Kroki powyżej odświeżą się same, gdy skill zapisze zmiany w aplikacji.",
   tabs: [
     { id: "expenses", label: "Wydatki", render: (ctx) => <Expenses categories={ctx.categories} onDataChanged={ctx.refresh} /> },
     { id: "flows", label: "Przepływy", render: () => <Flows /> },

@@ -62,12 +62,9 @@ function LoanFacts() {
 export const loans: ModuleDef = {
   id: "loans",
   name: "Kredyty",
-  desc: "Hipoteka i inne kredyty: harmonogram, odsetki, saldo w czasie. Wiele kredytów na profil.",
+  desc: "Hipoteka i kredyty: harmonogram, odsetki, saldo w czasie",
   hint: "Z Budżetem: raty nie są liczone jako subskrypcje.",
   short: "Harmonogramy kredytów, odsetki i saldo w czasie",
-  intro: "Moduł prowadzi harmonogramy kredytów i liczy saldo w czasie. Raty są rozpoznawane w Budżecie jako spłata, nie subskrypcja.",
-  skillBlurb: "Skill {skill} zapyta o kwotę, oprocentowanie, ratę i datę startu każdego kredytu i przygotuje polecenia, które uruchomisz w swoim terminalu. Dane pobiera przez MCP, więc obowiązuje poziom prywatności tego profilu.",
-  skillHint: "Kroki powyżej odświeżą się same, gdy skill zapisze kredyt w aplikacji.",
   tabs: [{ id: "list", label: "Kredyty", render: () => <Loans /> }],
   Facts: LoanFacts,
   overview: [{ id: "list", span: 1, order: 50, stack: "side", Widget: LoansWidget }],

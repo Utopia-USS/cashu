@@ -79,7 +79,7 @@ export function NetWorthWidget() {
           <Seg quiet label="Krok wykresu" items={[["miesięcznie", "monthly"], ["tygodniowo", "weekly"], ["dziennie", "daily"]]} value={gran} onChange={setGran} />
         </>
       }>
-      {empty ? <div className="empty">Brak danych do wykresu. Pojawią się po dodaniu kont lub pozycji.</div>
+      {empty ? <div className="empty">Brak danych: dodaj konta lub pozycje.</div>
         : !resp ? <div className="skeleton" style={{ height: 230 }} />
         : mode === "line" ? (
           <LineChart label={`Wartość netto w czasie, ${currency}`} height={230} padL={60} padR={110} yFmt={fmtAxis} xLabels={xl}

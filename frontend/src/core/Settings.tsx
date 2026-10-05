@@ -10,13 +10,13 @@ import {
 } from "./api";
 import { moduleDef, orderModules } from "./registry";
 import { describeJob, describeRelocation, errorText, label } from "./messages";
-import { PRIVACY_PLAIN, stepsTag } from "./SetupPage";
+import { stepsTag } from "./SetupPage";
 import { useShell } from "./context";
 import type { ThemePref } from "./theme";
 import { serialSaver } from "./util";
-import { CURRENCIES, legacySkipped, PRIVACY_OPTIONS } from "./Wizard";
+import { CURRENCIES, PRIVACY_OPTIONS } from "./Wizard";
 import {
-  changesToast, needsForce, outdatedLabel, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, workspaceErrorText, workspaceSummary,
+  changesToast, needsForce, outdatedLabel, PROPOSAL_NOTE, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, workspaceErrorText, workspaceSummary,
 } from "./workspace";
 import { getWorkspace, postWorkspace } from "./workspaceApi";
 import { InvestmentsStrategySettings } from "../modules/investments/v2/StrategySettings";
@@ -112,7 +112,7 @@ function ProfileSection() {
           <select id="set-cur" value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {[...new Set([...CURRENCIES, profile.base_currency])].map((c) => <option key={c}>{c}</option>)}
           </select>
-          <span className="hint">waluta nagłówka wartości netto; inne waluty są pokazywane osobno, bez przeliczania</span>
+          <span className="hint">inne waluty osobno, bez przeliczania</span>
         </span>
         <span className="k">Identyfikator</span>
         <span className="v"><code>{slug}</code><span className="hint">w poleceniach CLI i MCP (<code>--profile {slug}</code>)</span></span>
@@ -178,7 +178,6 @@ function ModulesSection() {
         );
       })}
       {err && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Nie udało się zapisać modułów: {err}</Notice>}
-      <div className="foot">Wyłączenie modułu ukrywa jego zakładki i narzędzia MCP; dane zostają w bazie i wracają po włączeniu.</div>
     </Card>
   );
 }
@@ -194,7 +193,7 @@ function ModuleRow({ info, on, pm, onToggle }: { info: ModuleInfo; on: boolean; 
   return (
     <div className="row">
       <Switch on={on} disabled={!info.available} label={`Moduł ${def.name}`} onChange={onToggle}
-        title={!info.available ? "Moduł jeszcze niedostępny" : undefined} />
+        title={!info.available ? "Wkrótce" : undefined} />
       <div className="grow">
         <div className="t">
           {def.name}
@@ -230,14 +229,9 @@ function AgentSection() {
   return (
     <Card id="agent" title="Agent AI (MCP)">
       <RadioList<Privacy> name="set-privacy" value={profile.mcp_privacy} onChange={change} disabled={busy}
-        options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.short, tag: o.tag ? <Tag>domyślny</Tag> : undefined }))} />
+        options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example, tag: o.tag ? <Tag>domyślny</Tag> : undefined }))} />
       {err && <Notice tone="neg">Nie udało się zapisać poziomu: {err}</Notice>}
-      <Notice tone="info">
-        {profile.mcp_privacy === "strict"
-          ? <>Przykład na poziomie ścisłym: zamiast „CD Projekt: 12 400 zł" agent dostaje „CD Projekt: 6,7 % portfela".</>
-          : PRIVACY_PLAIN.amounts}
-        {" "}Zapis przez agenta (reguła, decyzja, zmiana strategii) to zawsze propozycja, którą zatwierdzasz w aplikacji.
-      </Notice>
+      <Notice tone="info">{PROPOSAL_NOTE}</Notice>
       <WorkspacePanel />
       <div className="kv" style={{ marginTop: 14 }}>
         <span className="k">Claude Code</span>
@@ -285,18 +279,16 @@ function WorkspacePanel() {
   return (
     <div style={{ margin: "14px 0 0" }}>
       <div className="controls" style={{ margin: "0 0 6px" }}>
-        <strong style={{ fontSize: 14 }}>Workspace agenta</strong>
+        <strong style={{ fontSize: 14 }} title="CLAUDE.md, .mcp.json, uprawnienia i skille modułów. Dane tylko przez MCP.">Workspace agenta</strong>
         {ws && <Tag tone={summary.tone}>{summary.text}</Tag>}
         <span className="spacer" />
         {ws?.exists && (
-          <button className="btn" onClick={() => run({})} disabled={busy}>{busy ? "Aktualizuję…" : "Aktualizuj workspace"}</button>
+          <button className="btn" onClick={() => run({})} disabled={busy}
+            title="Odświeża CLAUDE.md, .mcp.json, uprawnienia i skille; Twoje pliki zostają.">{busy ? "Aktualizuję…" : "Aktualizuj"}</button>
         )}
         {ws && !ws.exists && (
-          <button className="btn primary" onClick={() => run({ path: newPath })} disabled={busy}>{busy ? "Tworzę…" : "Utwórz workspace"}</button>
+          <button className="btn primary" onClick={() => run({ path: newPath })} disabled={busy}>{busy ? "Tworzę…" : "Utwórz"}</button>
         )}
-      </div>
-      <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-        Folder, w którym uruchamiasz Claude Code dla tego profilu: CLAUDE.md z kontekstem, tylko serwer MCP tego profilu, skille włączonych modułów i blokada odczytu katalogu danych (dane wyłącznie przez MCP).
       </div>
       {error && <Notice tone="neg">Nie udało się sprawdzić workspace: {error}</Notice>}
       {loading && !ws && <div className="muted" style={{ fontSize: 13 }}>Sprawdzam…</div>}
@@ -337,17 +329,12 @@ function WorkspacePanel() {
       {ws?.conflict && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Ten folder jest workspace innego profilu. Wybierz inny folder.</Notice>}
       {ws?.exists && ws.outdated.length > 0 && (
         <Notice tone="warn" style={{ margin: "10px 0 0" }} action={needsForce(ws)
-          ? <button className="btn" onClick={() => run({ force: true })} disabled={busy}>Zastąp zmienione</button>
+          ? <button className="btn" onClick={() => run({ force: true })} disabled={busy} title="Twoja wersja trafi do .claude/finanse-backup/.">Zastąp zmienione</button>
           : undefined}>
           Do aktualizacji:
           <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
             {ws.outdated.map((i) => <li key={`${i.kind}:${i.name}`}>{outdatedLabel(i)}</li>)}
           </ul>
-          {needsForce(ws) && (
-            <div style={{ fontSize: 12.5, marginTop: 4 }}>
-              Zmienione przez Ciebie skille zostają, dopóki ich nie zastąpisz; poprzednia wersja trafia wtedy do .claude/finanse-backup/.
-            </div>
-          )}
         </Notice>
       )}
       {investments && ws && (
@@ -359,17 +346,16 @@ function WorkspacePanel() {
           </div>
           <div className="muted" style={{ fontSize: 12.5 }}>{ROUTINE_PERMISSIONS_HINT}</div>
           {ws.exists && (
-            <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
-              Sobotni research działa lokalnie (rutyny w chmurze nie widzą serwera MCP na tym komputerze): aplikacja Claude &gt; Code &gt; Routines &gt; New routine &gt; Local, co tydzień w sobotę 07:00, folder = ten workspace, polecenie <code>/market-research rutyna</code>. Z terminala, przez LaunchAgent instalowany samodzielnie:
-              <Code cmd={ws.routine_command} />
+            <div className="kv" style={{ marginTop: 8 }}>
+              <span className="k" title="Rutyny w chmurze nie widzą serwera MCP na tym komputerze.">Rutyna (lokalna)</span>
+              <span className="v"><code>/market-research rutyna</code><span className="hint">Claude › Code › Routines › Local · sobota 07:00 · ten folder</span></span>
+              <span className="k">Z terminala</span>
+              <span className="v block"><Code cmd={ws.routine_command} /></span>
             </div>
           )}
         </div>
       )}
       {err && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Nie udało się zapisać workspace. {err}</Notice>}
-      <div className="foot">
-        „Aktualizuj workspace” odświeża sekcje finanse w CLAUDE.md, .mcp.json, uprawnienia i skille włączonych modułów; Twoje pliki zostają. Włączenie lub wyłączenie modułu aktualizuje istniejący workspace samo.
-      </div>
     </div>
   );
 }
@@ -419,13 +405,13 @@ function AuditLog() {
               );
             })}
             {!loading && !calls.length && (
-              <tr><td colSpan={5} className="muted">{data === null ? "Serwer nie prowadzi jeszcze dziennika. " : "Brak wywołań. "}Dziennik zacznie się zapełniać po podłączeniu serwera MCP.</td></tr>
+              <tr><td colSpan={5} className="muted">{data === null ? "Dziennik niedostępny." : "Brak wywołań."}</td></tr>
             )}
             {loading && !calls.length && <tr><td colSpan={5} className="muted">Wczytuję…</td></tr>}
           </tbody>
         </table>
       </div>
-      <div className="foot">Dziennik zapisuje narzędzie, czas, poziom prywatności i nazwy argumentów - nigdy ich wartości.</div>
+      <div className="foot">Nazwy argumentów, nigdy wartości.</div>
     </>
   );
 }
@@ -446,13 +432,10 @@ function DataSection() {
       </div>
       {system?.legacy_db_detected ? (
         <Notice tone="warn" style={{ margin: "14px 0 0" }}>
-          Stara baza <code>{system.legacy_db_path || "data/finanse.db"}</code> nadal leży w katalogu repozytorium.
-          {legacySkipped() ? " Pominięto ją przy tworzeniu profilu." : ""} Żeby przenieść ją do katalogu danych z kopią zapasową, zamknij aplikację i uruchom:
+          Stara baza: <code>{system.legacy_db_path || "data/finanse.db"}</code>. Zamknij aplikację i uruchom:
           <Code cmd="finanse migrate-data" />
         </Notice>
-      ) : (
-        <div className="foot">Brak starej bazy w katalogu repozytorium.</div>
-      )}
+      ) : null}
     </Card>
   );
 }
@@ -515,11 +498,11 @@ function WorkerSection() {
         </Notice>
       )}
       <div className="row" style={{ paddingTop: 0 }}>
-        <Switch on={!!w?.installed} disabled={!known || !supported || busy != null} label={`Codziennie o ${w?.schedule ?? time} w tle`}
+        <Switch on={!!w?.installed} disabled={!known || !supported || busy != null} label={`Codziennie o ${w?.schedule ?? time}`}
           title={!known ? "Serwer nie obsługuje jeszcze instalacji z aplikacji" : !supported ? "Ten system nie ma obsługiwanego harmonogramu zadań" : undefined}
           onChange={(v) => act(v ? "install" : "uninstall", v ? { time } : {})} />
         <div className="grow">
-          <div className="t">Codziennie o {w?.schedule ?? time} w tle {w?.installed ? <Tag tone="pos">działa</Tag> : <Tag>nie zainstalowano</Tag>}</div>
+          <div className="t">Codziennie o {w?.schedule ?? time} {w?.installed ? <Tag tone="pos">działa</Tag> : <Tag>nie zainstalowano</Tag>}</div>
           <div className="d">
             {w?.platform === "launchd" || !w?.platform ? "launchd" : w.platform} · {schedule}
             {w?.installed && w.next_run ? ` · następny przebieg ${when(w.next_run)}` : ""}
@@ -533,11 +516,10 @@ function WorkerSection() {
       </div>
       {known && (
         <div className="kv" style={{ margin: "10px 0" }}>
-          <label className="k" htmlFor="set-worker-time">Godzina przebiegu</label>
+          <label className="k" htmlFor="set-worker-time">Godzina</label>
           <span className="v">
-            <input id="set-worker-time" type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 110 }} />
-            {w?.installed && time !== w.schedule && <button className="btn primary" disabled={busy != null} onClick={() => act("install", { time })}>Zapisz godzinę</button>}
-            <span className="hint">czas lokalny, raz dziennie (nie przy logowaniu); uśpiony Mac nadrobi przebieg po wybudzeniu, wyłączony o tej porze pominie ten dzień</span>
+            <input id="set-worker-time" type="time" title="Czas lokalny. Uśpiony Mac nadrobi po wybudzeniu, wyłączony pominie dzień." value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 110 }} />
+            {w?.installed && time !== w.schedule && <button className="btn primary" disabled={busy != null} onClick={() => act("install", { time })}>Zapisz</button>}
           </span>
           {w?.log_path && <>
             <span className="k">Dziennik</span>
@@ -565,7 +547,7 @@ function WorkerSection() {
           </tbody>
         </table>
       </div>
-      <div className="foot">Powiadomienie natychmiast tylko dla sygnałów „do działania"; reszta czeka na podsumowanie tygodnia.</div>
+      <div className="foot">Natychmiast tylko sygnały „do działania", reszta w podsumowaniu tygodnia.</div>
     </Card>
   );
 }
@@ -583,7 +565,7 @@ function SecretsSection() {
       <div className="row">
         <div className="grow">
           <div className="t">Klucz API Anthropic {presence(s?.anthropic, "w pęku kluczy")}</div>
-          <div className="d">pęk kluczy systemu · używany do kategoryzacji (Budżet), gdy wybrano backend anthropic</div>
+          <div className="d">pęk kluczy · kategoryzacja (Budżet), backend anthropic</div>
           <Code cmd="finanse secrets set anthropic" />
         </div>
       </div>
@@ -596,10 +578,10 @@ function SecretsSection() {
       <div className="row">
         <div className="grow">
           <div className="t">Token API aplikacji</div>
-          <div className="d">losowy przy każdym uruchomieniu · tylko 127.0.0.1 · nie wymaga obsługi</div>
+          <div className="d">losowy przy starcie · tylko 127.0.0.1</div>
         </div>
       </div>
-      <div className="foot">Wartości sekretów nigdy nie są tu pokazywane. Sekrety nie trafiają do logów, eksportów ani do agenta AI.</div>
+      <div className="foot">Sekrety nie trafiają do logów, eksportów ani do agenta AI.</div>
     </Card>
   );
 }

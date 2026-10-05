@@ -129,8 +129,8 @@ function RunStrip({ runs, summary, candidates, today, strategyVersion, privacy, 
         <div className="fact"><div className="l">Tezy</div><div className="v">{weak.length ? `${weak.length} osłabione` : sup.length ? `${sup.length} wzmocnione` : "bez zmian"}</div>
           <div className="d">{[weak.slice(0, 3).map((x) => sym(x.s.instrument_id)).join(", "), sup.length && weak.length ? `${sup.length} wzmocniona` : null].filter(Boolean).join(" · ") || "-"}</div></div>
         <div className="fact"><div className="l">Tematy</div><div className="v">{themes.length}</div><div className="d">{`${down} ${down === 1 ? "słabnie" : "słabną"} · ${up} ${up === 1 ? "rośnie" : "rosną"}`}</div></div>
-        <div className="fact"><div className="l">Kandydaci</div><div className="v">{openC}</div><div className="d">{dismissedC ? `${plural(dismissedC, "odrzucony", "odrzuceni", "odrzuconych")}` : "nikt nie odrzucony"}</div></div>
-        {typeof c.signals === "number" && <div className="fact"><div className="l">Sygnały</div><div className="v">{c.signals}</div><div className="d">z notatek o sile 3 albo podważających tezę</div></div>}
+        <div className="fact"><div className="l">Kandydaci</div><div className="v">{openC}</div><div className="d">{dismissedC ? `${plural(dismissedC, "odrzucony", "odrzuceni", "odrzuconych")}` : "0 odrzuconych"}</div></div>
+        {typeof c.signals === "number" && <div className="fact" title="Z notatek o sile 3 albo podważających tezę"><div className="l">Sygnały</div><div className="v">{c.signals}</div></div>}
       </div>
       <div className="hr">
         {tag.state === "fresh" || tag.state === "none" ? <span className="tag solid pos">następny: {wdm(nextSaturday(today))} 07:00</span> : <span className={`tag ${tag.tone}`}>{tag.text}</span>}
@@ -151,12 +151,12 @@ function ThemesTable({ themes, selected, symOf, onSelect }: { themes: ThemeSumma
   return (
     <Widget title="Tematy i trendy" count={`${themes.length} · sentyment 8 tyg.`}
       controls={<select value={sort} onChange={(e) => setSort(e.target.value as ThemeSort)} aria-label="Sortowanie tematów">
-        <option value="change">sortuj: zmiana kierunku</option><option value="notes">sortuj: liczba notatek</option><option value="name">sortuj: nazwa</option>
+        <option value="change">zmiana kierunku</option><option value="notes">liczba notatek</option><option value="name">nazwa</option>
       </select>}
-      body="tight" footer={<><span>kierunek: siła notatek z 4 tyg. wobec poprzednich 4</span><span className="spacer" /><span>temat znika po 60 dniach bez notatek</span></>}>
-      {!list.length ? <div className="muted" style={{ fontSize: 13 }}>Brak tematów. Research zapisuje tematy sektorowe i makro razem z notatkami.</div> : (
+      body="tight">
+      {!list.length ? <div className="muted" style={{ fontSize: 13 }}>Brak tematów.</div> : (
         <>
-          <div className="theme head"><span>temat</span><span>8 tygodni</span><span>ostatnia notatka</span><span style={{ textAlign: "right" }}>kierunek · instrumenty</span></div>
+          <div className="theme head"><span>temat</span><span>8 tygodni</span><span>ostatnia notatka</span><span style={{ textAlign: "right" }} title="Kierunek: ostatnie 4 tyg. wobec poprzednich 4">kierunek · instrumenty</span></div>
           {list.map((t) => {
             const d = normDirection(t.direction);
             const ln = t.last_note;
@@ -193,9 +193,9 @@ function CandidatesWidget({ slug, today, notes, watched, strategyVersion, onChan
   const actions = useResearchActions(slug, onChanged);
   const list = [...notes].sort((a, b) => (a.dismissed_at ? 1 : 0) - (b.dismissed_at ? 1 : 0) || b.observed_at.localeCompare(a.observed_at));
   return (
-    <Widget title="Kandydaci" count={list.filter((n) => !n.dismissed_at).length || undefined} controls={<span className="muted" style={{ fontSize: 12 }}>kryteria wejścia ze strategii{strategyVersion != null ? ` v${strategyVersion}` : ""}</span>}
-      body="tight" footer={<><span><b>Obserwuj</b> dodaje do Obserwowanych z wersją roboczą tezy</span><span>odrzuceni wracają po 90 dniach</span></>}>
-      {!list.length ? <div className="muted" style={{ fontSize: 13 }}>Brak kandydatów. Research proponuje tylko spółki i fundusze spełniające kryteria wejścia strategii.</div>
+    <Widget title="Kandydaci" count={list.filter((n) => !n.dismissed_at).length || undefined} controls={<span className="muted" style={{ fontSize: 12 }}>{strategyVersion != null ? `wg strategii v${strategyVersion}` : "wg strategii"}</span>}
+      body="tight">
+      {!list.length ? <div className="muted" style={{ fontSize: 13 }}>Brak kandydatów.</div>
         : list.map((n) => <CandidateCard key={n.id} note={n} today={today} state={watched(n)} busy={actions.busy === n.id} onWatch={actions.watch} onDismiss={actions.dismiss}
           onRestore={actions.restore} canRestore={canRestore(n)} />)}
     </Widget>
@@ -265,12 +265,12 @@ function NotesList({ slug, today, nonce, scope, kind, theme, held, watchedIds, o
       controls={<>
         <label className="muted" style={{ fontSize: 12.5, display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={old} onChange={(e) => setOld(e.target.checked)} />odrzucone i wygasłe</label>
         <select value={sort} onChange={(e) => setSort(e.target.value as NoteSort)} aria-label="Sortowanie notatek">
-          <option value="date">sortuj: data</option><option value="strength">sortuj: siła</option><option value="relation">sortuj: relacja z tezą</option>
+          <option value="date">data</option><option value="strength">siła</option><option value="relation">relacja z tezą</option>
         </select>
       </>}
       body="tight"
-      footer={<><span>każda notatka ma źródło z datą</span><span>społeczność oznaczona jako szum</span><span className="muted">j / k · x odrzuca · Enter otwiera źródło</span><span className="spacer" /><span>{BOUNDARY}</span></>}>
-      {q.loading && !q.data ? <Skeleton h={180} /> : !list.length ? <div className="muted" style={{ fontSize: 13 }}>Brak notatek w tym widoku.</div> : (
+      footer={<><span className="muted">j / k · x odrzuca · Enter otwiera źródło</span><span className="spacer" /><span>{BOUNDARY}</span></>}>
+      {q.loading && !q.data ? <Skeleton h={180} /> : !list.length ? <div className="muted" style={{ fontSize: 13 }}>Brak notatek.</div> : (
         <>
           <div className="notes2">
             {visible.map((n) => (
@@ -302,9 +302,9 @@ function RunsTable({ runs, symOf }: { runs: ResearchRun[]; symOf: (id: number) =
   const list = [...runs].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 12);
   return (
     <Widget title="Przebiegi" count={`${list.length} ost.`} body="flush tight"
-      footer={<><span>przerwany przebieg zachowuje zapisane notatki</span><span className="spacer" /><span>rutyna: <b>sobota 07:00</b> · Claude Code</span></>}>
+      footer={<><span className="spacer" /><span>rutyna: <b>sobota 07:00</b> · Claude Code</span></>}>
       <table>
-        <thead><tr><th style={{ paddingLeft: 16 }}>Data</th><th>Status</th><th>Zakres</th><th className="num">Notatki</th><th className="num">Sygnały</th><th className="num">Czas</th><th style={{ paddingRight: 16 }}>Uruchomił</th></tr></thead>
+        <thead><tr><th style={{ paddingLeft: 16 }}>Data</th><th>Status</th><th>Zakres</th><th className="num">Notatki</th><th className="num" title="Sygnał powstaje, gdy notatka podważa tezę (do działania) albo ma siłę 3 (informacja)">Sygnały</th><th className="num">Czas</th><th style={{ paddingRight: 16 }}>Uruchomił</th></tr></thead>
         <tbody>
           {list.map((r) => {
             const m = runMinutes(r);
@@ -329,13 +329,13 @@ function RunsTable({ runs, symOf }: { runs: ResearchRun[]; symOf: (id: number) =
 
 function ScopeWidget({ held, watched, strategyVersion, privacy, path }: { held: number; watched: number; strategyVersion: number | null; privacy: string; path: string }) {
   return (
-    <Widget title="Zakres i zasady" body="tight" footer={<span>sygnał powstaje, gdy notatka podważa tezę (do działania) albo ma siłę 3 (informacja)</span>}>
+    <Widget title="Zakres i zasady" body="tight">
       <div className="kvl">
         <span className="k">Zakres</span><span><b>{plural(held, "pozycja", "pozycje", "pozycji")}, {plural(watched, "obserwowana", "obserwowane", "obserwowanych")}</b>, kandydaci wg kryteriów wejścia strategii{strategyVersion != null ? ` v${strategyVersion}` : ""}, tematy sektorowe i makro</span>
-        <span className="k">Źródła</span><span>wiadomości i raporty spółek; społeczność (Reddit, X, fora) jako skala i kierunek, zawsze oznaczona jako szum; przepływy ETF, siła relatywna, trendy wyszukiwań</span>
-        <span className="k">Nie</span><span>rekomendacje kup / sprzedaj, prognozy cen, oceny analityków, omijanie paywalli i zabezpieczeń</span>
-        <span className="k">Prywatność</span><span>poziom {PRIVACY_SHORT[privacy] ?? privacy}: {privacy === "amounts" ? "agent widzi też kwoty, nie widzi numerów kont" : "agent widzi udziały procentowe i tezy, nie widzi kwot ani rachunków"}</span>
-        <span className="k">Workspace</span><span><code className="cmd wrap">{path}</code> · skill market-research i pliki robocze w <code className="cmd">research/</code>; dane tylko przez MCP</span>
+        <span className="k">Źródła</span><span>wiadomości, raporty, społeczność (szum), przepływy ETF, trendy</span>
+        <span className="k">Nie</span><span>rekomendacje, prognozy cen, omijanie paywalli</span>
+        <span className="k">Prywatność</span><span>poziom {PRIVACY_SHORT[privacy] ?? privacy} · {privacy === "amounts" ? "także kwoty, bez numerów kont" : "udziały i tezy, bez kwot i rachunków"}</span>
+        <span className="k">Workspace</span><span><code className="cmd wrap">{path}</code> · dane tylko przez MCP</span>
         <span className="k">Ważność</span><span>notatka 30 dni, temat 60 dni bez notatek, odrzucony kandydat 90 dni</span>
       </div>
     </Widget>
@@ -350,7 +350,7 @@ function EmptyResearch({ cmd, path, ws, onSettings }: { cmd: string; path: strin
   const skill = ws?.skill_installed ?? null;
   const steps: SetupStepItem[] = [
     noWs ? {
-      key: "ws", status: "on", title: <span>Utwórz workspace profilu</span>, hint: "Ustawienia › Agent AI: folder z CLAUDE.md, .mcp.json i skillami tego profilu.",
+      key: "ws", status: "on", title: <span>Utwórz workspace profilu</span>,
       actions: <button className="btn primary" onClick={onSettings}>Ustawienia › Agent AI</button>,
     } : {
       key: "skill", status: skill === true ? "done" : "on",
@@ -361,21 +361,20 @@ function EmptyResearch({ cmd, path, ws, onSettings }: { cmd: string; path: strin
     },
     {
       key: "run", status: noWs ? "todo" : "on", title: "Uruchom pierwszy research w Claude Code",
-      hint: "ok. 30 min, notatki pojawią się tu w trakcie",
+      hint: "ok. 30 min",
       actions: noWs ? undefined : <CopyCommand cmd={cmd} label="Kopiuj" />,
     },
     {
       key: "schedule", status: "todo", title: "Zaplanuj rutynę na soboty",
-      hint: how ? undefined : <>{ROUTINE_MENU}: sobota 07:00, folder workspace, polecenie <code>{ROUTINE_PROMPT}</code> · szczegóły w Ustawieniach › Agent AI</>,
+      hint: how ? undefined : <>sobota 07:00 · <code>{ROUTINE_PROMPT}</code></>,
       actions: <button className="btn" onClick={() => setHow((v) => !v)} aria-expanded={how}>Jak zaplanować</button>,
       body: how ? <div style={{ margin: "6px 0" }}><ScheduleHow path={path} onSettings={onSettings} /></div> : undefined,
     },
   ];
   return (
-    <Widget title="Research" tags={<Tag>jeszcze nie działał</Tag>} body="tight" className="rsch-empty"
-      footer={<span>bez researchu sygnały działają jak dotąd: reguły i alerty na twardych danych</span>}>
-      <div className="lead">Co sobotę Claude przegląda wiadomości, raporty, sentyment i trendy dla Twoich pozycji, obserwowanych i kandydatów wg strategii.</div>
-      <div className="d">Notatki ze źródłami trafią tutaj, do szuflady aktywa i do niedzielnego przeglądu. Fakty i sentyment, bez rekomendacji i prognoz.</div>
+    <Widget title="Research" tags={<Tag>jeszcze nie działał</Tag>} body="tight" className="rsch-empty">
+      <div className="lead">Co sobotę: wiadomości, raporty, sentyment i trendy dla pozycji, obserwowanych i kandydatów.</div>
+      <div className="d">Bez rekomendacji i prognoz.</div>
       <SetupSteps steps={steps} />
     </Widget>
   );

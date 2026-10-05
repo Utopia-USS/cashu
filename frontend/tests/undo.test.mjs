@@ -32,7 +32,7 @@ test("after 15 minutes the undo is not sent at all", async () => {
   const undo = makeUndo(0, async () => { calls += 1; }, () => UNDO_WINDOW_MS + 1);
   assert.equal(await undo.undo(), "expired");
   assert.equal(calls, 0);
-  assert.match(undoMessage("expired", "decyzja"), /Za późno na cofnięcie \(15 minut/);
+  assert.match(undoMessage("expired", "decyzja"), /Za późno na cofnięcie: minęło 15 minut/);
 });
 
 test("a 409 from the server means too late; other failures can be retried", async () => {

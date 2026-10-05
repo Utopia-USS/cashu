@@ -12,7 +12,7 @@ export function Subscriptions() {
 
   return (
     <section className="card chart-card">
-      <h2>Subskrypcje / płatności cykliczne</h2>
+      <h2>Subskrypcje</h2>
       <div className="scroll">
         <table>
           <thead>
@@ -20,7 +20,7 @@ export function Subscriptions() {
           </thead>
           <tbody>
             {!items.length ? (
-              <tr><td colSpan={4} className="muted">Brak wykrytych płatności cyklicznych.</td></tr>
+              <tr><td colSpan={4} className="muted">Brak subskrypcji.</td></tr>
             ) : items.map((r, i) => (
               <tr key={i}>
                 <td>{r.payee} {r.active && <span className="tag live">aktywna</span>}</td>

@@ -320,6 +320,28 @@ upstream-shaped database for migration tests.
 
 ---
 
+## Frontend copy conventions
+
+UI text is Polish, minimal and glanceable. Before adding or changing a string:
+
+- A screen, card or widget never explains what it is for: the title and the data say it. No paragraph
+  under a heading; context needed less than monthly goes into a tooltip (`title` on the label, switch or
+  button), never an inline `<p className="muted">`.
+- Labels are 1-3 word nouns (table headers one word where possible); buttons are 1-2 word verbs
+  (Zapisz, Importuj, Cofnij, Utwórz); the object is implied by the card.
+- Empty state = one line (a state, not an apology) + one action button. Errors say what to do in the same
+  line: "Nie udało się X: {detail}" or "{problem}. {action}." (no "Próbuję ponownie", no apology).
+- Only two kinds of notes, one sentence each: privacy / safety (what the agent sees, nothing leaves the
+  machine, an agent write is always a proposal approved in the app) and irreversible actions. Shared copy
+  lives in one constant (e.g. `PRIVACY_OPTIONS`, `PROPOSAL_NOTE`), never two versions on two screens.
+- Numbers first: `12 400 zł · 3 konta`. Status words are single adjectives / short tags (gotowy, w toku,
+  nieaktualne). Refresh mechanics stay invisible ("co 5 s", "na żywo", "odświeża się").
+- Backend codes get Polish labels in `frontend/src/core/messages.ts` (strategy issues, import warnings,
+  proposals, `X-Finanse-Error-Code` errors, `perf.<code>`, `worker.<code>`); the English text is only the
+  fallback. Product names (Claude Code, MCP, Enable Banking) stay as they are. Never the em dash; hyphen.
+
+---
+
 ## What NOT to do
 
 - Don't sum different currencies into a single net-worth figure.

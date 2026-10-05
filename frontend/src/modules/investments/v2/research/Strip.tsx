@@ -64,7 +64,7 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
     <Widget title="Research" className="rsch" id="inv-research" tags={<span className={`tag ${tag.tone}`}>{tag.text}</span>}
       controls={<>
         {tag.state === "failed" && <CopyCommand cmd={cmd} label="Uruchom ponownie" primary={false} showCmd={false} />}
-        <button className="lnk" onClick={() => ctx.onOpenResearch()}>wszystkie notatki i tematy</button>
+        <button className="lnk" onClick={() => ctx.onOpenResearch()}>wszystkie</button>
       </>}
       body="tight"
       footer={<>
@@ -81,13 +81,13 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
           {theses.length ? theses.slice(0, 6).map(({ s, health }) => (
             <ThesisRow key={s.instrument_id} s={s} health={health} muted={stale} name={ctx.held.get(s.instrument_id)?.name ?? s.label ?? `#${s.instrument_id}`}
               symbol={ctx.held.get(s.instrument_id)?.symbol ?? s.symbol ?? null} onOpen={() => ctx.onOpenAsset(s.instrument_id)} />
-          )) : <div className="empty-line">{last?.status === "running" ? "Notatki pojawią się tu w trakcie przebiegu." : "Brak notatek o pozycjach z ostatnich 30 dni."}</div>}
+          )) : <div className="empty-line">{last?.status === "running" ? "Przebieg trwa…" : "Brak notatek (30 dni)."}</div>}
           {theses.length > 6 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=positions")}>pozostałe {theses.length - 6}</button></div>}
         </div>
         <div>
           <div className="rsec">Tematy i trendy <span className="cnt">· {themes.length}</span></div>
           {themes.length ? themes.slice(0, 5).map((t) => <ThemeRow key={t.theme} t={t} symOf={ctx.symOf} onOpen={() => ctx.onOpenResearch(`theme=${encodeURIComponent(t.theme)}`)} />)
-            : <div className="empty-line">Brak tematów z ostatnich 60 dni.</div>}
+            : <div className="empty-line">Brak tematów.</div>}
         </div>
         <div>
           <div className="rsec">Kandydaci <span className="cnt">· {fresh.length ? `${plural(fresh.length, "nowy", "nowe", "nowych")} wg strategii${ctx.strategyVersion != null ? ` v${ctx.strategyVersion}` : ""}` : "0"}</span></div>
@@ -98,7 +98,7 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
                   onWatch={actions.watch} onDismiss={actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)} />
               ))}
             </div>
-          ) : <div className="empty-line">Brak nowych kandydatów{ctx.strategyVersion != null ? ` · kryteria strategii v${ctx.strategyVersion}` : ""}</div>}
+          ) : <div className="empty-line">Brak nowych kandydatów</div>}
           {open.length > 2 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=candidates")}>wszyscy kandydaci ({open.length})</button></div>}
         </div>
       </div>
@@ -161,11 +161,12 @@ export function NotRun({ ctx, runs, cmd }: { ctx: Pick<StripCtx, "slug" | "today
   return (
     <div className="norun">
       <div className="grow">
-        <b>Sobotnia rutyna nie uruchomiła się.</b>
-        <div className="d">
-          {at ? <>Ostatni research: {wdm(at)}{n != null ? ` · ${nNotes(n)}` : ""}{notesQ.data ? `; nadal ${live.length === 1 ? "ważna" : "ważnych"}: ${live.length}${lastExpiry ? ` (wygasają do ${dm(lastExpiry)})` : ""}` : ""}. </> : null}
-          Przegląd można zamknąć bez researchu{at ? `; tezy pokażą stan z ${dm(at)}` : ""}.
-        </div>
+        <b>Rutyna nie uruchomiła się.</b>
+        {at && (
+          <div className="d">
+            ostatni research {wdm(at)}{n != null ? ` · ${nNotes(n)}` : ""}{notesQ.data ? ` · ważnych ${live.length}${lastExpiry ? ` do ${dm(lastExpiry)}` : ""}` : ""}
+          </div>
+        )}
       </div>
       <CopyCommand cmd={cmd} />
       <button className="btn" onClick={() => setHow((v) => !v)} aria-expanded={how}>Zaplanuj w Claude Code</button>

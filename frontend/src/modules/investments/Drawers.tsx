@@ -1,18 +1,18 @@
 // Drawers over the workspace (one at a time): import, manual transaction, brokerage account,
 // thesis, agent proposal, signal history + decision journal, an instrument's transactions.
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ApiError } from "../../core/api";
 import { describeError, describeImportWarning, proposalError, proposalSummary } from "../../core/messages";
 import { useAsync } from "../../hooks";
-import { Drawer, Notice, RadioList, Seg, Skeleton, Stepper, Tag, useToast } from "../../ui";
+import { Drawer, Notice, RadioList, Skeleton, Stepper, Tag, useToast } from "../../ui";
 import {
-  type AccountRow, approveProposal, type CommitResult, getDecisions, getProposal, getSignals, getTransactions, type ImportPreview,
+  type AccountRow, approveProposal, type CommitResult, getProposal, getTransactions, type ImportPreview,
   type Position, postAccount, postImportCommit, postImportPreview, postThesis, postTransaction, patchThesis, rejectProposal, type Thesis,
 } from "./api";
 import {
-  accountLabel, DECISION_ACTION, dm, dmy, ENTRY_TYPE, isoDate, money, nInstruments, nTxns, numInput, parseNum, plural, qty, TXN_TYPE, txnType, WRAPPER,
+  accountLabel, dm, dmy, ENTRY_TYPE, isoDate, money, nTxns, numInput, parseNum, plural, qty, TXN_TYPE, txnType, WRAPPER,
 } from "./labels";
-import { commitLabel, decisionTag, signalTitle, TXN_RULES, txnCash, validateTxn } from "./logic";
+import { commitLabel, TXN_RULES, txnCash, validateTxn } from "./logic";
 
 /** The Polish label of the error's `X-Finanse-Error-Code` (core/messages.ts), else the server's detail. */
 const errText = (e: unknown) => describeError(e).text;
@@ -78,7 +78,6 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
   const footer = step === 2 && preview ? (
     <>
       <button className="btn" onClick={() => setStep(1)}>← Wstecz</button>
-      <span className="muted" style={{ fontSize: 12 }}>zapamiętam importer dla tego rachunku</span>
       <span style={{ flex: 1 }} />
       <button className="btn primary" disabled={busy || !preview.can_commit || !counts?.new && !fixes.size} onClick={commit}>
         {busy ? "Importuję…" : commitLabel(counts?.new ?? 0, fixes.size)}
@@ -88,6 +87,7 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
     <>
       {accounts.length > 1 && <button className="btn" onClick={() => setStep(0)}>← Wstecz</button>}
       <span style={{ flex: 1 }} />
+      <button className="lnk" onClick={onManual}>dodaj ręcznie</button>
       <button className="btn primary" disabled={!file || busy || (importer === "generic_csv" && !mapping.trim() && !account?.has_mapping)} onClick={runPreview}>
         {busy ? "Sprawdzam…" : "Podgląd"}
       </button>
@@ -114,7 +114,7 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
       {step === 1 && (
         <>
           <div className="field">
-            <label htmlFor="imp-file">Plik od brokera (format finanse .csv / .json albo CSV brokera)</label>
+            <label htmlFor="imp-file">Plik od brokera</label>
             <input id="imp-file" ref={fileRef} type="file" accept=".csv,.json,.txt,text/csv,application/json" data-autofocus
               onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPreview(null); }} />
           </div>
@@ -123,16 +123,15 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
             <select id="imp-importer" value={importer} onChange={(e) => setImporter(e.target.value)}>
               {IMPORTERS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
-            {account?.importer && <span className="hint">zapamiętany dla tego rachunku: {IMPORTERS.find(([k]) => k === account.importer)?.[1] ?? account.importer}{account.has_mapping ? " (z mapowaniem)" : ""}</span>}
+            {account?.importer && <span className="hint">zapamiętany: {IMPORTERS.find(([k]) => k === account.importer)?.[1] ?? account.importer}{account.has_mapping ? " (z mapowaniem)" : ""}</span>}
           </div>
           {importer === "generic_csv" && (
             <div className="field">
-              <label htmlFor="imp-map">Mapowanie kolumn (YAML){account?.has_mapping ? " - puste = zapamiętane" : ""}</label>
+              <label htmlFor="imp-map">Mapowanie (YAML){account?.has_mapping ? " · puste = zapamiętane" : ""}</label>
               <textarea id="imp-map" rows={9} value={mapping} placeholder={MAPPING_HINT} onChange={(e) => setMapping(e.target.value)}
                 style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12 }} />
             </div>
           )}
-          <Notice tone="info" action={<button className="lnk" onClick={onManual}>dodaj ręcznie</button>}>Nic nie zapisuję przed podglądem: zobaczysz nowe wiersze, duplikaty i uzgodnienie ze stanem u brokera. Pojedynczą transakcję możesz też wpisać ręcznie.</Notice>
         </>
       )}
       {step === 2 && preview && (
@@ -141,11 +140,11 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
             <code>{preview.file_name}</code> · importer: {IMPORTERS.find(([k]) => k === preview.importer.id)?.[1] ?? preview.importer.name ?? preview.importer.id ?? "-"}{preview.importer.requested === "auto" ? " (rozpoznany automatycznie)" : ""} · {plural(counts?.rows ?? preview.rows.length, "wiersz", "wiersze", "wierszy")} · <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => setStep(1)}>zmień importer</button>
           </div>
           {preview.errors.length > 0 && (
-            <Notice tone="neg"><b>Plik ma błędy - nic nie zostanie zaimportowane, dopóki ich nie poprawisz.</b>
+            <Notice tone="neg"><b>Plik ma błędy: popraw je przed importem.</b>
               <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{preview.errors.slice(0, 6).map((e, k) => <li key={k}><WarningText w={e} /></li>)}</ul>
             </Notice>
           )}
-          {preview.previous_imports.length > 0 && <Notice tone="warn">Ten sam plik był już importowany ({dm(preview.previous_imports[0].at)}). Wiersze z tamtego importu są oznaczone jako duplikaty.</Notice>}
+          {preview.previous_imports.length > 0 && <Notice tone="warn">Plik importowany już {dm(preview.previous_imports[0].at)}: powtórzone wiersze to duplikaty.</Notice>}
           <div className="controls" style={{ marginBottom: 8 }}>
             <Tag tone="pos" solid>{plural(counts?.new ?? 0, "nowy", "nowe", "nowych")}</Tag>
             <Tag>{plural(counts?.duplicates ?? 0, "duplikat", "duplikaty", "duplikatów")}</Tag>
@@ -185,16 +184,13 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
           {recon && recon.diffs.length > 0 && (
             <>
               <div className="controls" style={{ margin: "16px 0 6px" }}>
-                <strong style={{ fontSize: 14 }}>Uzgodnienie ze stanem u brokera</strong>
+                <strong style={{ fontSize: 14 }}>Uzgodnienie</strong>
                 {recon.as_of && <Tag>snapshot {preview.account.broker_name.replace(/ Broker$/, "")} z {dm(recon.as_of)}</Tag>}
                 <span className="spacer" />
                 <span className="muted" style={{ fontSize: 12 }}>{recon.mismatches ? plural(recon.mismatches, "różnica", "różnice", "różnic") : "zgodne"}</span>
               </div>
-              <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-                Porównujemy ilości po imporcie ze stanem rachunku w pliku brokera. Różnica zwykle oznacza luki w eksporcie; korekta dodaje transakcję „korekta stanu" z zerowym kosztem, którą możesz później uzupełnić.
-              </div>
               <table>
-                <thead><tr><th>Instrument</th><th className="num">U brokera</th><th className="num">Po imporcie</th><th className="num">Różnica</th><th>Korekta</th></tr></thead>
+                <thead><tr><th>Instrument</th><th className="num">U brokera</th><th className="num">Po imporcie</th><th className="num">Różnica</th><th title="Transakcja „korekta stanu” z zerowym kosztem; uzupełnisz ją później.">Korekta</th></tr></thead>
                 <tbody>
                   {recon.diffs.map((d) => {
                     const id = String(d.instrument_id);
@@ -218,7 +214,7 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
           )}
           {newOnes.length > 0 && (
             <Notice tone="info" style={{ margin: "14px 0 0" }}>
-              Po imporcie: {nInstruments(newOnes.length)} do sklasyfikowania ({newOnes.map((i) => i.symbol ?? i.label).join(", ")}). Sygnały przeliczysz przyciskiem „Uruchom reguły" (albo zrobi to praca w tle).
+              Do sklasyfikowania po imporcie: {newOnes.map((i) => i.symbol ?? i.label).join(", ")}.
             </Notice>
           )}
         </>
@@ -227,7 +223,7 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
         <div className="empty" style={{ textAlign: "left", padding: "8px 0" }}>
           <div style={{ color: "var(--text)", fontWeight: 600 }}>Zaimportowano {nTxns(done.inserted)}{done.corrections ? ` i ${plural(done.corrections, "korektę", "korekty", "korekt")}` : ""}.</div>
           <div style={{ fontSize: 13, marginTop: 4 }}>
-            {done.duplicates ? `${plural(done.duplicates, "duplikat pominięty", "duplikaty pominięte", "duplikatów pominiętych")} · ` : ""}plik zarchiwizowany w katalogu danych.
+            {done.duplicates ? plural(done.duplicates, "duplikat pominięty", "duplikaty pominięte", "duplikatów pominiętych") : ""}
           </div>
           <div className="controls" style={{ justifyContent: "flex-start" }}>
             {done.new_instrument_ids.length > 0 && (
@@ -277,7 +273,7 @@ export function TxnDrawer({ slug, accounts, positions, preset, onClose, onSaved 
     quantity: parseNum(q), price: parseNum(price), amount: parseNum(amount), fee: parseNum(fee), split: parseNum(split), date,
   };
   const errors = validateTxn(values, today);
-  if (cross && !(fxNum != null && fxNum > 0)) errors.fx = `Podaj kurs: ile ${accCur} za 1 ${currency} (z potwierdzenia brokera).`;
+  if (cross && !(fxNum != null && fxNum > 0)) errors.fx = `Podaj kurs: ${accCur} za 1 ${currency}.`;
   const rawCash = txnCash(values);
   const cash = rawCash == null ? null : cross ? (fxNum ? rawCash * fxNum : null) : rawCash;
   const fe = (k: string) => (touched && errors[k] ? <span className="fe">{errors[k]}</span> : null);
@@ -301,7 +297,7 @@ export function TxnDrawer({ slug, accounts, positions, preset, onClose, onSaved 
   };
   return (
     <Drawer open title="Dodaj transakcję" tag={account ? <Tag>{accountLabel(account, accounts)}</Tag> : undefined} onClose={onClose} label="Dodaj transakcję"
-      footer={<><span className="hint">{cash != null && cash !== 0 ? `Wpływ na gotówkę: ${money(cash, cross ? accCur : currency, true)}` : rule.sign === "neutral" ? "bez wpływu na gotówkę" : ""}</span><span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Anuluj</button><button className="btn primary" disabled={busy || acc == null} onClick={save}>{busy ? "Zapisuję…" : "Zapisz transakcję"}</button></>}>
+      footer={<><span className="hint">{cash != null && cash !== 0 ? `Wpływ na gotówkę: ${money(cash, cross ? accCur : currency, true)}` : rule.sign === "neutral" ? "bez wpływu na gotówkę" : ""}</span><span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Anuluj</button><button className="btn primary" disabled={busy || acc == null} onClick={save}>{busy ? "Zapisuję…" : "Zapisz"}</button></>}>
       {err && <Notice tone="neg">Nie zapisano: {err}</Notice>}
       <div className="form-row">
         <div className="field">
@@ -342,10 +338,10 @@ export function TxnDrawer({ slug, accounts, positions, preset, onClose, onSaved 
       )}
       <div className="form-row">
         {rule.quantity !== "none" && <div className="field"><label htmlFor="tx-q">Ilość{rule.quantity === "optional" ? " (opcjonalnie)" : ""}</label><input id="tx-q" className="num" inputMode="decimal" value={q} onChange={(e) => setQ(e.target.value)} />{fe("quantity")}</div>}
-        {rule.price !== "none" && <div className="field"><label htmlFor="tx-p">Cena ({currency}){rule.price === "optional" ? " - pusta = koszt nieznany" : ""}</label><input id="tx-p" className="num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />{fe("price")}</div>}
+        {rule.price !== "none" && <div className="field"><label htmlFor="tx-p" title={rule.price === "optional" ? "Pusta = koszt nieznany" : undefined}>Cena ({currency})</label><input id="tx-p" className="num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />{fe("price")}</div>}
         {rule.amount !== "none" && <div className="field"><label htmlFor="tx-a">Kwota ({currency})</label><input id="tx-a" className="num" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />{fe("amount")}</div>}
         {rule.split && <div className="field"><label htmlFor="tx-s">Współczynnik (nowe na 1 starą)</label><input id="tx-s" className="num" inputMode="decimal" value={split} onChange={(e) => setSplit(e.target.value)} />{fe("split")}</div>}
-        {rule.sign !== "neutral" && <div className="field"><label htmlFor="tx-f">Prowizja (opcjonalnie)</label><input id="tx-f" className="num" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} />{fe("fee")}</div>}
+        {rule.sign !== "neutral" && <div className="field"><label htmlFor="tx-f">Prowizja</label><input id="tx-f" className="num" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} />{fe("fee")}</div>}
       </div>
       <div className="form-row">
         <div className="field">
@@ -357,8 +353,8 @@ export function TxnDrawer({ slug, accounts, positions, preset, onClose, onSaved 
         </div>
         {cross && <div className="field"><label htmlFor="tx-fx">Kurs ({accCur} za 1 {currency})</label><input id="tx-fx" className="num" inputMode="decimal" value={fx} onChange={(e) => setFx(e.target.value)} />{fe("fx")}</div>}
       </div>
-      <div className="field"><label htmlFor="tx-note">Notatka (opcjonalnie)</label><input id="tx-note" value={note} onChange={(e) => setNote(e.target.value)} /></div>
-      <div className="foot">Kwoty bez znaku: kierunek wynika z typu (kupno zmniejsza gotówkę, wpłata ją zwiększa). Ten sam wiersz zaimportowany później z pliku brokera zostanie rozpoznany jako duplikat.</div>
+      <div className="field"><label htmlFor="tx-note">Notatka</label><input id="tx-note" value={note} onChange={(e) => setNote(e.target.value)} /></div>
+      <div className="foot">Kwoty bez znaku; kierunek wynika z typu.</div>
     </Drawer>
   );
 }
@@ -383,15 +379,14 @@ export function AccountDrawer({ slug, onClose, onSaved }: { slug: string; onClos
   };
   return (
     <Drawer open title="Dodaj rachunek maklerski" onClose={onClose} label="Dodaj rachunek"
-      footer={<><span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Anuluj</button><button className="btn primary" disabled={busy} onClick={save}>{busy ? "Zapisuję…" : "Dodaj rachunek"}</button></>}>
-      <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>Rachunek = jeden broker + jedno opakowanie podatkowe (zwykłe, IKE, IKZE). Każdy ma własną historię i własny importer.</p>
+      footer={<><span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Anuluj</button><button className="btn primary" disabled={busy} onClick={save}>{busy ? "Zapisuję…" : "Dodaj"}</button></>}>
       {err && <Notice tone="neg">{err}</Notice>}
       <div className="form-row">
         <div className="field"><label htmlFor="ac-b">Broker</label><select id="ac-b" value={broker} onChange={(e) => setBroker(e.target.value)} data-autofocus>{BROKERS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
         <div className="field"><label htmlFor="ac-w">Opakowanie</label><select id="ac-w" value={wrapper} onChange={(e) => setWrapper(e.target.value)}>{Object.entries(WRAPPER).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
         <div className="field"><label htmlFor="ac-c">Waluta</label><select id="ac-c" value={currency} onChange={(e) => setCurrency(e.target.value)}>{["PLN", "EUR", "USD", "GBP", "CHF"].map((c) => <option key={c}>{c}</option>)}</select></div>
       </div>
-      <div className="field"><label htmlFor="ac-n">Nazwa (opcjonalnie)</label><input id="ac-n" value={name} placeholder={auto} maxLength={60} onChange={(e) => setName(e.target.value)} /></div>
+      <div className="field"><label htmlFor="ac-n">Nazwa</label><input id="ac-n" value={name} placeholder={auto} maxLength={60} onChange={(e) => setName(e.target.value)} /></div>
     </Drawer>
   );
 }
@@ -420,13 +415,13 @@ export function ThesisDrawer({ slug, position, thesis, onClose, onSaved }: {
   };
   return (
     <Drawer open title={thesis ? "Edytuj tezę" : "Dodaj tezę"} tag={<Tag>{position.instrument.label}</Tag>} onClose={onClose} label="Teza"
-      footer={<>{thesis && <label style={{ fontSize: 12.5, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" className="check" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} /> przejrzana dziś</label>}<span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Anuluj</button><button className="btn primary" disabled={busy || !text.trim()} onClick={save}>{busy ? "Zapisuję…" : "Zapisz tezę"}</button></>}>
+      footer={<>{thesis && <label style={{ fontSize: 12.5, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" className="check" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} /> przejrzana dziś</label>}<span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Anuluj</button><button className="btn primary" disabled={busy || !text.trim()} onClick={save}>{busy ? "Zapisuję…" : "Zapisz"}</button></>}>
       {err && <Notice tone="neg">{err}</Notice>}
       <div className="field"><label htmlFor="th-e">Typ wejścia</label>
         <select id="th-e" value={entry} onChange={(e) => setEntry(e.target.value)} data-autofocus>{Object.entries(ENTRY_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
       </div>
-      <div className="field"><label htmlFor="th-t">Wejście: dlaczego ta pozycja</label><textarea id="th-t" rows={3} value={text} onChange={(e) => setText(e.target.value)} /></div>
-      <div className="field"><label htmlFor="th-i">Unieważnienie: co by znaczyło, że się mylę</label><textarea id="th-i" rows={2} value={inv} onChange={(e) => setInv(e.target.value)} /></div>
+      <div className="field"><label htmlFor="th-t">Wejście</label><textarea id="th-t" rows={3} placeholder="Dlaczego ta pozycja?" value={text} onChange={(e) => setText(e.target.value)} /></div>
+      <div className="field"><label htmlFor="th-i">Unieważnienie</label><textarea id="th-i" rows={2} placeholder="Co by znaczyło, że się mylę?" value={inv} onChange={(e) => setInv(e.target.value)} /></div>
       <div className="field"><label htmlFor="th-x">Plan wyjścia</label><textarea id="th-x" rows={2} value={exit} onChange={(e) => setExit(e.target.value)} /></div>
       <div className="field"><label htmlFor="th-s">Wielkość i dokupienia</label><textarea id="th-s" rows={2} value={size} onChange={(e) => setSize(e.target.value)} /></div>
     </Drawer>
@@ -483,8 +478,8 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
             {data.status !== "pending" ? ` · ${({ approved: "zatwierdzona", rejected: "odrzucona", failed: "nie udało się zastosować" } as Record<string, string>)[data.status] ?? data.status}` : ""}
           </div>
           {data.detail_error && !unsupported && <Notice tone="warn">{data.detail_error}</Notice>}
-          {unsupported && <Notice tone="warn">Ten import wymaga skryptu konwertera, a aplikacja nie uruchamia skryptów. Poproś agenta, żeby sam uruchomił konwerter i zaproponował gotowy plik w formacie finanse.</Notice>}
-          {data.base_changed && <Notice tone="warn">Pliki strategii zmieniły się od czasu propozycji - zatwierdzenie może się nie udać; poproś agenta o nową propozycję.</Notice>}
+          {unsupported && <Notice tone="warn">Aplikacja nie uruchamia skryptów konwertera: poproś agenta o gotowy plik w formacie finanse.</Notice>}
+          {data.base_changed && <Notice tone="warn">Pliki strategii zmieniły się od propozycji: poproś agenta o nową.</Notice>}
           {data.reason && <div className="thesis" style={{ marginBottom: 12 }}><b>Uzasadnienie agenta:</b> {data.reason}</div>}
           {yamlDiff && <DiffBlock title="Zmiana w strategy.yaml" text={yamlDiff} />}
           {mdDiff && <DiffBlock title="Zmiana w strategy.md" text={mdDiff} />}
@@ -505,7 +500,7 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
               </div>
             </>
           )}
-          <div className="foot">Zapis przez agenta to zawsze propozycja: zatwierdzenie tworzy nową wersję strategii (albo wykonuje import), odrzucenie niczego nie zmienia.</div>
+          <div className="foot">Odrzucenie niczego nie zmienia.</div>
         </>
       )}
     </Drawer>
@@ -522,67 +517,6 @@ function DiffBlock({ title, text }: { title: string; text: string }) {
         ))}
       </div>
     </>
-  );
-}
-
-// ---- signal history + decision journal ---------------------------------------------------
-
-export function HistoryDrawer({ slug, instrument, onClose }: { slug: string; instrument: { id: number | string; label: string } | null; onClose: () => void }) {
-  const [tab, setTab] = useState<"signals" | "journal">(instrument ? "journal" : "signals");
-  const sig = useAsync(() => getSignals(slug, "all"), [slug]);
-  const dec = useAsync(() => getDecisions(slug), [slug]);
-  const [only, setOnly] = useState<string>(instrument ? String(instrument.id) : "");
-  const labels = useMemo(() => new Map((sig.data ?? []).filter((s) => s.instrument_id != null).map((s) => [String(s.instrument_id), s.instrument_label ?? String(s.instrument_id)])), [sig.data]);
-  if (instrument) labels.set(String(instrument.id), instrument.label);
-  const sigs = (sig.data ?? []).filter((s) => !only || String(s.instrument_id) === only);
-  const decs = (dec.data ?? []).filter((d) => !only || String(d.instrument_id) === only);
-  const status: Record<string, string> = { active: "aktywny", acknowledged: "przyjęty", resolved: "rozwiązany", expired: "wygasł" };
-  return (
-    <Drawer open title="Historia sygnałów i dziennik decyzji" width={640} onClose={onClose} label="Historia sygnałów">
-      <div className="controls">
-        <Seg<"signals" | "journal"> items={[["Sygnały", "signals"], ["Dziennik decyzji", "journal"]]} value={tab} onChange={setTab} />
-        <span className="spacer" />
-        <select value={only} onChange={(e) => setOnly(e.target.value)} aria-label="Filtr instrumentu">
-          <option value="">wszystkie instrumenty</option>
-          {[...labels].map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-      </div>
-      {tab === "signals" ? (
-        !sig.data ? <Skeleton h={120} /> : (
-          <table>
-            <thead><tr><th>Od</th><th>Sygnał</th><th>Status</th><th>Decyzja</th></tr></thead>
-            <tbody>
-              {sigs.map((s) => (
-                <tr key={s.id}>
-                  <td>{dm(s.first_seen_at)}</td>
-                  <td style={{ whiteSpace: "normal" }}>{signalTitle(s)} <span className="sym">{s.rule_id}</span></td>
-                  <td>{status[s.status] ?? s.status}{s.closed_at ? ` ${dm(s.closed_at)}` : ""}</td>
-                  <td className="muted">{decisionTag(s.decisions[s.decisions.length - 1])?.replace("decyzja: ", "") ?? "-"}</td>
-                </tr>
-              ))}
-              {!sigs.length && <tr><td colSpan={4} className="muted">Brak sygnałów.</td></tr>}
-            </tbody>
-          </table>
-        )
-      ) : !dec.data ? <Skeleton h={120} /> : (
-        <table>
-          <thead><tr><th>Data</th><th>Instrument</th><th>Decyzja</th><th className="num">Ilość</th><th className="num">Cena</th><th>Powód</th></tr></thead>
-          <tbody>
-            {[...decs].reverse().map((d) => (
-              <tr key={d.id}>
-                <td>{dm(d.created_at)}</td>
-                <td>{d.instrument_id != null ? labels.get(String(d.instrument_id)) ?? `#${d.instrument_id}` : <span className="muted">portfel</span>}</td>
-                <td>{DECISION_ACTION[d.action] ?? d.action}</td>
-                <td className="num">{d.quantity != null ? qty(d.quantity) : "-"}</td>
-                <td className="num">{d.price != null ? money(d.price, d.currency ?? "PLN") : "-"}</td>
-                <td style={{ whiteSpace: "normal", fontSize: 12.5 }} className="muted">{d.reason ?? ""}</td>
-              </tr>
-            ))}
-            {!decs.length && <tr><td colSpan={6} className="muted">Dziennik jest pusty. Decyzje zapisujesz przy sygnałach w kolumnie „Do decyzji".</td></tr>}
-          </tbody>
-        </table>
-      )}
-    </Drawer>
   );
 }
 

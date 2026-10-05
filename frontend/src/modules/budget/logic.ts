@@ -83,10 +83,10 @@ const num = (v: string): number | null => {
 export function cushionPayload(d: CushionDraft, baseCurrency: string): { ok: true; value: CushionSettings } | { ok: false; error: string } {
   const amount = num(d.amount), months = num(d.months), max = num(d.monthlyMax);
   if (d.enabled) {
-    if (d.mode === "amount" && (amount == null || Number.isNaN(amount) || amount <= 0)) return { ok: false, error: "Podaj docelową kwotę poduszki (większą od zera)." };
+    if (d.mode === "amount" && (amount == null || Number.isNaN(amount) || amount <= 0)) return { ok: false, error: "Podaj kwotę większą od zera." };
     if (d.mode === "months" && (months == null || !Number.isInteger(months) || months < 1 || months > 36)) return { ok: false, error: "Liczba miesięcy: od 1 do 36." };
   }
-  if (max != null && (Number.isNaN(max) || max <= 0)) return { ok: false, error: "Limit miesięcznej dopłaty musi być większy od zera (albo pusty)." };
+  if (max != null && (Number.isNaN(max) || max <= 0)) return { ok: false, error: "Maks. dopłata: liczba większa od zera albo puste." };
   const okAmount = amount != null && !Number.isNaN(amount) && amount > 0 ? amount : null;
   const okMonths = months != null && Number.isInteger(months) && months >= 1 && months <= 36 ? months : null;
   return {

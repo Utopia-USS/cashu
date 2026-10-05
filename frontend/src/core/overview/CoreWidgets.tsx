@@ -116,7 +116,7 @@ export function SubscriptionsWidget({ ctx }: { ctx: ModuleCtx }) {
     <Widget title="Subskrypcje" count={subs.count || undefined}
       controls={<button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: "budget.subs" })}>Subskrypcje</button>}
       body="tight"
-      footer={stale.length ? <span className="warn">{plural(stale.length, "subskrypcja", "subskrypcje", "subskrypcji")} do sprawdzenia: brak obciążenia</span> : <span>wykryte z historii obciążeń</span>}>
+      footer={stale.length ? <span className="warn">{plural(stale.length, "subskrypcja", "subskrypcje", "subskrypcji")} bez obciążenia</span> : undefined}>
       <div className="facts" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div className="fact"><div className="l">Miesięcznie</div><div className="v">{monthly != null ? cur0s(monthly, monthlyCur) : "-"}</div>
           {share != null && norm && <div className="d" title={normTitle(norm)}>{pctSigned(share, false)} wydatków</div>}</div>
@@ -151,7 +151,7 @@ export function AccountsWidget({ accounts, categories, onChanged }: { accounts: 
           <button className="lnk" onClick={() => setCash(true)}>{wallet ? "+ wydatek gotówkowy" : "gotówka"}</button>
         </>
       }>
-      {!list.length ? <div className="empty">Brak kont bankowych w tym profilu.</div> : (
+      {!list.length ? <div className="empty">Brak kont bankowych.</div> : (
         <table>
           <tbody>
             {visible.map((a) => (
@@ -179,7 +179,7 @@ export function PendingWidget({ def, m, onHide }: { def: ModuleDef; m: ProfileMo
     <Widget title={def.name} ghost tags={stepsTag(data, m.setup_state)}
       controls={<button className="lnk" onClick={onHide}>ukryj</button>}
       footer={<><span>{data ? `${data.steps.filter((s) => s.status === "done").length} z ${data.steps.length} kroków` : ""}</span><span className="spacer" />
-        <button className="btn sm primary" onClick={() => go({ kind: "setup", module: def.id })}>Kontynuuj konfigurację</button></>}>
+        <button className="btn sm primary" onClick={() => go({ kind: "setup", module: def.id })}>Kontynuuj</button></>}>
       <div className="muted" style={{ fontSize: 13 }}>
         {!data ? <Skeleton w="80%" h={12} /> : next ? `Następny krok: ${next.title.charAt(0).toLowerCase()}${next.title.slice(1)}.` : "Moduł czeka na dane."}
       </div>

@@ -248,12 +248,12 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     try {
       await postStrategyInit(slug);
       await postStrategyReload(slug).catch(() => null);
-      toast("Utworzono strategię z szablonu · uzupełnij strategy.yaml albo poproś agenta o propozycję", 4000);
+      toast("Strategia z szablonu · uzupełnij strategy.yaml", 4000);
       reload();
     } catch (e) { toast(`Nie utworzono strategii: ${errorText(e)}`, 4000); } finally { setInitBusy(false); }
   };
   const classify = async (i: { id: number | string }, patch: { asset_class: string; region: string | null; valuation_mode: string; tags: string[] }) => {
-    try { await patchInstrument(slug, i.id, patch); toast("Zapisano klasyfikację · alokacja przeliczona", 2500); reload(); }
+    try { await patchInstrument(slug, i.id, patch); toast("Zapisano klasyfikację", 2500); reload(); }
     catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 4000); throw e; }
   };
   const alias = async (instrumentId: string, yahoo: string) => {
@@ -300,7 +300,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       setReviewUndo(u ? () => retry : null);
       toast(`Przegląd zapisany · następny ${dm(nextWeekday(today, weekday))}`, 10000, u ? { label: "Cofnij", onClick: retry } : undefined);
     } catch (e) {
-      toast(e instanceof ApiError && e.status === 404 ? "Serwer nie zapisuje jeszcze przeglądów (brak /reviews)." : `Nie zapisano przeglądu: ${errorText(e)}`, 5000);
+      toast(e instanceof ApiError && e.status === 404 ? "Serwer nie obsługuje przeglądów: zaktualizuj aplikację." : `Nie zapisano przeglądu: ${errorText(e)}`, 5000);
     }
   });
 
@@ -393,10 +393,10 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
         title={fr.prices.stale.map((s) => `${s.label}: ${s.price_date ? `ostatnie notowanie ${dm(s.price_date)}` : "brak notowań"}`).join("\n")}
         onClick={() => scrollTo("inv-accounts")}>{stale === 1 ? "1 nieaktualna" : `${stale} nieaktualne`}</button>}
       <span className="spacer" />
-      <button className="btn ghost" onClick={run} disabled={runBusy || !hasData} title="Wycena, alokacja, reguły i alerty teraz (wspólna blokada z pracą w tle)">{runBusy ? "Uruchamiam…" : "Uruchom reguły"}</button>
+      <button className="btn ghost" onClick={run} disabled={runBusy || !hasData} title="Wycena, alokacja, reguły i alerty">{runBusy ? "Uruchamiam…" : "Uruchom reguły"}</button>
       <button className="btn" onClick={() => setDrawer({ kind: "import", account: filter })}>Import</button>
       {!hasData ? <button className="btn" onClick={() => setDrawer({ kind: "txn" })}>Dodaj transakcję</button> : reviewOpen ? (
-        <button className="btn" onClick={() => setReviewOpen(false)}>Zamknij tryb przeglądu</button>
+        <button className="btn" onClick={() => setReviewOpen(false)}>Zamknij przegląd</button>
       ) : (
         <button className={`btn ${due && !light ? "primary" : ""}`} onClick={openReview} title="Przegląd tygodnia">
           {doneLocal && !due ? `Przegląd zrobiony ${dm(doneLocal)}` : `Przegląd tygodnia · ${isDigestDay(today, weekday) ? "dziś" : WEEKDAYS[weekday] ?? weekday}`}
@@ -477,7 +477,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   }
   if (!reviewOpen && !reentry) items.push({ id: "hero", span: 3, node: hero });
   if (last?.status === "failed") {
-    items.push({ id: "failed", span: 3, node: <Notice tone="neg" style={{ margin: 0 }}>Ostatni przebieg reguł się nie udał{last.errors[0] ? `: ${runError(last.errors[0])}` : ""}. Sygnały poniżej pochodzą z wcześniejszego przebiegu.</Notice> });
+    items.push({ id: "failed", span: 3, node: <Notice tone="neg" style={{ margin: 0 }}>Przebieg reguł nieudany{last.errors[0] ? `: ${runError(last.errors[0])}` : ""}. Sygnały z poprzedniego przebiegu.</Notice> });
   }
   const wSignals: GridItem = { id: "signals", span: 2, node: <SignalsWidget signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} review={reviewOpen} expired={expired} onHistory={() => openJournal()} focusId={focusSignal} /> };
   const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsQ.data} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
@@ -563,13 +563,13 @@ function Start({ accounts, strategy, hasTxn, initBusy, onAddAccount, onInitStrat
   const steps: SetupStepItem[] = [
     {
       key: "account", status: hasAccount ? "done" : "on", title: "Rachunek maklerski",
-      hint: hasAccount ? accounts.map((a) => `${accountLabel(a, accounts)} · ${a.currency}`).join(" · ") : "Jeden broker + jedno opakowanie (zwykłe, IKE, IKZE).",
+      hint: hasAccount ? accounts.map((a) => `${accountLabel(a, accounts)} · ${a.currency}`).join(" · ") : "Broker + opakowanie (zwykłe, IKE, IKZE)",
       actions: <button className={`btn ${hasAccount ? "" : "primary"}`} onClick={onAddAccount}>{hasAccount ? "Dodaj kolejny" : "Dodaj rachunek"}</button>,
     },
     {
       key: "strategy", status: hasStrategy ? "done" : hasAccount ? "on" : "todo", title: "Strategia",
-      tag: hasStrategy ? <Tag tone="pos">{strategy!.version != null ? `v${strategy!.version}` : "zapisana"}</Tag> : <Tag tone="info">zalecane teraz</Tag>,
-      hint: hasStrategy ? "Koszyki i cele pojawią się w alokacji od pierwszej wyceny." : <>Cel, horyzont, koszyki i reguły w <code>strategy.yaml</code>; najprościej wywiad w Claude Code: <code>/investments-setup</code>.</>,
+      tag: hasStrategy ? <Tag tone="pos">{strategy!.version != null ? `v${strategy!.version}` : "zapisana"}</Tag> : <Tag tone="info">zalecane</Tag>,
+      hint: hasStrategy ? undefined : <><code>strategy.yaml</code> albo wywiad w Claude Code: <code>/investments-setup</code></>,
       actions: hasStrategy ? undefined : (
         <>
           <button className={`btn ${hasAccount ? "primary" : ""}`} onClick={onInitStrategy} disabled={initBusy}>{initBusy ? "Tworzę…" : "Utwórz z szablonu"}</button>
@@ -579,16 +579,16 @@ function Start({ accounts, strategy, hasTxn, initBusy, onAddAccount, onInitStrat
     },
     {
       key: "txn", status: hasTxn ? "done" : hasStrategy ? "on" : "todo", title: "Pierwsza wpłata lub zakup",
-      hint: "Ręcznie albo import pliku od brokera (format finanse lub CSV z mapowaniem kolumn).",
+      hint: "Ręcznie albo import pliku od brokera.",
       actions: hasAccount ? <><button className="btn" onClick={onAddTxn}>Dodaj transakcję</button><button className="btn" onClick={onImport}>Import</button></> : undefined,
     },
-    { key: "review", status: "todo", title: "Pierwszy przegląd", hint: `${(WEEKDAYS[weekday] ?? weekday).replace(/^./, (m) => m.toUpperCase())} · raz w tygodniu albo rzadziej; aplikacja nie przypomina poza podsumowaniem.` },
+    { key: "review", status: "todo", title: "Pierwszy przegląd", hint: `${(WEEKDAYS[weekday] ?? weekday).replace(/^./, (m) => m.toUpperCase())} · raz w tygodniu` },
   ];
   return (
     <Grid items={[
       {
         id: "start", span: 2, node: (
-          <Widget title="Pierwsze kroki" body="tight" footer={<span>portfel jest pusty: zacznij od strategii, nie od zakupów</span>}>
+          <Widget title="Pierwsze kroki" body="tight">
             <SetupSteps steps={steps} />
             {!hasAccount && <Code cmd={`finanse --profile ${slug} invest accounts add "XTB IKE" --broker xtb --wrapper ike`} />}
           </Widget>
