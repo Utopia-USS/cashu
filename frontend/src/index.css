@@ -385,6 +385,22 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
   .g3 { grid-template-columns: minmax(0, 1fr); }
   .g3 .s2, .g3 .s3, .g3 .s1-full { grid-column: auto; }
 }
+/* split cell (signals-rail.md 1): main stack 2/3 + rail 1/3 on the thirds of .g3; 320 px rail at <= 1180;
+   one column below 900 with the rail's Sygnały + Alerty on top (`--o` from grid.ts splitNarrowOrder) */
+.split { display: grid; grid-template-columns: minmax(0, calc((100% - 32px) * 2 / 3 + 16px)) minmax(0, 1fr); gap: 16px; align-items: start; }
+.split .main, .split .rail { display: grid; gap: 16px; min-width: 0; align-content: start; }
+.split .si { min-width: 0; }
+@media (max-width: 1180px) {
+  .split { grid-template-columns: minmax(0, 1fr) 320px; }
+  /* Aktywa in ~700 px: no 30-day sparkline, no absolute result (Wynik % stays) */
+  .split .main table .c-spark, .split .main table .c-abs { display: none; }
+  .split .main table td:not(:first-child) { white-space: nowrap; }
+}
+@media (max-width: 900px) {
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .split .main, .split .rail { display: contents; }
+  .split .si { order: var(--o, 0); }
+}
 
 /* widget anatomy */
 .w { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 0; }
@@ -706,6 +722,58 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 /* data-quality tag in the shell header (a button that leads to the stale prices) */
 button.tag.hdr-tag { background: transparent; cursor: pointer; font: inherit; font-size: 11px; line-height: 1.5; }
 button.tag.hdr-tag:hover { background: var(--warnBg); }
+/* ===== signals rail (signals-rail.md 2-4): compact rows, wide allocation, the signals dialog ===== */
+.srail .rgrp + .rgrp { margin-top: 12px; }
+.srail .none { color: var(--muted); font-size: 12.5px; padding: 6px 0 4px 18px; }
+.sig.cmp { position: relative; grid-template-columns: 8px minmax(0, 1fr) auto; padding: 7px 0; align-items: center; }
+.sig.cmp:last-child { padding-bottom: 7px; border-bottom: 1px solid var(--border); }
+.srail .rgrp:last-child .sig.cmp:last-child { border-bottom: none; }
+.sig.cmp .pd { margin-top: 0; }
+.sig.cmp .t { display: flex; gap: 0; align-items: baseline; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; font-size: 13.5px; }
+.sig.cmp .t .nm { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the ticker and the badge give way first, then the title truncates (full text in `title`) */
+.sig.cmp .t .sym { margin-left: 5px; flex: 0 1000 auto; min-width: 0; overflow: hidden; }
+.sig.cmp .t .tag.agent { padding: 0 2px; gap: 0; margin-left: 4px; vertical-align: 1px; flex: 0 1000 auto; min-width: 0; overflow: hidden; }
+.sig.cmp .m { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sig.cmp .rt { display: flex; align-items: center; justify-content: flex-end; min-height: 24px; min-width: 52px; }
+.sig.cmp .when { margin: 0; }
+.sig.cmp .act { margin: 0; gap: 4px; flex-wrap: nowrap; }
+.sig.cmp .act .btn.sm { min-height: 24px; padding: 2px 8px; white-space: nowrap; }
+/* age vs actions: the actions stay in the tab order (Tab reveals them) but take no room until hover,
+   focus inside or the j / k cursor; no height change */
+.sig.cmp:not(:hover):not(:focus-within):not(.cur) .act { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); }
+.sig.cmp:hover .when, .sig.cmp:focus-within .when, .sig.cmp.cur .when { display: none; }
+.sig.cmp:hover { background: linear-gradient(90deg, transparent, var(--subtle)); }
+.sig.cmp.open .when { display: inline; }
+.sig.cmp .cf { grid-column: 2 / -1; min-width: 0; }
+@media (hover: none) {
+  .sig.cmp:not(:hover):not(:focus-within):not(.cur) .act { position: static; width: auto; height: auto; overflow: visible; clip: auto; clip-path: none; }
+  .sig.cmp .when { display: none; }
+  .sig.cmp.open .when { display: inline; }
+}
+.tag.agent.mono { padding: 0 2px; gap: 0; }
+/* Alokacja at 2/3: donut 128 + koszyk | teraz | cel | dryf | wartość | do celu */
+.w .alloc.wide { grid-template-columns: 128px minmax(0, 1fr); gap: 20px; }
+.alloc.wide .arow { grid-template-columns: 10px minmax(0, 1fr) 60px 44px 64px 96px 96px; }
+@media (max-width: 760px) {
+  .w .alloc.wide { grid-template-columns: 112px minmax(0, 1fr); gap: 14px; }
+  .alloc.wide .arow { grid-template-columns: 10px minmax(0, 1fr) 52px 40px 58px; }
+  .alloc.wide .c-val, .alloc.wide .c-to { display: none; }
+}
+/* the signals dialog: centered, body scrolls, footer like a widget's */
+.sdlg { position: fixed; top: 48px; left: 50%; transform: translateX(-50%); width: min(1120px, calc(100vw - 48px)); max-height: calc(100vh - 96px);
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 24px 64px rgba(0,0,0,0.35); z-index: 71;
+  display: flex; flex-direction: column; min-width: 0; outline: none; font-size: 14px; line-height: 1.45; }
+.sdlg .dh { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.sdlg .dh strong { font-size: 15px; }
+.sdlg .dh .seg { margin-left: 6px; }
+.sdlg .dh .spacer { flex: 1; }
+.sdlg .dh .hint { color: var(--muted); font-size: 12px; }
+.sdlg .dh .icon-btn:hover { color: var(--text); }
+.sdlg .db { padding: 8px 18px 14px; overflow: auto; flex: 1; min-height: 0; overscroll-behavior: contain; }
+.sdlg .pol2 { align-items: start; }
+.sdlg .wf { border-radius: 0 0 14px 14px; }
+@media (max-width: 760px) { .sdlg { top: 12px; width: calc(100vw - 16px); max-height: calc(100vh - 24px); } .sdlg .dh .hint { display: none; } }
 /* a signal opened from a notification (?signal=<id>) flashes once */
 .sig.flash { animation: sig-flash 2.4s ease-out; border-radius: 6px; }
 @keyframes sig-flash { 0%, 30% { background: var(--infoBg); } 100% { background: transparent; } }

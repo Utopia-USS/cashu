@@ -1,6 +1,7 @@
-// Inwestycje v2 (design/v2/inv-home.html, inv-review.html; ia-v2.md 2-4, 9): the page head, then the widget
-// grid on thirds in reading order: hero, Sygnały (Szanse | Ryzyka) + Alerty, Wartość vs benchmark + Alokacja,
-// Aktywa + Obserwowane, Obsunięcie + Wpłaty + Rachunki. The weekly review is a strip with Co się zmieniło above
+// Inwestycje v2 (design/v2/inv-home.html, inv-review.html; ia-v2.md 2-4, 9; signals-rail.md): the page head,
+// then the widget grid on thirds: hero, one split cell (main 2/3: Wartość vs benchmark, Alokacja, Aktywa;
+// rail 1/3: Sygnały, Alerty, Obserwowane), Obsunięcie + Wpłaty + Rachunki. `Wszystkie` in Sygnały opens the
+// signals dialog (local state, not in the URL). The weekly review is a strip with Co się zmieniło above
 // the grid; after 21+ days away a re-entry banner, the change log and Stan dziś come first. The review strip
 // opens by itself on the profile's digest weekday until the review is marked done (decisions.md 7). Sub-pages:
 // the alerts manager (`/alerts`), the decision journal (`/journal`) and the asset detail (`/assets/{id}`: a
@@ -18,7 +19,7 @@ import type { ModuleCtx } from "../../../core/types";
 import { useAsync, useInFlight } from "../../../hooks";
 import { addDays, localDay } from "../../../time";
 import { Code, Notice, SetupSteps, type SetupStepItem, Seg, Skeleton, Tag, useToast } from "../../../ui";
-import { Fact, Grid, type GridItem, Widget } from "../../../widgets";
+import { Fact, Grid, type GridItem, Split, Widget } from "../../../widgets";
 import {
   type CommitResult, deleteReview, getProposals, getStrategy, patchInstrument, type Position, postReview, postRun, postStrategyInit, postStrategyReload,
   type Thesis,
@@ -33,13 +34,15 @@ import { getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, 
 import { AssetDrawer } from "./AssetDrawer";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
-import { daysSince, instName, isDigestDay, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, staleBenchmark } from "./logic";
+import {
+  daysSince, instName, isDigestDay, nextContribution, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, signalPlace, staleBenchmark,
+} from "./logic";
 import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, DrawdownWidget, ValueChartWidget } from "./Perf";
 import { AccountsWidget, AllocationWidget, AssetList } from "./Portfolio";
 import { insertAfterAttention, useResearchHome } from "./research";
 import { ChangeLog, ChangesWidget, ReentryBanner, ReviewStrip, StateToday } from "./Review";
-import { type SignalsCtx, SignalsWidget } from "./Signals";
+import { type SignalFilter, type SignalsCtx, SignalsDialog, SignalsRail } from "./Signals";
 import { WatchlistWidget } from "./Watchlist";
 
 type DrawerState =
@@ -193,9 +196,15 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     started.current ??= Date.now();
   }, [due, light, hasData, weekday]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A notification click opens `?signal=<id>` (F6 NT): an open signal is scrolled to and highlighted in
-  // Sygnały (the account filter is dropped when it hides it); a closed one opens its asset drawer (the
-  // timeline) or the journal; an unknown or foreign id leaves just the home. Handled once per id.
+  // The signals dialog (signals-rail.md 3): `Wszystkie` in the rail, review step 2, a notification link to a
+  // signal outside the rail's rows. Local state; leaving the home view closes it.
+  const [sigDialog, setSigDialog] = useState<{ filter: SignalFilter; focusId: number | null } | null>(null);
+  useEffect(() => { setSigDialog(null); }, [route]);
+
+  // A notification click opens `?signal=<id>` (F6 NT): an open signal is scrolled to and highlighted in the
+  // Sygnały rail when it is one of its rows, else in the signals dialog (the account filter is dropped when it
+  // hides it); a closed one opens its asset drawer (the timeline) or the journal; an unknown or foreign id
+  // leaves just the home. Handled once per id.
   const signalParam = params.get("signal");
   const needHistory = !!signalParam && !!sig.data && !sig.data.some((s) => String(s.id) === signalParam);
   const sigHistory = useAsync(() => (needHistory ? getSignalsV2(slug, "all").catch(() => []) : Promise.resolve([])).then((list) => ({ for: signalParam, list })),
@@ -209,8 +218,10 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     const t = signalLinkTarget(signalParam, sig.data, needHistory ? sigHistory.data?.list ?? [] : []);
     if (!t) return;
     if (t.kind === "open") {
-      if (filter != null && !signals.some((s) => s.id === t.id)) setFilter(null);
-      setFocusSignal(t.id);
+      const dropFilter = filter != null && !signals.some((s) => s.id === t.id);
+      if (dropFilter) setFilter(null);
+      if (signalPlace(t.id, dropFilter ? sig.data : signals) === "rail") setFocusSignal(t.id);
+      else setSigDialog({ filter: "all", focusId: t.id });
     } else {
       toast(`Ten sygnał jest już zamknięty (${t.status === "expired" ? "wygasł" : t.status === "resolved" ? "rozwiązany" : t.status})`, 4000);
       if (t.kind === "asset") openAsset(t.instrumentId); else openJournal();
@@ -262,9 +273,10 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   };
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const openReview = () => { setReviewOpen(true); setStep(0); started.current ??= Date.now(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  // Review step 2 opens the signals dialog; closing it keeps the review (the strip's chip reopens it).
   const onStep = (k: number) => {
     setStep(k);
-    if (k === 1) setTimeout(() => scrollTo("inv-signals"), 30);
+    if (k === 1) setSigDialog({ filter: "all", focusId: null });
     if (k === 2) document.getElementById("inv-review-note")?.focus();
   };
   // One review per click (F7 FE2): a double click on "Zamknij przegląd" must not store two reviews.
@@ -480,10 +492,13 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   if (last?.status === "failed") {
     items.push({ id: "failed", span: 3, node: <Notice tone="neg" style={{ margin: 0 }}>Przebieg reguł nieudany{last.errors[0] ? `: ${runError(last.errors[0])}` : ""}. Sygnały z poprzedniego przebiegu.</Notice> });
   }
-  const wSignals: GridItem = { id: "signals", span: 2, node: <SignalsWidget signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} review={reviewOpen} expired={expired} onHistory={() => openJournal()} focusId={focusSignal} /> };
+  const wSignals: GridItem = { id: "signals", span: 1, node: <SignalsRail signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} focusId={focusSignal}
+    paused={!!sigDialog} onAll={(f) => setSigDialog({ filter: f ?? "all", focusId: null })} /> };
   const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsQ.data} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
   const wValue: GridItem = { id: "value", span: 2, node: <ValueChartWidget slug={slug} accounts={accountsFilter} nonce={nonce} initial={perf1y.loading ? undefined : perf1y.data} /> };
-  const wAlloc: GridItem = { id: "alloc", span: 1, node: <AllocationWidget alloc={overview.allocation} strategy={strategy ?? null} filtered={filter != null} /> };
+  // Alokacja at 2/3: the next planned contribution and what it closes (whole portfolio only).
+  const next = filter == null ? nextContribution({ amount: plan?.amount ?? null, day: plan?.day ?? null, today, total: overview.allocation.total, buckets: overview.allocation.buckets }) : null;
+  const wAlloc: GridItem = { id: "alloc", span: 1, node: <AllocationWidget alloc={overview.allocation} strategy={strategy ?? null} filtered={filter != null} wide next={next} /> };
   const wAssets: GridItem = { id: "assets", span: 2, node: <AssetList data={positions} accounts={accounts} signals={signals} alerts={alerts} strategy={strategy ?? null}
     onOpen={(id) => openAsset(id)} onAddTxn={() => setDrawer({ kind: "txn" })} onClassify={classify} /> };
   const wWatch: GridItem = { id: "watch", span: 1, node: <WatchlistWidget slug={slug} items={watchQ.data} onChanged={reload} onOpen={(id) => openAsset(id)} autoAdd={route === "watch"} /> };
@@ -495,13 +510,18 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     items.push(wContrib(2), wAccounts);
     if (watch.length || route === "watch") items.push(wWatch);
   } else {
-    const grid = [wSignals, wAlerts, wValue, wAlloc, wAssets, wWatch, wDd, wContrib(1), wAccounts];
+    const split: GridItem = { id: "split", span: 3, node: <Split main={[wValue, wAlloc, wAssets]} rail={[wSignals, wAlerts, wWatch]} /> };
+    const grid = [split, wDd, wContrib(1), wAccounts];
     items.push(...(research.strip ? insertAfterAttention(grid, research.strip) : grid));
   }
   return (
     <>
       {head}
       <Grid items={items.filter(Boolean) as GridItem[]} />
+      {sigDialog && !light && (
+        <SignalsDialog signals={signals} ctx={signalsCtx} filter={sigDialog.filter} focusId={sigDialog.focusId} review={reviewOpen} expired={expired}
+          onHistory={() => openJournal()} onClose={() => setSigDialog(null)} />
+      )}
       {assetDrawer}
       {drawers}
     </>

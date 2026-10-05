@@ -1,7 +1,7 @@
 // v2 shared layer: grid ordering (src/grid.ts) and chart geometry (src/chart.ts), run with `npm test`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { twoColumnOrder } from "../src/grid.ts";
+import { splitNarrowOrder, twoColumnOrder } from "../src/grid.ts";
 import { areaPath, barLayout, donutArcs, extent, labelIndices, linePath, nearestIndex, sparkline, stackLabels, ticks } from "../src/chart.ts";
 
 const ordered = (slots) => {
@@ -17,6 +17,22 @@ test("grid: two-column order of the investments home matches the 1100 mock", () 
   ]);
   assert.deepEqual(r.ids, ["hero", "signals", "value", "alerts", "alloc", "assets", "watch", "dd", "contrib", "accts"]);
   assert.deepEqual(r.alone, []);
+});
+
+test("split: below 900 px Sygnały and Alerty first, then the main column, then Obserwowane (signals-rail.md 1)", () => {
+  const o = splitNarrowOrder(["value", "alloc", "assets"], ["signals", "alerts", "watch"]);
+  assert.deepEqual([...o.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id), ["signals", "alerts", "value", "alloc", "assets", "watch"]);
+  assert.equal(o.get("signals"), 1);
+  assert.equal(o.get("watch"), 6);
+  // a shorter rail keeps its widgets on top; an empty one leaves the main order
+  assert.deepEqual([...splitNarrowOrder(["a", "b"], ["r"]).entries()], [["r", 1], ["a", 2], ["b", 3]]);
+  assert.deepEqual([...splitNarrowOrder(["a"], []).entries()], [["a", 1]]);
+});
+
+test("split: the home grid around the split cell keeps the two-column pairing", () => {
+  const r = ordered([{ id: "hero", span: 3 }, { id: "research", span: 3, defer: true }, { id: "split", span: 3 }, { id: "dd", span: 1 }, { id: "contrib", span: 1 }, { id: "accounts", span: 1 }]);
+  assert.deepEqual(r.ids, ["hero", "research", "split", "dd", "contrib", "accounts"]);
+  assert.deepEqual(r.alone, ["accounts"]);
 });
 
 test("grid: singles pair up in reading order, a leftover single spans the row, wide ones keep order", () => {

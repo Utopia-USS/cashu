@@ -4,7 +4,8 @@
 // URLs beyond example.org). Scenarios via the query string: `?research=none` (never ran), `stale` (last run
 // 26.09), `running`, `failed`.
 import { ApiError } from "../../../../core/api";
-import { relationCounts, sentiment8w } from "./logic";
+import { KIND_LABEL, RELATION_LABEL, relationCounts, sentiment8w } from "./logic";
+import { plural } from "../../labels";
 import type { DigestResearch, InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, ThemeSummary } from "./types";
 
 const SCENARIO = new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("research") ?? "";
@@ -196,7 +197,7 @@ export function researchSignals(slug: string, kind: string, status: string): Rec
   if (status === "history" && open) return [];
   return [{
     id: 961, rule_id: "research:news", kind: "research:news", dedup_key: "research:306:2026-W40", severity: "info", status: open ? "active" : "resolved", polarity: "negative", source: "research",
-    alert_id: null, message: `Research (news, weakens the thesis): ${n.title}; strength 3/3, ${n.sources.length} sources`, instrument_id: 306, instrument_label: "CD Projekt", account_id: null, note_id: n.id,
+    alert_id: null, message: `Analiza (${KIND_LABEL.news}, ${RELATION_LABEL.weakens}): ${n.title}; siła 3/3, ${plural(n.sources.length, "źródło", "źródła", "źródeł")}`, instrument_id: 306, instrument_label: "CD Projekt", account_id: null, note_id: n.id,
     payload: { note_id: n.id, note_ids: [n.id], notes: 1, title: "premiera przesunięta na 2028", relation: "weakens", strength: 3, sources: n.sources.length, kind: "news", symbol: "CDR", name: "CD Projekt", thesis_field: "thesis", week: "2026-W40" },
     first_seen_at: SAT, last_seen_at: SAT, acknowledged_at: null, closed_at: open ? null : n.dismissed_at, decisions: [],
   }];

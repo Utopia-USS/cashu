@@ -6,6 +6,7 @@ import { bucketLabel, dm, money, money0, pct, pctTarget, plural, pp, WEEKDAY_IND
 import { isResearchKind, researchSignalText } from "./research/logic.ts";
 import { localDay, parseServerTime, serverDate } from "../../../time.ts";
 import { describePerfNote } from "../../../core/messages.ts";
+import { nextDeposit } from "../logic.ts";
 
 export type Polarity = "positive" | "negative" | "neutral";
 
@@ -43,13 +44,34 @@ export function polarityOf(sig: Pick<SigLike, "polarity" | "kind">): Polarity {
 
 export const isDecided = (sig: Pick<SigLike, "decisions">) => sig.decisions.length > 0;
 
-/** Signals in two columns (ia-v2 6): Szanse = positive; Ryzyka i przegląd = negative, then neutral at the
- * bottom. Within a column: undecided before decided (decided sink), action before info, newest first. */
+/** Newest first by `first_seen_at` (a missing time counts as the oldest), then action before info, then the
+ * higher id (signals-rail.md 2-3: the rail's rows and the dialog's columns share this order). */
+function byTime<T extends SigLike>(a: T, b: T): number {
+  const time = (x: T) => { const t = parseServerTime(x.first_seen_at); return Number.isNaN(t) ? -Infinity : t; };
+  const ta = time(a), tb = time(b);
+  return (ta === tb ? 0 : tb > ta ? 1 : -1) || (a.severity === "action" ? 0 : 1) - (b.severity === "action" ? 0 : 1) || b.id - a.id;
+}
+const settled = (x: SigLike) => isDecided(x) || !!x.snoozed;
+
+/** Signals in two columns (ia-v2 6): Szanse = positive; Ryzyka i przegląd = negative and neutral. Within a
+ * column (signals-rail.md 3): undecided before decided or snoozed, then newest first, action before info. */
 export function splitByPolarity<T extends SigLike>(list: T[]): { positive: T[]; negative: T[] } {
-  const rank = (x: T) => (isDecided(x) || x.snoozed ? 4 : 0) + (polarityOf(x) === "neutral" ? 2 : 0) + (x.severity === "action" ? 0 : 1);
-  const sorted = [...list].sort((a, b) => rank(a) - rank(b) || b.id - a.id);
+  const sorted = [...list].sort((a, b) => Number(settled(a)) - Number(settled(b)) || byTime(a, b));
   return { positive: sorted.filter((x) => polarityOf(x) === "positive"), negative: sorted.filter((x) => polarityOf(x) !== "positive") };
 }
+
+/** Rows of one rail section (signals-rail.md 2): undecided and not snoozed only, newest first, action before
+ * info, then the higher id; at most `n`. `negative` = Ryzyka i przegląd (negative and neutral). */
+export function railTop<T extends SigLike>(list: T[], polarity: "positive" | "negative", n = 4): T[] {
+  return list.filter((x) => !settled(x) && (polarityOf(x) === "positive") === (polarity === "positive")).sort(byTime).slice(0, n);
+}
+
+/** The rail's rows in reading order (Szanse, then Ryzyka i przegląd): its j / k cursor walks this. */
+export const railRows = <T extends SigLike>(list: T[], n = 4): T[] => [...railTop(list, "positive", n), ...railTop(list, "negative", n)];
+
+/** Where an open signal from a notification link shows (signals-rail.md 3): in the rail when it is one of its
+ * rows, else in the dialog. */
+export const signalPlace = (id: number, list: SigLike[]): "rail" | "dialog" => (railRows(list).some((s) => s.id === id) ? "rail" : "dialog");
 
 /** Undecided signals in reading order (left column, then right): the j / k cursor walks this. */
 export function cursorOrder<T extends SigLike>(list: T[]): T[] {
@@ -442,6 +464,21 @@ export function planMonthsSoFar(firstDeposit: string | null, today: string): num
 export function contributionPp(amount: number, total: number, weight: number): number {
   if (!(amount > 0) || !(total + amount > 0)) return 0;
   return (amount * (1 - Math.min(1, Math.max(0, weight)))) / (total + amount) * 100;
+}
+
+/** Alokacja footer at 2/3 (signals-rail.md 1): the next planned contribution (the plan's day in this or the
+ * next month, as `Odłóż do`) and the percentage points it closes of the most underweight bucket (capped at
+ * that bucket's gap; as the month-close card). Null without a plan amount. */
+export function nextContribution(a: {
+  amount: number | null; day: number | null; today: string; total: number;
+  buckets: { bucket_id: string; weight?: number | null; target: number; drift_pp: number }[];
+}): { date: string; amount: number; bucket: string | null; pp: number | null } | null {
+  if (a.amount == null || !(a.amount > 0)) return null;
+  const date = nextDeposit(a.today, a.day);
+  const under = a.buckets.filter((b) => b.drift_pp < 0).sort((x, y) => x.drift_pp - y.drift_pp)[0];
+  if (!under || !(a.total > 0)) return { date, amount: a.amount, bucket: null, pp: null };
+  const weight = under.weight ?? under.target + under.drift_pp / 100;
+  return { date, amount: a.amount, bucket: under.bucket_id, pp: Math.min(Math.abs(under.drift_pp), contributionPp(a.amount, a.total, Number(weight))) };
 }
 
 /** The card's flow from the month close of one currency: what is left for investing after the cushion top-up

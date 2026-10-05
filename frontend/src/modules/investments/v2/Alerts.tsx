@@ -56,11 +56,10 @@ export function AlertsWidget({ slug, alerts, onManage, onNew, onChanged }: {
   return (
     <Widget title="Alerty" count={live.length || undefined} controls={<button className="btn sm" onClick={onNew}>+ Nowy</button>} body="tight"
       footer={<><FootFacts items={[<><b>{live.length - triggered}</b> aktywne</>, triggered > 0 && <><b>{triggered}</b> wyzwolone</>]} /><span className="spacer" />
-        <button className="lnk" onClick={onManage}>zarządzaj</button></>}>
+        <button className="lnk" onClick={onManage}>Wszystkie ({live.length})</button></>}>
       {!alerts ? <Skeleton h={120} /> : !live.length ? (
         <div className="empty">Brak alertów.</div>
-      ) : live.slice(0, 6).map((a) => <AlertRow key={a.id} a={a} onRemove={a.source === "agent" ? () => remove(a) : undefined} />)}
-      {live.length > 6 && <div className="muted" style={{ fontSize: 12, paddingTop: 6 }}>i {plural(live.length - 6, "kolejny", "kolejne", "kolejnych")} · <button className="lnk" onClick={onManage}>wszystkie</button></div>}
+      ) : live.slice(0, 4).map((a) => <AlertRow key={a.id} a={a} onRemove={a.source === "agent" ? () => remove(a) : undefined} />)}
     </Widget>
   );
 }

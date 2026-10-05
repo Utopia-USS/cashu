@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   alertConditionText, alertDefaultTitle, alertDistance, alertLevelText, alertNowText, alertPreview, changeSince, cursorOrder, daysSince, gapText,
-  groupByMonth, isDigestDay, isImportant, monthlyFlows, nextWeekday, orderAlerts, polarityOf, signalText, splitByPolarity, weekChange,
+  groupByMonth, isDigestDay, isImportant, monthlyFlows, nextContribution, nextWeekday, orderAlerts, polarityOf, railRows, railTop, signalPlace, signalText,
+  splitByPolarity, weekChange,
 } from "../src/modules/investments/v2/logic.ts";
+import { bucketGenitive } from "../src/modules/investments/labels.ts";
 
 const NB = " ";
 const sig = (over) => ({
@@ -27,7 +29,7 @@ test("polarity: server value wins, else the rule kind default (mirrors DEFAULT_P
   assert.equal(polarityOf({ kind: "x", polarity: "bogus" }), "neutral");
 });
 
-test("polarity split: Szanse left, risks then neutral right; undecided action first, decided sink, newest first", () => {
+test("polarity split: Szanse left, risks and neutral right; undecided first, decided and snoozed sink; same time: action first, then id", () => {
   const list = [
     sig({ id: 1, polarity: "negative", severity: "info" }),
     sig({ id: 2, polarity: "positive", severity: "info" }),
@@ -40,8 +42,79 @@ test("polarity split: Szanse left, risks then neutral right; undecided action fi
   ];
   const { positive, negative } = splitByPolarity(list);
   assert.deepEqual(positive.map((s) => s.id), [6, 2, 5]);
-  assert.deepEqual(negative.map((s) => s.id), [4, 8, 1, 3, 7]);
-  assert.deepEqual(cursorOrder(list).map((s) => s.id), [6, 2, 4, 8, 1, 3]);
+  // signals-rail.md 3: neutral no longer sinks below the risks; the time order decides (all equal here).
+  assert.deepEqual(negative.map((s) => s.id), [4, 3, 8, 1, 7]);
+  assert.deepEqual(cursorOrder(list).map((s) => s.id), [6, 2, 4, 3, 8, 1]);
+});
+
+test("polarity split: inside a column newest first by first_seen_at (signals-rail.md 3), not by id", () => {
+  const list = [
+    sig({ id: 10, polarity: "negative", severity: "action", first_seen_at: "2026-09-15T07:02:00Z" }),
+    sig({ id: 3, polarity: "negative", severity: "info", first_seen_at: "2026-10-03T07:02:00Z" }),
+    sig({ id: 4, polarity: "neutral", severity: "info", first_seen_at: "2026-10-02T07:02:00+02:00" }),
+    sig({ id: 2, polarity: "negative", severity: "info", first_seen_at: null }),
+    sig({ id: 9, polarity: "negative", severity: "action", first_seen_at: "2026-09-28T07:02:00Z", decisions: [{ action: "held", quantity: null, created_at: "2026-10-04T10:00:00Z" }] }),
+    sig({ id: 8, polarity: "negative", severity: "info", first_seen_at: "2026-09-12T07:02:00Z", snoozed: true }),
+  ];
+  const { negative } = splitByPolarity(list);
+  assert.deepEqual(negative.map((s) => s.id), [3, 4, 10, 2, 9, 8]);
+});
+
+test("railTop: undecided and not snoozed only, newest first, action before info on a tie, then id; cap 4", () => {
+  const T = "2026-10-02T07:02:00Z";
+  const list = [
+    sig({ id: 1, polarity: "positive", first_seen_at: "2026-09-29T07:02:00Z" }),
+    sig({ id: 2, polarity: "positive", first_seen_at: T, severity: "info" }),
+    sig({ id: 3, polarity: "positive", first_seen_at: T, severity: "action" }),
+    sig({ id: 4, polarity: "positive", first_seen_at: "2026-10-05T05:00:00Z", decisions: [{ action: "held", quantity: null, created_at: "2026-10-05T06:00:00Z" }] }),
+    sig({ id: 5, polarity: "positive", first_seen_at: "2026-10-04T07:02:00Z", snoozed: true }),
+    sig({ id: 6, polarity: "positive", first_seen_at: T, severity: "info" }),
+    sig({ id: 7, polarity: "positive", first_seen_at: "2026-10-03T07:02:00Z" }),
+    sig({ id: 8, polarity: "positive", first_seen_at: "2026-09-01T07:02:00Z" }),
+    sig({ id: 20, polarity: "negative", first_seen_at: "2026-10-01T07:02:00Z" }),
+    sig({ id: 21, polarity: "neutral", first_seen_at: "2026-10-03T07:02:00Z" }),
+    sig({ id: 22, kind: "allocation_drift", first_seen_at: "2026-09-20T07:02:00Z" }),
+  ];
+  assert.deepEqual(railTop(list, "positive").map((s) => s.id), [7, 3, 6, 2]);
+  assert.deepEqual(railTop(list, "positive", 10).map((s) => s.id), [7, 3, 6, 2, 1, 8]);
+  // Ryzyka i przegląd = negative and neutral (an allocation drift without a server polarity is neutral)
+  assert.deepEqual(railTop(list, "negative").map((s) => s.id), [21, 20, 22]);
+  assert.deepEqual(railRows(list).map((s) => s.id), [7, 3, 6, 2, 21, 20, 22]);
+  assert.deepEqual(railTop([], "negative"), []);
+  // the dialog's undecided rows start with the rail's rows (same order)
+  assert.deepEqual(cursorOrder(list).slice(0, 4).map((s) => s.id), [7, 3, 6, 2]);
+});
+
+test("notification link: an open signal among the rail's rows flashes in the rail, any other open one opens the dialog", () => {
+  const list = [1, 2, 3, 4, 5].map((id) => sig({ id, polarity: "positive", first_seen_at: `2026-10-0${id}T07:02:00Z` }))
+    .concat([sig({ id: 9, polarity: "negative", decisions: [{ action: "held", quantity: null, created_at: "2026-10-05T06:00:00Z" }] })]);
+  assert.equal(signalPlace(5, list), "rail");
+  assert.equal(signalPlace(2, list), "rail");
+  assert.equal(signalPlace(1, list), "dialog"); // fifth newest Szanse: not in the rail's top 4
+  assert.equal(signalPlace(9, list), "dialog"); // decided: never in the rail
+  assert.equal(signalPlace(77, list), "dialog");
+});
+
+test("Alokacja footer: next contribution date, amount and the pp it closes of the most underweight bucket", () => {
+  const buckets = [
+    { bucket_id: "global_equity", weight: 0.541, target: 0.6, drift_pp: -5.9 },
+    { bucket_id: "pl_equity", weight: 0.245, target: 0.15, drift_pp: 9.5 },
+    { bucket_id: "treasury_bonds", weight: 0.161, target: 0.2, drift_pp: -3.9 },
+  ];
+  const n = nextContribution({ amount: 2000, day: 10, today: "2026-10-02", total: 186401, buckets });
+  assert.equal(n.date, "2026-10-10");
+  assert.equal(n.amount, 2000);
+  assert.equal(n.bucket, "global_equity");
+  assert.ok(Math.abs(n.pp - (2000 * (1 - 0.541)) / 188401 * 100) < 1e-9);
+  assert.equal(nextContribution({ amount: 2000, day: 10, today: "2026-10-12", total: 186401, buckets }).date, "2026-11-10");
+  // capped at the gap; no underweight bucket: date and amount only; no plan: nothing
+  assert.equal(nextContribution({ amount: 50000, day: 10, today: "2026-10-02", total: 10000, buckets: [{ bucket_id: "x", weight: 0.5, target: 0.51, drift_pp: -1 }] }).pp, 1);
+  assert.deepEqual(nextContribution({ amount: 2000, day: null, today: "2026-10-02", total: 1000, buckets: [buckets[1]] }), { date: "2026-10-10", amount: 2000, bucket: null, pp: null });
+  assert.equal(nextContribution({ amount: null, day: 10, today: "2026-10-02", total: 1000, buckets }), null);
+  assert.equal(bucketGenitive("global_equity"), "Akcji globalnych");
+  assert.equal(bucketGenitive("treasury_bonds"), "Obligacji skarbowych");
+  assert.equal(bucketGenitive("my_custom"), null);
+  assert.equal(bucketGenitive("eu_equity"), null);
 });
 
 test("signal copy: plain words, no rule ids", () => {

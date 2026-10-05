@@ -43,3 +43,11 @@ export function twoColumnOrder(slots: GridSlot[]): { order: Map<string, number>;
   flush();
   return { order, alone };
 }
+
+/** Order of the split cell's widgets below 900 px, where the main column and the rail become one column
+ * (signals-rail.md 1): the rail's first `lead` widgets (Sygnały, Alerty) first, then the main column
+ * (Wartość, Alokacja, Aktywa), then the rest of the rail (Obserwowane). 1-based `order` values. */
+export function splitNarrowOrder(main: string[], rail: string[], lead = 2): Map<string, number> {
+  const ids = [...rail.slice(0, lead), ...main, ...rail.slice(lead)];
+  return new Map(ids.map((id, k) => [id, k + 1]));
+}

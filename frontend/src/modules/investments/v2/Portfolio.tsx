@@ -7,7 +7,7 @@ import { Drawer, Pop, Seg, Tag } from "../../../ui";
 import { FootFacts, Widget } from "../../../widgets";
 import type { AccountRow, Allocation, Instrument, Overview, StrategyStatus } from "../api";
 import {
-  accountLabel, assetClass, bucketColor, bucketLabel, dm, money, money0, nAccountsInv, nBuckets, nInstruments, pct, pctTarget, plural, pp, region,
+  accountLabel, assetClass, bucketColor, bucketGenitive, bucketLabel, dm, money, money0, nAccountsInv, nBuckets, nInstruments, pct, pctTarget, plural, pp, region,
 } from "../labels";
 import { ClassifyCard, WarningsCard } from "../Rail";
 import { warningItems } from "../logic";
@@ -71,7 +71,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
       <div className="scroll">
         <table>
           <thead>
-            <tr><th>Instrument</th><th>30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Udział</th><th className="num">Wartość</th><th className="num" title="Od kosztu (FIFO), ceny zamknięcia">Wynik</th><th className="num">Wynik %</th></tr>
+            <tr><th>Instrument</th><th className="c-spark">30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Udział</th><th className="num">Wartość</th><th className="num c-abs" title="Od kosztu (FIFO), ceny zamknięcia">Wynik</th><th className="num">Wynik %</th></tr>
           </thead>
           <tbody>
             {rows.map((p) => {
@@ -102,20 +102,20 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
                       </span>
                       <span className="sym">{split === "account" && p.accounts.length === 1 ? `${sym} · ${accLabel(p.accounts[0].account_id)}` : sym || assetClass(i.asset_class)}</span>
                     </td>
-                    <td><Spark values={(p.closes_30d ?? []).map((x) => x.close)} tone={cost ? "" : undefined} label={`${i.label}: 30 dni`} /></td>
+                    <td className="c-spark"><Spark values={(p.closes_30d ?? []).map((x) => x.close)} tone={cost ? "" : undefined} label={`${i.label}: 30 dni`} /></td>
                     <td className="num">{p.price != null ? money(p.price, p.price_currency ?? c) : "-"}{p.is_stale && <> <span className="tag warn">{dm(p.price_date)}</span></>}</td>
                     <td className={`num ${cost || wk == null ? "muted" : wk >= 0 ? "pos" : "neg"}`}>{wk != null ? pct(wk, true) : "-"}</td>
                     {weightCell(p.weight)}
                     <td className="num">{money(p.value, c)}</td>
-                    <td className={`num ${resultCls(p.unrealized)}`}>{money0(p.unrealized, c, true)}</td>
+                    <td className={`num c-abs ${resultCls(p.unrealized)}`}>{money0(p.unrealized, c, true)}</td>
                     <td className={`num ${resultCls(p.unrealized_pct)}`}>{pct(p.unrealized_pct, true)}</td>
                   </tr>
                   {parts?.map((a) => (
                     <tr key={`${id}:${a.account_id}`} className="sum">
-                      <td style={{ paddingLeft: 28 }}>{accLabel(a.account_id)}</td><td /><td /><td />
+                      <td style={{ paddingLeft: 28 }}>{accLabel(a.account_id)}</td><td className="c-spark" /><td /><td />
                       {weightCell(a.weight)}
                       <td className="num">{money(a.value, c)}</td>
-                      <td className="num" /><td className={`num ${resultCls(a.unrealized_pct)}`}>{pct(a.unrealized_pct, true)}</td>
+                      <td className="num c-abs" /><td className={`num ${resultCls(a.unrealized_pct)}`}>{pct(a.unrealized_pct, true)}</td>
                     </tr>
                   ))}
                 </Fragment>
@@ -124,9 +124,9 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
             {!rows.length && <tr><td colSpan={8} className="muted">Brak otwartych pozycji.</td></tr>}
             {data.cash.length > 0 && (
               <tr className="sum">
-                <td>Gotówka · {nAccountsInv(cashAccounts)}</td><td /><td /><td />
+                <td>Gotówka · {nAccountsInv(cashAccounts)}</td><td className="c-spark" /><td /><td />
                 {weightCell(data.total ? cash / data.total : null)}
-                <td className="num">{money(cash, c)}</td><td /><td />
+                <td className="num">{money(cash, c)}</td><td className="c-abs" /><td />
               </tr>
             )}
           </tbody>
@@ -140,19 +140,25 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
 
 type AllocView = "buckets" | "classes" | "regions";
 
-export function AllocationWidget({ alloc, strategy, filtered }: { alloc: Allocation; strategy: StrategyStatus | null; filtered: boolean }) {
+export function AllocationWidget({ alloc, strategy, filtered, wide, next }: {
+  alloc: Allocation; strategy: StrategyStatus | null; filtered: boolean;
+  /** At 2/3 of the grid (signals-rail.md 1): donut 128 px + koszyk | teraz | cel | dryf | wartość | do celu;
+   * the footer gains the next contribution instead of the worst bucket's `do celu`. */
+  wide?: boolean;
+  next?: { date: string; amount: number; bucket: string | null; pp: number | null } | null;
+}) {
   const [view, setView] = useState<AllocView>(alloc.has_strategy && alloc.buckets.length ? "buckets" : "classes");
   const order = alloc.buckets.map((b) => b.bucket_id);
   const out = alloc.buckets.filter((b) => b.out_of_band).length;
   const band = alloc.band?.absolute_band_pp ?? null;
   const rows = view === "buckets"
     ? [
-      ...alloc.buckets.map((b) => ({ key: b.bucket_id, name: bucketLabel(b.bucket_id), color: bucketColor(b.bucket_id, order), w: b.weight, target: b.target as number | null, drift: b.drift_pp as number | null, out: !!b.out_of_band, value: b.value })),
-      ...(alloc.unclassified && alloc.unclassified.value ? [{ key: "_none", name: "Bez koszyka", color: "var(--inv-other)", w: alloc.unclassified.weight, target: null, drift: null, out: false, value: alloc.unclassified.value }] : []),
+      ...alloc.buckets.map((b) => ({ key: b.bucket_id, name: bucketLabel(b.bucket_id), color: bucketColor(b.bucket_id, order), w: b.weight, target: b.target as number | null, drift: b.drift_pp as number | null, out: !!b.out_of_band, value: b.value, toTarget: b.to_target as number | null })),
+      ...(alloc.unclassified && alloc.unclassified.value ? [{ key: "_none", name: "Bez koszyka", color: "var(--inv-other)", w: alloc.unclassified.weight, target: null, drift: null, out: false, value: alloc.unclassified.value, toTarget: null }] : []),
     ]
     : (view === "classes" ? alloc.by_asset_class : alloc.by_region).map((s, k) => ({
       key: s.key, name: view === "classes" ? (s.key === "cash" ? "gotówka" : assetClass(s.key)) : region(s.key), color: `var(${["--inv-global", "--inv-pl", "--inv-bonds", "--inv-cash", "--inv-5", "--inv-6", "--inv-7", "--inv-other"][k % 8]})`,
-      w: s.weight, target: null, drift: null, out: false, value: s.value,
+      w: s.weight, target: null, drift: null, out: false, value: s.value, toTarget: null as number | null,
     }));
   const worst = alloc.buckets.filter((b) => b.out_of_band).sort((a, b) => Math.abs(b.to_target) - Math.abs(a.to_target))[0];
   const totalK = alloc.total >= 1000 ? `${Math.round(alloc.total / 1000).toLocaleString("pl-PL")} tys.` : money0(alloc.total, alloc.base_currency);
@@ -162,17 +168,21 @@ export function AllocationWidget({ alloc, strategy, filtered }: { alloc: Allocat
       controls={<Seg quiet label="Podział alokacji" value={view} onChange={setView} items={[...(alloc.buckets.length ? [["Koszyki", "buckets"] as [string, AllocView]] : []), ["Klasy", "classes"], ["Regiony", "regions"]]} />}
       footer={view === "buckets" && alloc.buckets.length ? (
         <>
-          <FootFacts items={[band != null && `pasmo ±${band} pp`, worst && <>do celu: <b>{money0(worst.to_target, alloc.base_currency, true)}</b> {bucketLabel(worst.bucket_id)}</>, filtered && "cel dotyczy całego portfela"]} />
+          <FootFacts items={[band != null && `pasmo ±${band} pp`,
+            wide ? next && <>wpłata {dm(next.date)} ({money0(next.amount, alloc.base_currency)}){next.bucket && next.pp != null && next.pp > 0 && <> domyka <b>{pp(next.pp).replace(/^\+/, "")}</b> {bucketGenitive(next.bucket) ?? bucketLabel(next.bucket)}</>}</>
+              : worst && <>do celu: <b>{money0(worst.to_target, alloc.base_currency, true)}</b> {bucketLabel(worst.bucket_id)}</>,
+            filtered && "cel dotyczy całego portfela"]} />
           <span className="spacer" />{strategy?.version != null && <span>v{strategy.version}</span>}
         </>
       ) : alloc.has_strategy ? undefined : <span>bez strategii</span>}>
       {!rows.length ? <div className="empty">Brak pozycji.</div> : (
-        <div className="alloc">
-          <Donut size={112} label={`Alokacja: ${rows.map((r) => `${r.name} ${pct(r.w)}`).join(", ")}`} segments={rows.map((r) => ({ value: Math.max(0, r.value), color: r.color }))}>
+        <div className={`alloc ${wide ? "wide" : ""}`}>
+          <Donut size={wide ? 128 : 112} label={`Alokacja: ${rows.map((r) => `${r.name} ${pct(r.w)}`).join(", ")}`} segments={rows.map((r) => ({ value: Math.max(0, r.value), color: r.color }))}>
             <b>{totalK}</b><span>{view === "buckets" ? nBuckets(alloc.buckets.length) : plural(rows.length, "pozycja", "pozycje", "pozycji")}</span>
           </Donut>
           <div>
-            <div className="arow head"><span /><span>{view === "buckets" ? "koszyk" : view === "classes" ? "klasa" : "region"}</span><span className="num">teraz</span><span className="num">{view === "buckets" ? "cel" : ""}</span><span className="num">{view === "buckets" ? "dryf" : ""}</span></div>
+            <div className="arow head"><span /><span>{view === "buckets" ? "koszyk" : view === "classes" ? "klasa" : "region"}</span><span className="num">teraz</span><span className="num">{view === "buckets" ? "cel" : ""}</span><span className="num">{view === "buckets" ? "dryf" : ""}</span>
+              {wide && <><span className="num c-val">wartość</span><span className="num c-to">{view === "buckets" ? "do celu" : ""}</span></>}</div>
             {rows.map((r) => (
               <div className="arow" key={r.key}>
                 <span className="sw" style={{ background: r.color }} />
@@ -180,6 +190,7 @@ export function AllocationWidget({ alloc, strategy, filtered }: { alloc: Allocat
                 <span className="num">{pct(r.w)}</span>
                 <span className="num muted">{r.target != null ? pctTarget(r.target) : ""}</span>
                 <span className={`num ${r.out ? "warn" : ""}`}>{r.drift != null ? pp(r.drift) : ""}</span>
+                {wide && <><span className="num c-val">{money0(r.value, alloc.base_currency)}</span><span className="num c-to">{r.toTarget != null ? money0(r.toTarget, alloc.base_currency, true) : ""}</span></>}
               </div>
             ))}
           </div>

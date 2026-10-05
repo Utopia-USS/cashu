@@ -250,6 +250,9 @@ test("grid: the strip only after the first run; after Sygnały + Alerty at three
   assert.ok(r3.alone.has("s"));
   // no Alerty widget (light grid): the strip goes before Wartość vs benchmark
   assert.deepEqual(insertAfterAttention([{ id: "hero" }, { id: "value" }], { id: "research" }).map((x) => x.id), ["hero", "research", "value"]);
+  // signals-rail home: Sygnały + Alerty live in the split cell, the strip goes right before it
+  assert.deepEqual(insertAfterAttention([{ id: "hero" }, { id: "split" }, { id: "dd" }], { id: "research" }).map((x) => x.id), ["hero", "research", "split", "dd"]);
+  assert.deepEqual(insertAfterAttention([{ id: "dd" }], { id: "research" }).map((x) => x.id), ["dd", "research"]);
 });
 
 test("contract accessors: candidate subject, accepted row, restore window, latest note, signal word, direction names", () => {

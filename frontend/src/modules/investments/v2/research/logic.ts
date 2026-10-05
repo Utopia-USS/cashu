@@ -468,10 +468,12 @@ export const scheduleSteps = (path: string | null | undefined, slug: string) =>
 export const showStrip = (runs: ResearchRun[] | null | undefined) => !!runs && runs.length > 0;
 
 /** Position of the research strip in the home grid: right after the attention row (Sygnały + Alerty),
- * before the charts; at two columns it waits for the Alerty + Alokacja pair (`defer`). */
+ * before the charts; at two columns it waits for the Alerty + Alokacja pair (`defer`). The signals-rail home
+ * (one `split` cell holding both) gets it before that cell. */
 export function insertAfterAttention<T extends { id: string }>(items: T[], strip: T): T[] {
   const i = items.findIndex((x) => x.id === "alerts");
-  const at = i >= 0 ? i + 1 : items.findIndex((x) => x.id === "value");
+  let at = i >= 0 ? i + 1 : items.findIndex((x) => x.id === "value");
+  if (at < 0) at = items.findIndex((x) => x.id === "split");
   if (at < 0) return [...items, strip];
   return [...items.slice(0, at), strip, ...items.slice(at)];
 }

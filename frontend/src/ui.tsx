@@ -1,4 +1,5 @@
-import { createContext, type CSSProperties, Fragment, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { attachModal, FOCUSABLE } from "./modal";
 import { dropToast, MIN_ACTION_MS, pushToast, type ToastAction, type ToastItem, toastTimers } from "./toasts";
 
 export function Skeleton({ w = "100%", h = 14, r = 8, style }: {
@@ -347,16 +348,18 @@ export function FactList({ facts }: { facts: [ReactNode, ReactNode, string?][] |
 
 // ---- F3 workspace primitives (design-system-notes 4.2) ----------------------
 
-// history.back() calls made by a closing drawer itself: the popstate they cause is not a "back" press.
-// One global listener, so such an event is consumed even after the drawer unmounted.
-let ownBacks = 0;
-const backHandlers = new Set<() => void>();
-window.addEventListener("popstate", () => {
-  if (ownBacks > 0) { ownBacks--; return; }
-  backHandlers.forEach((h) => h());
-});
-
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+/** Modal behaviour of a panel (modal.ts): Esc (after an open `[data-esc-local]` form inside), Tab trap,
+ * body scroll lock, browser back closes, focus returns to the opener. Shared by `Drawer` and the centered
+ * dialogs (signals-rail.md 3). `focus: "panel"` focuses the panel itself instead of its first control. */
+export function useModal(ref: RefObject<HTMLElement>, open: boolean, onClose: () => void, opts?: { focus?: "first" | "panel" }) {
+  const close = useRef(onClose);
+  close.current = onClose;
+  const focus = opts?.focus;
+  useEffect(() => {
+    if (!open) return;
+    return attachModal(ref.current, { onClose: () => close.current(), focus });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+}
 
 /** Right side panel over a scrim. Esc, the scrim, ✕ and the browser back button close it; focus is
  * trapped inside while it is open and returns to the opener afterwards. */
@@ -365,38 +368,7 @@ export function Drawer({ open, title, tag, width = 520, footer, onClose, childre
   onClose: () => void; children: ReactNode; label?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const close = useRef(onClose);
-  close.current = onClose;
-  useEffect(() => {
-    if (!open) return;
-    const opener = document.activeElement as HTMLElement | null;
-    const el = ref.current;
-    (el?.querySelector<HTMLElement>("[data-autofocus]") ?? el?.querySelector<HTMLElement>(".db " + FOCUSABLE) ?? el)?.focus();
-    // Back button closes the drawer: one history entry per open drawer (same URL).
-    history.pushState({ ...(history.state ?? {}), finanseDrawer: true }, "");
-    let viaBack = false;
-    const onPop = () => { viaBack = true; close.current(); };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close.current(); return; }
-      if (e.key !== "Tab" || !el) return;
-      const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.offsetParent !== null);
-      if (!items.length) return;
-      const first = items[0], last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    backHandlers.add(onPop);
-    document.addEventListener("keydown", onKey, true);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      backHandlers.delete(onPop);
-      document.removeEventListener("keydown", onKey, true);
-      document.body.style.overflow = prev;
-      if (!viaBack && history.state?.finanseDrawer) { ownBacks++; history.back(); }
-      opener?.focus?.();
-    };
-  }, [open]);
+  useModal(ref, open, onClose);
   if (!open) return null;
   return (
     <>

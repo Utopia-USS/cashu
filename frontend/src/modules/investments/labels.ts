@@ -171,6 +171,13 @@ export function bucketLabel(id: string | null | undefined): string {
   const words = id.replace(/[_-]+/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+/** Genitive of the generic bucket labels ("domyka 1,1 pp Akcji globalnych"). */
+const BUCKET_GEN: Record<string, string> = {
+  "Akcje globalne": "Akcji globalnych", "ETF-y obligacyjne": "ETF-ów obligacyjnych", "Obligacje skarbowe": "Obligacji skarbowych", Gotówka: "Gotówki",
+  Akcje: "Akcji", Obligacje: "Obligacji", Kryptowaluty: "Kryptowalut", Nieruchomości: "Nieruchomości", Surowce: "Surowców", Złoto: "Złota",
+};
+export const bucketGenitive = (id: string | null | undefined): string | null => { const l = bucketLabel(id); return l ? BUCKET_GEN[l] ?? null : null; };
+
 
 const BUCKET_COLOR: Record<string, string> = {
   global_equity: "--inv-global", global_equities: "--inv-global", world_equity: "--inv-global",

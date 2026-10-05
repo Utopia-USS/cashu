@@ -2,7 +2,7 @@
 // (title + count tag + controls / body / footer facts), facts as label-value-detail triplets, the hero strip,
 // polarity dots, the agent badge and alert status. Widgets are landmarks (`section` + aria-labelledby).
 import { type CSSProperties, Fragment, type ReactNode, useId } from "react";
-import { type Span, twoColumnOrder } from "./grid";
+import { type Span, splitNarrowOrder, twoColumnOrder } from "./grid";
 
 export interface GridItem {
   id: string;
@@ -33,6 +33,20 @@ export function Grid({ items, className }: { items: GridItem[]; className?: stri
     } else out.push(cell(it));
   }
   return <div className={`g3 ${className ?? ""}`}>{out}</div>;
+}
+
+/** Grid cell with a main column (2/3) and a rail (1/3) aligned to the thirds of `.g3` (signals-rail.md 1):
+ * 320 px rail at <= 1180 px, one column below 900 px with the rail's first two widgets on top
+ * (`splitNarrowOrder` through `--o`). Each column is a stack with the grid gap. */
+export function Split({ main, rail }: { main: Pick<GridItem, "id" | "node">[]; rail: Pick<GridItem, "id" | "node">[] }) {
+  const order = splitNarrowOrder(main.map((x) => x.id), rail.map((x) => x.id));
+  const cell = (it: Pick<GridItem, "id" | "node">) => <div key={it.id} className="si" style={{ "--o": order.get(it.id) } as CSSProperties}>{it.node}</div>;
+  return (
+    <div className="split">
+      <div className="main">{main.map(cell)}</div>
+      <div className="rail">{rail.map(cell)}</div>
+    </div>
+  );
 }
 
 /** Widget frame. `body`: "tight" (less top padding), "flush" (tables edge to edge) or both. */
@@ -113,8 +127,10 @@ export function Hero({ label, value, delta, facts, right, meta, ariaLabel }: {
   );
 }
 
-/** Agent-created item badge (`A agent` / `A alert agenta`). */
-export function AgentTag({ text = "agent" }: { text?: string }) {
+/** Agent-created item badge (`A agent` / `A alert agenta`); `mono` = the monogram only (compact rows), the
+ * text then goes to the tooltip and screen readers. */
+export function AgentTag({ text = "agent", mono }: { text?: string; mono?: boolean }) {
+  if (mono) return <span className="tag agent mono" title={text}><i aria-hidden>A</i><span className="sr-only">{text}</span></span>;
   return <span className="tag agent" title="Dodane przez agenta"><i aria-hidden>A</i>{text}</span>;
 }
 

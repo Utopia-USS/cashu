@@ -1,12 +1,14 @@
-// Sygnały (ia-v2.md 6, F-01/F-05): rule signals and triggered alerts in one list, two columns by polarity
-// (Szanse | Ryzyka i przegląd), plain words instead of rule ids, the thesis under the signal that fired,
+// Sygnały (ia-v2.md 6, F-01/F-05; signals-rail.md 2-3): rule signals and triggered alerts in one list by
+// polarity (Szanse | Ryzyka i przegląd), plain words instead of rule ids. On the home a rail widget shows the
+// four newest undecided signals per polarity as compact rows (actions on hover / focus / the j / k cursor);
+// `Wszystkie (n)` opens the dialog with the full two-column list: the thesis under the signal that fired,
 // actions in place (Zanotuj decyzję, Potwierdź, Odłóż do …), decided items quiet at the bottom. A decision
 // is saved at once; `Cofnij` in the toast deletes it within the server's 15-minute window (F5 R4).
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../core/api";
 import { errorText } from "../../../core/messages";
 import { useAsync, useInFlight } from "../../../hooks";
-import { Seg, useToast } from "../../../ui";
+import { Seg, Skeleton, useModal, useToast } from "../../../ui";
 import { AgentTag, PolDot, Widget } from "../../../widgets";
 import {
   type AccountRow, type BucketRow, deleteDecision, type DecisionInput, getPositionDetail, postAcknowledge, postDecision, postSnooze, type Thesis,
@@ -16,7 +18,7 @@ import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, plural, qty } from ".
 import { decisionEffect, decisionTag, nextDeposit } from "../logic";
 import { canUndo, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
 import type { Alert, PositionV2, SignalV2 } from "./api";
-import { cursorOrder, instName, isDecided, polarityOf, signalStateKey, signalText, splitByPolarity } from "./logic";
+import { instName, isDecided, polarityOf, railTop, signalStateKey, signalText, splitByPolarity } from "./logic";
 import { stillLocked } from "../../../inflight";
 import { isResearchKind, signalNoteId } from "./research/logic";
 import { localDay, parseServerTime } from "../../../time";
@@ -43,90 +45,172 @@ export interface SignalsCtx {
   researchEffect?: (instrumentId: number) => ReactNode;
 }
 
-const ageText = (iso: string | null, today: string) => (!iso ? "" : localDay(iso) === today ? "dziś" : `od ${dm(iso)}`);
+/** Polarity filter of the dialog (`Wszystkie | Szanse n | Ryzyka n`). */
+export type SignalFilter = "all" | "positive" | "negative";
 
-export function SignalsWidget({ signals, ctx, hl, review, expired, onHistory, focusId }: {
-  signals: SignalV2[] | null;
-  ctx: SignalsCtx;
-  hl?: boolean;
-  review?: boolean;
-  /** Signals that expired since the last review (digest), for the footer. */
-  expired?: { title: string }[];
-  onHistory: () => void;
-  /** A notification link (`?signal=<id>`, F6 NT): scroll to this signal, highlight it briefly and put the
-   * cursor on it (Enter or "Zanotuj decyzję" opens the decision form). */
-  focusId?: number | null;
-}) {
-  const list = signals ?? [];
-  const { positive, negative } = splitByPolarity(list);
+const ageText = (iso: string | null, today: string) => (!iso ? "" : localDay(iso) === today ? "dziś" : `od ${dm(iso)}`);
+/** Signals with a decision saved in the last 7 days (footer `decyzje: n z m w tym tygodniu`). */
+const decidedThisWeek = (list: SignalV2[]) => {
+  const weekAgo = Date.now() - 7 * 86400000;
+  return list.filter((s) => s.decisions.some((d) => parseServerTime(d.created_at) >= weekAgo)).length;
+};
+
+/** j / k move a cursor over `order` (the row scrolls into view inside `root`), Enter opens or closes its
+ * decision form; off while `enabled` is false. */
+function useCursor(order: SignalV2[], root: RefObject<HTMLElement>, enabled: boolean) {
   const [openId, setOpenId] = useState<number | null>(null);
   const [cursor, setCursor] = useState<number | null>(null);
-  const theses = useTheses(ctx.slug, list, ctx.positions);
-  const decided = list.filter(isDecided).length;
-  const weekAgo = Date.now() - 7 * 86400000;
-  const decidedWeek = list.filter((s) => s.decisions.some((d) => parseServerTime(d.created_at) >= weekAgo)).length;
-  const order = cursorOrder(list);
   const move = (d: number) => {
     if (!order.length) return;
     const i = order.findIndex((s) => s.id === cursor);
     const next = order[Math.max(0, Math.min(order.length - 1, i < 0 ? 0 : i + d))];
     setCursor(next.id);
-    document.querySelector(`[data-signal="${next.id}"]`)?.scrollIntoView({ block: "nearest" });
+    root.current?.querySelector(`[data-signal="${next.id}"]`)?.scrollIntoView({ block: "nearest" });
   };
   useShortcuts({
     j: () => move(1),
     k: () => move(-1),
     Enter: () => { if (cursor != null) setOpenId((cur) => (cur === cursor ? null : cursor)); },
-  });
-  // Review step 2 focuses the first undecided signal.
-  useEffect(() => { if (review && hl && cursor == null && order[0]) setCursor(order[0].id); }, [review, hl]); // eslint-disable-line react-hooks/exhaustive-deps
-  const present = focusId != null && list.some((s) => s.id === focusId);
+  }, enabled);
+  return { openId, setOpenId, cursor, setCursor };
+}
+
+/** Scroll to a signal inside `root`, flash it once and put the cursor on it (a notification link). */
+function useFocusSignal(focusId: number | null | undefined, present: boolean, root: RefObject<HTMLElement>, setCursor: (id: number) => void) {
   useEffect(() => {
     if (!present || focusId == null) return;
     setCursor(focusId);
     const t = setTimeout(() => {
-      const el = document.querySelector<HTMLElement>(`[data-signal="${focusId}"]`);
+      const el = root.current?.querySelector<HTMLElement>(`[data-signal="${focusId}"]`);
       if (!el) return;
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       el.classList.add("flash");
       setTimeout(() => el.classList.remove("flash"), 2600);
     }, 60);
     return () => clearTimeout(t);
-  }, [focusId, present]);
-  const col = (items: SignalV2[]) => items.map((s) => (
-    <SignalItem key={s.id} s={s} ctx={ctx} thesis={s.instrument_id != null ? theses.get(s.instrument_id) ?? null : null}
-      open={openId === s.id} cursor={cursor === s.id} primary={s.id === (order[0]?.id ?? -1)}
-      onToggle={(v) => { setOpenId(v ? s.id : null); if (v) setCursor(s.id); }} />
-  ));
-  const undecided = list.length - decided;
+  }, [focusId, present]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** The home's Sygnały rail widget (signals-rail.md 2): per polarity its count and the four newest undecided
+ * signals as compact rows; footer = this week's decisions + `Wszystkie (n)` (the dialog). */
+export function SignalsRail({ signals, ctx, focusId, onAll, hl, paused }: {
+  signals: SignalV2[] | null;
+  ctx: SignalsCtx;
+  /** A notification link (`?signal=<id>`) to one of the rail's rows: scroll to it, flash it, cursor on it. */
+  focusId?: number | null;
+  /** `Wszystkie (n)`: open the dialog (on one polarity when given). */
+  onAll: (filter?: SignalFilter) => void;
+  /** Review step 2 (Sygnały). */
+  hl?: boolean;
+  /** The dialog is open: its keyboard owns j / k / Enter. */
+  paused?: boolean;
+}) {
+  const list = signals ?? [];
+  const { positive, negative } = splitByPolarity(list);
+  const top = { positive: railTop(list, "positive"), negative: railTop(list, "negative") };
+  const rows = [...top.positive, ...top.negative];
+  const ref = useRef<HTMLDivElement>(null);
+  const { openId, setOpenId, cursor, setCursor } = useCursor(rows, ref, !paused);
+  useFocusSignal(focusId, focusId != null && rows.some((s) => s.id === focusId), ref, setCursor);
+  const section = (polarity: "positive" | "negative", label: string, count: number, items: SignalV2[]) => (
+    <div className="rgrp">
+      <div className="polh"><PolDot polarity={polarity} />{label} <span className="cnt">{count}</span></div>
+      {items.length ? items.map((s) => (
+        <SignalItem key={s.id} compact s={s} ctx={ctx} thesis={null} open={openId === s.id} cursor={cursor === s.id} primary
+          onToggle={(v) => { setOpenId(v ? s.id : null); if (v) setCursor(s.id); }} />
+      )) : <div className="none">Brak</div>}
+    </div>
+  );
   return (
-    <Widget title="Sygnały" id="inv-signals" hl={hl} count={list.length || undefined}
-      tags={review && decided > 0 ? <span className="tag solid pos">{plural(decided, "rozstrzygnięty", "rozstrzygnięte", "rozstrzygniętych")}</span> : undefined}
-      controls={review ? <span className="muted" style={{ fontSize: 12 }}>j / k: następny · Enter: decyzja</span> : <button className="lnk" onClick={onHistory}>dziennik</button>}
-      body="tight"
-      footer={review ? (
-        <span>bez decyzji: <b>{undecided}</b></span>
-      ) : (
-        <>
-          <span>decyzje: <b>{decidedWeek} z {list.length}</b> w tym tygodniu</span>
-          {expired && expired.length > 0 && <span>{plural(expired.length, "sygnał wygasł", "sygnały wygasły", "sygnałów wygasło")} ({expired.slice(0, 2).map((e) => e.title).join(", ")})</span>}
-        </>
-      )}>
-      {!signals ? <div className="skeleton" style={{ height: 140 }} /> : !list.length ? (
+    <Widget title="Sygnały" id="inv-signals" hl={hl} count={list.length || undefined} body="tight" className="srail"
+      footer={!signals ? undefined : list.length ? (
+        <><span>decyzje: <b>{decidedThisWeek(list)} z {list.length}</b> w tym tygodniu</span><span className="spacer" />
+          <button className="lnk" onClick={() => onAll()}>Wszystkie ({list.length})</button></>
+      ) : <><span className="spacer" /><button className="lnk" disabled>Wszystkie (0)</button></>}>
+      {!signals ? <Skeleton h={140} /> : !list.length ? (
         <div className="empty">Brak otwartych sygnałów.</div>
       ) : (
-        <div className="pol2">
-          <div>
-            <div className="polh"><PolDot polarity="positive" />Szanse <span className="cnt">{positive.length}</span></div>
-            {positive.length ? col(positive) : <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Brak</div>}
-          </div>
-          <div>
-            <div className="polh"><PolDot polarity="negative" />Ryzyka i przegląd <span className="cnt">{negative.length}</span></div>
-            {negative.length ? col(negative) : <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Brak</div>}
-          </div>
+        <div ref={ref}>
+          {section("positive", "Szanse", positive.length, top.positive)}
+          {section("negative", "Ryzyka i przegląd", negative.length, top.negative)}
         </div>
       )}
     </Widget>
+  );
+}
+
+/** All open signals (signals-rail.md 3): a centered modal with the two-column list, a polarity filter and the
+ * footer (decisions this week, expired since the last review, the journal). Review mode: the keyboard hint,
+ * the cursor on the first undecided signal, `bez decyzji: n`. Leaving to an asset, a note or the journal
+ * closes it first. */
+export function SignalsDialog({ signals, ctx, filter: initial = "all", focusId, review, expired, onHistory, onClose }: {
+  signals: SignalV2[];
+  ctx: SignalsCtx;
+  filter?: SignalFilter;
+  /** A notification link to a signal outside the rail's rows: scroll to it, flash it, cursor on it. */
+  focusId?: number | null;
+  review?: boolean;
+  /** Signals that expired since the last review (digest), for the footer. */
+  expired?: { title: string }[];
+  onHistory: () => void;
+  onClose: () => void;
+}) {
+  const list = signals;
+  const { positive, negative } = splitByPolarity(list);
+  const [filter, setFilter] = useState<SignalFilter>(initial);
+  const shown = { positive: filter !== "negative" ? positive : [], negative: filter !== "positive" ? negative : [] };
+  const order = [...shown.positive, ...shown.negative].filter((x) => !isDecided(x) && !x.snoozed);
+  const ref = useRef<HTMLDivElement>(null);
+  useModal(ref, true, onClose, { focus: "panel" });
+  const { openId, setOpenId, cursor, setCursor } = useCursor(order, ref, true);
+  const theses = useTheses(ctx.slug, list, ctx.positions);
+  // Review step 2 puts the cursor on the first undecided signal.
+  useEffect(() => { if (review && focusId == null && order[0]) setCursor(order[0].id); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useFocusSignal(focusId, focusId != null && list.some((s) => s.id === focusId), ref, setCursor);
+  const leave = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => { onClose(); fn(...a); };
+  const dctx: SignalsCtx = { ...ctx, onOpenAsset: leave(ctx.onOpenAsset), onOpenNote: ctx.onOpenNote && leave(ctx.onOpenNote) };
+  const decided = list.filter(isDecided).length;
+  const col = (polarity: "positive" | "negative", items: SignalV2[], count: number) => (
+    <div>
+      <div className="polh"><PolDot polarity={polarity} />{polarity === "positive" ? "Szanse" : "Ryzyka i przegląd"} <span className="cnt">{count}</span></div>
+      {items.length ? items.map((s) => (
+        <SignalItem key={s.id} s={s} ctx={dctx} thesis={s.instrument_id != null ? theses.get(s.instrument_id) ?? null : null}
+          open={openId === s.id} cursor={cursor === s.id} primary={s.id === (order[0]?.id ?? -1)}
+          onToggle={(v) => { setOpenId(v ? s.id : null); if (v) setCursor(s.id); }} />
+      )) : <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Brak</div>}
+    </div>
+  );
+  return (
+    <>
+      <div className="scrim" onClick={onClose} aria-hidden />
+      <div className="sdlg" role="dialog" aria-modal="true" aria-label="Sygnały" ref={ref} tabIndex={-1}>
+        <div className="dh">
+          <strong>Sygnały</strong>
+          {list.length > 0 && <span className="tag">{list.length}</span>}
+          {review && decided > 0 && <span className="tag solid pos">{plural(decided, "rozstrzygnięty", "rozstrzygnięte", "rozstrzygniętych")}</span>}
+          <Seg<SignalFilter> quiet label="Filtr sygnałów" value={filter} onChange={setFilter}
+            items={[["Wszystkie", "all"], [`Szanse ${positive.length}`, "positive"], [`Ryzyka ${negative.length}`, "negative"]]} />
+          <span className="spacer" />
+          <span className="hint">j / k: następny · Enter: decyzja</span>
+          <button className="icon-btn" title="Zamknij (Esc)" aria-label="Zamknij" onClick={onClose}>✕</button>
+        </div>
+        <div className="db">
+          {!list.length ? <div className="empty">Brak otwartych sygnałów.</div> : filter === "all" ? (
+            <div className="pol2">{col("positive", positive, positive.length)}{col("negative", negative, negative.length)}</div>
+          ) : col(filter, filter === "positive" ? positive : negative, filter === "positive" ? positive.length : negative.length)}
+        </div>
+        <div className="wf">
+          {review ? <span>bez decyzji: <b>{list.length - decided}</b></span> : (
+            <>
+              <span>decyzje: <b>{decidedThisWeek(list)} z {list.length}</b> w tym tygodniu</span>
+              {expired && expired.length > 0 && <span>{plural(expired.length, "sygnał wygasł", "sygnały wygasły", "sygnałów wygasło")} ({expired.slice(0, 2).map((e) => e.title).join(", ")})</span>}
+            </>
+          )}
+          <span className="spacer" />
+          <button className="lnk" onClick={leave(onHistory)}>dziennik</button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -148,8 +232,11 @@ function thesisLine(t: Thesis): string {
   return [t.entry_type ? ENTRY_TYPE[t.entry_type] ?? t.entry_type : null, t.size_plan, t.exit_plan ? `wyjście ${t.exit_plan}` : null].filter(Boolean).join(" · ");
 }
 
-export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: {
+export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, compact }: {
   s: SignalV2; ctx: SignalsCtx; thesis: Thesis | null; open: boolean; cursor: boolean; primary: boolean; onToggle: (open: boolean) => void;
+  /** The rail's row (signals-rail.md 2): two one-line rows, no thesis, the age swapped for `Zanotuj` (or
+   * `Odłóż`) and `Potwierdź` on hover, focus inside and the cursor; the decision form opens below. */
+  compact?: boolean;
 }) {
   const toast = useToast();
   // One request at a time per signal (F7 FE2): a double click must not record two decisions.
@@ -222,8 +309,51 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
     const retry = () => { void runUndo(u, "decyzja", retry); };
     retry();
   } : null;
+  // Esc or `Zwiń` in the form: back to the row's first action (keeps the keyboard in place; in the rail the
+  // focus reveals the actions).
+  const row = useRef<HTMLDivElement>(null);
+  const collapse = () => {
+    onToggle(false);
+    requestAnimationFrame(() => row.current?.querySelector<HTMLElement>(".act button:not([disabled])")?.focus());
+  };
+  const title = held ? <button className="nm" onClick={() => ctx.onOpenAsset(s.instrument_id!)}>{text.title}</button>
+    : compact ? <span className="nm">{text.title}</span> : text.title;
+  const metric = decided ? <><span className="tag solid pos">{decisionTag(decided)}</span>{text.bold ? <> · {text.bold}</> : null}{s.kind === "position_concentration" || s.kind === "allocation_drift" ? " · wraca w podsumowaniu" : ""}
+    {rowUndo && <> · <button className="lnk" style={{ fontSize: 12 }} onClick={rowUndo}>cofnij</button></>}</>
+    : snoozed ? <><span className="tag solid pos">odłożono{s.snoozed_until ? ` do ${dm(s.snoozed_until)}` : ""}</span>{text.bold ? <> · {text.lead ? `${text.lead} ` : ""}{text.bold}</> : null}</>
+    : <>{text.lead ? `${text.lead} ` : ""}{text.bold && <b>{text.bold}</b>}{text.tail ? ` ${text.tail}` : ""}</>;
+  const form = <DecisionForm s={s} ctx={ctx} pending={busy} onCollapse={collapse} onDecide={decide} onAck={ack} />;
+  const age = ageText(decided?.created_at ?? s.first_seen_at, ctx.today);
+  if (compact) {
+    return (
+      <div ref={row} className={`sig cmp ${quiet ? "quiet" : ""} ${cursor && !open ? "cur" : ""} ${open ? "open" : ""}`} data-signal={s.id}>
+        <PolDot polarity={polarityOf(s)} quiet={quiet} />
+        <div className="mn">
+          <div className="t" title={[text.title, text.sym].filter(Boolean).join(" ")}>
+            {title}
+            {text.sym && <span className="sym">{text.sym}</span>}
+            {alert?.source === "agent" && <AgentTag mono text="alert agenta" />}
+            {research && <AgentTag mono text="research" />}
+          </div>
+          <div className="m" title={[text.lead, text.bold, text.tail].filter(Boolean).join(" ")}>{metric}</div>
+        </div>
+        <div className="rt">
+          <span className="when">{age}</span>
+          {!quiet && !open && (
+            <span className="act">
+              {s.kind === "contribution_gap" ? (
+                <button className="btn sm primary" disabled={busy} title={`Odłóż do ${dm(later)}`} aria-label={`Odłóż do ${dm(later)}`} onClick={() => snooze(later)}>Odłóż</button>
+              ) : <button className="btn sm primary" aria-label="Zanotuj decyzję" onClick={() => onToggle(true)}>Zanotuj</button>}
+              <button className="btn sm" disabled={busy} onClick={() => ack()}>Potwierdź</button>
+            </span>
+          )}
+        </div>
+        {!quiet && open && <div className="cf">{form}</div>}
+      </div>
+    );
+  }
   return (
-    <div className={`sig ${quiet ? "quiet" : ""} ${cursor && !open ? "cur" : ""}`} data-signal={s.id}>
+    <div ref={row} className={`sig ${quiet ? "quiet" : ""} ${cursor && !open ? "cur" : ""}`} data-signal={s.id}>
       <PolDot polarity={polarityOf(s)} quiet={quiet} />
       <div>
         <div className="t">
@@ -232,18 +362,11 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
           {alert?.source === "agent" && <AgentTag text="alert agenta" />}
           {research && <AgentTag text="research" />}
         </div>
-        <div className="m">
-          {decided ? <><span className="tag solid pos">{decisionTag(decided)}</span>{text.bold ? <> · {text.bold}</> : null}{s.kind === "position_concentration" || s.kind === "allocation_drift" ? " · wraca w podsumowaniu" : ""}
-            {rowUndo && <> · <button className="lnk" style={{ fontSize: 12 }} onClick={rowUndo}>cofnij</button></>}</>
-            : snoozed ? <><span className="tag solid pos">odłożono{s.snoozed_until ? ` do ${dm(s.snoozed_until)}` : ""}</span>{text.bold ? <> · {text.lead ? `${text.lead} ` : ""}{text.bold}</> : null}</>
-            : <>{text.lead ? `${text.lead} ` : ""}{text.bold && <b>{text.bold}</b>}{text.tail ? ` ${text.tail}` : ""}</>}
-        </div>
+        <div className="m">{metric}</div>
         {!quiet && thesis && (thesis.thesis || thesis.exit_plan) && (
           <div className="th"><b>Teza ({thesis.created_at ? `${thesis.created_at.slice(5, 7)}.${thesis.created_at.slice(0, 4)}` : "-"})</b> {thesisLine(thesis) || thesis.thesis}</div>
         )}
-        {!quiet && (open ? (
-          <DecisionForm s={s} ctx={ctx} pending={busy} onCollapse={() => onToggle(false)} onDecide={decide} onAck={ack} />
-        ) : (
+        {!quiet && (open ? form : (
           <div className="act">
             <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)}>Zanotuj decyzję</button>
             <button className="btn sm" disabled={busy} onClick={() => ack()}>Potwierdź</button>
@@ -252,7 +375,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
           </div>
         ))}
       </div>
-      <div className="when">{ageText(decided?.created_at ?? s.first_seen_at, ctx.today)}</div>
+      <div className="when">{age}</div>
     </div>
   );
 }
@@ -310,7 +433,7 @@ export function DecisionForm({ s, ctx, pending, onCollapse, onDecide, onAck }: {
     try { await onDecide(input, decisionTag({ action: ACTION[act], quantity: trade ? qn : null }) ?? "decyzja"); } finally { setBusy(false); }
   };
   return (
-    <div className="decide" ref={ref} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCollapse(); } }}>
+    <div className="decide" ref={ref} data-esc-local onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCollapse(); } }}>
       <div className="fr"><label>Decyzja</label>
         <Seg<Act> label="Decyzja" items={[["Nic", "none"], ["Dokupuję", "buy"], ["Sprzedaję", "sell"], ["Odkładam", "later"]]} value={act} onChange={setAct} /></div>
       {s.instrument_id != null && ctx.researchEffect?.(s.instrument_id) && <div className="eff">{ctx.researchEffect(s.instrument_id)}</div>}
