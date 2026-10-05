@@ -51,6 +51,21 @@ env/
 build/
 dist/
 
+# --- Agent artifacts & screenshots (local only) ------------------------------
+/docs/fork/
+/docs/specs/
+/docs/progress/
+/docs/design/
+/screens/
+/screenshots/
+/*.png
+/*.jpg
+*.screenshot.png
+.claude/worktrees/
+frontend/test-results/
+frontend/playwright-report/
+frontend/e2e/output/
+
 # --- System / IDE ------------------------------------------------------------
 .DS_Store
 *.swp
