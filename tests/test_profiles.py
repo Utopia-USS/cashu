@@ -51,8 +51,15 @@ PROFILE_GETS = [
     "/modules/assets/setup",
     "/modules/loans/setup",
     "/modules/investments/setup",
+    "/proposals",
+    "/proposals?status=pending",
+    "/reviews",
+    "/reviews?module=investments",
+    "/mcp/calls",
+    "/mcp",
 ]
-LEGACY_LESS = ("/modules/",)  # profile-only routes (no /api alias)
+# profile-only routes (no /api alias)
+LEGACY_LESS = ("/modules/", "/proposals", "/reviews", "/mcp")
 ID_KEYS = {"id", "account_id"}
 
 
@@ -272,7 +279,8 @@ def test_legacy_aliases_equal_the_default_profile(api):
 
 def test_every_profile_route_is_in_the_isolation_list():
     """A new profile-scoped GET route must be added to PROFILE_GETS. Investments routes have
-    their own list and isolation test (tests/investments/persistence/test_invp_isolation.py)."""
+    their own list and isolation test (tests/investments/persistence/test_invp_isolation.py);
+    a proposal by id is covered by tests/test_proposals.py."""
     templates = {
         path.removeprefix("/api/p/{slug}")
         for path, ops in app.openapi()["paths"].items()
@@ -280,6 +288,8 @@ def test_every_profile_route_is_in_the_isolation_list():
         and not path.startswith("/api/p/{slug}/investments/")
     }
     covered = {re.sub(r"/category/[^/]+/", "/category/{key}/", p.split("?")[0]) for p in PROFILE_GETS}
+        # a proposal by id: cross-profile 404s in tests/test_proposals.py
+        and path != "/api/p/{slug}/proposals/{proposal_id}"
     covered = {re.sub(r"/modules/[^/]+/setup", "/modules/{module_id}/setup", p) for p in covered}
     assert templates <= covered, templates - covered
 
