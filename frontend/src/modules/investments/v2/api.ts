@@ -14,6 +14,9 @@ export interface SignalV2 extends Signal {
   alert_id?: number | null;
   snoozed_until?: string | null;
   snoozed?: boolean;
+  /** Alert signals (F6 BE): `alert.<kind>` + params for the Polish fact (core/messages.ts); null for rules. */
+  message_code?: string | null;
+  message_params?: Record<string, unknown> | null;
 }
 
 export interface AttentionItem {
@@ -128,6 +131,11 @@ export interface DigestEvent {
   instrument_label?: string | null;
   rule_id?: string;
   severity?: string;
+  /** Allocation-drift signal events: the bucket (F6 BE). */
+  bucket_id?: string | null;
+  /** Alert signal events: `alert.<kind>` + params (F6 BE), the Polish fact via core/messages.ts. */
+  message_code?: string | null;
+  message_params?: Record<string, unknown> | null;
   file_name?: string;
   inserted?: number;
   account_id?: number | null;
@@ -217,7 +225,7 @@ export const restoreAlert = (slug: string, id: number) => jpost<Alert>(inv(slug,
 
 export const getWatchlist = (slug: string) => j<WatchItem[]>(inv(slug, "/watchlist"));
 export const postWatch = (slug: string, b: { symbol_or_isin?: string; instrument_id?: number; note?: string | null; currency?: string | null }) =>
-  jpost<WatchItem & { created_instrument: boolean; warnings: string[] }>(inv(slug, "/watchlist"), b);
+  jpost<WatchItem & { created_instrument: boolean; warnings: string[]; warning_codes?: { code: string; params: Record<string, unknown> | null; message: string }[] }>(inv(slug, "/watchlist"), b);
 export const deleteWatch = (slug: string, id: number) => jdel<{ deleted: number }>(inv(slug, `/watchlist/${id}`));
 
 // ---- planned deposits (F6 BE: `inv_planned_deposits`; "Zaplanuj wpłatę" on Przegląd and the minimal view) --

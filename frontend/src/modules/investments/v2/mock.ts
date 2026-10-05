@@ -91,7 +91,7 @@ function janState(): V2State {
     alertSignals: [
       { id: 951, rule_id: "alert:801", kind: "alert:price_below", dedup_key: "alert:801", severity: "action", status: "active", polarity: "positive", source: "alert", alert_id: 801, message: "EIMI poniżej 75,00 zł: closed at 74.57 PLN", instrument_id: 307, instrument_label: "iShares MSCI EM IMI", account_id: null, payload: { alert_kind: "price_below", symbol: "EIMI", level: "75", close: "74.57", currency: "PLN", title: "EIMI poniżej 75,00 zł" }, first_seen_at: "2026-10-02T07:02:00+02:00", last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
       { id: 952, rule_id: "alert:802", kind: "alert:change_pct", dedup_key: "alert:802", severity: "info", status: "active", polarity: "negative", source: "alert", alert_id: 802, message: "KGHM -10 % w 30 sesji: fell 12.4%", instrument_id: 305, instrument_label: "KGHM", account_id: null, payload: { alert_kind: "change_pct", symbol: "KGH", change: -0.124, threshold: 0.1, window_days: 30, direction: "down" }, first_seen_at: "2026-10-03T07:02:00+02:00", last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
-      { id: 905, rule_id: "global_below", kind: "allocation_drift", dedup_key: "global_below", severity: "info", status: "active", polarity: "positive", source: "rule", alert_id: null, message: "global equity below target", instrument_id: null, instrument_label: null, account_id: null, payload: { bucket_id: "global_equity", weight: 0.57, target: 0.6, drift_pp: -3.0, drift_value_base: "-5590", currency: "PLN", absolute_band_pp: 5, relative_band: 0.05 }, first_seen_at: `${TODAY}T07:02:00+02:00`, last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
+      { id: 905, rule_id: "global_below", kind: "allocation_drift", dedup_key: "global_below", severity: "info", status: "active", polarity: "neutral", source: "rule", alert_id: null, message: "global equity below target", instrument_id: null, instrument_label: null, account_id: null, payload: { bucket_id: "global_equity", weight: 0.57, target: 0.6, drift_pp: -3.0, drift_value_base: "-5590", currency: "PLN", absolute_band_pp: 5, relative_band: 0.05 }, first_seen_at: `${TODAY}T07:02:00+02:00`, last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
     ],
   };
 }
@@ -234,12 +234,13 @@ function martaOverview() {
 // ---- digest events ----------------------------------------------------------------------------------------
 function janEvents(since: string) {
   const ev = [
-    { type: "alert_triggered", at: "2026-10-03T07:02:00+02:00", date: "2026-10-03", polarity: "negative", alert_id: 802, instrument_label: "KGHM", message: "KGHM -10 % w 30 sesji", kind: "alert:change_pct" },
+    { type: "alert_triggered", at: "2026-10-03T07:02:00+02:00", date: "2026-10-03", polarity: "negative", alert_id: 802, instrument_label: "KGHM", message: "KGHM -10 % w 30 sesji", kind: "alert:change_pct",
+      message_code: "alert.change_pct", message_params: { title: "KGHM -10 % w 30 sesji", label: "KGH", window_days: 30, change: 0.124, direction: "down", threshold: 0.1, close: "142.30", date: "2026-10-02" } },
     { type: "alert_triggered", at: "2026-10-02T07:02:00+02:00", date: "2026-10-02", polarity: "positive", alert_id: 801, instrument_label: "iShares MSCI EM IMI", message: "EIMI poniżej 75,00 zł", kind: "alert:price_below" },
     { type: "import", at: "2026-10-01T19:02:00+02:00", date: "2026-10-01", file_name: "dif_2026-10-01.csv", inserted: 6, account_id: 21 },
     { type: "signal_created", at: "2026-09-29T07:02:00+02:00", date: "2026-09-29", polarity: "positive", kind: "drawdown_from_high", instrument_label: "CD Projekt", message: "" },
     { type: "signal_created", at: "2026-09-21T07:02:00+02:00", date: "2026-09-21", polarity: "negative", kind: "contribution_gap", message: "" },
-    { type: "signal_created", at: "2026-09-15T07:02:00+02:00", date: "2026-09-15", polarity: "negative", kind: "allocation_drift", message: "", instrument_label: null },
+    { type: "signal_created", at: "2026-09-15T07:02:00+02:00", date: "2026-09-15", polarity: "neutral", kind: "allocation_drift", message: "", instrument_label: null, bucket_id: "pl_equity" },
     { type: "decision", at: "2026-09-14T20:00:00+02:00", date: "2026-09-14", action: "held", instrument_label: null, reason: "rebalans przy wpłacie" },
     { type: "signal_resolved", at: "2026-08-24T07:02:00+02:00", date: "2026-08-24", polarity: "neutral", kind: "gain_from_cost", instrument_label: "KGHM", status: "expired", message: "" },
     { type: "deposit", at: "2026-08-10T00:00:00+02:00", date: "2026-08-10", amount: 2000, currency: "PLN", account_id: 22 },
@@ -387,7 +388,7 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
   return res;
 }
 
-const DEFAULT_POL: Record<string, string> = { drawdown_from_high: "positive", gain_from_cost: "positive", allocation_drift: "negative", position_concentration: "negative", contribution_gap: "negative", cash_level: "negative", loss_from_cost: "negative" };
+const DEFAULT_POL: Record<string, string> = { drawdown_from_high: "positive", gain_from_cost: "positive", allocation_drift: "neutral", position_concentration: "negative", contribution_gap: "negative", cash_level: "negative", loss_from_cost: "negative" };
 function decorateSignal(s: Record<string, unknown>, st: V2State) {
   const id = s.id as number;
   const own = st.alertSignals.some((x) => x.id === id) ? st.decisions.filter((d) => d.signal_id === id) : [];

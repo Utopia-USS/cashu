@@ -90,7 +90,8 @@ function NetHero({ base, mods }: { base: Omit<ModuleCtx, "state">; mods: { m: Pr
   const changePct = prev && change != null && prev.value ? change / Math.abs(prev.value) : null;
   const others = Object.entries(base.summary.networth).filter(([k]) => k !== c);
   const accounts = base.networth.accounts;
-  const liabilities = accounts.filter((a) => (a.is_liability || (a.balance ?? 0) < 0) && (a.balance ?? 0) !== 0 && a.currency === c && a.type !== "brokerage");
+  // `is_liability` follows the account type since F6 (mortgage, loan, credit card); no balance-sign guess.
+  const liabilities = accounts.filter((a) => a.is_liability && (a.balance ?? 0) !== 0 && a.currency === c);
   const liabNames = [...new Set(liabilities.map((a) => (TYPE_LABEL[a.type] ?? a.type).toLowerCase()))].slice(0, 2).join(", ");
   const liquid = accounts.filter((a) => LIQUID.has(a.type) && a.currency === c).reduce((s, a) => s + (a.balance ?? 0), 0);
   const spend = base.summary.month?.expense ?? null;

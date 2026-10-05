@@ -65,6 +65,9 @@ export interface ModuleDef {
   HeroFact?: ComponentType<{ ctx: ModuleCtx }>;
   /** v2 Przegląd of a profile that has only this module (zero start): everything below the tabbar. */
   MinimalOverview?: ComponentType<{ ctx: ModuleCtx }>;
+  /** v2 shell header (ia-v2.md 10): a data-quality tag of a set-up module, rendered only when something is
+   * stale (null otherwise), e.g. "1 nieaktualna cena". */
+  HeaderTag?: ComponentType<{ slug: string; go: (v: View) => void }>;
 }
 
 /** One widget a module contributes to the v2 Przegląd grid. */

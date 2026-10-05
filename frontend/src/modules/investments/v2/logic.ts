@@ -8,7 +8,7 @@ export type Polarity = "positive" | "negative" | "neutral";
 
 /** Default polarity per rule kind (mirrors rules/kinds DEFAULT_POLARITY) for servers without the field. */
 const KIND_POLARITY: Record<string, Polarity> = {
-  drawdown_from_high: "positive", gain_from_cost: "positive", loss_from_cost: "negative", allocation_drift: "negative",
+  drawdown_from_high: "positive", gain_from_cost: "positive", loss_from_cost: "negative", allocation_drift: "neutral",
   cash_level: "negative", contribution_gap: "negative", position_concentration: "negative", tagged_weight: "negative", custom: "neutral",
 };
 
@@ -480,4 +480,24 @@ export function journalStats<
   }).filter((x): x is number => x != null).sort((a, b) => a - b);
   const median = days.length ? (days.length % 2 ? days[(days.length - 1) / 2] : (days[days.length / 2 - 1] + days[days.length / 2]) / 2) : null;
   return { decisions: ds.length, byAction, signals: seen.length, decided: decided.length, expired, medianDays: median };
+}
+
+// ---- notification links (F6 NT: a click opens `#/{slug}/investments.portfolio/?signal=<id>`) --------------
+
+export type SignalLink = { kind: "open"; id: number } | { kind: "asset"; id: number; instrumentId: number; status: string } | { kind: "journal"; id: number; status: string };
+
+/** Where `?signal=<id>` leads: an open signal (in the Sygnały widget: scroll, highlight, decision one click
+ * away), a closed one with an instrument (the asset drawer's timeline), a closed portfolio-wide one (the
+ * journal). Anything else (not a positive integer, unknown, another profile's id) is null: just the home. */
+export function signalLinkTarget<S extends { id: number; instrument_id: number | null; status: string }>(
+  param: string | null | undefined, open: S[], all: S[],
+): SignalLink | null {
+  if (!param || !/^\d+$/.test(param)) return null;
+  const id = Number(param);
+  if (!(id > 0)) return null;
+  if (open.some((s) => s.id === id)) return { kind: "open", id };
+  const s = all.find((x) => x.id === id);
+  if (!s) return null;
+  if (s.status === "active" || s.status === "acknowledged") return { kind: "open", id };
+  return s.instrument_id != null ? { kind: "asset", id, instrumentId: s.instrument_id, status: s.status } : { kind: "journal", id, status: s.status };
 }

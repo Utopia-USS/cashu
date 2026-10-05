@@ -22,6 +22,18 @@ const range = (r: unknown) =>
     .replace(/at most/g, "co najwyżej")
     .replace(/ and /g, " i ");
 const has = (p: Params, ...keys: string[]) => keys.every((k) => p[k] !== undefined && p[k] !== null && p[k] !== "");
+const CUR_SIGN: Record<string, string> = { PLN: "zł", EUR: "€", USD: "$", GBP: "£", CHF: "CHF" };
+/** Decimal text or a number as "148,60 zł" (2 decimals, Polish grouping); no currency = the number only. */
+const cur = (v: unknown, c?: unknown) => {
+  const n = Number(v);
+  const txt = Number.isFinite(n) ? n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(v);
+  return c ? `${txt} ${CUR_SIGN[String(c)] ?? String(c)}` : txt;
+};
+/** A fraction as a percent with one decimal: 0.124 -> "12,4 %". */
+const frac = (v: unknown) => {
+  const n = Math.abs(Number(v)) * 100;
+  return Number.isFinite(n) ? `${n.toLocaleString("pl-PL", { maximumFractionDigits: 1 })} %` : String(v);
+};
 
 /** Polish plural: plural(5, "reguła", "reguły", "reguł") -> "5 reguł". */
 export function plural(n: number, one: string, few: string, many: string): string {
@@ -180,6 +192,22 @@ export const LABELS: Record<string, Label> = {
   "error.planned_invalid": "Nieprawidłowy plan wpłaty: sprawdź kwotę, datę i rachunek",
   "error.planned_booked": "Ta wpłata jest już zaksięgowana z importu; planu nie można zmienić",
 
+  // ---- alert signal facts (`message_code` + `message_params` on alert signals; the subject is added by the UI) --
+  "alert.price_below": (p) => has(p, "close", "level") ? `cena ${cur(p.close, p.currency)} poniżej ${cur(p.level, p.currency)}` : null,
+  "alert.price_above": (p) => has(p, "close", "level") ? `cena ${cur(p.close, p.currency)} powyżej ${cur(p.level, p.currency)}` : null,
+  "alert.change_pct": (p) => has(p, "change", "window_days")
+    ? `${p.direction === "down" ? "-" : p.direction === "up" ? "+" : ""}${frac(p.change)} w ${p.window_days} sesji${has(p, "threshold") ? ` (próg ${frac(p.threshold)})` : ""}`
+    : null,
+  "alert.drawdown_from_high": (p) => has(p, "drawdown") ? `-${frac(p.drawdown)} od szczytu${has(p, "high") ? ` ${cur(p.high, p.currency)}` : ""}${has(p, "threshold") ? ` (próg -${frac(p.threshold)})` : ""}` : null,
+  "alert.new_high": (p) => has(p, "close") ? `nowy szczyt ${cur(p.close, p.currency)}${has(p, "window_days") ? ` (${p.window_days} sesji)` : ""}` : null,
+  "alert.sma_cross": (p) => has(p, "close", "window_days") ? `cena ${cur(p.close, p.currency)} ${p.direction === "above" ? "powyżej" : "poniżej"} SMA ${p.window_days}${has(p, "sma") ? ` (${cur(p.sma, p.currency)})` : ""}` : null,
+  "alert.weight_above": (p) => has(p, "weight", "threshold") ? `udział ${frac(p.weight)} powyżej ${frac(p.threshold)}` : null,
+  "alert.weight_below": (p) => has(p, "weight", "threshold") ? `udział ${frac(p.weight)} poniżej ${frac(p.threshold)}` : null,
+  "alert.custom": "warunek spełniony",
+
+  // ---- watchlist warnings (`warning_codes` of POST watchlist) -----------------------------------------
+  "watchlist.guessed_price_symbol": (p) => `symbol ceny zgadnięty${p.price_symbol ? ` (${p.price_symbol})` : ""}: sprawdź, czy przyjdą notowania`,
+  "watchlist.no_price_symbol": "brak symbolu ceny: notowania nie przyjdą, dopóki nie dodasz aliasu Yahoo w klasyfikacji",
 };
 
 /** Fill "{name}" placeholders; null when a placeholder has no value (the caller falls back). */

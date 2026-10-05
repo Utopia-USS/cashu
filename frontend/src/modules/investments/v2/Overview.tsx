@@ -14,10 +14,10 @@ import { getMonthClose, type MonthClose } from "../../budget/api";
 import { Skeleton, useToast } from "../../../ui";
 import { Fact, FootFacts, Grid, Widget } from "../../../widgets";
 import { getStrategy } from "../api";
-import { accountLabel, bucketLabel, dm, money, money0, nInstruments, parseNum, pct, plural, pp } from "../labels";
+import { accountLabel, bucketLabel, dm, isoDate, money, money0, nInstruments, parseNum, pct, plural, pp, WEEKDAYS } from "../labels";
 import { nextDeposit } from "../logic";
-import { deletePlannedDeposit, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
-import { changeSince, monthlyFlows, planForMonth, polarityOf } from "./logic";
+import { deletePlannedDeposit, getDigestV2, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
+import { changeSince, isDigestDay, monthlyFlows, planForMonth, polarityOf } from "./logic";
 import { isMissingEndpoint } from "./undoFlow";
 
 const MONTH_ADJ = ["styczniowa", "lutowa", "marcowa", "kwietniowa", "majowa", "czerwcowa", "lipcowa", "sierpniowa", "wrześniowa", "październikowa", "listopadowa", "grudniowa"];
@@ -79,12 +79,31 @@ export function InvestmentsHeroFact({ ctx }: { ctx: ModuleCtx }) {
   );
 }
 
+/** Shell header tag (ia-v2.md 10): stale prices of the investments, only when there are some. */
+export function InvestmentsHeaderTag({ slug, go }: { slug: string; go: ModuleCtx["go"] }) {
+  const ov = useAsync(() => getOverviewV2(slug).catch(() => null), [slug]);
+  const fr = ov.data?.freshness.prices;
+  if (!fr?.stale_count) return null;
+  const n = fr.stale_count;
+  const open = () => {
+    go({ kind: "tab", tab: "investments.portfolio" });
+    setTimeout(() => document.getElementById("inv-accounts")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
+  };
+  return (
+    <button className="tag warn hdr-tag" onClick={open}
+      title={fr.stale.map((x) => `${x.label}: ${x.price_date ? `ostatnie notowanie ${dm(x.price_date)}` : "brak notowań"}`).join("\n")}>
+      {plural(n, "nieaktualna cena", "nieaktualne ceny", "nieaktualnych cen")}
+    </button>
+  );
+}
+
 /** Inwestycje widget on Przegląd: YTD vs benchmark, chances, risks, the 12-month value line. */
 export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
   const ov = useAsync(() => getOverviewV2(ctx.slug).catch(() => null), [ctx.slug]);
   const ytd = useAsync(() => getPerformance(ctx.slug, "ytd").catch(() => null), [ctx.slug]);
   const year = useAsync(() => getPerformance(ctx.slug, "1y").catch(() => null), [ctx.slug]);
   const sig = useAsync(() => getSignalsV2(ctx.slug, "open").catch(() => []), [ctx.slug]);
+  const dig = useAsync(() => getDigestV2(ctx.slug).catch(() => null), [ctx.slug]);
   const open = (sig.data ?? []).filter((s) => !s.snoozed);
   const chances = open.filter((s) => polarityOf(s) === "positive");
   const risks = open.filter((s) => polarityOf(s) !== "positive");
@@ -94,9 +113,14 @@ export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
   const last = ov.data?.kpis.last_run;
   const vals = (year.data?.points ?? []).map((p) => p.value);
   const go = () => ctx.go({ kind: "tab", tab: "investments.portfolio" });
+  // The review day (mock overview.html): "dziś" on the digest weekday while due, "do zrobienia" after it, else the weekday.
+  const d = dig.data;
+  const review = !d ? null : d.review_due ? (isDigestDay(isoDate(new Date()), d.digest_weekday) ? "dziś" : "do zrobienia")
+    : WEEKDAYS[d.digest_weekday] ?? d.digest_weekday;
   return (
     <Widget title="Inwestycje" count={vals.length ? "12 mies." : undefined} controls={<button className="lnk" onClick={go}>Inwestycje</button>} body="tight"
-      footer={<><span>{last ? <>reguły {last.status === "ok" ? "ok" : last.status === "partial" ? "częściowo" : "błąd"} · <b>{dm(last.finished_at ?? last.started_at)}</b></> : "reguły jeszcze nie działały"}</span></>}>
+      footer={<>{review && <span>przegląd tygodnia: <b>{review}</b></span>}<span className="spacer" />
+        <span>{last ? <>reguły {last.status === "ok" ? "ok" : last.status === "partial" ? "częściowo" : "błąd"} · <b>{dm(last.finished_at ?? last.started_at)}</b></> : "reguły jeszcze nie działały"}</span></>}>
       <div className="facts" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
         <Fact label="YTD" value={s?.twr != null ? pct(s.twr, true) : "-"} tone={s?.twr != null ? (s.twr >= 0 ? "pos" : "neg") : undefined}
           detail={b?.status === "ok" && b.twr != null ? `${b.id ?? "benchmark"} ${pct(b.twr, true)}` : "bez benchmarku"} />

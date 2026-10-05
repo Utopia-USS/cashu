@@ -3,6 +3,7 @@
 // carry the badge; removing toasts with undo (re-adds the instrument).
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../core/api";
+import { describeIssue, errorText } from "../../../core/messages";
 import { Spark } from "../../../charts";
 import { Skeleton, useToast } from "../../../ui";
 import { AgentTag, FootFacts, Widget } from "../../../widgets";
@@ -53,11 +54,12 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
       const r = await postWatch(slug, { symbol_or_isin: v, note: note.trim() || null });
       setText(""); setNote(""); setAdding(false);
       const label = r.instrument ? instName(r.instrument) : v;
-      // The backend warning (English) says the price symbol was guessed: one Polish line instead.
-      toast(r.created_instrument && r.warnings?.length ? `Obserwujesz ${label} · symbol ceny zgadnięty, sprawdź, czy przyjdą notowania` : `Obserwujesz ${label} · ceny przy następnym odświeżeniu`, 5000);
+      // Coded warnings (F6 BE `warning_codes`) in Polish; an older server's English warning: one Polish line.
+      const coded = r.warning_codes?.map((w) => describeIssue({ code: w.code, params: w.params, message: w.message }).text) ?? [];
+      toast(coded.length ? `Obserwujesz ${label} · ${coded[0]}` : r.created_instrument && r.warnings?.length ? `Obserwujesz ${label} · symbol ceny zgadnięty, sprawdź, czy przyjdą notowania` : `Obserwujesz ${label} · ceny przy następnym odświeżeniu`, 6000);
       onChanged();
     } catch (e) {
-      setErr(e instanceof ApiError && e.status === 409 ? "Ten instrument już jest na liście." : (e as Error).message);
+      setErr(e instanceof ApiError && e.status === 409 && !e.code ? "Ten instrument już jest na liście." : errorText(e));
     } finally { setBusy(false); }
   };
   const remove = async (w: WatchItem) => {
@@ -67,7 +69,7 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
       toast(`Usunięto ${w.instrument?.label ?? "instrument"} z obserwowanych`, 6000, {
         label: "Cofnij", onClick: () => { void postWatch(slug, { instrument_id: w.instrument_id, note: w.note }).then(onChanged); },
       });
-    } catch (e) { toast(`Nie usunięto: ${(e as Error).message}`, 4000); }
+    } catch (e) { toast(`Nie usunięto: ${errorText(e)}`, 4000); }
   };
   return (
     <Widget title="Obserwowane" count={list.length || undefined} id="inv-watch"

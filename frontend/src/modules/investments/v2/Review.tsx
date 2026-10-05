@@ -5,11 +5,11 @@
 import { type ReactNode, useState } from "react";
 import { LineChart } from "../../../charts";
 import { labelIndices } from "../../../chart";
-import { proposalSummary } from "../../../core/messages";
+import { label, proposalSummary } from "../../../core/messages";
 import { Seg } from "../../../ui";
 import { Facts, Widget } from "../../../widgets";
 import type { AccountRow, Proposal } from "../api";
-import { accountLabel, DECISION_ACTION, dm, money, money0, nTxns, pct, plural, pp, txnType } from "../labels";
+import { accountLabel, bucketLabel, DECISION_ACTION, dm, money, money0, nTxns, pct, plural, pp, txnType } from "../labels";
 import { runError } from "../logic";
 import type { Alert, DigestEvent, DigestV2, Performance, SignalV2 } from "./api";
 import { changeSince, gapText, groupByMonth, isImportant, polarityOf, signalText } from "./logic";
@@ -43,6 +43,9 @@ const KIND_PHRASE: Record<string, string> = {
   gain_from_cost: "zysk od kosztu", loss_from_cost: "strata od kosztu", cash_level: "poziom gotówki", tagged_weight: "udział tagów",
 };
 const phrase = (kind?: string, message?: string) => (kind ? KIND_PHRASE[kind] ?? (kind.startsWith("alert:") ? "alert" : message || kind) : message || "");
+/** Signal events of the change log: the instrument, or the bucket of an allocation-drift event (F6 BE
+ * `bucket_id`; before it the log said "dryf alokacji" for every bucket). */
+const subject = (e: DigestEvent, inst: string) => inst || (e.kind === "allocation_drift" && e.bucket_id ? bucketLabel(e.bucket_id) : "");
 
 function Chg({ k, v, onKey }: { k: string; v: ReactNode; onKey?: () => void }) {
   return <div className="chg"><span className="k">{onKey ? <button onClick={onKey}>{k}</button> : k}</span><span className="v">{v}</span></div>;
@@ -146,10 +149,15 @@ function eventView(e: LogEvent, accounts: AccountRow[], alerts: Alert[], names?:
   const pol = e.polarity === "positive" ? "pos" : e.polarity === "negative" ? "neg" : "";
   const inst = (e.instrument_id != null ? names?.get(e.instrument_id) : undefined) ?? e.instrument_label ?? "";
   switch (e.type) {
-    case "alert_triggered": return { dot: pol, head: e.agent ? "Alert agenta wyzwolony" : "Alert wyzwolony", main: alerts.find((a) => a.id === e.alert_id)?.title ?? inst, tail: e.status === "active" || !e.status ? "sygnał otwarty" : undefined };
-    case "signal_created": return { dot: pol, head: e.polarity === "positive" ? "Szansa" : e.polarity === "negative" ? "Ryzyko" : "Sygnał", main: [inst, phrase(e.kind, e.message)].filter(Boolean).join(" · ") };
-    case "signal_escalated": return { dot: pol, head: "Eskalacja", main: [inst, phrase(e.kind, e.message)].filter(Boolean).join(" · ") };
-    case "signal_resolved": return { dot: "", head: e.status === "expired" ? "Wygasł bez decyzji" : "Rozstrzygnięty", main: [inst, phrase(e.kind, e.message)].filter(Boolean).join(" · ") };
+    case "alert_triggered": {
+      // The alert's own title, then the Polish fact of the coded message (F6 BE `message_code`), e.g. "cena 138,20 zł poniżej 140,00 zł".
+      const fact = label(e.message_code, e.message_params);
+      return { dot: pol, head: e.agent ? "Alert agenta wyzwolony" : "Alert wyzwolony", main: alerts.find((a) => a.id === e.alert_id)?.title ?? (typeof e.message_params?.title === "string" ? e.message_params.title : inst),
+        tail: [fact, e.status === "active" || !e.status ? "sygnał otwarty" : null].filter(Boolean).join(" · ") || undefined };
+    }
+    case "signal_created": return { dot: pol, head: e.polarity === "positive" ? "Szansa" : e.polarity === "negative" ? "Ryzyko" : "Sygnał", main: [subject(e, inst), phrase(e.kind, e.message)].filter(Boolean).join(" · ") };
+    case "signal_escalated": return { dot: pol, head: "Eskalacja", main: [subject(e, inst), phrase(e.kind, e.message)].filter(Boolean).join(" · ") };
+    case "signal_resolved": return { dot: "", head: e.status === "expired" ? "Wygasł bez decyzji" : "Rozstrzygnięty", main: [subject(e, inst), phrase(e.kind, e.message)].filter(Boolean).join(" · ") };
     case "import": return { dot: "nw", head: "Import", main: nTxns(e.inserted ?? 0), tail: e.file_name };
     case "decision": return { dot: "nw", head: `Decyzja: ${DECISION_ACTION[e.action ?? ""] ?? e.action}`, main: inst, tail: e.reason ? `„${e.reason}"` : undefined };
     case "deposit":

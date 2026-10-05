@@ -701,6 +701,13 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .g2 .s2 { grid-column: span 2; }
 .g2 .stack { display: grid; gap: 16px; align-content: start; }
 @media (max-width: 760px) { .g2 { grid-template-columns: minmax(0, 1fr); } .g2 .s2 { grid-column: auto; } }
+/* data-quality tag in the shell header (a button that leads to the stale prices) */
+button.tag.hdr-tag { background: transparent; cursor: pointer; font: inherit; font-size: 11px; line-height: 1.5; }
+button.tag.hdr-tag:hover { background: var(--warnBg); }
+/* a signal opened from a notification (?signal=<id>) flashes once */
+.sig.flash { animation: sig-flash 2.4s ease-out; border-radius: 6px; }
+@keyframes sig-flash { 0%, 30% { background: var(--infoBg); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .sig.flash { animation: none; background: var(--infoBg); } }
 @media (max-width: 760px) {
   .adh nav .pre { display: none; }
   .adh .lnk { white-space: nowrap; }

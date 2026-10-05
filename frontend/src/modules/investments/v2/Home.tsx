@@ -32,7 +32,7 @@ import { getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, 
 import { AssetDrawer } from "./AssetDrawer";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
-import { daysSince, instName, isDigestDay, nextWeekday, planForMonth, REENTRY_DAYS, reviewAutoOpen } from "./logic";
+import { daysSince, instName, isDigestDay, nextWeekday, planForMonth, REENTRY_DAYS, reviewAutoOpen, signalLinkTarget } from "./logic";
 import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, DrawdownWidget, ValueChartWidget } from "./Perf";
 import { AccountsWidget, AllocationWidget, AssetList } from "./Portfolio";
@@ -187,6 +187,30 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     setReviewOpen(true);
     started.current ??= Date.now();
   }, [due, light, hasData, weekday]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A notification click opens `?signal=<id>` (F6 NT): an open signal is scrolled to and highlighted in
+  // Sygnały (the account filter is dropped when it hides it); a closed one opens its asset drawer (the
+  // timeline) or the journal; an unknown or foreign id leaves just the home. Handled once per id.
+  const signalParam = params.get("signal");
+  const needHistory = !!signalParam && !!sig.data && !sig.data.some((s) => String(s.id) === signalParam);
+  const sigHistory = useAsync(() => (needHistory ? getSignalsV2(slug, "all").catch(() => []) : Promise.resolve([])).then((list) => ({ for: signalParam, list })),
+    [slug, needHistory, signalParam]);
+  const [focusSignal, setFocusSignal] = useState<number | null>(null);
+  const linkDone = useRef<string | null>(null);
+  useEffect(() => {
+    if (!signalParam || linkDone.current === signalParam || !sig.data || !positions) return;
+    if (needHistory && (sigHistory.loading || sigHistory.data?.for !== signalParam)) return;
+    linkDone.current = signalParam;
+    const t = signalLinkTarget(signalParam, sig.data, needHistory ? sigHistory.data?.list ?? [] : []);
+    if (!t) return;
+    if (t.kind === "open") {
+      if (filter != null && !signals.some((s) => s.id === t.id)) setFilter(null);
+      setFocusSignal(t.id);
+    } else {
+      toast(`Ten sygnał jest już zamknięty (${t.status === "expired" ? "wygasł" : t.status === "resolved" ? "rozwiązany" : t.status})`, 4000);
+      if (t.kind === "asset") openAsset(t.instrumentId); else openJournal();
+    }
+  }, [signalParam, sig.data, positions, needHistory, sigHistory.data, sigHistory.loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const instruments: InstrumentChoice[] = useMemo(() => {
     const out: InstrumentChoice[] = (positions?.positions ?? []).map((p) => ({
@@ -426,7 +450,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   if (last?.status === "failed") {
     items.push({ id: "failed", span: 3, node: <Notice tone="neg" style={{ margin: 0 }}>Ostatni przebieg reguł się nie udał{last.errors[0] ? `: ${runError(last.errors[0])}` : ""}. Sygnały poniżej pochodzą z wcześniejszego przebiegu.</Notice> });
   }
-  const wSignals: GridItem = { id: "signals", span: 2, node: <SignalsWidget signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} review={reviewOpen} expired={expired} onHistory={() => openJournal()} /> };
+  const wSignals: GridItem = { id: "signals", span: 2, node: <SignalsWidget signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} review={reviewOpen} expired={expired} onHistory={() => openJournal()} focusId={focusSignal} /> };
   const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsQ.data} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
   const wValue: GridItem = { id: "value", span: 2, node: <ValueChartWidget slug={slug} accounts={accountsFilter} initial={perf1y.loading ? undefined : perf1y.data} /> };
   const wAlloc: GridItem = { id: "alloc", span: 1, node: <AllocationWidget alloc={overview.allocation} strategy={strategy ?? null} filtered={filter != null} /> };

@@ -237,6 +237,10 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
             <span className="sub">{sub}</span>
           </div>
           <div className="hdr-right">
+            {enabled.filter((m) => m.setup_state !== "empty").map((m) => {
+              const Tag = moduleDef(m.id, modules).HeaderTag;
+              return Tag ? <Tag key={`${profile.slug}:${m.id}:${nonce}`} slug={profile.slug} go={go} /> : null;
+            })}
             {networthS.data && <span className="tag">{nAccounts(networthS.data.accounts.length)}</span>}
             {budgetOn && (
               <button className="btn" onClick={resync} disabled={syncingHere || !bankAccounts.length}

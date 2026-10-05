@@ -37,7 +37,7 @@ export interface SignalsCtx {
 
 const ageText = (iso: string | null, today: string) => (!iso ? "" : iso.slice(0, 10) === today ? "dziś" : `od ${dm(iso)}`);
 
-export function SignalsWidget({ signals, ctx, hl, review, expired, onHistory }: {
+export function SignalsWidget({ signals, ctx, hl, review, expired, onHistory, focusId }: {
   signals: SignalV2[] | null;
   ctx: SignalsCtx;
   hl?: boolean;
@@ -45,6 +45,9 @@ export function SignalsWidget({ signals, ctx, hl, review, expired, onHistory }: 
   /** Signals that expired since the last review (digest), for the footer. */
   expired?: { title: string }[];
   onHistory: () => void;
+  /** A notification link (`?signal=<id>`, F6 NT): scroll to this signal, highlight it briefly and put the
+   * cursor on it (Enter or "Zanotuj decyzję" opens the decision form). */
+  focusId?: number | null;
 }) {
   const list = signals ?? [];
   const { positive, negative } = splitByPolarity(list);
@@ -69,6 +72,19 @@ export function SignalsWidget({ signals, ctx, hl, review, expired, onHistory }: 
   });
   // Review step 2 focuses the first undecided signal.
   useEffect(() => { if (review && hl && cursor == null && order[0]) setCursor(order[0].id); }, [review, hl]); // eslint-disable-line react-hooks/exhaustive-deps
+  const present = focusId != null && list.some((s) => s.id === focusId);
+  useEffect(() => {
+    if (!present || focusId == null) return;
+    setCursor(focusId);
+    const t = setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-signal="${focusId}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("flash");
+      setTimeout(() => el.classList.remove("flash"), 2600);
+    }, 60);
+    return () => clearTimeout(t);
+  }, [focusId, present]);
   const col = (items: SignalV2[]) => items.map((s) => (
     <SignalItem key={s.id} s={s} ctx={ctx} thesis={s.instrument_id != null ? theses.get(s.instrument_id) ?? null : null}
       open={openId === s.id} cursor={cursor === s.id} primary={s.id === (order[0]?.id ?? -1)}

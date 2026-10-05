@@ -5,7 +5,7 @@ import { FactList, Kpi } from "../../ui";
 import { getOverview } from "./api";
 import { dm, money, pct } from "./labels";
 import { InvestmentsV2 } from "./v2/Home";
-import { InvestmentsHeroFact, InvestmentsSummaryWidget, MinimalOverview, SurplusWidget } from "./v2/Overview";
+import { InvestmentsHeaderTag, InvestmentsHeroFact, InvestmentsSummaryWidget, MinimalOverview, SurplusWidget } from "./v2/Overview";
 
 // Frontend half of the investments module: the v2 home (widget grid on thirds, one tab, wide page) with
 // its sub-pages (alerts manager, asset page). The home renders its own first steps for an empty
@@ -62,4 +62,5 @@ export const investments: ModuleDef = {
   ],
   HeroFact: InvestmentsHeroFact,
   MinimalOverview,
+  HeaderTag: InvestmentsHeaderTag,
 };
