@@ -33,7 +33,15 @@ WEBDIST = Path(__file__).parent / "webdist"  # built React SPA (frontend/ → np
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     init_db()
+    _prune_staged_imports()
     yield
+
+
+def _prune_staged_imports() -> None:
+    """Abandoned import uploads / proposal exports leave the data dir (F5 R9; never raises)."""
+    from ..modules.investments.service import staging
+
+    staging.prune_quietly()
 
 
 app = FastAPI(title="finanse", docs_url="/api/docs", lifespan=_lifespan)

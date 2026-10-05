@@ -181,6 +181,10 @@ def _run(notifier, offline, budget, now, as_of, sources, lock_wait, session_fact
             if job is not None:
                 report.jobs.append(job)
 
+    pruned = inv.prune_staged()  # housekeeping, not a job row (F5 R9)
+    if pruned and (pruned["removed"] or pruned["errors"]):
+        _log.info("pruned staged import files: %s", pruned)
+
     report.finished_at = max(now, local_now())
     state.last_run = report.state_summary()
     save(state)

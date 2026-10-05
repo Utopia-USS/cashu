@@ -163,6 +163,14 @@ def review_count(session: Session, profile_id: int) -> int:
     )
 
 
+def prune_staged() -> dict | None:
+    """Remove abandoned import uploads and unreferenced proposal exports (F5 R9); never raises."""
+    from finanse.modules.investments.service import staging
+
+    report = staging.prune_quietly()
+    return None if report is None else report.stats()
+
+
 def last_worker_run(session: Session) -> tuple[dt.datetime, str] | None:
     """(started_at, status) of the newest daily-check run the worker triggered, any profile."""
     from finanse.modules.investments.models import InvRuleRun
