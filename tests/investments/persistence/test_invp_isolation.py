@@ -40,6 +40,9 @@ INVESTMENTS_GETS = [
     "/investments/alerts?status=live",
     "/investments/alert-kinds",
     "/investments/watchlist",
+    "/investments/research",
+    "/investments/research/summary",
+    "/investments/research/runs",
     "/investments/planned-deposits",
 ]
 VOLATILE = {
@@ -63,7 +66,11 @@ def strip(value, slug: str):
         return {
             k: strip(v, slug)
             for k, v in value.items()
-            if k not in VOLATILE and not k.endswith("_at") and k != "at"
+            if k not in VOLATILE
+            and not k.endswith("_at")
+            and k != "at"
+            # an instant (the digest research block's baseline), unlike the date-level "since"
+            and not (k == "since" and isinstance(v, str) and "T" in v)
         }
     if isinstance(value, list):
         return [strip(v, slug) for v in value]

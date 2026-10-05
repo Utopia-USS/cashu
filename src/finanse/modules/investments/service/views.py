@@ -49,6 +49,8 @@ from ..models import (
 )
 from ..portfolio import build_snapshot, effective_valuation_mode
 from ..portfolio.fx_lookup import convert as fx_convert
+from ..research.keys import is_research_key
+from ..research.views import research_digest
 from ..rules import (
     AllocationDriftParams,
     AllocationDriftRule,
@@ -677,6 +679,21 @@ def manual_txn_dict(result) -> dict:
 # --------------------------------------------------------------------------- #
 
 
+def _signal_source(row: InvSignal) -> str:
+    """``alert`` (an alert's signal), ``research`` (a research note's, F6) or ``rule``."""
+    if is_alert_key(row.rule_id):
+        return "alert"
+    return "research" if is_research_key(row.rule_id) else "rule"
+
+
+def _note_id(row: InvSignal) -> int | None:
+    """The lead research note of a research signal (the UI's ``notatka`` link), else None."""
+    if not is_research_key(row.rule_id):
+        return None
+    note_id = (row.payload or {}).get("note_id")
+    return note_id if isinstance(note_id, int) else None
+
+
 def _message_code(row: InvSignal, labels: dict[int, str]) -> dict:
     label = labels.get(row.instrument_id) if row.instrument_id else None
     code, params = alert_message(row.kind, row.payload, row.message, label)
@@ -696,8 +713,9 @@ def signal_dict(
         "dedup_key": row.dedup_key,
         "severity": row.severity,
         "polarity": row.polarity,
-        "source": "alert" if is_alert_key(row.rule_id) else "rule",
+        "source": _signal_source(row),
         "alert_id": alert_id_of(row.rule_id),
+        "note_id": _note_id(row),
         "status": row.status,
         "message": row.message,
         **_message_code(row, labels or {}),
@@ -813,7 +831,8 @@ def attention(
                 "title": alert.title if alert is not None else row.rule_id,
                 "message": row.message,
                 **_message_code(row, labels),
-                "source": alert.source if alert is not None else "rule",
+                "source": alert.source if alert is not None else _signal_source(row),
+                "note_id": _note_id(row),
                 "instrument_id": row.instrument_id,
                 "instrument_label": labels.get(row.instrument_id) if row.instrument_id else None,
                 "held": row.instrument_id is not None and row.instrument_id in held,
@@ -1891,4 +1910,6 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
                 for v in strategy_files.versions(session, profile.id)
             ),
         },
+        # research since the same baseline (F6, research.views; run null = research never ran)
+        "research": research_digest(session, profile.id, since_at, now=now),
     }
