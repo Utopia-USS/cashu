@@ -1,125 +1,127 @@
-// Przegląd, composed: core KPIs + module KPIs, the net worth chart, one compact card
-// per enabled module (overview widgets), then the core cards (breakdown, accounts, cash).
-import { useState } from "react";
-import { Accounts } from "../components/Accounts";
-import { Breakdown } from "../components/Breakdown";
-import { CashCard } from "../components/CashCard";
-import { NetWorthChart } from "../components/NetWorthChart";
-import { cur } from "../format";
+// Przegląd v2 (design/v2/overview.html, ia-v2.md sections 2, 5, 9): the hero strip (net worth and the
+// facts that matter), then the widget grid on thirds: budget month, surplus -> contribution, investments,
+// net worth over time, loans and assets, accounts, subscriptions. Modules contribute widgets through
+// ModuleDef.overview / HeroFact; a profile with only the investments module gets that module's minimal view
+// in the narrow frame. Every currency other than the base one keeps its own total (never converted).
+import { type ReactNode, useEffect, useState } from "react";
+import { cur, MONTH_GEN, nAccounts, nModules, pctSigned, TYPE_LABEL } from "../format";
 import { useAsync } from "../hooks";
-import { Empty, Kpi, Skeleton } from "../ui";
-import { getSetup, type ProfileModule } from "./api";
-import { moduleDef, tabKey } from "./registry";
-import { stepsTag } from "./SetupPage";
+import { Empty } from "../ui";
+import { Fact, Grid, type GridItem, Widget } from "../widgets";
+import { getSeries, type ProfileModule } from "./api";
 import { useShell } from "./context";
+import { AccountsWidget, BudgetMonthWidget, PendingWidget, SubscriptionsWidget } from "./overview/CoreWidgets";
+import { NetWorthWidget } from "./overview/NetWorthWidget";
+import { moduleDef } from "./registry";
 import type { ModuleCtx, ModuleDef } from "./types";
 
 const HIDDEN_KEY = "finanse.hiddenCards";
 const readHidden = (): Record<string, string> => {
   try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || "{}"); } catch { return {}; }
 };
+const LIQUID = new Set(["checking", "savings", "cash"]);
+/** Whole units for hero facts ("582 986 zł"). */
+const whole = (v: number, c: string) => cur(v, c).replace(/,\d\d(?=\s)/, "");
 
 export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; enabled: ProfileModule[] }) {
-  const { summary } = base;
-  // The headline is the profile's base currency (the backend builds the breakdown in
-  // it). Every other currency keeps its own total next to it: never converted, never
-  // summed into the headline, never hidden.
-  const bd = summary.breakdown;
-  const otherTotals = Object.entries(summary.networth).filter(([c]) => c !== bd.currency);
-  const others = otherTotals.length
-    ? `inne waluty (bez przeliczenia): ${otherTotals.map(([c, v]) => cur(v, c)).join(" · ")}`
-    : "";
-  const hasHome = bd.property || bd.mortgage;
+  const { setNarrow } = useShell();
+  const mods = enabled.map((m) => ({ m, def: moduleDef(m.id), ctx: { ...base, state: m.setup_state } as ModuleCtx }));
+  const only = mods.length === 1 ? mods[0] : null;
+  const minimal = !!only?.def.MinimalOverview && only.m.setup_state !== "empty";
+  useEffect(() => {
+    setNarrow(minimal);
+    return () => setNarrow(false);
+  }, [minimal, setNarrow]);
   const [hidden, setHidden] = useState(readHidden);
+  if (minimal && only?.def.MinimalOverview) return <only.def.MinimalOverview ctx={only.ctx} />;
+
   const hide = (id: string, state: string) => {
     const next = { ...hidden, [`${base.slug}.${id}`]: state };
     setHidden(next);
     try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(next)); } catch { /* ignore */ }
   };
-  const mods = enabled.map((m) => ({ m, def: moduleDef(m.id), ctx: { ...base, state: m.setup_state } as ModuleCtx }));
-  // A hidden "not set up" card comes back as soon as the module state changes.
-  const visible = mods.filter(({ m }) => hidden[`${base.slug}.${m.id}`] !== m.setup_state);
+  const on = new Set(enabled.map((m) => m.id));
+  const ready = mods.filter(({ m }) => m.setup_state !== "empty");
+  const budget = mods.find(({ m }) => m.id === "budget" && m.setup_state !== "empty");
+  type Slot = GridItem & { order: number };
+  const slots: Slot[] = [];
+  if (budget) {
+    slots.push({ id: "budget", span: 1, order: 10, node: <BudgetMonthWidget ctx={budget.ctx} /> });
+    slots.push({ id: "subs", span: 1, order: 80, node: <SubscriptionsWidget ctx={budget.ctx} /> });
+  }
+  for (const { def, ctx } of ready) {
+    for (const s of def.overview ?? []) {
+      if (s.needs?.some((id) => !on.has(id))) continue;
+      slots.push({ id: `${def.id}.${s.id}`, span: s.span, order: s.order, stack: s.stack, node: <s.Widget ctx={ctx} /> });
+    }
+  }
+  mods.filter(({ m }) => m.setup_state !== "ready" && hidden[`${base.slug}.${m.id}`] !== m.setup_state).forEach(({ m, def }, k) => {
+    slots.push({ id: `pending.${m.id}`, span: 1, order: 35 + k / 10, node: <PendingWidget def={def} m={m} onHide={() => hide(m.id, m.setup_state)} /> });
+  });
+  slots.push({ id: "networth", span: 2, order: 40, node: <NetWorthWidget /> });
+  slots.push({ id: "accounts", span: 2, order: 70, node: <AccountsWidget accounts={base.networth.accounts} categories={base.categories} onChanged={base.refresh} /> });
+  slots.sort((a, b) => a.order - b.order);
 
-  return (
-    <>
-      <div className="kpis">
-        <Kpi label={`Net worth (${bd.currency})`} value={cur(bd.net, bd.currency)} hint={others} />
-        <Kpi label="Aktywa" value={cur(bd.assets, bd.currency)} cls="pos" />
-        <Kpi label="Zobowiązania" value={cur(bd.liabilities ? -bd.liabilities : 0, bd.currency)} cls={bd.liabilities > 0 ? "neg" : ""} />
-        <Kpi
-          label="Home equity"
-          value={hasHome ? cur(bd.home_equity, bd.currency) : "-"}
-          hint={hasHome ? "nieruchomość - hipoteka" : "brak nieruchomości w profilu"}
-        />
-        {mods.map(({ m, def, ctx }) => def.Kpis && <def.Kpis key={m.id} ctx={ctx} />)}
-      </div>
-
-      <NetWorthChart />
-
-      <section className="card chart-card">
-        <h2>Moduły</h2>
-        {!enabled.length ? (
-          <Empty
-            title="Brak włączonych modułów."
+  const items: GridItem[] = [{ id: "hero", span: 3, node: <NetHero base={base} mods={mods} /> }, ...slots];
+  if (!enabled.length) {
+    items.splice(1, 0, {
+      id: "nomods", span: 3, node: (
+        <Widget title="Moduły">
+          <Empty title="Brak włączonych modułów."
             hint="Przegląd pokazuje wartość netto i gotówkę. Budżet, kredyty, majątek i inwestycje włączysz w Ustawieniach."
-            action={<button className="btn" onClick={() => base.go({ kind: "settings", section: "modules" })}>Ustawienia → Moduły</button>}
-          />
-        ) : !visible.length ? (
-          <div className="muted" style={{ fontSize: 13 }}>Karty modułów są ukryte do czasu zmiany ich stanu.</div>
-        ) : (
-          <div className="modgrid">
-            {visible.map(({ m, def, ctx }) =>
-              m.setup_state === "ready"
-                ? <ModuleCard key={m.id} def={def} ctx={ctx} />
-                : <PendingCard key={m.id} def={def} ctx={ctx} onHide={() => hide(m.id, m.setup_state)} />)}
-          </div>
-        )}
-      </section>
-
-      <Breakdown bd={bd} />
-      <Accounts accounts={base.networth.accounts} />
-      <CashCard categories={base.categories} onChanged={base.refresh} />
-    </>
-  );
+            action={<button className="btn" onClick={() => base.go({ kind: "settings", section: "modules" })}>Ustawienia → Moduły</button>} />
+        </Widget>
+      ),
+    });
+  }
+  return <Grid items={items} />;
 }
 
-/** Overview widget of a set-up module: title, status tag, 3 facts, link to its first tab. */
-function ModuleCard({ def, ctx }: { def: ModuleDef; ctx: ModuleCtx }) {
-  const first = def.tabs[0];
+/** Hero: net worth with the change since last month; assets, liabilities, home equity, module facts,
+ * liquid money with months of spending; other currencies on the right, never converted. */
+function NetHero({ base, mods }: { base: Omit<ModuleCtx, "state">; mods: { m: ProfileModule; def: ModuleDef; ctx: ModuleCtx }[] }) {
+  const bd = base.summary.breakdown;
+  const c = bd.currency;
+  const series = useAsync(() => getSeries(base.slug, "monthly", "total").catch(() => null), [base.slug]);
+  const pts = series.data?.points ?? [];
+  const prev = pts.length >= 2 ? pts[pts.length - 2] : null;
+  const last = pts.length ? pts[pts.length - 1] : null;
+  const change = prev && last ? last.value - prev.value : null;
+  const changePct = prev && change != null && prev.value ? change / Math.abs(prev.value) : null;
+  const others = Object.entries(base.summary.networth).filter(([k]) => k !== c);
+  const accounts = base.networth.accounts;
+  const liabilities = accounts.filter((a) => (a.is_liability || (a.balance ?? 0) < 0) && (a.balance ?? 0) !== 0 && a.currency === c && a.type !== "brokerage");
+  const liabNames = [...new Set(liabilities.map((a) => (TYPE_LABEL[a.type] ?? a.type).toLowerCase()))].slice(0, 2).join(", ");
+  const liquid = accounts.filter((a) => LIQUID.has(a.type) && a.currency === c).reduce((s, a) => s + (a.balance ?? 0), 0);
+  const spend = base.summary.month?.expense ?? null;
+  const hasHome = bd.property || bd.mortgage;
+  const delta: ReactNode = change != null && prev ? (
+    <>
+      <span className={change >= 0 ? "pos" : "neg"}>{change >= 0 ? "+" : ""}{whole(change, c)}{changePct != null ? ` (${pctSigned(changePct)})` : ""}</span>
+      {" "}od {MONTH_GEN[Number(prev.date.slice(5, 7)) - 1]}
+    </>
+  ) : null;
   return (
-    <div className="card">
-      <div className="mt">{def.name} {stepsTag(null, "ready")}</div>
-      {def.Facts ? <def.Facts ctx={ctx} /> : <div className="muted" style={{ fontSize: 13 }}>{def.short}</div>}
-      {first && (
-        <div className="ml">
-          <button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: tabKey(def.id, first.id) })}>{first.label} →</button>
+    <section className="w hero" aria-label="Wartość netto">
+      <div className="h1">
+        <div className="l">Wartość netto</div>
+        <div className="v">{cur(bd.net, c)}</div>
+        {delta && <div className="d">{delta}</div>}
+      </div>
+      <div className="hf">
+        <Fact label="Aktywa" value={whole(bd.assets, c)} detail={`${nAccounts(accounts.length)} · ${nModules(mods.length)}`} />
+        {bd.liabilities > 0 && <Fact label="Zobowiązania" value={whole(-bd.liabilities, c)} detail={liabNames || undefined} />}
+        {hasHome ? <Fact label="Home equity" value={whole(bd.home_equity, c)} detail="nieruchomość - hipoteka" /> : null}
+        {mods.filter(({ m, def }) => def.HeroFact && m.setup_state !== "empty").map(({ def, ctx }) => def.HeroFact && <def.HeroFact key={def.id} ctx={ctx} />)}
+        <Fact label="Płynne" value={whole(liquid, c)}
+          detail={spend ? `${(liquid / spend).toLocaleString("pl-PL", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} mies. wydatków` : "konta i gotówka"} />
+      </div>
+      {others.length > 0 && (
+        <div className="hr">
+          <span className="tag">inne waluty: {others.map(([k, v]) => cur(v, k)).join(" · ")}</span>
+          <div className="meta">bez przeliczenia</div>
         </div>
       )}
-    </div>
-  );
-}
-
-/** Dashed card of a module that is enabled but not (fully) set up: progress, next step. */
-function PendingCard({ def, ctx, onHide }: { def: ModuleDef; ctx: ModuleCtx; onHide: () => void }) {
-  const { slug } = useShell();
-  const { data } = useAsync(() => getSetup(slug, def.id), [slug, def.id, ctx.state]);
-  const done = data?.steps.filter((s) => s.status === "done") ?? [];
-  const next = data?.steps.find((s) => s.status === "on") ?? data?.steps.find((s) => s.status !== "done");
-  return (
-    <div className="card pending">
-      <div className="mt">{def.name} {stepsTag(data, ctx.state)}</div>
-      <div className="muted" style={{ fontSize: 13 }}>
-        {!data ? <Skeleton w="90%" h={12} /> : (
-          <>
-            {done.length ? `${done.map((s) => s.title).join(", ")}: zrobione. ` : ""}
-            {next ? `Następny krok: ${next.title.charAt(0).toLowerCase()}${next.title.slice(1)}.` : "Moduł czeka na dane."}
-          </>
-        )}
-      </div>
-      <div className="controls ml" style={{ margin: 0 }}>
-        <button className="btn primary" onClick={() => ctx.go({ kind: "setup", module: def.id })}>Kontynuuj konfigurację</button>
-        <button className="btn" onClick={onHide}>Ukryj kartę</button>
-      </div>
-    </div>
+    </section>
   );
 }
