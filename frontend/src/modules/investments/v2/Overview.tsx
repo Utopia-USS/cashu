@@ -1,11 +1,12 @@
 // Investments on Przegląd v2: the hero fact (value, week, chances / risks), the Inwestycje widget (YTD vs
 // benchmark, polarity counts, 12-month line), the surplus -> contribution card (budget month close +
 // the contribution plan + the bucket it helps) and the minimal view of a zero-start profile (hero, Wpłaty,
-// Na ten miesiąc; ia-v2.md 9). The planned deposit is kept per profile and month in this browser until the
-// backend stores planned deposits (NEEDS in F5-UI2.md).
+// Na ten miesiąc; ia-v2.md 9). "Zaplanuj wpłatę" stores a planned deposit on the server (F6 BE
+// `planned-deposits`): it counts against the contribution plan and is never cash until an import books it.
 import { useState } from "react";
 import { LineChart, Bars } from "../../../charts";
 import { useShell } from "../../../core/context";
+import { errorText } from "../../../core/messages";
 import type { ModuleCtx } from "../../../core/types";
 import { MONTH_NOM } from "../../../format";
 import { useAsync } from "../../../hooks";
@@ -15,8 +16,9 @@ import { Fact, FootFacts, Grid, Widget } from "../../../widgets";
 import { getStrategy } from "../api";
 import { accountLabel, bucketLabel, dm, money, money0, nInstruments, parseNum, pct, plural, pp } from "../labels";
 import { nextDeposit } from "../logic";
-import { getOverviewV2, getPerformance, getPositionsV2, getSignalsV2, type Performance } from "./api";
-import { changeSince, monthlyFlows, polarityOf } from "./logic";
+import { deletePlannedDeposit, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
+import { changeSince, monthlyFlows, planForMonth, polarityOf } from "./logic";
+import { isMissingEndpoint } from "./undoFlow";
 
 const MONTH_ADJ = ["styczniowa", "lutowa", "marcowa", "kwietniowa", "majowa", "czerwcowa", "lipcowa", "sierpniowa", "wrześniowa", "październikowa", "listopadowa", "grudniowa"];
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
@@ -28,15 +30,38 @@ const prevMonth = (today: string) => {
 };
 const minusDays = (iso: string, days: number) => new Date(new Date(`${iso}T12:00:00`).getTime() - days * 86400000).toISOString().slice(0, 10);
 
-// ---- planned deposit (this browser, per profile and month) -----------------------------------------------
-interface Planned { amount: number; date: string; at: string }
-const planKey = (slug: string, month: string) => `finanse.inv.plannedDeposit.${slug}.${month}`;
-export function readPlan(slug: string, month: string): Planned | null {
-  try { const raw = localStorage.getItem(planKey(slug, month)); return raw ? (JSON.parse(raw) as Planned) : null; } catch { return null; }
+// ---- planned deposits (server, per profile) ---------------------------------------------------------------
+/** The profile's planned deposits; `null` data = a server without the endpoint (the button then explains). */
+export function usePlannedDeposits(slug: string, nonce = 0) {
+  const q = useAsync(() => getPlannedDeposits(slug).catch((e) => (isMissingEndpoint(e) ? null : Promise.reject(e))), [slug, nonce]);
+  return { list: q.data?.items ?? null, plan: q.data?.plan ?? null, missing: !q.loading && q.data === null && !q.error, reload: q.reload };
 }
-function writePlan(slug: string, month: string, p: Planned | null) {
-  try { if (p) localStorage.setItem(planKey(slug, month), JSON.stringify(p)); else localStorage.removeItem(planKey(slug, month)); } catch { /* private mode */ }
+
+/** Save / undo / change of the month's planned deposit, with toasts. */
+function usePlanActions(slug: string, reload: () => void) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const save = async (amount: number, currency: string, date: string, accountId: number | null) => {
+    setBusy(true);
+    try {
+      const p = await postPlannedDeposit(slug, { amount, currency, planned_date: date, account_id: accountId });
+      reload();
+      toast(`Zaplanowano wpłatę ${money0(amount, currency)} · ${dm(date)}`, 8000, {
+        label: "Cofnij", onClick: () => { void deletePlannedDeposit(slug, p.id).then(() => { reload(); toast("Cofnięto: plan wpłaty", 2500); }, (e) => toast(`Nie cofnięto: ${errorText(e)}`, 5000)); },
+      });
+    } catch (e) {
+      toast(isMissingEndpoint(e) ? "Ten serwer nie zapisuje jeszcze planowanych wpłat (zaktualizuj aplikację)" : `Nie zapisano planu: ${errorText(e)}`, 5000);
+    } finally { setBusy(false); }
+  };
+  const drop = async (p: PlannedDeposit) => {
+    try { await deletePlannedDeposit(slug, p.id); reload(); }
+    catch (e) { toast(`Nie zmieniono planu: ${errorText(e)}`, 5000); }
+  };
+  return { save, drop, busy };
 }
+
+/** Status line of a month's planned deposit. */
+const planTag = (p: PlannedDeposit) => (p.status === "booked" ? `zaksięgowano ${money0(p.amount, p.currency)}${p.booked_at ? ` · ${dm(p.booked_at)}` : ""}` : `zaplanowano ${money0(p.amount, p.currency)} · ${dm(p.planned_date)}`);
 
 /** Hero fact on Przegląd: the portfolio value, the week's change and chances / risks. */
 export function InvestmentsHeroFact({ ctx }: { ctx: ModuleCtx }) {
@@ -90,13 +115,14 @@ export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
 /** Nadwyżka -> wpłata: last month's surplus, the planned contribution, what stays; the checks that gate it
  * and one primary action that records the plan. Highlighted (`.hl`): the step the month asks for. */
 export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
-  const toast = useToast();
   const month = prevMonth(todayIso());
   const mc = useAsync<MonthClose | null>(() => getMonthClose(ctx.slug, month).catch(() => null), [ctx.slug]);
   const ov = useAsync(() => getOverviewV2(ctx.slug).catch(() => null), [ctx.slug]);
   const ytd = useAsync(() => getPerformance(ctx.slug, "ytd").catch(() => null), [ctx.slug]);
   const curMonth = todayIso().slice(0, 7);
-  const [plan, setPlanState] = useState<Planned | null>(() => readPlan(ctx.slug, curMonth));
+  const plans = usePlannedDeposits(ctx.slug);
+  const plan = planForMonth(plans.list, curMonth);
+  const acts = usePlanActions(ctx.slug, plans.reload);
   const [other, setOther] = useState<string | null>(null);
   const d = mc.data;
   const base = ctx.profile.base_currency;
@@ -122,21 +148,22 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
   const monthIdx = Number(month.slice(5, 7)) - 1;
   const deposits = ytd.data?.summary?.deposits ?? null;
   const ytdPlan = amount != null ? amount * Number(curMonth.slice(5, 7)) : null;
-  const save = (value: number) => {
-    const p = { amount: value, date: due, at: new Date().toISOString() };
-    writePlan(ctx.slug, curMonth, p);
-    setPlanState(p);
-    setOther(null);
-    toast(`Zaplanowano wpłatę ${money0(value, c)} · ${dm(due)}`, 6000, { label: "Cofnij", onClick: () => { writePlan(ctx.slug, curMonth, null); setPlanState(null); } });
-  };
+  const accountId = ov.data?.accounts.length === 1 ? ov.data.accounts[0].id : null;
+  const save = (value: number) => { setOther(null); void acts.save(value, c, due, accountId); };
   const otherNum = other != null ? parseNum(other) : null;
   return (
     <Widget title="Nadwyżka → wpłata" hl={!plan} tags={<span className="tag">{dm(due)}</span>}
       controls={<button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: "budget.flows" })}>zamknięcie miesiąca</button>}
       body="tight"
       footer={<>
-        <FootFacts items={[deposits != null && ytdPlan != null && <>wpłaty {curMonth.slice(0, 4)}: <b>{money0(deposits, c)}</b> z {money0(ytdPlan, c)}</>]} />
-        <span className="spacer" /><span>{plan ? "plan zapisany w tej przeglądarce" : "import wpłaty potwierdzi plan"}</span>
+        <FootFacts items={[
+          deposits != null && ytdPlan != null && <>wpłaty {curMonth.slice(0, 4)}: <b>{money0(deposits, c)}</b> z {money0(ytdPlan, c)}</>,
+          // BE's month progress: deposits + open plans of this month against the strategy's monthly amount.
+          plans.plan?.monthly_amount != null && plans.plan.covered != null && (plans.plan.covered
+            ? <>{MONTH_NOM[Number(curMonth.slice(5, 7)) - 1]}: <b>plan pokryty</b></>
+            : plans.plan.remaining != null ? <>{MONTH_NOM[Number(curMonth.slice(5, 7)) - 1]}: brakuje <b>{money0(plans.plan.remaining, plans.plan.currency)}</b></> : null),
+        ]} />
+        <span className="spacer" /><span>{plan?.status === "booked" ? "wpłata zaksięgowana z importu" : plan ? "import wpłaty zaksięguje plan" : "import wpłaty potwierdzi plan"}</span>
       </>}>
       <div className="flow">
         <Fact label={`Nadwyżka ${ROMAN[monthIdx]}`} value={money0(close.surplus, c)} tone={close.surplus < 0 ? "neg" : undefined} />
@@ -156,21 +183,21 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
       </div>
       <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {plan ? (
-          <span className="tag solid pos">zaplanowano {money0(plan.amount, c)} · {dm(plan.date)}</span>
+          <span className="tag solid pos">{planTag(plan)}</span>
         ) : other == null ? (
           <>
-            {want != null && <button className="btn primary" onClick={() => save(want)}>Zaplanuj wpłatę {money0(want, c)}</button>}
+            {want != null && <button className="btn primary" disabled={acts.busy || plans.list === null && !plans.missing} onClick={() => save(want)}>Zaplanuj wpłatę {money0(want, c)}</button>}
             <button className="btn" onClick={() => setOther(want != null ? String(Math.round(want)) : "")}>Inna kwota</button>
           </>
         ) : (
           <>
             <input className="num" inputMode="decimal" aria-label="Kwota wpłaty" value={other} onChange={(e) => setOther(e.target.value)} style={{ width: 110 }} autoFocus
               onKeyDown={(e) => { if (e.key === "Enter" && otherNum && otherNum > 0) save(otherNum); if (e.key === "Escape") setOther(null); }} />
-            <button className="btn primary" disabled={!otherNum || otherNum <= 0} onClick={() => otherNum && save(otherNum)}>Zaplanuj</button>
+            <button className="btn primary" disabled={!otherNum || otherNum <= 0 || acts.busy} onClick={() => otherNum && save(otherNum)}>Zaplanuj</button>
             <button className="lnk" onClick={() => setOther(null)}>Anuluj</button>
           </>
         )}
-        {plan && <button className="lnk" onClick={() => { writePlan(ctx.slug, curMonth, null); setPlanState(null); }}>zmień</button>}
+        {plan?.status === "planned" && <button className="lnk" onClick={() => void acts.drop(plan)}>zmień</button>}
       </div>
     </Widget>
   );
@@ -192,7 +219,6 @@ export function depositFacts(perf: Performance | null, today: string) {
 
 export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
   const { go } = useShell();
-  const toast = useToast();
   const slug = ctx.slug;
   const ov = useAsync(() => getOverviewV2(slug).catch(() => null), [slug]);
   const pos = useAsync(() => getPositionsV2(slug).catch(() => null), [slug]);
@@ -200,7 +226,9 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
   const strat = useAsync(() => getStrategy(slug).catch(() => null), [slug]);
   const today = todayIso();
   const curMonth = today.slice(0, 7);
-  const [plan, setPlanState] = useState<Planned | null>(() => readPlan(slug, curMonth));
+  const plans = usePlannedDeposits(slug);
+  const plan = planForMonth(plans.list, curMonth);
+  const acts = usePlanActions(slug, plans.reload);
   const k = ov.data?.kpis;
   const c = ov.data?.base_currency ?? ctx.profile.base_currency;
   const s = perf.data?.summary;
@@ -218,13 +246,7 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
   const pol = k?.polarity;
   const alertsLive = k?.alerts ? k.alerts.active + k.alerts.triggered + k.alerts.snoozed : 0;
   const quiet = [alertsLive ? plural(alertsLive, "alert", "alerty", "alertów") : "bez alertów", pol && pol.positive + pol.negative + pol.neutral ? plural(pol.positive + pol.negative + pol.neutral, "sygnał", "sygnały", "sygnałów") : "bez sygnałów"].join(" · ");
-  const savePlan = () => {
-    if (planAmount == null) return;
-    const p = { amount: planAmount, date: due, at: new Date().toISOString() };
-    writePlan(slug, curMonth, p);
-    setPlanState(p);
-    toast(`Zaplanowano wpłatę ${money0(planAmount, c)} · ${dm(due)}`, 6000, { label: "Cofnij", onClick: () => { writePlan(slug, curMonth, null); setPlanState(null); } });
-  };
+  const savePlan = () => { if (planAmount != null) void acts.save(planAmount, c, due, accounts.length === 1 ? accounts[0].id : null); };
   const toInv = (sub?: string) => go({ kind: "tab", tab: "investments.portfolio", sub });
   const historyMonths = dep.monthsSince;
   return (
@@ -280,8 +302,8 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
               )}
               <div className={`step ${doneThisMonth || plan ? "done" : "on"}`}>
                 <b className="n" aria-label={doneThisMonth ? "zrobione" : "krok 2"}>{doneThisMonth || plan ? "✓" : 2}</b>
-                <div>Wpłata {planAmount != null ? money0(planAmount, c) : ""} do {dm(due)}<div className="h">{doneThisMonth ? "zrobiona w tym miesiącu" : plan ? `zaplanowana ${dm(plan.date)}` : acc ?? "wg planu"}</div></div>
-                {!doneThisMonth && !plan && planAmount != null ? <button className="btn sm" onClick={savePlan}>Zaplanuj</button> : <span />}
+                <div>Wpłata {planAmount != null ? money0(planAmount, c) : ""} do {dm(due)}<div className="h">{doneThisMonth ? "zrobiona w tym miesiącu" : plan ? (plan.status === "booked" ? "zaksięgowana z importu" : `zaplanowana ${dm(plan.planned_date)}${plan.amount !== planAmount ? ` · ${money0(plan.amount, plan.currency)}` : ""}`) : acc ?? "wg planu"}</div></div>
+                {!doneThisMonth && !plan && planAmount != null ? <button className="btn sm" disabled={acts.busy} onClick={savePlan}>Zaplanuj</button> : <span />}
               </div>
               <div className="step"><b className="n" aria-hidden>3</b><div className="muted">Nic więcej<div className="h">przegląd raz w miesiącu wystarczy</div></div><span /></div>
             </div>

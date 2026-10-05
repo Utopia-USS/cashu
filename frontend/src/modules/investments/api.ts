@@ -329,6 +329,8 @@ export interface CommitResult {
   status_changes: number;
   corrections: number;
   archive_path: string;
+  /** Planned deposits this import booked (F6 BE, additive). */
+  planned_booked?: number[];
 }
 export interface Batch {
   id: number;

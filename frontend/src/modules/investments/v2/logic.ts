@@ -410,3 +410,74 @@ export function isDigestDay(today: string, weekday: string): boolean {
   const [y, m, d] = today.split("-").map(Number);
   return new Date(y, m - 1, d).getDay() === (WEEKDAY_INDEX[weekday] ?? 0);
 }
+
+/** decisions.md 7: the review strip opens by itself on the digest weekday while the review is due, unless
+ * the owner opened or closed it in this visit (`explicit` = the session flag "1" / "0") or the profile is
+ * light (zero start: the review button never turns primary) or has no data yet. */
+export function reviewAutoOpen(a: { due: boolean; light: boolean; hasData: boolean; today: string; weekday: string; explicit: string | null }): boolean {
+  return a.due && !a.light && a.hasData && a.explicit == null && isDigestDay(a.today, a.weekday);
+}
+
+/** The planned deposit of a month ("YYYY-MM") for the surplus card and the minimal view: a `planned` one
+ * first (the newest), else a `booked` one (the import confirmed it); cancelled ones never count. */
+export function planForMonth<T extends { id: number; planned_date: string; status: string }>(list: T[] | null | undefined, month: string): T | null {
+  const inMonth = (list ?? []).filter((p) => p.planned_date.slice(0, 7) === month && p.status !== "cancelled");
+  const pick = (st: string) => inMonth.filter((p) => p.status === st).sort((a, b) => b.id - a.id)[0] ?? null;
+  return pick("planned") ?? pick("booked");
+}
+
+// ---- decision journal (route `journal`) -----------------------------------------------------------------
+
+export type JournalFilter = "all" | "decisions" | "signals";
+export interface JournalEntry<S, D> { at: string; type: "decision" | "signal" | "expired" | "resolved"; signal: S | null; decision: D | null }
+
+/** The journal's timeline, newest first: decisions (with the signal they answer), signals as they appeared,
+ * signals that expired without a decision and the ones resolved by the rules. `instrument` narrows to one
+ * instrument (string id from the URL). */
+export function journalEntries<
+  S extends { id: number; instrument_id: number | null; status: string; first_seen_at: string | null; closed_at?: string | null; decisions: unknown[] },
+  D extends { id: number; signal_id: number | null; instrument_id: number | null; created_at: string | null },
+>(signals: S[], decisions: D[], filter: JournalFilter, instrument: string | null = null): JournalEntry<S, D>[] {
+  const mine = <T extends { instrument_id: number | null }>(x: T) => instrument == null || String(x.instrument_id) === instrument;
+  const byId = new Map(signals.map((s) => [s.id, s]));
+  const out: JournalEntry<S, D>[] = [];
+  if (filter !== "signals") {
+    for (const d of decisions) {
+      if (!d.created_at) continue;
+      const sig = d.signal_id != null ? byId.get(d.signal_id) ?? null : null;
+      if (instrument != null && !(mine(d) || (sig && mine(sig)))) continue;
+      out.push({ at: d.created_at, type: "decision", signal: sig, decision: d });
+    }
+  }
+  if (filter !== "decisions") {
+    for (const s of signals) {
+      if (!mine(s)) continue;
+      if (s.first_seen_at) out.push({ at: s.first_seen_at, type: "signal", signal: s, decision: null });
+      if (s.closed_at && (s.status === "expired" || s.status === "resolved") && !s.decisions.length) {
+        out.push({ at: s.closed_at, type: s.status === "expired" ? "expired" : "resolved", signal: s, decision: null });
+      }
+    }
+  }
+  return out.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** Facts of the journal for one year: decisions by action, signals decided vs expired without a decision,
+ * the median days from a signal to its first decision. */
+export function journalStats<
+  S extends { first_seen_at: string | null; closed_at?: string | null; status: string; decisions: { created_at: string | null }[] },
+  D extends { action: string; created_at: string | null },
+>(signals: S[], decisions: D[], year: string) {
+  const inYear = (iso: string | null | undefined) => !!iso && iso.slice(0, 4) === year;
+  const ds = decisions.filter((d) => inYear(d.created_at));
+  const byAction: Record<string, number> = {};
+  for (const d of ds) byAction[d.action] = (byAction[d.action] ?? 0) + 1;
+  const seen = signals.filter((s) => inYear(s.first_seen_at));
+  const decided = seen.filter((s) => s.decisions.length > 0);
+  const expired = seen.filter((s) => s.status === "expired" && !s.decisions.length).length;
+  const days = decided.map((s) => {
+    const first = s.decisions.map((d) => d.created_at).filter(Boolean).sort()[0] as string | undefined;
+    return first && s.first_seen_at ? Math.max(0, (Date.parse(first) - Date.parse(s.first_seen_at)) / 86400000) : null;
+  }).filter((x): x is number => x != null).sort((a, b) => a - b);
+  const median = days.length ? (days.length % 2 ? days[(days.length - 1) / 2] : (days[days.length / 2 - 1] + days[days.length / 2]) / 2) : null;
+  return { decisions: ds.length, byAction, signals: seen.length, decided: decided.length, expired, medianDays: median };
+}

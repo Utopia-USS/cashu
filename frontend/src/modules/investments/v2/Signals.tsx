@@ -4,6 +4,7 @@
 // is saved at once; `Cofnij` in the toast deletes it within the server's 15-minute window (F5 R4).
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../core/api";
+import { errorText } from "../../../core/messages";
 import { useAsync } from "../../../hooks";
 import { Seg, useToast } from "../../../ui";
 import { AgentTag, PolDot, Widget } from "../../../widgets";
@@ -155,7 +156,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
       onToggle(false);
       ctx.onChanged();
       offerUndo(r.decision.id, `Zapisano decyzję · ${label.replace("decyzja: ", "")}`, "decyzja");
-    } catch (e) { toast(`Nie zapisano decyzji: ${(e as Error).message}`, 5000); }
+    } catch (e) { toast(`Nie zapisano decyzji: ${errorText(e)}`, 5000); }
   };
   const ack = async (reason?: string) => {
     try {
@@ -163,7 +164,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
       onToggle(false);
       ctx.onChanged();
       offerUndo(r.decision.id, "Potwierdzone bez zmian", "potwierdzenie");
-    } catch (e) { toast(`Nie zapisano: ${(e as Error).message}`, 5000); }
+    } catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 5000); }
   };
   const snooze = async (until: string) => {
     try {
@@ -175,7 +176,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
     } catch (e) {
       // Older servers without the snooze endpoint: the v1 behaviour (acknowledge with a note).
       if (e instanceof ApiError && e.status === 404 && /not found/i.test(e.message)) await ack(`odłożone do ${until}`);
-      else toast(`Nie odłożono: ${(e as Error).message}`, 5000);
+      else toast(`Nie odłożono: ${errorText(e)}`, 5000);
     }
   };
   const rowUndo = decided && canUndo(decided) ? () => {

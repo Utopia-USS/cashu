@@ -5,7 +5,7 @@
 // instrument, three deposits); `?marta=empty` keeps the empty F3 profile instead.
 import { ApiError } from "../../../core/api";
 import { investmentsMock } from "../mock";
-import type { Alert, Performance, PerfPoint, PerfRange, WatchItem } from "./api";
+import type { Alert, Performance, PerfPoint, PerfRange, PlannedDeposit, WatchItem } from "./api";
 
 const TODAY = "2026-10-04";
 const MINIMAL_MARTA = new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("marta") !== "empty";
@@ -44,6 +44,9 @@ interface V2State {
   snoozed: Record<number, string>;
   undone: Set<number>;
   deletedReviews: Set<number>;
+  /** F6: soft-deleted alerts (restore within 15 minutes keeps the id) and planned deposits. */
+  deletedAlerts: { a: Alert; at: number }[];
+  planned: PlannedDeposit[];
   nextId: number;
 }
 const states = new Map<string, V2State>();
@@ -65,6 +68,8 @@ function janState(): V2State {
     snoozed: {},
     undone: new Set(),
     deletedReviews: new Set(),
+    deletedAlerts: [],
+    planned: [],
     decisions: [],
     alerts: [
       alert(801, { kind: "price_below", title: "EIMI poniżej 75,00 zł", instrument_id: 307, instrument: instRef(307, "iShares MSCI EM IMI", "EIMI"), params: { level: 75 }, severity: "action", source: "agent", created_by: "mcp", status: "triggered", last_triggered_at: "2026-10-02T07:02:00+02:00", last_value: 74.57, note: "Poziom dokupienia z tezy EM.", signal: { id: 951, status: "active", message: "", first_seen_at: "2026-10-02T07:02:00+02:00" } }),
@@ -105,7 +110,7 @@ function watchItem(id: number, instId: number, name: string, symbol: string, cur
 function stateFor(slug: string): V2State {
   let st = states.get(slug);
   if (!st) {
-    st = slug === "jan" ? janState() : { alerts: [], watch: [], alertSignals: [], decisions: [], snoozed: {}, undone: new Set(), deletedReviews: new Set(), nextId: 8000 };
+    st = slug === "jan" ? janState() : { alerts: [], watch: [], alertSignals: [], decisions: [], snoozed: {}, undone: new Set(), deletedReviews: new Set(), deletedAlerts: [], planned: [], nextId: 8000 };
     states.set(slug, st);
   }
   return st;
@@ -284,11 +289,20 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
     st.alerts.unshift(a);
     return a;
   }
-  let m = /^\/alerts\/(\d+)$/.exec(ip);
+  let m = /^\/alerts\/(\d+)\/restore$/.exec(ip);
+  if (m && method === "POST") {
+    const k = st.deletedAlerts.findIndex((x) => x.a.id === Number(m![1]));
+    if (k < 0) throw new ApiError(404, "No deleted alert", "not_found");
+    if (Date.now() - st.deletedAlerts[k].at > 15 * 60000) throw new ApiError(409, "The undo window has passed", "undo_expired");
+    const [{ a }] = st.deletedAlerts.splice(k, 1);
+    st.alerts.unshift(a);
+    return a;
+  }
+  m = /^\/alerts\/(\d+)$/.exec(ip);
   if (m) {
     const a = st.alerts.find((x) => x.id === Number(m![1]));
-    if (!a) throw new ApiError(404, "No alert");
-    if (method === "DELETE") { st.alerts = st.alerts.filter((x) => x !== a); st.alertSignals = st.alertSignals.filter((s) => s.alert_id !== a.id); return { deleted: a.id }; }
+    if (!a) throw new ApiError(404, "No alert", "not_found");
+    if (method === "DELETE") { st.alerts = st.alerts.filter((x) => x !== a); st.deletedAlerts.push({ a, at: Date.now() }); st.alertSignals = st.alertSignals.filter((s) => s.alert_id !== a.id); return { deleted: a.id }; }
     const patch = { ...b };
     if (patch.status === "snoozed") patch.snoozed_until = new Date(Date.now() + Number(patch.snooze_days ?? 7) * 86400000).toISOString();
     delete patch.snooze_days;
@@ -299,14 +313,35 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
   if (ip === "/watchlist" && method === "GET") return st.watch;
   if (ip === "/watchlist" && method === "POST") {
     const sym = String(b.symbol_or_isin ?? "").trim().toUpperCase();
-    if (!sym) throw new ApiError(422, "symbol_or_isin is required");
-    if (st.watch.some((w) => w.instrument?.symbol === sym)) throw new ApiError(409, `${sym} is already on the watchlist`);
+    if (!sym) throw new ApiError(422, "symbol_or_isin is required", "watchlist_invalid");
+    if (st.watch.some((w) => w.instrument?.symbol === sym)) throw new ApiError(409, `${sym} is already on the watchlist`, "watchlist_conflict");
     const w = watchItem(st.nextId++, st.nextId++, sym, sym.replace(/\..*$/, ""), "PLN", 100, st.nextId, 0.001, (b.note as string) ?? null, "user", { live: 0, triggered: 0, nearest: null });
     st.watch.push(w);
     return { ...w, created_instrument: true, warnings: [] };
   }
   m = /^\/watchlist\/(\d+)$/.exec(ip);
   if (m && method === "DELETE") { st.watch = st.watch.filter((w) => w.id !== Number(m![1])); return { deleted: Number(m[1]) }; }
+
+  // F6 planned deposits: "Zaplanuj wpłatę" (never cash until an import books it).
+  if (ip === "/planned-deposits" && method === "GET") {
+    const items = st.planned.filter((p) => p.status !== "cancelled");
+    const month = TODAY.slice(0, 7);
+    const planned = items.filter((p) => p.status === "planned" && p.planned_date.startsWith(month)).reduce((a, p) => a + p.amount, 0);
+    return { items, plan: { month, currency: "PLN", monthly_amount: 2000, day_of_month: 10, deposited: 0, planned, remaining: Math.max(0, 2000 - planned), covered: planned >= 2000, planned_count: items.length } };
+  }
+  if (ip === "/planned-deposits" && method === "POST") {
+    const amount = Number(b.amount);
+    if (!(amount > 0)) throw new ApiError(422, "amount must be positive", "planned_invalid");
+    const p: PlannedDeposit = { id: st.nextId++, account_id: (b.account_id as number | null) ?? null, amount, currency: String(b.currency ?? "PLN"), planned_date: String(b.planned_date), note: (b.note as string | null) ?? null, status: "planned", booked_txn_id: null, booked_at: null, created_at: new Date().toISOString() };
+    st.planned.push(p);
+    return p;
+  }
+  m = /^\/planned-deposits\/(\d+)$/.exec(ip);
+  if (m && method === "DELETE") {
+    if (!st.planned.some((p) => p.id === Number(m![1]))) throw new ApiError(404, "No planned deposit", "not_found");
+    st.planned = st.planned.filter((p) => p.id !== Number(m![1]));
+    return { deleted: Number(m[1]) };
+  }
 
   m = /^\/decisions\/(\d+)$/.exec(ip);
   if (m && method === "DELETE") {

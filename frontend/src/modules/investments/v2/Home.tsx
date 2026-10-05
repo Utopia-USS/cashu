@@ -1,15 +1,18 @@
 // Inwestycje v2 (design/v2/inv-home.html, inv-review.html; ia-v2.md 2-4, 9): the page head, then the widget
 // grid on thirds in reading order: hero, Sygnały (Szanse | Ryzyka) + Alerty, Wartość vs benchmark + Alokacja,
 // Aktywa + Obserwowane, Obsunięcie + Wpłaty + Rachunki. The weekly review is a strip with Co się zmieniło above
-// the grid; after 21+ days away a re-entry banner, the change log and Stan dziś come first. Sub-pages: the
-// alerts manager (`/alerts`) and the asset page (`/assets/{id}`). A zero-start profile gets a light grid in
-// the narrow frame (widgets appear when their data does).
+// the grid; after 21+ days away a re-entry banner, the change log and Stan dziś come first. The review strip
+// opens by itself on the profile's digest weekday until the review is marked done (decisions.md 7). Sub-pages:
+// the alerts manager (`/alerts`), the decision journal (`/journal`) and the asset detail (`/assets/{id}`: a
+// drawer over this grid, F6 owner decision 3; `?page=1` = "otwórz jako stronę"). A zero-start profile gets a
+// light grid in the narrow frame (widgets appear when their data does).
 //
 // Profile scoping: the shell remounts the page per profile; every request takes the slug; remembered values
 // (account filter, review note, review open, re-entry baseline) live under slug-scoped keys.
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../../core/api";
 import { useShell } from "../../../core/context";
+import { errorText } from "../../../core/messages";
 import { PRIVACY_PLAIN } from "../../../core/SetupPage";
 import type { ModuleCtx } from "../../../core/types";
 import { useAsync } from "../../../hooks";
@@ -19,16 +22,18 @@ import {
   type CommitResult, deleteReview, getProposals, getStrategy, patchInstrument, type Position, postReview, postRun, postStrategyInit, postStrategyReload,
   type Thesis,
 } from "../api";
-import { AccountDrawer, HistoryDrawer, ImportDrawer, ProposalDrawer, ThesisDrawer, TxnDrawer, TxnsDrawer } from "../Drawers";
+import { AccountDrawer, ImportDrawer, ProposalDrawer, ThesisDrawer, TxnDrawer, TxnsDrawer } from "../Drawers";
 import { storedKey, useStored } from "../hooks";
 import { accountLabel, dm, hm, isoDate, money, money0, pct, plural, pp, RUN_STATUS, WEEKDAYS, wdm } from "../labels";
 import { runError } from "../logic";
 import { makeUndo, undoMessage } from "../undo";
 import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
 import { getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, getSignalsV2, getWatchlist, dropCache, type PerfPoint } from "./api";
-import { AssetPage } from "./AssetPage";
-import { daysSince, instName, isDigestDay, nextWeekday, REENTRY_DAYS } from "./logic";
-import { readPlan } from "./Overview";
+import { AssetDrawer } from "./AssetDrawer";
+import { AssetDetail, assetName } from "./AssetPage";
+import { Journal } from "./Journal";
+import { daysSince, instName, isDigestDay, nextWeekday, planForMonth, REENTRY_DAYS, reviewAutoOpen } from "./logic";
+import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, DrawdownWidget, ValueChartWidget } from "./Perf";
 import { AccountsWidget, AllocationWidget, AssetList } from "./Portfolio";
 import { ChangeLog, ChangesWidget, ReentryBanner, ReviewStrip, StateToday } from "./Review";
@@ -41,7 +46,6 @@ type DrawerState =
   | { kind: "account" }
   | { kind: "thesis"; position: Position; thesis: Thesis | null }
   | { kind: "proposal"; id: number }
-  | { kind: "history"; instrument: { id: number | string; label: string } | null }
   | { kind: "txns"; position: Position };
 
 const ss = {
@@ -74,6 +78,18 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const [route, query] = (ctx.sub ?? "").split("?");
   const params = useMemo(() => new URLSearchParams(query ?? ""), [query]);
   const go = useCallback((sub?: string) => ctx.go({ kind: "tab", tab: "investments.portfolio", sub }), [ctx]);
+  // The asset drawer opens over the grid: the route changes (deep link) but the page under it keeps its
+  // scroll position (the shell scrolls to the top on every navigation).
+  const goKeep = useCallback((sub?: string) => {
+    const y = window.scrollY;
+    go(sub);
+    requestAnimationFrame(() => window.scrollTo({ top: y }));
+  }, [go]);
+  const assetRoute = /^assets\/(\d+)$/.exec(route ?? "");
+  const assetId = assetRoute ? Number(assetRoute[1]) : null;
+  const assetPage = assetId != null && params.get("page") === "1";
+  const openAsset = useCallback((id: number | string) => goKeep(`assets/${id}`), [goKeep]);
+  const openJournal = useCallback((instrument?: number | string | null) => go(instrument != null ? `journal?instrument=${instrument}` : "journal"), [go]);
 
   const [filter, setFilter] = useStored<number | null>(storedKey("filter", slug), null);
   const [note, setNote] = useStored<string>(storedKey("reviewNote", slug), "");
@@ -88,6 +104,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const strat = useAsync(() => getStrategy(slug).catch(() => null), [slug, nonce]);
   const dig = useAsync(() => getDigestV2(slug).catch(() => null), [slug, nonce]);
   const props = useAsync(() => getProposals(slug).catch(() => []), [slug, nonce]);
+  const planned = usePlannedDeposits(slug, nonce);
   const perf1y = useAsync(() => getPerformance(slug, "1y", accountsFilter).catch(() => null), [slug, filter, nonce]);
   const perfYtd = useAsync(() => getPerformance(slug, "ytd", accountsFilter).catch(() => null), [slug, filter, nonce]);
   const perf1m = useAsync(() => getPerformance(slug, "1m", accountsFilter).catch(() => null), [slug, filter, nonce]);
@@ -156,11 +173,20 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   // Minimal profile density (ia-v2.md 9): widgets appear when their data does.
   const historyMonths = perf1y.data?.points.length ? daysSince(perf1y.data.points[0].date, today) / 30.4 : 0;
   const light = !!positions && positions.positions.length <= 1 && !signals.length && !alerts.length && historyMonths < 6 && !(overview?.allocation.buckets.length);
+  // Narrow frame: the light grid (also under its asset drawer) and the asset detail as a page.
+  const homeLike = !route || route === "watch" || (assetId != null && !assetPage);
   useEffect(() => {
-    const narrow = light && !route;
-    setNarrow(narrow);
+    setNarrow((light && homeLike) || assetPage);
     return () => setNarrow(false);
-  }, [light, route, setNarrow]);
+  }, [light, homeLike, assetPage, setNarrow]);
+
+  // decisions.md 7: on the digest weekday the review strip opens by itself until the review is marked done.
+  // Closing it keeps it closed for this visit (session); the next visit that day opens it again.
+  useEffect(() => {
+    if (!reviewAutoOpen({ due, light, hasData, today: isoDate(new Date()), weekday, explicit: ss.get(reviewKey) })) return;
+    setReviewOpen(true);
+    started.current ??= Date.now();
+  }, [due, light, hasData, weekday]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const instruments: InstrumentChoice[] = useMemo(() => {
     const out: InstrumentChoice[] = (positions?.positions ?? []).map((p) => ({
@@ -185,7 +211,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       toast(status === "failed" ? `Przebieg reguł nieudany${firstErr ? `: ${runError(firstErr)}` : ""}` : status === "partial" ? `Reguły przeliczone częściowo${firstErr ? ` · ${runError(firstErr)}` : ""}` : "Reguły przeliczone", 4000);
       reload();
     } catch (e) {
-      toast(e instanceof ApiError && e.status === 409 ? "Reguły już działają (praca w tle)" : `Nie udało się uruchomić reguł: ${(e as Error).message}`, 4000);
+      toast(e instanceof ApiError && e.status === 409 ? "Reguły już działają (praca w tle)" : `Nie udało się uruchomić reguł: ${errorText(e)}`, 4000);
     } finally { setRunBusy(false); }
   };
   const initStrategy = async () => {
@@ -195,15 +221,15 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       await postStrategyReload(slug).catch(() => null);
       toast("Utworzono strategię z szablonu · uzupełnij strategy.yaml albo poproś agenta o propozycję", 4000);
       reload();
-    } catch (e) { toast(`Nie utworzono strategii: ${(e as Error).message}`, 4000); } finally { setInitBusy(false); }
+    } catch (e) { toast(`Nie utworzono strategii: ${errorText(e)}`, 4000); } finally { setInitBusy(false); }
   };
   const classify = async (i: { id: number | string }, patch: { asset_class: string; region: string | null; valuation_mode: string; tags: string[] }) => {
     try { await patchInstrument(slug, i.id, patch); toast("Zapisano klasyfikację · alokacja przeliczona", 2500); reload(); }
-    catch (e) { toast(`Nie zapisano: ${(e as Error).message}`, 4000); throw e; }
+    catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 4000); throw e; }
   };
   const alias = async (instrumentId: string, yahoo: string) => {
     try { await patchInstrument(slug, instrumentId, { aliases: [{ namespace: "yahoo", value: yahoo }] }); toast("Zapisano alias · ceny przy następnym przebiegu reguł", 3000); reload(); }
-    catch (e) { toast(`Nie zapisano aliasu: ${(e as Error).message}`, 4000); throw e; }
+    catch (e) { toast(`Nie zapisano aliasu: ${errorText(e)}`, 4000); throw e; }
   };
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const openReview = () => { setReviewOpen(true); setStep(0); started.current ??= Date.now(); window.scrollTo({ top: 0, behavior: "smooth" }); };
@@ -233,7 +259,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       };
       toast(`Przegląd zapisany · następny ${dm(nextWeekday(today, weekday))}`, 10000, u ? { label: "Cofnij", onClick: retry } : undefined);
     } catch (e) {
-      toast(e instanceof ApiError && e.status === 404 ? "Serwer nie zapisuje jeszcze przeglądów (brak /reviews)." : `Nie zapisano przeglądu: ${(e as Error).message}`, 5000);
+      toast(e instanceof ApiError && e.status === 404 ? "Serwer nie zapisuje jeszcze przeglądów (brak /reviews)." : `Nie zapisano przeglądu: ${errorText(e)}`, 5000);
     }
   };
 
@@ -242,7 +268,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const signalsCtx: SignalsCtx = {
     slug, positions: positions?.positions ?? [], buckets: overview?.allocation.buckets ?? [], total: overview?.allocation.total ?? 0, base,
     accounts, today, contributionDay: strategy?.facts?.contributions?.day_of_month ?? null, alertsById, onChanged: reload,
-    onOpenAsset: (id) => go(`assets/${id}`),
+    onOpenAsset: (id) => openAsset(id),
   };
 
   // ---- render --------------------------------------------------------------------------------------------------
@@ -267,21 +293,42 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       </>
     );
   }
-  const asset = /^assets\/(\d+)$/.exec(route ?? "");
-  if (asset) {
+  if (route === "journal") {
     return (
       <>
-        <AssetPage id={Number(asset[1])} ctx={signalsCtx} positions={positions.positions} alerts={alerts} watch={watch} onBack={() => go()}
-          onNewAlert={() => go(`alerts?new=1&instrument=${asset[1]}`)}
-          onAddTxn={() => setDrawer({ kind: "txn", instrumentId: Number(asset[1]) })}
-          onTxns={(p) => setDrawer({ kind: "txns", position: p })}
-          onThesis={(p, t) => setDrawer({ kind: "thesis", position: p, thesis: t })}
-          onJournal={() => setDrawer({ kind: "history", instrument: { id: Number(asset[1]), label: positions.positions.find((p) => String(p.instrument.id) === asset[1])?.instrument.label ?? "" } })}
-          onAlertsChanged={reload} />
+        <Journal slug={slug} instruments={instruments} accounts={accounts} initialInstrument={params.get("instrument")} onBack={() => go()}
+          onOpenAsset={(id) => go(`assets/${id}`)} onChanged={reload} />
         {drawers}
       </>
     );
   }
+  const assetDetail = (id: number, mode: "drawer" | "page") => (
+    <AssetDetail key={id} id={id} ctx={signalsCtx} positions={positions.positions} alerts={alerts} watch={watch} mode={mode} noteId={params.get("note")}
+      onNewAlert={() => go(`alerts?new=1&instrument=${id}`)}
+      onAddTxn={() => setDrawer({ kind: "txn", instrumentId: id })}
+      onTxns={(p) => setDrawer({ kind: "txns", position: p })}
+      onThesis={(p, t) => setDrawer({ kind: "thesis", position: p, thesis: t })}
+      onJournal={() => openJournal(id)}
+      onAlerts={() => go(`alerts?instrument=${id}`)}
+      onAlertsChanged={reload} />
+  );
+  if (assetId != null && assetPage) {
+    const nm = assetName(assetId, positions.positions, watch);
+    return (
+      <>
+        <nav className="crumb" aria-label="Ścieżka"><button onClick={() => go()}>Inwestycje</button> › <button onClick={() => go()}>Aktywa</button> › <span>{nm}</span>
+          <span style={{ flex: 1 }} /><button className="lnk" onClick={() => go(`assets/${assetId}`)}>otwórz w panelu</button></nav>
+        {assetDetail(assetId, "page")}
+        {drawers}
+      </>
+    );
+  }
+  const assetDrawer = assetId != null && (
+    <AssetDrawer name={assetName(assetId, positions.positions, watch)} onClose={() => goKeep()} onPage={() => go(`assets/${assetId}?page=1`)}
+      onCrumb={(where) => { goKeep(); if (where === "assets") setTimeout(() => scrollTo("inv-assets"), 60); }}>
+      {assetDetail(assetId, "drawer")}
+    </AssetDrawer>
+  );
 
   const fr = overview.freshness;
   const stale = fr.prices.stale_count;
@@ -312,7 +359,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   if (!hasData) {
     return <>{head}<Start accounts={accounts} strategy={strategy ?? null} hasTxn={positions.positions.length > 0} initBusy={initBusy}
       onAddAccount={() => setDrawer({ kind: "account" })} onInitStrategy={initStrategy} onAddTxn={() => setDrawer({ kind: "txn" })}
-      onImport={() => setDrawer({ kind: "import", account: filter })} />{drawers}</>;
+      onImport={() => setDrawer({ kind: "import", account: filter })} />{assetDrawer}{drawers}</>;
   }
 
   // ---- hero --------------------------------------------------------------------------------------------------
@@ -366,26 +413,26 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     items.push({ id: "reentry", span: 3, node: <ReentryBanner since={reentry} days={days} digest={reDigest.data} perf={perf1y.data} alerts={alerts} proposals={props.data ?? []}
       depositPlan={!!plan} onDismiss={dismissReentry} onReview={() => { scrollTo("inv-changelog"); if (due) openReview(); }} /> });
     items.push({ id: "changelog", span: 2, node: <ChangeLog since={reentry} digest={reDigest.data} alerts={alerts} proposals={props.data ?? []} accounts={accounts} today={today} names={names}
-      onJournal={() => setDrawer({ kind: "history", instrument: null })} /> });
+      onJournal={() => openJournal()} /> });
     items.push({ id: "today", span: 1, node: <StateToday since={reentry} total={k.value.total} base={base} ytd={ytd} perf={perf1y.data} signals={signals}
       reviewText={due ? "dziś" : WEEKDAYS[weekday] ?? weekday} onSignals={() => scrollTo("inv-signals")} /> });
   }
   if (reviewOpen && digest) {
     items.push({ id: "review", span: 3, node: <ReviewStrip digest={digest} step={step} onStep={onStep} decided={decided} total={signals.length} note={note} onNote={setNote} onDone={markDone} /> });
     items.push({ id: "changes", span: 3, node: <ChangesWidget digest={digest} perf={perf1y.data} alerts={alerts} proposals={props.data ?? []} accounts={accounts} names={names}
-      onSignals={() => onStep(1)} onProposal={(id) => setDrawer({ kind: "proposal", id })} onJournal={() => setDrawer({ kind: "history", instrument: null })} /> });
+      onSignals={() => onStep(1)} onProposal={(id) => setDrawer({ kind: "proposal", id })} onJournal={() => openJournal()} /> });
   }
   if (!reviewOpen && !reentry) items.push({ id: "hero", span: 3, node: hero });
   if (last?.status === "failed") {
     items.push({ id: "failed", span: 3, node: <Notice tone="neg" style={{ margin: 0 }}>Ostatni przebieg reguł się nie udał{last.errors[0] ? `: ${runError(last.errors[0])}` : ""}. Sygnały poniżej pochodzą z wcześniejszego przebiegu.</Notice> });
   }
-  const wSignals: GridItem = { id: "signals", span: 2, node: <SignalsWidget signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} review={reviewOpen} expired={expired} onHistory={() => setDrawer({ kind: "history", instrument: null })} /> };
+  const wSignals: GridItem = { id: "signals", span: 2, node: <SignalsWidget signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} review={reviewOpen} expired={expired} onHistory={() => openJournal()} /> };
   const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsQ.data} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
   const wValue: GridItem = { id: "value", span: 2, node: <ValueChartWidget slug={slug} accounts={accountsFilter} initial={perf1y.loading ? undefined : perf1y.data} /> };
   const wAlloc: GridItem = { id: "alloc", span: 1, node: <AllocationWidget alloc={overview.allocation} strategy={strategy ?? null} filtered={filter != null} /> };
   const wAssets: GridItem = { id: "assets", span: 2, node: <AssetList data={positions} accounts={accounts} signals={signals} alerts={alerts} strategy={strategy ?? null}
-    onOpen={(id) => go(`assets/${id}`)} onAddTxn={() => setDrawer({ kind: "txn" })} onClassify={classify} /> };
-  const wWatch: GridItem = { id: "watch", span: 1, node: <WatchlistWidget slug={slug} items={watchQ.data} onChanged={reload} onOpen={(id) => go(`assets/${id}`)} autoAdd={route === "watch"} /> };
+    onOpen={(id) => openAsset(id)} onAddTxn={() => setDrawer({ kind: "txn" })} onClassify={classify} /> };
+  const wWatch: GridItem = { id: "watch", span: 1, node: <WatchlistWidget slug={slug} items={watchQ.data} onChanged={reload} onOpen={(id) => openAsset(id)} autoAdd={route === "watch"} /> };
   const wDd: GridItem = { id: "dd", span: 1, node: <DrawdownWidget perf={perf1y.loading ? undefined : perf1y.data} /> };
   const wContrib = (span: 1 | 2): GridItem => ({ id: "contrib", span, node: <ContributionsWidget perf={perf1y.loading ? undefined : perf1y.data} ytd={perfYtd.loading ? undefined : perfYtd.data} plan={plan ?? fallbackPlan()} today={today} fromBudget={budgetOn} /> });
   const wAccounts: GridItem = { id: "accounts", span: 1, node: <AccountsWidget overview={overview} strategy={strategy ?? null} today={today} onAdd={() => setDrawer({ kind: "account" })}
@@ -400,6 +447,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     <>
       {head}
       <Grid items={items.filter(Boolean) as GridItem[]} />
+      {assetDrawer}
       {drawers}
     </>
   );
@@ -408,8 +456,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   function fallbackPlan() {
     const flows = (perf1y.data?.points ?? []).filter((p) => (p.flow ?? 0) > 0);
     const lastFlow = flows[flows.length - 1];
-    const local = readPlan(slug, today.slice(0, 7));
-    if (local) return { amount: local.amount, day: Number(local.date.slice(8, 10)) };
+    const local = planForMonth(planned.list, today.slice(0, 7));
+    if (local) return { amount: local.amount, day: Number(local.planned_date.slice(8, 10)) };
     return lastFlow ? { amount: lastFlow.flow!, day: Number(lastFlow.date.slice(8, 10)) } : null;
   }
 
@@ -424,7 +472,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       case "import":
         return (
           <ImportDrawer slug={slug} accounts={accounts} initialAccount={drawer.account ?? null} onClose={close}
-            onDone={(r: CommitResult) => { toast(`Zaimportowano ${r.inserted} transakcji`, 2500); shellStale.current = true; reload(); }}
+            onDone={(r: CommitResult) => { toast(`Zaimportowano ${r.inserted} transakcji${r.planned_booked?.length ? ` · ${plural(r.planned_booked.length, "plan wpłaty zaksięgowany", "plany wpłat zaksięgowane", "planów wpłat zaksięgowanych")}` : ""}`, 3500); shellStale.current = true; reload(); }}
             onAddAccount={() => setDrawer({ kind: "account" })} onManual={() => setDrawer({ kind: "txn" })}
             onClassify={() => { close(); setTimeout(() => scrollTo("inv-assets"), 50); }} />
         );
@@ -442,8 +490,6 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
           <ProposalDrawer slug={slug} id={drawer.id} version={strategy?.version ?? null} onClose={close} onChanged={reload}
             onDone={(ok, v) => { close(); toast(ok ? `Zatwierdzono propozycję${v ? ` · strategia v${v}` : ""}` : "Odrzucono propozycję", 3000); reload(); }} />
         );
-      case "history":
-        return <HistoryDrawer slug={slug} instrument={drawer.instrument} onClose={close} />;
       case "txns":
         return <TxnsDrawer slug={slug} position={drawer.position} accounts={accounts} onClose={close} onAdd={() => setDrawer({ kind: "txn", instrumentId: drawer.position.instrument.id })} />;
     }

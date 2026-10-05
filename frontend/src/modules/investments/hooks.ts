@@ -33,7 +33,7 @@ export function useShortcuts(map: Record<string, () => void>, enabled = true) {
       const t = e.target as HTMLElement | null;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if (e.key === "Enter" && t && /^(BUTTON|A|SUMMARY)$/.test(t.tagName)) return; // native activation
-      if (document.querySelector(".drawer, .overlay, .pop, .menu")) return;
+      if (document.querySelector(".drawer, .adrawer, .overlay, .pop, .menu")) return;
       const fn = ref.current[e.key];
       if (fn) { e.preventDefault(); fn(); }
     };

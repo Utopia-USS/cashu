@@ -3,27 +3,38 @@
 // form = the standardized schema, the 12-month triggered history). One schema for the owner and the agent;
 // agent items are badged and removable. Alerts are conditions on hard data, never forecasts.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ApiError } from "../../../core/api";
+import { describeError, errorText } from "../../../core/messages";
 import { useAsync } from "../../../hooks";
 import { Notice, Seg, Skeleton, useToast } from "../../../ui";
 import { AgentTag, AlertStatus, FootFacts, Grid, PolarityText, Widget } from "../../../widgets";
 import { bucketLabel, dm, dmy, DECISION_ACTION, hm, numInput, parseNum, pct, plural } from "../labels";
 import {
-  type Alert, type AlertInput, type AlertKindInfo, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, patchAlert, postAlert, type SignalV2,
+  type Alert, type AlertInput, type AlertKindInfo, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, patchAlert, postAlert, restoreAlert, type SignalV2,
 } from "./api";
 import {
   alertConditionText, alertDefaultTitle, alertDistance, alertLevelText, alertNowText, alertPreview, alertWhenSuffix, instName, KIND_LABEL, orderAlerts, price,
 } from "./logic";
+import { alertDeleteUndo, offerUndo, recreateInput } from "./undoFlow";
 
 export interface InstrumentChoice { id: number; label: string; symbol: string | null; venue: string | null; currency: string; price: number | null; held: boolean }
 
 const isLive = (a: Alert) => a.status === "active" || a.status === "triggered" || a.status === "snoozed";
 
-/** Re-create a deleted alert (the toast's "Cofnij"); the new one has a new id and source user. */
-const recreate = (a: Alert): AlertInput => ({
-  kind: a.kind, title: a.title, params: a.params, instrument_id: a.instrument_id, scope: a.scope, polarity: a.polarity, severity: a.severity,
-  note: a.note, cooldown_days: a.cooldown_days, expires_at: a.expires_at,
-});
+/** Delete an alert at once; the toast's "Cofnij" restores it (same id, 15 minutes; BE soft delete) or, on a
+ * server without the restore endpoint, re-creates it. Returns false when the delete failed. */
+export async function removeAlertWithUndo(slug: string, a: Alert, toast: (t: string, ms?: number, act?: { label: string; onClick: () => void }) => void,
+  onChanged: () => void): Promise<boolean> {
+  try {
+    await deleteAlert(slug, a.id);
+  } catch (e) {
+    toast(`Nie usunięto alertu: ${errorText(e)}`, 5000);
+    return false;
+  }
+  onChanged();
+  const u = alertDeleteUndo(() => restoreAlert(slug, a.id), () => postAlert(slug, recreateInput(a) as AlertInput));
+  offerUndo(toast, `Usunięto alert „${a.title}"`, u, "usunięcie alertu", onChanged);
+  return true;
+}
 
 // ---- widget on the home ------------------------------------------------------------------------------------
 
@@ -33,13 +44,7 @@ export function AlertsWidget({ slug, alerts, onManage, onNew, onChanged }: {
   const toast = useToast();
   const live = orderAlerts((alerts ?? []).filter((a) => a.status === "active" || a.status === "triggered"));
   const triggered = live.filter((a) => a.status === "triggered").length;
-  const remove = async (a: Alert) => {
-    try {
-      await deleteAlert(slug, a.id);
-      onChanged();
-      toast(`Usunięto alert „${a.title}"`, 6000, { label: "Cofnij", onClick: () => { void postAlert(slug, recreate(a)).then(onChanged); } });
-    } catch (e) { toast(`Nie usunięto alertu: ${(e as Error).message}`, 4000); }
-  };
+  const remove = (a: Alert) => { void removeAlertWithUndo(slug, a, toast, onChanged); };
   return (
     <Widget title="Alerty" count={live.length || undefined} controls={<button className="btn sm" onClick={onNew}>+ Nowy</button>} body="tight"
       footer={<><FootFacts items={[<><b>{live.length - triggered}</b> aktywne</>, triggered > 0 && <><b>{triggered}</b> wyzwolone</>]} /><span className="spacer" />
@@ -116,15 +121,14 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
   const act = async (a: Alert, what: "mute" | "unmute" | "delete") => {
     try {
       if (what === "delete") {
-        await deleteAlert(slug, a.id);
-        toast(`Usunięto alert „${a.title}"`, 6000, { label: "Cofnij", onClick: () => { void postAlert(slug, recreate(a)).then(reload); } });
-        if (editing === a.id) setEditing("new");
+        if (await removeAlertWithUndo(slug, a, toast, reload) && editing === a.id) setEditing("new");
+        return;
       } else {
         await patchAlert(slug, a.id, { status: what === "mute" ? "muted" : "active" });
         toast(what === "mute" ? "Alert wyciszony" : "Alert włączony", 2500);
       }
       reload();
-    } catch (e) { toast(`Nie zapisano: ${(e as Error).message}`, 4000); }
+    } catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 5000); }
   };
 
   return (
@@ -307,7 +311,8 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
         onSaved(await patchAlert(slug, alert.id, { ...patch, expires_at: patch.expires_at ?? null }), false);
       } else onSaved(await postAlert(slug, body), true);
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : (e as Error).message);
+      const d = describeError(e);
+      setErr(d.detail ? `${d.text} (${d.detail})` : d.text);
     } finally { setBusy(false); }
   };
   const pickInstrument = (text: string) => {

@@ -212,11 +212,44 @@ export const getAlertKinds = (slug: string) => cached(`kinds:${slug}`, () => j<A
 export const postAlert = (slug: string, b: AlertInput) => jpost<Alert>(inv(slug, "/alerts"), b);
 export const patchAlert = (slug: string, id: number, b: AlertPatch) => jpatch<Alert>(inv(slug, `/alerts/${id}`), b);
 export const deleteAlert = (slug: string, id: number) => jdel<{ deleted: number }>(inv(slug, `/alerts/${id}`));
+/** Undo of a delete within 15 minutes (F6 BE: soft delete + restore, the id stays). */
+export const restoreAlert = (slug: string, id: number) => jpost<Alert>(inv(slug, `/alerts/${id}/restore`));
 
 export const getWatchlist = (slug: string) => j<WatchItem[]>(inv(slug, "/watchlist"));
 export const postWatch = (slug: string, b: { symbol_or_isin?: string; instrument_id?: number; note?: string | null; currency?: string | null }) =>
   jpost<WatchItem & { created_instrument: boolean; warnings: string[] }>(inv(slug, "/watchlist"), b);
 export const deleteWatch = (slug: string, id: number) => jdel<{ deleted: number }>(inv(slug, `/watchlist/${id}`));
+
+// ---- planned deposits (F6 BE: `inv_planned_deposits`; "Zaplanuj wpłatę" on Przegląd and the minimal view) --
+/** A planned deposit: counted against the contribution plan, never as cash until an import books it. */
+export interface PlannedDeposit {
+  id: number;
+  account_id: number | null;
+  amount: number;
+  currency: string;
+  planned_date: string;
+  note: string | null;
+  status: "planned" | "booked" | "cancelled" | string;
+  booked_txn_id: number | null;
+  booked_at: string | null;
+  created_at: string | null;
+}
+export interface PlannedDepositInput { amount: number; currency: string; planned_date: string; account_id?: number | null; note?: string | null }
+type RawPlanned = Omit<PlannedDeposit, "amount"> & { amount: number | string };
+const normPlanned = (r: RawPlanned): PlannedDeposit => ({ ...r, amount: Number(r.amount) });
+/** The month's contribution-plan progress in the base currency (amounts null when an FX rate is missing). */
+export interface MonthPlan {
+  month: string; currency: string; monthly_amount: Num; day_of_month: number | null;
+  deposited: Num; planned: Num; remaining: Num; covered: boolean | null; planned_count: number;
+}
+export interface PlannedList { items: PlannedDeposit[]; plan: MonthPlan | null }
+export const getPlannedDeposits = async (slug: string): Promise<PlannedList> => {
+  const r = await j<RawPlanned[] | { items: RawPlanned[]; plan?: MonthPlan | null }>(inv(slug, "/planned-deposits"));
+  return Array.isArray(r) ? { items: r.map(normPlanned), plan: null } : { items: (r.items ?? []).map(normPlanned), plan: r.plan ?? null };
+};
+export const postPlannedDeposit = async (slug: string, b: PlannedDepositInput): Promise<PlannedDeposit> =>
+  normPlanned(await jpost<RawPlanned>(inv(slug, "/planned-deposits"), b));
+export const deletePlannedDeposit = (slug: string, id: number) => jdel<{ deleted: number }>(inv(slug, `/planned-deposits/${id}`));
 
 // Decision undo (DELETE /decisions/{id}), snooze and review undo live in ../api.ts (FX, F5 R4 / R7).
 export const getDecisionsFor = (slug: string, instrumentId: number | string) => j<Decision[]>(inv(slug, `/decisions?instrument_id=${instrumentId}`));
