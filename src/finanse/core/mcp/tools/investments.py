@@ -10,6 +10,8 @@ Read: ``portfolio_overview``, ``positions``, ``signals``, ``strategy_status``, `
 from __future__ import annotations
 
 import datetime as dt
+import logging
+import math
 
 from sqlmodel import func, select
 
@@ -656,7 +658,126 @@ def _thesis_instrument(inst) -> dict:
 def history_metrics(ctx: ToolContext) -> dict:
     from .investments_history import history_metrics as compute
 
-    return compute(ctx)
+    out = compute(ctx)
+    if "activity" in out:  # there is a history: add the performance metrics
+        out.pop("not_measured", None)
+        out["performance"] = _performance_metrics(ctx)
+    return out
+
+
+def _safe_pct(value) -> L.Labelled:
+    """A fraction as a percent label; absurd or non-finite values (a short span annualized) are None."""
+    if value is None:
+        return L.pct(None)
+    number = float(value)
+    if not math.isfinite(number) or abs(number) > 100:
+        return L.pct(None)
+    return L.pct(number)
+
+
+def _drawdown_fields(prefix: str, dd) -> dict:
+    return {
+        prefix: _safe_pct(None if dd is None else dd.depth),
+        f"{prefix}_peak": L.date(None if dd is None else dd.peak),
+        f"{prefix}_trough": L.date(None if dd is None else dd.trough),
+        f"{prefix}_recovered": L.date(None if dd is None else dd.recovered),
+    }
+
+
+def _performance_metrics(ctx: ToolContext) -> dict:
+    """Return vs the benchmark, max drawdowns, profit concentration and rolling relative performance
+    over the whole history (``modules.investments.performance``), as fractions, dates and counts only:
+    no amount leaves in either privacy mode."""
+    from finanse.modules.investments.performance import service as perf
+
+    try:
+        data = perf.mcp_summary(ctx.session, ctx.profile, as_of=ctx.today)
+    except Exception:  # the other history metrics still answer
+        logging.getLogger("finanse.mcp").exception("performance metrics failed")
+        return {"note": L.text("performance metrics could not be computed")}
+    if data is None:
+        return {"note": L.text("no investments history yet")}
+    s, b, meta, conc = (
+        data["summary"],
+        data["benchmark"],
+        data["benchmark_meta"],
+        data["concentration"],
+    )
+    shares = dict(conc.top_shares)
+    return {
+        "since": L.date(data["since"]),
+        "as_of": L.date(data["as_of"]),
+        "base_currency": L.category(data["base_currency"]),
+        "return": {
+            "twr": _safe_pct(s["twr"]),
+            "twr_annualized": _safe_pct(s["twr_annualized"]),
+            "xirr": _safe_pct(s["xirr"]),
+            "money_weighted": _safe_pct(s["mwr"]),
+            "days": L.count(s["days"]),
+        },
+        "benchmark": {
+            "id": L.category(meta["id"]),
+            "proxy": L.symbol(meta["proxy"]),
+            "status": L.category(meta["status"]),
+            "covers_history": L.flag(b.get("covers_range")),
+            "twr": _safe_pct(b.get("twr")),
+            "twr_annualized": _safe_pct(b.get("twr_annualized")),
+            "simulation_xirr": _safe_pct(b.get("simulation_xirr")),
+            "simulation_money_weighted": _safe_pct(b.get("simulation_mwr")),
+            "excess_twr": _safe_pct(b.get("excess_twr")),
+            "excess_vs_simulation": _safe_pct(b.get("excess_vs_simulation")),
+        },
+        "max_drawdown": {
+            **_drawdown_fields("portfolio", s["max_drawdown"]),
+            **_drawdown_fields("benchmark", b.get("max_drawdown")),
+        },
+        "profit_concentration": {
+            "instruments_positive": L.count(conc.positive),
+            "instruments_negative": L.count(conc.negative),
+            "top1_share": _safe_pct(shares.get(1)),
+            "top2_share": _safe_pct(shares.get(2)),
+            "top3_share": _safe_pct(shares.get(3)),
+            "top5_share": _safe_pct(shares.get(5)),
+            "pnl_pct_of_contributions": _safe_pct(data["pnl_pct_of_contributions"]),
+            "without_top2_pct_of_contributions": _safe_pct(
+                data["without_top2_pct_of_contributions"]
+            ),
+            "benchmark_pnl_pct_of_contributions": _safe_pct(
+                data["benchmark_pnl_pct_of_contributions"]
+            ),
+        },
+        "rolling_relative": [
+            {
+                "months": L.count(r["months"]),
+                "windows": L.count(r["windows"]),
+                "latest_date": L.date(None if r["latest"] is None else r["latest"].date),
+                "latest_excess": _safe_pct(None if r["latest"] is None else r["latest"].excess),
+                "min_excess": _safe_pct(r["min_excess"]),
+                "max_excess": _safe_pct(r["max_excess"]),
+                "share_outperforming": _safe_pct(r["share_outperforming"]),
+            }
+            for r in data["rolling"]
+        ],
+        "per_year": [
+            {
+                "year": L.count(y.year),
+                "portfolio_twr": _safe_pct(y.portfolio),
+                "benchmark": _safe_pct(y.benchmark),
+                "partial_year": L.flag(y.partial),
+            }
+            for y in data["per_year"]
+        ],
+        "data_quality": {
+            "incomplete_days": L.count(s["incomplete_days"]),
+            "implied_funding": L.flag(bool(s["implied_funding"])),
+        },
+        "note": L.text(
+            "values are fractions, not percent; twr is contributions-neutral, money_weighted and "
+            "xirr follow the deposits; the benchmark simulation puts the same deposits on the same "
+            "days into the proxy; excess = portfolio minus benchmark; rolling windows are "
+            "cumulative, not annualized"
+        ),
+    }
 
 
 def inspect_export(ctx: ToolContext, path: str, max_samples: int = 5) -> dict:
