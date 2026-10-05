@@ -242,6 +242,9 @@ def run_stdio(slug: str) -> None:
 
     host = FinanseMcp.for_slug(slug)
     server = build_server(host, f"finanse-{slug}")
+    from .. import runtime
+
+    runtime.note_mcp_started()
 
     async def main() -> None:
         async with stdio_server() as (read_stream, write_stream):

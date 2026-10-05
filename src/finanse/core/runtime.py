@@ -204,8 +204,31 @@ def app_moved_from() -> str | None:
     return moved if isinstance(moved, str) and moved != bundle else None
 
 
+def note_mcp_started() -> None:
+    """Called when ``finanse mcp`` starts: some agent client was given an MCP line, so a later move of
+    the app can leave it pointing at the old path (F7 review R8). Recorded once; best effort."""
+    try:
+        data = _read_location()
+        if not data.get("mcp_started_at"):
+            data["mcp_started_at"] = datetime.now(UTC).replace(microsecond=0).isoformat()
+            _write_location(data)
+    except OSError:
+        pass
+
+
+def mcp_ever_started() -> bool:
+    return bool(_read_location().get("mcp_started_at"))
+
+
+def app_moved_at() -> str | None:
+    value = _read_location().get("moved_at") if app_moved_from() else None
+    return value if isinstance(value, str) else None
+
+
 def clear_app_move() -> None:
-    """The fix was applied (worker re-installed, MCP lines re-added): forget the old location."""
+    """The MCP part of a move is fixed (the owner confirmed re-adding the MCP lines, or a workspace
+    update rewrote its .mcp.json): forget the old location. A worker re-install does not clear it:
+    the worker part is derived from the installed job itself (F7 review R8)."""
     data = _read_location()
     if data.pop("moved_from", None) is not None:
         data.pop("moved_at", None)

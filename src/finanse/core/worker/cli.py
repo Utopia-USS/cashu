@@ -148,15 +148,16 @@ def _echo_relocation(rel: dict | None) -> None:
     """Stale paths after a moved / renamed app (PK11) and how to fix them; nothing is rewritten."""
     if not rel:
         return
-    if rel.get("worker") == "missing":
+    worker, mcp = rel.get("worker"), rel.get("mcp")
+    if worker and worker.get("reason") == "missing":
         typer.echo("  STALE: the scheduled job's program no longer exists (the app was moved,")
         typer.echo("         renamed or deleted); the job fails without writing to the log.")
-    elif rel.get("worker") == "other_program":
+    elif worker and worker.get("reason") == "other_program":
         typer.echo("  STALE: the scheduled job runs another finanse install than this one.")
-    if rel.get("worker"):
-        expected = " ".join(rel.get("expected_program") or []) or "-"
+    if worker:
+        expected = " ".join(worker.get("expected_program") or []) or "-"
         typer.echo(f"         Fix: `finanse worker install` (it will run {expected}).")
-    if rel.get("app_moved_from"):
-        typer.echo(f"  STALE: Finanse.app was moved from {rel['app_moved_from']}.")
-        typer.echo("         MCP servers added before still point there: re-add them with the")
-        typer.echo("         lines from Settings > Agent AI, then run `finanse worker install`.")
+    if mcp:
+        typer.echo(f"  STALE: Finanse.app was moved from {mcp['app_moved_from']}.")
+        typer.echo("         MCP servers you added before may still point there: re-add them with")
+        typer.echo("         the lines from Settings > Agent AI, then mark it done there.")

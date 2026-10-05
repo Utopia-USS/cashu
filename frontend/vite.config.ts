@@ -50,10 +50,14 @@ function sameOriginApiOnly(): Plugin {
 
 // Dev: `npm run dev` serves the SPA and proxies /api to the FastAPI backend
 // (run `finanse serve` alongside), adding the X-Finanse-Token header the backend
-// requires, but only to same-origin requests from the dev page (devProxyGuard.ts:
+// requires, but only to requests that do not name another site (devProxyGuard.ts:
 // Origin, Referer and Sec-Fetch-Site must not name another site; others get 403).
+// A local client that sends none of these headers (curl) still gets the token
+// added: dev only, accepted by the PK1 contract.
 // Build: emits into the FastAPI static dir so `finanse serve` alone serves the
-// production bundle (the token then arrives via a <meta> tag).
+// production bundle; the page never carries the token: the desktop window gets
+// it from the pywebview bridge, a browser from the one-time `#token=` URL that
+// `finanse serve` prints (src/core/token.ts).
 export default defineConfig({
   plugins: [react(), sameOriginApiOnly()],
   server: {

@@ -421,6 +421,13 @@ def _import_webview():
     return webview
 
 
+ERROR_PAGE_BASE = ""
+"""Base URL of the boot error page. pywebview's ``load_html`` defaults to a ``file://`` base (the app
+bundle), which WebKit reports to the navigation delegate as the request URL, so the PK5 guard would
+cancel the page; an empty base is reported as ``about:blank`` (allowed), like the loading page that
+pywebview itself loads with ``''`` (F7 review R1)."""
+
+
 def _boot(
     window,
     server: ServerThread,
@@ -438,7 +445,7 @@ def _boot(
         except DesktopError as e:
             launch.error = str(e)
             log.error("%s", e)
-            window.load_html(error_html(str(e), log_file))
+            window.load_html(error_html(str(e), log_file), ERROR_PAGE_BASE)
             return
         _remember(server.port)
         window.load_url(router.ready(window, server.url) if router is not None else server.url)
@@ -446,7 +453,7 @@ def _boot(
         launch.error = launch.error or f"Unexpected error while opening the window: {e}"
         log.exception("the window could not be opened")
         try:
-            window.load_html(error_html(launch.error, log_file))
+            window.load_html(error_html(launch.error, log_file), ERROR_PAGE_BASE)
         except Exception:
             log.exception("could not show the error page")
 

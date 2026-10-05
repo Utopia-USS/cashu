@@ -306,3 +306,20 @@ def test_wrong_host_response_forbids_framing_too(client):
     r = client.get("/", headers={"Host": "attacker.example:8500"})
     assert r.status_code == 400
     _assert_no_framing(r)
+
+
+def test_packaged_app_ignores_the_dev_embed_switch(client, monkeypatch, caplog):
+    """F7 review R3: a stray FINANSE_DEV_EMBED_TOKEN=1 (launchctl setenv, a shell profile) must not
+    bring the token back into / of the packaged app; it is logged once at error level."""
+    import sys
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(security, "_frozen_embed_logged", False)
+    monkeypatch.setenv(security.DEV_EMBED_ENV, "1")
+    with caplog.at_level("ERROR", logger="finanse.security"):
+        r = client.get("/")
+        client.get("/")
+    assert TOKEN not in r.text and security.TOKEN_META not in r.text
+    errors = [rec for rec in caplog.records if rec.name == "finanse.security"]
+    assert len(errors) == 1 and errors[0].levelname == "ERROR"
+    assert security.DEV_EMBED_ENV in errors[0].getMessage() and TOKEN not in errors[0].getMessage()

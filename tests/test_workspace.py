@@ -663,3 +663,44 @@ def test_skill_references_resolve_inside_the_skill():
                 if not (folder / ref).exists():
                     missing.append(f"{folder.name}: {ref}")
     assert not missing, missing
+
+
+# --------------------------------------------------------------------------- #
+# F7 OB6 / OB7
+# --------------------------------------------------------------------------- #
+
+
+def test_protected_places_have_a_stable_order(tmp_path, monkeypatch):
+    """OB6: equally deep places come out sorted by path, not in set order (CLAUDE.md boundaries and
+    settings.json flapped between "outdated" and "up to date" across processes)."""
+    names = ["zeta", "alpha", "mid", "beta"]
+    for n in names:
+        (tmp_path / n).mkdir()
+    monkeypatch.setattr(paths, "data_dir", lambda: tmp_path / "zeta")
+    monkeypatch.setattr(paths, "storage_dir", lambda: tmp_path / "mid")
+    monkeypatch.setattr(paths, "LEGACY_DIR", tmp_path / "beta")
+    monkeypatch.setattr(paths, "PROJECT_ROOT", tmp_path / "alpha" / "..")
+    (tmp_path / "statements").mkdir()
+    places = service.protected_places()
+    assert list(places) == sorted(places, key=lambda p: (len(p.parts), str(p)))
+    assert [p.name for p in places] == ["beta", "mid", "statements", "zeta"]
+
+
+def test_status_flags_an_mcp_command_of_another_install(client, tmp_path):
+    """OB7: a workspace written by another process (a dev venv, the app at its old path) keeps that
+    CLI in .mcp.json; status says so and "Aktualizuj workspace" rewrites it."""
+    assert client.post("/api/p/anna-test/workspace", json={}).status_code == 200
+    ws = _ws(tmp_path, "anna-test")
+    fresh = client.get("/api/p/anna-test/workspace").json()
+    assert fresh["mcp_command_stale"] is False and fresh["up_to_date"]
+    data = _json(ws / ".mcp.json")
+    data["mcpServers"]["finanse-anna-test"]["command"] = "/old/venv/bin/finanse"
+    (ws / ".mcp.json").write_text(json.dumps(data), encoding="utf-8")
+    stale = client.get("/api/p/anna-test/workspace").json()
+    assert stale["mcp_command_stale"] is True and stale["up_to_date"] is False
+    updated = client.post("/api/p/anna-test/workspace", json={}).json()
+    assert updated["mcp_command_stale"] is False and updated["up_to_date"]
+    entry = _json(ws / ".mcp.json")["mcpServers"]["finanse-anna-test"]
+    assert entry["command"] == service.cli_program()[0]
+    # no workspace yet: never stale
+    assert client.get("/api/p/bolek-test/workspace").json()["mcp_command_stale"] is False

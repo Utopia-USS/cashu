@@ -39,6 +39,7 @@ the Vite dev proxy and other local clients.
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 import re
 import secrets
@@ -133,9 +134,27 @@ def get_config() -> SecurityConfig:
     return _config
 
 
+_frozen_embed_logged = False
+
+
 def embed_token_enabled() -> bool:
-    """True only in the explicit dev mode ``FINANSE_DEV_EMBED_TOKEN=1``."""
-    return os.environ.get(DEV_EMBED_ENV) == "1"
+    """True only in the explicit dev mode ``FINANSE_DEV_EMBED_TOKEN=1`` from a source checkout. The
+    packaged app ignores the switch (a stray ``launchctl setenv`` must not bring the token back into
+    ``/``; F7 review R3) and logs that once at error level."""
+    global _frozen_embed_logged
+    if os.environ.get(DEV_EMBED_ENV) != "1":
+        return False
+    from . import runtime
+
+    if runtime.frozen():
+        if not _frozen_embed_logged:
+            _frozen_embed_logged = True
+            logging.getLogger("finanse.security").error(
+                "%s=1 is ignored in the packaged app: the API token is never embedded into /",
+                DEV_EMBED_ENV,
+            )
+        return False
+    return True
 
 
 def _is_public(path: str) -> bool:

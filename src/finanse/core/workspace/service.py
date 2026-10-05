@@ -156,7 +156,9 @@ def protected_places() -> tuple[Path, ...]:
         if extra.is_dir():
             found.append(extra)
     out: list[Path] = []
-    for place in sorted({p.resolve() for p in found}, key=lambda p: len(p.parts)):
+    # (depth, path): a stable order, so the rendered CLAUDE.md boundaries and settings.json deny
+    # rules are the same in every process (set order differs between runs; F7 OB6)
+    for place in sorted({p.resolve() for p in found}, key=lambda p: (len(p.parts), str(p))):
         if not any(inside(place, kept) for kept in out):
             out.append(place)
     return tuple(out)
@@ -403,6 +405,21 @@ def _outdated(ctx: Context, manifest: dict) -> list[dict]:
     return items
 
 
+def _mcp_command_stale(ctx: Context) -> bool:
+    """The profile's server in .mcp.json starts another finanse CLI than this install would write
+    (``cli_program()``, the bundled binary in the packaged app): e.g. a workspace written by a dev
+    venv or an app at its old path (F7 OB7). A missing entry is reported by ``outdated`` instead.
+    "Aktualizuj workspace" (``apply``) rewrites it."""
+    data, valid = _read_json(ctx.path / MCP_FILE)
+    servers = (data or {}).get("mcpServers") if valid else None
+    entry = servers.get(ctx.server) if isinstance(servers, dict) else None
+    if not isinstance(entry, dict):
+        return False
+    wanted = render.mcp_entry(ctx)
+    args = entry.get("args") if isinstance(entry.get("args"), list) else []
+    return entry.get("command") != wanted["command"] or args[: len(ctx.cli) - 1] != list(ctx.cli[1:])
+
+
 def status(session: Session, profile: Profile, *, path: Path | None = None) -> dict:
     slug = profile.slug
     configured = configured_path(slug)
@@ -413,10 +430,12 @@ def status(session: Session, profile: Profile, *, path: Path | None = None) -> d
     exists = bool(manifest) and valid and conflict is None
     outdated: list[dict] = []
     skill_rows: list[dict] = []
+    command_stale = False
     if exists:
         ctx = build_context(session, profile, ws)
         outdated = _outdated(ctx, manifest or {})
         skill_rows = _skill_states(ctx, manifest or {})
+        command_stale = _mcp_command_stale(ctx)
     return {
         "path": str(ws),
         "default_path": str(default_path(slug)),
@@ -429,6 +448,7 @@ def status(session: Session, profile: Profile, *, path: Path | None = None) -> d
         "current_version": __version__,
         "updated_at": (manifest or {}).get("updated_at") if exists else None,
         "up_to_date": exists and not outdated,
+        "mcp_command_stale": command_stale,
         "outdated": outdated,
         "skills": skill_rows,
         "skills_source": skills.source_dir() is not None,
@@ -588,6 +608,8 @@ def apply(
             _write_config(slug, target, routine)
     except locks.LockBusy:
         raise WorkspaceBusy("the workspace is being updated right now; try again") from None
+    if any(c["kind"] == "mcp" and c["action"] == "updated" for c in changes):
+        runtime.clear_app_move()  # its .mcp.json now names this install (F7 review R8)
     result = status(session, profile)
     result["changes"] = changes
     result["moved_from"] = (

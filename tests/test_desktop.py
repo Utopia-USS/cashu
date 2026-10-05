@@ -270,18 +270,31 @@ class FakeEvent:
             handler()
 
 
+PYWEBVIEW_DEFAULT_BASE = "file:///Applications/Finanse.app/Contents/Frameworks/"
+
+
+def webkit_request_url(base_uri: str) -> str:
+    """The URL WebKit hands the navigation delegate for ``loadHTMLString:baseURL:`` (verified with a
+    real WKWebView in the F7 review, R1): the base URL itself, or ``about:blank`` for an empty base
+    (pywebview turns ``''`` into a nil NSURL)."""
+    return base_uri or "about:blank"
+
+
 class FakeWindow:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.loaded: list[tuple[str, str]] = []
+        self.bases: list[str] = []
         self.exposed: dict = {}
         self.events = SimpleNamespace(closing=FakeEvent())
 
     def load_url(self, url):
         self.loaded.append(("url", url))
 
-    def load_html(self, page):
+    def load_html(self, page, base_uri=PYWEBVIEW_DEFAULT_BASE):
+        # pywebview's signature and default: a file:// base unless the caller passes one
         self.loaded.append(("html", page))
+        self.bases.append(base_uri)
 
     def expose(self, *functions):
         self.exposed.update({f.__name__: f for f in functions})
@@ -390,6 +403,17 @@ def test_run_shows_an_error_page_when_the_server_fails(data_dir, monkeypatch):
     assert launch.error == "The local server did not start: boom"
     kind, page = fake.window.loaded[-1]
     assert kind == "html" and "boom" in page and "app.log" in page
+    _assert_error_page_passes_the_guard(fake.window, launch.port)
+
+
+def _assert_error_page_passes_the_guard(window, port) -> None:
+    """F7 review R1: the PK5 navigation guard must let the error page load (with pywebview's default
+    file:// base it was cancelled, leaving the window on the loading page)."""
+    origin = f"http://127.0.0.1:{port or 50999}"
+    for base in window.bases:
+        assert shell.navigation_decision(webkit_request_url(base), origin) == shell.ALLOW
+    # the default base pywebview would use is what the guard blocks
+    assert shell.navigation_decision(webkit_request_url(PYWEBVIEW_DEFAULT_BASE), origin) == shell.BLOCK
 
 
 def test_token_bridge_answers_only_the_apps_own_page():
@@ -511,6 +535,8 @@ def test_boot_failures_are_logged_and_shown(data_dir, monkeypatch, caplog):
         shell._boot(window, Server(), launch, data_dir / "app.log")
     kind, page = window.loaded[-1]
     assert kind == "html" and "webview gone" in page and "app.log" in page
+    assert window.bases == [shell.ERROR_PAGE_BASE]
+    _assert_error_page_passes_the_guard(window, Server.port)
     assert "webview gone" in launch.error
     assert any(r.exc_info for r in caplog.records)  # the traceback is in app.log
 

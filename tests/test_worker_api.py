@@ -60,7 +60,7 @@ def test_system_worker_shape_not_installed(api_empty, tmp_path, fakes):
         "job_path": str(tmp_path / "agents" / f"{sched.DEFAULT_LABEL}.plist"),
         "program": None,
         "jobs": [],
-        "relocation": None,
+        "relocation": {"worker": None, "mcp": None},
     }
 
 

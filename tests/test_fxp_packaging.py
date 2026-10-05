@@ -164,10 +164,13 @@ def test_worker_status_flags_a_missing_program(db_engine, data_dir, launchd, fro
     _install_plist(launchd, "/Users/x/Downloads/Finanse.app/Contents/MacOS/finanse")
     rel = service.status()["relocation"]
     assert rel == {
-        "worker": "missing",
-        "expected_program": [APP_EXE],
-        "app_moved_from": None,
-        "actions": ["worker_reinstall"],
+        "worker": {
+            "reason": "missing",
+            "program": "/Users/x/Downloads/Finanse.app/Contents/MacOS/finanse",
+            "expected_program": [APP_EXE],
+            "actions": ["worker_reinstall"],
+        },
+        "mcp": None,
     }
 
 
@@ -177,7 +180,8 @@ def test_worker_status_flags_another_install(db_engine, data_dir, launchd, froze
     venv.write_text("#!/bin/sh\n")
     _install_plist(launchd, str(venv))  # the dev venv took the shared label
     rel = service.status()["relocation"]
-    assert rel["worker"] == "other_program" and rel["expected_program"] == [APP_EXE]
+    assert rel["worker"]["reason"] == "other_program"
+    assert rel["worker"]["expected_program"] == [APP_EXE] and rel["mcp"] is None
 
 
 def test_worker_status_is_clean_when_the_job_matches(db_engine, data_dir, launchd, monkeypatch, tmp_path):
@@ -187,25 +191,78 @@ def test_worker_status_is_clean_when_the_job_matches(db_engine, data_dir, launch
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
     _install_plist(launchd, str(exe))
-    assert service.status()["relocation"] is None
+    assert service.status()["relocation"] == {"worker": None, "mcp": None}
 
 
-def test_moved_app_flags_mcp_and_reinstall_clears_it(db_engine, data_dir, launchd, frozen, monkeypatch, tmp_path):
+def _moved_app(monkeypatch, tmp_path) -> Path:
     runtime.note_app_location()  # launched from /Applications/Finanse.app
     exe = tmp_path / "Apps" / "Finanse.app" / "Contents" / "MacOS" / "finanse"
     exe.parent.mkdir(parents=True)
     exe.write_text("")
     monkeypatch.setattr(sys, "executable", str(exe))
     runtime.note_app_location()  # ... and now from somewhere else
+    return exe
+
+
+def test_moved_app_without_any_mcp_line_raises_nothing(db_engine, data_dir, launchd, frozen, monkeypatch, tmp_path):
+    """F7 review R8: no workspace and `finanse mcp` never started: no MCP client can hold the old
+    path, so a move alone is no relocation notice."""
+    _moved_app(monkeypatch, tmp_path)
+    assert service.status()["relocation"] == {"worker": None, "mcp": None}
+
+
+def test_moved_app_mcp_part_survives_a_worker_reinstall_until_acked(db_engine, data_dir, launchd, frozen, monkeypatch, tmp_path):
+    """F7 review R8: the worker and MCP parts are cleared separately: re-installing the worker (the
+    obvious button) no longer hides the MCP hint; only the ack (or a workspace rewrite) does."""
+    old_exe = "/Applications/Finanse.app/Contents/MacOS/finanse"
+    runtime.note_mcp_started()  # an agent client ran the MCP server from the old path
+    _install_plist(launchd, old_exe)
+    exe = _moved_app(monkeypatch, tmp_path)
     rel = service.status()["relocation"]
-    assert rel["app_moved_from"] == "/Applications/Finanse.app" and rel["worker"] is None
-    assert rel["actions"] == ["mcp_readd"]
+    assert rel["worker"]["reason"] == "missing" and rel["worker"]["program"] == old_exe
+    assert rel["mcp"]["reason"] == "app_moved" and rel["mcp"]["actions"] == ["mcp_readd"]
+    assert rel["mcp"]["app_moved_from"] == "/Applications/Finanse.app" and rel["mcp"]["moved_at"]
     out = CliRunner().invoke(_cli(), ["worker", "status"])
     assert out.exit_code == 0, out.output
     assert "moved from /Applications/Finanse.app" in out.output and "Settings > Agent AI" in out.output
-    service.install()  # the fix action
-    assert service.status()["relocation"] is None
+    service.install()  # the worker fix action
     assert plistlib.loads(launchd.plist_path.read_bytes())["ProgramArguments"][0] == str(exe)
+    rel = service.status()["relocation"]
+    assert rel["worker"] is None and rel["mcp"] is not None
+    service.acknowledge_mcp_relocation()  # "Gotowe" in Settings
+    assert service.status()["relocation"] == {"worker": None, "mcp": None}
+
+
+def test_relocation_ack_route_and_workspace_rewrite_clear_the_mcp_part(api_empty, data_dir, launchd, frozen, monkeypatch, tmp_path):
+    r = api_empty.post("/api/profiles", json={"name": "Ola Test", "modules": ["budget"]})
+    assert r.status_code == 201, r.text
+    slug = "ola-test"
+    old = tmp_path / "Old" / "Finanse.app" / "Contents" / "MacOS" / "finanse"
+    old.parent.mkdir(parents=True)
+    old.write_text("")
+    monkeypatch.setattr(sys, "executable", str(old))
+    runtime.note_app_location()
+    assert api_empty.post(f"/api/p/{slug}/workspace", json={}).status_code == 200
+    _moved_app(monkeypatch, tmp_path)
+    # a workspace exists: its .mcp.json may still name the old path
+    rel = api_empty.get("/api/system").json()["worker"]["relocation"]
+    assert rel["mcp"]["app_moved_from"] == str(old.parents[2])
+    status = api_empty.get(f"/api/p/{slug}/workspace").json()
+    assert status["mcp_command_stale"] is True
+    # "Aktualizuj workspace" rewrites .mcp.json with the new path: the mcp part is gone
+    updated = api_empty.post(f"/api/p/{slug}/workspace", json={}).json()
+    assert updated["mcp_command_stale"] is False
+    assert api_empty.get("/api/system").json()["worker"]["relocation"]["mcp"] is None
+    # the explicit ack route
+    _moved_app_again = tmp_path / "Third" / "Finanse.app" / "Contents" / "MacOS" / "finanse"
+    _moved_app_again.parent.mkdir(parents=True)
+    _moved_app_again.write_text("")
+    monkeypatch.setattr(sys, "executable", str(_moved_app_again))
+    runtime.note_app_location()
+    assert api_empty.get("/api/system").json()["worker"]["relocation"]["mcp"] is not None
+    r = api_empty.post("/api/system/relocation/ack")
+    assert r.status_code == 200, r.text
+    assert r.json()["worker"]["relocation"]["mcp"] is None
 
 
 def test_worker_status_cli_prints_the_fix(db_engine, data_dir, launchd, frozen):

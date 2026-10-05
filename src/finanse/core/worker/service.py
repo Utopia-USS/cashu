@@ -7,6 +7,7 @@ calls launchctl or a notifier unless asked to install, uninstall or run.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ from . import scheduler as sched
 from . import state as worker_state
 from .notifier import Notifier, default_notifier
 from .schedule import DEFAULT_SCHEDULE, Schedule, local_now
+
+log = logging.getLogger("finanse.worker")
 
 
 def get_scheduler() -> sched.Scheduler:
@@ -74,18 +77,44 @@ def last_run() -> dict:
     return out
 
 
-def relocation(installed_program: list[str] | None) -> dict | None:
-    """Stale paths after Finanse.app was moved or renamed, or after another install took over
-    (PK11). None when nothing is stale. Nothing is rewritten: the fix is a re-install
-    (``finanse worker install`` / POST /api/system/worker/install), which also clears the
-    app-moved note, plus re-adding the MCP lines from Settings > Agent AI.
+def _mcp_lines_possible() -> bool:
+    """Whether an agent client may hold an MCP line with the app's old path: a profile workspace
+    exists (its .mcp.json), or ``finanse mcp`` was started at least once (F7 review R8)."""
+    from .. import runtime
 
-    - ``worker``: "missing" (the job's program no longer exists: launchd fails every day without
-      a line in worker.log) or "other_program" (the job runs another install than this one, e.g.
-      the old app path or the dev venv); None when the job is fine or not installed;
-    - ``expected_program``: what a re-install would write (None when it cannot, e.g. translocated);
-    - ``app_moved_from``: where Finanse.app ran from before (MCP configs made then point there);
-    - ``actions``: "worker_reinstall", "mcp_readd"."""
+    if runtime.mcp_ever_started():
+        return True
+    try:
+        from ..profiles import list_profiles
+        from ..workspace import service as workspace
+
+        with get_session() as s:
+            slugs = [p.slug for p in list_profiles(s)]
+        for slug in slugs:
+            ws = workspace.configured_path(slug) or workspace.default_path(slug)
+            if (ws / workspace.MANIFEST_FILE).is_file():
+                return True
+    except Exception:
+        log.warning("could not check the profile workspaces", exc_info=True)
+        return True
+    return False
+
+
+def relocation(installed_program: list[str] | None) -> dict:
+    """Stale paths after Finanse.app was moved or renamed, or after another install took over
+    (PK11), in two independent parts (F7 review R8); each is None when nothing is stale. Nothing is
+    rewritten.
+
+    - ``worker``: the installed job's program is stale; cleared by a re-install (``finanse worker
+      install`` / POST /api/system/worker/install), derived from the job itself:
+      ``{reason: "missing" | "other_program", program, expected_program, actions: ["worker_reinstall"]}``
+      ("missing": the program no longer exists, launchd fails every day without a line in worker.log;
+      "other_program": the job runs another install, e.g. the old app path or the dev venv;
+      ``expected_program``: what a re-install writes, None when it cannot, e.g. translocated);
+    - ``mcp``: Finanse.app was moved and an MCP line may still name the old path (raised only when a
+      profile workspace exists or ``finanse mcp`` ever started):
+      ``{reason: "app_moved", app_moved_from, moved_at, actions: ["mcp_readd"]}``; cleared by
+      POST /api/system/relocation/ack or a workspace update that rewrote its .mcp.json."""
     from .. import runtime
 
     try:
@@ -100,15 +129,33 @@ def relocation(installed_program: list[str] | None) -> dict | None:
         elif expected is not None and program != expected[0]:
             worker = "other_program"
     moved_from = runtime.app_moved_from()
-    if worker is None and moved_from is None:
-        return None
-    actions = (["worker_reinstall"] if worker else []) + (["mcp_readd"] if moved_from else [])
+    mcp = None
+    if moved_from is not None and _mcp_lines_possible():
+        mcp = {
+            "reason": "app_moved",
+            "app_moved_from": moved_from,
+            "moved_at": runtime.app_moved_at(),
+            "actions": ["mcp_readd"],
+        }
     return {
-        "worker": worker,
-        "expected_program": expected,
-        "app_moved_from": moved_from,
-        "actions": actions,
+        "worker": None
+        if worker is None
+        else {
+            "reason": worker,
+            "program": installed_program[0] if installed_program else None,
+            "expected_program": expected,
+            "actions": ["worker_reinstall"],
+        },
+        "mcp": mcp,
     }
+
+
+def acknowledge_mcp_relocation() -> dict:
+    """The owner re-added the MCP lines after a move (Settings "Gotowe"): clear the mcp part."""
+    from .. import runtime
+
+    runtime.clear_app_move()
+    return status()
 
 
 def status(*, now: dt.datetime | None = None) -> dict:
@@ -143,9 +190,8 @@ def install(schedule: Schedule | None = None, program: str | None = None) -> dic
     current = scheduler.status()
     schedule = schedule or current.schedule or DEFAULT_SCHEDULE
     scheduler.install(schedule, sched.entry_point(program))
-    from .. import runtime
-
-    runtime.clear_app_move()  # the re-install is the fix action of a moved app (PK11)
+    # the worker part of a relocation is derived from the job, so it is fixed now; the MCP part
+    # (lines in agent clients) stays until acknowledged (F7 review R8)
     return status()
 
 

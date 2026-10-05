@@ -115,6 +115,15 @@ def system() -> dict:
     }
 
 
+@platform_router.post("/system/relocation/ack")
+def acknowledge_relocation() -> dict:
+    """The owner re-added the MCP lines after the app moved: clears ``worker.relocation.mcp``
+    (F7 review R8). Returns ``{worker: <status>}`` like the worker install route."""
+    from .worker import service as worker
+
+    return {"worker": worker.acknowledge_mcp_relocation()}
+
+
 @platform_router.get("/modules")
 def list_modules() -> list[dict]:
     """Every module the app knows (core is implicit), in display order."""
