@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened runtime entitlements of Finanse.app (scripts/build_macos.sh signs with them when
+  DEVELOPER_ID_APPLICATION is set). Only what a PyInstaller + pyobjc app needs:
+
+  - allow-unsigned-executable-memory: ctypes / libffi closures (pyobjc callbacks from AppKit and
+    WebKit into Python) write executable trampolines;
+  - disable-library-validation: the embedded Python loads its extension modules and the bundled
+    dylibs at runtime from the app's own folders (they are signed with the same identity, but
+    PyInstaller's collected wheels may carry other signatures until re-signed).
+
+  Not requested: allow-jit (CPython's JIT is off by default), network server/client and file
+  access (the app is not sandboxed; the server binds 127.0.0.1 only), camera, microphone.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>
