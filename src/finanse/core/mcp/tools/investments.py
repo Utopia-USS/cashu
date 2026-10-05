@@ -137,27 +137,35 @@ def name_sources(session, profile_id: int) -> tuple[set[str], set[str]]:
     if "inv_instruments" not in sa_inspect(session.get_bind()).get_table_names():
         return set(), set()
     from finanse.modules.investments.models import InvInstrument
-    from finanse.modules.investments.store.instruments import profile_instrument_ids
+    from finanse.modules.investments.store.instruments import profile_instrument_ids, profile_rows
 
     ids = profile_instrument_ids(session, profile_id)
     if not ids:
         return set(), set()
+    # The profile's own view decides (its overrides, F5 R2); the shared name / symbol of such an
+    # instrument is masked too.
     rows = [
         r
-        for r in session.exec(select(InvInstrument).where(InvInstrument.id.in_(ids))).all()
+        for r in profile_rows(session, profile_id, ids)
         if owner_named(r.asset_class, r.valuation_mode, r.isin)
     ]
+    shared = {
+        r.id: r
+        for r in session.exec(
+            select(InvInstrument).where(InvInstrument.id.in_([r.id for r in rows]))
+        ).all()
+    }
+    rows += [shared[r.id] for r in rows if r.id in shared]
     return {r.name for r in rows if r.name} | {r.symbol for r in rows if r.symbol}, set()
 
 
 def owner_named_ids(ctx: ToolContext) -> set[int]:
-    from finanse.modules.investments.models import InvInstrument
-    from finanse.modules.investments.store.instruments import profile_instrument_ids
+    from finanse.modules.investments.store.instruments import profile_instrument_ids, profile_rows
 
     ids = profile_instrument_ids(ctx.session, ctx.profile_id)
     if not ids:
         return set()
-    rows = ctx.session.exec(select(InvInstrument).where(InvInstrument.id.in_(ids))).all()
+    rows = profile_rows(ctx.session, ctx.profile_id, ids)  # the profile's view (F5 R2)
     return {r.id for r in rows if owner_named(r.asset_class, r.valuation_mode, r.isin)}
 
 
@@ -613,7 +621,9 @@ def theses(ctx: ToolContext, instrument: str | None = None) -> dict:
 
     iid = profile_instrument(ctx, instrument) if instrument else None
     rows = journal.theses(ctx.session, ctx.profile_id, iid)
-    insts = instrument_store.load(ctx.session, {r.instrument_id for r in rows})
+    insts = instrument_store.load(
+        ctx.session, {r.instrument_id for r in rows}, profile_id=ctx.profile_id
+    )
     return {
         "theses": [
             {

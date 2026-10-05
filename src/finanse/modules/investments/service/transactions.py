@@ -218,7 +218,7 @@ def _check_cash_sign(txn_type: TxnType, cash: Decimal) -> str | None:
 def _existing_instrument(session: Session, profile: Profile, instrument_id: int) -> Instrument:
     if instrument_id not in instruments.profile_instrument_ids(session, profile.id):
         raise ManualTxnNotFound(f"No instrument {instrument_id} in this profile")
-    found = instruments.load_one(session, instrument_id)
+    found = instruments.load_one(session, instrument_id, profile_id=profile.id)
     if found is None:
         raise ManualTxnNotFound(f"No instrument {instrument_id}")
     return found
@@ -237,7 +237,9 @@ def _find_described(
     if symbol is None:
         return None
     upper = symbol.upper()
-    referenced = instruments.load(session, instruments.profile_instrument_ids(session, profile.id))
+    referenced = instruments.load(
+        session, instruments.profile_instrument_ids(session, profile.id), profile_id=profile.id
+    )
     for key in sorted(referenced):
         inst = referenced[key]
         if (inst.symbol or "").strip().upper() != upper:

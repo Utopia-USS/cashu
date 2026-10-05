@@ -1,9 +1,15 @@
 """Instruments and aliases (shared reference data): the DB ``InstrumentLookup`` used by import
-planning, inserts of planned instruments, classification, and which instruments a profile uses."""
+planning, inserts of planned instruments, classification, and which instruments a profile uses.
+
+Market identity (symbol, ISIN, currency, MIC, price aliases) is shared. The owner-editable attributes
+(name, asset class, tags, region, sector, valuation mode, status, reviewed flag) are per profile: writes
+go to the profile's ``inv_profile_instruments`` row, and ``load(..., profile_id=)`` returns the shared row
+overlaid with it (the shared values are the defaults every profile starts from)."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -20,15 +26,18 @@ from ..domain import (
     default_valuation_mode,
 )
 from ..models import (
+    InvAlert,
     InvDecision,
     InvInstrument,
     InvInstrumentAlias,
     InvInstrumentRename,
     InvManualValuation,
     InvPositionSnapshot,
+    InvProfileInstrument,
     InvSignal,
     InvThesis,
     InvTransaction,
+    InvWatchlistItem,
 )
 from . import convert
 
@@ -38,8 +47,11 @@ def _normalize(namespace: str, value: str) -> str:
     return value.upper() if namespace == AliasNamespace.ISIN else value
 
 
-def load(session: Session, ids: Iterable[int]) -> dict[int, Instrument]:
-    """Domain instruments (with aliases) by row key."""
+def load(
+    session: Session, ids: Iterable[int], *, profile_id: int | None = None
+) -> dict[int, Instrument]:
+    """Domain instruments (with aliases) by row key; with ``profile_id`` as that profile sees them
+    (its overrides applied), without it the shared defaults (market identity code paths)."""
     wanted = sorted(set(ids))
     if not wanted:
         return {}
@@ -49,11 +61,101 @@ def load(session: Session, ids: Iterable[int]) -> dict[int, Instrument]:
         select(InvInstrumentAlias).where(InvInstrumentAlias.instrument_id.in_(wanted))
     ).all():
         aliases.setdefault(alias.instrument_id, []).append(alias)
-    return {row.id: convert.instrument(row, aliases.get(row.id, ())) for row in rows}
+    found = {row.id: convert.instrument(row, aliases.get(row.id, ())) for row in rows}
+    if profile_id is not None:
+        for key, override in overrides(session, profile_id, wanted).items():
+            if key in found:
+                found[key] = apply_override(found[key], override)
+    return found
 
 
-def load_one(session: Session, instrument_id: int) -> Instrument | None:
-    return load(session, [instrument_id]).get(instrument_id)
+def load_one(
+    session: Session, instrument_id: int, *, profile_id: int | None = None
+) -> Instrument | None:
+    return load(session, [instrument_id], profile_id=profile_id).get(instrument_id)
+
+
+# --------------------------------------------------------------------------- #
+# Per-profile overrides
+# --------------------------------------------------------------------------- #
+
+
+def overrides(
+    session: Session, profile_id: int, ids: Iterable[int] | None = None
+) -> dict[int, InvProfileInstrument]:
+    query = select(InvProfileInstrument).where(InvProfileInstrument.profile_id == profile_id)
+    if ids is not None:
+        wanted = sorted(set(ids))
+        if not wanted:
+            return {}
+        query = query.where(InvProfileInstrument.instrument_id.in_(wanted))
+    return {row.instrument_id: row for row in session.exec(query).all()}
+
+
+def apply_override(instrument: Instrument, o: InvProfileInstrument) -> Instrument:
+    """``instrument`` with the profile's overrides (None = keep, "" = clear a text attribute)."""
+    changes: dict[str, object] = {}
+    if o.name:
+        changes["name"] = o.name
+    if o.asset_class:
+        changes["asset_class"] = AssetClass(o.asset_class)
+    if o.tags is not None:
+        changes["tags"] = tuple(o.tags)
+    if o.region is not None:
+        changes["region"] = o.region or None
+    if o.sector is not None:
+        changes["sector"] = o.sector or None
+    if o.valuation_mode:
+        changes["valuation_mode"] = ValuationMode(o.valuation_mode)
+    if o.status:
+        changes["status"] = InstrumentStatus(o.status)
+    if o.needs_classification is not None:
+        changes["needs_classification"] = o.needs_classification
+    return replace(instrument, **changes) if changes else instrument
+
+
+def profile_rows(session: Session, profile_id: int, ids: Iterable[int]) -> list[InvInstrument]:
+    """Detached copies of the instrument rows as ``profile_id`` sees them (for code that reads row
+    attributes, e.g. the MCP owner-named check); never added to the session."""
+    wanted = sorted(set(ids))
+    if not wanted:
+        return []
+    found = overrides(session, profile_id, wanted)
+    out: list[InvInstrument] = []
+    for row in session.exec(select(InvInstrument).where(InvInstrument.id.in_(wanted))).all():
+        copy = InvInstrument.model_validate(row.model_dump())
+        o = found.get(row.id)
+        if o is not None:
+            if o.name:
+                copy.name = o.name
+            if o.asset_class:
+                copy.asset_class = o.asset_class
+            if o.tags is not None:
+                copy.tags = list(o.tags)
+            if o.region is not None:
+                copy.region = o.region or None
+            if o.sector is not None:
+                copy.sector = o.sector or None
+            if o.valuation_mode:
+                copy.valuation_mode = o.valuation_mode
+            if o.status:
+                copy.status = o.status
+            if o.needs_classification is not None:
+                copy.needs_classification = o.needs_classification
+        out.append(copy)
+    return out
+
+
+def _override_row(session: Session, profile_id: int, instrument_id: int) -> InvProfileInstrument:
+    row = session.exec(
+        select(InvProfileInstrument).where(
+            InvProfileInstrument.profile_id == profile_id,
+            InvProfileInstrument.instrument_id == instrument_id,
+        )
+    ).first()
+    if row is None:
+        row = InvProfileInstrument(profile_id=profile_id, instrument_id=instrument_id)
+    return row
 
 
 class DbInstrumentLookup:
@@ -178,12 +280,20 @@ def add_aliases(
     return added
 
 
-def set_status(session: Session, instrument_id: int, status: InstrumentStatus) -> None:
-    row = session.get(InvInstrument, instrument_id)
-    if row is not None and row.status != status.value:
-        row.status = status.value
-        row.updated_at = utcnow()
-        session.add(row)
+def set_status(
+    session: Session, instrument_id: int, status: InstrumentStatus, *, profile_id: int
+) -> None:
+    """The instrument's status (e.g. frozen / delisted from an import) for ``profile_id`` only."""
+    if session.get(InvInstrument, instrument_id) is None:
+        return
+    current = load_one(session, instrument_id, profile_id=profile_id)
+    if current is not None and current.status == status:
+        return
+    row = _override_row(session, profile_id, instrument_id)
+    row.status = status.value
+    row.updated_at = utcnow()
+    session.add(row)
+    session.flush()
 
 
 class ClassificationError(ValueError):
@@ -194,6 +304,7 @@ def classify(
     session: Session,
     instrument_id: int,
     *,
+    profile_id: int,
     asset_class: str | None = None,
     tags: Sequence[str] | None = None,
     valuation_mode: str | None = None,
@@ -203,17 +314,21 @@ def classify(
     status: str | None = None,
     aliases: Sequence[InstrumentAlias] = (),
     reviewed: bool = True,
-) -> InvInstrument:
-    """Update an instrument's classification; ``reviewed`` clears ``needs_classification``."""
-    row = session.get(InvInstrument, instrument_id)
-    if row is None:
+) -> InvProfileInstrument:
+    """Update how ``profile_id`` classifies an instrument (its override row; other profiles keep
+    theirs); ``reviewed`` clears ``needs_classification`` for this profile. Aliases are market
+    identity: they are added to the shared instrument (a conflict with another instrument raises)."""
+    shared = session.get(InvInstrument, instrument_id)
+    if shared is None:
         raise ClassificationError(f"No instrument {instrument_id}")
+    current = load_one(session, instrument_id, profile_id=profile_id)
+    assert current is not None
+    row = _override_row(session, profile_id, instrument_id)
     try:
         if asset_class is not None:
             new_class = AssetClass(asset_class)
-            if (
-                valuation_mode is None
-                and row.valuation_mode == default_valuation_mode(AssetClass(row.asset_class)).value
+            if valuation_mode is None and current.valuation_mode == default_valuation_mode(
+                current.asset_class
             ):
                 row.valuation_mode = default_valuation_mode(new_class).value
             row.asset_class = new_class.value
@@ -227,9 +342,9 @@ def classify(
         cleaned = [t.strip() for t in tags if t and t.strip()]
         row.tags = list(dict.fromkeys(cleaned))
     if region is not None:
-        row.region = region.strip() or None
+        row.region = region.strip()
     if sector is not None:
-        row.sector = sector.strip() or None
+        row.sector = sector.strip()
     if name is not None and name.strip():
         row.name = name.strip()
     if reviewed:
@@ -244,17 +359,18 @@ def classify(
                 InvInstrumentAlias.namespace == alias.namespace, InvInstrumentAlias.value == value
             )
         ).first()
-        if owner is not None and owner.instrument_id != row.id:
+        if owner is not None and owner.instrument_id != shared.id:
             raise ClassificationError(
                 f"Alias {alias.namespace}:{value} already belongs to another instrument"
             )
-    add_aliases(session, row, [InstrumentAlias(a.namespace, a.value, False) for a in aliases])
+    add_aliases(session, shared, [InstrumentAlias(a.namespace, a.value, False) for a in aliases])
     return row
 
 
 def profile_instrument_ids(session: Session, profile_id: int) -> set[int]:
     """Every instrument the profile references (transactions, broker snapshots, renames, manual
-    valuations, theses, signals, decisions): what its instrument endpoints may show or change."""
+    valuations, theses, watchlist, signals, decisions, alerts): what its instrument endpoints may show
+    or change."""
     accounts = select(Account.id).where(Account.profile_id == profile_id)
     ids: set[int] = set()
     ids |= set(
@@ -277,11 +393,11 @@ def profile_instrument_ids(session: Session, profile_id: int) -> set[int]:
         )
     ).all():
         ids |= {old, new}
-    for model in (InvManualValuation, InvThesis):
+    for model in (InvManualValuation, InvThesis, InvWatchlistItem, InvProfileInstrument):
         ids |= set(
             session.exec(select(model.instrument_id).where(model.profile_id == profile_id)).all()
         )
-    for model in (InvSignal, InvDecision):
+    for model in (InvSignal, InvDecision, InvAlert):
         ids |= {
             i
             for i in session.exec(

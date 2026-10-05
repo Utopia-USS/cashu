@@ -7,7 +7,7 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
-from invp_support import FakeFx, FakePrices, weekdays
+from invp_support import FakeFx, FakePrices, make_profile, weekdays
 from sqlmodel import select
 
 from finanse.core.db import get_session
@@ -245,10 +245,12 @@ def test_db_instrument_lookup(db_engine):
 def test_classify_and_aliases(db_engine):
     iid = stored_instrument()
     other = stored_instrument("ABC", "PLABC0000016", "ABC.WA")
+    pid, _ = make_profile()
     with get_session() as s:
         row = instruments.classify(
             s,
             int(iid),
+            profile_id=pid,
             asset_class="etf",
             tags=["global_equity", " ", "global_equity"],
             aliases=[InstrumentAlias("yahoo", "XMPL")],
@@ -263,8 +265,10 @@ def test_classify_and_aliases(db_engine):
             a.guessed for a in inst.aliases if a.namespace == "yahoo"
         )
         with pytest.raises(instruments.ClassificationError):
-            instruments.classify(s, int(iid), aliases=[InstrumentAlias("yahoo", "ABC.WA")])
+            instruments.classify(
+                s, int(iid), profile_id=pid, aliases=[InstrumentAlias("yahoo", "ABC.WA")]
+            )
         with pytest.raises(instruments.ClassificationError):
-            instruments.classify(s, int(other), valuation_mode="guess")
-        row = instruments.classify(s, int(other), asset_class="treasury_bond")
+            instruments.classify(s, int(other), profile_id=pid, valuation_mode="guess")
+        row = instruments.classify(s, int(other), profile_id=pid, asset_class="treasury_bond")
         assert row.valuation_mode == "cost"  # follows the class default when it was the default

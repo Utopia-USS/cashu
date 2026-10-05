@@ -83,7 +83,9 @@ def build(
     referenced = {convert.pk(t.instrument_id) for t in txns if t.instrument_id is not None}
     for r in renames:
         referenced |= {convert.pk(r.old_instrument_id), convert.pk(r.new_instrument_id)}
-    loaded = {convert.sid(k): v for k, v in instruments.load(session, referenced).items()}
+    loaded = {
+        convert.sid(k): v for k, v in instruments.load(session, referenced, profile_id=pid).items()
+    }
     held = {h.instrument_id for h in snapshot.holdings}
     view = market.market_view(
         session,

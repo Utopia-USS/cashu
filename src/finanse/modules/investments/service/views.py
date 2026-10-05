@@ -577,7 +577,7 @@ def position_detail(
     if inst is None:
         from ..store import instruments as instrument_store
 
-        inst = instrument_store.load_one(session, instrument_id)
+        inst = instrument_store.load_one(session, instrument_id, profile_id=profile.id)
     since = state.as_of - dt.timedelta(days=days)
     series = market.bars(session, [instrument_id], until=state.as_of, since=since).get(
         convert.sid(instrument_id), ()
@@ -683,7 +683,7 @@ def signals_view(session: Session, profile: Profile, status: str = "open") -> li
     labels = {
         k: v.label
         for k, v in instrument_store.load(
-            session, {r.instrument_id for r in rows if r.instrument_id}
+            session, {r.instrument_id for r in rows if r.instrument_id}, profile_id=profile.id
         ).items()
     }
     rank = {SignalSeverity.ACTION.value: 0, SignalSeverity.INFO.value: 1}
@@ -1027,7 +1027,9 @@ def position_chart(
     config = st.config
     state = portfolio.build(session, profile, strategy=config)
     key = convert.sid(instrument_id)
-    inst = state.instruments.get(key) or instrument_store.load_one(session, instrument_id)
+    inst = state.instruments.get(key) or instrument_store.load_one(
+        session, instrument_id, profile_id=profile.id
+    )
     as_of = state.as_of
     since = _months_before(as_of, months)
     bars = market.bars(session, [instrument_id], until=as_of).get(key, ())
@@ -1252,7 +1254,7 @@ def review_digest(session: Session, profile: Profile) -> dict:
     labels = {
         k: v.label
         for k, v in instrument_store.load(
-            session, {r.instrument_id for r in rows if r.instrument_id}
+            session, {r.instrument_id for r in rows if r.instrument_id}, profile_id=profile.id
         ).items()
     }
     new_rows = [r for r in rows if _at_or_after(r.first_seen_at, since_at)]

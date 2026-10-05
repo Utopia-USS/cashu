@@ -165,7 +165,11 @@ def test_rename_and_frozen_delisting(setup):
         new = s.get(InvInstrument, rename.new_instrument_id)
         assert (new.symbol, rename.profile_id) == ("ABCN", pid)
         xmpl = s.exec(select(InvInstrument).where(InvInstrument.symbol == "XMPL")).one()
-        assert xmpl.status == "frozen"
+        # the delisting is this profile's view; the shared row keeps its market status (F5 R2)
+        from finanse.modules.investments.store import instruments as instrument_store
+
+        assert xmpl.status == "active"
+        assert instrument_store.load_one(s, xmpl.id, profile_id=pid).status.value == "frozen"
         mv = s.exec(select(InvManualValuation)).one()
         assert (mv.instrument_id, mv.unit_value, mv.currency, mv.profile_id) == (
             xmpl.id,

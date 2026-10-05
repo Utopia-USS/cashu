@@ -312,7 +312,7 @@ def instrument_list(profile: CurrentProfile, unclassified: bool = False) -> list
     """Instruments the profile references; ``unclassified=true``: only those needing review."""
     with get_session() as s:
         ids = instruments.profile_instrument_ids(s, profile.id)
-        found = instruments.load(s, ids)
+        found = instruments.load(s, ids, profile_id=profile.id)
         rows = [views.instrument_dict(i) for i in found.values()]
         if unclassified:
             rows = [r for r in rows if r["needs_classification"]]
@@ -337,14 +337,16 @@ class ClassifyBody(BaseModel):
 
 @router.patch("/instruments/{instrument_id}")
 def classify(profile: CurrentProfile, instrument_id: int, body: ClassifyBody) -> dict:
-    """Asset class, tags, valuation mode, region / sector, aliases; marks the instrument reviewed.
-    Instruments are shared reference data: the classification applies to every profile."""
+    """Asset class, tags, valuation mode, region / sector, name, status; marks the instrument
+    reviewed. Applies to this profile only (other profiles keep their own view of the shared
+    instrument); aliases are market identity and are added to the shared instrument."""
     with get_session() as s:
         _instrument(s, profile, instrument_id)
         try:
             instruments.classify(
                 s,
                 instrument_id,
+                profile_id=profile.id,
                 asset_class=body.asset_class,
                 tags=body.tags,
                 valuation_mode=body.valuation_mode,
@@ -358,7 +360,7 @@ def classify(profile: CurrentProfile, instrument_id: int, body: ClassifyBody) ->
             )
         except instruments.ClassificationError as e:
             raise _422(str(e)) from None
-        return views.instrument_dict(instruments.load_one(s, instrument_id))
+        return views.instrument_dict(instruments.load_one(s, instrument_id, profile_id=profile.id))
 
 
 @router.get("/instruments/{instrument_id}/theses")
@@ -700,7 +702,7 @@ def reconciliation_view(profile: CurrentProfile, account_id: int | None = None) 
                 )
                 continue
             ids = {int(d.instrument_id) for d in report.diffs}
-            labels = {str(k): v for k, v in instruments.load(s, ids).items()}
+            labels = {str(k): v for k, v in instruments.load(s, ids, profile_id=profile.id).items()}
             out.append(views.reconciliation_dict(report, labels))
         return out
 

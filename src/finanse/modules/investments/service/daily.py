@@ -161,7 +161,9 @@ def _needs(session: Session, profile: Profile, as_of: dt.date) -> _Needs:
         convert.sid(profile.id), txns, as_of, renames=transactions.renames(session, profile.id)
     )
     held = {convert.pk(h.instrument_id) for h in snapshot.holdings}
-    needs.instruments = {convert.sid(k): v for k, v in instruments.load(session, held).items()}
+    needs.instruments = {
+        convert.sid(k): v for k, v in instruments.load(session, held, profile_id=profile.id).items()
+    }
     grouped: dict[InstrumentId, list] = {}
     for valuation in transactions.manual_valuations(session, profile.id, held):
         grouped.setdefault(valuation.instrument_id, []).append(valuation)
@@ -226,7 +228,13 @@ def _run(trigger, profile_ids, as_of, offline, sources, clock, session_factory) 
         history: dict[Currency, dt.date] = {}
         splits: dict[InstrumentId, dt.date] = {}
         for needs in checked:
-            held.update(needs.instruments)
+            # Profiles may see a shared instrument differently (one froze it): fetch it when any
+            # profile still needs market prices for it.
+            for iid, inst in needs.instruments.items():
+                if iid not in held or (
+                    inst.fetches_market_data and not held[iid].fetches_market_data
+                ):
+                    held[iid] = inst
             currencies |= needs.currencies
             for cur, day in needs.fx_history_from.items():
                 _earliest(history, cur, day)

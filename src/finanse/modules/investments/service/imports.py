@@ -470,7 +470,7 @@ def commit(
                 renames += 1
         for change in plan.status_changes:
             instrument_id = _resolve(change.instrument_id, mapping)
-            instruments.set_status(s, instrument_id, change.status)
+            instruments.set_status(s, instrument_id, change.status, profile_id=profile.id)
             if change.status == InstrumentStatus.FROZEN:
                 row = s.get(InvInstrument, instrument_id)
                 transactions.upsert_manual_valuation(

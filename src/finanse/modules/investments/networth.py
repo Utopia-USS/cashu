@@ -65,7 +65,8 @@ class _ProfileHistory:
         for r in self.renames:
             ids |= {convert.pk(r.old_instrument_id), convert.pk(r.new_instrument_id)}
         self.instruments: dict[InstrumentId, Instrument] = {
-            convert.sid(k): v for k, v in instruments.load(session, ids).items()
+            convert.sid(k): v
+            for k, v in instruments.load(session, ids, profile_id=profile_id).items()
         }
         self.valuations = transactions.manual_valuations(session, profile_id, ids)
 
