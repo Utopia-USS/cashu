@@ -2,7 +2,7 @@
 // (Szanse | Ryzyka i przegląd), plain words instead of rule ids, the thesis under the signal that fired,
 // actions in place (Zanotuj decyzję, Potwierdź, Odłóż do …), decided items quiet at the bottom. A decision
 // is saved at once; `Cofnij` in the toast deletes it within the server's 15-minute window (F5 R4).
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../../core/api";
 import { errorText } from "../../../core/messages";
 import { useAsync } from "../../../hooks";
@@ -17,6 +17,7 @@ import { decisionEffect, decisionTag, nextDeposit } from "../logic";
 import { canUndo, makeUndo, type Undo, undoMessage } from "../undo";
 import type { Alert, PositionV2, SignalV2 } from "./api";
 import { cursorOrder, instName, isDecided, polarityOf, signalText, splitByPolarity } from "./logic";
+import { isResearchKind, signalNoteId } from "./research/logic";
 
 type Act = "none" | "buy" | "sell" | "later";
 const ACTION: Record<Act, string> = { none: "held", buy: "bought", sell: "sold", later: "other" };
@@ -33,6 +34,11 @@ export interface SignalsCtx {
   alertsById: Map<number, Alert>;
   onChanged: () => void;
   onOpenAsset: (instrumentId: number) => void;
+  /** Research layer (F6): the strip exists (footer copy), `notatka` opens the note (drawer or research view),
+   * the decision form's `research z soboty: …` line for an instrument. */
+  researchOn?: boolean;
+  onOpenNote?: (instrumentId: number | null, noteId: number | null, theme: string | null) => void;
+  researchEffect?: (instrumentId: number) => ReactNode;
 }
 
 const ageText = (iso: string | null, today: string) => (!iso ? "" : iso.slice(0, 10) === today ? "dziś" : `od ${dm(iso)}`);
@@ -102,7 +108,7 @@ export function SignalsWidget({ signals, ctx, hl, review, expired, onHistory, fo
         <>
           <span>decyzje: <b>{decidedWeek} z {list.length}</b> w tym tygodniu</span>
           {expired && expired.length > 0 && <span>{plural(expired.length, "sygnał wygasł", "sygnały wygasły", "sygnałów wygasło")} ({expired.slice(0, 2).map((e) => e.title).join(", ")})</span>}
-          <span className="spacer" /><span>sygnały z reguł i wyzwolonych alertów</span>
+          <span className="spacer" /><span>{ctx.researchOn ? "sygnały z reguł, alertów i researchu" : "sygnały z reguł i wyzwolonych alertów"}</span>
         </>
       )}>
       {!signals ? <div className="skeleton" style={{ height: 140 }} /> : !list.length ? (
@@ -153,6 +159,8 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
   const alert = s.alert_id != null ? ctx.alertsById.get(s.alert_id) : undefined;
   const later = nextDeposit(ctx.today, ctx.contributionDay);
   const held = s.instrument_id != null && ctx.positions.some((p) => String(p.instrument.id) === String(s.instrument_id));
+  const research = isResearchKind(s.kind) || s.source === "research";
+  const noteId = research ? signalNoteId(s) : null;
 
   // One server-side undo per saved decision, shared by the toast and the "cofnij" link (FX, undo.ts).
   const runUndo = async (u: Undo, what: string, retry: () => void) => {
@@ -208,6 +216,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
           {held ? <button className="nm" onClick={() => ctx.onOpenAsset(s.instrument_id!)}>{text.title}</button> : text.title}
           {text.sym && <span className="sym">{text.sym}</span>}
           {alert?.source === "agent" && <AgentTag text="alert agenta" />}
+          {research && <AgentTag text="research" />}
         </div>
         <div className="m">
           {decided ? <><span className="tag solid pos">{decisionTag(decided)}</span>{text.bold ? <> · {text.bold}</> : null}{s.kind === "position_concentration" || s.kind === "allocation_drift" ? " · wraca w podsumowaniu" : ""}
@@ -225,6 +234,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
             <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)}>Zanotuj decyzję</button>
             <button className="btn sm" onClick={() => ack()}>Potwierdź</button>
             {s.kind === "contribution_gap" && <button className="btn sm" onClick={() => snooze(later)}>Odłóż do {dm(later)}</button>}
+            {research && ctx.onOpenNote && <button className="lnk" style={{ fontSize: 12 }} onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.theme === "string" ? s.payload.theme : null)}>notatka</button>}
           </div>
         ))}
       </div>
@@ -287,6 +297,7 @@ export function DecisionForm({ s, ctx, onCollapse, onDecide, onAck }: {
     <div className="decide" ref={ref} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCollapse(); } }}>
       <div className="fr"><label>Co robię?</label>
         <Seg<Act> label="Co robię?" items={[["Nic", "none"], ["Dokupuję", "buy"], ["Sprzedaję", "sell"], ["Odkładam", "later"]]} value={act} onChange={setAct} /></div>
+      {s.instrument_id != null && ctx.researchEffect?.(s.instrument_id) && <div className="eff">{ctx.researchEffect(s.instrument_id)}</div>}
       {trade && pos && (
         <>
           <div className="fr">

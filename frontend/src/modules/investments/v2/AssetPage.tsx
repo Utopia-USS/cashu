@@ -17,6 +17,7 @@ import { accountLabel, bucketLabel, DECISION_ACTION, dm, dmy, ENTRY_TYPE, money,
 import { AlertRow, removeAlertWithUndo } from "./Alerts";
 import { type Alert, getSignalsV2, type WatchItem } from "./api";
 import { ASSET_SLOTS, type AssetSlotProps, type AssetTimelineEntry, type ThesisField } from "./assetSlots";
+import { isResearchKind } from "./research/logic";
 import { instName, isDecided, polarityOf, price as priceText, signalText, weekChange } from "./logic";
 import { SignalItem, type SignalsCtx } from "./Signals";
 
@@ -75,7 +76,9 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const firstLot = [...(pos?.lots ?? [])].sort((a, b) => a.open_date.localeCompare(b.open_date))[0];
   const accounts = ctx.accounts;
   const acc = pos?.accounts.length === 1 ? accounts.find((a) => a.id === pos.accounts[0].account_id) : null;
-  const mainSignal = undecided[0] ?? open[0] ?? null;
+  // Research signals have their own header note (research slot `HeaderNote`): the rule / alert signal leads here.
+  const ruleOpen = open.filter((s) => !isResearchKind(s.kind));
+  const mainSignal = ruleOpen.find((s) => !isDecided(s) && !s.snoozed) ?? ruleOpen[0] ?? null;
   const dividends = pos ? Object.entries(pos.dividends).filter(([, v]) => v) : [];
   const fees = (detail.data?.transactions ?? []).reduce((s, t) => s + (t.fee || 0), 0);
 
@@ -117,9 +120,10 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const { Research, ThesisTags, ThesisFieldChip, HeaderNote } = ASSET_SLOTS;
   const chip = (field: ThesisField) => (ThesisFieldChip ? <> <ThesisFieldChip {...slot} field={field} /></> : null);
 
-  // Timeline: signals, decisions, thesis reviews, buys / sells.
+  // Timeline: signals, decisions, thesis reviews, buys / sells. Research signals come as `Research: …` rows
+  // from the research slot (useTimeline), so they are not listed twice.
   const timeline = [
-    ...signals.map((s) => ({ at: s.first_seen_at ?? "", dot: polarityOf(s) === "positive" ? "pos" : polarityOf(s) === "negative" ? "neg" : "", head: polarityOf(s) === "positive" ? "Szansa" : polarityOf(s) === "negative" ? "Ryzyko" : "Sygnał",
+    ...signals.filter((s) => !isResearchKind(s.kind)).map((s) => ({ at: s.first_seen_at ?? "", dot: polarityOf(s) === "positive" ? "pos" : polarityOf(s) === "negative" ? "neg" : "", head: polarityOf(s) === "positive" ? "Szansa" : polarityOf(s) === "negative" ? "Ryzyko" : "Sygnał",
       main: [signalText(s).lead?.replace(/ ·$/, ""), signalText(s).bold].filter(Boolean).join(" "), tail: s.status === "active" ? "otwarty" : s.status === "acknowledged" ? "potwierdzony" : s.status === "expired" ? "wygasł" : "rozstrzygnięty", signal: s.status === "active" && !isDecided(s) ? s.id : null })),
     ...(detail.data?.decisions ?? []).map((d) => ({ at: d.created_at ?? "", dot: "nw", head: `Decyzja: ${DECISION_ACTION[d.action] ?? d.action}`, main: d.quantity != null && (d.action === "bought" || d.action === "sold") ? `${qty(d.quantity)}${d.price != null ? ` @ ${money(d.price, d.currency ?? c)}` : ""}` : "", tail: d.reason ? `„${d.reason}"` : undefined, signal: null })),
     ...(detail.data?.theses ?? []).filter((t) => t.reviewed_at).map((t) => ({ at: t.reviewed_at!, dot: "", head: "Przegląd tezy", main: "", tail: "bez zmian", signal: null })),

@@ -3,6 +3,7 @@
 // from 30-day closes, re-entry gap, change-log grouping, performance facts. Pure; `npm test` imports it
 // (node strips the types; imports carry their .ts extension).
 import { bucketLabel, dm, money, money0, pct, pctTarget, plural, pp, WEEKDAY_INDEX } from "../labels.ts";
+import { isResearchKind, researchSignalText } from "./research/logic.ts";
 
 export type Polarity = "positive" | "negative" | "neutral";
 
@@ -78,6 +79,7 @@ export function signalText(sig: SigLike, ctx: { total?: number | null; base?: st
   const sym = s(p.symbol) && s(p.symbol) !== name ? s(p.symbol) : null;
   const base = ctx.base ?? "PLN";
   if (sig.kind.startsWith("alert:")) return alertSignalText(sig, name, sym);
+  if (isResearchKind(sig.kind)) return researchSignalText(sig, name, sym);
   switch (sig.kind) {
     case "drawdown_from_high":
       return { title: name, sym, lead: "transza spadkowa ·", bold: pct(-(n(p.drawdown) ?? 0)), tail: `od szczytu ${win(n(p.window_days) ?? 252)} · próg -${pctTarget(n(p.threshold))}` };

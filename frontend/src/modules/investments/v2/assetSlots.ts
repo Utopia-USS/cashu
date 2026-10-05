@@ -10,6 +10,7 @@
 // Every slot is optional; without `Research` the drawer moves the timeline into the right column.
 import type { ComponentType } from "react";
 import type { Thesis } from "../api";
+import { AssetResearch, ResearchHeaderNote, ThesisFieldChip, ThesisHealth, useResearchTimeline } from "./research/AssetResearch";
 
 export interface AssetSlotProps {
   slug: string;
@@ -56,4 +57,6 @@ export interface AssetSlots {
   useTimeline?: (p: AssetSlotProps) => AssetTimelineEntry[];
 }
 
-export const ASSET_SLOTS: AssetSlots = {};
+export const ASSET_SLOTS: AssetSlots = {
+  Research: AssetResearch, ThesisTags: ThesisHealth, ThesisFieldChip, HeaderNote: ResearchHeaderNote, useTimeline: useResearchTimeline,
+};

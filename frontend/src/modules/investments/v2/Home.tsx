@@ -36,6 +36,7 @@ import { daysSince, instName, isDigestDay, nextWeekday, planForMonth, REENTRY_DA
 import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, DrawdownWidget, ValueChartWidget } from "./Perf";
 import { AccountsWidget, AllocationWidget, AssetList } from "./Portfolio";
+import { insertAfterAttention, useResearchHome } from "./research";
 import { ChangeLog, ChangesWidget, ReentryBanner, ReviewStrip, StateToday } from "./Review";
 import { type SignalsCtx, SignalsWidget } from "./Signals";
 import { WatchlistWidget } from "./Watchlist";
@@ -289,10 +290,17 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
 
   const names = new Map((positions?.positions ?? []).map((p) => [Number(p.instrument.id), instName(p.instrument)] as [number, string]));
   for (const w of watch) if (w.instrument) names.set(w.instrument_id, instName(w.instrument));
+  // Research layer (F6, v2/research): strip, review block, research view, note links; nothing before the first run.
+  const research = useResearchHome({
+    slug, nonce, today, privacy: ctx.profile.mcp_privacy, positions: positions?.positions ?? [], watch, strategyVersion: strategy?.version ?? null, digest,
+    go, openAsset: (id, noteId) => goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`), onSettings: () => ctx.go({ kind: "settings", section: "agent" }), onChanged: reload,
+  });
   const signalsCtx: SignalsCtx = {
     slug, positions: positions?.positions ?? [], buckets: overview?.allocation.buckets ?? [], total: overview?.allocation.total ?? 0, base,
     accounts, today, contributionDay: strategy?.facts?.contributions?.day_of_month ?? null, alertsById, onChanged: reload,
     onOpenAsset: (id) => openAsset(id),
+    researchOn: research.ran, researchEffect: research.effect,
+    onOpenNote: (id, noteId, theme) => (id != null ? goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`) : go(theme ? `research?theme=${encodeURIComponent(theme)}` : "research")),
   };
 
   // ---- render --------------------------------------------------------------------------------------------------
@@ -317,6 +325,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       </>
     );
   }
+  if (route === "research") return <>{research.page(params, () => go())}{drawers}</>;
   if (route === "journal") {
     return (
       <>
@@ -422,6 +431,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
         {last ? <span className={`tag solid ${last.status === "ok" ? "pos" : last.status === "failed" ? "neg" : "warn"}`} title={last.errors[0] ? runError(last.errors[0]) : undefined}>
           reguły: {runDay} {hm(runAt)} · {last.status === "ok" ? "ok" : RUN_STATUS[last.status] ?? last.status}</span> : <span className="tag">reguły jeszcze nie działały</span>}
         <div className="meta">{[strategy?.version != null ? `strategia v${strategy.version}` : "bez strategii", lastReview ? `ostatni przegląd ${dm(lastReview)}` : null].filter(Boolean).join(" · ")}</div>
+        {research.heroMeta && <div className="meta">{research.heroMeta}</div>}
       </div>
     </section>
   );
@@ -442,9 +452,11 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       reviewText={due ? "dziś" : WEEKDAYS[weekday] ?? weekday} onSignals={() => scrollTo("inv-signals")} /> });
   }
   if (reviewOpen && digest) {
-    items.push({ id: "review", span: 3, node: <ReviewStrip digest={digest} step={step} onStep={onStep} decided={decided} total={signals.length} note={note} onNote={setNote} onDone={markDone} /> });
+    items.push({ id: "review", span: 3, node: <ReviewStrip digest={digest} step={step} onStep={onStep} decided={decided} total={signals.length} note={note} onNote={setNote} onDone={markDone} researchRan={research.ranInPeriod} /> });
     items.push({ id: "changes", span: 3, node: <ChangesWidget digest={digest} perf={perf1y.data} alerts={alerts} proposals={props.data ?? []} accounts={accounts} names={names}
-      onSignals={() => onStep(1)} onProposal={(id) => setDrawer({ kind: "proposal", id })} onJournal={() => openJournal()} /> });
+      onSignals={() => onStep(1)} onProposal={(id) => setDrawer({ kind: "proposal", id })} onJournal={() => openJournal()} research={research.changesRow} /> });
+    const rr = research.review(digest.since);
+    if (rr) items.push(rr);
   }
   if (!reviewOpen && !reentry) items.push({ id: "hero", span: 3, node: hero });
   if (last?.status === "failed") {
@@ -465,7 +477,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     items.push(wContrib(2), wAccounts);
     if (watch.length || route === "watch") items.push(wWatch);
   } else {
-    items.push(wSignals, wAlerts, wValue, wAlloc, wAssets, wWatch, wDd, wContrib(1), wAccounts);
+    const grid = [wSignals, wAlerts, wValue, wAlloc, wAssets, wWatch, wDd, wContrib(1), wAccounts];
+    items.push(...(research.strip ? insertAfterAttention(grid, research.strip) : grid));
   }
   return (
     <>

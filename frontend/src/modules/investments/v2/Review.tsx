@@ -16,9 +16,11 @@ import { changeSince, gapText, groupByMonth, isImportant, polarityOf, signalText
 
 // ---- review strip ---------------------------------------------------------------------------------------------
 
-export function ReviewStrip({ digest, step, onStep, decided, total, note, onNote, onDone }: {
+export function ReviewStrip({ digest, step, onStep, decided, total, note, onNote, onDone, researchRan }: {
   digest: DigestV2; step: number; onStep: (k: number) => void; decided: number; total: number;
   note: string; onNote: (v: string) => void; onDone: () => void;
+  /** A research run happened in the period: step 1 reads `Zmiany i research` (F6 research layer). */
+  researchRan?: boolean;
 }) {
   const last = digest.last_review;
   const minutes = last && typeof last.stats?.minutes === "number" ? last.stats.minutes : null;
@@ -26,7 +28,7 @@ export function ReviewStrip({ digest, step, onStep, decided, total, note, onNote
     <section className="w review hl" aria-label="Przegląd tygodnia">
       <div className="title">Przegląd tygodnia <span className="muted" style={{ fontWeight: 500 }}>· {dm(digest.since)} - {dm(digest.as_of)}</span></div>
       <div className="rsteps" role="tablist" aria-label="Kroki przeglądu">
-        <button role="tab" aria-selected={step === 0} className={step > 0 ? "done" : step === 0 ? "on" : ""} onClick={() => onStep(0)}>{step > 0 ? "✓" : "1"} Zmiany</button>
+        <button role="tab" aria-selected={step === 0} className={step > 0 ? "done" : step === 0 ? "on" : ""} onClick={() => onStep(0)}>{step > 0 ? "✓" : "1"} {researchRan ? "Zmiany i research" : "Zmiany"}</button>
         <button role="tab" aria-selected={step === 1} className={step > 1 ? "done" : step === 1 ? "on" : ""} onClick={() => onStep(1)}>{step > 1 ? "✓" : "2"} Sygnały <b>{decided} z {total}</b></button>
         <button role="tab" aria-selected={step === 2} className={step === 2 ? "on" : ""} onClick={() => onStep(2)}>3 Zamknij</button>
       </div>
@@ -52,9 +54,11 @@ function Chg({ k, v, onKey }: { k: string; v: ReactNode; onKey?: () => void }) {
 }
 
 /** Co się zmieniło: value vs benchmark over the same days, signals, alerts, transactions, dividends, strategy. */
-export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names, onSignals, onProposal, onJournal }: {
+export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names, onSignals, onProposal, onJournal, research }: {
   digest: DigestV2; perf: Performance | null | undefined; alerts: Alert[]; proposals: Proposal[]; accounts: AccountRow[]; names?: Map<number, string>;
   onSignals: () => void; onProposal: (id: number) => void; onJournal: () => void;
+  /** `Research` row (F6 research layer, research/ReviewBlock.tsx `researchChanges`); null = no run in the period. */
+  research?: ReactNode;
 }) {
   const v = digest.value;
   const c = v.currency;
@@ -84,6 +88,7 @@ export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names
           <b>{[sg.new.length && plural(sg.new.length, "nowy", "nowe", "nowych"), sg.resolved.length && plural(sg.resolved.length, "wygasł", "wygasły", "wygasło")].filter(Boolean).join(", ")}</b>
           {sg.new.length > 0 && <span className="s"> · nowe: {sigNames(sg.new as SignalV2[])}</span>}
         </> : <span className="s">bez nowych · {plural(sg.open, "otwarty", "otwarte", "otwartych")}</span>} />
+        {research != null && <Chg k="Research" v={research} />}
         <Chg k="Alerty" v={trig.length || agentAdded ? <>
           {trig.length > 0 && <b>{plural(trig.length, "wyzwolony", "wyzwolone", "wyzwolonych")}</b>}
           <span className="s">{trig.length ? ` · ${trig.slice(0, 2).map(alertTitle).join(", ")}` : ""}{agentAdded ? ` · ${plural(agentAdded, "dodany", "dodane", "dodanych")} przez agenta` : ""}</span>

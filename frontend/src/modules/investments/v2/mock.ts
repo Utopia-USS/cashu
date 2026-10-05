@@ -6,6 +6,7 @@
 import { ApiError } from "../../../core/api";
 import { investmentsMock } from "../mock";
 import type { Alert, Performance, PerfPoint, PerfRange, PlannedDeposit, WatchItem } from "./api";
+import { researchDigest, researchMock, researchSignals } from "./research/mock";
 
 const TODAY = "2026-10-04";
 const MINIMAL_MARTA = new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("marta") !== "empty";
@@ -267,6 +268,12 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
   if (rv && method === "DELETE") { st.deletedReviews.add(Number(rv[1])); return { deleted: Number(rv[1]) }; }
   if (path === "/reviews" && method === "GET") return (base() as { id: number }[]).filter((r) => !st.deletedReviews.has(r.id));
   if (ip == null) return base();
+  if (ip.startsWith("/research")) {
+    return researchMock(slug, kind, ip, q, method, body, {
+      add: (symbol, name, note) => { const w = watchItem(st.nextId++, st.nextId++, name, symbol, "PLN", 100, st.nextId, 0.001, note, "user", { live: 0, triggered: 0, nearest: null }); st.watch.push(w); return w.id; },
+      remove: (id) => { st.watch = st.watch.filter((w) => w.id !== id); },
+    });
+  }
 
   if (minimal) {
     if (ip === "/overview") return martaOverview();
@@ -372,7 +379,8 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
   const res = base();
   if (ip === "/signals") {
     const status = q.get("status") ?? "open";
-    const list = (res as Record<string, unknown>[]).concat(st.alertSignals.filter((s) => status === "all" || (status === "open" ? isOpen(s as { status: string }) : !isOpen(s as { status: string }))));
+    const list = (res as Record<string, unknown>[]).concat(st.alertSignals.filter((s) => status === "all" || (status === "open" ? isOpen(s as { status: string }) : !isOpen(s as { status: string }))))
+      .concat(researchSignals(slug, kind, status));
     return list.map((s) => decorateSignal(s, st));
   }
   if (ip === "/overview") return decorateOverview(res as Record<string, unknown>, st, slug, kind);
@@ -383,7 +391,7 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
     if (kind !== "full") return { ...d, events: [], events_total: 0 };
     const from = since ?? String(d.since);
     const ev = janEvents(from);
-    return { ...d, since: from, baseline: since ? "since" : d.baseline, events: ev, events_total: ev.length, value: { ...(d.value as object), contributions: since ? 4000 : 0, market_change: since ? 6720 : (d.value as { change: number }).change } };
+    return { ...d, research: researchDigest(slug, kind), since: from, baseline: since ? "since" : d.baseline, events: ev, events_total: ev.length, value: { ...(d.value as object), contributions: since ? 4000 : 0, market_change: since ? 6720 : (d.value as { change: number }).change } };
   }
   return res;
 }
