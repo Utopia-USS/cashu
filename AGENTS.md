@@ -331,8 +331,10 @@ UI text is Polish, minimal and glanceable. Before adding or changing a string:
   (Zapisz, Importuj, Cofnij, Utwórz); the object is implied by the card.
 - Empty state = one line (a state, not an apology) + one action button. Errors say what to do in the same
   line: "Nie udało się X: {detail}" or "{problem}. {action}." (no "Próbuję ponownie", no apology).
-- Only two kinds of notes, one sentence each: privacy / safety (what the agent sees, nothing leaves the
-  machine, an agent write is always a proposal approved in the app) and irreversible actions. Shared copy
+- Only two kinds of notes, one sentence each: privacy / safety (what the agent sees, that in-app analyses
+  never leave the machine, an agent write is always a proposal approved in the app) and irreversible actions.
+  "Nothing leaves the machine" only where literally true (the app's own analyses); never imply that what an
+  agent gets through MCP stays local: MCP tool results go to the Claude API. Shared copy
   lives in one constant (e.g. `PRIVACY_OPTIONS`, `PROPOSAL_NOTE`), never two versions on two screens.
 - Numbers first: `12 400 zł · 3 konta`. Status words are single adjectives / short tags (gotowy, w toku,
   nieaktualne). Refresh mechanics stay invisible ("co 5 s", "na żywo", "odświeża się").

@@ -101,10 +101,21 @@ test("F7: performance data-quality notes and worker job codes read in Polish; un
   finally { if (prev === undefined) delete process.env.TZ; else process.env.TZ = prev; }
 });
 
-test("F7 PK11: a moved app / stale worker reads as one Polish line; all fine = nothing", async () => {
-  const { describeRelocation } = await import("../src/core/messages.ts");
-  assert.equal(describeRelocation(null), null);
-  assert.equal(describeRelocation({ worker: "missing", app_moved_from: null, actions: ["worker_reinstall"] }), "Praca w tle wskazuje program, którego już nie ma");
-  assert.equal(describeRelocation({ worker: null, app_moved_from: "/Applications/Old.app", actions: ["mcp_readd"] }), "Aplikacja została przeniesiona z /Applications/Old.app");
-  assert.equal(describeRelocation({ worker: "other_program", app_moved_from: "/x", actions: [] }), "Praca w tle wskazuje inną kopię aplikacji · Aplikacja została przeniesiona z /x");
+test("F7 R8: relocation has a worker part and an MCP part, each its own line; the pre-R8 flat shape maps onto them", async () => {
+  const { relocationParts } = await import("../src/core/messages.ts");
+  const none = { worker: null, mcp: null };
+  assert.deepEqual(relocationParts(null), none);
+  assert.deepEqual(relocationParts({ worker: null, mcp: null }), none);
+  const READD = "Dodaj ponownie serwer MCP w Claude Code (polecenie w Agent AI).";
+  assert.deepEqual(relocationParts({ worker: { reason: "missing", program: "/gone/finanse", expected_program: null, actions: ["worker_reinstall"] }, mcp: null }),
+    { worker: "Praca w tle wskazuje program, którego już nie ma", mcp: null });
+  assert.deepEqual(relocationParts({ worker: null, mcp: { reason: "app_moved", app_moved_from: "/Applications/Old.app", moved_at: null, actions: ["mcp_readd"] } }),
+    { worker: null, mcp: `Aplikacja została przeniesiona z /Applications/Old.app. ${READD}` });
+  assert.deepEqual(relocationParts({ worker: { reason: "other_program", actions: [] }, mcp: { reason: "app_moved", app_moved_from: "/x", actions: [] } }),
+    { worker: "Praca w tle wskazuje inną kopię aplikacji", mcp: `Aplikacja została przeniesiona z /x. ${READD}` });
+  // pre-R8 server: one flat object
+  assert.deepEqual(relocationParts({ worker: "missing", app_moved_from: null, actions: ["worker_reinstall"] }),
+    { worker: "Praca w tle wskazuje program, którego już nie ma", mcp: null });
+  assert.deepEqual(relocationParts({ worker: null, app_moved_from: "/Applications/Old.app", actions: ["mcp_readd"] }),
+    { worker: null, mcp: `Aplikacja została przeniesiona z /Applications/Old.app. ${READD}` });
 });

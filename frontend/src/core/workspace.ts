@@ -26,6 +26,8 @@ export interface WorkspaceStatus {
   routine_command: string;
   /** Opt-in: the unattended Saturday routine may search the web and write notes without asking. */
   routine_permissions: boolean;
+  /** F7 OB7: the command recorded in .mcp.json is not this app's program (moved app); "Aktualizuj" rewrites it. */
+  mcp_command_stale?: boolean;
 }
 
 export interface WorkspaceResult extends WorkspaceStatus {
@@ -106,6 +108,10 @@ export const ROUTINE_PERMISSIONS_HINT =
 /** The proposal-safety line (wizard and Settings share it). */
 export const PROPOSAL_NOTE = "Zapis przez agenta to zawsze propozycja do zatwierdzenia w aplikacji.";
 
+/** macOS App Translocation (PK3): the MCP snippets are placeholders until the app is moved. Shown for the
+ * workspace error code, GET /mcp `translocated` and the setup page's `skill.translocated`. */
+export const TRANSLOCATED_TEXT = "Aplikacja działa z tymczasowej lokalizacji macOS: przenieś Finanse.app do folderu Programy i otwórz ją ponownie.";
+
 const ERRORS: Record<string, string> = {
   path_required: "Podaj folder.",
   path_relative: "Podaj pełną ścieżkę folderu (od / albo od ~).",
@@ -115,7 +121,7 @@ const ERRORS: Record<string, string> = {
   path_data_dir: "Workspace musi leżeć poza katalogiem danych finanse i nie może go zawierać.",
   path_checkout: "Workspace nie może leżeć w katalogu z kodem finanse.",
   workspace_taken: "Ten folder jest (albo zawiera) workspace innego profilu.",
-  translocated: "Aplikacja działa z tymczasowej lokalizacji macOS: przenieś Finanse.app do folderu Programy i otwórz ją ponownie.",
+  translocated: TRANSLOCATED_TEXT,
   busy: "Workspace jest właśnie aktualizowany. Spróbuj za chwilę.",
   write_failed: "Nie udało się zapisać plików w tym folderze (uprawnienia albo dysk).",
 };

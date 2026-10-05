@@ -8,6 +8,7 @@ import { getSetup, type ModuleInfo, type SetupAction, type SetupInfo, type Setup
 import { moduleDef, tabKey } from "./registry";
 import type { View } from "./types";
 import { pathToView, useShell } from "./context";
+import { TRANSLOCATED_TEXT } from "./workspace";
 
 const POLL_MS = 5000;
 
@@ -110,6 +111,7 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
       {skill && (
         <section className="card chart-card">
           <h2>Z pomocą Claude Code</h2>
+          {skill.translocated && <Notice tone="warn">{TRANSLOCATED_TEXT}</Notice>}
           <SetupSteps steps={[
             {
               key: "mcp", status: "on", title: "Podłącz MCP do Claude Code", tag: <Tag>raz na profil</Tag>,

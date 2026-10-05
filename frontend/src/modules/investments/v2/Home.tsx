@@ -33,7 +33,7 @@ import { getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, 
 import { AssetDrawer } from "./AssetDrawer";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
-import { daysSince, instName, isDigestDay, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget } from "./logic";
+import { daysSince, instName, isDigestDay, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, staleBenchmark } from "./logic";
 import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, DrawdownWidget, ValueChartWidget } from "./Perf";
 import { AccountsWidget, AllocationWidget, AssetList } from "./Portfolio";
@@ -415,7 +415,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   // ---- hero --------------------------------------------------------------------------------------------------
   const k = overview.kpis;
   const ytd = perfYtd.data;
-  const yb = ytd?.benchmark?.status === "ok" ? ytd.benchmark : null;
+  const ybStale = staleBenchmark(ytd?.benchmark);
+  const yb = ytd?.benchmark?.status === "ok" && !ybStale ? ytd.benchmark : null;
   const week = perf1m.data ? weekMove(perf1m.data.points, perf1m.data.as_of) : null;
   const ddPts = perf1y.data?.points ?? [];
   const ddNow = ddPts.length ? ddPts[ddPts.length - 1].drawdown : null;
@@ -437,8 +438,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
         {week && <div className="d"><span className={week.money >= 0 ? "pos" : "neg"}>{money(week.money, base, true)}{week.pct != null ? ` (${pct(week.pct, true)})` : ""}</span> w tym tygodniu</div>}
       </div>
       <div className="hf">
-        <Fact label="Od początku roku" value={ytd?.summary?.twr != null ? pct(ytd.summary.twr, true) : "-"}
-          detail={yb?.twr != null ? <>{yb.id ?? "benchmark"} {pct(yb.twr, true)}{yb.excess_twr != null && <> · <span className={yb.excess_twr >= 0 ? "pos" : "neg"}>{pp(yb.excess_twr * 100)}</span></>}</> : ytd === null ? "brak historii" : undefined} />
+        <Fact label="Od początku roku" value={ytd?.summary?.twr != null ? pct(ytd.summary.twr, true) : "-"} title={ybStale?.title}
+          detail={ybStale ? ybStale.label : yb?.twr != null ? <>{yb.id ?? "benchmark"} {pct(yb.twr, true)}{yb.excess_twr != null && <> · <span className={yb.excess_twr >= 0 ? "pos" : "neg"}>{pp(yb.excess_twr * 100)}</span></>}</> : ytd === null ? "brak historii" : undefined} />
         <Fact label="Wynik niezrealizowany" value={money0(k.unrealized.amount, base, true)} detail={k.unrealized.pct != null ? `${pct(k.unrealized.pct, true)} od kosztu` : "koszt nieznany"} />
         <Fact label="Gotówka" value={pct(k.cash.weight)} detail={`${money0(k.cash.amount, base)}${cashTarget != null ? ` · cel ${Math.round(cashTarget * 100)} %` : ""}`} />
         {ddNow != null && <Fact label="Od szczytu" value={pct(ddNow)} detail={peak ? `szczyt ${dm(peak)}` : undefined} />}

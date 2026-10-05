@@ -62,3 +62,21 @@ test("FE12: an edited weight alert keeps its kind whatever the direction seg say
   assert.equal(formKind("weight", false, null), "weight_below");
   assert.equal(formKind("price_above", false, null), "price_above");
 });
+
+// F7 fix pass F7: a note-only edit never re-sends params, whatever the stored key order or missing defaults.
+test("note-only edit: params in another key order or without a form default are not sent", () => {
+  const ordered = { ...agentAlert, kind: "change_pct", params: { direction: "any", threshold: 0.05, window_days: 5 } };
+  assert.deepEqual(alertPatch(ordered, unchanged(ordered, { note: "b" })), { note: "b" });
+  const noDirection = { ...agentAlert, kind: "change_pct", params: { threshold: 0.05, window_days: 5 } };
+  assert.deepEqual(alertPatch(noDirection, unchanged(noDirection, { note: "b" })), { note: "b" });
+  const noWindow = { ...agentAlert, kind: "new_high", params: {} };
+  assert.deepEqual(alertPatch(noWindow, unchanged(noWindow, { note: "b" })), { note: "b" });
+  // a real change still sends the params; the untouched default is left to the backend
+  const t = draftText(noDirection.params);
+  const initialParams = buildParams(noDirection.kind, noDirection.scope, t);
+  const params = buildParams(noDirection.kind, noDirection.scope, { ...t, threshold: "7" });
+  assert.deepEqual(alertPatch(noDirection, { ...unchanged(noDirection), params, initialParams }).params, { window_days: 5, threshold: 0.07 });
+  // a touched default is sent
+  const dir = buildParams(noDirection.kind, noDirection.scope, { ...t, direction: "up" });
+  assert.deepEqual(alertPatch(noDirection, { ...unchanged(noDirection), params: dir, initialParams }).params, { window_days: 5, threshold: 0.05, direction: "up" });
+});

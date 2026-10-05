@@ -339,9 +339,20 @@ export function describeJob(j: { code?: string | null; params?: Params | null; d
   return label(j.code ? `worker.${j.code}` : null, j.params) ?? j.detail ?? null;
 }
 
-/** One line about a moved app / stale worker config (F7 PK11), or null when all is fine. */
-export function describeRelocation(r: { worker: string | null; app_moved_from?: string | null } | null | undefined): string | null {
-  if (!r) return null;
-  const parts = [r.worker ? label(`relocation.${r.worker}`) : null, r.app_moved_from ? label("relocation.moved", { path: r.app_moved_from }) : null];
-  return parts.filter(Boolean).join(" · ") || null;
+/** The two parts of a moved app / stale config (F7 PK11, R8), each one line or null when fine: `worker` (the
+ * launchd job, fixed by reinstalling) and `mcp` (the MCP lines, the owner re-adds them and marks it done). An
+ * older server's flat object (`worker` reason + `app_moved_from`) maps onto the same parts. */
+export function relocationParts(r: unknown): { worker: string | null; mcp: string | null } {
+  if (!r || typeof r !== "object") return { worker: null, mcp: null };
+  const o = r as { worker?: unknown; mcp?: unknown; app_moved_from?: unknown };
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const part = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : null);
+  const legacy = !("mcp" in o);
+  const workerReason = legacy ? str(o.worker) : str(part(o.worker)?.reason);
+  const mcpPart = legacy ? (str(o.app_moved_from) ? { app_moved_from: o.app_moved_from } : null) : part(o.mcp);
+  const movedFrom = str(mcpPart?.app_moved_from);
+  return {
+    worker: workerReason ? label(`relocation.${workerReason}`) ?? workerReason : null,
+    mcp: mcpPart ? [movedFrom ? label("relocation.moved", { path: movedFrom }) : null, label("relocation.mcp_readd")].filter(Boolean).join(". ") : null,
+  };
 }

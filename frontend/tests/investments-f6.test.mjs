@@ -168,3 +168,34 @@ test("alert signal facts and watchlist warnings from their codes (F6 BE message_
   assert.equal(describeIssue({ code: "watchlist.guessed_price_symbol", params: { price_symbol: "CSPX.L" }, message: "x" }).text, "symbol ceny zgadnięty (CSPX.L): sprawdź, czy przyjdą notowania");
   assert.equal(describeIssue({ code: "watchlist.unknown", params: {}, message: "English" }).text, "English");
 });
+
+// F7 fix pass F6: the watchlist undo is a re-create; its outcome is the POST's own, not the undo window's.
+test("watchlist re-create undo: 409 = already on the list, 404 = not restored with the reason, 5xx = retry", async () => {
+  const { makeRecreate, offerRecreate, recreateMessage, recreateSettled } = await import("../src/modules/investments/v2/undoFlow.ts");
+  const err = (status, code) => Object.assign(new Error("x"), { status, code });
+  const conflict = makeRecreate(async () => { throw err(409, "watchlist_conflict"); });
+  const r1 = await conflict.undo();
+  assert.equal(r1, "exists");
+  assert.equal(recreateMessage(r1, "usunięcie z obserwowanych", ""), "Już na liście");
+  assert.equal(recreateSettled(r1), true);
+  assert.equal(await conflict.undo(), "already");
+  const missing = makeRecreate(async () => { throw err(404, "not_found"); });
+  const r2 = await missing.undo();
+  assert.equal(r2, "missing");
+  assert.equal(recreateMessage(r2, "u", "nie znaleziono instrumentu"), "Nie przywrócono: nie znaleziono instrumentu");
+  assert.equal(recreateSettled(r2), false);
+  let calls = 0;
+  const flaky = makeRecreate(async () => { calls += 1; if (calls === 1) throw err(503); });
+  assert.equal(await flaky.undo(), "failed");
+  assert.equal(await flaky.undo(), "done");
+  assert.equal(await flaky.undo(), "already");
+  // the toast flow: no "za późno ... 15 minut" text for a conflict
+  const toasts = [];
+  let refreshed = 0;
+  offerRecreate((t, ms, a) => toasts.push({ t, a }), "Usunięto X z obserwowanych", async () => { throw err(409, "watchlist_conflict"); },
+    "usunięcie z obserwowanych", () => { refreshed += 1; }, () => "detail");
+  toasts[0].a.onClick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(toasts[1].t, "Już na liście");
+  assert.equal(refreshed, 1);
+});

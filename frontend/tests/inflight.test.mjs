@@ -24,3 +24,26 @@ test("a failing run releases the guard and rethrows", async () => {
   assert.equal(g.busy, false);
   assert.equal(await g.run(async () => 1), 1);
 });
+
+// F7 fix pass F1: the row stays locked after a successful write until the reload shows the new state.
+import { stillLocked } from "../src/inflight.ts";
+import { signalStateKey } from "../src/modules/investments/v2/logic.ts";
+
+test("post-write lock holds until the signal state changes (decision, snooze), not when the POST answers", async () => {
+  const g = singleFlight();
+  const open = { status: "active", decisions: [], snoozed: false };
+  let lock = null, posts = 0;
+  const click = (s) => (stillLocked(lock, signalStateKey(s)) ? undefined : g.run(async () => { posts += 1; lock = signalStateKey(s); }));
+  await click(open);
+  // the POST answered, the reload has not landed yet: a second click is ignored
+  assert.equal(g.busy, false);
+  assert.equal(stillLocked(lock, signalStateKey(open)), true);
+  assert.equal(await click(open), undefined);
+  assert.equal(posts, 1);
+  // the reload brings the decision: the key changed, the lock is gone
+  const decided = { ...open, status: "acknowledged", decisions: [{ id: 7 }] };
+  assert.equal(stillLocked(lock, signalStateKey(decided)), false);
+  // snooze changes the key too
+  assert.notEqual(signalStateKey({ ...open, snoozed: true, snoozed_until: "2026-10-12" }), signalStateKey(open));
+  assert.equal(stillLocked(null, signalStateKey(open)), false);
+});

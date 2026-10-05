@@ -57,13 +57,29 @@ export function buildParams(kind: string, scope: string, t: AlertDraftText): Rec
   }
 }
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/** Deep equality, insensitive to key order (F7 fix pass F7); undefined and null are the same. */
+export function same(a: unknown, b: unknown): boolean {
+  if ((a ?? null) === (b ?? null)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === (b as unknown[]).length && a.every((x, i) => same(x, (b as unknown[])[i]));
+  const ra = a as Record<string, unknown>, rb = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(ra), ...Object.keys(rb)]);
+  for (const k of keys) if (!same(ra[k], rb[k])) return false;
+  return true;
+}
 
 /** Params to save for an edit: a value the owner did not touch (its text-built value equals the one built
- * from the initial texts) keeps the stored value; returns null when nothing changed. */
+ * from the initial texts) keeps the stored value; a default the form filled for a key the stored params lack
+ * (e.g. `direction: "any"`) is not added while untouched (the backend fills it the same way). Returns null
+ * when nothing changed, so a note-only edit never re-sends params (F7 fix pass F7). */
 export function editedParams(stored: Record<string, unknown>, initial: Record<string, unknown>, current: Record<string, unknown>): Record<string, unknown> | null {
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(current)) out[k] = k in stored && same(v, initial[k]) ? stored[k] : v;
+  for (const [k, v] of Object.entries(current)) {
+    const untouched = same(v, initial[k]);
+    if (k in stored) out[k] = untouched ? stored[k] : v;
+    else if (!untouched) out[k] = v;
+  }
   for (const [k, v] of Object.entries(stored)) if (!(k in out)) out[k] = v; // a param the form does not show stays
   return same(out, stored) ? null : out;
 }

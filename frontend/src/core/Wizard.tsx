@@ -142,7 +142,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
   const lead = [
     firstLaunch ? "Wszystko działa lokalnie na tym komputerze." : null,
     "Do zmiany później w Ustawieniach.",
-    "Dotyczy tylko narzędzi MCP (Claude Code, Claude Desktop). Dane nie wychodzą z komputera.",
+    "Dotyczy tylko narzędzi MCP (Claude Code, Claude Desktop). Analizy w aplikacji nie wychodzą z komputera.",
   ][step];
   const showLegacy = firstLaunch && step === 0 && system?.legacy_db_detected && !skipLegacy;
 

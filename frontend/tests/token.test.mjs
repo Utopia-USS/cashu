@@ -110,3 +110,22 @@ test("a refusing or failing bridge gives null", async () => {
   failing.pywebview = { api: { token: async () => { throw new Error("x"); } } };
   assert.equal(await desktopToken(failing), null);
 });
+
+// F7 fix pass R2: a desktop lookup that timed out (null) is not cached; the next request asks again.
+import { cacheFound } from "../src/core/token.ts";
+
+test("cacheFound: a null result is retried, a found token is shared and kept until reset", async () => {
+  let calls = 0;
+  const answers = [null, "tok-1", "tok-2"];
+  const c = cacheFound(async () => answers[calls++]);
+  assert.equal(await c.get(), null); // bridge not ready within the timeout
+  const [a, b] = [c.get(), c.get()]; // concurrent callers share one lookup
+  assert.equal(await a, "tok-1");
+  assert.equal(await b, "tok-1");
+  assert.equal(await c.get(), "tok-1");
+  assert.equal(calls, 2);
+  c.reset(); // a 401
+  assert.equal(await c.get(), "tok-2");
+  const failing = cacheFound(async () => { throw new Error("bridge"); });
+  assert.equal(await failing.get(), null);
+});

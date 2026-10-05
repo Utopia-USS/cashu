@@ -77,6 +77,29 @@ export function desktopToken(win: TokenWindow, timeoutMs = DESKTOP_TIMEOUT_MS): 
   });
 }
 
+/** A shared lookup that caches only a found value (F7 fix pass R2): concurrent callers share the request in
+ * flight, but a null result (the desktop bridge was not ready within the timeout) is not kept, so the next
+ * request asks again. `reset()` drops a cached value (a 401). */
+export function cacheFound<T>(lookup: () => Promise<T | null>): { get(): Promise<T | null>; reset(): void } {
+  let pending: Promise<T | null> | null = null;
+  return {
+    get() {
+      if (!pending) {
+        const p = lookup().then((v) => {
+          if (v == null && pending === p) pending = null;
+          return v;
+        }, () => {
+          if (pending === p) pending = null;
+          return null;
+        });
+        pending = p;
+      }
+      return pending;
+    },
+    reset() { pending = null; },
+  };
+}
+
 // ---- the page's token -------------------------------------------------------------------------
 
 const hasDom = typeof window !== "undefined" && typeof document !== "undefined";
@@ -90,7 +113,8 @@ const DEV = (() => {
 // Runs when the module loads (api.ts imports it before the app renders): the fragment is gone
 // before the hash router looks at the location.
 let captured: string | null = hasDom ? captureFragmentToken(window.location, window.history, session()) : null;
-let pending: Promise<string | null> | null = null;
+const lookup = cacheFound<string>(async () => captured || storedToken(session()) || metaToken()
+  || (hasDom ? await desktopToken(window as unknown as TokenWindow) : null));
 
 function metaToken(): string | null {
   if (!hasDom) return null;
@@ -100,19 +124,13 @@ function metaToken(): string | null {
 /** The API token: "" under `npm run dev` (the proxy adds it), null when none could be found. */
 export function apiToken(): Promise<string | null> {
   if (DEV && !captured && !storedToken(session()) && !metaToken()) return Promise.resolve("");
-  if (!pending) {
-    pending = (async () => {
-      return captured || storedToken(session()) || metaToken()
-        || (hasDom ? await desktopToken(window as unknown as TokenWindow) : null);
-    })();
-  }
-  return pending;
+  return lookup.get();
 }
 
 /** A 401: the token belongs to an earlier server launch. Forget it, so a reload asks again
  * (desktop bridge) or shows NO_TOKEN_TEXT (browser: open the new URL `finanse serve` printed). */
 export function forgetToken(): void {
   captured = null;
-  pending = null;
+  lookup.reset();
   try { session()?.removeItem(TOKEN_STORAGE_KEY); } catch { /* ignore */ }
 }

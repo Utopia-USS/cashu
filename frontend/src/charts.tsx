@@ -151,12 +151,13 @@ export function LineChart({
           )}
         </svg>
       )}
-      {hover != null && tooltip && width > 0 && (
+      {/* The live region stays mounted (visually hidden while idle), so the first arrow press is announced (F7 fix pass F8). */}
+      {tooltip && (hover != null && width > 0 ? (
         <div className="tip" role="status" style={{
           left: hx, top: Math.max(0, tipY - 8),
           transform: `translate(${hx > w * 0.6 ? "-108%" : "10px"}, -100%)`,
         }}>{tooltip(hover)}</div>
-      )}
+      ) : <div className="sr-only" role="status" />)}
     </div>
   );
 }
@@ -275,9 +276,9 @@ export function StackedChart({ rows, keys, colors, totals, xLabels = [], yFmt, h
           {hover != null && <line className="cross" x1={hx} x2={hx} y1={padT} y2={h - padB} />}
         </svg>
       )}
-      {hover != null && tooltip && width > 0 && (
-        <div className="tip" role="status" style={{ left: hx, top: padT, transform: `translate(${hx > w * 0.6 ? "-108%" : "10px"}, 0)` }}>{tooltip(hover)}</div>
-      )}
+      {tooltip && (hover != null && width > 0
+        ? <div className="tip" role="status" style={{ left: hx, top: padT, transform: `translate(${hx > w * 0.6 ? "-108%" : "10px"}, 0)` }}>{tooltip(hover)}</div>
+        : <div className="sr-only" role="status" />)}
     </div>
   );
 }

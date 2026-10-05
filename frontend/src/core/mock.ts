@@ -231,7 +231,7 @@ function setupOf(p: MockProfile, id: string): SetupInfo {
       id: `s${i + 1}`, title, description, actions: actions ?? [],
       status: i < done ? "done" : i === done ? "on" : "todo",
     })),
-    skill: { command: `/${id}-setup`, mcp_add: `claude mcp add finanse-${p.slug} -- finanse mcp --profile ${p.slug}` },
+    skill: { command: `/${id}-setup`, mcp_add: `claude mcp add finanse-${p.slug} -- finanse mcp --profile ${p.slug}`, translocated: false },
   };
 }
 
@@ -324,6 +324,9 @@ const worker = {
   last_status: null as string | null, next_run: null as string | null, log_path: "~/Library/Application Support/finanse/logs/worker.log",
   platform: "launchd", supported: true, job_path: "~/Library/LaunchAgents/io.finanse.worker.plist", program: null as string[] | null,
   jobs: [] as { job: string; module: string | null; status: string; detail: string | null; last_run: string | null }[],
+  // F7 R8: two parts, each null when fine (worker: {reason, program, expected_program, actions};
+  // mcp: {reason: "app_moved", app_moved_from, moved_at, actions: ["mcp_readd"]}).
+  relocation: { worker: null, mcp: null } as { worker: Record<string, unknown> | null; mcp: Record<string, unknown> | null },
 };
 
 function route(method: string, url: string, body: unknown): unknown {
@@ -336,9 +339,14 @@ function route(method: string, url: string, body: unknown): unknown {
       worker: { ...worker },
     };
   }
+  if (path === "/api/system/relocation/ack" && method === "POST") {
+    worker.relocation = { ...worker.relocation, mcp: null };
+    return { worker: { ...worker, relocation: { ...worker.relocation } } };
+  }
   const wk = path.match(/^\/api\/system\/worker\/(install|uninstall|run)$/);
   if (wk && method === "POST") {
     const b = (body ?? {}) as { time?: string };
+    if (wk[1] === "install") worker.relocation = { ...worker.relocation, worker: null };
     if (wk[1] === "install") Object.assign(worker, { installed: true, schedule: b.time || worker.schedule, next_run: `2026-10-05T${b.time || worker.schedule}:00+02:00`, program: ["finanse", "worker", "run"] });
     if (wk[1] === "uninstall") Object.assign(worker, { installed: false, next_run: null, program: null });
     if (wk[1] === "run") {

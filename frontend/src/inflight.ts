@@ -21,3 +21,13 @@ export function singleFlight(onChange?: (busy: boolean) => void): InFlight {
     },
   };
 }
+
+// Post-write lock (F7 fix pass F1): the guard above releases when the POST answers, but the item keeps its
+// buttons until the parent's reload brings the new server state. The caller records the key of the state
+// the write changes (e.g. the signal's decision ids) on success; while the data still shows that key the
+// item stays locked. The caller clears the lock itself on undo (undo brings the old key back).
+
+/** Locked while a lock was taken and the data still shows the key it was taken at. */
+export function stillLocked(lockKey: string | null, currentKey: string): boolean {
+  return lockKey != null && lockKey === currentKey;
+}

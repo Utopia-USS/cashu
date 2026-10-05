@@ -5,18 +5,18 @@ import { useAsync } from "../hooks";
 import { parseServerTime, serverDate } from "../time";
 import { Code, copyText, Notice, RadioList, Seg, Switch, Tag, useToast } from "../ui";
 import {
-  ApiError, getMcpCalls, getMcpInfo, getSetup, getSystem, mcpAddCommand, type McpCall, type ModuleInfo, patchProfile, postWorker, type Privacy,
+  ApiError, getMcpCalls, getMcpInfo, getSetup, getSystem, mcpAddCommand, type McpCall, type ModuleInfo, patchProfile, postRelocationAck, postWorker, type Privacy,
   putProfileModules, type ProfileModule, type WorkerInfo,
 } from "./api";
 import { moduleDef, orderModules } from "./registry";
-import { describeJob, describeRelocation, errorText, label } from "./messages";
+import { describeJob, errorText, relocationParts } from "./messages";
 import { stepsTag } from "./SetupPage";
 import { useShell } from "./context";
 import type { ThemePref } from "./theme";
 import { serialSaver } from "./util";
 import { CURRENCIES, PRIVACY_OPTIONS } from "./Wizard";
 import {
-  changesToast, needsForce, outdatedLabel, PROPOSAL_NOTE, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, workspaceErrorText, workspaceSummary,
+  changesToast, needsForce, outdatedLabel, PROPOSAL_NOTE, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, TRANSLOCATED_TEXT, workspaceErrorText, workspaceSummary,
 } from "./workspace";
 import { getWorkspace, postWorkspace } from "./workspaceApi";
 import { InvestmentsStrategySettings } from "../modules/investments/v2/StrategySettings";
@@ -233,6 +233,7 @@ function AgentSection() {
       {err && <Notice tone="neg">Nie udało się zapisać poziomu: {err}</Notice>}
       <Notice tone="info">{PROPOSAL_NOTE}</Notice>
       <WorkspacePanel />
+      {mcp?.translocated && <Notice tone="warn">{TRANSLOCATED_TEXT}</Notice>}
       <div className="kv" style={{ marginTop: 14 }}>
         <span className="k">Claude Code</span>
         <span className="v block"><Code cmd={mcp?.claude_mcp_add ?? mcpAddCommand(slug)} /></span>
@@ -282,6 +283,7 @@ function WorkspacePanel() {
         <strong style={{ fontSize: 14 }} title="CLAUDE.md, .mcp.json, uprawnienia i skille modułów. Dane tylko przez MCP.">Workspace agenta</strong>
         {ws && <Tag tone={summary.tone}>{summary.text}</Tag>}
         <span className="spacer" />
+        {ws?.exists && ws.mcp_command_stale && <Tag tone="warn" title="Serwer MCP w .mcp.json wskazuje poprzednią lokalizację aplikacji. Aktualizuj zapisze nową.">MCP: stara ścieżka</Tag>}
         {ws?.exists && (
           <button className="btn" onClick={() => run({})} disabled={busy}
             title="Odświeża CLAUDE.md, .mcp.json, uprawnienia i skille; Twoje pliki zostają.">{busy ? "Aktualizuję…" : "Aktualizuj"}</button>
@@ -458,6 +460,7 @@ function WorkerSection() {
   const [time, setTime] = useState(system?.worker?.schedule ?? "07:30");
   const [busy, setBusy] = useState<null | "install" | "uninstall" | "run">(null);
   const [err, setErr] = useState<string | null>(null);
+  const [acking, setAcking] = useState(false);
   // Fresh status on open (the shell loads /api/system once per page load).
   useEffect(() => {
     let alive = true;
@@ -486,15 +489,26 @@ function WorkerSection() {
     { job: "notifications", module: null, status: "", detail: null },
     { job: "digest", module: null, status: "", detail: null },
   ];
-  const reloc = w?.relocation ?? null;
-  const relocText = describeRelocation(reloc);
+  const reloc = relocationParts(w?.relocation);
+  const ackMcp = async () => {
+    setAcking(true); setErr(null);
+    try {
+      const r = await postRelocationAck();
+      if (r.worker) setW(r.worker);
+    } catch (e) { setErr(`Nie zapisano: ${errorText(e)}`); } finally { setAcking(false); }
+  };
   return (
     <Card id="worker" title="Praca w tle">
-      {reloc && relocText && (
-        <Notice tone="warn" style={{ margin: "0 0 10px" }} action={reloc.actions.includes("worker_reinstall")
-          ? <button className="btn primary" disabled={!known || busy != null} onClick={() => act("install", { time: w?.schedule ?? time })}>{busy === "install" ? "Instaluję…" : "Zainstaluj ponownie"}</button>
-          : undefined}>
-          <b>{relocText}.</b>{reloc.actions.includes("mcp_readd") ? ` ${label("relocation.mcp_readd")}` : ""}
+      {reloc.worker && (
+        <Notice tone="warn" style={{ margin: "0 0 10px" }}
+          action={<button className="btn primary" disabled={!known || busy != null} onClick={() => act("install", { time: w?.schedule ?? time })}>{busy === "install" ? "Instaluję…" : "Zainstaluj ponownie"}</button>}>
+          <b>{reloc.worker}.</b>
+        </Notice>
+      )}
+      {reloc.mcp && (
+        <Notice tone="warn" style={{ margin: "0 0 10px" }}
+          action={<button className="btn" disabled={acking} title="Serwer MCP dodany ponownie w Claude Code / Claude Desktop" onClick={ackMcp}>{acking ? "Zapisuję…" : "Gotowe"}</button>}>
+          {reloc.mcp}
         </Notice>
       )}
       <div className="row" style={{ paddingTop: 0 }}>

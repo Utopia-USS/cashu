@@ -11,8 +11,7 @@ import { AgentTag, FootFacts, Widget } from "../../../widgets";
 import { pct, plural } from "../labels";
 import { deleteWatch, postWatch, type WatchItem } from "./api";
 import { instName, price, watchMove } from "./logic";
-import { makeUndo } from "../undo";
-import { offerUndo } from "./undoFlow";
+import { offerRecreate } from "./undoFlow";
 
 const KIND_WORD: Record<string, string> = {
   price_below: "poniżej", price_above: "powyżej", sma_cross: "SMA", new_high: "nowy szczyt", drawdown_from_high: "spadek od szczytu",
@@ -72,9 +71,10 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
       onChanged();
       // The undo re-adds the item with its note and tags; failures get a toast (F7 FE8). An agent's item comes
       // back as the owner's (the API has no restore for the watchlist).
-      const u = makeUndo(Date.now(), () => postWatch(slug, { instrument_id: w.instrument_id, note: w.note, tags: w.tags?.length ? w.tags : null }));
-      offerUndo(toast, `Usunięto ${w.instrument?.label ?? "instrument"} z obserwowanych`, u, "usunięcie z obserwowanych", onChanged, 10000,
-        () => (w.source === "agent" ? "wraca jako Twoja pozycja" : null));
+      // The outcome is the POST's own (F7 fix pass F6): 409 "Już na liście", 404 "Nie przywrócono: ...".
+      offerRecreate(toast, `Usunięto ${w.instrument?.label ?? "instrument"} z obserwowanych`,
+        () => postWatch(slug, { instrument_id: w.instrument_id, note: w.note, tags: w.tags?.length ? w.tags : null }),
+        "usunięcie z obserwowanych", onChanged, errorText, 10000, () => (w.source === "agent" ? "wraca jako Twoja pozycja" : null));
     } catch (e) { toast(`Nie usunięto: ${errorText(e)}`, 4000); }
   });
   return (

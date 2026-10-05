@@ -14,6 +14,9 @@ import type { BudgetCurrency } from "./currency";
 import type { CushionDraft } from "./logic";
 import { closeFor, cushionDraft, cushionPayload, monthLabel, planState, shiftMonth } from "./logic";
 
+/** What the cushion level is (backend monthclose.py, F7 R5 variant B: net transfers of the month): one text for the fact and the form. */
+const CUSHION_LEVEL = "Saldo na początek miesiąca + przelewy netto w miesiącu";
+
 const TOP = 3;
 
 export function MonthCloseCard({ bc }: { bc: BudgetCurrency }) {
@@ -142,7 +145,7 @@ function CushionFact({ cushion, editing, onEdit }: { cushion: CushionState | nul
       ? `osiągnięta (${cur(cushion.balance, c)})`
       : `${cur(cushion.balance, c)} z ${cur(cushion.target, c)} · dopłata ${cur(cushion.top_up, c)}`;
   // The level is the balance at the month start plus the month's transfers to the cushion (F7 FXB V7).
-  return <div><span>Poduszka finansowa</span><b style={{ fontWeight: 550 }} title="Saldo na początek miesiąca + przelewy w miesiącu">{text}</b>{edit}</div>;
+  return <div><span>Poduszka finansowa</span><b style={{ fontWeight: 550 }} title={CUSHION_LEVEL}>{text}</b>{edit}</div>;
 }
 
 function PlanFact({ close }: { close: MonthClose }) {
@@ -232,7 +235,7 @@ function CushionForm({ currencies, baseCurrency, onClose, onSaved }: {
       )}
       {draft.enabled && (
         <div className="field">
-          <label title={`Domyślnie konta oszczędnościowe w ${draft.currency}; saldo na koniec miesiąca.`}>Konta</label>
+          <label title={`Domyślnie konta oszczędnościowe w ${draft.currency}; ${CUSHION_LEVEL.toLowerCase()}.`}>Konta</label>
           {choices.length ? (
             <div className="accounts">
               {choices.map((a) => (

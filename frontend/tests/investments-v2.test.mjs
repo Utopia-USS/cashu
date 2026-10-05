@@ -219,3 +219,36 @@ test("F7 FE13: performance caveats read in Polish; a stale benchmark tail is fla
   assert.deepEqual(perfNotes({ data_quality: null, benchmark: { status: "ok", covers_range_end: true } }), []);
   assert.deepEqual(perfNotes(null), []);
 });
+
+// ---- F7 fix pass ---------------------------------------------------------------------------------------
+import { digestValueLine } from "../src/modules/investments/v2/logic.ts";
+
+test("F2 digest value line: market_change null with change set is a value change, not the market move", () => {
+  const base = { then: 100000, change: 42300, change_pct: 0.011, contributions: 2000 };
+  const unvalued = digestValueLine({ ...base, market_change: null, market_change_pct: null, transfers: null }, 0.003);
+  assert.equal(unvalued.kind, "value");
+  assert.equal(unvalued.amount, 42300);
+  assert.equal(unvalued.pct, null);
+  assert.equal(unvalued.contributions, null);
+  assert.equal(unvalued.transfersUnvalued, true);
+  const valued = digestValueLine({ ...base, market_change: 300, market_change_pct: 0.003, transfers: 40000 }, 0.004);
+  assert.deepEqual([valued.kind, valued.amount, valued.pct, valued.contributions, valued.transfersUnvalued], ["market", 300, 0.003, 2000, false]);
+  // older server: no market_change key at all -> `change` as the market line, as before
+  const old = digestValueLine({ then: 1, change: 500, change_pct: 0.01 }, null);
+  assert.deepEqual([old.kind, old.amount, old.pct, old.transfersUnvalued], ["market", 500, 0.01, false]);
+  // no starting value: nothing to show, transfers row not flagged
+  const none = digestValueLine({ then: null, change: null, change_pct: null, market_change: null, transfers: null }, null);
+  assert.deepEqual([none.kind, none.transfersUnvalued], ["none", false]);
+});
+
+test("F4 stale benchmark: no comparison figure on the heroes, a short label with the last priced day", async () => {
+  const { heroBenchmark, staleBenchmark } = await import("../src/modules/investments/v2/logic.ts");
+  const b = { status: "ok", id: "MSCI ACWI", twr: 0.061, simulation: { pnl: 400 }, covers_range_end: false, last_priced: "2026-09-12" };
+  assert.equal(heroBenchmark(b, 10000), null);
+  assert.deepEqual(staleBenchmark(b), { label: "benchmark nieaktualny", title: "MSCI ACWI: ceny do 12.09" });
+  assert.equal(staleBenchmark({ ...b, id: "my_mix" }).title, "my_mix: ceny do 12.09");
+  assert.equal(staleBenchmark({ ...b, covers_range_end: true }), null);
+  assert.equal(staleBenchmark({ ...b, covers_range_end: undefined }), null);
+  assert.equal(staleBenchmark({ ...b, status: "missing" }), null);
+  assert.deepEqual(heroBenchmark({ ...b, covers_range_end: true }, 10000), { value: 0.04, label: "MSCI ACWI, te same wpłaty" });
+});

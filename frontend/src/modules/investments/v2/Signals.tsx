@@ -16,7 +16,8 @@ import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, plural, qty } from ".
 import { decisionEffect, decisionTag, nextDeposit } from "../logic";
 import { canUndo, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
 import type { Alert, PositionV2, SignalV2 } from "./api";
-import { cursorOrder, instName, isDecided, polarityOf, signalText, splitByPolarity } from "./logic";
+import { cursorOrder, instName, isDecided, polarityOf, signalStateKey, signalText, splitByPolarity } from "./logic";
+import { stillLocked } from "../../../inflight";
 import { isResearchKind, signalNoteId } from "./research/logic";
 import { localDay, parseServerTime } from "../../../time";
 
@@ -153,6 +154,12 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
   const toast = useToast();
   // One request at a time per signal (F7 FE2): a double click must not record two decisions.
   const flight = useInFlight();
+  // ...and after a successful write the row stays locked until the reload shows the new state (F7 fix pass F1).
+  const stateKey = signalStateKey(s);
+  const [lockKey, setLockKey] = useState<string | null>(null);
+  const locked = stillLocked(lockKey, stateKey);
+  useEffect(() => { if (lockKey != null && lockKey !== stateKey) setLockKey(null); }, [lockKey, stateKey]);
+  const busy = flight.busy || locked;
   const names = new Map(ctx.positions.map((p) => [Number(p.instrument.id), instName(p.instrument)]));
   const text = signalText(s, { total: ctx.total, base: ctx.base, names });
   const decided = isDecided(s) ? s.decisions[s.decisions.length - 1] : null;
@@ -167,6 +174,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
   // One server-side undo per saved decision, shared by the toast and the "cofnij" link (FX, undo.ts).
   const runUndo = async (u: Undo, what: string, retry: () => void) => {
     const res = await u.undo();
+    if (undoSettled(res)) setLockKey(null);
     const msg = undoMessage(res, what);
     if (undoSettled(res)) ctx.onChanged();
     if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
@@ -176,9 +184,10 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
     const retry = () => { void runUndo(u, what, retry); };
     toast(text, 10000, { label: "Cofnij", onClick: retry });
   };
-  const decide = (input: DecisionInput, label: string) => flight.run(async () => {
+  const decide = (input: DecisionInput, label: string) => locked ? undefined : flight.run(async () => {
     try {
       const r = await postDecision(ctx.slug, s.id, input);
+      setLockKey(stateKey);
       onToggle(false);
       ctx.onChanged();
       offerUndo(r.decision.id, `Zapisano decyzję · ${label.replace("decyzja: ", "")}`, "decyzja");
@@ -187,15 +196,17 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
   const ackNow = async (reason?: string) => {
     try {
       const r = await postAcknowledge(ctx.slug, s.id, reason);
+      setLockKey(stateKey);
       onToggle(false);
       ctx.onChanged();
       offerUndo(r.decision.id, "Potwierdzone bez zmian", "potwierdzenie");
     } catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 5000); }
   };
-  const ack = (reason?: string) => flight.run(() => ackNow(reason));
-  const snooze = (until: string) => flight.run(async () => {
+  const ack = (reason?: string) => { if (!locked) void flight.run(() => ackNow(reason)); };
+  const snooze = (until: string) => locked ? undefined : flight.run(async () => {
     try {
       await postSnooze(ctx.slug, s.id, until);
+      setLockKey(stateKey);
       ctx.onChanged();
       const u = makeUndo(Date.now(), () => postSnooze(ctx.slug, s.id, null));
       const retry = () => { void runUndo(u, "odłożenie", retry); };
@@ -231,12 +242,12 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle }: 
           <div className="th"><b>Teza ({thesis.created_at ? `${thesis.created_at.slice(5, 7)}.${thesis.created_at.slice(0, 4)}` : "-"})</b> {thesisLine(thesis) || thesis.thesis}</div>
         )}
         {!quiet && (open ? (
-          <DecisionForm s={s} ctx={ctx} pending={flight.busy} onCollapse={() => onToggle(false)} onDecide={decide} onAck={ack} />
+          <DecisionForm s={s} ctx={ctx} pending={busy} onCollapse={() => onToggle(false)} onDecide={decide} onAck={ack} />
         ) : (
           <div className="act">
             <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)}>Zanotuj decyzję</button>
-            <button className="btn sm" disabled={flight.busy} onClick={() => ack()}>Potwierdź</button>
-            {s.kind === "contribution_gap" && <button className="btn sm" disabled={flight.busy} onClick={() => snooze(later)}>Odłóż do {dm(later)}</button>}
+            <button className="btn sm" disabled={busy} onClick={() => ack()}>Potwierdź</button>
+            {s.kind === "contribution_gap" && <button className="btn sm" disabled={busy} onClick={() => snooze(later)}>Odłóż do {dm(later)}</button>}
             {research && ctx.onOpenNote && <button className="lnk" style={{ fontSize: 12 }} onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.theme === "string" ? s.payload.theme : null)}>notatka</button>}
           </div>
         ))}

@@ -2,7 +2,7 @@
 // contract endpoints the workspace uses: weekly reviews and agent proposals (track M). Shapes mirror
 // service/views.py; money is a JSON number next to its currency, weights are fractions (0.213),
 // drift is in percentage points.
-import { ApiError, authHeaders, j, jdel, jpatch, jpost, pp } from "../../core/api";
+import { ApiError, authHeaders, handle401, j, jdel, jpatch, jpost, pp } from "../../core/api";
 
 export type Num = number | null;
 
@@ -510,6 +510,7 @@ async function upload<T>(u: string, body: FormData): Promise<T> {
   }
   // The token from core/token.ts (PK1: never read from the page), as every JSON request.
   const r = await fetch(u, { method: "POST", body, headers: await authHeaders() });
+  if (r.status === 401) handle401();
   if (!r.ok) {
     let detail = "";
     try { const d = (await r.json())?.detail; detail = typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => x?.msg ?? "").join("; ") : ""; } catch { /* not JSON */ }

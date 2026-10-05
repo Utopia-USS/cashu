@@ -17,7 +17,7 @@ import { getStrategy } from "../api";
 import { accountLabel, bucketLabel, dm, isoDate, money, money0, nInstruments, parseNum, pct, plural, pp, WEEKDAYS } from "../labels";
 import { nextDeposit } from "../logic";
 import { deletePlannedDeposit, getDigestV2, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
-import { changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "./logic";
+import { changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, staleBenchmark, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "./logic";
 import { addDays, todayLocal } from "../../../time";
 import { isMissingEndpoint } from "./undoFlow";
 
@@ -126,7 +126,7 @@ export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
       <div className="facts" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
         <Fact label="YTD" value={s?.twr != null ? pct(s.twr, true) : "-"} tone={s?.twr != null ? (s.twr >= 0 ? "pos" : "neg") : undefined}
           title={perfNotes(ytd.data).join("\n") || undefined}
-          detail={b?.status === "ok" && b.twr != null ? `${b.id ?? "benchmark"} ${pct(b.twr, true)}` : "bez benchmarku"} />
+          detail={staleBenchmark(b)?.label ?? (b?.status === "ok" && b.twr != null ? `${b.id ?? "benchmark"} ${pct(b.twr, true)}` : "bez benchmarku")} />
         <Fact label="Szanse" value={sig.data ? chances.length : "-"} detail={names(chances) || undefined} />
         <Fact label="Ryzyka" value={sig.data ? risks.length : "-"} detail={triggered ? plural(triggered, "alert wyzwolony", "alerty wyzwolone", "alertów wyzwolonych") : names(risks) || undefined} />
       </div>
@@ -299,7 +299,7 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
               <Fact label="Wpłacono" value={s?.net_contributions != null ? money0(s.net_contributions, c) : "-"}
                 detail={dep.flows.length ? (dep.same ? `${plural(dep.flows.length, "wpłata", "wpłaty", "wpłat")} po ${money0(dep.same, c)}` : plural(dep.flows.length, "wpłata", "wpłaty", "wpłat")) : undefined} />
               <Fact label="Benchmark" value={bench ? pct(bench.value, true) : "-"} title={perfNotes(perf.data).join("\n") || undefined}
-                detail={bench ? bench.label : perf.data?.benchmark?.status === "ok" ? undefined : "ustaw w strategii"} />
+                detail={bench ? bench.label : staleBenchmark(perf.data?.benchmark)?.label ?? (perf.data?.benchmark?.status === "ok" ? undefined : "ustaw w strategii")} />
               <Fact label="Następna wpłata" value={dm(due)} detail={[planAmount != null ? money0(planAmount, c) : null, acc].filter(Boolean).join(" · ") || undefined} />
             </div>
             <div className="hr">

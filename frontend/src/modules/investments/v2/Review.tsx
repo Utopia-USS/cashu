@@ -12,7 +12,7 @@ import type { AccountRow, Proposal } from "../api";
 import { accountLabel, bucketLabel, DECISION_ACTION, dm, money, money0, nTxns, pct, plural, pp, txnType } from "../labels";
 import { runError } from "../logic";
 import type { Alert, DigestEvent, DigestV2, Performance, SignalV2 } from "./api";
-import { changeSince, gapText, groupByMonth, isImportant, polarityOf, signalText } from "./logic";
+import { changeSince, digestValueLine, gapText, groupByMonth, isImportant, polarityOf, signalText } from "./logic";
 
 // ---- review strip ---------------------------------------------------------------------------------------------
 
@@ -66,8 +66,9 @@ export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names
   const c = v.currency;
   const since = changeSince(perf?.points ?? [], digest.since);
   const benchName = perf?.benchmark?.id ?? "benchmark";
-  const market = v.market_change ?? v.change;
-  const marketPct = v.market_change_pct ?? since.pct ?? v.change_pct;
+  const line = digestValueLine(v, since.pct);
+  const market = line.amount;
+  const marketPct = line.pct;
   const sg = digest.signals;
   const events = digest.events ?? [];
   const trig = events.filter((e) => e.type === "alert_triggered");
@@ -84,11 +85,12 @@ export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names
       <div className="changes">
         <Chg k="Wartość" v={market != null ? <>
           <b className={market >= 0 ? "pos" : "neg"}>{money(market, c, true)}</b>{marketPct != null && <b> ({pct(marketPct, true)})</b>}
-          <span className="s">{v.contributions ? ` · bez wpłat ${money0(v.contributions, c)}` : ""}{since.bench != null ? ` · ${benchName} ${pct(since.bench, true)}` : ""}{since.bench != null && since.pct != null ? <> · <b>{pp((since.pct - since.bench) * 100)}</b></> : ""}</span>
+          <span className="s">{line.kind === "value" ? " · z przeniesieniami" : ""}{line.contributions ? ` · bez wpłat ${money0(line.contributions, c)}` : ""}{line.kind === "market" && since.bench != null ? ` · ${benchName} ${pct(since.bench, true)}` : ""}{line.kind === "market" && since.bench != null && since.pct != null ? <> · <b>{pp((since.pct - since.bench) * 100)}</b></> : ""}</span>
         </> : <><b>{money(v.now, c)}</b> <span className="s">· brak wyceny z początku okresu</span></>} />
-        {(!!v.transfers || !!v.implied_funding) && <Chg k="Przeniesienia" v={<>
+        {(!!v.transfers || !!v.implied_funding || line.transfersUnvalued) && <Chg k="Przeniesienia" v={<>
           {!!v.transfers && <b>{money(v.transfers, c, true)}</b>}
-          {!!v.implied_funding && <span className="s">{v.transfers ? " · " : ""}brakujące wpłaty {money0(v.implied_funding, c)}</span>}
+          {line.transfersUnvalued && <span className="s">nie do wyceny</span>}
+          {!!v.implied_funding && <span className="s">{v.transfers || line.transfersUnvalued ? " · " : ""}brakujące wpłaty {money0(v.implied_funding, c)}</span>}
         </>} />}
         <Chg k="Sygnały" onKey={onSignals} v={sg.new.length || sg.resolved.length ? <>
           <b>{[sg.new.length && plural(sg.new.length, "nowy", "nowe", "nowych"), sg.resolved.length && plural(sg.resolved.length, "wygasł", "wygasły", "wygasło")].filter(Boolean).join(", ")}</b>

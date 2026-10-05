@@ -381,6 +381,11 @@ export function groupByMonth<T extends EventLike>(events: T[], today: string): {
   return out;
 }
 
+/** Key of the signal state a decision / acknowledge / snooze changes (F7 fix pass F1, inflight.ts `stillLocked`). */
+export function signalStateKey(s: { status?: string; decisions?: { id: number }[]; snoozed?: boolean; snoozed_until?: string | null }): string {
+  return [s.status ?? "", (s.decisions ?? []).map((d) => d.id).join(","), s.snoozed ? s.snoozed_until ?? "1" : ""].join("|");
+}
+
 // ---- performance ---------------------------------------------------------------------------------------
 
 export interface PointLike { date: string; value: number | null; twr: number | null; benchmark: number | null; simulated_value: number | null; flow: number | null; drawdown: number | null }
@@ -401,6 +406,25 @@ export function changeSince(points: PointLike[], since: string): { pct: number |
     bench: ratio(a.benchmark, b.benchmark),
     from: a.date,
   };
+}
+
+/** Value line of the review digest ("Co się zmieniło"), F7 F2. `market_change` absent (older server):
+ * fall back to `change` as before. `market_change: null` while `change` is set means the backend could not
+ * value the transfers: the line shows the value change labelled as such (no TWR %, no "bez wpłat", which
+ * would claim the deposits were taken out) and the transfers row says they are not valued. */
+export interface DigestValueLike {
+  then: number | null; change: number | null; change_pct: number | null;
+  contributions?: number | null; market_change?: number | null; market_change_pct?: number | null; transfers?: number | null;
+}
+export function digestValueLine(v: DigestValueLike, sincePct: number | null): {
+  kind: "market" | "value" | "none"; amount: number | null; pct: number | null; contributions: number | null; transfersUnvalued: boolean;
+} {
+  const transfersUnvalued = "transfers" in v && v.transfers === null && v.then != null;
+  const pctOf = () => v.market_change_pct ?? sincePct ?? v.change_pct;
+  if (v.market_change != null) return { kind: "market", amount: v.market_change, pct: pctOf(), contributions: v.contributions ?? null, transfersUnvalued };
+  if (v.market_change === undefined && v.change != null) return { kind: "market", amount: v.change, pct: pctOf(), contributions: v.contributions ?? null, transfersUnvalued };
+  if (v.change != null) return { kind: "value", amount: v.change, pct: null, contributions: null, transfersUnvalued };
+  return { kind: "none", amount: null, pct: null, contributions: null, transfersUnvalued };
 }
 
 // ---- surplus -> contribution (Przegląd card, F7 FE5) -------------------------------------------------------
@@ -574,13 +598,22 @@ export function averageCost(
  * benchmark bought with the same deposits (`simulation.pnl` over the same net contributions), so both are the
  * same measure; without a simulation the benchmark's TWR, labelled as such (F7 FE6). */
 export function heroBenchmark(
-  b: { status: string; id: string | null; twr: number | null; simulation: { pnl: number | null } | null } | null | undefined,
+  b: { status: string; id: string | null; twr: number | null; simulation: { pnl: number | null } | null; covers_range_end?: boolean | null } | null | undefined,
   netContributions: number | null | undefined,
 ): { value: number; label: string } | null {
-  if (!b || b.status !== "ok") return null;
+  if (!b || b.status !== "ok" || b.covers_range_end === false) return null;
   const name = b.id ?? "benchmark";
   if (b.simulation?.pnl != null && netContributions) return { value: b.simulation.pnl / netContributions, label: `${name}, te same wpłaty` };
   return b.twr != null ? { value: b.twr, label: `${name}, TWR` } : null;
+}
+
+/** A benchmark whose prices stop before the range end is not compared (F7 fix pass F4, backend R4 nulls the
+ * comparison figures): a short label for the fact detail and the last priced day for its tooltip. */
+export function staleBenchmark(
+  b: { status: string; id?: string | null; covers_range_end?: boolean | null; last_priced?: string | null } | null | undefined,
+): { label: string; title: string } | null {
+  if (!b || b.status !== "ok" || b.covers_range_end !== false) return null;
+  return { label: "benchmark nieaktualny", title: `${b.id ?? "benchmark"}: ceny do ${b.last_priced ? dm(b.last_priced) : "-"}` };
 }
 
 // ---- performance caveats (F7 FE13) -------------------------------------------------------------------------

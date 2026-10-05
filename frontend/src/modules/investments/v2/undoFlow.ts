@@ -55,3 +55,68 @@ export function recreateInput<A extends {
 export function alertDeleteUndo(restore: () => Promise<unknown>, recreate: () => Promise<unknown>, now: () => number = Date.now): Undo {
   return makeUndo(now(), () => restoreOrRecreate(restore, recreate), now);
 }
+
+// ---- undo by re-creating (watchlist remove, F7 fix pass F6) ------------------------------------------------
+
+/** The watchlist has no server-side undo: "Cofnij" POSTs the item again, so the outcome is the POST's own
+ * (no 15-minute window): 409 = it is already on the list again (e.g. the agent re-added it), 404 = the
+ * instrument is gone, another 4xx is final, network / 5xx / 408 / 429 can be retried. */
+export type RecreateResult = "done" | "busy" | "already" | "exists" | "missing" | "refused" | "failed";
+
+export function makeRecreate(run: () => Promise<unknown>): { undo(): Promise<RecreateResult>; readonly error: unknown } {
+  let state: "ready" | "running" | "settled" = "ready";
+  let error: unknown = null;
+  return {
+    get error() { return error; },
+    async undo(): Promise<RecreateResult> {
+      if (state === "running") return "busy";
+      if (state === "settled") return "already";
+      state = "running";
+      try {
+        await run();
+        state = "settled";
+        return "done";
+      } catch (e) {
+        error = e;
+        const status = typeof e === "object" && e !== null ? (e as { status?: unknown }).status : undefined;
+        if (typeof status === "number" && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+          state = "settled";
+          return status === 409 ? "exists" : status === 404 || status === 410 ? "missing" : "refused";
+        }
+        state = "ready";
+        return "failed";
+      }
+    },
+  };
+}
+
+/** Toast text after a re-create undo; `detail` = the Polish error text of the failed POST. */
+export function recreateMessage(result: RecreateResult, what: string, detail: string): string | null {
+  switch (result) {
+    case "done": return `Cofnięto: ${what}`;
+    case "exists": return "Już na liście";
+    case "missing": return `Nie przywrócono: ${detail}`;
+    case "refused": return `Nie przywrócono: ${detail}`;
+    case "failed": return `Nie udało się cofnąć: ${what} - spróbuj jeszcze raz`;
+    default: return null;
+  }
+}
+
+/** The list changed on the server after this result (refresh the view). */
+export const recreateSettled = (r: RecreateResult): boolean => r === "done" || r === "exists";
+
+/** Toast `text` with "Cofnij" that re-creates the item (see makeRecreate); a failed request offers it again. */
+export function offerRecreate(toast: Toast, text: string, run: () => Promise<unknown>, what: string, onDone: () => void,
+  describe: (e: unknown) => string, ms = 10000, note?: () => string | null): void {
+  const u = makeRecreate(run);
+  const retry = () => {
+    void u.undo().then((res) => {
+      if (recreateSettled(res)) onDone();
+      const base = recreateMessage(res, what, describe(u.error));
+      const extra = res === "done" ? note?.() ?? null : null;
+      const msg = base && extra ? `${base} · ${extra}` : base;
+      if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+    });
+  };
+  toast(text, ms, { label: "Cofnij", onClick: retry });
+}

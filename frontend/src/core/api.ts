@@ -42,6 +42,11 @@ function reportAuthLost() {
   authLost = true;
   authLostListeners.forEach((cb) => cb());
 }
+/** A 401 answer of any request (JSON or multipart upload): drop the token, show the one notice. */
+export function handle401(): void {
+  forgetToken();
+  reportAuthLost();
+}
 
 async function request<T>(method: string, u: string, body?: unknown): Promise<T> {
   if (MOCK) {
@@ -55,7 +60,7 @@ async function request<T>(method: string, u: string, body?: unknown): Promise<T>
     init.body = JSON.stringify(body);
   }
   const r = await fetch(u, init);
-  if (r.status === 401) { forgetToken(); reportAuthLost(); }
+  if (r.status === 401) handle401();
   if (!r.ok) {
     let detail = "";
     try {
@@ -111,11 +116,19 @@ export interface WorkerInfo {
   job_path?: string | null;
   program?: string[] | null;
   jobs?: WorkerJob[];
-  /** F7 PK11: the worker / MCP config points at a program that moved or is gone (null = fine). */
-  relocation?: WorkerRelocation | null;
+  /** F7 PK11 / R8: the worker job or the MCP lines point at a program that moved or is gone. Two parts, each
+   * null when fine; an older server sent one flat object (`worker` reason string + `app_moved_from`) or null. */
+  relocation?: WorkerRelocation | LegacyRelocation | null;
 }
 export interface WorkerRelocation {
-  /** missing: the configured program is gone; other_program: it points at another install; null: worker fine. */
+  /** The launchd job: cleared by POST /api/system/worker/install. */
+  worker: { reason: "missing" | "other_program" | string; program?: string | null; expected_program?: string[] | null; actions: string[] } | null;
+  /** The MCP lines (Claude Code / Desktop, workspace .mcp.json): cleared by POST /api/system/relocation/ack or a
+   * workspace update that rewrote .mcp.json. */
+  mcp: { reason: "app_moved" | string; app_moved_from: string; moved_at?: string | null; actions: string[] } | null;
+}
+/** The F7 PK11 shape before R8. */
+export interface LegacyRelocation {
   worker: "missing" | "other_program" | null;
   expected_program?: string | null;
   app_moved_from?: string | null;
@@ -147,10 +160,13 @@ export interface SetupStep {
 export interface SetupInfo {
   state: SetupState;
   steps: SetupStep[];
-  skill: { command: string; mcp_add: string } | null;
+  /** `translocated`: macOS App Translocation, `mcp_add` is a placeholder until the app is moved (PK3). */
+  skill: { command: string; mcp_add: string; translocated?: boolean } | null;
 }
 
 export const getSystem = () => j<SystemInfo>("/api/system");
+/** The owner re-added the MCP server after the app moved (F7 R8): clears `relocation.mcp`. */
+export const postRelocationAck = () => jpost<{ worker: WorkerInfo }>("/api/system/relocation/ack");
 /** Background worker actions (track W): install / uninstall the launchd agent, run once now. */
 export const postWorker = (action: "install" | "uninstall" | "run", body: { time?: string; offline?: boolean } = {}) =>
   jpost<{ worker: WorkerInfo; run?: { status: string; summary?: WorkerJob[] } }>(`/api/system/worker/${action}`, body);
@@ -194,6 +210,8 @@ export interface McpInfo {
   /** Claude Desktop server entry: goes under mcpServers[server_name]. */
   claude_desktop?: { command: string; args: string[] };
   packaged?: boolean;
+  /** macOS App Translocation: the snippets are placeholders until the app is moved (PK3). */
+  translocated?: boolean;
 }
 export const getMcpInfo = (slug: string) => j<McpInfo>(pp(slug, "/mcp"));
 export const getModules = () => j<ModuleInfo[]>("/api/modules");
@@ -212,7 +230,7 @@ export const getSetup = async (slug: string, moduleId: string): Promise<SetupInf
   const sk = r.skill;
   const skill = !sk ? null
     : typeof sk === "string" ? { command: sk, mcp_add: mcpAddCommand(slug) }
-    : { command: sk.command, mcp_add: sk.mcp_add || mcpAddCommand(slug) };
+    : { command: sk.command, mcp_add: sk.mcp_add || mcpAddCommand(slug), translocated: !!sk.translocated };
   return { ...r, steps: r.steps ?? [], skill };
 };
 
