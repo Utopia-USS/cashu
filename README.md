@@ -110,6 +110,63 @@ name it, so deleting `data/` afterwards never loses it.
 
 ---
 
+## 🖥️ Instalacja aplikacji (macOS app)
+
+finanse can also run as a normal Mac app: `Finanse.app` with its own window and
+icon, no terminal. It is the same code and the same data dir as the CLI, so the
+app and `finanse ...` commands see the same profiles.
+
+**Build it** (macOS, Python 3.12+, Node.js, Xcode command line tools):
+
+```bash
+scripts/build_macos.sh          # SPA (npm ci + build), icon, PyInstaller bundle
+                                # -> build/macos/dist/Finanse.app and a .zip next to it
+```
+
+The script builds the dashboard in a copy of `frontend/` and installs the Python
+side into its own venv under `build/macos/`, so your dev setup stays untouched.
+`--dmg` also makes a disk image, `--clean` starts from scratch.
+
+**Install it:** drag `build/macos/dist/Finanse.app` to `/Applications` (or open
+the `.dmg`) and start it from Launchpad or Finder. The first launch creates the
+database in the data dir (or keeps using the one you already have) and opens the
+profile wizard. Closing the window quits the app, local server included.
+
+**Gatekeeper:** a build without a signature runs on the Mac that built it. Copied
+to another Mac (download, AirDrop), macOS blocks it as "from an unidentified
+developer": open it once, then confirm in System Settings > Privacy & Security >
+"Open Anyway" (only do that for a build you made yourself). Signed and notarized
+builds open normally; the script signs and notarizes when these are set:
+
+```bash
+export DEVELOPER_ID_APPLICATION="Developer ID Application: Your Name (TEAMID)"
+export NOTARY_KEYCHAIN_PROFILE=finanse-notary   # xcrun notarytool store-credentials finanse-notary ...
+scripts/build_macos.sh
+```
+
+Without them the script says that it skipped signing. No certificate, password
+or key is stored in the repo: the identity stays in your keychain.
+
+**One binary for everything.** `Finanse.app/Contents/MacOS/finanse` takes the
+usual commands, so the background worker and the AI agents use the app too:
+
+- Settings > Praca w tle installs the daily worker pointing at the app (move the
+  app to `/Applications` first; a copy macOS runs from a temporary location is
+  refused);
+- Settings > Agent AI shows the `claude mcp add ...` line and the Claude Desktop
+  config with the app's path, e.g.
+  `/Applications/Finanse.app/Contents/MacOS/finanse mcp --profile <slug>`;
+- `.../MacOS/finanse skills install` copies the setup skills (`/budget-setup`,
+  `/investments-setup`, ...) to `~/.claude/skills` for use without a checkout.
+
+From a checkout the same window is `pip install -e ".[desktop]"` and
+`finanse app`. Only one window runs per data dir; a second start brings the first
+one to the front. The app log is `<data dir>/logs/app.log` (`FINANSE_APP_DEBUG=1`
+adds the request log and the WebKit inspector). A Windows build is planned: see
+`packaging/windows/finanse-windows.spec`.
+
+---
+
 ## What it does
 
 - **Net worth over time** — per-currency (never mixes currencies), broken down by

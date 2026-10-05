@@ -97,8 +97,12 @@ src/finanse/
 │   ├── migrations/       # Alembic: env.py + versions/ (0001 baseline = upstream schema, 0002 profiles, ...)
 │   ├── security.py       # API token + Host check middleware, token meta tag
 │   ├── secrets.py        # OS keychain via keyring (`finanse secrets ...`)
+│   ├── runtime.py        # source checkout vs packaged app: the command other programs run
+│   │                     #   (launchd, MCP snippets), bundled skills
 │   └── worker/           # `finanse worker run|install|uninstall|status`: daily jobs for every profile,
 │                         #   notifications, weekly digest, launchd agent (state + log in the data dir)
+├── desktop/              # `finanse app` (pywebview window over in-process uvicorn, single instance),
+│                         #   `finanse skills install`, entry.py = the packaged app's entry point
 ├── modules/
 │   ├── budget/           # bank accounts, categorization, cashflow, recurring, cash pool
 │   │   ├── module.py         # ModuleSpec (router, CLI, cash net-worth contributor, setup)
@@ -126,6 +130,8 @@ frontend/                 # React + Vite + TS SPA (dashboard; UI strings are Pol
 ├── src/modules/<id>/     # each module's tabs and its SetupPage
 └── src/ui.tsx, format.ts, index.css   # shared primitives and tokens
 
+packaging/                # PyInstaller spec, entitlements, icon (macOS); windows/ = documented stub
+scripts/build_macos.sh    # builds Finanse.app (SPA, icon, bundle; signs/notarizes from env vars)
 tests/                    # pytest — synthetic data, no real data
 data/                     # (git-ignored) legacy location of DB/keys/sessions (see migrate-data)
 statements/               # (git-ignored) drop CSV statements here — empty in the repo
