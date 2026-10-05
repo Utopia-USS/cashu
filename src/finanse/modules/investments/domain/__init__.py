@@ -19,7 +19,13 @@ Contract note (stable names; changes are recorded in ``stock/docs/fork/progress/
   reads ``ValuedPortfolio``, ``AllocationResult`` (incl. ``unclassified``), ``MarketView`` and ``FxLookup``.
 """
 
-from .buckets import AllocationPlan, BucketDef, BucketMatch
+from .buckets import (
+    GENERIC_BUCKET_IDS,
+    AllocationPlan,
+    BucketDef,
+    BucketMatch,
+    is_generic_bucket,
+)
 from .enums import (
     AccountWrapper,
     AssetClass,
@@ -104,6 +110,7 @@ __all__ = [
     "DIVISION_SCALE",
     "EPOCH",
     "EXACT_CONTEXT",
+    "GENERIC_BUCKET_IDS",
     "AccountId",
     "AccountWrapper",
     "AliasNamespace",
@@ -170,6 +177,7 @@ __all__ = [
     "divided_by",
     "exact",
     "exact_decimals",
+    "is_generic_bucket",
     "placeholder_instrument",
     "ratio",
     "severity_rank",

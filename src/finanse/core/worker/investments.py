@@ -59,6 +59,8 @@ class PendingNotification:
     """The owner recorded a decision on the signal after this entry was written."""
     snoozed_until: dt.datetime | None = None
     """Aware UTC; the signal is postponed until then (``inv_signals.snoozed_until``, once it exists)."""
+    hidden: bool = False
+    """A drift signal of the owner's own (non-generic) bucket: never notified (F7 owner decision)."""
 
     def snoozed(self, now: dt.datetime) -> bool:
         if self.signal_status == "snoozed":
@@ -126,6 +128,7 @@ def pending(session: Session, profile_id: int) -> list[PendingNotification]:
     from sqlalchemy import func
 
     from finanse.modules.investments.models import InvDecision, InvNotification, InvSignal
+    from finanse.modules.investments.rules.kinds.allocation_drift import hidden_from_owner
 
     rows = session.exec(
         select(InvNotification, InvSignal)
@@ -162,6 +165,7 @@ def pending(session: Session, profile_id: int) -> list[PendingNotification]:
             created_at=log.created_at,
             decided=decided(log, sig),
             snoozed_until=_utc(getattr(sig, "snoozed_until", None)),
+            hidden=hidden_from_owner(sig.kind, sig.payload),
         )
         for log, sig in rows
     ]
@@ -198,19 +202,23 @@ def release(session_factory: Callable, log_id: int) -> None:
 
 
 def review_count(session: Session, profile_id: int) -> int:
-    """Signals waiting for a decision (status ``active``, not snoozed): the weekly digest's number."""
-    from sqlalchemy import func, or_
+    """Signals waiting for a decision (status ``active``, not snoozed): the weekly digest's number.
+    Drift signals of the owner's own (non-generic) buckets are not counted (F7 owner decision)."""
+    from sqlalchemy import or_
 
     from finanse.modules.investments.models import InvSignal
+    from finanse.modules.investments.rules.kinds.allocation_drift import hidden_from_owner
 
-    query = select(func.count(InvSignal.id)).where(
+    query = select(InvSignal.kind, InvSignal.payload).where(
         InvSignal.profile_id == profile_id, InvSignal.status == "active"
     )
     snoozed_until = getattr(InvSignal, "snoozed_until", None)  # F5 R7 (AL), once the column exists
     if snoozed_until is not None:
         now = dt.datetime.now(dt.UTC)
         query = query.where(or_(snoozed_until.is_(None), snoozed_until <= now))
-    return int(session.exec(query).one())
+    return sum(
+        1 for kind, payload in session.exec(query).all() if not hidden_from_owner(kind, payload)
+    )
 
 
 def prune_staged() -> dict | None:

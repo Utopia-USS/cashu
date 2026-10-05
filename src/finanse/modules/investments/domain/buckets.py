@@ -9,6 +9,36 @@ from dataclasses import dataclass, field
 from .enums import AssetClass
 from .values import Currency, InstrumentId
 
+GENERIC_BUCKET_IDS: frozenset[str] = frozenset(
+    {
+        # every bucket id of the shipped strategy templates (templates/strategy/*.yaml)
+        "global_equity",
+        "bond_etfs",
+        "treasury_bonds",
+        "cash",
+        "stocks",
+        "bonds",
+        # plain asset-class ids
+        "equity",
+        "equities",
+        "fixed_income",
+        "crypto",
+        "real_estate",
+        "reits",
+        "commodities",
+        "gold",
+    }
+)
+"""Bucket ids the app may show as a generic, asset-class style allocation (F7 owner decision): the
+template ids plus plain asset-class ids. Any other id is the owner's own bucket (``core``, ``active``,
+...): knowledge for the agent (MCP, strategy files), never shown in the app. Case-sensitive, as written.
+Here (not in ``strategy``) because the rule kinds need it and ``strategy`` imports the rules."""
+
+
+def is_generic_bucket(bucket_id: object) -> bool:
+    """True when ``bucket_id`` is one of :data:`GENERIC_BUCKET_IDS` (exact, case-sensitive match)."""
+    return isinstance(bucket_id, str) and bucket_id in GENERIC_BUCKET_IDS
+
 
 @dataclass(frozen=True, slots=True)
 class BucketMatch:

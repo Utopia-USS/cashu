@@ -34,6 +34,7 @@ from ..domain import (
     ValuationMode,
     ValuedHolding,
     divided_by,
+    is_generic_bucket,
     ratio,
 )
 from ..importing import ImportWarning
@@ -64,6 +65,7 @@ from ..rules import (
     RuleSpec,
     polarity_rank,
 )
+from ..rules.kinds.allocation_drift import hidden_from_owner, with_bucket_generic
 from ..store import alerts as alert_store
 from ..store import convert, journal, market, signals, transactions
 from . import portfolio
@@ -234,6 +236,9 @@ def allocation_view(state: portfolio.PortfolioState, config) -> dict:
         "by_asset_class": shares(by_class),
         "by_region": shares(by_region),
         "band": None,
+        # F7 owner decision: the app shows targets / drift only for generic (asset-class style)
+        # buckets; true only with at least one bucket and every bucket generic
+        "buckets_generic": False,
     }
     if config is None or state.allocation is None:
         return out
@@ -245,6 +250,7 @@ def allocation_view(state: portfolio.PortfolioState, config) -> dict:
         out["buckets"].append(
             {
                 "bucket_id": b.bucket_id,
+                "generic": is_generic_bucket(b.bucket_id),
                 "weight": ratio_pct(b.weight),
                 "target": b.target,
                 "drift_pp": round(b.drift_pp, 4),
@@ -259,6 +265,7 @@ def allocation_view(state: portfolio.PortfolioState, config) -> dict:
                 ],
             }
         )
+    out["buckets_generic"] = bool(out["buckets"]) and all(b["generic"] for b in out["buckets"])
     unclassified = {
         convert.maybe_pk(h.instrument_id): h.instrument.label for h in alloc.unclassified
     }
@@ -289,7 +296,17 @@ def _unrealized(valued: Iterable[ValuedHolding]) -> tuple[Decimal, Decimal]:
     return value, cost
 
 
-def overview(session: Session, profile: Profile, *, account_ids: list[int] | None = None) -> dict:
+def overview(
+    session: Session,
+    profile: Profile,
+    *,
+    account_ids: list[int] | None = None,
+    for_owner: bool = True,
+) -> dict:
+    """The investments overview. ``for_owner`` (the app; F7 owner decision): the KPI counts leave out
+    allocation_drift signals of non-generic buckets (``kpis.signals``, ``kpis.polarity``) and
+    ``kpis.max_drift`` / ``kpis.out_of_band`` consider generic buckets only. The agent (MCP) passes
+    False and gets every signal and bucket, as before. ``allocation`` is the same either way."""
     st = strategy_files.load(session, profile)
     config = st.config
     state = portfolio.build(session, profile, strategy=config, account_ids=account_ids)
@@ -301,8 +318,12 @@ def overview(session: Session, profile: Profile, *, account_ids: list[int] | Non
     )
     open_rows = signals.open_signal_rows(session, profile.id)
     allocation = allocation_view(state, config)
-    out_of_band = [b for b in allocation["buckets"] if b["out_of_band"]]
-    max_drift = max(allocation["buckets"], key=lambda b: abs(b["drift_pp"]), default=None)
+    buckets = allocation["buckets"]
+    if for_owner:
+        open_rows = [r for r in open_rows if not hidden_from_owner(r.kind, r.payload)]
+        buckets = [b for b in buckets if b["generic"]]
+    out_of_band = [b for b in buckets if b["out_of_band"]]
+    max_drift = max(buckets, key=lambda b: abs(b["drift_pp"]), default=None)
     last = signals.last_run(session, profile.id)
     held_ids = [convert.pk(h.instrument_id) for h in valued.valued]
     stale = [
@@ -724,7 +745,7 @@ def signal_dict(
         "instrument_id": row.instrument_id,
         "instrument_label": label,
         "account_id": row.account_id,
-        "payload": row.payload,
+        "payload": with_bucket_generic(row.kind, row.payload),
         "first_seen_at": iso(row.first_seen_at),
         "last_seen_at": iso(row.last_seen_at),
         "acknowledged_at": iso(row.acknowledged_at),
@@ -1843,13 +1864,17 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
     # Signals.
     from ..store import instruments as instrument_store
 
-    rows = list(
-        session.exec(
+    # The weekly digest skips drift signals of the owner's own (non-generic) buckets (F7 owner
+    # decision): every list, count and event below is built from these rows.
+    rows = [
+        r
+        for r in session.exec(
             select(InvSignal)
             .where(InvSignal.profile_id == profile.id)
             .order_by(InvSignal.id.desc())
         ).all()
-    )
+        if not hidden_from_owner(r.kind, r.payload)
+    ]
     decisions = journal.decisions(session, profile.id)
     by_signal: dict[int, list[InvDecision]] = defaultdict(list)
     for d in decisions:

@@ -9,6 +9,8 @@ Immediate (per profile, policy = the profile's strategy ``notifications``):
   longer immediate, is closed out (``skipped:closed`` / ``skipped:acknowledged`` /
   ``skipped:decided`` / ``skipped:policy``); an entry of a snoozed signal stays pending until the
   snooze ends (F5 R5);
+- a drift signal of the owner's own (non-generic) bucket is never notified: its entry is closed out
+  as ``skipped:hidden`` (F7 owner decision; the signal itself and MCP are unchanged);
 - each entry is claimed before delivery (``sent_at`` set in its own transaction, at most once);
   a failed delivery releases the claim, and the run stops notifying that profile (the notifier
   is likely broken; the next run tries again);
@@ -16,8 +18,8 @@ Immediate (per profile, policy = the profile's strategy ``notifications``):
   summary notification (a long-idle worker never floods the screen).
 
 Weekly digest: on the profile's digest weekday, one notification per profile and day
-("N sygnałów do przeglądu", the signals waiting for a decision), recorded in the worker state
-before it is sent.
+("N sygnałów do przeglądu", the signals waiting for a decision, without the hidden drift signals),
+recorded in the worker state before it is sent.
 
 Texts are Polish (UI data). Each notification carries a ``finanse://`` link (the signal, the
 investments view, the weekly review) that Finanse.app opens on a click.
@@ -82,9 +84,11 @@ def deliver_pending(
         items = inv.pending(s, profile.id)
     due: list[inv.PendingNotification] = []
     for item in items:
-        if item.snoozed(now):
+        if item.hidden:
+            reason = "skipped:hidden"  # a non-generic bucket's drift: never shown to the owner
+        elif item.snoozed(now):
             continue  # postponed by the owner: delivered (or closed out) after the snooze
-        if item.signal_status not in inv.OPEN_STATUSES:
+        elif item.signal_status not in inv.OPEN_STATUSES:
             reason = "skipped:closed"
         elif item.signal_status != inv.DELIVERABLE_STATUS:
             reason = "skipped:acknowledged"

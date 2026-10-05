@@ -1,4 +1,8 @@
-"""``allocation_drift``: a strategy bucket drifted outside its rebalance band."""
+"""``allocation_drift``: a strategy bucket drifted outside its rebalance band.
+
+The payload carries ``bucket_generic`` (F7 owner decision): only generic, asset-class style buckets
+(``domain.GENERIC_BUCKET_IDS``) are shown in the app; a drift signal of the owner's own bucket stays a
+signal (rules, MCP) but notifications and the weekly digest skip it (:func:`hidden_from_owner`)."""
 
 from __future__ import annotations
 
@@ -6,6 +10,8 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
+
+from finanse.modules.investments.domain import is_generic_bucket
 
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
@@ -133,6 +139,7 @@ class AllocationDriftRule:
             big_enough = abs(allocation.drift_value_base) >= bands.min_trade_value
             details: dict[str, object] = {
                 "bucket_id": bucket_id,
+                "bucket_generic": is_generic_bucket(bucket_id),
                 "weight": allocation.weight,
                 "target": allocation.target,
                 "drift_pp": allocation.drift_pp,
@@ -169,3 +176,28 @@ class AllocationDriftRule:
                 )
             )
         return outcomes
+
+
+def drift_bucket_generic(payload: Mapping[str, object] | None) -> bool:
+    """``bucket_generic`` of an allocation_drift payload. Rows stored before the key existed derive it
+    from ``bucket_id`` (no bucket id: generic, nothing to name)."""
+    data = payload or {}
+    flag = data.get("bucket_generic")
+    if isinstance(flag, bool):
+        return flag
+    bucket_id = data.get("bucket_id")
+    return bucket_id is None or is_generic_bucket(bucket_id)
+
+
+def with_bucket_generic(kind: str, payload: dict | None) -> dict | None:
+    """``payload`` of a stored signal with ``bucket_generic`` filled in for an allocation_drift row
+    stored before the key existed (API reads); any other payload as is."""
+    if kind != AllocationDriftRule.KIND or payload is None or "bucket_generic" in payload:
+        return payload
+    return {**payload, "bucket_generic": drift_bucket_generic(payload)}
+
+
+def hidden_from_owner(kind: str, payload: Mapping[str, object] | None) -> bool:
+    """True for an allocation_drift signal of a non-generic bucket: macOS notifications and the weekly
+    digest skip it. The signal itself, the rules and MCP are unchanged."""
+    return kind == AllocationDriftRule.KIND and not drift_bucket_generic(payload)

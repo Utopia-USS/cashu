@@ -289,7 +289,8 @@ def investments_review_stats(session, profile_id: int) -> dict[str, int]:
 
 
 def portfolio_overview(ctx: ToolContext) -> dict:
-    ov = _views().overview(ctx.session, ctx.profile)
+    # every signal and bucket for the agent (the app's KPIs hide non-generic buckets, F7-GB5)
+    ov = _views().overview(ctx.session, ctx.profile, for_owner=False)
     owned = owner_named_ids(ctx)
     k, alloc, fresh = ov["kpis"], ov["allocation"], ov["freshness"]
     total = k["value"]["total"]
