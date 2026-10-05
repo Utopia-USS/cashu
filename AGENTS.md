@@ -118,7 +118,7 @@ src/finanse/
 │       └── module.py, api.py, cli.py, networth.py, setup.py
 └── api/
     ├── app.py            # FastAPI composition: /api/p/{slug}/... + legacy /api/... aliases, SPA
-    ├── static/index.html # legacy fallback (when webdist/ is absent)
+    ├── static/index.html # fallback page "build the frontend" (when webdist/ is absent)
     └── webdist/          # built React SPA (git-ignored, `npm run build`)
 
 frontend/                 # React + Vite + TS SPA (dashboard; UI strings are Polish)
@@ -156,8 +156,8 @@ cd frontend && npm run dev         # terminal 2 (Vite :5173, proxies /api → :8
 There is a `.claude/launch.json` with a `dashboard` config — via the preview
 tools you can run `finanse serve` and verify changes in the browser (net worth,
 charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
-`npm run build` once, otherwise FastAPI falls back to the legacy
-`static/index.html`.
+`npm run build` once, otherwise FastAPI serves `static/index.html`, a
+minimal page that says how to build the frontend.
 
 ---
 
@@ -202,7 +202,9 @@ the skill triggers) and use only tool names from the MCP server.
   `finanse --profile <slug> ...`. "Own IBANs" (what counts as an internal
   transfer) are per profile: a transfer to a partner in another profile is a real
   outflow.
-- **Net worth is per-currency** — never sum currencies. Analytics default to PLN.
+- **Net worth is per-currency**: never sum currencies. Budget analytics default
+  to the profile's base currency and take any other currency explicitly (the UI's
+  currency picker lists the currencies with data: `GET /budget/currencies`).
   Core values every account from its balance snapshots; a module values the
   accounts it owns through its `NetWorthContributor` (loans, vehicles, cash pool).
   Sign, liquidity and chart bucket come from the account type registry.
@@ -218,6 +220,11 @@ the skill triggers) and use only tool names from the MCP server.
   by phrases ("RATA KREDYTU", ...) and by each loan's lender account / title phrase
   (`finanse loans set-payment`), so they are "Raty kredytów", never subscriptions.
 - **Asset depreciation** (`Depreciation`): a car's value decays over time.
+- **Month close** (`modules/budget/monthclose.py`, `GET /budget/month-close`):
+  income, spending and surplus of a month per currency (the cashflow filters), an
+  optional cushion top-up (per-profile `profiles/<slug>/budget.json` in the data
+  dir) and the suggested transfer, compared with the investments strategy's
+  `contributions` when that module is on (read-only, `budget/investing_link.py`).
 - **Cash**: a virtual `manual`/`cash` account per currency and profile; its balance
   is the running sum of its transactions, not a snapshot. Tagging a bank
   withdrawal creates a mirror leg.

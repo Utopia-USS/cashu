@@ -47,8 +47,8 @@ cd frontend && npm run build
 
 This emits into `../src/finanse/api/webdist/`, which FastAPI serves at `/`.
 After building, `finanse serve` alone shows the built app (no Node needed at
-runtime). If `webdist/` is absent, FastAPI falls back to the legacy single-file
-dashboard at `src/finanse/api/static/index.html`.
+runtime). If `webdist/` is absent, FastAPI serves a minimal page
+(`src/finanse/api/static/index.html`) that says how to build the frontend.
 
 ## Demo backend (no Python needed)
 
