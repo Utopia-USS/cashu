@@ -8,7 +8,7 @@ from typing import Annotated
 import typer
 
 from ..db import init_db
-from . import runner, service
+from . import logfile, runner, service
 from .notifier import NOTIFIER_NAMES
 from .schedule import Schedule, ScheduleError, local_now
 from .scheduler import LaunchdScheduler, WorkerSchedulerError, WorkerUnsupported, entry_point
@@ -46,6 +46,7 @@ def run_cmd(
     as_json: Annotated[bool, typer.Option("--json", help="Print the report as JSON.")] = False,
 ) -> None:
     """Run every job once: what the scheduled job does (all profiles x enabled modules)."""
+    logfile.setup()  # rotate worker.log before anything is written to it, log records to stderr
     init_db()
     try:
         chosen = service.get_notifier(notifier)
