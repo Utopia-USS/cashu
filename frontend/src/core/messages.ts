@@ -169,6 +169,17 @@ export const LABELS: Record<string, Label> = {
   "proposal.error.converter_unsupported": "Ten import wymaga skryptu konwertera, a aplikacja nie uruchamia już skryptów; poproś agenta o przekonwertowany plik",
   "proposal.error.apply_failed": "Zatwierdzenie nie powiodło się (szczegóły w logu aplikacji)",
   "proposal.error.write_failed": "Nie udało się zapisać plików; nic nie zostało zmienione",
+
+  // ---- request errors: the `X-Finanse-Error-Code` header (errorText; the English detail stays as detail) ---
+  "error.not_found": "Nie znaleziono: mogło zostać usunięte w innym oknie",
+  "error.alert_invalid": "Alert ma nieprawidłowe parametry",
+  "error.watchlist_conflict": "Ten instrument już jest na liście obserwowanych",
+  "error.watchlist_invalid": "Nie rozpoznano instrumentu: sprawdź symbol lub ISIN",
+  "error.undo_expired": "Za późno na cofnięcie: minęło 15 minut",
+  "error.busy": "Trwa inna operacja; spróbuj za chwilę",
+  "error.planned_invalid": "Nieprawidłowy plan wpłaty: sprawdź kwotę, datę i rachunek",
+  "error.planned_booked": "Ta wpłata jest już zaksięgowana z importu; planu nie można zmienić",
+
 };
 
 /** Fill "{name}" placeholders; null when a placeholder has no value (the caller falls back). */
@@ -225,3 +236,21 @@ export function proposalError(result: Record<string, unknown> | null | undefined
   if (pl) return { text: pl, detail: english, translated: true };
   return { text: english ?? code ?? "", detail: null, translated: false };
 }
+
+/** What a failed request shows: the Polish label of its `X-Finanse-Error-Code` (`error.<code>`, a
+ * proposal code as `proposal.error.<code>`) with the server's English detail kept as `detail`; without a
+ * known code the English detail itself. A network failure (no response) gets one Polish line. */
+export function describeError(e: unknown): Described {
+  const err = (typeof e === "object" && e !== null ? e : {}) as { code?: unknown; message?: unknown; status?: unknown; name?: unknown };
+  const english = typeof err.message === "string" ? err.message : String(e ?? "");
+  const code = typeof err.code === "string" && err.code ? err.code : null;
+  const pl = code ? label(`error.${code}`) ?? label(`proposal.error.${code}`) : null;
+  if (pl) return { text: pl, detail: english && english !== pl ? english : null, translated: true };
+  if (err.status === undefined && err.name === "TypeError" && /fetch|network|load failed/i.test(english)) {
+    return { text: "Brak połączenia z aplikacją (serwer finanse nie odpowiada)", detail: english, translated: true };
+  }
+  return { text: english, detail: null, translated: false };
+}
+
+/** One line for a toast: the Polish label of the error code, else the English detail. */
+export const errorText = (e: unknown): string => describeError(e).text;

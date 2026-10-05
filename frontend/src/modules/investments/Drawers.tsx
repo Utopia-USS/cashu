@@ -2,7 +2,7 @@
 // thesis, agent proposal, signal history + decision journal, an instrument's transactions.
 import { useMemo, useRef, useState } from "react";
 import { ApiError } from "../../core/api";
-import { describeImportWarning, proposalError, proposalSummary } from "../../core/messages";
+import { describeError, describeImportWarning, proposalError, proposalSummary } from "../../core/messages";
 import { useAsync } from "../../hooks";
 import { Drawer, Notice, RadioList, Seg, Skeleton, Stepper, Tag, useToast } from "../../ui";
 import {
@@ -14,7 +14,8 @@ import {
 } from "./labels";
 import { commitLabel, decisionTag, signalTitle, TXN_RULES, txnCash, validateTxn } from "./logic";
 
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** The Polish label of the error's `X-Finanse-Error-Code` (core/messages.ts), else the server's detail. */
+const errText = (e: unknown) => describeError(e).text;
 
 /** One import warning: "wiersz N: " + the Polish label of its kind, the English detail next to it. */
 function WarningText({ w }: { w: { row: number | null; kind: string; message: string; code?: string } }) {

@@ -14,9 +14,11 @@ const auth: Record<string, string> = TOKEN ? { "X-Finanse-Token": TOKEN } : {};
 // module is only loaded when the flag is set at build time.
 const MOCK = import.meta.env.VITE_MOCK === "1";
 
-/** Error with the server's `detail` message when it sent one (FastAPI style). */
+/** Error with the server's `detail` message when it sent one (FastAPI style) and the stable code of the
+ * `X-Finanse-Error-Code` header (the detail stays English; core/messages.ts `errorText` shows the Polish
+ * label of the code). */
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) { super(message); }
+  constructor(readonly status: number, message: string, readonly code: string | null = null) { super(message); }
 }
 
 // A 401 means the token this page was served with is no longer valid: `finanse serve`
@@ -53,7 +55,7 @@ async function request<T>(method: string, u: string, body?: unknown): Promise<T>
       const d = (await r.json())?.detail;
       detail = typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => x?.msg ?? "").join("; ") : "";
     } catch { /* not JSON */ }
-    throw new ApiError(r.status, detail || `${u} → ${r.status}`);
+    throw new ApiError(r.status, detail || `${u} → ${r.status}`, r.headers.get("X-Finanse-Error-Code"));
   }
   return r.json() as Promise<T>;
 }
