@@ -20,6 +20,7 @@ from finanse.core import institutions
 from finanse.core.api import f
 from finanse.core.models import Account, Profile, utcnow
 
+from ..alerts import CATALOG, alert_id_of, catalog_dicts, is_alert_key
 from ..domain import (
     BucketDef,
     Instrument,
@@ -35,6 +36,7 @@ from ..domain import (
 )
 from ..importing import ImportWarning
 from ..models import (
+    InvAlert,
     InvDecision,
     InvImportBatch,
     InvManualValuation,
@@ -42,8 +44,10 @@ from ..models import (
     InvSignal,
     InvStrategyVersion,
     InvThesis,
+    InvWatchlistItem,
 )
-from ..portfolio import effective_valuation_mode
+from ..portfolio import build_snapshot, effective_valuation_mode
+from ..portfolio.fx_lookup import convert as fx_convert
 from ..rules import (
     AllocationDriftParams,
     AllocationDriftRule,
@@ -54,7 +58,9 @@ from ..rules import (
     NotFired,
     RuleContext,
     RuleSpec,
+    polarity_rank,
 )
+from ..store import alerts as alert_store
 from ..store import convert, journal, market, signals, transactions
 from . import portfolio
 from . import strategy as strategy_files
@@ -320,6 +326,8 @@ def overview(session: Session, profile: Profile, *, account_ids: list[int] | Non
                 "info": sum(r.severity == SignalSeverity.INFO.value for r in open_rows),
                 "new": sum(r.status == "active" for r in open_rows),
             },
+            "polarity": polarity_counts(open_rows),
+            "alerts": alert_store.alert_counts(session, profile.id),
             "max_drift": None
             if max_drift is None
             else {
@@ -347,6 +355,9 @@ def overview(session: Session, profile: Profile, *, account_ids: list[int] | Non
         },
         "warnings": [warning_dict(w) for w in valued.all_warnings],
         "accounts": accounts_view(session, profile, state),
+        **attention(
+            session, profile, open_rows, {convert.pk(h.instrument_id) for h in valued.valued}
+        ),
     }
 
 
@@ -559,10 +570,20 @@ def position_rows(
                 "lots": lots,
                 "open_signals": open_by_instrument.get(convert.pk(instrument_id), 0),
                 "has_thesis": convert.pk(instrument_id) in with_thesis,
+                "closes_30d": closes_30d(state.market.bars.get(instrument_id, ()), state.as_of),
             }
         )
     rows.sort(key=lambda r: -(r["value"] or 0))
     return rows
+
+
+CLOSES_DAYS = 30
+
+
+def closes_30d(bars, as_of: dt.date) -> list[dict]:
+    """Stored daily closes of the last 30 calendar days up to ``as_of`` (sparklines; no network)."""
+    since = as_of - dt.timedelta(days=CLOSES_DAYS)
+    return [{"date": iso(b.date), "close": f(b.close)} for b in bars if since < b.date <= as_of]
 
 
 def position_detail(
@@ -653,6 +674,9 @@ def signal_dict(
         "kind": row.kind,
         "dedup_key": row.dedup_key,
         "severity": row.severity,
+        "polarity": row.polarity,
+        "source": "alert" if is_alert_key(row.rule_id) else "rule",
+        "alert_id": alert_id_of(row.rule_id),
         "status": row.status,
         "message": row.message,
         "instrument_id": row.instrument_id,
@@ -663,6 +687,8 @@ def signal_dict(
         "last_seen_at": iso(row.last_seen_at),
         "acknowledged_at": iso(row.acknowledged_at),
         "closed_at": iso(row.closed_at),
+        "snoozed_until": iso(row.snoozed_until),
+        "snoozed": signals.is_snoozed(row, utcnow()),
         "decisions": [decision_dict(d) for d in decisions],
     }
 
@@ -688,8 +714,357 @@ def signals_view(session: Session, profile: Profile, status: str = "open") -> li
     }
     rank = {SignalSeverity.ACTION.value: 0, SignalSeverity.INFO.value: 1}
     if status == "open":
-        rows.sort(key=lambda r: (r.status != "active", rank.get(r.severity, 9), -r.id))
+        now = utcnow()
+        rows.sort(
+            key=lambda r: (
+                signals.is_snoozed(r, now),
+                r.status != "active",
+                rank.get(r.severity, 9),
+                -r.id,
+            )
+        )
     return [signal_dict(r, by_signal.get(r.id, []), labels) for r in rows]
+
+
+# --------------------------------------------------------------------------- #
+# Polarity, attention, alerts, watchlist
+# --------------------------------------------------------------------------- #
+
+ATTENTION_LIMIT = 6
+"""Items in the overview's ``attention`` list (two rows of a thirds layout)."""
+
+
+def polarity_counts(rows: Iterable[InvSignal]) -> dict[str, int]:
+    counts = Counter(r.polarity for r in rows)
+    return {key: counts.get(key, 0) for key in ("positive", "negative", "neutral")}
+
+
+def attention(
+    session: Session, profile: Profile, open_rows: list[InvSignal], held: set[int]
+) -> dict:
+    """The compact "look at this" list: open signals (from rules and triggered alerts) that are not
+    snoozed, ranked by active before acknowledged, action before info, negative before positive
+    before neutral, items about held positions (or the whole portfolio) before watched instruments,
+    newest first."""
+    now = utcnow()
+    snoozed = [r for r in open_rows if signals.is_snoozed(r, now)]
+    open_rows = [r for r in open_rows if not signals.is_snoozed(r, now)]
+    alerts_by_id = {a.id: a for a in alert_store.alerts(session, profile.id) if a.id is not None}
+    from ..store import instruments as instrument_store
+
+    labels = {
+        k: v.label
+        for k, v in instrument_store.load(
+            session, {r.instrument_id for r in open_rows if r.instrument_id}, profile_id=profile.id
+        ).items()
+    }
+    severity = {SignalSeverity.ACTION.value: 0, SignalSeverity.INFO.value: 1}
+
+    def relevant(row: InvSignal) -> bool:
+        return row.instrument_id is None or row.instrument_id in held
+
+    ranked = sorted(
+        open_rows,
+        key=lambda r: (
+            r.status != "active",
+            severity.get(r.severity, 9),
+            polarity_rank(r.polarity),
+            not relevant(r),
+            -(r.last_seen_at.timestamp() if r.last_seen_at else 0),
+            -(r.id or 0),
+        ),
+    )
+    items = []
+    for row in ranked[:ATTENTION_LIMIT]:
+        alert_id = alert_id_of(row.rule_id)
+        alert = alerts_by_id.get(alert_id) if alert_id is not None else None
+        items.append(
+            {
+                "type": "alert" if alert_id is not None else "signal",
+                "signal_id": row.id,
+                "alert_id": alert_id,
+                "kind": row.kind,
+                "rule_id": row.rule_id,
+                "polarity": row.polarity,
+                "severity": row.severity,
+                "status": row.status,
+                "title": alert.title if alert is not None else row.rule_id,
+                "message": row.message,
+                "source": alert.source if alert is not None else "rule",
+                "instrument_id": row.instrument_id,
+                "instrument_label": labels.get(row.instrument_id) if row.instrument_id else None,
+                "held": row.instrument_id is not None and row.instrument_id in held,
+                "first_seen_at": iso(row.first_seen_at),
+                "last_seen_at": iso(row.last_seen_at),
+            }
+        )
+    return {
+        "attention": items,
+        "attention_total": len(open_rows),
+        "attention_snoozed": len(snoozed),
+    }
+
+
+def _number(text: str | None) -> float | None:
+    if text is None:
+        return None
+    try:
+        return float(Decimal(text))
+    except ArithmeticError:
+        return None
+
+
+def alert_dict(
+    row: InvAlert, instrument: Instrument | None = None, open_signal: InvSignal | None = None
+) -> dict:
+    info = CATALOG.get(row.kind)  # StrEnum keys match their wire names
+    return {
+        "id": row.id,
+        "kind": row.kind,
+        "scope": row.scope,
+        "instrument_id": row.instrument_id,
+        "instrument": None
+        if instrument is None
+        else {
+            "id": convert.maybe_pk(instrument.id),
+            "label": instrument.label,
+            "symbol": instrument.symbol,
+            "name": instrument.name,
+            "isin": instrument.isin,
+            "currency": str(instrument.currency),
+            "asset_class": instrument.asset_class.value,
+            "valuation_mode": instrument.valuation_mode.value
+            if instrument.valuation_mode
+            else None,
+        },
+        "params": dict(row.params or {}),
+        "unit": info.unit if info is not None else None,
+        "polarity": row.polarity,
+        "severity": row.severity,
+        "title": row.title,
+        "note": row.note,
+        "source": row.source,
+        "created_by": row.created_by,
+        "status": row.status,
+        "cooldown_days": row.cooldown_days,
+        "expires_at": iso(row.expires_at),
+        "snoozed_until": iso(row.snoozed_until),
+        "last_triggered_at": iso(row.last_triggered_at),
+        "last_checked_at": iso(row.last_checked_at),
+        "last_value": _number(row.last_value),
+        "signal": None
+        if open_signal is None
+        else {
+            "id": open_signal.id,
+            "status": open_signal.status,
+            "message": open_signal.message,
+            "first_seen_at": iso(open_signal.first_seen_at),
+        },
+        "created_at": iso(row.created_at),
+        "updated_at": iso(row.updated_at),
+    }
+
+
+ALERT_STATUS_ORDER = {"triggered": 0, "active": 1, "snoozed": 2, "muted": 3, "expired": 4}
+
+
+def alerts_view(
+    session: Session, profile: Profile, statuses: list[str] | None = None
+) -> list[dict]:
+    """The profile's alerts (``statuses`` filter; None = all): triggered first, then active, snoozed,
+    muted, expired; newest first within a status."""
+    from ..store import instruments as instrument_store
+
+    rows = alert_store.alerts(session, profile.id, statuses)
+    loaded = instrument_store.load(
+        session, {r.instrument_id for r in rows if r.instrument_id}, profile_id=profile.id
+    )
+    open_signals = alert_store.open_alert_signals(session, profile.id)
+    rows.sort(key=lambda r: (ALERT_STATUS_ORDER.get(r.status, 9), -(r.id or 0)))
+    return [
+        alert_dict(
+            r, loaded.get(r.instrument_id) if r.instrument_id else None, open_signals.get(r.id)
+        )
+        for r in rows
+    ]
+
+
+def one_alert(session: Session, profile: Profile, row: InvAlert) -> dict:
+    from ..store import instruments as instrument_store
+
+    instrument = (
+        instrument_store.load_one(session, row.instrument_id, profile_id=profile.id)
+        if row.instrument_id
+        else None
+    )
+    return alert_dict(
+        row, instrument, alert_store.open_alert_signals(session, profile.id).get(row.id)
+    )
+
+
+def alert_kinds() -> dict:
+    """The alert catalog for forms (kinds, scopes, params with limits) plus the polarity values."""
+    return {
+        "kinds": catalog_dicts(),
+        "polarities": ["positive", "negative", "neutral"],
+        "severities": [s.value for s in SignalSeverity],
+        "statuses": list(ALERT_STATUS_ORDER),
+    }
+
+
+def _ratio_between(new: Decimal, old: Decimal) -> float | None:
+    return float(new / old - 1) if old > 0 else None
+
+
+def _alert_level(row: InvAlert, check) -> Decimal | None:
+    """The price at which a live price alert would change state, from its evaluation details."""
+    outcome = check.outcome
+    details = (
+        outcome.candidate.payload
+        if isinstance(outcome, Fired)
+        else getattr(outcome, "details", None) or {}
+    )
+
+    def number(key: str) -> Decimal | None:
+        value = details.get(key)
+        return None if value is None else Decimal(str(value))
+
+    match row.kind:
+        case "price_above" | "price_below":
+            return number("level")
+        case "sma_cross":
+            return number("sma")
+        case "new_high":
+            return number("previous_high")
+        case "drawdown_from_high":
+            high = number("high")
+            threshold = Decimal(str((row.params or {}).get("threshold", 0)))
+            return None if high is None else high * (1 - threshold)
+    return None
+
+
+def nearest_alert(
+    alerts: list[InvAlert], instrument: Instrument | None, bars: tuple, as_of: dt.date
+) -> dict | None:
+    """The live price alert whose level is closest to the last close: ``distance_pct`` = (level -
+    close) / close as a fraction (positive = the level is above the close)."""
+    from ..alerts import AlertData, evaluate_alert
+    from . import alerts as alert_service
+
+    if instrument is None or not bars:
+        return None
+    close = bars[-1].close
+    if close <= 0:
+        return None
+    data = AlertData(as_of=as_of, bars={instrument.id: bars}, max_price_age_days=10_000)
+    best: dict | None = None
+    for row in alerts:
+        if row.status not in ("active", "triggered", "snoozed") or row.instrument_id is None:
+            continue
+        level = _alert_level(row, evaluate_alert(alert_service.definition(row, instrument), data))
+        if level is None:
+            continue
+        distance = float((level - close) / close)
+        if best is None or abs(distance) < abs(best["distance_pct"]):
+            best = {
+                "alert_id": row.id,
+                "kind": row.kind,
+                "title": row.title,
+                "level": f(level),
+                "distance_pct": round(distance, 6),
+            }
+    return best
+
+
+def watchlist_row(
+    item: InvWatchlistItem,
+    instrument: Instrument | None,
+    bars: tuple,
+    *,
+    as_of: dt.date,
+    held: bool,
+    alerts: list[InvAlert],
+    max_price_age_days: int = 5,
+) -> dict:
+    """One watched instrument with hard price facts only (last close, past changes, 52-week high);
+    never a forecast."""
+    price: dict | None = None
+    if bars:
+        last = bars[-1]
+        year = bars[-252:]
+        high = max(year, key=lambda b: b.close)
+        price = {
+            "close": f(last.close),
+            "date": iso(last.date),
+            "currency": str(last.currency or (instrument.currency if instrument else "")),
+            "stale": (as_of - last.date).days > max_price_age_days,
+            "change_1d": _ratio_between(last.close, bars[-2].close) if len(bars) >= 2 else None,
+            "change_1m": _ratio_between(last.close, bars[-22].close) if len(bars) >= 22 else None,
+            "high_52w": f(high.close),
+            "high_52w_date": iso(high.date),
+            "from_high_52w": float((last.close - high.close) / high.close) if high.close else None,
+            "bars": len(bars),
+        }
+    has_source = instrument is not None and any(instrument.alias(ns) for ns in ("yahoo", "stooq"))
+    return {
+        "id": item.id,
+        "instrument_id": item.instrument_id,
+        "instrument": instrument_dict(instrument) if instrument is not None else None,
+        "note": item.note,
+        "tags": list(item.tags or []),
+        "source": item.source,
+        "added_at": iso(item.added_at),
+        "held": held,
+        "price_source": has_source,
+        "price": price,
+        "closes_30d": closes_30d(bars, as_of),
+        "alerts": {
+            "count": len(alerts),
+            "live": sum(a.status in ("active", "triggered", "snoozed") for a in alerts),
+            "triggered": sum(a.status == "triggered" for a in alerts),
+            "nearest": nearest_alert(alerts, instrument, bars, as_of),
+        },
+    }
+
+
+def watchlist_view(
+    session: Session, profile: Profile, *, as_of: dt.date | None = None
+) -> list[dict]:
+    """Every watchlist item of the profile, oldest first."""
+    from ..store import instruments as instrument_store
+
+    as_of = as_of or portfolio.today()
+    items = alert_store.watchlist(session, profile.id)
+    if not items:
+        return []
+    ids = {i.instrument_id for i in items}
+    loaded = instrument_store.load(session, ids, profile_id=profile.id)
+    series = market.bars(session, ids, until=as_of, since=as_of - dt.timedelta(days=400))
+    snapshot = build_snapshot(
+        convert.sid(profile.id),
+        transactions.transactions(session, profile.id),
+        as_of,
+        renames=transactions.renames(session, profile.id),
+    )
+    held = {convert.pk(h.instrument_id) for h in snapshot.holdings}
+    by_instrument: dict[int, list[InvAlert]] = defaultdict(list)
+    for a in alert_store.alerts(session, profile.id):
+        if a.instrument_id is not None:
+            by_instrument[a.instrument_id].append(a)
+    st = strategy_files.load(session, profile)
+    max_age = st.config.data.max_price_age_days if st.config is not None else 5
+    return [
+        watchlist_row(
+            item,
+            loaded.get(item.instrument_id),
+            series.get(convert.sid(item.instrument_id), ()),
+            as_of=as_of,
+            held=item.instrument_id in held,
+            alerts=by_instrument.get(item.instrument_id, []),
+            max_price_age_days=max_age,
+        )
+        for item in items
+    ]
 
 
 def decision_dict(d: InvDecision) -> dict:
@@ -1208,9 +1583,121 @@ def _price_moves(session: Session, state: portfolio.PortfolioState, since: dt.da
     return moves
 
 
-def review_digest(session: Session, profile: Profile) -> dict:
-    """What changed since the last weekly review (or the last 7 days without one): value, signals,
-    imports, transactions, decisions, dividends, larger price moves, current warnings, strategy.
+EVENTS_LIMIT = 200
+
+
+def _local_midnight(day: dt.date) -> dt.datetime:
+    return dt.datetime.combine(day, dt.time.min).astimezone().astimezone(dt.UTC)
+
+
+def _digest_events(
+    *,
+    new_rows: list[InvSignal],
+    escalated: list[InvSignal],
+    escalated_at: dict[int, dt.datetime],
+    resolved: list[InvSignal],
+    labels: dict[int, str],
+    batches: list[InvImportBatch],
+    decisions: list[InvDecision],
+    txns: list,
+    runs: list[InvRuleRun],
+) -> list[dict]:
+    """The re-entry change log: one typed, dated entry per change, newest first. Types:
+    ``signal_created``, ``alert_triggered``, ``signal_escalated``, ``signal_resolved``, ``import``,
+    ``decision``, ``deposit``, ``withdrawal``, ``data_warning``."""
+    out: list[tuple[dt.datetime, dict]] = []
+
+    def signal_fields(row: InvSignal) -> dict:
+        return {
+            "signal_id": row.id,
+            "alert_id": alert_id_of(row.rule_id),
+            "kind": row.kind,
+            "rule_id": row.rule_id,
+            "severity": row.severity,
+            "polarity": row.polarity,
+            "status": row.status,
+            "message": row.message,
+            "instrument_id": row.instrument_id,
+            "instrument_label": labels.get(row.instrument_id) if row.instrument_id else None,
+        }
+
+    def add(event_type: str, at: dt.datetime | dt.date, /, **fields) -> None:
+        moment = convert.aware(at) if isinstance(at, dt.datetime) else _local_midnight(at)
+        date = at.astimezone().date() if isinstance(at, dt.datetime) else at
+        out.append((moment, {"type": event_type, "at": iso(at), "date": iso(date), **fields}))
+
+    for row in new_rows:
+        kind = "alert_triggered" if is_alert_key(row.rule_id) else "signal_created"
+        add(kind, row.first_seen_at, **signal_fields(row))
+    for row in escalated:
+        add("signal_escalated", escalated_at.get(row.id, row.last_seen_at), **signal_fields(row))
+    for row in resolved:
+        if row.closed_at is not None:
+            add("signal_resolved", row.closed_at, **signal_fields(row))
+    for b in batches:
+        add(
+            "import",
+            b.created_at,
+            batch_id=b.id,
+            account_id=b.account_id,
+            file_name=b.file_name,
+            inserted=b.txn_count,
+            duplicates=b.duplicate_count,
+        )
+    for d in decisions:
+        add(
+            "decision",
+            d.created_at,
+            decision_id=d.id,
+            signal_id=d.signal_id,
+            action=d.action,
+            instrument_id=d.instrument_id,
+            instrument_label=labels.get(d.instrument_id) if d.instrument_id else None,
+            reason=d.reason,
+        )
+    for t in txns:
+        if t.type in (TxnType.DEPOSIT, TxnType.WITHDRAWAL):
+            add(
+                t.type.value,
+                t.trade_date,
+                account_id=convert.maybe_pk(t.account_id),
+                amount=f(t.cash_amount),
+                currency=str(t.cash_currency),
+            )
+    for run in runs:
+        if run.status in ("partial", "failed") and run.errors:
+            add(
+                "data_warning",
+                run.started_at,
+                run_id=run.id,
+                status=run.status,
+                message=run.errors[0],
+                count=len(run.errors),
+            )
+    out.sort(key=lambda item: item[0], reverse=True)
+    return [event for _, event in out]
+
+
+def _net_contributions(
+    state: portfolio.PortfolioState, *, after: dt.date, until: dt.date
+) -> Decimal | None:
+    """Deposits minus withdrawals dated after ``after`` up to ``until``, in the base currency at the
+    trade-date rate (None when a rate is missing: the split would be a guess)."""
+    total = Decimal(0)
+    for t in state.txns:
+        if t.type not in (TxnType.DEPOSIT, TxnType.WITHDRAWAL) or not after < t.trade_date <= until:
+            continue
+        converted = fx_convert(state.fx, t.cash_amount, t.cash_currency, state.base, t.trade_date)
+        if converted is None:
+            return None
+        total += converted
+    return total
+
+
+def review_digest(session: Session, profile: Profile, since_date: dt.date | None = None) -> dict:
+    """What changed since the last weekly review (or the last 7 days without one, or since
+    ``since_date`` when given: baseline ``since``): value, signals, imports, transactions, decisions,
+    dividends, larger price moves, current warnings, strategy, and a typed, dated ``events`` list.
 
     Timestamps (``*_at``) compare with the baseline instant ``since_at``; dates (dividends, the
     value then, price moves) with its local calendar date ``since`` (never after ``as_of``).
@@ -1221,7 +1708,10 @@ def review_digest(session: Session, profile: Profile) -> dict:
     as_of = state.as_of
     now = utcnow()
     review = last_review(session, profile)
-    since_at = review["done_at"] if review else now - dt.timedelta(days=DEFAULT_DIGEST_DAYS)
+    if since_date is not None:
+        since_at = _local_midnight(since_date)
+    else:
+        since_at = review["done_at"] if review else now - dt.timedelta(days=DEFAULT_DIGEST_DAYS)
     since = min(since_at.astimezone().date(), as_of)
     weekday = config.notifications.digest_weekday if config is not None else None
     digest_weekday = weekday.value if weekday is not None else "sunday"
@@ -1235,6 +1725,10 @@ def review_digest(session: Session, profile: Profile) -> dict:
         then = portfolio.build(session, profile, as_of=since, strategy=config, base=state.base)
         then_total = then.valued.total_base
     change = None if then_total is None else total - then_total
+    contributions = (
+        None if then_total is None else _net_contributions(state, after=since, until=as_of)
+    )
+    market_change = None if change is None or contributions is None else change - contributions
 
     # Signals.
     from ..store import instruments as instrument_store
@@ -1260,9 +1754,14 @@ def review_digest(session: Session, profile: Profile) -> dict:
     new_rows = [r for r in rows if _at_or_after(r.first_seen_at, since_at)]
     new_ids = {r.id for r in new_rows}
     escalated_ids: set[int] = set()
+    escalated_at: dict[int, dt.datetime] = {}
+    runs_since: list[InvRuleRun] = []
     for run in session.exec(select(InvRuleRun).where(InvRuleRun.profile_id == profile.id)).all():
         if _at_or_after(run.started_at, since_at):
-            escalated_ids |= {int(i) for i in (run.report or {}).get("escalated", [])}
+            runs_since.append(run)
+            for i in (run.report or {}).get("escalated", []):
+                escalated_ids.add(int(i))
+                escalated_at[int(i)] = max(escalated_at.get(int(i), run.started_at), run.started_at)
     escalated = [r for r in rows if r.id in escalated_ids and r.id not in new_ids]
     resolved = [
         r
@@ -1297,12 +1796,25 @@ def review_digest(session: Session, profile: Profile) -> dict:
         if t.type == TxnType.DIVIDEND and t.trade_date >= since:
             dividends[str(t.cash_currency)] += t.cash_amount
 
+    events = _digest_events(
+        new_rows=new_rows,
+        escalated=escalated,
+        escalated_at=escalated_at,
+        resolved=resolved,
+        labels=labels,
+        batches=[b for b in batches if _at_or_after(b.created_at, since_at)],
+        decisions=[d for d in decisions if _at_or_after(d.created_at, since_at)],
+        txns=[t for t in state.txns if since <= t.trade_date <= as_of],
+        runs=runs_since,
+    )
     return {
         "as_of": iso(as_of),
         "since": iso(since),
         "since_at": iso(since_at),
         "until_at": iso(now),
-        "baseline": "review" if review else "default_7d",
+        "baseline": "since" if since_date is not None else ("review" if review else "default_7d"),
+        "events": events[:EVENTS_LIMIT],
+        "events_total": len(events),
         "last_review": None
         if review is None
         else {
@@ -1318,6 +1830,12 @@ def review_digest(session: Session, profile: Profile) -> dict:
             "now": f(total),
             "change": f(change),
             "change_pct": ratio_pct(ratio(change, then_total)) if change is not None else None,
+            # change = contributions (net deposits - withdrawals) + market_change (the market part)
+            "contributions": f(contributions),
+            "market_change": f(market_change),
+            "market_change_pct": ratio_pct(ratio(market_change, then_total))
+            if market_change is not None
+            else None,
         },
         "signals": {
             "new": signal_rows(new_rows),

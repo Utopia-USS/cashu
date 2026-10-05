@@ -284,6 +284,44 @@ def acknowledge(
         }
 
 
+class SnoozeBody(BaseModel):
+    until: str | None = None  # YYYY-MM-DD (local midnight) or an ISO timestamp; null = back now
+
+
+def _until(text: str | None) -> dt.datetime | None:
+    if text is None or not text.strip():
+        return None
+    raw = text.strip()
+    try:
+        if len(raw) == 10:
+            day = dt.date.fromisoformat(raw)
+            return dt.datetime.combine(day, dt.time.min).astimezone().astimezone(dt.UTC)
+        moment = dt.datetime.fromisoformat(raw)
+    except ValueError:
+        raise _422("until must be a date (YYYY-MM-DD) or an ISO timestamp") from None
+    return moment.replace(tzinfo=dt.UTC) if moment.tzinfo is None else moment.astimezone(dt.UTC)
+
+
+@router.post("/signals/{signal_id}/snooze")
+def snooze_signal(profile: CurrentProfile, signal_id: int, body: SnoozeBody) -> dict:
+    """ "Odłóż do": hide an open signal until ``until`` (a date = that day's local midnight): it leaves
+    the attention list and is not notified meanwhile; the daily check brings it back (active, notified
+    per the policy). ``until: null`` brings it back now. 409 for a closed signal."""
+    from .store import signals as signal_store
+
+    until = _until(body.until)
+    if until is not None and until <= dt.datetime.now(dt.UTC):
+        raise _422("until must be in the future")
+    with get_session() as s:
+        row = journal.signal(s, profile.id, signal_id)
+        if row is None:
+            raise _404(f"No signal {signal_id}")
+        if row.status not in ("active", "acknowledged"):
+            raise HTTPException(status_code=409, detail=f"Signal {signal_id} is {row.status}")
+        signal_store.snooze(s, row, until)
+        return views.signal_dict(row)
+
+
 @router.get("/decisions")
 def decision_list(profile: CurrentProfile, instrument_id: int | None = None) -> list[dict]:
     with get_session() as s:
@@ -293,13 +331,36 @@ def decision_list(profile: CurrentProfile, instrument_id: int | None = None) -> 
         ]
 
 
-@router.get("/review-digest")
-def review_digest(profile: CurrentProfile) -> dict:
-    """Changes since the last weekly review (``baseline: review``) or the last 7 days
-    (``default_7d``): value then / now, new / escalated / resolved signals, imports, transactions,
-    decisions, dividends, larger price moves, warnings, strategy changes; ``review_due``."""
+@router.delete("/decisions/{decision_id}")
+def decision_undo(profile: CurrentProfile, decision_id: int) -> dict:
+    """Undo a decision within 15 minutes of recording it: the entry is deleted and the
+    acknowledgement it caused is reverted (409 ``undo_expired`` after that)."""
     with get_session() as s:
-        return views.review_digest(s, profile)
+        row = journal.decision(s, profile.id, decision_id)
+        if row is None:
+            raise _404(f"No decision {decision_id}")
+        try:
+            linked = journal.undo_decision(s, profile.id, row)
+        except journal.UndoExpired as e:
+            raise HTTPException(
+                status_code=409, detail=str(e), headers={"X-Finanse-Error-Code": "undo_expired"}
+            ) from None
+        return {
+            "deleted": decision_id,
+            "signal": None if linked is None else views.signal_dict(linked),
+        }
+
+
+@router.get("/review-digest")
+def review_digest(profile: CurrentProfile, since: dt.date | None = None) -> dict:
+    """Changes since the last weekly review (``baseline: review``), the last 7 days
+    (``default_7d``) or ``since=YYYY-MM-DD`` (``since``): value then / now (contributions vs the
+    market part), new / escalated / resolved signals, imports, transactions, decisions, dividends,
+    larger price moves, warnings, strategy changes, ``review_due`` and the typed ``events`` log."""
+    if since is not None and since > dt.date.today():  # noqa: DTZ011 - local calendar date
+        raise _422("since must not be in the future")
+    with get_session() as s:
+        return views.review_digest(s, profile, since)
 
 
 # --------------------------------------------------------------------------- #
@@ -582,15 +643,39 @@ def _preview_or_error(
         raise _422(str(e)) from None
 
 
+MAX_UPLOAD_BYTES = MAX_FILE_BYTES + 1024 * 1024
+"""Largest request body of an upload (the file limit plus room for multipart framing and fields)."""
+
+
+async def _read_limited(request: Request, limit: int) -> bytes:
+    """The request body, refused (413) as soon as it is larger than ``limit``: a declared
+    Content-Length is checked before reading, and the stream is counted while it arrives (a missing or
+    false Content-Length never makes the server buffer more than ``limit`` bytes)."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            size = int(declared)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length") from None
+        if size > limit:
+            raise HTTPException(status_code=413, detail="File too large")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(status_code=413, detail="File too large")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.post("/import/preview")
 async def import_preview(profile: CurrentProfile, request: Request) -> dict:
     """Preview an import. Multipart fields: ``file`` (the export), ``account_id``, optional
     ``importer`` (auto | finanse | generic_csv) and ``mapping`` (generic CSV mapping YAML). A raw
     body works too (``?account_id=&filename=&importer=``). The file is staged until committed;
     commit with the returned ``file_id``."""
-    body = await request.body()
-    if len(body) > MAX_FILE_BYTES + 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File too large")
+    body = await _read_limited(request, MAX_UPLOAD_BYTES)
     content_type = request.headers.get("content-type", "")
     query = request.query_params
     if content_type.startswith("multipart/form-data"):
@@ -750,3 +835,195 @@ def run_list(profile: CurrentProfile, limit: int = 20) -> list[dict]:
 
     with get_session() as s:
         return [views.run_dict(r) for r in signals.runs(s, profile.id, max(1, min(limit, 100)))]
+
+
+# --------------------------------------------------------------------------- #
+# Alerts and the watchlist
+# --------------------------------------------------------------------------- #
+
+
+def _coded(status: int, message: str, code: str) -> HTTPException:
+    return HTTPException(status_code=status, detail=message, headers={"X-Finanse-Error-Code": code})
+
+
+class AlertBody(BaseModel):
+    kind: str
+    title: str
+    params: dict[str, Any] = {}
+    instrument_id: int | None = None
+    scope: str | None = None
+    polarity: str | None = None
+    severity: str | None = None
+    note: str | None = None
+    cooldown_days: int | None = None
+    expires_at: dt.datetime | None = None
+    expires_in_days: int | None = None
+
+
+class AlertPatchBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    title: str | None = None
+    note: str | None = None
+    params: dict[str, Any] | None = None
+    polarity: str | None = None
+    severity: str | None = None
+    cooldown_days: int | None = None
+    expires_at: dt.datetime | None = None
+    expires_in_days: int | None = None
+    status: str | None = None
+    snooze_days: int | None = None
+    snoozed_until: dt.datetime | None = None
+
+
+@router.get("/alert-kinds")
+def alert_kinds(profile: CurrentProfile) -> dict:
+    """The alert catalog for forms: kinds, scopes, params (types, defaults, limits)."""
+    return views.alert_kinds()
+
+
+@router.get("/alerts")
+def alert_list(profile: CurrentProfile, status: str = "all") -> list[dict]:
+    """``status=all`` (default), ``live`` or a comma list (``active,triggered``); triggered first."""
+    from .service import alerts as alert_service
+
+    try:
+        statuses = alert_service.parse_status_filter(status)
+    except alert_service.AlertError as e:
+        raise _422(str(e)) from None
+    with get_session() as s:
+        return views.alerts_view(s, profile, statuses)
+
+
+@router.post("/alerts", status_code=201)
+def alert_create(profile: CurrentProfile, body: AlertBody) -> dict:
+    """Create an ACTIVE alert (``source = user``), validated against the catalog; ``instrument_id``
+    must be an instrument of the profile (held, watched or otherwise referenced)."""
+    from .service import alerts as alert_service
+
+    data = alert_service.AlertInput(**body.model_dump())
+    with get_session() as s:
+        try:
+            row = alert_service.create(s, profile, data, created_by="app")
+        except alert_service.AlertNotFound as e:
+            raise _coded(404, str(e), "not_found") from None
+        except alert_service.AlertError as e:
+            raise _coded(422, str(e), "alert_invalid") from None
+        return views.one_alert(s, profile, row)
+
+
+@router.patch("/alerts/{alert_id}")
+def alert_update(profile: CurrentProfile, alert_id: int, body: AlertPatchBody) -> dict:
+    """Update texts / params / polarity / severity / cooldown / expiry, or snooze (``status:
+    snoozed`` with ``snooze_days`` or ``snoozed_until``), mute (``status: muted``) or re-arm
+    (``status: active``). Snoozing and muting close the alert's open signal at once."""
+    from .service import alerts as alert_service
+
+    with get_session() as s:
+        try:
+            row = alert_service.update(s, profile, alert_id, body.model_dump(exclude_unset=True))
+        except alert_service.AlertNotFound as e:
+            raise _coded(404, str(e), "not_found") from None
+        except alert_service.AlertError as e:
+            raise _coded(422, str(e), "alert_invalid") from None
+        return views.one_alert(s, profile, row)
+
+
+@router.delete("/alerts/{alert_id}")
+def alert_delete(profile: CurrentProfile, alert_id: int) -> dict:
+    """Delete an alert; its open signal expires, closed signals stay in the history."""
+    from .service import alerts as alert_service
+
+    with get_session() as s:
+        try:
+            alert_service.delete(s, profile, alert_id)
+        except alert_service.AlertNotFound as e:
+            raise _coded(404, str(e), "not_found") from None
+        return {"deleted": alert_id}
+
+
+class WatchBody(BaseModel):
+    symbol_or_isin: str | None = None
+    instrument_id: int | None = None
+    name: str | None = None
+    currency: str | None = None
+    exchange: str | None = None
+    note: str | None = None
+    tags: list[str] | None = None
+
+
+class WatchPatchBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    note: str | None = None
+    tags: list[str] | None = None
+
+
+def _watch_row(s, profile: Profile, item_id: int) -> dict:
+    return next(r for r in views.watchlist_view(s, profile) if r["id"] == item_id)
+
+
+@router.get("/watchlist")
+def watchlist(profile: CurrentProfile) -> list[dict]:
+    """Watched instruments with the last close, past changes, the 52-week high and their alerts."""
+    with get_session() as s:
+        return views.watchlist_view(s, profile)
+
+
+@router.post("/watchlist", status_code=201)
+def watchlist_add(profile: CurrentProfile, body: WatchBody) -> dict:
+    """Watch an instrument: ``symbol_or_isin`` (``VWCE.DE``, ``PKN.WA``, ``AAPL.US``, an ISIN; a new
+    instrument gets guessed price aliases) or ``instrument_id``. It joins the daily price refresh."""
+    from .service import watchlist as watch_service
+
+    with get_session() as s:
+        try:
+            result = watch_service.add(
+                s,
+                profile,
+                body.symbol_or_isin,
+                instrument_id=body.instrument_id,
+                name=body.name,
+                currency=body.currency,
+                exchange=body.exchange,
+                note=body.note,
+                tags=body.tags,
+            )
+        except watch_service.WatchlistNotFound as e:
+            raise _coded(404, str(e), "not_found") from None
+        except watch_service.WatchlistConflict as e:
+            raise _coded(409, str(e), "watchlist_conflict") from None
+        except watch_service.WatchlistError as e:
+            raise _coded(422, str(e), "watchlist_invalid") from None
+        return {
+            **_watch_row(s, profile, result.item.id),
+            "created_instrument": result.created_instrument,
+            "warnings": result.warnings,
+        }
+
+
+@router.patch("/watchlist/{item_id}")
+def watchlist_update(profile: CurrentProfile, item_id: int, body: WatchPatchBody) -> dict:
+    from .service import watchlist as watch_service
+
+    with get_session() as s:
+        try:
+            watch_service.update(s, profile, item_id, note=body.note, tags=body.tags)
+        except watch_service.WatchlistNotFound as e:
+            raise _coded(404, str(e), "not_found") from None
+        except watch_service.WatchlistError as e:
+            raise _coded(422, str(e), "watchlist_invalid") from None
+        return _watch_row(s, profile, item_id)
+
+
+@router.delete("/watchlist/{item_id}")
+def watchlist_remove(profile: CurrentProfile, item_id: int) -> dict:
+    """Stop watching (the instrument's alerts stay)."""
+    from .service import watchlist as watch_service
+
+    with get_session() as s:
+        try:
+            watch_service.remove(s, profile, item_id)
+        except watch_service.WatchlistNotFound as e:
+            raise _coded(404, str(e), "not_found") from None
+        return {"deleted": item_id}

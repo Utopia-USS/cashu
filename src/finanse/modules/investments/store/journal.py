@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from decimal import Decimal
 
 from sqlmodel import Session, select
@@ -76,6 +77,53 @@ def acknowledge(session: Session, row: InvSignal, *, at=None) -> bool:
     session.add(row)
     session.flush()
     return True
+
+
+UNDO_WINDOW = dt.timedelta(minutes=15)
+"""How long after recording a decision it can still be deleted (the UI's undo)."""
+
+
+class UndoExpired(JournalError):
+    """The decision is older than ``UNDO_WINDOW``."""
+
+
+def decision(session: Session, profile_id: int, decision_id: int) -> InvDecision | None:
+    row = session.get(InvDecision, decision_id)
+    return row if row is not None and row.profile_id == profile_id else None
+
+
+def undo_decision(
+    session: Session, profile_id: int, row: InvDecision, *, now: dt.datetime | None = None
+) -> InvSignal | None:
+    """Delete a decision recorded less than ``UNDO_WINDOW`` ago (raises :class:`UndoExpired`
+    otherwise). The acknowledgement it caused is reverted (the signal is active again) when the signal
+    is still open, was acknowledged by this very decision and has no other decision. Returns the linked
+    signal, if any."""
+    now = _aware(now or utcnow())
+    created = _aware(row.created_at)
+    if now - created > UNDO_WINDOW:
+        raise UndoExpired(
+            f"Decisions can be undone for {int(UNDO_WINDOW.total_seconds() // 60)} minutes after "
+            "they are recorded"
+        )
+    linked = signal(session, profile_id, row.signal_id) if row.signal_id is not None else None
+    session.delete(row)
+    session.flush()
+    if linked is not None and linked.status == SignalStatus.ACKNOWLEDGED.value:
+        others = session.exec(
+            select(InvDecision.id).where(InvDecision.signal_id == linked.id)
+        ).first()
+        acked = linked.acknowledged_at
+        if others is None and acked is not None and _aware(acked) == created:
+            linked.status = SignalStatus.ACTIVE.value
+            linked.acknowledged_at = None
+            session.add(linked)
+            session.flush()
+    return linked
+
+
+def _aware(value: dt.datetime) -> dt.datetime:
+    return value.replace(tzinfo=dt.UTC) if value.tzinfo is None else value.astimezone(dt.UTC)
 
 
 def decisions(

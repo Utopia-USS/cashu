@@ -33,6 +33,10 @@ INVESTMENTS_GETS = [
     "/investments/imports",
     "/investments/reconciliation",
     "/investments/runs",
+    "/investments/alerts",
+    "/investments/alerts?status=live",
+    "/investments/alert-kinds",
+    "/investments/watchlist",
 ]
 VOLATILE = {
     "id",
@@ -41,6 +45,8 @@ VOLATILE = {
     "batch_id",
     "open_txn_id",
     "signal_id",
+    "alert_id",
+    "decision_id",
     "new_signal_ids",
     "escalated_signal_ids",
     "sha256",
@@ -58,6 +64,7 @@ def strip(value, slug: str):
     if isinstance(value, list):
         return [strip(v, slug) for v in value]
     if isinstance(value, str):
+        value = re.sub(r"\balert:\d+\b", "alert:<id>", value)  # alert signal rule ids / keys
         return re.sub(rf"\b{re.escape(slug)}\b", "<slug>", value)
     return value
 
@@ -98,8 +105,34 @@ def household(client, name: str) -> tuple[str, int, int]:
         json={"file_id": preview["file_id"], "file_name": "h.csv", "account_id": aid},
     )
     files.write_text_private(files.strategy_yaml_path(slug), STRATEGY_YAML)
+    # a watched instrument and a firing alert on a held one (F5)
+    assert (
+        client.post(
+            f"/api/p/{slug}/investments/watchlist",
+            json={"symbol_or_isin": "WATCH.DE", "note": "Example watch"},
+        ).status_code
+        == 201
+    )
+    xmpl_id = next(
+        i["id"]
+        for i in client.get(f"/api/p/{slug}/investments/instruments").json()
+        if i["label"] == "XMPL"
+    )
+    r = client.post(
+        f"/api/p/{slug}/investments/alerts",
+        json={
+            "kind": "price_above",
+            "params": {"level": 50},
+            "instrument_id": xmpl_id,
+            "title": "XMPL above 50",
+            "polarity": "positive",
+        },
+    )
+    assert r.status_code == 201, r.text
     assert client.post(f"/api/p/{slug}/investments/run", json={}).status_code == 200
-    (sig,) = client.get(f"/api/p/{slug}/investments/signals").json()
+    signals = client.get(f"/api/p/{slug}/investments/signals").json()
+    assert sorted(s["source"] for s in signals) == ["alert", "rule"]
+    sig = next(s for s in signals if s["source"] == "rule")
     client.post(f"/api/p/{slug}/investments/signals/{sig['id']}/decision", json={"action": "held"})
     xmpl = sig["instrument_id"]
     client.post(
@@ -155,8 +188,11 @@ def test_two_profiles_with_the_same_history_do_not_leak(client):
         "/investments/imports",
         "/investments/reconciliation",
         "/investments/runs",
+        "/investments/alerts",
+        "/investments/watchlist",
     ):
         assert e[path] == [], path
+    assert e["/investments/overview"]["attention"] == []
     assert e["/investments/strategy"]["state"] == "missing"
     digest = e["/investments/review-digest"]
     assert digest["imports"] == [] and digest["decisions"] == [] and digest["signals"]["new"] == []
@@ -225,6 +261,22 @@ def test_writes_through_one_profile_never_touch_another(client):
         ).status_code
         == 404
     )
+    # alerts and the watchlist (F5)
+    a_alert = client.get(f"/api/p/{a_slug}/investments/alerts").json()[0]["id"]
+    a_item = client.get(f"/api/p/{a_slug}/investments/watchlist").json()[0]["id"]
+    assert client.patch(f"{b}/alerts/{a_alert}", json={"title": "x"}).status_code == 404
+    assert client.patch(f"{b}/alerts/{a_alert}", json={"status": "muted"}).status_code == 404
+    assert client.delete(f"{b}/alerts/{a_alert}").status_code == 404
+    assert client.patch(f"{b}/watchlist/{a_item}", json={"note": "x"}).status_code == 404
+    assert client.delete(f"{b}/watchlist/{a_item}").status_code == 404
+    only_alert = {
+        "kind": "price_below",
+        "params": {"level": 1},
+        "instrument_id": only_id,
+        "title": "x",
+    }
+    assert client.post(f"{b}/alerts", json=only_alert).status_code == 404
+    assert client.post(f"{b}/watchlist", json={"instrument_id": only_id}).status_code == 404
     assert client.get(f"{b}/overview?accounts={a_aid}").status_code == 404
     assert client.get(f"{b}/transactions?account_id={a_aid}").status_code == 404
     assert client.get(f"{b}/reconciliation?account_id={a_aid}").status_code == 404
@@ -250,5 +302,11 @@ def test_writes_through_one_profile_never_touch_another(client):
         f"/api/p/{a_slug}/investments/manual-valuations",
         json={"instrument_id": xmpl, "unit_value": "1", "as_of": "2026-02-02"},
     )
+    assert client.post(f"/api/p/{a_slug}/investments/alerts", json=only_alert).status_code == 201
+    a_api = f"/api/p/{a_slug}/investments"
+    assert client.patch(f"{a_api}/alerts/{a_alert}", json={"status": "muted"}).status_code == 200
+    assert client.post(f"{a_api}/watchlist", json={"symbol_or_isin": "ONLYW.WA"}).status_code == 201
+    assert client.delete(f"{a_api}/watchlist/{a_item}").status_code == 200
+    assert client.post(f"{a_api}/run", json={}).status_code == 200
     assert snapshot(client, b_slug, xmpl) == reference
     assert b_aid != a_aid

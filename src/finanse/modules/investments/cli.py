@@ -435,3 +435,6 @@ def register_module(app: typer.Typer) -> None:
     app.command("positions")(positions_cmd)
     app.command("signals")(signals_cmd)
     app.command("run")(run_cmd)
+    from .cli_alerts import register as register_alerts  # alerts, watchlist
+
+    register_alerts(app)

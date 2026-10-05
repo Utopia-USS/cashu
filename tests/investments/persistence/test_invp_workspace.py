@@ -523,6 +523,9 @@ def test_invp_review_digest_of_an_empty_profile(client):
         "now": 0.0,
         "change": None,
         "change_pct": None,
+        "contributions": None,
+        "market_change": None,
+        "market_change_pct": None,
     }
     assert d["signals"] == {"new": [], "escalated": [], "resolved": [], "open": 0, "undecided": 0}
     assert d["imports"] == [] and d["price_moves"] == [] and d["dividends"] == {}
