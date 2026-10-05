@@ -1,0 +1,93 @@
+# Copy shipped with this skill, generated from the finanse sources; do not edit it here.
+# finanse strategy - blank template.
+#
+# This file is the measurable half of your strategy (strategy.md is the prose half). The app validates
+# it on every change and reports problems with the line and column. Uncomment and fill in the sections
+# you need; see passive_etf.yaml for a complete example.
+#
+# Conventions:
+# - Weights, thresholds and bands are fractions: 0.15 means 15%. Only absolute_band_pp is in
+#   percentage points (5 means 5 pp). Inside custom rule expressions you may also write 15%.
+# - Amounts are in base_currency.
+# - Unknown keys are reported as warnings (with a "did you mean" hint) and ignored.
+
+# Schema version of this file. Keep it at 1.
+version: 1
+
+# Currency all values are reported in. The app converts with NBP rates, so PLN is the supported choice.
+base_currency: PLN
+
+# How many years you plan to stay invested (context for reports; optional).
+# horizon_years: 10
+
+# Planned deposits; needed by the contribution_gap rule.
+# contributions:
+#   monthly_amount: 1000      # planned deposit per month in base_currency (> 0)
+#   day_of_month: 10          # optional, 1-31
+
+# Data-quality limits; rules skip (and say why) instead of firing on bad data.
+data:
+  # A price older than this many calendar days is stale.
+  max_price_age_days: 5
+  # Portfolio-wide rules skip when stale prices cover more than this share of the portfolio.
+  max_stale_weight: 0.05
+  # allocation_drift and tagged_weight skip while holdings that match no bucket (e.g. freshly
+  # imported, untagged instruments) are more than this share of the portfolio.
+  max_unclassified_weight: 0.02
+  # An FX rate older than this many calendar days counts as missing; amounts in that currency are left
+  # out and rules that compare weights skip.
+  max_fx_age_days: 10
+
+# Allocation buckets: every holding goes to the FIRST bucket whose match fits.
+# match keys: asset_class (equity, etf, fund, bond, treasury_bond, cash, crypto, commodity, claim,
+# other), tags (all must be present), mic (e.g. XWAR), currency (e.g. PLN), instrument_ids.
+# A list means "any of".
+# buckets:
+#   - id: stocks
+#     match: { asset_class: [equity, etf] }
+#   - id: bonds
+#     match: { asset_class: [bond, treasury_bond] }
+#   - id: cash
+#     match: { asset_class: cash }
+
+# Target weight per bucket (must sum to 1) and rebalance bands for allocation_drift rules.
+# allocation:
+#   targets: { stocks: 0.60, bonds: 0.35, cash: 0.05 }
+#   rebalance: { absolute_band_pp: 5, relative_band: 0.25, min_trade_value: 500 }
+
+# Rules: unique id, kind, params, optional severity (info | action) and cooldown_days.
+# Kinds and params (per-instrument kinds also take the filters asset_class, tags, instrument_ids):
+#   allocation_drift        absolute_band_pp, relative_band, min_trade_value (default: allocation.rebalance),
+#                           buckets (optional subset)
+#   position_concentration  max_weight + filters
+#   loss_from_cost          threshold (0.25 = down 25% from cost) + filters
+#   gain_from_cost          threshold (0.50 = up 50% from cost) + filters
+#   drawdown_from_high      threshold (0.15 = 15% below the high), window_days (bars, default 252) + filters
+#   cash_level              min_weight and/or max_weight
+#   contribution_gap        period_days (default 31), grace_days (default 10)
+#   tagged_weight           tags (all required), max_weight
+#   custom                  when (a condition), scope (portfolio | instrument | bucket), message (optional)
+rules: []
+# rules:
+#   - { id: rebalance_check, kind: allocation_drift, severity: action }
+#   - { id: max_single_stock, kind: position_concentration, params: { max_weight: 0.10, asset_class: equity } }
+#   - { id: loss_review, kind: loss_from_cost, params: { threshold: 0.25, tags: [satellite] } }
+#   - { id: missed_deposit, kind: contribution_gap, params: { grace_days: 10 } }
+#   - { id: theme_cap, kind: tagged_weight, params: { tags: [thematic], max_weight: 0.10 } }
+#   - id: small_position_dip
+#     kind: custom
+#     params:
+#       scope: instrument
+#       when: 'drawdown_from_high(252) >= 20% and weight < 3%'
+#       message: Deep drop in a small position; review the thesis
+
+# Screening criteria for watchlist ideas (later stage), e.g. max_pe, min_dividend_yield.
+# watchlist:
+#   criteria: { max_pe: 20, min_dividend_yield: 0.03 }
+
+# Benchmark for reports (later stage): id, proxy (Yahoo symbol or ISIN), optional currency.
+# benchmark: { id: msci_acwi, proxy: VWCE.DE }
+
+# Notifications: severities that notify immediately (default [action]) and the weekly digest day
+# (default sunday).
+# notifications: { immediate: [action], digest_weekday: sunday }

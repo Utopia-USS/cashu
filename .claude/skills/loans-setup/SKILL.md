@@ -35,8 +35,11 @@ user runs them. Conversation in Polish, files in English, regular hyphens only.
 ## Flow
 
 1. **Profile.** Use the connected `finanse-<slug>` server (ask which one if several; never mix
-   profiles). If none is connected: `claude mcp add finanse-<slug> -- finanse mcp --profile <slug>`,
-   then restart Claude Code. Call `profile_overview` and `setup_status("loans")`; state the privacy
+   profiles). In the profile's agent workspace (its `CLAUDE.md` names the profile) it is configured in
+   `.mcp.json`. Elsewhere, if none is connected: the `claude mcp add` line from Ustawienia > Agent AI,
+   then restart Claude Code (or create the workspace there and start Claude Code in it). `finanse` in
+   the commands below is the CLI named in the workspace's `CLAUDE.md` (in the packaged app, the app's
+   binary). Call `profile_overview` and `setup_status("loans")`; state the privacy
    level.
 2. **What loans** (one at a time): mortgage (`--type mortgage`) or another loan (`--type loan`: car,
    cash, instalment). A profile can have any number of loans. For each the user needs, from the

@@ -1,11 +1,12 @@
 ---
 name: budget-setup
-description: Guided setup of the finanse home budget module for one profile, following ONBOARDING.md - install check, choosing banks, CSV export vs Open Banking (Enable Banking), the categorization backend (local Ollama vs Anthropic), a first categorization pass of the most frequent unknown merchants through the profile's finanse MCP server, and a check that the numbers look sane. Use when the user wants to start with finanse, connect or import their bank accounts, set up the budget, or clean up spending categories. Triggers on /budget-setup and on Polish requests such as "skonfiguruj budżet", "podłącz bank", "zaimportuj wyciągi", "wgraj CSV z banku", "Open Banking", "popraw kategorie wydatków", "przeprowadź mnie przez instalację". Not for broker exports (import-builder), manual assets (assets-setup) or loans (loans-setup).
+description: Guided setup of the finanse home budget module for one profile - install check, choosing banks, CSV export vs Open Banking (Enable Banking), the categorization backend (local Ollama vs Anthropic), a first categorization pass of the most frequent unknown merchants through the profile's finanse MCP server, and a check that the numbers look sane. Use when the user wants to start with finanse, connect or import their bank accounts, set up the budget, or clean up spending categories. Triggers on /budget-setup and on Polish requests such as "skonfiguruj budżet", "podłącz bank", "zaimportuj wyciągi", "wgraj CSV z banku", "Open Banking", "popraw kategorie wydatków", "przeprowadź mnie przez instalację". Not for broker exports (import-builder), manual assets (assets-setup) or loans (loans-setup).
 ---
 
 # budget-setup: banks, import and categories
 
-You walk the user through the budget module step by step (the script is the repo's `ONBOARDING.md`).
+You walk the user through the budget module step by step (the same steps as the finanse onboarding
+guide; everything you need is in this file).
 After each step show the result and wait until it works before moving on. Ask at the decision points
 (marked "Decision" below). Conversation in Polish, files in English, regular hyphens only.
 
@@ -50,14 +51,18 @@ After each step show the result and wait until it works before moving on. Ask at
 
 ## Step 0 - Where are we
 
-1. Is finanse installed (`finanse --help` works in the project's venv)? If not, steps 1-2 first.
-2. Is the profile's MCP server connected? If not: the profile must exist first (step 2), then the user
-   runs `claude mcp add finanse-<slug> -- finanse mcp --profile <slug>` and restarts Claude Code; they
-   re-run `/budget-setup` and `setup_status("budget")` shows where to continue. Steps 1-6 work without
-   MCP; the categorization pass (step 7) and the checks (step 8) need it.
+1. How does finanse run? **Packaged app** (Finanse.app): nothing to install, skip steps 1 and 9's
+   build; `finanse` in the commands below is the CLI named in the workspace's `CLAUDE.md` (the app's
+   binary). **Source checkout**: `finanse --help` works in the project's venv; if not, steps 1-2 first.
+2. Is the profile's MCP server connected? In the profile's agent workspace (its `CLAUDE.md` names the
+   profile) it is configured in `.mcp.json`. Otherwise the profile must exist first (step 2), then the
+   user creates the workspace (Ustawienia > Agent AI, or `finanse workspace init --profile <slug>`) and
+   starts Claude Code in it (or runs the `claude mcp add` line shown there and restarts Claude Code);
+   they re-run `/budget-setup` and `setup_status("budget")` shows where to continue. Steps 1-6 work
+   without MCP; the categorization pass (step 7) and the checks (step 8) need it.
 3. If several `finanse-*` servers are connected, ask which profile and use only that one.
 
-## Step 1 - Prerequisites and install (ONBOARDING steps 0-1)
+## Step 1 - Prerequisites and install (source checkout only)
 
 Check `python3 --version` (3.12+), `node --version` (18+, for the dashboard), optionally `ollama`.
 Missing on macOS: `brew install python node ollama`. Then:
@@ -72,9 +77,9 @@ pytest                   # synthetic data only
 Older checkout with `data/finanse.db`: every command prints a notice; the user runs `finanse
 migrate-data` (copies the DB, Open Banking sessions and key into the data dir with a backup).
 
-## Step 2 - Configuration and profile (ONBOARDING step 2)
+## Step 2 - Configuration and profile
 
-`cp .env.example .env`; the defaults are enough to start. Decision: one person or several? One person:
+Source checkout: `cp .env.example .env`; the defaults are enough to start. Decision: one person or several? One person:
 the first import creates the `default` profile (or the dashboard wizard creates the first profile).
 Several: one profile each (`finanse profiles add "<name>" --modules budget`; the name can be anything,
 e.g. "dom"), and every later command takes `finanse --profile <slug> ...` (or `FINANSE_PROFILE` in `.env`).
@@ -83,22 +88,24 @@ e.g. "dom"), and every later command takes `finanse --profile <slug> ...` (or `F
 
 Ask which banks the user has. Supported CSV formats (verified): **mBank** (cp1250, `;`,
 multi-currency), **Erste / former Santander** (UTF-8, no header, positional), **Pekao** (UTF-8, `;`).
-Bank Millennium: Open Banking only for now (no CSV parser yet; `core/institutions.py` is the registry).
+Bank Millennium: Open Banking only for now (no CSV parser yet).
 
 A different bank:
 - Open Banking, if Enable Banking lists it (`finanse eb banks --country PL` after step 5 is configured);
-- or a new CSV parser as in `AGENTS.md` "Adding a new bank". You need the format, not the data: ask the
+- or a new CSV parser: a code change in a finanse source checkout (its developer guide, section
+  "Adding a new bank"). You need the format, not the data: ask the
   user for a **synthetic** sample (the real header line plus 2-3 rows with invented values, same
   encoding and separator). Never ask for a real statement.
 
 ## Step 4 - CSV import (recommended first)
 
-The user exports history from online banking to CSV and puts the files under `statements/<bank>/`
-(`statements/mbank/`, `statements/erste/`, `statements/pekao/`; git-ignored, stays local). The user runs
-in their own terminal:
+The user exports history from online banking to CSV and puts the files in one folder per bank: in
+the agent workspace `inbox/statements/<bank>/` (Claude Code's file tools are denied in `inbox/`), in a
+source checkout `statements/<bank>/` (git-ignored); bank folders `mbank`, `erste`, `pekao`. The user
+runs in their own terminal, from the workspace (or the checkout):
 
 ```bash
-finanse --profile <slug> import-dir statements     # bank from the subdir name, idempotent
+finanse --profile <slug> import-dir inbox/statements   # checkout: import-dir statements; idempotent
 ```
 
 Then you may run `finanse --profile <slug> match-transfers` (pairs internal transfers by IBAN; prints a
@@ -154,8 +161,8 @@ Media/Telekom, `health` Zdrowie/Apteka, `shopping` Zakupy, `entertainment` Rozry
 Subskrypcje, `travel` Podróże, `education` Edukacja, `personal_care` Higiena/Uroda, `gifts`
 Prezenty/Darowizny, `cash` Gotówka, `fees` Opłaty bankowe, `taxes` Podatki, `other` Inne,
 `income_salary` Pensja, `income_refund` Zwroty, `income_other` Inne przychody, `transfer` Przelew
-własny, `cash_withdrawal` Wypłata gotówki. The source of truth is
-`src/finanse/modules/budget/categorize/taxonomy.py`; use only these keys.
+własny, `cash_withdrawal` Wypłata gotówki. The source of truth is the app's category list:
+`uncategorized_merchants` lists the valid keys and `set_merchant_category` rejects unknown ones.
 
 Loan and mortgage installments belong to `loans` (the loans module recognises them; see
 `loans-setup`), never to `subscriptions`.
@@ -171,6 +178,8 @@ Loan and mortgage installments belong to `loans` (the loans module recognises th
 
 ## Step 9 - Dashboard and finish
 
+Packaged app: the user opens Finanse.app. Source checkout:
+
 ```bash
 cd frontend && npm install && npm run build && cd ..
 finanse serve            # http://127.0.0.1:8500 (127.0.0.1 only, per-launch token)
@@ -179,7 +188,8 @@ finanse serve            # http://127.0.0.1:8500 (127.0.0.1 only, per-launch tok
 The user opens it and walks the tabs (Przegląd, Wydatki, Przepływy, Subskrypcje). Opening an `/api/...`
 URL directly answers 401, which is expected.
 
-Finally check that user data cannot be committed (prints nothing when all is well):
+Source checkout only: finally check that user data cannot be committed (prints nothing when all is
+well):
 
 ```bash
 for p in data/finanse.db statements/mbank/x.csv .env key.pem; do git check-ignore -q "$p" || echo "NOT IGNORED: $p"; done

@@ -1,0 +1,104 @@
+# Copy shipped with this skill, generated from the finanse sources; do not edit it here.
+# Generic CSV import mapping (GenericCsvImporter). Synthetic example, no real data.
+#
+# Copy this file, adjust it to your broker's export and load it as a mapping. Unknown keys are errors
+# (with a "did you mean" hint and the line / column), so a typo never silently falls back to a default.
+# Header names and type values are matched trimmed and case-insensitively.
+
+# Mapping format version. Required, always 1.
+version: 1
+
+# Name shown in the import dialog. Optional, default "Generic CSV".
+name: "Example Polish broker (CSV)"
+
+# Broker id: alias namespace of the file's symbols and the broker stored on the import batch.
+# Lower-case letters, digits and "_". Optional, default generic_csv. Use the broker's id (e.g. mbank)
+# when the mapping describes one broker's export, so its symbols become broker aliases.
+broker_id: generic_csv
+
+# Text encoding: utf-8 (a leading byte order mark is fine), windows-1250 (older Polish exports; also
+# written cp1250) or auto (UTF-8 when the bytes are valid UTF-8, otherwise Windows-1250).
+# Optional, default utf-8.
+encoding: utf-8
+
+# Field delimiter, one character: ",", ";", "|" or tab (write "tab" or "\t"). Optional, default ",".
+delimiter: ";"
+
+# Quote character around fields that contain the delimiter. Optional, default '"'.
+quote: '"'
+
+# Decimal separator of numbers: "." or ",". Optional, default ".".
+decimal_separator: ","
+
+# Thousands separator: "" or none, " " or space (no-break spaces are accepted too), ".", "," or "'".
+# Must differ from decimal_separator. Optional, default "" (none).
+thousands_separator: " "
+
+# Date patterns tried in order. Tokens: yyyy, MM, M, dd, d, HH, H, mm, ss; every other character is a
+# literal. A time after a space or "T" is accepted even if the pattern has none; the time of day only
+# orders rows of the same date (the stored trade date is a calendar date). Optional, default [yyyy-MM-dd].
+date_formats: ["dd.MM.yyyy HH:mm", "dd.MM.yyyy", "yyyy-MM-dd"]
+
+# 0-based index of the CSV record that holds the column headers. Records before it (titles, account
+# info) are skipped. Optional, default 0.
+header_row: 0
+
+# Currency for rows whose currency cell is empty (or when no currency column is mapped).
+# Required when columns has no currency.
+default_currency: PLN
+
+# How amounts carry their direction. Optional, default signed.
+#   signed:   cash_amount is signed as written (negative = money leaves the account).
+#   absolute: all amounts are positive; buy, withdrawal, fee and tax become outflows, sell, dividend,
+#             deposit and interest inflows (fx_conversion rows then need a signed export).
+# quantity, price, gross_amount, fee and tax are always taken as absolute values.
+amount_sign: signed
+
+# What to do with a row that cannot be parsed (bad number or date, unknown type, missing fx_rate):
+#   block: the row is a blocking error and the import cannot be committed until fixed (default).
+#   skip:  the row is skipped with a warning (its history is then missing).
+on_row_error: block
+
+# File extensions this mapping accepts (case-insensitive, with or without the dot).
+# Optional, default [csv, txt, tsv].
+extensions: [csv, txt]
+
+# Column mapping: field -> header text in the file. Required: trade_date, type, and an amount
+# (cash_amount, gross_amount, or quantity and price). Every mapped header must exist in the file,
+# otherwise the importer does not claim the file.
+columns:
+  external_ref: "ID"            # broker's row / order id; dedup then uses ref + type, instrument, qty, price
+  trade_date: "Data"            # trade date, optionally with a time of day (required)
+  settle_date: "Data rozliczenia"
+  type: "Typ"                   # broker type string, translated by `types` below (required)
+  symbol: "Symbol"              # ticker as exported (a suffix like PKN.PL is understood)
+  isin: "ISIN"                  # invalid ISINs are ignored with a warning
+  name: "Nazwa"                 # instrument name (ETF / UCITS in the name -> asset class etf)
+  exchange: "Giełda"            # exchange hint: GPW, XWAR, NASDAQ, XETRA, LSE, crypto...
+  quantity: "Ilość"
+  price: "Cena"                 # unit price in `currency`
+  currency: "Waluta"            # currency of price, gross, fee and tax
+  gross_amount: "Wartość"       # value before fees and taxes (default: quantity * price)
+  fee: "Prowizja"
+  tax: "Podatek"
+  cash_amount: "Kwota"          # net effect on cash (default: derived from gross, fee, tax and type)
+  cash_currency: "Waluta rozliczenia"   # default: currency; when it differs, fx_rate converts
+  fx_rate: "Kurs wymiany"       # units of cash_currency per 1 unit of currency
+  split_ratio: "Współczynnik"   # for splits: new units per old unit (a 1:4 split is 4)
+  note: "Opis"
+
+# Broker type string -> transaction type: buy, sell, dividend, deposit, withdrawal, fee, tax, interest,
+# fx_conversion, split, transfer_in, transfer_out, adjustment, or ignore (row skipped with a warning).
+# Values not listed here are also accepted when they are one of those type names (e.g. "buy").
+types:
+  "Kupno": buy
+  "Sprzedaż": sell
+  "Dywidenda": dividend
+  "Wpłata": deposit
+  "Wypłata": withdrawal
+  "Prowizja": fee
+  "Podatek": tax
+  "Odsetki": interest
+  "Przewalutowanie": fx_conversion
+  "Podział akcji": split
+  "Blokada środków": ignore

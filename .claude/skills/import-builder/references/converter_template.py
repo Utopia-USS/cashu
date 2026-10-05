@@ -3,8 +3,8 @@
 Written by the import-builder skill for profile <slug> on <YYYY-MM-DD>. Read it before you let
 Claude Code run it: the finanse app never runs scripts, the agent runs this one on your computer.
 Input:  <what the export looks like: file type, sheets, encoding, separator, date and number format>
-Output: finanse-import CSV, see docs/import-format.md in the finanse repository.
-Run:    python3 -I import_<source>.py <export file> <output .csv>
+Output: finanse-import CSV, see references/import-format.md of the import-builder skill.
+Run:    python3 -I scripts/import_<source>.py inbox/<export file> inbox/converted/<output .csv>
 
 Contract: Python standard library only; no network; no environment variables; reads only the export
 file and writes only the output file; deterministic (the same export always gives the same rows);

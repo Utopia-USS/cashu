@@ -12,7 +12,7 @@ Handle every one the same way:
    initiatives only as information. Never bypass bot protection to reach a source; use another one.
 2. **Deadline on top.** Put the deadline at the top of the current and every following message and
    session until resolved (`interview-state.md` keeps the list, SKILL.md session start step 6 reads it).
-3. **Local note** `interview/special-<topic>.md` (English) with: facts and sources, an evidence checklist,
+3. **Local note** `notes/interview/special-<topic>.md` (English) with: facts and sources, an evidence checklist,
    known vs unknown values (e.g. provable deposits vs the user's estimate of the balance; in strict mode
    as relative values unless the user agrees to note amounts), next step and its date.
 4. **Representation in the app** (what exists today):

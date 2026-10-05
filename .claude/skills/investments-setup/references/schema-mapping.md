@@ -1,9 +1,9 @@
 # strategy.yaml mapping (schema version 1)
 
-Source of truth: `src/finanse/modules/investments/templates/strategy/README.md` (keys, rule kinds,
-params, data limits) and the examples `passive_etf.yaml` / `blank.yaml` next to it. Custom rule
-expressions: `src/finanse/modules/investments/rules/expr/EXPRESSIONS.md`. If this file and the README
-disagree, the README wins; tell the user and follow it.
+Source of truth: `strategy-schema.md` next to this file (a copy of the app's strategy template
+reference: keys, rule kinds, params, data limits) and the examples `templates/passive_etf.yaml` /
+`templates/blank.yaml`. Custom rule expressions: `expressions.md`. If this file and
+`strategy-schema.md` disagree, `strategy-schema.md` wins; tell the user and follow it.
 
 Validation happens in the app: `propose_strategy` validates before storing the proposal and
 `strategy_status` shows the current file's issues. Unknown keys are warnings with a "did you mean" hint;

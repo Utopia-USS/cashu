@@ -23,7 +23,7 @@ Keep these verbatim; do not soften them:
 Adapted to the app (same intent as the brief's "writes only under `private/`"):
 
 - You write only through the MCP write tools below and to the local interview notes in the profile's
-  data dir (see "Files"). Personal and financial data never goes to the repository, `docs/`, code, the
+  agent workspace (see "Files"). Personal and financial data never goes to a repository, code, the
   scratchpad or memory files.
 - No passwords, logins, IBANs or account numbers, not even partial ones: accounts are named by the
   app's labels (for example "XTB IKE 1"). If the user pastes one, do not repeat or store it.
@@ -86,14 +86,16 @@ drawer; other formats through the `import-builder` skill. One custom rule on its
 
 ## Session start
 
-1. **Profile.** MCP servers are per profile, named `finanse-<slug>`. If none is connected, give the
-   user the command from the app's Inwestycje page (`claude mcp add finanse-<slug> -- finanse mcp
-   --profile <slug>`) and ask them to restart Claude Code. If several are connected, ask which profile
-   and use only that server for the whole session. Never combine data of two profiles.
+1. **Profile.** MCP servers are per profile, named `finanse-<slug>`. In the profile's agent workspace
+   (its `CLAUDE.md` names the profile) the server is already configured in `.mcp.json`. Elsewhere, if
+   none is connected, suggest creating the workspace (Ustawienia > Agent AI, or `finanse workspace init
+   --profile <slug>`) and starting Claude Code there, or give the `claude mcp add` line shown in
+   Ustawienia > Agent AI. If several are connected, ask which profile and use only that server for the
+   whole session. Never combine data of two profiles.
 2. Call `profile_overview`, `setup_status("investments")` and `strategy_status`. State the privacy
    level (above). Mention pending proposals (`pending_proposals`; they wait for approval in the app)
    and the last recorded review (`last_reviews`).
-3. Read the local notes `interview/interview-state.md` of this profile if they exist (see "Files").
+3. Read the local notes `notes/interview/interview-state.md` of this profile if they exist (see "Files").
 4. Ask whether this is the interview or a check-in. If no strategy exists yet, a check-in is
    impossible: say so and go to the interview.
 5. First run only: show the phase plan in 5-8 lines with time estimates (phase 1 ~10 min, 2 ~10,
@@ -148,8 +150,8 @@ Phase guides with question banks per user type: `references/phases.md`. Phase 4 
 ## Phase 7: writing the strategy through the app
 
 1. Draft `strategy.md` (Polish prose) and `strategy.yaml` (schema v1) with `references/schema-mapping.md`
-   and the template reference `src/finanse/modules/investments/templates/strategy/README.md` (examples:
-   `passive_etf.yaml`, `blank.yaml`; custom rules: `src/finanse/modules/investments/rules/expr/EXPRESSIONS.md`).
+   and the template reference `references/strategy-schema.md` (examples: `references/templates/passive_etf.yaml`,
+   `references/templates/blank.yaml`; custom rules: `references/expressions.md`).
 2. Consistency: targets sum to 1; every YAML rule is referenced in `strategy.md`; every failure mode
    has a safeguard; anything not expressible goes to the `strategy.md` section of manual checks in the
    weekly review ("ręcznie, do czasu wsparcia w aplikacji").
@@ -223,13 +225,13 @@ in/out, withholding tax handling, recurring investment plans); exchange regulato
 ## Files (local interview notes)
 
 The strategy, its versions, decisions, theses and reviews live in the app (written through MCP). Your
-own working notes live next to the profile's strategy, outside the repository:
-`<data dir>/profiles/<slug>/interview/`. Find the data dir with
-`python3 -c "from finanse.core import paths; print(paths.data_dir())"` in the project's venv (prints only
-a path) or ask the user (Ustawienia > Dane).
+own working notes live in the profile's agent workspace, in `notes/interview/` (the workspace's
+`CLAUDE.md` says where notes go; reads of the finanse data dir are denied there). Outside a finanse
+workspace, ask the user for a local folder outside any repository and outside the finanse data dir, or
+suggest creating the workspace first (Ustawienia > Agent AI).
 
 ```
-interview/
+notes/interview/
   interview-state.md        phase checklist with the actual order, where we stopped, open questions,
                             working decisions of the current phase, privacy level used
   situation.md              facts with "as of" dates, one section per phase 1/2/3/5
@@ -244,5 +246,8 @@ values only, unless the user agreed to note amounts.
 
 - `references/phases.md`: phase guides and question banks per user type, phase 6 parameter checklist.
 - `references/retrospective.md`: phase 4 from `history_metrics`, what is not measured yet, caveats.
-- `references/schema-mapping.md`: strategy.yaml patterns, kept in sync with the template README.
+- `references/schema-mapping.md`: strategy.yaml patterns, kept in sync with `strategy-schema.md`.
+- `references/strategy-schema.md`: the app's strategy.yaml reference (keys, rule kinds, params);
+  `references/templates/*.yaml`: the app's templates; `references/expressions.md`: custom rule
+  expressions. These three are copies refreshed with every finanse version.
 - `references/special-situations.md`: insolvent brokers, frozen holdings, expiring limits, deadlines.

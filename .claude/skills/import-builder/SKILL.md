@@ -6,7 +6,7 @@ description: Builds an importer for a broker or exchange export that finanse can
 # import-builder: a converter for an unsupported export
 
 finanse ships no broker-specific importers. Any export is converted into the documented finanse import
-format (`docs/import-format.md`) or read with a generic CSV mapping. You write that converter from the
+format (`references/import-format.md`) or read with a generic CSV mapping. You write that converter from the
 file's **structure**, never from its contents, and you run it yourself. Conversation in Polish, files
 in English, regular hyphens only.
 
@@ -24,7 +24,8 @@ in English, regular hyphens only.
 - The import itself is a proposal: nothing is written to the portfolio until the owner reviews the
   preview and the reconciliation in the app and commits it.
 - Never open, `cat`, `head`, list or parse the real export or the converted file yourself, and never
-  print their rows (the converter prints nothing but value-free errors). Never run `finanse invest
+  print their rows (the converter prints nothing but value-free errors). In the profile's agent
+  workspace they live in `inbox/`, where Claude Code's file tools are denied. Never run `finanse invest
   import` or `finanse invest positions` (they print the user's data).
 - Never ask for broker logins, passwords, 2FA codes, API keys, IBANs or account numbers. File names
   often contain account numbers: ask the user to rename the file to something neutral (e.g.
@@ -45,18 +46,23 @@ in English, regular hyphens only.
 ## Flow
 
 1. **Profile and account.** Use the connected `finanse-<slug>` server (ask which one if several; never
-   mix profiles; none connected: `claude mcp add finanse-<slug> -- finanse mcp --profile <slug>`, restart
-   Claude Code). One file = one brokerage account. If the account does not exist yet, the user adds it
+   mix profiles). Work in the profile's agent workspace (its `CLAUDE.md` names the profile, `.mcp.json`
+   configures the server; folders `inbox/` and `scripts/`). Without one, suggest creating it
+   (Ustawienia > Agent AI, or `finanse workspace init --profile <slug>`) and starting Claude Code there.
+   `finanse` in the commands below is the CLI named in the workspace's `CLAUDE.md` (in the packaged
+   app, the app's binary). One file = one brokerage account. If the account does not exist yet, the user adds it
    in the app or with `finanse --profile <slug> invest accounts add "<name>" --broker <id> --wrapper
    <regular|ike|ikze|oipe|other>`; account labels come from `setup_status` / `portfolio_overview`.
-2. **The file.** The user saves the export locally, renames it if the name holds an account number,
-   and gives you the path. Call `inspect_export(path)`.
+2. **The file.** The user saves the export into the workspace's `inbox/` folder, renames it if the
+   name holds an account number, and tells you the file name. Call `inspect_export(<absolute path of
+   inbox/<file>>)`. Outside a workspace: any local folder that is not hidden and not inside the
+   finanse data dir.
 3. **Choose the path.**
    - A simple CSV (one row per transaction, a type column, dates and numbers in one format): a generic
-     CSV mapping, no code. Model it on
-     `src/finanse/modules/investments/importing/generic_csv_example.yaml`, save it as
-     `<data dir>/profiles/<slug>/extensions/import_<source>.yaml` (data dir: step 5), and pass it as
-     `mapping` with the export as `path`. Steps 4 and 8-10 apply; a mapping is data, not code.
+     CSV mapping, no code. Model it on `references/generic_csv_example.yaml`, save it as
+     `scripts/import_<source>.yaml` (to reuse it next time) and pass its YAML text as `mapping` with
+     the export as `path` (mapping file paths are read only from the finanse data dir, which is off
+     limits here). Steps 4 and 8-10 apply; a mapping is data, not code.
    - Anything else (xlsx with several sheets, cash ledger and trades in separate tables, positions
      snapshot, odd sign conventions, corporate actions): a converter script (below).
 4. **Clarify the semantics** with the user, 1-3 questions per message: what each sheet holds; the
@@ -66,9 +72,9 @@ in English, regular hyphens only.
    `external_ref`); whether there is a positions sheet (it becomes `position` records for the
    reconciliation); how splits, renames and delistings appear. Masked samples show the types; ask the
    user to describe values when needed, never to paste rows.
-5. **Write the converter** to `<data dir>/profiles/<slug>/extensions/import_<source>.py` (find the data
-   dir with `python3 -c "from finanse.core import paths; print(paths.data_dir())"` in the project's
-   venv, or ask the user: Ustawienia > Dane). Start from `references/converter_template.py` and follow
+5. **Write the converter** to the workspace's `scripts/import_<source>.py` (outside a workspace: a
+   local folder the user picks, outside any repository and the finanse data dir). Start from
+   `references/converter_template.py` and follow
    the contract below. Show the user a short summary of what it reads and how it maps, and where the
    file is, so they can read it.
 6. **Test it on synthetic data** in the scratchpad: build rows (or a small file) with the same columns,
@@ -77,8 +83,8 @@ in English, regular hyphens only.
    both signs, an FX row and an error case.
 7. **Run it on the real export yourself**, with the system Python in isolated mode (not the finanse
    app binary, not the project's venv: the converter needs only the standard library):
-   `python3 -I <data dir>/profiles/<slug>/extensions/import_<source>.py <export> <data dir>/profiles/<slug>/extensions/converted/<source>-<YYYY-MM-DD>.csv`
-   (create the `converted` folder first). Claude Code asks the user to allow the command; tell them
+   `python3 -I scripts/import_<source>.py inbox/<export> inbox/converted/<source>-<YYYY-MM-DD>.csv`
+   (create the `inbox/converted` folder first). Claude Code asks the user to allow the command; tell them
    what it does in one line before. Exit 0 = the file is written; exit 1 = a data problem: you see only
    the converter's value-free message (row and field), fix the script, test on synthetic data again
    and rerun. Never open, print or list the output file.
@@ -89,8 +95,8 @@ in English, regular hyphens only.
    its own copy with the preview as a pending import. The owner opens it in Inwestycje > Import, checks
    the new instruments and the reconciliation against the broker's position snapshot (quantities must
    match exactly), applies or rejects the proposed corrections and commits. Re-importing an
-   overlapping export later does not duplicate rows (see the dedup rules in `docs/import-format.md`
-   section 5).
+   overlapping export later does not duplicate rows (see the dedup rules in
+   `references/import-format.md` section 5).
 10. **Clean up and after the commit:** delete the converted file (`rm <output.csv>`; it holds the
     user's transactions and the app keeps its own copy); keep the converter script for the next export
     from the same broker. `positions` shows new instruments; unclassified ones need an asset class,
@@ -113,4 +119,5 @@ in English, regular hyphens only.
 - A trade settled in another currency: `cash_currency` plus `cash_amount` or `fx_rate`.
 - Unknown type labels, unparsable dates or numbers: an error, never a silent skip or a guess.
 - A header docstring: broker, export kind, profile, date, input description, run command.
-- The full field reference and checklist: `docs/import-format.md` (sections 3-9 and 11).
+- The full field reference and checklist: `references/import-format.md` (sections 3-9 and 11), a
+  copy of the app's import format reference refreshed with every finanse version.
