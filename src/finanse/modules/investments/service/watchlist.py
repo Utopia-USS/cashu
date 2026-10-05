@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Self
 
 from sqlmodel import Session
 
@@ -41,11 +42,27 @@ class WatchlistNotFound(LookupError):
     """No such item / instrument in this profile (404)."""
 
 
+class WatchWarning(str):
+    """An English warning text (it stays a ``str`` for the CLI, MCP and the ``warnings`` list) with a
+    stable ``code`` + ``params`` for a translated label (``watchlist.<name>``)."""
+
+    code: str
+    params: dict
+
+    def __new__(cls, message: str, code: str, **params: object) -> Self:
+        obj = super().__new__(cls, message)
+        obj.code, obj.params = code, dict(params)
+        return obj
+
+    def to_dict(self) -> dict:
+        return {"code": self.code, "params": dict(self.params), "message": str(self)}
+
+
 @dataclass
 class Resolution:
     instrument_id: int
     created: bool
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[WatchWarning] = field(default_factory=list)
 
 
 def _clean(value: str | None) -> str | None:
@@ -117,9 +134,11 @@ def resolve_instrument(
             row.id,
             True,
             [
-                (
+                WatchWarning(
                     f"No Yahoo symbol known for {upper}: prices are not fetched until one is set "
-                    "(instrument classification, alias yahoo)"
+                    "(instrument classification, alias yahoo)",
+                    "watchlist.no_price_symbol",
+                    isin=upper,
                 )
             ],
         )
@@ -177,9 +196,13 @@ def resolve_instrument(
     )
     row = instruments.insert(session, planned)
     warnings = [
-        (
+        WatchWarning(
             f"New instrument {ticker} ({instrument_currency}); price symbol guessed as {yahoo} "
-            "(check it in the instrument classification if no prices arrive)"
+            "(check it in the instrument classification if no prices arrive)",
+            "watchlist.guessed_price_symbol",
+            symbol=ticker,
+            currency=str(instrument_currency),
+            price_symbol=yahoo,
         )
     ]
     return Resolution(row.id, True, warnings)
@@ -212,7 +235,7 @@ def _note(note: str | None) -> str | None:
 class AddResult:
     item: InvWatchlistItem
     created_instrument: bool
-    warnings: list[str]
+    warnings: list[WatchWarning]
 
 
 def add(

@@ -109,10 +109,12 @@ def test_networth(api, seeded_engine):
     assert accounts["Mieszkanie Test"]["balance"] == 600000.0
     assert accounts["Mieszkanie Test"]["as_of"] == "2026-06-01"
     assert accounts["Gotówka"]["balance"] == 260.0
-    # computed accounts: as of today, mortgage subtracts (but is_liability is only for credit cards)
+    # computed accounts: as of today, mortgage subtracts; is_liability follows the account type's
+    # net-worth sign (F6: upstream set it for credit cards only)
     assert accounts["Kredyt hipoteczny Test"]["balance"] == pytest.approx(-mortgage)
     assert accounts["Kredyt hipoteczny Test"]["as_of"] == _today().isoformat()
-    assert accounts["Kredyt hipoteczny Test"]["is_liability"] is False
+    assert accounts["Kredyt hipoteczny Test"]["is_liability"] is True
+    assert [a["name"] for a in body["accounts"] if a["is_liability"]] == ["Kredyt hipoteczny Test"]
     assert accounts["Auto Test"]["balance"] == pytest.approx(car, abs=0.01)
 
     pln_sum = sum(a["balance"] for a in body["accounts"] if a["currency"] == "PLN")

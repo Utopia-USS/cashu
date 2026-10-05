@@ -516,6 +516,9 @@ def signals(ctx: ToolContext, status: str = "open") -> dict:
                 "kind": L.category(r["kind"]),
                 "severity": L.category(r["severity"]),
                 "status": L.category(r["status"]),
+                "polarity": L.category(r.get("polarity")),
+                "source": L.category(r.get("source")),
+                "snoozed_until": L.date(r.get("snoozed_until")),
                 "scope": scope,
                 **_measure(r["kind"], payload),
                 "direction": L.category(payload.get("direction")),
@@ -947,7 +950,8 @@ TOOLS = (
     ToolSpec(
         "signals",
         "investments",
-        "Rule signals: rule, scope, measured vs threshold (as ratio / pp / days), severity, age, "
+        "Rule and alert signals: rule, scope, measured vs threshold (as ratio / pp / days), "
+        "severity, polarity (positive | negative | neutral), source (rule | alert), snooze, age, "
         "decisions. status: open (default), history or all.",
         signals,
         properties={

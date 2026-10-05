@@ -21,6 +21,7 @@ from finanse.core.api import f
 from finanse.core.models import Account, Profile, utcnow
 
 from ..alerts import CATALOG, alert_id_of, catalog_dicts, is_alert_key
+from ..alerts.messages import alert_message
 from ..domain import (
     BucketDef,
     Instrument,
@@ -82,6 +83,9 @@ def _key(instrument_id: str | None) -> int | str | None:
 
 
 def instrument_dict(inst: Instrument) -> dict:
+    """``label`` is the symbol, else the name, for every instrument (imported, manual and watched
+    alike: messages and lists use it); ``name`` is the display name (it falls back to the symbol when
+    none was given)."""
     return {
         "id": _key(inst.id),
         "symbol": inst.symbol,
@@ -114,7 +118,15 @@ def warning_dict(w: PortfolioWarning) -> dict:
 
 
 def import_warning_dict(w: ImportWarning) -> dict:
-    return {"message": w.message, "row": w.row, "kind": str(w.kind), "blocking": w.blocking}
+    """``code`` (``import.<kind>``) is the stable key of the UI's Polish label; ``message`` stays
+    the English detail."""
+    return {
+        "message": w.message,
+        "row": w.row,
+        "kind": str(w.kind),
+        "code": w.code,
+        "blocking": w.blocking,
+    }
 
 
 def run_dict(run: InvRuleRun | None) -> dict | None:
@@ -665,9 +677,18 @@ def manual_txn_dict(result) -> dict:
 # --------------------------------------------------------------------------- #
 
 
+def _message_code(row: InvSignal, labels: dict[int, str]) -> dict:
+    label = labels.get(row.instrument_id) if row.instrument_id else None
+    code, params = alert_message(row.kind, row.payload, row.message, label)
+    return {"message_code": code, "message_params": params}
+
+
 def signal_dict(
     row: InvSignal, decisions: list[InvDecision] = (), labels: dict[int, str] | None = None
 ) -> dict:
+    """``message_code`` / ``message_params``: the alert signal's message as a stable code
+    (``alert.<kind>``) + its facts for a translated label (None for rule signals)."""
+    label = (labels or {}).get(row.instrument_id) if row.instrument_id else None
     return {
         "id": row.id,
         "rule_id": row.rule_id,
@@ -679,8 +700,9 @@ def signal_dict(
         "alert_id": alert_id_of(row.rule_id),
         "status": row.status,
         "message": row.message,
+        **_message_code(row, labels or {}),
         "instrument_id": row.instrument_id,
-        "instrument_label": (labels or {}).get(row.instrument_id) if row.instrument_id else None,
+        "instrument_label": label,
         "account_id": row.account_id,
         "payload": row.payload,
         "first_seen_at": iso(row.first_seen_at),
@@ -790,6 +812,7 @@ def attention(
                 "status": row.status,
                 "title": alert.title if alert is not None else row.rule_id,
                 "message": row.message,
+                **_message_code(row, labels),
                 "source": alert.source if alert is not None else "rule",
                 "instrument_id": row.instrument_id,
                 "instrument_label": labels.get(row.instrument_id) if row.instrument_id else None,
@@ -858,6 +881,9 @@ def alert_dict(
             "id": open_signal.id,
             "status": open_signal.status,
             "message": open_signal.message,
+            **_message_code(
+                open_signal, {} if instrument is None else {row.instrument_id: instrument.label}
+            ),
             "first_seen_at": iso(open_signal.first_seen_at),
         },
         "created_at": iso(row.created_at),
@@ -1617,8 +1643,10 @@ def _digest_events(
             "polarity": row.polarity,
             "status": row.status,
             "message": row.message,
+            **_message_code(row, labels),
             "instrument_id": row.instrument_id,
             "instrument_label": labels.get(row.instrument_id) if row.instrument_id else None,
+            "bucket_id": (row.payload or {}).get("bucket_id"),  # drift / bucket signals (F6)
         }
 
     def add(event_type: str, at: dt.datetime | dt.date, /, **fields) -> None:

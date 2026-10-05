@@ -931,15 +931,35 @@ def alert_update(profile: CurrentProfile, alert_id: int, body: AlertPatchBody) -
 
 @router.delete("/alerts/{alert_id}")
 def alert_delete(profile: CurrentProfile, alert_id: int) -> dict:
-    """Delete an alert; its open signal expires, closed signals stay in the history."""
+    """Delete an alert; its open signal expires, closed signals stay in the history. It can be
+    restored (same id) until ``restore_until`` (15 minutes): ``POST /alerts/{id}/restore``."""
     from .service import alerts as alert_service
 
     with get_session() as s:
         try:
-            alert_service.delete(s, profile, alert_id)
+            row = alert_service.delete(s, profile, alert_id)
         except alert_service.AlertNotFound as e:
             raise _coded(404, str(e), "not_found") from None
-        return {"deleted": alert_id}
+        return {"deleted": alert_id, "restore_until": alert_service.restore_until(row)}
+
+
+@router.post("/alerts/{alert_id}/restore")
+def alert_restore(profile: CurrentProfile, alert_id: int) -> dict:
+    """Undo a deletion within 15 minutes: the same alert (same id, status, params) is back and the
+    signal the deletion closed is open again. 409 ``undo_expired`` later, 404 ``not_found`` for an
+    unknown or another profile's alert, 422 ``alert_invalid`` when the agent alert cap is full."""
+    from .service import alerts as alert_service
+
+    with get_session() as s:
+        try:
+            row = alert_service.restore(s, profile, alert_id)
+        except alert_service.AlertNotFound as e:
+            raise _coded(404, str(e), "not_found") from None
+        except alert_service.AlertRestoreExpired as e:
+            raise _coded(409, str(e), "undo_expired") from None
+        except alert_service.AlertError as e:
+            raise _coded(422, str(e), "alert_invalid") from None
+        return views.one_alert(s, profile, row)
 
 
 class WatchBody(BaseModel):
@@ -998,7 +1018,9 @@ def watchlist_add(profile: CurrentProfile, body: WatchBody) -> dict:
         return {
             **_watch_row(s, profile, result.item.id),
             "created_instrument": result.created_instrument,
-            "warnings": result.warnings,
+            "warnings": [str(w) for w in result.warnings],
+            # the same warnings as stable code + params (+ the English message) for Polish labels
+            "warning_codes": [w.to_dict() for w in result.warnings],
         }
 
 

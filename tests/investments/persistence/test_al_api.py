@@ -111,7 +111,8 @@ def test_alert_kinds_and_alert_crud(client):
     assert (
         client.patch(f"{base}/alerts/{aid}", json={"status": "muted"}).json()["status"] == "muted"
     )
-    assert client.delete(f"{base}/alerts/{aid}").json() == {"deleted": aid}
+    deleted = client.delete(f"{base}/alerts/{aid}").json()
+    assert deleted["deleted"] == aid and deleted["restore_until"] is not None  # F6: soft delete
     assert client.delete(f"{base}/alerts/{aid}").status_code == 404
 
 

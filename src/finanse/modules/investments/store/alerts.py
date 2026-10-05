@@ -1,4 +1,5 @@
-"""Alerts and watchlist rows of one profile (every query is scoped by ``profile_id``)."""
+"""Alerts and watchlist rows of one profile (every query is scoped by ``profile_id``). Soft-deleted
+alerts (``deleted_at`` set) are left out of every alert query except ``deleted_alert``."""
 
 from __future__ import annotations
 
@@ -16,11 +17,13 @@ from ..models import InvAlert, InvSignal, InvWatchlistItem
 from . import convert
 from .signals import OPEN_STATUSES
 
+_LIVE_ROW = InvAlert.deleted_at.is_(None)
+
 
 def alerts(
     session: Session, profile_id: int, statuses: Collection[str] | None = None
 ) -> list[InvAlert]:
-    query = select(InvAlert).where(InvAlert.profile_id == profile_id)
+    query = select(InvAlert).where(InvAlert.profile_id == profile_id, _LIVE_ROW)
     if statuses is not None:
         query = query.where(InvAlert.status.in_(sorted(statuses)))
     return list(session.exec(query.order_by(InvAlert.id)).all())
@@ -28,7 +31,17 @@ def alerts(
 
 def alert(session: Session, profile_id: int, alert_id: int) -> InvAlert | None:
     row = session.get(InvAlert, alert_id)
-    return row if row is not None and row.profile_id == profile_id else None
+    if row is None or row.profile_id != profile_id or row.deleted_at is not None:
+        return None
+    return row
+
+
+def deleted_alert(session: Session, profile_id: int, alert_id: int) -> InvAlert | None:
+    """A soft-deleted alert of the profile (restore), else None."""
+    row = session.get(InvAlert, alert_id)
+    if row is None or row.profile_id != profile_id or row.deleted_at is None:
+        return None
+    return row
 
 
 def live_agent_alerts(session: Session, profile_id: int) -> int:
@@ -36,6 +49,7 @@ def live_agent_alerts(session: Session, profile_id: int) -> int:
     return session.exec(
         select(func.count(InvAlert.id)).where(
             InvAlert.profile_id == profile_id,
+            _LIVE_ROW,
             InvAlert.source == AlertSource.AGENT.value,
             InvAlert.status.in_([s.value for s in LIVE_STATUSES]),
         )
@@ -79,11 +93,51 @@ def close_open_signal(
     return row
 
 
+def reopen_signal_closed_at(
+    session: Session, profile_id: int, alert_id: int, closed_at: dt.datetime
+) -> InvSignal | None:
+    """Re-open the alert's signal that ``close_open_signal`` expired at ``closed_at`` (an alert
+    restore): acknowledged again when it had been acknowledged, else active. None when there is no
+    such signal or another signal of the alert is open."""
+    if (
+        session.exec(
+            select(InvSignal.id).where(
+                InvSignal.profile_id == profile_id,
+                InvSignal.dedup_key == alert_rule_id(alert_id),
+                InvSignal.status.in_(OPEN_STATUSES),
+            )
+        ).first()
+        is not None
+    ):
+        return None
+    rows = session.exec(
+        select(InvSignal)
+        .where(
+            InvSignal.profile_id == profile_id,
+            InvSignal.dedup_key == alert_rule_id(alert_id),
+            InvSignal.status == SignalStatus.EXPIRED.value,
+        )
+        .order_by(InvSignal.id.desc())
+    ).all()
+    row = next(
+        (r for r in rows if r.closed_at is not None and convert.aware(r.closed_at) == closed_at),
+        None,
+    )
+    if row is None:
+        return None
+    acknowledged = row.acknowledged_at is not None
+    row.status = (SignalStatus.ACKNOWLEDGED if acknowledged else SignalStatus.ACTIVE).value
+    row.closed_at = None
+    session.add(row)
+    session.flush()
+    return row
+
+
 def alert_counts(session: Session, profile_id: int) -> dict[str, int]:
     """Alerts per status plus the agent-created ones that can still fire."""
     rows = session.exec(
         select(InvAlert.status, func.count(InvAlert.id))
-        .where(InvAlert.profile_id == profile_id)
+        .where(InvAlert.profile_id == profile_id, _LIVE_ROW)
         .group_by(InvAlert.status)
     ).all()
     counts = {status: n for status, n in rows}
@@ -140,7 +194,7 @@ def alert_instrument_ids(
     session: Session, profile_id: int, statuses: Collection[str] | None = None
 ) -> set[int]:
     query = select(InvAlert.instrument_id).where(
-        InvAlert.profile_id == profile_id, InvAlert.instrument_id.is_not(None)
+        InvAlert.profile_id == profile_id, _LIVE_ROW, InvAlert.instrument_id.is_not(None)
     )
     if statuses is not None:
         query = query.where(InvAlert.status.in_(sorted(statuses)))

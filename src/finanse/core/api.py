@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from .. import __version__
-from . import modules, networth, paths, profiles, runtime
+from . import account_types, modules, networth, paths, profiles, runtime
 from .db import get_session
 from .models import Account, Profile
 
@@ -233,7 +233,8 @@ def account_row(acc: Account, contribution: Decimal | None, as_of) -> dict:
         "iban_tail": (acc.iban or "")[-4:],
         "balance": f(contribution),
         "as_of": as_of.isoformat() if as_of else None,
-        "is_liability": str(acc.type) == "credit",
+        # a liability (mortgage, loan) or a credit card: the type's net-worth sign, not the balance
+        "is_liability": account_types.get(acc.type).sign != "asset",
     }
 
 

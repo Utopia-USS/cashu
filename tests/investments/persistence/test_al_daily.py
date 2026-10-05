@@ -187,7 +187,7 @@ def test_expiry_snooze_mute_and_delete(investor):
     assert [x.status for x in alert_signals(pid, expiring)] == ["expired"]
     assert alert_row(snoozed).status == "snoozed" and alert_row(muted).status == "muted"
     assert alert_row(muted).last_checked_at == checked  # never evaluated while muted
-    assert alert_row(deleted) is None
+    assert alert_row(deleted).deleted_at is not None  # F6: a tombstone, never evaluated
 
     woke = run(pid, at=T0 + dt.timedelta(days=4))
     assert woke.stats["alerts_woken"] == 1

@@ -17,6 +17,7 @@ from finanse.core.models import Profile, utcnow
 
 from ..alerts import (
     EVALUATED_STATUSES,
+    LIVE_STATUSES,
     AlertCheck,
     AlertData,
     AlertDefinition,
@@ -58,6 +59,8 @@ AGENT_ALERT_LIMIT = 50
 """Most agent-created alerts that can still fire (active, triggered, snoozed) per profile."""
 BAR_HISTORY_DAYS = 420
 """Calendar days of stored bars loaded for evaluation (windows are capped at 260 sessions)."""
+RESTORE_WINDOW = dt.timedelta(minutes=15)
+"""How long a deleted alert can be restored with its id (the UI's undo), like decisions."""
 
 
 class AlertError(ValueError):
@@ -74,6 +77,10 @@ class AlertLimit(AlertError):
 
 class AlertNotFound(LookupError):
     """No such alert (or instrument) in this profile (404)."""
+
+
+class AlertRestoreExpired(ValueError):
+    """The alert was deleted more than ``RESTORE_WINDOW`` ago (409 ``undo_expired``)."""
 
 
 def _invalid(error: AlertValidationError) -> AlertError:
@@ -376,12 +383,59 @@ def mute(session: Session, profile: Profile, alert_id: int, *, now=None) -> InvA
 
 
 def delete(session: Session, profile: Profile, alert_id: int, *, now=None) -> InvAlert:
-    """Delete an alert; its open signal expires (closed signals stay as history)."""
+    """Delete an alert (soft: ``deleted_at``, restorable for ``RESTORE_WINDOW``); its open signal
+    expires at once (closed signals stay as history). The row stays as a tombstone, never purged:
+    SQLite would hand its id (``max(rowid) + 1``) to the next alert, which would then inherit the old
+    ``alert:<id>`` signals and cooldown (F6 review V8)."""
+    now = convert.aware(now or utcnow())
     row = alert_store.alert(session, profile.id, alert_id)
     if row is None:
         raise AlertNotFound(f"No alert {alert_id}")
     alert_store.close_open_signal(session, profile.id, alert_id, now=now)
-    session.delete(row)
+    row.deleted_at = now
+    session.add(row)
+    session.flush()
+    return row
+
+
+def restore_until(row: InvAlert) -> dt.datetime | None:
+    """Until when a deleted alert can be restored (None: not deleted)."""
+    return None if row.deleted_at is None else convert.aware(row.deleted_at) + RESTORE_WINDOW
+
+
+def restore(session: Session, profile: Profile, alert_id: int, *, now=None) -> InvAlert:
+    """Undo a deletion within ``RESTORE_WINDOW``: the same alert (same id) is back with its status,
+    and the open signal the deletion expired is open again (``AlertRestoreExpired`` after the window,
+    ``AlertNotFound`` for an unknown or another profile's alert). Restoring a live alert returns it
+    unchanged. An agent alert still counts against ``AGENT_ALERT_LIMIT``."""
+    now = convert.aware(now or utcnow())
+    live = alert_store.alert(session, profile.id, alert_id)
+    if live is not None:
+        return live
+    row = alert_store.deleted_alert(session, profile.id, alert_id)
+    if row is None:
+        raise AlertNotFound(f"No alert {alert_id}")
+    deleted_at = convert.aware(row.deleted_at)
+    if now - deleted_at > RESTORE_WINDOW:
+        raise AlertRestoreExpired(
+            f"Deleted alerts can be restored for {int(RESTORE_WINDOW.total_seconds() // 60)} minutes"
+        )
+    if (
+        row.source == AlertSource.AGENT.value
+        and row.status in {s.value for s in LIVE_STATUSES}
+        and alert_store.live_agent_alerts(session, profile.id) >= AGENT_ALERT_LIMIT
+    ):
+        raise AlertLimit(
+            f"At most {AGENT_ALERT_LIMIT} active agent alerts per profile; mute or let some expire "
+            "first",
+            [("", "agent alert limit")],
+        )
+    reopened = alert_store.reopen_signal_closed_at(session, profile.id, alert_id, deleted_at)
+    if row.status == AlertStatus.TRIGGERED.value and reopened is None:
+        row.status = AlertStatus.ACTIVE.value  # its signal is gone: the next check re-arms it
+    row.deleted_at = None
+    row.updated_at = now
+    session.add(row)
     session.flush()
     return row
 

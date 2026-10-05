@@ -398,11 +398,8 @@ def profile_instrument_ids(session: Session, profile_id: int) -> set[int]:
             session.exec(select(model.instrument_id).where(model.profile_id == profile_id)).all()
         )
     for model in (InvSignal, InvDecision, InvAlert):
-        ids |= {
-            i
-            for i in session.exec(
-                select(model.instrument_id).where(model.profile_id == profile_id)
-            ).all()
-            if i is not None
-        }
+        query = select(model.instrument_id).where(model.profile_id == profile_id)
+        if model is InvAlert:
+            query = query.where(InvAlert.deleted_at.is_(None))  # soft-deleted (F6)
+        ids |= {i for i in session.exec(query).all() if i is not None}
     return ids
