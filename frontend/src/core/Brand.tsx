@@ -1,12 +1,13 @@
-// Brand in the shell header (design v2 F-16): the cashU "U" mark on an ink square + the wordmark.
-// The mark is always on black (1 px 8 % white edge in dark), never on a colour; minimum 16 px.
-import mark from "../assets/logo-mark.png";
+// Brand in the shell header: the long cashU logo (wordmark + cashew "U") on a transparent background.
+// Two cuts: ink letters for the light theme, cream letters for the dark one (switched in CSS).
+import logoDark from "../assets/logo-wordmark.png";
+import logoLight from "../assets/logo-wordmark-light.png";
 
 export function Brand() {
   return (
-    <>
-      <span className="mark" aria-hidden><img src={mark} alt="" width={22} height={22} /></span>
-      <h1 className="wordmark">cashU</h1>
-    </>
+    <h1 className="logo">
+      <img className="on-light" src={logoLight} alt="cashU" width={82} height={26} />
+      <img className="on-dark" src={logoDark} alt="" aria-hidden width={82} height={26} />
+    </h1>
   );
 }
