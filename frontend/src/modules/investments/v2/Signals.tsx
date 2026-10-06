@@ -2,8 +2,8 @@
 // grouped per subject (instrument, bucket, portfolio rule) in two scopes, Portfel (held, portfolio-wide) and
 // Obserwowane (watched only). One glyph per subject (chance dot, risk diamond, review square, mixed half dot).
 // On the home a rail widget shows up to four live subjects per scope as two-line rows (`TICKER date` + one fact
-// per signal); a row has no inline buttons: a click (or Enter on the j / k cursor) opens a small menu anchored to
-// it (Zanotuj, Potwierdź, Odłóż, Otwórz, Wszystkie). `Wszystkie (n)` opens the dialog with both scopes as
+// per signal); a click (or Enter on the j / k cursor) opens the subject (its asset page, else the dialog at the
+// signal), the trailing icon button opens a small menu anchored to it (Zanotuj, Potwierdź, Odłóż, Wszystkie). `Wszystkie (n)` opens the dialog with both scopes as
 // columns: the thesis once per subject, a subject's signals as sub-rows with their own actions. A decision is
 // saved at once; `Cofnij` in the toast deletes it within the server's 15-minute window (F5 R4).
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
@@ -120,8 +120,8 @@ const decidedThisWeek = (list: SignalV2[]) => {
 };
 
 /** j / k move a cursor over `keys` (the item `[attr="key"]` scrolls into view inside `root`), Enter toggles the
- * cursor's item (a decision form, a row menu); off while `enabled` is false. */
-function useCursor<K extends string | number>(keys: K[], root: RefObject<HTMLElement>, enabled: boolean, attr: string) {
+ * cursor's item (a decision form) or runs `onEnter` for it (the rail opens the subject); off while `enabled` is false. */
+function useCursor<K extends string | number>(keys: K[], root: RefObject<HTMLElement>, enabled: boolean, attr: string, onEnter?: (key: K) => void) {
   const [openId, setOpenId] = useState<K | null>(null);
   const [cursor, setCursor] = useState<K | null>(null);
   const move = (d: number) => {
@@ -135,7 +135,7 @@ function useCursor<K extends string | number>(keys: K[], root: RefObject<HTMLEle
   useShortcuts({
     j: () => move(1),
     k: () => move(-1),
-    Enter: () => { if (cursor != null) setOpenId((cur) => (cur === cursor ? null : cursor)); },
+    Enter: () => { if (cursor == null) return; if (onEnter) onEnter(cursor); else setOpenId((cur) => (cur === cursor ? null : cursor)); },
   }, enabled);
   return { openId, setOpenId, cursor, setCursor };
 }
@@ -179,7 +179,9 @@ export function SignalsRail({ signals, ctx, focusId, onAll, hl, paused }: {
   const showWatched = (ctx.watch?.length ?? 0) > 0 || nScope("watched") > 0;
   const rows = [...portfolio, ...(showWatched ? watched : [])];
   const ref = useRef<HTMLDivElement>(null);
-  const { openId, setOpenId, cursor, setCursor } = useCursor(rows.map((g) => g.key), ref, !paused, "data-group");
+  const openSubject = (g: SignalGroup<SignalV2>) => { if (g.instrumentId != null) ctx.onOpenAsset(g.instrumentId); else onAll(g.primary!.id); };
+  const { openId, setOpenId, cursor, setCursor } = useCursor(rows.map((g) => g.key), ref, !paused, "data-group",
+    (k) => { const g = rows.find((x) => x.key === k); if (g) openSubject(g); });
   const focusKey = focusId != null ? rows.find((g) => g.live.some((s) => s.id === focusId))?.key ?? null : null;
   useFocusItem(focusKey, ref, "data-group", setCursor);
   const section = (label: string, count: number, groups: SignalGroup<SignalV2>[]) => (
@@ -187,7 +189,7 @@ export function SignalsRail({ signals, ctx, focusId, onAll, hl, paused }: {
       <div className="polh">{label} <span className="cnt">{count}</span></div>
       {groups.length ? groups.map((g) => (
         <GroupRow key={g.key} g={g} ctx={ctx} cursor={cursor === g.key} open={openId === g.key}
-          onOpen={(v) => { setOpenId(v ? g.key : null); setCursor(g.key); }} onAll={onAll} />
+          onOpen={(v) => { setOpenId(v ? g.key : null); setCursor(g.key); }} onAll={onAll} onActivate={() => { setCursor(g.key); openSubject(g); }} />
       )) : <div className="none">Brak</div>}
     </div>
   );
@@ -210,11 +212,13 @@ export function SignalsRail({ signals, ctx, focusId, onAll, hl, paused }: {
 }
 
 /** One rail row = one subject (rev 2 7.1 + Q17): the glyph, `TICKER date`, one fact per live signal (two lines
- * max, `+n` after the second). No buttons on the row: a click or Enter opens the menu anchored to it; Zanotuj
+ * max, `+n` after the second). A click or Enter opens the subject; the trailing icon button opens the menu; Zanotuj
  * turns the menu into the decision form (decision on the newest signal, the others acknowledged with
  * `decyzja: <tag>`, one undo); Potwierdź acknowledges every live signal (one undo). */
-function GroupRow({ g, ctx, cursor, open, onOpen, onAll }: {
+function GroupRow({ g, ctx, cursor, open, onOpen, onAll, onActivate }: {
   g: SignalGroup<SignalV2>; ctx: SignalsCtx; cursor: boolean; open: boolean; onOpen: (open: boolean) => void; onAll: (focusId?: number | null) => void;
+  /** A click or Enter on the row: open the subject (asset page, else the dialog at the signal). */
+  onActivate: () => void;
 }) {
   const toast = useToast();
   const flight = useInFlight();
@@ -225,6 +229,7 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll }: {
   useEffect(() => { if (lockKey != null && lockKey !== stateKey) setLockKey(null); }, [lockKey, stateKey]);
   const busy = flight.busy || locked;
   const row = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const primary = g.primary!;
   const plan = groupPlan(g);
@@ -238,13 +243,13 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll }: {
   useEffect(() => {
     if (open && mode === "menu") requestAnimationFrame(() => menu.current?.querySelector<HTMLElement>("[role=menuitem]:not([disabled])")?.focus());
   }, [open, mode]);
-  // Focus returns to the row after Esc or a menu action (the menu's focused button is gone by then); after an
-  // outside click it stays where the click put it (a select, an input), F8 review FE-4.
+  // Focus returns to the menu button after Esc or a menu action (the menu's focused button is gone by then); after
+  // an outside click it stays where the click put it (a select, an input), F8 review FE-4.
   const close = () => {
     onOpen(false);
     requestAnimationFrame(() => {
       const a = document.activeElement;
-      if (!a || a === document.body || row.current?.contains(a)) row.current?.focus({ preventScroll: true });
+      if (!a || a === document.body || row.current?.contains(a)) (trigger.current ?? row.current)?.focus({ preventScroll: true });
     });
   };
 
@@ -316,10 +321,10 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll }: {
   const name = io ? instName(io.inst) : subject;
   const label = `${name}: ${g.live.map((x) => [signalFact(x).pre, signalFact(x).bold, signalFact(x).post].filter(Boolean).join(" ")).join("; ")}`;
   return (
-    <div ref={row} role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={open} aria-label={label}
-      className={`sig cmp row ${g.live.length > 1 ? "grp" : ""} ${cursor && !open ? "cur" : ""}`} data-signal={primary.id} data-group={g.key}
-      onClick={(e) => { if (!(e.target as HTMLElement).closest(".pop")) onOpen(!open); }}
-      onKeyDown={(e) => { if (e.target === row.current && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(!open); } }}>
+    <div ref={row} role="link" tabIndex={0} aria-label={label}
+      className={`sig cmp row ${g.live.length > 1 ? "grp" : ""} ${cursor && !open ? "cur" : ""} ${open ? "open" : ""}`} data-signal={primary.id} data-group={g.key}
+      onClick={(e) => { if (!(e.target as HTMLElement).closest(".pop, .rt")) onActivate(); }}
+      onKeyDown={(e) => { if (e.target === row.current && e.key === "Enter") { e.preventDefault(); onActivate(); } }}>
       <PolDot state={g.state} title={STATE_LABEL[g.state]} />
       <div className="mn">
         <div className="t"><span className="tk">{tk}</span><Age a={age} /></div>
@@ -327,14 +332,16 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll }: {
           <div key={x.id} className="m f" title={longText(x, ctx)}><Fact1 f={signalFact(x)} />{i === lines.length - 1 && more > 0 && <span className="more">+{more}</span>}</div>
         ))}
       </div>
-      <div className="rt" />
-      <Pop portal open={open} onClose={close} width={mode === "form" ? 460 : 220} align={mode === "form" ? "right" : "left"} label={name}>
+      <div className="rt">
+        <button ref={trigger} className="icon-btn quiet rmore" aria-haspopup="menu" aria-expanded={open} aria-label={`Akcje: ${name}`} title="Akcje"
+          onClick={() => onOpen(!open)}>⋯</button>
+      {/* keyed by mode: the form is taller than the menu, so it is placed again */}
+      <Pop key={mode} portal open={open} onClose={close} width={mode === "form" ? 460 : 220} align="right" label={name}>
         {mode === "menu" ? (
           <div className="rmenu" role="menu" aria-label={name} ref={menu} onKeyDown={onMenuKey}>
             <button role="menuitem" disabled={busy} onClick={() => setMode("form")}>Zanotuj</button>
             <button role="menuitem" disabled={busy} onClick={() => ack()}>Potwierdź{g.live.length > 1 && <span className="hint">{g.live.length}</span>}</button>
             {primary.kind === "contribution_gap" && <button role="menuitem" disabled={busy} onClick={() => void snooze()}>Odłóż<span className="hint">do {dm(later)}</span></button>}
-            {g.instrumentId != null && <button role="menuitem" onClick={() => { onOpen(false); ctx.onOpenAsset(g.instrumentId!); }}>Otwórz</button>}
             <div className="sep" role="separator" />
             <button role="menuitem" onClick={() => { onOpen(false); onAll(primary.id); }}>Wszystkie</button>
           </div>
@@ -345,6 +352,7 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll }: {
           </div>
         )}
       </Pop>
+      </div>
     </div>
   );
 }

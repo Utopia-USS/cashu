@@ -1,5 +1,6 @@
 // Inwestycje home v3 (design/v3/home-v3/home-v3.md rev 2 + owner F8 Q17-Q19): Alokacja's Rachunki view, Aktywa
-// sorted by Wynik %, the Obserwowane tab, the rail's Portfel section and its row menu (no inline buttons), the
+// sorted by Wynik %, the Obserwowane tab, the rail's Portfel section (a row click opens the subject, the trailing
+// icon button opens the row menu), the
 // hero facts Obsunięcie / Wpłaty, and no `wyzwol*` word on the home or the alerts manager.
 import { ANNA, expect, go, plNumber, test, toasts } from "../fixtures";
 
@@ -40,32 +41,41 @@ test("home v3: no wyzwol words on the home and the alerts manager (Q3)", async (
   await expect(page.getByText(/wyzwol/i)).toHaveCount(0);
 });
 
-test("home v3: rail sections, a row opens its menu (Q17)", async ({ app: page }) => {
+test("home v3: rail sections, a row click opens the subject, the trailing button opens the menu (Q17)", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio`);
   const rail = page.getByRole("region", { name: "Sygnały" });
   await expect(rail.locator(".polh", { hasText: "Portfel" })).toBeVisible();
   const row = rail.locator(".sig.cmp.row").first();
   await expect(row).toBeVisible();
-  // no buttons inside a rail row
-  await expect(row.getByRole("button")).toHaveCount(0);
-  await row.click();
+  // one button on a rail row: the trailing menu button
+  const more = row.getByRole("button", { name: /^Akcje: / });
+  await expect(row.getByRole("button")).toHaveCount(1);
+  await more.click();
   const menu = page.getByRole("menu");
   await expect(menu.getByRole("menuitem", { name: "Zanotuj" })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: /^Potwierdź/ })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Wszystkie" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Otwórz" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();
-  await expect(row).toBeFocused();
-  // Enter on the focused row opens it again; Zanotuj turns the menu into the decision form
+  await expect(more).toBeFocused();
+  // Enter on the focused menu button opens it again; Zanotuj turns the menu into the decision form
   await page.keyboard.press("Enter");
   await page.getByRole("menuitem", { name: "Zanotuj" }).click();
   await expect(page.getByLabel("Powód decyzji")).toBeVisible();
   await page.getByRole("button", { name: "Zwiń" }).click();
   await expect(page.getByLabel("Powód decyzji")).toBeHidden();
   // Wszystkie from the menu opens the dialog
-  await row.click();
+  await more.click();
   await page.getByRole("menuitem", { name: "Wszystkie" }).click();
-  await expect(page.getByRole("dialog", { name: "Sygnały" })).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Sygnały" });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  // a click on the row itself opens the subject: an instrument's asset page, else the dialog at the signal
+  const instrumentRow = rail.locator(".sig.cmp.row", { has: page.locator(".il") }).first();
+  await instrumentRow.locator(".mn").click();
+  await expect(page).toHaveURL(/\/assets\/\d+/);
 });
 
 test("home v3: an outside click leaves focus where it landed; Potwierdź writes the row and one Cofnij restores it", async ({ app: page }) => {
@@ -73,8 +83,9 @@ test("home v3: an outside click leaves focus where it landed; Potwierdź writes 
   const rail = page.getByRole("region", { name: "Sygnały" });
   const row = rail.locator(".sig.cmp.row").first();
   const key = await row.getAttribute("data-group");
+  const more = row.getByRole("button", { name: /^Akcje: / });
   // F8 review FE-4: a click elsewhere closes the menu without pulling focus back to the row
-  await row.click();
+  await more.click();
   await expect(page.getByRole("menu")).toBeVisible();
   const sort = page.getByRole("region", { name: "Aktywa" }).getByLabel("Sortowanie");
   await sort.click();
@@ -83,7 +94,7 @@ test("home v3: an outside click leaves focus where it landed; Potwierdź writes 
   await expect(sort).toBeFocused();
   await page.keyboard.press("Escape");
   // Potwierdź acknowledges every live signal of the row; one Cofnij undoes all of them
-  await row.click();
+  await more.click();
   await page.getByRole("menu").getByRole("menuitem", { name: /^Potwierdź/ }).click();
   const toast = toasts(page).locator(".toast", { hasText: "Potwierdzone bez zmian" });
   await expect(toast).toBeVisible();
