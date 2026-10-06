@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build Finanse.app (macOS): the SPA, the icon, a PyInstaller one-folder bundle, and - when the
+# Build cashU.app (macOS): the SPA, the icon, a PyInstaller one-folder bundle, and - when the
 # signing variables are set - a Developer ID signature with the hardened runtime and notarization.
 #
 #   scripts/build_macos.sh [--skip-frontend] [--clean] [--dmg]
 #
-# Output (git-ignored): build/macos/dist/Finanse.app and build/macos/Finanse-<version>-macos-<arch>.zip
+# Output (git-ignored): build/macos/dist/cashU.app and build/macos/cashU-<version>-macos-<arch>.zip
 # (+ .dmg with --dmg). The script never installs anything into /Applications.
 #
 # Environment:
@@ -41,7 +41,7 @@ done
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-[[ "$(uname -s)" == "Darwin" ]] || die "Finanse.app can only be built on macOS."
+[[ "$(uname -s)" == "Darwin" ]] || die "cashU.app can only be built on macOS."
 for tool in sips iconutil codesign ditto rsync npm; do
   command -v "$tool" >/dev/null || die "$tool not found (Xcode command line tools / Node.js needed)."
 done
@@ -49,7 +49,7 @@ done
 
 VERSION="$("$PYTHON" -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["project"]["version"])' "$ROOT/pyproject.toml")"
 ARCH="$(uname -m)"
-APP="$BUILD/dist/Finanse.app"
+APP="$BUILD/dist/cashU.app"
 mkdir -p "$BUILD"
 if [[ $CLEAN == 1 ]]; then
   say "Cleaning $BUILD"
@@ -118,7 +118,7 @@ if [[ -f "$PYLIB" ]]; then
 fi
 
 # --- 4. PyInstaller.
-say "Running PyInstaller (Finanse.app $VERSION, $ARCH${MIN_MACOS:+, macOS $MIN_MACOS+})"
+say "Running PyInstaller (cashU.app $VERSION, $ARCH${MIN_MACOS:+, macOS $MIN_MACOS+})"
 (
   cd "$ROOT"
   FINANSE_WEBDIST="$WEBDIST" FINANSE_ICNS="$BUILD/icon/Finanse.icns" FINANSE_MIN_MACOS="$MIN_MACOS" \
@@ -156,7 +156,7 @@ fi
 if [[ -n "${NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
   [[ $SIGNED == 1 ]] || die "NOTARY_KEYCHAIN_PROFILE is set but the app is not signed (set DEVELOPER_ID_APPLICATION)."
   say "Notarizing (profile $NOTARY_KEYCHAIN_PROFILE)"
-  SUBMIT="$BUILD/Finanse-notarize.zip"
+  SUBMIT="$BUILD/cashU-notarize.zip"
   rm -f "$SUBMIT"
   ditto -c -k --sequesterRsrc --keepParent "$APP" "$SUBMIT"
   xcrun notarytool submit "$SUBMIT" --keychain-profile "$NOTARY_KEYCHAIN_PROFILE" --wait
@@ -169,16 +169,16 @@ elif [[ $SIGNED == 1 ]]; then
 fi
 
 # --- 7. Archives for distribution.
-ZIP="$BUILD/Finanse-$VERSION-macos-$ARCH.zip"
+ZIP="$BUILD/cashU-$VERSION-macos-$ARCH.zip"
 rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 if [[ $DMG == 1 ]]; then
-  DMG_PATH="$BUILD/Finanse-$VERSION-macos-$ARCH.dmg"
+  DMG_PATH="$BUILD/cashU-$VERSION-macos-$ARCH.dmg"
   STAGE="$BUILD/dmg"
   rm -rf "$STAGE" "$DMG_PATH" && mkdir -p "$STAGE"
-  ditto "$APP" "$STAGE/Finanse.app"
+  ditto "$APP" "$STAGE/cashU.app"
   ln -s /Applications "$STAGE/Applications"
-  hdiutil create -quiet -volname "Finanse" -srcfolder "$STAGE" -ov -format UDZO "$DMG_PATH"
+  hdiutil create -quiet -volname "cashU" -srcfolder "$STAGE" -ov -format UDZO "$DMG_PATH"
   rm -rf "$STAGE"
   if [[ $SIGNED == 1 ]]; then codesign --force --timestamp --sign "$DEVELOPER_ID_APPLICATION" "$DMG_PATH"; fi
 fi

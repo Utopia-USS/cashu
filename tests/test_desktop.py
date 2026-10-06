@@ -364,7 +364,7 @@ def test_run_opens_the_window_on_the_server_and_stops_it(data_dir, monkeypatch):
         "lock_pid": os.getpid(),
     }
     w = fake.window.kwargs
-    assert w["title"] == "finanse" and w["min_size"] == shell.MIN_SIZE
+    assert w["title"] == "cashU" and w["min_size"] == shell.MIN_SIZE
     assert (w["width"], w["height"]) == (1432, 902)  # 1512 x 982 screen minus the margin
     assert w["html"] == shell.LOADING_HTML and w["text_select"] is True
     assert fake.start_kwargs["private_mode"] is False and fake.start_kwargs["debug"] is False

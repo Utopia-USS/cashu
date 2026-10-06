@@ -138,7 +138,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
   };
 
   const pickedNames = ordered.filter((m) => picked.has(m.id)).map((m) => moduleDef(m.id, modules).name);
-  const title = step === 0 ? (firstLaunch ? "Witaj w finanse" : "Nowy profil") : `Nowy profil: ${trimmed}`;
+  const title = step === 0 ? (firstLaunch ? "Witaj w cashU" : "Nowy profil") : `Nowy profil: ${trimmed}`;
   const lead = [
     firstLaunch ? "Wszystko działa lokalnie na tym komputerze." : null,
     "Do zmiany później w Ustawieniach.",

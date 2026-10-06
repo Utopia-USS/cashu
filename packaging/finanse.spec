@@ -1,4 +1,4 @@
-# PyInstaller spec of Finanse.app (macOS, one-folder bundle). Build it with scripts/build_macos.sh,
+# PyInstaller spec of cashU.app (macOS, one-folder bundle). Build it with scripts/build_macos.sh,
 # which builds the SPA first, prepares the icon and the build venv, and signs / notarizes when the
 # signing variables are set. Direct use (from the repo root, inside a venv with .[desktop] and
 # packaging/requirements-build.txt installed):
@@ -86,8 +86,8 @@ exe = EXE(
 coll = COLLECT(exe, a.binaries, a.datas, name="finanse")
 
 info_plist = {
-    "CFBundleName": "Finanse",
-    "CFBundleDisplayName": "Finanse",
+    "CFBundleName": "cashU",
+    "CFBundleDisplayName": "cashU",
     "CFBundleShortVersionString": VERSION,
     "CFBundleVersion": os.environ.get("FINANSE_BUILD_NUMBER", VERSION),
     "LSApplicationCategoryType": "public.app-category.finance",
@@ -113,7 +113,7 @@ if MIN_MACOS:
 
 app = BUNDLE(
     coll,
-    name="Finanse.app",
+    name="cashU.app",
     icon=str(ICNS),
     bundle_identifier=BUNDLE_ID,
     version=VERSION,

@@ -134,7 +134,7 @@ frontend/                 # React + Vite + TS SPA (dashboard; UI strings are Pol
 └── src/ui.tsx, format.ts, index.css   # shared primitives and tokens
 
 packaging/                # PyInstaller spec, entitlements, icon (macOS); windows/ = documented stub
-scripts/build_macos.sh    # builds Finanse.app (SPA, icon, bundle; signs/notarizes from env vars)
+scripts/build_macos.sh    # builds cashU.app (SPA, icon, bundle; signs/notarizes from env vars)
 scripts/bump_version.py   # version bump run by .github/workflows/bump-version.yml on every push to main
 tests/                    # pytest — synthetic data, no real data
 data/                     # (git-ignored) legacy location of DB/keys/sessions (see migrate-data)

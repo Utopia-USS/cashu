@@ -24,6 +24,9 @@
 - Links (packaged app only): ``finanse://`` URLs and clicks on the app's notifications open the
   matching view (``notify.install_app_handlers`` + ``notify.LinkRouter``); a link that launched
   the app is kept until the window loads the dashboard.
+- App name and Dock icon: the packaged app takes them from its bundle; a run from the source tree
+  (no bundle, macOS would show the Python launcher) sets the menu bar name to :data:`TITLE` and the
+  icon from ``packaging/icon/finanse-1024.png``.
 - Log: ``<data dir>/logs/app.log`` (warnings and errors; no request log).
 """
 
@@ -49,7 +52,7 @@ from . import DEBUG_ENV, notify
 
 log = logging.getLogger("finanse.desktop")
 
-TITLE = "finanse"
+TITLE = "cashU"
 LOCK_NAME = "desktop"
 STATE_FILE = "desktop.json"
 LOG_FILE = "app.log"
@@ -264,6 +267,29 @@ def focus_process(pid: int) -> bool:
 # Window
 # --------------------------------------------------------------------------- #
 
+DEV_ICON = Path(__file__).resolve().parents[3] / "packaging" / "icon" / "finanse-1024.png"
+
+
+def use_dev_identity(icon: Path = DEV_ICON) -> bool:
+    """Show the app name in the menu bar and the app icon in the Dock when running from the source
+    tree (macOS); the packaged app already has both in its bundle. Must run before the
+    ``NSApplication`` is created. False when not applicable or not possible."""
+    if sys.platform != "darwin" or runtime.frozen() or not icon.is_file():
+        return False
+    try:
+        from AppKit import NSApplication, NSBundle, NSImage
+    except ImportError:
+        return False
+    info = NSBundle.mainBundle().infoDictionary()
+    if info is not None:
+        info["CFBundleName"] = TITLE  # the Python launcher's bundle; read when the app starts
+    image = NSImage.alloc().initWithContentsOfFile_(str(icon))
+    if image is None:
+        return False
+    NSApplication.sharedApplication().setApplicationIconImage_(image)
+    return True
+
+
 _PAGE = """<!doctype html><html lang="pl"><head><meta charset="utf-8"><style>
 :root {{ color-scheme: light dark; }}
 body {{ font: 14px -apple-system, system-ui, sans-serif; display: flex; align-items: center;
@@ -272,7 +298,7 @@ body {{ font: 14px -apple-system, system-ui, sans-serif; display: flex; align-it
 main {{ max-width: 560px; padding: 24px; }} code {{ font-size: 12px; }}
 </style></head><body><main>{body}</main></body></html>"""
 
-LOADING_HTML = _PAGE.format(body="<p>Uruchamianie finanse…</p>")
+LOADING_HTML = _PAGE.format(body="<p>Uruchamianie cashU…</p>")
 
 
 def error_html(message: str, log_file: Path | None) -> str:
@@ -280,7 +306,7 @@ def error_html(message: str, log_file: Path | None) -> str:
         f"<p>Szczegóły w logu: <code>{html.escape(str(log_file))}</code></p>" if log_file else ""
     )
     return _PAGE.format(
-        body=f"<h2>Nie udało się uruchomić finanse</h2><p>{html.escape(message)}</p>{where}"
+        body=f"<h2>Nie udało się uruchomić cashU</h2><p>{html.escape(message)}</p>{where}"
     )
 
 
@@ -496,6 +522,7 @@ def run(*, debug: bool = False, webview_module=None, log_file: Path | None = Non
             webview.settings["OPEN_DEVTOOLS_IN_DEBUG"] = False  # inspector via right click only
             if webview_module is None:  # the real pywebview: pin the window to the app (PK5)
                 install_navigation_guard(cfg.origin)
+                use_dev_identity()
             try:
                 screens = list(webview.screens)
             except Exception:  # noqa: BLE001 - no screen info: default size

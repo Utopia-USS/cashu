@@ -1,4 +1,4 @@
-# Packaging notes (Finanse.app)
+# Packaging notes (cashU.app)
 
 Build: `scripts/build_macos.sh` (see its header for options and signing variables). This file
 records the decisions behind the signing and build inputs.
@@ -38,11 +38,11 @@ Removed in F7 (PK4):
 
 Checklist for a Developer ID build (run before shipping, and before adding an entitlement back):
 
-1. `codesign -d --entitlements - Finanse.app` shows no exception keys.
+1. `codesign -d --entitlements - cashU.app` shows no exception keys.
 2. Open the app from /Applications: the dashboard loads (token bridge, navigation delegate), a
    notification click opens the right view, Cmd+Q quits (app.log in debug mode: "Shutting down").
-3. `Finanse.app/Contents/MacOS/finanse worker run --offline` and
-   `Finanse.app/Contents/MacOS/finanse mcp --profile <slug>` (Claude Code connects) work.
+3. `cashU.app/Contents/MacOS/finanse worker run --offline` and
+   `cashU.app/Contents/MacOS/finanse mcp --profile <slug>` (Claude Code connects) work.
 4. `log show --last 5m --predicate 'process == "finanse"' | grep -i -E "library validation|code signature|killed"`
    is empty. If a step fails with a code-signing or memory error, add back only the entitlement
    named there and record why in this table.
@@ -55,7 +55,7 @@ Checklist for a Developer ID build (run before shipping, and before adding an en
   WebKit's default data store and ignores `storage_path`, so this cannot live in the data dir. The
   SPA keeps no amounts there (planned deposits are stored on the server). Deleting the data dir
   does not clear it; remove that folder too for a full wipe.
-- `app-location.json` in the data dir: where Finanse.app last ran from. After a move or rename
+- `app-location.json` in the data dir: where cashU.app last ran from. After a move or rename
   `finanse worker status` (and the `worker.relocation` object of `GET /api/system`) flags the
   launchd job and the MCP lines given out before as stale; `finanse worker install` is the fix and
   clears the note. Nothing is rewritten automatically.

@@ -236,15 +236,15 @@ own.
 
 ## Step 7b - Install the macOS app (optional)
 
-If the user prefers a normal Mac app over the terminal, build `Finanse.app`:
+If the user prefers a normal Mac app over the terminal, build `cashU.app`:
 
 ```bash
-scripts/build_macos.sh            # -> build/macos/dist/Finanse.app (+ a .zip)
+scripts/build_macos.sh            # -> build/macos/dist/cashU.app (+ a .zip)
 ```
 
 It needs Node.js and the Xcode command line tools, takes a few minutes the first
 time (npm and pip downloads) and never touches the dev setup (`frontend/node_modules`,
-`.venv`). Then the **user** drags `build/macos/dist/Finanse.app` to `/Applications`
+`.venv`). Then the **user** drags `build/macos/dist/cashU.app` to `/Applications`
 and opens it; do not copy it there yourself. The app uses the same data dir and
 database as the CLI, so everything from the steps above is already in it. Closing
 the window quits the app.
@@ -257,7 +257,7 @@ the window quits the app.
   Apple ID passwords or certificates in the chat.
 - After the move to `/Applications`: Settings > Praca w tle installs the daily
   worker, and Settings > Agent AI shows the `claude mcp add` line, both pointing
-  at `/Applications/Finanse.app/Contents/MacOS/finanse`.
+  at `/Applications/cashU.app/Contents/MacOS/finanse`.
 - Quick check without building: `pip install -e ".[desktop]"` and `finanse app`
   opens the same window from the checkout.
 

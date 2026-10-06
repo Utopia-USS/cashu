@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Hardened runtime entitlements of Finanse.app (scripts/build_macos.sh signs the executable and
+  Hardened runtime entitlements of cashU.app (scripts/build_macos.sh signs the executable and
   the bundle with them when DEVELOPER_ID_APPLICATION is set). Every exception weakens the signed,
   notarized binary, so only what is shown to be needed is granted (F7 PK4): currently none.
   Evidence and the checklist for adding one back: packaging/README.md ("Entitlements").

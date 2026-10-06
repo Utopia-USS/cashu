@@ -110,7 +110,7 @@ export const PROPOSAL_NOTE = "Zapis przez agenta to zawsze propozycja do zatwier
 
 /** macOS App Translocation (PK3): the MCP snippets are placeholders until the app is moved. Shown for the
  * workspace error code, GET /mcp `translocated` and the setup page's `skill.translocated`. */
-export const TRANSLOCATED_TEXT = "Aplikacja działa z tymczasowej lokalizacji macOS: przenieś Finanse.app do folderu Programy i otwórz ją ponownie.";
+export const TRANSLOCATED_TEXT = "Aplikacja działa z tymczasowej lokalizacji macOS: przenieś cashU.app do folderu Programy i otwórz ją ponownie.";
 
 const ERRORS: Record<string, string> = {
   path_required: "Podaj folder.",
