@@ -27,7 +27,7 @@ YAML anchors/aliases, merge keys (`<<`), custom tags and duplicate keys are erro
 | `base_currency` | yes | ISO code; PLN is the supported choice (other codes give a warning) |
 | `horizon_years` | no | 1-100 |
 | `contributions` | no | `monthly_amount` (> 0, required in the section), `day_of_month` (1-31) |
-| `data` | no | `max_price_age_days` (default 5), `max_stale_weight` (0-1, default 0.05), `max_unclassified_weight` (0-1, default 0.02), `max_fx_age_days` (default 10); see "Data limits" below |
+| `data` | no | `max_price_age_days` (default 5), `max_stale_weight` (0-1, default 0.05), `max_unclassified_weight` (0-1, default 0.02), `max_fx_age_days` (default 10), `max_unverified_days` (default 14, `null` = never); see "Data limits" below |
 | `buckets` | no | list of `{id, match}`; ids unique (letters, digits, `_ . -`); first match wins; `match` keys `asset_class`, `tags` (all required), `mic`, `currency`, `instrument_ids`, each one value or a list; `match: {}` = catch-all |
 | `allocation` | no | `targets` (bucket id -> weight, must reference buckets, sum to 1 +-0.001; a bucket without a target gets 0 and a warning), `rebalance` (`absolute_band_pp` 5, `relative_band` 0.25, `min_trade_value` 0) |
 | `rules` | no | list of `{id, kind, params, severity, cooldown_days, polarity}`; ids unique (letters, digits, `_ . -`); `severity` `info` (default) or `action`; `cooldown_days` >= 0; `polarity` `positive`, `negative` or `neutral` overrides the kind's default (positive: `drawdown_from_high`, `gain_from_cost`; neutral: `custom`, `allocation_drift`; negative: every other kind) |
@@ -93,6 +93,7 @@ Every key is optional; the defaults apply when the key or the whole section is a
 | `max_stale_weight` | 0.05 | `allocation_drift`, `position_concentration`, `cash_level` and `tagged_weight` skip while stale prices cover more than this share of the portfolio |
 | `max_unclassified_weight` | 0.02 | `allocation_drift` and `tagged_weight` skip while holdings that match no bucket (freshly imported instruments without tags or with a guessed asset class) are more than this share of the portfolio, listing them; otherwise every classified bucket would look underweight |
 | `max_fx_age_days` | 10 | an FX rate older than this many calendar days (relative to the date it is needed for) counts as missing; a holding or cash balance in that currency is left out of the total, so the weight rules skip, and per-instrument rules skip instruments priced in that currency |
+| `max_unverified_days` | 14 | an open rule or alert signal that no run confirmed for more than this many days (its check kept skipping: stale price, stale share, invalid strategy) closes as expired (`closed_reason: unverified`); it starts no cooldown and opens again on the next run that fires it; `null` keeps such signals open |
 
 Independent of these limits: negative cash in an account (deposits missing from the imported history) counts as
 0 in totals and weights and makes `cash_level` (and the bucket holding it in `allocation_drift`) skip until the

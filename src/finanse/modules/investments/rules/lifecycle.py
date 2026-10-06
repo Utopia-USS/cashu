@@ -26,6 +26,8 @@ class OpenSignal:
     dedup_key: str
     severity: SignalSeverity
     status: SignalStatus = SignalStatus.ACTIVE
+    last_seen_at: datetime | None = None
+    """When a run last confirmed it (fired); drives the ``max_unverified_days`` expiry."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,12 +81,16 @@ class ResolveSignal:
 
 @dataclass(frozen=True, slots=True)
 class ExpireSignal:
-    """The open signal's rule is no longer in the strategy."""
+    """The open signal's rule is no longer in the strategy, or (``reason`` :data:`UNVERIFIED`) no run
+    confirmed it for longer than ``max_unverified_days``."""
 
     signal_id: object
     rule_id: str
     dedup_key: str
     expired_at: datetime
+    reason: str | None = None
+    """None for a removed rule; :data:`UNVERIFIED` for an age-based close (stored as the payload's
+    ``closed_reason`` and ``closed_by``, so it never starts a cooldown)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +100,9 @@ class SuppressCandidate:
     candidate: SignalCandidate
     cooldown_until: datetime
 
+
+UNVERIFIED = "unverified"
+"""``closed_reason`` / ``closed_by`` of a signal closed because no run confirmed it for too long."""
 
 SignalAction = (
     CreateSignal | RefreshSignal | EscalateSignal | ResolveSignal | ExpireSignal | SuppressCandidate
@@ -156,6 +165,7 @@ def reconcile_signals(
     rules: Sequence[RuleSpec[object]],
     clock: Callable[[], datetime],
     closed_signals: Iterable[ClosedSignal] = (),
+    max_unverified_days: int | None = None,
 ) -> SignalReconciliation:
     """Turns one run's ``outcomes`` (from the engine over ``rules``) into lifecycle actions.
 
@@ -168,6 +178,9 @@ def reconcile_signals(
       NotFired and a scope that disappeared, e.g. an instrument sold).
     - Skipped (scope or whole rule), or a rule absent from the outcomes -> untouched.
     - An open signal whose rule id is not in ``rules`` (rule removed) -> :class:`ExpireSignal`.
+    - An open signal that would stay untouched and whose ``last_seen_at`` is more than
+      ``max_unverified_days`` days before ``now`` -> :class:`ExpireSignal` with ``reason``
+      :data:`UNVERIFIED` (None: never; a signal without ``last_seen_at`` never expires this way).
 
     ``clock`` is called once; all timestamps of the run use that instant.
     """
@@ -244,7 +257,23 @@ def reconcile_signals(
             or signal.rule_id in skipped_rules
             or signal.dedup_key in skipped_keys
         ):
-            untouched.append(signal)
+            if _unverified_too_long(signal, now, max_unverified_days):
+                actions.append(
+                    ExpireSignal(
+                        signal.signal_id, signal.rule_id, signal.dedup_key, now, UNVERIFIED
+                    )
+                )
+            else:
+                untouched.append(signal)
             continue
         actions.append(ResolveSignal(signal.signal_id, signal.rule_id, signal.dedup_key, now))
     return SignalReconciliation(tuple(actions), tuple(untouched))
+
+
+def _unverified_too_long(signal: OpenSignal, now: datetime, max_days: int | None) -> bool:
+    if max_days is None or signal.last_seen_at is None:
+        return False
+    seen = signal.last_seen_at
+    if seen.tzinfo is None and now.tzinfo is not None:
+        seen = seen.replace(tzinfo=now.tzinfo)
+    return now - seen > timedelta(days=max_days)

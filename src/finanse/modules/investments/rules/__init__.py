@@ -33,6 +33,7 @@ from .kinds import (
     UnrealizedThresholdParams,
 )
 from .lifecycle import (
+    UNVERIFIED,
     ClosedSignal,
     CreateSignal,
     EscalateSignal,
@@ -59,6 +60,7 @@ from .polarity import SignalPolarity, default_polarity, polarity_rank
 
 __all__ = [
     "BUILT_IN_KINDS",
+    "UNVERIFIED",
     "AllocationDriftParams",
     "AllocationDriftRule",
     "CashLevelParams",

@@ -44,6 +44,7 @@ from ..portfolio import build_snapshot, fx_currencies_for
 from ..research import service as research_service
 from ..research.keys import is_research_key
 from ..rules import (
+    DataQualityPolicy,
     Fired,
     NotFired,
     RuleContext,
@@ -452,6 +453,30 @@ def _evaluate(
                 (str(i) for i in state.issues if i.is_error), "invalid"
             )
             result.errors.append(f"strategy invalid, rules not run: {first}")
+        # No rule runs, so every open rule signal stays unconfirmed; the age-based expiry still applies
+        # (contract C1: an invalid or missing strategy skips every check), with the default limit since
+        # the strategy's own one cannot be read. Alert and research signals have their own passes.
+        stale = [
+            o
+            for o in signals.open_signals(s, profile.id)
+            if not is_alert_key(o.dedup_key) and not is_research_key(o.dedup_key)
+        ]
+        if stale:
+            now = convert.aware(clock())
+            reconciliation = reconcile_signals(
+                open_signals=stale,
+                outcomes=[],
+                rules=[
+                    RuleSpec(id=rule_id, kind="inactive", params=None)
+                    for rule_id in dict.fromkeys(o.rule_id for o in stale)
+                ],
+                clock=lambda: now,
+                max_unverified_days=DataQualityPolicy().max_unverified_days,
+            )
+            signals.apply_reconciliation(
+                s, profile.id, reconciliation, run_id=run.id, notify=frozenset()
+            )
+            stats.update(reconciliation.stats)
     else:
         outcomes = RulesEngine(config.rules).evaluate(ctx)
         # Inactive rules are known to the lifecycle (so their open signals are not expired) but are
@@ -474,7 +499,9 @@ def _evaluate(
             outcomes=outcomes,
             rules=lifecycle_rules,
             clock=lambda: now,
-            closed_signals=signals.closed_signals(s, profile.id),
+            # A close by age (``closed_by`` unverified) is no resolution: it starts no cooldown.
+            closed_signals=signals.closed_signals(s, profile.id, skip_closed_by=True),
+            max_unverified_days=config.data.max_unverified_days,
         )
         applied = signals.apply_reconciliation(
             s, profile.id, reconciliation, run_id=run.id, notify=config.notifications.immediate

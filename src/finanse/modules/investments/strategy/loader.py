@@ -36,6 +36,7 @@ from finanse.modules.investments.rules import (
     did_you_mean,
 )
 from finanse.modules.investments.rules.expr import Scope
+from finanse.modules.investments.rules.kind import MAX_UNVERIFIED_DAYS
 from finanse.modules.investments.rules.params import parse_currency
 
 from . import yaml_tree
@@ -723,7 +724,17 @@ def _read_data(reader: ParamReader) -> DataQualityPolicy:
         max_fx_age_days=reader.integer(
             "max_fx_age_days", fallback=defaults.max_fx_age_days, minimum=1
         ),
+        max_unverified_days=_read_unverified_days(reader, defaults.max_unverified_days),
     )
+
+
+def _read_unverified_days(reader: ParamReader, default: int | None) -> int | None:
+    """``max_unverified_days``: absent -> the default; an explicit ``null`` -> None (never expire)."""
+    key = "max_unverified_days"
+    if key in reader.raw and reader.raw[key] is None:
+        reader.has(key)  # known key
+        return None
+    return reader.integer(key, fallback=default, minimum=1, maximum=MAX_UNVERIFIED_DAYS)
 
 
 def _read_contributions(reader: ParamReader) -> ContributionPlan:

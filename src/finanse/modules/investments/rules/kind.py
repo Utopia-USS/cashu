@@ -69,6 +69,10 @@ class RuleKind[P](Protocol):
         ...
 
 
+DEFAULT_MAX_UNVERIFIED_DAYS = 14
+MAX_UNVERIFIED_DAYS = 3650
+
+
 @dataclass(frozen=True, slots=True)
 class DataQualityPolicy:
     """Data-quality thresholds from the strategy's ``data:`` section (every key optional)."""
@@ -81,8 +85,17 @@ class DataQualityPolicy:
     """allocation_drift (and tagged_weight) skip while holdings that match no bucket exceed this share."""
     max_fx_age_days: int = DEFAULT_MAX_FX_AGE_DAYS
     """An FX rate older than this many days relative to the date it is needed for counts as missing."""
+    max_unverified_days: int | None = DEFAULT_MAX_UNVERIFIED_DAYS
+    """An open rule or alert signal no run confirmed (its check skipped) for more than this many days
+    closes as expired (``closed_reason`` ``unverified``); None (YAML ``null``) = never."""
 
-    KEYS = ("max_price_age_days", "max_stale_weight", "max_unclassified_weight", "max_fx_age_days")
+    KEYS = (
+        "max_price_age_days",
+        "max_stale_weight",
+        "max_unclassified_weight",
+        "max_fx_age_days",
+        "max_unverified_days",
+    )
 
 
 @dataclass(frozen=True, slots=True)

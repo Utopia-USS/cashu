@@ -224,6 +224,12 @@ class DecisionBody(BaseModel):
     reason: str | None = None
 
 
+def _good_run(s, profile) -> int | None:
+    from .store import signals as signal_store
+
+    return signal_store.last_good_run_id(s, profile.id)
+
+
 @router.post("/signals/{signal_id}/decision", status_code=201)
 def decide(profile: CurrentProfile, signal_id: int, body: DecisionBody) -> dict:
     """Record a decision about a signal (acknowledges it; never books a trade)."""
@@ -252,7 +258,7 @@ def decide(profile: CurrentProfile, signal_id: int, body: DecisionBody) -> dict:
             raise _422(str(e)) from None
         return {
             "decision": views.decision_dict(decision),
-            "signal": views.signal_dict(row, [decision]),
+            "signal": views.signal_dict(row, [decision], good_run_id=_good_run(s, profile)),
         }
 
 
@@ -280,7 +286,7 @@ def acknowledge(
         )
         return {
             "decision": views.decision_dict(decision),
-            "signal": views.signal_dict(row, [decision]),
+            "signal": views.signal_dict(row, [decision], good_run_id=_good_run(s, profile)),
         }
 
 
@@ -319,7 +325,7 @@ def snooze_signal(profile: CurrentProfile, signal_id: int, body: SnoozeBody) -> 
         if row.status not in ("active", "acknowledged"):
             raise HTTPException(status_code=409, detail=f"Signal {signal_id} is {row.status}")
         signal_store.snooze(s, row, until)
-        return views.signal_dict(row)
+        return views.signal_dict(row, good_run_id=_good_run(s, profile))
 
 
 @router.get("/decisions")
@@ -347,7 +353,9 @@ def decision_undo(profile: CurrentProfile, decision_id: int) -> dict:
             ) from None
         return {
             "deleted": decision_id,
-            "signal": None if linked is None else views.signal_dict(linked),
+            "signal": None
+            if linked is None
+            else views.signal_dict(linked, good_run_id=_good_run(s, profile)),
         }
 
 

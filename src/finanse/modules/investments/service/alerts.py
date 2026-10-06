@@ -36,8 +36,11 @@ from ..alerts.catalog import MAX_COOLDOWN_DAYS, MAX_EXPIRY_DAYS
 from ..domain import SignalSeverity
 from ..models import InvAlert
 from ..rules import (
+    UNVERIFIED,
     CreateSignal,
+    DataQualityPolicy,
     EscalateSignal,
+    ExpireSignal,
     Fired,
     NotFired,
     RefreshSignal,
@@ -551,6 +554,11 @@ def evaluate_profile(
         rules=specs,
         clock=lambda: now,
         closed_signals=closed_alert,
+        max_unverified_days=(
+            config.data.max_unverified_days
+            if config is not None
+            else DataQualityPolicy().max_unverified_days
+        ),
     )
     notify = (config.notifications if config is not None else NotificationPolicy()).immediate
     applied = signals.apply_reconciliation(
@@ -564,6 +572,8 @@ def evaluate_profile(
     resolved_now: set[str] = set()
     for action in reconciliation.actions:
         match action:
+            case ExpireSignal(rule_id=rule_id, reason=reason) if reason == UNVERIFIED:
+                resolved_now.add(rule_id)  # no check confirmed it for too long: armed again
             case CreateSignal(candidate=candidate):
                 fired_now.add(candidate.rule_id)
                 created_now.add(candidate.rule_id)
@@ -576,9 +586,12 @@ def evaluate_profile(
     for row in rows:
         rule_id = f"alert:{row.id}"
         check = result.checks[row.id]
-        row.last_checked_at = now
-        if check.value is not None:
-            row.last_value = decimal_text(Decimal(check.value))
+        if not isinstance(check.outcome, Skipped):
+            # Only a real check counts as one: a skip (stale price, short series) leaves the last
+            # check's time and value, so "sprawdzone d.m" stays true (F8, lifecycle facts 5(a3)).
+            row.last_checked_at = now
+            if check.value is not None:
+                row.last_value = decimal_text(Decimal(check.value))
         if rule_id in fired_now:
             row.status = AlertStatus.TRIGGERED.value
             if rule_id in created_now:

@@ -49,6 +49,7 @@ def open_signals(session: Session, profile_id: int) -> list[OpenSignal]:
             dedup_key=row.dedup_key,
             severity=SignalSeverity(row.severity),
             status=SignalStatus(row.status),
+            last_seen_at=None if row.last_seen_at is None else convert.aware(row.last_seen_at),
         )
         for row in open_signal_rows(session, profile_id)
     ]
@@ -189,13 +190,19 @@ def apply_reconciliation(
                 )
                 session.add(row)
                 applied.resolved.append(row.id)
-            case ExpireSignal(signal_id=sid, expired_at=at):
+            case ExpireSignal(signal_id=sid, expired_at=at, reason=reason):
                 row = rows[sid]
-                row.status, row.closed_at, row.last_run_id = (
-                    SignalStatus.EXPIRED.value,
-                    convert.aware(at),
-                    run_id,
-                )
+                row.status, row.closed_at = SignalStatus.EXPIRED.value, convert.aware(at)
+                if reason is None:
+                    row.last_run_id = run_id
+                else:
+                    # An age-based close (no run confirmed it): ``last_run_id`` keeps the last run
+                    # that did; ``closed_by`` keeps it out of cooldowns (``closed_signals``).
+                    row.payload = {
+                        **(row.payload or {}),
+                        "closed_reason": reason,
+                        "closed_by": reason,
+                    }
                 session.add(row)
                 applied.expired.append(row.id)
             case _:
@@ -276,6 +283,24 @@ def last_run(session: Session, profile_id: int) -> InvRuleRun | None:
         .where(InvRuleRun.profile_id == profile_id)
         .order_by(InvRuleRun.started_at.desc(), InvRuleRun.id.desc())
     ).first()
+
+
+GOOD_RUN_STATUSES = ("ok", "partial")
+
+
+def last_good_run_id(session: Session, profile_id: int) -> int | None:
+    """Id of the profile's newest finished rule run that did not fail (``ok`` / ``partial``)."""
+    return session.exec(
+        select(InvRuleRun.id)
+        .where(InvRuleRun.profile_id == profile_id, InvRuleRun.status.in_(GOOD_RUN_STATUSES))
+        .order_by(InvRuleRun.started_at.desc(), InvRuleRun.id.desc())
+    ).first()
+
+
+def is_current(row: InvSignal, good_run_id: int | None) -> bool:
+    """Whether the last good run confirmed ``row`` (fired or evaluated it): true without any good run,
+    for a signal without a run (research signals) or when its ``last_run_id`` is that run."""
+    return good_run_id is None or row.last_run_id is None or row.last_run_id == good_run_id
 
 
 def runs(session: Session, profile_id: int, limit: int = 20) -> list[InvRuleRun]:

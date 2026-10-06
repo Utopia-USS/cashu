@@ -724,10 +724,16 @@ def _message_code(row: InvSignal, labels: dict[int, str]) -> dict:
 
 
 def signal_dict(
-    row: InvSignal, decisions: list[InvDecision] = (), labels: dict[int, str] | None = None
+    row: InvSignal,
+    decisions: list[InvDecision] = (),
+    labels: dict[int, str] | None = None,
+    *,
+    good_run_id: int | None = None,
 ) -> dict:
     """``message_code`` / ``message_params``: the alert signal's message as a stable code
-    (``alert.<kind>``) + its facts for a translated label (None for rule signals)."""
+    (``alert.<kind>``) + its facts for a translated label (None for rule signals). ``current``:
+    the profile's last good run (``good_run_id``, ``signals.last_good_run_id``; None = no run yet)
+    confirmed it (F8, home-v3 section 8)."""
     label = (labels or {}).get(row.instrument_id) if row.instrument_id else None
     return {
         "id": row.id,
@@ -752,6 +758,7 @@ def signal_dict(
         "closed_at": iso(row.closed_at),
         "snoozed_until": iso(row.snoozed_until),
         "snoozed": signals.is_snoozed(row, utcnow()),
+        "current": signals.is_current(row, good_run_id),
         "decisions": [decision_dict(d) for d in decisions],
     }
 
@@ -786,7 +793,8 @@ def signals_view(session: Session, profile: Profile, status: str = "open") -> li
                 -r.id,
             )
         )
-    return [signal_dict(r, by_signal.get(r.id, []), labels) for r in rows]
+    good_run = signals.last_good_run_id(session, profile.id)
+    return [signal_dict(r, by_signal.get(r.id, []), labels, good_run_id=good_run) for r in rows]
 
 
 # --------------------------------------------------------------------------- #
@@ -822,6 +830,7 @@ def attention(
         ).items()
     }
     severity = {SignalSeverity.ACTION.value: 0, SignalSeverity.INFO.value: 1}
+    good_run = signals.last_good_run_id(session, profile.id)
 
     def relevant(row: InvSignal) -> bool:
         return row.instrument_id is None or row.instrument_id in held
@@ -861,6 +870,7 @@ def attention(
                 "held": row.instrument_id is not None and row.instrument_id in held,
                 "first_seen_at": iso(row.first_seen_at),
                 "last_seen_at": iso(row.last_seen_at),
+                "current": signals.is_current(row, good_run),
             }
         )
     return {
@@ -1782,9 +1792,7 @@ def _other_flows(
     ``transfers``: units moved in / out and adjustments at the day's unit value the performance
     series used, cash-only transfers at the trade-date rate; None when one cannot be valued.
     ``implied_funding``: cash gaps filled by unrecorded money (negative cash and its reversal)."""
-    window = [
-        t for t in state.txns if t.type in _UNIT_FLOWS and after < t.trade_date <= until
-    ]
+    window = [t for t in state.txns if t.type in _UNIT_FLOWS and after < t.trade_date <= until]
     unit_moves = [t for t in window if t.instrument_id is not None and t.quantity]
     transfers: Decimal | None = Decimal(0)
     for t in window:
@@ -1905,8 +1913,12 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
     ]
     open_rows = [r for r in rows if r.status in signals.OPEN_STATUSES]
 
+    good_run = signals.last_good_run_id(session, profile.id)
+
     def signal_rows(found: list[InvSignal]) -> list[dict]:
-        return [signal_dict(r, by_signal.get(r.id, []), labels) for r in found]
+        return [
+            signal_dict(r, by_signal.get(r.id, []), labels, good_run_id=good_run) for r in found
+        ]
 
     # Imports, transactions, decisions since the baseline.
     names = {a.id: a.name for a in transactions.brokerage_accounts(session, profile.id)}

@@ -244,6 +244,16 @@ class TestValidStrategies:
         assert "at least 1" in issue_at(bad, "data.max_fx_age_days").message
         assert "whole number, got 1.5" in issue_at(bad, "data.max_price_age_days").message
 
+    def test_max_unverified_days_defaults_to_14_and_null_means_never(self):
+        assert DataQualityPolicy().max_unverified_days == 14
+        assert load(MINIMAL).config.data.max_unverified_days == 14
+        result = load(MINIMAL + "data: { max_unverified_days: 30 }\n")
+        assert result.issues == () and result.config.data.max_unverified_days == 30
+        never = load(MINIMAL + "data: { max_unverified_days: null }\n")
+        assert never.issues == () and never.config.data.max_unverified_days is None
+        bad = load(MINIMAL + "data: { max_unverified_days: 0 }\n")
+        assert "at least 1" in issue_at(bad, "data.max_unverified_days").message
+
     def test_explicit_nulls_count_as_absent_sections(self):
         result = load(MINIMAL + "data:\nrules:\nwatchlist:\nbenchmark:\nnotifications:\n")
         assert result.issues == ()
