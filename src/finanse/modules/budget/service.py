@@ -18,7 +18,7 @@ from finanse.core.accounts import get_or_create_account, own_ibans, upsert_balan
 from finanse.core.models import Account, AccountType, Source
 
 from .cash import cash_account_ids, get_cash_account, sync_cash_leg
-from .ingestion.csv_import import parse_file
+from .ingestion.csv_import import ParsedStatement, parse_file
 from .ingestion.dedup import prepare_new_transactions
 from .ingestion.normalize import RawTransaction
 from .models import ImportBatch, Transaction
@@ -36,7 +36,11 @@ def ingest_transactions(
     *,
     source: Source,
     filename: str | None = None,
+    newest_day_rule: bool = False,
 ) -> ImportBatch:
+    """Store the new rows of ``raws`` (dedup; ``newest_day_rule`` for sources whose texts differ from
+    what is stored: Open Banking, finanse-format documents, connectors). Rows not inserted, by id,
+    content or the newest-day rule, count as duplicates of the batch."""
     batch = ImportBatch(
         source=source,
         bank=account.bank,
@@ -47,13 +51,15 @@ def ingest_transactions(
     session.add(batch)
     session.flush()
 
-    result = prepare_new_transactions(session, account.id, raws, import_batch_id=batch.id)
+    result = prepare_new_transactions(
+        session, account.id, raws, import_batch_id=batch.id, newest_day_rule=newest_day_rule
+    )
     for txn in result.to_insert:
         session.add(txn)
 
     batch.num_seen = len(raws)
     batch.num_inserted = result.num_inserted
-    batch.num_duplicates = result.num_duplicates
+    batch.num_duplicates = result.num_duplicates + result.num_overlap
     batch.finished_at = _utcnow()
     session.add(batch)
     return batch
@@ -89,23 +95,58 @@ def import_csv(
 ) -> tuple[Account, ImportBatch]:
     path = Path(path)
     stmt = parse_file(path, bank)
-
-    account = get_or_create_account(
+    return import_statement(
         session,
-        bank=stmt.bank,
-        iban=stmt.account_number,
-        name=account_name,
-        type=account_type,
-        currency=stmt.currency,
+        stmt,
+        account_type=account_type,
+        account_name=account_name,
         profile_id=profile_id,
+        filename=path.name,
     )
+
+
+def import_statement(
+    session: Session,
+    stmt: ParsedStatement,
+    *,
+    account: Account | None = None,
+    account_type: str = AccountType.CHECKING,
+    account_name: str | None = None,
+    external_id: str | None = None,
+    profile_id: int | None = None,
+    source: Source = Source.CSV,
+    filename: str | None = None,
+    notes: str | None = None,
+    newest_day_rule: bool = False,
+) -> tuple[Account, ImportBatch]:
+    """Write a parsed statement: into ``account`` when given (the caller checked it belongs to the
+    profile), else the profile's account of the statement's bank and account number (created when
+    missing, ``external_id`` naming a new one without a number); then the end-of-day balances
+    (explicit closing balances win over a running balance of the same date)."""
+    if account is None:
+        account = get_or_create_account(
+            session,
+            bank=stmt.bank,
+            iban=stmt.account_number,
+            name=account_name or stmt.account_name,
+            external_id=external_id,
+            type=account_type,
+            currency=stmt.currency,
+            profile_id=profile_id,
+        )
 
     batch = ingest_transactions(
-        session, account, stmt.transactions, source=Source.CSV, filename=path.name
+        session, account, stmt.transactions, source=source, filename=filename,
+        newest_day_rule=newest_day_rule,
     )
+    if notes:
+        batch.notes = notes
+        session.add(batch)
 
-    for on_date, amount in _end_of_day_balances(stmt.transactions, stmt.balances).items():
-        upsert_balance(session, account, on_date, amount, source=Source.CSV)
+    eod = _end_of_day_balances(stmt.transactions, stmt.balances)
+    eod.update(dict(stmt.closing_balances))
+    for on_date, amount in eod.items():
+        upsert_balance(session, account, on_date, amount, source=source)
 
     return account, batch
 

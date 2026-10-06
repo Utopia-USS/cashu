@@ -19,6 +19,31 @@ from .models import Account, AccountType, Balance, Source, utcnow
 from .text import iban_key, normalize_iban
 
 
+def find_account(
+    session: Session,
+    *,
+    bank: str | None,
+    iban: str | None = None,
+    external_id: str | None = None,
+    profile_id: int | None = None,
+) -> Account | None:
+    """The read-only half of ``get_or_create_account``: the profile's account of ``bank`` with this
+    ``external_id`` or (canonical) IBAN, None when there is none (nothing is written). ``bank=None``
+    matches by IBAN across every institution of the profile (an account number names one account,
+    whatever source reported it)."""
+    pid = profiles.scope(session, profile_id)
+    iban_canon = iban_key(normalize_iban(iban) or None)
+    stmt = select(Account).where(Account.profile_id == pid)
+    if bank is not None:
+        stmt = stmt.where(Account.bank == bank)
+    for acc in session.exec(stmt).all():
+        if bank is not None and external_id and acc.external_id == external_id:
+            return acc
+        if iban_canon and acc.iban and iban_key(acc.iban) == iban_canon:
+            return acc
+    return None
+
+
 def get_or_create_account(
     session: Session,
     *,

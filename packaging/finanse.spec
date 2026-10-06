@@ -8,7 +8,8 @@
 #
 # One binary, Contents/MacOS/finanse: no arguments = the desktop window (Finder), anything else =
 # the finanse CLI (`worker run`, `mcp --profile <slug>`, ...), `--notify-helper` = post one
-# notification for the worker (see src/finanse/desktop/entry.py). It never runs scripts.
+# notification for the worker (see src/finanse/desktop/entry.py). It has no mode that runs a script;
+# approved connectors (F10) run only as sandboxed child processes (core/connectors/sandbox.sb).
 # The bundle registers the finanse:// URL scheme (notification clicks and links open the app on a
 # view, src/finanse/desktop/notify.py).
 # ruff: noqa
@@ -34,7 +35,9 @@ SKILLS = ROOT / ".claude" / "skills"
 WEBDIST_DEST = os.path.join("finanse", "api", "webdist")
 
 # Package data: the SPA (from FINANSE_WEBDIST, never a stale dev copy), the legacy static page,
-# templates, examples, and the Alembic scripts (env.py and versions/*.py are read from disk).
+# templates, examples, the connector sandbox profile template (core/connectors/sandbox.sb, read with
+# importlib.resources for every connector run), and the Alembic scripts (env.py and versions/*.py are
+# read from disk).
 datas = [
     (src, dest)
     for src, dest in collect_data_files("finanse")

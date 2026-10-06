@@ -91,6 +91,11 @@ class ParsedStatement:
     transactions: list[RawTransaction] = field(default_factory=list)
     # (date, balance) snapshots derived from a running-balance column, if present.
     balances: list[tuple[date, Decimal]] = field(default_factory=list)
+    # Explicit closing balances (date, amount) of the account (the budget import format's
+    # ``balances``): they win over a running balance of the same date.
+    closing_balances: list[tuple[date, Decimal]] = field(default_factory=list)
+    # Rows after the header that were dropped (no date or no amount; blank rows not counted).
+    skipped_rows: int = 0
 
 
 def _read_text(path: Path, encodings: tuple[str, ...]) -> str:
@@ -174,6 +179,8 @@ class DelimitedImporter:
 
         for row in reader[header_idx + 1:]:
             rt = self._row_to_txn(row, mapping, currency)
+            if rt is None and any(c.strip() for c in row):
+                stmt.skipped_rows += 1
             if rt is not None:
                 stmt.transactions.append(rt)
                 bal = self._row_balance(row, mapping)

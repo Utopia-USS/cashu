@@ -10,13 +10,15 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlmodel import select
 
+from finanse.core import uploads
 from finanse.core.api import CurrentProfile, f
 from finanse.core.db import get_session
 
-from . import analytics, monthclose
+from . import analytics, imports, monthclose
 from . import settings as budget_settings
 from .models import Transaction
 from .queries import transactions
@@ -264,9 +266,12 @@ def _eb_client():
 
 
 @router.post("/resync")
-def resync(profile: CurrentProfile, days: int = 90) -> dict:
+def resync(profile: CurrentProfile, days: int = 90, connectors: bool = True) -> dict:
     """Re-sync every saved Enable Banking session of the profile, then re-match
-    transfers and re-categorize — the dashboard equivalent of `finanse eb resync`."""
+    transfers and re-categorize - the dashboard equivalent of `finanse eb resync`.
+    ``connectors``: also sync the profile's due budget fetch-connector bindings (F10; at most once per
+    20 h each, never in a rate-limit backoff), reported under ``connectors``. The worker passes False
+    (its ``connectors.fetch`` job does that)."""
     from finanse.config import settings
     from finanse.core import profiles
 
@@ -280,12 +285,17 @@ def resync(profile: CurrentProfile, days: int = 90) -> dict:
     from .ingestion.transfers import match_internal_transfers
     from .service import categorize_all
 
+    synced = _sync_connectors(profile) if connectors else None
     if not settings.eb_configured:
+        if synced:
+            return _connectors_only(profile, synced)
         return {"ok": False, "error": "Enable Banking nie jest skonfigurowany (.env)."}
     with get_session() as s:
         legacy_owner = profiles.legacy_owner_slug(s)
     sessions = load_sessions(profile.slug, legacy_profile=legacy_owner)
     if not sessions:
+        if synced:
+            return _connectors_only(profile, synced)
         return {"ok": False, "error": "Brak sesji Enable Banking: zaloguj się: finanse eb login"}
 
     client = _eb_client()
@@ -325,12 +335,37 @@ def resync(profile: CurrentProfile, days: int = 90) -> dict:
         reprocess_open_banking_fields(s, profile_id=profile.id)
         pairs = match_internal_transfers(s, profile_id=profile.id)
         categorize_all(s, profile_id=profile.id)
-    return {
+    out = {
         "ok": True,
         "inserted": total_inserted,
         "banks": banks_out,
         "pairs": pairs,
         "errors": errors,
+    }
+    if synced:  # only when a binding exists (the shape stays as before otherwise)
+        out["connectors"] = synced
+    return out
+
+
+def _sync_connectors(profile) -> list[dict]:
+    """The profile's due budget fetch bindings (owner view: run, preview, proposal / commit)."""
+    from finanse.core.connectors import sync
+
+    return sync.summary_dicts(sync.run_due(profile, "budget"))
+
+
+def _connectors_only(profile, synced: list[dict]) -> dict:
+    """No Enable Banking session: only the connectors ran; transfers and categories as usual."""
+    from .ingestion.transfers import match_internal_transfers
+    from .service import categorize_all
+
+    with get_session() as s:
+        pairs = match_internal_transfers(s, profile_id=profile.id)
+        categorize_all(s, profile_id=profile.id)
+    inserted = sum((c.get("committed") or {}).get("inserted", 0) for c in synced)
+    return {
+        "ok": True, "inserted": inserted, "banks": [], "pairs": pairs, "errors": [],
+        "connectors": synced,
     }
 
 
@@ -418,3 +453,175 @@ def put_budget_settings(profile: CurrentProfile, payload: dict) -> dict:
             )
     budget_settings.save(profile.slug, parsed)
     return budget_settings.to_dict(parsed)
+
+
+# --------------------------------------------------------------------------- #
+# Statement import (first steps / tabbar Import): preview -> commit; transfers
+# --------------------------------------------------------------------------- #
+
+
+def _problem(e: imports.ImportProblem) -> HTTPException:
+    return HTTPException(
+        status_code=e.status, detail=str(e), headers={"X-Finanse-Error-Code": e.code}
+    )
+
+
+def _optional_int(value: str | int | None, name: str) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail=f"{name} must be an integer") from None
+
+
+@router.get("/budget/import/importers")
+def import_importers(profile: CurrentProfile) -> dict:
+    """The importer choices of the statement import (the drawer's ``Bank`` select): ``auto``, the
+    banks with a CSV parser (``institutions.csv_ids()``), the finanse format, the budget file
+    connectors (``connector:<id>``; ``available`` only when approved)."""
+    del profile  # profile-scoped route (connectors themselves are global)
+    return {"importers": imports.importer_choices(), "max_bytes": imports.MAX_FILE_BYTES}
+
+
+@router.post("/budget/import/preview")
+async def import_preview(profile: CurrentProfile, request: Request) -> dict:
+    """Preview a bank statement (read-only). Multipart fields: ``file``; optional ``bank`` (alias
+    ``importer``: ``auto`` | a bank id | ``finanse-budget`` | ``connector:<id>``), ``account_type``
+    (checking | savings | credit, for a new account), ``account_name`` (a new account's name),
+    ``account_id`` (import into this bank account). A raw body works too (the same names as query
+    parameters, ``filename`` for the name). The file is staged until committed (``file_id``)."""
+    body = await uploads.read_limited(request, imports.MAX_FILE_BYTES + 1024 * 1024)
+    content_type = request.headers.get("content-type", "")
+    query = request.query_params
+    if content_type.startswith("multipart/form-data"):
+        try:
+            fields = uploads.parse_multipart(content_type, body)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Malformed multipart body") from None
+        if "file" not in fields:
+            raise HTTPException(status_code=422, detail="multipart field 'file' is required")
+        name, content = fields["file"]
+
+        def field(key: str) -> str | None:
+            return uploads.text_field(fields, key) or query.get(key) or None
+
+        name = name or field("filename") or "wyciag.csv"
+    else:
+        content = body
+
+        def field(key: str) -> str | None:
+            return query.get(key) or None
+
+        name = field("filename") or "wyciag.csv"
+    if not content:
+        raise HTTPException(
+            status_code=422,
+            detail="The file is empty",
+            headers={"X-Finanse-Error-Code": "import_empty"},
+        )
+    if len(content) > imports.MAX_FILE_BYTES:
+        raise uploads.too_large()
+    name = name.replace("\\", "/").rsplit("/", 1)[-1][:200] or "wyciag.csv"
+    account_id = _optional_int(field("account_id"), "account_id")
+    upload = imports.stage(profile.slug, name, content)
+    importer = field("bank") or field("importer")
+    detected = False
+    try:
+        # A file connector runs here, before any database session is open (F10).
+        from finanse.core.connectors import imports as connector_imports
+
+        try:
+            facts = _account_facts(profile, account_id)
+            ran = imports.run_connector(
+                profile.slug, upload, importer,
+                profile_id=profile.id, account=facts[0] if facts else None,
+                prefer=facts[1] if facts else None,
+            )
+        except connector_imports.ConnectorRunFailed as e:
+            upload.path.unlink(missing_ok=True)
+            raise connector_imports.http_error(e) from None
+        if ran is not None:
+            upload, importer, detected = ran.upload, ran.importer, ran.detected
+        with get_session() as s:
+            return imports.preview(
+                s,
+                profile,
+                upload,
+                importer=importer,
+                account_type=field("account_type"),
+                account_name=field("account_name"),
+                account_id=account_id,
+                detected=detected,
+            )
+    except imports.ImportProblem as e:
+        upload.path.unlink(missing_ok=True)  # nothing to commit: do not keep the statement
+        raise _problem(e) from None
+
+
+def _account_facts(profile, account_id: int | None) -> tuple[dict[str, str], str | None] | None:
+    """What a connector is told about the chosen account (currency, name) and the account's
+    remembered importer (``auto`` asks that connector first); None without an account."""
+    from finanse.core.models import Account
+
+    if account_id is None:
+        return None
+    with get_session() as s:
+        acc = s.get(Account, account_id)
+        if acc is None or acc.profile_id != profile.id or acc.removed_at is not None:
+            return None
+        facts = {"currency": acc.currency, "label": acc.name}
+        return facts, imports.remembered_importer(s, acc.id)
+
+
+class StatementCommitBody(BaseModel):
+    file_id: str
+    file_name: str
+    bank: str | None = None
+    importer: str | None = None
+    account_type: str | None = None
+    account_name: str | None = None
+    account_id: int | None = None
+
+
+@router.post("/budget/import/commit", status_code=201)
+def import_commit(profile: CurrentProfile, body: StatementCommitBody) -> dict:
+    """Commit a previewed statement: the same importer and account choices as the preview; writes in
+    one transaction (statement, transfer matching, categorization), then drops the staged file."""
+    try:
+        path = imports.staged_path(profile.slug, body.file_id, body.file_name)
+        if not path.is_file():
+            raise imports.ImportProblem(
+                "not_found", "No staged file with this id; preview it again", 404
+            )
+        upload = imports.Upload(body.file_id, body.file_name, path)
+        return imports.commit(
+            get_session,
+            profile,
+            upload,
+            importer=body.bank or body.importer,
+            account_type=body.account_type,
+            account_name=body.account_name,
+            account_id=body.account_id,
+        )
+    except imports.ImportProblem as e:
+        raise _problem(e) from None
+
+
+class MatchTransfersBody(BaseModel):
+    max_days: int = Field(default=3, ge=0, le=31)
+
+
+@router.post("/budget/match-transfers")
+def match_transfers(profile: CurrentProfile, body: MatchTransfersBody | None = None) -> dict:
+    """Pair internal transfers between the profile's own accounts (by IBAN; ``match-transfers``),
+    then re-categorize so the paired rows leave income and spending."""
+    from .ingestion.transfers import match_internal_transfers
+    from .service import categorize_all
+
+    max_days = (body or MatchTransfersBody()).max_days
+    with get_session() as s:
+        pairs = match_internal_transfers(s, max_days=max_days, profile_id=profile.id)
+        if pairs:
+            categorize_all(s, profile_id=profile.id)
+    return {"pairs": pairs}

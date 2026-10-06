@@ -72,7 +72,7 @@ class FinanseMcp:
 
     def _available(self, s: Session, profile: Profile) -> list[ToolSpec]:
         enabled = set(profiles.enabled_modules(s, profile.id))
-        return [t for t in self._tools.values() if t.module == "core" or t.module in enabled]
+        return [t for t in self._tools.values() if t.enabled_in(enabled)]
 
     # ------------------------------------------------------------------ #
 

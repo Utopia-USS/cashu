@@ -5,7 +5,8 @@ data dir:
 
 - ``<data dir>/imports/<slug>/.staging/``: uploads kept between the preview and the commit (the commit
   re-previews the staged file and removes it). An upload older than ``STAGING_MAX_AGE`` was abandoned.
-- ``<data dir>/imports/<slug>/.proposals/``: the export of an agent's import proposal. Kept while a
+- ``<data dir>/imports/<slug>/.proposals/``: the export of an import proposal (an agent's, or a fetch
+  connector's document, also ``budget_import``). Kept while a
   pending (or applying) proposal references it; any other file older than ``PROPOSAL_GRACE`` is removed
   (the grace covers a proposal being stored right now: its file is written before its row commits).
 
@@ -51,7 +52,8 @@ def _referenced(session_factory: Callable) -> set[Path] | None:
         with session_factory() as s:
             rows = s.exec(
                 select(Proposal).where(
-                    Proposal.kind == "import", Proposal.status.in_(("pending", "applying"))
+                    Proposal.kind.in_(("import", "budget_import")),
+                    Proposal.status.in_(("pending", "applying")),
                 )
             ).all()
             staged = [str((row.payload or {}).get("staged") or "") for row in rows]

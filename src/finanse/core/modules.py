@@ -23,6 +23,9 @@ What a module declares:
 - ``text_rules`` / ``payment_patterns`` / ``not_subscription_categories``: what the
   module tells transaction categorization (budget) about payments it owns, e.g.
   loans claim their installments so they are never "subscriptions";
+- ``recategorize(session, profile_id)``: the module that owns transaction categorization (budget)
+  re-runs it for a profile, so another module whose configuration changes what matches (a loan's
+  installment phrase) can apply it without importing that module;
 - ``setup_status(session, profile_id)``: steps of the module's blank page;
 - ``skill``: the Claude Code setup skill command (``/budget-setup``).
 """
@@ -65,18 +68,23 @@ class SetupStep:
     description: str  # Polish (UI data)
     done: bool
     actions: tuple[SetupAction, ...] = ()
+    # An optional step (e.g. a car) never counts toward the module state and is never "on": it is
+    # "done" when done, else "todo" (the UI tags it "opcjonalnie").
+    optional: bool = False
 
 
 @dataclass(frozen=True)
 class SetupStatus:
-    """Blank-page steps; the first step not done is "on", the rest "todo"."""
+    """Blank-page steps; the first required step not done is "on", the rest "todo". The state counts
+    required steps only: "ready" when every one is done, "empty" when none is."""
 
     steps: tuple[SetupStep, ...]
 
     @property
     def state(self) -> SetupState:
-        done = sum(s.done for s in self.steps)
-        if self.steps and done == len(self.steps):
+        required = [s for s in self.steps if not s.optional]
+        done = sum(s.done for s in required)
+        if required and done == len(required):
             return "ready"
         return "partial" if done else "empty"
 
@@ -86,7 +94,7 @@ class SetupStatus:
         for s in self.steps:
             if s.done:
                 status: StepStatus = "done"
-            elif not current_given:
+            elif not current_given and not s.optional:
                 status, current_given = "on", True
             else:
                 status = "todo"
@@ -95,6 +103,7 @@ class SetupStatus:
                 "title": s.title,
                 "description": s.description,
                 "status": status,
+                "optional": s.optional,
                 "actions": [a.as_dict() for a in s.actions],
             })
         return out
@@ -132,6 +141,7 @@ class ModuleSpec:
     text_rules: tuple[tuple[str, str], ...] = ()  # (phrase in normalized text, category)
     payment_patterns: Callable[[Session, int], list[PaymentPattern]] | None = None
     not_subscription_categories: frozenset[str] = frozenset()
+    recategorize: Callable[[Session, int], Any] | None = None
     setup_status: Callable[[Session, int], SetupStatus] | None = None
     skill: str | None = None  # Claude Code skill command, e.g. "/budget-setup"
     extra: dict[str, Any] = field(default_factory=dict)
@@ -265,6 +275,17 @@ def payment_patterns(session: Session, profile_id: int) -> list[PaymentPattern]:
         if spec.payment_patterns is not None:
             out.extend(spec.payment_patterns(session, profile_id))
     return out
+
+
+def recategorize(session: Session, profile_id: int) -> bool:
+    """Re-run transaction categorization of the profile through every module that provides it
+    (``ModuleSpec.recategorize``); False when none does. Runs inside the caller's transaction."""
+    ran = False
+    for spec in all_modules():
+        if spec.recategorize is not None:
+            spec.recategorize(session, profile_id)
+            ran = True
+    return ran
 
 
 def not_subscription_categories() -> frozenset[str]:

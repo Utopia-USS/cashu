@@ -1098,11 +1098,14 @@ _MAPPING = {
     "maxLength": 64_000,
     "description": "generic CSV mapping: YAML text or a path to a .yaml/.yml file",
 }
-# The app never runs agent-written code (F5 R1): a converter is run by the agent itself, under
-# its own permission prompts, and the finanse-format file it writes is what these tools take.
+# An MCP call never makes the app run code (F10): the app runs only connectors the owner approved in
+# the app; a one-off converter is run by the agent itself, under its own permission prompts, and the
+# finanse-format file it writes is what these tools take.
 _NO_SCRIPTS = {
-    "converter": "the app never runs scripts: run your converter yourself (python3 <script> "
-    "<export> <output.csv>) and pass the finanse-format output file as path"
+    "converter": "MCP calls never make the app run code: run a one-off converter yourself (python3 "
+    "<script> <export> <output.csv>) and pass the finanse-format output file as path, or write a "
+    "connector (propose_connector), which the app runs only after the owner approves it in "
+    "Ustawienia > Konektory"
 }
 _TEXT = {"type": "string", "maxLength": 4000}
 
@@ -1162,20 +1165,24 @@ TOOLS = (
     ToolSpec(
         "inspect_export",
         "investments",
-        "Structure of a broker export file (CSV, TSV, JSON, XLSX): sheets, columns, inferred types, "
-        "row counts and masked sample rows (amounts, identifiers and names never shown).",
+        "Structure of a broker export or bank statement file (CSV, TSV, JSON, XLSX): sheets, header "
+        "row, columns, inferred types, row counts and masked sample rows (numbers as their format, "
+        "free text as token shapes; amounts, identifiers and names never shown). The blind route: "
+        "when the user hands you the file itself, read it directly.",
         inspect_export,
         properties={
             "path": _PATH,
             "max_samples": {"type": "integer", "minimum": 0, "maximum": 20, "default": 5},
         },
         required=("path",),
+        also=("budget",),
     ),
     ToolSpec(
         "validate_import",
         "investments",
         "Validate a finanse-format file (or a CSV with a mapping): counts and errors by kind with "
-        "row numbers, no values. The app never runs scripts: convert other exports yourself first.",
+        "row numbers, no values. MCP never makes the app run code: convert other exports yourself "
+        "first, or write a connector (propose_connector).",
         validate_import,
         properties={"path": _PATH, "mapping": _MAPPING},
         required=("path",),
@@ -1270,8 +1277,8 @@ TOOLS = (
         "propose_import",
         "investments",
         "Propose importing a file into a brokerage account (account: the generated label or id from "
-        "portfolio_overview). path: a finanse-format file or a CSV with a mapping (the app never "
-        "runs scripts). Runs the preview and stores a pending import the owner commits in the app.",
+        "portfolio_overview). path: a finanse-format file or a CSV with a mapping (MCP never makes the "
+        "app run code). Runs the preview and stores a pending import the owner commits in the app.",
         propose_import,
         properties={
             "path": _PATH,

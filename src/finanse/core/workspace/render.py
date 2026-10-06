@@ -20,8 +20,9 @@ BEGIN = "<!-- finanse:begin {name} -->"
 END = "<!-- finanse:end {name} -->"
 # Managed CLAUDE.md sections, in file order.
 SECTIONS = ("profile", "privacy", "tools", "boundaries", "files", "skills", "research")
-FOLDERS = ("notes", "research", "scripts", "inbox")
+FOLDERS = ("notes", "research", "scripts", "connectors", "inbox")
 INBOX = "inbox"
+CONNECTORS = "connectors"
 RESEARCH_SKILL = "market-research"
 SERVER_PREFIX = "finanse"
 
@@ -51,7 +52,7 @@ class Context:
     research_available: bool  # the market-research skill ships with this version
     cli: tuple[str, ...]  # how to run the finanse CLI (bundled binary or the venv script)
     path: Path  # the workspace
-    protected: tuple[Path, ...] = field(default=())  # data dir, DB, raw exports (deny rules)
+    protected: tuple[Path, ...] = field(default=())  # data dir, DB, import archive (deny rules)
     # Opt-in (default off): the unattended Saturday routine may search the web and write its notes
     # without asking (allow rules for WebSearch, WebFetch, Edit of research/ and notes/).
     routine_permissions: bool = False
@@ -109,7 +110,9 @@ def _section_privacy(ctx: Context) -> str:
 - The live level is `profile_overview` (`privacy`); when it differs from this file, the live
   level wins.
 - In both levels accounts appear as generated labels ("<institution> <type> <n>") and private
-  payees as `payee:` references. Every MCP call is logged in the app (Ustawienia > Agent AI)."""
+  payees as `payee:` references. Every MCP call is logged in the app (Ustawienia > Agent AI).
+- The level covers what the app's MCP tools give you. Files or rows the user hands you themselves are
+  their choice: use them for the task they asked for."""
 
 
 def _section_tools(ctx: Context) -> str:
@@ -134,11 +137,14 @@ def _section_boundaries(ctx: Context) -> str:
     places = "\n".join(f"  - `{p}`" for p in ctx.protected)
     return f"""## Boundaries
 
-- Data only through the MCP tools above. Never read, list, copy or parse these places (finanse
-  data dir, database, import archive, raw exports):
+- Data only through the MCP tools above. Never read, list, copy or parse these places of the app
+  (finanse data dir, database, backups, import archive):
 {places}
   `.claude/settings.json` denies Claude Code's file tools there. Bash commands ask the user
   first: never propose one that reads those places.
+- Files in `{INBOX}/` are the user's: open one when the user hands it to you or asks you to. Do not
+  copy its values into `notes/`, memory, scripts or git; keep them in the conversation. Account
+  numbers, IBANs and names you see there are never repeated or written anywhere.
 - Never run finanse CLI commands that print personal data (`stats`, `accounts`, `import-dir`,
   `import-csv`, `invest positions`, `invest import`, `loans list`, `eb login|check|sessions|resync`).
   Give them to the user to run in their own terminal, not with `!` in this session.
@@ -161,9 +167,13 @@ def _section_files(ctx: Context) -> str:
   the research MCP tools.
 - `scripts/`: converters and helper scripts you write (Python standard library only). You run them
   with a Bash command the user approves; the app never runs them.
-- `{INBOX}/`: raw exports the user saves here (renamed if the file name holds an account number). You
-  never open them; `inspect_export` shows their masked structure. Converter output goes to
-  `{INBOX}/converted/` and is deleted after the owner commits the import.
+- `{CONNECTORS}/`: connectors you write (`{CONNECTORS}/<id>/`; the contract is
+  `.claude/skills/import-builder/references/connectors.md`); `propose_connector` submits one. The app
+  runs one only after the owner approves it in Ustawienia > Konektory.
+- `{INBOX}/`: the user saves exports here (renamed if the file name holds an account number). Open
+  one when the user hands it to you; with the blind route `inspect_export` shows its masked
+  structure. Converter output goes to `{INBOX}/converted/` and is deleted after the owner commits the
+  import.
 - `.claude/skills/`: the skills finanse manages (below) plus your own skills, which finanse never
   touches."""
 
@@ -347,12 +357,21 @@ def routine_rules(ctx: Context) -> list[str]:
 
 
 def deny_rules(ctx: Context) -> list[str]:
+    """Read / Edit denied in the app's places only (``inbox/`` is the user's drop folder: not denied
+    since F10 11.3; the agent opens a file there when the user hands it over)."""
     out: list[str] = []
-    for place in [*ctx.protected, ctx.path / INBOX]:
+    for place in ctx.protected:
         p = rule_path(place)
         for tool in ("Read", "Edit"):
             out.append(f"{tool}({p}/**)")
     return out
+
+
+def legacy_deny_rules(ctx: Context) -> list[str]:
+    """Deny rules finanse wrote before and no longer wants (the ``inbox/`` rules before F10): removed
+    on update even when the workspace manifest does not list them."""
+    p = rule_path(ctx.path / INBOX)
+    return [f"Read({p}/**)", f"Edit({p}/**)"]
 
 
 def is_managed_rule(rule: str, server_names: tuple[str, ...] = ()) -> bool:
@@ -400,7 +419,8 @@ def merge_settings(
         if not is_managed_rule(r) and r not in old_routine and r not in ours
     ]
     want_deny = deny_rules(ctx)
-    deny = [r for r in as_list(perms.get("deny")) if r not in previous_deny and r not in want_deny]
+    dropped = set(previous_deny) | set(legacy_deny_rules(ctx))
+    deny = [r for r in as_list(perms.get("deny")) if r not in dropped and r not in want_deny]
     perms["allow"] = ours + allow
     perms["deny"] = want_deny + deny
     data["permissions"] = perms

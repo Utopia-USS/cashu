@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import func
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from finanse.core import institutions, profiles
 from finanse.core.accounts import get_or_create_account, upsert_balance
@@ -283,48 +281,12 @@ def store_account(
         profile_id=profile_id,
     )
 
-    # High-water mark: CSV backfill is authoritative up to its export date, so
-    # only ingest Open Banking transactions from the newest stored day onwards.
-    # Avoids the OB↔CSV overlap (which can't be perfectly deduped for card
-    # payments - different memos per source).
-    latest = db.exec(
-        select(func.max(Transaction.booking_date)).where(Transaction.account_id == account.id)
-    ).one()
-    # The newest stored day may be incomplete (a CSV exported, or a sync run,
-    # before the day ended): its later transactions must not be dropped, so that
-    # day is re-ingested. Open Banking rows already stored are caught by dedup
-    # (bank transaction id / content hash). Rows stored from a CSV cannot be
-    # matched that way (different memo per source), so on that day an incoming row
-    # first consumes a CSV row with the same amount (a multiset: two identical
-    # payments stay two); only the surplus is new.
-    csv_on_latest: Counter[str] = Counter()
-    if latest is not None:
-        csv_on_latest.update(
-            f"{amount:.2f}"
-            for amount in db.exec(
-                select(Transaction.amount).where(
-                    Transaction.account_id == account.id,
-                    Transaction.booking_date == latest,
-                    Transaction.source != Source.OPEN_BANKING,
-                )
-            ).all()
-        )
-
-    raws: list[RawTransaction] = []
-    for t in fetched.transactions:
-        rt = eb_transaction_to_raw(t)
-        if rt is None:
-            continue
-        if latest is None or rt.booking_date > latest:
-            raws.append(rt)
-        elif rt.booking_date == latest:
-            key = f"{rt.amount:.2f}"
-            if csv_on_latest[key] > 0:
-                csv_on_latest[key] -= 1  # the CSV twin of this row is already stored
-            else:
-                raws.append(rt)  # stored from OB (dedup skips it) or booked later that day
-
-    batch = ingest_transactions(db, account, raws, source=Source.OPEN_BANKING)
+    # The newest-day rule (ingestion/dedup.py, point 3): what is stored (a CSV backfill) is
+    # authoritative up to the account's newest stored day, so older Open Banking rows the id / content
+    # hash did not match are left out; on that day an incoming row first consumes an unmatched stored
+    # row of the same amount (the CSV twin with another memo); only the surplus is new.
+    raws = [rt for rt in (eb_transaction_to_raw(t) for t in fetched.transactions) if rt is not None]
+    batch = ingest_transactions(db, account, raws, source=Source.OPEN_BANKING, newest_day_rule=True)
 
     picked = _pick_balance(fetched.balances)
     if picked is not None:

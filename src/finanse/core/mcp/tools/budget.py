@@ -349,6 +349,40 @@ _CURRENCY = {
     "description": "3-letter code (default: base currency)",
 }
 
+def validate_budget_import(ctx: ToolContext, path: str) -> dict:
+    from finanse.modules.budget.ingestion.canonical import validate_budget_document
+
+    from .exports import checked_local_file
+
+    p = checked_local_file(path, ctx.profile.slug, ("json", "csv"))
+    if p.stat().st_size > 20 * 1024 * 1024:
+        raise ToolError("file is too large (max 20 MB)")
+    report = validate_budget_document(p.read_bytes(), p.name)
+    by_kind: dict[str, int] = defaultdict(int)
+    for issue in report.issues:
+        by_kind[issue.kind] += 1
+    return {
+        "ok": L.flag(report.ok),
+        "variant": L.category(report.variant),
+        "transactions": L.count(report.transactions),
+        "balances": L.count(report.balances),
+        "date_from": L.date(report.date_range[0] if report.date_range else None),
+        "date_to": L.date(report.date_range[1] if report.date_range else None),
+        "currencies": [L.category(c) for c in report.currencies],
+        "issues_by_kind": {k: L.count(v) for k, v in sorted(by_kind.items())},
+        "issues": [
+            {
+                "kind": L.category(i.kind),
+                "blocking": L.flag(i.blocking),
+                "row": L.count(i.row),
+                "field": L.text(i.field),
+                "message": L.text(i.message),
+            }
+            for i in report.issues[:50]
+        ],
+    }
+
+
 TOOLS = (
     ToolSpec(
         "spending_breakdown",
@@ -398,5 +432,15 @@ TOOLS = (
         },
         required=("merchant", "category"),
         write=True,
+    ),
+    ToolSpec(
+        "validate_budget_import",
+        "budget",
+        "Validate a finanse-budget-import document (JSON or CSV; e.g. your connector's or converter's "
+        "output): ok, transaction and balance counts, date range, currencies, and issues by kind with "
+        "row numbers and field names, no values. Nothing is imported.",
+        validate_budget_import,
+        properties={"path": {"type": "string", "maxLength": 1024}},
+        required=("path",),
     ),
 )

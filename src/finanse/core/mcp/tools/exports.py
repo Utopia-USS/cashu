@@ -4,9 +4,13 @@ standard library) and ``inspect``: the structure of a file with every value mask
 ``inspect`` is what lets a cloud agent write a parser without seeing the data: sheet and column names,
 the inferred type and format of each column (decimal / thousands separators, date pattern, sign),
 empty shares, row counts, and sample rows where numbers become a format mask (``-N NNN,NN``), dates
-their pattern (``DD.MM.YYYY``), identifiers ``[identifier]`` and free text ``<text: 2 words>``. Only
-short code-like values of low-cardinality columns (transaction types, currencies, tickers, ISINs) are
-shown as they are, never in columns whose header suggests a name or a description.
+their pattern (``DD.MM.YYYY``), identifiers ``[identifier]`` and free text a per-token shape: known
+words (transaction types, currencies, booleans) as they are, an e-mail ``[email]``, a token with a digit
+as its shape (digits ``9``, a run of 3+ letters ``<w>``, a shorter one ``A``, punctuation kept:
+``OPEN BUY <w> 9 @ 999.99``, ``<w>9999``), any other word ``<w>`` (a person's name never shows, not even
+its length). Only short code-like values of low-cardinality columns
+(transaction types, currencies, tickers, ISINs) are shown as they are, never in columns whose header
+suggests a name or a description. The output is the same in both privacy levels: it is structure.
 
 Paths: a regular file (symlinks resolved), extension csv / tsv / txt / json / xlsx, at most 20 MB, no
 hidden directory on the way (``~/.ssh`` ...), and nothing inside the finanse data dir except the bound
@@ -91,6 +95,31 @@ def checked_local_file(
         )
     if inside(path, paths.LEGACY_DIR.resolve()):
         raise ToolError("files inside the legacy data folder are not read")
+    return path
+
+
+def checked_local_dir(raw: str, root: Path) -> Path:
+    """A directory directly inside ``root`` (``<root>/<name>``, symlinks resolved), outside hidden
+    directories, the finanse data dir and the legacy repo data dir (``propose_connector``: ``root`` =
+    the workspace's ``connectors/``)."""
+    if not raw or "\x00" in raw:
+        raise ToolError("path is required")
+    try:
+        path = Path(raw).expanduser().resolve(strict=True)
+        base = root.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise ToolError("directory not found", "not_found") from None
+    if not path.is_dir():
+        raise ToolError("not a directory")
+    if any(part.startswith(".") for part in path.parts[1:]):
+        raise ToolError("hidden directories are not read")
+    if inside(path, paths.data_dir().resolve()) or inside(path, paths.LEGACY_DIR.resolve()):
+        raise ToolError("directories inside the finanse data dir are not read")
+    if not (inside(path.parent, base) and inside(base, path.parent)):
+        raise ToolError(
+            "the connector must be a directory directly in the workspace's connectors/ folder "
+            "(connectors/<id>/)"
+        )
     return path
 
 
@@ -498,33 +527,164 @@ def _mask(value: str, kind: str, column: dict) -> str:
         return value
     if kind == "identifier":
         return "[identifier]"
-    words = len(value.split())
-    return f"<text: {words} word{'s' if words != 1 else ''}>"
+    return text_shape(value)
+
+
+MAX_SHAPE_TOKENS = 40
+_VOCAB_EXACT = frozenset(_VOCAB)
+_EDGE_PUNCT = "\"'()[]{}<>,;:!?."
+
+
+def _known_word(core: str) -> bool:
+    """A transaction-type word, a boolean or a currency code (as a whole word)."""
+    up = fold(core).upper()
+    return up in _VOCAB_EXACT or up in _BOOL or up in _CURRENCIES
+
+
+# Endings an inflected vocabulary word may add to its stem (folded: Polish case endings, English
+# plural / verb forms). A surname built on a stem (PRZELEW-SKI) has none of them, so it stays <w>.
+_ENDINGS = frozenset({
+    "A", "I", "Y", "E", "U", "O", "OM", "OW", "ACH", "AMI", "EM", "IE", "OWI", "S", "ES", "ED",
+})
+
+
+def _inflected_word(core: str) -> bool:
+    """An inflected form of a long vocabulary stem (``DYWIDENDA``, ``PROWIZJI``, ``WITHDRAWALS``):
+    the stem, then one ending from :data:`_ENDINGS`."""
+    up = fold(core).upper()
+    return up.isalpha() and any(
+        len(v) >= 6 and up.startswith(v) and up[len(v):] in _ENDINGS for v in _VOCAB
+    )
+
+
+_LETTER_RUN = re.compile(r"[^\W\d_]{3,}")
+
+
+def _shape(token: str) -> str:
+    """Digits as 9, a letter run of 3+ letters as <w> (no letter count of a name or nickname next to
+    digits: ``Anna2000`` -> ``<w>9999``), shorter runs as A."""
+    parts = []
+    for i, piece in enumerate(_LETTER_RUN.split(token)):
+        if i:
+            parts.append("<w>")
+        parts.append("".join("A" if ch.isalpha() else "9" if ch.isdigit() else ch for ch in piece))
+    return "".join(parts)
+
+
+def text_shape(value: str) -> str:
+    """Free text as a per-token shape (see the module doc): never a word that could be a name."""
+    tokens = value.split()
+    out = []
+    for i, token in enumerate(tokens[:MAX_SHAPE_TOKENS]):
+        core = token.strip(_EDGE_PUNCT)
+        if not core:
+            out.append(token[:8])  # punctuation only: "@", "-", "/"
+            continue
+        if _is_identifier(core):
+            out.append("[identifier]")
+            continue
+        if "@" in core and any(ch.isalpha() for ch in core):  # an e-mail or a handle
+            out.append("[email]")
+            continue
+        if _known_word(core):
+            out.append(token)
+            continue
+        if _inflected_word(core):
+            neighbours = [
+                n for n in (tokens[j].strip(_EDGE_PUNCT) for j in (i - 1, i + 1) if 0 <= j < len(tokens))
+                if n.isalpha()  # a name next to it ("JAN PRZELEWSKI") hides the word
+            ]
+            if not any(
+                looks_like_person(f"{a} {b}")
+                for n in neighbours
+                for a, b in ((n, core), (core, n))
+            ):
+                out.append(token)
+                continue
+        if any(ch.isdigit() for ch in core):
+            out.append(_shape(token))
+            continue
+        if not any(ch.isalpha() for ch in core):
+            out.append(token[:8])
+            continue
+        out.append("<w>")
+    if len(tokens) > MAX_SHAPE_TOKENS:
+        out.append(f"<+{len(tokens) - MAX_SHAPE_TOKENS} words>")
+    return " ".join(out)
+
+
+MAX_LABEL_WORDS = 5
 
 
 def _safe_label(text: str) -> str:
     """A header, sheet name or JSON key as shown: masked when it looks like data rather than a label
-    (a person's name, 4+ digits, or longer than 48 characters), e.g. a headerless file's first row."""
-    if looks_like_person(text) or len(_DIGITS.findall(text or "")) >= 4 or len(text or "") > 48:
+    (a person's name, 4+ digits, a number / date / identifier, longer than 48 characters or more than
+    5 words: a title), e.g. a headerless file's first row."""
+    value = text or ""
+    if (
+        looks_like_person(value)
+        or len(_DIGITS.findall(value)) >= 4
+        or len(value) > 48
+        or len(value.split()) > MAX_LABEL_WORDS
+        or (value.strip() and _cell_kind(value.strip(), "") in _DATA_KINDS)
+    ):
         return _mask(text, "text", {})
     return text
 
 
+_DATA_KINDS = ("date", "integer", "decimal", "identifier", "isin")
+
+
+MAX_RUN_SCAN = 50
+
+
+def _is_data_row(row: list[str], width: int) -> bool:
+    """A row of a table under a ``width``-wide label row: a number / date / id, about as wide."""
+    cells = [c for c in row if c]
+    return len(cells) >= max(2, width - 1) and any(_cell_kind(c, "") in _DATA_KINDS for c in cells)
+
+
+def _data_run(rows: list[list[str]], start: int, width: int) -> int:
+    """How many data rows follow ``start`` directly (until a blank or another kind of row)."""
+    run = 0
+    for row in rows[start + 1 : start + 1 + MAX_RUN_SCAN]:
+        if not any(row) or not _is_data_row(row, width):
+            break
+        run += 1
+    return run
+
+
 def _header_row(rows: list[list[str]]) -> int:
-    """Index of the header row: the first of the first 30 rows whose filled width matches the
-    typical width of the rows below it and whose cells are mostly not numbers or dates."""
+    """Index of the header row among the first 30: a label row (cells mostly text, no number or date)
+    that is either as wide as the typical row or directly followed by a data row about as wide. Of
+    several, the one followed by data wins, then the one with a run of 2+ data rows, then the longest
+    run, then the widest, then the first: a preamble of short "label: value" rows, or a wide
+    one-row account summary (``Name | Account | Currency | Balance ...`` and its values) above the
+    operations table, never beats the table's header."""
     widths = Counter(sum(1 for c in r if c) for r in rows[:200] if any(r))
     common = widths.most_common(1)[0][0] if widths else 0
+    best, best_key = -1, None
     for i, row in enumerate(rows[:30]):
         filled = [c for c in row if c]
-        if not filled or len(filled) < max(1, common - 1):
+        if not filled:
             continue
         kinds = [_cell_kind(c, "") for c in filled]
         texty = sum(1 for k in kinds if k in ("text", "code", "currency_code"))
-        datay = sum(1 for k in kinds if k in ("date", "integer", "decimal", "identifier", "isin"))
-        if texty >= max(1, len(filled) * 0.6) and datay == 0:
-            return i
-    return -1  # no label row: every row is data, columns get generic names
+        datay = sum(1 for k in kinds if k in _DATA_KINDS)
+        if not (texty >= max(1, len(filled) * 0.6) and datay == 0):
+            continue
+        following = next((r for r in rows[i + 1 : i + 30] if any(r)), None)
+        followed = following is not None and (
+            any(_cell_kind(c, "") in _DATA_KINDS for c in following if c)
+            and sum(1 for c in following if c) >= max(2, len(filled) - 1)
+        )
+        if not followed and len(filled) < max(1, common - 1):
+            continue
+        run = _data_run(rows, i, len(filled))
+        key = (followed, run >= 2, run, len(filled), -i)
+        if best_key is None or key > best_key:
+            best, best_key = i, key
+    return best  # -1: no label row, every row is data, columns get generic names
 
 
 def _describe(table: Table, max_samples: int) -> dict:
@@ -640,8 +800,11 @@ def inspect_file(path: Path, *, max_samples: int = 5) -> dict:
         ],
         "masking": L.text(
             "numbers are shown as their format (N = digit, separators kept), dates as their pattern, "
-            "identifiers as [identifier], free text as <text: n words>; only short code-like values "
-            "of low-cardinality columns are shown"
+            "identifiers as [identifier]; free text token by token: transaction-type words, "
+            "currencies and booleans as they are, an e-mail as [email], a token with a digit as its "
+            "shape (9 = digit, a run of 3+ letters <w>, a shorter one A, punctuation kept), any "
+            "other word as <w>; only short code-like values of "
+            "low-cardinality columns are shown; the same in both privacy levels"
         ),
     }
 

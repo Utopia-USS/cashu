@@ -97,8 +97,8 @@ class RunningValuation:
 
 
 # Prefer Open Banking over CSV when two snapshots share the same date (OB is the
-# more current/authoritative source).
-_BALANCE_SOURCE_RANK = {"open_banking": 0, "csv": 1, "manual": 2}
+# more current/authoritative source); a connector (a bank API or export converter) sits between.
+_BALANCE_SOURCE_RANK = {"open_banking": 0, "connector": 1, "csv": 2, "manual": 3}
 
 
 class BalanceValuation:

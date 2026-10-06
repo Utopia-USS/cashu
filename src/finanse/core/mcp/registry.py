@@ -29,6 +29,7 @@ PROVIDERS = (
     "finanse.core.mcp.tools.investments",
     "finanse.core.mcp.tools.alerts",
     "finanse.core.mcp.tools.research",
+    "finanse.core.mcp.tools.connectors",
 )
 
 MAX_STRING = 200_000  # strategy YAML / markdown are the longest arguments
@@ -53,7 +54,21 @@ class ToolSpec:
     write: bool = False
     refused: dict[str, str] = field(default_factory=dict)
     """Arguments that do not exist (any more), with the message telling the agent what to do
-    instead (e.g. ``converter``: the app never runs scripts). Not part of the schema."""
+    instead (e.g. ``converter``: MCP never makes the app run code; the app runs only connectors the
+    owner approved in the app). Not part of the schema."""
+    also: tuple[str, ...] = ()
+    """More modules that make the tool available (any of ``module`` and these; e.g. ``inspect_export``
+    serves the investments and the budget import)."""
+
+    def enabled_in(self, enabled) -> bool:
+        """Listed and callable for a profile with these modules enabled."""
+        return self.module == "core" or self.module in enabled or any(m in enabled for m in self.also)
+
+    def listed_module(self, enabled) -> str:
+        """The module the tool is listed under for this profile (the first enabled one)."""
+        if self.module == "core" or self.module in enabled:
+            return self.module
+        return next((m for m in self.also if m in enabled), self.module)
 
     @property
     def input_schema(self) -> dict[str, Any]:

@@ -32,6 +32,7 @@ from .service import transactions as manual_transactions
 from .store import instruments, journal, transactions
 
 router = APIRouter(prefix="/investments")
+MODULE_ID = "investments"
 
 
 def _404(what: str) -> HTTPException:
@@ -813,14 +814,62 @@ async def import_preview(profile: CurrentProfile, request: Request) -> dict:
         mapping = None
     if not content:
         raise _422("The file is empty")
-    file = ImportFile(name, content)
+    request_ = _with_connector(
+        profile, imports.ImportRequest(ImportFile(name, content), account_id, importer, mapping)
+    )
     with get_session() as s:
-        result = _preview_or_error(
-            s, profile, imports.ImportRequest(file, account_id, importer, mapping)
-        )
+        result = _preview_or_error(s, profile, request_)
         out = views.preview_dict(result)
-    files.write_private(files.staged_path(profile.slug, result.sha256, name), content)
+    # A connector import stages its converted document: the commit never runs the connector again.
+    staged_content = request_.file.content
+    files.write_private(files.staged_path(profile.slug, result.sha256, name), staged_content)
     return out
+
+
+def _with_connector(profile: Profile, request: imports.ImportRequest) -> imports.ImportRequest:
+    """``connector:<id>`` (or ``auto`` that no built-in importer recognises): run the approved file
+    connector's ``convert`` now, before any database session is open, and return the request with
+    the converted document as the file. A failed run is the owner's 422 ``connector_<kind>``."""
+    from finanse.core.connectors import imports as connector_imports
+
+    cid = connector_imports.connector_id_of(request.importer)
+    prefer = None
+    with get_session() as s:
+        if cid is None:
+            if (request.importer or imports.AUTO) != imports.AUTO:
+                return request
+            need, prefer, account = imports.connector_auto_check(s, profile, request)
+            if not need:
+                return request
+        else:
+            account = imports.account_facts(s, profile, request.account_id)
+    if cid is not None and account is None:
+        raise _404(f"No brokerage account {request.account_id} in this profile")
+    try:
+        with connector_imports.upload_file(request.file.content, request.file.name) as path:
+            if cid is None:
+                if not connector_imports.file_connectors(MODULE_ID, request.file.name):
+                    return request
+                converted = connector_imports.detect_and_convert(
+                    MODULE_ID, path, request.file.name,
+                    profile_id=profile.id, prefer=prefer, account=account,
+                )
+                if converted is None:
+                    return request  # nothing claims it: the preview says so as before
+            else:
+                converted = connector_imports.convert(
+                    cid, MODULE_ID, path, request.file.name, profile_id=profile.id, account=account
+                )
+    except connector_imports.ConnectorRunFailed as e:
+        raise connector_imports.http_error(e) from None
+    return imports.ImportRequest(
+        ImportFile(request.file.name, converted.content),
+        request.account_id,
+        connector_imports.choice_of(converted.connector_id),
+        None,
+        connector_name=converted.name,
+        requested=request.importer or imports.AUTO,
+    )
 
 
 class CommitBody(BaseModel):
@@ -843,8 +892,14 @@ def import_commit(profile: CurrentProfile, body: CommitBody) -> dict:
     if not staged.is_file():
         raise _404("No staged file with this id; preview it again")
     content = staged.read_bytes()
+    connector_name = None
+    if imports.is_connector_choice(body.importer):  # the staged file is the converted document
+        from finanse.core.connectors import imports as connector_imports
+
+        connector_name = connector_imports.connector_name(body.importer.split(":", 1)[1])
     request = imports.ImportRequest(
-        ImportFile(body.file_name, content), body.account_id, body.importer, body.mapping
+        ImportFile(body.file_name, content), body.account_id, body.importer, body.mapping,
+        connector_name=connector_name,
     )
     with get_session() as s:
         preview = _preview_or_error(s, profile, request)
@@ -938,14 +993,23 @@ class RunBody(BaseModel):
 
 @router.post("/run")
 def run_now(profile: CurrentProfile, body: RunBody | None = None) -> dict:
-    """Run the daily check for this profile now (shares the worker's lock: 409 when busy)."""
+    """Run the daily check for this profile now (shares the worker's lock: 409 when busy). Online runs
+    first sync the profile's due investments fetch-connector bindings (F10; at most once per 20 h
+    each), reported under ``connectors``."""
+    offline = bool(body and body.offline)
+    synced = None
+    if not offline:
+        from finanse.core.connectors import sync
+
+        synced = sync.summary_dicts(sync.run_due(profile, MODULE_ID))
     try:
-        report = daily.run_daily_check(
-            "api", profile_ids=[profile.id], offline=bool(body and body.offline)
-        )
+        report = daily.run_daily_check("api", profile_ids=[profile.id], offline=offline)
     except daily.RunBusy as e:
         raise HTTPException(status_code=409, detail=f"Rules are already running ({e})") from None
-    return report.to_dict()
+    out = report.to_dict()
+    if synced:  # only when a binding exists (the shape stays as before otherwise)
+        out["connectors"] = synced
+    return out
 
 
 @router.get("/runs")

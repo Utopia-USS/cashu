@@ -36,35 +36,32 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
     ) + _count(session, bank_txns.where(Transaction.category_source == "manual_txn"))
     n_transfers = _count(session, bank_txns.where(Transaction.is_internal_transfer == True))
 
+    # One bank account: nothing to pair, the step is done once there is data (first steps B1).
+    single = n_txns > 0 and n_bank_accounts < 2
     return SetupStatus(steps=(
         SetupStep(
-            "bank_account",
-            "Dodaj bank i konto",
-            "Powstaje przy pierwszym imporcie CSV albo przez Open Banking.",
-            done=n_bank_accounts > 0,
-            actions=(SetupAction("cli", "Kopiuj polecenie", f"{cli} import-csv WYCIAG.csv"),),
-        ),
-        SetupStep(
-            "first_import",
-            "Pierwszy import",
-            "CSV z banku (mBank, Erste, Pekao) albo Enable Banking.",
+            "statement",
+            "Pierwszy wyciąg z banku",
+            "Plik CSV (mBank, Pekao, Erste) albo Open Banking.",
             done=n_txns > 0,
             actions=(
-                SetupAction("cli", "Import katalogu", f"{cli} import-dir statements/"),
+                SetupAction("cli", "Kopiuj polecenie", f"{cli} import-csv WYCIAG.csv"),
                 SetupAction("cli", "Open Banking", f'{cli} eb login "mBank"'),
             ),
         ),
         SetupStep(
             "categories",
-            "Sprawdź kategorie",
+            "Kategorie wydatków",
             "W zakładce Wydatki; reguła zapamięta sprzedawcę.",
             done=n_txns > 0 and (n_manual > 0 or n_uncategorized == 0),
             actions=(SetupAction("tab", "Wydatki", "expenses"),),
         ),
         SetupStep(
             "transfers",
-            "Oznacz przelewy wewnętrzne",
-            "Dopasowanie po IBAN; nie liczą się jako wydatki.",
+            "Przelewy między kontami",
+            "Jedno konto bankowe: nic do dopasowania."
+            if single
+            else "Po IBAN między Twoimi kontami; nie liczą się jako wydatki.",
             done=n_txns > 0 and (n_transfers > 0 or n_bank_accounts < 2),
             actions=(SetupAction("cli", "Kopiuj polecenie", f"{cli} match-transfers"),),
         ),

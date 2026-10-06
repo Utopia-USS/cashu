@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlmodel import Session, select
 
+from finanse.core import profiles
 from finanse.core.modules import SetupAction, SetupStatus, SetupStep, cli_prefix
 from finanse.core.profiles import account_ids_query
 
@@ -16,11 +17,11 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
     loans = session.exec(
         select(Loan).where(Loan.account_id.in_(account_ids_query(profile_id)))
     ).all()
-    return SetupStatus(steps=(
+    steps = [
         SetupStep(
             "loan",
-            "Dodaj kredyt",
-            "Kwota, oprocentowanie, rata, data startu.",
+            "Kredyt",
+            "Kwota, oprocentowanie, okres, pierwsza rata.",
             done=bool(loans),
             actions=(SetupAction(
                 "cli", "Kopiuj polecenie",
@@ -28,10 +29,14 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
                 "--years 25 --start 2025-01-05",
             ),),
         ),
-        SetupStep(
+    ]
+    # Installments are recognised in bank transactions: without the budget module there is nothing
+    # to recognise them in (first steps L4).
+    if "budget" in profiles.enabled_modules(session, profile_id):
+        steps.append(SetupStep(
             "payments",
-            "Wskaż konto raty",
-            "IBAN albo fraza z tytułu raty; raty liczą się jako spłata, nie subskrypcja.",
+            "Rozpoznawanie rat",
+            "Fraza z tytułu przelewu albo IBAN banku; raty liczą się jako spłata, nie subskrypcja.",
             done=bool(loans) and (
                 any(loan.payment_iban or loan.payment_text for loan in loans)
                 or _has_categorized_installments(session, profile_id)
@@ -39,8 +44,8 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
             actions=(SetupAction(
                 "cli", "Kopiuj polecenie", f'{cli} loans set-payment KREDYT_ID --text "RATA KREDYTU"'
             ),),
-        ),
-    ))
+        ))
+    return SetupStatus(steps=tuple(steps))
 
 
 def _has_categorized_installments(session: Session, profile_id: int) -> bool:

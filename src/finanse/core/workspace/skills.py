@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .. import runtime
@@ -20,7 +20,8 @@ from .. import runtime
 # e.g. market-research before it ships). Every skill folder must be listed here
 # (tests/test_workspace.py checks it), so a new skill is a deliberate decision.
 MODULE_SKILLS: dict[str, tuple[str, ...]] = {
-    "budget": ("budget-setup",),
+    # import-builder serves both import modules (broker exports and bank statements, F10).
+    "budget": ("budget-setup", "import-builder"),
     "assets": ("assets-setup",),
     "loans": ("loans-setup",),
     "investments": ("investments-setup", "import-builder", "extension-builder", "market-research"),
@@ -96,8 +97,9 @@ def wanted(
     out: dict[str, SkillSource] = {}
     for module_id in enabled_modules:
         for name in MODULE_SKILLS.get(module_id, ()):
-            if name in shipped:
-                out[name] = shipped[name]
+            if name in shipped and name not in out:
+                # a skill of several modules is labelled with the first enabled one
+                out[name] = replace(shipped[name], module=module_id)
     return out
 
 

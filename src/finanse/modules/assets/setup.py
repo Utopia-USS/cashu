@@ -29,22 +29,25 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
     return SetupStatus(steps=(
         SetupStep(
             "position",
-            "Dodaj pozycję",
-            "Nazwa, wartość, waluta.",
+            "Pozycja",
+            "Mieszkanie, działka, inne aktywa: nazwa, wartość, waluta.",
             done=bool(positions),
             actions=(SetupAction(
                 "cli", "Kopiuj polecenie",
                 f'{cli} add-position "Mieszkanie" --type property --value 500000',
             ),),
         ),
+        # Optional (first steps A3 / D8): never counts toward the state; done only when a car with a
+        # depreciation curve exists (a profile without a car is not "done", it simply skips it).
         SetupStep(
             "vehicle",
-            "Krzywa utraty wartości auta",
-            "Cena zakupu, data, roczny spadek.",
-            done=bool(positions) and (not vehicles or n_depreciating == len(vehicles)),
+            "Auto",
+            "Cena i data zakupu, roczny spadek; wartość liczy się sama.",
+            done=bool(vehicles) and n_depreciating == len(vehicles),
             actions=(SetupAction(
                 "cli", "Kopiuj polecenie",
                 f'{cli} set-vehicle "Auto" 80000 2025-05-01 --rate 15',
             ),),
+            optional=True,
         ),
     ))

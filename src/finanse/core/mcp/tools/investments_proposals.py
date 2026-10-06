@@ -10,10 +10,11 @@ MCP write tools that create them and ``validate_import``.
   and the rule is backtested: evaluated as of weekly (longer histories: evenly spaced, at most 260)
   dates over the profile's history. Approving merges it into the then-current file the same way.
 - ``propose_import``: previews the file (finanse format, or generic CSV + mapping) and stores it in
-  ``<data dir>/imports/<slug>/.proposals/``. Approving re-runs the preview and commits it. The app
-  never runs agent-written code (F5 R1): an export in another format is converted by the agent
-  itself, under its own permission prompts, and the converted file is what these tools take; a
-  script path or a ``converter`` argument is refused with a clear error.
+  ``<data dir>/imports/<slug>/.proposals/``. Approving re-runs the preview and commits it. An MCP call
+  never makes the app run code (F10): the app runs only connectors the owner approved in the app
+  (Ustawienia > Konektory); a one-off converter is run by the agent itself, under its own permission
+  prompts, and the converted file is what these tools take; a script path or a ``converter``
+  argument is refused with a clear error.
 
 What the agent gets back is labelled like any tool answer: counts, kinds, rows and dates; the diff of
 the owner's files is shown only in the app (``detail``), the agent gets line counts.
@@ -26,6 +27,7 @@ import difflib
 import hashlib
 import math
 import re
+import uuid
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -49,8 +51,9 @@ MAX_BACKTEST_POINTS = 260
 MAX_MAPPING_BYTES = 256 * 1024
 STRATEGY_LOCK_WAIT = 30.0  # seconds an approval waits for a running daily check (then busy)
 NO_SCRIPTS = (
-    "the app never runs scripts: run your converter yourself (python3 <script> <export> "
-    "<output.csv>) and pass the finanse-format output file"
+    "MCP calls never make the app run code: run a one-off converter yourself (python3 <script> "
+    "<export> <output.csv>) and pass the finanse-format output file, or write a connector "
+    "(propose_connector), which the app runs only after the owner approves it in Ustawienia > Konektory"
 )
 SCRIPT_EXTENSIONS = frozenset(
     ("py", "pyw", "pyc", "pyz", "sh", "bash", "zsh", "command", "js", "mjs", "cjs", "ts")
@@ -921,7 +924,11 @@ def _summary_labelled(summary: dict, pv) -> dict:
 def _stage(slug: str, sha: str, file_name: str, content: bytes) -> str:
     from finanse.modules.investments.service import files
 
-    target = files.imports_dir(slug) / ".proposals" / f"{sha}.{files.extension(file_name)}"
+    # One file per proposal (never shared): rejecting one proposal never removes another's file.
+    target = (
+        files.imports_dir(slug) / ".proposals"
+        / f"{sha}-{uuid.uuid4().hex[:12]}.{files.extension(file_name)}"
+    )
     files.write_private(target, content)
     return files.relative_to_data_dir(target)
 
@@ -1008,8 +1015,9 @@ def propose_import(
 
 
 CONVERTER_UNSUPPORTED = (
-    "this import needs a converter script, and the app no longer runs scripts; ask the agent to run "
-    "the converter itself and propose the converted file"
+    "this import was stored with a converter script, which a proposal never runs (the app runs only "
+    "connectors the owner approved in Ustawienia > Konektory); ask the agent to run the converter "
+    "itself and propose the converted file"
 )
 
 
@@ -1021,19 +1029,26 @@ def _import_detail(session: Session, profile: Profile, row: Proposal) -> dict:
         "preview": p.get("preview"),
     }
     if p.get("converter"):
-        # Stored before F5 R1: such an import needs a script the app no longer runs.
+        # Stored before F5 R1: it names a converter script, which a proposal never runs.
         out["converter_unsupported"] = True
         out["detail_error"] = CONVERTER_UNSUPPORTED
+    if p.get("source") == "connector":  # a fetch connector's sync (F10)
+        out |= {"connector_name": p.get("connector_name"), "since": p.get("since")}
     return out
 
 
-def _import_apply(profile: Profile, row: Proposal) -> dict:
+def _import_apply(profile: Profile, row: Proposal) -> dict | Staged:
     from finanse.modules.investments.importing import ImportFile
     from finanse.modules.investments.service import imports
 
     p = row.payload or {}
     if p.get("converter"):
         raise ProposalError(CONVERTER_UNSUPPORTED, "converter_unsupported")
+    from_connector = p.get("source") == "connector"
+    if from_connector:  # binding gone, connector not approved, or synced again since (F10)
+        from finanse.core.connectors import sync
+
+        sync.check_proposal(p)
     staged = _staged_file(p.get("staged") or "")
     if not staged.is_file():
         raise ProposalError(
@@ -1056,7 +1071,9 @@ def _import_apply(profile: Profile, row: Proposal) -> dict:
                 s,
                 fresh,
                 imports.ImportRequest(
-                    ImportFile(name, content), p["account_id"], importer, mapping_yaml
+                    ImportFile(name, content), p["account_id"], importer, mapping_yaml,
+                    connector_name=p.get("connector_name"),
+                    bound_account=from_connector,
                 ),
             )
         except imports.ImportFailure as e:
@@ -1069,13 +1086,19 @@ def _import_apply(profile: Profile, row: Proposal) -> dict:
     except imports.ImportFailure as e:
         raise ProposalError(str(e), "import_failed") from None
     staged.unlink(missing_ok=True)
-    return {
+    out = {
         "batch_id": result.batch_id,
         "inserted": result.inserted,
         "duplicates": result.duplicates,
         "positions": result.positions,
         "new_instruments": len(result.new_instrument_ids),
     }
+    if not from_connector:
+        return out
+    from finanse.core.connectors import sync
+
+    batch_ref = f"investments:{result.batch_id}"
+    return Staged(out, record=lambda s: sync.record_approved(s, p, row.id, batch_ref))
 
 
 def _import_discard(row: Proposal) -> None:

@@ -1,8 +1,9 @@
 """One worker run: every profile x its enabled modules, then notifications and the digest.
 
-Order: the investments daily check (one call for all investments profiles, shares the
-``investments-daily`` lock with the in-app "run now") followed by the incremental performance price
-backfill (online runs only, no job row), the budget sync per profile (only when
+Order: the fetch connectors per profile (``connectors.fetch``: due bindings only, F10; first, so
+what they commit is in today's check), the investments daily check (one call for all investments
+profiles, shares the ``investments-daily`` lock with the in-app "run now") followed by the incremental
+performance price backfill (online runs only, no job row), the budget sync per profile (only when
 configured and not throttled), immediate notifications, the weekly digest. A failing job is
 recorded and never stops the others. The whole run holds the ``worker`` lock, so two worker
 runs never overlap; the summary lands in the worker state (``last_run``).
@@ -20,6 +21,7 @@ from typing import Any
 from .. import locks, profiles
 from ..db import get_session
 from . import budget as budget_glue
+from . import connectors as connectors_glue
 from . import investments as inv
 from . import notifications
 from . import state as worker_state
@@ -32,11 +34,13 @@ _log = logging.getLogger("finanse.worker")
 # Job ids (also the keys of the per-job summary).
 INVESTMENTS_DAILY = "investments.daily"
 BUDGET_SYNC = "budget.sync"
+CONNECTORS_FETCH = connectors_glue.JOB
 NOTIFICATIONS = "notifications"
 DIGEST = "digest"
 JOB_MODULES = {
     INVESTMENTS_DAILY: "investments",
     BUDGET_SYNC: "budget",
+    CONNECTORS_FETCH: "core",
     NOTIFICATIONS: "investments",
     DIGEST: "investments",
 }
@@ -185,6 +189,12 @@ def _run(notifier, offline, budget, now, as_of, sources, lock_wait, session_fact
     investors = [p for p in everyone if inv.MODULE_ID in enabled[p.id]]
     budgeters = [p for p in everyone if budget_glue.MODULE_ID in enabled[p.id]]
 
+    # Fetch connectors first: what an investments binding commits is in today's daily check
+    # (positions, rules, notifications), like the in-app "run now" (sync, then the check).
+    for profile in everyone:
+        job = _connectors(profile, enabled[profile.id], offline, notifier, now)
+        if job is not None:
+            report.jobs.append(job)
     if investors:
         report.jobs += _investments(offline, as_of, sources, lock_wait)
         if not offline:  # performance history of sold instruments + benchmark (housekeeping, F6)
@@ -278,6 +288,20 @@ def _budget(profile, enabled: bool, now, state, save, legacy_owner) -> JobResult
         outcome = budget_glue.SyncOutcome("failed", book["last_error"])
     save(state)
     return JobResult(BUDGET_SYNC, outcome.status, profile.slug, outcome.detail, outcome.stats)
+
+
+def _connectors(profile, modules: set[str], offline: bool, notifier, now) -> JobResult | None:
+    try:
+        outcome = connectors_glue.run(profile, modules, now=now, notifier=notifier, offline=offline)
+    except Exception as e:  # noqa: BLE001 - recorded, the other jobs still run
+        _log.exception("connector fetch failed for %s", profile.slug)
+        return JobResult(CONNECTORS_FETCH, "failed", profile.slug, f"{type(e).__name__}")
+    if outcome is None:
+        return None
+    return JobResult(
+        CONNECTORS_FETCH, outcome.status, profile.slug, outcome.detail, outcome.stats,
+        code=outcome.code, params=outcome.params,
+    )
 
 
 def _notify(profile, notifier, now, session_factory) -> JobResult:

@@ -35,7 +35,8 @@ def profile_overview(ctx: ToolContext) -> dict:
 
     by_module: dict[str, list[str]] = defaultdict(list)
     for spec in all_tools().values():
-        by_module[spec.module].append(spec.name)
+        for module_id in (spec.module, *spec.also):
+            by_module[module_id].append(spec.name)
     module_rows = []
     for spec in modules.all_modules():
         on = spec.id in enabled

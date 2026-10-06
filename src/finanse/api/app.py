@@ -24,6 +24,7 @@ from ..core import modules, networth, security
 from ..core.agent_api import router as agent_router
 from ..core.api import CurrentProfile, breakdown_dict, f, platform_router, profile_only_router
 from ..core.api import router as core_router
+from ..core.connectors import api as connectors_api
 from ..core.db import get_session, init_db
 from ..core.workspace import api as workspace_api
 from ..modules.budget import analytics as budget_analytics
@@ -103,8 +104,13 @@ _profile_routers = [shell_router, core_router] + [
 ]
 app.include_router(platform_router, prefix="/api")
 app.include_router(workspace_api.platform_router, prefix="/api")
-# agent_router: proposals, reviews, MCP audit; workspace (profile-only, no legacy alias).
-for _router in [profile_only_router, agent_router, workspace_api.router, *_profile_routers]:
+app.include_router(connectors_api.router, prefix="/api")  # global: connectors are code, not data
+# agent_router: proposals, reviews, MCP audit; workspace and connector bindings (profile-only, no
+# legacy alias).
+_profile_only = [
+    profile_only_router, agent_router, workspace_api.router, connectors_api.profile_router,
+]
+for _router in [*_profile_only, *_profile_routers]:
     app.include_router(_router, prefix=PROFILE_PREFIX, dependencies=[Depends(_profile_slug)])
 for _router in _profile_routers:  # legacy aliases: the default profile
     app.include_router(_router, prefix="/api")

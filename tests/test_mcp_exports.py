@@ -54,7 +54,7 @@ def test_csv_with_preamble(tmp_path, db_engine):
     assert sorted(cols["ISIN"]["values"]) == ["PLPKO0000016", "US0378331005"]
     sample = sheet["samples"][1]
     assert sample[0] == "DD.MM.YYYY" and sample[6] == "-N NNN,NN" and sample[7] == "[identifier]"
-    assert sample[8].startswith("<text")
+    assert sample[8] == "<w> <w>"  # a name: neither the words nor their lengths
 
 
 def test_xlsx(tmp_path, db_engine):
@@ -217,3 +217,158 @@ def test_unicode_variant_of_the_data_dir_is_refused(tmp_path, monkeypatch):
         pytest.skip("the file system distinguishes Unicode normalization forms")
     with pytest.raises(ToolError, match="data dir"):
         exports.checked_path(variant, "x")
+
+
+# --------------------------------------------------------------------------- #
+# F10 11.3.4: free text as token shapes; 11.3.5: a header below a "label: value" preamble
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("text", "shape"),
+    [
+        ("OPEN BUY CDR.PL 10 @ 120.5", "OPEN BUY <w> 99 @ 999.9"),
+        ("CLOSE SELL EUNL.DE 3.0000 @ 98.1200", "CLOSE SELL <w> 9.9999 @ 99.9999"),
+        ("DYWIDENDA AAPL.US 0.24 USD/SHR", "DYWIDENDA <w> 9.99 <w>"),
+        ("Przelew od JAN KOWALSKI za czynsz 10/2026", "Przelew <w> <w> <w> <w> <w> 99/9999"),
+        ("Jan Przelewski", "<w> <w>"),  # a vocabulary-like surname next to a name stays hidden
+        ("zwrot PL61109010140000071219812874", "<w> [identifier]"),
+        ("PROWIZJA 1.50 PLN", "PROWIZJA 9.99 PLN"),
+        # BE-8: no letter counts of an e-mail, a nickname with digits or a vocabulary-like surname
+        ("mail jan.kowalski1@gmail.com", "<w> [email]"),
+        ("Zakup BLIK Anna2000", "Zakup <w> <w>9999"),
+        ("PRZELEWSKI 12", "<w> 99"),
+        ("PROWIZJI 2.00", "PROWIZJI 9.99"),
+        ("AB12 TX-9", "AA99 AA-9"),
+    ],
+)
+def test_text_is_shown_as_token_shapes(text, shape):
+    assert exports.text_shape(text) == shape
+
+
+def test_a_name_in_a_transfer_title_never_leaks(tmp_path, db_engine):
+    path = tmp_path / "wyciag.csv"
+    rows = ["Data;Tytul;Kwota"] + [
+        f"2026-09-0{i};Przelew od Grzegorz Brzeczyszczykiewicz {i};-1{i},00" for i in range(1, 6)
+    ]
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    data = _plain(exports.inspect(str(path), slug="x"))
+    blob = json.dumps(data)
+    assert "Grzegorz" not in blob and "Brzeczyszczykiewicz" not in blob
+    # no letter counts of a name either: names are <w>, never AAAA
+    assert "AAAAAAAA" not in blob
+    assert data["sheets"][0]["samples"][0][1] == "Przelew <w> <w> <w> 9"
+    assert "token" in data["masking"] and "<w>" in data["masking"]
+
+
+def _xlsx(path, sheets: dict[str, list[list]]) -> None:
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    def cell(ref: str, value) -> str:
+        if isinstance(value, (int, float)):
+            return f'<c r="{ref}"><v>{value}</v></c>'
+        return f'<c r="{ref}" t="inlineStr"><is><t>{escape(str(value))}</t></is></c>'
+
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        names = list(sheets)
+        z.writestr(
+            "xl/workbook.xml",
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+            + "".join(
+                f'<sheet name="{escape(n)}" sheetId="{i + 1}" r:id="rId{i + 1}"/>'
+                for i, n in enumerate(names)
+            )
+            + "</sheets></workbook>",
+        )
+        z.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            + "".join(
+                f'<Relationship Id="rId{i + 1}" Target="worksheets/sheet{i + 1}.xml"/>'
+                for i in range(len(names))
+            )
+            + "</Relationships>",
+        )
+        for i, name in enumerate(names):
+            body = []
+            for r, row in enumerate(sheets[name], start=1):
+                cells = "".join(
+                    cell(f"{chr(65 + c)}{r}", v) for c, v in enumerate(row) if v not in ("", None)
+                )
+                body.append(f'<row r="{r}">{cells}</row>')
+            z.writestr(
+                f"xl/worksheets/sheet{i + 1}.xml",
+                '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                f"<sheetData>{''.join(body)}</sheetData></worksheet>",
+            )
+
+
+def test_header_below_an_account_preamble_in_an_xtb_like_xlsx(tmp_path, db_engine):
+    """Several sheets, each with 5-10 "label: value" preamble rows above a short table (2 data rows
+    and a totals row): the header is the table's, not the first preamble row."""
+    preamble = [
+        ["Imie i nazwisko", "Grzegorz Brzeczyszczykiewicz"],
+        ["Numer rachunku", "12345678"],
+        ["Waluta", "PLN"],
+        ["Typ rachunku", "Standard"],
+        ["Data od", "2026-01-01"],
+        ["Data do", "2026-09-30"],
+        [],
+    ]
+    header = ["Position", "Symbol", "Type", "Volume", "Open time", "Open price", "Market price",
+              "Gross P/L"]
+    positions = preamble + [
+        header,
+        [123456781, "CDR.PL", "BUY", 10, "2026-03-02 10:15:00", 120.5, 130.2, 97.0],
+        [123456782, "EUNL.DE", "BUY", 3, "2026-04-11 09:00:01", 98.12, 100.0, 5.64],
+        ["Total", "", "", "", "", "", "", 102.64],
+    ]
+    cash = preamble[:5] + [
+        [],
+        ["ID", "Type", "Time", "Comment", "Symbol", "Amount"],
+        [987654321, "Deposit", "2026-02-01 12:00:00", "Przelew od Grzegorz Brzeczyszczykiewicz", "", 5000],
+        [987654322, "Stocks/ETF purchase", "2026-03-02 10:15:00", "OPEN BUY 10 @ 120.50", "CDR.PL",
+         -1205.0],
+        ["Total", "", "", "", "", 3795.0],
+    ]
+    path = tmp_path / "account_12345678_pl.xlsx"
+    _xlsx(path, {"OPEN POSITION 30092026": positions, "CASH OPERATION HISTORY": cash})
+    data = _plain(exports.inspect(str(path), slug="x"))
+    blob = json.dumps(data)
+    assert "Brzeczyszczykiewicz" not in blob and "Grzegorz" not in blob
+    pos, ops = data["sheets"]
+    assert pos["header_row"] == 8 and pos["preamble_rows"] == 7 and pos["rows"] == 3
+    assert [c["header"] for c in pos["columns"]][:3] == ["Position", "Symbol", "Type"]
+    assert ops["header_row"] == 7 and ops["preamble_rows"] == 6
+    comment = [c["header"] for c in ops["columns"]].index("Comment")
+    assert ops["samples"][1][comment] == "OPEN BUY 99 @ 999.99"
+    assert ops["samples"][0][comment] == "Przelew <w> <w> <w>"
+
+
+def test_header_below_a_wide_account_summary(tmp_path, db_engine):
+    """BE-10: a one-row horizontal account summary wider than the operations table above it (a
+    common broker layout, synthetic): the header is the table's, not the summary's."""
+    rows = [
+        ["Raport TEST"],
+        [],
+        ["Name and surname", "Account", "Currency", "Balance", "Equity", "Margin", "Free margin",
+         "Margin level"],
+        ["Grzegorz Brzeczyszczykiewicz", 12345678, "PLN", 1000.5, 1000.5, 0, 1000.5, 0],
+        [],
+        ["ID", "Type", "Time", "Comment", "Symbol", "Amount"],
+        [987654321, "Deposit", "2026-02-01 12:00:00", "Wplata", "", 5000],
+        [987654322, "Stocks/ETF purchase", "2026-03-02 10:15:00", "OPEN BUY 10 @ 120.50", "CDR.PL",
+         -1205.0],
+        [987654323, "Dividend", "2026-04-02 10:15:00", "DYWIDENDA", "CDR.PL", 12.0],
+        ["Total", "", "", "", "", 3807.0],
+    ]
+    path = tmp_path / "summary_pl.xlsx"
+    _xlsx(path, {"CASH OPERATION HISTORY": rows})
+    data = _plain(exports.inspect(str(path), slug="x"))
+    (sheet,) = data["sheets"]
+    assert sheet["header_row"] == 6
+    assert [c["header"] for c in sheet["columns"]][:3] == ["ID", "Type", "Time"]
+    assert "Brzeczyszczykiewicz" not in json.dumps(data)

@@ -244,9 +244,9 @@ def build_context(
     enabled = profiles.enabled_modules(session, profile.id)
     registry = modules.registry()
     tools = tuple(
-        ToolInfo(t.name, t.module, t.write)
+        ToolInfo(t.name, t.listed_module(enabled), t.write)
         for t in all_tools().values()
-        if t.module == "core" or t.module in enabled
+        if t.enabled_in(enabled)
     )
     shipped = skills.available()
     return Context(

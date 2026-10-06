@@ -104,7 +104,7 @@ def sync(profile, book: dict, now: dt.datetime) -> SyncOutcome:
     days = days_to_fetch(book, now)
     budget_api = importlib.import_module("finanse.modules.budget.api")
     try:
-        result = budget_api.resync(profile, days=days)
+        result = budget_api.resync(profile, days=days, connectors=False)  # own job
     except Exception as e:  # noqa: BLE001 - recorded, the worker goes on
         book["last_status"], book["last_error"] = "failed", f"{type(e).__name__}: {e}"[:300]
         return SyncOutcome("failed", book["last_error"], {"days": days})

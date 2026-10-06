@@ -5,7 +5,8 @@ Tables live with their owner: core (``Profile``, ``ProfileModule``, ``Account``,
 (budget: ``Transaction``, ``CategoryRule``, ``ImportBatch``; assets:
 ``Depreciation``, ``AssetDetails``; loans: ``Loan``; investments: the ``Inv*`` tables in
 ``modules/investments/models.py``) and the agent layer (``Proposal``, ``McpCall``,
-``Review`` in ``core/agent_models.py``). Importing this module registers all of them on
+``Review`` in ``core/agent_models.py``) and the connectors (``Connector``, ``ConnectorBinding``,
+``ConnectorRun`` in ``core/connectors/models.py``). Importing this module registers all of them on
 ``SQLModel.metadata`` (used by ``init_db`` and the Alembic environment) and keeps
 ``from finanse.models import ...`` working for scripts.
 """
@@ -13,6 +14,7 @@ Tables live with their owner: core (``Profile``, ``ProfileModule``, ``Account``,
 from __future__ import annotations
 
 from .core.agent_models import McpCall, Proposal, Review
+from .core.connectors.models import Connector, ConnectorBinding, ConnectorRun
 from .core.models import Account, AccountType, Balance, Profile, ProfileModule, Source
 from .modules.assets.models import AssetDetails, Depreciation
 from .modules.budget.models import CategoryRule, ImportBatch, Transaction
@@ -27,6 +29,9 @@ __all__ = [
     "AssetDetails",
     "Balance",
     "CategoryRule",
+    "Connector",
+    "ConnectorBinding",
+    "ConnectorRun",
     "Depreciation",
     "ImportBatch",
     "Loan",

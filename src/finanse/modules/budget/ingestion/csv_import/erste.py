@@ -101,6 +101,8 @@ class ErsteImporter(DelimitedImporter):
 
         for row in rows[start:]:
             rt = self._row_to_txn(row, stmt.currency)
+            if rt is None:
+                stmt.skipped_rows += 1  # blank rows are filtered out above
             if rt is not None:
                 stmt.transactions.append(rt)
                 if len(row) > 6:

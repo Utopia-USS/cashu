@@ -181,9 +181,9 @@ def mcp_info(profile: CurrentProfile) -> dict:
     with get_session() as s:
         enabled = set(profiles.enabled_modules(s, profile.id))
     tools = [
-        {"name": t.name, "module": t.module, "write": t.write}
+        {"name": t.name, "module": t.listed_module(enabled), "write": t.write}
         for t in all_tools().values()
-        if t.module == "core" or t.module in enabled
+        if t.enabled_in(enabled)
     ]
     return {
         # The packaged app's commands point at its bundled binary (core/runtime.py).

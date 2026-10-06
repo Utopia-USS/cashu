@@ -5,9 +5,15 @@
   ``iban_tail``, ``balance``, ``as_of``, ``is_liability``) plus ``kind`` ("manual" | "vehicle") and
   ``note`` (string | null).
 - ``POST  /assets/manual``        ``{name, type, value, currency?, on_date?, note?}`` -> 201 the row;
-  409 ``name_taken`` when the profile already has a manual position of that name.
-- ``PATCH /assets/manual/{id}``   ``{note?, value?, on_date?}``: ``note: null`` (or blank) clears it;
-  ``value`` records a new valuation (``on_date``, default today). 404 outside the profile.
+  409 ``name_taken`` when the profile already has a manual position (or a vehicle) of that name.
+  ``type: "vehicle"`` (F10 first steps) takes ``depreciation: {purchase_price, purchase_date,
+  annual_rate (fraction, 0.15), floor (number | null)}`` instead of ``value`` / ``on_date`` (ignored):
+  the value follows the curve. 422 ``depreciation_invalid`` (missing curve, price <= 0, rate outside
+  0-1, purchase date in the future, floor above the price).
+- ``PATCH /assets/manual/{id}``   ``{note?, value?, on_date?, depreciation?}``: ``note: null`` (or
+  blank) clears it; ``value`` records a new valuation (``on_date``, default today; refused for a
+  vehicle); ``depreciation`` (vehicles only, any subset of the curve fields) updates the curve. 404
+  outside the profile.
 - ``DELETE /assets/manual/{id}``  -> ``{id, removed: true}`` (F7 MB2): the position leaves every view
   and net worth (current and history) but stays stored for a restore. Idempotent; 404 outside the
   profile or for an unknown id.
@@ -41,23 +47,32 @@ from .models import Depreciation
 
 router = APIRouter()
 
-CREATE_TYPES = ("property", "investment", "other", "mortgage", "loan")
-"""Types a manual position can be created with here (vehicles have their own depreciation terms)."""
+CREATE_TYPES = ("property", "vehicle", "investment", "other", "mortgage", "loan")
+"""Types a manual position can be created with here (a vehicle with its depreciation terms)."""
+
+
+class DepreciationBody(BaseModel):
+    purchase_price: float | None = None
+    purchase_date: date | None = None
+    annual_rate: float | None = None  # a fraction: 0.15 = 15 %/yr
+    floor: float | None = None
 
 
 class ManualCreate(BaseModel):
     name: str
     type: str
-    value: float
+    value: float | None = None
     currency: str | None = None
     on_date: date | None = None
     note: str | None = None
+    depreciation: DepreciationBody | None = None
 
 
 class ManualPatch(BaseModel):
     note: str | None = None
     value: float | None = None
     on_date: date | None = None
+    depreciation: DepreciationBody | None = None
 
 
 def _422(message: str) -> HTTPException:
@@ -72,6 +87,30 @@ def _decimal(value: float) -> Decimal:
     if not out.is_finite() or out < 0:
         raise _422("value must be a number >= 0")
     return out
+
+
+def _curve_invalid(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=422, detail=message, headers={"X-Finanse-Error-Code": "depreciation_invalid"}
+    )
+
+
+def _curve(body: DepreciationBody) -> tuple[Decimal, date, Decimal, Decimal | None]:
+    """A complete, valid curve -> (price, purchase date, rate in PERCENT as stored, floor)."""
+    if body.purchase_price is None or body.purchase_date is None or body.annual_rate is None:
+        raise _curve_invalid("depreciation needs purchase_price, purchase_date and annual_rate")
+    if not body.purchase_price > 0:
+        raise _curve_invalid("purchase_price must be greater than 0")
+    price = _decimal(body.purchase_price)
+    if body.purchase_date > date.today():  # noqa: DTZ011 - local dates
+        raise _curve_invalid("purchase_date must not be in the future")
+    if not 0 <= body.annual_rate <= 1:
+        raise _curve_invalid("annual_rate must be a fraction from 0 to 1 (0.15 = 15 %/yr)")
+    rate = (Decimal(str(body.annual_rate)) * 100).normalize()
+    floor = None if body.floor is None else _decimal(body.floor)
+    if floor is not None and floor > price:
+        raise _curve_invalid("floor must not be above purchase_price")
+    return price, body.purchase_date, rate, floor
 
 
 def _is_vehicle(account: Account) -> bool:
@@ -152,7 +191,15 @@ def create_manual_position(profile: CurrentProfile, body: ManualCreate) -> dict:
     currency = (body.currency or profile.base_currency or "PLN").strip().upper()
     if len(currency) != 3 or not currency.isalpha():
         raise _422("currency must be a 3-letter code")
-    value = _decimal(body.value)
+    vehicle = body.type == "vehicle"
+    if vehicle:
+        if body.depreciation is None:
+            raise _curve_invalid("a vehicle needs depreciation terms")
+        curve = _curve(body.depreciation)
+    else:
+        if body.value is None:
+            raise _422("value is required")
+        value = _decimal(body.value)
     try:
         service.clean_note(body.note)
     except service.AssetError as e:
@@ -162,7 +209,8 @@ def create_manual_position(profile: CurrentProfile, body: ManualCreate) -> dict:
             select(Account.id).where(
                 Account.profile_id == profile.id,
                 Account.bank == MANUAL,
-                Account.external_id == f"manual:{name}",
+                # a position and a vehicle of one name would read as one row twice
+                Account.external_id.in_((f"manual:{name}", f"vehicle:{name}")),
                 Account.removed_at.is_(None),  # a removed one's name is free again
             )
         ).first()
@@ -172,16 +220,31 @@ def create_manual_position(profile: CurrentProfile, body: ManualCreate) -> dict:
                 detail="A manual position with this name already exists",
                 headers={"X-Finanse-Error-Code": "name_taken"},
             )
-        acc = service.add_manual_position(
-            s,
-            name=name,
-            type=body.type,
-            value=value,
-            currency=currency,
-            on_date=body.on_date,
-            profile_id=profile.id,
-            note=body.note,
-        )
+        if vehicle:
+            price, bought, rate, floor = curve
+            acc = service.set_vehicle(
+                s,
+                name=name,
+                purchase_price=price,
+                purchase_date=bought,
+                annual_rate=rate,
+                floor=floor,
+                currency=currency,
+                profile_id=profile.id,
+            )
+            if body.note is not None:
+                service.set_note(s, acc, body.note)
+        else:
+            acc = service.add_manual_position(
+                s,
+                name=name,
+                type=body.type,
+                value=value,
+                currency=currency,
+                on_date=body.on_date,
+                profile_id=profile.id,
+                note=body.note,
+            )
         s.commit()
         return _row(s, profile.id, acc.id)
 
@@ -197,6 +260,20 @@ def patch_manual_position(profile: CurrentProfile, account_id: int, body: Manual
             upsert_balance(
                 s, acc, body.on_date or date.today(),  # noqa: DTZ011 - local dates
                 _decimal(body.value), source=Source.MANUAL,
+            )
+        if "depreciation" in fields and body.depreciation is not None:
+            if not _is_vehicle(acc):
+                raise _422("a manual position has no depreciation terms")
+            current = s.exec(select(Depreciation).where(Depreciation.account_id == acc.id)).first()
+            given = body.depreciation.model_fields_set
+            stored = _depreciation(current) or {}
+            merged = DepreciationBody(**{
+                key: getattr(body.depreciation, key) if key in given else stored.get(key)
+                for key in ("purchase_price", "purchase_date", "annual_rate", "floor")
+            })
+            price, bought, rate, floor = _curve(merged)
+            service.set_depreciation(
+                s, acc, purchase_price=price, purchase_date=bought, annual_rate=rate, floor=floor
             )
         if "note" in fields:
             try:

@@ -43,6 +43,38 @@ def _set_privacy(pid: int, level: str) -> None:
         s.add(p)
 
 
+def _connector_fixtures(host: FinanseMcp, tmp_path, note: str):
+    from connector_support import write_connector
+
+    from finanse.core.connectors import service
+    from finanse.core.connectors.runner import RunResult
+    from finanse.core.workspace import service as workspace
+
+    with get_session() as s:
+        slug = s.get(Profile, host.profile_id).slug
+    root = workspace.workspace_path(slug) / "connectors" / "fuzz-conn"
+    write_connector(root, cid="fuzz-conn")
+    service.install(root)
+    service.record_run(
+        RunResult("convert", "failed", "bad_file", message=note, stderr_tail=note, records=3),
+        "fuzz-conn",
+    )
+    doc = {
+        "format": "finanse-budget-import", "format_version": 1, "source": "fuzz_bank",
+        "account": {"iban": "PL61109010140000071219812874", "currency": "PLN"},
+        "transactions": [
+            {"booking_date": "2026-10-01", "amount": "-4321.09", "currency": "PLN",
+             "counterparty_name": PERSON_P2P, "counterparty_iban": "PL61109010140000071219812874",
+             "description": note, "transaction_id": "t-1"},
+            {"booking_date": "2026-10-02", "amount": "4321.091", "currency": "PLN",
+             "description": note},
+        ],
+    }
+    budget_doc = tmp_path / "budget-doc.json"
+    budget_doc.write_text(json.dumps(doc), encoding="utf-8")
+    return root, budget_doc
+
+
 def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
     canonical = write_canonical(tmp_path)
     export_csv = write_export_csv(tmp_path)
@@ -88,7 +120,13 @@ def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
             }
         ]
 
+    # Connectors (F10): one in the workspace's connectors/ folder, a failed run whose message and
+    # stderr hold a name and an IBAN (owner-only: never in an MCP answer), a budget document.
+    connector_dir, budget_doc = _connector_fixtures(host, tmp_path, note)
     return [
+        ("propose_connector", {"path": str(connector_dir)}),
+        ("connectors", {}),
+        ("validate_budget_import", {"path": str(budget_doc)}),
         ("profile_overview", {}),
         ("setup_status", {"module": "investments"}),
         ("setup_status", {"module": "budget"}),

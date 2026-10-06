@@ -149,6 +149,28 @@ def set_vehicle(
         profile_id=profile_id,
     )
     session.flush()
+    set_depreciation(
+        session,
+        account,
+        purchase_price=purchase_price,
+        purchase_date=purchase_date,
+        annual_rate=annual_rate,
+        floor=floor,
+    )
+    return account
+
+
+def set_depreciation(
+    session: Session,
+    account: Account,
+    *,
+    purchase_price: Decimal | float | str,
+    purchase_date: date,
+    annual_rate: Decimal | float | str,
+    floor: Decimal | float | str | None = None,
+) -> Depreciation:
+    """Create or replace the depreciation curve of a vehicle account (``annual_rate`` in percent,
+    15 = 15 %/yr; ``floor`` None = no floor)."""
     existing = session.exec(
         select(Depreciation).where(Depreciation.account_id == account.id)
     ).first()
@@ -159,14 +181,13 @@ def set_vehicle(
         existing.annual_rate = Decimal(str(annual_rate))
         existing.floor = floor_val
         session.add(existing)
-    else:
-        session.add(
-            Depreciation(
-                account_id=account.id,
-                purchase_price=Decimal(str(purchase_price)),
-                purchase_date=purchase_date,
-                annual_rate=Decimal(str(annual_rate)),
-                floor=floor_val,
-            )
-        )
-    return account
+        return existing
+    row = Depreciation(
+        account_id=account.id,
+        purchase_price=Decimal(str(purchase_price)),
+        purchase_date=purchase_date,
+        annual_rate=Decimal(str(annual_rate)),
+        floor=floor_val,
+    )
+    session.add(row)
+    return row

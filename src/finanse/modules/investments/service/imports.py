@@ -75,6 +75,10 @@ from . import planned as planned_service
 
 AUTO = "auto"
 IMPORTER_CHOICES = (AUTO, "finanse", GENERIC_CSV_BROKER_ID)
+CONNECTOR_PREFIX = "connector:"
+"""``connector:<id>``: an approved file connector (F10). The service never runs it: the HTTP layer runs
+the connector's ``convert`` first and passes the converted ``finanse-import`` document as the file,
+which is then read like the canonical format (also what is staged and archived)."""
 SessionFactory = Callable[[], AbstractContextManager[Session]]
 
 
@@ -90,8 +94,13 @@ class AccountNotFound(ImportFailure):
 class ImportRequest:
     file: ImportFile
     account_id: int
-    importer: str = AUTO  # auto | finanse | generic_csv
+    importer: str = AUTO  # auto | finanse | generic_csv | connector:<id>
     mapping_yaml: str | None = None
+    connector_name: str | None = None  # display name of a connector:<id> importer
+    requested: str | None = None  # what the user chose when it differs (auto -> a detected connector)
+    bound_account: bool = False
+    """A fetch connector's binding names the account (the owner's choice): no "source vs the
+    account's broker" note (a connector's ``source`` is its author's label)."""
 
 
 @dataclass
@@ -157,6 +166,11 @@ def _choose_importer(preview: ImportPreview, settings: InvAccountSettings) -> Br
     request = preview.request
     mapping_text = request.mapping_yaml
     choice = request.importer or AUTO
+    if is_connector_choice(choice):
+        connector_id = choice[len(CONNECTOR_PREFIX):]
+        if request.requested == AUTO:
+            preview.detected = (choice,)
+        return ConnectorDocumentImporter(choice, request.connector_name or connector_id)
     if choice not in IMPORTER_CHOICES:
         preview.blocking.append(
             _note(
@@ -220,6 +234,74 @@ def _choose_importer(preview: ImportPreview, settings: InvAccountSettings) -> Br
     return found[0]
 
 
+def is_connector_choice(choice: str | None) -> bool:
+    return bool(choice) and choice.startswith(CONNECTOR_PREFIX) and len(choice) > len(CONNECTOR_PREFIX)
+
+
+class ConnectorDocumentImporter:
+    """A connector's converted document (``finanse-import`` JSON) read with the canonical importer;
+    the batch and the account remember ``connector:<id>`` as the importer."""
+
+    def __init__(self, importer_id: str, name: str) -> None:
+        self.importer_id = importer_id
+        self._name = name
+        self._canonical = CanonicalImporter()
+
+    @property
+    def broker_id(self) -> str:  # alias namespace when the document has no ``source``
+        return self._canonical.broker_id
+
+    @property
+    def display_name(self) -> str:
+        return self._name
+
+    @property
+    def version(self) -> int:
+        return self._canonical.version
+
+    @staticmethod
+    def _as_json(file: ImportFile) -> ImportFile:
+        return ImportFile(f"{file.name}.json", file.content)
+
+    def can_parse(self, file: ImportFile) -> bool:
+        return self._canonical.can_parse(self._as_json(file))
+
+    def parse(self, file: ImportFile) -> ImportParseResult:
+        return self._canonical.parse(self._as_json(file))
+
+
+def connector_auto_check(
+    session: Session, profile: Profile, request: ImportRequest
+) -> tuple[bool, str | None, dict[str, str] | None]:
+    """For ``auto`` (read-only): (no built-in importer recognises the file, the connector remembered
+    for the account or None, the account facts a connector gets). The caller then asks the approved
+    connectors (outside any transaction). An unknown account answers (False, None, None): the preview
+    reports it."""
+    account = transactions.brokerage_account(session, profile.id, request.account_id)
+    if account is None:
+        return False, None, None
+    settings = transactions.account_settings(session, account.id)
+    remembered = settings.importer if is_connector_choice(settings.importer) else None
+    facts = {"currency": account.currency, "label": account.name}
+    mapping_text = request.mapping_yaml or settings.mapping_yaml
+    mapping = None
+    if mapping_text:
+        try:
+            mapping = CsvMapping.from_yaml(mapping_text)
+        except CsvMappingError:
+            mapping = None
+    registry = default_registry(*([mapping] if mapping is not None else []))
+    found = registry.detect(request.file)
+    prefer = remembered[len(CONNECTOR_PREFIX):] if remembered else None
+    return not found, prefer, facts
+
+
+def account_facts(session: Session, profile: Profile, account_id: int) -> dict[str, str] | None:
+    """What a connector is told about the target account (currency, label); None when unknown."""
+    account = transactions.brokerage_account(session, profile.id, account_id)
+    return None if account is None else {"currency": account.currency, "label": account.name}
+
+
 def preview(
     session: Session,
     profile: Profile,
@@ -238,7 +320,8 @@ def preview(
     importer = _choose_importer(result, settings)
     if importer is None:
         return result
-    result.importer_id, result.importer_name = importer.broker_id, importer.display_name
+    result.importer_id = getattr(importer, "importer_id", importer.broker_id)
+    result.importer_name = importer.display_name
     try:
         parsed = importer.parse(request.file)
     except Exception as e:  # noqa: BLE001 - a broken importer must not crash the preview
@@ -285,7 +368,8 @@ def preview(
         )
     inst = _institution(account.bank)
     if (
-        inst is not None
+        not request.bound_account
+        and inst is not None
         and inst.kind in ("broker", "exchange")
         and parsed.source
         and parsed.source != account.bank

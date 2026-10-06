@@ -127,7 +127,7 @@ def test_create_writes_every_managed_part(client, tmp_path):
         "skill",
     }
 
-    for folder in ("notes", "research", "scripts", "inbox"):
+    for folder in ("notes", "research", "scripts", "connectors", "inbox"):
         assert (ws / folder).is_dir()
     assert "inbox/" in (ws / ".gitignore").read_text()
 
@@ -160,7 +160,8 @@ def test_create_writes_every_managed_part(client, tmp_path):
     deny = settings["permissions"]["deny"]
     data = "/" + paths.data_dir().resolve().as_posix()
     assert f"Read({data}/**)" in deny and f"Edit({data}/**)" in deny
-    assert f"Read(/{(ws / 'inbox').as_posix()}/**)" in deny
+    # inbox/ is the user's drop folder: not denied (F10 11.3.1)
+    assert not any("inbox" in rule for rule in deny), deny
     assert settings["enabledMcpjsonServers"] == ["finanse-anna-test"]
 
     assert _skills_in(ws) == {
@@ -193,6 +194,35 @@ def test_update_is_idempotent(client, tmp_path):
     again = client.post("/api/p/anna-test/workspace", json={}).json()
     assert again["changes"] == [] and again["up_to_date"]
     assert {p: p.read_bytes() for p in ws.rglob("*") if p.is_file()} == before
+
+
+def test_update_lifts_the_old_inbox_deny_rule_and_keeps_user_rules(client, tmp_path):
+    """F10 11.3.1: a workspace written before (``Read/Edit(<ws>/inbox/**)`` denied) loses those two
+    rules on update, also when its manifest does not list them; the user's own rules stay."""
+    client.post("/api/p/anna-test/workspace", json={})
+    ws = _ws(tmp_path, "anna-test")
+    inbox = "/" + (ws / "inbox").as_posix()
+    old = [f"Read({inbox}/**)", f"Edit({inbox}/**)"]
+    settings = _json(ws / ".claude" / "settings.json")
+    settings["permissions"]["deny"] += [*old, "Read(./secret/**)"]
+    (ws / ".claude" / "settings.json").write_text(json.dumps(settings))
+    manifest_path = ws / ".claude" / "finanse-workspace.json"
+    manifest = _json(manifest_path)
+    for key in ("deny", "deny_rules"):
+        if isinstance(manifest.get(key), list):
+            manifest[key] = [*manifest[key], *old]  # as an older version recorded them
+    manifest_path.write_text(json.dumps(manifest))
+    client.post("/api/p/anna-test/workspace", json={})
+    deny = _json(ws / ".claude" / "settings.json")["permissions"]["deny"]
+    assert not any(r in deny for r in old), deny
+    assert "Read(./secret/**)" in deny
+    data = "/" + paths.data_dir().resolve().as_posix()
+    assert f"Read({data}/**)" in deny
+    # the rendered boundaries name the inbox as the user's
+    text = " ".join((ws / "CLAUDE.md").read_text().split())
+    assert "Files in `inbox/` are the user's" in text and "You never open them" not in text
+    assert "Files or rows the user hands you themselves are their choice" in text
+    assert "Ustawienia > Konektory" in text and "connectors/<id>/" in text
 
 
 def test_update_keeps_user_files(client, tmp_path):
@@ -296,7 +326,7 @@ def test_module_changes_update_the_skill_set(client, tmp_path):
     ws = _ws(tmp_path, "anna-test")
     r = client.put("/api/profiles/anna-test/modules", json={"modules": ["budget", "loans"]})
     assert r.status_code == 200
-    assert _skills_in(ws) == {"budget-setup", "loans-setup"}
+    assert _skills_in(ws) == {"budget-setup", "import-builder", "loans-setup"}  # F10: budget too
     text = (ws / "CLAUDE.md").read_text()
     assert "`loans_summary`" in text and "`portfolio_overview`" not in text
     assert "investments module is off" in text
@@ -378,7 +408,7 @@ def test_edited_skill_of_a_disabled_module_stays_as_the_users(client, tmp_path):
     edited = ws / ".claude" / "skills" / "extension-builder" / "SKILL.md"
     edited.write_text("mine now\n")
     client.put("/api/profiles/anna-test/modules", json={"modules": ["budget"]})
-    assert _skills_in(ws) == {"budget-setup", "extension-builder"}
+    assert _skills_in(ws) == {"budget-setup", "import-builder", "extension-builder"}
     assert edited.read_text() == "mine now\n"
     assert "extension-builder" not in _json(ws / service.MANIFEST_FILE)["skills"]
     assert client.get("/api/p/anna-test/workspace").json()["up_to_date"]

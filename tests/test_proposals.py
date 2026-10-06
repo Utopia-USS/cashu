@@ -1,7 +1,7 @@
 """Proposals end to end: created by the MCP write tools, listed / inspected / approved / rejected through
 the app API. Strategy (files + version, refused when the files changed meanwhile), custom rule (compiler
 column, dry run, backtest, merged into strategy.yaml keeping comments), import (preview, commit on
-approval) and the refusal of scripts (the app never runs agent-written code, F5 R1)."""
+approval) and the refusal of scripts (an MCP call never makes the app run code, F10; F5 R1)."""
 
 from __future__ import annotations
 
@@ -268,7 +268,7 @@ def test_converter_argument_is_refused_with_a_clear_error(setup, tmp_path):
     ):
         result = host.call(tool, args)
         assert not result.ok and result.error_kind == "invalid_arguments", (tool, result)
-        assert "never runs scripts" in result.error and "python3" in result.error
+        assert "never make the app run code" in result.error and "python3" in result.error
     assert api.get(f"/api/p/{slug}/proposals").json() == []
 
 
@@ -287,7 +287,7 @@ def test_script_paths_are_refused_and_never_run(setup, tmp_path):
         ):
             result = host.call(tool, args)
             assert not result.ok and result.error_kind == "script_refused", (tool, suffix)
-            assert "never runs scripts" in result.error
+            assert "never make the app run code" in result.error
     assert not list(tmp_path.glob("*.ran"))
     assert api.get(f"/api/p/{slug}/proposals").json() == []
 
@@ -319,7 +319,7 @@ def test_stored_converter_proposal_cannot_be_approved(setup, tmp_path):
         s.add(row)
         staged = paths.data_dir() / row.payload["staged"]
     detail = api.get(f"/api/p/{slug}/proposals/{stored['proposal_id']}").json()
-    assert detail["converter_unsupported"] is True and "no longer runs" in detail["detail_error"]
+    assert detail["converter_unsupported"] is True and "never runs" in detail["detail_error"]
     before = _txn_count(pid)
     response = api.post(f"/api/p/{slug}/proposals/{stored['proposal_id']}/approve")
     assert response.status_code == 422
@@ -329,7 +329,7 @@ def test_stored_converter_proposal_cannot_be_approved(setup, tmp_path):
 
 
 def test_proposal_kinds_registered():
-    assert set(proposals.kinds()) == {"strategy", "custom_rule", "import"}
+    assert set(proposals.kinds()) == {"strategy", "custom_rule", "import", "budget_import"}
 
 
 def test_rejected_import_removes_the_stored_export(setup, tmp_path):
@@ -345,6 +345,24 @@ def test_rejected_import_removes_the_stored_export(setup, tmp_path):
     assert staged.is_file() and staged.stat().st_mode & 0o077 == 0
     api.post(f"/api/p/{slug}/proposals/{stored['proposal_id']}/reject")
     assert not staged.exists()
+
+
+def test_two_import_proposals_of_one_file_never_share_the_stored_export(setup, tmp_path):
+    """BE-2: rejecting one proposal never removes the file another one approves from."""
+    _pid, slug, host, api = setup
+    path = tmp_path / "new.csv"
+    path.write_text(NEW_DEPOSIT)
+    label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
+    first, second = (
+        host.call("propose_import", {"path": str(path), "account": label}).data["proposal_id"]
+        for _ in range(2)
+    )
+    with get_session() as s:
+        assert s.get(Proposal, first).payload["staged"] != s.get(Proposal, second).payload["staged"]
+    api.post(f"/api/p/{slug}/proposals/{first}/reject")
+    approved = api.post(f"/api/p/{slug}/proposals/{second}/approve")
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["result"]["inserted"] == 1
 
 
 # --------------------------------------------------------------------------- #

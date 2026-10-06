@@ -338,3 +338,7 @@ def register(app: typer.Typer) -> None:
     from .worker.cli import worker_app
 
     app.add_typer(worker_app, name="worker")
+
+    from .connectors.cli import register as register_connectors
+
+    register_connectors(app)  # finanse connectors ...

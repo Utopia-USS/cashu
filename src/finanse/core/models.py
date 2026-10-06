@@ -40,9 +40,14 @@ class AccountType(enum.StrEnum):
 
 
 class Source(str, enum.Enum):
+    """Where a transaction or balance came from. Stored by NAME in an ``sa.Enum`` column
+    (``VARCHAR(12)``, no CHECK constraint), so a new member needs no migration while its name fits."""
+
     OPEN_BANKING = "open_banking"
     CSV = "csv"
     MANUAL = "manual"
+    # A document in the ``finanse-budget-import`` format produced by an approved connector (F10).
+    CONNECTOR = "connector"
 
 
 def profile_fk_column(table: str) -> Column:

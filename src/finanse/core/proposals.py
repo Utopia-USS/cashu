@@ -1,6 +1,7 @@
 """Proposals: changes an agent suggested over MCP, applied only when the owner approves them in the app.
 
-A proposal has a ``kind`` (``strategy``, ``custom_rule``, ``import``), a validated ``payload`` and a
+A proposal has a ``kind`` (``strategy``, ``custom_rule``, ``import``, ``budget_import``), a validated
+``payload`` and a
 status (``pending`` -> ``applying`` -> ``approved`` | ``failed``, or ``pending`` -> ``rejected``;
 ``failed`` carries the reason in ``result.error``). MCP write tools only *create* proposals; ``approve``
 / ``reject`` are called by the app's API (``core.agent_api``), never by MCP.
@@ -45,7 +46,10 @@ REJECT_WAIT = 10.0  # seconds a rejection waits for a running approval, then "bu
 _log = logging.getLogger("finanse.proposals")
 
 # Modules providing proposal kinds (each exports ``KINDS: tuple[ProposalKind, ...]``).
-KIND_PROVIDERS = ("finanse.core.mcp.tools.investments_proposals",)
+KIND_PROVIDERS = (
+    "finanse.core.mcp.tools.investments_proposals",
+    "finanse.core.connectors.proposals",  # budget_import (fetch connector syncs, F10)
+)
 
 
 class ProposalError(ValueError):

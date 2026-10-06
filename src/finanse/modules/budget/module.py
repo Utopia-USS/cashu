@@ -10,6 +10,13 @@ from .models import CategoryRule, ImportBatch, Transaction
 from .networth import CashContributor
 from .setup import setup_status
 
+
+def _recategorize(session, profile_id: int) -> dict:
+    from .service import categorize_all
+
+    return categorize_all(session, profile_id=profile_id)
+
+
 MODULE = ModuleSpec(
     id="budget",
     name="Budżet domowy",
@@ -26,6 +33,7 @@ MODULE = ModuleSpec(
         AccountTypeInfo("credit", "budget", "Karty kredytowe", sign="credit"),
         AccountTypeInfo("cash", "budget", "Gotówka"),
     ),
+    recategorize=_recategorize,
     setup_status=setup_status,
     skill="/budget-setup",
 )

@@ -1545,7 +1545,7 @@ def preview_dict(preview: ImportPreview) -> dict:
             "id": preview.importer_id,
             "name": preview.importer_name,
             "detected": list(preview.detected),
-            "requested": preview.request.importer,
+            "requested": preview.request.requested or preview.request.importer,
         },
         "can_commit": preview.can_commit,
         "warnings": [import_warning_dict(w) for w in preview.warnings],

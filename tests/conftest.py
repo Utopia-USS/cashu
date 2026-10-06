@@ -16,6 +16,42 @@ def _private_launch_agents_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("FINANSE_APP_BUNDLE", "none")
 
 
+class _GuardKeyring:
+    """Raises on any use: the real OS keychain must never be reached from a test."""
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def __call__(self, *args, **kwargs):
+        raise AssertionError(
+            f"a test reached the real OS keychain ({self.name}); tests run on the in-memory keyring"
+        )
+
+
+@pytest.fixture(autouse=True)
+def _memory_keyring_everywhere(monkeypatch):
+    """Every test runs on an in-memory keyring (SEC-1): ``keyring`` calls in this process go to a
+    fresh :class:`connector_support.MemoryKeyring`; the real macOS backend's methods raise if anything
+    instantiates it directly; a subprocess (CLI, MCP stdio) gets the ``fail`` backend through the
+    environment, so a missed override errors instead of writing to the developer's Keychain.
+    Per-file ``memory_keyring`` fixtures still work (they install their own backend on top)."""
+    import keyring
+    from connector_support import MemoryKeyring
+
+    try:
+        from keyring.backends import macOS
+    except ImportError:  # pragma: no cover - not on macOS
+        macOS = None
+    if macOS is not None:
+        for method in ("get_password", "set_password", "delete_password", "get_credential"):
+            monkeypatch.setattr(macOS.Keyring, method, _GuardKeyring(f"macOS.Keyring.{method}"))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.fail.Keyring")
+    previous = keyring.get_keyring()
+    keyring.set_keyring(MemoryKeyring())
+    yield
+    keyring.set_keyring(previous)
+
+
 @pytest.fixture(autouse=True)
 def _private_workspaces_dir(tmp_path, monkeypatch):
     """Agent workspaces default into tmp_path for every test (core/workspace), never the real

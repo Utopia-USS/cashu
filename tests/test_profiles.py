@@ -49,6 +49,7 @@ PROFILE_GETS = [
     "/budget/month-close",
     "/budget/month-close?month=2026-09",
     "/budget/settings",
+    "/budget/import/importers",
     "/loan",
     "/loans",
     "/assets/manual",
@@ -63,9 +64,10 @@ PROFILE_GETS = [
     "/mcp/calls",
     "/mcp",
     "/workspace",
+    "/connectors/bindings",
 ]
 # profile-only routes (no /api alias)
-LEGACY_LESS = ("/modules/", "/proposals", "/reviews", "/mcp", "/workspace")
+LEGACY_LESS = ("/modules/", "/proposals", "/reviews", "/mcp", "/workspace", "/connectors/")
 ID_KEYS = {"id", "account_id"}
 
 
@@ -129,6 +131,7 @@ def test_system(api_empty, tmp_path):
     body = api_empty.get("/api/system").json()
     assert set(body) == {
         "version", "data_dir", "legacy_db_detected", "legacy_db_path", "worker", "secrets",
+        "connectors",
     }
     assert body["data_dir"] == str((tmp_path / "data").resolve())
     assert body["legacy_db_detected"] is False and body["legacy_db_path"] is None
@@ -136,6 +139,9 @@ def test_system(api_empty, tmp_path):
     assert worker["installed"] is False and worker["last_run"] is None
     assert worker["last_status"] is None and worker["next_run"] is None
     assert body["secrets"] == {"anthropic": False, "enable_banking_key": False}
+    # F10 design C1: whether connectors can run here (only inside the macOS sandbox)
+    assert body["connectors"]["platform"] in ("mac", "unsupported")
+    assert body["connectors"]["sandbox"] is (body["connectors"]["platform"] == "mac")
 
 
 def test_modules(api_empty):
@@ -230,11 +236,14 @@ def test_slug_collision_gets_a_suffix(api_empty):
 def test_setup_endpoint_shape(api_empty):
     api_empty.post("/api/profiles", json={"name": "Jan", "modules": ["budget"]})
     body = api_empty.get("/api/p/jan/modules/budget/setup").json()
-    assert set(body) == {"state", "steps", "skill"}
+    assert set(body) == {"state", "steps", "skill", "cli_prefix"}
+    assert body["cli_prefix"] == "finanse --profile jan"
     assert body["state"] == "empty"
-    assert [s["status"] for s in body["steps"]] == ["on", "todo", "todo", "todo"]
+    assert [s["id"] for s in body["steps"]] == ["statement", "categories", "transfers"]
+    assert [s["status"] for s in body["steps"]] == ["on", "todo", "todo"]
     for step in body["steps"]:
-        assert set(step) == {"id", "title", "description", "status", "actions"}
+        assert set(step) == {"id", "title", "description", "status", "optional", "actions"}
+        assert step["optional"] is False
         for a in step["actions"]:
             assert set(a) == {"kind", "label", "target"} and a["kind"] in {"cli", "tab"}
             if a["kind"] == "cli":
@@ -297,6 +306,8 @@ def test_every_profile_route_is_in_the_isolation_list():
         and not path.startswith("/api/p/{slug}/investments/")
         # a proposal by id: cross-profile 404s in tests/test_proposals.py
         and path != "/api/p/{slug}/proposals/{proposal_id}"
+        # a connector binding by id: cross-profile 404s in tests/test_connectors_api.py
+        and path != "/api/p/{slug}/connectors/bindings/{binding_id}"
     }
     covered = {re.sub(r"/category/[^/]+/", "/category/{key}/", p.split("?")[0]) for p in PROFILE_GETS}
     covered = {re.sub(r"/modules/[^/]+/setup", "/modules/{module_id}/setup", p) for p in covered}

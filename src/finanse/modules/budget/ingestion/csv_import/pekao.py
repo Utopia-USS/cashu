@@ -98,6 +98,7 @@ class PekaoImporter(DelimitedImporter):
             booking = parse_pl_date(cell("booking"))
             amount = parse_pl_amount(cell("amount"))
             if booking is None or amount is None:
+                stmt.skipped_rows += 1  # blank rows are filtered out above
                 continue
             src, dst = _acct(cell("source")), _acct(cell("dest"))
             cp_iban = (dst if src == own else src) if own else (dst or src)

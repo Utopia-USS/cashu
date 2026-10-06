@@ -112,7 +112,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     assert (
         migrations.upgrade_to_head(engine)
         == migrations.head_revision()
-        == "0015_recommendation_reason"
+        == "0016_connectors"
     )
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
@@ -349,7 +349,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
         edited,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0015_recommendation_reason"
+    assert migrations.upgrade_to_head(engine) == "0016_connectors"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
     assert columns[-1] == "core_changed_at"
     assert _sql(path, "SELECT thesis, core_changed_at FROM inv_theses") == [
@@ -363,7 +363,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0015_recommendation_reason"
+    assert migrations.current_revision(engine) == "0016_connectors"
     engine.dispose()
 
 
@@ -389,7 +389,7 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0015_recommendation_reason"
+    assert migrations.upgrade_to_head(engine) == "0016_connectors"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
     assert columns[-3:] == ["plan", "plan_at", "plan_reason"]
     assert _sql(path, "SELECT plan, plan_reason FROM inv_profile_instruments") == [("hold", None)]
@@ -400,5 +400,5 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
     assert _sql(path, "SELECT plan FROM inv_profile_instruments") == [("hold",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0015_recommendation_reason"
+    assert migrations.current_revision(engine) == "0016_connectors"
     engine.dispose()

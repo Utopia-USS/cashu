@@ -112,7 +112,16 @@ def system() -> dict:
             "anthropic": secrets.get_secret(secrets.ANTHROPIC) is not None,
             "enable_banking_key": settings.eb_key_file.exists(),
         },
+        # Connectors run only inside the macOS sandbox (F10): elsewhere every run is refused.
+        "connectors": _connectors_platform(),
     }
+
+
+def _connectors_platform() -> dict:
+    from .connectors.sandbox import MacSandbox, default_sandbox
+
+    sandboxed = isinstance(default_sandbox(), MacSandbox)
+    return {"sandbox": sandboxed, "platform": "mac" if sandboxed else "unsupported"}
 
 
 @platform_router.get("/system/update")
@@ -245,6 +254,7 @@ def module_setup(profile: CurrentProfile, module_id: str) -> dict:
         raise HTTPException(status_code=404, detail=f"Unknown module '{module_id}'") from None
     with get_session() as s:
         status = profiles.module_setup(s, profile.id, module_id)
+        cli = modules.cli_prefix(s, profile.id)  # the drawers' copyable lines (`eb login`)
     skill = None
     if spec.skill:
         skill = {
@@ -253,7 +263,7 @@ def module_setup(profile: CurrentProfile, module_id: str) -> dict:
             # macOS App Translocation: the snippet is a placeholder; the UI says to move the app
             "translocated": runtime.translocated(),
         }
-    return {"state": status.state, "steps": status.step_dicts(), "skill": skill}
+    return {"state": status.state, "steps": status.step_dicts(), "skill": skill, "cli_prefix": cli}
 
 
 def _include_worker_routes() -> None:
