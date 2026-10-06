@@ -1,4 +1,4 @@
-// Investments home renders from the demo data; "Uruchom reguły" refreshes the value chart with the hero
+// Investments home renders from the demo data; "Synchronizuj" refreshes the value chart with the hero
 // (F7 FE7: the chart's last point equals the hero value after a run that adds a new bar).
 import type { Page } from "@playwright/test";
 import { ANNA, expect, go, plNumber, test } from "../fixtures";
@@ -26,13 +26,13 @@ test("investments home renders hero, signals, alerts, research, chart", async ({
   await expect(page.locator("#inv-value").getByText(/^portfel\s+\d/)).toBeVisible();
 });
 
-test("Uruchom reguły: the value chart follows the hero", async ({ app: page }) => {
+test("Synchronizuj: the value chart follows the hero", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio`);
   await expect(page.locator("#inv-value").getByText(/^portfel\s+\d/)).toBeVisible();
   const before = await heroValue(page);
   expect(Math.abs(Math.round(before) - (await chartValue(page)))).toBeLessThanOrEqual(1);
 
-  const run = page.getByRole("button", { name: "Uruchom reguły" });
+  const run = page.getByRole("button", { name: "↻ Synchronizuj" });
   await run.click();
   await expect(run).toBeEnabled({ timeout: 30_000 });
   // The run fetched one more session (synthetic source): the hero moves, the chart must follow.

@@ -1,9 +1,9 @@
 // Settings page: every section renders for the demo profile, a profile edit saves and reverts.
-import { ANNA, expect, go, test, toasts, tab } from "../fixtures";
+import { ANNA, expect, go, openSettings, test, toasts } from "../fixtures";
 
 test("settings sections and a profile edit", async ({ app: page }) => {
   await go(page, `${ANNA}/overview`);
-  await tab(page, "Ustawienia").click();
+  await openSettings(page);
   const nav = page.getByRole("navigation", { name: "Sekcje ustawień" });
   for (const label of ["Profil", "Moduły", "Agent AI (MCP)", "Dane", "Praca w tle", "Sekrety", "Aplikacja"]) {
     await expect(nav.getByRole("button", { name: label, exact: true })).toBeVisible();

@@ -1,5 +1,5 @@
 """`finanse serve` for the e2e suite, with the market sources swapped for the synthetic generator of
-scripts/demo_data.py, so "Uruchom reguły" (POST /run) and the backfill never touch the network.
+scripts/demo_data.py, so "Synchronizuj" on Inwestycje (POST /run) and the backfill never touch the network.
 
 Run with FINANSE_DATA_DIR set (the e2e global setup does it); arguments go to `finanse serve`:
 

@@ -1,6 +1,6 @@
 // Wizard: a new profile with two modules (and its agent workspace in the suite's temp dir); the app
 // switches to it, the modules are on in Settings, the other profiles' data is not there.
-import { expect, test, toasts, tab } from "../fixtures";
+import { expect, openSettings, test, toasts } from "../fixtures";
 
 test("wizard creates a profile with modules", async ({ app: page }) => {
   await page.getByRole("button", { name: /^D?\s*Demo (Anna|Piotr)/ }).first().click();
@@ -24,7 +24,7 @@ test("wizard creates a profile with modules", async ({ app: page }) => {
   await expect(page.getByRole("button", { name: /Demo Kasia/ }).first()).toBeVisible();
   await expect(page.getByText("Mieszkanie Demo", { exact: true })).toHaveCount(0);
 
-  await tab(page, "Ustawienia").click();
+  await openSettings(page);
   const modules = page.getByRole("region", { name: "Moduły", exact: true });
   await expect(modules.getByRole("switch", { name: "Moduł Budżet domowy" })).toHaveAttribute("aria-checked", "true");
   await expect(modules.getByRole("switch", { name: "Moduł Inwestycje" })).toHaveAttribute("aria-checked", "true");

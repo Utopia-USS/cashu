@@ -1,13 +1,12 @@
-// The shell: header with the profile switcher, module tab groups, Ustawienia, and the
-// page of the current view. Navigation state lives in the URL hash
+// The shell: header with the profile switcher (Ustawienia live in its menu), module tab groups with the
+// open module's action, and the page of the current view. Navigation state lives in the URL hash
 // (#/{slug}/{view}) and the last view per profile is remembered.
-import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { nAccounts, nModules, wdmShort } from "../format";
+import { Fragment, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useAsync } from "../hooks";
 import { ck, clearCache, swr } from "../swr";
 import { Notice, SkeletonChart, SkeletonKpis, useToast } from "../ui";
 import {
-  getCategories, getNetworth, getSetup, getSummary, type ModuleInfo, postResync, type Profile, type SystemInfo,
+  getCategories, getNetworth, getSetup, getSummary, type ModuleInfo, type Profile, type SystemInfo,
 } from "./api";
 import { Brand } from "./Brand";
 import { Overview } from "./Overview";
@@ -21,7 +20,6 @@ import type { ModuleCtx, View } from "./types";
 import { decodeSegment, resolveView } from "./util";
 import { Wizard } from "./Wizard";
 import { IconSheet } from "../widgets";
-import { errorText } from "./messages";
 
 const PROFILE_KEY = "finanse.profile";
 const lastViewKey = (slug: string) => `finanse.lastView.${slug}`;
@@ -66,14 +64,8 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   const [nonce, setNonce] = useState(0);
   // A page can ask for the narrow frame (minimal profile); reset whenever the page changes.
   const [narrow, setNarrow] = useState(false);
-  // Profiles whose resync is running: a sync belongs to the profile it was started for.
-  const [syncing, setSyncing] = useState<ReadonlySet<string>>(new Set());
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
 
   const profile = profiles.find((p) => p.slug === slug) ?? profiles[0];
-  const activeSlug = useRef(profile.slug);
-  activeSlug.current = profile.slug;
   const enabled = useMemo(() => orderModules(profile.modules.filter((m) => m.enabled)), [profile]);
 
   // URL hash + last view per profile follow the state.
@@ -133,7 +125,6 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
     if (!p) return;
     setSlug(s);
     setView(pathToView(store.get(lastViewKey(s)) ?? undefined) ?? OVERVIEW);
-    setSyncMsg(null); setErr(null);
     toast(`Profil: ${p.name}`);
   };
 
@@ -142,40 +133,9 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   const resolved: View = resolveView(view, enabled, (id) => moduleDef(id, modules).tabs.map((t) => t.id));
   const tabless = (id: string) => !moduleDef(id, modules).tabs.length;
 
-  const bankAccounts = (networthS.data?.accounts ?? []).filter((a) => a.bank !== "manual" && a.type !== "cash");
-  const budgetOn = enabled.some((m) => m.id === "budget");
-
-  const resync = async () => {
-    const s = profile.slug, name = profile.name;
-    const here = () => activeSlug.current === s; // still on the profile the sync is for?
-    setSyncing((cur) => new Set(cur).add(s)); setErr(null); setSyncMsg(null);
-    try {
-      const res = await postResync(s);
-      let msg: string;
-      if (!res.ok) msg = res.error || "Synchronizacja nieudana.";
-      else {
-        msg = `wgrano ${res.inserted} nowych transakcji`;
-        if (res.pairs) msg += `, ${res.pairs} przelewów wewn.`;
-        if (res.errors?.length) msg += ` · ${res.errors.length} konto/a pominięte (limit banku)`;
-      }
-      // The header shows the result only on its own profile; elsewhere a toast names it.
-      if (!here()) toast(`${name}: ${msg}`, 5000);
-      else if (!res.ok) setErr(msg);
-      else { setSyncMsg(msg); refresh(); }
-    } catch (e) {
-      if (here()) setErr(errorText(e));
-      else toast(`${name}: ${errorText(e)}`, 5000);
-    } finally {
-      setSyncing((cur) => { const next = new Set(cur); next.delete(s); return next; });
-    }
-  };
-  const syncingHere = syncing.has(profile.slug);
-
-  const asof = networthS.data?.accounts.map((a) => a.as_of).filter(Boolean).sort().slice(-1)[0];
-  const modCount = nModules(enabled.length);
-  const sub = syncMsg ? `${syncMsg} · odświeżono`
-    : !networthS.data ? "ładowanie…"
-    : asof ? `dane: ${wdmShort(asof)} · ${modCount}` : `brak danych · ${modCount}`;
+  // The open module's tabbar action (budget: bank sync).
+  const activeMod = resolved.kind === "tab" && resolved.tab !== "overview" ? resolved.tab.split(".")[0] : null;
+  const TabAction = activeMod ? moduleDef(activeMod, modules).TabAction : undefined;
 
   const shell: ShellState = {
     slug: profile.slug, profile, profiles, system, modules, view: resolved, go,
@@ -228,27 +188,19 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
         <header className="shell">
           <div className="brand">
             <Brand />
-            <ProfileMenu profiles={profiles} active={profile} activeNetworth={networthS.data}
+            <ProfileMenu profiles={profiles} active={profile}
               onSelect={switchProfile} onNew={() => setWizard(true)}
-              onSettings={() => go({ kind: "settings", section: "profile" })} />
-            <span className="sub">{sub}</span>
+              onSettings={() => go({ kind: "settings" })} />
           </div>
           <div className="hdr-right">
             {enabled.filter((m) => m.setup_state !== "empty").map((m) => {
               const Tag = moduleDef(m.id, modules).HeaderTag;
               return Tag ? <Tag key={`${profile.slug}:${m.id}:${nonce}`} slug={profile.slug} go={go} /> : null;
             })}
-            {networthS.data && <span className="tag">{nAccounts(networthS.data.accounts.length)}</span>}
-            {budgetOn && (
-              <button className="btn" onClick={resync} disabled={syncingHere || !bankAccounts.length}
-                title={bankAccounts.length ? "Pobierz nowe transakcje z banków (Enable Banking)" : "Brak kont bankowych do synchronizacji"}>
-                {syncingHere ? "Synchronizuję…" : "↻ Synchronizuj"}
-              </button>
-            )}
           </div>
         </header>
 
-        {(err || loadError) && <div className="err">Błąd: {err || loadError}</div>}
+        {loadError && <div className="err">Błąd: {loadError}</div>}
 
         <nav className="tabbar" aria-label="Moduły">
           {/* The setup page of a module that lives on Przegląd keeps Przegląd lit. */}
@@ -275,7 +227,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
             );
           })}
           <span className="spacer" />
-          <button className={`tabbtn ${resolved.kind === "settings" ? "on" : ""}`} onClick={() => go({ kind: "settings" })}>Ustawienia</button>
+          {TabAction && <TabAction slug={profile.slug} profileName={profile.name} networth={networthS.data ?? null} refresh={refresh} />}
         </nav>
 
         {/* Remount per profile, refresh and theme change (charts read tokens at render);

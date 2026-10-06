@@ -14,8 +14,14 @@ export function serverUrl(): string {
 /** Open the app in this tab with the token fragment, then the hash route (e.g. `demo-anna/overview`). */
 export async function openApp(page: Page, route?: string): Promise<void> {
   await page.goto(`${serverUrl()}/#token=${process.env.E2E_TOKEN}`);
-  await expect(tab(page, "Ustawienia")).toBeVisible();
+  await expect(tab(page, "Przegląd")).toBeVisible();
   if (route) await go(page, route);
+}
+
+/** Ustawienia live in the profile menu. */
+export async function openSettings(page: Page): Promise<void> {
+  await page.locator("header.shell .btn.pill").click();
+  await page.getByRole("menuitem", { name: "Ustawienia", exact: true }).click();
 }
 
 /** Navigate inside the SPA (hash router) without reloading the page. */
@@ -42,6 +48,6 @@ export const test = base.extend<{ app: Page }>({
 });
 export { expect };
 
-/** A top-level tab (navigation "Moduły": Przegląd, Wydatki, ..., Inwestycje, Ustawienia). */
+/** A top-level tab (navigation "Moduły": Przegląd, Wydatki, ..., Inwestycje). */
 export const tab = (page: Page, name: string): Locator =>
   page.getByRole("navigation", { name: "Moduły" }).getByRole("button", { name, exact: true });

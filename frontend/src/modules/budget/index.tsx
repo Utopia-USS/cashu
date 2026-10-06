@@ -1,6 +1,7 @@
 import type { ModuleDef } from "../../core/types";
 import { cur } from "../../format";
 import { FactList, Kpi } from "../../ui";
+import { BankSync } from "./BankSync";
 import { Expenses } from "./Expenses";
 import { Flows } from "./Flows";
 import { monthLabel } from "./logic";
@@ -18,6 +19,7 @@ export const budget: ModuleDef = {
     { id: "flows", label: "Przepływy", render: () => <Flows /> },
     { id: "subs", label: "Subskrypcje", render: () => <Subscriptions /> },
   ],
+  TabAction: BankSync,
   Kpis: ({ ctx }) => {
     const m = ctx.summary.month;
     if (ctx.state === "empty" || !m) return null;

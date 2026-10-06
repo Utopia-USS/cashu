@@ -277,10 +277,10 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       const p = r.profiles?.[0];
       const status = p?.status ?? "ok";
       const firstErr = p?.errors?.[0] ?? r.market_errors?.[0] ?? r.market_error ?? "";
-      toast(status === "failed" ? `Przebieg reguł nieudany${firstErr ? `: ${runError(firstErr)}` : ""}` : status === "partial" ? `Reguły przeliczone częściowo${firstErr ? ` · ${runError(firstErr)}` : ""}` : "Reguły przeliczone", 4000);
+      toast(status === "failed" ? `Synchronizacja nieudana${firstErr ? `: ${runError(firstErr)}` : ""}` : status === "partial" ? `Zsynchronizowano częściowo${firstErr ? ` · ${runError(firstErr)}` : ""}` : "Zsynchronizowano", 4000);
       reload();
     } catch (e) {
-      toast(e instanceof ApiError && e.status === 409 ? "Reguły już działają (praca w tle)" : `Nie udało się uruchomić reguł: ${errorText(e)}`, 4000);
+      toast(e instanceof ApiError && e.status === 409 ? "Synchronizacja już trwa (praca w tle)" : `Nie udało się zsynchronizować: ${errorText(e)}`, 4000);
     } finally { setRunBusy(false); }
   };
   const initStrategy = async () => {
@@ -443,7 +443,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
         <Seg<number | null> quiet label="Rachunek" value={filter} onChange={setFilter}
           items={[["Wszystkie", null], ...accounts.map((a) => [accountLabel(a, accounts), a.id] as [string, number])]} />
       )}
-      {hasData && (fr.prices.newest_bar ? <Tag title="Najnowsze notowanie w bazie">ceny {wdm(fr.prices.newest_bar)}</Tag> : <Tag>brak notowań - uruchom reguły</Tag>)}
+      {hasData && (fr.prices.newest_bar ? <Tag title="Najnowsze notowanie w bazie">ceny {wdm(fr.prices.newest_bar)}</Tag> : <Tag>brak notowań</Tag>)}
       {stale > 0 && <button className="tag warn" style={{ background: "transparent", cursor: "pointer", font: "inherit", fontSize: 11 }}
         title={fr.prices.stale.map((s) => `${s.label}: ${s.price_date ? `ostatnie notowanie ${dm(s.price_date)}` : "brak notowań"}`).join("\n")}
         onClick={() => { setAllocView("accounts"); setTimeout(() => scrollTo(light ? "inv-accounts" : "inv-alloc"), 30); }}>{stale === 1 ? "1 nieaktualna" : `${stale} nieaktualne`}</button>}
@@ -452,7 +452,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       {hasData && !last && <span className="tag">reguły jeszcze nie działały</span>}
       <span className="spacer" />
       <button className="btn ghost" onClick={run} disabled={runBusy || !hasData}
-        title={`Wycena, alokacja, reguły i alerty${last && runAt ? ` · ostatni przebieg ${runDay} ${hm(runAt)} · ${last.status === "ok" ? "ok" : last.status === "partial" ? "częściowo" : "błąd"}` : ""}`}>{runBusy ? "Uruchamiam…" : "Uruchom reguły"}</button>
+        title={`Ceny, wycena, reguły i alerty${last && runAt ? ` · ostatni przebieg ${runDay} ${hm(runAt)} · ${last.status === "ok" ? "ok" : last.status === "partial" ? "częściowo" : "błąd"}` : ""}`}>{runBusy ? "Synchronizuję…" : "↻ Synchronizuj"}</button>
       <button className="btn" onClick={() => setDrawer({ kind: "import", account: filter })}>Import</button>
       {!hasData ? <button className="btn" onClick={() => setDrawer({ kind: "txn" })}>Dodaj transakcję</button> : reviewOpen ? (
         <button className="btn" onClick={() => setReviewOpen(false)}>Zamknij przegląd</button>

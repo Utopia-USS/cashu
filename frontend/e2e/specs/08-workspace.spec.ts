@@ -1,10 +1,10 @@
 // Settings > Agent AI: the agent workspace panel creates the profile's workspace (in the suite's temp
 // FINANSE_WORKSPACES_DIR) and then offers "Aktualizuj" and the Claude Code command.
-import { ANNA, expect, go, test, toasts, tab } from "../fixtures";
+import { ANNA, expect, go, openSettings, test, toasts } from "../fixtures";
 
 test("workspace panel creates and updates the workspace", async ({ app: page }) => {
   await go(page, `${ANNA}/overview`);
-  await tab(page, "Ustawienia").click();
+  await openSettings(page);
   await page.getByRole("navigation", { name: "Sekcje ustawień" }).getByRole("button", { name: "Agent AI (MCP)" }).click();
   const agent = page.getByRole("region", { name: "Agent AI (MCP)" });
   await expect(agent.getByText("Workspace agenta", { exact: true })).toBeVisible();
