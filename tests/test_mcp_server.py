@@ -1,6 +1,6 @@
 """The MCP server host: bound to one profile, module gating, privacy level read per call, audit rows
 without argument values, fail-closed refusals (rolled back), the official SDK round trip in process
-and over a real stdio subprocess, and the ``finanse mcp`` command."""
+and over a real stdio subprocess, and the ``cashu mcp`` command."""
 
 from __future__ import annotations
 
@@ -14,14 +14,14 @@ from mcp_support import TODAY, investments_account_id, seed_profile
 from sqlmodel import select
 from typer.testing import CliRunner
 
-from finanse.core import profiles
-from finanse.core.agent_models import McpCall, Review
-from finanse.core.db import get_session
-from finanse.core.mcp import labels as L
-from finanse.core.mcp.registry import ToolSpec
-from finanse.core.mcp.server import FinanseMcp, build_server
-from finanse.core.models import Profile
-from finanse.modules.investments.store import journal, signals
+from cashu.core import profiles
+from cashu.core.agent_models import McpCall, Review
+from cashu.core.db import get_session
+from cashu.core.mcp import labels as L
+from cashu.core.mcp.registry import ToolSpec
+from cashu.core.mcp.server import CashuMcp, build_server
+from cashu.core.models import Profile
+from cashu.modules.investments.store import journal, signals
 
 SECRET = "B-SECRET-THESIS"
 
@@ -30,7 +30,7 @@ SECRET = "B-SECRET-THESIS"
 def api_factory():
     from conftest import make_client
 
-    from finanse.api.app import app
+    from cashu.api.app import app
 
     return lambda: make_client(app)
 
@@ -40,7 +40,7 @@ def two(db_engine):
     a, a_slug = seed_profile("Marta Kowalczyk")
     b, b_slug = seed_profile("Piotr Zielinski")
     with get_session() as s:
-        from finanse.modules.investments.store.instruments import profile_instrument_ids
+        from cashu.modules.investments.store.instruments import profile_instrument_ids
 
         iid = min(profile_instrument_ids(s, b))
         journal.create_thesis(s, b, iid, {"entry_type": "trend", "thesis": SECRET})
@@ -57,7 +57,7 @@ def _set(pid: int, **fields) -> None:
 
 def test_server_serves_only_its_profile(two):
     a, _a_slug, b, _b_slug = two
-    host = FinanseMcp(a, today=TODAY)
+    host = CashuMcp(a, today=TODAY)
     for spec in host.list_tools():
         if spec.write or spec.properties.keys() & {"path", "module"}:
             continue
@@ -87,14 +87,14 @@ def test_server_serves_only_its_profile(two):
 
 def test_for_slug_requires_an_existing_profile(db_engine):
     with pytest.raises(profiles.ProfileNotFound):
-        FinanseMcp.for_slug("nobody")
+        CashuMcp.for_slug("nobody")
 
 
 def test_disabled_module_tools_are_hidden_and_refused(db_engine):
     pid, _slug = seed_profile(run_daily=False)
     with get_session() as s:
         profiles.set_modules(s, s.get(Profile, pid), ["budget"])
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
     names = {t.name for t in host.list_tools()}
     assert (
         "spending_breakdown" in names and "positions" not in names and "loans_summary" not in names
@@ -107,7 +107,7 @@ def test_disabled_module_tools_are_hidden_and_refused(db_engine):
 
 def test_privacy_level_is_read_on_every_call(db_engine):
     pid, _slug = seed_profile(run_daily=False)
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
     strict = host.call("networth_breakdown", {}).data
     assert all("assets" not in c for c in strict["currencies"])
     _set(pid, mcp_privacy="amounts")
@@ -118,7 +118,7 @@ def test_privacy_level_is_read_on_every_call(db_engine):
 
 def test_every_call_is_audited_without_argument_values(db_engine, api_factory):
     pid, slug = seed_profile(run_daily=False)
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
     secret_note = "notatka-ZOFIA-WISNIEWSKA-4321.09"
     host.call("profile_overview", {})
     host.call("mark_review_done", {"notes": secret_note})
@@ -148,14 +148,14 @@ def test_every_call_is_audited_without_argument_values(db_engine, api_factory):
     assert [c["tool"] for c in listed] == ["positions", "(unknown)", "setup_status"]
     info = api.get(f"/api/p/{slug}/mcp").json()
     assert (
-        info["claude_mcp_add"] == f"claude mcp add finanse-{slug} -- finanse mcp --profile {slug}"
+        info["claude_mcp_add"] == f"claude mcp add cashu-{slug} -- cashu mcp --profile {slug}"
     )
     assert {"profile_overview", "positions"} <= {t["name"] for t in info["tools"]}
 
 
 def test_internal_errors_send_no_exception_text(db_engine):
     pid, _slug = seed_profile(run_daily=False)
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
 
     def boom(ctx):
         raise ValueError("PL61109010140000071219812874 Zofia")
@@ -168,7 +168,7 @@ def test_internal_errors_send_no_exception_text(db_engine):
 
 def test_unlabelled_or_leaky_answers_are_refused_and_rolled_back(db_engine):
     pid, _slug = seed_profile(run_daily=False)
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
 
     def writes_then(value):
         def handler(ctx):
@@ -198,7 +198,7 @@ def test_sdk_round_trip_in_process(db_engine):
     from mcp import Client
 
     pid, slug = seed_profile(run_daily=False)
-    server = build_server(FinanseMcp(pid, today=TODAY), f"finanse-{slug}")
+    server = build_server(CashuMcp(pid, today=TODAY), f"cashu-{slug}")
 
     async def main():
         async with Client(server) as client:
@@ -225,11 +225,11 @@ def test_stdio_subprocess_end_to_end(db_engine, tmp_path):
     env = {
         "PATH": os.environ.get("PATH", ""),
         "HOME": str(tmp_path),
-        "FINANSE_DATA_DIR": str(tmp_path / "data"),
-        "FINANSE_DATABASE_URL": f"sqlite:///{tmp_path / 'finanse.db'}",
+        "CASHU_DATA_DIR": str(tmp_path / "data"),
+        "CASHU_DATABASE_URL": f"sqlite:///{tmp_path / 'cashu.db'}",
     }
     params = StdioServerParameters(
-        command=sys.executable, args=["-m", "finanse.cli", "mcp", "--profile", slug], env=env
+        command=sys.executable, args=["-m", "cashu.cli", "mcp", "--profile", slug], env=env
     )
 
     async def main():
@@ -247,7 +247,7 @@ def test_stdio_subprocess_end_to_end(db_engine, tmp_path):
 
 
 def test_cli_requires_an_existing_profile(db_engine):
-    from finanse.cli import app
+    from cashu.cli import app
 
     runner = CliRunner()
     missing = runner.invoke(app, ["mcp"])
@@ -260,17 +260,17 @@ def test_cli_requires_an_existing_profile(db_engine):
 
 def test_investments_account_label_used_for_imports(db_engine):
     pid, _slug = seed_profile(run_daily=False)
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
     label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
     assert label == "DIF Broker brokerage 1"
     assert investments_account_id(pid) > 0
 
 
 def test_no_audit_row_no_call(db_engine, monkeypatch):
-    from finanse.core.mcp import audit
+    from cashu.core.mcp import audit
 
     pid, _slug = seed_profile(run_daily=False)
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
 
     def broken(*_a, **_k):
         raise audit.AuditUnavailable("OperationalError")

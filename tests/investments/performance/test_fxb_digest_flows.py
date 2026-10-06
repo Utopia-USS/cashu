@@ -9,11 +9,11 @@ import datetime as dt
 import pytest
 from perf_support import AS_OF, BENCH_STRATEGY, ROWS, canonical_csv, sources
 
-from finanse.core import profiles
-from finanse.core.db import get_session
-from finanse.modules.investments.importing import ImportFile
-from finanse.modules.investments.performance import backfill, service
-from finanse.modules.investments.service import accounts, files, imports, portfolio, views
+from cashu.core import profiles
+from cashu.core.db import get_session
+from cashu.modules.investments.importing import ImportFile
+from cashu.modules.investments.performance import backfill, service
+from cashu.modules.investments.service import accounts, files, imports, portfolio, views
 
 SINCE = dt.date(2025, 9, 1)
 # WRLD closes at 110 EUR from April, EUR at 4.3: 473 PLN per unit

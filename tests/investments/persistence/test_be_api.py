@@ -9,11 +9,11 @@ import pytest
 from invp_support import AS_OF, HEADER, STRATEGY_YAML, canonical_csv, sources
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile, utcnow
-from finanse.modules.investments.models import InvAlert, InvSignal
-from finanse.modules.investments.service import alerts as alert_service
-from finanse.modules.investments.service import daily, files, portfolio
+from cashu.core.db import get_session
+from cashu.core.models import Profile, utcnow
+from cashu.modules.investments.models import InvAlert, InvSignal
+from cashu.modules.investments.service import alerts as alert_service
+from cashu.modules.investments.service import daily, files, portfolio
 
 
 @pytest.fixture
@@ -110,7 +110,7 @@ def test_alert_restore_window_other_profiles_and_tombstones(client):
     assert client.delete(f"/api/p/{other}/investments/alerts/{alert['id']}").status_code == 404
     client.delete(f"{base}/alerts/{alert['id']}")
     r = client.post(f"/api/p/{other}/investments/alerts/{alert['id']}/restore")
-    assert r.status_code == 404 and r.headers["X-Finanse-Error-Code"] == "not_found"
+    assert r.status_code == 404 and r.headers["X-Cashu-Error-Code"] == "not_found"
     assert client.post(f"{base}/alerts/999/restore").status_code == 404
 
     profile = _profile(slug)
@@ -118,7 +118,7 @@ def test_alert_restore_window_other_profiles_and_tombstones(client):
     with get_session() as s:
         alert_service.delete(s, profile, late["id"], now=old)
     r = client.post(f"{base}/alerts/{late['id']}/restore")
-    assert r.status_code == 409 and r.headers["X-Finanse-Error-Code"] == "undo_expired"
+    assert r.status_code == 409 and r.headers["X-Cashu-Error-Code"] == "undo_expired"
 
     # an untriggered alert comes back active; an expired deletion stays a hidden tombstone
     assert client.post(f"{base}/alerts/{alert['id']}/restore").json()["status"] == "active"
@@ -170,7 +170,7 @@ def test_restoring_an_agent_alert_respects_the_cap(client, monkeypatch):
             created_by="mcp",
         )
     r = client.post(f"{base}/alerts/{first}/restore")
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "alert_invalid"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "alert_invalid"
 
 
 DRIFT_STRATEGY = (
@@ -310,7 +310,7 @@ def test_planned_deposits_lifecycle_and_month_plan(client):
         r = client.post(f"{base}/planned-deposits", json=bad)
         assert r.status_code == code, (bad, r.text)
         expected = "planned_invalid" if code == 422 else "not_found"
-        assert r.headers["X-Finanse-Error-Code"] == expected
+        assert r.headers["X-Cashu-Error-Code"] == expected
 
     r = client.post(
         f"{base}/planned-deposits",
@@ -362,7 +362,7 @@ def test_planned_deposits_lifecycle_and_month_plan(client):
     month = client.get(f"{base}/planned-deposits").json()["plan"]
     assert (month["deposited"], month["planned"], month["remaining"]) == (980.0, 300.0, 220.0)
     r = client.delete(f"{base}/planned-deposits/{plan['id']}")
-    assert r.status_code == 409 and r.headers["X-Finanse-Error-Code"] == "planned_booked"
+    assert r.status_code == 409 and r.headers["X-Cashu-Error-Code"] == "planned_booked"
 
     assert client.delete(f"{base}/planned-deposits/{later['id']}").json() == {
         "deleted": later["id"],

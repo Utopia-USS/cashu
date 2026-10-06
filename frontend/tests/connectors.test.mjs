@@ -61,10 +61,10 @@ test("secretsText, lastSyncText", () => {
 });
 
 test("importerName: built-in label, connector name, raw id", () => {
-  const builtins = [["auto", "rozpoznaj automatycznie"], ["finanse", "format finanse"]];
+  const builtins = [["auto", "rozpoznaj automatycznie"], ["cashu", "format cashU"]];
   assert.equal(importerName("connector:x", [{ id: "x", name: "N" }], builtins), "N");
   assert.equal(importerName("connector:x", [], builtins), "connector:x");
-  assert.equal(importerName("finanse", [], builtins), "format finanse");
+  assert.equal(importerName("cashu", [], builtins), "format cashU");
   assert.equal(acceptOf(["csv", "xlsx"]), ".csv,.xlsx");
 });
 
@@ -190,8 +190,8 @@ test("FE-8 secrets are trimmed; blank fields keep, null clears", () => {
 test("FE-11 secretsLeftText", () => {
   assert.equal(secretsLeftText(0, "x"), null);
   assert.equal(secretsLeftText(undefined, "x"), null);
-  assert.equal(secretsLeftText(1, "bank-y"), "1 sekret został w pęku kluczy macOS (finanse · connector/bank-y/…)");
-  assert.equal(secretsLeftText(2, "bank-y"), "2 sekrety zostały w pęku kluczy macOS (finanse · connector/bank-y/…)");
+  assert.equal(secretsLeftText(1, "bank-y"), "1 sekret został w pęku kluczy macOS (cashu · connector/bank-y/…)");
+  assert.equal(secretsLeftText(2, "bank-y"), "2 sekrety zostały w pęku kluczy macOS (cashu · connector/bank-y/…)");
 });
 
 test("FE-5 changedSinceApproval: changed, or disabled with content_changed", () => {

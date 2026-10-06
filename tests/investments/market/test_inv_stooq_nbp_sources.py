@@ -21,8 +21,8 @@ from inv_market_support import (
     respond,
 )
 
-from finanse.modules.investments.domain import Currency, FxRate, InstrumentAlias, PriceBar
-from finanse.modules.investments.market import (
+from cashu.modules.investments.domain import Currency, FxRate, InstrumentAlias, PriceBar
+from cashu.modules.investments.market import (
     NbpFxSource,
     NoPriceSourceException,
     SourceBlockedException,

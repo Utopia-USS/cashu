@@ -118,15 +118,15 @@ const ERRORS: Record<string, string> = {
   path_is_file: "Pod tą ścieżką jest plik, nie folder.",
   path_home: "Wybierz osobny folder, nie cały katalog domowy ani dysk.",
   path_hidden: "Folder nie może leżeć w ukrytym katalogu.",
-  path_data_dir: "Workspace musi leżeć poza katalogiem danych finanse i nie może go zawierać.",
-  path_checkout: "Workspace nie może leżeć w katalogu z kodem finanse.",
+  path_data_dir: "Workspace musi leżeć poza katalogiem danych cashU i nie może go zawierać.",
+  path_checkout: "Workspace nie może leżeć w katalogu z kodem cashU.",
   workspace_taken: "Ten folder jest (albo zawiera) workspace innego profilu.",
   translocated: TRANSLOCATED_TEXT,
   busy: "Workspace jest właśnie aktualizowany. Spróbuj za chwilę.",
   write_failed: "Nie udało się zapisać plików w tym folderze (uprawnienia albo dysk).",
 };
 
-/** Polish text of a workspace API error (the `X-Finanse-Error-Code` code on ApiError), else the
+/** Polish text of a workspace API error (the `X-Cashu-Error-Code` code on ApiError), else the
  * server's English message. */
 export function workspaceErrorText(e: unknown): string {
   const code = (e as { code?: string | null } | null)?.code;

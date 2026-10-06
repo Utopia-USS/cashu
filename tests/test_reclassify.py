@@ -5,10 +5,10 @@ offline."""
 from datetime import date
 from decimal import Decimal
 
-from finanse.core.accounts import get_or_create_account
-from finanse.models import AccountType, Source, Transaction
-from finanse.modules.budget.categorize import local_llm
-from finanse.modules.budget.categorize.reclassify import (
+from cashu.core.accounts import get_or_create_account
+from cashu.models import AccountType, Source, Transaction
+from cashu.modules.budget.categorize import local_llm
+from cashu.modules.budget.categorize.reclassify import (
     _is_structural,
     reclassify_all,
     txn_signature,
@@ -45,7 +45,7 @@ def test_signature_groups_by_full_detail_not_merchant():
 
 
 def test_structural_transactions_excluded(session):
-    from finanse.modules.budget.ingestion.normalize import iban_key
+    from cashu.modules.budget.ingestion.normalize import iban_key
 
     acc = get_or_create_account(session, bank="mbank", name="mBank",
                                 iban="PL10 1140 0000 0000 0000 1234")

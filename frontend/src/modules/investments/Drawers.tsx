@@ -19,7 +19,7 @@ import {
 import { commitLabel, TXN_RULES, txnCash, validateTxn } from "./logic";
 import { invKey } from "./v2/api";
 
-/** The Polish label of the error's `X-Finanse-Error-Code` (core/messages.ts), else the server's detail. */
+/** The Polish label of the error's `X-Cashu-Error-Code` (core/messages.ts), else the server's detail. */
 const errText = (e: unknown) => describeError(e).text;
 
 /** One import warning: "wiersz N: " + the Polish label of its kind, the English detail next to it. */
@@ -30,7 +30,7 @@ function WarningText({ w }: { w: { row: number | null; kind: string; message: st
 
 // ---- import ------------------------------------------------------------------------------
 
-export const IMPORTERS: [string, string][] = [["auto", "rozpoznaj automatycznie"], ["finanse", "format finanse"], ["generic_csv", "CSV z mapowaniem kolumn"]];
+export const IMPORTERS: [string, string][] = [["auto", "rozpoznaj automatycznie"], ["cashu", "format cashU"], ["generic_csv", "CSV z mapowaniem kolumn"]];
 const MAPPING_HINT = `# Mapowanie kolumn CSV (przykład)\ndelimiter: ";"\ncolumns:\n  date: Data\n  type: Typ\n  symbol: Instrument\n  quantity: Ilość\n  price: Cena\n  cash_amount: Kwota\n  currency: Waluta`;
 
 export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, onAddAccount, onManual, onClassify }: {

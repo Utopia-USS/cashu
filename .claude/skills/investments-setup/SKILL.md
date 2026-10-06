@@ -1,6 +1,6 @@
 ---
 name: investments-setup
-description: Strategy interview and periodic check-ins for the finanse investments module, with data only from the profile's finanse MCP server. Use when the user wants to set up investing in finanse, choose or write their own investment strategy (strategy.md + strategy.yaml), go through goals, horizon, risk profile and a retrospective of their trading history, revise an existing strategy, or run a weekly / monthly / quarterly review of signals and record decisions. Triggers on /investments-setup and on Polish requests such as "wywiad strategiczny", "ustawmy strategię inwestycyjną", "skonfiguruj inwestycje", "napiszmy strategię", "przegląd tygodniowy portfela", "check-in", "co z sygnałami", "zapisz decyzję". Not for converting broker exports (use import-builder) or drafting one custom rule (use extension-builder). Never recommends instruments or trades.
+description: Strategy interview and periodic check-ins for the cashU investments module, with data only from the profile's cashU MCP server. Use when the user wants to set up investing in cashU, choose or write their own investment strategy (strategy.md + strategy.yaml), go through goals, horizon, risk profile and a retrospective of their trading history, revise an existing strategy, or run a weekly / monthly / quarterly review of signals and record decisions. Triggers on /investments-setup and on Polish requests such as "wywiad strategiczny", "ustawmy strategię inwestycyjną", "skonfiguruj inwestycje", "napiszmy strategię", "przegląd tygodniowy portfela", "check-in", "co z sygnałami", "zapisz decyzję". Not for converting broker exports (use import-builder) or drafting one custom rule (use extension-builder). Never recommends instruments or trades.
 ---
 
 # investments-setup: strategy interview and check-ins
@@ -31,7 +31,7 @@ Adapted to the app (same intent as the brief's "writes only under `private/`"):
 
 ## What you can and cannot see (say it at session start)
 
-Data comes only from the MCP server of the chosen profile (`finanse-<slug>`). Every call is logged in
+Data comes only from the MCP server of the chosen profile (`cashu-<slug>`). Every call is logged in
 the app (Ustawienia > Agent AI). Read the privacy level from `profile_overview` (`privacy`: `strict`
 or `amounts`):
 
@@ -44,12 +44,12 @@ or `amounts`):
 
 Rules that follow from it:
 
-- Never open `finanse.db`, backups or the import archive. The privacy level covers what the MCP tools
+- Never open `cashu.db`, backups or the import archive. The privacy level covers what the MCP tools
   give you; an export or statement the user hands you themselves may be read for the task they asked
   for (values stay in the conversation, never in notes or files). Never run
   CLI commands whose output contains balances, positions, transactions, account names or file names
-  (`finanse invest positions`, `finanse invest signals`, `finanse invest import`, `finanse accounts`,
-  `finanse stats`). If one is needed, the user runs it in their own terminal (not with `!` in this
+  (`cashu invest positions`, `cashu invest signals`, `cashu invest import`, `cashu accounts`,
+  `cashu stats`). If one is needed, the user runs it in their own terminal (not with `!` in this
   session, which would put the output into the conversation) and tells you only what you need.
 - This conversation runs on a cloud model: what the user types here leaves the machine. In strict
   mode do not ask for absolute amounts. Work in relative units: percent of the portfolio, months of
@@ -83,7 +83,7 @@ propozycję, którą zatwierdzisz w aplikacji."
 | `record_decision(signal_id, action, reason)` | check-in |
 | `mark_review_done(notes, module="investments")` | end of the interview (first review), every check-in |
 
-Imports are not done here: exports in the finanse format, a simple CSV or a format an approved
+Imports are not done here: exports in the cashU format, a simple CSV or a format an approved
 connector reads go through the app's import drawer; other formats through the `import-builder` skill,
 which opens with one question: (a) "Daj mi plik z wartościami" (the agent reads the export) or (b)
 recommended: a connector written without seeing values, approved once in the app. The user's answer
@@ -91,9 +91,9 @@ decides. One custom rule on its own: `extension-builder`.
 
 ## Session start
 
-1. **Profile.** MCP servers are per profile, named `finanse-<slug>`. In the profile's agent workspace
+1. **Profile.** MCP servers are per profile, named `cashu-<slug>`. In the profile's agent workspace
    (its `CLAUDE.md` names the profile) the server is already configured in `.mcp.json`. Elsewhere, if
-   none is connected, suggest creating the workspace (Ustawienia > Agent AI, or `finanse workspace init
+   none is connected, suggest creating the workspace (Ustawienia > Agent AI, or `cashu workspace init
    --profile <slug>`) and starting Claude Code there, or give the `claude mcp add` line shown in
    Ustawienia > Agent AI. If several are connected, ask which profile and use only that server for the
    whole session. Never combine data of two profiles.
@@ -169,7 +169,7 @@ Phase guides with question banks per user type: `references/phases.md`. Phase 4 
 5. Tell the user where to approve: Inwestycje > the strategy pill (`Strategia v{n}`) > the pending proposal > `Zobacz` >
    `Zatwierdź jako v{n}`. After approval `strategy_status` shows the new version.
 
-Never write `strategy.yaml` / `strategy.md` in the data dir yourself and never run `finanse invest
+Never write `strategy.yaml` / `strategy.md` in the data dir yourself and never run `cashu invest
 strategy init` on the user's behalf: the proposal is the only path, so the owner sees the diff.
 
 ## Phase 8 end: the interview counts as the first review
@@ -189,7 +189,7 @@ offered as scheduled tasks; creating them needs the user's explicit yes.
 Needs an approved strategy (`strategy_status`).
 
 1. `portfolio_overview`: if data is stale (freshness, last run), say so first and ask the user to run
-   the rules in the app (`Uruchom reguły`) or `finanse invest run` in their terminal, then re-read.
+   the rules in the app (`Uruchom reguły`) or `cashu invest run` in their terminal, then re-read.
 2. `signals` for the open statuses (`active` and `acknowledged`, or `open` if the tool accepts it).
    Show only what exceeds thresholds, strongest first: rule, scope, measured vs threshold, severity,
    age. No signals is a good result; say so.
@@ -231,8 +231,8 @@ in/out, withholding tax handling, recurring investment plans); exchange regulato
 
 The strategy, its versions, decisions, theses and reviews live in the app (written through MCP). Your
 own working notes live in the profile's agent workspace, in `notes/interview/` (the workspace's
-`CLAUDE.md` says where notes go; reads of the finanse data dir are denied there). Outside a finanse
-workspace, ask the user for a local folder outside any repository and outside the finanse data dir, or
+`CLAUDE.md` says where notes go; reads of the cashU data dir are denied there). Outside a cashU
+workspace, ask the user for a local folder outside any repository and outside the cashU data dir, or
 suggest creating the workspace first (Ustawienia > Agent AI).
 
 ```
@@ -254,5 +254,5 @@ values only, unless the user agreed to note amounts.
 - `references/schema-mapping.md`: strategy.yaml patterns, kept in sync with `strategy-schema.md`.
 - `references/strategy-schema.md`: the app's strategy.yaml reference (keys, rule kinds, params);
   `references/templates/*.yaml`: the app's templates; `references/expressions.md`: custom rule
-  expressions. These three are copies refreshed with every finanse version.
+  expressions. These three are copies refreshed with every cashU version.
 - `references/special-situations.md`: insolvent brokers, frozen holdings, expiring limits, deadlines.

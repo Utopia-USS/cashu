@@ -11,7 +11,7 @@ from datetime import date
 import pytest
 from sqlmodel import select
 
-from finanse.api.app import app
+from cashu.api.app import app
 
 # Every upstream endpoint. A route disappearing or moving is a behaviour change.
 UPSTREAM_ROUTES = {
@@ -45,9 +45,9 @@ def _today_values(seeded_engine):
     """Mortgage outstanding and car value as of today, from the library itself."""
     from sqlmodel import Session
 
-    from finanse.models import Depreciation, Loan
-    from finanse.modules.assets.depreciation import value_of
-    from finanse.modules.loans import amortization as loanmod
+    from cashu.models import Depreciation, Loan
+    from cashu.modules.assets.depreciation import value_of
+    from cashu.modules.loans import amortization as loanmod
 
     with Session(seeded_engine) as s:
         ln = s.exec(select(Loan)).one()
@@ -414,7 +414,7 @@ def test_cash_expense_validation(api, payload, error):
 # --------------------------------------------------------------------------- #
 
 def test_resync_not_configured(api, monkeypatch):
-    from finanse.config import settings
+    from cashu.config import settings
 
     monkeypatch.setattr(type(settings), "eb_configured", property(lambda self: False))
     assert api.post("/api/resync").json() == {
@@ -425,7 +425,7 @@ def test_resync_not_configured(api, monkeypatch):
 def test_resync_no_sessions(api, eb_configured, fake_eb):
     eb_configured(fake_eb({}), {})
     assert api.post("/api/resync").json() == {
-        "ok": False, "error": "Brak sesji Enable Banking: zaloguj się: finanse eb login",
+        "ok": False, "error": "Brak sesji Enable Banking: zaloguj się: cashu eb login",
     }
 
 
@@ -457,7 +457,7 @@ def test_resync_ok(api, eb_configured, fake_eb, make_eb_txn):
 
 
 def test_resync_expired_session_is_reported(api, eb_configured, fake_eb):
-    from finanse.modules.budget.ingestion.enable_banking.client import EnableBankingError
+    from cashu.modules.budget.ingestion.enable_banking.client import EnableBankingError
 
     class Expired(fake_eb):
         def get_session(self, session_id):

@@ -4,7 +4,7 @@
 // modules/<id>/api.ts and use the same transport.
 
 // Per-launch API token: never in the served page (PK1). core/token.ts gets it from the desktop
-// bridge, the `#token=` fragment `finanse serve` prints, or this tab's sessionStorage; under
+// bridge, the `#token=` fragment `cashu serve` prints, or this tab's sessionStorage; under
 // `npm run dev` the Vite proxy adds the header itself (see vite.config.ts).
 import { clearCache } from "../swr";
 import type { ModuleSyncLine } from "./connectors";
@@ -15,7 +15,7 @@ import { apiToken, forgetToken, NO_TOKEN_TEXT } from "./token";
 export async function authHeaders(): Promise<Record<string, string>> {
   const token = await apiToken();
   if (token === null) throw new ApiError(401, NO_TOKEN_TEXT, "auth.no_token");
-  return token ? { "X-Finanse-Token": token } : {};
+  return token ? { "X-Cashu-Token": token } : {};
 }
 
 // Dev-only demo backend (`VITE_MOCK=1 npm run dev`). Off by default; the mock
@@ -23,7 +23,7 @@ export async function authHeaders(): Promise<Record<string, string>> {
 const MOCK = import.meta.env.VITE_MOCK === "1";
 
 /** Error with the server's `detail` message when it sent one (FastAPI style) and the stable code of the
- * `X-Finanse-Error-Code` header (the detail stays English; core/messages.ts `errorText` shows the Polish
+ * `X-Cashu-Error-Code` header (the detail stays English; core/messages.ts `errorText` shows the Polish
  * label of the code). */
 export class ApiError extends Error {
   /** `body`: the parsed `detail` when it is an object (a connector run failure: kind, message, stderr_tail,
@@ -46,12 +46,12 @@ export async function responseError(r: Response, u: string): Promise<ApiError> {
       detail = typeof m === "string" ? m : "";
     }
   } catch { /* not JSON */ }
-  return new ApiError(r.status, detail || `${u} → ${r.status}`, r.headers.get("X-Finanse-Error-Code"), body);
+  return new ApiError(r.status, detail || `${u} → ${r.status}`, r.headers.get("X-Cashu-Error-Code"), body);
 }
 
-// A 401 means this page's token is no longer valid: `finanse serve` was restarted (new token
+// A 401 means this page's token is no longer valid: `cashu serve` was restarted (new token
 // per launch). The stale token is dropped (core/token.ts) and the app shows one notice (App.tsx)
-// instead of an error in every view; the browser then needs the new URL `finanse serve` printed.
+// instead of an error in every view; the browser then needs the new URL `cashu serve` printed.
 const authLostListeners = new Set<() => void>();
 let authLost = false;
 export function onAuthLost(cb: () => void): () => void {
@@ -126,6 +126,8 @@ export interface SystemInfo {
   secrets?: Partial<Record<SecretKey, boolean>>;
   /** Connectors (F10): `sandbox` false = runs are refused on this platform (approval still possible). */
   connectors?: { sandbox: boolean; platform: string };
+  /** F11: steps of the move from the pre-rename install that failed or were refused (core/migrate_legacy.py). */
+  rename_migration?: { step: string; status: string; detail: string }[];
 }
 
 export interface WorkerJob {
@@ -195,7 +197,7 @@ export interface SetupInfo {
   steps: SetupStep[];
   /** `translocated`: macOS App Translocation, `mcp_add` is a placeholder until the app is moved (PK3). */
   skill: { command: string; mcp_add: string; translocated?: boolean } | null;
-  /** The CLI prefix of the profile (`finanse --profile jan`), for command lines shown in the app. */
+  /** The CLI prefix of the profile (`cashu --profile jan`), for command lines shown in the app. */
   cli_prefix?: string | null;
 }
 
@@ -282,7 +284,7 @@ export const getSetup = async (slug: string, moduleId: string): Promise<SetupInf
 };
 
 /** One MCP server per profile (design decision 4). */
-export const mcpAddCommand = (slug: string) => `claude mcp add finanse-${slug} -- finanse mcp --profile ${slug}`;
+export const mcpAddCommand = (slug: string) => `claude mcp add cashu-${slug} -- cashu mcp --profile ${slug}`;
 
 // ---- shapes ----------------------------------------------------------------
 export interface Breakdown {

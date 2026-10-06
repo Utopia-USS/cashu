@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from imp_support import counter_ids, instrument, parsed_txn
 
-from finanse.modules.investments.domain import AssetClass, Currency, InstrumentAlias, TxnType
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.domain import AssetClass, Currency, InstrumentAlias, TxnType
+from cashu.modules.investments.importing import (
     CurrencyEvidence,
     InMemoryInstrumentLookup,
     InstrumentHint,

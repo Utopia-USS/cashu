@@ -9,8 +9,8 @@ from datetime import timedelta
 
 from al_fixtures import AS_OF, alert, alloc, bars, check, context, h, instrument, portfolio
 
-from finanse.modules.investments.domain import InstrumentStatus, SignalSeverity
-from finanse.modules.investments.rules import Fired, NotFired, SignalPolarity, Skipped
+from cashu.modules.investments.domain import InstrumentStatus, SignalSeverity
+from cashu.modules.investments.rules import Fired, NotFired, SignalPolarity, Skipped
 
 VWCE = instrument("VWCE")
 

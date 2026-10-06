@@ -22,21 +22,21 @@ from invp_support import (
 )
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile, utcnow
-from finanse.modules.investments.alerts import AlertSource
-from finanse.modules.investments.market import SourceException
-from finanse.modules.investments.models import (
+from cashu.core.db import get_session
+from cashu.core.models import Profile, utcnow
+from cashu.modules.investments.alerts import AlertSource
+from cashu.modules.investments.market import SourceException
+from cashu.modules.investments.models import (
     InvAlert,
     InvInstrument,
     InvNotification,
     InvPriceBar,
     InvSignal,
 )
-from finanse.modules.investments.service import alerts as alert_service
-from finanse.modules.investments.service import daily, files, views
-from finanse.modules.investments.service import watchlist as watch_service
-from finanse.modules.investments.store import signals as signal_store
+from cashu.modules.investments.service import alerts as alert_service
+from cashu.modules.investments.service import daily, files, views
+from cashu.modules.investments.service import watchlist as watch_service
+from cashu.modules.investments.store import signals as signal_store
 
 T0 = dt.datetime(2026, 3, 2, 8, 0, tzinfo=dt.UTC)
 

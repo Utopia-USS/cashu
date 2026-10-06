@@ -7,7 +7,7 @@ records the decisions behind the signing and build inputs.
 
 The build venv is installed only from `requirements-build.lock`: every package (runtime
 dependencies with the `desktop` extra, PyInstaller, the hatchling build backend, pip and setuptools)
-at an exact version with sha256 hashes, `pip install --require-hashes --no-deps`. finanse itself is
+at an exact version with sha256 hashes, `pip install --require-hashes --no-deps`. cashU itself is
 installed editable with `--no-deps --no-build-isolation`, so nothing unpinned is downloaded while
 building a bundle that gets signed with the owner's Developer ID. The npm side uses `npm ci`
 (lockfile integrity hashes).
@@ -41,21 +41,28 @@ Checklist for a Developer ID build (run before shipping, and before adding an en
 1. `codesign -d --entitlements - cashU.app` shows no exception keys.
 2. Open the app from /Applications: the dashboard loads (token bridge, navigation delegate), a
    notification click opens the right view, Cmd+Q quits (app.log in debug mode: "Shutting down").
-3. `cashU.app/Contents/MacOS/finanse worker run --offline` and
-   `cashU.app/Contents/MacOS/finanse mcp --profile <slug>` (Claude Code connects) work.
-4. `log show --last 5m --predicate 'process == "finanse"' | grep -i -E "library validation|code signature|killed"`
+3. `cashU.app/Contents/MacOS/cashu worker run --offline` and
+   `cashU.app/Contents/MacOS/cashu mcp --profile <slug>` (Claude Code connects) work.
+4. `log show --last 5m --predicate 'process == "cashu"' | grep -i -E "library validation|code signature|killed"`
    is empty. If a step fails with a code-signing or memory error, add back only the entitlement
    named there and record why in this table.
 
 ## Where the app keeps data
 
-- Data dir: `~/Library/Application Support/finanse` (0700), or `FINANSE_DATA_DIR`.
+- Data dir: `~/Library/Application Support/cashU` (0700), or `CASHU_DATA_DIR`.
 - WebView storage (localStorage: chosen profile, theme, layout, view filters, the review note
-  draft): `~/Library/WebKit/io.github.synszakala.finanse/`. pywebview's macOS backend always uses
+  draft): `~/Library/WebKit/io.utopiasoft.cashu/`. pywebview's macOS backend always uses
   WebKit's default data store and ignores `storage_path`, so this cannot live in the data dir. The
   SPA keeps no amounts there (planned deposits are stored on the server). Deleting the data dir
-  does not clear it; remove that folder too for a full wipe.
+  does not clear it; remove that folder too for a full wipe. The bundle id changed with the rename
+  to cashU (legacy name: `io.github.synszakala.finanse`), so the window starts with an empty
+  WebKit store once; the old folder can be deleted.
+- Before the rename (legacy name: finanse) the executable was `Contents/MacOS/finanse`: launchd
+  jobs and MCP lines that name it stop working after the update. The first start of the new app
+  reinstalls the background job (core/migrate_legacy.py); MCP lines are fixed by "Aktualizuj
+  workspace" or by re-adding them. The legacy name scheme `finanse://` stays registered for links
+  in notifications posted before the update.
 - `app-location.json` in the data dir: where cashU.app last ran from. After a move or rename
-  `finanse worker status` (and the `worker.relocation` object of `GET /api/system`) flags the
-  launchd job and the MCP lines given out before as stale; `finanse worker install` is the fix and
+  `cashu worker status` (and the `worker.relocation` object of `GET /api/system`) flags the
+  launchd job and the MCP lines given out before as stale; `cashu worker install` is the fix and
   clears the note. Nothing is rewritten automatically.

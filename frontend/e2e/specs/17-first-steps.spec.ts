@@ -30,7 +30,7 @@ test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async ({ request }) => {
   const r = await request.post(`${serverUrl()}/api/profiles`, {
-    headers: { "X-Finanse-Token": process.env.E2E_TOKEN ?? "" },
+    headers: { "X-Cashu-Token": process.env.E2E_TOKEN ?? "" },
     data: { name: NAME, base_currency: "PLN", modules: ["budget", "loans", "assets"], mcp_privacy: "strict" },
   });
   expect(r.status(), await r.text()).toBe(201);

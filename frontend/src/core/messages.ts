@@ -332,7 +332,7 @@ export const LABELS: Record<string, Label> = {
   "proposal.error.apply_failed": "Zatwierdzenie nie powiodło się (szczegóły w logu aplikacji)",
   "proposal.error.write_failed": "Nie udało się zapisać plików; nic nie zostało zmienione",
 
-  // ---- request errors: the `X-Finanse-Error-Code` header (errorText; the English detail stays as detail) ---
+  // ---- request errors: the `X-Cashu-Error-Code` header (errorText; the English detail stays as detail) ---
   "error.not_found": "Nie znaleziono: mogło zostać usunięte w innym oknie",
   "error.alert_invalid": "Alert ma nieprawidłowe parametry",
   "error.watchlist_conflict": "Ten instrument już jest na liście obserwowanych",
@@ -350,7 +350,7 @@ export const LABELS: Record<string, Label> = {
   "error.import_empty": "Plik nie zawiera transakcji.",
   "error.import_file_format": "Nieobsługiwany lub uszkodzony plik",
   "error.file_too_large": "Plik jest za duży.",
-  "error.import_invalid": "Plik w formacie finanse ma błędy: popraw je przed importem.",
+  "error.import_invalid": "Plik w formacie cashU ma błędy: popraw je przed importem.",
   "error.import_currency_mismatch": "Waluta pliku różni się od waluty konta.",
   // FE-only: a statement commit whose staged preview is gone (pruned after 24 h, or committed in another window)
   "import.preview_expired": "Podgląd wygasł: wybierz plik jeszcze raz.",
@@ -429,7 +429,7 @@ export const LABELS: Record<string, Label> = {
   "error.connector_params": "Nieprawidłowe parametry powiązania",
   "error.connector_file_too_large": "Plik za duży do podglądu (limit 200 KiB).",
   "error.connector_file_binary": "Plik binarny: bez podglądu.",
-  // a connector run failure (`kind`; the import previews answer `X-Finanse-Error-Code: connector_<kind>`)
+  // a connector run failure (`kind`; the import previews answer `X-Cashu-Error-Code: connector_<kind>`)
   "connector.bad_file": "Konektor nie rozpoznał tego pliku.",
   "connector.unsupported_version": "Konektor nie obsługuje tej wersji eksportu.",
   "connector.auth_failed": "Serwis odrzucił klucz: sprawdź sekret powiązania.",
@@ -507,7 +507,7 @@ export function proposalError(result: Record<string, unknown> | null | undefined
   return { text: english ?? code ?? "", detail: null, translated: false };
 }
 
-/** What a failed request shows: the Polish label of its `X-Finanse-Error-Code` (`error.<code>`, a
+/** What a failed request shows: the Polish label of its `X-Cashu-Error-Code` (`error.<code>`, a
  * proposal code as `proposal.error.<code>`) with the server's English detail kept as `detail`; without a
  * known code the English detail itself. A network failure (no response) gets one Polish line. */
 export function describeError(e: unknown): Described {
@@ -520,7 +520,7 @@ export function describeError(e: unknown): Described {
     : null;
   if (pl) return { text: pl, detail: english && english !== pl ? english : null, translated: true };
   if (err.status === undefined && err.name === "TypeError" && /fetch|network|load failed/i.test(english)) {
-    return { text: "Brak połączenia z aplikacją (serwer finanse nie odpowiada)", detail: english, translated: true };
+    return { text: "Brak połączenia z aplikacją (serwer cashU nie odpowiada)", detail: english, translated: true };
   }
   return { text: english, detail: null, translated: false };
 }

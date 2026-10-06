@@ -12,16 +12,16 @@ import pytest
 from alembic import command
 from upstream_db import make_upstream_db
 
-from finanse import db
-from finanse.core import legacy, migrations
-from finanse.modules.investments.models import TABLES
+from cashu import db
+from cashu.core import legacy, migrations
+from cashu.modules.investments.models import TABLES
 
 INV_TABLES = {t.__tablename__ for t in TABLES}
 
 
 @pytest.fixture(autouse=True)
 def _isolated_data_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
 
 
 def _to(engine, revision: str, *, down: bool = False) -> None:
@@ -48,7 +48,7 @@ def _db_at_0004(tmp_path: Path) -> Path:
     engine = db.make_engine(f"sqlite:///{original}")
     _to(engine, "0004_loan_payments")
     engine.dispose()
-    copy = tmp_path / "work" / "finanse.db"
+    copy = tmp_path / "work" / "cashu.db"
     copy.parent.mkdir()
     shutil.copy(original, copy)
     return copy
@@ -84,8 +84,8 @@ def test_migrated_database_takes_investments_data(tmp_path, monkeypatch):
     from conftest import use_engine
     from invp_support import add_account, canonical_csv, import_file
 
-    from finanse.core.db import get_session
-    from finanse.core.models import Profile
+    from cashu.core.db import get_session
+    from cashu.core.models import Profile
 
     path = _db_at_0004(tmp_path)
     engine = db.make_engine(f"sqlite:///{path}")

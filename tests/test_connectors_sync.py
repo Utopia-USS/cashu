@@ -22,11 +22,11 @@ from connector_support import (  # noqa: F401  (fixture)
 )
 from sqlmodel import select
 
-from finanse.core import profiles
-from finanse.core.agent_models import Proposal
-from finanse.core.connectors import runner, service, sync
-from finanse.core.connectors.models import ConnectorBinding, ConnectorRun
-from finanse.core.db import get_session
+from cashu.core import profiles
+from cashu.core.agent_models import Proposal
+from cashu.core.connectors import runner, service, sync
+from cashu.core.connectors.models import ConnectorBinding, ConnectorRun
+from cashu.core.db import get_session
 
 pytestmark = needs_python3
 
@@ -55,12 +55,12 @@ def deposit(day: str, ref: str, amount: str = "100.00") -> dict:
 
 
 def inv_doc(*records: dict) -> dict:
-    return {"format": "finanse-import", "format_version": 1, "source": "demo_broker",
+    return {"format": "cashu-import", "format_version": 1, "source": "demo_broker",
             "records": list(records)}
 
 
 def bud_doc(*txns: dict) -> dict:
-    return {"format": "finanse-budget-import", "format_version": 1, "source": "demo_bank",
+    return {"format": "cashu-budget-import", "format_version": 1, "source": "demo_bank",
             "account": {"currency": "PLN"}, "transactions": list(txns)}
 
 
@@ -93,7 +93,7 @@ class Setup:
             assert r.status_code == 201, r.text
             self.account = r.json()["id"]
         else:
-            from finanse.core.accounts import get_or_create_account
+            from cashu.core.accounts import get_or_create_account
 
             with get_session() as s:
                 p = profiles.get_by_slug(s, self.slug)
@@ -142,14 +142,14 @@ class Setup:
 
 
 def inv_count(account: int) -> int:
-    from finanse.modules.investments.models import InvTransaction
+    from cashu.modules.investments.models import InvTransaction
 
     with get_session() as s:
         return len(s.exec(select(InvTransaction).where(InvTransaction.account_id == account)).all())
 
 
 def bud_count(account: int) -> int:
-    from finanse.modules.budget.models import Transaction
+    from cashu.modules.budget.models import Transaction
 
     with get_session() as s:
         return len(s.exec(select(Transaction).where(Transaction.account_id == account)).all())
@@ -260,7 +260,7 @@ def test_cursor_conflict_binding_missing_and_not_approved(client, tmp_path):
         assert sync.save_cursor(s, st.binding, base_cursor=None, base_ok_at=None, cursor="c2",
                                 fetched_at=dt.datetime(2026, 9, 2, 12, 0, tzinfo=dt.UTC))
     r = st.approve(first)
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "cursor_conflict"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "cursor_conflict"
     assert inv_count(st.account) == 0 and st.binding_row().cursor == "c2"
     second = st.sync().json()["proposal_id"]
     assert st.approve(second).status_code == 200
@@ -270,7 +270,7 @@ def test_cursor_conflict_binding_missing_and_not_approved(client, tmp_path):
     third = st.sync().json()["proposal_id"]
     client.post(f"/api/connectors/{st.cid}/disable")
     r = st.approve(third)
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "connector_not_approved"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "connector_not_approved"
 
     d = client.get(f"/api/connectors/{st.cid}").json()
     client.post(f"/api/connectors/{st.cid}/approve", json={
@@ -278,12 +278,12 @@ def test_cursor_conflict_binding_missing_and_not_approved(client, tmp_path):
     fourth = st.sync().json()["proposal_id"]
     assert client.delete(f"{st.base}/connectors/bindings/{st.binding}").status_code == 200
     r = st.approve(fourth)
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "binding_missing"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "binding_missing"
     assert inv_count(st.account) == 2
 
 
 def test_rejecting_removes_the_stored_document_and_keeps_the_cursor(client, tmp_path):
-    from finanse.core import paths
+    from cashu.core import paths
 
     st = Setup(client, tmp_path)
     st.answer(inv_doc(deposit("2026-09-01", "d1")), cursor="c1")
@@ -311,7 +311,7 @@ def test_failed_fetch_and_rate_limit_backoff(client, tmp_path):
 
 def test_blocking_preview_stores_nothing(client, tmp_path):
     st = Setup(client, tmp_path)
-    st.answer({"format": "finanse-import", "format_version": 1, "records": [{"record": "txn"}]})
+    st.answer({"format": "cashu-import", "format_version": 1, "records": [{"record": "txn"}]})
     body = st.sync().json()
     assert body["run"]["ok"] is True and body["preview"]["blocking"] >= 1
     assert body["problem"]["code"] == "import_blocked" and body["proposal_id"] is None
@@ -319,13 +319,13 @@ def test_blocking_preview_stores_nothing(client, tmp_path):
 
 
 def test_busy_binding_answers_409(client, tmp_path):
-    from finanse.core import locks
+    from cashu.core import locks
 
     st = Setup(client, tmp_path)
     st.answer(inv_doc(), cursor=None)
     with locks.run_lock(sync.lock_name(st.binding)):
         r = st.sync()
-    assert r.status_code == 409 and r.headers["X-Finanse-Error-Code"] == "connector_busy"
+    assert r.status_code == 409 and r.headers["X-Cashu-Error-Code"] == "connector_busy"
     assert client.post(f"{st.base}/connectors/bindings/99999/sync").status_code == 404
 
 
@@ -396,8 +396,8 @@ def test_budget_sync_proposal_approve_and_auto_commit(client, tmp_path):
     assert r.status_code == 200, r.text
     assert r.json()["result"]["inserted"] == 2 and r.json()["result"]["cursor_saved"] is True
     assert bud_count(st.account) == 2 and st.binding_row().cursor == "b1"
-    from finanse.core.models import Source
-    from finanse.modules.budget.models import Transaction
+    from cashu.core.models import Source
+    from cashu.modules.budget.models import Transaction
 
     with get_session() as s:
         sources = {t.source for t in s.exec(select(Transaction)).all()}
@@ -423,7 +423,7 @@ def test_budget_document_for_another_account_is_a_problem(client, tmp_path):
     doc = bud_doc(bud_txn("2026-09-01", "t1"))
     doc["account"]["iban"] = "PL61109010140000071219812874"
     with get_session() as s:
-        from finanse.core.models import Account
+        from cashu.core.models import Account
 
         acc = s.get(Account, st.account)
         acc.iban = "PL27114020040000300201355387"
@@ -445,14 +445,14 @@ class FakeNotifier:
         self.sent = []
 
     def send(self, notification):
-        from finanse.core.worker.notifier import Delivery
+        from cashu.core.worker.notifier import Delivery
 
         self.sent.append(notification)
         return Delivery(True, "fake")
 
 
 def test_worker_job_syncs_due_bindings_once_and_notifies(client, tmp_path):
-    from finanse.core.worker import connectors as glue
+    from cashu.core.worker import connectors as glue
 
     st = Setup(client, tmp_path)
     st.answer(inv_doc(deposit("2026-09-01", "d1")), cursor="c1")
@@ -470,7 +470,7 @@ def test_worker_job_syncs_due_bindings_once_and_notifies(client, tmp_path):
 
 
 def test_worker_job_one_failing_binding_never_stops_the_others(client, tmp_path):
-    from finanse.core.worker import connectors as glue
+    from cashu.core.worker import connectors as glue
 
     st = Setup(client, tmp_path)
     st.answer(error={"kind": "upstream", "message": "boom TEST"})
@@ -488,7 +488,7 @@ def test_worker_job_one_failing_binding_never_stops_the_others(client, tmp_path)
 
 
 def test_worker_runner_records_the_job(client, tmp_path, monkeypatch):
-    from finanse.core.worker import runner as worker_runner
+    from cashu.core.worker import runner as worker_runner
 
     st = Setup(client, tmp_path)
     st.answer(inv_doc(deposit("2026-09-01", "d1")), cursor="c1")
@@ -508,7 +508,7 @@ def _runs(binding: int) -> int:
 def test_one_pending_proposal_per_binding(client, tmp_path):
     """BE-2: while a sync proposal of the binding waits, a sync runs nothing and answers
     ``pending_exists`` with that proposal; the worker skips the binding without a new notification."""
-    from finanse.core.worker import connectors as glue
+    from cashu.core.worker import connectors as glue
 
     st = Setup(client, tmp_path)
     st.answer(inv_doc(deposit("2026-09-01", "d1")), cursor="c1")
@@ -537,7 +537,7 @@ def test_one_pending_proposal_per_binding(client, tmp_path):
 def test_proposals_never_share_a_staged_file(client, tmp_path):
     """BE-2: two bindings fetching the same document stage two files; rejecting one proposal never
     breaks the other (was 422 staged_missing)."""
-    from finanse.core import paths
+    from cashu.core import paths
 
     st = Setup(client, tmp_path)
     st.answer(inv_doc(deposit("2026-09-01", "d1")), cursor="c1")
@@ -569,7 +569,7 @@ def test_check_is_not_a_sync_attempt(client, tmp_path):
 
 def test_worker_syncs_connectors_before_the_investments_daily_check(client, tmp_path, monkeypatch):
     """BE-13: a fetch binding's commit is in the same run's daily check (sync first, then the check)."""
-    from finanse.core.worker import runner as worker_runner
+    from cashu.core.worker import runner as worker_runner
 
     st = Setup(client, tmp_path)
     st.answer(inv_doc(deposit("2026-09-01", "d1")), cursor="c1")

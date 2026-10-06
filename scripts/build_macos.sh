@@ -15,15 +15,15 @@
 #                             Unset: the app keeps PyInstaller's ad-hoc signature (local use only).
 #   NOTARY_KEYCHAIN_PROFILE   notarytool keychain profile (created once with
 #                             `xcrun notarytool store-credentials <profile> ...`). Needs a signed build.
-#   FINANSE_BUILD_DIR         build folder (default: build/macos)
-#   FINANSE_BUILD_NUMBER      CFBundleVersion (default: the pyproject version)
+#   CASHU_BUILD_DIR           build folder (default: build/macos)
+#   CASHU_BUILD_NUMBER        CFBundleVersion (default: the pyproject version)
 #
 # No secret is read from or written to the repository: the identity lives in the login keychain,
 # the notary credentials in a keychain profile.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD="${FINANSE_BUILD_DIR:-$ROOT/build/macos}"
+BUILD="${CASHU_BUILD_DIR:-$ROOT/build/macos}"
 PYTHON="${PYTHON:-python3}"
 SKIP_FRONTEND=0
 CLEAN=0
@@ -57,9 +57,9 @@ if [[ $CLEAN == 1 ]]; then
 fi
 
 # --- 1. SPA: npm ci + npm run build in a copy of frontend/ (the dev node_modules and
-#        src/finanse/api/webdist stay untouched). vite's outDir is ../src/finanse/api/webdist
-#        relative to the config, i.e. $BUILD/src/finanse/api/webdist for the copy.
-WEBDIST="$BUILD/src/finanse/api/webdist"
+#        src/cashu/api/webdist stay untouched). vite's outDir is ../src/cashu/api/webdist
+#        relative to the config, i.e. $BUILD/src/cashu/api/webdist for the copy.
+WEBDIST="$BUILD/src/cashu/api/webdist"
 if [[ $SKIP_FRONTEND == 0 ]]; then
   say "Building the dashboard (npm ci && npm run build)"
   rsync -a --delete --exclude node_modules --exclude dist "$ROOT/frontend/" "$BUILD/frontend/"
@@ -67,21 +67,21 @@ if [[ $SKIP_FRONTEND == 0 ]]; then
 fi
 [[ -f "$WEBDIST/index.html" ]] || die "No built dashboard in $WEBDIST (run without --skip-frontend)."
 
-# --- 2. Icon: packaging/icon/finanse-1024.png -> iconset (sips) -> .icns (iconutil).
+# --- 2. Icon: packaging/icon/cashu-1024.png -> iconset (sips) -> .icns (iconutil).
 say "Generating the icon"
-ICONSET="$BUILD/icon/Finanse.iconset"
+ICONSET="$BUILD/icon/cashU.iconset"
 rm -rf "$ICONSET" && mkdir -p "$ICONSET"
-SRC_PNG="$ROOT/packaging/icon/finanse-1024.png"
+SRC_PNG="$ROOT/packaging/icon/cashu-1024.png"
 for size in 16 32 128 256 512; do
   sips -z "$size" "$size" "$SRC_PNG" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
   sips -z $((size * 2)) $((size * 2)) "$SRC_PNG" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
 done
-iconutil -c icns "$ICONSET" -o "$BUILD/icon/Finanse.icns"
+iconutil -c icns "$ICONSET" -o "$BUILD/icon/cashU.icns"
 
 # --- 3. Build venv from packaging/requirements-build.lock: every package (runtime deps + the
 #        desktop extra, PyInstaller, the hatchling build backend, pip itself) at an exact version
 #        with sha256 hashes, so a re-uploaded or compromised wheel cannot reach the signed bundle.
-#        pip is pinned there too (PIP_VERSION below must match). finanse itself is installed
+#        pip is pinned there too (PIP_VERSION below must match). cashU itself is installed
 #        editable from src/ without dependencies and without build isolation (no unpinned
 #        download at build time).
 PIP_VERSION="26.2.1"
@@ -121,13 +121,13 @@ fi
 say "Running PyInstaller (cashU.app $VERSION, $ARCH${MIN_MACOS:+, macOS $MIN_MACOS+})"
 (
   cd "$ROOT"
-  FINANSE_WEBDIST="$WEBDIST" FINANSE_ICNS="$BUILD/icon/Finanse.icns" FINANSE_MIN_MACOS="$MIN_MACOS" \
+  CASHU_WEBDIST="$WEBDIST" CASHU_ICNS="$BUILD/icon/cashU.icns" CASHU_MIN_MACOS="$MIN_MACOS" \
     "$BUILD/venv/bin/pyinstaller" --noconfirm --clean --log-level WARN \
-    --distpath "$BUILD/dist" --workpath "$BUILD/work" "$ROOT/packaging/finanse.spec"
+    --distpath "$BUILD/dist" --workpath "$BUILD/work" "$ROOT/packaging/cashu.spec"
 )
-[[ -x "$APP/Contents/MacOS/finanse" ]] || die "PyInstaller produced no $APP"
+[[ -x "$APP/Contents/MacOS/cashu" ]] || die "PyInstaller produced no $APP"
 # Smoke test of the CLI path (no window, no data dir access beyond --help).
-"$APP/Contents/MacOS/finanse" --help >/dev/null || die "the bundled CLI does not start"
+"$APP/Contents/MacOS/cashu" --help >/dev/null || die "the bundled CLI does not start"
 
 # --- 5. Signing (Developer ID + hardened runtime), inside-out: every Mach-O file, then the app.
 SIGNED=0
@@ -142,7 +142,7 @@ if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
   # Embedded framework bundles (e.g. Python.framework), if PyInstaller kept any as bundles.
   while IFS= read -r -d '' fw; do sign "$fw"; done < <(find "$APP/Contents/Frameworks" -type d -name '*.framework' -prune -print0)
   # The executable and the bundle carry the hardened-runtime entitlements.
-  sign --entitlements "$ENT" "$APP/Contents/MacOS/finanse"
+  sign --entitlements "$ENT" "$APP/Contents/MacOS/cashu"
   sign --entitlements "$ENT" "$APP"
   codesign --verify --deep --strict --verbose=2 "$APP"
   SIGNED=1

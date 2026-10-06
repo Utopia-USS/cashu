@@ -1,4 +1,4 @@
-"""The example connectors in `examples/connectors/` pass `finanse connectors test` (F10 DOC-C).
+"""The example connectors in `examples/connectors/` pass `cashu connectors test` (F10 DOC-C).
 
 docs/connectors.md points outside authors at these examples, so they must keep working: with the real
 macOS sandbox (the way the app runs them) and, on every platform, with the tests' NoSandbox double.
@@ -15,10 +15,10 @@ from connector_support import NoSandbox, needs_python3
 from rich.console import Console
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import cliutil, paths
-from finanse.core.connectors import manifest as mf
-from finanse.core.connectors import runner
+from cashu import cli as cli_mod
+from cashu.core import cliutil, paths
+from cashu.core.connectors import manifest as mf
+from cashu.core.connectors import runner
 
 pytestmark = needs_python3
 
@@ -26,14 +26,14 @@ EXAMPLES = paths.PROJECT_ROOT / "examples" / "connectors"
 # (directory, test option, input file, lines the report must contain)
 CASES = [
     ("budget-csv-example", "--file", "sample.csv",
-     ["detect: ok", "match: yes", "convert: ok", "document: OK (finanse-budget-import)",
+     ["detect: ok", "match: yes", "convert: ok", "document: OK (cashu-budget-import)",
       "4 transactions"]),
     ("investments-json-example", "--file", "sample.json",
-     ["detect: ok", "match: yes", "convert: ok", "document: OK (finanse-import)",
+     ["detect: ok", "match: yes", "convert: ok", "document: OK (cashu-import)",
       "transactions: 6 (buy 2, deposit 1, dividend 1, fee 1, sell 1)", "positions: 2",
       "errors: 0, warnings: 0"]),
     ("fetch-example", "--fixture", "fixture.json",
-     ["fetch: ok", "(offline, fixture)", "cursor: 6 characters", "document: OK (finanse-import)",
+     ["fetch: ok", "(offline, fixture)", "cursor: 6 characters", "document: OK (cashu-import)",
       "transactions: 4 (buy 2, deposit 1, sell 1)", "errors: 0, warnings: 0"]),
 ]
 # Synthetic values from the inputs that a value-free report must not contain.
@@ -81,7 +81,7 @@ def test_example_passes_without_the_sandbox(run, monkeypatch, name, option, inpu
 @real_sandbox
 @pytest.mark.parametrize(("name", "option", "input_name", "expected"), CASES)
 def test_example_passes_in_the_real_sandbox(run, monkeypatch, name, option, input_name, expected):
-    from finanse.core.connectors.sandbox import MacSandbox
+    from cashu.core.connectors.sandbox import MacSandbox
 
     monkeypatch.setattr(runner, "default_sandbox", lambda: MacSandbox())
     _check(run, name, option, input_name, expected)

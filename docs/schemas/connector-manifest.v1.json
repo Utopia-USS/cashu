@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "connector-manifest.v1.json",
-  "title": "finanse connector manifest (connector.yaml), api_version 1",
-  "description": "Generated from finanse.core.connectors.manifest.Manifest by scripts/gen_connector_schemas.py; see docs/connectors.md. The app also enforces the rules a schema cannot express: run[0] is an allowed interpreter or ./<file>, no `..` or absolute paths in run, the file / fetch section matches kind, unique ids, directory limits.",
+  "title": "cashU connector manifest (connector.yaml), api_version 1",
+  "description": "Generated from cashu.core.connectors.manifest.Manifest by scripts/gen_connector_schemas.py; see docs/connectors.md. The app also enforces the rules a schema cannot express: run[0] is an allowed interpreter or ./<file>, no `..` or absolute paths in run, the file / fetch section matches kind, unique ids, directory limits.",
   "$defs": {
     "FetchSpec": {
       "additionalProperties": false,

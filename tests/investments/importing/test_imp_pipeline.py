@@ -24,7 +24,7 @@ from imp_support import (
     simple_mapping,
 )
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     Currency,
     HistoryGap,
@@ -32,7 +32,7 @@ from finanse.modules.investments.domain import (
     InstrumentStatus,
     TxnType,
 )
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.importing import (
     CanonicalImporter,
     CsvField,
     CsvMapping,
@@ -47,7 +47,7 @@ from finanse.modules.investments.importing import (
     plan_import,
     reconcile,
 )
-from finanse.modules.investments.portfolio import build_snapshot
+from cashu.modules.investments.portfolio import build_snapshot
 
 ACCOUNT = "acc-1"
 NOW = datetime(2026, 2, 1, 12, tzinfo=UTC)
@@ -347,7 +347,7 @@ def test_delisting_of_a_known_instrument_becomes_a_status_change() -> None:
 def replace_aliases(inst):
     from dataclasses import replace
 
-    return replace(inst, aliases=(InstrumentAlias("finanse", "ZZZ"),))
+    return replace(inst, aliases=(InstrumentAlias("cashu", "ZZZ"),))
 
 
 def test_transactions_carry_every_parsed_field() -> None:

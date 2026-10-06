@@ -7,8 +7,8 @@ from datetime import UTC, datetime, time, timedelta
 import pytest
 from imp_support import d, day, parsed_txn
 
-from finanse.modules.investments.domain import Currency, Transaction, TxnType
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.domain import Currency, Transaction, TxnType
+from cashu.modules.investments.importing import (
     AmountError,
     DedupInput,
     chronological_ranks,
@@ -18,14 +18,14 @@ from finanse.modules.investments.importing import (
     derive_amounts,
     is_newest_first,
 )
-from finanse.modules.investments.importing.cash import (
+from cashu.modules.investments.importing.cash import (
     cash_from_gross,
     gross_from_cash,
     signed_cash,
     to_cash_currency,
     to_trade_currency,
 )
-from finanse.modules.investments.importing.dedup import (
+from cashu.modules.investments.importing.dedup import (
     decimal_key,
     parsed_dedup_inputs,
     reconciliation_hash,

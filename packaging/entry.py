@@ -1,6 +1,6 @@
-"""PyInstaller entry script of cashU.app: everything happens in finanse.desktop.entry."""
+"""PyInstaller entry script of cashU.app: everything happens in cashu.desktop.entry."""
 
-from finanse.desktop.entry import main
+from cashu.desktop.entry import main
 
 if __name__ == "__main__":
     main()

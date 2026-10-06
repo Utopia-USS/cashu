@@ -8,17 +8,17 @@ from decimal import Decimal
 import pytest
 from perf_support import EUR, PLN, bars, day, days, instrument, rates, txn
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AllocationPlan,
     AssetClass,
     BucketDef,
     BucketMatch,
     InstrumentRename,
 )
-from finanse.modules.investments.performance import attribution as attr
-from finanse.modules.investments.performance import report
-from finanse.modules.investments.performance.series import Renames, build_series
-from finanse.modules.investments.portfolio import InMemoryFxLookup
+from cashu.modules.investments.performance import attribution as attr
+from cashu.modules.investments.performance import report
+from cashu.modules.investments.performance.series import Renames, build_series
+from cashu.modules.investments.portfolio import InMemoryFxLookup
 
 END = day("2025-01-31")
 FX = rates(EUR, {d.isoformat(): "4.0" for d in days("2024-12-28", "2025-01-31")})

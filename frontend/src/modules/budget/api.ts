@@ -142,7 +142,7 @@ export interface StatementPreview {
   rows: StatementRow[];
   /** Newest first; `same_file`: the same bytes (sha256), else only the same file name (e.g. a CLI import). */
   previous_imports: { at: string; file_name: string; inserted: number; same_file?: boolean }[];
-  /** finanse format only: non-blocking issues (`import.<kind>` codes). */
+  /** cashU format only: non-blocking issues (`import.<kind>` codes). */
   warnings?: { kind: string; code?: string; row: number | null; field?: string | null; message: string; blocking?: boolean }[];
 }
 export interface StatementRow {
@@ -172,7 +172,7 @@ export async function postStatementPreview(slug: string, b: StatementFileInput):
   if (b.account_name.trim()) fd.append("account_name", b.account_name.trim());
   return jupload<StatementPreview>(pp(slug, "/budget/import/preview"), fd);
 }
-/** GET /budget/import/importers: the `Bank` select (auto, the banks with a CSV parser, the finanse format; later
+/** GET /budget/import/importers: the `Bank` select (auto, the banks with a CSV parser, the cashU format; later
  * connectors) and the upload limit. */
 export interface ImporterChoice { id: string; name: string; kind: "auto" | "bank" | "format" | "connector" | string; available: boolean }
 export const getImporters = (slug: string) => j<{ importers: ImporterChoice[]; max_bytes: number }>(pp(slug, "/budget/import/importers"));

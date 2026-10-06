@@ -1,9 +1,9 @@
 from datetime import date
 from decimal import Decimal
 
-from finanse.modules.budget.ingestion.csv_import import detect_importer, parse_file
-from finanse.modules.budget.ingestion.csv_import.base import parse_pl_amount, parse_pl_date
-from finanse.modules.budget.ingestion.normalize import merchant_key
+from cashu.modules.budget.ingestion.csv_import import detect_importer, parse_file
+from cashu.modules.budget.ingestion.csv_import.base import parse_pl_amount, parse_pl_date
+from cashu.modules.budget.ingestion.normalize import merchant_key
 
 MBANK_CSV = """mBank S.A.
 Lista operacji

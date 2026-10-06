@@ -6,14 +6,14 @@ from datetime import date
 from decimal import Decimal
 from itertools import count
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     Currency,
     Instrument,
     InstrumentAlias,
     TxnType,
 )
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.importing import (
     CsvField,
     CsvMapping,
     ImportFile,

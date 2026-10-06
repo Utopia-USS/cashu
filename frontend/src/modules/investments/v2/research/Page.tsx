@@ -70,7 +70,7 @@ export function ResearchPage(p: ResearchPageProps) {
     { id: "cands", span: 1, node: <CandidatesWidget slug={p.slug} today={p.today} notes={candidates ?? []} watched={p.watched} strategyVersion={p.strategyVersion} onChanged={refresh} /> },
     { id: "notes", span: 3, node: <NotesList slug={p.slug} today={p.today} nonce={nonce} scope={scope} kind={kind} theme={theme} held={p.held} watchedIds={p.watchedIds} onClearTheme={() => setTheme(null)} onChanged={refresh} onOpenAsset={p.onOpenAsset} /> },
     { id: "runs", span: 2, node: <RunsTable runs={runs} symOf={p.symOf} /> },
-    { id: "scope", span: 1, node: <ScopeWidget held={p.held.size} watched={p.watchedIds.size} strategyVersion={p.strategyVersion} privacy={p.privacy} path={ws.data?.path ?? `~/Documents/finanse/${p.slug}`} /> },
+    { id: "scope", span: 1, node: <ScopeWidget held={p.held.size} watched={p.watchedIds.size} strategyVersion={p.strategyVersion} privacy={p.privacy} path={ws.data?.path ?? `~/Documents/cashU/${p.slug}`} /> },
   ];
   return <>{head}<Grid items={items} /></>;
 }
@@ -369,7 +369,7 @@ function EmptyResearch({ cmd, path, ws, onSettings }: { cmd: string; path: strin
     } : {
       key: "skill", status: skill === true ? "done" : "on",
       title: <span>Skill <b>market-research</b> {skill === true ? "zainstalowany" : skill === false ? "do zainstalowania" : "w workspace profilu"}</span>,
-      hint: skill === true ? <>w workspace <code>{path}</code></> : <>Ustawienia › Agent AI › Aktualizuj workspace (albo <code>finanse workspace update</code>)</>,
+      hint: skill === true ? <>w workspace <code>{path}</code></> : <>Ustawienia › Agent AI › Aktualizuj workspace (albo <code>cashu workspace update</code>)</>,
       tag: ws?.skill_installed_at ? <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{dm(ws.skill_installed_at)}</span> : undefined,
       actions: skill === true ? undefined : <button className="btn" onClick={onSettings}>Ustawienia › Agent AI</button>,
     },

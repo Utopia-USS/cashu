@@ -1,12 +1,12 @@
-<!-- Copy shipped with this skill, generated from the finanse sources; do not edit it here. -->
+<!-- Copy shipped with this skill, generated from the cashU sources; do not edit it here. -->
 
-# finanse connectors (api_version 1)
+# cashU connectors (api_version 1)
 
-The contract for anyone who writes a connector for finanse (cashU): a person, or more often their
+The contract for anyone who writes a connector for cashU (cashU): a person, or more often their
 agent (Claude Code). Read it whole before you start; it is short on purpose. Working examples:
 [`connector-examples/`](connector-examples/). JSON Schemas: [`schemas/`](schemas/).
 
-finanse ships few importers of its own. Instead, anyone can write a small **connector** in any language,
+cashU ships few importers of its own. Instead, anyone can write a small **connector** in any language,
 drop it in, and the owner approves it once in the app. From then on the app runs it itself to read
 exports or pull data from an API. No fork, no rebuild.
 
@@ -23,8 +23,8 @@ A directory with a manifest `connector.yaml` and code. Two kinds:
 | `file` | converts an export file the owner imports (CSV, XLSX, JSON, ...) | `detect`, `convert` | none |
 | `fetch` | pulls data from a broker / exchange / bank API with a key the owner enters in the app | `fetch`, `check` | only the manifest's hosts, port 443, through the app's proxy |
 
-and two modules: `investments` (the output is a `finanse-import` document) and `budget` (a
-`finanse-budget-import` document). A connector never writes anything itself: its output goes through the
+and two modules: `investments` (the output is a `cashu-import` document) and `budget` (a
+`cashu-budget-import` document). A connector never writes anything itself: its output goes through the
 same validation, preview and deduplication as any import, and the owner commits it (section 9 for the
 fetch auto-commit rule).
 
@@ -167,7 +167,7 @@ it. Log counts and steps, never values.
 | --- | --- |
 | cwd, `HOME`, `TMPDIR` | a fresh private run directory under the data dir, deleted after the run |
 | code | a private copy of the installed connector made for this run, outside the run directory; the app hashes the copy and runs it only when the hash and the interpreter equal the approval (a file changed after the check never runs); deleted after the run |
-| environment | exactly `PATH=/usr/bin:/bin:<dir of the interpreter>`, `HOME`, `TMPDIR`, `LANG=LC_ALL=C.UTF-8`, `PYTHONDONTWRITEBYTECODE=1`, `PYTHONNOUSERSITE=1`, `FINANSE_CONNECTOR_API=1`; fetch runs also `HTTPS_PROXY=HTTP_PROXY=http://127.0.0.1:<port>` and an empty `NO_PROXY`. Nothing is inherited |
+| environment | exactly `PATH=/usr/bin:/bin:<dir of the interpreter>`, `HOME`, `TMPDIR`, `LANG=LC_ALL=C.UTF-8`, `PYTHONDONTWRITEBYTECODE=1`, `PYTHONNOUSERSITE=1`, `CASHU_CONNECTOR_API=1` (and the deprecated `FINANSE_CONNECTOR_API=1`, the legacy name, for one more release); fetch runs also `HTTPS_PROXY=HTTP_PROXY=http://127.0.0.1:<port>` and an empty `NO_PROXY`. Nothing is inherited |
 | time | `detect` 10 s, other commands `timeout_s`; then the whole process group gets SIGTERM and, 2 s later, SIGKILL. CPU time is limited to the timeout + 5 s |
 | size | the input file <= 64 MiB; any file you write <= 128 MiB; stdout <= 64 MiB |
 
@@ -175,7 +175,7 @@ it. Log counts and steps, never values.
 
 - **Reads:** system locations (`/usr`, `/bin`, `/System`, `/private/etc`, `/opt/homebrew`, `/dev/null`,
   `/dev/urandom`), the interpreter's own installation, the connector's directory and the run directory.
-  **Not** `/Library`, the user's home, Documents, Desktop, the finanse data dir or database, other
+  **Not** `/Library`, the user's home, Documents, Desktop, the cashU data dir or database, other
   connectors, the keychains or the clipboard.
 - **Writes:** only the run directory (and `/dev/null`). Use it for temporary files; it is deleted after
   the run, so nothing survives between runs except the `cursor` you return.
@@ -237,10 +237,10 @@ function get(url, headers = {}) {
 
 The `document` of `convert` / `fetch` is the JSON variant of the module's import format:
 
-- `investments`: `finanse-import` v1, [`import-format.md`](import-format.md) (section 2.2 for JSON);
-  schema [`schemas/finanse-import.v1.json`](schemas/finanse-import.v1.json).
-- `budget`: `finanse-budget-import` v1, [`budget-import-format.md`](budget-import-format.md); schema
-  [`schemas/finanse-budget-import.v1.json`](schemas/finanse-budget-import.v1.json).
+- `investments`: `cashu-import` v1, [`import-format.md`](import-format.md) (section 2.2 for JSON);
+  schema [`schemas/cashu-import.v1.json`](schemas/cashu-import.v1.json).
+- `budget`: `cashu-budget-import` v1, [`budget-import-format.md`](budget-import-format.md); schema
+  [`schemas/cashu-budget-import.v1.json`](schemas/cashu-budget-import.v1.json).
 
 The import keeps the formats' rules: exact decimal strings, ISO dates, outflows negative, unknown fields
 refused. Two rules matter most for connectors that run again and again:
@@ -253,16 +253,16 @@ refused. Two rules matter most for connectors that run again and again:
 The document's `source` becomes the batch's source label (`[a-z][a-z0-9_]`, <= 32 characters; keep it
 the same for every run).
 
-## 6. Testing: `finanse connectors test`
+## 6. Testing: `cashu connectors test`
 
 Run your connector exactly as the app does, in the same sandbox, also before it is installed or
 approved:
 
 ```bash
-finanse connectors test connectors/<id> --file inbox/<export>          # file kind: detect + convert
-finanse connectors test connectors/<id> --fixture connectors/<id>/fixture.json   # fetch kind, offline
-finanse connectors test connectors/<id> --check-manifest                # manifest and directory only
-finanse connectors test connectors/<id> --file <export> --module budget # also check the module
+cashu connectors test connectors/<id> --file inbox/<export>          # file kind: detect + convert
+cashu connectors test connectors/<id> --fixture connectors/<id>/fixture.json   # fetch kind, offline
+cashu connectors test connectors/<id> --check-manifest                # manifest and directory only
+cashu connectors test connectors/<id> --file <export> --module budget # also check the module
 ```
 
 The report is **value-free**: manifest facts, the interpreter, the hash, each command's outcome and
@@ -278,8 +278,8 @@ manifest: OK (budget-csv-example 1.0.0, module budget, kind file)
 detect: ok (77 ms)
   match: yes (confidence 0.95)
 convert: ok (75 ms)
-document: OK (finanse-budget-import)
-  finanse-budget-import v1 (json): OK, 4 transactions, 0 balances
+document: OK (cashu-budget-import)
+  cashu-budget-import v1 (json): OK, 4 transactions, 0 balances
 ```
 
 **Fetch connectors are tested offline.** `--fixture <file>` runs `fetch` with no network and the
@@ -295,7 +295,7 @@ Test runs are recorded in the connector's run log without a profile.
 
 ## 7. Installing
 
-- CLI: `finanse connectors add <dir>` copies the directory into the data dir and installs it as
+- CLI: `cashu connectors add <dir>` copies the directory into the data dir and installs it as
   `pending`. `--replace` updates an installed connector of the same id: it keeps its bindings; an
   approved one becomes `changed` unless the content is identical. Changing `module` or `kind` needs
   `remove` first.
@@ -305,7 +305,7 @@ Test runs are recorded in the connector's run log without a profile.
   returns the id, status, hash prefix, module, kind, hosts and secret ids, and runs nothing. The read
   tool `connectors()` lists the installed connectors with their status, the last run's outcome, error
   kind and time, and the profile's binding count (never messages, stderr, params or secrets).
-- Other commands: `finanse connectors list`, `show <id>` (manifest facts, files with sha, status, diff
+- Other commands: `cashu connectors list`, `show <id>` (manifest facts, files with sha, status, diff
   since the approval), `disable <id>` (stops it; bindings and secrets stay), `remove <id>` (deletes the
   files, bindings, their secrets and the run log).
 
@@ -335,7 +335,7 @@ at the last approval, before approving again. Statuses: `pending` (do zatwierdze
 
 **File connectors** appear in the import drawers of their module (Wydatki > Import, Inwestycje > Import)
 for files with a matching extension, next to the built-in importers. With `rozpoznaj automatycznie` the
-built-in importers go first (the finanse formats, a bank signature or a CSV mapping); only when none
+built-in importers go first (the cashU formats, a bank signature or a CSV mapping); only when none
 recognises the file does the app run `detect` on at most 5 approved connectors of the module reading that
 extension (the account's remembered connector first, 10 s each) and pick the highest confidence of at
 least 0.5. The chosen connector runs `convert` once; the converted document is what the preview shows and
@@ -375,7 +375,7 @@ bindings before the investments daily check, so what they commit is in that day'
 ## 10. Secrets and privacy
 
 - **Secrets** are entered by the owner only: in the binding form in the app (a password field) or with
-  `finanse connectors secret set <binding> <secret_id>` (hidden prompt). They live in the macOS keychain,
+  `cashu connectors secret set <binding> <secret_id>` (hidden prompt). They live in the macOS keychain,
   are never returned by any endpoint, never stored in runs, logs, proposals or MCP answers, and reach
   your process only on stdin, for `fetch` and `check`. Never print, log or echo them; never put them in
   a URL query, the cursor or the document. (The app also replaces secret values in your message and
@@ -391,7 +391,7 @@ bindings before the investments daily check, so what they commit is in that day'
 
 ## 11. Checklist
 
-1. `connector.yaml` passes `finanse connectors test <dir> --check-manifest`.
+1. `connector.yaml` passes `cashu connectors test <dir> --check-manifest`.
 2. Only stdlib or files inside the directory (no `pip install` at run time: there is no network).
 3. One JSON object on stdout, logs on stderr, exit 0 or 1 with an error object.
 4. `detect` answers `false` for foreign files instead of failing.
@@ -399,5 +399,5 @@ bindings before the investments daily check, so what they commit is in that day'
 6. Value-free messages and logs; secrets never printed.
 7. Fetch: `HTTPS_PROXY` honoured, `check` implemented, `params.fixture` path for the offline test, cursor
    tolerant to a repeated fetch.
-8. `finanse connectors test` reports OK on a synthetic sample (and, with the user's consent, on the real
+8. `cashu connectors test` reports OK on a synthetic sample (and, with the user's consent, on the real
    export); then install it and tell the owner to approve it in Ustawienia > Konektory.

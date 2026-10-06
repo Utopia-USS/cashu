@@ -1,4 +1,4 @@
-<!-- Copy shipped with this skill, generated from the finanse sources; do not edit it here. -->
+<!-- Copy shipped with this skill, generated from the cashU sources; do not edit it here. -->
 
 # Custom rule expressions
 
@@ -22,7 +22,7 @@ rules:
 
 Quote the expression in YAML when it contains `:` or `#`, or starts with a quote (single quotes outside,
 double quotes inside work well). Code: `compile_expression(text, scope)` and `evaluate(compiled, resolver)`
-in `finanse.modules.investments.rules.expr`.
+in `cashu.modules.investments.rules.expr`.
 
 ## Grammar
 

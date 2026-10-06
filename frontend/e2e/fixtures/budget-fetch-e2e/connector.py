@@ -22,7 +22,7 @@ def main():
             {"booking_date": "2026-10-06", "amount": "-7.50", "currency": "PLN", "description": "E2E KAWA", "transaction_id": "E2E-2"},
         ]
         print("fetched 2 entries", file=sys.stderr)
-        reply({"document": {"format": "finanse-budget-import", "format_version": 1, "source": "e2e_api",
+        reply({"document": {"format": "cashu-budget-import", "format_version": 1, "source": "e2e_api",
                             "account": account, "transactions": transactions}, "cursor": "E2E-2"})
     reply({"error": {"kind": "internal", "message": "unknown command"}}, 1)
 

@@ -9,7 +9,7 @@ import datetime as dt
 
 import pytest
 
-from finanse.modules.investments.research.validation import (
+from cashu.modules.investments.research.validation import (
     ResearchInputError,
     advice_problem,
     check_url,

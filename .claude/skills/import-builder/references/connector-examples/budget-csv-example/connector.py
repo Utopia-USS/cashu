@@ -1,6 +1,6 @@
-# Copy shipped with this skill, generated from the finanse sources; do not edit it here.
-"""Example finanse connector (kind file, module budget): the made-up Przykladowy Bank CSV statement ->
-finanse-budget-import v1 JSON (budget-import-format.md).
+# Copy shipped with this skill, generated from the cashU sources; do not edit it here.
+"""Example cashU connector (kind file, module budget): the made-up Przykladowy Bank CSV statement ->
+cashu-budget-import v1 JSON (budget-import-format.md).
 
 Protocol (connectors.md): one JSON request on stdin, one JSON response on stdout, logs on stderr.
 Python standard library only. Error messages name the row and the column, never a value from the file.
@@ -127,7 +127,7 @@ def convert(path, request):
     print(f"converted {len(transactions)} rows", file=sys.stderr)  # counts only, never values
     return {
         "document": {
-            "format": "finanse-budget-import",
+            "format": "cashu-budget-import",
             "format_version": 1,
             "source": SOURCE,
             "account": account,

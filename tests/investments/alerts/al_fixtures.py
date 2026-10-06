@@ -21,7 +21,7 @@ from rules_fixtures import (
     portfolio,
 )
 
-from finanse.modules.investments.alerts import (
+from cashu.modules.investments.alerts import (
     AlertData,
     AlertDefinition,
     AlertKind,
@@ -29,8 +29,8 @@ from finanse.modules.investments.alerts import (
     evaluate_alert,
     validate,
 )
-from finanse.modules.investments.domain import SignalSeverity
-from finanse.modules.investments.rules import SignalPolarity
+from cashu.modules.investments.domain import SignalSeverity
+from cashu.modules.investments.rules import SignalPolarity
 
 __all__ = [
     "AS_OF",

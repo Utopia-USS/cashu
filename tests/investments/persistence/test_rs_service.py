@@ -13,9 +13,9 @@ import pytest
 from invp_support import add_account, canonical_csv, import_file, make_profile
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile, utcnow
-from finanse.modules.investments.models import (
+from cashu.core.db import get_session
+from cashu.core.models import Profile, utcnow
+from cashu.modules.investments.models import (
     InvInstrument,
     InvNotification,
     InvResearchNote,
@@ -23,10 +23,10 @@ from finanse.modules.investments.models import (
     InvSignal,
     InvWatchlistItem,
 )
-from finanse.modules.investments.research import service, views
-from finanse.modules.investments.research.signals import CLOSED_DISMISSED, CLOSED_EXPIRED
-from finanse.modules.investments.research.validation import RunScope, validate_note
-from finanse.modules.investments.store import journal
+from cashu.modules.investments.research import service, views
+from cashu.modules.investments.research.signals import CLOSED_DISMISSED, CLOSED_EXPIRED
+from cashu.modules.investments.research.validation import RunScope, validate_note
+from cashu.modules.investments.store import journal
 
 SOURCE = {"url": "https://example.com/news/a", "publisher": "Example News", "published_at": None}
 
@@ -213,7 +213,7 @@ def test_owner_named_instruments_are_never_researched(investor):
         )
         s.add(claim)
         s.flush()
-        from finanse.modules.investments.models import InvManualValuation
+        from cashu.modules.investments.models import InvManualValuation
 
         s.add(
             InvManualValuation(
@@ -382,7 +382,7 @@ def test_accept_candidate_and_undo(investor):
 
 
 def test_accept_keeps_an_existing_watch_and_thesis(investor):
-    from finanse.modules.investments.service import watchlist as watch_service
+    from cashu.modules.investments.service import watchlist as watch_service
 
     pid = investor
     note_id, _ = add(pid, instrument=None, **CANDIDATE)
@@ -470,7 +470,7 @@ def test_the_daily_check_keeps_research_signals_open(investor):
     """Research signals are not strategy rules: the daily check must leave them alone (BE ask 1)."""
     from invp_support import AS_OF, STRATEGY_YAML, sources
 
-    from finanse.modules.investments.service import daily, files
+    from cashu.modules.investments.service import daily, files
 
     pid = investor
     with get_session() as s:

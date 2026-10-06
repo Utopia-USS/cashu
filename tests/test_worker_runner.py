@@ -24,16 +24,16 @@ from invp_support import (
     sources,
 )
 
-from finanse.core import locks
-from finanse.core.db import get_session
-from finanse.core.models import Profile
-from finanse.core.worker import budget as budget_glue
-from finanse.core.worker import investments as inv
-from finanse.core.worker import notifications, runner
-from finanse.core.worker import state as worker_state
-from finanse.core.worker.notifier import Delivery, Notification
-from finanse.modules.investments.models import InvNotification, InvSignal
-from finanse.modules.investments.service import daily, files
+from cashu.core import locks
+from cashu.core.db import get_session
+from cashu.core.models import Profile
+from cashu.core.worker import budget as budget_glue
+from cashu.core.worker import investments as inv
+from cashu.core.worker import notifications, runner
+from cashu.core.worker import state as worker_state
+from cashu.core.worker.notifier import Delivery, Notification
+from cashu.modules.investments.models import InvNotification, InvSignal
+from cashu.modules.investments.service import daily, files
 
 TZ = dt.timezone(dt.timedelta(hours=1))
 MONDAY = dt.datetime(2026, 3, 2, 7, 30, tzinfo=TZ)  # AS_OF's day; the default digest is Sunday
@@ -128,7 +128,7 @@ def test_first_run_notifies_the_action_signal_once(investor):
     assert (check.status, check.profile) == ("ok", "inwestor")
     assert check.stats["new_signals"] == 1 and check.stats["notifications"] == 1
     (note,) = fake.sent
-    assert note.title == "finanse: Inwestor" and note.subtitle == "Sygnał do działania"
+    assert note.title == "cashU: Inwestor" and note.subtitle == "Sygnał do działania"
     assert "XMPL" in note.message or "Example" in note.message
     (row,) = log_rows(pid)
     assert row.sent_at is not None and row.channel == "fake"
@@ -242,7 +242,7 @@ def test_two_profiles_are_notified_separately(db_engine):
         write_strategy(slug)
     fake = RecordingNotifier()
     report = work(fake)
-    assert sorted(n.title for n in fake.sent) == ["finanse: Anna", "finanse: Bartek"]
+    assert sorted(n.title for n in fake.sent) == ["cashU: Anna", "cashU: Bartek"]
     assert sorted(j.profile for j in jobs(report, runner.NOTIFICATIONS)) == ["anna", "bartek"]
 
 
@@ -290,7 +290,7 @@ def test_digest_once_on_the_default_weekday(db_engine):
     assert digest.status == "ok" and digest.stats == {"signals": 2}
     (note,) = fake.sent
     assert (note.title, note.subtitle, note.message) == (
-        "finanse: Dom",
+        "cashU: Dom",
         "Przegląd tygodniowy",
         "2 sygnały do przeglądu",
     )
@@ -357,7 +357,7 @@ def household(db_engine):
 
 
 def test_budget_sync_skipped_when_not_configured(household, monkeypatch):
-    from finanse.config import settings
+    from cashu.config import settings
 
     monkeypatch.setattr(type(settings), "eb_configured", property(lambda self: False))
     report = work(RecordingNotifier())
@@ -397,7 +397,7 @@ def test_budget_sync_once_then_throttled(household, eb_configured, fake_eb, make
 
 
 def test_budget_rate_limit_backs_off(household, eb_configured, fake_eb):
-    from finanse.modules.budget.ingestion.enable_banking.client import EnableBankingError
+    from cashu.modules.budget.ingestion.enable_banking.client import EnableBankingError
 
     class Throttled(fake_eb):
         def get_session(self, session_id):
@@ -495,7 +495,7 @@ def test_known_job_details_carry_stable_codes(household, eb_configured, fake_eb,
 
 
 def test_budget_precheck_codes(household, monkeypatch):
-    from finanse.config import settings
+    from cashu.config import settings
 
     monkeypatch.setattr(type(settings), "eb_configured", property(lambda self: False))
     (job,) = jobs(work(RecordingNotifier()), runner.BUDGET_SYNC)

@@ -1,0 +1,148 @@
+# cashU strategy - passive starter: one global equity ETF, bonds, a little cash.
+#
+# This file is the measurable half of your strategy (strategy.md is the prose half). The app validates
+# it on every change and reports problems with the line and column. All numbers below are generic
+# starter values, not advice: change them to match what you wrote in strategy.md.
+#
+# Conventions:
+# - Weights, thresholds and bands are fractions: 0.15 means 15%. Only absolute_band_pp is in
+#   percentage points (5 means 5 pp). Inside custom rule expressions you may also write 15%.
+# - Amounts are in base_currency.
+# - Unknown keys are reported as warnings (with a "did you mean" hint) and ignored.
+
+# Schema version of this file. Keep it at 1.
+version: 1
+
+# Currency all values are reported in. The app converts with NBP rates, so PLN is the supported choice.
+base_currency: PLN
+
+# How many years you plan to stay invested (context for reports; optional).
+horizon_years: 15
+
+# Planned deposits. Drives the contribution_gap rule below (optional section).
+contributions:
+  # Planned deposit per month, in base_currency (must be greater than 0).
+  monthly_amount: 1000
+  # Day of the month you plan to deposit on, 1-31 (optional).
+  day_of_month: 10
+
+# Data-quality limits. Rules skip (and say why) instead of firing on bad data (optional section).
+data:
+  # A price older than this many calendar days is stale.
+  max_price_age_days: 5
+  # Portfolio-wide rules skip when stale prices cover more than this share of the portfolio.
+  max_stale_weight: 0.05
+  # allocation_drift and tagged_weight skip while holdings that match no bucket (e.g. freshly
+  # imported, untagged instruments) are more than this share of the portfolio.
+  max_unclassified_weight: 0.02
+  # An FX rate older than this many calendar days counts as missing; amounts in that currency are left
+  # out and rules that compare weights skip.
+  max_fx_age_days: 10
+
+# Allocation buckets. Every holding goes to the FIRST bucket whose match fits (order matters).
+# match keys (all optional, every given key must fit; a list means "any of"):
+#   asset_class:    equity, etf, fund, bond, treasury_bond, cash, crypto, commodity, claim, other
+#   tags:           instrument tags; the instrument must carry ALL listed tags
+#   mic:            exchange code, e.g. XWAR (GPW), XETR (Xetra)
+#   currency:       trading currency, e.g. PLN, EUR, USD
+#   instrument_ids: explicit instrument ids, for one-off classification
+# Use match: {} for a catch-all bucket (put it last).
+buckets:
+  # Global stock ETFs (tag your all-world / developed-world ETF with global_equity in the app).
+  - id: global_equity
+    match: { asset_class: etf, tags: [global_equity] }
+  # Bond ETFs (tag them with bonds).
+  - id: bond_etfs
+    match: { asset_class: etf, tags: [bonds] }
+  # Polish treasury bonds (EDO, COI, ...) and other bonds.
+  - id: treasury_bonds
+    match: { asset_class: [bond, treasury_bond] }
+  # Cash balances on all accounts and cash-like instruments.
+  - id: cash
+    match: { asset_class: cash }
+
+allocation:
+  # Target weight per bucket id. Must reference the buckets above and sum to 1.
+  targets:
+    global_equity: 0.70
+    bond_etfs: 0.10
+    treasury_bonds: 0.15
+    cash: 0.05
+  # Rebalance bands used by allocation_drift rules (their params can override them).
+  # A bucket is out of band when its drift exceeds absolute_band_pp percentage points OR its drift
+  # relative to the target exceeds relative_band (the "5/25" rule), and only when the money to move is
+  # at least min_trade_value.
+  rebalance:
+    absolute_band_pp: 5
+    relative_band: 0.25
+    min_trade_value: 500
+
+# Rules: each has a unique id, a kind from the catalog, kind-specific params, and optionally
+# severity (info or action, default info) and cooldown_days (a resolved signal of the same rule and
+# scope does not come back within this many days).
+#
+# Kinds and their params (the per-instrument kinds also take the optional filters asset_class, tags
+# and instrument_ids, combined with AND; tags means "carries all of them"):
+#   allocation_drift        absolute_band_pp, relative_band, min_trade_value (default: allocation.rebalance),
+#                           buckets (optional subset of bucket ids)
+#   position_concentration  max_weight + filters
+#   loss_from_cost          threshold (0.25 = down 25% from cost) + filters
+#   gain_from_cost          threshold (0.50 = up 50% from cost) + filters
+#   drawdown_from_high      threshold (0.15 = 15% below the high), window_days (bars, default 252) + filters
+#   cash_level              min_weight and/or max_weight
+#   contribution_gap        period_days (default 31), grace_days (default 10)
+#   tagged_weight           tags (all required), max_weight: summed weight of holdings carrying the tags
+#   custom                  when (a condition), scope (portfolio, instrument or bucket), message
+#                           (optional); see the README for the expression language
+rules:
+  # A bucket drifted outside the rebalance bands above: time to check the allocation.
+  - id: rebalance_check
+    kind: allocation_drift
+    severity: action
+    cooldown_days: 14
+
+  # A passive portfolio should not depend on one company: flag any single stock above 5%.
+  - id: single_stock_limit
+    kind: position_concentration
+    params: { max_weight: 0.05, asset_class: equity }
+
+  # Too much idle cash: deposits that were never invested.
+  - id: idle_cash
+    kind: cash_level
+    params: { max_weight: 0.15 }
+
+  # A deep market drop: a reminder to stick to the plan (and to keep buying), not to sell.
+  - id: market_dip
+    kind: drawdown_from_high
+    params: { window_days: 252, threshold: 0.20, asset_class: etf }
+    cooldown_days: 30
+
+  # Deposits stopped: no deposit for period_days + grace_days.
+  - id: missed_deposit
+    kind: contribution_gap
+    params: { period_days: 31, grace_days: 10 }
+
+  # A custom rule: cash is waiting while global equities are below target, so the next purchase
+  # should go there. Conditions use a fixed metric catalog; missing data never fires a rule.
+  - id: invest_idle_cash
+    kind: custom
+    params:
+      scope: portfolio
+      when: 'bucket_drift_pp("global_equity") <= -3 and cash_weight >= 5%'
+      message: Akcje globalne poniżej celu, a gotówka czeka na zainwestowanie
+
+# Screening criteria for watchlist ideas (used by a later stage; any numeric criterion is kept).
+watchlist:
+  criteria: {}
+
+# What the portfolio is compared with in reports (later stage): an id, an instrument tracking it
+# (proxy: a Yahoo symbol or an ISIN) and optionally the comparison currency (default base_currency).
+benchmark:
+  id: msci_acwi
+  proxy: VWCE.DE
+
+# Notifications (used by the background worker): severities that notify immediately, and the day of
+# the weekly digest with everything else.
+notifications:
+  immediate: [action]
+  digest_weekday: sunday

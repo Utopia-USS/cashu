@@ -20,16 +20,16 @@ from invp_support import (
 )
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.models import Profile, utcnow
-from finanse.modules.investments.models import (
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.models import Profile, utcnow
+from cashu.modules.investments.models import (
     InvAlert,
     InvInstrument,
     InvProfileInstrument,
     InvResearchNote,
 )
-from finanse.modules.investments.service import daily, files
+from cashu.modules.investments.service import daily, files
 
 STRATEGY = """\
 version: 1
@@ -281,7 +281,7 @@ def test_mcp_plan_freshness_is_the_same_in_strict_and_full(api):
             p.mcp_privacy = level
             s.add(p)
             s.commit()
-        mcp = FinanseMcp(pid, today=AS_OF)
+        mcp = CashuMcp(pid, today=AS_OF)
         positions = mcp.call("positions")
         watchlist = mcp.call("watchlist")
         assert positions.ok and watchlist.ok, (positions.error, watchlist.error)

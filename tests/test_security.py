@@ -1,5 +1,5 @@
 """Local API protection: Host allowlist, per-launch token, token meta tag,
-loopback-only `finanse serve` (FINANSE_HOST / FINANSE_PORT, not HOST / PORT)."""
+loopback-only `cashu serve` (CASHU_HOST / CASHU_PORT, not HOST / PORT)."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from finanse import db
-from finanse.core import paths, security
+from cashu import db
+from cashu.core import paths, security
 
 TOKEN = "test-token-0123456789abcdefghijklmnop"
 PORT = 8500
@@ -20,7 +20,7 @@ PORT = 8500
 
 @pytest.fixture(autouse=True)
 def _isolated(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.delenv(security.TOKEN_ENV, raising=False)
     monkeypatch.setattr(security, "_config", None)
     engine = db.make_engine(f"sqlite:///{tmp_path / 'api.db'}")
@@ -31,7 +31,7 @@ def _isolated(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client():
-    from finanse.api.app import app
+    from cashu.api.app import app
 
     security.configure(token=TOKEN, port=PORT)
     with TestClient(app, base_url=f"http://127.0.0.1:{PORT}") as c:  # no default token
@@ -148,14 +148,14 @@ def test_index_never_carries_the_token(client, monkeypatch):
 
 
 def test_dev_embed_env_restores_the_meta_tag_with_a_warning(client, monkeypatch, caplog):
-    module = importlib.import_module("finanse.api.app")  # the module (finanse.api re-exports app)
+    module = importlib.import_module("cashu.api.app")  # the module (cashu.api re-exports app)
     monkeypatch.setattr(module, "_embed_warned", False)
     monkeypatch.setenv(security.DEV_EMBED_ENV, "1")
-    with caplog.at_level("WARNING", logger="finanse.security"):
+    with caplog.at_level("WARNING", logger="cashu.security"):
         r = client.get("/")
         client.get("/")
-    assert f'<meta name="finanse-token" content="{TOKEN}" />' in r.text
-    warnings = [rec for rec in caplog.records if rec.name == "finanse.security"]
+    assert f'<meta name="cashu-token" content="{TOKEN}" />' in r.text
+    warnings = [rec for rec in caplog.records if rec.name == "cashu.security"]
     assert len(warnings) == 1 and security.DEV_EMBED_ENV in warnings[0].getMessage()
     assert TOKEN not in warnings[0].getMessage()
     monkeypatch.setenv(security.DEV_EMBED_ENV, "0")  # only "1" counts
@@ -176,7 +176,7 @@ def test_static_files_are_public_but_host_checked(client):
 def test_inject_token_meta():
     html = '<!doctype html><html><HEAD lang="pl"><title>x</title></head></html>'
     out = security.inject_token_meta(html, "abc")
-    assert out.index('<meta name="finanse-token" content="abc" />') > out.index("<HEAD")
+    assert out.index('<meta name="cashu-token" content="abc" />') > out.index("<HEAD")
     assert security.inject_token_meta("<p>no head</p>", "abc").startswith("<meta")
 
 
@@ -205,7 +205,7 @@ def test_tokens_are_random_and_reload_worker_inherits(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# finanse serve
+# cashu serve
 # --------------------------------------------------------------------------- #
 
 @pytest.fixture
@@ -226,12 +226,12 @@ def fake_uvicorn(monkeypatch):
 
 
 def test_serve_binds_loopback_and_ignores_generic_host_port(fake_uvicorn, monkeypatch):
-    from finanse.cli import app
+    from cashu.cli import app
 
     monkeypatch.setenv("HOST", "0.0.0.0")
     monkeypatch.setenv("PORT", "1234")
-    monkeypatch.delenv("FINANSE_HOST", raising=False)
-    monkeypatch.delenv("FINANSE_PORT", raising=False)
+    monkeypatch.delenv("CASHU_HOST", raising=False)
+    monkeypatch.delenv("CASHU_PORT", raising=False)
     result = CliRunner().invoke(app, ["serve"])
     assert result.exit_code == 0, result.output
     (call,) = fake_uvicorn
@@ -244,11 +244,11 @@ def test_serve_binds_loopback_and_ignores_generic_host_port(fake_uvicorn, monkey
     assert out.count(f"http://127.0.0.1:8500/#token={call['token']}") == 1
 
 
-def test_serve_reads_finanse_host_and_port(fake_uvicorn, monkeypatch):
-    from finanse.cli import app
+def test_serve_reads_cashu_host_and_port(fake_uvicorn, monkeypatch):
+    from cashu.cli import app
 
-    monkeypatch.setenv("FINANSE_HOST", "localhost")
-    monkeypatch.setenv("FINANSE_PORT", "8611")
+    monkeypatch.setenv("CASHU_HOST", "localhost")
+    monkeypatch.setenv("CASHU_PORT", "8611")
     result = CliRunner().invoke(app, ["serve"])
     assert result.exit_code == 0, result.output
     (call,) = fake_uvicorn
@@ -256,7 +256,7 @@ def test_serve_reads_finanse_host_and_port(fake_uvicorn, monkeypatch):
 
 
 def test_serve_warns_on_non_loopback_bind(fake_uvicorn):
-    from finanse.cli import app
+    from cashu.cli import app
 
     result = CliRunner().invoke(app, ["serve", "--host", "0.0.0.0", "--port", "8622"])
     assert result.exit_code == 0, result.output
@@ -264,10 +264,10 @@ def test_serve_warns_on_non_loopback_bind(fake_uvicorn):
 
 
 def test_serve_reload_hands_token_to_worker(fake_uvicorn, monkeypatch):
-    from finanse.cli import app
+    from cashu.cli import app
 
     monkeypatch.setenv(security.TOKEN_ENV, "")  # registered for cleanup by monkeypatch
-    monkeypatch.setenv("FINANSE_PORT", "8633")
+    monkeypatch.setenv("CASHU_PORT", "8633")
     result = CliRunner().invoke(app, ["serve", "--reload"])
     assert result.exit_code == 0, result.output
     (call,) = fake_uvicorn
@@ -275,7 +275,7 @@ def test_serve_reload_hands_token_to_worker(fake_uvicorn, monkeypatch):
 
     assert call["reload"] is True
     assert os.environ[security.TOKEN_ENV] == call["token"]
-    assert os.environ["FINANSE_PORT"] == "8633"
+    assert os.environ["CASHU_PORT"] == "8633"
 
 
 # --------------------------------------------------------------------------- #
@@ -309,17 +309,17 @@ def test_wrong_host_response_forbids_framing_too(client):
 
 
 def test_packaged_app_ignores_the_dev_embed_switch(client, monkeypatch, caplog):
-    """F7 review R3: a stray FINANSE_DEV_EMBED_TOKEN=1 (launchctl setenv, a shell profile) must not
+    """F7 review R3: a stray CASHU_DEV_EMBED_TOKEN=1 (launchctl setenv, a shell profile) must not
     bring the token back into / of the packaged app; it is logged once at error level."""
     import sys
 
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(security, "_frozen_embed_logged", False)
     monkeypatch.setenv(security.DEV_EMBED_ENV, "1")
-    with caplog.at_level("ERROR", logger="finanse.security"):
+    with caplog.at_level("ERROR", logger="cashu.security"):
         r = client.get("/")
         client.get("/")
     assert TOKEN not in r.text and security.TOKEN_META not in r.text
-    errors = [rec for rec in caplog.records if rec.name == "finanse.security"]
+    errors = [rec for rec in caplog.records if rec.name == "cashu.security"]
     assert len(errors) == 1 and errors[0].levelname == "ERROR"
     assert security.DEV_EMBED_ENV in errors[0].getMessage() and TOKEN not in errors[0].getMessage()

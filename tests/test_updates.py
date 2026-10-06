@@ -8,16 +8,16 @@ import tomllib
 import httpx
 import pytest
 
-from finanse import __version__
-from finanse.config import settings
-from finanse.core import paths, updates
+from cashu import __version__
+from cashu.config import settings
+from cashu.core import paths, updates
 
 
 @pytest.fixture(autouse=True)
 def _fresh(monkeypatch):
     updates.reset_cache()
     monkeypatch.setattr(settings, "update_check", True)
-    monkeypatch.setattr(settings, "update_repo", "owner/finanse")
+    monkeypatch.setattr(settings, "update_repo", "owner/cashu")
     monkeypatch.setattr(settings, "update_branch", "main")
     yield
     updates.reset_cache()
@@ -68,7 +68,7 @@ def test_newer_remote_version_is_available(monkeypatch):
     assert status.available is True
     assert status.latest == "99.0.0"
     assert status.current == __version__
-    assert status.url == "https://github.com/owner/finanse/commits/main"
+    assert status.url == "https://github.com/owner/cashu/commits/main"
     assert status.error is None
 
 
@@ -94,7 +94,7 @@ def test_cache_is_per_repo_and_branch(monkeypatch):
     updates.check()
     monkeypatch.setattr(settings, "update_branch", "dev")
     updates.check()
-    assert calls == [("owner/finanse", "main"), ("owner/finanse", "dev")]
+    assert calls == [("owner/cashu", "main"), ("owner/cashu", "dev")]
 
 
 def test_disabled_check_never_fetches(monkeypatch):
@@ -108,8 +108,8 @@ def test_disabled_check_never_fetches(monkeypatch):
 
 @pytest.mark.parametrize(
     ("repo", "branch"),
-    [("owner", "main"), ("owner/finanse/extra", "main"), ("owner/finanse", "../x"),
-     ("owner/fi nanse", "main"), ("owner/finanse", "-x"), ("owner/finanse", "a?b")],
+    [("owner", "main"), ("owner/cashu/extra", "main"), ("owner/cashu", "../x"),
+     ("owner/fi nanse", "main"), ("owner/cashu", "-x"), ("owner/cashu", "a?b")],
 )
 def test_invalid_source_is_rejected(monkeypatch, repo, branch):
     calls: list = []
@@ -135,11 +135,11 @@ def test_fetch_reads_project_version_from_raw_pyproject(monkeypatch):
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(str(request.url))
-        return httpx.Response(200, text='[project]\nname = "finanse"\nversion = "0.4.2"\n')
+        return httpx.Response(200, text='[project]\nname = "cashu"\nversion = "0.4.2"\n')
 
     _mock_httpx(monkeypatch, handler)
-    assert updates.fetch_remote_version("owner/finanse", "main") == "0.4.2"
-    assert seen == ["https://raw.githubusercontent.com/owner/finanse/main/pyproject.toml"]
+    assert updates.fetch_remote_version("owner/cashu", "main") == "0.4.2"
+    assert seen == ["https://raw.githubusercontent.com/owner/cashu/main/pyproject.toml"]
 
 
 @pytest.mark.parametrize(

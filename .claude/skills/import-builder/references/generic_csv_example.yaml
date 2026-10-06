@@ -1,4 +1,4 @@
-# Copy shipped with this skill, generated from the finanse sources; do not edit it here.
+# Copy shipped with this skill, generated from the cashU sources; do not edit it here.
 # Generic CSV import mapping (GenericCsvImporter). Synthetic example, no real data.
 #
 # Copy this file, adjust it to your broker's export and load it as a mapping. Unknown keys are errors

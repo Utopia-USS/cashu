@@ -10,14 +10,14 @@ from invp_support import STRATEGY_YAML
 from sqlmodel import select
 from test_invp_api import client, imported  # noqa: F401 - client is a pytest fixture
 
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.models import Profile
-from finanse.core.worker import investments as inv
-from finanse.core.worker import notifications
-from finanse.core.worker.notifier import Delivery
-from finanse.modules.investments.models import InvNotification, InvSignal
-from finanse.modules.investments.service import files
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.models import Profile
+from cashu.core.worker import investments as inv
+from cashu.core.worker import notifications
+from cashu.core.worker.notifier import Delivery
+from cashu.modules.investments.models import InvNotification, InvSignal
+from cashu.modules.investments.service import files
 
 # The synthetic strategy with the owner's own bucket id "core" instead of "stocks", far from its
 # target, and an allocation_drift rule (action: notified at once by the default policy).
@@ -90,7 +90,7 @@ def test_own_bucket_drift_is_a_signal_but_never_notified_or_digested(client):  #
         pid = profile.id
         assert inv.review_count(s, pid) == len(signals) - 1
     # the agent still sees it (MCP unchanged)
-    mcp_signals = FinanseMcp(pid).call("signals", {}).data["signals"]
+    mcp_signals = CashuMcp(pid).call("signals", {}).data["signals"]
     assert sum(1 for x in mcp_signals if x["kind"] == "allocation_drift") == 2
 
     fake = Recorder()
@@ -202,7 +202,7 @@ def test_owner_kpis_leave_out_own_buckets_and_mcp_keeps_them(client):  # noqa: F
     # MCP: every signal and bucket, as before GB5
     with get_session() as s:
         pid = s.exec(select(Profile).where(Profile.slug == slug)).one().id
-    data = FinanseMcp(pid).call("portfolio_overview", {}).data
+    data = CashuMcp(pid).call("portfolio_overview", {}).data
     agent = _expected(rows, buckets)
     assert data["signals"] == agent["signals"]
     assert data["max_drift"]["bucket"] == agent["max_drift"] == "core"
@@ -221,5 +221,5 @@ def test_no_generic_bucket_means_no_max_drift_for_the_owner(client):  # noqa: F8
     assert k["max_drift"] is None and k["out_of_band"] == 0
     with get_session() as s:
         pid = s.exec(select(Profile).where(Profile.slug == slug)).one().id
-    data = FinanseMcp(pid).call("portfolio_overview", {}).data
+    data = CashuMcp(pid).call("portfolio_overview", {}).data
     assert data["max_drift"]["bucket"] in ("core", "reserve") and data["out_of_band"] == 2

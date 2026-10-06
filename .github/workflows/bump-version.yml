@@ -1,5 +1,5 @@
 # Raise the app version after every push to main, so installed apps see the change through their
-# update check (src/finanse/core/updates.py reads project.version of pyproject.toml on main).
+# update check (src/cashu/core/updates.py reads project.version of pyproject.toml on main).
 # Patch by default; "[minor]" / "[major]" in a pushed commit message raises that part instead,
 # "[skip bump]" or a hand-made version change in the push skips the bump (scripts/bump_version.py).
 name: Bump version

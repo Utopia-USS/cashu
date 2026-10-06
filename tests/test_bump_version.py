@@ -43,7 +43,7 @@ def test_the_real_files_carry_matching_version_lines():
 
 
 def test_replace_touches_only_the_project_version():
-    text = '[project]\nname = "finanse"\nversion = "0.1.0"\n\n[tool.ruff]\ntarget-version = "py312"\n'
+    text = '[project]\nname = "cashu"\nversion = "0.1.0"\n\n[tool.ruff]\ntarget-version = "py312"\n'
     out = bv.replace_version(text, bv.PYPROJECT_RE, "0.1.1")
     assert out == text.replace('version = "0.1.0"', 'version = "0.1.1"')
 
@@ -58,9 +58,9 @@ def repo(tmp_path):
         pytest.skip("git not installed")
     (tmp_path / "scripts").mkdir()
     shutil.copy(SCRIPT, tmp_path / "scripts" / "bump_version.py")
-    (tmp_path / "src" / "finanse").mkdir(parents=True)
-    (tmp_path / "pyproject.toml").write_text('[project]\nname = "finanse"\nversion = "0.3.4"\n')
-    (tmp_path / "src" / "finanse" / "__init__.py").write_text('"""x."""\n\n__version__ = "0.3.4"\n')
+    (tmp_path / "src" / "cashu").mkdir(parents=True)
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "cashu"\nversion = "0.3.4"\n')
+    (tmp_path / "src" / "cashu" / "__init__.py").write_text('"""x."""\n\n__version__ = "0.3.4"\n')
     for args in (["init", "-q"], ["config", "user.email", "t@example.com"], ["config", "user.name", "t"]):
         subprocess.run(["git", *args], cwd=tmp_path, check=True)
     commit(tmp_path, "Initial")
@@ -82,7 +82,7 @@ def run(root: Path, *args: str) -> str:
 
 def versions(root: Path) -> tuple[str, str]:
     return (bv.read_version((root / "pyproject.toml").read_text(), bv.PYPROJECT_RE),
-            bv.read_version((root / "src/finanse/__init__.py").read_text(), bv.INIT_RE))
+            bv.read_version((root / "src/cashu/__init__.py").read_text(), bv.INIT_RE))
 
 
 def test_push_bumps_patch_in_both_files(repo):
@@ -107,8 +107,8 @@ def test_first_push_reads_only_the_head_message(repo):
 
 def test_hand_made_version_change_is_kept(repo):
     before = commit(repo, "Base")
-    (repo / "pyproject.toml").write_text('[project]\nname = "finanse"\nversion = "1.0.0"\n')
-    (repo / "src/finanse/__init__.py").write_text('__version__ = "1.0.0"\n')
+    (repo / "pyproject.toml").write_text('[project]\nname = "cashu"\nversion = "1.0.0"\n')
+    (repo / "src/cashu/__init__.py").write_text('__version__ = "1.0.0"\n')
     commit(repo, "Release 1.0")
     assert run(repo, "--since", before) == ""
     assert versions(repo) == ("1.0.0", "1.0.0")

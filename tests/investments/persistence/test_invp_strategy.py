@@ -7,12 +7,12 @@ import pytest
 from invp_support import STRATEGY_YAML, make_profile
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile
-from finanse.modules.investments.models import InvStrategyVersion
-from finanse.modules.investments.service import files
-from finanse.modules.investments.service import strategy as strategy_files
-from finanse.modules.investments.strategy import load_strategy
+from cashu.core.db import get_session
+from cashu.core.models import Profile
+from cashu.modules.investments.models import InvStrategyVersion
+from cashu.modules.investments.service import files
+from cashu.modules.investments.service import strategy as strategy_files
+from cashu.modules.investments.strategy import load_strategy
 
 
 def test_partial_config_when_only_rules_have_errors():

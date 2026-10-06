@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).parent / "investments" / "persistence"))
 from test_invp_isolation import INVESTMENTS_GETS, household
 from test_profiles import PROFILE_GETS
 
-from finanse.core.api import utc_iso
-from finanse.modules.investments.service import daily, portfolio
+from cashu.core.api import utc_iso
+from cashu.modules.investments.service import daily, portfolio
 
 NAIVE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$")
 DATE_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
@@ -101,15 +101,15 @@ def test_mcp_tools_send_offset_timestamps(db_engine):
 
     from mcp_support import TODAY, seed_profile
 
-    from finanse.core.mcp import labels as L
-    from finanse.core.mcp.redaction import Redactor
-    from finanse.core.mcp.server import FinanseMcp
+    from cashu.core.mcp import labels as L
+    from cashu.core.mcp.redaction import Redactor
+    from cashu.core.mcp.server import CashuMcp
 
     naive = dt.datetime(2026, 10, 5, 10, 0)  # noqa: DTZ001 - SQLite-style naive UTC
     assert Redactor("strict").apply({"at": L.date(naive)}) == {"at": "2026-10-05T10:00:00+00:00"}
 
     pid, _slug = seed_profile()
-    mcp = FinanseMcp(pid, today=TODAY)
+    mcp = CashuMcp(pid, today=TODAY)
     seen, offenders = 0, []
     tools = (
         "signals",

@@ -10,7 +10,7 @@ import sys
 import keyring
 import pytest
 
-from finanse.core import secrets
+from cashu.core import secrets
 
 
 def test_secrets_go_to_the_in_memory_keyring_without_any_fixture():
@@ -26,7 +26,7 @@ def test_the_real_macos_backend_fails_loudly():
     from keyring.backends import macOS
 
     with pytest.raises(AssertionError, match="real OS keychain"):
-        macOS.Keyring().get_password("finanse", "guard-test")
+        macOS.Keyring().get_password("cashu", "guard-test")
 
 
 def test_subprocesses_get_the_failing_backend():

@@ -227,7 +227,7 @@ function ModuleRow({ info, on, pm, onToggle }: { info: ModuleInfo; on: boolean; 
 }
 
 const desktopJson = (slug: string) =>
-  `{\n  "mcpServers": {\n    "finanse-${slug}": {\n      "command": "finanse",\n      "args": ["mcp", "--profile", "${slug}"]\n    }\n  }\n}`;
+  `{\n  "mcpServers": {\n    "cashu-${slug}": {\n      "command": "cashu",\n      "args": ["mcp", "--profile", "${slug}"]\n    }\n  }\n}`;
 
 function AgentSection() {
   const { slug, profile, reloadProfiles } = useShell();
@@ -343,7 +343,7 @@ function WorkspacePanel() {
               <span className="v block"><Code cmd={ws.claude_command} /></span>
               <span className="k">Zarządzane</span>
               <span className="v" style={{ fontSize: 13 }}>
-                finanse {ws.managed_version ?? "-"} · skille: {ws.skills.filter((x) => x.state !== "extra").map((x) => `/${x.name}`).join(", ") || "brak"}
+                cashU {ws.managed_version ?? "-"} · skille: {ws.skills.filter((x) => x.state !== "extra").map((x) => `/${x.name}`).join(", ") || "brak"}
               </span>
             </>
           )}
@@ -352,7 +352,7 @@ function WorkspacePanel() {
       {ws?.conflict && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Ten folder jest workspace innego profilu. Wybierz inny folder.</Notice>}
       {ws?.exists && ws.outdated.length > 0 && (
         <Notice tone="warn" style={{ margin: "10px 0 0" }} action={needsForce(ws)
-          ? <button className="btn" onClick={() => run({ force: true })} disabled={busy} title="Twoja wersja trafi do .claude/finanse-backup/.">Zastąp zmienione</button>
+          ? <button className="btn" onClick={() => run({ force: true })} disabled={busy} title="Twoja wersja trafi do .claude/cashu-backup/.">Zastąp zmienione</button>
           : undefined}>
           Do aktualizacji:
           <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
@@ -455,8 +455,9 @@ function DataSection() {
       </div>
       {system?.legacy_db_detected ? (
         <Notice tone="warn" style={{ margin: "14px 0 0" }}>
+          {/* legacy name: the repo-dir database of old checkouts is data/finanse.db */}
           Stara baza: <code>{system.legacy_db_path || "data/finanse.db"}</code>. Zamknij aplikację i uruchom:
-          <Code cmd="finanse migrate-data" />
+          <Code cmd="cashu migrate-data" />
         </Notice>
       ) : null}
     </Card>
@@ -611,7 +612,7 @@ function SecretsSection() {
         <div className="grow">
           <div className="t">Klucz API Anthropic {presence(s?.anthropic, "w pęku kluczy")}</div>
           <div className="d">pęk kluczy · kategoryzacja (Budżet), backend anthropic</div>
-          <Code cmd="finanse secrets set anthropic" />
+          <Code cmd="cashu secrets set anthropic" />
         </div>
       </div>
       <div className="row">
@@ -631,6 +632,8 @@ function SecretsSection() {
   );
 }
 
+const MIGRATION_STEP: Record<string, string> = { data_dir: "katalog danych", db_file: "plik bazy", keychain: "pęk kluczy", launchd: "praca w tle" };
+
 function AppSection({ theme, setTheme }: { theme: ThemePref; setTheme: (t: ThemePref) => void }) {
   const { system } = useShell();
   return (
@@ -644,6 +647,14 @@ function AppSection({ theme, setTheme }: { theme: ThemePref; setTheme: (t: Theme
         <span className="k">Wersja</span>
         <span className="v">{system?.version ?? "-"}</span>
       </div>
+      {system?.rename_migration?.length ? (
+        <Notice tone="warn" style={{ margin: "14px 0 0" }}>
+          <b>Przeniesienie danych z poprzedniej wersji nie powiodło się.</b> Zamknij inne okna aplikacji i uruchom ją ponownie.
+          <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+            {system.rename_migration.map((p) => <li key={p.step}>{MIGRATION_STEP[p.step] ?? p.step}: <span className="hint">{p.detail}</span></li>)}
+          </ul>
+        </Notice>
+      ) : null}
     </Card>
   );
 }

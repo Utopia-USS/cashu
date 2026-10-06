@@ -23,21 +23,21 @@ from invp_support import (
 )
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile, utcnow
-from finanse.modules.investments.market import SourceException
-from finanse.modules.investments.models import (
+from cashu.core.db import get_session
+from cashu.core.models import Profile, utcnow
+from cashu.modules.investments.market import SourceException
+from cashu.modules.investments.models import (
     InvAlert,
     InvInstrument,
     InvPriceBar,
     InvResearchNote,
     InvSignal,
 )
-from finanse.modules.investments.research import service as research
-from finanse.modules.investments.research.validation import validate_note
-from finanse.modules.investments.service import alerts as alert_service
-from finanse.modules.investments.service import daily, files, views
-from finanse.modules.investments.service import watchlist as watch_service
+from cashu.modules.investments.research import service as research
+from cashu.modules.investments.research.validation import validate_note
+from cashu.modules.investments.service import alerts as alert_service
+from cashu.modules.investments.service import daily, files, views
+from cashu.modules.investments.service import watchlist as watch_service
 
 T0 = dt.datetime(2026, 3, 2, 8, 0, tzinfo=dt.UTC)
 CONC_XMPL = "concentration"
@@ -210,7 +210,7 @@ def test_a_failed_run_is_not_the_reference_for_current(investor):
     run(pid)
     (conc,) = xmpl_conc(pid)
     with get_session() as s:
-        from finanse.modules.investments.models import InvRuleRun
+        from cashu.modules.investments.models import InvRuleRun
 
         s.add(
             InvRuleRun(
@@ -341,13 +341,13 @@ def test_research_read_validation_and_isolation(api_investor):
     for body in ({}, {"instrument_id": 1, "theme": "x"}, {"ids": []}, {"theme": "  "}):
         r = client.post(f"{api}/research/read", json=body)
         assert r.status_code == 422, body
-        assert r.headers.get("X-Finanse-Error-Code") == "research_invalid", body
+        assert r.headers.get("X-Cashu-Error-Code") == "research_invalid", body
     other_slug = client.post("/api/profiles", json={"name": "Inna", "modules": ["investments"]}).json()[
         "slug"
     ]  # fmt: skip
     other = f"/api/p/{other_slug}/investments"
     r = client.post(f"{other}/research/read", json={"instrument_id": instrument_id("XMPL")})
-    assert r.status_code == 404 and r.headers["X-Finanse-Error-Code"] == "not_found"
+    assert r.status_code == 404 and r.headers["X-Cashu-Error-Code"] == "not_found"
     assert client.post(f"{other}/research/read", json={"ids": [note_id]}).json() == {"marked": 0}
     assert client.get(f"{api}/research").json()[0]["unread"] is True
 
@@ -446,14 +446,14 @@ def test_new_kinds_through_the_api(api_investor):
 
 
 def test_mcp_alert_tools_take_the_new_kinds_and_scrub_amounts(investor):
-    from finanse.core.mcp.redaction import Redactor, leak_check
-    from finanse.core.mcp.tools import alerts as mcp_alerts
-    from finanse.core.mcp.tools import investments as mcp_inv
+    from cashu.core.mcp.redaction import Redactor, leak_check
+    from cashu.core.mcp.tools import alerts as mcp_alerts
+    from cashu.core.mcp.tools import investments as mcp_inv
 
     pid, _ = investor
     _set_bars("XMPL", [*["10.5", "11.2", "10.8"] * 3, "10.9", "11.9"])
     with get_session() as s:
-        from finanse.core.mcp.registry import ToolContext
+        from cashu.core.mcp.registry import ToolContext
 
         profile = s.get(Profile, pid)
         ctx = ToolContext(session=s, profile=profile, privacy="strict", today=AS_OF)
@@ -489,8 +489,8 @@ def test_mcp_alert_tools_take_the_new_kinds_and_scrub_amounts(investor):
 
 
 def test_mcp_measures_the_volume_multiple():
-    from finanse.core.mcp.redaction import Redactor
-    from finanse.core.mcp.tools import investments as mcp_inv
+    from cashu.core.mcp.redaction import Redactor
+    from cashu.core.mcp.tools import investments as mcp_inv
 
     out = Redactor("strict").apply(
         mcp_inv._measure(None, "alert:volume_spike", {"ratio": 3.4, "multiple": 2.5})  # type: ignore[arg-type]
@@ -500,8 +500,8 @@ def test_mcp_measures_the_volume_multiple():
 
 def test_nearest_level_skips_a_breakout_whose_range_is_too_wide(investor):
     # F8 review BE-4: a range wider than max_range_pct cannot break out, so it names no level
-    from finanse.modules.investments.store import instruments as instrument_store
-    from finanse.modules.investments.store import market as market_store
+    from cashu.modules.investments.store import instruments as instrument_store
+    from cashu.modules.investments.store import market as market_store
 
     pid, _ = investor
     aid = create_alert(pid, "range_breakout", {"window_days": 10, "max_range_pct": 0.08})

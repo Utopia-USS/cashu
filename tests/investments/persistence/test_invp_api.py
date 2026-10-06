@@ -7,8 +7,8 @@ from __future__ import annotations
 import pytest
 from invp_support import AS_OF, STRATEGY_YAML, canonical_csv, sources
 
-from finanse.core import security
-from finanse.modules.investments.service import daily, files, portfolio
+from cashu.core import security
+from cashu.modules.investments.service import daily, files, portfolio
 
 
 @pytest.fixture
@@ -73,7 +73,7 @@ def test_token_is_required(client):
 def test_preview_and_commit_flow(client):
     slug, aid = setup_profile(client)
     preview = upload(client, slug, aid, canonical_csv(xmpl_quantity=25))
-    assert preview["can_commit"] and preview["importer"]["id"] == "finanse"
+    assert preview["can_commit"] and preview["importer"]["id"] == "cashu"
     assert preview["counts"] == {
         "rows": 5,
         "new": 5,
@@ -201,7 +201,7 @@ def test_run_overview_positions_signals(client):
 
 
 def test_run_busy_is_409(client):
-    from finanse.core import locks
+    from cashu.core import locks
 
     slug, _ = imported(client)
     with locks.run_lock(daily.LOCK_NAME):
@@ -343,5 +343,5 @@ def test_accounts_endpoint(client):
     assert [s["status"] for s in setup["steps"]] == ["done", "on", "todo", "todo"]
     assert (
         setup["steps"][1]["actions"][0]["target"]
-        == f"finanse --profile {slug} invest strategy init"
+        == f"cashu --profile {slug} invest strategy init"
     )

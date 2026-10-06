@@ -15,13 +15,13 @@ from mcp_support import (
     write_export_xlsx,
 )
 
-from finanse.core.mcp.registry import ToolError
-from finanse.core.mcp.tools import exports
+from cashu.core.mcp.registry import ToolError
+from cashu.core.mcp.tools import exports
 
 
 def _plain(tree):
     """Labelled tree -> values (labels are checked elsewhere; here we look at what is masked)."""
-    from finanse.core.mcp.redaction import Redactor
+    from cashu.core.mcp.redaction import Redactor
 
     return Redactor("amounts").apply(tree)
 
@@ -93,7 +93,7 @@ def test_json(tmp_path, db_engine):
 
 
 def test_path_rules(tmp_path, db_engine):
-    from finanse.core import paths
+    from cashu.core import paths
 
     hidden = tmp_path / ".secret"
     hidden.mkdir()
@@ -152,8 +152,8 @@ def test_headerless_file_never_shows_data_as_headers(tmp_path, db_engine):
 
 
 def test_case_variants_hidden_files_and_mapping_location(tmp_path, db_engine):
-    from finanse.core import paths
-    from finanse.core.mcp.tools.investments_proposals import _mapping_text
+    from cashu.core import paths
+    from cashu.core.mcp.tools.investments_proposals import _mapping_text
 
     secret = paths.data_dir() / "imports" / "other" / "x.csv"
     secret.parent.mkdir(parents=True, exist_ok=True)
@@ -205,10 +205,10 @@ def test_single_word_names_and_headerless_rows_are_masked(tmp_path, db_engine):
 def test_unicode_variant_of_the_data_dir_is_refused(tmp_path, monkeypatch):
     import unicodedata
 
-    from finanse.core import paths
+    from cashu.core import paths
 
     root = tmp_path / unicodedata.normalize("NFC", "Dane-Józefa")
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(root))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(root))
     secret = paths.data_dir() / "imports" / "other" / "x.csv"
     secret.parent.mkdir(parents=True, exist_ok=True)
     secret.write_text("a,b\n1,2\n")

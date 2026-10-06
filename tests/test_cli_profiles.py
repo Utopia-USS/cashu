@@ -1,4 +1,4 @@
-"""CLI: the root --profile option, `finanse profiles ...`, module sub-apps."""
+"""CLI: the root --profile option, `cashu profiles ...`, module sub-apps."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from sqlmodel import Session, select
 from test_cli import _write_mbank
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import cliutil
-from finanse.models import Account, Loan, Profile
+from cashu import cli as cli_mod
+from cashu.core import cliutil
+from cashu.models import Account, Loan, Profile
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ def test_without_profile_a_fresh_db_gets_the_default_profile(run, db_engine, tmp
 
 
 def test_configured_default_profile_is_strict(run, db_engine, monkeypatch):
-    from finanse.config import settings
+    from cashu.config import settings
 
     run("profiles", "add", "Jan")
     monkeypatch.setattr(settings, "profile", "marta")
@@ -147,7 +147,7 @@ def test_profile_option_on_a_fresh_db_never_writes_into_default(run, db_engine):
     res = run("--profile", "marta", "add-position", "Konto Test", "--type", "savings",
               "--value", "100", ok=False)
     assert res.exit_code == 1
-    assert "No profile 'marta'" in res.stderr and "finanse profiles add" in res.stderr
+    assert "No profile 'marta'" in res.stderr and "cashu profiles add" in res.stderr
     with Session(db_engine) as s:
         assert s.exec(select(Profile)).all() == []
     assert _accounts(db_engine) == []
@@ -159,7 +159,7 @@ def test_profile_option_on_a_fresh_db_never_writes_into_default(run, db_engine):
 def test_configured_default_profile_on_a_fresh_db_is_created_under_its_slug(
     run, db_engine, monkeypatch
 ):
-    from finanse.config import settings
+    from cashu.config import settings
 
     monkeypatch.setattr(settings, "profile", "marta")
     run("add-position", "Konto Test", "--type", "savings", "--value", "100")

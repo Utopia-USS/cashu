@@ -51,6 +51,7 @@ import { useResearchHome } from "./research";
 import { ChangeLog, ChangesWidget, ReentryBanner, ReviewStrip, StateToday } from "./Review";
 import { type SignalFilter, type SignalsCtx, SignalsDialog, SignalsRail } from "./Signals";
 import { WatchlistWidget } from "./Watchlist";
+import { readStored } from "../../../core/storage.ts";
 
 type DrawerState =
   | { kind: "import"; account?: number | null }
@@ -61,14 +62,14 @@ type DrawerState =
   | { kind: "txns"; position: Position };
 
 const ss = {
-  get: (k: string) => { try { return sessionStorage.getItem(k); } catch { return null; } },
+  get: (k: string) => { try { return readStored(sessionStorage, k); } catch { return null; } },
   set: (k: string, v: string | null) => { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch { /* ignore */ } },
 };
 const ls = {
-  get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
+  get: (k: string) => { try { return readStored(localStorage, k); } catch { return null; } },
   set: (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* ignore */ } },
 };
-const lastSeenKey = (slug: string) => `finanse.lastSeen.${slug}`;
+const lastSeenKey = (slug: string) => `cashu.lastSeen.${slug}`;
 
 /** Market change over the last 7 days: money without the flows in between, TWR ratio for the percent. */
 function weekMove(points: PerfPoint[], asOf: string): { money: number; pct: number | null } | null {
@@ -152,7 +153,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   // ---- re-entry: compare the last visit on open, remember this visit when leaving -----------------------------
   // The pending baseline lives in localStorage until "Wszystko jasne" (F7 FE17): leaving the page, closing the
   // window or a new window keeps it, and the last-visit mark does not move while it is pending.
-  const reentryKey = `finanse.inv.reentry.${slug}`;
+  const reentryKey = `cashu.inv.reentry.${slug}`;
   const [reentry, setReentry] = useState<string | null>(() => {
     const r = reentryBaseline(ls.get(reentryKey) ?? ss.get(reentryKey), ls.get(lastSeenKey(slug)), new Date().toISOString());
     if (r.baseline) { ls.set(reentryKey, r.baseline); ss.set(reentryKey, null); }
@@ -172,7 +173,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const dismissReentry = () => { ls.set(reentryKey, null); ss.set(reentryKey, null); ls.set(lastSeenKey(slug), new Date().toISOString()); setReentry(null); };
 
   // ---- review strip ------------------------------------------------------------------------------------------
-  const reviewKey = `finanse.inv.reviewOpen.${slug}`;
+  const reviewKey = `cashu.inv.reviewOpen.${slug}`;
   const [reviewOpen, setReviewOpenState] = useState(() => ss.get(reviewKey) === "1" || params.get("review") === "1");
   const setReviewOpen = (v: boolean) => { setReviewOpenState(v); ss.set(reviewKey, v ? "1" : "0"); };
   const [step, setStep] = useState(0);
@@ -686,7 +687,7 @@ function Start({ accounts, strategy, hasTxn, initBusy, onAddAccount, onInitStrat
         id: "start", span: 2, node: (
           <Widget title="Pierwsze kroki" body="tight">
             <SetupSteps steps={steps} />
-            {!hasAccount && <Code cmd={`finanse --profile ${slug} invest accounts add "XTB IKE" --broker xtb --wrapper ike`} />}
+            {!hasAccount && <Code cmd={`cashu --profile ${slug} invest accounts add "XTB IKE" --broker xtb --wrapper ike`} />}
           </Widget>
         ),
       },

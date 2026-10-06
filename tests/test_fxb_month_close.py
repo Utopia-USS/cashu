@@ -15,9 +15,9 @@ from decimal import Decimal
 import pytest
 from sqlmodel import select
 
-from finanse.core import accounts
-from finanse.db import get_session
-from finanse.models import Account, Source
+from cashu.core import accounts
+from cashu.db import get_session
+from cashu.models import Account, Source
 
 SEPT = "/api/budget/month-close?month=2026-09"
 
@@ -93,9 +93,9 @@ IBAN_SPENDING = "99999000000000000000000004"
 def test_a_transfer_that_funds_spending_on_another_own_account_is_no_cushion_outflow(api):
     """F7 review R5 probe: 2000 moved from the checking cushion to an own spending account and spent
     there by card in the same month; the spending is in the surplus, so the transfer is added back."""
-    from finanse.modules.budget import service as budget
-    from finanse.modules.budget.ingestion.normalize import RawTransaction
-    from finanse.modules.budget.ingestion.transfers import match_internal_transfers
+    from cashu.modules.budget import service as budget
+    from cashu.modules.budget.ingestion.normalize import RawTransaction
+    from cashu.modules.budget.ingestion.transfers import match_internal_transfers
 
     with get_session() as s:
         main = s.exec(select(Account).where(Account.name == "mKonto Test")).one()
@@ -142,9 +142,9 @@ def test_a_transfer_to_an_own_account_in_another_currency_stays_an_outflow(api):
     """F7 re-review B1 probe: 2000 PLN from the checking cushion to the own EUR account, 465 EUR spent
     there. The EUR spending is in the EUR close, not in the PLN surplus, so nothing is added back:
     the level drops by the 2000 and moving the suggested transfer out leaves the cushion at its target."""
-    from finanse.modules.budget import service as budget
-    from finanse.modules.budget.ingestion.normalize import RawTransaction
-    from finanse.modules.budget.ingestion.transfers import match_internal_transfers
+    from cashu.modules.budget import service as budget
+    from cashu.modules.budget.ingestion.normalize import RawTransaction
+    from cashu.modules.budget.ingestion.transfers import match_internal_transfers
 
     _balance("mKonto Test", date(2026, 8, 31), "5000.00")
     with get_session() as s:

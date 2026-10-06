@@ -6,14 +6,14 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from finanse.core import profiles
-from finanse.core.db import get_session
-from finanse.core.models import utcnow
-from finanse.modules.investments.domain import Currency, FxRate, Instrument, PriceBar
-from finanse.modules.investments.importing import ImportFile
-from finanse.modules.investments.market import PriceHistory, PriceSource, SplitEvent
-from finanse.modules.investments.service import accounts, imports
-from finanse.modules.investments.service.daily import MarketSources
+from cashu.core import profiles
+from cashu.core.db import get_session
+from cashu.core.models import utcnow
+from cashu.modules.investments.domain import Currency, FxRate, Instrument, PriceBar
+from cashu.modules.investments.importing import ImportFile
+from cashu.modules.investments.market import PriceHistory, PriceSource, SplitEvent
+from cashu.modules.investments.service import accounts, imports
+from cashu.modules.investments.service.daily import MarketSources
 
 AS_OF = dt.date(2026, 3, 2)  # a Monday after the synthetic history
 

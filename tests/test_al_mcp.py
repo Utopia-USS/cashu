@@ -18,18 +18,18 @@ from mcp_support import (
 )
 from sqlmodel import select
 
-from finanse.core.agent_models import McpCall
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.models import Profile
-from finanse.modules.investments.models import InvAlert
-from finanse.modules.investments.service import daily
+from cashu.core.agent_models import McpCall
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.models import Profile
+from cashu.modules.investments.models import InvAlert
+from cashu.modules.investments.service import daily
 
 
 @pytest.fixture
 def host(db_engine):
     pid, _slug = seed_profile()
-    return pid, FinanseMcp(pid, today=TODAY)
+    return pid, CashuMcp(pid, today=TODAY)
 
 
 def price_alert(**extra) -> dict:
@@ -160,7 +160,7 @@ def test_tools_are_bound_to_their_profile(host):
     alert_id = mcp.call("add_alert", price_alert()).data["alert"]["alert_id"]
     item_id = mcp.call("add_to_watchlist", {"symbol_or_isin": "CDR.WA"}).data["item"]["item_id"]
     other, _ = seed_profile("Ewa Testowa", run_daily=False)
-    stranger = FinanseMcp(other, today=TODAY)
+    stranger = CashuMcp(other, today=TODAY)
     assert stranger.call("alerts", {"status": "all"}).data["alerts"] == []
     assert stranger.call("watchlist", {}).data["items"] == []
     assert stranger.call("mute_alert", {"id": alert_id}).error_kind == "not_found"

@@ -18,7 +18,7 @@ Handle every one the same way:
 4. **Representation in the app** (what exists today):
    - a claim against an insolvent platform: instrument asset class `claim` (valued manually, by default
      at 0 until the user sets a value in the app);
-   - frozen or sanctioned holdings: a `delisting` record with `frozen: true` in the finanse import format
+   - frozen or sanctioned holdings: a `delisting` record with `frozen: true` in the cashU import format
      (the holding is then valued manually), or the instrument's valuation mode set to manual where the
      app offers it;
    - an ordinary delisting with a cash-out: a `delisting` record with `frozen: false` plus a normal

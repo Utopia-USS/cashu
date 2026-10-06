@@ -7,13 +7,13 @@ from __future__ import annotations
 import pytest
 from mcp_support import STRATEGY_YAML, TODAY, leaks, seed_profile, write_strategy
 
-from finanse.core.db import get_session
-from finanse.core.mcp.labels import Labelled, Sensitivity
-from finanse.core.mcp.registry import ToolContext
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.mcp.tools.investments import _performance_metrics
-from finanse.core.models import Profile
-from finanse.modules.investments.performance import service
+from cashu.core.db import get_session
+from cashu.core.mcp.labels import Labelled, Sensitivity
+from cashu.core.mcp.registry import ToolContext
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.mcp.tools.investments import _performance_metrics
+from cashu.core.models import Profile
+from cashu.modules.investments.performance import service
 
 ALLOWED = {
     Sensitivity.PERCENT,
@@ -70,7 +70,7 @@ def test_history_metrics_performance_block(fuzz, privacy):
         p = s.get(Profile, pid)
         p.mcp_privacy = privacy
         s.add(p)
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
     result = host.call("history_metrics", {})
     assert result.ok, (result.error, result.error_kind)
     data = result.data
@@ -94,7 +94,7 @@ def test_history_metrics_performance_block(fuzz, privacy):
 
 def test_same_block_in_both_modes(fuzz):
     pid, _slug = fuzz
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
     strict = host.call("history_metrics", {}).data["performance"]
     with get_session() as s:
         p = s.get(Profile, pid)

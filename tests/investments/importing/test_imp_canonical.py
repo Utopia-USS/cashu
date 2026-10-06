@@ -1,4 +1,4 @@
-"""The canonical finanse-import format: CSV and JSON variants, strict validation, spec examples."""
+"""The canonical cashu-import format: CSV and JSON variants, strict validation, spec examples."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from imp_support import d, day
 
-from finanse.modules.investments.domain import Currency, TxnType
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.domain import Currency, TxnType
+from cashu.modules.investments.importing import (
     CanonicalImporter,
     ImportFile,
     ImportParseResult,
@@ -21,7 +21,7 @@ from finanse.modules.investments.importing import (
     parse_canonical_csv,
     parse_canonical_json,
 )
-from finanse.modules.investments.importing.canonical import CSV_COLUMNS, RECORD_FIELDS
+from cashu.modules.investments.importing.canonical import CSV_COLUMNS, RECORD_FIELDS
 
 SPEC = Path(__file__).resolve().parents[3] / "docs" / "import-format.md"
 HEADER = "format_version,record,date,time,type,external_ref,symbol,isin,exchange,quantity,price,currency,gross_amount,fee,tax,cash_amount,cash_currency,fx_rate,split_ratio,note"
@@ -45,7 +45,7 @@ def txn_row(**fields: str) -> str:
 def json_doc(*records: str, top: str = "") -> ImportParseResult:
     body = ",\n".join(records)
     extra = f"{top}," if top else ""
-    text = f'{{"format": "finanse-import", "format_version": 1, {extra} "records": [{body}]}}'
+    text = f'{{"format": "cashu-import", "format_version": 1, {extra} "records": [{body}]}}'
     return parse_canonical_json(text.encode())
 
 
@@ -139,10 +139,10 @@ def test_can_parse() -> None:
     assert importer.can_parse(ImportFile("x.txt", b"record,format_version,date\n"))
     assert not importer.can_parse(ImportFile("x.csv", b"date,type,amount\n"))
     assert not importer.can_parse(ImportFile("x.csv", b""))
-    assert importer.can_parse(ImportFile("x.json", b' {"format": "finanse-import"}'))
+    assert importer.can_parse(ImportFile("x.json", b' {"format": "cashu-import"}'))
     assert not importer.can_parse(ImportFile("x.json", b'{"format": "other"}'))
     assert not importer.can_parse(ImportFile("x.xlsx", f"{HEADER}\n".encode()))
-    assert (importer.broker_id, importer.version) == ("finanse", 1)
+    assert (importer.broker_id, importer.version) == ("cashu", 1)
 
 
 def test_parse_dispatches_by_extension() -> None:
@@ -150,7 +150,7 @@ def test_parse_dispatches_by_extension() -> None:
     csv_result = importer.parse(ImportFile("x.csv", f"{HEADER}\n".encode()))
     assert csv_result.warnings == ()
     json_result = importer.parse(
-        ImportFile("x.json", b'{"format": "finanse-import", "format_version": 1, "records": []}')
+        ImportFile("x.json", b'{"format": "cashu-import", "format_version": 1, "records": []}')
     )
     assert json_result.warnings == ()
 
@@ -621,19 +621,19 @@ def test_json_numbers_are_exact_and_strings_work_too() -> None:
 def test_json_document_structure_errors() -> None:
     assert parse_canonical_json(b"[]").warnings[0].message == "The JSON document must be an object"
     assert "not valid JSON" in parse_canonical_json(b"{").warnings[0].message
-    dup = parse_canonical_json(b'{"format": "finanse-import", "format": "x"}')
+    dup = parse_canonical_json(b'{"format": "cashu-import", "format": "x"}')
     assert "duplicate key" in dup.warnings[0].message
-    nan = parse_canonical_json(b'{"format": "finanse-import", "format_version": NaN}')
+    nan = parse_canonical_json(b'{"format": "cashu-import", "format_version": NaN}')
     assert "not valid JSON" in nan.warnings[0].message
     result = parse_canonical_json(b'{"format": "other", "format_version": "1", "record": []}')
     messages = [w.message for w in result.warnings]
-    assert 'format: must be "finanse-import"' in messages
+    assert 'format: must be "cashu-import"' in messages
     assert "format_version: must be the number 1" in messages
     assert "records: must be an array of record objects" in messages
     assert any(m.startswith('Unknown key "record" (did you mean "records"?)') for m in messages)
     assert all(w.kind for w in result.warnings)
     boolean = parse_canonical_json(
-        b'{"format": "finanse-import", "format_version": true, "records": []}'
+        b'{"format": "cashu-import", "format_version": true, "records": []}'
     )
     assert boolean.warnings[0].message == "format_version: must be the number 1"
 
@@ -679,7 +679,7 @@ def test_record_fields_cover_every_parsed_txn_field() -> None:
     }
     from dataclasses import fields
 
-    from finanse.modules.investments.importing import ParsedTxn
+    from cashu.modules.investments.importing import ParsedTxn
 
     mapping = {"trade_date": "date", "trade_time": "time", "exchange_hint": "exchange"}
     for field_ in fields(ParsedTxn):

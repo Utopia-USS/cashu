@@ -21,8 +21,8 @@ from rules_fixtures import (
     skip_reason,
 )
 
-from finanse.modules.investments.domain import AssetClass, SignalSeverity
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.domain import AssetClass, SignalSeverity
+from cashu.modules.investments.rules import (
     CustomParams,
     CustomRule,
     InstrumentFilter,
@@ -32,7 +32,7 @@ from finanse.modules.investments.rules import (
     RuleSpec,
     reconcile_signals,
 )
-from finanse.modules.investments.rules.expr import Scope
+from cashu.modules.investments.rules.expr import Scope
 
 KIND = CustomRule()
 ETF = instrument("VWCE", asset_class=AssetClass.ETF, tags=("core",))

@@ -1,11 +1,11 @@
-# finanse budget import format (format_version 1)
+# cashU budget import format (format_version 1)
 
 The documented file format of the budget module: bank statements (transactions and balances of one bank
 account). The built-in banks (mBank, Erste, Pekao) are read from their own CSV exports; any other bank, a
-bank API or a hand-written converter produces this format, and finanse imports it natively through the
+bank API or a hand-written converter produces this format, and cashU imports it natively through the
 same preview and deduplication as a bank export. This document is the complete specification.
 
-- Format name: `finanse-budget-import`, version `1`.
+- Format name: `cashu-budget-import`, version `1`.
 - Two equivalent variants: **JSON** (`.json`, required for connectors) and **CSV** (`.csv`, for
   hand-written converters). Both share one strict validator and the same field names.
 - One file = one bank account. It holds booked transactions and, optionally, closing balances.
@@ -13,7 +13,7 @@ same preview and deduplication as a bank export. This document is the complete s
   cannot be imported until it is fixed. Nothing is silently guessed or dropped. Problem messages never
   repeat a value from the file (they name the kind, the row and the field), so they are safe to show to
   an agent.
-- JSON Schema of the JSON variant: [`schemas/finanse-budget-import.v1.json`](schemas/finanse-budget-import.v1.json)
+- JSON Schema of the JSON variant: [`schemas/cashu-budget-import.v1.json`](schemas/cashu-budget-import.v1.json)
   (generated from the validator's models by `scripts/gen_connector_schemas.py`).
 
 The investments module has its own format ([`import-format.md`](import-format.md)); the two are separate.
@@ -38,7 +38,7 @@ The investments module has its own format ([`import-format.md`](import-format.md
 
 ```json
 {
-  "format": "finanse-budget-import",
+  "format": "cashu-budget-import",
   "format_version": 1,
   "source": "examplebank_api",
   "account": {"iban": "PL99 1090 0000 0000 0000 0000 0001", "name": "Konto osobiste", "currency": "PLN",
@@ -50,7 +50,7 @@ The investments module has its own format ([`import-format.md`](import-format.md
 
 | Key | Required | Rule |
 | --- | --- | --- |
-| `format` | yes | exactly `"finanse-budget-import"` |
+| `format` | yes | exactly `"cashu-budget-import"` (the deprecated `"finanse-budget-import"`, legacy name, is still accepted) |
 | `format_version` | yes | the number `1` |
 | `source` | no | who produced the file: `^[a-z][a-z0-9_]{0,31}$` (`examplebank_api`, `my_converter`) |
 | `account` | yes | object, section 3.1 |
@@ -78,7 +78,7 @@ A header line, then one row per transaction. Comma separated, `"` quotes (standa
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `currency` | yes | currency of the account (CSV: `account_currency`). Importing into an existing account (chosen in the preview, found by `iban` or by `name`) of another currency is refused (`import_currency_mismatch`): amounts and balances would be stored in the wrong currency. |
-| `iban` | no | the account's number. finanse looks it up among **all** accounts of the profile (whatever bank); when found the statement goes there, otherwise a new account is created. Without it the owner chooses the account in the preview, or a new account named after `name` is created (and found again by that name on the next import). |
+| `iban` | no | the account's number. cashU looks it up among **all** accounts of the profile (whatever bank); when found the statement goes there, otherwise a new account is created. Without it the owner chooses the account in the preview, or a new account named after `name` is created (and found again by that name on the next import). |
 | `name` | no | name of a newly created account, max 120 characters (never renames an existing one) |
 | `institution` | no | institution id of a newly created account (`mbank`, `pekao`, `erste`, `millennium`, or your own lower-case id; an unknown id is a warning and is kept as is). Default: `source`. |
 
@@ -143,7 +143,7 @@ Rules for converter authors:
 
 ```json
 {
-  "format": "finanse-budget-import",
+  "format": "cashu-budget-import",
   "format_version": 1,
   "source": "examplebank_api",
   "account": {
@@ -184,10 +184,10 @@ format_version,booking_date,amount,currency,counterparty_name,counterparty_iban,
 ## 6. Importing a file
 
 - In the app: Wydatki › `Import` (or the first steps' `Importuj wyciąg`), `Bank`: `rozpoznaj
-  automatycznie` recognises the format (a JSON object naming `finanse-budget-import`, or a CSV whose
-  header has `format_version` and `booking_date`); or choose `Format finanse` explicitly. The preview
+  automatycznie` recognises the format (a JSON object naming `cashu-budget-import`, or a CSV whose
+  header has `format_version` and `booking_date`); or choose `Format cashU` explicitly. The preview
   shows new rows and duplicates before anything is written.
-- HTTP: `POST /api/p/<profile>/budget/import/preview` (multipart `file`, `bank=finanse-budget`), then
+- HTTP: `POST /api/p/<profile>/budget/import/preview` (multipart `file`, `bank=cashu-budget`), then
   `POST /api/p/<profile>/budget/import/commit` with the returned `file_id`.
 - A connector ([`connectors.md`](connectors.md)) returns the JSON variant as its `document`; it goes through the same
   validation and preview, its rows are marked as coming from a connector.
@@ -198,7 +198,7 @@ Validation needs no database and changes nothing:
 
 ```python
 from pathlib import Path
-from finanse.modules.budget.ingestion.canonical import validate_budget_document
+from cashu.modules.budget.ingestion.canonical import validate_budget_document
 
 data = Path("converted.json").read_bytes()
 report = validate_budget_document(data, "converted.json")   # or a .csv
@@ -210,7 +210,7 @@ assert report.ok           # True when the file can be imported
 has `kind`, `row` (1-based transaction number, `None` for file-level problems), `field` and a value-free
 `message`. Kinds: `file_format`, `missing_column`, `unknown_field`, `missing_value`, `invalid_value`,
 `inconsistent_file`, `duplicate_id` (errors); `currency_mismatch`, `unknown_institution`, `empty`
-(warnings). `report.as_dict()` is the same as JSON. `finanse connectors test` prints this report for a
+(warnings). `report.as_dict()` is the same as JSON. `cashu connectors test` prints this report for a
 budget connector's output.
 
 Checklist for converter authors:
@@ -227,3 +227,7 @@ Checklist for converter authors:
 This is `format_version` 1. Files without a version or with another version are refused. Any change to
 field meanings, required fields or accepted values will come as a new version; the importer will keep
 reading version 1 files.
+
+Before the rename to cashU (legacy name) this format was called `finanse-budget-import` and its
+importer id `finanse-budget`. Both are still accepted and read as `cashu-budget-import` /
+`cashu-budget`; they are deprecated, so write the new ids in new converters and connectors.

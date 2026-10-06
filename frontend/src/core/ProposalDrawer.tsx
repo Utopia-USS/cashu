@@ -65,7 +65,7 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
             {data.status !== "pending" ? ` · ${({ approved: "zatwierdzona", rejected: "odrzucona", failed: "nie udało się zastosować" } as Record<string, string>)[data.status] ?? data.status}` : ""}
           </div>
           {data.detail_error && !unsupported && <Notice tone="warn">{data.detail_error}</Notice>}
-          {unsupported && <Notice tone="warn">Tego skryptu konwertera nie da się zatwierdzić: aplikacja uruchamia tylko konektory zatwierdzone w Ustawieniach › Konektory. Poproś agenta o konektor albo gotowy plik w formacie finanse.</Notice>}
+          {unsupported && <Notice tone="warn">Tego skryptu konwertera nie da się zatwierdzić: aplikacja uruchamia tylko konektory zatwierdzone w Ustawieniach › Konektory. Poproś agenta o konektor albo gotowy plik w formacie cashU.</Notice>}
           {data.base_changed && <Notice tone="warn">Pliki strategii zmieniły się od propozycji: poproś agenta o nową.</Notice>}
           {data.reason && <div className="thesis" style={{ marginBottom: 12 }}><b>Uzasadnienie agenta:</b> {data.reason}</div>}
           {yamlDiff && <DiffBlock title="Zmiana w strategy.yaml" text={yamlDiff} />}

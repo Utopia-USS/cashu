@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "dashboard",
-      "runtimeExecutable": ".venv/bin/finanse",
+      "runtimeExecutable": ".venv/bin/cashu",
       "runtimeArgs": ["serve"],
       "autoPort": true,
       "port": 8500

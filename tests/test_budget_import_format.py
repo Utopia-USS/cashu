@@ -1,4 +1,4 @@
-"""The budget import format ``finanse-budget-import`` v1 (F10): JSON and CSV variants, one strict
+"""The budget import format ``cashu-budget-import`` v1 (F10): JSON and CSV variants, one strict
 validator with value-free issues, the mapping to ``RawTransaction``, ``Source.CONNECTOR``, dedup
 against bank CSV rows, and the documentation examples. All data is synthetic."""
 
@@ -13,19 +13,19 @@ from pathlib import Path
 import pytest
 from sqlmodel import select
 
-from finanse.core.accounts import get_or_create_account
-from finanse.core.models import Balance, Source
-from finanse.modules.budget import service
-from finanse.modules.budget.ingestion import canonical
-from finanse.modules.budget.ingestion.canonical import (
+from cashu.core.accounts import get_or_create_account
+from cashu.core.models import Balance, Source
+from cashu.modules.budget import service
+from cashu.modules.budget.ingestion import canonical
+from cashu.modules.budget.ingestion.canonical import (
     BudgetIssue,
     IssueKind,
     looks_like_budget_document,
     parse_budget_document,
     validate_budget_document,
 )
-from finanse.modules.budget.ingestion.csv_import import parse_file
-from finanse.modules.budget.models import Transaction
+from cashu.modules.budget.ingestion.csv_import import parse_file
+from cashu.modules.budget.models import Transaction
 
 ROOT = Path(__file__).resolve().parents[1]
 IBAN = "PL99114000000000000000000001"
@@ -34,7 +34,7 @@ SECRET = "ZZSENTINELZZ"  # appears in values only: never in an issue message
 
 def doc(**over) -> dict:
     base = {
-        "format": "finanse-budget-import",
+        "format": "cashu-budget-import",
         "format_version": 1,
         "source": "test_api",
         "account": {"iban": IBAN, "name": "Konto Test", "currency": "PLN"},
@@ -99,7 +99,7 @@ def test_connector_source_marks_the_rows():
 @pytest.mark.parametrize(
     ("mutate", "expected"),
     [
-        (lambda d: d.update(format="finanse-import"), (IssueKind.FILE_FORMAT, None, "format")),
+        (lambda d: d.update(format="cashu-import"), (IssueKind.FILE_FORMAT, None, "format")),
         (lambda d: d.update(format_version=2), (IssueKind.FILE_FORMAT, None, "format_version")),
         (lambda d: d.update(format_version=True), (IssueKind.FILE_FORMAT, None, "format_version")),
         (lambda d: d.pop("account"), (IssueKind.MISSING_VALUE, None, "account")),
@@ -231,7 +231,7 @@ def test_detection():
     assert looks_like_budget_document(as_json(doc()), "statement.json")
     assert looks_like_budget_document(as_json(doc()), "noext")
     assert looks_like_budget_document(CSV_OK.encode(), "x.csv")
-    assert not looks_like_budget_document(b'{"format": "finanse-import"}', "x.json")
+    assert not looks_like_budget_document(b'{"format": "cashu-import"}', "x.json")
     assert not looks_like_budget_document(b"#Data operacji;#Kwota\n", "mbank.csv")
     assert not looks_like_budget_document(b"\x00\x01\x02", "x.bin")
 
@@ -279,7 +279,7 @@ def test_connector_rows_round_trip_and_dedup_against_csv_rows(session, tmp_path)
     assert batch.num_inserted == 2
     # The same two rows as a connector document: same account (by number, any bank), all duplicates.
     d = {
-        "format": "finanse-budget-import",
+        "format": "cashu-budget-import",
         "format_version": 1,
         "source": "mbank_api",
         "account": {"iban": "PL99114000000000000000000001", "currency": "PLN"},

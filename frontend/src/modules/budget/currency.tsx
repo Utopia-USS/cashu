@@ -9,14 +9,15 @@ import { Seg } from "../../ui";
 import type { BudgetCurrencies } from "./api";
 import { getBudgetCurrencies } from "./api";
 import { pickCurrency } from "./logic";
+import { readStored } from "../../core/storage.ts";
 
-const KEY = (slug: string) => `finanse.budget.currency.${slug}`;
+const KEY = (slug: string) => `cashu.budget.currency.${slug}`;
 const chosen = new Map<string, string>(); // this session, per profile
 const listeners = new Set<() => void>();
 
 function remembered(slug: string): string | null {
   if (chosen.has(slug)) return chosen.get(slug)!;
-  try { return localStorage.getItem(KEY(slug)); } catch { return null; }
+  try { return readStored(localStorage, KEY(slug)); } catch { return null; }
 }
 
 function remember(slug: string, currency: string) {

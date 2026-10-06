@@ -10,10 +10,10 @@ import pytest
 from invp_support import AS_OF, HEADER, ROWS, STRATEGY_YAML, canonical_csv, sources
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.modules.investments import api as inv_api
-from finanse.modules.investments.models import InvDecision
-from finanse.modules.investments.service import daily, files, portfolio
+from cashu.core.db import get_session
+from cashu.modules.investments import api as inv_api
+from cashu.modules.investments.models import InvDecision
+from cashu.modules.investments.service import daily, files, portfolio
 
 
 @pytest.fixture
@@ -61,7 +61,7 @@ def test_alert_kinds_and_alert_crud(client):
         f"{base}/alerts",
         json={"kind": "price_abve", "params": {}, "instrument_id": xmpl, "title": "x"},
     )
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "alert_invalid"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "alert_invalid"
     assert 'did you mean "price_above"' in r.json()["detail"]
     r = client.post(
         f"{base}/alerts",
@@ -72,7 +72,7 @@ def test_alert_kinds_and_alert_crud(client):
         f"{base}/alerts",
         json={"kind": "price_above", "params": {"level": 1}, "instrument_id": 999, "title": "x"},
     )
-    assert r.status_code == 404 and r.headers["X-Finanse-Error-Code"] == "not_found"
+    assert r.status_code == 404 and r.headers["X-Cashu-Error-Code"] == "not_found"
     r = client.post(
         f"{base}/alerts",
         json={
@@ -129,7 +129,7 @@ def test_watchlist_api(client):
     assert item["tags"] == ["etf"] and item["held"] is False and item["price"] is None
     again = client.post(f"{base}/watchlist", json={"symbol_or_isin": "vwce.de"})
     assert (
-        again.status_code == 409 and again.headers["X-Finanse-Error-Code"] == "watchlist_conflict"
+        again.status_code == 409 and again.headers["X-Cashu-Error-Code"] == "watchlist_conflict"
     )
     # an instrument the profile holds, by ISIN: no new instrument, flagged held
     held = client.post(f"{base}/watchlist", json={"symbol_or_isin": "US0000000001"}).json()
@@ -218,7 +218,7 @@ def test_decision_undo_within_fifteen_minutes(client):
         row.created_at = row.created_at - dt.timedelta(minutes=16)
         s.add(row)
     r = client.delete(f"{base}/decisions/{late['decision']['id']}")
-    assert r.status_code == 409 and r.headers["X-Finanse-Error-Code"] == "undo_expired"
+    assert r.status_code == 409 and r.headers["X-Cashu-Error-Code"] == "undo_expired"
     other, _ = household(client, "Bartek")
     assert (
         client.delete(f"/api/p/{other}/investments/decisions/{late['decision']['id']}").status_code

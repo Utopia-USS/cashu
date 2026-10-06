@@ -6,9 +6,9 @@ from decimal import Decimal
 
 from sqlmodel import select
 
-from finanse.core.accounts import get_or_create_account
-from finanse.models import Source, Transaction
-from finanse.modules.budget.ingestion.enable_banking.sync import (
+from cashu.core.accounts import get_or_create_account
+from cashu.models import Source, Transaction
+from cashu.modules.budget.ingestion.enable_banking.sync import (
     eb_transaction_to_raw,
     reprocess_open_banking_fields,
 )

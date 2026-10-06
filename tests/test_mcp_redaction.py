@@ -11,9 +11,9 @@ from decimal import Decimal
 
 import pytest
 
-from finanse.core.mcp import labels as L
-from finanse.core.mcp.names import NameGuard, fold, looks_like_person, normalize
-from finanse.core.mcp.redaction import (
+from cashu.core.mcp import labels as L
+from cashu.core.mcp.names import NameGuard, fold, looks_like_person, normalize
+from cashu.core.mcp.redaction import (
     LeakDetected,
     Redactor,
     UnlabelledValue,

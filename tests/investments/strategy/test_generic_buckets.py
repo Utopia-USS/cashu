@@ -7,9 +7,9 @@ import re
 
 import pytest
 
-from finanse.modules.investments.domain import GENERIC_BUCKET_IDS, is_generic_bucket
-from finanse.modules.investments.strategy import load_strategy
-from finanse.modules.investments.templates import STRATEGY_TEMPLATE_NAMES, strategy_template
+from cashu.modules.investments.domain import GENERIC_BUCKET_IDS, is_generic_bucket
+from cashu.modules.investments.strategy import load_strategy
+from cashu.modules.investments.templates import STRATEGY_TEMPLATE_NAMES, strategy_template
 
 
 def _uncommented(text: str) -> list[str]:

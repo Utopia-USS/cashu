@@ -8,22 +8,22 @@ from types import SimpleNamespace
 
 from rules_fixtures import alloc, candidate, context, h, instrument, parse_ok, portfolio, run
 
-from finanse.core.mcp.tools.messages import custom_signal_message
-from finanse.modules.investments.alerts import (
+from cashu.core.mcp.tools.messages import custom_signal_message
+from cashu.modules.investments.alerts import (
     AlertData,
     AlertDefinition,
     AlertKind,
     AlertScope,
     evaluate_alert,
 )
-from finanse.modules.investments.domain import AssetClass
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.domain import AssetClass
+from cashu.modules.investments.rules import (
     AllocationDriftParams,
     AllocationDriftRule,
     CustomRule,
     Fired,
 )
-from finanse.modules.investments.rules.kinds.support import (
+from cashu.modules.investments.rules.kinds.support import (
     bucket_cash_gap_problem,
     bucket_named,
     no_allocation_problem,

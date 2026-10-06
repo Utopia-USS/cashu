@@ -58,8 +58,8 @@ test("proposal summaries and errors", () => {
   "Nowa reguła: w teście wstecznym 0 epizodów");
   assert.equal(proposalSummary({ kind: "custom_rule", summary: "Rule turnover (custom): fired 2x in backtest" }), "Nowa reguła");
   assert.equal(proposalSummary({ kind: "import", summary_code: "import",
-    summary_params: { account: "XTB IKE", importer: "finanse", converter: null, new: 12, duplicates: 0 } }),
-  "Import do XTB IKE (finanse): 12 nowych wierszy");
+    summary_params: { account: "XTB IKE", importer: "cashu", converter: null, new: 12, duplicates: 0 } }),
+  "Import do XTB IKE (cashu): 12 nowych wierszy");
   assert.equal(proposalSummary({ kind: "import", summary_code: "import",
     summary_params: { account: "DIF", converter: "dif_csv", new: null } }),
   "Import do DIF (konwerter dif_csv): konwerter czeka na zatwierdzenie");
@@ -113,7 +113,7 @@ test("F7 R8: relocation has a worker part and an MCP part, each its own line; th
   assert.deepEqual(relocationParts(null), none);
   assert.deepEqual(relocationParts({ worker: null, mcp: null }), none);
   const READD = "Dodaj ponownie serwer MCP w Claude Code (polecenie w Agent AI).";
-  assert.deepEqual(relocationParts({ worker: { reason: "missing", program: "/gone/finanse", expected_program: null, actions: ["worker_reinstall"] }, mcp: null }),
+  assert.deepEqual(relocationParts({ worker: { reason: "missing", program: "/gone/cashu", expected_program: null, actions: ["worker_reinstall"] }, mcp: null }),
     { worker: "Praca w tle wskazuje program, którego już nie ma", mcp: null });
   assert.deepEqual(relocationParts({ worker: null, mcp: { reason: "app_moved", app_moved_from: "/Applications/Old.app", moved_at: null, actions: ["mcp_readd"] } }),
     { worker: null, mcp: `Aplikacja została przeniesiona z /Applications/Old.app. ${READD}` });
@@ -127,7 +127,7 @@ test("F7 R8: relocation has a worker part and an MCP part, each its own line; th
 });
 
 // F7 C2: every strategy issue code the backend can emit, with params as the backend produces them. Codes: the
-// `_TEMPLATES` of src/finanse/modules/investments/strategy/codes.py (`strategy.other` left out: it means "no
+// `_TEMPLATES` of src/cashu/modules/investments/strategy/codes.py (`strategy.other` left out: it means "no
 // template", the English text stays). Params: tests/test_message_codes.py CORPUS plus a few variants run
 // through load_strategy (collected 2026-10-05). Keep in sync when codes.py gains a template.
 const BACKEND_ISSUES = [

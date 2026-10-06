@@ -1,10 +1,10 @@
-# finanse import format (format_version 1)
+# cashU import format (format_version 1)
 
 The canonical file format of the investments module. Any broker export can be converted into it with a
-small custom parser (written by hand or with an LLM); finanse then imports it natively. This document is
+small custom parser (written by hand or with an LLM); cashU then imports it natively. This document is
 the complete specification: a parser that follows it produces files that import without guesswork.
 
-- Format name: `finanse-import`, version `1`.
+- Format name: `cashu-import`, version `1`.
 - Two equivalent variants: **CSV** (`.csv`) and **JSON** (`.json`). Both carry the same records with the
   same field names and the same rules.
 - One file = one broker account. It may hold transactions, a position snapshot and corporate actions.
@@ -12,7 +12,7 @@ the complete specification: a parser that follows it produces files that import 
   cannot be imported until it is fixed. Nothing is silently guessed or dropped.
 
 Other ways in: CSV exports can also be imported without code through a YAML column mapping (the generic
-CSV importer, see `src/finanse/modules/investments/importing/generic_csv_example.yaml`). This document is
+CSV importer, see `src/cashu/modules/investments/importing/generic_csv_example.yaml`). This document is
 only about the canonical format.
 
 ## 1. Conventions
@@ -48,7 +48,7 @@ A single JSON object:
 
 ```json
 {
-  "format": "finanse-import",
+  "format": "cashu-import",
   "format_version": 1,
   "source": "examplebroker",
   "account_hint": "Brokerage account 1",
@@ -58,7 +58,7 @@ A single JSON object:
 
 | Key | Required | Meaning |
 | --- | --- | --- |
-| `format` | yes | Always `"finanse-import"`. |
+| `format` | yes | Always `"cashu-import"`. The pre-rename id `"finanse-import"` (legacy name) is still accepted and deprecated. |
 | `format_version` | yes | Always `1` (number). |
 | `source` | no | See section 3.1. |
 | `account_hint` | no | See section 3.1. |
@@ -73,7 +73,7 @@ Row numbers in error messages: `row 0` is `records[0]`.
 | Field | Format | Meaning |
 | --- | --- | --- |
 | `format_version` | `1` | Version of this specification. CSV: a column, `1` in every row. JSON: top-level number. |
-| `source` | `[a-z][a-z0-9_]*`, max 32 characters | Id of the broker the data came from (e.g. `examplebroker`). Symbols of the file are remembered under this name, so the same ticker from two brokers never gets mixed up. Use the same value for every file from that broker. Default: `finanse`. |
+| `source` | `[a-z][a-z0-9_]*`, max 32 characters | Id of the broker the data came from (e.g. `examplebroker`). Symbols of the file are remembered under this name, so the same ticker from two brokers never gets mixed up. Use the same value for every file from that broker. Default: `cashu` (the deprecated `finanse`, legacy name, means the same and its symbols still match). |
 | `account_hint` | text, max 200 characters | Account number or name from the export; only used to suggest the target account. |
 
 ### 3.2 Record fields
@@ -284,7 +284,7 @@ Notes:
 
 ```json
 {
-  "format": "finanse-import",
+  "format": "cashu-import",
   "format_version": 1,
   "source": "examplebroker",
   "account_hint": "Account 12-3456",
@@ -314,7 +314,7 @@ Notes:
 Validate before importing; validation needs no database and changes nothing:
 
 ```python
-from finanse.modules.investments.importing import validate_import_file
+from cashu.modules.investments.importing import validate_import_file
 
 report = validate_import_file("converted.csv")   # or .json
 print(report.summary())       # counts, then every error and warning with row and field
@@ -325,7 +325,7 @@ assert report.ok               # True when the file can be imported
 importable rows. Each entry has `row` (0-based record index, `None` for file-level problems), a message
 that starts with the field name (`quantity: must be greater than 0`) and a stable `kind` for grouping
 (`invalid_value`, `missing_value`, `unknown_field`, `unmapped_type`, `fx_missing`, `cash_sign`,
-`amount_mismatch`, `missing_instrument`, `missing_quantity`, `unknown_split_ratio`, `file_format`, ...). A CLI command (`finanse
+`amount_mismatch`, `missing_instrument`, `missing_quantity`, `unknown_split_ratio`, `file_format`, ...). A CLI command (`cashu
 investments validate <file>`) comes with the persistence layer.
 
 Checklist for converter authors:
@@ -344,3 +344,7 @@ Checklist for converter authors:
 This is `format_version` 1. Files without a version or with another version are refused. Any change to
 field meanings, required fields or accepted values will come as a new version; the importer will keep
 reading version 1 files.
+
+Before the rename to cashU this format was called `finanse-import` (legacy name). Documents with
+`"format": "finanse-import"` or `source` `finanse` are still read exactly like the new ids; the old
+ids are deprecated, so write `cashu-import` in new converters and connectors.

@@ -4,7 +4,7 @@ api_version: 1
 id: budget-fetch-e2e
 name: E2E Bank API
 version: 0.1.0
-author: finanse e2e
+author: cashU e2e
 description: Synthetic budget fetch connector for the e2e suite.
 module: budget
 kind: fetch

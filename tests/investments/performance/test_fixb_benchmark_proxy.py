@@ -10,15 +10,15 @@ import pytest
 from perf_support import AS_OF, BENCH_STRATEGY, EUR, USD, bench_close, household, sources
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile
-from finanse.modules.investments.domain import AliasNamespace, Currency
-from finanse.modules.investments.models import InvInstrument, InvPriceBar
-from finanse.modules.investments.performance import backfill, service
-from finanse.modules.investments.performance.proxy import reference_instrument
-from finanse.modules.investments.service import daily, portfolio
-from finanse.modules.investments.service import strategy as strategy_files
-from finanse.modules.investments.store.instruments import profile_instrument_ids
+from cashu.core.db import get_session
+from cashu.core.models import Profile
+from cashu.modules.investments.domain import AliasNamespace, Currency
+from cashu.modules.investments.models import InvInstrument, InvPriceBar
+from cashu.modules.investments.performance import backfill, service
+from cashu.modules.investments.performance.proxy import reference_instrument
+from cashu.modules.investments.service import daily, portfolio
+from cashu.modules.investments.service import strategy as strategy_files
+from cashu.modules.investments.store.instruments import profile_instrument_ids
 
 
 @pytest.fixture

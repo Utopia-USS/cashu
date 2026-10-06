@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Synthetic demo data for finanse: two invented profiles seeded through the app's service layer.
+"""Synthetic demo data for cashU: two invented profiles seeded through the app's service layer.
 
-    .venv/bin/python scripts/demo_data.py --data-dir /tmp/finanse-demo
-    FINANSE_DATA_DIR=/tmp/finanse-demo .venv/bin/finanse serve
+    .venv/bin/python scripts/demo_data.py --data-dir /tmp/cashu-demo
+    CASHU_DATA_DIR=/tmp/cashu-demo .venv/bin/cashu serve
 
 Everything is invented: profile names ("Demo Anna", "Demo Piotr"), account numbers (a fake "99"
 prefix), merchants, instruments (ISINs with "DEMO" in them), prices and FX rates (a deterministic
@@ -14,12 +14,12 @@ What each profile gets: budget accounts with categorised transactions (salary, r
 subscriptions, internal transfers to savings, a cash withdrawal into the cash pool) and a cushion
 setting for the month close; a loan (Anna: a mortgage, Piotr: a car loan); assets (Anna: a flat and a
 car, Piotr: a car), with depreciation; a brokerage account filled through the import path (a
-canonical ``finanse-import`` CSV, preview + commit) with synthetic price bars and FX rates written
+canonical ``cashu-import`` CSV, preview + commit) with synthetic price bars and FX rates written
 through the market data store; a strategy from the passive ETF template; watchlist items; owner and
 agent alerts; theses, a finished research run with notes; a planned deposit; a decision journal
 entry; one daily check (offline, on the stored data). Anna also gets a pending agent import proposal.
 
-Safety: ``--data-dir`` is required and becomes ``FINANSE_DATA_DIR`` before finanse is imported; the
+Safety: ``--data-dir`` is required and becomes ``CASHU_DATA_DIR`` before cashU is imported; the
 platform default data dir (the real one) is refused unless ``--force``; the database must live inside
 the given data dir. Idempotent: every section checks whether its data is already there, so a second
 run on the same day changes nothing (a later day only adds that day's price bars and FX rates).
@@ -41,7 +41,7 @@ from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
-# Synthetic market (pure: no finanse imports at module level)
+# Synthetic market (pure: no cashU imports at module level)
 # --------------------------------------------------------------------------- #
 
 EPOCH = dt.date(2020, 1, 6)  # a Monday; the random walks start here
@@ -205,9 +205,9 @@ def fx_on(currency: str, day: dt.date) -> Decimal:
 
 def synthetic_sources():
     """MarketSources over the synthetic generator (``daily.default_sources`` stand-in for tests)."""
-    from finanse.modules.investments.domain import Currency, FxRate, PriceBar
-    from finanse.modules.investments.market import PriceHistory, PriceSource
-    from finanse.modules.investments.service.daily import MarketSources
+    from cashu.modules.investments.domain import Currency, FxRate, PriceBar
+    from cashu.modules.investments.market import PriceHistory, PriceSource
+    from cashu.modules.investments.service.daily import MarketSources
 
     class DemoPrices(PriceSource):
         @property
@@ -667,7 +667,7 @@ def strategy_yaml(template: str, plan: Plan) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Seeding (finanse is imported only after FINANSE_DATA_DIR is set)
+# Seeding (cashU is imported only after CASHU_DATA_DIR is set)
 # --------------------------------------------------------------------------- #
 
 
@@ -682,8 +682,8 @@ class Seeder:
 
     # -- profile ---------------------------------------------------------------------------- #
     def profile(self, plan: Plan):
-        from finanse.core import profiles
-        from finanse.core.db import get_session
+        from cashu.core import profiles
+        from cashu.core.db import get_session
 
         with get_session() as s:
             row = next((p for p in profiles.list_profiles(s) if p.name == plan.name), None)
@@ -698,14 +698,14 @@ class Seeder:
     def budget(self, plan: Plan, profile) -> None:
         from sqlmodel import select
 
-        from finanse.core import accounts
-        from finanse.core.db import get_session
-        from finanse.models import AccountType, Source, Transaction
-        from finanse.modules.budget import cash
-        from finanse.modules.budget import service as budget
-        from finanse.modules.budget import settings as budget_settings
-        from finanse.modules.budget.ingestion.normalize import RawTransaction
-        from finanse.modules.budget.ingestion.transfers import match_internal_transfers
+        from cashu.core import accounts
+        from cashu.core.db import get_session
+        from cashu.models import AccountType, Source, Transaction
+        from cashu.modules.budget import cash
+        from cashu.modules.budget import service as budget
+        from cashu.modules.budget import settings as budget_settings
+        from cashu.modules.budget.ingestion.normalize import RawTransaction
+        from cashu.modules.budget.ingestion.transfers import match_internal_transfers
 
         pid = profile.id
         with get_session() as s:
@@ -955,11 +955,11 @@ class Seeder:
 
     # -- loans and assets ------------------------------------------------------------------- #
     def loans_assets(self, plan: Plan, profile) -> None:
-        from finanse.core import accounts
-        from finanse.core.db import get_session
-        from finanse.models import AccountType
-        from finanse.modules.assets import service as assets
-        from finanse.modules.loans import service as loans
+        from cashu.core import accounts
+        from cashu.core.db import get_session
+        from cashu.models import AccountType
+        from cashu.modules.assets import service as assets
+        from cashu.modules.loans import service as loans
 
         pid = profile.id
         with get_session() as s:
@@ -1012,11 +1012,11 @@ class Seeder:
 
     # -- investments ------------------------------------------------------------------------ #
     def brokerage(self, plan: Plan, profile) -> int:
-        from finanse.core.db import get_session
-        from finanse.modules.investments.importing import ImportFile
-        from finanse.modules.investments.service import accounts, imports
-        from finanse.modules.investments.store import instruments
-        from finanse.modules.investments.store import transactions as txn_store
+        from cashu.core.db import get_session
+        from cashu.modules.investments.importing import ImportFile
+        from cashu.modules.investments.service import accounts, imports
+        from cashu.modules.investments.store import instruments
+        from cashu.modules.investments.store import transactions as txn_store
 
         pid = profile.id
         with get_session() as s:
@@ -1073,10 +1073,10 @@ class Seeder:
         return account_id
 
     def strategy(self, plan: Plan, profile) -> None:
-        from finanse.core.db import get_session
-        from finanse.modules.investments.service import files
-        from finanse.modules.investments.service import strategy as strategy_service
-        from finanse.modules.investments.templates import strategy_template
+        from cashu.core.db import get_session
+        from cashu.modules.investments.service import files
+        from cashu.modules.investments.service import strategy as strategy_service
+        from cashu.modules.investments.templates import strategy_template
 
         if files.strategy_yaml_path(profile.slug).exists():
             self.note(profile.slug, "strategy", "exists")
@@ -1094,10 +1094,10 @@ class Seeder:
         self.note(profile.slug, "strategy", "created (passive_etf template, demo targets)")
 
     def watchlist(self, plan: Plan, profile) -> None:
-        from finanse.core.db import get_session
-        from finanse.modules.investments.service import watchlist
-        from finanse.modules.investments.store import alerts as alert_store
-        from finanse.modules.investments.store import instruments
+        from cashu.core.db import get_session
+        from cashu.modules.investments.service import watchlist
+        from cashu.modules.investments.store import alerts as alert_store
+        from cashu.modules.investments.store import instruments
 
         with get_session() as s:
             prof = s.get(type(profile), profile.id)
@@ -1120,10 +1120,10 @@ class Seeder:
     def market_data(self, profile) -> None:
         """Synthetic bars for every instrument the profile references (held and watched) and the
         FX rates of their currencies, through the market data store."""
-        from finanse.core.db import get_session
-        from finanse.core.models import utcnow
-        from finanse.modules.investments.domain import Currency, FxRate, PriceBar
-        from finanse.modules.investments.store import convert, instruments, market
+        from cashu.core.db import get_session
+        from cashu.core.models import utcnow
+        from cashu.modules.investments.domain import Currency, FxRate, PriceBar
+        from cashu.modules.investments.store import convert, instruments, market
 
         last = last_bar_day(self.today)
         start = add_months(self.today, -26, 1)
@@ -1177,18 +1177,18 @@ class Seeder:
     def _fx_dates(s, code: str) -> set[dt.date]:
         from sqlmodel import select
 
-        from finanse.modules.investments.models import InvFxRate
+        from cashu.modules.investments.models import InvFxRate
 
         return set(s.exec(select(InvFxRate.date).where(InvFxRate.quote == code)).all())
 
     def theses_alerts(self, plan: Plan, profile) -> None:
         from sqlmodel import select
 
-        from finanse.core.db import get_session
-        from finanse.modules.investments.alerts.catalog import AlertSource
-        from finanse.modules.investments.models import InvAlert, InvInstrument
-        from finanse.modules.investments.service import alerts as alert_service
-        from finanse.modules.investments.store import journal
+        from cashu.core.db import get_session
+        from cashu.modules.investments.alerts.catalog import AlertSource
+        from cashu.modules.investments.models import InvAlert, InvInstrument
+        from cashu.modules.investments.service import alerts as alert_service
+        from cashu.modules.investments.store import journal
 
         pid = profile.id
 
@@ -1253,9 +1253,9 @@ class Seeder:
     def daily_check(self, profile) -> None:
         from sqlmodel import select
 
-        from finanse.core.db import get_session
-        from finanse.modules.investments.models import InvRuleRun
-        from finanse.modules.investments.service import daily
+        from cashu.core.db import get_session
+        from cashu.modules.investments.models import InvRuleRun
+        from cashu.modules.investments.service import daily
 
         with get_session() as s:
             if s.exec(select(InvRuleRun.id).where(InvRuleRun.profile_id == profile.id)).first():
@@ -1270,11 +1270,11 @@ class Seeder:
     def research(self, plan: Plan, profile) -> None:
         from sqlmodel import select
 
-        from finanse.core.db import get_session
-        from finanse.core.models import utcnow
-        from finanse.modules.investments.models import InvResearchRun
-        from finanse.modules.investments.research import service
-        from finanse.modules.investments.research.validation import validate_note, validate_scope
+        from cashu.core.db import get_session
+        from cashu.core.models import utcnow
+        from cashu.modules.investments.models import InvResearchRun
+        from cashu.modules.investments.research import service
+        from cashu.modules.investments.research.validation import validate_note, validate_scope
 
         with get_session() as s:
             if s.exec(
@@ -1378,10 +1378,10 @@ class Seeder:
     def journal_and_plans(self, plan: Plan, profile, account_id: int) -> None:
         from sqlmodel import select
 
-        from finanse.core.db import get_session
-        from finanse.modules.investments.models import InvInstrument
-        from finanse.modules.investments.service import planned
-        from finanse.modules.investments.store import journal
+        from cashu.core.db import get_session
+        from cashu.modules.investments.models import InvInstrument
+        from cashu.modules.investments.service import planned
+        from cashu.modules.investments.store import journal
 
         pid = profile.id
         with get_session() as s:
@@ -1418,11 +1418,11 @@ class Seeder:
             self.note(profile.slug, "decision", "created")
 
     def proposal(self, plan: Plan, profile, account_id: int) -> None:
-        from finanse.core import proposals
-        from finanse.core.db import get_session
-        from finanse.core.mcp.registry import ToolContext
-        from finanse.core.mcp.tools import investments_proposals
-        from finanse.modules.investments.service import files
+        from cashu.core import proposals
+        from cashu.core.db import get_session
+        from cashu.core.mcp.registry import ToolContext
+        from cashu.core.mcp.tools import investments_proposals
+        from cashu.modules.investments.service import files
 
         if not plan.proposal:
             return
@@ -1465,7 +1465,7 @@ class Seeder:
 
 
 def _check_target(data_dir: Path, force: bool) -> None:
-    from finanse.core import paths
+    from cashu.core import paths
 
     real = paths.default_data_dir().expanduser().resolve()
     if data_dir == real and not force:
@@ -1475,19 +1475,19 @@ def _check_target(data_dir: Path, force: bool) -> None:
         )
     if data_dir == paths.LEGACY_DIR.resolve():
         raise SystemExit("refusing to write demo data into the repository data/ folder")
-    from finanse import db
+    from cashu import db
 
     file = db.sqlite_file(str(db.engine.url))
     if file is None or not file.resolve().is_relative_to(data_dir):
         raise SystemExit(
             f"the database ({db.engine.url}) is not inside {data_dir}; unset "
-            "FINANSE_DATABASE_URL (environment or .env) before seeding demo data"
+            "CASHU_DATABASE_URL (environment or .env) before seeding demo data"
         )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--data-dir", required=True, help="Target data dir (FINANSE_DATA_DIR).")
+    parser.add_argument("--data-dir", required=True, help="Target data dir (CASHU_DATA_DIR).")
     parser.add_argument(
         "--force", action="store_true", help="Allow the platform default data dir (the real one)."
     )
@@ -1500,14 +1500,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     data_dir = Path(args.data_dir).expanduser().resolve()
-    os.environ["FINANSE_DATA_DIR"] = str(data_dir)
-    os.environ.pop("FINANSE_DATABASE_URL", None)
-    if "finanse" in sys.modules:
-        raise SystemExit("demo_data must be run before finanse is imported (fresh interpreter)")
+    os.environ["CASHU_DATA_DIR"] = str(data_dir)
+    os.environ.pop("CASHU_DATABASE_URL", None)
+    if "cashu" in sys.modules:
+        raise SystemExit("demo_data must be run before cashu is imported (fresh interpreter)")
     _check_target(data_dir, args.force)
 
-    from finanse.core import paths
-    from finanse.core.db import init_db
+    from cashu.core import paths
+    from cashu.core.db import init_db
 
     paths.ensure_private_dir(data_dir)
     init_db()

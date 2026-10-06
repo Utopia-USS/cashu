@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 from rules_fixtures import context, h, instrument, portfolio
 
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.rules import (
     BUILT_IN_KINDS,
     Fired,
     NotFired,
@@ -18,7 +18,7 @@ from finanse.modules.investments.rules import (
     default_polarity,
     polarity_rank,
 )
-from finanse.modules.investments.strategy import IssueSeverity, load_strategy
+from cashu.modules.investments.strategy import IssueSeverity, load_strategy
 
 EXPECTED = {
     "allocation_drift": SignalPolarity.NEUTRAL,

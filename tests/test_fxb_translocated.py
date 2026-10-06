@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import sys
 
-from finanse.core import runtime
+from cashu.core import runtime
 
-APP_EXE = "/Applications/Finanse.app/Contents/MacOS/finanse"
-MOVED_EXE = "/private/var/folders/x/T/AppTranslocation/ABC/d/Finanse.app/Contents/MacOS/finanse"
+APP_EXE = "/Applications/cashU.app/Contents/MacOS/cashu"
+MOVED_EXE = "/private/var/folders/x/T/AppTranslocation/ABC/d/cashU.app/Contents/MacOS/cashu"
 
 
 def test_translocated_flag_on_mcp_and_module_setup(api_empty, monkeypatch, tmp_path):

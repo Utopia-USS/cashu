@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
 
-from finanse.core import migrations
+from cashu.core import migrations
 
 
 def create_upstream_schema(path: Path) -> None:

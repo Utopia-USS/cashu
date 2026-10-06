@@ -20,17 +20,17 @@ from rules_fixtures import (
     portfolio,
 )
 
-from finanse.modules.investments.domain import AssetClass, CashHistoryGap, Currency
-from finanse.modules.investments.rules import ContributionPlan, DataQualityPolicy, InstrumentFilter
-from finanse.modules.investments.rules.expr import (
+from cashu.modules.investments.domain import AssetClass, CashHistoryGap, Currency
+from cashu.modules.investments.rules import ContributionPlan, DataQualityPolicy, InstrumentFilter
+from cashu.modules.investments.rules.expr import (
     METRICS,
     MetricRef,
     Scope,
     Unknown,
     names_in_scope,
 )
-from finanse.modules.investments.rules.expr.metrics import MetricEnv
-from finanse.modules.investments.rules.kinds.support import positions_by_instrument
+from cashu.modules.investments.rules.expr.metrics import MetricEnv
+from cashu.modules.investments.rules.kinds.support import positions_by_instrument
 
 ETF = instrument("VWCE", asset_class=AssetClass.ETF, tags=("core", "global_equity"), mic="xetr")
 PKN = instrument("PKN", tags=("satellite",))
@@ -84,7 +84,7 @@ def approx(result, expected: str) -> bool:
 
 def test_every_catalog_metric_is_documented_and_covered_here():
     doc = (
-        Path(__file__).parents[3] / "src/finanse/modules/investments/rules/expr/EXPRESSIONS.md"
+        Path(__file__).parents[3] / "src/cashu/modules/investments/rules/expr/EXPRESSIONS.md"
     ).read_text(encoding="utf-8")
     source = Path(__file__).read_text(encoding="utf-8")
     for name, spec in METRICS.items():

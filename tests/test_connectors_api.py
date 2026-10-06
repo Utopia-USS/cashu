@@ -17,11 +17,11 @@ from connector_support import (  # noqa: F401  (fixture)
 )
 from sqlmodel import select
 
-from finanse.core import secrets
-from finanse.core.connectors import manifest as mf
-from finanse.core.connectors import runner, service
-from finanse.core.connectors.models import Connector, ConnectorBinding, ConnectorRun
-from finanse.core.db import get_session
+from cashu.core import secrets
+from cashu.core.connectors import manifest as mf
+from cashu.core.connectors import runner, service
+from cashu.core.connectors.models import Connector, ConnectorBinding, ConnectorRun
+from cashu.core.db import get_session
 
 pytestmark = needs_python3
 
@@ -106,15 +106,15 @@ def test_file_viewer(client, tmp_path):
     assert client.get("/api/connectors/test-conn/files/data.bin").status_code == 415
     assert client.get("/api/connectors/test-conn/files/big.txt").status_code == 413
     assert client.get("/api/connectors/test-conn/files/nope.py").status_code == 404
-    assert client.get("/api/connectors/test-conn/files/..%2F..%2Ffinanse.db").status_code == 404
+    assert client.get("/api/connectors/test-conn/files/..%2F..%2Fcashu.db").status_code == 404
     assert client.get("/api/connectors/nope/files/main.py").status_code == 404
 
 
 def test_routes_need_the_token(api_empty, tmp_path):
     from fastapi.testclient import TestClient
 
-    from finanse.api.app import app
-    from finanse.core import security
+    from cashu.api.app import app
+    from cashu.core import security
 
     raw = TestClient(app, base_url=security.get_config().base_url)
     assert raw.get("/api/connectors").status_code in (401, 403)
@@ -132,7 +132,7 @@ def test_approve_pins_hash_and_interpreter_409_on_mismatch(client, tmp_path):
     wrong_sha = client.post("/api/connectors/test-conn/approve", json={
         "content_sha256": "0" * 64, "interpreter_path": d["interpreter_path"]})
     assert wrong_sha.status_code == 409
-    assert wrong_sha.headers["X-Finanse-Error-Code"] == "connector_changed"
+    assert wrong_sha.headers["X-Cashu-Error-Code"] == "connector_changed"
     wrong_interp = client.post("/api/connectors/test-conn/approve", json={
         "content_sha256": d["content_sha256"], "interpreter_path": "/usr/bin/false"})
     assert wrong_interp.status_code == 409
@@ -289,16 +289,16 @@ def test_binding_crud_and_write_only_secrets(client, tmp_path, memory_keyring): 
     assert b["secrets_set"] == ["api_key"] and b["params"] == {"start": "2026-01-01"}
     assert b["auto_commit"] is False and b["has_cursor"] is False
     name = secrets.connector_secret_name("test-fetch", slug, b["id"], "api_key")
-    assert memory_keyring.store[("finanse", name)] == SECRET
+    assert memory_keyring.store[("cashu", name)] == SECRET
 
     dup = client.post(base, json={"account_id": account, "connector_id": "test-fetch"})
     assert dup.status_code == 409
-    assert dup.headers["X-Finanse-Error-Code"] == "connector_binding_exists"
+    assert dup.headers["X-Cashu-Error-Code"] == "connector_binding_exists"
 
     upd = client.put(f"{base}/{b['id']}", json={"auto_commit": True, "params": {}})
     assert upd.status_code == 200 and upd.json()["auto_commit"] is True and upd.json()["params"] == {}
     bad = client.put(f"{base}/{b['id']}", json={"params": {"start": "01.01.2026"}})
-    assert bad.status_code == 422 and bad.headers["X-Finanse-Error-Code"] == "connector_params"
+    assert bad.status_code == 422 and bad.headers["X-Cashu-Error-Code"] == "connector_params"
     assert bad.json()["detail"]["params"] == {"start": "must be a date YYYY-MM-DD"}
     assert client.put(f"{base}/{b['id']}", json={"params": {"nope": 1}}).status_code == 422
 
@@ -327,7 +327,7 @@ def test_binding_rules(client, tmp_path):
     # a connector the owner has not approved cannot be bound (design C3)
     pending = client.post(base, json={"account_id": account, "connector_id": "test-fetch"})
     assert pending.status_code == 422
-    assert pending.headers["X-Finanse-Error-Code"] == "connector_not_approved"
+    assert pending.headers["X-Cashu-Error-Code"] == "connector_not_approved"
     approve(client, "test-fetch")
     assert client.post(base, json={"account_id": 99999, "connector_id": "test-fetch"}).status_code == 404
     assert client.post(base, json={"account_id": account, "connector_id": "nope"}).status_code == 404
@@ -396,7 +396,7 @@ def test_run_fetch_seam_does_not_save_the_cursor(client, tmp_path):
     b = client.post(f"/api/p/{slug}/connectors/bindings", json={
         "account_id": account, "connector_id": "test-fetch"}).json()
     with get_session() as s:
-        from finanse.core import profiles
+        from cashu.core import profiles
 
         profile = profiles.get_by_slug(s, slug)
     out = service.run_fetch(profile, b["id"], sandbox=NoSandbox())

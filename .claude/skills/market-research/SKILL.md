@@ -1,6 +1,6 @@
 ---
 name: market-research
-description: Market research and model recommendations for the finanse investments module through the profile's finanse MCP server. Reviews held positions, watchlist, strategy, portfolio construction and thesis health; writes sourced Polish research notes, then saves a current buy/hold/reduce/exit recommendation for each covered instrument. Never places trades or predicts prices.
+description: Market research and model recommendations for the cashU investments module through the profile's cashU MCP server. Reviews held positions, watchlist, strategy, portfolio construction and thesis health; writes sourced Polish research notes, then saves a current buy/hold/reduce/exit recommendation for each covered instrument. Never places trades or predicts prices.
 argument-hint: "[symbol | ISIN | temat | tezy [symbol] | rutyna]"
 ---
 
@@ -36,9 +36,9 @@ What they mean here:
 - Never imply that saving a recommendation records a decision or books a transaction.
 - Public web pages only: no logins, no paywall or bot-protection workarounds; a blocked source is
   skipped and counted.
-- The profile's data reaches you only through its finanse MCP server, logged in Ustawienia > Agent AI.
-  Never read the data dir, `finanse.db`, backups, exports or statements (the workspace denies it; never
-  look for a way around a denial), and never run `finanse` commands that print positions, balances or
+- The profile's data reaches you only through its cashU MCP server, logged in Ustawienia > Agent AI.
+  Never read the data dir, `cashu.db`, backups, exports or statements (the workspace denies it; never
+  look for a way around a denial), and never run `cashu` commands that print positions, balances or
   transactions.
 
 ## Privacy level
@@ -69,7 +69,7 @@ time, never a list of the profile's holdings with weights.
 | `add_alert(...)` | step 7: a proposed `range_breakout` / `volume_spike` alert (`references/alerts.md`) |
 | `add_to_watchlist` | on demand only, when the user explicitly asks (`references/candidates.md`) |
 
-If the research tools are missing, the finanse app is older than this skill: tell the user to update
+If the research tools are missing, the cashU app is older than this skill: tell the user to update
 the app and click `Aktualizuj workspace` (Ustawienia > Agent AI), and stop.
 
 ## Limits
@@ -110,7 +110,7 @@ needs a decision and name it in the final summary.
 ## The weekly routine, step by step
 
 **0. Preflight.** You should be in the profile's workspace (its `CLAUDE.md` names the profile, its
-`.mcp.json` holds one finanse server). If several finanse servers are connected, ask which profile in
+`.mcp.json` holds one cashU server). If several cashU servers are connected, ask which profile in
 an interactive session, or stop with one line in an unattended one; never mix profiles. Call
 `profile_overview`: investments must be enabled, note the privacy level. If the module is off or the
 server is not connected, stop and say why.
@@ -242,7 +242,7 @@ the user's explicit approval (`references/scheduling.md`): recommended a local r
 desktop app (Code > Routines > New routine > Local, weekly, Saturday 07:00, instructions
 `/market-research rutyna`, folder = workspace); for terminal users a LaunchAgent running
 `cd <workspace> && claude -p "/market-research rutyna"` that the user installs. Not `/schedule` (cloud
-routines cannot reach the local finanse server) and not `/loop` (session only). Show the plan, wait
+routines cannot reach the local cashU server) and not `/loop` (session only). Show the plan, wait
 for a clear yes, never create a schedule as a side effect.
 
 ## References

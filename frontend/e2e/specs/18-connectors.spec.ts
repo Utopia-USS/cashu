@@ -24,12 +24,12 @@ const PYTHON = join(REPO, ".venv", "bin", "python");
 function pyEnv(): NodeJS.ProcessEnv {
   const backend = process.env.E2E_PYTHON_KEYRING_BACKEND;
   if (!backend) throw new Error("E2E_PYTHON_KEYRING_BACKEND is not set (global setup did not run)");
-  return { ...process.env, FINANSE_DATA_DIR: process.env.E2E_DATA_DIR, PYTHON_KEYRING_BACKEND: backend, PYTHONPATH: process.env.E2E_PYTHONPATH };
+  return { ...process.env, CASHU_DATA_DIR: process.env.E2E_DATA_DIR, PYTHON_KEYRING_BACKEND: backend, PYTHONPATH: process.env.E2E_PYTHONPATH };
 }
 
 function cli(...args: string[]) {
-  const r = spawnSync(PYTHON, ["-c", "from finanse.cli import app; app()", ...args], { env: pyEnv(), encoding: "utf-8" });
-  if (r.status !== 0) throw new Error(`finanse ${args.join(" ")} failed:\n${r.stdout}\n${r.stderr}`);
+  const r = spawnSync(PYTHON, ["-c", "from cashu.cli import app; app()", ...args], { env: pyEnv(), encoding: "utf-8" });
+  if (r.status !== 0) throw new Error(`cashu ${args.join(" ")} failed:\n${r.stdout}\n${r.stderr}`);
   return r.stdout;
 }
 
@@ -38,7 +38,7 @@ function txnCount(slug: string): number {
   const code = "import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); print(c.execute("
     + "'select count(*) from transactions t join accounts a on a.id = t.account_id join profiles p on p.id = a.profile_id where p.slug = ?', "
     + "(sys.argv[2],)).fetchone()[0])";
-  const r = spawnSync(PYTHON, ["-c", code, join(process.env.E2E_DATA_DIR!, "finanse.db"), slug], { encoding: "utf-8" });
+  const r = spawnSync(PYTHON, ["-c", code, join(process.env.E2E_DATA_DIR!, "cashu.db"), slug], { encoding: "utf-8" });
   if (r.status !== 0) throw new Error(`txn count failed:\n${r.stderr}`);
   return Number(r.stdout.trim());
 }
@@ -46,12 +46,12 @@ function txnCount(slug: string): number {
 const hashOf = async (d: Locator) => (await d.locator("code", { hasText: /^sha256 / }).first().innerText()).trim();
 
 test.beforeAll(async ({ request }) => {
-  const sys = await request.get(`${serverUrl()}/api/system`, { headers: { "X-Finanse-Token": process.env.E2E_TOKEN ?? "" } });
+  const sys = await request.get(`${serverUrl()}/api/system`, { headers: { "X-Cashu-Token": process.env.E2E_TOKEN ?? "" } });
   const sandbox = ((await sys.json()) as { connectors?: { sandbox?: boolean } }).connectors?.sandbox;
   test.skip(sandbox === false, "connectors run only under the macOS sandbox");
   cli("connectors", "add", EXAMPLE);
   const r = await request.post(`${serverUrl()}/api/profiles`, {
-    headers: { "X-Finanse-Token": process.env.E2E_TOKEN ?? "" },
+    headers: { "X-Cashu-Token": process.env.E2E_TOKEN ?? "" },
     data: { name: PROFILE, base_currency: "PLN", modules: ["budget"], mcp_privacy: "strict" },
   });
   expect(r.status(), await r.text()).toBe(201);

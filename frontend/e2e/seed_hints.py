@@ -1,5 +1,5 @@
 """Extra demo facts for the strategy-hint / recommendation-freshness e2e spec (16-strategy-hints), written
-through the service layer into the running e2e database (FINANSE_DATA_DIR = the global setup's temp dir).
+through the service layer into the running e2e database (CASHU_DATA_DIR = the global setup's temp dir).
 Idempotent: a second call finds the DMTC thesis and does nothing.
 
 - demo-piotr GLBA (held, model recommendation `hold`): a thesis + a note that invalidates it, stored after
@@ -8,7 +8,7 @@ Idempotent: a second call finds the DMTC thesis and does nothing.
   hint `thesis_fulfilled`, the note tagged `predates_thesis`, the summary row `health_predates_thesis`.
 - demo-anna DMSE (watched, no recommendation): a triggered alert -> hint `alert_triggered`.
 
-    FINANSE_DATA_DIR=<tmp> .venv/bin/python frontend/e2e/seed_hints.py
+    CASHU_DATA_DIR=<tmp> .venv/bin/python frontend/e2e/seed_hints.py
 """
 
 from __future__ import annotations
@@ -18,14 +18,14 @@ import os
 
 from sqlmodel import select
 
-from finanse.core import profiles
-from finanse.core.db import get_session
-from finanse.core.models import utcnow
-from finanse.modules.investments.models import InvAlert, InvInstrument
-from finanse.modules.investments.research import service as research
-from finanse.modules.investments.research.validation import validate_note, validate_scope
-from finanse.modules.investments.service import alerts as alert_service
-from finanse.modules.investments.store import journal
+from cashu.core import profiles
+from cashu.core.db import get_session
+from cashu.core.models import utcnow
+from cashu.modules.investments.models import InvAlert, InvInstrument
+from cashu.modules.investments.research import service as research
+from cashu.modules.investments.research.validation import validate_note, validate_scope
+from cashu.modules.investments.service import alerts as alert_service
+from cashu.modules.investments.store import journal
 
 def _profile(s, slug: str):
     return next(p for p in profiles.list_profiles(s) if p.slug == slug)
@@ -59,8 +59,8 @@ def _thesis(text: str) -> dict:
 
 
 def main() -> None:
-    if not os.environ.get("FINANSE_DATA_DIR"):
-        raise SystemExit("FINANSE_DATA_DIR must point at the e2e data dir")
+    if not os.environ.get("CASHU_DATA_DIR"):
+        raise SystemExit("CASHU_DATA_DIR must point at the e2e data dir")
     with get_session() as s:
         piotr = _profile(s, "demo-piotr")
         anna = _profile(s, "demo-anna")

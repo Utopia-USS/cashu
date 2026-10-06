@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime as dt
 from itertools import pairwise
 
-from finanse.modules.investments.research.scoring import (
+from cashu.modules.investments.research.scoring import (
     HEALTH_ORDER,
     Direction,
     Health,

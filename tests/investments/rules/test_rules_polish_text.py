@@ -19,28 +19,28 @@ from rules_fixtures import (
     skip_reason,
 )
 
-from finanse.core.mcp import labels as L
-from finanse.core.mcp.redaction import Redactor
-from finanse.core.mcp.tools.messages import custom_signal_message
-from finanse.modules.investments.alerts import (
+from cashu.core.mcp import labels as L
+from cashu.core.mcp.redaction import Redactor
+from cashu.core.mcp.tools.messages import custom_signal_message
+from cashu.modules.investments.alerts import (
     AlertData,
     AlertDefinition,
     AlertKind,
     AlertScope,
     evaluate_alert,
 )
-from finanse.modules.investments.domain import AssetClass
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.domain import AssetClass
+from cashu.modules.investments.rules import (
     AllocationDriftParams,
     AllocationDriftRule,
     CustomRule,
     Fired,
     Skipped,
 )
-from finanse.modules.investments.rules.expr import Scope, compile_expression
-from finanse.modules.investments.rules.expr.evaluator import evaluate
-from finanse.modules.investments.rules.expr.metrics import MetricEnv
-from finanse.modules.investments.rules.kinds.support import (
+from cashu.modules.investments.rules.expr import Scope, compile_expression
+from cashu.modules.investments.rules.expr.evaluator import evaluate
+from cashu.modules.investments.rules.expr.metrics import MetricEnv
+from cashu.modules.investments.rules.kinds.support import (
     days_phrase,
     format_amount,
     format_decimal,

@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from finanse.core import paths
-from finanse.core.worker import scheduler as sched
-from finanse.core.worker.notifier import CommandResult
-from finanse.core.worker.schedule import Schedule, ScheduleError
+from cashu.core import paths
+from cashu.core.worker import scheduler as sched
+from cashu.core.worker.notifier import CommandResult
+from cashu.core.worker.schedule import Schedule, ScheduleError
 
 
 class FakeLaunchctl:
@@ -39,7 +39,7 @@ class FakeLaunchctl:
 
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch) -> Path:
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
     return (tmp_path / "data").resolve()
 
 
@@ -50,7 +50,7 @@ def launchd(tmp_path, data_dir):
     return sched.LaunchdScheduler(agents_dir=agents, runner=fake, uid=501), fake, agents
 
 
-PROGRAM = ["/opt/finanse/.venv/bin/finanse"]
+PROGRAM = ["/opt/cashu/.venv/bin/cashu"]
 
 
 # --------------------------------------------------------------------------- #
@@ -92,17 +92,17 @@ def test_plist_content(launchd, data_dir):
     env = plist["EnvironmentVariables"]
     assert "/opt/homebrew/bin" in env["PATH"].split(":") and "/usr/bin" in env["PATH"]
     # the explicit data dir is pinned, so the agent uses the same database
-    assert env["FINANSE_DATA_DIR"] == str(data_dir)
+    assert env["CASHU_DATA_DIR"] == str(data_dir)
 
 
 def test_plist_does_not_pin_the_platform_default_data_dir(launchd, monkeypatch):
-    """Without FINANSE_DATA_DIR (e.g. legacy repo data/ mode) the agent must resolve the data
+    """Without CASHU_DATA_DIR (e.g. legacy repo data/ mode) the agent must resolve the data
     dir itself; pinning the default would switch it to another database."""
     scheduler, _fake, _ = launchd
-    monkeypatch.delenv("FINANSE_DATA_DIR")
-    monkeypatch.setattr(paths, "default_data_dir", lambda: Path("/nonexistent/finanse-test"))
+    monkeypatch.delenv("CASHU_DATA_DIR")
+    monkeypatch.setattr(paths, "default_data_dir", lambda: Path("/nonexistent/cashu-test"))
     plist = scheduler.plist(Schedule(), PROGRAM)
-    assert "FINANSE_DATA_DIR" not in plist["EnvironmentVariables"]
+    assert "CASHU_DATA_DIR" not in plist["EnvironmentVariables"]
 
 
 def test_install_writes_the_agent_and_bootstraps_it(launchd, data_dir):
@@ -180,23 +180,23 @@ def test_default_agents_dir_is_redirected_in_tests(tmp_path):
 
 
 def test_entry_point_resolution(tmp_path, monkeypatch):
-    from finanse.config import settings
+    from cashu.config import settings
 
     monkeypatch.setattr(settings, "worker_program", None)
-    assert sched.entry_point("/Applications/finanse.app/Contents/MacOS/finanse") == [
-        "/Applications/finanse.app/Contents/MacOS/finanse"
+    assert sched.entry_point("/Applications/cashu.app/Contents/MacOS/cashu") == [
+        "/Applications/cashu.app/Contents/MacOS/cashu"
     ]
-    monkeypatch.setattr(settings, "worker_program", "/opt/bin/finanse")
-    assert sched.entry_point() == ["/opt/bin/finanse"]
-    assert sched.entry_point("/explicit/finanse") == ["/explicit/finanse"]  # CLI option wins
+    monkeypatch.setattr(settings, "worker_program", "/opt/bin/cashu")
+    assert sched.entry_point() == ["/opt/bin/cashu"]
+    assert sched.entry_point("/explicit/cashu") == ["/explicit/cashu"]  # CLI option wins
     monkeypatch.setattr(settings, "worker_program", None)
 
     venv_bin = tmp_path / "venv" / "bin"
     venv_bin.mkdir(parents=True)
     python = venv_bin / "python"
     monkeypatch.setattr(sys, "executable", str(python))
-    assert sched.entry_point() == [str(python), "-m", "finanse.cli"]  # no script next to it
-    script = venv_bin / ("finanse.exe" if os.name == "nt" else "finanse")
+    assert sched.entry_point() == [str(python), "-m", "cashu.cli"]  # no script next to it
+    script = venv_bin / ("cashu.exe" if os.name == "nt" else "cashu")
     script.write_text("#!/bin/sh\n")
     assert sched.entry_point() == [str(script)]
     monkeypatch.setattr(sys, "frozen", True, raising=False)

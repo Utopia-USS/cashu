@@ -1,21 +1,22 @@
 // Per-launch API token bootstrap (PK1). The server never puts the token into the page (any local
 // process can GET /), so the SPA gets it out of band, in this order:
 //
-// 1. the `#token=<token>` fragment of the one-time URL `finanse serve` prints (browsers never send
+// 1. the `#token=<token>` fragment of the one-time URL `cashu serve` prints (browsers never send
 //    the fragment to the server): moved to sessionStorage (this tab only) and stripped from the
 //    address bar with history.replaceState, before the hash router reads the location;
 // 2. sessionStorage: a reload in the same tab keeps working;
-// 3. `<meta name="finanse-token">`: only with FINANSE_DEV_EMBED_TOKEN=1 (explicit dev mode);
-// 4. the desktop window: `window.pywebview.api.token()` (finanse app, desktop/shell.py), which
+// 3. `<meta name="cashu-token">`: only with CASHU_DEV_EMBED_TOKEN=1 (explicit dev mode);
+// 4. the desktop window: `window.pywebview.api.token()` (cashU app, desktop/shell.py), which
 //    pywebview injects after the page has loaded, so the SPA waits for it (short timeout).
 //
 // Under `npm run dev` there is no token in the page: the Vite proxy adds the header itself.
+import { readStored } from "./storage.ts";
 
-export const TOKEN_STORAGE_KEY = "finanse.apiToken";
+export const TOKEN_STORAGE_KEY = "cashu.apiToken";
 export const TOKEN_FRAGMENT = "token";
 export const DESKTOP_TIMEOUT_MS = 5000;
 export const NO_TOKEN_TEXT =
-  "Brak tokenu dostępu. Otwórz aplikację finanse albo adres z #token=..., który wypisuje `finanse serve`.";
+  "Brak tokenu dostępu. Otwórz aplikację cashU albo adres z #token=..., który wypisuje `cashu serve`.";
 
 interface LocationLike { hash: string; pathname: string; search: string }
 interface HistoryLike { state: unknown; replaceState(data: unknown, unused: string, url?: string): void }
@@ -46,7 +47,7 @@ export function captureFragmentToken(loc: LocationLike, history: HistoryLike, st
 }
 
 export function storedToken(storage: StorageLike | null): string | null {
-  try { return storage?.getItem(TOKEN_STORAGE_KEY) || null; } catch { return null; }
+  try { return readStored(storage, TOKEN_STORAGE_KEY) || null; } catch { return null; }
 }
 
 interface DesktopBridge { api?: { token?: () => Promise<string | null> } }
@@ -118,7 +119,7 @@ const lookup = cacheFound<string>(async () => captured || storedToken(session())
 
 function metaToken(): string | null {
   if (!hasDom) return null;
-  return document.querySelector<HTMLMetaElement>('meta[name="finanse-token"]')?.content || null;
+  return document.querySelector<HTMLMetaElement>('meta[name="cashu-token"]')?.content || null;
 }
 
 /** The API token: "" under `npm run dev` (the proxy adds it), null when none could be found. */
@@ -128,7 +129,7 @@ export function apiToken(): Promise<string | null> {
 }
 
 /** A 401: the token belongs to an earlier server launch. Forget it, so a reload asks again
- * (desktop bridge) or shows NO_TOKEN_TEXT (browser: open the new URL `finanse serve` printed). */
+ * (desktop bridge) or shows NO_TOKEN_TEXT (browser: open the new URL `cashu serve` printed). */
 export function forgetToken(): void {
   captured = null;
   lookup.reset();

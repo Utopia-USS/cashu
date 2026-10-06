@@ -1,4 +1,4 @@
-"""`finanse invest backfill` and `finanse invest performance` (fake sources, synthetic history)."""
+"""`cashu invest backfill` and `cashu invest performance` (fake sources, synthetic history)."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from perf_support import AS_OF, household, sources
 from rich.console import Console
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import cliutil
-from finanse.modules.investments.performance import service
-from finanse.modules.investments.service import daily, portfolio
+from cashu import cli as cli_mod
+from cashu.core import cliutil
+from cashu.modules.investments.performance import service
+from cashu.modules.investments.service import daily, portfolio
 
 
 @pytest.fixture

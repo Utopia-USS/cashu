@@ -10,23 +10,23 @@ from decimal import Decimal
 import pytest
 from sqlmodel import select
 
-from finanse.core import profiles
-from finanse.core.accounts import get_or_create_account
-from finanse.core.db import get_session
-from finanse.core.models import Account, Source
-from finanse.core.modules import PaymentPattern, SetupStatus, SetupStep
-from finanse.modules.assets.models import Depreciation
-from finanse.modules.budget import service
-from finanse.modules.budget.categorize import engine
-from finanse.modules.budget.ingestion.normalize import RawTransaction
-from finanse.modules.budget.models import Transaction
-from finanse.modules.loans.models import Loan
+from cashu.core import profiles
+from cashu.core.accounts import get_or_create_account
+from cashu.core.db import get_session
+from cashu.core.models import Account, Source
+from cashu.core.modules import PaymentPattern, SetupStatus, SetupStep
+from cashu.modules.assets.models import Depreciation
+from cashu.modules.budget import service
+from cashu.modules.budget.categorize import engine
+from cashu.modules.budget.ingestion.normalize import RawTransaction
+from cashu.modules.budget.models import Transaction
+from cashu.modules.loans.models import Loan
 
 LENDER = "99160000000000000000000555"
 
 
 def code(resp) -> str | None:
-    return resp.headers.get("x-finanse-error-code")
+    return resp.headers.get("x-cashu-error-code")
 
 
 def make(client, name: str, modules: list[str]) -> str:
@@ -61,7 +61,7 @@ def test_optional_steps_never_count_and_are_never_current():
 
 def test_setup_response_carries_the_cli_prefix(api_empty):
     slug = make(api_empty, "Jan", ["budget"])
-    assert setup(api_empty, slug, "budget")["cli_prefix"] == f"finanse --profile {slug}"
+    assert setup(api_empty, slug, "budget")["cli_prefix"] == f"cashu --profile {slug}"
 
 
 # --- budget steps (B1) ------------------------------------------------------------------------------
@@ -91,7 +91,7 @@ def test_budget_steps(api_empty):
     statement = body["steps"][0]
     assert statement["description"] == "Plik CSV (mBank, Pekao, Erste) albo Open Banking."
     assert [a["target"] for a in statement["actions"]] == [
-        f"finanse --profile {slug} import-csv WYCIAG.csv", f'finanse --profile {slug} eb login "mBank"',
+        f"cashu --profile {slug} import-csv WYCIAG.csv", f'cashu --profile {slug} eb login "mBank"',
     ]
     assert body["steps"][2]["description"] == "Po IBAN między Twoimi kontami; nie liczą się jako wydatki."
 

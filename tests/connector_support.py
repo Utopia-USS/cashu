@@ -16,8 +16,8 @@ import pytest
 from keyring.backend import KeyringBackend
 from keyring.errors import PasswordDeleteError
 
-from finanse.core.connectors.process import run_process
-from finanse.core.connectors.sandbox import RunOutcome, RunSpec
+from cashu.core.connectors.process import run_process
+from cashu.core.connectors.sandbox import RunOutcome, RunSpec
 
 PYTHON3 = shutil.which("python3", path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
 needs_python3 = pytest.mark.skipif(PYTHON3 is None, reason="no python3 on the fixed search path")
@@ -125,7 +125,7 @@ else:
         {"record": "txn", "date": "2026-01-06", "type": "buy", "symbol": "TEST", "exchange": "XWAR",
          "currency": "PLN", "quantity": "2", "price": "100.00", "gross_amount": "200.00"},
     ]
-    doc = {"format": "finanse-import", "format_version": 1, "source": "test_broker", "records": records}
+    doc = {"format": "cashu-import", "format_version": 1, "source": "test_broker", "records": records}
     out = {"document": doc}
     if cmd == "fetch":
         out["cursor"] = "c1"
@@ -157,7 +157,7 @@ def write_connector(
 
 
 def target_of(root: Path):
-    from finanse.core.connectors import manifest as mf
-    from finanse.core.connectors.runner import RunTarget
+    from cashu.core.connectors import manifest as mf
+    from cashu.core.connectors.runner import RunTarget
 
     return RunTarget.of(mf.load_dir(root))

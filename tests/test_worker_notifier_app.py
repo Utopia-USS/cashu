@@ -1,6 +1,6 @@
-"""Notifications through Finanse.app (F6 NT), worker side: finding the app, the helper protocol
+"""Notifications through cashU.app (F6 NT), worker side: finding the app, the helper protocol
 (JSON on stdin, never argv or a script), denied / pending permission without fallback, technical
-failures falling back to terminal-notifier / osascript, the ``auto`` choice, the finanse:// links
+failures falling back to terminal-notifier / osascript, the ``auto`` choice, the cashu:// links
 on the worker's notifications. Every helper call goes to a fake runner: nothing is posted."""
 
 from __future__ import annotations
@@ -19,38 +19,38 @@ from test_worker_runner import (  # also re-exports the investments test helpers
     make_profile,
 )
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile
-from finanse.core.worker import notifications
-from finanse.core.worker import notifier as nt
-from finanse.core.worker import notifier_app as na
-from finanse.core.worker import state as worker_state
-from finanse.core.worker.notifier import CommandResult, Delivery, Notification
+from cashu.core.db import get_session
+from cashu.core.models import Profile
+from cashu.core.worker import notifications
+from cashu.core.worker import notifier as nt
+from cashu.core.worker import notifier_app as na
+from cashu.core.worker import state as worker_state
+from cashu.core.worker.notifier import CommandResult, Delivery, Notification
 
 NOTE = Notification(
-    title="finanse: Dom",
+    title="cashU: Dom",
     subtitle="Sygnał do działania",
     message='XMPL 37.3% > 30% "cudzysłów" \\ end; rm -rf ~ $(touch /tmp/x)',
-    group="finanse-signal-7",
-    url="finanse://signal/dom/7",
+    group="cashu-signal-7",
+    url="cashu://signal/dom/7",
 )
 
 
-def make_app(root: Path, *, helper=True, executable="finanse", mode=0o755) -> Path:
-    app = root / "Finanse.app"
+def make_app(root: Path, *, helper=True, executable="cashu", mode=0o755) -> Path:
+    app = root / "cashU.app"
     (app / "Contents" / "MacOS").mkdir(parents=True)
-    info = {"CFBundleIdentifier": "io.github.synszakala.finanse", "CFBundleExecutable": executable}
+    info = {"CFBundleIdentifier": "io.utopiasoft.cashu", "CFBundleExecutable": executable}
     if helper:
         info[na.INFO_PLIST_KEY] = True
     (app / "Contents" / "Info.plist").write_bytes(plistlib.dumps(info))
-    exe = app / "Contents" / "MacOS" / "finanse"
+    exe = app / "Contents" / "MacOS" / "cashu"
     exe.write_text("#!/bin/sh\nexit 0\n")
     os.chmod(exe, mode)
     return app
 
 
 class FakeHelper:
-    """Stands in for `Finanse.app/.../finanse --notify-helper`: records argv + stdin."""
+    """Stands in for `cashU.app/.../cashu --notify-helper`: records argv + stdin."""
 
     def __init__(self, code=0, stdout=None, stderr=""):
         self.calls: list[tuple[list[str], dict]] = []
@@ -81,10 +81,10 @@ def app_notifier(tmp_path, helper, fallback=None) -> na.AppNotifier:
 
 
 def test_links():
-    assert nt.signal_link("dom", 7) == "finanse://signal/dom/7"
-    assert nt.review_link("anna-k") == "finanse://review/anna-k"
-    assert nt.investments_link("anna-k") == "finanse://investments/anna-k"
-    assert nt.signal_link("a/b c", "12") == "finanse://signal/a%2Fb%20c/12"  # never a new segment
+    assert nt.signal_link("dom", 7) == "cashu://signal/dom/7"
+    assert nt.review_link("anna-k") == "cashu://review/anna-k"
+    assert nt.investments_link("anna-k") == "cashu://investments/anna-k"
+    assert nt.signal_link("a/b c", "12") == "cashu://signal/a%2Fb%20c/12"  # never a new segment
     with pytest.raises(ValueError):
         nt.signal_link("dom", "7; drop")
 
@@ -96,7 +96,7 @@ def test_links():
 
 def test_inspect_bundle_needs_the_helper_key_and_an_executable(tmp_path):
     found = na.inspect_bundle(make_app(tmp_path / "ok"))
-    assert found is not None and found.executable.name == "finanse"
+    assert found is not None and found.executable.name == "cashu"
     assert na.inspect_bundle(make_app(tmp_path / "old", helper=False)) is None  # older build
     assert na.inspect_bundle(make_app(tmp_path / "noexec", mode=0o644)) is None
     assert na.inspect_bundle(make_app(tmp_path / "evil", executable="../../bin/sh")) is None
@@ -144,19 +144,19 @@ def test_texts_go_to_the_helper_as_json_on_stdin(tmp_path):
     ((args, data),) = helper.calls
     assert args == [str(app.app.executable), "--notify-helper"]  # nothing else on the command line
     assert data == {
-        "title": "Dom",  # the app's own name (Finanse) is shown above the title
+        "title": "Dom",  # the app's own name (cashU) is shown above the title
         "subtitle": "Sygnał do działania",
         "message": NOTE.message,
-        "group": "finanse-signal-7",
-        "url": "finanse://signal/dom/7",
+        "group": "cashu-signal-7",
+        "url": "cashu://signal/dom/7",
     }
 
 
 def test_payload_is_clipped_like_the_other_notifiers(tmp_path):
     helper = FakeHelper()
-    app_notifier(tmp_path, helper).send(Notification(title="finanse: ", message="a\n b " * 200))
+    app_notifier(tmp_path, helper).send(Notification(title="cashU: ", message="a\n b " * 200))
     ((_, data),) = helper.calls
-    assert data["title"] == "finanse" and data["subtitle"] == ""
+    assert data["title"] == "cashU" and data["subtitle"] == ""
     assert len(data["message"]) == nt.MAX_MESSAGE and data["message"].startswith("a b a b")
     assert data["group"] is None and data["url"] is None
 
@@ -169,7 +169,7 @@ def test_denied_or_pending_permission_is_never_routed_around(tmp_path, code, hin
     app = app_notifier(tmp_path, FakeHelper(code), fallback)
     delivery = app.send(NOTE)
     assert delivery == Delivery(False, "app", hint)
-    assert fallback.sent == []  # the user's choice for Finanse stands
+    assert fallback.sent == []  # the user's choice for cashU stands
 
 
 @pytest.mark.parametrize(
@@ -178,7 +178,7 @@ def test_denied_or_pending_permission_is_never_routed_around(tmp_path, code, hin
         FakeHelper(na.EXIT_UNAVAILABLE),
         FakeHelper(na.EXIT_FAILED, json.dumps({"status": "failed", "error": "UNErrorDomain 1"})),
         FakeHelper(na.EXIT_USAGE),
-        FakeHelper(127, stdout="", stderr="FileNotFoundError: finanse"),  # app deleted meanwhile
+        FakeHelper(127, stdout="", stderr="FileNotFoundError: cashu"),  # app deleted meanwhile
         FakeHelper(-9, stdout="Traceback (most recent call last): ..."),  # crashed
     ],
     ids=["unavailable", "failed", "usage", "missing", "crash"],
@@ -195,7 +195,7 @@ def test_technical_failure_without_fallback_is_reported(tmp_path):
     helper = FakeHelper(na.EXIT_FAILED, json.dumps({"status": "failed", "error": "boom"}))
     delivery = app_notifier(tmp_path, helper).send(NOTE)
     assert not delivery.ok and delivery.channel == "app"
-    assert delivery.error == "Finanse.app could not post (failed: boom)"
+    assert delivery.error == "cashU.app could not post (failed: boom)"
 
 
 def test_parse_answer():
@@ -242,7 +242,7 @@ def test_without_the_app_auto_uses_terminal_notifier_then_osascript(monkeypatch)
     assert nt.default_notifier("auto", platform="darwin").name == "terminal-notifier"
     monkeypatch.setattr(nt, "find_terminal_notifier", lambda: None)
     assert nt.default_notifier("auto", platform="darwin").name == "osascript"
-    with pytest.raises(ValueError, match=r"Finanse\.app .*not found"):
+    with pytest.raises(ValueError, match=r"cashU\.app .*not found"):
         nt.default_notifier("app", platform="darwin")
 
 
@@ -258,16 +258,16 @@ def test_terminal_notifier_opens_the_link_only_when_asked():
     other = Notification(title="t", message="m", url="https://example.invalid/")
     nt.MacNotifier(runner=runner, terminal_notifier="/x/tn", open_links=True).send(other)
     nt.MacNotifier(runner=runner, terminal_notifier=None, open_links=True).send(NOTE)
-    assert calls[0][-2:] == ["-open", "finanse://signal/dom/7"]
-    assert "-open" not in calls[1]  # no app: a finanse:// link would open nothing
+    assert calls[0][-2:] == ["-open", "cashu://signal/dom/7"]
+    assert "-open" not in calls[1]  # no app: a cashu:// link would open nothing
     assert "-open" not in calls[2]  # only the app's own links
-    assert calls[3][0] == "/usr/bin/osascript" and "finanse://" not in " ".join(calls[3])
+    assert calls[3][0] == "/usr/bin/osascript" and "cashu://" not in " ".join(calls[3])
 
 
 def test_log_notifier_shows_the_link():
     lines: list[str] = []
     nt.LogNotifier(lines.append).send(NOTE)
-    assert lines[0].endswith(" <finanse://signal/dom/7>")
+    assert lines[0].endswith(" <cashu://signal/dom/7>")
 
 
 # --------------------------------------------------------------------------- #
@@ -283,8 +283,8 @@ def test_worker_notifications_carry_links(db_engine):
         profile = s.get(Profile, pid)
     notifications.deliver_pending(profile, fake, now=MONDAY, session_factory=get_session)
     assert [n.url for n in fake.sent] == [
-        *(f"finanse://signal/{slug}/{i}" for i in ids[:3]),
-        f"finanse://investments/{slug}",  # the summary of the rest
+        *(f"cashu://signal/{slug}/{i}" for i in ids[:3]),
+        f"cashu://investments/{slug}",  # the summary of the rest
     ]
 
     state = worker_state.WorkerState()
@@ -298,4 +298,4 @@ def test_worker_notifications_carry_links(db_engine):
         session_factory=get_session,
     )
     assert result.status == "sent"
-    assert digest.sent[0].url == f"finanse://review/{slug}"
+    assert digest.sent[0].url == f"cashu://review/{slug}"

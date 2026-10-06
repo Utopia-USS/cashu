@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from imp_support import pl_mapping
 
-from finanse.modules.investments.domain import Currency, TxnType
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.domain import Currency, TxnType
+from cashu.modules.investments.importing import (
     AmountSign,
     CsvField,
     CsvMapping,
@@ -16,7 +16,7 @@ from finanse.modules.investments.importing import (
     RowErrorPolicy,
     example_mapping_yaml,
 )
-from finanse.modules.investments.importing.csv_mapping import KNOWN_KEYS, CsvMappingIssue
+from cashu.modules.investments.importing.csv_mapping import KNOWN_KEYS, CsvMappingIssue
 
 MINIMAL = """\
 version: 1

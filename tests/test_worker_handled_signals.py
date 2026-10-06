@@ -21,13 +21,13 @@ from test_worker_runner import (
     work,
 )
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile
-from finanse.core.worker import investments as inv
-from finanse.core.worker import notifications, runner
-from finanse.modules.investments.models import InvDecision, InvNotification, InvSignal
-from finanse.modules.investments.service import daily
-from finanse.modules.investments.store import journal
+from cashu.core.db import get_session
+from cashu.core.models import Profile
+from cashu.core.worker import investments as inv
+from cashu.core.worker import notifications, runner
+from cashu.modules.investments.models import InvDecision, InvNotification, InvSignal
+from cashu.modules.investments.service import daily
+from cashu.modules.investments.store import journal
 
 
 @pytest.fixture

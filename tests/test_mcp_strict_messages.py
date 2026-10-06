@@ -12,10 +12,10 @@ import re
 import pytest
 from mcp_support import STRATEGY_YAML, TODAY, leaks, seed_profile
 
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.mcp.tools.messages import scrub_numbers
-from finanse.core.models import Profile
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.mcp.tools.messages import scrub_numbers
+from cashu.core.models import Profile
 
 # Distinctive values: a quantity sold beyond the history (73 units) and the cash balance that leaves
 # (3650.00 - 4131.00 = -481.00).
@@ -31,9 +31,9 @@ STRICT_ALLOWED = re.compile(r"\d{4}-\d{2}-\d{2}|\d+(?:[.,]\d+)?\s?(?:%|pp)|\[\d+
 
 
 def _gap_account(pid: int) -> None:
-    from finanse.modules.investments.importing import ImportFile
-    from finanse.modules.investments.service import accounts as inv_accounts
-    from finanse.modules.investments.service import imports
+    from cashu.modules.investments.importing import ImportFile
+    from cashu.modules.investments.service import accounts as inv_accounts
+    from cashu.modules.investments.service import imports
 
     with get_session() as s:
         account_id = inv_accounts.add_account(s, pid, name="IKE 2", broker="dif", wrapper="ike").id
@@ -58,7 +58,7 @@ def _set_privacy(pid: int, level: str) -> None:
 def gaps(db_engine):
     pid, slug = seed_profile()  # with the daily check: signals for record_decision
     _gap_account(pid)
-    return pid, slug, FinanseMcp(pid, today=TODAY)
+    return pid, slug, CashuMcp(pid, today=TODAY)
 
 
 def _numbers_left(text: str) -> list[str]:
@@ -86,7 +86,7 @@ def _calls() -> list[tuple[str, dict, str, str]]:
 
 def test_strict_system_messages_carry_no_quantities_or_balances(gaps):
     _pid, slug, host = gaps
-    from finanse.modules.investments.service import files
+    from cashu.modules.investments.service import files
 
     seen_kinds: set[str] = set()
     for tool, args, key, strategy in _calls():

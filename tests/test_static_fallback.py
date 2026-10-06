@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import importlib
 
-from finanse.core import security
+from cashu.core import security
 
-app_mod = importlib.import_module("finanse.api.app")  # the module (finanse.api re-exports `app`)
+app_mod = importlib.import_module("cashu.api.app")  # the module (cashu.api re-exports `app`)
 
 
 def test_without_webdist_the_shell_explains_how_to_build(api_empty, monkeypatch, tmp_path):

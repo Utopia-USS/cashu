@@ -9,9 +9,9 @@ import time
 
 import pytest
 
-from finanse.core import profiles, proposals
-from finanse.core.db import get_session
-from finanse.modules.investments.service import files, staging
+from cashu.core import profiles, proposals
+from cashu.core.db import get_session
+from cashu.modules.investments.service import files, staging
 
 DAY = 24 * 3600
 
@@ -75,7 +75,7 @@ def test_prune_keeps_every_proposal_export_when_proposals_cannot_be_listed(layou
 
 
 def test_worker_run_prunes(layout, tmp_path):
-    from finanse.core.worker import runner
+    from cashu.core.worker import runner
 
     runner.run_worker(notifier=None, offline=True, budget=False, state_path=tmp_path / "s.json")
     assert "old_upload" not in _alive(layout) and "rejected_export" not in _alive(layout)
@@ -85,7 +85,7 @@ def test_worker_run_prunes(layout, tmp_path):
 def test_app_start_prunes(layout):
     from fastapi.testclient import TestClient
 
-    from finanse.api.app import app
+    from cashu.api.app import app
 
     with TestClient(app):  # runs the lifespan (init_db + pruning)
         pass

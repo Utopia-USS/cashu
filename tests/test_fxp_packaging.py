@@ -15,19 +15,19 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from finanse.core import paths, runtime
-from finanse.core.worker import scheduler as sched
-from finanse.core.worker import service
+from cashu.core import paths, runtime
+from cashu.core.worker import scheduler as sched
+from cashu.core.worker import service
 
 ROOT = Path(__file__).resolve().parents[1]
-APP_EXE = "/Applications/Finanse.app/Contents/MacOS/finanse"
-MOVED_EXE = "/private/var/folders/x/T/AppTranslocation/ABC/d/Finanse.app/Contents/MacOS/finanse"
+APP_EXE = "/Applications/cashU.app/Contents/MacOS/cashu"
+MOVED_EXE = "/private/var/folders/x/T/AppTranslocation/ABC/d/cashU.app/Contents/MacOS/cashu"
 
 
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     path = tmp_path / "data"
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(path))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(path))
     return path
 
 
@@ -62,7 +62,7 @@ def test_translocated_app_hands_out_no_mcp_path(frozen, monkeypatch):
         assert line == runtime.TRANSLOCATED_SNIPPET and line.startswith("# ")
         assert "AppTranslocation" not in line
         assert shlex.split(line, comments=True) == []  # a pasted line runs nothing
-    entry = runtime.claude_desktop_config("jan")["mcpServers"]["finanse-jan"]
+    entry = runtime.claude_desktop_config("jan")["mcpServers"]["cashu-jan"]
     assert entry["command"] == "" and "AppTranslocation" not in json.dumps(entry)
     assert entry["error"] and entry["args"] == ["mcp", "--profile", "jan"]
     assert chr(0x2014) not in runtime.TRANSLOCATED_SNIPPET  # no em dash
@@ -79,7 +79,7 @@ def test_translocated_mcp_endpoint_and_module_setup(api_empty, frozen, monkeypat
     # Back in /Applications: the real lines again.
     monkeypatch.setattr(sys, "executable", APP_EXE)
     info = api_empty.get(f"/api/p/{slug}/mcp").json()
-    assert info["claude_mcp_add"] == f"claude mcp add finanse-{slug} -- {APP_EXE} mcp --profile {slug}"
+    assert info["claude_mcp_add"] == f"claude mcp add cashu-{slug} -- {APP_EXE} mcp --profile {slug}"
 
 
 # --------------------------------------------------------------------------- #
@@ -104,7 +104,7 @@ def test_setup_commands_use_the_bundled_binary_when_packaged(api_empty, frozen, 
             assert cmd.startswith(f"{APP_EXE} --profile {slug} "), cmd
     assert seen, "no module offered a copyable command"
     # A path with spaces stays one shell word.
-    spaced = "/Users/x/My Apps/Finanse.app/Contents/MacOS/finanse"
+    spaced = "/Users/x/My Apps/cashU.app/Contents/MacOS/cashu"
     monkeypatch.setattr(sys, "executable", spaced)
     targets = _cli_targets(api_empty.get(f"/api/p/{slug}/modules/budget/setup").json())
     assert targets and all(shlex.split(t)[0] == spaced for t in targets)
@@ -113,7 +113,7 @@ def test_setup_commands_use_the_bundled_binary_when_packaged(api_empty, frozen, 
 def test_setup_commands_from_source_keep_the_plain_command(api_empty):
     slug = _profile(api_empty, ("budget",))
     targets = _cli_targets(api_empty.get(f"/api/p/{slug}/modules/budget/setup").json())
-    assert targets and all(t.startswith(f"finanse --profile {slug} ") for t in targets)
+    assert targets and all(t.startswith(f"cashu --profile {slug} ") for t in targets)
 
 
 # --------------------------------------------------------------------------- #
@@ -125,20 +125,20 @@ def test_app_location_records_a_move(data_dir, frozen, monkeypatch):
     assert runtime.note_app_location() is None  # first launch: nothing to compare with
     assert runtime.app_moved_from() is None
     path = runtime.app_location_path()
-    assert json.loads(path.read_text())["bundle"] == "/Applications/Finanse.app"
+    assert json.loads(path.read_text())["bundle"] == "/Applications/cashU.app"
     assert oct(path.stat().st_mode & 0o777) == "0o600"
     assert runtime.note_app_location() is None  # same place again
-    moved = "/Applications/Finanse 2.app/Contents/MacOS/finanse"  # Finder's rename on reinstall
+    moved = "/Applications/cashU 2.app/Contents/MacOS/cashu"  # Finder's rename on reinstall
     monkeypatch.setattr(sys, "executable", moved)
-    assert runtime.note_app_location() == "/Applications/Finanse.app"
-    assert runtime.app_moved_from() == "/Applications/Finanse.app"
-    assert runtime.note_app_location() == "/Applications/Finanse.app"  # kept until fixed
+    assert runtime.note_app_location() == "/Applications/cashU.app"
+    assert runtime.app_moved_from() == "/Applications/cashU.app"
+    assert runtime.note_app_location() == "/Applications/cashU.app"  # kept until fixed
     runtime.clear_app_move()
     assert runtime.app_moved_from() is None
     # A translocated launch is never recorded (random path).
     monkeypatch.setattr(sys, "executable", MOVED_EXE)
     assert runtime.note_app_location() is None
-    assert json.loads(path.read_text())["bundle"] == "/Applications/Finanse 2.app"
+    assert json.loads(path.read_text())["bundle"] == "/Applications/cashU 2.app"
 
 
 def test_app_location_is_not_recorded_from_source(data_dir):
@@ -161,12 +161,12 @@ def _install_plist(scheduler, program: str) -> None:
 
 
 def test_worker_status_flags_a_missing_program(db_engine, data_dir, launchd, frozen):
-    _install_plist(launchd, "/Users/x/Downloads/Finanse.app/Contents/MacOS/finanse")
+    _install_plist(launchd, "/Users/x/Downloads/cashU.app/Contents/MacOS/cashu")
     rel = service.status()["relocation"]
     assert rel == {
         "worker": {
             "reason": "missing",
-            "program": "/Users/x/Downloads/Finanse.app/Contents/MacOS/finanse",
+            "program": "/Users/x/Downloads/cashU.app/Contents/MacOS/cashu",
             "expected_program": [APP_EXE],
             "actions": ["worker_reinstall"],
         },
@@ -175,7 +175,7 @@ def test_worker_status_flags_a_missing_program(db_engine, data_dir, launchd, fro
 
 
 def test_worker_status_flags_another_install(db_engine, data_dir, launchd, frozen, tmp_path):
-    venv = tmp_path / "venv" / "bin" / "finanse"
+    venv = tmp_path / "venv" / "bin" / "cashu"
     venv.parent.mkdir(parents=True)
     venv.write_text("#!/bin/sh\n")
     _install_plist(launchd, str(venv))  # the dev venv took the shared label
@@ -185,7 +185,7 @@ def test_worker_status_flags_another_install(db_engine, data_dir, launchd, froze
 
 
 def test_worker_status_is_clean_when_the_job_matches(db_engine, data_dir, launchd, monkeypatch, tmp_path):
-    exe = tmp_path / "Finanse.app" / "Contents" / "MacOS" / "finanse"
+    exe = tmp_path / "cashU.app" / "Contents" / "MacOS" / "cashu"
     exe.parent.mkdir(parents=True)
     exe.write_text("")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
@@ -195,8 +195,8 @@ def test_worker_status_is_clean_when_the_job_matches(db_engine, data_dir, launch
 
 
 def _moved_app(monkeypatch, tmp_path) -> Path:
-    runtime.note_app_location()  # launched from /Applications/Finanse.app
-    exe = tmp_path / "Apps" / "Finanse.app" / "Contents" / "MacOS" / "finanse"
+    runtime.note_app_location()  # launched from /Applications/cashU.app
+    exe = tmp_path / "Apps" / "cashU.app" / "Contents" / "MacOS" / "cashu"
     exe.parent.mkdir(parents=True)
     exe.write_text("")
     monkeypatch.setattr(sys, "executable", str(exe))
@@ -205,7 +205,7 @@ def _moved_app(monkeypatch, tmp_path) -> Path:
 
 
 def test_moved_app_without_any_mcp_line_raises_nothing(db_engine, data_dir, launchd, frozen, monkeypatch, tmp_path):
-    """F7 review R8: no workspace and `finanse mcp` never started: no MCP client can hold the old
+    """F7 review R8: no workspace and `cashu mcp` never started: no MCP client can hold the old
     path, so a move alone is no relocation notice."""
     _moved_app(monkeypatch, tmp_path)
     assert service.status()["relocation"] == {"worker": None, "mcp": None}
@@ -214,17 +214,17 @@ def test_moved_app_without_any_mcp_line_raises_nothing(db_engine, data_dir, laun
 def test_moved_app_mcp_part_survives_a_worker_reinstall_until_acked(db_engine, data_dir, launchd, frozen, monkeypatch, tmp_path):
     """F7 review R8: the worker and MCP parts are cleared separately: re-installing the worker (the
     obvious button) no longer hides the MCP hint; only the ack (or a workspace rewrite) does."""
-    old_exe = "/Applications/Finanse.app/Contents/MacOS/finanse"
+    old_exe = "/Applications/cashU.app/Contents/MacOS/cashu"
     runtime.note_mcp_started()  # an agent client ran the MCP server from the old path
     _install_plist(launchd, old_exe)
     exe = _moved_app(monkeypatch, tmp_path)
     rel = service.status()["relocation"]
     assert rel["worker"]["reason"] == "missing" and rel["worker"]["program"] == old_exe
     assert rel["mcp"]["reason"] == "app_moved" and rel["mcp"]["actions"] == ["mcp_readd"]
-    assert rel["mcp"]["app_moved_from"] == "/Applications/Finanse.app" and rel["mcp"]["moved_at"]
+    assert rel["mcp"]["app_moved_from"] == "/Applications/cashU.app" and rel["mcp"]["moved_at"]
     out = CliRunner().invoke(_cli(), ["worker", "status"])
     assert out.exit_code == 0, out.output
-    assert "moved from /Applications/Finanse.app" in out.output and "Settings > Agent AI" in out.output
+    assert "moved from /Applications/cashU.app" in out.output and "Settings > Agent AI" in out.output
     service.install()  # the worker fix action
     assert plistlib.loads(launchd.plist_path.read_bytes())["ProgramArguments"][0] == str(exe)
     rel = service.status()["relocation"]
@@ -237,7 +237,7 @@ def test_relocation_ack_route_and_workspace_rewrite_clear_the_mcp_part(api_empty
     r = api_empty.post("/api/profiles", json={"name": "Ola Test", "modules": ["budget"]})
     assert r.status_code == 201, r.text
     slug = "ola-test"
-    old = tmp_path / "Old" / "Finanse.app" / "Contents" / "MacOS" / "finanse"
+    old = tmp_path / "Old" / "cashU.app" / "Contents" / "MacOS" / "cashu"
     old.parent.mkdir(parents=True)
     old.write_text("")
     monkeypatch.setattr(sys, "executable", str(old))
@@ -254,7 +254,7 @@ def test_relocation_ack_route_and_workspace_rewrite_clear_the_mcp_part(api_empty
     assert updated["mcp_command_stale"] is False
     assert api_empty.get("/api/system").json()["worker"]["relocation"]["mcp"] is None
     # the explicit ack route
-    _moved_app_again = tmp_path / "Third" / "Finanse.app" / "Contents" / "MacOS" / "finanse"
+    _moved_app_again = tmp_path / "Third" / "cashU.app" / "Contents" / "MacOS" / "cashu"
     _moved_app_again.parent.mkdir(parents=True)
     _moved_app_again.write_text("")
     monkeypatch.setattr(sys, "executable", str(_moved_app_again))
@@ -266,15 +266,15 @@ def test_relocation_ack_route_and_workspace_rewrite_clear_the_mcp_part(api_empty
 
 
 def test_worker_status_cli_prints_the_fix(db_engine, data_dir, launchd, frozen):
-    _install_plist(launchd, "/Users/x/Downloads/Finanse.app/Contents/MacOS/finanse")
+    _install_plist(launchd, "/Users/x/Downloads/cashU.app/Contents/MacOS/cashu")
     out = CliRunner().invoke(_cli(), ["worker", "status"])
     assert out.exit_code == 0, out.output
-    assert "no longer exists" in out.output and "finanse worker install" in out.output
+    assert "no longer exists" in out.output and "cashu worker install" in out.output
     assert APP_EXE in out.output
 
 
 def _cli():
-    from finanse.cli import app
+    from cashu.cli import app
 
     return app
 
@@ -323,9 +323,30 @@ def test_build_lock_is_hash_pinned():
     names = {re.split(r"[=\s\[]", r.strip(), maxsplit=1)[0].lower() for r in reqs}
     for needed in ("pyinstaller", "pywebview", "fastapi", "uvicorn", "sqlmodel", "typer"):
         assert needed in names, needed
-    assert "finanse" not in names  # the app itself is installed from the checkout, no deps
+    assert "cashu" not in names  # the app itself is installed from the checkout, no deps
 
 
 def test_paths_module_is_untouched_by_runtime_state(data_dir):
     """The app-location file lives in the data dir, owner-only, like desktop.json."""
     assert runtime.app_location_path().parent == paths.data_dir()
+
+
+def test_bundle_names_after_the_rename():
+    """F11: the spec builds cashU.app with the executable `cashu`, bundle id io.utopiasoft.cashu, the
+    cashu:// scheme (legacy name finanse:// kept second for links posted before) and the new helper key;
+    the build script uses that spec and checks that executable."""
+    spec = (ROOT / "packaging" / "cashu.spec").read_text()
+    assert not (ROOT / "packaging" / "finanse.spec").exists()  # legacy name
+    assert 'BUNDLE_ID = "io.utopiasoft.cashu"' in spec
+    assert 'name="cashu",' in spec and 'name="cashU.app"' in spec
+    assert '"CFBundleURLSchemes": ["cashu", "finanse"]' in spec  # legacy name second
+    assert '"CashuNotificationHelper": True' in spec
+    assert 'collect_submodules("cashu"' in spec and 'os.path.join("cashu", "api", "webdist")' in spec
+    script = (ROOT / "scripts" / "build_macos.sh").read_text()
+    assert '"$ROOT/packaging/cashu.spec"' in script
+    assert '[[ -x "$APP/Contents/MacOS/cashu" ]]' in script and 'APP="$BUILD/dist/cashU.app"' in script
+    assert "packaging/icon/cashu-1024.png" in script and (ROOT / "packaging" / "icon" / "cashu-1024.png").is_file()
+    from cashu.core.worker import notifier_app, scheduler
+
+    assert notifier_app.INFO_PLIST_KEY == "CashuNotificationHelper"
+    assert scheduler.DEFAULT_LABEL == "io.utopiasoft.cashu.worker"

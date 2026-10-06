@@ -1,6 +1,6 @@
 ---
 name: assets-setup
-description: Short guided setup of the finanse assets module (Majątek) for one profile - which manually valued assets to add (home, plot, car with a depreciation curve, other assets), the exact CLI commands with placeholders for the user to run, how to revalue them later, and a check through the profile's finanse MCP server. Use when the user wants their net worth to include a flat, house, plot, car or other non-bank asset, or asks how to add or revalue such an asset. Triggers on /assets-setup and on Polish requests such as "dodaj mieszkanie", "dodaj auto", "majątek", "skonfiguruj aktywa", "wycena nieruchomości", "utrata wartości auta", "wartość netto bez mieszkania". Not for loans or mortgages (loans-setup), bank accounts (budget-setup) or brokerage accounts (investments-setup).
+description: Short guided setup of the cashU assets module (Majątek) for one profile - which manually valued assets to add (home, plot, car with a depreciation curve, other assets), the exact CLI commands with placeholders for the user to run, how to revalue them later, and a check through the profile's cashU MCP server. Use when the user wants their net worth to include a flat, house, plot, car or other non-bank asset, or asks how to add or revalue such an asset. Triggers on /assets-setup and on Polish requests such as "dodaj mieszkanie", "dodaj auto", "majątek", "skonfiguruj aktywa", "wycena nieruchomości", "utrata wartości auta", "wartość netto bez mieszkania". Not for loans or mortgages (loans-setup), bank accounts (budget-setup) or brokerage accounts (investments-setup).
 ---
 
 # assets-setup: manually valued assets
@@ -10,7 +10,7 @@ runs them. Conversation in Polish, files in English, regular hyphens only.
 
 ## Privacy and boundaries (say the first two lines at the start)
 
-- Data reaches you only through the profile's MCP server `finanse-<slug>`, logged in Ustawienia > Agent
+- Data reaches you only through the profile's MCP server `cashu-<slug>`, logged in Ustawienia > Agent
   AI. Read the privacy level from `profile_overview` (`strict` or `amounts`). **Ścisły (strict, default):** you see net worth
   bucket shares and percentages, no amounts, account numbers or names. **Z kwotami:** also amounts.
 - The MCP server has no write tool for assets, so values are entered by the user: you prepare each
@@ -19,7 +19,7 @@ runs them. Conversation in Polish, files in English, regular hyphens only.
   may tell you, but still runs the command.
 - Never ask for addresses, land register (księga wieczysta) numbers, VINs, registration plates, IBANs
   or account numbers. A city and a size are enough if the user wants help estimating a value.
-- Do not run `finanse accounts` or `finanse stats` (they print balances and names); the user runs them.
+- Do not run `cashu accounts` or `cashu stats` (they print balances and names); the user runs them.
 - Valuation facts that change (prices per m2, typical depreciation of a car model) are looked up online
   with a source, never from memory, and only if the user asks. You explain the mechanism; the value is
   the user's estimate. Never bypass bot protection on a price site.
@@ -31,10 +31,10 @@ curve), `networth_breakdown` (bucket shares per currency, to confirm the asset a
 
 ## Flow
 
-1. **Profile.** Use the connected `finanse-<slug>` server (ask which one if several; never mix
+1. **Profile.** Use the connected `cashu-<slug>` server (ask which one if several; never mix
    profiles). In the profile's agent workspace (its `CLAUDE.md` names the profile) it is configured in
    `.mcp.json`. Elsewhere, if none is connected: the `claude mcp add` line from Ustawienia > Agent AI,
-   then restart Claude Code (or create the workspace there and start Claude Code in it). `finanse` in
+   then restart Claude Code (or create the workspace there and start Claude Code in it). `cashu` in
    the commands below is the CLI named in the workspace's `CLAUDE.md` (in the packaged app, the app's
    binary). Call `profile_overview` and `setup_status("assets")`; state the privacy
    level.
@@ -50,14 +50,14 @@ curve), `networth_breakdown` (bucket shares per currency, to confirm the asset a
    are free text, keep them generic like "Mieszkanie", "Auto"):
 
    ```bash
-   finanse --profile <slug> add-position "Mieszkanie" --type property --value <WARTOSC> --currency PLN
-   finanse --profile <slug> set-vehicle "Auto" <CENA_ZAKUPU> <DATA_ZAKUPU_YYYY-MM-DD> --rate 15 --floor <WARTOSC_MINIMALNA>
+   cashu --profile <slug> add-position "Mieszkanie" --type property --value <WARTOSC> --currency PLN
+   cashu --profile <slug> set-vehicle "Auto" <CENA_ZAKUPU> <DATA_ZAKUPU_YYYY-MM-DD> --rate 15 --floor <WARTOSC_MINIMALNA>
    ```
 
    Car curve mechanism: declining balance, the value drops by `--rate` percent of the remaining value
    each year and never below `--floor`. 15% is the default, not a recommendation; the user picks it.
-4. **Revaluing later:** `finanse --profile <slug> set-balance <ID_KONTA> <NOWA_WARTOSC> --date
-   <YYYY-MM-DD>` records a new valuation from that date (the account id is in `finanse accounts`, run by
+4. **Revaluing later:** `cashu --profile <slug> set-balance <ID_KONTA> <NOWA_WARTOSC> --date
+   <YYYY-MM-DD>` records a new valuation from that date (the account id is in `cashu accounts`, run by
    the user). Suggest a rhythm the user chooses (e.g. once a year for property).
 5. **Check:** `setup_status("assets")` shows the steps done; `networth_breakdown` shows the property /
    vehicle bucket with its share. The Majątek tab and Przegląd in the dashboard show the values to the

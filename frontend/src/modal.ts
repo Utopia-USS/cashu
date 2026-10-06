@@ -40,7 +40,7 @@ export function attachModal(el: HTMLElement | null, { onClose, focus = "first", 
   const opener = doc.activeElement as HTMLElement | null;
   const initial = focus === "panel" ? el : el?.querySelector<HTMLElement>("[data-autofocus]") ?? el?.querySelector<HTMLElement>(".db " + FOCUSABLE) ?? el;
   initial?.focus();
-  hist.pushState({ ...((hist.state as object | null) ?? {}), finanseDrawer: true }, "");
+  hist.pushState({ ...((hist.state as object | null) ?? {}), cashuDrawer: true }, "");
   let viaBack = false;
   const onPop = () => { viaBack = true; onClose(); };
   const onKey = (e: KeyboardEvent) => {
@@ -74,7 +74,7 @@ export function attachModal(el: HTMLElement | null, { onClose, focus = "first", 
     doc.body.style.overflow = prev;
     // A tick later: a close that navigated away (the shell replaced this entry with the new view) leaves the
     // history as it is; a plain close drops this modal's entry.
-    if (!viaBack) setTimeout(() => { if ((hist.state as { finanseDrawer?: boolean } | null)?.finanseDrawer) { ownBacks++; hist.back(); } }, 0);
+    if (!viaBack) setTimeout(() => { if ((hist.state as { cashuDrawer?: boolean } | null)?.cashuDrawer) { ownBacks++; hist.back(); } }, 0);
     opener?.focus?.();
   };
 }

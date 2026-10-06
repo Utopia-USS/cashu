@@ -7,7 +7,7 @@ from collections.abc import Mapping
 import pytest
 from rules_fixtures import context, d, day, describe, h, instrument, portfolio, skip_reason
 
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.rules import (
     BUILT_IN_KINDS,
     CashLevelParams,
     CashLevelRule,

@@ -13,7 +13,7 @@ from connector_support import (  # noqa: F401
     write_connector,
 )
 
-from finanse.core.connectors import service
+from cashu.core.connectors import service
 
 pytestmark = needs_python3
 

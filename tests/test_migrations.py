@@ -16,15 +16,15 @@ from alembic.runtime.migration import MigrationContext
 from sqlmodel import SQLModel
 from upstream_db import create_upstream_schema, make_upstream_db
 
-from finanse import db
-from finanse.core import migrations
+from cashu import db
+from cashu.core import migrations
 
 REPO = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(autouse=True)
 def _isolated_data_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
 
 
 def _engine(path: Path, **kwargs):
@@ -253,15 +253,15 @@ def test_single_head_and_baseline_is_root():
     assert script.get_revision(migrations.BASELINE).down_revision is None
 
 
-def test_alembic_cli_uses_the_finanse_database(tmp_path):
+def test_alembic_cli_uses_the_cashu_database(tmp_path):
     """Developer path: `alembic upgrade head` / `alembic check` from the repo root."""
-    env = {k: v for k, v in os.environ.items() if k != "FINANSE_DATABASE_URL"}
-    env["FINANSE_DATA_DIR"] = str(tmp_path / "cli-data")
+    env = {k: v for k, v in os.environ.items() if k != "CASHU_DATABASE_URL"}
+    env["CASHU_DATA_DIR"] = str(tmp_path / "cli-data")
     run = [sys.executable, "-m", "alembic", "-c", str(REPO / "alembic.ini")]
     up = subprocess.run([*run, "upgrade", "head"], cwd=REPO, env=env, capture_output=True,
                         text=True, timeout=60, check=False)
     assert up.returncode == 0, up.stderr
-    created = tmp_path / "cli-data" / "finanse.db"
+    created = tmp_path / "cli-data" / "cashu.db"
     assert created.exists()
     check = subprocess.run([*run, "check"], cwd=REPO, env=env, capture_output=True, text=True,
                            timeout=60, check=False)

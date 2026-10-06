@@ -7,8 +7,8 @@ from __future__ import annotations
 import pytest
 from perf_support import AS_OF, household, sources
 
-from finanse.modules.investments.performance import backfill, service
-from finanse.modules.investments.service import daily, portfolio
+from cashu.modules.investments.performance import backfill, service
+from cashu.modules.investments.service import daily, portfolio
 
 
 @pytest.fixture
@@ -53,9 +53,9 @@ def test_per_profile_valuation_override_reaches_performance(client):
 
 
 def _history_twr(pid: int) -> float:
-    from finanse.core.mcp.server import FinanseMcp
+    from cashu.core.mcp.server import CashuMcp
 
-    result = FinanseMcp(pid, today=AS_OF).call("history_metrics", {})
+    result = CashuMcp(pid, today=AS_OF).call("history_metrics", {})
     assert result.ok, result.error
     return result.data["performance"]["return"]["twr"]
 

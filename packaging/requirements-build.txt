@@ -8,7 +8,7 @@ pyinstaller-hooks-contrib==2026.8
 altgraph==0.17.5
 macholib==1.16.4
 setuptools==84.0.0
-# Build backend of the editable `finanse` install and what it needs for an editable build
+# Build backend of the editable `cashu` install and what it needs for an editable build
 # (installed with --no-build-isolation, so no unpinned backend is fetched at build time).
 hatchling==1.32.4
 editables==0.6

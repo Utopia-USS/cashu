@@ -11,14 +11,14 @@ import pytest
 from perf_support import AS_OF, days, household, sources
 from sqlmodel import delete, select
 
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.worker import runner
-from finanse.modules.investments.models import InvInstrument, InvPriceBar
-from finanse.modules.investments.performance import backfill, report, service
-from finanse.modules.investments.performance.benchmark import simulate
-from finanse.modules.investments.performance.series import Combined
-from finanse.modules.investments.service import daily, portfolio
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.worker import runner
+from cashu.modules.investments.models import InvInstrument, InvPriceBar
+from cashu.modules.investments.performance import backfill, report, service
+from cashu.modules.investments.performance.benchmark import simulate
+from cashu.modules.investments.performance.series import Combined
+from cashu.modules.investments.service import daily, portfolio
 
 LAST_BAR = dt.date(2025, 8, 31)
 
@@ -137,7 +137,7 @@ def test_stale_benchmark_tail_is_flagged_and_drops_the_excess(client):
     # every note carries a code and params
     assert all(set(n) == {"code", "params", "message"} for n in d["data_quality"]["notes"])
 
-    result = FinanseMcp(pid, today=AS_OF).call("history_metrics", {})
+    result = CashuMcp(pid, today=AS_OF).call("history_metrics", {})
     assert result.ok, result.error
     bench = result.data["performance"]["benchmark"]
     assert bench["covers_to_date"] is False and bench["excess_twr"] is None

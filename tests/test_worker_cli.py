@@ -1,4 +1,4 @@
-"""`finanse worker run|install|uninstall|status` with fakes: the log notifier, fake market sources,
+"""`cashu worker run|install|uninstall|status` with fakes: the log notifier, fake market sources,
 a temp agents dir and a fake launchctl."""
 
 from __future__ import annotations
@@ -22,11 +22,11 @@ from test_worker_runner import (  # also re-exports the investments test helpers
 from test_worker_scheduler import FakeLaunchctl
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import cliutil, locks
-from finanse.core.worker import runner, service
-from finanse.core.worker import scheduler as sched
-from finanse.modules.investments.service import daily, portfolio
+from cashu import cli as cli_mod
+from cashu.core import cliutil, locks
+from cashu.core.worker import runner, service
+from cashu.core.worker import scheduler as sched
+from cashu.modules.investments.service import daily, portfolio
 
 
 @pytest.fixture
@@ -62,7 +62,7 @@ def test_worker_run_with_the_log_notifier(run):
     out = run("worker", "run", "--notifier", "log").output
     assert "worker run: ok (notifier: log)" in out
     assert "investments.daily [inwestor]: ok" in out
-    assert "[powiadomienie] finanse: Inwestor | Sygnał do działania |" in out
+    assert "[powiadomienie] cashU: Inwestor | Sygnał do działania |" in out
     assert "notifications [inwestor]: ok (delivered=1)" in out
 
     again = run("worker", "run", "--notifier", "log").output
@@ -90,9 +90,9 @@ def test_worker_run_with_nothing_to_do(run):
 
 def test_install_dry_run_changes_nothing(run, fake_scheduler):
     scheduler, launchctl = fake_scheduler
-    out = run("worker", "install", "--time", "6:45", "--program", "/x/finanse", "--dry-run").output
+    out = run("worker", "install", "--time", "6:45", "--program", "/x/cashu", "--dry-run").output
     plist = plistlib.loads(out.encode("utf-8"))
-    assert plist["ProgramArguments"] == ["/x/finanse", "worker", "run"]
+    assert plist["ProgramArguments"] == ["/x/cashu", "worker", "run"]
     assert plist["StartCalendarInterval"] == {"Hour": 6, "Minute": 45}
     assert not scheduler.plist_path.exists() and launchctl.calls == []
 
@@ -102,12 +102,12 @@ def test_install_status_uninstall(run, fake_scheduler):
     out = run("worker", "status").output
     assert "not installed, daily at 07:30" in out and "last run: - (-)" in out
 
-    out = run("worker", "install", "--time", "6:45", "--program", "/x/finanse").output
+    out = run("worker", "install", "--time", "6:45", "--program", "/x/cashu").output
     assert f"Installed {sched.DEFAULT_LABEL}: daily at 06:45" in out
-    assert "command: /x/finanse worker run" in out
+    assert "command: /x/cashu worker run" in out
     assert launchctl.verbs == ["bootout", "bootstrap", "enable"]
     with scheduler.plist_path.open("rb") as f:
-        assert plistlib.load(f)["ProgramArguments"] == ["/x/finanse", "worker", "run"]
+        assert plistlib.load(f)["ProgramArguments"] == ["/x/cashu", "worker", "run"]
 
     status = json.loads(run("worker", "status", "--json").output)
     assert status["installed"] is True and status["schedule"] == "06:45"

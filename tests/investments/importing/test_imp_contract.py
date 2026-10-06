@@ -7,8 +7,8 @@ from dataclasses import FrozenInstanceError
 import pytest
 from imp_support import csv_file, d, day, parsed_txn, pl_mapping
 
-from finanse.modules.investments.domain import Currency, TxnType
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.domain import Currency, TxnType
+from cashu.modules.investments.importing import (
     CRYPTO,
     BrokerImporter,
     CanonicalImporter,
@@ -29,7 +29,7 @@ from finanse.modules.investments.importing import (
     is_crypto_symbol,
     split_broker_symbol,
 )
-from finanse.modules.investments.importing.exchanges import MARKETS
+from cashu.modules.investments.importing.exchanges import MARKETS
 
 
 def test_import_file_extension() -> None:
@@ -112,12 +112,12 @@ def test_registry_register_get_detect() -> None:
 
 def test_default_registry_puts_the_canonical_importer_first() -> None:
     registry = default_registry(pl_mapping())
-    assert [importer.broker_id for importer in registry.importers] == ["finanse", "generic_csv"]
+    assert [importer.broker_id for importer in registry.importers] == ["cashu", "generic_csv"]
 
 
 def test_effective_broker_id_prefers_the_file_source() -> None:
     importer = CanonicalImporter()
-    assert effective_broker_id(importer, ImportParseResult()) == "finanse"
+    assert effective_broker_id(importer, ImportParseResult()) == "cashu"
     assert (
         effective_broker_id(importer, ImportParseResult(source="examplebroker")) == "examplebroker"
     )
@@ -230,7 +230,7 @@ def test_hong_kong_yahoo_symbols_are_padded_to_four_digits() -> None:
 
 
 def test_warning_kinds() -> None:
-    from finanse.modules.investments.importing import ImportWarningKind
+    from cashu.modules.investments.importing import ImportWarningKind
 
     assert ImportWarning(message="m").kind == ImportWarningKind.OTHER == "other"
     warning = ImportWarning(message="m", kind=ImportWarningKind.FX_MISSING)

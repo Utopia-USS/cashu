@@ -15,11 +15,11 @@ import threading
 import pytest
 from connector_support import memory_keyring, needs_python3, write_connector  # noqa: F401
 
-from finanse.core.connectors import proxy as px
-from finanse.core.connectors import runner, service
-from finanse.core.connectors.models import ConnectorBinding
-from finanse.core.connectors.sandbox import MacSandbox
-from finanse.core.db import get_session
+from cashu.core.connectors import proxy as px
+from cashu.core.connectors import runner, service
+from cashu.core.connectors.models import ConnectorBinding
+from cashu.core.connectors.sandbox import MacSandbox
+from cashu.core.db import get_session
 
 pytestmark = [
     pytest.mark.skipif(sys.platform != "darwin", reason="macOS sandbox-exec only"),
@@ -28,7 +28,7 @@ pytestmark = [
 ]
 
 DOCUMENT = {
-    "format": "finanse-import", "format_version": 1, "source": "demo_api",
+    "format": "cashu-import", "format_version": 1, "source": "demo_api",
     "records": [
         {"record": "txn", "date": "2026-09-01", "type": "deposit", "currency": "PLN",
          "gross_amount": "100.00", "external_ref": "api-1"},

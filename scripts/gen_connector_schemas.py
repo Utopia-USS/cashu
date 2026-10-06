@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Generate the connector JSON Schemas in ``docs/schemas/`` from the pydantic models.
 
-- ``connector-manifest.v1.json``: ``connector.yaml`` (``finanse.core.connectors.manifest.Manifest``);
+- ``connector-manifest.v1.json``: ``connector.yaml`` (``cashu.core.connectors.manifest.Manifest``);
 - ``connector-protocol.v1.json``: the stdin request and the stdout responses
-  (``finanse.core.connectors.protocol``);
-- ``finanse-budget-import.v1.json``: the budget import document, JSON variant
-  (``finanse.modules.budget.ingestion.canonical.BudgetImportDocument``, docs/budget-import-format.md);
-- ``finanse-import.v1.json``: the investments import document, JSON variant (built from the canonical
-  importer's field tables, ``finanse.modules.investments.importing.canonical``, docs/import-format.md).
+  (``cashu.core.connectors.protocol``);
+- ``cashu-budget-import.v1.json``: the budget import document, JSON variant
+  (``cashu.modules.budget.ingestion.canonical.BudgetImportDocument``, docs/budget-import-format.md);
+- ``cashu-import.v1.json``: the investments import document, JSON variant (built from the canonical
+  importer's field tables, ``cashu.modules.investments.importing.canonical``, docs/import-format.md).
 
 Connector authors (and their agents) validate against these; the models stay the source of truth. Run
 after changing a model:
@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from pydantic.json_schema import models_json_schema
 
-from finanse.core.connectors import manifest, protocol
+from cashu.core.connectors import manifest, protocol
 
 SCHEMAS = ROOT / "docs" / "schemas"
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
@@ -39,9 +39,9 @@ def manifest_schema() -> dict:
     return {
         "$schema": DRAFT,
         "$id": "connector-manifest.v1.json",
-        "title": "finanse connector manifest (connector.yaml), api_version 1",
+        "title": "cashU connector manifest (connector.yaml), api_version 1",
         "description": (
-            "Generated from finanse.core.connectors.manifest.Manifest by "
+            "Generated from cashu.core.connectors.manifest.Manifest by "
             "scripts/gen_connector_schemas.py; see docs/connectors.md. The app also enforces the "
             "rules a schema cannot express: run[0] is an allowed interpreter or ./<file>, no `..` or "
             "absolute paths in run, the file / fetch section matches kind, unique ids, directory "
@@ -69,9 +69,9 @@ def protocol_schema() -> dict:
     return {
         "$schema": DRAFT,
         "$id": "connector-protocol.v1.json",
-        "title": "finanse connector protocol, api_version 1",
+        "title": "cashU connector protocol, api_version 1",
         "description": (
-            "Generated from finanse.core.connectors.protocol by scripts/gen_connector_schemas.py; "
+            "Generated from cashu.core.connectors.protocol by scripts/gen_connector_schemas.py; "
             "see docs/connectors.md. stdin: request. stdout with exit code 0: detect_response "
             "(detect), document_response (convert, fetch), check_response (check); with exit code 1: "
             "error_response. Known error kinds: " + ", ".join(protocol.CONNECTOR_ERROR_KINDS) + "."
@@ -84,15 +84,15 @@ def protocol_schema() -> dict:
 
 
 def budget_import_schema() -> dict:
-    from finanse.modules.budget.ingestion import canonical
+    from cashu.modules.budget.ingestion import canonical
 
     schema = canonical.BudgetImportDocument.model_json_schema(mode="validation")
     return {
         "$schema": DRAFT,
-        "$id": "finanse-budget-import.v1.json",
-        "title": "finanse budget import document (finanse-budget-import), format_version 1",
+        "$id": "cashu-budget-import.v1.json",
+        "title": "cashU budget import document (cashu-budget-import), format_version 1",
         "description": (
-            "Generated from finanse.modules.budget.ingestion.canonical.BudgetImportDocument by "
+            "Generated from cashu.modules.budget.ingestion.canonical.BudgetImportDocument by "
             "scripts/gen_connector_schemas.py; see docs/budget-import-format.md (also the CSV "
             "variant). The app also enforces what a schema cannot express: real calendar dates, at "
             "most 2 decimal places (3 for BHD, IQD, JOD, KWD, LYD, OMR, TND), unique transaction_id."
@@ -102,10 +102,10 @@ def budget_import_schema() -> dict:
 
 
 def investments_import_schema() -> dict:
-    """The ``finanse-import`` JSON variant from the canonical importer's tables (it has no pydantic
+    """The ``cashu-import`` JSON variant from the canonical importer's tables (it has no pydantic
     model): top-level keys, the record fields allowed per record kind, value formats and limits."""
-    from finanse.modules.investments.domain import TxnType
-    from finanse.modules.investments.importing import canonical as c
+    from cashu.modules.investments.domain import TxnType
+    from cashu.modules.investments.importing import canonical as c
 
     decimal = {
         "description": "a decimal number: a JSON number or a string with '.' as decimal separator",
@@ -164,10 +164,10 @@ def investments_import_schema() -> dict:
     ]
     return {
         "$schema": DRAFT,
-        "$id": "finanse-import.v1.json",
-        "title": "finanse investments import document (finanse-import), format_version 1",
+        "$id": "cashu-import.v1.json",
+        "title": "cashU investments import document (cashu-import), format_version 1",
         "description": (
-            "Built from finanse.modules.investments.importing.canonical by "
+            "Built from cashu.modules.investments.importing.canonical by "
             "scripts/gen_connector_schemas.py; see docs/import-format.md (also the CSV variant). The "
             "app also enforces what a schema cannot express: real calendar dates, the instrument and "
             "quantity rules per transaction type, cash sign rules, gross / fee / tax / cash "
@@ -202,8 +202,8 @@ def render(schema: dict) -> str:
 OUTPUTS = {
     "connector-manifest.v1.json": manifest_schema,
     "connector-protocol.v1.json": protocol_schema,
-    "finanse-budget-import.v1.json": budget_import_schema,
-    "finanse-import.v1.json": investments_import_schema,
+    "cashu-budget-import.v1.json": budget_import_schema,
+    "cashu-import.v1.json": investments_import_schema,
 }
 
 

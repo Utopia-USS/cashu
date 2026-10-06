@@ -11,7 +11,7 @@ from datetime import timedelta
 import pytest
 from al_fixtures import AS_OF, alert, bars, check, instrument
 
-from finanse.modules.investments.alerts import (
+from cashu.modules.investments.alerts import (
     CATALOG,
     PRICE_KINDS,
     AlertKind,
@@ -19,8 +19,8 @@ from finanse.modules.investments.alerts import (
     catalog_dicts,
     validate,
 )
-from finanse.modules.investments.alerts.messages import alert_message
-from finanse.modules.investments.rules import Fired, NotFired, Skipped
+from cashu.modules.investments.alerts.messages import alert_message
+from cashu.modules.investments.rules import Fired, NotFired, Skipped
 
 QUBT = instrument("QUBT", currency="USD")
 

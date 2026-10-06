@@ -13,14 +13,14 @@ from mcp_support import STRATEGY_YAML, TODAY
 from sqlalchemy.exc import OperationalError
 from sqlmodel import select
 
-from finanse.core import locks, proposals
-from finanse.core.agent_models import Proposal
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.mcp.tools import investments_proposals
-from finanse.core.models import Profile
-from finanse.modules.investments.models import InvStrategyVersion
-from finanse.modules.investments.service import files
+from cashu.core import locks, proposals
+from cashu.core.agent_models import Proposal
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.mcp.tools import investments_proposals
+from cashu.core.models import Profile
+from cashu.modules.investments.models import InvStrategyVersion
+from cashu.modules.investments.service import files
 
 NEW_DEPOSIT = (
     "format_version,record,date,time,type,external_ref,symbol,isin,name,exchange,quantity,price,"
@@ -34,10 +34,10 @@ def setup(db_engine):
     from conftest import make_client
     from mcp_support import seed_profile
 
-    from finanse.api.app import app
+    from cashu.api.app import app
 
     pid, slug = seed_profile(run_daily=False)
-    return pid, slug, FinanseMcp(pid, today=TODAY), make_client(app)
+    return pid, slug, CashuMcp(pid, today=TODAY), make_client(app)
 
 
 def _profile(pid: int) -> Profile:
@@ -57,7 +57,7 @@ def _versions(pid: int) -> list[int]:
 
 
 def _propose_strategy(host, slug) -> tuple[int, str]:
-    from finanse.modules.investments.service import strategy as strategy_files
+    from cashu.modules.investments.service import strategy as strategy_files
 
     with get_session() as s:  # version 1 = the current files
         strategy_files.load(
@@ -115,7 +115,7 @@ def test_reject_during_an_approval_answers_busy_and_the_approval_wins(setup, mon
         assert api.get(f"/api/p/{slug}/proposals/{proposal_id}").json()["status"] == "applying"
         response = api.post(f"/api/p/{slug}/proposals/{proposal_id}/reject", json={"note": "nie"})
         assert response.status_code == 409
-        assert response.headers["X-Finanse-Error-Code"] == "busy"
+        assert response.headers["X-Cashu-Error-Code"] == "busy"
     finally:
         slow.release.set()
         thread.join(10)
@@ -123,7 +123,7 @@ def test_reject_during_an_approval_answers_busy_and_the_approval_wins(setup, mon
     assert _status(proposal_id) == "approved"
     assert files.strategy_yaml_path(slug).read_text() == new_yaml
     late = api.post(f"/api/p/{slug}/proposals/{proposal_id}/reject")
-    assert late.status_code == 409 and late.headers["X-Finanse-Error-Code"] == "not_pending"
+    assert late.status_code == 409 and late.headers["X-Cashu-Error-Code"] == "not_pending"
 
 
 def test_reject_waits_for_the_running_approval_and_never_overwrites_it(setup, monkeypatch):
@@ -153,7 +153,7 @@ def test_reject_waits_for_the_running_approval_and_never_overwrites_it(setup, mo
 
 
 def test_reject_never_deletes_the_staged_export_mid_apply(setup, monkeypatch, tmp_path):
-    from finanse.core import paths
+    from cashu.core import paths
 
     pid, slug, host, api = setup
     path = tmp_path / "new.csv"
@@ -199,7 +199,7 @@ def test_an_interrupted_approval_is_closed_out_as_failed(setup):
 
 
 def test_strategy_approval_records_the_version_once(setup):
-    from finanse.modules.investments.service import strategy as strategy_files
+    from cashu.modules.investments.service import strategy as strategy_files
 
     pid, slug, host, api = setup
     proposal_id, new_yaml = _propose_strategy(host, slug)
@@ -226,7 +226,7 @@ def test_a_db_failure_leaves_files_versions_and_a_failed_proposal(setup, monkeyp
     monkeypatch.setattr(investments_proposals, "_record_version", locked)
     response = api.post(f"/api/p/{slug}/proposals/{proposal_id}/approve")
     assert response.status_code == 422
-    assert response.headers["X-Finanse-Error-Code"] == "apply_failed"
+    assert response.headers["X-Cashu-Error-Code"] == "apply_failed"
     assert _status(proposal_id) == "failed"
     assert files.strategy_yaml_path(slug).read_text() == before
     assert _versions(pid) == [1]
@@ -243,7 +243,7 @@ def test_a_file_failure_removes_the_version_and_keeps_the_old_files(setup, monke
     monkeypatch.setattr(investments_proposals, "replace_files", disk_full)
     response = api.post(f"/api/p/{slug}/proposals/{proposal_id}/approve")
     assert response.status_code == 422
-    assert response.headers["X-Finanse-Error-Code"] == "write_failed"
+    assert response.headers["X-Cashu-Error-Code"] == "write_failed"
     detail = api.get(f"/api/p/{slug}/proposals/{proposal_id}").json()
     assert detail["status"] == "failed" and detail["result"]["error_code"] == "write_failed"
     assert files.strategy_yaml_path(slug).read_text() == before
@@ -274,7 +274,7 @@ def test_replace_files_puts_back_what_it_replaced(tmp_path, monkeypatch):
 
 
 def test_approval_waits_for_the_daily_check_then_stays_pending(setup, monkeypatch):
-    from finanse.modules.investments.service.daily import LOCK_NAME
+    from cashu.modules.investments.service.daily import LOCK_NAME
 
     pid, slug, host, api = setup
     proposal_id, _new_yaml = _propose_strategy(host, slug)
@@ -282,7 +282,7 @@ def test_approval_waits_for_the_daily_check_then_stays_pending(setup, monkeypatc
     monkeypatch.setattr(investments_proposals, "STRATEGY_LOCK_WAIT", 0.2)
     with locks.run_lock(LOCK_NAME):
         response = api.post(f"/api/p/{slug}/proposals/{proposal_id}/approve")
-    assert response.status_code == 409 and response.headers["X-Finanse-Error-Code"] == "busy"
+    assert response.status_code == 409 and response.headers["X-Cashu-Error-Code"] == "busy"
     assert _status(proposal_id) == "pending"
     assert files.strategy_yaml_path(slug).read_text() == before
     assert _versions(pid) == [1]

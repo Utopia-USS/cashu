@@ -1,4 +1,4 @@
-"""worker.log rotation (F6 NT): copytruncate at the start of `finanse worker run` (launchd keeps
+"""worker.log rotation (F6 NT): copytruncate at the start of `cashu worker run` (launchd keeps
 the file open in append mode), 0600 copies, a few backups, and the worker's logging setup."""
 
 from __future__ import annotations
@@ -11,10 +11,10 @@ import stat
 
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import paths
-from finanse.core.worker import logfile
-from finanse.core.worker import scheduler as sched
+from cashu import cli as cli_mod
+from cashu.core import paths
+from cashu.core.worker import logfile
+from cashu.core.worker import scheduler as sched
 
 
 def mode(path) -> int:
@@ -85,10 +85,10 @@ def test_a_failed_rotation_does_not_stop_the_run(tmp_path, capsys):
 
 @contextlib.contextmanager
 def bare_root_logger():
-    """The root logger as in a fresh `finanse worker run` process (pytest adds its own handlers
+    """The root logger as in a fresh `cashu worker run` process (pytest adds its own handlers
     for every test phase, so this runs inside the test body)."""
     root = logging.getLogger()
-    worker = logging.getLogger("finanse.worker")
+    worker = logging.getLogger("cashu.worker")
     saved = (root.handlers[:], root.level, worker.level)
     root.handlers.clear()
     try:
@@ -104,11 +104,11 @@ def test_logging_goes_to_stderr_with_timestamps():
     with bare_root_logger() as root:
         handler = logfile.configure_logging(stream)
         assert handler is not None and root.handlers == [handler]
-        logging.getLogger("finanse.worker").info("pruned staged import files: 2")
-        logging.getLogger("finanse.other").info("chatty")  # only warnings from elsewhere
+        logging.getLogger("cashu.worker").info("pruned staged import files: 2")
+        logging.getLogger("cashu.other").info("chatty")  # only warnings from elsewhere
         assert logfile.configure_logging(io.StringIO()) is None  # configured once
     line = stream.getvalue().strip()
-    assert line.endswith("INFO finanse.worker: pruned staged import files: 2")
+    assert line.endswith("INFO cashu.worker: pruned staged import files: 2")
     assert line[:4].isdigit() and "chatty" not in stream.getvalue()
 
 

@@ -38,7 +38,7 @@ function fullState(): State {
   return {
     kind: "full",
     accounts: [
-      { id: 21, name: "DIF zwykłe", broker: "dif", broker_name: "DIF", wrapper: "regular", currency: "PLN", importer: "finanse", has_mapping: false },
+      { id: 21, name: "DIF zwykłe", broker: "dif", broker_name: "DIF", wrapper: "regular", currency: "PLN", importer: "cashu", has_mapping: false },
       { id: 22, name: "XTB IKE", broker: "xtb", broker_name: "XTB", wrapper: "ike", currency: "PLN", importer: "generic_csv", has_mapping: true },
       { id: 23, name: "XTB IKZE", broker: "xtb", broker_name: "XTB", wrapper: "ikze", currency: "PLN", importer: "generic_csv", has_mapping: true },
     ],
@@ -94,7 +94,7 @@ function fullState(): State {
     }],
     strategyVersion: 7,
     imports: [
-      { id: 61, account_id: 21, importer: "finanse", broker: "dif", file_name: "dif_2026-10-01.csv", inserted: 6, duplicates: 3, new_instruments: 1, corrections: 0, warnings: 0, created_at: "2026-10-01T19:02:00+02:00" },
+      { id: 61, account_id: 21, importer: "cashu", broker: "dif", file_name: "dif_2026-10-01.csv", inserted: 6, duplicates: 3, new_instruments: 1, corrections: 0, warnings: 0, created_at: "2026-10-01T19:02:00+02:00" },
     ],
     manual: [],
     nextId: 1000,
@@ -288,13 +288,13 @@ function strategy(st: State): StrategyStatus {
   if (v == null) {
     return {
       state: "missing", version: null, changed: false, errors: 0, warnings: 0,
-      files: { yaml: "~/Library/Application Support/finanse/profiles/marta/strategy.yaml", md: "~/Library/Application Support/finanse/profiles/marta/strategy.md", yaml_exists: false, md_exists: false },
+      files: { yaml: "~/Library/Application Support/cashU/profiles/marta/strategy.yaml", md: "~/Library/Application Support/cashU/profiles/marta/strategy.md", yaml_exists: false, md_exists: false },
       read_error: null, issues: [], inactive_rules: [], facts: null, base_currency_note: null, versions: [],
     };
   }
   return {
     state: "partial", version: v, changed: false, errors: 0, warnings: 1,
-    files: { yaml: "~/Library/Application Support/finanse/profiles/jan/strategy.yaml", md: "~/Library/Application Support/finanse/profiles/jan/strategy.md", yaml_exists: true, md_exists: true },
+    files: { yaml: "~/Library/Application Support/cashU/profiles/jan/strategy.yaml", md: "~/Library/Application Support/cashU/profiles/jan/strategy.md", yaml_exists: true, md_exists: true },
     read_error: null,
     // issues as the real loader reports them (code + params, F7 D1): a typo warning and a rule left inactive
     issues: [{ severity: "warning", path: "rules[1].cooldown_dyas", message: 'Unknown key "cooldown_dyas" (did you mean "cooldown_days"?); it is ignored', line: 24, column: 5, code: "strategy.unknown_key", params: { key: "cooldown_dyas", suggestion: "cooldown_days" } }],
@@ -368,7 +368,7 @@ function preview(st: State, accountId: number, fileName: string): ImportPreview 
   return {
     file_id: "f".repeat(64), file_name: fileName, size: 4210,
     account: { id: acc.id, name: acc.name, broker: acc.broker, broker_name: acc.broker_name },
-    importer: { id: acc.importer ?? "finanse", name: acc.importer === "generic_csv" ? "CSV z mapowaniem" : "format finanse", detected: [acc.importer ?? "finanse"], requested: "auto" },
+    importer: { id: acc.importer ?? "cashu", name: acc.importer === "generic_csv" ? "CSV z mapowaniem" : "format cashU", detected: [acc.importer ?? "cashu"], requested: "auto" },
     can_commit: true,
     warnings: full ? [{ message: "Row 18: unknown type CORP ACT skipped", row: 18, kind: "skipped", blocking: false }] : [],
     errors: [], previous_imports: [], account_hint: null,
@@ -461,7 +461,7 @@ export function investmentsMock(slug: string, kind: Kind, path: string, q: URLSe
     }
     case "/import/commit": {
       const pv = preview(st, Number(b.account_id), String(b.file_name));
-      const batch: Batch = { id: st.nextId++, account_id: Number(b.account_id), importer: pv.importer.id ?? "finanse", broker: pv.account.broker, file_name: String(b.file_name), inserted: pv.counts!.new, duplicates: pv.counts!.duplicates, new_instruments: 1, corrections: (b.corrections as unknown[]).length, warnings: 0, created_at: new Date().toISOString() };
+      const batch: Batch = { id: st.nextId++, account_id: Number(b.account_id), importer: pv.importer.id ?? "cashu", broker: pv.account.broker, file_name: String(b.file_name), inserted: pv.counts!.new, duplicates: pv.counts!.duplicates, new_instruments: 1, corrections: (b.corrections as unknown[]).length, warnings: 0, created_at: new Date().toISOString() };
       st.imports.unshift(batch);
       return { batch_id: batch.id, inserted: batch.inserted, duplicates: batch.duplicates, new_instrument_ids: [st.nextId++], positions: pv.counts!.positions, renames: 0, status_changes: 0, corrections: batch.corrections, archive_path: "imports/…" };
     }

@@ -8,17 +8,17 @@ from decimal import Decimal
 import pytest
 from sqlmodel import select
 
-from finanse.core import profiles
-from finanse.core.accounts import get_or_create_account, set_balance
-from finanse.core.db import get_session
-from finanse.core.networth import net_worth, net_worth_series
-from finanse.models import Source, Transaction
-from finanse.modules.assets.service import add_manual_position
-from finanse.modules.budget.analytics import detect_recurring
-from finanse.modules.budget.ingestion.normalize import RawTransaction
-from finanse.modules.budget.service import categorize_all, ingest_transactions
-from finanse.modules.loans import amortization
-from finanse.modules.loans.service import add_loan, list_loans, set_loan, set_payment_matching
+from cashu.core import profiles
+from cashu.core.accounts import get_or_create_account, set_balance
+from cashu.core.db import get_session
+from cashu.core.networth import net_worth, net_worth_series
+from cashu.models import Source, Transaction
+from cashu.modules.assets.service import add_manual_position
+from cashu.modules.budget.analytics import detect_recurring
+from cashu.modules.budget.ingestion.normalize import RawTransaction
+from cashu.modules.budget.service import categorize_all, ingest_transactions
+from cashu.modules.loans import amortization
+from cashu.modules.loans.service import add_loan, list_loans, set_loan, set_payment_matching
 
 TODAY = dt.date.today()  # noqa: DTZ011 - the code under test uses the naive local date
 LENDER = "99160000000000000000000999"
@@ -224,7 +224,7 @@ def test_set_loan_refuses_a_property_account(session):
 
 def test_net_worth_ignores_loan_terms_left_on_a_non_loan_account(session):
     """Rows written before the fix (terms on a property) no longer replace its value."""
-    from finanse.modules.loans.models import Loan
+    from cashu.modules.loans.models import Loan
 
     house = add_manual_position(session, name="Dom Test", type="property", value="800000")
     session.add(Loan(account_id=house.id, principal=Decimal(300000), annual_rate=Decimal(6),
@@ -237,8 +237,8 @@ def test_net_worth_ignores_loan_terms_left_on_a_non_loan_account(session):
 
 
 def _lender_installment(session):
-    from finanse.modules.budget.categorize.rules import upsert_rule
-    from finanse.modules.budget.ingestion.normalize import merchant_key
+    from cashu.modules.budget.categorize.rules import upsert_rule
+    from cashu.modules.budget.ingestion.normalize import merchant_key
 
     _home, car = _two_loans(session)
     bank = get_or_create_account(session, bank="mbank", iban="99114000000000000000000001")

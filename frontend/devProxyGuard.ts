@@ -1,7 +1,7 @@
 // Dev-only guard for the Vite proxy (see vite.config.ts), kept in its own file so
 // `npm test` can check it without starting Vite.
 //
-// The backend's CSRF defence is "a cross-site page cannot add X-Finanse-Token".
+// The backend's CSRF defence is "a cross-site page cannot add X-Cashu-Token".
 // The dev proxy adds that header itself, so it must only do so for requests
 // that come from the dev page itself: anything a browser marks as cross-site
 // (Origin, Referer or Sec-Fetch-Site) is refused before it reaches the backend.

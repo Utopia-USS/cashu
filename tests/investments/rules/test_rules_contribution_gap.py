@@ -15,7 +15,7 @@ from rules_fixtures import (
     skip_reason,
 )
 
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.rules import (
     ContributionGapParams,
     ContributionGapRule,
     ContributionPlan,

@@ -10,19 +10,19 @@ from decimal import Decimal
 import pytest
 from perf_support import EUR, PLN, USD, bars, day, days, instrument, rates, txn
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     InstrumentRename,
     MarketView,
     ValuationMode,
 )
-from finanse.modules.investments.performance import report, returns
-from finanse.modules.investments.performance.series import (
+from cashu.modules.investments.performance import report, returns
+from cashu.modules.investments.performance.series import (
     SnapshotStream,
     ValuationPolicy,
     build_series,
 )
-from finanse.modules.investments.portfolio import (
+from cashu.modules.investments.portfolio import (
     InMemoryFxLookup,
     build_snapshot,
     value_portfolio,

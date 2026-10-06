@@ -4,8 +4,8 @@ headings, long sections are bounded. Synthetic markdown only."""
 
 from __future__ import annotations
 
-from finanse.modules.investments.research.strategy_text import SECTION_MAX, strategy_sections
-from finanse.modules.investments.templates import strategy_template
+from cashu.modules.investments.research.strategy_text import SECTION_MAX, strategy_sections
+from cashu.modules.investments.templates import strategy_template
 
 
 def test_template_sections():

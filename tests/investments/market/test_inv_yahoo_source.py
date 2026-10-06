@@ -21,8 +21,8 @@ from inv_market_support import (
     vwce,
 )
 
-from finanse.modules.investments.domain import AssetClass, Currency, InstrumentAlias, PriceBar
-from finanse.modules.investments.market import (
+from cashu.modules.investments.domain import AssetClass, Currency, InstrumentAlias, PriceBar
+from cashu.modules.investments.market import (
     NoPriceSourceException,
     QuoteCurrencyMismatchException,
     SourceBlockedException,

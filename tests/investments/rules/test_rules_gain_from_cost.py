@@ -15,8 +15,8 @@ from rules_fixtures import (
     skip_reason,
 )
 
-from finanse.modules.investments.domain import AssetClass
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.domain import AssetClass
+from cashu.modules.investments.rules import (
     GainFromCostRule,
     InstrumentFilter,
     UnrealizedThresholdParams,

@@ -63,10 +63,10 @@ holding days), `networth_breakdown` (investments vs other assets and liabilities
 
 Questions:
 - All accounts per broker with type (taxable, IKE, IKZE, PPK, OIPE). Compare with the app's account
-  labels; anything missing is added by the user in the app or with `finanse invest accounts add`.
+  labels; anything missing is added by the user in the app or with `cashu invest accounts add`.
 - Other assets: treasury bonds, crypto, real estate, deposits, claims. Where idle cash sits and whether
   it earns interest.
-- History: E has it in the app. X: offer the import now (finanse format or simple CSV in the app's
+- History: E has it in the app. X: offer the import now (cashU format or simple CSV in the app's
   import drawer, any other format with the `import-builder` skill); reconciliation against the
   broker's position snapshot happens in the app's import preview, and the user confirms it there.
   B/P: usually nothing to import.

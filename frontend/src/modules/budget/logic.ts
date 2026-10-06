@@ -126,7 +126,7 @@ export function cushionPayload(d: CushionDraft, baseCurrency: string): { ok: tru
 // ---- first steps: statement import (design/v3/first-steps sections 3, 4) ------------------------------------
 
 /** The `Bank` select when the server has no GET /budget/import/importers (an older server): `[id, label]`. The list
- * itself comes from that endpoint (institutions.csv_ids() + the finanse format). "auto" = detect from the file. */
+ * itself comes from that endpoint (institutions.csv_ids() + the cashU format). "auto" = detect from the file. */
 export const BANKS: [string, string][] = [["auto", "rozpoznaj automatycznie"], ["mbank", "mBank"], ["pekao", "Bank Pekao"], ["erste", "Erste Bank Polska"]];
 /** Account types a statement can create, `[id, label]` (format.ts TYPE_LABEL). */
 export const STATEMENT_TYPES: [string, string][] = [["checking", "Konta osobiste"], ["savings", "Oszczędności"], ["credit", "Karty kredytowe"]];
@@ -192,7 +192,7 @@ export function statementErrorKey(e: { status?: unknown; code?: unknown }): { ke
 }
 
 /** The CLI prefix for command lines in the app: the setup response's `cli_prefix`, else read off a step's `cli`
- * action (`finanse --profile jan import-csv WYCIAG.csv` -> `finanse --profile jan`), else the plain default. */
+ * action (`cashu --profile jan import-csv WYCIAG.csv` -> `cashu --profile jan`), else the plain default. */
 export function cliPrefix(info: { cli_prefix?: string | null; steps?: { actions?: { kind: string; target: string }[] }[] } | null, slug: string): string {
   if (info?.cli_prefix) return info.cli_prefix;
   for (const s of info?.steps ?? []) {
@@ -201,7 +201,7 @@ export function cliPrefix(info: { cli_prefix?: string | null; steps?: { actions?
       if (a.kind === "cli" && m) return m[1];
     }
   }
-  return `finanse --profile ${slug}`;
+  return `cashu --profile ${slug}`;
 }
 
 /** The bank part of the tabbar `↻ Synchronizuj` toast (POST /resync). A profile with connector bindings but no

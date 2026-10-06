@@ -7,13 +7,13 @@ from datetime import time
 import pytest
 from imp_support import d, day, pl_export_cp1250, pl_export_utf8_bom
 
-from finanse.modules.investments.importing.csv_values import (
+from cashu.modules.investments.importing.csv_values import (
     DatePattern,
     DecimalFormat,
     parse_date_with_patterns,
     parse_datetime_with_patterns,
 )
-from finanse.modules.investments.importing.text import (
+from cashu.modules.investments.importing.text import (
     ImportTextEncoding,
     decode_import_text,
     has_utf8_bom,

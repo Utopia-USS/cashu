@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from finanse.modules.investments.alerts import (
+from cashu.modules.investments.alerts import (
     CATALOG,
     KINDS,
     AlertScope,

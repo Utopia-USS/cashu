@@ -6,14 +6,14 @@ from datetime import UTC, datetime, timedelta
 
 from imp_support import counter_ids, d, day
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     Currency,
     Holding,
     PortfolioSnapshot,
     TxnSource,
     TxnType,
 )
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.importing import (
     BrokerPosition,
     ParsedPosition,
     PositionDiffKind,

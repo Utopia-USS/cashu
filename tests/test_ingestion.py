@@ -1,14 +1,14 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from finanse.core.accounts import get_or_create_account, upsert_balance
-from finanse.core.networth import net_worth, net_worth_breakdown, net_worth_series
-from finanse.models import AccountType, Source
-from finanse.modules.budget.analytics import detect_recurring, monthly_cashflow
-from finanse.modules.budget.ingestion.dedup import prepare_new_transactions
-from finanse.modules.budget.ingestion.normalize import RawTransaction
-from finanse.modules.budget.ingestion.transfers import match_internal_transfers
-from finanse.modules.budget.service import ingest_transactions
+from cashu.core.accounts import get_or_create_account, upsert_balance
+from cashu.core.networth import net_worth, net_worth_breakdown, net_worth_series
+from cashu.models import AccountType, Source
+from cashu.modules.budget.analytics import detect_recurring, monthly_cashflow
+from cashu.modules.budget.ingestion.dedup import prepare_new_transactions
+from cashu.modules.budget.ingestion.normalize import RawTransaction
+from cashu.modules.budget.ingestion.transfers import match_internal_transfers
+from cashu.modules.budget.service import ingest_transactions
 
 
 def _raw(amount, d=date(2024, 1, 5), cp="Sklep ABC", source=Source.CSV, btid=None, iban=None):
@@ -219,9 +219,9 @@ def test_net_worth_series_monthly_smoothing(session):
 
 
 def test_categorization_and_spending(session):
-    from finanse.modules.budget.analytics import spending_by_category
-    from finanse.modules.budget.ingestion.normalize import merchant_key
-    from finanse.modules.budget.service import categorize_all, recategorize_merchant
+    from cashu.modules.budget.analytics import spending_by_category
+    from cashu.modules.budget.ingestion.normalize import merchant_key
+    from cashu.modules.budget.service import categorize_all, recategorize_merchant
 
     acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
     session.commit()
@@ -252,7 +252,7 @@ def test_categorization_and_spending(session):
 
 
 def test_loan_amortization():
-    from finanse.modules.loans import amortization as loan
+    from cashu.modules.loans import amortization as loan
 
     P, r, n = 680000, 6.27, 360
     m = loan.monthly_payment(P, r, n)
@@ -278,8 +278,8 @@ def test_loan_amortization():
 def test_transaction_category_override_survives_recategorize(session):
     from sqlmodel import select
 
-    from finanse.models import Transaction
-    from finanse.modules.budget.service import categorize_all, set_transaction_category
+    from cashu.models import Transaction
+    from cashu.modules.budget.service import categorize_all, set_transaction_category
 
     acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
     session.commit()
@@ -303,8 +303,8 @@ def test_transaction_category_override_survives_recategorize(session):
 
 
 def test_spending_by_quarter_and_year(session):
-    from finanse.modules.budget.analytics import spending_by_category
-    from finanse.modules.budget.service import categorize_all
+    from cashu.modules.budget.analytics import spending_by_category
+    from cashu.modules.budget.service import categorize_all
 
     acc = get_or_create_account(session, bank="mbank", iban="PL10000000000000000000000001")
     session.commit()
@@ -325,8 +325,8 @@ def test_spending_by_quarter_and_year(session):
 
 
 def test_fx_conversion_is_transfer(session):
-    from finanse.models import Transaction
-    from finanse.modules.budget.categorize import engine
+    from cashu.models import Transaction
+    from cashu.modules.budget.categorize import engine
 
     t = Transaction(account_id=1, booking_date=date(2026, 1, 1), amount=Decimal(-500),
                     description="OBCIĄŻ. NATYCH. TRANSAKCJA WALUT.", dedup_hash="x", source=Source.CSV)

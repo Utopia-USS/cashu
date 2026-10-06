@@ -1,19 +1,60 @@
+import atexit
+import os
+import shutil
+import tempfile
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
+
+# --------------------------------------------------------------------------- #
+# Fail-safe isolation, before anything from cashu is imported (core.db resolves its URL at
+# import). Session-wide and in os.environ, so every subprocess (CLI, MCP stdio, scripts) inherits
+# it: HOME, the data dir, the pre-rename data dir, workspaces, launch agents and the keyring all
+# point into one temp root; CASHU_TESTING=1 turns on the guard in core/migrate_legacy.py, which
+# refuses to act on anything under the real home folder (resolved independently of HOME). Every
+# pre-rename FINANSE_* variable (legacy name) of the developer's shell is dropped (core/env.py).
+# Per-test fixtures below narrow these further to tmp_path.
+# --------------------------------------------------------------------------- #
+
+REAL_HOME = Path(os.path.expanduser("~")).resolve()
+SESSION_ROOT = Path(tempfile.mkdtemp(prefix="cashu-tests-")).resolve()
+atexit.register(shutil.rmtree, SESSION_ROOT, ignore_errors=True)
+for _key in [k for k in os.environ if k.startswith("FINANSE_")]:  # legacy name
+    del os.environ[_key]
+os.environ.update(
+    {
+        "CASHU_TESTING": "1",
+        "HOME": str(SESSION_ROOT / "home"),
+        "CASHU_DATA_DIR": str(SESSION_ROOT / "data"),
+        "CASHU_LEGACY_DATA_DIR": str(SESSION_ROOT / "legacy-default-data-dir"),
+        "CASHU_WORKSPACES_DIR": str(SESSION_ROOT / "workspaces"),
+        "CASHU_LAUNCH_AGENTS_DIR": str(SESSION_ROOT / "LaunchAgents"),
+        "CASHU_APP_BUNDLE": "none",
+        "PYTHON_KEYRING_BACKEND": "keyring.backends.fail.Keyring",
+    }
+)
+os.environ.pop("CASHU_DATABASE_URL", None)
+(SESSION_ROOT / "home").mkdir()
 
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from finanse import models  # noqa: F401  (register tables)
+from cashu import models  # noqa: F401  (register tables)
 
 
 @pytest.fixture(autouse=True)
 def _private_launch_agents_dir(tmp_path, monkeypatch):
     """The worker's launchd agents dir points into tmp_path for every test, so nothing
     (e.g. GET /api/system) ever reads or writes the real ~/Library/LaunchAgents."""
-    monkeypatch.setenv("FINANSE_LAUNCH_AGENTS_DIR", str(tmp_path / "LaunchAgents"))
-    # Never post through an installed Finanse.app (the notifier's "auto" choice).
-    monkeypatch.setenv("FINANSE_APP_BUNDLE", "none")
+    monkeypatch.setenv("CASHU_LAUNCH_AGENTS_DIR", str(tmp_path / "LaunchAgents"))
+    # The startup migration (core/migrate_legacy.py) looks for the pre-rename data dir here, never
+    # in the real ~/Library/Application Support (also for subprocesses, through the environment).
+    monkeypatch.setenv("CASHU_LEGACY_DATA_DIR", str(tmp_path / "legacy-default-data-dir"))
+    monkeypatch.setenv("CASHU_TESTING", "1")
+    for key in [k for k in os.environ if k.startswith("FINANSE_")]:  # legacy name
+        monkeypatch.delenv(key)
+    # Never post through an installed cashU.app (the notifier's "auto" choice).
+    monkeypatch.setenv("CASHU_APP_BUNDLE", "none")
 
 
 class _GuardKeyring:
@@ -55,8 +96,8 @@ def _memory_keyring_everywhere(monkeypatch):
 @pytest.fixture(autouse=True)
 def _private_workspaces_dir(tmp_path, monkeypatch):
     """Agent workspaces default into tmp_path for every test (core/workspace), never the real
-    ~/Documents/finanse."""
-    monkeypatch.setenv("FINANSE_WORKSPACES_DIR", str(tmp_path / "workspaces"))
+    ~/Documents/cashU."""
+    monkeypatch.setenv("CASHU_WORKSPACES_DIR", str(tmp_path / "workspaces"))
 
 
 @pytest.fixture
@@ -92,14 +133,14 @@ SEED_MONTHS = (6, 7, 8, 9)
 def seed_demo(s: Session, profile_id: int | None = None) -> None:
     """Fill a profile (default: the default profile) through the project's own
     service layer. Seeding two profiles gives them the same account numbers."""
-    from finanse.core import accounts
-    from finanse.models import AccountType, Source, Transaction
-    from finanse.modules.assets import service as assets
-    from finanse.modules.budget import cash
-    from finanse.modules.budget import service as budget
-    from finanse.modules.budget.ingestion.normalize import RawTransaction
-    from finanse.modules.budget.ingestion.transfers import match_internal_transfers
-    from finanse.modules.loans import service as loans
+    from cashu.core import accounts
+    from cashu.models import AccountType, Source, Transaction
+    from cashu.modules.assets import service as assets
+    from cashu.modules.budget import cash
+    from cashu.modules.budget import service as budget
+    from cashu.modules.budget.ingestion.normalize import RawTransaction
+    from cashu.modules.budget.ingestion.transfers import match_internal_transfers
+    from cashu.modules.loans import service as loans
 
     pid = profile_id
     main = accounts.get_or_create_account(
@@ -200,7 +241,7 @@ def seed_demo(s: Session, profile_id: int | None = None) -> None:
 def use_engine(monkeypatch, engine) -> None:
     """Point the app-wide engine (read at call time by get_session / init_db, so
     used by the API and the CLI) at `engine`."""
-    from finanse import db
+    from cashu import db
 
     monkeypatch.setattr(db, "engine", engine)
 
@@ -210,13 +251,13 @@ def db_engine(tmp_path, monkeypatch):
     """An empty, file-backed SQLite DB wired in as the application database.
 
     File-backed (not in-memory) so the API's own sessions, the CLI and extra raw
-    connections all see the same data. FINANSE_DATA_DIR points into tmp_path so
+    connections all see the same data. CASHU_DATA_DIR points into tmp_path so
     nothing touches a real data directory.
     """
-    from finanse import db
+    from cashu import db
 
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
-    engine = create_engine(f"sqlite:///{tmp_path / 'finanse.db'}")
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
+    engine = create_engine(f"sqlite:///{tmp_path / 'cashu.db'}")
     use_engine(monkeypatch, engine)
     db.init_db()
     yield engine
@@ -225,7 +266,7 @@ def db_engine(tmp_path, monkeypatch):
 
 @pytest.fixture
 def seeded_engine(db_engine):
-    from finanse.db import get_session
+    from cashu.db import get_session
 
     with get_session() as s:
         seed_demo(s)
@@ -238,7 +279,7 @@ def make_client(app):
     from fastapi.testclient import TestClient
 
     try:
-        from finanse.core import security
+        from cashu.core import security
     except ImportError:  # upstream app without the security layer
         return TestClient(app)
     cfg = security.get_config()
@@ -248,7 +289,7 @@ def make_client(app):
 @pytest.fixture
 def api(seeded_engine):
     """TestClient over the FastAPI app, backed by the seeded synthetic DB."""
-    from finanse.api.app import app
+    from cashu.api.app import app
 
     with make_client(app) as client:
         yield client
@@ -257,7 +298,7 @@ def api(seeded_engine):
 @pytest.fixture
 def api_empty(db_engine):
     """TestClient over the FastAPI app with an empty DB."""
-    from finanse.api.app import app
+    from cashu.api.app import app
 
     with make_client(app) as client:
         yield client
@@ -333,16 +374,16 @@ def make_eb_txn():
 def eb_configured(monkeypatch):
     """Make the app believe Enable Banking is configured and hand it `client`
     plus the saved `sessions` ({institution id: session id}) of the profile in use."""
-    from finanse.config import settings
+    from cashu.config import settings
 
     monkeypatch.setattr(type(settings), "eb_configured", property(lambda self: True))
 
     def install(client, sessions: dict[str, str]):
         import importlib
 
-        from finanse.modules.budget.ingestion.enable_banking import state
+        from cashu.modules.budget.ingestion.enable_banking import state
 
-        budget_api = importlib.import_module("finanse.modules.budget.api")
+        budget_api = importlib.import_module("cashu.modules.budget.api")
 
         monkeypatch.setattr(budget_api, "_eb_client", lambda: client)
         saved = [state.SavedSession(bank, sid) for bank, sid in sessions.items()]

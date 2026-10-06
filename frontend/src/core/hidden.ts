@@ -2,8 +2,9 @@
 // and the partial-setup strip on the module's first tab (design/v3/first-steps section 12). The key is
 // `<slug>.<module>` and the value the setup state it was hidden in: a new state shows the reminder again.
 // Browser storage is a convenience only (it may be unavailable): every read and write is guarded.
+import { readStored } from "./storage.ts";
 
-export const HIDDEN_KEY = "finanse.hiddenCards";
+export const HIDDEN_KEY = "cashu.hiddenCards";
 
 const listeners = new Set<() => void>();
 /** This window's hides: they hold while storage is unavailable (private window, blocked site data). */
@@ -12,7 +13,7 @@ const memory: Record<string, string> = {};
 /** Every hidden reminder: `{ "<slug>.<module>": "<state>" }`. */
 export function hiddenCards(): Record<string, string> {
   try {
-    const v = JSON.parse(globalThis.localStorage?.getItem(HIDDEN_KEY) || "{}");
+    const v = JSON.parse(readStored(globalThis.localStorage, HIDDEN_KEY) || "{}");
     return v && typeof v === "object" && !Array.isArray(v) ? { ...v, ...memory } : { ...memory };
   } catch {
     return { ...memory };

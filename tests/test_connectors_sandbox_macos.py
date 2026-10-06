@@ -16,11 +16,11 @@ from pathlib import Path
 import pytest
 from connector_support import needs_python3, target_of, write_connector
 
-from finanse.core.connectors import manifest as mf
-from finanse.core.connectors import proxy as px
-from finanse.core.connectors import runner
-from finanse.core.connectors.runner import InputFile, RunTarget, execute
-from finanse.core.connectors.sandbox import MacSandbox
+from cashu.core.connectors import manifest as mf
+from cashu.core.connectors import proxy as px
+from cashu.core.connectors import runner
+from cashu.core.connectors.runner import InputFile, RunTarget, execute
+from cashu.core.connectors.sandbox import MacSandbox
 
 pytestmark = [
     pytest.mark.skipif(sys.platform != "darwin", reason="macOS sandbox-exec only"),
@@ -31,7 +31,7 @@ pytestmark = [
 
 @pytest.fixture(autouse=True)
 def _data_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
 
 
 @pytest.fixture
@@ -99,7 +99,7 @@ def test_file_connector_is_confined(tmp_path, export):
     (home / ".ssh").mkdir(parents=True)
     ssh = home / ".ssh" / "id_rsa"
     ssh.write_text("FAKE KEY", encoding="utf-8")
-    data_file = tmp_path / "data" / "finanse.db"
+    data_file = tmp_path / "data" / "cashu.db"
     data_file.parent.mkdir(parents=True, exist_ok=True)
     data_file.write_text("FAKE DB", encoding="utf-8")
     listener = _Listener()
@@ -234,7 +234,7 @@ def test_node_starts_under_the_profile(tmp_path, export):
 
 def test_profile_runs_echo(tmp_path):
     """sandbox-exec accepts the rendered profile (a syntax error would fail every run)."""
-    from finanse.core.connectors.sandbox import RunSpec
+    from cashu.core.connectors.sandbox import RunSpec
 
     spec = RunSpec(
         argv=("/bin/echo", "ok"), connector_dir=tmp_path, interpreter=Path("/bin/echo"),
@@ -247,7 +247,7 @@ def test_profile_runs_echo(tmp_path):
 
 def test_report_is_json_serialisable(tmp_path, export):
     """Sanity: a sandboxed convert result can be turned into the owner's run view."""
-    from finanse.core.connectors.service import run_dict
+    from cashu.core.connectors.service import run_dict
 
     target = target_of(write_connector(tmp_path / "c", code=PY_MINIMAL))
     result = execute(target, "convert", file=export, sandbox=MacSandbox())

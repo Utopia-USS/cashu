@@ -6,7 +6,7 @@ import httpx
 import pytest
 from inv_market_support import FakeTime, make_http
 
-from finanse.modules.investments.market import (
+from cashu.modules.investments.market import (
     MarketHttp,
     SourceBlockedException,
     SourceException,

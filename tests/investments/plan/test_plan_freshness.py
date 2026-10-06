@@ -8,7 +8,7 @@ import datetime as dt
 
 import pytest
 
-from finanse.modules.investments.plan import (
+from cashu.modules.investments.plan import (
     PLAN_MAX_AGE_DAYS,
     FreshnessFacts,
     FreshnessState,
@@ -16,14 +16,14 @@ from finanse.modules.investments.plan import (
     PlanSignal,
     plan_freshness,
 )
-from finanse.modules.investments.plan.freshness import (
+from cashu.modules.investments.plan.freshness import (
     MAYBE_CODES,
     OUTDATED_CODES,
     REASON_ORDER,
     STRATEGY_RULE_KINDS,
 )
-from finanse.modules.investments.plan.hints import RULE_KIND_HINTS
-from finanse.modules.investments.research.scoring import ScoredNote
+from cashu.modules.investments.plan.hints import RULE_KIND_HINTS
+from cashu.modules.investments.research.scoring import ScoredNote
 
 NOW = dt.datetime(2026, 10, 6, 12, tzinfo=dt.UTC)
 PLAN_AT = NOW - dt.timedelta(days=5)

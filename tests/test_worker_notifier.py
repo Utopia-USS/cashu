@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from finanse.core.worker import notifier as nt
-from finanse.core.worker.notifier import CommandResult, Notification
+from cashu.core.worker import notifier as nt
+from cashu.core.worker.notifier import CommandResult, Notification
 
 
 class FakeRunner:
@@ -20,10 +20,10 @@ class FakeRunner:
 
 
 NOTE = Notification(
-    title="finanse: Dom",
+    title="cashU: Dom",
     subtitle="Sygnał do działania",
     message='XMPL 37.3% > 30% "cudzysłów" \\ end',
-    group="finanse-signal-7",
+    group="cashu-signal-7",
 )
 
 
@@ -37,13 +37,13 @@ def test_terminal_notifier_command():
         [
             "/opt/homebrew/bin/terminal-notifier",
             "-title",
-            "finanse: Dom",
+            "cashU: Dom",
             "-message",
             'XMPL 37.3% > 30% "cudzysłów" \\ end',
             "-subtitle",
             "Sygnał do działania",
             "-group",
-            "finanse-signal-7",
+            "cashu-signal-7",
         ]
     ]
 
@@ -94,7 +94,7 @@ def test_a_failed_delivery_is_reported_not_raised():
 
 
 def test_run_command_reports_a_missing_binary():
-    result = nt.run_command(["/nonexistent/finanse-notifier-test"])
+    result = nt.run_command(["/nonexistent/cashu-notifier-test"])
     assert result.returncode == 127 and "FileNotFoundError" in result.stderr
 
 
@@ -103,7 +103,7 @@ def test_log_notifier():
     log = nt.LogNotifier(lines.append)
     assert log.send(NOTE) == nt.Delivery(True, "log")
     assert lines == [
-        '[powiadomienie] finanse: Dom | Sygnał do działania | XMPL 37.3% > 30% "cudzysłów" \\ end'
+        '[powiadomienie] cashU: Dom | Sygnał do działania | XMPL 37.3% > 30% "cudzysłów" \\ end'
     ]
     assert log.sent == [NOTE]
 

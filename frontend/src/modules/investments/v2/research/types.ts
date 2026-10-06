@@ -169,7 +169,7 @@ export interface DigestResearch {
   highlights?: number[];
 }
 
-/** `GET /api/p/{slug}/workspace` (track AW): the folder, whether finanse set it up, the managed skills. */
+/** `GET /api/p/{slug}/workspace` (track AW): the folder, whether cashU set it up, the managed skills. */
 export interface Workspace {
   path: string | null;
   exists: boolean;

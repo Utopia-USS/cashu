@@ -10,11 +10,11 @@ import datetime as dt
 import pytest
 from sqlmodel import select
 
-from finanse.core import profiles
-from finanse.core.institutions import MANUAL as MANUAL_BANK
-from finanse.db import get_session
-from finanse.models import Account
-from finanse.modules.assets import depreciation
+from cashu.core import profiles
+from cashu.core.institutions import MANUAL as MANUAL_BANK
+from cashu.db import get_session
+from cashu.models import Account
+from cashu.modules.assets import depreciation
 
 MANUAL = "/api/assets/manual"
 
@@ -209,7 +209,7 @@ def _loans(api) -> list[dict]:
 
 
 def test_a_loan_under_a_removed_mortgages_name_gets_a_fresh_account(api):
-    from finanse.modules.loans import service as loans
+    from cashu.modules.loans import service as loans
 
     mortgage = _by_name(api.get(MANUAL).json(), "Kredyt hipoteczny Test")
     (original,) = _loans(api)
@@ -259,7 +259,7 @@ def test_a_loan_under_a_removed_mortgages_name_gets_a_fresh_account(api):
 
 
 def test_loan_lookups_never_reach_a_removed_account(api):
-    from finanse.modules.loans import service as loans
+    from cashu.modules.loans import service as loans
 
     mortgage = _by_name(api.get(MANUAL).json(), "Kredyt hipoteczny Test")
     with get_session() as s:
@@ -295,7 +295,7 @@ def test_loan_lookups_never_reach_a_removed_account(api):
 
 def test_a_removed_property_does_not_block_a_loan_name(api):
     """The mirror case: a removed property holding ``manual:<name>`` no longer refuses the loan name."""
-    from finanse.modules.loans import service as loans
+    from cashu.modules.loans import service as loans
 
     flat = _by_name(api.get(MANUAL).json(), "Mieszkanie Test")
     api.delete(f"{MANUAL}/{flat['id']}")

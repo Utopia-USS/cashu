@@ -7,16 +7,16 @@ import datetime as dt
 
 import pytest
 
-from finanse.core import profiles, reviews
-from finanse.core.agent_models import Review
-from finanse.core.db import get_session
+from cashu.core import profiles, reviews
+from cashu.core.agent_models import Review
+from cashu.core.db import get_session
 
 
 @pytest.fixture
 def setup(db_engine):
     from conftest import make_client
 
-    from finanse.api.app import app
+    from cashu.api.app import app
 
     with get_session() as s:
         a = profiles.create_profile(s, name="Anna", modules_=["investments"])
@@ -45,7 +45,7 @@ def test_review_undo_expires_after_15_minutes(setup):
         row.done_at = dt.datetime.now(dt.UTC) - dt.timedelta(minutes=16)
         s.add(row)
     late = api.delete(f"/api/p/{a}/reviews/{review_id}")
-    assert late.status_code == 409 and late.headers["X-Finanse-Error-Code"] == "undo_expired"
+    assert late.status_code == 409 and late.headers["X-Cashu-Error-Code"] == "undo_expired"
     with get_session() as s:
         assert s.get(Review, review_id) is not None
         now = dt.datetime.now(dt.UTC)

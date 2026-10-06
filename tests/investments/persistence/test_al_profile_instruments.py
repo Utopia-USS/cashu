@@ -8,10 +8,10 @@ import pytest
 from invp_support import AS_OF, HEADER, ROWS, FakePrices, sources
 from test_al_api import household, ids
 
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.modules.investments.models import InvInstrument
-from finanse.modules.investments.service import daily, portfolio
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.modules.investments.models import InvInstrument
+from cashu.modules.investments.service import daily, portfolio
 
 
 @pytest.fixture
@@ -109,14 +109,14 @@ def test_mcp_owner_named_decision_follows_the_profile(client):
     )
     from sqlmodel import select
 
-    from finanse.core.models import Profile
+    from cashu.core.models import Profile
 
     with get_session() as s:
         pid = {p.slug: p.id for p in s.exec(select(Profile)).all()}
-    a_rows = FinanseMcp(pid[a], today=AS_OF).call("positions", {}).data["positions"]
-    b_rows = FinanseMcp(pid[b], today=AS_OF).call("positions", {}).data["positions"]
+    a_rows = CashuMcp(pid[a], today=AS_OF).call("positions", {}).data["positions"]
+    b_rows = CashuMcp(pid[b], today=AS_OF).call("positions", {}).data["positions"]
     a_x = next(r for r in a_rows if r.get("instrument_id") == xmpl)
     b_x = next(r for r in b_rows if r.get("instrument_id") == xmpl)
     assert a_x["owner_named"] is True and "name" not in a_x and "symbol" not in a_x
     assert b_x["owner_named"] is False and b_x["symbol"] == "XMPL"
-    assert "Kowalski" not in str(FinanseMcp(pid[a], today=AS_OF).call("theses", {}).data)
+    assert "Kowalski" not in str(CashuMcp(pid[a], today=AS_OF).call("theses", {}).data)

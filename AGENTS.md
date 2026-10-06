@@ -17,7 +17,9 @@ the repository or off the machine:
    staged, **stop and report it to the user**. The DB, Open Banking sessions and
    key, backups and the API token now live in the per-user data dir outside the
    repo (`core/paths.py`); `data/` only holds them in older checkouts until
-   `finanse migrate-data`. Tests always set `FINANSE_DATA_DIR` to a temp dir.
+   `cashu migrate-data`. Tests always set `CASHU_DATA_DIR` to a temp dir; `tests/conftest.py`
+   also points HOME, the pre-rename data dir, workspaces and launch agents at temp dirs and sets
+   `CASHU_TESTING=1`, under which `core/migrate_legacy.py` refuses any path in the real home.
 2. **Never write balances, IBANs, names, or transactions** into files that could
    land in the repo (code, tests, docs). Tests use synthetic data.
 3. **Never send data to a cloud LLM.** The `anthropic` backend sends only the
@@ -75,35 +77,37 @@ internals: cross-module needs go through core (net-worth contributors, account
 types, institutions, categorization hooks).
 
 ```
-src/finanse/
+src/cashu/
 ├── cli.py            # Typer root: --profile, core + module commands, `stats` (entry point)
-├── config.py         # Settings (pydantic-settings), reads .env (FINANSE_ prefix)
+├── config.py         # Settings (pydantic-settings), reads .env (CASHU_ prefix)
 ├── models.py         # facade: every table (scripts, Alembic env)
-├── db.py             # alias of core/db.py (`finanse.db.engine` still works)
+├── db.py             # alias of core/db.py (`cashu.db.engine` still works)
 ├── core/
 │   ├── db.py             # SQLite engine + pragmas (WAL, busy_timeout, foreign_keys), init_db
 │   ├── models.py         # Profile, ProfileModule, Account, Balance (+ AccountType, Source)
 │   ├── profiles.py       # profiles, slugs, the default profile, module choice per profile
-│   ├── modules.py        # ModuleSpec + registry (finanse/modules/<id>/module.py)
+│   ├── modules.py        # ModuleSpec + registry (cashu/modules/<id>/module.py)
 │   ├── account_types.py  # account type registry: sign, liquid, net-worth bucket, PL label
 │   ├── institutions.py   # bank/broker registry: CSV importer, Open Banking ASPSP names
 │   ├── accounts.py       # get_or_create_account, balances, own IBANs (per profile)
 │   ├── networth.py       # net worth per currency from module NetWorthContributors
 │   ├── api.py            # profile resolution, /api/system(/update)|modules|profiles, accounts, net worth
-│   ├── updates.py        # update check: version vs pyproject.toml on a GitHub branch (FINANSE_UPDATE_*)
+│   ├── updates.py        # update check: version vs pyproject.toml on a GitHub branch (CASHU_UPDATE_*)
 │   ├── cli.py            # init-db, serve, migrate-data, accounts, set-balance, profiles, secrets
 │   ├── text.py           # IBAN / text normalization shared by all modules
-│   ├── paths.py          # per-user data dir (platformdirs, FINANSE_DATA_DIR), legacy data/ detection
-│   ├── legacy.py         # `finanse migrate-data` (copy data/ into the data dir with a backup)
+│   ├── paths.py          # per-user data dir (platformdirs, CASHU_DATA_DIR), legacy data/ detection
+│   ├── legacy.py         # `cashu migrate-data` (copy data/ into the data dir with a backup)
+│   ├── env.py            # env(): CASHU_* variables, FINANSE_* (legacy name) as a fallback
+│   ├── migrate_legacy.py # startup move of a pre-rename install (data dir, DB file, keychain, launchd)
 │   ├── migrations/       # Alembic: env.py + versions/ (0001 baseline = upstream schema, 0002 profiles, ...)
 │   ├── security.py       # API token + Host check middleware, token meta tag
-│   ├── secrets.py        # OS keychain via keyring (`finanse secrets ...`)
+│   ├── secrets.py        # OS keychain via keyring (`cashu secrets ...`)
 │   ├── runtime.py        # source checkout vs packaged app: the command other programs run
 │   │                     #   (launchd, MCP snippets), bundled skills
-│   └── worker/           # `finanse worker run|install|uninstall|status`: daily jobs for every profile,
+│   └── worker/           # `cashu worker run|install|uninstall|status`: daily jobs for every profile,
 │                         #   notifications, weekly digest, launchd agent (state + log in the data dir)
-├── desktop/              # `finanse app` (pywebview window over in-process uvicorn, single instance),
-│                         #   `finanse skills install`, entry.py = the packaged app's entry point
+├── desktop/              # `cashu app` (pywebview window over in-process uvicorn, single instance),
+│                         #   `cashu skills install`, entry.py = the packaged app's entry point
 ├── modules/
 │   ├── budget/           # bank accounts, categorization, cashflow, recurring, cash pool
 │   │   ├── module.py         # ModuleSpec (router, CLI, cash net-worth contributor, setup)
@@ -114,11 +118,11 @@ src/finanse/
 │   │   ├── api.py, cli.py, setup.py, queries.py
 │   │   ├── imports.py        # in-app statement import: preview (staged, read-only) -> commit
 │   │   ├── ingestion/        # normalize, dedup, transfers, csv_import/ (per-bank parsers), enable_banking/,
-│   │   │                     #   canonical.py (finanse-budget-import, docs/budget-import-format.md)
+│   │   │                     #   canonical.py (cashu-budget-import, docs/budget-import-format.md)
 │   │   └── categorize/       # taxonomy (25 categories + ~420 PL rules), engine, rules, llm, local_llm, reclassify
 │   ├── assets/           # manual positions, vehicles (depreciation.py), net-worth contributor
 │   ├── loans/            # many loans per profile: amortization.py, valuation.py, patterns.py, api, cli
-│   └── investments/      # brokerage accounts, imports, portfolio, strategy + rules, signals (`finanse invest`)
+│   └── investments/      # brokerage accounts, imports, portfolio, strategy + rules, signals (`cashu invest`)
 │       ├── domain/, portfolio/, market/, strategy/, rules/, importing/   # pure core (no DB, no IO)
 │       ├── models.py, store/       # inv_* tables and repositories
 │       ├── service/              # imports, daily check, strategy files, portfolio views
@@ -153,22 +157,22 @@ statements/               # (git-ignored) drop CSV statements here — empty in 
 # environment
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-finanse init-db
+cashu init-db
 
 # tests (synthetic data — safe)
 pytest
 
 # dashboard: backend + built frontend
 cd frontend && npm install && npm run build && cd ..
-finanse serve                      # http://127.0.0.1:8500
+cashu serve                      # http://127.0.0.1:8500
 
 # dashboard in dev mode (HMR): two processes
-finanse serve                      # terminal 1 (API :8500)
+cashu serve                      # terminal 1 (API :8500)
 cd frontend && npm run dev         # terminal 2 (Vite :5173, proxies /api → :8500)
 ```
 
 There is a `.claude/launch.json` with a `dashboard` config — via the preview
-tools you can run `finanse serve` and verify changes in the browser (net worth,
+tools you can run `cashu serve` and verify changes in the browser (net worth,
 charts, tabs). `webdist/` is git-ignored — after `git clone` you must run
 `npm run build` once, otherwise FastAPI serves `static/index.html`, a
 minimal page that says how to build the frontend.
@@ -187,15 +191,15 @@ deposit, a decision and (Anna) a pending agent import proposal. Dates follow tod
 run changes nothing.
 
 ```bash
-.venv/bin/python scripts/demo_data.py --data-dir /tmp/finanse-demo
-FINANSE_DATA_DIR=/tmp/finanse-demo finanse serve      # open the printed #token= URL
+.venv/bin/python scripts/demo_data.py --data-dir /tmp/cashu-demo
+CASHU_DATA_DIR=/tmp/cashu-demo cashu serve      # open the printed #token= URL
 pytest -q tests/test_demo_data.py                     # the script twice on a temp dir
 ```
 
 The browser smoke suite lives in `frontend/e2e/` (Playwright test runner with the
 system Chrome, `channel: "chrome"`; install with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 npm install`). It never builds: run `npm run build` first. The global setup seeds a
-temp data dir with the demo script, starts `e2e/serve_offline.py` (`finanse serve`
+temp data dir with the demo script, starts `e2e/serve_offline.py` (`cashu serve`
 with the synthetic market sources and outbound HTTP refused) on a free port, reads
 the token from the printed URL, and removes everything afterwards. Specs run one
 after another (some change the data), browser timezone Europe/Warsaw; artifacts go
@@ -218,7 +222,7 @@ Each module ships a setup skill in `.claude/skills/<name>/SKILL.md` (plus
 Code, and runs the skill as a slash command in this repo:
 
 ```bash
-claude mcp add finanse-<slug> -- finanse mcp --profile <slug>   # once per profile
+claude mcp add cashu-<slug> -- cashu mcp --profile <slug>   # once per profile
 ```
 
 | skill | what it does |
@@ -254,9 +258,9 @@ the skill triggers) and use only tool names from the MCP server.
   sessions are per profile too, the seed taxonomy is global. Transactions,
   balances, loans and depreciation belong to a profile through their account.
   Every service function takes `profile_id` (`None` = the default profile:
-  `FINANSE_PROFILE`, else the oldest). The API is `/api/p/{slug}/...`; the old
+  `CASHU_PROFILE`, else the oldest). The API is `/api/p/{slug}/...`; the old
   `/api/...` paths are aliases for the default profile. The CLI takes
-  `finanse --profile <slug> ...`. "Own IBANs" (what counts as an internal
+  `cashu --profile <slug> ...`. "Own IBANs" (what counts as an internal
   transfer) are per profile: a transfer to a partner in another profile is a real
   outflow.
 - **Net worth is per-currency**: never sum currencies. Budget analytics default
@@ -272,10 +276,10 @@ the skill triggers) and use only tool names from the MCP server.
 - **Loans** (`Loan`, any number per profile): the net-worth balance = the computed
   outstanding debt (amortization), not a fixed number; `outstanding` returns 0
   before origination. A balance recorded for the loan account *after* its terms
-  were set (`finanse loans set-balance`, `set-balance`, a statement) wins from its
+  were set (`cashu loans set-balance`, `set-balance`, a statement) wins from its
   date on, reduced by the principal repaid after it. Installments are recognised
   by phrases ("RATA KREDYTU", ...) and by each loan's lender account / title phrase
-  (`finanse loans set-payment`), so they are "Raty kredytów", never subscriptions.
+  (`cashu loans set-payment`), so they are "Raty kredytów", never subscriptions.
 - **Asset depreciation** (`Depreciation`): a car's value decays over time.
 - **Month close** (`modules/budget/monthclose.py`, `GET /budget/month-close`):
   income, spending and surplus of a month per currency (the cashflow filters), an
@@ -293,20 +297,20 @@ the skill triggers) and use only tool names from the MCP server.
   The math is the pure core (FIFO lots, valuation, allocation, rules); the
   `store/` and `service/` layers only load and persist. Files live in the data dir:
   `profiles/<slug>/strategy.yaml|.md` and `imports/<slug>/<sha256>.<ext>` (every
-  committed import). Imports go through the finanse format
+  committed import). Imports go through the cashU format
   ([`docs/import-format.md`](docs/import-format.md)), a generic CSV mapping or an
   approved connector ([`docs/connectors.md`](docs/connectors.md)), never a
-  broker-specific parser in the code base. The daily check (`finanse invest run`) refreshes prices
+  broker-specific parser in the code base. The daily check (`cashu invest run`) refreshes prices
   (Yahoo/stooq) and NBP rates without holding a database transaction across the
   network, then runs the rules per profile.
 - **Migrations: Alembic.** `init_db()` (every CLI command and server start)
   upgrades the DB to head; a pre-Alembic DB is stamped at `0001_baseline`. When
   you change a model, add a revision from the repo root
-  (`FINANSE_DATA_DIR=/tmp/x alembic revision --autogenerate -m "..."`) and use
+  (`CASHU_DATA_DIR=/tmp/x alembic revision --autogenerate -m "..."`) and use
   `op.batch_alter_table` for existing tables (SQLite rebuilds them).
   `tests/test_migrations.py` fails when models and migrations drift. Before a
   database with data is upgraded, a copy goes to `backups/` next to it (the
-  legacy `data/finanse.db`: to the data dir's `backups/`). `alembic upgrade` /
+  legacy `data/finanse.db` (legacy name): to the data dir's `backups/`). `alembic upgrade` /
   `downgrade` from the repo root take the same copy first; `alembic -x
   no-backup=1 ...` skips it explicitly.
 
@@ -315,13 +319,13 @@ the skill triggers) and use only tool names from the MCP server.
 ## Conventions when extending
 
 **Versions:** never bump the version in a normal change. Every push to `main` gets a patch bump from the
-`bump-version` workflow (`pyproject.toml` and `src/finanse/__init__.py` together); `[minor]` / `[major]` in
+`bump-version` workflow (`pyproject.toml` and `src/cashu/__init__.py` together); `[minor]` / `[major]` in
 a commit message asks for a bigger step, `[skip bump]` for none. Pull after pushing (the bot commits to
 `main`).
 
 **Adding a new bank (CSV parser):** (a bank or broker only one user needs is better
 served by a connector, [`docs/connectors.md`](docs/connectors.md): no code change)
-1. New file `src/finanse/modules/budget/ingestion/csv_import/<bank>.py` - a thin
+1. New file `src/cashu/modules/budget/ingestion/csv_import/<bank>.py` - a thin
    config on top of the engine in `base.py` (model it on `mbank.py`/`pekao.py`:
    encoding, separator, columns, where currency/IBAN/balance come from; set
    `bank = "<id>"`). Keep the bank's Polish CSV headers verbatim - they are
@@ -332,7 +336,7 @@ served by a connector, [`docs/connectors.md`](docs/connectors.md): no code chang
    `--bank` choices and `statements/<id>/` directories pick it up from there.
 3. Add a test in `tests/test_parsing.py` using a **synthetic** sample of the format.
 
-**Adding a module:** a package `src/finanse/modules/<id>/` with its tables
+**Adding a module:** a package `src/cashu/modules/<id>/` with its tables
 (`models.py`, plus an Alembic revision), and `module.py` exporting
 `MODULE = ModuleSpec(...)`: Polish name/description (wizard), router, CLI
 `register` (and/or `cli_module` for its sub-app, named `cli_name` or the id),
@@ -351,7 +355,7 @@ institutions it owns, categorization hooks, `setup_status(session, profile_id)`
    in `tests/investments/persistence/test_invp_isolation.py`. Every `/api/*` route is behind the
    token + Host check automatically (`core/security.py`); in tests use a
    `TestClient` with `base_url=security.get_config().base_url` and the
-   `X-Finanse-Token` header (see `tests/conftest.py`).
+   `X-Cashu-Token` header (see `tests/conftest.py`).
 2. Type + function in `frontend/src/api.ts` (mirror the JSON shape); call it
    through `j`/`jpost`/`jdel`, which send the token.
 3. Component in `frontend/src/components/` or a new tab in `frontend/src/tabs/`
@@ -361,12 +365,12 @@ institutions it owns, categorization hooks, `setup_status(session, profile_id)`
    `components/ScrollableChart.tsx` (window+scroll+axis+grid). Don't add zoom/pan plugins to Chart.js — they were removed as janky.
 
 **CLI:** a module's commands live in its `cli.py` and are added by `register(app)`
-(top level, upstream names) and in the module's sub-app (`finanse loans ...`).
+(top level, upstream names) and in the module's sub-app (`cashu loans ...`).
 Resolve the profile with `core.cliutil.profile(session)` and print through
 `core.cliutil.console`. Follow the existing pattern.
 
 **Tests:** `pytest`. Always synthetic data. Never paste real statements. Point
-`FINANSE_DATA_DIR` at a temp dir (never the real data dir) and use an in-memory
+`CASHU_DATA_DIR` at a temp dir (never the real data dir) and use an in-memory
 keyring backend for secrets. `conftest.seed_demo(session, profile_id=...)` seeds a
 synthetic household into any profile; `tests/upstream_db.py` builds an
 upstream-shaped database for migration tests.
@@ -392,7 +396,7 @@ UI text is Polish, minimal and glanceable. Before adding or changing a string:
 - Numbers first: `12 400 zł · 3 konta`. Status words are single adjectives / short tags (gotowy, w toku,
   nieaktualne). Refresh mechanics stay invisible ("co 5 s", "na żywo", "odświeża się").
 - Backend codes get Polish labels in `frontend/src/core/messages.ts` (strategy issues, import warnings,
-  proposals, `X-Finanse-Error-Code` errors, `perf.<code>`, `worker.<code>`); the English text is only the
+  proposals, `X-Cashu-Error-Code` errors, `perf.<code>`, `worker.<code>`); the English text is only the
   fallback. Product names (Claude Code, MCP, Enable Banking) stay as they are. Never the em dash; hyphen.
 
 ---

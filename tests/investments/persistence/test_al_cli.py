@@ -1,4 +1,4 @@
-"""`finanse invest alerts ...` and `finanse invest watchlist ...` (F5)."""
+"""`cashu invest alerts ...` and `cashu invest watchlist ...` (F5)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from invp_support import AS_OF, STRATEGY_YAML, canonical_csv, sources
 from rich.console import Console
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import cliutil
-from finanse.modules.investments.service import daily, files, portfolio
+from cashu import cli as cli_mod
+from cashu.core import cliutil
+from cashu.modules.investments.service import daily, files, portfolio
 
 
 @pytest.fixture

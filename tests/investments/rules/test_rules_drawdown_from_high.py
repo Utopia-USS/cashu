@@ -17,8 +17,8 @@ from rules_fixtures import (
     skip_reason,
 )
 
-from finanse.modules.investments.domain import AssetClass, Currency
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.domain import AssetClass, Currency
+from cashu.modules.investments.rules import (
     DataQualityPolicy,
     DrawdownFromHighParams,
     DrawdownFromHighRule,

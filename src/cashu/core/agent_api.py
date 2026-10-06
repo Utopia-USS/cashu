@@ -1,0 +1,200 @@
+"""Agent layer API (profile-scoped, mounted under ``/api/p/{slug}`` only): proposals the owner approves
+or rejects, weekly reviews, the MCP call audit log and the MCP connection snippet.
+
+- ``GET  /proposals?status=&limit=``             list (newest first, no payload)
+- ``GET  /proposals/{id}``                       payload + detail (strategy diff, rule backtest, import
+  preview summary)
+- ``POST /proposals/{id}/approve``               apply it (409 not pending or busy, 422 cannot apply:
+  then ``failed`` with ``result.error``)
+- ``POST /proposals/{id}/reject``  ``{note?}``   (409 not pending, or busy while an approval runs)
+- ``GET  /reviews?module=&limit=``, ``POST /reviews`` ``{module, notes?, done_at?}`` (201;
+  ``done_at`` a past or today's date YYYY-MM-DD, 422 when in the future)
+- ``DELETE /reviews/{id}``                       undo within 15 minutes (409 ``undo_expired``)
+- ``GET  /mcp/calls?limit=``                     audit rows (argument names and types only)
+- ``GET  /mcp``                                  server name, ``claude mcp add`` command, privacy, tools
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from . import locks, proposals, reviews
+from .api import CurrentProfile
+from .db import get_session
+
+router = APIRouter()
+
+
+def _404(e: Exception) -> HTTPException:
+    return HTTPException(status_code=404, detail=str(e))
+
+
+def _422(e: Exception) -> HTTPException:
+    return HTTPException(status_code=422, detail=str(e), headers=_code(e))
+
+
+def _code(e: Exception) -> dict[str, str]:
+    """``detail`` stays an English string (the app shows it); the stable code rides in a header."""
+    code = getattr(e, "code", None)
+    return {"X-Cashu-Error-Code": code} if code else {}
+
+
+# --------------------------------------------------------------------------- #
+# Proposals
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/proposals")
+def list_proposals(
+    profile: CurrentProfile, status: str | None = None, limit: int = 100
+) -> list[dict]:
+    with get_session() as s:
+        try:
+            rows = proposals.list_proposals(s, profile, status, limit)
+        except proposals.ProposalError as e:
+            raise _422(e) from None
+        return [proposals.proposal_dict(r) for r in rows]
+
+
+@router.get("/proposals/{proposal_id}")
+def get_proposal(profile: CurrentProfile, proposal_id: int) -> dict:
+    with get_session() as s:
+        try:
+            row = proposals.get(s, profile, proposal_id)
+        except proposals.ProposalNotFound as e:
+            raise _404(e) from None
+        return proposals.detail_dict(s, profile, row)
+
+
+@router.post("/proposals/{proposal_id}/approve")
+def approve_proposal(profile: CurrentProfile, proposal_id: int) -> dict:
+    try:
+        row = proposals.approve(profile, proposal_id)
+    except proposals.ProposalNotFound as e:
+        raise _404(e) from None
+    except (proposals.ProposalConflict, proposals.ProposalBusy) as e:
+        raise HTTPException(status_code=409, detail=str(e), headers=_code(e)) from None
+    except proposals.ProposalError as e:
+        raise _422(e) from None
+    except locks.LockBusy:
+        raise HTTPException(
+            status_code=409,
+            detail="another approval is running",
+            headers={"X-Cashu-Error-Code": "busy"},
+        ) from None
+    return proposals.proposal_dict(row)
+
+
+class RejectBody(BaseModel):
+    note: str | None = None
+
+
+@router.post("/proposals/{proposal_id}/reject")
+def reject_proposal(
+    profile: CurrentProfile, proposal_id: int, body: RejectBody | None = None
+) -> dict:
+    # Takes the approval lock itself (F5 R3): no session is held open around it.
+    try:
+        row = proposals.reject(profile, proposal_id, body.note if body else None)
+    except proposals.ProposalNotFound as e:
+        raise _404(e) from None
+    except (proposals.ProposalConflict, proposals.ProposalBusy) as e:
+        raise HTTPException(status_code=409, detail=str(e), headers=_code(e)) from None
+    return proposals.proposal_dict(row)
+
+
+# --------------------------------------------------------------------------- #
+# Reviews
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/reviews")
+def list_reviews(profile: CurrentProfile, module: str | None = None, limit: int = 50) -> list[dict]:
+    with get_session() as s:
+        return [reviews.review_dict(r) for r in reviews.list_reviews(s, profile, module, limit)]
+
+
+class ReviewBody(BaseModel):
+    module: str
+    notes: str | None = None
+    done_at: str | None = None  # YYYY-MM-DD, not in the future (F7 OB3); default: now
+
+
+def _module_stats(session, profile_id: int, module: str) -> dict[str, Any]:
+    if module == "investments":
+        from .mcp.tools.investments import investments_review_stats
+
+        return {"source": "app"} | investments_review_stats(session, profile_id)
+    return {"source": "app"}
+
+
+@router.post("/reviews", status_code=201)
+def create_review(profile: CurrentProfile, body: ReviewBody) -> dict:
+    with get_session() as s:
+        try:
+            stats = _module_stats(s, profile.id, body.module) if body.module else {}
+            row = reviews.mark_done(
+                s, profile, body.module, body.notes, stats, done_at=body.done_at or None
+            )
+        except reviews.ReviewError as e:
+            raise _422(e) from None
+        return reviews.review_dict(row)
+
+
+@router.delete("/reviews/{review_id}")
+def undo_review(profile: CurrentProfile, review_id: int) -> dict:
+    """The app's "Cofnij" after "Oznacz przegląd jako zrobiony" (F5 R4): the save is immediate, the
+    undo deletes it within 15 minutes."""
+    with get_session() as s:
+        try:
+            reviews.undo(s, profile, review_id)
+        except reviews.ReviewNotFound as e:
+            raise _404(e) from None
+        except reviews.ReviewUndoExpired as e:
+            raise HTTPException(
+                status_code=409, detail=str(e), headers={"X-Cashu-Error-Code": "undo_expired"}
+            ) from None
+    return {"deleted": review_id}
+
+
+# --------------------------------------------------------------------------- #
+# MCP audit and connection
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/mcp/calls")
+def mcp_calls(profile: CurrentProfile, limit: int = 100) -> list[dict]:
+    from .mcp import audit
+
+    with get_session() as s:
+        return [audit.call_dict(r) for r in audit.calls(s, profile.id, limit)]
+
+
+@router.get("/mcp")
+def mcp_info(profile: CurrentProfile) -> dict:
+    from . import profiles, runtime
+    from .mcp.registry import all_tools
+
+    with get_session() as s:
+        enabled = set(profiles.enabled_modules(s, profile.id))
+    tools = [
+        {"name": t.name, "module": t.listed_module(enabled), "write": t.write}
+        for t in all_tools().values()
+        if t.enabled_in(enabled)
+    ]
+    return {
+        # The packaged app's commands point at its bundled binary (core/runtime.py).
+        "server_name": runtime.mcp_server_name(profile.slug),
+        "command": runtime.mcp_command(profile.slug),
+        "claude_mcp_add": runtime.claude_mcp_add(profile.slug),
+        # Claude Desktop: {"mcpServers": {<server_name>: claude_desktop}} (no data-derived keys here).
+        "claude_desktop": runtime.mcp_server_entry(profile.slug),
+        "packaged": runtime.frozen(),
+        # macOS App Translocation: the snippets are placeholders until the app is moved (PK3)
+        "translocated": runtime.translocated(),
+        "privacy": profile.mcp_privacy,
+        "tools": tools,
+    }

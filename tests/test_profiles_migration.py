@@ -11,15 +11,15 @@ import pytest
 from alembic import command
 from upstream_db import UPSTREAM_ROWS, create_upstream_schema, make_upstream_db
 
-from finanse import db
-from finanse.core import legacy, migrations
+from cashu import db
+from cashu.core import legacy, migrations
 
 KEEP = ("transactions", "balances", "depreciations")  # no revision changes these rows
 
 
 @pytest.fixture(autouse=True)
 def _isolated_data_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
 
 
 def _rows(path: Path, sql: str) -> list[tuple]:
@@ -39,14 +39,14 @@ def _upgrade(path: Path) -> None:
 
 
 def test_upstream_db_migrates_into_a_default_profile(tmp_path):
-    path = make_upstream_db(tmp_path / "finanse.db")
+    path = make_upstream_db(tmp_path / "cashu.db")
     before_counts = legacy.table_counts(path)
     kept_before = {t: _rows(path, f"SELECT * FROM {t} ORDER BY id") for t in KEEP}
 
     _upgrade(path)
 
     # a consistent backup of the original was taken first
-    (backup,) = (tmp_path / "backups").glob(f"finanse-pre-{migrations.head_revision()}-*.db")
+    (backup,) = (tmp_path / "backups").glob(f"cashu-pre-{migrations.head_revision()}-*.db")
     assert legacy.table_counts(backup) == before_counts
     assert _rows(backup, "SELECT bank, type FROM accounts WHERE id = 1") == [("MBANK", "CHECKING")]
 
@@ -83,9 +83,9 @@ def test_upstream_db_migrates_into_a_default_profile(tmp_path):
 def test_migrated_db_serves_the_api_and_takes_a_second_profile(tmp_path, monkeypatch):
     from conftest import make_client
 
-    from finanse.api.app import app
+    from cashu.api.app import app
 
-    path = make_upstream_db(tmp_path / "finanse.db")
+    path = make_upstream_db(tmp_path / "cashu.db")
     engine = db.make_engine(f"sqlite:///{path}")
     monkeypatch.setattr(db, "engine", engine)
     with make_client(app) as client:  # app startup runs init_db -> migrations
@@ -100,9 +100,9 @@ def test_migrated_db_serves_the_api_and_takes_a_second_profile(tmp_path, monkeyp
         assert [m["id"] for m in profile["modules"] if m["enabled"]] == ["budget", "assets", "loans"]
         # a second profile can hold the same account number (profile-aware uniques)
         client.post("/api/profiles", json={"name": "Marta", "modules": ["budget"]})
-        from finanse.core.accounts import get_or_create_account
-        from finanse.core.db import get_session
-        from finanse.core.profiles import get_by_slug
+        from cashu.core.accounts import get_or_create_account
+        from cashu.core.db import get_session
+        from cashu.core.profiles import get_by_slug
 
         with get_session() as s:
             marta = get_by_slug(s, "marta")
@@ -190,15 +190,15 @@ def test_downgrade_refuses_to_merge_profiles(tmp_path):
 
 
 def test_migrate_data_moves_a_legacy_db_into_a_profile(tmp_path, monkeypatch):
-    from finanse.core import paths
+    from cashu.core import paths
 
     repo = tmp_path / "repo"
     (repo / "data").mkdir(parents=True)
-    appdata = tmp_path / "appdata" / "finanse"
+    appdata = tmp_path / "appdata" / "cashu"
     monkeypatch.setattr(paths, "LEGACY_DIR", repo / "data")
     monkeypatch.setattr(paths, "default_data_dir", lambda: appdata)
     monkeypatch.delenv(paths.DATA_DIR_ENV, raising=False)
-    make_upstream_db(repo / "data" / "finanse.db")
+    make_upstream_db(repo / "data" / paths.LEGACY_DB_FILENAME)
 
     result = legacy.migrate_legacy_data()
 

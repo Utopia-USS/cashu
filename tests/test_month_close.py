@@ -11,13 +11,13 @@ from datetime import date
 import pytest
 from sqlmodel import select
 
-from finanse.core import paths, profiles
-from finanse.db import get_session
-from finanse.models import Account
-from finanse.modules.budget import monthclose
-from finanse.modules.budget import settings as budget_settings
-from finanse.modules.investments.models import InvStrategyVersion
-from finanse.modules.investments.service import files as inv_files
+from cashu.core import paths, profiles
+from cashu.db import get_session
+from cashu.models import Account
+from cashu.modules.budget import monthclose
+from cashu.modules.budget import settings as budget_settings
+from cashu.modules.investments.models import InvStrategyVersion
+from cashu.modules.investments.service import files as inv_files
 
 SEPT = "/api/budget/month-close?month=2026-09"
 ALL_MODULES = ["budget", "assets", "loans", "investments"]
@@ -290,8 +290,8 @@ def run(monkeypatch):
     from rich.console import Console
     from typer.testing import CliRunner
 
-    from finanse import cli as cli_mod
-    from finanse.core import cliutil
+    from cashu import cli as cli_mod
+    from cashu.core import cliutil
 
     monkeypatch.setattr(cliutil, "console", Console(width=200, color_system=None))
     monkeypatch.setattr(cliutil, "_profile_slug", None)

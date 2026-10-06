@@ -3,7 +3,7 @@ signals get no code."""
 
 from __future__ import annotations
 
-from finanse.modules.investments.alerts.messages import alert_message
+from cashu.modules.investments.alerts.messages import alert_message
 
 
 def test_rule_signals_have_no_code():

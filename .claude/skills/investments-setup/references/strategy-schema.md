@@ -1,4 +1,4 @@
-<!-- Copy shipped with this skill, generated from the finanse sources; do not edit it here. -->
+<!-- Copy shipped with this skill, generated from the cashU sources; do not edit it here. -->
 
 # Strategy templates
 
@@ -11,9 +11,9 @@ Never put personal numbers here; this folder is committed.
 | `passive_etf.yaml` + `passive_etf.md` | starter: one global equity ETF, bond ETFs, treasury bonds, cash; rebalance, concentration, idle cash, market dip, missed deposit and one custom rule; benchmark and notifications |
 | `blank.yaml` + `blank.md` | empty scaffold: version, base currency, data limits; every other section commented out with examples |
 
-Every template must load without errors or warnings (the finanse test suite).
-Code: `finanse.modules.investments.strategy.load_strategy(yaml_text, md)`; templates:
-`finanse.modules.investments.templates.strategy_template(name)`.
+Every template must load without errors or warnings (the cashU test suite).
+Code: `cashu.modules.investments.strategy.load_strategy(yaml_text, md)`; templates:
+`cashu.modules.investments.templates.strategy_template(name)`.
 
 ## strategy.yaml reference (version 1)
 

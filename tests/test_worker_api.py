@@ -10,11 +10,11 @@ import pytest
 from test_worker_runner import RecordingNotifier
 from test_worker_scheduler import FakeLaunchctl
 
-from finanse.core import locks
-from finanse.core.db import get_session
-from finanse.core.worker import runner, service
-from finanse.core.worker import scheduler as sched
-from finanse.core.worker import state as worker_state
+from cashu.core import locks
+from cashu.core.db import get_session
+from cashu.core.worker import runner, service
+from cashu.core.worker import scheduler as sched
+from cashu.core.worker import state as worker_state
 
 WORKER_KEYS = {
     "installed",
@@ -40,7 +40,7 @@ def fakes(tmp_path, monkeypatch):
     notifier = RecordingNotifier()
     monkeypatch.setattr(service, "get_scheduler", lambda: scheduler)
     monkeypatch.setattr(service, "get_notifier", lambda name="auto": notifier)
-    monkeypatch.setattr(sched, "entry_point", lambda program=None: ["/venv/bin/finanse"])
+    monkeypatch.setattr(sched, "entry_point", lambda program=None: ["/venv/bin/cashu"])
     return scheduler, launchctl, notifier
 
 
@@ -76,7 +76,7 @@ def test_install_and_uninstall(api_empty, fakes):
     _scheduler, launchctl, _ = fakes
     body = api_empty.post("/api/system/worker/install", json={"time": "06:45"}).json()["worker"]
     assert body["installed"] is True and body["schedule"] == "06:45"
-    assert body["program"] == ["/venv/bin/finanse", "worker", "run"]
+    assert body["program"] == ["/venv/bin/cashu", "worker", "run"]
     next_run = dt.datetime.fromisoformat(body["next_run"])
     assert (next_run.hour, next_run.minute) == (6, 45) and next_run > dt.datetime.now().astimezone()
     assert launchctl.verbs == ["bootout", "bootstrap", "enable"]
@@ -137,7 +137,7 @@ def test_run_endpoint_busy(api_empty, fakes):
 
 def test_last_run_falls_back_to_rule_runs(api_empty, fakes):
     """Without the worker's own summary, the newest worker-triggered daily-check run counts."""
-    from finanse.modules.investments.models import InvRuleRun
+    from cashu.modules.investments.models import InvRuleRun
 
     api_empty.post("/api/profiles", json={"name": "Dom", "modules": ["investments"]})
     started = dt.datetime(2026, 3, 2, 6, 30, tzinfo=dt.UTC)

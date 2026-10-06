@@ -16,8 +16,8 @@ from rules_fixtures import (
     skip_reason,
 )
 
-from finanse.modules.investments.domain import AssetClass, Currency
-from finanse.modules.investments.rules import NotFired, TaggedWeightParams, TaggedWeightRule
+from cashu.modules.investments.domain import AssetClass, Currency
+from cashu.modules.investments.rules import NotFired, TaggedWeightParams, TaggedWeightRule
 
 KIND = TaggedWeightRule()
 SPACE = instrument("SPACE", tags=("thematic", "space"))

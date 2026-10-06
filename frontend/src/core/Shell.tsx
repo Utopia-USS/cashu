@@ -23,11 +23,12 @@ import type { ModuleCtx, View } from "./types";
 import { decodeSegment, resolveView } from "./util";
 import { Wizard } from "./Wizard";
 import { IconSheet } from "../widgets";
+import { readStored } from "./storage";
 
-const PROFILE_KEY = "finanse.profile";
-const lastViewKey = (slug: string) => `finanse.lastView.${slug}`;
+const PROFILE_KEY = "cashu.profile";
+const lastViewKey = (slug: string) => `cashu.lastView.${slug}`;
 const store = {
-  get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } },
+  get: (k: string) => { try { return readStored(localStorage, k); } catch { return null; } },
   set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } },
 };
 

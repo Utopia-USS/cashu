@@ -198,7 +198,7 @@ const LOANS = [
 type StepDef = [title: string, description: string, actions?: SetupStep["actions"]];
 const SETUP: Record<string, StepDef[]> = {
   budget: [
-    ["Dodaj bank i konto", "Bank, rodzaj konta i waluta. Konto = jeden rachunek w jednym banku.", [{ kind: "cli", label: "Kopiuj polecenie", target: "finanse import statements/" }]],
+    ["Dodaj bank i konto", "Bank, rodzaj konta i waluta. Konto = jeden rachunek w jednym banku.", [{ kind: "cli", label: "Kopiuj polecenie", target: "cashu import statements/" }]],
     ["Wgraj pierwszy CSV lub połącz Open Banking", "Eksport CSV z banku (mBank, Pekao, Erste) albo połączenie przez Enable Banking."],
     ["Sprawdź kategorie (10 najczęstszych sprzedawców)", "Popraw kategorię w zakładce Wydatki; reguła zapamięta sprzedawcę.", [{ kind: "tab", label: "Wydatki", target: "expenses" }]],
     ["Oznacz przelewy wewnętrzne", "Przelewy między własnymi kontami są dopasowywane po IBAN, żeby nie liczyły się jako wydatki."],
@@ -237,7 +237,7 @@ function setupOf(p: MockProfile, id: string): SetupInfo {
       id: `s${i + 1}`, title, description, actions: actions ?? [],
       status: i < done ? "done" : i === done ? "on" : "todo",
     })),
-    skill: { command: `/${id}-setup`, mcp_add: `claude mcp add finanse-${p.slug} -- finanse mcp --profile ${p.slug}`, translocated: false },
+    skill: { command: `/${id}-setup`, mcp_add: `claude mcp add cashu-${p.slug} -- cashu mcp --profile ${p.slug}`, translocated: false },
   };
 }
 
@@ -331,9 +331,9 @@ function profileApi(p: MockProfile, path: string, q: URLSearchParams, method: st
 
 // F3: background worker (track W contract), kept in memory.
 const worker = {
-  installed: false, label: "io.finanse.worker", schedule: "07:30", last_run: null as string | null,
-  last_status: null as string | null, next_run: null as string | null, log_path: "~/Library/Application Support/finanse/logs/worker.log",
-  platform: "launchd", supported: true, job_path: "~/Library/LaunchAgents/io.finanse.worker.plist", program: null as string[] | null,
+  installed: false, label: "io.cashu.worker", schedule: "07:30", last_run: null as string | null,
+  last_status: null as string | null, next_run: null as string | null, log_path: "~/Library/Application Support/cashU/logs/worker.log",
+  platform: "launchd", supported: true, job_path: "~/Library/LaunchAgents/io.cashu.worker.plist", program: null as string[] | null,
   jobs: [] as { job: string; module: string | null; status: string; detail: string | null; last_run: string | null }[],
   // F7 R8: two parts, each null when fine (worker: {reason, program, expected_program, actions};
   // mcp: {reason: "app_moved", app_moved_from, moved_at, actions: ["mcp_readd"]}).
@@ -342,11 +342,11 @@ const worker = {
 // `?reloc=mcp`: the app was moved (F7 R8 / FIX2 A5): the MCP notice under Praca w tle and a workspace whose .mcp.json
 // names the old program; "Aktualizuj" (POST /workspace) rewrites it and clears `relocation.mcp`, as the backend does.
 const RELOC_MCP = new URLSearchParams(location.search).get("reloc") === "mcp";
-if (RELOC_MCP) worker.relocation.mcp = { reason: "app_moved", app_moved_from: "/Applications/finanse-stara.app", moved_at: "2026-10-04T08:00:00+02:00", actions: ["mcp_readd"] };
+if (RELOC_MCP) worker.relocation.mcp = { reason: "app_moved", app_moved_from: "/Applications/cashu-stara.app", moved_at: "2026-10-04T08:00:00+02:00", actions: ["mcp_readd"] };
 let wsStale = RELOC_MCP;
 function workspaceMock(slug: string, method: string): unknown {
   if (method === "POST") { wsStale = false; worker.relocation = { ...worker.relocation, mcp: null }; }
-  const path = `~/finanse-agent/${slug}`;
+  const path = `~/cashu-agent/${slug}`;
   const status = {
     path, default_path: path, configured: true, custom: false, exists: true, folder_exists: true, conflict: null,
     managed_version: "1", current_version: "1", updated_at: "2026-10-01T09:00:00+02:00", up_to_date: !wsStale,
@@ -362,8 +362,8 @@ function route(method: string, url: string, body: unknown): unknown {
   const path = u.pathname;
   if (path === "/api/system") {
     return {
-      version: "0.2.0-dev (demo)", data_dir: "~/Library/Application Support/finanse",
-      legacy_db_detected: db.legacy, legacy_db_path: db.legacy ? "data/finanse.db" : null,
+      version: "0.2.0-dev (demo)", data_dir: "~/Library/Application Support/cashU",
+      legacy_db_detected: db.legacy, legacy_db_path: db.legacy ? "data/finanse.db" : null, // legacy name: old checkouts' repo-dir DB
       worker: { ...worker },
     };
   }
@@ -383,7 +383,7 @@ function route(method: string, url: string, body: unknown): unknown {
   if (wk && method === "POST") {
     const b = (body ?? {}) as { time?: string };
     if (wk[1] === "install") worker.relocation = { ...worker.relocation, worker: null };
-    if (wk[1] === "install") Object.assign(worker, { installed: true, schedule: b.time || worker.schedule, next_run: `2026-10-05T${b.time || worker.schedule}:00+02:00`, program: ["finanse", "worker", "run"] });
+    if (wk[1] === "install") Object.assign(worker, { installed: true, schedule: b.time || worker.schedule, next_run: `2026-10-05T${b.time || worker.schedule}:00+02:00`, program: ["cashu", "worker", "run"] });
     if (wk[1] === "uninstall") Object.assign(worker, { installed: false, next_run: null, program: null });
     if (wk[1] === "run") {
       const at = new Date().toISOString();

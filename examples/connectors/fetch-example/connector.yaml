@@ -1,9 +1,9 @@
-# Example connector: trade history from the made-up ExampleExchange API -> finanse-import JSON.
+# Example connector: trade history from the made-up ExampleExchange API -> cashu-import JSON.
 api_version: 1
 id: fetch-example
 name: ExampleExchange API (przykład)
 version: 1.0.0
-author: finanse examples
+author: cashU examples
 description: Fetches the trade history of the made-up ExampleExchange (api.example.com) with a read-only API key.
 module: investments
 kind: fetch

@@ -1,5 +1,5 @@
 """scripts/demo_data.py: seeds two invented profiles into a temp data dir, twice; the second run changes
-nothing. Runs the script in a fresh interpreter (it sets FINANSE_DATA_DIR before importing finanse)
+nothing. Runs the script in a fresh interpreter (it sets CASHU_DATA_DIR before importing cashU)
 and reads the result read-only."""
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ SCRIPT = REPO / "scripts" / "demo_data.py"
 
 def run(*args: str) -> subprocess.CompletedProcess:
     env = {
-        k: v for k, v in os.environ.items() if k not in ("FINANSE_DATA_DIR", "FINANSE_DATABASE_URL")
+        k: v for k, v in os.environ.items() if k not in ("CASHU_DATA_DIR", "CASHU_DATABASE_URL")
     }
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
@@ -45,10 +45,10 @@ def seeded(tmp_path_factory):
     data = tmp_path_factory.mktemp("demo") / "data"
     first = run("--data-dir", str(data))
     assert first.returncode == 0, first.stdout + first.stderr
-    before = dump(data / "finanse.db")
+    before = dump(data / "cashu.db")
     second = run("--data-dir", str(data))
     assert second.returncode == 0, second.stdout + second.stderr
-    return data, before, dump(data / "finanse.db"), second.stdout
+    return data, before, dump(data / "cashu.db"), second.stdout
 
 
 def test_key_counts(seeded):
@@ -63,7 +63,7 @@ def test_key_counts(seeded):
     assert count(rows, "inv_planned_deposits") == 2 and count(rows, "inv_decisions") == 2
     assert count(rows, "proposals") == 1 and count(rows, "inv_theses") == 3
     assert count(rows, "inv_rule_runs") == 2 and count(rows, "inv_signals") >= 2
-    with sqlite3.connect(f"file:{data / 'finanse.db'}?mode=ro", uri=True) as con:
+    with sqlite3.connect(f"file:{data / 'cashu.db'}?mode=ro", uri=True) as con:
         names = sorted(r[0] for r in con.execute("select name from profiles"))
         sources = dict(con.execute("select source, count(*) from alerts group by source"))
         runs = {r[0] for r in con.execute("select status from research_runs")}
@@ -87,7 +87,7 @@ def test_second_run_changes_nothing(seeded):
 
 
 def test_refuses_the_real_data_dir():
-    from finanse.core import paths
+    from cashu.core import paths
 
     result = run("--data-dir", str(paths.default_data_dir()))
     assert result.returncode != 0

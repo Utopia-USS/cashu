@@ -7,16 +7,16 @@ from importlib.resources import files
 
 import pytest
 
-from finanse.modules.investments.domain import SignalSeverity
-from finanse.modules.investments.rules import BUILT_IN_KINDS
-from finanse.modules.investments.strategy import TOP_LEVEL_KEYS, Weekday, load_strategy
-from finanse.modules.investments.templates import (
+from cashu.modules.investments.domain import SignalSeverity
+from cashu.modules.investments.rules import BUILT_IN_KINDS
+from cashu.modules.investments.strategy import TOP_LEVEL_KEYS, Weekday, load_strategy
+from cashu.modules.investments.templates import (
     STRATEGY_TEMPLATE_NAMES,
     strategy_reference,
     strategy_template,
 )
 
-FOLDER = files("finanse.modules.investments.templates").joinpath("strategy")
+FOLDER = files("cashu.modules.investments.templates").joinpath("strategy")
 EM_DASH = chr(0x2014)
 
 

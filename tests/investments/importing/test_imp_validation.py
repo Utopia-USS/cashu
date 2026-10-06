@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from imp_support import SIMPLE_HEADER, pl_export_utf8_bom, pl_mapping_yaml, simple_mapping
 
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.importing import (
     CsvMappingError,
     ImportFile,
     ImportParseResult,
@@ -16,7 +16,7 @@ from finanse.modules.investments.importing import (
     validate_import,
     validate_import_file,
 )
-from finanse.modules.investments.importing import validation as validation_module
+from cashu.modules.investments.importing import validation as validation_module
 
 SPEC = Path(__file__).resolve().parents[3] / "docs" / "import-format.md"
 
@@ -32,9 +32,9 @@ def test_valid_canonical_csv_and_json(tmp_path: Path) -> None:
     report = validate_import_file(csv_path)
     assert report.ok
     assert (report.txn_count, report.position_count, report.corporate_action_count) == (11, 3, 2)
-    assert report.importer_id == "finanse"
+    assert report.importer_id == "cashu"
     summary = report.summary()
-    assert summary.startswith("converted.csv: OK (finanse)")
+    assert summary.startswith("converted.csv: OK (cashu)")
     assert "transactions: 11, positions: 3, corporate actions: 2" in summary
 
     json_path = tmp_path / "converted.json"
@@ -97,7 +97,7 @@ def test_generic_csv_gets_the_semantic_checks() -> None:
 
 
 def _generic():
-    from finanse.modules.investments.importing import GenericCsvImporter
+    from cashu.modules.investments.importing import GenericCsvImporter
 
     return GenericCsvImporter(simple_mapping())
 

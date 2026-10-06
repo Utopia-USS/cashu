@@ -1,6 +1,6 @@
 """Workspace endpoints of the investments API: manual transactions (validation, instrument
 resolution, dedup against later imports), the weekly review digest (default window and a baseline
-from ``finanse.core.reviews``) and the position chart with rule threshold lines. Synthetic data only,
+from ``cashu.core.reviews``) and the position chart with rule threshold lines. Synthetic data only,
 fake market sources, no live HTTP."""
 
 from __future__ import annotations
@@ -14,12 +14,12 @@ import pytest
 from invp_support import AS_OF, HEADER, STRATEGY_YAML, canonical_csv, sources
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile, utcnow
-from finanse.modules.investments.domain import Currency, PriceBar
-from finanse.modules.investments.models import InvInstrument
-from finanse.modules.investments.service import daily, files, portfolio, views
-from finanse.modules.investments.store import market
+from cashu.core.db import get_session
+from cashu.core.models import Profile, utcnow
+from cashu.modules.investments.domain import Currency, PriceBar
+from cashu.modules.investments.models import InvInstrument
+from cashu.modules.investments.service import daily, files, portfolio, views
+from cashu.modules.investments.store import market
 
 
 @pytest.fixture
@@ -448,9 +448,9 @@ def test_invp_review_digest_default_window(client, monkeypatch):
 
 
 def fake_reviews(monkeypatch, last) -> None:
-    module = types.ModuleType("finanse.core.reviews")
+    module = types.ModuleType("cashu.core.reviews")
     module.last = last
-    monkeypatch.setitem(sys.modules, "finanse.core.reviews", module)
+    monkeypatch.setitem(sys.modules, "cashu.core.reviews", module)
 
 
 def test_invp_review_digest_uses_the_last_review(client, monkeypatch):
@@ -650,7 +650,7 @@ def test_invp_position_chart_without_holding_or_strategy(client):
 
 
 def test_invp_review_digest_with_the_core_reviews_module(client):
-    reviews = pytest.importorskip("finanse.core.reviews")
+    reviews = pytest.importorskip("cashu.core.reviews")
     slug, _ = imported(client)
     run(client, slug)
     with get_session() as s:

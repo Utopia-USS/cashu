@@ -1,4 +1,4 @@
-"""Native notifications (F6 NT), app side: finanse:// links -> dashboard routes (strict: links
+"""Native notifications (F6 NT), app side: cashu:// links -> dashboard routes (strict: links
 come from any program), the link router (pending until the window loads, then a hash change),
 the notification helper with a fake notification center (permission on first use, denied /
 pending / failed answers, the JSON protocol shared with the worker), the ObjC callbacks through
@@ -15,10 +15,10 @@ import threading
 import pytest
 from test_desktop import FakeWebview, FakeWindow, _patch_server_app
 
-from finanse.core import runtime, security
-from finanse.core.worker import notifier_app as na
-from finanse.core.worker.notifier import Notification, investments_link, review_link, signal_link
-from finanse.desktop import entry, notify, shell
+from cashu.core import runtime, security
+from cashu.core.worker import notifier_app as na
+from cashu.core.worker.notifier import Notification, investments_link, review_link, signal_link
+from cashu.desktop import entry, notify, shell
 
 # --------------------------------------------------------------------------- #
 # Links
@@ -29,9 +29,9 @@ def test_link_to_hash_routes():
     assert notify.link_to_hash(signal_link("dom", 7)) == "#/dom/investments.portfolio/?signal=7"
     assert notify.link_to_hash(review_link("anna-k")) == "#/anna-k/investments.portfolio/?review=1"
     assert notify.link_to_hash(investments_link("p2")) == "#/p2/investments.portfolio"
-    assert notify.link_to_hash("finanse://open") == ""
+    assert notify.link_to_hash("cashu://open") == ""
     assert (
-        notify.link_to_hash("finanse://signal/dom/007") == "#/dom/investments.portfolio/?signal=7"
+        notify.link_to_hash("cashu://signal/dom/007") == "#/dom/investments.portfolio/?signal=7"
     )
 
 
@@ -40,22 +40,22 @@ def test_link_to_hash_routes():
     [
         "https://signal/dom/7",
         "javascript://signal/dom/7",
-        "finanse://signal/Dom/7",  # slugs are lower-case
-        "finanse://signal/dom/7/x",
-        "finanse://signal/dom",
-        "finanse://signal/dom/abc",
-        "finanse://signal/dom/７",  # a full-width digit is not an id
-        "finanse://signal/dom/1234567890123",
-        "finanse://signal/%2E%2E/7",
-        "finanse://signal/a%2Fb/7",
-        "finanse://signal/dom%22%3Balert(1)/7",
-        "finanse://signal/dom/7?x=1",
-        "finanse://signal/dom/7#frag",
-        "finanse://review",
-        "finanse://open/extra",
-        "finanse://delete/dom",
-        "finanse://signal/" + "a" * 65 + "/7",
-        "finanse://signal/dom/" + "1" * 600,
+        "cashu://signal/Dom/7",  # slugs are lower-case
+        "cashu://signal/dom/7/x",
+        "cashu://signal/dom",
+        "cashu://signal/dom/abc",
+        "cashu://signal/dom/７",  # a full-width digit is not an id
+        "cashu://signal/dom/1234567890123",
+        "cashu://signal/%2E%2E/7",
+        "cashu://signal/a%2Fb/7",
+        "cashu://signal/dom%22%3Balert(1)/7",
+        "cashu://signal/dom/7?x=1",
+        "cashu://signal/dom/7#frag",
+        "cashu://review",
+        "cashu://open/extra",
+        "cashu://delete/dom",
+        "cashu://signal/" + "a" * 65 + "/7",
+        "cashu://signal/dom/" + "1" * 600,
         "",
         None,
         42,
@@ -100,9 +100,9 @@ BASE = "http://127.0.0.1:5000/"
 
 def test_a_link_before_the_window_is_ready_opens_with_it():
     router = sync_router()
-    assert router.open("finanse://signal/dom/3")
-    assert router.open("finanse://signal/dom/4")  # the latest wins
-    assert router.open("finanse://open")  # just "bring forward": keeps the pending route
+    assert router.open("cashu://signal/dom/3")
+    assert router.open("cashu://signal/dom/4")  # the latest wins
+    assert router.open("cashu://open")  # just "bring forward": keeps the pending route
     window = NavWindow()
     assert router.ready(window, BASE) == BASE + "#/dom/investments.portfolio/?signal=4"
     assert window.calls == []
@@ -113,13 +113,13 @@ def test_a_link_after_ready_changes_the_route_in_place():
     router = sync_router()
     window = NavWindow()
     router.ready(window, BASE)
-    assert router.open("finanse://review/dom")
+    assert router.open("cashu://review/dom")
     assert window.calls == [
         ("js", 'location.hash = "#/dom/investments.portfolio/?review=1";'),
         ("show",),
     ]
     window.calls.clear()
-    assert router.open("finanse://open")
+    assert router.open("cashu://open")
     assert window.calls == [("show",)]
 
 
@@ -127,7 +127,7 @@ def test_router_loads_the_route_when_the_window_shows_another_page():
     router = sync_router()
     window = NavWindow(current=None)  # e.g. the loading or error page
     router.ready(window, BASE)
-    router.open("finanse://investments/dom")
+    router.open("cashu://investments/dom")
     assert window.calls == [("url", BASE + "#/dom/investments.portfolio"), ("show",)]
 
 
@@ -136,7 +136,7 @@ def test_router_ignores_foreign_links_and_survives_window_errors(caplog):
     window = NavWindow(fail=True)
     router.ready(window, BASE)
     assert router.open("https://example.invalid/") is False
-    assert router.open("finanse://signal/dom/1") is True  # run_js raises: logged, no crash
+    assert router.open("cashu://signal/dom/1") is True  # run_js raises: logged, no crash
     assert window.calls == []
     assert "ignored a link" in caplog.text and "could not open a link" in caplog.text
 
@@ -146,7 +146,7 @@ def test_router_navigates_off_the_calling_thread():
     router = notify.LinkRouter(spawn=lambda target, *args: started.append((target, args)))
     window = NavWindow()
     router.ready(window, BASE)
-    router.open("finanse://signal/dom/9")
+    router.open("cashu://signal/dom/9")
     assert window.calls == [] and len(started) == 1  # the Apple event thread never blocks
     target, args = started[0]
     target(*args)
@@ -196,8 +196,8 @@ PAYLOAD = {
     "title": "Dom",
     "subtitle": "Sygnał do działania",
     "message": 'XMPL 37.3% > 30% "x" \n end',
-    "group": "finanse-signal-7",
-    "url": "finanse://signal/dom/7",
+    "group": "cashu-signal-7",
+    "url": "cashu://signal/dom/7",
 }
 
 
@@ -208,13 +208,13 @@ def request(**changes) -> notify.NativeRequest:
 def test_native_request_validation():
     req = request()
     assert (req.identifier, req.title, req.subtitle) == (
-        "finanse-signal-7",
+        "cashu-signal-7",
         "Dom",
         PAYLOAD["subtitle"],
     )
-    assert req.message == 'XMPL 37.3% > 30% "x" end' and req.url == "finanse://signal/dom/7"
+    assert req.message == 'XMPL 37.3% > 30% "x" end' and req.url == "cashu://signal/dom/7"
     assert request(url="https://evil.invalid/").url is None  # only links the app opens
-    assert request(url=None, group=None).identifier.startswith("finanse-")
+    assert request(url=None, group=None).identifier.startswith("cashu-")
     assert request(subtitle=None).subtitle == ""
     assert len(request(message="x" * 5000).message) == 400
     for bad in ({"title": ""}, {"message": None}, {"title": 5}, {"group": "a b"}, {"group": 7}):
@@ -286,7 +286,7 @@ def test_helper_posts_one_notification_from_stdin():
     code, answer = helper([], json.dumps(PAYLOAD, ensure_ascii=False), center)
     assert (code, answer) == (na.EXIT_DELIVERED, {"status": "delivered"})
     (req,) = center.added
-    assert req.identifier == "finanse-signal-7" and req.url == "finanse://signal/dom/7"
+    assert req.identifier == "cashu-signal-7" and req.url == "cashu://signal/dom/7"
 
 
 def test_helper_answers_with_matching_exit_codes():
@@ -310,7 +310,7 @@ def test_helper_rejects_bad_input_and_arguments():
 
 def test_helper_outside_the_app_is_unavailable_and_reports_crashes():
     def unavailable():
-        raise notify.Unavailable("not running from Finanse.app")
+        raise notify.Unavailable("not running from cashU.app")
 
     code, answer = helper([], json.dumps(PAYLOAD), factory=unavailable)
     assert (code, answer["status"]) == (na.EXIT_UNAVAILABLE, "unavailable")
@@ -340,7 +340,7 @@ def test_worker_and_helper_speak_the_same_protocol(tmp_path):
     """AppNotifier -> (stdin JSON) -> helper_main -> fake center, end to end in-process."""
     from test_worker_notifier_app import make_app
 
-    from finanse.core.worker.notifier import CommandResult
+    from cashu.core.worker.notifier import CommandResult
 
     center = FakeCenter()
 
@@ -354,10 +354,10 @@ def test_worker_and_helper_speak_the_same_protocol(tmp_path):
 
     app = na.AppNotifier(na.inspect_bundle(make_app(tmp_path)), runner=run_helper)
     note = Notification(
-        title="finanse: Dom",
+        title="cashU: Dom",
         subtitle="Sygnał do działania",
         message="XMPL 37.3% > 30%",
-        group="finanse-signal-7",
+        group="cashu-signal-7",
         url=signal_link("dom", 7),
     )
     assert app.send(note).ok
@@ -383,10 +383,10 @@ def test_box_waits_for_a_handler_on_another_thread():
 
 
 def test_entry_dispatches_the_helper_without_the_cli(monkeypatch, capsys):
-    monkeypatch.setitem(sys.modules, "finanse.cli", None)  # the CLI must not be imported
+    monkeypatch.setitem(sys.modules, "cashu.cli", None)  # the CLI must not be imported
     with pytest.raises(SystemExit) as done:
         entry.main(["--notify-helper", "--status"])
-    assert done.value.code == na.EXIT_UNAVAILABLE  # a plain interpreter is not Finanse.app
+    assert done.value.code == na.EXIT_UNAVAILABLE  # a plain interpreter is not cashU.app
     assert json.loads(capsys.readouterr().out)["status"] == "unavailable"
 
 
@@ -405,7 +405,7 @@ def test_install_app_handlers_does_nothing_outside_the_app(monkeypatch):
 def test_install_app_handlers_inside_the_app(monkeypatch, tmp_path, caplog):
     if sys.platform != "darwin":
         pytest.skip("macOS only")
-    monkeypatch.setattr(runtime, "app_bundle", lambda: tmp_path / "Finanse.app")
+    monkeypatch.setattr(runtime, "app_bundle", lambda: tmp_path / "cashU.app")
     steps = []
 
     def broken():
@@ -417,9 +417,9 @@ def test_install_app_handlers_inside_the_app(monkeypatch, tmp_path, caplog):
     got = []
     assert notify.install_app_handlers(got.append) is True
     assert steps == ["delegate"] and "could not install the URL handler" in caplog.text
-    notify.dispatch_link("finanse://open")
+    notify.dispatch_link("cashu://open")
     notify.dispatch_link(None)
-    assert got == ["finanse://open"]
+    assert got == ["cashu://open"]
 
 
 def test_dispatch_link_never_raises(monkeypatch, caplog):
@@ -427,7 +427,7 @@ def test_dispatch_link_never_raises(monkeypatch, caplog):
         raise ValueError("bad")
 
     monkeypatch.setattr(notify, "_on_link", boom)
-    notify.dispatch_link("finanse://open")
+    notify.dispatch_link("cashu://open")
     assert "link handler failed" in caplog.text
 
 
@@ -475,16 +475,16 @@ def test_a_click_on_a_notification_opens_its_link(objc_classes):
     delegate = delegate_cls.alloc().init()
     completed = []
     click = fake_response(
-        un.UNNotificationDefaultActionIdentifier, {"url": "finanse://signal/dom/7"}
+        un.UNNotificationDefaultActionIdentifier, {"url": "cashu://signal/dom/7"}
     )
     delegate.userNotificationCenter_didReceiveNotificationResponse_withCompletionHandler_(
         None, click, lambda: completed.append(1)
     )
-    dismiss = fake_response(un.UNNotificationDismissActionIdentifier, {"url": "finanse://open"})
+    dismiss = fake_response(un.UNNotificationDismissActionIdentifier, {"url": "cashu://open"})
     delegate.userNotificationCenter_didReceiveNotificationResponse_withCompletionHandler_(
         None, dismiss, lambda: completed.append(2)
     )
-    assert got == ["finanse://signal/dom/7"] and completed == [1, 2]
+    assert got == ["cashu://signal/dom/7"] and completed == [1, 2]
 
 
 def test_a_broken_click_still_completes(objc_classes, caplog):
@@ -517,7 +517,7 @@ def test_url_apple_event_opens_the_link(objc_classes):
 
     class Descriptor:
         def stringValue(self):
-            return "finanse://review/dom"
+            return "cashu://review/dom"
 
     class Event:
         def paramDescriptorForKeyword_(self, key):
@@ -525,7 +525,7 @@ def test_url_apple_event_opens_the_link(objc_classes):
             return Descriptor()
 
     handler_cls.alloc().init().handleGetURLEvent_withReplyEvent_(Event(), None)
-    assert got == ["finanse://review/dom"] and keys == [int.from_bytes(b"----", "big")]
+    assert got == ["cashu://review/dom"] and keys == [int.from_bytes(b"----", "big")]
     assert notify.K_AE_GET_URL == notify.K_INTERNET_EVENT_CLASS == 0x4755524C  # 'GURL'
 
 
@@ -569,14 +569,14 @@ class LinkWebview(FakeWebview):
 @pytest.fixture
 def app_data(tmp_path, monkeypatch):
     path = tmp_path / "data"
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(path))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(path))
     monkeypatch.setattr(security, "_config", security._config)  # shell.run() configures it
     return path
 
 
 def test_shell_opens_the_window_on_a_link_and_follows_later_links(app_data, monkeypatch):
     _patch_server_app(monkeypatch)
-    fake = LinkWebview(["finanse://signal/dom/5"], ["finanse://review/dom"])
+    fake = LinkWebview(["cashu://signal/dom/5"], ["cashu://review/dom"])
 
     def install(on_link):
         fake.on_link = on_link
@@ -600,4 +600,4 @@ def test_shell_without_links_loads_the_plain_url(app_data, monkeypatch):
     fake = FakeWebview()
     launch = shell.run(webview_module=fake)
     assert fake.window.loaded == [("url", f"http://127.0.0.1:{launch.port}/")]
-    assert len(installed) == 1  # asked once per launch (a no-op outside Finanse.app)
+    assert len(installed) == 1  # asked once per launch (a no-op outside cashU.app)

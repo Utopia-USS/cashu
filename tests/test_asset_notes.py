@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from sqlmodel import select
 
-from finanse.db import get_session
-from finanse.models import Account, AssetDetails
+from cashu.db import get_session
+from cashu.models import Account, AssetDetails
 
 MANUAL = "/api/assets/manual"
 
@@ -67,7 +67,7 @@ def test_note_and_input_validation(api):
     assert api.post(MANUAL, json={"name": "X", "type": "checking", "value": 1}).status_code == 422
     assert api.post(MANUAL, json={"name": "X", "type": "other", "value": -5}).status_code == 422
     dup = api.post(MANUAL, json={"name": "Mieszkanie Test", "type": "property", "value": 1})
-    assert dup.status_code == 409 and dup.headers["X-Finanse-Error-Code"] == "name_taken"
+    assert dup.status_code == 409 and dup.headers["X-Cashu-Error-Code"] == "name_taken"
     car = _by_name(api.get(MANUAL).json(), "Auto Test")
     assert api.patch(f"{MANUAL}/{car['id']}", json={"value": 1}).status_code == 422
     checking = next(a for a in api.get("/api/accounts").json() if a["name"] == "mKonto Test")
@@ -75,7 +75,7 @@ def test_note_and_input_validation(api):
 
 
 def test_a_note_never_reaches_another_profile(api):
-    from finanse.core import profiles
+    from cashu.core import profiles
 
     with get_session() as s:
         other = profiles.create_profile(s, name="Druga Test", modules_=["assets"])

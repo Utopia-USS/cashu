@@ -9,11 +9,11 @@ import pytest
 from invp_support import HEADER, ROWS, add_account, canonical_csv, import_file, make_profile
 from sqlmodel import func, select
 
-from finanse.core import paths, profiles
-from finanse.core.db import get_session
-from finanse.modules.investments.domain import AssetClass, Currency, Instrument
-from finanse.modules.investments.importing import ImportFile
-from finanse.modules.investments.models import (
+from cashu.core import paths, profiles
+from cashu.core.db import get_session
+from cashu.modules.investments.domain import AssetClass, Currency, Instrument
+from cashu.modules.investments.importing import ImportFile
+from cashu.modules.investments.models import (
     InvAccountSettings,
     InvImportBatch,
     InvInstrument,
@@ -23,8 +23,8 @@ from finanse.modules.investments.models import (
     InvPositionSnapshot,
     InvTransaction,
 )
-from finanse.modules.investments.service import imports
-from finanse.modules.investments.store import instruments
+from cashu.modules.investments.service import imports
+from cashu.modules.investments.store import instruments
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def count(model) -> int:
 def test_preview_is_read_only_and_reports_the_plan(setup):
     pid, _slug, aid = setup
     p = preview(pid, aid, canonical_csv())
-    assert p.can_commit and p.importer_id == "finanse"
+    assert p.can_commit and p.importer_id == "cashu"
     assert (p.plan.new_count, p.plan.duplicate_count, len(p.plan.positions)) == (5, 0, 3)
     assert [i.symbol for i in p.plan.new_instruments] == ["ABC", "WRLD", "XMPL"]
     assert any("source 'examplebroker'" in n.message for n in p.notes)  # account belongs to dif
@@ -78,7 +78,7 @@ def test_commit_archives_then_writes_everything(setup):
         assert all(r.import_batch_id == result.batch_id for r in rows)
         assert rows[2].cash_amount == Decimal("-4300.00") and rows[2].fx_rate == Decimal("4.3")
         batch = s.get(InvImportBatch, result.batch_id)
-        assert (batch.importer, batch.txn_count, batch.position_count) == ("finanse", 5, 3)
+        assert (batch.importer, batch.txn_count, batch.position_count) == ("cashu", 5, 3)
         assert s.exec(select(func.count()).select_from(InvPositionSnapshot)).one() == 3
         xmpl = s.exec(select(InvInstrument).where(InvInstrument.symbol == "XMPL")).one()
         assert (xmpl.currency, xmpl.mic, xmpl.needs_classification) == ("USD", "XNAS", True)
@@ -86,7 +86,7 @@ def test_commit_archives_then_writes_everything(setup):
             select(InvInstrumentAlias).where(InvInstrumentAlias.instrument_id == xmpl.id)
         ).all()
         assert ("yahoo", "XMPL", True) in {(a.namespace, a.value, a.guessed) for a in aliases}
-        assert s.get(InvAccountSettings, aid).importer == "finanse"
+        assert s.get(InvAccountSettings, aid).importer == "cashu"
 
 
 def test_reimport_is_all_duplicates_and_says_so(setup):
@@ -166,7 +166,7 @@ def test_rename_and_frozen_delisting(setup):
         assert (new.symbol, rename.profile_id) == ("ABCN", pid)
         xmpl = s.exec(select(InvInstrument).where(InvInstrument.symbol == "XMPL")).one()
         # the delisting is this profile's view; the shared row keeps its market status (F5 R2)
-        from finanse.modules.investments.store import instruments as instrument_store
+        from cashu.modules.investments.store import instruments as instrument_store
 
         assert xmpl.status == "active"
         assert instrument_store.load_one(s, xmpl.id, profile_id=pid).status.value == "frozen"
@@ -266,14 +266,14 @@ def test_a_positions_only_file_keeps_the_remembered_importer(setup):
     )
     snapshot = ("\n".join([HEADER, *position_rows()[:1]]) + "\n").encode()
     p = preview(pid, aid, snapshot, name="positions.csv")
-    assert p.importer_id == "finanse" and not p.plan.rows and p.plan.positions
+    assert p.importer_id == "cashu" and not p.plan.rows and p.plan.positions
     imports.commit(p, corrections=())
     with get_session() as s:
         settings = s.get(InvAccountSettings, aid)
         assert settings.importer == "genbroker" and settings.mapping_yaml == GENERIC
     imports.commit(preview(pid, aid, canonical_csv(positions=False)))
     with get_session() as s:
-        assert s.get(InvAccountSettings, aid).importer == "finanse"
+        assert s.get(InvAccountSettings, aid).importer == "cashu"
 
 
 def test_errors_are_reported_not_raised(setup):

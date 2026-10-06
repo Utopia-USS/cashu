@@ -1,4 +1,4 @@
-"""`finanse connectors add|list|show|remove|disable|test|secret set` (F10). There is no `approve`
+"""`cashu connectors add|list|show|remove|disable|test|secret set` (F10). There is no `approve`
 command. `test` prints a value-free report. Synthetic data, NoSandbox unless the real macOS sandbox is
 the point of the test."""
 
@@ -19,11 +19,11 @@ from rich.console import Console
 from sqlmodel import select
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import cliutil, secrets
-from finanse.core.connectors import devtest, runner, service
-from finanse.core.connectors.models import Connector, ConnectorRun
-from finanse.core.db import get_session
+from cashu import cli as cli_mod
+from cashu.core import cliutil, secrets
+from cashu.core.connectors import devtest, runner, service
+from cashu.core.connectors.models import Connector, ConnectorRun
+from cashu.core.db import get_session
 
 pytestmark = needs_python3
 
@@ -47,7 +47,7 @@ def run(monkeypatch, db_engine, memory_keyring):  # noqa: F811
 
 
 def test_no_approve_command(run):
-    from finanse.core.connectors.cli import connectors_app, secret_app
+    from cashu.core.connectors.cli import connectors_app, secret_app
 
     names = {c.name for c in connectors_app.registered_commands}
     assert names == {"add", "list", "show", "disable", "remove", "test"}
@@ -103,7 +103,7 @@ for row in rows:
                     "price": row["price"], "gross_amount": row["gross"]}})
 records.append({{"record": "txn", "date": "2026-01-02", "type": "deposit", "currency": "PLN",
                 "gross_amount": "{MARKER_PRICE}"}})
-print(json.dumps({{"document": {{"format": "finanse-import", "format_version": 1, "source": "test_csv",
+print(json.dumps({{"document": {{"format": "cashu-import", "format_version": 1, "source": "test_csv",
                                  "records": records}}}}))
 '''
 
@@ -125,7 +125,7 @@ def test_test_prints_a_value_free_report(run, tmp_path):
     result = run("connectors", "test", str(src), "--file", str(_export(tmp_path)))
     out = result.output
     assert "manifest: OK" in out and "detect: ok" in out and "match: yes (confidence 0.90)" in out
-    assert "convert: ok" in out and "document: INVALID (finanse-import)" in out
+    assert "convert: ok" in out and "document: INVALID (cashu-import)" in out
     assert "transactions:" in out and "buy" in out
     assert "invalid_value" in out and "fields quantity" in out
     assert result.exit_code == 1  # the invalid quantity blocks
@@ -142,7 +142,7 @@ def test_test_ok_and_check_manifest(run, tmp_path):
     export.write_text("a\n", encoding="utf-8")
     ok = run("connectors", "test", str(src), "--file", str(export), "--module", "investments")
     assert ok.exit_code == 0, ok.output
-    assert "document: OK (finanse-import)" in ok.output
+    assert "document: OK (cashu-import)" in ok.output
     assert "transactions: 2 (buy 1, deposit 1)" in ok.output
     only = run("connectors", "test", str(src), "--check-manifest")
     assert only.exit_code == 0 and "manifest: OK" in only.output and "detect" not in only.output
@@ -175,7 +175,7 @@ assert req["secrets"] == {"api_key": "test-not-a-real-secret"}
 data = json.loads(req["params"]["fixture"])
 records = [{"record": "txn", "date": d["day"], "type": "deposit", "currency": "PLN",
             "gross_amount": d["amount"]} for d in data["items"]]
-print(json.dumps({"document": {"format": "finanse-import", "format_version": 1, "records": records},
+print(json.dumps({"document": {"format": "cashu-import", "format_version": 1, "records": records},
                   "cursor": "next-page"}))
 '''
 
@@ -198,7 +198,7 @@ def test_test_budget_document_without_the_validator(run, tmp_path, monkeypatch):
     code = (
         "import json, sys\nreq = json.load(sys.stdin)\n"
         "if req['command'] == 'detect':\n    print(json.dumps({'match': False, 'confidence': 0}))\n"
-        "else:\n    print(json.dumps({'document': {'format': 'finanse-budget-import', "
+        "else:\n    print(json.dumps({'document': {'format': 'cashu-budget-import', "
         "'format_version': 1, 'account': {'currency': 'PLN'}, 'transactions': [{}, {}]}}))\n"
     )
     src = write_connector(tmp_path / "src", module="budget", code=code)
@@ -206,7 +206,7 @@ def test_test_budget_document_without_the_validator(run, tmp_path, monkeypatch):
     export.write_text("a\n", encoding="utf-8")
     result = run("connectors", "test", str(src), "--file", str(export))
     assert result.exit_code == 0, result.output
-    assert "document: shape OK (finanse-budget-import)" in result.output
+    assert "document: shape OK (cashu-budget-import)" in result.output
     assert "transactions: 2, balances: 0" in result.output
     assert "budget validation not available yet" in result.output
 
@@ -216,7 +216,7 @@ def test_test_budget_document_with_the_real_validator(run, tmp_path):
         pytest.skip("the budget module does not provide validate_budget_document yet")
     code = (
         "import json, sys\nreq = json.load(sys.stdin)\n"
-        "doc = {'format': 'finanse-budget-import', 'format_version': 1, 'source': 'test_bank',\n"
+        "doc = {'format': 'cashu-budget-import', 'format_version': 1, 'source': 'test_bank',\n"
         "       'account': {'currency': 'PLN'}, 'transactions': [\n"
         "         {'booking_date': '2026-03-01', 'amount': '-12.50', 'currency': 'PLN',\n"
         "          'counterparty_name': 'SKLEP ZZQX'}]}\n"
@@ -228,7 +228,7 @@ def test_test_budget_document_with_the_real_validator(run, tmp_path):
     export.write_text("a\n", encoding="utf-8")
     result = run("connectors", "test", str(src), "--file", str(export))
     assert result.exit_code == 0, result.output
-    assert "document: OK (finanse-budget-import)" in result.output
+    assert "document: OK (cashu-budget-import)" in result.output
     assert MARKER_SYMBOL not in result.output and "12.50" not in result.output
 
 
@@ -244,21 +244,21 @@ def test_test_budget_document_uses_the_hook_when_present(run, tmp_path, monkeypa
     code = (
         "import json, sys\nreq = json.load(sys.stdin)\n"
         "print(json.dumps({'match': True}) if req['command'] == 'detect' else "
-        "json.dumps({'document': {'format': 'finanse-budget-import', 'transactions': []}}))\n"
+        "json.dumps({'document': {'format': 'cashu-budget-import', 'transactions': []}}))\n"
     )
     src = write_connector(tmp_path / "src", module="budget", code=code)
     export = tmp_path / "e.csv"
     export.write_text("a\n", encoding="utf-8")
     result = run("connectors", "test", str(src), "--file", str(export))
     assert result.exit_code == 1
-    assert "document: INVALID (finanse-budget-import)" in result.output
+    assert "document: INVALID (cashu-budget-import)" in result.output
     assert "  error invalid_value: rows 1" in result.output
-    assert json.loads(seen[0])["format"] == "finanse-budget-import"
+    assert json.loads(seen[0])["format"] == "cashu-budget-import"
 
 
 def test_secret_set_uses_hidden_input_never_argv(run, tmp_path, memory_keyring):  # noqa: F811
-    from finanse.core import profiles
-    from finanse.core.accounts import get_or_create_account
+    from cashu.core import profiles
+    from cashu.core.accounts import get_or_create_account
 
     with get_session() as s:
         profile = profiles.create_profile(s, name="Jan Test", modules_=["investments"])
@@ -275,7 +275,7 @@ def test_secret_set_uses_hidden_input_never_argv(run, tmp_path, memory_keyring):
     assert result.exit_code == 0, result.output
     assert "s3cret" not in result.output
     name = secrets.connector_secret_name("test-fetch", profile.slug, binding["id"], "api_key")
-    assert memory_keyring.store[("finanse", name)] == "s3cret-TEST"
+    assert memory_keyring.store[("cashu", name)] == "s3cret-TEST"
     assert run("--profile", profile.slug, "connectors", "secret", "set", "999", "api_key",
                input="x\n").exit_code == 1
     assert run("--profile", profile.slug, "connectors", "secret", "set", str(binding["id"]), "nope",
@@ -285,7 +285,7 @@ def test_secret_set_uses_hidden_input_never_argv(run, tmp_path, memory_keyring):
 @pytest.mark.skipif(sys.platform != "darwin" or not os.path.exists("/usr/bin/sandbox-exec"),
                     reason="macOS sandbox-exec only")
 def test_test_runs_in_the_real_sandbox(run, tmp_path, monkeypatch):
-    from finanse.core.connectors.sandbox import MacSandbox
+    from cashu.core.connectors.sandbox import MacSandbox
 
     monkeypatch.setattr(runner, "default_sandbox", lambda: MacSandbox())
     src = write_connector(tmp_path / "src", code=INVESTMENTS_CONVERTER)
@@ -296,7 +296,7 @@ def test_test_runs_in_the_real_sandbox(run, tmp_path, monkeypatch):
 
 def test_value_free_strips_names_ibans_and_emails():
     """BE-7: a failed run's message printed by ``connectors test`` (the agent may read it)."""
-    from finanse.core.connectors.devtest import value_free
+    from cashu.core.connectors.devtest import value_free
 
     out = value_free(
         "row 7: bad account PL61109010140000071219812874 of Jan Kowalski, kwota 4321.09, "

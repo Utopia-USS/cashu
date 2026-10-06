@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from finanse.modules.investments.models import RESEARCH_NOTE_KINDS
-from finanse.modules.investments.research.signals import (
+from cashu.modules.investments.models import RESEARCH_NOTE_KINDS
+from cashu.modules.investments.research.signals import (
     KIND_LABEL,
     RELATION_LABEL,
     research_message,

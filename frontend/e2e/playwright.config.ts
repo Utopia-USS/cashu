@@ -1,5 +1,5 @@
 // e2e smoke suite: Playwright test runner with the system Chrome (no browser download). The global setup
-// seeds a temp data dir with scripts/demo_data.py and starts `finanse serve` (offline market sources) on
+// seeds a temp data dir with scripts/demo_data.py and starts `cashu serve` (offline market sources) on
 // a free port; every spec opens the printed #token= URL. Artifacts stay in e2e/output/ (gitignored).
 import { defineConfig } from "@playwright/test";
 

@@ -13,13 +13,13 @@ from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, SQLModel, create_engine
 
-from finanse import db
-from finanse.models import Source, Transaction
+from cashu import db
+from cashu.models import Source, Transaction
 
 
 @pytest.fixture(autouse=True)
 def _isolated_data_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_service_layer_works_with_foreign_keys_on(tmp_path, monkeypatch):
     transfers, categorization, cash pool) runs clean with FK enforcement."""
     from conftest import seed_demo
 
-    from finanse.modules.budget import cash as cash_pool
+    from cashu.modules.budget import cash as cash_pool
 
     engine = db.make_engine(f"sqlite:///{tmp_path / 'service.db'}")  # schema via migrations
     monkeypatch.setattr(db, "engine", engine)

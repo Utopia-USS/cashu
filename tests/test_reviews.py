@@ -1,4 +1,4 @@
-"""Weekly review records: the service (``finanse.core.reviews``), the API (``/api/p/{slug}/reviews``) and
+"""Weekly review records: the service (``cashu.core.reviews``), the API (``/api/p/{slug}/reviews``) and
 the MCP tool ``mark_review_done``; records stay in their profile."""
 
 from __future__ import annotations
@@ -7,8 +7,8 @@ import datetime as dt
 
 import pytest
 
-from finanse.core import profiles, reviews
-from finanse.core.db import get_session
+from cashu.core import profiles, reviews
+from cashu.core.db import get_session
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def two_profiles(db_engine):
 def api():
     from conftest import make_client
 
-    from finanse.api.app import app
+    from cashu.api.app import app
 
     return make_client(app)
 
@@ -94,10 +94,10 @@ def test_api_create_and_list(two_profiles, api):
 def test_mcp_mark_review_done_counts_decisions_since_last_review(db_engine):
     from mcp_support import TODAY, seed_profile
 
-    from finanse.core.mcp.server import FinanseMcp
+    from cashu.core.mcp.server import CashuMcp
 
     pid, _slug = seed_profile()
-    host = FinanseMcp(pid, today=TODAY)
+    host = CashuMcp(pid, today=TODAY)
     signal_id = host.call("signals", {}).data["signals"][0]["signal_id"]
     host.call("record_decision", {"signal_id": signal_id, "action": "ignored", "reason": "x"})
     first = host.call("mark_review_done", {"notes": "pierwszy"}).data

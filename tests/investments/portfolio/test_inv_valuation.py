@@ -21,7 +21,7 @@ from inv_portfolio_fixtures import (
     transfer_in,
 )
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     DatedPrice,
     FrozenValuedAtZero,
@@ -38,7 +38,7 @@ from finanse.modules.investments.domain import (
     StalePrice,
     ValuationMode,
 )
-from finanse.modules.investments.portfolio import (
+from cashu.modules.investments.portfolio import (
     InMemoryFxLookup,
     build_snapshot,
     last_trade_prices,

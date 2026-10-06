@@ -5,12 +5,12 @@ from __future__ import annotations
 import pytest
 from perf_support import EUR, PLN, bars, days, rates
 
-from finanse.modules.investments.performance.benchmark import (
+from cashu.modules.investments.performance.benchmark import (
     benchmark_prices,
     price_index,
     simulate,
 )
-from finanse.modules.investments.portfolio import InMemoryFxLookup
+from cashu.modules.investments.portfolio import InMemoryFxLookup
 
 
 def test_proxy_prices_converted_and_aged():

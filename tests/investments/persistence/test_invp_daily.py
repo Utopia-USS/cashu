@@ -17,16 +17,16 @@ from invp_support import (
 )
 from sqlmodel import select
 
-from finanse.core import locks
-from finanse.core.db import get_session
-from finanse.modules.investments.market import SourceException
-from finanse.modules.investments.models import (
+from cashu.core import locks
+from cashu.core.db import get_session
+from cashu.modules.investments.market import SourceException
+from cashu.modules.investments.models import (
     InvNotification,
     InvRuleRun,
     InvSignal,
     InvStrategyVersion,
 )
-from finanse.modules.investments.service import daily, files
+from cashu.modules.investments.service import daily, files
 
 
 @pytest.fixture
@@ -209,8 +209,8 @@ def test_the_run_lock_is_shared(investor):
 
 def test_no_transaction_is_held_while_fetching(investor, tmp_path):
     """While the sources are 'on the network', another connection can write to the database."""
-    from finanse.core.db import make_engine
-    from finanse.db import engine
+    from cashu.core.db import make_engine
+    from cashu.db import engine
 
     probe = make_engine(str(engine.url))
     writes: list[bool] = []

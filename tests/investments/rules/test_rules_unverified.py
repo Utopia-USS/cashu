@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from finanse.modules.investments.domain import SignalSeverity
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.domain import SignalSeverity
+from cashu.modules.investments.rules import (
     UNVERIFIED,
     ExpireSignal,
     Fired,

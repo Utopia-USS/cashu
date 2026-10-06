@@ -1,11 +1,11 @@
 ---
 name: import-builder
-description: Builds an importer for an export finanse cannot read yet - broker / exchange / crypto history (investments) or a bank statement (budget). Preferred result is a reusable connector in the workspace's connectors/ folder that the app runs itself once the owner approves it in Ustawienia > Konektory; also fetch connectors for an API (the owner enters the key in the app). Asks first whether the user hands over the export with values or prefers the blind route (inspect_export); tests with `finanse connectors test`, installs with propose_connector. Alternatives - a one-off converter (validate_import / propose_import) or a generic CSV mapping. Use for an unsupported export (xlsx, csv, json) from a broker (XTB, DIF, Revolut, Binance, Zonda) or a bank, or to pull data from an API. Triggers on /import-builder and Polish requests such as "zaimportuj historię z brokera", "napisz konwerter eksportu", "parser do pliku z XTB", "konektor do banku", "wyciąg z innego banku", "pobieraj z API giełdy".
+description: Builds an importer for an export cashU cannot read yet - broker / exchange / crypto history (investments) or a bank statement (budget). Preferred result is a reusable connector in the workspace's connectors/ folder that the app runs itself once the owner approves it in Ustawienia > Konektory; also fetch connectors for an API (the owner enters the key in the app). Asks first whether the user hands over the export with values or prefers the blind route (inspect_export); tests with `cashu connectors test`, installs with propose_connector. Alternatives - a one-off converter (validate_import / propose_import) or a generic CSV mapping. Use for an unsupported export (xlsx, csv, json) from a broker (XTB, DIF, Revolut, Binance, Zonda) or a bank, or to pull data from an API. Triggers on /import-builder and Polish requests such as "zaimportuj historię z brokera", "napisz konwerter eksportu", "parser do pliku z XTB", "konektor do banku", "wyciąg z innego banku", "pobieraj z API giełdy".
 ---
 
 # import-builder: a connector (or converter) for an unsupported export
 
-finanse ships few importers of its own. Any other export is turned into one of the documented import
+cashU ships few importers of its own. Any other export is turned into one of the documented import
 formats: `references/import-format.md` (investments) or `references/budget-import-format.md` (budget,
 bank statements). The preferred way is a **connector**: a small program with a manifest that the app runs
 itself, in a sandbox, after the owner approved it once in the app, so every later export (or API sync)
@@ -30,8 +30,8 @@ Polish, files in English, regular hyphens only.
 - Never ask for broker or bank logins, passwords, 2FA / SCA codes, API keys, IBANs or account numbers.
   A fetch connector's key is entered by the owner in the app (binding form in Ustawienia > Konektory).
   If the user pastes a secret, do not repeat or store it, and tell them to enter it in the app instead.
-- Never run `finanse invest import`, `finanse invest positions`, `finanse import-dir`, `finanse
-  import-csv` (they print the user's data), never open `finanse.db`, backups or the import archive.
+- Never run `cashu invest import`, `cashu invest positions`, `cashu import-dir`, `cashu
+  import-csv` (they print the user's data), never open `cashu.db`, backups or the import archive.
 - Never download exports or fetch data from a broker's or bank's site for the user, and never bypass
   bot protection. Public documentation of an export format or an API may be looked up (with the source).
 
@@ -44,18 +44,18 @@ Polish, files in English, regular hyphens only.
 | `propose_connector(path)` | install the connector directory as pending (runs nothing) |
 | `connectors()` | status of installed connectors (pending / approved / changed), last run |
 | `validate_import(path, mapping?)` | converter route: validation report of the converted file |
-| `validate_budget_import(path)` | budget: validation report of a `finanse-budget-import` file (your connector's fixture output or a converter's), by kind / row / field, no values |
+| `validate_budget_import(path)` | budget: validation report of a `cashu-budget-import` file (your connector's fixture output or a converter's), by kind / row / field, no values |
 | `propose_import(path, account, mapping?)` | converter / mapping route: pending import for the owner |
 | `positions`, `portfolio_overview` | after the commit: new instruments, weights, freshness |
 
 ## Flow
 
-1. **Profile, module, account.** Use the connected `finanse-<slug>` server (ask which one if several;
+1. **Profile, module, account.** Use the connected `cashu-<slug>` server (ask which one if several;
    never mix profiles). Work in the profile's agent workspace (its `CLAUDE.md` names the profile; folders
    `inbox/`, `connectors/`, `scripts/`). Without one, suggest creating it (Ustawienia > Agent AI, or
-   `finanse workspace init --profile <slug>`) and starting Claude Code there. `finanse` below is the CLI
+   `cashu workspace init --profile <slug>`) and starting Claude Code there. `cashu` below is the CLI
    named in the workspace's `CLAUDE.md`. Module: broker history -> `investments`, bank statement ->
-   `budget`. One file = one account; a missing brokerage account is added in the app or with `finanse
+   `budget`. One file = one account; a missing brokerage account is added in the app or with `cashu
    --profile <slug> invest accounts add "<name>" --broker <id> --wrapper <regular|ike|ikze|oipe|other>`.
 2. **The file.** If the user already handed you the file or rows, skip the question and use them.
    Otherwise ask once, before anything else:
@@ -78,7 +78,7 @@ Polish, files in English, regular hyphens only.
      `propose_import` with the export as `path`. Steps 4, 10.
    - One-off converter script: when the user does not want a connector (section "Converter route").
 4. **Clarify the semantics** with the user, 1-3 questions per message: what each sheet holds; every
-   type label and its finanse type (unknown labels are an error); sign conventions; currencies and FX;
+   type label and its cashU type (unknown labels are an error); sign conventions; currencies and FX;
    fees and withholding tax; a stable transaction / order id (only then `external_ref` /
    `transaction_id`); a positions sheet (investments: `position` records for the reconciliation); how
    splits, renames and delistings appear; for statements: which column is the counterparty, the title,
@@ -91,11 +91,11 @@ Polish, files in English, regular hyphens only.
    the owner sees every file, and test samples stay synthetic.
 6. **Test on synthetic data:** build a small sample with the same columns, labels and quirks and
    invented values (in the connector's folder, e.g. `sample.csv`, or the scratchpad), then
-   `finanse connectors test connectors/<id> --file <sample>`. Fetch: record a synthetic API answer as
-   `fixture.json` and run `finanse connectors test connectors/<id> --fixture connectors/<id>/fixture.json`
+   `cashu connectors test connectors/<id> --file <sample>`. Fetch: record a synthetic API answer as
+   `fixture.json` and run `cashu connectors test connectors/<id> --fixture connectors/<id>/fixture.json`
    (the fixture arrives as `params.fixture`; never declare `fixture` in the manifest). Cover every
    label, both signs, an FX row and an error case. Claude Code asks the user to allow each command.
-7. **Test on the real export:** `finanse connectors test connectors/<id> --file inbox/<export>`. The
+7. **Test on the real export:** `cashu connectors test connectors/<id> --file inbox/<export>`. The
    report is value-free (counts, problem kinds with row numbers and field names), so it is fine on both
    routes. Fix by kind and row and rerun until it says OK; read every warning with the user.
 8. **Install:** `propose_connector(<absolute path of connectors/<id>>)`. Tell the owner, in one or two
@@ -118,8 +118,8 @@ Polish, files in English, regular hyphens only.
 For the investments module, when the user prefers a script to a connector:
 
 - Write `scripts/import_<source>.py` from `references/converter_template.py` (contract below), test it on
-  synthetic data with `finanse invest validate <synthetic output>`.
-- Run it yourself with the system Python in isolated mode (not the finanse app binary, not a venv):
+  synthetic data with `cashu invest validate <synthetic output>`.
+- Run it yourself with the system Python in isolated mode (not the cashU app binary, not a venv):
   `python3 -I scripts/import_<source>.py inbox/<export> inbox/converted/<source>-<YYYY-MM-DD>.csv`
   (create `inbox/converted` first); tell the user in one line what the command does. Exit 1 = a data
   problem with a value-free message: fix, test on synthetic data, rerun.
@@ -127,16 +127,16 @@ For the investments module, when the user prefers a script to a connector:
   owner checks the preview and the reconciliation in Inwestycje > Import and commits. Re-importing an
   overlapping export does not duplicate rows (`references/import-format.md` section 5). Delete the
   converted file after the commit.
-- Budget statements: a script may write a `finanse-budget-import` file (CSV or JSON) to `inbox/converted/`;
+- Budget statements: a script may write a `cashu-budget-import` file (CSV or JSON) to `inbox/converted/`;
   check it with `validate_budget_import(<output>)` and fix by kind and row; the owner imports it in
-  Wydatki > Import (`Format finanse`). Import older periods first: rows older than the account's newest
+  Wydatki > Import (`Format cashU`). Import older periods first: rows older than the account's newest
   stored day are skipped as overlap (`references/budget-import-format.md` section 4). A connector is the
   better choice here.
 
 ## Converter contract (scripts) - connectors follow references/connectors.md
 
 - Python standard library only (`csv`, `zipfile` + `xml.etree` for xlsx, `json`, `decimal`,
-  `datetime`). No network, no subprocesses, no environment variables, never imports `finanse`, reads
+  `datetime`). No network, no subprocesses, no environment variables, never imports `cashu`, reads
   only the export and writes only the output file.
 - Invocation: `python3 -I import_<source>.py <export file> <output .csv>`; exit 0 on success, 1 with a
   message on stderr on a data problem, 2 on wrong usage. Nothing on stdout.

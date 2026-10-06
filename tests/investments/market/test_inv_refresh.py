@@ -27,7 +27,7 @@ from inv_market_support import (
     yahoo_chart_client,
 )
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     CalendarDate,
     Currency,
@@ -39,7 +39,7 @@ from finanse.modules.investments.domain import (
     Transaction,
     TxnType,
 )
-from finanse.modules.investments.market import (
+from cashu.modules.investments.market import (
     CompositePriceSource,
     FetchStatus,
     InMemoryMarketData,
@@ -51,7 +51,7 @@ from finanse.modules.investments.market import (
     SourceException,
     YahooPriceSource,
 )
-from finanse.modules.investments.portfolio import build_snapshot, value_portfolio
+from cashu.modules.investments.portfolio import build_snapshot, value_portfolio
 
 AS_OF = day("2026-10-02")  # a Friday
 

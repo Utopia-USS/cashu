@@ -30,8 +30,8 @@ CLI help, and docs.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]" && finanse init-db
+pip install -e ".[dev]" && cashu init-db
 pytest                                        # tests run on synthetic data
 cd frontend && npm install && npm run build && cd ..
-finanse serve                                 # http://127.0.0.1:8500
+cashu serve                                 # http://127.0.0.1:8500
 ```

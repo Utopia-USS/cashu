@@ -1,4 +1,4 @@
-"""Characterization tests for the main `finanse` CLI commands (Typer CliRunner)
+"""Characterization tests for the main `cashu` CLI commands (Typer CliRunner)
 on a synthetic DB. They pin exit codes, the key output lines and the DB effects
 so the wave-2 split of cli.py cannot silently change behaviour. `serve` belongs
 to the infrastructure track; `reclassify` and the interactive `eb` login flows
@@ -13,10 +13,10 @@ from rich.console import Console
 from sqlmodel import Session, select
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import cliutil
-from finanse.models import Account, AccountType, Balance, Depreciation, Loan, Transaction
-from finanse.modules.budget import cli as budget_cli
+from cashu import cli as cli_mod
+from cashu.core import cliutil
+from cashu.models import Account, AccountType, Balance, Depreciation, Loan, Transaction
+from cashu.modules.budget import cli as budget_cli
 
 MBANK_HEADER = [
     "mBank S.A. Bankowość Detaliczna;",
@@ -181,7 +181,7 @@ def test_eb_reprocess(run, seeded_engine):
 
 
 def test_eb_resync_without_sessions(run, db_engine, monkeypatch):
-    from finanse.modules.budget.ingestion.enable_banking import state
+    from cashu.modules.budget.ingestion.enable_banking import state
 
     monkeypatch.setattr(state, "load_sessions", lambda *_a, **_k: [])
     res = run("eb", "resync", ok=False)
@@ -189,7 +189,7 @@ def test_eb_resync_without_sessions(run, db_engine, monkeypatch):
 
 
 def test_eb_check_not_configured(run, db_engine, monkeypatch):
-    from finanse.config import settings
+    from cashu.config import settings
 
     monkeypatch.setattr(type(settings), "eb_configured", property(lambda self: False))
     res = run("eb", "check", ok=False)

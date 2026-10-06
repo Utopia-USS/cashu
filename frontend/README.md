@@ -1,4 +1,4 @@
-# finanse — dashboard (frontend)
+# cashU - dashboard (frontend)
 
 React + Vite + TypeScript SPA. Talks to the FastAPI backend over `/api/*` only;
 no business logic lives here.
@@ -9,7 +9,7 @@ Two processes:
 
 ```bash
 # 1) backend (serves the JSON API on :8500)
-finanse serve
+cashu serve
 
 # 2) frontend dev server with HMR (proxies /api → :8500)
 cd frontend && npm install && npm run dev
@@ -17,8 +17,8 @@ cd frontend && npm install && npm run dev
 
 Open the printed Vite URL (http://localhost:5173). Edits hot-reload instantly.
 The proxy adds the backend's per-launch API token, read on every request from
-`<data dir>/api-token` (written by `finanse serve`; `FINANSE_DATA_DIR` and
-`FINANSE_PORT` are honoured), so restarting the backend needs no Vite restart.
+`<data dir>/api-token` (written by `cashu serve`; `CASHU_DATA_DIR` and
+`CASHU_PORT` are honoured), so restarting the backend needs no Vite restart.
 It does so only for same-origin requests from the dev page itself
 (`devProxyGuard.ts`): a request whose `Origin`, `Referer` or `Sec-Fetch-Site`
 names another site (another web page you have open, another local port) gets a
@@ -26,9 +26,9 @@ names another site (another web page you have open, another local port) gets a
 cross-site requests while `npm run dev` runs. Requests without any browser
 context (curl, opening `/api/...` in the address bar) still pass.
 The built app gets the token without it ever being embedded in the page:
-`finanse serve` prints a one-time URL `http://127.0.0.1:<port>/#token=<token>`;
+`cashu serve` prints a one-time URL `http://127.0.0.1:<port>/#token=<token>`;
 the SPA moves the fragment token to `sessionStorage` (this tab only) and strips it
-from the address bar (`core/token.ts`). The desktop app (`finanse app`) hands the
+from the address bar (`core/token.ts`). The desktop app (`cashu app`) hands the
 token to the window over the pywebview bridge (`window.pywebview.api.token()`).
 
 ## Tests
@@ -42,16 +42,16 @@ the serialized module-save queue, hash decoding) with Node's built-in test runne
 (Node 23.6+ strips the TypeScript types itself; no extra dependency). Component
 behaviour (profile switch, resync, toggles) is checked in the browser.
 
-## Build (production — served by `finanse serve`)
+## Build (production - served by `cashu serve`)
 
 ```bash
 cd frontend && npm run build
 ```
 
-This emits into `../src/finanse/api/webdist/`, which FastAPI serves at `/`.
-After building, `finanse serve` alone shows the built app (no Node needed at
+This emits into `../src/cashu/api/webdist/`, which FastAPI serves at `/`.
+After building, `cashu serve` alone shows the built app (no Node needed at
 runtime). If `webdist/` is absent, FastAPI serves a minimal page
-(`src/finanse/api/static/index.html`) that says how to build the frontend.
+(`src/cashu/api/static/index.html`) that says how to build the frontend.
 
 ## Demo backend (no Python needed)
 

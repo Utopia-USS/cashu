@@ -15,18 +15,18 @@ from pathlib import Path
 import pytest
 from connector_support import NoSandbox, needs_python3, target_of, write_connector
 
-from finanse.core.connectors import protocol as proto
-from finanse.core.connectors import proxy as px
-from finanse.core.connectors import runner
-from finanse.core.connectors.process import run_process
-from finanse.core.connectors.runner import InputFile, execute
+from cashu.core.connectors import protocol as proto
+from cashu.core.connectors import proxy as px
+from cashu.core.connectors import runner
+from cashu.core.connectors.process import run_process
+from cashu.core.connectors.runner import InputFile, execute
 
 pytestmark = needs_python3
 
 
 @pytest.fixture(autouse=True)
 def _data_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ def test_file_commands_happy_path(tmp_path, export):
     assert detect.ok and detect.response.match and detect.response.confidence == 0.75
     convert = execute(target, "convert", file=export, sandbox=NoSandbox())
     assert convert.ok and convert.records == 2 and convert.exit_code == 0
-    assert convert.response.document["format"] == "finanse-import"
+    assert convert.response.document["format"] == "cashu-import"
     assert convert.response.cursor is None
 
 
@@ -91,7 +91,7 @@ def test_request_shape_for_convert_and_input_is_a_copy(tmp_path, export):
 
 
 def test_env_is_clean(tmp_path, export, monkeypatch):
-    monkeypatch.setenv("FINANSE_SECRET_PROBE", "must-not-leak")
+    monkeypatch.setenv("CASHU_SECRET_PROBE", "must-not-leak")
     code = _code(
         "sys.stderr.write('ENV=' + json.dumps(dict(os.environ)))\n"
         "print(json.dumps({'document': {'records': []}}))\n"
@@ -106,10 +106,12 @@ def test_env_is_clean(tmp_path, export, monkeypatch):
     )
     env = json.loads(run.stdout)
     allowed = {"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "PYTHONDONTWRITEBYTECODE",
-               "PYTHONNOUSERSITE", "FINANSE_CONNECTOR_API"}
+               "PYTHONNOUSERSITE", "CASHU_CONNECTOR_API",
+               "FINANSE_CONNECTOR_API"}  # legacy name, set for one release
     # macOS adds __CF_USER_TEXT_ENCODING to every process it starts (not inherited, not data)
     assert set(env) - {"__CF_USER_TEXT_ENCODING"} == allowed, env
     assert env["HOME"] == env["TMPDIR"] and env["PATH"].startswith("/usr/bin:/bin:")
+    assert env["CASHU_CONNECTOR_API"] == env["FINANSE_CONNECTOR_API"] == "1"  # legacy name
     assert "must-not-leak" not in json.dumps(env)
 
 
@@ -212,7 +214,7 @@ def _alive(pid: int) -> bool:
 
 
 def test_detect_has_its_own_short_timeout(tmp_path, export, monkeypatch):
-    from finanse.core.connectors import manifest as mf
+    from cashu.core.connectors import manifest as mf
 
     monkeypatch.setattr(mf, "DETECT_TIMEOUT_S", 1)
     target = target_of(write_connector(tmp_path / "c", code=_code("import time\ntime.sleep(30)\n")))
@@ -231,7 +233,7 @@ def test_refusals_before_running(tmp_path, export):
 
 
 def test_unsupported_sandbox_never_runs(tmp_path, export):
-    from finanse.core.connectors.sandbox import SANDBOX_UNAVAILABLE_PL, UnsupportedSandbox
+    from cashu.core.connectors.sandbox import SANDBOX_UNAVAILABLE_PL, UnsupportedSandbox
 
     target = target_of(write_connector(tmp_path / "c"))
     result = execute(target, "convert", file=export, sandbox=UnsupportedSandbox())
@@ -249,7 +251,7 @@ def test_argv_makes_connector_files_absolute(tmp_path):
 def test_profile_shape(tmp_path):
     """Deny by default, no mach-lookup, network only for fetch and only to the proxy port; paths are
     escaped real paths."""
-    from finanse.core.connectors.sandbox import RunSpec, render_profile
+    from cashu.core.connectors.sandbox import RunSpec, render_profile
 
     root = tmp_path / 'we"ird\\dir'
     root.mkdir()

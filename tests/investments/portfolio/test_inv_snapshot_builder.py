@@ -19,7 +19,7 @@ from inv_portfolio_fixtures import (
     transfer_in,
 )
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     CashBalance,
     CashHistoryGap,
     DatedPrice,
@@ -31,7 +31,7 @@ from finanse.modules.investments.domain import (
     TxnSource,
     TxnType,
 )
-from finanse.modules.investments.portfolio import (
+from cashu.modules.investments.portfolio import (
     build_snapshot,
     last_trade_prices,
     restrict_snapshot,

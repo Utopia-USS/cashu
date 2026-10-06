@@ -16,8 +16,8 @@ from imp_support import (
     simple_mapping,
 )
 
-from finanse.modules.investments.domain import Currency, TxnType
-from finanse.modules.investments.importing import (
+from cashu.modules.investments.domain import Currency, TxnType
+from cashu.modules.investments.importing import (
     AmountSign,
     CsvField,
     CsvMapping,
@@ -336,7 +336,7 @@ def test_importer_identity() -> None:
 
 
 def test_warning_kinds_of_row_errors() -> None:
-    from finanse.modules.investments.importing import ImportWarningKind
+    from cashu.modules.investments.importing import ImportWarningKind
 
     result = GenericCsvImporter(simple_mapping()).parse(csv_file(ERROR_ROWS))
     by_row = {w.row: w.kind for w in result.warnings}

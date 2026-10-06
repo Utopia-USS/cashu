@@ -1,13 +1,14 @@
 // Theme override: follow the system by default; Settings can force light/dark
 // by setting data-theme on <html> (tokens are repeated for it in index.css).
 import { useEffect, useState } from "react";
+import { readStored } from "./storage.ts";
 
 export type ThemePref = "system" | "light" | "dark";
-const KEY = "finanse.theme";
+const KEY = "cashu.theme";
 
 export function readTheme(): ThemePref {
   try {
-    const v = localStorage.getItem(KEY);
+    const v = readStored(localStorage, KEY);
     return v === "light" || v === "dark" ? v : "system";
   } catch {
     return "system";

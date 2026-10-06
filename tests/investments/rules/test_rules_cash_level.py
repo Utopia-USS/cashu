@@ -19,8 +19,8 @@ from rules_fixtures import (
     skip_reason,
 )
 
-from finanse.modules.investments.domain import AssetClass, CashHistoryGap, Currency
-from finanse.modules.investments.rules import CashLevelParams, CashLevelRule
+from cashu.modules.investments.domain import AssetClass, CashHistoryGap, Currency
+from cashu.modules.investments.rules import CashLevelParams, CashLevelRule
 
 KIND = CashLevelRule()
 ETF = instrument("VWCE", asset_class=AssetClass.ETF)

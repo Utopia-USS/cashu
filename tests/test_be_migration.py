@@ -13,8 +13,8 @@ import pytest
 from alembic import command
 from upstream_db import make_upstream_db
 
-from finanse import db
-from finanse.core import legacy, migrations
+from cashu import db
+from cashu.core import legacy, migrations
 
 NEW_TABLES = {"inv_planned_deposits", "research_runs", "research_notes"}
 TS = "2026-10-01 00:00:00"
@@ -22,7 +22,7 @@ TS = "2026-10-01 00:00:00"
 
 @pytest.fixture(autouse=True)
 def _isolated_data_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
 
 
 def _to(engine, revision: str, *, down: bool = False) -> None:
@@ -57,7 +57,7 @@ def _db_at(tmp_path: Path, revision: str) -> Path:
     engine = db.make_engine(f"sqlite:///{original}")
     _to(engine, revision)
     engine.dispose()
-    copy = tmp_path / "work" / "finanse.db"
+    copy = tmp_path / "work" / "cashu.db"
     copy.parent.mkdir()
     shutil.copy(original, copy)
     return copy

@@ -7,8 +7,8 @@ import time
 
 import pytest
 
-from finanse.modules.investments.rules.expr import ExpressionError, Scope, compile_expression
-from finanse.modules.investments.rules.expr.limits import (
+from cashu.modules.investments.rules.expr import ExpressionError, Scope, compile_expression
+from cashu.modules.investments.rules.expr.limits import (
     MAX_DEPTH,
     MAX_EXPRESSION_LENGTH,
     MAX_FUNCTION_ARGS,

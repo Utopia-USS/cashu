@@ -18,8 +18,8 @@ from rules_fixtures import (
     skip_reason,
 )
 
-from finanse.modules.investments.domain import AssetClass, Currency, SignalSeverity
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.domain import AssetClass, Currency, SignalSeverity
+from cashu.modules.investments.rules import (
     AllocationDriftParams,
     AllocationDriftRule,
     DataQualityPolicy,

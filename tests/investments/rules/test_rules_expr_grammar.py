@@ -6,15 +6,15 @@ from decimal import Decimal
 
 import pytest
 
-from finanse.modules.investments.rules.expr import (
+from cashu.modules.investments.rules.expr import (
     ExpressionError,
     Scope,
     Unknown,
     compile_expression,
     evaluate,
 )
-from finanse.modules.investments.rules.expr.lexer import TokenType, tokenize
-from finanse.modules.investments.rules.expr.parser import (
+from cashu.modules.investments.rules.expr.lexer import TokenType, tokenize
+from cashu.modules.investments.rules.expr.parser import (
     Binary,
     Compare,
     Logical,

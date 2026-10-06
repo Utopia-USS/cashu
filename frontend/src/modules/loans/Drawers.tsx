@@ -1,4 +1,4 @@
-// Loans drawers (design/v3/first-steps sections 8, 9): a new loan (the fields of `finanse loans add`, with the
+// Loans drawers (design/v3/first-steps sections 8, 9): a new loan (the fields of `cashu loans add`, with the
 // instalment preview) and the installment matching (`set-payment`: a title phrase or the bank's IBAN, with the
 // recent regular payments as phrase candidates).
 import { useState } from "react";

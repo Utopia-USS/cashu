@@ -15,8 +15,8 @@ from alembic import command
 from alembic.config import main as alembic_main
 from upstream_db import make_upstream_db
 
-from finanse import db
-from finanse.core import migrations
+from cashu import db
+from cashu.core import migrations
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 
@@ -24,7 +24,7 @@ ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 @pytest.fixture
 def baseline_db(tmp_path, monkeypatch):
     """An upstream household stamped at the baseline, wired in as the app engine."""
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
     path = make_upstream_db(tmp_path / "dev.db")
     engine = db.make_engine(f"sqlite:///{path}")
     with engine.begin() as conn:
@@ -39,13 +39,13 @@ def _alembic(*args: str) -> None:
 
 
 def _backups(path: Path) -> list[Path]:
-    return sorted((path.parent / "backups").glob("finanse-pre-*.db"))
+    return sorted((path.parent / "backups").glob("cashu-pre-*.db"))
 
 
 def test_alembic_upgrade_backs_up_first(baseline_db):
     _alembic("upgrade", "head")
     (copy,) = _backups(baseline_db)
-    assert copy.name.startswith(f"finanse-pre-{migrations.head_revision()}-")
+    assert copy.name.startswith(f"cashu-pre-{migrations.head_revision()}-")
     engine = db.make_engine(f"sqlite:///{copy}")
     assert migrations.current_revision(engine) == migrations.BASELINE  # the state before
     engine.dispose()

@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from finanse.modules.investments.importing.contract import ImportWarning, ImportWarningKind
-from finanse.modules.investments.service import files as inv_files
-from finanse.modules.investments.service import strategy as strategy_service
-from finanse.modules.investments.strategy import load_strategy
-from finanse.modules.investments.strategy.codes import CODES, OTHER, classify
-from finanse.modules.investments.strategy.issues import IssueSeverity, StrategyIssue
+from cashu.modules.investments.importing.contract import ImportWarning, ImportWarningKind
+from cashu.modules.investments.service import files as inv_files
+from cashu.modules.investments.service import strategy as strategy_service
+from cashu.modules.investments.strategy import load_strategy
+from cashu.modules.investments.strategy.codes import CODES, OTHER, classify
+from cashu.modules.investments.strategy.issues import IssueSeverity, StrategyIssue
 
 ROOT = Path(__file__).resolve().parents[1]
 MESSAGES_TS = ROOT / "frontend" / "src" / "core" / "messages.ts"
@@ -181,7 +181,7 @@ def _label_keys() -> set[str]:
 def _proposal_error_codes() -> set[str]:
     """Every literal code passed to ProposalError / NotPending in the backend."""
     codes: set[str] = set()
-    for path in (ROOT / "src" / "finanse").rglob("*.py"):
+    for path in (ROOT / "src" / "cashu").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -199,7 +199,7 @@ def test_frontend_labels_cover_every_backend_code():
     assert set(CODES) - {OTHER} <= keys, sorted(set(CODES) - {OTHER} - keys)
     kinds = {f"import.{k.value}" for k in ImportWarningKind if k != ImportWarningKind.OTHER}
     assert kinds <= keys, sorted(kinds - keys)
-    from finanse.core import proposals
+    from cashu.core import proposals
 
     summary_kinds = {f"proposal.{k}" for k in proposals.kinds()}
     assert summary_kinds <= keys, sorted(summary_kinds - keys)

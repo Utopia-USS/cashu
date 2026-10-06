@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from rules_fixtures import alloc, candidate, context, h, instrument, portfolio, run
 
-from finanse.modules.investments.domain import AssetClass
-from finanse.modules.investments.rules import AllocationDriftParams, AllocationDriftRule, Fired
-from finanse.modules.investments.rules.kinds.allocation_drift import (
+from cashu.modules.investments.domain import AssetClass
+from cashu.modules.investments.rules import AllocationDriftParams, AllocationDriftRule, Fired
+from cashu.modules.investments.rules.kinds.allocation_drift import (
     drift_bucket_generic,
     hidden_from_owner,
     with_bucket_generic,

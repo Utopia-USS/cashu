@@ -1,4 +1,4 @@
-"""Desktop shell and packaged-app awareness (``finanse app``, ``core/runtime.py``, the frozen
+"""Desktop shell and packaged-app awareness (``cashu app``, ``core/runtime.py``, the frozen
 entry point). No real window, no real data dir: pywebview is replaced by a fake module and the
 server thread serves a tiny ASGI app behind the real security middleware."""
 
@@ -15,16 +15,16 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from finanse.core import locks, runtime, security
-from finanse.desktop import entry, shell
+from cashu.core import locks, runtime, security
+from cashu.desktop import entry, shell
 
-APP_EXE = "/Applications/Finanse.app/Contents/MacOS/finanse"
+APP_EXE = "/Applications/cashU.app/Contents/MacOS/cashu"
 
 
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     path = tmp_path / "data"
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(path))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(path))
     # shell.run() configures the process-wide security config; restore it afterwards.
     monkeypatch.setattr(security, "_config", security._config)
     return path
@@ -32,7 +32,7 @@ def data_dir(tmp_path, monkeypatch):
 
 @pytest.fixture
 def frozen(monkeypatch, tmp_path):
-    """Pretend to run inside Finanse.app (PyInstaller)."""
+    """Pretend to run inside cashU.app (PyInstaller)."""
     meipass = tmp_path / "bundle"
     meipass.mkdir()
     monkeypatch.setattr(sys, "frozen", True, raising=False)
@@ -49,27 +49,27 @@ def frozen(monkeypatch, tmp_path):
 def test_runtime_from_source_keeps_the_plain_command():
     assert not runtime.frozen()
     assert runtime.executable() is None and runtime.app_bundle() is None
-    assert runtime.cli_program() == ["finanse"]
-    assert runtime.mcp_command("jan") == "finanse mcp --profile jan"
+    assert runtime.cli_program() == ["cashu"]
+    assert runtime.mcp_command("jan") == "cashu mcp --profile jan"
     assert (
-        runtime.claude_mcp_add("jan") == "claude mcp add finanse-jan -- finanse mcp --profile jan"
+        runtime.claude_mcp_add("jan") == "claude mcp add cashu-jan -- cashu mcp --profile jan"
     )
     assert runtime.claude_desktop_config("jan") == {
-        "mcpServers": {"finanse-jan": {"command": "finanse", "args": ["mcp", "--profile", "jan"]}}
+        "mcpServers": {"cashu-jan": {"command": "cashu", "args": ["mcp", "--profile", "jan"]}}
     }
     assert runtime.skills_dir() == runtime.paths.PROJECT_ROOT / ".claude" / "skills"
 
 
 def test_runtime_frozen_points_at_the_bundled_binary(frozen):
     assert runtime.frozen()
-    assert runtime.app_bundle() == Path("/Applications/Finanse.app")
+    assert runtime.app_bundle() == Path("/Applications/cashU.app")
     assert runtime.cli_program() == [APP_EXE]
     assert runtime.mcp_command("jan") == f"{APP_EXE} mcp --profile jan"
     assert (
         runtime.claude_mcp_add("jan")
-        == f"claude mcp add finanse-jan -- {APP_EXE} mcp --profile jan"
+        == f"claude mcp add cashu-jan -- {APP_EXE} mcp --profile jan"
     )
-    entry_ = runtime.claude_desktop_config("jan")["mcpServers"]["finanse-jan"]
+    entry_ = runtime.claude_desktop_config("jan")["mcpServers"]["cashu-jan"]
     assert entry_ == {"command": APP_EXE, "args": ["mcp", "--profile", "jan"]}
     assert not runtime.translocated()
     assert runtime.skills_dir() is None  # not bundled in this fake bundle
@@ -78,26 +78,26 @@ def test_runtime_frozen_points_at_the_bundled_binary(frozen):
 
 
 def test_runtime_quotes_a_path_with_spaces(frozen, monkeypatch):
-    exe = "/Users/x/My Apps/Finanse.app/Contents/MacOS/finanse"
+    exe = "/Users/x/My Apps/cashU.app/Contents/MacOS/cashu"
     monkeypatch.setattr(sys, "executable", exe)
     assert (
-        runtime.claude_mcp_add("jan") == f"claude mcp add finanse-jan -- '{exe}' mcp --profile jan"
+        runtime.claude_mcp_add("jan") == f"claude mcp add cashu-jan -- '{exe}' mcp --profile jan"
     )
-    assert runtime.claude_desktop_config("jan")["mcpServers"]["finanse-jan"]["command"] == exe
+    assert runtime.claude_desktop_config("jan")["mcpServers"]["cashu-jan"]["command"] == exe
 
 
 def test_worker_entry_point_uses_the_bundle_and_refuses_translocation(frozen, monkeypatch):
-    from finanse.core.worker import scheduler
+    from cashu.core.worker import scheduler
 
-    monkeypatch.setattr("finanse.config.settings.worker_program", None)
+    monkeypatch.setattr("cashu.config.settings.worker_program", None)
     assert scheduler.entry_point() == [APP_EXE]
-    moved = "/private/var/folders/x/T/AppTranslocation/ABC/d/Finanse.app/Contents/MacOS/finanse"
+    moved = "/private/var/folders/x/T/AppTranslocation/ABC/d/cashU.app/Contents/MacOS/cashu"
     monkeypatch.setattr(sys, "executable", moved)
     assert runtime.translocated()
     with pytest.raises(scheduler.WorkerSchedulerError, match="Applications"):
         scheduler.entry_point()
-    # An explicit program still wins (FINANSE_WORKER_PROGRAM / --program).
-    assert scheduler.entry_point("/opt/finanse") == ["/opt/finanse"]
+    # An explicit program still wins (CASHU_WORKER_PROGRAM / --program).
+    assert scheduler.entry_point("/opt/cashu") == ["/opt/cashu"]
 
 
 def test_mcp_endpoints_use_the_bundled_binary_when_packaged(api_empty, frozen):
@@ -116,7 +116,7 @@ def test_mcp_endpoints_use_the_bundled_binary_when_packaged(api_empty, frozen):
     assert info["packaged"] is True
     assert info["command"] == f"{APP_EXE} mcp --profile {slug}"
     assert (
-        info["claude_mcp_add"] == f"claude mcp add finanse-{slug} -- {APP_EXE} mcp --profile {slug}"
+        info["claude_mcp_add"] == f"claude mcp add cashu-{slug} -- {APP_EXE} mcp --profile {slug}"
     )
     assert info["claude_desktop"] == {"command": APP_EXE, "args": ["mcp", "--profile", slug]}
     setup = api_empty.get(f"/api/p/{slug}/modules/investments/setup").json()
@@ -130,12 +130,12 @@ def test_mcp_endpoints_use_the_bundled_binary_when_packaged(api_empty, frozen):
 
 def test_entry_without_arguments_opens_the_app(monkeypatch):
     calls = []
-    monkeypatch.setattr("finanse.cli.app", lambda **kw: calls.append(kw))
+    monkeypatch.setattr("cashu.cli.app", lambda **kw: calls.append(kw))
     entry.main([])
     entry.main(["-psn_0_12345"])  # Finder on old macOS versions
     entry.main(["worker", "run", "--offline"])
     assert [c["args"] for c in calls] == [["app"], ["app"], ["worker", "run", "--offline"]]
-    assert all(c["prog_name"] == "finanse" for c in calls)
+    assert all(c["prog_name"] == "cashu" for c in calls)
 
 
 def test_entry_never_runs_scripts(tmp_path, monkeypatch):
@@ -145,9 +145,9 @@ def test_entry_never_runs_scripts(tmp_path, monkeypatch):
     script = tmp_path / "converter.py"
     script.write_text(f"import pathlib\npathlib.Path({str(marker)!r}).write_text('x')\n")
     calls = []
-    monkeypatch.setattr("finanse.cli.app", lambda **kw: calls.append(kw))
+    monkeypatch.setattr("cashu.cli.app", lambda **kw: calls.append(kw))
     entry.main(["-I", str(script), "in.csv", "out.csv"])
-    assert calls == [{"args": ["-I", str(script), "in.csv", "out.csv"], "prog_name": "finanse"}]
+    assert calls == [{"args": ["-I", str(script), "in.csv", "out.csv"], "prog_name": "cashu"}]
     assert not marker.exists()
     assert not hasattr(entry, "run_script") and not hasattr(entry, "is_script_call")
 
@@ -270,7 +270,7 @@ class FakeEvent:
             handler()
 
 
-PYWEBVIEW_DEFAULT_BASE = "file:///Applications/Finanse.app/Contents/Frameworks/"
+PYWEBVIEW_DEFAULT_BASE = "file:///Applications/cashU.app/Contents/Frameworks/"
 
 
 def webkit_request_url(base_uri: str) -> str:
@@ -456,7 +456,7 @@ def test_navigation_is_pinned_to_the_app_origin():
         "https://www.gpw.pl/": external,
         "file:///etc/passwd": block,
         "javascript:alert(1)": block,
-        "finanse://signal/jan/1": block,
+        "cashu://signal/jan/1": block,
         "x-apple.systempreferences:": block,
         "": block,
     }
@@ -474,7 +474,7 @@ def test_navigation_guard_wraps_the_cocoa_delegate(monkeypatch):
     original = cocoa.BrowserView.BrowserDelegate
     monkeypatch.setitem(shell._guard, "installed", False)
     monkeypatch.setattr(cocoa.BrowserView, "BrowserDelegate", original)
-    if original.__name__ == "FinanseBrowserDelegate":  # installed by an earlier test run
+    if original.__name__ == "CashuBrowserDelegate":  # installed by an earlier test run
         original = original.__bases__[0]
         monkeypatch.setattr(cocoa.BrowserView, "BrowserDelegate", original)
     assert shell.install_navigation_guard("http://127.0.0.1:50111") is True
@@ -519,7 +519,7 @@ def test_boot_failures_are_logged_and_shown(data_dir, monkeypatch, caplog):
     monkeypatch.setattr(shell, "save_state", unwritable)
     window = FakeWindow()
     launch = shell.Launch()
-    with caplog.at_level("WARNING", logger="finanse.desktop"):
+    with caplog.at_level("WARNING", logger="cashu.desktop"):
         shell._boot(window, Server(), launch, data_dir / "app.log")
     assert window.loaded == [("url", Server.url)] and launch.error is None
     assert any("could not remember the port" in r.getMessage() for r in caplog.records)
@@ -531,7 +531,7 @@ def test_boot_failures_are_logged_and_shown(data_dir, monkeypatch, caplog):
     window = BrokenWindow()
     launch = shell.Launch()
     caplog.clear()
-    with caplog.at_level("ERROR", logger="finanse.desktop"):
+    with caplog.at_level("ERROR", logger="cashu.desktop"):
         shell._boot(window, Server(), launch, data_dir / "app.log")
     kind, page = window.loaded[-1]
     assert kind == "html" and "webview gone" in page and "app.log" in page
@@ -549,9 +549,9 @@ def test_rotated_app_log_stays_owner_only(data_dir, monkeypatch):
     try:
         path = shell.setup_logging()
         handler = next(h for h in root.handlers if h not in before)
-        logging.getLogger("finanse.desktop").warning("before rotation")
+        logging.getLogger("cashu.desktop").warning("before rotation")
         handler.doRollover()
-        logging.getLogger("finanse.desktop").warning("after rotation")
+        logging.getLogger("cashu.desktop").warning("after rotation")
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
         assert stat.S_IMODE(path.with_name("app.log.1").stat().st_mode) == 0o600
         assert "after rotation" in path.read_text()
@@ -581,8 +581,8 @@ def test_socket_options_never_share_the_port_on_windows():
         assert windows == []
 
 
-def test_bind_loopback_ignores_finanse_host(monkeypatch):
-    monkeypatch.setenv("FINANSE_HOST", "0.0.0.0")
+def test_bind_loopback_ignores_cashu_host(monkeypatch):
+    monkeypatch.setenv("CASHU_HOST", "0.0.0.0")
     sock = shell.bind_loopback()
     try:
         assert sock.getsockname()[0] == "127.0.0.1"
@@ -607,12 +607,12 @@ def test_missing_pywebview_is_explained(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# CLI: finanse app, finanse skills
+# CLI: cashu app, cashu skills
 # --------------------------------------------------------------------------- #
 
 
 def _cli():
-    from finanse.cli import app
+    from cashu.cli import app
 
     return app
 
@@ -633,7 +633,7 @@ def test_app_command_exit_codes(data_dir, monkeypatch):
 
     seen = {}
     monkeypatch.setattr(shell, "run", lambda **kw: seen.update(kw) or shell.Launch(port=1))
-    monkeypatch.setenv("FINANSE_APP_DEBUG", "1")
+    monkeypatch.setenv("CASHU_APP_DEBUG", "1")
     assert runner.invoke(_cli(), ["app"]).exit_code == 0
     assert seen["debug"] is True
     assert (data_dir / "logs" / "app.log").exists()

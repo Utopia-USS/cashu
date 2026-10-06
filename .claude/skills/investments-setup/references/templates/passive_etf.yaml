@@ -1,5 +1,5 @@
-# Copy shipped with this skill, generated from the finanse sources; do not edit it here.
-# finanse strategy - passive starter: one global equity ETF, bonds, a little cash.
+# Copy shipped with this skill, generated from the cashU sources; do not edit it here.
+# cashU strategy - passive starter: one global equity ETF, bonds, a little cash.
 #
 # This file is the measurable half of your strategy (strategy.md is the prose half). The app validates
 # it on every change and reports problems with the line and column. All numbers below are generic

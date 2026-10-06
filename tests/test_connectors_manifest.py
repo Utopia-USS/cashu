@@ -10,7 +10,7 @@ import pytest
 import yaml
 from connector_support import needs_python3, write_connector
 
-from finanse.core.connectors import manifest as mf
+from cashu.core.connectors import manifest as mf
 
 BASE = {
     "api_version": 1,

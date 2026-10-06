@@ -1,11 +1,11 @@
-"""`finanse serve` for the e2e suite, with the market sources swapped for the synthetic generator of
+"""`cashu serve` for the e2e suite, with the market sources swapped for the synthetic generator of
 scripts/demo_data.py, so "Synchronizuj" on Inwestycje (POST /run) and the backfill never touch the network.
 
-Run with FINANSE_DATA_DIR set (the e2e global setup does it); arguments go to `finanse serve`:
+Run with CASHU_DATA_DIR set (the e2e global setup does it); arguments go to `cashu serve`:
 
-    FINANSE_DATA_DIR=<tmp> .venv/bin/python frontend/e2e/serve_offline.py --port 8711
+    CASHU_DATA_DIR=<tmp> .venv/bin/python frontend/e2e/serve_offline.py --port 8711
 
-It prints the same one-time `Dashboard: http://127.0.0.1:<port>/#token=...` line as `finanse serve`.
+It prints the same one-time `Dashboard: http://127.0.0.1:<port>/#token=...` line as `cashu serve`.
 """
 
 from __future__ import annotations
@@ -32,18 +32,18 @@ def _refuse_outbound_http() -> None:
 
 
 def main() -> None:
-    if not os.environ.get("FINANSE_DATA_DIR"):
-        raise SystemExit("FINANSE_DATA_DIR must point at a temporary data dir")
+    if not os.environ.get("CASHU_DATA_DIR"):
+        raise SystemExit("CASHU_DATA_DIR must point at a temporary data dir")
     sys.path.insert(0, str(REPO / "scripts"))
     import demo_data  # scripts/ is not a package
 
-    from finanse.modules.investments.service import daily
+    from cashu.modules.investments.service import daily
 
     daily.default_sources = demo_data.synthetic_sources  # the backfill reads it from daily too
     _refuse_outbound_http()
-    from finanse.cli import app
+    from cashu.cli import app
 
-    sys.argv = ["finanse", "serve", *sys.argv[1:]]
+    sys.argv = ["cashu", "serve", *sys.argv[1:]]
     app()
 
 

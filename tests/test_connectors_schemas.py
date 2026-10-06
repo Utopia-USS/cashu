@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 
-from finanse.core import paths
+from cashu.core import paths
 
 SCRIPT = paths.PROJECT_ROOT / "scripts" / "gen_connector_schemas.py"
 SCHEMAS = paths.PROJECT_ROOT / "docs" / "schemas"

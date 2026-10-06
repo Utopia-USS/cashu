@@ -1,9 +1,9 @@
 // Turns a square logo into a macOS app icon canvas (1024 x 1024 PNG): the logo inside the
 // standard rounded square (824 x 824 at 100 px, corner radius 185) with a soft drop shadow,
-// transparent around it. One-off tool; the result is committed as finanse-1024.png and
+// transparent around it. One-off tool; the result is committed as cashu-1024.png and
 // scripts/build_macos.sh turns that PNG into the .icns with sips + iconutil.
 //
-//   swift packaging/icon/make_icon.swift <square logo (png/webp/...)> packaging/icon/finanse-1024.png
+//   swift packaging/icon/make_icon.swift <square logo (png/webp/...)> packaging/icon/cashu-1024.png
 import AppKit
 
 let args = CommandLine.arguments

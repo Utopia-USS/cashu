@@ -14,11 +14,11 @@ import json
 import pytest
 from mcp_support import TODAY, seed_profile, sources
 
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.models import Profile
-from finanse.modules.investments.rules.expr.privacy import scrub_amount_literals
-from finanse.modules.investments.service import daily
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.models import Profile
+from cashu.modules.investments.rules.expr.privacy import scrub_amount_literals
+from cashu.modules.investments.service import daily
 
 BUFFER = "cash_value > 7 and cash_weight < 99%"
 
@@ -26,7 +26,7 @@ BUFFER = "cash_value > 7 and cash_weight < 99%"
 @pytest.fixture
 def host(db_engine):
     pid, _slug = seed_profile()
-    return pid, FinanseMcp(pid, today=TODAY)
+    return pid, CashuMcp(pid, today=TODAY)
 
 
 def _privacy(pid: int, value: str) -> None:
@@ -118,7 +118,7 @@ LABEL = "Na mieszkanie dla Tomka Lis"
 def _rename(pid: int, symbol: str, name: str) -> tuple[int, str]:
     from sqlmodel import select
 
-    from finanse.modules.investments.models import InvInstrument, InvProfileInstrument
+    from cashu.modules.investments.models import InvInstrument, InvProfileInstrument
 
     with get_session() as s:
         inst = s.exec(select(InvInstrument).where(InvInstrument.symbol == symbol)).one()
@@ -174,8 +174,8 @@ DIGIT_LABELS = [
 
 @pytest.mark.parametrize("label", DIGIT_LABELS)
 def test_scrub_text_swaps_aliases_with_numbers_before_the_number_scrub(label):
-    from finanse.core.mcp.names import NameGuard
-    from finanse.core.mcp.redaction import scrub_text
+    from cashu.core.mcp.names import NameGuard
+    from cashu.core.mcp.redaction import scrub_text
 
     guard = NameGuard(1, strict_aliases=((label, "Public Market Name"),))
     out = scrub_text(f"Pozycja {label} spadła o 5%", strict=True, guard=guard)

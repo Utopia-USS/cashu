@@ -12,16 +12,16 @@ import pytest
 from alembic import command
 from upstream_db import make_upstream_db
 
-from finanse import db
-from finanse.core import legacy, migrations
-from finanse.core.agent_models import TABLES
+from cashu import db
+from cashu.core import legacy, migrations
+from cashu.core.agent_models import TABLES
 
 AGENT_TABLES = {t.__tablename__ for t in TABLES}
 
 
 @pytest.fixture(autouse=True)
 def _isolated_data_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINANSE_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CASHU_DATA_DIR", str(tmp_path / "data"))
 
 
 def _to(engine, revision: str, *, down: bool = False) -> None:
@@ -46,7 +46,7 @@ def _db_at_0005(tmp_path: Path) -> Path:
     engine = db.make_engine(f"sqlite:///{original}")
     _to(engine, "0005_investments")
     engine.dispose()
-    copy = tmp_path / "work" / "finanse.db"
+    copy = tmp_path / "work" / "cashu.db"
     copy.parent.mkdir()
     shutil.copy(original, copy)
     return copy
@@ -79,9 +79,9 @@ def test_0006_on_a_copy_of_a_0005_database(tmp_path):
 def test_downgrade_refuses_with_data_and_round_trips_when_empty(tmp_path, monkeypatch):
     from conftest import use_engine
 
-    from finanse.core import reviews
-    from finanse.core.db import get_session
-    from finanse.core.models import Profile
+    from cashu.core import reviews
+    from cashu.core.db import get_session
+    from cashu.core.models import Profile
 
     path = _db_at_0005(tmp_path)
     engine = db.make_engine(f"sqlite:///{path}")

@@ -9,7 +9,7 @@ import { UpdateNotice } from "./UpdateNotice";
 import { Wizard } from "./Wizard";
 import { errorText } from "./messages";
 
-/** The pywebview desktop window (finanse app), not a browser tab. */
+/** The pywebview desktop window (cashU app), not a browser tab. */
 const inDesktop = () => typeof window !== "undefined" && "pywebview" in window;
 
 export function App() {
@@ -25,7 +25,7 @@ export function App() {
               <b>Serwer uruchomiony ponownie.</b> Odśwież stronę.
             </Notice>
           ) : (
-            <Notice tone="warn"><b>Serwer uruchomiony ponownie.</b> Otwórz nowy adres z <code>finanse serve</code>.</Notice>
+            <Notice tone="warn"><b>Serwer uruchomiony ponownie.</b> Otwórz nowy adres z <code>cashu serve</code>.</Notice>
           )}
         </div>
       )}

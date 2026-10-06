@@ -1,7 +1,7 @@
 [project]
-name = "finanse"
+name = "cashu"
 version = "0.1.4"
-description = "Personal finance tracker — bank transaction ingestion (mBank + Erste), net worth, spending & recurring payments"
+description = "cashU: local personal finance and investing companion - bank imports, net worth, spending, loans and investments"
 requires-python = ">=3.12"
 # Upper bounds stop before the next major release (0.x packages: before 1.0, sqlmodel
 # before 0.1). constraints.txt pins the exact tested set:
@@ -24,7 +24,7 @@ dependencies = [
     "platformdirs>=4.3,<5",
     "keyring>=25,<26",
     "pyyaml>=6.0,<7",
-    # Official MCP SDK (v2 API: mcp.server.Server, stdio transport) for `finanse mcp`.
+    # Official MCP SDK (v2 API: mcp.server.Server, stdio transport) for `cashu mcp`.
     "mcp>=2.3,<3",
 ]
 
@@ -33,7 +33,7 @@ dev = [
     "pytest>=8.3,<10",
     "ruff>=0.6,<1",
 ]
-# `finanse app`: the dashboard in a native window (WKWebView on macOS via pyobjc); native
+# `cashu app`: the dashboard in a native window (WKWebView on macOS via pyobjc); native
 # notifications through the app bundle (UserNotifications).
 desktop = [
     "pywebview>=6.2,<7",
@@ -41,14 +41,16 @@ desktop = [
 ]
 
 [project.scripts]
-finanse = "finanse.cli:app"
+cashu = "cashu.cli:app"
+# legacy name: the pre-rename command, prints a deprecation line and runs the same CLI
+finanse = "cashu.cli:legacy_main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/finanse"]
+packages = ["src/cashu"]
 
 [tool.ruff]
 line-length = 100

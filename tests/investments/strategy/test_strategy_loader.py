@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AllocationPlan,
     AssetClass,
     BucketMatch,
@@ -18,7 +18,7 @@ from finanse.modules.investments.domain import (
     SignalSeverity,
     ValuedPortfolio,
 )
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.rules import (
     AllocationDriftParams,
     ContributionGapParams,
     ContributionPlan,
@@ -33,8 +33,8 @@ from finanse.modules.investments.rules import (
     RulesEngine,
     TaggedWeightParams,
 )
-from finanse.modules.investments.rules.expr import Scope
-from finanse.modules.investments.strategy import (
+from cashu.modules.investments.rules.expr import Scope
+from cashu.modules.investments.strategy import (
     Benchmark,
     IssueSeverity,
     NotificationPolicy,

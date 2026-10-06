@@ -9,7 +9,7 @@ import { alertDeleteUndo, isMissingEndpoint, offerUndo, recreateInput, restoreOr
 
 const apiError = (status, message, code = null) => Object.assign(new Error(message), { status, code });
 
-test("error codes: the Polish label of X-Finanse-Error-Code, the English detail kept; unknown codes stay English", () => {
+test("error codes: the Polish label of X-Cashu-Error-Code, the English detail kept; unknown codes stay English", () => {
   const d = describeError(apiError(409, "XTB.WA is already on the watchlist", "watchlist_conflict"));
   assert.deepEqual(d, { text: "Ten instrument już jest na liście obserwowanych", detail: "XTB.WA is already on the watchlist", translated: true });
   assert.equal(errorText(apiError(409, "too late", "undo_expired")), "Za późno na cofnięcie: minęło 15 minut");
@@ -18,7 +18,7 @@ test("error codes: the Polish label of X-Finanse-Error-Code, the English detail 
   assert.deepEqual(describeError(apiError(422, "level must be > 0", "something_new")), { text: "level must be > 0", detail: null, translated: false });
   assert.equal(errorText(apiError(500, "boom")), "boom");
   const net = new TypeError("Failed to fetch");
-  assert.equal(errorText(net), "Brak połączenia z aplikacją (serwer finanse nie odpowiada)");
+  assert.equal(errorText(net), "Brak połączenia z aplikacją (serwer cashU nie odpowiada)");
   assert.equal(errorText("plain string"), "plain string");
 });
 

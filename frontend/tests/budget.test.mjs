@@ -97,15 +97,15 @@ test("first steps: bank accounts and the statement step's done line", () => {
   assert.equal(bankName("erste"), "Erste Bank Polska");
   assert.equal(bankName("ing"), "ing");
   assert.equal(bankName("mbank", [{ id: "mbank", name: "mBank S.A." }]), "mBank S.A.");
-  // GET /budget/import/importers: auto, banks, the finanse format; connectors are sources of their own
+  // GET /budget/import/importers: auto, banks, the cashU format; connectors are sources of their own
   const choices = [
     { id: "auto", name: "rozpoznaj automatycznie", kind: "auto", available: true },
     { id: "mbank", name: "mBank", kind: "bank", available: true },
-    { id: "finanse-budget", name: "Format finanse", kind: "format", available: true },
+    { id: "cashu-budget", name: "Format cashU", kind: "format", available: true },
     { id: "connector:ing", name: "ING", kind: "connector", available: true },
     { id: "pekao", name: "Bank Pekao", kind: "bank", available: false },
   ];
-  assert.deepEqual(bankOptions(choices), [["auto", "rozpoznaj automatycznie"], ["mbank", "mBank"], ["finanse-budget", "Format finanse"]]);
+  assert.deepEqual(bankOptions(choices), [["auto", "rozpoznaj automatycznie"], ["mbank", "mBank"], ["cashu-budget", "Format cashU"]]);
   assert.deepEqual(bankOptions(null), BANKS);
   assert.deepEqual(bankOptions([{ id: "mbank", name: "mBank", kind: "bank", available: true }])[0], ["auto", "rozpoznaj automatycznie"]);
   assert.equal(dmShort("2026-01-05"), "5.01");
@@ -138,9 +138,9 @@ test("first steps: upload errors map to labels, the bank error to the bank selec
 });
 
 test("first steps: the CLI prefix from the setup response, an action, or the default", () => {
-  assert.equal(cliPrefix({ cli_prefix: "finanse --profile jan", steps: [] }, "jan"), "finanse --profile jan");
-  assert.equal(cliPrefix({ steps: [{ actions: [{ kind: "cli", target: "uv run finanse --profile ola import-csv WYCIAG.csv" }] }] }, "ola"), "uv run finanse --profile ola");
-  assert.equal(cliPrefix(null, "jan"), "finanse --profile jan");
+  assert.equal(cliPrefix({ cli_prefix: "cashu --profile jan", steps: [] }, "jan"), "cashu --profile jan");
+  assert.equal(cliPrefix({ steps: [{ actions: [{ kind: "cli", target: "uv run cashu --profile ola import-csv WYCIAG.csv" }] }] }, "ola"), "uv run cashu --profile ola");
+  assert.equal(cliPrefix(null, "jan"), "cashu --profile jan");
 });
 
 test("FE-4 bankAccounts: bank statement types only (no brokerage, property, cash, manual deposits)", () => {

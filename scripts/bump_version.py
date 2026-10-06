@@ -2,8 +2,8 @@
 """Bump the app version after a push to main (run by .github/workflows/bump-version.yml).
 
 The version lives in two places that must agree: ``project.version`` in ``pyproject.toml`` (what the
-app's update check reads on GitHub, see ``src/finanse/core/updates.py``) and ``__version__`` in
-``src/finanse/__init__.py`` (what the running app reports). This script raises both:
+app's update check reads on GitHub, see ``src/cashu/core/updates.py``) and ``__version__`` in
+``src/cashu/__init__.py`` (what the running app reports). This script raises both:
 
 - the patch number by default (0.1.0 -> 0.1.1);
 - the minor or major number when a pushed commit message contains ``[minor]`` or ``[major]``;
@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
-INIT = ROOT / "src" / "finanse" / "__init__.py"
+INIT = ROOT / "src" / "cashu" / "__init__.py"
 
 PYPROJECT_RE = re.compile(r'^(version\s*=\s*")(\d+\.\d+\.\d+)(")', re.MULTILINE)
 INIT_RE = re.compile(r'^(__version__\s*=\s*")(\d+\.\d+\.\d+)(")', re.MULTILINE)
@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     py_text, init_text = PYPROJECT.read_text(), INIT.read_text()
     current = read_version(py_text, PYPROJECT_RE)
     if current is None or read_version(init_text, INIT_RE) is None:
-        print("error: no X.Y.Z version in pyproject.toml or src/finanse/__init__.py", file=sys.stderr)
+        print("error: no X.Y.Z version in pyproject.toml or src/cashu/__init__.py", file=sys.stderr)
         return 1
     if read_version(init_text, INIT_RE) != current:
         print(f"error: pyproject.toml ({current}) and __init__.py disagree", file=sys.stderr)

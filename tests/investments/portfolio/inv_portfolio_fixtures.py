@@ -13,7 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     Currency,
     FxRate,
@@ -28,7 +28,7 @@ from finanse.modules.investments.domain import (
     TxnType,
     ValuationMode,
 )
-from finanse.modules.investments.portfolio import InMemoryFxLookup
+from cashu.modules.investments.portfolio import InMemoryFxLookup
 
 PLN = Currency.PLN
 USD = Currency.USD

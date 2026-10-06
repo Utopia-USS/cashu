@@ -7,7 +7,7 @@ import datetime as dt
 
 import pytest
 
-from finanse.modules.investments.performance import returns
+from cashu.modules.investments.performance import returns
 
 D0 = dt.date(2025, 1, 1)
 

@@ -7,13 +7,13 @@ from __future__ import annotations
 
 import pytest
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     PLAN_VALUES,
     SignalSeverity,
     effective_plan,
     plan_label,
 )
-from finanse.modules.investments.plan import (
+from cashu.modules.investments.plan import (
     GAIN_REVIEW,
     PlanFacts,
     check_no_exit,
@@ -23,7 +23,7 @@ from finanse.modules.investments.plan import (
     plan_dedup_key,
     rule_specs,
 )
-from finanse.modules.investments.rules import Fired, NotFired, SignalPolarity, Skipped
+from cashu.modules.investments.rules import Fired, NotFired, SignalPolarity, Skipped
 
 
 def facts(**changes) -> PlanFacts:
@@ -207,7 +207,7 @@ def test_opened_on_is_the_last_reopening_from_zero():
     import datetime as dt
     from types import SimpleNamespace as NS
 
-    from finanse.modules.investments.domain import opened_on
+    from cashu.modules.investments.domain import opened_on
 
     def holding(*dates):
         return NS(instrument_id="1", lots=tuple(NS(open_date=d) for d in dates))

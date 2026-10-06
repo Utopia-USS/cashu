@@ -20,7 +20,7 @@ const axisK = (v: number) => new Intl.NumberFormat("pl-PL", { maximumFractionDig
 
 const BENCH_NOTE: Record<string, string> = {
   no_strategy: "benchmark: brak strategii", not_configured: "benchmark: ustaw benchmark.proxy w strategii",
-  proxy_not_found: "benchmark: nie znaleziono instrumentu", no_prices: "benchmark: brak notowań (finanse invest backfill)",
+  proxy_not_found: "benchmark: nie znaleziono instrumentu", no_prices: "benchmark: brak notowań (cashu invest backfill)",
 };
 
 export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
@@ -81,7 +81,7 @@ export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
         {benchOk && <span><i className="bench" />{benchName} w {c}, te same wpłaty</span>}
       </div>
       {q.loading && !perf ? <Skeleton h={230} /> : !perf || pts.length < 2 ? (
-        <div className="empty">{perf === null ? <>Brak historii: uruchom <code>finanse invest backfill</code>.</> : "Za mało historii."}</div>
+        <div className="empty">{perf === null ? <>Brak historii: uruchom <code>cashu invest backfill</code>.</> : "Za mało historii."}</div>
       ) : table ? (
         <div className="ctable">
           <table>

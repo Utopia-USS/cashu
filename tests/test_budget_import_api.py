@@ -8,11 +8,11 @@ import json
 import pytest
 from sqlmodel import func, select
 
-from finanse.core import institutions
-from finanse.core.db import get_session
-from finanse.core.models import Account, Source
-from finanse.modules.budget import imports
-from finanse.modules.budget.models import ImportBatch, Transaction
+from cashu.core import institutions
+from cashu.core.db import get_session
+from cashu.core.models import Account, Source
+from cashu.modules.budget import imports
+from cashu.modules.budget.models import ImportBatch, Transaction
 
 MBANK_CSV = """mBank S.A.
 #Numer rachunku
@@ -27,9 +27,9 @@ PLN
 Suma;;;;;;
 """.encode("cp1250")
 
-# The savings side of the 2026-09-11 transfer, in the finanse format (another bank, own account).
+# The savings side of the 2026-09-11 transfer, in the cashU format (another bank, own account).
 SAVINGS_DOC = {
-    "format": "finanse-budget-import",
+    "format": "cashu-budget-import",
     "format_version": 1,
     "source": "erste_api",
     "account": {"iban": "PL99109000000000000000000303", "name": "Oszczędności Test", "currency": "PLN",
@@ -62,7 +62,7 @@ def commit(client, body: dict, slug="jan"):
 
 
 def code(resp) -> str | None:
-    return resp.headers.get("x-finanse-error-code")
+    return resp.headers.get("x-cashu-error-code")
 
 
 def counts() -> tuple[int, int, int]:
@@ -83,7 +83,7 @@ def test_importer_choices_match_the_registry(jan):
     """B6: the drawer's bank list comes from the server (no FE constant to keep in sync)."""
     body = jan.get("/api/p/jan/budget/import/importers").json()
     ids = [c["id"] for c in body["importers"]]
-    assert ids == ["auto", *institutions.csv_ids(), "finanse-budget"]
+    assert ids == ["auto", *institutions.csv_ids(), "cashu-budget"]
     names = {c["id"]: c["name"] for c in body["importers"]}
     assert names["mbank"] == institutions.display_name("mbank")
     assert {c["kind"] for c in body["importers"]} == {"auto", "bank", "format"}
@@ -151,21 +151,21 @@ def test_preview_is_read_only_and_commit_writes_once(jan, tmp_path):
     assert c2["inserted"] == 0 and c2["duplicates"] == 4 and c2["account"]["created"] is False
 
 
-def test_a_finanse_document_matches_by_number_and_pairs_the_transfer(jan):
+def test_a_cashu_document_matches_by_number_and_pairs_the_transfer(jan):
     first = preview(jan, MBANK_CSV).json()
     commit(jan, {"file_id": first["file_id"], "file_name": first["file_name"]})
     content = json.dumps(SAVINGS_DOC).encode()
-    for importer in ("auto", "finanse-budget"):
+    for importer in ("auto", "cashu-budget"):
         p = preview(jan, content, name="oszczednosci.json", bank=importer)
         assert p.status_code == 200, p.text
         body = p.json()
         assert body["bank"] == {
-            "id": "finanse-budget", "name": "Format finanse", "detected": importer == "auto",
+            "id": "cashu-budget", "name": "Format cashU", "detected": importer == "auto",
         }
     assert body["account"]["existing"] is False and body["account"]["institution"]["id"] == "erste"
     assert body["account"]["name"] == "Oszczędności Test" and body["balances"] == 1
     done = commit(jan, {"file_id": body["file_id"], "file_name": "oszczednosci.json",
-                        "bank": "finanse-budget", "account_type": "savings"}).json()
+                        "bank": "cashu-budget", "account_type": "savings"}).json()
     assert done["inserted"] == 1 and done["transfer_pairs"] == 1 and done["balances"] == 1
     with get_session() as s:
         acc = s.get(Account, done["account"]["id"])
@@ -209,7 +209,7 @@ def test_preview_into_a_chosen_account(jan):
         # F10: an unknown / unapproved connector is the owner's 422 connector_<kind>
         (b"x", {"bank": "connector:xtb-csv"}, 422, "connector_not_approved"),
         (b"x", {"importer": "connector:xtb-csv"}, 422, "connector_not_approved"),
-        (b'{"format": "finanse-budget-import", "format_version": 2}', {}, 422, "import_invalid"),
+        (b'{"format": "cashu-budget-import", "format_version": 2}', {}, 422, "import_invalid"),
         (b"mBank S.A.\n#Data operacji;#Opis operacji;#Kwota\n", {}, 422, "import_empty"),
         (b"", {}, 422, "import_empty"),
         (b"x", {"account_type": "mortgage"}, 422, "import_account_type"),
@@ -283,10 +283,10 @@ def test_match_transfers_endpoint(jan):
         from datetime import date
         from decimal import Decimal
 
-        from finanse.core import profiles
-        from finanse.core.accounts import get_or_create_account
-        from finanse.modules.budget import service
-        from finanse.modules.budget.ingestion.normalize import RawTransaction
+        from cashu.core import profiles
+        from cashu.core.accounts import get_or_create_account
+        from cashu.modules.budget import service
+        from cashu.modules.budget.ingestion.normalize import RawTransaction
 
         pid = profiles.get_by_slug(s, "jan").id
         a = get_or_create_account(s, bank="mbank", iban="99114000000000000000000101", profile_id=pid)
@@ -311,7 +311,7 @@ def _doc(currency: str = "PLN", iban: str | None = None, **extra) -> bytes:
     if iban:
         account["iban"] = iban
     return json.dumps({
-        "format": "finanse-budget-import", "format_version": 1, "source": "demo_api",
+        "format": "cashu-budget-import", "format_version": 1, "source": "demo_api",
         "account": account, "balances": [{"date": "2026-09-30", "amount": "100.00"}],
         "transactions": [{"booking_date": "2026-09-20", "amount": "-5.00", "currency": currency,
                           "description": "Zakupy TEST"}],
@@ -320,8 +320,8 @@ def _doc(currency: str = "PLN", iban: str | None = None, **extra) -> bytes:
 
 
 def _bank_account(currency: str = "PLN", iban: str | None = None) -> int:
-    from finanse.core import profiles
-    from finanse.core.accounts import get_or_create_account
+    from cashu.core import profiles
+    from cashu.core.accounts import get_or_create_account
 
     with get_session() as s:
         pid = profiles.get_by_slug(s, "jan").id
@@ -345,7 +345,7 @@ def test_document_in_another_currency_than_the_account_is_refused(jan):
     assert ok.status_code == 200, ok.text
     assert counts() == before
     r = commit(jan, {"file_id": ok.json()["file_id"], "file_name": "doc.json", "account_id": pln,
-                     "bank": "finanse-budget"})
+                     "bank": "cashu-budget"})
     assert r.status_code == 201
 
 

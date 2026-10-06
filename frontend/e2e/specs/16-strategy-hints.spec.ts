@@ -14,7 +14,7 @@ test.beforeAll(() => {
   const dataDir = process.env.E2E_DATA_DIR;
   if (!dataDir) throw new Error("E2E_DATA_DIR is not set (global setup did not run)");
   const r = spawnSync(join(REPO, ".venv", "bin", "python"), [join(HERE, "..", "seed_hints.py")], {
-    env: { ...process.env, FINANSE_DATA_DIR: dataDir }, encoding: "utf-8",
+    env: { ...process.env, CASHU_DATA_DIR: dataDir }, encoding: "utf-8",
   });
   if (r.status !== 0) throw new Error(`seed_hints.py failed:\n${r.stdout}\n${r.stderr}`);
 });

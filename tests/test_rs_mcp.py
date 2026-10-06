@@ -11,12 +11,12 @@ import pytest
 from mcp_support import CLAIM_SYMBOL, PERSON_P2P, TODAY, seed_profile, write_strategy
 from sqlmodel import select
 
-from finanse.core.agent_models import McpCall
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.models import Profile
-from finanse.modules.investments.models import InvResearchNote, InvSignal
-from finanse.modules.investments.service import files
+from cashu.core.agent_models import McpCall
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.models import Profile
+from cashu.modules.investments.models import InvResearchNote, InvSignal
+from cashu.modules.investments.service import files
 
 IBAN = "PL61109010140000071219812874"
 STRATEGY_MD = f"""# Strategia
@@ -67,7 +67,7 @@ def note(n: int = 1, **extra) -> dict:
 def host(db_engine):
     pid, slug = seed_profile()
     files.write_text_private(files.strategy_md_path(slug), STRATEGY_MD)
-    return pid, slug, FinanseMcp(pid, today=TODAY)
+    return pid, slug, CashuMcp(pid, today=TODAY)
 
 
 def _privacy(pid: int, level: str) -> None:
@@ -174,7 +174,7 @@ def test_candidate_cooldown_is_a_conflict(host):
     assert first.ok, first.error
     assert first.data["signal"] is None  # candidates never become signals
     with get_session() as s:
-        from finanse.modules.investments.research import service
+        from cashu.modules.investments.research import service
 
         service.dismiss(s, s.get(Profile, pid), first.data["note_id"])
     again = mcp.call("add_research_note", {**candidate, "sources": source(6), "title": "Newco 2"})
@@ -233,7 +233,7 @@ def test_tools_are_bound_to_their_profile(host):
     run_id = mcp.call("start_research_run", {}).data["run_id"]
     note_id = mcp.call("add_research_note", note()).data["note_id"]
     other, _ = seed_profile("Ewa Testowa", run_daily=False)
-    stranger = FinanseMcp(other, today=TODAY)
+    stranger = CashuMcp(other, today=TODAY)
     assert stranger.call("research_notes", {}).data["notes"] == []
     assert stranger.call("research_context", {}).data["last_run"] is None
     assert stranger.call("finish_research_run", {"run_id": run_id}).error_kind == "not_found"

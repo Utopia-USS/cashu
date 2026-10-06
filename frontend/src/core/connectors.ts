@@ -209,7 +209,7 @@ export function secretChanges(secrets: Readonly<Record<string, string | null>>):
 /** Keychain entries a delete could not remove (`secrets_left`): one line for a toast, null when none. */
 export function secretsLeftText(n: number | null | undefined, connectorId: string): string | null {
   if (!n) return null;
-  return `${plural(n, "sekret został", "sekrety zostały", "sekretów zostało")} w pęku kluczy macOS (finanse · connector/${connectorId}/…)`;
+  return `${plural(n, "sekret został", "sekrety zostały", "sekretów zostało")} w pęku kluczy macOS (cashu · connector/${connectorId}/…)`;
 }
 
 /** The files differ from the approved copy: a `changed` connector, or a `disabled` one edited on disk

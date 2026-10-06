@@ -3,7 +3,7 @@ import time
 
 import httpx
 
-from finanse.modules.budget.ingestion.enable_banking.callback import wait_for_authorization_code
+from cashu.modules.budget.ingestion.enable_banking.callback import wait_for_authorization_code
 
 
 def _capture_via(redirect: str, verify):
@@ -19,7 +19,7 @@ def _capture_via(redirect: str, verify):
     deadline = time.time() + 6
     while time.time() < deadline:
         try:
-            r = httpx.get(f"{redirect}?code=TESTCODE&state=finanse", timeout=1, verify=verify)
+            r = httpx.get(f"{redirect}?code=TESTCODE&state=cashu", timeout=1, verify=verify)
             status = r.status_code
             break
         except httpx.HTTPError:

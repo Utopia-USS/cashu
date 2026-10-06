@@ -9,8 +9,8 @@ import re
 import pytest
 from invp_support import AS_OF, HEADER, ROWS, STRATEGY_YAML, canonical_csv, sources
 
-from finanse.api.app import app
-from finanse.modules.investments.service import daily, files, portfolio
+from cashu.api.app import app
+from cashu.modules.investments.service import daily, files, portfolio
 
 # Every investments GET route ({instrument_id} is filled per test), with the variants worth comparing.
 INVESTMENTS_GETS = [

@@ -17,10 +17,10 @@ from conftest import IBAN_MAIN, seed_demo
 from keyring.backend import KeyringBackend
 from sqlmodel import select
 
-from finanse.api.app import app
-from finanse.core import profiles
-from finanse.core.db import get_session
-from finanse.models import Profile, ProfileModule, Transaction
+from cashu.api.app import app
+from cashu.core import profiles
+from cashu.core.db import get_session
+from cashu.models import Profile, ProfileModule, Transaction
 
 # Every profile-scoped GET route, with the query variants worth comparing.
 PROFILE_GETS = [
@@ -131,7 +131,7 @@ def test_system(api_empty, tmp_path):
     body = api_empty.get("/api/system").json()
     assert set(body) == {
         "version", "data_dir", "legacy_db_detected", "legacy_db_path", "worker", "secrets",
-        "connectors",
+        "connectors", "rename_migration",
     }
     assert body["data_dir"] == str((tmp_path / "data").resolve())
     assert body["legacy_db_detected"] is False and body["legacy_db_path"] is None
@@ -237,7 +237,7 @@ def test_setup_endpoint_shape(api_empty):
     api_empty.post("/api/profiles", json={"name": "Jan", "modules": ["budget"]})
     body = api_empty.get("/api/p/jan/modules/budget/setup").json()
     assert set(body) == {"state", "steps", "skill", "cli_prefix"}
-    assert body["cli_prefix"] == "finanse --profile jan"
+    assert body["cli_prefix"] == "cashu --profile jan"
     assert body["state"] == "empty"
     assert [s["id"] for s in body["steps"]] == ["statement", "categories", "transfers"]
     assert [s["status"] for s in body["steps"]] == ["on", "todo", "todo"]
@@ -247,10 +247,10 @@ def test_setup_endpoint_shape(api_empty):
         for a in step["actions"]:
             assert set(a) == {"kind", "label", "target"} and a["kind"] in {"cli", "tab"}
             if a["kind"] == "cli":
-                assert a["target"].startswith("finanse --profile jan ")
+                assert a["target"].startswith("cashu --profile jan ")
     assert body["skill"] == {
         "command": "/budget-setup",
-        "mcp_add": "claude mcp add finanse-jan -- finanse mcp --profile jan",
+        "mcp_add": "claude mcp add cashu-jan -- cashu mcp --profile jan",
         "translocated": False,
     }
 
@@ -341,7 +341,7 @@ def test_two_profiles_with_the_same_ibans_do_not_leak(api):
     assert _snapshot(api, marta) == reference
     # same IBAN, two accounts (one per profile)
     with get_session() as s:
-        from finanse.models import Account
+        from cashu.models import Account
 
         rows = s.exec(select(Account).where(Account.iban == IBAN_MAIN)).all()
         assert sorted(a.profile_id for a in rows) == sorted(
@@ -375,7 +375,7 @@ def test_writes_through_one_profile_never_touch_another(api):
     api.post(f"/api/p/{marta}/cash/expense",
              json={"amount": 99, "title": "Tylko Marta", "category": "dining", "date": "2026-09-20"})
     with get_session() as s:
-        from finanse.modules.budget.service import categorize_all
+        from cashu.modules.budget.service import categorize_all
 
         categorize_all(s, profile_id=_profile_id("default"))  # re-run: default keeps its rules
     assert _snapshot(api, "default") == before
@@ -385,11 +385,11 @@ def test_writes_through_one_profile_never_touch_another(api):
 
 def test_own_ibans_are_per_profile(session):
     """A transfer to an account of *another* profile is a real outflow here."""
-    from finanse.core.accounts import get_or_create_account
-    from finanse.modules.budget.analytics import monthly_cashflow
-    from finanse.modules.budget.ingestion.normalize import RawTransaction
-    from finanse.modules.budget.ingestion.transfers import match_internal_transfers
-    from finanse.modules.budget.service import categorize_all, ingest_transactions
+    from cashu.core.accounts import get_or_create_account
+    from cashu.modules.budget.analytics import monthly_cashflow
+    from cashu.modules.budget.ingestion.normalize import RawTransaction
+    from cashu.modules.budget.ingestion.transfers import match_internal_transfers
+    from cashu.modules.budget.service import categorize_all, ingest_transactions
 
     jan = profiles.create_profile(session, name="Jan", modules_=["budget"])
     ola = profiles.create_profile(session, name="Ola", modules_=["budget"])
@@ -397,7 +397,7 @@ def test_own_ibans_are_per_profile(session):
                                     profile_id=jan.id)
     ola_acc = get_or_create_account(session, bank="erste", iban="99109000000000000000000202",
                                     profile_id=ola.id)
-    from finanse.models import Source
+    from cashu.models import Source
 
     ingest_transactions(session, jan_acc, [RawTransaction(
         booking_date=date(2026, 9, 1), amount=Decimal("-500.00"), reference="DLA OLI TEST",
@@ -418,8 +418,8 @@ def test_own_ibans_are_per_profile(session):
 
 
 def test_resync_uses_the_profile_sessions(api, monkeypatch, fake_eb):
-    from finanse.config import settings
-    from finanse.modules.budget.ingestion.enable_banking import state
+    from cashu.config import settings
+    from cashu.modules.budget.ingestion.enable_banking import state
 
     monkeypatch.setattr(type(settings), "eb_configured", property(lambda self: True))
     seen: list[str] = []
@@ -446,8 +446,8 @@ def test_profiles_table_is_the_only_source_of_slugs(api_empty):
 # --------------------------------------------------------------------------- #
 
 def test_a_eur_profile_sees_its_own_net_worth(api_empty):
-    from finanse.core.accounts import get_or_create_account, upsert_balance
-    from finanse.models import Source
+    from cashu.core.accounts import get_or_create_account, upsert_balance
+    from cashu.models import Source
 
     api = api_empty
     slug = api.post("/api/profiles", json={

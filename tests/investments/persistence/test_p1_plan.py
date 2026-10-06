@@ -22,17 +22,17 @@ from invp_support import (
 )
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.models import utcnow
-from finanse.modules.investments.models import (
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.models import utcnow
+from cashu.modules.investments.models import (
     InvDecision,
     InvInstrument,
     InvProfileInstrument,
     InvResearchNote,
     InvSignal,
 )
-from finanse.modules.investments.service import daily, files
+from cashu.modules.investments.service import daily, files
 
 XMPL_DOUBLED = {"ABC.WA": 60, "WRLD.DE": 110, "XMPL": 200}  # XMPL bought at 100 USD: +100 %
 
@@ -362,7 +362,7 @@ def test_mcp_positions_watchlist_and_theses_carry_the_recommendation(api):
         f"{base}/instruments/{xmpl}/theses",
         json={"entry_type": "trend", "thesis": "Przykladowa teza"},
     )
-    mcp = FinanseMcp(pid, today=AS_OF)
+    mcp = CashuMcp(pid, today=AS_OF)
     positions = mcp.call("positions")
     assert positions.ok, positions.error
     recommendations = {r["symbol"]: r["recommendation"] for r in positions.data["positions"]}
@@ -376,7 +376,7 @@ def test_mcp_positions_watchlist_and_theses_carry_the_recommendation(api):
 
 def test_mcp_model_sets_recommendation_without_recording_a_decision(api):
     _client, pid, _base, _aid = api
-    mcp = FinanseMcp(pid, today=AS_OF)
+    mcp = CashuMcp(pid, today=AS_OF)
     before = mcp.call("positions").data["positions"]
     result = mcp.call(
         "set_recommendation",
@@ -397,7 +397,7 @@ def test_mcp_model_sets_recommendation_without_recording_a_decision(api):
 
 def test_mcp_recommendation_reason_is_shown_and_cleared_with_the_plan(api):
     client, pid, base, _aid = api
-    mcp = FinanseMcp(pid, today=AS_OF)
+    mcp = CashuMcp(pid, today=AS_OF)
     result = mcp.call(
         "set_recommendation",
         {
@@ -540,17 +540,17 @@ def test_mcp_theses_hide_a_stale_reduce_recommendation(api):
     )
     put_plan(client, base, abc, "reduce")
     assert [
-        t["recommendation"] for t in FinanseMcp(pid, today=AS_OF).call("theses").data["theses"]
+        t["recommendation"] for t in CashuMcp(pid, today=AS_OF).call("theses").data["theses"]
     ] == ["reduce"]
     set_plan_at(abc, dt.datetime(2026, 1, 1, tzinfo=dt.UTC))  # before the lot of 2026-01-07
     assert [
-        t["recommendation"] for t in FinanseMcp(pid, today=AS_OF).call("theses").data["theses"]
+        t["recommendation"] for t in CashuMcp(pid, today=AS_OF).call("theses").data["theses"]
     ] == [None]
 
 
 def test_a_failing_plan_pass_leaves_the_run_partial_not_failed(api, monkeypatch):
     """BE-1: the plan pass rolls back to its savepoint; strategy and alert work of the run stays."""
-    from finanse.modules.investments.service import plans
+    from cashu.modules.investments.service import plans
 
     _client, pid, _base, _aid = api
     real = plans.evaluate_profile
@@ -579,7 +579,7 @@ def test_a_failing_plan_pass_leaves_the_run_partial_not_failed(api, monkeypatch)
 def test_a_failing_re_evaluation_keeps_the_plan_and_thesis_writes(api, monkeypatch):
     """BE-7 / BE-3: a failure computing or writing the plan signals after a write is logged; the
     plan / thesis write itself stands (the signal write runs in a savepoint after the flush)."""
-    from finanse.modules.investments.service import plans
+    from cashu.modules.investments.service import plans
 
     client, pid, base, _aid = api
     xmpl = instrument_id("XMPL")
@@ -609,7 +609,7 @@ def test_a_failing_re_evaluation_keeps_the_plan_and_thesis_writes(api, monkeypat
 
 def test_isolated_opens_a_savepoint_only_inside_a_driver_transaction(api):
     """BE-3: no SAVEPOINT before the first write (pysqlite would make it the outermost transaction)."""
-    from finanse.modules.investments.service import plans
+    from cashu.modules.investments.service import plans
 
     _client, pid, _base, _aid = api
     with get_session() as s:
@@ -639,7 +639,7 @@ def test_thesis_delete_and_mcp_upsert_re_evaluate(api):
     client.delete(f"{base}/theses/{thesis['id']}")
     assert key in plan_signals(pid)
 
-    mcp = FinanseMcp(pid, today=TODAY)
+    mcp = CashuMcp(pid, today=TODAY)
     done = mcp.call(
         "upsert_thesis",
         {
@@ -655,7 +655,7 @@ def test_thesis_delete_and_mcp_upsert_re_evaluate(api):
 
 def test_mcp_recommendation_is_the_same_in_strict_and_full(api):
     """BE-7: a recommendation is not an amount: identical in strict and amounts mode."""
-    from finanse.core.models import Profile
+    from cashu.core.models import Profile
 
     client, pid, base, _aid = api
     put_plan(client, base, instrument_id("XMPL"), "buy")
@@ -665,7 +665,7 @@ def test_mcp_recommendation_is_the_same_in_strict_and_full(api):
             p = s.get(Profile, pid)
             p.mcp_privacy = level
             s.add(p)
-        mcp = FinanseMcp(pid, today=AS_OF)
+        mcp = CashuMcp(pid, today=AS_OF)
         rows = mcp.call("positions").data["positions"]
         return tuple(sorted((r["instrument_id"], r["recommendation"]) for r in rows))
 

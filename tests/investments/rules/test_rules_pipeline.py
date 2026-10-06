@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from rules_fixtures import describe, skip_reason
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     Currency,
     FrozenValuedAtZero,
@@ -21,14 +21,14 @@ from finanse.modules.investments.domain import (
     Transaction,
     TxnType,
 )
-from finanse.modules.investments.portfolio import (
+from cashu.modules.investments.portfolio import (
     InMemoryFxLookup,
     allocate,
     build_snapshot,
     value_portfolio,
 )
-from finanse.modules.investments.rules import Fired, RuleContext, RulesEngine
-from finanse.modules.investments.strategy import StrategyConfig, load_strategy
+from cashu.modules.investments.rules import Fired, RuleContext, RulesEngine
+from cashu.modules.investments.strategy import StrategyConfig, load_strategy
 
 PLN = Currency.PLN
 AS_OF = date(2026, 10, 2)

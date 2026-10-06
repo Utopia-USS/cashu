@@ -132,7 +132,7 @@ test("modal: browser back closes without another back; a plain close drops its e
   const t = setup();
   let closed = 0;
   const detach = attachModal(t.panel, { onClose: () => closed++, env: t.env });
-  assert.equal(t.history.state.finanseDrawer, true);
+  assert.equal(t.history.state.cashuDrawer, true);
   assert.equal(t.history.state.route, "home");
   t.history.userBack();
   assert.equal(closed, 1);

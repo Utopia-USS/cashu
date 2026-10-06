@@ -9,9 +9,9 @@ import itertools
 import pytest
 from perf_support import day, days
 
-from finanse.modules.investments.performance import report
-from finanse.modules.investments.performance.series import Combined
-from finanse.modules.investments.performance.service import sample
+from cashu.modules.investments.performance import report
+from cashu.modules.investments.performance.series import Combined
+from cashu.modules.investments.performance.service import sample
 
 
 def combined(values, flows=None, complete=None) -> Combined:

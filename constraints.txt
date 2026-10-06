@@ -1,5 +1,5 @@
 # Exact versions of the tested environment (Python 3.14, macOS). Install with:
-#   pip install -e ".[dev]" -c constraints.txt        (add ,desktop for `finanse app`)
+#   pip install -e ".[dev]" -c constraints.txt        (add ,desktop for `cashu app`)
 # Regenerate after changing dependencies in pyproject.toml, from a fresh venv:
 #   pip install -e ".[dev,desktop]" && pip freeze --exclude-editable > constraints.txt
 alembic==1.20.0

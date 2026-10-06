@@ -9,8 +9,8 @@ from decimal import Decimal
 
 import pytest
 
-from finanse.modules.investments import domain
-from finanse.modules.investments.domain import (
+from cashu.modules.investments import domain
+from cashu.modules.investments.domain import (
     ALL_WARNING_TYPES,
     DEFAULT_MAX_FX_AGE_DAYS,
     AccountWrapper,

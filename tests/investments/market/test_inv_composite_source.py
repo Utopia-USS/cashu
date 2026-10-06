@@ -19,7 +19,7 @@ from inv_market_support import (
     vwce,
 )
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     CalendarDate,
     Currency,
@@ -27,7 +27,7 @@ from finanse.modules.investments.domain import (
     InstrumentAlias,
     PriceBar,
 )
-from finanse.modules.investments.market import (
+from cashu.modules.investments.market import (
     CompositePriceSource,
     NoPriceSourceException,
     PriceSource,

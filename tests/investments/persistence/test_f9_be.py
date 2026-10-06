@@ -11,17 +11,17 @@ import pytest
 from invp_support import STRATEGY_YAML, add_account, canonical_csv, import_file, make_profile
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.worker import investments as worker_investments
-from finanse.modules.investments.models import (
+from cashu.core.db import get_session
+from cashu.core.worker import investments as worker_investments
+from cashu.modules.investments.models import (
     InvDecision,
     InvDecisionSignal,
     InvInstrument,
     InvNotification,
     InvSignal,
 )
-from finanse.modules.investments.service import files
-from finanse.modules.investments.store import journal
+from cashu.modules.investments.service import files
+from cashu.modules.investments.store import journal
 
 
 def setup_investor() -> tuple[int, str]:
@@ -377,9 +377,9 @@ def test_deleting_a_decision_row_cascades_its_links(db_engine):
 def test_the_mcp_record_decision_tool_writes_one_link_row(db_engine):
     import datetime as dt
 
-    from finanse.core.mcp.registry import ToolContext
-    from finanse.core.mcp.tools import investments as mcp_investments
-    from finanse.core.models import Profile
+    from cashu.core.mcp.registry import ToolContext
+    from cashu.core.mcp.tools import investments as mcp_investments
+    from cashu.core.models import Profile
 
     pid, _slug = setup_investor()
     sid = add_signal(pid, instrument_id("XMPL"), "a")

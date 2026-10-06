@@ -403,7 +403,7 @@ export interface ReviewDigest {
   strategy: { version: number | null; state: string; changed_since: boolean };
 }
 
-/** Weekly review record (track M: finanse.core.reviews). */
+/** Weekly review record (track M: cashu.core.reviews). */
 export interface Review { id?: number; module: string; done_at: string; notes: string | null; stats?: Record<string, unknown> }
 
 // Agent proposals moved to core (core/proposalsApi.ts: a budget sync proposal uses them too).

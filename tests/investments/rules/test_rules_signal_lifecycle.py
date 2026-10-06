@@ -7,8 +7,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from finanse.modules.investments.domain import SignalSeverity, SignalStatus
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.domain import SignalSeverity, SignalStatus
+from cashu.modules.investments.rules import (
     ClosedSignal,
     CreateSignal,
     EscalateSignal,

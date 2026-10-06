@@ -11,11 +11,11 @@ from decimal import Decimal
 
 import pytest
 
-from finanse.core import accounts, profiles
-from finanse.db import get_session
-from finanse.models import Source
-from finanse.modules.budget import service as budget
-from finanse.modules.budget.ingestion.normalize import RawTransaction
+from cashu.core import accounts, profiles
+from cashu.db import get_session
+from cashu.models import Source
+from cashu.modules.budget import service as budget
+from cashu.modules.budget.ingestion.normalize import RawTransaction
 
 IBAN_ANNA = "99114000000000000000000901"
 IBAN_EMPLOYER_EU = "99102000000000000000000902"

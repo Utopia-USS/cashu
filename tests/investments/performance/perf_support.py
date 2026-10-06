@@ -6,10 +6,10 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from finanse.core import profiles
-from finanse.core.db import get_session
-from finanse.core.models import utcnow
-from finanse.modules.investments.domain import (
+from cashu.core import profiles
+from cashu.core.db import get_session
+from cashu.core.models import utcnow
+from cashu.modules.investments.domain import (
     AssetClass,
     Currency,
     FxRate,
@@ -18,14 +18,14 @@ from finanse.modules.investments.domain import (
     Transaction,
     TxnType,
 )
-from finanse.modules.investments.importing import ImportFile
-from finanse.modules.investments.market import (
+from cashu.modules.investments.importing import ImportFile
+from cashu.modules.investments.market import (
     PriceHistory,
     PriceSource,
     QuoteCurrencyMismatchException,
 )
-from finanse.modules.investments.service import accounts, files, imports
-from finanse.modules.investments.service.daily import MarketSources
+from cashu.modules.investments.service import accounts, files, imports
+from cashu.modules.investments.service.daily import MarketSources
 
 D = Decimal
 PLN, EUR, USD = Currency.PLN, Currency.EUR, Currency.USD

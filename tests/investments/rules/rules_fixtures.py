@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     BucketAllocation,
     CashBalance,
@@ -27,7 +27,7 @@ from finanse.modules.investments.domain import (
     ValuedHolding,
     ValuedPortfolio,
 )
-from finanse.modules.investments.rules import (
+from cashu.modules.investments.rules import (
     ContributionPlan,
     DataQualityPolicy,
     Fired,

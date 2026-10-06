@@ -213,13 +213,13 @@ test("next Saturday and the copied commands", () => {
   assert.equal(nextSaturday("2026-10-05"), "2026-10-10");
   assert.equal(nextSaturday("2026-10-03"), "2026-10-10"); // on a Saturday: the following one
   assert.equal(nextSaturday("2026-10-09"), "2026-10-10");
-  assert.equal(researchCommand("~/Documents/finanse/jakub", "jakub"), 'cd ~/Documents/finanse/jakub && claude -p "/market-research"');
-  assert.equal(researchCommand(null, "jan"), 'cd ~/Documents/finanse/jan && claude -p "/market-research"');
-  assert.equal(researchCommand("~/Moje dane/finanse", "jan"), 'cd ~/"Moje dane/finanse" && claude -p "/market-research"');
+  assert.equal(researchCommand("~/Documents/cashU/jakub", "jakub"), 'cd ~/Documents/cashU/jakub && claude -p "/market-research"');
+  assert.equal(researchCommand(null, "jan"), 'cd ~/Documents/cashU/jan && claude -p "/market-research"');
+  assert.equal(researchCommand("~/Moje dane/cashu", "jan"), 'cd ~/"Moje dane/cashu" && claude -p "/market-research"');
   assert.equal(researchCommand("/Users/x/My Drive/f", "jan"), 'cd "/Users/x/My Drive/f" && claude -p "/market-research"');
-  assert.equal(workspacePath(null, "jan"), "~/Documents/finanse/jan");
+  assert.equal(workspacePath(null, "jan"), "~/Documents/cashU/jan");
   // a LOCAL routine of the Claude app (a cloud routine from /schedule cannot reach the local MCP server)
-  assert.equal(scheduleSteps(null, "jan"), "Claude (aplikacja) › Code › Routines › Nowa rutyna › Lokalna: sobota 07:00, folder ~/Documents/finanse/jan, polecenie /market-research rutyna");
+  assert.equal(scheduleSteps(null, "jan"), "Claude (aplikacja) › Code › Routines › Nowa rutyna › Lokalna: sobota 07:00, folder ~/Documents/cashU/jan, polecenie /market-research rutyna");
   assert.ok(!scheduleSteps("~/x", "jan").includes("/schedule"));
 });
 

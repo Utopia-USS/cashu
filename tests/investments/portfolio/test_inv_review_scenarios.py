@@ -24,7 +24,7 @@ from inv_portfolio_fixtures import (
     new_id,
 )
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AllocationPlan,
     AssetClass,
     BucketDef,
@@ -38,7 +38,7 @@ from finanse.modules.investments.domain import (
     TxnSource,
     TxnType,
 )
-from finanse.modules.investments.portfolio import (
+from cashu.modules.investments.portfolio import (
     InMemoryFxLookup,
     allocate,
     build_snapshot,

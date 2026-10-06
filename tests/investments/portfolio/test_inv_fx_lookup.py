@@ -17,8 +17,8 @@ from inv_portfolio_fixtures import (
     new_id,
 )
 
-from finanse.modules.investments.domain import Currency, FxLookup, FxQuote
-from finanse.modules.investments.portfolio import (
+from cashu.modules.investments.domain import Currency, FxLookup, FxQuote
+from cashu.modules.investments.portfolio import (
     InMemoryFxLookup,
     build_snapshot,
     convert,

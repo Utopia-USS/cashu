@@ -7,17 +7,17 @@ from __future__ import annotations
 import pytest
 from mcp_support import TODAY, seed_profile, sources
 
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.models import Profile
-from finanse.modules.investments.service import alerts as alert_service
-from finanse.modules.investments.service import daily
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.models import Profile
+from cashu.modules.investments.service import alerts as alert_service
+from cashu.modules.investments.service import daily
 
 
 @pytest.fixture
 def host(db_engine):
     pid, _slug = seed_profile()
-    return pid, FinanseMcp(pid, today=TODAY)
+    return pid, CashuMcp(pid, today=TODAY)
 
 
 def _alert(mcp, level: float = 10, title: str = "PKO above 10") -> int:

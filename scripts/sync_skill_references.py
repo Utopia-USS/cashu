@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh the reference copies inside the Claude Code skills (``.claude/skills/<skill>/references/``).
 
-Skills leave the repository (``finanse skills install``, the per-profile agent workspaces, the
+Skills leave the repository (``cashu skills install``, the per-profile agent workspaces, the
 packaged app), so a skill never points at repository files: the docs it needs are copied into its
 own ``references/`` folder, with repository paths rewritten to the copies' names. Run after editing
 one of the sources:
@@ -18,16 +18,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS = ROOT / ".claude" / "skills"
-STRATEGY = "src/finanse/modules/investments/templates/strategy"
-EXPRESSIONS = "src/finanse/modules/investments/rules/expr/EXPRESSIONS.md"
-GENERIC_CSV = "src/finanse/modules/investments/importing/generic_csv_example.yaml"
+STRATEGY = "src/cashu/modules/investments/templates/strategy"
+EXPRESSIONS = "src/cashu/modules/investments/rules/expr/EXPRESSIONS.md"
+GENERIC_CSV = "src/cashu/modules/investments/importing/generic_csv_example.yaml"
 EXAMPLES = "examples/connectors"
 CONNECTOR_EXAMPLES = ("budget-csv-example", "investments-json-example", "fetch-example")
 SCHEMAS = (
     "connector-manifest.v1.json",
     "connector-protocol.v1.json",
-    "finanse-budget-import.v1.json",
-    "finanse-import.v1.json",
+    "cashu-budget-import.v1.json",
+    "cashu-import.v1.json",
 )
 
 # (skill, file inside the skill, source in the repository)
@@ -56,7 +56,7 @@ REWRITES: list[tuple[str, str]] = [
     (EXPRESSIONS, "expressions.md"),
     (f"`{GENERIC_CSV}`", "`generic_csv_example.yaml`"),
     (GENERIC_CSV, "generic_csv_example.yaml"),
-    ("`tests/investments/strategy/test_strategy_templates.py`", "the finanse test suite"),
+    ("`tests/investments/strategy/test_strategy_templates.py`", "the cashU test suite"),
     (f"../{EXAMPLES}/", "connector-examples/"),
     (f"{EXAMPLES}/", "connector-examples/"),
     ("docs/import-format.md", "import-format.md"),
@@ -64,7 +64,7 @@ REWRITES: list[tuple[str, str]] = [
     ("docs/connectors.md", "connectors.md"),
 ]
 
-NOTE = "Copy shipped with this skill, generated from the finanse sources; do not edit it here."
+NOTE = "Copy shipped with this skill, generated from the cashU sources; do not edit it here."
 
 
 def render(source: Path, dest: str) -> str:

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from finanse.core import account_types, institutions, modules
-from finanse.core.modules import ModuleSpec, SetupAction, SetupStatus, SetupStep
-from finanse.modules.budget.ingestion.csv_import import detect_importer, get_importer
-from finanse.modules.budget.ingestion.enable_banking.sync import bank_from_aspsp
+from cashu.core import account_types, institutions, modules
+from cashu.core.modules import ModuleSpec, SetupAction, SetupStatus, SetupStep
+from cashu.modules.budget.ingestion.csv_import import detect_importer, get_importer
+from cashu.modules.budget.ingestion.enable_banking.sync import bank_from_aspsp
 
 # --------------------------------------------------------------------------- #
 # Modules
@@ -56,7 +56,7 @@ def test_dependencies_are_enabled_together(monkeypatch):
 def test_setup_status_states_and_step_statuses():
     def steps(*done: bool) -> SetupStatus:
         return SetupStatus(steps=tuple(
-            SetupStep(f"s{i}", "T", "D", d, (SetupAction("cli", "Kopiuj", "finanse x"),))
+            SetupStep(f"s{i}", "T", "D", d, (SetupAction("cli", "Kopiuj", "cashu x"),))
             for i, d in enumerate(done)
         ))
 
@@ -68,14 +68,14 @@ def test_setup_status_states_and_step_statuses():
     assert steps(False, True).step_dicts()[1]["status"] == "done"  # done stays done
     assert SetupStatus(steps=()).state == "empty"
     assert steps(True).step_dicts()[0]["actions"] == [
-        {"kind": "cli", "label": "Kopiuj", "target": "finanse x"}
+        {"kind": "cli", "label": "Kopiuj", "target": "cashu x"}
     ]
 
 
 def test_categorization_hooks_come_from_modules():
     assert ("RATA KREDYTU", "loans") in modules.text_rules()
     assert "loans" in modules.not_subscription_categories()
-    from finanse.modules.budget.categorize import taxonomy
+    from cashu.modules.budget.categorize import taxonomy
 
     assert taxonomy.apply_text_rules("SPLATA RATY 05/2026") == "loans"  # registered by loans
     assert taxonomy.apply_text_rules("CZYNSZ ZA WRZESIEN") == "housing"  # budget's own
@@ -155,20 +155,20 @@ def test_adding_a_bank_is_one_registry_entry(monkeypatch, tmp_path: Path):
     import sys
     import types
 
-    from finanse.modules.budget.ingestion.csv_import.mbank import MBankImporter
+    from cashu.modules.budget.ingestion.csv_import.mbank import MBankImporter
 
-    mod = types.ModuleType("finanse_test_bank")
+    mod = types.ModuleType("cashu_test_bank")
 
     class TestBankImporter(MBankImporter):
         bank = "testbank"
         signature = ("testbank s.a.",)
 
     mod.TestBankImporter = TestBankImporter
-    monkeypatch.setitem(sys.modules, "finanse_test_bank", mod)
+    monkeypatch.setitem(sys.modules, "cashu_test_bank", mod)
     monkeypatch.setattr(institutions, "_REGISTRY", dict(institutions._REGISTRY))
     monkeypatch.setattr(institutions, "_IMPORTERS", {})
     institutions.register(institutions.Institution(
-        "testbank", "bank", "Bank Test", "finanse_test_bank:TestBankImporter", ("testbank",)
+        "testbank", "bank", "Bank Test", "cashu_test_bank:TestBankImporter", ("testbank",)
     ))
     assert "testbank" in institutions.csv_ids()
     assert bank_from_aspsp("TestBank Online") == "testbank"

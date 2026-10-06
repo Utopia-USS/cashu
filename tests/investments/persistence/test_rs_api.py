@@ -11,12 +11,12 @@ import pytest
 from invp_support import canonical_csv
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.models import Profile, utcnow
-from finanse.modules.investments.models import InvInstrument, InvSignal
-from finanse.modules.investments.research import service
-from finanse.modules.investments.research.validation import RunScope, validate_note
-from finanse.modules.investments.store import journal
+from cashu.core.db import get_session
+from cashu.core.models import Profile, utcnow
+from cashu.modules.investments.models import InvInstrument, InvSignal
+from cashu.modules.investments.research import service
+from cashu.modules.investments.research.validation import RunScope, validate_note
+from cashu.modules.investments.store import journal
 
 ROUTES = ("research", "research/summary", "research/runs")
 
@@ -115,7 +115,7 @@ def test_notes_list_filters_and_codes(two):
     for bad in ("kind=rumour", "since=yesterday", "limit=0"):
         r = client.get(f"{base}?{bad}")
         assert r.status_code == 422, bad
-    assert client.get(f"{base}?kind=rumour").headers["X-Finanse-Error-Code"] == "research_invalid"
+    assert client.get(f"{base}?kind=rumour").headers["X-Cashu-Error-Code"] == "research_invalid"
     with get_session() as s:
         row = service.note(s, pid, n4)
         row.expires_at = utcnow() - dt.timedelta(hours=1)
@@ -145,14 +145,14 @@ def test_dismiss_restore_and_codes(two):
     assert client.patch(f"{base}/{n1}", json={"dismissed": True, "x": 1}).status_code == 422
     assert client.patch(f"{base}/{n1}", json={}).status_code == 422
     missing = client.patch(f"{base}/999999", json={"dismissed": True})
-    assert missing.status_code == 404 and missing.headers["X-Finanse-Error-Code"] == "not_found"
+    assert missing.status_code == 404 and missing.headers["X-Cashu-Error-Code"] == "not_found"
     client.patch(f"{base}/{n1}", json={"dismissed": True})
     with get_session() as s:
         row = service.note(s, pid, n1)
         row.dismissed_at = utcnow() - dt.timedelta(minutes=16)
         s.add(row)
     late = client.patch(f"{base}/{n1}", json={"dismissed": False})
-    assert late.status_code == 409 and late.headers["X-Finanse-Error-Code"] == "undo_expired"
+    assert late.status_code == 409 and late.headers["X-Cashu-Error-Code"] == "undo_expired"
 
 
 def test_candidate_accept_and_undo(two):
@@ -169,7 +169,7 @@ def test_candidate_accept_and_undo(two):
     watch = client.get(f"/api/p/{slug}/investments/watchlist").json()
     assert [w["id"] for w in watch] == [body["watchlist_item"]["id"]]
     again = client.post(f"{base}/{n}/accept")
-    assert again.status_code == 409 and again.headers["X-Finanse-Error-Code"] == "research_conflict"
+    assert again.status_code == 409 and again.headers["X-Cashu-Error-Code"] == "research_conflict"
     undone = client.delete(f"{base}/{n}/accept")
     assert undone.status_code == 200 and undone.json()["candidate"]["accepted_at"] is None
     assert client.get(f"/api/p/{slug}/investments/watchlist").json() == []

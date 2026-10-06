@@ -1,5 +1,5 @@
-"""Example finanse connector (kind fetch, module investments): the trade history of the made-up
-ExampleExchange API (https://api.example.com) -> finanse-import v1 JSON (docs/import-format.md).
+"""Example cashU connector (kind fetch, module investments): the trade history of the made-up
+ExampleExchange API (https://api.example.com) -> cashu-import v1 JSON (docs/import-format.md).
 
 Protocol (docs/connectors.md): one JSON request on stdin, one JSON response on stdout, logs on stderr.
 Python standard library only.
@@ -10,7 +10,7 @@ Python standard library only.
   printed, logged or put into a message.
 - Cursor: the id of the newest entry already returned. The app hands it back on the next fetch (after
   the owner committed the import); with no cursor the history starts at `params.start` or `since`.
-- Tests: `finanse connectors test <dir> --fixture fixture.json` runs `fetch` offline and passes the
+- Tests: `cashu connectors test <dir> --fixture fixture.json` runs `fetch` offline and passes the
   fixture's text as `params.fixture` (never declared in connector.yaml, so a real binding can never
   set it). The fixture holds the API pages this script would have downloaded.
 """
@@ -66,7 +66,7 @@ class HttpApi:
         request = urllib.request.Request(url, headers={
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
-            "User-Agent": "finanse-fetch-example/1.0",
+            "User-Agent": "cashu-fetch-example/1.0",
         })
         try:
             with self.opener.open(request, timeout=30) as response:
@@ -178,7 +178,7 @@ def fetch(request):
     else:
         raise ConnectorError("upstream", f"more than {MAX_PAGES} pages")
     print(f"fetched {len(records)} entries", file=sys.stderr)  # counts only, never values
-    document = {"format": "finanse-import", "format_version": 1, "source": SOURCE, "records": records}
+    document = {"format": "cashu-import", "format_version": 1, "source": SOURCE, "records": records}
     # The cursor: the newest id seen, or the old cursor when nothing new arrived.
     return {"document": document, "cursor": after}
 

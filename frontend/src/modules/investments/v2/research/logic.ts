@@ -456,8 +456,8 @@ export const runMinutes = (r: Pick<ResearchRun, "started_at" | "finished_at">) =
 
 // ---- commands (research.md 7; design answer 3: the app copies, never spawns) ---------------------------------
 
-/** The profile's workspace folder (AW `GET workspace`), else the default `~/Documents/finanse/<slug>`. */
-export const workspacePath = (path: string | null | undefined, slug: string) => path || `~/Documents/finanse/${slug}`;
+/** The profile's workspace folder (AW `GET workspace`), else the default `~/Documents/cashU/<slug>`. */
+export const workspacePath = (path: string | null | undefined, slug: string) => path || `~/Documents/cashU/${slug}`;
 
 /** `cd <workspace> && claude -p "/market-research"`; a path with spaces is quoted (keeping `~/` expandable). */
 export function researchCommand(path: string | null | undefined, slug: string): string {

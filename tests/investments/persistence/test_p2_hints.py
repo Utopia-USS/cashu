@@ -22,17 +22,17 @@ from invp_support import (
 )
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.models import Profile, utcnow
-from finanse.modules.investments.models import (
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.models import Profile, utcnow
+from cashu.modules.investments.models import (
     InvAlert,
     InvInstrument,
     InvResearchNote,
     InvSignal,
     InvThesis,
 )
-from finanse.modules.investments.service import daily, files
+from cashu.modules.investments.service import daily, files
 
 STRATEGY = """\
 version: 1
@@ -305,7 +305,7 @@ def test_plan_vs_thesis_follows_research_note_writes(api):
         return codes(next(r for r in rows if r["instrument"]["id"] == abc)["hints"])
 
     assert not plan_vs_thesis_open(pid, abc) and "plan_vs_thesis" not in abc_codes()
-    added = FinanseMcp(pid, today=AS_OF).call(
+    added = CashuMcp(pid, today=AS_OF).call(
         "add_research_note",
         {
             "kind": "news",
@@ -380,7 +380,7 @@ def test_mcp_hints_are_the_same_in_strict_and_full(api):
             p.mcp_privacy = level
             s.add(p)
             s.commit()
-        mcp = FinanseMcp(pid, today=AS_OF)
+        mcp = CashuMcp(pid, today=AS_OF)
         positions = mcp.call("positions")
         watchlist = mcp.call("watchlist")
         assert positions.ok and watchlist.ok, (positions.error, watchlist.error)
@@ -484,7 +484,7 @@ def test_a_thesis_edit_tags_research_and_an_exit_plan_edit_does_not(api):
     }
 
     # MCP research_notes carries the tag
-    mcp = FinanseMcp(pid, today=dt.date.today())  # noqa: DTZ011 - notes are stored now
+    mcp = CashuMcp(pid, today=dt.date.today())  # noqa: DTZ011 - notes are stored now
     notes = mcp.call("research_notes")
     assert notes.ok, notes.error
     assert [n["predates_thesis"] for n in notes.data["notes"]] == [True]

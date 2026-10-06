@@ -1,7 +1,7 @@
 """File connectors in the in-app imports (F10 BE-C3): investments ``connector:<id>`` and auto-detect,
 the budget ``connector:<id>`` branch and auto-detect, the converted document is what is staged (the
 commit never runs the connector again), the remembered importer, and the owner's 422 for a failed run
-(``X-Finanse-Error-Code: connector_<kind>``, ``detail`` an object). Synthetic data, NoSandbox."""
+(``X-Cashu-Error-Code: connector_<kind>``, ``detail`` an object). Synthetic data, NoSandbox."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ import pytest
 from connector_support import NoSandbox, needs_python3, write_connector
 from sqlmodel import select
 
-from finanse.core.connectors import imports as connector_imports
-from finanse.core.connectors import runner, service
-from finanse.core.connectors.models import ConnectorRun
-from finanse.core.db import get_session
+from cashu.core.connectors import imports as connector_imports
+from cashu.core.connectors import runner, service
+from cashu.core.connectors.models import ConnectorRun
+from cashu.core.db import get_session
 
 pytestmark = needs_python3
 
@@ -33,7 +33,7 @@ if req["command"] == "detect":
     head = open(req["file"]["path"]).read(200)
     print(json.dumps({"match": head.startswith("DEMO-BANK"), "confidence": 0.9}))
     sys.exit(0)
-doc = {"format": "finanse-budget-import", "format_version": 1, "source": "demo_bank",
+doc = {"format": "cashu-budget-import", "format_version": 1, "source": "demo_bank",
        "account": {"currency": "PLN", "name": "Demo konto"},
        "transactions": [
            {"booking_date": "2026-09-01", "amount": "-12.50", "currency": "PLN",
@@ -109,7 +109,7 @@ def test_investments_connector_preview_and_commit(inv, tmp_path, sandbox):
     assert runs("test-conn") == ["convert"]  # the commit read the staged document, nothing ran
     batches = client.get(f"/api/p/{slug}/investments/imports").json()
     assert batches[0]["importer"] == "connector:test-conn"
-    from finanse.modules.investments.models import InvAccountSettings
+    from cashu.modules.investments.models import InvAccountSettings
 
     with get_session() as s:
         assert s.get(InvAccountSettings, account).importer == "connector:test-conn"
@@ -124,11 +124,11 @@ def test_investments_auto_detects_a_connector_only_when_built_ins_do_not(inv, tm
     assert p["importer"]["requested"] == "auto" and p["importer"]["id"] == "connector:test-conn"
     assert p["importer"]["detected"] == ["connector:test-conn"]
     assert runs("test-conn") == ["detect", "convert"]
-    # a finanse-format file: the canonical importer wins, no connector runs
+    # a cashu-format file: the canonical importer wins, no connector runs
     canonical = (b"format_version,record,date,type,currency,gross_amount\n"
                  b"1,txn,2026-01-05,deposit,PLN,10.00\n")
     p = inv_preview(client, slug, account, content=canonical).json()
-    assert p["importer"]["id"] == "finanse" and runs("test-conn") == ["detect", "convert"]
+    assert p["importer"]["id"] == "cashu" and runs("test-conn") == ["detect", "convert"]
     # a connector for another extension is never asked
     p = inv_preview(client, slug, account, content=b"{}", name="x.json").json()
     assert p["can_commit"] is False and runs("test-conn") == ["detect", "convert"]
@@ -140,7 +140,7 @@ def test_auto_detect_limit_and_remembered_connector_first(inv, tmp_path, monkeyp
     install_approved(client, tmp_path, "bbb-conn")
     monkeypatch.setattr(connector_imports, "MAX_DETECT", 1)
     assert inv_preview(client, slug, account).json()["importer"]["id"] == "connector:aaa-conn"
-    from finanse.modules.investments.models import InvAccountSettings
+    from cashu.modules.investments.models import InvAccountSettings
 
     with get_session() as s:
         row = s.get(InvAccountSettings, account)
@@ -154,17 +154,17 @@ def test_failed_connector_run_is_the_owners_422(inv, tmp_path):
     client, slug, account = inv
     install_approved(client, tmp_path, "bad-conn", code=FAILING)
     r = inv_preview(client, slug, account, importer="connector:bad-conn")
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "connector_bad_file"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "connector_bad_file"
     d = r.json()["detail"]
     assert d["kind"] == "bad_file" and d["message"] == "row 3: unexpected column"
     assert "Kwota" in d["stderr_tail"] and d["timeout_s"] == 60
     assert d["connector"] == {"id": "bad-conn", "name": "Test connector"}
     service.install(write_connector(tmp_path / "src" / "pend-conn", cid="pend-conn"))
     r = inv_preview(client, slug, account, importer="connector:pend-conn")
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "connector_not_approved"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "connector_not_approved"
     client.post("/api/connectors/bad-conn/disable")
     r = inv_preview(client, slug, account, importer="connector:bad-conn")
-    assert r.headers["X-Finanse-Error-Code"] == "connector_disabled"
+    assert r.headers["X-Cashu-Error-Code"] == "connector_disabled"
     r = inv_preview(client, slug, 99999, importer="connector:bad-conn")
     assert r.status_code == 404
 
@@ -173,7 +173,7 @@ def test_connector_of_the_other_module_is_refused(inv, tmp_path):
     client, slug, account = inv
     install_approved(client, tmp_path, "bud-conn", module="budget", code=BUDGET_CONNECTOR)
     r = inv_preview(client, slug, account, importer="connector:bud-conn")
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "connector_bad_request"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "connector_bad_request"
     assert runs("bud-conn") == []
 
 
@@ -195,8 +195,8 @@ def bud_preview(client, slug, content=b"DEMO-BANK;x\n1;2\n", name="wyciag.csv", 
 
 
 def test_budget_connector_preview_and_commit(bud, tmp_path):
-    from finanse.core.models import Source
-    from finanse.modules.budget.models import ImportBatch, Transaction
+    from cashu.core.models import Source
+    from cashu.modules.budget.models import ImportBatch, Transaction
 
     client, slug = bud
     install_approved(client, tmp_path, "bud-conn", module="budget", code=BUDGET_CONNECTOR)
@@ -225,12 +225,12 @@ def test_budget_auto_detect_and_failure(bud, tmp_path):
     assert runs("bud-conn") == ["detect", "convert"]
     # not claimed by the connector (detect says no): the old refusal
     r = bud_preview(client, slug, content=b"zupelnie;nie;wyciag\n1;2;3\n")
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "import_bank_unknown"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "import_bank_unknown"
     install_approved(client, tmp_path, "bad-conn", module="budget", code=FAILING)
     r = bud_preview(client, slug, bank="connector:bad-conn")
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "connector_bad_file"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "connector_bad_file"
     assert r.json()["detail"]["connector"]["id"] == "bad-conn"
-    from finanse.core import paths
+    from cashu.core import paths
 
     staged = list((paths.data_dir() / "imports" / slug / ".staging").glob("budget-*"))
     assert len(staged) == 1  # the earlier detected preview; the failed upload is not kept
@@ -242,7 +242,7 @@ req = json.load(sys.stdin)
 if req["command"] == "detect":
     print(json.dumps({"match": True, "confidence": 0.9}))
     sys.exit(0)
-print('{"document": {"format": "finanse-import", "format_version": 1, "source": "test_broker", '
+print('{"document": {"format": "cashu-import", "format_version": 1, "source": "test_broker", '
       '"records": [{"record": "txn", "date": "2026-01-05", "type": "deposit", "currency": "PLN", '
       '"gross_amount": 1000.00}, {"record": "txn", "date": "2026-01-06", "type": "buy", '
       '"symbol": "TEST", "exchange": "XWAR", "currency": "PLN", "quantity": 0.123456789012345678, '
@@ -254,7 +254,7 @@ def test_connector_quantity_with_18_decimals_is_imported_exactly(inv, tmp_path):
     """BE-6: the document reaches the importer with exact decimals (no float round trip)."""
     from decimal import Decimal
 
-    from finanse.modules.investments.models import InvTransaction
+    from cashu.modules.investments.models import InvTransaction
 
     client, slug, account = inv
     install_approved(client, tmp_path, "test-conn", code=EXACT_CONNECTOR)
@@ -277,7 +277,7 @@ if req["command"] == "detect":
     print(json.dumps({"match": True, "confidence": 0.9}))
     sys.exit(0)
 rows = [("2026-09-01", "9000.00"), ("2026-09-03", "-120.50"), ("2026-09-05", "-3000.00")]
-doc = {"format": "finanse-budget-import", "format_version": 1, "source": "demo_api",
+doc = {"format": "cashu-budget-import", "format_version": 1, "source": "demo_api",
        "account": {"currency": "PLN", "iban": "PL99114000000000000000000101"},
        "transactions": [{"booking_date": d, "amount": a, "currency": "PLN",
                          "description": "API TEXT " + d} for d, a in rows]}
@@ -298,7 +298,7 @@ PLN
 
 def test_budget_connector_rows_do_not_double_csv_rows(bud, tmp_path):
     """BE-1: 3 rows from the bank CSV, then the same 3 from a connector (other texts): new 0."""
-    from finanse.modules.budget.models import Transaction
+    from cashu.modules.budget.models import Transaction
 
     client, slug = bud
     p = bud_preview(client, slug, content=CSV_3).json()
@@ -323,11 +323,11 @@ def test_budget_connector_rows_do_not_double_open_banking_rows(bud, tmp_path):
     from datetime import date
     from decimal import Decimal
 
-    from finanse.core import profiles
-    from finanse.core.accounts import get_or_create_account
-    from finanse.core.models import Source
-    from finanse.modules.budget.ingestion.normalize import RawTransaction
-    from finanse.modules.budget.service import ingest_transactions
+    from cashu.core import profiles
+    from cashu.core.accounts import get_or_create_account
+    from cashu.core.models import Source
+    from cashu.modules.budget.ingestion.normalize import RawTransaction
+    from cashu.modules.budget.service import ingest_transactions
 
     client, slug = bud
     with get_session() as s:
@@ -346,8 +346,8 @@ def test_budget_connector_rows_do_not_double_open_banking_rows(bud, tmp_path):
 
 def test_budget_remembers_the_connector_per_account(bud, tmp_path, monkeypatch):
     """BE-5: ``auto`` asks the account's last connector first (a tie no longer goes by id order)."""
-    from finanse.core import profiles
-    from finanse.core.accounts import get_or_create_account
+    from cashu.core import profiles
+    from cashu.core.accounts import get_or_create_account
 
     client, slug = bud
     with get_session() as s:

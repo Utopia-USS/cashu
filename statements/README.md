@@ -16,8 +16,8 @@ statements/
 Then:
 
 ```bash
-finanse import-dir statements     # recursive, bank inferred from the subdir name
-finanse match-transfers           # pair internal transfers between your own accounts
+cashu import-dir statements     # recursive, bank inferred from the subdir name
+cashu match-transfers           # pair internal transfers between your own accounts
 ```
 
 Don't have one of these banks? Ignore or delete the empty subdirectory.

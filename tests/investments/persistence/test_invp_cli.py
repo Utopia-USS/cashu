@@ -1,4 +1,4 @@
-"""`finanse invest ...`: accounts, import (dry run, commit, duplicates), validate, positions,
+"""`cashu invest ...`: accounts, import (dry run, commit, duplicates), validate, positions,
 signals, strategy init / validate, run."""
 
 from __future__ import annotations
@@ -9,11 +9,11 @@ from rich.console import Console
 from sqlmodel import func, select
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import cliutil
-from finanse.core.db import get_session
-from finanse.modules.investments.models import InvTransaction
-from finanse.modules.investments.service import daily, files, portfolio
+from cashu import cli as cli_mod
+from cashu.core import cliutil
+from cashu.core.db import get_session
+from cashu.modules.investments.models import InvTransaction
+from cashu.modules.investments.service import daily, files, portfolio
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def test_invest_workflow(run, tmp_path):
 
     path = tmp_path / "history.csv"
     path.write_bytes(canonical_csv(xmpl_quantity=25))
-    assert "OK (finanse)" in run("invest", "validate", path).output
+    assert "OK (cashu)" in run("invest", "validate", path).output
     dry = run("invest", "import", path, "--account", "1", "--dry-run").output
     assert "new: 5" in dry and "Dry run" in dry and "reconciliation XMPL" in dry
     assert txn_count() == 0

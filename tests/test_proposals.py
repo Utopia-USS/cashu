@@ -13,12 +13,12 @@ from mcp_support import (
 )
 from sqlmodel import select
 
-from finanse.core import proposals
-from finanse.core.agent_models import Proposal
-from finanse.core.db import get_session
-from finanse.core.mcp.server import FinanseMcp
-from finanse.modules.investments.models import InvStrategyVersion, InvTransaction
-from finanse.modules.investments.service import files
+from cashu.core import proposals
+from cashu.core.agent_models import Proposal
+from cashu.core.db import get_session
+from cashu.core.mcp.server import CashuMcp
+from cashu.modules.investments.models import InvStrategyVersion, InvTransaction
+from cashu.modules.investments.service import files
 
 
 @pytest.fixture
@@ -26,10 +26,10 @@ def setup(db_engine):
     from conftest import make_client
     from mcp_support import seed_profile
 
-    from finanse.api.app import app
+    from cashu.api.app import app
 
     pid, slug = seed_profile()
-    return pid, slug, FinanseMcp(pid, today=TODAY), make_client(app)
+    return pid, slug, CashuMcp(pid, today=TODAY), make_client(app)
 
 
 def _versions(pid: int) -> list[int]:
@@ -92,7 +92,7 @@ def test_reject_and_profile_scoping(setup):
     _pid, slug, host, api = setup
     pid_ = host.call("propose_strategy", {"yaml": STRATEGY_YAML + "\n"}).data["proposal_id"]
     with get_session() as s:
-        from finanse.core import profiles
+        from cashu.core import profiles
 
         other = profiles.create_profile(s, name="Inny", modules_=["investments"])
         other_slug = other.slug
@@ -187,8 +187,8 @@ def test_builtin_kind_rule_and_no_strategy(setup):
 
 
 def test_merge_rule_variants():
-    from finanse.core.mcp.tools.investments_proposals import merge_rule
-    from finanse.modules.investments.strategy import load_strategy
+    from cashu.core.mcp.tools.investments_proposals import merge_rule
+    from cashu.modules.investments.strategy import load_strategy
 
     entry = {"id": "x", "kind": "cash_level", "params": {"max_weight": 0.3}}
     base = STRATEGY_YAML.split("rules:")[0]
@@ -216,7 +216,7 @@ NEW_DEPOSIT = (
 
 
 def _txn_count(pid: int) -> int:
-    from finanse.modules.investments.store.transactions import brokerage_accounts
+    from cashu.modules.investments.store.transactions import brokerage_accounts
 
     with get_session() as s:
         ids = [a.id for a in brokerage_accounts(s, pid)]
@@ -293,20 +293,20 @@ def test_script_paths_are_refused_and_never_run(setup, tmp_path):
 
 
 def test_import_tools_have_no_converter_argument():
-    from finanse.core.mcp.registry import all_tools
+    from cashu.core.mcp.registry import all_tools
 
     tools = all_tools()
     for name in ("validate_import", "propose_import"):
         assert "converter" not in tools[name].input_schema["properties"]
         assert "converter" in tools[name].refused
     with pytest.raises(ModuleNotFoundError):
-        __import__("finanse.core.mcp.tools.converters")
+        __import__("cashu.core.mcp.tools.converters")
 
 
 def test_stored_converter_proposal_cannot_be_approved(setup, tmp_path):
     """A pending import stored before F5 R1 (with a converter) is never run: approving fails with
     a code, and its stored export is removed."""
-    from finanse.core import paths
+    from cashu.core import paths
 
     pid, slug, host, api = setup
     label = host.call("portfolio_overview", {}).data["accounts"][0]["account"]
@@ -323,7 +323,7 @@ def test_stored_converter_proposal_cannot_be_approved(setup, tmp_path):
     before = _txn_count(pid)
     response = api.post(f"/api/p/{slug}/proposals/{stored['proposal_id']}/approve")
     assert response.status_code == 422
-    assert response.headers["X-Finanse-Error-Code"] == "converter_unsupported"
+    assert response.headers["X-Cashu-Error-Code"] == "converter_unsupported"
     assert _txn_count(pid) == before
     assert not staged.exists()
 
@@ -333,7 +333,7 @@ def test_proposal_kinds_registered():
 
 
 def test_rejected_import_removes_the_stored_export(setup, tmp_path):
-    from finanse.core import paths
+    from cashu.core import paths
 
     _pid, slug, host, api = setup
     path = tmp_path / "new.csv"
@@ -430,7 +430,7 @@ def test_broken_proposed_rule_blocks_approval_with_a_code(setup):
     )
     response = api.post(f"/api/p/{slug}/proposals/{stored['proposal_id']}/approve")
     assert response.status_code == 422
-    assert response.headers["X-Finanse-Error-Code"] == "rule_exists"
+    assert response.headers["X-Cashu-Error-Code"] == "rule_exists"
     failed = api.get(f"/api/p/{slug}/proposals/{stored['proposal_id']}").json()
     assert failed["status"] == "failed" and failed["result"]["error_code"] == "rule_exists"
 

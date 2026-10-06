@@ -10,12 +10,13 @@ import { moduleDef, orderModules } from "./registry";
 import { PROPOSAL_NOTE, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, workspaceErrorText } from "./workspace";
 import { getWorkspaceDefault, postWorkspace } from "./workspaceApi";
 import { errorText } from "./messages";
+import { readStored } from "./storage";
 
 export const CURRENCIES = ["PLN", "EUR", "USD", "CHF", "GBP"];
-const LEGACY_SKIP_KEY = "finanse.legacySkipped";
+const LEGACY_SKIP_KEY = "cashu.legacySkipped";
 
 export const legacySkipped = (): boolean => {
-  try { return localStorage.getItem(LEGACY_SKIP_KEY) === "1"; } catch { return false; }
+  try { return readStored(localStorage, LEGACY_SKIP_KEY) === "1"; } catch { return false; }
 };
 
 export const PRIVACY_OPTIONS: { value: Privacy; title: string; desc: string; example: string; tag?: boolean }[] = [
@@ -163,8 +164,9 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
                   try { localStorage.setItem(LEGACY_SKIP_KEY, "1"); } catch { /* ignore */ }
                 }}>Pomiń</button>
               }>
+                {/* legacy name: the repo-dir database of old checkouts is data/finanse.db */}
                 Dane z poprzedniej wersji: <code>{system?.legacy_db_path || "data/finanse.db"}</code>. Zamknij aplikację i uruchom:
-                <Code cmd="finanse migrate-data" />
+                <Code cmd="cashu migrate-data" />
               </Notice>
             )}
             <div className="form-row">
@@ -215,7 +217,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
                 <>
                   <div className="field">
                     <label htmlFor="wz-ws">Folder workspace</label>
-                    <input id="wz-ws" value={wsPath} placeholder="~/Documents/finanse/<profil>" autoComplete="off" spellCheck={false}
+                    <input id="wz-ws" value={wsPath} placeholder="~/Documents/cashU/<profil>" autoComplete="off" spellCheck={false}
                       disabled={busy} onChange={(e) => { setWsPath(e.target.value); setWsTouched(true); }} />
                   </div>
                   {investmentsPicked && (

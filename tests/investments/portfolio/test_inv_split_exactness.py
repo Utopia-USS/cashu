@@ -18,8 +18,8 @@ from inv_portfolio_fixtures import (
     transfer_out,
 )
 
-from finanse.modules.investments.domain import DatedPrice, HistoryGap
-from finanse.modules.investments.portfolio import (
+from cashu.modules.investments.domain import DatedPrice, HistoryGap
+from cashu.modules.investments.portfolio import (
     SPLIT_REMAINDER_TOLERANCE,
     build_snapshot,
     last_trade_prices,

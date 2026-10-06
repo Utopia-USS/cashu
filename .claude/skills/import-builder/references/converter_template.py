@@ -1,10 +1,10 @@
-"""Convert <BROKER> <EXPORT KIND> exports to the finanse import format (format_version 1).
+"""Convert <BROKER> <EXPORT KIND> exports to the cashU import format (format_version 1).
 
 Written by the import-builder skill for profile <slug> on <YYYY-MM-DD>. Read it before you let
-Claude Code run it: the agent runs this one-off converter on your computer. The finanse app never runs
+Claude Code run it: the agent runs this one-off converter on your computer. The cashU app never runs
 it; the app runs only connectors you approved in Ustawienia > Konektory.
 Input:  <what the export looks like: file type, sheets, encoding, separator, date and number format>
-Output: finanse-import CSV, see references/import-format.md of the import-builder skill.
+Output: cashu-import CSV, see references/import-format.md of the import-builder skill.
 Run:    python3 -I scripts/import_<source>.py inbox/<export file> inbox/converted/<output .csv>
 
 Contract: Python standard library only; no network; no environment variables; reads only the export
@@ -35,7 +35,7 @@ FIELDS = (
     "market_value,new_symbol,new_isin,new_exchange,new_name,frozen,note,source,account_hint"
 ).split(",")
 
-# Broker label -> finanse transaction type. A label that is not listed is an error, never a guess.
+# Broker label -> cashU transaction type. A label that is not listed is an error, never a guess.
 TYPE_MAP = {
     "kupno": "buy",
     "sprzedaz": "sell",

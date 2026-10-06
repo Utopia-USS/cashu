@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from finanse.modules.investments.plan import (
+from cashu.modules.investments.plan import (
     Freshness,
     FreshnessState,
     HintFacts,
@@ -14,8 +14,8 @@ from finanse.modules.investments.plan import (
     TriggeredAlert,
     instrument_hints,
 )
-from finanse.modules.investments.plan.freshness import Reason
-from finanse.modules.investments.plan.hints import CODES, HELD_ORDER, WATCHED_ORDER
+from cashu.modules.investments.plan.freshness import Reason
+from cashu.modules.investments.plan.hints import CODES, HELD_ORDER, WATCHED_ORDER
 
 GAIN = OpenSignal("gain_from_cost", {"unrealized_pct": 4.5512, "threshold": 1.0})
 LOSS = OpenSignal("loss_from_cost", {"unrealized_pct": -0.27, "threshold": 0.25})

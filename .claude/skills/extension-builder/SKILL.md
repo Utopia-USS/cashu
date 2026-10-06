@@ -1,6 +1,6 @@
 ---
 name: extension-builder
-description: Turns a monitoring idea for the finanse investments module into a custom rule - interviews the user about what situation should raise a signal, drafts it as a built-in rule kind or a safe custom expression (kind custom, metric catalog in references/expressions.md), submits it through the profile's finanse MCP server with propose_custom_rule, reads the backtest on the profile's history (how often it would have fired), tunes it with the user and leaves approval to the owner in the app. Use when the user wants a new alert, signal, warning or rule for their portfolio, asks "let me know when...", wants to change a threshold, or asks how to express a check from their strategy as a rule. Triggers on /extension-builder and on Polish requests such as "dodaj regułę", "własna reguła", "powiadom mnie, gdy", "chcę sygnał, kiedy", "zmień próg reguły", "alert na spadek", "reguła custom". Not for writing a whole strategy (investments-setup) or importing files (import-builder).
+description: Turns a monitoring idea for the cashU investments module into a custom rule - interviews the user about what situation should raise a signal, drafts it as a built-in rule kind or a safe custom expression (kind custom, metric catalog in references/expressions.md), submits it through the profile's cashU MCP server with propose_custom_rule, reads the backtest on the profile's history (how often it would have fired), tunes it with the user and leaves approval to the owner in the app. Use when the user wants a new alert, signal, warning or rule for their portfolio, asks "let me know when...", wants to change a threshold, or asks how to express a check from their strategy as a rule. Triggers on /extension-builder and on Polish requests such as "dodaj regułę", "własna reguła", "powiadom mnie, gdy", "chcę sygnał, kiedy", "zmień próg reguły", "alert na spadek", "reguła custom". Not for writing a whole strategy (investments-setup) or importing files (import-builder).
 ---
 
 # extension-builder: custom rules with a backtest
@@ -11,7 +11,7 @@ Conversation in Polish, files in English, regular hyphens only.
 
 ## Boundaries and privacy (say the first two lines at the start)
 
-- Data reaches you only through the profile's MCP server `finanse-<slug>`, logged in Ustawienia > Agent
+- Data reaches you only through the profile's MCP server `cashu-<slug>`, logged in Ustawienia > Agent
   AI. Privacy level from `profile_overview` (`strict` or `amounts`): **Ścisły (strict, default)** gives weights, percentages,
   percentage points, dates, tickers and counts, no amounts or account numbers; **Z kwotami** also
   amounts.
@@ -40,7 +40,7 @@ Conversation in Polish, files in English, regular hyphens only.
 
 ## Flow
 
-1. **Profile.** Use the connected `finanse-<slug>` server (ask which one if several; never mix
+1. **Profile.** Use the connected `cashu-<slug>` server (ask which one if several; never mix
    profiles). In the profile's agent workspace it is configured in `.mcp.json`; elsewhere, with none
    connected, suggest the workspace (Ustawienia > Agent AI) or the `claude mcp add` line shown there,
    then a Claude Code restart. Call `profile_overview` and `strategy_status`. Without an approved strategy, suggest
@@ -123,4 +123,4 @@ YAML shape the proposal ends up as (for reading back to the user):
 - `references/expressions.md`: grammar, scopes, metric catalog and limits of custom expressions.
 - `references/strategy-schema.md`: strategy.yaml keys and the params of every built-in rule kind.
 
-Both are copies of the app's own reference, refreshed with every finanse version.
+Both are copies of the app's own reference, refreshed with every cashU version.

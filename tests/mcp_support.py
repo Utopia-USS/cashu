@@ -17,15 +17,15 @@ from pathlib import Path
 
 from conftest import seed_demo
 
-from finanse.core import accounts, profiles
-from finanse.core.db import get_session
-from finanse.core.models import Source, utcnow
-from finanse.modules.investments.domain import Currency, FxRate, Instrument, PriceBar
-from finanse.modules.investments.importing import ImportFile
-from finanse.modules.investments.market import PriceHistory, PriceSource
-from finanse.modules.investments.service import accounts as inv_accounts
-from finanse.modules.investments.service import daily, files, imports
-from finanse.modules.investments.service.daily import MarketSources
+from cashu.core import accounts, profiles
+from cashu.core.db import get_session
+from cashu.core.models import Source, utcnow
+from cashu.modules.investments.domain import Currency, FxRate, Instrument, PriceBar
+from cashu.modules.investments.importing import ImportFile
+from cashu.modules.investments.market import PriceHistory, PriceSource
+from cashu.modules.investments.service import accounts as inv_accounts
+from cashu.modules.investments.service import daily, files, imports
+from cashu.modules.investments.service.daily import MarketSources
 
 TODAY = dt.date.today()  # noqa: DTZ011 - the views value portfolios as of today
 
@@ -154,7 +154,7 @@ def sources() -> MarketSources:
 
 
 # --------------------------------------------------------------------------- #
-# Investments history (finanse import format)
+# Investments history (cashU import format)
 # --------------------------------------------------------------------------- #
 
 HEADER = (
@@ -238,7 +238,7 @@ def write_strategy(slug: str, text: str = STRATEGY_YAML) -> None:
 
 
 def _raw(day, amount, *, cp=None, iban=None, ref=None, desc=None):
-    from finanse.modules.budget.ingestion.normalize import RawTransaction
+    from cashu.modules.budget.ingestion.normalize import RawTransaction
 
     return RawTransaction(
         booking_date=day,
@@ -254,7 +254,7 @@ def _raw(day, amount, *, cp=None, iban=None, ref=None, desc=None):
 
 def seed_profile(name: str = PROFILE_NAME, *, run_daily: bool = True) -> tuple[int, str]:
     """A profile with budget, assets, loans and investments, full of sensitive synthetic values."""
-    from finanse.modules.budget import service as budget
+    from cashu.modules.budget import service as budget
 
     with get_session() as s:
         p = profiles.create_profile(
@@ -347,8 +347,8 @@ def seed_profile(name: str = PROFILE_NAME, *, run_daily: bool = True) -> tuple[i
 
 def add_claim(profile_id: int, account_id: int) -> int:
     """A private loan held as a claim, named after a person (owner-entered name and symbol)."""
-    from finanse.modules.investments.models import InvInstrument, InvTransaction
-    from finanse.modules.investments.store.transactions import upsert_manual_valuation
+    from cashu.modules.investments.models import InvInstrument, InvTransaction
+    from cashu.modules.investments.store.transactions import upsert_manual_valuation
 
     with get_session() as s:
         inst = InvInstrument(
@@ -392,7 +392,7 @@ def add_claim(profile_id: int, account_id: int) -> int:
 
 
 def investments_account_id(profile_id: int) -> int:
-    from finanse.modules.investments.store.transactions import brokerage_accounts
+    from cashu.modules.investments.store.transactions import brokerage_accounts
 
     with get_session() as s:
         return brokerage_accounts(s, profile_id)[0].id
@@ -505,7 +505,7 @@ _ISO = re.compile(r"\d{4}-\d{2}-\d{2}(?:T[0-9:.+]+)?")
 
 
 def fold(text: str) -> str:
-    from finanse.core.mcp.names import fold as _fold
+    from cashu.core.mcp.names import fold as _fold
 
     return _fold(text)
 
@@ -520,11 +520,11 @@ def leaks(data, *, strict: bool) -> list[str]:
         if iban in blob or iban.replace(" ", "") in blob.replace(" ", ""):
             found.append(f"iban {iban}")
     for m in _IBAN_LIKE.finditer(no_dates):
-        from finanse.core.mcp.redaction import isin_valid
+        from cashu.core.mcp.redaction import isin_valid
 
         if not isin_valid(m.group(0)):
             found.append(f"iban-like {m.group(0)}")
-    from finanse.core.mcp.redaction import isin_valid
+    from cashu.core.mcp.redaction import isin_valid
 
     no_isins = re.sub(
         r"[A-Z]{2}[A-Z0-9]{9}\d", lambda m: "" if isin_valid(m.group(0)) else m.group(0), no_dates

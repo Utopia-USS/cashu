@@ -4,8 +4,8 @@ character (PyYAML's reader error has no mark and a multi-line text) gets PyYAML'
 
 from __future__ import annotations
 
-from finanse.modules.investments.strategy import load_strategy
-from finanse.modules.investments.strategy.codes import classify
+from cashu.modules.investments.strategy import load_strategy
+from cashu.modules.investments.strategy.codes import classify
 
 
 def _issue(text: str):

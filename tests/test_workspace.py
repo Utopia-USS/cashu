@@ -1,6 +1,6 @@
 """Per-profile agent workspace (core/workspace): create, update, status, API, CLI, profile isolation.
 
-Every path is under tmp_path: the workspaces root (FINANSE_WORKSPACES_DIR, autouse in conftest),
+Every path is under tmp_path: the workspaces root (CASHU_WORKSPACES_DIR, autouse in conftest),
 HOME when the default location is checked, and a synthetic skills tree (the real repo skills are
 used by one test only).
 """
@@ -18,9 +18,9 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-from finanse import cli as cli_mod
-from finanse.core import cliutil, paths, runtime
-from finanse.core.workspace import render, service, skills
+from cashu import cli as cli_mod
+from cashu.core import cliutil, paths, runtime
+from cashu.core.workspace import render, service, skills
 
 SKILL_NAMES = (
     "budget-setup",
@@ -82,7 +82,7 @@ def test_default_location_is_documents_in_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     assert (
         service.default_path("anna-test")
-        == tmp_path / "home" / "Documents" / "finanse" / "anna-test"
+        == tmp_path / "home" / "Documents" / "cashU" / "anna-test"
     )
 
 
@@ -133,8 +133,8 @@ def test_create_writes_every_managed_part(client, tmp_path):
 
     text = (ws / "CLAUDE.md").read_text()
     for name in render.SECTIONS:
-        assert f"<!-- finanse:begin {name} -->" in text and f"<!-- finanse:end {name} -->" in text
-    assert "finanse profile `anna-test`" in text and "finanse-anna-test" in text
+        assert f"<!-- cashu:begin {name} -->" in text and f"<!-- cashu:end {name} -->" in text
+    assert "cashU profile `anna-test`" in text and "cashu-anna-test" in text
     assert "Anna" not in text  # the display name (a person's name) is never written
     assert (
         "**strict**" in text
@@ -143,26 +143,26 @@ def test_create_writes_every_managed_part(client, tmp_path):
     )
     assert "`loans_summary`" not in text  # loans module is off
     assert str(paths.data_dir().resolve()) in text
-    assert "market research skill is not part of this finanse version" in text
+    assert "market research skill is not part of this cashU version" in text
     assert "\u2014" not in text
 
     mcp = _json(ws / ".mcp.json")
-    assert list(mcp["mcpServers"]) == ["finanse-anna-test"]
-    entry = mcp["mcpServers"]["finanse-anna-test"]
+    assert list(mcp["mcpServers"]) == ["cashu-anna-test"]
+    entry = mcp["mcpServers"]["cashu-anna-test"]
     assert entry["args"][-3:] == ["mcp", "--profile", "anna-test"]
     assert entry["command"] == service.cli_program()[0]
 
     settings = _json(ws / ".claude" / "settings.json")
     allow = settings["permissions"]["allow"]
-    assert "mcp__finanse-anna-test__profile_overview" in allow
-    assert "mcp__finanse-anna-test__positions" in allow
+    assert "mcp__cashu-anna-test__profile_overview" in allow
+    assert "mcp__cashu-anna-test__positions" in allow
     assert not any("loans_summary" in rule for rule in allow)
     deny = settings["permissions"]["deny"]
     data = "/" + paths.data_dir().resolve().as_posix()
     assert f"Read({data}/**)" in deny and f"Edit({data}/**)" in deny
     # inbox/ is the user's drop folder: not denied (F10 11.3.1)
     assert not any("inbox" in rule for rule in deny), deny
-    assert settings["enabledMcpjsonServers"] == ["finanse-anna-test"]
+    assert settings["enabledMcpjsonServers"] == ["cashu-anna-test"]
 
     assert _skills_in(ws) == {
         "budget-setup",
@@ -206,7 +206,7 @@ def test_update_lifts_the_old_inbox_deny_rule_and_keeps_user_rules(client, tmp_p
     settings = _json(ws / ".claude" / "settings.json")
     settings["permissions"]["deny"] += [*old, "Read(./secret/**)"]
     (ws / ".claude" / "settings.json").write_text(json.dumps(settings))
-    manifest_path = ws / ".claude" / "finanse-workspace.json"
+    manifest_path = ws / ".claude" / "cashu-workspace.json"
     manifest = _json(manifest_path)
     for key in ("deny", "deny_rules"):
         if isinstance(manifest.get(key), list):
@@ -235,11 +235,11 @@ def test_update_keeps_user_files(client, tmp_path):
     _skill(ws / ".claude" / "skills", "my-own-skill", "mine")
     mcp = _json(ws / ".mcp.json")
     mcp["mcpServers"]["weather"] = {"command": "weather-mcp"}
-    mcp["mcpServers"]["finanse-bolek-test"] = {"command": "finanse", "args": ["mcp"]}  # copied over
+    mcp["mcpServers"]["cashu-bolek-test"] = {"command": "cashu", "args": ["mcp"]}  # copied over
     (ws / ".mcp.json").write_text(json.dumps(mcp))
     settings = _json(ws / ".claude" / "settings.json")
     settings["permissions"]["allow"].append("WebSearch")
-    settings["permissions"]["allow"].append("mcp__finanse-bolek-test__positions")
+    settings["permissions"]["allow"].append("mcp__cashu-bolek-test__positions")
     settings["permissions"]["deny"].append("Read(./secret/**)")
     settings["model"] = "opus"
     (ws / ".claude" / "settings.json").write_text(json.dumps(settings))
@@ -260,10 +260,10 @@ def test_update_keeps_user_files(client, tmp_path):
     assert (ws / "notes" / "mine.md").read_text() == "notes of the user\n"
     assert (ws / ".claude" / "skills" / "my-own-skill" / "SKILL.md").read_text().endswith("mine\n")
     servers = _json(ws / ".mcp.json")["mcpServers"]
-    assert set(servers) == {"finanse-anna-test", "weather"}  # the other profile's server is gone
+    assert set(servers) == {"cashu-anna-test", "weather"}  # the other profile's server is gone
     settings = _json(ws / ".claude" / "settings.json")
     assert "WebSearch" in settings["permissions"]["allow"]
-    assert "mcp__finanse-bolek-test__positions" not in settings["permissions"]["allow"]
+    assert "mcp__cashu-bolek-test__positions" not in settings["permissions"]["allow"]
     assert "Read(./secret/**)" in settings["permissions"]["deny"]
     assert settings["model"] == "opus"
 
@@ -272,8 +272,8 @@ def test_missing_sections_and_files_come_back(client, tmp_path):
     client.post("/api/p/anna-test/workspace", json={})
     ws = _ws(tmp_path, "anna-test")
     text = (ws / "CLAUDE.md").read_text()
-    start = text.index("<!-- finanse:begin tools -->")
-    end = text.index("<!-- finanse:end tools -->") + len("<!-- finanse:end tools -->")
+    start = text.index("<!-- cashu:begin tools -->")
+    end = text.index("<!-- cashu:end tools -->") + len("<!-- cashu:end tools -->")
     (ws / "CLAUDE.md").write_text(text[:start] + text[end:])
     (ws / ".mcp.json").unlink()
     (ws / "research").rmdir()
@@ -287,7 +287,7 @@ def test_missing_sections_and_files_come_back(client, tmp_path):
     body = client.post("/api/p/anna-test/workspace", json={}).json()
     assert body["up_to_date"]
     fixed = (ws / "CLAUDE.md").read_text()
-    order = [fixed.index(f"<!-- finanse:begin {n} -->") for n in render.SECTIONS]
+    order = [fixed.index(f"<!-- cashu:begin {n} -->") for n in render.SECTIONS]
     assert order == sorted(order)
 
 
@@ -300,7 +300,7 @@ def test_unreadable_json_is_backed_up_and_rewritten(client, tmp_path):
     ).json()["outdated"]
     body = client.post("/api/p/anna-test/workspace", json={}).json()
     assert {"kind": "mcp", "name": ".mcp.json", "action": "backed_up"} in body["changes"]
-    assert list(_json(ws / ".mcp.json")["mcpServers"]) == ["finanse-anna-test"]
+    assert list(_json(ws / ".mcp.json")["mcpServers"]) == ["cashu-anna-test"]
     backups = list((ws / service.BACKUP_DIR).rglob(".mcp.json"))
     assert len(backups) == 1 and backups[0].read_text() == "{not json"
 
@@ -312,7 +312,7 @@ def test_existing_claude_md_without_markers_keeps_the_user_text(client, tmp_path
     body = client.post("/api/p/anna-test/workspace", json={"path": str(ws)}).json()
     assert body["exists"] and body["custom"] and body["path"] == str(ws.resolve())
     text = (ws / "CLAUDE.md").read_text()
-    assert text.startswith("# Moje\n\n<!-- finanse:begin profile -->")
+    assert text.startswith("# Moje\n\n<!-- cashu:begin profile -->")
     assert text.rstrip().endswith("Tekst użytkownika.")
 
 
@@ -331,7 +331,7 @@ def test_module_changes_update_the_skill_set(client, tmp_path):
     assert "`loans_summary`" in text and "`portfolio_overview`" not in text
     assert "investments module is off" in text
     allow = _json(ws / ".claude" / "settings.json")["permissions"]["allow"]
-    assert "mcp__finanse-anna-test__loans_summary" in allow
+    assert "mcp__cashu-anna-test__loans_summary" in allow
     assert not any("portfolio_overview" in rule for rule in allow)
     assert client.get("/api/p/anna-test/workspace").json()["up_to_date"]
     # the other profile (no workspace) is untouched
@@ -390,7 +390,7 @@ def test_shipped_skill_update_replaces_an_unedited_copy(client, tmp_path):
 def test_user_folder_with_a_skill_name_is_a_conflict(client, tmp_path):
     ws = tmp_path / "ws-conflict"
     _skill(ws / ".claude" / "skills", "budget-setup", "the user's own budget skill")
-    # an identical copy (e.g. from `finanse skills install --dest`) is adopted silently
+    # an identical copy (e.g. from `cashu skills install --dest`) is adopted silently
     shutil.copytree(
         skills.source_dir() / "import-builder", ws / ".claude" / "skills" / "import-builder"
     )
@@ -437,7 +437,7 @@ def test_routine_permissions_are_opt_in(client, tmp_path):
     client.post("/api/p/anna-test/workspace", json={})
     ws = _ws(tmp_path, "anna-test")
     settings_file = ws / ".claude" / "settings.json"
-    # the user allowed WebSearch by hand: finanse never removes it
+    # the user allowed WebSearch by hand: cashU never removes it
     settings = _json(settings_file)
     settings["permissions"]["allow"].append("WebSearch")
     settings_file.write_text(json.dumps(settings))
@@ -507,7 +507,7 @@ def test_with_the_real_repo_skills(api_empty, tmp_path):
     "where, message, code",
     [
         ("relative/path", "absolute", "path_relative"),
-        ("{data}/ws", "outside the finanse data dir", "path_data_dir"),
+        ("{data}/ws", "outside the cashU data dir", "path_data_dir"),
         ("{tmp}/.hidden/ws", "hidden folder", "path_hidden"),
         ("{home}", "home folder", "path_home"),
         ("{file}", "is a file", "path_is_file"),
@@ -528,7 +528,7 @@ def test_bad_paths_are_refused(client, tmp_path, monkeypatch, where, message, co
     r = client.post("/api/p/anna-test/workspace", json={"path": raw})
     assert r.status_code == 422, r.text
     assert message in r.json()["detail"]
-    assert r.headers["X-Finanse-Error-Code"] == code
+    assert r.headers["X-Cashu-Error-Code"] == code
 
 
 def test_folder_containing_the_data_dir_is_refused(client, tmp_path):
@@ -542,7 +542,7 @@ def test_profiles_cannot_share_a_workspace(client, tmp_path):
     for target in (shared, shared / "inner"):
         r = client.post("/api/p/bolek-test/workspace", json={"path": str(target)})
         assert r.status_code == 409, r.text
-        assert r.headers["X-Finanse-Error-Code"] == "workspace_taken"
+        assert r.headers["X-Cashu-Error-Code"] == "workspace_taken"
     # Bolek's status shows his own (default) workspace, never Anna's folder
     status = client.get("/api/p/bolek-test/workspace").json()
     assert status["path"] == str(_ws(tmp_path, "bolek-test")) and status["exists"] is False
@@ -572,33 +572,33 @@ def test_unknown_profile_is_404(client):
 def test_translocated_app_is_refused(client, monkeypatch):
     monkeypatch.setattr(runtime, "translocated", lambda: True)
     r = client.post("/api/p/anna-test/workspace", json={})
-    assert r.status_code == 422 and r.headers["X-Finanse-Error-Code"] == "translocated"
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "translocated"
 
 
 def test_packaged_app_points_mcp_at_the_bundled_binary(client, tmp_path, monkeypatch):
-    exe = tmp_path / "Finanse.app" / "Contents" / "MacOS" / "finanse"
+    exe = tmp_path / "cashU.app" / "Contents" / "MacOS" / "cashu"
     monkeypatch.setattr(runtime, "frozen", lambda: True)
     monkeypatch.setattr(runtime, "executable", lambda: exe)
     client.post("/api/p/anna-test/workspace", json={})
     ws = _ws(tmp_path, "anna-test")
-    assert _json(ws / ".mcp.json")["mcpServers"]["finanse-anna-test"]["command"] == str(exe)
+    assert _json(ws / ".mcp.json")["mcpServers"]["cashu-anna-test"]["command"] == str(exe)
     assert f"`{exe} --profile anna-test ...`" in (ws / "CLAUDE.md").read_text()
 
 
 def test_source_install_points_mcp_at_the_venv_script(monkeypatch):
-    script = Path(sys.executable).parent / "finanse"
+    script = Path(sys.executable).parent / "cashu"
     if script.is_file():
         assert service.cli_program() == [str(script)]
     monkeypatch.setattr(sys, "executable", "/nonexistent/bin/python")
     monkeypatch.setattr(service.shutil, "which", lambda _name: None)
-    assert service.cli_program() == ["finanse"]
+    assert service.cli_program() == ["cashu"]
 
 
 def test_rule_paths():
-    assert render.rule_path(Path("/Users/x/Library/Application Support/finanse")) == (
-        "//Users/x/Library/Application Support/finanse"
+    assert render.rule_path(Path("/Users/x/Library/Application Support/cashU")) == (
+        "//Users/x/Library/Application Support/cashU"
     )
-    assert render.rule_path(Path("C:\\Users\\x\\AppData\\finanse")) == "//c/Users/x/AppData/finanse"
+    assert render.rule_path(Path("C:\\Users\\x\\AppData\\cashu")) == "//c/Users/x/AppData/cashu"
 
 
 # --------------------------------------------------------------------------- #
@@ -652,8 +652,8 @@ def test_cli_without_profiles(run):
 REPO_SKILLS = paths.PROJECT_ROOT / ".claude" / "skills"
 # File references that exist only in a source checkout.
 REPO_ONLY = re.compile(
-    r"src/finanse/|docs/import-format|tests/[a-z_/]+\.py|AGENTS\.md|ONBOARDING\.md"
-    r"|from finanse\.core import paths"
+    r"src/cashu/|docs/import-format|tests/[a-z_/]+\.py|AGENTS\.md|ONBOARDING\.md"
+    r"|from cashu\.core import paths"
 )
 
 
@@ -724,13 +724,58 @@ def test_status_flags_an_mcp_command_of_another_install(client, tmp_path):
     fresh = client.get("/api/p/anna-test/workspace").json()
     assert fresh["mcp_command_stale"] is False and fresh["up_to_date"]
     data = _json(ws / ".mcp.json")
-    data["mcpServers"]["finanse-anna-test"]["command"] = "/old/venv/bin/finanse"
+    data["mcpServers"]["cashu-anna-test"]["command"] = "/old/venv/bin/cashu"
     (ws / ".mcp.json").write_text(json.dumps(data), encoding="utf-8")
     stale = client.get("/api/p/anna-test/workspace").json()
     assert stale["mcp_command_stale"] is True and stale["up_to_date"] is False
     updated = client.post("/api/p/anna-test/workspace", json={}).json()
     assert updated["mcp_command_stale"] is False and updated["up_to_date"]
-    entry = _json(ws / ".mcp.json")["mcpServers"]["finanse-anna-test"]
+    entry = _json(ws / ".mcp.json")["mcpServers"]["cashu-anna-test"]
     assert entry["command"] == service.cli_program()[0]
     # no workspace yet: never stale
     assert client.get("/api/p/bolek-test/workspace").json()["mcp_command_stale"] is False
+
+
+# --------------------------------------------------------------------------- #
+# F11: a workspace written before the rename (legacy name: finanse markers, manifest, server)
+# --------------------------------------------------------------------------- #
+
+
+def test_update_rewrites_a_workspace_from_before_the_rename(client, tmp_path):
+    client.post("/api/p/anna-test/workspace", json={})
+    ws = _ws(tmp_path, "anna-test")
+    # turn it into what the old version wrote (legacy name everywhere)
+    text = (ws / "CLAUDE.md").read_text()
+    text = text.replace("<!-- cashu:", "<!-- finanse:").replace("# cashU agent workspace", "# finanse agent workspace")  # legacy name
+    (ws / "CLAUDE.md").write_text(text + "\nMy own note stays.\n")
+    manifest = _json(ws / service.MANIFEST_FILE)
+    manifest["finanse_version"] = manifest.pop("cashu_version")  # legacy name
+    (ws / service.LEGACY_MANIFEST_FILE).write_text(json.dumps(manifest))
+    (ws / service.MANIFEST_FILE).unlink()
+    mcp = _json(ws / ".mcp.json")
+    mcp["mcpServers"] = {"finanse-anna-test": {"command": "/old/venv/bin/finanse", "args": ["mcp", "--profile", "anna-test"]}, "mine": {"command": "x"}}  # legacy name
+    (ws / ".mcp.json").write_text(json.dumps(mcp))
+    settings = _json(ws / ".claude" / "settings.json")
+    settings["permissions"]["allow"] = ["mcp__finanse-anna-test__positions", "Bash(ls)"]  # legacy name
+    settings["enabledMcpjsonServers"] = ["finanse-anna-test", "mine"]  # legacy name
+    (ws / ".claude" / "settings.json").write_text(json.dumps(settings))
+
+    status = client.get("/api/p/anna-test/workspace").json()
+    assert status["exists"] and not status["up_to_date"]
+    assert {"kind": "manifest", "name": str(service.LEGACY_MANIFEST_FILE), "reason": "outdated"} in status["outdated"]
+    assert status["managed_version"]  # read from the legacy manifest key
+
+    body = client.post("/api/p/anna-test/workspace", json={}).json()
+    assert body["up_to_date"], body["outdated"]
+    text = (ws / "CLAUDE.md").read_text()
+    assert "<!-- finanse:" not in text and text.startswith("# cashU agent workspace")  # legacy name
+    assert text.count("<!-- cashu:begin profile -->") == 1 and "My own note stays." in text
+    assert not (ws / service.LEGACY_MANIFEST_FILE).exists() and (ws / service.MANIFEST_FILE).is_file()
+    servers = _json(ws / ".mcp.json")["mcpServers"]
+    assert set(servers) == {"cashu-anna-test", "mine"}
+    # the app runs on an explicit data dir in tests: the server keeps it (the old update dropped it)
+    assert servers["cashu-anna-test"]["env"] == {"CASHU_DATA_DIR": str(paths.data_dir_override())}
+    settings = _json(ws / ".claude" / "settings.json")
+    assert not any("finanse" in r for r in settings["permissions"]["allow"])  # legacy name
+    assert "Bash(ls)" in settings["permissions"]["allow"]
+    assert settings["enabledMcpjsonServers"] == ["cashu-anna-test", "mine"]

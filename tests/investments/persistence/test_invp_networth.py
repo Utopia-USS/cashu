@@ -9,12 +9,12 @@ from decimal import Decimal
 import pytest
 from invp_support import AS_OF, add_account, canonical_csv, import_file, make_profile, sources
 
-from finanse.core import networth
-from finanse.core.accounts import upsert_balance
-from finanse.core.db import get_session
-from finanse.core.models import Account, Source
-from finanse.modules.investments import networth as inv_networth
-from finanse.modules.investments.service import accounts, daily
+from cashu.core import networth
+from cashu.core.accounts import upsert_balance
+from cashu.core.db import get_session
+from cashu.core.models import Account, Source
+from cashu.modules.investments import networth as inv_networth
+from cashu.modules.investments.service import accounts, daily
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ def test_without_transactions_core_balances_apply(db_engine):
 
 def test_api_networth_includes_brokerage(priced, api_empty):
     pid, _ = priced
-    from finanse.core import profiles
+    from cashu.core import profiles
 
     with get_session() as s:
         slug = s.get(profiles.Profile, pid).slug

@@ -1,6 +1,6 @@
-# Copy shipped with this skill, generated from the finanse sources; do not edit it here.
-"""Example finanse connector (kind file, module investments): the made-up ExampleBroker JSON account
-history -> finanse-import v1 JSON (import-format.md, JSON variant).
+# Copy shipped with this skill, generated from the cashU sources; do not edit it here.
+"""Example cashU connector (kind file, module investments): the made-up ExampleBroker JSON account
+history -> cashu-import v1 JSON (import-format.md, JSON variant).
 
 Protocol (connectors.md): one JSON request on stdin, one JSON response on stdout, logs on stderr.
 Python standard library only. Error messages name the row and the field, never a value from the file.
@@ -18,7 +18,7 @@ SOURCE = "examplebroker"
 BROKER = "ExampleBroker"
 EXPORT_VERSIONS = (2,)
 
-# Broker operation kind -> finanse transaction type. An unknown kind is an error, never a guess.
+# Broker operation kind -> cashU transaction type. An unknown kind is an error, never a guess.
 TYPES = {
     "CASH_IN": "deposit",
     "CASH_OUT": "withdrawal",
@@ -155,7 +155,7 @@ def convert(path):
     records.sort(key=lambda r: (r["date"], r.get("time", "")))  # oldest first, stable
     records += positions(data.get("holdings") or {})
     print(f"converted {len(records)} records", file=sys.stderr)  # counts only, never values
-    return {"document": {"format": "finanse-import", "format_version": 1, "source": SOURCE,
+    return {"document": {"format": "cashu-import", "format_version": 1, "source": SOURCE,
                          "records": records}}
 
 

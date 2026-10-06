@@ -11,13 +11,13 @@ from uuid import uuid4
 
 import httpx
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     AssetClass,
     Currency,
     Instrument,
     InstrumentAlias,
 )
-from finanse.modules.investments.market import MarketHttp
+from cashu.modules.investments.market import MarketHttp
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "market"
 FETCHED_AT = datetime(2026, 10, 4, 18, tzinfo=UTC)

@@ -10,8 +10,8 @@ import pytest
 from invp_support import FakeFx, FakePrices, make_profile, weekdays
 from sqlmodel import select
 
-from finanse.core.db import get_session
-from finanse.modules.investments.domain import (
+from cashu.core.db import get_session
+from cashu.modules.investments.domain import (
     AliasNamespace,
     AssetClass,
     Currency,
@@ -20,15 +20,15 @@ from finanse.modules.investments.domain import (
     InstrumentAlias,
     PriceBar,
 )
-from finanse.modules.investments.market import (
+from cashu.modules.investments.market import (
     FetchReport,
     FetchStatus,
     InstrumentFetch,
     MarketDataRefresher,
     SplitEvent,
 )
-from finanse.modules.investments.models import InvPriceBar
-from finanse.modules.investments.store import convert, instruments, market
+from cashu.modules.investments.models import InvPriceBar
+from cashu.modules.investments.store import convert, instruments, market
 
 UTC = dt.UTC
 

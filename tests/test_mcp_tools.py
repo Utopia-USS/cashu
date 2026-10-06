@@ -23,12 +23,12 @@ from mcp_support import (
     write_export_xlsx,
 )
 
-from finanse.core.db import get_session
-from finanse.core.mcp import redaction
-from finanse.core.mcp.labels import Sensitivity
-from finanse.core.mcp.registry import all_tools
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.models import Profile
+from cashu.core.db import get_session
+from cashu.core.mcp import redaction
+from cashu.core.mcp.labels import Sensitivity
+from cashu.core.mcp.registry import all_tools
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.models import Profile
 
 MAPPING = """\
 delimiter: ";"
@@ -43,12 +43,12 @@ def _set_privacy(pid: int, level: str) -> None:
         s.add(p)
 
 
-def _connector_fixtures(host: FinanseMcp, tmp_path, note: str):
+def _connector_fixtures(host: CashuMcp, tmp_path, note: str):
     from connector_support import write_connector
 
-    from finanse.core.connectors import service
-    from finanse.core.connectors.runner import RunResult
-    from finanse.core.workspace import service as workspace
+    from cashu.core.connectors import service
+    from cashu.core.connectors.runner import RunResult
+    from cashu.core.workspace import service as workspace
 
     with get_session() as s:
         slug = s.get(Profile, host.profile_id).slug
@@ -60,7 +60,7 @@ def _connector_fixtures(host: FinanseMcp, tmp_path, note: str):
         "fuzz-conn",
     )
     doc = {
-        "format": "finanse-budget-import", "format_version": 1, "source": "fuzz_bank",
+        "format": "cashu-budget-import", "format_version": 1, "source": "fuzz_bank",
         "account": {"iban": "PL61109010140000071219812874", "currency": "PLN"},
         "transactions": [
             {"booking_date": "2026-10-01", "amount": "-4321.09", "currency": "PLN",
@@ -75,7 +75,7 @@ def _connector_fixtures(host: FinanseMcp, tmp_path, note: str):
     return root, budget_doc
 
 
-def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
+def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
     canonical = write_canonical(tmp_path)
     export_csv = write_export_csv(tmp_path)
     export_xlsx = write_export_xlsx(tmp_path)
@@ -100,7 +100,7 @@ def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
     assert watched.ok, watched.error
     from mcp_support import sources
 
-    from finanse.modules.investments.service import daily
+    from cashu.modules.investments.service import daily
 
     daily.run_daily_check("manual", as_of=TODAY, sources=sources())
     # Research (F6): a run in progress; notes below carry names / amounts / an IBAN in free text.
@@ -286,7 +286,7 @@ def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
 @pytest.fixture
 def fuzz(db_engine):
     pid, slug = seed_profile()
-    return pid, slug, FinanseMcp(pid, today=TODAY)
+    return pid, slug, CashuMcp(pid, today=TODAY)
 
 
 def _record_labels(monkeypatch) -> list[tuple[Sensitivity, object]]:
@@ -387,8 +387,8 @@ def test_signal_messages_are_scrubbed_in_strict(fuzz):
 def test_agent_category_never_overrides_the_owner(fuzz):
     from sqlmodel import select
 
-    from finanse.modules.budget.categorize.rules import upsert_rule
-    from finanse.modules.budget.models import Transaction
+    from cashu.modules.budget.categorize.rules import upsert_rule
+    from cashu.modules.budget.models import Transaction
 
     pid, _slug, host = fuzz
     with get_session() as s:
@@ -404,7 +404,7 @@ def test_agent_category_never_overrides_the_owner(fuzz):
     ).data
     assert learned["updated_transactions"] >= 1
     with get_session() as s:
-        from finanse.modules.budget.models import CategoryRule
+        from cashu.modules.budget.models import CategoryRule
 
         rule = s.exec(
             select(CategoryRule).where(CategoryRule.merchant_key == "ORLEN STACJA TEST")
@@ -413,7 +413,7 @@ def test_agent_category_never_overrides_the_owner(fuzz):
 
 
 def test_thesis_update_keeps_plans_not_given(fuzz):
-    from finanse.modules.investments.store import journal
+    from cashu.modules.investments.store import journal
 
     pid, _slug, host = fuzz
     host.call(
@@ -447,7 +447,7 @@ def test_owner_named_instruments_are_identifiers(fuzz):
 def test_one_word_owner_named_instrument_never_leaks(fuzz):
     from mcp_support import add_claim, investments_account_id
 
-    from finanse.modules.investments.models import InvInstrument
+    from cashu.modules.investments.models import InvInstrument
 
     pid, _slug, host = fuzz
     claim_id = add_claim(pid, investments_account_id(pid))

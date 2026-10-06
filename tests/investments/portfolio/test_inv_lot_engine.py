@@ -21,7 +21,7 @@ from inv_portfolio_fixtures import (
     transfer_out,
 )
 
-from finanse.modules.investments.domain import (
+from cashu.modules.investments.domain import (
     CashBalance,
     DatedAmount,
     HistoryGap,
@@ -35,7 +35,7 @@ from finanse.modules.investments.domain import (
     TxnType,
     UnknownCostBasis,
 )
-from finanse.modules.investments.portfolio import run_lots
+from cashu.modules.investments.portfolio import run_lots
 
 ACC = new_id()
 OTHER = new_id()

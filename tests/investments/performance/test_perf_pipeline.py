@@ -17,12 +17,12 @@ from perf_support import (
     sources,
 )
 
-from finanse.core import profiles, security
-from finanse.core.db import get_session
-from finanse.modules.investments.importing import ImportFile
-from finanse.modules.investments.models import InvInstrument
-from finanse.modules.investments.performance import backfill, service
-from finanse.modules.investments.service import daily, files, imports, portfolio
+from cashu.core import profiles, security
+from cashu.core.db import get_session
+from cashu.modules.investments.importing import ImportFile
+from cashu.modules.investments.models import InvInstrument
+from cashu.modules.investments.performance import backfill, service
+from cashu.modules.investments.service import daily, files, imports, portfolio
 
 
 @pytest.fixture
@@ -198,7 +198,7 @@ def test_unknown_proxy_symbol_is_an_error_not_an_instrument(client):
 
 
 def test_backfill_is_exclusive(client):
-    from finanse.core import locks
+    from cashu.core import locks
 
     with locks.run_lock(backfill.LOCK_NAME), pytest.raises(backfill.BackfillBusy):
         backfill.run_backfill(as_of=AS_OF, sources=sources())

@@ -54,7 +54,7 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
   const [all, setAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // the server's English detail under `err` (a finanse-format file: which rows / fields failed)
+  // the server's English detail under `err` (a cashu-format file: which rows / fields failed)
   const [errDetail, setErrDetail] = useState<string | null>(null);
   const [runErr, setRunErr] = useState<RunFailure | null>(null);
   const [done, setDone] = useState<StatementCommit | null>(null);

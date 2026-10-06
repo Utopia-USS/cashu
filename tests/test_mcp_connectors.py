@@ -11,13 +11,13 @@ import os
 import pytest
 from connector_support import ECHO_CONNECTOR, needs_python3, write_connector
 
-from finanse.core import profiles
-from finanse.core.connectors import runner, service
-from finanse.core.connectors.runner import RunResult
-from finanse.core.db import get_session
-from finanse.core.mcp.registry import all_tools
-from finanse.core.mcp.server import FinanseMcp
-from finanse.core.workspace import service as workspace
+from cashu.core import profiles
+from cashu.core.connectors import runner, service
+from cashu.core.connectors.runner import RunResult
+from cashu.core.db import get_session
+from cashu.core.mcp.registry import all_tools
+from cashu.core.mcp.server import CashuMcp
+from cashu.core.workspace import service as workspace
 
 pytestmark = needs_python3
 
@@ -39,7 +39,7 @@ def host(db_engine, monkeypatch):
     with get_session() as s:
         p = profiles.create_profile(s, name="Anna Nowak", modules_=["investments", "budget"])
         pid, slug = p.id, p.slug
-    return FinanseMcp(pid), slug
+    return CashuMcp(pid), slug
 
 
 def ws_connectors(slug: str):
@@ -59,7 +59,7 @@ def test_propose_connector_installs_pending_and_runs_nothing(host):
     with get_session() as s:
         from sqlmodel import select
 
-        from finanse.core.connectors.models import Connector, ConnectorRun
+        from cashu.core.connectors.models import Connector, ConnectorRun
 
         row = s.get(Connector, "test-fetch")
         assert row.status == "pending" and row.source == "mcp" and row.approved_sha256 is None
@@ -72,7 +72,7 @@ def test_reproposing_an_approved_connector_needs_approval_again(host):
     root = write_connector(ws_connectors(slug) / "test-conn", cid="test-conn")
     assert mcp.call("propose_connector", {"path": str(root)}).ok
     with get_session() as s:
-        from finanse.core.connectors.models import Connector
+        from cashu.core.connectors.models import Connector
 
         row = s.get(Connector, "test-conn")
         sha, interp = row.content_sha256, row.interpreter_path
@@ -91,7 +91,7 @@ def test_propose_connector_path_rules(host, tmp_path):
     linked = base / "test-conn"
     linked.symlink_to(outside, target_is_directory=True)
     hidden = write_connector(base / ".hidden-conn", cid="hidden-conn")
-    from finanse.core import paths
+    from cashu.core import paths
 
     in_data = write_connector(paths.data_dir() / "x" / "test-conn", cid="test-conn")
     cases = {
@@ -154,7 +154,7 @@ def test_connectors_tool_shows_only_this_profiles_last_run(host):
     service.record_run(RunResult("convert", "failed", "bad_file"), "test-fetch")  # a dev test run
     (item,) = mcp.call("connectors", {}).data["connectors"]
     assert item["last_run"]["command"] == "convert"
-    other_mcp = FinanseMcp(other)
+    other_mcp = CashuMcp(other)
     (item,) = other_mcp.call("connectors", {}).data["connectors"]
     assert item["last_run"]["command"] == "convert"  # never Anna's check
 
@@ -187,7 +187,7 @@ def test_inspect_export_and_budget_validation_for_a_budget_only_profile(db_engin
     with get_session() as s:
         p = profiles.create_profile(s, name="Ola Nowak", modules_=["budget"])
         pid = p.id
-    mcp = FinanseMcp(pid)
+    mcp = CashuMcp(pid)
     export = tmp_path / "statement.csv"
     export.write_text("Data;Opis;Kwota\n2026-09-01;OPEN BUY Jan Kowalski;-12,50\n", encoding="utf-8")
     result = mcp.call("inspect_export", {"path": str(export)})
@@ -195,26 +195,26 @@ def test_inspect_export_and_budget_validation_for_a_budget_only_profile(db_engin
     assert "Kowalski" not in json.dumps(result.data)
     doc = tmp_path / "doc.json"
     doc.write_text(json.dumps({
-        "format": "finanse-budget-import", "format_version": 1, "account": {"currency": "PLN"},
+        "format": "cashu-budget-import", "format_version": 1, "account": {"currency": "PLN"},
         "transactions": [{"booking_date": "2026-09-01", "amount": "-12.50", "currency": "PLN",
                           "counterparty_name": "Jan Kowalski", "transaction_id": "t1"}]}))
     ok = mcp.call("validate_budget_import", {"path": str(doc)})
     assert ok.ok and ok.data["ok"] is True and ok.data["transactions"] == 1
     assert "Kowalski" not in json.dumps(ok.data)
     assert mcp.call("validate_import", {"path": str(doc)}).error_kind == "module_disabled"
-    assert os.environ.get("FINANSE_WORKSPACES_DIR")  # never the real ~/Documents
+    assert os.environ.get("CASHU_WORKSPACES_DIR")  # never the real ~/Documents
 
 
 def test_a_headerless_csv_never_echoes_its_first_row(db_engine, tmp_path):
     """BE-11: a raw statement (first line = data) passed to the budget validation, ``inspect_export``
     and ``connectors test``: a third party's name, a transfer title, an IBAN and an amount never come
     back as column names (strict profile)."""
-    from finanse.modules.budget.ingestion.canonical import validate_budget_document
+    from cashu.modules.budget.ingestion.canonical import validate_budget_document
 
     with get_session() as s:
         p = profiles.create_profile(s, name="Ola Nowak", modules_=["budget"])
         pid = p.id
-    mcp = FinanseMcp(pid)
+    mcp = CashuMcp(pid)
     raw = ("2026-09-01,Krzysztof Wisniewski,PL61109010140000071219812874,-1234.56,"
            "Czynsz za mieszkanie\n2026-09-02,Sklep TEST,,-5.00,Zakupy\n")
     export = tmp_path / "export.csv"

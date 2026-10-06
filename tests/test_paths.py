@@ -1,4 +1,4 @@
-"""Data dir resolution, legacy repo-dir detection and `finanse migrate-data`.
+"""Data dir resolution, legacy repo-dir detection and `cashu migrate-data`.
 
 Everything runs in tmp_path: the platform default data dir and the repo's
 legacy data/ dir are both redirected, so no real data is ever touched."""
@@ -17,8 +17,8 @@ import pytest
 from typer.testing import CliRunner
 from upstream_db import make_upstream_db
 
-from finanse import db
-from finanse.core import legacy, migrations, paths
+from cashu import db
+from cashu.core import legacy, migrations, paths
 
 FIXED_NOW = dt.datetime(2026, 10, 4, 12, 30, 0, tzinfo=dt.UTC)
 
@@ -28,7 +28,7 @@ def layout(tmp_path, monkeypatch):
     """A fake repo checkout (with data/) and a fake platform data dir."""
     repo = tmp_path / "repo"
     (repo / "data").mkdir(parents=True)
-    appdata = tmp_path / "appdata" / "finanse"
+    appdata = tmp_path / "appdata" / "cashu"
     monkeypatch.setattr(paths, "PROJECT_ROOT", repo)
     monkeypatch.setattr(paths, "LEGACY_DIR", repo / "data")
     monkeypatch.setattr(paths, "default_data_dir", lambda: appdata)
@@ -74,13 +74,13 @@ def _sha(path: Path) -> str:
 def test_data_dir_override(tmp_path, monkeypatch):
     monkeypatch.setenv(paths.DATA_DIR_ENV, str(tmp_path / "custom"))
     assert paths.data_dir() == (tmp_path / "custom").resolve()
-    assert paths.db_path() == (tmp_path / "custom").resolve() / "finanse.db"
+    assert paths.db_path() == (tmp_path / "custom").resolve() / "cashu.db"
     assert paths.token_path().parent == paths.data_dir()
 
 
 def test_data_dir_override_expands_user(monkeypatch):
-    monkeypatch.setenv(paths.DATA_DIR_ENV, "~/finanse-test-dir")
-    assert paths.data_dir() == Path.home() / "finanse-test-dir"
+    monkeypatch.setenv(paths.DATA_DIR_ENV, "~/cashu-test-dir")
+    assert paths.data_dir() == Path.home() / "cashu-test-dir"
 
 
 def test_default_data_dir_uses_platformdirs_without_author(monkeypatch):
@@ -88,17 +88,17 @@ def test_default_data_dir_uses_platformdirs_without_author(monkeypatch):
 
     def fake_user_data_dir(appname, appauthor=None, roaming=False, **_):
         seen.update(appname=appname, appauthor=appauthor, roaming=roaming)
-        return "/somewhere/finanse"
+        return "/somewhere/cashu"
 
     monkeypatch.setattr(paths, "user_data_dir", fake_user_data_dir)
-    assert paths.default_data_dir() == Path("/somewhere/finanse")
-    # appauthor=False -> %APPDATA%\finanse (not finanse\finanse); roaming -> %APPDATA%
-    assert seen == {"appname": "finanse", "appauthor": False, "roaming": True}
+    assert paths.default_data_dir() == Path("/somewhere/cashu")
+    # appauthor=False -> %APPDATA%\cashU (not cashU\cashu); roaming -> %APPDATA%
+    assert seen == {"appname": "cashU", "appauthor": False, "roaming": True}
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS location")
 def test_default_data_dir_macos():
-    assert paths.default_data_dir() == Path.home() / "Library" / "Application Support" / "finanse"
+    assert paths.default_data_dir() == Path.home() / "Library" / "Application Support" / "cashU"
 
 
 def test_ensure_private_dir_is_owner_only(tmp_path):
@@ -109,7 +109,7 @@ def test_ensure_private_dir_is_owner_only(tmp_path):
 
 
 def test_engine_creates_private_db_file_lazily(tmp_path):
-    target = tmp_path / "lazy" / "finanse.db"
+    target = tmp_path / "lazy" / "cashu.db"
     engine = db.make_engine(f"sqlite:///{target}")
     assert not target.parent.exists()  # nothing created at engine construction
     with engine.connect():
@@ -128,7 +128,7 @@ def test_engine_creates_private_db_file_lazily(tmp_path):
 def test_fresh_install_uses_data_dir(layout):
     _legacy, appdata = layout
     assert not paths.legacy_mode()
-    assert paths.db_path() == appdata / "finanse.db"
+    assert paths.db_path() == appdata / "cashu.db"
     assert paths.eb_sessions_path() == appdata / "eb_sessions.json"
     assert paths.eb_key_path() == appdata / "enablebanking_private.pem"
     assert paths.legacy_notice() is None
@@ -136,34 +136,34 @@ def test_fresh_install_uses_data_dir(layout):
 
 def test_legacy_db_keeps_being_used_until_migrated(layout):
     legacy_dir, appdata = layout
-    _make_legacy_db(legacy_dir / "finanse.db")
+    _make_legacy_db(legacy_dir / paths.LEGACY_DB_FILENAME)
     assert paths.legacy_mode()
-    assert paths.db_path() == legacy_dir / "finanse.db"
+    assert paths.db_path() == legacy_dir / paths.LEGACY_DB_FILENAME
     assert paths.eb_sessions_path() == legacy_dir / "eb_sessions.json"
-    assert db.resolve_database_url() == f"sqlite:///{legacy_dir / 'finanse.db'}"
+    assert db.resolve_database_url() == f"sqlite:///{legacy_dir / paths.LEGACY_DB_FILENAME}"
     notice = paths.legacy_notice()
-    assert notice and "finanse migrate-data" in notice and str(appdata) in notice
+    assert notice and "cashu migrate-data" in notice and str(appdata) in notice
     # the API token always lives in the data dir (the Vite proxy looks there)
     assert paths.token_path() == appdata / "api-token"
 
 
 def test_data_dir_override_never_uses_legacy_files(layout, tmp_path, monkeypatch):
     legacy_dir, _appdata = layout
-    _make_legacy_db(legacy_dir / "finanse.db")
+    _make_legacy_db(legacy_dir / paths.LEGACY_DB_FILENAME)
     monkeypatch.setenv(paths.DATA_DIR_ENV, str(tmp_path / "explicit"))
     assert not paths.legacy_mode()
-    assert paths.db_path() == (tmp_path / "explicit").resolve() / "finanse.db"
+    assert paths.db_path() == (tmp_path / "explicit").resolve() / "cashu.db"
     notice = paths.legacy_notice()
-    assert notice and "FINANSE_DATA_DIR" in notice
+    assert notice and "CASHU_DATA_DIR" in notice
 
 
 def test_both_present_without_marker_prefers_data_dir(layout):
     legacy_dir, appdata = layout
-    _make_legacy_db(legacy_dir / "finanse.db")
+    _make_legacy_db(legacy_dir / paths.LEGACY_DB_FILENAME)
     appdata.mkdir(parents=True)
-    _make_legacy_db(appdata / "finanse.db")
+    _make_legacy_db(appdata / "cashu.db")
     assert not paths.legacy_mode()
-    assert paths.db_path() == appdata / "finanse.db"
+    assert paths.db_path() == appdata / "cashu.db"
     assert "--force" in (paths.legacy_notice() or "")
 
 
@@ -174,14 +174,14 @@ def test_database_url_resolution(layout, tmp_path):
     # relative paths keep resolving against the repo root (historical behaviour)
     assert db.resolve_database_url("sqlite:///x/y.db") == f"sqlite:///{paths.PROJECT_ROOT / 'x/y.db'}"
     # the old .env.example default counts as unset -> data dir (or legacy mode)
-    assert db.resolve_database_url("sqlite:///data/finanse.db") == f"sqlite:///{appdata / 'finanse.db'}"
-    assert db.resolve_database_url(None) == f"sqlite:///{appdata / 'finanse.db'}"
+    assert db.resolve_database_url("sqlite:///data/finanse.db") == f"sqlite:///{appdata / 'cashu.db'}"  # legacy name
+    assert db.resolve_database_url(None) == f"sqlite:///{appdata / 'cashu.db'}"
     assert db.resolve_database_url("sqlite://") == "sqlite://"
     assert db.resolve_database_url("postgresql://u@h/db") == "postgresql://u@h/db"
 
 
 def test_eb_key_file_resolution(layout, tmp_path):
-    from finanse.config import Settings
+    from cashu.config import Settings
 
     _legacy, appdata = layout
     assert Settings(_env_file=None).eb_key_file == appdata / "enablebanking_private.pem"
@@ -192,7 +192,7 @@ def test_eb_key_file_resolution(layout, tmp_path):
 
 
 def test_eb_sessions_saved_owner_only(layout):
-    from finanse.modules.budget.ingestion.enable_banking import state
+    from cashu.modules.budget.ingestion.enable_banking import state
 
     _legacy, appdata = layout
     state.save_session("jan", "mbank", "session-test-1")
@@ -211,7 +211,7 @@ def test_eb_sessions_saved_owner_only(layout):
 
 
 def test_eb_sessions_upstream_file_belongs_to_the_migrated_profile(layout):
-    from finanse.modules.budget.ingestion.enable_banking import state
+    from cashu.modules.budget.ingestion.enable_banking import state
 
     _legacy, appdata = layout
     appdata.mkdir(parents=True)
@@ -237,7 +237,7 @@ def test_eb_sessions_upstream_file_belongs_to_the_migrated_profile(layout):
 
 def test_migrate_copies_db_with_backup_and_switches(layout):
     legacy_dir, appdata = layout
-    src = legacy_dir / "finanse.db"
+    src = legacy_dir / paths.LEGACY_DB_FILENAME
     _make_legacy_db(src)
     (legacy_dir / "eb_sessions.json").write_text('{"mbank": "session-test"}')
     (legacy_dir / "enablebanking_private.pem").write_text("not a real key")
@@ -245,9 +245,9 @@ def test_migrate_copies_db_with_backup_and_switches(layout):
 
     result = legacy.migrate_legacy_data(now=FIXED_NOW)
 
-    dst = appdata / "finanse.db"
+    dst = appdata / "cashu.db"
     assert result.database == dst and dst.exists()
-    assert result.backup == appdata / "backups" / "finanse-legacy-20261004-123000.db"
+    assert result.backup == appdata / "backups" / "cashu-legacy-20261004-123000.db"
     assert legacy.table_counts(result.backup)["transactions"] == 1
     assert result.tables["accounts"] == 1 and result.tables["transactions"] == 1
     assert _sha(src) == before  # the original is untouched
@@ -271,7 +271,7 @@ def test_migrate_copies_db_with_backup_and_switches(layout):
 
 def test_migrate_includes_uncheckpointed_wal_content(layout):
     legacy_dir, appdata = layout
-    src = legacy_dir / "finanse.db"
+    src = legacy_dir / paths.LEGACY_DB_FILENAME
     _make_legacy_db(src, wal=True)
     live = sqlite3.connect(src)  # a running server: last write still only in -wal
     live.execute("PRAGMA wal_autocheckpoint=0")
@@ -282,20 +282,20 @@ def test_migrate_includes_uncheckpointed_wal_content(layout):
         legacy.migrate_legacy_data(now=FIXED_NOW)
     finally:
         live.close()
-    conn = sqlite3.connect(appdata / "finanse.db")
+    conn = sqlite3.connect(appdata / "cashu.db")
     assert conn.execute("SELECT reference FROM transactions").fetchone()[0] == "ZMIANA TEST"
     conn.close()
 
 
 def test_migrate_refuses_to_overwrite_without_force(layout):
     legacy_dir, appdata = layout
-    _make_legacy_db(legacy_dir / "finanse.db")
+    _make_legacy_db(legacy_dir / paths.LEGACY_DB_FILENAME)
     legacy.migrate_legacy_data(now=FIXED_NOW)
     with pytest.raises(legacy.MigrationError, match="--force"):
         legacy.migrate_legacy_data(now=FIXED_NOW)
     later = FIXED_NOW + dt.timedelta(minutes=1)
     result = legacy.migrate_legacy_data(force=True, now=later)
-    assert result.replaced_backup == appdata / "backups" / "finanse-replaced-20261004-123100.db"
+    assert result.replaced_backup == appdata / "backups" / "cashu-replaced-20261004-123100.db"
     assert result.replaced_backup.exists()
 
 
@@ -307,22 +307,22 @@ def test_migrate_without_legacy_data_fails_cleanly(layout):
 
 
 def test_cli_migrate_data_and_legacy_notice(layout, monkeypatch, tmp_path):
-    from finanse.cli import app
+    from cashu.cli import app
 
     legacy_dir, appdata = layout
-    _make_legacy_db(legacy_dir / "finanse.db")
+    _make_legacy_db(legacy_dir / paths.LEGACY_DB_FILENAME)
     engine = db.make_engine(f"sqlite:///{tmp_path / 'cli.db'}")
     monkeypatch.setattr(db, "engine", engine)
     runner = CliRunner()
 
     before = runner.invoke(app, ["init-db"])
     assert before.exit_code == 0, before.output
-    assert "Run `finanse migrate-data`" in _flat(before.stderr)
+    assert "Run `cashu migrate-data`" in _flat(before.stderr)
 
     migrated = runner.invoke(app, ["migrate-data"])
     assert migrated.exit_code == 0, migrated.output
     assert "Migrated" in migrated.stdout and "Notice" not in migrated.stderr
-    assert (appdata / "finanse.db").exists()
+    assert (appdata / "cashu.db").exists()
 
     after = runner.invoke(app, ["init-db"])
     assert after.exit_code == 0 and "Notice" not in after.stderr
@@ -345,7 +345,7 @@ def _tables(path: Path) -> set[str]:
 
 def test_legacy_notice_before_any_upgrade_says_it_will_be_upgraded(layout):
     legacy_dir, appdata = layout
-    _make_legacy_db(legacy_dir / "finanse.db")
+    _make_legacy_db(legacy_dir / paths.LEGACY_DB_FILENAME)
     notice = _flat(paths.legacy_notice() or "")
     assert "untouched" not in notice
     assert "upgrades it in place" in notice and str(appdata / "backups") in notice
@@ -353,7 +353,7 @@ def test_legacy_notice_before_any_upgrade_says_it_will_be_upgraded(layout):
 
 def test_legacy_mode_upgrade_backs_up_into_the_data_dir_first(layout):
     legacy_dir, appdata = layout
-    src = legacy_dir / "finanse.db"
+    src = legacy_dir / paths.LEGACY_DB_FILENAME
     _make_legacy_db(src)
     upstream_tables = _tables(src)
     engine = db.make_engine(db.resolve_database_url(None))
@@ -362,7 +362,7 @@ def test_legacy_mode_upgrade_backs_up_into_the_data_dir_first(layout):
     finally:
         engine.dispose()
     assert "profiles" in _tables(src)  # upgraded in place (what this version needs)
-    (copy,) = (appdata / "backups").glob("finanse-legacy-pre-*.db")
+    (copy,) = (appdata / "backups").glob("cashu-legacy-pre-*.db")
     assert migrations.last_backup == copy
     assert _tables(copy) == upstream_tables  # the pristine upstream shape
     assert legacy.table_counts(copy)["transactions"] == 1
@@ -370,24 +370,24 @@ def test_legacy_mode_upgrade_backs_up_into_the_data_dir_first(layout):
     assert paths.legacy_mode()  # a backups/ dir does not end legacy mode
     notice = _flat(paths.legacy_notice() or "")
     assert "untouched" not in notice and "upgraded" in notice and str(copy) in notice
-    assert "finanse migrate-data" in notice
+    assert "cashu migrate-data" in notice
 
 
 def test_migrate_data_after_an_in_place_upgrade_points_at_the_clean_copy(layout):
     legacy_dir, appdata = layout
-    src = legacy_dir / "finanse.db"
+    src = legacy_dir / paths.LEGACY_DB_FILENAME
     _make_legacy_db(src)
     engine = db.make_engine(db.resolve_database_url(None))
     migrations.upgrade_to_head(engine)
     engine.dispose()
-    (copy,) = (appdata / "backups").glob("finanse-legacy-pre-*.db")
+    (copy,) = (appdata / "backups").glob("cashu-legacy-pre-*.db")
 
     result = legacy.migrate_legacy_data(now=FIXED_NOW)
     assert result.upgraded_in_place and result.pre_upgrade_backup == copy
 
     fresh = legacy_dir.parent / "data2"
     fresh.mkdir()
-    _make_legacy_db(fresh / "finanse.db")
+    _make_legacy_db(fresh / paths.LEGACY_DB_FILENAME)
     untouched = legacy.migrate_legacy_data(
         legacy_dir=fresh, target_dir=appdata.parent / "other", now=FIXED_NOW
     )
@@ -398,10 +398,10 @@ def test_migrate_data_rescues_a_clean_copy_kept_inside_the_repo(layout):
     """Older builds wrote the pre-upgrade backup to <repo>/data/backups/, which the
     user deletes after migrate-data: it is copied into the data dir first."""
     legacy_dir, appdata = layout
-    src = legacy_dir / "finanse.db"
+    src = legacy_dir / paths.LEGACY_DB_FILENAME
     _make_legacy_db(src)
     old = legacy.backup_sqlite(
-        src, legacy_dir / "backups" / "finanse-pre-0004_x-20261001-080000.db"
+        src, legacy_dir / "backups" / "finanse-pre-0004_x-20261001-080000.db"  # legacy name
     )
     old_tables = _tables(old)
     engine = db.make_engine(f"sqlite:///{src}")
@@ -421,17 +421,17 @@ def test_cli_migrate_data_never_says_untouched_after_an_in_place_upgrade(
 ):
     from rich.console import Console
 
-    from finanse.cli import app
-    from finanse.core import cliutil
+    from cashu.cli import app
+    from cashu.core import cliutil
 
     legacy_dir, appdata = layout
-    _make_legacy_db(legacy_dir / "finanse.db")
+    _make_legacy_db(legacy_dir / paths.LEGACY_DB_FILENAME)
     engine = db.make_engine(db.resolve_database_url(None))
     monkeypatch.setattr(db, "engine", engine)
     monkeypatch.setattr(cliutil, "console", Console(width=1000, color_system=None))
     runner = CliRunner()
-    assert runner.invoke(app, ["init-db"]).exit_code == 0  # e.g. `finanse serve` first
-    (copy,) = (appdata / "backups").glob("finanse-legacy-pre-*.db")
+    assert runner.invoke(app, ["init-db"]).exit_code == 0  # e.g. `cashu serve` first
+    (copy,) = (appdata / "backups").glob("cashu-legacy-pre-*.db")
     out = runner.invoke(app, ["migrate-data"])
     engine.dispose()
     text = _flat(out.stdout)
