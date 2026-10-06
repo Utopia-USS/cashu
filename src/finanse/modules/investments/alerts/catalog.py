@@ -11,6 +11,8 @@ expression language), never price predictions.
 | ``sma_cross`` | instrument | ``window_days`` (default 200), ``direction`` above / below |
 | ``weight_above`` / ``weight_below`` | instrument or bucket | ``threshold`` (0 < t <= 1), ``bucket`` for scope bucket |
 | ``custom`` | instrument, portfolio or bucket | ``expression`` (EXPRESSIONS.md), ``bucket`` for scope bucket |
+| ``range_breakout`` | instrument | ``window_days`` (10-260, default 30), ``max_range_pct`` (fraction, 0.01-0.30, default 0.08), ``direction`` up / down / any |
+| ``volume_spike`` | instrument | ``window_days`` (5-260, default 20), ``multiple`` (1.5-20, default 2.5) |
 
 ``window_days`` counts daily bars (trading sessions), like the ``drawdown_from_high`` rule; the daily
 refresh keeps about 400 calendar days, so windows are capped at :data:`MAX_WINDOW_DAYS`.
@@ -37,6 +39,8 @@ class AlertKind(StrEnum):
     WEIGHT_ABOVE = "weight_above"
     WEIGHT_BELOW = "weight_below"
     CUSTOM = "custom"
+    RANGE_BREAKOUT = "range_breakout"
+    VOLUME_SPIKE = "volume_spike"
 
 
 class AlertScope(StrEnum):
@@ -85,8 +89,19 @@ PRICE_KINDS = (
     AlertKind.DRAWDOWN_FROM_HIGH,
     AlertKind.NEW_HIGH,
     AlertKind.SMA_CROSS,
+    AlertKind.RANGE_BREAKOUT,
+    AlertKind.VOLUME_SPIKE,
 )
 """Kinds that read one instrument's price series (scope instrument only)."""
+
+BREAKOUT_WINDOW = (10, MAX_WINDOW_DAYS, 30)
+"""``range_breakout`` window in sessions: minimum, maximum, default."""
+BREAKOUT_RANGE = (0.01, 0.30, 0.08)
+"""``range_breakout`` ``max_range_pct`` (a fraction): minimum, maximum, default."""
+VOLUME_WINDOW = (5, MAX_WINDOW_DAYS, 20)
+"""``volume_spike`` window in sessions: minimum, maximum, default."""
+VOLUME_MULTIPLE = (1.5, 20.0, 2.5)
+"""``volume_spike`` ``multiple`` of the average volume: minimum, maximum, default."""
 WEIGHT_KINDS = (AlertKind.WEIGHT_ABOVE, AlertKind.WEIGHT_BELOW)
 
 
@@ -248,6 +263,69 @@ CATALOG: dict[AlertKind, KindInfo] = {
             _BUCKET,
         ),
     ),
+    AlertKind.RANGE_BREAKOUT: KindInfo(
+        AlertKind.RANGE_BREAKOUT,
+        (AlertScope.INSTRUMENT,),
+        "The last close leaves the min / max close of the previous window_days sessions while that "
+        "range ((max - min) / min) was at most max_range_pct: a break out of a consolidation. A "
+        "one-session event (the next window contains the break).",
+        "price",
+        (
+            ParamInfo(
+                "window_days",
+                "integer",
+                False,
+                "sessions before the last one that form the range",
+                BREAKOUT_WINDOW[2],
+                BREAKOUT_WINDOW[0],
+                BREAKOUT_WINDOW[1],
+            ),
+            ParamInfo(
+                "max_range_pct",
+                "number",
+                False,
+                "widest range that counts as a consolidation, a fraction (0.08 = 8%)",
+                BREAKOUT_RANGE[2],
+                BREAKOUT_RANGE[0],
+                BREAKOUT_RANGE[1],
+            ),
+            ParamInfo(
+                "direction",
+                "choice",
+                False,
+                "up, down or any",
+                "any",
+                choices=("up", "down", "any"),
+            ),
+        ),
+    ),
+    AlertKind.VOLUME_SPIKE: KindInfo(
+        AlertKind.VOLUME_SPIKE,
+        (AlertScope.INSTRUMENT,),
+        "The last session's volume is at least multiple times the average volume of the previous "
+        "window_days sessions.",
+        "ratio",
+        (
+            ParamInfo(
+                "window_days",
+                "integer",
+                False,
+                "sessions before the last one that form the average",
+                VOLUME_WINDOW[2],
+                VOLUME_WINDOW[0],
+                VOLUME_WINDOW[1],
+            ),
+            ParamInfo(
+                "multiple",
+                "number",
+                False,
+                "volume as a multiple of the average (2.5 = 2.5x)",
+                VOLUME_MULTIPLE[2],
+                VOLUME_MULTIPLE[0],
+                VOLUME_MULTIPLE[1],
+            ),
+        ),
+    ),
 }
 
 KINDS = tuple(k.value for k in AlertKind)
@@ -379,6 +457,25 @@ def validate(
             out["direction"] = _choice(reader, "direction", ("above", "below"), None)
         case AlertKind.WEIGHT_ABOVE | AlertKind.WEIGHT_BELOW:
             out["threshold"] = reader.number("threshold", minimum=0, maximum=1, exclusive_min=True)
+        case AlertKind.RANGE_BREAKOUT:
+            low, high, default = BREAKOUT_WINDOW
+            out["window_days"] = reader.integer(
+                "window_days", fallback=default, minimum=low, maximum=high
+            )
+            low_r, high_r, default_r = BREAKOUT_RANGE
+            out["max_range_pct"] = reader.number(
+                "max_range_pct", fallback=default_r, minimum=low_r, maximum=high_r
+            )
+            out["direction"] = _choice(reader, "direction", ("up", "down", "any"), "any")
+        case AlertKind.VOLUME_SPIKE:
+            low, high, default = VOLUME_WINDOW
+            out["window_days"] = reader.integer(
+                "window_days", fallback=default, minimum=low, maximum=high
+            )
+            low_m, high_m, default_m = VOLUME_MULTIPLE
+            out["multiple"] = reader.number(
+                "multiple", fallback=default_m, minimum=low_m, maximum=high_m
+            )
         case AlertKind.CUSTOM:
             expression = reader.optional_string("expression")
             if expression is None or not expression.strip():

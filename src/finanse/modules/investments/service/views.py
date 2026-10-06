@@ -893,8 +893,13 @@ def _number(text: str | None) -> float | None:
 
 
 def alert_dict(
-    row: InvAlert, instrument: Instrument | None = None, open_signal: InvSignal | None = None
+    row: InvAlert,
+    instrument: Instrument | None = None,
+    open_signal: InvSignal | None = None,
+    state: dict | None = None,
 ) -> dict:
+    """``state``: what the last stored bars say about a ``range_breakout`` (the range) or a
+    ``volume_spike`` (the average volume) alert, from :func:`alert_states`; None for other kinds."""
     info = CATALOG.get(row.kind)  # StrEnum keys match their wire names
     return {
         "id": row.id,
@@ -930,6 +935,7 @@ def alert_dict(
         "last_triggered_at": iso(row.last_triggered_at),
         "last_checked_at": iso(row.last_checked_at),
         "last_value": _number(row.last_value),
+        "state": state,
         "signal": None
         if open_signal is None
         else {
@@ -947,6 +953,82 @@ def alert_dict(
 
 
 ALERT_STATUS_ORDER = {"triggered": 0, "active": 1, "snoozed": 2, "muted": 3, "expired": 4}
+STATE_KINDS = ("range_breakout", "volume_spike")
+"""Alert kinds whose level is computed per run: ``alert_dict.state`` echoes it (F8, home-v3 11)."""
+
+
+def _state_of(kind: str, details: dict) -> dict | None:
+    if kind == "range_breakout":
+        low, high, close = (
+            _number(details.get("range_low")),
+            _number(details.get("range_high")),
+            _number(details.get("close")),
+        )
+        if low is None or high is None or close is None:
+            return None
+        return {
+            "range_low": low,
+            "range_high": high,
+            "range_pct": details.get("range_pct"),
+            "close": close,
+            "currency": details.get("currency"),
+            "window_days": details.get("window_days"),
+        }
+    if kind == "volume_spike":
+        if details.get("average_volume") is None:
+            return None
+        return {
+            "average_volume": details.get("average_volume"),
+            "volume": details.get("volume"),
+            "ratio": details.get("ratio"),
+            "window_days": details.get("window_days"),
+        }
+    return None
+
+
+def alert_states(
+    session: Session,
+    profile: Profile,
+    rows: Iterable[InvAlert],
+    *,
+    loaded: dict | None = None,
+    as_of: dt.date | None = None,
+) -> dict[int, dict]:
+    """The computed level of each ``range_breakout`` / ``volume_spike`` alert from the stored bars
+    (the same evaluation as the daily check, any price age): ``{alert id: state}``; an alert whose
+    series cannot be judged (too short, no volume) is left out."""
+    from ..alerts import AlertData, evaluate_alert
+    from ..store import instruments as instrument_store
+    from . import alerts as alert_service
+
+    wanted = [r for r in rows if r.kind in STATE_KINDS and r.instrument_id is not None]
+    if not wanted:
+        return {}
+    as_of = as_of or portfolio.today()
+    ids = {r.instrument_id for r in wanted}
+    if loaded is None:
+        loaded = instrument_store.load(session, ids, profile_id=profile.id)
+    bars = market.bars(
+        session,
+        ids,
+        until=as_of,
+        since=as_of - dt.timedelta(days=alert_service.BAR_HISTORY_DAYS),
+    )
+    data = AlertData(as_of=as_of, bars=bars, max_price_age_days=10_000)
+    out: dict[int, dict] = {}
+    for row in wanted:
+        instrument = loaded.get(row.instrument_id)
+        if instrument is None:
+            continue
+        outcome = evaluate_alert(alert_service.definition(row, instrument), data).outcome
+        if isinstance(outcome, Fired):
+            details = dict(outcome.candidate.payload)
+        else:
+            details = dict(getattr(outcome, "details", None) or {})
+        state = _state_of(row.kind, details)
+        if state is not None and row.id is not None:
+            out[row.id] = state
+    return out
 
 
 def alerts_view(
@@ -961,10 +1043,14 @@ def alerts_view(
         session, {r.instrument_id for r in rows if r.instrument_id}, profile_id=profile.id
     )
     open_signals = alert_store.open_alert_signals(session, profile.id)
+    states = alert_states(session, profile, rows, loaded=loaded)
     rows.sort(key=lambda r: (ALERT_STATUS_ORDER.get(r.status, 9), -(r.id or 0)))
     return [
         alert_dict(
-            r, loaded.get(r.instrument_id) if r.instrument_id else None, open_signals.get(r.id)
+            r,
+            loaded.get(r.instrument_id) if r.instrument_id else None,
+            open_signals.get(r.id),
+            states.get(r.id),
         )
         for r in rows
     ]
@@ -978,8 +1064,16 @@ def one_alert(session: Session, profile: Profile, row: InvAlert) -> dict:
         if row.instrument_id
         else None
     )
+    states = (
+        alert_states(session, profile, [row], loaded={row.instrument_id: instrument})
+        if instrument is not None
+        else {}
+    )
     return alert_dict(
-        row, instrument, alert_store.open_alert_signals(session, profile.id).get(row.id)
+        row,
+        instrument,
+        alert_store.open_alert_signals(session, profile.id).get(row.id),
+        states.get(row.id),
     )
 
 
@@ -1021,6 +1115,21 @@ def _alert_level(row: InvAlert, check) -> Decimal | None:
             high = number("high")
             threshold = Decimal(str((row.params or {}).get("threshold", 0)))
             return None if high is None else high * (1 - threshold)
+        case "range_breakout":
+            # the edge the close would have to leave (the nearer one for direction any)
+            low, high, close = number("range_low"), number("range_high"), number("close")
+            direction = (row.params or {}).get("direction", "any")
+            if low is None or high is None or close is None:
+                return None
+            # a range wider than the limit cannot break out yet: no level (F8 review BE-4)
+            width, limit = number("range_pct"), number("max_range_pct")
+            if width is not None and limit is not None and width > limit + Decimal("1e-9"):
+                return None
+            if direction == "up":
+                return high
+            if direction == "down":
+                return low
+            return high if abs(high - close) <= abs(close - low) else low
     return None
 
 

@@ -27,6 +27,8 @@ _KINDS = [
     "weight_above",
     "weight_below",
     "custom",
+    "range_breakout",
+    "volume_spike",
 ]
 _STATUS = ["all", "live", "active", "triggered", "snoozed", "muted", "expired"]
 
@@ -69,6 +71,10 @@ def _params(ctx: ToolContext, kind: str, params: dict, private: bool) -> dict:
         out["window_days"] = L.count(params.get("window_days"))
     if "direction" in params:
         out["direction"] = L.category(params.get("direction"))
+    if "max_range_pct" in params:
+        out["max_range_pct"] = L.pct(params.get("max_range_pct"))
+    if "multiple" in params:
+        out["multiple"] = L.pct(params.get("multiple"))
     if "bucket" in params:
         out["bucket"] = L.category(params.get("bucket"))
     if "expression" in params:
@@ -88,6 +94,7 @@ def _alert(ctx: ToolContext, row: dict, owned: set[int]) -> dict:
     else:
         last_value = L.pct(None)
     signal = row.get("signal")
+    state = row.get("state")
     return {
         "alert_id": L.ref(row["id"]),
         "kind": L.category(row["kind"]),
@@ -108,6 +115,7 @@ def _alert(ctx: ToolContext, row: dict, owned: set[int]) -> dict:
         "last_triggered_at": L.date(row.get("last_triggered_at")),
         "last_checked_at": L.date(row.get("last_checked_at")),
         "last_value": last_value,
+        "state": _state(row["kind"], state, private),
         "created_at": L.date(row.get("created_at")),
         "signal": None
         if signal is None
@@ -124,6 +132,26 @@ def _alert(ctx: ToolContext, row: dict, owned: set[int]) -> dict:
             else L.text(signal.get("message")),
         },
     }
+
+
+def _state(kind: str, state: dict | None, private: bool) -> dict | None:
+    """The computed level of a range_breakout (the range) or volume_spike (the volume multiple)
+    alert; raw volumes never leave (only the ratio)."""
+    if not state:
+        return None
+    if kind == "range_breakout":
+        return {
+            "range_low": _price(state.get("range_low"), private),
+            "range_high": _price(state.get("range_high"), private),
+            "range_pct": L.pct(state.get("range_pct")),
+            "window_days": L.count(state.get("window_days")),
+        }
+    if kind == "volume_spike":
+        return {
+            "ratio": L.pct(state.get("ratio")),
+            "window_days": L.count(state.get("window_days")),
+        }
+    return None
 
 
 def _limits(ctx: ToolContext) -> dict:
@@ -151,7 +179,10 @@ def alerts(ctx: ToolContext, status: str = "live") -> dict:
         "note": L.text(
             "alerts are conditions on stored prices and weights, checked by the daily run; a "
             "triggered alert is a signal (rule alert:<id>) with the alert's polarity and severity; "
-            "threshold and weights are fractions (0.1 = 10%), levels are in the instrument's currency"
+            "threshold and weights are fractions (0.1 = 10%), levels are in the instrument's "
+            "currency; range_breakout: max_range_pct and range_pct are fractions, state gives the "
+            "range of the last window; volume_spike: multiple, last_value and state.ratio are "
+            "multiples of the average volume (2.5 = 2.5x)"
         ),
     }
 
@@ -203,9 +234,7 @@ def add_alert(
     except alert_service.AlertError as e:
         raise ToolError(str(e)) from None
     return {
-        "alert": _alert(
-            ctx, views.one_alert(ctx.session, ctx.profile, row), owner_named_ids(ctx)
-        ),
+        "alert": _alert(ctx, views.one_alert(ctx.session, ctx.profile, row), owner_named_ids(ctx)),
         "limits": _limits(ctx),
         "note": L.text(
             "created as active (source agent); the daily run checks it, the owner sees it badged in "
@@ -266,7 +295,9 @@ def watchlist(ctx: ToolContext) -> dict:
     _alerts, views, _watch = _services()
     owned = owner_named_ids(ctx)
     return {
-        "items": [_watch_row(r, owned, ctx) for r in views.watchlist_view(ctx.session, ctx.profile)],
+        "items": [
+            _watch_row(r, owned, ctx) for r in views.watchlist_view(ctx.session, ctx.profile)
+        ],
         "note": L.text(
             "watched instruments join the daily price refresh; changes and distances are fractions "
             "(0.05 = 5%) from stored closes, never forecasts"
@@ -341,7 +372,10 @@ TOOLS = (
         "{level}, change_pct {window_days, threshold, direction up|down|any}, drawdown_from_high "
         "{window_days, threshold}, new_high {window_days}, sma_cross {window_days, direction "
         "above|below}, weight_above / weight_below {threshold, bucket?}, custom {expression, "
-        "bucket?}. instrument: id, symbol, ISIN or Yahoo symbol of a held or watched instrument "
+        "bucket?}, range_breakout {window_days 10-260 (30), max_range_pct 0.01-0.30 (0.08), "
+        "direction up|down|any} (the close leaves a narrow range of the previous sessions), "
+        "volume_spike {window_days 5-260 (20), multiple 1.5-20 (2.5)} (volume vs its average). "
+        "instrument: id, symbol, ISIN or Yahoo symbol of a held or watched instrument "
         "(add_to_watchlist first). Thresholds are fractions (0.1 = 10%), window_days counts "
         "sessions. At most 50 live agent alerts per profile. Conditions on hard data only.",
         add_alert,

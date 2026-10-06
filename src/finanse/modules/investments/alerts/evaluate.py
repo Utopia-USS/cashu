@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from ..domain import (
     AssetClass,
@@ -140,6 +140,10 @@ def _evaluate(alert: AlertDefinition, data: AlertData) -> AlertCheck:
             return _weight(alert, data)
         case AlertKind.CUSTOM:
             return _custom(alert, data)
+        case AlertKind.RANGE_BREAKOUT:
+            return _range_breakout(alert, data)
+        case AlertKind.VOLUME_SPIKE:
+            return _volume_spike(alert, data)
     raise AssertionError(f"unknown alert kind {alert.kind}")  # pragma: no cover
 
 
@@ -378,6 +382,107 @@ def _sma_cross(alert: AlertDefinition, data: AlertData) -> AlertCheck:
         f"({_shown(sma.quantize(Decimal('0.0001')))})."
     )
     return _fired(alert, detail, payload, last.close)
+
+
+def _range_breakout(alert: AlertDefinition, data: AlertData) -> AlertCheck:
+    """The last close leaves the min / max close of the previous ``window_days`` sessions while that
+    range was narrow (at most ``max_range_pct`` of its low)."""
+    window_days = int(alert.params.get("window_days", 30))
+    window = _series(alert, data, window_days + 1)
+    if isinstance(window, str):
+        return _skip(alert, window)
+    last, previous = window[-1], window[:-1]
+    low = min(b.close for b in previous)
+    high = max(b.close for b in previous)
+    range_pct = (high - low) / low
+    max_range = Decimal(str(alert.params.get("max_range_pct", 0.08)))
+    direction = str(alert.params.get("direction", "any"))
+    eps = Decimal(str(RATIO_EPSILON))
+    narrow = range_pct <= max_range + eps
+    if last.close > high:
+        side, edge = "up", high
+    elif last.close < low:
+        side, edge = "down", low
+    else:
+        side, edge = None, None
+    breakout = None if edge is None else last.close / edge - 1
+    cur = _currency(alert.instrument, last)
+    payload = {
+        **_base_payload(alert),
+        "close": _price(last.close),
+        "price_date": last.date.isoformat(),
+        "currency": cur,
+        "range_low": _price(low),
+        "range_high": _price(high),
+        "range_pct": float(range_pct),
+        "window_days": window_days,
+        "max_range_pct": float(max_range),
+        "direction": direction,
+        "breakout_pct": None if breakout is None else float(breakout),
+        "unit": "price",
+    }
+    hit = narrow and side is not None and direction in ("any", side)
+    if not hit:
+        return _not_fired(alert, payload, last.close)
+    assert breakout is not None and edge is not None
+    # under 0,05 % the percent would read "+0,0 %" (F8 review BE-7)
+    size = (
+        "tuż"
+        if abs(breakout) < Decimal("0.0005")
+        else f"{'+' if breakout > 0 else '-'}{format_pct(float(abs(breakout)))}"
+    )
+    detail = (
+        f"{_label(alert.instrument)}: wybicie z konsolidacji {window_days} sesji, "
+        f"{size} {'nad' if side == 'up' else 'pod'} "
+        f"{_shown(edge)} {cur} (zamknięcie {_shown(last.close)} {cur}, {last.date})."
+    )
+    return _fired(alert, detail, payload, last.close)
+
+
+def _volume_spike(alert: AlertDefinition, data: AlertData) -> AlertCheck:
+    """The last session's volume is at least ``multiple`` times the average volume of the previous
+    ``window_days`` sessions."""
+    window_days = int(alert.params.get("window_days", 20))
+    window = _series(alert, data, window_days + 1)
+    if isinstance(window, str):
+        return _skip(alert, window)
+    label = _label(alert.instrument)
+    if any(b.volume is None for b in window):
+        return _skip(alert, f"Brak wolumenu w oknie: {label} (źródło cen go nie podaje)")
+    last, previous = window[-1], window[:-1]
+    average = sum(int(b.volume) for b in previous) / len(previous)  # type: ignore[arg-type]
+    if average <= 0:
+        return _skip(alert, f"Zerowy średni wolumen w oknie: {label}")
+    ratio = int(last.volume) / average  # type: ignore[arg-type]
+    multiple = float(alert.params.get("multiple", 2.5))
+    cur = _currency(alert.instrument, last)
+    payload = {
+        **_base_payload(alert),
+        "volume": int(last.volume),  # type: ignore[arg-type]
+        "average_volume": round(average, 2),
+        "ratio": round(ratio, 6),
+        "multiple": multiple,
+        "window_days": window_days,
+        "close": _price(last.close),
+        "price_date": last.date.isoformat(),
+        "currency": cur,
+        "unit": "ratio",
+    }
+    value = Decimal(str(round(ratio, 6)))
+    if ratio < multiple - RATIO_EPSILON:
+        return _not_fired(alert, payload, value)
+    detail = (
+        f"{label}: wolumen {_multiple(ratio)} średniej z {window_days} sesji "
+        f"(zamknięcie {_shown(last.close)} {cur}, {last.date})."
+    )
+    return _fired(alert, detail, payload, value)
+
+
+def _multiple(ratio: float) -> str:
+    """``3,4x`` (one decimal, Polish comma, no space)."""
+    return f"{Decimal(str(ratio)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}x".replace(
+        ".", ","
+    )
 
 
 # --------------------------------------------------------------------------- #

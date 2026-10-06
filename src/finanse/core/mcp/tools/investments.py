@@ -501,6 +501,21 @@ def _measure(ctx: ToolContext, kind: str, payload: dict, private: bool = False) 
             "threshold": L.count(allowed or None),
             "unit": L.category("days"),
         }
+    if kind == "alert:range_breakout":
+        # the range width vs its limit, and how far the close left it (fractions; F8 review BE-3)
+        return {
+            "measured": L.pct(payload.get("range_pct")),
+            "threshold": L.pct(payload.get("max_range_pct")),
+            "unit": L.category("ratio"),
+            "breakout": L.pct(payload.get("breakout_pct")),
+        }
+    if kind == "alert:volume_spike":
+        # the last volume as a multiple of its average (the strict redactor scrubs it in the message)
+        return {
+            "measured": L.pct(payload.get("ratio")),
+            "threshold": L.pct(payload.get("multiple")),
+            "unit": L.category("multiple"),
+        }
     if kind in ("custom", "alert:custom"):
         from finanse.modules.investments.rules.expr.catalog import METRICS, Unit
 

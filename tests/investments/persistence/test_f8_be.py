@@ -1,11 +1,13 @@
 """F8 backend (home v3): signal freshness (``current``, the ``max_unverified_days`` expiry, alerts
-re-armed and ``last_checked_at`` only on real checks) and unread research notes (``read_at``, the
-``POST research/read`` mark, counts on notes / summary / positions / watchlist, profile isolation).
-Synthetic data and fake sources only."""
+re-armed and ``last_checked_at`` only on real checks), unread research notes (``read_at``, the
+``POST research/read`` mark, counts on notes / summary / positions / watchlist, profile isolation) and
+the new alert kinds through the API (catalog, ``state``, signals) and MCP strict mode. Synthetic data
+and fake sources only."""
 
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 
 import pytest
 from invp_support import (
@@ -27,6 +29,7 @@ from finanse.modules.investments.market import SourceException
 from finanse.modules.investments.models import (
     InvAlert,
     InvInstrument,
+    InvPriceBar,
     InvResearchNote,
     InvSignal,
 )
@@ -347,3 +350,171 @@ def test_research_read_validation_and_isolation(api_investor):
     assert r.status_code == 404 and r.headers["X-Finanse-Error-Code"] == "not_found"
     assert client.post(f"{other}/research/read", json={"ids": [note_id]}).json() == {"marked": 0}
     assert client.get(f"{api}/research").json()[0]["unread"] is True
+
+
+# --- new alert kinds through the API and MCP ------------------------------------------------------
+
+
+def _set_bars(symbol: str, closes: list[str], volumes: list[int] | None = None) -> None:
+    """Replace the instrument's stored bars with ``closes`` ending on AS_OF (weekdays back)."""
+    iid = instrument_id(symbol)
+    days: list[dt.date] = []
+    day = AS_OF
+    while len(days) < len(closes):
+        if day.weekday() < 5:
+            days.append(day)
+        day -= dt.timedelta(days=1)
+    days.reverse()
+    with get_session() as s:
+        for bar in s.exec(select(InvPriceBar).where(InvPriceBar.instrument_id == iid)).all():
+            s.delete(bar)
+        s.flush()
+        for i, (d, c) in enumerate(zip(days, closes, strict=True)):
+            s.add(
+                InvPriceBar(
+                    instrument_id=iid,
+                    date=d,
+                    close=Decimal(c),
+                    volume=None if volumes is None else volumes[i],
+                    currency="USD",
+                    source="yahoo",
+                )
+            )
+
+
+def test_new_kinds_through_the_api(api_investor):
+    client, pid, slug = api_investor
+    api = f"/api/p/{slug}/investments"
+    kinds = {k["kind"]: k for k in client.get(f"{api}/alert-kinds").json()["kinds"]}
+    assert {"range_breakout", "volume_spike"} <= set(kinds)
+    xmpl = instrument_id("XMPL")
+    r = client.post(
+        f"{api}/alerts",
+        json={"kind": "range_breakout", "params": {"max_range_pct": 0.5}, "instrument_id": xmpl,
+              "title": "XMPL wybicie"},
+    )  # fmt: skip
+    assert r.status_code == 422 and "max_range_pct" in r.text
+    created = client.post(
+        f"{api}/alerts",
+        json={"kind": "range_breakout", "params": {"window_days": 10}, "instrument_id": xmpl,
+              "title": "XMPL wybicie", "polarity": "positive"},
+    )  # fmt: skip
+    assert created.status_code == 201, created.text
+    alert = created.json()
+    assert alert["params"] == {"window_days": 10, "max_range_pct": 0.08, "direction": "any"}
+    assert alert["unit"] == "price" and alert["state"] is None  # no bars yet
+    volume = client.post(
+        f"{api}/alerts",
+        json={"kind": "volume_spike", "params": {"window_days": 5}, "instrument_id": xmpl,
+              "title": "XMPL wolumen"},
+    ).json()  # fmt: skip
+
+    _set_bars("XMPL", ["10", "10.2", "10.4", "10.1", "10.3", "10", "10.2", "10.1", "10.3", "10.2",
+                       "11"], [1000] * 10 + [3000])  # fmt: skip
+    listed = {a["id"]: a for a in client.get(f"{api}/alerts").json()}
+    state = listed[alert["id"]]["state"]
+    assert (state["range_low"], state["range_high"], state["close"]) == (10.0, 10.4, 11.0)
+    assert state["window_days"] == 10 and state["currency"] == "USD"
+    assert listed[volume["id"]]["state"] == {
+        "average_volume": 1000.0,
+        "volume": 3000,
+        "ratio": 3.0,
+        "window_days": 5,
+    }
+    one = client.patch(f"{api}/alerts/{volume['id']}", json={"title": "XMPL wolumen 2"}).json()
+    assert one["state"]["ratio"] == 3.0
+
+    with get_session() as s:
+        profile = s.get(Profile, pid)
+        run_result = alert_service.evaluate_profile(
+            s, profile, as_of=AS_OF, now=T0, ctx=None, config=None, run_id=None
+        )
+    assert run_result.stats["alerts_fired"] == 2
+    sigs = {r["kind"]: r for r in client.get(f"{api}/signals").json()}
+    breakout = sigs["alert:range_breakout"]
+    assert breakout["message_code"] == "alert.range_breakout"
+    assert breakout["payload"]["range_high"] == "10.4"
+    assert breakout["payload"]["breakout_pct"] == pytest.approx(11 / 10.4 - 1)
+    assert "wybicie z konsolidacji 10 sesji" in breakout["message"]
+    spike = sigs["alert:volume_spike"]
+    assert spike["message_params"]["ratio"] == 3.0
+    assert "wolumen 3,0x średniej z 5 sesji" in spike["message"]
+    alerts_now = {a["id"]: a for a in client.get(f"{api}/alerts").json()}
+    assert alerts_now[alert["id"]]["status"] == "triggered"
+    assert alerts_now[alert["id"]]["last_value"] == 11.0
+    assert alerts_now[volume["id"]]["last_value"] == 3.0
+
+
+def test_mcp_alert_tools_take_the_new_kinds_and_scrub_amounts(investor):
+    from finanse.core.mcp.redaction import Redactor, leak_check
+    from finanse.core.mcp.tools import alerts as mcp_alerts
+    from finanse.core.mcp.tools import investments as mcp_inv
+
+    pid, _ = investor
+    _set_bars("XMPL", [*["10.5", "11.2", "10.8"] * 3, "10.9", "11.9"])
+    with get_session() as s:
+        from finanse.core.mcp.registry import ToolContext
+
+        profile = s.get(Profile, pid)
+        ctx = ToolContext(session=s, profile=profile, privacy="strict", today=AS_OF)
+        made = mcp_alerts.add_alert(
+            ctx,
+            kind="range_breakout",
+            params={"window_days": 10, "max_range_pct": 0.1},
+            polarity="positive",
+            severity="info",
+            title="XMPL wybicie",
+            instrument="XMPL",
+        )
+        assert made["alert"]["params"]["max_range_pct"].value == 0.1
+        alert_service.evaluate_profile(
+            s, profile, as_of=AS_OF, now=T0, ctx=None, config=None, run_id=None
+        )
+        redactor = Redactor("strict")
+        listed = redactor.apply(mcp_alerts.alerts(ctx))
+        signals = redactor.apply(mcp_inv.signals(ctx))
+    leak_check(listed, strict=True)
+    leak_check(signals, strict=True)
+    (row,) = [a for a in listed["alerts"] if a["kind"] == "range_breakout"]
+    assert row["state"]["range_high"] == 11.2  # a public price level, sent in strict mode
+    assert row["status"] == "triggered" and row["signal"]["status"] == "active"
+    message = row["signal"]["message"]
+    assert "wybicie z konsolidacji 10 sesji" in message
+    assert "11,9" not in message and "11,2" not in message  # amounts scrubbed in strict text
+    (sig,) = [x for x in signals["signals"] if x["kind"] == "alert:range_breakout"]
+    assert "11,9" not in sig["message"]
+    # F8 review BE-3: the measured facts survive the strict redaction as fractions
+    assert sig["threshold"] == 0.1 and sig["unit"] == "ratio"
+    assert 0 < sig["measured"] <= 0.1 and 0 < sig["breakout"] < 0.1
+
+
+def test_mcp_measures_the_volume_multiple():
+    from finanse.core.mcp.redaction import Redactor
+    from finanse.core.mcp.tools import investments as mcp_inv
+
+    out = Redactor("strict").apply(
+        mcp_inv._measure(None, "alert:volume_spike", {"ratio": 3.4, "multiple": 2.5})  # type: ignore[arg-type]
+    )
+    assert out == {"measured": 3.4, "threshold": 2.5, "unit": "multiple"}
+
+
+def test_nearest_level_skips_a_breakout_whose_range_is_too_wide(investor):
+    # F8 review BE-4: a range wider than max_range_pct cannot break out, so it names no level
+    from finanse.modules.investments.store import instruments as instrument_store
+    from finanse.modules.investments.store import market as market_store
+
+    pid, _ = investor
+    aid = create_alert(pid, "range_breakout", {"window_days": 10, "max_range_pct": 0.08})
+    iid = instrument_id("XMPL")
+
+    def nearest():
+        with get_session() as s:
+            inst = instrument_store.load(s, {iid}, profile_id=pid)[iid]
+            bars = market_store.bars(s, {iid}, until=AS_OF, since=AS_OF - dt.timedelta(days=60))
+            return views.nearest_alert([s.get(InvAlert, aid)], inst, tuple(bars[inst.id]), AS_OF)
+
+    _set_bars("XMPL", [*["10", "12.5"] * 5, "11"])  # 25 % wide
+    assert nearest() is None
+    _set_bars("XMPL", [*["10.5", "11"] * 5, "10.9"])  # 4.8 % wide
+    near = nearest()
+    assert near is not None and near["alert_id"] == aid and Decimal(near["level"]) == Decimal(11)
