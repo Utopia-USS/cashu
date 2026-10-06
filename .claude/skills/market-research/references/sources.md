@@ -11,7 +11,8 @@ relation and strength: `rubrics.md`. Writing the note: `notes.md`.
   data point. No date: find a dated alternative or drop the fact. Never construct, guess or shorten a
   URL; copy the one you opened.
 - **Window.** Weekly run: facts published since the instrument's or theme's last research date from
-  `research_context`; never researched: the last 30 days. Older facts may appear in the summary as
+  `research_context`; never researched: the last 30 days. Thesis review: since the instrument's last
+  thesis review, else since the thesis was last changed, at most 90 days (`thesis-review.md`). Older facts may appear in the summary as
   background, never as the fact the note is about.
 - **Primary first.** Look for the primary source before the press, and cite it when you find it.
   Strength 3 and `invalidates` need a primary source (`rubrics.md`).
@@ -31,7 +32,9 @@ relation and strength: `rubrics.md`. Writing the note: `notes.md`.
 
 - Analyst ratings, brokerage recommendations (`rekomendacje domów maklerskich`), price targets
   (`cena docelowa`), "fair value" estimates, analyst consensus forecasts, model portfolios.
-- Technical-analysis forecasts (targets, "breakout", support and resistance levels).
+- Technical-analysis forecasts (targets, "breakout", support and resistance levels). A
+  `range_breakout` alert proposal (`alerts.md`) is not one: the app measures the range on stored
+  closes and reports a move after it happened; its reason names only a dated fact or event.
 - Sponsored or promotional content, paid stock promotion, content farms, anonymous "insider" claims.
 - If an article mixes facts and ratings, take only the facts and never mention the rating or target.
 

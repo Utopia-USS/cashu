@@ -1,15 +1,18 @@
 ---
 name: market-research
-description: Weekly market research for the finanse investments module - a local Claude Code routine on Saturday (before the Sunday review) or on demand for one instrument or theme. Gathers dated facts from news and company reports, community sentiment (Reddit, X, forums; scale and direction only, flagged as noise) and trend data (ETF flows, relative strength, search trends) for held positions, the watchlist, candidates matching the strategy's entry criteria and sector / macro themes, and writes Polish notes with sources through the profile's finanse MCP server, each tied to the thesis. Use on /market-research (optionally a symbol, ISIN or theme), research or sentiment requests about holdings, or to schedule the Saturday research. Triggers on Polish requests such as "zrób research", "research tygodniowy", "co słychać w", "sentyment na", "zbadaj temat", "nowi kandydaci", "zaplanuj research". Not for strategy or theses (investments-setup), rules (extension-builder) or imports. Never recommends trades or predicts prices.
-argument-hint: "[symbol | ISIN | temat | rutyna]"
+description: Market research for the finanse investments module through the profile's finanse MCP server - the Saturday routine (held positions, watchlist, candidates matching the strategy, sector and macro themes), on-demand research of one instrument or theme, and an on-demand thesis review of held positions against the owner's invalidation condition and exit plan. Writes Polish notes with dated sources (news, company reports, community sentiment flagged as noise, trend data) tied to the theses, and may propose a few range-breakout or volume-spike alerts. Use on /market-research (optionally a symbol, ISIN, theme, `tezy` or `rutyna`) or to schedule the routine. Triggers on Polish requests such as "zrób research", "research tygodniowy", "co słychać w", "sentyment na", "zbadaj temat", "nowi kandydaci", "przegląd tez", "sprawdź tezę", "zaplanuj research". Not for writing strategy or theses (investments-setup), rules (extension-builder) or imports. Never recommends trades or predicts prices.
+argument-hint: "[symbol | ISIN | temat | tezy [symbol] | rutyna]"
 ---
 
-# market-research: the Saturday routine and on-demand notes
+# market-research: the Saturday routine, on-demand notes and thesis reviews
 
 You research one profile: its held positions, its watchlist, new candidates that match the owner's
-strategy, and the sector and macro themes behind them. What you find becomes notes with sources,
-written through the profile's MCP server; the app shows them in Inwestycje (research strip, asset
-drawer, research view) and in the Sunday review. Notes and conversation in Polish, working files in
+strategy, and the sector and macro themes behind them; on demand you also review the theses of the
+held positions against the owner's own invalidation conditions and exit plans. What you find always
+becomes notes with sources, written through the profile's MCP server (a finding that exists only in a
+local file is invisible in the app); the app shows them in Inwestycje (research strip, asset drawer,
+research view) and in the Sunday review. After a run you may propose a few alerts that watch for a
+move out of a sideways range or a volume spike. Notes and conversation in Polish, working files in
 English, regular hyphens only (never the em dash character).
 
 ## Hard boundaries
@@ -58,9 +61,11 @@ time, never a list of the profile's holdings with weights.
 | `start_research_run(scope)` | step 1: opens the run, returns `run_id` |
 | `research_context` | step 2: held and watched instruments (weights as fractions, 0.12 = 12 %) with theses (entry type, thesis, invalidation, exit plan) and research state (health, last researched), themes with direction, the strategy's version and `candidate_criteria`, open and cooled-down candidates, upcoming events, the last run and a running one, limits |
 | `research_notes(since?)` | step 2: notes of the last 30 days by default, dismissed ones included (never add them again), for duplicates |
-| `add_research_note(...)` | steps 3-6: one note (schema in `references/notes.md`); validated, sources required, no amounts |
-| `finish_research_run(run_id, counts)` | step 7, and on any abort |
+| `add_research_note(...)` | steps 3-6 and the thesis review: one note (schema in `references/notes.md`); validated, sources required, no amounts |
+| `finish_research_run(run_id, counts)` | step 8, and on any abort |
 | `theses(instrument)`, `positions`, `watchlist` | only if `research_context` lacks a detail you need |
+| `alerts(status)` | step 7: live alerts, muted agent alerts and the agent alert limit, before any proposal |
+| `add_alert(...)` | step 7: a proposed `range_breakout` / `volume_spike` alert (`references/alerts.md`) |
 | `add_to_watchlist` | on demand only, when the user explicitly asks (`references/candidates.md`) |
 
 If the research tools are missing, the finanse app is older than this skill: tell the user to update
@@ -69,14 +74,19 @@ the app and click `Aktualizuj workspace` (Ustawienia > Agent AI), and stop.
 ## Limits
 
 - Weekly run: at most **25 notes**, at most **3 per instrument or theme**, at most **3 new candidates**,
-  at most **5 theme notes** (sector and macro together). On demand: at most **8 notes**.
+  at most **5 theme notes** (sector and macro together). On demand: at most **8 notes**. Thesis
+  review: at most **3 notes per position**, **40** in total (`references/thesis-review.md`).
+- Alert proposals: at most **3 per run**, **1 per instrument**, only the dynamic kinds
+  (`references/alerts.md`).
 - No note without news: "nothing new" is not a note.
 - No duplicates of existing notes (`references/notes.md`, Duplicates); dismissed facts stay dismissed;
   a dismissed candidate is not re-proposed for 90 days.
-- Notes expire after **30 days** (the default; community notes 15 days); never set a later expiry.
+- Notes expire after **30 days** (the default; community notes 15 days); never set a later expiry,
+  except thesis-review notes: **90 days** (the quarterly review cycle).
 - Strength 3 creates an info signal and `invalidates` an action signal: run the checklist in
   `references/rubrics.md` before writing either.
-- Time box: about 30-40 minutes. Past 60 minutes, stop gathering and finish with what you have.
+- Time box: about 30-40 minutes. Past 60 minutes, stop gathering and finish with what you have (a
+  thesis review has its own, `references/thesis-review.md`).
 
 ## Modes
 
@@ -86,6 +96,8 @@ Claude Code appends arguments as `ARGUMENTS:` at the end of this skill.
   weekly routine below with `"scheduled": true`.
 - **No arguments** (the user typed it, or the app's `Uruchom teraz` command): the weekly routine with
   `"scheduled": false`.
+- **`tezy`**, optionally followed by a symbol or ISIN, or a request such as "przegląd tez", "sprawdź
+  tezę", "czy teza ... jest aktualna": the thesis review (below).
 - **Any other argument** (a symbol, ISIN, name or theme) or a request about one instrument or theme:
   on-demand mode.
 - **"Zaplanuj" / how to schedule:** `references/scheduling.md`; never create a schedule silently.
@@ -144,13 +156,19 @@ region, rates, inflation, FX, regulation): official sources first, trend data wi
 Reuse existing theme names. A theme fact that bears on one thesis goes on that instrument's note with
 the theme set.
 
-**7. Finish.** `finish_research_run(run_id, counts)` with your own counters only (the app counts
+**7. Alert proposals (optional).** Where this run's notes point to a dated catalyst or a changed
+situation for a held or watched single stock, sector ETF or crypto, you may propose a
+`range_breakout` or `volume_spike` alert with a short reason: at most 3 per run, by the rules in
+`references/alerts.md` (unattended: created as agent alerts the owner reviews in the app; interactive:
+only those the user accepts). None is fine; never a price level, a target or buy / sell wording.
+
+**8. Finish.** `finish_research_run(run_id, counts)` with your own counters only (the app counts
 notes, kinds and signals itself): `{"sources_checked": n, "instruments_covered": n,
 "themes_covered": n, "candidates_screened": n, "skipped": n}`, where `skipped` = duplicates, blocked
 sources and refused notes together. Then a short Polish summary in the session (at most 15 lines):
 notes per part, notes that created signals (title and relation), weakened or invalidated theses by
-symbol, blocked sources, no candidate criteria in the strategy (if so), what to look at on Sunday. No
-recommendations.
+symbol, alerts proposed (symbol, kind, reason), blocked sources, no candidate criteria in the strategy
+(if so), what to look at on Sunday. No recommendations.
 
 If a step fails, continue with the next item. When the time box runs out, finish normally with what
 is saved. If the MCP tools keep failing, finish with `status: "failed"` and a short `reason` (at most
@@ -172,16 +190,39 @@ research`) can pick up from the working file (duplicates are skipped).
      (`references/candidates.md`); a full match becomes a `candidate` note, anything else is answered
      in the chat without a note, with the offer to add it to the watchlist (`add_to_watchlist` only
      after an explicit yes).
-5. At most 8 notes, then `finish_research_run`.
+5. At most 8 notes; in an interactive session at most 1 alert proposal for the instrument, only if
+   the user accepts it (`references/alerts.md`); then `finish_research_run`.
 6. Show the notes in the chat (title, kind, relation, strength, sources with dates) and where they are
    in the app (Inwestycje > the asset > Research, or Inwestycje > Research). Follow-up questions get
    facts with sources, under the same boundaries.
 
+## Thesis review (on demand, held positions)
+
+The owner asks whether the theses still hold (`/market-research tezy [symbol]`). Full procedure:
+`references/thesis-review.md`. In short:
+
+1. Preflight, `research_context`; pick the held positions with a thesis (not drafts, not owner-named
+   instruments or cash); one symbol: that position only.
+2. `start_research_run` with `{"held": false, "watchlist": false, "candidates": false, "instruments":
+   [...]}` (exactly the reviewed positions), then `research_notes` for the last 90 days.
+3. Per position, in a window since its last thesis review (at most 90 days): dated, sourced facts
+   checked field by field against the invalidation condition, the exit plan and the thesis premise.
+   Price-based conditions stay with the app's rules and alerts.
+4. Every field whose state changed becomes a note through `add_research_note` with `thesis_relation`
+   + `thesis_field`, `details.context` starting `Przegląd tezy:` and `expires_in_days: 90`; at most 3
+   per position. No change, no note.
+5. The long report goes to `research/<YYYY-MM-DD>-thesis-review.md` in the workspace; it never
+   replaces the notes.
+6. Optional alert proposals (step 7 rules), `finish_research_run`, then one line per position in the
+   chat with the app's words (`podważona`, `osłabiona`, `wzmocniona`, `aktualna`). No advice; a
+   revision of the thesis is `/investments-setup`.
+
 ## Working files (workspace only)
 
 In the profile's workspace keep one file per run, `research/<YYYY-MM-DD>-run.md` (English): the plan,
-items done, notes written (title and id), sources blocked, open questions. It holds no amounts and no
-personal data, only what a note may hold. If the current folder is not a profile workspace (no
+items done, notes written (title and id), alerts proposed, sources blocked, open questions; a thesis
+review writes `research/<YYYY-MM-DD>-thesis-review.md` instead (`references/thesis-review.md`). They
+hold no amounts and no personal data, only what a note may hold. If the current folder is not a profile workspace (no
 `research/` folder), keep the plan in the conversation and write no files; never write into a code
 repository, `docs/` or memory files.
 
@@ -203,4 +244,8 @@ for a clear yes, never create a schedule as a side effect.
   strength 1-3, signal checklist.
 - `references/candidates.md`: candidate criteria from the strategy, exclusions, `details` shape.
 - `references/notes.md`: fields, Polish title and summary, sources, themes, duplicates, examples.
+- `references/thesis-review.md`: the thesis review of held positions: window, per-field states, notes,
+  report, summary.
+- `references/alerts.md`: proposing `range_breakout` / `volume_spike` alerts after research: when,
+  limits, parameters, wording.
 - `references/scheduling.md`: the local Saturday routine (desktop app or launchd), approval rules.

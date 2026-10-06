@@ -19,9 +19,9 @@ the asset drawer, the research view and the Sunday review. They are in Polish; t
 | `title` | at most 120 characters |
 | `summary` | at most 1200 characters |
 | `sources` | 1-10 objects with exactly the keys `url`, `publisher`, `published_at`, `title` |
-| `details` | optional object, only these keys: candidates `entry_type`, `criteria`, `criteria_version`, `bucket` (`candidates.md`); community `scale` (`small`, `medium`, `large`); any note `context` (one line, at most 200 characters) and `event` + `event_date` (the next dated event the note points to, `YYYY-MM-DD`). Never amounts, targets or sizes |
+| `details` | optional object, only these keys: candidates `entry_type`, `criteria`, `criteria_version`, `bucket` (`candidates.md`); community `scale` (`small`, `medium`, `large`); any note `context` (one line, at most 200 characters; thesis-review notes start it with `Przegląd tezy:`, `thesis-review.md`) and `event` + `event_date` (the next dated event the note points to, `YYYY-MM-DD`). Never amounts, targets or sizes |
 | `observed_at` | leave to the tool (now); the dates of the facts go into `sources` and the summary |
-| `expires_in_days` | leave the default 30; community notes 15; a note tied to an event that passes earlier may expire then; never more than 30 |
+| `expires_in_days` | leave the default 30; community notes 15; a note tied to an event that passes earlier may expire then; never more than 30, except thesis-review notes: 90 (`thesis-review.md`) |
 
 The tool validates lengths, enums, sources (http(s) URL, publisher, date; paywall-bypass hosts are
 refused) and refuses wording that reads like a recommendation, a rating or a price prediction. If it
