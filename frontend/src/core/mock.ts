@@ -367,6 +367,14 @@ function route(method: string, url: string, body: unknown): unknown {
       worker: { ...worker },
     };
   }
+  // ?update=1 shows the update notice (core/UpdateNotice.tsx); otherwise the demo is up to date.
+  if (path === "/api/system/update") {
+    const on = new URLSearchParams(location.search).get("update") === "1";
+    return {
+      current: "0.2.0", latest: on ? "0.3.0" : "0.2.0", available: on,
+      url: "https://github.com/Utopia-USS/cashu/commits/main", checked_at: `${TODAY}T08:00:00+00:00`, error: null,
+    };
+  }
   if (path === "/api/system/relocation/ack" && method === "POST") {
     worker.relocation = { ...worker.relocation, mcp: null };
     return { worker: { ...worker, relocation: { ...worker.relocation } } };

@@ -5,6 +5,7 @@ import { useAsync } from "../hooks";
 import { Notice, Skeleton, SkeletonChart, SkeletonKpis, ToastProvider } from "../ui";
 import { getModules, getProfiles, getSystem, onAuthLost, type Profile } from "./api";
 import { Shell } from "./Shell";
+import { UpdateNotice } from "./UpdateNotice";
 import { Wizard } from "./Wizard";
 import { errorText } from "./messages";
 
@@ -29,6 +30,7 @@ export function App() {
         </div>
       )}
       <Root />
+      <UpdateNotice />
     </ToastProvider>
   );
 }

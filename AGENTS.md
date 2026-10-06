@@ -89,7 +89,8 @@ src/finanse/
 │   ├── institutions.py   # bank/broker registry: CSV importer, Open Banking ASPSP names
 │   ├── accounts.py       # get_or_create_account, balances, own IBANs (per profile)
 │   ├── networth.py       # net worth per currency from module NetWorthContributors
-│   ├── api.py            # profile resolution, /api/system|modules|profiles, accounts, net worth
+│   ├── api.py            # profile resolution, /api/system(/update)|modules|profiles, accounts, net worth
+│   ├── updates.py        # update check: version vs pyproject.toml on a GitHub branch (FINANSE_UPDATE_*)
 │   ├── cli.py            # init-db, serve, migrate-data, accounts, set-balance, profiles, secrets
 │   ├── text.py           # IBAN / text normalization shared by all modules
 │   ├── paths.py          # per-user data dir (platformdirs, FINANSE_DATA_DIR), legacy data/ detection

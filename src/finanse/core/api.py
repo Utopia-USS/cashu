@@ -115,6 +115,15 @@ def system() -> dict:
     }
 
 
+@platform_router.get("/system/update")
+def update_status() -> dict:
+    """Whether a newer version is on the configured GitHub branch (core/updates.py). Separate from
+    ``/system`` so the network call never delays the first render; a failure only sets ``error``."""
+    from . import updates
+
+    return updates.check().to_json()
+
+
 @platform_router.post("/system/relocation/ack")
 def acknowledge_relocation() -> dict:
     """The owner re-added the MCP lines after the app moved: clears ``worker.relocation.mcp``

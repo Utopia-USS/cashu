@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     eb_redirect_url: str = "https://localhost:8000/eb/callback"
     eb_country: str = "PL"
 
+    # App update check (core/updates.py): the dashboard compares the running version with
+    # project.version of pyproject.toml on this GitHub branch and shows a notice when it is higher.
+    update_check: bool = True  # FINANSE_UPDATE_CHECK
+    update_repo: str = "Utopia-USS/cashu"  # FINANSE_UPDATE_REPO (owner/name)
+    update_branch: str = "main"  # FINANSE_UPDATE_BRANCH
+
     # Background worker (`finanse worker install`): the finanse executable the scheduled
     # job runs. Unset = the packaged app binary, else the venv's `finanse` script.
     worker_program: str | None = None  # FINANSE_WORKER_PROGRAM

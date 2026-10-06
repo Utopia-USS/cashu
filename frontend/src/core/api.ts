@@ -168,6 +168,18 @@ export interface SetupInfo {
 }
 
 export const getSystem = () => j<SystemInfo>("/api/system");
+/** GET /api/system/update (core/updates.py): the running version vs `project.version` of pyproject.toml on
+ * the configured GitHub branch. `url` is that branch's commit list; `error` is set when the check is off or
+ * failed ("disabled" | "config" | "network" | "parse"), and then `available` is false. */
+export interface UpdateInfo {
+  current: string;
+  latest: string | null;
+  available: boolean;
+  url: string | null;
+  checked_at: string;
+  error: string | null;
+}
+export const getUpdate = () => j<UpdateInfo>("/api/system/update");
 /** The owner re-added the MCP server after the app moved (F7 R8): clears `relocation.mcp`. */
 export const postRelocationAck = () => jpost<{ worker: WorkerInfo }>("/api/system/relocation/ack");
 /** Background worker actions (track W): install / uninstall the launchd agent, run once now. */

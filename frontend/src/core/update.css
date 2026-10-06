@@ -1,0 +1,18 @@
+/* Update notice (core/UpdateNotice.tsx): bottom-left card, below drawers and dialogs' scrims (z 60+),
+   clear of the centred toasts. */
+.upd { position: fixed; left: 16px; bottom: 16px; z-index: 55; width: min(300px, calc(100vw - 32px));
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 10px 12px 12px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 10px 34px rgba(0,0,0,0.18); animation: upd-in 0.2s ease-out; }
+.upd-ico { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--infoBg); color: var(--nw); }
+.upd-body { flex: 1; min-width: 0; }
+.upd-ttl { font-size: 13px; font-weight: 600; line-height: 1.3; margin-top: 3px; }
+.upd-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.upd-act { display: inline-block; margin-top: 10px; padding: 4px 10px; font-size: 12px; text-decoration: none; }
+.upd-x { flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: none;
+  border-radius: 6px; background: none; color: var(--muted); cursor: pointer; }
+.upd-x:hover { background: var(--chip); color: var(--text); }
+.upd-x:focus-visible, .upd-act:focus-visible { outline: 2px solid var(--nw); outline-offset: 2px; }
+@keyframes upd-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .upd { animation: none; } }
