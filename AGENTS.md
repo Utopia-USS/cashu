@@ -135,6 +135,7 @@ frontend/                 # React + Vite + TS SPA (dashboard; UI strings are Pol
 
 packaging/                # PyInstaller spec, entitlements, icon (macOS); windows/ = documented stub
 scripts/build_macos.sh    # builds Finanse.app (SPA, icon, bundle; signs/notarizes from env vars)
+scripts/bump_version.py   # version bump run by .github/workflows/bump-version.yml on every push to main
 tests/                    # pytest — synthetic data, no real data
 data/                     # (git-ignored) legacy location of DB/keys/sessions (see migrate-data)
 statements/               # (git-ignored) drop CSV statements here — empty in the repo
@@ -303,6 +304,11 @@ the skill triggers) and use only tool names from the MCP server.
 ---
 
 ## Conventions when extending
+
+**Versions:** never bump the version in a normal change. Every push to `main` gets a patch bump from the
+`bump-version` workflow (`pyproject.toml` and `src/finanse/__init__.py` together); `[minor]` / `[major]` in
+a commit message asks for a bigger step, `[skip bump]` for none. Pull after pushing (the bot commits to
+`main`).
 
 **Adding a new bank (CSV parser):**
 1. New file `src/finanse/modules/budget/ingestion/csv_import/<bank>.py` - a thin
