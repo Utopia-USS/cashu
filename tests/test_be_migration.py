@@ -109,7 +109,9 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     before = legacy.table_counts(path)
     engine = db.make_engine(f"sqlite:///{path}")
     assert migrations.current_revision(engine) == "0007_alerts_watchlist"
-    assert migrations.upgrade_to_head(engine) == migrations.head_revision() == "0011_research_read"
+    assert (
+        migrations.upgrade_to_head(engine) == migrations.head_revision() == "0012_decision_signals"
+    )
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
     assert legacy.table_counts(backup) == before and not (_tables(backup) & NEW_TABLES)
@@ -210,7 +212,8 @@ def test_0011_backfills_read_at_and_round_trips(tmp_path):
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0011_research_read"
+    _to(engine, "0011_research_read")
+    assert migrations.current_revision(engine) == "0011_research_read"
     assert _sql(path, "SELECT read_at = created_at FROM research_notes") == [(1,)]
     assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][-1] == "read_at"
     assert ("ix_research_notes_unread",) in _sql(
@@ -219,5 +222,57 @@ def test_0011_backfills_read_at_and_round_trips(tmp_path):
     _to(engine, "0010_account_removed", down=True)
     assert "read_at" not in [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")]
     assert _sql(path, "SELECT title FROM research_notes") == [("Example",)]
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    engine.dispose()
+
+
+def test_0012_backfills_decision_links_and_round_trips(tmp_path):
+    """F9: every decision with a signal gets its link row; a free decision none. The downgrade
+    refuses while a decision covers a signal its ``signal_id`` column cannot hold."""
+    path = _db_at(tmp_path, "0011_research_read")
+    pid = _profile_id(path)
+    for i in (1, 2):
+        _sql(
+            path,
+            "INSERT INTO inv_signals (id, profile_id, rule_id, kind, dedup_key, severity, status, "
+            "message, payload, first_seen_at, last_seen_at, polarity) VALUES (?, ?, ?, "
+            "'gain_from_cost', ?, 'info', 'acknowledged', 'm', '{}', ?, ?, 'neutral')",
+            i,
+            pid,
+            f"r{i}",
+            f"r{i}",
+            TS,
+            TS,
+        )
+    for decision_id, signal_id in ((10, 1), (11, None)):
+        _sql(
+            path,
+            "INSERT INTO inv_decisions (id, profile_id, signal_id, action, created_at) "
+            "VALUES (?, ?, ?, 'held', ?)",
+            decision_id,
+            pid,
+            signal_id,
+            TS,
+        )
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0012_decision_signals"
+    assert _sql(path, "SELECT decision_id, signal_id FROM inv_decision_signals") == [(10, 1)]
+    assert ("ix_inv_decision_signals_signal_id",) in _sql(
+        path, "SELECT name FROM sqlite_master WHERE type = 'index'"
+    )
+    _sql(path, "INSERT INTO inv_decision_signals (decision_id, signal_id) VALUES (10, 2)")
+    with pytest.raises(RuntimeError, match="several signals"):
+        _to(engine, "0011_research_read", down=True)
+    assert migrations.current_revision(engine) == "0012_decision_signals"
+    _sql(path, "DELETE FROM inv_decision_signals WHERE signal_id = 2")
+    _to(engine, "0011_research_read", down=True)
+    assert "inv_decision_signals" not in _tables(path)
+    assert _sql(path, "SELECT id, signal_id FROM inv_decisions ORDER BY id") == [
+        (10, 1),
+        (11, None),
+    ]
+    _to(engine, "head")
+    assert _sql(path, "SELECT decision_id, signal_id FROM inv_decision_signals") == [(10, 1)]
+    assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     engine.dispose()

@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Iterable, Sequence
 from decimal import Decimal
 
+from sqlalchemy import delete, or_
 from sqlmodel import Session, select
 
 from finanse.core.models import utcnow
 
 from ..domain import DecisionAction, SignalStatus
-from ..models import THESIS_ENTRY_TYPES, InvDecision, InvSignal, InvThesis
+from ..models import THESIS_ENTRY_TYPES, InvDecision, InvDecisionSignal, InvSignal, InvThesis
 
 
 class JournalError(ValueError):
@@ -28,6 +30,7 @@ def record_decision(
     *,
     action: str,
     signal_row: InvSignal | None = None,
+    signal_rows: Sequence[InvSignal] = (),
     instrument_id: int | None = None,
     account_id: int | None = None,
     quantity: Decimal | None = None,
@@ -35,8 +38,10 @@ def record_decision(
     currency: str | None = None,
     reason: str | None = None,
 ) -> InvDecision:
-    """A journal entry. Linked to a signal it also acknowledges the signal (it stays open until the
-    rule clears); it never books a transaction."""
+    """A journal entry. Linked to signals (``signal_row`` is the one-signal shortcut of
+    ``signal_rows``; all of one instrument) it acknowledges every one of them with the same timestamp
+    (they stay open until the rule clears) and writes one ``inv_decision_signals`` row per signal;
+    ``signal_id`` keeps the first. It never books a transaction."""
     try:
         action_value = DecisionAction(action).value
     except ValueError:
@@ -46,14 +51,26 @@ def record_decision(
         raise JournalError("quantity must be >= 0")
     if price is not None and price < 0:
         raise JournalError("price must be >= 0")
+    rows: list[InvSignal] = []
+    for row in ([signal_row] if signal_row is not None else []) + list(signal_rows):
+        if all(row.id != seen.id for seen in rows):
+            rows.append(row)
+    if any(row.profile_id != profile_id for row in rows):
+        raise JournalError("A signal belongs to another profile")
+    if len({row.instrument_id for row in rows}) > 1:
+        raise JournalError("The signals belong to different instruments")
+    if rows and instrument_id is not None and rows[0].instrument_id not in (None, instrument_id):
+        raise JournalError("The signals belong to another instrument")
     now = utcnow()
-    if signal_row is not None:
-        instrument_id = instrument_id if instrument_id is not None else signal_row.instrument_id
-        account_id = account_id if account_id is not None else signal_row.account_id
-        acknowledge(session, signal_row, at=now)
-    row = InvDecision(
+    if rows:
+        instrument_id = instrument_id if instrument_id is not None else rows[0].instrument_id
+        if account_id is None and len({row.account_id for row in rows}) == 1:
+            account_id = rows[0].account_id
+        for row in rows:
+            acknowledge(session, row, at=now)
+    decision_row = InvDecision(
         profile_id=profile_id,
-        signal_id=None if signal_row is None else signal_row.id,
+        signal_id=rows[0].id if rows else None,
         instrument_id=instrument_id,
         account_id=account_id,
         action=action_value,
@@ -63,9 +80,12 @@ def record_decision(
         reason=(reason or "").strip() or None,
         created_at=now,
     )
-    session.add(row)
+    session.add(decision_row)
     session.flush()
-    return row
+    for row in rows:
+        session.add(InvDecisionSignal(decision_id=decision_row.id, signal_id=row.id))
+    session.flush()
+    return decision_row
 
 
 def acknowledge(session: Session, row: InvSignal, *, at=None) -> bool:
@@ -94,32 +114,72 @@ def decision(session: Session, profile_id: int, decision_id: int) -> InvDecision
 
 def undo_decision(
     session: Session, profile_id: int, row: InvDecision, *, now: dt.datetime | None = None
-) -> InvSignal | None:
+) -> list[InvSignal]:
     """Delete a decision recorded less than ``UNDO_WINDOW`` ago (raises :class:`UndoExpired`
-    otherwise). The acknowledgement it caused is reverted (the signal is active again) when the signal
-    is still open, was acknowledged by this very decision and has no other decision. Returns the linked
-    signal, if any."""
+    otherwise). For every linked signal (the link table, else the legacy ``signal_id``) that is still
+    acknowledged and that no remaining decision links, the acknowledgement is reverted (the signal is
+    active again), whichever decision wrote it: every acknowledgement comes from a decision, so a
+    signal without one must not stay acknowledged (an out-of-order undo would leave it stuck).
+    Returns the linked signals, the first one (``signal_id``) first."""
     now = _aware(now or utcnow())
-    created = _aware(row.created_at)
-    if now - created > UNDO_WINDOW:
+    if now - _aware(row.created_at) > UNDO_WINDOW:
         raise UndoExpired(
             f"Decisions can be undone for {int(UNDO_WINDOW.total_seconds() // 60)} minutes after "
             "they are recorded"
         )
-    linked = signal(session, profile_id, row.signal_id) if row.signal_id is not None else None
+    ids = decision_signal_ids(session, [row]).get(row.id, [])
+    linked = [r for r in (signal(session, profile_id, i) for i in ids) if r is not None]
+    session.exec(delete(InvDecisionSignal).where(InvDecisionSignal.decision_id == row.id))
     session.delete(row)
     session.flush()
-    if linked is not None and linked.status == SignalStatus.ACKNOWLEDGED.value:
-        others = session.exec(
-            select(InvDecision.id).where(InvDecision.signal_id == linked.id)
-        ).first()
-        acked = linked.acknowledged_at
-        if others is None and acked is not None and _aware(acked) == created:
-            linked.status = SignalStatus.ACTIVE.value
-            linked.acknowledged_at = None
-            session.add(linked)
-            session.flush()
+    for sig in linked:
+        if sig.status != SignalStatus.ACKNOWLEDGED.value or _has_decision(session, sig.id):
+            continue
+        sig.status = SignalStatus.ACTIVE.value
+        sig.acknowledged_at = None
+        session.add(sig)
+        session.flush()
     return linked
+
+
+def _has_decision(session: Session, signal_id: int) -> bool:
+    """Whether any decision links the signal (the link table or the legacy column)."""
+    return (
+        session.exec(select(InvDecision.id).where(_links_signal(signal_id)).limit(1)).first()
+        is not None
+    )
+
+
+def _links_signal(signal_id: int):
+    return or_(
+        InvDecision.signal_id == signal_id,
+        InvDecision.id.in_(
+            select(InvDecisionSignal.decision_id).where(InvDecisionSignal.signal_id == signal_id)
+        ),
+    )
+
+
+def decision_signal_ids(
+    session: Session, decision_rows: Iterable[InvDecision]
+) -> dict[int, list[int]]:
+    """Decision id -> the signal ids it covers: the legacy ``signal_id`` first, then the other linked
+    signals by id. A decision without signals maps to ``[]``."""
+    rows = [d for d in decision_rows if d.id is not None]
+    links: dict[int, set[int]] = {d.id: set() for d in rows}
+    ids = list(links)
+    for start in range(0, len(ids), 500):  # well under SQLite's bound-parameter limit
+        chunk = ids[start : start + 500]
+        for decision_id, signal_id in session.exec(
+            select(InvDecisionSignal.decision_id, InvDecisionSignal.signal_id).where(
+                InvDecisionSignal.decision_id.in_(chunk)
+            )
+        ).all():
+            links[decision_id].add(signal_id)
+    out: dict[int, list[int]] = {}
+    for d in rows:
+        first = [] if d.signal_id is None else [d.signal_id]
+        out[d.id] = first + sorted(links[d.id] - set(first))
+    return out
 
 
 def _aware(value: dt.datetime) -> dt.datetime:
@@ -135,7 +195,7 @@ def decisions(
 ) -> list[InvDecision]:
     query = select(InvDecision).where(InvDecision.profile_id == profile_id)
     if signal_id is not None:
-        query = query.where(InvDecision.signal_id == signal_id)
+        query = query.where(_links_signal(signal_id))
     if instrument_id is not None:
         query = query.where(InvDecision.instrument_id == instrument_id)
     return list(

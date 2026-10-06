@@ -17,7 +17,7 @@ import datetime as dt
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import JSON, Column, Index, UniqueConstraint, text
+from sqlalchemy import JSON, Column, ForeignKey, Index, Integer, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 from finanse.core.models import profile_fk_column, utcnow
@@ -365,6 +365,24 @@ class InvDecision(SQLModel, table=True):
     created_at: dt.datetime = Field(default_factory=utcnow)
 
 
+class InvDecisionSignal(SQLModel, table=True):
+    """A signal one decision covers (F9, asset detail Q25): one decision can settle several open
+    signals of one instrument. ``inv_decisions.signal_id`` keeps the first linked signal for older
+    readers; the link rows go with their decision (``ON DELETE CASCADE``)."""
+
+    __tablename__ = "inv_decision_signals"
+
+    decision_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("inv_decisions.id", ondelete="CASCADE"),
+            primary_key=True,
+            nullable=False,
+        )
+    )
+    signal_id: int = Field(foreign_key="inv_signals.id", primary_key=True, index=True)
+
+
 class InvThesis(SQLModel, table=True):
     """Why a position is held: entry type, thesis, what would invalidate it, exit and size plans."""
 
@@ -568,6 +586,7 @@ TABLES: tuple[type[SQLModel], ...] = (
     InvSignal,
     InvNotification,
     InvDecision,
+    InvDecisionSignal,
     InvThesis,
     InvProfileInstrument,
     InvAlert,

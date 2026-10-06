@@ -127,7 +127,12 @@ def pending(session: Session, profile_id: int) -> list[PendingNotification]:
     owner did since: the signal's current status, a newer decision, a snooze."""
     from sqlalchemy import func
 
-    from finanse.modules.investments.models import InvDecision, InvNotification, InvSignal
+    from finanse.modules.investments.models import (
+        InvDecision,
+        InvDecisionSignal,
+        InvNotification,
+        InvSignal,
+    )
     from finanse.modules.investments.rules.kinds.allocation_drift import hidden_from_owner
 
     rows = session.exec(
@@ -137,17 +142,21 @@ def pending(session: Session, profile_id: int) -> list[PendingNotification]:
         .order_by(InvNotification.created_at, InvNotification.id)
     ).all()
     signal_ids = {sig.id for _log, sig in rows}
-    last_decision = (
-        dict(
-            session.exec(
-                select(InvDecision.signal_id, func.max(InvDecision.created_at))
-                .where(InvDecision.signal_id.in_(signal_ids))
-                .group_by(InvDecision.signal_id)
-            ).all()
-        )
-        if signal_ids
-        else {}
-    )
+    last_decision: dict = {}
+    if signal_ids:
+        # the legacy column and the link table (F9: one decision can cover several signals)
+        for query in (
+            select(InvDecision.signal_id, func.max(InvDecision.created_at))
+            .where(InvDecision.signal_id.in_(signal_ids))
+            .group_by(InvDecision.signal_id),
+            select(InvDecisionSignal.signal_id, func.max(InvDecision.created_at))
+            .join(InvDecision, InvDecision.id == InvDecisionSignal.decision_id)
+            .where(InvDecisionSignal.signal_id.in_(signal_ids))
+            .group_by(InvDecisionSignal.signal_id),
+        ):
+            for sid, at in session.exec(query).all():
+                if at is not None and (last_decision.get(sid) is None or at > last_decision[sid]):
+                    last_decision[sid] = at
 
     def decided(log, sig) -> bool:
         at, created = _utc(last_decision.get(sig.id)), _utc(log.created_at)

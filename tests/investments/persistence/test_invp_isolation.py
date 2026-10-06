@@ -52,6 +52,7 @@ VOLATILE = {
     "batch_id",
     "open_txn_id",
     "signal_id",
+    "signal_ids",
     "alert_id",
     "decision_id",
     "new_signal_ids",
@@ -255,6 +256,19 @@ def test_writes_through_one_profile_never_touch_another(client):
         client.post(f"{b}/signals/{a_signal}/decision", json={"action": "sold"}).status_code == 404
     )
     assert client.post(f"{b}/signals/{a_signal}/acknowledge", json={}).status_code == 404
+    # one decision per position (F9): another profile's instrument or signal is not found
+    assert (
+        client.post(f"{b}/positions/{only_id}/decision", json={"action": "held"}).status_code == 404
+    )
+    a_xmpl_signal = next(
+        sig["id"]
+        for sig in client.get(f"/api/p/{a_slug}/investments/signals").json()
+        if sig["instrument_id"] == xmpl
+    )
+    r = client.post(
+        f"{b}/positions/{xmpl}/decision", json={"action": "held", "signal_ids": [a_xmpl_signal]}
+    )
+    assert r.status_code == 404
     assert client.patch(f"{b}/theses/{a_thesis}", json={"thesis": "x"}).status_code == 404
     assert client.delete(f"{b}/theses/{a_thesis}").status_code == 404
     assert client.get(f"{b}/positions/{only_id}").status_code == 404

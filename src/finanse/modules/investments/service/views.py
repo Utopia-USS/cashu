@@ -12,7 +12,7 @@ import datetime as dt
 import importlib
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from decimal import Decimal
 
 from sqlmodel import Session, select
@@ -652,10 +652,9 @@ def position_detail(
         "high_52w": f(max(window)) if window else None,
         "transactions": [txn_dict(t, state) for t in txns],
         "theses": [thesis_dict(t) for t in journal.theses(session, profile.id, instrument_id)],
-        "decisions": [
-            decision_dict(d)
-            for d in journal.decisions(session, profile.id, instrument_id=instrument_id)
-        ],
+        "decisions": decision_dicts(
+            session, journal.decisions(session, profile.id, instrument_id=instrument_id)
+        ),
         "manual_valuations": [
             manual_valuation_dict(m)
             for m in transactions.manual_valuation_rows(session, profile.id, [instrument_id])
@@ -732,11 +731,13 @@ def signal_dict(
     labels: dict[int, str] | None = None,
     *,
     good_run_id: int | None = None,
+    links: Mapping[int, list[int]] | None = None,
 ) -> dict:
     """``message_code`` / ``message_params``: the alert signal's message as a stable code
     (``alert.<kind>``) + its facts for a translated label (None for rule signals). ``current``:
     the profile's last good run (``good_run_id``, ``signals.last_good_run_id``; None = no run yet)
-    confirmed it (F8, home-v3 section 8)."""
+    confirmed it (F8, home-v3 section 8). ``decisions``: every decision covering the signal (one
+    decision can cover several, F9); ``links`` = ``journal.decision_signal_ids`` of them."""
     label = (labels or {}).get(row.instrument_id) if row.instrument_id else None
     return {
         "id": row.id,
@@ -762,7 +763,7 @@ def signal_dict(
         "snoozed_until": iso(row.snoozed_until),
         "snoozed": signals.is_snoozed(row, utcnow()),
         "current": signals.is_current(row, good_run_id),
-        "decisions": [decision_dict(d) for d in decisions],
+        "decisions": [decision_dict(d, (links or {}).get(d.id)) for d in decisions],
     }
 
 
@@ -773,10 +774,9 @@ def signals_view(session: Session, profile: Profile, status: str = "open") -> li
     elif status == "history":
         query = query.where(InvSignal.status.in_(signals.CLOSED_STATUSES))
     rows = list(session.exec(query.order_by(InvSignal.id.desc())).all())
-    by_signal: dict[int, list[InvDecision]] = defaultdict(list)
-    for d in journal.decisions(session, profile.id):
-        if d.signal_id is not None:
-            by_signal[d.signal_id].append(d)
+    decisions = journal.decisions(session, profile.id)
+    links = journal.decision_signal_ids(session, decisions)
+    by_signal = decisions_by_signal(decisions, links)
     from ..store import instruments as instrument_store
 
     labels = {
@@ -797,7 +797,22 @@ def signals_view(session: Session, profile: Profile, status: str = "open") -> li
             )
         )
     good_run = signals.last_good_run_id(session, profile.id)
-    return [signal_dict(r, by_signal.get(r.id, []), labels, good_run_id=good_run) for r in rows]
+    return [
+        signal_dict(r, by_signal.get(r.id, []), labels, good_run_id=good_run, links=links)
+        for r in rows
+    ]
+
+
+def decisions_by_signal(
+    decisions: list[InvDecision], links: Mapping[int, list[int]]
+) -> dict[int, list[InvDecision]]:
+    """Signal id -> the decisions covering it (in the given order); a decision over several signals
+    is listed under each (F9)."""
+    out: dict[int, list[InvDecision]] = defaultdict(list)
+    for d in decisions:
+        for signal_id in links.get(d.id) or ([d.signal_id] if d.signal_id is not None else []):
+            out[signal_id].append(d)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -1261,10 +1276,15 @@ def watchlist_view(
     ]
 
 
-def decision_dict(d: InvDecision) -> dict:
+def decision_dict(d: InvDecision, signal_ids: list[int] | None = None) -> dict:
+    """``signal_id``: the first signal the decision covers (older readers); ``signal_ids``: all of
+    them (``journal.decision_signal_ids``; without it the legacy column alone)."""
+    if signal_ids is None:
+        signal_ids = [] if d.signal_id is None else [d.signal_id]
     return {
         "id": d.id,
         "signal_id": d.signal_id,
+        "signal_ids": list(signal_ids),
         "instrument_id": d.instrument_id,
         "account_id": d.account_id,
         "action": d.action,
@@ -1274,6 +1294,12 @@ def decision_dict(d: InvDecision) -> dict:
         "reason": d.reason,
         "created_at": iso(d.created_at),
     }
+
+
+def decision_dicts(session: Session, decisions: list[InvDecision]) -> list[dict]:
+    """``decision_dict`` of each, with its linked signal ids."""
+    links = journal.decision_signal_ids(session, decisions)
+    return [decision_dict(d, links.get(d.id)) for d in decisions]
 
 
 def thesis_dict(t: InvThesis) -> dict:
@@ -2000,10 +2026,8 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
         if not hidden_from_owner(r.kind, r.payload)
     ]
     decisions = journal.decisions(session, profile.id)
-    by_signal: dict[int, list[InvDecision]] = defaultdict(list)
-    for d in decisions:
-        if d.signal_id is not None:
-            by_signal[d.signal_id].append(d)
+    links = journal.decision_signal_ids(session, decisions)
+    by_signal = decisions_by_signal(decisions, links)
     labels = {
         k: v.label
         for k, v in instrument_store.load(
@@ -2033,7 +2057,8 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
 
     def signal_rows(found: list[InvSignal]) -> list[dict]:
         return [
-            signal_dict(r, by_signal.get(r.id, []), labels, good_run_id=good_run) for r in found
+            signal_dict(r, by_signal.get(r.id, []), labels, good_run_id=good_run, links=links)
+            for r in found
         ]
 
     # Imports, transactions, decisions since the baseline.
@@ -2117,7 +2142,11 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
             "by_type": dict(sorted(Counter(t.type for t in created).items())),
             "manual": sum(1 for t in created if t.source == TxnSource.MANUAL.value),
         },
-        "decisions": [decision_dict(d) for d in decisions if _at_or_after(d.created_at, since_at)],
+        "decisions": [
+            decision_dict(d, links.get(d.id))
+            for d in decisions
+            if _at_or_after(d.created_at, since_at)
+        ],
         "dividends": {cur: f(amount) for cur, amount in sorted(dividends.items())},
         "price_moves": _price_moves(session, state, since),
         "warnings": [warning_dict(w) for w in state.valued.all_warnings],

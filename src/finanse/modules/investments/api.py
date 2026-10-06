@@ -257,8 +257,77 @@ def decide(profile: CurrentProfile, signal_id: int, body: DecisionBody) -> dict:
         except journal.JournalError as e:
             raise _422(str(e)) from None
         return {
-            "decision": views.decision_dict(decision),
-            "signal": views.signal_dict(row, [decision], good_run_id=_good_run(s, profile)),
+            "decision": views.decision_dicts(s, [decision])[0],
+            "signal": _signal_dicts(s, profile, [row])[0],
+        }
+
+
+class PositionDecisionBody(DecisionBody):
+    signal_ids: list[int] = []
+
+
+def _signal_dicts(s, profile: Profile, rows: list) -> list[dict]:
+    """``signal_dict`` of each signal with every decision covering it (F9: one decision can cover
+    several signals), as ``GET /signals`` shows it (labels, ``current``)."""
+    good_run = _good_run(s, profile)
+    labels = {
+        k: v.label
+        for k, v in instruments.load(
+            s, {r.instrument_id for r in rows if r.instrument_id}, profile_id=profile.id
+        ).items()
+    }
+    covering = {r.id: journal.decisions(s, profile.id, signal_id=r.id) for r in rows}
+    links = journal.decision_signal_ids(s, [d for ds in covering.values() for d in ds])
+    return [
+        views.signal_dict(r, covering[r.id], labels, good_run_id=good_run, links=links)
+        for r in rows
+    ]
+
+
+@router.post("/positions/{instrument_id}/decision", status_code=201)
+def position_decide(
+    profile: CurrentProfile, instrument_id: int, body: PositionDecisionBody
+) -> dict:
+    """One decision about a position (held or watched) covering ``signal_ids`` (its open signals,
+    possibly none): every listed signal is acknowledged and linked to the one journal entry. 404 for
+    an instrument or signal outside the profile, 409 for a closed signal, 422 for a signal of another
+    instrument. Never books a trade. The app's own route: the MCP ``record_decision`` tool stays
+    per signal (one signal, one link row)."""
+    with get_session() as s:
+        _instrument(s, profile, instrument_id)
+        if (
+            body.account_id is not None
+            and transactions.brokerage_account(s, profile.id, body.account_id) is None
+        ):
+            raise _404(f"No brokerage account {body.account_id} in this profile")
+        rows = []
+        for signal_id in dict.fromkeys(body.signal_ids):
+            row = journal.signal(s, profile.id, signal_id)
+            if row is None:
+                raise _404(f"No signal {signal_id}")
+            if row.status not in ("active", "acknowledged"):
+                raise HTTPException(status_code=409, detail=f"Signal {signal_id} is {row.status}")
+            if row.instrument_id != instrument_id:
+                raise _422(f"Signal {signal_id} is not about instrument {instrument_id}")
+            rows.append(row)
+        try:
+            decision = journal.record_decision(
+                s,
+                profile.id,
+                action=body.action,
+                signal_rows=rows,
+                instrument_id=instrument_id,
+                account_id=body.account_id,
+                quantity=_decimal(body.quantity, "quantity"),
+                price=_decimal(body.price, "price"),
+                currency=body.currency,
+                reason=body.reason,
+            )
+        except journal.JournalError as e:
+            raise _422(str(e)) from None
+        return {
+            "decision": views.decision_dicts(s, [decision])[0],
+            "signals": _signal_dicts(s, profile, rows),
         }
 
 
@@ -285,8 +354,8 @@ def acknowledge(
             reason=(body.reason if body else None) or "acknowledged",
         )
         return {
-            "decision": views.decision_dict(decision),
-            "signal": views.signal_dict(row, [decision], good_run_id=_good_run(s, profile)),
+            "decision": views.decision_dicts(s, [decision])[0],
+            "signal": _signal_dicts(s, profile, [row])[0],
         }
 
 
@@ -325,22 +394,22 @@ def snooze_signal(profile: CurrentProfile, signal_id: int, body: SnoozeBody) -> 
         if row.status not in ("active", "acknowledged"):
             raise HTTPException(status_code=409, detail=f"Signal {signal_id} is {row.status}")
         signal_store.snooze(s, row, until)
-        return views.signal_dict(row, good_run_id=_good_run(s, profile))
+        return _signal_dicts(s, profile, [row])[0]
 
 
 @router.get("/decisions")
 def decision_list(profile: CurrentProfile, instrument_id: int | None = None) -> list[dict]:
     with get_session() as s:
-        return [
-            views.decision_dict(d)
-            for d in journal.decisions(s, profile.id, instrument_id=instrument_id)
-        ]
+        return views.decision_dicts(
+            s, journal.decisions(s, profile.id, instrument_id=instrument_id)
+        )
 
 
 @router.delete("/decisions/{decision_id}")
 def decision_undo(profile: CurrentProfile, decision_id: int) -> dict:
     """Undo a decision within 15 minutes of recording it: the entry is deleted and the
-    acknowledgement it caused is reverted (409 ``undo_expired`` after that)."""
+    acknowledgements it caused are reverted (409 ``undo_expired`` after that). ``signals``: every
+    signal it covered; ``signal``: the first of them (older clients)."""
     with get_session() as s:
         row = journal.decision(s, profile.id, decision_id)
         if row is None:
@@ -351,11 +420,11 @@ def decision_undo(profile: CurrentProfile, decision_id: int) -> dict:
             raise HTTPException(
                 status_code=409, detail=str(e), headers={"X-Finanse-Error-Code": "undo_expired"}
             ) from None
+        signals = _signal_dicts(s, profile, linked)
         return {
             "deleted": decision_id,
-            "signal": None
-            if linked is None
-            else views.signal_dict(linked, good_run_id=_good_run(s, profile)),
+            "signal": signals[0] if signals else None,
+            "signals": signals,
         }
 
 

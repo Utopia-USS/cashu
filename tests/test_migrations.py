@@ -98,6 +98,7 @@ HEAD_TABLES = migrations.BASELINE_TABLES | {"profiles", "profile_modules"} | {
     "inv_account_settings", "inv_import_batches", "inv_transactions", "inv_position_snapshots",
     "inv_instrument_renames", "inv_manual_valuations", "inv_strategy_versions", "inv_rule_runs",
     "inv_signals", "inv_notification_log", "inv_decisions", "inv_theses",
+    "inv_decision_signals",
 } | {"proposals", "mcp_calls", "reviews"} | {
     "alerts", "watchlist_items", "inv_profile_instruments",
 } | {"inv_planned_deposits", "research_runs", "research_notes"} | {"asset_details"}
@@ -115,7 +116,8 @@ def test_head_equals_create_all(tmp_path):
     assert tables == HEAD_TABLES
     # 18 + 22 investments + 3 agent (proposals, mcp_calls, reviews) + 6 overrides / alerts / watchlist
     # + 7 planned deposits / research + 1 asset details (F7 OB5) + 1 unread research notes (F8)
-    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 58
+    # + 1 decision links by signal (F9)
+    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 59
     reference.dispose()
     migrated.dispose()
 
