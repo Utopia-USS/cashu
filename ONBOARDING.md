@@ -234,7 +234,7 @@ own.
 
 ---
 
-## Step 7b - Instalacja aplikacji (optional, macOS)
+## Step 7b - Install the macOS app (optional)
 
 If the user prefers a normal Mac app over the terminal, build `Finanse.app`:
 
@@ -253,7 +253,7 @@ the window quits the app.
   opens fine on this Mac. On another Mac macOS blocks it: open it once, then
   System Settings > Privacy & Security > "Open Anyway". Signing and notarization
   need the user's own Apple Developer ID (`DEVELOPER_ID_APPLICATION`,
-  `NOTARY_KEYCHAIN_PROFILE`, see README "Instalacja aplikacji"); never ask for
+  `NOTARY_KEYCHAIN_PROFILE`, see README "Installing the macOS app"); never ask for
   Apple ID passwords or certificates in the chat.
 - After the move to `/Applications`: Settings > Praca w tle installs the daily
   worker, and Settings > Agent AI shows the `claude mcp add` line, both pointing

@@ -149,7 +149,7 @@ if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
 else
   say "Signing skipped: DEVELOPER_ID_APPLICATION is not set."
   echo "    This build is for local use: it runs on this Mac, but Gatekeeper blocks it on other"
-  echo "    Macs after a download (see README, \"Instalacja aplikacji\")."
+  echo "    Macs after a download (see README, \"Installing the macOS app\")."
 fi
 
 # --- 6. Notarization (needs a signed build).

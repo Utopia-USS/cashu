@@ -1,12 +1,19 @@
-# finanse — a local personal-finance tracker
+# cashU - a local personal-finance and investing companion
 
-Pulls transactions from Polish banks (**mBank**, **Erste** / former Santander,
+An open-source, local-first app for your money: budget, assets, loans and
+investments in one dashboard, plus Claude Code agents that help you set it up and
+research your positions. The Python package and the command line are called
+`finanse`.
+
+It pulls transactions from Polish banks (**mBank**, **Erste** / former Santander,
 **Pekao**) via CSV export and optionally Open Banking, normalizes them to a common
 model, deduplicates, detects internal transfers between your own accounts,
 categorizes spending, and shows **net worth over time, monthly cashflow, recurring
 payments, loans, and asset depreciation** on a web dashboard. Data is kept per
 **profile** (you, your partner, the household), and each profile picks the
-**modules** it uses (budget, assets, loans, investments).
+**modules** it uses (budget, assets, loans, investments). The investments module
+keeps you on your own written strategy: rule signals on market data, alerts,
+theses and a watchlist, never orders, never price predictions.
 
 > 🔒 **Privacy.** Everything runs **locally**. Your financial data lives in a
 > SQLite file in your per-user data dir, outside the repository
@@ -20,7 +27,7 @@ payments, loans, and asset depreciation** on a web dashboard. Data is kept per
 > optional cloud mode sends **only merchant names**.
 
 > 🌐 **Language.** Code, comments, and docs are in English. The **dashboard UI is
-> in Polish** and so are the categorization keywords and LLM prompts — the tool
+> in Polish** and so are the categorization keywords and LLM prompts - the tool
 > targets customers of Polish banks, and those strings are matched against Polish
 > transaction text.
 
@@ -29,14 +36,14 @@ React + Vite + TypeScript + Recharts (dashboard).
 
 ---
 
-## 🚀 Fastest start — with an AI agent
+## 🚀 Fastest start - with an AI agent
 
 The project is set up so an **agent (e.g. Claude Code) walks you through the whole
-setup step by step** — from install, through loading your data, to running the
+setup step by step** - from install, through loading your data, to running the
 dashboard.
 
 ```bash
-git clone <repo-url> finanse && cd finanse
+git clone https://github.com/Utopia-USS/cashu.git && cd cashu
 ```
 
 Open the directory in Claude Code (or another file-aware assistant) and say:
@@ -70,7 +77,7 @@ cd frontend && npm install && npm run build && cd ..
 finanse serve                  # open the printed http://127.0.0.1:8500/#token=... URL
 ```
 
-Full guide (including Open Banking, LLM categorization, manual positions) —
+Full guide (including Open Banking, LLM categorization, manual positions) -
 [`ONBOARDING.md`](ONBOARDING.md).
 
 **More than one person?** `finanse profiles add "Marta"` creates a second
@@ -110,7 +117,7 @@ name it, so deleting `data/` afterwards never loses it.
 
 ---
 
-## 🖥️ Instalacja aplikacji (macOS app)
+## 🖥️ Installing the macOS app
 
 finanse can also run as a normal Mac app: `Finanse.app` with its own window and
 icon, no terminal. It is the same code and the same data dir as the CLI, so the
@@ -169,33 +176,56 @@ adds the request log and the WebKit inspector). A Windows build is planned: see
 
 ## What it does
 
-- **Net worth over time** — per-currency (never mixes currencies), broken down by
+- **Net worth over time** - per-currency (never mixes currencies), broken down by
   asset/liability class (cash, property, vehicle, mortgage, loan), with a
   windowed/scrollable chart and a zoomable Y axis.
-- **Monthly cashflow** — income vs expenses, excluding transfers within your own
+- **Monthly cashflow** - income vs expenses, excluding transfers within your own
   net worth.
 - **Where the money goes** - spending categorization (25 categories, ~420 PL rules
   + optional LLM), drill-down to transactions with corrections that teach the
   system.
-- **Recurring payments** — subscription detection.
+- **Recurring payments** - subscription detection.
 - **Loans** - any number per profile; annuity amortization (payment, schedule,
   outstanding debt, total interest); the net-worth balance decreases over time,
   and a balance from a bank statement takes over from its date. Installments are
   recognised as loan repayments, never as subscriptions.
-- **Assets and cash** — car depreciation, manual positions, cash tracking.
+- **Assets and cash** - car depreciation, manual positions, cash tracking.
 - **Investments** - brokerage accounts, FIFO positions valued with stored prices
   and NBP rates, allocation vs your `strategy.yaml`, rule signals and a decision
   journal; the portfolio counts toward net worth in each account's currency.
 
-The dashboard has 5 tabs: **Przegląd · Wydatki · Przepływy · Subskrypcje · Kredyt**
-(the UI is in Polish).
+The dashboard shows **Przegląd** (overview) plus a tab per enabled module:
+**Wydatki · Przepływy · Subskrypcje** (budget), **Kredyty** (loans) and
+**Inwestycje** (investments), with **Ustawienia** (settings) on the right. The UI is
+in Polish.
+
+---
+
+## AI agents (MCP and skills)
+
+Every profile has its own local MCP server (`finanse mcp --profile <slug>`), so
+Claude Code or Claude Desktop can read and propose changes without ever touching
+the database or your raw exports. The privacy level is per profile and **strict by
+default**: shares and percentages, no amounts, never account numbers or other
+identifiers. Agent writes are proposals you approve in the app, and the app never
+runs code an agent wrote.
+
+```bash
+claude mcp add finanse-<slug> -- finanse mcp --profile <slug>   # once per profile
+```
+
+The repo ships Claude Code skills for each module (`/budget-setup`,
+`/assets-setup`, `/loans-setup`, `/investments-setup`) and for investments work
+(`/import-builder` for unsupported broker exports, `/extension-builder` for custom
+rules, `/market-research` for dated, sourced research notes). Details:
+[`AGENTS.md`](AGENTS.md).
 
 ---
 
 ## Where the data comes from
 
 **CSV import (works right away, no API).** Arrange statements under
-`statements/<bank>/` — import takes the bank from the subdir name. Repeated import
+`statements/<bank>/` - import takes the bank from the subdir name. Repeated import
 is idempotent (dedup by `bank_transaction_id` and by content hash). Parsers are
 thin configs on a shared engine (`src/finanse/modules/budget/ingestion/csv_import/`)
 and banks are entries in a registry (`src/finanse/core/institutions.py`) -
@@ -215,7 +245,7 @@ in [`ONBOARDING.md`](ONBOARDING.md).
 | `profiles`, `profile_modules` | profiles (person / household) and the modules each one uses |
 | `accounts` | accounts of a profile (one physical account = one record; Santander and Erste are the same account) |
 | `transactions` | normalized signed transactions (+income / −expense), with a dedup hash and transfer group |
-| `balances` | balance snapshots over time — the basis for net worth |
+| `balances` | balance snapshots over time - the basis for net worth |
 | `category_rules` | learned merchant → category rules (per profile) |
 | `import_batches` | audit of every import/sync |
 
@@ -226,6 +256,24 @@ prices, FX rates, broker transactions, signals, decisions, theses). Schema chang
 
 ---
 
+## Updates and versions
+
+Every push to `main` raises the version: a GitHub Action
+(`.github/workflows/bump-version.yml`) bumps the patch number in `pyproject.toml`
+and `src/finanse/__init__.py` and commits it back. Put `[minor]` or `[major]` in a
+commit message for a bigger step, or `[skip bump]` to skip it; a push that changes
+the version by hand keeps that version. Pull after pushing, since `main` gains the
+bump commit.
+
+The app checks `pyproject.toml` on `main` at launch and shows a small notice in the
+bottom-left corner while a newer version exists, with a link to the changes. It
+never downloads or installs anything: update with `git pull` and a rebuild
+(`scripts/build_macos.sh`, or `npm run build` in `frontend/` for `finanse serve`).
+`FINANSE_UPDATE_REPO` / `FINANSE_UPDATE_BRANCH` point the check at another fork,
+`FINANSE_UPDATE_CHECK=false` turns it off.
+
+---
+
 ## Development and tests
 
 ```bash
@@ -233,13 +281,17 @@ pytest                               # tests run on synthetic data
 cd frontend && npm run dev           # dashboard with hot-reload (proxies /api → :8500)
 ```
 
-Architecture, code map, conventions, and "how to add a bank / feature" —
+Architecture, code map, conventions, and "how to add a bank / feature" -
 [`AGENTS.md`](AGENTS.md).
+
+**Contributing.** Issues and pull requests are welcome. Read
+[`AGENTS.md`](AGENTS.md) first, and never include real financial data: tests,
+fixtures and screenshots use synthetic data only.
 
 ---
 
 ## Disclaimers
 
 A personal-use tool, provided "as is" (licensed [MIT](LICENSE)). Not financial or
-investment advice. CSV formats and Open Banking endpoints drift — an unusual
+investment advice. CSV formats and Open Banking endpoints drift - an unusual
 statement may need a small parser tweak (an agent can handle it from a sample file).
