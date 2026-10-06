@@ -44,7 +44,9 @@ or `amounts`):
 
 Rules that follow from it:
 
-- Never open broker exports, statements, `finanse.db`, backups or the import archive, and never run
+- Never open `finanse.db`, backups or the import archive. The privacy level covers what the MCP tools
+  give you; an export or statement the user hands you themselves may be read for the task they asked
+  for (values stay in the conversation, never in notes or files). Never run
   CLI commands whose output contains balances, positions, transactions, account names or file names
   (`finanse invest positions`, `finanse invest signals`, `finanse invest import`, `finanse accounts`,
   `finanse stats`). If one is needed, the user runs it in their own terminal (not with `!` in this
@@ -81,8 +83,11 @@ propozycję, którą zatwierdzisz w aplikacji."
 | `record_decision(signal_id, action, reason)` | check-in |
 | `mark_review_done(notes, module="investments")` | end of the interview (first review), every check-in |
 
-Imports are not done here: exports in the finanse format or a simple CSV go through the app's import
-drawer; other formats through the `import-builder` skill. One custom rule on its own: `extension-builder`.
+Imports are not done here: exports in the finanse format, a simple CSV or a format an approved
+connector reads go through the app's import drawer; other formats through the `import-builder` skill,
+which opens with one question: (a) "Daj mi plik z wartościami" (the agent reads the export) or (b)
+recommended: a connector written without seeing values, approved once in the app. The user's answer
+decides. One custom rule on its own: `extension-builder`.
 
 ## Session start
 

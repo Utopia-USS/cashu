@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "finanse-budget-import.v1.json",
+  "title": "finanse budget import document (finanse-budget-import), format_version 1",
+  "description": "Generated from finanse.modules.budget.ingestion.canonical.BudgetImportDocument by scripts/gen_connector_schemas.py; see budget-import-format.md (also the CSV variant). The app also enforces what a schema cannot express: real calendar dates, at most 2 decimal places (3 for BHD, IQD, JOD, KWD, LYD, OMR, TND), unique transaction_id.",
+  "$defs": {
+    "DocAccount": {
+      "additionalProperties": false,
+      "description": "The account the statement belongs to.",
+      "properties": {
+        "currency": {
+          "description": "ISO 4217 code of the account.",
+          "pattern": "^[A-Za-z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "iban": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Matches an existing account of the profile (any bank); otherwise the owner picks the account in the preview.",
+          "title": "Iban"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of a newly created account (never renames one).",
+          "title": "Name"
+        },
+        "institution": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Institution id of a newly created account (\"mbank\", \"pekao\", ...); default: the document's source.",
+          "title": "Institution"
+        }
+      },
+      "required": [
+        "currency"
+      ],
+      "title": "DocAccount",
+      "type": "object"
+    },
+    "DocBalance": {
+      "additionalProperties": false,
+      "description": "A closing balance of the account on a date (wins over ``balance_after`` of that date).",
+      "properties": {
+        "date": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Date",
+          "type": "string"
+        },
+        "amount": {
+          "description": "Signed decimal, \".\" separator (a string is preferred: no float rounding).",
+          "pattern": "^[+-]?\\d+(\\.\\d+)?$",
+          "title": "Amount",
+          "type": [
+            "string",
+            "number"
+          ]
+        }
+      },
+      "required": [
+        "date",
+        "amount"
+      ],
+      "title": "DocBalance",
+      "type": "object"
+    },
+    "DocTransaction": {
+      "additionalProperties": false,
+      "description": "One booked transaction (mirrors ``RawTransaction``).",
+      "properties": {
+        "booking_date": {
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Booking Date",
+          "type": "string"
+        },
+        "amount": {
+          "description": "Signed: negative = outflow, positive = inflow.",
+          "pattern": "^[+-]?\\d+(\\.\\d+)?$",
+          "title": "Amount",
+          "type": [
+            "string",
+            "number"
+          ]
+        },
+        "currency": {
+          "pattern": "^[A-Za-z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "value_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value Date"
+        },
+        "counterparty_name": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Counterparty Name"
+        },
+        "counterparty_iban": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IBAN or Polish NRB; spaces and punctuation are ignored.",
+          "title": "Counterparty Iban"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference"
+        },
+        "transaction_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The bank's stable id of the transaction (deduplication).",
+          "title": "Transaction Id"
+        },
+        "balance_after": {
+          "anyOf": [
+            {
+              "description": "Signed decimal, \".\" separator (a string is preferred: no float rounding).",
+              "pattern": "^[+-]?\\d+(\\.\\d+)?$",
+              "type": [
+                "string",
+                "number"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Account balance after this transaction (end-of-day snapshot).",
+          "title": "Balance After"
+        }
+      },
+      "required": [
+        "booking_date",
+        "amount",
+        "currency"
+      ],
+      "title": "DocTransaction",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "finanse-budget-import",
+      "title": "Format",
+      "type": "string"
+    },
+    "format_version": {
+      "const": 1,
+      "title": "Format Version",
+      "type": "integer"
+    },
+    "account": {
+      "$ref": "#/$defs/DocAccount"
+    },
+    "transactions": {
+      "items": {
+        "$ref": "#/$defs/DocTransaction"
+      },
+      "maxItems": 200000,
+      "title": "Transactions",
+      "type": "array"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{0,31}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Who produced the document (connector or converter).",
+      "title": "Source"
+    },
+    "balances": {
+      "items": {
+        "$ref": "#/$defs/DocBalance"
+      },
+      "maxItems": 10000,
+      "title": "Balances",
+      "type": "array"
+    }
+  },
+  "required": [
+    "format",
+    "format_version",
+    "account",
+    "transactions"
+  ],
+  "type": "object"
+}

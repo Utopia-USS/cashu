@@ -1,0 +1,13 @@
+# Example connector: a made-up broker's JSON export -> finanse-import JSON (investments).
+api_version: 1
+id: investments-json-example
+name: ExampleBroker JSON (przykład)
+version: 1.0.0
+author: finanse examples
+description: Converts the JSON account history of the made-up ExampleBroker into the finanse import format.
+module: investments
+kind: file
+run: [python3, connector.py]
+timeout_s: 30
+file:
+  extensions: [json]

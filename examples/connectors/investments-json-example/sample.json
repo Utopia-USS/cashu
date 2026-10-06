@@ -1,0 +1,31 @@
+{
+  "broker": "ExampleBroker",
+  "export_version": 2,
+  "account": {"number": "EB-000-TEST", "currency": "PLN"},
+  "generated_at": "2026-04-01T08:00:00Z",
+  "operations": [
+    {"id": "OP-1001", "time": "2026-01-05T09:00:00", "kind": "CASH_IN", "amount": "20000.00", "currency": "PLN"},
+    {"id": "OP-1002", "time": "2026-01-06T10:15:00", "kind": "BUY", "ticker": "ETFTEST", "isin": "PLTEST000010",
+     "name": "Test ETF WIG20", "market": "XWAR", "units": "100", "unit_price": "95.40", "currency": "PLN",
+     "commission": "3.82", "settled": "-9543.82", "settled_currency": "PLN"},
+    {"id": "OP-1003", "time": "2026-01-07T15:30:00", "kind": "BUY", "ticker": "WRLD", "isin": "IE00TEST0000",
+     "name": "Test World UCITS ETF", "market": "XETR", "units": "10", "unit_price": "110.50", "currency": "EUR",
+     "commission": "0", "settled": "-4751.50", "settled_currency": "PLN", "fx": "4.30"},
+    {"id": "OP-1004", "time": "2026-02-20T12:00:00", "kind": "SELL", "ticker": "ETFTEST", "isin": "PLTEST000010",
+     "name": "Test ETF WIG20", "market": "XWAR", "units": "40", "unit_price": "99.00", "currency": "PLN",
+     "commission": "1.58", "settled": "3958.42", "settled_currency": "PLN"},
+    {"id": "OP-1005", "time": "2026-03-10T09:00:00", "kind": "DIVIDEND", "ticker": "ETFTEST", "isin": "PLTEST000010",
+     "name": "Test ETF WIG20", "market": "XWAR", "gross": "60.00", "withholding": "11.40", "currency": "PLN",
+     "settled": "48.60", "settled_currency": "PLN"},
+    {"id": "OP-1006", "time": "2026-03-31T23:59:00", "kind": "ACCOUNT_FEE", "amount": "-5.00", "currency": "PLN"}
+  ],
+  "holdings": {
+    "as_of": "2026-03-31",
+    "items": [
+      {"ticker": "ETFTEST", "isin": "PLTEST000010", "name": "Test ETF WIG20", "market": "XWAR", "units": "60",
+       "currency": "PLN", "avg_price": "95.44"},
+      {"ticker": "WRLD", "isin": "IE00TEST0000", "name": "Test World UCITS ETF", "market": "XETR", "units": "10",
+       "currency": "EUR", "avg_price": "110.50"}
+    ]
+  }
+}

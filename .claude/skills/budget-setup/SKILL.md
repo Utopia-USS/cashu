@@ -24,7 +24,10 @@ After each step show the result and wait until it works before moving on. Ask at
 - Never ask for bank logins, passwords, SCA codes, API keys or IBANs. The user logs in only in the
   bank's own page; keys are typed only into hidden prompts in the user's own terminal
   (`finanse secrets set anthropic`). If the user pastes a secret or an IBAN, do not repeat or store it.
-- Never open statement CSVs, `finanse.db`, backups or Open Banking session files. Never run commands
+- Never open `finanse.db`, backups or Open Banking session files. The privacy level covers what the
+  MCP tools give you; a statement the user hands you themselves may be read for the task they asked for
+  (values stay in the conversation, never in notes or files; account numbers, IBANs and names are never
+  repeated or written anywhere). Never run commands
   that print account names, file names, balances or transactions (`finanse import-dir`, `import-csv`,
   `accounts`, `stats`, `eb login`, `eb check`, `eb sessions`, `eb resync`). Give them to the user to run
   in their own terminal, not with `!` in this session (that would put the output into the
@@ -92,17 +95,27 @@ Bank Millennium: Open Banking only for now (no CSV parser yet).
 
 A different bank:
 - Open Banking, if Enable Banking lists it (`finanse eb banks --country PL` after step 5 is configured);
+- or a **connector** (preferred, no change to finanse): the `import-builder` skill writes it in the
+  workspace's `connectors/`, the owner approves it once in Ustawienia > Konektory and the app then
+  imports this bank's statements itself (also a `fetch` connector when the bank has an API with a key
+  the owner enters in the app). It starts with the question of step 4;
 - or a new CSV parser: a code change in a finanse source checkout (its developer guide, section
-  "Adding a new bank"). You need the format, not the data: ask the
-  user for a **synthetic** sample (the real header line plus 2-3 rows with invented values, same
-  encoding and separator). Never ask for a real statement.
+  "Adding a new bank"); its test fixtures are synthetic (the real header line plus 2-3 rows with
+  invented values, same encoding and separator).
 
 ## Step 4 - CSV import (recommended first)
 
-The user exports history from online banking to CSV and puts the files in one folder per bank: in
-the agent workspace `inbox/statements/<bank>/` (Claude Code's file tools are denied in `inbox/`), in a
-source checkout `statements/<bank>/` (git-ignored); bank folders `mbank`, `erste`, `pekao`. The user
-runs in their own terminal, from the workspace (or the checkout):
+A supported bank: the user imports the CSV in the app (Wydatki > Import, the bank is recognised) and
+checks the preview there; nothing for you to see. A bank finanse does not read yet: ask once, before
+anything else: (a) "Daj mi plik z wartościami" (the user saves the statement in `inbox/` or names a
+path; you read it and build the connector against the real columns) or (b) **recommended**: a
+connector written without seeing values (`inspect_export` shows the masked structure), approved once in
+the app. The answer decides; then follow `import-builder`. If the user already handed you the file,
+skip the question.
+
+Many files at once (CLI): the user puts them in one folder per bank: in the agent workspace
+`inbox/statements/<bank>/`, in a source checkout `statements/<bank>/` (git-ignored); bank folders
+`mbank`, `erste`, `pekao`. The user runs in their own terminal, from the workspace (or the checkout):
 
 ```bash
 finanse --profile <slug> import-dir inbox/statements   # checkout: import-dir statements; idempotent

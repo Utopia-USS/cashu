@@ -24,7 +24,7 @@ only about the canonical format.
 | Encoding | UTF-8. A leading byte order mark (EF BB BF) is allowed. |
 | Dates | `YYYY-MM-DD` (ISO 8601 calendar date, e.g. `2026-01-07`). No other format is accepted. |
 | Times | `HH:MM` or `HH:MM:SS`, 24-hour clock (e.g. `09:05`, `15:30:12`). No zone, no fractions. |
-| Decimal numbers | `.` as decimal separator, optional leading `-`, digits only: `1234.5`, `-0.75`, `10`. No thousands separators, no `+`, no exponent (`1e3`), no currency symbols, no percent signs. Any number of decimal places; values are exact decimals. In JSON a number may also be written as a JSON number (`12.5`); it is read exactly (never as a binary float). |
+| Decimal numbers | `.` as decimal separator, optional leading `-`, digits only: `1234.5`, `-0.75`, `10`. No thousands separators, no `+`, no exponent (`1e3`), no currency symbols, no percent signs. Any number of decimal places; values are exact decimals. In JSON a number may also be written as a JSON number (`12.5`); it is read exactly (never as a binary float), also in a connector's output. |
 | Currencies | ISO 4217 code, three upper-case letters (`PLN`, `USD`, `EUR`). |
 | Text | Trimmed of surrounding spaces. An empty string means "no value". |
 | Booleans | `true` / `false` (CSV: case-insensitive text, empty = `false`; JSON: `true` / `false`). |

@@ -1,7 +1,8 @@
 """Convert <BROKER> <EXPORT KIND> exports to the finanse import format (format_version 1).
 
 Written by the import-builder skill for profile <slug> on <YYYY-MM-DD>. Read it before you let
-Claude Code run it: the finanse app never runs scripts, the agent runs this one on your computer.
+Claude Code run it: the agent runs this one-off converter on your computer. The finanse app never runs
+it; the app runs only connectors you approved in Ustawienia > Konektory.
 Input:  <what the export looks like: file type, sheets, encoding, separator, date and number format>
 Output: finanse-import CSV, see references/import-format.md of the import-builder skill.
 Run:    python3 -I scripts/import_<source>.py inbox/<export file> inbox/converted/<output .csv>

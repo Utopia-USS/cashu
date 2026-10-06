@@ -207,10 +207,11 @@ in Polish.
 
 Every profile has its own local MCP server (`finanse mcp --profile <slug>`), so
 Claude Code or Claude Desktop can read and propose changes without ever touching
-the database or your raw exports. The privacy level is per profile and **strict by
-default**: shares and percentages, no amounts, never account numbers or other
-identifiers. Agent writes are proposals you approve in the app, and the app never
-runs code an agent wrote.
+the database. The privacy level is per profile and **strict by default**: shares
+and percentages, no amounts, never account numbers or other identifiers (it
+covers what the app gives the agent; a file you hand the agent yourself is your
+call). Agent writes are proposals you approve in the app, and the app runs only
+connectors you approved (below).
 
 ```bash
 claude mcp add finanse-<slug> -- finanse mcp --profile <slug>   # once per profile
@@ -221,6 +222,19 @@ The repo ships Claude Code skills for each module (`/budget-setup`,
 (`/import-builder` for unsupported broker exports, `/extension-builder` for custom
 rules, `/market-research` for dated, sourced research notes). Details:
 [`AGENTS.md`](AGENTS.md).
+
+---
+
+## Connectors (any bank or broker, no fork)
+
+A bank or broker finanse does not read can be added with a **connector**: a small
+program in any language with a `connector.yaml` manifest, written by you or your
+agent. It converts an export file or fetches from an API with a key you enter in
+the app. You approve it once in **Ustawienia > Konektory** (pinned by content
+hash); the app then runs it in a macOS sandbox with a timeout and sends its output
+through the normal import preview. The contract for authors:
+[`docs/connectors.md`](docs/connectors.md); tested examples in
+[`examples/connectors/`](examples/connectors/).
 
 ---
 

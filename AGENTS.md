@@ -112,7 +112,9 @@ src/finanse/
 │   │   ├── cash.py           # the cash pool (one virtual account per currency and profile)
 │   │   ├── analytics.py      # cashflow, spending, drill-down, recurring payments
 │   │   ├── api.py, cli.py, setup.py, queries.py
-│   │   ├── ingestion/        # normalize, dedup, transfers, csv_import/ (per-bank parsers), enable_banking/
+│   │   ├── imports.py        # in-app statement import: preview (staged, read-only) -> commit
+│   │   ├── ingestion/        # normalize, dedup, transfers, csv_import/ (per-bank parsers), enable_banking/,
+│   │   │                     #   canonical.py (finanse-budget-import, docs/budget-import-format.md)
 │   │   └── categorize/       # taxonomy (25 categories + ~420 PL rules), engine, rules, llm, local_llm, reclassify
 │   ├── assets/           # manual positions, vehicles (depreciation.py), net-worth contributor
 │   ├── loans/            # many loans per profile: amortization.py, valuation.py, patterns.py, api, cli
@@ -133,6 +135,8 @@ frontend/                 # React + Vite + TS SPA (dashboard; UI strings are Pol
 ├── src/charts.tsx, chart.ts           # v2 SVG charts (line + benchmark + levels, bars, donut, sparkline)
 └── src/ui.tsx, format.ts, index.css   # shared primitives and tokens
 
+docs/connectors.md        # connector contract for outside authors (manifest, protocol, sandbox); schemas in docs/schemas/
+examples/connectors/      # three tested example connectors (budget CSV, investments JSON, fetch with a fixture)
 packaging/                # PyInstaller spec, entitlements, icon (macOS); windows/ = documented stub
 scripts/build_macos.sh    # builds cashU.app (SPA, icon, bundle; signs/notarizes from env vars)
 scripts/bump_version.py   # version bump run by .github/workflows/bump-version.yml on every push to main
@@ -223,18 +227,22 @@ claude mcp add finanse-<slug> -- finanse mcp --profile <slug>   # once per profi
 | `/assets-setup` | home, car (depreciation curve) and other manually valued assets |
 | `/loans-setup` | mortgages and loans, installment recognition, balances from the bank |
 | `/investments-setup` | strategy interview (goals, risk, history retrospective, strategy) and weekly check-ins |
-| `/import-builder` | converter for an unsupported broker export into the finanse import format (the agent runs it locally; the app takes only the converted file) |
+| `/import-builder` | importer for an unsupported broker export or bank statement: preferably a connector (`docs/connectors.md`) the app runs after the owner approves it in Ustawienia > Konektory; else a one-off converter the agent runs, or a generic CSV mapping |
 | `/extension-builder` | one custom rule (expression language) with a backtest on the profile's history |
 | `/market-research` | weekly research as a local Saturday routine in the profile's workspace (or on demand for one instrument or theme): dated facts, community sentiment flagged as noise and trend data as Polish notes with sources linked to positions and theses; never recommendations or price predictions |
 
-Rules every skill follows: data only through the profile's MCP tools (never raw
-exports, statements or the DB), the profile's privacy level decides what the
-agent sees (strict by default: shares and percentages, no amounts, never
-identifiers), configuration changes are proposals the owner approves in the app,
-the app never runs code an agent writes (a converter runs in Claude Code under its
-own permission prompts; `validate_import` / `propose_import` refuse scripts),
-no passwords, IBANs or account numbers, conversation in Polish and files in
-English. When you edit a skill, keep its `description` precise (it decides when
+Rules every skill follows: app data only through the profile's MCP tools (never
+the DB, backups or the import archive), the profile's privacy level decides what
+the MCP tools give the agent (strict by default: shares and percentages, no
+amounts, never identifiers), while files or rows the user hands over themselves
+are used for the task they asked for (asked once at the import step: the file
+with values, or the recommended blind connector), configuration changes are
+proposals the owner approves in the app, the app runs only a connector the owner
+approved in the app (pinned by content hash, sandboxed, with a timeout) and an
+MCP call never makes it run code (`propose_connector` only installs a pending
+connector; `validate_import` / `propose_import` refuse scripts), no passwords,
+API keys, IBANs or account numbers (connector keys are entered by the owner in
+the app), conversation in Polish and files in English. When you edit a skill, keep its `description` precise (it decides when
 the skill triggers) and use only tool names from the MCP server.
 
 ---
@@ -286,8 +294,9 @@ the skill triggers) and use only tool names from the MCP server.
   `store/` and `service/` layers only load and persist. Files live in the data dir:
   `profiles/<slug>/strategy.yaml|.md` and `imports/<slug>/<sha256>.<ext>` (every
   committed import). Imports go through the finanse format
-  ([`docs/import-format.md`](docs/import-format.md)) or a generic CSV mapping, never
-  a broker-specific parser. The daily check (`finanse invest run`) refreshes prices
+  ([`docs/import-format.md`](docs/import-format.md)), a generic CSV mapping or an
+  approved connector ([`docs/connectors.md`](docs/connectors.md)), never a
+  broker-specific parser in the code base. The daily check (`finanse invest run`) refreshes prices
   (Yahoo/stooq) and NBP rates without holding a database transaction across the
   network, then runs the rules per profile.
 - **Migrations: Alembic.** `init_db()` (every CLI command and server start)
@@ -310,7 +319,8 @@ the skill triggers) and use only tool names from the MCP server.
 a commit message asks for a bigger step, `[skip bump]` for none. Pull after pushing (the bot commits to
 `main`).
 
-**Adding a new bank (CSV parser):**
+**Adding a new bank (CSV parser):** (a bank or broker only one user needs is better
+served by a connector, [`docs/connectors.md`](docs/connectors.md): no code change)
 1. New file `src/finanse/modules/budget/ingestion/csv_import/<bank>.py` - a thin
    config on top of the engine in `base.py` (model it on `mbank.py`/`pekao.py`:
    encoding, separator, columns, where currency/IBAN/balance come from; set

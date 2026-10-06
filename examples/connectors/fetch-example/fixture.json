@@ -1,0 +1,17 @@
+{
+  "pages": [
+    {"entries": [
+      {"id": "E-1001", "time": "2026-01-05T09:00:00Z", "type": "DEPOSIT", "amount": "5000.00", "currency": "EUR"},
+      {"id": "E-1002", "time": "2026-01-06T10:15:00Z", "type": "BUY", "asset": "BTC", "quantity": "0.05",
+       "price": "40000.00", "currency": "EUR", "fee": "4.00"}
+     ],
+     "has_more": true},
+    {"entries": [
+      {"id": "E-1003", "time": "2026-02-10T16:45:00Z", "type": "BUY", "asset": "ETH", "quantity": "1.5",
+       "price": "2000.00", "currency": "EUR", "fee": "3.00"},
+      {"id": "E-1004", "time": "2026-03-01T08:30:00Z", "type": "SELL", "asset": "BTC", "quantity": "0.01",
+       "price": "45000.00", "currency": "EUR", "fee": "0.90"}
+     ],
+     "has_more": false}
+  ]
+}

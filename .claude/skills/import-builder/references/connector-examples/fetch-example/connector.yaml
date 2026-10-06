@@ -1,0 +1,19 @@
+# Copy shipped with this skill, generated from the finanse sources; do not edit it here.
+# Example connector: trade history from the made-up ExampleExchange API -> finanse-import JSON.
+api_version: 1
+id: fetch-example
+name: ExampleExchange API (przykład)
+version: 1.0.0
+author: finanse examples
+description: Fetches the trade history of the made-up ExampleExchange (api.example.com) with a read-only API key.
+module: investments
+kind: fetch
+run: [python3, connector.py]
+timeout_s: 120
+fetch:
+  hosts: [api.example.com]
+  secrets:
+    - {id: api_key, label: Klucz API (tylko odczyt)}
+  params:
+    - {id: start, label: Od daty (pierwsze pobranie), type: date, required: false}
+  history_days: 365

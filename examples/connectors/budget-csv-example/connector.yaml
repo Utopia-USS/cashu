@@ -1,0 +1,13 @@
+# Example connector: a made-up bank's CSV statement -> finanse-budget-import JSON.
+api_version: 1
+id: budget-csv-example
+name: Przykładowy Bank CSV (przykład)
+version: 1.0.0
+author: finanse examples
+description: Converts the CSV statement of the made-up Przykładowy Bank into the finanse budget import format.
+module: budget
+kind: file
+run: [python3, connector.py]
+timeout_s: 30
+file:
+  extensions: [csv]

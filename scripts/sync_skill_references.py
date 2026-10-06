@@ -21,6 +21,14 @@ SKILLS = ROOT / ".claude" / "skills"
 STRATEGY = "src/finanse/modules/investments/templates/strategy"
 EXPRESSIONS = "src/finanse/modules/investments/rules/expr/EXPRESSIONS.md"
 GENERIC_CSV = "src/finanse/modules/investments/importing/generic_csv_example.yaml"
+EXAMPLES = "examples/connectors"
+CONNECTOR_EXAMPLES = ("budget-csv-example", "investments-json-example", "fetch-example")
+SCHEMAS = (
+    "connector-manifest.v1.json",
+    "connector-protocol.v1.json",
+    "finanse-budget-import.v1.json",
+    "finanse-import.v1.json",
+)
 
 # (skill, file inside the skill, source in the repository)
 COPIES: list[tuple[str, str, str]] = [
@@ -32,6 +40,14 @@ COPIES: list[tuple[str, str, str]] = [
     ("extension-builder", "references/expressions.md", EXPRESSIONS),
     ("import-builder", "references/import-format.md", "docs/import-format.md"),
     ("import-builder", "references/generic_csv_example.yaml", GENERIC_CSV),
+    ("import-builder", "references/connectors.md", "docs/connectors.md"),
+    ("import-builder", "references/budget-import-format.md", "docs/budget-import-format.md"),
+    *[("import-builder", f"references/schemas/{name}", f"docs/schemas/{name}") for name in SCHEMAS],
+    *[
+        ("import-builder", f"references/connector-examples/{example}/{name}", f"{EXAMPLES}/{example}/{name}")
+        for example in CONNECTOR_EXAMPLES
+        for name in ("connector.yaml", "connector.py")
+    ],
 ]
 
 # Repository paths inside the sources -> what the copy calls them (copies sit side by side).
@@ -41,6 +57,11 @@ REWRITES: list[tuple[str, str]] = [
     (f"`{GENERIC_CSV}`", "`generic_csv_example.yaml`"),
     (GENERIC_CSV, "generic_csv_example.yaml"),
     ("`tests/investments/strategy/test_strategy_templates.py`", "the finanse test suite"),
+    (f"../{EXAMPLES}/", "connector-examples/"),
+    (f"{EXAMPLES}/", "connector-examples/"),
+    ("docs/import-format.md", "import-format.md"),
+    ("docs/budget-import-format.md", "budget-import-format.md"),
+    ("docs/connectors.md", "connectors.md"),
 ]
 
 NOTE = "Copy shipped with this skill, generated from the finanse sources; do not edit it here."
@@ -50,6 +71,8 @@ def render(source: Path, dest: str) -> str:
     text = source.read_text(encoding="utf-8")
     for old, new in REWRITES:
         text = text.replace(old, new)
+    if dest.endswith(".json"):
+        return text  # JSON has no comments: copied verbatim (its $id / description name the source)
     if dest.endswith(".md"):
         return f"<!-- {NOTE} -->\n\n{text}"
     return f"# {NOTE}\n{text}"

@@ -92,11 +92,14 @@ statements/mbank/*.csv    statements/erste/*.csv    statements/pekao/*.csv
 Supported formats (verified): **mBank** (cp1250, `;`, multi-currency),
 **Erste/Santander** (UTF-8, no header, positional), **Pekao** (UTF-8, `;`).
 
-> 🔀 **A different bank?** If the user has a bank outside these three, offer to
-> write a parser and add the bank to the registry - instructions in
-> [`AGENTS.md`](AGENTS.md) → "Adding a new bank".
-> Ask for **one sample file** and analyze the format (encoding, separator,
-> columns, where currency/IBAN/balance come from).
+> 🔀 **A different bank?** If the user has a bank outside these three, the
+> preferred way is a **connector** that the owner approves once in the app
+> (Ustawienia > Konektory) and the app then runs itself: the `/import-builder`
+> skill writes it, the contract is [`docs/connectors.md`](docs/connectors.md).
+> Ask once whether the user hands you the statement with values or wants the
+> blind route (you see only its masked structure). Alternatively write a parser
+> and add the bank to the registry - instructions in [`AGENTS.md`](AGENTS.md) →
+> "Adding a new bank" (test fixtures synthetic).
 
 ```bash
 finanse import-dir statements     # bank from the subdir name, idempotent

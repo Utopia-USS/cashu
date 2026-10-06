@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "connector-protocol.v1.json",
+  "title": "finanse connector protocol, api_version 1",
+  "description": "Generated from finanse.core.connectors.protocol by scripts/gen_connector_schemas.py; see connectors.md. stdin: request. stdout with exit code 0: detect_response (detect), document_response (convert, fetch), check_response (check); with exit code 1: error_response. Known error kinds: bad_file, unsupported_version, auth_failed, rate_limited, network, upstream, internal.",
+  "messages": {
+    "request": {
+      "$ref": "#/$defs/Request"
+    },
+    "detect_response": {
+      "$ref": "#/$defs/DetectResponse"
+    },
+    "document_response": {
+      "$ref": "#/$defs/DocumentResponse"
+    },
+    "check_response": {
+      "$ref": "#/$defs/CheckResponse"
+    },
+    "error_response": {
+      "$ref": "#/$defs/ErrorResponse"
+    }
+  },
+  "$defs": {
+    "CheckResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "const": true,
+          "title": "Ok",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "CheckResponse",
+      "type": "object"
+    },
+    "DetectResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "match": {
+          "title": "Match",
+          "type": "boolean"
+        },
+        "confidence": {
+          "default": 1.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "match"
+      ],
+      "title": "DetectResponse",
+      "type": "object"
+    },
+    "DocumentResponse": {
+      "additionalProperties": false,
+      "description": "``convert`` / ``fetch``: the import document in the module's format.",
+      "properties": {
+        "document": {
+          "additionalProperties": true,
+          "description": "investments: finanse-import v1 JSON; budget: finanse-budget-import v1 JSON.",
+          "title": "Document",
+          "type": "object"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "fetch only: opaque state handed back on the next fetch.",
+          "title": "Cursor"
+        }
+      },
+      "required": [
+        "document"
+      ],
+      "title": "DocumentResponse",
+      "type": "object"
+    },
+    "ErrorDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "pattern": "^[a-z][a-z0-9_]{0,39}$",
+          "title": "Kind",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ErrorDetail",
+      "type": "object"
+    },
+    "ErrorResponse": {
+      "additionalProperties": false,
+      "description": "Exit code 1. ``message`` is shown to the owner only (it may contain data), never to MCP.",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/ErrorDetail"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "title": "ErrorResponse",
+      "type": "object"
+    },
+    "Request": {
+      "description": "What the app writes to the connector's stdin.",
+      "properties": {
+        "api_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Api Version",
+          "type": "integer"
+        },
+        "command": {
+          "enum": [
+            "detect",
+            "convert",
+            "fetch",
+            "check"
+          ],
+          "title": "Command",
+          "type": "string"
+        },
+        "module": {
+          "enum": [
+            "investments",
+            "budget"
+          ],
+          "title": "Module",
+          "type": "string"
+        },
+        "file": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestFile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "detect / convert only."
+        },
+        "account": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestAccount"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "secrets": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "fetch / check only.",
+          "title": "Secrets"
+        },
+        "since": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "fetch only: YYYY-MM-DD.",
+          "title": "Since"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "fetch only: opaque, from the last fetch.",
+          "title": "Cursor"
+        }
+      },
+      "required": [
+        "command",
+        "module"
+      ],
+      "title": "Request",
+      "type": "object"
+    },
+    "RequestAccount": {
+      "properties": {
+        "currency": {
+          "description": "ISO 4217 currency of the target account.",
+          "title": "Currency",
+          "type": "string"
+        },
+        "label": {
+          "description": "The account's display name.",
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "currency",
+        "label"
+      ],
+      "title": "RequestAccount",
+      "type": "object"
+    },
+    "RequestFile": {
+      "properties": {
+        "path": {
+          "description": "Absolute path of the input copy inside the run directory.",
+          "title": "Path",
+          "type": "string"
+        },
+        "name": {
+          "description": "The original file name (never its original location).",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "name"
+      ],
+      "title": "RequestFile",
+      "type": "object"
+    }
+  }
+}
