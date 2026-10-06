@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/logo-cashu.png" alt="cashU" width="560"></p>
+
 # cashU - a local personal-finance and investing companion
 
 An open-source, local-first app for your money: budget, assets, loans and
