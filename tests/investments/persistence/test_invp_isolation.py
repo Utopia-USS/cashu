@@ -288,6 +288,8 @@ def test_writes_through_one_profile_never_touch_another(client):
     }
     assert client.post(f"{b}/alerts", json=only_alert).status_code == 404
     assert client.post(f"{b}/watchlist", json={"instrument_id": only_id}).status_code == 404
+    # research read marks (F8): another profile's instrument is not found
+    assert client.post(f"{b}/research/read", json={"instrument_id": only_id}).status_code == 404
     assert client.get(f"{b}/overview?accounts={a_aid}").status_code == 404
     assert client.get(f"{b}/transactions?account_id={a_aid}").status_code == 404
     assert client.get(f"{b}/reconciliation?account_id={a_aid}").status_code == 404

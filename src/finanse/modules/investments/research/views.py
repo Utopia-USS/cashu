@@ -204,6 +204,8 @@ def note_dict(
         "dismissed_at": iso(dismissed),
         "restorable_until": iso(dismissed + service.RESTORE_WINDOW) if dismissed else None,
         "cooldown_until": iso(_aware(row.cooldown_until)),
+        "read_at": iso(_aware(row.read_at)),
+        "unread": service.is_unread(row, now),
     }
 
 
@@ -363,6 +365,14 @@ def summary(
         moment = convert.aware(created)
         if iid not in last_note_at or last_note_at[iid] < moment:
             last_note_at[iid] = moment
+    unread_rows = service.unread_notes(session, pid, now=now)
+    unread_by_instrument: dict[int, int] = defaultdict(int)
+    unread_by_theme: dict[str, int] = defaultdict(int)
+    for r in unread_rows:
+        if r.instrument_id is not None:
+            unread_by_instrument[r.instrument_id] += 1
+        if r.theme:
+            unread_by_theme[theme_key(r.theme)] += 1
     candidate_ids = set(by_instrument)
     ids = held | watched | candidate_ids
     loaded = instruments.load(session, ids, profile_id=pid)
@@ -406,6 +416,7 @@ def summary(
                 "sentiment_8w": values,
                 "direction": direction(values).value,
                 "last_researched_at": iso(max(researched)) if researched else None,
+                "unread": unread_by_instrument.get(iid, 0),
             }
         )
     items.sort(
@@ -417,6 +428,8 @@ def summary(
         )
     )
     themes = _themes(rows, now)
+    for t in themes:
+        t["unread"] = unread_by_theme.get(t["key"], 0)
     latest_run = service.latest_run(session, pid)
     running = service.running_run(session, pid, now)
     candidate_rows = [r for r in rows if r.kind == CANDIDATE_KIND]
@@ -453,6 +466,13 @@ def summary(
                 and not (r.details or {}).get("accepted_at")
             ),
             "signals_open": _open_research_signals(session, pid),
+            # Only notes the app can mark read (F8 review BE-2): a held or watched instrument's (its asset
+            # drawer) or a theme's (the theme view); a note on a sold instrument would never clear.
+            "notes_unread": sum(
+                1
+                for r in unread_rows
+                if r.theme or (r.instrument_id is not None and r.instrument_id in held | watched)
+            ),
         },
     }
 

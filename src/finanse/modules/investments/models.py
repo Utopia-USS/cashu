@@ -522,6 +522,7 @@ class InvResearchNote(SQLModel, table=True):
     signal the note created or joined (dismissing the note resolves it)."""
 
     __tablename__ = "research_notes"
+    __table_args__ = (Index("ix_research_notes_unread", "profile_id", "instrument_id", "read_at"),)
 
     id: int | None = Field(default=None, primary_key=True)
     profile_id: int = Field(sa_column=profile_fk_column("research_notes"))
@@ -546,6 +547,9 @@ class InvResearchNote(SQLModel, table=True):
     cooldown_until: dt.datetime | None = None
     created_at: dt.datetime = Field(default_factory=utcnow)
     updated_at: dt.datetime = Field(default_factory=utcnow)
+    read_at: dt.datetime | None = None
+    """When the owner opened the note (F8: the asset drawer's research section, the research page);
+    None = unread. Owner-written notes are born read; added last by migration 0011."""
 
 
 TABLES: tuple[type[SQLModel], ...] = (

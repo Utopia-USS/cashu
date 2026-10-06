@@ -1,5 +1,7 @@
 """F8 backend (home v3): signal freshness (``current``, the ``max_unverified_days`` expiry, alerts
-re-armed and ``last_checked_at`` only on real checks). Synthetic data and fake sources only."""
+re-armed and ``last_checked_at`` only on real checks) and unread research notes (``read_at``, the
+``POST research/read`` mark, counts on notes / summary / positions / watchlist, profile isolation).
+Synthetic data and fake sources only."""
 
 from __future__ import annotations
 
@@ -20,15 +22,19 @@ from invp_support import (
 from sqlmodel import select
 
 from finanse.core.db import get_session
-from finanse.core.models import Profile
+from finanse.core.models import Profile, utcnow
 from finanse.modules.investments.market import SourceException
 from finanse.modules.investments.models import (
     InvAlert,
     InvInstrument,
+    InvResearchNote,
     InvSignal,
 )
+from finanse.modules.investments.research import service as research
+from finanse.modules.investments.research.validation import validate_note
 from finanse.modules.investments.service import alerts as alert_service
 from finanse.modules.investments.service import daily, files, views
+from finanse.modules.investments.service import watchlist as watch_service
 
 T0 = dt.datetime(2026, 3, 2, 8, 0, tzinfo=dt.UTC)
 CONC_XMPL = "concentration"
@@ -227,3 +233,117 @@ def test_signal_action_answers_carry_current(api_investor):
     acked = client.post(f"{api}/signals/{conc.id}/acknowledge", json={}).json()
     assert acked["signal"]["current"] is False
     assert client.get(f"{api}/overview").json()["attention"][0]["current"] in (True, False)
+
+
+# --- unread research notes ----------------------------------------------------------------------
+
+
+def add_note(pid: int, n: int, *, instrument: str | None = "XMPL", created_by="agent", **raw):
+    data = {
+        "kind": "news",
+        "polarity": "negative",
+        "strength": 2,
+        "title": f"Example fact {n}",
+        "summary": "Przykladowy fakt ze zrodla, opisany neutralnie.",
+        "sources": [
+            {
+                "url": f"https://example.com/f8/{n}",
+                "publisher": "Example News",
+                "published_at": utcnow().date().isoformat(),
+            }
+        ],
+        **raw,
+    }
+    with get_session() as s:
+        p = s.get(Profile, pid)
+        ref = research.resolve_reference(s, pid, instrument) if instrument else None
+        return research.add_note(
+            s, p, validate_note(data, now=utcnow()), instrument_id=ref, created_by=created_by
+        ).note.id
+
+
+def test_unread_counts_and_marking_read(api_investor):
+    client, pid, slug = api_investor
+    api = f"/api/p/{slug}/investments"
+    xmpl = instrument_id("XMPL")
+    a1 = add_note(pid, 1)
+    add_note(pid, 2)
+    owner = add_note(pid, 3, created_by="user")
+    theme_note = add_note(pid, 4, instrument=None, theme="Półprzewodniki")
+    dismissed = add_note(pid, 5, instrument="ABC")
+    client.patch(f"{api}/research/{dismissed}", json={"dismissed": True})
+
+    notes = {n["id"]: n for n in client.get(f"{api}/research").json()}
+    assert notes[a1]["unread"] is True and notes[a1]["read_at"] is None
+    assert notes[owner]["unread"] is False and notes[owner]["read_at"] is not None
+    summary = client.get(f"{api}/research/summary").json()
+    assert summary["totals"]["notes_unread"] == 3  # two XMPL notes + the theme note
+    by_inst = {i["instrument_id"]: i for i in summary["instruments"]}
+    assert by_inst[xmpl]["unread"] == 2 and by_inst[instrument_id("ABC")]["unread"] == 0
+    (theme,) = summary["themes"]
+    assert theme["unread"] == 1
+    positions = {
+        p["instrument"]["id"]: p for p in client.get(f"{api}/positions").json()["positions"]
+    }
+    assert positions[xmpl]["research_unread"] == 2
+    assert positions[instrument_id("ABC")]["research_unread"] == 0
+
+    r = client.post(f"{api}/research/read", json={"instrument_id": xmpl})
+    assert r.status_code == 200 and r.json() == {"marked": 2}
+    assert client.post(f"{api}/research/read", json={"instrument_id": xmpl}).json() == {"marked": 0}
+    assert client.post(f"{api}/research/read", json={"theme": "PÓŁPRZEWODNIKI"}).json() == {
+        "marked": 1
+    }
+    notes = {n["id"]: n for n in client.get(f"{api}/research").json()}
+    assert notes[a1]["unread"] is False and notes[a1]["read_at"] is not None
+    assert notes[theme_note]["unread"] is False
+    assert client.get(f"{api}/research/summary").json()["totals"]["notes_unread"] == 0
+    with get_session() as s:
+        assert s.get(InvResearchNote, owner).read_at is not None
+
+    a6 = add_note(pid, 6)
+    assert client.post(f"{api}/research/read", json={"ids": [a6, 999999]}).json() == {"marked": 1}
+
+
+def test_watchlist_rows_carry_research_unread(investor):
+    pid, _ = investor
+    with get_session() as s:
+        watched = watch_service.add(s, s.get(Profile, pid), "WATCH.DE").item.instrument_id
+    add_note(pid, 1, instrument=str(watched))
+    with get_session() as s:
+        rows = views.watchlist_view(s, s.get(Profile, pid), as_of=AS_OF)
+    assert next(r for r in rows if r["instrument_id"] == watched)["research_unread"] == 1
+
+
+def test_notes_unread_counts_only_notes_the_app_can_clear(api_investor):
+    # F8 review BE-2: a note on an instrument that is neither held nor watched (any more) has no view that
+    # marks it read, so the strip's total leaves it out; the theme notes stay in.
+    client, pid, slug = api_investor
+    api = f"/api/p/{slug}/investments"
+    with get_session() as s:
+        item = watch_service.add(s, s.get(Profile, pid), "WATCH.DE").item
+        watched, item_id = item.instrument_id, item.id
+    add_note(pid, 1, instrument=str(watched))
+    add_note(pid, 2, instrument=None, theme="Półprzewodniki")
+    assert client.get(f"{api}/research/summary").json()["totals"]["notes_unread"] == 2
+    with get_session() as s:
+        watch_service.remove(s, s.get(Profile, pid), item_id)
+    assert client.get(f"{api}/research/summary").json()["totals"]["notes_unread"] == 1
+
+
+def test_research_read_validation_and_isolation(api_investor):
+    client, pid, slug = api_investor
+    api = f"/api/p/{slug}/investments"
+    note_id = add_note(pid, 1)
+    for body in ({}, {"instrument_id": 1, "theme": "x"}, {"ids": []}, {"theme": "  "}):
+        r = client.post(f"{api}/research/read", json=body)
+        assert r.status_code == 422, body
+        assert r.headers.get("X-Finanse-Error-Code") == "research_invalid", body
+    other_slug = client.post("/api/profiles", json={"name": "Inna", "modules": ["investments"]}).json()[
+        "slug"
+    ]  # fmt: skip
+    other = f"/api/p/{other_slug}/investments"
+    r = client.post(f"{other}/research/read", json={"instrument_id": instrument_id("XMPL")})
+    assert r.status_code == 404 and r.headers["X-Finanse-Error-Code"] == "not_found"
+    assert client.post(f"{other}/research/read", json={"ids": [note_id]}).json() == {"marked": 0}
+    assert client.get(f"{api}/research").json()[0]["unread"] is True

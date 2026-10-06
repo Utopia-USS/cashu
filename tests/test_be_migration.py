@@ -109,9 +109,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     before = legacy.table_counts(path)
     engine = db.make_engine(f"sqlite:///{path}")
     assert migrations.current_revision(engine) == "0007_alerts_watchlist"
-    assert (
-        migrations.upgrade_to_head(engine) == migrations.head_revision() == "0010_account_removed"
-    )
+    assert migrations.upgrade_to_head(engine) == migrations.head_revision() == "0011_research_read"
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
     assert legacy.table_counts(backup) == before and not (_tables(backup) & NEW_TABLES)
@@ -123,6 +121,9 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     # appended by ALTER TABLE ADD COLUMN: the last column, no rebuild
     assert [r[1] for r in _sql(path, "PRAGMA table_info('alerts')")][-1] == "deleted_at"
     assert [r[1] for r in _sql(path, "PRAGMA table_info('accounts')")][-1] == "removed_at"  # 0010
+    assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][
+        -1
+    ] == "read_at"  # 0011
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     engine.dispose()
@@ -189,4 +190,34 @@ def test_0008_downgrade_refuses_with_data_and_round_trips_when_empty(tmp_path):
     _to(engine, "0007_alerts_watchlist", down=True)
     assert migrations.current_revision(engine) == "0007_alerts_watchlist"
     assert len(_sql(path, "SELECT id FROM alerts")) == 1
+    engine.dispose()
+
+
+def test_0011_backfills_read_at_and_round_trips(tmp_path):
+    """F8: existing research notes count as read after the upgrade (nothing lights up); the
+    downgrade drops the column and its index."""
+    path = _db_at(tmp_path, "0010_account_removed")
+    pid = _profile_id(path)
+    _sql(
+        path,
+        "INSERT INTO research_notes (profile_id, kind, polarity, strength, thesis_relation, title, "
+        "summary, sources, observed_at, expires_at, created_by, created_at, updated_at) VALUES "
+        "(?, 'news', 'neutral', 1, 'none', 'Example', 'Przykladowy fakt.', '[]', ?, ?, 'agent', ?, ?)",
+        pid,
+        TS,
+        TS,
+        TS,
+        TS,
+    )
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0011_research_read"
+    assert _sql(path, "SELECT read_at = created_at FROM research_notes") == [(1,)]
+    assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][-1] == "read_at"
+    assert ("ix_research_notes_unread",) in _sql(
+        path, "SELECT name FROM sqlite_master WHERE type = 'index'"
+    )
+    _to(engine, "0010_account_removed", down=True)
+    assert "read_at" not in [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")]
+    assert _sql(path, "SELECT title FROM research_notes") == [("Example",)]
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     engine.dispose()

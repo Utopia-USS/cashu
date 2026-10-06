@@ -14,6 +14,7 @@ import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from finanse.core.models import Profile, utcnow
@@ -617,6 +618,8 @@ def add_note(
         created_by=created_by,
         created_at=now,
         updated_at=now,
+        # the owner's own notes are born read; the agent's wait for the owner (F8 Q10)
+        read_at=None if created_by == AGENT else now,
     )
     session.add(row)
     session.flush()
@@ -626,6 +629,115 @@ def add_note(
         result.signal = research_signals.sync(session, profile, key, now=now)
         session.refresh(row)
     return result
+
+
+# --------------------------------------------------------------------------- #
+# Read marks (F8, home v3 Q10)
+# --------------------------------------------------------------------------- #
+
+AGENT = "agent"
+MAX_READ_IDS = 500
+
+
+def is_unread(row: InvResearchNote, now: dt.datetime) -> bool:
+    """An agent note (not a candidate) the owner has not opened, still live (not dismissed, not
+    expired)."""
+    return (
+        row.read_at is None
+        and row.dismissed_at is None
+        and convert.aware(row.expires_at) > convert.aware(now)
+        and row.created_by == AGENT
+        and row.kind != CANDIDATE_KIND
+    )
+
+
+def _unread_conditions(profile_id: int, now: dt.datetime) -> tuple:
+    return (
+        InvResearchNote.profile_id == profile_id,
+        InvResearchNote.read_at.is_(None),
+        InvResearchNote.dismissed_at.is_(None),
+        InvResearchNote.expires_at > convert.aware(now),
+        InvResearchNote.created_by == AGENT,
+        InvResearchNote.kind != CANDIDATE_KIND,
+    )
+
+
+def _unread_query(profile_id: int, now: dt.datetime):
+    return select(InvResearchNote).where(*_unread_conditions(profile_id, now))
+
+
+def unread_notes(
+    session: Session, profile_id: int, *, now: dt.datetime | None = None
+) -> list[InvResearchNote]:
+    return list(session.exec(_unread_query(profile_id, _now(now))).all())
+
+
+def unread_by_instrument(
+    session: Session, profile_id: int, *, now: dt.datetime | None = None
+) -> dict[int, int]:
+    """Instrument id -> number of its unread notes (instruments without any are absent); one grouped
+    query (index ``ix_research_notes_unread``)."""
+    query = (
+        select(InvResearchNote.instrument_id, func.count(InvResearchNote.id))
+        .where(*_unread_conditions(profile_id, _now(now)))
+        .where(InvResearchNote.instrument_id.is_not(None))
+        .group_by(InvResearchNote.instrument_id)
+    )
+    return {int(iid): int(n) for iid, n in session.exec(query).all()}
+
+
+def mark_read(
+    session: Session,
+    profile: Profile,
+    *,
+    instrument_id: int | None = None,
+    theme: str | None = None,
+    ids: list[int] | None = None,
+    now: dt.datetime | None = None,
+) -> int:
+    """Set ``read_at`` on the profile's unread notes of one instrument, one theme (case-insensitive)
+    or the given ids (other profiles' and unknown ids are ignored); returns how many changed
+    (idempotent). Exactly one selector. :class:`ResearchNotFound` for an instrument that is not the
+    profile's, :class:`ResearchError` for a bad selector."""
+    assert profile.id is not None
+    now = _now(now)
+    given = [x is not None for x in (instrument_id, theme, ids)]
+    if sum(given) != 1:
+        raise ResearchError("give exactly one of instrument_id, theme or ids")
+    query = _unread_query(profile.id, now)
+    key: str | None = None
+    if instrument_id is not None:
+        own_note = session.exec(
+            select(InvResearchNote.id).where(
+                InvResearchNote.profile_id == profile.id,
+                InvResearchNote.instrument_id == instrument_id,
+            )
+        ).first()
+        if own_note is None and instrument_id not in instruments.profile_instrument_ids(
+            session, profile.id
+        ):
+            raise ResearchNotFound(f"no instrument {instrument_id} in this profile")
+        query = query.where(InvResearchNote.instrument_id == instrument_id)
+    elif theme is not None:
+        text = clean_theme(theme)
+        if text is None:
+            raise ResearchError("theme must not be empty")
+        key = theme_key(text)
+        query = query.where(InvResearchNote.theme.is_not(None))
+    else:
+        wanted = list(ids or [])
+        if not wanted or len(wanted) > MAX_READ_IDS:
+            raise ResearchError(f"ids: give 1 to {MAX_READ_IDS} note ids")
+        query = query.where(InvResearchNote.id.in_(wanted))
+    marked = 0
+    for row in session.exec(query).all():
+        if key is not None and theme_key(row.theme or "") != key:
+            continue
+        row.read_at = now
+        session.add(row)
+        marked += 1
+    session.flush()
+    return marked
 
 
 def dismiss(

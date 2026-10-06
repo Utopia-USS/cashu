@@ -114,8 +114,8 @@ def test_head_equals_create_all(tmp_path):
     tables = {k.split(":", 2)[2] for k in expected if k.startswith("ddl:table:")}
     assert tables == HEAD_TABLES
     # 18 + 22 investments + 3 agent (proposals, mcp_calls, reviews) + 6 overrides / alerts / watchlist
-    # + 7 planned deposits / research + 1 asset details (F7 OB5)
-    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 57
+    # + 7 planned deposits / research + 1 asset details (F7 OB5) + 1 unread research notes (F8)
+    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 58
     reference.dispose()
     migrated.dispose()
 

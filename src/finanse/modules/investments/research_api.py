@@ -1,8 +1,8 @@
 """Research API (included into the investments router, so mounted under ``/api/p/{slug}/investments``
 like every investments route): ``research`` (notes with filters), ``research/summary``,
-``research/runs``, ``PATCH research/{id}`` (dismiss / restore), ``POST|DELETE
-research/{id}/accept`` (candidate -> watchlist + draft thesis, and its undo). Reads and writes only the
-profile in the URL. Notes are written by the agent through MCP (``core/mcp/tools/research.py``).
+``research/runs``, ``POST research/read`` (read marks, F8), ``PATCH research/{id}`` (dismiss /
+restore), ``POST|DELETE research/{id}/accept`` (candidate -> watchlist + draft thesis, and its undo).
+Reads and writes only the profile in the URL. Notes are written by the agent through MCP (``core/mcp/tools/research.py``).
 Shapes: the CONTRACT in ``stock/docs/fork/progress/F6-RS.md``.
 """
 
@@ -92,6 +92,30 @@ def research_runs(profile: CurrentProfile, limit: int = Query(20, ge=1, le=100))
     """Research runs, newest first (a run left running for hours shows as failed / interrupted)."""
     with get_session() as s:
         return views.runs_view(s, profile, limit)
+
+
+class ReadBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    instrument_id: int | None = None
+    theme: str | None = None
+    ids: list[int] | None = None
+
+
+@router.post("/read")
+def research_read(profile: CurrentProfile, body: ReadBody) -> dict:
+    """Mark the profile's unread notes read (the owner opened them): exactly one of
+    ``{"instrument_id": n}``, ``{"theme": "..."}`` or ``{"ids": [...]}`` -> ``{"marked": n}``
+    (idempotent; 404 for an instrument that is not the profile's). Not exposed over MCP: the agent
+    never marks notes read."""
+    with get_session() as s:
+        try:
+            marked = service.mark_read(
+                s, profile, instrument_id=body.instrument_id, theme=body.theme, ids=body.ids
+            )
+        except (service.ResearchError, service.ResearchNotFound) as e:
+            raise _mapped(e) from None
+        return {"marked": marked}
 
 
 class NotePatch(BaseModel):

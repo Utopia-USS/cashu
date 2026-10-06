@@ -51,6 +51,7 @@ from ..models import (
 )
 from ..portfolio import build_snapshot, effective_valuation_mode
 from ..portfolio.fx_lookup import convert as fx_convert
+from ..research import service as research_service
 from ..research.keys import is_research_key
 from ..research.views import research_digest
 from ..rules import (
@@ -514,6 +515,7 @@ def position_rows(
         if row.instrument_id is not None:
             open_by_instrument[row.instrument_id] += 1
     with_thesis = {t.instrument_id for t in journal.theses(session, profile.id)}
+    unread = research_service.unread_by_instrument(session, profile.id)
     dividends: dict[InstrumentId, dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
     scope = state.account_ids
     for t in state.txns:
@@ -607,6 +609,7 @@ def position_rows(
                 "lots": lots,
                 "open_signals": open_by_instrument.get(convert.pk(instrument_id), 0),
                 "has_thesis": convert.pk(instrument_id) in with_thesis,
+                "research_unread": unread.get(convert.pk(instrument_id), 0),
                 "closes_30d": closes_30d(state.market.bars.get(instrument_id, ()), state.as_of),
             }
         )
@@ -1063,9 +1066,10 @@ def watchlist_row(
     held: bool,
     alerts: list[InvAlert],
     max_price_age_days: int = 5,
+    research_unread: int = 0,
 ) -> dict:
     """One watched instrument with hard price facts only (last close, past changes, 52-week high);
-    never a forecast."""
+    never a forecast. ``research_unread``: its unread research notes (F8)."""
     price: dict | None = None
     if bars:
         last = bars[-1]
@@ -1102,6 +1106,7 @@ def watchlist_row(
             "triggered": sum(a.status == "triggered" for a in alerts),
             "nearest": nearest_alert(alerts, instrument, bars, as_of),
         },
+        "research_unread": research_unread,
     }
 
 
@@ -1131,6 +1136,7 @@ def watchlist_view(
             by_instrument[a.instrument_id].append(a)
     st = strategy_files.load(session, profile)
     max_age = st.config.data.max_price_age_days if st.config is not None else 5
+    unread = research_service.unread_by_instrument(session, profile.id)
     return [
         watchlist_row(
             item,
@@ -1140,6 +1146,7 @@ def watchlist_view(
             held=item.instrument_id in held,
             alerts=by_instrument.get(item.instrument_id, []),
             max_price_age_days=max_age,
+            research_unread=unread.get(item.instrument_id, 0),
         )
         for item in items
     ]
