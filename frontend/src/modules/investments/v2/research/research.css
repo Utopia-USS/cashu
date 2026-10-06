@@ -120,8 +120,10 @@ code.cmd.wrap { white-space: normal; word-break: break-all; display: inline; }
 .norun code.cmd { max-width: min(560px, 100%); }
 
 /* ---------- drawer: research summary ---------- */
-.hsum { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
-.hsum .facts { grid-template-columns: 1fr; gap: 6px; }
+/* research summary row of the asset detail (asset-detail.md 6): the sentiment word, then the 8 weekly bars */
+.rsum { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; align-items: center; padding: 2px 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+.rsum .fact .v.sm { font-size: 15px; }
+@media (max-width: 760px) { .rsum { grid-template-columns: 1fr; gap: 6px; } }
 
 /* ---------- empty / not-run states ---------- */
 .norun { display: flex; align-items: center; gap: 14px; padding: 10px 0; flex-wrap: wrap; font-size: 13px; }
@@ -152,3 +154,24 @@ code.cmd.wrap { white-space: normal; word-break: break-all; display: inline; }
   .rsch3 > div + div, .rsch3 > div:nth-child(3) { grid-column: auto; border-left: none; padding-left: 0; border-top: 1px solid var(--border); margin-top: 10px; padding-top: 4px; }
   .rsch3 > div:nth-child(3) .cands { grid-template-columns: 1fr; }
 }
+
+/* ---------- note row (instrument context, asset-detail.md 6; `.note` stays for the list) ---------- */
+.nr { border-bottom: 1px solid var(--border); scroll-margin-top: 80px; }
+.nr:last-child { border-bottom: none; }
+.nr .nrw { display: flex; align-items: start; gap: 10px; }
+.nr .nrh { flex: 1; min-width: 0; display: grid; grid-template-columns: 16px minmax(0, 1fr) 12px; gap: 0 10px; align-items: start; padding: 9px 0; background: none; border: none; font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+.nr .nrh:hover .nt { color: var(--nw); }
+.nr .nchev { color: var(--muted); margin-top: 3px; transition: transform .15s; } .nr .nrh:hover .nchev { color: var(--text); } .nr.open .nchev { transform: rotate(180deg); }
+.nr .nt { font-size: 13.5px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nr.open .nt { -webkit-line-clamp: unset; display: block; }
+.nr .nrr { font-size: 12px; color: var(--muted); white-space: nowrap; padding-top: 10px; } .nr .nrr .lnk { font-size: 12px; }
+.nr .nx { padding: 0 0 10px 26px; display: grid; gap: 6px; }
+.nr .ns { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; white-space: pre-line; } .nr .ns b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.nr .nf { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; } .nr .nf .lnk { font-size: 12px; }
+.nr .nsrc { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+.nr .nsrc a { color: var(--text); text-decoration: none; border-bottom: 1px solid var(--border); } .nr .nsrc a:hover { border-bottom-color: var(--text); }
+.nr .nsrc span { color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
+.nr.dim .nrh, .nr.dim .nx { opacity: .62; }
+.nr.hl { box-shadow: inset 3px 0 0 var(--nw); background: var(--infoBg); border-radius: 8px; padding-left: 10px; margin-left: -10px; }
+.ri { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid currentColor; display: inline-flex; align-items: center; justify-content: center; font: 700 12px/1 -apple-system, BlinkMacSystemFont, sans-serif; margin-top: 1px; flex: none; color: var(--muted); box-sizing: border-box; }
+.ri.sup { color: var(--pos); } .ri.weak { color: var(--neg); } .ri.inv { color: var(--card); background: var(--neg); border-color: var(--neg); } .ri.neu { color: var(--muted); }

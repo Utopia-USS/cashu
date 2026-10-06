@@ -471,3 +471,25 @@ export const showStrip = (runs: ResearchRun[] | null | undefined) => !!runs && r
 export function orderTheses<T extends { health: HealthKey; weight?: number | null; label?: string | null }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health] || (b.weight ?? 0) - (a.weight ?? 0) || (a.label ?? "").localeCompare(b.label ?? ""));
 }
+
+/** The note row's icon (asset-detail.md 6): what the note does to the thesis, not its polarity. Circled plus
+ * (wzmacnia), minus (osłabia), a filled minus (podważa), tilde (nie dotyczy, also without a thesis). */
+export function relationIcon(rel: string | null | undefined): { cls: "sup" | "weak" | "inv" | "neu"; glyph: string; label: string } {
+  switch (normRelation(rel)) {
+    case "supports": return { cls: "sup", glyph: "+", label: "wzmacnia tezę" };
+    case "weakens": return { cls: "weak", glyph: "−", label: "osłabia tezę" };
+    case "invalidates": return { cls: "inv", glyph: "−", label: "podważa tezę" };
+    default: return { cls: "neu", glyph: "~", label: "nie dotyczy tezy" };
+  }
+}
+
+/** The row tooltip of a note (6): `wyniki · 29.07` (+ `odrzucona d.m` / `wygasła d.m`). */
+export function noteRowTitle(n: Pick<ResearchNote, "kind" | "observed_at" | "dismissed_at" | "expires_at"> & { expired?: boolean }, today: string): string {
+  return [n.kind === "community" ? "społeczność" : KIND_LABEL[n.kind] ?? n.kind, dm(n.observed_at),
+    n.dismissed_at ? `odrzucona ${dm(n.dismissed_at)}` : isExpired(n, today) && n.expires_at ? `wygasła ${dm(n.expires_at)}` : null].filter(Boolean).join(" · ");
+}
+
+/** A source in the expanded note row: the publisher (or title / host) without its date, and `d.m` apart. */
+export function sourceParts(s: NoteSource): { who: string; date: string | null } {
+  return { who: sourceText({ ...s, published_at: null }), date: s.published_at ? dm(s.published_at) : null };
+}

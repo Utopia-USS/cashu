@@ -915,3 +915,52 @@ td .ai + .status, td .ai { margin-right: 6px; }
 /* Aktywa tabs: the count inside the Seg label */
 .w .wh .seg .cnt { color: var(--muted); font-weight: 500; margin-left: 5px; }
 .w .wh .seg button.on .cnt { color: inherit; opacity: .7; }
+
+/* ===== F9: asset detail v3 (design/v3/asset-detail/asset-detail.md 3, 5, 7) ===== */
+.wh .sub { color: var(--muted); font-size: 12.5px; font-weight: 500; }
+/* header: the state glyph link, the meta line (lots, transactions, dividends, fees) and the lot table */
+.ahead .hsig { font-size: 12.5px; text-decoration: none; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+.ahead .hsig:hover { color: var(--nw); } .ahead .hsig .pd { width: 7px; height: 7px; margin: 0; }
+.ahead .hmeta { flex-basis: 100%; font-size: 12.5px; color: var(--muted); display: flex; gap: 4px 6px; flex-wrap: wrap; align-items: center; margin-top: -2px; }
+.ahead .hmeta .mi { display: inline-flex; gap: 6px; align-items: center; }
+.ahead .hmeta b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ahead .hmeta .lnk { font-size: 12.5px; }
+.ahead .hmeta .lnk[aria-expanded]::after { content: " ▾"; font-size: 10px; } .ahead .hmeta .lnk[aria-expanded="true"]::after { content: " ▴"; }
+.ahead .hlots { flex-basis: 100%; margin: 2px -20px -14px; padding: 0 20px 6px; border-top: 1px solid var(--border); }
+.ahead .hlots table { font-size: 12.5px; } .ahead .hlots th, .ahead .hlots td { padding: 5px 8px; } .ahead .hlots td:first-child, .ahead .hlots th:first-child { padding-left: 0; }
+.ahead .hlots tr:last-child td { border-bottom: none; }
+.adrawer .ahead .hlots { margin: 2px -16px -12px; padding: 0 16px 4px; }
+.adrawer .ahead .hdr-right { margin-left: auto; }
+/* Sygnały i decyzje: the open rows above the timeline, a quiet `potwierdź` (keeps its box: no layout shift) */
+.sig.orow { grid-template-columns: 10px minmax(0, 1fr) auto; padding: 8px 0; align-items: start; }
+.sig.orow .pd { margin-top: 5px; }
+.sig.orow .m { font-size: 13px; color: var(--text); margin: 0; } .sig.orow .m .age { color: var(--muted); font-size: 12px; margin-left: 8px; } .sig.orow .m .age.warn { color: var(--warn); }
+.sig.orow .m .lnk { font-size: 12.5px; }
+.sig.orow .rt .lnk.quiet { font-size: 12px; color: var(--muted); text-decoration: none; }
+.sig.orow .rt .lnk.quiet:hover, .sig.orow:focus-within .rt .lnk.quiet { color: var(--nw); text-decoration: underline; }
+.sig.orow:not(:hover):not(:focus-within) .rt .lnk.quiet { opacity: 0; }
+@media (hover: none) { .sig.orow .rt .lnk.quiet { opacity: 1 !important; } }
+.osig + .tl { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 4px; }
+.tl .t .sub { color: var(--muted); font-size: 12px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl .m i.neu { background: var(--border); }
+/* the one decision per position (Decide.tsx), over the page or the asset drawer */
+.ascrim.over { z-index: 70; }
+.ddlg { position: fixed; top: 10vh; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px)); max-height: 80vh; overflow: auto; overscroll-behavior: contain;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 24px 64px rgba(0,0,0,0.35); z-index: 72; outline: none; font-size: 14px; line-height: 1.45; }
+.ddlg .dh { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.ddlg .dh strong { font-size: 15px; } .ddlg .dh .tk { font-weight: 650; } .ddlg .dh .nmm { color: var(--muted); font-size: 12.5px; } .ddlg .dh .spacer { flex: 1; }
+.ddlg .dh .icon-btn:hover { color: var(--text); }
+.ddlg .db { padding: 12px 18px 16px; display: grid; gap: 10px; }
+.ddlg .kick { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.ddlg .dctx { display: grid; gap: 4px; } .ddlg .dctx .ln { display: flex; gap: 8px; align-items: baseline; font-size: 13px; } .ddlg .dctx .ln .pd { flex: none; position: relative; top: -1px; }
+.ddlg .dctx .ln b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ddlg .dctx .ln .age { color: var(--muted); font-size: 12px; margin-left: 4px; } .ddlg .dctx .more { color: var(--muted); font-size: 12px; }
+.ddlg .th { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); padding-left: 8px; border-left: 2px solid var(--border); line-height: 1.4; }
+.ddlg .th b { color: var(--text); font-weight: 600; }
+.ddlg .decide { margin-top: 2px; display: grid; gap: 8px; background: var(--chip); border-radius: 10px; padding: 10px 12px; }
+.ddlg .decide .fr { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; }
+.ddlg .decide .fr label { color: var(--muted); font-size: 11.5px; }
+.ddlg .decide input { width: 84px; }
+.ddlg .decide select, .ddlg .decide textarea, .ddlg .decide input, .ddlg .decide .seg, .ddlg .decide .btn:not(.primary) { background: var(--card); }
+.ddlg .decide .eff { font-size: 12.5px; color: var(--muted); } .ddlg .decide .eff b { color: var(--text); font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .ddlg { top: 12px; width: calc(100vw - 16px); max-height: calc(100vh - 24px); } }

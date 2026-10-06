@@ -4,7 +4,7 @@
 // CONTRACT). Shapes mirror service/views.py and performance/service.py; fractions stay fractions.
 import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../core/api";
 import { ck, dedupe, invalidate } from "../../../swr";
-import type { Decision, Instrument, Overview, Position, Positions, ReviewDigest, Signal } from "../api";
+import type { Decision, DecisionInput, Instrument, Overview, Position, Positions, ReviewDigest, Signal } from "../api";
 import { digestShown, isShownSignal } from "./logic";
 import { monthCloseStale } from "../../budget/logic";
 
@@ -294,3 +294,9 @@ export const deletePlannedDeposit = (slug: string, id: number) => jdel<{ deleted
 
 // Decision undo (DELETE /decisions/{id}), snooze and review undo live in ../api.ts (FX, F5 R4 / R7).
 export const getDecisionsFor = (slug: string, instrumentId: number | string) => j<Decision[]>(inv(slug, `/decisions?instrument_id=${instrumentId}`));
+
+/** One decision per position (F9, asset-detail.md 8): one journal row linked to every listed open signal (all
+ * acknowledged at once); `signal_ids: []` records a decision without a signal (held positions). Older servers
+ * answer with FastAPI's own 404 (`isMissingRoute`): the caller falls back to the per-signal fan-out. */
+export const postPositionDecision = (slug: string, instrumentId: number, b: DecisionInput & { signal_ids: number[] }) =>
+  jpost<{ decision: Decision; signals: SignalV2[] }>(inv(slug, `/positions/${instrumentId}/decision`), b);

@@ -7,7 +7,7 @@
 // columns: the thesis once per subject, a subject's signals as sub-rows with their own actions. A decision is
 // saved at once; `Cofnij` in the toast deletes it within the server's 15-minute window (F5 R4).
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import { ApiError } from "../../../core/api";
+import { ApiError, isMissingRoute } from "../../../core/api";
 import { errorText } from "../../../core/messages";
 import { useAsync, useInFlight } from "../../../hooks";
 import { Pop, Seg, Skeleton, useModal, useToast } from "../../../ui";
@@ -19,7 +19,8 @@ import { useShortcuts } from "../hooks";
 import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, plural, qty } from "../labels";
 import { decisionEffect, decisionTag, nextDeposit } from "../logic";
 import { canUndo, groupUndoRun, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
-import { type Alert, invKey, type PositionV2, type SignalV2, type WatchItem } from "./api";
+import { type Alert, invKey, type PositionV2, postPositionDecision, type SignalV2, type WatchItem } from "./api";
+import { staleSignalText, writePositionDecision } from "./decisionFlow";
 import { InstLabel, type InstLike } from "./InstLabel";
 import {
   cursorOrder, groupPlan, instMono, instName, isDecided, polarityOf, railGroups, type SigFact, signalCurrent, signalFact, signalScope, signalStateKey,
@@ -72,7 +73,7 @@ export function signalAge(s: SignalV2, ctx: Pick<SignalsCtx, "today" | "lastRunA
   const iso = decided?.created_at ?? s.first_seen_at;
   return { text: !iso ? "" : localDay(iso) === ctx.today ? "dziś" : dm(iso), warn: false };
 }
-const Age = ({ a }: { a: { text: string; warn: boolean; title?: string } }) => (a.text ? <span className={`age ${a.warn ? "warn" : ""}`} title={a.title}>{a.text}</span> : null);
+export const Age = ({ a }: { a: { text: string; warn: boolean; title?: string } }) => (a.text ? <span className={`age ${a.warn ? "warn" : ""}`} title={a.title}>{a.text}</span> : null);
 
 /** The fact line `{pre} <b>{bold}</b>{post}` (a post starting with a comma joins without a space). */
 export const Fact1 = ({ f }: { f: SigFact }) => (
@@ -86,7 +87,7 @@ function originOf(s: SignalV2, ctx: SignalsCtx): string {
   return "";
 }
 /** The long form of a signal (the fact's tooltip): origin + `signalText` lead / bold / tail. */
-function longText(s: SignalV2, ctx: SignalsCtx): string {
+export function longText(s: SignalV2, ctx: SignalsCtx): string {
   const t = signalText(s, { total: ctx.total, base: ctx.base, names: namesOf(ctx) });
   return `${originOf(s, ctx)}${[t.lead, t.bold, t.tail].filter(Boolean).join(" ")}`.trim();
 }
@@ -281,8 +282,7 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll, onActivate }: {
   const decide = (input: DecisionInput, label: string) => {
     if (!plan) return;
     const tag = label.replace("decyzja: ", "");
-    return writeAll([() => postDecision(ctx.slug, plan.primary.id, input), ...plan.rest.map((x) => () => postAcknowledge(ctx.slug, x.id, `decyzja: ${tag}`))],
-      `Zapisano decyzję · ${tag}`, "decyzja", "Nie zapisano decyzji");
+    return writeAll(fanOutSteps(ctx.slug, plan.primary, plan.rest, input, tag), `Zapisano decyzję · ${tag}`, "decyzja", "Nie zapisano decyzji");
   };
   const ack = (reason?: string) => { void writeAll(g.live.map((x) => () => postAcknowledge(ctx.slug, x.id, reason)), "Potwierdzone bez zmian", "potwierdzenie", "Nie zapisano"); };
   const snooze = () => locked ? undefined : flight.run(async () => {
@@ -625,7 +625,8 @@ function undoFor(decisionId: number, savedAt: number, run: () => Promise<unknown
   return u;
 }
 
-function defaultAct(s: SignalV2): Act {
+function defaultAct(s: SignalV2 | null | undefined): Act {
+  if (!s) return "none";
   const kind = s.kind.startsWith("alert:") ? String(s.payload.alert_kind ?? "") : s.kind;
   switch (kind) {
     case "drawdown_from_high": case "loss_from_cost": case "price_below": return "buy";
@@ -635,15 +636,22 @@ function defaultAct(s: SignalV2): Act {
   }
 }
 
-export function DecisionForm({ s, ctx, pending, onCollapse, onDecide, onAck }: {
-  s: SignalV2; ctx: SignalsCtx; onCollapse: () => void; onDecide: (input: DecisionInput, label: string) => Promise<unknown> | void; onAck: (reason?: string) => void;
+export function DecisionForm({ s = null, instrumentId = null, ctx, pending, hideAck, onCollapse, onDecide, onAck }: {
+  /** The signal the decision answers (its default action and quantity); null for a position decision without one. */
+  s?: SignalV2 | null;
+  /** The instrument when there is no signal (the asset's decision dialog, asset-detail.md 7.2). */
+  instrumentId?: number | null;
+  ctx: SignalsCtx; onCollapse: () => void; onDecide: (input: DecisionInput, label: string) => Promise<unknown> | void; onAck?: (reason?: string) => void;
   /** A decision / acknowledgement of this signal is being saved (F7 FE2). */
   pending?: boolean;
+  /** No `Potwierdź` button (the asset's dialog records a decision; acknowledging is the row's link). */
+  hideAck?: boolean;
 }) {
-  const pos = s.instrument_id != null ? ctx.positions.find((p) => String(p.instrument.id) === String(s.instrument_id)) ?? null : null;
+  const instId = s?.instrument_id ?? instrumentId;
+  const pos = instId != null ? ctx.positions.find((p) => String(p.instrument.id) === String(instId)) ?? null : null;
   const [act, setAct] = useState<Act>(() => defaultAct(s));
   const [q, setQ] = useState(() => {
-    if (!pos || !pos.price) return "";
+    if (!pos || !pos.price || !s) return "";
     if (s.kind === "position_concentration") {
       const over = (Number(s.payload.weight) - Number(s.payload.max_weight)) * ctx.total;
       return over > 0 ? String(Math.max(1, Math.ceil(over / pos.price))) : "";
@@ -660,7 +668,8 @@ export function DecisionForm({ s, ctx, pending, onCollapse, onDecide, onAck }: {
   const trade = act === "buy" || act === "sell";
   const qn = parseNum(q), pn = parseNum(price);
   const currency = pos?.price_currency ?? ctx.base;
-  const bucketId = pos?.bucket ?? (s.kind === "allocation_drift" ? String(s.payload.bucket_id) : null);
+  const bucketId = pos?.bucket ?? (s?.kind === "allocation_drift" ? String(s.payload.bucket_id) : null);
+  const fid = s?.id ?? `p${instId}`;
   const bucket = ctx.buckets.find((b) => b.bucket_id === bucketId) ?? null;
   const effect = trade && pos ? decisionEffect({ side: act === "buy" ? "buy" : "sell", quantity: qn, price: pn, currency, bucket, total: ctx.total, base: ctx.base }) : null;
   const invalid = trade && pos != null && (qn == null || qn <= 0 || pn == null || pn <= 0);
@@ -673,16 +682,16 @@ export function DecisionForm({ s, ctx, pending, onCollapse, onDecide, onAck }: {
     <div className="decide" ref={ref} data-esc-local onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCollapse(); } }}>
       <div className="fr"><label>Decyzja</label>
         <Seg<Act> label="Decyzja" items={[["Nic", "none"], ["Dokupuję", "buy"], ["Sprzedaję", "sell"], ["Odkładam", "later"]]} value={act} onChange={setAct} /></div>
-      {s.instrument_id != null && ctx.researchEffect?.(s.instrument_id) && <div className="eff">{ctx.researchEffect(s.instrument_id)}</div>}
+      {instId != null && ctx.researchEffect?.(instId) && <div className="eff">{ctx.researchEffect(instId)}</div>}
       {trade && pos && (
         <>
           <div className="fr">
-            <label htmlFor={`dq-${s.id}`}>Ilość</label>
-            <input id={`dq-${s.id}`} className="num" inputMode="decimal" value={q} onChange={(e) => setQ(e.target.value)} />
-            <label htmlFor={`dp-${s.id}`}>Cena</label>
-            <input id={`dp-${s.id}`} className="num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
-            <label htmlFor={`da-${s.id}`}>Rachunek</label>
-            <select id={`da-${s.id}`} value={acc ?? ""} onChange={(e) => setAcc(Number(e.target.value))}>
+            <label htmlFor={`dq-${fid}`}>Ilość</label>
+            <input id={`dq-${fid}`} className="num" inputMode="decimal" value={q} onChange={(e) => setQ(e.target.value)} />
+            <label htmlFor={`dp-${fid}`}>Cena</label>
+            <input id={`dp-${fid}`} className="num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
+            <label htmlFor={`da-${fid}`}>Rachunek</label>
+            <select id={`da-${fid}`} value={acc ?? ""} onChange={(e) => setAcc(Number(e.target.value))}>
               {(held.length ? ctx.accounts.filter((a) => held.includes(a.id)) : ctx.accounts).map((a) => <option key={a.id} value={a.id}>{accountLabel(a, ctx.accounts)}</option>)}
             </select>
           </div>
@@ -693,7 +702,7 @@ export function DecisionForm({ s, ctx, pending, onCollapse, onDecide, onAck }: {
       <textarea rows={2} placeholder="Dlaczego?" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Powód decyzji" />
       <div className="fr">
         <button className="btn primary" onClick={save} disabled={invalid || busy || pending}>Zapisz decyzję</button>
-        <button className="btn" disabled={busy || pending} onClick={() => onAck(reason.trim() || undefined)}>Potwierdź</button>
+        {!hideAck && onAck && <button className="btn" disabled={busy || pending} onClick={() => onAck(reason.trim() || undefined)}>Potwierdź</button>}
         <span style={{ flex: 1 }} />
         <button className="lnk" onClick={onCollapse}>Zwiń</button>
       </div>
@@ -702,3 +711,90 @@ export function DecisionForm({ s, ctx, pending, onCollapse, onDecide, onAck }: {
   );
 }
 
+
+// ---- the asset's one decision and its row acknowledgement (asset-detail.md 7.1-7.2, F9) --------------------
+
+/** The home's fan-out for servers without position decisions: the decision on the primary signal, `decyzja:
+ * <tag>` acknowledgements on the rest (one journal act, n rows; one undo deletes them all). */
+export function fanOutSteps(slug: string, primary: SignalV2, rest: SignalV2[], input: DecisionInput, tag: string): (() => Promise<{ decision: { id: number } }>)[] {
+  return [() => postDecision(slug, primary.id, input), ...rest.map((x) => () => postAcknowledge(slug, x.id, `decyzja: ${tag}`))];
+}
+
+/** Profiles whose server answered `POST /positions/{id}/decision` with a missing route (this session). */
+const legacyServers = new Set<string>();
+/** The server has no position decisions: a decision needs an open signal (the header button turns disabled). */
+export const legacyDecisions = (slug: string) => legacyServers.has(slug);
+
+function useUndoToast(ctx: Pick<SignalsCtx, "onChanged">, onUndone?: () => void) {
+  const toast = useToast();
+  return (ids: number[], text: string, what: string, slug: string) => {
+    if (!ids.length) return;
+    const u = makeUndo(Date.now(), groupUndoRun(ids, (id) => deleteDecision(slug, id)));
+    const retry = () => {
+      void u.undo().then((res) => {
+        if (undoSettled(res)) { onUndone?.(); ctx.onChanged(); }
+        const msg = undoMessage(res, what);
+        if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+      });
+    };
+    toast(text, 10000, { label: "Cofnij", onClick: retry });
+  };
+}
+
+/** One decision per position (7.2): `POST /positions/{id}/decision` linked to every listed signal; on an older
+ * server the fan-out above (a decision without signals cannot be saved there). The tree is `writePositionDecision`
+ * (decisionFlow.ts, tested); this maps its outcome to one toast with one `Cofnij`. Resolves "saved" (the dialog
+ * closes), "close" (nothing saved but the dialog has nothing more to offer: an older server without an open
+ * signal) or "stay" (a failure; the dialog stays for a retry). */
+export function useDecisionWriter(ctx: SignalsCtx) {
+  const toast = useToast();
+  const flight = useInFlight();
+  const offer = useUndoToast(ctx);
+  const save = async (instrumentId: number, signals: SignalV2[], input: DecisionInput, label: string): Promise<"saved" | "close" | "stay"> => {
+    const r = await flight.run(async () => {
+      const tag = label.replace("decyzja: ", "");
+      const out = await writePositionDecision({
+        legacy: legacyServers.has(ctx.slug),
+        post: () => postPositionDecision(ctx.slug, instrumentId, { ...input, signal_ids: signals.map((x) => x.id) }),
+        fanOut: signals.length ? fanOutSteps(ctx.slug, signals[0], signals.slice(1), input, tag) : [],
+        isMissingRoute,
+      });
+      if (out.legacy) legacyServers.add(ctx.slug);
+      switch (out.kind) {
+        case "saved": ctx.onChanged(); offer(out.ids, `Zapisano decyzję · ${tag}`, "decyzja", ctx.slug); return "saved" as const;
+        case "partial": ctx.onChanged(); offer(out.ids, `Nie zapisano decyzji: ${errorText(out.error)}`, "decyzja", ctx.slug); return "saved" as const;
+        case "needs-signal": toast("Nie zapisano: starszy serwer wymaga otwartego sygnału", 5000); return "close" as const;
+        default: {
+          const stale = staleSignalText(out.error);
+          // The open signals changed since the list loaded: reload them (the dialog's list refreshes) and say so.
+          if (stale) { ctx.onChanged(); toast(stale, 5000); } else toast(`Nie zapisano decyzji: ${errorText(out.error)}`, 5000);
+          return "stay" as const;
+        }
+      }
+    });
+    return r ?? "stay";
+  };
+  return { save, busy: flight.busy };
+}
+
+/** `potwierdź` on an asset's open row (7.1): acknowledge one signal with the in-flight lock and the post-write
+ * lock of `SignalItem` (the row stays locked until the reload shows its new state), toast + `Cofnij`. */
+export function useSignalAck(ctx: SignalsCtx) {
+  const toast = useToast();
+  const flight = useInFlight();
+  const [locks, setLocks] = useState<Record<number, string>>({});
+  const offer = useUndoToast(ctx, () => setLocks({}));
+  const busy = (s: SignalV2) => flight.busy || stillLocked(locks[s.id] ?? null, signalStateKey(s));
+  const ack = (s: SignalV2) => {
+    if (busy(s)) return;
+    void flight.run(async () => {
+      try {
+        const r = await postAcknowledge(ctx.slug, s.id);
+        setLocks((l) => ({ ...l, [s.id]: signalStateKey(s) }));
+        ctx.onChanged();
+        offer([r.decision.id], "Potwierdzone bez zmian", "potwierdzenie", ctx.slug);
+      } catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 5000); }
+    });
+  };
+  return { ack, busy };
+}

@@ -196,6 +196,8 @@ export interface Decision {
   currency: string | null;
   reason: string | null;
   created_at: string | null;
+  /** Every signal the decision answers (position decisions link several; F9 BE). Older servers: absent. */
+  signal_ids?: number[];
 }
 export interface Thesis {
   id: number;

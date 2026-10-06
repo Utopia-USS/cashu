@@ -347,3 +347,7 @@ export const getCategories = (slug: string): Promise<Category[]> => {
   }
   return p;
 };
+
+// FastAPI's own 404 / 405 for a route the server does not have (an older server): pure, in its own module so
+// `npm test` can import it (this file uses a TS class parameter property node cannot strip).
+export { isMissingRoute } from "./missingRoute";

@@ -10,8 +10,8 @@ import { dm, micName, plural } from "../../labels";
 import { InstLabel, type InstLike } from "../InstLabel";
 import {
   candidateCriteria, candidateReturn, clampStrength, criterionText, entryTypeLabel, expiryText, freshness, HEALTH_CLS, HEALTH_LABEL, isExpired,
-  acceptedAt, KIND_LABEL, NOISE_SCALE, noteSubject, noteWhen, normRelation, polarityCls, watchItemId, POLARITY_WORD, RELATION_CLS, RELATION_LABEL, ROUTINE_MENU, ROUTINE_PROMPT, safeUrl, sentimentBars,
-  sourceText, strengthTitle, summaryWithoutCriteria,
+  acceptedAt, KIND_LABEL, NOISE_SCALE, noteRowTitle, noteSubject, noteWhen, normRelation, polarityCls, watchItemId, POLARITY_WORD, RELATION_CLS, RELATION_LABEL, relationIcon,
+  ROUTINE_MENU, ROUTINE_PROMPT, safeUrl, sentimentBars, sourceParts, sourceText, strengthTitle, summaryWithoutCriteria,
 } from "./logic";
 import type { HealthKey, ResearchNote } from "./types";
 import "./research.css";
@@ -137,6 +137,60 @@ export function NoteCard({ note: n, today, context, card, hl, who, signalText, o
           <span>odrzucona {dm(n.dismissed_at)}{onRestore && canRestore && <> · <button className="lnk" onClick={() => onRestore(n)}>przywróć</button></>}</span>
         ) : exp && <span>{exp}</span>}
       </div>
+    </article>
+  );
+}
+
+/** The note's effect on the thesis (asset-detail.md 6): circled plus / minus / filled minus / tilde. */
+export function RelationIcon({ relation }: { relation: string | null | undefined }) {
+  const r = relationIcon(relation);
+  return <span className={`ri ${r.cls}`} role="img" aria-label={r.label} title={r.label}>{r.glyph}</span>;
+}
+
+/** A note in the instrument context (asset-detail.md 6): the relation icon + the title; a click expands the
+ * summary, `źródła (n)` (one more click lists them) and `odrzuć`. Kind and date live in the row's tooltip;
+ * a dismissed row keeps `przywróć` one click away while it can be restored. `NoteCard` stays for the list. */
+export function NoteRow({ note: n, today, hl, open, onToggle, onDismiss, onRestore, canRestore }: {
+  note: ResearchNote; today: string; hl?: boolean; open: boolean; onToggle: () => void;
+  onDismiss?: (n: ResearchNote) => void; onRestore?: (n: ResearchNote) => void; canRestore?: boolean;
+}) {
+  const [src, setSrc] = useState(false);
+  const dismissed = !!n.dismissed_at;
+  const body = summaryWithoutCriteria(n.summary);
+  const restore = dismissed && onRestore && canRestore ? (
+    <span className="nrr">odrzucona {dm(n.dismissed_at)} · <button className="lnk" onClick={(e) => { e.stopPropagation(); onRestore(n); }}>przywróć</button></span>
+  ) : null;
+  return (
+    <article className={`nr ${open ? "open" : ""} ${dismissed || isExpired(n, today) ? "dim" : ""} ${hl ? "hl" : ""}`} id={`note-${n.id}`} data-note={n.id}>
+      <div className="nrw">
+        <button className="nrh" aria-expanded={open} title={noteRowTitle(n, today)} onClick={onToggle}>
+          <RelationIcon relation={n.thesis_relation} />
+          <span className="nt">{n.title}</span>
+          <svg className="nchev" width="12" height="12" viewBox="0 0 12 12" aria-hidden><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+        {restore}
+      </div>
+      {open && (
+        <div className="nx">
+          {body && <p className="ns">{richSummary(body)}</p>}
+          {(n.sources.length > 0 || (onDismiss && !dismissed)) && (
+            <div className="nf">
+              {n.sources.length > 0 && <button className="lnk" aria-expanded={src} onClick={() => setSrc((v) => !v)}>źródła ({n.sources.length})</button>}
+              {n.sources.length > 0 && onDismiss && !dismissed && <span aria-hidden>·</span>}
+              {onDismiss && !dismissed && <button className="lnk" onClick={() => onDismiss(n)}>odrzuć</button>}
+            </div>
+          )}
+          {src && (
+            <ul className="nsrc">
+              {n.sources.map((s, i) => {
+                const url = safeUrl(s.url);
+                const p = sourceParts(s);
+                return <li key={i}>{url ? <a href={url} target="_blank" rel="noopener noreferrer" title={s.title ?? url}>{p.who}</a> : p.who}{p.date && <span>{p.date}</span>}</li>;
+              })}
+            </ul>
+          )}
+        </div>
+      )}
     </article>
   );
 }

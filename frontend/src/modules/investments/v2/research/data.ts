@@ -8,6 +8,7 @@ import { useAsync } from "../../../../hooks";
 import { dedupe } from "../../../../swr";
 import { useToast } from "../../../../ui";
 import { errorText } from "../../../../core/messages";
+import { isMissingRoute } from "../../../../core/api";
 import { makeUndo, type Undo, undoMessage, undoSettled } from "../../undo";
 import { deleteWatch, dropInv, invKey, postWatch } from "../api";
 import { acceptCandidate, dismissNote, getResearch, getResearchRuns, getResearchSummary, getWorkspace, restoreNote, unacceptCandidate } from "./api";
@@ -87,11 +88,7 @@ export const canRestore = (n: Pick<ResearchNote, "dismissed_at" | "restorable_un
 
 const noteUndos = new Map<string, Undo>();
 
-/** FastAPI's own 404 / 405 for a route the server does not have (no error code, the generic detail). */
-function isMissingRoute(e: unknown): boolean {
-  const x = (typeof e === "object" && e !== null ? e : {}) as { status?: number; message?: string; code?: string | null };
-  return (x.status === 404 || x.status === 405) && !x.code && /^(not found|method not allowed)$/i.test(x.message ?? "");
-}
+export { isMissingRoute };
 
 /** Actions with undo. `onChanged` refreshes the caller (and the page: signals change on dismiss). */
 export function useResearchActions(slug: string, onChanged: () => void) {

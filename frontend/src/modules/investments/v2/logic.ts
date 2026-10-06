@@ -2,7 +2,7 @@
 // (no rule ids), alert distance to level, the alert form's default title and preview sentence, weekly change
 // from 30-day closes, re-entry gap, change-log grouping, performance facts. Pure; `npm test` imports it
 // (node strips the types; imports carry their .ts extension).
-import { ASSET_CLASS, bucketLabel, dm, GENERIC_BUCKET_IDS, isGenericBucket, micName, money, money0, pct, pctTarget, plural, pp, REGION, WEEKDAY_INDEX } from "../labels.ts";
+import { ASSET_CLASS, bucketLabel, DECISION_ACTION, dm, GENERIC_BUCKET_IDS, isGenericBucket, micName, money, money0, pct, pctTarget, plural, pp, qty, REGION, txnType, WEEKDAY_INDEX } from "../labels.ts";
 import { isResearchKind, researchSignalText } from "./research/logic.ts";
 import { localDay, parseServerTime, serverDate } from "../../../time.ts";
 import { describePerfNote } from "../../../core/messages.ts";
@@ -1147,3 +1147,123 @@ export function instSummary(i: InstLike, o: { accounts?: string[]; stale?: strin
 export function subLine(o: { cost: boolean; split: "total" | "account"; accounts: { account_id: number }[]; accLabel: (id: number) => string }): string | undefined {
   return [o.cost ? "koszt + odsetki" : null, o.split === "account" && o.accounts.length === 1 ? o.accLabel(o.accounts[0].account_id) : null].filter(Boolean).join(" · ") || undefined;
 }
+
+// ---- asset detail v3 (F9, design/v3/asset-detail/asset-detail.md 3 + 7) -------------------------------------
+
+/** A signal fact as plain text (the `Fact1` rendering without the bold). */
+export function factText(f: SigFact): string {
+  return `${f.pre ? `${f.pre}${f.bold ? " " : ""}` : ""}${f.bold}${f.post ? (/^[,.]/.test(f.post) ? f.post : ` ${f.post}`) : ""}`.trim();
+}
+
+/** The asset's open rows (7.1): open signals without a decision and not snoozed, in the rail's order (newest
+ * first, action before info). Acknowledged ones are timeline rows, snoozed ones show nowhere until back. */
+export function openRows<T extends SigLike>(signals: T[]): T[] {
+  return signals.filter((s) => (s.status === "active" || s.status === "acknowledged") && !isDecided(s) && !s.snoozed).sort(byTime);
+}
+
+/** The header's lot table (3): lots sorted by open date with the result in % of their cost; `multi` when the
+ * lots sit in more than one account (the account label goes under the date). */
+export function lotRows<L extends { account_id: number; open_date: string; quantity: number; unit_cost: number | null; result: number | null }>(
+  lots: L[],
+): { rows: (L & { resultPct: number | null })[]; multi: boolean } {
+  const rows = [...lots].sort((a, b) => a.open_date.localeCompare(b.open_date)).map((l) => {
+    const cost = l.quantity * (l.unit_cost ?? 0);
+    return { ...l, resultPct: l.result != null && cost ? l.result / cost : null };
+  });
+  return { rows, multi: new Set(lots.map((l) => l.account_id)).size > 1 };
+}
+
+export type HeaderMetaItem =
+  | { kind: "lots"; text: string; toggle: boolean }
+  | { kind: "txns"; text: string }
+  | { kind: "dividends"; label: string; value: string }
+  | { kind: "fees"; label: string; value: string };
+
+/** The header's meta line (3) as data: `2 loty` (a toggle from two lots up; `1 lot` plain; `brak lotów`),
+ * `4 transakcje` (`transakcje` while the detail loads), dividends per currency, fees. */
+export function headerMeta(o: { lots: number; txns: number | null; dividends: Record<string, number>; fees: number; currency: string }): HeaderMetaItem[] {
+  const divs = Object.entries(o.dividends).filter(([, v]) => v);
+  return [
+    { kind: "lots", text: o.lots ? plural(o.lots, "lot", "loty", "lotów") : "brak lotów", toggle: o.lots > 1 },
+    { kind: "txns", text: o.txns == null ? "transakcje" : plural(o.txns, "transakcja", "transakcje", "transakcji") },
+    { kind: "dividends", label: "dywidendy", value: divs.length ? divs.map(([k, v]) => money(v, k)).join(", ") : money(0, o.currency) },
+    { kind: "fees", label: "opłaty", value: money(o.fees, o.currency) },
+  ];
+}
+
+/** One row of the asset's `Sygnały i decyzje` timeline: date · dot · one fact (+ the owner's reason as `sub`,
+ * a muted `tail` word such as `wygasł`). */
+export interface TlRow { at: string; dot: "pos" | "neg" | "nw" | "neu" | ""; head: string; fact: string; tail?: string; sub?: string; title?: string; key: string }
+
+interface TlDecision { id: number; signal_id: number | null; signal_ids?: number[]; action: string; quantity: number | null; price: number | null; currency: string | null; reason: string | null; created_at: string | null }
+interface TlSignal extends SigLike { closed_at?: string | null }
+
+const isAck = (d: Pick<TlDecision, "action" | "reason">) => (d.action === "held" && d.reason === "acknowledged") || (d.reason ?? "").startsWith("decyzja: ");
+const linkedIds = (d: Pick<TlDecision, "signal_id" | "signal_ids">) => [...new Set([...(d.signal_ids ?? []), ...(d.signal_id != null ? [d.signal_id] : [])])];
+const STATE_HEAD: Record<Polarity, string> = { positive: "Szansa", negative: "Ryzyko", neutral: "Sygnał" };
+
+/** The timeline (7.3), newest first, at most `limit`: decisions (`Decyzja · dokupuję 10 szt. @ 44,80 $`, the
+ * reason as `sub`), acknowledgements (`Potwierdzone · <fact>`; fan-out ones of a decision's minute fold into it),
+ * closed signals (`Ryzyko · <fact>` + `wygasł`), thesis reviews, buys and sells. Open signals never appear here
+ * (undecided ones are the rows above it, decided ones are told by their decision); research notes neither. */
+export function assetTimeline(o: {
+  signals: TlSignal[];
+  decisions: TlDecision[];
+  theses: { reviewed_at: string | null }[];
+  txns: { id: number | string; type: string; trade_date: string; quantity: number | null; price: number | null; currency: string }[];
+  ctx?: { total?: number | null; base?: string; names?: Map<number, string> };
+  currency: string;
+}, limit = 12): TlRow[] {
+  const byId = new Map(o.signals.map((x) => [x.id, x]));
+  const factOf = (id: number) => { const x = byId.get(id); return x ? factText(signalFact(x)) : null; };
+  const longOf = (x: SigLike) => { const t = signalText(x, o.ctx ?? {}); return [t.lead, t.bold, t.tail].filter(Boolean).join(" "); };
+  const at = (iso: string | null) => parseServerTime(iso);
+  const out: TlRow[] = [];
+  const decisions = o.decisions.filter((d) => d.created_at);
+  const real = decisions.filter((d) => !isAck(d));
+  // The `decyzja: <tag>` tag a fan-out writes for a decision (decisionTag without the prefix).
+  const tagOf = (d: TlDecision) => `${DECISION_ACTION[d.action] ?? d.action}${d.quantity != null && (d.action === "bought" || d.action === "sold") ? ` ${qty(d.quantity)} szt.` : ""}`;
+  const folded = new Map<number, string[]>();
+  for (const d of decisions) {
+    if (!isAck(d)) continue;
+    const ids = linkedIds(d);
+    // A fan-out acknowledgement (`decyzja: <tag>`) written within 60 s of a decision is part of it: the nearest
+    // decision with the same tag, else the nearest one.
+    if ((d.reason ?? "").startsWith("decyzja: ")) {
+      const t = at(d.created_at);
+      const tag = (d.reason ?? "").slice("decyzja: ".length).replace(/\s+/g, " ").trim();
+      const near = real.map((r) => ({ r, dt: Math.abs(at(r.created_at) - t) })).filter((x) => Number.isFinite(x.dt) && x.dt <= 60000)
+        .sort((x, y) => Number(tagOf(y.r).replace(/\s+/g, " ") === tag) - Number(tagOf(x.r).replace(/\s+/g, " ") === tag) || x.dt - y.dt);
+      const host = near[0]?.r;
+      if (host) { folded.set(host.id, [...(folded.get(host.id) ?? []), ...ids.map(factOf).filter((x): x is string => !!x)]); continue; }
+    }
+    const fact = ids.map(factOf).find(Boolean) ?? "";
+    out.push({ at: d.created_at!, dot: "neu", head: "Potwierdzone", fact, key: `a:${d.id}` });
+  }
+  for (const d of real) {
+    const trade = (d.action === "bought" || d.action === "sold") && d.quantity != null;
+    const fact = `${DECISION_ACTION[d.action] ?? d.action}${trade ? ` ${qty(d.quantity)} szt.${d.price != null ? ` @ ${money(d.price, d.currency ?? o.currency)}` : ""}` : ""}`;
+    const reason = d.reason && d.reason !== "acknowledged" && !d.reason.startsWith("decyzja: ") ? d.reason : null;
+    const facts = [...linkedIds(d).map(factOf).filter((x): x is string => !!x), ...(folded.get(d.id) ?? [])];
+    const title = [reason, ...new Set(facts)].filter(Boolean).join("\n") || undefined;
+    out.push({ at: d.created_at!, dot: "nw", head: "Decyzja", fact, ...(reason ? { sub: reason } : {}), ...(title ? { title } : {}), key: `d:${d.id}` });
+  }
+  for (const x of o.signals) {
+    if (x.status !== "resolved" && x.status !== "expired") continue;
+    const at = x.first_seen_at ?? x.closed_at ?? null;
+    if (!at) continue;
+    out.push({ at, dot: "neu", head: STATE_HEAD[polarityOf(x)], fact: factText(signalFact(x)), ...(x.status === "expired" ? { tail: "wygasł" } : {}), title: longOf(x), key: `s:${x.id}` });
+  }
+  for (const r of new Set(o.theses.map((t) => t.reviewed_at).filter((v): v is string => !!v))) {
+    out.push({ at: r, dot: "", head: "Przegląd tezy", fact: "", key: `r:${r}` });
+  }
+  for (const t of o.txns) {
+    if (t.type !== "buy" && t.type !== "sell") continue;
+    out.push({ at: `${t.trade_date}T12:00:00`, dot: "nw", head: txnType(t.type).replace(/^./, (c) => c.toUpperCase()), fact: `${qty(t.quantity)} @ ${money(t.price, t.currency)}`, key: `t:${t.id}` });
+  }
+  const time = (iso: string) => { const t = parseServerTime(iso); return Number.isNaN(t) ? 0 : t; };
+  return out.sort((a, b) => time(b.at) - time(a.at) || b.key.localeCompare(a.key)).slice(0, limit);
+}
+
+/** A timeline date: `5.10` this year, `5.10.25` older. */
+export const tlDate = (at: string, year: string) => (at.slice(0, 4) === year ? dm(at) : `${dm(at)}.${at.slice(2, 4)}`);

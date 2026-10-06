@@ -1,10 +1,12 @@
-// Asset detail (design/v2/asset-detail.html, F-12; F6 owner decision 3: a drawer over the widget grid,
-// design/v2/research/research-drawer.html): header facts, the price chart with alert levels (user amber,
-// agent blue), rule thresholds (labelled with the rule id and basis), the average cost and buy / sell
-// markers (labels stacked with leaders), then a two-column grid: Teza / Alerty / Loty on the left, the
-// research slot on the right (assetSlots.ts; without it the timeline takes the right column), the
-// signals-and-decisions timeline below. The same content renders in the drawer (AssetDrawer) and as a page
-// ("otwórz jako stronę"). Watched instruments (not held) get the chart, alerts and timeline only.
+// Asset detail v3 (design/v3/asset-detail/asset-detail.md, owner QA round 3 Q21-Q26; F6 owner decision 3: a
+// drawer over the widget grid). Header: identity, price, the facts Wartość / Wynik / Śr. koszt / Ilość, the
+// actions (+ Alert, + Transakcja, Zanotuj decyzję: one decision per position in a dialog, Decide.tsx) and a meta
+// line (lots behind `n loty`, transactions, dividends, fees). Then the price chart with alert levels (user amber,
+// agent blue), rule thresholds, the average cost and buy / sell markers; a two-column grid: Teza (plain text) and
+// Alerty on the left, the research slot on the right (assetSlots.ts; without it the timeline takes the right
+// column), `Sygnały i decyzje` below: the open signals as rows (a quiet `potwierdź`) above a timeline with one
+// fact per row. The same content renders in the drawer (AssetDrawer) and as a page ("otwórz jako stronę").
+// Watched instruments (not held): no facts and no meta line, Alerty on the left, research only with notes.
 import { useMemo, useState } from "react";
 import { LineChart, type Level } from "../../../charts";
 import { labelIndices } from "../../../chart";
@@ -12,16 +14,19 @@ import { monthYearShort } from "../../../format";
 import { useAsync } from "../../../hooks";
 import { Seg, Skeleton, useToast } from "../../../ui";
 import { FootFacts, PolDot, Widget } from "../../../widgets";
-import { type AccountRow, getPositionChart, getPositionDetail, type Position, type Thesis } from "../api";
-import { accountLabel, bucketLabel, DECISION_ACTION, dm, dmy, ENTRY_TYPE, micName, money, money0, pct, plural, qty, txnType, wdm } from "../labels";
+import { getPositionChart, getPositionDetail, type Position, type Thesis } from "../api";
+import { accountLabel, bucketLabel, dmy, ENTRY_TYPE, micName, money, money0, pct, plural, qty, wdm } from "../labels";
 import { InstLabel } from "./InstLabel";
 import { AlertRow, removeAlertWithUndo } from "./Alerts";
-import { type Alert, getSignalsV2, invKey, type WatchItem } from "./api";
-import { ASSET_SLOTS, type AssetSlotProps, type AssetTimelineEntry, type ThesisField } from "./assetSlots";
-import { isResearchKind } from "./research/logic";
-import { averageCost, instName, isDecided, polarityOf, price as priceText, signalText, weekChange } from "./logic";
+import { type Alert, getDecisionsFor, getSignalsV2, invKey, type SignalV2, type WatchItem } from "./api";
+import { ASSET_SLOTS, type AssetSlotProps } from "./assetSlots";
+import { PositionDecisionDialog } from "./Decide";
+import { isResearchKind, signalNoteId } from "./research/logic";
+import {
+  assetTimeline, averageCost, headerMeta, instName, lotRows, openRows, polarityOf, price as priceText, signalFact, STATE_LABEL, stateOf, tlDate, weekChange,
+} from "./logic";
 import { todayLocal } from "../../../time";
-import { SignalItem, type SignalsCtx } from "./Signals";
+import { Age, Fact1, legacyDecisions, longText, type SignalsCtx, signalAge, useSignalAck } from "./Signals";
 
 const MONTHS: [string, number][] = [["6M", 6], ["1R", 12], ["2R", 24], ["Max", 120]];
 
@@ -54,12 +59,17 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const toast = useToast();
   const slug = ctx.slug;
   const [months, setMonths] = useState(24);
-  const [decideOpen, setDecideOpen] = useState<number | null>(null);
+  const [decideOpen, setDecideOpen] = useState(false);
+  const [lotsOpen, setLotsOpen] = useState(false);
   const pos = positions.find((p) => String(p.instrument.id) === String(id)) ?? null;
   const w = watch.find((x) => x.instrument_id === id) ?? null;
   // Keyed (F7 PX4): reopening an asset shows its last detail, chart and signals at once and refreshes them.
-  const detail = useAsync(() => (pos ? getPositionDetail(slug, id) : Promise.resolve(null)), [slug, id, !!pos],
+  // Re-read with the page's data (`ctx.positions` changes on every reload): a decision or its undo shows in the timeline.
+  const detail = useAsync(() => (pos ? getPositionDetail(slug, id) : Promise.resolve(null)), [slug, id, !!pos, ctx.positions],
     { key: pos ? invKey(slug, "position", id) : undefined });
+  // Watched (not held): no position detail, so the timeline's decisions come from the journal of this instrument.
+  const watchedDecisions = useAsync(() => (pos ? Promise.resolve(null) : getDecisionsFor(slug, id)), [slug, id, !!pos, ctx.positions],
+    { key: pos ? undefined : invKey(slug, "decisions", id) });
   const chart = useAsync(() => getPositionChart(slug, id, months), [slug, id, months], { key: invKey(slug, "chart", id, months) });
   const sig = useAsync(() => getSignalsV2(slug, "all"), [slug, id, ctx.positions], { key: invKey(slug, "signals", "all") });
   const inst = pos?.instrument ?? detail.data?.instrument ?? w?.instrument ?? null;
@@ -67,8 +77,9 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const mine = alerts.filter((a) => a.instrument_id === id);
   const live = mine.filter((a) => a.status === "active" || a.status === "triggered" || a.status === "snoozed");
   const signals = (sig.data ?? []).filter((s) => s.instrument_id === id);
-  const open = signals.filter((s) => s.status === "active" || s.status === "acknowledged");
-  const undecided = open.filter((s) => !isDecided(s) && !s.snoozed);
+  const undecided = openRows(signals);
+  // The header glyph says something waits for a decision: open signals no decision covers (none once decided).
+  const state = stateOf(undecided.map(polarityOf));
   const thesis = detail.data?.theses[detail.data.theses.length - 1] ?? null;
   const c = pos?.price_currency ?? chart.data?.currency ?? inst?.currency ?? "PLN";
   const series = chart.data?.series ?? [];
@@ -77,14 +88,15 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const high = chart.data?.high_52w ?? null;
   const fromHigh = high && last ? last / high - 1 : null;
   const wk = weekChange(series.length ? series.slice(-30) : (w?.closes_30d ?? null));
-  const firstLot = [...(pos?.lots ?? [])].sort((a, b) => a.open_date.localeCompare(b.open_date))[0];
   const accounts = ctx.accounts;
+  const lots = lotRows(pos?.lots ?? []);
+  const firstLot = lots.rows[0];
   const acc = pos?.accounts.length === 1 ? accounts.find((a) => a.id === pos.accounts[0].account_id) : null;
-  // Research signals have their own header note (research slot `HeaderNote`): the rule / alert signal leads here.
-  const ruleOpen = open.filter((s) => !isResearchKind(s.kind));
-  const mainSignal = ruleOpen.find((s) => !isDecided(s) && !s.snoozed) ?? ruleOpen[0] ?? null;
-  const dividends = pos ? Object.entries(pos.dividends).filter(([, v]) => v) : [];
   const fees = (detail.data?.transactions ?? []).reduce((s, t) => s + (t.fee || 0), 0);
+  const meta = pos ? headerMeta({ lots: lots.rows.length, txns: detail.data ? detail.data.transactions.length : null, dividends: pos.dividends, fees, currency: c }) : [];
+  const legacy = legacyDecisions(slug);
+  // Held: a decision without an open signal is fine (position decisions); watched, or an older server: only with one.
+  const canDecide = undecided.length > 0 || (!!pos && !legacy);
 
   const levels: Level[] = useMemo(() => {
     const out: Level[] = [];
@@ -120,30 +132,22 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
     .map((a) => ({ a, d: (a.params.level as number) / last! - 1 })).sort((x, y) => Math.abs(x.d) - Math.abs(y.d))[0];
   const removeAlert = (a: Alert) => { void removeAlertWithUndo(slug, a, toast, onAlertsChanged); };
 
-  // Slots (research): props shared by every slot, the extra timeline rows from the slot's hook.
   const slot: AssetSlotProps = { slug, instrumentId: id, name, symbol: inst?.symbol ?? null, held: !!pos, thesis, noteId, mode, onChanged: ctx.onChanged, onRead: ctx.onResearchRead };
-  const extra: AssetTimelineEntry[] = ASSET_SLOTS.useTimeline?.(slot) ?? [];
-  const { Research, ThesisTags, ThesisFieldChip, HeaderNote } = ASSET_SLOTS;
-  const chip = (field: ThesisField) => (ThesisFieldChip ? <> <ThesisFieldChip {...slot} field={field} /></> : null);
-
-  // Timeline: signals, decisions, thesis reviews, buys / sells. Research signals come as `Research: …` rows
-  // from the research slot (useTimeline), so they are not listed twice.
-  const timeline = [
-    ...signals.filter((s) => !isResearchKind(s.kind)).map((s) => ({ at: s.first_seen_at ?? "", dot: polarityOf(s) === "positive" ? "pos" : polarityOf(s) === "negative" ? "neg" : "", head: polarityOf(s) === "positive" ? "Szansa" : polarityOf(s) === "negative" ? "Ryzyko" : "Sygnał",
-      main: [signalText(s).lead?.replace(/ ·$/, ""), signalText(s).bold].filter(Boolean).join(" "), tail: s.status === "active" ? "otwarty" : s.status === "acknowledged" ? "potwierdzony" : s.status === "expired" ? "wygasł" : "rozstrzygnięty", signal: s.status === "active" && !isDecided(s) ? s.id : null })),
-    ...(detail.data?.decisions ?? []).map((d) => ({ at: d.created_at ?? "", dot: "nw", head: `Decyzja: ${DECISION_ACTION[d.action] ?? d.action}`, main: d.quantity != null && (d.action === "bought" || d.action === "sold") ? `${qty(d.quantity)}${d.price != null ? ` @ ${money(d.price, d.currency ?? c)}` : ""}` : "", tail: d.reason ? `„${d.reason}"` : undefined, signal: null })),
-    ...(detail.data?.theses ?? []).filter((t) => t.reviewed_at).map((t) => ({ at: t.reviewed_at!, dot: "", head: "Przegląd tezy", main: "", tail: "bez zmian", signal: null })),
-    ...(detail.data?.transactions ?? []).filter((t) => t.type === "buy" || t.type === "sell").map((t) => ({ at: `${t.trade_date}T12:00:00`, dot: "nw", head: txnType(t.type).replace(/^./, (m) => m.toUpperCase()), main: `${qty(t.quantity)} @ ${money(t.price, t.currency)}`, tail: undefined, signal: null })),
-    ...extra.map((e) => ({ at: e.at, dot: e.dot, head: e.head, main: e.main ?? "", tail: e.tail, signal: null as number | null, action: e.action })),
-  ].filter((e) => e.at).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12) as { at: string; dot: string; head: string; main: string; tail?: string; signal: number | null; action?: AssetTimelineEntry["action"] }[];
+  const { Research, ThesisTags } = ASSET_SLOTS;
+  const researchShown = ASSET_SLOTS.useResearchShown?.(slot) ?? true;
+  const names = useMemo(() => new Map(ctx.positions.map((p) => [Number(p.instrument.id), instName(p.instrument)] as [number, string])), [ctx.positions]);
+  const timeline = assetTimeline({
+    signals, decisions: (pos ? detail.data?.decisions : watchedDecisions.data) ?? [], theses: detail.data?.theses ?? [], txns: detail.data?.transactions ?? [],
+    ctx: { total: ctx.total, base: ctx.base, names }, currency: c,
+  });
 
   const pctOf = pos?.weight;
   // Phone width: room for the level labels and fewer date labels under the chart.
   const small = typeof window !== "undefined" && window.matchMedia?.("(max-width: 640px)").matches;
-  const lastTrig = mine.map((a) => a.last_triggered_at).filter(Boolean).sort().slice(-1)[0] ?? null;
   const yearNow = todayLocal().slice(0, 4);
   // All accounts, not the first one (F7 FE6); per-account cost stays in "Per rachunek".
   const avgCost = pos ? averageCost(pos, ctx.base) : null;
+  const toSignals = () => document.getElementById(`asset-signals-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const head = (
     <section className="w ahead s2" aria-label={name}>
@@ -153,10 +157,8 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
             sub={[inst.symbol !== name ? inst.symbol : null, micName(inst.mic), bucketLabel(pos?.bucket)].filter(Boolean).join(" · ")} />
         ) : name}</h2>
         <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
-          {[acc ? accountLabel(acc, accounts) : pos ? `${plural(pos.accounts.length, "rachunek", "rachunki", "rachunków")}` : "obserwowany", firstLot ? `od ${dmy(firstLot.open_date)}` : null].filter(Boolean).join(" · ")}
-          {mainSignal && <> · <PolDot polarity={polarityOf(mainSignal)} /> {polarityOf(mainSignal) === "positive" ? "szansa" : polarityOf(mainSignal) === "negative" ? "ryzyko" : "sygnał"}: {signalText(mainSignal).lead?.replace(/ ·$/, "") ?? signalText(mainSignal).title.toLowerCase()}</>}
-          {HeaderNote && <HeaderNote {...slot} />}
-          {live.length > 0 && ` · ${plural(live.length, "alert", "alerty", "alertów")}`}
+          {[acc ? accountLabel(acc, accounts) : pos ? plural(pos.accounts.length, "rachunek", "rachunki", "rachunków") : "obserwowany", firstLot ? `od ${dmy(firstLot.open_date)}` : null].filter(Boolean).join(" · ")}
+          {state && <> · <button className="lnk hsig" onClick={toSignals}><PolDot state={state} /> {STATE_LABEL[state]}</button></>}
         </div>
       </div>
       <div className="sep" aria-hidden />
@@ -168,21 +170,55 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
         <>
           <div className="sep" aria-hidden />
           <div className="hfx">
-            <div className="fact"><div className="l">Ilość</div><div className="v sm">{qty(pos.quantity)}</div></div>
-            <div className="fact"><div className="l">Śr. koszt</div><div className="v sm">{avgCost ? money(avgCost.value, avgCost.currency) : "-"}</div></div>
             <div className="fact"><div className="l">Wartość</div><div className="v sm">{money(pos.value, ctx.base)}</div>{pctOf != null && <div className="d">{pct(pctOf)} portfela</div>}</div>
             <div className="fact"><div className="l">Wynik</div><div className={`v sm ${(pos.unrealized ?? 0) >= 0 ? "pos" : "neg"}`}>{money0(pos.unrealized, ctx.base, true)}</div>
-              <div className="d">{pct(pos.unrealized_pct, true)}{dividends.length ? ` · dywidendy ${dividends.map(([k, v]) => money0(v, k)).join(", ")}` : ""}</div></div>
+              <div className="d">{pct(pos.unrealized_pct, true)}</div></div>
+            <div className="fact"><div className="l">Śr. koszt</div><div className="v sm">{avgCost ? money(avgCost.value, avgCost.currency) : "-"}</div></div>
+            <div className="fact"><div className="l">Ilość</div><div className="v sm">{qty(pos.quantity)}</div></div>
           </div>
         </>
       )}
       <span className="spacer" />
       <div className="hdr-right">
         <button className="btn" onClick={onNewAlert}>+ Alert</button>
-        {pos && <button className="btn" onClick={onAddTxn}>Dodaj transakcję</button>}
-        <button className="btn primary" disabled={!undecided.length} title={undecided.length ? undefined : "Brak otwartego sygnału"}
-          onClick={() => { setDecideOpen(undecided[0]?.id ?? null); document.getElementById(`asset-signals-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>Zanotuj decyzję</button>
+        {pos && <button className="btn" onClick={onAddTxn}>+ Transakcja</button>}
+        <button className="btn primary" disabled={!canDecide} title={canDecide ? undefined : "Brak otwartego sygnału"} onClick={() => setDecideOpen(true)}>Zanotuj decyzję</button>
       </div>
+      {pos && (
+        <div className="hmeta">
+          {meta.map((m, k) => (
+            <span key={m.kind} className="mi">
+              {k > 0 && <span className="msep" aria-hidden>·</span>}
+              {m.kind === "lots" ? (m.toggle
+                ? <button className="lnk" aria-expanded={lotsOpen} aria-controls={`hlots-${id}`} onClick={() => setLotsOpen((v) => !v)}>{m.text}</button>
+                : <span>{m.text}</span>)
+                : m.kind === "txns" ? <button className="lnk" onClick={() => onTxns(pos)}>{m.text}</button>
+                : <span>{m.label} <b>{m.value}</b></span>}
+            </span>
+          ))}
+        </div>
+      )}
+      {pos && lotsOpen && lots.rows.length > 1 && (
+        <div className="hlots" id={`hlots-${id}`}>
+          <table className="lots">
+            <thead><tr><th>data</th><th className="num">ilość</th><th className="num">cena</th><th className="num">wynik</th><th className="num">wynik %</th></tr></thead>
+            <tbody>
+              {lots.rows.map((l, k) => {
+                const a = accounts.find((x) => x.id === l.account_id);
+                return (
+                  <tr key={k}>
+                    <td className="tnum">{dmy(l.open_date)}{lots.multi && a && <span className="sym">{accountLabel(a, accounts)}</span>}</td>
+                    <td className="num">{qty(l.quantity)}</td>
+                    <td className="num">{l.unit_cost != null ? money(l.unit_cost, l.currency) : "-"}</td>
+                    <td className={`num ${(l.result ?? 0) >= 0 ? "pos" : "neg"}`}>{money0(l.result, l.currency, true)}</td>
+                    <td className={`num ${(l.resultPct ?? 0) >= 0 ? "pos" : "neg"}`}>{pct(l.resultPct, true)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 
@@ -216,53 +252,40 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   );
 
   const thesisW = pos && (
-    <Widget title="Teza" tags={<>{thesis?.entry_type ? <span className="tag">{ENTRY_TYPE[thesis.entry_type] ?? thesis.entry_type}</span> : null}{ThesisTags && <ThesisTags {...slot} />}</>}
-      controls={<button className="btn sm" onClick={() => onThesis(pos, thesis)}>{thesis ? "Edytuj" : "Dodaj"}</button>} body="tight"
-      footer={thesis ? <FootFacts items={[thesis.created_at && `z ${dmy(thesis.created_at)}`, thesis.reviewed_at && <>przegląd tezy <b>{dm(thesis.reviewed_at)}</b></>]} /> : undefined}>
+    <Widget title="Teza" tags={<>{thesis?.entry_type ? <span className="sub">{ENTRY_TYPE[thesis.entry_type] ?? thesis.entry_type}</span> : null}{ThesisTags && <ThesisTags {...slot} />}</>}
+      controls={<button className="btn sm" onClick={() => onThesis(pos, thesis)}>{thesis ? "Edytuj" : "Dodaj"}</button>} body="tight">
       {thesis ? (
         <div className="tz">
-          {thesis.thesis && <p><b>Wejście</b>{thesis.thesis}{chip("entry")}</p>}
-          {thesis.invalidation && <p><b>Unieważnienie</b>{thesis.invalidation}{chip("invalidation")}</p>}
-          {thesis.exit_plan && <p><b>Plan wyjścia</b>{thesis.exit_plan}{chip("exit")}</p>}
-          {thesis.size_plan && <p><b>Wielkość i dokupienia</b>{thesis.size_plan}{chip("size")}</p>}
+          {thesis.thesis && <p><b>Wejście</b>{thesis.thesis}</p>}
+          {thesis.invalidation && <p><b>Unieważnienie</b>{thesis.invalidation}</p>}
+          {thesis.exit_plan && <p><b>Plan wyjścia</b>{thesis.exit_plan}</p>}
+          {thesis.size_plan && <p><b>Wielkość i dokupienia</b>{thesis.size_plan}</p>}
         </div>
       ) : <div className="muted" style={{ fontSize: 13 }}>Brak tezy.</div>}
     </Widget>
   );
 
   const alertsW = (
-    <Widget title="Alerty" count={live.length || undefined} controls={<button className="btn sm" onClick={onNewAlert}>+ Nowy</button>} body="tight"
-      footer={<><span>ostatni sygnał: <b>{lastTrig ? dm(lastTrig) : "brak"}</b></span>
-        <span className="spacer" /><button className="lnk" onClick={onAlerts}>wszystkie alerty</button></>}>
+    <Widget title="Alerty" controls={<><button className="lnk" onClick={onAlerts}>wszystkie</button><button className="btn sm" onClick={onNewAlert}>+ Nowy</button></>} body="tight">
       {!live.length ? <div className="muted" style={{ fontSize: 13 }}>Brak alertów.</div>
         : live.map((a) => <AlertRow key={a.id} a={a} compact onRemove={a.source === "agent" ? () => removeAlert(a) : undefined} />)}
     </Widget>
   );
 
-  const lotsW = pos && (
-    <Widget title="Loty" tags={<span className="tag">FIFO{acc ? ` · ${accountLabel(acc, accounts)}` : ""}</span>}
-      controls={<button className="btn sm" onClick={() => onTxns(pos)}>Transakcje{detail.data ? ` (${detail.data.transactions.length})` : ""}</button>} body="flush tight"
-      footer={<><FootFacts items={[<>dywidendy <b>{dividends.length ? dividends.map(([k, v]) => money(v, k)).join(", ") : money(0, c)}</b></>, <>opłaty <b>{money(fees, c)}</b></>]} />
-        <span className="spacer" /><button className="lnk" onClick={onAddTxn}>+ transakcja</button></>}>
-      <LotsTable p={pos} accounts={accounts} />
-    </Widget>
-  );
-
-  const research = Research ? <Research {...slot} /> : null;
+  const research = Research && researchShown ? <Research {...slot} /> : null;
   const timelineW = (
     <Widget title="Sygnały i decyzje" id={`asset-signals-${id}`} className={research ? "s2" : undefined} controls={<button className="lnk" onClick={onJournal}>dziennik</button>} body="tight">
-      {undecided.map((s) => (
-        <SignalItem key={s.id} s={s} ctx={ctx} thesis={null} open={decideOpen === s.id} cursor={false} primary={false} onToggle={(v) => setDecideOpen(v ? s.id : null)} />
-      ))}
-      {!timeline.length ? <div className="muted" style={{ fontSize: 13 }}>Brak sygnałów i decyzji.</div> : (
-        <div className="tl wide" style={{ marginTop: undecided.length ? 8 : 0 }}>
-          {timeline.map((e, k) => (
-            <div key={k} style={{ display: "contents" }}>
-              <div className="d">{e.at.slice(0, 4) === yearNow ? dm(e.at) : `${dm(e.at)}.${e.at.slice(2, 4)}`}</div>
+      {undecided.length > 0 && (
+        <div className="osig">{undecided.map((s) => <OpenSignalRow key={s.id} s={s} ctx={ctx} />)}</div>
+      )}
+      {!timeline.length && !undecided.length ? <div className="muted" style={{ fontSize: 13 }}>Brak sygnałów i decyzji.</div> : timeline.length > 0 && (
+        <div className="tl wide">
+          {timeline.map((e) => (
+            <div key={e.key} style={{ display: "contents" }}>
+              <div className="d">{tlDate(e.at, yearNow)}</div>
               <div className="m"><i className={e.dot} aria-hidden /></div>
-              <div className="t"><b>{e.head}</b>{e.main ? ` · ${e.main}` : ""}{e.tail && <span> · {e.tail}</span>}
-                {e.signal && <> · <button className="lnk" onClick={() => setDecideOpen(e.signal)}>decyzja</button></>}
-                {e.action && <> · <button className="lnk" onClick={e.action.onClick}>{e.action.label}</button></>}</div>
+              <div className="t" title={e.title}><b>{e.head}</b>{e.fact ? ` · ${e.fact}` : ""}{e.tail && <span> · {e.tail}</span>}
+                {e.sub && <div className="sub">{e.sub}</div>}</div>
             </div>
           ))}
         </div>
@@ -270,47 +293,38 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
     </Widget>
   );
 
-  // Two columns (research.css .g2): the left stack (Teza, Alerty, Loty) next to the research slot; without
-  // a research section the timeline takes the right column so no cell stays empty.
+  // Two columns (research.css .g2): the left stack (Teza, Alerty) next to the research slot; without a research
+  // section the timeline takes the right column so no cell stays empty.
   return (
     <div className="g2 asset">
       {head}
       {priceChart}
-      <div className="stack">{thesisW}{alertsW}{lotsW}</div>
+      <div className="stack">{thesisW}{alertsW}</div>
       {research ?? timelineW}
       {research && timelineW}
+      {decideOpen && (
+        <PositionDecisionDialog instrumentId={id} name={name} symbol={inst?.symbol ?? null} signals={undecided} ctx={ctx} thesis={thesis} held={!!pos}
+          onClose={() => setDecideOpen(false)} />
+      )}
     </div>
   );
 }
 
-function LotsTable({ p, accounts }: { p: Position; accounts: AccountRow[] }) {
-  const lots = [...p.lots].sort((a, b) => a.open_date.localeCompare(b.open_date));
-  const sumQ = lots.reduce((s, l) => s + l.quantity, 0);
-  const sumCost = lots.reduce((s, l) => s + l.quantity * (l.unit_cost ?? 0), 0);
-  const sumRes = lots.reduce((s, l) => s + (l.result ?? 0), 0);
-  const multi = new Set(lots.map((l) => l.account_id)).size > 1;
-  if (!lots.length) return <div className="empty">Brak otwartych lotów.</div>;
+/** One open signal of the asset (7.1): the glyph, one fact (+ `notatka` for research), the date and a quiet
+ * `potwierdź` (acknowledge, toast + `Cofnij`). The decision is the header's, once per position. */
+function OpenSignalRow({ s, ctx }: { s: SignalV2; ctx: SignalsCtx }) {
+  const { ack, busy } = useSignalAck(ctx);
+  const research = isResearchKind(s.kind) || s.source === "research";
+  const noteId = research ? signalNoteId(s) : null;
   return (
-    <table>
-      <thead><tr><th>Data</th><th className="num">Ilość</th><th className="num">Cena</th><th className="num">Wynik</th><th className="num">Wynik %</th></tr></thead>
-      <tbody>
-        {lots.map((l, k) => {
-          const cost = l.quantity * (l.unit_cost ?? 0);
-          const r = l.result != null && cost ? l.result / cost : null;
-          const a = accounts.find((x) => x.id === l.account_id);
-          return (
-            <tr key={k}>
-              <td className="tnum">{l.open_date}{multi && a && <span className="sym">{accountLabel(a, accounts)}</span>}</td>
-              <td className="num">{qty(l.quantity)}</td>
-              <td className="num">{l.unit_cost != null ? money(l.unit_cost, l.currency) : "-"}</td>
-              <td className={`num ${(l.result ?? 0) >= 0 ? "pos" : "neg"}`}>{money0(l.result, l.currency, true)}</td>
-              <td className={`num ${(r ?? 0) >= 0 ? "pos" : "neg"}`}>{pct(r, true)}</td>
-            </tr>
-          );
-        })}
-        <tr className="sum"><td>razem</td><td className="num">{qty(sumQ)}</td><td className="num">{sumQ ? money(sumCost / sumQ, lots[0].currency) : "-"}</td>
-          <td className="num">{money0(sumRes, lots[0].currency, true)}</td><td className="num">{pct(sumCost ? sumRes / sumCost : null, true)}</td></tr>
-      </tbody>
-    </table>
+    <div className="sig orow" data-signal={s.id}>
+      <PolDot polarity={polarityOf(s)} />
+      <div className="m" title={longText(s, ctx)}>
+        <Fact1 f={signalFact(s)} />
+        {research && ctx.onOpenNote && <> · <button className="lnk" onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.theme === "string" ? s.payload.theme : null)}>notatka</button></>}
+        <Age a={signalAge(s, ctx)} />
+      </div>
+      <div className="rt"><button className="lnk quiet" disabled={busy(s)} onClick={() => ack(s)}>potwierdź</button></div>
+    </div>
   );
 }

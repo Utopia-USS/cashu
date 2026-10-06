@@ -14,7 +14,7 @@ import { ResearchStrip, type StripCtx } from "./Strip";
 import type { DigestResearch, ResearchNote } from "./types";
 import { localDay } from "../../../../time";
 
-export { AssetResearch, ResearchHeaderNote, ThesisFieldChip, ThesisHealth, useResearchTimeline } from "./AssetResearch";
+export { AssetResearch, ThesisHealth, useResearchShown } from "./AssetResearch";
 
 interface PositionLike { instrument: { id: number | string; name?: string | null; label: string; symbol?: string | null }; weight?: number | null }
 
