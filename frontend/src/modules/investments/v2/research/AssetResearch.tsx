@@ -3,11 +3,12 @@
 // date labels, note cards of this instrument, older notes behind `pokaż`, boundaries in the footer), the health
 // pill in the Teza header, a relation chip after the thesis field a note touches, the header's research note
 // and research entries in the "Sygnały i decyzje" timeline. `?note=<id>` scrolls to and highlights the card.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Widget } from "../../../../widgets";
 import type { AssetSlotProps, AssetTimelineEntry, ThesisField } from "../assetSlots";
 import { dm } from "../../labels";
-import { canRestore, useInstrumentNotes, useResearchActions } from "./data";
+import { bumpResearch, canRestore, useInstrumentNotes, useResearchActions } from "./data";
+import { postResearchRead } from "./api";
 import {
   addDays, BOUNDARY, chipsFromFields, countsText, direction, DIRECTION_LABEL, DIRECTION_TONE, fieldChips, healthOf, healthStale, isExpired, lastNonEmpty, latestRun, nNotes,
   normField, normRelation, POLARITY_WORD, signalWord, RELATION_LABEL, relationCounts, runTag, sentiment8w, thesisHealth, weekLabels, weekStarts, windowStart,
@@ -44,6 +45,16 @@ export function AssetResearch(p: AssetSlotProps) {
   const recent = notes.filter((n) => (localDay(n.observed_at) ?? "") >= cutoff && !isExpired(n, r.today) && (!n.dismissed_at || canRestore(n)));
   const old = notes.filter((n) => !recent.includes(n) && !n.dismissed_at);
   const hlId = p.noteId ? Number(p.noteId) : null;
+  // Q10: opening the Research section marks the instrument's unread agent notes read (once per mount; a failed
+  // call is silent and the marker stays). A real mark re-reads the research views (strip rows, the chip).
+  const marked = useRef(false);
+  useEffect(() => {
+    if (marked.current || !r.notes || !r.notes.some((n) => n.unread === true)) return;
+    marked.current = true;
+    postResearchRead(p.slug, { instrument_id: p.instrumentId })
+      .then((res) => { p.onRead?.(p.instrumentId); if (res.marked > 0) bumpResearch(p.slug); })
+      .catch(() => undefined);
+  }, [r.notes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Deep link: open older notes when the target is among them, then scroll it into view.
   useEffect(() => {

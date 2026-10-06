@@ -7,7 +7,7 @@ import type { GridItem } from "../../../../widgets";
 import type { WatchItem } from "../api";
 import { instName } from "../logic";
 import { useResearchOverview, useWorkspace } from "./data";
-import { acceptedAt, latestRun, runTag, showStrip, watchItemId } from "./logic";
+import { acceptedAt, latestRun, showStrip, watchItemId } from "./logic";
 import { ResearchPage } from "./Page";
 import { ReviewResearch, researchChanges, researchEffectLine } from "./ReviewBlock";
 import { ResearchStrip, type StripCtx } from "./Strip";
@@ -15,7 +15,6 @@ import type { DigestResearch, ResearchNote } from "./types";
 import { localDay } from "../../../../time";
 
 export { AssetResearch, ResearchHeaderNote, ThesisFieldChip, ThesisHealth, useResearchTimeline } from "./AssetResearch";
-export { insertAfterAttention } from "./logic";
 
 interface PositionLike { instrument: { id: number | string; name?: string | null; label: string; symbol?: string | null }; weight?: number | null }
 
@@ -57,19 +56,15 @@ export function useResearchHome(input: ResearchHomeInput) {
     onOpenAsset: o.openAsset, onOpenResearch: (q) => o.go(q ? `research?${q}` : "research"), onChanged: o.onChanged, onSettings: o.onSettings,
   };
   const ran = showStrip(runs);
-  const tag = runTag(runs ?? [], o.today);
   const last = latestRun(runs ?? []);
 
-  /** Grid item of the strip (null before the first run). */
-  const strip: GridItem | null = ran && runs ? { id: "research", span: 3, defer: true, node: <ResearchStrip ctx={ctx} runs={runs} summary={summary} candidates={candidates} /> } : null;
+  /** Grid item of the strip (null before the first run); the last cell of the home (Q13). */
+  const strip: GridItem | null = ran && runs ? { id: "research", span: 3, node: <ResearchStrip ctx={ctx} runs={runs} summary={summary} candidates={candidates} /> } : null;
 
   /** Review block (span 3) between Co się zmieniło and Sygnały; null before the first run. */
   const review = (since: string | null): GridItem | null => ran && runs && since
     ? { id: "review-research", span: 3, node: <ReviewResearch ctx={ctx} runs={runs} summary={summary} candidates={candidates} digest={o.digestResearch} since={since} onSettings={o.onSettings} /> }
     : null;
-
-  /** Hero meta line 2: `research sob 3.10 · 14 notatek` (warn when no run this week). */
-  const heroMeta: ReactNode = ran ? <span className={tag.tone === "warn" || tag.tone === "neg" ? tag.tone : undefined}>research {tag.text}</span> : null;
 
   /** `Research` row of Co się zmieniło (null when no run in the period). */
   const changesRow = researchChanges({ digest: o.digestResearch, held, onJump: () => document.getElementById("inv-review-research")?.scrollIntoView({ behavior: "smooth", block: "start" }) });
@@ -90,5 +85,5 @@ export function useResearchHome(input: ResearchHomeInput) {
       initial={params} onBack={onBack} onOpenAsset={o.openAsset} onSettings={o.onSettings} onChanged={o.onChanged} />
   );
 
-  return { ran, runs, summary, strip, review, heroMeta, changesRow, ranInPeriod, effect, page };
+  return { ran, runs, summary, strip, review, changesRow, ranInPeriod, effect, page };
 }

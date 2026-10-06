@@ -20,6 +20,10 @@ export interface SignalV2 extends Signal {
   /** Alert signals (F6 BE): `alert.<kind>` + params for the Polish fact (core/messages.ts); null for rules. */
   message_code?: string | null;
   message_params?: Record<string, unknown> | null;
+  /** F8 BE: the profile's last non-failed rules run confirmed it (research signals: true); absent on older servers. */
+  current?: boolean | null;
+  /** F8 BE: the instrument is held in any account of the profile (null for portfolio-wide signals). */
+  held?: boolean | null;
 }
 
 export interface AttentionItem {
@@ -50,7 +54,8 @@ export interface OverviewV2 extends Overview {
 }
 
 export interface Close { date: string; close: number }
-export type PositionV2 = Position & { closes_30d?: Close[] };
+/** `research_unread` (F8 BE): the instrument's unread agent research notes. */
+export type PositionV2 = Position & { closes_30d?: Close[]; research_unread?: number };
 export type PositionsV2 = Omit<Positions, "positions"> & { positions: PositionV2[] };
 
 export interface Alert {
@@ -75,6 +80,11 @@ export interface Alert {
   last_checked_at: string | null;
   last_value: Num;
   signal: { id: number; status: string; message: string; first_seen_at: string | null } | null;
+  /** F8 BE (dynamic kinds): the last run's range (range_breakout) or the average volume (volume_spike). */
+  state?: {
+    range_low?: number | string | null; range_high?: number | string | null; range_pct?: number | null; close?: number | null; currency?: string | null;
+    average_volume?: number | string | null; volume?: number | null; ratio?: number | null; window_days?: number | null;
+  } | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -118,6 +128,8 @@ export interface WatchItem {
   } | null;
   closes_30d?: Close[];
   alerts: { count?: number; live: number; triggered: number; nearest?: { alert_id: number; kind: string; title: string; level: Num; distance_pct: Num } | null };
+  /** F8 BE: unread agent research notes of the instrument. */
+  research_unread?: number;
 }
 
 export interface DigestEvent {

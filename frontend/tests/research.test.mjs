@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { twoColumnOrder } from "../src/grid.ts";
 import {
   acceptedAt, candidateCriteria, candidateReturn, chipsFromFields, countsText, isRestorable, latestTitle, normDirection, noteSubject, signalWord, watchItemId, criterionText, direction, directionChange, expiryText, fieldChips, freshness, healthOf,
-  HEALTH_CLS, HEALTH_LABEL, insertAfterAttention, isResearchKind, nextSaturday, normHealth, noteWhen, orderTheses, relationCounts,
+  HEALTH_CLS, HEALTH_LABEL, isResearchKind, nextSaturday, normHealth, noteWhen, orderTheses, relationCounts,
   researchCommand, researchSignalText, runTag, safeUrl, scheduleSteps, workspacePath, sentiment8w, sentimentBars, showStrip, signalNoteId, sourceText, thesisHealth,
   weekLabels, weekScore, weekStarts, windowStart,
 } from "../src/modules/investments/v2/research/logic.ts";
@@ -225,34 +225,20 @@ test("next Saturday and the copied commands", () => {
 
 // ---- home grid integration -----------------------------------------------------------------------------
 
-test("grid: the strip only after the first run; after Sygnały + Alerty at three columns, after the Alerty + Alokacja pair at two", () => {
+test("grid: the strip only after the first run; the last cell of the home v3 (Q13), no defer", () => {
   assert.equal(showStrip(null), false);
   assert.equal(showStrip([]), false);
   assert.equal(showStrip([{ id: 1, status: "running" }]), true);
-  const home = [
-    { id: "hero", span: 3 }, { id: "signals", span: 2 }, { id: "alerts", span: 1 }, { id: "value", span: 2 }, { id: "alloc", span: 1 },
-    { id: "assets", span: 2 }, { id: "watch", span: 1 }, { id: "dd", span: 1 }, { id: "contrib", span: 1 }, { id: "accounts", span: 1 },
-  ];
-  const items = insertAfterAttention(home, { id: "research", span: 3, defer: true });
-  // three columns: DOM order = reading order (row 3, between attention and the charts)
-  assert.deepEqual(items.map((x) => x.id), ["hero", "signals", "alerts", "research", "value", "alloc", "assets", "watch", "dd", "contrib", "accounts"]);
-  // two columns (1100 mock): hero, Sygnały, Wartość, Alerty + Alokacja, Research, Aktywa, ...
-  const { order, alone } = twoColumnOrder(items);
-  const byOrder = [...order.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
-  assert.deepEqual(byOrder, ["hero", "signals", "value", "alerts", "alloc", "research", "assets", "watch", "dd", "contrib", "accounts"]);
+  // home v3: hero, (failed notice), the split cell, the research strip last: reading order = DOM order
+  const { order, alone } = twoColumnOrder([{ id: "hero", span: 3 }, { id: "split", span: 3 }, { id: "research", span: 3 }]);
+  assert.deepEqual([...order.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id), ["hero", "split", "research"]);
   assert.equal(alone.size, 0);
-  // without a waiting single widget a deferred wide item keeps its place
+  // a deferred wide item (still supported by the grid) keeps its place without a waiting single widget
   const r2 = twoColumnOrder([{ id: "a", span: 3 }, { id: "r", span: 3, defer: true }, { id: "b", span: 2 }]);
   assert.deepEqual([...r2.order.entries()], [["a", 1], ["r", 2], ["b", 3]]);
-  // a trailing single widget still flushes the deferred item after it
   const r3 = twoColumnOrder([{ id: "s", span: 1 }, { id: "r", span: 3, defer: true }]);
   assert.deepEqual([...r3.order.entries()], [["s", 1], ["r", 2]]);
   assert.ok(r3.alone.has("s"));
-  // no Alerty widget (light grid): the strip goes before Wartość vs benchmark
-  assert.deepEqual(insertAfterAttention([{ id: "hero" }, { id: "value" }], { id: "research" }).map((x) => x.id), ["hero", "research", "value"]);
-  // signals-rail home: Sygnały + Alerty live in the split cell, the strip goes right before it
-  assert.deepEqual(insertAfterAttention([{ id: "hero" }, { id: "split" }, { id: "dd" }], { id: "research" }).map((x) => x.id), ["hero", "research", "split", "dd"]);
-  assert.deepEqual(insertAfterAttention([{ id: "dd" }], { id: "research" }).map((x) => x.id), ["dd", "research"]);
 });
 
 test("contract accessors: candidate subject, accepted row, restore window, latest note, signal word, direction names", () => {

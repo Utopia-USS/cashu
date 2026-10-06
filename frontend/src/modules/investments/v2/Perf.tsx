@@ -11,7 +11,7 @@ import { Facts, FootFacts, Widget } from "../../../widgets";
 import { dm, money0, pct, plural, pp } from "../labels";
 import { nextDeposit } from "../logic";
 import { accKey, getPerformance, invKey, type Performance, type PerfRange } from "./api";
-import { benchmarkLabel, daysSince, monthlyFlows, perfNotes, planMonthsSoFar, staleBenchmark } from "./logic";
+import { benchmarkLabel, contributionFacts, daysSince, monthlyFlows, perfNotes, staleBenchmark } from "./logic";
 
 const RANGES: [string, PerfRange][] = [["1M", "1m"], ["3M", "3m"], ["YTD", "ytd"], ["1R", "1y"], ["3R", "3y"], ["Max", "max"]];
 const RANGE_TEXT: Record<PerfRange, string> = { "1m": "1 mies.", "3m": "3 mies.", ytd: "od początku roku", "1y": "12 mies.", "3y": "3 lata", max: "całość" };
@@ -141,13 +141,10 @@ export function ContributionsWidget({ perf, ytd, plan, today, fromBudget }: {
   const c = perf?.base_currency ?? ytd?.base_currency ?? "PLN";
   const months = monthlyFlows(perf?.points ?? [], today, 12);
   const curDone = months[months.length - 1]?.value > 0;
-  const deposits = ytd?.summary?.deposits ?? null;
   // The plan counts from January or from the first deposit, whichever is later (a profile that started in
-  // July has no "missed" months before it).
+  // July has no "missed" months before it); shared with the hero's Wpłaty fact (home v3 Q19).
   const firstFlow = (perf?.points ?? []).find((p) => (p.flow ?? 0) > 0)?.date ?? null;
-  const monthsSoFar = planMonthsSoFar(firstFlow, today);
-  const planYtd = plan ? plan.amount * monthsSoFar : null;
-  const missed = plan ? months.slice(-monthsSoFar, curDone ? undefined : -1).filter((m) => m.value <= 0).length : 0;
+  const { deposits, planYtd, missed } = contributionFacts({ months, deposits: ytd?.summary?.deposits ?? null, plan, firstDeposit: firstFlow, today });
   const next = nextDeposit(today, plan?.day ?? null);
   return (
     <Widget title="Wpłaty" id="inv-contrib" controls={<span className="tag">12 mies.</span>} body="tight">

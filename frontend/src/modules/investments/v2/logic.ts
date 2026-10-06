@@ -6,7 +6,6 @@ import { ASSET_CLASS, bucketLabel, dm, GENERIC_BUCKET_IDS, isGenericBucket, micN
 import { isResearchKind, researchSignalText } from "./research/logic.ts";
 import { localDay, parseServerTime, serverDate } from "../../../time.ts";
 import { describePerfNote } from "../../../core/messages.ts";
-import { nextDeposit } from "../logic.ts";
 
 export type Polarity = "positive" | "negative" | "neutral";
 
@@ -32,6 +31,11 @@ export interface SigLike {
   first_seen_at: string | null;
   decisions: { action: string; quantity: number | null; created_at: string | null }[];
   snoozed?: boolean;
+  last_seen_at?: string | null;
+  /** F8 BE: the profile's last non-failed run confirmed it (research signals: true). */
+  current?: boolean | null;
+  /** F8 BE: the instrument is held in any account of the profile (null for portfolio-wide signals). */
+  held?: boolean | null;
 }
 
 const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
@@ -122,23 +126,174 @@ export function splitByPolarity<T extends SigLike>(list: T[]): { positive: T[]; 
   return { positive: sorted.filter((x) => polarityOf(x) === "positive"), negative: sorted.filter((x) => polarityOf(x) !== "positive") };
 }
 
-/** Rows of one rail section (signals-rail.md 2): undecided and not snoozed only, newest first, action before
- * info, then the higher id; at most `n`. `negative` = Ryzyka i przegląd (negative and neutral). */
-export function railTop<T extends SigLike>(list: T[], polarity: "positive" | "negative", n = 4): T[] {
-  return list.filter((x) => !settled(x) && (polarityOf(x) === "positive") === (polarity === "positive")).sort(byTime).slice(0, n);
+// ---- signals by subject and scope (home v3, Q4 / Q6: design/v3/home-v3/home-v3.md 6) ---------------------
+
+export type SigScope = "portfolio" | "watched";
+/** Portfel = portfolio-wide, a bucket, or a held instrument; Obserwowane = an instrument that is not held. The
+ * server's `held` (F8) wins; else the `held` set (instrument ids as strings). */
+export const signalScope = (s: Pick<SigLike, "instrument_id" | "held">, held: Set<string>): SigScope =>
+  s.instrument_id == null || (typeof s.held === "boolean" ? s.held : held.has(String(s.instrument_id))) ? "portfolio" : "watched";
+
+/** One subject per row: the instrument, the bucket of a drift signal, else the rule kind (contribution_gap, ...). */
+export const subjectKey = (s: Pick<SigLike, "kind" | "instrument_id" | "payload">): string =>
+  s.instrument_id != null ? `i:${s.instrument_id}` : s.kind === "allocation_drift" ? `b:${String(s.payload.bucket_id ?? "")}` : `k:${s.kind}`;
+
+export type SigState = "positive" | "negative" | "neutral" | "mixed";
+/** positive only -> positive; no positive -> negative when any negative, else neutral; positive with anything
+ * else -> mixed; nothing -> null. */
+export function stateOf(pols: Polarity[]): SigState | null {
+  if (!pols.length) return null;
+  if (pols.includes("positive")) return pols.every((p) => p === "positive") ? "positive" : "mixed";
+  return pols.includes("negative") ? "negative" : "neutral";
+}
+/** The glyph's title: `szansa` / `ryzyko` / `sygnał` / `szansa i ryzyko`. */
+export const STATE_LABEL: Record<SigState, string> = { positive: "szansa", negative: "ryzyko", neutral: "sygnał", mixed: "szansa i ryzyko" };
+
+export interface SignalGroup<T> {
+  key: string;
+  instrumentId: number | null;
+  /** Every signal of the subject, byTime order. */
+  signals: T[];
+  /** Not decided and not snoozed, byTime order. */
+  live: T[];
+  state: SigState;
+  /** live[0]: the newest (action first on a tie). */
+  primary: T | null;
+  /** No live signal. */
+  settled: boolean;
 }
 
-/** The rail's rows in reading order (Szanse, then Ryzyka i przegląd): its j / k cursor walks this. */
-export const railRows = <T extends SigLike>(list: T[], n = 4): T[] => [...railTop(list, "positive", n), ...railTop(list, "negative", n)];
+/** Groups by `subjectKey`. `state` over the live signals (over all when none is live). Order: unsettled groups
+ * by their primary (byTime), then settled groups by their newest signal. */
+export function groupSignals<T extends SigLike>(list: T[]): SignalGroup<T>[] {
+  const by = new Map<string, T[]>();
+  for (const x of list) {
+    const k = subjectKey(x);
+    const g = by.get(k);
+    if (g) g.push(x); else by.set(k, [x]);
+  }
+  const groups = [...by].map(([key, sigs]): SignalGroup<T> => {
+    const all = [...sigs].sort(byTime);
+    const live = all.filter((x) => !settled(x));
+    return { key, instrumentId: all[0].instrument_id, signals: all, live, state: stateOf((live.length ? live : all).map((x) => polarityOf(x)))!, primary: live[0] ?? null, settled: !live.length };
+  });
+  return groups.sort((a, b) => Number(a.settled) - Number(b.settled) || byTime(a.primary ?? a.signals[0], b.primary ?? b.signals[0]));
+}
 
-/** Where an open signal from a notification link shows (signals-rail.md 3): in the rail when it is one of its
- * rows, else in the dialog. */
-export const signalPlace = (id: number, list: SigLike[]): "rail" | "dialog" => (railRows(list).some((s) => s.id === id) ? "rail" : "dialog");
+/** One rail section: the unsettled groups of the scope, at most `n`. */
+export function railGroups<T extends SigLike>(list: T[], held: Set<string>, scope: SigScope, n = 4): SignalGroup<T>[] {
+  return groupSignals(list.filter((x) => signalScope(x, held) === scope)).filter((g) => !g.settled).slice(0, n);
+}
 
-/** Undecided signals in reading order (left column, then right): the j / k cursor walks this. */
-export function cursorOrder<T extends SigLike>(list: T[]): T[] {
-  const { positive, negative } = splitByPolarity(list);
-  return [...positive, ...negative].filter((x) => !isDecided(x) && !x.snoozed);
+/** The rail's rows in reading order (Portfel, then Obserwowane): the j / k cursor walks groups. */
+export const railRows = <T extends SigLike>(list: T[], held: Set<string>, n = 4): SignalGroup<T>[] =>
+  [...railGroups(list, held, "portfolio", n), ...railGroups(list, held, "watched", n)];
+
+/** A notification link lands in the rail when its signal is live in one of the rail's groups, else in the dialog. */
+export const signalPlace = (id: number, list: SigLike[], held: Set<string>): "rail" | "dialog" =>
+  (railRows(list, held).some((g) => g.live.some((x) => x.id === id)) ? "rail" : "dialog");
+
+/** Rail group actions (architect default, F8): Potwierdź acknowledges every live signal; Zanotuj posts the
+ * decision to `primary` and acknowledges `rest` with the reason `decyzja: <tag>`. */
+export const groupPlan = <T>(g: Pick<SignalGroup<T>, "primary" | "live">): { primary: T; rest: T[] } | null =>
+  (g.primary == null ? null : { primary: g.primary, rest: g.live.slice(1) });
+
+/** Polarity filter of the dialog (`Wszystkie | Szanse n | Ryzyka n`). */
+export type SignalFilter = "all" | "positive" | "negative";
+const passes = (x: SigLike, f: SignalFilter) => f === "all" || (polarityOf(x) === "positive") === (f === "positive");
+
+/** The dialog's columns by scope; the polarity filter keeps only the signals of that polarity (Ryzyka = negative
+ * and neutral) and drops the groups left empty. */
+export function splitByScope<T extends SigLike>(list: T[], held: Set<string>, filter: SignalFilter): { portfolio: SignalGroup<T>[]; watched: SignalGroup<T>[] } {
+  const keep = list.filter((x) => passes(x, filter));
+  return {
+    portfolio: groupSignals(keep.filter((x) => signalScope(x, held) === "portfolio")),
+    watched: groupSignals(keep.filter((x) => signalScope(x, held) === "watched")),
+  };
+}
+
+/** Undecided signals in reading order (Portfel groups, then Obserwowane): the dialog's cursor. */
+export function cursorOrder<T extends SigLike>(list: T[], held: Set<string>, filter: SignalFilter = "all"): T[] {
+  const { portfolio, watched } = splitByScope(list, held, filter);
+  return [...portfolio, ...watched].flatMap((g) => g.live);
+}
+
+/** Whether the rules confirmed an open signal in the profile's last non-failed run: the server's `current` when
+ * sent; else true unless that run finished on a later local day than the signal's `last_seen_at`. Research
+ * signals are always current. */
+export function signalCurrent(s: { current?: boolean | null; last_seen_at?: string | null; kind: string }, lastRunAt: string | null): boolean {
+  if (typeof s.current === "boolean") return s.current;
+  if (isResearchKind(s.kind) || !lastRunAt || !s.last_seen_at) return true;
+  return (localDay(lastRunAt) ?? "") <= (localDay(s.last_seen_at) ?? "");
+}
+
+/** Short name of a signal's subject (rail line 1): an instrument's ticker (`instMono`), a bucket's label, a
+ * portfolio rule's short title (`Brak wpłaty`, `Za mało gotówki`, `Udział: tagi`). `insts`: instrument id ->
+ * symbol / name (positions, watchlist) when the payload carries no symbol. */
+export function signalSubject(sig: SigLike, insts?: Map<number, { symbol?: string | null; name?: string | null; label: string }>): string {
+  if (sig.instrument_id != null) {
+    const i = insts?.get(Number(sig.instrument_id));
+    const symbol = s(sig.payload.symbol) ?? i?.symbol ?? null;
+    const name = i ? instName(i) : s(sig.payload.name) ?? sig.instrument_label ?? "";
+    return symbol ? instMono({ symbol, name, label: name }) : name || "Instrument";
+  }
+  if (sig.kind === "allocation_drift") return bucketLabel(s(sig.payload.bucket_id)) ?? "Alokacja";
+  return signalText(sig).title;
+}
+
+/** One measurable fact of a signal (rail / dialog line 2, rev 2 7.5): `{pre} <b>{bold}</b>{post}`; no threshold,
+ * no `·` chains (those stay in `signalText` for the title and the journal). `post` starting with a comma joins
+ * without a space. */
+export interface SigFact { pre?: string; bold: string; post?: string }
+export function signalFact(sig: SigLike): SigFact {
+  const p = sig.payload;
+  if (isResearchKind(sig.kind)) {
+    const t = researchSignalText(sig, "", null);
+    return { pre: t.lead?.replace(/\s*·$/, ""), bold: t.bold ?? "" };
+  }
+  if (sig.kind.startsWith("alert:")) return alertFactOf(s(p.alert_kind) ?? sig.kind.slice("alert:".length), p);
+  switch (sig.kind) {
+    case "drawdown_from_high": return { bold: pct(-(n(p.drawdown) ?? 0)), post: `od szczytu ${win(n(p.window_days) ?? 252)}` };
+    case "gain_from_cost": case "loss_from_cost": return { bold: signedPct(n(p.unrealized_pct)), post: "od kosztu" };
+    case "position_concentration": return { bold: pct(n(p.weight)), post: `portfela, maks ${pctTarget(n(p.max_weight))}` };
+    case "allocation_drift": {
+      const d = n(p.drift_pp) ?? 0;
+      return { bold: pp(d), post: `${d > 0 ? "nad celem" : "do celu"} ${pctTarget(n(p.target))}` };
+    }
+    case "contribution_gap": {
+      const last = s(p.last_deposit);
+      return last ? { pre: "ostatnia wpłata", bold: dm(last) } : { bold: "brak wpłat" };
+    }
+    case "cash_level": {
+      const above = p.direction === "above_max";
+      return { pre: "gotówka", bold: pct(n(p.cash_weight)), post: above ? `, maks ${pctTarget(n(p.max_weight))}` : `, min ${pctTarget(n(p.min_weight))}` };
+    }
+    case "tagged_weight": return { bold: pct(n(p.weight)), post: `portfela, maks ${pctTarget(n(p.max_weight))}` };
+    default: return { pre: unnameBuckets(sig.message || "") || "Reguła własna", bold: "" };
+  }
+}
+
+/** `x` ratio with one decimal: 3.4 -> "3,4x". */
+export const ratioX = (v: number | null) => (v == null ? "-" : `${v.toLocaleString("pl-PL", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}x`);
+
+function alertFactOf(kind: string, p: Record<string, unknown>): SigFact {
+  const c = s(p.currency);
+  switch (kind) {
+    case "price_below": case "price_above":
+      return { pre: "cena", bold: price(n(p.close), c), post: `${kind === "price_below" ? "poniżej" : "powyżej"} ${price(n(p.level), c)}` };
+    case "change_pct": return { bold: signedPct(n(p.change)), post: `w ${n(p.window_days) ?? "-"} sesji` };
+    case "drawdown_from_high": return { bold: pct(-(n(p.drawdown) ?? 0)), post: `od szczytu ${win(n(p.window_days) ?? 252)}` };
+    case "new_high": return { pre: p.direction === "low" ? "nowy dołek" : "nowy szczyt", bold: price(n(p.close), c) };
+    case "sma_cross": return { bold: price(n(p.close), c), post: `${p.direction === "above" ? "nad" : "pod"} SMA ${n(p.window_days) ?? 200}` };
+    case "weight_above": case "weight_below":
+      return { bold: pct(n(p.weight)), post: `portfela, ${kind === "weight_above" ? "powyżej" : "poniżej"} ${pctTarget(n(p.threshold))}` };
+    case "range_breakout": {
+      const b = n(p.breakout_pct);
+      return { pre: "wybicie", bold: breakoutPct(b), post: b != null && b < 0 ? `pod ${price(n(p.range_low), c)}` : `nad ${price(n(p.range_high), c)}` };
+    }
+    case "volume_spike": return { pre: "wolumen", bold: ratioX(n(p.ratio)), post: "średniej" };
+    default: return { pre: unnameBuckets(s(p.title) ?? "") || "Alert", bold: "" };
+  }
 }
 
 // ---- signal copy -------------------------------------------------------------------------------------
@@ -147,6 +302,8 @@ export interface SigText { title: string; sym: string | null; lead?: string; bol
 
 const win = (days: number | null) => (days == null ? "" : days >= 250 ? "52 tyg." : `${days} sesji`);
 const signedPct = (v: number | null) => (v == null ? "-" : pct(v, true));
+/** A breakout's size vs the range edge; under 0,05 % it would read "+0,0 %", so "tuż" (F8 review BE-7). */
+const breakoutPct = (v: number | null) => (v != null && Math.abs(v) < 0.0005 ? "tuż" : signedPct(v));
 
 /** Price with currency (2 decimals): "30,00 €", "148,60 zł". */
 export const price = (v: number | null | undefined, c?: string | null) => (v == null || !Number.isFinite(v) ? "-" : money(v, c || "PLN"));
@@ -224,6 +381,12 @@ function alertSignalText(sig: SigLike, name: string, sym: string | null): SigTex
       return { title, sym, lead: "nowy szczyt", bold: price(n(p.close), c), tail: `· ${win(n(p.window_days))}` };
     case "sma_cross":
       return { title, sym, lead: `przecięcie SMA ${n(p.window_days) ?? ""} ${p.direction === "above" ? "w górę" : "w dół"} ·`, bold: price(n(p.close), c), tail: n(p.sma) != null ? `· SMA ${price(n(p.sma), c)}` : undefined };
+    case "range_breakout": {
+      const b = n(p.breakout_pct);
+      return { title, sym, lead: `wybicie z konsolidacji ${n(p.window_days) ?? 30} sesji ·`, bold: breakoutPct(b), tail: b != null && b < 0 ? `pod ${price(n(p.range_low), c)}` : `nad ${price(n(p.range_high), c)}` };
+    }
+    case "volume_spike":
+      return { title, sym, lead: "wolumen", bold: ratioX(n(p.ratio)), tail: `średniej ${n(p.window_days) ?? 20} sesji · teraz ${price(n(p.close), c)}` };
     case "weight_above":
     case "weight_below":
       return { title: bucketLabel(s(p.bucket_id)) ?? title, sym, bold: pct(n(p.weight)), tail: `portfela · ${kind === "weight_above" ? "powyżej" : "poniżej"} ${pctTarget(n(p.threshold))}` };
@@ -247,13 +410,19 @@ export interface AlertLike {
   cooldown_days: number | null;
   expires_at: string | null;
   snoozed_until?: string | null;
+  last_triggered_at?: string | null;
   instrument?: { label: string; symbol: string | null; currency: string } | null;
+  /** Per-run values of the dynamic kinds (F8 BE, optional): `range_low` / `range_high` / `range_pct`
+   * (range_breakout), `average_volume` (volume_spike). */
+  state?: { range_low?: number | string | null; range_high?: number | string | null; range_pct?: number | string | null; average_volume?: number | string | null } | null;
 }
 
 export const KIND_LABEL: Record<string, string> = {
   price_above: "Cena powyżej", price_below: "Cena poniżej", change_pct: "Zmiana % w oknie", drawdown_from_high: "Spadek od szczytu",
   new_high: "Nowy szczyt", sma_cross: "Przecięcie SMA", weight_above: "Waga powyżej", weight_below: "Waga poniżej", custom: "Własne wyrażenie",
+  range_breakout: "Wybicie z konsolidacji", volume_spike: "Skok wolumenu",
 };
+const DIR_WORD: Record<string, string> = { up: "w górę", down: "w dół", any: "w którąkolwiek stronę" };
 
 /** Condition in words for the alert table: "cena poniżej poziomu", "zmiana w oknie", "waga koszyka powyżej". */
 export function alertConditionText(a: Pick<AlertLike, "kind" | "scope" | "params">): string {
@@ -267,6 +436,8 @@ export function alertConditionText(a: Pick<AlertLike, "kind" | "scope" | "params
     case "sma_cross": return `przecięcie średniej ${n(p.window_days) ?? 200}-dniowej ${p.direction === "above" ? "w górę" : "w dół"}`;
     case "weight_above": return a.scope === "bucket" ? "waga koszyka powyżej" : "waga powyżej";
     case "weight_below": return a.scope === "bucket" ? "waga koszyka poniżej" : "waga poniżej";
+    case "range_breakout": return `wybicie z zakresu ${n(p.window_days) ?? 30} sesji (zakres do ${pctTarget(n(p.max_range_pct) ?? 0.08)})`;
+    case "volume_spike": return `wolumen ${ratioX(n(p.multiple) ?? 2.5)} średniej z ${n(p.window_days) ?? 20} sesji`;
     case "custom": return `wyrażenie: ${s(p.expression) ? unnameBuckets(s(p.expression)!) : "-"}`;
     default: return a.kind;
   }
@@ -280,6 +451,11 @@ export function alertLevelText(a: AlertLike): string | null {
     case "change_pct": return `${p.direction === "down" ? "-" : p.direction === "up" ? "+" : "±"}${pctTarget(n(p.threshold))}`;
     case "drawdown_from_high": return `-${pctTarget(n(p.threshold))}`;
     case "weight_above": case "weight_below": return pctTarget(n(p.threshold));
+    case "range_breakout": {
+      const lo = n(a.state?.range_low), hi = n(a.state?.range_high);
+      return lo != null && hi != null ? `zakres ${price(lo, c)}-${price(hi, c)}` : null;
+    }
+    case "volume_spike": return ratioX(n(p.multiple));
     default: return null;
   }
 }
@@ -289,7 +465,8 @@ export function alertNowText(a: AlertLike): string | null {
   const v = a.last_value, c = a.instrument?.currency;
   if (v == null) return null;
   switch (a.kind) {
-    case "price_below": case "price_above": case "new_high": case "sma_cross": return price(v, c);
+    case "price_below": case "price_above": case "new_high": case "sma_cross": case "range_breakout": return price(v, c);
+    case "volume_spike": return ratioX(v);
     case "change_pct": return pct(v, true);
     case "drawdown_from_high": return pct(-v);
     case "weight_above": case "weight_below": return pct(v);
@@ -299,7 +476,7 @@ export function alertNowText(a: AlertLike): string | null {
 
 /** Distance to the level and the closeness bar fill (0..1): percent of the price for price levels,
  * percentage points for weights, change and drawdown. Null when the alert has no measurable distance. */
-export function alertDistance(a: AlertLike): { text: string; fill: number; pp: boolean } | null {
+export function alertDistance(a: AlertLike): { text: string; fill: number; pp: boolean; level?: string } | null {
   const v = a.last_value, p = a.params;
   if (v == null) return null;
   const clamp = (x: number) => Math.max(0, Math.min(1, x));
@@ -331,6 +508,17 @@ export function alertDistance(a: AlertLike): { text: string; fill: number; pp: b
       const d = Math.max(0, t - moved) * 100;
       return { text: pp(d).replace(/^\+/, ""), fill: clamp(1 - d / 10), pp: true };
     }
+    case "range_breakout": {
+      // The distance of the close to the edge the alert waits for (the server echoes the range in `state`).
+      const b = breakoutEdge(a, v);
+      if (!b) return null;
+      return { text: pct(b.d), fill: clamp(1 - b.d / 0.2), pp: false, level: price(b.edge, a.instrument?.currency) };
+    }
+    case "volume_spike": {
+      const m = n(p.multiple);
+      if (m == null || m <= 0) return null;
+      return { text: ratioX(Math.max(0, m - v)), fill: clamp(v / m), pp: false };
+    }
     default:
       return null;
   }
@@ -349,6 +537,8 @@ export function alertDefaultTitle(kind: string, params: Record<string, unknown>,
     case "sma_cross": return `${who}: SMA ${n(p.window_days) ?? 200} ${p.direction === "above" ? "w górę" : "w dół"}`;
     case "weight_above": return `${who} powyżej ${pctTarget(n(p.threshold))}`;
     case "weight_below": return `${who} poniżej ${pctTarget(n(p.threshold))}`;
+    case "range_breakout": return `${who}: wybicie z konsolidacji ${n(p.window_days) ?? 30} sesji`;
+    case "volume_spike": return `${who}: wolumen ${ratioX(n(p.multiple) ?? 2.5)} średniej`;
     default: return `${who}: warunek własny`;
   }
 }
@@ -370,12 +560,21 @@ export function alertPreview(args: {
     case "sma_cross": when = `cena ${who} przetnie średnią ${n(p.window_days) ?? 200}-dniową ${p.direction === "above" ? "w górę" : "w dół"}`; break;
     case "weight_above": when = `udział ${who} w portfelu przekroczy ${pctTarget(n(p.threshold))}`; break;
     case "weight_below": when = `udział ${who} w portfelu spadnie poniżej ${pctTarget(n(p.threshold))}`; break;
+    case "range_breakout":
+      return `Zadziała, gdy kurs ${who} wyjdzie ${DIR_WORD[String(p.direction ?? "any")] ?? DIR_WORD.any} poza zakres ostatnich ${n(p.window_days) ?? 30} sesji, o ile ten zakres był węższy niż ${pctTarget(n(p.max_range_pct) ?? 0.08)}.${tailOf(args)}`;
+    case "volume_spike":
+      return `Zadziała, gdy wolumen ${who} przekroczy ${ratioX(n(p.multiple) ?? 2.5)} średnią z ${n(p.window_days) ?? 20} sesji.${tailOf(args)}`;
     default: when = `wyrażenie będzie prawdziwe dla ${who}`;
   }
+  return `Zadziała, gdy ${when}.${tailOf(args)}`;
+}
+
+/** The preview's second sentence: notification, the signal's column, the pause. */
+function tailOf(args: { polarity: string; severity: string; cooldown: number | null }): string {
   const notify = args.severity === "action" ? "Powiadomienie od razu" : `Bez powiadomienia, w podsumowaniu tygodnia`;
   const column = args.polarity === "positive" ? "„Szanse\"" : args.polarity === "negative" ? "„Ryzyka i przegląd\"" : "„Ryzyka i przegląd\" (neutralny)";
-  const pause = args.cooldown ? `, pauza ${plural(args.cooldown, "dzień", "dni", "dni")} po wyzwoleniu` : "";
-  return `Zadziała, gdy ${when}. ${notify}, sygnał w ${column}${pause}.`;
+  const pause = args.cooldown ? `, pauza ${plural(args.cooldown, "dzień", "dni", "dni")} po spełnieniu` : "";
+  return ` ${notify}, sygnał w ${column}${pause}.`;
 }
 
 /** "wygasa 31.12" / "do 1.11" suffix of an alert condition line. */
@@ -389,6 +588,138 @@ export function alertWhenSuffix(a: Pick<AlertLike, "status" | "expires_at" | "sn
 export function orderAlerts<T extends { status: string; id: number }>(list: T[]): T[] {
   const r: Record<string, number> = { triggered: 0, active: 1, snoozed: 2, muted: 3, expired: 4 };
   return [...list].sort((a, b) => (r[a.status] ?? 9) - (r[b.status] ?? 9) || b.id - a.id);
+}
+
+// ---- alert state (home v3, Q3 / Q5 / Q11: home-v3.md 9.2) ---------------------------------------------------
+
+export type AlertState = "far" | "near" | "met";
+/** "Close to the level": within this percent of the price (price kinds, range edges) or these percentage points
+ * (weight, change, drawdown); strategy `alerts.near_price_pct` / `alerts.near_pp` override when the server sends them. */
+export const NEAR_PRICE_PCT = 5, NEAR_PP = 2;
+
+/** The range edge a `range_breakout` alert waits for (`up` the high, `down` the low, `any` the nearer one) and
+ * the close's distance to it as a fraction; null while the range is wider than `max_range_pct` (the alert
+ * cannot fire until it narrows) or the server sent no range (F8 review FE-6). */
+export function breakoutEdge(a: Pick<AlertLike, "params" | "state">, close: number): { edge: number; d: number } | null {
+  const lo = n(a.state?.range_low), hi = n(a.state?.range_high);
+  if (lo == null || hi == null || lo <= 0 || close <= 0) return null;
+  const width = n(a.state?.range_pct) ?? (hi - lo) / lo;
+  if (width > (n(a.params.max_range_pct) ?? 0.08) + 1e-9) return null;
+  const toHi = Math.max(0, hi - close) / close, toLo = Math.max(0, close - lo) / close;
+  const dir = a.params.direction;
+  if (dir === "up") return { edge: hi, d: toHi };
+  if (dir === "down") return { edge: lo, d: toLo };
+  return toHi <= toLo ? { edge: hi, d: toHi } : { edge: lo, d: toLo };
+}
+
+/** The gap to the level as a number: percent of the price, percentage points or the volume ratio's share of the
+ * multiple; null for kinds without a distance (sma_cross, new_high, custom) or without the data. */
+function alertGap(a: AlertLike): { kind: "pct" | "pp" | "ratio"; value: number; limit?: number } | null {
+  const v = a.last_value, p = a.params;
+  if (v == null) return null;
+  switch (a.kind) {
+    case "price_below": case "price_above": {
+      const level = n(p.level);
+      return level == null || v <= 0 ? null : { kind: "pct", value: (Math.abs(v - level) / v) * 100 };
+    }
+    case "range_breakout": {
+      // Near only in the last quarter of the allowed range (a close inside a narrow range is always a few
+      // percent from an edge, F8 review FE-6).
+      const b = breakoutEdge(a, v);
+      return b ? { kind: "pct", value: b.d * 100, limit: (n(p.max_range_pct) ?? 0.08) * 25 } : null;
+    }
+    case "weight_above": case "weight_below": {
+      const t = n(p.threshold);
+      return t == null ? null : { kind: "pp", value: Math.abs(v - t) * 100 };
+    }
+    case "drawdown_from_high": {
+      const t = n(p.threshold);
+      return t == null ? null : { kind: "pp", value: Math.max(0, t - v) * 100 };
+    }
+    case "change_pct": {
+      const t = n(p.threshold);
+      if (t == null) return null;
+      const moved = p.direction === "up" ? v : p.direction === "down" ? -v : Math.abs(v);
+      return { kind: "pp", value: Math.max(0, t - moved) * 100 };
+    }
+    case "volume_spike": {
+      const m = n(p.multiple);
+      return m == null || m <= 0 ? null : { kind: "ratio", value: v / m };
+    }
+    default: return null;
+  }
+}
+
+/** met = status triggered (its signal is open); near = within the thresholds (volume: ratio >= 0.7 x the
+ * multiple); else far. Kinds without a distance are far until met. */
+export function alertState(a: AlertLike, near?: { pricePct?: number | null; pp?: number | null } | null): AlertState {
+  if (a.status === "triggered") return "met";
+  const g = alertGap(a);
+  if (!g) return "far";
+  const lim = g.limit ?? (g.kind === "pct" ? near?.pricePct ?? NEAR_PRICE_PCT : near?.pp ?? NEAR_PP);
+  return (g.kind === "ratio" ? g.value >= 0.7 : g.value <= lim + 1e-9) ? "near" : "far";
+}
+
+/** The condition in a few words (the met fact and the waiting fallback): `poniżej 75,00 zł`, `-10 % w 30 sesji`. */
+function alertCondShort(a: AlertLike): string {
+  const p = a.params, c = a.instrument?.currency;
+  switch (a.kind) {
+    case "price_below": return `poniżej ${price(n(p.level), c)}`;
+    case "price_above": return `powyżej ${price(n(p.level), c)}`;
+    case "change_pct": return `${p.direction === "up" ? "+" : p.direction === "down" ? "-" : "±"}${pctTarget(n(p.threshold))} w ${n(p.window_days) ?? "-"} sesji`;
+    case "drawdown_from_high": return `spadek ${pctTarget(n(p.threshold))} od szczytu`;
+    case "new_high": return `${p.direction === "low" ? "nowy dołek" : "nowy szczyt"} ${win(n(p.window_days) ?? 252)}`;
+    case "sma_cross": return `${p.direction === "above" ? "nad" : "pod"} SMA ${n(p.window_days) ?? 200}`;
+    case "weight_above": return `powyżej ${pctTarget(n(p.threshold))}`;
+    case "weight_below": return `poniżej ${pctTarget(n(p.threshold))}`;
+    case "range_breakout": return `wybicie z konsolidacji ${n(p.window_days) ?? 30} sesji`;
+    case "volume_spike": return `wolumen ${ratioX(n(p.multiple) ?? 2.5)} średniej`;
+    default: return unnameBuckets(a.title);
+  }
+}
+
+/** The icon's tooltip, never a state word: waiting `5,8 % do 140,00 zł · teraz 148,60 zł`; met `poniżej 140,00 zł
+ * od 2.10`; no distance `teraz 486,10 zł`. */
+export function alertFact(a: AlertLike): string {
+  if (a.status === "triggered") return `${alertCondShort(a)}${a.last_triggered_at ? ` od ${dm(a.last_triggered_at)}` : ""}`;
+  const d = alertDistance(a), level = d?.level ?? alertLevelText(a), now = alertNowText(a);
+  if (d && level) return `${d.text} do ${level}${now ? ` · teraz ${now}` : ""}`;
+  return now ? `teraz ${now}` : alertCondShort(a);
+}
+
+const LIVE = (a: { status: string }) => a.status === "active" || a.status === "triggered";
+/** An instrument's alerts state: met > near > far over its live alerts; null without any. */
+export function alertStateOf(alerts: AlertLike[], near?: { pricePct?: number | null; pp?: number | null } | null): AlertState | null {
+  const st = alerts.filter(LIVE).map((a) => alertState(a, near));
+  return st.includes("met") ? "met" : st.includes("near") ? "near" : st.length ? "far" : null;
+}
+
+/** The nearest live alert (the bell's tooltip): a met one first, else the closest to its level, else the newest. */
+export function nearestAlert<T extends AlertLike & { id: number }>(alerts: T[]): T | null {
+  const live = alerts.filter(LIVE);
+  return [...live].sort((a, b) => Number(b.status === "triggered") - Number(a.status === "triggered")
+    || (alertDistance(b)?.fill ?? -1) - (alertDistance(a)?.fill ?? -1) || b.id - a.id)[0] ?? null;
+}
+
+/** The home's Alerty widget (Q5): waiting alerts only (`active`), nearest to the level first, no distance last,
+ * then the newest. */
+export function waitingAlerts<T extends AlertLike & { id: number }>(list: T[]): T[] {
+  return list.filter((a) => a.status === "active").sort((a, b) => {
+    const da = alertDistance(a)?.fill, db = alertDistance(b)?.fill;
+    return (da == null ? 1 : 0) - (db == null ? 1 : 0) || (db ?? 0) - (da ?? 0) || b.id - a.id;
+  });
+}
+
+// ---- table rows: flags and markers (Q4 / Q10 / Q14) ------------------------------------------------------
+
+/** One instrument's markers in Aktywa / Obserwowane: the state glyph of its open signals (one `mixed` glyph for a
+ * good and a bad one), the nearest live alert (the bell) and the unread research notes (the page glyph). */
+export function rowFlags<S extends SigLike, A extends AlertLike & { id: number; instrument_id?: number | null }>(
+  instrumentId: number | string, signals: S[], alerts: A[], unread: number,
+): { state: SigState | null; alert: A | null; notes: number } {
+  const id = String(instrumentId);
+  const open = signals.filter((x) => String(x.instrument_id) === id && !settled(x));
+  return { state: stateOf([...new Set(open.map((x) => polarityOf(x)))]), alert: nearestAlert(alerts.filter((a) => String(a.instrument_id) === id)), notes: Math.max(0, unread) };
 }
 
 // ---- prices ------------------------------------------------------------------------------------------
@@ -529,19 +860,27 @@ export function contributionPp(amount: number, total: number, weight: number): n
   return (amount * (1 - Math.min(1, Math.max(0, weight)))) / (total + amount) * 100;
 }
 
-/** Alokacja footer at 2/3 (signals-rail.md 1): the next planned contribution (the plan's day in this or the
- * next month, as `Odłóż do`) and the percentage points it closes of the most underweight bucket (capped at
- * that bucket's gap; as the month-close card). Null without a plan amount. */
-export function nextContribution(a: {
-  amount: number | null; day: number | null; today: string; total: number;
-  buckets: { bucket_id: string; weight?: number | null; target: number; drift_pp: number }[];
-}): { date: string; amount: number; bucket: string | null; pp: number | null } | null {
-  if (a.amount == null || !(a.amount > 0)) return null;
-  const date = nextDeposit(a.today, a.day);
-  const under = a.buckets.filter((b) => b.drift_pp < 0).sort((x, y) => x.drift_pp - y.drift_pp)[0];
-  if (!under || !(a.total > 0)) return { date, amount: a.amount, bucket: null, pp: null };
-  const weight = under.weight ?? under.target + under.drift_pp / 100;
-  return { date, amount: a.amount, bucket: under.bucket_id, pp: Math.min(Math.abs(under.drift_pp), contributionPp(a.amount, a.total, Number(weight))) };
+/** The contribution facts of this year (hero `Wpłaty`, the Wpłaty widget of the light grid): deposits so far,
+ * the plan so far (from January or from the first deposit of this year) and the months of that span without a
+ * deposit (the current month counts only once it has one). */
+export function contributionFacts(a: {
+  months: { value: number }[]; deposits: number | null; plan: { amount: number } | null; firstDeposit: string | null; today: string;
+}): { deposits: number | null; planYtd: number | null; missed: number } {
+  const monthsSoFar = planMonthsSoFar(a.firstDeposit, a.today);
+  const curDone = (a.months[a.months.length - 1]?.value ?? 0) > 0;
+  const planYtd = a.plan ? a.plan.amount * monthsSoFar : null;
+  const missed = a.plan ? a.months.slice(-monthsSoFar, curDone ? undefined : -1).filter((m) => m.value <= 0).length : 0;
+  return { deposits: a.deposits, planYtd, missed };
+}
+
+/** An account's snapshot cell in the Alokacja `Rachunki` view: the date (or `brak`), the row's tooltip and the
+ * warn flag (a snapshot older than 14 days while an import exists: `uzgodnij`). */
+export function accountSnapshot(a: { snapshot_date?: string | null; last_import?: { at: string } | null }, today: string): { cell: string; title: string; warn: boolean } {
+  const imp = a.last_import ? `import ${dm(a.last_import.at)}` : "bez importu";
+  if (!a.snapshot_date) return { cell: "brak", title: `bez snapshotu · ${imp}`, warn: false };
+  const age = Math.round((Date.parse(today) - Date.parse(a.snapshot_date)) / 86400000);
+  const warn = age > 14 && !!a.last_import;
+  return { cell: dm(a.snapshot_date), title: `snapshot ${dm(a.snapshot_date)} · ${imp}${warn ? " · starszy niż 14 dni" : ""}`, warn };
 }
 
 /** The card's flow from the month close of one currency: what is left for investing after the cushion top-up

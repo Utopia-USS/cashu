@@ -56,6 +56,9 @@ export interface ResearchNote {
   created_at?: string | null;
   dismissed?: boolean;
   dismissed_at: string | null;
+  /** F8 BE (Q10): when the owner opened it; agent notes are born unread. */
+  read_at?: string | null;
+  unread?: boolean;
   /** dismissed_at + 15 minutes: `przywróć` / `Cofnij` only before this. */
   restorable_until?: string | null;
   /** Dismissed candidate: not re-proposed before this date (90 days). */
@@ -90,6 +93,8 @@ export interface InstrumentSummary {
   sentiment_8w: (number | null)[];
   direction?: Direction | string | null;
   last_researched_at: string | null;
+  /** F8 BE: unread agent notes of the instrument. */
+  unread?: number;
 }
 
 export interface ThemeSummary {
@@ -102,6 +107,8 @@ export interface ThemeSummary {
   instruments: (number | string)[];
   last_note: LatestNote | null;
   last_observed_at?: string | null;
+  /** F8 BE: unread agent notes of the theme. */
+  unread?: number;
 }
 
 export interface ResearchSummary {
@@ -115,7 +122,7 @@ export interface ResearchSummary {
   instruments: InstrumentSummary[];
   themes: ThemeSummary[];
   candidates?: { open: number; accepted: number; dismissed_in_cooldown: number };
-  totals?: { notes_active: number; notes_this_week: number; candidates_open: number; signals_open: number };
+  totals?: { notes_active: number; notes_this_week: number; candidates_open: number; signals_open: number; notes_unread?: number };
 }
 
 export interface RunCounts { notes?: number; signals?: number; candidates?: number; by_kind?: Record<string, number>; sources_checked?: number; instruments_covered?: number; [k: string]: unknown }

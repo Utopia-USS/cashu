@@ -274,6 +274,8 @@ export interface StrategyStatus extends Omit<StrategyBrief, "inactive_rules"> {
     horizon_years: number | null;
     contributions: { monthly_amount: number; day_of_month: number | null } | null;
     notifications: { immediate: string[]; digest_weekday: string };
+    /** "Close to the level" thresholds of the alert icons (strategy `alerts.near_price_pct` / `near_pp`, home v3 Q11). */
+    alerts?: { near_price_pct?: number | null; near_pp?: number | null } | null;
     bucket_matches?: BucketMatch[];
   } | null;
   base_currency_note: string | null;

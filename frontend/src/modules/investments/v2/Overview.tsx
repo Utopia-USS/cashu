@@ -92,8 +92,11 @@ export function InvestmentsHeaderTag({ slug, go }: { slug: string; go: ModuleCtx
   if (!fr?.stale_count) return null;
   const n = fr.stale_count;
   const open = () => {
-    go({ kind: "tab", tab: "investments.portfolio" });
-    setTimeout(() => document.getElementById("inv-accounts")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
+    // Alokacja on its Rachunki view (home v3 Q2: the accounts and the data warnings live there).
+    // `t` makes a repeated click a new query, so Home applies the Rachunki view again (F8 review FE-7); the
+    // light grid has no Alokacja, only Rachunki.
+    go({ kind: "tab", tab: "investments.portfolio", sub: `?alloc=accounts&t=${Date.now()}` });
+    setTimeout(() => (document.getElementById("inv-alloc") ?? document.getElementById("inv-accounts"))?.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
   };
   return (
     <button className="tag warn hdr-tag" onClick={open}
@@ -132,7 +135,7 @@ export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
           title={perfNotes(ytd.data).join("\n") || undefined}
           detail={staleBenchmark(b)?.label ?? (b?.status === "ok" && b.twr != null ? `${benchmarkLabel(b)} ${pct(b.twr, true)}` : "bez benchmarku")} />
         <Fact label="Szanse" value={sig.data ? chances.length : "-"} detail={names(chances) || undefined} />
-        <Fact label="Ryzyka" value={sig.data ? risks.length : "-"} detail={triggered ? plural(triggered, "alert wyzwolony", "alerty wyzwolone", "alertów wyzwolonych") : names(risks) || undefined} />
+        <Fact label="Ryzyka" value={sig.data ? risks.length : "-"} detail={triggered ? plural(triggered, "alert spełniony", "alerty spełnione", "alertów spełnionych") : names(risks) || undefined} />
       </div>
       {vals.length > 2 && (
         <div style={{ marginTop: 8 }}>

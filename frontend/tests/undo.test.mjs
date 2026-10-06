@@ -3,7 +3,7 @@
 // each with its own undo). Run with `npm test`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canUndo, isExpired, makeUndo, UNDO_WINDOW_MS, undoFailure, undoMessage, undoSettled } from "../src/modules/investments/undo.ts";
+import { canUndo, groupUndoRun, isExpired, makeUndo, UNDO_WINDOW_MS, undoFailure, undoMessage, undoSettled } from "../src/modules/investments/undo.ts";
 import { dropToast, MAX_TOASTS, pushToast } from "../src/toasts.ts";
 
 test("an undo runs the server request at most once", async () => {
@@ -123,4 +123,28 @@ test("F7 FE14: toast timers pause while the owner is on the stack and resume wit
   timers.stop(2);
   advance(5000);
   assert.deepEqual(expired, [1]);
+});
+
+test("a group undo retry deletes only what is left (F8 review FE-3)", async () => {
+  const deleted = [];
+  let failOnce = true;
+  const del = async (id) => {
+    if (deleted.includes(id)) throw Object.assign(new Error("not found"), { status: 404 });
+    if (id === 2 && failOnce) { failOnce = false; throw Object.assign(new Error("offline"), { status: 503 }); }
+    deleted.push(id);
+  };
+  const undo = makeUndo(1000, groupUndoRun([1, 2, 3], del), () => 2000);
+  assert.equal(await undo.undo(), "failed");
+  assert.deepEqual(deleted, [1]);
+  assert.equal(await undo.undo(), "done");
+  assert.deepEqual(deleted, [1, 2, 3]);
+});
+
+test("a group undo treats an id already gone as undone and stops on a final refusal", async () => {
+  const seen = [];
+  const run = groupUndoRun([7, 8], async (id) => { seen.push(id); if (id === 7) throw Object.assign(new Error("gone"), { status: 410 }); });
+  await run();
+  assert.deepEqual(seen, [7, 8]);
+  const refused = groupUndoRun([1, 2], async (id) => { if (id === 1) throw Object.assign(new Error("no"), { status: 403 }); });
+  await assert.rejects(refused(), (e) => e.status === 403);
 });

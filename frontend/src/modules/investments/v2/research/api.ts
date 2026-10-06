@@ -94,3 +94,10 @@ export const getWorkspace = async (slug: string): Promise<Workspace | null> => {
     return { ...w, path, exists, skill_installed, skill_installed_at: skill_installed && typeof w.updated_at === "string" ? w.updated_at : null } as Workspace;
   } catch (e) { if (missing(e)) return null; throw e; }
 };
+
+/** Mark the profile's unread agent notes of an instrument, a theme or a list read (F8 BE, Q10): idempotent;
+ * the agent never marks read. A server without the endpoint answers 404: nothing is marked, nothing breaks. */
+export const postResearchRead = async (slug: string, body: { instrument_id: number } | { theme: string } | { ids: number[] }): Promise<{ marked: number }> => {
+  try { return await jpost<{ marked: number }>(inv(slug, "/research/read"), body); }
+  catch (e) { if (missing(e)) return { marked: 0 }; throw e; }
+};

@@ -144,10 +144,49 @@ export type Polarity = "positive" | "negative" | "neutral";
 const POL: Record<Polarity, string> = { positive: "pos", negative: "neg", neutral: "neu" };
 export const POLARITY_LABEL: Record<Polarity, string> = { positive: "szansa", negative: "ryzyko", neutral: "neutralny" };
 
-/** Polarity dot (green chance, red risk, grey neutral or decided). */
-export function PolDot({ polarity, quiet, className }: { polarity: Polarity | string; quiet?: boolean; className?: string }) {
-  const cls = quiet ? "neu" : POL[polarity as Polarity] ?? "neu";
-  return <span className={`pd ${cls} ${className ?? ""}`} aria-hidden />;
+/** Signal glyph (one language everywhere, F7 FE14 + home v3 Q4): chance = green dot, risk = red diamond,
+ * review = grey square, mixed (`state`) = a half green / half red dot. `title` makes it a labelled image. */
+export function PolDot({ polarity, state, quiet, className, title }: {
+  polarity?: Polarity | string; state?: "positive" | "negative" | "neutral" | "mixed" | null; quiet?: boolean; className?: string; title?: string;
+}) {
+  const cls = quiet ? "neu" : state === "mixed" ? "mix" : POL[(state ?? polarity) as Polarity] ?? "neu";
+  return title ? <span className={`pd ${cls} ${className ?? ""}`} role="img" aria-label={title} title={title} />
+    : <span className={`pd ${cls} ${className ?? ""}`} aria-hidden />;
+}
+
+/** Alert state icon (home v3 Q11): one ring family, never a word. far = empty ring (muted), near = ring + dot
+ * (warn), met = ring + disc (pos). Only where the state matters: the Alerty widget and the manager. */
+export function AlertIcon({ state, title }: { state: "far" | "near" | "met"; title?: string }) {
+  const label = title ?? (state === "met" ? "spełniony" : state === "near" ? "blisko" : "czeka");
+  return <i className={`ai ${state}`} role="img" aria-label={label} title={title} />;
+}
+
+/** Quiet marker next to an instrument in tables (home v3 Q14): bell = has a live alert, page = new research
+ * notes (blue). The fact or the count lives in the tooltip. Symbols `#i-bell` / `#i-page` live in the shell. */
+export function Mark({ kind, title }: { kind: "alert" | "notes"; title: string }) {
+  return (
+    <span className={`mk ${kind === "notes" ? "new" : ""}`} role="img" aria-label={title} title={title}>
+      <svg aria-hidden><use href={kind === "notes" ? "#i-page" : "#i-bell"} /></svg>
+    </span>
+  );
+}
+
+/** The icon sheet the `Mark` glyphs reference (rendered once by the shell). */
+export function IconSheet() {
+  return (
+    <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden focusable="false">
+      <symbol id="i-bell" viewBox="0 0 12 12"><path d="M3 8.5V5.5a3 3 0 0 1 6 0v3l.9 1H2.1zM4.8 10.2a1.3 1.3 0 0 0 2.4 0" /></symbol>
+      <symbol id="i-page" viewBox="0 0 12 12"><path d="M3 1.5h4l2.5 2.5v6.5h-6.5zM7 1.5V4h2.5M4.5 6.5h3M4.5 8.5h3" /></symbol>
+    </svg>
+  );
+}
+
+/** Unread research notes count (home v3 Q10): the agent monogram's tile with a number; only at the research
+ * entry point. */
+export function UnreadChip({ n }: { n: number }) {
+  if (!(n > 0)) return null;
+  const t = n === 1 ? "1 nowa notatka research" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? `${n} nowe notatki research` : `${n} nowych notatek research`;
+  return <span className="rs-un" role="img" aria-label={t} title={t}>{n}</span>;
 }
 
 /** "● szansa" with the polarity colour (alerts table, history). */
@@ -157,7 +196,7 @@ export function PolarityText({ polarity }: { polarity: string }) {
 }
 
 export const ALERT_STATUS: Record<string, [label: string, cls: string]> = {
-  active: ["aktywny", "active"], triggered: ["wyzwolony", "trig"], snoozed: ["uśpiony", "snz"], muted: ["wyciszony", "mute"], expired: ["wygasł", "mute"],
+  active: ["aktywny", "active"], triggered: ["spełniony", "trig"], snoozed: ["uśpiony", "snz"], muted: ["wyciszony", "mute"], expired: ["wygasł", "mute"],
 };
 
 export function AlertStatus({ status }: { status: string }) {

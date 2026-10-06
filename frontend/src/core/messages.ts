@@ -344,6 +344,12 @@ export const LABELS: Record<string, Label> = {
   "alert.drawdown_from_high": (p) => has(p, "drawdown") ? `-${frac(p.drawdown)} od szczytu${has(p, "high") ? ` ${cur(p.high, p.currency)}` : ""}${has(p, "threshold") ? ` (próg -${frac(p.threshold)})` : ""}` : null,
   "alert.new_high": (p) => has(p, "close") ? `nowy szczyt ${cur(p.close, p.currency)}${has(p, "window_days") ? ` (${p.window_days} sesji)` : ""}` : null,
   "alert.sma_cross": (p) => has(p, "close", "window_days") ? `cena ${cur(p.close, p.currency)} ${p.direction === "above" ? "powyżej" : "poniżej"} SMA ${p.window_days}${has(p, "sma") ? ` (${cur(p.sma, p.currency)})` : ""}` : null,
+  "alert.range_breakout": (p) => has(p, "window_days") && (has(p, "range_high") || has(p, "range_low"))
+    ? `wybicie z konsolidacji ${p.window_days} sesji${has(p, "breakout_pct") ? (Math.abs(Number(p.breakout_pct)) < 0.0005 ? " tuż" : ` ${Number(p.breakout_pct) < 0 ? "-" : "+"}${frac(p.breakout_pct)}`) : ""} ${Number(p.breakout_pct) < 0 ? `pod ${cur(p.range_low, p.currency)}` : `nad ${cur(p.range_high, p.currency)}`}`
+    : null,
+  "alert.volume_spike": (p) => has(p, "ratio", "window_days")
+    ? `wolumen ${Number(p.ratio).toLocaleString("pl-PL", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}x średniej z ${p.window_days} sesji`
+    : null,
   "alert.weight_above": (p) => has(p, "weight", "threshold") ? `udział ${frac(p.weight)} powyżej ${frac(p.threshold)}` : null,
   "alert.weight_below": (p) => has(p, "weight", "threshold") ? `udział ${frac(p.weight)} poniżej ${frac(p.threshold)}` : null,
   "alert.custom": "warunek spełniony",

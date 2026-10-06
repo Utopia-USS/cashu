@@ -20,6 +20,7 @@ import { useTheme } from "./theme";
 import type { ModuleCtx, View } from "./types";
 import { decodeSegment, resolveView } from "./util";
 import { Wizard } from "./Wizard";
+import { IconSheet } from "../widgets";
 import { errorText } from "./messages";
 
 const PROFILE_KEY = "finanse.profile";
@@ -222,6 +223,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
 
   return (
     <ShellContext.Provider value={shell}>
+      <IconSheet />
       <div className={`wrap ${narrow ? "narrow" : wide ? "wide" : ""}`} aria-hidden={wizard || undefined}>
         <header className="shell">
           <div className="brand">

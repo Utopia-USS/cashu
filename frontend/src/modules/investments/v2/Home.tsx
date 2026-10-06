@@ -1,7 +1,8 @@
-// Inwestycje v2 (design/v2/inv-home.html, inv-review.html; ia-v2.md 2-4, 9; signals-rail.md): the page head,
-// then the widget grid on thirds: hero, one split cell (main 2/3: Wartość vs benchmark, Alokacja, Aktywa;
-// rail 1/3: Sygnały, Alerty, Obserwowane), Obsunięcie + Wpłaty + Rachunki. `Wszystkie` in Sygnały opens the
-// signals dialog (local state, not in the URL). The weekly review is a strip with Co się zmieniło above
+// Inwestycje v2 (design/v2/inv-home.html, inv-review.html; ia-v2.md 2-4, 9; home v3: design/v3/home-v3/home-v3.md
+// rev 2 + owner F8 Q17-Q19): the page head, then the widget grid on thirds: the hero (value, YTD, unrealized,
+// drawdown, contributions), one split cell (main 2/3: Wartość vs benchmark, Alokacja with the Rachunki view,
+// Aktywa with the Obserwowane tab; rail 1/3: Sygnały, Alerty), the research strip last. `Wszystkie` in Sygnały
+// opens the signals dialog (local state, not in the URL). The weekly review is a strip with Co się zmieniło above
 // the grid; after 21+ days away a re-entry banner, the change log and Stan dziś come first. The review strip
 // opens by itself on the profile's digest weekday until the review is marked done (decisions.md 7). Sub-pages:
 // the alerts manager (`/alerts`), the decision journal (`/journal`) and the asset detail (`/assets/{id}`: a
@@ -26,7 +27,7 @@ import {
 } from "../api";
 import { AccountDrawer, ImportDrawer, ProposalDrawer, ThesisDrawer, TxnDrawer, TxnsDrawer } from "../Drawers";
 import { storedKey, useStored } from "../hooks";
-import { accountLabel, dm, hm, isGenericBucket, isoDate, money, money0, pct, plural, pp, RUN_STATUS, WEEKDAYS, wdm } from "../labels";
+import { accountLabel, dm, hm, isGenericBucket, isoDate, money, money0, pct, plural, pp, WEEKDAYS, wdm } from "../labels";
 import { runError } from "../logic";
 import { makeUndo, UNDO_WINDOW_MS, undoMessage, undoSettled } from "../undo";
 import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
@@ -35,12 +36,13 @@ import { AssetDrawer } from "./AssetDrawer";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
 import {
-  benchmarkLabel, daysSince, instName, isDigestDay, nextContribution, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, signalPlace, signalText, staleBenchmark,
+  benchmarkLabel, contributionFacts, daysSince, instName, isDigestDay, monthlyFlows, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, signalPlace, signalText,
+  staleBenchmark,
 } from "./logic";
 import { usePlannedDeposits } from "./Overview";
-import { ContributionsWidget, DrawdownWidget, ValueChartWidget } from "./Perf";
-import { AccountsWidget, AllocationWidget, AssetList } from "./Portfolio";
-import { insertAfterAttention, useResearchHome } from "./research";
+import { ContributionsWidget, ValueChartWidget } from "./Perf";
+import { AccountsWidget, type AllocView, AllocationWidget, AssetList } from "./Portfolio";
+import { useResearchHome } from "./research";
 import { ChangeLog, ChangesWidget, ReentryBanner, ReviewStrip, StateToday } from "./Review";
 import { type SignalFilter, type SignalsCtx, SignalsDialog, SignalsRail } from "./Signals";
 import { WatchlistWidget } from "./Watchlist";
@@ -121,6 +123,12 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const perfYtd = useAsync(() => getPerformance(slug, "ytd", accountsFilter), [slug, filter, nonce], { key: invKey(slug, "perf", "ytd", acc) });
   const perf1m = useAsync(() => getPerformance(slug, "1m", accountsFilter), [slug, filter, nonce], { key: invKey(slug, "perf", "1m", acc) });
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
+  // Alokacja's view (home v3 Q2): Home owns it so the stale-prices tag and the header tag (`?alloc=accounts`)
+  // can land on Rachunki.
+  const [allocView, setAllocView] = useState<AllocView | null>(() => (params.get("alloc") === "accounts" ? "accounts" : null));
+  useEffect(() => { if (params.get("alloc") === "accounts") setAllocView("accounts"); }, [params]);
+  // Unread research notes (home v3 Q10): the server's counts minus what this window marked read.
+  const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
   const shellStale = useRef(false);
   const [runBusy, setRunBusy] = useState(false);
   const [initBusy, setInitBusy] = useState(false);
@@ -181,11 +189,22 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const watch = watchList ?? [];
   const alertsById = useMemo(() => new Map(alerts.map((a) => [a.id, a])), [alerts]);
 
-  // Signals scoped to the account filter (instrument signals of instruments held there; portfolio-wide stay).
+  // Held instruments (Portfel / Obserwowane scope of the signals, home v3 Q6): the positions in view plus what the
+  // server marks as held anywhere (`held` on a signal, F8).
+  const held = useMemo(() => {
+    const out = new Set((positions?.positions ?? []).map((p) => String(p.instrument.id)));
+    for (const s of sig.data ?? []) if (s.held === true && s.instrument_id != null) out.add(String(s.instrument_id));
+    return out;
+  }, [positions, sig.data]);
+  // Signals scoped to the account filter: portfolio-wide ones, instruments held in the filtered accounts and
+  // watched-only instruments (not account-bound). Without the server's `held`, an instrument counts as held
+  // elsewhere unless it is on the watchlist.
   const signals = useMemo(() => {
-    const held = new Set((positions?.positions ?? []).map((p) => String(p.instrument.id)));
-    return (sig.data ?? []).filter((s) => filter == null || s.instrument_id == null || held.has(String(s.instrument_id)));
-  }, [sig.data, positions, filter]);
+    const inView = new Set((positions?.positions ?? []).map((p) => String(p.instrument.id)));
+    const watched = new Set((watchQ.data ?? []).map((w) => String(w.instrument_id)));
+    const heldAnywhere = (s: { instrument_id: number | null; held?: boolean | null }) => (typeof s.held === "boolean" ? s.held : !watched.has(String(s.instrument_id)));
+    return (sig.data ?? []).filter((s) => filter == null || s.instrument_id == null || inView.has(String(s.instrument_id)) || !heldAnywhere(s));
+  }, [sig.data, positions, filter, watchQ.data]);
   const decided = signals.filter((s) => s.decisions.length).length;
 
   // Minimal profile density (ia-v2.md 9): widgets appear when their data does.
@@ -230,7 +249,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     if (t.kind === "open") {
       const dropFilter = filter != null && !signals.some((s) => s.id === t.id);
       if (dropFilter) setFilter(null);
-      if (signalPlace(t.id, dropFilter ? sig.data : signals) === "rail") setFocusSignal(t.id);
+      if (signalPlace(t.id, dropFilter ? sig.data : signals, held) === "rail") setFocusSignal(t.id);
       else setSigDialog({ filter: "all", focusId: t.id });
     } else {
       toast(`Ten sygnał jest już zamknięty (${t.status === "expired" ? "wygasł" : t.status === "resolved" ? "rozwiązany" : t.status})`, 4000);
@@ -333,9 +352,19 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     slug, nonce, today, privacy: ctx.profile.mcp_privacy, positions: positions?.positions ?? [], watch, strategyVersion: strategy?.version ?? null, digest,
     go, openAsset: (id, noteId) => goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`), onSettings: () => ctx.go({ kind: "settings", section: "agent" }), onChanged: reload,
   });
+  const lastRun = overview?.kpis.last_run ?? null;
+  const lastRunAt = lastRun && lastRun.status !== "failed" ? lastRun.finished_at ?? lastRun.started_at ?? null : null;
+  const unreadOf = (id: number | string): number => {
+    if (readIds.has(String(id))) return 0;
+    const p = positions?.positions.find((x) => String(x.instrument.id) === String(id));
+    const w = watch.find((x) => String(x.instrument_id) === String(id));
+    const summaryN = research.summary?.instruments.find((x) => String(x.instrument_id) === String(id))?.unread;
+    return p?.research_unread ?? w?.research_unread ?? summaryN ?? 0;
+  };
+  const markRead = (id: number | string) => setReadIds((cur) => (cur.has(String(id)) ? cur : new Set(cur).add(String(id))));
   const signalsCtx: SignalsCtx = {
     slug, positions: positions?.positions ?? [], buckets: overview?.allocation.buckets ?? [], total: overview?.allocation.total ?? 0, base,
-    accounts, today, contributionDay: strategy?.facts?.contributions?.day_of_month ?? null, alertsById, onChanged: reload,
+    accounts, today, contributionDay: strategy?.facts?.contributions?.day_of_month ?? null, alertsById, onChanged: reload, held, watch, lastRunAt, onResearchRead: markRead,
     onOpenAsset: (id) => openAsset(id),
     researchOn: research.ran, researchEffect: research.effect,
     onOpenNote: (id, noteId, theme) => (id != null ? goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`) : go(theme ? `research?theme=${encodeURIComponent(theme)}` : "research")),
@@ -403,6 +432,10 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
 
   const fr = overview.freshness;
   const stale = fr.prices.stale_count;
+  const last = overview.kpis.last_run;
+  const runAt = last ? (last.finished_at ?? last.started_at) : null;
+  const runDay = runAt ? (localDay(runAt) === today ? "dziś" : dm(runAt)) : null;
+  const lastReview = doneLocal ?? digest?.last_review?.done_at ?? null;
   const head = (
     <div className="pagehead">
       <h2 className="ph">Inwestycje</h2>
@@ -413,14 +446,18 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       {hasData && (fr.prices.newest_bar ? <Tag title="Najnowsze notowanie w bazie">ceny {wdm(fr.prices.newest_bar)}</Tag> : <Tag>brak notowań - uruchom reguły</Tag>)}
       {stale > 0 && <button className="tag warn" style={{ background: "transparent", cursor: "pointer", font: "inherit", fontSize: 11 }}
         title={fr.prices.stale.map((s) => `${s.label}: ${s.price_date ? `ostatnie notowanie ${dm(s.price_date)}` : "brak notowań"}`).join("\n")}
-        onClick={() => scrollTo("inv-accounts")}>{stale === 1 ? "1 nieaktualna" : `${stale} nieaktualne`}</button>}
+        onClick={() => { setAllocView("accounts"); setTimeout(() => scrollTo(light ? "inv-accounts" : "inv-alloc"), 30); }}>{stale === 1 ? "1 nieaktualna" : `${stale} nieaktualne`}</button>}
+      {/* The run status shows only when it is not ok (home v3 Q7); a failed run keeps its Notice. */}
+      {hasData && last?.status === "partial" && <span className="tag warn" title={last.errors[0] ? runError(last.errors[0]) : undefined}>reguły częściowo</span>}
+      {hasData && !last && <span className="tag">reguły jeszcze nie działały</span>}
       <span className="spacer" />
-      <button className="btn ghost" onClick={run} disabled={runBusy || !hasData} title="Wycena, alokacja, reguły i alerty">{runBusy ? "Uruchamiam…" : "Uruchom reguły"}</button>
+      <button className="btn ghost" onClick={run} disabled={runBusy || !hasData}
+        title={`Wycena, alokacja, reguły i alerty${last && runAt ? ` · ostatni przebieg ${runDay} ${hm(runAt)} · ${last.status === "ok" ? "ok" : last.status === "partial" ? "częściowo" : "błąd"}` : ""}`}>{runBusy ? "Uruchamiam…" : "Uruchom reguły"}</button>
       <button className="btn" onClick={() => setDrawer({ kind: "import", account: filter })}>Import</button>
       {!hasData ? <button className="btn" onClick={() => setDrawer({ kind: "txn" })}>Dodaj transakcję</button> : reviewOpen ? (
         <button className="btn" onClick={() => setReviewOpen(false)}>Zamknij przegląd</button>
       ) : (
-        <button className={`btn ${due && !light ? "primary" : ""}`} onClick={openReview} title="Przegląd tygodnia">
+        <button className={`btn ${due && !light ? "primary" : ""}`} onClick={openReview} title={`Przegląd tygodnia${lastReview ? ` · ostatni ${dm(lastReview)}` : ""}`}>
           {doneLocal && !due ? `Przegląd zrobiony ${dm(doneLocal)}` : `Przegląd tygodnia · ${isDigestDay(today, weekday) ? "dziś" : WEEKDAYS[weekday] ?? weekday}`}
         </button>
       )}
@@ -434,7 +471,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       onImport={() => setDrawer({ kind: "import", account: filter })} />{assetDrawer}{drawers}</>;
   }
 
-  // ---- hero --------------------------------------------------------------------------------------------------
+  // ---- hero (home v3 Q7 + Q19): value | Od początku roku | Wynik niezrealizowany | Obsunięcie | Wpłaty ---------------
   const k = overview.kpis;
   const ytd = perfYtd.data;
   const ybStale = staleBenchmark(ytd?.benchmark);
@@ -442,16 +479,13 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const week = perf1m.data ? weekMove(perf1m.data.points, perf1m.data.as_of) : null;
   const ddPts = perf1y.data?.points ?? [];
   const ddNow = ddPts.length ? ddPts[ddPts.length - 1].drawdown : null;
-  let peak: string | null = null;
-  for (const p of ddPts) if (p.drawdown != null && p.drawdown >= -1e-9) peak = p.date;
-  const ac = k.alerts;
-  const alertsLive = ac ? ac.active + ac.triggered : alerts.filter((a) => a.status === "active" || a.status === "triggered").length;
-  const agentAlerts = alerts.filter((a) => a.source === "agent" && (a.status === "active" || a.status === "triggered")).length;
-  const last = k.last_run;
-  const runAt = last ? (last.finished_at ?? last.started_at) : null;
-  const runDay = runAt ? (localDay(runAt) === today ? "dziś" : dm(runAt)) : null;
-  const cashTarget = strategy?.facts?.targets?.cash;
-  const lastReview = doneLocal ?? digest?.last_review?.done_at ?? null;
+  const ddMax = perf1y.data?.summary?.max_drawdown?.depth ?? null;
+  const planAmount = strategy?.facts?.contributions?.monthly_amount ?? null;
+  const plan = planAmount != null ? { amount: planAmount, day: strategy?.facts?.contributions?.day_of_month ?? null } : null;
+  const contrib = contributionFacts({
+    months: monthlyFlows(ddPts, today, 12), deposits: ytd?.summary?.deposits ?? null, plan,
+    firstDeposit: ddPts.find((p) => (p.flow ?? 0) > 0)?.date ?? null, today,
+  });
   const hero = (
     <section className="w hero" aria-label="Wartość portfela">
       <div className="h1">
@@ -463,22 +497,15 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
         <Fact label="Od początku roku" value={ytd?.summary?.twr != null ? pct(ytd.summary.twr, true) : "-"} title={ybStale?.title}
           detail={ybStale ? ybStale.label : yb?.twr != null ? <>{benchmarkLabel(yb)} {pct(yb.twr, true)}{yb.excess_twr != null && <> · <span className={yb.excess_twr >= 0 ? "pos" : "neg"}>{pp(yb.excess_twr * 100)}</span></>}</> : ytd === null ? "brak historii" : undefined} />
         <Fact label="Wynik niezrealizowany" value={money0(k.unrealized.amount, base, true)} detail={k.unrealized.pct != null ? `${pct(k.unrealized.pct, true)} od kosztu` : "koszt nieznany"} />
-        <Fact label="Gotówka" value={pct(k.cash.weight)} detail={`${money0(k.cash.amount, base)}${cashTarget != null ? ` · cel ${Math.round(cashTarget * 100)} %` : ""}`} />
-        {ddNow != null && <Fact label="Od szczytu" value={pct(ddNow)} detail={peak ? `szczyt ${dm(peak)}` : undefined} />}
-        {!(light && !alertsLive) && <Fact label="Alerty" value={alertsLive} detail={<>{ac?.triggered ? <span className="neg">{plural(ac.triggered, "wyzwolony", "wyzwolone", "wyzwolonych")}</span> : "bez wyzwoleń"}{agentAlerts ? ` · ${agentAlerts} od agenta` : ""}</>} />}
-      </div>
-      <div className="hr">
-        {last ? <span className={`tag solid ${last.status === "ok" ? "pos" : last.status === "failed" ? "neg" : "warn"}`} title={last.errors[0] ? runError(last.errors[0]) : undefined}>
-          reguły: {runDay} {hm(runAt)} · {last.status === "ok" ? "ok" : RUN_STATUS[last.status] ?? last.status}</span> : <span className="tag">reguły jeszcze nie działały</span>}
-        <div className="meta">{[strategy?.version != null ? `strategia v${strategy.version}` : "bez strategii", lastReview ? `ostatni przegląd ${dm(lastReview)}` : null].filter(Boolean).join(" · ")}</div>
-        {research.heroMeta && <div className="meta">{research.heroMeta}</div>}
+        {/* The light grid keeps its Wpłaty widget: no duplicate facts there. */}
+        {!light && ddNow != null && <Fact label="Obsunięcie" value={pct(ddNow)} detail={ddMax != null ? `maks. ${pct(ddMax)}` : undefined} title="Od szczytu, 12 mies." />}
+        {!light && perf1y.data !== undefined && <Fact label="Wpłaty" value={contrib.deposits != null ? money0(contrib.deposits, base) : "-"} title="W tym roku"
+          detail={contrib.planYtd != null ? `plan ${money0(contrib.planYtd, base)}${contrib.missed ? ` · ${contrib.missed} mies. bez wpłaty` : ""}` : "bez planu w strategii"} />}
       </div>
     </section>
   );
 
   // ---- grid ----------------------------------------------------------------------------------------------------
-  const planAmount = strategy?.facts?.contributions?.monthly_amount ?? null;
-  const plan = planAmount != null ? { amount: planAmount, day: strategy?.facts?.contributions?.day_of_month ?? null } : null;
   const budgetOn = ctx.profile.modules.some((m) => m.id === "budget" && m.enabled);
   // Named by the signal's own title (instrument, bucket label, rule message), never the strategy's rule id (FE-A A6).
   const expired = (digest?.signals.resolved ?? []).filter((s) => s.status === "expired").map((s) => ({ title: s.instrument_label ?? signalText(s).title }));
@@ -504,16 +531,16 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     items.push({ id: "failed", span: 3, node: <Notice tone="neg" style={{ margin: 0 }}>Przebieg reguł nieudany{last.errors[0] ? `: ${runError(last.errors[0])}` : ""}. Sygnały z poprzedniego przebiegu.</Notice> });
   }
   const wSignals: GridItem = { id: "signals", span: 1, node: <SignalsRail signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} focusId={focusSignal}
-    paused={!!sigDialog} onAll={(f) => setSigDialog({ filter: f ?? "all", focusId: null })} /> };
-  const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsList} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
+    paused={!!sigDialog} onAll={(focusId) => setSigDialog({ filter: "all", focusId: focusId ?? null })} /> };
+  const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsList} near={strategy?.facts?.alerts ?? null} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
   const wValue: GridItem = { id: "value", span: 2, node: <ValueChartWidget slug={slug} accounts={accountsFilter} nonce={nonce} initial={perf1y.loading ? undefined : perf1y.data} /> };
-  // Alokacja at 2/3: the next planned contribution and what it closes (whole portfolio only).
-  const next = filter == null ? nextContribution({ amount: plan?.amount ?? null, day: plan?.day ?? null, today, total: overview.allocation.total, buckets: overview.allocation.buckets }) : null;
-  const wAlloc: GridItem = { id: "alloc", span: 1, node: <AllocationWidget alloc={overview.allocation} strategy={strategy ?? null} filtered={filter != null} wide next={next} /> };
+  const wAlloc: GridItem = { id: "alloc", span: 1, node: <AllocationWidget overview={overview} strategy={strategy ?? null} filtered={filter != null} wide today={today}
+    view={allocView} onView={setAllocView} onAdd={() => setDrawer({ kind: "account" })} onReconcile={(id) => setDrawer({ kind: "import", account: id })} onAlias={alias}
+    onSettings={() => ctx.go({ kind: "settings", section: "agent" })} /> };
   const wAssets: GridItem = { id: "assets", span: 2, node: <AssetList data={positions} accounts={accounts} signals={signals} alerts={alerts} strategy={strategy ?? null}
-    onOpen={(id) => openAsset(id)} onAddTxn={() => setDrawer({ kind: "txn" })} onClassify={classify} /> };
+    onOpen={(id) => openAsset(id)} onAddTxn={() => setDrawer({ kind: "txn" })} onClassify={classify} slug={slug} watch={watchList}
+    initialTab={route === "watch" ? "watch" : undefined} autoAdd={route === "watch"} onWatchChanged={reload} unread={unreadOf} /> };
   const wWatch: GridItem = { id: "watch", span: 1, node: <WatchlistWidget slug={slug} items={watchList} onChanged={reload} onOpen={(id) => openAsset(id)} autoAdd={route === "watch"} /> };
-  const wDd: GridItem = { id: "dd", span: 1, node: <DrawdownWidget perf={perf1y.loading ? undefined : perf1y.data} /> };
   const wContrib = (span: 1 | 2): GridItem => ({ id: "contrib", span, node: <ContributionsWidget perf={perf1y.loading ? undefined : perf1y.data} ytd={perfYtd.loading ? undefined : perfYtd.data} plan={plan ?? fallbackPlan()} today={today} fromBudget={budgetOn} /> });
   const wAccounts: GridItem = { id: "accounts", span: 1, node: <AccountsWidget overview={overview} strategy={strategy ?? null} today={today} onAdd={() => setDrawer({ kind: "account" })}
     onReconcile={(id) => setDrawer({ kind: "import", account: id })} onAlias={alias} onSettings={() => ctx.go({ kind: "settings", section: "agent" })} /> };
@@ -521,9 +548,11 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     items.push(wContrib(2), wAccounts);
     if (watch.length || route === "watch") items.push(wWatch);
   } else {
-    const split: GridItem = { id: "split", span: 3, node: <Split main={[wValue, wAlloc, wAssets]} rail={[wSignals, wAlerts, wWatch]} /> };
-    const grid = [split, wDd, wContrib(1), wAccounts];
-    items.push(...(research.strip ? insertAfterAttention(grid, research.strip) : grid));
+    // Q13 / Q19: the research strip last; Obsunięcie and Wpłaty live in the hero, Rachunki in Alokacja,
+    // Obserwowane in Aktywa.
+    const split: GridItem = { id: "split", span: 3, node: <Split main={[wValue, wAlloc, wAssets]} rail={[wSignals, wAlerts]} /> };
+    items.push(split);
+    if (research.strip) items.push(research.strip);
   }
   return (
     <>

@@ -124,6 +124,13 @@ function stateFor(slug: string, kind: string): RState {
   if (!st) {
     const on = slug === "jan" && kind === "full" && SCENARIO !== "none";
     st = { notes: on ? janNotes() : [], runs: on ? janRuns() : [], nextId: 9500 };
+    // F8 (Q10): agent notes of this week's run on EIMI, KGHM's community note and the renewable-energy theme are
+    // unread; everything else was opened.
+    for (const n of st.notes) {
+      const unread = n.created_by === "agent" && n.kind !== "candidate" && n.observed_at === SAT
+        && (n.instrument_id === 307 || (n.instrument_id === 305 && n.kind === "community") || n.theme === "Energia odnawialna: napływy");
+      n.read_at = unread ? null : n.observed_at;
+    }
     if (on && SCENARIO === "stale") st.notes = st.notes.filter((n) => n.observed_at < "2026-10-02");
     states.set(slug, st);
   }
@@ -168,6 +175,7 @@ function summary(st: RState): ResearchSummary {
       notes: mine.length,
       sentiment_8w: mine.length ? SENT[id] ?? sentiment8w(mine, TODAY) : sentiment8w([], TODAY),
       direction: id === 306 || id === 307 ? "falling" : "stable",
+      unread: mine.filter(isUnread).length,
       last_researched_at: st.runs.filter((r) => r.status === "done").map((r) => r.finished_at).sort().slice(-1)[0] ?? null,
     };
   });
@@ -175,7 +183,8 @@ function summary(st: RState): ResearchSummary {
   return {
     as_of: TODAY, window_days: 30, weeks: weekStarts.map((_, k) => `2026-W${33 + k}`), week_starts: weekStarts,
     last_run: [...st.runs].sort((a, b) => b.started_at.localeCompare(a.started_at))[0] ?? null, running: st.runs.some((r) => r.status === "running"),
-    instruments, themes: st.runs.length ? THEMES : [],
+    instruments, themes: st.runs.length ? THEMES.map((t) => ({ ...t, unread: live.filter((n) => n.theme === t.theme && isUnread(n)).length })) : [],
+    totals: { notes_active: live.length, notes_this_week: live.filter((n) => n.observed_at >= "2026-09-28").length, candidates_open: st.notes.filter((n) => n.kind === "candidate" && !n.dismissed_at).length, signals_open: 1, notes_unread: live.filter(isUnread).length },
   };
 }
 const SHORT: Record<string, string> = {
@@ -224,10 +233,15 @@ export function researchDigest(slug: string, kind: string): DigestResearch | nul
 
 // ---- router ---------------------------------------------------------------------------------------------
 /** Server-computed note fields (RS CONTRACT 2). */
+const isUnread = (n: ResearchNote) => n.read_at == null && !n.dismissed_at && n.created_by === "agent" && n.kind !== "candidate" && !(!!n.expires_at && n.expires_at.slice(0, 10) < TODAY);
+/** Unread agent notes of an instrument (positions / watchlist `research_unread`, F8 BE C2). */
+export function researchUnread(slug: string, kind: string, instrumentId: number): number {
+  return stateFor(slug, kind).notes.filter((n) => n.instrument_id === instrumentId && isUnread(n)).length;
+}
 function decorate(n: ResearchNote): ResearchNote {
   const expired = !!n.expires_at && n.expires_at.slice(0, 10) < TODAY;
   return {
-    ...n, expired, dismissed: !!n.dismissed_at, restorable_until: n.dismissed_at ? new Date(Date.parse(n.dismissed_at) + 15 * 60000).toISOString() : null,
+    ...n, expired, read_at: n.read_at ?? null, unread: isUnread(n), dismissed: !!n.dismissed_at, restorable_until: n.dismissed_at ? new Date(Date.parse(n.dismissed_at) + 15 * 60000).toISOString() : null,
     held: n.instrument_id != null && n.instrument_id < 400, watched: !!n.candidate?.accepted_at,
   };
 }
@@ -238,6 +252,12 @@ export function researchMock(slug: string, kind: string, ip: string, q: URLSearc
   const b = (body ?? {}) as Record<string, unknown>;
   if (ip === "/research/runs") return st.runs;
   if (ip === "/research/summary") return summary(st);
+  if (ip === "/research/read" && method === "POST") {
+    const hit = (n: ResearchNote) => (b.instrument_id != null ? n.instrument_id === Number(b.instrument_id) : typeof b.theme === "string" ? n.theme === b.theme : Array.isArray(b.ids) ? (b.ids as number[]).includes(n.id) : false);
+    let marked = 0;
+    for (const n of st.notes) if (hit(n) && isUnread(n)) { n.read_at = new Date().toISOString(); marked++; }
+    return { marked };
+  }
   if (ip === "/research" && method === "GET") {
     const instrument = q.get("instrument"), theme = q.get("theme"), k = q.get("kind"), since = q.get("since");
     const withDismissed = q.get("include_dismissed") === "true", withExpired = q.get("include_expired") === "true";

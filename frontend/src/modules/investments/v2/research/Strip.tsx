@@ -1,10 +1,12 @@
 // Research strip on the Inwestycje home (research.md 1, implementation-plan item 30): span 3, three calm
 // columns `Tezy` (thesis health per held position with 8-week sentiment) | `Tematy i trendy` (direction) |
 // `Kandydaci` (compact cards with Obserwuj / Odrzuć). Rendered only after the first run (density rule).
-// Header tag = the latest run; a week without a run collapses the strip to the not-run line.
+// Header tag = the latest run (its title: the next run); a week without a run collapses the strip to the not-run
+// line. Home v3 (Q10 / Q13 / Q14): no footer, the strip is the last cell of the home; the unread count sits at the
+// `wszystkie` entry point, rows carry the quiet page marker for new notes.
 import { type ReactNode, useState } from "react";
 import { useAsync } from "../../../../hooks";
-import { Widget } from "../../../../widgets";
+import { Mark, UnreadChip, Widget } from "../../../../widgets";
 import { dm, plural, wdm } from "../../labels";
 import { canRestore, useResearchActions } from "./data";
 import { getResearch } from "./api";
@@ -58,25 +60,15 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
   const themes = summary?.themes ?? [];
   const open = (candidates ?? []).filter((n) => !n.dismissed_at);
   const fresh = open.filter((n) => !ctx.watched(n) && !acceptedAt(n) && watchItemId(n) == null);
-  const c = last?.counts ?? {};
-  const signals = typeof c.signals === "number" ? c.signals : null;
-  const sources = typeof c.sources_checked === "number" ? c.sources_checked : null;
-  const community = c.by_kind?.community ?? null;
   return (
-    <Widget title="Research" className="rsch" id="inv-research" tags={<span className={`tag ${tag.tone}`}>{tag.text}</span>}
+    <Widget title="Research" className="rsch" id="inv-research"
+      tags={<span className={`tag ${tag.tone}`} title={last?.status === "running" ? "przebieg trwa…" : `następny ${wdm(nextSaturday(ctx.today))} · rutyna Claude Code`}>{tag.text}</span>}
       controls={<>
         {tag.state === "failed" && <CopyCommand cmd={cmd} label="Uruchom ponownie" primary={false} showCmd={false} />}
+        <UnreadChip n={summary?.totals?.notes_unread ?? 0} />
         <button className="lnk" onClick={() => ctx.onOpenResearch()}>wszystkie</button>
       </>}
-      body="tight"
-      footer={<>
-        {last && runNotes(last) != null && <span><b>{runNotes(last)}</b> {nNotes(runNotes(last)!).replace(/^\d+ /, "")}</span>}
-        {sources != null && <span><b>{sources}</b> {plural(sources, "źródło", "źródła", "źródeł").replace(/^\d+ /, "")}</span>}
-        {community != null && <span><b>{community}</b> ze społeczności (szum)</span>}
-        {typeof signals === "number" && <span><b>{signals}</b> {plural(signals, "sygnał", "sygnały", "sygnałów").replace(/^\d+ /, "")} z researchu</span>}
-        <span className="spacer" />
-        <span>następny: <b>{wdm(nextSaturday(ctx.today))}</b> · rutyna Claude Code</span>
-      </>}>
+      body="tight">
       <div className="rsch3">
         <div>
           <div className="rsec">Tezy <span className="cnt">· sentyment 8 tyg.</span></div>
@@ -119,11 +111,13 @@ export function ThesisRow({ s, health, name, symbol, inst, muted, sub, right, on
     <div className="rrow">
       {inst ? (
         <div style={{ minWidth: 0 }}>
-          <InstLabel density="compact" inst={inst} text={name} onOpen={onOpen ? () => onOpen() : undefined} sub={<span title={latestTitle(s) ?? undefined}>{line}</span>} />
+          <InstLabel density="compact" inst={inst} text={name} onOpen={onOpen ? () => onOpen() : undefined} sub={<span title={latestTitle(s) ?? undefined}>{line}</span>}
+            badges={(s.unread ?? 0) > 0 && <Mark kind="notes" title={plural(s.unread!, "nowa notatka", "nowe notatki", "nowych notatek")} />} />
         </div>
       ) : (
         <div style={{ minWidth: 0 }}>
-          <div className="nm">{onOpen ? <button className="nm" onClick={onOpen}>{name}</button> : name}{symbol && symbol !== name && <span className="sym">{symbol}</span>}</div>
+          <div className="nm">{onOpen ? <button className="nm" onClick={onOpen}>{name}</button> : name}{symbol && symbol !== name && <span className="sym">{symbol}</span>}
+            {(s.unread ?? 0) > 0 && <> <Mark kind="notes" title={plural(s.unread!, "nowa notatka", "nowe notatki", "nowych notatek")} /></>}</div>
           <div className="sub" title={latestTitle(s) ?? undefined}>{line}</div>
         </div>
       )}
@@ -153,7 +147,7 @@ export function ThemeRow({ t, sub, symOf, onOpen }: { t: ThemeSummary; sub?: Rea
         <div className="sub">{sub ?? themeSub(t, symOf)}</div>
       </div>
       <SentimentBars values={t.sentiment_8w} />
-      <div className="r"><span className={`tag ${DIRECTION_TONE[d]}`}>{DIRECTION_LABEL[d]}</span></div>
+      <div className="r">{(t.unread ?? 0) > 0 && <Mark kind="notes" title={plural(t.unread!, "nowa notatka", "nowe notatki", "nowych notatek")} />}<span className={`tag ${DIRECTION_TONE[d]}`}>{DIRECTION_LABEL[d]}</span></div>
     </div>
   );
 }

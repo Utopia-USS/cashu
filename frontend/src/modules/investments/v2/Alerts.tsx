@@ -1,22 +1,26 @@
-// Alerts (design/v2/alerts.html, ia-v2.md 7): the Alerty widget on the investments home (triggered first,
-// distance-to-level bars, agent badge) and the alerts manager page (status and source filters, the table, the
+// Alerts (design/v2/alerts.html, ia-v2.md 7; home v3 Q3 / Q5 / Q11 / Q12): the Alerty widget on the investments
+// home (waiting conditions only, nearest first, the ring icon of the state and the distance-to-level bar; a met
+// alert is a signal and lives in Sygnały) and the alerts manager page (status and source filters, the table, the
 // form = the standardized schema, the 12-month triggered history). One schema for the owner and the agent;
 // agent items are badged and removable. Alerts are conditions on hard data, never forecasts.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { describeError, errorText } from "../../../core/messages";
 import { useAsync, useInFlight } from "../../../hooks";
 import { Notice, Seg, Skeleton, useToast } from "../../../ui";
-import { AgentTag, AlertStatus, FootFacts, Grid, PolarityText, Widget } from "../../../widgets";
+import { AgentTag, AlertIcon, AlertStatus, FootFacts, Grid, PolarityText, Widget } from "../../../widgets";
 import { InstLabel } from "./InstLabel";
 import { bucketLabel, dm, dmy, DECISION_ACTION, hm, parseNum, pct, plural } from "../labels";
 import {
   type Alert, type AlertInput, type AlertKindInfo, type AlertPatch, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, invKey, patchAlert, postAlert, restoreAlert, type SignalV2,
 } from "./api";
 import {
-  alertConditionText, alertDefaultTitle, alertDistance, alertLevelText, alertNowText, alertPreview, alertWhenSuffix, instName, KIND_LABEL, orderAlerts, price, unnameBuckets,
+  alertConditionText, alertDefaultTitle, alertDistance, alertFact, alertLevelText, alertNowText, alertPreview, alertState, alertWhenSuffix, instName, KIND_LABEL, orderAlerts, price,
+  ratioX, unnameBuckets, waitingAlerts,
 } from "./logic";
 import { alertDeleteUndo, offerUndo, recreateInput } from "./undoFlow";
-import { alertPatch, buildParams, draftText, expiryChoice, expiryValue, formKind } from "./alertForm";
+import { alertPatch, buildParams, draftText, expiryChoice, expiryValue, formKind, validate } from "./alertForm";
+
+export { validate };
 import { csvLine } from "../../../csv";
 import { addDays, localDay, parseServerTime, todayLocal } from "../../../time";
 
@@ -46,44 +50,59 @@ export async function removeAlertWithUndo(slug: string, a: Alert, toast: (t: str
 
 // ---- widget on the home ------------------------------------------------------------------------------------
 
-export function AlertsWidget({ slug, alerts, onManage, onNew, onChanged }: {
-  slug: string; alerts: Alert[] | null; onManage: () => void; onNew: () => void; onChanged: () => void;
+/** Thresholds of "close to the level" from the strategy facts (null: the defaults). */
+type Near = { near_price_pct?: number | null; near_pp?: number | null } | null | undefined;
+const nearOf = (n: Near) => (n ? { pricePct: n.near_price_pct ?? null, pp: n.near_pp ?? null } : null);
+
+export function AlertsWidget({ slug, alerts, near, onManage, onNew, onChanged }: {
+  slug: string; alerts: Alert[] | null; near?: Near; onManage: () => void; onNew: () => void; onChanged: () => void;
 }) {
   const toast = useToast();
-  const live = orderAlerts((alerts ?? []).filter((a) => a.status === "active" || a.status === "triggered"));
-  const triggered = live.filter((a) => a.status === "triggered").length;
+  const all = alerts ?? [];
+  const live = all.filter((a) => a.status === "active" || a.status === "triggered");
+  const waiting = waitingAlerts(all);
+  const th = nearOf(near);
+  const nearN = waiting.filter((a) => alertState(a, th) === "near").length;
+  const met = live.length - waiting.length;
   const flight = useInFlight();
   const remove = (a: Alert) => { void flight.run(() => removeAlertWithUndo(slug, a, toast, onChanged)); };
   return (
-    <Widget title="Alerty" count={live.length || undefined} controls={<button className="btn sm" onClick={onNew}>+ Nowy</button>} body="tight"
-      footer={<><FootFacts items={[<><b>{live.length - triggered}</b> aktywne</>, triggered > 0 && <><b>{triggered}</b> wyzwolone</>]} /><span className="spacer" />
+    <Widget title="Alerty" id="inv-alerts" count={waiting.length || undefined} controls={<button className="btn sm" onClick={onNew}>+ Nowy</button>} body="tight"
+      footer={<><FootFacts items={[nearN > 0 && <><AlertIcon state="near" /><b>{nearN}</b> blisko</>, met > 0 && <><AlertIcon state="met" /><b>{met}</b> w Sygnałach</>]} /><span className="spacer" />
         <button className="lnk" onClick={onManage}>Wszystkie ({live.length})</button></>}>
       {!alerts ? <Skeleton h={120} /> : !live.length ? (
         <div className="empty">Brak alertów.</div>
-      ) : live.slice(0, 4).map((a) => <AlertRow key={a.id} a={a} onRemove={a.source === "agent" ? () => remove(a) : undefined} />)}
+      ) : !waiting.length ? <div className="empty">Brak czekających.</div>
+        : waiting.slice(0, 4).map((a) => <AlertRow key={a.id} a={a} near={th} onRemove={a.source === "agent" ? () => remove(a) : undefined} />)}
     </Widget>
   );
 }
 
-export function AlertRow({ a, onRemove, compact }: { a: Alert; onRemove?: () => void; compact?: boolean }) {
+/** An alert as a row: the state icon + title (+ agent badge), `teraz <b>now</b>`, the distance to the level with
+ * its bar (home); `compact` (the asset page): the condition, `od d.m · teraz now` when met, else the distance. */
+export function AlertRow({ a, onRemove, compact, near }: { a: Alert; onRemove?: () => void; compact?: boolean; near?: { pricePct?: number | null; pp?: number | null } | null }) {
   const trig = a.status === "triggered";
+  const liveA = trig || a.status === "active";
   const dist = trig ? null : alertDistance(a);
+  const level = dist?.level ?? alertLevelText(a);
   const now = alertNowText(a);
-  const kindWord = a.polarity === "positive" ? "szansa" : a.polarity === "negative" ? "ryzyko" : "neutralny";
+  const icon = liveA ? <AlertIcon state={alertState(a, near)} title={alertFact(a)} /> : null;
+  const cond = compact && level && (a.kind === "price_below" || a.kind === "price_above") ? `${a.kind === "price_below" ? "poniżej" : "powyżej"} ${level}` : unnameBuckets(a.title);
+  const suffix = alertWhenSuffix(a);
   return (
     <div className={`al ${trig ? "trig" : ""}`}>
       <div>
-        <div className="t">{compact ? (alertLevelText(a) && (a.kind === "price_below" || a.kind === "price_above") ? `${a.kind === "price_below" ? "poniżej" : "powyżej"} ${alertLevelText(a)}` : unnameBuckets(a.title)) : unnameBuckets(a.title)}{a.source === "agent" && <AgentTag />}</div>
+        <div className="t"><span className="ttl">{icon}{cond}</span>{a.source === "agent" && <AgentTag />}</div>
         <div className="c">
-          {trig ? <>wyzwolony {dm(a.last_triggered_at)}{now && <> · teraz <b>{now}</b></>}{a.cooldown_days ? ` · cooldown ${a.cooldown_days} dni` : ""}</>
-            : compact ? <>{kindWord} · {a.severity === "action" ? "do działania" : "informacja"}{dist ? <> · <b>{dist.text}</b> do poziomu</> : now ? <> · teraz <b>{now}</b></> : ""}</>
-            : <>{a.scope === "portfolio" ? "portfel · " : a.scope === "bucket" ? `koszyk · ` : ""}{now ? <>teraz <b>{now}</b> · </> : ""}{kindWord}{alertWhenSuffix(a) ? ` · ${alertWhenSuffix(a)}` : ""}</>}
+          {trig ? <>od {dm(a.last_triggered_at)}{now && <> · teraz <b>{now}</b></>}</>
+            : compact ? <>{now ? <>teraz <b>{now}</b></> : alertConditionText(a)}{dist && level ? <> · <b>{dist.text}</b> do {level}</> : ""}</>
+            : <>{a.scope === "portfolio" ? "portfel · " : a.scope === "bucket" ? "koszyk · " : ""}{now ? <>teraz <b>{now}</b></> : alertConditionText(a)}
+              {a.kind === "volume_spike" ? ` średniej ${Number(a.params.window_days ?? 20)} sesji` : ""}{suffix ? ` · ${suffix}` : ""}</>}
         </div>
       </div>
       <div className="r">
-        {trig ? <span className="tag solid neg">wyzwolony</span>
-          : compact ? <AlertStatus status={a.status} />
-          : dist ? <span className="dist">{dist.text}{!dist.pp ? " do poziomu" : ""}<span className="bar" aria-hidden><i style={{ width: `${Math.round(dist.fill * 100)}%` }} /></span></span>
+        {compact ? (!liveA && <AlertStatus status={a.status} />)
+          : dist && level ? <span className="dist">{dist.text} do {level}<span className="bar" aria-hidden><i style={{ width: `${Math.round(dist.fill * 100)}%` }} /></span></span>
           : null}
         {onRemove && <button className="icon-btn" title="Usuń alert agenta" aria-label={`Usuń alert ${a.title}`} onClick={onRemove}>✕</button>}
       </div>
@@ -150,7 +169,7 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
       <div className="pagehead">
         <h2 className="ph">Alerty</h2>
         <Seg quiet label="Status" value={status} onChange={setStatus} items={[
-          [`Aktywne · ${count("active")}`, "active"], [`Wyzwolone · ${count("triggered")}`, "triggered"], [`Uśpione · ${count("snoozed")}`, "snoozed"],
+          [`Czekają · ${count("active")}`, "active"], [`Spełnione · ${count("triggered")}`, "triggered"], [`Uśpione · ${count("snoozed")}`, "snoozed"],
           [`Wyciszone · ${count("muted")}`, "muted"], ["Wszystkie", "all"],
         ]} />
         <Seg quiet label="Źródło" value={source} onChange={setSource} items={[["Wszystkie", "all"], ["Moje", "user"], [`Agenta · ${agentCount}`, "agent"]]} />
@@ -173,8 +192,8 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
                         const suffix = alertWhenSuffix(a);
                         return (
                           <tr key={a.id} className={editing === a.id ? "hover" : undefined}>
-                            <td><AlertStatus status={a.status} /></td>
-                            <td><span className="nm">{unnameBuckets(a.title)}</span><span className="cond">{alertConditionText(a)}{a.note ? ` · ${a.note.length > 48 ? `${a.note.slice(0, 46)}…` : a.note}` : ""}{suffix ? ` · ${suffix}` : ""}</span></td>
+                            <td>{a.status === "active" || a.status === "triggered" ? <AlertIcon state={alertState(a)} title={alertFact(a)} /> : <AlertStatus status={a.status} />}</td>
+                            <td><span className="nm">{unnameBuckets(a.title)}</span><span className="cond">{alertConditionText(a)}{a.note ? ` · ${a.note.length > 48 ? `${a.note.slice(0, 46)}…` : a.note}` : ""}{suffix ? ` · ${suffix}` : ""}{a.status === "triggered" && a.cooldown_days ? ` · pauza ${plural(a.cooldown_days, "dzień", "dni", "dni")}` : ""}</span></td>
                             <td>{a.scope === "portfolio" ? "Portfel" : a.scope === "bucket" ? ["Koszyk", bucketLabel(String(a.params.bucket ?? ""))].filter(Boolean).join(" ") : a.instrument ? <InstLabel density="inline" inst={a.instrument} /> : "-"}</td>
                             <td className="num"><b>{alertNowText(a) ?? "-"}</b><span className="cond">{alertLevelText(a) ?? ""}{dist ? ` · ${a.kind.startsWith("price") ? (a.kind === "price_below" ? "-" : "+") : ""}${dist.text}` : ""}</span></td>
                             <td><PolarityText polarity={a.polarity} /><span className="cond">{a.severity === "action" ? "do działania" : "informacja"}</span></td>
@@ -216,12 +235,13 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
 // ---- the form (the standardized schema) -------------------------------------------------------------------
 
 type Scope = "instrument" | "portfolio" | "bucket";
-type KindCard = "price_above" | "price_below" | "change_pct" | "drawdown_from_high" | "new_high" | "sma_cross" | "weight" | "custom";
+type KindCard = "price_above" | "price_below" | "change_pct" | "drawdown_from_high" | "new_high" | "sma_cross" | "range_breakout" | "volume_spike" | "weight" | "custom";
 
 /** Static catalog (mirrors alerts/catalog.py) when the server has no /alert-kinds. */
 const STATIC_KINDS: Record<string, string[]> = {
   price_above: ["instrument"], price_below: ["instrument"], change_pct: ["instrument"], drawdown_from_high: ["instrument"], new_high: ["instrument"],
   sma_cross: ["instrument"], weight_above: ["instrument", "bucket"], weight_below: ["instrument", "bucket"], custom: ["instrument", "portfolio", "bucket"],
+  range_breakout: ["instrument"], volume_spike: ["instrument"],
 };
 const CARDS: { card: KindCard; label: string; machine: string; kinds: string[] }[] = [
   { card: "price_above", label: "Cena powyżej", machine: "price_above", kinds: ["price_above"] },
@@ -230,13 +250,18 @@ const CARDS: { card: KindCard; label: string; machine: string; kinds: string[] }
   { card: "drawdown_from_high", label: "Spadek od szczytu", machine: "drawdown_from_high", kinds: ["drawdown_from_high"] },
   { card: "new_high", label: "Nowy szczyt", machine: "new_high", kinds: ["new_high"] },
   { card: "sma_cross", label: "Przecięcie SMA", machine: "sma_cross", kinds: ["sma_cross"] },
+  { card: "range_breakout", label: "Wybicie z konsolidacji", machine: "range_breakout", kinds: ["range_breakout"] },
+  { card: "volume_spike", label: "Skok wolumenu", machine: "volume_spike", kinds: ["volume_spike"] },
   { card: "weight", label: "Waga powyżej / poniżej", machine: "weight_above · weight_below", kinds: ["weight_above", "weight_below"] },
   { card: "custom", label: "Własne wyrażenie", machine: "custom", kinds: ["custom"] },
 ];
 const DEFAULT_POLARITY: Record<string, string> = {
   price_below: "positive", price_above: "neutral", change_pct: "negative", drawdown_from_high: "positive", new_high: "neutral",
   sma_cross: "negative", weight_above: "negative", weight_below: "positive", custom: "neutral",
+  range_breakout: "neutral", volume_spike: "neutral",
 };
+/** A breakout's polarity follows its direction until the owner picks one: up = chance, down = risk. */
+const breakoutPolarity = (direction: string) => (direction === "up" ? "positive" : direction === "down" ? "negative" : "neutral");
 const COOLDOWNS: [string, number | null][] = [["bez pauzy", null], ["7 dni", 7], ["14 dni", 14], ["30 dni", 30], ["90 dni", 90]];
 
 function endOfYear(): string { return `${new Date().getFullYear()}-12-31`; }
@@ -265,6 +290,8 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
   const [windowDays, setWindowDays] = useState(t0.windowDays);
   const [direction, setDirection] = useState<string>(t0.direction);
   const [expression, setExpression] = useState(t0.expression);
+  const [rangePct, setRangePct] = useState(t0.rangePct ?? "");
+  const [multiple, setMultiple] = useState(t0.multiple ?? "");
   const [polarity, setPolarity] = useState<string>(alert?.polarity ?? DEFAULT_POLARITY[kind] ?? "neutral");
   const polarityTouched = useRef(!!alert);
   const [severity, setSeverity] = useState<string>(alert?.severity ?? "info");
@@ -287,7 +314,19 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
     if (!windowDays && kind === "change_pct") setWindowDays("30");
     if (kind === "sma_cross" && direction !== "above" && direction !== "below") setDirection("below");
     if (kind === "change_pct" && !["up", "down", "any"].includes(direction)) setDirection("down");
+    if (kind === "range_breakout") {
+      if (!windowDays) setWindowDays("30");
+      if (!rangePct) setRangePct("8");
+      // A direction picked on another card does not carry over: `oba` unless the stored alert has one (FE-8).
+      const stored = alert?.kind === "range_breakout" ? String(alert.params.direction ?? "any") : "any";
+      setDirection(["up", "down", "any"].includes(stored) ? stored : "any");
+    }
+    if (kind === "volume_spike") {
+      if (!windowDays) setWindowDays("20");
+      if (!multiple) setMultiple("2,5");
+    }
   }, [kind]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (kind === "range_breakout" && !polarityTouched.current) setPolarity(breakoutPolarity(direction)); }, [kind, direction]);
 
   const cardOk = (c: (typeof CARDS)[number]) => c.kinds.some((k) => (catalog[k] ?? []).includes(scope));
   useEffect(() => {
@@ -295,7 +334,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
     if (!cardOk(cur)) setCard((CARDS.find(cardOk)?.card ?? "custom") as KindCard);
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const params = buildParams(kind, scope, { level, threshold, windowDays, direction, expression, bucket });
+  const params = buildParams(kind, scope, { level, threshold, windowDays, direction, expression, bucket, rangePct, multiple });
   const subject = scope === "instrument" ? (inst?.symbol ?? inst?.label ?? "") : scope === "bucket" ? bucketLabel(bucket) ?? "Koszyk" : "Portfel";
   const problems = validate(kind, scope, params, inst, bucket);
   // The title follows the condition until the owner edits it; nothing to suggest while the condition is incomplete.
@@ -397,6 +436,23 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
             )}
           </div>
         )}
+        {(kind === "range_breakout" || kind === "volume_spike") && (
+          <div className="frow">
+            <div className="field"><label htmlFor="af-win">Okno (sesje)</label>
+              <input id="af-win" className="num" inputMode="numeric" value={windowDays} onChange={(e) => setWindowDays(e.target.value.replace(/\D/g, ""))} /></div>
+            {kind === "range_breakout" ? (
+              <div className="field"><label htmlFor="af-range">Zakres maks. (%)</label>
+                <input id="af-range" className="num" inputMode="decimal" value={rangePct} onChange={(e) => setRangePct(e.target.value)} /></div>
+            ) : (
+              <div className="field"><label htmlFor="af-mult">Krotność</label>
+                <input id="af-mult" className="num" inputMode="decimal" value={multiple} onChange={(e) => setMultiple(e.target.value)} /></div>
+            )}
+          </div>
+        )}
+        {kind === "range_breakout" && (
+          <div className="field"><label>Kierunek</label>
+            <Seg quiet label="Kierunek wybicia" value={direction} onChange={setDirection} items={[["w górę", "up"], ["w dół", "down"], ["oba", "any"]]} /></div>
+        )}
         {kind === "change_pct" && (
           <div className="field"><label>Kierunek</label>
             <Seg quiet label="Kierunek zmiany" value={direction} onChange={setDirection} items={[["spadek", "down"], ["wzrost", "up"], ["oba", "any"]]} /></div>
@@ -452,25 +508,6 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
 
 const choiceText = (i: InstrumentChoice) => [i.label, i.symbol, i.venue].filter(Boolean).join(" · ");
 
-/** Client-side checks before the server's catalog validation (Polish messages). */
-export function validate(kind: string, scope: string, params: Record<string, unknown>, inst: InstrumentChoice | null, bucket: string): string[] {
-  const out: string[] = [];
-  if (scope === "instrument" && !inst) out.push("Wybierz instrument z listy.");
-  if (scope === "bucket" && !bucket) out.push("Wybierz koszyk.");
-  const num = (k: string) => (typeof params[k] === "number" && Number.isFinite(params[k] as number) ? (params[k] as number) : null);
-  if ((kind === "price_above" || kind === "price_below") && !(num("level")! > 0)) out.push("Podaj poziom ceny większy od zera.");
-  if ("window_days" in params) {
-    // The catalog wants at least 2 sessions for drawdown / new high / SMA (alerts/catalog.py), 1 for a change.
-    const w = num("window_days"), min = kind === "change_pct" ? 1 : 2;
-    if (w == null || w < min || w > 260 || !Number.isInteger(w)) out.push(`Okno: liczba sesji od ${min} do 260.`);
-  }
-  if (kind === "change_pct" && !(num("threshold")! > 0)) out.push("Podaj próg zmiany w procentach.");
-  if (kind === "drawdown_from_high" && !(num("threshold")! > 0 && num("threshold")! < 1)) out.push("Próg spadku: od 0 do 100 %.");
-  if ((kind === "weight_above" || kind === "weight_below") && !(num("threshold")! > 0 && num("threshold")! <= 1)) out.push("Próg wagi: od 0 do 100 % portfela.");
-  if (kind === "custom" && !String(params.expression ?? "").trim()) out.push("Wpisz wyrażenie.");
-  return out;
-}
-
 // ---- triggered history ------------------------------------------------------------------------------------
 
 function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; alerts: Alert[] }) {
@@ -480,6 +517,8 @@ function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; ale
   const byId = new Map(alerts.map((a) => [a.id, a]));
   const value = (s: SignalV2) => {
     const p = s.payload, c = typeof p.currency === "string" ? p.currency : undefined;
+    if (typeof p.ratio === "number" || (typeof p.ratio === "string" && p.ratio)) return ratioX(Number(p.ratio));
+    if (typeof p.breakout_pct === "number") return pct(p.breakout_pct, true);
     if (typeof p.change === "number") return pct(p.change, true);
     if (typeof p.drawdown === "number") return pct(-p.drawdown);
     if (typeof p.weight === "number") return pct(p.weight);
@@ -511,8 +550,8 @@ function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; ale
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
-    <Widget title="Historia wyzwoleń" count={`12 mies. · ${rows.length}`} controls={rows.length ? <button className="lnk" onClick={exportCsv}>eksport CSV</button> : undefined} body="flush tight">
-      {!signals ? <div style={{ padding: "0 16px" }}><Skeleton h={80} /></div> : !rows.length ? <div className="empty">Brak wyzwoleń.</div> : (
+    <Widget title="Historia" count={`12 mies. · ${rows.length}`} controls={rows.length ? <button className="lnk" onClick={exportCsv}>eksport CSV</button> : undefined} body="flush tight">
+      {!signals ? <div style={{ padding: "0 16px" }}><Skeleton h={80} /></div> : !rows.length ? <div className="empty">Brak spełnionych alertów.</div> : (
         <div className="scroll">
           <table>
             <thead><tr><th>Data</th><th>Alert</th><th className="num">Wartość</th><th>Typ</th><th>Źródło</th><th>Co dalej</th><th>Decyzja</th></tr></thead>

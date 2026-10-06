@@ -104,9 +104,9 @@ export function ChangesWidget({ digest, perf, alerts, proposals, accounts, names
         </> : <span className="s">bez nowych · {plural(sg.open, "otwarty", "otwarte", "otwartych")}</span>} />
         {research != null && <Chg k="Research" v={research} />}
         <Chg k="Alerty" v={trig.length || agentAdded ? <>
-          {trig.length > 0 && <b>{plural(trig.length, "wyzwolony", "wyzwolone", "wyzwolonych")}</b>}
+          {trig.length > 0 && <b>{plural(trig.length, "spełniony", "spełnione", "spełnionych")}</b>}
           <span className="s">{trig.length ? ` · ${trig.slice(0, 2).map(alertTitle).join(", ")}` : ""}{agentAdded ? ` · ${plural(agentAdded, "dodany", "dodane", "dodanych")} przez agenta` : ""}</span>
-        </> : <span className="s">bez wyzwoleń</span>} />
+        </> : <span className="s">0 spełnionych</span>} />
         <Chg k="Transakcje" v={digest.transactions.count ? <>
           <b>{digest.transactions.count}</b>{byAcc.length ? ` z ${byAcc.join(", ")}` : ""}{imports[0] ? ` (${dm(imports[0].created_at)})` : ""}
           <span className="s">{types ? ` · ${types}` : ""}</span>
@@ -149,7 +149,7 @@ export function ReentryBanner({ since, days, digest, perf, alerts, proposals, de
           <div className="fact"><div className="l">Wartość</div><div className={`v ${ch.pct == null ? "" : ch.pct >= 0 ? "pos" : "neg"}`}>{ch.pct != null ? pct(ch.pct, true) : "-"}</div>
             <div className="d">{ch.money != null ? money0(ch.money, c, true) : ""}{benchStale ? <span title={benchStale.title}> · {benchStale.label}</span> : ch.bench != null ? ` · ${benchName} ${pct(ch.bench, true)}` : ""}</div></div>
           <div className="fact"><div className="l">Sygnały</div><div className="v">{created}</div><div className="d">{expired ? `${expired} wygasły bez decyzji` : "żaden nie wygasł"}</div></div>
-          <div className="fact"><div className="l">Alerty</div><div className="v">{trig.length}</div><div className="d">wyzwolone{agentTrig ? ` · ${agentTrig} od agenta` : ""}</div></div>
+          <div className="fact"><div className="l">Alerty</div><div className="v">{trig.length}</div><div className="d">spełnione{agentTrig ? ` · ${agentTrig} od agenta` : ""}</div></div>
           {depositPlan && <div className="fact"><div className="l">Wpłaty</div><div className="v">{depMonths} z {monthsGap}</div><div className="d">{depMonths >= monthsGap ? "zgodnie z planem" : `${plural(monthsGap - depMonths, "miesiąc", "miesiące", "miesięcy")} bez wpłaty`}</div></div>}
           <div className="fact"><div className="l">Transakcje</div><div className="v">{digest?.transactions.count ?? "-"}</div><div className="d">{plural(imports, "import", "importy", "importów")}</div></div>
           <div className="fact"><div className="l">Agent</div><div className="v">{proposals.length}</div><div className="d">{proposals.length ? "propozycja czeka" : "bez propozycji"}</div></div>
@@ -172,7 +172,7 @@ function eventView(e: LogEvent, accounts: AccountRow[], alerts: Alert[], names?:
     case "alert_triggered": {
       // The alert's own title, then the Polish fact of the coded message (F6 BE `message_code`), e.g. "cena 138,20 zł poniżej 140,00 zł".
       const fact = label(e.message_code, e.message_params);
-      return { dot: pol, head: e.agent ? "Alert agenta wyzwolony" : "Alert wyzwolony", main: unnameBuckets(alerts.find((a) => a.id === e.alert_id)?.title ?? (typeof e.message_params?.title === "string" ? e.message_params.title : inst)),
+      return { dot: pol, head: e.agent ? "Alert agenta" : "Alert", main: unnameBuckets(alerts.find((a) => a.id === e.alert_id)?.title ?? (typeof e.message_params?.title === "string" ? e.message_params.title : inst)),
         tail: [fact, e.status === "active" || !e.status ? "sygnał otwarty" : null].filter(Boolean).join(" · ") || undefined };
     }
     case "signal_created": return { dot: pol, head: e.polarity === "positive" ? "Szansa" : e.polarity === "negative" ? "Ryzyko" : "Sygnał", main: [subject(e, inst), phrase(e.kind, e.message)].filter(Boolean).join(" · ") };

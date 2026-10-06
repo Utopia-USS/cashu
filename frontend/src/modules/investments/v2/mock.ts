@@ -6,7 +6,7 @@
 import { ApiError } from "../../../core/api";
 import { investmentsMock } from "../mock";
 import type { Alert, Performance, PerfPoint, PerfRange, PlannedDeposit, WatchItem } from "./api";
-import { researchDigest, researchMock, researchSignals } from "./research/mock";
+import { researchDigest, researchMock, researchSignals, researchUnread } from "./research/mock";
 
 const TODAY = "2026-10-04";
 const MINIMAL_MARTA = new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("marta") !== "empty";
@@ -82,16 +82,26 @@ function janState(): V2State {
       alert(807, { kind: "price_above", title: "CDR powyżej 201,80 zł", instrument_id: 306, instrument: instRef(306, "CD Projekt", "CDR"), params: { level: 201.8 }, polarity: "neutral", last_value: 148.6, note: "Plan wyjścia z tezy." }),
       alert(808, { kind: "price_below", title: "CSPX poniżej 560,00 $", instrument_id: 401, instrument: instRef(401, "iShares Core S&P 500", "CSPX", "USD"), params: { level: 560 }, status: "snoozed", snoozed_until: "2026-11-01T00:00:00+01:00", last_triggered_at: "2026-09-18T07:02:00+02:00", last_value: 612.4 }),
       alert(809, { kind: "weight_above", title: "Akcje powyżej 25 %", scope: "bucket", params: { threshold: 0.25, bucket: "stocks" }, unit: "ratio", polarity: "negative", status: "muted", last_triggered_at: "2026-09-14T07:02:00+02:00", last_value: 0.212 }),
+      // F8 (home v3): a mixed subject (CDR: a chance from the rules + a risk from this alert), met alerts on watched
+      // instruments (Obserwowane scope) and the two dynamic kinds (Q12) waiting.
+      alert(810, { kind: "change_pct", title: "CDR -10 % w 30 sesji", instrument_id: 306, instrument: instRef(306, "CD Projekt", "CDR"), params: { window_days: 30, threshold: 0.1, direction: "down" }, unit: "ratio", polarity: "negative", status: "triggered", last_triggered_at: `${TODAY}T07:02:00+02:00`, last_value: -0.142, signal: { id: 953, status: "active", message: "", first_seen_at: `${TODAY}T07:02:00+02:00` } }),
+      alert(811, { kind: "drawdown_from_high", title: "ALE: spadek 10 % od szczytu", instrument_id: 402, instrument: instRef(402, "Allegro", "ALE"), params: { window_days: 90, threshold: 0.1 }, unit: "ratio", polarity: "negative", source: "agent", created_by: "mcp", status: "triggered", last_triggered_at: "2026-10-03T07:02:00+02:00", last_value: 0.112, signal: { id: 954, status: "active", message: "", first_seen_at: "2026-10-03T07:02:00+02:00" } }),
+      alert(812, { kind: "new_high", title: "XMME: nowy dołek 90 sesji", instrument_id: 403, instrument: instRef(403, "Xtrackers MSCI EM", "XMME", "EUR"), params: { window_days: 90, direction: "low" }, polarity: "positive", status: "triggered", last_triggered_at: "2026-10-01T07:02:00+02:00", last_value: 44.6, signal: { id: 955, status: "active", message: "", first_seen_at: "2026-10-01T07:02:00+02:00" } }),
+      alert(813, { kind: "volume_spike", title: "CDR: wolumen 2,5x średniej", instrument_id: 306, instrument: instRef(306, "CD Projekt", "CDR"), params: { window_days: 20, multiple: 2.5 }, unit: "ratio", polarity: "neutral", source: "agent", created_by: "mcp", last_value: 1.2, note: "Po notatce o przesunięciu premiery.", state: { average_volume: 412000, volume: 494400, ratio: 1.2, window_days: 20 } }),
+      alert(814, { kind: "range_breakout", title: "PKN: wybicie z konsolidacji 30 sesji", instrument_id: 304, instrument: instRef(304, "PKN Orlen", "PKN"), params: { window_days: 30, max_range_pct: 0.08, direction: "any" }, polarity: "neutral", last_value: 64.5, state: { range_low: 61.2, range_high: 66.0, range_pct: 0.0784, close: 64.5, currency: "PLN", window_days: 30 } }),
     ],
     watch: [
       watchItem(9101, 401, "iShares Core S&P 500", "CSPX", "USD", 612.4, 41, 0.0015, null, "user", { live: 1, triggered: 0, nearest: { alert_id: 808, kind: "price_below", title: "CSPX poniżej 560,00 $", level: 560, distance_pct: -0.0856 } }),
-      watchItem(9102, 402, "Allegro", "ALE", "PLN", 32.15, 43, -0.002, "czekam na -10 % od szczytu", "agent", { live: 0, triggered: 0, nearest: null }),
-      watchItem(9103, 403, "Xtrackers MSCI EM", "XMME", "EUR", 44.6, 47, -0.001, null, "user", { live: 1, triggered: 0, nearest: { alert_id: 0, kind: "new_high", title: "nowy dołek 90 dni", level: null, distance_pct: null } }),
+      watchItem(9102, 402, "Allegro", "ALE", "PLN", 32.15, 43, -0.002, "czekam na -10 % od szczytu", "agent", { live: 1, triggered: 1, nearest: { alert_id: 811, kind: "drawdown_from_high", title: "ALE: spadek 10 % od szczytu", level: null, distance_pct: null } }),
+      watchItem(9103, 403, "Xtrackers MSCI EM", "XMME", "EUR", 44.6, 47, -0.001, null, "user", { live: 1, triggered: 1, nearest: { alert_id: 812, kind: "new_high", title: "nowy dołek 90 sesji", level: null, distance_pct: null } }),
       watchItem(9104, 404, "LPP", "LPP", "PLN", 16980, 53, 0.001, null, "user", { live: 0, triggered: 0, nearest: null }),
     ],
     alertSignals: [
       { id: 951, rule_id: "alert:801", kind: "alert:price_below", dedup_key: "alert:801", severity: "action", status: "active", polarity: "positive", source: "alert", alert_id: 801, message: "EIMI poniżej 75,00 zł: closed at 74.57 PLN", instrument_id: 307, instrument_label: "iShares MSCI EM IMI", account_id: null, payload: { alert_kind: "price_below", symbol: "EIMI", level: "75", close: "74.57", currency: "PLN", title: "EIMI poniżej 75,00 zł" }, first_seen_at: "2026-10-02T07:02:00+02:00", last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
-      { id: 952, rule_id: "alert:802", kind: "alert:change_pct", dedup_key: "alert:802", severity: "info", status: "active", polarity: "negative", source: "alert", alert_id: 802, message: "KGHM -10 % w 30 sesji: fell 12.4%", instrument_id: 305, instrument_label: "KGHM", account_id: null, payload: { alert_kind: "change_pct", symbol: "KGH", change: -0.124, threshold: 0.1, window_days: 30, direction: "down" }, first_seen_at: "2026-10-03T07:02:00+02:00", last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
+      { id: 952, rule_id: "alert:802", kind: "alert:change_pct", dedup_key: "alert:802", severity: "info", status: "active", polarity: "negative", source: "alert", alert_id: 802, message: "KGHM -10 % w 30 sesji: fell 12.4%", instrument_id: 305, instrument_label: "KGHM", account_id: null, payload: { alert_kind: "change_pct", symbol: "KGH", change: -0.124, threshold: 0.1, window_days: 30, direction: "down" }, first_seen_at: "2026-10-03T07:02:00+02:00", last_seen_at: "2026-10-03T07:02:00+02:00", current: false, acknowledged_at: null, closed_at: null, decisions: [] },
+      { id: 953, rule_id: "alert:810", kind: "alert:change_pct", dedup_key: "alert:810", severity: "action", status: "active", polarity: "negative", source: "alert", alert_id: 810, message: "CDR -10 % w 30 sesji: fell 14.2%", instrument_id: 306, instrument_label: "CD Projekt", account_id: null, payload: { alert_kind: "change_pct", symbol: "CDR", change: -0.142, threshold: 0.1, window_days: 30, direction: "down" }, first_seen_at: `${TODAY}T07:02:00+02:00`, last_seen_at: `${TODAY}T07:02:00+02:00`, current: true, acknowledged_at: null, closed_at: null, decisions: [] },
+      { id: 954, rule_id: "alert:811", kind: "alert:drawdown_from_high", dedup_key: "alert:811", severity: "info", status: "active", polarity: "negative", source: "alert", alert_id: 811, message: "ALE: spadek 10 % od szczytu", instrument_id: 402, instrument_label: "Allegro", account_id: null, payload: { alert_kind: "drawdown_from_high", symbol: "ALE", drawdown: 0.112, threshold: 0.1, window_days: 90 }, first_seen_at: "2026-10-03T07:02:00+02:00", last_seen_at: `${TODAY}T07:02:00+02:00`, current: true, acknowledged_at: null, closed_at: null, decisions: [] },
+      { id: 955, rule_id: "alert:812", kind: "alert:new_high", dedup_key: "alert:812", severity: "info", status: "active", polarity: "positive", source: "alert", alert_id: 812, message: "XMME: nowy dołek 90 sesji", instrument_id: 403, instrument_label: "Xtrackers MSCI EM", account_id: null, payload: { alert_kind: "new_high", symbol: "XMME", close: "44.60", currency: "EUR", window_days: 90, direction: "low" }, first_seen_at: "2026-10-01T07:02:00+02:00", last_seen_at: `${TODAY}T07:02:00+02:00`, current: true, acknowledged_at: null, closed_at: null, decisions: [] },
       { id: 905, rule_id: "global_below", kind: "allocation_drift", dedup_key: "global_below", severity: "info", status: "active", polarity: "neutral", source: "rule", alert_id: null, message: "global equity below target", instrument_id: null, instrument_label: null, account_id: null, payload: { bucket_id: "global_equity", bucket_generic: true, weight: 0.57, target: 0.6, drift_pp: -3.0, drift_value_base: "-5590", currency: "PLN", absolute_band_pp: 5, relative_band: 0.05 }, first_seen_at: `${TODAY}T07:02:00+02:00`, last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
       // F7-generic: a drift of an owner's own bucket (non-generic id): the server sends it, the app never shows it
       // (lists, counts, links); the agent sees it over MCP.
@@ -321,7 +331,7 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
     Object.assign(a, patch, { updated_at: new Date().toISOString() });
     return a;
   }
-  if (ip === "/watchlist" && method === "GET") return st.watch;
+  if (ip === "/watchlist" && method === "GET") return st.watch.map((w) => ({ ...w, research_unread: researchUnread(slug, kind, w.instrument_id) }));
   if (ip === "/watchlist" && method === "POST") {
     const sym = String(b.symbol_or_isin ?? "").trim().toUpperCase();
     if (!sym) throw new ApiError(422, "symbol_or_isin is required", "watchlist_invalid");
@@ -387,7 +397,7 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
     return list.map((s) => decorateSignal(s, st));
   }
   if (ip === "/overview") return decorateOverview(res as Record<string, unknown>, st, slug, kind);
-  if (ip === "/positions") return decoratePositions(res as { positions: Record<string, unknown>[] });
+  if (ip === "/positions") return decoratePositions(res as { positions: Record<string, unknown>[] }, (id) => researchUnread(slug, kind, id));
   if (ip === "/review-digest") {
     const since = q.get("since");
     const d = res as Record<string, unknown>;
@@ -413,6 +423,7 @@ function decorateSignal(s: Record<string, unknown>, st: V2State) {
     alert_id: s.alert_id ?? null,
     snoozed_until: st.snoozed[id] ?? null,
     snoozed: !!st.snoozed[id],
+    current: s.current ?? true,
   };
 }
 
@@ -428,7 +439,7 @@ function decorateOverview(ov: Record<string, unknown>, st: V2State, slug: string
 }
 
 const SEEDS: Record<number, [number, number]> = { 301: [3, 0.0012], 302: [4, 0.001], 303: [0, 0], 304: [9, 0.002], 305: [21, -0.0045], 306: [17, -0.006], 307: [31, -0.003] };
-function decoratePositions(res: { positions: Record<string, unknown>[] }) {
+function decoratePositions(res: { positions: Record<string, unknown>[] }, unread: (instrumentId: number) => number) {
   return {
     ...res,
     positions: res.positions.map((p) => {
@@ -438,7 +449,7 @@ function decoratePositions(res: { positions: Record<string, unknown>[] }) {
       const closes = p.valuation_mode === "cost"
         ? closes30(last, 1, 0, 0).map((c, i, all) => ({ ...c, close: r2(last * (1 - (all.length - 1 - i) * 0.0002)) }))
         : closes30(last, seed, drift, id === 306 ? 0.035 : 0.025);
-      return { ...p, closes_30d: closes };
+      return { ...p, closes_30d: closes, research_unread: unread(id) };
     }),
   };
 }

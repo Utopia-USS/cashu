@@ -350,3 +350,11 @@ test("F7 C2: condition errors and YAML problems read in Polish; an unknown sente
   assert.equal(describeIssue({ code: "strategy.not_number", params: { key: "monthly_amount", value: '"abc"' }, message: "m" }).text,
     "monthly_amount musi być liczbą, jest „abc\"");
 });
+
+test("alert labels of the F8 kinds (F8 review FE-5)", () => {
+  const sp = (v) => v.replace(/[\s  ]+/g, " ");
+  assert.equal(sp(label("alert.range_breakout", { window_days: 30, breakout_pct: 0.062, range_low: "10.50", range_high: "11.20", currency: "USD" })), "wybicie z konsolidacji 30 sesji +6,2 % nad 11,20 $");
+  assert.equal(sp(label("alert.range_breakout", { window_days: 30, breakout_pct: -0.0001, range_low: "10.50", range_high: "11.20", currency: "USD" })), "wybicie z konsolidacji 30 sesji tuż pod 10,50 $");
+  assert.equal(sp(label("alert.volume_spike", { ratio: 3.42, window_days: 20 })), "wolumen 3,4x średniej z 20 sesji");
+  assert.equal(label("alert.volume_spike", { window_days: 20 }), null);
+});

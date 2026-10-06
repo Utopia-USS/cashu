@@ -28,6 +28,8 @@ export interface AssetSlotProps {
   mode: "drawer" | "page";
   /** Refresh the investments page data (signals, alerts) after a change made in the slot. */
   onChanged: () => void;
+  /** The instrument's research notes were marked read (home v3 Q10): the page drops its unread marker. */
+  onRead?: (instrumentId: number) => void;
 }
 
 export type ThesisField = "entry" | "invalidation" | "exit" | "size";

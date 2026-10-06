@@ -467,17 +467,6 @@ export const scheduleSteps = (path: string | null | undefined, slug: string) =>
 /** The strip appears only after the first run exists (density rule): any run, running or finished. */
 export const showStrip = (runs: ResearchRun[] | null | undefined) => !!runs && runs.length > 0;
 
-/** Position of the research strip in the home grid: right after the attention row (Sygnały + Alerty),
- * before the charts; at two columns it waits for the Alerty + Alokacja pair (`defer`). The signals-rail home
- * (one `split` cell holding both) gets it before that cell. */
-export function insertAfterAttention<T extends { id: string }>(items: T[], strip: T): T[] {
-  const i = items.findIndex((x) => x.id === "alerts");
-  let at = i >= 0 ? i + 1 : items.findIndex((x) => x.id === "value");
-  if (at < 0) at = items.findIndex((x) => x.id === "split");
-  if (at < 0) return [...items, strip];
-  return [...items.slice(0, at), strip, ...items.slice(at)];
-}
-
 /** Rows of the `Tezy` column: held positions, most severe health first, then weight. */
 export function orderTheses<T extends { health: HealthKey; weight?: number | null; label?: string | null }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => HEALTH_RANK[a.health] - HEALTH_RANK[b.health] || (b.weight ?? 0) - (a.weight ?? 0) || (a.label ?? "").localeCompare(b.label ?? ""));

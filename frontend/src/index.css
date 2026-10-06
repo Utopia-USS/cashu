@@ -560,7 +560,6 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .flag.pos { background: var(--pos); } .flag.neg { background: var(--neg); } .flag.neu { background: var(--muted); }
 /* Shape as well as colour (F7 FE14): chance = dot, risk = diamond, neutral = square, alert = ring. */
 .flag.neg { border-radius: 1px; transform: rotate(45deg) scale(0.9); } .flag.neu { border-radius: 1px; }
-.flag.al { width: 8px; height: 8px; background: transparent; border: 1.5px solid var(--warn); }
 .w .scroll { overflow-x: auto; }
 
 /* ===== instrument label (design/v2/instrument-label/instrument-label.md): ticker tile + name, hover card ===== */
@@ -838,3 +837,79 @@ button.tag.hdr-tag:hover { background: var(--warnBg); }
   .adh .lnk { white-space: nowrap; }
   .adrawer .ahead .sep, .g2 .ahead .sep { display: none; }
 }
+
+/* ===== Inwestycje home v3 (design/v3/home-v3/home-v3.md rev 2 + F8 owner overrides Q17-Q19) ===== */
+/* one signal glyph language (Q4): chance = dot, risk = diamond, review = square, mixed = half green / half red */
+.pd.neg { border-radius: 1px; transform: rotate(45deg) scale(.9); }
+.pd.neu { border-radius: 1px; }
+.pd.mix, .flag.mix { background: linear-gradient(90deg, var(--pos) 50%, var(--neg) 50%); border-radius: 50%; transform: none; }
+/* alert state icon (Q11): far = ring, near = ring + dot, met = ring + disc */
+.ai { position: relative; display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid currentColor; vertical-align: -1px; flex: none; color: var(--muted); font-style: normal; }
+.ai::after { content: ""; position: absolute; border-radius: 50%; background: currentColor; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 0; height: 0; }
+.ai.near { color: var(--warn); } .ai.near::after { width: 4px; height: 4px; }
+.ai.met { color: var(--pos); } .ai.met::after { width: 6px; height: 6px; }
+.al .t .ttl { min-width: 0; } .al .t .ai { margin-right: 6px; } .wf .ai { margin-right: 4px; vertical-align: -1px; }
+td .ai + .status, td .ai { margin-right: 6px; }
+/* quiet markers next to an instrument (Q14): bell = live alert, page = new research notes */
+.mk { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; color: var(--muted); flex: none; vertical-align: -1px; }
+.mk svg { width: 11px; height: 11px; display: block; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.mk.new { color: var(--info); }
+.il .ln .mk { margin-left: 1px; }
+/* unread research count (Q10), only at the research entry point */
+.rs-un { display: inline-flex; align-items: center; justify-content: center; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 4px; background: var(--info); color: var(--card);
+  font: 700 8.5px/13px -apple-system, BlinkMacSystemFont, sans-serif; font-variant-numeric: tabular-nums; vertical-align: 1px; flex: none; }
+/* rail rows (Q15 / Q17 / Q18): dot | "TICKER date" + one fact per signal; the row opens a menu, no inline buttons */
+.srail .polh { font-size: 12.5px; }
+.sig.cmp.row { cursor: pointer; border-radius: 6px; outline: none; }
+.sig.cmp.row:focus-visible { box-shadow: inset 0 0 0 2px var(--nw); }
+.sig.cmp.row[aria-expanded="true"] { background: var(--subtle); }
+.sig.cmp .t .tk { font-weight: 650; font-size: 13px; letter-spacing: .01em; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sig.cmp .t .tk .il.inl { display: inline; }
+.sig.cmp .t .age { color: var(--muted); font-weight: 500; font-size: 12px; margin-left: 5px; flex: none; }
+.sig.cmp .t .age.warn { color: var(--warn); }
+.sig.cmp .m.f { color: var(--text); font-size: 13px; }
+.sig.cmp .m.f b { font-weight: 600; }
+.sig.cmp .m.f .more { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.sig.cmp.grp .m + .m { margin-top: 2px; }
+.rmenu { display: grid; padding: 4px; min-width: 0; }
+.rmenu [role="menuitem"] { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 10px; border: none; border-radius: 6px; background: none;
+  font: inherit; font-size: 13px; color: var(--text); cursor: pointer; }
+.rmenu [role="menuitem"]:hover, .rmenu [role="menuitem"]:focus-visible { background: var(--chip); outline: none; }
+.rmenu [role="menuitem"]:disabled { color: var(--muted); cursor: default; background: none; }
+.rmenu .sep { height: 1px; background: var(--border); margin: 4px 0; }
+.rmenu .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+.pop .rform { padding: 4px; }
+.pop .rform .rfh { font-size: 12.5px; color: var(--muted); margin: 2px 2px 8px; }
+.pop .rform .rfh b { color: var(--text); }
+.pop .rform .decide { display: grid; gap: 8px; }
+.pop .rform .decide .fr { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; }
+.pop .rform .decide .fr label { color: var(--muted); font-size: 11.5px; }
+.pop .rform .decide input { width: 84px; }
+.pop .rform .decide .eff { font-size: 12.5px; color: var(--muted); } .pop .rform .decide .eff b { color: var(--text); font-variant-numeric: tabular-nums; }
+/* the dialog (7.4): columns by scope, a subject's signals as sub-rows */
+.sig .t .tk { font-weight: 650; }
+.sig .t .nmm { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+.sig .t .age { color: var(--muted); font-weight: 500; font-size: 12px; }
+.sig .t .age.warn { color: var(--warn); }
+.sdlg .scope2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 0 24px; align-items: start; }
+.sdlg .scope2 > div + div { border-left: 1px solid var(--border); padding-left: 24px; }
+.sig .sub-sig { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 0 10px; align-items: start; padding: 6px 0 2px; }
+.sig .sub-sig + .sub-sig { border-top: 1px dashed var(--border); margin-top: 4px; }
+.sig .sub-sig .pd { width: 6px; height: 6px; margin-top: 6px; }
+.sig .sub-sig .m { margin-top: 0; }
+@media (max-width: 760px) {
+  .sdlg .scope2 { grid-template-columns: minmax(0, 1fr); }
+  .sdlg .scope2 > div + div { border-left: none; padding-left: 0; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
+}
+/* Alokacja, the Rachunki view (Q2): rachunek | teraz | wartość | snapshot */
+.alloc.acc .arow { grid-template-columns: 10px minmax(0, 1fr) 52px 84px 84px; }
+.alloc.wide.acc .arow { grid-template-columns: 10px minmax(0, 1fr) 60px 96px 120px; }
+.alloc.acc .arow .snap { color: var(--muted); }
+.alloc.acc .arow .snap .lnk { font-size: 12.5px; color: var(--warn); }
+@media (max-width: 760px) {
+  .alloc.wide.acc .arow { grid-template-columns: 10px minmax(0, 1fr) 52px 86px; }
+  .alloc.wide.acc .c-snap { display: none; }
+}
+/* Aktywa tabs: the count inside the Seg label */
+.w .wh .seg .cnt { color: var(--muted); font-weight: 500; margin-left: 5px; }
+.w .wh .seg button.on .cnt { color: inherit; opacity: .7; }

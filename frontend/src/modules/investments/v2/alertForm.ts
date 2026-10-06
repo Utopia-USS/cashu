@@ -20,7 +20,15 @@ export function percentText(v: unknown): string {
 }
 
 /** The texts of the form's param fields. */
-export interface AlertDraftText { level: string; threshold: string; windowDays: string; direction: string; expression: string; bucket: string }
+export interface AlertDraftText {
+  level: string; threshold: string; windowDays: string; direction: string; expression: string; bucket: string;
+  /** range_breakout: the narrow range's maximum width in percent ("8"; stored as the fraction 0.08, F8 BE C3);
+   * volume_spike: the multiple ("2,5"). */
+  rangePct?: string; multiple?: string;
+}
+
+/** A plain number as input text: 2.5 -> "2,5", 8 -> "8". */
+const plainText = (v: unknown): string => (typeof v === "number" && Number.isFinite(v) ? fmt(v, 8, 0) : "");
 
 export function draftText(params: Record<string, unknown> | null | undefined, defaultBucket = ""): AlertDraftText {
   const p = params ?? {};
@@ -31,6 +39,8 @@ export function draftText(params: Record<string, unknown> | null | undefined, de
     direction: p.direction == null ? "" : String(p.direction),
     expression: p.expression == null ? "" : String(p.expression),
     bucket: p.bucket == null ? defaultBucket : String(p.bucket),
+    rangePct: percentText(p.max_range_pct),
+    multiple: plainText(p.multiple),
   };
 }
 
@@ -53,6 +63,11 @@ export function buildParams(kind: string, scope: string, t: AlertDraftText): Rec
     case "new_high": return { window_days: wd ?? 252 };
     case "sma_cross": return { window_days: wd ?? 200, direction: t.direction || "below" };
     case "weight_above": case "weight_below": return { threshold: frac, ...(scope === "bucket" ? { bucket: t.bucket } : {}) };
+    case "range_breakout": {
+      const r = num(t.rangePct ?? "");
+      return { window_days: wd ?? 30, max_range_pct: r != null ? Number((r / 100).toPrecision(12)) : null, direction: t.direction || "any" };
+    }
+    case "volume_spike": return { window_days: wd ?? 20, multiple: num(t.multiple ?? "") };
     default: return { expression: t.expression.trim(), ...(scope === "bucket" ? { bucket: t.bucket } : {}) };
   }
 }
@@ -123,4 +138,25 @@ export function alertPatch(a: AlertLike, v: AlertFormValues): Record<string, unk
 export function formKind(card: string, above: boolean, stored: string | null): string {
   if (stored) return stored;
   return card === "weight" ? (above ? "weight_above" : "weight_below") : card;
+}
+
+/** Client-side checks before the server's catalog validation (Polish messages). */
+export function validate(kind: string, scope: string, params: Record<string, unknown>, inst: object | null, bucket: string): string[] {
+  const out: string[] = [];
+  if (scope === "instrument" && !inst) out.push("Wybierz instrument z listy.");
+  if (scope === "bucket" && !bucket) out.push("Wybierz koszyk.");
+  const num = (k: string) => (typeof params[k] === "number" && Number.isFinite(params[k] as number) ? (params[k] as number) : null);
+  if ((kind === "price_above" || kind === "price_below") && !(num("level")! > 0)) out.push("Podaj poziom ceny większy od zera.");
+  if ("window_days" in params) {
+    // The catalog wants at least 2 sessions for drawdown / new high / SMA (alerts/catalog.py), 1 for a change.
+    const w = num("window_days"), min = kind === "change_pct" ? 1 : kind === "range_breakout" ? 10 : kind === "volume_spike" ? 5 : 2;
+    if (w == null || w < min || w > 260 || !Number.isInteger(w)) out.push(`Okno: liczba sesji od ${min} do 260.`);
+  }
+  if (kind === "change_pct" && !(num("threshold")! > 0)) out.push("Podaj próg zmiany w procentach.");
+  if (kind === "drawdown_from_high" && !(num("threshold")! > 0 && num("threshold")! < 1)) out.push("Próg spadku: od 0 do 100 %.");
+  if ((kind === "weight_above" || kind === "weight_below") && !(num("threshold")! > 0 && num("threshold")! <= 1)) out.push("Próg wagi: od 0 do 100 % portfela.");
+  if (kind === "custom" && !String(params.expression ?? "").trim()) out.push("Wpisz wyrażenie.");
+  if (kind === "range_breakout" && !(num("max_range_pct")! >= 0.01 - 1e-12 && num("max_range_pct")! <= 0.3 + 1e-12)) out.push("Zakres maks.: od 1 do 30 %.");
+  if (kind === "volume_spike" && !(num("multiple")! >= 1.5 && num("multiple")! <= 20)) out.push("Krotność: od 1,5 do 20.");
+  return out;
 }

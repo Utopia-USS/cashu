@@ -121,7 +121,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const removeAlert = (a: Alert) => { void removeAlertWithUndo(slug, a, toast, onAlertsChanged); };
 
   // Slots (research): props shared by every slot, the extra timeline rows from the slot's hook.
-  const slot: AssetSlotProps = { slug, instrumentId: id, name, symbol: inst?.symbol ?? null, held: !!pos, thesis, noteId, mode, onChanged: ctx.onChanged };
+  const slot: AssetSlotProps = { slug, instrumentId: id, name, symbol: inst?.symbol ?? null, held: !!pos, thesis, noteId, mode, onChanged: ctx.onChanged, onRead: ctx.onResearchRead };
   const extra: AssetTimelineEntry[] = ASSET_SLOTS.useTimeline?.(slot) ?? [];
   const { Research, ThesisTags, ThesisFieldChip, HeaderNote } = ASSET_SLOTS;
   const chip = (field: ThesisField) => (ThesisFieldChip ? <> <ThesisFieldChip {...slot} field={field} /></> : null);
@@ -232,7 +232,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
 
   const alertsW = (
     <Widget title="Alerty" count={live.length || undefined} controls={<button className="btn sm" onClick={onNewAlert}>+ Nowy</button>} body="tight"
-      footer={<><span>ostatnio wyzwolony: <b>{lastTrig ? dm(lastTrig) : "brak"}</b></span>
+      footer={<><span>ostatni sygnał: <b>{lastTrig ? dm(lastTrig) : "brak"}</b></span>
         <span className="spacer" /><button className="lnk" onClick={onAlerts}>wszystkie alerty</button></>}>
       {!live.length ? <div className="muted" style={{ fontSize: 13 }}>Brak alertów.</div>
         : live.map((a) => <AlertRow key={a.id} a={a} compact onRemove={a.source === "agent" ? () => removeAlert(a) : undefined} />)}

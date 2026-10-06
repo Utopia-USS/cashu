@@ -50,6 +50,21 @@ export function makeUndo(savedAt: number, run: () => Promise<unknown>, now: () =
   };
 }
 
+/** The undo request of a group write (one toast, several saved decisions): deletes the ids still pending, in
+ * order. An id the server no longer has (404 / 410) counts as undone; any other failure stops the run and is
+ * thrown, and a retry only touches the ids that are left (F8 review FE-3: a retry must not stop at the first
+ * id it already deleted). */
+export function groupUndoRun(ids: readonly number[], del: (id: number) => Promise<unknown>): () => Promise<void> {
+  const pending = [...ids];
+  return async () => {
+    while (pending.length) {
+      try { await del(pending[0]); }
+      catch (e) { if (undoFailure(e) !== "gone") throw e; }
+      pending.shift();
+    }
+  };
+}
+
 /** A saved decision (a real id, not the overlay of one being saved) still inside the undo window. */
 export function canUndo(d: { id: number; created_at: string | null }, now: number = Date.now()): boolean {
   if (!(d.id > 0) || !d.created_at) return false;

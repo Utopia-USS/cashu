@@ -2,16 +2,16 @@
 // page head with the scope and kind filters and `Uruchom teraz` (copies the command), the run strip, Tematy i
 // trendy, Kandydaci, Notatki (two-column cards, filters, sort, paging by 6, j / k / x / Enter), Przebiegi and
 // Zakres i zasady. Before the first run: the empty state with the three steps (skill, first run, schedule).
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAsync } from "../../../../hooks";
 import { Seg, SetupSteps, type SetupStepItem, Skeleton, Tag } from "../../../../ui";
 import { Grid, type GridItem, Widget } from "../../../../widgets";
 import { useShortcuts } from "../../hooks";
 import { dm, hm, plural, wdm } from "../../labels";
-import { getResearch } from "./api";
+import { getResearch, postResearchRead } from "./api";
 import { invKey } from "../api";
 import type { InstLike } from "../InstLabel";
-import { canRestore, useResearchActions, useResearchOverview, useWorkspace } from "./data";
+import { bumpResearch, canRestore, useResearchActions, useResearchOverview, useWorkspace } from "./data";
 import {
   BOUNDARY, DIRECTION_LABEL, DIRECTION_TONE, healthOf, isExpired, KIND_FILTER, latestRun, nextSaturday, normDirection, normRelation,
   nNotes, polarityCls, RELATION_LABEL, researchCommand, ROUTINE_MENU, ROUTINE_PROMPT, runMinutes, runNotes, runTag, workspacePath,
@@ -222,6 +222,16 @@ function NotesList({ slug, today, nonce, scope, kind, theme, held, watchedIds, o
     { key: invKey(slug, "research", "notes", old ? "all" : "live") });
   const actions = useResearchActions(slug, onChanged);
   const all = q.data ?? [];
+  // Q10 (home-v3 12.2): opening a theme marks its unread agent notes read, once per theme; a failed call is
+  // silent (the markers stay), a real mark re-reads the research views (the strip's chip and Tematy rows).
+  const markedThemes = useRef(new Set<string>());
+  useEffect(() => {
+    if (!theme || !q.data) return;
+    const key = theme.toLocaleLowerCase("pl");
+    if (markedThemes.current.has(key) || !q.data.some((n) => n.unread === true && n.theme?.toLocaleLowerCase("pl") === key)) return;
+    markedThemes.current.add(key);
+    postResearchRead(slug, { theme }).then((res) => { if (res.marked > 0) bumpResearch(slug); }).catch(() => undefined);
+  }, [slug, theme, q.data]);
   const since = all.length ? all.map((n) => n.observed_at).sort()[0] : null;
   const list = useMemo(() => {
     const out = all.filter((n) => {
