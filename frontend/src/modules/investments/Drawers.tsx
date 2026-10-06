@@ -2,12 +2,16 @@
 // thesis, agent proposal, signal history + decision journal, an instrument's transactions.
 import { useRef, useState } from "react";
 import { ApiError } from "../../core/api";
+import { acceptOf, importerName, statusOf } from "../../core/connectors";
+import { getBindings, getConnectors } from "../../core/connectorsApi";
+import { type RunFailure, RunError, runFailureOf } from "../../core/RunError";
 import { describeError, describeImportWarning, proposalError, proposalSummary } from "../../core/messages";
 import { useAsync } from "../../hooks";
+import { ck } from "../../swr";
 import { Drawer, Notice, RadioList, Skeleton, Stepper, Tag, useToast } from "../../ui";
 import {
-  type AccountRow, approveProposal, type CommitResult, getProposal, getTransactions, type ImportPreview,
-  type Position, postAccount, postImportCommit, postImportPreview, postThesis, postTransaction, patchThesis, rejectProposal, type Thesis,
+  type AccountRow, type CommitResult, getTransactions, type ImportPreview,
+  type Position, postAccount, postImportCommit, postImportPreview, postThesis, postTransaction, patchThesis, type Thesis,
 } from "./api";
 import {
   accountLabel, dm, dmy, ENTRY_TYPE, isoDate, money, nTxns, numInput, parseNum, plural, qty, TXN_TYPE, txnType, WRAPPER,
@@ -26,7 +30,7 @@ function WarningText({ w }: { w: { row: number | null; kind: string; message: st
 
 // ---- import ------------------------------------------------------------------------------
 
-const IMPORTERS: [string, string][] = [["auto", "rozpoznaj automatycznie"], ["finanse", "format finanse"], ["generic_csv", "CSV z mapowaniem kolumn"]];
+export const IMPORTERS: [string, string][] = [["auto", "rozpoznaj automatycznie"], ["finanse", "format finanse"], ["generic_csv", "CSV z mapowaniem kolumn"]];
 const MAPPING_HINT = `# Mapowanie kolumn CSV (przykład)\ndelimiter: ";"\ncolumns:\n  date: Data\n  type: Typ\n  symbol: Instrument\n  quantity: Ilość\n  price: Cena\n  cash_amount: Kwota\n  currency: Waluta`;
 
 export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, onAddAccount, onManual, onClassify }: {
@@ -37,7 +41,21 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
   const [acc, setAcc] = useState<number | null>(initialAccount ?? (accounts.length === 1 ? accounts[0].id : null));
   const account = accounts.find((a) => a.id === acc) ?? null;
   const [file, setFile] = useState<File | null>(null);
+  // Approved file connectors of the module join the importer select (design/v3/connectors 5.2).
+  const conn = useAsync(() => getConnectors().catch(() => []), [], { key: ck(slug, "connectors") });
+  const invConnectors = (conn.data ?? []).filter((c) => c.module === "investments" && c.kind === "file");
+  const approvedConn = invConnectors.filter((c) => c.status === "approved");
+  const bindings = useAsync(() => getBindings(slug).catch(() => []), [slug]);
+  const boundTo = (accountId: number) => (bindings.data ?? []).find((b) => b.account_id === accountId && b.module === "investments");
+  const nameOf = (id: string | null | undefined) => importerName(id, invConnectors, IMPORTERS);
+  /** The remembered importer, or `auto` when it names a connector that is no longer approved. */
+  const remembered = (a: AccountRow | null) => {
+    const id = a?.importer;
+    if (!id?.startsWith("connector:")) return id ?? null;
+    return conn.data && !approvedConn.some((c) => `connector:${c.id}` === id) ? null : id;
+  };
   const [importer, setImporter] = useState("auto");
+  const [runErr, setRunErr] = useState<RunFailure | null>(null);
   const [mapping, setMapping] = useState("");
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [problems, setProblems] = useState(false);
@@ -52,11 +70,15 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
     if (!file || acc == null) return;
     setBusy(true); setErr(null);
     try {
+      setRunErr(null);
       const p = await postImportPreview(slug, { file, account_id: acc, importer, mapping: importer === "generic_csv" ? mapping : null });
       setPreview(p);
       setFixes(new Set((p.reconciliation?.diffs ?? []).filter((d) => d.correction).map((d) => String(d.instrument_id))));
       setStep(2);
-    } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
+    } catch (e) {
+      const run = runFailureOf(e);
+      if (run) setRunErr(run); else setErr(errText(e));
+    } finally { setBusy(false); }
   };
   const commit = async () => {
     if (!preview || acc == null) return;
@@ -90,7 +112,7 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
       <span style={{ flex: 1 }} />
       <button className="lnk" onClick={onManual}>dodaj ręcznie</button>
       <button className="btn primary" disabled={!file || busy || (importer === "generic_csv" && !mapping.trim() && !account?.has_mapping)} onClick={runPreview}>
-        {busy ? "Sprawdzam…" : "Podgląd"}
+        {busy ? (importer.startsWith("connector:") ? "Uruchamiam konektor…" : "Sprawdzam…") : "Podgląd"}
       </button>
     </>
   ) : step === 0 ? (
@@ -103,11 +125,12 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
     <Drawer open title="Import transakcji" tag={account ? <Tag>{accountLabel(account, accounts)}</Tag> : undefined} width={600} footer={footer} onClose={onClose} label="Import transakcji">
       <Stepper steps={["Rachunek", "Plik", "Podgląd", "Gotowe"]} current={step} />
       {err && <Notice tone="neg">{err}</Notice>}
+      {runErr && step === 1 && <RunError {...runErr} />}
       {step === 0 && (
         <>
           {accounts.length ? (
             <RadioList<string> name="imp-acc" value={acc == null ? "" : String(acc)} onChange={(v) => setAcc(Number(v))}
-              options={accounts.map((a) => ({ value: String(a.id), title: accountLabel(a, accounts), desc: `${a.name} · ${a.currency}${a.importer ? ` · importer: ${IMPORTERS.find(([k]) => k === a.importer)?.[1] ?? a.importer}` : ""}` }))} />
+              options={accounts.map((a) => ({ value: String(a.id), title: accountLabel(a, accounts), desc: `${a.name} · ${a.currency}${a.importer ? ` · importer: ${nameOf(a.importer)}` : ""}${boundTo(a.id) ? ` · synchronizowane konektorem ${boundTo(a.id)!.connector_name}` : ""}` }))} />
           ) : <div className="muted" style={{ fontSize: 13 }}>Najpierw dodaj rachunek maklerski.</div>}
           <button className="lnk" onClick={onAddAccount}>Dodaj rachunek</button>
         </>
@@ -116,15 +139,27 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
         <>
           <div className="field">
             <label htmlFor="imp-file">Plik od brokera</label>
-            <input id="imp-file" ref={fileRef} type="file" accept=".csv,.json,.txt,text/csv,application/json" data-autofocus
-              onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPreview(null); }} />
+            <input id="imp-file" ref={fileRef} type="file" accept={[".csv,.json,.txt,text/csv,application/json",
+              acceptOf(importer.startsWith("connector:") ? approvedConn.find((c) => `connector:${c.id}` === importer)?.extensions : importer === "auto" ? approvedConn.flatMap((c) => c.extensions ?? []) : [])].filter(Boolean).join(",")} data-autofocus
+              onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPreview(null); setRunErr(null); }} />
           </div>
           <div className="field">
             <label htmlFor="imp-importer">Importer</label>
-            <select id="imp-importer" value={importer} onChange={(e) => setImporter(e.target.value)}>
+            <select id="imp-importer" value={importer} onChange={(e) => { setImporter(e.target.value); setRunErr(null); }}>
               {IMPORTERS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {invConnectors.length > 0 && (
+                <optgroup label="Konektory">
+                  {invConnectors.map((c) => (
+                    <option key={c.id} value={`connector:${c.id}`} disabled={c.status !== "approved"}>
+                      {c.name}{c.status !== "approved" ? ` · ${statusOf(c.status)[0]}` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
-            {account?.importer && <span className="hint">zapamiętany: {IMPORTERS.find(([k]) => k === account.importer)?.[1] ?? account.importer}{account.has_mapping ? " (z mapowaniem)" : ""}</span>}
+            {account?.importer && (
+              <span className="fhint">zapamiętany: {nameOf(account.importer)}{account.importer.startsWith("connector:") && conn.data && remembered(account) == null ? " (niezatwierdzony)" : ""}{account.has_mapping ? " (z mapowaniem)" : ""}</span>
+            )}
           </div>
           {importer === "generic_csv" && (
             <div className="field">
@@ -138,7 +173,7 @@ export function ImportDrawer({ slug, accounts, initialAccount, onClose, onDone, 
       {step === 2 && preview && (
         <>
           <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
-            <code>{preview.file_name}</code> · importer: {IMPORTERS.find(([k]) => k === preview.importer.id)?.[1] ?? preview.importer.name ?? preview.importer.id ?? "-"}{preview.importer.requested === "auto" ? " (rozpoznany automatycznie)" : ""} · {plural(counts?.rows ?? preview.rows.length, "wiersz", "wiersze", "wierszy")} · <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => setStep(1)}>zmień importer</button>
+            <code>{preview.file_name}</code> · importer: {preview.importer.id?.startsWith("connector:") ? preview.importer.name ?? nameOf(preview.importer.id) : IMPORTERS.find(([k]) => k === preview.importer.id)?.[1] ?? preview.importer.name ?? preview.importer.id ?? "-"}{preview.importer.requested === "auto" ? (preview.importer.id?.startsWith("connector:") ? ` · rozpoznano: ${preview.importer.name ?? nameOf(preview.importer.id)}` : " (rozpoznany automatycznie)") : ""} · {plural(counts?.rows ?? preview.rows.length, "wiersz", "wiersze", "wierszy")} · <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => setStep(1)}>zmień importer</button>
           </div>
           {preview.errors.length > 0 && (
             <Notice tone="neg"><b>Plik ma błędy: popraw je przed importem.</b>
@@ -298,7 +333,7 @@ export function TxnDrawer({ slug, accounts, positions, preset, onClose, onSaved 
   };
   return (
     <Drawer open title="Dodaj transakcję" tag={account ? <Tag>{accountLabel(account, accounts)}</Tag> : undefined} onClose={onClose} label="Dodaj transakcję"
-      footer={<><span className="hint">{cash != null && cash !== 0 ? `Wpływ na gotówkę: ${money(cash, cross ? accCur : currency, true)}` : rule.sign === "neutral" ? "bez wpływu na gotówkę" : ""}</span><span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Anuluj</button><button className="btn primary" disabled={busy || acc == null} onClick={save}>{busy ? "Zapisuję…" : "Zapisz"}</button></>}>
+      footer={<><span className="fhint">{cash != null && cash !== 0 ? `Wpływ na gotówkę: ${money(cash, cross ? accCur : currency, true)}` : rule.sign === "neutral" ? "bez wpływu na gotówkę" : ""}</span><span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Anuluj</button><button className="btn primary" disabled={busy || acc == null} onClick={save}>{busy ? "Zapisuję…" : "Zapisz"}</button></>}>
       {err && <Notice tone="neg">Nie zapisano: {err}</Notice>}
       <div className="form-row">
         <div className="field">
@@ -429,97 +464,9 @@ export function ThesisDrawer({ slug, position, thesis, onClose, onSaved }: {
   );
 }
 
-// ---- agent proposal ----------------------------------------------------------------------
+// ---- agent proposal: moved to core (core/ProposalDrawer.tsx; a budget sync proposal uses it too) ----------
 
-export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }: {
-  slug: string; id: number; version: number | null; onClose: () => void; onDone: (approved: boolean, newVersion: number | null) => void;
-  onChanged?: () => void;
-}) {
-  const p = useAsync(() => getProposal(slug, id), [slug, id]);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const data = p.data;
-  const act = async (approve: boolean) => {
-    setBusy(true); setErr(null);
-    try {
-      const r = approve ? await approveProposal(slug, id) : await rejectProposal(slug, id);
-      const v = r.result && typeof r.result.version === "number" ? (r.result.version as number) : null;
-      onDone(approve, v);
-    } catch (e) {
-      setErr(errText(e));
-      p.reload(); // a refused approval marks the proposal failed: show its new status
-      onChanged?.();
-    } finally { setBusy(false); }
-  };
-  const isImport = data?.kind === "import";
-  const failure = proposalError(data?.result); // why applying failed (stable error_code -> Polish)
-  const kindLabel = !data ? "" : isImport ? "import" : data.kind === "strategy" ? "strategia" : "reguła";
-  const yamlDiff = typeof data?.diff === "string" ? data.diff : data?.diff?.yaml ?? null;
-  const mdDiff = typeof data?.diff === "object" && data?.diff ? data.diff.md ?? null : null;
-  const bt = data?.backtest;
-  const pv = data?.preview;
-  const unsupported = !!data?.converter_unsupported; // stored before the app stopped running scripts
-  return (
-    <Drawer open title="Propozycja agenta" tag={data ? <Tag tone="info">{kindLabel}</Tag> : undefined}
-      width={600} onClose={onClose} label="Propozycja agenta"
-      footer={data?.status === "pending" ? <>
-        <button className="btn" disabled={busy} onClick={() => act(false)}>Odrzuć</button>
-        <span style={{ flex: 1 }} />
-        <button className="btn primary" disabled={busy || unsupported} onClick={() => act(true)}>{isImport ? "Zatwierdź import" : `Zatwierdź jako v${(version ?? 0) + 1}`}</button>
-      </> : undefined}>
-      {err && <Notice tone="neg">{failure ? <span title={failure.detail ?? undefined}>{failure.text}</span> : err}</Notice>}
-      {!err && data?.status === "failed" && failure && <Notice tone="neg"><span title={failure.detail ?? undefined}>{failure.text}</span></Notice>}
-      {p.error && <Notice tone="neg">Nie udało się wczytać propozycji: {p.error}</Notice>}
-      {!data && !p.error && <Skeleton h={160} />}
-      {data && (
-        <>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>{proposalSummary(data) ?? "Propozycja zmiany"}</div>
-          <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
-            {data.created_at ? `zgłoszona ${dmy(data.created_at)}` : ""}
-            {data.status !== "pending" ? ` · ${({ approved: "zatwierdzona", rejected: "odrzucona", failed: "nie udało się zastosować" } as Record<string, string>)[data.status] ?? data.status}` : ""}
-          </div>
-          {data.detail_error && !unsupported && <Notice tone="warn">{data.detail_error}</Notice>}
-          {unsupported && <Notice tone="warn">Aplikacja nie uruchamia skryptów konwertera: poproś agenta o gotowy plik w formacie finanse.</Notice>}
-          {data.base_changed && <Notice tone="warn">Pliki strategii zmieniły się od propozycji: poproś agenta o nową.</Notice>}
-          {data.reason && <div className="thesis" style={{ marginBottom: 12 }}><b>Uzasadnienie agenta:</b> {data.reason}</div>}
-          {yamlDiff && <DiffBlock title="Zmiana w strategy.yaml" text={yamlDiff} />}
-          {mdDiff && <DiffBlock title="Zmiana w strategy.md" text={mdDiff} />}
-          {!yamlDiff && data.rule_yaml && <DiffBlock title="Nowa reguła" text={data.rule_yaml} />}
-          {bt && (
-            <Notice tone="info" style={{ margin: "12px 0 0" }}>
-              {bt.evaluated
-                ? <>Test wsteczny {bt.from ? dm(bt.from) : ""}{bt.to ? ` - ${dm(bt.to)}` : ""}: reguła zadziałałaby w {bt.points_fired ?? 0} z {bt.evaluated} punktów ({plural(bt.episodes ?? 0, "epizod", "epizody", "epizodów")}){bt.last_fired ? `, ostatnio ${dm(bt.last_fired)}` : ""}{bt.instruments?.length ? ` · ${bt.instruments.join(", ")}` : ""}.</>
-                : "Test wsteczny: brak historii transakcji."}
-            </Notice>
-          )}
-          {isImport && (
-            <>
-              <div className="kv" style={{ margin: "4px 0 10px" }}>
-                <span className="k">Plik</span><span className="v"><code>{data.file_name ?? "-"}</code></span>
-                <span className="k">Rachunek</span><span className="v">{data.account ?? "-"}</span>
-                {pv && <><span className="k">Podgląd</span><span className="v">{plural(Number(pv.new ?? 0), "nowy wiersz", "nowe wiersze", "nowych wierszy")} · {plural(Number(pv.duplicates ?? 0), "duplikat", "duplikaty", "duplikatów")}{Number(pv.reconciliation_mismatches ?? 0) ? ` · ${plural(Number(pv.reconciliation_mismatches), "różnica", "różnice", "różnic")} ze snapshotem` : ""}{Number(pv.errors ?? 0) ? ` · ${plural(Number(pv.errors), "błąd", "błędy", "błędów")}` : ""}</span></>}
-              </div>
-            </>
-          )}
-          <div className="foot">Odrzucenie niczego nie zmienia.</div>
-        </>
-      )}
-    </Drawer>
-  );
-}
-
-function DiffBlock({ title, text }: { title: string; text: string }) {
-  return (
-    <>
-      <h4 style={{ margin: "10px 0 6px", fontSize: 12, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.03em" }}>{title}</h4>
-      <div className="diff" role="region" aria-label={title}>
-        {text.split("\n").map((l, k) => (
-          <div key={k} className={l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : ""}>{l || " "}</div>
-        ))}
-      </div>
-    </>
-  );
-}
+export { ProposalDrawer } from "../../core/ProposalDrawer";
 
 // ---- an instrument's transactions ----------------------------------------------------------
 

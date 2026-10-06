@@ -63,6 +63,9 @@ export default async function globalSetup() {
     FINANSE_APP_BUNDLE: "none",
     FINANSE_DEV_EMBED_TOKEN: "",
     PYTHONUNBUFFERED: "1",
+    // Connector secrets typed in the e2e app stay in the server's memory, never in the macOS keychain.
+    PYTHON_KEYRING_BACKEND: "memory_keyring.MemoryKeyring",
+    PYTHONPATH: [HERE, process.env.PYTHONPATH].filter(Boolean).join(":"),
   };
   delete env.FINANSE_DATABASE_URL;
 
@@ -81,6 +84,9 @@ export default async function globalSetup() {
   process.env.E2E_BASE_URL = base;
   process.env.E2E_TOKEN = token;
   process.env.E2E_DATA_DIR = env.FINANSE_DATA_DIR;
+  // The specs' own CLI calls (18-connectors `cli()`) use the same memory keyring as the server, never the login keychain.
+  process.env.E2E_PYTHON_KEYRING_BACKEND = env.PYTHON_KEYRING_BACKEND;
+  process.env.E2E_PYTHONPATH = env.PYTHONPATH;
 
   return async () => {
     proc.kill("SIGINT");

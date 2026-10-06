@@ -173,6 +173,17 @@ textarea { font: inherit; font-size: 13px; padding: 6px 9px; border-radius: 8px;
 .setup-steps .t { font-weight: 600; font-size: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .setup-steps .h { color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 64ch; }
 .setup-steps .act { display: flex; gap: 6px; align-items: center; margin-top: 1px; flex-wrap: wrap; justify-content: flex-end; }
+/* compact variant for a 1/3-width widget (first steps in the Majątek widget): the actions under the hint */
+.setup-steps.compact .ss { grid-template-columns: 28px minmax(0, 1fr); gap: 8px 12px; padding: 10px 0; }
+.setup-steps.compact .act { grid-column: 2; justify-content: flex-start; margin-top: 2px; }
+.setup-steps.compact .t { font-size: 13.5px; }
+.setup-steps .ss.done .h { color: var(--muted); }
+/* a placeholder radio (a source that is not there yet) */
+.radios label.off { opacity: .6; cursor: default; }
+/* plain muted helper text under a field / in a drawer footer (`.hint` is the strategy-hint chip since P2) */
+.fhint { color: var(--muted); font-size: 12px; }
+.drawer .inline { display: flex; gap: 8px; align-items: center; }
+.drawer .inline input { flex: 1; min-width: 0; }
 /* Menu / popover */
 .menu-anchor { position: relative; }
 .menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 300px; background: var(--card); border: 1px solid var(--border);
@@ -1047,3 +1058,33 @@ td .ai + .status, td .ai { margin-right: 6px; }
 /* Asset page: the model recommendation under Teza (label with its coin, then the short reason). */
 .rec b { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
 .rec p { margin: 6px 0 0; font-size: 13px; line-height: 1.45; }
+/* Connectors (F10, design/v3/connectors): drawer facts, code viewer, line diff, disclosure, binding form */
+.drawer .kv { grid-template-columns: 150px minmax(0, 1fr); }
+.drawer .kv code { overflow-wrap: anywhere; }
+.drawer .kv.ckv { align-items: baseline; gap: 8px 16px; }
+.codeview { margin: 8px 0 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.codeview .cvh { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 10px; background: var(--chip); font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.codeview .cvh code { color: var(--text); }
+.codeview pre { margin: 0; max-height: 420px; overflow: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-ligatures: none; counter-reset: ln; padding: 8px 0; }
+.codeview pre:focus-visible { outline: 2px solid var(--nw); outline-offset: -2px; }
+.codeview pre .in { display: inline-block; min-width: 100%; }
+.codeview pre span.l { display: block; padding: 0 12px 0 0; white-space: pre; }
+.codeview pre span.l::before { counter-increment: ln; content: counter(ln); display: inline-block; width: 44px; padding-right: 12px; text-align: right; color: var(--muted); user-select: none; }
+.codeview pre span.d { display: block; padding: 0 12px 0 0; white-space: pre; }
+.codeview pre span.d i { display: inline-block; width: 38px; padding-right: 6px; text-align: right; color: var(--muted); font-style: normal; user-select: none; }
+.codeview pre span.d b { display: inline-block; width: 16px; font-weight: 400; color: var(--muted); user-select: none; }
+.codeview pre span.d.add { background: var(--posBg); } .codeview pre span.d.add b { color: var(--pos); }
+.codeview pre span.d.del { background: var(--negBg); } .codeview pre span.d.del b { color: var(--neg); }
+.codeview pre span.d.hunk { color: var(--muted); background: var(--chip); padding-left: 98px; }
+.codeview pre span.d.note { color: var(--muted); font-style: italic; padding-left: 98px; }
+.more summary { font-size: 12px; color: var(--muted); cursor: pointer; margin-top: 4px; list-style: none; }
+.more summary::-webkit-details-marker { display: none; }
+.more summary::before { content: "▸ "; }
+.more[open] summary::before { content: "▾ "; }
+.more pre.diff { white-space: pre-wrap; max-height: 240px; }
+.bindform { background: var(--chip); border-radius: 10px; padding: 12px 14px; margin: 8px 0; }
+.bindform .field input:not([type="checkbox"]), .bindform .field select { background: var(--card); }
+.drawer .kick { display: flex; gap: 8px; align-items: center; margin: 16px 0 6px; }
+.drawer .kick:first-child { margin-top: 0; }
+.drawer .kick .spacer { flex: 1; }
+.drawer table tr.muted td { color: var(--muted); }

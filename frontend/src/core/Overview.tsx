@@ -13,13 +13,10 @@ import { getSeries, type ProfileModule } from "./api";
 import { useShell } from "./context";
 import { AccountsWidget, BudgetMonthWidget, normTitle, PendingWidget, SubscriptionsWidget, useMonthNorm } from "./overview/CoreWidgets";
 import { NetWorthWidget } from "./overview/NetWorthWidget";
+import { hiddenCards, hideCard, onHiddenChange } from "./hidden";
 import { moduleDef } from "./registry";
 import type { ModuleCtx, ModuleDef } from "./types";
 
-const HIDDEN_KEY = "finanse.hiddenCards";
-const readHidden = (): Record<string, string> => {
-  try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || "{}"); } catch { return {}; }
-};
 const LIQUID = new Set(["checking", "savings", "cash"]);
 /** Whole units for hero facts, rounded (582 986,99 -> "582 987 zł"; no "-0", F7 FE11). */
 const whole = (v: number, c: string) => cur0s(v, c);
@@ -33,11 +30,12 @@ export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; en
     setNarrow(minimal);
     return () => setNarrow(false);
   }, [minimal, setNarrow]);
-  const [hidden, setHidden] = useState(readHidden);
+  const [hidden, setHidden] = useState(hiddenCards);
+  useEffect(() => onHiddenChange(() => setHidden(hiddenCards())), []);
 
   // `#/<slug>/overview/<module>` (a tab route of a module that lives here, F7 merge): scroll its widget into view,
   // ring it for 2.4 s and normalise the URL (and the remembered view) to plain Przegląd.
-  const focusMod = base.sub ? mods.find(({ m, def }) => def.id === base.sub && m.setup_state !== "empty" && def.overview?.length) : undefined;
+  const focusMod = base.sub ? mods.find(({ m, def }) => def.id === base.sub && (m.setup_state !== "empty" || def.overview?.some((s) => s.whenEmpty)) && def.overview?.length) : undefined;
   const focusId = focusMod ? `${focusMod.def.id}.${focusMod.def.overview![0].id}` : null;
   const [flash, setFlash] = useState<string | null>(focusId);
   const flashTimer = useRef<number | undefined>(undefined);
@@ -53,13 +51,11 @@ export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; en
 
   if (minimal && only?.def.MinimalOverview) return <only.def.MinimalOverview ctx={only.ctx} />;
 
-  const hide = (id: string, state: string) => {
-    const next = { ...hidden, [`${base.slug}.${id}`]: state };
-    setHidden(next);
-    try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-  };
+  const hide = (id: string, state: string) => hideCard(base.slug, id, state);
   const on = new Set(enabled.map((m) => m.id));
-  const ready = mods.filter(({ m }) => m.setup_state !== "empty");
+  // A module whose widget is its own first steps (`whenEmpty`, the Majątek widget) renders while empty too.
+  const hasWhenEmpty = (def: ModuleDef) => !!def.overview?.some((s) => s.whenEmpty);
+  const ready = mods.filter(({ m, def }) => m.setup_state !== "empty" || hasWhenEmpty(def));
   const budget = mods.find(({ m }) => m.id === "budget" && m.setup_state !== "empty");
   type Slot = GridItem & { order: number };
   const slots: Slot[] = [];
@@ -67,13 +63,14 @@ export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; en
     slots.push({ id: "budget", span: 1, order: 10, node: <BudgetMonthWidget ctx={budget.ctx} /> });
     slots.push({ id: "subs", span: 1, order: 80, node: <SubscriptionsWidget ctx={budget.ctx} /> });
   }
-  for (const { def, ctx } of ready) {
+  for (const { m, def, ctx } of ready) {
     for (const s of def.overview ?? []) {
       if (s.needs?.some((id) => !on.has(id))) continue;
+      if (m.setup_state === "empty" && !s.whenEmpty) continue;
       slots.push({ id: `${def.id}.${s.id}`, span: s.span, order: s.order, stack: s.stack, node: <s.Widget ctx={ctx} /> });
     }
   }
-  mods.filter(({ m }) => m.setup_state !== "ready" && hidden[`${base.slug}.${m.id}`] !== m.setup_state).forEach(({ m, def }, k) => {
+  mods.filter(({ m, def }) => m.setup_state !== "ready" && !hasWhenEmpty(def) && hidden[`${base.slug}.${m.id}`] !== m.setup_state).forEach(({ m, def }, k) => {
     slots.push({ id: `pending.${m.id}`, span: 1, order: 35 + k / 10, node: <PendingWidget def={def} m={m} onHide={() => hide(m.id, m.setup_state)} /> });
   });
   slots.push({ id: "networth", span: 2, order: 40, node: <NetWorthWidget /> });

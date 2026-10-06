@@ -4,6 +4,7 @@
 // resolveView).
 import type { ModuleDef } from "../../core/types";
 import { AssetsWidget } from "./AssetsWidget";
+import { AssetsStart } from "./Start";
 
 export const assets: ModuleDef = {
   id: "assets",
@@ -12,5 +13,7 @@ export const assets: ModuleDef = {
   short: "Nieruchomości, auta i inne aktywa wyceniane ręcznie",
   tabs: [],
   // In the side stack right of `Wartość netto w czasie`, above Kredyty (50): assets, then liabilities.
-  overview: [{ id: "list", span: 1, order: 45, stack: "side", Widget: AssetsWidget }],
+  // `whenEmpty`: the widget is the module's first steps while it has no position (first-steps D6).
+  overview: [{ id: "list", span: 1, order: 45, stack: "side", whenEmpty: true, Widget: AssetsWidget }],
+  Start: AssetsStart,
 };

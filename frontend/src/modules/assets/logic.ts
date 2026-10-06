@@ -58,8 +58,9 @@ const FUTURE = "Data wyceny nie może być z przyszłości.";
 /** modules/assets/models.NOTE_MAX. */
 export const NOTE_MAX = 500;
 
-/** Asset types the add form offers (the API also takes mortgage / loan; liabilities live in Kredyty). */
-export const CREATE_TYPES = ["property", "investment", "other"] as const;
+/** Asset types the add form offers (the API also takes mortgage / loan; liabilities live in Kredyty). A vehicle is
+ * valued by its depreciation curve (first-steps D7). */
+export const CREATE_TYPES = ["property", "vehicle", "investment", "other"] as const;
 
 /** The note as the backend stores it: whitespace folded to single spaces, blank = null. */
 export function cleanNote(text: string | null | undefined): string | null {
@@ -75,13 +76,66 @@ export function parseValue(text: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** `onDate`: the valuation date (`on_date`, "YYYY-MM-DD"; blank = the server's today). */
-export interface AssetDraft { name: string; type: string; value: string; currency: string; note: string; onDate?: string }
+/** `onDate`: the valuation date (`on_date`, "YYYY-MM-DD"; blank = the server's today). A vehicle carries its curve
+ * fields instead of the value and date. */
+export interface AssetDraft { name: string; type: string; value: string; currency: string; note: string; onDate?: string; curve?: CurveDraft }
+
+/** A vehicle's depreciation fields as typed: price, purchase date, yearly rate in percent, optional floor. */
+export interface CurveDraft { price: string; purchaseDate: string; ratePct: string; floor: string }
+
+/** The curve as the API takes it (`annual_rate` a fraction), or the first problem in Polish. */
+export function curveBody(c: CurveDraft, today?: string): { ok: true; body: Depreciation } | { ok: false; error: string } {
+  const price = parseValue(c.price);
+  if (price == null || !(price > 0)) return { ok: false, error: "Podaj cenę zakupu (liczba większa od 0)." };
+  const date = c.purchaseDate.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "Podaj datę zakupu." };
+  if (today && date > today) return { ok: false, error: "Data zakupu nie może być z przyszłości." };
+  const rate = parseValue(c.ratePct);
+  if (rate == null || rate < 0 || rate > 100) return { ok: false, error: "Roczny spadek od 0 do 100 %." };
+  const floor = c.floor.trim() ? parseValue(c.floor) : null;
+  if (c.floor.trim() && floor == null) return { ok: false, error: "Wartość minimalna: liczba, 0 lub więcej." };
+  if (floor != null && floor > price) return { ok: false, error: "Wartość minimalna nie może przekraczać ceny zakupu." };
+  return { ok: true, body: { purchase_price: price, purchase_date: date, annual_rate: Math.round(rate * 1e6) / 1e8, floor } };
+}
+
+/** The edit form's curve fields of a vehicle row (rate back in percent). */
+export function curveDraft(dep: Depreciation | null | undefined, today: string): CurveDraft {
+  if (!dep) return { price: "", purchaseDate: today, ratePct: "15", floor: "" };
+  const t = (v: number) => v.toLocaleString("pl-PL", { maximumFractionDigits: 2, useGrouping: false });
+  return { price: t(dep.purchase_price), purchaseDate: dep.purchase_date, ratePct: t(dep.annual_rate * 100), floor: dep.floor != null ? t(dep.floor) : "" };
+}
+
+/** A vehicle's value on `today` by the declining-balance curve (modules/assets/depreciation.py): 0 before the
+ * purchase, `price * (1 - rate) ** years` (years = days / 365.25), never below `floor`. */
+export function vehicleValue(price: number, purchaseDate: string, ratePct: number, floor: number | null, today: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(purchaseDate) || !/^\d{4}-\d{2}-\d{2}/.test(today)) return price;
+  const days = dayNo(today) - dayNo(purchaseDate);
+  if (days < 0) return 0;
+  const v = price * (1 - ratePct / 100) ** (days / 365.25);
+  return floor != null ? Math.max(v, floor) : v;
+}
+
+/** The live line under the curve fields: `dziś ≈ 63 391 zł · -853 zł / mies.` as numbers, or null while invalid. */
+export function curvePreview(c: CurveDraft, today: string): { value: number; loss: number } | null {
+  const r = curveBody(c, today);
+  if (!r.ok) return null;
+  const d = r.body;
+  const value = vehicleValue(d.purchase_price, d.purchase_date, d.annual_rate * 100, d.floor, today);
+  return { value, loss: monthlyLoss(value, d) ?? 0 };
+}
 
 /** POST body of the add form, or the first problem in Polish. `today` (todayLocal()) guards the date. */
 export function createBody(d: AssetDraft, today?: string): { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
   const name = d.name.split(/\s+/).filter(Boolean).join(" ");
   if (!name) return { ok: false, error: "Podaj nazwę." };
+  if (d.type === "vehicle") {
+    const c = curveBody(d.curve ?? { price: "", purchaseDate: "", ratePct: "", floor: "" }, today);
+    if (!c.ok) return c;
+    const note = cleanNote(d.note);
+    if (note && note.length > NOTE_MAX) return { ok: false, error: `Notatka: maks. ${NOTE_MAX} znaków.` };
+    const currency = d.currency.trim().toUpperCase();
+    return { ok: true, body: { name, type: "vehicle", ...(currency ? { currency } : {}), depreciation: c.body, ...(note ? { note } : {}) } };
+  }
   const value = parseValue(d.value);
   if (value == null) return { ok: false, error: "Podaj wartość (liczba, 0 lub więcej)." };
   const onDate = d.onDate?.trim() || null;
@@ -95,14 +149,23 @@ export function createBody(d: AssetDraft, today?: string): { ok: true; body: Rec
 /** PATCH body of an edit: only the changed note / value (an empty object = nothing to save); `on_date` goes
  * only with a changed value (a date alone changes nothing). */
 export function patchBody(
-  row: { note: string | null; balance: number | null },
-  edit: { note: string; value: string | null; onDate?: string },
+  row: { note: string | null; balance: number | null; depreciation?: Depreciation | null },
+  edit: { note: string; value: string | null; onDate?: string; curve?: CurveDraft },
   today?: string,
 ): { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
   const body: Record<string, unknown> = {};
   const note = cleanNote(edit.note);
   if (note && note.length > NOTE_MAX) return { ok: false, error: `Notatka: maks. ${NOTE_MAX} znaków.` };
   if (note !== (row.note ?? null)) body.note = note;
+  // A vehicle's curve goes only when one of its fields changed (first-steps 11).
+  if (edit.curve) {
+    const c = curveBody(edit.curve, today);
+    if (!c.ok) return c;
+    const old = row.depreciation ?? null;
+    const same = (a: number | null | undefined, b: number | null | undefined) => (a == null || b == null ? a == b : Math.abs(a - b) < 1e-9);
+    if (!old || !same(old.purchase_price, c.body.purchase_price) || old.purchase_date !== c.body.purchase_date
+      || !same(old.annual_rate, c.body.annual_rate) || !same(old.floor ?? null, c.body.floor)) body.depreciation = c.body;
+  }
   if (edit.value != null) {
     const value = parseValue(edit.value);
     if (value == null) return { ok: false, error: "Podaj wartość (liczba, 0 lub więcej)." };
@@ -114,4 +177,11 @@ export function patchBody(
     }
   }
   return { ok: true, body };
+}
+
+/** The assets first steps' statuses from the rows (first-steps section 10): a position (done with any row), a
+ * vehicle with its curve (optional: done only when one exists). */
+export function assetSteps(rows: readonly { kind?: string | null; type?: string; depreciation?: Depreciation | null }[]): { position: "done" | "on"; vehicle: "done" | "todo" } {
+  const vehicles = rows.filter((r) => (r.kind === "vehicle" || r.type === "vehicle") && r.depreciation);
+  return { position: rows.length ? "done" : "on", vehicle: vehicles.length ? "done" : "todo" };
 }

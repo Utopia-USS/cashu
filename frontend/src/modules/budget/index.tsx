@@ -1,10 +1,11 @@
 import type { ModuleDef } from "../../core/types";
 import { cur } from "../../format";
 import { FactList, Kpi } from "../../ui";
-import { BankSync } from "./BankSync";
+import { BudgetActions } from "./BankSync";
 import { Expenses } from "./Expenses";
 import { Flows } from "./Flows";
 import { monthLabel } from "./logic";
+import { BudgetStart } from "./Start";
 import { Subscriptions } from "./Subscriptions";
 
 // The overview's `summary.month` is in the profile's base currency (the server's budget default).
@@ -19,7 +20,8 @@ export const budget: ModuleDef = {
     { id: "flows", label: "Przepływy", render: () => <Flows /> },
     { id: "subs", label: "Subskrypcje", render: () => <Subscriptions /> },
   ],
-  TabAction: BankSync,
+  Start: BudgetStart,
+  TabAction: BudgetActions,
   Kpis: ({ ctx }) => {
     const m = ctx.summary.month;
     if (ctx.state === "empty" || !m) return null;

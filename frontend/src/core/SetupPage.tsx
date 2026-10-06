@@ -9,15 +9,16 @@ import { getSetup, type ModuleInfo, type SetupAction, type SetupInfo, type Setup
 import { moduleDef, tabKey } from "./registry";
 import type { View } from "./types";
 import { pathToView, useShell } from "./context";
+import { stepCounts } from "./setupSteps";
 import { TRANSLOCATED_TEXT } from "./workspace";
 
 const POLL_MS = 5000;
 
 export const stepsTag = (info: SetupInfo | null, state?: SetupState): ReactNode => {
   if (state === "ready" || info?.state === "ready") return <Tag tone="pos">gotowy</Tag>;
-  const n = info?.steps.length ?? 0;
+  // Required steps only: an optional step never counts toward the state (first-steps D8).
+  const { done, n } = stepCounts(info?.steps);
   if (!info || !n) return <Tag tone="warn">nieskonfigurowany</Tag>;
-  const done = info.steps.filter((s) => s.status === "done").length;
   return <Tag tone="warn">{done} z {n} {n === 1 ? "kroku" : "kroków"}</Tag>;
 };
 
@@ -85,6 +86,7 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
         <div className="controls" style={{ marginBottom: 6 }}>
           <h2 style={{ margin: 0 }}>{def.name} · konfiguracja</h2>
           {stepsTag(data, data?.state)}
+          {def.Start && <><span className="spacer" /><button className="lnk" onClick={() => go({ kind: "setup", module: moduleId })}>Pierwsze kroki w aplikacji</button></>}
         </div>
         {error && <Notice tone="neg">Nie udało się pobrać stanu: {error}</Notice>}
         {data?.state === "ready" && (
@@ -106,6 +108,7 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
               title: s.title,
               hint: s.description,
               status: s.status,
+              optional: s.optional,
               actions: s.actions.length ? s.actions.map((a, i) => <ActionButton key={i} moduleId={moduleId} a={a} />) : undefined,
             }))} />
           ) : <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>Brak kroków konfiguracji.</div>

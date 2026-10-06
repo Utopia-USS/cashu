@@ -282,6 +282,11 @@ export const LABELS: Record<string, Label> = {
   "import.instrument_note": "Uwaga do instrumentu",
   "import.unknown_instrument": "Nieznany instrument",
   "import.history_gap_hint": "Możliwa luka w historii",
+  "import.currency_mismatch": "Waluta nie zgadza się z walutą konta",
+  "import.overlap": "Wiersze już w historii konta z innego źródła (bank, CSV): pominięte",
+  "import.unknown_institution": "Nieznany bank w pliku",
+  "import.empty": "Plik nie zawiera transakcji",
+  "import.duplicate_id": "Powtórzony identyfikator transakcji",
   "import.importer_error": "Importer nie rozpoznał pliku",
 
   // ---- agent proposals: summary by kind ---------------------------------------------------------
@@ -294,10 +299,15 @@ export const LABELS: Record<string, Label> = {
   "proposal.custom_rule": (p) => (p.rule_kind === "custom" ? "Nowa reguła własna" : "Nowa reguła")
     + (p.episodes != null ? `: w teście wstecznym ${plural(Number(p.episodes), "epizod", "epizody", "epizodów")}` : ""),
   "proposal.import": (p) => has(p, "account")
-    ? `Import do ${p.account}` + (p.converter ? ` (konwerter ${p.converter})` : p.importer ? ` (${p.importer})` : "")
+    ? `Import do ${p.account}` + (p.connector ? ` (konektor ${p.connector})` : p.converter ? ` (konwerter ${p.converter})` : p.importer ? ` (${p.importer})` : "")
       + (p.new != null ? `: ${plural(Number(p.new), "nowy wiersz", "nowe wiersze", "nowych wierszy")}` : ": konwerter czeka na zatwierdzenie")
     : null,
+  "proposal.budget_import": (p) => `Import wyciągu` + (p.account ? ` do ${p.account}` : "") + (p.connector ? ` (konektor ${p.connector})` : "")
+    + (p.new != null ? `: ${plural(Number(p.new), "nowa transakcja", "nowe transakcje", "nowych transakcji")}` : ""),
   // ---- agent proposals: why applying failed (result.error_code) -----------------------------------
+  "proposal.error.cursor_conflict": "Konto zsynchronizowano później niż ta propozycja; uruchom synchronizację jeszcze raz",
+  "proposal.error.connector_not_approved": "Konektor nie jest zatwierdzony; zatwierdź go w Ustawieniach › Konektory",
+  "proposal.error.binding_missing": "Powiązanie zostało odłączone",
   "proposal.error.invalid": "Propozycja jest nieprawidłowa",
   "proposal.error.unknown_kind": "Nieznany rodzaj propozycji",
   "proposal.error.too_long": "Uzasadnienie jest za długie",
@@ -318,7 +328,7 @@ export const LABELS: Record<string, Label> = {
   "proposal.error.import_failed": "Import się nie udał",
   "proposal.error.import_blocked": "Tego pliku nie da się teraz zaimportować",
   "proposal.error.interrupted": "Zatwierdzanie przerwane (aplikacja się zamknęła): sprawdź wynik przed nową propozycją",
-  "proposal.error.converter_unsupported": "Aplikacja nie uruchamia skryptów konwertera: poproś agenta o przekonwertowany plik",
+  "proposal.error.converter_unsupported": "Skryptu konwertera z tej propozycji nie da się zatwierdzić: aplikacja uruchamia tylko konektory zatwierdzone w Ustawieniach › Konektory. Poproś agenta o konektor albo przekonwertowany plik",
   "proposal.error.apply_failed": "Zatwierdzenie nie powiodło się (szczegóły w logu aplikacji)",
   "proposal.error.write_failed": "Nie udało się zapisać plików; nic nie zostało zmienione",
 
@@ -334,6 +344,21 @@ export const LABELS: Record<string, Label> = {
   "error.research_conflict": "Notatka już obsłużona (obserwowana albo odrzucona)",
   "error.research_invalid": "Nieprawidłowe dane notatki researchu",
   "error.name_taken": "Pozycja o tej nazwie już istnieje",
+  "error.loan_name_taken": "Kredyt o tej nazwie już istnieje.",
+  "error.import_bank_unknown": "Nie rozpoznano banku: wybierz go z listy.",
+  "error.import_header_missing": "To nie wygląda na wyciąg z tego banku: sprawdź bank i plik.",
+  "error.import_empty": "Plik nie zawiera transakcji.",
+  "error.import_file_format": "Nieobsługiwany lub uszkodzony plik",
+  "error.file_too_large": "Plik jest za duży.",
+  "error.import_invalid": "Plik w formacie finanse ma błędy: popraw je przed importem.",
+  "error.import_currency_mismatch": "Waluta pliku różni się od waluty konta.",
+  // FE-only: a statement commit whose staged preview is gone (pruned after 24 h, or committed in another window)
+  "import.preview_expired": "Podgląd wygasł: wybierz plik jeszcze raz.",
+  "error.import_connector_unavailable": "Ten konektor nie jest jeszcze dostępny.",
+  "error.import_account_mismatch": "Plik jest z innego konta: numer rachunku się nie zgadza.",
+  "error.import_account_type": "Nieprawidłowy typ konta.",
+  "error.loan_invalid": "Nieprawidłowe dane kredytu: sprawdź pola.",
+  "error.depreciation_invalid": "Nieprawidłowa krzywa utraty wartości: sprawdź cenę, datę, spadek i wartość minimalną.",
 
   // ---- alert signal facts (`message_code` + `message_params` on alert signals; the subject is added by the UI) --
   "alert.price_below": (p) => has(p, "close", "level") ? `cena ${cur(p.close, p.currency)} poniżej ${cur(p.level, p.currency)}` : null,
@@ -374,6 +399,7 @@ export const LABELS: Record<string, Label> = {
   "worker.throttled": (p) => (has(p, "until") ? `limit banku do ${whenText(p.until)}` : "limit banku"),
   "worker.disabled_for_run": "wyłączone w tym przebiegu",
   "worker.busy": "inny przebieg w toku",
+  "worker.connectors_not_due": "konektory: jeszcze nie pora",
   "worker.notifier_none": "bez powiadomień",
   "worker.digest_already_sent": "już wysłane dziś",
   // params {rule} = the raw rule id (or index): never shown; the payload carries no kind for a Polish label
@@ -386,6 +412,42 @@ export const LABELS: Record<string, Label> = {
   // ---- moved app (GET /api/system worker.relocation, F7 PK11) ----------------------------------------------
   "relocation.missing": "Praca w tle wskazuje program, którego już nie ma",
   "relocation.other_program": "Praca w tle wskazuje inną kopię aplikacji",
+  // connectors (F10): the approval / bindings routes send `connector.<code>`, the import previews `connector_<kind>`
+  "error.connector.not_found": "Nie znaleziono konektora: mógł zostać usunięty",
+  "error.connector.conflict": "Konektor zmienił się, odkąd go otworzyłeś: sprawdź pliki jeszcze raz.",
+  "error.connector.invalid": "Konektor nie przechodzi walidacji",
+  "error.connector.binary_file": "Plik binarny: bez podglądu.",
+  "error.connector.file_too_large": "Plik za duży do podglądu (limit 200 KiB).",
+  "error.connector.keychain": "Pęk kluczy macOS jest niedostępny",
+  "error.connector.busy": "Trwa inna synchronizacja tego konta; spróbuj za chwilę.",
+  "error.connector_changed": "Konektor zmienił się, odkąd go otworzyłeś: sprawdź pliki jeszcze raz.",
+  "error.connector_invalid": "Konektor nie przechodzi walidacji",
+  "error.connector_busy": "Trwa inna synchronizacja tego konta; spróbuj za chwilę.",
+  "error.connector_conflict": "Konektor o tym identyfikatorze jest już zainstalowany",
+  "error.connector_not_approved": "Konektor nie jest zatwierdzony; zatwierdź go w Ustawieniach › Konektory",
+  "error.connector_binding_exists": "To konto ma już powiązanie z tym konektorem.",
+  "error.connector_params": "Nieprawidłowe parametry powiązania",
+  "error.connector_file_too_large": "Plik za duży do podglądu (limit 200 KiB).",
+  "error.connector_file_binary": "Plik binarny: bez podglądu.",
+  // a connector run failure (`kind`; the import previews answer `X-Finanse-Error-Code: connector_<kind>`)
+  "connector.bad_file": "Konektor nie rozpoznał tego pliku.",
+  "connector.unsupported_version": "Konektor nie obsługuje tej wersji eksportu.",
+  "connector.auth_failed": "Serwis odrzucił klucz: sprawdź sekret powiązania.",
+  "connector.rate_limited": "Serwis ograniczył liczbę zapytań; następna próba później.",
+  "connector.network": "Brak połączenia z serwisem.",
+  "connector.upstream": "Serwis odpowiedział błędem.",
+  "connector.internal": "Błąd w konektorze.",
+  "connector.protocol": "Konektor odpowiedział niezgodnie z protokołem.",
+  "connector.timeout": (p) => (p.timeout_s != null ? `Konektor przekroczył limit czasu (${p.timeout_s} s).` : "Konektor przekroczył limit czasu."),
+  "connector.sandbox_unavailable": "Konektory działają tylko w aplikacji na macOS (brak piaskownicy).",
+  "connector.spawn_failed": "Nie udało się uruchomić konektora.",
+  "connector.not_approved": "Konektor czeka na zatwierdzenie w Ustawieniach › Konektory.",
+  "connector.changed": "Konektor zmienił się: zatwierdź go ponownie w Ustawieniach › Konektory.",
+  "connector.interpreter_changed": "Interpreter konektora zmienił się: zatwierdź go ponownie w Ustawieniach › Konektory.",
+  "connector.disabled": "Konektor jest wyłączony.",
+  "connector.missing": "Katalog konektora zniknął z dysku.",
+  "connector.bad_request": "Konektor nie przyjmie tego pliku (rozszerzenie albo rozmiar).",
+  "connector.denied_host": "Konektor próbował połączyć się poza dozwolonymi hostami.",
   "relocation.moved": "Aplikacja została przeniesiona z {path}",
   "relocation.mcp_readd": "Dodaj ponownie serwer MCP w Claude Code (polecenie w Agent AI).",
 };
@@ -449,15 +511,24 @@ export function proposalError(result: Record<string, unknown> | null | undefined
  * proposal code as `proposal.error.<code>`) with the server's English detail kept as `detail`; without a
  * known code the English detail itself. A network failure (no response) gets one Polish line. */
 export function describeError(e: unknown): Described {
-  const err = (typeof e === "object" && e !== null ? e : {}) as { code?: unknown; message?: unknown; status?: unknown; name?: unknown };
+  const err = (typeof e === "object" && e !== null ? e : {}) as { code?: unknown; message?: unknown; status?: unknown; name?: unknown; body?: unknown };
   const english = typeof err.message === "string" ? err.message : String(e ?? "");
   const code = typeof err.code === "string" && err.code ? err.code : null;
-  const pl = code ? label(`error.${code}`) ?? label(`proposal.error.${code}`) : null;
+  const pl = code
+    ? label(`error.${code}`) ?? label(`proposal.error.${code}`)
+      ?? (code.startsWith("connector_") ? label(`connector.${code.slice(10)}`, connectorParams(err)) : null)
+    : null;
   if (pl) return { text: pl, detail: english && english !== pl ? english : null, translated: true };
   if (err.status === undefined && err.name === "TypeError" && /fetch|network|load failed/i.test(english)) {
     return { text: "Brak połączenia z aplikacją (serwer finanse nie odpowiada)", detail: english, translated: true };
   }
   return { text: english, detail: null, translated: false };
+}
+
+/** `{timeout_s}` of a connector failure's body (the import previews' 422 `detail` object). */
+function connectorParams(err: { body?: unknown }): Params {
+  const b = err.body as { timeout_s?: unknown } | null | undefined;
+  return b && typeof b === "object" && b.timeout_s != null ? { timeout_s: b.timeout_s } : {};
 }
 
 /** One line for a toast: the Polish label of the error code, else the English detail. */

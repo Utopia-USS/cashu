@@ -20,10 +20,11 @@ import {
   changesToast, needsForce, outdatedLabel, PROPOSAL_NOTE, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, TRANSLOCATED_TEXT, workspaceErrorText, workspaceSummary,
 } from "./workspace";
 import { getWorkspace, postWorkspace } from "./workspaceApi";
+import { ConnectorsSection } from "./ConnectorsSection";
 import { InvestmentsStrategySettings } from "../modules/investments/v2/StrategySettings";
 
 const SECTIONS: [id: string, label: string][] = [
-  ["profile", "Profil"], ["modules", "Moduły"], ["agent", "Agent AI (MCP)"], ["data", "Dane"],
+  ["profile", "Profil"], ["modules", "Moduły"], ["agent", "Agent AI (MCP)"], ["connectors", "Konektory"], ["data", "Dane"],
   ["worker", "Praca w tle"], ["secrets", "Sekrety"], ["app", "Aplikacja"],
 ];
 
@@ -68,6 +69,7 @@ export function Settings({ section, theme, setTheme }: { section?: string; theme
           <ProfileSection />
           <ModulesSection />
           <AgentSection />
+          <ConnectorsSection />
           <DataSection />
           <WorkerSection />
           <SecretsSection />

@@ -10,6 +10,7 @@ import { todayLocal } from "../../time";
 import { getLoans, loanName } from "./api";
 import { incomeShare, rateText } from "./logic";
 import { Loans } from "./Loans";
+import { LoansStart } from "./Start";
 
 /** Przegląd v2: loans as compact rows (instalment, rate, end; balance and principal per month). */
 function LoansWidget({ ctx }: { ctx: ModuleCtx }) {
@@ -67,6 +68,7 @@ export const loans: ModuleDef = {
   hint: "Z Budżetem: raty nie są liczone jako subskrypcje.",
   short: "Harmonogramy kredytów, odsetki i saldo w czasie",
   tabs: [{ id: "list", label: "Kredyty", render: () => <Loans /> }],
+  Start: LoansStart,
   Facts: LoanFacts,
   overview: [{ id: "list", span: 1, order: 50, stack: "side", Widget: LoansWidget }],
 };

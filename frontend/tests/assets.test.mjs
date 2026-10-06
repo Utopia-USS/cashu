@@ -94,3 +94,53 @@ test("valuation date: on_date with the add form; with an edit only together with
   assert.deepEqual(patchBody(row, { note: "x", value: null, onDate: "2026-10-01" }, "2026-10-05"), { ok: true, body: { note: "x" } }); // vehicle
   assert.equal(patchBody(row, { note: "", value: "550000", onDate: "2027-01-01" }, "2026-10-05").ok, false);
 });
+
+// ---- first steps: vehicles and the steps (design/v3/first-steps sections 10, 11) ------------------------------
+import { assetSteps, CREATE_TYPES, curveBody, curveDraft, curvePreview, vehicleValue } from "../src/modules/assets/logic.ts";
+
+test("first steps: a vehicle's value follows the declining-balance curve (depreciation.py)", () => {
+  // 523 days at 15 % a year: 80 000 * 0.85 ** (523 / 365.25)
+  assert.ok(Math.abs(vehicleValue(80000, "2025-05-01", 15, null, "2026-10-06") - 63391) < 1);
+  assert.equal(vehicleValue(80000, "2025-05-01", 15, 70000, "2026-10-06"), 70000);
+  assert.equal(vehicleValue(80000, "2026-11-01", 15, null, "2026-10-06"), 0);
+  const p = curvePreview({ price: "80 000", purchaseDate: "2025-05-01", ratePct: "15", floor: "" }, "2026-10-06");
+  assert.equal(Math.round(p.loss), 853);
+  const atFloor = curvePreview({ price: "80000", purchaseDate: "2025-05-01", ratePct: "15", floor: "70000" }, "2026-10-06");
+  assert.equal(atFloor.value, 70000);
+  assert.equal(atFloor.loss, 0);
+});
+
+test("first steps: the vehicle body carries the curve (rate a fraction), no value", () => {
+  assert.ok(CREATE_TYPES.includes("vehicle"));
+  const r = createBody({ name: "Auto", type: "vehicle", value: "", currency: "pln", note: "", curve: { price: "80 000", purchaseDate: "2025-05-01", ratePct: "15", floor: "" } }, "2026-10-06");
+  assert.deepEqual(r, { ok: true, body: { name: "Auto", type: "vehicle", currency: "PLN", depreciation: { purchase_price: 80000, purchase_date: "2025-05-01", annual_rate: 0.15, floor: null } } });
+  assert.ok(!("value" in r.body) && !("on_date" in r.body));
+  const c = (o) => curveBody({ price: "80000", purchaseDate: "2025-05-01", ratePct: "15", floor: "", ...o }, "2026-10-06");
+  assert.equal(c({ price: "0" }).error, "Podaj cenę zakupu (liczba większa od 0).");
+  assert.equal(c({ purchaseDate: "" }).error, "Podaj datę zakupu.");
+  assert.equal(c({ purchaseDate: "2026-12-01" }).error, "Data zakupu nie może być z przyszłości.");
+  assert.equal(c({ ratePct: "101" }).error, "Roczny spadek od 0 do 100 %.");
+  assert.equal(c({ floor: "90000" }).error, "Wartość minimalna nie może przekraczać ceny zakupu.");
+  assert.equal(c({ ratePct: "12,5" }).body.annual_rate, 0.125);
+});
+
+test("first steps: a vehicle edit sends the curve only when a curve field changed", () => {
+  const dep = { purchase_price: 80000, purchase_date: "2025-05-01", annual_rate: 0.15, floor: null };
+  const row = { note: null, balance: 63391, depreciation: dep };
+  const draft = curveDraft(dep, "2026-10-06");
+  assert.deepEqual(draft, { price: "80000", purchaseDate: "2025-05-01", ratePct: "15", floor: "" });
+  assert.deepEqual(patchBody(row, { note: "", value: null, curve: draft }, "2026-10-06"), { ok: true, body: {} });
+  assert.deepEqual(patchBody(row, { note: "x", value: null, curve: draft }, "2026-10-06"), { ok: true, body: { note: "x" } });
+  assert.deepEqual(patchBody(row, { note: "", value: null, curve: { ...draft, ratePct: "20" } }, "2026-10-06").body,
+    { depreciation: { purchase_price: 80000, purchase_date: "2025-05-01", annual_rate: 0.2, floor: null } });
+  assert.equal(patchBody(row, { note: "", value: null, curve: { ...draft, price: "" } }, "2026-10-06").ok, false);
+});
+
+test("first steps: the assets steps come from the rows", () => {
+  assert.deepEqual(assetSteps([]), { position: "on", vehicle: "todo" });
+  assert.deepEqual(assetSteps([{ kind: "manual", type: "property" }]), { position: "done", vehicle: "todo" });
+  assert.deepEqual(assetSteps([{ kind: "vehicle", type: "vehicle", depreciation: { purchase_price: 1, purchase_date: "2025-01-01", annual_rate: 0.1, floor: null } }]),
+    { position: "done", vehicle: "done" });
+  // a car without a curve is not the step done
+  assert.deepEqual(assetSteps([{ kind: "vehicle", type: "vehicle", depreciation: null }]), { position: "done", vehicle: "todo" });
+});

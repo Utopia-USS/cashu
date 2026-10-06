@@ -11,6 +11,7 @@
 //
 // Profile scoping: the shell remounts the page per profile; every request takes the slug; remembered values
 // (account filter, review note, review open, re-entry baseline) live under slug-scoped keys.
+import { INV_PROPOSAL_KINDS, moduleSyncLines } from "../../../core/connectors";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type InstState, InstStateContext } from "./instState";
 import { healthOf, healthStale } from "./research/logic";
@@ -18,7 +19,7 @@ import type { HealthKey } from "./research/types";
 import { ApiError } from "../../../core/api";
 import { useShell } from "../../../core/context";
 import { errorText, label } from "../../../core/messages";
-import { PRIVACY_PLAIN } from "../../../core/SetupPage";
+import { AgentWidget } from "../../../core/AgentWidget";
 import type { ModuleCtx } from "../../../core/types";
 import { useAsync, useInFlight } from "../../../hooks";
 import { addDays, localDay } from "../../../time";
@@ -124,7 +125,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const watchQ = useAsync(() => getWatchlist(slug), [slug, nonce], { key: invKey(slug, "watchlist") });
   const strat = useAsync(() => getStrategy(slug), [slug, nonce], { key: invKey(slug, "strategy") });
   const dig = useAsync(() => getDigestV2(slug), [slug, nonce], { key: invKey(slug, "digest", "") });
-  const props = useAsync(() => getProposals(slug), [slug, nonce], { key: invKey(slug, "proposals", "pending") });
+  const props = useAsync(() => getProposals(slug).then((l) => l.filter((x) => INV_PROPOSAL_KINDS.has(x.kind))), [slug, nonce], { key: invKey(slug, "proposals", "pending") });
   const planned = usePlannedDeposits(slug, nonce);
   const perf1y = useAsync(() => getPerformance(slug, "1y", accountsFilter), [slug, filter, nonce], { key: invKey(slug, "perf", "1y", acc) });
   const perfYtd = useAsync(() => getPerformance(slug, "ytd", accountsFilter), [slug, filter, nonce], { key: invKey(slug, "perf", "ytd", acc) });
@@ -285,6 +286,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       const status = p?.status ?? "ok";
       const firstErr = p?.errors?.[0] ?? r.market_errors?.[0] ?? r.market_error ?? "";
       toast(status === "failed" ? `Synchronizacja nieudana${firstErr ? `: ${runError(firstErr)}` : ""}` : status === "partial" ? `Zsynchronizowano częściowo${firstErr ? ` · ${runError(firstErr)}` : ""}` : "Zsynchronizowano", 4000);
+      // the connector lines (a stored proposal shows in the proposals reloaded below)
+      for (const line of moduleSyncLines(r.connectors, (l) => l.connector_id ?? "Konektor")) toast(line.text, line.failed ? 7000 : 5000);
       reload();
     } catch (e) {
       toast(e instanceof ApiError && e.status === 409 ? "Synchronizacja już trwa (praca w tle)" : `Nie udało się zsynchronizować: ${errorText(e)}`, 4000);
@@ -649,7 +652,7 @@ function Start({ accounts, strategy, hasTxn, initBusy, onAddAccount, onInitStrat
   strategy: { state: string; version: number | null; facts?: { notifications: { digest_weekday: string } } | null } | null;
   hasTxn: boolean; initBusy: boolean; onAddAccount: () => void; onInitStrategy: () => void; onAddTxn: () => void; onImport: () => void;
 }) {
-  const { profile, slug, go } = useShell();
+  const { slug, go } = useShell();
   const hasAccount = accounts.length > 0;
   const hasStrategy = !!strategy && strategy.state !== "missing";
   const weekday = strategy?.facts?.notifications.digest_weekday ?? "sunday";
@@ -687,13 +690,7 @@ function Start({ accounts, strategy, hasTxn, initBusy, onAddAccount, onInitStrat
           </Widget>
         ),
       },
-      {
-        id: "privacy", span: 1, node: (
-          <Widget title="Agent AI" body="tight" footer={<button className="lnk" onClick={() => go({ kind: "settings", section: "agent" })}>Ustawienia</button>}>
-            <div style={{ fontSize: 13 }}>{PRIVACY_PLAIN[profile.mcp_privacy] ?? PRIVACY_PLAIN.strict}</div>
-          </Widget>
-        ),
-      },
+      { id: "privacy", span: 1, node: <AgentWidget /> },
     ]} />
   );
 }

@@ -1,5 +1,5 @@
 // Loans module endpoints (profile-scoped). One profile can hold many loans.
-import { ApiError, j, pp } from "../../core/api";
+import { ApiError, j, jpatch, jpost, pp } from "../../core/api";
 
 export interface LoanInfo {
   // Identity of a list item; the contract keeps the upstream /loan shape per item,
@@ -18,6 +18,12 @@ export interface LoanInfo {
   paid_interest?: number;
   payoff_date?: string;
   months_elapsed?: number;
+  term_months?: number;
+  start_date?: string;
+  type?: string;
+  /** Installment matching (`set-payment`): the stored phrase, the last 4 digits of the stored IBAN (never the full number). */
+  payment_text?: string | null;
+  payment_iban_tail?: string | null;
   series?: { date: string; balance: number }[];
   schedule?: { n: number; date: string; payment: number; interest: number; principal: number; balance: number }[];
 }
@@ -37,3 +43,13 @@ export const getLoans = async (slug: string): Promise<LoanInfo[]> => {
 };
 
 export const loanName = (l: LoanInfo, i: number): string => l.name || l.account || `Kredyt ${i + 1}`;
+
+/** POST /loans (`loans add`): 201 one item of GET /loans; 409 `loan_name_taken`. `annual_rate` is a percent. */
+export interface NewLoan {
+  name: string; type: "mortgage" | "loan"; principal: number; annual_rate: number; term_months: number;
+  start_date: string; origination_date?: string | null; currency?: string;
+}
+export const postLoan = (slug: string, body: NewLoan) => jpost<LoanInfo>(pp(slug, "/loans"), body);
+/** PATCH /loans/{id}/payment (`set-payment`): "" clears; `matched` = installments recognised now. */
+export const patchLoanPayment = (slug: string, id: number, body: { text?: string | null; iban?: string | null }) =>
+  jpatch<{ loan: LoanInfo; matched: number }>(pp(slug, `/loans/${id}/payment`), body);

@@ -5,7 +5,7 @@ import type { Category, NetworthResp, Profile, SetupState, Summary } from "./api
 /** What the shell shows below the tabbar. Tab keys: "overview" or "<module>.<tab>". */
 export type View =
   | { kind: "tab"; tab: string; sub?: string }
-  | { kind: "setup"; module: string }
+  | { kind: "setup"; module: string; cli?: boolean }
   | { kind: "settings"; section?: string };
 
 /** Everything a module page or overview widget gets from the shell. */
@@ -67,6 +67,9 @@ export interface ModuleDef {
   /** v2 shell header (ia-v2.md 10): a data-quality tag of a set-up module, rendered only when something is
    * stale (null otherwise), e.g. "1 nieaktualna cena". */
   HeaderTag?: ComponentType<{ slug: string; go: (v: View) => void }>;
+  /** "Pierwsze kroki" in the app: rendered in place of the generic SetupPage for the empty first tab and for the
+   * `setup` view (the SetupPage stays reachable as `setup/<module>/cli`, design/v3/first-steps D1). */
+  Start?: ComponentType<{ ctx: ModuleCtx }>;
   /** Action at the end of the tabbar while one of this module's tabs is open (budget: bank sync). */
   TabAction?: ComponentType<TabActionProps>;
 }
@@ -88,5 +91,8 @@ export interface OverviewSlot {
   stack?: string;
   /** Other modules that must be enabled too (e.g. the surplus card needs the budget). */
   needs?: string[];
+  /** Rendered while the module is still `empty` too (the Majątek widget is its own first steps); such a module
+   * gets no PendingWidget ghost card on Przegląd. */
+  whenEmpty?: boolean;
   Widget: ComponentType<{ ctx: ModuleCtx }>;
 }

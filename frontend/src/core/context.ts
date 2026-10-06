@@ -1,6 +1,7 @@
 // Shell context: the active profile and navigation, shared by core pages and modules.
 import { createContext, useContext } from "react";
 import type { ModuleInfo, Profile, SystemInfo } from "./api";
+import type { ReloadHold } from "./hold";
 import type { View } from "./types";
 
 export interface Shell {
@@ -14,6 +15,9 @@ export interface Shell {
   go: (v: View, opts?: { scroll?: boolean }) => void;
   /** Re-read /api/profiles (module states, names). */
   reloadProfiles: () => Promise<void>;
+  /** The reload hold (core/hold.ts): a Start page takes it while its drawer is open; the focus reload and the
+   * setup poll skip while it is held. */
+  hold: ReloadHold;
   openWizard: () => void;
   /** The page asks for the narrow frame (1120 px, header included): the minimal profile view. */
   setNarrow: (narrow: boolean) => void;
@@ -36,10 +40,10 @@ export const useSlug = (): string => useShell().slug;
 /** View <-> path used in the URL hash (#/{slug}/{path}) and by setup actions of kind "view":
  * "overview", "overview/<module>" (Przegląd with that module's widget focused, F7 merge), "<module>.<tab>",
  * "<module>.<tab>/<sub>" (a page inside a tab, e.g. "investments.portfolio/alerts" or ".../assets/306"),
- * "setup/<module>", "settings" or "settings/<section>". */
+ * "setup/<module>" (the in-app first steps), "setup/<module>/cli" (the CLI / Claude Code page), "settings" or "settings/<section>". */
 export function viewToPath(v: View): string {
   if (v.kind === "settings") return v.section ? `settings/${v.section}` : "settings";
-  if (v.kind === "setup") return `setup/${v.module}`;
+  if (v.kind === "setup") return v.cli ? `setup/${v.module}/cli` : `setup/${v.module}`;
   return v.sub ? `${v.tab}/${v.sub}` : v.tab;
 }
 
@@ -48,7 +52,7 @@ export function pathToView(path: string | undefined): View | null {
   const [head, ...rest] = path.split("/");
   const arg = rest[0];
   if (head === "settings") return { kind: "settings", section: arg || undefined };
-  if (head === "setup" && arg) return { kind: "setup", module: arg };
+  if (head === "setup" && arg) return rest[1] === "cli" ? { kind: "setup", module: arg, cli: true } : { kind: "setup", module: arg };
   if (!head) return null;
   const sub = rest.join("/");
   return sub ? { kind: "tab", tab: head, sub } : { kind: "tab", tab: head };

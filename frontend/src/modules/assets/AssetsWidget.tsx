@@ -1,8 +1,10 @@
 // Majątek on Przegląd (F7 merge, design/v2/networth-merge): the manually valued positions in one widget of the
 // assets module (no tab any more): the list with valuation dates and a vehicle's monthly loss, `+ Dodaj` and a
-// row open one drawer form (add / edit), `Usuń` removes with `Cofnij`. An older server without
-// GET /assets/manual: the net-worth rows, read-only.
+// row open one drawer form (add / edit), `Usuń` removes with `Cofnij`. With no position yet the widget is the
+// module's first steps (design/v3/first-steps D6: `Dodaj pozycję`, `Dodaj auto`). A vehicle is a type of the same
+// form with its depreciation curve (D7). An older server without GET /assets/manual: the net-worth rows, read-only.
 import { useState } from "react";
+import { useShell } from "../../core/context";
 import type { Account } from "../../core/api";
 import { errorText } from "../../core/messages";
 import type { ModuleCtx } from "../../core/types";
@@ -14,19 +16,26 @@ import { Drawer, Empty, Notice, Skeleton, Tag, useToast } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
 import { deleteManualAsset, getManualAssets, type ManualAsset, patchManualAsset, postManualAsset, restoreManualAsset } from "./api";
 import {
-  type AssetDraft, CREATE_TYPES, createBody, dmy, isAsset, monthlyLoss, NOTE_MAX, patchBody, ratePct, sumByCurrency, valuationLabel, visibleRows,
+  type AssetDraft, CREATE_TYPES, createBody, type CurveDraft, curveDraft, curvePreview, dmy, isAsset, monthlyLoss, NOTE_MAX, patchBody, ratePct,
+  sumByCurrency, valuationLabel, visibleRows,
 } from "./logic";
+import { AssetsSteps } from "./Steps";
 
 type Row = Account & Partial<Pick<ManualAsset, "kind" | "note" | "depreciation">>;
 const CAP = 5;
+/** The drawer's subject: a new position (with the type to start from) or a row. */
+export type AssetTarget = { kind: "new"; type: string } | ManualAsset;
+const isNew = (t: AssetTarget): t is { kind: "new"; type: string } => t.kind === "new" && !("id" in t);
 
 export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
   const toast = useToast();
+  const { reloadProfiles } = useShell();
   const slug = ctx.slug;
   const base = ctx.profile.base_currency;
   const today = todayLocal();
   const manual = useAsync(() => getManualAssets(slug), [slug], { key: ck(slug, "assets-manual") });
-  const [edit, setEdit] = useState<null | "new" | ManualAsset>(null);
+  const [edit, setEdit] = useState<null | AssetTarget>(null);
+  const addNew = (type = "property") => setEdit({ kind: "new", type });
   const [all, setAll] = useState(false);
 
   const api = manual.data != null;
@@ -43,6 +52,8 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
     manual.reload();
     // A value moves the net worth: the hero, the chart and Konta re-read (the page remounts).
     if (valueChanged) ctx.refresh();
+    // The first position sets the module up (empty -> ready).
+    if (created && ctx.state !== "ready") void reloadProfiles();
   };
   const removed = (a: ManualAsset) => {
     setEdit(null);
@@ -74,9 +85,25 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
     return round0(l) > 0 ? `-${cur0s(l, a.currency)} / mies.` : "wartość minimalna";
   };
 
+  const drawer = edit != null && (
+    <AssetDrawer key={isNew(edit) ? `new:${edit.type}` : edit.id} target={edit} slug={slug} base={base} today={today}
+      onClose={() => setEdit(null)} onSaved={saved} onRemoved={removed} />
+  );
+
+  // No position yet: the widget is the module's first steps (the steps are the controls).
+  if (api && !rows.length) {
+    return (
+      <Widget title="Majątek" body="tight" id="ov-assets"
+        footer={<button className="lnk" onClick={() => ctx.go({ kind: "setup", module: "assets", cli: true })}>Instrukcja Claude Code i CLI</button>}>
+        <AssetsSteps compact rows={[]} base={base} onAdd={addNew} />
+        {drawer}
+      </Widget>
+    );
+  }
+
   return (
     <Widget title="Majątek" count={rows.length || undefined} id="ov-assets"
-      controls={api && rows.length ? <button className="btn sm" onClick={() => setEdit("new")}>+ Dodaj</button> : undefined}
+      controls={api && rows.length ? <button className="btn sm" onClick={() => addNew()}>+ Dodaj</button> : undefined}
       body="flush tight"
       footer={rows.length ? (
         <>
@@ -90,7 +117,7 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
       ) : undefined}>
       {!rows.length ? (
         <Empty title="Brak pozycji." action={api
-          ? <button className="btn" onClick={() => setEdit("new")}>Dodaj</button>
+          ? <button className="btn" onClick={() => addNew()}>Dodaj</button>
           : <button className="btn" onClick={() => ctx.go({ kind: "setup", module: "assets" })}>Konfiguracja</button>} />
       ) : (
         <table>
@@ -115,10 +142,7 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
           </tbody>
         </table>
       )}
-      {edit != null && (
-        <AssetDrawer key={edit === "new" ? "new" : edit.id} target={edit} slug={slug} base={base} today={today}
-          onClose={() => setEdit(null)} onSaved={saved} onRemoved={removed} />
-      )}
+      {drawer}
     </Widget>
   );
 }
@@ -133,30 +157,37 @@ function currencySign(c: string): string {
 /** "545 000" / "1 250,5" for the value field. */
 const valueText = (v: number | null) => (v == null ? "" : v.toLocaleString("pl-PL", { maximumFractionDigits: 2 }));
 
-/** The add / edit form in a drawer: a new position (name, type, value, currency, date, note), a manual one
- * (value, date, note) or a vehicle (note only: its value follows the depreciation terms). */
-function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRemoved }: {
-  target: "new" | ManualAsset; slug: string; base: string; today: string;
+/** The add / edit form in a drawer: a new position (name, type, value, currency, date, note; a vehicle: its curve
+ * instead of value and date), a manual one (value, date, note) or a vehicle (read-only value, its curve, note). */
+export function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRemoved }: {
+  target: AssetTarget; slug: string; base: string; today: string;
   onClose: () => void; onSaved: (created: boolean, valueChanged: boolean) => void; onRemoved: (a: ManualAsset) => void;
 }) {
-  const row = target === "new" ? null : target;
+  const row = isNew(target) ? null : target;
   const vehicle = row?.kind === "vehicle";
   const [d, setD] = useState<AssetDraft>({
-    name: "", type: "property", currency: base, onDate: today,
+    name: "", type: isNew(target) ? target.type : "property", currency: base, onDate: today,
     value: row ? valueText(row.balance) : "", note: row?.note ?? "",
   });
+  const [curve, setCurve] = useState<CurveDraft>(() => curveDraft(row?.depreciation ?? null, today));
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof AssetDraft) => (e: { target: { value: string } }) => setD((x) => ({ ...x, [k]: e.target.value }));
+  const setC = (k: keyof CurveDraft) => (e: { target: { value: string } }) => setCurve((x) => ({ ...x, [k]: e.target.value }));
+  const newVehicle = !row && d.type === "vehicle";
+  const live = vehicle || newVehicle ? curvePreview(curve, today) : null;
+  const liveCur = row?.currency ?? (d.currency.trim().toUpperCase() || base);
 
   const submit = async () => {
-    const r = row ? patchBody(row, { note: d.note, value: vehicle ? null : d.value, onDate: d.onDate }, today) : createBody(d, today);
+    const r = row
+      ? patchBody(row, { note: d.note, value: vehicle ? null : d.value, onDate: d.onDate, curve: vehicle ? curve : undefined }, today)
+      : createBody({ ...d, curve }, today);
     if (!r.ok) { setErr(r.error); return; }
     if (row && !Object.keys(r.body).length) { onClose(); return; }
     setBusy(true); setErr(null);
     try {
       if (row) await patchManualAsset(slug, row.id, r.body); else await postManualAsset(slug, r.body);
-      onSaved(!row, !row || "value" in r.body);
+      onSaved(!row, !row || "value" in r.body || "depreciation" in r.body);
     } catch (e) {
       setErr(`Nie zapisano: ${errorText(e)}`);
       setBusy(false);
@@ -189,6 +220,43 @@ function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRemoved }:
       <label htmlFor="as-date">Data wyceny</label>
       <input id="as-date" type="date" value={d.onDate ?? ""} max={today} onChange={set("onDate")} />
     </div>
+  );
+  const curveFields = (
+    <>
+      {!row && (
+        <div className="form-row">
+          <div className="field">
+            <label htmlFor="as-price">Cena zakupu</label>
+            <input id="as-price" className="num" inputMode="decimal" autoComplete="off" value={curve.price} onChange={setC("price")} />
+          </div>
+          <div className="field">
+            <label htmlFor="as-cur">Waluta</label>
+            <input id="as-cur" value={d.currency} maxLength={3} autoComplete="off" style={{ textTransform: "uppercase" }} onChange={set("currency")} />
+          </div>
+        </div>
+      )}
+      {row && (
+        <div className="field">
+          <label htmlFor="as-price">Cena zakupu</label>
+          <input id="as-price" className="num" inputMode="decimal" autoComplete="off" value={curve.price} onChange={setC("price")} />
+        </div>
+      )}
+      <div className="form-row">
+        <div className="field">
+          <label htmlFor="as-pdate">Data zakupu</label>
+          <input id="as-pdate" type="date" value={curve.purchaseDate} max={today} onChange={setC("purchaseDate")} />
+        </div>
+        <div className="field">
+          <label htmlFor="as-rate">Roczny spadek (%)</label>
+          <input id="as-rate" className="num" inputMode="decimal" autoComplete="off" value={curve.ratePct} onChange={setC("ratePct")} />
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="as-floor">Wartość minimalna (opcjonalnie)</label>
+        <input id="as-floor" className="num" inputMode="decimal" autoComplete="off" value={curve.floor} title="Poniżej tej kwoty wartość nie spada" onChange={setC("floor")} />
+      </div>
+      {live && <div className="sub">dziś ≈ {cur0s(live.value, liveCur)} · -{cur0s(live.loss, liveCur)} / mies.</div>}
+    </>
   );
   const noteField = (
     <div className="field">
@@ -223,14 +291,18 @@ function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRemoved }:
                 {CREATE_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>)}
               </select>
             </div>
-            <div className="form-row">
-              {valueField}
-              <div className="field">
-                <label htmlFor="as-cur">Waluta</label>
-                <input id="as-cur" value={d.currency} maxLength={3} autoComplete="off" style={{ textTransform: "uppercase" }} onChange={set("currency")} />
-              </div>
-            </div>
-            {dateField}
+            {newVehicle ? curveFields : (
+              <>
+                <div className="form-row">
+                  {valueField}
+                  <div className="field">
+                    <label htmlFor="as-cur">Waluta</label>
+                    <input id="as-cur" value={d.currency} maxLength={3} autoComplete="off" style={{ textTransform: "uppercase" }} onChange={set("currency")} />
+                  </div>
+                </div>
+                {dateField}
+              </>
+            )}
             {noteField}
           </>
         ) : vehicle ? (
@@ -239,7 +311,7 @@ function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRemoved }:
               <label htmlFor="as-ro">Wartość</label>
               <output id="as-ro" className="ro">{cur0s(row.balance, row.currency)}</output>
             </div>
-            <div className="sub">krzywa utraty wartości{row.depreciation ? ` · ${ratePct(row.depreciation.annual_rate)} % / rok` : ""}</div>
+            {curveFields}
             {noteField}
           </>
         ) : (

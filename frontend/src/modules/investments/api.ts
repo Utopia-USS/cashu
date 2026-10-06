@@ -2,7 +2,8 @@
 // contract endpoints the workspace uses: weekly reviews and agent proposals (track M). Shapes mirror
 // service/views.py; money is a JSON number next to its currency, weights are fractions (0.213),
 // drift is in percentage points.
-import { ApiError, authHeaders, handle401, j, jdel, jpatch, jpost, pp } from "../../core/api";
+import { ApiError, authHeaders, handle401, j, jdel, jpatch, jpost, pp, responseError } from "../../core/api";
+import type { ModuleSyncLine } from "../../core/connectors";
 
 export type Num = number | null;
 
@@ -405,40 +406,8 @@ export interface ReviewDigest {
 /** Weekly review record (track M: finanse.core.reviews). */
 export interface Review { id?: number; module: string; done_at: string; notes: string | null; stats?: Record<string, unknown> }
 
-/** Agent proposal (track M, core/proposals.py). List shape: id, kind (strategy | custom_rule |
- * import), status (pending | approved | rejected | failed), summary, reason, source, created_at,
- * reviewed_at, result. Detail adds payload plus per kind: strategy `diff {yaml, md}`, `base_changed`;
- * custom_rule `rule_yaml`, `backtest`, `diff {yaml}`; import `account`, `file_name`, `preview`
- * (counts); `converter_unsupported` for an import stored with a converter script (the app never runs
- * scripts: such a proposal cannot be approved). */
-export interface Proposal {
-  id: number;
-  kind: string;
-  status: string;
-  summary?: string | null;
-  /** The kind, and the summary's values, for the Polish line (core/messages.ts proposalSummary). */
-  summary_code?: string | null;
-  summary_params?: Record<string, unknown> | null;
-  reason?: string | null;
-  source?: string | null;
-  created_at: string | null;
-  reviewed_at?: string | null;
-  result?: Record<string, unknown> | null;
-  payload?: Record<string, unknown>;
-  diff?: string | { yaml?: string | null; md?: string | null } | null;
-  base_changed?: boolean;
-  rule_yaml?: string | null;
-  backtest?: Backtest | null;
-  account?: string | null;
-  file_name?: string | null;
-  preview?: Record<string, number | boolean | string> | null;
-  converter_unsupported?: boolean;
-  detail_error?: string;
-}
-export interface Backtest {
-  evaluated?: number; step_days?: number; from?: string; to?: string; points_fired?: number; episodes?: number;
-  first_fired?: string | null; last_fired?: string | null; instruments?: string[]; points_skipped?: number; skip_reasons?: string[]; note?: string;
-}
+// Agent proposals moved to core (core/proposalsApi.ts: a budget sync proposal uses them too).
+export type { Backtest, Proposal } from "../../core/proposalsApi";
 
 // ---- endpoints ---------------------------------------------------------------
 const inv = (slug: string, path: string) => pp(slug, `/investments${path}`);
@@ -474,7 +443,8 @@ export const getPositionChart = async (slug: string, id: number | string, months
 
 export const getReviewDigest = (slug: string) => j<ReviewDigest>(inv(slug, "/review-digest"));
 
-export const postRun = (slug: string, offline = false) => jpost<{ profiles: { status: string; errors: string[]; new_signals?: unknown; escalated_signals?: unknown }[]; market_error?: string | null; market_errors?: string[] }>(inv(slug, "/run"), { offline });
+/** `connectors`: the investments fetch bindings synced before the check (F10), only when the profile has some. */
+export const postRun = (slug: string, offline = false) => jpost<{ profiles: { status: string; errors: string[]; new_signals?: unknown; escalated_signals?: unknown }[]; market_error?: string | null; market_errors?: string[]; connectors?: ModuleSyncLine[] }>(inv(slug, "/run"), { offline });
 
 export interface DecisionInput { action: string; quantity?: number | null; price?: number | null; currency?: string | null; account_id?: number | null; reason?: string | null }
 export const postDecision = (slug: string, signalId: number, b: DecisionInput) =>
@@ -545,11 +515,7 @@ async function upload<T>(u: string, body: FormData): Promise<T> {
   // The token from core/token.ts (PK1: never read from the page), as every JSON request.
   const r = await fetch(u, { method: "POST", body, headers: await authHeaders() });
   if (r.status === 401) handle401();
-  if (!r.ok) {
-    let detail = "";
-    try { const d = (await r.json())?.detail; detail = typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => x?.msg ?? "").join("; ") : ""; } catch { /* not JSON */ }
-    throw new ApiError(r.status, detail || `${u} → ${r.status}`, r.headers.get("X-Finanse-Error-Code"));
-  }
+  if (!r.ok) throw await responseError(r, u);
   return r.json() as Promise<T>;
 }
 
@@ -561,16 +527,4 @@ export const postReview = (slug: string, notes: string | null, stats?: Record<st
 /** Undo "review done" within 15 minutes (core/agent_api.py, F5 R4; 409 after that). */
 export const deleteReview = (slug: string, reviewId: number) => jdel<{ deleted: number }>(pp(slug, `/reviews/${reviewId}`));
 
-/** Pending (or other) proposals; an absent endpoint (track M not landed) reads as "none". */
-export const getProposals = async (slug: string, status = "pending"): Promise<Proposal[]> => {
-  try {
-    const r = await j<Proposal[] | { items: Proposal[] }>(pp(slug, `/proposals?status=${status}`));
-    return Array.isArray(r) ? r : r.items ?? [];
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 404) return [];
-    throw e;
-  }
-};
-export const getProposal = (slug: string, id: number) => j<Proposal>(pp(slug, `/proposals/${id}`));
-export const approveProposal = (slug: string, id: number) => jpost<Proposal>(pp(slug, `/proposals/${id}/approve`), {});
-export const rejectProposal = (slug: string, id: number) => jpost<Proposal>(pp(slug, `/proposals/${id}/reject`), {});
+export { approveProposal, getProposal, getProposals, rejectProposal } from "../../core/proposalsApi";

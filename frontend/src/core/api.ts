@@ -7,6 +7,7 @@
 // bridge, the `#token=` fragment `finanse serve` prints, or this tab's sessionStorage; under
 // `npm run dev` the Vite proxy adds the header itself (see vite.config.ts).
 import { clearCache } from "../swr";
+import type { ModuleSyncLine } from "./connectors";
 import { apiToken, forgetToken, NO_TOKEN_TEXT } from "./token";
 
 /** The token header for a request (`{}` under `npm run dev`); throws a 401 ApiError with a Polish
@@ -25,7 +26,27 @@ const MOCK = import.meta.env.VITE_MOCK === "1";
  * `X-Finanse-Error-Code` header (the detail stays English; core/messages.ts `errorText` shows the Polish
  * label of the code). */
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string, readonly code: string | null = null) { super(message); }
+  /** `body`: the parsed `detail` when it is an object (a connector run failure: kind, message, stderr_tail,
+   * timeout_s, connector), else null. */
+  constructor(readonly status: number, message: string, readonly code: string | null = null, readonly body: unknown = null) { super(message); }
+}
+
+/** The ApiError of a failed response: a string `detail` is the message; an object `detail` is kept as `body`
+ * (its `message` becomes the message); FastAPI validation lists join their `msg`s. */
+export async function responseError(r: Response, u: string): Promise<ApiError> {
+  let detail = "";
+  let body: unknown = null;
+  try {
+    const d = (await r.json())?.detail;
+    if (typeof d === "string") detail = d;
+    else if (Array.isArray(d)) detail = d.map((x) => x?.msg ?? "").join("; ");
+    else if (d && typeof d === "object") {
+      body = d;
+      const m = (d as { message?: unknown }).message;
+      detail = typeof m === "string" ? m : "";
+    }
+  } catch { /* not JSON */ }
+  return new ApiError(r.status, detail || `${u} → ${r.status}`, r.headers.get("X-Finanse-Error-Code"), body);
 }
 
 // A 401 means this page's token is no longer valid: `finanse serve` was restarted (new token
@@ -64,14 +85,7 @@ async function request<T>(method: string, u: string, body?: unknown): Promise<T>
   }
   const r = await fetch(u, init);
   if (r.status === 401) handle401();
-  if (!r.ok) {
-    let detail = "";
-    try {
-      const d = (await r.json())?.detail;
-      detail = typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => x?.msg ?? "").join("; ") : "";
-    } catch { /* not JSON */ }
-    throw new ApiError(r.status, detail || `${u} → ${r.status}`, r.headers.get("X-Finanse-Error-Code"));
-  }
+  if (!r.ok) throw await responseError(r, u);
   return r.json() as Promise<T>;
 }
 
@@ -80,6 +94,18 @@ export const jpost = <T>(u: string, body: unknown = {}): Promise<T> => request<T
 export const jpatch = <T>(u: string, body: unknown): Promise<T> => request<T>("PATCH", u, body);
 export const jput = <T>(u: string, body: unknown): Promise<T> => request<T>("PUT", u, body);
 export const jdel = <T>(u: string): Promise<T> => request<T>("DELETE", u);
+
+/** Multipart POST (a file upload) around the JSON helper: the same token header and error handling. */
+export async function jupload<T>(u: string, body: FormData): Promise<T> {
+  if (MOCK) {
+    const { mockFetch } = await import("./mock");
+    return mockFetch("POST", u, body) as Promise<T>;
+  }
+  const r = await fetch(u, { method: "POST", body, headers: await authHeaders() });
+  if (r.status === 401) handle401();
+  if (!r.ok) throw await responseError(r, u);
+  return r.json() as Promise<T>;
+}
 
 /** Base path of a profile-scoped endpoint: pp("jan", "/summary") -> /api/p/jan/summary. */
 export const pp = (slug: string, path: string): string => `/api/p/${encodeURIComponent(slug)}${path}`;
@@ -98,6 +124,8 @@ export interface SystemInfo {
   /** Background worker (track W contract; older servers send only installed + last_run). */
   worker: WorkerInfo;
   secrets?: Partial<Record<SecretKey, boolean>>;
+  /** Connectors (F10): `sandbox` false = runs are refused on this platform (approval still possible). */
+  connectors?: { sandbox: boolean; platform: string };
 }
 
 export interface WorkerJob {
@@ -159,12 +187,16 @@ export interface SetupStep {
   description: string;
   status: "done" | "on" | "todo";
   actions: SetupAction[];
+  /** Never counts toward the module state (e.g. the assets vehicle step, first-steps D8). */
+  optional?: boolean;
 }
 export interface SetupInfo {
   state: SetupState;
   steps: SetupStep[];
   /** `translocated`: macOS App Translocation, `mcp_add` is a placeholder until the app is moved (PK3). */
   skill: { command: string; mcp_add: string; translocated?: boolean } | null;
+  /** The CLI prefix of the profile (`finanse --profile jan`), for command lines shown in the app. */
+  cli_prefix?: string | null;
 }
 
 export const getSystem = () => j<SystemInfo>("/api/system");
@@ -323,6 +355,8 @@ export interface ResyncResp {
   banks?: { bank: string; inserted: number; accounts: number }[];
   pairs?: number;
   errors?: string[];
+  /** Budget fetch-connector bindings synced with it (F10): present only when the profile has some. */
+  connectors?: ModuleSyncLine[];
 }
 
 // ---- core endpoints (profile-scoped) ---------------------------------------

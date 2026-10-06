@@ -1,0 +1,19 @@
+# Synthetic e2e fetch connector (never touches the network): `check` accepts any key, `fetch` returns two
+# made-up transactions of the example bank's synthetic account.
+api_version: 1
+id: budget-fetch-e2e
+name: E2E Bank API
+version: 0.1.0
+author: finanse e2e
+description: Synthetic budget fetch connector for the e2e suite.
+module: budget
+kind: fetch
+run: [python3, connector.py]
+timeout_s: 20
+fetch:
+  hosts: [api.example.com]
+  secrets:
+    - {id: api_key, label: Klucz API}
+  params:
+    - {id: start, label: Od daty, type: date, required: false}
+  history_days: 30

@@ -1,6 +1,7 @@
 // Strategy and agent proposals in Ustawienia > Agent AI (ia-v2.md 8, F-05): the strategy pill and popover are
 // gone from the investments page; validation, inactive rules, versions and pending proposals live here (and in
 // the change log / the review's Strategia row).
+import { INV_PROPOSAL_KINDS } from "../../../core/connectors";
 import { useState } from "react";
 import { useShell } from "../../../core/context";
 import { errorText } from "../../../core/messages";
@@ -18,7 +19,7 @@ export function InvestmentsStrategySettings() {
   // After a strategy / proposal write: the investments views read fresh, this card re-reads (F7 PX4).
   const reload = () => { dropInv(slug); setNonce((n) => n + 1); };
   const st = useAsync(() => getStrategy(slug), [slug, nonce], { key: invKey(slug, "strategy") });
-  const props = useAsync(() => getProposals(slug), [slug, nonce], { key: invKey(slug, "proposals", "pending") });
+  const props = useAsync(() => getProposals(slug).then((l) => l.filter((x) => INV_PROPOSAL_KINDS.has(x.kind))), [slug, nonce], { key: invKey(slug, "proposals", "pending") });
   const [open, setOpen] = useState<number | null>(null);
   const s = st.data;
   const brief = s ? { state: s.state, errors: s.errors, warnings: s.warnings, inactive_rules: s.inactive_rules.length } : null;

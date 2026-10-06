@@ -15,6 +15,7 @@ import type { Account, Category, ProfileModule } from "../api";
 import { getSetup } from "../api";
 import { useShell } from "../context";
 import { stepsTag } from "../SetupPage";
+import { lowerFirst, nextStep, stepCounts } from "../setupSteps";
 import type { ModuleCtx, ModuleDef } from "../types";
 
 /** "2026-10-05" -> "2026-09" (the last closed month). */
@@ -173,14 +174,15 @@ export function AccountsWidget({ accounts, categories, onChanged }: { accounts: 
 export function PendingWidget({ def, m, onHide }: { def: ModuleDef; m: ProfileModule; onHide: () => void }) {
   const { slug, go } = useShell();
   const { data } = useAsync(() => getSetup(slug, def.id), [slug, def.id, m.setup_state], { key: ck(slug, "setup", def.id) });
-  const next = data?.steps.find((s) => s.status === "on") ?? data?.steps.find((s) => s.status !== "done");
+  const next = nextStep(data?.steps);
+  const counts = stepCounts(data?.steps);
   return (
     <Widget title={def.name} ghost tags={stepsTag(data, m.setup_state)}
       controls={<button className="lnk" onClick={onHide}>ukryj</button>}
-      footer={<><span>{data ? `${data.steps.filter((s) => s.status === "done").length} z ${data.steps.length} kroków` : ""}</span><span className="spacer" />
+      footer={<><span>{data ? `${counts.done} z ${counts.n} kroków` : ""}</span><span className="spacer" />
         <button className="btn sm primary" onClick={() => go({ kind: "setup", module: def.id })}>Kontynuuj</button></>}>
       <div className="muted" style={{ fontSize: 13 }}>
-        {!data ? <Skeleton w="80%" h={12} /> : next ? `Następny krok: ${next.title.charAt(0).toLowerCase()}${next.title.slice(1)}.` : "Moduł czeka na dane."}
+        {!data ? <Skeleton w="80%" h={12} /> : next ? `Następny krok: ${lowerFirst(next.title)}.` : "Moduł czeka na dane."}
       </div>
     </Widget>
   );

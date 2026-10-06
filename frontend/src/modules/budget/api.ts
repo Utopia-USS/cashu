@@ -1,6 +1,6 @@
 // Budget module endpoints (profile-scoped). Shapes mirror the server JSON. Every view takes an
 // explicit currency (the server defaults to the profile's base currency, never sums currencies).
-import { j, jpost, jput, pp } from "../../core/api";
+import { j, jpost, jput, jupload, pp } from "../../core/api";
 
 export interface CashflowRow { label: string; income: number; expense: number; net: number }
 export interface SpendRow { category: string; label: string; amount: number }
@@ -120,3 +120,69 @@ export const drillUrl = (
   if (opts.quarter) p.set("quarter", String(opts.quarter));
   return pp(slug, `/category/${encodeURIComponent(key)}/transactions?${p.toString()}`);
 };
+
+// ---- first steps: statement import, merchants without a category, transfer matching (first-steps 15 B2-B5) ----
+/** POST /budget/import/preview: the parsed statement before anything is written. */
+export interface StatementPreview {
+  /** sha256 of the staged bytes: the commit's handle. */
+  file_id: string;
+  file_name: string;
+  bank: { id: string; name: string; detected: boolean };
+  /** `bank.id` is the importer id (send it back on commit); the account's bank is `account.institution`. */
+  account: {
+    existing: boolean; id: number | null; name: string; currency: string; iban_tail: string | null; transactions: number;
+    institution?: { id: string; name: string } | null;
+  };
+  /** `overlap` (BE-1, part of `duplicates`): rows not matched one to one but covered by the account's history from
+   * another source (bank CSV, Open Banking); skipped. */
+  counts: { rows: number; new: number; duplicates: number; skipped: number; overlap?: number };
+  range: { from: string; to: string } | null;
+  balances?: number;
+  /** The first rows (50 at most). */
+  rows: StatementRow[];
+  /** Newest first; `same_file`: the same bytes (sha256), else only the same file name (e.g. a CLI import). */
+  previous_imports: { at: string; file_name: string; inserted: number; same_file?: boolean }[];
+  /** finanse format only: non-blocking issues (`import.<kind>` codes). */
+  warnings?: { kind: string; code?: string; row: number | null; field?: string | null; message: string; blocking?: boolean }[];
+}
+export interface StatementRow {
+  row: number; date: string; amount: number; currency: string; title: string | null; counterparty: string | null; status: "new" | "duplicate";
+  /** A duplicate by the cross-source rule (BE-1). */
+  overlap?: boolean;
+}
+/** POST /budget/import/commit. */
+export interface StatementCommit {
+  batch_id: number | null;
+  account: { id: number; name: string; currency: string; iban_tail: string | null; created: boolean };
+  inserted: number;
+  duplicates: number;
+  skipped: number;
+  balances?: number;
+  categorized: number;
+  transfer_pairs: number;
+}
+export interface StatementFileInput { file: File; bank: string; account_type: string; account_name: string }
+export interface StatementCommitInput { file_id: string; file_name: string; bank?: string; account_type?: string; account_name?: string }
+
+export async function postStatementPreview(slug: string, b: StatementFileInput): Promise<StatementPreview> {
+  const fd = new FormData();
+  fd.append("file", b.file, b.file.name);
+  if (b.bank && b.bank !== "auto") fd.append("bank", b.bank);
+  fd.append("account_type", b.account_type);
+  if (b.account_name.trim()) fd.append("account_name", b.account_name.trim());
+  return jupload<StatementPreview>(pp(slug, "/budget/import/preview"), fd);
+}
+/** GET /budget/import/importers: the `Bank` select (auto, the banks with a CSV parser, the finanse format; later
+ * connectors) and the upload limit. */
+export interface ImporterChoice { id: string; name: string; kind: "auto" | "bank" | "format" | "connector" | string; available: boolean }
+export const getImporters = (slug: string) => j<{ importers: ImporterChoice[]; max_bytes: number }>(pp(slug, "/budget/import/importers"));
+
+export const postStatementCommit = (slug: string, b: StatementCommitInput) =>
+  jpost<StatementCommit>(pp(slug, "/budget/import/commit"), b);
+export const postMatchTransfers = (slug: string, maxDays?: number) =>
+  jpost<{ pairs: number }>(pp(slug, "/budget/match-transfers"), maxDays != null ? { max_days: maxDays } : {});
+
+/** GET /uncategorized: expense merchants still in the default category, largest total first (one currency). */
+export interface UncategorizedRow { merchant_key: string; sample: string; count: number; total: number; currency: string }
+export const getUncategorized = (slug: string, limit = 30, currency?: string | null) =>
+  j<UncategorizedRow[]>(pp(slug, withCurrency(`/uncategorized?limit=${limit}`, currency)));

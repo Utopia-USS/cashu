@@ -4,11 +4,14 @@
 import { Fragment, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useAsync } from "../hooks";
 import { ck, clearCache, swr } from "../swr";
-import { Notice, SkeletonChart, SkeletonKpis, useToast } from "../ui";
+import { SkeletonChart, SkeletonKpis, useToast } from "../ui";
 import {
   getCategories, getNetworth, getSetup, getSummary, type ModuleInfo, type Profile, type SystemInfo,
 } from "./api";
 import { Brand } from "./Brand";
+import { hideCard, isHidden, onHiddenChange } from "./hidden";
+import { createReloadHold } from "./hold";
+import { partialLine } from "./setupSteps";
 import { Overview } from "./Overview";
 import { ProfileMenu } from "./ProfileMenu";
 import { moduleDef, orderModules, tabKey } from "./registry";
@@ -87,12 +90,14 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
     return () => window.removeEventListener("hashchange", onHash);
   }, [slug, profiles]);
 
-  // Module states can change outside the app (CLI, Claude Code): re-read on focus.
+  // Module states can change outside the app (CLI, Claude Code): re-read on focus, unless a Start page's drawer
+  // holds the page (closing the native file chooser focuses the window too).
+  const [hold] = useState(createReloadHold);
   useEffect(() => {
-    const onFocus = () => { void reloadProfiles(); };
+    const onFocus = () => { if (!hold.held()) void reloadProfiles(); };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [reloadProfiles]);
+  }, [reloadProfiles, hold]);
 
   // A newly created profile (first launch or wizard) arrives through initialSlug.
   useEffect(() => {
@@ -139,7 +144,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
 
   const shell: ShellState = {
     slug: profile.slug, profile, profiles, system, modules, view: resolved, go,
-    reloadProfiles, openWizard: () => setWizard(true), setNarrow: askNarrow, refresh,
+    reloadProfiles, hold, openWizard: () => setWizard(true), setNarrow: askNarrow, refresh,
   };
 
   // Przegląd (widget grid) and workspace tabs (investments) use the wide page; everything else keeps
@@ -162,23 +167,28 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
       sub: resolved.kind === "tab" ? resolved.sub : undefined,
     };
     if (resolved.kind === "tab" && resolved.tab === "overview") return <Overview base={base} enabled={enabled} />;
+    // The in-app first steps (`setup/<module>`) of a module that has them; the CLI / Claude Code page otherwise and
+    // at `setup/<module>/cli` (design/v3/first-steps D1).
     if (resolved.kind === "setup") {
       const pm = enabled.find((m) => m.id === resolved.module)!;
-      return <SetupPage moduleId={pm.id} state={pm.setup_state} />;
+      const def = moduleDef(pm.id, modules);
+      return def.Start && !resolved.cli
+        ? <def.Start ctx={{ ...base, state: pm.setup_state }} />
+        : <SetupPage moduleId={pm.id} state={pm.setup_state} />;
     }
     const [mid, tid] = resolved.tab.split(".");
     const pm = enabled.find((m) => m.id === mid)!;
     const def = moduleDef(mid, modules);
     const tab = def.tabs.find((t) => t.id === tid)!;
-    // An enabled module with no data yet: its first tab is the blank page (SetupPage).
-    // A partial module shows its data with a strip that leads back to the remaining steps.
+    // An enabled module with no data yet: its first tab is the module's first steps (Start), else the blank page
+    // (SetupPage). A partial module shows its data with a strip that leads back to the remaining steps.
     const first = tab === def.tabs[0];
     if (first && !def.ownSetup && (pm.setup_state === "empty" || (def.setupUntilReady && pm.setup_state !== "ready"))) {
-      return <SetupPage moduleId={mid} state={pm.setup_state} />;
+      return def.Start ? <def.Start ctx={{ ...base, state: pm.setup_state }} /> : <SetupPage moduleId={mid} state={pm.setup_state} />;
     }
     const body = tab.render({ ...base, state: pm.setup_state });
     if (body == null) return <SetupPage moduleId={mid} state={pm.setup_state} />;
-    return <>{first && !def.ownSetup && pm.setup_state === "partial" && <PartialStrip moduleId={mid} name={def.name} />}{body}</>;
+    return <>{first && !def.ownSetup && pm.setup_state === "partial" && <PartialStrip moduleId={mid} name={def.name} state={pm.setup_state} />}{body}</>;
   })();
 
   return (
@@ -227,7 +237,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
             );
           })}
           <span className="spacer" />
-          {TabAction && <TabAction slug={profile.slug} profileName={profile.name} networth={networthS.data ?? null} refresh={refresh} />}
+          {TabAction && <TabAction key={profile.slug} slug={profile.slug} profileName={profile.name} networth={networthS.data ?? null} refresh={refresh} />}
         </nav>
 
         {/* Remount per profile, refresh and theme change (charts read tokens at render);
@@ -251,15 +261,20 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   );
 }
 
-/** Compact reminder on the first tab of a partially set up module. */
-function PartialStrip({ moduleId, name }: { moduleId: string; name: string }) {
+/** One quiet line on the first tab of a partially set up module: `{Moduł} · 2 z 3 kroków · następny: …`, `Kontynuuj`
+ * (the module's first steps) and `ukryj` (until the setup state changes; shared with the Przegląd ghost card). */
+function PartialStrip({ moduleId, name, state }: { moduleId: string; name: string; state: string }) {
   const { slug, go } = useContext(ShellContext)!;
   const { data } = useAsync(() => getSetup(slug, moduleId), [slug, moduleId], { key: ck(slug, "setup", moduleId) });
-  const next = data?.steps.find((s) => s.status === "on") ?? data?.steps.find((s) => s.status !== "done");
+  const [, rerender] = useState(0);
+  useEffect(() => onHiddenChange(() => rerender((n) => n + 1)), []);
+  if (isHidden(slug, moduleId, state)) return null;
   return (
-    <Notice tone="warn" action={<button className="btn" onClick={() => go({ kind: "setup", module: moduleId })}>Kontynuuj</button>}>
-      <b>{name}</b>{next ? ` · następny krok: ${next.title.charAt(0).toLowerCase()}${next.title.slice(1)}` : ""}
-    </Notice>
+    <div className="notice">
+      <div className="grow"><b>{name}</b>{data ? ` · ${partialLine(data.steps)}` : ""}</div>
+      <button className="btn sm primary" onClick={() => go({ kind: "setup", module: moduleId })}>Kontynuuj</button>
+      <button className="lnk" onClick={() => hideCard(slug, moduleId, state)}>ukryj</button>
+    </div>
   );
 }
 

@@ -134,17 +134,21 @@ export function Stepper({ steps, current }: { steps: string[]; current: number }
 }
 
 export type StepStatus = "done" | "on" | "todo";
-export interface SetupStepItem { key: string; title: ReactNode; hint?: ReactNode; status: StepStatus; tag?: ReactNode; actions?: ReactNode; body?: ReactNode }
+export interface SetupStepItem {
+  key: string; title: ReactNode; hint?: ReactNode; status: StepStatus; tag?: ReactNode; actions?: ReactNode; body?: ReactNode;
+  /** Never counts toward the module state: `opcjonalnie` after the title until done (unless `tag` is given). */
+  optional?: boolean;
+}
 
-/** Vertical step list with live status (blank page / setup). */
-export function SetupSteps({ steps }: { steps: SetupStepItem[] }) {
+/** Vertical step list with live status (blank page / setup). `compact`: the actions go under the hint (a 1/3 widget). */
+export function SetupSteps({ steps, compact }: { steps: SetupStepItem[]; compact?: boolean }) {
   return (
-    <div className="setup-steps">
+    <div className={`setup-steps${compact ? " compact" : ""}`}>
       {steps.map((s, i) => (
         <div key={s.key} className={`ss ${s.status}`}>
           <b className="n" aria-label={s.status === "done" ? "zrobione" : `krok ${i + 1}`}>{s.status === "done" ? "✓" : i + 1}</b>
           <div style={{ minWidth: 0 }}>
-            <div className="t">{s.title} {s.tag}</div>
+            <div className="t">{s.title} {s.tag ?? (s.optional && s.status !== "done" ? <Tag>opcjonalnie</Tag> : null)}</div>
             {s.body}
             {s.hint && <div className="h">{s.hint}</div>}
           </div>
@@ -217,13 +221,14 @@ export function ChoiceCard({ checked, title, desc, hint, tag, disabled, onChange
 
 export function RadioList<T extends string>({ name, value, onChange, options, disabled }: {
   name: string; value: T; onChange: (v: T) => void; disabled?: boolean;
-  options: { value: T; title: ReactNode; desc?: ReactNode; tag?: ReactNode; tooltip?: string }[];
+  /** `disabled` on an option: shown, not selectable (a placeholder slot); `tooltip` says why. */
+  options: { value: T; title: ReactNode; desc?: ReactNode; tag?: ReactNode; tooltip?: string; disabled?: boolean }[];
 }) {
   return (
     <div className="radios" role="radiogroup">
       {options.map((o) => (
-        <label key={o.value} className={o.value === value ? "on" : ""} title={o.tooltip}>
-          <input type="radio" name={name} value={o.value} checked={o.value === value} disabled={disabled} onChange={() => onChange(o.value)} />
+        <label key={o.value} className={`${o.value === value ? "on" : ""}${o.disabled ? " off" : ""}`} title={o.tooltip}>
+          <input type="radio" name={name} value={o.value} checked={o.value === value} disabled={disabled || o.disabled} onChange={() => onChange(o.value)} />
           <div>
             <div className="t">{o.title} {o.tag}</div>
             {o.desc && <div className="d">{o.desc}</div>}
