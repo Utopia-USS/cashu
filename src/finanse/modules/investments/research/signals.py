@@ -61,6 +61,7 @@ RELATION_LABEL = {
     "invalidates": "podważa tezę",
     "weakens": "osłabia tezę",
     "supports": "wzmacnia tezę",
+    "fulfills": "spełnia tezę",
 }
 """Polish labels of the thesis relations a message names (``RELATION_LABEL`` in v2/research/logic.ts);
 ``neutral`` / ``none`` are left out of the message."""

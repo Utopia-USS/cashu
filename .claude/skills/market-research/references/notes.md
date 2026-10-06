@@ -14,8 +14,8 @@ the asset drawer, the research view and the Sunday review. They are in Polish; t
 | `kind` | `news`, `earnings`, `community`, `trend`, `macro`, `candidate` (`rubrics.md`) |
 | `polarity` | `positive`, `negative`, `neutral` (`rubrics.md`) |
 | `strength` | 1-3 with the caps per kind (`rubrics.md`) |
-| `thesis_relation` | `supports`, `weakens`, `invalidates`, `neutral`, `none` (`rubrics.md`) |
-| `thesis_field` | `thesis`, `invalidation`, `exit_plan`, `size_plan` or `entry_type`; only with `supports` / `weakens` / `invalidates` |
+| `thesis_relation` | `supports`, `weakens`, `invalidates`, `fulfills`, `neutral`, `none` (`rubrics.md`) |
+| `thesis_field` | `thesis`, `invalidation`, `exit_plan`, `size_plan` or `entry_type`; only with `supports` / `weakens` / `invalidates` / `fulfills` (`fulfills`: `thesis` or `exit_plan` only) |
 | `title` | at most 120 characters |
 | `summary` | at most 1200 characters |
 | `sources` | 1-10 objects with exactly the keys `url`, `publisher`, `published_at`, `title` |
@@ -72,7 +72,7 @@ Regular hyphens only (no em dash character).
   point used. No date, no source.
 - `title`: the page's headline or a short description of the dataset.
 - Order: primary source first. Two sources for strength 2 when the first is not primary; a primary
-  source always for strength 3 and `invalidates`.
+  source always for strength 3, `invalidates` and `fulfills`.
 
 ## Themes
 

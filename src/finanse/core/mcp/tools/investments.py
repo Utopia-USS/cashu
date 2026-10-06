@@ -3,8 +3,8 @@ import preview). The views return absolute amounts; here every field gets its la
 sends weights, percentages and dates only.
 
 Read: ``portfolio_overview``, ``positions``, ``signals``, ``strategy_status``, ``history_metrics``,
-``theses``, ``inspect_export``, ``validate_import``. Write: ``record_decision``, ``upsert_thesis``,
-``propose_strategy``, ``propose_custom_rule``, ``propose_import`` (proposals are approved in the app).
+``theses``, ``inspect_export``, ``validate_import``. Write: ``set_recommendation``, ``record_decision``,
+``upsert_thesis``, ``propose_strategy``, ``propose_custom_rule``, ``propose_import``.
 """
 
 from __future__ import annotations
@@ -398,6 +398,52 @@ def portfolio_overview(ctx: ToolContext) -> dict:
     }
 
 
+_HINT_PCT = frozenset({"gain", "loss", "drawdown", "weight", "max_weight", "threshold"})
+_HINT_FLAG = frozenset({"has_exit_plan", "predates_thesis"})
+_HINT_CATEGORY = frozenset({"plan", "health", "kind"})
+
+
+def hint_rows(hints: list[dict] | None) -> list[dict]:
+    """Strategy hints (P2): codes, severities and params (fractions, flags, categories, the alert
+    ref; never an amount, the alert's owner-written title dropped), so strict and full agree."""
+    rows = []
+    for h in hints or []:
+        params: dict = {}
+        for key, value in (h.get("params") or {}).items():
+            if key in _HINT_PCT:
+                params[key] = L.pct(value)
+            elif key in _HINT_FLAG:
+                params[key] = L.flag(bool(value))
+            elif key in _HINT_CATEGORY:
+                params[key] = L.category(value)
+            elif key == "alert_id":
+                params[key] = L.ref(value)
+            elif key == "reasons":  # the recommendation's freshness reason codes (P3)
+                params[key] = [L.category(c) for c in value or []]
+            # anything else (the alert title) stays in the app
+        rows.append(
+            {
+                "code": L.category(h.get("code")),
+                "severity": L.category(h.get("severity")),
+                "params": params,
+            }
+        )
+    return rows
+
+
+def plan_freshness_row(value: dict | None) -> dict | None:
+    """The recommendation's freshness (P3): its state and reason codes (no ids, no dates), the same
+    in strict and full; None without a recommendation."""
+    if not value:
+        return None
+    return {
+        "state": L.category(value.get("state")),
+        "reasons": [
+            L.category(c) for c in dict.fromkeys(r.get("code") for r in value.get("reasons") or [])
+        ],
+    }
+
+
 def positions(ctx: ToolContext) -> dict:
     view = _views().positions(ctx.session, ctx.profile)
     total = view["total"]
@@ -429,6 +475,13 @@ def positions(ctx: ToolContext) -> dict:
                 "lots": L.count(len(lots)),
                 "open_signals": L.count(p.get("open_signals")),
                 "has_thesis": L.flag(p.get("has_thesis")),
+                "recommendation": L.category((p.get("instrument") or {}).get("plan")),
+                # possibly / definitely outdated by data stored after it (P3)
+                "plan_freshness": plan_freshness_row(
+                    (p.get("instrument") or {}).get("plan_freshness")
+                ),
+                # which of the owner's own rules apply now (P2), main first; never a buy / sell call
+                "hints": hint_rows(p.get("hints")),
                 "accounts": [
                     {
                         "account": L.account(labels.get(a.get("account_id"))),
@@ -695,6 +748,8 @@ def strategy_status(ctx: ToolContext) -> dict:
 
 
 def theses(ctx: ToolContext, instrument: str | None = None) -> dict:
+    from finanse.modules.investments.domain import effective_plan
+    from finanse.modules.investments.research.service import held_since
     from finanse.modules.investments.store import instruments as instrument_store
     from finanse.modules.investments.store import journal
 
@@ -703,6 +758,19 @@ def theses(ctx: ToolContext, instrument: str | None = None) -> dict:
     insts = instrument_store.load(
         ctx.session, {r.instrument_id for r in rows}, profile_id=ctx.profile_id
     )
+    held = held_since(ctx.session, ctx.profile_id) if rows else {}
+
+    def plan(instrument_id: int) -> str | None:
+        inst = insts.get(instrument_id)
+        if inst is None:
+            return None
+        return effective_plan(
+            inst.plan,
+            held=instrument_id in held,
+            plan_at=inst.plan_at,
+            opened=held.get(instrument_id),
+        )
+
     return {
         "theses": [
             {
@@ -714,6 +782,7 @@ def theses(ctx: ToolContext, instrument: str | None = None) -> dict:
                 "invalidation": L.text(r.invalidation),
                 "exit_plan": L.text(r.exit_plan),
                 "size_plan": L.text(r.size_plan),
+                "recommendation": L.category(plan(r.instrument_id)),
                 "reviewed_at": L.date(r.reviewed_at),
                 "created_at": L.date(r.created_at),
                 "updated_at": L.date(r.updated_at),
@@ -876,6 +945,35 @@ def validate_import(ctx: ToolContext, path: str, mapping: str | None = None) -> 
 # --------------------------------------------------------------------------- #
 
 
+def set_recommendation(ctx: ToolContext, instrument: str, recommendation: str, reason: str) -> dict:
+    """Store the model's current recommendation; this never records or places a trade."""
+    from finanse.modules.investments.research.service import held_since
+    from finanse.modules.investments.service import plans
+    from finanse.modules.investments.store import instruments
+
+    iid = profile_instrument(ctx, instrument)
+    held = iid in held_since(ctx.session, ctx.profile_id)
+    try:
+        row = instruments.set_plan(
+            ctx.session,
+            iid,
+            recommendation,
+            profile_id=ctx.profile_id,
+            held=held,
+            reason=reason,
+        )
+    except instruments.PlanError as e:
+        raise ToolError(str(e)) from None
+    plans.sync_instrument(ctx.session, ctx.profile, iid)
+    return {
+        "instrument_id": L.ref(iid),
+        "recommendation": L.category(row.plan),
+        "generated_at": L.date(row.plan_at),
+        "reason_saved": L.flag(row.plan_reason is not None),
+        "note": L.text("model recommendation saved; no decision or transaction was recorded"),
+    }
+
+
 def record_decision(
     ctx: ToolContext, signal_id: int, action: str, reason: str | None = None
 ) -> dict:
@@ -912,7 +1010,7 @@ def upsert_thesis(
 
     iid = profile_instrument(ctx, instrument)
     values = {"entry_type": entry_type, "thesis": thesis}
-    # Optional fields only when given: an update never wipes the owner's plans.
+    # Optional fields only when given: a thesis update never wipes model recommendations.
     for key, value in (
         ("invalidation", invalidation),
         ("exit_plan", exit_plan),
@@ -930,6 +1028,9 @@ def upsert_thesis(
             created = True
     except journal.JournalError as e:
         raise ToolError(str(e)) from None
+    from finanse.modules.investments.service import plans
+
+    plans.sync_instrument(ctx.session, ctx.profile, iid)  # the plan checks follow the thesis (P1)
     return {
         "thesis_id": L.ref(row.id),
         "instrument_id": L.ref(iid),
@@ -1017,14 +1118,19 @@ TOOLS = (
         "positions",
         "investments",
         "Per instrument: symbol, name, weight, unrealized %, tags, bucket, valuation mode, holding "
-        "days, open signals, thesis flag; cash weights per account.",
+        "days, open signals, thesis flag, the model recommendation (buy_asap | buy | hold | reduce | "
+        "exit_asap | null), plan_freshness (state fresh | maybe_outdated | outdated and reason "
+        "codes; null without a recommendation), hints (which of the owner's own rules apply now: "
+        "code, severity rule|review|info, params as fractions; main first); "
+        "cash weights per account.",
         positions,
     ),
     ToolSpec(
         "signals",
         "investments",
         "Rule and alert signals: rule, scope, measured vs threshold (as ratio / pp / days), "
-        "severity, polarity (positive | negative | neutral), source (rule | alert), snooze, age, "
+        "severity, polarity (positive | negative | neutral), source (rule | alert | research | "
+        "plan), snooze, age, "
         "decisions. status: open (default), history or all.",
         signals,
         properties={
@@ -1048,8 +1154,8 @@ TOOLS = (
     ToolSpec(
         "theses",
         "investments",
-        "Position theses (entry type, thesis, invalidation, exit and size plans), optionally of "
-        "one instrument (id, symbol or ISIN).",
+        "Position theses (entry type, thesis, invalidation, exit and size plans) with the model "
+        "recommendation, optionally of one instrument (id, symbol or ISIN).",
         theses,
         properties={"instrument": {"type": "string", "maxLength": 40}},
     ),
@@ -1074,6 +1180,25 @@ TOOLS = (
         properties={"path": _PATH, "mapping": _MAPPING},
         required=("path",),
         refused=_NO_SCRIPTS,
+    ),
+    ToolSpec(
+        "set_recommendation",
+        "investments",
+        "Save the model's recommendation for one instrument after reviewing current research, the "
+        "owner's thesis and invalidation, portfolio construction, strategy and history. This is an "
+        "opinion for the owner to evaluate, not a decision and never a trade. `reason`: one or two "
+        "short Polish sentences (max 280 characters) the app shows under the thesis; no amounts.",
+        set_recommendation,
+        properties={
+            "instrument": {"type": "string", "maxLength": 40},
+            "recommendation": {
+                "type": "string",
+                "enum": ["buy_asap", "buy", "hold", "reduce", "exit_asap"],
+            },
+            "reason": {"type": "string", "maxLength": 280},
+        },
+        required=("instrument", "recommendation", "reason"),
+        write=True,
     ),
     ToolSpec(
         "record_decision",

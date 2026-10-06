@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from .. import labels as L
 from ..registry import ToolContext, ToolError, ToolSpec
-from .investments import owner_named, owner_named_ids, public_label
+from .investments import hint_rows, owner_named, owner_named_ids, plan_freshness_row, public_label
 from .messages import custom_condition, custom_signal_message
 
 _TEXT = {"type": "string", "maxLength": 2000}
@@ -37,6 +37,14 @@ def _services():
     from finanse.modules.investments.service import alerts, views, watchlist
 
     return alerts, views, watchlist
+
+
+def _sync_plan(ctx: ToolContext, instrument_id: int) -> None:
+    """The plan checks follow the watchlist: a watched instrument's buy plan is checked against its
+    thesis (P2)."""
+    from finanse.modules.investments.service import plans
+
+    plans.sync_instrument(ctx.session, ctx.profile, instrument_id)
 
 
 def _instrument(inst: dict | None, owned: set[int], ctx: ToolContext | None = None) -> dict:
@@ -267,6 +275,12 @@ def _watch_row(row: dict, owned: set[int], ctx: ToolContext | None = None) -> di
         "source": L.category(row.get("source")),
         "added_at": L.date(row.get("added_at")),
         "held": L.flag(bool(row.get("held"))),
+        # The model's current opinion; the owner's decision remains separate.
+        "recommendation": L.category((row.get("instrument") or {}).get("plan")),
+        # possibly / definitely outdated by data stored after it (P3)
+        "plan_freshness": plan_freshness_row((row.get("instrument") or {}).get("plan_freshness")),
+        # which of the owner's own rules apply now (P2), main first; never a buy / sell call
+        "hints": hint_rows(row.get("hints")),
         "price_source": L.flag(bool(row.get("price_source"))),
         "last_close": _price(price.get("close"), private),
         "price_date": L.date(price.get("date")),
@@ -333,6 +347,7 @@ def add_to_watchlist(
         raise ToolError(str(e), "not_found") from None
     except watch.WatchlistError as e:
         raise ToolError(str(e)) from None
+    _sync_plan(ctx, result.item.instrument_id)
     owned = owner_named_ids(ctx)
     row = next(
         r for r in views.watchlist_view(ctx.session, ctx.profile) if r["id"] == result.item.id
@@ -352,6 +367,7 @@ def remove_from_watchlist(ctx: ToolContext, id: int) -> dict:
         raise ToolError(
             "no such watchlist item in this profile (see watchlist)", "not_found"
         ) from None
+    _sync_plan(ctx, item.instrument_id)
     return {"item_id": L.ref(item.id), "removed": L.flag(True)}
 
 
@@ -408,7 +424,10 @@ TOOLS = (
         "watchlist",
         "investments",
         "Watched instruments (not necessarily held): last close, 1-day / 1-month change, 52-week "
-        "high and distance, alerts count and the nearest alert level.",
+        "high and distance, alerts count, the model recommendation "
+        "(buy_asap | buy | hold | null), plan_freshness (state fresh | maybe_outdated | outdated "
+        "and reason codes; null without a recommendation), hints (which of the owner's own rules apply "
+        "now: code, severity, params; main first).",
         watchlist,
     ),
     ToolSpec(

@@ -1061,6 +1061,15 @@ class Seeder:
                     asset_class=spec.asset_class,
                     tags=list(spec.tags),
                 )
+                if inst.symbol == "GLBA":
+                    instruments.set_plan(
+                        s,
+                        int(iid),
+                        "hold",
+                        profile_id=pid,
+                        held=True,
+                        reason="Teza pozostaje aktualna, a pozycja mieści się w docelowej konstrukcji portfela.",
+                    )
         return account_id
 
     def strategy(self, plan: Plan, profile) -> None:
@@ -1088,14 +1097,24 @@ class Seeder:
         from finanse.core.db import get_session
         from finanse.modules.investments.service import watchlist
         from finanse.modules.investments.store import alerts as alert_store
+        from finanse.modules.investments.store import instruments
 
         with get_session() as s:
             prof = s.get(type(profile), profile.id)
             if alert_store.watchlist(s, profile.id):
                 self.note(profile.slug, "watchlist", "exists")
                 return
-            for symbol, name, note in plan.watch:
-                watchlist.add(s, prof, symbol, name=name, note=note, tags=["demo"])
+            for index, (symbol, name, note) in enumerate(plan.watch):
+                added = watchlist.add(s, prof, symbol, name=name, note=note, tags=["demo"])
+                if index == 0:
+                    instruments.set_plan(
+                        s,
+                        added.item.instrument_id,
+                        "buy",
+                        profile_id=profile.id,
+                        held=False,
+                        reason="Kandydat pasuje do strategii; przed zakupem model czeka na potwierdzenie warunków wejścia.",
+                    )
         self.note(profile.slug, "watchlist", f"created ({len(plan.watch)})")
 
     def market_data(self, profile) -> None:

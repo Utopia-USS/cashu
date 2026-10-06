@@ -34,7 +34,9 @@ from ..domain import (
     ValuationMode,
     ValuedHolding,
     divided_by,
+    effective_plan,
     is_generic_bucket,
+    opened_on,
     ratio,
 )
 from ..importing import ImportWarning
@@ -49,6 +51,7 @@ from ..models import (
     InvThesis,
     InvWatchlistItem,
 )
+from ..plan.keys import is_plan_key
 from ..portfolio import build_snapshot, effective_valuation_mode
 from ..portfolio.fx_lookup import convert as fx_convert
 from ..research import service as research_service
@@ -69,6 +72,7 @@ from ..rules import (
 from ..rules.kinds.allocation_drift import hidden_from_owner, with_bucket_generic
 from ..store import alerts as alert_store
 from ..store import convert, journal, market, signals, transactions
+from . import hints as hint_service
 from . import portfolio
 from . import strategy as strategy_files
 from .imports import ImportPreview
@@ -89,10 +93,15 @@ def _key(instrument_id: str | None) -> int | str | None:
     return instrument_id if key is None else key
 
 
-def instrument_dict(inst: Instrument) -> dict:
+def instrument_dict(
+    inst: Instrument, *, held: bool | None = None, opened: dt.date | None = None
+) -> dict:
     """``label`` is the symbol, else the name, for every instrument (imported, manual and watched
     alike: messages and lists use it); ``name`` is the display name (it falls back to the symbol when
-    none was given)."""
+    none was given). ``plan`` / ``plan_at`` are compatibility wire names for the model recommendation
+    and its generation time. A stale reduce / exit recommendation is emitted as None.
+    """
+    plan = effective_plan(inst.plan, held=held, plan_at=inst.plan_at, opened=opened)
     return {
         "id": _key(inst.id),
         "symbol": inst.symbol,
@@ -111,6 +120,9 @@ def instrument_dict(inst: Instrument) -> dict:
         "aliases": [
             {"namespace": a.namespace, "value": a.value, "guessed": a.guessed} for a in inst.aliases
         ],
+        "plan": plan,
+        "plan_at": iso(inst.plan_at) if plan is not None else None,
+        "plan_reason": inst.plan_reason if plan is not None else None,
     }
 
 
@@ -511,7 +523,8 @@ def position_rows(
             for h in held:
                 buckets[(h.account_id, h.instrument_id)] = bucket_id
     open_by_instrument: dict[int, int] = defaultdict(int)
-    for row in signals.open_signal_rows(session, profile.id):
+    open_rows = signals.open_signal_rows(session, profile.id)
+    for row in open_rows:
         if row.instrument_id is not None:
             open_by_instrument[row.instrument_id] += 1
     with_thesis = {t.instrument_id for t in journal.theses(session, profile.id)}
@@ -564,7 +577,11 @@ def position_rows(
         bucket_ids = {buckets.get((v.account_id, v.instrument_id)) for v in held}
         rows.append(
             {
-                "instrument": instrument_dict(inst),
+                "instrument": instrument_dict(
+                    inst,
+                    held=True,
+                    opened=opened_on((v.holding for v in held), state.snapshot.realized),
+                ),
                 "bucket": next(iter(bucket_ids)) if len(bucket_ids) == 1 else None,
                 "quantity": f(sum((v.holding.quantity for v in held), Decimal(0))),
                 "price": f(first.price),
@@ -613,8 +630,30 @@ def position_rows(
                 "closes_30d": closes_30d(state.market.bars.get(instrument_id, ()), state.as_of),
             }
         )
+    subjects = {
+        r["instrument"]["id"]: hint_service.Subject(
+            instrument=grouped[convert.sid(r["instrument"]["id"])][0].instrument,
+            held=True,
+            plan=r["instrument"]["plan"],
+            weight=r["weight"],
+        )
+        for r in rows
+        if isinstance(r["instrument"]["id"], int)
+    }
+    found = hint_service.annotate(session, profile.id, subjects, open_rows=open_rows)
+    for r in rows:
+        _attach(r, found.get(r["instrument"]["id"]))
     rows.sort(key=lambda r: -(r["value"] or 0))
     return rows
+
+
+def _attach(row: dict, found: hint_service.Annotation | None) -> None:
+    """What the owner's own rules say about the instrument now (P2 ``hints``, main first) and the
+    recommendation's freshness next to ``plan`` (P3 ``instrument.plan_freshness``; None without a
+    plan)."""
+    row["hints"] = [] if found is None else found.hints
+    if row.get("instrument") is not None:
+        row["instrument"]["plan_freshness"] = None if found is None else found.plan_freshness
 
 
 CLOSES_DAYS = 30
@@ -645,9 +684,35 @@ def position_detail(
     )
     window = [b.close for b in series[-252:]]
     txns = [t for t in state.txns if t.instrument_id == convert.sid(instrument_id)]
+    detail_instrument = (
+        None
+        if inst is None
+        else instrument_dict(
+            inst,
+            held=bool(rows),
+            opened=opened_on(
+                (
+                    v.holding
+                    for v in state.valued.valued
+                    if v.instrument_id == convert.sid(instrument_id)
+                ),
+                state.snapshot.realized,
+            ),
+        )
+    )
+    # P2: the position's hints when held, the watched table when watched, else none; P3: the
+    # recommendation's freshness next to its plan
+    found = (
+        hint_service.Annotation(rows[0]["hints"], rows[0]["instrument"].get("plan_freshness"))
+        if rows
+        else _unheld_annotation(session, profile, inst)
+    )
+    if detail_instrument is not None:
+        detail_instrument["plan_freshness"] = found.plan_freshness
     return {
-        "instrument": None if inst is None else instrument_dict(inst),
+        "instrument": detail_instrument,
         "position": rows[0] if rows else None,
+        "hints": found.hints,
         "series": [{"date": iso(b.date), "close": f(b.close)} for b in series],
         "high_52w": f(max(window)) if window else None,
         "transactions": [txn_dict(t, state) for t in txns],
@@ -660,6 +725,23 @@ def position_detail(
             for m in transactions.manual_valuation_rows(session, profile.id, [instrument_id])
         ],
     }
+
+
+def _unheld_annotation(
+    session: Session, profile: Profile, inst: Instrument | None
+) -> hint_service.Annotation:
+    """An instrument not held: the watched hints table when watched (P2), none otherwise; the
+    recommendation's freshness either way (P3; None without a plan)."""
+    iid = None if inst is None else convert.maybe_pk(inst.id)
+    plan = None if inst is None else effective_plan(inst.plan, held=False)
+    if iid is None:
+        return hint_service.Annotation([], None)
+    watched = iid in research_service.watched_instrument_ids(session, profile.id)
+    if not watched and plan is None:
+        return hint_service.Annotation([], None)
+    subject = hint_service.Subject(instrument=inst, held=False, plan=plan, hints=watched)
+    found = hint_service.annotate(session, profile.id, {iid: subject}).get(iid)
+    return found or hint_service.Annotation([], None)
 
 
 def txn_dict(t, state: portfolio.PortfolioState | None = None) -> dict:
@@ -705,9 +787,12 @@ def manual_txn_dict(result) -> dict:
 
 
 def _signal_source(row: InvSignal) -> str:
-    """``alert`` (an alert's signal), ``research`` (a research note's, F6) or ``rule``."""
+    """``alert`` (an alert's signal), ``research`` (a research note's, F6), ``plan`` (a plan
+    check's, P1) or ``rule``."""
     if is_alert_key(row.rule_id):
         return "alert"
+    if is_plan_key(row.rule_id):
+        return "plan"
     return "research" if is_research_key(row.rule_id) else "rule"
 
 
@@ -1191,6 +1276,7 @@ def watchlist_row(
     alerts: list[InvAlert],
     max_price_age_days: int = 5,
     research_unread: int = 0,
+    opened: dt.date | None = None,
 ) -> dict:
     """One watched instrument with hard price facts only (last close, past changes, 52-week high);
     never a forecast. ``research_unread``: its unread research notes (F8)."""
@@ -1215,7 +1301,9 @@ def watchlist_row(
     return {
         "id": item.id,
         "instrument_id": item.instrument_id,
-        "instrument": instrument_dict(instrument) if instrument is not None else None,
+        "instrument": instrument_dict(instrument, held=held, opened=opened)
+        if instrument is not None
+        else None,
         "note": item.note,
         "tags": list(item.tags or []),
         "source": item.source,
@@ -1253,15 +1341,19 @@ def watchlist_view(
         as_of,
         renames=transactions.renames(session, profile.id),
     )
-    held = {convert.pk(h.instrument_id) for h in snapshot.holdings}
+    holdings: dict[int, list] = defaultdict(list)
+    for h in snapshot.holdings:
+        holdings[convert.pk(h.instrument_id)].append(h)
+    held = set(holdings)
     by_instrument: dict[int, list[InvAlert]] = defaultdict(list)
-    for a in alert_store.alerts(session, profile.id):
+    alert_rows = alert_store.alerts(session, profile.id)
+    for a in alert_rows:
         if a.instrument_id is not None:
             by_instrument[a.instrument_id].append(a)
     st = strategy_files.load(session, profile)
     max_age = st.config.data.max_price_age_days if st.config is not None else 5
     unread = research_service.unread_by_instrument(session, profile.id)
-    return [
+    rows = [
         watchlist_row(
             item,
             loaded.get(item.instrument_id),
@@ -1271,9 +1363,24 @@ def watchlist_view(
             alerts=by_instrument.get(item.instrument_id, []),
             max_price_age_days=max_age,
             research_unread=unread.get(item.instrument_id, 0),
+            opened=opened_on(holdings.get(item.instrument_id, ()), snapshot.realized),
         )
         for item in items
     ]
+    subjects = {
+        r["instrument_id"]: hint_service.Subject(
+            instrument=loaded[r["instrument_id"]],
+            held=r["held"],
+            plan=r["instrument"]["plan"],
+        )
+        for r in rows
+        if r["instrument"] is not None
+    }
+    found = hint_service.annotate(session, profile.id, subjects, alert_rows=alert_rows)
+    for r in rows:
+        # a held item gets the held hints table
+        _attach(r, found.get(r["instrument_id"]))
+    return rows
 
 
 def decision_dict(d: InvDecision, signal_ids: list[int] | None = None) -> dict:
@@ -1314,6 +1421,8 @@ def thesis_dict(t: InvThesis) -> dict:
         "reviewed_at": iso(t.reviewed_at),
         "created_at": iso(t.created_at),
         "updated_at": iso(t.updated_at),
+        # the last change of entry_type / thesis / invalidation (P2; research before it is tagged)
+        "core_changed_at": iso(t.core_changed_at or t.updated_at),
     }
 
 

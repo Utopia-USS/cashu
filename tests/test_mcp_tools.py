@@ -101,6 +101,14 @@ def _calls(host: FinanseMcp, tmp_path) -> list[tuple[str, dict]]:
         ("loans_summary", {}),
         ("portfolio_overview", {}),
         ("positions", {}),
+        (
+            "set_recommendation",
+            {
+                "instrument": "PKO",
+                "recommendation": "hold",
+                "reason": "Teza pozostaje aktualna; model czeka na kolejny punkt kontrolny.",
+            },
+        ),
         ("signals", {"status": "all"}),
         ("strategy_status", {}),
         ("history_metrics", {}),

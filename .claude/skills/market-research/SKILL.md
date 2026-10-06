@@ -1,6 +1,6 @@
 ---
 name: market-research
-description: Market research for the finanse investments module through the profile's finanse MCP server - the Saturday routine (held positions, watchlist, candidates matching the strategy, sector and macro themes), on-demand research of one instrument or theme, and an on-demand thesis review of held positions against the owner's invalidation condition and exit plan. Writes Polish notes with dated sources (news, company reports, community sentiment flagged as noise, trend data) tied to the theses, and may propose a few range-breakout or volume-spike alerts. Use on /market-research (optionally a symbol, ISIN, theme, `tezy` or `rutyna`) or to schedule the routine. Triggers on Polish requests such as "zrób research", "research tygodniowy", "co słychać w", "sentyment na", "zbadaj temat", "nowi kandydaci", "przegląd tez", "sprawdź tezę", "zaplanuj research". Not for writing strategy or theses (investments-setup), rules (extension-builder) or imports. Never recommends trades or predicts prices.
+description: Market research and model recommendations for the finanse investments module through the profile's finanse MCP server. Reviews held positions, watchlist, strategy, portfolio construction and thesis health; writes sourced Polish research notes, then saves a current buy/hold/reduce/exit recommendation for each covered instrument. Never places trades or predicts prices.
 argument-hint: "[symbol | ISIN | temat | tezy [symbol] | rutyna]"
 ---
 
@@ -20,7 +20,7 @@ English, regular hyphens only (never the em dash character).
 Keep these verbatim; do not soften them:
 
 - Not a licensed advisor.
-- No buy/sell recommendations.
+- Recommendations are model opinions for the owner to evaluate, never decisions or orders.
 - No price predictions.
 - Facts with sources.
 - Never bypass paywalls or bot protection.
@@ -28,12 +28,12 @@ Keep these verbatim; do not soften them:
 
 What they mean here:
 
-- You report facts and sentiment, each with a dated source. You never say or imply what to buy, sell,
-  hold or how much; a weakened thesis is a count of what research found, not advice. No price targets,
-  no "fair value", no forecasts, no analyst ratings (`references/sources.md`).
-- If the user asks "czy kupić / sprzedać?", say in one sentence that you do not recommend trades, then
-  offer the facts, the thesis check (its invalidation condition and exit plan) or `/investments-setup`
-  to revise the thesis.
+- Research notes report facts and sentiment with dated sources. Notes never contain a recommendation,
+  price target, forecast or analyst rating (`references/sources.md`).
+- After the facts are stored, form your own recommendation from the current research, the owner's
+  thesis and invalidation, portfolio construction, strategy and history. Save it through
+  `set_recommendation`. State it as a model opinion; the owner decides what to do.
+- Never imply that saving a recommendation records a decision or books a transaction.
 - Public web pages only: no logins, no paywall or bot-protection workarounds; a blocked source is
   skipped and counted.
 - The profile's data reaches you only through its finanse MCP server, logged in Ustawienia > Agent AI.
@@ -64,6 +64,7 @@ time, never a list of the profile's holdings with weights.
 | `add_research_note(...)` | steps 3-6 and the thesis review: one note (schema in `references/notes.md`); validated, sources required, no amounts |
 | `finish_research_run(run_id, counts)` | step 8, and on any abort |
 | `theses(instrument)`, `positions`, `watchlist` | only if `research_context` lacks a detail you need |
+| `set_recommendation(instrument, recommendation, reason)` | after research: save the model opinion (`buy_asap`, `buy`, `hold`, `reduce`, `exit_asap`) with its short reason |
 | `alerts(status)` | step 7: live alerts, muted agent alerts and the agent alert limit, before any proposal |
 | `add_alert(...)` | step 7: a proposed `range_breakout` / `volume_spike` alert (`references/alerts.md`) |
 | `add_to_watchlist` | on demand only, when the user explicitly asks (`references/candidates.md`) |
@@ -83,8 +84,9 @@ the app and click `Aktualizuj workspace` (Ustawienia > Agent AI), and stop.
   a dismissed candidate is not re-proposed for 90 days.
 - Notes expire after **30 days** (the default; community notes 15 days); never set a later expiry,
   except thesis-review notes: **90 days** (the quarterly review cycle).
-- Strength 3 creates an info signal and `invalidates` an action signal: run the checklist in
-  `references/rubrics.md` before writing either.
+- Strength 3 creates an info signal and `invalidates` an action signal; `fulfills` (the outcome the
+  thesis expected has happened) marks the thesis `spełniona`: run the checklist in
+  `references/rubrics.md` before writing any of them.
 - Time box: about 30-40 minutes. Past 60 minutes, stop gathering and finish with what you have (a
   thesis review has its own, `references/thesis-review.md`).
 
@@ -162,13 +164,19 @@ situation for a held or watched single stock, sector ETF or crypto, you may prop
 `references/alerts.md` (unattended: created as agent alerts the owner reviews in the app; interactive:
 only those the user accepts). None is fine; never a price level, a target or buy / sell wording.
 
-**8. Finish.** `finish_research_run(run_id, counts)` with your own counters only (the app counts
+**8. Recommend and finish.** For each covered held or watched instrument, compare the fresh facts with
+its thesis, invalidation, exit plan, position weight, theme concentration, strategy and history. Call
+`set_recommendation` with a `reason`: one or two short Polish sentences (max 280 characters, no amounts) naming
+the facts it rests on; the app shows it under the thesis. Do not use price targets and do not mistake a low
+price for evidence. Prefer
+`hold` when evidence is incomplete. `buy_asap` and `exit_asap` require a clear, time-sensitive reason.
+Then call `finish_research_run(run_id, counts)` with your own counters only (the app counts
 notes, kinds and signals itself): `{"sources_checked": n, "instruments_covered": n,
 "themes_covered": n, "candidates_screened": n, "skipped": n}`, where `skipped` = duplicates, blocked
 sources and refused notes together. Then a short Polish summary in the session (at most 15 lines):
-notes per part, notes that created signals (title and relation), weakened or invalidated theses by
-symbol, alerts proposed (symbol, kind, reason), blocked sources, no candidate criteria in the strategy
-(if so), what to look at on Sunday. No recommendations.
+notes per part, notes that created signals (title and relation), weakened, invalidated or fulfilled
+theses by symbol, recommendations changed by symbol, alerts proposed (symbol, kind, reason), blocked
+sources, no candidate criteria in the strategy (if so), what to look at on Sunday.
 
 If a step fails, continue with the next item. When the time box runs out, finish normally with what
 is saved. If the MCP tools keep failing, finish with `status: "failed"` and a short `reason` (at most
@@ -192,9 +200,9 @@ research`) can pick up from the working file (duplicates are skipped).
      after an explicit yes).
 5. At most 8 notes; in an interactive session at most 1 alert proposal for the instrument, only if
    the user accepts it (`references/alerts.md`); then `finish_research_run`.
-6. Show the notes in the chat (title, kind, relation, strength, sources with dates) and where they are
-   in the app (Inwestycje > the asset > Research, or Inwestycje > Research). Follow-up questions get
-   facts with sources, under the same boundaries.
+6. Save a recommendation for a held or watched instrument, then show the notes and recommendation in
+   the chat and where they are in the app. Follow-up questions keep facts and recommendation clearly
+   separated.
 
 ## Thesis review (on demand, held positions)
 
@@ -207,15 +215,16 @@ The owner asks whether the theses still hold (`/market-research tezy [symbol]`).
    [...]}` (exactly the reviewed positions), then `research_notes` for the last 90 days.
 3. Per position, in a window since its last thesis review (at most 90 days): dated, sourced facts
    checked field by field against the invalidation condition, the exit plan and the thesis premise.
-   Price-based conditions stay with the app's rules and alerts.
+   Price-based conditions stay with the app's rules and alerts (except an exit plan's own written
+   price level being reached: `fulfills`, `references/rubrics.md`).
 4. Every field whose state changed becomes a note through `add_research_note` with `thesis_relation`
    + `thesis_field`, `details.context` starting `Przegląd tezy:` and `expires_in_days: 90`; at most 3
    per position. No change, no note.
 5. The long report goes to `research/<YYYY-MM-DD>-thesis-review.md` in the workspace; it never
    replaces the notes.
-6. Optional alert proposals (step 7 rules), `finish_research_run`, then one line per position in the
-   chat with the app's words (`podważona`, `osłabiona`, `wzmocniona`, `aktualna`). No advice; a
-   revision of the thesis is `/investments-setup`.
+6. Save a recommendation per reviewed position, optionally propose alerts, `finish_research_run`, then
+   one line per position with thesis health and the model recommendation. A revision of the thesis is
+   `/investments-setup`.
 
 ## Working files (workspace only)
 

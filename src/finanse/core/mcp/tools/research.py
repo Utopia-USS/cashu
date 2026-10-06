@@ -26,7 +26,7 @@ from ..registry import ToolContext, ToolError, ToolSpec
 from .investments import owner_named_ids, public_label
 
 _KINDS = ["news", "earnings", "community", "trend", "macro", "candidate"]
-_RELATIONS = ["supports", "weakens", "invalidates", "neutral", "none"]
+_RELATIONS = ["supports", "weakens", "invalidates", "fulfills", "neutral", "none"]
 _FIELDS = ["entry_type", "thesis", "invalidation", "exit_plan", "size_plan"]
 BOUNDARIES = (
     (
@@ -87,6 +87,7 @@ def _thesis(row) -> dict | None:
         "size_plan": L.text(row.size_plan),
         "draft": L.flag(row.reviewed_at is None and row.thesis.startswith("Szkic z researchu: ")),
         "updated_at": L.date(row.updated_at),
+        "core_changed_at": L.date(row.core_changed_at or row.updated_at),
     }
 
 
@@ -95,6 +96,7 @@ def _research_fields(item: dict | None) -> dict:
     counts = item.get("counts") or {}
     return {
         "health": L.category(item.get("health")),
+        "health_predates_thesis": L.flag(bool(item.get("health_predates_thesis"))),
         "counts": {k: L.count(counts.get(k)) for k in counts},
         "sentiment_8w": [L.pct(v) for v in item.get("sentiment_8w") or []],
         "direction": L.category(item.get("direction")),
@@ -114,6 +116,8 @@ def _note(row: dict, owned: set[int], ctx: ToolContext | None = None) -> dict:
         "strength": L.count(row["strength"]),
         "thesis_relation": L.category(row["thesis_relation"]),
         "thesis_field": L.category(row.get("thesis_field")),
+        # stored before the thesis' last core change: may judge an older thesis (P2)
+        "predates_thesis": L.flag(bool(row.get("predates_thesis"))),
         "title": L.text(row["title"]),
         "summary": L.text(row["summary"]),
         "instrument": _instrument(inst, owned, ctx) if inst else None,
@@ -410,8 +414,10 @@ def research_context(ctx: ToolContext) -> dict:
         "note": L.text(
             "weights are fractions of the portfolio total (1 = 100%); sentiment_8w has one score "
             "per ISO week (week_starts, oldest first) in [-1, 1], null = no notes that week; "
-            "health: invalidated, weakened, supported, current, no_research, no_thesis (30-day "
-            "window, reset when the thesis changes)"
+            "health: invalidated, weakened, fulfilled, supported, current, no_research, no_thesis "
+            "(30-day window; a thesis edit never drops notes: health_predates_thesis / "
+            "predates_thesis tag notes stored before the thesis' last core change; fulfilled = a "
+            "fulfills note: the outcome the thesis expected has happened)"
         ),
     }
 
@@ -500,6 +506,9 @@ def add_research_note(ctx: ToolContext, **arguments: Any) -> dict:
     except (validation.ResearchInputError, service.ResearchError, service.ResearchNotFound) as e:
         raise _errors(e) from None
     row = added.note
+    from finanse.modules.investments.service import plans
+
+    plans.sync_after_note(ctx.session, ctx.profile, row)  # the plan checks follow the health
     signal = added.signal
     return {
         "note_id": L.ref(row.id),
@@ -597,8 +606,10 @@ TOOLS = (
         "or symbol from research_context), a theme (sector / macro topic), or, for kind candidate, a "
         "new instrument (candidate {symbol_or_isin, name, exchange?, currency?} + details "
         "{entry_type, criteria [{text, met, threshold?}], context?, bucket?}). thesis_relation "
-        "(supports | weakens | invalidates | neutral) needs an instrument with a thesis, else none; "
-        "thesis_field names the thesis field it bears on. details.event + event_date record a known "
+        "(supports | weakens | invalidates | fulfills | neutral) needs an instrument with a thesis, "
+        "else none; thesis_field names the thesis field it bears on (fulfills: thesis or exit_plan, "
+        "a dated fact that the expected outcome happened or the exit target is met, never a sell "
+        "call). details.event + event_date record a known "
         "upcoming event; details.scale (small | medium | large) the size of a community discussion. "
         "Title <= 120, summary <= 1200 characters (Polish). invalidates -> action signal, strength "
         "3 -> info signal.",

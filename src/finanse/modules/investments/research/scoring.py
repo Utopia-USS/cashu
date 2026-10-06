@@ -13,8 +13,10 @@ Direction = the sum of the last 4 weekly scores vs the previous 4 (empty weeks c
 ``DIRECTION_DELTA`` lower = ``falling``, higher = ``rising``, else ``stable``.
 
 Thesis health of a position (30-day window of stored, non-dismissed, non-expired notes; a thesis edit
-resets it: only notes stored after the thesis' last change count): ``invalidated`` (any note that
-invalidates), ``weakened`` (any weakens), ``supported`` (supports, none of the two), ``current``
+never drops research, P2: notes stored before the thesis' last core change still count, and the
+result says when every note deciding the state predates it, ``predates_thesis``): ``invalidated`` (any note that
+invalidates), ``weakened`` (any weakens), ``fulfilled`` (any fulfills, none of the two: the outcome the
+thesis expected has happened, P1), ``supported`` (supports, none of the three), ``current``
 (thesis, only neutral / unrelated notes), ``no_research`` (thesis, nothing researched in 30 days),
 ``no_thesis`` (no thesis record).
 """
@@ -35,14 +37,24 @@ COMMUNITY_KIND = "community"
 CANDIDATE_KIND = "candidate"
 
 POLARITY_SIGN = {"positive": 1, "negative": -1, "neutral": 0}
-RELATIONS = ("supports", "weakens", "invalidates", "neutral", "none")
-RELATION_RANK = {"invalidates": 4, "weakens": 3, "supports": 2, "neutral": 1, "none": 0}
+RELATIONS = ("supports", "weakens", "invalidates", "fulfills", "neutral", "none")
+RELATION_RANK = {
+    "invalidates": 5,
+    "weakens": 4,
+    "fulfills": 3,
+    "supports": 2,
+    "neutral": 1,
+    "none": 0,
+}
 """How much a relation says about the thesis (the strongest one wins in summaries)."""
+BEARING_RELATIONS = ("supports", "weakens", "invalidates", "fulfills")
+"""Relations that bear on the thesis (the others are neutral / unrelated)."""
 
 
 class Health(StrEnum):
     INVALIDATED = "invalidated"  # podważona
     WEAKENED = "weakened"  # osłabiona
+    FULFILLED = "fulfilled"  # spełniona
     SUPPORTED = "supported"  # wzmocniona
     CURRENT = "current"  # aktualna
     NO_RESEARCH = "no_research"  # bez researchu
@@ -52,6 +64,7 @@ class Health(StrEnum):
 HEALTH_ORDER = (
     Health.INVALIDATED,
     Health.WEAKENED,
+    Health.FULFILLED,
     Health.NO_RESEARCH,
     Health.NO_THESIS,
     Health.SUPPORTED,
@@ -172,8 +185,8 @@ def window_notes(
     since: dt.datetime | None = None,
     window_days: int = HEALTH_WINDOW_DAYS,
 ) -> list[ScoredNote]:
-    """Notes active at ``at`` and observed in the ``window_days`` before it; with ``since`` (the
-    thesis' last change) only notes stored after it."""
+    """Notes active at ``at`` and observed in the ``window_days`` before it; with ``since`` only
+    notes stored at or after it (thesis health no longer passes one, P2)."""
     start = at - dt.timedelta(days=window_days)
     return [
         n
@@ -186,7 +199,14 @@ def window_notes(
 
 
 def empty_counts() -> dict[str, int]:
-    return {"supports": 0, "weakens": 0, "invalidates": 0, "neutral": 0, "community": 0}
+    return {
+        "supports": 0,
+        "weakens": 0,
+        "invalidates": 0,
+        "fulfills": 0,
+        "neutral": 0,
+        "community": 0,
+    }
 
 
 def relation_counts(notes: Iterable[ScoredNote]) -> dict[str, int]:
@@ -214,7 +234,25 @@ class HealthResult:
     relation: str = "none"
     """The strongest thesis relation among the window's notes."""
     note_ids: tuple[int, ...] = ()
-    """The window's notes that bear on the thesis (supports / weakens / invalidates), newest first."""
+    """The window's notes that bear on the thesis (supports / weakens / invalidates / fulfills),
+    newest first."""
+    predates_thesis: bool = False
+    """Every note deciding the state (the notes of the winning relation) was stored before the
+    thesis' last core change: the state rests on research older than the current thesis (P2)."""
+
+
+DECIDING_RELATION = {
+    "invalidated": "invalidates",
+    "weakened": "weakens",
+    "fulfilled": "fulfills",
+    "supported": "supports",
+}
+"""The relation whose notes decide each note-driven health state."""
+
+
+def predates(note: ScoredNote, core_changed_at: dt.datetime | None) -> bool:
+    """The note was stored before the thesis' last core change (tagged, never dropped; P2)."""
+    return core_changed_at is not None and note.created_at < core_changed_at
 
 
 def thesis_health(
@@ -226,16 +264,18 @@ def thesis_health(
     researched: bool = False,
 ) -> HealthResult:
     """Health of one position at ``at`` from its notes. ``researched``: a research run covered the
-    instrument in the window (a note in the window also counts as covered)."""
+    instrument in the window (a note in the window also counts as covered). ``thesis_changed_at``:
+    the thesis' last core change as of ``at``; it never filters notes, it only sets
+    ``predates_thesis`` (P2)."""
     all_notes = list(notes)
     if not has_thesis:
         counted = window_notes(all_notes, at)
         return HealthResult(Health.NO_THESIS, relation_counts(counted), "none")
-    counted = window_notes(all_notes, at, since=thesis_changed_at)
+    counted = window_notes(all_notes, at)
     counts = relation_counts(counted)
     relation = strongest_relation(counted)
     bearing = sorted(
-        (n for n in counted if n.thesis_relation in ("supports", "weakens", "invalidates")),
+        (n for n in counted if n.thesis_relation in BEARING_RELATIONS),
         key=lambda n: (n.observed_at, n.id),
         reverse=True,
     )
@@ -244,13 +284,17 @@ def thesis_health(
         state = Health.INVALIDATED
     elif counts["weakens"]:
         state = Health.WEAKENED
+    elif counts["fulfills"]:
+        state = Health.FULFILLED
     elif counts["supports"]:
         state = Health.SUPPORTED
     elif researched or window_notes(all_notes, at):
         state = Health.CURRENT
     else:
         state = Health.NO_RESEARCH
-    return HealthResult(state, counts, relation, ids)
+    deciding = [n for n in counted if n.thesis_relation == DECIDING_RELATION.get(state.value)]
+    old = bool(deciding) and all(predates(n, thesis_changed_at) for n in deciding)
+    return HealthResult(state, counts, relation, ids, predates_thesis=old)
 
 
 def health_rank(state: Health | str) -> int:

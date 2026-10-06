@@ -17,6 +17,7 @@ from finanse.core.db import get_session
 from .models import RESEARCH_NOTE_KINDS
 from .research import service, views
 from .research.validation import parse_moment
+from .service import plans as plan_service
 
 router = APIRouter(prefix="/research")
 
@@ -81,7 +82,7 @@ def research_notes(
 
 @router.get("/summary")
 def research_summary(profile: CurrentProfile) -> dict:
-    """Thesis health (6 states), relation counts, 8-week sentiment and direction per position (held,
+    """Thesis health (7 states), relation counts, 8-week sentiment and direction per position (held,
     watched or with notes) and per theme; the latest run; candidate counts."""
     with get_session() as s:
         return views.summary(s, profile)
@@ -138,6 +139,7 @@ def research_note_update(profile: CurrentProfile, note_id: int, body: NotePatch)
             )
         except (service.ResearchError, service.ResearchNotFound) as e:
             raise _mapped(e) from None
+        plan_service.sync_after_note(s, profile, row)  # the health the plan check reads moved
         return views.one_note(s, profile, row)
 
 

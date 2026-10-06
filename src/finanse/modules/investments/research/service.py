@@ -19,7 +19,7 @@ from sqlmodel import Session, select
 
 from finanse.core.models import Profile, utcnow
 
-from ..domain import Instrument
+from ..domain import Instrument, opened_on
 from ..models import (
     RESEARCH_CANDIDATE_COOLDOWN_DAYS,
     RESEARCH_RESTORE_MINUTES,
@@ -91,17 +91,28 @@ def researchable(inst: Instrument | None) -> bool:
     return inst is not None and not owner_named(inst) and inst.asset_class.value != "cash"
 
 
-def held_instrument_ids(
+def held_since(
     session: Session, profile_id: int, as_of: dt.date | None = None
-) -> set[int]:
-    """Instruments the profile holds today (from its transactions; no valuation)."""
+) -> dict[int, dt.date | None]:
+    """Instruments the profile holds today (from its transactions; no valuation) -> the open date of
+    the oldest still-open lot of the holding (P1: whether a held-only plan predates it)."""
     snapshot = build_snapshot(
         convert.sid(profile_id),
         transactions.transactions(session, profile_id),
         as_of or dt.date.today(),  # noqa: DTZ011 - naive local date, like trade dates
         renames=transactions.renames(session, profile_id),
     )
-    return {convert.pk(h.instrument_id) for h in snapshot.holdings}
+    grouped: dict[int, list] = {}
+    for h in snapshot.holdings:
+        grouped.setdefault(convert.pk(h.instrument_id), []).append(h)
+    return {key: opened_on(holdings, snapshot.realized) for key, holdings in grouped.items()}
+
+
+def held_instrument_ids(
+    session: Session, profile_id: int, as_of: dt.date | None = None
+) -> set[int]:
+    """Instruments the profile holds today (from its transactions; no valuation)."""
+    return set(held_since(session, profile_id, as_of))
 
 
 def watched_instrument_ids(session: Session, profile_id: int) -> set[int]:

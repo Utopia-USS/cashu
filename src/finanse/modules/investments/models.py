@@ -399,6 +399,9 @@ class InvThesis(SQLModel, table=True):
     reviewed_at: dt.datetime | None = None
     created_at: dt.datetime = Field(default_factory=utcnow)
     updated_at: dt.datetime = Field(default_factory=utcnow)
+    core_changed_at: dt.datetime | None = None
+    """Last change of a core field (entry_type, thesis, invalidation); None reads as ``updated_at``.
+    Research notes stored before it are tagged ``predates_thesis`` (P2), never dropped."""
 
 
 # --------------------------------------------------------------------------- #
@@ -408,7 +411,8 @@ class InvThesis(SQLModel, table=True):
 
 class InvProfileInstrument(SQLModel, table=True):
     """One profile's own view of a shared instrument: the owner-editable attributes it changed
-    (classification, display name, valuation mode, status incl. frozen / delisted, reviewed flag).
+    (classification, display name, valuation mode, status incl. frozen / delisted, reviewed flag)
+    and the model recommendation for it (P1; legacy field name: ``plan``).
     ``None`` = the shared default on ``inv_instruments``; an empty text clears a text attribute for
     this profile. Market identity (symbol, ISIN, currency, MIC, price aliases) stays shared."""
 
@@ -430,6 +434,13 @@ class InvProfileInstrument(SQLModel, table=True):
     needs_classification: bool | None = None
     created_at: dt.datetime = Field(default_factory=utcnow)
     updated_at: dt.datetime = Field(default_factory=utcnow)
+    # Added by 0013 (ALTER TABLE ADD COLUMN appends them, so they stay the last columns): the owner's
+    # plan for the instrument (``domain.PLAN_VALUES``, None = no plan) and when it was written (UTC,
+    # cleared with the plan). Set only by the owner in the app (P1).
+    plan: str | None = None
+    plan_at: dt.datetime | None = None
+    # Added by 0015: the model's short reason for the recommendation, written and cleared with ``plan``.
+    plan_reason: str | None = None
 
 
 class InvAlert(SQLModel, table=True):
@@ -604,7 +615,9 @@ PLANNED_DEPOSIT_STATUSES = ("planned", "booked", "cancelled")
 RESEARCH_RUN_STATUSES = ("running", "done", "failed")
 RESEARCH_NOTE_KINDS = ("news", "earnings", "community", "trend", "macro", "candidate")
 RESEARCH_POLARITIES = ("positive", "negative", "neutral")
-RESEARCH_THESIS_RELATIONS = ("supports", "weakens", "invalidates", "neutral", "none")
+RESEARCH_THESIS_RELATIONS = ("supports", "weakens", "invalidates", "fulfills", "neutral", "none")
+FULFILLS_THESIS_FIELDS = ("thesis", "exit_plan")
+"""The thesis fields a ``fulfills`` note may name (the expected outcome, the exit target; P1)."""
 RESEARCH_THESIS_FIELDS = ("entry_type", "thesis", "invalidation", "exit_plan", "size_plan")
 RESEARCH_CREATORS = ("agent", "user")
 RESEARCH_TITLE_MAX = 120

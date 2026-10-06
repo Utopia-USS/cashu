@@ -15,7 +15,7 @@ relation and strength: `rubrics.md`. Writing the note: `notes.md`.
   thesis review, else since the thesis was last changed, at most 90 days (`thesis-review.md`). Older facts may appear in the summary as
   background, never as the fact the note is about.
 - **Primary first.** Look for the primary source before the press, and cite it when you find it.
-  Strength 3 and `invalidates` need a primary source (`rubrics.md`).
+  Strength 3, `invalidates` and `fulfills` need a primary source (`rubrics.md`).
 - **Public pages only.** Never log in, never use the user's browser, cookies or signed-in sessions,
   never use archive or cache mirrors, reader-mode tricks, alternative front-ends, scripts or any other
   way past a paywall, CAPTCHA, JavaScript challenge, "verify you are human" page or rate limit. A
@@ -82,9 +82,9 @@ Always:
   the venues, the sample size and `szum` with `mała skala` or `duża skala`.
 - Strength 1 by default; 2 only when the scale is far above the usual level across several venues;
   never 3. Expiry 15 days (sentiment ages fast).
-- Never `invalidates`. `supports` / `weakens` only when the thesis itself is about sentiment (entry
-  type `sentiment_correction`, or the thesis text names sentiment); otherwise `neutral` (thesis exists)
-  or `none`.
+- Never `invalidates` or `fulfills`. `supports` / `weakens` only when the thesis itself is about
+  sentiment (entry type `sentiment_correction`, or the thesis text names sentiment); otherwise
+  `neutral` (thesis exists) or `none`.
 - A rumour of a fact (takeover, fraud, insolvency, management change) found in the community is not a
   fact. Verify it in a primary source; if verified, write the fact as its own `news` note; if not,
   the community note says `niepotwierdzone`.

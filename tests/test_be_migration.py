@@ -110,7 +110,9 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     engine = db.make_engine(f"sqlite:///{path}")
     assert migrations.current_revision(engine) == "0007_alerts_watchlist"
     assert (
-        migrations.upgrade_to_head(engine) == migrations.head_revision() == "0012_decision_signals"
+        migrations.upgrade_to_head(engine)
+        == migrations.head_revision()
+        == "0015_recommendation_reason"
     )
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
@@ -255,7 +257,8 @@ def test_0012_backfills_decision_links_and_round_trips(tmp_path):
             TS,
         )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0012_decision_signals"
+    _to(engine, "0012_decision_signals")
+    assert migrations.current_revision(engine) == "0012_decision_signals"
     assert _sql(path, "SELECT decision_id, signal_id FROM inv_decision_signals") == [(10, 1)]
     assert ("ix_inv_decision_signals_signal_id",) in _sql(
         path, "SELECT name FROM sqlite_master WHERE type = 'index'"
@@ -275,4 +278,127 @@ def test_0012_backfills_decision_links_and_round_trips(tmp_path):
     assert _sql(path, "SELECT decision_id, signal_id FROM inv_decision_signals") == [(10, 1)]
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    engine.dispose()
+
+
+def test_0013_adds_the_plan_columns_and_round_trips(tmp_path):
+    """P1: ``inv_profile_instruments.plan`` / ``plan_at`` appended (no rebuild, existing override rows
+    kept with no plan); the downgrade refuses while a plan is set, then drops both columns."""
+    path = _db_at(tmp_path, "0012_decision_signals")
+    pid = _profile_id(path)
+    _sql(
+        path,
+        "INSERT INTO inv_instruments (id, name, currency, asset_class, tags, needs_classification, "
+        "valuation_mode, status, created_at, updated_at) VALUES (1, 'Example Corp', 'USD', "
+        "'equity', '[]', 0, 'market', 'active', ?, ?)",
+        TS,
+        TS,
+    )
+    _sql(
+        path,
+        "INSERT INTO inv_profile_instruments (profile_id, instrument_id, name, created_at, "
+        "updated_at) VALUES (?, 1, 'Example', ?, ?)",
+        pid,
+        TS,
+        TS,
+    )
+    engine = db.make_engine(f"sqlite:///{path}")
+    _to(engine, "0013_instrument_plan")
+    assert migrations.current_revision(engine) == "0013_instrument_plan"
+    columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
+    assert columns[-2:] == ["plan", "plan_at"]
+    assert _sql(path, "SELECT name, plan, plan_at FROM inv_profile_instruments") == [
+        ("Example", None, None)
+    ]
+    _sql(path, "UPDATE inv_profile_instruments SET plan = 'hold', plan_at = ?", TS)
+    with pytest.raises(RuntimeError, match="an instrument has a plan"):
+        _to(engine, "0012_decision_signals", down=True)
+    assert migrations.current_revision(engine) == "0013_instrument_plan"
+    _sql(path, "UPDATE inv_profile_instruments SET plan = NULL, plan_at = NULL")
+    _to(engine, "0012_decision_signals", down=True)
+    columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
+    assert "plan" not in columns and "plan_at" not in columns
+    assert _sql(path, "SELECT name FROM inv_profile_instruments") == [("Example",)]
+    assert _sql(path, "PRAGMA foreign_key_check") == []
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    _to(engine, "0013_instrument_plan")
+    assert migrations.current_revision(engine) == "0013_instrument_plan"
+    engine.dispose()
+
+
+def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
+    """P2: ``inv_theses.core_changed_at`` appended (no rebuild) and backfilled from ``updated_at``;
+    the downgrade drops it and keeps the theses."""
+    path = _db_at(tmp_path, "0013_instrument_plan")
+    pid = _profile_id(path)
+    edited = "2026-10-03 08:30:00"
+    _sql(
+        path,
+        "INSERT INTO inv_instruments (id, name, currency, asset_class, tags, needs_classification, "
+        "valuation_mode, status, created_at, updated_at) VALUES (1, 'Example Corp', 'USD', "
+        "'equity', '[]', 0, 'market', 'active', ?, ?)",
+        TS,
+        TS,
+    )
+    _sql(
+        path,
+        "INSERT INTO inv_theses (profile_id, instrument_id, entry_type, thesis, created_at, "
+        "updated_at) VALUES (?, 1, 'trend', 'Przykladowa teza.', ?, ?)",
+        pid,
+        TS,
+        edited,
+    )
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0015_recommendation_reason"
+    columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
+    assert columns[-1] == "core_changed_at"
+    assert _sql(path, "SELECT thesis, core_changed_at FROM inv_theses") == [
+        ("Przykladowa teza.", edited)
+    ]
+    _to(engine, "0013_instrument_plan", down=True)
+    assert "core_changed_at" not in [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
+    assert _sql(path, "SELECT thesis, updated_at FROM inv_theses") == [
+        ("Przykladowa teza.", edited)
+    ]
+    assert _sql(path, "PRAGMA foreign_key_check") == []
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    _to(engine, "head")
+    assert migrations.current_revision(engine) == "0015_recommendation_reason"
+    engine.dispose()
+
+
+def test_0015_appends_plan_reason_and_round_trips(tmp_path):
+    """The recommendation reason is appended to the override row (no rebuild); downgrade drops it."""
+    path = _db_at(tmp_path, "0014_thesis_core_changed")
+    pid = _profile_id(path)
+    _sql(
+        path,
+        "INSERT INTO inv_instruments (id, name, currency, asset_class, tags, needs_classification, "
+        "valuation_mode, status, created_at, updated_at) VALUES (1, 'Example Corp', 'USD', "
+        "'equity', '[]', 0, 'market', 'active', ?, ?)",
+        TS,
+        TS,
+    )
+    _sql(
+        path,
+        "INSERT INTO inv_profile_instruments (profile_id, instrument_id, name, plan, plan_at, "
+        "created_at, updated_at) VALUES (?, 1, 'Example', 'hold', ?, ?, ?)",
+        pid,
+        TS,
+        TS,
+        TS,
+    )
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0015_recommendation_reason"
+    columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
+    assert columns[-3:] == ["plan", "plan_at", "plan_reason"]
+    assert _sql(path, "SELECT plan, plan_reason FROM inv_profile_instruments") == [("hold", None)]
+    _sql(path, "UPDATE inv_profile_instruments SET plan_reason = 'Krotkie uzasadnienie.'")
+    _to(engine, "0014_thesis_core_changed", down=True)
+    columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
+    assert "plan_reason" not in columns
+    assert _sql(path, "SELECT plan FROM inv_profile_instruments") == [("hold",)]
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    _to(engine, "head")
+    assert migrations.current_revision(engine) == "0015_recommendation_reason"
     engine.dispose()

@@ -208,6 +208,9 @@ def decisions(
 # --------------------------------------------------------------------------- #
 
 THESIS_FIELDS = ("entry_type", "thesis", "invalidation", "exit_plan", "size_plan")
+CORE_THESIS_FIELDS = ("entry_type", "thesis", "invalidation")
+"""The fields whose change moves ``core_changed_at`` (research stored before it is tagged
+``predates_thesis``); ``exit_plan`` / ``size_plan`` edits never do (P2)."""
 
 
 def _clean_thesis(values: dict, *, partial: bool) -> dict:
@@ -240,7 +243,15 @@ def thesis(session: Session, profile_id: int, thesis_id: int) -> InvThesis | Non
 
 def create_thesis(session: Session, profile_id: int, instrument_id: int, values: dict) -> InvThesis:
     cleaned = _clean_thesis(values, partial=False)
-    row = InvThesis(profile_id=profile_id, instrument_id=instrument_id, **cleaned)
+    now = utcnow()
+    row = InvThesis(
+        profile_id=profile_id,
+        instrument_id=instrument_id,
+        created_at=now,
+        updated_at=now,
+        core_changed_at=now,
+        **cleaned,
+    )
     session.add(row)
     session.flush()
     return row
@@ -249,9 +260,11 @@ def create_thesis(session: Session, profile_id: int, instrument_id: int, values:
 def update_thesis(
     session: Session, row: InvThesis, values: dict, *, reviewed: bool = False
 ) -> InvThesis:
-    for key, value in _clean_thesis(values, partial=True).items():
-        setattr(row, key, value)
     now = utcnow()
+    for key, value in _clean_thesis(values, partial=True).items():
+        if key in CORE_THESIS_FIELDS and getattr(row, key) != value:
+            row.core_changed_at = now
+        setattr(row, key, value)
     row.updated_at = now
     if reviewed:
         row.reviewed_at = now

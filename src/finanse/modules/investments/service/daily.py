@@ -40,6 +40,7 @@ from ..alerts import LIVE_STATUSES, is_alert_key
 from ..domain import Currency, Instrument, InstrumentId, MarketView, TxnType
 from ..market import FetchReport, FetchStatus, FxSource, MarketDataRefresher, PriceSource
 from ..models import InvRuleRun, InvSignal
+from ..plan.keys import is_plan_key
 from ..portfolio import build_snapshot, fx_currencies_for
 from ..research import service as research_service
 from ..research.keys import is_research_key
@@ -57,6 +58,7 @@ from ..store import alerts as alert_store
 from ..store import convert, instruments, market, signals, transactions
 from ..strategy import NotificationPolicy
 from . import alerts as alert_service
+from . import plans as plan_service
 from . import portfolio
 from . import strategy as strategy_files
 
@@ -455,12 +457,9 @@ def _evaluate(
             result.errors.append(f"strategy invalid, rules not run: {first}")
         # No rule runs, so every open rule signal stays unconfirmed; the age-based expiry still applies
         # (contract C1: an invalid or missing strategy skips every check), with the default limit since
-        # the strategy's own one cannot be read. Alert and research signals have their own passes.
-        stale = [
-            o
-            for o in signals.open_signals(s, profile.id)
-            if not is_alert_key(o.dedup_key) and not is_research_key(o.dedup_key)
-        ]
+        # the strategy's own one cannot be read. Alert, research and plan signals have their own
+        # passes.
+        stale = [o for o in signals.open_signals(s, profile.id) if _strategy_signal(o.dedup_key)]
         if stale:
             now = convert.aware(clock())
             reconciliation = reconcile_signals(
@@ -489,12 +488,11 @@ def _evaluate(
         ]
         now = convert.aware(clock())
         # Alert signals have their own pass below (their "rules" are the alerts, not the strategy);
-        # research signals live with their notes (research.signals, housekeeping below).
+        # research signals live with their notes (research.signals, housekeeping below); plan checks
+        # have their own pass below too (P1).
         reconciliation = reconcile_signals(
             open_signals=[
-                o
-                for o in signals.open_signals(s, profile.id)
-                if not is_alert_key(o.dedup_key) and not is_research_key(o.dedup_key)
+                o for o in signals.open_signals(s, profile.id) if _strategy_signal(o.dedup_key)
             ],
             outcomes=outcomes,
             rules=lifecycle_rules,
@@ -532,13 +530,34 @@ def _evaluate(
     )
     stats.update(alert_run.stats)
     stats["notifications"] = stats.get("notifications", 0) + len(alert_run.notified)
+    # Recommendation checks (P1): model output vs thesis health, exit plan and unrealized result. A
+    # failing pass never costs the run: its savepoint rolls back (the run row was flushed above, so
+    # the driver holds a transaction and ``isolated`` opens one), the error is recorded (partial).
+    try:
+        with plan_service.isolated(s):
+            plan_run = plan_service.evaluate_profile(
+                s, profile, valued=valued, now=convert.aware(clock()), config=config, run_id=run.id
+            )
+    except Exception as e:  # noqa: BLE001 - partial failure, the other passes stand
+        _log.exception("plan checks failed for profile %s", profile.slug)
+        result.errors.append(f"plan checks failed: {type(e).__name__}: {e}")
+        plan_run = plan_service.PlanRun()
+    stats.update(plan_run.stats)
+    stats["notifications"] = stats.get("notifications", 0) + len(plan_run.notified)
     # Research (F6): resolve research signals whose notes all expired, fail runs left running.
     stats.update(research_service.housekeeping(s, profile, now=convert.aware(clock())))
-    result.new_signals = _signal_summaries(s, created + alert_run.created)
-    result.escalated_signals = _signal_summaries(s, escalated + alert_run.escalated)
+    result.new_signals = _signal_summaries(s, created + alert_run.created + plan_run.created)
+    result.escalated_signals = _signal_summaries(
+        s, escalated + alert_run.escalated + plan_run.escalated
+    )
     if result.errors:
         result.status = "partial"
     return result
+
+
+def _strategy_signal(dedup_key: str) -> bool:
+    """A signal of a strategy rule (not an alert's, a research note's or a plan check's)."""
+    return not (is_alert_key(dedup_key) or is_research_key(dedup_key) or is_plan_key(dedup_key))
 
 
 def _signal_summaries(s: Session, ids: list[int]) -> list[dict]:

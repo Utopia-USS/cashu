@@ -20,6 +20,7 @@ from ..store import convert, instruments, journal
 from . import service
 from .keys import is_research_key
 from .scoring import (
+    BEARING_RELATIONS,
     CANDIDATE_KIND,
     HEALTH_WINDOW_DAYS,
     SENTIMENT_WEEKS,
@@ -27,6 +28,7 @@ from .scoring import (
     HealthResult,
     ScoredNote,
     direction,
+    empty_counts,
     health_rank,
     iso_week,
     sentiment_weeks,
@@ -138,8 +140,12 @@ def note_dict(
     signals: dict[int, InvSignal] | None = None,
     held: set[int] | None = None,
     watched: set[int] | None = None,
+    theses: dict[int, InvThesis] | None = None,
     now: dt.datetime | None = None,
 ) -> dict:
+    """``predates_thesis``: the note was stored before the last core change of its instrument's
+    newest thesis (``theses``: newest thesis per instrument), so it may judge an older thesis; it
+    still counts in health (P2)."""
     now = convert.aware(now or utcnow())
     details = dict(row.details or {})
     candidate = details.pop("candidate", None)
@@ -154,6 +160,7 @@ def note_dict(
     dismissed = _aware(row.dismissed_at)
     expires = convert.aware(row.expires_at)
     inst = (insts or {}).get(row.instrument_id) if row.instrument_id is not None else None
+    thesis = (theses or {}).get(row.instrument_id) if row.instrument_id is not None else None
     return {
         "id": row.id,
         "run_id": row.run_id,
@@ -206,6 +213,9 @@ def note_dict(
         "cooldown_until": iso(_aware(row.cooldown_until)),
         "read_at": iso(_aware(row.read_at)),
         "unread": service.is_unread(row, now),
+        "predates_thesis": thesis is not None
+        and row.kind != CANDIDATE_KIND
+        and convert.aware(row.created_at) < core_changed_at(thesis),
     }
 
 
@@ -227,6 +237,7 @@ def _context(session: Session, profile_id: int, rows: Iterable[InvResearchNote])
         "signals": signals,
         "held": service.held_instrument_ids(session, profile_id),
         "watched": service.watched_instrument_ids(session, profile_id),
+        "theses": _theses_by_instrument(session, profile_id) if ids else {},
     }
 
 
@@ -264,18 +275,26 @@ def _theses_by_instrument(session: Session, profile_id: int) -> dict[int, InvThe
     return out
 
 
+def core_changed_at(thesis: InvThesis) -> dt.datetime:
+    """The thesis' last core change (``entry_type`` / ``thesis`` / ``invalidation``), aware UTC;
+    ``updated_at`` for rows from before migration 0014 left it NULL."""
+    return convert.aware(thesis.core_changed_at or thesis.updated_at)
+
+
 def _health(
     notes: list[ScoredNote],
     thesis: InvThesis | None,
     at: dt.datetime,
     covered_at: dt.datetime | None,
 ) -> HealthResult:
+    """Thesis health at ``at``. A thesis edit never drops notes; notes stored before its last core
+    change only tag the result (``predates_thesis``, P2)."""
     if thesis is not None and convert.aware(thesis.created_at) > at:
         thesis = None  # the thesis did not exist yet at ``at``
     changed = None
     if thesis is not None:
-        updated = convert.aware(thesis.updated_at)
-        changed = updated if updated <= at else convert.aware(thesis.created_at)
+        core = core_changed_at(thesis)
+        changed = core if core <= at else convert.aware(thesis.created_at)
     return thesis_health(
         notes,
         at,
@@ -285,18 +304,42 @@ def _health(
     )
 
 
+def health_by_instrument(
+    session: Session, profile_id: int, ids: Iterable[int], now: dt.datetime
+) -> dict[int, tuple[HealthResult, InvThesis | None]]:
+    """Thesis health at ``now`` of each instrument in ``ids`` (the summary's computation: the newest
+    thesis, the notes of the health window, research coverage) with that thesis (None: no thesis).
+    Used by the plan checks (P1)."""
+    wanted = set(ids)
+    if not wanted:
+        return {}
+    now = convert.aware(now)
+    rows = _recent_notes(session, profile_id, now - dt.timedelta(days=HISTORY_DAYS))
+    by_instrument: dict[int, list[InvResearchNote]] = defaultdict(list)
+    for r in rows:
+        if r.instrument_id in wanted and r.kind != CANDIDATE_KIND:
+            by_instrument[r.instrument_id].append(r)
+    theses = _theses_by_instrument(session, profile_id)
+    covered = service.covered_recently(session, profile_id, now)
+    out: dict[int, tuple[HealthResult, InvThesis | None]] = {}
+    for iid in wanted:
+        notes = [scored(r) for r in by_instrument.get(iid, [])]
+        thesis = theses.get(iid)
+        window = window_notes(notes, now)
+        out[iid] = (
+            _health(notes, thesis, now, covered.get(iid) or (now if window else None)),
+            thesis,
+        )
+    return out
+
+
 def _field_counts(notes: list[ScoredNote]) -> list[dict]:
     fields: dict[str, dict[str, int]] = {}
     for n in notes:
-        if n.thesis_field and n.thesis_relation in (
-            "supports",
-            "weakens",
-            "invalidates",
-            "neutral",
-        ):
+        if n.thesis_field and n.thesis_relation in (*BEARING_RELATIONS, "neutral"):
             entry = fields.setdefault(
                 n.thesis_field,
-                {"supports": 0, "weakens": 0, "invalidates": 0, "neutral": 0},
+                {"supports": 0, "weakens": 0, "invalidates": 0, "fulfills": 0, "neutral": 0},
             )
             entry[n.thesis_relation] += 1
     return [{"field": k, **v} for k, v in sorted(fields.items())]
@@ -403,13 +446,8 @@ def summary(
                 "counts": health.counts,
                 "thesis_relation": health.relation,
                 "note_ids": list(health.note_ids),
-                "fields": _field_counts(
-                    window_notes(
-                        notes,
-                        now,
-                        since=convert.aware(thesis.updated_at) if thesis is not None else None,
-                    )
-                ),
+                "health_predates_thesis": health.predates_thesis,
+                "fields": _field_counts(window),
                 "latest_polarity": latest.polarity if latest is not None else None,
                 "latest_note": _brief_note(latest),
                 "notes": len(window),
@@ -566,7 +604,7 @@ def research_digest(
     rows = _recent_notes(session, profile_id, min(start, now) - dt.timedelta(days=HISTORY_DAYS))
     new_rows = [r for r in rows if convert.aware(r.created_at) >= start]
     new_active = [r for r in new_rows if r.dismissed_at is None]
-    counts = {"supports": 0, "weakens": 0, "invalidates": 0, "neutral": 0, "community": 0}
+    counts = empty_counts()
     by_kind: dict[str, int] = {}
     for r in new_active:
         by_kind[r.kind] = by_kind.get(r.kind, 0) + 1
@@ -662,11 +700,11 @@ def research_digest(
             and (
                 r.signal_id is not None
                 or r.strength >= 3
-                or r.thesis_relation in ("invalidates", "weakens")
+                or r.thesis_relation in ("invalidates", "weakens", "fulfills")
             )
         ),
         key=lambda r: (
-            {"invalidates": 0, "weakens": 1}.get(r.thesis_relation, 2),
+            {"invalidates": 0, "weakens": 1, "fulfills": 2}.get(r.thesis_relation, 3),
             -r.strength,
             -convert.aware(r.created_at).timestamp(),
         ),

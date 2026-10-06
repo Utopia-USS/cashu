@@ -59,13 +59,15 @@ entry, as noise (`sources.md` 2). Search with public identifiers only, one instr
 | field (`thesis_field`) | app label | possible states (report and context line) |
 |---|---|---|
 | `invalidation` | Unieważnienie | met (`invalidates`), closer (`weakens`), further away (`supports`), unchanged (no note) |
-| `exit_plan` | Plan wyjścia | catalyst happened, condition met (`supports`), delayed or less likely (`weakens`), unchanged (no note) |
-| `thesis` | Wejście | premise confirmed (`supports`), premise undermined (`weakens`), unchanged (no note) |
+| `exit_plan` | Plan wyjścia | target met (`fulfills`), catalyst closer (`supports`), delayed or less likely (`weakens`), unchanged (no note) |
+| `thesis` | Wejście | expected outcome happened (`fulfills`), premise confirmed (`supports`), premise undermined (`weakens`), unchanged (no note) |
 | `size_plan`, `entry_type` | | only when a fact clearly bears on them (`weakens` mostly) |
 
 - Price and technical conditions (`spadek poniżej X`, `poniżej SMA 200`, a stop) are not judged by
   research: the app's rules and alerts measure them on hard data. Write in the report that the
-  condition is price-based and leave it out of the notes.
+  condition is price-based and leave it out of the notes. One exception: an exit plan that names its
+  own price level (`sprzedaję przy 120 zł`) reached by a dated close is a fact about the owner's
+  written plan: `fulfills` on `exit_plan` (`rubrics.md`).
 - A time-based exit plan (`koniec 2028`) is not met by the calendar alone in a note; mention the date
   in the report and the summary.
 - When in doubt, the milder relation (`rubrics.md`), and say in the summary what would settle it.
@@ -81,7 +83,7 @@ decisive first. Each note follows `notes.md`, plus:
 - `details.event` + `details.event_date` when the next dated event matters for a field;
 - `expires_in_days: 90` (the quarterly review cycle; the tool's maximum), community notes 15, a note
   tied to an event that passes earlier may expire then;
-- strength and the checklist for `invalidates` / strength 3 exactly as in `rubrics.md`.
+- strength and the checklist for `invalidates` / `fulfills` / strength 3 exactly as in `rubrics.md`.
 
 **No change, no note.** A position whose fields are all unchanged gets no note; the report and the chat
 say `bez nowych faktów dotyczących tezy od <d.m>`. Never write a note only to show that a review ran.
@@ -116,7 +118,8 @@ ABC.WA · aktualna · bez nowych faktów dotyczących tezy od 5.07
 DEF.US · wzmocniona · wejście: przychody segmentu +18 % r/r w II kw. (raport 7.08) · 2 notatki
 ```
 
-- states use the app's words: `podważona`, `osłabiona`, `wzmocniona`, `aktualna` (no change);
+- states use the app's words: `podważona`, `osłabiona`, `spełniona`, `wzmocniona`, `aktualna` (no
+  change);
 - then: positions without a thesis (offer `/investments-setup`), price-based conditions left to the
   app's rules and alerts, alerts proposed (`alerts.md`), blocked sources;
 - where to look: Inwestycje > the asset > Research (and Inwestycje > Research), and the report's path.

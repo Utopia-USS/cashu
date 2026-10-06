@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import datetime as dt
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from .enums import AssetClass, InstrumentStatus, ValuationMode, default_valuation_mode
@@ -58,6 +59,13 @@ class Instrument:
     aliases: tuple[InstrumentAlias, ...] = ()
     valuation_mode: ValuationMode | None = None
     status: InstrumentStatus = InstrumentStatus.ACTIVE
+    plan: str | None = field(default=None, compare=False)
+    """The model recommendation (:data:`~.plan.PLAN_VALUES`) in a profile's view of the instrument (its
+    override row); None in the shared view. Not part of the instrument's value (``compare=False``)."""
+    plan_at: dt.datetime | None = field(default=None, compare=False)
+    """When the plan was written (UTC)."""
+    plan_reason: str | None = field(default=None, compare=False)
+    """The model's short reason for the recommendation (written and cleared with ``plan``)."""
 
     def __post_init__(self) -> None:
         if self.valuation_mode is None:

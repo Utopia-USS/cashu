@@ -12,7 +12,7 @@ check-ins against it. The strategy becomes active only when the owner approves y
 
 Keep these verbatim; do not soften them:
 
-- Not a licensed advisor. No recommendations of specific instruments or trades, no price predictions.
+- Not a licensed advisor. Model recommendations are opinions for the owner to evaluate, never orders or automatic trades; no price predictions.
   Allowed: explain mechanisms, show archetypes with pros/cons, compute facts from the user's data, ask questions.
   Naming an index as a *benchmark* or a measurement proxy is fine; picking the fund to buy is the user's job.
 - Facts that change (tax-wrapper limits, tax rules, broker fees and policies, regulatory status of exchanges,

@@ -419,7 +419,14 @@ def test_summary_health_sentiment_and_themes(investor):
     assert result["instruments"][0]["label"] == "XMPL"  # invalidated first
     assert rows["XMPL"]["health"] == "invalidated" and rows["XMPL"]["counts"]["invalidates"] == 1
     assert rows["XMPL"]["fields"] == [
-        {"field": "invalidation", "supports": 0, "weakens": 0, "invalidates": 1, "neutral": 0}
+        {
+            "field": "invalidation",
+            "supports": 0,
+            "weakens": 0,
+            "invalidates": 1,
+            "fulfills": 0,
+            "neutral": 0,
+        }
     ]
     assert rows["XMPL"]["sentiment_8w"][-1] == round(-2 / 3, 4)
     assert rows["ABC"]["health"] == "supported" and rows["ABC"]["latest_polarity"] == "positive"

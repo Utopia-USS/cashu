@@ -13,7 +13,7 @@ from email.parser import BytesParser
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from finanse.core.api import CurrentProfile
 from finanse.core.db import get_session
@@ -23,8 +23,10 @@ from .domain import InstrumentAlias
 from .importing import ImportFile
 from .importing.validation import MAX_FILE_BYTES
 from .models import InvImportBatch, InvInstrument
+from .research.service import held_since
 from .service import accounts as account_service
 from .service import daily, files, imports, views
+from .service import plans as plan_service
 from .service import strategy as strategy_files
 from .service import transactions as manual_transactions
 from .store import instruments, journal, transactions
@@ -451,7 +453,10 @@ def instrument_list(profile: CurrentProfile, unclassified: bool = False) -> list
     with get_session() as s:
         ids = instruments.profile_instrument_ids(s, profile.id)
         found = instruments.load(s, ids, profile_id=profile.id)
-        rows = [views.instrument_dict(i) for i in found.values()]
+        held = held_since(s, profile.id)
+        rows = [
+            views.instrument_dict(i, held=k in held, opened=held.get(k)) for k, i in found.items()
+        ]
         if unclassified:
             rows = [r for r in rows if r["needs_classification"]]
         return sorted(rows, key=lambda r: (r["label"] or "").upper())
@@ -498,7 +503,39 @@ def classify(profile: CurrentProfile, instrument_id: int, body: ClassifyBody) ->
             )
         except instruments.ClassificationError as e:
             raise _422(str(e)) from None
-        return views.instrument_dict(instruments.load_one(s, instrument_id, profile_id=profile.id))
+        held = held_since(s, profile.id)
+        return views.instrument_dict(
+            instruments.load_one(s, instrument_id, profile_id=profile.id),
+            held=instrument_id in held,
+            opened=held.get(instrument_id),
+        )
+
+
+class PlanBody(BaseModel):
+    plan: str | None = Field(...)
+    """Required: an explicit null clears the plan, a missing key is a 422 (never a silent clear)."""
+
+
+@router.put("/instruments/{instrument_id}/plan")
+def plan_write(profile: CurrentProfile, instrument_id: int, body: PlanBody) -> dict:
+    """Compatibility endpoint for the model recommendation.
+
+    The dashboard is read-only. Connected models write through MCP; this route remains for older
+    clients and tests. ``reduce`` / ``exit_asap`` require a held instrument.
+    """
+    with get_session() as s:
+        _instrument(s, profile, instrument_id)
+        since = held_since(s, profile.id)
+        held = instrument_id in since
+        try:
+            instruments.set_plan(s, instrument_id, body.plan, profile_id=profile.id, held=held)
+        except instruments.PlanError as e:
+            raise _422(str(e)) from None
+        plan_service.sync_instrument(s, profile, instrument_id)
+        inst = instruments.load_one(s, instrument_id, profile_id=profile.id)
+        return {
+            "instrument": views.instrument_dict(inst, held=held, opened=since.get(instrument_id))
+        }
 
 
 @router.get("/instruments/{instrument_id}/theses")
@@ -527,6 +564,7 @@ def thesis_create(profile: CurrentProfile, instrument_id: int, body: ThesisBody)
             )
         except journal.JournalError as e:
             raise _422(str(e)) from None
+        plan_service.sync_instrument(s, profile, instrument_id)
         return views.thesis_dict(row)
 
 
@@ -545,6 +583,7 @@ def thesis_update(profile: CurrentProfile, thesis_id: int, body: ThesisBody) -> 
             )
         except journal.JournalError as e:
             raise _422(str(e)) from None
+        plan_service.sync_instrument(s, profile, row.instrument_id)
         return views.thesis_dict(row)
 
 
@@ -554,7 +593,9 @@ def thesis_delete(profile: CurrentProfile, thesis_id: int) -> dict:
         row = journal.thesis(s, profile.id, thesis_id)
         if row is None:
             raise _404(f"No thesis {thesis_id}")
+        instrument_id = row.instrument_id
         journal.delete_thesis(s, row)
+        plan_service.sync_instrument(s, profile, instrument_id)
         return {"deleted": thesis_id}
 
 
@@ -1162,6 +1203,8 @@ def watchlist_add(profile: CurrentProfile, body: WatchBody) -> dict:
             raise _coded(409, str(e), "watchlist_conflict") from None
         except watch_service.WatchlistError as e:
             raise _coded(422, str(e), "watchlist_invalid") from None
+        # a buy plan on a watched instrument is checked against its thesis too (P2)
+        plan_service.sync_instrument(s, profile, result.item.instrument_id)
         return {
             **_watch_row(s, profile, result.item.id),
             "created_instrument": result.created_instrument,
@@ -1192,7 +1235,8 @@ def watchlist_remove(profile: CurrentProfile, item_id: int) -> dict:
 
     with get_session() as s:
         try:
-            watch_service.remove(s, profile, item_id)
+            item = watch_service.remove(s, profile, item_id)
         except watch_service.WatchlistNotFound as e:
             raise _coded(404, str(e), "not_found") from None
+        plan_service.sync_instrument(s, profile, item.instrument_id)  # P2: a watched-only signal
         return {"deleted": item_id}

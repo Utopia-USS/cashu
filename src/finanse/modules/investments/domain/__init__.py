@@ -49,6 +49,17 @@ from .instrument import (
     placeholder_instrument,
 )
 from .market_data import FxRate, PriceBar
+from .plan import (
+    BUY_PLANS,
+    HELD_ONLY_PLANS,
+    PLAN_LABEL_HELD,
+    PLAN_LABEL_WATCHED,
+    PLAN_VALUES,
+    effective_plan,
+    is_plan,
+    opened_on,
+    plan_label,
+)
 from .snapshot import (
     AllocationResult,
     BucketAllocation,
@@ -106,11 +117,16 @@ from .warnings import (
 
 __all__ = [
     "ALL_WARNING_TYPES",
+    "BUY_PLANS",
     "DEFAULT_MAX_FX_AGE_DAYS",
     "DIVISION_SCALE",
     "EPOCH",
     "EXACT_CONTEXT",
     "GENERIC_BUCKET_IDS",
+    "HELD_ONLY_PLANS",
+    "PLAN_LABEL_HELD",
+    "PLAN_LABEL_WATCHED",
+    "PLAN_VALUES",
     "AccountId",
     "AccountWrapper",
     "AliasNamespace",
@@ -175,10 +191,14 @@ __all__ = [
     "days_between",
     "default_valuation_mode",
     "divided_by",
+    "effective_plan",
     "exact",
     "exact_decimals",
     "is_generic_bucket",
+    "is_plan",
+    "opened_on",
     "placeholder_instrument",
+    "plan_label",
     "ratio",
     "severity_rank",
 ]

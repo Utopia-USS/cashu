@@ -204,3 +204,16 @@ def test_scope_and_counts():
         validate_counts({"notes": 5})  # the server counts notes
     with pytest.raises(ResearchInputError):
         validate_counts({"skipped": -1})
+
+
+def test_fulfills_names_the_thesis_or_its_exit_plan_p1():
+    for field in ("thesis", "exit_plan", None):
+        raw = base(thesis_relation="fulfills", polarity="positive")
+        if field is not None:
+            raw["thesis_field"] = field
+        data = validate_note(raw, now=NOW)
+        assert data.thesis_relation == "fulfills" and data.thesis_field == field
+    for field in ("invalidation", "size_plan", "entry_type"):
+        assert issues(base(thesis_relation="fulfills", thesis_field=field)) == ["thesis_field"]
+    # weakens still takes any field
+    assert validate_note(base(thesis_relation="weakens", thesis_field="size_plan"), now=NOW)

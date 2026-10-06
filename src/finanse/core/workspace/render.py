@@ -142,8 +142,9 @@ def _section_boundaries(ctx: Context) -> str:
 - Never run finanse CLI commands that print personal data (`stats`, `accounts`, `import-dir`,
   `import-csv`, `invest positions`, `invest import`, `loans list`, `eb login|check|sessions|resync`).
   Give them to the user to run in their own terminal, not with `!` in this session.
-- Not a licensed advisor: no buy or sell recommendations, no price predictions. Facts that change
-  are looked up online with a source; never bypass paywalls, logins or bot protection.
+- Not a licensed advisor. Model recommendations are opinions for the owner to evaluate, never
+  decisions or orders. No price predictions. Facts that change are looked up online with a source;
+  never bypass paywalls, logins or bot protection.
 - Never ask for passwords, logins, SCA / 2FA codes, API keys, IBANs or account numbers. If the user
   pastes one, do not repeat or store it.
 - Personal or financial data never goes into git repositories, memory files or code; working notes
@@ -207,8 +208,9 @@ def _section_research(ctx: Context) -> str:
   `{claude_command(ctx.path, "/market-research rutyna")}`.
   Set it up only after the user approves the schedule; never silently.
 - Unattended permissions (opt-in, Ustawienia > Agent AI): {unattended}
-- Facts and sentiment with sources only (community sentiment flagged as noisy); no recommendations
-  or price predictions; never bypass paywalls or bot protection."""
+- Research notes contain facts and sentiment with sources only (community sentiment flagged as
+  noisy). Recommendations are saved separately and never place trades. No price predictions;
+  never bypass paywalls or bot protection."""
 
 
 def claude_command(path: Path, prompt: str | None = None) -> str:

@@ -17,6 +17,8 @@ from sqlmodel import Session, select
 from finanse.core.models import Account, utcnow
 
 from ..domain import (
+    HELD_ONLY_PLANS,
+    PLAN_VALUES,
     AliasNamespace,
     AssetClass,
     Instrument,
@@ -24,6 +26,7 @@ from ..domain import (
     InstrumentStatus,
     ValuationMode,
     default_valuation_mode,
+    is_plan,
 )
 from ..models import (
     InvAlert,
@@ -93,7 +96,8 @@ def overrides(
 
 
 def apply_override(instrument: Instrument, o: InvProfileInstrument) -> Instrument:
-    """``instrument`` with the profile's overrides (None = keep, "" = clear a text attribute)."""
+    """``instrument`` with the profile's overrides (None = keep, "" = clear a text attribute) and the
+    model recommendation (legacy storage name: ``plan``)."""
     changes: dict[str, object] = {}
     if o.name:
         changes["name"] = o.name
@@ -111,6 +115,10 @@ def apply_override(instrument: Instrument, o: InvProfileInstrument) -> Instrumen
         changes["status"] = InstrumentStatus(o.status)
     if o.needs_classification is not None:
         changes["needs_classification"] = o.needs_classification
+    if o.plan is not None:
+        changes["plan"] = o.plan
+        changes["plan_at"] = convert.aware(o.plan_at) if o.plan_at is not None else None
+        changes["plan_reason"] = o.plan_reason
     return replace(instrument, **changes) if changes else instrument
 
 
@@ -155,6 +163,48 @@ def _override_row(session: Session, profile_id: int, instrument_id: int) -> InvP
     ).first()
     if row is None:
         row = InvProfileInstrument(profile_id=profile_id, instrument_id=instrument_id)
+    return row
+
+
+class PlanError(ValueError):
+    """An invalid recommendation value (message safe to show; the API answers 422)."""
+
+
+PLAN_REASON_MAX = 280
+
+
+def set_plan(
+    session: Session,
+    instrument_id: int,
+    plan: str | None,
+    *,
+    profile_id: int,
+    held: bool,
+    reason: str | None = None,
+) -> InvProfileInstrument:
+    """Write the model recommendation for ``instrument_id`` in ``profile_id`` (None clears it).
+
+    ``plan_at`` is the generation time and ``reason`` the model's short justification (whitespace
+    collapsed, at most :data:`PLAN_REASON_MAX` characters); both are cleared with the recommendation.
+    A reduce / exit recommendation needs a held instrument. The legacy storage names stay for
+    migration compatibility.
+    """
+    reason = " ".join((reason or "").split()) or None
+    if reason is not None and len(reason) > PLAN_REASON_MAX:
+        raise PlanError(f"Reason too long ({len(reason)} > {PLAN_REASON_MAX} characters)")
+    if plan is not None and not is_plan(plan):
+        raise PlanError(f"Unknown plan {plan!r} (one of {', '.join(PLAN_VALUES)})")
+    if plan in HELD_ONLY_PLANS and not held:
+        raise PlanError(f"Plan {plan!r} needs a held instrument")
+    if session.get(InvInstrument, instrument_id) is None:
+        raise PlanError(f"No instrument {instrument_id}")
+    row = _override_row(session, profile_id, instrument_id)
+    row.plan = plan
+    row.plan_at = utcnow() if plan is not None else None
+    row.plan_reason = reason if plan is not None else None
+    row.updated_at = utcnow()
+    session.add(row)
+    session.flush()
     return row
 
 

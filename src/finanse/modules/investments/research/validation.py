@@ -18,6 +18,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ..models import (
+    FULFILLS_THESIS_FIELDS,
     RESEARCH_NOTE_KINDS,
     RESEARCH_NOTE_TTL_DAYS,
     RESEARCH_POLARITIES,
@@ -535,6 +536,11 @@ def validate_note(raw: Mapping[str, Any], *, now: dt.datetime) -> NoteInput:
         thesis_field = _enum(issues, "thesis_field", thesis_field, RESEARCH_THESIS_FIELDS)
         if thesis_field and relation in (None, "none"):
             issues.add("thesis_field", "only with a thesis_relation other than none")
+        elif thesis_field and relation == "fulfills" and thesis_field not in FULFILLS_THESIS_FIELDS:
+            issues.add(
+                "thesis_field",
+                "a fulfills note names the thesis or its exit_plan (the outcome that happened)",
+            )
     title = _text(issues, "title", raw.get("title"), minimum=TITLE_MIN, maximum=RESEARCH_TITLE_MAX)
     summary = _text(
         issues,
