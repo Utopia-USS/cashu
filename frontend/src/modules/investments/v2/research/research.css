@@ -9,6 +9,8 @@
 .health.sup { color: var(--pos); border-color: var(--pos); } .health.sup i { background: var(--pos); }
 .health.weak { color: var(--neg); border-color: var(--neg); } .health.weak i { background: var(--neg); }
 .health.inv { color: var(--neg); background: var(--negBg); border-color: transparent; font-weight: 600; } .health.inv i { background: var(--neg); }
+/* P1: fulfilled follows the tile ring hue (design/v3/plan-badges 7) */
+.health.ful { color: var(--net); border-color: var(--net); } .health.ful i { background: var(--net); }
 .health.none { border-style: dashed; }
 .health.muted { opacity: .62; }
 
@@ -17,6 +19,7 @@
 .rel.sup { color: var(--pos); border-color: var(--pos); }
 .rel.weak { color: var(--neg); border-color: var(--neg); }
 .rel.inv { color: var(--neg); background: var(--negBg); border-color: transparent; font-weight: 600; }
+.rel.ful { color: var(--net); border-color: var(--net); }
 .rel.none { border-style: dashed; }
 
 /* ---------- strength 1-3 ---------- */
@@ -174,4 +177,10 @@ code.cmd.wrap { white-space: normal; word-break: break-all; display: inline; }
 .nr.dim .nrh, .nr.dim .nx { opacity: .62; }
 .nr.hl { box-shadow: inset 3px 0 0 var(--nw); background: var(--infoBg); border-radius: 8px; padding-left: 10px; margin-left: -10px; }
 .ri { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid currentColor; display: inline-flex; align-items: center; justify-content: center; font: 700 12px/1 -apple-system, BlinkMacSystemFont, sans-serif; margin-top: 1px; flex: none; color: var(--muted); box-sizing: border-box; }
-.ri.sup { color: var(--pos); } .ri.weak { color: var(--neg); } .ri.inv { color: var(--card); background: var(--neg); border-color: var(--neg); } .ri.neu { color: var(--muted); }
+.ri.sup { color: var(--pos); } .ri.weak { color: var(--neg); } .ri.inv { color: var(--card); background: var(--neg); border-color: var(--neg); } .ri.neu { color: var(--muted); } .ri.ful { color: var(--net); font-size: 10px; }
+
+/* P2: research stored before the last thesis change (predates_thesis): a plain tag; the health pill's dot goes hollow
+   when the state rests only on such notes */
+.nr .nrh { grid-template-columns: 16px minmax(0, 1fr) auto; }
+.nr .nrh .tag.pre { margin-top: 1px; }
+.health.pre i { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }

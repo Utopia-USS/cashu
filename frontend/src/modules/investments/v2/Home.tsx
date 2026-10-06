@@ -12,6 +12,9 @@
 // Profile scoping: the shell remounts the page per profile; every request takes the slug; remembered values
 // (account filter, review note, review open, re-entry baseline) live under slug-scoped keys.
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type InstState, InstStateContext } from "./instState";
+import { healthOf, healthStale } from "./research/logic";
+import type { HealthKey } from "./research/types";
 import { ApiError } from "../../../core/api";
 import { useShell } from "../../../core/context";
 import { errorText, label } from "../../../core/messages";
@@ -31,6 +34,7 @@ import { accountLabel, dm, hm, isGenericBucket, isoDate, money, money0, pct, plu
 import { runError } from "../logic";
 import { makeUndo, UNDO_WINDOW_MS, undoMessage, undoSettled } from "../undo";
 import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
+import type { Hint } from "../api";
 import { accKey, dropInv, getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, getSignalsV2, getWatchlist, invKey, type PerfPoint } from "./api";
 import { AssetDrawer } from "./AssetDrawer";
 import { AssetDetail, assetName } from "./AssetPage";
@@ -112,6 +116,9 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   // (the list / null fallbacks are the views' own `?? []` / `?? null`).
   const ov = useAsync(() => getOverviewV2(slug, accountsFilter), [slug, filter, nonce], { key: invKey(slug, "overview", acc) });
   const pos = useAsync(() => getPositionsV2(slug, accountsFilter), [slug, filter, nonce], { key: invKey(slug, "positions", acc) });
+  // Every account's positions while a filter is on (P1 review FE-2: the plan label's held form must not follow the filter).
+  const allPos = useAsync(() => (filter == null ? Promise.resolve(null) : getPositionsV2(slug, null)), [slug, filter, nonce],
+    { key: filter == null ? undefined : invKey(slug, "positions", accKey(null)) });
   const sig = useAsync(() => getSignalsV2(slug, "open"), [slug, nonce], { key: invKey(slug, "signals", "open") });
   const alertsQ = useAsync(() => getAlerts(slug, "all"), [slug, nonce], { key: invKey(slug, "alerts", "all") });
   const watchQ = useAsync(() => getWatchlist(slug), [slug, nonce], { key: invKey(slug, "watchlist") });
@@ -352,6 +359,31 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     slug, nonce, today, privacy: ctx.profile.mcp_privacy, positions: positions?.positions ?? [], watch, strategyVersion: strategy?.version ?? null, digest,
     go, openAsset: (id, noteId) => goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`), onSettings: () => ctx.go({ kind: "settings", section: "agent" }), onChanged: reload,
   });
+  // The tile's marks (P1, design/v3/plan-badges): thesis health from the cached research summary, stale research,
+  // held instruments (the plan label's form); one provider for every label under this page.
+  // Held = unfiltered positions + the server's `held` (signals, summary rows, watchlist rows); unknown (null, the held
+  // form) while the unfiltered positions load.
+  const allPositions = filter == null ? positions : allPos.data;
+  const instState = useMemo<InstState>(() => {
+    const health = new Map<string, HealthKey>();
+    const pre = new Set<string>();
+    for (const x of research.summary?.instruments ?? []) {
+      health.set(String(x.instrument_id), healthOf(x, today));
+      if (x.health_predates_thesis) pre.add(String(x.instrument_id));
+    }
+    let heldIds: Set<string> | null = null;
+    if (allPositions) {
+      heldIds = new Set(allPositions.positions.map((p) => String(p.instrument.id)));
+      for (const s of sig.data ?? []) if (s.held === true && s.instrument_id != null) heldIds.add(String(s.instrument_id));
+      for (const x of research.summary?.instruments ?? []) if (x.held === true) heldIds.add(String(x.instrument_id));
+      for (const w of watchQ.data ?? []) if (w.held) heldIds.add(String(w.instrument_id));
+    }
+    const hints = new Map<string, Hint[]>();
+    for (const w of watchQ.data ?? []) if (w.hints?.length) hints.set(String(w.instrument_id), w.hints);
+    for (const p of (allPositions ?? positions)?.positions ?? []) if (p.hints) hints.set(String(p.instrument.id), p.hints);
+    return { health, stale: health.size > 0 && healthStale(research.runs ?? [], today), held: heldIds, pre, hints };
+  }, [research.summary, research.runs, today, allPositions, positions, sig.data, watchQ.data]);
+  const provide = (node: ReactNode) => <InstStateContext.Provider value={instState}>{node}</InstStateContext.Provider>;
   const lastRun = overview?.kpis.last_run ?? null;
   const lastRunAt = lastRun && lastRun.status !== "failed" ? lastRun.finished_at ?? lastRun.started_at ?? null : null;
   const unreadOf = (id: number | string): number => {
@@ -384,7 +416,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const drawers = renderDrawer();
 
   if (route === "alerts") {
-    return (
+    return provide(
       <>
         <AlertsManager slug={slug} instruments={instruments} buckets={(strategy?.facts?.buckets ?? overview.allocation.buckets.map((b) => b.bucket_id)).filter(isGenericBucket)}
           digestWeekday={weekday} onBack={() => go()} initial={params} onChanged={reload} />
@@ -392,9 +424,9 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       </>
     );
   }
-  if (route === "research") return <>{research.page(params, () => go())}{drawers}</>;
+  if (route === "research") return provide(<>{research.page(params, () => go())}{drawers}</>);
   if (route === "journal") {
-    return (
+    return provide(
       <>
         <Journal slug={slug} instruments={instruments} accounts={accounts} initialInstrument={params.get("instrument")} onBack={() => go()}
           onOpenAsset={(id) => go(`assets/${id}`)} onChanged={reload} />
@@ -414,7 +446,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   );
   if (assetId != null && assetPage) {
     const nm = assetName(assetId, positions.positions, watch);
-    return (
+    return provide(
       <>
         <nav className="crumb" aria-label="Ścieżka"><button onClick={() => go()}>Inwestycje</button> › <button onClick={() => go()}>Aktywa</button> › <span>{nm}</span>
           <span style={{ flex: 1 }} /><button className="lnk" onClick={() => go(`assets/${assetId}`)}>otwórz w panelu</button></nav>
@@ -554,7 +586,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     items.push(split);
     if (research.strip) items.push(research.strip);
   }
-  return (
+  return provide(
     <>
       {head}
       <Grid items={items.filter(Boolean) as GridItem[]} />

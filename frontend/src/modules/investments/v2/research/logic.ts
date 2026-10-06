@@ -25,16 +25,16 @@ export const strengthTitle = (v: number) => `siła ${clampStrength(v)} z 3 (${ST
 export const clampStrength = (v: number) => Math.max(1, Math.min(3, Math.round(Number(v) || 1)));
 
 export const RELATION_LABEL: Record<Relation, string> = {
-  supports: "wzmacnia tezę", weakens: "osłabia tezę", invalidates: "podważa tezę", neutral: "nie dotyka tezy", none: "bez tezy",
+  supports: "wzmacnia tezę", weakens: "osłabia tezę", invalidates: "podważa tezę", fulfills: "spełnia tezę", neutral: "nie dotyka tezy", none: "bez tezy",
 };
-export const RELATION_CLS: Record<Relation, string> = { supports: "sup", weakens: "weak", invalidates: "inv", neutral: "", none: "none" };
+export const RELATION_CLS: Record<Relation, string> = { supports: "sup", weakens: "weak", invalidates: "inv", fulfills: "ful", neutral: "", none: "none" };
 
 export const HEALTH_LABEL: Record<HealthKey, string> = {
-  inv: "podważona", weak: "osłabiona", sup: "wzmocniona", ok: "aktualna", no_thesis: "bez tezy", no_research: "bez researchu",
+  inv: "podważona", weak: "osłabiona", ful: "spełniona", sup: "wzmocniona", ok: "aktualna", no_thesis: "bez tezy", no_research: "bez researchu",
 };
-export const HEALTH_CLS: Record<HealthKey, string> = { inv: "inv", weak: "weak", sup: "sup", ok: "", no_thesis: "none", no_research: "none muted" };
-/** Attention order for lists (RS CONTRACT 1): invalidated, weakened, no_research, no_thesis, supported, current. */
-export const HEALTH_RANK: Record<HealthKey, number> = { inv: 0, weak: 1, no_research: 2, no_thesis: 3, sup: 4, ok: 5 };
+export const HEALTH_CLS: Record<HealthKey, string> = { inv: "inv", weak: "weak", ful: "ful", sup: "sup", ok: "", no_thesis: "none", no_research: "none muted" };
+/** Attention order for lists (RS CONTRACT 1 + P1): invalidated, weakened, fulfilled, no_research, no_thesis, supported, current. */
+export const HEALTH_RANK: Record<HealthKey, number> = { inv: 0, weak: 1, ful: 2, no_research: 3, no_thesis: 4, sup: 5, ok: 6 };
 
 export const DIRECTION_LABEL: Record<Direction, string> = { up: "rośnie", down: "słabnie", flat: "stabilnie" };
 export const DIRECTION_TONE: Record<Direction, "pos" | "neg" | ""> = { up: "pos", down: "neg", flat: "" };
@@ -61,6 +61,7 @@ export function normRelation(v: string | null | undefined): Relation {
     case "supports": case "support": case "supported": return "supports";
     case "weakens": case "weaken": case "weakened": return "weakens";
     case "invalidates": case "invalidate": case "invalidated": return "invalidates";
+    case "fulfills": case "fulfil": case "fulfill": case "fulfils": case "fulfilled": return "fulfills";
     case "neutral": return "neutral";
     default: return "none";
   }
@@ -70,6 +71,7 @@ export function normHealth(v: string | null | undefined): HealthKey | null {
   switch ((v ?? "").toLowerCase()) {
     case "inv": case "invalidated": case "invalidates": case "podważona": return "inv";
     case "weak": case "weakened": case "weakens": case "osłabiona": return "weak";
+    case "ful": case "fulfilled": case "fulfills": case "spełniona": return "ful";
     case "sup": case "supported": case "supports": case "strengthened": case "wzmocniona": return "sup";
     case "ok": case "current": case "intact": case "neutral": case "aktualna": return "ok";
     case "no_thesis": case "none": case "bez tezy": return "no_thesis";
@@ -238,13 +240,14 @@ export function lastNonEmpty(values: (number | null)[]): number | null {
 // ---- thesis health (research.md 5; design answer 2: 30 days, reset on thesis edit) -------------------------
 
 export function relationCounts(notes: Pick<ResearchNote, "thesis_relation" | "kind">[]): RelationCounts {
-  const c: RelationCounts = { supports: 0, weakens: 0, invalidates: 0, neutral: 0, community: 0 };
+  const c: RelationCounts = { supports: 0, weakens: 0, invalidates: 0, fulfills: 0, neutral: 0, community: 0 };
   for (const n of notes) {
     if (n.kind === "community") c.community++;
     const r = normRelation(n.thesis_relation);
     if (r === "supports") c.supports++;
     else if (r === "weakens") c.weakens++;
     else if (r === "invalidates") c.invalidates++;
+    else if (r === "fulfills") c.fulfills = (c.fulfills ?? 0) + 1;
     else if (r === "neutral") c.neutral++;
   }
   return c;
@@ -266,6 +269,7 @@ export function thesisHealth(o: {
   const c = relationCounts(win);
   if (c.invalidates) return "inv";
   if (c.weakens) return "weak";
+  if (c.fulfills) return "ful";
   if (c.supports) return "sup";
   const covered = win.length > 0 || (!!o.researchedAt && day(o.researchedAt) >= addDays(o.today, -30));
   return covered ? "ok" : "no_research";
@@ -285,6 +289,7 @@ export function healthOf(s: Pick<InstrumentSummary, "health" | "counts" | "has_t
   if (s.has_thesis === false) return "no_thesis";
   if (s.counts.invalidates) return "inv";
   if (s.counts.weakens) return "weak";
+  if (s.counts.fulfills) return "ful";
   if (s.counts.supports) return "sup";
   return s.last_researched_at && day(s.last_researched_at) >= addDays(today, -30) ? "ok" : "no_research";
 }
@@ -302,6 +307,7 @@ export function countsText(health: HealthKey, c: RelationCounts, o: { notes?: nu
   }
   if (c.invalidates) parts.push(verb(c.invalidates, "podważa", "podważają"));
   if (c.weakens || health === "weak") parts.push(verb(c.weakens, "osłabia", "osłabiają"));
+  if (c.fulfills || health === "ful") parts.push(verb(c.fulfills ?? 0, "spełnia", "spełniają"));
   if (c.supports || health === "weak" || health === "inv") parts.push(verb(c.supports, "wzmacnia", "wzmacniają"));
   if (c.community) parts.push(`${c.community} szum`);
   if (!parts.length && c.neutral) parts.push(plural(c.neutral, "neutralna", "neutralne", "neutralnych"));
@@ -319,19 +325,20 @@ export function fieldChips(notes: Pick<ResearchNote, "thesis_relation" | "thesis
   }
   const out = new Map<string, { relation: Relation; text: string }>();
   for (const [f, rs] of by) {
-    const worst: Relation = rs.includes("invalidates") ? "invalidates" : rs.includes("weakens") ? "weakens" : "supports";
+    const worst: Relation = rs.includes("invalidates") ? "invalidates" : rs.includes("weakens") ? "weakens" : rs.includes("fulfills") ? "fulfills" : "supports";
     const k = rs.filter((r) => r === worst).length;
-    const v = worst === "invalidates" ? word(k, "podważa", "podważają", "podważa") : worst === "weakens" ? word(k, "osłabia", "osłabiają", "osłabia") : word(k, "wzmacnia", "wzmacniają", "wzmacnia");
+    const v = worst === "invalidates" ? word(k, "podważa", "podważają", "podważa") : worst === "weakens" ? word(k, "osłabia", "osłabiają", "osłabia")
+      : worst === "fulfills" ? word(k, "spełnia", "spełniają", "spełnia") : word(k, "wzmacnia", "wzmacniają", "wzmacnia");
     out.set(f, { relation: worst, text: `${plural(k, "notatka", "notatki", "notatek")} ${v}` });
   }
   return out;
 }
 
-/** Field chips from the summary's per-field counts (`fields: [{field, supports, weakens, invalidates}]`). */
-export function chipsFromFields(fields: { field: string; supports: number; weakens: number; invalidates: number }[]): Map<string, { relation: Relation; text: string }> {
+/** Field chips from the summary's per-field counts (`fields: [{field, supports, weakens, invalidates, fulfills}]`). */
+export function chipsFromFields(fields: { field: string; supports: number; weakens: number; invalidates: number; fulfills?: number }[]): Map<string, { relation: Relation; text: string }> {
   const notes: { thesis_relation: string; thesis_field: string }[] = [];
   for (const f of fields) {
-    for (const [rel, k] of [["supports", f.supports], ["weakens", f.weakens], ["invalidates", f.invalidates]] as [string, number][]) {
+    for (const [rel, k] of [["supports", f.supports], ["weakens", f.weakens], ["invalidates", f.invalidates], ["fulfills", f.fulfills ?? 0]] as [string, number][]) {
       for (let i = 0; i < (k || 0); i++) notes.push({ thesis_relation: rel, thesis_field: f.field });
     }
   }
@@ -474,8 +481,9 @@ export function orderTheses<T extends { health: HealthKey; weight?: number | nul
 
 /** The note row's icon (asset-detail.md 6): what the note does to the thesis, not its polarity. Circled plus
  * (wzmacnia), minus (osłabia), a filled minus (podważa), tilde (nie dotyczy, also without a thesis). */
-export function relationIcon(rel: string | null | undefined): { cls: "sup" | "weak" | "inv" | "neu"; glyph: string; label: string } {
+export function relationIcon(rel: string | null | undefined): { cls: "sup" | "weak" | "inv" | "ful" | "neu"; glyph: string; label: string } {
   switch (normRelation(rel)) {
+    case "fulfills": return { cls: "ful", glyph: "✓", label: "spełnia tezę" };
     case "supports": return { cls: "sup", glyph: "+", label: "wzmacnia tezę" };
     case "weakens": return { cls: "weak", glyph: "−", label: "osłabia tezę" };
     case "invalidates": return { cls: "inv", glyph: "−", label: "podważa tezę" };
@@ -483,10 +491,11 @@ export function relationIcon(rel: string | null | undefined): { cls: "sup" | "we
   }
 }
 
-/** The row tooltip of a note (6): `wyniki · 29.07` (+ `odrzucona d.m` / `wygasła d.m`). */
-export function noteRowTitle(n: Pick<ResearchNote, "kind" | "observed_at" | "dismissed_at" | "expires_at"> & { expired?: boolean }, today: string): string {
+/** The row tooltip of a note (6): `wyniki · 29.07` (+ `odrzucona d.m` / `wygasła d.m`, + `sprzed zmiany tezy`, P2). */
+export function noteRowTitle(n: Pick<ResearchNote, "kind" | "observed_at" | "dismissed_at" | "expires_at"> & { expired?: boolean; predates_thesis?: boolean }, today: string): string {
   return [n.kind === "community" ? "społeczność" : KIND_LABEL[n.kind] ?? n.kind, dm(n.observed_at),
-    n.dismissed_at ? `odrzucona ${dm(n.dismissed_at)}` : isExpired(n, today) && n.expires_at ? `wygasła ${dm(n.expires_at)}` : null].filter(Boolean).join(" · ");
+    n.dismissed_at ? `odrzucona ${dm(n.dismissed_at)}` : isExpired(n, today) && n.expires_at ? `wygasła ${dm(n.expires_at)}` : null,
+    n.predates_thesis ? "sprzed zmiany tezy" : null].filter(Boolean).join(" · ");
 }
 
 /** A source in the expanded note row: the publisher (or title / host) without its date, and `d.m` apart. */

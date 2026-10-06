@@ -19,6 +19,7 @@ import { useShortcuts } from "../hooks";
 import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, plural, qty } from "../labels";
 import { decisionEffect, decisionTag, nextDeposit } from "../logic";
 import { canUndo, groupUndoRun, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
+import type { Hint } from "../api";
 import { type Alert, invKey, type PositionV2, postPositionDecision, type SignalV2, type WatchItem } from "./api";
 import { staleSignalText, writePositionDecision } from "./decisionFlow";
 import { InstLabel, type InstLike } from "./InstLabel";
@@ -98,12 +99,12 @@ const namesOf = (ctx: SignalsCtx) => {
 };
 
 /** The instrument of a signal (positions first, then the watchlist) for the identity label. */
-function instOf(ctx: SignalsCtx, id: number | null): { inst: InstLike; pos: PositionV2 | null } | null {
+function instOf(ctx: SignalsCtx, id: number | null): { inst: InstLike; pos: PositionV2 | null; hints: Hint[] | null } | null {
   if (id == null) return null;
   const pos = ctx.positions.find((p) => String(p.instrument.id) === String(id)) ?? null;
-  if (pos) return { inst: pos.instrument, pos };
   const w = (ctx.watch ?? []).find((x) => x.instrument_id === Number(id));
-  return w?.instrument ? { inst: w.instrument, pos: null } : null;
+  if (pos) return { inst: pos.instrument, pos, hints: pos.hints ?? w?.hints ?? null };
+  return w?.instrument ? { inst: w.instrument, pos: null, hints: w.hints ?? null } : null;
 }
 const accLabels = (ctx: SignalsCtx, pos: PositionV2 | null) =>
   pos?.accounts.map((a) => { const r = ctx.accounts.find((x) => x.id === a.account_id); return r ? accountLabel(r, ctx.accounts) : `rachunek ${a.account_id}`; });
@@ -316,7 +317,7 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll, onActivate }: {
     items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
   };
   const tk = io ? (
-    <InstLabel density="inline" inst={io.inst} text={subject} accounts={accLabels(ctx, io.pos)} stale={io.pos?.is_stale ? io.pos.price_date : null} />
+    <InstLabel density="inline" inst={io.inst} text={subject} accounts={accLabels(ctx, io.pos)} stale={io.pos?.is_stale ? io.pos.price_date : null} hints={io.hints} />
   ) : subject;
   const name = io ? instName(io.inst) : subject;
   const label = `${name}: ${g.live.map((x) => [signalFact(x).pre, signalFact(x).bold, signalFact(x).post].filter(Boolean).join(" ")).join("; ")}`;
@@ -455,7 +456,7 @@ export function SignalsDialog({ signals, ctx, filter: initial = "all", focusId, 
 
 /** A dialog row's title (rev 2 7.4): the ticker (bold, the identity label's hover card; opens the asset), the
  * muted full name and the date; portfolio subjects: the signal's title + date. */
-function SubjectTitle({ s, ctx, io, extra }: { s: SignalV2; ctx: SignalsCtx; io: { inst: InstLike; pos: PositionV2 | null } | null; extra?: ReactNode }) {
+function SubjectTitle({ s, ctx, io, extra }: { s: SignalV2; ctx: SignalsCtx; io: { inst: InstLike; pos: PositionV2 | null; hints: Hint[] | null } | null; extra?: ReactNode }) {
   const age = signalAge(s, ctx);
   if (io) {
     const name = instName(io.inst);
@@ -463,7 +464,7 @@ function SubjectTitle({ s, ctx, io, extra }: { s: SignalV2; ctx: SignalsCtx; io:
     return (
       <div className="t">
         <span className="tk"><InstLabel density="inline" inst={io.inst} text={ticker} onOpen={() => ctx.onOpenAsset(Number(io.inst.id))}
-          accounts={accLabels(ctx, io.pos)} stale={io.pos?.is_stale ? io.pos.price_date : null} /></span>
+          accounts={accLabels(ctx, io.pos)} stale={io.pos?.is_stale ? io.pos.price_date : null} hints={io.hints} /></span>
         {ticker !== name && <span className="nmm">{name}</span>}
         {extra}
         <Age a={age} />

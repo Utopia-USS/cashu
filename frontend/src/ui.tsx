@@ -156,7 +156,7 @@ export function SetupSteps({ steps }: { steps: SetupStepItem[] }) {
 }
 
 /** Anchored popover menu. Closes on Esc and outside click; arrow keys move between items. */
-export function Menu({ open, onClose, children, label }: { open: boolean; onClose: () => void; children: ReactNode; label?: string }) {
+export function Menu({ open, onClose, children, label, className }: { open: boolean; onClose: () => void; children: ReactNode; label?: string; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -180,14 +180,16 @@ export function Menu({ open, onClose, children, label }: { open: boolean; onClos
     return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
   }, [open, onClose]);
   if (!open) return null;
-  return <div className="menu" role="menu" aria-label={label} ref={ref}>{children}</div>;
+  return <div className={className ? `menu ${className}` : "menu"} role="menu" aria-label={label} ref={ref}>{children}</div>;
 }
 
-export function MenuItem({ icon, title, sub, on, onSelect, right }: {
+export function MenuItem({ icon, title, sub, on, onSelect, right, disabled }: {
   icon?: ReactNode; title: ReactNode; sub?: ReactNode; on?: boolean; onSelect: () => void; right?: ReactNode;
+  /** `aria-disabled` (still focusable, so the menu's arrow keys keep working); a click does nothing. */
+  disabled?: boolean;
 }) {
   return (
-    <button className={`mi ${on ? "on" : ""}`} role="menuitem" onClick={onSelect}>
+    <button className={`mi ${on ? "on" : ""}`} role="menuitem" aria-disabled={disabled || undefined} onClick={disabled ? undefined : onSelect}>
       {icon}
       <span className="grow">{title}{sub && <div className="sub">{sub}</div>}</span>
       {right}
@@ -281,9 +283,13 @@ export function Empty({ title, hint, action }: { title: ReactNode; hint?: ReactN
 // ---- toasts (a stack at the bottom centre; each with its own timer and action, F5 R4) ----------
 
 export type { ToastAction } from "./toasts";
-type ShowToast = (text: string, ms?: number, action?: ToastAction) => void;
-const ToastCtx = createContext<ShowToast>(() => {});
+/** Shows a toast and returns its id (for `useToastClose`). */
+type ShowToast = (text: string, ms?: number, action?: ToastAction) => number;
+const ToastCtx = createContext<ShowToast>(() => 0);
+const ToastCloseCtx = createContext<(id: number) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
+/** Closes a toast by the id `useToast()` returned (e.g. an older undo the next change makes stale). */
+export const useToastClose = () => useContext(ToastCloseCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
@@ -300,6 +306,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     // An undo stays long enough to reach it with the keyboard; every timer pauses while the owner is on the
     // stack (hover, focus) or away from the window (F7 FE14).
     timers.current!.start(id, action ? Math.max(ms, MIN_ACTION_MS) : ms);
+    return id;
   }, []);
   const hover = useRef(false), focus = useRef(false);
   const sync = useCallback(() => {
@@ -313,6 +320,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (!items.length) { hover.current = false; focus.current = false; sync(); } }, [items.length, sync]);
   return (
     <ToastCtx.Provider value={show}>
+      <ToastCloseCtx.Provider value={close}>
       {children}
       {items.length > 0 && (
         <div className="toasts" role="region" aria-label="Powiadomienia"
@@ -330,6 +338,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           </div>
         </div>
       )}
+      </ToastCloseCtx.Provider>
     </ToastCtx.Provider>
   );
 }

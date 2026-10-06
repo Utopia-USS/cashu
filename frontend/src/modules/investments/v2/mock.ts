@@ -5,6 +5,7 @@
 // instrument, three deposits); `?marta=empty` keeps the empty F3 profile instead.
 import { ApiError } from "../../../core/api";
 import { investmentsMock } from "../mock";
+import type { Hint, PlanFreshness } from "../api";
 import type { Alert, Performance, PerfPoint, PerfRange, PlannedDeposit, WatchItem } from "./api";
 import { researchDigest, researchMock, researchSignals, researchUnread } from "./research/mock";
 
@@ -331,7 +332,7 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
     Object.assign(a, patch, { updated_at: new Date().toISOString() });
     return a;
   }
-  if (ip === "/watchlist" && method === "GET") return st.watch.map((w) => ({ ...w, research_unread: researchUnread(slug, kind, w.instrument_id) }));
+  if (ip === "/watchlist" && method === "GET") return st.watch.map((w) => ({ ...w, research_unread: researchUnread(slug, kind, w.instrument_id), hints: HINTS[w.instrument_id] ?? [] }));
   if (ip === "/watchlist" && method === "POST") {
     const sym = String(b.symbol_or_isin ?? "").trim().toUpperCase();
     if (!sym) throw new ApiError(422, "symbol_or_isin is required", "watchlist_invalid");
@@ -409,7 +410,7 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
   return res;
 }
 
-const DEFAULT_POL: Record<string, string> = { drawdown_from_high: "positive", gain_from_cost: "positive", allocation_drift: "neutral", position_concentration: "negative", contribution_gap: "negative", cash_level: "negative", loss_from_cost: "negative" };
+const DEFAULT_POL: Record<string, string> = { "plan:plan_no_exit": "negative", "plan:plan_vs_thesis": "negative", drawdown_from_high: "positive", gain_from_cost: "positive", allocation_drift: "neutral", position_concentration: "negative", contribution_gap: "negative", cash_level: "negative", loss_from_cost: "negative" };
 function decorateSignal(s: Record<string, unknown>, st: V2State) {
   const id = s.id as number;
   const own = st.alertSignals.some((x) => x.id === id) ? st.decisions.filter((d) => d.signal_id === id) : [];
@@ -438,6 +439,32 @@ function decorateOverview(ov: Record<string, unknown>, st: V2State, slug: string
   return { ...ov, kpis: { ...kpis, polarity: pol, alerts: counts }, attention: [], attention_total: signals.length };
 }
 
+// P2 / P3 (spec contracts, BE order: main first): the strategy hints of the rows and the recommendations' freshness.
+const HINTS: Record<number, Hint[]> = {
+  306: [
+    { code: "recommendation_maybe_outdated", severity: "review", params: { reasons: ["note_after", "rule_fired", "age"] } },
+    { code: "plan_vs_thesis", severity: "rule", params: { plan: "buy_asap", health: "weakened" } },
+    { code: "drawdown_review", severity: "review", params: { drawdown: 0.184, threshold: 0.15 } },
+    { code: "thesis_weakened", severity: "review", params: { predates_thesis: false } },
+  ],
+  305: [{ code: "thesis_fulfilled", severity: "review", params: { has_exit_plan: false, predates_thesis: true } }],
+  304: [{ code: "concentration", severity: "review", params: { weight: 0.111, max_weight: 0.1 } }, { code: "no_thesis", severity: "review", params: {} }],
+  301: [{ code: "recommendation_outdated", severity: "rule", params: { reasons: ["fulfilled_buy"] } }, { code: "no_thesis", severity: "review", params: {} }],
+  307: [{ code: "thesis_weakened", severity: "review", params: { predates_thesis: false } }, { code: "no_exit_plan", severity: "info", params: {} }],
+  402: [{ code: "alert_triggered", severity: "review", params: { alert_id: 811, kind: "drawdown_from_high", title: "ALE: spadek 10 % od szczytu" } }, { code: "no_thesis", severity: "info", params: {} }],
+  403: [{ code: "alert_triggered", severity: "review", params: { alert_id: 812, kind: "new_high", title: "XMME: nowy dołek 90 sesji" } }, { code: "no_thesis", severity: "info", params: {} }],
+  404: [{ code: "no_thesis", severity: "info", params: {} }],
+};
+const FRESHNESS: Record<number, PlanFreshness> = {
+  306: { state: "maybe_outdated", reasons: [
+    { code: "note_after", at: "2026-10-03T07:40:00+00:00", note_id: null, relation: "weakens", count: 2 },
+    { code: "rule_fired", at: "2026-09-29T05:02:00+00:00", signal_id: 901, kind: "drawdown_from_high" },
+    { code: "age", at: "2026-10-05T08:00:00+00:00" },
+  ] },
+  301: { state: "outdated", reasons: [{ code: "fulfilled_buy", at: "2026-10-03T07:40:00+00:00", note_id: null, relation: "fulfills", count: 1 }] },
+  302: { state: "fresh", reasons: [] }, 304: { state: "fresh", reasons: [] }, 305: { state: "fresh", reasons: [] },
+};
+
 const SEEDS: Record<number, [number, number]> = { 301: [3, 0.0012], 302: [4, 0.001], 303: [0, 0], 304: [9, 0.002], 305: [21, -0.0045], 306: [17, -0.006], 307: [31, -0.003] };
 function decoratePositions(res: { positions: Record<string, unknown>[] }, unread: (instrumentId: number) => number) {
   return {
@@ -449,7 +476,8 @@ function decoratePositions(res: { positions: Record<string, unknown>[] }, unread
       const closes = p.valuation_mode === "cost"
         ? closes30(last, 1, 0, 0).map((c, i, all) => ({ ...c, close: r2(last * (1 - (all.length - 1 - i) * 0.0002)) }))
         : closes30(last, seed, drift, id === 306 ? 0.035 : 0.025);
-      return { ...p, closes_30d: closes, research_unread: unread(id) };
+      const instrument = { ...(p.instrument as object), plan_freshness: FRESHNESS[id] ?? null };
+      return { ...p, instrument, closes_30d: closes, research_unread: unread(id), hints: HINTS[id] ?? [] };
     }),
   };
 }

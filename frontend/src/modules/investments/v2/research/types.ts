@@ -4,10 +4,10 @@
 
 export type NoteKind = "news" | "earnings" | "community" | "trend" | "macro" | "candidate";
 export type NotePolarity = "positive" | "negative" | "neutral";
-export type Relation = "supports" | "weakens" | "invalidates" | "neutral" | "none";
-/** Thesis health per position (research.md 5): podważona, osłabiona, wzmocniona, aktualna, bez tezy, bez researchu.
- * Server names: invalidated, weakened, supported, current, no_thesis, no_research. */
-export type HealthKey = "inv" | "weak" | "sup" | "ok" | "no_thesis" | "no_research";
+export type Relation = "supports" | "weakens" | "invalidates" | "fulfills" | "neutral" | "none";
+/** Thesis health per position (research.md 5): podważona, osłabiona, spełniona (P1), wzmocniona, aktualna, bez tezy,
+ * bez researchu. Server names: invalidated, weakened, fulfilled, supported, current, no_thesis, no_research. */
+export type HealthKey = "inv" | "weak" | "ful" | "sup" | "ok" | "no_thesis" | "no_research";
 export type Direction = "up" | "down" | "flat";
 /** Thesis record field a note bears on. */
 export type ThesisField = "entry_type" | "thesis" | "invalidation" | "exit_plan" | "size_plan";
@@ -59,13 +59,16 @@ export interface ResearchNote {
   /** F8 BE (Q10): when the owner opened it; agent notes are born unread. */
   read_at?: string | null;
   unread?: boolean;
+  /** P2: stored before the thesis' last core change (judged against the previous thesis). */
+  predates_thesis?: boolean;
   /** dismissed_at + 15 minutes: `przywróć` / `Cofnij` only before this. */
   restorable_until?: string | null;
   /** Dismissed candidate: not re-proposed before this date (90 days). */
   cooldown_until?: string | null;
 }
 
-export interface RelationCounts { supports: number; weakens: number; invalidates: number; neutral: number; community: number }
+/** `fulfills` (P1) is absent on older servers. */
+export interface RelationCounts { supports: number; weakens: number; invalidates: number; fulfills?: number; neutral: number; community: number }
 
 export interface LatestNote { id?: number; title: string; kind?: string; polarity?: string | null; thesis_relation?: string | null; observed_at?: string | null; strength?: number | null }
 
@@ -85,7 +88,7 @@ export interface InstrumentSummary {
   thesis_relation: Relation | string | null;
   note_ids?: number[];
   /** Per thesis field counts (the chip on the Teza field). */
-  fields?: { field: string; supports: number; weakens: number; invalidates: number; neutral: number }[];
+  fields?: { field: string; supports: number; weakens: number; invalidates: number; fulfills?: number; neutral: number }[];
   latest_polarity: NotePolarity | string | null;
   latest_note?: LatestNote | null;
   notes?: number;
@@ -95,6 +98,8 @@ export interface InstrumentSummary {
   last_researched_at: string | null;
   /** F8 BE: unread agent notes of the instrument. */
   unread?: number;
+  /** P2: the health rests only on notes stored before the thesis' last core change. */
+  health_predates_thesis?: boolean;
 }
 
 export interface ThemeSummary {

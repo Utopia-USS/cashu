@@ -116,5 +116,5 @@ export function ThesisHealth(p: AssetSlotProps) {
   const latest = (r.notes ?? []).find((n) => !n.dismissed_at);
   const counts = r.row?.counts ?? relationCounts(r.window);
   const title = [countsText(r.health, counts, { notes: r.window.length, latestPolarity: latest?.polarity }), r.health === "no_thesis" ? null : "30 dni"].filter(Boolean).join(" · ");
-  return <HealthPill state={r.health} muted={healthStale(r.runs ?? [], r.today)} title={title || undefined} />;
+  return <HealthPill state={r.health} muted={healthStale(r.runs ?? [], r.today)} pre={!!r.row?.health_predates_thesis} title={title || undefined} />;
 }

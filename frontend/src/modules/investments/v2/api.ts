@@ -4,7 +4,7 @@
 // CONTRACT). Shapes mirror service/views.py and performance/service.py; fractions stay fractions.
 import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../core/api";
 import { ck, dedupe, invalidate } from "../../../swr";
-import type { Decision, DecisionInput, Instrument, Overview, Position, Positions, ReviewDigest, Signal } from "../api";
+import type { Decision, DecisionInput, Hint, Instrument, Overview, Position, Positions, ReviewDigest, Signal } from "../api";
 import { digestShown, isShownSignal } from "./logic";
 import { monthCloseStale } from "../../budget/logic";
 
@@ -130,6 +130,8 @@ export interface WatchItem {
   alerts: { count?: number; live: number; triggered: number; nearest?: { alert_id: number; kind: string; title: string; level: Num; distance_pct: Num } | null };
   /** F8 BE: unread agent research notes of the instrument. */
   research_unread?: number;
+  /** P2: the owner's rules that apply now (held: the held table), main first. */
+  hints?: Hint[];
 }
 
 export interface DigestEvent {

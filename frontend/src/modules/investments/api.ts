@@ -23,7 +23,29 @@ export interface Instrument {
   status: string;
   needs_classification: boolean;
   aliases: Alias[];
+  /** Model recommendation (legacy field name): buy_asap | buy | hold | reduce | exit_asap. */
+  plan?: string | null;
+  /** When the plan was set (UTC ISO), null without a plan. */
+  plan_at?: string | null;
+  /** The model's short reason for the recommendation, null without one. */
+  plan_reason?: string | null;
+  /** P3: whether data stored after `plan_at` puts the recommendation in question; null without a plan. Only on
+   * positions rows, watchlist rows and the asset detail. */
+  plan_freshness?: PlanFreshness | null;
 }
+
+/** P2 strategy hint: which of the owner's own rules apply now (BE decides code, severity and order, main first).
+ * Params are fractions as in the rules (0.27 = 27 %). */
+export interface Hint { code: string; severity: "rule" | "review" | "info" | string; params: Record<string, unknown> }
+
+/** P3 one reason a recommendation may be outdated: `at` = when it happened (UTC ISO); note reasons carry the newest
+ * note, its relation and how many notes qualify; rule / alert reasons the signal / alert id and the kind. */
+export interface FreshReason {
+  code: string; at: string | null;
+  note_id?: number | null; relation?: string | null; count?: number | null;
+  signal_id?: number | null; alert_id?: number | null; kind?: string | null;
+}
+export interface PlanFreshness { state: "fresh" | "maybe_outdated" | "outdated" | string; reasons: FreshReason[] }
 
 export interface PortfolioWarning { kind: string; message: string; account_id: number | null; instrument_id: number | null }
 
@@ -159,6 +181,8 @@ export interface Position {
   lots: Lot[];
   open_signals: number;
   has_thesis: boolean;
+  /** P2: the owner's rules that apply now, main first (absent on older servers). */
+  hints?: Hint[];
 }
 export interface CashRow { account_id: number; account_name: string | null; currency: string; amount: number; amount_base: Num }
 export interface Positions { as_of: string; base_currency: string; positions: Position[]; cash: CashRow[]; total: number }
@@ -220,6 +244,8 @@ export interface PositionDetail {
   theses: Thesis[];
   decisions: Decision[];
   manual_valuations: { id: number; instrument_id: number; as_of: string; unit_value: number; currency: string; note: string | null }[];
+  /** P2: held = the position row's hints, watched = the watched table, else []. */
+  hints?: Hint[];
 }
 
 export interface Threshold { rule_id: string; kind: string; threshold: number; basis: "high" | "cost" | string; window_days: number | null; y: number }

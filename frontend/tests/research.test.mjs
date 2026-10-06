@@ -116,7 +116,7 @@ test("health mapping: server names normalised, pill class and label per state, d
   assert.equal(normHealth("no_research"), "no_research");
   assert.equal(normHealth("bogus"), null);
   assert.deepEqual(Object.keys(HEALTH_LABEL).map((k) => [HEALTH_LABEL[k], HEALTH_CLS[k]]), [
-    ["podważona", "inv"], ["osłabiona", "weak"], ["wzmocniona", "sup"], ["aktualna", ""], ["bez tezy", "none"], ["bez researchu", "none muted"],
+    ["podważona", "inv"], ["osłabiona", "weak"], ["spełniona", "ful"], ["wzmocniona", "sup"], ["aktualna", ""], ["bez tezy", "none"], ["bez researchu", "none muted"],
   ]);
   const counts = { supports: 0, weakens: 2, invalidates: 0, neutral: 0, community: 0 };
   assert.equal(healthOf({ health: "supported", counts, last_researched_at: null }, "2026-10-05"), "sup"); // server wins
@@ -128,7 +128,7 @@ test("health mapping: server names normalised, pill class and label per state, d
 
 test("health counts line and thesis field chips (Polish verb agreement)", () => {
   const c = relationCounts([note({ thesis_relation: "weakens" }), note({ thesis_relation: "weakens" }), note({ kind: "community", thesis_relation: "neutral" })]);
-  assert.deepEqual(c, { supports: 0, weakens: 2, invalidates: 0, neutral: 1, community: 1 });
+  assert.deepEqual(c, { supports: 0, weakens: 2, invalidates: 0, fulfills: 0, neutral: 1, community: 1 });
   assert.equal(countsText("weak", { ...c, community: 0 }), "2 osłabiają · 0 wzmacnia");
   assert.equal(countsText("sup", { supports: 1, weakens: 0, invalidates: 0, neutral: 0, community: 1 }), "1 wzmacnia · 1 szum");
   assert.equal(countsText("weak", { supports: 0, weakens: 5, invalidates: 0, neutral: 0, community: 0 }), "5 osłabia · 0 wzmacnia");

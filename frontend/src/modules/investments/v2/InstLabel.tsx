@@ -6,12 +6,18 @@
 // be clipped by the scrolling Aktywa table or the signals dialog), opens 350 ms after the pointer enters the
 // label or at once on keyboard focus of the name, closes on leave, blur, Esc, scroll and resize. Without hover
 // (touch) there is no card: the label carries a one-line `title` instead.
+// The tile carries two model-derived facts: the recommendation as a coin on its top-right
+// corner (shape only, never a P/L colour) and the thesis health as a ring (no layout shift); both come from the
+// instrument (`plan`) and `InstStateContext` (health, stale research, held), so the call sites pass nothing new.
 import { type CSSProperties, type FocusEvent, Fragment, type MouseEvent, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { instCardFacts, instMono, instName, type InstLike, instSummary } from "./logic";
+import type { Hint } from "../api";
+import { freshOf, instCardFacts, type InstFactsOpts, instMono, instName, type InstLike, instSummary, PLAN_PATH, planLabel, ringOf } from "./logic";
+import { isHeld, useInstState } from "./instState";
 
 export type InstDensity = "row" | "compact" | "inline" | "header";
 export type { InstLike };
+export { PLAN_PATH };
 
 const CLS: Record<InstDensity, string> = { row: "il", compact: "il cmp", inline: "il inl", header: "il hd" };
 const OPEN_DELAY = 350;
@@ -19,12 +25,44 @@ const OPEN_DELAY = 350;
 /** The tile: same width for every monogram of a density; a 5-character one (`00241`, `BRK-B`), or 4 capitals with
  * two or more of the widest letters (`WWWW`, `MMMM`), steps the type down (`data-n="5"`) instead of widening it. */
 function Tile({ inst }: { inst: InstLike }) {
+  const st = useInstState();
   const mono = instMono(inst);
   const dense = mono.length >= 5 || (mono.length === 4 && (mono.match(/[WM]/g) ?? []).length >= 2);
-  return <span className="av" data-n={dense ? "5" : undefined} aria-hidden>{mono}</span>;
+  // Only a plan with a label in this instrument's form (held / watched), so the tile, the card and the header agree.
+  const plan = inst.plan && PLAN_PATH[inst.plan] && planLabel(inst.plan, isHeld(st, inst.id)) ? inst.plan : null;
+  const ring = ringOf(st.health.get(String(inst.id)) ?? null, st.stale);
+  // P2: a ring resting only on research older than the thesis is faded; P3: the coin rim takes the freshness colour.
+  const pre = ring != null && !!st.pre?.has(String(inst.id));
+  const fresh = plan ? freshOf(inst.plan_freshness) : null;
+  return (
+    <span className="avw" data-plan={plan ?? undefined} data-health={ring ?? undefined} data-fresh={fresh ?? undefined}>
+      <span className="av" data-n={dense ? "5" : undefined} data-health={ring ?? undefined} data-pre={pre ? "" : undefined} aria-hidden>{mono}</span>
+      {plan && <PlanGlyph plan={plan} className="pl" />}
+    </span>
+  );
 }
 
-export function InstLabel({ inst, density = "row", onOpen, text, accounts, stale, badges, action, sub, card }: {
+/** The recommendation glyph (a coin in CSS: `.pl` on the tile, `.pcoin` in the header badge). */
+export function PlanGlyph({ plan, className }: { plan: string; className: string }) {
+  const d = PLAN_PATH[plan];
+  if (!d) return null; // an unknown value from an older / newer server: no glyph
+  return (
+    <svg className={className} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d={d} />
+    </svg>
+  );
+}
+
+/** The card / touch-title options from the label's props and the owner state (held form, health, stale research). */
+function useFacts(inst: InstLike, accounts?: string[], stale?: string | null, hints?: Hint[] | null): InstFactsOpts {
+  const st = useInstState();
+  return {
+    accounts, stale, held: isHeld(st, inst.id), health: st.health.get(String(inst.id)) ?? null, healthStale: st.stale,
+    pre: !!st.pre?.has(String(inst.id)), hints: hints ?? st.hints?.get(String(inst.id)) ?? null,
+  };
+}
+
+export function InstLabel({ inst, density = "row", onOpen, text, accounts, stale, badges, action, sub, card, hints }: {
   inst: InstLike;
   density?: InstDensity;
   /** Set: the name is `button.nm` (opens the asset); unset: plain text. */
@@ -43,6 +81,8 @@ export function InstLabel({ inst, density = "row", onOpen, text, accounts, stale
   sub?: ReactNode;
   /** Hover card; default on, except `header`. */
   card?: boolean;
+  /** P2: the row's strategy hints (card `strategia` rows, touch title suffix). */
+  hints?: Hint[] | null;
 }) {
   const withCard = card ?? density !== "header";
   const id = useId();
@@ -50,12 +90,12 @@ export function InstLabel({ inst, density = "row", onOpen, text, accounts, stale
   const [touch] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(hover: none)").matches);
   const hover = useHoverCard(ref, withCard && !touch);
   const name = text ?? instName(inst);
-  const facts = { accounts, stale };
+  const facts = useFacts(inst, accounts, stale, hints);
   const nameNode = onOpen
     ? <button className="nm" onClick={() => onOpen(inst.id)} aria-describedby={hover.open ? id : undefined}>{name}</button>
     : <span className="nmt">{name}</span>;
   const title = withCard && touch ? instSummary(inst, facts) : undefined;
-  const cardNode = hover.open && ref.current ? <InstCard anchor={ref.current} id={id} inst={inst} accounts={accounts} stale={stale} /> : null;
+  const cardNode = hover.open && ref.current ? <InstCard anchor={ref.current} id={id} inst={inst} accounts={accounts} stale={stale} hints={hints} /> : null;
   if (density === "inline") {
     const sym = inst.symbol && inst.symbol !== name ? inst.symbol : null;
     return (
@@ -115,11 +155,12 @@ function useHoverCard(ref: RefObject<HTMLSpanElement>, enabled: boolean) {
   };
 }
 
-/** The card: tile + name + `symbol · exchange`, then klasa / rachunek / ISIN, then status tags (not-normal only). */
-function InstCard({ anchor, id, inst, accounts, stale }: { anchor: HTMLElement; id: string; inst: InstLike; accounts?: string[]; stale?: string | null }) {
+/** The card: tile + name + `symbol · exchange`, then rekomendacja / teza / strategia (P2: one row per hint, the first
+ * keyed `strategia`), klasa / rachunek / ISIN, then status tags (not-normal only). */
+function InstCard({ anchor, id, inst, accounts, stale, hints }: { anchor: HTMLElement; id: string; inst: InstLike; accounts?: string[]; stale?: string | null; hints?: Hint[] | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<CSSProperties>({ top: 0, left: 0, visibility: "hidden" });
-  const f = instCardFacts(inst, { accounts, stale });
+  const f = instCardFacts(inst, useFacts(inst, accounts, stale, hints));
   useLayoutEffect(() => {
     const a = anchor.getBoundingClientRect();
     const el = ref.current;
@@ -133,7 +174,7 @@ function InstCard({ anchor, id, inst, accounts, stale }: { anchor: HTMLElement; 
     <div className="ilc" role="tooltip" id={id} ref={ref} style={pos}>
       <div className="ih"><span className="il"><Tile inst={inst} /></span><div><b>{f.head[0]}</b>{f.head[1] && <span>{f.head[1]}</span>}</div></div>
       {f.rows.length > 0 && (
-        <div className="kvl">{f.rows.map(([k, v]) => <Fragment key={k}><span className="k">{k}</span><span className={k === "ISIN" ? "tnum" : undefined}>{v}</span></Fragment>)}</div>
+        <div className="kvl">{f.rows.map(([k, v, cls], n) => <Fragment key={`${k}:${n}`}><span className="k">{k}</span><span className={cls ?? (k === "ISIN" ? "tnum" : undefined)}>{v}</span></Fragment>)}</div>
       )}
       {f.status.length > 0 && <div className="st">{f.status.map((t) => <span key={t} className={`tag ${t === "koszt + odsetki" || t === "wycena ręczna" ? "" : "solid warn"}`}>{t}</span>)}</div>}
     </div>,

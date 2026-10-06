@@ -95,6 +95,13 @@ function janNotes(): ResearchNote[] {
       title: "Asseco Poland: przegląd opcji strategicznych", summary: "Spółka ogłosiła przegląd opcji strategicznych.", dismissed_at: "2026-09-27T10:00:00+02:00", cooldown_until: "2026-12-26T10:00:00+01:00",
       details: { entry_type: "special_situation", context: "odrzucony: „poza kompetencjami”", criteria: [{ text: "ogłoszony przegląd opcji", met: true }] },
       sources: [src("ESPI", "2026-09-25", "acp-1")] }),
+    // P1: KGHM's thesis played out (the fulfilled ring and the plan check `brak planu wyjścia`).
+    // P2: stored before the last thesis edit (`sprzed zmiany tezy`; KGHM's health rests on it: the faded ring).
+    note({ instrument_id: 305, instrument: kgh, kind: "earnings", polarity: "positive", strength: 2, thesis_relation: "fulfills", thesis_field: "thesis", observed_at: SAT,
+      predates_thesis: true,
+      title: "KGHM: marża na miedzi wróciła powyżej średniej 5 lat",
+      summary: "Wyniki Q3: marża EBITDA segmentu miedzi powyżej średniej pięciu lat, czego teza „trend” oczekiwała przy wejściu.",
+      sources: [src("raport kwartalny", "2026-10-02", "kgh-6")] }),
   ];
 }
 
@@ -142,7 +149,7 @@ const SENT: Record<number, (number | null)[]> = {
   306: [0.3, 0.2, null, -0.2, -0.3, null, -0.6, -0.9], 305: [0.1, 0.4, 0.2, null, 0.5, 0.3, -0.2, 0.6], 307: [null, 0.2, 0.1, -0.1, null, -0.3, -0.4, -0.5],
   304: [null, 0.3, null, 0.1, -0.2, null, null, -0.4], 301: [0.1, null, 0.2, 0.1, null, 0.3, null, 0.2],
 };
-const HEALTH: Record<number, string> = { 306: "weakened", 305: "supported", 307: "weakened", 304: "no_thesis", 301: "no_thesis" }; // server wire names
+const HEALTH: Record<number, string> = { 306: "weakened", 305: "fulfilled", 307: "weakened", 304: "no_thesis", 301: "no_thesis" }; // server wire names
 const WEIGHT: Record<number, number> = { 301: 0.409, 302: 0.126, 303: 0.161, 304: 0.133, 305: 0.055, 306: 0.057, 307: 0.006 };
 const THEMES: ThemeSummary[] = [
   { theme: "Gry wideo: premiery 2027", key: "gry-wideo", sentiment_8w: [0.2, 0.3, null, 0, -0.2, -0.3, -0.5, -0.8], direction: "falling", notes: 4, instruments: [306], last_observed_at: "2026-10-03",
@@ -167,7 +174,7 @@ function summary(st: RState): ResearchSummary {
     return {
       instrument_id: id, instrument: i ? { ...i, isin: null, currency: "PLN" } : null, label: i?.label ?? null, held: true, watched: false, weight: WEIGHT[id] ?? null,
       has_thesis: HEALTH[id] !== "no_thesis", entry_type: id === 306 ? "sentiment_correction" : null, health,
-      health_rank: ["invalidated", "weakened", "no_research", "no_thesis", "supported", "current"].indexOf(health),
+      health_rank: ["invalidated", "weakened", "fulfilled", "no_research", "no_thesis", "supported", "current"].indexOf(health),
       counts: relationCounts(mine), thesis_relation: latest?.thesis_relation ?? null, note_ids: mine.map((n) => n.id),
       fields: id === 306 ? [{ field: "thesis", supports: 1, weakens: mine.filter((n) => n.thesis_relation === "weakens").length, invalidates: 0, neutral: 0 }] : [],
       latest_polarity: latest?.polarity ?? null,
@@ -176,6 +183,7 @@ function summary(st: RState): ResearchSummary {
       sentiment_8w: mine.length ? SENT[id] ?? sentiment8w(mine, TODAY) : sentiment8w([], TODAY),
       direction: id === 306 || id === 307 ? "falling" : "stable",
       unread: mine.filter(isUnread).length,
+      health_predates_thesis: id === 305,
       last_researched_at: st.runs.filter((r) => r.status === "done").map((r) => r.finished_at).sort().slice(-1)[0] ?? null,
     };
   });

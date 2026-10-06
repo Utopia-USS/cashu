@@ -13,6 +13,7 @@ import { ClassifyCard, WarningsCard } from "../Rail";
 import { warningItems } from "../logic";
 import type { Alert, PositionV2, PositionsV2, SignalV2, WatchItem } from "./api";
 import { ClassifyButton, InstLabel } from "./InstLabel";
+import { HintChip, mainHint } from "./hints";
 import { accountSnapshot, alertFact, allocGeneric, instName, rowFlags, ruleKindLabel, STATE_LABEL, subLine, weekChange } from "./logic";
 import { WatchTable } from "./Watchlist";
 
@@ -102,7 +103,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
         <div className="scroll">
           <table>
             <thead>
-              <tr><th className="c-inst">Instrument</th><th className="c-spark">30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Udział</th><th className="num">Wartość</th><th className="num c-abs" title="Od kosztu (FIFO), ceny zamknięcia">Wynik</th><th className="num">Wynik %</th></tr>
+              <tr><th className="c-inst">Instrument</th><th className="c-hint">Strategia</th><th className="c-spark">30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Udział</th><th className="num">Wartość</th><th className="num c-abs" title="Od kosztu (FIFO), ceny zamknięcia">Wynik</th><th className="num">Wynik %</th></tr>
             </thead>
             <tbody>
               {rows.map((p) => {
@@ -111,12 +112,13 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
                 const wk = weekChange(p.closes_30d);
                 const cost = p.valuation_mode === "cost";
                 const parts = split === "account" && p.accounts.length > 1 ? p.accounts : null;
+                const hint = mainHint(p.hints, true);
                 return (
                   <Fragment key={id}>
                     <tr className="rowlink" onClick={(e) => { if (!(e.target as HTMLElement).closest("button, a, input, select, .pop")) onOpen(i.id); }}>
                       <td className="c-inst">
                         <InstLabel inst={i} onOpen={onOpen} accounts={p.accounts.map((a) => accLabel(a.account_id))} stale={p.is_stale ? p.price_date : null}
-                          badges={marks(id)} sub={subLine({ cost, split, accounts: p.accounts, accLabel })}
+                          badges={marks(id)} sub={subLine({ cost, split, accounts: p.accounts, accLabel })} hints={p.hints}
                           action={i.needs_classification && (
                             <span className="menu-anchor">
                               <ClassifyButton name={instName(i)} expanded={classify === id} onClick={() => setClassify(classify === id ? null : id)} />
@@ -127,6 +129,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
                             </span>
                           )} />
                       </td>
+                      <td className="c-hint">{hint && <HintChip hint={hint} held />}</td>
                       <td className="c-spark"><Spark values={(p.closes_30d ?? []).map((x) => x.close)} tone={cost ? "" : undefined} label={`${i.label}: 30 dni`} /></td>
                       <td className="num">{p.price != null ? money(p.price, p.price_currency ?? c) : "-"}{p.is_stale && <> <span className="tag warn">{dm(p.price_date)}</span></>}</td>
                       <td className={`num ${cost || wk == null ? "muted" : wk >= 0 ? "pos" : "neg"}`}>{wk != null ? pct(wk, true) : "-"}</td>
@@ -137,7 +140,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
                     </tr>
                     {parts?.map((a) => (
                       <tr key={`${id}:${a.account_id}`} className="sum">
-                        <td style={{ paddingLeft: 28 }}>{accLabel(a.account_id)}</td><td className="c-spark" /><td /><td />
+                        <td style={{ paddingLeft: 28 }}>{accLabel(a.account_id)}</td><td className="c-hint" /><td className="c-spark" /><td /><td />
                         {weightCell(a.weight)}
                         <td className="num">{money(a.value, c)}</td>
                         <td className="num c-abs" /><td className={`num ${resultCls(a.unrealized_pct)}`}>{pct(a.unrealized_pct, true)}</td>
@@ -146,10 +149,10 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
                   </Fragment>
                 );
               })}
-              {!rows.length && <tr><td colSpan={8} className="muted">Brak otwartych pozycji.</td></tr>}
+              {!rows.length && <tr><td colSpan={9} className="muted">Brak otwartych pozycji.</td></tr>}
               {data.cash.length > 0 && (
                 <tr className="sum">
-                  <td>Gotówka · {nAccountsInv(cashAccounts)}</td><td className="c-spark" /><td /><td />
+                  <td>Gotówka · {nAccountsInv(cashAccounts)}</td><td className="c-hint" /><td className="c-spark" /><td /><td />
                   {weightCell(data.total ? cash / data.total : null)}
                   <td className="num">{money(cash, c)}</td><td className="c-abs" /><td />
                 </tr>

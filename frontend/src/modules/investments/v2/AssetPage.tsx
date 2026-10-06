@@ -3,10 +3,13 @@
 // actions (+ Alert, + Transakcja, Zanotuj decyzję: one decision per position in a dialog, Decide.tsx) and a meta
 // line (lots behind `n loty`, transactions, dividends, fees). Then the price chart with alert levels (user amber,
 // agent blue), rule thresholds, the average cost and buy / sell markers; a two-column grid: Teza (plain text) and
-// Alerty on the left, the research slot on the right (assetSlots.ts; without it the timeline takes the right
-// column), `Sygnały i decyzje` below: the open signals as rows (a quiet `potwierdź`) above a timeline with one
-// fact per row. The same content renders in the drawer (AssetDrawer) and as a page ("otwórz jako stronę").
-// Watched instruments (not held): no facts and no meta line, Alerty on the left, research only with notes.
+// the model recommendation with its short reason on the left, Alerty above the research slot on the right
+// (assetSlots.ts), `Sygnały i decyzje` below: the open signals as rows (a quiet `potwierdź`) above a timeline with
+// one fact per row. The same content renders in the drawer (AssetDrawer) and as a page ("otwórz jako stronę").
+// Watched instruments (not held): no facts and no meta line, no Teza, research only with notes.
+// P1: the model recommendation is read-only here. The owner records their own decision separately.
+// P2: the main strategy hint ends the sub line under the name (its title lists every hint); P3: the Rekomendacja card
+// is tinted yellow / red when data stored after it puts it in question, with the reasons as short lines.
 import { useMemo, useState } from "react";
 import { LineChart, type Level } from "../../../charts";
 import { labelIndices } from "../../../chart";
@@ -16,15 +19,18 @@ import { Seg, Skeleton, useToast } from "../../../ui";
 import { FootFacts, PolDot, Widget } from "../../../widgets";
 import { getPositionChart, getPositionDetail, type Position, type Thesis } from "../api";
 import { accountLabel, bucketLabel, dmy, ENTRY_TYPE, micName, money, money0, pct, plural, qty, wdm } from "../labels";
-import { InstLabel } from "./InstLabel";
+import { InstLabel, PlanGlyph } from "./InstLabel";
 import { AlertRow, removeAlertWithUndo } from "./Alerts";
 import { type Alert, getDecisionsFor, getSignalsV2, invKey, type SignalV2, type WatchItem } from "./api";
+import { isHeld, useInstState } from "./instState";
 import { ASSET_SLOTS, type AssetSlotProps } from "./assetSlots";
 import { PositionDecisionDialog } from "./Decide";
 import { isResearchKind, signalNoteId } from "./research/logic";
 import {
-  assetTimeline, averageCost, headerMeta, instName, lotRows, openRows, polarityOf, price as priceText, signalFact, STATE_LABEL, stateOf, tlDate, weekChange,
+  assetTimeline, averageCost, FRESH_LABEL, freshOf, freshReasonLines, headerMeta, instName, knownHints, lotRows, openRows, planLabel, polarityOf,
+  price as priceText, signalFact, STATE_LABEL, stateOf, tlDate, weekChange,
 } from "./logic";
+import { HintChip } from "./hints";
 import { todayLocal } from "../../../time";
 import { Age, Fact1, legacyDecisions, longText, type SignalsCtx, signalAge, useSignalAck } from "./Signals";
 
@@ -147,7 +153,18 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const yearNow = todayLocal().slice(0, 4);
   // All accounts, not the first one (F7 FE6); per-account cost stays in "Per rachunek".
   const avgCost = pos ? averageCost(pos, ctx.base) : null;
+  // Held from the unfiltered data (the same source as the tiles); a held-only recommendation on a watched
+  // instrument is hidden, like the tile.
+  const instState = useInstState();
+  const held = !!pos || isHeld(instState, id);
+  const pLabel = (v: string | null) => planLabel(v, held);
+  const plan = inst?.plan && pLabel(inst.plan) ? inst.plan : null;
   const toSignals = () => document.getElementById(`asset-signals-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // P2: what the owner's own rules say now (the detail's, else the position / watchlist row's); main first.
+  const hints = knownHints(detail.data?.hints ?? pos?.hints ?? w?.hints ?? [], held);
+  // P3: the recommendation's freshness (yellow / red card, reason lines).
+  const fresh = plan ? freshOf(inst?.plan_freshness) : null;
+  const reasons = fresh ? freshReasonLines(inst?.plan_freshness, { hints, alerts: mine }) : [];
 
   const head = (
     <section className="w ahead s2" aria-label={name}>
@@ -156,9 +173,10 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
           <InstLabel density="header" inst={inst} text={name} card={false}
             sub={[inst.symbol !== name ? inst.symbol : null, micName(inst.mic), bucketLabel(pos?.bucket)].filter(Boolean).join(" · ")} />
         ) : name}</h2>
-        <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>
+        <div className="muted hsub" style={{ fontSize: 12.5, marginTop: 2 }}>
           {[acc ? accountLabel(acc, accounts) : pos ? plural(pos.accounts.length, "rachunek", "rachunki", "rachunków") : "obserwowany", firstLot ? `od ${dmy(firstLot.open_date)}` : null].filter(Boolean).join(" · ")}
           {state && <> · <button className="lnk hsig" onClick={toSignals}><PolDot state={state} /> {STATE_LABEL[state]}</button></>}
+          {hints.length > 0 && <> · <HintChip hint={hints[0]} held={held} all={hints} /></>}
         </div>
       </div>
       <div className="sep" aria-hidden />
@@ -265,6 +283,30 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
     </Widget>
   );
 
+  // P3: tinted yellow (may be outdated) / red (outdated, the owner's explicit exception to "no P/L red"), a tag, and
+  // the reasons stored after the recommendation as short muted lines (a note reason links to its note).
+  const recW = plan && (
+    <Widget title="Rekomendacja" className={fresh ? `recw ${fresh}` : "recw"}
+      tags={<>
+        {inst?.plan_at && <span className="sub" title="Rekomendacja modelu. Decyzję zapisujesz osobno.">{dmy(inst.plan_at)}</span>}
+        {fresh && <span className={`tag ${fresh === "out" ? "neg" : "warn"}`} title="Według danych zapisanych po rekomendacji">{FRESH_LABEL[fresh]}</span>}
+      </>} body="tight">
+      <div className="rec" aria-label={`Rekomendacja modelu: ${pLabel(plan)}`} data-fresh={fresh ?? undefined}>
+        <b><PlanGlyph plan={plan} className="pcoin" />{pLabel(plan)}</b>
+        {inst?.plan_reason && <p>{inst.plan_reason}</p>}
+        {reasons.length > 0 && (
+          <ul className="rsn" aria-label="Powody">
+            {reasons.map((r) => (
+              <li key={r.key}>{r.noteId != null && ctx.onOpenNote
+                ? <button className="lnk" onClick={() => ctx.onOpenNote!(id, r.noteId, null)}>{r.text}</button>
+                : r.text}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Widget>
+  );
+
   const alertsW = (
     <Widget title="Alerty" controls={<><button className="lnk" onClick={onAlerts}>wszystkie</button><button className="btn sm" onClick={onNewAlert}>+ Nowy</button></>} body="tight">
       {!live.length ? <div className="muted" style={{ fontSize: 13 }}>Brak alertów.</div>
@@ -274,7 +316,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
 
   const research = Research && researchShown ? <Research {...slot} /> : null;
   const timelineW = (
-    <Widget title="Sygnały i decyzje" id={`asset-signals-${id}`} className={research ? "s2" : undefined} controls={<button className="lnk" onClick={onJournal}>dziennik</button>} body="tight">
+    <Widget title="Sygnały i decyzje" id={`asset-signals-${id}`} className={thesisW || recW || research ? "s2" : undefined} controls={<button className="lnk" onClick={onJournal}>dziennik</button>} body="tight">
       {undecided.length > 0 && (
         <div className="osig">{undecided.map((s) => <OpenSignalRow key={s.id} s={s} ctx={ctx} />)}</div>
       )}
@@ -293,15 +335,18 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
     </Widget>
   );
 
-  // Two columns (research.css .g2): the left stack (Teza, Alerty) next to the research slot; without a research
-  // section the timeline takes the right column so no cell stays empty.
+  // Two columns (research.css .g2): Teza + Rekomendacja on the left, Alerty above research on the right. With
+  // nothing on the left (watched, no recommendation) Alerty move there; a right column left empty takes the timeline.
+  const left = thesisW || recW;
+  const leftCol = left ? <div className="stack">{thesisW}{recW}</div> : <div className="stack">{alertsW}</div>;
+  const rightCol = left ? <div className="stack">{alertsW}{research}</div> : research;
   return (
     <div className="g2 asset">
       {head}
       {priceChart}
-      <div className="stack">{thesisW}{alertsW}</div>
-      {research ?? timelineW}
-      {research && timelineW}
+      {leftCol}
+      {rightCol ?? timelineW}
+      {rightCol && timelineW}
       {decideOpen && (
         <PositionDecisionDialog instrumentId={id} name={name} symbol={inst?.symbol ?? null} signals={undecided} ctx={ctx} thesis={thesis} held={!!pos}
           onClose={() => setDecideOpen(false)} />

@@ -17,9 +17,20 @@ import type { HealthKey, ResearchNote } from "./types";
 import "./research.css";
 import { localDay } from "../../../../time";
 
-export function HealthPill({ state, muted, title }: { state: HealthKey; muted?: boolean; title?: string }) {
-  return <span className={`health ${HEALTH_CLS[state]} ${muted ? "muted" : ""}`} title={title ?? `teza: ${HEALTH_LABEL[state]}`}><i aria-hidden />{HEALTH_LABEL[state]}</span>;
+/** `pre` (P2): the state rests only on research older than the thesis' last change: the dot goes hollow (stale
+ * research, `muted`, wins). */
+export function HealthPill({ state, muted, pre, title }: { state: HealthKey; muted?: boolean; pre?: boolean; title?: string }) {
+  const base = title ?? `teza: ${HEALTH_LABEL[state]}`;
+  const hollow = !!pre && !muted;
+  return (
+    <span className={`health ${HEALTH_CLS[state]} ${muted ? "muted" : ""} ${hollow ? "pre" : ""}`} title={hollow ? `${base} · research sprzed zmiany tezy` : base}>
+      <i aria-hidden />{HEALTH_LABEL[state]}
+    </span>
+  );
 }
+
+/** P2: a note stored before the thesis' last core change (judged against the previous thesis). */
+export const PreTag = () => <span className="tag pre">sprzed zmiany tezy</span>;
 
 export function RelationChip({ relation, text }: { relation: string | null | undefined; text?: string }) {
   const r = normRelation(relation);
@@ -112,6 +123,7 @@ export function NoteCard({ note: n, today, context, card, hl, who, signalText, o
         <KindTag kind={n.kind} />
         <Strength value={n.strength} />
         <RelationChip relation={n.thesis_relation} />
+        {n.predates_thesis && <PreTag />}
         <span className="right">
           {n.created_by === "agent" && <AgentTag text="research" />}
           <span className={`when ${fresh !== "fresh" ? "old" : ""}`} title={localDay(n.observed_at) ?? undefined}>{noteWhen(n.observed_at, today)}</span>
@@ -166,6 +178,7 @@ export function NoteRow({ note: n, today, hl, open, onToggle, onDismiss, onResto
         <button className="nrh" aria-expanded={open} title={noteRowTitle(n, today)} onClick={onToggle}>
           <RelationIcon relation={n.thesis_relation} />
           <span className="nt">{n.title}</span>
+          {n.predates_thesis && <PreTag />}
           <svg className="nchev" width="12" height="12" viewBox="0 0 12 12" aria-hidden><path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
         {restore}

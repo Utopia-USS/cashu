@@ -43,12 +43,13 @@ function fullState(): State {
       { id: 23, name: "XTB IKZE", broker: "xtb", broker_name: "XTB", wrapper: "ikze", currency: "PLN", importer: "generic_csv", has_mapping: true },
     ],
     instruments: [
-      inst(301, "VWRA", "Vanguard FTSE All-World", { isin: "IE00BK5BQT80", asset_class: "etf", region: "global", tags: ["global_equity"] }),
-      inst(302, "SWDA", "iShares Core MSCI World", { isin: "IE00B4L5Y983", asset_class: "etf", region: "developed", tags: ["global_equity"] }),
+      // P1 plans (design/v3/plan-badges): one of each kind on the held instruments, EIMI without a plan.
+      inst(301, "VWRA", "Vanguard FTSE All-World", { isin: "IE00BK5BQT80", asset_class: "etf", region: "global", tags: ["global_equity"], plan: "buy", plan_at: "2026-10-01T08:00:00Z" }),
+      inst(302, "SWDA", "iShares Core MSCI World", { isin: "IE00B4L5Y983", asset_class: "etf", region: "developed", tags: ["global_equity"], plan: "hold", plan_at: "2026-09-20T08:00:00Z" }),
       inst(303, "EDO0535", "Obligacje skarbowe 10-letnie EDO", { asset_class: "treasury_bond", valuation_mode: "cost", region: "pl" }),
-      inst(304, "PKN", "PKN Orlen", { mic: "XWAR", region: "pl", tags: ["pl"] }),
-      inst(305, "KGH", "KGHM", { mic: "XWAR", region: "pl", tags: ["pl"] }),
-      inst(306, "CDR", "CD Projekt", { mic: "XWAR", region: "pl", tags: ["pl"] }),
+      inst(304, "PKN", "PKN Orlen", { mic: "XWAR", region: "pl", tags: ["pl"], plan: "reduce", plan_at: "2026-10-02T08:00:00Z" }),
+      inst(305, "KGH", "KGHM", { mic: "XWAR", region: "pl", tags: ["pl"], plan: "hold", plan_at: "2026-09-12T08:00:00Z" }),
+      inst(306, "CDR", "CD Projekt", { mic: "XWAR", region: "pl", tags: ["pl"], plan: "buy_asap", plan_at: "2026-09-05T08:00:00Z" }),
       inst(307, "EIMI", "iShares MSCI EM IMI", { isin: "IE00BKM4GZ66", asset_class: "other", needs_classification: true }),
     ],
     holdings: [
@@ -66,6 +67,9 @@ function fullState(): State {
       sig(902, "rebalance_check", "allocation_drift", "info", null, null, { bucket_id: "stocks", bucket_generic: true, weight: 0.212, target: 0.15, drift_pp: 6.2, drift_value_base: "11600", currency: "PLN", absolute_band_pp: 5, relative_band: 0.25 }, "2026-09-15", "acknowledged"),
       sig(903, "single_stock", "position_concentration", "info", 304, "PKN Orlen", { name: "PKN Orlen", symbol: "PKN", weight: 0.111, max_weight: 0.1 }, "2026-10-02"),
       sig(904, "missed_deposit", "contribution_gap", "info", null, null, { last_deposit: "2026-08-10", day_of_month: 10, period_days: 31, grace_days: 10, monthly_amount: "2000" }, "2026-09-21"),
+      // P1 plan checks: KGHM's thesis played out with no exit plan; CDR's plan buys into a weakened thesis.
+      { ...sig(905, "plan:plan_no_exit", "plan:plan_no_exit", "info", 305, "KGHM", { check: "plan_no_exit", plan: "hold", health: "fulfilled", has_exit_plan: false, unrealized: 0.46, symbol: "KGH", trigger: "fulfilled" }, "2026-10-04"), message: "Teza spełniona, brak planu wyjścia" },
+      { ...sig(906, "plan:plan_vs_thesis", "plan:plan_vs_thesis", "info", 306, "CD Projekt", { check: "plan_vs_thesis", plan: "buy_asap", health: "weakened", has_exit_plan: true, unrealized: 0.18, symbol: "CDR" }, "2026-10-04"), message: "Rekomendacja: dokup asap, teza osłabiona" },
     ],
     decisions: [],
     theses: [{
@@ -73,6 +77,12 @@ function fullState(): State {
       thesis: "wartość (P/E poniżej mediany 5 lat, pipeline gier 2027).", invalidation: "utrata udziału w rynku przez 2 lata z rzędu lub zmiana zarządu.",
       exit_plan: "+60 % od kosztu albo koniec 2028, co pierwsze.", size_plan: "do ok. 6 % portfela, dokupienia przy spadkach.",
       reviewed_at: "2026-09-27T10:00:00+02:00", created_at: "2025-03-12T18:00:00+01:00", updated_at: "2026-09-27T10:00:00+02:00",
+    }, {
+      // P1: KGHM's thesis played out (fulfilled) and has no exit plan (the plan check `brak planu wyjścia`).
+      id: 42, instrument_id: 305, entry_type: "trend",
+      thesis: "trend: deficyt podaży miedzi, marża segmentu wraca powyżej średniej 5 lat.", invalidation: "nadwyżka podaży dwa kwartały z rzędu.",
+      exit_plan: null, size_plan: "do ok. 6 % portfela.",
+      reviewed_at: "2026-09-27T10:00:00+02:00", created_at: "2025-06-02T18:00:00+02:00", updated_at: "2026-09-12T10:00:00+02:00",
     }],
     reviews: [{ id: 1, module: "investments", done_at: "2026-09-27T11:41:00+02:00", notes: "Bez zmian w strategii.", stats: { minutes: 41 } }],
     proposals: [{
@@ -482,6 +492,18 @@ export function investmentsMock(slug: string, kind: Kind, path: string, q: URLSe
     const h = st.holdings.find((x) => x.inst === i.id);
     if (h) h.bucket = i.asset_class === "etf" && i.tags.includes("global_equity") ? "global_equity" : i.asset_class === "equity" && i.tags.includes("pl") ? "stocks" : null;
     return i;
+  }
+  mm = m(/^\/investments\/instruments\/(\d+)\/plan$/);
+  if (mm && method === "PUT") {
+    const i = st.instruments.find((x) => x.id === Number(mm![1]));
+    if (!i) throw new ApiError(404, "No instrument", "not_found");
+    const plan = (b.plan as string | null) ?? null;
+    const held = st.holdings.some((h) => h.inst === i.id);
+    if (plan != null && (!["buy_asap", "buy", "hold", "reduce", "exit_asap"].includes(plan) || (!held && (plan === "reduce" || plan === "exit_asap")))) {
+      throw new ApiError(422, `invalid plan: ${plan}`, "invalid_plan");
+    }
+    Object.assign(i, { plan, plan_at: plan ? new Date().toISOString() : null });
+    return { instrument: i };
   }
   mm = m(/^\/investments\/instruments\/(\d+)\/theses$/);
   if (mm && method === "POST") {

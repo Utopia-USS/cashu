@@ -108,6 +108,7 @@ function RunStrip({ runs, summary, candidates, today, strategyVersion, privacy, 
   const mins = runMinutes(last);
   const inst = (summary?.instruments ?? []).map((s) => ({ s, h: healthOf(s, today) }));
   const weak = inst.filter((x) => x.h === "weak" || x.h === "inv");
+  const ful = inst.filter((x) => x.h === "ful");
   const sup = inst.filter((x) => x.h === "sup");
   const themes = summary?.themes ?? [];
   const down = themes.filter((t) => normDirection(t.direction) === "down").length, up = themes.filter((t) => normDirection(t.direction) === "up").length;
@@ -128,7 +129,7 @@ function RunStrip({ runs, summary, candidates, today, strategyVersion, privacy, 
       </div>
       <div className="hf">
         <div className="fact"><div className="l">Notatki</div><div className="v">{runNotes(last) ?? "-"}</div><div className="d">{plural(nHeld, "pozycja", "pozycje", "pozycji")}{typeof c.watchlist === "number" ? ` · ${c.watchlist} obserwowane` : ""}</div></div>
-        <div className="fact"><div className="l">Tezy</div><div className="v">{weak.length ? `${weak.length} osłabione` : sup.length ? `${sup.length} wzmocnione` : "bez zmian"}</div>
+        <div className="fact"><div className="l">Tezy</div><div className="v">{weak.length ? `${weak.length} osłabione` : ful.length ? `${ful.length} spełnione` : sup.length ? `${sup.length} wzmocnione` : "bez zmian"}</div>
           <div className="d">{[weak.slice(0, 3).map((x) => sym(x.s.instrument_id)).join(", "), sup.length && weak.length ? `${sup.length} wzmocniona` : null].filter(Boolean).join(" · ") || "-"}</div></div>
         <div className="fact"><div className="l">Tematy</div><div className="v">{themes.length}</div><div className="d">{`${down} ${down === 1 ? "słabnie" : "słabną"} · ${up} ${up === 1 ? "rośnie" : "rosną"}`}</div></div>
         <div className="fact"><div className="l">Kandydaci</div><div className="v">{openC}</div><div className="d">{dismissedC ? `${plural(dismissedC, "odrzucony", "odrzuceni", "odrzuconych")}` : "0 odrzuconych"}</div></div>
@@ -207,7 +208,7 @@ function CandidatesWidget({ slug, today, notes, watched, strategyVersion, onChan
 // ---- notes ----------------------------------------------------------------------------------------------
 
 type NoteSort = "date" | "strength" | "relation";
-const REL_RANK: Record<string, number> = { invalidates: 0, weakens: 1, supports: 2, neutral: 3, none: 4 };
+const REL_RANK: Record<string, number> = { invalidates: 0, weakens: 1, fulfills: 2, supports: 3, neutral: 4, none: 5 };
 
 function NotesList({ slug, today, nonce, scope, kind, theme, held, watchedIds, onClearTheme, onChanged, onOpenAsset }: {
   slug: string; today: string; nonce: number; scope: Scope; kind: string | null; theme: string | null;

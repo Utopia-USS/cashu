@@ -3,7 +3,7 @@
   --border: #e5e7eb; --pos: #16a34a; --neg: #dc2626; --nw: #2563eb;
   --net: #7c3aed; --chip: #eef1f5; --chipText: #374151; --shimmer: rgba(255,255,255,0.55);
   /* instrument ticker tile (GF9): black with light grey type in both themes */
-  --av-bg: #000; --av-fg: #e8e8e8;
+  --av-bg: #000; --av-fg: #e8e8e8; --av-coin: #000;
   --nw-money: #2563eb; --nw-property: #0891b2; --nw-vehicle: #16a34a;
   --nw-mortgage: #dc2626; --nw-loan: #ea580c;
   /* additions (design-system-notes 4.1): data quality / rule state, never money */
@@ -24,7 +24,7 @@
   :root:not([data-theme="light"]) {
     --bg: #0f1216; --card: #171b21; --text: #e6e8eb; --muted: #9aa4b2;
     --border: #262c34; --pos: #34d399; --neg: #f87171; --nw: #60a5fa;
-    --net: #a78bfa; --chip: #232a33; --chipText: #cbd5e1; --shimmer: rgba(255,255,255,0.09);
+    --net: #a78bfa; --chip: #232a33; --av-coin: #2b323c; --chipText: #cbd5e1; --shimmer: rgba(255,255,255,0.09);
     --nw-money: #60a5fa; --nw-property: #22d3ee; --nw-vehicle: #34d399;
     --nw-mortgage: #f87171; --nw-loan: #fb923c;
     --warn: #fbbf24; --info: #60a5fa;
@@ -41,7 +41,7 @@
 :root[data-theme="dark"] {
   --bg: #0f1216; --card: #171b21; --text: #e6e8eb; --muted: #9aa4b2;
   --border: #262c34; --pos: #34d399; --neg: #f87171; --nw: #60a5fa;
-  --net: #a78bfa; --chip: #232a33; --chipText: #cbd5e1; --shimmer: rgba(255,255,255,0.09);
+  --net: #a78bfa; --chip: #232a33; --av-coin: #2b323c; --chipText: #cbd5e1; --shimmer: rgba(255,255,255,0.09);
   --nw-money: #60a5fa; --nw-property: #22d3ee; --nw-vehicle: #34d399;
   --nw-mortgage: #f87171; --nw-loan: #fb923c;
   --warn: #fbbf24; --info: #60a5fa;
@@ -183,6 +183,7 @@ textarea { font: inherit; font-size: 13px; padding: 6px 9px; border-radius: 8px;
 .menu .mi .sub { color: var(--muted); font-size: 12px; }
 .menu .mi .grow { flex: 1; min-width: 0; }
 .menu .mi:hover, .menu .mi:focus-visible, .menu .mi.on { background: var(--chip); outline: none; }
+.menu .mi[aria-disabled="true"] { opacity: .5; cursor: default; }
 .menu .sep { height: 1px; background: var(--border); margin: 6px 0; }
 .avatar { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 700; color: #fff; background: var(--nw); flex: none; }
@@ -583,7 +584,7 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .w th.c-inst, .w td.c-inst { width: 36%; max-width: 0; }      /* lets the name ellipsize inside an auto table (Aktywa) */
 .w td.c-inst.wide { width: 58%; }                              /* Obserwowane: name | spark | price | ✕ */
 /* the asset header: the page's h2 rules (`.ahead .nm span` = the muted detail) must not reach the label's parts */
-.ahead .nm .il, .ahead .nm .il .tx, .ahead .nm .il .ln, .ahead .nm .il .nmt { margin-left: 0; color: inherit; font-size: inherit; font-weight: inherit; }
+.ahead .nm .il, .ahead .nm .il .avw, .ahead .nm .il .tx, .ahead .nm .il .ln, .ahead .nm .il .nmt { margin-left: 0; color: inherit; font-size: inherit; font-weight: inherit; }
 .ahead .nm .il .av { margin-left: 0; color: var(--av-fg); font-size: 13px; font-weight: 650; letter-spacing: -0.01em; }
 .ahead .nm .il .av[data-n="5"] { font-size: 11.5px; letter-spacing: -0.03em; }
 .ahead .nm .il .sub { color: var(--muted); font-size: 13px; font-weight: 500; margin: 0 0 0 3px; }
@@ -595,7 +596,7 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .ilc .ih { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .ilc .ih b { display: block; font-size: 13.5px; font-weight: 600; line-height: 1.25; }
 .ilc .ih div > span { display: block; color: var(--muted); font-size: 12px; }
-.ilc .kvl { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 3px 10px; }
+.ilc .kvl { display: grid; grid-template-columns: minmax(64px, max-content) minmax(0, 1fr); gap: 3px 10px; }   /* `rekomendacja` is wider than 64 px */
 .ilc .kvl .k { color: var(--muted); }
 .ilc .st { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
 /* classify icon button (replaces the `sklasyfikuj` pill) */
@@ -604,6 +605,81 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .il-cls svg { width: 15px; height: 15px; display: block; }
 .il-cls:hover, .il-cls[aria-expanded="true"] { background: var(--warnBg); }
 .il .menu-anchor { display: inline-flex; flex: none; }
+
+/* ===== P1 plan badges (design/v3/plan-badges/plan-badges.md): plan coin on the tile corner, thesis health ring ===== */
+.il { --tile-bg: var(--card); }                              /* the surface the tile sits on: rim and ring gap colour */
+.clickable:hover .il, .w tr.rowlink:hover .il, .w tr.rowlink:focus-within .il { --tile-bg: var(--chip); }   /* Aktywa / Obserwowane rows */
+.il .avw { position: relative; flex: none; display: inline-flex; }
+/* the plan: a coin on the top-right corner, rimmed in the surface colour, light chevrons; shape only, never a P/L colour.
+   Offsets keep coin + rim clear of the ticker's ink at every density, 4 wide capitals and 5-character monograms included
+   (review P1 FE-3, measured: >= 0.7 px for SWDA / VWRA / GOOG / WWWW / MMMM / BRK-B / 00241) */
+.il .avw .pl { position: absolute; top: -5.5px; right: -5.5px; width: 13px; height: 13px; border-radius: 50%; background: var(--av-coin);
+  color: var(--av-fg); box-shadow: 0 0 0 1.5px var(--tile-bg); padding: 1.5px; display: block; pointer-events: none; }
+.il.cmp .avw .pl { width: 12px; height: 12px; padding: 1px; top: -6px; right: -6px; }
+.il.hd .avw .pl { width: 16px; height: 16px; top: -5.5px; right: -5.5px; padding: 2px; }
+/* thesis health: a ring 1 px off the tile, 1.5 px wide (shadows / outline: no layout shift); hues are never --pos / --neg */
+.il .av[data-health="sup"] { box-shadow: 0 0 0 1px var(--tile-bg), 0 0 0 2.5px var(--nw); }
+.il .av[data-health="ful"] { box-shadow: 0 0 0 1px var(--tile-bg), 0 0 0 2.5px var(--net); }
+.il .av[data-health="weak"] { box-shadow: 0 0 0 1px var(--tile-bg), 0 0 0 2.5px var(--warn); }
+.il .av[data-health="inv"] { outline: 1.5px dashed var(--warn); outline-offset: 1px; }
+/* plan button in the asset header and its menu */
+.plan-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px 4px 6px; font-size: 12.5px; color: var(--text); }
+.plan-btn.unset { color: var(--muted); padding-left: 10px; }
+.plan-btn::after { content: "▾"; font-size: 10px; color: var(--muted); margin-left: 1px; }
+.plan-btn.model-rec::after { content: none; }
+.plan-btn.model-rec { cursor: default; }
+.plan-btn[aria-expanded="true"] { border-color: var(--nw); }
+.pcoin { width: 16px; height: 16px; border-radius: 50%; background: var(--av-coin); color: var(--av-fg); padding: 2px; display: inline-block; flex: none; }
+.pcoin.none { background: transparent; border: 1px dashed var(--muted); }
+.menu.plan-menu { min-width: 176px; }
+.menu.plan-menu .mi { font-size: 13.5px; padding: 7px 10px; }
+.ahead .menu .sep { width: auto; align-self: auto; }                 /* the header's own `.ahead .sep` (column rule) must not reach the menu */
+
+/* ===== P2 strategy hints (design/v3/strategy-hints/strategy-hints.md): the Strategia column, the chip, card rows, header ===== */
+/* the column (Aktywa, both tabs): one chip = the main hint, or nothing. The chip, not the cell, bounds the width
+   (a px max-width on the cell collapses the column in auto table layout) */
+.w th.c-hint, .w td.c-hint { width: 168px; }                 /* 158 px chip: `rekomendacja nieaktualna` (600) is 157 px */
+.w td.c-hint { padding-left: 4px; }
+.w td.c-hint .hint { max-width: 158px; }
+/* Aktywa sits in the 2/3 main column (~875 px at a 1360 px window): below 1000 px the 9th column would squeeze the names
+   to ~110 px, so the sparkline and the absolute result give way (as the <= 1180 px rule above does at ~700 px) */
+#inv-assets { container-type: inline-size; }
+@container (max-width: 999px) { #inv-assets table .c-spark, #inv-assets table .c-abs { display: none; } }
+/* the chip: `.tag` metrics; severity by contrast, never --pos / --neg: rule = warn solid, review = ink in an outline, info = muted */
+.hint { display: inline-flex; align-items: center; max-width: 100%; font-size: 11px; line-height: 1.5; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; vertical-align: middle; }
+.hint > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hint.review { color: var(--text); border-color: var(--muted); }
+.hint.rule { color: var(--warn); background: var(--warnBg); border-color: transparent; font-weight: 600; }
+/* hover card: `strategia` rows after rekomendacja / teza; continuation rows keep an empty key */
+.ilc .kvl .hv.rule { color: var(--warn); font-weight: 600; }
+.ilc .kvl .hv.info { color: var(--muted); }
+/* asset header: the chip ends the sub line under the name */
+.ahead .hsub .hint { vertical-align: -1px; }
+.ahead .hsub .hint[tabindex]:focus-visible { outline: 2px solid var(--nw); outline-offset: 1px; }
+/* thesis health resting on research older than the thesis (health_predates_thesis): the same ring, faded to 50 % */
+.il .av[data-health="sup"][data-pre] { box-shadow: 0 0 0 1px var(--tile-bg), 0 0 0 2.5px color-mix(in srgb, var(--nw) 50%, var(--tile-bg)); }
+.il .av[data-health="ful"][data-pre] { box-shadow: 0 0 0 1px var(--tile-bg), 0 0 0 2.5px color-mix(in srgb, var(--net) 50%, var(--tile-bg)); }
+.il .av[data-health="weak"][data-pre] { box-shadow: 0 0 0 1px var(--tile-bg), 0 0 0 2.5px color-mix(in srgb, var(--warn) 50%, var(--tile-bg)); }
+.il .av[data-health="inv"][data-pre] { outline-color: color-mix(in srgb, var(--warn) 50%, var(--tile-bg)); }
+
+/* ===== P3 recommendation freshness (spec P3 Frontend): coin rim, Rekomendacja card tint, reason lines ===== */
+/* the coin's rim takes the state colour instead of the surface colour (maybe = warn, outdated = neg) */
+.il .avw[data-fresh="maybe"] .pl { box-shadow: 0 0 0 1.5px var(--warn); }
+.il .avw[data-fresh="out"] .pl { box-shadow: 0 0 0 1.5px var(--neg); }
+/* the card: a 14 % tint of the state colour over the card surface; the border follows at a quieter mix */
+.w.recw.maybe { background: color-mix(in srgb, var(--warn) 14%, var(--card)); border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
+.w.recw.out { background: color-mix(in srgb, var(--neg) 14%, var(--card)); border-color: color-mix(in srgb, var(--neg) 35%, var(--border)); }
+/* every text on the tint >= 4.5:1 (review FE-1, computed: light maybe / out 5.51 / 5.37 for the quiet text and 5.75 / 5.59
+   for the tag; dark >= 5.79 / 6.15): the header title, the date, muted text and the reasons in a 72 % ink, the state tag
+   in its hue mixed 75 % with the ink */
+.w.recw.maybe .wh h3, .w.recw.out .wh h3, .w.recw.maybe .wh .sub, .w.recw.out .wh .sub, .w.recw.maybe .muted, .w.recw.out .muted,
+.w.recw.maybe .rec .rsn, .w.recw.out .rec .rsn { color: color-mix(in srgb, var(--text) 72%, var(--card)); }
+.w.recw.maybe .wh .tag.warn { color: color-mix(in srgb, var(--warn) 75%, var(--text)); border-color: color-mix(in srgb, var(--warn) 75%, var(--text)); }
+.w.recw.out .wh .tag.neg { color: color-mix(in srgb, var(--neg) 75%, var(--text)); border-color: color-mix(in srgb, var(--neg) 75%, var(--text)); }
+.rec .rsn { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.rec .rsn .lnk { font-size: 12px; color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 2px; }
+.rec .rsn .lnk:hover { color: var(--nw); }
 
 /* allocation: donut + rows */
 .w .alloc { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 14px; align-items: center; height: auto; background: none; border-radius: 0; position: static; }
@@ -964,3 +1040,6 @@ td .ai + .status, td .ai { margin-right: 6px; }
 .ddlg .decide select, .ddlg .decide textarea, .ddlg .decide input, .ddlg .decide .seg, .ddlg .decide .btn:not(.primary) { background: var(--card); }
 .ddlg .decide .eff { font-size: 12.5px; color: var(--muted); } .ddlg .decide .eff b { color: var(--text); font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { .ddlg { top: 12px; width: calc(100vw - 16px); max-height: calc(100vh - 24px); } }
+/* Asset page: the model recommendation under Teza (label with its coin, then the short reason). */
+.rec b { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
+.rec p { margin: 6px 0 0; font-size: 13px; line-height: 1.45; }

@@ -39,7 +39,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   const changedRows = changed.map((c) => ({ c, s: rows.find((s) => s.instrument_id === c.instrument_id) })).filter((x) => x.s);
   const others = rows.filter((s) => !changed.some((c) => c.instrument_id === s.instrument_id));
   const noThesis = others.filter((s) => healthOf(s, ctx.today) === "no_thesis");
-  const noNotes = others.filter((s) => !s.notes && !s.counts.supports && !s.counts.weakens && !s.counts.invalidates && !s.counts.neutral);
+  const noNotes = others.filter((s) => !s.notes && !s.counts.supports && !s.counts.weakens && !s.counts.invalidates && !s.counts.fulfills && !s.counts.neutral);
   const themesChanged = digest?.themes_changed ?? [];
   const themes = (summary?.themes ?? []).filter((t) => themesChanged.some((c) => c.theme === t.theme));
   const restThemes = (summary?.themes ?? []).filter((t) => !themesChanged.some((c) => c.theme === t.theme));
@@ -115,9 +115,11 @@ export function researchChanges(o: { digest: DigestResearch | null | undefined; 
   if (!d || (!(d.ran_in_period ?? !!d.run) && !d.notes_count)) return null;
   const sym = (c: { instrument_id: number; symbol?: string | null; label?: string | null }) => o.held.get(c.instrument_id)?.symbol ?? c.symbol ?? c.label ?? `#${c.instrument_id}`;
   const weak = d.theses_changed.filter((c) => ["weak", "inv"].includes(normHealth(c.to) ?? ""));
+  const ful = d.theses_changed.filter((c) => normHealth(c.to) === "ful");
   const sup = d.theses_changed.filter((c) => normHealth(c.to) === "sup");
   const parts = [
     weak.length ? `${plural(weak.length, "teza osłabiona", "tezy osłabione", "tez osłabionych")} (${weak.map(sym).join(", ")})` : null,
+    ful.length ? `${plural(ful.length, "spełniona", "spełnione", "spełnionych")} (${ful.map(sym).join(", ")})` : null,
     sup.length ? `${plural(sup.length, "wzmocniona", "wzmocnione", "wzmocnionych")} (${sup.map(sym).join(", ")})` : null,
   ].filter(Boolean).join(", ");
   return (
@@ -140,6 +142,7 @@ export function researchEffectLine(o: {
   const c = row.counts;
   const rel = c.invalidates ? `${plural(c.invalidates, "notatka podważa", "notatki podważają", "notatek podważa")} tezę`
     : c.weakens ? `${plural(c.weakens, "notatka osłabia", "notatki osłabiają", "notatek osłabia")} tezę`
+    : c.fulfills ? `${plural(c.fulfills, "notatka spełnia", "notatki spełniają", "notatek spełnia")} tezę`
     : c.supports ? `${plural(c.supports, "notatka wzmacnia", "notatki wzmacniają", "notatek wzmacnia")} tezę` : null;
   if (!rel && !changed) return null;
   const day = new Date(`${localDay(last.started_at)}T12:00:00`).getDay();

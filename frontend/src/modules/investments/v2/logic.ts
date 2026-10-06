@@ -3,7 +3,9 @@
 // from 30-day closes, re-entry gap, change-log grouping, performance facts. Pure; `npm test` imports it
 // (node strips the types; imports carry their .ts extension).
 import { ASSET_CLASS, bucketLabel, DECISION_ACTION, dm, GENERIC_BUCKET_IDS, isGenericBucket, micName, money, money0, pct, pctTarget, plural, pp, qty, REGION, txnType, WEEKDAY_INDEX } from "../labels.ts";
-import { isResearchKind, researchSignalText } from "./research/logic.ts";
+import { HEALTH_LABEL, isResearchKind, normHealth, normRelation, RELATION_LABEL, researchSignalText } from "./research/logic.ts";
+import type { HealthKey } from "./research/types.ts";
+import type { FreshReason, Hint, PlanFreshness } from "../api.ts";
 import { localDay, parseServerTime, serverDate } from "../../../time.ts";
 import { describePerfNote } from "../../../core/messages.ts";
 
@@ -93,9 +95,12 @@ export function unnameBuckets(text: string): string {
 export const RULE_KIND_LABEL: Record<string, string> = {
   drawdown_from_high: "transza spadkowa", gain_from_cost: "zysk od kosztu", loss_from_cost: "strata od kosztu", allocation_drift: "dryf alokacji",
   position_concentration: "koncentracja", contribution_gap: "brak wpłaty", cash_level: "poziom gotówki", tagged_weight: "udział tagów",
-  custom: "reguła własna",
+  custom: "reguła własna", plan: "Rekomendacja",
 };
-export const ruleKindLabel = (kind: string | null | undefined): string => (kind ? RULE_KIND_LABEL[kind] ?? (kind.startsWith("alert:") ? "alert" : "reguła") : "reguła");
+export const ruleKindLabel = (kind: string | null | undefined): string =>
+  (kind ? RULE_KIND_LABEL[kind] ?? (isPlanKind(kind) ? RULE_KIND_LABEL.plan : kind.startsWith("alert:") ? "alert" : "reguła") : "reguła");
+/** Recommendation checks: `plan:plan_no_exit`, `plan:plan_vs_thesis` (the model output vs facts). */
+export const isPlanKind = (kind: string | null | undefined) => !!kind && kind.startsWith("plan:");
 
 /** Whether the allocation's buckets (targets, drift, `Koszyki`) may show: at least one bucket and every bucket
  * generic (`buckets_generic` / `generic` from the server, a missing key = generic, plus a generic label). */
@@ -252,6 +257,7 @@ export function signalFact(sig: SigLike): SigFact {
     return { pre: t.lead?.replace(/\s*·$/, ""), bold: t.bold ?? "" };
   }
   if (sig.kind.startsWith("alert:")) return alertFactOf(s(p.alert_kind) ?? sig.kind.slice("alert:".length), p);
+  if (isPlanKind(sig.kind)) return planFact(sig);
   switch (sig.kind) {
     case "drawdown_from_high": return { bold: pct(-(n(p.drawdown) ?? 0)), post: `od szczytu ${win(n(p.window_days) ?? 252)}` };
     case "gain_from_cost": case "loss_from_cost": return { bold: signedPct(n(p.unrealized_pct)), post: "od kosztu" };
@@ -271,6 +277,23 @@ export function signalFact(sig: SigLike): SigFact {
     case "tagged_weight": return { bold: pct(n(p.weight)), post: `portfela, maks ${pctTarget(n(p.max_weight))}` };
     default: return { pre: unnameBuckets(sig.message || "") || "Reguła własna", bold: "" };
   }
+}
+
+/** A plan check's fact from its payload (P1 spec table): `teza **spełniona**, brak planu wyjścia`, `**+112 %** od kosztu,
+ * brak planu wyjścia`, `plan **dokup**, teza osłabiona`; an unknown payload keeps the server's Polish message. */
+export function planFact(sig: Pick<SigLike, "kind" | "payload" | "message">): SigFact {
+  const p = sig.payload ?? {};
+  const check = s(p.check) ?? sig.kind.slice("plan:".length);
+  const health = normHealth(s(p.health));
+  if (check === "plan_no_exit") {
+    const u = n(p.unrealized);
+    if (p.trigger === "fulfilled" || (p.trigger == null && health === "ful")) return { pre: "teza", bold: HEALTH_LABEL.ful, post: ", brak planu wyjścia" };
+    if (u != null) return { bold: signedPct(u), post: "od kosztu, brak planu wyjścia" };
+  }
+  if (check === "plan_vs_thesis" && s(p.plan) && planLabel(s(p.plan), true) && health) {
+    return { pre: "rekomendacja", bold: planLabel(s(p.plan), true), post: `, teza ${HEALTH_LABEL[health]}` };
+  }
+  return { pre: sig.message || "Plan", bold: "" };
 }
 
 /** `x` ratio with one decimal: 3.4 -> "3,4x". */
@@ -323,6 +346,12 @@ export function signalText(sig: SigLike, ctx: { total?: number | null; base?: st
   const base = ctx.base ?? "PLN";
   if (sig.kind.startsWith("alert:")) return alertSignalText(sig, name, sym);
   if (isResearchKind(sig.kind)) return researchSignalText(sig, name, sym);
+  if (isPlanKind(sig.kind)) {
+    // Kind label first, like a rule's lead (`Plan · teza spełniona · brak planu wyjścia`, `Plan · dokup · teza osłabiona`).
+    const f = planFact(sig);
+    const pre = f.pre && f.pre !== "rekomendacja" ? ` ${f.pre}` : "";
+    return { title: name || sig.message, sym, lead: `${RULE_KIND_LABEL.plan} ·${pre}`, bold: f.bold || undefined, tail: f.post ? f.post.replace(/^,\s*/, "· ") : undefined };
+  }
   switch (sig.kind) {
     case "drawdown_from_high":
       return { title: name, sym, lead: "transza spadkowa ·", bold: pct(-(n(p.drawdown) ?? 0)), tail: `od szczytu ${win(n(p.window_days) ?? 252)} · próg -${pctTarget(n(p.threshold))}` };
@@ -1093,6 +1122,206 @@ export interface InstLike {
   id: number | string; label: string; name?: string | null; symbol?: string | null; mic?: string | null;
   isin?: string | null; asset_class?: string | null; region?: string | null; status?: string | null;
   valuation_mode?: string | null; needs_classification?: boolean | null;
+  /** Model recommendation: buy_asap | buy | hold | reduce | exit_asap, null = none; `plan_at` = generation time (UTC). */
+  plan?: string | null; plan_at?: string | null;
+  /** P3: the recommendation's freshness (positions / watchlist rows and the asset detail only). */
+  plan_freshness?: PlanFreshness | null;
+}
+
+// ---- the model recommendation and the thesis ring on the tile -------------------------------------------
+
+export const PLAN_VALUES = ["buy_asap", "buy", "hold", "reduce", "exit_asap"] as const;
+export type PlanValue = (typeof PLAN_VALUES)[number];
+/** Labels for a held instrument (spec table) and for a watched one (`reduce` / `exit_asap` are held only). */
+export const PLAN_HELD: Record<string, string> = { buy_asap: "dokup asap", buy: "dokup", hold: "trzymaj", reduce: "redukuj", exit_asap: "pozbądź się asap" };
+export const PLAN_WATCHED: Record<string, string> = { buy_asap: "kup asap", buy: "kup", hold: "czekam" };
+/** Recommendation values: all five for a held instrument, three for a watched one. */
+export const planOptions = (held: boolean): PlanValue[] => (held ? [...PLAN_VALUES] : ["buy_asap", "buy", "hold"]);
+/** The plan's label in the held / watched form; an unknown value (or a held-only one on a watched instrument) -> "". */
+export const planLabel = (plan: string | null | undefined, held: boolean): string => (plan ? (held ? PLAN_HELD : PLAN_WATCHED)[plan] ?? "" : "");
+/** The plan glyph (viewBox 0 0 12 12, stroked): chevron count = urgency, direction = add / remove, a dash = hold. */
+export const PLAN_PATH: Record<string, string> = {
+  buy_asap: "M3 5.75l3-3 3 3M3 9.25l3-3 3 3",
+  buy: "M3 7.5l3-3 3 3",
+  hold: "M3 6h6",
+  reduce: "M3 4.5l3 3 3-3",
+  exit_asap: "M3 2.75l3 3 3-3M3 6.25l3 3 3-3",
+};
+export type Ring = "sup" | "ful" | "weak" | "inv";
+/** The tile's thesis ring: supported / fulfilled / weakened / invalidated; nothing for the rest or stale research. */
+export function ringOf(health: HealthKey | null | undefined, stale: boolean): Ring | null {
+  if (stale || !health) return null;
+  return health === "sup" || health === "ful" || health === "weak" || health === "inv" ? health : null;
+}
+
+// ---- P2 strategy hints (design/v3/strategy-hints/strategy-hints.md 3) ----------------------------------------
+// The BE decides code, severity and order (main first); the FE only words them: a chip of 1-4 words and a one-line
+// `line` (tooltip / card): the condition, then the review the owner's own strategy asks for. Never buy / sell in the
+// app's voice; the only imperatives are about the owner's own records. Unknown code -> "" (no chip, no row).
+
+const NBSP = " ";
+const int0 = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0 });
+/** Fraction -> integer percent: `4.55 -> "+455 %"` (signed), `-0.272 -> "-27 %"`, `0.2 -> "20 %"`. */
+export function pct0(v: number | null | undefined, signed = false): string {
+  if (v == null || !Number.isFinite(v)) return "";
+  const p = Math.round(v * 100);
+  return `${signed && p > 0 ? "+" : p < 0 ? "-" : ""}${int0.format(Math.abs(p))}${NBSP}%`;
+}
+/** The locative after `przy tezie`. */
+export const HEALTH_LOC: Record<string, string> = { weak: "osłabionej", weakened: "osłabionej", inv: "podważonej", invalidated: "podważonej" };
+const healthLoc = (v: unknown) => (typeof v === "string" ? HEALTH_LOC[v] ?? "" : "");
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const neg = (v: unknown): number | null => { const x = num(v); return x == null ? null : -Math.abs(x); };
+const withNum = (n: string, rest: string) => (n ? `${n}${rest}` : rest.replace(/^ · /, ""));
+
+/** Short words for the P3 reason codes (the recommendation hints' lines). */
+export const FRESH_REASON_SHORT: Record<string, string> = {
+  note_invalidates: "notatka podważa tezę", thesis_invalidated: "teza podważona", fulfilled_buy: "teza spełniona",
+  note_after: "nowe notatki", thesis_changed: "teza zmieniona", rule_fired: "reguła strategii", alert_triggered: "alert", age: "starsza niż 30 dni",
+};
+const reasonList = (v: unknown) => (Array.isArray(v) ? v.map((c) => FRESH_REASON_SHORT[String(c)]).filter(Boolean).join(", ") : "");
+
+/** The chip (1-4 words) of a hint in the held / watched form; "" for an unknown code. */
+export function hintChip(h: Pick<Hint, "code" | "params">, held: boolean): string {
+  const p = h.params ?? {};
+  switch (h.code) {
+    case "recommendation_outdated": return "rekomendacja nieaktualna";
+    case "recommendation_maybe_outdated": return "sprawdź rekomendację"; // spec copy `rekomendacja do sprawdzenia` = 173 px, over the column
+    case "thesis_invalidated": return "teza podważona";
+    case "plan_vs_thesis": return "plan kontra teza";
+    case "thesis_fulfilled": return "teza spełniona";
+    case "gain_review": return withNum(pct0(num(p.gain), true), " · plan wyjścia");
+    case "loss_review": return withNum(pct0(neg(p.loss)), " · przegląd tezy");
+    case "drawdown_review": return pct0(neg(p.drawdown)) ? `${pct0(neg(p.drawdown))} od szczytu` : "spadek od szczytu";
+    case "concentration": return pct0(num(p.max_weight)) ? `ponad ${pct0(num(p.max_weight))}` : "koncentracja";
+    case "thesis_weakened": return "teza osłabiona";
+    case "no_thesis": return held ? "zapisz tezę" : "bez tezy";
+    case "no_exit_plan": return "bez planu wyjścia";
+    case "alert_triggered": return typeof p.title === "string" && p.title ? `alert: ${p.title}` : "alert spełniony";
+    case "plan_without_thesis": return "kup bez tezy";
+    default: return "";
+  }
+}
+
+/** The hint's one line (chip title, hover card, header tooltip); "" for an unknown code. */
+export function hintLine(h: Pick<Hint, "code" | "params">, held: boolean): string {
+  const p = h.params ?? {};
+  const plan = planLabel(typeof p.plan === "string" ? p.plan : null, held);
+  const exit = p.has_exit_plan === false;
+  switch (h.code) {
+    case "recommendation_outdated": { const r = reasonList(p.reasons); return r ? `rekomendacja nieaktualna: ${r}` : "rekomendacja nieaktualna"; }
+    case "recommendation_maybe_outdated": { const r = reasonList(p.reasons); return r ? `rekomendacja do sprawdzenia: ${r}` : "rekomendacja do sprawdzenia"; }
+    case "thesis_invalidated": return held ? "zaszedł warunek unieważnienia tezy: zanotuj decyzję" : "zaszedł warunek unieważnienia tezy: zweryfikuj plan";
+    case "plan_vs_thesis": return `plan ${plan || "zakupu"} przy tezie ${healthLoc(p.health) || "osłabionej"}: popraw plan albo tezę`;
+    case "thesis_fulfilled":
+      if (!held) return "teza spełniona bez pozycji: zweryfikuj plan";
+      return exit ? "teza spełniona, brak planu wyjścia: zapisz go" : "teza spełniona: sprawdź plan wyjścia";
+    case "gain_review": {
+      const lead = [`${pct0(num(p.gain), true) || "zysk"} od kosztu`, pct0(num(p.threshold)) ? `próg +${pct0(num(p.threshold))}` : null].filter(Boolean).join(", ");
+      return exit ? `${lead}, brak planu wyjścia: zapisz go` : `${lead}: sprawdź plan wyjścia`;
+    }
+    case "loss_review": {
+      const lead = [`${pct0(neg(p.loss)) || "strata"} od kosztu`, pct0(neg(p.threshold)) ? `próg ${pct0(neg(p.threshold))}` : null].filter(Boolean).join(", ");
+      return `${lead}: czy teza jest aktualna?`;
+    }
+    case "drawdown_review": {
+      const lead = [`${pct0(neg(p.drawdown)) || "spadek"} od szczytu`, pct0(neg(p.threshold)) ? `próg ${pct0(neg(p.threshold))}` : null].filter(Boolean).join(", ");
+      return `${lead}: czy teza jest aktualna?`;
+    }
+    case "concentration": {
+      const w = num(p.weight), m = num(p.max_weight);
+      return `${w != null ? `${pct(w)} portfela` : "udział w portfelu"}${m != null ? `, limit ${pct0(m)}` : ""}: przegląd koncentracji`;
+    }
+    case "thesis_weakened": return "research osłabia tezę: przejrzyj notatki";
+    case "no_thesis": return held ? "pozycja bez zapisanej tezy: zapisz tezę i warunek unieważnienia" : "bez zapisanej tezy";
+    case "no_exit_plan": return "teza bez planu wyjścia: uzupełnij go";
+    case "alert_triggered": return typeof p.title === "string" && p.title ? `alert spełniony: ${p.title}. sprawdź tezę i plan` : "alert spełniony: sprawdź tezę i plan";
+    case "plan_without_thesis": return `plan ${plan || "zakupu"} bez tezy: najpierw zapisz tezę`;
+    default: return "";
+  }
+}
+
+/** The hints the FE can word (unknown codes from an older / newer server dropped), payload order kept. */
+export const knownHints = <H extends Pick<Hint, "code" | "params">>(hints: H[] | null | undefined, held: boolean): H[] =>
+  (hints ?? []).filter((h) => hintChip(h, held) !== "");
+
+/** CSS class of a hint by severity (`rule` / `review` / `info`; anything else reads as info). */
+export const hintCls = (severity: string | null | undefined) => (severity === "rule" || severity === "review" ? severity : "info");
+
+// ---- P3 recommendation freshness (spec P3 Frontend) -----------------------------------------------------------
+
+export type FreshKey = "maybe" | "out";
+/** `maybe_outdated` -> "maybe" (yellow), `outdated` -> "out" (red); fresh / none / unknown -> null. */
+export function freshOf(f: Pick<PlanFreshness, "state"> | null | undefined): FreshKey | null {
+  return f?.state === "outdated" ? "out" : f?.state === "maybe_outdated" ? "maybe" : null;
+}
+export const FRESH_LABEL: Record<FreshKey, string> = { maybe: "może być nieaktualna", out: "nieaktualna" };
+
+const REL_VERB: Record<string, [string, string, string]> = {
+  invalidates: ["podważa", "podważają", "tezę"], weakens: ["osłabia", "osłabiają", "tezę"], fulfills: ["spełnia", "spełniają", "tezę"],
+  supports: ["wzmacnia", "wzmacniają", "tezę"],
+};
+/** `notatka podważa tezę` / `3 notatki podważają tezę` / `5 notatek spełnia tezę` (Polish numeral agreement); for the
+ * reasons whose notes share one relation (`note_invalidates`, `fulfilled_buy`). */
+export function notesVerb(count: number | null | undefined, relation: string | null | undefined): string {
+  const n = count && count > 1 ? count : 1;
+  const [one, many, obj] = REL_VERB[relation ?? ""] ?? ["dotyczy", "dotyczą", "tezy"];
+  if (n === 1) return `notatka ${one} ${obj}`;
+  const n10 = n % 10, n100 = n % 100;
+  const few = n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14);
+  return `${n} ${few ? "notatki" : "notatek"} ${few ? many : one} ${obj}`;
+}
+
+/** `note_after` mixes relations (the BE sends the newest note's relation and the count of all): one note reads like
+ * its chip (`notatka osłabia tezę`, `notatka nie dotyka tezy`), several read neutrally (`3 nowe notatki`). */
+export function noteAfterText(count: number | null | undefined, relation: string | null | undefined): string {
+  if (count && count > 1) return plural(count, "nowa notatka", "nowe notatki", "nowych notatek");
+  const r = normRelation(relation);
+  return r === "none" ? "nowa notatka" : `notatka ${RELATION_LABEL[r]}`;
+}
+
+/** Context for the reason lines: the instrument's hints (rule thresholds) and its alerts (titles). */
+export interface FreshCtx { hints?: Pick<Hint, "code" | "params">[] | null; alerts?: { id: number; title: string; kind: string }[] | null }
+
+function ruleReasonText(kind: string | null | undefined, ctx: FreshCtx): string {
+  const p = (code: string) => (ctx.hints ?? []).find((h) => h.code === code)?.params ?? {};
+  switch (kind) {
+    case "gain_from_cost": { const v = pct0(num(p("gain_review").threshold)); return v ? `+${v} od kosztu` : "zysk od kosztu"; }
+    case "loss_from_cost": { const v = pct0(neg(p("loss_review").threshold)); return v ? `${v} od kosztu` : "strata od kosztu"; }
+    case "drawdown_from_high": { const v = pct0(neg(p("drawdown_review").threshold)); return v ? `${v} od szczytu` : "spadek od szczytu"; }
+    case "position_concentration": { const v = pct0(num(p("concentration").max_weight)); return v ? `ponad ${v} portfela` : "koncentracja"; }
+    default: return ruleKindLabel(kind);
+  }
+}
+
+/** The text of one reason (no date): `notatka podważa tezę`, `teza zmieniona`, `+100 % od kosztu`,
+ * `alert: -30 % od szczytu`, `starsza niż 30 dni`; "" for an unknown code. */
+export function freshReasonText(r: FreshReason, ctx: FreshCtx = {}): string {
+  switch (r.code) {
+    case "note_invalidates": return notesVerb(r.count, r.relation ?? "invalidates");
+    case "fulfilled_buy": return notesVerb(r.count, r.relation ?? "fulfills");
+    case "note_after": return noteAfterText(r.count, r.relation);
+    case "thesis_invalidated": return "teza podważona";
+    case "thesis_changed": return "teza zmieniona";
+    case "rule_fired": return ruleReasonText(r.kind, ctx);
+    case "alert_triggered": {
+      const a = (ctx.alerts ?? []).find((x) => x.id === r.alert_id);
+      return `alert: ${a?.title || (r.kind ? (KIND_LABEL[r.kind] ?? "spełniony").toLowerCase() : "spełniony")}`;
+    }
+    case "age": return "starsza niż 30 dni";
+    default: return "";
+  }
+}
+
+/** The card's reason lines: `7.10 · notatka podważa tezę` (dated reasons), `starsza niż 30 dni`; a note reason
+ * carries its note id (the line links to it). Unknown codes dropped. */
+export function freshReasonLines(f: PlanFreshness | null | undefined, ctx: FreshCtx = {}): { key: string; text: string; noteId: number | null }[] {
+  if (!freshOf(f)) return [];
+  return (f!.reasons ?? []).flatMap((r, k) => {
+    const text = freshReasonText(r, ctx);
+    if (!text) return [];
+    return [{ key: `${r.code}:${k}`, text: r.at && r.code !== "age" ? `${dm(r.at)} · ${text}` : text, noteId: r.note_id ?? null }];
+  });
 }
 
 const QUOTE_SUFFIX = /-(USD|USDT|USDC|EUR|PLN|GBP|CHF|JPY|BTC|ETH)$/;
@@ -1119,12 +1348,37 @@ export function instMono(i: Pick<InstLike, "symbol" | "name" | "label">): string
 /** Instrument status words (never the backend's raw status). */
 export const INST_STATUS: Record<string, string> = { frozen: "zamrożony", delisted: "wycofany z giełdy", inactive: "nieaktywny" };
 
-/** The hover card's facts (Polish only): head = name + `symbol · exchange`, rows = klasa (+ region when known),
- * rachunek / rachunki (positions), ISIN; status tags only for what is not normal. No bucket (F7-generic). */
-export function instCardFacts(i: InstLike, o: { accounts?: string[]; stale?: string | null } = {}): { head: [string, string]; rows: [string, string][]; status: string[] } {
+/** Options of the card and the touch title: accounts, the stale price date, and the owner state behind the tile's marks
+ * (P1): whether the profile holds the instrument (label form; unknown = held), its thesis health from the research
+ * summary (undefined = no summary row) and whether that research is stale. */
+export interface InstFactsOpts {
+  accounts?: string[]; stale?: string | null; held?: boolean | null; health?: HealthKey | null; healthStale?: boolean;
+  /** P2: the health rests only on research older than the thesis' last core change. */
+  pre?: boolean;
+  /** P2: the instrument's hints (main first): the card's `strategia` rows and the touch title's suffix. */
+  hints?: Pick<Hint, "code" | "severity" | "params">[] | null;
+}
+/** A card row: key, value and an optional value class (`hv rule` / `hv review` / `hv info`). */
+export type CardRow = [string, string] | [string, string, string];
+
+/** The hover card's facts (Polish only): head = name + `symbol · exchange`, rows = recommendation + thesis (they explain the
+ * tile's marks), klasa (+ region when known), rachunek / rachunki (positions), ISIN; status tags only for what is not
+ * normal. No bucket (F7-generic). */
+export function instCardFacts(i: InstLike, o: InstFactsOpts = {}): { head: [string, string]; rows: CardRow[]; status: string[] } {
   const cls = i.asset_class ? ASSET_CLASS[i.asset_class] ?? null : null;
   const reg = i.region && i.region.toLowerCase() !== "unknown" ? REGION[i.region.toLowerCase()] ?? null : null;
-  const rows: [string, string][] = [];
+  const rows: CardRow[] = [];
+  const held = o.held !== false;
+  const plan = planLabel(i.plan, held);
+  const fresh = plan ? freshOf(i.plan_freshness) : null;
+  if (plan) rows.push(["rekomendacja", [plan, i.plan_at ? dm(i.plan_at) : null, fresh ? FRESH_LABEL[fresh] : null].filter(Boolean).join(" · ")]);
+  if (o.health) {
+    const suffix = o.healthStale ? " · research nieaktualny" : o.pre ? " · research sprzed zmiany tezy" : "";
+    rows.push(["teza", `${HEALTH_LABEL[o.health]}${suffix}`]);
+  }
+  // P2: every hint the FE can word (the recommendation's own hints only when no `rekomendacja` row carries it).
+  const hints = knownHints(o.hints, held).filter((h) => !plan || !h.code.startsWith("recommendation_"));
+  hints.forEach((h, k) => rows.push([k === 0 ? "strategia" : "", hintLine(h, held), `hv ${hintCls(h.severity)}`]));
   if (cls) rows.push(["klasa", reg ? `${cls} · ${reg}` : cls]);
   if (o.accounts?.length) rows.push([o.accounts.length > 1 ? "rachunki" : "rachunek", o.accounts.join(", ")]);
   if (i.isin) rows.push(["ISIN", i.isin]);
@@ -1137,10 +1391,15 @@ export function instCardFacts(i: InstLike, o: { accounts?: string[]; stale?: str
   return { head: [instName({ label: i.label, name: i.name, symbol: i.symbol }), [i.symbol, micName(i.mic)].filter(Boolean).join(" · ")], rows, status };
 }
 
-/** One-line summary (the label's `title` where there is no hover): `INTC · Nasdaq · akcje · USA · XTB · IKE`. */
-export function instSummary(i: InstLike, o: { accounts?: string[]; stale?: string | null } = {}): string {
+/** One-line summary (the label's `title` where there is no hover): `INTC · Nasdaq · akcje · USA · XTB · IKE`, then
+ * `rekomendacja: dokup` / `teza: spełniona` when known (no date, no stale suffix). */
+export function instSummary(i: InstLike, o: InstFactsOpts = {}): string {
   const f = instCardFacts(i, o);
-  return [f.head[1], ...f.rows.map((r) => r[1])].filter(Boolean).join(" · ");
+  const plan = planLabel(i.plan, o.held !== false);
+  const main = knownHints(o.hints, o.held !== false)[0];
+  return [f.head[1], ...f.rows.filter((r) => r[0] !== "rekomendacja" && r[0] !== "teza" && r.length === 2).map((r) => r[1]),
+    plan ? `rekomendacja: ${plan}` : null, o.health ? `teza: ${HEALTH_LABEL[o.health]}` : null,
+    main ? `strategia: ${hintChip(main, o.held !== false)}` : null].filter(Boolean).join(" · ");
 }
 
 /** The Aktywa row's second line: `koszt + odsetki` and / or the single account in `Per rachunek`. */
