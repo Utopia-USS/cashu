@@ -259,9 +259,44 @@ export const deleteAlert = (slug: string, id: number) => jdel<{ deleted: number 
 export const restoreAlert = (slug: string, id: number) => jpost<Alert>(inv(slug, `/alerts/${id}/restore`));
 
 export const getWatchlist = (slug: string) => j<WatchItem[]>(inv(slug, "/watchlist"));
-export const postWatch = (slug: string, b: { symbol_or_isin?: string; instrument_id?: number; note?: string | null; currency?: string | null; tags?: string[] | null }) =>
-  jpost<WatchItem & { created_instrument: boolean; warnings: string[]; warning_codes?: { code: string; params: Record<string, unknown> | null; message: string }[] }>(inv(slug, "/watchlist"), b);
+/** A search hit picked to watch (F12 B3): the backend verifies the Yahoo symbol and reads the currency from it. */
+export interface SearchPick { yahoo_symbol: string; ticker?: string | null; name?: string | null; asset_class?: string | null; mic?: string | null; isin?: string | null }
+/** Exactly one of `pick`, `instrument_id`, `symbol_or_isin`. */
+export interface WatchInput { symbol_or_isin?: string; instrument_id?: number; pick?: SearchPick; note?: string | null; currency?: string | null; tags?: string[] | null }
+export interface WatchAddResult extends WatchItem {
+  created_instrument: boolean;
+  /** F12: the profile's removed entry came back (same row, research and notes kept). */
+  restored?: boolean;
+  warnings: string[];
+  warning_codes?: { code: string; params: Record<string, unknown> | null; message: string }[];
+}
+export const postWatch = (slug: string, b: WatchInput) => jpost<WatchAddResult>(inv(slug, "/watchlist"), b);
 export const deleteWatch = (slug: string, id: number) => jdel<{ deleted: number }>(inv(slug, `/watchlist/${id}`));
+
+// ---- instrument search (F12 B4) -------------------------------------------------------------------
+/** The profile's entry state of a hit: held (in holdings), watched (active watch row), saved (referenced, e.g. a
+ * removed watch row or research notes), new (not in the profile). */
+export type EntryState = "held" | "watched" | "saved" | "new";
+export interface SearchHit {
+  /** Stable per hit: `i:<id>` (instrument), `y:<symbol>` (remote). */
+  key: string;
+  instrument_id: number | null;
+  state: EntryState | string;
+  symbol: string;
+  yahoo_symbol: string | null;
+  name: string;
+  exchange: string | null;
+  mic: string | null;
+  asset_class: string;
+  /** Remote hits: the market's currency hint, may be wrong (never shown). */
+  currency: string | null;
+  isin: string | null;
+  source: "local" | "yahoo" | "openfigi" | string;
+}
+export interface SearchResult { query: string; local: SearchHit[]; remote: SearchHit[]; remote_status: "ok" | "unavailable" | "skipped" | string }
+/** `remote=false`: the profile's own instruments only (instant). */
+export const searchInstruments = (slug: string, q: string, remote = true, signal?: AbortSignal) =>
+  j<SearchResult>(inv(slug, `/instruments/search?q=${encodeURIComponent(q)}&remote=${remote ? 1 : 0}`), signal);
 
 // ---- planned deposits (F6 BE: `inv_planned_deposits`; "Zaplanuj wpłatę" on Przegląd and the minimal view) --
 /** A planned deposit: counted against the contribution plan, never as cash until an import books it. */

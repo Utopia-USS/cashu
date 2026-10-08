@@ -27,7 +27,8 @@ def exponential_backoff(retry: int) -> float:
 
 
 class MarketHttp:
-    """GETs for market data sources over an injected ``httpx.Client``.
+    """GETs (and the odd read-only POST lookup) for market data sources over an injected
+    ``httpx.Client``.
 
     Share one instance between all sources of a run so the per-host gap holds across them.
 
@@ -74,6 +75,30 @@ class MarketHttp:
         headers: Mapping[str, str] | None = None,
     ) -> httpx.Response:
         """GETs ``url`` on behalf of source ``source_id`` (named in raised exceptions)."""
+        return self._request("GET", url, source_id=source_id, params=params, headers=headers)
+
+    def post(
+        self,
+        url: str,
+        *,
+        source_id: str,
+        json: object,
+        headers: Mapping[str, str] | None = None,
+    ) -> httpx.Response:
+        """POSTs ``json`` to ``url`` on behalf of source ``source_id``, with the same timeout, retries
+        and pacing as :meth:`get` (a read-only lookup such as OpenFIGI's mapping endpoint)."""
+        return self._request("POST", url, source_id=source_id, json=json, headers=headers)
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        source_id: str,
+        params: Mapping[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
+        json: object = None,
+    ) -> httpx.Response:
         host = httpx.URL(url).host
         attempts = self.max_retries + 1
         attempt = 0
@@ -82,9 +107,14 @@ class MarketHttp:
             is_last = attempt == attempts
             self._wait_for_slot(host)
             try:
-                response = self._client.get(
-                    url, params=params, headers=headers, timeout=self.timeout
-                )
+                if method == "GET":
+                    response = self._client.get(
+                        url, params=params, headers=headers, timeout=self.timeout
+                    )
+                else:
+                    response = self._client.request(
+                        method, url, json=json, headers=headers, timeout=self.timeout
+                    )
             except httpx.TransportError as error:
                 if is_last:
                     if isinstance(error, httpx.TimeoutException):

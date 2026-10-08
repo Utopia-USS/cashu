@@ -37,6 +37,7 @@ from ..models import (
     InvManualValuation,
     InvPositionSnapshot,
     InvProfileInstrument,
+    InvResearchNote,
     InvSignal,
     InvThesis,
     InvTransaction,
@@ -419,8 +420,10 @@ def classify(
 
 def profile_instrument_ids(session: Session, profile_id: int) -> set[int]:
     """Every instrument the profile references (transactions, broker snapshots, renames, manual
-    valuations, theses, watchlist, signals, decisions, alerts): what its instrument endpoints may show
-    or change."""
+    valuations, theses, watchlist rows incl. removed ones, overrides, signals, decisions, alerts,
+    research notes incl. dismissed ones): what its instrument endpoints may show or change. An
+    instrument the owner stopped watching stays here, so its asset page and research stay reachable
+    (F12: one entry per profile and instrument, research is never dropped)."""
     accounts = select(Account.id).where(Account.profile_id == profile_id)
     ids: set[int] = set()
     ids |= set(
@@ -447,7 +450,7 @@ def profile_instrument_ids(session: Session, profile_id: int) -> set[int]:
         ids |= set(
             session.exec(select(model.instrument_id).where(model.profile_id == profile_id)).all()
         )
-    for model in (InvSignal, InvDecision, InvAlert):
+    for model in (InvSignal, InvDecision, InvAlert, InvResearchNote):
         query = select(model.instrument_id).where(model.profile_id == profile_id)
         if model is InvAlert:
             query = query.where(InvAlert.deleted_at.is_(None))  # soft-deleted (F6)

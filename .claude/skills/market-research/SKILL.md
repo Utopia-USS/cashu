@@ -67,7 +67,8 @@ time, never a list of the profile's holdings with weights.
 | `set_recommendation(instrument, recommendation, reason)` | after research: save the model opinion (`buy_asap`, `buy`, `hold`, `reduce`, `exit_asap`) with its short reason |
 | `alerts(status)` | step 7: live alerts, muted agent alerts and the agent alert limit, before any proposal |
 | `add_alert(...)` | step 7: a proposed `range_breakout` / `volume_spike` alert (`references/alerts.md`) |
-| `add_to_watchlist` | on demand only, when the user explicitly asks (`references/candidates.md`) |
+| `add_to_watchlist` | on demand only, when the user explicitly asks (`references/candidates.md`); a removed instrument comes back with its old note and research (`restored`) |
+| `search_instruments(query)` | before `add_to_watchlist` when the market is not obvious: pick the exact Yahoo symbol of the listing the user means (name, ticker or ISIN) |
 
 If the research tools are missing, the cashU app is older than this skill: tell the user to update
 the app and click `Aktualizuj workspace` (Ustawienia > Agent AI), and stop.

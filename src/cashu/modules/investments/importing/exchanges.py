@@ -175,6 +175,30 @@ def exchange_for_hint(hint: str | None) -> ExchangeInfo | None:
     return MARKETS[mic] if mic else None
 
 
+def _by_yahoo_suffix() -> dict[str, ExchangeInfo]:
+    out: dict[str, ExchangeInfo] = {}
+    # the first market wins: ``.WA`` is the GPW main market, not NewConnect
+    for info in MARKETS.values():
+        if info.yahoo_suffix:
+            out.setdefault(info.yahoo_suffix.upper(), info)
+    return out
+
+
+_BY_YAHOO_SUFFIX = _by_yahoo_suffix()
+
+
+def exchange_for_yahoo_suffix(suffix: str | None) -> ExchangeInfo | None:
+    """The market whose Yahoo ticker suffix is ``suffix`` (``.DE`` / ``DE`` -> XETR, ``.WA`` -> XWAR,
+    ``.L`` -> XLON), or None for a suffix no market in :data:`MARKETS` uses (``.MU``, ``.SG``, ``.F``):
+    never an invented MIC."""
+    if suffix is None:
+        return None
+    key = suffix.strip().upper()
+    if not key:
+        return None
+    return _BY_YAHOO_SUFFIX.get(key if key.startswith(".") else f".{key}")
+
+
 @dataclass(frozen=True, slots=True)
 class SplitSymbol:
     """A broker symbol split into the bare ticker and its market."""
@@ -278,6 +302,7 @@ __all__ = [
     "crypto_base",
     "exchange_for_hint",
     "exchange_for_mic",
+    "exchange_for_yahoo_suffix",
     "is_crypto_symbol",
     "split_broker_symbol",
 ]

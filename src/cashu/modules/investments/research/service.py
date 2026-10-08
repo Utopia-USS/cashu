@@ -822,8 +822,9 @@ class AcceptResult:
 def accept_candidate(
     session: Session, profile: Profile, note_id: int, *, now: dt.datetime | None = None
 ) -> AcceptResult:
-    """``Obserwuj``: put the candidate on the watchlist (source user, note ``kandydat: <title>``; an
-    instrument already watched is kept) and create a draft thesis with the candidate's entry type
+    """``Obserwuj``: put the candidate on the watchlist through the watchlist add path (source user,
+    note ``kandydat: <title>``; an instrument already watched is kept, one the owner removed earlier
+    gets its row back with its own note) and create a draft thesis with the candidate's entry type
     when the instrument has none, so the research keeps tracking it. Undo with :func:`undo_accept`
     within 15 minutes."""
     from ..service import watchlist as watch_service
@@ -844,6 +845,9 @@ def accept_candidate(
     candidate = details.get("candidate") or {}
     watch_note = f"kandydat: {row.title}"[: watch_service.MAX_NOTE_LENGTH]
     created_item = False
+    restored_item = False
+    previous_note: str | None = None
+    accepted_note: str | None = None
     created_instrument = False
     warnings: list[str] = []
     try:
@@ -856,10 +860,15 @@ def accept_candidate(
                 item_id, instrument_id = existing.id, existing.instrument_id
             else:
                 added = watch_service.add(
-                    session, profile, instrument_id=row.instrument_id, note=watch_note
+                    session,
+                    profile,
+                    instrument_id=row.instrument_id,
+                    note=watch_note,
+                    keep_existing_note=True,
                 )
                 item_id, instrument_id = added.item.id, added.item.instrument_id
-                created_item = True
+                created_item, restored_item = not added.restored, added.restored
+                previous_note, accepted_note = added.previous_note, added.item.note
         else:
             symbol = candidate.get("symbol") or row.candidate_key
             if not symbol:
@@ -873,9 +882,12 @@ def accept_candidate(
                     currency=candidate.get("currency"),
                     exchange=candidate.get("exchange"),
                     note=watch_note,
+                    keep_existing_note=True,
                 )
                 item_id, instrument_id = added.item.id, added.item.instrument_id
-                created_item, created_instrument = True, added.created_instrument
+                created_item, restored_item = not added.restored, added.restored
+                previous_note, accepted_note = added.previous_note, added.item.note
+                created_instrument = added.created_instrument
                 warnings += added.warnings
             except watch_service.WatchlistConflict:
                 resolved = watch_service.resolve_instrument(
@@ -916,6 +928,9 @@ def accept_candidate(
             "watchlist_item_id": item_id,
             "thesis_id": thesis_row.id if thesis_row is not None else None,
             "created_watchlist_item": created_item,
+            "restored_watchlist_item": restored_item,
+            "previous_watchlist_note": previous_note,
+            "accepted_watchlist_note": accepted_note,
             "created_thesis": created_thesis,
             "previous_instrument_id": row.instrument_id,
         }
@@ -931,8 +946,10 @@ def accept_candidate(
 def undo_accept(
     session: Session, profile: Profile, note_id: int, *, now: dt.datetime | None = None
 ) -> InvResearchNote:
-    """Undo ``Obserwuj`` within 15 minutes: the watchlist item and the draft thesis it created go
-    away (a thesis the owner edited since stays), the candidate is open again."""
+    """Undo ``Obserwuj`` within 15 minutes: the watchlist row it created or restored is removed again
+    (soft: ``removed_at``; a restored row gets its previous note back unless the owner edited the note
+    since), the draft thesis it created
+    goes away (a thesis the owner edited since stays), the candidate is open again."""
     from ..models import InvWatchlistItem
 
     assert profile.id is not None
@@ -947,10 +964,16 @@ def undo_accept(
         raise ResearchConflict("the candidate is not accepted")
     if now - convert.aware(dt.datetime.fromisoformat(accepted)) > RESTORE_WINDOW:
         raise UndoExpired(f"accepting can be undone for {RESEARCH_RESTORE_MINUTES} minutes")
-    if details.get("created_watchlist_item") and details.get("watchlist_item_id"):
+    created = details.get("created_watchlist_item")
+    restored = details.get("restored_watchlist_item")
+    if (created or restored) and details.get("watchlist_item_id"):
         item = session.get(InvWatchlistItem, details["watchlist_item_id"])
-        if item is not None and item.profile_id == pid:
-            session.delete(item)
+        if item is not None and item.profile_id == pid and item.removed_at is None:
+            item.removed_at = now  # never deleted: one row per (profile, instrument), F12
+            # the note the restore replaced comes back, unless the owner edited it since
+            if restored and item.note == details.get("accepted_watchlist_note"):
+                item.note = details.get("previous_watchlist_note")
+            session.add(item)
     if details.get("created_thesis") and details.get("thesis_id"):
         thesis_row = journal.thesis(session, pid, details["thesis_id"])
         untouched = thesis_row is not None and aware(thesis_row.updated_at) <= aware(
@@ -964,6 +987,9 @@ def undo_accept(
         "watchlist_item_id",
         "thesis_id",
         "created_watchlist_item",
+        "restored_watchlist_item",
+        "previous_watchlist_note",
+        "accepted_watchlist_note",
         "created_thesis",
         "previous_instrument_id",
     ):

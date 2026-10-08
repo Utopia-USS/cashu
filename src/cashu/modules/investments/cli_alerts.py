@@ -8,6 +8,7 @@ cashu invest alerts mute ID | unmute ID | snooze ID --days 7 | delete ID
 cashu invest watchlist list
 cashu invest watchlist add SYMBOL_OR_ISIN [--name N] [--currency EUR] [--exchange XETRA] [--note N]
 cashu invest watchlist remove ID
+cashu invest search QUERY [--local]
 """
 
 from __future__ import annotations
@@ -249,13 +250,58 @@ def watchlist_add_cmd(
             raise typer.BadParameter(str(e)) from None
         item_id = result.item.id
         warnings = result.warnings
-    cliutil.console.print(f"[green]Watching[/] {symbol_or_isin} (item {item_id}).")
+        restored = result.restored
+    verb = "Watching again" if restored else "Watching"
+    cliutil.console.print(f"[green]{verb}[/] {symbol_or_isin} (item {item_id}).")
     for warning in warnings:
         cliutil.console.print(f"  [yellow]![/] {warning}", markup=True, highlight=False)
 
 
+def search_cmd(
+    query: Annotated[
+        str, typer.Argument(help="A name, ticker or ISIN (orlen, VWCE, IE00BK5BQT80).")
+    ],
+    local: Annotated[bool, typer.Option("--local", help="Only the profile's instruments.")] = False,
+) -> None:
+    """Find instruments: the profile's own first, then listings found online (Yahoo / OpenFIGI)."""
+    from .service import instrument_search
+
+    init_db()
+    with get_session() as s:
+        profile = cliutil.profile(s, create=False)
+    try:
+        result = instrument_search.search_detached(profile, query, remote=not local)
+    except instrument_search.SearchError as e:
+        raise typer.BadParameter(str(e)) from None
+    rows = result.local + result.remote
+    if result.remote_status == "unavailable":
+        cliutil.err_console.print("Online search unavailable; showing the profile's instruments.")
+    if not rows:
+        cliutil.console.print(f'No instrument matches "{result.query}".')
+        return
+    table = Table(title=f'Search "{result.query}"')
+    for col in ("symbol", "yahoo", "name", "exchange", "type", "state"):
+        table.add_column(col)
+    for hit in rows:
+        table.add_row(
+            hit.symbol,
+            hit.yahoo_symbol or "-",
+            hit.name,
+            hit.exchange or hit.mic or "-",
+            hit.asset_class,
+            hit.state,
+        )
+    cliutil.console.print(table)
+    if result.remote:
+        cliutil.console.print(
+            "Watch one: cashu invest watchlist add <yahoo symbol> (e.g. "
+            f"{result.remote[0].yahoo_symbol})"
+        )
+
+
 def watchlist_remove_cmd(item_id: int) -> None:
-    """Stop watching an instrument (its alerts stay)."""
+    """Stop watching an instrument (the entry is kept: its alerts, research, note and tags stay and
+    adding it again restores it)."""
     from .service import watchlist as watch_service
 
     init_db()
@@ -284,3 +330,4 @@ def register(app: typer.Typer) -> None:
     watch_app.command("remove")(watchlist_remove_cmd)
     app.add_typer(alerts_app, name="alerts")
     app.add_typer(watch_app, name="watchlist")
+    app.command("search")(search_cmd)

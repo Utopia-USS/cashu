@@ -275,6 +275,7 @@ def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
                 "expires_in_days": 30,
             },
         ),
+        ("search_instruments", {"query": "Example"}),
         ("add_to_watchlist", {"symbol_or_isin": "AAPL", "note": note}),
         ("mute_alert", {"id": added.data["alert"]["alert_id"]}),
         ("remove_from_watchlist", {"id": watched.data["item"]["item_id"]}),

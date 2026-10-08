@@ -112,7 +112,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     assert (
         migrations.upgrade_to_head(engine)
         == migrations.head_revision()
-        == "0016_connectors"
+        == "0017_watchlist_removed_at"
     )
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
@@ -349,7 +349,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
         edited,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0016_connectors"
+    assert migrations.upgrade_to_head(engine) == "0017_watchlist_removed_at"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
     assert columns[-1] == "core_changed_at"
     assert _sql(path, "SELECT thesis, core_changed_at FROM inv_theses") == [
@@ -363,7 +363,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0016_connectors"
+    assert migrations.current_revision(engine) == "0017_watchlist_removed_at"
     engine.dispose()
 
 
@@ -389,7 +389,7 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0016_connectors"
+    assert migrations.upgrade_to_head(engine) == "0017_watchlist_removed_at"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
     assert columns[-3:] == ["plan", "plan_at", "plan_reason"]
     assert _sql(path, "SELECT plan, plan_reason FROM inv_profile_instruments") == [("hold", None)]
@@ -400,5 +400,45 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
     assert _sql(path, "SELECT plan FROM inv_profile_instruments") == [("hold",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0016_connectors"
+    assert migrations.current_revision(engine) == "0017_watchlist_removed_at"
+    engine.dispose()
+
+
+def test_0017_appends_removed_at_and_refuses_to_downgrade_over_removed_rows(tmp_path):
+    """The watchlist soft remove column is appended (no rebuild, rows and ids kept); downgrade drops
+    it only while no row is removed (dropping it would make a removed row watched again)."""
+    path = _db_at(tmp_path, "0016_connectors")
+    pid = _profile_id(path)
+    _sql(
+        path,
+        "INSERT INTO inv_instruments (id, name, currency, asset_class, tags, needs_classification, "
+        "valuation_mode, status, created_at, updated_at) VALUES (1, 'Example Corp', 'USD', "
+        "'equity', '[]', 0, 'market', 'active', ?, ?)",
+        TS,
+        TS,
+    )
+    _sql(
+        path,
+        "INSERT INTO watchlist_items (id, profile_id, instrument_id, note, tags, source, added_at) "
+        "VALUES (7, ?, 1, 'moja notatka', '[\"x\"]', 'user', ?)",
+        pid,
+        TS,
+    )
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0017_watchlist_removed_at"
+    columns = [r[1] for r in _sql(path, "PRAGMA table_info('watchlist_items')")]
+    assert columns[-1] == "removed_at"
+    assert _sql(path, "SELECT id, note, removed_at FROM watchlist_items") == [
+        (7, "moja notatka", None)
+    ]
+    _sql(path, "UPDATE watchlist_items SET removed_at = ?", TS)
+    with pytest.raises(RuntimeError, match="some watchlist rows are removed"):
+        _to(engine, "0016_connectors", down=True)
+    _sql(path, "UPDATE watchlist_items SET removed_at = NULL")
+    _to(engine, "0016_connectors", down=True)
+    assert "removed_at" not in [r[1] for r in _sql(path, "PRAGMA table_info('watchlist_items')")]
+    assert _sql(path, "SELECT id, note FROM watchlist_items") == [(7, "moja notatka")]
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    _to(engine, "head")
+    assert migrations.current_revision(engine) == "0017_watchlist_removed_at"
     engine.dispose()

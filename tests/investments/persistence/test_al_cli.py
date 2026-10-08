@@ -83,3 +83,25 @@ def test_alert_and_watchlist_commands(run, tmp_path):
     assert "removed" in run("invest", "watchlist", "remove", "1").output
     assert "The watchlist is empty." in run("invest", "watchlist", "list").output
     assert run("invest", "watchlist", "remove", "1", ok=False).exit_code == 2
+
+
+def test_search_command_and_restore_message(run, monkeypatch, tmp_path):
+    """F12: `cashu invest search` (local + recorded remote listings) and re-adding a removed item."""
+    from f12_support import install
+
+    run("profiles", "add", "Jan", "--modules", "investments")
+    run("invest", "accounts", "add", "DIF", "--broker", "dif")
+    path = tmp_path / "history.csv"
+    path.write_bytes(canonical_csv())
+    run("invest", "import", path, "--account", "1")
+    install(monkeypatch)
+    out = run("invest", "search", "VWCE").output
+    assert "VWCE.DE" in out and "XETRA" in out and "new" in out
+    assert "cashu invest watchlist add" in out
+    local = run("invest", "search", "xmpl", "--local").output
+    assert "XMPL" in local and "held" in local
+    assert "Watching" in run("invest", "watchlist", "add", "VWCE.DE").output
+    run("invest", "watchlist", "remove", "1")
+    assert "saved" in run("invest", "search", "VWCE", "--local").output
+    assert "Watching again" in run("invest", "watchlist", "add", "VWCE.DE").output
+    assert run("invest", "search", "", ok=False).exit_code != 0

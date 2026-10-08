@@ -449,7 +449,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       onAlertsChanged={reload} />
   );
   if (assetId != null && assetPage) {
-    const nm = assetName(assetId, positions.positions, watch);
+    const nm = assetName(slug, assetId, positions.positions, watch);
     return provide(
       <>
         <nav className="crumb" aria-label="Ścieżka"><button onClick={() => go()}>Inwestycje</button> › <button onClick={() => go()}>Aktywa</button> › <span>{nm}</span>
@@ -460,7 +460,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     );
   }
   const assetDrawer = assetId != null && (
-    <AssetDrawer name={assetName(assetId, positions.positions, watch)} onClose={() => goKeep()} onPage={() => go(`assets/${assetId}?page=1`)}
+    <AssetDrawer name={assetName(slug, assetId, positions.positions, watch)} onClose={() => goKeep()} onPage={() => go(`assets/${assetId}?page=1`)}
       onCrumb={(where) => { goKeep(); if (where === "assets") setTimeout(() => scrollTo("inv-assets"), 60); }}>
       {assetDetail(assetId, "drawer")}
     </AssetDrawer>

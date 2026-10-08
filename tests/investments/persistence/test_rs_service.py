@@ -368,11 +368,13 @@ def test_accept_candidate_and_undo(investor):
         call(pid, service.accept_candidate, note_id)
     call(pid, service.undo_accept, note_id)
     with get_session() as s:
-        assert s.get(InvWatchlistItem, result.watchlist_item_id) is None
+        # F12: the row is soft-removed (never deleted), the draft thesis goes away
+        assert s.get(InvWatchlistItem, result.watchlist_item_id).removed_at is not None
         assert journal.theses(s, pid, item.instrument_id) == []
         note = s.get(InvResearchNote, note_id)
         assert note.instrument_id is None and "accepted_at" not in (note.details or {})
     accepted = call(pid, service.accept_candidate, note_id)
+    assert accepted.watchlist_item_id == result.watchlist_item_id  # the same row came back
     with pytest.raises(service.UndoExpired):
         call(pid, service.undo_accept, note_id, now=utcnow() + dt.timedelta(minutes=20))
     assert accepted.thesis is not None

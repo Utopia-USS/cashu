@@ -480,7 +480,8 @@ class InvAlert(SQLModel, table=True):
 
 class InvWatchlistItem(SQLModel, table=True):
     """An instrument the profile watches without (necessarily) holding it; joins the daily price
-    refresh and can carry alerts."""
+    refresh and can carry alerts. The one entry of (profile, instrument): removing it only sets
+    ``removed_at``."""
 
     __tablename__ = "watchlist_items"
     __table_args__ = (
@@ -494,6 +495,11 @@ class InvWatchlistItem(SQLModel, table=True):
     tags: list[str] = _json_list()
     source: str = Field(default="user")  # user | agent
     added_at: dt.datetime = Field(default_factory=utcnow)
+    # Added by 0017 (ALTER TABLE ADD COLUMN appends it, so it stays the last column): soft remove.
+    # A removed row is never watched (no daily price fetch, not listed, no watched hints), but the
+    # instrument stays referenced by the profile; adding it again restores this row (same id, note
+    # and tags). The row is never deleted: exactly one row per (profile, instrument).
+    removed_at: dt.datetime | None = None
 
 
 # --------------------------------------------------------------------------- #

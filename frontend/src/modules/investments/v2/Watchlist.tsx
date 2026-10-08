@@ -1,9 +1,9 @@
 // Obserwowane (ia-v2.md 7, F-11; home v3 Q6: a tab of Aktywa): instruments the owner does not hold, with the
-// price, a 30-day sparkline, the weekly change and the nearest alert or the note; `+ Dodaj` resolves a symbol or ISIN; agent-added rows
-// carry the badge; removing toasts with undo (re-adds the instrument).
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { ApiError } from "../../../core/api";
-import { describeIssue, errorText } from "../../../core/messages";
+// price, a 30-day sparkline, the weekly change and the nearest alert or the note; `+ Dodaj` opens the instrument
+// search (F12, InstrumentSearch.tsx); agent-added rows carry the badge; removing toasts with undo (re-adds the
+// instrument by id, which restores the same entry with its research, notes and tags).
+import { type ReactNode, useState } from "react";
+import { errorText } from "../../../core/messages";
 import { Spark } from "../../../charts";
 import { useInFlight } from "../../../hooks";
 import { Skeleton, useToast } from "../../../ui";
@@ -12,8 +12,25 @@ import { pct, plural } from "../labels";
 import { deleteWatch, postWatch, type WatchItem } from "./api";
 import { HintChip, mainHint } from "./hints";
 import { InstLabel } from "./InstLabel";
+import { InstrumentSearch } from "./InstrumentSearch";
 import { instName, price, watchMove } from "./logic";
 import { offerRecreate } from "./undoFlow";
+
+type Toast = ReturnType<typeof useToast>;
+
+/** Stop watching with an undo toast (the list's ✕ and the asset header's `Obserwujesz`): the undo re-adds by
+ * `instrument_id`, which restores the same row (F12 B1); failures get a toast (F7 FE8). An agent's item comes back
+ * as the owner's. The outcome is the POST's own (F7 fix pass F6): 409 "Już na liście", 404 "Nie przywrócono: ...". */
+export async function removeWatchWithUndo(slug: string, w: Pick<WatchItem, "id" | "instrument_id" | "note" | "tags" | "source">, label: string,
+  toast: Toast, onChanged: () => void): Promise<void> {
+  try {
+    await deleteWatch(slug, w.id);
+    onChanged();
+    offerRecreate(toast, `Usunięto ${label} z obserwowanych`,
+      () => postWatch(slug, { instrument_id: w.instrument_id, note: w.note, tags: w.tags?.length ? w.tags : null }),
+      "usunięcie z obserwowanych", onChanged, errorText, 10000, () => (w.source === "agent" ? "wraca jako Twoja pozycja" : null));
+  } catch (e) { toast(`Nie usunięto: ${errorText(e)}`, 4000); }
+}
 
 const KIND_WORD: Record<string, string> = {
   price_below: "poniżej", price_above: "powyżej", sma_cross: "SMA", new_high: "nowy szczyt", drawdown_from_high: "spadek od szczytu",
@@ -39,7 +56,7 @@ export function watchAlerts(w: WatchItem): string {
 }
 
 /** The Obserwowane list (home v3 Q6): `wide` = the Aktywa tab (Instrument | Strategia (P2 main hint) | 30 dni | Cena | tydz. | Alerty | ✕,
- * rows open the asset); narrow = the light grid's widget (name + summary | spark | price | ✕). The inline add row
+ * rows open the asset); narrow = the light grid's widget (name + summary | spark | price | ✕). The instrument search
  * shows while `adding`. */
 export function WatchTable({ slug, items, wide, adding, onAdding, onChanged, onOpen, flags }: {
   slug: string;
@@ -53,52 +70,11 @@ export function WatchTable({ slug, items, wide, adding, onAdding, onChanged, onO
   flags?: (w: WatchItem) => ReactNode;
 }) {
   const toast = useToast();
-  const [text, setText] = useState("");
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (adding) input.current?.focus(); }, [adding]);
   const list = items ?? [];
-  const add = async () => {
-    const v = text.trim();
-    if (!v) return;
-    setBusy(true); setErr(null);
-    try {
-      const r = await postWatch(slug, { symbol_or_isin: v, note: note.trim() || null });
-      setText(""); setNote(""); onAdding(false);
-      const label = r.instrument ? instName(r.instrument) : v;
-      // Coded warnings (F6 BE `warning_codes`) in Polish; an older server's English warning: one Polish line.
-      const coded = r.warning_codes?.map((w) => describeIssue({ code: w.code, params: w.params, message: w.message }).text) ?? [];
-      toast(coded.length ? `Obserwujesz ${label} · ${coded[0]}` : r.created_instrument && r.warnings?.length ? `Obserwujesz ${label} · symbol ceny zgadnięty, sprawdź, czy przyjdą notowania` : `Obserwujesz ${label}`, 6000);
-      onChanged();
-    } catch (e) {
-      setErr(e instanceof ApiError && e.status === 409 && !e.code ? "Ten instrument już jest na liście." : errorText(e));
-    } finally { setBusy(false); }
-  };
   const flight = useInFlight();
-  const remove = (w: WatchItem) => flight.run(async () => {
-    try {
-      await deleteWatch(slug, w.id);
-      onChanged();
-      // The undo re-adds the item with its note and tags; failures get a toast (F7 FE8). An agent's item comes
-      // back as the owner's (the API has no restore for the watchlist).
-      // The outcome is the POST's own (F7 fix pass F6): 409 "Już na liście", 404 "Nie przywrócono: ...".
-      offerRecreate(toast, `Usunięto ${w.instrument?.label ?? "instrument"} z obserwowanych`,
-        () => postWatch(slug, { instrument_id: w.instrument_id, note: w.note, tags: w.tags?.length ? w.tags : null }),
-        "usunięcie z obserwowanych", onChanged, errorText, 10000, () => (w.source === "agent" ? "wraca jako Twoja pozycja" : null));
-    } catch (e) { toast(`Nie usunięto: ${errorText(e)}`, 4000); }
-  });
-  const addRow = adding && (
-    <div className="inline-add">
-      <input ref={input} value={text} onChange={(e) => setText(e.target.value)} placeholder="symbol lub ISIN" aria-label="Symbol lub ISIN"
-        onKeyDown={(e) => { if (e.key === "Enter") void add(); if (e.key === "Escape") { e.stopPropagation(); onAdding(false); } }} />
-      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="notatka" aria-label="Notatka" style={{ flex: "1 1 120px" }}
-        onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
-      <button className="btn primary sm" onClick={add} disabled={busy || !text.trim()}>{busy ? "Dodaję…" : "Dodaj"}</button>
-      {err && <span className="neg" style={{ fontSize: 12, flexBasis: "100%" }} role="alert">{err}</span>}
-    </div>
-  );
+  const remove = (w: WatchItem) => flight.run(() =>
+    removeWatchWithUndo(slug, w, w.instrument ? instName(w.instrument) : "instrument", toast, onChanged));
+  const addRow = adding && <InstrumentSearch slug={slug} onClose={() => onAdding(false)} onChanged={onChanged} onOpen={onOpen} />;
   const removeBtn = (w: WatchItem, label: string) => (
     <button className="icon-btn" title="Przestań obserwować" aria-label={`Przestań obserwować ${label}`} disabled={flight.busy} onClick={() => remove(w)}>✕</button>
   );
@@ -173,7 +149,7 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
   items: WatchItem[] | null;
   onChanged: () => void;
   onOpen: (instrumentId: number) => void;
-  /** Open the inline add row (the minimal view's "obserwuj instrument"). */
+  /** Open the instrument search (the minimal view's "obserwuj instrument"). */
   autoAdd?: boolean;
 }) {
   const [adding, setAdding] = useState(!!autoAdd);

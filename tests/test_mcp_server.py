@@ -61,7 +61,8 @@ def test_server_serves_only_its_profile(two):
     for spec in host.list_tools():
         if spec.write or spec.properties.keys() & {"path", "module"}:
             continue
-        result = host.call(spec.name, {})
+        # a read tool with a required argument (search_instruments) gets a harmless value
+        result = host.call(spec.name, dict.fromkeys(spec.required, "Example"))
         assert result.ok, (spec.name, result.error)
         assert SECRET not in json.dumps(result.data), spec.name
     # No profile argument exists on any tool.

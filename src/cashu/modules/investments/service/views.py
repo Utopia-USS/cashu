@@ -710,8 +710,14 @@ def position_detail(
     )
     if detail_instrument is not None:
         detail_instrument["plan_freshness"] = found.plan_freshness
+    # F12: the profile's one entry of the instrument (held | watched | saved) and its active watch row
+    watch = alert_store.watched_item_for(session, profile.id, instrument_id)
     return {
         "instrument": detail_instrument,
+        "entry": {
+            "state": "held" if rows else ("watched" if watch is not None else "saved"),
+            "watch_item_id": None if watch is None else watch.id,
+        },
         "position": rows[0] if rows else None,
         "hints": found.hints,
         "series": [{"date": iso(b.date), "close": f(b.close)} for b in series],

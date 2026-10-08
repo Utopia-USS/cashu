@@ -448,6 +448,21 @@ def review_digest(profile: CurrentProfile, since: dt.date | None = None) -> dict
 # --------------------------------------------------------------------------- #
 
 
+@router.get("/instruments/search")
+def instrument_search(profile: CurrentProfile, q: str = "", remote: bool = True) -> dict:
+    """Instruments matching ``q`` (1..60 characters: name, symbol or ISIN): the profile's own first
+    (``local``, with their state held | watched | saved), then listings from the free remote sources
+    (``remote``, state new; ``remote=0`` skips them). ``remote_status``: ok | unavailable | skipped.
+    A remote hit's ``currency`` is the market's usual one, a hint that may be wrong."""
+    from .service import instrument_search as search_service
+
+    try:  # short sessions only: no connection is held while the remote sources answer
+        result = search_service.search_detached(profile, q, remote=remote)
+    except search_service.SearchError as e:
+        raise _coded(422, str(e), "search_invalid") from None
+    return result.to_dict()
+
+
 @router.get("/instruments")
 def instrument_list(profile: CurrentProfile, unclassified: bool = False) -> list[dict]:
     """Instruments the profile references; ``unclassified=true``: only those needing review."""
@@ -1214,9 +1229,23 @@ def alert_restore(profile: CurrentProfile, alert_id: int) -> dict:
         return views.one_alert(s, profile, row)
 
 
+class PickBody(BaseModel):
+    """A listing chosen from ``GET /instruments/search`` (its remote fields)."""
+
+    model_config = {"extra": "forbid"}
+
+    yahoo_symbol: str
+    ticker: str | None = None
+    name: str | None = None
+    asset_class: str | None = None
+    mic: str | None = None
+    isin: str | None = None
+
+
 class WatchBody(BaseModel):
     symbol_or_isin: str | None = None
     instrument_id: int | None = None
+    pick: PickBody | None = None
     name: str | None = None
     currency: str | None = None
     exchange: str | None = None
@@ -1244,10 +1273,20 @@ def watchlist(profile: CurrentProfile) -> list[dict]:
 
 @router.post("/watchlist", status_code=201)
 def watchlist_add(profile: CurrentProfile, body: WatchBody) -> dict:
-    """Watch an instrument: ``symbol_or_isin`` (``VWCE.DE``, ``PKN.WA``, ``AAPL.US``, an ISIN; a new
-    instrument gets guessed price aliases) or ``instrument_id``. It joins the daily price refresh."""
+    """Watch an instrument: exactly one of ``pick`` (a listing from ``GET /instruments/search``,
+    verified against its price chart when new), ``instrument_id`` or ``symbol_or_isin`` (``VWCE.DE``,
+    ``PKN.WA``, ``AAPL.US``, an ISIN; a new instrument gets guessed price aliases). An instrument the
+    profile stopped watching gets its row back (``restored``). It joins the daily price refresh."""
     from .service import watchlist as watch_service
 
+    given = [body.pick is not None, body.instrument_id is not None, bool(body.symbol_or_isin)]
+    if sum(given) != 1:
+        raise _coded(
+            422, "give exactly one of pick, instrument_id or symbol_or_isin", "watchlist_invalid"
+        )
+    pick = None
+    if body.pick is not None:
+        pick = watch_service.SearchPick(**body.pick.model_dump())
     with get_session() as s:
         try:
             result = watch_service.add(
@@ -1255,6 +1294,7 @@ def watchlist_add(profile: CurrentProfile, body: WatchBody) -> dict:
                 profile,
                 body.symbol_or_isin,
                 instrument_id=body.instrument_id,
+                pick=pick,
                 name=body.name,
                 currency=body.currency,
                 exchange=body.exchange,
@@ -1272,6 +1312,7 @@ def watchlist_add(profile: CurrentProfile, body: WatchBody) -> dict:
         return {
             **_watch_row(s, profile, result.item.id),
             "created_instrument": result.created_instrument,
+            "restored": result.restored,
             "warnings": [str(w) for w in result.warnings],
             # the same warnings as stable code + params (+ the English message) for Polish labels
             "warning_codes": [w.to_dict() for w in result.warnings],
@@ -1294,7 +1335,8 @@ def watchlist_update(profile: CurrentProfile, item_id: int, body: WatchPatchBody
 
 @router.delete("/watchlist/{item_id}")
 def watchlist_remove(profile: CurrentProfile, item_id: int) -> dict:
-    """Stop watching (the instrument's alerts stay)."""
+    """Stop watching: the row is kept as removed (F12), so the instrument's alerts, theses, research
+    and the row's note and tags stay, and adding it again restores the same row."""
     from .service import watchlist as watch_service
 
     with get_session() as s:

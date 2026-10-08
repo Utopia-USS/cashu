@@ -1,9 +1,10 @@
 """Alert and watchlist MCP tools (investments module): thin adapters over
 ``modules.investments.service.{alerts,watchlist,views}``.
 
-Read: ``alerts``, ``watchlist``. Write: ``add_alert`` (an ACTIVE alert with ``source = agent``, validated
-against the catalog, at most 50 live agent alerts per profile), ``mute_alert``, ``add_to_watchlist``,
-``remove_from_watchlist``. Every call is audited by the server (``mcp_calls``). Price levels of public
+Read: ``alerts``, ``watchlist``, ``search_instruments`` (F12). Write: ``add_alert`` (an ACTIVE alert with
+``source = agent``, validated against the catalog, at most 50 live agent alerts per profile),
+``mute_alert``, ``add_to_watchlist``, ``remove_from_watchlist`` (soft: the row stays as removed and
+comes back on the next add). Every call is audited by the server (``mcp_calls``). Price levels of public
 instruments and percentages are not personal amounts (label ``level`` / ``percent``, sent in both modes);
 an owner-named instrument's name and symbol are identifiers and its levels stay ``amount``. Alerts are
 conditions on hard data, never price predictions.
@@ -355,6 +356,7 @@ def add_to_watchlist(
     return {
         "item": _watch_row(row, owned, ctx),
         "created_instrument": L.flag(result.created_instrument),
+        "restored": L.flag(result.restored),
         "warnings": [L.text(w) for w in result.warnings],
     }
 
@@ -369,6 +371,53 @@ def remove_from_watchlist(ctx: ToolContext, id: int) -> dict:
         ) from None
     _sync_plan(ctx, item.instrument_id)
     return {"item_id": L.ref(item.id), "removed": L.flag(True)}
+
+
+def _search_hit(ctx: ToolContext, hit: dict, owned: set[int]) -> dict:
+    private = hit.get("instrument_id") in owned
+    return {
+        "key": L.text(hit["key"]),  # i:<id> | y:<symbol> (not a row id)
+        "instrument_id": L.ref(hit.get("instrument_id")),
+        "state": L.category(hit.get("state")),
+        "symbol": L.identifier(hit.get("symbol")) if private else L.symbol(hit.get("symbol")),
+        "yahoo_symbol": L.symbol(hit.get("yahoo_symbol")),
+        "name": L.identifier(hit.get("name"))
+        if private
+        else L.text(public_label(ctx, hit.get("name"))),
+        "exchange": L.category(hit.get("exchange")),
+        "mic": L.category(hit.get("mic")),
+        "asset_class": L.category(hit.get("asset_class")),
+        "currency": L.category(hit.get("currency")),
+        "isin": L.symbol(hit.get("isin")),
+        "source": L.category(hit.get("source")),
+    }
+
+
+def search_instruments(ctx: ToolContext, query: str) -> dict:
+    from cashu.modules.investments.service import instrument_search
+
+    def name_match(inst) -> bool:
+        # an owner-named instrument's name is redacted: never match on it (no name oracle)
+        valuation = inst.valuation_mode.value if inst.valuation_mode else None
+        return not owner_named(inst.asset_class.value, valuation, inst.isin)
+
+    try:
+        result = instrument_search.search(ctx.session, ctx.profile, query, name_match=name_match)
+    except instrument_search.SearchError as e:
+        raise ToolError(str(e)) from None
+    owned = owner_named_ids(ctx)
+    data = result.to_dict()
+    return {
+        "query": L.text(data["query"]),
+        "local": [_search_hit(ctx, h, owned) for h in data["local"]],
+        "remote": [_search_hit(ctx, h, owned) for h in data["remote"]],
+        "remote_status": L.category(data["remote_status"]),
+        "note": L.text(
+            "local = the profile's instruments (state held | watched | saved); remote = listings "
+            "found online (state new; currency is the market's usual one, only a hint). Pass a "
+            "remote yahoo_symbol to add_to_watchlist."
+        ),
+    }
 
 
 TOOLS = (
@@ -431,11 +480,24 @@ TOOLS = (
         watchlist,
     ),
     ToolSpec(
+        "search_instruments",
+        "investments",
+        "Find an instrument by name, ticker or ISIN (1-60 characters): the profile's own instruments "
+        "(local, with state held | watched | saved) and listings found online on Yahoo / OpenFIGI "
+        "(remote, state new, with the exact Yahoo symbol and exchange; remote_status ok | "
+        "unavailable | skipped). Use it before add_to_watchlist when the market is not obvious.",
+        search_instruments,
+        properties={"query": {"type": "string", "minLength": 1, "maxLength": 60}},
+        required=("query",),
+    ),
+    ToolSpec(
         "add_to_watchlist",
         "investments",
         "Watch an instrument by ticker with its market (VWCE.DE, PKN.WA, AAPL.US, NVDA:XNAS) or ISIN; "
-        "a new instrument gets a guessed Yahoo symbol (exchange / currency help when the market is "
-        "unknown). It joins the daily price refresh.",
+        "when the market is not obvious pass an exact Yahoo symbol from search_instruments. A new "
+        "listing is checked against its Yahoo price chart (its real currency); if that check fails "
+        "the symbol is kept as a guess (exchange / currency help when the market is unknown). An instrument removed from the watchlist earlier is restored with its old note "
+        "and tags (restored = true). It joins the daily price refresh.",
         add_to_watchlist,
         properties={
             "symbol_or_isin": {"type": "string", "maxLength": 40},
@@ -450,7 +512,8 @@ TOOLS = (
     ToolSpec(
         "remove_from_watchlist",
         "investments",
-        "Stop watching an instrument (item id from watchlist); its alerts stay.",
+        "Stop watching an instrument (item id from watchlist). Nothing is deleted: its alerts, "
+        "theses, research notes, note and tags stay, and add_to_watchlist restores it.",
         remove_from_watchlist,
         properties={"id": {"type": "integer", "minimum": 1}},
         required=("id",),

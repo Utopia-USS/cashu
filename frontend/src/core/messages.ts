@@ -337,6 +337,7 @@ export const LABELS: Record<string, Label> = {
   "error.alert_invalid": "Alert ma nieprawidłowe parametry",
   "error.watchlist_conflict": "Ten instrument już jest na liście obserwowanych",
   "error.watchlist_invalid": "Nie rozpoznano instrumentu: sprawdź symbol lub ISIN",
+  "error.search_invalid": "Wpisz od 1 do 60 znaków",
   "error.undo_expired": "Za późno na cofnięcie: minęło 15 minut",
   "error.busy": "Trwa inna operacja; spróbuj za chwilę",
   "error.planned_invalid": "Nieprawidłowy plan wpłaty: sprawdź kwotę, datę i rachunek",
@@ -382,6 +383,7 @@ export const LABELS: Record<string, Label> = {
   // ---- watchlist warnings (`warning_codes` of POST watchlist) -----------------------------------------
   "watchlist.guessed_price_symbol": (p) => `symbol ceny zgadnięty${p.price_symbol ? ` (${p.price_symbol})` : ""}: sprawdź, czy przyjdą notowania`,
   "watchlist.no_price_symbol": "brak symbolu ceny: dodaj alias Yahoo w klasyfikacji",
+  "watchlist.unverified_price_symbol": (p) => `notowania niepotwierdzone${p.symbol ? ` (${p.symbol})` : ""}: sprawdź, czy przyjdą`,
 
   // ---- performance data quality (`data_quality.notes[] {code, params}` of GET investments/performance) -------
   "perf.incomplete_days": (p) => has(p, "days") ? `niepełna wycena: ${plural(Number(p.days), "dzień", "dni", "dni")}` : "niepełna wycena części dni",

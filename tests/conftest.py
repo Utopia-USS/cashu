@@ -100,6 +100,19 @@ def _private_workspaces_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("CASHU_WORKSPACES_DIR", str(tmp_path / "workspaces"))
 
 
+@pytest.fixture(autouse=True)
+def _offline_instrument_search(monkeypatch):
+    """The instrument search and pick verification never reach the network in tests: every remote
+    source is unavailable unless a test installs fakes (``instrument_search.default_sources``); the
+    in-process search cache starts empty."""
+    from cashu.modules.investments.service import instrument_search
+
+    monkeypatch.setattr(instrument_search, "default_sources", instrument_search.offline_sources)
+    instrument_search.clear_cache()
+    yield
+    instrument_search.clear_cache()
+
+
 @pytest.fixture
 def session():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False})

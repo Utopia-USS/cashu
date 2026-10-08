@@ -105,7 +105,7 @@ def is_reference_only(session: Session, instrument_id) -> bool:
     for model in (
         InvTransaction,
         InvPositionSnapshot,
-        InvWatchlistItem,
+        InvWatchlistItem,  # removed rows too: the instrument stays referenced (F12)
         InvAlert,
         InvProfileInstrument,
         InvPriceBar,

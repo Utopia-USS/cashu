@@ -6,15 +6,19 @@ import json
 import math
 import struct
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from ..domain import (
     AliasNamespace,
+    AssetClass,
     CalendarDate,
     Currency,
     Instrument,
+    InstrumentAlias,
+    InstrumentId,
     PriceBar,
     divided_by,
 )
@@ -38,6 +42,22 @@ def utc_now() -> datetime:
 
 _MINOR_UNITS = {"GBp": "GBP", "GBX": "GBP", "ZAc": "ZAR", "ILA": "ILS"}
 """Minor-unit quote currencies Yahoo uses and their major currency (prices / 100)."""
+
+
+@dataclass(frozen=True, slots=True)
+class ChartQuote:
+    """A Yahoo chart read without an instrument (:meth:`YahooPriceSource.chart`): the verification and
+    currency source of a search pick."""
+
+    symbol: str
+    currency: Currency
+    """``meta.currency`` normalized for minor units (``GBp`` -> GBP); the bars are in it."""
+    instrument_type: str | None
+    """``meta.instrumentType`` (``EQUITY``, ``ETF``, ``MUTUALFUND``, ``CRYPTOCURRENCY``, ...)."""
+    long_name: str | None
+    exchange_name: str | None
+    bars: tuple[PriceBar, ...] = ()
+    splits: tuple[SplitEvent, ...] = ()
 
 
 class YahooPriceSource(PriceSource):
@@ -99,6 +119,63 @@ class YahooPriceSource(PriceSource):
             raise NoPriceSourceException(self.id, f"instrument {instrument.id} has no yahoo alias")
         if start > end:
             return PriceHistory()
+        body = self._get_chart(symbol, start, end)
+        return self.parse_history(body, instrument, start, end, symbol=symbol)
+
+    def chart(
+        self,
+        symbol: str,
+        start: CalendarDate,
+        end: CalendarDate,
+        *,
+        instrument_id: InstrumentId = "chart",
+    ) -> ChartQuote:
+        """The chart of a Yahoo ``symbol`` before any instrument exists (verifying a search pick): the
+        meta (quote currency normalized like the bars, instrument type, long name, exchange) and the
+        bars within ``start..end``, stamped with ``instrument_id``. Errors as in :meth:`fetch`; a
+        chart without a quote currency is a :class:`SourceException`."""
+        body = self._get_chart(symbol, start, end)
+        return self.parse_chart(body, symbol, start, end, instrument_id=instrument_id)
+
+    def parse_chart(
+        self,
+        body: str,
+        symbol: str,
+        start: CalendarDate,
+        end: CalendarDate,
+        *,
+        instrument_id: InstrumentId = "chart",
+    ) -> ChartQuote:
+        """Parses a chart response body into a :class:`ChartQuote` (see :meth:`chart`)."""
+        what = f' for "{symbol}"'
+
+        def probe(currency: Currency) -> Instrument:
+            return Instrument(
+                id=instrument_id,
+                name=symbol,
+                currency=currency,
+                asset_class=AssetClass.OTHER,
+                aliases=(InstrumentAlias(AliasNamespace.YAHOO, symbol),),
+            )
+
+        meta = _chart_meta(body)
+        currency, _divisor = self._quote_currency(meta.get("currency"), what)
+        if currency is None:
+            # an error body (unknown symbol) or no meta: the bar parser names the actual problem
+            self.parse_history(body, probe(Currency.USD), start, end, symbol=symbol)
+            raise SourceException(self.id, f"unexpected response{what}: no quote currency")
+        history = self.parse_history(body, probe(currency), start, end, symbol=symbol)
+        return ChartQuote(
+            symbol=symbol,
+            currency=currency,
+            instrument_type=_text(meta.get("instrumentType")),
+            long_name=_text(meta.get("longName")) or _text(meta.get("shortName")),
+            exchange_name=_text(meta.get("exchangeName")),
+            bars=history.bars,
+            splits=history.splits,
+        )
+
+    def _get_chart(self, symbol: str, start: CalendarDate, end: CalendarDate) -> str:
         # One extra day on each side covers every UTC offset; parsing filters by exchange date.
         response = self._http.get(
             f"https://{self.host}/v8/finance/chart/{symbol}",
@@ -120,7 +197,7 @@ class YahooPriceSource(PriceSource):
             raise SourceException(
                 self.id, f'HTTP {status} for "{symbol}": {body_snippet(response.text)}'
             )
-        return self.parse_history(response.text, instrument, start, end, symbol=symbol)
+        return response.text
 
     def parse(
         self,
@@ -261,6 +338,24 @@ class YahooPriceSource(PriceSource):
                 currency=currency,
             )
         return tuple(bars[on] for on in sorted(bars))
+
+
+def _chart_meta(body: str) -> dict:
+    """``chart.result[0].meta`` of a chart body, or {} when the body has none (``parse_history`` then
+    reports the actual problem)."""
+    try:
+        data = json.loads(body)
+        meta = data["chart"]["result"][0]["meta"]
+    except (ValueError, KeyError, IndexError, TypeError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = " ".join(value.split())
+    return text or None
 
 
 def exchange_date(epoch_seconds: int, gmt_offset_seconds: int) -> CalendarDate:

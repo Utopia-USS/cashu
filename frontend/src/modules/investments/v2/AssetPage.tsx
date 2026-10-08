@@ -6,7 +6,8 @@
 // the model recommendation with its short reason on the left, Alerty above the research slot on the right
 // (assetSlots.ts), `Sygnały i decyzje` below: the open signals as rows (a quiet `potwierdź`) above a timeline with
 // one fact per row. The same content renders in the drawer (AssetDrawer) and as a page ("otwórz jako stronę").
-// Watched instruments (not held): no facts and no meta line, no Teza, research only with notes.
+// Watched instruments (not held): no facts and no meta line, no Teza, research only with notes. Not held: the header's
+// watch toggle `Obserwuj` / `Obserwujesz` (F12 F2).
 // P1: the model recommendation is read-only here. The owner records their own decision separately.
 // P2: the main strategy hint ends the sub line under the name (its title lists every hint); P3: the Rekomendacja card
 // is tinted yellow / red when data stored after it puts it in question, with the reasons as short lines.
@@ -21,7 +22,10 @@ import { getPositionChart, getPositionDetail, type Position, type Thesis } from 
 import { accountLabel, bucketLabel, dmy, ENTRY_TYPE, micName, money, money0, pct, plural, qty, wdm } from "../labels";
 import { InstLabel, PlanGlyph } from "./InstLabel";
 import { AlertRow, removeAlertWithUndo } from "./Alerts";
-import { type Alert, getDecisionsFor, getSignalsV2, invKey, type SignalV2, type WatchItem } from "./api";
+import { type Alert, getDecisionsFor, getSignalsV2, invKey, postWatch, type SignalV2, type WatchItem } from "./api";
+import { describeIssue, errorText } from "../../../core/messages";
+import { removeWatchWithUndo } from "./Watchlist";
+import { addedToast } from "./searchLogic";
 import { isHeld, useInstState } from "./instState";
 import { ASSET_SLOTS, type AssetSlotProps } from "./assetSlots";
 import { PositionDecisionDialog } from "./Decide";
@@ -36,12 +40,18 @@ import { Age, Fact1, legacyDecisions, longText, type SignalsCtx, signalAge, useS
 
 const MONTHS: [string, number][] = [["6M", 6], ["1R", 12], ["2R", 24], ["Max", 120]];
 
+/** Names seen this session, per profile (`slug:id`; names carry per-profile overrides): a saved instrument (F12:
+ * removed from Obserwowane, kept for its research) keeps its name in the drawer label after it leaves the watchlist. */
+const NAMES = new Map<string, string>();
+const nameKey = (slug: string, id: number) => `${slug}:${id}`;
+
 /** Name of an instrument for the drawer label and crumb before the detail loads. */
-export function assetName(id: number, positions: Position[], watch: WatchItem[]): string {
+export function assetName(slug: string, id: number, positions: Position[], watch: WatchItem[]): string {
   const p = positions.find((x) => String(x.instrument.id) === String(id));
-  if (p) return instName(p.instrument);
-  const w = watch.find((x) => x.instrument_id === id);
-  return w?.instrument ? instName(w.instrument) : `instrument ${id}`;
+  const w = p ? null : watch.find((x) => x.instrument_id === id);
+  const name = p ? instName(p.instrument) : w?.instrument ? instName(w.instrument) : null;
+  if (name) NAMES.set(nameKey(slug, id), name);
+  return name ?? NAMES.get(nameKey(slug, id)) ?? `instrument ${id}`;
 }
 
 export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, onNewAlert, onAddTxn, onTxns, onThesis, onJournal, onAlerts, onAlertsChanged }: {
@@ -71,15 +81,18 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const w = watch.find((x) => x.instrument_id === id) ?? null;
   // Keyed (F7 PX4): reopening an asset shows its last detail, chart and signals at once and refreshes them.
   // Re-read with the page's data (`ctx.positions` changes on every reload): a decision or its undo shows in the timeline.
-  const detail = useAsync(() => (pos ? getPositionDetail(slug, id) : Promise.resolve(null)), [slug, id, !!pos, ctx.positions],
-    { key: pos ? invKey(slug, "position", id) : undefined });
+  // Not held and not watched (a saved entry, F12): the detail names the instrument.
+  const needDetail = !!pos || !w;
+  const detail = useAsync(() => (needDetail ? getPositionDetail(slug, id) : Promise.resolve(null)), [slug, id, needDetail, ctx.positions],
+    { key: needDetail ? invKey(slug, "position", id) : undefined });
   // Watched (not held): no position detail, so the timeline's decisions come from the journal of this instrument.
   const watchedDecisions = useAsync(() => (pos ? Promise.resolve(null) : getDecisionsFor(slug, id)), [slug, id, !!pos, ctx.positions],
     { key: pos ? undefined : invKey(slug, "decisions", id) });
   const chart = useAsync(() => getPositionChart(slug, id, months), [slug, id, months], { key: invKey(slug, "chart", id, months) });
   const sig = useAsync(() => getSignalsV2(slug, "all"), [slug, id, ctx.positions], { key: invKey(slug, "signals", "all") });
   const inst = pos?.instrument ?? detail.data?.instrument ?? w?.instrument ?? null;
-  const name = inst ? instName(inst) : chart.data?.label ?? `instrument ${id}`;
+  const name = inst ? instName(inst) : NAMES.get(nameKey(slug, id)) ?? chart.data?.label ?? `instrument ${id}`;
+  if (inst) NAMES.set(nameKey(slug, id), name);
   const mine = alerts.filter((a) => a.instrument_id === id);
   const live = mine.filter((a) => a.status === "active" || a.status === "triggered" || a.status === "snoozed");
   const signals = (sig.data ?? []).filter((s) => s.instrument_id === id);
@@ -165,6 +178,20 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   // P3: the recommendation's freshness (yellow / red card, reason lines).
   const fresh = plan ? freshOf(inst?.plan_freshness) : null;
   const reasons = fresh ? freshReasonLines(inst?.plan_freshness, { hints, alerts: mine }) : [];
+  // F12 F2: watch toggle for an instrument that is not held (`Obserwujesz` stops watching with the undo toast).
+  const [watchBusy, setWatchBusy] = useState(false);
+  const toggleWatch = async () => {
+    if (watchBusy) return;
+    setWatchBusy(true);
+    try {
+      if (w) { await removeWatchWithUndo(slug, w, name, toast, ctx.onChanged); return; }
+      const r = await postWatch(slug, { instrument_id: id });
+      toast(addedToast(r, r.instrument ? instName(r.instrument) : name, (x) => describeIssue(x).text), 6000);
+      ctx.onChanged();
+    } catch (e) {
+      toast(`Nie dodano: ${errorText(e)}`, 4000);
+    } finally { setWatchBusy(false); }
+  };
 
   const head = (
     <section className="w ahead s2" aria-label={name}>
@@ -174,7 +201,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
             sub={[inst.symbol !== name ? inst.symbol : null, micName(inst.mic), bucketLabel(pos?.bucket)].filter(Boolean).join(" · ")} />
         ) : name}</h2>
         <div className="muted hsub" style={{ fontSize: 12.5, marginTop: 2 }}>
-          {[acc ? accountLabel(acc, accounts) : pos ? plural(pos.accounts.length, "rachunek", "rachunki", "rachunków") : "obserwowany", firstLot ? `od ${dmy(firstLot.open_date)}` : null].filter(Boolean).join(" · ")}
+          {[acc ? accountLabel(acc, accounts) : pos ? plural(pos.accounts.length, "rachunek", "rachunki", "rachunków") : w ? "obserwowany" : null, firstLot ? `od ${dmy(firstLot.open_date)}` : null].filter(Boolean).join(" · ")}
           {state && <> · <button className="lnk hsig" onClick={toSignals}><PolDot state={state} /> {STATE_LABEL[state]}</button></>}
           {hints.length > 0 && <> · <HintChip hint={hints[0]} held={held} all={hints} /></>}
         </div>
@@ -198,6 +225,9 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
       )}
       <span className="spacer" />
       <div className="hdr-right">
+        {!held && (w
+          ? <button className="btn watching" title="Przestań obserwować" disabled={watchBusy} onClick={toggleWatch}><span aria-hidden>✓ </span>Obserwujesz</button>
+          : <button className="btn" disabled={watchBusy} onClick={toggleWatch}>Obserwuj</button>)}
         <button className="btn" onClick={onNewAlert}>+ Alert</button>
         {pos && <button className="btn" onClick={onAddTxn}>+ Transakcja</button>}
         <button className="btn primary" disabled={!canDecide} title={canDecide ? undefined : "Brak otwartego sygnału"} onClick={() => setDecideOpen(true)}>Zanotuj decyzję</button>

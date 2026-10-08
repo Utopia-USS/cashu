@@ -26,9 +26,10 @@ from .sources import (
     SplitEvent,
 )
 from .stooq import StooqPriceSource
-from .yahoo import YahooPriceSource, exchange_date, utc_now
+from .yahoo import ChartQuote, YahooPriceSource, exchange_date, utc_now
 
 __all__ = [
+    "ChartQuote",
     "CompositePriceSource",
     "FetchReport",
     "FetchStatus",

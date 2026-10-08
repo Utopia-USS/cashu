@@ -1,5 +1,6 @@
 """Alerts and watchlist rows of one profile (every query is scoped by ``profile_id``). Soft-deleted
-alerts (``deleted_at`` set) are left out of every alert query except ``deleted_alert``."""
+alerts (``deleted_at`` set) are left out of every alert query except ``deleted_alert``; removed watchlist
+rows (``removed_at`` set) are left out of every watchlist query except ``watch_row_for``."""
 
 from __future__ import annotations
 
@@ -170,24 +171,38 @@ def alert_counts(session: Session, profile_id: int) -> dict[str, int]:
 # --------------------------------------------------------------------------- #
 
 
+_ACTIVE_WATCH = InvWatchlistItem.removed_at.is_(None)
+
+
 def watchlist(session: Session, profile_id: int) -> list[InvWatchlistItem]:
+    """The profile's active watchlist rows (removed ones left out), oldest first."""
     return list(
         session.exec(
             select(InvWatchlistItem)
-            .where(InvWatchlistItem.profile_id == profile_id)
+            .where(InvWatchlistItem.profile_id == profile_id, _ACTIVE_WATCH)
             .order_by(InvWatchlistItem.added_at, InvWatchlistItem.id)
         ).all()
     )
 
 
 def watchlist_item(session: Session, profile_id: int, item_id: int) -> InvWatchlistItem | None:
+    """An active watchlist row of the profile; None for a removed row or another profile's."""
     row = session.get(InvWatchlistItem, item_id)
-    return row if row is not None and row.profile_id == profile_id else None
+    if row is None or row.profile_id != profile_id or row.removed_at is not None:
+        return None
+    return row
 
 
 def watched_item_for(
     session: Session, profile_id: int, instrument_id: int
 ) -> InvWatchlistItem | None:
+    """The active watchlist row of the instrument in the profile, else None."""
+    row = watch_row_for(session, profile_id, instrument_id)
+    return row if row is not None and row.removed_at is None else None
+
+
+def watch_row_for(session: Session, profile_id: int, instrument_id: int) -> InvWatchlistItem | None:
+    """The one watchlist row of (profile, instrument) whatever its state (active or removed)."""
     return session.exec(
         select(InvWatchlistItem).where(
             InvWatchlistItem.profile_id == profile_id,
@@ -197,9 +212,12 @@ def watched_item_for(
 
 
 def watched_instrument_ids(session: Session, profile_id: int) -> set[int]:
+    """Instruments on the profile's active watchlist (a removed row is never watched)."""
     return set(
         session.exec(
-            select(InvWatchlistItem.instrument_id).where(InvWatchlistItem.profile_id == profile_id)
+            select(InvWatchlistItem.instrument_id).where(
+                InvWatchlistItem.profile_id == profile_id, _ACTIVE_WATCH
+            )
         ).all()
     )
 

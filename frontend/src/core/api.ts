@@ -72,13 +72,13 @@ export function handle401(): void {
   reportAuthLost();
 }
 
-async function request<T>(method: string, u: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, u: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   if (MOCK) {
     const { mockFetch } = await import("./mock");
     return mockFetch(method, u, body) as Promise<T>;
   }
   const auth = await authHeaders();
-  const init: RequestInit = { method, headers: { ...auth } };
+  const init: RequestInit = { method, headers: { ...auth }, signal };
   if (body !== undefined) {
     init.headers = { "Content-Type": "application/json", ...auth };
     init.body = JSON.stringify(body);
@@ -89,7 +89,8 @@ async function request<T>(method: string, u: string, body?: unknown): Promise<T>
   return r.json() as Promise<T>;
 }
 
-export const j = <T>(u: string): Promise<T> => request<T>("GET", u);
+/** `signal`: aborts the request (a superseded search keystroke). */
+export const j = <T>(u: string, signal?: AbortSignal): Promise<T> => request<T>("GET", u, undefined, signal);
 export const jpost = <T>(u: string, body: unknown = {}): Promise<T> => request<T>("POST", u, body);
 export const jpatch = <T>(u: string, body: unknown): Promise<T> => request<T>("PATCH", u, body);
 export const jput = <T>(u: string, body: unknown): Promise<T> => request<T>("PUT", u, body);

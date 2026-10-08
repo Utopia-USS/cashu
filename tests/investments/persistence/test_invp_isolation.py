@@ -30,6 +30,7 @@ INVESTMENTS_GETS = [
     "/investments/instruments",
     "/investments/instruments?unclassified=true",
     "/investments/instruments/{instrument_id}/theses",
+    "/investments/instruments/search?q=Example&remote=0",
     "/investments/manual-valuations",
     "/investments/strategy",
     "/investments/accounts",

@@ -112,4 +112,6 @@ Example (invented):
 Do not call `add_to_watchlist` in the unattended weekly routine: the owner accepts candidates with
 `Obserwuj`, which also creates the draft thesis that research then tracks. On demand, add an
 instrument only when the user explicitly asks in this session; pass `note` = `kandydat z researchu
-<d.m>: <title>` (the row is badged `A agent`).
+<d.m>: <title>` (the row is badged `A agent`). When the market is not obvious (a bare ticker, a name,
+an ISIN), call `search_instruments` first and pass the exact Yahoo symbol of the listing the user
+means. An instrument the owner removed earlier is restored (same entry, its research and notes kept).
