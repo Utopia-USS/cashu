@@ -42,7 +42,8 @@ export function Grid({ items, className, flash }: {
 }
 
 /** Grid cell with a main column (2/3) and a rail (1/3) aligned to the thirds of `.g3` (signals-rail.md 1):
- * 320 px rail at <= 1180 px, one column below 900 px with the rail's first two widgets on top
+ * 320 px rail at <= 1180 px, the rail under the main column on a portrait screen, one column below 900 px
+ * with the rail's first two widgets on top
  * (`splitNarrowOrder` through `--o`). Each column is a stack with the grid gap. */
 export function Split({ main, rail }: { main: Pick<GridItem, "id" | "node">[]; rail: Pick<GridItem, "id" | "node">[] }) {
   const order = splitNarrowOrder(main.map((x) => x.id), rail.map((x) => x.id));

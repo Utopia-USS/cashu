@@ -421,6 +421,13 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
   /* Obserwowane at the 320 px rail: no sparkline (instrument-label.md 6) */
   .split .rail table .c-spark { display: none; }
 }
+/* Portrait monitor wider than 900: one column, Aktywa full width with all their columns, and the rail under
+   Aktywa with Sygnały and Alerty side by side */
+@media (orientation: portrait) and (min-width: 901px) {
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .split .main table .c-spark, .split .main table .c-abs { display: table-cell; }
+  .split .rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 900px) {
   .split { grid-template-columns: minmax(0, 1fr); }
   .split .main, .split .rail { display: contents; }
@@ -614,6 +621,9 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .ilc .kvl { display: grid; grid-template-columns: minmax(64px, max-content) minmax(0, 1fr); gap: 3px 10px; }   /* `rekomendacja` is wider than 64 px */
 .ilc .kvl .k { color: var(--muted); }
 .ilc .st { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+/* the Wynik % card of Aktywa: money facts only, amounts right-aligned */
+.ilc.gain { min-width: 0; }
+.ilc.gain .kvl > :not(.k) { text-align: right; }
 /* classify icon button (replaces the `sklasyfikuj` pill) */
 .il-cls { width: 24px; height: 24px; border-radius: 6px; border: none; padding: 0; margin-left: 1px; background: transparent; color: var(--warn);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }

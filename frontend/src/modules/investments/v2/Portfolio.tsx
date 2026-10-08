@@ -3,7 +3,7 @@
 // quiet bell / page markers; default sort by Wynik %), Alokacja with four views `Koszyki | Klasy | Regiony |
 // Rachunki` (donut with 2 px gaps + rows, drift coloured only out of band, no footer; the data warnings behind
 // `ostrzeżenia (n)` on Rachunki). The light grid keeps a small Rachunki widget over the same rows.
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useId, useMemo, useRef, useState } from "react";
 import { Donut, Spark } from "../../../charts";
 import { Drawer, Pop, Seg } from "../../../ui";
 import { FootFacts, Mark, Widget } from "../../../widgets";
@@ -12,7 +12,7 @@ import { accountLabel, assetClass, bucketColor, bucketLabel, dm, money, money0, 
 import { ClassifyCard, WarningsCard } from "../Rail";
 import { warningItems } from "../logic";
 import type { Alert, PositionV2, PositionsV2, SignalV2, WatchItem } from "./api";
-import { ClassifyButton, InstLabel } from "./InstLabel";
+import { ClassifyButton, HoverCard, InstLabel, useHoverCard, useTouch } from "./InstLabel";
 import { HintChip, mainHint } from "./hints";
 import { accountSnapshot, alertFact, allocGeneric, instName, rowFlags, ruleKindLabel, STATE_LABEL, subLine, weekChange } from "./logic";
 import { WatchTable } from "./Watchlist";
@@ -136,14 +136,14 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
                       {weightCell(p.weight)}
                       <td className="num">{money(p.value, c)}</td>
                       <td className={`num c-abs ${resultCls(p.unrealized)}`}>{money0(p.unrealized, c, true)}</td>
-                      <td className={`num ${resultCls(p.unrealized_pct)}`}>{pct(p.unrealized_pct, true)}</td>
+                      <GainCell pct={p.unrealized_pct} gain={p.unrealized} cost={p.cost} c={c} />
                     </tr>
                     {parts?.map((a) => (
                       <tr key={`${id}:${a.account_id}`} className="sum">
                         <td style={{ paddingLeft: 28 }}>{accLabel(a.account_id)}</td><td className="c-hint" /><td className="c-spark" /><td /><td />
                         {weightCell(a.weight)}
                         <td className="num">{money(a.value, c)}</td>
-                        <td className="num c-abs" /><td className={`num ${resultCls(a.unrealized_pct)}`}>{pct(a.unrealized_pct, true)}</td>
+                        <td className="num c-abs" /><GainCell pct={a.unrealized_pct} gain={a.value != null && a.cost != null ? a.value - a.cost : null} cost={a.cost} c={c} />
                       </tr>
                     ))}
                   </Fragment>
@@ -170,6 +170,31 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
 export type AllocView = "buckets" | "classes" | "regions" | "accounts";
 const PALETTE = ["--inv-global", "--inv-pl", "--inv-bonds", "--inv-cash", "--inv-5", "--inv-6", "--inv-7", "--inv-other"];
 const totalK = (total: number, currency: string) => (total >= 1000 ? `${Math.round(total / 1000).toLocaleString("pl-PL")} tys.` : money0(total, currency));
+
+/** Aktywa `Wynik %` cell: hovering it opens the instrument-card style card with the gain in money and the cost
+ * (the Wynik column is hidden when the main column is narrow); without hover a one-line `title`. */
+function GainCell({ pct: ratio, gain, cost, c }: { pct: number | null; gain: number | null; cost: number | null; c: string }) {
+  const ref = useRef<HTMLTableCellElement>(null);
+  const id = useId();
+  const touch = useTouch();
+  const hover = useHoverCard(ref, gain != null && !touch);
+  const label = gain != null && gain < 0 ? "strata" : "zysk";
+  const tone = ratio == null ? "" : ratio >= 0 ? "pos" : "neg";
+  return (
+    <td ref={ref} className={`num ${tone}`} title={touch && gain != null ? `${label} ${money(gain, c, true)}` : undefined}
+      aria-describedby={hover.open ? id : undefined} {...hover.handlers}>
+      {pct(ratio, true)}
+      {hover.open && ref.current && (
+        <HoverCard anchor={ref.current} id={id} className="gain">
+          <div className="kvl">
+            <span className="k">{label}</span><span className={`tnum ${gain != null && gain < 0 ? "neg" : "pos"}`}>{money(gain, c, true)}</span>
+            {cost != null && <><span className="k">koszt</span><span className="tnum">{money(cost, c)}</span></>}
+          </div>
+        </HoverCard>
+      )}
+    </td>
+  );
+}
 
 /** The data warnings of the overview (stale prices, FX, snapshots, inactive rules, an invalid strategy): the
  * `ostrzeżenia (n)` link (its title lists the facts) and the drawer with the fixes. */

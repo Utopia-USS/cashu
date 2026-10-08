@@ -87,7 +87,7 @@ export function InstLabel({ inst, density = "row", onOpen, text, accounts, stale
   const withCard = card ?? density !== "header";
   const id = useId();
   const ref = useRef<HTMLSpanElement>(null);
-  const [touch] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(hover: none)").matches);
+  const touch = useTouch();
   const hover = useHoverCard(ref, withCard && !touch);
   const name = text ?? instName(inst);
   const facts = useFacts(inst, accounts, stale, hints);
@@ -116,11 +116,17 @@ export function InstLabel({ inst, density = "row", onOpen, text, accounts, stale
   );
 }
 
+/** True without hover (touch): no card, the caller sets a one-line `title` instead. */
+export function useTouch(): boolean {
+  const [touch] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(hover: none)").matches);
+  return touch;
+}
+
 /** Open / close of the hover card: pointer over the tile or the name (after a delay) and leave, keyboard focus of
  * the name button (`:focus-visible`) and blur, Esc (consumed only while the card is open), scroll and resize. The
  * row's action (the classify icon and its popover, a React child even when portaled) never opens it and closes
  * it, so the card cannot cover the popover or take its Esc. */
-function useHoverCard(ref: RefObject<HTMLSpanElement>, enabled: boolean) {
+export function useHoverCard(ref: RefObject<HTMLElement>, enabled: boolean) {
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clear = () => { if (timer.current != null) { clearTimeout(timer.current); timer.current = null; } };
@@ -158,9 +164,23 @@ function useHoverCard(ref: RefObject<HTMLSpanElement>, enabled: boolean) {
 /** The card: tile + name + `symbol · exchange`, then rekomendacja / teza / strategia (P2: one row per hint, the first
  * keyed `strategia`), klasa / rachunek / ISIN, then status tags (not-normal only). */
 function InstCard({ anchor, id, inst, accounts, stale, hints }: { anchor: HTMLElement; id: string; inst: InstLike; accounts?: string[]; stale?: string | null; hints?: Hint[] | null }) {
+  const f = instCardFacts(inst, useFacts(inst, accounts, stale, hints));
+  return (
+    <HoverCard anchor={anchor} id={id}>
+      <div className="ih"><span className="il"><Tile inst={inst} /></span><div><b>{f.head[0]}</b>{f.head[1] && <span>{f.head[1]}</span>}</div></div>
+      {f.rows.length > 0 && (
+        <div className="kvl">{f.rows.map(([k, v, cls], n) => <Fragment key={`${k}:${n}`}><span className="k">{k}</span><span className={cls ?? (k === "ISIN" ? "tnum" : undefined)}>{v}</span></Fragment>)}</div>
+      )}
+      {f.status.length > 0 && <div className="st">{f.status.map((t) => <span key={t} className={`tag ${t === "koszt + odsetki" || t === "wycena ręczna" ? "" : "solid warn"}`}>{t}</span>)}</div>}
+    </HoverCard>
+  );
+}
+
+/** The hover card frame: a fixed-position portal under the anchor (above it when there is no room below), kept
+ * inside the viewport. */
+export function HoverCard({ anchor, id, className, children }: { anchor: HTMLElement; id: string; className?: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<CSSProperties>({ top: 0, left: 0, visibility: "hidden" });
-  const f = instCardFacts(inst, useFacts(inst, accounts, stale, hints));
   useLayoutEffect(() => {
     const a = anchor.getBoundingClientRect();
     const el = ref.current;
@@ -170,16 +190,7 @@ function InstCard({ anchor, id, inst, accounts, stale, hints }: { anchor: HTMLEl
     const below = a.bottom + 6 + h <= window.innerHeight - 8;
     setPos(below || a.top - 6 - h < 8 ? { top: a.bottom + 6, left } : { bottom: window.innerHeight - a.top + 6, left });
   }, [anchor]);
-  return createPortal(
-    <div className="ilc" role="tooltip" id={id} ref={ref} style={pos}>
-      <div className="ih"><span className="il"><Tile inst={inst} /></span><div><b>{f.head[0]}</b>{f.head[1] && <span>{f.head[1]}</span>}</div></div>
-      {f.rows.length > 0 && (
-        <div className="kvl">{f.rows.map(([k, v, cls], n) => <Fragment key={`${k}:${n}`}><span className="k">{k}</span><span className={cls ?? (k === "ISIN" ? "tnum" : undefined)}>{v}</span></Fragment>)}</div>
-      )}
-      {f.status.length > 0 && <div className="st">{f.status.map((t) => <span key={t} className={`tag ${t === "koszt + odsetki" || t === "wycena ręczna" ? "" : "solid warn"}`}>{t}</span>)}</div>}
-    </div>,
-    document.body,
-  );
+  return createPortal(<div className={`ilc ${className ?? ""}`} role="tooltip" id={id} ref={ref} style={pos}>{children}</div>, document.body);
 }
 
 /** The tag icon that replaces the `sklasyfikuj` pill (opens the existing classification popover). */
