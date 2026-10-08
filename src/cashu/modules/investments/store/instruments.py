@@ -120,6 +120,9 @@ def apply_override(instrument: Instrument, o: InvProfileInstrument) -> Instrumen
         changes["plan"] = o.plan
         changes["plan_at"] = convert.aware(o.plan_at) if o.plan_at is not None else None
         changes["plan_reason"] = o.plan_reason
+    if o.segment is not None:
+        changes["segment"] = o.segment
+        changes["segment_by"] = o.segment_by
     return replace(instrument, **changes) if changes else instrument
 
 
@@ -349,6 +352,39 @@ def set_status(
 
 class ClassificationError(ValueError):
     """Invalid classification input (message safe to show)."""
+
+
+class OwnerSegment(ClassificationError):
+    """The agent tried to change or clear a segment the owner set (message safe to show)."""
+
+
+def set_segment(
+    session: Session, instrument_id: int, segment: str | None, *, profile_id: int, by: str
+) -> InvProfileInstrument:
+    """Set the market segment of ``instrument_id`` in ``profile_id`` (a ``research.segments``
+    catalog key; None clears it, the automatic guess applies again) on behalf of ``by`` (``owner``:
+    the app, ``agent``: MCP). The agent never changes or clears the owner's value
+    (:class:`OwnerSegment`). Other profiles keep theirs; the reviewed flag is not touched (a segment
+    is research context, not classification)."""
+    from ..research.segments import SEGMENT_KEYS, SEGMENT_SETTERS, is_segment
+
+    if by not in SEGMENT_SETTERS:
+        raise ValueError(f"unknown segment setter {by!r}")
+    if segment is not None and not is_segment(segment):
+        raise ClassificationError(f"Unknown segment (one of {', '.join(SEGMENT_KEYS)})")
+    if session.get(InvInstrument, instrument_id) is None:
+        raise ClassificationError(f"No instrument {instrument_id}")
+    row = _override_row(session, profile_id, instrument_id)
+    if row.segment == segment:
+        return row  # unchanged (no empty override row is created to clear nothing)
+    if by == "agent" and row.segment is not None and (row.segment_by or "owner") == "owner":
+        raise OwnerSegment("the owner set this segment; leave it")
+    row.segment = segment
+    row.segment_by = by if segment is not None else None
+    row.updated_at = utcnow()
+    session.add(row)
+    session.flush()
+    return row
 
 
 def classify(

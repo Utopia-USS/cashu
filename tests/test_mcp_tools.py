@@ -105,7 +105,7 @@ def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
     daily.run_daily_check("manual", as_of=TODAY, sources=sources())
     # Research (F6): a run in progress; notes below carry names / amounts / an IBAN in free text.
     started = host.call(
-        "start_research_run", {"scope": {"themes": [f"Banki {PERSON_P2P}"], "scheduled": True}}
+        "start_research_run", {"scope": {"segments": ["financials"], "scheduled": True}}
     )
     assert started.ok, started.error
     run_id = started.data["run_id"]
@@ -194,14 +194,13 @@ def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
         (
             "add_research_note",
             {
-                "kind": "community",
+                "kind": "trend",
                 "polarity": "positive",
                 "strength": 2,
-                "theme": f"Banki {PERSON_P2P}",
-                "title": "Forum o bankach",
+                "segment": "financials",
+                "title": "Napływy do funduszy bankowych",
                 "summary": note,
                 "sources": source(2),
-                "details": {"scale": "small"},
             },
         ),
         (
@@ -230,7 +229,8 @@ def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
             "finish_research_run",
             {"run_id": run_id, "counts": {"sources_checked": 12}, "reason": note},
         ),
-        ("start_research_run", {"scope": {"held": False, "themes": ["Energia"]}}),
+        ("start_research_run", {"scope": {"held": False, "segments": ["energy"]}}),
+        ("set_instrument_segment", {"instrument": "CDR.WA", "segment": "games_media"}),
         ("research_context", {}),
         ("signals", {"status": "open"}),
         ("set_merchant_category", {"merchant": "SKLEP NIEZNANY TEST", "category": "groceries"}),

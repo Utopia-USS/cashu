@@ -74,6 +74,7 @@ class DemoInstrument:
     vol: float  # per session (log)
     asset_class: str = "etf"
     tags: tuple[str, ...] = ()
+    segment: str | None = None  # market segment (P5), set for the profile; None = the auto guess
 
 
 GLBA = DemoInstrument(
@@ -87,6 +88,7 @@ GLBA = DemoInstrument(
     0.009,
     "etf",
     ("global_equity",),
+    segment="equity_global",
 )
 BNDA = DemoInstrument(
     isin("IE0DEMOBNDA"),
@@ -99,6 +101,7 @@ BNDA = DemoInstrument(
     0.003,
     "etf",
     ("bonds",),
+    segment="bonds",
 )
 DMEN = DemoInstrument(
     isin("PL0DEMOENRG"),
@@ -110,6 +113,7 @@ DMEN = DemoInstrument(
     0.0002,
     0.016,
     "equity",
+    segment="energy",
 )
 DMBK = DemoInstrument(
     isin("PL0DEMOBANK"),
@@ -121,6 +125,7 @@ DMBK = DemoInstrument(
     0.0003,
     0.014,
     "equity",
+    segment="financials",
 )
 DMTC = DemoInstrument(
     isin("US0DEMOTECH"),
@@ -133,12 +138,21 @@ DMTC = DemoInstrument(
     0.012,
     "etf",
     ("global_equity",),
+    segment="semis_ai",
 )
 # Watchlist-only (created by the watchlist from a ticker with its market suffix).
 WATCH = {
     "DMWA": DemoInstrument("DMWA", "DMWA", "Demo Wodociągi SA", "XWAR", "PLN", 54.0, 0.0001, 0.012),
     "DMSE": DemoInstrument(
-        "DMSE", "DMSE", "Demo Semiconductor UCITS ETF", "XETR", "EUR", 31.0, 0.0006, 0.018
+        "DMSE",
+        "DMSE",
+        "Demo Semiconductor UCITS ETF",
+        "XETR",
+        "EUR",
+        31.0,
+        0.0006,
+        0.018,
+        segment="semis_ai",
     ),
     "DMHC": DemoInstrument(
         "DMHC", "DMHC", "Demo Health Care ETF", "XNYS", "USD", 88.0, 0.0002, 0.008
@@ -1061,6 +1075,8 @@ class Seeder:
                     asset_class=spec.asset_class,
                     tags=list(spec.tags),
                 )
+                if spec.segment is not None:
+                    instruments.set_segment(s, int(iid), spec.segment, profile_id=pid, by="owner")
                 if inst.symbol == "GLBA":
                     instruments.set_plan(
                         s,
@@ -1106,6 +1122,11 @@ class Seeder:
                 return
             for index, (symbol, name, note) in enumerate(plan.watch):
                 added = watchlist.add(s, prof, symbol, name=name, note=note, tags=["demo"])
+                spec = WATCH.get(symbol.split(".")[0])
+                if spec is not None and spec.segment is not None:
+                    instruments.set_segment(
+                        s, added.item.instrument_id, spec.segment, profile_id=profile.id, by="owner"
+                    )
                 if index == 0:
                     instruments.set_plan(
                         s,
@@ -1329,11 +1350,24 @@ class Seeder:
                     "kind": "trend",
                     "polarity": "neutral",
                     "strength": 1,
-                    "theme": "stopy procentowe",
+                    "segment": "bonds",
                     "title": "Rynek oczekuje stabilnych stóp procentowych",
                     "summary": "Przykładowe dane rynkowe pokazują stabilne oczekiwania co do stóp "
-                    "procentowych w najbliższych miesiącach.",
+                    "procentowych w najbliższych miesiącach; BNDA bez większych zmian w tygodniu.",
                     "sources": src(3),
+                },
+                None,
+            ),
+            (
+                {
+                    "kind": "macro",
+                    "polarity": "positive",
+                    "strength": 1,
+                    "segment": "equity_global",
+                    "title": "Globalne indeksy akcji blisko szczytów",
+                    "summary": "Przykładowe dane: szerokie indeksy akcji zakończyły tydzień wyżej; "
+                    "GLBA rośnie razem z rynkiem.",
+                    "sources": src(5),
                 },
                 None,
             ),

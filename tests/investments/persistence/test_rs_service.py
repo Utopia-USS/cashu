@@ -408,7 +408,7 @@ def test_accept_keeps_an_existing_watch_and_thesis(investor):
 # --------------------------------------------------------------------------- #
 
 
-def test_summary_health_sentiment_and_themes(investor):
+def test_summary_health_and_sentiment_without_themes(investor):
     pid = investor
     thesis(pid, "XMPL")
     thesis(pid, "ABC")
@@ -433,11 +433,7 @@ def test_summary_health_sentiment_and_themes(investor):
     assert rows["XMPL"]["sentiment_8w"][-1] == round(-2 / 3, 4)
     assert rows["ABC"]["health"] == "supported" and rows["ABC"]["latest_polarity"] == "positive"
     assert rows["XMPL"]["last_researched_at"] is not None
-    (theme,) = result["themes"]
-    assert theme["theme"] == "Technologia" and theme["notes"] == 2
-    assert theme["instruments"] == [iid("XMPL")]
-    # (-2 - 1) / (3 * 2): the community note counts with strength 1
-    assert theme["sentiment_8w"][-1] == round(-3 / 6, 4)
+    assert "themes" not in result  # P5: market segments have their own view; old notes stay stored
     assert result["totals"]["signals_open"] == 2 and len(result["weeks"]) == 8
 
 
@@ -460,8 +456,8 @@ def test_research_digest_since_the_last_review(investor):
     assert changed["label"] == "XMPL" and changed["from"] == "no_research"
     assert changed["to"] == "invalidated" and changed["note_ids"] == [note_id]
     assert block["candidates"] == [cand] and block["highlights"][0] == note_id
-    (theme,) = block["themes_changed"]
-    assert theme["theme"] == "Energia" and (theme["from"], theme["to"]) == ("stable", "rising")
+    assert "themes_changed" not in block  # P5: the week's segments instead
+    assert isinstance(block["segments"], list) and block["market"]["window"] == "1w"
     with get_session() as s:
         empty = views.research_digest(s, pid, utcnow() + dt.timedelta(minutes=1))
     assert empty["notes_count"] == 0 and not empty["ran_in_period"]

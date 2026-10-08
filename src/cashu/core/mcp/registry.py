@@ -56,6 +56,9 @@ class ToolSpec:
     """Arguments that do not exist (any more), with the message telling the agent what to do
     instead (e.g. ``converter``: MCP never makes the app run code; the app runs only connectors the
     owner approved in the app). Not part of the schema."""
+    nullable: tuple[str, ...] = ()
+    """Arguments that must be given but may be an explicit null (e.g. ``segment: null`` clears a
+    value): required in the schema, typed ``[<type>, "null"]``, passed to the handler as None."""
     also: tuple[str, ...] = ()
     """More modules that make the tool available (any of ``module`` and these; e.g. ``inspect_export``
     serves the investments and the budget import)."""
@@ -72,10 +75,17 @@ class ToolSpec:
 
     @property
     def input_schema(self) -> dict[str, Any]:
+        properties = dict(self.properties)
+        for name in self.nullable:
+            schema = dict(properties[name])
+            schema["type"] = [schema.get("type", "string"), "null"]
+            if "enum" in schema:
+                schema["enum"] = [*schema["enum"], None]
+            properties[name] = schema
         return {
             "type": "object",
-            "properties": self.properties,
-            "required": list(self.required),
+            "properties": properties,
+            "required": [*self.required, *(n for n in self.nullable if n not in self.required)],
             "additionalProperties": False,
         }
 
@@ -143,10 +153,16 @@ def validate_arguments(spec: ToolSpec, arguments: dict[str, Any] | None) -> dict
             "invalid_arguments",
         )
     for name in spec.required:
-        if args.get(name) is None:
+        if args.get(name) is None and name not in spec.nullable:
             raise ToolError(f"missing argument: {name}", "invalid_arguments")
+    for name in spec.nullable:
+        if name not in args:
+            raise ToolError(f"missing argument: {name} (null clears it)", "invalid_arguments")
     out: dict[str, Any] = {}
     for name, schema in spec.properties.items():
+        if name in spec.nullable and name in args and args[name] is None:
+            out[name] = None
+            continue
         if name not in args or args[name] is None:
             if "default" in schema:
                 out[name] = schema["default"]

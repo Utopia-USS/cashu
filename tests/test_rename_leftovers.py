@@ -1,7 +1,8 @@
 """F11: the app is cashU. No "finanse" (the pre-rename name) is left in the repository outside an
 allowlist: whole files with a reason, lines carrying the ``legacy name`` marker (on the line or one
 of the two lines above: compatibility code, deprecated ids in docs), and the Polish word FINANSE in
-upper case (bank and merchant texts the categorizer matches), and the README credit line."""
+upper case (bank and merchant texts the categorizer matches), the Polish market segment label
+"Finanse i płatności" (P5 catalog, UI data), and the README credit line."""
 
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 WORD = re.compile(r"finanse", re.IGNORECASE)
 POLISH_WORD = re.compile(r"\bFINANSE\b")
+SEGMENT_LABEL = re.compile(r"Finanse i płatności")  # the P5 segment label (Polish UI data)
 MARKER = "legacy name"
 CREDIT = "github.com/SynSzakala/finanse"  # the README credit line to the original project
 FILES = {
@@ -57,7 +59,10 @@ def test_no_finanse_left_outside_the_allowlist():
         for i, line in enumerate(lines):
             if not WORD.search(line):
                 continue
-            if all(POLISH_WORD.match(line, m.start()) for m in WORD.finditer(line)):
+            if all(
+                POLISH_WORD.match(line, m.start()) or SEGMENT_LABEL.match(line, m.start())
+                for m in WORD.finditer(line)
+            ):
                 continue
             if CREDIT in line or any(MARKER in lines[j] for j in range(max(0, i - 2), i + 1)):
                 continue

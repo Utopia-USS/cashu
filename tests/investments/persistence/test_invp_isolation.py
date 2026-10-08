@@ -43,6 +43,7 @@ INVESTMENTS_GETS = [
     "/investments/watchlist",
     "/investments/research",
     "/investments/research/summary",
+    "/investments/research/segments",
     "/investments/research/runs",
     "/investments/planned-deposits",
 ]

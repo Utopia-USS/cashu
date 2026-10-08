@@ -1,5 +1,6 @@
 """Research runs and notes of one profile: start / finish runs, add notes (validated, sourced, linked
-to a held / watched instrument, a theme or a candidate), dismiss / restore notes (the signal follows),
+to a held / watched instrument, a market segment, an (old) theme or a candidate; novelty limits of
+the weekly run), dismiss / restore notes (the signal follows),
 accept a candidate (watchlist + draft thesis) or dismiss it (90-day cooldown), and housekeeping
 (expired notes resolve their signal, runs left running are marked failed).
 
@@ -14,7 +15,7 @@ import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlmodel import Session, select
 
 from cashu.core.models import Profile, utcnow
@@ -31,9 +32,10 @@ from ..portfolio import build_snapshot
 from ..store import alerts as alert_store
 from ..store import convert, instruments, journal, transactions
 from . import signals as research_signals
-from .scoring import CANDIDATE_KIND, HEALTH_WINDOW_DAYS, clean_theme, theme_key
+from .scoring import CANDIDATE_KIND, HEALTH_WINDOW_DAYS, clean_theme, iso_week, theme_key
 from .validation import (
     REASON_MAX,
+    SEGMENT_ONLY,
     NoteInput,
     ResearchInputError,
     RunScope,
@@ -46,6 +48,16 @@ RUN_STALE = dt.timedelta(hours=4)
 """A run still ``running`` with no note for this long is treated as interrupted (failed)."""
 MAX_NOTES_PER_RUN = 150
 DUPLICATE_WINDOW = dt.timedelta(days=14)
+WEEKLY_INSTRUMENTS_MAX = 6
+"""Per ISO week (of storing), the weekly runs (scope ``held: true``) and the agent's notes written
+without a run cover at most this many instruments (P5 novelty: only part of the portfolio has new
+things to review each week); on-demand runs are exempt."""
+WEEKLY_NOTES_PER_INSTRUMENT = 2
+WEEKLY_SEGMENT_NOTES_MAX = 6
+SEGMENT_NOTES_PER_WEEK = 1
+"""Per segment and ISO week (of observation and of storing)."""
+NOVELTY_EXEMPT_RELATIONS = ("invalidates", "fulfills")
+"""Notes that always pass the weekly limits: these relations, or strength 3."""
 DRAFT_THESIS_PREFIX = "Szkic z researchu: "
 
 
@@ -285,6 +297,7 @@ def start_run(
             "watchlist": scope.watchlist,
             "candidates": scope.candidates,
             "themes": list(scope.themes),
+            "segments": list(scope.segments),
             "instrument_ids": explicit,
             "covered_instrument_ids": sorted(covered),
             "scheduled": scope.scheduled,
@@ -352,6 +365,7 @@ def notes(
     *,
     instrument_id: int | None = None,
     theme: str | None = None,
+    segment: str | None = None,
     kinds: Iterable[str] | None = None,
     since: dt.datetime | None = None,
     run_id: int | None = None,
@@ -366,6 +380,8 @@ def notes(
     query = select(InvResearchNote).where(InvResearchNote.profile_id == profile_id)
     if instrument_id is not None:
         query = query.where(InvResearchNote.instrument_id == instrument_id)
+    if segment is not None:
+        query = query.where(InvResearchNote.segment == segment)
     wanted_kinds = list(kinds or [])
     if wanted_kinds:
         query = query.where(InvResearchNote.kind.in_(wanted_kinds))
@@ -453,6 +469,8 @@ def _duplicate(
     candidate_key: str | None,
     now: dt.datetime,
 ) -> InvResearchNote | None:
+    """A note of the same scope (instrument; else candidate; else segment; else theme) with the same
+    title or first source within :data:`DUPLICATE_WINDOW`, dismissed ones included."""
     first_url = data.sources[0].url if data.sources else None
     title = data.title.casefold()
     since = now - DUPLICATE_WINDOW
@@ -474,6 +492,14 @@ def _duplicate(
             or (
                 instrument_id is None
                 and candidate_key is None
+                and data.segment is not None
+                and row.instrument_id is None
+                and row.segment == data.segment
+            )
+            or (
+                instrument_id is None
+                and candidate_key is None
+                and data.segment is None
                 and tkey is not None
                 and row.instrument_id is None
                 and row.theme is not None
@@ -486,6 +512,112 @@ def _duplicate(
         if row.title.casefold() == title or (first_url and first_url in row_urls):
             return row
     return None
+
+
+def _week_start(day: dt.date) -> dt.datetime:
+    """Monday 00:00 UTC of the ISO week of ``day`` (note timestamps are UTC)."""
+    return dt.datetime.combine(day - dt.timedelta(days=day.weekday()), dt.time(), tzinfo=dt.UTC)
+
+
+def _segment_week_note(
+    session: Session, profile_id: int, segment: str, observed: dt.datetime, now: dt.datetime
+) -> InvResearchNote | None:
+    """A note of ``segment`` observed in the ISO week of ``observed`` or stored in the ISO week of
+    ``now`` (dismissed ones included): one segment note per segment and week, back-dating included."""
+    observed_week = iso_week(convert.aware(observed).date())
+    stored_week = iso_week(convert.aware(now).date())
+    observed_from = _week_start(convert.aware(observed).date())
+    stored_from = _week_start(convert.aware(now).date())
+    for row in session.exec(
+        select(InvResearchNote)
+        .where(
+            InvResearchNote.profile_id == profile_id,
+            InvResearchNote.segment == segment,
+            or_(
+                and_(
+                    InvResearchNote.observed_at >= observed_from - dt.timedelta(days=1),
+                    InvResearchNote.observed_at < observed_from + dt.timedelta(days=8),
+                ),
+                InvResearchNote.created_at >= stored_from - dt.timedelta(days=1),
+            ),
+        )
+        .order_by(InvResearchNote.id)
+    ).all():
+        if (
+            iso_week(convert.aware(row.observed_at).date()) == observed_week
+            or iso_week(convert.aware(row.created_at).date()) == stored_week
+        ):
+            return row
+    return None
+
+
+def is_weekly(row: InvResearchRun) -> bool:
+    """The weekly run (scheduled or a manual "run now"): its scope covers the held positions. Runs
+    with only ``instruments`` / ``segments`` (on demand) are exempt from the novelty limits."""
+    return bool((row.scope or {}).get("held"))
+
+
+def _novelty_rows(session: Session, profile_id: int, now: dt.datetime) -> list[InvResearchNote]:
+    """The notes the weekly novelty limits count: stored in the ISO week of ``now`` by a weekly run
+    of the profile, or by the agent without a run."""
+    since = _week_start(convert.aware(now).date())
+    rows = session.exec(
+        select(InvResearchNote).where(
+            InvResearchNote.profile_id == profile_id, InvResearchNote.created_at >= since
+        )
+    ).all()
+    run_ids = {r.run_id for r in rows if r.run_id is not None}
+    weekly = (
+        {
+            r.id
+            for r in session.exec(
+                select(InvResearchRun).where(InvResearchRun.id.in_(run_ids))
+            ).all()
+            if is_weekly(r)
+        }
+        if run_ids
+        else set()
+    )
+    return [r for r in rows if (r.run_id in weekly) or (r.run_id is None and r.created_by == AGENT)]
+
+
+def _check_novelty(
+    session: Session,
+    profile_id: int,
+    data: NoteInput,
+    instrument_id: int | None,
+    now: dt.datetime,
+) -> None:
+    """The weekly novelty limits (P5), per ISO week of storing over the profile's weekly runs and
+    the agent's notes written without a run: notes on at most :data:`WEEKLY_INSTRUMENTS_MAX`
+    instruments, :data:`WEEKLY_NOTES_PER_INSTRUMENT` per instrument (strength 3, invalidates and
+    fulfills always pass) and :data:`WEEKLY_SEGMENT_NOTES_MAX` segment notes. Candidates are not
+    counted here (they have their own limits)."""
+    if data.segment is None and (instrument_id is None or data.kind == CANDIDATE_KIND):
+        return
+    rows = _novelty_rows(session, profile_id, now)
+    if data.segment is not None:
+        if sum(1 for r in rows if r.segment is not None) >= WEEKLY_SEGMENT_NOTES_MAX:
+            raise ResearchConflict(
+                f"this week's research already has {WEEKLY_SEGMENT_NOTES_MAX} segment notes; "
+                "write only the segments where something changed"
+            )
+        return
+    if data.strength >= 3 or data.thesis_relation in NOVELTY_EXEMPT_RELATIONS:
+        return
+    own = [r for r in rows if r.instrument_id is not None and r.kind != CANDIDATE_KIND]
+    covered = {r.instrument_id for r in own}
+    if instrument_id not in covered and len(covered) >= WEEKLY_INSTRUMENTS_MAX:
+        raise ResearchConflict(
+            f"this week's research already covers {WEEKLY_INSTRUMENTS_MAX} instruments; pick the "
+            "material changes only (strength 3, invalidates or fulfills still pass)"
+        )
+    if sum(1 for r in own if r.instrument_id == instrument_id) >= WEEKLY_NOTES_PER_INSTRUMENT:
+        raise ResearchConflict(
+            f"this week's research already has {WEEKLY_NOTES_PER_INSTRUMENT} notes on this "
+            "instrument; pick the material changes only (strength 3, invalidates or fulfills "
+            "still pass)"
+        )
 
 
 @dataclass
@@ -519,10 +651,13 @@ def add_note(
     created_by: str = "agent",
 ) -> AddedNote:
     """Store a validated note (``instrument_id``: already resolved with :func:`resolve_reference`).
-    Checks the run, the per-run limit, the scope (instrument / theme / candidate), the thesis relation
-    (needs a thesis), candidate rules (new instruments only, the 90-day cooldown, one open proposal),
-    duplicates (same scope with the same title or first source within 14 days). A qualifying note
-    creates or joins the research signal of its instrument / theme and week."""
+    Checks the run, the per-run limit, the scope (instrument / segment / theme / candidate; a segment
+    note has neither instrument nor candidate), the thesis relation (needs a thesis), candidate rules
+    (new instruments only, the 90-day cooldown, one open proposal), duplicates (same scope with the
+    same title or first source within 14 days), one segment note per segment and ISO week (of
+    ``observed_at``, dismissed ones included) and the weekly run's novelty limits
+    (:func:`_check_novelty`). A qualifying note creates or joins the research signal of its
+    instrument / segment / theme and week."""
     assert profile.id is not None
     pid = profile.id
     now = _now(now)
@@ -548,6 +683,10 @@ def add_note(
             raise ResearchConflict(f"a run holds at most {MAX_NOTES_PER_RUN} notes")
 
     theme = _stored_theme(session, pid, data.theme)
+    if data.segment is not None and (
+        instrument_id is not None or data.candidate is not None or data.kind == CANDIDATE_KIND
+    ):
+        raise ResearchError(SEGMENT_ONLY)
     held = held_instrument_ids(session, pid)
     watched = watched_instrument_ids(session, pid)
     candidate_key: str | None = None
@@ -588,12 +727,14 @@ def add_note(
         if data.candidate is not None:
             details["candidate"] = data.candidate.as_json()
     else:
-        if instrument_id is None and theme is None:
-            raise ResearchError("a note is about an instrument (instrument) or a theme (theme)")
+        if instrument_id is None and theme is None and data.segment is None:
+            raise ResearchError(
+                "a note is about an instrument (instrument) or a market segment (segment)"
+            )
     if data.thesis_relation != "none":
         if instrument_id is None:
             raise ResearchError(
-                "thesis_relation needs an instrument with a thesis (use none for theme notes)"
+                "thesis_relation needs an instrument with a thesis (use none for segment notes)"
             )
         if not journal.theses(session, pid, instrument_id):
             raise ResearchError(
@@ -605,15 +746,25 @@ def add_note(
         raise ResearchConflict(
             f"duplicate of note {duplicate.id}{state} (same scope, title or source)"
         )
+    observed = data.observed_at or now
+    if data.segment is not None:
+        same_week = _segment_week_note(session, pid, data.segment, observed, now)
+        if same_week is not None:
+            raise ResearchConflict(
+                f"segment {data.segment} already has a note this week (note {same_week.id}); "
+                "update nothing, write next week only if something changed"
+            )
+    if created_by == AGENT and (run_row is None or is_weekly(run_row)):
+        _check_novelty(session, pid, data, instrument_id, now)
     if instrument_id is not None and instrument_id not in held | watched:
         warnings.append("the instrument is neither held nor watched (it carries an alert)")
 
-    observed = data.observed_at or now
     row = InvResearchNote(
         profile_id=pid,
         run_id=run_row.id if run_row is not None else None,
         instrument_id=instrument_id,
         theme=theme,
+        segment=data.segment,
         kind=data.kind,
         polarity=data.polarity,
         strength=data.strength,
@@ -704,17 +855,18 @@ def mark_read(
     instrument_id: int | None = None,
     theme: str | None = None,
     ids: list[int] | None = None,
+    segment: str | None = None,
     now: dt.datetime | None = None,
 ) -> int:
-    """Set ``read_at`` on the profile's unread notes of one instrument, one theme (case-insensitive)
-    or the given ids (other profiles' and unknown ids are ignored); returns how many changed
+    """Set ``read_at`` on the profile's unread notes of one instrument, one segment, one (old) theme
+    (case-insensitive) or the given ids (other profiles' and unknown ids are ignored); returns how many changed
     (idempotent). Exactly one selector. :class:`ResearchNotFound` for an instrument that is not the
     profile's, :class:`ResearchError` for a bad selector."""
     assert profile.id is not None
     now = _now(now)
-    given = [x is not None for x in (instrument_id, theme, ids)]
+    given = [x is not None for x in (instrument_id, theme, ids, segment)]
     if sum(given) != 1:
-        raise ResearchError("give exactly one of instrument_id, theme or ids")
+        raise ResearchError("give exactly one of instrument_id, segment, theme or ids")
     query = _unread_query(profile.id, now)
     key: str | None = None
     if instrument_id is not None:
@@ -729,6 +881,12 @@ def mark_read(
         ):
             raise ResearchNotFound(f"no instrument {instrument_id} in this profile")
         query = query.where(InvResearchNote.instrument_id == instrument_id)
+    elif segment is not None:
+        from .segments import is_segment
+
+        if not is_segment(segment):
+            raise ResearchError("unknown segment")
+        query = query.where(InvResearchNote.segment == segment)
     elif theme is not None:
         text = clean_theme(theme)
         if text is None:

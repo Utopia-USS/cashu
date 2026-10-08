@@ -1,12 +1,13 @@
 """JSON views of the research layer for the API (and the inputs of the MCP tools): note and run dicts,
 the summary (thesis health per position, relation counts, 8-week sentiment and direction per
-instrument and theme, last researched) and the review-digest block. Shapes: the CONTRACT in
+instrument, last researched) and the review-digest block (with the week's market segments, P5). Shapes: the CONTRACT in
 ``stock/docs/fork/progress/F6-RS.md``.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from collections import defaultdict
 from collections.abc import Iterable
 
@@ -32,11 +33,13 @@ from .scoring import (
     health_rank,
     iso_week,
     sentiment_weeks,
-    theme_key,
     thesis_health,
     week_starts,
     window_notes,
 )
+from .segments import segment_label, segment_of
+
+_log = logging.getLogger(__name__)
 
 HISTORY_DAYS = 7 * SENTIMENT_WEEKS + HEALTH_WINDOW_DAYS + 7
 """How far back notes are loaded for summaries (8 weeks of sentiment + the health window)."""
@@ -71,6 +74,7 @@ def scored(row: InvResearchNote) -> ScoredNote:
 def instrument_brief(inst: Instrument | None) -> dict | None:
     if inst is None:
         return None
+    segment, source = segment_of(inst, inst.segment, inst.segment_by)
     return {
         "id": convert.maybe_pk(inst.id),
         "label": inst.label,
@@ -79,6 +83,8 @@ def instrument_brief(inst: Instrument | None) -> dict | None:
         "isin": inst.isin,
         "currency": str(inst.currency),
         "asset_class": inst.asset_class.value,
+        "segment": segment,
+        "segment_source": source,
     }
 
 
@@ -112,6 +118,7 @@ def run_dict(
             "watchlist": bool(scope.get("watchlist", True)),
             "candidates": bool(scope.get("candidates", True)),
             "themes": list(scope.get("themes") or []),
+            "segments": list(scope.get("segments") or []),
             "instrument_ids": list(scope.get("instrument_ids") or []),
             "covered_instrument_ids": list(scope.get("covered_instrument_ids") or []),
         },
@@ -183,6 +190,8 @@ def note_dict(
         "instrument_id": row.instrument_id,
         "instrument": instrument_brief(inst),
         "theme": row.theme,
+        "segment": row.segment,
+        "segment_label": segment_label(row.segment) if row.segment else None,
         "candidate": None
         if row.kind != CANDIDATE_KIND
         else {
@@ -376,8 +385,9 @@ def summary(
     positions: list[dict] | None = None,
     now: dt.datetime | None = None,
 ) -> dict:
-    """Thesis health and sentiment per position (held, watched, or with notes) and per theme.
-    ``positions``: rows of ``views.positions`` (for weights; loaded when None)."""
+    """Thesis health and sentiment per position (held, watched, or with notes). Market segments have
+    their own view (``segment_service.segments_view``). ``positions``: rows of ``views.positions``
+    (for weights; loaded when None)."""
     assert profile.id is not None
     pid = profile.id
     now = convert.aware(now or utcnow())
@@ -410,12 +420,9 @@ def summary(
             last_note_at[iid] = moment
     unread_rows = service.unread_notes(session, pid, now=now)
     unread_by_instrument: dict[int, int] = defaultdict(int)
-    unread_by_theme: dict[str, int] = defaultdict(int)
     for r in unread_rows:
         if r.instrument_id is not None:
             unread_by_instrument[r.instrument_id] += 1
-        if r.theme:
-            unread_by_theme[theme_key(r.theme)] += 1
     candidate_ids = set(by_instrument)
     ids = held | watched | candidate_ids
     loaded = instruments.load(session, ids, profile_id=pid)
@@ -465,9 +472,6 @@ def summary(
             (x["label"] or "").casefold(),
         )
     )
-    themes = _themes(rows, now)
-    for t in themes:
-        t["unread"] = unread_by_theme.get(t["key"], 0)
     latest_run = service.latest_run(session, pid)
     running = service.running_run(session, pid, now)
     candidate_rows = [r for r in rows if r.kind == CANDIDATE_KIND]
@@ -480,7 +484,6 @@ def summary(
         "last_run": run_dict(session, latest_run, now),
         "running": running is not None,
         "instruments": items,
-        "themes": themes,
         "candidates": _candidate_counts(session, pid, now),
         "totals": {
             "notes_active": sum(
@@ -505,11 +508,14 @@ def summary(
             ),
             "signals_open": _open_research_signals(session, pid),
             # Only notes the app can mark read (F8 review BE-2): a held or watched instrument's (its asset
-            # drawer) or a theme's (the theme view); a note on a sold instrument would never clear.
+            # drawer), a segment's (the segment view, P5) or an old theme's (``POST read {theme}``); a
+            # note on a sold instrument would never clear.
             "notes_unread": sum(
                 1
                 for r in unread_rows
-                if r.theme or (r.instrument_id is not None and r.instrument_id in held | watched)
+                if r.segment
+                or r.theme
+                or (r.instrument_id is not None and r.instrument_id in held | watched)
             ),
         },
     }
@@ -543,40 +549,6 @@ def _candidate_counts(session: Session, profile_id: int, now: dt.datetime) -> di
     return {"open": open_, "accepted": accepted, "dismissed_in_cooldown": cooldown}
 
 
-def _themes(rows: list[InvResearchNote], now: dt.datetime) -> list[dict]:
-    groups: dict[str, list[InvResearchNote]] = defaultdict(list)
-    for r in rows:
-        if r.theme and r.kind != CANDIDATE_KIND:
-            groups[theme_key(r.theme)].append(r)
-    out = []
-    for key, group in groups.items():
-        notes = [scored(r) for r in group]
-        values = sentiment_weeks(notes, now)
-        latest = _latest(group, now)
-        stored = [r for r in group if r.dismissed_at is None]
-        if not stored:
-            continue
-        newest = max(stored, key=lambda r: (convert.aware(r.observed_at), r.id))
-        out.append(
-            {
-                "theme": newest.theme,
-                "key": key,
-                "sentiment_8w": values,
-                "direction": direction(values).value,
-                "notes": sum(
-                    1 for r in group if r.dismissed_at is None and convert.aware(r.expires_at) > now
-                ),
-                "instruments": sorted(
-                    {r.instrument_id for r in stored if r.instrument_id is not None}
-                ),
-                "last_note": _brief_note(latest or newest),
-                "last_observed_at": iso(convert.aware(newest.observed_at)),
-            }
-        )
-    out.sort(key=lambda t: t["last_observed_at"] or "", reverse=True)
-    return out
-
-
 # --------------------------------------------------------------------------- #
 # Review digest
 # --------------------------------------------------------------------------- #
@@ -596,9 +568,13 @@ def research_digest(
     since: dt.date | dt.datetime | None = None,
     *,
     now: dt.datetime | None = None,
+    as_of: dt.date | None = None,
 ) -> dict:
     """The review digest's ``research`` block: what research found since the last review (``since``,
-    a date = local midnight taken as UTC, or an aware timestamp; None = the last 7 days)."""
+    a date = local midnight taken as UTC, or an aware timestamp; None = the last 7 days), and the
+    week's market segments as of ``as_of`` (the digest's portfolio day; today when None): ``segments``
+    = the top rows of the 1w attribution (the ``GET /research/segments`` row shape), ``market`` = the
+    rest of that view (window, portfolio return, explained, residual, currency, unassigned)."""
     now = convert.aware(now or utcnow())
     start = _since_moment(since, now)
     rows = _recent_notes(session, profile_id, min(start, now) - dt.timedelta(days=HISTORY_DAYS))
@@ -659,29 +635,7 @@ def research_digest(
         )
     changed.sort(key=lambda c: (health_rank(c["to"]), c["label"] or ""))
 
-    themes_changed = []
-    groups: dict[str, list[InvResearchNote]] = defaultdict(list)
-    for r in rows:
-        if r.theme and r.kind != CANDIDATE_KIND:
-            groups[theme_key(r.theme)].append(r)
-    for key, group in groups.items():
-        notes = [scored(r) for r in group]
-        then_values, now_values = sentiment_weeks(notes, start), sentiment_weeks(notes, now)
-        if not any(v is not None for v in now_values):
-            continue
-        then_dir, now_dir = direction(then_values), direction(now_values)
-        if then_dir != now_dir:
-            newest = max(group, key=lambda r: (convert.aware(r.observed_at), r.id))
-            themes_changed.append(
-                {
-                    "theme": newest.theme,
-                    "key": key,
-                    "from": then_dir.value,
-                    "to": now_dir.value,
-                    "sentiment_8w": now_values,
-                }
-            )
-    themes_changed.sort(key=lambda t: t["theme"].casefold())
+    segments, market = _digest_segments(session, profile_id, as_of=as_of, now=now)
 
     candidates = sorted(
         (
@@ -738,8 +692,28 @@ def research_digest(
         "by_kind": by_kind,
         "theses_changed": changed,
         "theses_unchanged": unchanged,
-        "themes_changed": themes_changed,
+        "segments": segments,
+        "market": market,
         "candidates": [r.id for r in candidates],
         "highlights": [r.id for r in highlights[:10]],
         "health_states": [h.value for h in Health],
     }
+
+
+def _digest_segments(
+    session: Session, profile_id: int, *, as_of: dt.date | None, now: dt.datetime
+) -> tuple[list[dict], dict | None]:
+    """The digest's segment rows and the rest of the 1w segment view; ``([], None)`` when it cannot
+    be computed (the digest still answers)."""
+    from .segment_service import DIGEST_ROWS, segments_view
+
+    profile = session.get(Profile, profile_id)
+    if profile is None:
+        return [], None
+    try:
+        view = segments_view(session, profile, window="1w", as_of=as_of, now=now)
+    except Exception:  # noqa: BLE001 - a failing attribution never breaks the review digest
+        _log.exception("review digest: segment attribution failed")
+        return [], None
+    rows = view.pop("segments")
+    return rows[:DIGEST_ROWS], view

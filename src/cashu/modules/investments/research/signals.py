@@ -3,7 +3,7 @@
 ``store.signals.apply_reconciliation``) and the profile's notification policy (the strategy's
 ``notifications.immediate``, else the default: action only).
 
-One signal per instrument or theme and ISO week of storing (``keys.research_dedup_key``): further
+One signal per instrument, market segment (P5) or (old) theme and ISO week of storing (``keys.research_dedup_key``): further
 qualifying notes of that week join it (refresh, or escalate to action with a notification); the
 signal shows its lead note (highest severity, then strength, then the newest). Polarity = the lead
 note's polarity. Candidate notes never become signals (they have their own accept / dismiss).
@@ -43,6 +43,7 @@ from ..store import convert
 from ..store import signals as signal_store
 from .keys import is_research_key, research_dedup_key, research_rule_id
 from .scoring import CANDIDATE_KIND, iso_week, theme_key
+from .segments import segment_label
 
 CLOSED_DISMISSED = "note_dismissed"
 CLOSED_EXPIRED = "notes_expired"
@@ -97,7 +98,7 @@ def severity_of(note: InvResearchNote, at: dt.datetime) -> SignalSeverity | None
         return None
     if aware(note.expires_at) <= at:
         return None
-    if note.instrument_id is None and not note.theme:
+    if note.instrument_id is None and not note.segment and not note.theme:
         return None
     if note.thesis_relation == "invalidates":
         return SignalSeverity.ACTION
@@ -108,12 +109,14 @@ def severity_of(note: InvResearchNote, at: dt.datetime) -> SignalSeverity | None
 
 def note_key(note: InvResearchNote) -> str | None:
     """The dedup key of the signal this note would create or join (None for candidates and notes
-    without an instrument or theme)."""
+    without an instrument, segment or theme)."""
     if note.kind == CANDIDATE_KIND:
         return None
     week = iso_week(aware(note.created_at).date())
     if note.instrument_id is not None:
         return research_dedup_key(week, instrument_id=note.instrument_id)
+    if note.segment:
+        return research_dedup_key(week, segment=note.segment)
     if note.theme:
         return research_dedup_key(week, theme=theme_key(note.theme))
     return None
@@ -192,6 +195,8 @@ def candidate_for(
             "sources": sources,
             "title": lead.title,
             "theme": lead.theme,
+            "segment": lead.segment,
+            "segment_label": segment_label(lead.segment) if lead.segment else None,
             "week": week,
         },
         polarity=SignalPolarity(lead.polarity),

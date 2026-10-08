@@ -283,8 +283,6 @@ def test_unread_counts_and_marking_read(api_investor):
     assert summary["totals"]["notes_unread"] == 3  # two XMPL notes + the theme note
     by_inst = {i["instrument_id"]: i for i in summary["instruments"]}
     assert by_inst[xmpl]["unread"] == 2 and by_inst[instrument_id("ABC")]["unread"] == 0
-    (theme,) = summary["themes"]
-    assert theme["unread"] == 1
     positions = {
         p["instrument"]["id"]: p for p in client.get(f"{api}/positions").json()["positions"]
     }
@@ -304,7 +302,7 @@ def test_unread_counts_and_marking_read(api_investor):
     with get_session() as s:
         assert s.get(InvResearchNote, owner).read_at is not None
 
-    a6 = add_note(pid, 6)
+    a6 = add_note(pid, 6, strength=3)  # a third XMPL note this week passes only when material
     assert client.post(f"{api}/research/read", json={"ids": [a6, 999999]}).json() == {"marked": 1}
 
 

@@ -82,7 +82,7 @@ def test_run_and_note_round_trip_with_a_signal(host):
     assert mcp.call(
         "upsert_thesis", {"instrument": "PKO", "entry_type": "trend", "thesis": "Bank rosnie"}
     ).ok
-    run = mcp.call("start_research_run", {"scope": {"scheduled": True, "themes": ["Banki"]}})
+    run = mcp.call("start_research_run", {"scope": {"held": True, "scheduled": True, "segments": ["financials"]}})
     assert run.ok, run.error
     run_id = run.data["run_id"]
     assert run.data["scope"]["covered_instruments"] >= 2  # held, no claim / cash
@@ -94,25 +94,25 @@ def test_run_and_note_round_trip_with_a_signal(host):
     )
     assert added.ok, added.error
     assert added.data["signal"]["created"] is True
-    community = mcp.call(
+    market = mcp.call(
         "add_research_note",
         {
-            "kind": "community",
+            "kind": "trend",
             "polarity": "positive",
             "strength": 3,
-            "theme": "Banki",
-            "title": "Forum o bankach",
-            "summary": "Duzo wpisow o bankach po decyzji RPP.",
+            "segment": "financials",
+            "title": "Naplywy do funduszy bankowych",
+            "summary": "Naplywy do ETF-ow bankowych po decyzji RPP; PKO bez zmian.",
             "sources": source(2),
-            "details": {"scale": "medium"},
             "expires_in_days": 15,
         },
     )
-    assert community.ok, community.error
+    assert market.ok, market.error
+    assert market.data["segment"] == "financials" and market.data["instrument_id"] is None
     finished = mcp.call("finish_research_run", {"run_id": run_id, "counts": {"sources_checked": 9}})
     assert finished.ok, finished.error
     counts = finished.data["counts"]
-    assert counts["notes"] == 2 and counts["by_kind"]["community"] == 1
+    assert counts["notes"] == 2 and counts["by_kind"]["trend"] == 1
     assert counts["sources_checked"] == 9 and counts["signals"] == 2
     with get_session() as s:
         sig = s.exec(select(InvSignal).where(InvSignal.dedup_key.startswith("research:"))).all()
@@ -121,12 +121,17 @@ def test_run_and_note_round_trip_with_a_signal(host):
         assert all(PERSON_P2P not in json.dumps(a.args) for a in audit)
         assert audit[0].args["sources"] == "array"
     listed = mcp.call("research_notes", {}).data["notes"]
-    assert {n["kind"] for n in listed} == {"news", "community"}
+    assert {n["kind"] for n in listed} == {"news", "trend"}
+    assert {n["segment_label"] for n in listed} == {None, "Finanse i płatności"}
     context = mcp.call("research_context", {}).data
     pko = next(p for p in context["positions"] if p["symbol"] == "PKO")
     assert pko["research"]["health"] == "invalidated" and pko["entry_type"] == "trend"
     assert context["last_done_run"]["run_id"] == run_id
-    assert context["themes"][0]["theme"] == "Banki"
+    assert "themes" not in context
+    financials = next(x for x in context["segments"] if x["segment"] == "financials")
+    assert financials["weight"] == 0 and financials["note_this_week"] is True
+    assert financials["last_note_at"] is not None
+    assert {"segment", "segment_source"} <= set(pko)
 
 
 def test_fixable_errors(host):

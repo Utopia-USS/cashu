@@ -29,6 +29,7 @@ from ..models import (
     THESIS_ENTRY_TYPES,
 )
 from .scoring import clean_theme
+from .segments import SEGMENT_KEYS, is_segment
 
 TITLE_MIN = 3
 SUMMARY_MIN = 10
@@ -47,6 +48,13 @@ OBSERVED_MAX_AGE_DAYS = 365
 SOURCE_MAX_AGE_DAYS = 3650
 FUTURE_TOLERANCE = dt.timedelta(days=1)
 SCOPE_THEMES_MAX = 20
+SEGMENT_SUMMARY_MAX = 400
+"""A segment note is short: what happened in the segment, the dated hard data, how it shows in the
+attribution (P5)."""
+SEGMENT_NOTE_KINDS = ("macro", "trend", "news")
+SEGMENT_ONLY = (
+    "a segment note is about the market segment only; write instrument facts on the instrument"
+)
 SCOPE_INSTRUMENTS_MAX = 100
 COUNT_MAX = 100_000
 REASON_MAX = 200
@@ -54,6 +62,7 @@ RUN_COUNT_KEYS = (
     "sources_checked",
     "instruments_covered",
     "themes_covered",
+    "segments_covered",
     "candidates_screened",
     "skipped",
 )
@@ -331,6 +340,8 @@ class NoteInput:
     expires_in_days: int = RESEARCH_NOTE_TTL_DAYS
     details: dict | None = None
     candidate: CandidateInput | None = None
+    segment: str | None = None
+    """The market segment of a segment note (catalog key; no instrument, no candidate, P5)."""
 
     def expires_at(self, now: dt.datetime) -> dt.datetime:
         return (self.observed_at or now) + dt.timedelta(days=self.expires_in_days)
@@ -561,6 +572,25 @@ def validate_note(raw: Mapping[str, Any], *, now: dt.datetime) -> NoteInput:
     theme = None
     if theme_raw is not None:
         theme = _text(issues, "theme", clean_theme(str(theme_raw)), minimum=2, maximum=THEME_MAX)
+    segment = raw.get("segment")
+    if segment is not None:
+        if not is_segment(segment):
+            issues.add("segment", f"must be one of: {', '.join(SEGMENT_KEYS)}")
+            segment = None
+        else:
+            if raw.get("candidate") is not None:
+                issues.add("segment", SEGMENT_ONLY)
+            if theme_raw is not None:
+                issues.add("theme", "a segment note has no theme (themes are gone: use segment)")
+            if kind is not None and kind not in SEGMENT_NOTE_KINDS:
+                issues.add("kind", f"a segment note is one of: {', '.join(SEGMENT_NOTE_KINDS)}")
+            if relation not in (None, "none"):
+                issues.add("thesis_relation", "a segment note has no thesis: use none")
+            if summary is not None and len(summary) > SEGMENT_SUMMARY_MAX:
+                issues.add(
+                    "summary",
+                    f"is too long for a segment note (max {SEGMENT_SUMMARY_MAX} characters)",
+                )
     sources = _sources(issues, raw.get("sources"), now)
     observed = _moment(
         issues,
@@ -604,6 +634,7 @@ def validate_note(raw: Mapping[str, Any], *, now: dt.datetime) -> NoteInput:
         expires_in_days=expires_in,
         details=details,
         candidate=candidate,
+        segment=segment,
     )
 
 
@@ -618,6 +649,9 @@ class RunScope:
     watchlist: bool = True
     candidates: bool = True
     themes: tuple[str, ...] = ()
+    """Old free-text themes (kept for stored runs and the service; the MCP scope no longer takes them)."""
+    segments: tuple[str, ...] = ()
+    """Market segments (catalog keys) an on-demand run covers (P5)."""
     instruments: tuple[str, ...] = ()
     """Explicit instrument references (ids, symbols, ISINs); resolved by the service."""
     scheduled: bool = False
@@ -627,12 +661,16 @@ class RunScope:
 def validate_scope(raw: Mapping[str, Any] | None) -> RunScope:
     issues = _Issues()
     data = dict(raw or {})
-    allowed = {"held", "watchlist", "candidates", "themes", "instruments", "scheduled"}
+    allowed = {"held", "watchlist", "candidates", "themes", "segments", "instruments", "scheduled"}
     unknown = sorted(set(data) - allowed)
     if unknown:
         issues.add("scope", f"allowed keys: {', '.join(sorted(allowed))}")
     flags = {}
-    for key, default in (("held", True), ("watchlist", True), ("candidates", True)):
+    # A scope naming only instruments / segments is on demand: the flags it leaves out default to
+    # false (P5: the weekly novelty limits apply to runs covering the held positions only).
+    on_demand = bool(data.get("instruments") or data.get("segments"))
+    for key in ("held", "watchlist", "candidates"):
+        default = not on_demand
         value = data.get(key, default)
         if not isinstance(value, bool):
             issues.add(f"scope.{key}", "must be true or false")
@@ -653,6 +691,16 @@ def validate_scope(raw: Mapping[str, Any] | None) -> RunScope:
             )
             if text and text.casefold() not in {t.casefold() for t in themes}:
                 themes.append(text)
+    segments: list[str] = []
+    raw_segments = data.get("segments") or []
+    if not isinstance(raw_segments, list) or len(raw_segments) > len(SEGMENT_KEYS):
+        issues.add("scope.segments", f"must be a list of at most {len(SEGMENT_KEYS)} segments")
+    else:
+        for i, key in enumerate(raw_segments):
+            if not is_segment(key):
+                issues.add(f"scope.segments[{i}]", f"must be one of: {', '.join(SEGMENT_KEYS)}")
+            elif key not in segments:
+                segments.append(key)
     instruments: list[str] = []
     raw_instruments = data.get("instruments") or []
     if not isinstance(raw_instruments, list) or len(raw_instruments) > SCOPE_INSTRUMENTS_MAX:
@@ -672,6 +720,7 @@ def validate_scope(raw: Mapping[str, Any] | None) -> RunScope:
         watchlist=flags["watchlist"],
         candidates=flags["candidates"],
         themes=tuple(themes),
+        segments=tuple(segments),
         instruments=tuple(dict.fromkeys(instruments)),
         scheduled=scheduled,
     )

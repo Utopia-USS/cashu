@@ -192,6 +192,9 @@ class Computed:
     series: PortfolioSeries
     bench_prices: list[float | None] | None
     _ranges: dict = field(default_factory=dict)
+    extras: dict = field(default_factory=dict)
+    """Results derived from this computation (e.g. the segment attribution, P5), cached with it:
+    they follow the same invalidation."""
 
     @property
     def has_history(self) -> bool:

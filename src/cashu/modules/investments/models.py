@@ -441,6 +441,11 @@ class InvProfileInstrument(SQLModel, table=True):
     plan_at: dt.datetime | None = None
     # Added by 0015: the model's short reason for the recommendation, written and cleared with ``plan``.
     plan_reason: str | None = None
+    # Added by 0018: the market segment (``research.segments`` catalog key) set by the owner or the
+    # research agent; None = not set (the automatic guess applies), and who set it ("owner" in the
+    # app | "agent" over MCP; the agent never changes the owner's choice). P5.
+    segment: str | None = None
+    segment_by: str | None = None
 
 
 class InvAlert(SQLModel, table=True):
@@ -585,6 +590,9 @@ class InvResearchNote(SQLModel, table=True):
     read_at: dt.datetime | None = None
     """When the owner opened the note (F8: the asset drawer's research section, the research page);
     None = unread. Owner-written notes are born read; added last by migration 0011."""
+    segment: str | None = None
+    """The market segment a segment note is about (``research.segments`` catalog key; P5). A segment
+    note has no instrument and no candidate. Added last by migration 0018."""
 
 
 TABLES: tuple[type[SQLModel], ...] = (

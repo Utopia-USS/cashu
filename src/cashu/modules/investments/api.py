@@ -492,31 +492,30 @@ class ClassifyBody(BaseModel):
     name: str | None = None
     status: str | None = None
     aliases: list[AliasBody] = []
+    segment: str | None = None
+    """Market segment (P5 catalog key); an explicit null clears it, a missing key keeps it."""
+
+
+_SEGMENT_ONLY = {"segment"}
 
 
 @router.patch("/instruments/{instrument_id}")
 def classify(profile: CurrentProfile, instrument_id: int, body: ClassifyBody) -> dict:
     """Asset class, tags, valuation mode, region / sector, name, status; marks the instrument
     reviewed. Applies to this profile only (other profiles keep their own view of the shared
-    instrument); aliases are market identity and are added to the shared instrument."""
+    instrument); aliases are market identity and are added to the shared instrument. ``segment``
+    (catalog key or null) sets the market segment; a body with only ``segment`` leaves the reviewed
+    flag alone."""
+    given = body.model_fields_set
     with get_session() as s:
         _instrument(s, profile, instrument_id)
         try:
-            instruments.classify(
-                s,
-                instrument_id,
-                profile_id=profile.id,
-                asset_class=body.asset_class,
-                tags=body.tags,
-                valuation_mode=body.valuation_mode,
-                region=body.region,
-                sector=body.sector,
-                name=body.name,
-                status=body.status,
-                aliases=[
-                    InstrumentAlias(a.namespace.strip().lower(), a.value) for a in body.aliases
-                ],
-            )
+            if "segment" in given:
+                instruments.set_segment(
+                    s, instrument_id, body.segment, profile_id=profile.id, by="owner"
+                )
+            if given - _SEGMENT_ONLY or not given:
+                _classify(s, profile, instrument_id, body)
         except instruments.ClassificationError as e:
             raise _422(str(e)) from None
         held = held_since(s, profile.id)
@@ -525,6 +524,22 @@ def classify(profile: CurrentProfile, instrument_id: int, body: ClassifyBody) ->
             held=instrument_id in held,
             opened=held.get(instrument_id),
         )
+
+
+def _classify(s, profile, instrument_id: int, body: ClassifyBody) -> None:
+    instruments.classify(
+        s,
+        instrument_id,
+        profile_id=profile.id,
+        asset_class=body.asset_class,
+        tags=body.tags,
+        valuation_mode=body.valuation_mode,
+        region=body.region,
+        sector=body.sector,
+        name=body.name,
+        status=body.status,
+        aliases=[InstrumentAlias(a.namespace.strip().lower(), a.value) for a in body.aliases],
+    )
 
 
 class PlanBody(BaseModel):

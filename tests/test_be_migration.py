@@ -112,7 +112,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     assert (
         migrations.upgrade_to_head(engine)
         == migrations.head_revision()
-        == "0017_watchlist_removed_at"
+        == "0018_market_segments"
     )
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
@@ -125,9 +125,10 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     # appended by ALTER TABLE ADD COLUMN: the last column, no rebuild
     assert [r[1] for r in _sql(path, "PRAGMA table_info('alerts')")][-1] == "deleted_at"
     assert [r[1] for r in _sql(path, "PRAGMA table_info('accounts')")][-1] == "removed_at"  # 0010
-    assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][
-        -1
-    ] == "read_at"  # 0011
+    assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][-2:] == [
+        "read_at",  # 0011
+        "segment",  # 0018
+    ]
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     engine.dispose()
@@ -349,7 +350,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
         edited,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0017_watchlist_removed_at"
+    assert migrations.upgrade_to_head(engine) == "0018_market_segments"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
     assert columns[-1] == "core_changed_at"
     assert _sql(path, "SELECT thesis, core_changed_at FROM inv_theses") == [
@@ -363,7 +364,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0017_watchlist_removed_at"
+    assert migrations.current_revision(engine) == "0018_market_segments"
     engine.dispose()
 
 
@@ -389,9 +390,9 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0017_watchlist_removed_at"
+    assert migrations.upgrade_to_head(engine) == "0018_market_segments"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
-    assert columns[-3:] == ["plan", "plan_at", "plan_reason"]
+    assert columns[-5:] == ["plan", "plan_at", "plan_reason", "segment", "segment_by"]  # 0018
     assert _sql(path, "SELECT plan, plan_reason FROM inv_profile_instruments") == [("hold", None)]
     _sql(path, "UPDATE inv_profile_instruments SET plan_reason = 'Krotkie uzasadnienie.'")
     _to(engine, "0014_thesis_core_changed", down=True)
@@ -400,7 +401,7 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
     assert _sql(path, "SELECT plan FROM inv_profile_instruments") == [("hold",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0017_watchlist_removed_at"
+    assert migrations.current_revision(engine) == "0018_market_segments"
     engine.dispose()
 
 
@@ -425,7 +426,7 @@ def test_0017_appends_removed_at_and_refuses_to_downgrade_over_removed_rows(tmp_
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0017_watchlist_removed_at"
+    assert migrations.upgrade_to_head(engine) == "0018_market_segments"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('watchlist_items')")]
     assert columns[-1] == "removed_at"
     assert _sql(path, "SELECT id, note, removed_at FROM watchlist_items") == [
@@ -440,5 +441,68 @@ def test_0017_appends_removed_at_and_refuses_to_downgrade_over_removed_rows(tmp_
     assert _sql(path, "SELECT id, note FROM watchlist_items") == [(7, "moja notatka")]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0017_watchlist_removed_at"
+    assert migrations.current_revision(engine) == "0018_market_segments"
+    engine.dispose()
+
+
+def test_0018_appends_segment_columns_and_refuses_to_downgrade_over_segments(tmp_path):
+    """The segment columns are appended to the instrument overrides and the research notes (no
+    rebuild, no backfill, themes kept); downgrade drops them only while no segment is set."""
+    path = _db_at(tmp_path, "0017_watchlist_removed_at")
+    pid = _profile_id(path)
+    _sql(
+        path,
+        "INSERT INTO inv_instruments (id, name, currency, asset_class, tags, needs_classification, "
+        "valuation_mode, status, created_at, updated_at) VALUES (1, 'Example Gold Miners', 'USD', "
+        "'etf', '[]', 0, 'market', 'active', ?, ?)",
+        TS,
+        TS,
+    )
+    _sql(
+        path,
+        "INSERT INTO inv_profile_instruments (id, profile_id, instrument_id, region, created_at, "
+        "updated_at) VALUES (3, ?, 1, 'US', ?, ?)",
+        pid,
+        TS,
+        TS,
+    )
+    _sql(
+        path,
+        "INSERT INTO research_notes (id, profile_id, theme, kind, polarity, strength, "
+        "thesis_relation, title, summary, sources, observed_at, expires_at, created_by, "
+        "created_at, updated_at) VALUES (5, ?, 'stopy procentowe', 'trend', 'neutral', 1, 'none', "
+        "'Stopy bez zmian', 'Rynek oczekuje stabilnych stóp.', '[]', ?, ?, 'agent', ?, ?)",
+        pid,
+        TS,
+        TS,
+        TS,
+        TS,
+    )
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0018_market_segments"
+    columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
+    assert columns[-2:] == ["segment", "segment_by"]
+    assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][-1] == "segment"
+    assert _sql(path, "SELECT id, region, segment, segment_by FROM inv_profile_instruments") == [
+        (3, "US", None, None)
+    ]
+    assert _sql(path, "SELECT id, theme, segment FROM research_notes") == [
+        (5, "stopy procentowe", None)
+    ]
+    _sql(path, "UPDATE research_notes SET segment = 'bonds'")
+    with pytest.raises(RuntimeError, match="research_notes has segments set"):
+        _to(engine, "0017_watchlist_removed_at", down=True)
+    _sql(path, "UPDATE research_notes SET segment = NULL")
+    _sql(path, "UPDATE inv_profile_instruments SET segment = 'gold', segment_by = 'agent'")
+    with pytest.raises(RuntimeError, match="inv_profile_instruments has segments set"):
+        _to(engine, "0017_watchlist_removed_at", down=True)
+    _sql(path, "UPDATE inv_profile_instruments SET segment = NULL, segment_by = NULL")
+    _to(engine, "0017_watchlist_removed_at", down=True)
+    for table in ("inv_profile_instruments", "research_notes"):
+        columns = [r[1] for r in _sql(path, f"PRAGMA table_info('{table}')")]
+        assert "segment" not in columns and "segment_by" not in columns
+    assert _sql(path, "SELECT id, theme FROM research_notes") == [(5, "stopy procentowe")]
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    _to(engine, "head")
+    assert migrations.current_revision(engine) == "0018_market_segments"
     engine.dispose()

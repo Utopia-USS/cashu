@@ -57,6 +57,7 @@ from ..portfolio import build_snapshot, effective_valuation_mode
 from ..portfolio.fx_lookup import convert as fx_convert
 from ..research import service as research_service
 from ..research.keys import is_research_key
+from ..research.segments import segment_of
 from ..research.views import research_digest
 from ..rules import (
     AllocationDriftParams,
@@ -103,6 +104,7 @@ def instrument_dict(
     and its generation time. A stale reduce / exit recommendation is emitted as None.
     """
     plan = effective_plan(inst.plan, held=held, plan_at=inst.plan_at, opened=opened)
+    segment, segment_source = segment_of(inst, inst.segment, inst.segment_by)
     return {
         "id": _key(inst.id),
         "symbol": inst.symbol,
@@ -124,6 +126,9 @@ def instrument_dict(
         "plan": plan,
         "plan_at": iso(inst.plan_at) if plan is not None else None,
         "plan_reason": inst.plan_reason if plan is not None else None,
+        # the market segment (P5): the profile's own value ("set") or the automatic guess ("auto")
+        "segment": segment,
+        "segment_source": segment_source,
     }
 
 
@@ -2276,5 +2281,5 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
             ),
         },
         # research since the same baseline (F6, research.views; run null = research never ran)
-        "research": research_digest(session, profile.id, since_at, now=now),
+        "research": research_digest(session, profile.id, since_at, now=now, as_of=as_of),
     }

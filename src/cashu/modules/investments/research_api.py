@@ -1,6 +1,6 @@
 """Research API (included into the investments router, so mounted under ``/api/p/{slug}/investments``
 like every investments route): ``research`` (notes with filters), ``research/summary``,
-``research/runs``, ``POST research/read`` (read marks, F8), ``PATCH research/{id}`` (dismiss /
+``research/segments`` (the market segments: move attribution and segment notes, P5), ``research/runs``, ``POST research/read`` (read marks, F8), ``PATCH research/{id}`` (dismiss /
 restore), ``POST|DELETE research/{id}/accept`` (candidate -> watchlist + draft thesis, and its undo).
 Reads and writes only the profile in the URL. Notes are written by the agent through MCP (``core/mcp/tools/research.py``).
 Shapes: the CONTRACT in ``stock/docs/fork/progress/F6-RS.md``.
@@ -15,7 +15,8 @@ from cashu.core.api import CurrentProfile
 from cashu.core.db import get_session
 
 from .models import RESEARCH_NOTE_KINDS
-from .research import service, views
+from .research import segment_service, service, views
+from .research.segments import SEGMENT_KEYS, is_segment
 from .research.validation import parse_moment
 from .service import plans as plan_service
 
@@ -43,6 +44,7 @@ def research_notes(
     profile: CurrentProfile,
     instrument: int | None = None,
     theme: str | None = None,
+    segment: str | None = None,
     kind: str | None = None,
     since: str | None = None,
     run_id: int | None = None,
@@ -52,13 +54,16 @@ def research_notes(
 ) -> list[dict]:
     """Research notes, newest observation first. ``kind``: one kind or a comma list (news, earnings,
     community, trend, macro, candidate); ``since``: YYYY-MM-DD or an ISO timestamp, by storing time
-    (poll with the running run's ``started_at``); dismissed and expired notes only on request."""
+    (poll with the running run's ``started_at``); dismissed and expired notes only on request.
+    ``segment``: a market segment's notes (catalog key); ``theme``: old theme notes."""
     kinds = [k.strip() for k in (kind or "").split(",") if k.strip()]
     unknown = [k for k in kinds if k not in RESEARCH_NOTE_KINDS]
     if unknown:
         raise _coded(
             422, f"kind must be one of: {', '.join(RESEARCH_NOTE_KINDS)}", "research_invalid"
         )
+    if segment is not None and not is_segment(segment):
+        raise _coded(422, f"segment must be one of: {', '.join(SEGMENT_KEYS)}", "research_invalid")
     moment = None
     if since:
         moment = parse_moment(since)
@@ -70,6 +75,7 @@ def research_notes(
             profile.id,
             instrument_id=instrument,
             theme=theme,
+            segment=segment,
             kinds=kinds,
             since=moment,
             run_id=run_id,
@@ -83,9 +89,20 @@ def research_notes(
 @router.get("/summary")
 def research_summary(profile: CurrentProfile) -> dict:
     """Thesis health (7 states), relation counts, 8-week sentiment and direction per position (held,
-    watched or with notes) and per theme; the latest run; candidate counts."""
+    watched or with notes); the latest run; candidate counts."""
     with get_session() as s:
         return views.summary(s, profile)
+
+
+@router.get("/segments")
+def research_segments(profile: CurrentProfile, window: str = "1w") -> dict:
+    """What moved the portfolio over the last week (``1w``) or 4 weeks (``4w``) by market segment and
+    currency, with each segment's latest note (fractions only, no amounts)."""
+    with get_session() as s:
+        try:
+            return segment_service.segments_view(s, profile, window=window)
+        except segment_service.WindowError as e:
+            raise _coded(422, str(e), "research_invalid") from None
 
 
 @router.get("/runs")
@@ -100,19 +117,26 @@ class ReadBody(BaseModel):
 
     instrument_id: int | None = None
     theme: str | None = None
+    segment: str | None = None
     ids: list[int] | None = None
 
 
 @router.post("/read")
 def research_read(profile: CurrentProfile, body: ReadBody) -> dict:
     """Mark the profile's unread notes read (the owner opened them): exactly one of
-    ``{"instrument_id": n}``, ``{"theme": "..."}`` or ``{"ids": [...]}`` -> ``{"marked": n}``
+    ``{"instrument_id": n}``, ``{"segment": "<key>"}``, ``{"theme": "..."}`` (old theme notes) or
+    ``{"ids": [...]}`` -> ``{"marked": n}``
     (idempotent; 404 for an instrument that is not the profile's). Not exposed over MCP: the agent
     never marks notes read."""
     with get_session() as s:
         try:
             marked = service.mark_read(
-                s, profile, instrument_id=body.instrument_id, theme=body.theme, ids=body.ids
+                s,
+                profile,
+                instrument_id=body.instrument_id,
+                theme=body.theme,
+                ids=body.ids,
+                segment=body.segment,
             )
         except (service.ResearchError, service.ResearchNotFound) as e:
             raise _mapped(e) from None

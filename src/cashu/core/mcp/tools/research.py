@@ -2,28 +2,35 @@
 reads its context and writes runs and notes through these thin adapters over
 ``modules.investments.research``.
 
-Read: ``research_context`` (held and watched instruments with weights, theses (entry type,
-invalidation, exit plan), thesis health and sentiment, the strategy's candidate criteria, dismissed
-candidates in cooldown, known upcoming events, the last run, limits), ``research_notes(since?)``.
+Read: ``research_context`` (held and watched instruments with weights and market segments, theses
+(entry type, invalidation, exit plan), thesis health and sentiment, the market segments with the
+week's / 4 weeks' move attribution, the strategy's candidate criteria, dismissed candidates in
+cooldown, known upcoming events, the last run, limits), ``research_notes(since?, segment?)``.
 Write: ``start_research_run(scope)``, ``add_research_note(...)`` (schema-validated: sources with URL,
 publisher and date required, bounded lengths, no amounts / targets / sizes, no recommendation or price
-prediction, no paywall-bypass links), ``finish_research_run(run_id, ...)``.
+prediction, no paywall-bypass links; segment notes short, one per segment and week; the weekly run's
+novelty limits), ``finish_research_run(run_id, ...)``, ``set_instrument_segment(instrument, segment)``
+(a direct classification write, like ``set_merchant_category``).
 
 Privacy: owner-named instruments (claims, private loans) and cash are never researched (not listed,
-refused as a note's instrument). Free text (titles, summaries, theses, themes, source fields) is a
-``text`` label: identifiers are always scrubbed and money amounts in strict mode, like every text
-field. Weights and sentiment scores are fractions (``percent``); candidate-criteria thresholds are
-screening parameters about public companies (``level``), never personal amounts.
+refused as a note's instrument or segment target). Free text (titles, summaries, theses, source fields)
+is a ``text`` label: identifiers are always scrubbed and money amounts in strict mode, like every text
+field. Weights, contributions, returns and sentiment scores are fractions (``percent``; the segment
+attribution carries no amounts, so strict and full output are the same); candidate-criteria thresholds
+are screening parameters about public companies (``level``), never personal amounts.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from typing import Any
 
 from .. import labels as L
 from ..registry import ToolContext, ToolError, ToolSpec
 from .investments import owner_named_ids, public_label
+
+_log = logging.getLogger(__name__)
 
 _KINDS = ["news", "earnings", "community", "trend", "macro", "candidate"]
 _RELATIONS = ["supports", "weakens", "invalidates", "fulfills", "neutral", "none"]
@@ -37,10 +44,26 @@ BOUNDARIES = (
     "community sentiment (Reddit, X, forums) is noisy: kind community, strength counts as 1",
     (
         "a note invalidating a thesis becomes an action signal, strength 3 an info signal (one per "
-        "instrument or theme and week); candidates never become signals"
+        "instrument or segment and week); candidates never become signals"
     ),
     "summaries in Polish, numbers as facts with their source; no personal amounts or sizes",
+    (
+        "company facts go on the instrument; a segment note is about the market segment only (at "
+        "most one per segment and week, only when something changed)"
+    ),
 )
+
+
+def _segment_keys() -> list[str]:
+    from cashu.modules.investments.research.segments import SEGMENT_KEYS
+
+    return list(SEGMENT_KEYS)
+
+
+def _segment_catalog_text() -> str:
+    from cashu.modules.investments.research.segments import SEGMENTS
+
+    return ", ".join(f"{s.key} ({s.label})" for s in SEGMENTS)
 
 
 def _research():
@@ -122,6 +145,8 @@ def _note(row: dict, owned: set[int], ctx: ToolContext | None = None) -> dict:
         "summary": L.text(row["summary"]),
         "instrument": _instrument(inst, owned, ctx) if inst else None,
         "theme": L.text(row.get("theme")),
+        "segment": L.category(row.get("segment")),
+        "segment_label": L.category(row.get("segment_label")),
         "candidate": None
         if candidate is None
         else {
@@ -253,6 +278,90 @@ def _exposure(positions: list[dict], owned: set[int]) -> dict:
     }
 
 
+def _segment_fields(inst: dict | None) -> dict:
+    inst = inst or {}
+    return {
+        "segment": L.category(inst.get("segment")),
+        "segment_source": L.category(inst.get("segment_source")),
+    }
+
+
+def _symbols(ctx: ToolContext, items: list[dict], owned: set[int]) -> list[L.Labelled]:
+    """Labels of the attributed instruments (owner-named ones are never named here)."""
+    return [
+        L.text(public_label(ctx, i.get("label")))
+        for i in items
+        if i.get("instrument_id") not in owned and i.get("label")
+    ]
+
+
+def _moves(ctx: ToolContext, items: list[dict], owned: set[int]) -> list[dict]:
+    """The attributed instruments of a segment row with their 1w return and contribution
+    (owner-named ones are never named here)."""
+    return [
+        {
+            "symbol": L.text(public_label(ctx, i.get("label"))),
+            "return_1w": L.pct(i.get("return")),
+            "contribution_1w": L.pct(i.get("contribution")),
+        }
+        for i in items
+        if i.get("instrument_id") not in owned and i.get("label")
+    ]
+
+
+def _segments(ctx: ToolContext, owned: set[int]) -> tuple[list[dict], dict | None, dict | None]:
+    """``research_context.segments`` (1w and 4w rows: 1w fields + the 4w contribution), ``currency`` and
+    ``unassigned``; empty when the attribution cannot be computed (the context still answers)."""
+    from cashu.modules.investments.research import segment_service
+
+    try:
+        week = segment_service.segments_view(ctx.session, ctx.profile, window="1w")
+        month = segment_service.segments_view(ctx.session, ctx.profile, window="4w")
+    except Exception:  # noqa: BLE001 - research keeps working without the attribution
+        _log.exception("research_context: segment attribution failed")
+        return [], None, None
+    month_rows = {r["segment"]: r for r in month["segments"]}
+    week_keys = {r["segment"] for r in week["segments"]}
+    # the union of both windows: a segment that moved over 4 weeks but has no 1w row (sold since)
+    # still shows, with no 1w exposure
+    month_only = sorted(
+        (r for r in month["segments"] if r["segment"] not in week_keys),
+        key=lambda r: -abs(r["contribution"] or 0.0),
+    )
+    rows = []
+    for r in [*week["segments"], *month_only]:
+        in_week = r["segment"] in week_keys
+        other = month_rows.get(r["segment"])
+        rows.append(
+            {
+                "segment": L.category(r["segment"]),
+                "label": L.category(r["label"]),
+                "weight": L.pct(r["weight"] if in_week else 0.0),
+                "contribution_1w": L.pct(r["contribution"] if in_week else 0.0),
+                "return_1w": L.pct(r["return"] if in_week else None),
+                "contribution_4w": L.pct(other["contribution"] if other else None),
+                "instruments": _moves(ctx, r["instruments"] if in_week else [], owned),
+                "last_note_at": L.date(r["last_note_at"]),
+                "note_this_week": L.flag(r["note_this_week"]),
+            }
+        )
+    currency = {
+        "contribution_1w": L.pct(week["currency"]["contribution"]),
+        "contribution_4w": L.pct(month["currency"]["contribution"]),
+    }
+    unassigned = week["unassigned"]
+    return (
+        rows,
+        currency,
+        None
+        if unassigned is None
+        else {
+            "weight": L.pct(unassigned["weight"]),
+            "symbols": _symbols(ctx, unassigned["instruments"], owned),
+        },
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Read tools
 # --------------------------------------------------------------------------- #
@@ -287,6 +396,7 @@ def research_context(ctx: ToolContext) -> dict:
             | {
                 "bucket": L.category(p.get("bucket")),
                 "weight": L.pct(p.get("weight")),
+                **_segment_fields(inst),
                 "watched": L.flag(by_id[iid]["watched"]),
                 "entry_type": L.category(getattr(theses.get(iid), "entry_type", None)),
                 "thesis": _thesis(theses.get(iid)),
@@ -305,6 +415,7 @@ def research_context(ctx: ToolContext) -> dict:
             _instrument(by_id[iid]["instrument"], owned, ctx)
             | {
                 "item_id": L.ref(item.id),
+                **_segment_fields(by_id[iid]["instrument"]),
                 "source": L.category(item.source),
                 "added_at": L.date(item.added_at),
                 "note": L.text(item.note),
@@ -357,25 +468,30 @@ def research_context(ctx: ToolContext) -> dict:
                 "event": L.text(details.get("event")),
                 "event_date": L.date(when),
                 "instrument_id": L.ref(r.instrument_id),
+                "segment": L.category(r.segment),
                 "theme": L.text(r.theme),
                 "note_id": L.ref(r.id),
             }
         )
     events.sort(key=lambda e: e["event_date"].value)
     running = service.running_run(s, pid, now)
+    segment_rows, currency, unassigned = _segments(ctx, owned)
+    from cashu.modules.investments.research.segments import SEGMENTS
+
     return {
         "as_of": L.date(ctx.today),
         "positions": held_rows,
         "watchlist": watch_rows,
-        "themes": [
+        "segments": segment_rows,
+        "currency": currency,
+        "unassigned": unassigned,
+        "segment_catalog": [
             {
-                "theme": L.text(t["theme"]),
-                "notes": L.count(t["notes"]),
-                "direction": L.category(t["direction"]),
-                "sentiment_8w": [L.pct(v) for v in t["sentiment_8w"]],
-                "last_observed_at": L.date(t["last_observed_at"]),
+                "segment": L.category(x.key),
+                "label": L.category(x.label),
+                "group": L.category(x.group),
             }
-            for t in summary["themes"]
+            for x in SEGMENTS
         ],
         "strategy": {
             "state": L.category(st.state),
@@ -409,6 +525,11 @@ def research_context(ctx: ToolContext) -> dict:
             "note_ttl_days": L.count(30),
             "notes_per_run": L.count(service.MAX_NOTES_PER_RUN),
             "candidate_cooldown_days": L.count(service.CANDIDATE_COOLDOWN.days),
+            "weekly_instruments_max": L.count(service.WEEKLY_INSTRUMENTS_MAX),
+            "weekly_notes_per_instrument": L.count(service.WEEKLY_NOTES_PER_INSTRUMENT),
+            "segment_notes_per_week": L.count(service.SEGMENT_NOTES_PER_WEEK),
+            "weekly_segment_notes_max": L.count(service.WEEKLY_SEGMENT_NOTES_MAX),
+            "segment_summary_max": L.count(validation.SEGMENT_SUMMARY_MAX),
         },
         "boundaries": [L.text(b) for b in BOUNDARIES],
         "note": L.text(
@@ -417,7 +538,14 @@ def research_context(ctx: ToolContext) -> dict:
             "health: invalidated, weakened, fulfilled, supported, current, no_research, no_thesis "
             "(30-day window; a thesis edit never drops notes: health_predates_thesis / "
             "predates_thesis tag notes stored before the thesis' last core change; fulfilled = a "
-            "fulfills note: the outcome the thesis expected has happened)"
+            "fulfills note: the outcome the thesis expected has happened); segments: what moved "
+            "the portfolio by market segment (contribution = share of the portfolio value at the "
+            "window start, e.g. -0.008 = -0.8 pp; return = the segment's own local price return; "
+            "currency = the FX part), segments with an active note, a cost-valued holding or only a "
+            "4-week move show with contribution 0 / weight 0; per ISO week the weekly runs (scope "
+            "held: true) and notes written without a run cover at most weekly_instruments_max "
+            "instruments, weekly_notes_per_instrument each, weekly_segment_notes_max segment notes "
+            "(strength 3, invalidates and fulfills always pass; on-demand runs are exempt)"
         ),
     }
 
@@ -428,6 +556,7 @@ def research_notes(
     kind: str | None = None,
     include_dismissed: bool = True,
     limit: int = 100,
+    segment: str | None = None,
 ) -> dict:
     service, validation, views = _research()
     moment = None
@@ -441,6 +570,7 @@ def research_notes(
         ctx.session,
         ctx.profile_id,
         kinds=[kind] if kind else None,
+        segment=segment,
         since=moment,
         include_dismissed=include_dismissed,
         include_expired=True,
@@ -464,6 +594,11 @@ def research_notes(
 
 def start_research_run(ctx: ToolContext, scope: dict | None = None) -> dict:
     service, validation, _views = _research()
+    if isinstance(scope, dict) and "themes" in scope:
+        raise ToolError(
+            "scope.themes is gone: use segments: [catalog keys] (research_context.segment_catalog)",
+            "invalid_arguments",
+        )
     try:
         parsed = validation.validate_scope(scope)
         row = service.start_run(ctx.session, ctx.profile, parsed)
@@ -479,7 +614,7 @@ def start_research_run(ctx: ToolContext, scope: dict | None = None) -> dict:
             "watchlist": L.flag(stored.get("watchlist")),
             "candidates": L.flag(stored.get("candidates")),
             "scheduled": L.flag(stored.get("scheduled")),
-            "themes": [L.text(t) for t in stored.get("themes") or []],
+            "segments": [L.category(k) for k in stored.get("segments") or []],
             "covered_instruments": L.count(len(stored.get("covered_instrument_ids") or [])),
         },
         "note": L.text(
@@ -515,7 +650,7 @@ def add_research_note(ctx: ToolContext, **arguments: Any) -> dict:
         "run_id": L.ref(row.run_id),
         "kind": L.category(row.kind),
         "instrument_id": L.ref(row.instrument_id),
-        "theme": L.text(row.theme),
+        "segment": L.category(row.segment),
         "expires_at": L.date(row.expires_at),
         "signal": None
         if signal is None or signal.signal_id is None
@@ -558,6 +693,40 @@ def finish_research_run(
     }
 
 
+def set_instrument_segment(ctx: ToolContext, instrument: str, segment: str | None) -> dict:
+    """The market segment of a held or watched instrument (a direct classification write, like
+    ``set_merchant_category``; stored as set by the agent); an explicit null clears it (the
+    automatic guess applies). A segment the owner set is never changed or cleared (conflict)."""
+    from cashu.modules.investments.research.segments import segment_of
+    from cashu.modules.investments.store import instruments as instrument_store
+
+    service, _validation, _views = _research()
+    try:
+        iid = service.resolve_reference(ctx.session, ctx.profile_id, str(instrument))
+    except (service.ResearchError, service.ResearchNotFound) as e:
+        raise _errors(e) from None
+    if iid not in service.held_instrument_ids(
+        ctx.session, ctx.profile_id
+    ) | service.watched_instrument_ids(ctx.session, ctx.profile_id):
+        raise ToolError("only a held or watched instrument gets a segment", "conflict")
+    try:
+        instrument_store.set_segment(
+            ctx.session, iid, segment, profile_id=ctx.profile_id, by="agent"
+        )
+    except instrument_store.OwnerSegment as e:
+        raise ToolError(str(e), "conflict") from None
+    except instrument_store.ClassificationError as e:
+        raise ToolError(str(e)) from None
+    inst = instrument_store.load_one(ctx.session, iid, profile_id=ctx.profile_id)
+    assert inst is not None
+    key, source = segment_of(inst, inst.segment, inst.segment_by)
+    return {
+        "instrument_id": L.ref(iid),
+        "segment": L.category(key),
+        "segment_source": L.category(source),
+    }
+
+
 _SOURCE_SCHEMA = {
     "type": "array",
     "description": "1-10 sources: {url (http(s), original publisher), publisher, published_at "
@@ -569,10 +738,13 @@ TOOLS = (
         "research_context",
         "investments",
         "Context for a research run: held instruments (weights as fractions) and watched ones, each "
-        "with its thesis (entry type, thesis, invalidation, exit plan) and research state (thesis "
-        "health, relation counts, 8-week sentiment, last researched), themes, the strategy's entry "
-        "types and candidate criteria, open and dismissed (cooldown) candidates, known upcoming "
-        "events, the last run, limits and boundaries.",
+        "with its market segment (segment, segment_source owner | agent | auto | null), thesis (entry type, "
+        "thesis, invalidation, exit plan) and research state (thesis health, relation counts, "
+        "8-week sentiment, last researched); segments: what moved the portfolio this week and over 4 "
+        "weeks by market segment (weight, contribution, return, instruments, last_note_at, "
+        "note_this_week), currency and unassigned; segment_catalog; the strategy's entry types and "
+        "candidate criteria, open and dismissed (cooldown) candidates, known upcoming events, the "
+        "last run, limits (incl. the weekly novelty limits) and boundaries.",
         research_context,
     ),
     ToolSpec(
@@ -586,14 +758,23 @@ TOOLS = (
             "kind": {"type": "string", "enum": _KINDS},
             "include_dismissed": {"type": "boolean", "default": True},
             "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100},
+            "segment": {
+                "type": "string",
+                "enum": _segment_keys(),
+                "description": "only this market segment's notes",
+            },
         },
     ),
     ToolSpec(
         "start_research_run",
         "investments",
-        "Open a research run. scope: {held: true, watchlist: true, candidates: true, themes: "
-        "[topics], instruments: [ids or symbols], scheduled: false (true for the scheduled "
-        "routine)}. Another run still running is a conflict: finish it first.",
+        "Open a research run. scope: {held: true, watchlist: true, candidates: true, segments: "
+        "[segment keys], instruments: [ids or symbols], scheduled: false (true for the scheduled "
+        "routine)}. A run covering the held positions is weekly: per ISO week, weekly runs and notes "
+        "written without a run cover at most 6 instruments, 2 notes each, and 6 segment notes "
+        "(strength 3, invalidates and fulfills always pass). A scope with only instruments or "
+        "segments is on demand (the flags it leaves out default to false) and exempt. Another run "
+        "still running is a conflict: finish it first.",
         start_research_run,
         properties={"scope": {"type": "object"}},
         write=True,
@@ -603,8 +784,10 @@ TOOLS = (
         "investments",
         "Store one sourced research note (facts and sentiment only: no recommendation, price "
         "prediction, target, amounts or sizes). About a held / watched instrument (instrument: id "
-        "or symbol from research_context), a theme (sector / macro topic), or, for kind candidate, a "
-        "new instrument (candidate {symbol_or_isin, name, exchange?, currency?} + details "
+        "or symbol from research_context), a market segment (segment: catalog key; no instrument, "
+        "no candidate; kind macro | trend | news; thesis_relation none; summary <= 400 characters; "
+        "at most one per segment and ISO week, only when something changed), or, for kind "
+        "candidate, a new instrument (candidate {symbol_or_isin, name, exchange?, currency?} + details "
         "{entry_type, criteria [{text, met, threshold?}], context?, bucket?}). thesis_relation "
         "(supports | weakens | invalidates | fulfills | neutral) needs an instrument with a thesis, "
         "else none; thesis_field names the thesis field it bears on (fulfills: thesis or exit_plan, "
@@ -622,7 +805,11 @@ TOOLS = (
             "summary": {"type": "string", "maxLength": 1200},
             "sources": _SOURCE_SCHEMA,
             "instrument": {"type": "string", "maxLength": 40},
-            "theme": {"type": "string", "maxLength": 60},
+            "segment": {
+                "type": "string",
+                "enum": _segment_keys(),
+                "description": "market segment of a segment note: " + _segment_catalog_text(),
+            },
             "thesis_relation": {"type": "string", "enum": _RELATIONS, "default": "none"},
             "thesis_field": {"type": "string", "enum": _FIELDS},
             "candidate": {"type": "object"},
@@ -633,12 +820,16 @@ TOOLS = (
         },
         required=("kind", "polarity", "strength", "title", "summary", "sources"),
         write=True,
+        refused={
+            "theme": "themes are gone: a market note takes segment (a catalog key from "
+            "research_context.segment_catalog); company facts go on the instrument",
+        },
     ),
     ToolSpec(
         "finish_research_run",
         "investments",
         "Close a running research run: status done (default) or failed (with a short reason); "
-        "counts: optional {sources_checked, instruments_covered, themes_covered, "
+        "counts: optional {sources_checked, instruments_covered, segments_covered, "
         "candidates_screened, skipped}. The server adds notes, signals and candidates.",
         finish_research_run,
         properties={
@@ -648,6 +839,23 @@ TOOLS = (
             "reason": {"type": "string", "maxLength": 200},
         },
         required=("run_id",),
+        write=True,
+    ),
+    ToolSpec(
+        "set_instrument_segment",
+        "investments",
+        "Set the market segment of a held or watched instrument (instrument: id, symbol, ISIN or "
+        "alias from research_context; segment: a catalog key, or an explicit null to clear it so "
+        "the automatic guess applies). A segment the owner set (segment_source owner) is never "
+        "changed or cleared (conflict); the agent may change its own (segment_source agent). "
+        "Catalog: " + _segment_catalog_text() + ".",
+        set_instrument_segment,
+        properties={
+            "instrument": {"type": "string", "maxLength": 40},
+            "segment": {"type": "string", "enum": _segment_keys()},
+        },
+        required=("instrument",),
+        nullable=("segment",),
         write=True,
     ),
 )

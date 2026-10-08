@@ -18,7 +18,7 @@ from cashu.modules.investments.research import service
 from cashu.modules.investments.research.validation import RunScope, validate_note
 from cashu.modules.investments.store import journal
 
-ROUTES = ("research", "research/summary", "research/runs")
+ROUTES = ("research", "research/summary", "research/segments", "research/runs")
 
 
 def profile(client, name: str) -> tuple[str, int]:
@@ -184,7 +184,7 @@ def test_summary_and_runs(two):
     client, (slug, pid), _ = two
     base = f"/api/p/{slug}/investments/research"
     empty = client.get(f"{base}/summary").json()
-    assert empty["last_run"] is None and empty["themes"] == []
+    assert empty["last_run"] is None and "themes" not in empty
     assert {r["label"] for r in empty["instruments"]} == {"ABC", "WRLD", "XMPL"}
     assert all(r["health"] == "no_thesis" for r in empty["instruments"])
     assert client.get(f"{base}/runs").json() == []
@@ -200,7 +200,6 @@ def test_summary_and_runs(two):
     assert top["label"] == "XMPL" and top["health"] == "weakened"
     assert top["counts"]["weakens"] == 1 and top["held"] and top["has_thesis"]
     assert len(top["sentiment_8w"]) == 8 and top["direction"] in ("rising", "falling", "stable")
-    assert summary["themes"][0]["theme"] == "Technologia"
     assert summary["last_run"]["id"] == run_id and summary["last_run"]["scheduled"] is True
     runs = client.get(f"{base}/runs").json()
     assert runs[0]["status"] == "done" and runs[0]["counts"]["sources_checked"] == 3
@@ -218,10 +217,15 @@ def test_profile_isolation_for_every_research_endpoint(two):
         a_run = run.id
     a_note = note(a_pid, 1, thesis_relation="invalidates", theme="Banki")
     a_cand = note(a_pid, 2, instrument=None, **CANDIDATE)
+    note(a_pid, 3, instrument=None, segment="gold", kind="macro")
+    abc = client.patch(f"{a}/instruments/{iid('ABC')}", json={"segment": "semis_ai"}).json()
+    assert (abc["segment"], abc["segment_source"]) == ("semis_ai", "owner")
+    mine = client.get(f"{a}/research/segments").json()["segments"]
+    assert {r["segment"] for r in mine} == {"gold", "semis_ai"}
     before = {route: client.get(f"{b}/{route}").json() for route in ROUTES}
     # B sees nothing of A
     assert before["research"] == [] and before["research/runs"] == []
-    assert before["research/summary"]["themes"] == []
+    assert before["research/segments"]["segments"] == []
     assert before["research/summary"]["totals"]["signals_open"] == 0
     assert all(i["health"] == "no_thesis" for i in before["research/summary"]["instruments"])
     assert client.get(f"{b}/research?run_id={a_run}").json() == []

@@ -66,6 +66,11 @@ class Instrument:
     """When the plan was written (UTC)."""
     plan_reason: str | None = field(default=None, compare=False)
     """The model's short reason for the recommendation (written and cleared with ``plan``)."""
+    segment: str | None = field(default=None, compare=False)
+    """The market segment set for the instrument in a profile's view (``research.segments`` catalog
+    key; P5); None = not set (the automatic guess applies). None in the shared view."""
+    segment_by: str | None = field(default=None, compare=False)
+    """Who set ``segment``: ``owner`` (the app) or ``agent`` (MCP)."""
 
     def __post_init__(self) -> None:
         if self.valuation_mode is None:

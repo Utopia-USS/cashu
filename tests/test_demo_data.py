@@ -59,7 +59,7 @@ def test_key_counts(seeded):
     assert count(rows, "inv_transactions") >= 80
     assert count(rows, "inv_price_bars") >= 3000 and count(rows, "inv_fx_rates") >= 500
     assert count(rows, "alerts") == 5 and count(rows, "watchlist_items") == 3
-    assert count(rows, "research_runs") == 2 and count(rows, "research_notes") == 8
+    assert count(rows, "research_runs") == 2 and count(rows, "research_notes") == 10
     assert count(rows, "inv_planned_deposits") == 2 and count(rows, "inv_decisions") == 2
     assert count(rows, "proposals") == 1 and count(rows, "inv_theses") == 3
     assert count(rows, "inv_rule_runs") == 2 and count(rows, "inv_signals") >= 2
