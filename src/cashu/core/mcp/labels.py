@@ -56,8 +56,18 @@ def identifier(value: Any) -> Labelled:
     return Labelled(value, Sensitivity.IDENTIFIER)
 
 
-def amount(value: Decimal | float | None) -> Labelled:
-    return Labelled(value, Sensitivity.AMOUNT)
+def _rounded(value: Any, digits: int) -> Any:
+    """Floats and Decimals rounded to ``digits`` places (ints, None and anything else unchanged):
+    an unrounded float (FX conversions, 0.1 + 0.2) would otherwise carry a 10+ digit fraction that
+    the final leak check rightly takes for an account number and withholds the whole answer."""
+    if isinstance(value, (float, Decimal)):
+        return round(float(value), digits)
+    return value
+
+
+def amount(value: Decimal | float | None, digits: int = 2) -> Labelled:
+    """Money (2 places by default); quantities and per-unit prices pass ``digits=8``."""
+    return Labelled(_rounded(value, digits), Sensitivity.AMOUNT)
 
 
 def merchant(value: str | None) -> Labelled:
@@ -106,7 +116,7 @@ def level(value: Decimal | float | None) -> Labelled:
     """A market price level of a public instrument (per unit, never times a quantity): not a
     personal amount, sent in both modes. Owner-named instruments' prices stay ``amount``."""
     if value is not None:
-        value = float(value)
+        value = round(float(value), 8)
     return Labelled(value, Sensitivity.LEVEL)
 
 

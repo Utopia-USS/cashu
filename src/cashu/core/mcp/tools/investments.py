@@ -487,13 +487,13 @@ def positions(ctx: ToolContext) -> dict:
                         "account": L.account(labels.get(a.get("account_id"))),
                         "weight": L.pct(a.get("weight")),
                         "unrealized_pct": L.pct(a.get("unrealized_pct")),
-                        "quantity": L.amount(a.get("quantity")),
+                        "quantity": L.amount(a.get("quantity"), 8),
                         "value": L.amount(a.get("value")),
                     }
                     for a in p.get("accounts") or []
                 ],
-                "quantity": L.amount(p.get("quantity")),
-                "price": L.amount(p.get("price")),
+                "quantity": L.amount(p.get("quantity"), 8),
+                "price": L.amount(p.get("price"), 8),
                 "value": L.amount(p.get("value")),
                 "cost": L.amount(p.get("cost")),
                 "realized": L.amount(p.get("realized")),

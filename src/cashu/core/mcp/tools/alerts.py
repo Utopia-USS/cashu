@@ -67,7 +67,7 @@ def _instrument(inst: dict | None, owned: set[int], ctx: ToolContext | None = No
 
 
 def _price(value, private: bool) -> L.Labelled:
-    return L.amount(value) if private else L.level(value)
+    return L.amount(value, 8) if private else L.level(value)
 
 
 def _params(ctx: ToolContext, kind: str, params: dict, private: bool) -> dict:
