@@ -1,7 +1,7 @@
 ---
 name: market-research
 description: Market research and model recommendations for the cashU investments module through the profile's cashU MCP server. Reviews held positions, watchlist, strategy, portfolio construction and thesis health; writes sourced Polish research notes, then saves a current buy/hold/reduce/exit recommendation for each covered instrument. Never places trades or predicts prices.
-argument-hint: "[symbol | ISIN | segment | tezy [symbol] | rutyna]"
+argument-hint: "[symbol | ISIN | segment | makro | tezy [symbol] | rutyna]"
 ---
 
 # market-research: the Saturday routine, on-demand notes and thesis reviews
@@ -62,7 +62,7 @@ profile's holdings with weights.
 |---|---|
 | `profile_overview` | preflight: investments enabled, privacy level, data freshness |
 | `start_research_run(scope)` | step 1: opens the run, returns `run_id` |
-| `research_context` | step 2: held and watched instruments (weights as fractions, 0.12 = 12 %) with theses (entry type, thesis, invalidation, exit plan) and research state (health, last researched), each with `segment` and `segment_source`; `segments` (the portfolio's move by segment: weight, contribution and return over 1 and 4 weeks, instruments with their own 1-week return and contribution, `last_note_at`, `note_this_week`), `currency`, `unassigned`, `segment_catalog`; the strategy's version and `candidate_criteria`, open and cooled-down candidates, upcoming events, the last run and a running one, limits |
+| `research_context` | step 2: held and watched instruments (weights as fractions, 0.12 = 12 %) with theses (entry type, thesis, invalidation, exit plan) and research state (health, last researched), each with `segment` and `segment_source`; `segments` (the portfolio's move by segment: weight, contribution and return over 1 and 4 weeks, instruments with their own 1-week return and contribution, `last_note_at`, `note_this_week`), `currency`, `unassigned`, `segment_catalog`; `macro` (five regime cards: state, since, metrics, `note_key`) and `macro_catalog`; the strategy's version and `candidate_criteria`, open and cooled-down candidates, upcoming events, the last run and a running one, limits |
 | `set_instrument_segment(instrument, segment)` | step 2: assign a catalog key to a held or watched instrument without one (`segment` is required; `null` clears your own value; an owner's value is refused) |
 | `research_notes(since?)` | step 2: notes of the last 30 days by default, dismissed ones included (never add them again), for duplicates |
 | `add_research_note(...)` | steps 3-6 and the thesis review: one note (schema in `references/notes.md`); validated, sources required, no amounts |
@@ -192,6 +192,19 @@ ISO week (the tool refuses a second one, dismissed notes included: count it in `
 per week. Company facts stay on the instrument, never on a segment; a segment fact that bears on one
 thesis gets that instrument's own note with the relation.
 
+**6b. Macro.** Read `research_context.macro`: five regimes computed by the app from public series
+(`risk` global equity, `dollar`, `em` emerging markets vs world, `commodities`, `rates` US yields and
+the curve), each with `state_label`, `since` (null with `since_open` when the state predates the app's data:
+say "since before <since_min>", never invent a start), metric texts and `last_note_at`. The state is the app's,
+never yours: do not restate or dispute it. Write a macro note (`segment` = its `note_key`, e.g.
+`macro_rates`) only when the state changed since its last macro note, or a dated decisive event
+happened this week (a central bank decision, an official data release that moved the regime's
+metric materially). Same note rules as segments (400 characters, kind `macro`, `trend` or `news`,
+one per key and ISO week, counted in the 6 segment notes per week): the dated facts and the metric
+values as the app shows them, official sources first (Fed, BLS, US Treasury, ECB, NBP). You may name
+the portfolio's segments the mechanism touches in neutral words (`dotyczy: złoto, rynki wschodzące`);
+never a forecast, never what the owner should do. A `missing` or `stale` regime gets no note.
+
 **7. Alert proposals (optional).** Where this run's notes point to a dated catalyst or a changed
 situation for a held or watched single stock, sector ETF or crypto, you may propose a
 `range_breakout` or `volume_spike` alert with a short reason: at most 3 per run, by the rules in
@@ -219,7 +232,7 @@ is saved. If the MCP tools keep failing, finish with `status: "failed"` and a sh
 interrupted after 4 hours without notes; saved notes stay, and a later on-demand run (`dokończ
 research`) can pick up from the working file (duplicates are skipped).
 
-## On-demand mode (one instrument or segment)
+## On-demand mode (one instrument, segment or makro)
 
 1. Preflight as in step 0.
 2. `start_research_run(scope)` with `{"held": false, "watchlist": false, "candidates": false,
@@ -229,6 +242,8 @@ research`) can pick up from the working file (duplicates are skipped).
 4. Resolve the target:
    - held or watched instrument: the passes of step 3 (window: since its last research, at most 30
      days);
+   - `makro`: scope `"segments"` = the five `macro_catalog` keys; step 6b, then explain in the chat
+     each regime's state, since when and its metrics as `research_context.macro` gives them;
    - a segment (key or label resolved against `segment_catalog`): step 6 for that segment only, at
      most one note and only if something changed since its last one and `note_this_week` is false.
      Always explain in the chat its 1-week and 4-week move from `research_context.segments`

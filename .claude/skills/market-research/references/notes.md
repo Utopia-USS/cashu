@@ -10,7 +10,7 @@ the asset drawer, the research view and the Sunday review. They are in Polish; t
 | `run_id` | the id from `start_research_run` |
 | instrument | for notes about a held or watched instrument: the id, ticker with market or ISIN as `research_context` gives it |
 | `candidate` | candidate notes only, instead of an instrument: `{symbol_or_isin, name, exchange, currency}` (`candidates.md`) |
-| `segment` | segment notes only: a key from `segment_catalog` (`gold`, `bonds`, `semis_ai` ...), with no instrument and no candidate (Segments below). Never write `theme`: old notes carry one, ignore its label |
+| `segment` | segment and macro notes only: a key from `segment_catalog` (`gold`, `bonds`, `semis_ai` ...) or `macro_catalog` (`macro_rates`, `macro_dollar` ...), with no instrument and no candidate (Segments below; macro notes follow the same rules, SKILL.md step 6b). Never write `theme`: old notes carry one, ignore its label |
 | `kind` | `news`, `earnings`, `community`, `trend`, `macro`, `candidate` (`rubrics.md`); a segment note only `macro`, `trend` or `news` |
 | `polarity` | `positive`, `negative`, `neutral` (`rubrics.md`) |
 | `strength` | 1-3 with the caps per kind (`rubrics.md`) |
