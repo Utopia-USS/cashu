@@ -3,8 +3,9 @@
 // workspace (track AW) and the watchlist for accepted candidates. A server without the research layer
 // answers 404: the runs read as "never ran" so no research UI shows (density rule), nothing breaks.
 import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../../core/api";
+import { normMacro } from "./macro";
 import { normAttribution } from "./segments";
-import type { ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentWindow, Workspace } from "./types";
+import type { MacroRegimes, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentWindow, Workspace } from "./types";
 
 const inv = (slug: string, path: string) => pp(slug, `/investments${path}`);
 /** A server without the research layer: FastAPI's generic 404 / 405 (a missing profile keeps its error). */
@@ -79,6 +80,13 @@ export const getResearchRuns = async (slug: string): Promise<ResearchRun[]> => {
  * note per row. Null on a server without the endpoint (404 / 405): the column says `Brak danych rynku.`. */
 export const getSegments = async (slug: string, window: SegmentWindow = "1w"): Promise<SegmentAttribution | null> => {
   try { return normAttribution(await j<unknown>(inv(slug, `/research/segments?window=${window}`)), window); }
+  catch (e) { if (missing(e)) return null; throw e; }
+};
+
+/** P6 macro regimes; null on a server without the endpoint (404 / 405): the page widget says `Brak danych makro.`,
+ * the home line renders nothing. */
+export const getMacro = async (slug: string): Promise<MacroRegimes | null> => {
+  try { return normMacro(await j<unknown>(inv(slug, "/research/macro"))); }
   catch (e) { if (missing(e)) return null; throw e; }
 };
 

@@ -1,5 +1,6 @@
 // Research view `#/{slug}/investments.portfolio/research` (research.md 1 + 7, implementation-plan item 34):
-// page head with the scope and kind filters and `Uruchom teraz` (copies the command), the run strip, Rynek (P5:
+// page head with the scope and kind filters and `Uruchom teraz` (copies the command), the run strip, Makro (P6: five
+// macro regime cards, a card filters the notes), Rynek (P5:
 // the portfolio move by market segment, 1 or 4 weeks; a row filters the notes), Kandydaci, Notatki (two-column cards, filters, sort, paging by 6, j / k / x / Enter), Przebiegi and
 // Zakres i zasady. Before the first run: the empty state with the three steps (skill, first run, schedule).
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,22 +12,25 @@ import { dm, hm, pct, plural, wdm } from "../../labels";
 import { getResearch, postResearchRead } from "./api";
 import { invKey } from "../api";
 import type { InstLike } from "../InstLabel";
-import { bumpResearch, canRestore, useResearchActions, useResearchOverview, useSegments, useWorkspace } from "./data";
+import { bumpResearch, canRestore, useMacro, useResearchActions, useResearchOverview, useSegments, useWorkspace } from "./data";
 import {
   BOUNDARY, healthOf, isExpired, KIND_FILTER, latestRun, nextSaturday, normRelation,
   researchCommand, ROUTINE_MENU, ROUTINE_PROMPT, runMinutes, runNotes, runTag, workspacePath,
 } from "./logic";
 import { CandidateCard, type CandidateState, ContribBar, CopyCommand, NoteCard, ScheduleHow } from "./primitives";
 import {
-  barTitle, contribBars, CURRENCY, currencyChips, exposed, factTitle, fixedRows, instSymbol, isSegment, pageRows, ppOf, ppTone, segmentLabel, staleSymbols, staleTitle, tone,
+  barTitle, contribBars, CURRENCY, currencyChips, exposed, factTitle, fixedRows, hashWithSegment, instSymbol, isSegment, pageRows, ppOf, ppTone, segmentLabel, staleSymbols, staleTitle, tone,
   UNASSIGNED, withNewNote,
 } from "./segments";
 import type { ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentWindow, Workspace } from "./types";
+import { isMacroKey, macroLabel, noteKeyLabel } from "./macro";
+import { MacroWidget } from "./MacroWidgets";
 import { localDay } from "../../../../time";
 
 type Scope = "all" | "positions" | "watched" | "candidates" | "segments";
 const SCOPES: Scope[] = ["all", "positions", "watched", "candidates", "segments"];
-const validSegment = (key: string | null): string | null => (key && (isSegment(key) || key === UNASSIGNED) ? key : null);
+/** A catalog segment, `unassigned` or a P6 macro note key (`macro_rates`); anything else opens the page unfiltered. */
+const validSegment = (key: string | null): string | null => (key && (isSegment(key) || key === UNASSIGNED || isMacroKey(key)) ? key : null);
 
 export interface ResearchPageProps {
   slug: string;
@@ -52,14 +56,20 @@ export function ResearchPage(p: ResearchPageProps) {
   const { runs, summary, candidates, loading } = useResearchOverview(p.slug, nonce);
   const ws = useWorkspace(p.slug);
   const seg = useSegments(p.slug, "1w", nonce);
+  const macro = useMacro(p.slug, nonce);
   // `?segment=<key>` (home strip, signals); an old `?theme=` link opens the unfiltered page.
   const [scope, setScope] = useState<Scope>(() => {
     const s = p.initial.get("scope") as Scope | null;
     return s && SCOPES.includes(s) ? s : validSegment(p.initial.get("segment")) ? "segments" : "all";
   });
   const [kind, setKind] = useState<string | null>(() => p.initial.get("kind"));
-  // Only a catalog key or `unassigned`; anything else (a hand-edited or unknown key) opens the unfiltered page.
+  // Only a catalog key, `unassigned` or a macro key; anything else (a hand-edited or unknown key) opens the unfiltered page.
   const [segment, setSegment] = useState<string | null>(() => validSegment(p.initial.get("segment")));
+  // The selection lives in the URL too (`?segment=<key>`, replaced in place): a reload keeps the filter.
+  useEffect(() => {
+    const next = hashWithSegment(location.hash, segment);
+    if (next !== location.hash) { try { history.replaceState(history.state, "", next); } catch { /* ignore */ } }
+  }, [segment]);
   const nameOf = (id: number) => p.held.get(id)?.name ?? p.watchedIds.get(id)?.name ?? null;
   const selectSegment = (key: string | null) => {
     setSegment(key);
@@ -79,10 +89,15 @@ export function ResearchPage(p: ResearchPageProps) {
     </>
   );
   if (loading && !runs) return <>{head}<Skeleton h={160} r={12} /></>;
-  if (!runs?.length) return <>{head}<Grid items={[{ id: "empty", span: 3, node: <EmptyResearch cmd={cmd} path={workspacePath(ws.data?.path, p.slug)} ws={ws.data} onSettings={p.onSettings} /> }]} /></>;
+  // P6: the macro cards do not depend on research runs (daily check data); shown under the empty state when present.
+  if (!runs?.length) return <>{head}<Grid items={[
+    { id: "empty", span: 3, node: <EmptyResearch cmd={cmd} path={workspacePath(ws.data?.path, p.slug)} ws={ws.data} onSettings={p.onSettings} /> },
+    { id: "macro", span: 3, node: macro.data?.regimes.length ? <MacroWidget slug={p.slug} nonce={nonce} selected={segment} onSelect={selectSegment} /> : null },
+  ]} /></>;
 
   const items: GridItem[] = [
     { id: "run", span: 3, node: <RunStrip runs={runs} summary={summary} candidates={candidates ?? []} today={p.today} strategyVersion={p.strategyVersion} privacy={p.privacy} held={p.held} segments={seg.data} /> },
+    { id: "macro", span: 3, node: <MacroWidget slug={p.slug} nonce={nonce} selected={segment} onSelect={selectSegment} /> },
     { id: "segments", span: 2, node: <SegmentsWidget slug={p.slug} nonce={nonce} selected={segment} symOf={p.symOf} nameOf={nameOf} onSelect={selectSegment} onOpenAsset={(id) => p.onOpenAsset(id)} /> },
     { id: "cands", span: 1, node: <CandidatesWidget slug={p.slug} today={p.today} notes={candidates ?? []} watched={p.watched} strategyVersion={p.strategyVersion} onChanged={refresh} /> },
     { id: "notes", span: 3, node: <NotesList slug={p.slug} today={p.today} nonce={nonce} scope={scope} kind={kind} segment={segment} held={p.held} watchedIds={p.watchedIds} onClearSegment={() => setSegment(null)} onSelectSegment={selectSegment} onChanged={refresh} onOpenAsset={p.onOpenAsset} /> },
@@ -324,6 +339,7 @@ function NotesList({ slug, today, nonce, scope, kind, segment, held, watchedIds,
       const h = held.get(id) ?? watchedIds.get(id);
       return { name: h?.name ?? n.instrument?.label ?? n.instrument?.name ?? `#${id}`, sym: h?.symbol ?? n.instrument?.symbol ?? null, inst: h?.inst };
     }
+    if (n.segment && isMacroKey(n.segment)) return { name: n.segment_label ?? macroLabel(n.segment), sym: "makro" };
     if (n.segment) return { name: n.segment_label ?? segmentLabel(n.segment), sym: "rynek" };
     // Old theme notes stay visible (research never dropped).
     return n.theme ? { name: n.theme, sym: "temat" } : null;
@@ -333,7 +349,7 @@ function NotesList({ slug, today, nonce, scope, kind, segment, held, watchedIds,
     : n.segment ? () => onSelectSegment(n.segment!) : undefined;
   return (
     <Widget title="Notatki" id="rsch-notes" count={`${list.length}${since ? ` · od ${dm(since)}` : ""}`}
-      tags={segment && segment !== UNASSIGNED ? <button className="tag" style={{ cursor: "pointer", background: "transparent", font: "inherit", fontSize: 11 }} onClick={onClearSegment} title="Pokaż wszystkie segmenty">{segmentLabel(segment)} ✕</button> : undefined}
+      tags={segment && segment !== UNASSIGNED ? <button className="tag" style={{ cursor: "pointer", background: "transparent", font: "inherit", fontSize: 11 }} onClick={onClearSegment} title={isMacroKey(segment) ? "Pokaż wszystkie notatki" : "Pokaż wszystkie segmenty"}>{noteKeyLabel(segment)} ✕</button> : undefined}
       controls={<>
         <label className="muted" style={{ fontSize: 12.5, display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={old} onChange={(e) => setOld(e.target.checked)} />odrzucone i wygasłe</label>
         <select value={sort} onChange={(e) => setSort(e.target.value as NoteSort)} aria-label="Sortowanie notatek">

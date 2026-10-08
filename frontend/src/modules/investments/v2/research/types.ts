@@ -156,6 +156,8 @@ export interface DigestResearch {
   segments?: SegmentRow[];
   /** P5: the rest of that 1w view (header move, Waluty, Bez segmentu, stale); null on an attribution error. */
   market?: Omit<SegmentAttribution, "segments"> | null;
+  /** P6: macro regimes whose state changed inside the digest period; missing on older servers. */
+  macro_changes?: MacroChange[];
   candidates: number[];
   highlights?: number[];
 }
@@ -183,6 +185,35 @@ export interface SegmentAttribution {
   unassigned: { weight: number; contribution: number; return: number | null; instruments: SegmentInstrument[] } | null;
   currency: { contribution: number; currencies: SegmentCurrency[] };
 }
+
+// ---- P6 macro regimes (`GET .../research/macro`, spec P6 section 4) ----------------------------------------
+
+export type MacroKey = "risk" | "dollar" | "em" | "commodities" | "rates";
+export type MacroTone = "pos" | "neg" | "warn" | "";
+export type MacroUnit = "pct" | "pp" | "bp" | "level";
+/** `text` = the server-formatted Polish string (`+6,2 %`, `+45 bp`, `4,23 %`); the UI never formats `value`. */
+/** `stale` (BE fix pass): the metric's source is older than the regime's data; `as_of` its last date when sent. */
+export interface MacroMetric { label: string; value: number | null; unit: MacroUnit | string; text: string; change_label?: string | null; stale?: boolean; as_of?: string | null }
+/** `state_label`: BE extra (the Polish word of a past state); the FE catalog wins for known states. `open`: the
+ * state already held before `date` (the first evaluated session of the stored window, not a real change). */
+export interface MacroHistoryItem { date: string; state: string; state_label?: string | null; open?: boolean }
+export interface MacroRegime {
+  key: MacroKey | string; label: string;
+  state: string; state_label: string; tone: MacroTone | string;
+  since: string | null; as_of: string | null; stale: boolean; missing: boolean;
+  /** The state held since before the data window (`since` is null then); `since_min` = the first evaluated session. */
+  since_open: boolean; since_min: string | null;
+  /** One factual sentence (tooltip only). */
+  meaning: string | null;
+  metrics: MacroMetric[];
+  /** State changes over the stored window, newest last, at most 12. */
+  history: MacroHistoryItem[];
+  note: SegmentNoteRef | null; last_note_at: string | null; note_this_week: boolean; unread: number;
+}
+/** `as_of` = the last bar date in the data (null when none). */
+export interface MacroRegimes { as_of: string | null; regimes: MacroRegime[] }
+/** `review-digest.research.macro_changes`: a regime whose state changed inside the digest period. */
+export interface MacroChange { key: string; label: string; from_label: string; to_label: string; since: string }
 
 /** `GET /api/p/{slug}/workspace` (track AW): the folder, whether cashU set it up, the managed skills. */
 export interface Workspace {

@@ -1,0 +1,495 @@
+{
+ "as_of": "2026-10-08",
+ "regimes": [
+  {
+   "key": "risk",
+   "label": "Rynek akcji",
+   "state": "bull",
+   "state_label": "hossa",
+   "tone": "pos",
+   "since": null,
+   "since_open": true,
+   "since_min": "2022-10-03",
+   "as_of": "2026-10-08",
+   "stale": false,
+   "missing": false,
+   "flags": [],
+   "meaning": "Globalne akcje są powyżej rosnącej średniej z 200 sesji: trwały trend wzrostowy zwykle sprzyja spółkom wzrostowym i rynkom ryzykowniejszym.",
+   "metrics": [
+    {
+     "label": "ACWI wobec 200 sesji",
+     "value": 0.044651,
+     "unit": "pct",
+     "text": "+4,5 %",
+     "stale": false
+    },
+    {
+     "label": "od szczytu",
+     "value": 0.0,
+     "unit": "pct",
+     "text": "0,0 %",
+     "stale": false
+    },
+    {
+     "label": "S&P 500 od szczytu",
+     "value": -0.005483,
+     "unit": "pct",
+     "text": "-0,5 %",
+     "stale": false
+    }
+   ],
+   "history": [
+    {
+     "date": "2022-10-03",
+     "state": "bull",
+     "state_label": "hossa",
+     "open": true
+    }
+   ],
+   "note": null,
+   "last_note_at": null,
+   "note_this_week": false,
+   "unread": 0
+  },
+  {
+   "key": "dollar",
+   "label": "Dolar",
+   "state": "weak",
+   "state_label": "słabnie",
+   "tone": "",
+   "since": "2026-10-02",
+   "since_open": false,
+   "since_min": null,
+   "as_of": "2026-10-08",
+   "stale": false,
+   "missing": false,
+   "flags": [],
+   "meaning": "Słabnący dolar obniża wartość aktywów w USD liczoną w złotych i zwykle sprzyja rynkom wschodzącym oraz surowcom wycenianym w dolarach.",
+   "metrics": [
+    {
+     "label": "DXY",
+     "value": 99.63,
+     "unit": "level",
+     "text": "99,6",
+     "stale": false
+    },
+    {
+     "label": "6 mies.",
+     "value": -0.040913,
+     "unit": "pct",
+     "text": "-4,1 %",
+     "stale": false
+    },
+    {
+     "label": "USD/PLN 6 mies.",
+     "value": 0.025572,
+     "unit": "pct",
+     "text": "+2,6 %",
+     "stale": false
+    }
+   ],
+   "history": [
+    {
+     "date": "2023-07-31",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    },
+    {
+     "date": "2023-09-06",
+     "state": "strong",
+     "state_label": "umacnia się",
+     "open": false
+    },
+    {
+     "date": "2024-03-11",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    },
+    {
+     "date": "2024-04-18",
+     "state": "weak",
+     "state_label": "słabnie",
+     "open": false
+    },
+    {
+     "date": "2024-10-21",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    },
+    {
+     "date": "2024-11-26",
+     "state": "strong",
+     "state_label": "umacnia się",
+     "open": false
+    },
+    {
+     "date": "2025-06-03",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    },
+    {
+     "date": "2025-07-10",
+     "state": "weak",
+     "state_label": "słabnie",
+     "open": false
+    },
+    {
+     "date": "2026-01-13",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    },
+    {
+     "date": "2026-02-18",
+     "state": "strong",
+     "state_label": "umacnia się",
+     "open": false
+    },
+    {
+     "date": "2026-08-25",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    },
+    {
+     "date": "2026-10-02",
+     "state": "weak",
+     "state_label": "słabnie",
+     "open": false
+    }
+   ],
+   "note": {
+    "id": 5,
+    "title": "Dolar: indeks DXY po posiedzeniu Fed",
+    "observed_at": "2026-10-08T22:24:02.227663+00:00",
+    "polarity": "neutral",
+    "kind": "macro"
+   },
+   "last_note_at": "2026-10-08T22:24:02.227663+00:00",
+   "note_this_week": true,
+   "unread": 1
+  },
+  {
+   "key": "em",
+   "label": "Rynki wschodzące",
+   "state": "inline",
+   "state_label": "w linii",
+   "tone": "",
+   "since": "2026-09-04",
+   "since_open": false,
+   "since_min": null,
+   "as_of": "2026-10-08",
+   "stale": false,
+   "missing": false,
+   "flags": [],
+   "meaning": "Akcje rynków wschodzących radzą sobie od pół roku podobnie jak akcje globalne.",
+   "metrics": [
+    {
+     "label": "EEM wobec ACWI 6 mies.",
+     "value": -0.32789,
+     "unit": "pp",
+     "text": "-0,3 pp",
+     "stale": false
+    },
+    {
+     "label": "EEM 6 mies.",
+     "value": 0.04713,
+     "unit": "pct",
+     "text": "+4,7 %",
+     "stale": false
+    }
+   ],
+   "history": [
+    {
+     "date": "2022-10-03",
+     "state": "lagging",
+     "state_label": "słabsze od świata",
+     "open": true
+    },
+    {
+     "date": "2022-11-08",
+     "state": "inline",
+     "state_label": "w linii",
+     "open": false
+    },
+    {
+     "date": "2023-01-11",
+     "state": "leading",
+     "state_label": "silniejsze od świata",
+     "open": false
+    },
+    {
+     "date": "2023-08-10",
+     "state": "inline",
+     "state_label": "w linii",
+     "open": false
+    },
+    {
+     "date": "2023-10-24",
+     "state": "lagging",
+     "state_label": "słabsze od świata",
+     "open": false
+    },
+    {
+     "date": "2024-05-21",
+     "state": "inline",
+     "state_label": "w linii",
+     "open": false
+    },
+    {
+     "date": "2024-07-22",
+     "state": "leading",
+     "state_label": "silniejsze od świata",
+     "open": false
+    },
+    {
+     "date": "2025-02-21",
+     "state": "inline",
+     "state_label": "w linii",
+     "open": false
+    },
+    {
+     "date": "2025-05-02",
+     "state": "lagging",
+     "state_label": "słabsze od świata",
+     "open": false
+    },
+    {
+     "date": "2025-12-01",
+     "state": "inline",
+     "state_label": "w linii",
+     "open": false
+    },
+    {
+     "date": "2026-02-04",
+     "state": "leading",
+     "state_label": "silniejsze od świata",
+     "open": false
+    },
+    {
+     "date": "2026-09-04",
+     "state": "inline",
+     "state_label": "w linii",
+     "open": false
+    }
+   ],
+   "note": null,
+   "last_note_at": null,
+   "note_this_week": false,
+   "unread": 0
+  },
+  {
+   "key": "commodities",
+   "label": "Surowce",
+   "state": "flat",
+   "state_label": "bez trendu",
+   "tone": "",
+   "since": "2026-06-29",
+   "since_open": false,
+   "since_min": null,
+   "as_of": "2026-10-08",
+   "stale": false,
+   "missing": false,
+   "flags": [],
+   "meaning": "Szeroki koszyk surowców nie ma wyraźnego trendu: to ani hossa, ani bessa surowcowa.",
+   "metrics": [
+    {
+     "label": "DBC 12 mies.",
+     "value": -0.041035,
+     "unit": "pct",
+     "text": "-4,1 %",
+     "stale": false
+    },
+    {
+     "label": "wobec ACWI 12 mies.",
+     "value": -13.63712,
+     "unit": "pp",
+     "text": "-13,6 pp",
+     "stale": false
+    }
+   ],
+   "history": [
+    {
+     "date": "2022-10-03",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": true
+    },
+    {
+     "date": "2023-01-02",
+     "state": "bear",
+     "state_label": "bessa surowcowa",
+     "open": false
+    },
+    {
+     "date": "2023-08-16",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    },
+    {
+     "date": "2023-12-14",
+     "state": "bull",
+     "state_label": "hossa surowcowa",
+     "open": false
+    },
+    {
+     "date": "2024-08-02",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    },
+    {
+     "date": "2024-11-29",
+     "state": "bear",
+     "state_label": "bessa surowcowa",
+     "open": false
+    },
+    {
+     "date": "2025-07-14",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    },
+    {
+     "date": "2025-11-12",
+     "state": "bull",
+     "state_label": "hossa surowcowa",
+     "open": false
+    },
+    {
+     "date": "2026-06-29",
+     "state": "flat",
+     "state_label": "bez trendu",
+     "open": false
+    }
+   ],
+   "note": null,
+   "last_note_at": null,
+   "note_this_week": false,
+   "unread": 0
+  },
+  {
+   "key": "rates",
+   "label": "Obligacje i stopy",
+   "state": "falling",
+   "state_label": "rentowności spadają · krzywa odwrócona",
+   "tone": "warn",
+   "since": "2026-06-19",
+   "since_open": false,
+   "since_min": null,
+   "as_of": "2026-10-08",
+   "stale": false,
+   "missing": false,
+   "flags": [
+    "inverted"
+   ],
+   "meaning": "Niższe rentowności obniżają koszt pieniądza: zwykle sprzyjają wycenom spółek wzrostowych i cenom obligacji długoterminowych. Krzywa jest odwrócona: bony 3-miesięczne dają więcej niż obligacje 10-letnie, co zwykle ciąży marżom banków i akcji kredytowej.",
+   "metrics": [
+    {
+     "label": "USA 10 lat",
+     "value": 3.733,
+     "unit": "level",
+     "text": "3,73 %",
+     "stale": false
+    },
+    {
+     "label": "3 mies. zmiana",
+     "value": -37.1,
+     "unit": "bp",
+     "text": "-37 bp",
+     "stale": false
+    },
+    {
+     "label": "krzywa 10l-3m",
+     "value": -23.468345,
+     "unit": "bp",
+     "text": "-23 bp",
+     "stale": false
+    }
+   ],
+   "history": [
+    {
+     "date": "2023-10-13",
+     "state": "stable",
+     "state_label": "rentowności stabilne",
+     "open": false
+    },
+    {
+     "date": "2023-12-22",
+     "state": "rising",
+     "state_label": "rentowności rosną",
+     "open": false
+    },
+    {
+     "date": "2024-04-09",
+     "state": "stable",
+     "state_label": "rentowności stabilne",
+     "open": false
+    },
+    {
+     "date": "2024-06-25",
+     "state": "falling",
+     "state_label": "rentowności spadają",
+     "open": false
+    },
+    {
+     "date": "2024-10-09",
+     "state": "stable",
+     "state_label": "rentowności stabilne",
+     "open": false
+    },
+    {
+     "date": "2024-12-18",
+     "state": "rising",
+     "state_label": "rentowności rosną",
+     "open": false
+    },
+    {
+     "date": "2025-04-11",
+     "state": "stable",
+     "state_label": "rentowności stabilne",
+     "open": false
+    },
+    {
+     "date": "2025-06-16",
+     "state": "falling",
+     "state_label": "rentowności spadają",
+     "open": false
+    },
+    {
+     "date": "2025-10-08",
+     "state": "stable",
+     "state_label": "rentowności stabilne",
+     "open": false
+    },
+    {
+     "date": "2025-12-19",
+     "state": "rising",
+     "state_label": "rentowności rosną",
+     "open": false
+    },
+    {
+     "date": "2026-04-07",
+     "state": "stable",
+     "state_label": "rentowności stabilne",
+     "open": false
+    },
+    {
+     "date": "2026-06-19",
+     "state": "falling",
+     "state_label": "rentowności spadają",
+     "open": false
+    }
+   ],
+   "note": null,
+   "last_note_at": null,
+   "note_this_week": false,
+   "unread": 0
+  }
+ ]
+}

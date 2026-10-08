@@ -13,6 +13,12 @@ import {
   BAR_FLOOR, barTitle, contribBars, currencyChips, currencySub, exposed, factTitle, homeRows, isSegment, normAttribution, pageRows, ppOf, ppTone,
   instSymbol, noExposure, normDigestMarket, reviewColumn, reviewRows, segmentLabel, segmentSub, SEGMENTS, staleSymbols, staleTitle, tone, UNASSIGNED, windowTitle, withNewNote,
 } from "../src/modules/investments/v2/research/segments.ts";
+import {
+  dateText, historyTitle, homeText, isInverted, isMacroKey, lineTitle, MACRO, macroAsOf, macroKeyOf, macroLabel, macroSub, metricTitle, monthsBetween, normMacro,
+  normMacroChanges, noteKeyLabel, openSpan, orderRegimes, sinceText, staleText, stateParts, toneCls,
+} from "../src/modules/investments/v2/research/macro.ts";
+import { hashWithSegment } from "../src/modules/investments/v2/research/segments.ts";
+import { readFileSync } from "node:fs";
 
 const note = (over) => ({
   id: 1, instrument_id: 306, theme: null, kind: "news", polarity: "negative", strength: 2, thesis_relation: "none", title: "t", summary: "",
@@ -428,4 +434,259 @@ test("segments fix pass: expired last note, BE labels, note-only rows, review co
   assert.equal(d.segments[0].last_note_at, "2026-08-20");
   assert.equal(d.segments[0].instruments[0].label, "GLBA");
   assert.equal(d.segments[0].instruments[0].weight, 0.1);
+});
+
+// ---- P6 macro regimes (R/macro.ts) -------------------------------------------------------------------------
+
+const regime = (over) => ({
+  key: "rates", label: "Obligacje i stopy", state: "falling", state_label: "rentowności spadają · krzywa odwrócona", tone: "warn", since: "2026-09-05", as_of: "2026-10-02",
+  stale: false, missing: false, since_open: false, since_min: null, meaning: "m",
+  metrics: [{ label: "USA 10 lat", value: 3.92, unit: "level", text: "3,92 %" }, { label: "3 mies. zmiana", value: -48, unit: "bp", text: "-48 bp" }, { label: "krzywa 10l-3m", value: -18, unit: "bp", text: "-18 bp" }],
+  history: [{ date: "2025-11-11", state: "rising" }, { date: "2026-03-02", state: "stable" }, { date: "2026-09-05", state: "falling" }],
+  note: null, last_note_at: null, note_this_week: false, unread: 0, ...over,
+});
+
+test("macro: the catalog has 5 unique keys in the BE order, every note key is macro_ + key", () => {
+  assert.deepEqual(MACRO.map((m) => m.key), ["risk", "dollar", "em", "commodities", "rates"]);
+  assert.equal(new Set(MACRO.map((m) => m.key)).size, 5);
+  for (const m of MACRO) assert.equal(m.noteKey, `macro_${m.key}`);
+});
+
+test("macro: note keys, labels and the chip label (collisions with P5 titles get the Makro prefix)", () => {
+  assert.equal(macroKeyOf("macro_rates"), "rates");
+  assert.equal(macroKeyOf("bonds"), null);
+  assert.equal(macroKeyOf(null), null);
+  assert.equal(isMacroKey("macro_em"), true);
+  assert.equal(isMacroKey("equity_em"), false);
+  assert.equal(macroLabel("macro_em"), "Rynki wschodzące");
+  assert.equal(noteKeyLabel("macro_em"), "Makro · Rynki wschodzące");
+  assert.equal(noteKeyLabel("gold"), "Złoto i górnicy");
+  assert.equal(noteKeyLabel("unassigned"), "Bez segmentu");
+});
+
+test("macro: state parts and the inversion flag", () => {
+  assert.deepEqual(stateParts("rentowności rosną · krzywa odwrócona"), ["rentowności rosną", "krzywa odwrócona"]);
+  assert.deepEqual(stateParts("hossa"), ["hossa"]);
+  assert.equal(isInverted({ state_label: "rentowności rosną · krzywa odwrócona" }), true);
+  assert.equal(isInverted({ state_label: "rentowności rosną" }), false);
+});
+
+test("macro: home words carry a subject where the bare state is ambiguous; BE label fallback; missing", () => {
+  const h = (key, state, state_label = "", missing = false) => homeText({ key, state, state_label, missing });
+  assert.equal(h("risk", "bull", "hossa"), "hossa");
+  assert.equal(h("risk", "flat", "bez trendu"), "akcje bez trendu");
+  assert.equal(h("dollar", "weak", "słabnie"), "dolar słabnie");
+  assert.equal(h("em", "inline", "w linii"), "EM w linii");
+  assert.equal(h("commodities", "bull", "hossa surowcowa"), "hossa surowcowa");
+  assert.equal(h("rates", "falling", "rentowności spadają · krzywa odwrócona"), "rentowności spadają, krzywa odwrócona");
+  assert.equal(h("rates", "sideways", "bok"), "bok");
+  assert.equal(h("dollar", "weak", "słabnie", true), "dolar: brak danych");
+  assert.equal(h("commodities", "unknown", "brak danych"), "surowce: brak danych");
+  assert.equal(h("gold", "x", "y"), "y");
+});
+
+test("macro: tone class passes pos / neg / warn only", () => {
+  assert.equal(toneCls("pos"), "pos");
+  assert.equal(toneCls("neg"), "neg");
+  assert.equal(toneCls("warn"), "warn");
+  assert.equal(toneCls(""), "");
+  assert.equal(toneCls(null), "");
+  assert.equal(toneCls("info"), "");
+});
+
+test("macro: since and stale texts (d.mm, no leading zero on the day)", () => {
+  assert.equal(sinceText({ since: "2026-08-14", missing: false }), "od 14.08");
+  assert.equal(sinceText({ since: "2026-10-06", missing: false }), "od 6.10");
+  assert.equal(sinceText({ since: null, missing: false }), null);
+  assert.equal(sinceText({ since: "2026-08-14", missing: true }), null);
+  assert.equal(staleText({ stale: true, as_of: "2026-09-26", missing: false }), "dane z 26.09");
+  assert.equal(staleText({ stale: false, as_of: "2026-09-26", missing: false }), null);
+  assert.equal(staleText({ stale: true, as_of: "2026-09-26", missing: true }), null);
+  assert.equal(staleText({ stale: true, as_of: null, missing: false }), null);
+});
+
+test("macro: history tooltip, current state first, newest first, max 5 lines", () => {
+  // A date of another year than the last bar carries its year.
+  assert.equal(historyTitle(regime({})), "od 5.09 rentowności spadają\nod 2.03 rentowności stabilne\nod 11.11.2025 rentowności rosną");
+  assert.equal(historyTitle(regime({ history: [{ date: "2026-09-05", state: "falling" }] })), null);
+  assert.equal(historyTitle(regime({ history: [] })), null);
+  assert.equal(historyTitle(regime({ missing: true })), null);
+  const many = Array.from({ length: 7 }, (_, i) => ({ date: `2025-0${i + 1}-01`, state: i % 2 ? "rising" : "stable" }));
+  assert.equal(historyTitle(regime({ history: [...many, { date: "2026-09-05", state: "falling" }] })).split("\n").length, 5);
+  assert.equal(historyTitle(regime({ history: [{ date: "2026-01-12", state: "x" }, { date: "2026-09-05", state: "falling" }] })), "od 5.09 rentowności spadają\nod 12.01 x");
+  // BE extra: the past state's Polish label is the fallback for a state the catalog does not know.
+  assert.equal(historyTitle(regime({ history: [{ date: "2026-01-12", state: "x", state_label: "iks" }] })), "od 5.09 rentowności spadają\nod 12.01 iks");
+});
+
+test("macro: home word tooltip (title, since, flag, metrics; stale; missing)", () => {
+  assert.equal(lineTitle(regime({})), "Obligacje i stopy · od 5.09\nkrzywa odwrócona\nUSA 10 lat 3,92 %\n3 mies. zmiana -48 bp\nkrzywa 10l-3m -18 bp");
+  const com = regime({ label: "Surowce", state_label: "bez trendu", since: "2026-07-21", as_of: "2026-09-26", stale: true, metrics: [{ label: "DBC 12 mies.", value: 0.041, unit: "pct", text: "+4,1 %" }] });
+  assert.equal(lineTitle(com).split("\n")[0], "Surowce · od 21.07 · dane z 26.09");
+  assert.equal(lineTitle(regime({ label: "Rynki wschodzące", state_label: "brak danych", missing: true, since: null })), "Rynki wschodzące · brak danych");
+});
+
+test("macro: card note line (this week's title, bez zmian od, nothing)", () => {
+  const note = { id: 905, title: "Fed: trzecia obniżka", observed_at: "2026-10-03T06:52:00+02:00" };
+  assert.deepEqual(macroSub({ note, note_this_week: true, last_note_at: null }), { text: "Fed: trzecia obniżka", title: "Fed: trzecia obniżka" });
+  assert.equal(macroSub({ note: { ...note, observed_at: "2026-09-19T07:00:00+02:00" }, note_this_week: false, last_note_at: null }).text, "bez zmian od 19.09");
+  assert.deepEqual(macroSub({ note: null, note_this_week: false, last_note_at: "2026-09-12T07:00:00+02:00" }), { text: "bez zmian od 12.09", title: "ostatnia notatka 12.09" });
+  assert.equal(macroSub({ note: null, note_this_week: false, last_note_at: null }), null);
+});
+
+test("macro: catalog order regardless of payload order, unknown keys last", () => {
+  const out = orderRegimes([regime({ key: "rates" }), regime({ key: "risk" }), regime({ key: "foo" }), regime({ key: "dollar" })]);
+  assert.deepEqual(out.map((r) => r.key), ["risk", "dollar", "rates", "foo"]);
+});
+
+test("macro: tolerant reader of GET /research/macro", () => {
+  const d = normMacro({ as_of: "2026-10-08", regimes: [
+    { key: "rates", state: "rising", tone: "info", stale: "yes", metrics: [{ label: "USA 10 lat", value: "4.231", unit: "level", text: "4,23 %" }, { value: 1 }] },
+    { key: "risk", state: "unknown", stale: true },
+    { state: "bull" },
+    { key: "dollar", state: "weak", state_label: "słabnie", tone: "", since: "2026-10-02", history: [{ date: "2026-10-02", state: "weak" }, { date: "" }],
+      note: { id: 3, title: "t", observed_at: "2026-10-03" }, note_this_week: true, unread: "2" },
+  ] });
+  assert.equal(d.as_of, "2026-10-08");
+  assert.deepEqual(d.regimes.map((r) => r.key), ["risk", "dollar", "rates"]);
+  const [risk, dollar, rates] = d.regimes;
+  assert.equal(rates.metrics.length, 1);
+  assert.equal(rates.metrics[0].value, 4.231);
+  assert.equal(rates.stale, false);
+  assert.equal(rates.tone, "");
+  assert.equal(rates.state_label, "rentowności rosną");
+  assert.equal(rates.label, "Obligacje i stopy");
+  assert.deepEqual(rates.history, []);
+  assert.equal(risk.missing, true);
+  assert.equal(risk.stale, false);
+  assert.equal(risk.state_label, "brak danych");
+  assert.deepEqual(risk.metrics, []);
+  assert.equal(dollar.history.length, 1);
+  assert.equal(dollar.note.id, 3);
+  assert.equal(dollar.unread, 2);
+  assert.equal(dollar.note_this_week, true);
+  assert.deepEqual(normMacro(null), { as_of: null, regimes: [] });
+  // BE extra `flags: ["inverted"]` without the suffix in the label: the second tag is added.
+  assert.equal(normMacro({ regimes: [{ key: "rates", state: "falling", state_label: "rentowności spadają", flags: ["inverted"] }] }).regimes[0].state_label, "rentowności spadają · krzywa odwrócona");
+  assert.equal(normMacro({ regimes: [{ key: "rates", state: "falling", state_label: "rentowności spadają · krzywa odwrócona", flags: ["inverted"] }] }).regimes[0].state_label, "rentowności spadają · krzywa odwrócona");
+});
+
+test("macro: tolerant reader of the digest's macro_changes", () => {
+  const c = normMacroChanges([
+    { key: "dollar", from_label: "bez trendu", to_label: "słabnie", since: "2026-10-02" },
+    { key: "rates", label: "Obligacje i stopy", from_label: "rentowności stabilne", to_label: "rentowności rosną · krzywa odwrócona", since: "2026-08-14" },
+    { from_label: "a", to_label: "b" },
+    { key: "em", from_label: "w linii" },
+  ]);
+  assert.equal(c.length, 2);
+  assert.equal(c[0].label, "Dolar");
+  assert.equal(c[1].to_label, "rentowności rosną");
+  assert.deepEqual(normMacroChanges(undefined), []);
+});
+
+// ---- P6 fix pass: open-ended states, years, stale metrics, the tag date, the URL ---------------------------
+
+test("macro: whole months and the open-ended span rule (mies. under a year, roku 12-23, lat from 24)", () => {
+  assert.equal(monthsBetween("2025-03-10", "2025-04-09"), 0);
+  assert.equal(monthsBetween("2025-03-10", "2025-04-10"), 1);
+  assert.equal(monthsBetween("2025-03-10", "2026-10-02"), 18);
+  assert.equal(openSpan("2026-09-20", "2026-10-02"), null);
+  assert.equal(openSpan("2026-08-20", "2026-10-02"), "ponad miesiąca");
+  assert.equal(openSpan("2026-05-01", "2026-10-02"), "ponad 5 mies.");
+  assert.equal(openSpan("2025-10-02", "2026-10-02"), "ponad roku");
+  assert.equal(openSpan("2024-10-03", "2026-10-02"), "ponad roku");
+  assert.equal(openSpan("2024-10-02", "2026-10-02"), "ponad 2 lat");
+  assert.equal(openSpan("2022-10-03", "2026-10-08"), "ponad 4 lat");
+});
+
+test("macro: since text with the year from another year, open-ended states", () => {
+  assert.equal(dateText("2025-08-21", "2026-10-09"), "21.08.2025");
+  assert.equal(dateText("2026-08-21", "2026-10-09"), "21.08");
+  assert.equal(dateText("2026-08-21", null), "21.08");
+  assert.equal(sinceText({ since: "2025-08-21", as_of: "2026-10-09", missing: false }), "od 21.08.2025");
+  assert.equal(sinceText({ since: null, since_open: true, since_min: "2025-03-10", as_of: "2026-10-02", missing: false }), "od ponad roku");
+  assert.equal(sinceText({ since: null, since_open: true, since_min: "2026-09-25", as_of: "2026-10-02", missing: false }), "od 25.09");
+  assert.equal(sinceText({ since: null, since_open: true, since_min: null, as_of: "2026-10-02", missing: false }), null);
+});
+
+test("macro: history with an open first run (przed d.mm.yyyy) and an open-ended current state", () => {
+  const rates = regime({ history: [{ date: "2025-03-10", state: "stable", open: true }, { date: "2025-11-11", state: "rising" }, { date: "2026-09-05", state: "falling" }] });
+  assert.equal(historyTitle(rates), "od 5.09 rentowności spadają\nod 11.11.2025 rentowności rosną\nprzed 10.03.2025 rentowności stabilne");
+  // The state held through the whole window: nothing before it, no tooltip.
+  const em = regime({ key: "em", state: "inline", state_label: "w linii", since: null, since_open: true, since_min: "2025-03-10", history: [{ date: "2025-03-10", state: "inline", open: true }] });
+  assert.equal(historyTitle(em), null);
+  assert.equal(lineTitle(em).split("\n")[0], "Obligacje i stopy · od ponad roku");
+});
+
+test("macro: a stale metric is muted with its note in the row title and the home tooltip", () => {
+  assert.equal(metricTitle({ stale: true, as_of: "2026-09-26" }), "dane z 26.09");
+  assert.equal(metricTitle({ stale: true }), "nieaktualne");
+  assert.equal(metricTitle({ stale: false, change_label: "x" }), "x");
+  assert.equal(metricTitle({ stale: false }), undefined);
+  const r = regime({ metrics: [{ label: "USD/PLN 6 mies.", value: 0.02, unit: "pct", text: "+2,0 %", stale: true }] });
+  assert.equal(lineTitle(r).split("\n").at(-1), "USD/PLN 6 mies. +2,0 % (nieaktualne)");
+});
+
+test("macro: the tag date is the payload's last bar, else the newest regime as_of", () => {
+  assert.equal(macroAsOf({ as_of: "2026-10-08", regimes: [regime({ as_of: "2026-10-09" })] }), "2026-10-08");
+  assert.equal(macroAsOf({ as_of: null, regimes: [regime({ as_of: "2026-09-26" }), regime({ as_of: "2026-10-02" }), regime({ as_of: null })] }), "2026-10-02");
+  assert.equal(macroAsOf({ as_of: null, regimes: [] }), null);
+  assert.equal(macroAsOf(null), null);
+  assert.equal(normMacro({ regimes: [] }).as_of, null);
+});
+
+test("macro: a verbatim backend payload (demo Anna) reads into the cards", () => {
+  const raw = JSON.parse(readFileSync(new URL("./fixtures/macro-demo-anna.json", import.meta.url), "utf-8"));
+  const d = normMacro(raw);
+  assert.equal(macroAsOf(d), "2026-10-08");
+  assert.deepEqual(d.regimes.map((r) => r.key), ["risk", "dollar", "em", "commodities", "rates"]);
+  const [risk, dollar, , , rates] = d.regimes;
+  assert.equal(risk.since_open, true);
+  assert.equal(risk.since, null);
+  assert.equal(sinceText(risk), "od ponad 4 lat");
+  assert.equal(historyTitle(risk), null);
+  assert.equal(homeText(risk), "hossa");
+  assert.equal(sinceText(dollar), "od 2.10");
+  assert.equal(dollar.note.title, "Dolar: indeks DXY po posiedzeniu Fed");
+  assert.equal(dollar.metrics.length, 3);
+  assert.equal(dollar.metrics.every((m) => m.stale === false), true);
+  const lines = historyTitle(dollar).split("\n");
+  assert.equal(lines.length, 5);
+  assert.equal(lines[0], "od 2.10 słabnie");
+  assert.equal(lines[1], "od 25.08 bez trendu");
+  assert.equal(isInverted(rates), true);
+  assert.equal(homeText(rates), "rentowności spadają, krzywa odwrócona");
+  assert.deepEqual(stateParts(rates.state_label), ["rentowności spadają", "krzywa odwrócona"]);
+  assert.equal(rates.metrics.map((m) => m.text).join(" "), "3,73 % -37 bp -23 bp");
+  for (const r of d.regimes) { assert.equal(r.missing, false); assert.equal(toneCls(r.tone), r.tone); }
+});
+
+test("macro: a missing card as the BE sends it (meaning, stale) stays missing, not stale", () => {
+  const d = normMacro({ as_of: "2026-10-08", regimes: [{ key: "commodities", label: "Surowce", state: "unknown", state_label: "brak danych", tone: "", since: null, since_open: false,
+    since_min: null, as_of: "2026-09-18", stale: true, missing: true, flags: [], meaning: "Za mało aktualnych notowań, by ustalić stan.", metrics: [], history: [],
+    note: null, last_note_at: null, note_this_week: false, unread: 0 }] });
+  const r = d.regimes[0];
+  assert.equal(r.missing, true);
+  assert.equal(r.stale, false);
+  assert.equal(r.meaning, "Za mało aktualnych notowań, by ustalić stan.");
+  assert.equal(sinceText(r), null);
+  assert.equal(staleText(r), null);
+  assert.equal(homeText(r), "surowce: brak danych");
+  assert.equal(lineTitle(r), "Surowce · brak danych");
+});
+
+test("macro: a macro note's signal reads Makro · <regime> with sym makro; a segment signal keeps rynek", () => {
+  const m = researchSignalText({ kind: "research:macro", message: "m", instrument_label: null, payload: { segment: "macro_rates", segment_label: "Obligacje i stopy", kind: "macro" } }, "", null);
+  assert.equal(m.title, "Makro · Obligacje i stopy");
+  assert.equal(m.sym, "makro");
+  const b = researchSignalText({ kind: "research:macro", message: "m", instrument_label: null, payload: { segment: "bonds", segment_label: "Obligacje i stopy", kind: "macro" } }, "", null);
+  assert.equal(b.title, "Obligacje i stopy");
+  assert.equal(b.sym, "rynek");
+});
+
+test("research page: the selection is written to the hash query (set, replace, remove, other params kept)", () => {
+  assert.equal(hashWithSegment("#/jan/investments.portfolio/research", "macro_rates"), "#/jan/investments.portfolio/research?segment=macro_rates");
+  assert.equal(hashWithSegment("#/jan/investments.portfolio/research?segment=bonds", "gold"), "#/jan/investments.portfolio/research?segment=gold");
+  assert.equal(hashWithSegment("#/jan/investments.portfolio/research?segment=bonds", null), "#/jan/investments.portfolio/research");
+  assert.equal(hashWithSegment("#/jan/investments.portfolio/research?scope=segments&segment=bonds", null), "#/jan/investments.portfolio/research?scope=segments");
+  assert.equal(hashWithSegment("#/jan/investments.portfolio/research", null), "#/jan/investments.portfolio/research");
 });

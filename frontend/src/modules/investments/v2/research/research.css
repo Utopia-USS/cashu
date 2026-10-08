@@ -143,6 +143,49 @@
   .sgrow .wk .cbar.md { width: 80px; }
 }
 
+/* ---------- macro regime cards (research view, P6) ---------- */
+.mcx { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+.mc { display: grid; grid-template-rows: auto auto 1fr auto; gap: 6px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+  background: var(--card); min-width: 0; font-size: 13px; }
+.mc[data-selectable] { cursor: pointer; }
+.mc:hover { border-color: var(--muted); }
+.mc.sel { background: var(--chip); }
+.mc.off { opacity: .62; }
+.mc .mh { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+.mc .mh button.t { background: none; border: none; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.mc .mh button.t:hover { color: var(--text); }
+.mc .st { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 20px; }
+.mc .st .tag { font-weight: 600; }
+.mc .st .since { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mc .st .since .warn { color: var(--warn); }
+.mc .ms { display: grid; gap: 3px; align-content: start; min-height: 54px; }
+.mc .m { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; font-size: 12.5px; }
+.mc .m .l { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc .m b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
+.mc.stale .m b, .mc .m.stale b { color: var(--muted); }
+.mc .n { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 17px; }
+@media (max-width: 1180px) { .mcx { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .mcx { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .mcx { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- macro state line (home strip, column Rynek) ---------- */
+.mline { display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 2px; font-size: 12.5px; line-height: 1.5; padding: 2px 0 6px; }
+/* the separator is decoration: the alt text form keeps screen readers silent (the plain form is the fallback) */
+.ml + .ml::before { content: "·"; content: "·" / ""; color: var(--muted); padding: 0 6px; }
+.ml button { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; white-space: nowrap; }
+.ml button.pos { color: var(--pos); } .ml button.neg { color: var(--neg); } .ml button.warn { color: var(--warn); }
+.ml button.off { color: var(--muted); font-weight: 500; }
+.ml button:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---------- macro changes (review column) ---------- */
+.mchg { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.mchg .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mchg .v button.nm { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; }
+.mchg .v button.nm:hover { color: var(--nw); text-decoration: underline; text-underline-offset: 2px; }
+.mchg .v b { font-weight: 600; }
+.mchg .when { font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
 /* ---------- run status strip ---------- */
 .run .h1 .v.sm { font-size: 22px; }
 .run .state { display: inline-flex; align-items: center; gap: 6px; }

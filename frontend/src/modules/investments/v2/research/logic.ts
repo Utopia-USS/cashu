@@ -4,6 +4,7 @@
 // sits in the home grid. Pure; `npm test` imports it (node strips the types; imports carry .ts).
 import { dm, ENTRY_TYPE, plural, wdm } from "../../labels.ts";
 import { segmentLabel } from "./segments.ts";
+import { isMacroKey, noteKeyLabel } from "./macro.ts";
 import { hmLocal, localDay, parseServerTime } from "../../../../time.ts";
 import type {
   Criterion, Direction, HealthKey, InstrumentSummary, NoteSource, Relation, RelationCounts, ResearchNote, ResearchRun,
@@ -383,9 +384,11 @@ export function researchSignalText(s: SigLike, name: string, sym: string | null)
   const strength = num(p.strength);
   const srcs = Array.isArray(p.sources) ? p.sources.length : num(p.sources_count ?? p.sources);
   // P5: a segment note's signal (no instrument) is titled by the segment; old theme signals keep their theme.
+  // P6: a macro note's signal reads `Makro · <regime>` with sym `makro` (two titles collide with P5 segments).
   const segment = str(p.segment);
-  const title = name || str(p.segment_label) || (segment ? segmentLabel(segment) : null) || str(p.theme) || s.instrument_label || "Research";
-  const who = segment && !name && !s.instrument_label ? "rynek" : sym;
+  const macro = isMacroKey(segment);
+  const title = name || (macro ? noteKeyLabel(segment) : null) || str(p.segment_label) || (segment ? segmentLabel(segment) : null) || str(p.theme) || s.instrument_label || "Research";
+  const who = segment && !name && !s.instrument_label ? (macro ? "makro" : "rynek") : sym;
   const bold = str(p.title) ?? str(p.note_title) ?? s.message;
   const tail = [strength != null ? `siła ${clampStrength(strength)}/3` : null, srcs ? plural(srcs, "źródło", "źródła", "źródeł") : null].filter(Boolean).join(" · ");
   return { title, sym: who, lead: rel !== "none" ? `${RELATION_LABEL[rel]} ·` : str(p.kind) ? `${KIND_LABEL[str(p.kind)!] ?? str(p.kind)} ·` : undefined, bold: bold || undefined, tail: tail ? `· ${tail}` : undefined };

@@ -23,6 +23,7 @@ import {
 } from "./segments";
 import type { InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, Workspace } from "./types";
 import { InstLabel, type InstLike } from "../InstLabel";
+import { MacroLine } from "./MacroWidgets";
 
 export interface StripCtx {
   slug: string;
@@ -56,6 +57,7 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
       <Widget title="Research" className="rsch" tags={<span className={`tag ${tag.tone}`}>{tag.text}</span>}
         controls={<button className="lnk" onClick={() => ctx.onOpenResearch()}>otwórz notatki</button>} body="tight"
         footer={<><span>rutyna: <b>sobota 07:00</b> · Claude Code</span><span className="spacer" /><span>{BOUNDARY}</span></>}>
+        <MacroLine ctx={ctx} />
         <NotRun ctx={ctx} runs={runs} cmd={cmd} />
       </Widget>
     );
@@ -132,12 +134,12 @@ export function ThesisRow({ s, health, name, symbol, inst, muted, sub, right, on
   );
 }
 
-/** Home column `Rynek` (P5 design 2): the 1w attribution, up to 6 rows (segments by |contribution|, `Waluty`,
- * `Bez segmentu`), `pozostałe N` when segments were dropped. */
+/** Home column `Rynek` (P5 design 2): the macro line (P6) on top, then the 1w attribution, up to 6 rows (segments
+ * by |contribution|, `Waluty`, `Bez segmentu`), `pozostałe N` when segments were dropped. */
 function MarketColumn({ ctx }: { ctx: StripCtx }) {
   const seg = useSegments(ctx.slug, "1w", ctx.nonce ?? 0);
   const d = seg.data;
-  const head = <MarketHead d={d} />;
+  const head = <><MacroLine ctx={ctx} /><MarketHead d={d} /></>;
   if (!d) return <div>{head}{seg.loading ? <Skeleton h={118} r={8} /> : <div className="empty-line">Brak danych rynku.</div>}</div>;
   if (!d.segments.length) {
     return (

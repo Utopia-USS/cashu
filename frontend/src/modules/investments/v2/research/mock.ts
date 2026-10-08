@@ -1,12 +1,14 @@
 // Dev-only demo data of the research layer (`VITE_MOCK=1`), plugged into v2/mock.ts: runs, notes (held
-// positions, a watched instrument, market segments, candidates), the summary, the segment attribution (P5),
+// positions, a watched instrument, market segments, macro regimes, candidates), the summary, the segment attribution (P5),
+// the macro regimes (P6; `?macro=missing` flips the EM card to missing),
 // dismiss / restore, candidate accept / undo, research signals and the review digest block. Invented content only (no real reports, no real
 // URLs beyond example.org). Scenarios via the query string: `?research=none` (never ran), `stale` (last run
 // 26.09), `running`, `failed`.
 import { ApiError } from "../../../../core/api";
 import { addDays, KIND_LABEL, RELATION_LABEL, relationCounts, sentiment8w } from "./logic";
 import { plural } from "../../labels";
-import type { DigestResearch, InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentRow } from "./types";
+import { stateLabel } from "./macro";
+import type { DigestResearch, InstrumentSummary, MacroRegime, MacroRegimes, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentRow } from "./types";
 
 const SCENARIO = new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("research") ?? "";
 const TODAY = "2026-10-04";
@@ -86,6 +88,15 @@ function janNotes(): ResearchNote[] {
     note({ id: 904, segment: "uranium", segment_label: "Uran i atom", kind: "news", polarity: "positive", strength: 2, thesis_relation: "none", observed_at: "2026-09-29T07:00:00+02:00",
       title: "Kazatomprom: cięcia wydobycia 2027", summary: "Plan wydobycia na 2027 obniżony o ok. 10 %; cena spot uranu +6 % w tygodniu. Brak pozycji w segmencie.",
       sources: [src("Kazatomprom", "2026-09-29", "u-1")] }),
+    // P6 macro notes (segment notes with a macro key): 905 is this week's and unread, 906 was read.
+    note({ id: 905, segment: "macro_rates", segment_label: "Obligacje i stopy", kind: "macro", polarity: "neutral", strength: 2, thesis_relation: "none", observed_at: SAT,
+      title: "Fed: trzecia obniżka, 10Y 3,92 %, krzywa nadal odwrócona",
+      summary: "Fed obniżył stopy o 25 pb (1.10). Rentowność 10Y 3,92 % (-48 bp w 3 mies.), 3M 4,10 %: krzywa 10l-3m -18 bp. Dotyczy: obligacje, złoto.",
+      sources: [src("Fed", "2026-10-01", "macro-1"), src("US Treasury", "2026-10-02", "macro-2")] }),
+    note({ id: 906, segment: "macro_risk", segment_label: "Rynek akcji", kind: "macro", polarity: "positive", strength: 1, thesis_relation: "none", observed_at: "2026-09-19T07:00:00+02:00", run_id: 1,
+      title: "ACWI: nowy szczyt po danych o inflacji",
+      summary: "ACWI zamknął tydzień na nowym szczycie; 6,2 % nad średnią 200 sesji. CPI USA 2,6 % r/r zgodnie z oczekiwaniami.",
+      sources: [src("BLS", "2026-09-17", "macro-3")] }),
     note({ candidate: { symbol: "TXT", name: "Text", exchange: "XWAR", currency: "PLN", key: "TXT" }, kind: "candidate", polarity: "neutral", strength: 2, thesis_relation: "none", observed_at: "2026-10-01T09:00:00+02:00",
       title: "Text: korekta sentymentu przy stabilnych przychodach",
       summary: "Kurs -31 % od szczytu 52 tyg. przy stabilnych przychodach od 4 kwartałów; sentyment społeczności negatywny (szum), wiadomości neutralne.",
@@ -138,11 +149,11 @@ function stateFor(slug: string, kind: string): RState {
   if (!st) {
     const on = slug === "jan" && kind === "full" && SCENARIO !== "none";
     st = { notes: on ? janNotes() : [], runs: on ? janRuns() : [], nextId: 9500 };
-    // F8 (Q10): agent notes of this week's run on EIMI, KGHM's community note and this week's segment notes (gold,
-    // uranium) are unread; everything else was opened.
+    // F8 (Q10): agent notes of this week's run on EIMI, KGHM's community note, this week's segment notes (gold,
+    // uranium) and the macro rates note (905) are unread; everything else was opened.
     for (const n of st.notes) {
       const unread = n.created_by === "agent" && n.kind !== "candidate"
-        && ((n.observed_at === SAT && (n.instrument_id === 307 || (n.instrument_id === 305 && n.kind === "community"))) || n.id === 901 || n.id === 904);
+        && ((n.observed_at === SAT && (n.instrument_id === 307 || (n.instrument_id === 305 && n.kind === "community"))) || n.id === 901 || n.id === 904 || n.id === 905);
       n.read_at = unread ? null : n.observed_at;
     }
     if (on && SCENARIO === "stale") st.notes = st.notes.filter((n) => n.observed_at < "2026-10-02");
@@ -250,6 +261,55 @@ function segmentsOf(st: RState, kind: string, window: "1w" | "4w"): SegmentAttri
   };
 }
 
+// ---- macro regimes (P6): five cards, one stale, one inverted curve, one change this week -------------------
+// Shaped like the BE (`macro/service.py`): top-level `as_of` = the last bar, `flags` on every card, history items
+// with `state_label` (the first run of the stored window is `open`), `since_open` / `since_min` for a state that
+// held since before the window, a missing card with the BE meaning and `stale`.
+const MACRO_AS_OF = "2026-10-02"; // Friday's session = the last bar
+const MACRO_WINDOW = "2025-03-10"; // first evaluated session of the stored window
+const MACRO_MISSING = new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("macro") === "missing";
+type RegimeSeed = Omit<MacroRegime, "unread" | "note_this_week"> & { flags: string[] };
+const hist = (key: string, items: [string, string, boolean?][]) => items.map(([date, state, open]) => ({ date, state, state_label: stateLabel(key, state), ...(open ? { open: true } : {}) }));
+const MACRO_SEED: RegimeSeed[] = [
+  { key: "risk", label: "Rynek akcji", state: "bull", state_label: "hossa", tone: "pos", since: "2026-08-14", since_open: false, since_min: MACRO_WINDOW, as_of: MACRO_AS_OF, stale: false, missing: false, flags: [],
+    meaning: "Globalne akcje są powyżej rosnącej średniej z 200 sesji: trwały trend wzrostowy szerokiego rynku.",
+    metrics: [{ label: "ACWI wobec 200 sesji", value: 0.062, unit: "pct", text: "+6,2 %" }, { label: "od szczytu", value: -0.014, unit: "pct", text: "-1,4 %" }, { label: "S&P 500 od szczytu", value: -0.008, unit: "pct", text: "-0,8 %" }],
+    history: hist("risk", [[MACRO_WINDOW, "correction", true], ["2025-05-02", "flat"], ["2025-06-20", "bull"], ["2026-04-07", "weak"], ["2026-08-14", "bull"]]),
+    note: { id: 906, title: "ACWI: nowy szczyt po danych o inflacji", observed_at: "2026-09-19T07:00:00+02:00", polarity: "positive", kind: "macro" }, last_note_at: "2026-09-19T07:00:00+02:00" },
+  { key: "dollar", label: "Dolar", state: "weak", state_label: "słabnie", tone: "", since: "2026-10-02", since_open: false, since_min: MACRO_WINDOW, as_of: MACRO_AS_OF, stale: false, missing: false, flags: [],
+    meaning: "Słabnący dolar obniża wartość aktywów w USD liczoną w złotych i zwykle sprzyja rynkom wschodzącym i surowcom.",
+    metrics: [{ label: "DXY", value: 98.4, unit: "level", text: "98,4" }, { label: "6 mies.", value: -0.048, unit: "pct", text: "-4,8 %" }, { label: "USD/PLN 6 mies.", value: -0.051, unit: "pct", text: "-5,1 %", stale: true }],
+    history: hist("dollar", [[MACRO_WINDOW, "weak", true], ["2025-11-03", "flat"], ["2026-10-02", "weak"]]),
+    note: null, last_note_at: null },
+  MACRO_MISSING
+    ? { key: "em", label: "Rynki wschodzące", state: "unknown", state_label: "brak danych", tone: "", since: null, since_open: false, since_min: null, as_of: "2026-09-18", stale: true, missing: true, flags: [],
+      meaning: "Za mało aktualnych notowań, by ustalić stan.", metrics: [], history: [], note: null, last_note_at: null }
+    : { key: "em", label: "Rynki wschodzące", state: "inline", state_label: "w linii", tone: "", since: null, since_open: true, since_min: MACRO_WINDOW, as_of: MACRO_AS_OF, stale: false, missing: false, flags: [],
+      meaning: "Akcje rynków wschodzących radzą sobie od pół roku podobnie jak akcje globalne.",
+      metrics: [{ label: "EEM wobec ACWI 6 mies.", value: 1.9, unit: "pp", text: "+1,9 pp" }, { label: "EEM 6 mies.", value: 0.093, unit: "pct", text: "+9,3 %" }],
+      history: hist("em", [[MACRO_WINDOW, "inline", true]]), note: null, last_note_at: null },
+  { key: "commodities", label: "Surowce", state: "flat", state_label: "bez trendu", tone: "", since: "2026-07-21", since_open: false, since_min: MACRO_WINDOW, as_of: "2026-09-26", stale: true, missing: false, flags: [],
+    meaning: "Szeroki koszyk surowców nie ma wyraźnego trendu: to ani hossa, ani bessa surowcowa.",
+    metrics: [{ label: "DBC 12 mies.", value: 0.041, unit: "pct", text: "+4,1 %" }, { label: "wobec ACWI 12 mies.", value: -6.2, unit: "pp", text: "-6,2 pp" }],
+    history: hist("commodities", [[MACRO_WINDOW, "bull", true], ["2026-07-21", "flat"]]),
+    note: null, last_note_at: "2026-09-12T07:00:00+02:00" },
+  { key: "rates", label: "Obligacje i stopy", state: "falling", state_label: "rentowności spadają · krzywa odwrócona", tone: "warn", since: "2026-09-05", since_open: false, since_min: MACRO_WINDOW, as_of: MACRO_AS_OF, stale: false, missing: false, flags: ["inverted"],
+    meaning: "Niższe rentowności obniżają koszt pieniądza: zwykle sprzyjają wycenom spółek wzrostowych i cenom obligacji długoterminowych.",
+    metrics: [{ label: "USA 10 lat", value: 3.92, unit: "level", text: "3,92 %" }, { label: "3 mies. zmiana", value: -48, unit: "bp", text: "-48 bp" }, { label: "krzywa 10l-3m", value: -18, unit: "bp", text: "-18 bp" }],
+    history: hist("rates", [[MACRO_WINDOW, "stable", true], ["2025-11-11", "rising"], ["2026-03-02", "stable"], ["2026-09-05", "falling"]]),
+    note: { id: 905, title: "Fed: trzecia obniżka, 10Y 3,92 %, krzywa nadal odwrócona", observed_at: SAT, polarity: "neutral", kind: "macro" }, last_note_at: SAT },
+];
+/** The regimes with `unread` / `note_this_week` from the notes (opening a card marks its notes read). */
+function macroOf(st: RState, kind: string): MacroRegimes {
+  if (kind !== "full") return { as_of: null, regimes: [] };
+  return {
+    as_of: MACRO_AS_OF, regimes: MACRO_SEED.map((r) => ({
+      ...r, note_this_week: !!r.note && r.note.observed_at.slice(0, 10) >= "2026-09-28",
+      unread: st.notes.filter((n) => n.segment === `macro_${r.key}` && isUnread(n)).length,
+    })),
+  };
+}
+
 // ---- signals and the review digest ----------------------------------------------------------------------
 export function researchSignals(slug: string, kind: string, status: string): Record<string, unknown>[] {
   const st = stateFor(slug, kind);
@@ -268,8 +328,11 @@ export function researchSignals(slug: string, kind: string, status: string): Rec
 
 export function researchDigest(slug: string, kind: string): DigestResearch | null {
   const st = stateFor(slug, kind);
-  if (!st.runs.length) return null;
   const since = "2026-09-27";
+  // The dollar's change of 2.10 falls inside the period starting 27.09; the rates change of 5.09 does not.
+  const macro_changes = kind === "full" ? [{ key: "dollar", label: "Dolar", from_label: "bez trendu", to_label: "słabnie", since: "2026-10-02" }] : [];
+  // Like the BE: the block exists before the first run too (run null), the macro changes do not depend on runs.
+  if (!st.runs.length) return { since, run: null, ran_in_period: false, notes_count: 0, theses_changed: [], candidates: [], macro_changes };
   const fresh = st.notes.filter((n) => n.observed_at.slice(0, 10) >= since);
   const run = [...st.runs].sort((a, b) => b.started_at.localeCompare(a.started_at))[0];
   return {
@@ -282,6 +345,7 @@ export function researchDigest(slug: string, kind: string): DigestResearch | nul
     ],
     segments: segmentRows(st, "1w").slice(0, 4),
     market: (({ segments: _s, ...rest }) => rest)(segmentsOf(st, kind, "1w")),
+    macro_changes,
     candidates: fresh.filter((n) => n.kind === "candidate").map((n) => n.id),
   };
 }
@@ -312,6 +376,7 @@ export function researchMock(slug: string, kind: string, ip: string, q: URLSearc
     if (w !== "1w" && w !== "4w") throw new ApiError(422, "window must be 1w or 4w");
     return segmentsOf(st, kind, w);
   }
+  if (ip === "/research/macro") return macroOf(st, kind);
   if (ip === "/research/read" && method === "POST") {
     const hit = (n: ResearchNote) => (b.instrument_id != null ? n.instrument_id === Number(b.instrument_id) : typeof b.segment === "string" ? n.segment === b.segment : Array.isArray(b.ids) ? (b.ids as number[]).includes(n.id) : false);
     let marked = 0;

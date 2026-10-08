@@ -12,6 +12,8 @@ import {
 } from "./logic";
 import { CandidateCard } from "./primitives";
 import { normDigestMarket, reviewColumn, withNewNote } from "./segments";
+import { MacroChanges } from "./MacroWidgets";
+import { normMacroChanges } from "./macro";
 import { MarketHead, NotRun, SegmentRows, type StripCtx, ThesisRow } from "./Strip";
 import type { DigestResearch, ResearchNote, ResearchRun, ResearchSummary } from "./types";
 import { localDay } from "../../../../time";
@@ -31,6 +33,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
       <Widget title="Co mówi research" className="rsch" tags={<span className={`tag ${tag.tone || "warn"}`}>{tag.state === "stale" ? tag.text : `brak w tym tygodniu${last ? ` · ostatni ${dm(last.finished_at ?? last.started_at)}` : ""}`}</span>}
         controls={last ? <button className="lnk" onClick={() => ctx.onOpenResearch()}>notatki z {dm(last.started_at)}{n != null ? ` (${n})` : ""}</button> : undefined} body="tight"
         footer={<><span>rutyna: <b>sobota 07:00</b> · Claude Code · <button className="lnk" onClick={onSettings}>Ustawienia › Agent AI</button></span><span className="spacer" /><span>{BOUNDARY}</span></>}>
+        <MacroChanges changes={normMacroChanges(digest?.macro_changes)} onOpen={(k) => ctx.onOpenResearch(`segment=${k}`)} />
         <NotRun ctx={ctx} runs={runs} cmd={researchCommand(ctx.workspace?.path, ctx.slug)} />
       </Widget>
     );
@@ -88,6 +91,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
           )}
         </div>
         <div>
+          <MacroChanges changes={normMacroChanges(digest?.macro_changes)} onOpen={(k) => ctx.onOpenResearch(`segment=${k}`)} />
           <MarketHead d={market} extra={newSeg ? plural(newSeg, "nowa notatka", "nowe notatki", "nowych notatek") : "bez nowych notatek"} />
           {segRows.length
             ? <SegmentRows rows={segRows} stale={market?.stale ?? []} symOf={ctx.symOf} onOpen={(key) => ctx.onOpenResearch(`segment=${key}`)} />

@@ -206,7 +206,7 @@ function normInstruments(v: unknown): SegmentInstrument[] {
   }).filter((i) => Number.isFinite(i.instrument_id));
 }
 
-function normNoteRef(v: unknown): SegmentNoteRef | null {
+export function normNoteRef(v: unknown): SegmentNoteRef | null {
   const o = obj(v);
   const id = num(o.id);
   if (id == null || !str(o.title)) return null;
@@ -250,4 +250,16 @@ export function normAttribution(v: unknown, window: SegmentWindow = "1w"): Segme
 export function normDigestMarket(segments: unknown, market: unknown): { segments: SegmentRow[]; market: SegmentAttribution | null } {
   const rows = arr(segments).map(normSegmentRow).filter((x): x is SegmentRow => !!x);
   return { segments: rows, market: market && typeof market === "object" ? normAttribution({ ...(market as object), segments: [] }) : null };
+}
+
+/** The location hash with `?segment=<key>` set (or removed for null), other query params kept: the research page
+ * writes its selection back with `history.replaceState`, so a reload keeps the filter (no history entries). */
+export function hashWithSegment(hash: string, key: string | null): string {
+  const i = hash.indexOf("?");
+  const path = i < 0 ? hash : hash.slice(0, i);
+  const q = new URLSearchParams(i < 0 ? "" : hash.slice(i + 1));
+  if (key) q.set("segment", key);
+  else q.delete("segment");
+  const s = q.toString();
+  return s ? `${path}?${s}` : path;
 }

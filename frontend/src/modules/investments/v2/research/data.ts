@@ -11,7 +11,7 @@ import { errorText } from "../../../../core/messages";
 import { isMissingRoute } from "../../../../core/api";
 import { makeUndo, type Undo, undoMessage, undoSettled } from "../../undo";
 import { deleteWatch, dropInv, invKey, postWatch } from "../api";
-import { acceptCandidate, dismissNote, getResearch, getResearchRuns, getResearchSummary, getSegments, getWorkspace, restoreNote, unacceptCandidate } from "./api";
+import { acceptCandidate, dismissNote, getResearch, getResearchRuns, getMacro, getResearchSummary, getSegments, getWorkspace, restoreNote, unacceptCandidate } from "./api";
 import { isRestorable, latestRun, noteSubject } from "./logic";
 import type { ResearchNote, ResearchRun, SegmentWindow } from "./types";
 
@@ -78,6 +78,19 @@ export function useSegments(slug: string, window: SegmentWindow, nonce = 0) {
   const finishedKey = runsQ.data ? runsQ.data.map((r) => `${r.id}:${r.status}`).join(",") : "";
   const q = useAsync(() => cached(`seg:${slug}:${window}`, () => getSegments(slug, window)), [slug, window, nonce, v, tick, finishedKey],
     { key: invKey(slug, "research", "segments", window) });
+  return { data: q.data, loading: q.loading, failed: !q.loading && !q.data };
+}
+
+/** P6 macro regimes (home line, page widget): re-read by `bumpResearch` (a macro note read / dismissed changes
+ * `unread` / `note`), the run poll (a run writes macro notes) and the home `nonce`. `failed` = the request failed or
+ * the server has no endpoint. */
+export function useMacro(slug: string, nonce = 0) {
+  const v = useResearchVersion();
+  const runsQ = useAsync(() => runsOf(slug), [slug, nonce, v], { key: invKey(slug, "research", "runs") });
+  const tick = useRunPoll(runsQ.data);
+  useEffect(() => { if (tick) { cache.clear(); runsQ.reload(); } }, [tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const finishedKey = runsQ.data ? runsQ.data.map((r) => `${r.id}:${r.status}`).join(",") : "";
+  const q = useAsync(() => cached(`macro:${slug}`, () => getMacro(slug)), [slug, nonce, v, tick, finishedKey], { key: invKey(slug, "research", "macro") });
   return { data: q.data, loading: q.loading, failed: !q.loading && !q.data };
 }
 

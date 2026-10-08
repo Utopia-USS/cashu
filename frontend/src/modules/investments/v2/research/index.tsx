@@ -6,11 +6,13 @@ import { type ReactNode, useCallback, useMemo } from "react";
 import type { GridItem } from "../../../../widgets";
 import type { WatchItem } from "../api";
 import { instName } from "../logic";
-import { useResearchOverview, useWorkspace } from "./data";
+import { useMacro, useResearchOverview, useWorkspace } from "./data";
 import { acceptedAt, latestRun, showStrip, watchItemId } from "./logic";
 import { ResearchPage } from "./Page";
 import { ReviewResearch, researchChanges, researchEffectLine } from "./ReviewBlock";
 import { ResearchStrip, type StripCtx } from "./Strip";
+import { MacroChangesWidget, MacroStrip } from "./MacroWidgets";
+import { normMacroChanges } from "./macro";
 import type { DigestResearch, ResearchNote } from "./types";
 import { localDay } from "../../../../time";
 
@@ -57,14 +59,21 @@ export function useResearchHome(input: ResearchHomeInput) {
   };
   const ran = showStrip(runs);
   const last = latestRun(runs ?? []);
+  // P6: the macro regimes come from the daily check, not from research runs: shown before the first run too.
+  const macro = useMacro(o.slug, o.nonce);
+  const macroChanges = normMacroChanges(o.digestResearch?.macro_changes);
+  const openMacro = (k: string) => o.go(`research?segment=${k}`);
 
-  /** Grid item of the strip (null before the first run); the last cell of the home (Q13). */
-  const strip: GridItem | null = ran && runs ? { id: "research", span: 3, node: <ResearchStrip ctx={ctx} runs={runs} summary={summary} candidates={candidates} /> } : null;
+  /** Grid item of the strip; the last cell of the home (Q13). Before the first run only the macro line (P6), when
+   * there are regimes. */
+  const strip: GridItem | null = ran && runs ? { id: "research", span: 3, node: <ResearchStrip ctx={ctx} runs={runs} summary={summary} candidates={candidates} /> }
+    : macro.data?.regimes.length ? { id: "research", span: 3, node: <MacroStrip ctx={ctx} /> } : null;
 
-  /** Review block (span 3) between Co się zmieniło and Sygnały; null before the first run. */
+  /** Review block (span 3) between Co się zmieniło and Sygnały; before the first run only the changed macro
+   * regimes (P6), when any changed. */
   const review = (since: string | null): GridItem | null => ran && runs && since
     ? { id: "review-research", span: 3, node: <ReviewResearch ctx={ctx} runs={runs} summary={summary} candidates={candidates} digest={o.digestResearch} since={since} onSettings={o.onSettings} /> }
-    : null;
+    : since && macroChanges.length ? { id: "review-research", span: 3, node: <MacroChangesWidget changes={macroChanges} onOpen={openMacro} /> } : null;
 
   /** `Research` row of Co się zmieniło (null when no run in the period). */
   const changesRow = researchChanges({ digest: o.digestResearch, held, onJump: () => document.getElementById("inv-review-research")?.scrollIntoView({ behavior: "smooth", block: "start" }) });
