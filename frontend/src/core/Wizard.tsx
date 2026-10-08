@@ -19,15 +19,18 @@ export const legacySkipped = (): boolean => {
   try { return readStored(localStorage, LEGACY_SKIP_KEY) === "1"; } catch { return false; }
 };
 
-export const PRIVACY_OPTIONS: { value: Privacy; title: string; desc: string; example: string; tag?: boolean }[] = [
+// Asked as an open question: neither answer is preselected or marked as the default.
+export const PRIVACY_QUESTION = "Czy agent AI może widzieć kwoty?";
+export const PRIVACY_COMMON = "W obu wariantach bez numerów kont, IBAN-ów i danych osobowych.";
+export const PRIVACY_OPTIONS: { value: Privacy; title: string; desc: string; example: string }[] = [
   {
-    value: "strict", title: "Ścisły", tag: true,
-    desc: "Udziały procentowe, kategorie, daty, nazwy instrumentów. Bez kwot, numerów kont i nazwisk.",
+    value: "strict", title: "Ścisły",
+    desc: "Udziały procentowe, kategorie, daty, nazwy instrumentów.",
     example: "Przykład: zamiast „CD Projekt: 12 400 zł\" agent dostaje „CD Projekt: 6,7 % portfela\".",
   },
   {
     value: "amounts", title: "Z kwotami",
-    desc: "Także kwoty w walucie konta. Bez numerów kont, IBAN-ów i danych osobowych.",
+    desc: "To samo plus kwoty w walucie konta.",
     example: "Przykład: pytanie „ile wydałam na jedzenie we wrześniu\".",
   },
 ];
@@ -55,7 +58,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
   const [picked, setPicked] = useState<Set<string>>(
     () => new Set(ordered.some((m) => m.id === "budget" && m.available) ? ["budget"] : []),
   );
-  const [privacy, setPrivacy] = useState<Privacy>("strict");
+  const [privacy, setPrivacy] = useState<Privacy | null>(null);
   const [nameErr, setNameErr] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -111,6 +114,7 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
   };
 
   const create = async () => {
+    if (!privacy) return;
     setBusy(true); setErr(null); setWsErr(null);
     let p = created;
     if (!p) {
@@ -204,9 +208,10 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
 
         {step === 2 && (
           <>
-            <RadioList<Privacy> name="wz-privacy" value={privacy} onChange={setPrivacy}
-              options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example, tag: o.tag ? <Tag>domyślny</Tag> : undefined }))} />
-            <div className="muted" style={{ fontSize: 12.5, margin: "4px 0 16px" }}>{PROPOSAL_NOTE}</div>
+            <h2 id="wz-privacy-h" style={{ margin: "0 0 8px" }}>{PRIVACY_QUESTION}</h2>
+            <RadioList<Privacy> name="wz-privacy" label={PRIVACY_QUESTION} value={privacy} onChange={setPrivacy} disabled={!!created}
+              options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example }))} />
+            <div className="muted" style={{ fontSize: 12.5, margin: "4px 0 16px" }}>{PRIVACY_COMMON} {PROPOSAL_NOTE}</div>
             <section style={{ margin: "0 0 16px" }} aria-labelledby="wz-ws-h">
               <div className="controls" style={{ margin: "0 0 6px" }}>
                 <Switch on={wsOn} label="Utwórz workspace agenta" onChange={setWsOn} disabled={busy} />
@@ -241,7 +246,9 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
                 <span className="k">Moduły</span><span className="v">{pickedNames.length ? pickedNames.join(", ") : "wartość netto i gotówka"}</span>
                 <span className="k">Agent AI</span>
                 <span className="v">
-                  {privacy === "strict" ? <>poziom ścisły · <span className="muted">udziały procentowe, nie kwoty</span></> : <>poziom z kwotami · <span className="muted">kwoty bez numerów kont</span></>}
+                  {privacy === "strict" ? <>poziom ścisły · <span className="muted">udziały procentowe, nie kwoty</span></>
+                    : privacy === "amounts" ? <>poziom z kwotami · <span className="muted">kwoty bez numerów kont</span></>
+                    : <span className="muted">do wyboru</span>}
                 </span>
                 <span className="k">Dane</span><span className="v" style={{ fontSize: 13 }}><code>{system?.data_dir ?? "-"}</code></span>
                 <span className="k">Workspace agenta</span>
@@ -266,10 +273,11 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
           </span>
           <span className="spacer" />
           {step === 1 && !picked.size && <span className="muted" style={{ fontSize: 12 }}>Bez modułów: tylko wartość netto i gotówka.</span>}
+          {step === 2 && !privacy && <span className="muted" style={{ fontSize: 12 }}>Wybierz, czy agent widzi kwoty.</span>}
           {step === 0 && <button className="btn primary" type="submit" form="wz-step">Dalej →</button>}
           {step === 1 && <button className="btn primary" onClick={() => setStep(2)}>Dalej →</button>}
           {step === 2 && (
-            <button className="btn primary" onClick={create} disabled={busy}>
+            <button className="btn primary" onClick={create} disabled={busy || !privacy}>
               {created ? (busy ? "Tworzę workspace…" : "Spróbuj ponownie") : busy ? "Tworzę profil…" : "Utwórz profil"}
             </button>
           )}

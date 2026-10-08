@@ -16,6 +16,12 @@ test("wizard creates a profile with modules", async ({ app: page }) => {
   await wizard.getByRole("button", { name: "Dalej →" }).click();
   await expect(wizard.getByRole("switch", { name: "Utwórz workspace agenta" })).toBeVisible();
   await expect(wizard.locator(".summary")).toContainText("Budżet domowy, Inwestycje");
+  // The amounts question has no preselected answer: creating waits for an explicit choice.
+  const privacy = wizard.getByRole("radiogroup", { name: "Czy agent AI może widzieć kwoty?" });
+  await expect(privacy.getByRole("radio", { checked: true })).toHaveCount(0);
+  await expect(wizard.getByRole("button", { name: "Utwórz profil" })).toBeDisabled();
+  await privacy.getByRole("radio", { name: /Z kwotami/ }).check();
+  await expect(wizard.locator(".summary")).toContainText("poziom z kwotami");
   await wizard.getByRole("button", { name: "Utwórz profil" }).click();
 
   await expect(wizard).toBeHidden({ timeout: 20_000 });

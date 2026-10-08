@@ -15,7 +15,7 @@ import { stepsTag } from "./SetupPage";
 import { useShell } from "./context";
 import type { ThemePref } from "./theme";
 import { serialSaver } from "./util";
-import { CURRENCIES, PRIVACY_OPTIONS } from "./Wizard";
+import { CURRENCIES, PRIVACY_COMMON, PRIVACY_OPTIONS, PRIVACY_QUESTION } from "./Wizard";
 import {
   changesToast, needsForce, outdatedLabel, PROPOSAL_NOTE, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, TRANSLOCATED_TEXT, workspaceErrorText, workspaceSummary,
 } from "./workspace";
@@ -247,8 +247,9 @@ function AgentSection() {
   };
   return (
     <Card id="agent" title="Agent AI (MCP)">
-      <RadioList<Privacy> name="set-privacy" value={profile.mcp_privacy} onChange={change} disabled={busy}
-        options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example, tag: o.tag ? <Tag>domyślny</Tag> : undefined }))} />
+      <RadioList<Privacy> name="set-privacy" label={PRIVACY_QUESTION} value={profile.mcp_privacy} onChange={change} disabled={busy}
+        options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example }))} />
+      <div className="muted" style={{ fontSize: 12.5, margin: "4px 0 0" }}>{PRIVACY_COMMON}</div>
       {err && <Notice tone="neg">Nie udało się zapisać poziomu: {err}</Notice>}
       <Notice tone="info">{PROPOSAL_NOTE}</Notice>
       <WorkspacePanel />

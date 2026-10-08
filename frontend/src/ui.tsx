@@ -219,13 +219,14 @@ export function ChoiceCard({ checked, title, desc, hint, tag, disabled, onChange
   );
 }
 
-export function RadioList<T extends string>({ name, value, onChange, options, disabled }: {
-  name: string; value: T; onChange: (v: T) => void; disabled?: boolean;
+/** `value` null = nothing picked yet (a question with no default answer). */
+export function RadioList<T extends string>({ name, value, onChange, options, disabled, label }: {
+  name: string; value: T | null; onChange: (v: T) => void; disabled?: boolean; label?: string;
   /** `disabled` on an option: shown, not selectable (a placeholder slot); `tooltip` says why. */
   options: { value: T; title: ReactNode; desc?: ReactNode; tag?: ReactNode; tooltip?: string; disabled?: boolean }[];
 }) {
   return (
-    <div className="radios" role="radiogroup">
+    <div className="radios" role="radiogroup" aria-label={label}>
       {options.map((o) => (
         <label key={o.value} className={`${o.value === value ? "on" : ""}${o.disabled ? " off" : ""}`} title={o.tooltip}>
           <input type="radio" name={name} value={o.value} checked={o.value === value} disabled={disabled || o.disabled} onChange={() => onChange(o.value)} />
