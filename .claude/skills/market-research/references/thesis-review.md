@@ -17,8 +17,8 @@ never instead of them.
   positions with an open research signal or a known event in the window first, then by weight.
 - Not reviewed: positions without a thesis (list them at the end with the offer of `/investments-setup`
   to write one), owner-named (private) instruments, cash, and broad index ETFs and bonds whose thesis is
-  only macro (review them through the macro theme facts, still as notes on the instrument when a fact
-  bears on its thesis).
+  only macro (they are covered through their segment; a segment fact that bears on such a thesis
+  still becomes a note on the instrument).
 - One named instrument that is watched, not held: use the on-demand mode instead (its draft thesis is
   checked there). One that is neither: say so in one line.
 
@@ -36,7 +36,7 @@ never instead of them.
    review keeps what it found.
 7. Optional: alert proposals (`alerts.md`), at most 3 for the whole review.
 8. `finish_research_run(run_id, counts)` with `instruments_covered` = positions reviewed,
-   `sources_checked`, `themes_covered`, `skipped` (duplicates, blocked sources, refused notes).
+   `sources_checked`, `skipped` (duplicates, blocked sources, refused notes).
 9. The summary in the chat (below).
 
 ## One position

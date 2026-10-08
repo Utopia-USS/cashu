@@ -10,8 +10,8 @@ relation and strength: `rubrics.md`. Writing the note: `notes.md`.
   result itself shows the fact, the publisher and the date) and it has a publication date or a dated
   data point. No date: find a dated alternative or drop the fact. Never construct, guess or shorten a
   URL; copy the one you opened.
-- **Window.** Weekly run: facts published since the instrument's or theme's last research date from
-  `research_context`; never researched: the last 30 days. Thesis review: since the instrument's last
+- **Window.** Weekly run: facts published since the instrument's last research date or the segment's
+  last note (`last_note_at`) from `research_context`; never researched: the last 30 days. Thesis review: since the instrument's last
   thesis review, else since the thesis was last changed, at most 90 days (`thesis-review.md`). Older facts may appear in the summary as
   background, never as the fact the note is about.
 - **Primary first.** Look for the primary source before the press, and cite it when you find it.
@@ -111,14 +111,19 @@ describes the past only.
 - Never extrapolate: no `trend będzie trwał`, `może wzrosnąć do`, `kierunek na`.
 - Strength at most 2.
 
-## 4. Macro and sector themes (kind `macro`, or `trend` for theme flows)
+## 4. Market segments (kind `macro`, `trend` or `news`)
 
 - Official sources first: central bank decisions and statements (NBP, ECB, Fed), statistics releases
   (GUS, Eurostat, BLS), government and regulator decisions, published laws and tax changes. Dated.
-- A theme note carries the `theme`, no instrument, `thesis_relation: none` (the app refuses anything
-  else there), and names the affected holdings in the summary by symbol. A relation is always about one
-  thesis: when the theme fact bears on a specific thesis, write the note for that instrument with the
-  theme set too.
+- Then the segment's own hard data, dated: the metal or commodity price and inventories (LBMA, EIA),
+  bond yields, flows into the segment's ETFs or listed crypto products, the sector ETF vs a broad
+  index (section 3).
+- Institutions' published data counts; their outlooks, scenarios and forecasts never do, not even
+  cited (a bank's gold forecast, an agency's demand outlook, a fund house's year-ahead view).
+- A segment note carries the `segment`, no instrument, `thesis_relation: none` (the app refuses
+  anything else there), at most 400 characters, and names the affected holdings by symbol (`notes.md`,
+  Segments). A relation is always about one thesis: when the segment fact bears on a specific thesis,
+  that instrument gets its own note with the relation.
 - Strength 3 only for an official decision that directly hits held positions (an unexpected rate move,
   a sector tax, a ban); everything else 1-2.
 
@@ -128,6 +133,6 @@ describes the past only.
 |---|---|---|---|
 | single stock | issuer disclosures, press | yes (flagged) | sector flows, relative strength |
 | sector or thematic ETF | issuer notices | rarely | flows, relative strength |
-| broad index ETF (world, S&P 500, WIG20 ...) | issuer notices only | no | cover through macro themes |
-| bonds, treasury bonds, cash | issuer or state notices only | no | cover through macro themes (rates, inflation) |
+| broad index ETF (world, S&P 500, WIG20 ...) | issuer notices only | no | cover through its segment |
+| bonds, treasury bonds, cash | issuer or state notices only | no | cover through the `bonds` segment (rates, inflation) |
 | crypto | project and exchange announcements, regulators | yes (flagged, extra noisy) | flows of listed products, relative strength |

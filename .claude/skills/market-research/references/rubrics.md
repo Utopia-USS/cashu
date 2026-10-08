@@ -1,7 +1,7 @@
 # Rubrics: kind, polarity, thesis relation, strength
 
 Three independent axes per note. Decide them in this order: kind (what the source is), polarity
-(which way the fact points for the instrument or theme), thesis relation (what it means for the
+(which way the fact points for the instrument or segment), thesis relation (what it means for the
 owner's own thesis). Then strength. Polarity colours the dot in the app; the relation colours the chip
 and drives the thesis health; strength 3 and `invalidates` create signals.
 
@@ -75,7 +75,7 @@ condition, exit plan, size plan. Then go down this list and take the first answe
 5. **`neutral`** (`nie dotyka tezy`): a thesis exists, the fact is about the instrument, but it does not
    bear on the thesis, its invalidation or its exit plan.
 6. **`none`** (`bez tezy`): there is no thesis record for the instrument (a held position without a
-   thesis, a watched instrument without a draft thesis), a candidate, or a pure theme note.
+   thesis, a watched instrument without a draft thesis), a candidate, or a segment note.
 
 Leave `thesis_field` empty for `neutral` and `none`.
 
@@ -101,7 +101,7 @@ over `fulfills`, `neutral` over `supports` / `weakens`) and say in the summary w
 | strength | app | meaning | evidence needed |
 |---|---|---|---|
 | 1 | `siła 1 z 3` (słaba) | incremental, small or early; any community note by default | one reputable source |
-| 2 | `siła 2 z 3` (umiarkowana) | material for the instrument or theme, not decisive | a primary source, or two independent reputable outlets |
+| 2 | `siła 2 z 3` (umiarkowana) | material for the instrument or segment, not decisive | a primary source, or two independent reputable outlets |
 | 3 | `siła 3 z 3` (silna) | decisive for a thesis premise, the invalidation condition or the exit plan; or a major event (M&A, tender offer, delisting, insolvency, guidance withdrawn, index exclusion, fund merger or closure, an official decision that directly hits held positions) | a primary source, always |
 
 Caps per kind: `community` 2 (default 1), `trend` 2, `candidate` 2, `macro` 3 only with an official
@@ -115,7 +115,7 @@ source and a direct effect on held positions. `news` and `earnings` up to 3.
 - `fulfills` sets the thesis health to `spełniona` (unless a note also weakens or invalidates it); it
   creates no research signal by itself (strength 3 still does). The app's own plan check then asks
   the owner for an exit plan when the thesis has none: that is the owner's rule, not the note's.
-- Signals are deduplicated per instrument or theme and week; dismissing the note resolves its signal.
+- Signals are deduplicated per instrument or segment and week; dismissing the note resolves its signal.
 
 Checklist before writing `invalidates`, `fulfills` or strength 3:
 

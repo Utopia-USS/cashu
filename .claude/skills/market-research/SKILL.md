@@ -1,13 +1,14 @@
 ---
 name: market-research
 description: Market research and model recommendations for the cashU investments module through the profile's cashU MCP server. Reviews held positions, watchlist, strategy, portfolio construction and thesis health; writes sourced Polish research notes, then saves a current buy/hold/reduce/exit recommendation for each covered instrument. Never places trades or predicts prices.
-argument-hint: "[symbol | ISIN | temat | tezy [symbol] | rutyna]"
+argument-hint: "[symbol | ISIN | segment | tezy [symbol] | rutyna]"
 ---
 
 # market-research: the Saturday routine, on-demand notes and thesis reviews
 
 You research one profile: its held positions, its watchlist, new candidates that match the owner's
-strategy, and the sector and macro themes behind them; on demand you also review the theses of the
+strategy, and the market segments behind them (the app's fixed catalog: gold, bonds, crypto,
+sectors ...); on demand you also review the theses of the
 held positions against the owner's own invalidation conditions and exit plans. What you find always
 becomes notes with sources, written through the profile's MCP server (a finding that exists only in a
 local file is invisible in the app); the app shows them in Inwestycje (research strip, asset drawer,
@@ -49,9 +50,11 @@ Read `privacy` from `profile_overview`:
 - **Z kwotami (amounts):** also amounts; still no account numbers or personal data.
 
 Either way, notes contain no portfolio data at all (no amounts, weights, cost, gains, account labels,
-profile name): they are about the market, and the app links them to positions. Web search queries
-carry only public identifiers (ticker, ISIN, company, sector, topic), one instrument or theme at a
-time, never a list of the profile's holdings with weights.
+profile name): they are about the market, and the app links them to positions. The one exception is
+the closing sentence of a segment note: returns and contributions in pp exactly as `research_context`
+gives them, never weights or amounts (step 6). Web search queries carry only public identifiers
+(ticker, ISIN, company, sector, topic), one instrument or segment at a time, never a list of the
+profile's holdings with weights.
 
 ## MCP tools
 
@@ -59,7 +62,8 @@ time, never a list of the profile's holdings with weights.
 |---|---|
 | `profile_overview` | preflight: investments enabled, privacy level, data freshness |
 | `start_research_run(scope)` | step 1: opens the run, returns `run_id` |
-| `research_context` | step 2: held and watched instruments (weights as fractions, 0.12 = 12 %) with theses (entry type, thesis, invalidation, exit plan) and research state (health, last researched), themes with direction, the strategy's version and `candidate_criteria`, open and cooled-down candidates, upcoming events, the last run and a running one, limits |
+| `research_context` | step 2: held and watched instruments (weights as fractions, 0.12 = 12 %) with theses (entry type, thesis, invalidation, exit plan) and research state (health, last researched), each with `segment` and `segment_source`; `segments` (the portfolio's move by segment: weight, contribution and return over 1 and 4 weeks, instruments with their own 1-week return and contribution, `last_note_at`, `note_this_week`), `currency`, `unassigned`, `segment_catalog`; the strategy's version and `candidate_criteria`, open and cooled-down candidates, upcoming events, the last run and a running one, limits |
+| `set_instrument_segment(instrument, segment)` | step 2: assign a catalog key to a held or watched instrument without one (`segment` is required; `null` clears your own value; an owner's value is refused) |
 | `research_notes(since?)` | step 2: notes of the last 30 days by default, dismissed ones included (never add them again), for duplicates |
 | `add_research_note(...)` | steps 3-6 and the thesis review: one note (schema in `references/notes.md`); validated, sources required, no amounts |
 | `finish_research_run(run_id, counts)` | step 8, and on any abort |
@@ -75,9 +79,12 @@ the app and click `Aktualizuj workspace` (Ustawienia > Agent AI), and stop.
 
 ## Limits
 
-- Weekly run: at most **25 notes**, at most **3 per instrument or theme**, at most **3 new candidates**,
-  at most **5 theme notes** (sector and macro together). On demand: at most **8 notes**. Thesis
-  review: at most **3 notes per position**, **40** in total (`references/thesis-review.md`).
+- Weekly run: at most **15 notes** on held and watched instruments, on at most **6 instruments** with
+  at most **2 notes** each (strength 3, `invalidates` and `fulfills` always pass), plus up to **6
+  segment notes** (one per segment and ISO week) and at most **2 new candidates**. The tool enforces
+  the instrument and segment limits per ISO week, across runs; its refusal is expected, not an error. On demand: at most **8
+  notes**. Thesis review: at most **3 notes per position**, **40** in total
+  (`references/thesis-review.md`).
 - Alert proposals: at most **3 per run**, **1 per instrument**, only the dynamic kinds
   (`references/alerts.md`).
 - No note without news: "nothing new" is not a note.
@@ -101,8 +108,10 @@ Claude Code appends arguments as `ARGUMENTS:` at the end of this skill.
   `"scheduled": false`.
 - **`tezy`**, optionally followed by a symbol or ISIN, or a request such as "przegląd tez", "sprawdź
   tezę", "czy teza ... jest aktualna": the thesis review (below).
-- **Any other argument** (a symbol, ISIN, name or theme) or a request about one instrument or theme:
-  on-demand mode.
+- **A segment** (a key or label from the catalog such as `gold` or `Złoto i górnicy`, matched case-
+  and accent-insensitively, or a request about one market segment): on-demand mode for that segment.
+  An argument that is both a held or watched symbol and a segment: ask (unattended: the instrument).
+- **Any other argument** (a symbol, ISIN or name) or a request about one instrument: on-demand mode.
 - **"Zaplanuj" / how to schedule:** `references/scheduling.md`; never create a schedule silently.
 
 Unattended runs (scheduled, `claude -p`) have nobody to answer: never ask questions there. Skip what
@@ -117,7 +126,8 @@ an interactive session, or stop with one line in an unattended one; never mix pr
 server is not connected, stop and say why.
 
 **1. Open the run.** `start_research_run(scope)` with `{"held": true, "watchlist": true,
-"candidates": true, "scheduled": true | false}` (themes are found along the way). Keep the `run_id`.
+"candidates": true, "scheduled": true | false}` (segments come from the context; `held: true` makes
+it a weekly run with the novelty limits). Keep the `run_id`.
 If the tool says another run is still running, do not touch it in an unattended run: stop with one
 line (the app marks a run without notes for 4 hours as interrupted). In an interactive session tell
 the user and close it (`finish_research_run(run_id, status="failed", reason=...)`) only after a yes.
@@ -125,13 +135,22 @@ In the workspace, start the working file `research/<YYYY-MM-DD>-run.md` (below).
 
 **2. Load the context.** `research_context`, then `research_notes` (defaults: 30 days, dismissed
 included). Plan in the working file:
+- segments first: every held or watched instrument with `segment` null gets one through
+  `set_instrument_segment`, a key from `segment_catalog` (funds by what they hold; single stocks by
+  sector when the catalog has it, else by market: `equity_pl`, `equity_em`, `equity_global`). Never
+  change an `owner` or `auto` value (the tool refuses an owner's); fix your own (`agent`) only when it is
+  clearly wrong; leave cash, stablecoins and owner-named instruments without one;
 - positions: with a thesis and a known upcoming or just-passed event first, then other theses by
   weight, then positions without a thesis by weight; broad index ETFs, bonds and cash only through
-  issuer notices and macro themes (`references/sources.md`, coverage table); owner-named (private)
+  issuer notices and their segment (`references/sources.md`, coverage table); owner-named (private)
   instruments and cash are never researched;
 - watched instruments: those with a draft thesis (accepted candidates) first;
 - the window per instrument: since its last research date (never researched: 30 days);
-- the note budget: about 15 for positions, 5 for the watchlist, 3 candidates, 5 themes.
+- the novelty budget: notes on at most 6 instruments (held and watched together), 2 each, at most 15
+  in total; segments up to 6; candidates 2. Positions with nothing new get nothing; each week only
+  part of the portfolio has new notes.
+Old notes may carry a free-text `theme` from before segments: ignore the label (their facts still
+count for duplicates) and never write `theme`.
 Scheduled run only (a catch-up after a missed Saturday can land days later): if `last_run` in the
 context is a `done` run that finished less than 3 days ago, finish this run at once with empty counts
 and say so in the summary.
@@ -142,22 +161,36 @@ and say so in the summary.
   (`references/sources.md` 2);
 - trend data for its sector or region when the thesis rests on a trend (`references/sources.md` 3).
 Decide kind, polarity, thesis relation (against the invalidation condition and the exit plan) and
-strength with `references/rubrics.md`, check duplicates, then `add_research_note`
-(`references/notes.md`). Tick the position off in the working file.
+strength with `references/rubrics.md` and check duplicates. Write a note with `invalidates`,
+`fulfills` or strength 3 at once through `add_research_note` (`references/notes.md`); list the
+others in the working file and tick the position off.
 
 **4. Watchlist.** The same passes, lighter: at most 2 notes per instrument. The relation is `none`
-unless the instrument has a (draft) thesis.
+unless the instrument has a (draft) thesis. Then write the listed notes of steps 3 and 4 in
+materiality order: a thesis relation first (`weakens`, then `supports`), then position weight x
+strength (watched instruments after held ones), until the 6-instrument budget is used. A refusal
+from the tool for the budget is expected: write nothing more for new instruments and count the rest
+in `skipped`.
 
 **5. Candidates.** From the strategy's criteria in `research_context` only
 (`references/candidates.md`): entry types `trend`, `sentiment_correction`, `special_situation` and the
-numeric thresholds. Exclude held, watched, cooled-down and recently proposed instruments. Propose only
-when every numeric threshold is met and verified, with structured `details`. No criteria in the
-strategy: no candidates (name it in the final summary). Never call `add_to_watchlist` here.
+numeric thresholds. At most 2. Exclude held, watched, cooled-down and recently proposed
+instruments. Propose only when every numeric threshold is met and verified, with structured
+`details`. No criteria in the strategy: no candidates (name it in the final summary). Never call
+`add_to_watchlist` here.
 
-**6. Sector and macro themes.** Themes behind the positions, the watchlist and the candidates (sector,
-region, rates, inflation, FX, regulation): official sources first, trend data with source and period.
-Reuse existing theme names. A theme fact that bears on one thesis goes on that instrument's note with
-the theme set.
+**6. Segments.** Go through `research_context.segments`: held exposure first by |contribution| over
+1 week, then segments with a note and no exposure. Per segment, ask what changed since its
+`last_note_at` (and its notes in `research_notes`); official sources and hard data first
+(`references/sources.md` 4). Nothing changed: no note (the app shows `bez zmian`). Otherwise one
+segment note (`references/notes.md`, Segments): `segment` = the key, no instrument, kind `macro`,
+`trend` or `news`, relation `none`, Polish, summary at most 400 characters: what happened in the
+segment this week with dated numbers, the affected holdings by symbol, then one sentence on how it
+shows in the attribution, with the 1-week figures from `research_context` (`GDXJ -4,4 % w tygodniu,
+segment -0,8 pp portfela.`; no exposure: leave the sentence out). At most one note per segment and
+ISO week (the tool refuses a second one, dismissed notes included: count it in `skipped`), at most 6
+per week. Company facts stay on the instrument, never on a segment; a segment fact that bears on one
+thesis gets that instrument's own note with the relation.
 
 **7. Alert proposals (optional).** Where this run's notes point to a dated catalyst or a changed
 situation for a held or watched single stock, sector ETF or crypto, you may propose a
@@ -166,17 +199,18 @@ situation for a held or watched single stock, sector ETF or crypto, you may prop
 only those the user accepts). None is fine; never a price level, a target or buy / sell wording.
 
 **8. Recommend and finish.** For each covered held or watched instrument, compare the fresh facts with
-its thesis, invalidation, exit plan, position weight, theme concentration, strategy and history. Call
+its thesis, invalidation, exit plan, position weight, segment concentration, strategy and history. Call
 `set_recommendation` with a `reason`: one or two short Polish sentences (max 280 characters, no amounts) naming
 the facts it rests on; the app shows it under the thesis. Do not use price targets and do not mistake a low
 price for evidence. Prefer
 `hold` when evidence is incomplete. `buy_asap` and `exit_asap` require a clear, time-sensitive reason.
 Then call `finish_research_run(run_id, counts)` with your own counters only (the app counts
 notes, kinds and signals itself): `{"sources_checked": n, "instruments_covered": n,
-"themes_covered": n, "candidates_screened": n, "skipped": n}`, where `skipped` = duplicates, blocked
-sources and refused notes together. Then a short Polish summary in the session (at most 15 lines):
-notes per part, notes that created signals (title and relation), weakened, invalidated or fulfilled
-theses by symbol, recommendations changed by symbol, alerts proposed (symbol, kind, reason), blocked
+"segments_covered": n, "candidates_screened": n, "skipped": n}`, where `segments_covered` = segments
+checked in step 6 (with or without a note) and `skipped` = duplicates, blocked sources and refused
+notes together. Then a short Polish summary in the session (at most 15 lines): notes per part
+(segments with a note by label), notes that created signals (title and relation), weakened,
+invalidated or fulfilled theses by symbol, recommendations changed by symbol, alerts proposed (symbol, kind, reason), blocked
 sources, no candidate criteria in the strategy (if so), what to look at on Sunday.
 
 If a step fails, continue with the next item. When the time box runs out, finish normally with what
@@ -185,16 +219,21 @@ is saved. If the MCP tools keep failing, finish with `status: "failed"` and a sh
 interrupted after 4 hours without notes; saved notes stay, and a later on-demand run (`dokończ
 research`) can pick up from the working file (duplicates are skipped).
 
-## On-demand mode (one instrument or theme)
+## On-demand mode (one instrument or segment)
 
 1. Preflight as in step 0.
 2. `start_research_run(scope)` with `{"held": false, "watchlist": false, "candidates": false,
-   "instruments": ["<id, symbol or ISIN>"]}`, or `"themes": ["<theme>"]` instead of `instruments`.
+   "instruments": ["<id, symbol or ISIN>"]}`, or `"segments": ["<key>"]` instead of `instruments`
+   (on-demand runs are exempt from the weekly novelty limits).
 3. `research_context` and `research_notes`.
 4. Resolve the target:
    - held or watched instrument: the passes of step 3 (window: since its last research, at most 30
      days);
-   - a theme: step 6 for that theme;
+   - a segment (key or label resolved against `segment_catalog`): step 6 for that segment only, at
+     most one note and only if something changed since its last one and `note_this_week` is false.
+     Always explain in the chat its 1-week and 4-week move from `research_context.segments`
+     (contribution, return, the holdings behind it, the currency effect); a segment missing there
+     has no exposure and no active note;
    - an instrument the profile neither holds nor watches: check it against the candidate criteria
      (`references/candidates.md`); a full match becomes a `candidate` note, anything else is answered
      in the chat without a note, with the offer to add it to the watchlist (`add_to_watchlist` only
@@ -253,7 +292,7 @@ for a clear yes, never create a schedule as a side effect.
 - `references/rubrics.md`: kind, polarity, thesis relation (invalidation condition and exit plan),
   strength 1-3, signal checklist.
 - `references/candidates.md`: candidate criteria from the strategy, exclusions, `details` shape.
-- `references/notes.md`: fields, Polish title and summary, sources, themes, duplicates, examples.
+- `references/notes.md`: fields, Polish title and summary, sources, segments, duplicates, examples.
 - `references/thesis-review.md`: the thesis review of held positions: window, per-field states, notes,
   report, summary.
 - `references/alerts.md`: proposing `range_breakout` / `volume_spike` alerts after research: when,

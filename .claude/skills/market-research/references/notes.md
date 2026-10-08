@@ -10,14 +10,14 @@ the asset drawer, the research view and the Sunday review. They are in Polish; t
 | `run_id` | the id from `start_research_run` |
 | instrument | for notes about a held or watched instrument: the id, ticker with market or ISIN as `research_context` gives it |
 | `candidate` | candidate notes only, instead of an instrument: `{symbol_or_isin, name, exchange, currency}` (`candidates.md`) |
-| `theme` | for sector and macro notes; also set it on an instrument note that belongs to a theme you track, so the theme's 8-week trend includes it |
-| `kind` | `news`, `earnings`, `community`, `trend`, `macro`, `candidate` (`rubrics.md`) |
+| `segment` | segment notes only: a key from `segment_catalog` (`gold`, `bonds`, `semis_ai` ...), with no instrument and no candidate (Segments below). Never write `theme`: old notes carry one, ignore its label |
+| `kind` | `news`, `earnings`, `community`, `trend`, `macro`, `candidate` (`rubrics.md`); a segment note only `macro`, `trend` or `news` |
 | `polarity` | `positive`, `negative`, `neutral` (`rubrics.md`) |
 | `strength` | 1-3 with the caps per kind (`rubrics.md`) |
 | `thesis_relation` | `supports`, `weakens`, `invalidates`, `fulfills`, `neutral`, `none` (`rubrics.md`) |
 | `thesis_field` | `thesis`, `invalidation`, `exit_plan`, `size_plan` or `entry_type`; only with `supports` / `weakens` / `invalidates` / `fulfills` (`fulfills`: `thesis` or `exit_plan` only) |
 | `title` | at most 120 characters |
-| `summary` | at most 1200 characters |
+| `summary` | at most 1200 characters; a segment note at most 400 |
 | `sources` | 1-10 objects with exactly the keys `url`, `publisher`, `published_at`, `title` |
 | `details` | optional object, only these keys: candidates `entry_type`, `criteria`, `criteria_version`, `bucket` (`candidates.md`); community `scale` (`small`, `medium`, `large`); any note `context` (one line, at most 200 characters; thesis-review notes start it with `Przegląd tezy:`, `thesis-review.md`) and `event` + `event_date` (the next dated event the note points to, `YYYY-MM-DD`). Never amounts, targets or sizes |
 | `observed_at` | leave to the tool (now); the dates of the facts go into `sources` and the summary |
@@ -36,7 +36,7 @@ refuses a note, fix the named field and retry once, then skip the note and count
 - No opinion, no question, no exclamation, no clickbait. Community titles name the venues and the
   direction: `Nastroje na forach wokół XYZ negatywne po wynikach`.
 
-## Summary (at most 1200 characters)
+## Summary (at most 1200 characters; segment notes 400, see Segments)
 
 1. **First paragraph = the fact** (the card shows about three lines, so the essentials fit in about
    250 characters): what happened, when (`1.10`, `30 września`), the key number, who said it.
@@ -52,7 +52,8 @@ Trend summaries add the measure, the period and the comparison base. A next date
 
 Never in a note:
 
-- the user's portfolio data: amounts, weights, cost, gains, account labels, the profile name;
+- the user's portfolio data: amounts, weights, cost, gains, account labels, the profile name (only
+  the closing attribution sentence of a segment note, below, gives returns and pp contributions);
 - recommendations or forecasts. Self-check every title and summary for words such as `kup`,
   `kupuj`, `sprzedaj`, `sprzedawaj`, `okazja`, `warto`, `należy`, `polecam`, `rekomend...`, `cel
   cenowy`, `cena docelowa`, `wycena godziwa`, `wzrośnie do`, `spadnie do`, `prognoz...`, `powinien
@@ -74,29 +75,38 @@ Regular hyphens only (no em dash character).
 - Order: primary source first. Two sources for strength 2 when the first is not primary; a primary
   source always for strength 3, `invalidates` and `fulfills`.
 
-## Themes
+## Segments
 
-- Reuse the exact theme names from `research_context` / `research_notes`, so the 8-week trend keeps
-  one line per theme (the app groups case- and accent-insensitively, but keep the spelling anyway).
-- A new theme: a short Polish noun phrase of at most 60 characters naming a sector, region or macro
-  topic, never one company: `Miedź i metale przemysłowe`, `Stopy procentowe USA`, `Rynki wschodzące:
-  przepływy ETF`, `Energia odnawialna: napływy`.
-- Open a new theme only when it bears on a held or watched instrument or on a candidate.
+The app has a fixed catalog of 18 segments (`research_context.segment_catalog`); there is nothing to
+name or invent. A segment note is a short market note for the "Rynek" view:
+
+- `segment` = the key; no instrument, no candidate; kind `macro`, `trend` or `news`;
+  `thesis_relation: none` (no `thesis_field`). The tool refuses anything else.
+- At most one per segment and ISO week, dismissed notes included, and only when something changed
+  since the segment's last note (`last_note_at`); never a repeat of last week's fact.
+- Summary at most **400 characters**, one paragraph: what happened in the segment, with dated numbers
+  and who published them, the affected holdings by symbol, then one closing sentence linking it to the
+  1-week attribution from `research_context.segments` (`GDXJ -4,4 % w tygodniu, segment -0,8 pp
+  portfela.`). Returns and contributions only, never weights or amounts; no exposure: no sentence.
+- Company facts (results, contracts, a fund notice) go on the instrument, never on a segment. A fact
+  that bears on one thesis gets that instrument's own note with the relation.
+- Never an outlook, scenario or forecast, also not one quoted from a bank, agency or fund house
+  (`sources.md` 4).
 
 ## Duplicates
 
 Before each note compare with `research_notes` (the last 30 days, including dismissed ones):
 
-- the same event for the same instrument or theme (the same primary source, or the same fact from
+- the same event for the same instrument or segment (the same primary source, or the same fact from
   another outlet): **skip**, count it in `skipped`;
 - a new fact in the same story (the next step of a merger, the confirmed date after a rumour): write a
   new note and say `Kontynuacja notatki z <d.m>.` in the summary;
 - a fact the owner dismissed: skip it, they have seen it;
 - never repeat a fact to refresh its expiry or to push it into this week's trend.
 
-The tool also refuses a note with the same instrument, candidate or theme and the same title or the
+The tool also refuses a note with the same instrument, candidate or segment and the same title or the
 same first source within 14 days (`duplicate of note <id>`): count it in `skipped` and move on. It
-refuses `thesis_relation` other than `none` for an instrument without a thesis and for theme notes.
+refuses `thesis_relation` other than `none` for an instrument without a thesis and for segment notes.
 
 No news is not a note: do not write "nothing new this week" notes.
 
@@ -107,7 +117,6 @@ Instrument, news, weakens the thesis through the exit plan:
 ```json
 {
   "instrument": "XYZ.WA",
-  "theme": "Gry wideo: premiery",
   "kind": "news",
   "polarity": "negative",
   "strength": 3,
@@ -141,19 +150,38 @@ Community, flagged as noise:
 }
 ```
 
-Theme, trend data:
+Segment, trend data (gold):
 
 ```json
 {
-  "theme": "Rynki wschodzące: przepływy ETF",
+  "segment": "gold",
   "kind": "trend",
   "polarity": "negative",
   "strength": 2,
   "thesis_relation": "none",
-  "title": "Odpływy z ETF rynków wschodzących trzeci tydzień z rzędu",
-  "summary": "Łączne odpływy z ETF rynków wschodzących w 3 tygodniach do 2.10: ok. 2,1 mld $. Siła relatywna szerokiego ETF EM wobec ACWI -4 pp od 1.08.\n\nDotyczy obserwowanych i posiadanych ETF EM; relacja do tez w notatkach instrumentów.",
+  "title": "Złoto -3,1 % w tygodniu, odpływy z ETF na złoto drugi tydzień z rzędu",
+  "summary": "Cena złota (LBMA PM) 2.10 o 3,1 % niżej niż tydzień wcześniej. Globalne ETF na złoto: odpływy ok. 1,4 mld $ w 2 tygodniach do 2.10 (World Gold Council). Spółki wydobywcze spadły mocniej niż metal. Dotyczy GDXJ: -4,4 % w tygodniu, segment -0,8 pp portfela.",
   "sources": [
-    {"title": "Weekly ETF flows", "url": "https://...", "publisher": "justETF", "published_at": "2026-10-02"}
+    {"title": "Gold ETF flows: September 2026", "url": "https://...", "publisher": "World Gold Council", "published_at": "2026-10-02"},
+    {"title": "LBMA Gold Price", "url": "https://...", "publisher": "LBMA", "published_at": "2026-10-02"}
+  ]
+}
+```
+
+Segment, macro (bonds):
+
+```json
+{
+  "segment": "bonds",
+  "kind": "macro",
+  "polarity": "positive",
+  "strength": 2,
+  "thesis_relation": "none",
+  "title": "RPP obniżyła stopę referencyjną o 25 pb do 4,25 %",
+  "summary": "Rada Polityki Pieniężnej 1.10 obniżyła stopy o 25 pb; stopa referencyjna 4,25 % (komunikat NBP). Inflacja CPI we wrześniu 2,9 % r/r (szybki szacunek GUS, 30.09). Rentowność 10-letnich obligacji skarbowych 5,05 % na zamknięciu 2.10, -14 pb w tygodniu. Dotyczy OBL.WA: +0,9 % w tygodniu, segment +0,1 pp portfela.",
+  "sources": [
+    {"title": "Komunikat po posiedzeniu RPP", "url": "https://...", "publisher": "NBP", "published_at": "2026-10-01"},
+    {"title": "Szybki szacunek wskaźnika cen towarów i usług konsumpcyjnych we wrześniu 2026", "url": "https://...", "publisher": "GUS", "published_at": "2026-09-30"}
   ]
 }
 ```

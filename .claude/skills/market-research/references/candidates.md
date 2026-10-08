@@ -52,7 +52,7 @@ Each numeric value needs a dated source. A value you cannot verify from a public
 - anything that is "hot" only in the community.
 
 Propose only when **every numeric threshold is met and verified**; descriptive criteria may be listed
-as not met. At most 3 new candidates per weekly run; prefer the ones that fit a bucket of the strategy.
+as not met. At most 2 new candidates per weekly run; prefer the ones that fit a bucket of the strategy.
 
 ## The note
 
@@ -64,9 +64,9 @@ as not met. At most 3 new candidates per weekly run; prefer the ones that fit a 
 | `strength` | 1: all thresholds met, one value from a secondary source; 2: all met and verified from primary or official data. Never 3 (candidates live in `Kandydaci`, they do not need a signal) |
 | `thesis_relation` | `none` |
 | `details` | structured criteria, below |
-| `theme` | the note's `theme` field: the theme it came from, when there is one |
+| `segment` | never: a candidate note has no `segment` (the tool refuses it); name the segment in the summary when it matters |
 | `title` | `<Name>: <what matches> (<entry type in Polish>)` |
-| `summary` | the facts behind each criterion with dates, the context (theme, bucket), what is unknown |
+| `summary` | the facts behind each criterion with dates, the context (segment, bucket), what is unknown |
 
 `details` (the app renders one line per criterion: `✓` met, `·` not met, threshold in brackets).
 Allowed keys: `entry_type` (required), `criteria` (required, at most 12, each `{text, met, threshold}`,
