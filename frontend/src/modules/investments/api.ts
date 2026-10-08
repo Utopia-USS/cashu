@@ -465,6 +465,8 @@ export interface ClassifyInput {
 export const patchInstrument = (slug: string, id: number | string, b: ClassifyInput) => jpatch<Instrument>(inv(slug, `/instruments/${id}`), b);
 
 export interface ThesisInput { entry_type?: string | null; thesis?: string | null; invalidation?: string | null; exit_plan?: string | null; size_plan?: string | null; reviewed?: boolean }
+/** Theses of one instrument of the profile (held or watched), newest first. */
+export const getTheses = (slug: string, instrumentId: number | string) => j<Thesis[]>(inv(slug, `/instruments/${instrumentId}/theses`));
 export const postThesis = (slug: string, instrumentId: number | string, b: ThesisInput) => jpost<Thesis>(inv(slug, `/instruments/${instrumentId}/theses`), b);
 export const patchThesis = (slug: string, id: number, b: ThesisInput) => jpatch<Thesis>(inv(slug, `/theses/${id}`), b);
 

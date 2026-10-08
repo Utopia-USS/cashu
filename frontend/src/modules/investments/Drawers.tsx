@@ -429,8 +429,9 @@ export function AccountDrawer({ slug, onClose, onSaved }: { slug: string; onClos
 
 // ---- thesis ------------------------------------------------------------------------------
 
-export function ThesisDrawer({ slug, position, thesis, onClose, onSaved }: {
-  slug: string; position: Position; thesis: Thesis | null; onClose: () => void; onSaved: () => void;
+/** Thesis of a held or watched instrument: a new one, or an edit of the latest. */
+export function ThesisDrawer({ slug, instrumentId, label, thesis, onClose, onSaved }: {
+  slug: string; instrumentId: number; label: string; thesis: Thesis | null; onClose: () => void; onSaved: () => void;
 }) {
   const [entry, setEntry] = useState(thesis?.entry_type ?? "sentiment_correction");
   const [text, setText] = useState(thesis?.thesis ?? "");
@@ -445,12 +446,12 @@ export function ThesisDrawer({ slug, position, thesis, onClose, onSaved }: {
     const body = { entry_type: entry, thesis: text.trim() || null, invalidation: inv.trim() || null, exit_plan: exit.trim() || null, size_plan: size.trim() || null };
     try {
       if (thesis) await patchThesis(slug, thesis.id, { ...body, reviewed });
-      else await postThesis(slug, position.instrument.id, body);
+      else await postThesis(slug, instrumentId, body);
       onSaved();
     } catch (e) { setErr(errText(e)); } finally { setBusy(false); }
   };
   return (
-    <Drawer open title={thesis ? "Edytuj tezę" : "Dodaj tezę"} tag={<Tag>{position.instrument.label}</Tag>} onClose={onClose} label="Teza"
+    <Drawer open title={thesis ? "Edytuj tezę" : "Dodaj tezę"} tag={<Tag>{label}</Tag>} onClose={onClose} label="Teza"
       footer={<>{thesis && <label style={{ fontSize: 12.5, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" className="check" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} /> przejrzana dziś</label>}<span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Anuluj</button><button className="btn primary" disabled={busy || !text.trim()} onClick={save}>{busy ? "Zapisuję…" : "Zapisz"}</button></>}>
       {err && <Notice tone="neg">{err}</Notice>}
       <div className="field"><label htmlFor="th-e">Typ wejścia</label>

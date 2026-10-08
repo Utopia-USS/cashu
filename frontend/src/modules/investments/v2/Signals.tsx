@@ -24,7 +24,7 @@ import { type Alert, invKey, type PositionV2, postPositionDecision, type SignalV
 import { staleSignalText, writePositionDecision } from "./decisionFlow";
 import { InstLabel, type InstLike } from "./InstLabel";
 import {
-  cursorOrder, groupPlan, instMono, instName, isDecided, polarityOf, railGroups, type SigFact, signalCurrent, signalFact, signalScope, signalStateKey,
+  cursorOrder, groupPlan, instMono, instName, isDecided, latestThesis, polarityOf, railGroups, type SigFact, signalCurrent, signalFact, signalScope, signalStateKey,
   signalSubject, signalText, splitByPolarity, splitByScope, STATE_LABEL, type SignalFilter, type SignalGroup,
 } from "./logic";
 import { stillLocked } from "../../../inflight";
@@ -485,7 +485,7 @@ function useTheses(slug: string, list: SignalV2[], positions: PositionV2[]): Map
   const q = useAsync(async () => {
     const out = new Map<number, Thesis>();
     await Promise.all(ids.map((id) => getPositionDetail(slug, id).then((d) => {
-      const t = d.theses[d.theses.length - 1];
+      const t = latestThesis(d.theses);
       if (t) out.set(id, t);
     }).catch(() => undefined)));
     return out;

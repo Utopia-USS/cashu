@@ -271,6 +271,8 @@ export interface WatchAddResult extends WatchItem {
   warning_codes?: { code: string; params: Record<string, unknown> | null; message: string }[];
 }
 export const postWatch = (slug: string, b: WatchInput) => jpost<WatchAddResult>(inv(slug, "/watchlist"), b);
+/** Note (why it is watched; "" clears it) or tags of a watchlist item. */
+export const patchWatch = (slug: string, id: number, b: { note?: string | null; tags?: string[] | null }) => jpatch<WatchItem>(inv(slug, `/watchlist/${id}`), b);
 export const deleteWatch = (slug: string, id: number) => jdel<{ deleted: number }>(inv(slug, `/watchlist/${id}`));
 
 // ---- instrument search (F12 B4) -------------------------------------------------------------------

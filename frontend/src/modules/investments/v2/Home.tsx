@@ -57,7 +57,7 @@ type DrawerState =
   | { kind: "import"; account?: number | null }
   | { kind: "txn"; instrumentId?: number | string | null; type?: string }
   | { kind: "account" }
-  | { kind: "thesis"; position: Position; thesis: Thesis | null }
+  | { kind: "thesis"; instrumentId: number; label: string; thesis: Thesis | null }
   | { kind: "proposal"; id: number }
   | { kind: "txns"; position: Position };
 
@@ -443,7 +443,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       onNewAlert={() => go(`alerts?new=1&instrument=${id}`)}
       onAddTxn={() => setDrawer({ kind: "txn", instrumentId: id })}
       onTxns={(p) => setDrawer({ kind: "txns", position: p })}
-      onThesis={(p, t) => setDrawer({ kind: "thesis", position: p, thesis: t })}
+      onThesis={(inst, t) => setDrawer({ kind: "thesis", instrumentId: inst.id, label: inst.label, thesis: t })}
       onJournal={() => openJournal(id)}
       onAlerts={() => go(`alerts?instrument=${id}`)}
       onAlertsChanged={reload} />
@@ -635,7 +635,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       case "account":
         return <AccountDrawer slug={slug} onClose={close} onSaved={(a) => { shellStale.current = true; close(); toast(`Dodano rachunek ${a.name}`, 2500); reload(); }} />;
       case "thesis":
-        return <ThesisDrawer slug={slug} position={drawer.position} thesis={drawer.thesis} onClose={close} onSaved={() => { close(); toast("Zapisano tezę", 2000); reload(); }} />;
+        return <ThesisDrawer slug={slug} instrumentId={drawer.instrumentId} label={drawer.label} thesis={drawer.thesis} onClose={close} onSaved={() => { close(); toast("Zapisano tezę", 2000); reload(); }} />;
       case "proposal":
         return (
           <ProposalDrawer slug={slug} id={drawer.id} version={strategy?.version ?? null} onClose={close} onChanged={reload}

@@ -6,23 +6,24 @@
 // the model recommendation with its short reason on the left, Alerty above the research slot on the right
 // (assetSlots.ts), `Sygnały i decyzje` below: the open signals as rows (a quiet `potwierdź`) above a timeline with
 // one fact per row. The same content renders in the drawer (AssetDrawer) and as a page ("otwórz jako stronę").
-// Watched instruments (not held): no facts and no meta line, no Teza, research only with notes. Not held: the header's
-// watch toggle `Obserwuj` / `Obserwujesz` (F12 F2).
+// Watched instruments (not held): no facts and no meta line, research only with notes; above Teza the watchlist
+// note (Dlaczego obserwuję, edited in place) and the thesis read from the instrument's theses (Q27). Not held: the
+// header's watch toggle `Obserwuj` / `Obserwujesz` (F12 F2).
 // P1: the model recommendation is read-only here. The owner records their own decision separately.
 // P2: the main strategy hint ends the sub line under the name (its title lists every hint); P3: the Rekomendacja card
 // is tinted yellow / red when data stored after it puts it in question, with the reasons as short lines.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LineChart, type Level } from "../../../charts";
 import { labelIndices } from "../../../chart";
 import { monthYearShort } from "../../../format";
 import { useAsync } from "../../../hooks";
 import { Seg, Skeleton, useToast } from "../../../ui";
 import { FootFacts, PolDot, Widget } from "../../../widgets";
-import { getPositionChart, getPositionDetail, type Position, type Thesis } from "../api";
+import { getPositionChart, getPositionDetail, getTheses, type Position, type Thesis } from "../api";
 import { accountLabel, bucketLabel, dmy, ENTRY_TYPE, micName, money, money0, pct, plural, qty, wdm } from "../labels";
 import { InstLabel, PlanGlyph } from "./InstLabel";
 import { AlertRow, removeAlertWithUndo } from "./Alerts";
-import { type Alert, getDecisionsFor, getSignalsV2, invKey, postWatch, type SignalV2, type WatchItem } from "./api";
+import { type Alert, getDecisionsFor, getSignalsV2, invKey, patchWatch, postWatch, type SignalV2, type WatchItem } from "./api";
 import { describeIssue, errorText } from "../../../core/messages";
 import { removeWatchWithUndo } from "./Watchlist";
 import { addedToast } from "./searchLogic";
@@ -31,7 +32,7 @@ import { ASSET_SLOTS, type AssetSlotProps } from "./assetSlots";
 import { PositionDecisionDialog } from "./Decide";
 import { isResearchKind, signalNoteId } from "./research/logic";
 import {
-  assetTimeline, averageCost, FRESH_LABEL, freshOf, freshReasonLines, headerMeta, instName, knownHints, lotRows, openRows, planLabel, polarityOf,
+  assetTimeline, averageCost, FRESH_LABEL, freshOf, freshReasonLines, headerMeta, instName, knownHints, latestThesis, lotRows, openRows, planLabel, polarityOf,
   price as priceText, signalFact, STATE_LABEL, stateOf, tlDate, weekChange,
 } from "./logic";
 import { HintChip } from "./hints";
@@ -66,7 +67,8 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   onNewAlert: () => void;
   onAddTxn: () => void;
   onTxns: (p: Position) => void;
-  onThesis: (p: Position, thesis: Thesis | null) => void;
+  /** Add or edit the thesis of a held or watched instrument. */
+  onThesis: (inst: { id: number; label: string }, thesis: Thesis | null) => void;
   onJournal: () => void;
   /** The alerts manager filtered to this instrument. */
   onAlerts: () => void;
@@ -88,6 +90,9 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   // Watched (not held): no position detail, so the timeline's decisions come from the journal of this instrument.
   const watchedDecisions = useAsync(() => (pos ? Promise.resolve(null) : getDecisionsFor(slug, id)), [slug, id, !!pos, ctx.positions],
     { key: pos ? undefined : invKey(slug, "decisions", id) });
+  // ... and its theses from the instrument's thesis list (Q27).
+  const watchedTheses = useAsync(() => (pos ? Promise.resolve(null) : getTheses(slug, id)), [slug, id, !!pos, ctx.positions],
+    { key: pos ? undefined : invKey(slug, "instrument-theses", id) });
   const chart = useAsync(() => getPositionChart(slug, id, months), [slug, id, months], { key: invKey(slug, "chart", id, months) });
   const sig = useAsync(() => getSignalsV2(slug, "all"), [slug, id, ctx.positions], { key: invKey(slug, "signals", "all") });
   const inst = pos?.instrument ?? detail.data?.instrument ?? w?.instrument ?? null;
@@ -99,7 +104,8 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const undecided = openRows(signals);
   // The header glyph says something waits for a decision: open signals no decision covers (none once decided).
   const state = stateOf(undecided.map(polarityOf));
-  const thesis = detail.data?.theses[detail.data.theses.length - 1] ?? null;
+  const theses = (pos ? detail.data?.theses : watchedTheses.data) ?? [];
+  const thesis = latestThesis(theses);
   const c = pos?.price_currency ?? chart.data?.currency ?? inst?.currency ?? "PLN";
   const series = chart.data?.series ?? [];
   const closes = series.map((p) => p.close);
@@ -156,7 +162,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const researchShown = ASSET_SLOTS.useResearchShown?.(slot) ?? true;
   const names = useMemo(() => new Map(ctx.positions.map((p) => [Number(p.instrument.id), instName(p.instrument)] as [number, string])), [ctx.positions]);
   const timeline = assetTimeline({
-    signals, decisions: (pos ? detail.data?.decisions : watchedDecisions.data) ?? [], theses: detail.data?.theses ?? [], txns: detail.data?.transactions ?? [],
+    signals, decisions: (pos ? detail.data?.decisions : watchedDecisions.data) ?? [], theses, txns: detail.data?.transactions ?? [],
     ctx: { total: ctx.total, base: ctx.base, names }, currency: c,
   });
 
@@ -299,9 +305,9 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
     </Widget>
   );
 
-  const thesisW = pos && (
+  const thesisW = (pos || w) && (
     <Widget title="Teza" tags={<>{thesis?.entry_type ? <span className="sub">{ENTRY_TYPE[thesis.entry_type] ?? thesis.entry_type}</span> : null}{ThesisTags && <ThesisTags {...slot} />}</>}
-      controls={<button className="btn sm" onClick={() => onThesis(pos, thesis)}>{thesis ? "Edytuj" : "Dodaj"}</button>} body="tight">
+      controls={<button className="btn sm" onClick={() => onThesis({ id, label: inst?.label || name }, thesis)}>{thesis ? "Edytuj" : "Dodaj"}</button>} body="tight">
       {thesis ? (
         <div className="tz">
           {thesis.thesis && <p><b>Wejście</b>{thesis.thesis}</p>}
@@ -365,10 +371,11 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
     </Widget>
   );
 
-  // Two columns (research.css .g2): Teza + Rekomendacja on the left, Alerty above research on the right. With
-  // nothing on the left (watched, no recommendation) Alerty move there; a right column left empty takes the timeline.
-  const left = thesisW || recW;
-  const leftCol = left ? <div className="stack">{thesisW}{recW}</div> : <div className="stack">{alertsW}</div>;
+  // Two columns (research.css .g2): Dlaczego obserwuję (watched), Teza + Rekomendacja on the left, Alerty above research
+  // on the right. With nothing on the left Alerty move there; a right column left empty takes the timeline.
+  const watchW = !pos && w && <WatchNote slug={slug} item={w} onChanged={ctx.onChanged} />;
+  const left = watchW || thesisW || recW;
+  const leftCol = left ? <div className="stack">{watchW}{thesisW}{recW}</div> : <div className="stack">{alertsW}</div>;
   const rightCol = left ? <div className="stack">{alertsW}{research}</div> : research;
   return (
     <div className="g2 asset">
@@ -382,6 +389,52 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
           onClose={() => setDecideOpen(false)} />
       )}
     </div>
+  );
+}
+
+/** Why a watched instrument is watched: the watchlist note in full, edited in place (PATCH /watchlist). Esc in
+ * the editor cancels the edit only (the drawer skips a handled key). */
+function WatchNote({ slug, item, onChanged }: { slug: string; item: WatchItem; onChanged: () => void }) {
+  const toast = useToast();
+  const [draft, setDraft] = useState<string | null>(null);
+  // The saved text until the reloaded watchlist carries it.
+  const [saved, setSaved] = useState<string | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => setSaved(undefined), [item.note]);
+  const note = saved !== undefined ? saved : item.note;
+  const save = async () => {
+    if (draft == null) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await patchWatch(slug, item.id, { note: draft.trim() });
+      setSaved(r.note ?? null);
+      setDraft(null);
+      toast("Zapisano", 2000);
+      onChanged();
+    } catch (e) {
+      setErr(`Nie udało się zapisać: ${errorText(e)}`);
+    } finally { setBusy(false); }
+  };
+  return (
+    <Widget title="Dlaczego obserwuję" body="tight"
+      controls={draft == null && <button className="btn sm" onClick={() => { setErr(null); setDraft(note ?? ""); }}>{note ? "Edytuj" : "Dodaj"}</button>}>
+      {draft != null ? (
+        <div className="form">
+          <div className="field">
+            <textarea rows={4} maxLength={1000} aria-label="Dlaczego obserwuję" value={draft} autoFocus
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setDraft(null); } }} />
+          </div>
+          {err && <div className="neg" style={{ fontSize: 12.5 }}>{err}</div>}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button className="btn sm" disabled={busy} onClick={() => setDraft(null)}>Anuluj</button>
+            <button className="btn sm primary" disabled={busy} onClick={save}>{busy ? "Zapisuję…" : "Zapisz"}</button>
+          </div>
+        </div>
+      ) : note ? <div className="tz"><p style={{ whiteSpace: "pre-wrap" }}>{note}</p></div>
+        : <div className="muted" style={{ fontSize: 13 }}>Brak notatki.</div>}
+    </Widget>
   );
 }
 

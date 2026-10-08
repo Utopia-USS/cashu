@@ -506,6 +506,7 @@ export function investmentsMock(slug: string, kind: Kind, path: string, q: URLSe
     return { instrument: i };
   }
   mm = m(/^\/investments\/instruments\/(\d+)\/theses$/);
+  if (mm && method === "GET") return st.theses.filter((t) => t.instrument_id === Number(mm![1])).reverse();
   if (mm && method === "POST") {
     const t: Thesis = { id: st.nextId++, instrument_id: Number(mm[1]), entry_type: (b.entry_type as string) ?? null, thesis: (b.thesis as string) ?? null, invalidation: (b.invalidation as string) ?? null, exit_plan: (b.exit_plan as string) ?? null, size_plan: (b.size_plan as string) ?? null, reviewed_at: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
     st.theses.push(t);

@@ -1438,6 +1438,16 @@ export type HeaderMetaItem =
   | { kind: "dividends"; label: string; value: string }
   | { kind: "fees"; label: string; value: string };
 
+/** The latest of an instrument's theses, whatever the list's order (the server sends newest first). */
+export function latestThesis<T extends { id: number; created_at: string | null }>(theses: readonly T[] | null | undefined): T | null {
+  let out: T | null = null;
+  for (const t of theses ?? []) {
+    const c = (t.created_at ?? "").localeCompare(out?.created_at ?? "");
+    if (!out || c > 0 || (c === 0 && t.id > out.id)) out = t;
+  }
+  return out;
+}
+
 /** The header's meta line (3) as data: `2 loty` (a toggle from two lots up; `1 lot` plain; `brak lotów`),
  * `4 transakcje` (`transakcje` while the detail loads), dividends per currency, fees. */
 export function headerMeta(o: { lots: number; txns: number | null; dividends: Record<string, number>; fees: number; currency: string }): HeaderMetaItem[] {

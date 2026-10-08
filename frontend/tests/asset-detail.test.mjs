@@ -2,7 +2,7 @@
 // no duplicates), the open rows, the header's lot table and meta line, the note row's relation icon.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assetTimeline, factText, headerMeta, lotRows, openRows } from "../src/modules/investments/v2/logic.ts";
+import { assetTimeline, factText, headerMeta, latestThesis, lotRows, openRows } from "../src/modules/investments/v2/logic.ts";
 import { noteRowTitle, relationIcon, sourceParts } from "../src/modules/investments/v2/research/logic.ts";
 import { staleSignalText, writePositionDecision } from "../src/modules/investments/v2/decisionFlow.ts";
 import { isMissingRoute } from "../src/core/missingRoute.ts";
@@ -213,4 +213,14 @@ test("staleSignalText: 409 closed, 422 other instrument, else null", () => {
   assert.equal(staleSignalText({ status: 422, message: "Signal 12 is not about instrument 7" }), "Sygnał dotyczy innego instrumentu");
   assert.equal(staleSignalText({ status: 422, message: "quantity must be positive" }), null);
   assert.equal(staleSignalText(new Error("x")), null);
+});
+
+test("latestThesis: newest by created_at then id, in any order", () => {
+  const t = (id, created_at) => ({ id, created_at });
+  assert.equal(latestThesis([t(3, "2026-10-06T09:00:00Z"), t(1, "2026-09-01T09:00:00Z")]).id, 3); // server order
+  assert.equal(latestThesis([t(1, "2026-09-01T09:00:00Z"), t(3, "2026-10-06T09:00:00Z")]).id, 3);
+  assert.equal(latestThesis([t(4, "2026-10-06T09:00:00Z"), t(5, "2026-10-06T09:00:00Z")]).id, 5);
+  assert.equal(latestThesis([t(2, null), t(1, "2026-01-01T00:00:00Z")]).id, 1);
+  assert.equal(latestThesis([]), null);
+  assert.equal(latestThesis(null), null);
 });
