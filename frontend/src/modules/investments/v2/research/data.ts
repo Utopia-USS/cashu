@@ -11,9 +11,9 @@ import { errorText } from "../../../../core/messages";
 import { isMissingRoute } from "../../../../core/api";
 import { makeUndo, type Undo, undoMessage, undoSettled } from "../../undo";
 import { deleteWatch, dropInv, invKey, postWatch } from "../api";
-import { acceptCandidate, dismissNote, getResearch, getResearchRuns, getResearchSummary, getWorkspace, restoreNote, unacceptCandidate } from "./api";
+import { acceptCandidate, dismissNote, getResearch, getResearchRuns, getResearchSummary, getSegments, getWorkspace, restoreNote, unacceptCandidate } from "./api";
 import { isRestorable, latestRun, noteSubject } from "./logic";
-import type { ResearchNote, ResearchRun } from "./types";
+import type { ResearchNote, ResearchRun, SegmentWindow } from "./types";
 
 export const POLL_MS = 30000;
 
@@ -66,6 +66,21 @@ export function useResearchOverview(slug: string, nonce: number) {
   return { runs: listOr(runsQ), summary: summaryQ.data, candidates: listOr(candQ), loading: runsQ.loading, reloadRuns: runsQ.reload };
 }
 
+/** P5 market segments of one window (home column, page widget, run strip fact): keyed per window, re-read by
+ * `bumpResearch` and the run poll like the summary. `failed` = the request failed or the server has no endpoint
+ * (nothing cached to show). */
+export function useSegments(slug: string, window: SegmentWindow, nonce = 0) {
+  const v = useResearchVersion();
+  const runsQ = useAsync(() => runsOf(slug), [slug, nonce, v], { key: invKey(slug, "research", "runs") });
+  const tick = useRunPoll(runsQ.data);
+  // A poll tick re-reads the runs too, so the poll stops once the run is done (as useResearchOverview).
+  useEffect(() => { if (tick) { cache.clear(); runsQ.reload(); } }, [tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const finishedKey = runsQ.data ? runsQ.data.map((r) => `${r.id}:${r.status}`).join(",") : "";
+  const q = useAsync(() => cached(`seg:${slug}:${window}`, () => getSegments(slug, window)), [slug, window, nonce, v, tick, finishedKey],
+    { key: invKey(slug, "research", "segments", window) });
+  return { data: q.data, loading: q.loading, failed: !q.loading && !q.data };
+}
+
 export function useWorkspace(slug: string) {
   return useAsync(() => getWorkspace(slug), [slug], { key: invKey(slug, "research", "workspace") });
 }
@@ -75,7 +90,7 @@ export function useInstrumentNotes(slug: string, instrumentId: number, nonce = 0
   const v = useResearchVersion();
   const runsQ = useAsync(() => runsOf(slug), [slug, nonce, v], { key: invKey(slug, "research", "runs") });
   const tick = useRunPoll(runsQ.data);
-  useEffect(() => { if (tick) cache.clear(); }, [tick]);
+  useEffect(() => { if (tick) { cache.clear(); runsQ.reload(); } }, [tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const notesQ = useAsync(() => cached(`inst:${slug}:${instrumentId}`, () => getResearch(slug, { instrument: instrumentId, include_dismissed: true, include_expired: true })), [slug, instrumentId, nonce, tick, v],
     { key: invKey(slug, "research", "instrument", instrumentId) });
   const summaryQ = useAsync(() => summaryOf(slug), [slug, nonce, tick, v], { key: invKey(slug, "research", "summary") });

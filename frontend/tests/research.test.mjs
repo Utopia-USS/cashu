@@ -4,11 +4,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { twoColumnOrder } from "../src/grid.ts";
 import {
-  acceptedAt, candidateCriteria, candidateReturn, chipsFromFields, countsText, isRestorable, latestTitle, normDirection, noteSubject, signalWord, watchItemId, criterionText, direction, directionChange, expiryText, fieldChips, freshness, healthOf,
+  acceptedAt, candidateCriteria, candidateReturn, chipsFromFields, countsText, isRestorable, latestTitle, noteSubject, signalWord, watchItemId, criterionText, direction, expiryText, fieldChips, freshness, healthOf,
   HEALTH_CLS, HEALTH_LABEL, isResearchKind, nextSaturday, normHealth, noteWhen, orderTheses, relationCounts,
   researchCommand, researchSignalText, runTag, safeUrl, scheduleSteps, workspacePath, sentiment8w, sentimentBars, showStrip, signalNoteId, sourceText, thesisHealth,
   weekLabels, weekScore, weekStarts, windowStart,
 } from "../src/modules/investments/v2/research/logic.ts";
+import {
+  BAR_FLOOR, barTitle, contribBars, currencyChips, currencySub, exposed, factTitle, homeRows, isSegment, normAttribution, pageRows, ppOf, ppTone,
+  instSymbol, noExposure, normDigestMarket, reviewColumn, reviewRows, segmentLabel, segmentSub, SEGMENTS, staleSymbols, staleTitle, tone, UNASSIGNED, windowTitle, withNewNote,
+} from "../src/modules/investments/v2/research/segments.ts";
 
 const note = (over) => ({
   id: 1, instrument_id: 306, theme: null, kind: "news", polarity: "negative", strength: 2, thesis_relation: "none", title: "t", summary: "",
@@ -67,15 +71,11 @@ test("sentiment bars: empty week = 2 px tick on the baseline, positive rises, ne
   assert.ok(lg.bw <= 14);
 });
 
-test("theme direction: last 4 weeks vs the previous 4, more than 1.0 apart; change wording", () => {
+test("sentiment direction: last 4 weeks vs the previous 4, more than 1.0 apart", () => {
   assert.equal(direction([0.2, 0.3, null, 0, -0.2, -0.3, -0.5, -0.8]), "down");
   assert.equal(direction([0.1, 0.3, 0.2, 0.4, null, 0.5, 0.3, 0.6]), "flat"); // +0.4 only
   assert.equal(direction([-0.4, -0.3, null, null, 0.3, 0.4, 0.2, 0.5]), "up");
   assert.equal(direction([null, null, null, null, null, null, null, null]), "flat");
-  assert.equal(directionChange("up", "down"), "z rośnie na słabnie");
-  assert.equal(directionChange("flat", "falling"), "ze stabilnie na słabnie");
-  assert.equal(directionChange("down", "up"), "ze słabnie na rośnie");
-  assert.equal(directionChange("up", "up"), null);
 });
 
 // ---- thesis health ------------------------------------------------------------------------------------
@@ -190,8 +190,13 @@ test("research signal copy: relation, title, strength and sources; note id from 
   assert.ok(!isResearchKind("alert:price_below"));
   assert.equal(signalNoteId(s), 77);
   assert.deepEqual(researchSignalText(s, "CD Projekt", "CDR"), { title: "CD Projekt", sym: "CDR", lead: "osłabia tezę ·", bold: "premiera przesunięta na 2028", tail: "· siła 3/3 · 2 źródła" });
+  // An old theme signal keeps its theme as the title.
   const theme = researchSignalText({ kind: "research:macro", message: "m", instrument_label: null, payload: { theme: "Stopy procentowe USA", kind: "macro", strength: 3, sources_count: 1 } }, "", null);
   assert.deepEqual(theme, { title: "Stopy procentowe USA", sym: null, lead: "makro ·", bold: "m", tail: "· siła 3/3 · 1 źródło" });
+  // P5: a segment note's signal is titled by the segment label, sym `rynek`.
+  const seg = researchSignalText({ kind: "research:macro", message: "m", instrument_label: null, payload: { segment: "gold", kind: "macro", strength: 3, sources_count: 1 } }, "", null);
+  assert.deepEqual(seg, { title: "Złoto i górnicy", sym: "rynek", lead: "makro ·", bold: "m", tail: "· siła 3/3 · 1 źródło" });
+  assert.equal(researchSignalText({ kind: "research:trend", message: "m", instrument_label: null, payload: { segment: "gold", segment_label: "Złoto" } }, "", null).title, "Złoto");
 });
 
 // ---- runs, commands, schedule -------------------------------------------------------------------------
@@ -256,7 +261,171 @@ test("contract accessors: candidate subject, accepted row, restore window, lates
   assert.equal(signalWord({ signal_id: null, signal: null }), null);
   assert.equal(signalWord({ signal_id: 9, signal: { id: 9, status: "active", severity: "info" } }), "sygnał otwarty");
   assert.equal(signalWord({ signal_id: 9, signal: { id: 9, status: "resolved", severity: "info" } }), "sygnał zamknięty");
-  assert.deepEqual(["rising", "falling", "stable", null].map(normDirection), ["up", "down", "flat", "flat"]);
+  // P5: a segment note's subject is its segment label (after instrument and candidate, before the old theme).
+  assert.equal(noteSubject(note({ instrument_id: null, instrument: null, segment: "bonds", segment_label: null, title: "t" })).name, "Obligacje i stopy");
+  assert.equal(noteSubject(note({ instrument_id: null, instrument: null, theme: "stopy procentowe", title: "t" })).name, "stopy procentowe");
   assert.deepEqual([...chipsFromFields([{ field: "thesis", supports: 1, weakens: 2, invalidates: 0, neutral: 0 }, { field: "exit_plan", supports: 0, weakens: 0, invalidates: 0, neutral: 3 }]).entries()],
     [["thesis", { relation: "weakens", text: "2 notatki osłabiają" }]]);
+});
+
+// ---- P5 market segments (R/segments.ts) -------------------------------------------------------------------
+
+const segRow = (over) => ({
+  segment: "gold", label: "Złoto i górnicy", group: "asset", weight: 0.1, contribution: 0, return: 0, instruments: [],
+  note: null, note_this_week: false, unread: 0, notes_8w: 0, ...over,
+});
+const symOf = (id) => ({ 301: "VWRA", 305: "GDXJ", 306: "CDR", 307: "EIMI", 308: "GLD", 309: "SIL" })[id] ?? null;
+
+test("segments: the catalog has 18 unique keys in the BE order, labels and the pseudo row", () => {
+  assert.equal(SEGMENTS.length, 18);
+  assert.equal(new Set(SEGMENTS.map((s) => s.key)).size, 18);
+  assert.equal(SEGMENTS[0].key, "equity_global");
+  assert.equal(SEGMENTS[17].key, "quantum");
+  assert.equal(SEGMENTS.filter((s) => s.group === "sector").length, 8);
+  assert.equal(segmentLabel("gold"), "Złoto i górnicy");
+  assert.equal(segmentLabel(UNASSIGNED), "Bez segmentu");
+  assert.equal(segmentLabel("nope"), "nope");
+  assert.equal(segmentLabel(null), "");
+  assert.ok(isSegment("semis_ai") && !isSegment(UNASSIGNED) && !isSegment(null));
+});
+
+test("segments: contribution tone, pp text and return tone (symmetric one-decimal rounding)", () => {
+  assert.equal(ppTone(0.0004), "zero");
+  assert.equal(ppTone(0.0005), "pos");
+  assert.equal(ppTone(-0.0005), "neg");
+  assert.equal(ppTone(0), "zero");
+  assert.equal(ppTone(null), "zero");
+  assert.equal(ppOf(-0.008), "-0,8\u00a0pp");
+  assert.equal(ppOf(0.004), "+0,4\u00a0pp");
+  assert.equal(ppOf(-0.0004), "0,0\u00a0pp");
+  assert.equal(ppOf(-0.0005), "-0,1\u00a0pp");
+  assert.equal(ppOf(null), "-");
+  assert.equal(tone(-0.012), "neg");
+  assert.equal(tone(0.031), "pos");
+  assert.equal(tone(0.0004), "");
+  assert.equal(tone(null), "");
+  // the return tone follows `pct` rounding: a half value printed as 0,0 % has no colour
+  assert.equal(tone(-0.0005), "");
+  assert.equal(tone(0.0005), "pos");
+  assert.equal(tone(-0.0006), "neg");
+});
+
+test("segments: diverging bar geometry on a shared scale with a 0,5 pp floor", () => {
+  const a = contribBars([-0.008, 0.004, 0.0003]);
+  assert.equal(a.max, 0.008);
+  assert.deepEqual(a.bars.map((b) => b.w), [50, 25, 0]);
+  assert.deepEqual(a.bars.map((b) => b.cls), ["neg", "pos", "zero"]);
+  const b = contribBars([0.001, -0.0005]);
+  assert.equal(b.max, BAR_FLOOR);
+  assert.deepEqual(b.bars.map((x) => x.w), [10, 5]);
+  assert.ok(contribBars([0, 0, 0.0001]).bars.every((x) => x.w === 0));
+  assert.equal(contribBars([]).max, BAR_FLOOR);
+  assert.deepEqual(contribBars([]).bars, []);
+  assert.equal(barTitle(-0.008, 0.02), "wkład -0,8\u00a0pp · skala ±2,0\u00a0pp");
+});
+
+test("segments: home rows take 6 slots, Waluty from 0,1 pp, Bez segmentu from 2 % weight", () => {
+  const segs = Array.from({ length: 7 }, (_, i) => segRow({ segment: SEGMENTS[i].key, label: SEGMENTS[i].label, contribution: -0.001 * (7 - i), unread: i === 6 ? 2 : i === 5 ? 1 : 0 }));
+  const cur = { contribution: -0.002, currencies: [] };
+  const un = { weight: 0.05, contribution: 0.001, instruments: [{ instrument_id: 307, contribution: 0.001, return: 0.019 }] };
+  const all = homeRows({ segments: segs, currency: cur, unassigned: un });
+  assert.equal(all.rows.length, 6);
+  assert.deepEqual(all.rows.map((r) => r.key), ["equity_global", "equity_pl", "equity_em", "bonds", "currency", UNASSIGNED]);
+  assert.deepEqual(all.rest, { count: 3, unread: 3 });
+  assert.equal(all.rows[5].label, "Bez segmentu");
+  assert.ok(Math.abs(all.rows[5].return - 0.02) < 1e-9); // contribution / weight
+  // currency 0.0004 -> no Waluty row
+  assert.ok(!homeRows({ segments: segs, currency: { contribution: 0.0004, currencies: [] }, unassigned: null }).rows.some((r) => r.key === "currency"));
+  assert.ok(homeRows({ segments: segs, currency: { contribution: -0.001, currencies: [] }, unassigned: null }).rows.some((r) => r.key === "currency"));
+  // unassigned weight 0.019 -> no row; 0.02 -> row
+  assert.ok(!homeRows({ segments: [], currency: cur, unassigned: { ...un, weight: 0.019 } }).rows.some((r) => r.key === UNASSIGNED));
+  assert.ok(homeRows({ segments: [], currency: cur, unassigned: { ...un, weight: 0.02 } }).rows.some((r) => r.key === UNASSIGNED));
+  // the page has no cap
+  assert.equal(pageRows({ segments: segs, currency: cur, unassigned: un }).length, 9);
+});
+
+test("segments: sub line (note this week, older note, symbols, currencies), stale marks, review order", () => {
+  const today = segRow({ note: { id: 1, title: "Fed: realne stopy w dół", observed_at: "2026-10-06" }, note_this_week: true });
+  const older = segRow({ note: { id: 2, title: "x", observed_at: "2026-09-22" } });
+  const none = segRow({ instruments: [305, 308, 309, 306].map((id) => ({ instrument_id: id, contribution: 0, return: 0 })) });
+  const rows = homeRows({ segments: [today, older, none], currency: { contribution: -0.002, currencies: [
+    { currency: "EUR", weight: 0.08, return: 0.002, contribution: 0.0002 }, { currency: "USD", weight: 0.55, return: -0.007, contribution: -0.0039 }, { currency: "CHF", weight: 0.01, return: 0, contribution: 0 },
+  ] }, unassigned: null }).rows;
+  assert.deepEqual(segmentSub(rows[0], symOf), { text: "Fed: realne stopy w dół", title: "Fed: realne stopy w dół" });
+  assert.equal(segmentSub(rows[1], symOf).text, "bez zmian od 22.09");
+  assert.equal(segmentSub(rows[2], symOf).text, "GDXJ · GLD · SIL");
+  assert.equal(segmentSub(rows[3], symOf).text, "USD -0,7\u00a0% · EUR +0,2\u00a0%");
+  assert.equal(currencySub([]), "");
+  assert.deepEqual(currencyChips([{ currency: "EUR", weight: 0.08, return: 0, contribution: 0 }, { currency: "USD", weight: 0.55, return: 0, contribution: 0 }]), ["USD 55\u00a0%", "EUR 8\u00a0%"]);
+  const st = staleSymbols(rows[2], [305, 308], symOf);
+  assert.deepEqual(st, ["GDXJ", "GLD"]);
+  assert.equal(staleTitle(st), "notowania nieaktualne: GDXJ, GLD");
+  assert.equal(staleTitle([]), undefined);
+  assert.deepEqual(reviewRows([older, today]).map((r) => r.note?.id), [1, 2]);
+  assert.equal(withNewNote([today, older]), 1);
+  assert.equal(exposed({ segments: [today, segRow({ weight: 0 })] }), 1);
+  assert.equal(exposed(null), 0);
+});
+
+test("segments: header and fact tooltips with and without residual, new positions, stale", () => {
+  const d = { start: "2026-10-01", end: "2026-10-08", portfolio_return: -0.012, explained: -0.0118, residual: -0.0004, new_positions: 0 };
+  assert.equal(windowTitle(d), "1.10 - 8.10 · TWR portfela");
+  assert.equal(windowTitle({ ...d, portfolio_return: null }), "1.10 - 8.10 · TWR portfela · brak pełnej historii");
+  assert.equal(factTitle(d), "wyjaśnione -1,2\u00a0% · reszta 0,0\u00a0% · 1.10 - 8.10");
+  assert.equal(factTitle({ ...d, residual: null }), "wyjaśnione -1,2\u00a0% · reszta - · 1.10 - 8.10");
+  assert.equal(factTitle({ ...d, residual: -0.001, new_positions: 1 }, ["GDXJ"]), "wyjaśnione -1,2\u00a0% · reszta -0,1\u00a0% · 1.10 - 8.10 · 1 nowa pozycja poza oknem · nieaktualne: GDXJ");
+  assert.match(factTitle({ ...d, new_positions: 3 }), /3 nowe pozycje poza oknem$/);
+});
+
+test("segments: the payload is read tolerantly (missing fields, string numbers, catalog label fallback)", () => {
+  const d = normAttribution({
+    as_of: "2026-10-08", start: "2026-10-01", end: "2026-10-08", window: "1w", portfolio_return: "-0.012", explained: -0.0115,
+    stale: [{ instrument_id: 7 }, 8], segments: [{ segment: "gold", weight: 0.18, contribution: -0.008, instruments: [12, { instrument_id: 13, contribution: 0.001 }], note: { id: 140, title: "t", observed_at: "2026-10-06" }, note_this_week: true }, { label: "no key" }],
+  });
+  assert.equal(d.portfolio_return, -0.012);
+  assert.equal(d.residual, null);
+  assert.deepEqual(d.stale, [7, 8]);
+  assert.equal(d.segments.length, 1);
+  assert.equal(d.segments[0].label, "Złoto i górnicy");
+  assert.equal(d.segments[0].group, "asset");
+  assert.equal(d.segments[0].return, null);
+  assert.deepEqual(d.segments[0].instruments.map((i) => i.instrument_id), [12, 13]);
+  assert.equal(d.segments[0].unread, 0);
+  assert.equal(d.unassigned, null);
+  assert.deepEqual(d.currency, { contribution: 0, currencies: [] });
+  assert.equal(normAttribution({}, "4w").window, "4w");
+});
+
+test("segments fix pass: expired last note, BE labels, note-only rows, review column with the digest market", () => {
+  // MED-2: no active note but an older (expired) one -> `bez zmian od`, symbols only without either
+  const expired = homeRows({ segments: [segRow({ last_note_at: "2026-08-20", instruments: [{ instrument_id: 305, contribution: 0, return: 0 }] })], currency: null, unassigned: null }).rows[0];
+  assert.equal(segmentSub(expired, symOf).text, "bez zmian od 20.08");
+  // MED-3: a sold position is named by the BE label, then `#id`
+  assert.equal(instSymbol({ instrument_id: 999, label: "BNDA" }, symOf), "BNDA");
+  assert.equal(instSymbol({ instrument_id: 305, label: "X" }, symOf), "GDXJ");
+  assert.equal(instSymbol({ instrument_id: 998 }, symOf), "#998");
+  const sold = homeRows({ segments: [segRow({ instruments: [{ instrument_id: 999, contribution: 0, return: 0, label: "BNDA" }] })], currency: null, unassigned: null }).rows[0];
+  assert.equal(segmentSub(sold, symOf).text, "BNDA");
+  assert.deepEqual(staleSymbols(sold, [999], symOf), ["BNDA"]);
+  // MED-4: a note-only segment shows `-`; a held non-market one (weight > 0, contribution 0) keeps 0,0 pp
+  const rows = pageRows({ segments: [segRow({ weight: 0 }), segRow({ segment: "bonds", weight: 0.2, contribution: 0, return: null })], currency: null, unassigned: null });
+  assert.deepEqual(rows.map(noExposure), [true, false]);
+  assert.equal(noExposure({ kind: "currency", weight: 0 }), false);
+  // MED-1: the review column takes Waluty / Bez segmentu from the digest market and keeps 6 rows
+  const segs = Array.from({ length: 6 }, (_, i) => segRow({ segment: SEGMENTS[i].key, note_this_week: i === 5 }));
+  const { segments, market } = normDigestMarket(segs, { start: "2026-10-01", end: "2026-10-08", portfolio_return: "-0.012", stale: [305],
+    currency: { contribution: -0.001, currencies: [] }, unassigned: { weight: 0.05, contribution: 0.001, return: 0.02, instruments: [] } });
+  assert.equal(market.portfolio_return, -0.012);
+  assert.deepEqual(market.stale, [305]);
+  assert.equal(market.unassigned.return, 0.02);
+  const col = reviewColumn(segments, market);
+  assert.equal(col.length, 6);
+  assert.deepEqual(col.map((r) => r.key), [SEGMENTS[5].key, SEGMENTS[0].key, SEGMENTS[1].key, SEGMENTS[2].key, "currency", UNASSIGNED]);
+  assert.equal(normDigestMarket(undefined, null).market, null);
+  assert.equal(reviewColumn(segments, null).length, 6);
+  // the parser keeps the BE extras
+  const d = normAttribution({ segments: [{ segment: "gold", last_note_at: "2026-08-20", instruments: [{ instrument_id: 1, label: "GLBA", weight: 0.1 }] }] });
+  assert.equal(d.segments[0].last_note_at, "2026-08-20");
+  assert.equal(d.segments[0].instruments[0].label, "GLBA");
+  assert.equal(d.segments[0].instruments[0].weight, 0.1);
 });

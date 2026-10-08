@@ -29,7 +29,11 @@ export interface ResearchNote {
   run_id?: number | null;
   instrument_id: number | null;
   instrument?: NoteInstrument | null;
+  /** Old free-text theme (pre-P5 notes; never written any more, kept readable). */
   theme: string | null;
+  /** P5: market segment key of a segment note (no instrument, no candidate) and its Polish label. */
+  segment?: string | null;
+  segment_label?: string | null;
   kind: NoteKind | string;
   polarity: NotePolarity | string;
   strength: number;
@@ -102,20 +106,6 @@ export interface InstrumentSummary {
   health_predates_thesis?: boolean;
 }
 
-export interface ThemeSummary {
-  theme: string;
-  key?: string;
-  sentiment_8w: (number | null)[];
-  direction: Direction | string | null;
-  notes: number;
-  /** Instrument ids (server) or display symbols. */
-  instruments: (number | string)[];
-  last_note: LatestNote | null;
-  last_observed_at?: string | null;
-  /** F8 BE: unread agent notes of the theme. */
-  unread?: number;
-}
-
 export interface ResearchSummary {
   as_of?: string;
   window_days?: number;
@@ -125,7 +115,6 @@ export interface ResearchSummary {
   last_run?: ResearchRun | null;
   running?: boolean;
   instruments: InstrumentSummary[];
-  themes: ThemeSummary[];
   candidates?: { open: number; accepted: number; dismissed_in_cooldown: number };
   totals?: { notes_active: number; notes_this_week: number; candidates_open: number; signals_open: number; notes_unread?: number };
 }
@@ -142,7 +131,7 @@ export interface ResearchRun {
   duration_s?: number | null;
   /** true = the Saturday routine ("rutyna"), false = on demand. */
   scheduled?: boolean | null;
-  scope: { held?: boolean; watchlist?: boolean; candidates?: boolean; themes?: string[]; instrument_ids?: number[]; covered_instrument_ids?: number[]; [k: string]: unknown } | string[] | null;
+  scope: { held?: boolean; watchlist?: boolean; candidates?: boolean; segments?: string[]; instrument_ids?: number[]; covered_instrument_ids?: number[]; [k: string]: unknown } | string[] | null;
   counts: RunCounts | null;
   notes?: number;
   signals?: number;
@@ -150,7 +139,6 @@ export interface ResearchRun {
 }
 
 export interface ThesisChange { instrument_id: number; label?: string | null; symbol?: string | null; from: string | null; to: string | null; note_ids?: number[]; counts?: RelationCounts }
-export interface ThemeChange { theme: string; key?: string; from: string | null; to: string | null; sentiment_8w?: (number | null)[] }
 
 /** `review-digest.research` (RS CONTRACT 6). `run: null` = never ran (no block); `ran_in_period: false` = not run. */
 export interface DigestResearch {
@@ -164,9 +152,36 @@ export interface DigestResearch {
   by_kind?: Record<string, number>;
   theses_changed: ThesisChange[];
   theses_unchanged?: number;
-  themes_changed: ThemeChange[];
+  /** P5: the 1w segment attribution rows as of the digest end (top 6); missing on older servers. */
+  segments?: SegmentRow[];
+  /** P5: the rest of that 1w view (header move, Waluty, Bez segmentu, stale); null on an attribution error. */
+  market?: Omit<SegmentAttribution, "segments"> | null;
   candidates: number[];
   highlights?: number[];
+}
+
+// ---- P5 market segments (`GET .../research/segments?window=1w|4w`, spec P5 section 5) ----------------------
+
+export type SegmentWindow = "1w" | "4w";
+/** `label` / `weight`: BE extras (a position sold inside the window is not in the held map, the label names it). */
+export interface SegmentInstrument { instrument_id: number; contribution: number; return: number | null; label?: string | null; weight?: number | null }
+export interface SegmentNoteRef { id: number; title: string; observed_at: string; polarity?: string | null; kind?: string; strength?: number | null }
+export interface SegmentRow {
+  segment: string; label: string; group: "asset" | "sector";
+  weight: number; contribution: number; return: number | null;
+  instruments: SegmentInstrument[];
+  note: SegmentNoteRef | null; note_this_week: boolean; unread: number; notes_8w: number;
+  /** Newest stored segment note, expired included (BE extra): `bez zmian od d.m` when `note` (active) is null. */
+  last_note_at?: string | null;
+}
+export interface SegmentCurrency { currency: string; weight: number; return: number; contribution: number }
+export interface SegmentAttribution {
+  as_of: string; start: string; end: string; window: SegmentWindow; base_currency: string;
+  portfolio_return: number | null; explained: number; residual: number | null;
+  new_positions: number; stale: number[];
+  segments: SegmentRow[];
+  unassigned: { weight: number; contribution: number; return: number | null; instruments: SegmentInstrument[] } | null;
+  currency: { contribution: number; currencies: SegmentCurrency[] };
 }
 
 /** `GET /api/p/{slug}/workspace` (track AW): the folder, whether cashU set it up, the managed skills. */

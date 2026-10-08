@@ -28,7 +28,7 @@ export interface ResearchHomeInput {
   strategyVersion: number | null;
   /** The review digest (its `since` and the `research` block, RS CONTRACT). */
   digest: { since?: string | null; research?: unknown } | null | undefined;
-  /** Navigate inside the investments tab (`research`, `research?theme=…`, `assets/{id}?note=…`). */
+  /** Navigate inside the investments tab (`research`, `research?segment=…`, `assets/{id}?note=…`). */
   go: (sub?: string) => void;
   openAsset: (id: number, noteId?: number) => void;
   onSettings: () => void;
@@ -52,7 +52,7 @@ export function useResearchHome(input: ResearchHomeInput) {
   const symOf = useCallback((id: number) => held.get(id)?.symbol ?? watchedIds.get(id)?.symbol
     ?? summary?.instruments.find((s) => s.instrument_id === id)?.instrument?.symbol ?? null, [held, watchedIds, summary]);
   const ctx: StripCtx = {
-    slug: o.slug, today: o.today, held, watched, symOf, strategyVersion: o.strategyVersion, workspace: ws.data,
+    slug: o.slug, today: o.today, nonce: o.nonce, held, watched, symOf, strategyVersion: o.strategyVersion, workspace: ws.data,
     onOpenAsset: o.openAsset, onOpenResearch: (q) => o.go(q ? `research?${q}` : "research"), onChanged: o.onChanged, onSettings: o.onSettings,
   };
   const ran = showStrip(runs);

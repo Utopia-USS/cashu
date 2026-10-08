@@ -44,13 +44,13 @@ function fullState(): State {
     ],
     instruments: [
       // P1 plans (design/v3/plan-badges): one of each kind on the held instruments, EIMI without a plan.
-      inst(301, "VWRA", "Vanguard FTSE All-World", { isin: "IE00BK5BQT80", asset_class: "etf", region: "global", tags: ["global_equity"], plan: "buy", plan_at: "2026-10-01T08:00:00Z" }),
-      inst(302, "SWDA", "iShares Core MSCI World", { isin: "IE00B4L5Y983", asset_class: "etf", region: "developed", tags: ["global_equity"], plan: "hold", plan_at: "2026-09-20T08:00:00Z" }),
-      inst(303, "EDO0535", "Obligacje skarbowe 10-letnie EDO", { asset_class: "treasury_bond", valuation_mode: "cost", region: "pl" }),
-      inst(304, "PKN", "PKN Orlen", { mic: "XWAR", region: "pl", tags: ["pl"], plan: "reduce", plan_at: "2026-10-02T08:00:00Z" }),
-      inst(305, "KGH", "KGHM", { mic: "XWAR", region: "pl", tags: ["pl"], plan: "hold", plan_at: "2026-09-12T08:00:00Z" }),
-      inst(306, "CDR", "CD Projekt", { mic: "XWAR", region: "pl", tags: ["pl"], plan: "buy_asap", plan_at: "2026-09-05T08:00:00Z" }),
-      inst(307, "EIMI", "iShares MSCI EM IMI", { isin: "IE00BKM4GZ66", asset_class: "other", needs_classification: true }),
+      inst(301, "VWRA", "Vanguard FTSE All-World", { isin: "IE00BK5BQT80", asset_class: "etf", region: "global", tags: ["global_equity"], plan: "buy", plan_at: "2026-10-01T08:00:00Z", segment: "semis_ai", segment_source: "owner" }),
+      inst(302, "SWDA", "iShares Core MSCI World", { isin: "IE00B4L5Y983", asset_class: "etf", region: "developed", tags: ["global_equity"], plan: "hold", plan_at: "2026-09-20T08:00:00Z", segment: "semis_ai", segment_source: "owner" }),
+      inst(303, "EDO0535", "Obligacje skarbowe 10-letnie EDO", { asset_class: "treasury_bond", valuation_mode: "cost", region: "pl", segment: "bonds", segment_source: "auto" }),
+      inst(304, "PKN", "PKN Orlen", { mic: "XWAR", region: "pl", tags: ["pl"], plan: "reduce", plan_at: "2026-10-02T08:00:00Z", segment: "equity_pl", segment_source: "agent" }),
+      inst(305, "KGH", "KGHM", { mic: "XWAR", region: "pl", tags: ["pl"], plan: "hold", plan_at: "2026-09-12T08:00:00Z", segment: "gold", segment_source: "auto" }),
+      inst(306, "CDR", "CD Projekt", { mic: "XWAR", region: "pl", tags: ["pl"], plan: "buy_asap", plan_at: "2026-09-05T08:00:00Z", segment: "games_media", segment_source: "owner" }),
+      inst(307, "EIMI", "iShares MSCI EM IMI", { isin: "IE00BKM4GZ66", asset_class: "other", needs_classification: true, segment: null, segment_source: null }),
     ],
     holdings: [
       { inst: 301, acc: 22, qty: 120, cost: 412.3, price: 486.1, date: "2026-10-03", bucket: "global_equity" },
@@ -488,6 +488,14 @@ export function investmentsMock(slug: string, kind: Kind, path: string, q: URLSe
   if (mm && method === "PATCH") {
     const i = st.instruments.find((x) => x.id === Number(mm![1]));
     if (!i) throw new ApiError(404, "No instrument");
+    // P5: `segment` (catalog key or null) is the instrument's own value; clearing it leaves the auto one (mock:
+    // KGHM -> gold, treasury bonds -> bonds).
+    if ("segment" in b) {
+      const auto = i.asset_class === "treasury_bond" ? "bonds" : i.id === 305 ? "gold" : null;
+      const set = typeof b.segment === "string" && b.segment ? b.segment : null;
+      Object.assign(i, { segment: set ?? auto, segment_source: set ? "owner" : auto ? "auto" : null });
+      return i;
+    }
     Object.assign(i, Object.fromEntries(Object.entries(b).filter(([, v]) => v != null)), { needs_classification: false });
     const h = st.holdings.find((x) => x.inst === i.id);
     if (h) h.bucket = i.asset_class === "etf" && i.tags.includes("global_equity") ? "global_equity" : i.asset_class === "equity" && i.tags.includes("pl") ? "stocks" : null;

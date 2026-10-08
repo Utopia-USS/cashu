@@ -3,7 +3,8 @@
 // workspace (track AW) and the watchlist for accepted candidates. A server without the research layer
 // answers 404: the runs read as "never ran" so no research UI shows (density rule), nothing breaks.
 import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../../core/api";
-import type { ResearchNote, ResearchRun, ResearchSummary, Workspace } from "./types";
+import { normAttribution } from "./segments";
+import type { ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentWindow, Workspace } from "./types";
 
 const inv = (slug: string, path: string) => pp(slug, `/investments${path}`);
 /** A server without the research layer: FastAPI's generic 404 / 405 (a missing profile keeps its error). */
@@ -11,7 +12,9 @@ const missing = (e: unknown) => e instanceof ApiError && (e.status === 404 || e.
 
 export interface NoteQuery {
   instrument?: number | string | null;
+  /** Old free-text themes stay filterable by the API; no UI sends it any more (P5). */
   theme?: string | null;
+  segment?: string | null;
   kind?: string | null;
   since?: string | null;
   include_dismissed?: boolean;
@@ -23,6 +26,7 @@ function qs(q: NoteQuery): string {
   const p = new URLSearchParams();
   if (q.instrument != null) p.set("instrument", String(q.instrument));
   if (q.theme) p.set("theme", q.theme);
+  if (q.segment) p.set("segment", q.segment);
   if (q.kind) p.set("kind", q.kind);
   if (q.since) p.set("since", q.since);
   if (q.include_dismissed) p.set("include_dismissed", "true");
@@ -48,6 +52,8 @@ export function normNote(n: ResearchNote): ResearchNote {
     strength: Number(n.strength) || 1,
     summary: n.summary ?? "",
     theme: n.theme ?? null,
+    segment: n.segment ?? null,
+    segment_label: n.segment_label ?? null,
     instrument_id: n.instrument_id ?? (n.instrument ? Number(n.instrument.id) : null),
   };
 }
@@ -60,13 +66,20 @@ export const getResearch = async (slug: string, q: NoteQuery = {}): Promise<Rese
 export const getResearchSummary = async (slug: string): Promise<ResearchSummary | null> => {
   try {
     const s = await j<ResearchSummary>(inv(slug, "/research/summary"));
-    return { ...s, instruments: s.instruments ?? [], themes: s.themes ?? [] };
+    return { ...s, instruments: s.instruments ?? [] };
   } catch (e) { if (missing(e)) return null; throw e; }
 };
 
 export const getResearchRuns = async (slug: string): Promise<ResearchRun[]> => {
   try { return list<ResearchRun>(await j<unknown>(inv(slug, "/research/runs")), "runs"); }
   catch (e) { if (missing(e)) return []; throw e; }
+};
+
+/** P5 market segments: the portfolio move by segment over 1 or 4 weeks (+ currency effect), the latest segment
+ * note per row. Null on a server without the endpoint (404 / 405): the column says `Brak danych rynku.`. */
+export const getSegments = async (slug: string, window: SegmentWindow = "1w"): Promise<SegmentAttribution | null> => {
+  try { return normAttribution(await j<unknown>(inv(slug, `/research/segments?window=${window}`)), window); }
+  catch (e) { if (missing(e)) return null; throw e; }
 };
 
 /** Dismiss a note (resolves the signal it created, server side; design answer 1). */
@@ -95,9 +108,9 @@ export const getWorkspace = async (slug: string): Promise<Workspace | null> => {
   } catch (e) { if (missing(e)) return null; throw e; }
 };
 
-/** Mark the profile's unread agent notes of an instrument, a theme or a list read (F8 BE, Q10): idempotent;
+/** Mark the profile's unread agent notes of an instrument, an old theme or a list (a segment's notes) read (F8 BE, Q10): idempotent;
  * the agent never marks read. A server without the endpoint answers 404: nothing is marked, nothing breaks. */
-export const postResearchRead = async (slug: string, body: { instrument_id: number } | { theme: string } | { ids: number[] }): Promise<{ marked: number }> => {
+export const postResearchRead = async (slug: string, body: { instrument_id: number } | { theme: string } | { segment: string } | { ids: number[] }): Promise<{ marked: number }> => {
   try { return await jpost<{ marked: number }>(inv(slug, "/research/read"), body); }
   catch (e) { if (missing(e)) return { marked: 0 }; throw e; }
 };

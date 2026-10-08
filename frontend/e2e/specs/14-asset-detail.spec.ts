@@ -151,7 +151,9 @@ test("asset detail: a watched instrument has no facts and no decision without a 
   const head = drawer.locator(".ahead");
   await expect(head).toContainText("obserwowany");
   await expect(head.locator(".hfx")).toHaveCount(0);
-  await expect(head.locator(".hmeta")).toHaveCount(0);
+  // P5: a watched instrument shows only the segment select in the meta line, no position facts.
+  await expect(head.locator(".hmeta .mi")).toHaveCount(1);
+  await expect(head.locator(".hmeta .mi select")).toHaveCount(1);
   await expect(head.getByRole("button", { name: "+ Transakcja" })).toHaveCount(0);
   const decide = head.getByRole("button", { name: "Zanotuj decyzję" });
   await expect(decide).toBeDisabled();

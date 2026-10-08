@@ -1,8 +1,9 @@
 // Research layer logic without React (design/v2/research/research.md 3-8): copy deck maps, note dates and
-// freshness, the 8-week sentiment score and its bars, the theme direction word, thesis health per position,
+// freshness, the 8-week sentiment score and its bars, the sentiment direction word, thesis health per position,
 // candidate criteria, research signal copy, run state tags, the commands the UI copies, and where the strip
 // sits in the home grid. Pure; `npm test` imports it (node strips the types; imports carry .ts).
 import { dm, ENTRY_TYPE, plural, wdm } from "../../labels.ts";
+import { segmentLabel } from "./segments.ts";
 import { hmLocal, localDay, parseServerTime } from "../../../../time.ts";
 import type {
   Criterion, Direction, HealthKey, InstrumentSummary, NoteSource, Relation, RelationCounts, ResearchNote, ResearchRun,
@@ -80,15 +81,6 @@ export function normHealth(v: string | null | undefined): HealthKey | null {
   }
 }
 
-export function normDirection(v: string | null | undefined): Direction {
-  switch ((v ?? "").toLowerCase()) {
-    case "up": case "rising": case "improving": case "rośnie": return "up";
-    case "stable": case "flat": case "stabilnie": return "flat";
-    case "down": case "falling": case "weakening": case "słabnie": return "down";
-    default: return "flat";
-  }
-}
-
 // ---- dates and freshness (research.md 3) ----------------------------------------------------------------
 
 const DAY = 86400000;
@@ -122,10 +114,12 @@ export const isExpired = (n: Pick<ResearchNote, "expires_at"> & { expired?: bool
 
 // ---- note accessors (RS CONTRACT 2) ---------------------------------------------------------------------
 
-/** Display name + `symbol · venue` of a note's instrument or candidate. */
-export function noteSubject(n: Pick<ResearchNote, "instrument" | "candidate" | "theme" | "title">): { name: string; sym: string | null } {
+/** Display name + `symbol · venue` of a note's instrument or candidate; else the segment label (P5), the old
+ * theme, the title. */
+export function noteSubject(n: Pick<ResearchNote, "instrument" | "candidate" | "theme" | "title"> & Partial<Pick<ResearchNote, "segment" | "segment_label">>): { name: string; sym: string | null } {
   const c = n.candidate, i = n.instrument;
-  const name = i?.name && i.name !== i.symbol ? i.name : i?.label || c?.name || i?.symbol || c?.symbol || n.theme || n.title;
+  const seg = n.segment ? n.segment_label || segmentLabel(n.segment) : null;
+  const name = i?.name && i.name !== i.symbol ? i.name : i?.label || c?.name || i?.symbol || c?.symbol || seg || n.theme || n.title;
   const sym = [i?.symbol ?? c?.symbol, i?.mic ?? c?.exchange].filter(Boolean).join(" · ") || null;
   return { name, sym };
 }
@@ -214,7 +208,7 @@ export function sentimentBars(values: (number | null)[], w: number, h: number, l
   return { mid, bars, slot, bw };
 }
 
-/** Theme direction: sum of the last 4 weeks vs the previous 4 (empty weeks count 0); a difference of more
+/** Sentiment direction: sum of the last 4 weeks vs the previous 4 (empty weeks count 0); a difference of more
  * than 1.0 either way is `rośnie` / `słabnie`, else `stabilnie`. */
 export function direction(values: (number | null)[]): Direction {
   if (values.length < 2) return "flat";
@@ -222,13 +216,6 @@ export function direction(values: (number | null)[]): Direction {
   const sum = (xs: (number | null)[]) => xs.reduce<number>((s, v) => s + (v ?? 0), 0);
   const d = sum(values.slice(-half)) - sum(values.slice(0, values.length - half));
   return d > 1.0 ? "up" : d < -1.0 ? "down" : "flat";
-}
-
-/** `z rośnie na słabnie`. */
-export function directionChange(from: string | null | undefined, to: string | null | undefined): string | null {
-  if (!from || !to || normDirection(from) === normDirection(to)) return null;
-  const a = DIRECTION_LABEL[normDirection(from)];
-  return `${/^s/.test(a) ? "ze" : "z"} ${a} na ${DIRECTION_LABEL[normDirection(to)]}`;
 }
 
 /** The latest non-empty week of a trend: polarity word for the drawer summary. */
@@ -395,10 +382,13 @@ export function researchSignalText(s: SigLike, name: string, sym: string | null)
   const rel = normRelation(str(p.thesis_relation) ?? str(p.relation));
   const strength = num(p.strength);
   const srcs = Array.isArray(p.sources) ? p.sources.length : num(p.sources_count ?? p.sources);
-  const title = name || str(p.theme) || s.instrument_label || "Research";
+  // P5: a segment note's signal (no instrument) is titled by the segment; old theme signals keep their theme.
+  const segment = str(p.segment);
+  const title = name || str(p.segment_label) || (segment ? segmentLabel(segment) : null) || str(p.theme) || s.instrument_label || "Research";
+  const who = segment && !name && !s.instrument_label ? "rynek" : sym;
   const bold = str(p.title) ?? str(p.note_title) ?? s.message;
   const tail = [strength != null ? `siła ${clampStrength(strength)}/3` : null, srcs ? plural(srcs, "źródło", "źródła", "źródeł") : null].filter(Boolean).join(" · ");
-  return { title, sym, lead: rel !== "none" ? `${RELATION_LABEL[rel]} ·` : str(p.kind) ? `${KIND_LABEL[str(p.kind)!] ?? str(p.kind)} ·` : undefined, bold: bold || undefined, tail: tail ? `· ${tail}` : undefined };
+  return { title, sym: who, lead: rel !== "none" ? `${RELATION_LABEL[rel]} ·` : str(p.kind) ? `${KIND_LABEL[str(p.kind)!] ?? str(p.kind)} ·` : undefined, bold: bold || undefined, tail: tail ? `· ${tail}` : undefined };
 }
 
 // ---- runs and the header tag (research.md 7) ------------------------------------------------------------

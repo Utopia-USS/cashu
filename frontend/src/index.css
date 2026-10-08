@@ -1051,6 +1051,7 @@ td .ai + .status, td .ai { margin-right: 6px; }
 .ahead .hmeta .mi { display: inline-flex; gap: 6px; align-items: center; }
 .ahead .hmeta b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .ahead .hmeta .lnk { font-size: 12.5px; }
+.ahead .hmeta select.sgsel { padding: 2px 6px; max-width: 220px; }
 .ahead .hmeta .lnk[aria-expanded]::after { content: " ▾"; font-size: 10px; } .ahead .hmeta .lnk[aria-expanded="true"]::after { content: " ▴"; }
 .ahead .hlots { flex-basis: 100%; margin: 2px -20px -14px; padding: 0 20px 6px; border-top: 1px solid var(--border); }
 .ahead .hlots table { font-size: 12.5px; } .ahead .hlots th, .ahead .hlots td { padding: 5px 8px; } .ahead .hlots td:first-child, .ahead .hlots th:first-child { padding-left: 0; }

@@ -104,13 +104,16 @@ test("home v3: an outside click leaves focus where it landed; Potwierdź writes 
   await expect(rail.locator(`.sig.cmp.row[data-group="${key}"]`)).toHaveCount(1);
 });
 
-test("home v3: opening a theme marks its research notes read (Q10)", async ({ app: page }) => {
+test("home v3: opening a market segment from the home strip marks its research notes read (Q10, P5)", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio`);
   const strip = page.locator("#inv-research");
   const chip = strip.locator(".rs-un");
   await expect(chip).toBeVisible();
   const before = Number(await chip.innerText());
-  await go(page, `${ANNA}/investments.portfolio/research?theme=${encodeURIComponent("stopy procentowe")}`);
+  // The Rynek column: the segment label opens the research page filtered to the segment.
+  await strip.getByRole("button", { name: "Obligacje i stopy", exact: true }).click();
+  await expect(page).toHaveURL(/research\?segment=bonds/);
+  await expect(page.locator("#rsch-notes").getByRole("button", { name: /Obligacje i stopy ✕/ })).toBeVisible();
   await expect(page.locator("article[data-note]", { hasText: "Rynek oczekuje stabilnych stóp procentowych" })).toBeVisible();
   await go(page, `${ANNA}/investments.portfolio`);
   if (before > 1) await expect(strip.locator(".rs-un")).toHaveText(String(before - 1));

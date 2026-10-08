@@ -403,7 +403,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     accounts, today, contributionDay: strategy?.facts?.contributions?.day_of_month ?? null, alertsById, onChanged: reload, held, watch, lastRunAt, onResearchRead: markRead,
     onOpenAsset: (id) => openAsset(id),
     researchOn: research.ran, researchEffect: research.effect,
-    onOpenNote: (id, noteId, theme) => (id != null ? goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`) : go(theme ? `research?theme=${encodeURIComponent(theme)}` : "research")),
+    // A segment note's signal opens the research page filtered to the segment; an old theme signal the plain page.
+    onOpenNote: (id, noteId, segment) => (id != null ? goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`) : go(segment ? `research?segment=${encodeURIComponent(segment)}` : "research")),
   };
 
   // ---- render --------------------------------------------------------------------------------------------------

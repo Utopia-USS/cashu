@@ -33,6 +33,10 @@ export interface Instrument {
   /** P3: whether data stored after `plan_at` puts the recommendation in question; null without a plan. Only on
    * positions rows, watchlist rows and the asset detail. */
   plan_freshness?: PlanFreshness | null;
+  /** P5 market segment: the effective key (set by the owner / agent, else the auto table) or null, and where it
+   * comes from: `owner` | `agent` | `auto` | null (`set` from earlier servers = owner or agent). */
+  segment?: string | null;
+  segment_source?: "owner" | "agent" | "auto" | "set" | null;
 }
 
 /** P2 strategy hint: which of the owner's own rules apply now (BE decides code, severity and order, main first).
@@ -463,6 +467,8 @@ export interface ClassifyInput {
   aliases?: { namespace: string; value: string }[];
 }
 export const patchInstrument = (slug: string, id: number | string, b: ClassifyInput) => jpatch<Instrument>(inv(slug, `/instruments/${id}`), b);
+/** P5: set (catalog key) or clear (null: the auto value, if any, applies again) the instrument's market segment. */
+export const patchInstrumentSegment = (slug: string, id: number | string, segment: string | null) => jpatch<Instrument>(inv(slug, `/instruments/${id}`), { segment });
 
 export interface ThesisInput { entry_type?: string | null; thesis?: string | null; invalidation?: string | null; exit_plan?: string | null; size_plan?: string | null; reviewed?: boolean }
 /** Theses of one instrument of the profile (held or watched), newest first. */

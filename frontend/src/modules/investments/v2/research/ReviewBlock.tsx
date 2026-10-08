@@ -1,6 +1,6 @@
 // Sunday review: the `Co mówi research` block (research.md 1, implementation-plan item 33; span 3 between Co
-// się zmieniło and Sygnały): theses whose health changed since the last review (`była aktualna`), themes
-// with a direction change (`z rośnie na słabnie`), candidates since the last review with actions; the rest
+// się zmieniło and Sygnały): theses whose health changed since the last review (`była aktualna`), the market
+// segments of the digest (P5, new segment notes first), candidates since the last review with actions; the rest
 // collapsed. A week without a run turns it into the not-run line with the copyable command. Also the
 // `Research` row of Co się zmieniło and the decision form's `research z soboty: …` line.
 import { type ReactNode, useState } from "react";
@@ -8,10 +8,11 @@ import { Widget } from "../../../../widgets";
 import { dm, hm, plural, wdm } from "../../labels";
 import { canRestore, useResearchActions } from "./data";
 import {
-  BOUNDARY, countsText, directionChange, HEALTH_LABEL, healthOf, latestRun, latestTitle, normDirection, normHealth, nNotes, researchCommand, runMinutes, runNotes, runTag,
+  BOUNDARY, countsText, HEALTH_LABEL, healthOf, latestRun, latestTitle, normHealth, nNotes, researchCommand, runMinutes, runNotes, runTag,
 } from "./logic";
 import { CandidateCard } from "./primitives";
-import { NotRun, type StripCtx, ThemeRow, ThesisRow, themeSub } from "./Strip";
+import { normDigestMarket, reviewColumn, withNewNote } from "./segments";
+import { MarketHead, NotRun, SegmentRows, type StripCtx, ThesisRow } from "./Strip";
 import type { DigestResearch, ResearchNote, ResearchRun, ResearchSummary } from "./types";
 import { localDay } from "../../../../time";
 
@@ -40,9 +41,10 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   const others = rows.filter((s) => !changed.some((c) => c.instrument_id === s.instrument_id));
   const noThesis = others.filter((s) => healthOf(s, ctx.today) === "no_thesis");
   const noNotes = others.filter((s) => !s.notes && !s.counts.supports && !s.counts.weakens && !s.counts.invalidates && !s.counts.fulfills && !s.counts.neutral);
-  const themesChanged = digest?.themes_changed ?? [];
-  const themes = (summary?.themes ?? []).filter((t) => themesChanged.some((c) => c.theme === t.theme));
-  const restThemes = (summary?.themes ?? []).filter((t) => !themesChanged.some((c) => c.theme === t.theme));
+  // The digest's 1w attribution as of its end: the top rows + `market` (header move, Waluty, Bez segmentu, stale).
+  const { segments, market } = normDigestMarket(digest?.segments, digest?.market);
+  const newSeg = withNewNote(segments);
+  const segRows = reviewColumn(segments, market);
   const candIds = new Set(digest?.candidates ?? []);
   const cands = (candidates ?? []).filter((n) => candIds.size ? candIds.has(n.id) : (localDay(n.observed_at) ?? "") >= since);
   const newC = cands.filter((n) => !n.dismissed_at).length, dismissedC = cands.filter((n) => n.dismissed_at).length;
@@ -86,14 +88,10 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
           )}
         </div>
         <div>
-          <div className="rsec">Tematy i trendy <span className="cnt">· {themesChanged.length ? `${plural(themesChanged.length, "zmiana", "zmiany", "zmian")} kierunku` : "bez zmian kierunku"}</span></div>
-          {[...themes, ...restThemes].slice(0, 5).map((t) => {
-            const ch = themesChanged.find((c) => c.theme === t.theme);
-            const word = ch ? directionChange(ch.from, ch.to ?? t.direction) : null;
-            const sub: ReactNode = word ? <>{themeSub(t, ctx.symOf).split(" · ").slice(0, 2).join(" · ")} · <b>{word}</b></> : undefined;
-            return <ThemeRow key={t.theme} t={{ ...t, direction: ch?.to ?? normDirection(t.direction) }} sub={sub} symOf={ctx.symOf} onOpen={() => ctx.onOpenResearch(`theme=${encodeURIComponent(t.theme)}`)} />;
-          })}
-          {!summary?.themes.length && <div className="empty-line">Brak tematów w tym okresie.</div>}
+          <MarketHead d={market} extra={newSeg ? plural(newSeg, "nowa notatka", "nowe notatki", "nowych notatek") : "bez nowych notatek"} />
+          {segRows.length
+            ? <SegmentRows rows={segRows} stale={market?.stale ?? []} symOf={ctx.symOf} onOpen={(key) => ctx.onOpenResearch(`segment=${key}`)} />
+            : <div className="empty-line">Brak danych rynku w tym okresie.</div>}
         </div>
         <div>
           <div className="rsec">Kandydaci <span className="cnt">· {[newC ? plural(newC, "nowy", "nowe", "nowych") : "brak nowych", dismissedC ? plural(dismissedC, "odrzucony", "odrzucone", "odrzuconych") : null].filter(Boolean).join(" · ")}</span></div>

@@ -1,22 +1,27 @@
 // Research strip on the Inwestycje home (research.md 1, implementation-plan item 30): span 3, three calm
-// columns `Tezy` (thesis health per held position with 8-week sentiment) | `Tematy i trendy` (direction) |
-// `Kandydaci` (compact cards with Obserwuj / Odrzuć). Rendered only after the first run (density rule).
+// columns `Tezy` (thesis health per held position with 8-week sentiment) | `Rynek` (P5: the week's portfolio
+// move by market segment, signed pp with a diverging bar, the latest segment note) | `Kandydaci` (compact cards
+// with Obserwuj / Odrzuć). Rendered only after the first run (density rule).
 // Header tag = the latest run (its title: the next run); a week without a run collapses the strip to the not-run
 // line. Home v3 (Q10 / Q13 / Q14): no footer, the strip is the last cell of the home; the unread count sits at the
 // `wszystkie` entry point, rows carry the quiet page marker for new notes.
 import { type ReactNode, useState } from "react";
 import { useAsync } from "../../../../hooks";
+import { Skeleton } from "../../../../ui";
 import { Mark, UnreadChip, Widget } from "../../../../widgets";
-import { dm, plural, wdm } from "../../labels";
-import { canRestore, useResearchActions } from "./data";
+import { dm, pct, plural, wdm } from "../../labels";
+import { canRestore, useResearchActions, useSegments } from "./data";
 import { getResearch } from "./api";
 import { invKey } from "../api";
 import {
-  BOUNDARY, countsText, DIRECTION_LABEL, DIRECTION_TONE, healthOf, healthStale, isLive, lastDone, latestRun, nextSaturday, normDirection, nNotes,
+  BOUNDARY, countsText, healthOf, healthStale, isLive, lastDone, latestRun, nextSaturday, nNotes,
   orderTheses, researchCommand, runNotes, runTag, workspacePath, acceptedAt, watchItemId, latestTitle,
 } from "./logic";
-import { CandidateCard, type CandidateState, CopyCommand, HealthPill, ScheduleHow, SentimentBars } from "./primitives";
-import type { InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, ThemeSummary, Workspace } from "./types";
+import { CandidateCard, type CandidateState, ContribBar, CopyCommand, HealthPill, ScheduleHow, SentimentBars } from "./primitives";
+import {
+  barTitle, contribBars, type DisplayRow, homeRows, noExposure, ppOf, ppTone, type PpTone, segmentSub, staleSymbols, staleTitle, type SymOf, tone, UNASSIGNED, windowTitle,
+} from "./segments";
+import type { InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, Workspace } from "./types";
 import { InstLabel, type InstLike } from "../InstLabel";
 
 export interface StripCtx {
@@ -33,7 +38,9 @@ export interface StripCtx {
   onChanged: () => void;
   /** Ustawienia › Agent AI (workspace and the routine). */
   onSettings?: () => void;
-  /** Symbol of an instrument id (theme rows list instrument ids). */
+  /** Home reload counter: the Rynek column re-reads with the other home views. */
+  nonce?: number;
+  /** Symbol of an instrument id (segment rows list instrument ids). */
   symOf: (id: number) => string | null;
 }
 
@@ -57,7 +64,6 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
   const theses = orderTheses((summary?.instruments ?? []).filter((s) => ctx.held.has(s.instrument_id)).map((s) => ({
     s, health: healthOf(s, ctx.today), weight: ctx.held.get(s.instrument_id)?.weight ?? s.weight ?? null, label: ctx.held.get(s.instrument_id)?.name ?? s.label ?? "",
   })));
-  const themes = summary?.themes ?? [];
   const open = (candidates ?? []).filter((n) => !n.dismissed_at);
   const fresh = open.filter((n) => !ctx.watched(n) && !acceptedAt(n) && watchItemId(n) == null);
   return (
@@ -78,11 +84,7 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
           )) : <div className="empty-line">{last?.status === "running" ? "Przebieg trwa…" : "Brak notatek (30 dni)."}</div>}
           {theses.length > 6 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=positions")}>pozostałe {theses.length - 6}</button></div>}
         </div>
-        <div>
-          <div className="rsec">Tematy i trendy <span className="cnt">· {themes.length}</span></div>
-          {themes.length ? themes.slice(0, 5).map((t) => <ThemeRow key={t.theme} t={t} symOf={ctx.symOf} onOpen={() => ctx.onOpenResearch(`theme=${encodeURIComponent(t.theme)}`)} />)
-            : <div className="empty-line">Brak tematów.</div>}
-        </div>
+        <MarketColumn ctx={ctx} />
         <div>
           <div className="rsec">Kandydaci <span className="cnt">· {fresh.length ? `${plural(fresh.length, "nowy", "nowe", "nowych")} wg strategii${ctx.strategyVersion != null ? ` v${ctx.strategyVersion}` : ""}` : "0"}</span></div>
           {open.length ? (
@@ -130,24 +132,74 @@ export function ThesisRow({ s, health, name, symbol, inst, muted, sub, right, on
   );
 }
 
-/** Instrument symbols of a theme (the server sends ids). */
-export const themeSymbols = (t: ThemeSummary, symOf: (id: number) => string | null) =>
-  t.instruments.map((x) => (typeof x === "number" ? symOf(x) : x)).filter((x): x is string => !!x);
-
-export function themeSub(t: ThemeSummary, symOf: (id: number) => string | null): string {
-  return [plural(t.notes, "notatka", "notatki", "notatek"), ...themeSymbols(t, symOf).slice(0, 3)].join(" · ");
+/** Home column `Rynek` (P5 design 2): the 1w attribution, up to 6 rows (segments by |contribution|, `Waluty`,
+ * `Bez segmentu`), `pozostałe N` when segments were dropped. */
+function MarketColumn({ ctx }: { ctx: StripCtx }) {
+  const seg = useSegments(ctx.slug, "1w", ctx.nonce ?? 0);
+  const d = seg.data;
+  const head = <MarketHead d={d} />;
+  if (!d) return <div>{head}{seg.loading ? <Skeleton h={118} r={8} /> : <div className="empty-line">Brak danych rynku.</div>}</div>;
+  if (!d.segments.length) {
+    return (
+      <div>{head}
+        {d.unassigned && d.unassigned.weight > 0
+          ? <div className="empty-line">Instrumenty bez segmentu. <button className="lnk" onClick={() => ctx.onOpenResearch(`segment=${UNASSIGNED}`)}>przypisz</button></div>
+          : <div className="empty-line">Brak notowań.</div>}
+      </div>
+    );
+  }
+  const { rows, rest } = homeRows(d);
+  return (
+    <div>
+      {head}
+      <SegmentRows rows={rows} stale={d.stale} symOf={ctx.symOf} onOpen={(key) => ctx.onOpenResearch(`segment=${key}`)} />
+      {rest.count > 0 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=segments")}>pozostałe {rest.count}</button></div>}
+    </div>
+  );
 }
 
-export function ThemeRow({ t, sub, symOf, onOpen }: { t: ThemeSummary; sub?: ReactNode; symOf: (id: number) => string | null; onOpen?: () => void }) {
-  const d = normDirection(t.direction);
+/** `Rynek · tydzień -1,2 %` (home and review column header); `extra` is appended to the count. */
+export function MarketHead({ d, extra }: { d: Pick<SegmentAttribution, "start" | "end" | "portfolio_return"> | null | undefined; extra?: string | null }) {
+  return (
+    <div className="rsec">Rynek <span className="cnt" title={d ? windowTitle(d) : undefined}>· tydzień{d && d.portfolio_return != null && <> <span className={tone(d.portfolio_return)}>{pct(d.portfolio_return, true)}</span></>}{extra ? ` · ${extra}` : ""}</span></div>
+  );
+}
+
+/** Rows of a home / review column on one shared bar scale; a catalog segment and `Bez segmentu` open the
+ * research page filtered to it, `Waluty` is plain text. A note-only segment shows `-` without a bar. */
+export function SegmentRows({ rows, stale, symOf, onOpen }: { rows: DisplayRow[]; stale: number[]; symOf: SymOf; onOpen: (key: string) => void }) {
+  const { max, bars } = contribBars(rows.map((r) => r.contribution));
+  return (
+    <>
+      {rows.map((r, i) => {
+        const sub = segmentSub(r, symOf);
+        const st = staleSymbols(r, stale, symOf);
+        const dash = noExposure(r);
+        return (
+          <SegmentRow key={r.key} label={r.label} sub={sub.text} subTitle={sub.title} unread={r.unread}
+            bar={dash ? null : { ...bars[i], title: barTitle(r.contribution, max) }} pp={dash ? "-" : ppOf(r.contribution)} tone={dash ? "zero" : ppTone(r.contribution)}
+            stale={st.length > 0} staleTitle={staleTitle(st)} onOpen={r.kind === "currency" ? undefined : () => onOpen(r.key)} />
+        );
+      })}
+    </>
+  );
+}
+
+export function SegmentRow({ label, sub, subTitle, unread, bar, pp: ppText, tone: t, stale, staleTitle: sTitle, onOpen }: {
+  label: string; sub: ReactNode; subTitle?: string; unread: number;
+  /** null = an empty bar slot. */
+  bar: { w: number; cls: PpTone; title: string } | null;
+  pp: string; tone: PpTone; stale?: boolean; staleTitle?: string; onOpen?: () => void;
+}) {
   return (
     <div className="rrow">
       <div style={{ minWidth: 0 }}>
-        <div className="nm">{onOpen ? <button className="nm" onClick={onOpen}>{t.theme}</button> : t.theme}</div>
-        <div className="sub">{sub ?? themeSub(t, symOf)}</div>
+        <div className="nm">{onOpen ? <button className="nm" onClick={onOpen}>{label}</button> : label}
+          {unread > 0 && <> <Mark kind="notes" title={plural(unread, "nowa notatka", "nowe notatki", "nowych notatek")} /></>}</div>
+        <div className="sub" title={subTitle}>{sub}</div>
       </div>
-      <SentimentBars values={t.sentiment_8w} />
-      <div className="r">{(t.unread ?? 0) > 0 && <Mark kind="notes" title={plural(t.unread!, "nowa notatka", "nowe notatki", "nowych notatek")} />}<span className={`tag ${DIRECTION_TONE[d]}`}>{DIRECTION_LABEL[d]}</span></div>
+      {bar ? <ContribBar {...bar} /> : <span />}
+      <div className="r"><span className={`pp ${t} ${stale ? "stale" : ""}`} title={sTitle}>{ppText}</span></div>
     </div>
   );
 }

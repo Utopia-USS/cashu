@@ -1,6 +1,6 @@
 // Research primitives (research.md 3-6, implementation-plan item 29): thesis health pill, thesis relation
-// chip, strength bars, 8-week sentiment bars (inline SVG, three sizes), the note card, the candidate card
-// and the copyable command. Copy from the research.md 8 deck; boundaries: facts and sentiment with sources,
+// chip, strength bars, 8-week sentiment bars (inline SVG, three sizes), the segment contribution bar (P5), the
+// note card, the candidate card and the copyable command. Copy from the research.md 8 deck; boundaries: facts and sentiment with sources,
 // never a recommendation, a price or a target.
 import { Fragment, type ReactNode, useState } from "react";
 import { useWidth } from "../../../../hooks";
@@ -72,6 +72,16 @@ export function SentimentBars({ values, labels, size = "sm" }: { values: (number
   );
 }
 
+/** P5 diverging contribution bar (CSS, zero axis in the middle; geometry from `contribBars`): decoration only,
+ * the signed pp text next to it is the value; the scale lives in `title`. */
+export function ContribBar({ w, cls, size, title }: { w: number; cls: "pos" | "neg" | "zero"; size?: "md"; title: string }) {
+  return (
+    <span className={`cbar ${size ?? ""}`} aria-hidden title={title}>
+      {cls !== "zero" && <i className={cls} style={{ width: `${w}%` }} />}
+    </span>
+  );
+}
+
 /** Summary text with numbers and quoted thesis words in bold (rendered as text nodes, never as HTML). */
 export function richSummary(text: string): ReactNode[] {
   const re = /(„[^”"]{1,80}[”"]|[+\-−]?\d+(?:[.,]\d+)?\s?(?:%|pp|pb|mld\s?\$|mln\s?\$|mld\s?zł|mln\s?zł|zł|\$|€)(?:\s?r\/r|\s?m\/m)?)/g;
@@ -93,7 +103,7 @@ export interface NoteCardProps {
   context: "instrument" | "list";
   card?: boolean;
   hl?: boolean;
-  /** Instrument display name + symbol, or the theme, shown in list context. */
+  /** Instrument display name + symbol, or the segment label (`rynek`) / old theme (`temat`), shown in list context. */
   who?: { name: string; sym?: string | null; inst?: InstLike } | null;
   signalText?: string | null;
   onDismiss?: (n: ResearchNote) => void;

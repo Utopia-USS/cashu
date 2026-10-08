@@ -6,7 +6,7 @@
 // the model recommendation with its short reason on the left, Alerty above the research slot on the right
 // (assetSlots.ts), `Sygnały i decyzje` below: the open signals as rows (a quiet `potwierdź`) above a timeline with
 // one fact per row. The same content renders in the drawer (AssetDrawer) and as a page ("otwórz jako stronę").
-// Watched instruments (not held): no facts and no meta line, research only with notes; above Teza the watchlist
+// Watched instruments (not held): no facts, a meta line with the segment only (P5), research only with notes; above Teza the watchlist
 // note (Dlaczego obserwuję, edited in place) and the thesis read from the instrument's theses (Q27). Not held: the
 // header's watch toggle `Obserwuj` / `Obserwujesz` (F12 F2).
 // P1: the model recommendation is read-only here. The owner records their own decision separately.
@@ -30,6 +30,7 @@ import { addedToast } from "./searchLogic";
 import { isHeld, useInstState } from "./instState";
 import { ASSET_SLOTS, type AssetSlotProps } from "./assetSlots";
 import { PositionDecisionDialog } from "./Decide";
+import { SegmentSelect } from "./SegmentSelect";
 import { isResearchKind, signalNoteId } from "./research/logic";
 import {
   assetTimeline, averageCost, FRESH_LABEL, freshOf, freshReasonLines, headerMeta, instName, knownHints, latestThesis, lotRows, openRows, planLabel, polarityOf,
@@ -176,6 +177,8 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   // instrument is hidden, like the tile.
   const instState = useInstState();
   const held = !!pos || isHeld(instState, id);
+  // P5: the segment select for held or watched instruments (the API accepts no other).
+  const showSegment = held || !!w;
   const pLabel = (v: string | null) => planLabel(v, held);
   const plan = inst?.plan && pLabel(inst.plan) ? inst.plan : null;
   const toSignals = () => document.getElementById(`asset-signals-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -238,7 +241,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
         {pos && <button className="btn" onClick={onAddTxn}>+ Transakcja</button>}
         <button className="btn primary" disabled={!canDecide} title={canDecide ? undefined : "Brak otwartego sygnału"} onClick={() => setDecideOpen(true)}>Zanotuj decyzję</button>
       </div>
-      {pos && (
+      {(pos || (showSegment && inst)) && (
         <div className="hmeta">
           {meta.map((m, k) => (
             <span key={m.kind} className="mi">
@@ -246,10 +249,14 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
               {m.kind === "lots" ? (m.toggle
                 ? <button className="lnk" aria-expanded={lotsOpen} aria-controls={`hlots-${id}`} onClick={() => setLotsOpen((v) => !v)}>{m.text}</button>
                 : <span>{m.text}</span>)
-                : m.kind === "txns" ? <button className="lnk" onClick={() => onTxns(pos)}>{m.text}</button>
+                : m.kind === "txns" ? <button className="lnk" onClick={() => pos && onTxns(pos)}>{m.text}</button>
                 : <span>{m.label} <b>{m.value}</b></span>}
             </span>
           ))}
+          {showSegment && inst && (
+            <SegmentSelect key={`${slug}:${id}`} slug={slug} instrumentId={id} segment={inst.segment ?? null} source={inst.segment_source ?? null}
+              sep={meta.length > 0} onChanged={ctx.onChanged} />
+          )}
         </div>
       )}
       {pos && lotsOpen && lots.rows.length > 1 && (
@@ -449,7 +456,7 @@ function OpenSignalRow({ s, ctx }: { s: SignalV2; ctx: SignalsCtx }) {
       <PolDot polarity={polarityOf(s)} />
       <div className="m" title={longText(s, ctx)}>
         <Fact1 f={signalFact(s)} />
-        {research && ctx.onOpenNote && <> · <button className="lnk" onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.theme === "string" ? s.payload.theme : null)}>notatka</button></>}
+        {research && ctx.onOpenNote && <> · <button className="lnk" onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.segment === "string" ? s.payload.segment : null)}>notatka</button></>}
         <Age a={signalAge(s, ctx)} />
       </div>
       <div className="rt"><button className="lnk quiet" disabled={busy(s)} onClick={() => ack(s)}>potwierdź</button></div>

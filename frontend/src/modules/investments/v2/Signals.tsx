@@ -50,7 +50,8 @@ export interface SignalsCtx {
   /** Research layer (F6): the strip exists (footer copy), `notatka` opens the note (drawer or research view),
    * the decision form's `research z soboty: …` line for an instrument. */
   researchOn?: boolean;
-  onOpenNote?: (instrumentId: number | null, noteId: number | null, theme: string | null) => void;
+  /** `segment` (P5): the market segment of a segment note's signal (opens `research?segment=<key>`). */
+  onOpenNote?: (instrumentId: number | null, noteId: number | null, segment: string | null) => void;
   researchEffect?: (instrumentId: number) => ReactNode;
   /** Instrument ids (strings) held anywhere in the profile: the Portfel / Obserwowane scope (the server's
    * signal `held` wins when sent). */
@@ -591,7 +592,7 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, su
       <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)}>Zanotuj decyzję</button>
       <button className="btn sm" disabled={busy} onClick={() => ack()}>Potwierdź</button>
       {s.kind === "contribution_gap" && <button className="btn sm" disabled={busy} onClick={() => snooze(later)}>Odłóż do {dm(later)}</button>}
-      {research && ctx.onOpenNote && <button className="lnk" style={{ fontSize: 12 }} onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.theme === "string" ? s.payload.theme : null)}>notatka</button>}
+      {research && ctx.onOpenNote && <button className="lnk" style={{ fontSize: 12 }} onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.segment === "string" ? s.payload.segment : null)}>notatka</button>}
     </div>
   ));
   if (sub) {
