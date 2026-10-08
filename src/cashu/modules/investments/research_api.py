@@ -1,6 +1,7 @@
 """Research API (included into the investments router, so mounted under ``/api/p/{slug}/investments``
 like every investments route): ``research`` (notes with filters), ``research/summary``,
-``research/segments`` (the market segments: move attribution and segment notes, P5), ``research/runs``, ``POST research/read`` (read marks, F8), ``PATCH research/{id}`` (dismiss /
+``research/segments`` (the market segments: move attribution and segment notes, P5), ``research/macro``
+(the macro regime cards and their notes, P6), ``research/runs``, ``POST research/read`` (read marks, F8), ``PATCH research/{id}`` (dismiss /
 restore), ``POST|DELETE research/{id}/accept`` (candidate -> watchlist + draft thesis, and its undo).
 Reads and writes only the profile in the URL. Notes are written by the agent through MCP (``core/mcp/tools/research.py``).
 Shapes: the CONTRACT in ``stock/docs/fork/progress/F6-RS.md``.
@@ -16,7 +17,7 @@ from cashu.core.db import get_session
 
 from .models import RESEARCH_NOTE_KINDS
 from .research import segment_service, service, views
-from .research.segments import SEGMENT_KEYS, is_segment
+from .research.segments import NOTE_SEGMENT_KEYS, is_note_segment
 from .research.validation import parse_moment
 from .service import plans as plan_service
 
@@ -62,8 +63,10 @@ def research_notes(
         raise _coded(
             422, f"kind must be one of: {', '.join(RESEARCH_NOTE_KINDS)}", "research_invalid"
         )
-    if segment is not None and not is_segment(segment):
-        raise _coded(422, f"segment must be one of: {', '.join(SEGMENT_KEYS)}", "research_invalid")
+    if segment is not None and not is_note_segment(segment):
+        raise _coded(
+            422, f"segment must be one of: {', '.join(NOTE_SEGMENT_KEYS)}", "research_invalid"
+        )
     moment = None
     if since:
         moment = parse_moment(since)
@@ -103,6 +106,17 @@ def research_segments(profile: CurrentProfile, window: str = "1w") -> dict:
             return segment_service.segments_view(s, profile, window=window)
         except segment_service.WindowError as e:
             raise _coded(422, str(e), "research_invalid") from None
+
+
+@router.get("/macro")
+def research_macro(profile: CurrentProfile) -> dict:
+    """The five macro regime cards (P6) as of today: state (after hysteresis), since, metrics with
+    server-formatted Polish text, state history, meaning (tooltip) and each card's latest macro note.
+    Public market data; only the notes are the profile's."""
+    from .macro import service as macro_service
+
+    with get_session() as s:
+        return macro_service.macro_view(s, profile)
 
 
 @router.get("/runs")

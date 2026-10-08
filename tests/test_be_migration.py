@@ -112,7 +112,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     assert (
         migrations.upgrade_to_head(engine)
         == migrations.head_revision()
-        == "0018_market_segments"
+        == "0019_macro_series"
     )
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
@@ -350,7 +350,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
         edited,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0018_market_segments"
+    assert migrations.upgrade_to_head(engine) == "0019_macro_series"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
     assert columns[-1] == "core_changed_at"
     assert _sql(path, "SELECT thesis, core_changed_at FROM inv_theses") == [
@@ -364,7 +364,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0018_market_segments"
+    assert migrations.current_revision(engine) == "0019_macro_series"
     engine.dispose()
 
 
@@ -390,7 +390,7 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0018_market_segments"
+    assert migrations.upgrade_to_head(engine) == "0019_macro_series"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
     assert columns[-5:] == ["plan", "plan_at", "plan_reason", "segment", "segment_by"]  # 0018
     assert _sql(path, "SELECT plan, plan_reason FROM inv_profile_instruments") == [("hold", None)]
@@ -401,7 +401,7 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
     assert _sql(path, "SELECT plan FROM inv_profile_instruments") == [("hold",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0018_market_segments"
+    assert migrations.current_revision(engine) == "0019_macro_series"
     engine.dispose()
 
 
@@ -426,7 +426,7 @@ def test_0017_appends_removed_at_and_refuses_to_downgrade_over_removed_rows(tmp_
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0018_market_segments"
+    assert migrations.upgrade_to_head(engine) == "0019_macro_series"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('watchlist_items')")]
     assert columns[-1] == "removed_at"
     assert _sql(path, "SELECT id, note, removed_at FROM watchlist_items") == [
@@ -441,7 +441,7 @@ def test_0017_appends_removed_at_and_refuses_to_downgrade_over_removed_rows(tmp_
     assert _sql(path, "SELECT id, note FROM watchlist_items") == [(7, "moja notatka")]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0018_market_segments"
+    assert migrations.current_revision(engine) == "0019_macro_series"
     engine.dispose()
 
 
@@ -479,7 +479,7 @@ def test_0018_appends_segment_columns_and_refuses_to_downgrade_over_segments(tmp
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0018_market_segments"
+    assert migrations.upgrade_to_head(engine) == "0019_macro_series"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
     assert columns[-2:] == ["segment", "segment_by"]
     assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][-1] == "segment"
@@ -504,5 +504,44 @@ def test_0018_appends_segment_columns_and_refuses_to_downgrade_over_segments(tmp
     assert _sql(path, "SELECT id, theme FROM research_notes") == [(5, "stopy procentowe")]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0018_market_segments"
+    assert migrations.current_revision(engine) == "0019_macro_series"
+    engine.dispose()
+
+
+def test_0019_creates_the_macro_bars_table_and_drops_it_on_downgrade(tmp_path):
+    """The shared macro closes table is new (no existing row touched); downgrade drops it (public
+    data the daily check fetches again) and the round trip leaves the database intact."""
+    path = _db_at(tmp_path, "0018_market_segments")
+    before = legacy.table_counts(path)
+    assert "inv_macro_bars" not in _tables(path)
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0019_macro_series"
+    after = legacy.table_counts(path)
+    assert all(after[t] == n for t, n in before.items()) and after["inv_macro_bars"] == 0
+    assert [r[1] for r in _sql(path, "PRAGMA table_info('inv_macro_bars')")] == [
+        "id",
+        "series",
+        "date",
+        "close",
+        "source",
+        "fetched_at",
+    ]
+    _sql(
+        path,
+        "INSERT INTO inv_macro_bars (series, date, close, source, fetched_at) "
+        "VALUES ('us10y', '2026-10-08', '4.231', 'yahoo', ?)",
+        TS,
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        _sql(
+            path,
+            "INSERT INTO inv_macro_bars (series, date, close, source) "
+            "VALUES ('us10y', '2026-10-08', '4.3', 'yahoo')",
+        )
+    _to(engine, "0018_market_segments", down=True)
+    assert "inv_macro_bars" not in _tables(path)
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    _to(engine, "head")
+    assert migrations.current_revision(engine) == "0019_macro_series"
+    assert _sql(path, "SELECT count(*) FROM inv_macro_bars") == [(0,)]
     engine.dispose()

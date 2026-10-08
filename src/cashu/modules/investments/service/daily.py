@@ -15,6 +15,14 @@ Phases (never a database transaction across network IO):
 Watched instruments (watchlist) and the instruments of live alerts join the market refresh; their
 fetch errors are reported in the run stats (``watched_price_errors``), not as run errors.
 
+Macro reference series (P6, ``macro/``): in the network phase, when the sources carry a macro chart
+source (production: Yahoo with a short timeout), the fixed macro series are fetched after the market
+refresh (the whole 5-year window, a circuit breaker after a blocked / retryable failure) and written in
+their own short transaction after the market data (a macro write failure never rolls the market data
+back); USD joins the FX refresh with history back to the macro window (the dollar card's USD/PLN).
+Their errors are entries of the report's ``macro`` block (or ``macro_error``), never profile run
+errors; offline skips them.
+
 A missing strategy means valuation only (no rules, status ok); an invalid one leaves every open
 signal untouched (status partial); a partial one runs the valid rules and leaves the signals of the
 inactive rules untouched (status partial). Market errors make the run partial, never failed.
@@ -38,6 +46,8 @@ from cashu.core.models import Profile, ProfileModule, utcnow
 
 from ..alerts import LIVE_STATUSES, is_alert_key
 from ..domain import Currency, Instrument, InstrumentId, MarketView, TxnType
+from ..macro.refresh import MacroChartSource, MacroReport, refresh_macro
+from ..macro.series import BACKFILL_DAYS as MACRO_BACKFILL_DAYS
 from ..market import FetchReport, FetchStatus, FxSource, MarketDataRefresher, PriceSource
 from ..models import InvRuleRun, InvSignal
 from ..plan.keys import is_plan_key
@@ -56,6 +66,7 @@ from ..rules import (
 )
 from ..store import alerts as alert_store
 from ..store import convert, instruments, market, signals, transactions
+from ..store import macro as macro_store
 from ..strategy import NotificationPolicy
 from . import alerts as alert_service
 from . import plans as plan_service
@@ -74,22 +85,33 @@ class RunBusy(RuntimeError):
 
 @dataclass
 class MarketSources:
-    """Price and FX sources of one run (``close`` releases their HTTP client)."""
+    """Price and FX sources of one run (``close`` releases their HTTP client). ``macro``: the chart
+    source of the macro reference series (P6); None skips the macro refresh (test fakes)."""
 
     prices: PriceSource
     fx: FxSource
     close: Callable[[], None] = lambda: None
+    macro: MacroChartSource | None = None
 
 
 def default_sources() -> MarketSources:
     """The production sources: Yahoo / stooq composite and NBP over one HTTP client."""
     import httpx
 
-    from ..market import CompositePriceSource, MarketHttp, NbpFxSource
+    from ..macro.refresh import MAX_RETRIES, TIMEOUT_SECONDS
+    from ..market import CompositePriceSource, MarketHttp, NbpFxSource, YahooPriceSource
 
     client = httpx.Client(follow_redirects=True)
     http = MarketHttp(client)
-    return MarketSources(CompositePriceSource.standard(http), NbpFxSource(http), client.close)
+    macro_http = MarketHttp(
+        client, timeout=TIMEOUT_SECONDS, max_retries=MAX_RETRIES, max_retry_after=TIMEOUT_SECONDS
+    )
+    return MarketSources(
+        CompositePriceSource.standard(http),
+        NbpFxSource(http),
+        client.close,
+        macro=YahooPriceSource(macro_http),
+    )
 
 
 @dataclass
@@ -127,6 +149,9 @@ class DailyCheckReport:
     market: FetchReport | None = None
     market_error: str | None = None
     market_stats: dict = field(default_factory=dict)
+    macro: MacroReport | None = None
+    macro_error: str | None = None
+    macro_stats: dict = field(default_factory=dict)
     profiles: list[ProfileRun] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -140,6 +165,10 @@ class DailyCheckReport:
             "market_errors": [] if self.market is None else self.market.error_messages,
             "market_error": self.market_error,
             "stored": self.market_stats,
+            "macro": None if self.macro is None else self.macro.to_stats(),
+            "macro_errors": [] if self.macro is None else self.macro.error_messages,
+            "macro_error": self.macro_error,
+            "macro_stored": self.macro_stats,
             "profiles": [p.to_dict() for p in self.profiles],
         }
 
@@ -265,7 +294,11 @@ def _run(trigger, profile_ids, as_of, offline, sources, clock, session_factory) 
             for iid, day in needs.split_dates.items():
                 if iid not in splits or day > splits[iid]:
                     splits[iid] = day
-        active = MarketSources(*_unpack(sources))
+        active = _unpack(sources)
+        if active.macro is not None:
+            # The dollar card's USD/PLN over the macro window (NBP; only what is missing is fetched).
+            currencies.add(Currency.USD)
+            _earliest(history, Currency.USD, as_of - dt.timedelta(days=MACRO_BACKFILL_DAYS))
         try:
             refresher = MarketDataRefresher(active.prices, active.fx)
             report.market = refresher.refresh(
@@ -279,15 +312,30 @@ def _run(trigger, profile_ids, as_of, offline, sources, clock, session_factory) 
         except Exception as e:  # noqa: BLE001 - the run goes on with the stored data
             _log.exception("market refresh failed")
             report.market_error = f"{type(e).__name__}: {e}"
+        try:
+            if active.macro is not None:
+                report.macro = refresh_macro(active.macro, as_of)
+        except Exception as e:  # noqa: BLE001 - macro cards keep the stored data
+            _log.exception("macro refresh failed")
+            report.macro_error = f"{type(e).__name__}: {e}"
         finally:
             active.close()
 
-        # 3. One write transaction for the fetched data.
+        # 3. One write transaction for the fetched market data, then one for the macro closes.
         if report.market is not None:
             with session_factory() as s:
                 report.market_stats = market.apply_fetch_report(
                     s, report.market, now=convert.aware(clock())
                 )
+        if report.macro is not None:
+            try:
+                with session_factory() as s:
+                    report.macro_stats = macro_store.apply_report(
+                        s, report.macro, now=convert.aware(clock())
+                    )
+            except Exception as e:  # noqa: BLE001 - macro cards keep the stored data
+                _log.exception("macro write failed")
+                report.macro_error = f"{type(e).__name__}: {e}"
 
     # 4. Per profile: evaluate and persist (one transaction each).
     for needs in checked:
@@ -298,12 +346,12 @@ def _run(trigger, profile_ids, as_of, offline, sources, clock, session_factory) 
     return report
 
 
-def _unpack(sources) -> tuple[PriceSource, FxSource, Callable[[], None]]:
+def _unpack(sources) -> MarketSources:
     if sources is None:
         sources = default_sources
     if callable(sources) and not isinstance(sources, MarketSources):
         sources = sources()
-    return sources.prices, sources.fx, sources.close
+    return sources
 
 
 # Stable codes of the run error templates above and below (``worker.<code>`` in the UI, F7): the

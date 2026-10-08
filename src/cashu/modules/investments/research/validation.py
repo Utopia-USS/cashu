@@ -29,7 +29,7 @@ from ..models import (
     THESIS_ENTRY_TYPES,
 )
 from .scoring import clean_theme
-from .segments import SEGMENT_KEYS, is_segment
+from .segments import NOTE_SEGMENT_KEYS, is_note_segment
 
 TITLE_MIN = 3
 SUMMARY_MIN = 10
@@ -574,8 +574,8 @@ def validate_note(raw: Mapping[str, Any], *, now: dt.datetime) -> NoteInput:
         theme = _text(issues, "theme", clean_theme(str(theme_raw)), minimum=2, maximum=THEME_MAX)
     segment = raw.get("segment")
     if segment is not None:
-        if not is_segment(segment):
-            issues.add("segment", f"must be one of: {', '.join(SEGMENT_KEYS)}")
+        if not is_note_segment(segment):
+            issues.add("segment", f"must be one of: {', '.join(NOTE_SEGMENT_KEYS)}")
             segment = None
         else:
             if raw.get("candidate") is not None:
@@ -693,12 +693,14 @@ def validate_scope(raw: Mapping[str, Any] | None) -> RunScope:
                 themes.append(text)
     segments: list[str] = []
     raw_segments = data.get("segments") or []
-    if not isinstance(raw_segments, list) or len(raw_segments) > len(SEGMENT_KEYS):
-        issues.add("scope.segments", f"must be a list of at most {len(SEGMENT_KEYS)} segments")
+    if not isinstance(raw_segments, list) or len(raw_segments) > len(NOTE_SEGMENT_KEYS):
+        issues.add("scope.segments", f"must be a list of at most {len(NOTE_SEGMENT_KEYS)} segments")
     else:
         for i, key in enumerate(raw_segments):
-            if not is_segment(key):
-                issues.add(f"scope.segments[{i}]", f"must be one of: {', '.join(SEGMENT_KEYS)}")
+            if not is_note_segment(key):
+                issues.add(
+                    f"scope.segments[{i}]", f"must be one of: {', '.join(NOTE_SEGMENT_KEYS)}"
+                )
             elif key not in segments:
                 segments.append(key)
     instruments: list[str] = []

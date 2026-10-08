@@ -4,13 +4,15 @@ reads its context and writes runs and notes through these thin adapters over
 
 Read: ``research_context`` (held and watched instruments with weights and market segments, theses
 (entry type, invalidation, exit plan), thesis health and sentiment, the market segments with the
-week's / 4 weeks' move attribution, the strategy's candidate criteria, dismissed candidates in
+week's / 4 weeks' move attribution, the macro regime cards (P6, public data: identical in both
+privacy modes) and their note keys, the strategy's candidate criteria, dismissed candidates in
 cooldown, known upcoming events, the last run, limits), ``research_notes(since?, segment?)``.
 Write: ``start_research_run(scope)``, ``add_research_note(...)`` (schema-validated: sources with URL,
 publisher and date required, bounded lengths, no amounts / targets / sizes, no recommendation or price
-prediction, no paywall-bypass links; segment notes short, one per segment and week; the weekly run's
-novelty limits), ``finish_research_run(run_id, ...)``, ``set_instrument_segment(instrument, segment)``
-(a direct classification write, like ``set_merchant_category``).
+prediction, no paywall-bypass links; segment notes (market segments and ``macro_*`` regimes) short,
+one per key and week; the weekly run's novelty limits), ``finish_research_run(run_id, ...)``, ``set_instrument_segment(instrument, segment)``
+(a direct classification write, like ``set_merchant_category``; macro keys are refused: they are note
+targets, never instrument segments).
 
 Privacy: owner-named instruments (claims, private loans) and cash are never researched (not listed,
 refused as a note's instrument or segment target). Free text (titles, summaries, theses, source fields)
@@ -60,10 +62,29 @@ def _segment_keys() -> list[str]:
     return list(SEGMENT_KEYS)
 
 
+def _note_segment_keys() -> list[str]:
+    """Keys a segment note may name: the market segments and the macro regimes (P6)."""
+    from cashu.modules.investments.research.segments import NOTE_SEGMENT_KEYS
+
+    return list(NOTE_SEGMENT_KEYS)
+
+
 def _segment_catalog_text() -> str:
     from cashu.modules.investments.research.segments import SEGMENTS
 
     return ", ".join(f"{s.key} ({s.label})" for s in SEGMENTS)
+
+
+def _macro_catalog_text() -> str:
+    from cashu.modules.investments.research.segments import MACRO_SEGMENTS
+
+    return ", ".join(f"{s.key} ({s.label})" for s in MACRO_SEGMENTS)
+
+
+def _macro_refusals() -> dict[str, str]:
+    from cashu.modules.investments.research.segments import MACRO_KEYS, NOT_INSTRUMENT_SEGMENT
+
+    return dict.fromkeys(MACRO_KEYS, NOT_INSTRUMENT_SEGMENT)
 
 
 def _research():
@@ -362,6 +383,40 @@ def _segments(ctx: ToolContext, owned: set[int]) -> tuple[list[dict], dict | Non
     )
 
 
+def _macro(ctx: ToolContext) -> list[dict]:
+    """``research_context.macro``: the five macro regime cards (public market data, identical in
+    strict and full mode; metric values are the server's Polish text); empty when they cannot be
+    computed (the context still answers)."""
+    from cashu.modules.investments.macro import service as macro_service
+
+    try:
+        cards = macro_service.macro_view(ctx.session, ctx.profile, as_of=ctx.today)["regimes"]
+    except Exception:  # noqa: BLE001 - research keeps working without the macro cards
+        _log.exception("research_context: macro regimes failed")
+        return []
+    return [
+        {
+            "key": L.category(c["key"]),
+            "note_key": L.category(f"macro_{c['key']}"),
+            "label": L.category(c["label"]),
+            "state": L.category(c["state"]),
+            "state_label": L.category(c["state_label"]),
+            "since": L.date(c["since"]),
+            "since_open": L.flag(c["since_open"]),
+            "since_min": L.date(c["since_min"]),
+            "as_of": L.date(c["as_of"]),
+            "metrics": [
+                {"label": L.market(m["label"]), "text": L.market(m["text"])} for m in c["metrics"]
+            ],
+            "stale": L.flag(c["stale"]),
+            "missing": L.flag(c["missing"]),
+            "last_note_at": L.date(c["last_note_at"]),
+            "note_this_week": L.flag(c["note_this_week"]),
+        }
+        for c in cards
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # Read tools
 # --------------------------------------------------------------------------- #
@@ -476,7 +531,7 @@ def research_context(ctx: ToolContext) -> dict:
     events.sort(key=lambda e: e["event_date"].value)
     running = service.running_run(s, pid, now)
     segment_rows, currency, unassigned = _segments(ctx, owned)
-    from cashu.modules.investments.research.segments import SEGMENTS
+    from cashu.modules.investments.research.segments import MACRO_SEGMENTS, SEGMENTS
 
     return {
         "as_of": L.date(ctx.today),
@@ -492,6 +547,10 @@ def research_context(ctx: ToolContext) -> dict:
                 "group": L.category(x.group),
             }
             for x in SEGMENTS
+        ],
+        "macro": _macro(ctx),
+        "macro_catalog": [
+            {"segment": L.category(x.key), "label": L.category(x.label)} for x in MACRO_SEGMENTS
         ],
         "strategy": {
             "state": L.category(st.state),
@@ -742,7 +801,10 @@ TOOLS = (
         "thesis, invalidation, exit plan) and research state (thesis health, relation counts, "
         "8-week sentiment, last researched); segments: what moved the portfolio this week and over 4 "
         "weeks by market segment (weight, contribution, return, instruments, last_note_at, "
-        "note_this_week), currency and unassigned; segment_catalog; the strategy's entry types and "
+        "note_this_week), currency and unassigned; segment_catalog; macro: the five macro regime "
+        "cards (state_label, since (null + since_open + since_min when the state began before the "
+        "data), metrics as text, stale, missing, last_note_at, note_this_week; "
+        "public data) and macro_catalog (their note keys); the strategy's entry types and "
         "candidate criteria, open and dismissed (cooldown) candidates, known upcoming events, the "
         "last run, limits (incl. the weekly novelty limits) and boundaries.",
         research_context,
@@ -760,8 +822,8 @@ TOOLS = (
             "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100},
             "segment": {
                 "type": "string",
-                "enum": _segment_keys(),
-                "description": "only this market segment's notes",
+                "enum": _note_segment_keys(),
+                "description": "only this market segment's or macro regime's notes",
             },
         },
     ),
@@ -769,7 +831,7 @@ TOOLS = (
         "start_research_run",
         "investments",
         "Open a research run. scope: {held: true, watchlist: true, candidates: true, segments: "
-        "[segment keys], instruments: [ids or symbols], scheduled: false (true for the scheduled "
+        "[segment or macro keys], instruments: [ids or symbols], scheduled: false (true for the scheduled "
         "routine)}. A run covering the held positions is weekly: per ISO week, weekly runs and notes "
         "written without a run cover at most 6 instruments, 2 notes each, and 6 segment notes "
         "(strength 3, invalidates and fulfills always pass). A scope with only instruments or "
@@ -786,7 +848,9 @@ TOOLS = (
         "prediction, target, amounts or sizes). About a held / watched instrument (instrument: id "
         "or symbol from research_context), a market segment (segment: catalog key; no instrument, "
         "no candidate; kind macro | trend | news; thesis_relation none; summary <= 400 characters; "
-        "at most one per segment and ISO week, only when something changed), or, for kind "
+        "at most one per segment and ISO week, only when something changed), a macro regime "
+        "(segment: a macro_catalog key, same rules: only when its state changed since its last "
+        "note or a dated decisive event happened this week), or, for kind "
         "candidate, a new instrument (candidate {symbol_or_isin, name, exchange?, currency?} + details "
         "{entry_type, criteria [{text, met, threshold?}], context?, bucket?}). thesis_relation "
         "(supports | weakens | invalidates | fulfills | neutral) needs an instrument with a thesis, "
@@ -807,8 +871,11 @@ TOOLS = (
             "instrument": {"type": "string", "maxLength": 40},
             "segment": {
                 "type": "string",
-                "enum": _segment_keys(),
-                "description": "market segment of a segment note: " + _segment_catalog_text(),
+                "enum": _note_segment_keys(),
+                "description": "market segment of a segment note: "
+                + _segment_catalog_text()
+                + "; or a macro regime (macro note): "
+                + _macro_catalog_text(),
             },
             "thesis_relation": {"type": "string", "enum": _RELATIONS, "default": "none"},
             "thesis_field": {"type": "string", "enum": _FIELDS},
@@ -857,5 +924,6 @@ TOOLS = (
         required=("instrument",),
         nullable=("segment",),
         write=True,
+        refused_values={"segment": _macro_refusals()},
     ),
 )

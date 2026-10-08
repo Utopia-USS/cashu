@@ -58,6 +58,9 @@ class ChartQuote:
     exchange_name: str | None
     bars: tuple[PriceBar, ...] = ()
     splits: tuple[SplitEvent, ...] = ()
+    adjusted: tuple[tuple[CalendarDate, Decimal], ...] = ()
+    """``indicators.adjclose`` (split- and distribution-adjusted closes) within the range, oldest
+    first; empty when the response has none. Read only by the macro refresh (P6)."""
 
 
 class YahooPriceSource(PriceSource):
@@ -159,13 +162,14 @@ class YahooPriceSource(PriceSource):
             )
 
         meta = _chart_meta(body)
-        currency, _divisor = self._quote_currency(meta.get("currency"), what)
+        currency, divisor = self._quote_currency(meta.get("currency"), what)
         if currency is None:
             # an error body (unknown symbol) or no meta: the bar parser names the actual problem
             self.parse_history(body, probe(Currency.USD), start, end, symbol=symbol)
             raise SourceException(self.id, f"unexpected response{what}: no quote currency")
         history = self.parse_history(body, probe(currency), start, end, symbol=symbol)
         return ChartQuote(
+            adjusted=_adjusted_closes(body, start, end, divisor),
             symbol=symbol,
             currency=currency,
             instrument_type=_text(meta.get("instrumentType")),
@@ -349,6 +353,32 @@ def _chart_meta(body: str) -> dict:
     except (ValueError, KeyError, IndexError, TypeError):
         return {}
     return meta if isinstance(meta, dict) else {}
+
+
+def _adjusted_closes(
+    body: str, start: CalendarDate, end: CalendarDate, divisor: int
+) -> tuple[tuple[CalendarDate, Decimal], ...]:
+    """``chart.result[0].indicators.adjclose[0].adjclose`` by exchange date within ``start..end``
+    (minor units scaled like the bars); empty when absent or malformed (the bars are unaffected)."""
+    try:
+        result = json.loads(body)["chart"]["result"][0]
+        timestamps = result["timestamp"]
+        values = result["indicators"]["adjclose"][0]["adjclose"]
+    except (ValueError, KeyError, IndexError, TypeError):
+        return ()
+    if not isinstance(timestamps, list) or not isinstance(values, list):
+        return ()
+    meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+    offset = int(meta["gmtoffset"]) if _is_number(meta.get("gmtoffset")) else 0
+    out: dict[CalendarDate, Decimal] = {}
+    for index, timestamp in enumerate(timestamps):
+        price = _price(values[index]) if index < len(values) else None
+        if not _is_number(timestamp) or price is None:
+            continue
+        on = exchange_date(int(timestamp), offset)
+        if start <= on <= end:
+            out[on] = price if divisor == 1 else price.scaleb(-2)
+    return tuple(sorted(out.items()))
 
 
 def _text(value: object) -> str | None:

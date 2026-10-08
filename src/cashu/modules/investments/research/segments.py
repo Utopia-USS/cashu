@@ -4,7 +4,8 @@ segment of each instrument and the automatic assignment of well-known funds. Pur
 An instrument's segment is per profile (``inv_profile_instruments.segment``, set by the owner or the
 research agent, ``segment_by``; the agent never changes the owner's choice); without one, :func:`auto_segment` guesses from the asset class and a table of
 well-known fund symbols; otherwise it has none (the attribution shows it as ``unassigned``). Order of
-:data:`SEGMENTS` is the UI tie-break. Labels are Polish (UI data).
+:data:`SEGMENTS` is the UI tie-break. Labels are Polish (UI data). A third group, :data:`MACRO_SEGMENTS`
+(P6), holds the macro regime cards as segment-note targets only.
 """
 
 from __future__ import annotations
@@ -56,7 +57,23 @@ UNASSIGNED = "unassigned"
 UNASSIGNED_LABEL = "Bez segmentu"
 """Pseudo row of the attribution for holdings without a segment (never a catalog key)."""
 
+MACRO_SEGMENTS: tuple[Segment, ...] = (
+    Segment("macro_risk", "Rynek akcji", "macro"),
+    Segment("macro_dollar", "Dolar", "macro"),
+    Segment("macro_em", "Rynki wschodzące", "macro"),
+    Segment("macro_commodities", "Surowce", "macro"),
+    Segment("macro_rates", "Obligacje i stopy", "macro"),
+)
+"""The macro regime cards as note targets (P6): a segment note may name one, an instrument never
+gets one (not in :data:`SEGMENTS`, never an attribution row). Labels = the regime card titles."""
+MACRO_KEYS: tuple[str, ...] = tuple(s.key for s in MACRO_SEGMENTS)
+NOTE_SEGMENT_KEYS: tuple[str, ...] = SEGMENT_KEYS + MACRO_KEYS
+"""Every key a segment note (and a research scope) may name."""
+MACRO_PREFIX = "macro_"
+NOT_INSTRUMENT_SEGMENT = "macro keys are not instrument segments"
+
 _BY_KEY = {s.key: s for s in SEGMENTS}
+_MACRO_BY_KEY = {s.key: s for s in MACRO_SEGMENTS}
 _ORDER = {s.key: i for i, s in enumerate(SEGMENTS)}
 
 STABLECOINS = frozenset({"USDC", "USDT", "DAI", "EURC", "FDUSD", "PYUSD"})
@@ -103,6 +120,26 @@ def is_segment(key: object) -> bool:
     return isinstance(key, str) and key in _BY_KEY
 
 
+def is_macro_key(key: object) -> bool:
+    """A macro regime note target (``macro_rates``), never an instrument segment."""
+    return isinstance(key, str) and key in _MACRO_BY_KEY
+
+
+def is_note_segment(key: object) -> bool:
+    """A key a segment note may name: a market segment or a macro regime."""
+    return is_segment(key) or is_macro_key(key)
+
+
+def macro_key(regime: str) -> str:
+    """``rates`` -> ``macro_rates``."""
+    return MACRO_PREFIX + regime
+
+
+def regime_of(key: str) -> str | None:
+    """``macro_rates`` -> ``rates`` (None for anything else)."""
+    return key[len(MACRO_PREFIX) :] if is_macro_key(key) else None
+
+
 def segment(key: str) -> Segment | None:
     return _BY_KEY.get(key)
 
@@ -112,12 +149,12 @@ def segment_label(key: str) -> str:
     unknown, e.g. a key dropped from the catalog later)."""
     if key == UNASSIGNED:
         return UNASSIGNED_LABEL
-    found = _BY_KEY.get(key)
+    found = _BY_KEY.get(key) or _MACRO_BY_KEY.get(key)
     return found.label if found is not None else key
 
 
 def segment_group(key: str) -> str | None:
-    found = _BY_KEY.get(key)
+    found = _BY_KEY.get(key) or _MACRO_BY_KEY.get(key)
     return found.group if found is not None else None
 
 
@@ -181,3 +218,8 @@ def segment_of(
 def catalog() -> list[dict]:
     """The catalog as JSON rows (API / MCP)."""
     return [{"segment": s.key, "label": s.label, "group": s.group} for s in SEGMENTS]
+
+
+def macro_catalog() -> list[dict]:
+    """The macro note targets as JSON rows (API / MCP), apart from the instrument catalog."""
+    return [{"segment": s.key, "label": s.label, "group": s.group} for s in MACRO_SEGMENTS]

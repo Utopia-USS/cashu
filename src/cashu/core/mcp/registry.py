@@ -56,6 +56,9 @@ class ToolSpec:
     """Arguments that do not exist (any more), with the message telling the agent what to do
     instead (e.g. ``converter``: MCP never makes the app run code; the app runs only connectors the
     owner approved in the app). Not part of the schema."""
+    refused_values: dict[str, dict[Any, str]] = field(default_factory=dict)
+    """Values of an argument outside its enum that get their own message instead of the generic enum
+    error (e.g. a macro note key given as an instrument segment). Not part of the schema."""
     nullable: tuple[str, ...] = ()
     """Arguments that must be given but may be an explicit null (e.g. ``segment: null`` clears a
     value): required in the schema, typed ``[<type>, "null"]``, passed to the handler as None."""
@@ -174,6 +177,9 @@ def validate_arguments(spec: ToolSpec, arguments: dict[str, Any] | None) -> dict
             raise ToolError(f"argument {name} must be a {kinds}", "invalid_arguments")
         if not isinstance(value, allowed):
             raise ToolError(f"argument {name} must be a {kinds}", "invalid_arguments")
+        refused = spec.refused_values.get(name, {})
+        if isinstance(value, str) and value in refused:
+            raise ToolError(refused[value], "invalid_arguments")
         if "enum" in schema and value not in schema["enum"]:
             raise ToolError(
                 f"argument {name} must be one of: {', '.join(map(str, schema['enum']))}",

@@ -44,6 +44,7 @@ INVESTMENTS_GETS = [
     "/investments/research",
     "/investments/research/summary",
     "/investments/research/segments",
+    "/investments/research/macro",
     "/investments/research/runs",
     "/investments/planned-deposits",
 ]

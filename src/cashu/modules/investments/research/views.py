@@ -574,7 +574,8 @@ def research_digest(
     a date = local midnight taken as UTC, or an aware timestamp; None = the last 7 days), and the
     week's market segments as of ``as_of`` (the digest's portfolio day; today when None): ``segments``
     = the top rows of the 1w attribution (the ``GET /research/segments`` row shape), ``market`` = the
-    rest of that view (window, portfolio return, explained, residual, currency, unassigned)."""
+    rest of that view (window, portfolio return, explained, residual, currency, unassigned);
+    ``macro_changes`` = the macro regimes whose state changed within the period (P6)."""
     now = convert.aware(now or utcnow())
     start = _since_moment(since, now)
     rows = _recent_notes(session, profile_id, min(start, now) - dt.timedelta(days=HISTORY_DAYS))
@@ -636,6 +637,7 @@ def research_digest(
     changed.sort(key=lambda c: (health_rank(c["to"]), c["label"] or ""))
 
     segments, market = _digest_segments(session, profile_id, as_of=as_of, now=now)
+    macro_changes = _digest_macro(session, start, as_of=as_of, now=now)
 
     candidates = sorted(
         (
@@ -694,10 +696,25 @@ def research_digest(
         "theses_unchanged": unchanged,
         "segments": segments,
         "market": market,
+        "macro_changes": macro_changes,
         "candidates": [r.id for r in candidates],
         "highlights": [r.id for r in highlights[:10]],
         "health_states": [h.value for h in Health],
     }
+
+
+def _digest_macro(
+    session: Session, start: dt.datetime, *, as_of: dt.date | None, now: dt.datetime
+) -> list[dict]:
+    """Macro regimes whose state changed within the digest period (P6); ``[]`` when they cannot be
+    computed (the digest still answers)."""
+    from ..macro import service as macro_service
+
+    try:
+        return macro_service.changes(session, min(start, now).date(), as_of)
+    except Exception:  # noqa: BLE001 - a failing macro view never breaks the review digest
+        _log.exception("review digest: macro regimes failed")
+        return []
 
 
 def _digest_segments(

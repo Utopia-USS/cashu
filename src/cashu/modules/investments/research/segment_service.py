@@ -36,6 +36,7 @@ from .scoring import iso_week
 from .segments import (
     UNASSIGNED,
     catalog_order,
+    is_segment,
     segment_group,
     segment_label,
     segment_of,
@@ -376,7 +377,8 @@ def segments_view(
     result = found.attribution
     notes = notes_by_segment(session, profile.id, now)
     moves = {m.segment: m for m in result.segments if m.segment is not None}
-    keys = set(moves) | {k for k, n in notes.items() if n.latest is not None}
+    # macro notes (P6) have their own view (``macro.service``): never an attribution row
+    keys = set(moves) | {k for k, n in notes.items() if n.latest is not None and is_segment(k)}
     rows = [_row(k, moves.get(k), notes.get(k), found.labels, now) for k in keys]
     rows.sort(key=lambda r: (-abs(r["contribution"] or 0.0), catalog_order(r["segment"])))
     unassigned = result.unassigned

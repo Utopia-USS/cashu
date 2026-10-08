@@ -882,9 +882,9 @@ def mark_read(
             raise ResearchNotFound(f"no instrument {instrument_id} in this profile")
         query = query.where(InvResearchNote.instrument_id == instrument_id)
     elif segment is not None:
-        from .segments import is_segment
+        from .segments import is_note_segment
 
-        if not is_segment(segment):
+        if not is_note_segment(segment):
             raise ResearchError("unknown segment")
         query = query.where(InvResearchNote.segment == segment)
     elif theme is not None:

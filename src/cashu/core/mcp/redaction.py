@@ -24,7 +24,7 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from .labels import Labelled, Sensitivity
+from .labels import Labelled, Sensitivity, market_ok
 from .names import NameGuard
 
 STRICT = "strict"
@@ -287,6 +287,10 @@ class Redactor:
             return self.text(symbol)
         if label in (Sensitivity.TEXT, Sensitivity.CATEGORY, Sensitivity.ACCOUNT):
             return self.text(str(value))
+        if label is Sensitivity.MARKET:
+            if not market_ok(value):
+                raise UnlabelledValue(f"{path}: not market text")
+            return scrub_text(str(value), strict=False, guard=self.guard)
         raise UnlabelledValue(f"{path}: unknown label {label}")  # pragma: no cover
 
 

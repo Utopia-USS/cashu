@@ -103,7 +103,7 @@ HEAD_TABLES = migrations.BASELINE_TABLES | {"profiles", "profile_modules"} | {
     "alerts", "watchlist_items", "inv_profile_instruments",
 } | {"inv_planned_deposits", "research_runs", "research_notes"} | {"asset_details"} | {
     "connectors", "connector_bindings", "connector_runs",
-}
+} | {"inv_macro_bars"}
 
 
 def test_head_equals_create_all(tmp_path):

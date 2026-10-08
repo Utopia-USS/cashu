@@ -18,7 +18,7 @@ from cashu.modules.investments.research import service
 from cashu.modules.investments.research.validation import RunScope, validate_note
 from cashu.modules.investments.store import journal
 
-ROUTES = ("research", "research/summary", "research/segments", "research/runs")
+ROUTES = ("research", "research/summary", "research/segments", "research/macro", "research/runs")
 
 
 def profile(client, name: str) -> tuple[str, int]:
@@ -218,6 +218,7 @@ def test_profile_isolation_for_every_research_endpoint(two):
     a_note = note(a_pid, 1, thesis_relation="invalidates", theme="Banki")
     a_cand = note(a_pid, 2, instrument=None, **CANDIDATE)
     note(a_pid, 3, instrument=None, segment="gold", kind="macro")
+    note(a_pid, 5, instrument=None, segment="macro_rates", kind="macro", polarity="neutral")
     abc = client.patch(f"{a}/instruments/{iid('ABC')}", json={"segment": "semis_ai"}).json()
     assert (abc["segment"], abc["segment_source"]) == ("semis_ai", "owner")
     mine = client.get(f"{a}/research/segments").json()["segments"]
@@ -226,6 +227,8 @@ def test_profile_isolation_for_every_research_endpoint(two):
     # B sees nothing of A
     assert before["research"] == [] and before["research/runs"] == []
     assert before["research/segments"]["segments"] == []
+    assert all(c["note"] is None and c["unread"] == 0 for c in before["research/macro"]["regimes"])
+    assert client.get(f"{a}/research/macro").json()["regimes"][4]["unread"] == 1
     assert before["research/summary"]["totals"]["signals_open"] == 0
     assert all(i["health"] == "no_thesis" for i in before["research/summary"]["instruments"])
     assert client.get(f"{b}/research?run_id={a_run}").json() == []

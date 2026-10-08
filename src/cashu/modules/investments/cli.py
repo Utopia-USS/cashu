@@ -9,6 +9,7 @@ cashu invest signals
 cashu invest strategy init [--template passive_etf] [--force]
 cashu invest strategy validate
 cashu invest run [--offline] [--all]
+cashu invest macro refresh
 """
 
 from __future__ import annotations
@@ -402,6 +403,11 @@ def run_cmd(
         )
     elif report.market_error:
         c.print(f"[yellow]market refresh failed:[/] {report.market_error}")
+    if report.macro is not None:
+        stats = report.macro.to_stats()
+        c.print(f"macro: {stats['series_ok']} ok, {stats['series_error']} error(s)")
+    elif report.macro_error:
+        c.print(f"[yellow]macro refresh failed:[/] {report.macro_error}")
     for p in report.profiles:
         s = p.stats
         c.print(
@@ -415,6 +421,50 @@ def run_cmd(
         for err in p.errors:
             c.print(f"  [yellow]![/] {err}")
     if any(p.status == "failed" for p in report.profiles):
+        raise typer.Exit(1)
+
+
+# --------------------------------------------------------------------------- #
+# macro
+# --------------------------------------------------------------------------- #
+
+
+def macro_refresh_cmd() -> None:
+    """Fetch the macro reference series now (the daily check does it too) and show the regimes."""
+    from .macro import service as macro_service
+    from .service import daily, portfolio
+
+    init_db()
+    sources = daily.default_sources()
+    try:
+        if sources.macro is None:
+            cliutil.err_console.print("No macro source configured.")
+            raise typer.Exit(1)
+        report, stored = macro_service.refresh_and_store(
+            sources.macro, portfolio.today(), session_factory=get_session
+        )
+    finally:
+        sources.close()
+    c = cliutil.console
+    for item in report.series:
+        c.print(
+            f"{item.series} ({item.symbol}): {item.status.value}, {len(item.closes)} bars",
+            markup=False,
+        )
+        if item.message:
+            c.print(f"  {item.message}", markup=False)
+    c.print(f"stored: {stored.get('macro_bars_written', 0)} closes")
+    with get_session() as s:
+        for r in macro_service.regimes(s):
+            metrics = ", ".join(f"{m.label} {m.text}" for m in r.metrics)
+            if r.since is not None:
+                since = f"od {r.since.isoformat()}"
+            elif r.since_min is not None:
+                since = f"od ponad {r.since_min.isoformat()}"
+            else:
+                since = "-"
+            c.print(f"{r.label}: {r.state_label} ({since}); {metrics}", markup=False)
+    if report.error_messages:
         raise typer.Exit(1)
 
 
@@ -438,6 +488,9 @@ def register_module(app: typer.Typer) -> None:
     app.command("positions")(positions_cmd)
     app.command("signals")(signals_cmd)
     app.command("run")(run_cmd)
+    macro_app = typer.Typer(help="Macro reference series (regime cards).", no_args_is_help=True)
+    macro_app.command("refresh")(macro_refresh_cmd)
+    app.add_typer(macro_app, name="macro")
     from .cli_alerts import register as register_alerts  # alerts, watchlist
 
     register_alerts(app)

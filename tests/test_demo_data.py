@@ -59,7 +59,8 @@ def test_key_counts(seeded):
     assert count(rows, "inv_transactions") >= 80
     assert count(rows, "inv_price_bars") >= 3000 and count(rows, "inv_fx_rates") >= 500
     assert count(rows, "alerts") == 5 and count(rows, "watchlist_items") == 3
-    assert count(rows, "research_runs") == 2 and count(rows, "research_notes") == 10
+    assert count(rows, "research_runs") == 2 and count(rows, "research_notes") == 12
+    assert count(rows, "inv_macro_bars") >= 7 * 500  # P6: ~2 years of every macro series
     assert count(rows, "inv_planned_deposits") == 2 and count(rows, "inv_decisions") == 2
     assert count(rows, "proposals") == 1 and count(rows, "inv_theses") == 3
     assert count(rows, "inv_rule_runs") == 2 and count(rows, "inv_signals") >= 2
@@ -75,6 +76,13 @@ def test_key_counts(seeded):
     assert sources == {"user": 3, "agent": 2}
     assert runs == {"done"} and pending == (1,)
     assert categorised >= 150
+    with sqlite3.connect(f"file:{data / 'cashu.db'}?mode=ro", uri=True) as con:
+        macro_notes = con.execute(
+            "select count(*) from research_notes where segment like 'macro_%'"
+        ).fetchone()[0]
+        series = {r[0] for r in con.execute("select distinct series from inv_macro_bars")}
+    assert macro_notes == 2  # one per profile
+    assert series == {"acwi", "spx", "dxy", "eem", "dbc", "us10y", "us3m"}
     for slug in ("demo-anna", "demo-piotr"):
         assert (data / "profiles" / slug / "strategy.yaml").is_file()
         assert (data / "profiles" / slug / "budget.json").is_file()
@@ -92,3 +100,26 @@ def test_refuses_the_real_data_dir():
     result = run("--data-dir", str(paths.default_data_dir()))
     assert result.returncode != 0
     assert "refusing" in (result.stdout + result.stderr)
+
+
+@pytest.mark.parametrize("offset_days", [0, 45, 90, 180, 365])
+def test_demo_macro_cards_show_a_state_and_a_change_on_any_run_date(offset_days):
+    """The synthetic macro series (pure generator) give five cards with at least one non-flat state
+    and at least one state change in the history, whatever day the demo is seeded."""
+    import datetime as dt
+
+    sys.path.insert(0, str(REPO / "scripts"))
+    import demo_data
+
+    from cashu.modules.investments.macro import regimes
+    from cashu.modules.investments.macro.series import SERIES_KEYS, USDPLN
+
+    today = dt.date.today() + dt.timedelta(days=offset_days)  # noqa: DTZ011 - demo dates follow today
+    days = list(demo_data.sessions(today - dt.timedelta(days=demo_data.MACRO_DAYS), today))
+    closes = {k: [(d, float(demo_data.macro_close(k, d))) for d in days] for k in SERIES_KEYS}
+    closes[USDPLN] = [(d, float(demo_data.fx_on("USD", d))) for d in days]
+    cards = regimes.evaluate(closes, today)
+    assert len(cards) == 5 and not any(c.missing for c in cards)
+    assert any(c.state not in ("flat", "inline", "stable") for c in cards)
+    assert any(len(c.history) >= 2 for c in cards)
+    assert any(m.label == "USD/PLN 6 mies." for m in cards[1].metrics)

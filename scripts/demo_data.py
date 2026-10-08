@@ -16,8 +16,9 @@ setting for the month close; a loan (Anna: a mortgage, Piotr: a car loan); asset
 car, Piotr: a car), with depreciation; a brokerage account filled through the import path (a
 canonical ``cashu-import`` CSV, preview + commit) with synthetic price bars and FX rates written
 through the market data store; a strategy from the passive ETF template; watchlist items; owner and
-agent alerts; theses, a finished research run with notes; a planned deposit; a decision journal
-entry; one daily check (offline, on the stored data). Anna also gets a pending agent import proposal.
+agent alerts; theses, a finished research run with notes (incl. a macro note); a planned deposit; a
+decision journal entry; one daily check (offline, on the stored data). Shared: about two years of
+synthetic macro reference closes (P6 regime cards) and USD/PLN rates. Anna also gets a pending agent import proposal.
 
 Safety: ``--data-dir`` is required and becomes ``CASHU_DATA_DIR`` before cashU is imported; the
 platform default data dir (the real one) is refused unless ``--force``; the database must live inside
@@ -217,10 +218,52 @@ def fx_on(currency: str, day: dt.date) -> Decimal:
     return Decimal(f"{value:.4f}")
 
 
+# Macro reference series (P6): smooth cycles on the absolute session index plus a little noise, so on
+# any run date the cards show a bull equity market and the cycles of the dollar, EM, commodities and
+# yields cross their thresholds within the stored window (state changes in the history).
+MACRO_SYMBOLS = {
+    "ACWI": "acwi",
+    "^GSPC": "spx",
+    "DX-Y.NYB": "dxy",
+    "EEM": "eem",
+    "DBC": "dbc",
+    "^TNX": "us10y",
+    "^IRX": "us3m",
+}
+MACRO_DAYS = 1830  # the macro refresh window (5 years)
+
+
+def macro_close(key: str, day: dt.date) -> Decimal:
+    """Close of the synthetic macro series ``key`` (``macro/series.py`` keys) on a session ``day``."""
+    i = session_index(day)
+    noise = _noise("macro" + key, i)
+
+    def wave(period: int) -> float:
+        return math.sin(2 * math.pi * i / period)
+
+    acwi = 80 * math.exp(0.0004 * i) * (1 + 0.003 * _noise("macroacwi", i))
+    value = {
+        "acwi": acwi,
+        "spx": 3200 * math.exp(0.00045 * i) * (1 + 0.003 * noise),
+        "dxy": 100 + 6 * wave(320) + 0.15 * noise,
+        "eem": acwi * 0.5 * (1 + 0.08 * wave(400)) * (1 + 0.002 * noise),
+        "dbc": 22 * (1 + 0.15 * wave(500)) * (1 + 0.003 * noise),
+        "us10y": 4.2 + 0.5 * wave(260) + 0.02 * noise,
+        "us3m": 4.0 + 0.3 * wave(600) + 0.01 * noise,
+    }[key]
+    digits = 3 if key in ("us10y", "us3m") else 2
+    return Decimal(f"{value:.{digits}f}")
+
+
 def synthetic_sources():
     """MarketSources over the synthetic generator (``daily.default_sources`` stand-in for tests)."""
     from cashu.modules.investments.domain import Currency, FxRate, PriceBar
-    from cashu.modules.investments.market import PriceHistory, PriceSource
+    from cashu.modules.investments.market import (
+        ChartQuote,
+        PriceHistory,
+        PriceSource,
+        SourceException,
+    )
     from cashu.modules.investments.service.daily import MarketSources
 
     class DemoPrices(PriceSource):
@@ -261,7 +304,24 @@ def synthetic_sources():
                 for day in sessions(max(start, EPOCH), end)
             ]
 
-    return MarketSources(DemoPrices(), DemoFx())
+    class DemoMacro:
+        def chart(self, symbol, start, end, *, instrument_id="chart"):
+            key = MACRO_SYMBOLS.get(symbol)
+            if key is None:
+                raise SourceException(BAR_SOURCE, f'no such symbol "{symbol}"')
+            bars = tuple(
+                PriceBar(
+                    instrument_id=instrument_id,
+                    date=day,
+                    close=macro_close(key, day),
+                    source=BAR_SOURCE,
+                    currency=Currency.USD,
+                )
+                for day in sessions(max(start, EPOCH), end)
+            )
+            return ChartQuote(symbol, Currency.USD, None, None, None, bars)
+
+    return MarketSources(DemoPrices(), DemoFx(), macro=DemoMacro())
 
 
 # --------------------------------------------------------------------------- #
@@ -1194,6 +1254,47 @@ class Seeder:
                     fx_written += market.upsert_rates(s, rates, now=now)
         self.note(profile.slug, "market data", f"{written} bars, {fx_written} FX rates written")
 
+    def macro_data(self) -> None:
+        """Synthetic macro reference closes (P6) for the last ``MACRO_DAYS`` days and the USD/PLN
+        rates the dollar card reads, written once (missing dates only, shared by both profiles)."""
+        from sqlmodel import select
+
+        from cashu.core.db import get_session
+        from cashu.core.models import utcnow
+        from cashu.modules.investments.domain import Currency, FxRate
+        from cashu.modules.investments.macro.series import SERIES_KEYS
+        from cashu.modules.investments.models import InvMacroBar
+        from cashu.modules.investments.store import macro, market
+
+        last = last_bar_day(self.today)
+        start = self.today - dt.timedelta(days=MACRO_DAYS)
+        now = utcnow()
+        written = 0
+        with get_session() as s:
+            for key in SERIES_KEYS:
+                stored = set(s.exec(select(InvMacroBar.date).where(InvMacroBar.series == key)))
+                closes = [
+                    (day, macro_close(key, day))
+                    for day in sessions(start, last)
+                    if day not in stored
+                ]
+                if closes:
+                    written += macro.upsert(s, key, closes, source=BAR_SOURCE, now=now)
+            have = self._fx_dates(s, "USD")
+            rates = [
+                FxRate(
+                    quote=Currency.USD,
+                    date=day,
+                    rate=fx_on("USD", day),
+                    source=BAR_SOURCE,
+                    fetched_at=now,
+                )
+                for day in sessions(start, last)
+                if day not in have
+            ]
+            fx_written = market.upsert_rates(s, rates, now=now) if rates else 0
+        log(f"  macro data: {written} closes, {fx_written} USD/PLN rates written")
+
     @staticmethod
     def _fx_dates(s, code: str) -> set[dt.date]:
         from sqlmodel import select
@@ -1373,6 +1474,20 @@ class Seeder:
             ),
             (
                 {
+                    "kind": "macro",
+                    "polarity": "neutral",
+                    "strength": 1,
+                    "segment": "macro_dollar",
+                    "title": "Dolar: indeks DXY po posiedzeniu Fed",
+                    "summary": "Przykładowe dane: Fed pozostawił stopy bez zmian, indeks dolara DXY "
+                    "zakończył tydzień na poziomie z przykładowego źródła. Dotyczy: rynki wschodzące, "
+                    "surowce.",
+                    "sources": src(6),
+                },
+                None,
+            ),
+            (
+                {
                     "kind": "candidate",
                     "polarity": "neutral",
                     "strength": 1,
@@ -1481,6 +1596,7 @@ class Seeder:
 
     # -- all -------------------------------------------------------------------------------- #
     def run(self) -> dict:
+        self.macro_data()
         for plan in PLANS:
             log(f"{plan.name}:")
             profile = self.profile(plan)

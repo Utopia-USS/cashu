@@ -112,6 +112,21 @@ class InvFxRate(SQLModel, table=True):
     fetched_at: dt.datetime | None = None
 
 
+class InvMacroBar(SQLModel, table=True):
+    """One daily close of a macro reference series (``macro/series.py``: ACWI, S&P 500, DXY, EEM, DBC,
+    US 10y / 3m yields); public market data shared by every profile (P6)."""
+
+    __tablename__ = "inv_macro_bars"
+    __table_args__ = (UniqueConstraint("series", "date", name="uq_inv_macro_bar"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    series: str  # macro series key (acwi, spx, dxy, eem, dbc, us10y, us3m)
+    date: dt.date
+    close: Decimal = _decimal(nullable=False)
+    source: str
+    fetched_at: dt.datetime | None = None
+
+
 # --------------------------------------------------------------------------- #
 # Accounts, imports, transactions (profile-scoped through the account)
 # --------------------------------------------------------------------------- #

@@ -2,7 +2,7 @@
 helpers below); the redaction layer decides per label and privacy level what may be sent. A raw
 (unlabelled) leaf in a tool's result is a programming error and the call fails closed.
 
-Labels (contract F4, plus ``count``, ``ref``, ``flag``, ``account`` and ``level`` (F5)):
+Labels (contract F4, plus ``count``, ``ref``, ``flag``, ``account`` and ``level`` (F5), ``market`` (P6)):
 
 | label | strict | amounts |
 |---|---|---|
@@ -12,6 +12,7 @@ Labels (contract F4, plus ``count``, ``ref``, ``flag``, ``account`` and ``level`
 | ``percent``, ``date``, ``category``, ``symbol`` (public tickers / ISINs) | sent | sent |
 | ``level`` (a market price level of a public instrument: an alert level, a close) | sent | sent |
 | ``text`` (scrubbed: identifiers always, money amounts in strict) | sent | sent |
+| ``market`` (server-made text about public market data, e.g. ``USA 10 lat`` / ``4,23 %``; identifiers scrubbed, never amounts) | sent | sent |
 | ``count`` (non-money integers: counts, days, row numbers) | sent | sent |
 | ``ref`` (local row ids the write tools take back) | sent | sent |
 | ``flag`` (booleans) | sent | sent |
@@ -24,6 +25,7 @@ key name says which. Amounts in strict mode are replaced by shares of a base the
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -44,6 +46,7 @@ class Sensitivity(StrEnum):
     FLAG = "flag"
     ACCOUNT = "account"
     LEVEL = "level"
+    MARKET = "market"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +93,43 @@ def category(value: str | None) -> Labelled:
 
 def text(value: str | None) -> Labelled:
     return Labelled(value, Sensitivity.TEXT)
+
+
+MARKET_LABELS: frozenset[str] = frozenset(
+    {
+        "ACWI wobec 200 sesji",
+        "od szczytu",
+        "S&P 500 od szczytu",
+        "DXY",
+        "6 mies.",
+        "USD/PLN 6 mies.",
+        "EEM wobec ACWI 6 mies.",
+        "EEM 6 mies.",
+        "DBC 12 mies.",
+        "wobec ACWI 12 mies.",
+        "USA 10 lat",
+        "3 mies. zmiana",
+        "krzywa 10l-3m",
+    }
+)
+"""The macro metric labels (P6, ``investments.macro.regimes.METRIC_LABELS``; a test keeps them equal):
+the only words a ``market`` value may carry."""
+_MARKET_NUMBER = re.compile(r"^[+-]?\d{1,3}(?: \d{3})*(?:,\d+)?(?: (?:%|pp|bp))?$")
+
+
+def market_ok(value: object) -> bool:
+    """A ``market`` value is a known macro metric label or a formatted number (digits, sign, spaces,
+    decimal comma, ``%`` / ``pp`` / ``bp``): nothing else may use the strict-mode exemption."""
+    return isinstance(value, str) and (value in MARKET_LABELS or bool(_MARKET_NUMBER.match(value)))
+
+
+def market(value: str | None) -> Labelled:
+    """Text the server builds from public market data only (a macro metric's label and its formatted
+    value, P6): never personal, so the same in both modes (identifiers are still scrubbed). Anything
+    but :func:`market_ok` text is refused here and again by the redactor (the call fails closed)."""
+    if value is not None and not market_ok(value):
+        raise ValueError("not a macro metric label or a formatted market number")
+    return Labelled(value, Sensitivity.MARKET)
 
 
 def symbol(value: str | None) -> Labelled:

@@ -366,10 +366,18 @@ def set_segment(
     the app, ``agent``: MCP). The agent never changes or clears the owner's value
     (:class:`OwnerSegment`). Other profiles keep theirs; the reviewed flag is not touched (a segment
     is research context, not classification)."""
-    from ..research.segments import SEGMENT_KEYS, SEGMENT_SETTERS, is_segment
+    from ..research.segments import (
+        NOT_INSTRUMENT_SEGMENT,
+        SEGMENT_KEYS,
+        SEGMENT_SETTERS,
+        is_macro_key,
+        is_segment,
+    )
 
     if by not in SEGMENT_SETTERS:
         raise ValueError(f"unknown segment setter {by!r}")
+    if is_macro_key(segment):
+        raise ClassificationError(NOT_INSTRUMENT_SEGMENT)
     if segment is not None and not is_segment(segment):
         raise ClassificationError(f"Unknown segment (one of {', '.join(SEGMENT_KEYS)})")
     if session.get(InvInstrument, instrument_id) is None:

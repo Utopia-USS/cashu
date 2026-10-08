@@ -60,7 +60,7 @@ def _position(context: dict, symbol: str) -> dict:
 def test_schemas_drop_theme_and_list_segments():
     tools = all_tools()
     note_schema = tools["add_research_note"].input_schema["properties"]
-    assert "theme" not in note_schema and len(note_schema["segment"]["enum"]) == 18
+    assert "theme" not in note_schema and len(note_schema["segment"]["enum"]) == 18 + 5  # P6 macro
     assert "Złoto i górnicy" in note_schema["segment"]["description"]
     assert tools["set_instrument_segment"].write is True
     schema = tools["set_instrument_segment"].input_schema
