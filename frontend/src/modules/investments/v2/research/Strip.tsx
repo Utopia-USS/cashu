@@ -1,11 +1,12 @@
-// Research strip on the Inwestycje home (research.md 1, implementation-plan item 30): span 3, three calm
-// columns `Tezy` (thesis health per held position with 8-week sentiment) | `Rynek` (P5: the week's portfolio
-// move by market segment, signed pp with a diverging bar, the latest segment note) | `Kandydaci` (compact cards
-// with Obserwuj / Odrzuć). Rendered only after the first run (density rule).
+// Research strip on the Inwestycje home (research.md 1, implementation-plan item 30; P7 strip-design.md 2): span 3,
+// two columns `Makro` (1/3: five regime rows with a one-sentence summary, the explanation on hover / focus) |
+// `Tematy` (2/3: the owner's topics, the week's topic trend regardless of weight, the contribution of held topics,
+// the latest topic note; watched-only topics muted after the held ones). Kandydaci live in the home rail
+// (`CandidatesRail`). Rendered only after the first run (density rule).
 // Header tag = the latest run (its title: the next run); a week without a run collapses the strip to the not-run
 // line. Home v3 (Q10 / Q13 / Q14): no footer, the strip is the last cell of the home; the unread count sits at the
 // `wszystkie` entry point, rows carry the quiet page marker for new notes.
-import { type ReactNode, useState } from "react";
+import { type CSSProperties, type ReactNode, useState } from "react";
 import { useAsync } from "../../../../hooks";
 import { Skeleton } from "../../../../ui";
 import { Mark, UnreadChip, Widget } from "../../../../widgets";
@@ -14,16 +15,16 @@ import { canRestore, useResearchActions, useSegments } from "./data";
 import { getResearch } from "./api";
 import { invKey } from "../api";
 import {
-  BOUNDARY, countsText, healthOf, healthStale, isLive, lastDone, latestRun, nextSaturday, nNotes,
-  orderTheses, researchCommand, runNotes, runTag, workspacePath, acceptedAt, watchItemId, latestTitle,
+  BOUNDARY, countsText, healthOf, isLive, lastDone, latestRun, nextSaturday, nNotes,
+  researchCommand, runNotes, runTag, workspacePath, acceptedAt, watchItemId, latestTitle,
 } from "./logic";
-import { CandidateCard, type CandidateState, ContribBar, CopyCommand, HealthPill, ScheduleHow, SentimentBars } from "./primitives";
+import { CandidateCard, type CandidateState, CopyCommand, HealthPill, ScheduleHow, SentimentBars, TopicRow } from "./primitives";
 import {
-  barTitle, contribBars, type DisplayRow, homeRows, noExposure, ppOf, ppTone, type PpTone, segmentSub, staleSymbols, staleTitle, type SymOf, tone, UNASSIGNED, windowTitle,
+  barTitle, contribBars, type DisplayRow, homeTopics, staleSymbols, type SymOf, tone, topicColumns, topicKind, topicSymbols, windowTitle,
 } from "./segments";
 import type { InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, Workspace } from "./types";
 import { InstLabel, type InstLike } from "../InstLabel";
-import { MacroLine } from "./MacroWidgets";
+import { MacroColumn } from "./MacroWidgets";
 
 export interface StripCtx {
   slug: string;
@@ -39,35 +40,30 @@ export interface StripCtx {
   onChanged: () => void;
   /** Ustawienia › Agent AI (workspace and the routine). */
   onSettings?: () => void;
-  /** Home reload counter: the Rynek column re-reads with the other home views. */
+  /** Home reload counter: the Tematy / Makro columns re-read with the other home views. */
   nonce?: number;
   /** Symbol of an instrument id (segment rows list instrument ids). */
   symOf: (id: number) => string | null;
+  /** P7: topic key -> watched (not held) symbols, from the watchlist's `instrument.segment`. */
+  watchedTopics: Map<string, string[]>;
 }
 
-export function ResearchStrip({ ctx, runs, summary, candidates }: {
-  ctx: StripCtx; runs: ResearchRun[]; summary: ResearchSummary | null | undefined; candidates: ResearchNote[] | null | undefined;
+export function ResearchStrip({ ctx, runs, summary }: {
+  ctx: StripCtx; runs: ResearchRun[]; summary: ResearchSummary | null | undefined;
 }) {
   const tag = runTag(runs, ctx.today);
   const last = latestRun(runs);
-  const actions = useResearchActions(ctx.slug, ctx.onChanged);
   const cmd = researchCommand(ctx.workspace?.path, ctx.slug);
   if (tag.state === "stale") {
     return (
       <Widget title="Research" className="rsch" tags={<span className={`tag ${tag.tone}`}>{tag.text}</span>}
         controls={<button className="lnk" onClick={() => ctx.onOpenResearch()}>otwórz notatki</button>} body="tight"
         footer={<><span>rutyna: <b>sobota 07:00</b> · Claude Code</span><span className="spacer" /><span>{BOUNDARY}</span></>}>
-        <MacroLine ctx={ctx} />
+        <MacroColumn ctx={ctx} />
         <NotRun ctx={ctx} runs={runs} cmd={cmd} />
       </Widget>
     );
   }
-  const stale = healthStale(runs, ctx.today);
-  const theses = orderTheses((summary?.instruments ?? []).filter((s) => ctx.held.has(s.instrument_id)).map((s) => ({
-    s, health: healthOf(s, ctx.today), weight: ctx.held.get(s.instrument_id)?.weight ?? s.weight ?? null, label: ctx.held.get(s.instrument_id)?.name ?? s.label ?? "",
-  })));
-  const open = (candidates ?? []).filter((n) => !n.dismissed_at);
-  const fresh = open.filter((n) => !ctx.watched(n) && !acceptedAt(n) && watchItemId(n) == null);
   return (
     <Widget title="Research" className="rsch" id="inv-research"
       tags={<span className={`tag ${tag.tone}`} title={last?.status === "running" ? "przebieg trwa…" : `następny ${wdm(nextSaturday(ctx.today))} · rutyna Claude Code`}>{tag.text}</span>}
@@ -77,29 +73,30 @@ export function ResearchStrip({ ctx, runs, summary, candidates }: {
         <button className="lnk" onClick={() => ctx.onOpenResearch()}>wszystkie</button>
       </>}
       body="tight">
-      <div className="rsch3">
-        <div>
-          <div className="rsec">Tezy <span className="cnt">· sentyment 8 tyg.</span></div>
-          {theses.length ? theses.slice(0, 6).map(({ s, health }) => (
-            <ThesisRow key={s.instrument_id} s={s} health={health} muted={stale} name={ctx.held.get(s.instrument_id)?.name ?? s.label ?? `#${s.instrument_id}`}
-              symbol={ctx.held.get(s.instrument_id)?.symbol ?? s.symbol ?? null} inst={ctx.held.get(s.instrument_id)?.inst} onOpen={() => ctx.onOpenAsset(s.instrument_id)} />
-          )) : <div className="empty-line">{last?.status === "running" ? "Przebieg trwa…" : "Brak notatek (30 dni)."}</div>}
-          {theses.length > 6 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=positions")}>pozostałe {theses.length - 6}</button></div>}
-        </div>
-        <MarketColumn ctx={ctx} />
-        <div>
-          <div className="rsec">Kandydaci <span className="cnt">· {fresh.length ? `${plural(fresh.length, "nowy", "nowe", "nowych")} wg strategii${ctx.strategyVersion != null ? ` v${ctx.strategyVersion}` : ""}` : "0"}</span></div>
-          {open.length ? (
-            <div className="cands">
-              {open.slice(0, 2).map((n) => (
-                <CandidateCard key={n.id} note={n} compact today={ctx.today} state={ctx.watched(n)} busy={actions.busy === n.id}
-                  onWatch={actions.watch} onDismiss={actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)} />
-              ))}
-            </div>
-          ) : <div className="empty-line">Brak nowych kandydatów</div>}
-          {open.length > 2 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=candidates")}>wszyscy kandydaci ({open.length})</button></div>}
-        </div>
+      <div className="rsch2">
+        <MacroColumn ctx={ctx} />
+        <TopicsColumn ctx={ctx} />
       </div>
+    </Widget>
+  );
+}
+
+/** Home rail widget under Alerty (P7 design 3): up to two compact candidate cards with Obserwuj / Odrzuć, the new
+ * count as the tag, `wszyscy (N)` to the research page. The hook returns no item before the first run. */
+export function CandidatesRail({ ctx, candidates }: { ctx: StripCtx; candidates: ResearchNote[] | null | undefined }) {
+  const actions = useResearchActions(ctx.slug, ctx.onChanged);
+  const open = (candidates ?? []).filter((n) => !n.dismissed_at);
+  const fresh = open.filter((n) => !ctx.watched(n) && !acceptedAt(n) && watchItemId(n) == null);
+  return (
+    <Widget title="Kandydaci" id="inv-candidates" body="tight"
+      count={fresh.length ? <span title={`nowi wg strategii${ctx.strategyVersion != null ? ` v${ctx.strategyVersion}` : ""}`}>{fresh.length}</span> : undefined}
+      controls={open.length > 2 ? <button className="lnk" onClick={() => ctx.onOpenResearch("scope=candidates")}>wszyscy ({open.length})</button> : undefined}>
+      {candidates === undefined ? <Skeleton h={96} r={8} />
+        : open.length ? <div className="cands">{open.slice(0, 2).map((n) => (
+            <CandidateCard key={n.id} note={n} compact today={ctx.today} state={ctx.watched(n)} busy={actions.busy === n.id}
+              onWatch={actions.watch} onDismiss={actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)} />
+          ))}</div>
+        : <div className="empty">Brak nowych kandydatów.</div>}
     </Widget>
   );
 }
@@ -134,74 +131,45 @@ export function ThesisRow({ s, health, name, symbol, inst, muted, sub, right, on
   );
 }
 
-/** Home column `Rynek` (P5 design 2): the macro line (P6) on top, then the 1w attribution, up to 6 rows (segments
- * by |contribution|, `Waluty`, `Bez segmentu`), `pozostałe N` when segments were dropped. */
-function MarketColumn({ ctx }: { ctx: StripCtx }) {
+/** Home column `Tematy` (P7 design 2.3): the week's move by topic, held topics (contribution bar) then watched-only
+ * topics (muted, trend only), two sub-columns from 6 rows, `pozostałe N` when topics were dropped. Instruments without
+ * a topic are not shown (owner P7: no unassigned bucket anywhere). */
+function TopicsColumn({ ctx }: { ctx: StripCtx }) {
   const seg = useSegments(ctx.slug, "1w", ctx.nonce ?? 0);
   const d = seg.data;
-  const head = <><MacroLine ctx={ctx} /><MarketHead d={d} /></>;
-  if (!d) return <div>{head}{seg.loading ? <Skeleton h={118} r={8} /> : <div className="empty-line">Brak danych rynku.</div>}</div>;
-  if (!d.segments.length) {
-    return (
-      <div>{head}
-        {d.unassigned && d.unassigned.weight > 0
-          ? <div className="empty-line">Instrumenty bez segmentu. <button className="lnk" onClick={() => ctx.onOpenResearch(`segment=${UNASSIGNED}`)}>przypisz</button></div>
-          : <div className="empty-line">Brak notowań.</div>}
-      </div>
-    );
-  }
-  const { rows, rest } = homeRows(d);
+  const head = <TopicsHead d={d} />;
+  if (!d) return <div className="tcol">{head}{seg.loading ? <Skeleton h={190} r={8} /> : <div className="empty-line">Brak danych tematów.</div>}</div>;
+  const { rows, rest } = homeTopics(d);
+  if (!rows.length) return <div className="tcol">{head}<div className="empty-line">Brak tematów.</div></div>;
   return (
-    <div>
+    <div className="tcol">
       {head}
-      <SegmentRows rows={rows} stale={d.stale} symOf={ctx.symOf} onOpen={(key) => ctx.onOpenResearch(`segment=${key}`)} />
-      {rest.count > 0 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=segments")}>pozostałe {rest.count}</button></div>}
+      <TopicRows rows={rows} stale={d.stale} symOf={ctx.symOf} watched={ctx.watchedTopics} onOpen={(key) => ctx.onOpenResearch(`segment=${key}`)} />
+      {rest > 0 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=segments")}>pozostałe {rest}</button></div>}
     </div>
   );
 }
 
-/** `Rynek · tydzień -1,2 %` (home and review column header); `extra` is appended to the count. */
-export function MarketHead({ d, extra }: { d: Pick<SegmentAttribution, "start" | "end" | "portfolio_return"> | null | undefined; extra?: string | null }) {
+/** `Tematy · tydzień -1,2 %` (home and review header); `extra` is appended to the count. */
+export function TopicsHead({ d, extra }: { d: (Pick<SegmentAttribution, "start" | "end" | "portfolio_return"> & Partial<Pick<SegmentAttribution, "residual">>) | null | undefined; extra?: string | null }) {
   return (
-    <div className="rsec">Rynek <span className="cnt" title={d ? windowTitle(d) : undefined}>· tydzień{d && d.portfolio_return != null && <> <span className={tone(d.portfolio_return)}>{pct(d.portfolio_return, true)}</span></>}{extra ? ` · ${extra}` : ""}</span></div>
+    <div className="rsec">Tematy <span className="cnt" title={d ? windowTitle(d) : undefined}>· tydzień{d && d.portfolio_return != null && <> <span className={tone(d.portfolio_return)}>{pct(d.portfolio_return, true)}</span></>}{extra ? ` · ${extra}` : ""}</span></div>
   );
 }
 
-/** Rows of a home / review column on one shared bar scale; a catalog segment and `Bez segmentu` open the
- * research page filtered to it, `Waluty` is plain text. A note-only segment shows `-` without a bar. */
-export function SegmentRows({ rows, stale, symOf, onOpen }: { rows: DisplayRow[]; stale: number[]; symOf: SymOf; onOpen: (key: string) => void }) {
-  const { max, bars } = contribBars(rows.map((r) => r.contribution));
-  return (
-    <>
-      {rows.map((r, i) => {
-        const sub = segmentSub(r, symOf);
-        const st = staleSymbols(r, stale, symOf);
-        const dash = noExposure(r);
-        return (
-          <SegmentRow key={r.key} label={r.label} sub={sub.text} subTitle={sub.title} unread={r.unread}
-            bar={dash ? null : { ...bars[i], title: barTitle(r.contribution, max) }} pp={dash ? "-" : ppOf(r.contribution)} tone={dash ? "zero" : ppTone(r.contribution)}
-            stale={st.length > 0} staleTitle={staleTitle(st)} onOpen={r.kind === "currency" ? undefined : () => onOpen(r.key)} />
-        );
-      })}
-    </>
-  );
-}
-
-export function SegmentRow({ label, sub, subTitle, unread, bar, pp: ppText, tone: t, stale, staleTitle: sTitle, onOpen }: {
-  label: string; sub: ReactNode; subTitle?: string; unread: number;
-  /** null = an empty bar slot. */
-  bar: { w: number; cls: PpTone; title: string } | null;
-  pp: string; tone: PpTone; stale?: boolean; staleTitle?: string; onOpen?: () => void;
+/** Rows on one shared bar scale (held rows only feed the scale); `compact` = one column always (review). */
+export function TopicRows({ rows, stale, symOf, watched, onOpen, compact }: {
+  rows: DisplayRow[]; stale: number[]; symOf: SymOf; watched: Map<string, string[]>; onOpen: (key: string) => void; compact?: boolean;
 }) {
+  const { max, bars } = contribBars(rows.map((r) => (topicKind(r) === "held" ? r.contribution : 0)));
+  const { cols, rows: perCol } = compact ? { cols: 1 as const, rows: rows.length } : topicColumns(rows.length);
+  const firstWatched = rows.findIndex((r) => topicKind(r) === "watched");
   return (
-    <div className="rrow">
-      <div style={{ minWidth: 0 }}>
-        <div className="nm">{onOpen ? <button className="nm" onClick={onOpen}>{label}</button> : label}
-          {unread > 0 && <> <Mark kind="notes" title={plural(unread, "nowa notatka", "nowe notatki", "nowych notatek")} /></>}</div>
-        <div className="sub" title={subTitle}>{sub}</div>
-      </div>
-      {bar ? <ContribBar {...bar} /> : <span />}
-      <div className="r"><span className={`pp ${t} ${stale ? "stale" : ""}`} title={sTitle}>{ppText}</span></div>
+    <div className={`topics c${cols}`} style={{ "--rows": perCol } as CSSProperties}>
+      {rows.map((r, i) => (
+        <TopicRow key={r.key} r={r} kind={topicKind(r)} bar={{ ...bars[i], title: barTitle(r.contribution, max) }} syms={topicSymbols(r, symOf, watched)}
+          stale={staleSymbols(r, stale, symOf)} first={i === firstWatched && i > 0} right={cols === 2 && i >= perCol} last={cols === 2 && i === perCol - 1} onOpen={() => onOpen(r.key)} />
+      ))}
     </div>
   );
 }

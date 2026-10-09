@@ -1,20 +1,21 @@
-// P6 macro regimes ("Makro", design/P6/macro-design.md): the research page widget (five regime cards, a card
-// filters Notatki by its macro note key), the home line (five toned state words at the top of the Rynek column)
-// and the Sunday review lines (regimes whose state changed in the digest period). Pure logic lives in macro.ts.
+// P6 macro regimes ("Makro", design/P6/macro-design.md; P7 strip-design.md 2.1): the research page widget (five
+// regime cards, a card filters Notatki by its macro note key), the home column Makro (five rows: title, toned state,
+// `od d.mm`, the one-sentence summary; hover / focus opens the explain popover) and the Sunday review lines (regimes whose state changed in the digest period). Pure logic lives in macro.ts.
 import { useId } from "react";
 import { Skeleton } from "../../../../ui";
 import { Mark, Widget } from "../../../../widgets";
 import { dm, plural } from "../../labels";
 import { useMacro } from "./data";
 import {
-  historyTitle, homeText, lineTitle, macroAsOf, macroNoteKey, macroSub, metricTitle, sinceText, staleText, stateParts, toneCls,
+  explainHead, explainText, hasExplain, historyTitle, macroAsOf, macroNoteKey, macroSub, metricTitle, sinceText, staleText, stateParts, summaryText, toneCls,
 } from "./macro";
+import { Explain, useExplainDismiss } from "./primitives";
 import type { StripCtx } from "./Strip";
 import type { MacroChange, MacroRegime } from "./types";
 
 const EMPTY = <div className="muted" style={{ fontSize: 13 }}>Brak danych makro.</div>;
 
-/** `Makro` (span 3, between the run strip and Rynek): five compact regime cards; the tag = the last session in
+/** `Makro` (span 3, between the run strip and Tematy): five compact regime cards; the tag = the last session in
  * the data. A card selects its macro note key (filters Notatki like a P5 segment row). */
 export function MacroWidget({ slug, nonce, selected, onSelect }: {
   slug: string; nonce: number; selected: string | null; onSelect: (noteKey: string | null) => void;
@@ -68,43 +69,58 @@ export function MacroCard({ r, selected, onSelect }: { r: MacroRegime; selected:
 
 type LineCtx = Pick<StripCtx, "slug" | "nonce" | "onOpenResearch">;
 
-/** The five words (toned buttons, a word opens the research page filtered to that regime's notes). */
-function MacroWords({ regimes, ctx }: { regimes: MacroRegime[]; ctx: LineCtx }) {
-  return (
-    <div className="mline" role="list" aria-label="Makro">
-      {regimes.map((r) => (
-        <span key={r.key} className="ml" role="listitem">
-          <button className={`${toneCls(r.tone)}${r.missing ? " off" : ""}`} title={lineTitle(r)} onClick={() => ctx.onOpenResearch(`segment=${macroNoteKey(r.key)}`)}>{homeText(r)}</button>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-/** Home column `Makro` (P6 design 3): the five regime states in one wrapping line under their own header.
- * Nothing (not even the header) on a server without the endpoint or without regimes. */
-export function MacroLine({ ctx }: { ctx: LineCtx }) {
+/** Home column `Makro` (P7 design 2.1): five rows, each the regime title, the toned state word, `od d.mm`, and the
+ * one-sentence summary (clamped to 2 lines); hover / focus opens the explain popover. The title opens the research
+ * page filtered to the regime's notes. Nothing (not even the header) without the endpoint or without regimes. */
+export function MacroColumn({ ctx }: { ctx: LineCtx }) {
   const q = useMacro(ctx.slug, ctx.nonce ?? 0);
   if (!q.data && !q.loading) return null;
   if (q.data && !q.data.regimes.length) return null;
   const asOf = macroAsOf(q.data);
   return (
-    <>
+    <div className="mcol">
       <div className="rsec">Makro {asOf && <span className="cnt" title="ostatnia sesja w danych">· stan {dm(asOf)}</span>}</div>
-      {q.data ? <MacroWords regimes={q.data.regimes} ctx={ctx} /> : <Skeleton h={18} r={6} />}
-    </>
+      {q.data ? <MacroRows regimes={q.data.regimes} onOpen={(k) => ctx.onOpenResearch(`segment=${k}`)} /> : <Skeleton h={190} r={8} />}
+    </div>
   );
 }
 
-/** The home before the first research run (no research strip yet): the same five words as a small widget, since
- * the regimes come from the daily check, not from research runs. Nothing without regimes. */
+export function MacroRows({ regimes, onOpen, wide }: { regimes: MacroRegime[]; onOpen: (noteKey: string) => void; wide?: boolean }) {
+  return <div className={`mrows${wide ? " wide" : ""}`} role="list" aria-label="Makro">{regimes.map((r) => <MacroRow key={r.key} r={r} onOpen={onOpen} />)}</div>;
+}
+
+export function MacroRow({ r, onOpen }: { r: MacroRegime; onOpen: (noteKey: string) => void }) {
+  const xid = useId();
+  const parts = stateParts(r.state_label);
+  const tone = toneCls(r.tone);
+  const since = sinceText(r), stale = staleText(r), hist = historyTitle(r);
+  const explain = hasExplain(r);
+  const dismiss = useExplainDismiss();
+  return (
+    <div className={`mrow${r.missing ? " off" : ""}${dismiss.hidden ? " xoff" : ""}`} role="listitem" data-macro={r.key} {...(explain ? dismiss.props : {})}>
+      <div className="mh">
+        <button className="t" aria-describedby={explain ? xid : undefined} onClick={() => onOpen(macroNoteKey(r.key))}>{r.label}</button>
+        {r.missing
+          ? <b className="st off">brak danych</b>
+          : parts.map((p, i) => <b key={i} className={`st ${i === 0 ? tone : "warn"}`}>{p}</b>)}
+        {(since || stale) && <span className="since" title={hist ?? undefined}>{since}{since && stale ? " · " : ""}{stale && <span className="warn" title="ostatnie notowanie w danych">{stale}</span>}</span>}
+        {r.unread > 0 && <Mark kind="notes" title={plural(r.unread, "nowa notatka", "nowe notatki", "nowych notatek")} />}
+      </div>
+      <div className="sum">{summaryText(r)}</div>
+      {explain && <Explain id={xid} head={explainHead(r)} tone={tone} text={explainText(r)!} metrics={r.missing ? [] : r.metrics} />}
+    </div>
+  );
+}
+
+/** The home before the first research run (no research strip yet): the same five rows side by side as a small
+ * widget, since the regimes come from the daily check, not from research runs. Nothing without regimes. */
 export function MacroStrip({ ctx }: { ctx: LineCtx }) {
   const q = useMacro(ctx.slug, ctx.nonce ?? 0);
   if (!q.data?.regimes.length) return null;
   const asOf = macroAsOf(q.data);
   return (
     <Widget title="Makro" id="inv-macro" body="tight" tags={asOf ? <span className="tag" title="ostatnia sesja w danych">stan {dm(asOf)}</span> : undefined}>
-      <MacroWords regimes={q.data.regimes} ctx={ctx} />
+      <MacroRows wide regimes={q.data.regimes} onOpen={(k) => ctx.onOpenResearch(`segment=${k}`)} />
     </Widget>
   );
 }

@@ -104,14 +104,26 @@ test("home v3: an outside click leaves focus where it landed; Potwierdź writes 
   await expect(rail.locator(`.sig.cmp.row[data-group="${key}"]`)).toHaveCount(1);
 });
 
-test("home v3: opening a market segment from the home strip marks its research notes read (Q10, P5)", async ({ app: page }) => {
+test("home v3: opening a topic from the home strip marks its research notes read (Q10, P5, P7)", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio`);
   const strip = page.locator("#inv-research");
+  // P7: the strip is Makro | Tematy; no Tezy, no Kandydaci column, no Waluty / Bez tematu rows.
+  await expect(strip.locator(".rsch2 > .mcol .rsec").first()).toContainText("Makro");
+  await expect(strip.locator(".rsch2 > .tcol .rsec").first()).toContainText("Tematy");
+  await expect(strip.locator(".rsec", { hasText: /^Tezy/ })).toHaveCount(0);
+  await expect(strip.locator(".rsec", { hasText: /^Kandydaci/ })).toHaveCount(0);
+  await expect(strip.locator(".trow", { hasText: /Waluty|Bez tematu|Bez segmentu/ })).toHaveCount(0);
+  await expect(strip.locator(".trow").first()).toBeVisible();
+  // Kandydaci live in the home rail, under Alerty.
+  const rail = page.locator(".split .rail");
+  await expect(rail.locator("#inv-candidates")).toBeVisible();
+  const ids = await rail.locator(".w[id]").evaluateAll((els) => els.map((e) => e.id));
+  expect(ids.indexOf("inv-candidates")).toBeGreaterThan(ids.indexOf("inv-alerts"));
   const chip = strip.locator(".rs-un");
   await expect(chip).toBeVisible();
   const before = Number(await chip.innerText());
-  // The Rynek column: the segment label opens the research page filtered to the segment.
-  await strip.getByRole("button", { name: "Obligacje i stopy", exact: true }).click();
+  // The Tematy column: the topic label opens the research page filtered to the topic.
+  await strip.locator(".tcol").getByRole("button", { name: "Obligacje i stopy", exact: true }).click();
   await expect(page).toHaveURL(/research\?segment=bonds/);
   await expect(page.locator("#rsch-notes").getByRole("button", { name: /Obligacje i stopy ✕/ })).toBeVisible();
   await expect(page.locator("article[data-note]", { hasText: "Rynek oczekuje stabilnych stóp procentowych" })).toBeVisible();

@@ -154,7 +154,7 @@ export interface DigestResearch {
   theses_unchanged?: number;
   /** P5: the 1w segment attribution rows as of the digest end (top 6); missing on older servers. */
   segments?: SegmentRow[];
-  /** P5: the rest of that 1w view (header move, Waluty, Bez segmentu, stale); null on an attribution error. */
+  /** P5: the rest of that 1w view (header move, currency, stale); null on an attribution error. */
   market?: Omit<SegmentAttribution, "segments"> | null;
   /** P6: macro regimes whose state changed inside the digest period; missing on older servers. */
   macro_changes?: MacroChange[];
@@ -173,9 +173,17 @@ export interface SegmentRow {
   weight: number; contribution: number; return: number | null;
   instruments: SegmentInstrument[];
   note: SegmentNoteRef | null; note_this_week: boolean; unread: number; notes_8w: number;
-  /** Newest stored segment note, expired included (BE extra): `bez zmian od d.m` when `note` (active) is null. */
+  /** Newest stored segment note, expired included (BE extra): the small date when `note` (active) is null. */
   last_note_at?: string | null;
+  /** P7: equal-weighted local-currency return of the held and watched instruments with prices; null when none. */
+  trend_1w: number | null; trend_4w: number | null;
+  /** P7: count of those instruments (0 = no priced member). */
+  members: number;
+  /** P7 BE extra: the priced members (held now or watched) with their own returns; missing on older servers. */
+  member_instruments?: SegmentMember[];
 }
+/** A topic member: `held` = held at the window end (else watched only). */
+export interface SegmentMember { instrument_id: number; label: string | null; held: boolean; return_1w: number | null; return_4w: number | null }
 export interface SegmentCurrency { currency: string; weight: number; return: number; contribution: number }
 export interface SegmentAttribution {
   as_of: string; start: string; end: string; window: SegmentWindow; base_currency: string;
@@ -203,7 +211,11 @@ export interface MacroRegime {
   since: string | null; as_of: string | null; stale: boolean; missing: boolean;
   /** The state held since before the data window (`since` is null then); `since_min` = the first evaluated session. */
   since_open: boolean; since_min: string | null;
-  /** One factual sentence (tooltip only). */
+  /** P7: 1-2 plain Polish sentences (<= ~140 chars), the one human line shown on screen. */
+  summary: string | null;
+  /** P7: 3-6 sentences (what the cycle is, how the app measures it, what the current state means); popover only. */
+  explain: string | null;
+  /** One factual sentence (kept for compatibility: the fallback of summary / explain, the card tooltip). */
   meaning: string | null;
   metrics: MacroMetric[];
   /** State changes over the stored window, newest last, at most 12. */

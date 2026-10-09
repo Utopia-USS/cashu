@@ -1,6 +1,6 @@
 /* cashU UI v2 - research layer (design/v2/research/research.css; v2 tokens only). Thesis health pill,
    thesis relation chip, strength bars, 8-week sentiment bars, note card, candidate card, segment rows, run strip,
-   not-run state, the home strip's three columns. Loaded by research/primitives.tsx. */
+   not-run state, the home strip (Makro | Tematy, P7), the review's three columns. Loaded by research/primitives.tsx. */
 
 /* ---------- thesis health (per position) ---------- */
 .health { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 1px 7px 1px 6px; border-radius: 999px;
@@ -169,15 +169,6 @@
 @media (max-width: 760px) { .mcx { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .mcx { grid-template-columns: minmax(0, 1fr); } }
 
-/* ---------- macro state line (home strip, column Rynek) ---------- */
-.mline { display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 2px; font-size: 12.5px; line-height: 1.5; padding: 2px 0 6px; }
-/* the separator is decoration: the alt text form keeps screen readers silent (the plain form is the fallback) */
-.ml + .ml::before { content: "·"; content: "·" / ""; color: var(--muted); padding: 0 6px; }
-.ml button { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; white-space: nowrap; }
-.ml button.pos { color: var(--pos); } .ml button.neg { color: var(--neg); } .ml button.warn { color: var(--warn); }
-.ml button.off { color: var(--muted); font-weight: 500; }
-.ml button:hover { text-decoration: underline; text-underline-offset: 2px; }
-
 /* ---------- macro changes (review column) ---------- */
 .mchg { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .mchg .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -215,20 +206,17 @@ code.cmd.wrap { white-space: normal; word-break: break-all; display: inline; }
 .rsch-empty .lead { font-weight: 600; font-size: 14px; }
 .rsch-empty .d { color: var(--muted); font-size: 12.5px; margin: 2px 0 6px; }
 
-/* ---------- research strip (home, span 3): three columns ---------- */
+/* ---------- Sunday review block: three columns (Tezy changes | Makro changes + Tematy | Kandydaci) ---------- */
 .rsch3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 24px; align-items: start; }
 .rsch3 > div + div { border-left: 1px solid var(--border); padding-left: 24px; }
 @media (max-width: 1180px) {
   .rsch3 { grid-template-columns: 1fr 1fr; }
   .rsch3 > div:nth-child(3) { grid-column: span 2; border-left: none; padding-left: 0; border-top: 1px solid var(--border); margin-top: 10px; padding-top: 4px; }
-  .rsch3 > div:nth-child(3) .cands { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .rsch3 > div:nth-child(3) .cand + .cand { margin-top: 0; }
 }
 @media (max-width: 760px) {
   .rrow .r .cnt { white-space: normal; text-align: right; max-width: 120px; }
   .rsch3 { grid-template-columns: 1fr; }
   .rsch3 > div + div, .rsch3 > div:nth-child(3) { grid-column: auto; border-left: none; padding-left: 0; border-top: 1px solid var(--border); margin-top: 10px; padding-top: 4px; }
-  .rsch3 > div:nth-child(3) .cands { grid-template-columns: 1fr; }
 }
 
 /* ---------- note row (instrument context, asset-detail.md 6; `.note` stays for the list) ---------- */
@@ -257,3 +245,104 @@ code.cmd.wrap { white-space: normal; word-break: break-all; display: inline; }
 .nr .nrh { grid-template-columns: 16px minmax(0, 1fr) auto; }
 .nr .nrh .tag.pre { margin-top: 1px; }
 .health.pre i { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+
+/* ---------- research strip (home, span 3): Makro 1/3 | Tematy 2/3 (P7) ---------- */
+.rsch2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 0 24px; align-items: start; }
+.rsch2 > .tcol { border-left: 1px solid var(--border); padding-left: 24px; min-width: 0; }
+.rsch2 > .mcol { min-width: 0; }
+/* no macro endpoint: the topics take the whole width */
+.rsch2 > .tcol:only-child { border-left: none; padding-left: 0; }
+.rsch2:has(> .tcol:only-child) { grid-template-columns: minmax(0, 1fr); }
+
+/* ---------- macro rows (home column Makro) ---------- */
+.mrows { display: grid; }
+.mrow { position: relative; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.mrow:last-child { border-bottom: none; }
+.mrow.off { opacity: .62; }
+.mrow .mh { display: flex; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; min-width: 0; }
+.mrow .mh button.t { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.mrow .mh button.t:hover { color: var(--nw); text-decoration: underline; text-underline-offset: 2px; }
+.mrow .mh .st { font-weight: 600; white-space: nowrap; color: var(--text); }
+.mrow .mh .st.pos { color: var(--pos); } .mrow .mh .st.neg { color: var(--neg); } .mrow .mh .st.warn { color: var(--warn); }
+.mrow .mh .st.off { color: var(--muted); font-weight: 500; }
+.mrow .mh .since { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mrow .mh .since .warn { color: var(--warn); }
+.mrow .sum { font-size: 12.5px; color: var(--muted); line-height: 1.4; margin-top: 2px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* MacroStrip before the first run: the five rows side by side */
+.mrows.wide { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 20px; }
+.mrows.wide .mrow { border-bottom: none; }
+
+/* ---------- explain popover (hover / focus; P7 2.2) ---------- */
+.mx { position: absolute; left: -8px; top: calc(100% + 2px); width: min(420px, calc(100vw - 32px)); z-index: 50;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 34px rgba(0,0,0,.28); padding: 10px 12px;
+  visibility: hidden; opacity: 0; transition: opacity .12s, visibility 0s linear .12s; }
+.mrow:hover .mx, .mrow:focus-within .mx { visibility: visible; opacity: 1; transition: opacity .12s .25s, visibility 0s linear .25s; }
+/* hoverable (WCAG 1.4.13): the popover is part of the row's hover; a strip bridges the 2px gap to the row */
+.mx::before { content: ""; position: absolute; left: 0; right: 0; top: -4px; height: 4px; }
+.mrows:not(.wide) .mrow:nth-last-child(-n+2) .mx::before { top: auto; bottom: -4px; }
+/* dismissed with Escape (useExplainDismiss) */
+.mrows .mrow.xoff .mx { visibility: hidden; opacity: 0; transition: none; }
+/* the last two rows open upwards: the strip is the last cell of the page */
+.mrows:not(.wide) .mrow:nth-last-child(-n+2) .mx { top: auto; bottom: calc(100% + 2px); }
+.mx .xh { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+.mx .xt { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.5; white-space: pre-line; }
+.mx .xm { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 12px; }
+.mx .xm .l { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx .xm b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
+.mx .xm b.stale { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .mx, .mrow:hover .mx, .mrow:focus-within .mx { transition: none; } }
+
+/* ---------- topic rows (home column Tematy, review column) ---------- */
+.topics { display: grid; }
+.topics.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: column; grid-template-rows: repeat(var(--rows, 5), auto); column-gap: 24px; }
+.topics.c2 .trow.c2 { border-left: 1px solid var(--border); padding-left: 24px; margin-left: -12px; }
+.trow { display: grid; grid-template-columns: minmax(0, 1fr) 64px 56px 58px; gap: 0 10px; align-items: center; padding: 6px 0;
+  border-bottom: 1px solid var(--border); font-size: 13px; min-width: 0; }
+.trow:last-child, .topics.c2 .trow.last { border-bottom: none; }   /* `.last` = the bottom row of the left sub-column */
+.trow.grp { border-top: 1px dashed var(--border); }
+/* `.tl` is also the global timeline grid (index.css): reset it here */
+.trow .tl { display: block; min-width: 0; font-size: inherit; }
+.trow div.nm { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-weight: 600; }
+.trow .nm button.nm { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left;
+  min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trow .nm button.nm:hover { color: var(--nw); text-decoration: underline; text-underline-offset: 2px; }
+.trow .nm .sym { color: var(--muted); font-weight: 500; font-size: 12px; white-space: nowrap; flex: none; }
+.trow .sub { font-size: 12px; color: var(--muted); min-height: 17px; line-height: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+.trow .sub .nt { color: var(--text); font-weight: 500; }
+.trow .sub .dt { font-size: 11px; font-variant-numeric: tabular-nums; }
+.trow .tr { display: grid; justify-items: end; align-content: center; gap: 1px; min-width: 0; }
+.trow .tr .v { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.trow .tr .v.pos { color: var(--pos); } .trow .tr .v.neg { color: var(--neg); }
+.trow .tr .s { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; min-height: 14px; }
+.trow .r { display: flex; justify-content: flex-end; }
+.trow .r .pp { min-width: 52px; text-align: right; }
+/* watched-only topic: no exposure, muted name and symbols, empty bar / pp slots */
+.trow.wo .nm button.nm { color: var(--muted); font-weight: 500; }
+.trow.wo .nm .sym { opacity: .8; }
+
+/* ---------- candidates in the home rail ---------- */
+.cands { display: grid; gap: 10px; }
+.cands .cand + .cand { margin-top: 0; }
+
+/* ---------- topics widget (research page): watched-only rows, the currency footer line ---------- */
+.sgrow.wo .nm button.nm { color: var(--muted); font-weight: 500; }
+.sgfoot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.sgfoot .pp { font-size: 12px; }
+
+/* ---------- responsive (P7) ---------- */
+@media (max-width: 1180px) {
+  /* the strip is ~ 760-1180 px wide: Makro | Tematy stay side by side, topics in one column */
+  .topics.c2 { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; grid-template-rows: none; }
+  .topics.c2 .trow.c2 { border-left: none; padding-left: 0; margin-left: 0; }
+  .topics.c2 .trow.last { border-bottom: 1px solid var(--border); }
+  .mx { width: min(360px, calc(100vw - 32px)); }
+}
+@media (max-width: 760px) {
+  .rsch2 { grid-template-columns: minmax(0, 1fr); }
+  .rsch2 > .tcol { border-left: none; padding-left: 0; border-top: 1px solid var(--border); margin-top: 10px; padding-top: 4px; }
+  .trow { grid-template-columns: minmax(0, 1fr) 60px 48px 54px; gap: 0 8px; }
+  .trow .tr .s { display: none; }
+  .mx { left: 0; width: calc(100vw - 32px); }
+}

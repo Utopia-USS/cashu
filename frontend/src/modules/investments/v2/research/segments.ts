@@ -1,9 +1,9 @@
-// P5 market segments ("Rynek", design/P5/segments-design.md): the catalog (kept in sync with the BE
+// P5 market segments, P7 "Tematy" (design/P5/segments-design.md, design/P7/strip-design.md): the catalog (kept in sync with the BE
 // `INV/research/segments.py`), the tolerant reading of `GET .../research/segments`, the contribution tone and
 // text, the diverging bar geometry, the row selection of the home / review column and the page widget, the sub
 // line and the tooltips. Pure; `npm test` imports it (imports carry .ts).
-import { dm, pct, pctTarget, pp } from "../../labels.ts";
-import type { SegmentAttribution, SegmentCurrency, SegmentInstrument, SegmentNoteRef, SegmentRow, SegmentWindow } from "./types.ts";
+import { dm, pct, plural, pp } from "../../labels.ts";
+import type { SegmentAttribution, SegmentCurrency, SegmentInstrument, SegmentMember, SegmentNoteRef, SegmentRow, SegmentWindow } from "./types.ts";
 
 export type SegmentGroup = "asset" | "sector";
 
@@ -11,24 +11,20 @@ export const SEGMENTS: { key: string; label: string; group: SegmentGroup }[] = [
   { key: "equity_global", label: "Akcje globalne", group: "asset" }, { key: "equity_pl", label: "Akcje polskie", group: "asset" },
   { key: "equity_em", label: "Rynki wschodzące", group: "asset" }, { key: "bonds", label: "Obligacje i stopy", group: "asset" },
   { key: "gold", label: "Złoto i górnicy", group: "asset" }, { key: "energy", label: "Ropa i gaz", group: "asset" },
-  { key: "uranium", label: "Uran i atom", group: "asset" }, { key: "metals", label: "Metale przemysłowe", group: "asset" },
+  { key: "power", label: "Energetyka: atom i OZE", group: "asset" }, { key: "metals", label: "Metale i ziemie rzadkie", group: "asset" },
   { key: "crypto", label: "Krypto", group: "asset" }, { key: "real_estate", label: "Nieruchomości", group: "asset" },
-  { key: "semis_ai", label: "Półprzewodniki i AI", group: "sector" }, { key: "software", label: "Oprogramowanie i internet", group: "sector" },
-  { key: "healthcare", label: "Ochrona zdrowia", group: "sector" }, { key: "financials", label: "Finanse i płatności", group: "sector" },
-  { key: "consumer", label: "Konsumpcja", group: "sector" }, { key: "games_media", label: "Gry i media", group: "sector" },
+  { key: "semis_ai", label: "AI: chipy i centra danych", group: "sector" }, { key: "software", label: "AI i oprogramowanie", group: "sector" },
+  { key: "healthcare", label: "Ochrona zdrowia", group: "sector" }, { key: "financials", label: "Płatności i finanse", group: "sector" },
+  { key: "consumer", label: "Konsumpcja", group: "sector" }, { key: "games_media", label: "Gry", group: "sector" },
   { key: "industrials", label: "Przemysł i obronność", group: "sector" }, { key: "quantum", label: "Komputery kwantowe", group: "sector" },
 ];
-/** Pseudo key of the `Bez segmentu` row and of `?segment=unassigned`. */
-export const UNASSIGNED = "unassigned";
-/** Pseudo key of the `Waluty` row (no notes behind it). */
-export const CURRENCY = "currency";
-export const isSegment = (key: string | null | undefined): boolean => !!key && SEGMENTS.some((s) => s.key === key);
-export const segmentLabel = (key: string | null | undefined): string =>
-  key === UNASSIGNED ? "Bez segmentu" : SEGMENTS.find((s) => s.key === key)?.label ?? key ?? "";
-
-/** Waluty is shown from 0,1 pp of the portfolio; Bez segmentu from 2 % weight. */
-export const CURRENCY_MIN = 0.001;
-export const UNASSIGNED_MIN = 0.02;
+/** Renamed keys still found in old URLs, notes or an older server payload. */
+export const LEGACY_KEYS: Record<string, string> = { uranium: "power" };
+export const canonKey = (key: string | null | undefined): string | null => (key ? LEGACY_KEYS[key] ?? key : null);
+export const isSegment = (key: string | null | undefined): boolean => !!key && SEGMENTS.some((s) => s.key === canonKey(key));
+/** Catalog label (a renamed key reads as its new topic); unknown keys as they are. P7: no label for the unassigned
+ * bucket, it is never shown. */
+export const segmentLabel = (key: string | null | undefined): string => SEGMENTS.find((s) => s.key === canonKey(key))?.label ?? key ?? "";
 
 // ---- tone and text ----------------------------------------------------------------------------------------
 
@@ -72,10 +68,10 @@ export const barTitle = (c: number, max: number) => `wkład ${ppOf(c)} · skala 
 
 // ---- rows -------------------------------------------------------------------------------------------------
 
-/** One rendered row: a catalog segment, `Waluty` or `Bez segmentu`. */
+/** One rendered topic row (P7: only catalog topics; Waluty is a page footer line, unassigned instruments are not shown). */
 export interface DisplayRow {
   key: string;
-  kind: "segment" | "currency" | "unassigned";
+  kind: "segment";
   label: string;
   weight: number;
   contribution: number;
@@ -83,62 +79,25 @@ export interface DisplayRow {
   instruments: SegmentInstrument[];
   note: SegmentNoteRef | null;
   note_this_week: boolean;
-  /** Newest stored note, expired included (fallback of `bez zmian od`). */
+  /** Newest stored note, expired included (the small date of the note line). */
   last_note_at?: string | null;
   unread: number;
-  currencies?: SegmentCurrency[];
+  /** P7 topic trend (equal weights, held and watched members) and the member count. */
+  trend_1w?: number | null;
+  trend_4w?: number | null;
+  members?: number;
+  /** P7 BE extra: the priced members (held now / watched); absent on older servers. */
+  member_instruments?: SegmentMember[];
 }
 
 export const segmentDisplay = (s: SegmentRow): DisplayRow => ({
   key: s.segment, kind: "segment", label: s.label || segmentLabel(s.segment), weight: s.weight, contribution: s.contribution, return: s.return,
   instruments: s.instruments, note: s.note, note_this_week: s.note_this_week, last_note_at: s.last_note_at ?? null, unread: s.unread,
+  trend_1w: s.trend_1w ?? null, trend_4w: s.trend_4w ?? null, members: s.members ?? 0,
+  ...(s.member_instruments ? { member_instruments: s.member_instruments } : {}),
 });
 
-/** The fixed rows that pass their thresholds: Waluty (|currency| >= 0,1 pp), Bez segmentu (weight >= 2 %). */
-export function fixedRows(d: Pick<SegmentAttribution, "currency" | "unassigned">, opts: { forceUnassigned?: boolean } = {}): DisplayRow[] {
-  const out: DisplayRow[] = [];
-  if (d.currency && Math.abs(d.currency.contribution) >= CURRENCY_MIN) {
-    out.push({ key: CURRENCY, kind: "currency", label: "Waluty", weight: 0, contribution: d.currency.contribution, return: null, instruments: [], note: null, note_this_week: false, unread: 0, currencies: d.currency.currencies });
-  }
-  const u = d.unassigned;
-  if (u && (u.weight >= UNASSIGNED_MIN || (opts.forceUnassigned && u.weight > 0))) {
-    // An older payload without `return`: contribution / weight is the V0-weighted local return.
-    const ret = u.return ?? (u.weight > 0 ? u.contribution / u.weight : null);
-    out.push({ key: UNASSIGNED, kind: "unassigned", label: "Bez segmentu", weight: u.weight, contribution: u.contribution, return: ret, instruments: u.instruments, note: null, note_this_week: false, unread: 0 });
-  }
-  return out;
-}
-
-/** Home column (6 rows): fixed rows that pass their thresholds take their slots, segments in payload order (the
- * BE sorts by |contribution|, ties by catalog) take the rest; output order segments, Waluty, Bez segmentu.
- * `rest` = the dropped segments (count and their unread notes). */
-export function homeRows(d: Pick<SegmentAttribution, "segments" | "currency" | "unassigned">, max = 6): { rows: DisplayRow[]; rest: { count: number; unread: number } } {
-  const fixed = fixedRows(d);
-  const slots = Math.max(0, max - fixed.length);
-  const shown = d.segments.slice(0, slots);
-  const dropped = d.segments.slice(slots);
-  return { rows: [...shown.map(segmentDisplay), ...fixed], rest: { count: dropped.length, unread: dropped.reduce((s, x) => s + (x.unread || 0), 0) } };
-}
-
-/** Page widget: every segment, then Waluty and Bez segmentu when they pass their thresholds. */
-export const pageRows = (d: Pick<SegmentAttribution, "segments" | "currency" | "unassigned">): DisplayRow[] => [...d.segments.map(segmentDisplay), ...fixedRows(d)];
-
-/** Review column: rows with a new note first, then the rest in payload order (the digest sends at most 6). */
-export const reviewRows = (segments: SegmentRow[]): DisplayRow[] =>
-  [...segments.filter((s) => s.note_this_week), ...segments.filter((s) => !s.note_this_week)].map(segmentDisplay);
-
-/** Review column (6 rows like home): the digest's segments (new notes first) then Waluty and Bez segmentu from the
- * digest's `market` block when they pass their thresholds. */
-export function reviewColumn(segments: SegmentRow[], market: Pick<SegmentAttribution, "currency" | "unassigned"> | null | undefined, max = 6): DisplayRow[] {
-  const fixed = market ? fixedRows(market) : [];
-  return [...reviewRows(segments).slice(0, Math.max(0, max - fixed.length)), ...fixed];
-}
-
-/** A note-only segment (no exposure at the window start): `-` instead of `0,0 pp`, no bar. A held non-market
- * segment (weight > 0, contribution 0) keeps `0,0 pp`. */
-export const noExposure = (r: Pick<DisplayRow, "kind" | "weight">): boolean => r.kind === "segment" && !(r.weight > 0);
-
-/** Segments with held exposure at the window start (the `Rynek · N` count). */
+/** Topics with held exposure at the window start (the `Tematy · N` count). */
 export const exposed = (d: Pick<SegmentAttribution, "segments"> | null | undefined): number => (d?.segments ?? []).filter((s) => s.weight > 0).length;
 /** Segments with a note this week. */
 export const withNewNote = (rows: Pick<SegmentRow, "note_this_week">[] | null | undefined): number => (rows ?? []).filter((s) => s.note_this_week).length;
@@ -154,42 +113,122 @@ export const symbolsOf = (instruments: SegmentInstrument[], symOf: SymOf): strin
 export const currencySub = (currencies: SegmentCurrency[] | undefined, n = 2): string =>
   [...(currencies ?? [])].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution)).slice(0, n).map((c) => `${c.currency} ${pct(c.return, true)}`).join(" · ");
 
-/** Sub line of a row: the note title this week, `bez zmian od d.m` for an older note, otherwise the first three
- * symbols; Waluty: the top two currencies. `title` = the full text (the line ellipsizes). */
-export function segmentSub(r: DisplayRow, symOf: SymOf): { text: string; title: string } {
-  let text: string;
-  if (r.kind === "currency") text = currencySub(r.currencies);
-  else if (r.note && r.note_this_week) text = r.note.title;
-  else if (r.note) text = `bez zmian od ${dm(r.note.observed_at)}`;
-  else if (r.last_note_at) text = `bez zmian od ${dm(r.last_note_at)}`;
-  else text = symbolsOf(r.instruments, symOf).slice(0, 3).join(" · ");
-  return { text, title: r.note && r.note_this_week ? r.note.title : text };
-}
-
 /** Symbols of a row's instruments with a stale price; a row is marked when any is stale. */
 export const staleSymbols = (r: Pick<DisplayRow, "instruments">, stale: number[], symOf: SymOf): string[] =>
   r.instruments.filter((i) => stale.includes(i.instrument_id)).map((i) => instSymbol(i, symOf));
 export const staleTitle = (syms: string[]) => (syms.length ? `notowania nieaktualne: ${syms.join(", ")}` : undefined);
 
-/** Home header tooltip: `1.10 - 8.10 · TWR portfela` (+ `· brak pełnej historii` without the portfolio move). */
-export const windowTitle = (d: Pick<SegmentAttribution, "start" | "end" | "portfolio_return">) =>
-  `${dm(d.start)} - ${dm(d.end)} · TWR portfela${d.portfolio_return == null ? " · brak pełnej historii" : ""}`;
+/** P7 (review LOW-2): one short line when the rows do not add up to the move (|residual| >= 0,1 pp): the gap comes
+ * from transactions and position imports inside the window. Null otherwise. */
+export const residualLine = (d: Partial<Pick<SegmentAttribution, "residual">>): string | null =>
+  d.residual != null && ppTone(d.residual) !== "zero" ? `reszta ${ppOf(d.residual)}: transakcje i import pozycji` : null;
 
-/** Page fact tooltip: `wyjaśnione -1,2 % · reszta -0,1 % · 1.10 - 8.10 · 1 nowa pozycja poza oknem · nieaktualne: GDXJ`. */
+/** Home header tooltip: `1.10 - 8.10 · TWR portfela` (+ `· brak pełnej historii` without the portfolio move), plus the
+ * residual line when it applies. */
+export const windowTitle = (d: Pick<SegmentAttribution, "start" | "end" | "portfolio_return"> & Partial<Pick<SegmentAttribution, "residual">>) =>
+  [`${dm(d.start)} - ${dm(d.end)} · TWR portfela${d.portfolio_return == null ? " · brak pełnej historii" : ""}`, residualLine(d)].filter(Boolean).join("\n");
+
+/** Page fact tooltip: `wyjaśnione -1,2 % · reszta 0,0 % · 1.10 - 8.10 · 1 nowa pozycja poza oknem · nieaktualne: GDXJ`;
+ * from |residual| >= 0,1 pp the residual moves to its own line (`residualLine`) instead of the inline `reszta`. */
 export function factTitle(d: Pick<SegmentAttribution, "explained" | "residual" | "start" | "end" | "new_positions">, staleSyms: string[] = []): string {
-  const parts = [`wyjaśnione ${pct(d.explained, true)}`, `reszta ${d.residual != null ? pct(d.residual, true) : "-"}`, `${dm(d.start)} - ${dm(d.end)}`];
+  const line = residualLine(d);
+  const parts = [`wyjaśnione ${pct(d.explained, true)}`];
+  if (!line) parts.push(`reszta ${d.residual != null ? pct(d.residual, true) : "-"}`);
+  parts.push(`${dm(d.start)} - ${dm(d.end)}`);
   if (d.new_positions > 0) parts.push(`${nPositions(d.new_positions)} poza oknem`);
   if (staleSyms.length) parts.push(`nieaktualne: ${staleSyms.join(", ")}`);
-  return parts.join(" · ");
+  return [parts.join(" · "), line].filter(Boolean).join("\n");
 }
 function nPositions(n: number): string {
   const n10 = n % 10, n100 = n % 100;
   return `${n} ${n === 1 ? "nowa pozycja" : n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14) ? "nowe pozycje" : "nowych pozycji"}`;
 }
 
-/** Waluty chips on the page: `USD 55 %` (weight, whole percent when exact), max 3. */
-export const currencyChips = (currencies: SegmentCurrency[] | undefined): string[] =>
-  [...(currencies ?? [])].sort((a, b) => b.weight - a.weight).slice(0, 3).map((c) => `${c.currency} ${pctTarget(c.weight)}`);
+// ---- topics (P7 design 1.3) --------------------------------------------------------------------------------
+
+export type TopicKind = "held" | "new" | "watched" | "none";
+/** A member of the row is held now (BE `member_instruments`, held at the window end). */
+export const heldNow = (r: Pick<DisplayRow, "member_instruments">): boolean => !!r.member_instruments?.some((m) => m.held);
+
+/** held = exposure at the window start; new = no exposure at the start but a member held now (bought inside the window:
+ * not muted, not `tylko obserwowane`, no contribution); watched = priced members, none held; none = a note-only row. */
+export const topicKind = (r: Pick<DisplayRow, "weight" | "members" | "member_instruments">): TopicKind =>
+  r.weight > 0 ? "held" : heldNow(r) ? "new" : (r.members ?? 0) > 0 ? "watched" : "none";
+const KIND_RANK: Record<TopicKind, number> = { held: 0, new: 1, watched: 2, none: 3 };
+
+/** Home column: held topics in payload order (BE: |contribution| desc), then new and watched-only (BE: |trend_1w|
+ * desc), max 10. No Waluty, no unassigned, no note-only rows. `rest` = dropped topics. */
+export function homeTopics(d: Pick<SegmentAttribution, "segments">, max = 10): { rows: DisplayRow[]; rest: number } {
+  const all = d.segments.map(segmentDisplay).filter((r) => topicKind(r) !== "none");
+  const shown = all.sort((a, b) => KIND_RANK[topicKind(a)] - KIND_RANK[topicKind(b)]);
+  const rows = shown.slice(0, max);
+  return { rows, rest: shown.length - rows.length };
+}
+/** Review column: rows with a new note first, then the rest; held, new, watched inside each group; max 6; no fixed rows. */
+export function reviewTopics(segments: SegmentRow[], max = 6): DisplayRow[] {
+  const rows = segments.map(segmentDisplay).filter((r) => topicKind(r) !== "none");
+  const rank = (r: DisplayRow) => (r.note_this_week ? 0 : 3) + KIND_RANK[topicKind(r)];
+  return rows.sort((a, b) => rank(a) - rank(b)).slice(0, max);
+}
+/** Page widget: held, new, watched-only, then note-only rows (muted `-` rows); never Waluty or the unassigned bucket as rows. */
+export const pageTopics = (d: Pick<SegmentAttribution, "segments">): DisplayRow[] =>
+  d.segments.map(segmentDisplay).sort((a, b) => KIND_RANK[topicKind(a)] - KIND_RANK[topicKind(b)]);
+/** Name tooltip of a row: `tylko obserwowane` (watched-only) / `nowa pozycja w tym oknie` (new). */
+export const kindTitle = (kind: TopicKind): string | undefined =>
+  kind === "watched" ? "tylko obserwowane" : kind === "new" ? "nowa pozycja w tym oknie" : undefined;
+
+/** `held`: held at the window start or now (clickable to the asset); `member`: the BE member entry, when any. */
+export interface TopicSym { symbol: string; id: number | null; held: boolean; member?: SegmentMember }
+/** Members of a topic row, as symbols: the start-held instruments (BE order, by |contribution|), then the BE
+ * `member_instruments` held now, then the watched ones; without `member_instruments` (older server) the watchlist
+ * map (`watched`: topic key -> watched symbols) is the fallback. No symbol twice. */
+export function topicMembers(r: Pick<DisplayRow, "key" | "instruments" | "member_instruments">, symOf: SymOf, watched: Map<string, string[]>): TopicSym[] {
+  const out: TopicSym[] = r.instruments.map((i) => ({ symbol: instSymbol(i, symOf), id: i.instrument_id, held: true }));
+  const add = (x: TopicSym) => { if (!out.some((o) => o.symbol === x.symbol || (x.id != null && o.id === x.id))) out.push(x); };
+  const members = r.member_instruments;
+  if (members) {
+    const sym = (m: SegmentMember) => symOf(m.instrument_id) ?? m.label ?? `#${m.instrument_id}`;
+    for (const m of members.filter((m) => m.held)) add({ symbol: sym(m), id: m.instrument_id, held: true, member: m });
+    for (const m of members.filter((m) => !m.held)) add({ symbol: sym(m), id: m.instrument_id, held: false, member: m });
+  } else {
+    for (const s of watched.get(r.key) ?? []) add({ symbol: s, id: null, held: false });
+  }
+  return out;
+}
+/** The symbols of `topicMembers`. */
+export const topicSymbols = (r: Pick<DisplayRow, "key" | "instruments" | "member_instruments">, symOf: SymOf, watched: Map<string, string[]>): string[] =>
+  topicMembers(r, symOf, watched).map((m) => m.symbol);
+/** `NVDA · SMH · AMD +2`: first `n` symbols, the rest as a count. */
+export const symbolsText = (syms: string[], n = 3): string => syms.slice(0, n).join(" · ") + (syms.length > n ? ` +${syms.length - n}` : "");
+
+/** Second line of a topic row: this week's note title (fresh), else the small date of the last note, else nothing.
+ * No `bez zmian` anywhere. */
+export function topicNote(r: Pick<DisplayRow, "note" | "note_this_week" | "last_note_at">): { text: string; title: string; fresh: boolean } | null {
+  if (r.note && r.note_this_week) return { text: r.note.title, title: r.note.title, fresh: true };
+  const at = r.note?.observed_at || r.last_note_at;
+  return at ? { text: dm(at), title: `ostatnia notatka ${dm(at)}`, fresh: false } : null;
+}
+
+/** The trend of a window. */
+export const trendOf = (r: Pick<DisplayRow, "trend_1w" | "trend_4w">, window: SegmentWindow): number | null => (window === "4w" ? r.trend_4w ?? null : r.trend_1w ?? null);
+/** `+3,1 %` / `-`. */
+export const trendText = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? "-" : pct(v, true));
+/** Trend cell tooltip: `3 instrumenty, równe wagi · 4 tyg. +8,2 %` (home) or `… · ważona udziałem -4,4 %` (page). */
+export function trendTitle(r: Pick<DisplayRow, "members" | "trend_4w" | "return" | "weight">, opts: { page?: boolean } = {}): string {
+  const parts = [`${plural(r.members ?? 0, "instrument", "instrumenty", "instrumentów")}, równe wagi`];
+  if (!opts.page && r.trend_4w != null) parts.push(`4 tyg. ${pct(r.trend_4w, true)}`);
+  if (opts.page && r.weight > 0 && r.return != null) parts.push(`ważona udziałem ${pct(r.return, true)}`);
+  return parts.join(" · ");
+}
+
+/** Two sub-columns from 6 rows (column-major: the first ceil(n/2) rows left); one column below. */
+export const topicColumns = (n: number): { cols: 1 | 2; rows: number } => (n >= 6 ? { cols: 2, rows: Math.ceil(n / 2) } : { cols: 1, rows: n });
+
+/** Page footer line (muted): `waluty +0,6 pp · USD +0,6 % · EUR +0,1 %`; null without currencies. */
+export function currencyFoot(d: Pick<SegmentAttribution, "currency">): { pp: string; tone: PpTone; detail: string } | null {
+  if (!d.currency?.currencies.length) return null;
+  return { pp: ppOf(d.currency.contribution), tone: ppTone(d.currency.contribution), detail: currencySub(d.currency.currencies) };
+}
 
 // ---- tolerant reading of the payload ----------------------------------------------------------------------
 
@@ -206,6 +245,13 @@ function normInstruments(v: unknown): SegmentInstrument[] {
   }).filter((i) => Number.isFinite(i.instrument_id));
 }
 
+function normMembers(v: unknown): SegmentMember[] {
+  return arr(v).map((x) => {
+    const o = obj(x);
+    return { instrument_id: Number(o.instrument_id ?? o.id), label: str(o.label) ?? str(o.symbol), held: o.held === true, return_1w: num(o.return_1w), return_4w: num(o.return_4w) };
+  }).filter((m) => Number.isFinite(m.instrument_id));
+}
+
 export function normNoteRef(v: unknown): SegmentNoteRef | null {
   const o = obj(v);
   const id = num(o.id);
@@ -215,14 +261,19 @@ export function normNoteRef(v: unknown): SegmentNoteRef | null {
 
 export function normSegmentRow(v: unknown): SegmentRow | null {
   const o = obj(v);
-  const key = str(o.segment) ?? str(o.key);
-  if (!key) return null;
+  const raw = str(o.segment) ?? str(o.key);
+  if (!raw) return null;
+  const key = canonKey(raw)!;
   const cat = SEGMENTS.find((s) => s.key === key);
+  // A renamed key from an older server carries its old label: the catalog label wins then.
+  const label = raw !== key ? segmentLabel(key) : str(o.label) ?? segmentLabel(key);
   return {
-    segment: key, label: str(o.label) ?? segmentLabel(key), group: (str(o.group) ?? cat?.group ?? "asset") as SegmentRow["group"],
+    segment: key, label, group: (str(o.group) ?? cat?.group ?? "asset") as SegmentRow["group"],
     weight: num(o.weight) ?? 0, contribution: num(o.contribution) ?? 0, return: num(o.return),
     instruments: normInstruments(o.instruments), note: normNoteRef(o.note), note_this_week: o.note_this_week === true,
     unread: num(o.unread) ?? 0, notes_8w: num(o.notes_8w) ?? 0, last_note_at: str(o.last_note_at),
+    trend_1w: num(o.trend_1w), trend_4w: num(o.trend_4w), members: num(o.members) ?? 0,
+    ...(Array.isArray(o.member_instruments) ? { member_instruments: normMembers(o.member_instruments) } : {}),
   };
 }
 

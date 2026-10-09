@@ -1,5 +1,5 @@
-// P6 macro regimes ("Makro", design/P6/macro-design.md): the catalog (kept in sync with the BE
-// `INV/macro/regimes.py`), the state words, the home line text, the tooltips, the ordering and the tolerant
+// P6 macro regimes ("Makro", design/P6/macro-design.md; P7 strip-design.md 1.4): the catalog (kept in sync with
+// the BE `INV/macro/regimes.py`), the state words, the summary / explain texts of the home rows, the tooltips, the ordering and the tolerant
 // reading of `GET .../research/macro` and the digest's `macro_changes`. Pure; `npm test` imports it (imports
 // carry .ts). segments.ts never imports this file (no cycle).
 import { dm } from "../../labels.ts";
@@ -36,26 +36,10 @@ export const STATE_LABEL: Record<MacroKey, Record<string, string>> = {
 };
 export const stateLabel = (key: string, state: string, fallback = state): string => (STATE_LABEL as Record<string, Record<string, string>>)[key]?.[state] ?? fallback;
 
-/** Home line text: the state word with its subject where the bare word would be ambiguous in a row of five
- * (`hossa` alone reads as equities; `bez trendu` alone reads as nothing). Unknown state -> the BE label as is. */
-const HOME_TEXT: Record<MacroKey, Record<string, string>> = {
-  risk: { bull: "hossa", bear: "bessa", correction: "korekta", weak: "akcje słabną", flat: "akcje bez trendu" },
-  dollar: { strong: "dolar się umacnia", weak: "dolar słabnie", flat: "dolar bez trendu" },
-  em: { leading: "EM silniejsze", lagging: "EM słabsze", inline: "EM w linii" },
-  commodities: { bull: "hossa surowcowa", bear: "bessa surowcowa", flat: "surowce bez trendu" },
-  rates: { rising: "rentowności rosną", falling: "rentowności spadają", stable: "rentowności stabilne" },
-};
 export const INVERTED = "krzywa odwrócona";
 /** `rentowności rosną · krzywa odwrócona` -> ["rentowności rosną", "krzywa odwrócona"]; one part otherwise. */
 export const stateParts = (label: string): string[] => label.split(" · ").map((s) => s.trim()).filter(Boolean);
 export const isInverted = (r: Pick<MacroRegime, "state_label">): boolean => stateParts(r.state_label).slice(1).some((p) => p.toLowerCase() === INVERTED);
-
-export function homeText(r: Pick<MacroRegime, "key" | "state" | "state_label" | "missing">): string {
-  const m = MACRO.find((x) => x.key === r.key);
-  if (r.missing || r.state === "unknown") return `${m?.subject ?? r.key}: brak danych`;
-  const base = (HOME_TEXT as Record<string, Record<string, string>>)[r.key]?.[r.state] ?? stateParts(r.state_label)[0] ?? r.state;
-  return isInverted(r) ? `${base}, ${INVERTED}` : base;
-}
 
 /** Tone -> class; anything unexpected is no tone. */
 export const toneCls = (tone: string | null | undefined): "pos" | "neg" | "warn" | "" => (tone === "pos" || tone === "neg" || tone === "warn" ? tone : "");
@@ -115,14 +99,6 @@ export function historyTitle(r: Pick<MacroRegime, "key" | "since" | "state_label
   return [since ? `${since} ${head}` : head, ...past.map(line)].slice(0, max).join("\n");
 }
 
-/** Home line tooltip: title, since, then one metric per line (`title=` renders the newlines). */
-export function lineTitle(r: Pick<MacroRegime, "label" | "since" | "missing" | "stale" | "as_of" | "metrics" | "state_label"> & Partial<Pick<MacroRegime, "since_open" | "since_min">>): string {
-  const head = [r.label, r.missing ? "brak danych" : sinceText(r), staleText(r)].filter(Boolean).join(" · ");
-  const parts = stateParts(r.state_label);
-  const flag = !r.missing && parts.length > 1 ? parts.slice(1).join(" · ") : null;
-  return [head, flag, ...(r.missing ? [] : r.metrics.map((m) => `${m.label} ${m.text}${m.stale ? ` (${metricStale(m)})` : ""}`))].filter(Boolean).join("\n");
-}
-
 /** A stale metric's note: `dane z 3.10` when the metric carries its date, else `nieaktualne`. */
 export const metricStale = (m: Pick<MacroMetric, "as_of">): string => (m.as_of ? `dane z ${dm(m.as_of)}` : "nieaktualne");
 /** Metric row tooltip: the stale note for a stale metric, else the BE `change_label` (if any). */
@@ -136,11 +112,27 @@ export function macroAsOf(d: Pick<MacroRegimes, "as_of" | "regimes"> | null | un
   return dates.length ? dates[dates.length - 1] : null;
 }
 
-/** Note line of a card (P5 rule): the note title this week, `bez zmian od d.mm` for an older note, else null. */
+/** Note line of a card (P7 rule, as the topic rows): the note title this week, the small date of an older note, else null. */
 export function macroSub(r: Pick<MacroRegime, "note" | "note_this_week" | "last_note_at">): { text: string; title: string } | null {
   if (r.note && r.note_this_week) return { text: r.note.title, title: r.note.title };
   const at = r.note?.observed_at || r.last_note_at;
-  return at ? { text: `bez zmian od ${dm(at)}`, title: `ostatnia notatka ${dm(at)}` } : null;
+  return at ? { text: dm(at), title: `ostatnia notatka ${dm(at)}` } : null;
+}
+
+// ---- P7 home rows: the one on-screen sentence and the explain popover ----------------------------------------
+
+/** The one on-screen sentence: BE `summary`; older server: `meaning`; neither: the metrics joined (`DXY 98,4 · 6 mies. -4,8 %`). */
+export function summaryText(r: Pick<MacroRegime, "summary" | "meaning" | "metrics" | "missing">): string {
+  if (r.missing) return "Brak danych.";
+  return r.summary ?? r.meaning ?? r.metrics.map((m) => `${m.label} ${m.text}`).join(" · ");
+}
+/** The popover exists when there is something longer than the summary to show. */
+export const hasExplain = (r: Pick<MacroRegime, "explain" | "meaning" | "summary" | "missing">): boolean => !r.missing && !!(r.explain ?? (r.summary ? r.meaning : null));
+/** Popover body text: `explain`, else `meaning` (when the summary is on screen already). */
+export const explainText = (r: Pick<MacroRegime, "explain" | "meaning" | "summary">): string | null => r.explain ?? (r.summary ? r.meaning : null);
+/** Popover head: `Dolar · słabnie · od 2.10` (+ ` · dane z 26.09` when stale). */
+export function explainHead(r: Pick<MacroRegime, "label" | "state_label" | "since" | "missing" | "stale" | "as_of"> & Partial<Pick<MacroRegime, "since_open" | "since_min">>): string {
+  return [r.label, stateParts(r.state_label)[0], sinceText(r), staleText(r)].filter(Boolean).join(" · ");
 }
 
 /** Catalog order regardless of payload order; unknown keys at the end in payload order. */
@@ -180,6 +172,7 @@ export function normRegime(v: unknown): MacroRegime | null {
   return {
     key, label: str(o.label) ?? cat?.label ?? key, state, state_label: label, tone: toneCls(str(o.tone)),
     since: str(o.since), as_of: str(o.as_of), stale: !missing && o.stale === true, missing, meaning: str(o.meaning),
+    summary: str(o.summary), explain: str(o.explain),
     since_open: !missing && o.since_open === true, since_min: str(o.since_min),
     metrics, history,
     note: normNoteRef(o.note), last_note_at: str(o.last_note_at), note_this_week: o.note_this_week === true, unread: num(o.unread) ?? 0,

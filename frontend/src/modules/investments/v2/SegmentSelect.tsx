@@ -1,4 +1,4 @@
-// P5 asset header: the instrument's market segment (design/P5/segments-design.md 5), one more item of the
+// P5 asset header: the instrument's topic (P7 label `Temat`; design/P5/segments-design.md 5), one more item of the
 // header meta line. The select holds the explicit value only; the empty option names the auto value when one
 // applies (`auto · Złoto i górnicy`), else `brak`. Choosing a catalog entry sets it, the empty option clears it.
 import { useEffect, useState } from "react";
@@ -6,9 +6,9 @@ import { useToast } from "../../../ui";
 import { errorText } from "../../../core/messages";
 import { patchInstrumentSegment } from "../api";
 import { bumpResearch } from "./research/data";
-import { SEGMENTS, segmentLabel } from "./research/segments";
+import { canonKey, SEGMENTS, segmentLabel } from "./research/segments";
 
-export function SegmentSelect({ slug, instrumentId, segment, source, sep, onChanged }: {
+export function SegmentSelect({ slug, instrumentId, segment: raw, source, sep, onChanged }: {
   slug: string; instrumentId: number; segment: string | null;
   /** `owner` / `agent` (earlier `set`) = an explicit value; `auto` = from the symbol or asset class table. */
   source: "owner" | "agent" | "auto" | "set" | null;
@@ -17,6 +17,8 @@ export function SegmentSelect({ slug, instrumentId, segment, source, sep, onChan
   onChanged: () => void;
 }) {
   const toast = useToast();
+  // A renamed key from an older server (`uranium`) selects its new entry (`power`).
+  const segment = canonKey(raw);
   const [busy, setBusy] = useState(false);
   const explicit = source != null && source !== "auto" && !!segment;
   const [value, setValue] = useState<string>(explicit ? segment! : "");
@@ -28,7 +30,7 @@ export function SegmentSelect({ slug, instrumentId, segment, source, sep, onChan
     const prev = value;
     setValue(next);
     setBusy(true);
-    // The research views (Rynek) re-read too: the instrument moves to another row.
+    // The research views (Tematy) re-read too: the instrument moves to another row.
     try { await patchInstrumentSegment(slug, instrumentId, next || null); bumpResearch(slug); onChanged(); }
     catch (e) { setValue(prev); toast(`Nie zapisano: ${errorText(e)}`, 4000); }
     finally { setBusy(false); }
@@ -36,8 +38,8 @@ export function SegmentSelect({ slug, instrumentId, segment, source, sep, onChan
   return (
     <span className="mi">
       {sep && <span className="msep" aria-hidden>·</span>}
-      <span>Segment</span>
-      <select className="sgsel" aria-label="Segment rynku" value={value} disabled={busy} onChange={(e) => void save(e.target.value)}
+      <span>Temat</span>
+      <select className="sgsel" aria-label="Temat" value={value} disabled={busy} onChange={(e) => void save(e.target.value)}
         title={title}>
         <option value="">{autoLabel ? `auto · ${autoLabel}` : "brak"}</option>
         <optgroup label="Klasy aktywów">{SEGMENTS.filter((s) => s.group === "asset").map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</optgroup>

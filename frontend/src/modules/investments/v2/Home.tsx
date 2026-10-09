@@ -587,7 +587,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   } else {
     // Q13 / Q19: the research strip last; Obsunięcie and Wpłaty live in the hero, Rachunki in Alokacja,
     // Obserwowane in Aktywa.
-    const split: GridItem = { id: "split", span: 3, node: <Split main={[wValue, wAlloc, wAssets]} rail={[wSignals, wAlerts]} /> };
+    const split: GridItem = { id: "split", span: 3, node: <Split main={[wValue, wAlloc, wAssets]} rail={[wSignals, wAlerts, ...(research.candidates ? [research.candidates] : [])]} /> };
     items.push(split);
     if (research.strip) items.push(research.strip);
   }

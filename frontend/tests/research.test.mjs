@@ -10,12 +10,13 @@ import {
   weekLabels, weekScore, weekStarts, windowStart,
 } from "../src/modules/investments/v2/research/logic.ts";
 import {
-  BAR_FLOOR, barTitle, contribBars, currencyChips, currencySub, exposed, factTitle, homeRows, isSegment, normAttribution, pageRows, ppOf, ppTone,
-  instSymbol, noExposure, normDigestMarket, reviewColumn, reviewRows, segmentLabel, segmentSub, SEGMENTS, staleSymbols, staleTitle, tone, UNASSIGNED, windowTitle, withNewNote,
+  BAR_FLOOR, barTitle, canonKey, contribBars, currencyFoot, currencySub, exposed, factTitle, homeTopics, isSegment, LEGACY_KEYS, normAttribution, normSegmentRow, pageTopics, ppOf, ppTone,
+  instSymbol, normDigestMarket, reviewTopics, segmentDisplay, segmentLabel, SEGMENTS, staleSymbols, staleTitle, symbolsText, tone, topicColumns, topicKind, topicNote, topicSymbols,
+  trendOf, trendText, trendTitle, windowTitle, withNewNote, residualLine, topicMembers, kindTitle, heldNow,
 } from "../src/modules/investments/v2/research/segments.ts";
 import {
-  dateText, historyTitle, homeText, isInverted, isMacroKey, lineTitle, MACRO, macroAsOf, macroKeyOf, macroLabel, macroSub, metricTitle, monthsBetween, normMacro,
-  normMacroChanges, noteKeyLabel, openSpan, orderRegimes, sinceText, staleText, stateParts, toneCls,
+  dateText, explainHead, explainText, hasExplain, historyTitle, isInverted, isMacroKey, MACRO, macroAsOf, macroKeyOf, macroLabel, macroSub, metricTitle, monthsBetween, normMacro,
+  normMacroChanges, normRegime, noteKeyLabel, openSpan, orderRegimes, sinceText, staleText, stateParts, summaryText, toneCls,
 } from "../src/modules/investments/v2/research/macro.ts";
 import { hashWithSegment } from "../src/modules/investments/v2/research/segments.ts";
 import { readFileSync } from "node:fs";
@@ -199,9 +200,9 @@ test("research signal copy: relation, title, strength and sources; note id from 
   // An old theme signal keeps its theme as the title.
   const theme = researchSignalText({ kind: "research:macro", message: "m", instrument_label: null, payload: { theme: "Stopy procentowe USA", kind: "macro", strength: 3, sources_count: 1 } }, "", null);
   assert.deepEqual(theme, { title: "Stopy procentowe USA", sym: null, lead: "makro ·", bold: "m", tail: "· siła 3/3 · 1 źródło" });
-  // P5: a segment note's signal is titled by the segment label, sym `rynek`.
+  // P5 / P7: a topic note's signal is titled by the topic label, sym `temat`.
   const seg = researchSignalText({ kind: "research:macro", message: "m", instrument_label: null, payload: { segment: "gold", kind: "macro", strength: 3, sources_count: 1 } }, "", null);
-  assert.deepEqual(seg, { title: "Złoto i górnicy", sym: "rynek", lead: "makro ·", bold: "m", tail: "· siła 3/3 · 1 źródło" });
+  assert.deepEqual(seg, { title: "Złoto i górnicy", sym: "temat", lead: "makro ·", bold: "m", tail: "· siła 3/3 · 1 źródło" });
   assert.equal(researchSignalText({ kind: "research:trend", message: "m", instrument_label: null, payload: { segment: "gold", segment_label: "Złoto" } }, "", null).title, "Złoto");
 });
 
@@ -282,17 +283,30 @@ const segRow = (over) => ({
 });
 const symOf = (id) => ({ 301: "VWRA", 305: "GDXJ", 306: "CDR", 307: "EIMI", 308: "GLD", 309: "SIL" })[id] ?? null;
 
-test("segments: the catalog has 18 unique keys in the BE order, labels and the pseudo row", () => {
+test("segments: the catalog has 18 unique keys in the BE order, P7 labels, uranium renamed to power", () => {
   assert.equal(SEGMENTS.length, 18);
   assert.equal(new Set(SEGMENTS.map((s) => s.key)).size, 18);
   assert.equal(SEGMENTS[0].key, "equity_global");
   assert.equal(SEGMENTS[17].key, "quantum");
   assert.equal(SEGMENTS.filter((s) => s.group === "sector").length, 8);
+  assert.ok(SEGMENTS.some((s) => s.key === "power") && !SEGMENTS.some((s) => s.key === "uranium"));
   assert.equal(segmentLabel("gold"), "Złoto i górnicy");
-  assert.equal(segmentLabel(UNASSIGNED), "Bez segmentu");
+  assert.equal(segmentLabel("semis_ai"), "AI: chipy i centra danych");
+  assert.equal(segmentLabel("software"), "AI i oprogramowanie");
+  assert.equal(segmentLabel("power"), "Energetyka: atom i OZE");
+  assert.equal(segmentLabel("energy"), "Ropa i gaz");
+  assert.equal(segmentLabel("metals"), "Metale i ziemie rzadkie");
+  assert.equal(segmentLabel("games_media"), "Gry");
+  assert.equal(segmentLabel("financials"), "Płatności i finanse");
+  assert.equal(segmentLabel("uranium"), "Energetyka: atom i OZE");
+  assert.deepEqual(LEGACY_KEYS, { uranium: "power" });
+  assert.equal(canonKey("uranium"), "power");
+  assert.equal(canonKey("gold"), "gold");
+  assert.equal(canonKey(null), null);
   assert.equal(segmentLabel("nope"), "nope");
   assert.equal(segmentLabel(null), "");
-  assert.ok(isSegment("semis_ai") && !isSegment(UNASSIGNED) && !isSegment(null));
+  // P7: the unassigned bucket is no topic (never a filter, never a label of its own)
+  assert.ok(isSegment("semis_ai") && isSegment("uranium") && !isSegment("unassigned") && !isSegment(null));
 });
 
 test("segments: contribution tone, pp text and return tone (symmetric one-decimal rounding)", () => {
@@ -330,48 +344,154 @@ test("segments: diverging bar geometry on a shared scale with a 0,5 pp floor", (
   assert.equal(barTitle(-0.008, 0.02), "wkład -0,8\u00a0pp · skala ±2,0\u00a0pp");
 });
 
-test("segments: home rows take 6 slots, Waluty from 0,1 pp, Bez segmentu from 2 % weight", () => {
-  const segs = Array.from({ length: 7 }, (_, i) => segRow({ segment: SEGMENTS[i].key, label: SEGMENTS[i].label, contribution: -0.001 * (7 - i), unread: i === 6 ? 2 : i === 5 ? 1 : 0 }));
-  const cur = { contribution: -0.002, currencies: [] };
-  const un = { weight: 0.05, contribution: 0.001, instruments: [{ instrument_id: 307, contribution: 0.001, return: 0.019 }] };
-  const all = homeRows({ segments: segs, currency: cur, unassigned: un });
-  assert.equal(all.rows.length, 6);
-  assert.deepEqual(all.rows.map((r) => r.key), ["equity_global", "equity_pl", "equity_em", "bonds", "currency", UNASSIGNED]);
-  assert.deepEqual(all.rest, { count: 3, unread: 3 });
-  assert.equal(all.rows[5].label, "Bez segmentu");
-  assert.ok(Math.abs(all.rows[5].return - 0.02) < 1e-9); // contribution / weight
-  // currency 0.0004 -> no Waluty row
-  assert.ok(!homeRows({ segments: segs, currency: { contribution: 0.0004, currencies: [] }, unassigned: null }).rows.some((r) => r.key === "currency"));
-  assert.ok(homeRows({ segments: segs, currency: { contribution: -0.001, currencies: [] }, unassigned: null }).rows.some((r) => r.key === "currency"));
-  // unassigned weight 0.019 -> no row; 0.02 -> row
-  assert.ok(!homeRows({ segments: [], currency: cur, unassigned: { ...un, weight: 0.019 } }).rows.some((r) => r.key === UNASSIGNED));
-  assert.ok(homeRows({ segments: [], currency: cur, unassigned: { ...un, weight: 0.02 } }).rows.some((r) => r.key === UNASSIGNED));
-  // the page has no cap
-  assert.equal(pageRows({ segments: segs, currency: cur, unassigned: un }).length, 9);
+const topicRow = (over) => segRow({ trend_1w: null, trend_4w: null, members: 0, ...over });
+
+test("topics: kind (held, watched-only, note-only) and the home selection (held first, watched after, max 10)", () => {
+  assert.equal(topicKind({ weight: 0.1, members: 0 }), "held");
+  assert.equal(topicKind({ weight: 0, members: 2 }), "watched");
+  assert.equal(topicKind({ weight: 0, members: 0 }), "none");
+  assert.equal(topicKind({ weight: 0 }), "none");
+  const held = Array.from({ length: 7 }, (_, i) => topicRow({ segment: SEGMENTS[i].key, weight: 0.1, contribution: -0.001 * (7 - i), members: 1 }));
+  const watched = Array.from({ length: 4 }, (_, i) => topicRow({ segment: SEGMENTS[10 + i].key, weight: 0, members: 2, trend_1w: 0.01 * (4 - i) }));
+  const noteOnly = topicRow({ segment: "crypto", weight: 0, members: 0, note: { id: 9, title: "n", observed_at: "2026-10-01" } });
+  // payload order as the BE sends it: held, a note-only row in between, watched
+  const d = { segments: [...held, noteOnly, ...watched] };
+  const a = homeTopics(d);
+  assert.equal(a.rows.length, 10);
+  assert.equal(a.rest, 1);
+  assert.deepEqual(a.rows.map((r) => r.key), [...held.map((r) => r.segment), ...watched.slice(0, 3).map((r) => r.segment)]);
+  assert.ok(!a.rows.some((r) => r.key === "crypto"));
+  const b = homeTopics(d, 4);
+  assert.equal(b.rows.length, 4);
+  assert.equal(b.rest, 7);
+  // P7 trend fields are carried by the display row
+  const r = segmentDisplay(topicRow({ trend_1w: 0.031, trend_4w: 0.082, members: 3 }));
+  assert.deepEqual([r.trend_1w, r.trend_4w, r.members], [0.031, 0.082, 3]);
 });
 
-test("segments: sub line (note this week, older note, symbols, currencies), stale marks, review order", () => {
+test("topics: review (new notes first, held before watched, max 6, no note-only) and page order (held, watched, note-only)", () => {
+  const h1 = topicRow({ segment: "gold", weight: 0.1, members: 1 });
+  const h2 = topicRow({ segment: "bonds", weight: 0.1, members: 1, note_this_week: true });
+  const w1 = topicRow({ segment: "quantum", weight: 0, members: 2, note_this_week: true });
+  const w2 = topicRow({ segment: "software", weight: 0, members: 1 });
+  const n1 = topicRow({ segment: "power", weight: 0, members: 0, note_this_week: true });
+  assert.deepEqual(reviewTopics([h1, w2, n1, w1, h2]).map((r) => r.key), ["bonds", "quantum", "gold", "software"]);
+  const many = Array.from({ length: 8 }, (_, i) => topicRow({ segment: SEGMENTS[i].key, weight: 0.1, members: 1 }));
+  assert.equal(reviewTopics(many).length, 6);
+  assert.deepEqual(pageTopics({ segments: [n1, w2, h1, w1, h2] }).map((r) => r.key), ["gold", "bonds", "software", "quantum", "power"]);
+});
+
+test("topics: symbols (held, then watched not listed), symbols text, note line (no bez zmian), trend texts, columns", () => {
+  const r = { key: "gold", instruments: [{ instrument_id: 305, contribution: 0, return: 0 }, { instrument_id: 308, contribution: 0, return: 0 }] };
+  const syms = topicSymbols(r, symOf, new Map([["gold", ["GLD", "SIL"]]]));
+  assert.deepEqual(syms, ["GDXJ", "GLD", "SIL"]);
+  assert.deepEqual(topicSymbols({ key: "quantum", instruments: [] }, symOf, new Map([["quantum", ["QUBT", "IONQ"]]])), ["QUBT", "IONQ"]);
+  assert.deepEqual(topicSymbols({ key: "x", instruments: [] }, symOf, new Map()), []);
+  assert.equal(symbolsText(["A", "B", "C", "D", "E"]), "A · B · C +2");
+  assert.equal(symbolsText(["A", "B"]), "A · B");
+  assert.equal(symbolsText([]), "");
+  const note = { id: 1, title: "Fed: realne stopy w dół", observed_at: "2026-10-06" };
+  assert.deepEqual(topicNote({ note, note_this_week: true, last_note_at: null }), { text: "Fed: realne stopy w dół", title: "Fed: realne stopy w dół", fresh: true });
+  assert.deepEqual(topicNote({ note: { ...note, observed_at: "2026-09-22" }, note_this_week: false, last_note_at: null }), { text: "22.09", title: "ostatnia notatka 22.09", fresh: false });
+  assert.deepEqual(topicNote({ note: null, note_this_week: false, last_note_at: "2026-08-20" }), { text: "20.08", title: "ostatnia notatka 20.08", fresh: false });
+  assert.equal(topicNote({ note: null, note_this_week: false, last_note_at: null }), null);
+  assert.equal(trendText(null), "-");
+  assert.equal(trendText(undefined), "-");
+  assert.equal(trendText(0.031), "+3,1 %");
+  assert.equal(trendText(-0.044), "-4,4 %");
+  assert.equal(trendOf({ trend_1w: 0.01, trend_4w: 0.04 }, "1w"), 0.01);
+  assert.equal(trendOf({ trend_1w: 0.01, trend_4w: 0.04 }, "4w"), 0.04);
+  assert.equal(trendOf({ trend_1w: 0.01 }, "4w"), null);
+  assert.equal(trendTitle({ members: 3, trend_4w: 0.082, return: -0.044, weight: 0.1 }), "3 instrumenty, równe wagi · 4 tyg. +8,2 %");
+  assert.equal(trendTitle({ members: 1, trend_4w: null, return: null, weight: 0 }), "1 instrument, równe wagi");
+  assert.equal(trendTitle({ members: 3, trend_4w: 0.082, return: -0.044, weight: 0.1 }, { page: true }), "3 instrumenty, równe wagi · ważona udziałem -4,4 %");
+  assert.equal(trendTitle({ members: 5, trend_4w: 0.1, return: null, weight: 0 }, { page: true }), "5 instrumentów, równe wagi");
+  assert.deepEqual(topicColumns(5), { cols: 1, rows: 5 });
+  assert.deepEqual(topicColumns(6), { cols: 2, rows: 3 });
+  assert.deepEqual(topicColumns(7), { cols: 2, rows: 4 });
+  assert.deepEqual(topicColumns(10), { cols: 2, rows: 5 });
+});
+
+test("topics: the currency footer line of the page (no unassigned line, owner P7)", () => {
+  const f = currencyFoot({ currency: { contribution: 0.006, currencies: [
+    { currency: "EUR", weight: 0.08, return: 0.001, contribution: 0.0001 }, { currency: "USD", weight: 0.55, return: 0.006, contribution: 0.0055 },
+  ] } });
+  assert.deepEqual(f, { pp: "+0,6 pp", tone: "pos", detail: "USD +0,6 % · EUR +0,1 %" });
+  assert.equal(currencyFoot({ currency: { contribution: 0, currencies: [] } }), null);
+});
+
+test("topics: member_instruments (review LOW-4): a topic held only through a position bought inside the window", () => {
+  // BE row: no exposure at the window start, IONQ bought this week (held now, not on the watchlist), QUBT watched
+  const raw = { segment: "quantum", weight: 0, members: 2, trend_1w: 0.05, member_instruments: [
+    { instrument_id: 410, label: "IONQ", held: true, return_1w: 0.08, return_4w: null },
+    { instrument_id: 411, label: "QUBT", held: false, return_1w: "0.02", return_4w: 0.1 },
+    { id: "x" },
+  ] };
+  const row = normSegmentRow(raw);
+  assert.deepEqual(row.member_instruments, [
+    { instrument_id: 410, label: "IONQ", held: true, return_1w: 0.08, return_4w: null },
+    { instrument_id: 411, label: "QUBT", held: false, return_1w: 0.02, return_4w: 0.1 },
+  ]);
+  const r = segmentDisplay(row);
+  assert.ok(heldNow(r));
+  assert.equal(topicKind(r), "new");
+  assert.equal(kindTitle("new"), "nowa pozycja w tym oknie");
+  assert.equal(kindTitle("watched"), "tylko obserwowane");
+  assert.equal(kindTitle("held"), undefined);
+  // symbols from member_instruments (held first, held ones carry the id to open the asset); the watchlist map is ignored
+  const members = topicMembers(r, symOf, new Map([["quantum", ["RGTI"]]]));
+  assert.deepEqual(members.map((m) => [m.symbol, m.id, m.held]), [["IONQ", 410, true], ["QUBT", 411, false]]);
+  assert.deepEqual(topicSymbols(r, symOf, new Map([["quantum", ["RGTI"]]])), ["IONQ", "QUBT"]);
+  // start-held instruments first, a member already listed is not repeated
+  const gold = segmentDisplay(normSegmentRow({ segment: "gold", weight: 0.1, members: 2, instruments: [{ instrument_id: 305, contribution: 0.001 }],
+    member_instruments: [{ instrument_id: 308, held: false }, { instrument_id: 305, held: true }] }));
+  assert.deepEqual(topicMembers(gold, symOf, new Map()).map((m) => [m.symbol, m.held]), [["GDXJ", true], ["GLD", false]]);
+  assert.equal(topicKind(gold), "held");
+  // only watched members: still watched-only; an older server without member_instruments: the watchlist fallback
+  const watchedOnly = segmentDisplay(normSegmentRow({ ...raw, member_instruments: [raw.member_instruments[1]] }));
+  assert.equal(topicKind(watchedOnly), "watched");
+  const older = segmentDisplay(normSegmentRow({ segment: "quantum", weight: 0, members: 1 }));
+  assert.equal(older.member_instruments, undefined);
+  assert.equal(topicKind(older), "watched");
+  assert.deepEqual(topicSymbols(older, symOf, new Map([["quantum", ["RGTI"]]])), ["RGTI"]);
+  // ordering: held, new, watched (home, page); review keeps new notes first
+  const held = topicRow({ segment: "gold", weight: 0.1, members: 1 });
+  const watched = topicRow({ segment: "software", weight: 0, members: 1 });
+  const fresh = { ...row, segment: "quantum" };
+  assert.deepEqual(homeTopics({ segments: [watched, fresh, held] }).rows.map((x) => x.key), ["gold", "quantum", "software"]);
+  assert.deepEqual(pageTopics({ segments: [watched, fresh, held] }).map((x) => x.key), ["gold", "quantum", "software"]);
+  assert.deepEqual(reviewTopics([held, fresh, { ...watched, note_this_week: true }]).map((x) => x.key), ["software", "gold", "quantum"]);
+});
+
+test("topics: the reader takes trend_1w / trend_4w / members, maps the renamed key and tolerates their absence", () => {
+  const r = normSegmentRow({ segment: "quantum", weight: 0, trend_1w: "0.098", trend_4w: 0.31, members: 2 });
+  assert.deepEqual([r.trend_1w, r.trend_4w, r.members], [0.098, 0.31, 2]);
+  const old = normSegmentRow({ segment: "gold", weight: 0.1 });
+  assert.deepEqual([old.trend_1w, old.trend_4w, old.members], [null, null, 0]);
+  // an older server: `uranium` with its old label reads as `power` with the new label
+  const u = normSegmentRow({ segment: "uranium", label: "Uran i atom", weight: 0 });
+  assert.equal(u.segment, "power");
+  assert.equal(u.label, "Energetyka: atom i OZE");
+  assert.equal(normSegmentRow({ segment: "power", label: "BE label" }).label, "BE label");
+});
+
+test("segments: currency text, stale marks, new-note count, exposure count", () => {
   const today = segRow({ note: { id: 1, title: "Fed: realne stopy w dół", observed_at: "2026-10-06" }, note_this_week: true });
   const older = segRow({ note: { id: 2, title: "x", observed_at: "2026-09-22" } });
-  const none = segRow({ instruments: [305, 308, 309, 306].map((id) => ({ instrument_id: id, contribution: 0, return: 0 })) });
-  const rows = homeRows({ segments: [today, older, none], currency: { contribution: -0.002, currencies: [
+  const none = segDisplayOf(segRow({ instruments: [305, 308, 309, 306].map((id) => ({ instrument_id: id, contribution: 0, return: 0 })) }));
+  assert.equal(currencySub([
     { currency: "EUR", weight: 0.08, return: 0.002, contribution: 0.0002 }, { currency: "USD", weight: 0.55, return: -0.007, contribution: -0.0039 }, { currency: "CHF", weight: 0.01, return: 0, contribution: 0 },
-  ] }, unassigned: null }).rows;
-  assert.deepEqual(segmentSub(rows[0], symOf), { text: "Fed: realne stopy w dół", title: "Fed: realne stopy w dół" });
-  assert.equal(segmentSub(rows[1], symOf).text, "bez zmian od 22.09");
-  assert.equal(segmentSub(rows[2], symOf).text, "GDXJ · GLD · SIL");
-  assert.equal(segmentSub(rows[3], symOf).text, "USD -0,7\u00a0% · EUR +0,2\u00a0%");
+  ]), "USD -0,7 % · EUR +0,2 %");
   assert.equal(currencySub([]), "");
-  assert.deepEqual(currencyChips([{ currency: "EUR", weight: 0.08, return: 0, contribution: 0 }, { currency: "USD", weight: 0.55, return: 0, contribution: 0 }]), ["USD 55\u00a0%", "EUR 8\u00a0%"]);
-  const st = staleSymbols(rows[2], [305, 308], symOf);
+  const st = staleSymbols(none, [305, 308], symOf);
   assert.deepEqual(st, ["GDXJ", "GLD"]);
   assert.equal(staleTitle(st), "notowania nieaktualne: GDXJ, GLD");
   assert.equal(staleTitle([]), undefined);
-  assert.deepEqual(reviewRows([older, today]).map((r) => r.note?.id), [1, 2]);
   assert.equal(withNewNote([today, older]), 1);
   assert.equal(exposed({ segments: [today, segRow({ weight: 0 })] }), 1);
   assert.equal(exposed(null), 0);
 });
+const segDisplayOf = (r) => segmentDisplay(r);
 
 test("segments: header and fact tooltips with and without residual, new positions, stale", () => {
   const d = { start: "2026-10-01", end: "2026-10-08", portfolio_return: -0.012, explained: -0.0118, residual: -0.0004, new_positions: 0 };
@@ -379,8 +499,15 @@ test("segments: header and fact tooltips with and without residual, new position
   assert.equal(windowTitle({ ...d, portfolio_return: null }), "1.10 - 8.10 · TWR portfela · brak pełnej historii");
   assert.equal(factTitle(d), "wyjaśnione -1,2\u00a0% · reszta 0,0\u00a0% · 1.10 - 8.10");
   assert.equal(factTitle({ ...d, residual: null }), "wyjaśnione -1,2\u00a0% · reszta - · 1.10 - 8.10");
-  assert.equal(factTitle({ ...d, residual: -0.001, new_positions: 1 }, ["GDXJ"]), "wyjaśnione -1,2\u00a0% · reszta -0,1\u00a0% · 1.10 - 8.10 · 1 nowa pozycja poza oknem · nieaktualne: GDXJ");
+  // review LOW-2: from |residual| >= 0,1 pp the residual gets its own line (home header and page fact), not repeated inline
+  assert.equal(factTitle({ ...d, residual: -0.001, new_positions: 1 }, ["GDXJ"]),
+    "wyjaśnione -1,2\u00a0% · 1.10 - 8.10 · 1 nowa pozycja poza oknem · nieaktualne: GDXJ\nreszta -0,1\u00a0pp: transakcje i import pozycji");
   assert.match(factTitle({ ...d, new_positions: 3 }), /3 nowe pozycje poza oknem$/);
+  assert.equal(residualLine(d), null);
+  assert.equal(residualLine({ residual: null }), null);
+  assert.equal(residualLine({}), null);
+  assert.equal(residualLine({ residual: 0.0123 }), "reszta +1,2\u00a0pp: transakcje i import pozycji");
+  assert.equal(windowTitle({ ...d, residual: -0.0051 }), "1.10 - 8.10 · TWR portfela\nreszta -0,5\u00a0pp: transakcje i import pozycji");
 });
 
 test("segments: the payload is read tolerantly (missing fields, string numbers, catalog label fallback)", () => {
@@ -402,33 +529,21 @@ test("segments: the payload is read tolerantly (missing fields, string numbers, 
   assert.equal(normAttribution({}, "4w").window, "4w");
 });
 
-test("segments fix pass: expired last note, BE labels, note-only rows, review column with the digest market", () => {
-  // MED-2: no active note but an older (expired) one -> `bez zmian od`, symbols only without either
-  const expired = homeRows({ segments: [segRow({ last_note_at: "2026-08-20", instruments: [{ instrument_id: 305, contribution: 0, return: 0 }] })], currency: null, unassigned: null }).rows[0];
-  assert.equal(segmentSub(expired, symOf).text, "bez zmian od 20.08");
+test("segments fix pass: BE labels of sold positions, the digest market block", () => {
   // MED-3: a sold position is named by the BE label, then `#id`
   assert.equal(instSymbol({ instrument_id: 999, label: "BNDA" }, symOf), "BNDA");
   assert.equal(instSymbol({ instrument_id: 305, label: "X" }, symOf), "GDXJ");
   assert.equal(instSymbol({ instrument_id: 998 }, symOf), "#998");
-  const sold = homeRows({ segments: [segRow({ instruments: [{ instrument_id: 999, contribution: 0, return: 0, label: "BNDA" }] })], currency: null, unassigned: null }).rows[0];
-  assert.equal(segmentSub(sold, symOf).text, "BNDA");
+  const sold = segmentDisplay(segRow({ instruments: [{ instrument_id: 999, contribution: 0, return: 0, label: "BNDA" }] }));
   assert.deepEqual(staleSymbols(sold, [999], symOf), ["BNDA"]);
-  // MED-4: a note-only segment shows `-`; a held non-market one (weight > 0, contribution 0) keeps 0,0 pp
-  const rows = pageRows({ segments: [segRow({ weight: 0 }), segRow({ segment: "bonds", weight: 0.2, contribution: 0, return: null })], currency: null, unassigned: null });
-  assert.deepEqual(rows.map(noExposure), [true, false]);
-  assert.equal(noExposure({ kind: "currency", weight: 0 }), false);
-  // MED-1: the review column takes Waluty / Bez segmentu from the digest market and keeps 6 rows
+  // MED-1: the digest market block (header move, stale) read tolerantly
   const segs = Array.from({ length: 6 }, (_, i) => segRow({ segment: SEGMENTS[i].key, note_this_week: i === 5 }));
   const { segments, market } = normDigestMarket(segs, { start: "2026-10-01", end: "2026-10-08", portfolio_return: "-0.012", stale: [305],
     currency: { contribution: -0.001, currencies: [] }, unassigned: { weight: 0.05, contribution: 0.001, return: 0.02, instruments: [] } });
+  assert.equal(segments.length, 6);
   assert.equal(market.portfolio_return, -0.012);
   assert.deepEqual(market.stale, [305]);
-  assert.equal(market.unassigned.return, 0.02);
-  const col = reviewColumn(segments, market);
-  assert.equal(col.length, 6);
-  assert.deepEqual(col.map((r) => r.key), [SEGMENTS[5].key, SEGMENTS[0].key, SEGMENTS[1].key, SEGMENTS[2].key, "currency", UNASSIGNED]);
   assert.equal(normDigestMarket(undefined, null).market, null);
-  assert.equal(reviewColumn(segments, null).length, 6);
   // the parser keeps the BE extras
   const d = normAttribution({ segments: [{ segment: "gold", last_note_at: "2026-08-20", instruments: [{ instrument_id: 1, label: "GLBA", weight: 0.1 }] }] });
   assert.equal(d.segments[0].last_note_at, "2026-08-20");
@@ -461,7 +576,7 @@ test("macro: note keys, labels and the chip label (collisions with P5 titles get
   assert.equal(macroLabel("macro_em"), "Rynki wschodzące");
   assert.equal(noteKeyLabel("macro_em"), "Makro · Rynki wschodzące");
   assert.equal(noteKeyLabel("gold"), "Złoto i górnicy");
-  assert.equal(noteKeyLabel("unassigned"), "Bez segmentu");
+  assert.equal(noteKeyLabel("uranium"), "Energetyka: atom i OZE");
 });
 
 test("macro: state parts and the inversion flag", () => {
@@ -471,18 +586,31 @@ test("macro: state parts and the inversion flag", () => {
   assert.equal(isInverted({ state_label: "rentowności rosną" }), false);
 });
 
-test("macro: home words carry a subject where the bare state is ambiguous; BE label fallback; missing", () => {
-  const h = (key, state, state_label = "", missing = false) => homeText({ key, state, state_label, missing });
-  assert.equal(h("risk", "bull", "hossa"), "hossa");
-  assert.equal(h("risk", "flat", "bez trendu"), "akcje bez trendu");
-  assert.equal(h("dollar", "weak", "słabnie"), "dolar słabnie");
-  assert.equal(h("em", "inline", "w linii"), "EM w linii");
-  assert.equal(h("commodities", "bull", "hossa surowcowa"), "hossa surowcowa");
-  assert.equal(h("rates", "falling", "rentowności spadają · krzywa odwrócona"), "rentowności spadają, krzywa odwrócona");
-  assert.equal(h("rates", "sideways", "bok"), "bok");
-  assert.equal(h("dollar", "weak", "słabnie", true), "dolar: brak danych");
-  assert.equal(h("commodities", "unknown", "brak danych"), "surowce: brak danych");
-  assert.equal(h("gold", "x", "y"), "y");
+test("macro (P7): the on-screen summary, the explain popover text and head", () => {
+  // summary: BE summary, else meaning, else the metrics joined; missing -> Brak danych.
+  assert.equal(summaryText(regime({ summary: "Rentowności w USA spadają od września." })), "Rentowności w USA spadają od września.");
+  assert.equal(summaryText(regime({ summary: null, meaning: "m" })), "m");
+  assert.equal(summaryText(regime({ summary: null, meaning: null })), "USA 10 lat 3,92 % · 3 mies. zmiana -48 bp · krzywa 10l-3m -18 bp");
+  assert.equal(summaryText(regime({ summary: "s", missing: true })), "Brak danych.");
+  // explain: present with `explain`; with summary + meaning (meaning not on screen); not with meaning alone (it is the summary)
+  assert.equal(hasExplain(regime({ summary: "s", explain: "e" })), true);
+  assert.equal(hasExplain(regime({ summary: "s", explain: null, meaning: "m" })), true);
+  assert.equal(hasExplain(regime({ summary: null, explain: null, meaning: "m" })), false);
+  assert.equal(hasExplain(regime({ summary: "s", explain: "e", missing: true })), false);
+  assert.equal(explainText(regime({ summary: "s", explain: "e", meaning: "m" })), "e");
+  assert.equal(explainText(regime({ summary: "s", explain: null, meaning: "m" })), "m");
+  assert.equal(explainText(regime({ summary: null, explain: null, meaning: "m" })), null);
+  // head: label, the first state word, since, stale
+  assert.equal(explainHead(regime({})), "Obligacje i stopy · rentowności spadają · od 5.09");
+  assert.equal(explainHead(regime({ label: "Surowce", state_label: "bez trendu", since: "2026-07-21", as_of: "2026-09-26", stale: true })), "Surowce · bez trendu · od 21.07 · dane z 26.09");
+  assert.equal(explainHead(regime({ label: "Dolar", state_label: "słabnie", since: null })), "Dolar · słabnie");
+  // the reader takes summary / explain, missing fields -> null
+  const r = normRegime({ key: "dollar", state: "weak", summary: "Dolar słabnie.", explain: "Cykl dolarowy …" });
+  assert.equal(r.summary, "Dolar słabnie.");
+  assert.equal(r.explain, "Cykl dolarowy …");
+  const o = normRegime({ key: "dollar", state: "weak" });
+  assert.equal(o.summary, null);
+  assert.equal(o.explain, null);
 });
 
 test("macro: tone class passes pos / neg / warn only", () => {
@@ -518,18 +646,11 @@ test("macro: history tooltip, current state first, newest first, max 5 lines", (
   assert.equal(historyTitle(regime({ history: [{ date: "2026-01-12", state: "x", state_label: "iks" }] })), "od 5.09 rentowności spadają\nod 12.01 iks");
 });
 
-test("macro: home word tooltip (title, since, flag, metrics; stale; missing)", () => {
-  assert.equal(lineTitle(regime({})), "Obligacje i stopy · od 5.09\nkrzywa odwrócona\nUSA 10 lat 3,92 %\n3 mies. zmiana -48 bp\nkrzywa 10l-3m -18 bp");
-  const com = regime({ label: "Surowce", state_label: "bez trendu", since: "2026-07-21", as_of: "2026-09-26", stale: true, metrics: [{ label: "DBC 12 mies.", value: 0.041, unit: "pct", text: "+4,1 %" }] });
-  assert.equal(lineTitle(com).split("\n")[0], "Surowce · od 21.07 · dane z 26.09");
-  assert.equal(lineTitle(regime({ label: "Rynki wschodzące", state_label: "brak danych", missing: true, since: null })), "Rynki wschodzące · brak danych");
-});
-
-test("macro: card note line (this week's title, bez zmian od, nothing)", () => {
+test("macro: card note line (this week's title, the small date of an older note, nothing; no bez zmian)", () => {
   const note = { id: 905, title: "Fed: trzecia obniżka", observed_at: "2026-10-03T06:52:00+02:00" };
   assert.deepEqual(macroSub({ note, note_this_week: true, last_note_at: null }), { text: "Fed: trzecia obniżka", title: "Fed: trzecia obniżka" });
-  assert.equal(macroSub({ note: { ...note, observed_at: "2026-09-19T07:00:00+02:00" }, note_this_week: false, last_note_at: null }).text, "bez zmian od 19.09");
-  assert.deepEqual(macroSub({ note: null, note_this_week: false, last_note_at: "2026-09-12T07:00:00+02:00" }), { text: "bez zmian od 12.09", title: "ostatnia notatka 12.09" });
+  assert.equal(macroSub({ note: { ...note, observed_at: "2026-09-19T07:00:00+02:00" }, note_this_week: false, last_note_at: null }).text, "19.09");
+  assert.deepEqual(macroSub({ note: null, note_this_week: false, last_note_at: "2026-09-12T07:00:00+02:00" }), { text: "12.09", title: "ostatnia notatka 12.09" });
   assert.equal(macroSub({ note: null, note_this_week: false, last_note_at: null }), null);
 });
 
@@ -614,16 +735,14 @@ test("macro: history with an open first run (przed d.mm.yyyy) and an open-ended 
   // The state held through the whole window: nothing before it, no tooltip.
   const em = regime({ key: "em", state: "inline", state_label: "w linii", since: null, since_open: true, since_min: "2025-03-10", history: [{ date: "2025-03-10", state: "inline", open: true }] });
   assert.equal(historyTitle(em), null);
-  assert.equal(lineTitle(em).split("\n")[0], "Obligacje i stopy · od ponad roku");
+  assert.equal(explainHead(em), "Obligacje i stopy · w linii · od ponad roku");
 });
 
-test("macro: a stale metric is muted with its note in the row title and the home tooltip", () => {
+test("macro: a stale metric is muted with its note in the row title", () => {
   assert.equal(metricTitle({ stale: true, as_of: "2026-09-26" }), "dane z 26.09");
   assert.equal(metricTitle({ stale: true }), "nieaktualne");
   assert.equal(metricTitle({ stale: false, change_label: "x" }), "x");
   assert.equal(metricTitle({ stale: false }), undefined);
-  const r = regime({ metrics: [{ label: "USD/PLN 6 mies.", value: 0.02, unit: "pct", text: "+2,0 %", stale: true }] });
-  assert.equal(lineTitle(r).split("\n").at(-1), "USD/PLN 6 mies. +2,0 % (nieaktualne)");
 });
 
 test("macro: the tag date is the payload's last bar, else the newest regime as_of", () => {
@@ -644,7 +763,7 @@ test("macro: a verbatim backend payload (demo Anna) reads into the cards", () =>
   assert.equal(risk.since, null);
   assert.equal(sinceText(risk), "od ponad 4 lat");
   assert.equal(historyTitle(risk), null);
-  assert.equal(homeText(risk), "hossa");
+  assert.equal(explainHead(risk), "Rynek akcji · hossa · od ponad 4 lat");
   assert.equal(sinceText(dollar), "od 2.10");
   assert.equal(dollar.note.title, "Dolar: indeks DXY po posiedzeniu Fed");
   assert.equal(dollar.metrics.length, 3);
@@ -654,7 +773,7 @@ test("macro: a verbatim backend payload (demo Anna) reads into the cards", () =>
   assert.equal(lines[0], "od 2.10 słabnie");
   assert.equal(lines[1], "od 25.08 bez trendu");
   assert.equal(isInverted(rates), true);
-  assert.equal(homeText(rates), "rentowności spadają, krzywa odwrócona");
+  assert.equal(explainHead(rates).split(" · ")[1], "rentowności spadają");
   assert.deepEqual(stateParts(rates.state_label), ["rentowności spadają", "krzywa odwrócona"]);
   assert.equal(rates.metrics.map((m) => m.text).join(" "), "3,73 % -37 bp -23 bp");
   for (const r of d.regimes) { assert.equal(r.missing, false); assert.equal(toneCls(r.tone), r.tone); }
@@ -670,17 +789,17 @@ test("macro: a missing card as the BE sends it (meaning, stale) stays missing, n
   assert.equal(r.meaning, "Za mało aktualnych notowań, by ustalić stan.");
   assert.equal(sinceText(r), null);
   assert.equal(staleText(r), null);
-  assert.equal(homeText(r), "surowce: brak danych");
-  assert.equal(lineTitle(r), "Surowce · brak danych");
+  assert.equal(summaryText(r), "Brak danych.");
+  assert.equal(hasExplain(r), false);
 });
 
-test("macro: a macro note's signal reads Makro · <regime> with sym makro; a segment signal keeps rynek", () => {
+test("macro: a macro note's signal reads Makro · <regime> with sym makro; a topic signal has sym temat", () => {
   const m = researchSignalText({ kind: "research:macro", message: "m", instrument_label: null, payload: { segment: "macro_rates", segment_label: "Obligacje i stopy", kind: "macro" } }, "", null);
   assert.equal(m.title, "Makro · Obligacje i stopy");
   assert.equal(m.sym, "makro");
   const b = researchSignalText({ kind: "research:macro", message: "m", instrument_label: null, payload: { segment: "bonds", segment_label: "Obligacje i stopy", kind: "macro" } }, "", null);
   assert.equal(b.title, "Obligacje i stopy");
-  assert.equal(b.sym, "rynek");
+  assert.equal(b.sym, "temat");
 });
 
 test("research page: the selection is written to the hash query (set, replace, remove, other params kept)", () => {

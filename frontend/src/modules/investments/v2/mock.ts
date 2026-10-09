@@ -96,6 +96,9 @@ function janState(): V2State {
       watchItem(9102, 402, "Allegro", "ALE", "PLN", 32.15, 43, -0.002, "czekam na -10 % od szczytu", "agent", { live: 1, triggered: 1, nearest: { alert_id: 811, kind: "drawdown_from_high", title: "ALE: spadek 10 % od szczytu", level: null, distance_pct: null } }),
       watchItem(9103, 403, "Xtrackers MSCI EM", "XMME", "EUR", 44.6, 47, -0.001, null, "user", { live: 1, triggered: 1, nearest: { alert_id: 812, kind: "new_high", title: "nowy dołek 90 sesji", level: null, distance_pct: null } }),
       watchItem(9104, 404, "LPP", "LPP", "PLN", 16980, 53, 0.001, null, "user", { live: 0, triggered: 0, nearest: null }),
+      // P7: a watched-only topic (Komputery kwantowe) in the research strip.
+      withSegment(watchItem(9105, 405, "Quantum Computing Inc.", "QUBT", "USD", 14.2, 59, 0.003, null, "user", { live: 0, triggered: 0, nearest: null }), "quantum"),
+      withSegment(watchItem(9106, 406, "IonQ", "IONQ", "USD", 41.8, 61, 0.002, null, "user", { live: 0, triggered: 0, nearest: null }), "quantum"),
     ],
     alertSignals: [
       { id: 951, rule_id: "alert:801", kind: "alert:price_below", dedup_key: "alert:801", severity: "action", status: "active", polarity: "positive", source: "alert", alert_id: 801, message: "EIMI poniżej 75,00 zł: closed at 74.57 PLN", instrument_id: 307, instrument_label: "iShares MSCI EM IMI", account_id: null, payload: { alert_kind: "price_below", symbol: "EIMI", level: "75", close: "74.57", currency: "PLN", title: "EIMI poniżej 75,00 zł" }, first_seen_at: "2026-10-02T07:02:00+02:00", last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
@@ -109,6 +112,11 @@ function janState(): V2State {
       { id: 906, rule_id: "own_bucket_drift", kind: "allocation_drift", dedup_key: "own_bucket_drift", severity: "action", status: "active", polarity: "negative", source: "rule", alert_id: null, message: "bucket active above target", instrument_id: null, instrument_label: null, account_id: null, payload: { bucket_id: "active", bucket_generic: false, weight: 0.31, target: 0.2, drift_pp: 11.0, drift_value_base: "20500", currency: "PLN", absolute_band_pp: 5, relative_band: 0.25 }, first_seen_at: `${TODAY}T07:02:00+02:00`, last_seen_at: `${TODAY}T07:02:00+02:00`, acknowledged_at: null, closed_at: null, decisions: [] },
     ],
   };
+}
+
+/** The watched instrument's topic as the owner set it (P5 `segment`). */
+function withSegment(w: WatchItem, segment: string): WatchItem {
+  return { ...w, instrument: w.instrument ? { ...w.instrument, segment, segment_source: "owner" } : null };
 }
 
 function watchItem(id: number, instId: number, name: string, symbol: string, currency: string, last: number, seed: number, drift: number, note: string | null, source: string, alerts: WatchItem["alerts"]): WatchItem {

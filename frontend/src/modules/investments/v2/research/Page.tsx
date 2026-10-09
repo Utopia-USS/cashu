@@ -1,7 +1,7 @@
 // Research view `#/{slug}/investments.portfolio/research` (research.md 1 + 7, implementation-plan item 34):
 // page head with the scope and kind filters and `Uruchom teraz` (copies the command), the run strip, Makro (P6: five
-// macro regime cards, a card filters the notes), Rynek (P5:
-// the portfolio move by market segment, 1 or 4 weeks; a row filters the notes), Kandydaci, Notatki (two-column cards, filters, sort, paging by 6, j / k / x / Enter), Przebiegi and
+// macro regime cards, a card filters the notes), Tematy (P5 / P7:
+// the portfolio move and the topic trend by topic, 1 or 4 weeks; a row filters the notes), Kandydaci, Notatki (two-column cards, filters, sort, paging by 6, j / k / x / Enter), Przebiegi and
 // Zakres i zasady. Before the first run: the empty state with the three steps (skill, first run, schedule).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAsync } from "../../../../hooks";
@@ -15,12 +15,12 @@ import type { InstLike } from "../InstLabel";
 import { bumpResearch, canRestore, useMacro, useResearchActions, useResearchOverview, useSegments, useWorkspace } from "./data";
 import {
   BOUNDARY, healthOf, isExpired, KIND_FILTER, latestRun, nextSaturday, normRelation,
-  researchCommand, ROUTINE_MENU, ROUTINE_PROMPT, runMinutes, runNotes, runTag, workspacePath,
+  researchCommand, ROUTINE_PROMPT, runMinutes, runNotes, runTag, workspacePath,
 } from "./logic";
 import { CandidateCard, type CandidateState, ContribBar, CopyCommand, NoteCard, ScheduleHow } from "./primitives";
 import {
-  barTitle, contribBars, CURRENCY, currencyChips, exposed, factTitle, fixedRows, hashWithSegment, instSymbol, isSegment, pageRows, ppOf, ppTone, segmentLabel, staleSymbols, staleTitle, tone,
-  UNASSIGNED, withNewNote,
+  barTitle, canonKey, contribBars, currencyFoot, exposed, factTitle, hashWithSegment, instSymbol, isSegment, kindTitle, pageTopics, ppOf, ppTone, segmentLabel, staleSymbols, staleTitle, tone,
+  topicKind, topicMembers, topicNote, trendOf, trendText, trendTitle, withNewNote,
 } from "./segments";
 import type { ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentWindow, Workspace } from "./types";
 import { isMacroKey, macroLabel, noteKeyLabel } from "./macro";
@@ -29,8 +29,9 @@ import { localDay } from "../../../../time";
 
 type Scope = "all" | "positions" | "watched" | "candidates" | "segments";
 const SCOPES: Scope[] = ["all", "positions", "watched", "candidates", "segments"];
-/** A catalog segment, `unassigned` or a P6 macro note key (`macro_rates`); anything else opens the page unfiltered. */
-const validSegment = (key: string | null): string | null => (key && (isSegment(key) || key === UNASSIGNED || isMacroKey(key)) ? key : null);
+/** A catalog topic (a renamed key maps to its new one: `uranium` -> `power`) or a P6 macro note key (`macro_rates`);
+ * anything else (P7: also `unassigned`) opens the page unfiltered. */
+const validSegment = (key: string | null): string | null => (key && isSegment(key) ? canonKey(key) : key && isMacroKey(key) ? key : null);
 
 export interface ResearchPageProps {
   slug: string;
@@ -40,6 +41,8 @@ export interface ResearchPageProps {
   watchedIds: Map<number, { name: string; symbol: string | null; inst?: InstLike }>;
   watched: (n: ResearchNote) => CandidateState | undefined;
   symOf: (id: number) => string | null;
+  /** P7: topic key -> watched (not held) symbols. */
+  watchedTopics: Map<string, string[]>;
   strategyVersion: number | null;
   initial: URLSearchParams;
   onBack: () => void;
@@ -63,7 +66,7 @@ export function ResearchPage(p: ResearchPageProps) {
     return s && SCOPES.includes(s) ? s : validSegment(p.initial.get("segment")) ? "segments" : "all";
   });
   const [kind, setKind] = useState<string | null>(() => p.initial.get("kind"));
-  // Only a catalog key, `unassigned` or a macro key; anything else (a hand-edited or unknown key) opens the unfiltered page.
+  // Only a catalog key or a macro key; anything else (a hand-edited or unknown key) opens the unfiltered page.
   const [segment, setSegment] = useState<string | null>(() => validSegment(p.initial.get("segment")));
   // The selection lives in the URL too (`?segment=<key>`, replaced in place): a reload keeps the filter.
   useEffect(() => {
@@ -74,7 +77,7 @@ export function ResearchPage(p: ResearchPageProps) {
   const selectSegment = (key: string | null) => {
     setSegment(key);
     setScope(key ? "segments" : "all");
-    if (key && key !== UNASSIGNED) setTimeout(() => document.getElementById("rsch-notes")?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
+    if (key) setTimeout(() => document.getElementById("rsch-notes")?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
   };
   const cmd = researchCommand(ws.data?.path, p.slug);
   const head = (
@@ -98,7 +101,7 @@ export function ResearchPage(p: ResearchPageProps) {
   const items: GridItem[] = [
     { id: "run", span: 3, node: <RunStrip runs={runs} summary={summary} candidates={candidates ?? []} today={p.today} strategyVersion={p.strategyVersion} privacy={p.privacy} held={p.held} segments={seg.data} /> },
     { id: "macro", span: 3, node: <MacroWidget slug={p.slug} nonce={nonce} selected={segment} onSelect={selectSegment} /> },
-    { id: "segments", span: 2, node: <SegmentsWidget slug={p.slug} nonce={nonce} selected={segment} symOf={p.symOf} nameOf={nameOf} onSelect={selectSegment} onOpenAsset={(id) => p.onOpenAsset(id)} /> },
+    { id: "segments", span: 2, node: <TopicsWidget slug={p.slug} nonce={nonce} selected={segment} symOf={p.symOf} nameOf={nameOf} watched={p.watchedTopics} onSelect={selectSegment} onOpenAsset={(id) => p.onOpenAsset(id)} /> },
     { id: "cands", span: 1, node: <CandidatesWidget slug={p.slug} today={p.today} notes={candidates ?? []} watched={p.watched} strategyVersion={p.strategyVersion} onChanged={refresh} /> },
     { id: "notes", span: 3, node: <NotesList slug={p.slug} today={p.today} nonce={nonce} scope={scope} kind={kind} segment={segment} held={p.held} watchedIds={p.watchedIds} onClearSegment={() => setSegment(null)} onSelectSegment={selectSegment} onChanged={refresh} onOpenAsset={p.onOpenAsset} /> },
     { id: "runs", span: 2, node: <RunsTable runs={runs} symOf={p.symOf} /> },
@@ -110,7 +113,7 @@ export function ResearchPage(p: ResearchPageProps) {
 function Filters({ scope, setScope, kind, setKind, summary, candidates, held, watchedIds, nSeg }: {
   scope: Scope; setScope: (s: Scope) => void; kind: string | null; setKind: (k: string | null) => void; summary: ResearchSummary | null | undefined;
   candidates: ResearchNote[] | null | undefined; held: Map<number, unknown>; watchedIds: Map<number, unknown>;
-  /** Segments with exposure (1w), 0 while loading. */
+  /** Topics with exposure (1w), 0 while loading. */
   nSeg: number;
 }) {
   const inst = summary?.instruments ?? [];
@@ -120,7 +123,7 @@ function Filters({ scope, setScope, kind, setKind, summary, candidates, held, wa
   return (
     <>
       <Seg<Scope> quiet label="Zakres" value={scope} onChange={setScope} items={[
-        ["Wszystko", "all"], [`Pozycje · ${nHeld}`, "positions"], [`Obserwowane · ${nWatched}`, "watched"], [`Kandydaci · ${nCand}`, "candidates"], [`Rynek · ${nSeg}`, "segments"],
+        ["Wszystko", "all"], [`Pozycje · ${nHeld}`, "positions"], [`Obserwowane · ${nWatched}`, "watched"], [`Kandydaci · ${nCand}`, "candidates"], [`Tematy · ${nSeg}`, "segments"],
       ]} />
       <Seg<string | null> quiet label="Rodzaj" value={kind} onChange={setKind} items={[["Wszystkie rodzaje", null], ...KIND_FILTER.map(([l, v]) => [l, v] as [string, string])]} />
     </>
@@ -166,7 +169,7 @@ function RunStrip({ runs, summary, candidates, today, strategyVersion, privacy, 
         <div className="fact"><div className="l">Notatki</div><div className="v">{runNotes(last) ?? "-"}</div><div className="d">{plural(nHeld, "pozycja", "pozycje", "pozycji")}{typeof c.watchlist === "number" ? ` · ${c.watchlist} obserwowane` : ""}</div></div>
         <div className="fact"><div className="l">Tezy</div><div className="v">{weak.length ? `${weak.length} osłabione` : ful.length ? `${ful.length} spełnione` : sup.length ? `${sup.length} wzmocnione` : "bez zmian"}</div>
           <div className="d">{[weak.slice(0, 3).map((x) => sym(x.s.instrument_id)).join(", "), sup.length && weak.length ? `${sup.length} wzmocniona` : null].filter(Boolean).join(" · ") || "-"}</div></div>
-        <div className="fact"><div className="l">Rynek</div><div className="v">{nSeg ?? "-"}</div><div className="d">{segments ? (k ? plural(k, "nowa notatka", "nowe notatki", "nowych notatek") : "bez nowych notatek") : ""}</div></div>
+        <div className="fact"><div className="l">Tematy</div><div className="v">{nSeg ?? "-"}</div><div className="d">{segments ? (k ? plural(k, "nowa notatka", "nowe notatki", "nowych notatek") : "bez nowych notatek") : ""}</div></div>
         <div className="fact"><div className="l">Kandydaci</div><div className="v">{openC}</div><div className="d">{dismissedC ? `${plural(dismissedC, "odrzucony", "odrzuceni", "odrzuconych")}` : "0 odrzuconych"}</div></div>
         {typeof c.signals === "number" && <div className="fact" title="Z notatek o sile 3 albo podważających tezę"><div className="l">Sygnały</div><div className="v">{c.signals}</div></div>}
       </div>
@@ -179,14 +182,15 @@ function RunStrip({ runs, summary, candidates, today, strategyVersion, privacy, 
   );
 }
 
-// ---- market segments (P5) ------------------------------------------------------------------------------------
+// ---- topics (P5 / P7) -------------------------------------------------------------------------------------
 
-/** `Rynek` (span 2): window toggle, the portfolio move with explained / residual in the tooltip, one row per
- * segment (udział, zmiana, wkład with the diverging bar, the latest note), then Waluty and Bez segmentu. A row
- * selects the segment (filters Notatki); a symbol chip opens the asset. */
-function SegmentsWidget({ slug, nonce, selected, symOf, nameOf, onSelect, onOpenAsset }: {
+/** `Tematy` (span 2): window toggle, the portfolio move with explained / residual in the tooltip, one row per topic
+ * (udział, the topic trend with equal weights, wkład with the diverging bar, the latest note): held, watched-only
+ * (muted), note-only. The currency effect is a muted footer line; instruments without a topic are not shown (owner
+ * P7). A row selects the topic (filters Notatki); a symbol chip opens the asset. */
+function TopicsWidget({ slug, nonce, selected, symOf, nameOf, watched, onSelect, onOpenAsset }: {
   slug: string; nonce: number; selected: string | null; symOf: (id: number) => string | null; nameOf: (id: number) => string | null;
-  onSelect: (key: string | null) => void; onOpenAsset: (id: number) => void;
+  watched: Map<string, string[]>; onSelect: (key: string | null) => void; onOpenAsset: (id: number) => void;
 }) {
   const [window, setWindow] = useState<SegmentWindow>("1w");
   const seg = useSegments(slug, window, nonce);
@@ -194,63 +198,68 @@ function SegmentsWidget({ slug, nonce, selected, symOf, nameOf, onSelect, onOpen
   const nSeg = exposed(d);
   // A position sold inside the window is not in the profile maps: the BE label names it.
   const labels = new Map<number, string>();
-  for (const r of d ? [...d.segments, ...(d.unassigned ? [d.unassigned] : [])] : []) for (const i of r.instruments) if (i.label) labels.set(i.instrument_id, i.label);
+  for (const r of d ? d.segments : []) for (const i of r.instruments) if (i.label) labels.set(i.instrument_id, i.label);
   const sym = (id: number) => instSymbol({ instrument_id: id, label: labels.get(id) }, symOf);
   const staleAll = d ? d.stale.map(sym) : [];
-  const onlyUnassigned = !!d && !d.segments.length && !!d.unassigned && d.unassigned.weight > 0;
-  const rows = !d ? [] : onlyUnassigned ? fixedRows({ currency: { contribution: 0, currencies: [] }, unassigned: d.unassigned }, { forceUnassigned: true }) : pageRows(d);
-  const { max, bars } = contribBars(rows.map((r) => r.contribution));
+  const rows = d ? pageTopics(d) : [];
+  const { max, bars } = contribBars(rows.map((r) => (topicKind(r) === "held" ? r.contribution : 0)));
+  const cur = d ? currencyFoot(d) : null;
   return (
-    <Widget title="Rynek" id="rsch-segments" count={d ? plural(nSeg, "segment", "segmenty", "segmentów") : undefined}
+    <Widget title="Tematy" id="rsch-segments" count={d ? plural(nSeg, "temat", "tematy", "tematów") : undefined}
       tags={d && <span className="tag" title={factTitle(d, staleAll)}>portfel {d.portfolio_return != null ? <b className={tone(d.portfolio_return)}>{pct(d.portfolio_return, true)}</b> : "-"}</span>}
       controls={<Seg<SegmentWindow> quiet label="Okno" value={window} onChange={setWindow} items={[["tydzień", "1w"], ["4 tyg.", "4w"]]} />}
       body="tight">
-      {!d ? (seg.loading ? <Skeleton h={160} /> : <div className="muted" style={{ fontSize: 13 }}>Brak danych rynku.</div>)
-        : !rows.length ? <div className="muted" style={{ fontSize: 13 }}>Brak notowań.</div> : (
+      {!d ? (seg.loading ? <Skeleton h={160} /> : <div className="muted" style={{ fontSize: 13 }}>Brak danych tematów.</div>)
+        : !rows.length ? <div className="muted" style={{ fontSize: 13 }}>Brak tematów.</div> : (
           <>
-            {onlyUnassigned && <div className="muted" style={{ fontSize: 13 }}>Instrumenty bez segmentu.</div>}
             <div className="sgrow head">
-              <span>segment</span><span className="num">udział</span><span className="num">zmiana</span>
+              <span>temat</span><span className="num">udział</span><span className="num" title="równe wagi, posiadane i obserwowane">trend</span>
               <span className="wk" title="udział x zmiana, w punktach procentowych portfela">wkład</span><span className="note">notatka</span>
             </div>
             {rows.map((r, i) => {
               const key = r.key;
-              const selectable = r.kind !== "currency";
+              const kind = topicKind(r);
               const isSel = selected === key;
-              const syms = r.instruments.map((x) => ({ id: x.instrument_id, symbol: sym(x.instrument_id), name: nameOf(x.instrument_id) ?? sym(x.instrument_id), contribution: x.contribution, return: x.return }));
+              // Held at the window start (contribution), held now (BE member, bought inside the window): chips to the
+              // asset; watched members: plain tags.
+              const syms = topicMembers(r, (id) => symOf(id) ?? labels.get(id) ?? null, watched).map((m) => {
+                const start = r.instruments.find((x) => x.instrument_id === m.id);
+                const name = (m.id != null ? nameOf(m.id) : null) ?? m.symbol;
+                const ret = start ? start.return : m.member?.return_1w ?? null;
+                const title = !m.held ? "obserwowany"
+                  : start ? `${name} · ${ppOf(start.contribution)}${ret != null ? ` · ${pct(ret, true)}` : ""}`
+                  : `${name} · nowa pozycja${ret != null ? ` · ${pct(ret, true)}` : ""}`;
+                return { id: m.held ? m.id : null, symbol: m.symbol, title };
+              });
               const st = staleSymbols(r, d.stale, symOf);
               const toggle = () => onSelect(isSel ? null : key);
-              const note = r.note && r.note_this_week ? r.note : null;
-              const lastNote = r.note && !r.note_this_week ? r.note : null;
+              const note = topicNote(r);
+              const t = trendOf(r, window);
               return (
-                <div key={key} className={`sgrow ${isSel ? "sel" : ""}`} data-segment={key} data-selectable={selectable ? "" : undefined} onClick={selectable ? toggle : undefined}>
+                <div key={key} className={`sgrow${kind === "watched" ? " wo" : ""}${isSel ? " sel" : ""}`} data-segment={key} data-selectable="" onClick={toggle}>
                   <div style={{ minWidth: 0 }}>
                     <div className="nm">
-                      {selectable ? <button className="nm" aria-pressed={isSel} onClick={(e) => { e.stopPropagation(); toggle(); }}>{r.label}</button> : r.label}
+                      <button className="nm" aria-pressed={isSel} title={kindTitle(kind)} onClick={(e) => { e.stopPropagation(); toggle(); }}>{r.label}</button>
                       {r.unread > 0 && <Mark kind="notes" title={plural(r.unread, "nowa notatka", "nowe notatki", "nowych notatek")} />}
                     </div>
                     <div className="chips">
-                      {r.kind === "currency"
-                        ? currencyChips(r.currencies).map((t) => <span key={t} className="tag">{t}</span>)
-                        : <>
-                          {syms.slice(0, 4).map((s) => (
-                            <button key={s.id} className="tag" title={`${s.name} · ${ppOf(s.contribution)}${s.return != null ? ` · ${pct(s.return, true)}` : ""}`}
-                              onClick={(e) => { e.stopPropagation(); onOpenAsset(s.id); }}>{s.symbol}</button>
-                          ))}
-                          {syms.length > 4 && <span className="tag more" title={syms.slice(4).map((s) => s.symbol).join(", ")}>+{syms.length - 4}</span>}
-                        </>}
+                      {syms.slice(0, 4).map((s) => s.id != null ? (
+                        <button key={s.symbol} className="tag" title={s.title}
+                          onClick={(e) => { e.stopPropagation(); onOpenAsset(s.id!); }}>{s.symbol}</button>
+                      ) : <span key={s.symbol} className="tag" title={s.title}>{s.symbol}</span>)}
+                      {syms.length > 4 && <span className="tag more" title={syms.slice(4).map((s) => s.symbol).join(", ")}>+{syms.length - 4}</span>}
                     </div>
                   </div>
                   <div className="num">{r.weight > 0 ? pct(r.weight) : "-"}</div>
-                  <div className={`num ${r.weight > 0 ? tone(r.return) : ""}`}>{r.weight > 0 && r.return != null ? pct(r.return, true) : "-"}</div>
-                  <div className="wk">{r.weight > 0 || key === CURRENCY
+                  <div className={`num ${tone(t)}`} title={trendTitle(r, { page: true })}>{trendText(t)}</div>
+                  <div className="wk">{kind === "held"
                     ? <><ContribBar size="md" {...bars[i]} title={barTitle(r.contribution, max)} /><span className={`pp ${ppTone(r.contribution)} ${st.length ? "stale" : ""}`} title={staleTitle(st)}>{ppOf(r.contribution)}</span></>
                     : <span className="pp zero">-</span>}</div>
-                  <div className="note" title={r.note?.title}>{note ? <><b>{note.title}</b><span className="when"> · {dm(note.observed_at)}</span></>
-                    : lastNote ? `bez zmian od ${dm(lastNote.observed_at)}` : r.last_note_at ? `bez zmian od ${dm(r.last_note_at)}` : "-"}</div>
+                  <div className="note" title={note?.title}>{note ? (note.fresh && r.note ? <><b>{r.note.title}</b><span className="when"> · {dm(r.note.observed_at)}</span></> : <span className="when">{note.text}</span>) : "-"}</div>
                 </div>
               );
             })}
+            {cur && <div className="sgfoot"><div>waluty <span className={`pp ${cur.tone}`}>{cur.pp}</span>{cur.detail ? ` · ${cur.detail}` : ""}</div></div>}
           </>
         )}
     </Widget>
@@ -293,11 +302,11 @@ function NotesList({ slug, today, nonce, scope, kind, segment, held, watchedIds,
   const actions = useResearchActions(slug, onChanged);
   const all = q.data ?? [];
   // Q10 / P5: opening a segment marks its unread agent notes read (`{segment}`), once per segment; a failed call is
-  // silent (the markers stay), a real mark re-reads the research views (the strip's chip and Rynek rows).
+  // silent (the markers stay), a real mark re-reads the research views (the strip's chip and Tematy rows).
   const markedSegments = useRef(new Set<string>());
   useEffect(() => {
-    if (!segment || segment === UNASSIGNED || !q.data || markedSegments.current.has(segment)) return;
-    if (!q.data.some((n) => n.unread === true && n.segment === segment)) return;
+    if (!segment || !q.data || markedSegments.current.has(segment)) return;
+    if (!q.data.some((n) => n.unread === true && canonKey(n.segment) === segment)) return;
     markedSegments.current.add(segment);
     postResearchRead(slug, { segment }).then((res) => { if (res.marked > 0) bumpResearch(slug); }).catch(() => undefined);
   }, [slug, segment, q.data]);
@@ -306,7 +315,7 @@ function NotesList({ slug, today, nonce, scope, kind, segment, held, watchedIds,
     const out = all.filter((n) => {
       if (!old && (n.dismissed_at || isExpired(n, today))) return false;
       if (kind && n.kind !== kind) return false;
-      if (segment && segment !== UNASSIGNED && n.segment !== segment) return false;
+      if (segment && canonKey(n.segment) !== segment) return false;
       const id = n.instrument_id;
       switch (scope) {
         case "positions": return id != null && held.has(id) && n.kind !== "candidate";
@@ -340,16 +349,16 @@ function NotesList({ slug, today, nonce, scope, kind, segment, held, watchedIds,
       return { name: h?.name ?? n.instrument?.label ?? n.instrument?.name ?? `#${id}`, sym: h?.symbol ?? n.instrument?.symbol ?? null, inst: h?.inst };
     }
     if (n.segment && isMacroKey(n.segment)) return { name: n.segment_label ?? macroLabel(n.segment), sym: "makro" };
-    if (n.segment) return { name: n.segment_label ?? segmentLabel(n.segment), sym: "rynek" };
+    if (n.segment) return { name: canonKey(n.segment) !== n.segment ? segmentLabel(n.segment) : n.segment_label ?? segmentLabel(n.segment), sym: "temat" };
     // Old theme notes stay visible (research never dropped).
     return n.theme ? { name: n.theme, sym: "temat" } : null;
   };
   const onWho = (n: ResearchNote) => n.instrument_id != null
     ? (held.has(n.instrument_id) || watchedIds.has(n.instrument_id) ? () => onOpenAsset(n.instrument_id!, n.id) : undefined)
-    : n.segment ? () => onSelectSegment(n.segment!) : undefined;
+    : n.segment ? () => onSelectSegment(canonKey(n.segment)!) : undefined;
   return (
     <Widget title="Notatki" id="rsch-notes" count={`${list.length}${since ? ` · od ${dm(since)}` : ""}`}
-      tags={segment && segment !== UNASSIGNED ? <button className="tag" style={{ cursor: "pointer", background: "transparent", font: "inherit", fontSize: 11 }} onClick={onClearSegment} title={isMacroKey(segment) ? "Pokaż wszystkie notatki" : "Pokaż wszystkie segmenty"}>{noteKeyLabel(segment)} ✕</button> : undefined}
+      tags={segment ? <button className="tag" style={{ cursor: "pointer", background: "transparent", font: "inherit", fontSize: 11 }} onClick={onClearSegment} title={isMacroKey(segment) ? "Pokaż wszystkie notatki" : "Pokaż wszystkie tematy"}>{noteKeyLabel(segment)} ✕</button> : undefined}
       controls={<>
         <label className="muted" style={{ fontSize: 12.5, display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={old} onChange={(e) => setOld(e.target.checked)} />odrzucone i wygasłe</label>
         <select value={sort} onChange={(e) => setSort(e.target.value as NoteSort)} aria-label="Sortowanie notatek">
@@ -382,7 +391,7 @@ function scopeText(s: ResearchRun["scope"], symOf: (id: number) => string | null
   if (!s || Array.isArray(s)) return Array.isArray(s) && s.length ? s.join(", ") : "-";
   const o = s as { held?: boolean; watchlist?: boolean; candidates?: boolean; segments?: string[]; instrument_ids?: number[] };
   const ids = (o.instrument_ids ?? []).map((id) => symOf(id) ?? `#${id}`);
-  const parts = [o.held && "pozycje", o.watchlist && "obserwowane", o.candidates && "kandydaci", o.segments?.length ? "rynek" : null, ids.length ? ids.join(", ") : null].filter(Boolean);
+  const parts = [o.held && "pozycje", o.watchlist && "obserwowane", o.candidates && "kandydaci", o.segments?.length ? "tematy" : null, ids.length ? ids.join(", ") : null].filter(Boolean);
   return parts.join(", ") || "-";
 }
 
@@ -419,12 +428,12 @@ function ScopeWidget({ held, watched, strategyVersion, privacy, path }: { held: 
   return (
     <Widget title="Zakres i zasady" body="tight">
       <div className="kvl">
-        <span className="k">Zakres</span><span><b>{plural(held, "pozycja", "pozycje", "pozycji")}, {plural(watched, "obserwowana", "obserwowane", "obserwowanych")}</b>, kandydaci wg kryteriów wejścia strategii{strategyVersion != null ? ` v${strategyVersion}` : ""}, segmenty rynku</span>
+        <span className="k">Zakres</span><span><b>{plural(held, "pozycja", "pozycje", "pozycji")}, {plural(watched, "obserwowana", "obserwowane", "obserwowanych")}</b>, kandydaci wg kryteriów wejścia strategii{strategyVersion != null ? ` v${strategyVersion}` : ""}, tematy</span>
         <span className="k">Źródła</span><span>wiadomości, raporty, społeczność (szum), przepływy ETF, trendy</span>
         <span className="k">Nie</span><span>rekomendacje, prognozy cen, omijanie paywalli</span>
         <span className="k">Prywatność</span><span>poziom {PRIVACY_SHORT[privacy] ?? privacy} · {privacy === "amounts" ? "także kwoty, bez numerów kont" : "udziały i tezy, bez kwot i rachunków"}</span>
         <span className="k">Workspace</span><span><code className="cmd wrap">{path}</code> · dane tylko przez MCP</span>
-        <span className="k">Ważność</span><span>notatka 30 dni, notatka segmentu 1 na tydzień, odrzucony kandydat 90 dni</span>
+        <span className="k">Ważność</span><span>notatka 30 dni, notatka tematu 1 na tydzień, odrzucony kandydat 90 dni</span>
       </div>
     </Widget>
   );

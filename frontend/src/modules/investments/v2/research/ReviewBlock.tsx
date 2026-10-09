@@ -1,6 +1,6 @@
 // Sunday review: the `Co mówi research` block (research.md 1, implementation-plan item 33; span 3 between Co
 // się zmieniło and Sygnały): theses whose health changed since the last review (`była aktualna`), the market
-// segments of the digest (P5, new segment notes first), candidates since the last review with actions; the rest
+// changed macro regimes and the topics of the digest (P5 / P7 Tematy, new topic notes first, no Waluty / no unassigned), candidates since the last review with actions; the rest
 // collapsed. A week without a run turns it into the not-run line with the copyable command. Also the
 // `Research` row of Co się zmieniło and the decision form's `research z soboty: …` line.
 import { type ReactNode, useState } from "react";
@@ -11,10 +11,10 @@ import {
   BOUNDARY, countsText, HEALTH_LABEL, healthOf, latestRun, latestTitle, normHealth, nNotes, researchCommand, runMinutes, runNotes, runTag,
 } from "./logic";
 import { CandidateCard } from "./primitives";
-import { normDigestMarket, reviewColumn, withNewNote } from "./segments";
+import { normDigestMarket, reviewTopics, withNewNote } from "./segments";
 import { MacroChanges } from "./MacroWidgets";
 import { normMacroChanges } from "./macro";
-import { MarketHead, NotRun, SegmentRows, type StripCtx, ThesisRow } from "./Strip";
+import { NotRun, type StripCtx, ThesisRow, TopicRows, TopicsHead } from "./Strip";
 import type { DigestResearch, ResearchNote, ResearchRun, ResearchSummary } from "./types";
 import { localDay } from "../../../../time";
 
@@ -44,10 +44,10 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   const others = rows.filter((s) => !changed.some((c) => c.instrument_id === s.instrument_id));
   const noThesis = others.filter((s) => healthOf(s, ctx.today) === "no_thesis");
   const noNotes = others.filter((s) => !s.notes && !s.counts.supports && !s.counts.weakens && !s.counts.invalidates && !s.counts.fulfills && !s.counts.neutral);
-  // The digest's 1w attribution as of its end: the top rows + `market` (header move, Waluty, Bez segmentu, stale).
+  // The digest's 1w attribution as of its end: the top rows + `market` (header move, stale).
   const { segments, market } = normDigestMarket(digest?.segments, digest?.market);
   const newSeg = withNewNote(segments);
-  const segRows = reviewColumn(segments, market);
+  const topicRows = reviewTopics(segments);
   const candIds = new Set(digest?.candidates ?? []);
   const cands = (candidates ?? []).filter((n) => candIds.size ? candIds.has(n.id) : (localDay(n.observed_at) ?? "") >= since);
   const newC = cands.filter((n) => !n.dismissed_at).length, dismissedC = cands.filter((n) => n.dismissed_at).length;
@@ -92,10 +92,10 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
         </div>
         <div>
           <MacroChanges changes={normMacroChanges(digest?.macro_changes)} onOpen={(k) => ctx.onOpenResearch(`segment=${k}`)} />
-          <MarketHead d={market} extra={newSeg ? plural(newSeg, "nowa notatka", "nowe notatki", "nowych notatek") : "bez nowych notatek"} />
-          {segRows.length
-            ? <SegmentRows rows={segRows} stale={market?.stale ?? []} symOf={ctx.symOf} onOpen={(key) => ctx.onOpenResearch(`segment=${key}`)} />
-            : <div className="empty-line">Brak danych rynku w tym okresie.</div>}
+          <TopicsHead d={market} extra={newSeg ? plural(newSeg, "nowa notatka", "nowe notatki", "nowych notatek") : "bez nowych notatek"} />
+          {topicRows.length
+            ? <TopicRows compact rows={topicRows} stale={market?.stale ?? []} symOf={ctx.symOf} watched={ctx.watchedTopics} onOpen={(key) => ctx.onOpenResearch(`segment=${key}`)} />
+            : <div className="empty-line">Brak danych tematów w tym okresie.</div>}
         </div>
         <div>
           <div className="rsec">Kandydaci <span className="cnt">· {[newC ? plural(newC, "nowy", "nowe", "nowych") : "brak nowych", dismissedC ? plural(dismissedC, "odrzucony", "odrzucone", "odrzuconych") : null].filter(Boolean).join(" · ")}</span></div>

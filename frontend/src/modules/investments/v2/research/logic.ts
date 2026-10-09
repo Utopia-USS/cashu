@@ -388,7 +388,7 @@ export function researchSignalText(s: SigLike, name: string, sym: string | null)
   const segment = str(p.segment);
   const macro = isMacroKey(segment);
   const title = name || (macro ? noteKeyLabel(segment) : null) || str(p.segment_label) || (segment ? segmentLabel(segment) : null) || str(p.theme) || s.instrument_label || "Research";
-  const who = segment && !name && !s.instrument_label ? (macro ? "makro" : "rynek") : sym;
+  const who = segment && !name && !s.instrument_label ? (macro ? "makro" : "temat") : sym;
   const bold = str(p.title) ?? str(p.note_title) ?? s.message;
   const tail = [strength != null ? `siła ${clampStrength(strength)}/3` : null, srcs ? plural(srcs, "źródło", "źródła", "źródeł") : null].filter(Boolean).join(" · ");
   return { title, sym: who, lead: rel !== "none" ? `${RELATION_LABEL[rel]} ·` : str(p.kind) ? `${KIND_LABEL[str(p.kind)!] ?? str(p.kind)} ·` : undefined, bold: bold || undefined, tail: tail ? `· ${tail}` : undefined };

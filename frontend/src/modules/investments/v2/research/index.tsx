@@ -8,9 +8,10 @@ import type { WatchItem } from "../api";
 import { instName } from "../logic";
 import { useMacro, useResearchOverview, useWorkspace } from "./data";
 import { acceptedAt, latestRun, showStrip, watchItemId } from "./logic";
+import { canonKey } from "./segments";
 import { ResearchPage } from "./Page";
 import { ReviewResearch, researchChanges, researchEffectLine } from "./ReviewBlock";
-import { ResearchStrip, type StripCtx } from "./Strip";
+import { CandidatesRail, ResearchStrip, type StripCtx } from "./Strip";
 import { MacroChangesWidget, MacroStrip } from "./MacroWidgets";
 import { normMacroChanges } from "./macro";
 import type { DigestResearch, ResearchNote } from "./types";
@@ -53,8 +54,18 @@ export function useResearchHome(input: ResearchHomeInput) {
   }, [o.watch]);
   const symOf = useCallback((id: number) => held.get(id)?.symbol ?? watchedIds.get(id)?.symbol
     ?? summary?.instruments.find((s) => s.instrument_id === id)?.instrument?.symbol ?? null, [held, watchedIds, summary]);
+  // P7: topic key -> watched (not held) symbols; the BE's `members` is the count, the FE lists the symbols.
+  const watchedTopics = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const w of o.watch) {
+      const k = canonKey(w.instrument?.segment);
+      const s = w.instrument?.symbol;
+      if (k && s && !w.held) m.set(k, [...(m.get(k) ?? []), s]);
+    }
+    return m;
+  }, [o.watch]);
   const ctx: StripCtx = {
-    slug: o.slug, today: o.today, nonce: o.nonce, held, watched, symOf, strategyVersion: o.strategyVersion, workspace: ws.data,
+    slug: o.slug, today: o.today, nonce: o.nonce, held, watched, symOf, watchedTopics, strategyVersion: o.strategyVersion, workspace: ws.data,
     onOpenAsset: o.openAsset, onOpenResearch: (q) => o.go(q ? `research?${q}` : "research"), onChanged: o.onChanged, onSettings: o.onSettings,
   };
   const ran = showStrip(runs);
@@ -66,8 +77,11 @@ export function useResearchHome(input: ResearchHomeInput) {
 
   /** Grid item of the strip; the last cell of the home (Q13). Before the first run only the macro line (P6), when
    * there are regimes. */
-  const strip: GridItem | null = ran && runs ? { id: "research", span: 3, node: <ResearchStrip ctx={ctx} runs={runs} summary={summary} candidates={candidates} /> }
+  const strip: GridItem | null = ran && runs ? { id: "research", span: 3, node: <ResearchStrip ctx={ctx} runs={runs} summary={summary} /> }
     : macro.data?.regimes.length ? { id: "research", span: 3, node: <MacroStrip ctx={ctx} /> } : null;
+
+  /** P7: the Kandydaci widget of the home rail (under Alerty); null before the first run. */
+  const candidatesItem: GridItem | null = ran && runs ? { id: "candidates", span: 1, node: <CandidatesRail ctx={ctx} candidates={candidates} /> } : null;
 
   /** Review block (span 3) between Co się zmieniło and Sygnały; before the first run only the changed macro
    * regimes (P6), when any changed. */
@@ -90,9 +104,9 @@ export function useResearchHome(input: ResearchHomeInput) {
 
   /** The research view (route `research`). */
   const page = (params: URLSearchParams, onBack: () => void) => (
-    <ResearchPage slug={o.slug} today={o.today} privacy={o.privacy} held={held} watchedIds={watchedIds} watched={watched} symOf={symOf} strategyVersion={o.strategyVersion}
+    <ResearchPage slug={o.slug} today={o.today} privacy={o.privacy} held={held} watchedIds={watchedIds} watched={watched} symOf={symOf} watchedTopics={watchedTopics} strategyVersion={o.strategyVersion}
       initial={params} onBack={onBack} onOpenAsset={o.openAsset} onSettings={o.onSettings} onChanged={o.onChanged} />
   );
 
-  return { ran, runs, summary, strip, review, changesRow, ranInPeriod, effect, page };
+  return { ran, runs, summary, strip, candidates: candidatesItem, review, changesRow, ranInPeriod, effect, page };
 }

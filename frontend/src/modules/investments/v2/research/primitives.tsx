@@ -1,11 +1,11 @@
 // Research primitives (research.md 3-6, implementation-plan item 29): thesis health pill, thesis relation
 // chip, strength bars, 8-week sentiment bars (inline SVG, three sizes), the segment contribution bar (P5), the
-// note card, the candidate card and the copyable command. Copy from the research.md 8 deck; boundaries: facts and sentiment with sources,
+// macro explain popover and the topic row (P7), the note card, the candidate card and the copyable command. Copy from the research.md 8 deck; boundaries: facts and sentiment with sources,
 // never a recommendation, a price or a target.
-import { Fragment, type ReactNode, useState } from "react";
+import { type FocusEvent, Fragment, type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import { useWidth } from "../../../../hooks";
 import { copyText, useToast } from "../../../../ui";
-import { AgentTag } from "../../../../widgets";
+import { AgentTag, Mark } from "../../../../widgets";
 import { dm, micName, plural } from "../../labels";
 import { InstLabel, type InstLike } from "../InstLabel";
 import {
@@ -13,7 +13,9 @@ import {
   acceptedAt, KIND_LABEL, NOISE_SCALE, noteRowTitle, noteSubject, noteWhen, normRelation, polarityCls, watchItemId, POLARITY_WORD, RELATION_CLS, RELATION_LABEL, relationIcon,
   ROUTINE_MENU, ROUTINE_PROMPT, safeUrl, sentimentBars, sourceParts, sourceText, strengthTitle, summaryWithoutCriteria,
 } from "./logic";
-import type { HealthKey, ResearchNote } from "./types";
+import { type DisplayRow, kindTitle, ppOf, ppTone, type PpTone, staleTitle, symbolsText, type TopicKind, topicNote, tone, trendText, trendTitle } from "./segments";
+import { metricTitle } from "./macro";
+import type { HealthKey, MacroMetric, ResearchNote } from "./types";
 import "./research.css";
 import { localDay } from "../../../../time";
 
@@ -79,6 +81,78 @@ export function ContribBar({ w, cls, size, title }: { w: number; cls: "pos" | "n
     <span className={`cbar ${size ?? ""}`} aria-hidden title={title}>
       {cls !== "zero" && <i className={cls} style={{ width: `${w}%` }} />}
     </span>
+  );
+}
+
+/** Escape hides the explain popover of a row while the pointer rests on the row (or the popover) or focus is inside
+ * it (WCAG 1.4.13 dismissible); it shows again once the pointer leaves and focus moves out. Spread `props` on the row,
+ * add `xoff` to its class while `hidden`. */
+export function useExplainDismiss() {
+  const [hidden, setHidden] = useState(false);
+  const [hover, setHover] = useState(false);
+  useEffect(() => {
+    if (!hover || hidden) return;
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") setHidden(true); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [hover, hidden]);
+  return {
+    hidden,
+    props: {
+      onMouseEnter: () => setHover(true),
+      onMouseLeave: () => { setHover(false); setHidden(false); },
+      onKeyDown: (e: KeyboardEvent) => { if (e.key === "Escape") setHidden(true); },
+      onBlur: (e: FocusEvent<HTMLElement>) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHidden(false); },
+    },
+  };
+}
+
+/** Hover / focus explanation card under a macro row (P7 design 2.2): a head line, a paragraph of 3-6 sentences, the
+ * metrics as label / value pairs. CSS shows it (`.mrow:hover .mx`, `.mrow:focus-within .mx`); the last two rows
+ * of a list open it upwards (CSS). Read-only; the pointer can rest on it (it is part of the row's hover) and Escape
+ * hides it (`useExplainDismiss`). */
+export function Explain({ id, head, tone: t, text, metrics }: { id: string; head: string; tone: string; text: string; metrics: MacroMetric[] }) {
+  return (
+    <div className="mx" role="tooltip" id={id}>
+      <div className={`xh ${t}`}>{head}</div>
+      <p className="xt">{text}</p>
+      {metrics.length > 0 && (
+        <div className="xm">{metrics.slice(0, 3).map((m, i) => <Fragment key={i}><span className="l">{m.label}</span><b className={m.stale ? "stale" : ""} title={metricTitle(m)}>{m.text}</b></Fragment>)}</div>
+      )}
+    </div>
+  );
+}
+
+/** One topic row (P7 design 2.3): label + symbols + unread mark, the note line (this week's title or the small
+ * date), the topic's own trend (1w, 4w small), and for held topics the contribution bar and pp. Watched-only rows
+ * are muted with empty bar / pp slots; a new row (held now, no exposure at the window start) has the empty slots
+ * but is not muted. */
+export function TopicRow({ r, kind, bar, syms, stale, first, right, last, onOpen }: {
+  r: DisplayRow; kind: TopicKind; bar: { w: number; cls: PpTone; title: string }; syms: string[]; stale: string[];
+  /** first watched-only row (dashed group rule), right sub-column (left rule), bottom of the left sub-column (no border). */
+  first: boolean; right: boolean; last: boolean; onOpen: () => void;
+}) {
+  const note = topicNote(r);
+  const t1 = r.trend_1w ?? null;
+  return (
+    <div className={`trow${kind === "watched" ? " wo" : ""}${first ? " grp" : ""}${right ? " c2" : ""}${last ? " last" : ""}`} data-topic={r.key}>
+      <div className="tl">
+        <div className="nm">
+          <button className="nm" onClick={onOpen} title={kindTitle(kind)}>{r.label}</button>
+          {syms.length > 0 && <span className="sym" title={syms.join(", ")}>{symbolsText(syms)}</span>}
+          {r.unread > 0 && <Mark kind="notes" title={plural(r.unread, "nowa notatka", "nowe notatki", "nowych notatek")} />}
+        </div>
+        <div className="sub" title={note?.title}>{note ? (note.fresh ? <span className="nt">{note.text}</span> : <span className="dt">{note.text}</span>) : ""}</div>
+      </div>
+      <div className="tr" title={trendTitle(r)}>
+        <span className={`v ${tone(t1)}`}>{trendText(t1)}</span>
+        <span className="s">{r.trend_4w != null ? `4 tyg. ${trendText(r.trend_4w)}` : ""}</span>
+      </div>
+      {kind === "held" ? <ContribBar {...bar} /> : <span />}
+      <div className="r">{kind === "held"
+        ? <span className={`pp ${ppTone(r.contribution)}${stale.length ? " stale" : ""}`} title={staleTitle(stale)}>{ppOf(r.contribution)}</span>
+        : <span />}</div>
+    </div>
   );
 }
 

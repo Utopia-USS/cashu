@@ -79,15 +79,20 @@ function janNotes(): ResearchNote[] {
     note({ id: 901, segment: "gold", segment_label: "Złoto i górnicy", kind: "macro", polarity: "negative", strength: 2, thesis_relation: "none", observed_at: SAT,
       title: "Fed: realne stopy w dół, GDXJ -4,4 % w tygodniu", summary: "Realne rentowności 10Y w górę o 15 pb po danych z rynku pracy; złoto -2,1 % w tygodniu, górnicy mocniej. Segment -0,8 pp portfela.",
       sources: [src("Fed", "2026-10-02", "gold-1")] }),
-    note({ id: 902, segment: "semis_ai", segment_label: "Półprzewodniki i AI", kind: "news", polarity: "positive", strength: 2, thesis_relation: "none", observed_at: "2026-09-18T07:00:00+02:00", run_id: 1,
+    note({ id: 902, segment: "semis_ai", segment_label: "AI: chipy i centra danych", kind: "news", polarity: "positive", strength: 2, thesis_relation: "none", observed_at: "2026-09-18T07:00:00+02:00", run_id: 1,
       title: "TSMC: przychody wrzesień +30 % r/r", summary: "Miesięczne przychody TSMC +30 % r/r, popyt na układy do centrów danych. Segment +0,4 pp portfela.",
       sources: [src("TSMC", "2026-09-17", "semis-1")] }),
     note({ id: 903, segment: "bonds", segment_label: "Obligacje i stopy", kind: "macro", polarity: "neutral", strength: 1, thesis_relation: "none", observed_at: "2026-09-25T07:00:00+02:00", run_id: 2,
       title: "Rynek oczekuje stabilnych stóp procentowych", summary: "Kontrakty na stopę referencyjną wyceniają brak zmian do końca roku. EDO bez wpływu na wycenę (koszt).",
       sources: [src("NBP", "2026-09-24", "bonds-1")] }),
+    // Stored before the P7 rename: the old key `uranium` and label (the FE maps it to `power`).
     note({ id: 904, segment: "uranium", segment_label: "Uran i atom", kind: "news", polarity: "positive", strength: 2, thesis_relation: "none", observed_at: "2026-09-29T07:00:00+02:00",
-      title: "Kazatomprom: cięcia wydobycia 2027", summary: "Plan wydobycia na 2027 obniżony o ok. 10 %; cena spot uranu +6 % w tygodniu. Brak pozycji w segmencie.",
+      title: "Kazatomprom: cięcia wydobycia 2027", summary: "Plan wydobycia na 2027 obniżony o ok. 10 %; cena spot uranu +6 % w tygodniu. Brak pozycji w temacie.",
       sources: [src("Kazatomprom", "2026-09-29", "u-1")] }),
+    // P7: a watched-only topic's note (QUBT, IONQ on the watchlist).
+    note({ id: 907, segment: "quantum", segment_label: "Komputery kwantowe", kind: "news", polarity: "positive", strength: 2, thesis_relation: "none", observed_at: "2026-10-03T07:00:00+02:00",
+      title: "QUBT: Dirac-3S z pierwszą dostawą komercyjną", summary: "Spółka potwierdziła pierwszą dostawę komercyjną systemu; QUBT +12 % w tygodniu, IONQ +7 %. Brak pozycji w temacie.",
+      sources: [src("komunikat spółki", "2026-10-02", "q-1")] }),
     // P6 macro notes (segment notes with a macro key): 905 is this week's and unread, 906 was read.
     note({ id: 905, segment: "macro_rates", segment_label: "Obligacje i stopy", kind: "macro", polarity: "neutral", strength: 2, thesis_relation: "none", observed_at: SAT,
       title: "Fed: trzecia obniżka, 10Y 3,92 %, krzywa nadal odwrócona",
@@ -153,7 +158,7 @@ function stateFor(slug: string, kind: string): RState {
     // uranium) and the macro rates note (905) are unread; everything else was opened.
     for (const n of st.notes) {
       const unread = n.created_by === "agent" && n.kind !== "candidate"
-        && ((n.observed_at === SAT && (n.instrument_id === 307 || (n.instrument_id === 305 && n.kind === "community"))) || n.id === 901 || n.id === 904 || n.id === 905);
+        && ((n.observed_at === SAT && (n.instrument_id === 307 || (n.instrument_id === 305 && n.kind === "community"))) || n.id === 901 || n.id === 904 || n.id === 905 || n.id === 907);
       n.read_at = unread ? null : n.observed_at;
     }
     if (on && SCENARIO === "stale") st.notes = st.notes.filter((n) => n.observed_at < "2026-10-02");
@@ -216,24 +221,29 @@ const SEG_1W: SegSeed[] = [
   { segment: "gold", label: "Złoto i górnicy", group: "asset", weight: 0.18, contribution: -0.008, return: -0.044,
     instruments: [{ instrument_id: 305, contribution: -0.008, return: -0.044 }],
     note: { id: 901, title: "Fed: realne stopy w dół, GDXJ -4,4 % w tygodniu", observed_at: SAT, polarity: "negative", kind: "macro", strength: 2 },
-    note_this_week: true, notes_8w: 3 },
-  { segment: "semis_ai", label: "Półprzewodniki i AI", group: "sector", weight: 0.125, contribution: 0.004, return: 0.031,
+    note_this_week: true, notes_8w: 3, trend_1w: -0.044, trend_4w: -0.061, members: 2 },
+  { segment: "semis_ai", label: "AI: chipy i centra danych", group: "sector", weight: 0.125, contribution: 0.004, return: 0.031,
     instruments: [{ instrument_id: 301, contribution: 0.003, return: 0.03 }, { instrument_id: 302, contribution: 0.001, return: 0.035 }],
     note: { id: 902, title: "TSMC: przychody wrzesień +30 % r/r", observed_at: addDays(TODAY, -16), polarity: "positive", kind: "news", strength: 2 },
-    note_this_week: false, notes_8w: 2 },
+    note_this_week: false, notes_8w: 2, trend_1w: 0.031, trend_4w: 0.082, members: 2 },
   // EDO is valued at cost: held (weight > 0) but no market move (contribution 0, return null).
   { segment: "bonds", label: "Obligacje i stopy", group: "asset", weight: 0.22, contribution: 0, return: null,
     instruments: [{ instrument_id: 303, contribution: 0, return: null }],
     note: { id: 903, title: "Rynek oczekuje stabilnych stóp procentowych", observed_at: addDays(TODAY, -9), polarity: "neutral", kind: "macro", strength: 1 },
-    note_this_week: false, notes_8w: 1 },
-  // Its last note expired: `note` null, `last_note_at` keeps `bez zmian od`.
+    note_this_week: false, notes_8w: 1, trend_1w: 0.001, trend_4w: 0.004, members: 1 },
+  // Its last note expired: `note` null, `last_note_at` keeps the small date.
   { segment: "equity_pl", label: "Akcje polskie", group: "asset", weight: 0.13, contribution: 0.0012, return: 0.009,
-    instruments: [{ instrument_id: 304, contribution: 0.0012, return: 0.009 }], note: null, note_this_week: false, notes_8w: 0 },
-  { segment: "games_media", label: "Gry i media", group: "sector", weight: 0.06, contribution: -0.003, return: -0.05,
-    instruments: [{ instrument_id: 306, contribution: -0.003, return: -0.05 }], note: null, note_this_week: false, notes_8w: 0 },
-  { segment: "uranium", label: "Uran i atom", group: "asset", weight: 0, contribution: 0, return: null, instruments: [],
+    instruments: [{ instrument_id: 304, contribution: 0.0012, return: 0.009 }], note: null, note_this_week: false, notes_8w: 0, trend_1w: 0.009, trend_4w: 0.021, members: 1 },
+  { segment: "games_media", label: "Gry", group: "sector", weight: 0.06, contribution: -0.003, return: -0.05,
+    instruments: [{ instrument_id: 306, contribution: -0.003, return: -0.05 }], note: null, note_this_week: false, notes_8w: 0, trend_1w: -0.05, trend_4w: -0.012, members: 1 },
+  // P7: a watched-only topic (no exposure, two priced watched members).
+  { segment: "quantum", label: "Komputery kwantowe", group: "sector", weight: 0, contribution: 0, return: null, instruments: [],
+    note: { id: 907, title: "QUBT: Dirac-3S z pierwszą dostawą komercyjną", observed_at: addDays(TODAY, -1), polarity: "positive", kind: "news", strength: 2 },
+    note_this_week: true, notes_8w: 1, trend_1w: 0.098, trend_4w: 0.31, members: 2 },
+  // A note-only topic (no exposure, no priced member); the BE sends the renamed key.
+  { segment: "power", label: "Energetyka: atom i OZE", group: "asset", weight: 0, contribution: 0, return: null, instruments: [],
     note: { id: 904, title: "Kazatomprom: cięcia wydobycia 2027", observed_at: addDays(TODAY, -5), polarity: "positive", kind: "news", strength: 2 },
-    note_this_week: true, notes_8w: 1 },
+    note_this_week: true, notes_8w: 1, trend_1w: null, trend_4w: null, members: 0 },
 ];
 /** The segment rows with `unread` from the notes (opening a segment marks its notes read). The 4w window doubles
  * the contributions. */
@@ -242,7 +252,7 @@ function segmentRows(st: RState, window: "1w" | "4w"): SegmentRow[] {
   return SEG_1W.map((r) => ({
     ...r, contribution: r.contribution * k, return: r.return != null ? r.return * k : null,
     instruments: r.instruments.map((i) => ({ ...i, contribution: i.contribution * k, return: i.return != null ? i.return * k : null })),
-    unread: st.notes.filter((n) => n.segment === r.segment && isUnread(n)).length,
+    unread: st.notes.filter((n) => (n.segment === "uranium" ? "power" : n.segment) === r.segment && isUnread(n)).length,
     last_note_at: r.note?.observed_at ?? (r.segment === "equity_pl" ? addDays(TODAY, -40) : null),
   }));
 }
@@ -273,28 +283,38 @@ const hist = (key: string, items: [string, string, boolean?][]) => items.map(([d
 const MACRO_SEED: RegimeSeed[] = [
   { key: "risk", label: "Rynek akcji", state: "bull", state_label: "hossa", tone: "pos", since: "2026-08-14", since_open: false, since_min: MACRO_WINDOW, as_of: MACRO_AS_OF, stale: false, missing: false, flags: [],
     meaning: "Globalne akcje są powyżej rosnącej średniej z 200 sesji: trwały trend wzrostowy szerokiego rynku.",
+    summary: "Akcje na świecie rosną od sierpnia, są 1,4 % pod szczytem.",
+    explain: "Hossa to okres, w którym szeroki rynek akcji rośnie przez wiele miesięcy, bessa to spadek o ponad 20 % od szczytu, korekta to spadek o 10-20 %. Aplikacja patrzy na globalny indeks ACWI: hossa, gdy jest powyżej rosnącej średniej z 200 sesji i blisko szczytu. Od 14.08 indeks jest nad średnią, 1,4 % pod szczytem. W takich okresach spadki o kilka procent zwykle były przejściowe.",
     metrics: [{ label: "ACWI wobec 200 sesji", value: 0.062, unit: "pct", text: "+6,2 %" }, { label: "od szczytu", value: -0.014, unit: "pct", text: "-1,4 %" }, { label: "S&P 500 od szczytu", value: -0.008, unit: "pct", text: "-0,8 %" }],
     history: hist("risk", [[MACRO_WINDOW, "correction", true], ["2025-05-02", "flat"], ["2025-06-20", "bull"], ["2026-04-07", "weak"], ["2026-08-14", "bull"]]),
     note: { id: 906, title: "ACWI: nowy szczyt po danych o inflacji", observed_at: "2026-09-19T07:00:00+02:00", polarity: "positive", kind: "macro" }, last_note_at: "2026-09-19T07:00:00+02:00" },
   { key: "dollar", label: "Dolar", state: "weak", state_label: "słabnie", tone: "", since: "2026-10-02", since_open: false, since_min: MACRO_WINDOW, as_of: MACRO_AS_OF, stale: false, missing: false, flags: [],
     meaning: "Słabnący dolar obniża wartość aktywów w USD liczoną w złotych i zwykle sprzyja rynkom wschodzącym i surowcom.",
+    summary: "Dolar słabnie od października; w tym tygodniu USD/PLN -0,6 %, co odjęło portfelowi 0,3 pp.",
+    explain: "Cykl dolarowy to wieloletnie fale umocnienia i osłabienia USD wobec koszyka walut. Aplikacja patrzy na indeks DXY wobec jego średniej z 200 sesji i na zmianę z 6 miesięcy. Słaby dolar obniżał dotąd wartość aktywów w USD liczoną w złotych i zwykle sprzyjał rynkom wschodzącym i surowcom.",
     metrics: [{ label: "DXY", value: 98.4, unit: "level", text: "98,4" }, { label: "6 mies.", value: -0.048, unit: "pct", text: "-4,8 %" }, { label: "USD/PLN 6 mies.", value: -0.051, unit: "pct", text: "-5,1 %", stale: true }],
     history: hist("dollar", [[MACRO_WINDOW, "weak", true], ["2025-11-03", "flat"], ["2026-10-02", "weak"]]),
     note: null, last_note_at: null },
   MACRO_MISSING
     ? { key: "em", label: "Rynki wschodzące", state: "unknown", state_label: "brak danych", tone: "", since: null, since_open: false, since_min: null, as_of: "2026-09-18", stale: true, missing: true, flags: [],
-      meaning: "Za mało aktualnych notowań, by ustalić stan.", metrics: [], history: [], note: null, last_note_at: null }
+      meaning: "Za mało aktualnych notowań, by ustalić stan.", summary: null, explain: null, metrics: [], history: [], note: null, last_note_at: null }
     : { key: "em", label: "Rynki wschodzące", state: "inline", state_label: "w linii", tone: "", since: null, since_open: true, since_min: MACRO_WINDOW, as_of: MACRO_AS_OF, stale: false, missing: false, flags: [],
       meaning: "Akcje rynków wschodzących radzą sobie od pół roku podobnie jak akcje globalne.",
+      summary: "Rynki wschodzące idą równo ze światem od ponad roku.",
+      explain: "Rynki wschodzące (Chiny, Indie, Brazylia, Tajwan i inne) mają własne cykle, często związane z dolarem i surowcami. Aplikacja porównuje wynik ETF EEM z globalnym ACWI z ostatnich 6 miesięcy: różnica ponad 5 pp to przewaga jednej strony. Teraz różnica jest mała, więc oba rynki idą podobnie.",
       metrics: [{ label: "EEM wobec ACWI 6 mies.", value: 1.9, unit: "pp", text: "+1,9 pp" }, { label: "EEM 6 mies.", value: 0.093, unit: "pct", text: "+9,3 %" }],
       history: hist("em", [[MACRO_WINDOW, "inline", true]]), note: null, last_note_at: null },
   { key: "commodities", label: "Surowce", state: "flat", state_label: "bez trendu", tone: "", since: "2026-07-21", since_open: false, since_min: MACRO_WINDOW, as_of: "2026-09-26", stale: true, missing: false, flags: [],
     meaning: "Szeroki koszyk surowców nie ma wyraźnego trendu: to ani hossa, ani bessa surowcowa.",
+    summary: "Surowce bez wyraźnego trendu od lipca: +4 % w rok, słabiej niż akcje.",
+    explain: "Supercykl surowcowy to wieloletni okres drożenia ropy, metali i żywności, zwykle przy silnym popycie i słabym dolarze. Aplikacja patrzy na koszyk DBC: zmianę z 12 miesięcy i wynik wobec akcji globalnych. Koszyk zyskał 4 % w rok, wyraźnie mniej niż akcje, więc nie jest to ani hossa, ani bessa surowcowa.",
     metrics: [{ label: "DBC 12 mies.", value: 0.041, unit: "pct", text: "+4,1 %" }, { label: "wobec ACWI 12 mies.", value: -6.2, unit: "pp", text: "-6,2 pp" }],
     history: hist("commodities", [[MACRO_WINDOW, "bull", true], ["2026-07-21", "flat"]]),
     note: null, last_note_at: "2026-09-12T07:00:00+02:00" },
   { key: "rates", label: "Obligacje i stopy", state: "falling", state_label: "rentowności spadają · krzywa odwrócona", tone: "warn", since: "2026-09-05", since_open: false, since_min: MACRO_WINDOW, as_of: MACRO_AS_OF, stale: false, missing: false, flags: ["inverted"],
     meaning: "Niższe rentowności obniżają koszt pieniądza: zwykle sprzyjają wycenom spółek wzrostowych i cenom obligacji długoterminowych.",
+    summary: "Rentowności w USA spadają od września, krzywa wciąż odwrócona.",
+    explain: "Rentowność obligacji to roczny zysk z ich trzymania; gdy spada, ceny obligacji rosły. Krzywa dochodowości porównuje obligacje 10-letnie z 3-miesięcznymi: odwrócona (krótkie wyżej niż długie) w przeszłości często poprzedzała spowolnienie gospodarki. Aplikacja patrzy na zmianę rentowności 10-letnich z 3 miesięcy. Od 5.09 rentowności spadają, a krzywa pozostaje odwrócona.",
     metrics: [{ label: "USA 10 lat", value: 3.92, unit: "level", text: "3,92 %" }, { label: "3 mies. zmiana", value: -48, unit: "bp", text: "-48 bp" }, { label: "krzywa 10l-3m", value: -18, unit: "bp", text: "-18 bp" }],
     history: hist("rates", [[MACRO_WINDOW, "stable", true], ["2025-11-11", "rising"], ["2026-03-02", "stable"], ["2026-09-05", "falling"]]),
     note: { id: 905, title: "Fed: trzecia obniżka, 10Y 3,92 %, krzywa nadal odwrócona", observed_at: SAT, polarity: "neutral", kind: "macro" }, last_note_at: SAT },
@@ -343,7 +363,8 @@ export function researchDigest(slug: string, kind: string): DigestResearch | nul
       { instrument_id: 305, label: "KGHM", symbol: "KGH", from: "current", to: "supported", note_ids: fresh.filter((n) => n.instrument_id === 305).map((n) => n.id) },
       { instrument_id: 307, label: "iShares MSCI EM IMI", symbol: "EIMI", from: "current", to: "weakened", note_ids: fresh.filter((n) => n.instrument_id === 307).map((n) => n.id) },
     ],
-    segments: segmentRows(st, "1w").slice(0, 4),
+    // The top 4 plus the watched-only quantum row (the review shows a muted topic).
+    segments: [...segmentRows(st, "1w").slice(0, 4), ...segmentRows(st, "1w").filter((r) => r.segment === "quantum")],
     market: (({ segments: _s, ...rest }) => rest)(segmentsOf(st, kind, "1w")),
     macro_changes,
     candidates: fresh.filter((n) => n.kind === "candidate").map((n) => n.id),
