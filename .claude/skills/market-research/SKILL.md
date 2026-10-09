@@ -62,7 +62,7 @@ profile's holdings with weights.
 |---|---|
 | `profile_overview` | preflight: investments enabled, privacy level, data freshness |
 | `start_research_run(scope)` | step 1: opens the run, returns `run_id` |
-| `research_context` | step 2: held and watched instruments (weights as fractions, 0.12 = 12 %) with theses (entry type, thesis, invalidation, exit plan) and research state (health, last researched), each with `segment` and `segment_source`; `segments` (the portfolio's move by segment: weight, contribution and return over 1 and 4 weeks, instruments with their own 1-week return and contribution, `last_note_at`, `note_this_week`), `currency`, `unassigned`, `segment_catalog`; `macro` (five regime cards: state, since, metrics, `note_key`) and `macro_catalog`; the strategy's version and `candidate_criteria`, open and cooled-down candidates, upcoming events, the last run and a running one, limits |
+| `research_context` | step 2: held and watched instruments (weights as fractions, 0.12 = 12 %) with theses (entry type, thesis, invalidation, exit plan) and research state (health, last researched), each with `segment` and `segment_source`; `segments` (the owner's topics, shown as "Tematy": the portfolio's move by segment, weight, contribution and return over 1 and 4 weeks, instruments with their own 1-week return and contribution, the topic trend `trend_1w` / `trend_4w` = the equal-weighted price move of its held and watched instruments with `members` = how many have prices, `last_note_at`, `note_this_week`; topics only watched have weight 0), `currency`, `unassigned`, `segment_catalog`; `macro` (five regime cards: state, since, `summary` = the app's one-line Polish description, metrics, `note_key`) and `macro_catalog`; the strategy's version and `candidate_criteria`, open and cooled-down candidates, upcoming events, the last run and a running one, limits |
 | `set_instrument_segment(instrument, segment)` | step 2: assign a catalog key to a held or watched instrument without one (`segment` is required; `null` clears your own value; an owner's value is refused) |
 | `research_notes(since?)` | step 2: notes of the last 30 days by default, dismissed ones included (never add them again), for duplicates |
 | `add_research_note(...)` | steps 3-6 and the thesis review: one note (schema in `references/notes.md`); validated, sources required, no amounts |
@@ -179,22 +179,26 @@ instruments. Propose only when every numeric threshold is met and verified, with
 `details`. No criteria in the strategy: no candidates (name it in the final summary). Never call
 `add_to_watchlist` here.
 
-**6. Segments.** Go through `research_context.segments`: held exposure first by |contribution| over
-1 week, then segments with a note and no exposure. Per segment, ask what changed since its
+**6. Segments (the owner's topics).** Go through `research_context.segments`: held exposure first by
+|contribution| over 1 week, then topics without exposure (watched only, or with a note) by |`trend_1w`|.
+The owner follows topics, not only holdings: a watched-only topic (AI, quantum, power ...) with a
+notable `trend_1w` or a dated event deserves a note as much as a held one. Per segment, ask what changed since its
 `last_note_at` (and its notes in `research_notes`); official sources and hard data first
 (`references/sources.md` 4). Nothing changed: no note (the app shows `bez zmian`). Otherwise one
 segment note (`references/notes.md`, Segments): `segment` = the key, no instrument, kind `macro`,
 `trend` or `news`, relation `none`, Polish, summary at most 400 characters: what happened in the
 segment this week with dated numbers, the affected holdings by symbol, then one sentence on how it
 shows in the attribution, with the 1-week figures from `research_context` (`GDXJ -4,4 % w tygodniu,
-segment -0,8 pp portfela.`; no exposure: leave the sentence out). At most one note per segment and
+segment -0,8 pp portfela.`; no exposure: give the topic trend instead, `temat +3,2 % w tygodniu`,
+or nothing when `trend_1w` is null). At most one note per segment and
 ISO week (the tool refuses a second one, dismissed notes included: count it in `skipped`), at most 6
 per week. Company facts stay on the instrument, never on a segment; a segment fact that bears on one
 thesis gets that instrument's own note with the relation.
 
 **6b. Macro.** Read `research_context.macro`: five regimes computed by the app from public series
 (`risk` global equity, `dollar`, `em` emerging markets vs world, `commodities`, `rates` US yields and
-the curve), each with `state_label`, `since` (null with `since_open` when the state predates the app's data:
+the curve), each with `state_label`, `summary` (the app's own text for the owner: do not repeat it in a
+note), `since` (null with `since_open` when the state predates the app's data:
 say "since before <since_min>", never invent a start), metric texts and `last_note_at`. The state is the app's,
 never yours: do not restate or dispute it. Write a macro note (`segment` = its `note_key`, e.g.
 `macro_rates`) only when the state changed since its last macro note, or a dated decisive event

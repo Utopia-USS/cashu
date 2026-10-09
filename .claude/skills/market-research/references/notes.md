@@ -77,8 +77,11 @@ Regular hyphens only (no em dash character).
 
 ## Segments
 
-The app has a fixed catalog of 18 segments (`research_context.segment_catalog`); there is nothing to
-name or invent. A segment note is a short market note for the "Rynek" view:
+The app has a fixed catalog of 18 segments (`research_context.segment_catalog`), shown to the owner as
+topics ("Tematy": e.g. `semis_ai` AI: chipy i centra danych, `software` AI i oprogramowanie, `quantum`,
+`power` Energetyka: atom i OZE, `energy` Ropa i gaz, `metals` Metale i ziemie rzadkie, `crypto`); there
+is nothing to name or invent (the old key `uranium` is now `power`). A segment note is a short market
+note for the "Tematy" view:
 
 - `segment` = the key; no instrument, no candidate; kind `macro`, `trend` or `news`;
   `thesis_relation: none` (no `thesis_field`). The tool refuses anything else.
