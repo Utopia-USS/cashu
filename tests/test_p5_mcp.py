@@ -151,7 +151,7 @@ def test_segment_notes_and_run_scope(host):
 
 def test_research_context_segments(host):
     _pid, _slug, mcp = host
-    assert mcp.call("add_research_note", segment_note(1, "uranium")).ok
+    assert mcp.call("add_research_note", segment_note(1, "power")).ok
     context = mcp.call("research_context", {}).data
     assert "themes" not in context
     assert len(context["segment_catalog"]) == 18
@@ -167,8 +167,8 @@ def test_research_context_segments(host):
     assert set(eunl) == {"symbol", "return_1w", "contribution_1w"}
     assert eunl["contribution_1w"] == world["contribution_1w"]
     assert {"contribution_1w", "return_1w", "contribution_4w", "last_note_at"} <= set(world)
-    uranium = rows["uranium"]
-    assert uranium["weight"] == 0 and uranium["note_this_week"] is True
+    power = rows["power"]
+    assert power["weight"] == 0 and power["note_this_week"] is True
     assert set(context["currency"]) == {"contribution_1w", "contribution_4w"}
     unassigned = context["unassigned"]
     assert unassigned is not None and "PKO" in unassigned["symbols"]
@@ -213,6 +213,9 @@ def test_research_context_segments_are_the_union_of_both_windows(host, monkeypat
             "contribution": contribution,
             "return": 0.02,
             "instruments": instruments,
+            "trend_1w": 0.01,
+            "trend_4w": 0.03 if key == "gold" else 0.02,
+            "members": 1,
             "last_note_at": None,
             "note_this_week": False,
         }
@@ -238,4 +241,5 @@ def test_research_context_segments_are_the_union_of_both_windows(host, monkeypat
     gold = rows[1]
     assert (gold["weight"], gold["contribution_1w"], gold["return_1w"]) == (0.0, 0.0, None)
     assert gold["contribution_4w"] == -0.01 and gold["instruments"] == []
+    assert (gold["trend_1w"], gold["trend_4w"], gold["members"]) == (0.01, 0.03, 1)
     assert rows[0]["contribution_4w"] == 0.004

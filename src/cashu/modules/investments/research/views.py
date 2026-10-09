@@ -720,8 +720,9 @@ def _digest_macro(
 def _digest_segments(
     session: Session, profile_id: int, *, as_of: dt.date | None, now: dt.datetime
 ) -> tuple[list[dict], dict | None]:
-    """The digest's segment rows and the rest of the 1w segment view; ``([], None)`` when it cannot
-    be computed (the digest still answers)."""
+    """The digest's segment rows (topics with a note from this week first, then the view's order, at
+    most :data:`DIGEST_ROWS`) and the rest of the 1w segment view; ``([], None)`` when it cannot be
+    computed (the digest still answers)."""
     from .segment_service import DIGEST_ROWS, segments_view
 
     profile = session.get(Profile, profile_id)
@@ -733,4 +734,6 @@ def _digest_segments(
         _log.exception("review digest: segment attribution failed")
         return [], None
     rows = view.pop("segments")
+    # topics with a note from this week first (stable), so the review never cuts a new note
+    rows.sort(key=lambda r: not r.get("note_this_week"))
     return rows[:DIGEST_ROWS], view

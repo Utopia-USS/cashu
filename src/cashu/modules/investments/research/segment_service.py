@@ -18,19 +18,24 @@ from sqlmodel import Session, select
 
 from cashu.core.models import Profile, utcnow
 
-from ..domain import AssetClass, InstrumentId, MarketView, ValuationMode
+from ..domain import AssetClass, Instrument, InstrumentId, MarketView, ValuationMode
 from ..models import InvResearchNote
 from ..performance import returns
 from ..performance.segment_attribution import (
+    TREND_WINDOWS,
     SegmentAttribution,
     SegmentMove,
+    SegmentTrend,
     StartHolding,
     StartPortfolio,
     attribute_segments,
     close_on_or_before,
+    segment_trends,
+    snapshot_openings,
 )
 from ..portfolio import build_snapshot, value_portfolio
-from ..store import convert
+from ..store import convert, market
+from ..store import instruments as instrument_store
 from . import service
 from .scoring import iso_week
 from .segments import (
@@ -78,6 +83,10 @@ class Attributed:
     labels: dict[InstrumentId, str]
     base: str
     end: dt.date
+    held_at_end: frozenset[InstrumentId] = frozenset()
+    loaded: object | None = None
+    """The performance computation's inputs (``performance.service.Loaded``): instruments, bars and
+    the valuation policy the topic trends reuse."""
 
 
 def _portfolio_return(computed, start: dt.date, end: dt.date) -> float | None:
@@ -134,9 +143,14 @@ def _fallback_value(v, view: MarketView, snapshot, fx, base, start: dt.date) -> 
 
 def _start_portfolio(loaded, start: dt.date) -> StartPortfolio:
     """The holdings at ``start`` with their base values (the valuation's, else the fallback of
-    :func:`_fallback_value`, flagged stale), ``T0`` and the instruments held there."""
+    :func:`_fallback_value`, flagged stale), ``T0`` and the instruments held there. Positions the
+    history knows only from a broker snapshot count as held at ``start``
+    (``segment_attribution.snapshot_openings``)."""
     then = build_snapshot(
-        convert.sid(loaded.profile_id), loaded.txns, start, renames=loaded.renames
+        convert.sid(loaded.profile_id),
+        snapshot_openings(loaded.txns, start),
+        start,
+        renames=loaded.renames,
     )
     held = {h.instrument_id for h in then.holdings}
     view = MarketView(
@@ -194,10 +208,13 @@ def _attribute(computed, days: int) -> Attributed:
     start = end - dt.timedelta(days=days)
     labels = {k: v.label for k, v in loaded.instruments.items()}
     if not loaded.txns:
-        return Attributed(SegmentAttribution(start, end), None, labels, str(loaded.base), end)
+        return Attributed(
+            SegmentAttribution(start, end), None, labels, str(loaded.base), end, loaded=loaded
+        )
     now_held = build_snapshot(
         convert.sid(loaded.profile_id), loaded.txns, end, renames=loaded.renames
     )
+    held_at_end = frozenset(h.instrument_id for h in now_held.holdings)
 
     def segment_key(iid: InstrumentId) -> str | None:
         inst = loaded.instruments.get(iid)
@@ -211,11 +228,17 @@ def _attribute(computed, days: int) -> Attributed:
         start,
         end,
         segment_key,
-        held_at_end={h.instrument_id for h in now_held.holdings},
+        held_at_end=held_at_end,
         max_price_age_days=loaded.policy.max_price_age_days,
     )
     return Attributed(
-        attribution, _portfolio_return(computed, start, end), labels, str(loaded.base), end
+        attribution,
+        _portfolio_return(computed, start, end),
+        labels,
+        str(loaded.base),
+        end,
+        held_at_end=held_at_end,
+        loaded=loaded,
     )
 
 
@@ -237,6 +260,53 @@ def attribution(
         found = _attribute(computed, days)
         computed.extras[key] = found
     return found
+
+
+# --------------------------------------------------------------------------- #
+# Topic trends (P7)
+# --------------------------------------------------------------------------- #
+
+_TREND_MARGIN_DAYS = 10
+"""Bars read before the longest trend window (a start close may be a few days older)."""
+
+
+@dataclass(frozen=True)
+class Trends:
+    by_segment: dict[str, SegmentTrend]
+    labels: dict[InstrumentId, str]
+
+
+def topic_trends(session: Session, profile: Profile, found: Attributed) -> Trends:
+    """Per segment the equal-weighted 1w / 4w price trend of the instruments held at the window's
+    end and the watched ones (``segment_attribution.segment_trends``), whatever their weight. Read
+    fresh (the watchlist and its bars are not in the performance cache key); held instruments reuse
+    the computation's bars, watched ones not in it are read in one query."""
+    assert profile.id is not None
+    loaded = found.loaded
+    instruments: dict[InstrumentId, Instrument] = dict(loaded.instruments) if loaded else {}
+    bars = dict(loaded.bars) if loaded else {}
+    max_age = loaded.policy.max_price_age_days if loaded else 5
+    watched = {convert.sid(i) for i in service.watched_instrument_ids(session, profile.id)}
+    missing = [convert.pk(i) for i in watched if i not in instruments]
+    if missing:
+        for key, inst in instrument_store.load(session, missing, profile_id=profile.id).items():
+            instruments[convert.sid(key)] = inst
+    unread = [convert.pk(i) for i in watched if i not in bars]
+    if unread:
+        since = found.end - dt.timedelta(days=max(TREND_WINDOWS) + max_age + _TREND_MARGIN_DAYS)
+        bars.update(market.bars(session, unread, until=found.end, since=since))
+    members: dict[InstrumentId, tuple[str, bool]] = {}
+    for iid in set(found.held_at_end) | watched:
+        inst = instruments.get(iid)
+        if inst is None or inst.asset_class == AssetClass.CASH:
+            continue
+        key = segment_of(inst, inst.segment, inst.segment_by)[0]
+        if key is not None:
+            members[iid] = (key, iid in found.held_at_end)
+    return Trends(
+        segment_trends(members, bars, found.end, max_price_age_days=max_age),
+        {iid: instruments[iid].label for iid in members},
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -333,14 +403,31 @@ def _instruments(move: SegmentMove, labels: dict[InstrumentId, str]) -> list[dic
     ]
 
 
+def _members(trend: SegmentTrend | None, labels: dict[InstrumentId, str]) -> list[dict]:
+    if trend is None:
+        return []
+    return [
+        {
+            "instrument_id": convert.maybe_pk(m.instrument_id),
+            "label": labels.get(m.instrument_id),
+            "held": m.held,
+            "return_1w": _r(m.returns[0]),
+            "return_4w": _r(m.returns[1]),
+        }
+        for m in trend.instruments
+    ]
+
+
 def _row(
     key: str,
     move: SegmentMove | None,
     notes: SegmentNotes | None,
     labels: dict[InstrumentId, str],
     now: dt.datetime,
+    trends: Trends,
 ) -> dict:
     latest = notes.latest if notes is not None else None
+    trend = trends.by_segment.get(key)
     return {
         "segment": key,
         "label": segment_label(key),
@@ -349,6 +436,10 @@ def _row(
         "contribution": _r(move.contribution) if move is not None else 0.0,
         "return": _r(move.ret) if move is not None else None,
         "instruments": _instruments(move, labels) if move is not None else [],
+        "trend_1w": _r(trend.trends[0]) if trend is not None else None,
+        "trend_4w": _r(trend.trends[1]) if trend is not None else None,
+        "members": trend.members if trend is not None else 0,
+        "member_instruments": _members(trend, trends.labels),
         "note": brief_note(latest),
         "note_this_week": latest is not None
         and iso_week(convert.aware(latest.observed_at).date()) == iso_week(now.date()),
@@ -360,6 +451,13 @@ def _row(
     }
 
 
+def _row_order(row: dict, exposed: bool) -> tuple:
+    if exposed:
+        return (0, -abs(row["contribution"] or 0.0), catalog_order(row["segment"]))
+    trend = row["trend_1w"]
+    return (1, trend is None, -abs(trend or 0.0), catalog_order(row["segment"]))
+
+
 def segments_view(
     session: Session,
     profile: Profile,
@@ -368,9 +466,14 @@ def segments_view(
     as_of: dt.date | None = None,
     now: dt.datetime | None = None,
 ) -> dict:
-    """``GET /research/segments``: the attribution of ``window`` by segment (segments with exposure
-    at the start plus segments with an active note and no exposure), the unassigned row, currency,
-    the portfolio's own return and the residual, each segment with its latest note."""
+    """``GET /research/segments``: the attribution of ``window`` by segment, the unassigned row,
+    currency, the portfolio's own return and the residual, each segment with its latest note and its
+    topic trend (P7: ``trend_1w`` / ``trend_4w`` / ``members``, :func:`topic_trends`).
+
+    Rows: segments with exposure at the start, segments with a held or watched instrument (no
+    exposure: weight and contribution 0) and segments with an active note. Order (the home strip):
+    rows with exposure by |contribution|, then the others by |trend_1w| (none last), ties in catalog
+    order."""
     assert profile.id is not None
     now = convert.aware(now or utcnow())
     found = attribution(session, profile, window=window, as_of=as_of)
@@ -378,9 +481,11 @@ def segments_view(
     notes = notes_by_segment(session, profile.id, now)
     moves = {m.segment: m for m in result.segments if m.segment is not None}
     # macro notes (P6) have their own view (``macro.service``): never an attribution row
-    keys = set(moves) | {k for k, n in notes.items() if n.latest is not None and is_segment(k)}
-    rows = [_row(k, moves.get(k), notes.get(k), found.labels, now) for k in keys]
-    rows.sort(key=lambda r: (-abs(r["contribution"] or 0.0), catalog_order(r["segment"])))
+    trends = topic_trends(session, profile, found)
+    keys = set(moves) | {k for k in trends.by_segment if is_segment(k)}
+    keys |= {k for k, n in notes.items() if n.latest is not None and is_segment(k)}
+    rows = [_row(k, moves.get(k), notes.get(k), found.labels, now, trends) for k in keys]
+    rows.sort(key=lambda r: _row_order(r, r["segment"] in moves))
     unassigned = result.unassigned
     explained = _r(result.explained)
     portfolio_return = _r(found.portfolio_return)

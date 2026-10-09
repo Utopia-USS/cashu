@@ -114,18 +114,44 @@ MARKET_LABELS: frozenset[str] = frozenset(
 )
 """The macro metric labels (P6, ``investments.macro.regimes.METRIC_LABELS``; a test keeps them equal):
 the only words a ``market`` value may carry."""
-_MARKET_NUMBER = re.compile(r"^[+-]?\d{1,3}(?: \d{3})*(?:,\d+)?(?: (?:%|pp|bp))?$")
+_MARKET_NUMBER = re.compile(r"^[+-]?\d{1,3}(?: \d{3})*(?:,\d+)?(?: (?:%|pp|bp|mln|mld))?$")
+COMPACT_FROM = 1_000_000
+"""From this absolute value a screening threshold is written compactly (:func:`compact_number`)."""
+
+
+def compact_number(value: float) -> str:
+    """A large number as short Polish text, ``1 mld`` / ``1,5 mld`` / ``500 mln`` / ``2 500 mld``
+    (3 significant digits at most, decimal comma, no trailing zeros): it never forms the long digit
+    run the leak check takes for an account number."""
+    number = float(value)
+    scale, unit = (1e9, "mld") if abs(number) >= 1e9 else (1e6, "mln")
+    if unit == "mln" and round(abs(number) / 1e6) >= 1000:  # 999 999 999 -> 1 mld
+        scale, unit = 1e9, "mld"
+    scaled = number / scale
+    decimals = 0 if abs(scaled) >= 100 else 1 if abs(scaled) >= 10 else 2
+    text = f"{abs(scaled):,.{decimals}f}".replace(",", " ")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    sign = "-" if number < 0 and text.strip("0 .") else ""
+    return f"{sign}{text.replace('.', ',')} {unit}"
 
 
 def market_ok(value: object) -> bool:
-    """A ``market`` value is a known macro metric label or a formatted number (digits, sign, spaces,
-    decimal comma, ``%`` / ``pp`` / ``bp``): nothing else may use the strict-mode exemption."""
-    return isinstance(value, str) and (value in MARKET_LABELS or bool(_MARKET_NUMBER.match(value)))
+    """A ``market`` value is a known macro metric label, a formatted number (digits, sign, spaces,
+    decimal comma, ``%`` / ``pp`` / ``bp`` / ``mln`` / ``mld``) or a macro card summary (P7: only the summary builder's
+    vocabulary, numbers and punctuation): nothing else may use the strict-mode exemption."""
+    if not isinstance(value, str):
+        return False
+    if value in MARKET_LABELS or _MARKET_NUMBER.match(value):
+        return True
+    from cashu.modules.investments.macro.texts import summary_ok
+
+    return summary_ok(value)
 
 
 def market(value: str | None) -> Labelled:
     """Text the server builds from public market data only (a macro metric's label and its formatted
-    value, P6): never personal, so the same in both modes (identifiers are still scrubbed). Anything
+    value, P6; a macro card summary, P7): never personal, so the same in both modes (identifiers are still scrubbed). Anything
     but :func:`market_ok` text is refused here and again by the redactor (the call fails closed)."""
     if value is not None and not market_ok(value):
         raise ValueError("not a macro metric label or a formatted market number")

@@ -57,7 +57,7 @@ def test_catalog_integrity():
     assert UNASSIGNED not in SEGMENT_KEYS
     assert set(FUND_SEGMENTS.values()) <= set(SEGMENT_KEYS)
     assert segment_label("gold") == "Złoto i górnicy"
-    assert segment_label(UNASSIGNED) == "Bez segmentu"
+    assert segment_label(UNASSIGNED) == "Bez tematu"
     assert is_segment("semis_ai") and not is_segment("Gold") and not is_segment(None)
     assert catalog_order("equity_global") == 0 and catalog_order("nope") == len(SEGMENTS)
     assert catalog()[3] == {"segment": "bonds", "label": "Obligacje i stopy", "group": "asset"}
@@ -81,7 +81,7 @@ def test_bare_symbol(symbol, expected):
 def test_auto_segment_table_with_suffixes():
     assert auto_segment(inst("GDXJ")) == "gold"
     assert auto_segment(inst("GDXJ.L")) == "gold"
-    assert auto_segment(inst("URNM")) == "uranium"
+    assert auto_segment(inst("URNM")) == "power"
     assert auto_segment(inst("SXR8.DE")) == "equity_global"
     assert auto_segment(inst("EIMI.L")) == "equity_em"
     assert auto_segment(inst("SMH")) == "semis_ai"

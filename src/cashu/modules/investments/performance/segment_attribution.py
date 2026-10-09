@@ -5,7 +5,16 @@ Method (holdings-based):
 
 - The window is ``start`` -> ``end`` (``1w`` = 7 days, ``4w`` = 28 days, ``end`` = the portfolio's
   as-of day). Holdings are the quantities at ``start`` (positions opened later are not attributed;
-  they are counted in ``new_positions``).
+  they are counted in ``new_positions``), from the same transactions the positions view reads.
+- Snapshot-held positions (P7): a position the history knows only from the account's FIRST broker
+  position snapshot (its first transaction in that account is the reconciliation ``adjustment`` the
+  snapshot import wrote, dated the account's earliest reconciliation day) was held before that day,
+  the history just does not say since when. :func:`snapshot_openings` dates such an opening at
+  ``start`` when it is later, so the position counts as held at ``start`` (never a new position). An
+  opening dated on or before ``start`` (the snapshot predates the window) is held anyway; a position
+  with any earlier trade, transfer or other transaction in that account keeps its dates (the history
+  is the information); a position first reported by a LATER snapshot of the account keeps its date
+  too (the earlier snapshot without it is the information: it is a new position).
 - ``T0`` = the full portfolio value at ``start`` in the base currency (all accounts, cash and cost /
   manually valued holdings included).
 - For each market-valued holding at ``start``: ``V0`` = its base value at ``start``; ``rL`` = the
@@ -36,10 +45,21 @@ from __future__ import annotations
 import datetime as dt
 from bisect import bisect_right
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
-from ..domain import Currency, FxLookup, InstrumentId, PriceBar, days_between, exact
+from ..domain import (
+    Currency,
+    FxLookup,
+    InstrumentId,
+    PriceBar,
+    Transaction,
+    TxnSource,
+    TxnType,
+    chronological_key,
+    days_between,
+    exact,
+)
 
 DEFAULT_MAX_PRICE_AGE_DAYS = 5
 
@@ -119,6 +139,32 @@ class SegmentAttribution:
     @property
     def empty(self) -> bool:
         return not self.segments and self.unassigned is None
+
+
+def snapshot_openings(txns: Sequence[Transaction], start: dt.date) -> list[Transaction]:
+    """``txns`` with each snapshot opening dated ``start`` when it is later (module doc): per
+    (account, instrument), when the first transaction is a reconciliation ``adjustment`` (the units
+    the broker snapshot reported and the history did not have) dated after ``start`` and on the
+    account's earliest reconciliation day (its first snapshot). Every other transaction is returned
+    unchanged."""
+    first: dict[tuple[str, str], Transaction] = {}
+    first_snapshot: dict[str, dt.date] = {}
+    for txn in sorted(txns, key=chronological_key):
+        if txn.source == TxnSource.RECONCILIATION:
+            first_snapshot.setdefault(txn.account_id, txn.trade_date)
+        if txn.instrument_id is not None:
+            first.setdefault((txn.account_id, txn.instrument_id), txn)
+    moved = {
+        t.id
+        for t in first.values()
+        if t.source == TxnSource.RECONCILIATION
+        and t.type == TxnType.ADJUSTMENT
+        and t.trade_date > start
+        and t.trade_date == first_snapshot.get(t.account_id)
+    }
+    if not moved:
+        return list(txns)
+    return [replace(t, trade_date=start, settle_date=None) if t.id in moved else t for t in txns]
 
 
 def close_on_or_before(bars: Sequence[PriceBar], day: dt.date) -> PriceBar | None:
@@ -269,3 +315,93 @@ def attribute_segments(
         new_positions=new_positions,
         stale=tuple(sorted(stale, key=str)),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Topic trends (P7)
+# --------------------------------------------------------------------------- #
+
+TREND_WINDOWS: tuple[int, ...] = (7, 28)
+"""Days of ``trend_1w`` and ``trend_4w``."""
+
+
+@dataclass(frozen=True, slots=True)
+class MemberMove:
+    instrument_id: InstrumentId
+    held: bool
+    """Held at ``end`` (else only watched)."""
+    returns: tuple[float | None, ...]
+    """Local price return per :data:`TREND_WINDOWS` window (None without usable closes)."""
+
+
+@dataclass(frozen=True, slots=True)
+class SegmentTrend:
+    """A segment's price trend independent of the holdings' weights: the equal-weighted local
+    return of its held and watched instruments."""
+
+    segment: str
+    trends: tuple[float | None, ...]
+    """Per :data:`TREND_WINDOWS` window; None when no member has usable closes there."""
+    members: int
+    """Members with a usable return in the first (1w) window."""
+    instruments: tuple[MemberMove, ...] = ()
+    """Every member (held first, then by |1w return|)."""
+
+
+def member_return(
+    bars: Sequence[PriceBar], end: dt.date, days: int, max_price_age_days: int
+) -> float | None:
+    """The local return close on/before ``end - days`` -> close on/before ``end``; None when either
+    close is missing, older than ``max_price_age_days`` before its day, or both are the same bar."""
+    start = end - dt.timedelta(days=days)
+    last = close_on_or_before(bars, end)
+    first = close_on_or_before(bars, start)
+    if last is None or first is None or first.close <= 0 or first.date >= last.date:
+        return None
+    if days_between(last.date, end) > max_price_age_days:
+        return None
+    if days_between(first.date, start) > max_price_age_days:
+        return None
+    return float(last.close / first.close - 1) + 0.0
+
+
+@exact
+def segment_trends(
+    members: Mapping[InstrumentId, tuple[str, bool]],
+    prices: Mapping[InstrumentId, Sequence[PriceBar]],
+    end: dt.date,
+    *,
+    max_price_age_days: int = DEFAULT_MAX_PRICE_AGE_DAYS,
+) -> dict[str, SegmentTrend]:
+    """Per segment the equal-weighted local price return over each :data:`TREND_WINDOWS` window of
+    its ``members`` (instrument -> (segment, held at ``end``)): held and watched instruments count
+    alike, whatever their weight in the portfolio; an instrument without usable closes in a window
+    is left out of that window's mean (:func:`member_return`). Every segment with a member is in the
+    result (trends None when no member has prices)."""
+    grouped: dict[str, list[MemberMove]] = {}
+    for iid, (segment, held) in members.items():
+        series = prices.get(iid, ())
+        moves = tuple(member_return(series, end, d, max_price_age_days) for d in TREND_WINDOWS)
+        grouped.setdefault(segment, []).append(MemberMove(iid, held, moves))
+    out: dict[str, SegmentTrend] = {}
+    for segment, items in grouped.items():
+        trends = []
+        for i in range(len(TREND_WINDOWS)):
+            values = [m.returns[i] for m in items if m.returns[i] is not None]
+            trends.append(sum(values) / len(values) + 0.0 if values else None)
+        ordered = sorted(
+            items,
+            key=lambda m: (
+                not m.held,
+                m.returns[0] is None,
+                -abs(m.returns[0] or 0.0),
+                str(m.instrument_id),
+            ),
+        )
+        out[segment] = SegmentTrend(
+            segment,
+            tuple(trends),
+            sum(1 for m in items if m.returns[0] is not None),
+            tuple(ordered),
+        )
+    return out

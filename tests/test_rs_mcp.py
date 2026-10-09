@@ -122,7 +122,7 @@ def test_run_and_note_round_trip_with_a_signal(host):
         assert audit[0].args["sources"] == "array"
     listed = mcp.call("research_notes", {}).data["notes"]
     assert {n["kind"] for n in listed} == {"news", "trend"}
-    assert {n["segment_label"] for n in listed} == {None, "Finanse i płatności"}
+    assert {n["segment_label"] for n in listed} == {None, "Płatności i finanse"}
     context = mcp.call("research_context", {}).data
     pko = next(p for p in context["positions"] if p["symbol"] == "PKO")
     assert pko["research"]["health"] == "invalidated" and pko["entry_type"] == "trend"

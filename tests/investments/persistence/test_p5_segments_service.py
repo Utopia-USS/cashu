@@ -184,7 +184,7 @@ def test_segments_endpoint_shape_windows_and_residual(api):
     assert row["instruments"][0]["label"] == "ABC"
     assert row["note"] is None and row["note_this_week"] is False and row["notes_8w"] == 0
     assert {i["label"] for i in flat["unassigned"]["instruments"]} == {"WRLD", "XMPL"}
-    assert flat["unassigned"]["label"] == "Bez segmentu"
+    assert flat["unassigned"]["label"] == "Bez tematu"
     assert {c["currency"] for c in flat["currency"]["currencies"]} == {"EUR", "USD"}
     assert flat["currency"]["contribution"] == 0.0 and flat["explained"] == 0.0
 
@@ -247,16 +247,16 @@ def test_segment_note_rules(investor):
 
 def test_segment_note_signal_key_and_payload(investor):
     pid, _ = investor
-    note_id = segment_note(pid, 1, "uranium", strength=3)
+    note_id = segment_note(pid, 1, "power", strength=3)
     with get_session() as s:
         (sig,) = s.exec(
             select(InvSignal).where(
                 InvSignal.profile_id == pid, InvSignal.dedup_key.startswith("research:")
             )
         ).all()
-    assert sig.dedup_key.endswith("|s:uranium") and sig.severity == "info"
+    assert sig.dedup_key.endswith("|s:power") and sig.severity == "info"
     assert sig.instrument_id is None
-    assert sig.payload["segment"] == "uranium" and sig.payload["segment_label"] == "Uran i atom"
+    assert sig.payload["segment"] == "power" and sig.payload["segment_label"] == "Energetyka: atom i OZE"
     assert sig.payload["note_id"] == note_id and sig.payload["theme"] is None
 
 
@@ -287,7 +287,7 @@ def test_weekly_novelty_limits(investor):
     add(pid, 15, instrument="ABC", run_id=run.id, strength=3)
     # six segment notes per week
     for n, segment in enumerate(
-        ("gold", "crypto", "bonds", "energy", "metals", "uranium"), start=20
+        ("gold", "crypto", "bonds", "energy", "metals", "power"), start=20
     ):
         segment_note(pid, n, segment, run_id=run.id)
     with pytest.raises(service.ResearchConflict, match="already has 6 segment notes"):
@@ -326,7 +326,7 @@ def test_novelty_counts_per_week_over_weekly_runs_and_notes_without_a_run(invest
     with pytest.raises(service.ResearchConflict, match="already covers 6 instruments"):
         add(pid, 10, instrument="W4.DE")
     add(pid, 11, instrument="W4.DE", strength=3)  # material: passes
-    for n, segment in enumerate(("crypto", "bonds", "energy", "metals", "uranium"), start=12):
+    for n, segment in enumerate(("crypto", "bonds", "energy", "metals", "power"), start=12):
         segment_note(pid, n, segment)
     with pytest.raises(service.ResearchConflict, match="already has 6 segment notes"):
         segment_note(pid, 20, "quantum")
@@ -365,7 +365,7 @@ def test_one_segment_note_per_week_of_storing_too(investor):
 
 def test_review_digest_carries_the_week_segments(investor):
     pid, _ = investor
-    keys = ("gold", "crypto", "bonds", "energy", "metals", "uranium", "quantum")
+    keys = ("gold", "crypto", "bonds", "energy", "metals", "power", "quantum")
     run = call(pid, service.start_run, RunScope(held=False, segments=keys))  # on demand
     for n, segment in enumerate(keys, start=1):
         segment_note(pid, n, segment, run_id=run.id)
@@ -499,7 +499,10 @@ def test_a_holding_without_any_start_rate_is_left_out_and_flagged(db_engine):
     pid, _ = _moving_portfolio(eur_from=START + dt.timedelta(days=1))
     view = _view(pid)
     rows = {r["segment"]: r for r in view["segments"]}
-    assert "equity_global" not in rows
+    world = rows["equity_global"]  # still held: a topic row without exposure (P7), its trend only
+    assert (world["weight"], world["contribution"], world["return"]) == (0.0, 0.0, None)
+    assert (world["trend_1w"], world["members"]) == (-0.1, 1)
+    assert view["segments"][-1]["segment"] == "equity_global"  # after the rows with exposure
     assert rows["equity_pl"]["weight"] == round(5000 / 16000, 6)  # T0 without WRLD
     assert view["new_positions"] == 1 and iid("WRLD") in view["stale"]
 

@@ -10,6 +10,7 @@ Public market data: nothing here depends on the profile except the notes.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import threading
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -21,10 +22,12 @@ from cashu.core.models import Profile, utcnow
 from ..store import convert
 from ..store import macro as macro_store
 from . import regimes as rg
+from . import texts
 from .refresh import MacroChartSource, MacroReport, refresh_macro
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
 DIGITS = 6
+_log = logging.getLogger(__name__)
 _CACHE_SIZE = 16
 _cache: dict[tuple, tuple[rg.Regime, ...]] = {}
 _cache_lock = threading.Lock()
@@ -76,8 +79,9 @@ def _iso(day: dt.date | None) -> str | None:
     return None if day is None else day.isoformat()
 
 
-def regime_dict(regime: rg.Regime) -> dict:
-    """A regime without its notes (the card's market part)."""
+def regime_dict(regime: rg.Regime, currency: texts.CurrencyEffect | None = None) -> dict:
+    """A regime without its notes (the card's market part) with its human texts (P7: ``summary``,
+    ``explain``; ``currency`` folds the portfolio's weekly currency effect into the dollar card)."""
     return {
         "key": regime.key,
         "label": regime.label,
@@ -92,6 +96,8 @@ def regime_dict(regime: rg.Regime) -> dict:
         "missing": regime.missing,
         "flags": list(regime.flags),
         "meaning": regime.meaning,
+        "summary": texts.summary(regime, currency),
+        "explain": texts.explain(regime),
         "metrics": [metric_dict(m) for m in regime.metrics],
         "history": [
             {
@@ -105,6 +111,25 @@ def regime_dict(regime: rg.Regime) -> dict:
     }
 
 
+def currency_effect(
+    session: Session, profile: Profile, as_of: dt.date | None = None
+) -> texts.CurrencyEffect | None:
+    """The portfolio's currency effect over the last week (the 1w segment attribution ending on
+    ``as_of``) for the dollar card; None without a portfolio or when it cannot be computed (the
+    card keeps its market text)."""
+    from ..research import segment_service
+
+    try:
+        found = segment_service.attribution(session, profile, window="1w", as_of=as_of)
+    except Exception:  # noqa: BLE001 - the macro cards never fail on the portfolio part
+        _log.exception("macro view: the currency effect failed")
+        return None
+    result = found.attribution
+    if result.empty:
+        return None
+    return texts.CurrencyEffect(result.currency_contribution, bool(result.currencies))
+
+
 def macro_view(
     session: Session,
     profile: Profile,
@@ -112,9 +137,10 @@ def macro_view(
     as_of: dt.date | None = None,
     now: dt.datetime | None = None,
 ) -> dict:
-    """``GET /research/macro``: the five cards in :data:`regimes.ORDER`, each with its latest macro
-    note (``macro_<key>``), when the last one was observed, whether one is from this ISO week and the
-    unread count."""
+    """``GET /research/macro``: the five cards in :data:`regimes.ORDER`, each with its human texts
+    (``summary``, ``explain``; the dollar card folds in the portfolio's weekly currency effect), its
+    latest macro note (``macro_<key>``), when the last one was observed, whether one is from this
+    ISO week and the unread count."""
     from ..research.segment_service import brief_note, notes_by_segment
     from ..research.segments import macro_key
 
@@ -124,6 +150,7 @@ def macro_view(
     notes = notes_by_segment(session, profile.id, now)
     cards = []
     found = regimes(session, as_of)
+    currency = currency_effect(session, profile, as_of)
     for regime in found:
         entry = notes.get(macro_key(regime.key))
         latest = entry.latest if entry is not None else None
@@ -132,7 +159,7 @@ def macro_view(
         if note is not None:
             note.pop("strength", None)
         cards.append(
-            regime_dict(regime)
+            regime_dict(regime, currency if regime.key == "dollar" else None)
             | {
                 "note": note,
                 "last_note_at": None if newest is None else brief_note(newest)["observed_at"],

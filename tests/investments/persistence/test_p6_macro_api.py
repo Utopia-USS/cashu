@@ -160,6 +160,8 @@ CARD_KEYS = {
     "missing",
     "flags",
     "meaning",
+    "summary",
+    "explain",
     "metrics",
     "history",
     "note",

@@ -110,6 +110,7 @@ def test_research_context_macro(host):
         "label",
         "state",
         "state_label",
+        "summary",
         "since",
         "since_open",
         "since_min",
@@ -122,6 +123,8 @@ def test_research_context_macro(host):
     }
     rates = cards["rates"]
     assert rates["note_key"] == "macro_rates" and rates["state"] == "rising"
+    assert rates["summary"].startswith("Rentowności obligacji USA rosną od ")
+    assert rates["summary"].endswith("Krzywa odwrócona: bony 3-miesięczne dają więcej niż 10-letnie.")
     assert rates["state_label"] == "rentowności rosną · krzywa odwrócona"
     assert rates["since"] == days[-30].isoformat() and rates["stale"] is False
     assert rates["metrics"] == [

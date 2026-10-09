@@ -2,8 +2,8 @@
 segment of each instrument and the automatic assignment of well-known funds. Pure (no IO).
 
 An instrument's segment is per profile (``inv_profile_instruments.segment``, set by the owner or the
-research agent, ``segment_by``; the agent never changes the owner's choice); without one, :func:`auto_segment` guesses from the asset class and a table of
-well-known fund symbols; otherwise it has none (the attribution shows it as ``unassigned``). Order of
+research agent, ``segment_by``; the agent never changes the owner's choice); without one,
+:func:`auto_segment` guesses from the asset class and a table of well-known fund symbols; otherwise it has none (the attribution shows it as ``unassigned``). Order of
 :data:`SEGMENTS` is the UI tie-break. Labels are Polish (UI data). A third group, :data:`MACRO_SEGMENTS`
 (P6), holds the macro regime cards as segment-note targets only.
 """
@@ -38,23 +38,23 @@ SEGMENTS: tuple[Segment, ...] = (
     Segment("bonds", "Obligacje i stopy", "asset"),
     Segment("gold", "Złoto i górnicy", "asset"),
     Segment("energy", "Ropa i gaz", "asset"),
-    Segment("uranium", "Uran i atom", "asset"),
-    Segment("metals", "Metale przemysłowe", "asset"),
+    Segment("power", "Energetyka: atom i OZE", "asset"),
+    Segment("metals", "Metale i ziemie rzadkie", "asset"),
     Segment("crypto", "Krypto", "asset"),
     Segment("real_estate", "Nieruchomości", "asset"),
-    Segment("semis_ai", "Półprzewodniki i AI", "sector"),
-    Segment("software", "Oprogramowanie i internet", "sector"),
+    Segment("semis_ai", "AI: chipy i centra danych", "sector"),
+    Segment("software", "AI i oprogramowanie", "sector"),
     Segment("healthcare", "Ochrona zdrowia", "sector"),
-    Segment("financials", "Finanse i płatności", "sector"),
+    Segment("financials", "Płatności i finanse", "sector"),
     Segment("consumer", "Konsumpcja", "sector"),
-    Segment("games_media", "Gry i media", "sector"),
+    Segment("games_media", "Gry", "sector"),
     Segment("industrials", "Przemysł i obronność", "sector"),
     Segment("quantum", "Komputery kwantowe", "sector"),
 )
 SEGMENT_KEYS: tuple[str, ...] = tuple(s.key for s in SEGMENTS)
 SEGMENT_GROUPS = ("asset", "sector")
 UNASSIGNED = "unassigned"
-UNASSIGNED_LABEL = "Bez segmentu"
+UNASSIGNED_LABEL = "Bez tematu"
 """Pseudo row of the attribution for holdings without a segment (never a catalog key)."""
 
 MACRO_SEGMENTS: tuple[Segment, ...] = (
@@ -72,6 +72,10 @@ NOTE_SEGMENT_KEYS: tuple[str, ...] = SEGMENT_KEYS + MACRO_KEYS
 MACRO_PREFIX = "macro_"
 NOT_INSTRUMENT_SEGMENT = "macro keys are not instrument segments"
 
+LEGACY_KEYS: dict[str, str] = {"uranium": "power"}
+"""Keys renamed in the catalog (P7: ``uranium`` -> ``power``). Migration 0020 rewrites stored values;
+:func:`segment_of` still reads an old value as its new key."""
+
 _BY_KEY = {s.key: s for s in SEGMENTS}
 _MACRO_BY_KEY = {s.key: s for s in MACRO_SEGMENTS}
 _ORDER = {s.key: i for i, s in enumerate(SEGMENTS)}
@@ -81,7 +85,7 @@ STABLECOINS = frozenset({"USDC", "USDT", "DAI", "EURC", "FDUSD", "PYUSD"})
 
 _FUNDS: dict[str, tuple[str, ...]] = {
     "gold": ("GLD", "IAU", "SGLD", "PHAU", "GDX", "GDXJ", "RING", "SIL"),
-    "uranium": ("URA", "URNM", "URNU", "NUKZ"),
+    "power": ("URA", "URNM", "URNU", "NUKZ"),
     "metals": ("REMX", "COPX", "PICK", "XME", "LIT"),
     "energy": ("OIH", "XLE", "XOP", "VDE", "IXC"),
     "equity_global": (
@@ -145,7 +149,7 @@ def segment(key: str) -> Segment | None:
 
 
 def segment_label(key: str) -> str:
-    """The Polish label of ``key`` (``Bez segmentu`` for the unassigned row, the key itself when
+    """The Polish label of ``key`` (``Bez tematu`` for the unassigned row, the key itself when
     unknown, e.g. a key dropped from the catalog later)."""
     if key == UNASSIGNED:
         return UNASSIGNED_LABEL
@@ -206,7 +210,9 @@ def segment_of(
 ) -> tuple[str | None, SegmentSource | None]:
     """``(segment, source)``: the profile's own value (source = who set it, ``owner`` or ``agent``;
     ``owner`` when unknown) wins over :func:`auto_segment` (``auto``); ``(None, None)`` when neither
-    gives one. An explicit value no longer in the catalog is ignored."""
+    gives one. A renamed key (:data:`LEGACY_KEYS`) reads as its new key; an explicit value no longer
+    in the catalog is ignored."""
+    explicit = LEGACY_KEYS.get(explicit, explicit) if explicit is not None else None
     if is_segment(explicit):
         return explicit, set_by if set_by in SEGMENT_SETTERS else "owner"
     guessed = auto_segment(instrument)

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+from bisect import bisect_right
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal
@@ -238,6 +239,9 @@ class Regime:
     """The current state held since the first evaluated session: its start is before the data."""
     since_min: dt.date | None = None
     """With ``since_open``: the first evaluated session (the state held at least since then)."""
+    usdpln_1w: float | None = None
+    """Dollar only: USD/PLN over the last 7 calendar days (rate on/before ``as_of - 7`` -> the newest
+    on/before ``as_of``, a fraction); None without both rates or when the newest is stale."""
 
 
 # --------------------------------------------------------------------------- #
@@ -492,7 +496,22 @@ def _dollar(dxy: dict, usdpln: dict, as_of: dt.date) -> Regime:
             )
         return out
 
-    return _regime("dollar", line, as_of, raw, metrics)
+    return replace(_regime("dollar", line, as_of, raw, metrics), usdpln_1w=week_change(pln, as_of))
+
+
+WEEK_DAYS = 7
+
+
+def week_change(line: _Line, as_of: dt.date) -> float | None:
+    """Close on/before ``as_of - 7`` -> the newest close on/before ``as_of``; None when either is
+    missing, the newest is stale or both are the same day."""
+    if not len(line) or _stale(line.dates[-1], as_of):
+        return None
+    start = as_of - dt.timedelta(days=WEEK_DAYS)
+    j = bisect_right(line.dates, start) - 1
+    if j < 0 or line.dates[j] >= line.dates[-1] or line.closes[j] <= 0:
+        return None
+    return line.closes[-1] / line.closes[j] - 1
 
 
 def _em(eem: dict, acwi: dict, as_of: dt.date) -> Regime:

@@ -2,7 +2,7 @@
 allowlist: whole files with a reason, lines carrying the ``legacy name`` marker (on the line or one
 of the two lines above: compatibility code, deprecated ids in docs), and the Polish word FINANSE in
 upper case (bank and merchant texts the categorizer matches), the Polish market segment label
-"Finanse i płatności" (P5 catalog, UI data), and the README credit line."""
+"Płatności i finanse" (the market segment catalog, UI data; P5 spelled it "Finanse i płatności"), and the README credit line."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 WORD = re.compile(r"finanse", re.IGNORECASE)
 POLISH_WORD = re.compile(r"\bFINANSE\b")
-SEGMENT_LABEL = re.compile(r"Finanse i płatności")  # the P5 segment label (Polish UI data)
+SEGMENT_LABEL = re.compile(r"(?<=Płatności i )finanse|Finanse i płatności")  # segment label (UI data)
 MARKER = "legacy name"
 CREDIT = "github.com/SynSzakala/finanse"  # the README credit line to the original project
 FILES = {

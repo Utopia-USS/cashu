@@ -19,7 +19,9 @@ refused as a note's instrument or segment target). Free text (titles, summaries,
 is a ``text`` label: identifiers are always scrubbed and money amounts in strict mode, like every text
 field. Weights, contributions, returns and sentiment scores are fractions (``percent``; the segment
 attribution carries no amounts, so strict and full output are the same); candidate-criteria thresholds
-are screening parameters about public companies (``level``), never personal amounts.
+are screening parameters about public companies (``level``), never personal amounts; from 1 million
+they are compact Polish text (``1 mld``, ``market`` label) so they never form the long digit run the
+leak check refuses.
 """
 
 from __future__ import annotations
@@ -299,6 +301,14 @@ def _exposure(positions: list[dict], owned: set[int]) -> dict:
     }
 
 
+def _threshold(value: float | None) -> L.Labelled:
+    """A candidate-criteria threshold: a number below :data:`labels.COMPACT_FROM`, else compact
+    Polish text (``min_market_cap_pln: 1000000000`` -> ``1 mld``)."""
+    if value is None or abs(float(value)) < L.COMPACT_FROM:
+        return L.level(value)
+    return L.market(L.compact_number(value))
+
+
 def _segment_fields(inst: dict | None) -> dict:
     inst = inst or {}
     return {
@@ -331,8 +341,9 @@ def _moves(ctx: ToolContext, items: list[dict], owned: set[int]) -> list[dict]:
 
 
 def _segments(ctx: ToolContext, owned: set[int]) -> tuple[list[dict], dict | None, dict | None]:
-    """``research_context.segments`` (1w and 4w rows: 1w fields + the 4w contribution), ``currency`` and
-    ``unassigned``; empty when the attribution cannot be computed (the context still answers)."""
+    """``research_context.segments`` (1w and 4w rows: 1w fields + the 4w contribution + the topic trend
+    ``trend_1w`` / ``trend_4w`` / ``members``, P7), ``currency`` and ``unassigned``; empty when the
+    attribution cannot be computed (the context still answers)."""
     from cashu.modules.investments.research import segment_service
 
     try:
@@ -361,6 +372,9 @@ def _segments(ctx: ToolContext, owned: set[int]) -> tuple[list[dict], dict | Non
                 "contribution_1w": L.pct(r["contribution"] if in_week else 0.0),
                 "return_1w": L.pct(r["return"] if in_week else None),
                 "contribution_4w": L.pct(other["contribution"] if other else None),
+                "trend_1w": L.pct(r["trend_1w"]),
+                "trend_4w": L.pct(r["trend_4w"]),
+                "members": L.count(r["members"]),
                 "instruments": _moves(ctx, r["instruments"] if in_week else [], owned),
                 "last_note_at": L.date(r["last_note_at"]),
                 "note_this_week": L.flag(r["note_this_week"]),
@@ -401,6 +415,7 @@ def _macro(ctx: ToolContext) -> list[dict]:
             "label": L.category(c["label"]),
             "state": L.category(c["state"]),
             "state_label": L.category(c["state_label"]),
+            "summary": L.market(c["summary"] if L.market_ok(c["summary"]) else None),
             "since": L.date(c["since"]),
             "since_open": L.flag(c["since_open"]),
             "since_min": L.date(c["since_min"]),
@@ -558,7 +573,7 @@ def research_context(ctx: ToolContext) -> dict:
             "entry_types": [L.category(e) for e in THESIS_ENTRY_TYPES],
             "entry_types_in_use": _entry_types_in_use(theses, set(by_id) - owned),
             "candidate_criteria": [
-                {"criterion": L.category(str(k)), "threshold": L.level(v)}
+                {"criterion": L.category(str(k)), "threshold": _threshold(v)}
                 for k, v in sorted(criteria.items())
             ],
             "buckets": _buckets(st.config),
@@ -800,10 +815,11 @@ TOOLS = (
         "with its market segment (segment, segment_source owner | agent | auto | null), thesis (entry type, "
         "thesis, invalidation, exit plan) and research state (thesis health, relation counts, "
         "8-week sentiment, last researched); segments: what moved the portfolio this week and over 4 "
-        "weeks by market segment (weight, contribution, return, instruments, last_note_at, "
-        "note_this_week), currency and unassigned; segment_catalog; macro: the five macro regime "
-        "cards (state_label, since (null + since_open + since_min when the state began before the "
-        "data), metrics as text, stale, missing, last_note_at, note_this_week; "
+        "weeks by market segment (weight, contribution, return, instruments, trend_1w / trend_4w = "
+        "the equal-weighted price move of its held and watched instruments, members, last_note_at, "
+        "note_this_week; watched-only topics with weight 0), currency and unassigned; "
+        "segment_catalog; macro: the five macro regime cards (state_label, summary, since (null + "
+        "since_open + since_min when the state began before the data), metrics as text, stale, missing, last_note_at, note_this_week; "
         "public data) and macro_catalog (their note keys); the strategy's entry types and "
         "candidate criteria, open and dismissed (cooldown) candidates, known upcoming events, the "
         "last run, limits (incl. the weekly novelty limits) and boundaries.",
