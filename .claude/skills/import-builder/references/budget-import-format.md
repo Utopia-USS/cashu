@@ -119,18 +119,20 @@ Importing the same or an overlapping file again never creates duplicates:
 The same period from another source (the bank's CSV export, Open Banking) describes the same transactions
 with other texts, so the content key cannot match them. A document in this format (a file or a connector)
 therefore goes through the same rule as the Open Banking sync, the **newest-day rule**: what is already
-stored for the account is authoritative up to the account's newest stored day.
+stored for the account is authoritative from the account's oldest to its newest stored day.
 
 - A row that neither its `transaction_id` nor the content key matched is **overlap** (not imported) when
-  its `booking_date` is before the account's newest stored day.
+  its `booking_date` is on or after the account's oldest stored day and before its newest stored day.
 - On the newest stored day itself it first takes the place of a stored row of the same amount that no row
   of the file matched (its twin from the other source); only the surplus is new.
-- Rows after that day are new.
+- Rows after the newest stored day are new.
+- Rows before the oldest stored day are new as well: nothing stored covers them. So a history export can
+  be imported after an Open Banking sync (a backfill); only its part inside the stored span is overlap.
 - The preview counts overlap rows (`overlap`) among the duplicates and warns about them
   (`import.overlap`); a connector sync with overlap rows always waits for the owner's approval.
 
-So import history oldest first: an older period imported after a newer one into the same account is
-overlap. An account with no stored transactions takes every row.
+A gap inside the stored span cannot be filled this way: a period between two imported ones is overlap.
+Import history oldest first when you can. An account with no stored transactions takes every row.
 
 Rules for converter authors:
 

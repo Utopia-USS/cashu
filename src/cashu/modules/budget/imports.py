@@ -21,8 +21,8 @@ Importers (the ``bank`` field; ``importer`` is accepted as an alias):
 
 Duplicates: a document (the cashU format or a connector, file or fetch) goes through the
 newest-day rule as Open Banking does (``ingestion/dedup.py`` point 3): rows the id and the content key
-do not match are ``overlap`` when stored history covers them (older than the account's newest stored
-day, or that day's twin of the same amount); they are not inserted, counted in ``counts.overlap`` and
+do not match are ``overlap`` when stored history covers them (from the account's oldest to before its
+newest stored day, or that day's twin of the same amount); they are not inserted, counted in ``counts.overlap`` and
 reported as a warning ``import.overlap`` (a sync with overlap is never auto-committed). Built-in bank
 CSV parsers keep the plain dedup (a CSV backfill is the authoritative history).
 

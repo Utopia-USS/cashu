@@ -16,11 +16,13 @@ Two independent problems are handled:
    documents and connectors) - another source describes the same transaction with
    other texts (a card payment's memo differs between the bank CSV, Open Banking and
    a converter), so the content hash cannot match it. What is already stored is
-   authoritative up to the account's newest stored day: an incoming row the id and
-   the content hash did not match is ``overlap`` (not inserted) when it is older than
-   that day; on that day it first consumes a stored row of the same amount that no
-   incoming row matched (a multiset: two identical payments stay two); only the
-   surplus and the rows after that day are new.
+   authoritative from the account's oldest to its newest stored day: an incoming row
+   the id and the content hash did not match is ``overlap`` (not inserted) when it
+   falls in that span before the newest day; on the newest day it first consumes a
+   stored row of the same amount that no incoming row matched (a multiset: two
+   identical payments stay two); only the surplus and the rows after that day are
+   new. Rows before the oldest stored day are new too (a history backfill after an
+   Open Banking sync: nothing stored covers them).
 """
 
 from __future__ import annotations
@@ -92,6 +94,7 @@ def prepare_new_transactions(
 
     # Pass 2 (newest-day rule): the stored rows of the newest day no incoming row matched.
     latest = max((t.booking_date for t in existing), default=None) if newest_day_rule else None
+    earliest = min(t.booking_date for t in existing) if latest is not None else None
     spare: Counter[str] = Counter()
     if latest is not None:
         on_latest: dict[str, Transaction] = {
@@ -107,7 +110,7 @@ def prepare_new_transactions(
             result.num_duplicates += 1
             result.statuses.append("duplicate")
             continue
-        if latest is not None and rt.booking_date <= latest:
+        if latest is not None and earliest <= rt.booking_date <= latest:
             key = f"{rt.amount:.2f}"
             if rt.booking_date < latest or spare[key] > 0:
                 if rt.booking_date == latest:

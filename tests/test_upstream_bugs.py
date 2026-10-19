@@ -240,9 +240,29 @@ def test_b3_identical_same_day_payments_keep_their_count(session, fake_eb, make_
 def test_b3_days_before_the_newest_stored_day_are_still_skipped(session, fake_eb, make_eb_txn):
     """The high-water mark itself stays: older Open Banking rows (already covered
     by a CSV backfill) are not re-ingested."""
-    _sync(session, fake_eb, [make_eb_txn("2026-09-20", "82.54", "LIDL TEST", ref="eb-a")])
+    _sync(session, fake_eb, [
+        make_eb_txn("2026-09-18", "10.00", "CSV BACKFILL TEST", ref="eb-first"),
+        make_eb_txn("2026-09-20", "82.54", "LIDL TEST", ref="eb-a"),
+    ])
     _sync(session, fake_eb, [make_eb_txn("2026-09-19", "99.00", "STARY WPIS TEST", ref="eb-old")])
-    assert _amounts(session) == [("2026-09-20", "-82.54")]
+    assert _amounts(session) == [("2026-09-18", "-10.00"), ("2026-09-20", "-82.54")]
+
+
+def test_b3_days_before_the_oldest_stored_day_are_a_backfill(session, fake_eb, make_eb_txn):
+    """A history export imported after the first Open Banking sync: rows older than
+    anything stored are new; the part inside the stored span is still overlap."""
+    _sync(session, fake_eb, [
+        make_eb_txn("2026-09-18", "10.00", "PIERWSZY TEST", ref="eb-first"),
+        make_eb_txn("2026-09-20", "82.54", "LIDL TEST", ref="eb-a"),
+    ])
+    res = _sync(session, fake_eb, [
+        make_eb_txn("2026-09-01", "40.00", "STARA HISTORIA TEST", ref="eb-history"),
+        make_eb_txn("2026-09-19", "99.00", "STARY WPIS TEST", ref="eb-old"),
+    ])
+    assert res[0].batch.num_inserted == 1
+    assert _amounts(session) == [
+        ("2026-09-01", "-40.00"), ("2026-09-18", "-10.00"), ("2026-09-20", "-82.54"),
+    ]
 
 
 def test_b3_dedup_bank_id_match_consumes_its_content_slot(session):
