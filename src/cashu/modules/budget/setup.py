@@ -35,6 +35,9 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
         ),
     ) + _count(session, bank_txns.where(Transaction.category_source == "manual_txn"))
     n_transfers = _count(session, bank_txns.where(Transaction.is_internal_transfer == True))
+    # Own moves the IBAN matching cannot pair (a card top-up of another own account, a transfer to
+    # an own account outside cashU) are handled once they carry the transfer category.
+    n_own_moves = _count(session, bank_txns.where(Transaction.category == "transfer"))
 
     # One bank account: nothing to pair, the step is done once there is data (first steps B1).
     single = n_txns > 0 and n_bank_accounts < 2
@@ -62,7 +65,7 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
             "Jedno konto bankowe: nic do dopasowania."
             if single
             else "Po IBAN między Twoimi kontami; nie liczą się jako wydatki.",
-            done=n_txns > 0 and (n_transfers > 0 or n_bank_accounts < 2),
+            done=n_txns > 0 and (n_transfers > 0 or n_own_moves > 0 or n_bank_accounts < 2),
             actions=(SetupAction("cli", "Kopiuj polecenie", f"{cli} match-transfers"),),
         ),
     ))

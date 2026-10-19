@@ -104,6 +104,23 @@ def test_budget_steps(api_empty):
     assert by_id["transfers"]["description"] == "Jedno konto bankowe: nic do dopasowania."
 
 
+
+def test_budget_transfers_step_counts_own_moves_without_an_iban_pair(api_empty):
+    """Two bank accounts and no IBAN pair (the second one is topped up by card): the step is done
+    once an own move carries the transfer category."""
+    slug = make(api_empty, "Jan", ["budget"])
+    _ingest(slug, "mbank", "99114000000000000000000101", [("-200.00", "TOP-UP DRUGIE KONTO TEST")])
+    _ingest(slug, "pekao", "99124000000000000000000202", [("-12.00", "KAWIARNIA TEST")])
+    by_id = {s["id"]: s for s in setup(api_empty, slug, "budget")["steps"]}
+    assert by_id["transfers"]["status"] != "done"
+
+    with get_session() as s:
+        txn = s.exec(select(Transaction).where(Transaction.amount == Decimal("-200.00"))).one()
+        txn.category = "transfer"
+        s.add(txn)
+    by_id = {s["id"]: s for s in setup(api_empty, slug, "budget")["steps"]}
+    assert by_id["transfers"]["status"] == "done"
+
 # --- loans ------------------------------------------------------------------------------------------
 
 LOAN = {
