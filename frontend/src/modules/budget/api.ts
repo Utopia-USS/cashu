@@ -161,8 +161,9 @@ export interface StatementCommit {
   categorized: number;
   transfer_pairs: number;
 }
-export interface StatementFileInput { file: File; bank: string; account_type: string; account_name: string }
-export interface StatementCommitInput { file_id: string; file_name: string; bank?: string; account_type?: string; account_name?: string }
+/** `account_id`: import into this existing bank account (else the file's account number, or a new account). */
+export interface StatementFileInput { file: File; bank: string; account_type: string; account_name: string; account_id?: number | null }
+export interface StatementCommitInput { file_id: string; file_name: string; bank?: string; account_type?: string; account_name?: string; account_id?: number }
 
 export async function postStatementPreview(slug: string, b: StatementFileInput): Promise<StatementPreview> {
   const fd = new FormData();
@@ -170,6 +171,7 @@ export async function postStatementPreview(slug: string, b: StatementFileInput):
   if (b.bank && b.bank !== "auto") fd.append("bank", b.bank);
   fd.append("account_type", b.account_type);
   if (b.account_name.trim()) fd.append("account_name", b.account_name.trim());
+  if (b.account_id != null) fd.append("account_id", String(b.account_id));
   return jupload<StatementPreview>(pp(slug, "/budget/import/preview"), fd);
 }
 /** GET /budget/import/importers: the `Bank` select (auto, the banks with a CSV parser, the cashU format; later

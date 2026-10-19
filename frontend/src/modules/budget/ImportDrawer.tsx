@@ -3,7 +3,7 @@
 // Nothing is written before `Importuj`; the staged file stays on this computer. Opened from the budget first steps
 // (step 0) or from the tabbar `Import` (step 1, the bank file).
 import { useRef, useState } from "react";
-import { ApiError, getSetup } from "../../core/api";
+import { type Account, ApiError, getSetup, j, pp } from "../../core/api";
 import { acceptOf, budgetConnectorSources } from "../../core/connectors";
 import { getBindings, getConnectors } from "../../core/connectorsApi";
 import { type RunFailure, RunError, runFailureOf } from "../../core/RunError";
@@ -41,6 +41,10 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
   // Connector radios: the importer list says which can run, the status list shows the ones waiting for approval.
   const connectors = useAsync(() => getConnectors().catch(() => []), [], { key: ck(slug, "connectors") });
   const bindings = useAsync(() => getBindings(slug).catch(() => []), [slug]);
+  // existing bank accounts a statement can go to (one without an account number, e.g. a Revolut export,
+  // otherwise lands in a new account)
+  const accounts = useAsync(() => j<Account[]>(pp(slug, "/accounts")).catch(() => [] as Account[]), [slug]);
+  const bankAccounts = (accounts.data ?? []).filter((a) => STATEMENT_TYPES.some(([k]) => k === a.type));
   const connectorItems = budgetConnectorSources(choices, connectors.data);
   const maxBytes = importers.data?.max_bytes ?? null;
   const [step, setStep] = useState<number>(initialStep);
@@ -49,6 +53,7 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
   const [bank, setBank] = useState("auto");
   const [accountType, setAccountType] = useState("checking");
   const [accountName, setAccountName] = useState("");
+  const [accountId, setAccountId] = useState(""); // "" = by the file (its account number) or a new account
   const [preview, setPreview] = useState<StatementPreview | null>(null);
   const [onlyNew, setOnlyNew] = useState(false);
   const [all, setAll] = useState(false);
@@ -90,7 +95,10 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
     if (maxBytes && file.size > maxBytes) { setErr(label("error.file_too_large")); return; }
     setBusy(true); clearErr();
     try {
-      const p = await postStatementPreview(slug, { file, bank: fileBank, account_type: accountType, account_name: accountName });
+      const p = await postStatementPreview(slug, {
+        file, bank: fileBank, account_type: accountType, account_name: accountName,
+        account_id: accountId ? Number(accountId) : null,
+      });
       setPreview(p); setAll(false); setStep(2);
     } catch (e) { fail(e); } finally { setBusy(false); }
   };
@@ -101,6 +109,7 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
       const r = await postStatementCommit(slug, {
         file_id: preview.file_id, file_name: preview.file_name, bank: preview.bank.id,
         account_type: accountType, ...(accountName.trim() ? { account_name: accountName.trim() } : {}),
+        ...(accountId ? { account_id: Number(accountId) } : {}),
       });
       setDone(r); setStep(3); onDone(r);
     } catch (e) {
@@ -207,7 +216,21 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
               </select>
             </div>
           )}
-          <div className="form-row">
+          {bankAccounts.length > 0 && (
+            <div className="field">
+              <label htmlFor="st-account">Konto</label>
+              <select id="st-account" value={accountId} onChange={(e) => { setAccountId(e.target.value); setPreview(null); }}>
+                <option value="">z pliku albo nowe konto</option>
+                {bankAccounts.map((a) => (
+                  <option key={a.id} value={String(a.id)}>
+                    {[bankName(a.bank, choices), a.name, a.iban_tail ? `…${a.iban_tail}` : "", a.currency].filter(Boolean).join(" · ")}
+                  </option>
+                ))}
+              </select>
+              <span className="fhint">Wybierz, gdy plik nie ma numeru konta, a konto już jest (np. z Open Banking).</span>
+            </div>
+          )}
+          {!accountId && <div className="form-row">
             <div className="field">
               <label htmlFor="st-type">Typ konta</label>
               <select id="st-type" value={accountType} onChange={(e) => setAccountType(e.target.value)}>
@@ -218,7 +241,7 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
               <label htmlFor="st-name">Nazwa konta (opcjonalnie)</label>
               <input id="st-name" value={accountName} placeholder="z pliku" maxLength={80} autoComplete="off" onChange={(e) => setAccountName(e.target.value)} />
             </div>
-          </div>
+          </div>}
         </>
       )}
 
