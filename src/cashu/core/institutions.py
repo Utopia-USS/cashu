@@ -47,6 +47,8 @@ BUILTIN: tuple[Institution, ...] = (
     Institution("pekao", "bank", "Bank Pekao", f"{_CSV}.pekao:PekaoImporter", ("pekao",)),
     # Open Banking only until the CSV parser lands (needs a sample export).
     Institution("millennium", "bank", "Bank Millennium", None, ("millennium",)),
+    # Open Banking only (no CSV parser).
+    Institution("revolut", "bank", "Revolut", None, ("revolut",)),
     Institution(MANUAL, "manual", "Ręcznie"),
 )
 

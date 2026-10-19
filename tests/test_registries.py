@@ -138,6 +138,7 @@ def test_open_banking_aspsp_mapping():
     assert bank_from_aspsp("Erste Bank Polska") == "erste"
     assert bank_from_aspsp("Bank Pekao SA") == "pekao"
     assert bank_from_aspsp("Bank Millennium") == "millennium"
+    assert bank_from_aspsp("Revolut") == "revolut"
     with pytest.raises(ValueError, match="pass bank explicitly"):
         bank_from_aspsp("Bank Test")
 
