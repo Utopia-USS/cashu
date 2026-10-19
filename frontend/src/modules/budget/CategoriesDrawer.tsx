@@ -8,6 +8,7 @@ import { cur0s, plural } from "../../format";
 import { useAsync } from "../../hooks";
 import { Drawer, Notice, Skeleton, Tag, useToast } from "../../ui";
 import { getUncategorized, postMerchantCategory, type UncategorizedRow } from "./api";
+import "./budget.css";
 import { useBudgetCurrency } from "./currency";
 import { recategorized } from "./logic";
 
@@ -57,24 +58,25 @@ export function CategoriesDrawer({ slug, categories, onClose }: {
       ) : !rows.length ? (
         <div className="empty">Wszyscy sprzedawcy mają kategorię.</div>
       ) : (
-        <table>
+        <table className="catd">
+          <colgroup><col /><col className="c-n" /><col className="c-sum" /><col className="c-cat" /></colgroup>
           <thead><tr><th>Sprzedawca</th><th className="num">liczba</th><th className="num">suma</th><th>kategoria</th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.merchant_key}>
-                <td>
+                <td className="merchant" title={r.merchant_key !== r.sample ? `${r.sample}\n${r.merchant_key}` : r.sample}>
                   <b>{r.sample}</b>
-                  {r.merchant_key !== r.sample && <div className="muted" style={{ fontSize: 12 }}>{r.merchant_key}</div>}
+                  {r.merchant_key !== r.sample && <div className="muted">{r.merchant_key}</div>}
                 </td>
                 <td className="num">{r.count}</td>
                 <td className="num">{cur0s(r.total, r.currency)}</td>
-                <td style={{ whiteSpace: "nowrap" }}>
+                <td>
                   <select aria-label={`Kategoria: ${r.sample}`} value={picked[r.merchant_key] ?? ""} onChange={(e) => void choose(r, e.target.value)}>
                     <option value="">wybierz…</option>
                     {expense.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                     {other.length > 0 && <optgroup label="Przychody">{other.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</optgroup>}
                   </select>
-                  {saved[r.merchant_key] && <> <Tag tone="pos">zapisano</Tag></>}
+                  {saved[r.merchant_key] && <div><Tag tone="pos">zapisano</Tag></div>}
                 </td>
               </tr>
             ))}

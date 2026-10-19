@@ -17,3 +17,14 @@
 @media (max-width: 560px) {
   .mc-fig .v { font-size: 17px; }
 }
+
+/* Categories drawer: fixed columns, so a long bank title wraps instead of pushing the category select
+   out of the drawer (the drawer's cells are nowrap by default). */
+.catd { table-layout: fixed; }
+.catd col.c-n { width: 48px; }
+.catd col.c-sum { width: 84px; }
+.catd col.c-cat { width: 164px; }
+.drawer .catd td.merchant { white-space: normal; overflow-wrap: anywhere; }
+.catd td.merchant b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.catd td.merchant .muted { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.catd select { width: 100%; }
