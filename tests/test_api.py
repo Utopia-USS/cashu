@@ -38,7 +38,7 @@ def _today() -> date:
     return date.today()  # noqa: DTZ011 - the code under test uses the naive local date
 
 
-ACCOUNT_KEYS = {"id", "bank", "name", "type", "currency", "iban_tail", "balance", "as_of", "is_liability"}
+ACCOUNT_KEYS = {"id", "bank", "bank_name", "name", "type", "currency", "iban_tail", "balance", "as_of", "is_liability"}
 
 
 def _today_values(seeded_engine):
@@ -101,7 +101,7 @@ def test_networth(api, seeded_engine):
     assert len(accounts) == 7
     assert all(set(a) == ACCOUNT_KEYS for a in body["accounts"])
     assert accounts["mKonto Test"] | {"id": None} == {
-        "id": None, "bank": "mbank", "name": "mKonto Test", "type": "checking", "currency": "PLN",
+        "id": None, "bank": "mbank", "bank_name": "mBank", "name": "mKonto Test", "type": "checking", "currency": "PLN",
         "iban_tail": "0001", "balance": 5000.0, "as_of": "2026-09-30", "is_liability": False,
     }
     assert accounts["eKonto EUR Test"]["balance"] == 460.04

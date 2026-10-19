@@ -301,6 +301,8 @@ export interface Breakdown {
 export interface Account {
   id: number;
   bank: string;
+  /** The institution's display name ("Bank Millennium", "Revolut"); older servers leave it out. */
+  bank_name?: string;
   name: string;
   type: string;
   currency: string;

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from .. import __version__
-from . import account_types, modules, networth, paths, profiles, runtime
+from . import account_types, institutions, modules, networth, paths, profiles, runtime
 from .db import get_session
 from .models import Account, Profile
 
@@ -286,6 +286,7 @@ def account_row(acc: Account, contribution: Decimal | None, as_of) -> dict:
     return {
         "id": acc.id,
         "bank": acc.bank,
+        "bank_name": institutions.display_name(acc.bank),
         "name": acc.name,
         "type": str(acc.type),
         "currency": acc.currency,

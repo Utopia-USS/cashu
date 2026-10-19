@@ -159,11 +159,11 @@ export function dmShort(iso: string | null | undefined): string {
 /** The done hint of the statement step: `mBank · eKonto · …1234 · PLN` per bank account joined with ` · `, then
  * ` · ostatni import 3.10` from the newest balance date. Empty without accounts. */
 export function statementDone(
-  accounts: readonly Pick<Account, "bank" | "name" | "iban_tail" | "currency" | "as_of">[],
+  accounts: readonly Pick<Account, "bank" | "bank_name" | "name" | "iban_tail" | "currency" | "as_of">[],
   choices?: readonly { id: string; name: string }[] | null,
 ): string {
   if (!accounts.length) return "";
-  const parts = accounts.map((a) => [bankName(a.bank, choices), a.name, a.iban_tail ? `…${a.iban_tail}` : null, a.currency].filter(Boolean).join(" · "));
+  const parts = accounts.map((a) => [a.bank_name ?? bankName(a.bank, choices), a.name, a.iban_tail ? `…${a.iban_tail}` : null, a.currency].filter(Boolean).join(" · "));
   const last = accounts.map((a) => a.as_of).filter((d): d is string => !!d).sort().slice(-1)[0];
   return `${parts.join(" · ")}${last ? ` · ostatni import ${dmShort(last)}` : ""}`;
 }

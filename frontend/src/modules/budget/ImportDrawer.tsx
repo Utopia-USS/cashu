@@ -223,7 +223,7 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
                 <option value="">z pliku albo nowe konto</option>
                 {bankAccounts.map((a) => (
                   <option key={a.id} value={String(a.id)}>
-                    {[bankName(a.bank, choices), a.name, a.iban_tail ? `…${a.iban_tail}` : "", a.currency].filter(Boolean).join(" · ")}
+                    {[a.bank_name ?? bankName(a.bank, choices), a.name, a.iban_tail ? `…${a.iban_tail}` : "", a.currency].filter(Boolean).join(" · ")}
                   </option>
                 ))}
               </select>

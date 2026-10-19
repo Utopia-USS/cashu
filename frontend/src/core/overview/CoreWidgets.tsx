@@ -156,7 +156,7 @@ export function AccountsWidget({ accounts, categories, onChanged }: { accounts: 
           <tbody>
             {visible.map((a) => (
               <tr key={a.id}>
-                <td>{a.name} <span className="sym inl">{[BANK[a.bank] ?? a.bank, a.iban_tail].filter(Boolean).join(" · ")}</span></td>
+                <td>{a.name} <span className="sym inl">{[BANK[a.bank] ?? a.bank_name ?? a.bank, a.iban_tail].filter(Boolean).join(" · ")}</span></td>
                 <td className={`num ${(a.balance ?? 0) < 0 ? "neg" : ""} ${isEmptyBal(a) ? "muted" : ""}`}>{cur(a.balance, a.currency)}</td>
               </tr>
             ))}

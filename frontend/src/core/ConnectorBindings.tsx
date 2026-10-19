@@ -30,7 +30,7 @@ async function moduleAccounts(slug: string, module: string): Promise<Acc[]> {
   }
   const nw = await getNetworth(slug);
   return bankAccounts(nw.accounts ?? [])
-    .map((a) => ({ id: a.id, label: [a.bank, a.name, a.iban_tail ? `…${a.iban_tail}` : null].filter(Boolean).join(" · ") }));
+    .map((a) => ({ id: a.id, label: [a.bank_name ?? a.bank, a.name, a.iban_tail ? `…${a.iban_tail}` : null].filter(Boolean).join(" · ") }));
 }
 
 export function BindingsPanel({ connector, onChanged, onProposal }: {
