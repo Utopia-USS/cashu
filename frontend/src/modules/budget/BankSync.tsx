@@ -65,7 +65,9 @@ export function BankSync({ slug, profileName, networth, refresh, bindings = [], 
     } finally {
       running.delete(slug); notify();
     }
-    if (ok && alive.current) refresh();
+    // The shell's refresh (cache cleared, views re-read), also when the user left the budget tab during the
+    // sync: otherwise Przegląd keeps showing the balances from before it.
+    if (ok) refresh();
   };
 
   return (
