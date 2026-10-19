@@ -172,7 +172,7 @@ Category keys (label shown in the app): `groceries` Spożywcze, `dining` Gastron
 Transport, `fuel` Paliwo, `car` Auto, `housing` Mieszkanie/Czynsz, `loans` Raty kredytów, `utilities`
 Media/Telekom, `health` Zdrowie/Apteka, `shopping` Zakupy, `entertainment` Rozrywka, `subscriptions`
 Subskrypcje, `travel` Podróże, `education` Edukacja, `personal_care` Higiena/Uroda, `gifts`
-Prezenty/Darowizny, `cash` Gotówka, `fees` Opłaty bankowe, `taxes` Podatki, `other` Inne,
+Prezenty/Darowizny, `private` Prywatne (owner only: transfers to and from other people, both directions; never guess it), `cash` Gotówka, `fees` Opłaty bankowe, `taxes` Podatki, `other` Inne,
 `income_salary` Pensja, `income_refund` Zwroty, `income_other` Inne przychody, `transfer` Przelew
 własny, `cash_withdrawal` Wypłata gotówki. The source of truth is the app's category list:
 `uncategorized_merchants` lists the valid keys and `set_merchant_category` rejects unknown ones.

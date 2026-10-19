@@ -202,13 +202,13 @@ def categorize_all(
     if not unknown:
         return result
 
-    classified, err = classify_unknown(unknown, taxonomy.CATEGORY_KEYS)
+    classified, err = classify_unknown(unknown, taxonomy.AUTO_CATEGORY_KEYS)
     if err:
         result["llm_error"] = err
         return result
     for mk, res in classified.items():
         cat = res.get("category")
-        if cat in taxonomy.CATEGORY_KEYS and cat != "other":
+        if cat in taxonomy.AUTO_CATEGORY_KEYS and cat != "other":
             upsert_rule(session, mk, cat, source="llm", locked=False, profile_id=pid)
             result["llm_classified"] += 1
 

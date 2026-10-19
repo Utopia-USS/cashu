@@ -98,3 +98,25 @@ def test_reclassify_applies_and_sign_guardrail(session, monkeypatch):
     assert session.get(Transaction, inflow.id).category == "income_other"  # groceries->income (inflow)
     assert session.get(Transaction, internal.id).category == "transfer"    # untouched
     assert res["targets"] == 2 and res["classified_txns"] == 2
+
+
+def test_manual_only_categories_are_never_offered_to_the_llm(session, monkeypatch):
+    """`private` (transfers to and from other people) is the owner's call: the LLM never sees it."""
+    from cashu.modules.budget.categorize import taxonomy
+
+    assert "private" in taxonomy.CATEGORY_KEYS
+    assert "private" not in taxonomy.AUTO_CATEGORY_KEYS
+
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL99 1140 0000 0000 0000 8888")
+    session.flush()
+    _txn(session, acc.id, "-40", ref="PRZELEW NA TELEFON ASIA", cat="other", dh="p2p")
+    seen: dict = {}
+
+    def fake(items, keys, labels, **kw):
+        seen["keys"], seen["labels"] = list(keys), dict(labels)
+        return {tid: {"category": "other", "confidence": 0.5} for tid, _ in items}
+
+    monkeypatch.setattr(local_llm, "classify_transactions", fake)
+    reclassify_all(session, model="stub", batch_size=10)
+    assert "private" not in seen["keys"] and "private" not in seen["labels"]
+    assert "transfer" not in seen["keys"]

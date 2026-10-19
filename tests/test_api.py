@@ -209,10 +209,11 @@ def test_accounts(api):
 
 def test_categories(api):
     rows = api.get("/api/categories").json()
-    assert len(rows) == 25
+    assert len(rows) == 26
     assert rows[0] == {"key": "groceries", "label": "Spożywcze", "kind": "expense"}
     assert rows[6] == {"key": "loans", "label": "Raty kredytów", "kind": "expense"}  # B2
     assert rows[-1] == {"key": "cash_withdrawal", "label": "Wypłata gotówki", "kind": "transfer"}
+    assert {"key": "private", "label": "Prywatne", "kind": "expense"} in rows
     kinds = {r["kind"] for r in rows}
     assert kinds == {"expense", "income", "transfer"}
 

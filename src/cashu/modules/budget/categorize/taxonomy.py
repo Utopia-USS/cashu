@@ -39,6 +39,9 @@ CATEGORIES: list[Category] = [
     Category("education", "Edukacja", "expense"),
     Category("personal_care", "Higiena/Uroda", "expense"),
     Category("gifts", "Prezenty/Darowizny", "expense"),
+    # Transfers to and from other people (friends, family: shared costs, paying back). Both signs
+    # (cash flow counts by the amount's sign); set by the owner only (MANUAL_ONLY).
+    Category("private", "Prywatne", "expense"),
     Category("cash", "Gotówka", "expense"),
     Category("fees", "Opłaty bankowe", "expense"),
     Category("taxes", "Podatki", "expense"),
@@ -53,6 +56,10 @@ CATEGORIES: list[Category] = [
 ]
 
 CATEGORY_KEYS: list[str] = [c.key for c in CATEGORIES]
+# Categories only the owner assigns (by hand or a rule they set): never offered to the LLM, which
+# cannot know what a payment to a person was for.
+MANUAL_ONLY: frozenset[str] = frozenset({"private"})
+AUTO_CATEGORY_KEYS: list[str] = [k for k in CATEGORY_KEYS if k not in MANUAL_ONLY]
 LABELS: dict[str, str] = {c.key: c.label for c in CATEGORIES}
 
 

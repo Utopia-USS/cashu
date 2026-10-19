@@ -155,9 +155,10 @@ def reclassify_all(
 
     # The LLM must not pick structural categories (transfer / cash_withdrawal):
     # those carry special net-worth / cash-pool semantics and are only set by the
-    # structural detector or the manual cash-marking flow. Keep them out of the enum.
-    allowed_keys = [k for k in taxonomy.CATEGORY_KEYS if k not in STRUCTURAL_CATEGORIES]
-    allowed_labels = {k: v for k, v in taxonomy.LABELS.items() if k not in STRUCTURAL_CATEGORIES}
+    # structural detector or the manual cash-marking flow. Keep them out of the enum, and the
+    # owner-only categories (taxonomy.MANUAL_ONLY) too.
+    allowed_keys = [k for k in taxonomy.AUTO_CATEGORY_KEYS if k not in STRUCTURAL_CATEGORIES]
+    allowed_labels = {k: v for k, v in taxonomy.LABELS.items() if k in allowed_keys}
     results = local_llm.classify_transactions(
         items, allowed_keys, allowed_labels,
         model=model, url=url, batch_size=batch_size, progress=progress,
