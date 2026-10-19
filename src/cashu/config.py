@@ -1,4 +1,5 @@
-"""Runtime configuration, loaded from environment / .env (prefix CASHU_).
+"""Runtime configuration, loaded from environment / .env (prefix CASHU_): the source checkout's .env
+and the data dir's .env (the one the packaged app reads; it wins over the checkout's).
 
 Personal files live in the per-user data dir (see ``core.paths``); secrets live in
 the OS keychain (see ``core.secrets``), with environment variables as a fallback
@@ -27,7 +28,9 @@ from .core.paths import PROJECT_ROOT  # noqa: F401  (re-exported for older impor
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="CASHU_",
-        env_file=str(paths.PROJECT_ROOT / ".env"),
+        # The source checkout's .env, then the data dir's (the packaged app has no checkout); the
+        # later file wins. Environment variables win over both.
+        env_file=(str(paths.PROJECT_ROOT / ".env"), str(paths.data_dir() / ".env")),
         env_file_encoding="utf-8",
         extra="ignore",
     )

@@ -187,8 +187,9 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
               <div className="fhint">Po zalogowaniu w banku: ↻ Synchronizuj w pasku zakładek pobierze transakcje.</div>
             </>
           ) : (
-            <Notice tone="warn" action={<button className="btn" onClick={() => { onClose(); go({ kind: "settings", section: "secrets" }); }}>Ustawienia</button>}>
-              Enable Banking nie jest skonfigurowany: identyfikator aplikacji i klucz w Ustawieniach › Sekrety.
+            <Notice tone="warn">
+              Enable Banking nie jest skonfigurowany: identyfikator aplikacji (<code>CASHU_EB_APP_ID</code>) w pliku
+              {" "}<code>.env</code> w katalogu danych cashU, klucz <code>enablebanking_private.pem</code> obok.
             </Notice>
           ))}
         </>

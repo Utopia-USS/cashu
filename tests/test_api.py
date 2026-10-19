@@ -419,7 +419,7 @@ def test_resync_not_configured(api, monkeypatch):
 
     monkeypatch.setattr(type(settings), "eb_configured", property(lambda self: False))
     assert api.post("/api/resync").json() == {
-        "ok": False, "error": "Enable Banking nie jest skonfigurowany (.env).",
+        "ok": False, "error": "Enable Banking nie jest skonfigurowany: CASHU_EB_APP_ID w pliku .env w katalogu danych cashU.",
     }
 
 

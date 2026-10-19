@@ -289,7 +289,7 @@ def resync(profile: CurrentProfile, days: int = 90, connectors: bool = True) -> 
     if not settings.eb_configured:
         if synced:
             return _connectors_only(profile, synced)
-        return {"ok": False, "error": "Enable Banking nie jest skonfigurowany (.env)."}
+        return {"ok": False, "error": "Enable Banking nie jest skonfigurowany: CASHU_EB_APP_ID w pliku .env w katalogu danych cashU."}
     with get_session() as s:
         legacy_owner = profiles.legacy_owner_slug(s)
     sessions = load_sessions(profile.slug, legacy_profile=legacy_owner)
