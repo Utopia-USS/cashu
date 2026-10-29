@@ -220,14 +220,16 @@ def test_sandbox_for_picks_deno_for_deno_connectors():
     assert isinstance(other, DenoSandbox) and other.outer is native and other.name == "deno+none"
 
 
-def test_default_sandbox_off_macos_is_unsupported_until_a_linux_layer_exists(monkeypatch):
+def test_default_sandbox_off_macos_needs_a_native_layer(monkeypatch):
     from cashu.core.connectors import sandbox as sb
 
+    # without a Linux layer (no Landlock or the seccomp probe failed) nothing runs off macOS
+    monkeypatch.setattr(sb, "_linux_sandbox", lambda: None)
     for platform in ("linux", "win32", "freebsd14"):
         monkeypatch.setattr(sb.sys, "platform", platform)
         assert isinstance(sb.default_sandbox(), UnsupportedSandbox), platform
         assert isinstance(sb.sandbox_for("deno"), UnsupportedSandbox), platform
-    # The Linux hook: a sandbox_linux module that offers a native sandbox is used on Linux only.
+    # The Linux hook (sandbox_linux.native_sandbox) is used on Linux only.
     native = NoSandbox()
     monkeypatch.setattr(sb, "_linux_sandbox", lambda: native)
     monkeypatch.setattr(sb.sys, "platform", "linux")
@@ -236,10 +238,15 @@ def test_default_sandbox_off_macos_is_unsupported_until_a_linux_layer_exists(mon
     assert isinstance(sb.default_sandbox(), UnsupportedSandbox)
 
 
-def test_the_linux_hook_is_missing_for_now():
+def test_the_linux_hook_answers_only_on_a_supporting_linux():
     from cashu.core.connectors import sandbox as sb
+    from cashu.core.connectors import sandbox_linux
 
-    assert sb._linux_sandbox() is None
+    native = sb._linux_sandbox()
+    if sandbox_linux.available():
+        assert isinstance(native, sandbox_linux.LinuxSandbox)
+    else:
+        assert native is None
 
 
 # --------------------------------------------------------------------------- #
