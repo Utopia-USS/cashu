@@ -244,7 +244,9 @@ the app. You approve it once in **Ustawienia > Konektory** (pinned by content
 hash); the app then runs it in a macOS sandbox with a timeout and sends its output
 through the normal import preview. The contract for authors:
 [`docs/connectors.md`](docs/connectors.md); tested examples in
-[`examples/connectors/`](examples/connectors/).
+[`examples/connectors/`](examples/connectors/). Community connectors are collected in
+the [`connectors/`](connectors/README.md) catalog, which ships with the app: your
+agent can install an entry for your review, and you still approve it in the app.
 
 ---
 

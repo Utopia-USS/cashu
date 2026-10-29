@@ -10,8 +10,9 @@ body:
         an API, approved once by the owner and run in a sandbox. Read
         [docs/connectors.md](https://github.com/Utopia-USS/cashu/blob/main/docs/connectors.md) and the
         [examples](https://github.com/Utopia-USS/cashu/tree/main/examples/connectors); the
-        `/import-builder` skill can write one with you. Community connectors will live in a top-level
-        `connectors/` directory, each with its own maintainer (see CONTRIBUTING.md).
+        `/import-builder` skill can write one with you. Community connectors live in the top-level
+        [connectors/](https://github.com/Utopia-USS/cashu/tree/main/connectors) catalog, each with its
+        own maintainer (see connectors/README.md).
 
         **Never attach a real export.** Describe the format (column names, file type) or attach a
         file with made-up values only.

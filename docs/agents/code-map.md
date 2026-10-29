@@ -108,6 +108,7 @@ but were not listed before.
 |---|---|
 | `docs/connectors.md` | connector contract for outside authors (manifest, protocol, sandbox); schemas in `docs/schemas/` |
 | `docs/import-format.md`, `docs/budget-import-format.md` | cashU investments / budget import formats |
+| `connectors/` | community connector catalog (contrib status, one dir per connector with `fixtures/`; shipped with the app, see its `README.md`) |
 | `examples/connectors/` | three tested example connectors (budget CSV, investments JSON, fetch with a fixture) |
 | `packaging/` | PyInstaller spec, entitlements, icon (macOS); `windows/` = documented stub; `README.md` = build decisions |
 | `scripts/build_macos.sh` | builds cashU.app (SPA, icon, bundle; signs/notarizes from env vars) |
