@@ -310,6 +310,25 @@ def test_test_connector_runs_a_private_copy_and_installs_nothing(tester):
     _nothing_installed_or_recorded()
 
 
+def test_test_connector_reports_document_issue_kinds(tester):
+    # a document with problems must still come back (the privacy check refused whole answers when
+    # the issue kinds were dict keys with a space)
+    from connector_support import ECHO_CONNECTOR
+
+    mcp, slug, _box = tester
+    code = ECHO_CONNECTOR.replace('"date": "2026-01-05"', '"date": "2026-13-40"')
+    root = write_connector(ws_connectors(slug) / "bad-conn", cid="bad-conn", code=code)
+    result = mcp.call("test_connector", {"path": str(root), "file": str(_sample(slug))})
+    assert result.ok, result.error
+    doc = result.data["document"]
+    assert doc["valid"] is False and doc["counts"]["errors"] >= 1
+    kinds = doc["issue_kinds"]
+    assert kinds and all(set(k) == {"severity", "kind", "count"} for k in kinds)
+    assert {k["severity"] for k in kinds} <= {"error", "warning"}
+    assert sum(k["count"] for k in kinds if k["severity"] == "error") == doc["counts"]["errors"]
+    _nothing_installed_or_recorded()
+
+
 def test_test_connector_fetch_runs_offline_with_a_fixture(tester, monkeypatch):
     mcp, slug, box = tester
 

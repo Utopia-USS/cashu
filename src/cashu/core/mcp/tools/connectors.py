@@ -221,7 +221,13 @@ def test_connector(ctx: ToolContext, path: str, file: str | None = None,
             "valid": L.flag(report.document_ok),
             "format": L.category(report.document_format),
             "counts": {k: L.count(v) for k, v in sorted(report.counts.items())},
-            "issue_kinds": {k: L.count(v) for k, v in sorted(report.issue_kinds.items())},
+            # a list, not a dict: the report keys ("error bad_date") are not snake_case keys
+            "issue_kinds": [
+                {"severity": L.category(sev), "kind": L.category(kind), "count": L.count(n)}
+                for (sev, kind), n in sorted(
+                    (tuple(k.split(" ", 1)), v) for k, v in report.issue_kinds.items()
+                )
+            ],
         },
         "note": L.text(TEST_RULE),
     }
