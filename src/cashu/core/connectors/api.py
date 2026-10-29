@@ -4,6 +4,12 @@ check + per-launch token), like the rest of the API.
 Global (``/api/connectors``, mounted once, not profile-scoped: a connector is code, not data):
 
 - ``GET    /connectors``                         installed connectors (status re-checked from disk)
+- ``GET    /connectors/catalog``                 the read-only connector catalog shipped with the app
+  (``catalog.list_catalog``: manifest facts, maintainer, last_verified, ``stale``, ``valid`` +
+  ``problems``, the installed copy's status and whether it has the same content)
+- ``POST   /connectors/catalog/{id}/install``    ``{replace?}``: copy a catalog entry into the data dir
+  (``service.install``, like ``cashu connectors add``): ``pending``, or ``changed`` over an approved copy
+  with other content; 409 when installed and ``replace`` is false. It never approves (201)
 - ``GET    /connectors/{id}``                    manifest facts, files (size, sha256), hash, interpreter,
   status, the diff against the approved file list when ``changed``, the last 10 runs (with the redacted
   stderr tail: the owner's view, never MCP)
@@ -79,6 +85,37 @@ def _secrets_error() -> HTTPException:
 def list_connectors() -> list[dict]:
     with get_session() as s:
         return service.list_connectors(s)
+
+
+class CatalogInstallBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    replace: bool = False
+
+
+# Before /{connector_id}: "catalog" would otherwise be taken for a connector id.
+@router.get("/catalog")
+def list_catalog() -> list[dict]:
+    from . import catalog
+
+    with get_session() as s:
+        return catalog.list_catalog(s)
+
+
+@router.post("/catalog/{connector_id}/install", status_code=201)
+def install_from_catalog(connector_id: str, body: CatalogInstallBody | None = None) -> dict:
+    """Install a catalog entry as pending: ``{replaced, connector: <summary>}``. Never approves."""
+    from . import catalog
+
+    try:
+        installed = catalog.install(
+            connector_id, replace=bool(body and body.replace), source="catalog"
+        )
+    except service.ConnectorError as e:
+        raise _http(e) from None
+    with get_session() as s:
+        row = s.get(service.Connector, installed.connector.id)
+        return {"replaced": installed.replaced, "connector": service.summary_dict(s, row)}
 
 
 @router.get("/{connector_id}")

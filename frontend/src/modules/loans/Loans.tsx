@@ -2,15 +2,17 @@ import { useState } from "react";
 import { Line, Tooltip } from "recharts";
 import { ScrollableChart } from "../../components/ScrollableChart";
 import { useShell, useSlug } from "../../core/context";
-import { cssVar, cur, cur0, dtFmt, plural } from "../../format";
+import { cssVar, cur, cur0, dtFmt } from "../../format";
+import { intlLocale } from "../../i18n.ts";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { Empty, Kpi, SkeletonChart, SkeletonKpis, SkeletonTable } from "../../ui";
 import { getLoans, type LoanInfo, loanName } from "./api";
+import { S } from "./Loans.strings.ts";
 
 const DAY = 86400000;
-const xTickFmt = new Intl.DateTimeFormat("pl-PL", { month: "short", year: "2-digit" });
-const RANGES: [string, number | null][] = [["1R", 365], ["5L", 1825], ["10L", 3650], ["Max", null]];
+const xTickFmt = new Intl.DateTimeFormat(intlLocale(), { month: "short", year: "2-digit" });
+const ranges = (): [string, number | null][] => [[S.oneYear, 365], [S.years(5), 1825], [S.years(10), 3650], [S.max, null]];
 
 /** Kredyty: every loan of the profile in one table, details of the selected one below. */
 export function Loans() {
@@ -20,13 +22,13 @@ export function Loans() {
   const { go } = useShell();
 
   // A failed refresh keeps the last list on screen (F7 PX2); the error alone only without data.
-  if (error && !data) return <div className="err">Błąd: {error}</div>;
+  if (error && !data) return <div className="err">{S.error(error)}</div>;
   if (!data) return <><SkeletonTable rows={2} /><SkeletonKpis n={5} /><SkeletonChart /></>;
   if (!data.length) {
     return (
       <section className="card chart-card">
-        <h2>Kredyty</h2>
-        <Empty title="Brak kredytów." action={<button className="btn" onClick={() => go({ kind: "setup", module: "loans" })}>Konfiguracja</button>} />
+        <h2>{S.title}</h2>
+        <Empty title={S.none} action={<button className="btn" onClick={() => go({ kind: "setup", module: "loans" })}>{S.setup}</button>} />
       </section>
     );
   }
@@ -36,13 +38,13 @@ export function Loans() {
     <>
       <section className="card chart-card">
         <div className="controls">
-          <h2 style={{ margin: 0 }}>Kredyty</h2>
-          <span className="tag">{plural(data.length, "kredyt", "kredyty", "kredytów")}</span>
+          <h2 style={{ margin: 0 }}>{S.title}</h2>
+          <span className="tag">{S.nLoans(data.length)}</span>
         </div>
         <div className="scroll">
           <table>
             <thead>
-              <tr><th>Kredyt</th><th className="num">Rata</th><th className="num">Pozostało</th><th className="num">Odsetki łącznie</th><th>Spłata do</th></tr>
+              <tr><th>{S.loan}</th><th className="num">{S.installment}</th><th className="num">{S.remaining}</th><th className="num">{S.totalInterest}</th><th>{S.payoffBy}</th></tr>
             </thead>
             <tbody>
               {data.map((l, k) => {
@@ -80,31 +82,31 @@ function LoanDetail({ loan, name }: { loan: LoanInfo; name: string }) {
   return (
     <>
       <div className="kpis">
-        <Kpi label="Rata miesięczna" value={cur(loan.monthly_payment, c)} />
-        <Kpi label="Pozostało" value={cur(loan.outstanding, c)} cls="neg" />
-        <Kpi label="Odsetki łącznie" value={cur(loan.total_interest, c)} />
-        <Kpi label="Spłacone odsetki" value={cur(loan.paid_interest, c)} />
-        <Kpi label="Data spłaty" value={loan.payoff_date || "-"} hint={loan.months_elapsed != null ? `${loan.months_elapsed} rat spłaconych` : ""} />
+        <Kpi label={S.monthlyInstallment} value={cur(loan.monthly_payment, c)} />
+        <Kpi label={S.remaining} value={cur(loan.outstanding, c)} cls="neg" />
+        <Kpi label={S.totalInterest} value={cur(loan.total_interest, c)} />
+        <Kpi label={S.paidInterest} value={cur(loan.paid_interest, c)} />
+        <Kpi label={S.payoffDate} value={loan.payoff_date || "-"} hint={loan.months_elapsed != null ? S.paidCount(loan.months_elapsed) : ""} />
       </div>
 
       <ScrollableChart
-        title={`Saldo · ${name}`}
+        title={S.balanceOf(name)}
         data={series}
         yValues={series.map((s) => s.y)}
         xAxisProps={{
           dataKey: "x", type: "number", scale: "time", domain: ["dataMin", "dataMax"],
           tickFormatter: (ms: number) => xTickFmt.format(new Date(ms)), minTickGap: 40,
         }}
-        ranges={RANGES}
+        ranges={ranges()}
         fullSpan={spanDays}
         yTickFormatter={(v) => cur0(v, c)}
-        emptyText="Brak harmonogramu."
+        emptyText={S.noSchedule}
         tooltip={
           <Tooltip
             contentStyle={{ background: cssVar("--card"), border: `1px solid ${cssVar("--border")}`, borderRadius: 8, fontSize: 13 }}
             labelStyle={{ color: cssVar("--muted") }}
             labelFormatter={(ms) => dtFmt.format(new Date(ms as number))}
-            formatter={(v) => [cur(v as number, c), "Saldo"] as [string, string]}
+            formatter={(v) => [cur(v as number, c), S.balance] as [string, string]}
           />
         }
       >
@@ -113,11 +115,11 @@ function LoanDetail({ loan, name }: { loan: LoanInfo; name: string }) {
 
       {/* section.card: same small uppercase heading as every other titled card (design decision 13) */}
       <section className="card chart-card">
-        <h2>Harmonogram</h2>
+        <h2>{S.schedule}</h2>
         <div className="scroll tall">
           <table>
             <thead>
-              <tr><th className="num">#</th><th>Data</th><th className="num">Rata</th><th className="num">Odsetki</th><th className="num">Kapitał</th><th className="num">Saldo</th></tr>
+              <tr><th className="num">#</th><th>{S.date}</th><th className="num">{S.installment}</th><th className="num">{S.interest}</th><th className="num">{S.principal}</th><th className="num">{S.balance}</th></tr>
             </thead>
             <tbody>
               {(loan.schedule ?? []).map((s) => (

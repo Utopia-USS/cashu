@@ -183,6 +183,7 @@ def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
         ),
         ("signals", {"status": "all"}),
         ("strategy_status", {}),
+        ("review_context", {}),
         ("history_metrics", {}),
         ("inspect_export", {"path": str(export_csv)}),
         ("inspect_export", {"path": str(export_xlsx), "max_samples": 20}),

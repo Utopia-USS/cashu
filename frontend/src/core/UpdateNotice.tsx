@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useAsync } from "../hooks";
 import { getUpdate } from "./api";
 import "./update.css";
+import { C } from "../common.strings.ts";
+import { S } from "./chrome.strings.ts";
 
 export function UpdateNotice() {
   const { data } = useAsync(getUpdate, []);
@@ -16,13 +18,13 @@ export function UpdateNotice() {
         <svg viewBox="0 0 16 16" width="14" height="14"><path d="M8 12.5V3.5M4 7.5l4-4 4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </span>
       <div className="upd-body">
-        <div className="upd-ttl">Nowa wersja {data.latest}</div>
-        <div className="upd-sub">Masz {data.current}</div>
+        <div className="upd-ttl">{S.newVersion(data.latest)}</div>
+        <div className="upd-sub">{S.current(data.current)}</div>
         {data.url && (
-          <a className="btn primary upd-act" href={data.url} target="_blank" rel="noopener noreferrer">Zobacz zmiany</a>
+          <a className="btn primary upd-act" href={data.url} target="_blank" rel="noopener noreferrer">{S.seeChanges}</a>
         )}
       </div>
-      <button className="upd-x" onClick={() => setClosed(true)} aria-label="Zamknij" title="Zamknij">
+      <button className="upd-x" onClick={() => setClosed(true)} aria-label={C.close} title={C.close}>
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
       </button>
     </aside>

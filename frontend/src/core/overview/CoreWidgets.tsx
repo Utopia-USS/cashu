@@ -3,7 +3,7 @@
 // accounts list with the cash wallet, and the card of a module that is not set up yet.
 import { useState } from "react";
 import { CashCard } from "../../components/CashCard";
-import { cur, cur0s, MONTH_NOM, nModules, pctSigned, plural } from "../../format";
+import { cur, cur0s, MONTH_NOM, nModules, pctSigned } from "../../format";
 import { useAsync } from "../../hooks";
 import { ck, dedupe } from "../../swr";
 import { type CashflowRow, getCashflow, getMonthClose, getRecurring, type MonthClose } from "../../modules/budget/api";
@@ -17,6 +17,7 @@ import { useShell } from "../context";
 import { stepsTag } from "../SetupPage";
 import { lowerFirst, nextStep, stepCounts } from "../setupSteps";
 import type { ModuleCtx, ModuleDef } from "../types";
+import { S } from "./CoreWidgets.strings.ts";
 
 /** "2026-10-05" -> "2026-09" (the last closed month). */
 export function previousMonth(today: string): string {
@@ -48,7 +49,7 @@ export function useMonthNorm(slug: string, currency: string) {
 }
 
 /** Tooltip of a ratio over the norm. */
-export const normTitle = (n: { months: number }) => `średnia z ${plural(n.months, "zamkniętego miesiąca", "zamkniętych miesięcy", "zamkniętych miesięcy")}`;
+export const normTitle = (n: { months: number }) => S.normTitle(n.months);
 
 /** Budżet · <month>: income / spending / surplus bars, savings rate, 6-month average. */
 export function BudgetMonthWidget({ ctx }: { ctx: ModuleCtx }) {
@@ -69,25 +70,25 @@ export function BudgetMonthWidget({ ctx }: { ctx: ModuleCtx }) {
   const others = (mc.data?.currencies ?? []).filter((c) => c.currency !== currency).map((c) => c.currency);
   const w = (v: number | null) => `${income && v != null ? Math.max(0, Math.min(100, (Math.abs(v) / income) * 100)) : 0}%`;
   return (
-    <Widget title={`Budżet${monthName ? ` · ${monthName}` : ""}`}
-      tags={mc.data ? <span className={`tag solid ${mc.data.complete ? "pos" : "muted"}`}>{mc.data.complete ? "zamknięty" : "w toku"}</span> : undefined}
-      controls={<button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: "budget.expenses" })}>Wydatki</button>}
+    <Widget title={S.budget(monthName)}
+      tags={mc.data ? <span className={`tag solid ${mc.data.complete ? "pos" : "muted"}`}>{mc.data.complete ? S.closed : S.inProgress}</span> : undefined}
+      controls={<button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: "budget.expenses" })}>{S.expenses}</button>}
       body="tight"
       footer={
         <>
           <FootFacts items={[
-            rate != null && <>stopa oszczędności <b>{Math.round(rate * 100)} %</b></>,
-            avg != null && <>średnia 6 mies. <b>{Math.round(avg * 100)} %</b></>,
+            rate != null && <>{S.savingsRate}<b>{S.percent(Math.round(rate * 100))}</b></>,
+            avg != null && <>{S.avg6}<b>{S.percent(Math.round(avg * 100))}</b></>,
           ]} />
           <span className="spacer" />
-          {others.length > 0 && <span>inne waluty: {others.join(", ")}</span>}
+          {others.length > 0 && <span>{S.otherCurrencies(others.join(", "))}</span>}
         </>
       }>
-      {income == null ? (mc.loading ? <Skeleton h={60} /> : <div className="empty">Brak transakcji z ostatniego miesiąca.</div>) : (
+      {income == null ? (mc.loading ? <Skeleton h={60} /> : <div className="empty">{S.noLastMonth}</div>) : (
         <div className="bud">
-          <span className="k">Przychody</span><span className="b"><i className="nw" style={{ width: "100%" }} /></span><span className="v">{cur0s(income, currency)}</span>
-          <span className="k">Wydatki</span><span className="b"><i style={{ width: w(spending) }} /></span><span className="v">{cur0s(spending, currency)}</span>
-          <span className="k">Nadwyżka</span><span className="b"><i className={(surplus ?? 0) >= 0 ? "pos" : "neg"} style={{ width: w(surplus) }} /></span>
+          <span className="k">{S.income}</span><span className="b"><i className="nw" style={{ width: "100%" }} /></span><span className="v">{cur0s(income, currency)}</span>
+          <span className="k">{S.expenses}</span><span className="b"><i style={{ width: w(spending) }} /></span><span className="v">{cur0s(spending, currency)}</span>
+          <span className="k">{S.surplus}</span><span className="b"><i className={(surplus ?? 0) >= 0 ? "pos" : "neg"} style={{ width: w(surplus) }} /></span>
           <span className={`v ${(surplus ?? 0) >= 0 ? "pos" : "neg"}`}>{cur0s(surplus, currency)}</span>
         </div>
       )}
@@ -113,21 +114,21 @@ export function SubscriptionsWidget({ ctx }: { ctx: ModuleCtx }) {
   });
   const stale = items.filter((i) => !i.active);
   return (
-    <Widget title="Subskrypcje" count={subs.count || undefined}
-      controls={<button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: "budget.subs" })}>Subskrypcje</button>}
+    <Widget title={S.subscriptions} count={subs.count || undefined}
+      controls={<button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: "budget.subs" })}>{S.subscriptions}</button>}
       body="tight"
-      footer={stale.length ? <span className="warn">{plural(stale.length, "subskrypcja", "subskrypcje", "subskrypcji")} bez obciążenia</span> : undefined}>
+      footer={stale.length ? <span className="warn">{S.noCharge(stale.length)}</span> : undefined}>
       <div className="facts" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <div className="fact"><div className="l">Miesięcznie</div><div className="v">{monthly != null ? cur0s(monthly, monthlyCur) : "-"}</div>
-          {share != null && norm && <div className="d" title={normTitle(norm)}>{pctSigned(share, false)} wydatków</div>}</div>
-        <div className="fact"><div className="l">W tym tygodniu</div><div className="v">{rec.data ? soon.length : "-"}</div>
+        <div className="fact"><div className="l">{S.monthly}</div><div className="v">{monthly != null ? cur0s(monthly, monthlyCur) : "-"}</div>
+          {share != null && norm && <div className="d" title={normTitle(norm)}>{S.ofSpending(pctSigned(share, false))}</div>}</div>
+        <div className="fact"><div className="l">{S.thisWeek}</div><div className="v">{rec.data ? soon.length : "-"}</div>
           {soon.length > 0 && <div className="d">{soon.slice(0, 3).map((i) => i.payee).join(", ")}</div>}</div>
       </div>
     </Widget>
   );
 }
 
-const BANK: Record<string, string> = { mbank: "mBank", erste: "Erste", pekao: "Pekao", santander: "Erste", manual: "ręczne" };
+const BANK: Record<string, string> = { mbank: "mBank", erste: "Erste", pekao: "Pekao", santander: "Erste", get manual() { return S.manual; } };
 const LISTED = new Set(["checking", "savings", "credit", "investment", "other"]);
 const isEmptyBal = (a: Account) => a.balance == null || Math.abs(a.balance) < 0.005;
 
@@ -141,17 +142,17 @@ export function AccountsWidget({ accounts, categories, onChanged }: { accounts: 
   const visible = showEmpty ? list : list.filter((a) => !isEmptyBal(a));
   const wallet = accounts.find((a) => a.type === "cash");
   return (
-    <Widget title="Konta" count={list.length || undefined}
-      controls={empties.length > 0 ? <button className="lnk" onClick={() => setShowEmpty((v) => !v)}>{showEmpty ? "ukryj puste" : `pokaż puste (${empties.length})`}</button> : undefined}
+    <Widget title={S.accounts} count={list.length || undefined}
+      controls={empties.length > 0 ? <button className="lnk" onClick={() => setShowEmpty((v) => !v)}>{showEmpty ? S.hideEmpty : S.showEmpty(empties.length)}</button> : undefined}
       body="flush tight"
       footer={
         <>
-          {wallet && <span>gotówka w portfelu <b>{cur(wallet.balance, wallet.currency)}</b></span>}
+          {wallet && <span>{S.walletCash}<b>{cur(wallet.balance, wallet.currency)}</b></span>}
           <span className="spacer" />
-          <button className="lnk" onClick={() => setCash(true)}>{wallet ? "+ wydatek gotówkowy" : "gotówka"}</button>
+          <button className="lnk" onClick={() => setCash(true)}>{wallet ? S.addCashExpense : S.cash}</button>
         </>
       }>
-      {!list.length ? <div className="empty">Brak kont bankowych.</div> : (
+      {!list.length ? <div className="empty">{S.noBankAccounts}</div> : (
         <table>
           <tbody>
             {visible.map((a) => (
@@ -163,7 +164,7 @@ export function AccountsWidget({ accounts, categories, onChanged }: { accounts: 
           </tbody>
         </table>
       )}
-      <Drawer open={cash} title="Gotówka w portfelu" onClose={() => setCash(false)} width={560}>
+      <Drawer open={cash} title={S.walletTitle} onClose={() => setCash(false)} width={560}>
         <CashCard categories={categories} onChanged={onChanged} />
       </Drawer>
     </Widget>
@@ -178,11 +179,11 @@ export function PendingWidget({ def, m, onHide }: { def: ModuleDef; m: ProfileMo
   const counts = stepCounts(data?.steps);
   return (
     <Widget title={def.name} ghost tags={stepsTag(data, m.setup_state)}
-      controls={<button className="lnk" onClick={onHide}>ukryj</button>}
-      footer={<><span>{data ? `${counts.done} z ${counts.n} kroków` : ""}</span><span className="spacer" />
-        <button className="btn sm primary" onClick={() => go({ kind: "setup", module: def.id })}>Kontynuuj</button></>}>
+      controls={<button className="lnk" onClick={onHide}>{S.hide}</button>}
+      footer={<><span>{data ? S.stepsDone(counts.done, counts.n) : ""}</span><span className="spacer" />
+        <button className="btn sm primary" onClick={() => go({ kind: "setup", module: def.id })}>{S.continue}</button></>}>
       <div className="muted" style={{ fontSize: 13 }}>
-        {!data ? <Skeleton w="80%" h={12} /> : next ? `Następny krok: ${lowerFirst(next.title)}.` : "Moduł czeka na dane."}
+        {!data ? <Skeleton w="80%" h={12} /> : next ? S.nextStep(lowerFirst(next.title)) : S.waitsForData}
       </div>
     </Widget>
   );

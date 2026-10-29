@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from cashu.core.i18n import tr
+
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
@@ -72,9 +74,10 @@ class PositionConcentrationRule:
             weight = position.weight
             price_problem = position.price_problem
             if price_problem is None and weight is None:
-                price_problem = f"Brak wagi: {position.label}"
+                price_problem = tr(pl=f"Brak wagi: {position.label}", en=f"No weight: {position.label}")
             if price_problem is not None or weight is None:
-                outcomes.append(Skipped(spec.id, price_problem or "Brak wagi", key))
+                no_weight = tr(pl="Brak wagi", en="No weight")
+                outcomes.append(Skipped(spec.id, price_problem or no_weight, key))
                 continue
             details = {**position.payload(), "weight": weight, "max_weight": max_weight}
             if weight <= max_weight + RATIO_EPSILON:
@@ -89,9 +92,15 @@ class PositionConcentrationRule:
                         severity=spec.severity,
                         instrument_id=position.id,
                         payload=details,
-                        message=(
-                            f"{position.label}: {format_pct(weight)} portfela "
-                            f"(maks {format_pct(max_weight)})."
+                        message=tr(
+                            pl=(
+                                f"{position.label}: {format_pct(weight)} portfela "
+                                f"(maks {format_pct(max_weight)})."
+                            ),
+                            en=(
+                                f"{position.label}: {format_pct(weight)} of the portfolio "
+                                f"(max {format_pct(max_weight)})."
+                            ),
                         ),
                     )
                 )

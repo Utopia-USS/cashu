@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from cashu.core.i18n import tr
 from cashu.modules.investments.domain import PriceBar, days_between, divided_by
 
 from ..kind import RuleContext, RuleSpec
@@ -68,7 +69,7 @@ def window_bars(
         return fx_problem
     bars = ctx.market.last_bars(position.id, window_days)
     if not bars:
-        return f"Brak notowań: {position.label}"
+        return tr(pl=f"Brak notowań: {position.label}", en=f"No prices: {position.label}")
     last = bars[-1]
     age = days_between(last.date, ctx.as_of)
     if age > ctx.data.max_price_age_days:
@@ -76,7 +77,7 @@ def window_bars(
     if len(bars) < window_days:
         return short_series_problem(position.label, len(bars), window_days)
     if any(bar.close <= 0 for bar in bars):
-        return f"Nieprawidłowe ceny: {position.label}"
+        return tr(pl=f"Nieprawidłowe ceny: {position.label}", en=f"Invalid prices: {position.label}")
     return WindowBars(tuple(bars))
 
 
@@ -151,11 +152,19 @@ class DrawdownFromHighRule:
                         severity=spec.severity,
                         instrument_id=position.id,
                         payload=details,
-                        message=(
-                            f"{position.label}: -{format_pct(drawdown)} od szczytu z "
-                            f"{params.window_days} sesji (zamknięcie {format_decimal(last.close)} "
-                            f"{last.date}, szczyt {format_decimal(high.close)} {high.date}; "
-                            f"próg -{format_pct(params.threshold)})."
+                        message=tr(
+                            pl=(
+                                f"{position.label}: -{format_pct(drawdown)} od szczytu z "
+                                f"{params.window_days} sesji (zamknięcie {format_decimal(last.close)} "
+                                f"{last.date}, szczyt {format_decimal(high.close)} {high.date}; "
+                                f"próg -{format_pct(params.threshold)})."
+                            ),
+                            en=(
+                                f"{position.label}: -{format_pct(drawdown)} from the "
+                                f"{params.window_days}-session high (close {format_decimal(last.close)} "
+                                f"{last.date}, high {format_decimal(high.close)} {high.date}; "
+                                f"threshold -{format_pct(params.threshold)})."
+                            ),
                         ),
                     )
                 )

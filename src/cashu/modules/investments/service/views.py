@@ -74,6 +74,7 @@ from ..rules import (
 from ..rules.kinds.allocation_drift import hidden_from_owner, with_bucket_generic
 from ..store import alerts as alert_store
 from ..store import convert, journal, market, signals, transactions
+from ..strategy.config import ReviewPolicy
 from . import hints as hint_service
 from . import portfolio
 from . import strategy as strategy_files
@@ -1881,6 +1882,41 @@ def _last_weekday(day: dt.date, iso_weekday: int) -> dt.date:
     return day - dt.timedelta(days=(day.isoweekday() - iso_weekday) % 7)
 
 
+def _review_day_on_or_before(day: dt.date, every: str, iso_weekday: int) -> dt.date:
+    """The latest scheduled review day on/before ``day``: that weekday (week, 2weeks) or the first such
+    weekday of the month (month)."""
+    if every != "month":
+        return _last_weekday(day, iso_weekday)
+    first = _first_weekday_of_month(day.year, day.month, iso_weekday)
+    if first <= day:
+        return first
+    prev = day.replace(day=1) - dt.timedelta(days=1)
+    return _first_weekday_of_month(prev.year, prev.month, iso_weekday)
+
+
+def _first_weekday_of_month(year: int, month: int, iso_weekday: int) -> dt.date:
+    first = dt.date(year, month, 1)
+    return first + dt.timedelta(days=(iso_weekday - first.isoweekday()) % 7)
+
+
+def review_schedule(
+    every: str, iso_weekday: int, today: dt.date, last_done: dt.date | None
+) -> tuple[bool, dt.date]:
+    """``(due, next_on)``: due when the latest scheduled day on/before ``today`` comes after the last
+    review (``2weeks``: and more than a week after it); ``next_on`` = the first scheduled day after a
+    review done today."""
+    scheduled = _review_day_on_or_before(today, every, iso_weekday)
+    due = last_done is None or (
+        scheduled > last_done and (every != "2weeks" or (scheduled - last_done).days > 7)
+    )
+    day = today + dt.timedelta(days=1)
+    while True:
+        on = _review_day_on_or_before(day, every, iso_weekday)
+        if on == day and (every != "2weeks" or (day - today).days > 7):
+            return due, day
+        day += dt.timedelta(days=1)
+
+
 def _at_or_after(value: dt.datetime | None, since_at: dt.datetime) -> bool:
     return value is not None and convert.aware(value) >= since_at
 
@@ -2107,10 +2143,15 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
     else:
         since_at = review["done_at"] if review else now - dt.timedelta(days=DEFAULT_DIGEST_DAYS)
     since = min(since_at.astimezone().date(), as_of)
-    weekday = config.notifications.digest_weekday if config is not None else None
+    policy = config.review if config is not None else ReviewPolicy()
+    weekday = policy.day or (config.notifications.digest_weekday if config is not None else None)
     digest_weekday = weekday.value if weekday is not None else "sunday"
-    last_digest_day = _last_weekday(as_of, weekday.iso_number if weekday is not None else 7)
-    review_due = review is None or last_digest_day > review["done_at"].astimezone().date()
+    review_due, next_review_on = review_schedule(
+        policy.every,
+        weekday.iso_number if weekday is not None else 7,
+        as_of,
+        review["done_at"].astimezone().date() if review else None,
+    )
 
     # Value then and now (base currency).
     total = state.valued.total_base
@@ -2233,6 +2274,15 @@ def review_digest(session: Session, profile: Profile, since_date: dt.date | None
         },
         "digest_weekday": digest_weekday,
         "review_due": review_due,
+        # The owner's review (strategy.yaml ``review:``): name, frequency, weekday, deck cards in order and
+        # the next scheduled day after a review done today.
+        "review": {
+            "name": policy.title,
+            "every": policy.every,
+            "day": digest_weekday,
+            "cards": list(policy.cards),
+            "next_on": iso(next_review_on),
+        },
         "value": {
             "currency": str(state.base),
             "then": f(then_total),

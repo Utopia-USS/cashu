@@ -346,6 +346,8 @@ def summary_dict(session: Session, row: Connector) -> dict:
         "name": row.name,
         "version": row.version,
         "author": m.get("author"),
+        "maintainer": m.get("maintainer"),
+        "last_verified": m.get("last_verified"),
         "module": row.module,
         "kind": row.kind,
         "status": row.status,

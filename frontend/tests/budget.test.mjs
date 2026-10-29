@@ -80,7 +80,7 @@ test("cushion form: draft from settings and back, with Polish validation", () =>
 });
 
 // ---- first steps: statement import (design/v3/first-steps sections 3, 4) -------------------------------------
-import { bankAccounts, bankName, bankOptions, BANKS, cliPrefix, dmShort, importDoneLine, previewRows, statementDone, statementErrorKey } from "../src/modules/budget/logic.ts";
+import { bankAccounts, bankName, bankOptions, banks, cliPrefix, dmShort, importDoneLine, previewRows, statementDone, statementErrorKey } from "../src/modules/budget/logic.ts";
 
 test("first steps: bank accounts and the statement step's done line", () => {
   const acc = [
@@ -93,7 +93,7 @@ test("first steps: bank accounts and the statement step's done line", () => {
   assert.deepEqual(b.map((a) => a.name), ["eKonto", "Oszczędności"]);
   assert.equal(statementDone(b), "mBank · eKonto · …1234 · PLN · Bank Pekao · Oszczędności · EUR · ostatni import 3.10");
   assert.equal(statementDone([]), "");
-  assert.deepEqual(BANKS.map(([k]) => k), ["auto", "mbank", "pekao", "erste"]);
+  assert.deepEqual(banks().map(([k]) => k), ["auto", "mbank", "pekao", "erste"]);
   assert.equal(bankName("erste"), "Erste Bank Polska");
   assert.equal(bankName("ing"), "ing");
   assert.equal(bankName("mbank", [{ id: "mbank", name: "mBank S.A." }]), "mBank S.A.");
@@ -106,7 +106,7 @@ test("first steps: bank accounts and the statement step's done line", () => {
     { id: "pekao", name: "Bank Pekao", kind: "bank", available: false },
   ];
   assert.deepEqual(bankOptions(choices), [["auto", "rozpoznaj automatycznie"], ["mbank", "mBank"], ["cashu-budget", "Format cashU"]]);
-  assert.deepEqual(bankOptions(null), BANKS);
+  assert.deepEqual(bankOptions(null), banks());
   assert.deepEqual(bankOptions([{ id: "mbank", name: "mBank", kind: "bank", available: true }])[0], ["auto", "rozpoznaj automatycznie"]);
   assert.equal(dmShort("2026-01-05"), "5.01");
 });

@@ -13,6 +13,8 @@
 // P2: the main strategy hint ends the sub line under the name (its title lists every hint); P3: the Rekomendacja card
 // is tinted yellow / red when data stored after it puts it in question, with the reasons as short lines.
 import { useEffect, useMemo, useState } from "react";
+import { C } from "../../../common.strings.ts";
+import { intlLocale } from "../../../i18n.ts";
 import { LineChart, type Level } from "../../../charts";
 import { labelIndices } from "../../../chart";
 import { monthYearShort } from "../../../format";
@@ -21,7 +23,7 @@ import { useAsync } from "../../../hooks";
 import { Seg, Skeleton, useToast } from "../../../ui";
 import { FootFacts, PolDot, Widget } from "../../../widgets";
 import { getPositionChart, getPositionDetail, getTheses, type Position, type Thesis } from "../api";
-import { accountLabel, bucketLabel, dmy, ENTRY_TYPE, micName, money, money0, pct, plural, qty, wdm } from "../labels";
+import { accountLabel, bucketLabel, dmy, ENTRY_TYPE, micName, money, money0, pct, qty, wdm } from "../labels";
 import { InstLabel, PlanGlyph } from "./InstLabel";
 import { AlertRow, removeAlertWithUndo } from "./Alerts";
 import { type Alert, getDecisionsFor, getSignalsV2, invKey, patchWatch, postWatch, type SignalV2, type WatchItem } from "./api";
@@ -40,13 +42,18 @@ import {
 import { HintChip } from "./hints";
 import { todayLocal } from "../../../time";
 import { Age, Fact1, legacyDecisions, longText, type SignalsCtx, signalAge, useGroupWriter, useSignalAck } from "./Signals";
+import { S, THRESHOLD_WORD } from "./AssetPage.strings.ts";
 
-const MONTHS: [string, number][] = [["6M", 6], ["1R", 12], ["2R", 24], ["Max", 120]];
+const MONTHS = (): [string, number][] => [["6M", 6], [S.year1, 12], [S.year2, 24], ["Max", 120]];
 
 /** Names seen this session, per profile (`slug:id`; names carry per-profile overrides): a saved instrument (F12:
  * removed from Obserwowane, kept for its research) keeps its name in the drawer label after it leaves the watchlist. */
 const NAMES = new Map<string, string>();
 const nameKey = (slug: string, id: number) => `${slug}:${id}`;
+
+/** A formatted price without its currency symbol (the chart's level labels): Polish puts it after the number
+ * (`560,00 $`), English before it (`$560.00`, `PLN 560.00`). */
+const bareNumber = (s: string) => s.replace(/\s?(z\u0142|€|\$)$/, "").replace(/^(?:[A-Z]{3}|[A-Z]{0,2}\$|€|z\u0142)\s?/, "");
 
 /** Name of an instrument for the drawer label and crumb before the detail loads. */
 export function assetName(slug: string, id: number, positions: Position[], watch: WatchItem[]): string {
@@ -54,7 +61,7 @@ export function assetName(slug: string, id: number, positions: Position[], watch
   const w = p ? null : watch.find((x) => x.instrument_id === id);
   const name = p ? instName(p.instrument) : w?.instrument ? instName(w.instrument) : null;
   if (name) NAMES.set(nameKey(slug, id), name);
-  return name ?? NAMES.get(nameKey(slug, id)) ?? `instrument ${id}`;
+  return name ?? NAMES.get(nameKey(slug, id)) ?? S.instrument(id);
 }
 
 export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, onNewAlert, onAddTxn, onTxns, onThesis, onJournal, onAlerts, onAlertsChanged }: {
@@ -98,7 +105,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const chart = useAsync(() => getPositionChart(slug, id, months), [slug, id, months], { key: invKey(slug, "chart", id, months) });
   const sig = useAsync(() => getSignalsV2(slug, "all"), [slug, id, ctx.positions], { key: invKey(slug, "signals", "all") });
   const inst = pos?.instrument ?? detail.data?.instrument ?? w?.instrument ?? null;
-  const name = inst ? instName(inst) : NAMES.get(nameKey(slug, id)) ?? chart.data?.label ?? `instrument ${id}`;
+  const name = inst ? instName(inst) : NAMES.get(nameKey(slug, id)) ?? chart.data?.label ?? S.instrument(id);
   if (inst) NAMES.set(nameKey(slug, id), name);
   const mine = alerts.filter((a) => a.instrument_id === id);
   const live = mine.filter((a) => a.status === "active" || a.status === "triggered" || a.status === "snoozed");
@@ -129,17 +136,17 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
     const out: Level[] = [];
     for (const a of live) {
       if ((a.kind === "price_below" || a.kind === "price_above") && typeof a.params.level === "number") {
-        out.push({ y: a.params.level, cls: a.source === "agent" ? "agent" : "alert", label: `${a.source === "agent" ? "alert agenta" : "alert"} · ${a.kind === "price_below" ? "poniżej" : "powyżej"} ${priceText(a.params.level, c).replace(/\s?(zł|€|\$)$/, "")}` });
+        out.push({ y: a.params.level, cls: a.source === "agent" ? "agent" : "alert", label: `${a.source === "agent" ? S.agentAlert : S.alert} · ${a.kind === "price_below" ? S.below : S.above} ${bareNumber(priceText(a.params.level, c))}` });
       }
     }
     for (const t of chart.data?.thresholds ?? []) {
       // By rule kind, never the strategy's rule id (FE-A A6): "transza -15 % od szczytu", "zysk +60 % od kosztu".
-      const word = ({ drawdown_from_high: "transza", loss_from_cost: "strata", gain_from_cost: "zysk" } as Record<string, string>)[t.kind] ?? "reguła";
-      out.push({ y: t.y, cls: "rule", muted: true, label: `${word} ${t.kind === "gain_from_cost" ? "+" : "-"}${Math.round(t.threshold * 100)} % od ${t.basis === "cost" ? "kosztu" : "szczytu"} · ${hideAmount(t.y.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}` });
+      const word = (THRESHOLD_WORD as Record<string, string | undefined>)[t.kind] ?? S.rule;
+      out.push({ y: t.y, cls: "rule", muted: true, label: S.threshold(word, t.kind === "gain_from_cost" ? "+" : "-", Math.round(t.threshold * 100), t.basis === "cost", hideAmount(t.y.toLocaleString(intlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }))) });
     }
-    if (high != null) out.push({ y: high, cls: "rule", muted: true, label: `szczyt 52 tyg. · ${hideAmount(high.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}` });
+    if (high != null) out.push({ y: high, cls: "rule", muted: true, label: `${S.high52} · ${hideAmount(high.toLocaleString(intlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}` });
     const cost = chart.data?.cost?.average;
-    if (cost != null && pos?.valuation_mode === "market") out.push({ y: cost, cls: "cost", muted: true, label: `śr. koszt · ${hideAmount(cost.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}` });
+    if (cost != null && pos?.valuation_mode === "market") out.push({ y: cost, cls: "cost", muted: true, label: `${S.avgCost} · ${hideAmount(cost.toLocaleString(intlLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}` });
     return out;
   }, [live, chart.data, high, c, pos?.valuation_mode]);
   // Buy / sell markers inside the shown range, on the line (the close of the trade day).
@@ -199,7 +206,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
       toast(addedToast(r, r.instrument ? instName(r.instrument) : name, (x) => describeIssue(x).text), 6000);
       ctx.onChanged();
     } catch (e) {
-      toast(`Nie dodano: ${errorText(e)}`, 4000);
+      toast(S.addFailed(errorText(e)), 4000);
     } finally { setWatchBusy(false); }
   };
 
@@ -211,36 +218,36 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
             sub={[inst.symbol !== name ? inst.symbol : null, micName(inst.mic), bucketLabel(pos?.bucket)].filter(Boolean).join(" · ")} />
         ) : name}</h2>
         <div className="muted hsub" style={{ fontSize: 12.5, marginTop: 2 }}>
-          {[acc ? accountLabel(acc, accounts) : pos ? plural(pos.accounts.length, "rachunek", "rachunki", "rachunków") : w ? "obserwowany" : null, firstLot ? `od ${dmy(firstLot.open_date)}` : null].filter(Boolean).join(" · ")}
+          {[acc ? accountLabel(acc, accounts) : pos ? S.accounts(pos.accounts.length) : w ? S.watched : null, firstLot ? S.since(dmy(firstLot.open_date)) : null].filter(Boolean).join(" · ")}
           {state && <> · <button className="lnk hsig" onClick={toSignals}><PolDot state={state} /> {STATE_LABEL[state]}</button></>}
           {hints.length > 0 && <> · <HintChip hint={hints[0]} held={held} all={hints} /></>}
         </div>
       </div>
       <div className="sep" aria-hidden />
       <div>
-        <div className="px">{last != null ? money(last, c) : "-"}{wk != null && <span className={wk >= 0 ? "pos" : "neg"}>{pct(wk, true)} tydz.</span>}</div>
-        <div className="muted" style={{ fontSize: 12 }}>{chart.data?.last ? wdm(chart.data.last.date) : ""}{fromHigh != null ? <> · od szczytu <b className={fromHigh < 0 ? "neg" : "pos"}>{pct(fromHigh)}</b></> : ""}</div>
+        <div className="px">{last != null ? money(last, c) : "-"}{wk != null && <span className={wk >= 0 ? "pos" : "neg"}>{pct(wk, true)} {S.week}</span>}</div>
+        <div className="muted" style={{ fontSize: 12 }}>{chart.data?.last ? wdm(chart.data.last.date) : ""}{fromHigh != null ? <> · {S.fromHigh} <b className={fromHigh < 0 ? "neg" : "pos"}>{pct(fromHigh)}</b></> : ""}</div>
       </div>
       {pos && (
         <>
           <div className="sep" aria-hidden />
           <div className="hfx">
-            <div className="fact"><div className="l">Wartość</div><div className="v sm">{money(pos.value, ctx.base)}</div>{pctOf != null && <div className="d">{pct(pctOf)} portfela</div>}</div>
-            <div className="fact"><div className="l">Wynik</div><div className={`v sm ${(pos.unrealized ?? 0) >= 0 ? "pos" : "neg"}`}>{money0(pos.unrealized, ctx.base, true)}</div>
+            <div className="fact"><div className="l">{S.value}</div><div className="v sm">{money(pos.value, ctx.base)}</div>{pctOf != null && <div className="d">{pct(pctOf)} {S.ofPortfolio}</div>}</div>
+            <div className="fact"><div className="l">{S.result}</div><div className={`v sm ${(pos.unrealized ?? 0) >= 0 ? "pos" : "neg"}`}>{money0(pos.unrealized, ctx.base, true)}</div>
               <div className="d">{pct(pos.unrealized_pct, true)}</div></div>
-            <div className="fact"><div className="l">Śr. koszt</div><div className="v sm">{avgCost ? money(avgCost.value, avgCost.currency) : "-"}</div></div>
-            <div className="fact"><div className="l">Ilość</div><div className="v sm">{qty(pos.quantity)}</div></div>
+            <div className="fact"><div className="l">{S.avgCostFact}</div><div className="v sm">{avgCost ? money(avgCost.value, avgCost.currency) : "-"}</div></div>
+            <div className="fact"><div className="l">{S.quantity}</div><div className="v sm">{qty(pos.quantity)}</div></div>
           </div>
         </>
       )}
       <span className="spacer" />
       <div className="hdr-right">
         {!held && (w
-          ? <button className="btn watching" title="Przestań obserwować" disabled={watchBusy} onClick={toggleWatch}><span aria-hidden>✓ </span>Obserwujesz</button>
-          : <button className="btn" disabled={watchBusy} onClick={toggleWatch}>Obserwuj</button>)}
-        <button className="btn" onClick={onNewAlert}>+ Alert</button>
-        {pos && <button className="btn" onClick={onAddTxn}>+ Transakcja</button>}
-        <button className="btn primary" disabled={!canDecide} title={canDecide ? undefined : "Brak otwartego sygnału"} onClick={() => setDecideOpen(true)}>Zanotuj decyzję</button>
+          ? <button className="btn watching" title={S.unwatch} disabled={watchBusy} onClick={toggleWatch}><span aria-hidden>✓ </span>{S.watching}</button>
+          : <button className="btn" disabled={watchBusy} onClick={toggleWatch}>{S.watch}</button>)}
+        <button className="btn" onClick={onNewAlert}>{S.addAlert}</button>
+        {pos && <button className="btn" onClick={onAddTxn}>{S.addTxn}</button>}
+        <button className="btn primary" disabled={!canDecide} title={canDecide ? undefined : S.noOpenSignal} onClick={() => setDecideOpen(true)}>{S.recordDecision}</button>
       </div>
       {(pos || (showSegment && inst)) && (
         <div className="hmeta">
@@ -263,7 +270,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
       {pos && lotsOpen && lots.rows.length > 1 && (
         <div className="hlots" id={`hlots-${id}`}>
           <table className="lots">
-            <thead><tr><th>data</th><th className="num">ilość</th><th className="num">cena</th><th className="num">wynik</th><th className="num">wynik %</th></tr></thead>
+            <thead><tr><th>{S.lotDate}</th><th className="num">{S.lotQty}</th><th className="num">{S.lotPrice}</th><th className="num">{S.lotResult}</th><th className="num">{S.lotResultPct}</th></tr></thead>
             <tbody>
               {lots.rows.map((l, k) => {
                 const a = accounts.find((x) => x.id === l.account_id);
@@ -285,61 +292,61 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   );
 
   const priceChart = (
-    <Widget title="Cena z poziomami" count={c} className="s2" controls={<Seg quiet label="Zakres" value={months} onChange={setMonths} items={MONTHS} />} body="tight"
+    <Widget title={S.chartTitle} count={c} className="s2" controls={<Seg quiet label={S.range} value={months} onChange={setMonths} items={MONTHS()} />} body="tight"
       footer={<FootFacts items={[
-        high != null && <>szczyt 52 tyg. <b>{money(high, c)}</b></>,
-        closes.length > 1 && <>dołek <b>{money(Math.min(...closes), c)}</b></>,
-        vol30 != null && <>zmienność 30 dni <b>{pct(vol30)}</b></>,
-        nearest && <>do alertu {priceText(nearest.a.params.level as number, c)}: <b>{pct(nearest.d, true)}</b></>,
+        high != null && <>{S.high52} <b>{money(high, c)}</b></>,
+        closes.length > 1 && <>{S.low} <b>{money(Math.min(...closes), c)}</b></>,
+        vol30 != null && <>{S.vol30} <b>{pct(vol30)}</b></>,
+        nearest && <>{S.toAlert(priceText(nearest.a.params.level as number, c))} <b>{pct(nearest.d, true)}</b></>,
       ]} />}>
       <div className="legend" style={{ marginBottom: 6 }}>
-        <span><i className="main" />cena</span>
-        {levels.some((l) => l.cls === "alert") && <span><i className="alert" />alerty</span>}
-        {levels.some((l) => l.cls === "agent") && <span><i className="agent" />alert agenta</span>}
-        {(chart.data?.thresholds.length ?? 0) > 0 && <span><i className="rule" />progi reguł</span>}
-        {levels.some((l) => l.cls === "cost") && <span><i className="cost" />śr. koszt</span>}
-        {markers.some((m) => m.cls === "buy") && <span><i className="dotb" />zakupy</span>}
-        {markers.some((m) => m.cls === "sell") && <span><i className="dots" />sprzedaże</span>}
+        <span><i className="main" />{S.legendPrice}</span>
+        {levels.some((l) => l.cls === "alert") && <span><i className="alert" />{S.legendAlerts}</span>}
+        {levels.some((l) => l.cls === "agent") && <span><i className="agent" />{S.agentAlert}</span>}
+        {(chart.data?.thresholds.length ?? 0) > 0 && <span><i className="rule" />{S.legendRules}</span>}
+        {levels.some((l) => l.cls === "cost") && <span><i className="cost" />{S.avgCost}</span>}
+        {markers.some((m) => m.cls === "buy") && <span><i className="dotb" />{S.legendBuys}</span>}
+        {markers.some((m) => m.cls === "sell") && <span><i className="dots" />{S.legendSells}</span>}
       </div>
       {chart.loading && !chart.data ? <Skeleton h={mode === "drawer" ? 260 : 300} /> : series.length < 2 ? (
-        <div className="empty">{pos?.valuation_mode === "cost" ? "Wycena po koszcie: bez notowań." : pos?.valuation_mode === "manual" ? "Wycena ręczna: bez notowań." : "Za mało notowań."}</div>
+        <div className="empty">{pos?.valuation_mode === "cost" ? S.costValued : pos?.valuation_mode === "manual" ? S.manualValued : S.tooFewQuotes}</div>
       ) : (
-        <LineChart label={`${name}: cena z poziomami alertów i reguł`} height={mode === "drawer" ? 260 : 300} padL={small ? 36 : 46} padR={small ? 150 : 200} yTicks={5}
-          yFmt={(v) => hideAmount(v.toLocaleString("pl-PL", { maximumFractionDigits: v >= 100 ? 0 : 2 }))}
+        <LineChart label={S.chartLabel(name)} height={mode === "drawer" ? 260 : 300} padL={small ? 36 : 46} padR={small ? 150 : 200} yTicks={5}
+          yFmt={(v) => hideAmount(v.toLocaleString(intlLocale(), { maximumFractionDigits: v >= 100 ? 0 : 2 }))}
           xLabels={labelIndices(series.length, small ? 3 : 5).map((i) => ({ i, text: monthYearShort(series[i].date) }))}
           series={[{ values: closes, cls: "main", endLabel: last != null ? money(last, c) : undefined }]} levels={levels} markers={markers}
-          tooltip={(i) => <><div className="k">{dmy(series[i].date)}</div><div>cena <b>{money(series[i].close, c)}</b></div></>} />
+          tooltip={(i) => <><div className="k">{dmy(series[i].date)}</div><div>{S.legendPrice} <b>{money(series[i].close, c)}</b></div></>} />
       )}
     </Widget>
   );
 
   const thesisW = (pos || w) && (
-    <Widget title="Teza" tags={<>{thesis?.entry_type ? <span className="sub">{ENTRY_TYPE[thesis.entry_type] ?? thesis.entry_type}</span> : null}{ThesisTags && <ThesisTags {...slot} />}</>}
-      controls={<button className="btn sm" onClick={() => onThesis({ id, label: inst?.label || name }, thesis)}>{thesis ? "Edytuj" : "Dodaj"}</button>} body="tight">
+    <Widget title={S.thesis} tags={<>{thesis?.entry_type ? <span className="sub">{ENTRY_TYPE[thesis.entry_type] ?? thesis.entry_type}</span> : null}{ThesisTags && <ThesisTags {...slot} />}</>}
+      controls={<button className="btn sm" onClick={() => onThesis({ id, label: inst?.label || name }, thesis)}>{thesis ? C.edit : C.add}</button>} body="tight">
       {thesis ? (
         <div className="tz">
-          {thesis.thesis && <p><b>Wejście</b>{thesis.thesis}</p>}
-          {thesis.invalidation && <p><b>Unieważnienie</b>{thesis.invalidation}</p>}
-          {thesis.exit_plan && <p><b>Plan wyjścia</b>{thesis.exit_plan}</p>}
-          {thesis.size_plan && <p><b>Wielkość i dokupienia</b>{thesis.size_plan}</p>}
+          {thesis.thesis && <p><b>{S.entry}</b>{thesis.thesis}</p>}
+          {thesis.invalidation && <p><b>{S.invalidation}</b>{thesis.invalidation}</p>}
+          {thesis.exit_plan && <p><b>{S.exitPlan}</b>{thesis.exit_plan}</p>}
+          {thesis.size_plan && <p><b>{S.sizePlan}</b>{thesis.size_plan}</p>}
         </div>
-      ) : <div className="muted" style={{ fontSize: 13 }}>Brak tezy.</div>}
+      ) : <div className="muted" style={{ fontSize: 13 }}>{S.noThesis}</div>}
     </Widget>
   );
 
   // P3: tinted yellow (may be outdated) / red (outdated, the owner's explicit exception to "no P/L red"), a tag, and
   // the reasons stored after the recommendation as short muted lines (a note reason links to its note).
   const recW = plan && (
-    <Widget title="Rekomendacja" className={fresh ? `recw ${fresh}` : "recw"}
+    <Widget title={S.recommendation} className={fresh ? `recw ${fresh}` : "recw"}
       tags={<>
-        {inst?.plan_at && <span className="sub" title="Rekomendacja modelu. Decyzję zapisujesz osobno.">{dmy(inst.plan_at)}</span>}
-        {fresh && <span className={`tag ${fresh === "out" ? "neg" : "warn"}`} title="Według danych zapisanych po rekomendacji">{FRESH_LABEL[fresh]}</span>}
+        {inst?.plan_at && <span className="sub" title={S.recTitle}>{dmy(inst.plan_at)}</span>}
+        {fresh && <span className={`tag ${fresh === "out" ? "neg" : "warn"}`} title={S.freshTitle}>{FRESH_LABEL[fresh]}</span>}
       </>} body="tight">
-      <div className="rec" aria-label={`Rekomendacja modelu: ${pLabel(plan)}`} data-fresh={fresh ?? undefined}>
+      <div className="rec" aria-label={S.recAria(pLabel(plan) ?? "")} data-fresh={fresh ?? undefined}>
         <b><PlanGlyph plan={plan} className="pcoin" />{pLabel(plan)}</b>
         {inst?.plan_reason && <p>{inst.plan_reason}</p>}
         {reasons.length > 0 && (
-          <ul className="rsn" aria-label="Powody">
+          <ul className="rsn" aria-label={S.reasons}>
             {reasons.map((r) => (
               <li key={r.key}>{r.noteId != null && ctx.onOpenNote
                 ? <button className="lnk" onClick={() => ctx.onOpenNote!(id, r.noteId, null)}>{r.text}</button>
@@ -352,22 +359,22 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   );
 
   const alertsW = (
-    <Widget title="Alerty" controls={<><button className="lnk" onClick={onAlerts}>wszystkie</button><button className="btn sm" onClick={onNewAlert}>+ Nowy</button></>} body="tight">
-      {!live.length ? <div className="muted" style={{ fontSize: 13 }}>Brak alertów.</div>
+    <Widget title={S.alerts} controls={<><button className="lnk" onClick={onAlerts}>{S.all}</button><button className="btn sm" onClick={onNewAlert}>{S.newAlert}</button></>} body="tight">
+      {!live.length ? <div className="muted" style={{ fontSize: 13 }}>{S.noAlerts}</div>
         : live.map((a) => <AlertRow key={a.id} a={a} compact onRemove={a.source === "agent" ? () => removeAlert(a) : undefined} />)}
     </Widget>
   );
 
   const research = Research && researchShown ? <Research {...slot} /> : null;
   const timelineW = (
-    <Widget title="Sygnały i decyzje" id={`asset-signals-${id}`} className={thesisW || recW || research ? "s2" : undefined} controls={<button className="lnk" onClick={onJournal}>dziennik</button>} body="tight">
+    <Widget title={S.signalsDecisions} id={`asset-signals-${id}`} className={thesisW || recW || research ? "s2" : undefined} controls={<button className="lnk" onClick={onJournal}>{S.journal}</button>} body="tight">
       {undecided.length > 0 && (
         <div className="osig">
           {undecided.map((s) => <OpenSignalRow key={s.id} s={s} ctx={ctx} grouped={undecided.length > 1} />)}
           {undecided.length > 1 && <GroupAck signals={undecided} ctx={ctx} />}
         </div>
       )}
-      {!timeline.length && !undecided.length ? <div className="muted" style={{ fontSize: 13 }}>Brak sygnałów i decyzji.</div> : timeline.length > 0 && (
+      {!timeline.length && !undecided.length ? <div className="muted" style={{ fontSize: 13 }}>{S.noSignalsDecisions}</div> : timeline.length > 0 && (
         <div className="tl wide">
           {timeline.map((e) => (
             <div key={e.key} style={{ display: "contents" }}>
@@ -421,30 +428,30 @@ function WatchNote({ slug, item, onChanged }: { slug: string; item: WatchItem; o
       const r = await patchWatch(slug, item.id, { note: draft.trim() });
       setSaved(r.note ?? null);
       setDraft(null);
-      toast("Zapisano", 2000);
+      toast(C.saved, 2000);
       onChanged();
     } catch (e) {
-      setErr(`Nie udało się zapisać: ${errorText(e)}`);
+      setErr(S.saveFailed(errorText(e)));
     } finally { setBusy(false); }
   };
   return (
-    <Widget title="Dlaczego obserwuję" body="tight"
-      controls={draft == null && <button className="btn sm" onClick={() => { setErr(null); setDraft(note ?? ""); }}>{note ? "Edytuj" : "Dodaj"}</button>}>
+    <Widget title={S.whyWatch} body="tight"
+      controls={draft == null && <button className="btn sm" onClick={() => { setErr(null); setDraft(note ?? ""); }}>{note ? C.edit : C.add}</button>}>
       {draft != null ? (
         <div className="form">
           <div className="field">
-            <textarea rows={4} maxLength={1000} aria-label="Dlaczego obserwuję" value={draft} autoFocus
+            <textarea rows={4} maxLength={1000} aria-label={S.whyWatch} value={draft} autoFocus
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setDraft(null); } }} />
           </div>
           {err && <div className="neg" style={{ fontSize: 12.5 }}>{err}</div>}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button className="btn sm" disabled={busy} onClick={() => setDraft(null)}>Anuluj</button>
-            <button className="btn sm primary" disabled={busy} onClick={save}>{busy ? "Zapisuję…" : "Zapisz"}</button>
+            <button className="btn sm" disabled={busy} onClick={() => setDraft(null)}>{C.cancel}</button>
+            <button className="btn sm primary" disabled={busy} onClick={save}>{busy ? S.saving : C.save}</button>
           </div>
         </div>
       ) : note ? <div className="tz"><p style={{ whiteSpace: "pre-wrap" }}>{note}</p></div>
-        : <div className="muted" style={{ fontSize: 13 }}>Brak notatki.</div>}
+        : <div className="muted" style={{ fontSize: 13 }}>{S.noNote}</div>}
     </Widget>
   );
 }
@@ -461,10 +468,10 @@ function OpenSignalRow({ s, ctx, grouped }: { s: SignalV2; ctx: SignalsCtx; grou
       <PolDot polarity={polarityOf(s)} />
       <div className="m" title={longText(s, ctx)}>
         <Fact1 f={signalFact(s)} />
-        {research && ctx.onOpenNote && <> · <button className="lnk" onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.segment === "string" ? s.payload.segment : null)}>notatka</button></>}
+        {research && ctx.onOpenNote && <> · <button className="lnk" onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.segment === "string" ? s.payload.segment : null)}>{S.note}</button></>}
         <Age a={signalAge(s, ctx)} />
       </div>
-      <div className="rt">{!grouped && <button className="lnk quiet" disabled={busy(s)} onClick={() => ack(s)}>potwierdź</button>}</div>
+      <div className="rt">{!grouped && <button className="lnk quiet" disabled={busy(s)} onClick={() => ack(s)}>{S.ack}</button>}</div>
     </div>
   );
 }
@@ -474,7 +481,7 @@ function GroupAck({ signals, ctx }: { signals: SignalV2[]; ctx: SignalsCtx }) {
   const w = useGroupWriter(ctx, { primary: signals[0] ?? null, live: signals }, () => undefined);
   return (
     <div className="oact">
-      <button className="btn sm" disabled={w.busy} onClick={() => w.ack()} title={`Potwierdza ${plural(signals.length, "sygnał", "sygnały", "sygnałów")}`}>Potwierdź</button>
+      <button className="btn sm" disabled={w.busy} onClick={() => w.ack()} title={S.ackTitle(signals.length)}>{S.ackAll}</button>
     </div>
   );
 }

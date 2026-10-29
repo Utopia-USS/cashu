@@ -1,10 +1,12 @@
-"""Budget's blank-page steps (``ModuleSpec.setup_status``). Copy is Polish UI data."""
+"""Budget's blank-page steps (``ModuleSpec.setup_status``). Copy is UI data in the request's
+language (``core.i18n.tr``), the CLI placeholders too."""
 
 from __future__ import annotations
 
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from cashu.core.i18n import tr
 from cashu.core.institutions import MANUAL
 from cashu.core.models import Account
 from cashu.core.modules import SetupAction, SetupStatus, SetupStep, cli_prefix
@@ -41,31 +43,46 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
 
     # One bank account: nothing to pair, the step is done once there is data (first steps B1).
     single = n_txns > 0 and n_bank_accounts < 2
+    copy = tr(pl="Kopiuj polecenie", en="Copy command")
     return SetupStatus(steps=(
         SetupStep(
             "statement",
-            "Pierwszy wyciąg z banku",
-            "Plik CSV (mBank, Pekao, Erste) albo Open Banking.",
+            tr(pl="Pierwszy wyciąg z banku", en="First bank statement"),
+            tr(
+                pl="Plik CSV (mBank, Pekao, Erste) albo Open Banking.",
+                en="A CSV file (mBank, Pekao, Erste) or Open Banking.",
+            ),
             done=n_txns > 0,
             actions=(
-                SetupAction("cli", "Kopiuj polecenie", f"{cli} import-csv WYCIAG.csv"),
+                SetupAction(
+                    "cli", copy, f"{cli} import-csv {tr(pl='WYCIAG.csv', en='STATEMENT.csv')}"
+                ),
                 SetupAction("cli", "Open Banking", f'{cli} eb login "mBank"'),
             ),
         ),
         SetupStep(
             "categories",
-            "Kategorie wydatków",
-            "W zakładce Wydatki; reguła zapamięta sprzedawcę.",
+            tr(pl="Kategorie wydatków", en="Expense categories"),
+            tr(
+                pl="W zakładce Wydatki; reguła zapamięta sprzedawcę.",
+                en="In the Expenses tab; a rule remembers the merchant.",
+            ),
             done=n_txns > 0 and (n_manual > 0 or n_uncategorized == 0),
-            actions=(SetupAction("tab", "Wydatki", "expenses"),),
+            actions=(SetupAction("tab", tr(pl="Wydatki", en="Expenses"), "expenses"),),
         ),
         SetupStep(
             "transfers",
-            "Przelewy między kontami",
-            "Jedno konto bankowe: nic do dopasowania."
+            tr(pl="Przelewy między kontami", en="Transfers between accounts"),
+            tr(
+                pl="Jedno konto bankowe: nic do dopasowania.",
+                en="One bank account: nothing to match.",
+            )
             if single
-            else "Po IBAN między Twoimi kontami; nie liczą się jako wydatki.",
+            else tr(
+                pl="Po IBAN między Twoimi kontami; nie liczą się jako wydatki.",
+                en="By IBAN between your accounts; they do not count as expenses.",
+            ),
             done=n_txns > 0 and (n_transfers > 0 or n_own_moves > 0 or n_bank_accounts < 2),
-            actions=(SetupAction("cli", "Kopiuj polecenie", f"{cli} match-transfers"),),
+            actions=(SetupAction("cli", copy, f"{cli} match-transfers"),),
         ),
     ))

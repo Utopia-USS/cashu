@@ -20,6 +20,9 @@ import {
   sumByCurrency, valuationLabel, visibleRows,
 } from "./logic";
 import { AssetsSteps } from "./Steps";
+import { C } from "../../common.strings.ts";
+import { intlLocale, lang } from "../../i18n.ts";
+import { S } from "./AssetsWidget.strings.ts";
 
 type Row = Account & Partial<Pick<ManualAsset, "kind" | "note" | "depreciation">>;
 const CAP = 5;
@@ -48,7 +51,7 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
 
   const saved = (created: boolean, valueChanged: boolean) => {
     setEdit(null);
-    toast(created ? "Dodano" : "Zapisano");
+    toast(created ? S.added : C.saved);
     manual.reload();
     // A value moves the net worth: the hero, the chart and Konta re-read (the page remounts).
     if (valueChanged) ctx.refresh();
@@ -60,29 +63,29 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
     const refresh = ctx.refresh;
     const undo = () => {
       void restoreManualAsset(slug, a.id).then(
-        () => { refresh(); toast(`Cofnięto: usunięcie ${a.name}`, 2500); },
-        (e: unknown) => toast(`Nie cofnięto: ${errorText(e)}`, 8000, { label: "Cofnij", onClick: undo }),
+        () => { refresh(); toast(S.undone(a.name), 2500); },
+        (e: unknown) => toast(S.notUndone(errorText(e)), 8000, { label: C.undo, onClick: undo }),
       );
     };
-    toast(`Usunięto ${a.name}`, 10000, { label: "Cofnij", onClick: undo });
+    toast(S.removed(a.name), 10000, { label: C.undo, onClick: undo });
     refresh();
   };
 
   if (manual.loading && !manual.data) {
-    return <Widget title="Majątek" body="flush tight"><div style={{ padding: "0 16px" }}><Skeleton h={40} /></div></Widget>;
+    return <Widget title={S.title} body="flush tight"><div style={{ padding: "0 16px" }}><Skeleton h={40} /></div></Widget>;
   }
 
   const subLine = (a: Row) => {
-    if (api && a.kind === "vehicle") return `krzywa utraty wartości${a.depreciation ? ` · ${ratePct(a.depreciation.annual_rate)} % / rok` : ""}`;
+    if (api && a.kind === "vehicle") return `${S.curve}${a.depreciation ? S.perYear(ratePct(a.depreciation.annual_rate)) : ""}`;
     const v = valuationLabel(a.as_of, today);
     if (!v) return null;
-    return v.stale ? <span className="warn" title="wycena starsza niż rok">{v.text}</span> : v.text;
+    return v.stale ? <span className="warn" title={S.staleTitle}>{v.text}</span> : v.text;
   };
   const lossLine = (a: Row) => {
     if (!api || a.kind !== "vehicle") return null;
     const l = monthlyLoss(a.balance, a.depreciation);
     if (l == null) return null;
-    return round0(l) > 0 ? `-${cur0s(l, a.currency)} / mies.` : "wartość minimalna";
+    return round0(l) > 0 ? S.lossPerMonth(cur0s(l, a.currency)) : S.floorReached;
   };
 
   const drawer = edit != null && (
@@ -93,8 +96,8 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
   // No position yet: the widget is the module's first steps (the steps are the controls).
   if (api && !rows.length) {
     return (
-      <Widget title="Majątek" body="tight" id="ov-assets"
-        footer={<button className="lnk" onClick={() => ctx.go({ kind: "setup", module: "assets", cli: true })}>Instrukcja Claude Code i CLI</button>}>
+      <Widget title={S.title} body="tight" id="ov-assets"
+        footer={<button className="lnk" onClick={() => ctx.go({ kind: "setup", module: "assets", cli: true })}>{S.setupLink}</button>}>
         <AssetsSteps compact rows={[]} base={base} onAdd={addNew} />
         {drawer}
       </Widget>
@@ -102,23 +105,23 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
   }
 
   return (
-    <Widget title="Majątek" count={rows.length || undefined} id="ov-assets"
-      controls={api && rows.length ? <button className="btn sm" onClick={() => addNew()}>+ Dodaj</button> : undefined}
+    <Widget title={S.title} count={rows.length || undefined} id="ov-assets"
+      controls={api && rows.length ? <button className="btn sm" onClick={() => addNew()}>{S.addPlus}</button> : undefined}
       body="flush tight"
       footer={rows.length ? (
         <>
           <FootFacts items={[
-            <>razem <b>{totals.map(([c, v]) => cur0s(v, c)).join(" · ")}</b></>,
-            loss != null && round0(loss) > 0 && <>{vehicles.length === 1 ? "auto" : "auta"} <b>-{cur0s(loss, base)}</b> / mies.</>,
+            <>{S.total} <b>{totals.map(([c, v]) => cur0s(v, c)).join(" · ")}</b></>,
+            loss != null && round0(loss) > 0 && <>{S.cars(vehicles.length)} <b>-{cur0s(loss, base)}</b>{S.perMonth}</>,
           ]} />
           <span className="spacer" />
-          {rows.length > CAP && <button className="lnk" onClick={() => setAll((v) => !v)}>{all ? "mniej" : `wszystkie (${rows.length})`}</button>}
+          {rows.length > CAP && <button className="lnk" onClick={() => setAll((v) => !v)}>{all ? S.less : S.all(rows.length)}</button>}
         </>
       ) : undefined}>
       {!rows.length ? (
-        <Empty title="Brak pozycji." action={api
-          ? <button className="btn" onClick={() => addNew()}>Dodaj</button>
-          : <button className="btn" onClick={() => ctx.go({ kind: "setup", module: "assets" })}>Konfiguracja</button>} />
+        <Empty title={S.empty} action={api
+          ? <button className="btn" onClick={() => addNew()}>{C.add}</button>
+          : <button className="btn" onClick={() => ctx.go({ kind: "setup", module: "assets" })}>{S.setup}</button>} />
       ) : (
         <table>
           <tbody>
@@ -130,9 +133,9 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
                 <tr key={a.id} className={api ? "rowlink" : undefined} onClick={open}>
                   <td>
                     {api
-                      ? <button className="nm" onClick={(e) => { e.stopPropagation(); open!(); }} aria-label={`Edytuj: ${a.name}`}>{a.name}</button>
+                      ? <button className="nm" onClick={(e) => { e.stopPropagation(); open!(); }} aria-label={S.editOf(a.name)}>{a.name}</button>
                       : <span className="nm">{a.name}</span>}
-                    {api && a.note && <> <Tag title={a.note}>notatka</Tag></>}
+                    {api && a.note && <> <Tag title={a.note}>{S.note}</Tag></>}
                     {sub != null && <span className="sym">{sub}</span>}
                   </td>
                   <td className="num">{cur0s(a.balance, a.currency)}{line && <span className="sym">{line}</span>}</td>
@@ -150,12 +153,14 @@ export function AssetsWidget({ ctx }: { ctx: ModuleCtx }) {
 /** "zł" / "€" after the value field (the currency code when Intl has no symbol). */
 function currencySign(c: string): string {
   try {
-    return new Intl.NumberFormat("pl-PL", { style: "currency", currency: c }).formatToParts(0).find((p) => p.type === "currency")?.value ?? c;
+    return new Intl.NumberFormat(intlLocale(), { style: "currency", currency: c }).formatToParts(0).find((p) => p.type === "currency")?.value ?? c;
   } catch { return c; }
 }
 
-/** "545 000" / "1 250,5" for the value field. */
-const valueText = (v: number | null) => (v == null ? "" : v.toLocaleString("pl-PL", { maximumFractionDigits: 2 }));
+/** "545 000" / "1 250,5" for the value field; English without grouping ("545000", "1250.5"), as parseValue reads
+ * a comma as the decimal separator. */
+const valueText = (v: number | null) =>
+  (v == null ? "" : v.toLocaleString(intlLocale(), { maximumFractionDigits: 2, ...(lang() === "pl" ? {} : { useGrouping: false }) }));
 
 /** The add / edit form in a drawer: a new position (name, type, value, currency, date, note; a vehicle: its curve
  * instead of value and date), a manual one (value, date, note) or a vehicle (read-only value, its curve, note). */
@@ -189,7 +194,7 @@ export function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRem
       if (row) await patchManualAsset(slug, row.id, r.body); else await postManualAsset(slug, r.body);
       onSaved(!row, !row || "value" in r.body || "depreciation" in r.body);
     } catch (e) {
-      setErr(`Nie zapisano: ${errorText(e)}`);
+      setErr(S.notSaved(errorText(e)));
       setBusy(false);
     }
   };
@@ -200,14 +205,14 @@ export function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRem
       await deleteManualAsset(slug, row.id);
       onRemoved(row);
     } catch (e) {
-      setErr(`Nie usunięto: ${errorText(e)}`);
+      setErr(S.notRemoved(errorText(e)));
       setBusy(false);
     }
   };
 
   const valueField = (
     <div className="field">
-      <label htmlFor="as-value">Wartość</label>
+      <label htmlFor="as-value">{S.value}</label>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <input id="as-value" className="num" inputMode="decimal" autoComplete="off" value={d.value} onChange={set("value")}
           style={{ flex: 1, minWidth: 0 }} data-autofocus={row && !vehicle ? true : undefined} />
@@ -217,7 +222,7 @@ export function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRem
   );
   const dateField = (
     <div className="field">
-      <label htmlFor="as-date">Data wyceny</label>
+      <label htmlFor="as-date">{S.valuationDate}</label>
       <input id="as-date" type="date" value={d.onDate ?? ""} max={today} onChange={set("onDate")} />
     </div>
   );
@@ -226,54 +231,54 @@ export function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRem
       {!row && (
         <div className="form-row">
           <div className="field">
-            <label htmlFor="as-price">Cena zakupu</label>
+            <label htmlFor="as-price">{S.purchasePrice}</label>
             <input id="as-price" className="num" inputMode="decimal" autoComplete="off" value={curve.price} onChange={setC("price")} />
           </div>
           <div className="field">
-            <label htmlFor="as-cur">Waluta</label>
+            <label htmlFor="as-cur">{S.currency}</label>
             <input id="as-cur" value={d.currency} maxLength={3} autoComplete="off" style={{ textTransform: "uppercase" }} onChange={set("currency")} />
           </div>
         </div>
       )}
       {row && (
         <div className="field">
-          <label htmlFor="as-price">Cena zakupu</label>
+          <label htmlFor="as-price">{S.purchasePrice}</label>
           <input id="as-price" className="num" inputMode="decimal" autoComplete="off" value={curve.price} onChange={setC("price")} />
         </div>
       )}
       <div className="form-row">
         <div className="field">
-          <label htmlFor="as-pdate">Data zakupu</label>
+          <label htmlFor="as-pdate">{S.purchaseDate}</label>
           <input id="as-pdate" type="date" value={curve.purchaseDate} max={today} onChange={setC("purchaseDate")} />
         </div>
         <div className="field">
-          <label htmlFor="as-rate">Roczny spadek (%)</label>
+          <label htmlFor="as-rate">{S.yearlyDecline}</label>
           <input id="as-rate" className="num" inputMode="decimal" autoComplete="off" value={curve.ratePct} onChange={setC("ratePct")} />
         </div>
       </div>
       <div className="field">
-        <label htmlFor="as-floor">Wartość minimalna (opcjonalnie)</label>
-        <input id="as-floor" className="num" inputMode="decimal" autoComplete="off" value={curve.floor} title="Poniżej tej kwoty wartość nie spada" onChange={setC("floor")} />
+        <label htmlFor="as-floor">{S.floor}</label>
+        <input id="as-floor" className="num" inputMode="decimal" autoComplete="off" value={curve.floor} title={S.floorTitle} onChange={setC("floor")} />
       </div>
-      {live && <div className="sub">dziś ≈ {cur0s(live.value, liveCur)} · -{cur0s(live.loss, liveCur)} / mies.</div>}
+      {live && <div className="sub">{S.todayApprox(cur0s(live.value, liveCur), cur0s(live.loss, liveCur))}</div>}
     </>
   );
   const noteField = (
     <div className="field">
-      <label htmlFor="as-note">Notatka</label>
+      <label htmlFor="as-note">{S.noteLabel}</label>
       <input id="as-note" value={d.note} maxLength={NOTE_MAX} autoComplete="off" onChange={set("note")} data-autofocus={vehicle ? true : undefined} />
     </div>
   );
 
   return (
-    <Drawer open width={480} onClose={onClose} label="Majątek"
-      title={row ? row.name : "Nowa pozycja"}
+    <Drawer open width={480} onClose={onClose} label={S.title}
+      title={row ? row.name : S.newPosition}
       tag={row ? <Tag>{TYPE_LABEL[row.type] ?? row.type}</Tag> : undefined}
       footer={
         <>
-          <button type="submit" form="asset-form" className="btn primary" disabled={busy}>{busy ? "Zapisuję…" : "Zapisz"}</button>
-          <button type="button" className="btn" onClick={onClose}>Anuluj</button>
-          {row && <button type="button" className="btn" onClick={() => void remove()} disabled={busy}>Usuń</button>}
+          <button type="submit" form="asset-form" className="btn primary" disabled={busy}>{busy ? S.saving : C.save}</button>
+          <button type="button" className="btn" onClick={onClose}>{C.cancel}</button>
+          {row && <button type="button" className="btn" onClick={() => void remove()} disabled={busy}>{C.remove}</button>}
         </>
       }>
       {/* noValidate: the date picker keeps `max` (no future day to pick), a typed one gets the Polish line below. */}
@@ -282,11 +287,11 @@ export function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRem
         {!row ? (
           <>
             <div className="field">
-              <label htmlFor="as-name">Nazwa</label>
+              <label htmlFor="as-name">{S.name}</label>
               <input id="as-name" value={d.name} maxLength={120} autoComplete="off" onChange={set("name")} data-autofocus />
             </div>
             <div className="field">
-              <label htmlFor="as-type">Typ</label>
+              <label htmlFor="as-type">{S.type}</label>
               <select id="as-type" value={d.type} onChange={set("type")}>
                 {CREATE_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>)}
               </select>
@@ -296,7 +301,7 @@ export function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRem
                 <div className="form-row">
                   {valueField}
                   <div className="field">
-                    <label htmlFor="as-cur">Waluta</label>
+                    <label htmlFor="as-cur">{S.currency}</label>
                     <input id="as-cur" value={d.currency} maxLength={3} autoComplete="off" style={{ textTransform: "uppercase" }} onChange={set("currency")} />
                   </div>
                 </div>
@@ -308,7 +313,7 @@ export function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRem
         ) : vehicle ? (
           <>
             <div className="field">
-              <label htmlFor="as-ro">Wartość</label>
+              <label htmlFor="as-ro">{S.value}</label>
               <output id="as-ro" className="ro">{cur0s(row.balance, row.currency)}</output>
             </div>
             {curveFields}
@@ -320,7 +325,7 @@ export function AssetDrawer({ target, slug, base, today, onClose, onSaved, onRem
               {valueField}
               {dateField}
             </div>
-            {row.as_of && <div className="sub">ostatnia wycena {dmy(row.as_of)}</div>}
+            {row.as_of && <div className="sub">{S.lastValuation(dmy(row.as_of))}</div>}
             {noteField}
           </>
         )}

@@ -1,0 +1,91 @@
+// Texts of research as a story (src/modules/investments/v2/research/Story.tsx). See src/i18n.ts.
+import { catalog, enCount, enForm, plCount, plForm } from "../../../../i18n.ts";
+import type { Mood } from "./storyLogic.ts";
+
+export const MOOD = catalog<Record<Mood, string>>({
+  up: { pl: "mocno w górę", en: "strong rise" },
+  tail: { pl: "wiatr w plecy", en: "tailwind" },
+  press: { pl: "pod presją", en: "under pressure" },
+  weak: { pl: "słabnie", en: "weakening" },
+  unsure: { pl: "niepewnie", en: "uncertain" },
+  calm: { pl: "spokojnie", en: "calm" },
+});
+
+export const REL = catalog({
+  supports: { pl: "wspiera tezę", en: "supports the thesis" },
+  weakens: { pl: "osłabia tezę", en: "weakens the thesis" },
+  invalidates: { pl: "podważa tezę", en: "undermines the thesis" },
+  fulfills: { pl: "spełnia tezę", en: "fulfils the thesis" },
+});
+
+export const S = catalog({
+  research: { pl: "Research", en: "Research" },
+  all: { pl: (n: number) => `Wszystko · ${plCount(n, "notatka", "notatki", "notatek")}`, en: (n: number) => `All · ${enCount(n, "note", "notes")}` },
+  newTag: { pl: "nowe", en: "new" },
+  more: { pl: "więcej →", en: "more →" },
+  ahead: { pl: "Nadchodzi", en: "Coming up" },
+  aheadQuiet: { pl: "Spokojny tydzień: brak ważnych wydarzeń.", en: "A quiet week: no major events." },
+  aheadNoneMine: { pl: "W tym tygodniu żadna Twoja spółka nie podaje wyników.", en: "None of your companies reports this week." },
+  aheadMine: {
+    pl: (n: number) => `W tym tygodniu ${plCount(n, "Twoja spółka podaje", "Twoje spółki podają", "Twoich spółek podaje")} wyniki. Po raporcie kurs może mocno się ruszyć.`,
+    en: (n: number) => `${enCount(n, "of your companies reports", "of your companies report")} this week. A report can move the price a lot.`,
+  },
+  reports: { pl: (name: string) => `${name} podaje wyniki`, en: (name: string) => `${name} reports` },
+  yours: { pl: "Twoja pozycja", en: "your position" },
+  watched: { pl: "obserwowana", en: "watched" },
+  fromResearch: { pl: "z researchu", en: "from research" },
+  lostGround: {
+    pl: (n: number) => `${n} ${plForm(n, "teza straciła", "tezy straciły", "tez straciło")} grunt:`,
+    en: (n: number) => `${n} ${enForm(n, "thesis lost", "theses lost")} ground:`,
+  },
+  review: { pl: "Przejrzyj", en: "Review" },
+  topicsWeek: { pl: "Tematy w tym tygodniu", en: "Topics this week" },
+  now: { pl: "Teraz", en: "Now" },
+  outlook: { pl: "Perspektywa", en: "Outlook" },
+  wholeTopic: { pl: "Cały temat →", en: "Whole topic →" },
+  watchedTopic: { pl: "obserwowany", en: "watched" },
+  quiet: { pl: (list: string) => `Bez nowości: ${list}`, en: (list: string) => `Nothing new: ${list}` },
+  drafts: {
+    pl: (n: number) => `${plCount(n, "szkic tezy czeka", "szkice tez czekają", "szkiców tez czeka")} na Ciebie`,
+    en: (n: number) => `${enCount(n, "thesis draft waits", "thesis drafts wait")} for you`,
+  },
+  reviewDrafts: { pl: "Przejrzyj szkice", en: "Review drafts" },
+  draft: { pl: "szkic tezy", en: "thesis draft" },
+  day: { pl: (b: number) => ["Dziś", "Wczoraj", "W tym tygodniu", "Wcześniej"][b], en: (b: number) => ["Today", "Yesterday", "This week", "Earlier"][b] },
+  // the research page
+  story: {
+    pl: (date: string, held: number, topics: number) => `Research z ${date} przejrzał ${plCount(held, "Twoją pozycję", "Twoje pozycje", "Twoich pozycji")} i ${plCount(topics, "temat", "tematy", "tematów")}.`,
+    en: (date: string, held: number, topics: number) => `The research of ${date} went through ${enCount(held, "of your positions", "of your positions")} and ${enCount(topics, "topic", "topics")}.`,
+  },
+  storyTop: { pl: (names: string) => ` Najwięcej ruchu: ${names}.`, en: (names: string) => ` Most movement: ${names}.` },
+  sentWeak: { pl: (n: number) => `${n} ${plForm(n, "teza straciła", "tezy straciły", "tez straciło")} grunt`, en: (n: number) => `${n} ${enForm(n, "thesis lost", "theses lost")} ground` },
+  sentStrong: { pl: (n: number) => plCount(n, "teza wzmocniona", "tezy wzmocnione", "tez wzmocnionych"), en: (n: number) => enCount(n, "thesis strengthened", "theses strengthened") },
+  sentCands: { pl: (n: number) => plCount(n, "nowa okazja", "nowe okazje", "nowych okazji"), en: (n: number) => enCount(n, "new opportunity", "new opportunities") },
+  sentSignals: { pl: (n: number) => `${plCount(n, "sygnał", "sygnały", "sygnałów")} z researchu`, en: (n: number) => `${enCount(n, "signal", "signals")} from research` },
+  sentNothing: { pl: "nic nie czeka na decyzję", en: "nothing waits for a decision" },
+  nextRun: { pl: (d: string) => `następny research: ${d}, 07:00 · rutyna w Claude Code`, en: (d: string) => `next research: ${d}, 07:00 · Claude Code routine` },
+  tabs: { pl: "Widok researchu", en: "Research view" },
+  tabTopics: { pl: "Tematy", en: "Topics" },
+  tabMine: { pl: "Twoje spółki", en: "Your holdings" },
+  tabNotes: { pl: "Notatki", en: "Notes" },
+  tabCalendar: { pl: "Kalendarz", en: "Calendar" },
+  tabCandidates: { pl: "Kandydaci", en: "Candidates" },
+  tabRuns: { pl: "Przebiegi", en: "Runs" },
+  thesis: { pl: (h: string) => `teza ${h}`, en: (h: string) => `thesis ${h}` },
+  nothingNew: { pl: "Nic nowego w tym tygodniu", en: "Nothing new this week" },
+  earningsOn: { pl: (d: string) => `wyniki ${d}`, en: (d: string) => `earnings ${d}` },
+  fAll: { pl: "Wszystkie", en: "All" },
+  fThesis: { pl: "Dotyczą moich tez", en: "About my theses" },
+  fEarnings: { pl: "Wyniki spółek", en: "Earnings" },
+  fNews: { pl: "Wiadomości", en: "News" },
+  filters: { pl: "Filtr notatek", en: "Note filter" },
+  market: { pl: "rynek", en: "market" },
+  dismiss: { pl: (title: string) => `Odrzuć notatkę: ${title}`, en: (title: string) => `Dismiss the note: ${title}` },
+  openIn: { pl: "otwórz →", en: "open →" },
+  sources: { pl: "Źródła", en: "Sources" },
+  showMore: { pl: (n: number) => `pokaż jeszcze ${n}`, en: (n: number) => `show ${n} more` },
+  noNotes: { pl: "Brak notatek dla tego filtra.", en: "No notes for this filter." },
+  calendarNone: { pl: "Brak ważnych wydarzeń w najbliższych 14 dniach.", en: "No major events in the next 14 days." },
+  calendarStale: { pl: "Część źródeł kalendarza nie odpowiedziała: pokazuję ostatnie dane.", en: "Some calendar sources did not answer: showing the last data." },
+  calendarSources: { pl: "Źródła: ForexFactory (makro), Nasdaq (wyniki spółek z USA), research.", en: "Sources: ForexFactory (macro), Nasdaq (US earnings), research." },
+});

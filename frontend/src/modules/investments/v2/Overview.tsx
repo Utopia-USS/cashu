@@ -15,16 +15,16 @@ import { getMonthClose, type MonthClose } from "../../budget/api";
 import { Skeleton, useToast } from "../../../ui";
 import { Fact, FootFacts, Grid, Widget } from "../../../widgets";
 import { getStrategy } from "../api";
-import { accountLabel, bucketLabel, dm, isoDate, money, money0, nInstruments, parseNum, pct, plural, pp, WEEKDAYS } from "../labels";
+import { accountLabel, bucketLabel, dm, isoDate, money, money0, nInstruments, parseNum, pct, pp, WEEKDAYS } from "../labels";
 import { nextDeposit } from "../logic";
 import { deletePlannedDeposit, dropInv, getDigestV2, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, invKey, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
 import { allocGeneric, benchmarkLabel, changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, staleBenchmark, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "./logic";
 import { addDays, todayLocal } from "../../../time";
 import { isMissingEndpoint } from "./undoFlow";
 import { usePriceRefresh } from "./priceRefresh";
+import { C } from "../../../common.strings.ts";
+import { S } from "./Overview.strings.ts";
 
-const MONTH_ADJ = ["styczniowa", "lutowa", "marcowa", "kwietniowa", "majowa", "czerwcowa", "lipcowa", "sierpniowa", "wrześniowa", "październikowa", "listopadowa", "grudniowa"];
-const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 /** Local calendar date (the UTC date is yesterday between 00:00 and 02:00 in Poland, F7 FE11). */
 const todayIso = () => todayLocal();
 const prevMonth = (today: string) => {
@@ -52,37 +52,37 @@ function usePlanActions(slug: string, reloadPlans: () => void) {
     try {
       const p = await postPlannedDeposit(slug, { amount, currency, planned_date: date, account_id: accountId });
       reload();
-      toast(`Zaplanowano wpłatę ${money0(amount, currency)} · ${dm(date)}`, 8000, {
-        label: "Cofnij", onClick: () => { void deletePlannedDeposit(slug, p.id).then(() => { reload(); toast("Cofnięto: plan wpłaty", 2500); }, (e) => toast(`Nie cofnięto: ${errorText(e)}`, 5000)); },
+      toast(S.planned(money0(amount, currency), dm(date)), 8000, {
+        label: C.undo, onClick: () => { void deletePlannedDeposit(slug, p.id).then(() => { reload(); toast(S.undonePlan, 2500); }, (e) => toast(S.undoFailed(errorText(e)), 5000)); },
       });
     } catch (e) {
-      toast(isMissingEndpoint(e) ? "Serwer nie obsługuje planów wpłat: zaktualizuj aplikację." : `Nie zapisano planu: ${errorText(e)}`, 5000);
+      toast(isMissingEndpoint(e) ? S.plansUnsupported : S.planSaveFailed(errorText(e)), 5000);
     } finally { setBusy(false); }
   };
   const drop = async (p: PlannedDeposit) => {
     try { await deletePlannedDeposit(slug, p.id); reload(); }
-    catch (e) { toast(`Nie zmieniono planu: ${errorText(e)}`, 5000); }
+    catch (e) { toast(S.planChangeFailed(errorText(e)), 5000); }
   };
   return { save, drop, busy };
 }
 
 /** Status line of a month's planned deposit. */
-const planTag = (p: PlannedDeposit) => (p.status === "booked" ? `zaksięgowano ${money0(p.amount, p.currency)}${p.booked_at ? ` · ${dm(p.booked_at)}` : ""}` : `zaplanowano ${money0(p.amount, p.currency)} · ${dm(p.planned_date)}`);
+const planTag = (p: PlannedDeposit) => (p.status === "booked" ? `${S.tagBooked(money0(p.amount, p.currency))}${p.booked_at ? ` · ${dm(p.booked_at)}` : ""}` : S.tagPlanned(money0(p.amount, p.currency), dm(p.planned_date)));
 
 /** Hero fact on Przegląd: the portfolio value, the week's change and chances / risks. */
 export function InvestmentsHeroFact({ ctx }: { ctx: ModuleCtx }) {
   const ov = useAsync(() => getOverviewV2(ctx.slug), [ctx.slug], { key: invKey(ctx.slug, "overview", "") });
   const perf = useAsync(() => getPerformance(ctx.slug, "1m"), [ctx.slug], { key: invKey(ctx.slug, "perf", "1m", "") });
   const k = ov.data?.kpis;
-  if (!k) return <Fact label="Inwestycje" value={<Skeleton w={90} h={16} />} />;
+  if (!k) return <Fact label={S.investments} value={<Skeleton w={90} h={16} />} />;
   const c = ov.data!.base_currency;
   const week = perf.data ? changeSince(perf.data.points, minusDays(perf.data.as_of, 7)).pct : null;
   // The server's counts already leave out drift signals of non-generic buckets (F7 GB5).
   const pol = k.polarity;
   return (
-    <Fact label="Inwestycje" value={money0(k.value.total, c)}
-      detail={<>{week != null && <><span className={week >= 0 ? "pos" : "neg"}>{pct(week, true)}</span> tydz. · </>}
-        {pol ? `${plural(pol.positive, "szansa", "szanse", "szans")} · ${plural(pol.negative + pol.neutral, "ryzyko", "ryzyka", "ryzyk")}` : `${k.signals.action + k.signals.info} sygnałów`}</>} />
+    <Fact label={S.investments} value={money0(k.value.total, c)}
+      detail={<>{week != null && <><span className={week >= 0 ? "pos" : "neg"}>{pct(week, true)}</span> {S.week} · </>}
+        {pol ? `${S.chances(pol.positive)} · ${S.risks(pol.negative + pol.neutral)}` : S.signalsCount(k.signals.action + k.signals.info)}</>} />
   );
 }
 
@@ -102,8 +102,8 @@ export function InvestmentsHeaderTag({ slug, go }: { slug: string; go: ModuleCtx
   };
   return (
     <button className="tag warn hdr-tag" onClick={open}
-      title={fr.stale.map((x) => `${x.label}: ${x.price_date ? `ostatnie notowanie ${dm(x.price_date)}` : "brak notowań"}`).join("\n")}>
-      {plural(n, "nieaktualna cena", "nieaktualne ceny", "nieaktualnych cen")}
+      title={fr.stale.map((x) => `${x.label}: ${x.price_date ? S.lastQuote(dm(x.price_date)) : S.noQuotes}`).join("\n")}>
+      {S.stalePrices(n)}
     </button>
   );
 }
@@ -126,22 +126,22 @@ export function InvestmentsSummaryWidget({ ctx }: { ctx: ModuleCtx }) {
   const go = () => ctx.go({ kind: "tab", tab: "investments.portfolio" });
   // The review day (mock overview.html): "dziś" on the digest weekday while due, "do zrobienia" after it, else the weekday.
   const d = dig.data;
-  const review = !d ? null : d.review_due ? (isDigestDay(isoDate(new Date()), d.digest_weekday) ? "dziś" : "do zrobienia")
+  const review = !d ? null : d.review_due ? (isDigestDay(isoDate(new Date()), d.digest_weekday) ? S.today : S.toDo)
     : WEEKDAYS[d.digest_weekday] ?? d.digest_weekday;
   return (
-    <Widget title="Inwestycje" count={vals.length ? "12 mies." : undefined} controls={<button className="lnk" onClick={go}>Inwestycje</button>} body="tight"
-      footer={<>{review && <span>przegląd tygodnia: <b>{review}</b></span>}<span className="spacer" />
-        <span>{last ? <>reguły {last.status === "ok" ? "ok" : last.status === "partial" ? "częściowo" : "błąd"} · <b>{dm(last.finished_at ?? last.started_at)}</b></> : "reguły jeszcze nie działały"}</span></>}>
+    <Widget title={S.investments} count={vals.length ? S.months12 : undefined} controls={<button className="lnk" onClick={go}>{S.investments}</button>} body="tight"
+      footer={<>{review && <span>{S.weeklyReview} <b>{review}</b></span>}<span className="spacer" />
+        <span>{last ? <>{S.rules} {last.status === "ok" ? S.runOk : last.status === "partial" ? S.runPartial : S.runError} · <b>{dm(last.finished_at ?? last.started_at)}</b></> : S.rulesNeverRan}</span></>}>
       <div className="facts" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
         <Fact label="YTD" value={s?.twr != null ? pct(s.twr, true) : "-"} tone={s?.twr != null ? (s.twr >= 0 ? "pos" : "neg") : undefined}
           title={perfNotes(ytd.data).join("\n") || undefined}
-          detail={staleBenchmark(b)?.label ?? (b?.status === "ok" && b.twr != null ? `${benchmarkLabel(b)} ${pct(b.twr, true)}` : "bez benchmarku")} />
-        <Fact label="Szanse" value={sig.data ? chances.length : "-"} detail={names(chances) || undefined} />
-        <Fact label="Ryzyka" value={sig.data ? risks.length : "-"} detail={triggered ? plural(triggered, "alert spełniony", "alerty spełnione", "alertów spełnionych") : names(risks) || undefined} />
+          detail={staleBenchmark(b)?.label ?? (b?.status === "ok" && b.twr != null ? `${benchmarkLabel(b)} ${pct(b.twr, true)}` : S.noBenchmark)} />
+        <Fact label={S.chancesLabel} value={sig.data ? chances.length : "-"} detail={names(chances) || undefined} />
+        <Fact label={S.risksLabel} value={sig.data ? risks.length : "-"} detail={triggered ? S.alertsMet(triggered) : names(risks) || undefined} />
       </div>
       {vals.length > 2 && (
         <div style={{ marginTop: 8 }}>
-          <LineChart label="Wartość portfela, 12 miesięcy" height={96} yFmt={false} padR={8} yTicks={2} series={[{ values: vals, cls: "main", area: true }]} />
+          <LineChart label={S.valueChart12m} height={96} yFmt={false} padR={8} yTicks={2} series={[{ values: vals, cls: "main", area: true }]} />
         </div>
       )}
     </Widget>
@@ -170,8 +170,8 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
   const c = close?.currency ?? base;
   if (!d || !close) {
     return (
-      <Widget title="Nadwyżka → wpłata" body="tight">
-        {mc.loading ? <Skeleton h={70} /> : <div className="muted" style={{ fontSize: 13 }}>Brak zamknięcia miesiąca.</div>}
+      <Widget title={S.surplusTitle} body="tight">
+        {mc.loading ? <Skeleton h={70} /> : <div className="muted" style={{ fontSize: 13 }}>{S.noMonthClose}</div>}
       </Widget>
     );
   }
@@ -197,52 +197,52 @@ export function SurplusWidget({ ctx }: { ctx: ModuleCtx }) {
   const save = (value: number) => { setOther(null); void acts.save(value, c, due, accountId); };
   const otherNum = other != null ? parseNum(other) : null;
   return (
-    <Widget title="Nadwyżka → wpłata" hl={!plan} tags={<span className="tag">{dm(due)}</span>}
-      controls={<button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: "budget.flows" })}>zamknięcie miesiąca</button>}
+    <Widget title={S.surplusTitle} hl={!plan} tags={<span className="tag">{dm(due)}</span>}
+      controls={<button className="lnk" onClick={() => ctx.go({ kind: "tab", tab: "budget.flows" })}>{S.monthClose}</button>}
       body="tight"
       footer={<>
         <FootFacts items={[
-          deposits != null && ytdPlan != null && <>wpłaty {curMonth.slice(0, 4)}: <b>{money0(deposits, c)}</b> z {money0(ytdPlan, c)}</>,
+          deposits != null && ytdPlan != null && <>{S.depositsOfYear(curMonth.slice(0, 4))} <b>{money0(deposits, c)}</b> {S.ofTotal} {money0(ytdPlan, c)}</>,
           // BE's month progress: deposits + open plans of this month against the strategy's monthly amount.
           plans.plan?.monthly_amount != null && plans.plan.covered != null && (plans.plan.covered
-            ? <>{MONTH_NOM[Number(curMonth.slice(5, 7)) - 1]}: <b>plan pokryty</b></>
-            : plans.plan.remaining != null ? <>{MONTH_NOM[Number(curMonth.slice(5, 7)) - 1]}: brakuje <b>{money0(plans.plan.remaining, plans.plan.currency)}</b></> : null),
+            ? <>{MONTH_NOM[Number(curMonth.slice(5, 7)) - 1]}: <b>{S.planCovered}</b></>
+            : plans.plan.remaining != null ? <>{MONTH_NOM[Number(curMonth.slice(5, 7)) - 1]}: {S.missing} <b>{money0(plans.plan.remaining, plans.plan.currency)}</b></> : null),
         ]} />
-        <span className="spacer" /><span>{plan?.status === "booked" ? "zaksięgowana z importu" : "do zaksięgowania importem"}</span>
+        <span className="spacer" /><span>{plan?.status === "booked" ? S.bookedFromImport : S.toBookByImport}</span>
       </>}>
       <div className="flow">
-        <Fact label={`Nadwyżka ${ROMAN[monthIdx]}`} value={money0(close.surplus, c)} tone={close.surplus < 0 ? "neg" : undefined}
-          detail={flow.topUp > 0 ? `na inwestycje ${money0(flow.available, c)} po poduszce` : undefined} />
+        <Fact label={S.surplusOf(monthIdx)} value={money0(close.surplus, c)} tone={close.surplus < 0 ? "neg" : undefined}
+          detail={flow.topUp > 0 ? S.forInvesting(money0(flow.available, c)) : undefined} />
         <span className="arrow" aria-hidden>→</span>
-        <Fact label="Plan wpłaty" value={want != null ? money0(want, c) : "-"} detail={want == null ? "brak planu w strategii" : day ? `do ${day}. dnia` : undefined} />
+        <Fact label={S.depositPlan} value={want != null ? money0(want, c) : "-"} detail={want == null ? S.noPlanInStrategy : day ? S.byDay(day) : undefined} />
         <span className="arrow" aria-hidden>→</span>
-        <Fact label={stays != null && stays < 0 ? "Brakuje" : "Zostaje"} value={stays != null ? money0(Math.abs(stays), c) : "-"} tone={stays != null && stays < 0 ? "warn" : undefined}
-          detail={stays != null && stays >= 0 ? "na koncie" : undefined} />
+        <Fact label={stays != null && stays < 0 ? S.short : S.stays} value={stays != null ? money0(Math.abs(stays), c) : "-"} tone={stays != null && stays < 0 ? "warn" : undefined}
+          detail={stays != null && stays >= 0 ? S.inAccount : undefined} />
       </div>
       <div className="checks">
         {cushion?.enabled && (cushion.reached
-          ? <><span className="ok">✓</span> poduszka {cushion.target_months ? `${cushion.target_months} mies.` : money0(cushion.target, cushion.currency)}</>
-          : <><span className="no">!</span> poduszka: brakuje {money0(cushion.missing, cushion.currency)}</>)}
+          ? <><span className="ok">✓</span> {S.cushion} {cushion.target_months ? S.cushionMonths(cushion.target_months) : money0(cushion.target, cushion.currency)}</>
+          : <><span className="no">!</span> {S.cushionMissing} {money0(cushion.missing, cushion.currency)}</>)}
         {cushion?.enabled && under && closes != null ? " · " : ""}
-        {under && closes != null && <>{bucketLabel(under.bucket_id)} poniżej celu: wpłata domyka {pp(closes).replace(/^\+/, "")}</>}
+        {under && closes != null && <>{S.belowTarget(bucketLabel(under.bucket_id) ?? "", pp(closes).replace(/^\+/, ""))}</>}
       </div>
       <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {plan ? (
           <span className="tag solid pos">{planTag(plan)}</span>
         ) : other == null ? (
           <>
-            {flow.primary != null && <button className="btn primary" disabled={acts.busy || plans.list === null && !plans.missing} onClick={() => save(flow.primary!)}>Zaplanuj {money0(flow.primary, c)}</button>}
-            <button className="btn" onClick={() => setOther(want != null ? String(Math.round(want)) : "")}>Inna kwota</button>
+            {flow.primary != null && <button className="btn primary" disabled={acts.busy || plans.list === null && !plans.missing} onClick={() => save(flow.primary!)}>{S.planAmount(money0(flow.primary, c))}</button>}
+            <button className="btn" onClick={() => setOther(want != null ? String(Math.round(want)) : "")}>{S.otherAmount}</button>
           </>
         ) : (
           <>
-            <input className="num" inputMode="decimal" aria-label="Kwota wpłaty" value={other} onChange={(e) => setOther(e.target.value)} style={{ width: 110 }} autoFocus
+            <input className="num" inputMode="decimal" aria-label={S.amountAria} value={other} onChange={(e) => setOther(e.target.value)} style={{ width: 110 }} autoFocus
               onKeyDown={(e) => { if (e.key === "Enter" && otherNum && otherNum > 0) save(otherNum); if (e.key === "Escape") setOther(null); }} />
-            <button className="btn primary" disabled={!otherNum || otherNum <= 0 || acts.busy} onClick={() => otherNum && save(otherNum)}>Zaplanuj</button>
-            <button className="lnk" onClick={() => setOther(null)}>Anuluj</button>
+            <button className="btn primary" disabled={!otherNum || otherNum <= 0 || acts.busy} onClick={() => otherNum && save(otherNum)}>{S.plan}</button>
+            <button className="lnk" onClick={() => setOther(null)}>{C.cancel}</button>
           </>
         )}
-        {plan?.status === "planned" && <button className="lnk" onClick={() => void acts.drop(plan)}>zmień</button>}
+        {plan?.status === "planned" && <button className="lnk" onClick={() => void acts.drop(plan)}>{S.change}</button>}
       </div>
     </Widget>
   );
@@ -291,27 +291,27 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
   const lastPrev = [...dep.flows].reverse().find((f) => f.date.slice(0, 7) < curMonth) ?? null;
   const pol = k?.polarity;
   const alertsLive = k?.alerts ? k.alerts.active + k.alerts.triggered + k.alerts.snoozed : 0;
-  const quiet = [alertsLive ? plural(alertsLive, "alert", "alerty", "alertów") : "bez alertów", pol && pol.positive + pol.negative + pol.neutral ? plural(pol.positive + pol.negative + pol.neutral, "sygnał", "sygnały", "sygnałów") : "bez sygnałów"].join(" · ");
+  const quiet = [alertsLive ? S.alerts(alertsLive) : S.noAlerts, pol && pol.positive + pol.negative + pol.neutral ? S.signals(pol.positive + pol.negative + pol.neutral) : S.noSignals].join(" · ");
   const savePlan = () => { if (planAmount != null) void acts.save(planAmount, c, due, accounts.length === 1 ? accounts[0].id : null); };
   const toInv = (sub?: string) => go({ kind: "tab", tab: "investments.portfolio", sub });
   return (
     <Grid items={[
       {
         id: "hero", span: 3, node: (
-          <section className="w hero" aria-label="Portfel">
+          <section className="w hero" aria-label={S.portfolio}>
             <div className="h1">
-              <div className="l">Portfel · {MONTH_NOM[Number(today.slice(5, 7)) - 1]}</div>
+              <div className="l">{S.portfolio} · {MONTH_NOM[Number(today.slice(5, 7)) - 1]}</div>
               <div className="v">{k ? money(k.value.total, c) : <Skeleton w={160} h={28} />}</div>
               {s?.pnl != null && s.net_contributions ? (
-                <div className="d"><span className={s.pnl >= 0 ? "pos" : "neg"}>{money(s.pnl, c, true)} ({pct(s.pnl / s.net_contributions, true)})</span> od pierwszej wpłaty</div>
+                <div className="d"><span className={s.pnl >= 0 ? "pos" : "neg"}>{money(s.pnl, c, true)} ({pct(s.pnl / s.net_contributions, true)})</span> {S.sinceFirstDeposit}</div>
               ) : null}
             </div>
             <div className="hf">
-              <Fact label="Wpłacono" value={s?.net_contributions != null ? money0(s.net_contributions, c) : "-"}
-                detail={dep.flows.length ? (dep.same ? `${plural(dep.flows.length, "wpłata", "wpłaty", "wpłat")} po ${money0(dep.same, c)}` : plural(dep.flows.length, "wpłata", "wpłaty", "wpłat")) : undefined} />
+              <Fact label={S.deposited} value={s?.net_contributions != null ? money0(s.net_contributions, c) : "-"}
+                detail={dep.flows.length ? (dep.same ? S.depositsOf(dep.flows.length, money0(dep.same, c)) : S.deposits(dep.flows.length)) : undefined} />
               <Fact label="Benchmark" value={bench ? pct(bench.value, true) : "-"} title={perfNotes(perf.data).join("\n") || undefined}
-                detail={bench ? bench.label : staleBenchmark(perf.data?.benchmark)?.label ?? (perf.data?.benchmark?.status === "ok" ? undefined : "ustaw w strategii")} />
-              <Fact label="Następna wpłata" value={dm(due)} detail={[planAmount != null ? money0(planAmount, c) : null, acc].filter(Boolean).join(" · ") || undefined} />
+                detail={bench ? bench.label : staleBenchmark(perf.data?.benchmark)?.label ?? (perf.data?.benchmark?.status === "ok" ? undefined : S.setInStrategy)} />
+              <Fact label={S.nextDeposit} value={dm(due)} detail={[planAmount != null ? money0(planAmount, c) : null, acc].filter(Boolean).join(" · ") || undefined} />
             </div>
             <div className="hr">
               {holdings.length > 0 && <span className="tag">{nInstruments(holdings.length)}{holdings.length === 1 ? ` · ${holdings[0].instrument.symbol ?? holdings[0].instrument.label}` : ""}</span>}
@@ -322,33 +322,33 @@ export function MinimalOverview({ ctx }: { ctx: ModuleCtx }) {
       },
       {
         id: "deposits", span: 2, node: (
-          <Widget title="Wpłaty" count="6 mies." controls={planAmount != null ? <span className="muted" style={{ fontSize: 12 }}>plan {money0(planAmount, c)}{day ? ` · do ${day}.` : ""}</span> : undefined}
+          <Widget title={S.depositsTitle} count={S.months6} controls={planAmount != null ? <span className="muted" style={{ fontSize: 12 }}>{S.planOf(money0(planAmount, c))}{day ? S.byDayShort(day) : ""}</span> : undefined}
             body="tight"
             footer={<>
-              <FootFacts items={[dep.monthsSince > 0 && <>regularność <b>{dep.withDeposit} z {dep.monthsSince}</b></>]} />
+              <FootFacts items={[dep.monthsSince > 0 && <>{S.regularity} <b>{S.xOfY(dep.withDeposit, dep.monthsSince)}</b></>]} />
             </>}>
             {perf.data ? (
-              <Bars label="Wpłaty w ostatnich 6 miesiącach" height={150} values={months.map((m) => m.value)} labels={months.map((m) => m.label)}
+              <Bars label={S.depositsChart} height={150} values={months.map((m) => m.value)} labels={months.map((m) => m.label)}
                 cls={months.map((m, i) => (i === months.length - 1 && !m.value && planAmount ? "plan" : "main"))}
-                valueLabels={months.map((m) => (m.value ? money0(m.value, c) : null))} plan={planAmount} planLabel={planAmount != null ? `plan ${money0(planAmount, c)}` : undefined} />
+                valueLabels={months.map((m) => (m.value ? money0(m.value, c) : null))} plan={planAmount} planLabel={planAmount != null ? S.planOf(money0(planAmount, c)) : undefined} />
             ) : <Skeleton h={150} />}
           </Widget>
         ),
       },
       {
         id: "month", span: 1, node: (
-          <Widget title="Na ten miesiąc" body="tight"
-            footer={<span><button className="lnk" onClick={() => toInv("alerts?new=1")}>dodaj alert</button> · <button className="lnk" onClick={() => toInv("watch")}>obserwuj instrument</button></span>}>
+          <Widget title={S.thisMonth} body="tight"
+            footer={<span><button className="lnk" onClick={() => toInv("alerts?new=1")}>{S.addAlert}</button> · <button className="lnk" onClick={() => toInv("watch")}>{S.watchInstrument}</button></span>}>
             <div className="steps-v">
               {lastPrev && (
-                <div className="step done"><b className="n" aria-label="zrobione">✓</b><div>Wpłata {MONTH_ADJ[Number(lastPrev.date.slice(5, 7)) - 1]}<div className="h">{money0(lastPrev.amount, c)} · {dm(lastPrev.date)}</div></div><span /></div>
+                <div className="step done"><b className="n" aria-label={S.done}>✓</b><div>{S.monthDeposit(Number(lastPrev.date.slice(5, 7)) - 1)}<div className="h">{money0(lastPrev.amount, c)} · {dm(lastPrev.date)}</div></div><span /></div>
               )}
               <div className={`step ${doneThisMonth || plan ? "done" : "on"}`}>
-                <b className="n" aria-label={doneThisMonth ? "zrobione" : "krok 2"}>{doneThisMonth || plan ? "✓" : 2}</b>
-                <div>Wpłata {planAmount != null ? money0(planAmount, c) : ""} do {dm(due)}<div className="h">{doneThisMonth ? "zrobiona w tym miesiącu" : plan ? (plan.status === "booked" ? "zaksięgowana z importu" : `zaplanowana ${dm(plan.planned_date)}${plan.amount !== planAmount ? ` · ${money0(plan.amount, plan.currency)}` : ""}`) : acc ?? "wg planu"}</div></div>
-                {!doneThisMonth && !plan && planAmount != null ? <button className="btn sm" disabled={acts.busy} onClick={savePlan}>Zaplanuj</button> : <span />}
+                <b className="n" aria-label={doneThisMonth ? S.done : S.step2}>{doneThisMonth || plan ? "✓" : 2}</b>
+                <div>{S.depositBy(planAmount != null ? money0(planAmount, c) : "", dm(due))}<div className="h">{doneThisMonth ? S.doneThisMonth : plan ? (plan.status === "booked" ? S.bookedFromImport : `${S.plannedOn(dm(plan.planned_date))}${plan.amount !== planAmount ? ` · ${money0(plan.amount, plan.currency)}` : ""}`) : acc ?? S.perPlan}</div></div>
+                {!doneThisMonth && !plan && planAmount != null ? <button className="btn sm" disabled={acts.busy} onClick={savePlan}>{S.plan}</button> : <span />}
               </div>
-              <div className="step"><b className="n" aria-hidden>3</b><div className="muted">Nic więcej<div className="h">przegląd raz w miesiącu wystarczy</div></div><span /></div>
+              <div className="step"><b className="n" aria-hidden>3</b><div className="muted">{S.nothingMore}<div className="h">{S.monthlyReviewEnough}</div></div><span /></div>
             </div>
           </Widget>
         ),

@@ -233,7 +233,9 @@ def _section_files(ctx: Context) -> str:
 - `{CONNECTORS}/`: connectors you write (`{CONNECTORS}/<id>/`; the contract is
   `.claude/skills/import-builder/references/connectors.md`); `test_connector` tests one in the
   sandbox on a sample from this workspace (value-free report, nothing installed), `propose_connector`
-  submits one. The app runs one on the owner's data only after the owner approves it in Ustawienia >
+  submits one. Before writing one, check the community catalog shipped with the app (`connectors()`
+  lists it): `propose_connector(catalog_id=...)` installs an entry the same way. The app runs one on
+  the owner's data only after the owner approves it in Ustawienia >
   Konektory.
 - `{INBOX}/`: the user saves exports here (renamed if the file name holds an account number). Open
   one when the user hands it to you; with the blind route `inspect_export` shows its masked

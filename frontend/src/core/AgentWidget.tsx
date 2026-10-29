@@ -3,11 +3,12 @@
 import { Widget } from "../widgets";
 import { useShell } from "./context";
 import { PRIVACY_PLAIN } from "./SetupPage";
+import { S } from "./chrome.strings.ts";
 
 export function AgentWidget() {
   const { profile, go } = useShell();
   return (
-    <Widget title="Agent AI" body="tight" footer={<button className="lnk" onClick={() => go({ kind: "settings", section: "agent" })}>Ustawienia</button>}>
+    <Widget title={S.agent} body="tight" footer={<button className="lnk" onClick={() => go({ kind: "settings", section: "agent" })}>{S.settings}</button>}>
       <div style={{ fontSize: 13 }}>{PRIVACY_PLAIN[profile.mcp_privacy] ?? PRIVACY_PLAIN.strict}</div>
     </Widget>
   );

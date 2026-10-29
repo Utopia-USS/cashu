@@ -7,6 +7,8 @@ disabled module's tools are not listed and are refused). One call = one database
 runs, the redaction and the leak check pass, then the session commits (a write whose answer fails the
 privacy check is rolled back). Every call is audited (``audit.start`` writes the row before the
 tool runs, so a call that cannot be logged is not run; ``audit.finish`` adds the outcome).
+Every call renders in Polish (``i18n.use_language("pl")``): MCP output is for the agent, and the
+stored app language of the dashboard must never change it (docs/agents/localization.md).
 
 ``build_server`` wraps the host in the official MCP SDK's low-level ``Server`` (tools only);
 ``run_stdio`` serves it over stdin/stdout. Nothing else may write to stdout in that process.
@@ -26,6 +28,7 @@ from sqlmodel import Session
 from ... import __version__
 from .. import profiles
 from ..db import get_session
+from ..i18n import use_language
 from ..models import Profile
 from . import audit
 from .redaction import LeakDetected, Redactor, UnlabelledValue, leak_check, scrub_text
@@ -111,7 +114,8 @@ class CashuMcp:
         privacy = "strict"
         result: CallResult
         try:
-            result, privacy = self._call(spec, name, arguments)
+            with use_language("pl"):  # MCP output stays Polish whatever the app language
+                result, privacy = self._call(spec, name, arguments)
         except Exception:  # noqa: BLE001 - never crash the server; never send exception text
             _log.exception("MCP tool %s failed", name)
             result = CallResult(

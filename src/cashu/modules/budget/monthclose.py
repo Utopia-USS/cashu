@@ -405,7 +405,7 @@ def _categories(values: dict[str, Decimal]) -> list[dict]:
 
     rows = sorted(values.items(), key=lambda kv: kv[1], reverse=True)
     return [
-        {"category": k, "label": taxonomy.LABELS.get(k, k), "amount": float(v)} for k, v in rows
+        {"category": k, "label": taxonomy.label(k), "amount": float(v)} for k, v in rows
     ]
 
 

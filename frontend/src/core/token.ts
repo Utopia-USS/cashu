@@ -11,12 +11,13 @@
 //
 // Under `npm run dev` there is no token in the page: the Vite proxy adds the header itself.
 import { readStored } from "./storage.ts";
+import { S } from "./chrome.strings.ts";
 
 export const TOKEN_STORAGE_KEY = "cashu.apiToken";
 export const TOKEN_FRAGMENT = "token";
 export const DESKTOP_TIMEOUT_MS = 5000;
-export const NO_TOKEN_TEXT =
-  "Brak tokenu dostępu. Otwórz aplikację cashU albo adres z #token=..., który wypisuje `cashu serve`.";
+/** The message when the page has no API token. */
+export const noTokenText = (): string => S.noToken;
 
 interface LocationLike { hash: string; pathname: string; search: string }
 interface HistoryLike { state: unknown; replaceState(data: unknown, unused: string, url?: string): void }
@@ -129,7 +130,7 @@ export function apiToken(): Promise<string | null> {
 }
 
 /** A 401: the token belongs to an earlier server launch. Forget it, so a reload asks again
- * (desktop bridge) or shows NO_TOKEN_TEXT (browser: open the new URL `cashu serve` printed). */
+ * (desktop bridge) or shows noTokenText() (browser: open the new URL `cashu serve` printed). */
 export function forgetToken(): void {
   captured = null;
   lookup.reset();

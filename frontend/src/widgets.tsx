@@ -3,6 +3,7 @@
 // polarity dots, the agent badge and alert status. Widgets are landmarks (`section` + aria-labelledby).
 import { type CSSProperties, Fragment, type ReactNode, useId } from "react";
 import { type Span, splitNarrowOrder, twoColumnOrder } from "./grid";
+import { ALERT_STATUS as STATUS, POLARITY, S } from "./widgets.strings.ts";
 
 export interface GridItem {
   id: string;
@@ -138,12 +139,12 @@ export function Hero({ label, value, delta, facts, right, meta, ariaLabel }: {
  * text then goes to the tooltip and screen readers. */
 export function AgentTag({ text = "agent", mono }: { text?: string; mono?: boolean }) {
   if (mono) return <span className="tag agent mono" title={text}><i aria-hidden>A</i><span className="sr-only">{text}</span></span>;
-  return <span className="tag agent" title="Dodane przez agenta"><i aria-hidden>A</i>{text}</span>;
+  return <span className="tag agent" title={S.addedByAgent}><i aria-hidden>A</i>{text}</span>;
 }
 
 export type Polarity = "positive" | "negative" | "neutral";
 const POL: Record<Polarity, string> = { positive: "pos", negative: "neg", neutral: "neu" };
-export const POLARITY_LABEL: Record<Polarity, string> = { positive: "szansa", negative: "ryzyko", neutral: "neutralny" };
+export const POLARITY_LABEL: Record<Polarity, string> = POLARITY;
 
 /** Signal glyph (one language everywhere, F7 FE14 + home v3 Q4): chance = green dot, risk = red diamond,
  * review = grey square, mixed (`state`) = a half green / half red dot. `title` makes it a labelled image. */
@@ -158,7 +159,7 @@ export function PolDot({ polarity, state, quiet, className, title }: {
 /** Alert state icon (home v3 Q11): one ring family, never a word. far = empty ring (muted), near = ring + dot
  * (warn), met = ring + disc (pos). Only where the state matters: the Alerty widget and the manager. */
 export function AlertIcon({ state, title }: { state: "far" | "near" | "met"; title?: string }) {
-  const label = title ?? (state === "met" ? "spełniony" : state === "near" ? "blisko" : "czeka");
+  const label = title ?? (state === "met" ? S.alertMet : state === "near" ? S.alertNear : S.alertWaiting);
   return <i className={`ai ${state}`} role="img" aria-label={label} title={title} />;
 }
 
@@ -186,7 +187,7 @@ export function IconSheet() {
  * entry point. */
 export function UnreadChip({ n }: { n: number }) {
   if (!(n > 0)) return null;
-  const t = n === 1 ? "1 nowa notatka research" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? `${n} nowe notatki research` : `${n} nowych notatek research`;
+  const t = S.unreadNotes(n);
   return <span className="rs-un" role="img" aria-label={t} title={t}>{n}</span>;
 }
 
@@ -196,9 +197,7 @@ export function PolarityText({ polarity }: { polarity: string }) {
   return <span className={`polt ${POL[p]}`}><i aria-hidden />{POLARITY_LABEL[p]}</span>;
 }
 
-export const ALERT_STATUS: Record<string, [label: string, cls: string]> = {
-  active: ["aktywny", "active"], triggered: ["spełniony", "trig"], snoozed: ["uśpiony", "snz"], muted: ["wyciszony", "mute"], expired: ["wygasł", "mute"],
-};
+export const ALERT_STATUS: Record<string, [label: string, cls: string]> = STATUS;
 
 export function AlertStatus({ status }: { status: string }) {
   const [label, cls] = ALERT_STATUS[status] ?? [status, "mute"];

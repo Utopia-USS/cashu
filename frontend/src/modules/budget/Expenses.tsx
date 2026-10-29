@@ -9,7 +9,8 @@ import { Seg, Skeleton } from "../../ui";
 import type { DrillRow } from "./api";
 import { drillUrl, getCashflow, getSpending, postMerchantCategory, postTxnCategory } from "./api";
 import { CurrencySwitch, useBudgetCurrency } from "./currency";
-import { MPL, recategorized } from "./logic";
+import { monthShort, recategorized } from "./logic";
+import { S } from "./Expenses.strings.ts";
 import { SpendingDonut } from "./SpendingDonut";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -84,8 +85,8 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
   }, [mode, ym, q, year, bounds]);
 
   const label = useMemo(() => {
-    if (mode === "all") return "Cały okres";
-    if (mode === "month" && period.month) return `${MPL[period.month - 1]} ${period.year}`;
+    if (mode === "all") return S.wholePeriod;
+    if (mode === "month" && period.month) return `${monthShort(period.month)} ${period.year}`;
     if (mode === "quarter" && period.quarter) return `Q${period.quarter} ${period.year}`;
     if (mode === "year") return `${period.year}`;
     return "";
@@ -145,13 +146,13 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
     if (!row.merchant_key) return;
     const name = row.counterparty || row.merchant || row.merchant_key;
     setToast({
-      text: `Zmieniono: ${labelFor(category)}`,
+      text: S.changed(labelFor(category)),
       action: {
-        label: `Wszystkie od ${name}`,
+        label: S.allFrom(name),
         run: async () => {
           const res = await postMerchantCategory(slug, row.merchant_key, category);
           changed();
-          setToast({ text: `${labelFor(category)} · ${res.updated ?? 0} transakcji` });
+          setToast({ text: `${labelFor(category)} · ${S.nTransactions(res.updated ?? 0)}` });
         },
       },
     });
@@ -159,18 +160,18 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
 
   const drillOpts = [
     ...categories.filter((c) => c.kind !== "transfer"),
-    { key: "cash_withdrawal", label: "Wypłata gotówki", kind: "transfer" },
+    { key: "cash_withdrawal", label: S.cashWithdrawal, kind: "transfer" },
   ];
 
   return (
     <>
       <div className="card chart-card">
         <div className="controls">
-          <strong style={{ fontSize: 14 }}>Wydatki</strong>
+          <strong style={{ fontSize: 14 }}>{S.expenses}</strong>
           <span className="spacer" />
           <CurrencySwitch bc={bc} />
           <Seg<Mode>
-            items={[["Miesiąc", "month"], ["Kwartał", "quarter"], ["Rok", "year"], ["Wszystko", "all"]]}
+            items={[[S.month, "month"], [S.quarter, "quarter"], [S.year, "year"], [S.all, "all"]]}
             value={mode} onChange={switchMode}
           />
           <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
@@ -187,16 +188,16 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
       {drill && (
         <div className="card chart-card">
           <div className="controls">
-            <strong style={{ fontSize: 14 }}>Transakcje · {drill.label}</strong>
+            <strong style={{ fontSize: 14 }}>{S.transactionsOf(drill.label)}</strong>
             <span className="spacer" />
-            <Seg label="Sortowanie" items={[["Data", "date"], ["Kwota", "amount"]]} value={sort} onChange={setSort} />
-            <Seg label="Kolejność" items={[["malejąco", "desc"], ["rosnąco", "asc"]]} value={order} onChange={setOrder} />
+            <Seg label={S.sorting} items={[[S.date, "date"], [S.amount, "amount"]]} value={sort} onChange={setSort} />
+            <Seg label={S.order} items={[[S.desc, "desc"], [S.asc, "asc"]]} value={order} onChange={setOrder} />
             <button className="btn" onClick={() => setDrill(null)}>✕</button>
           </div>
           <div className="scroll">
             <table>
               <thead>
-                <tr><th>Data</th><th>Sprzedawca</th><th>Konto</th><th className="num">Kwota</th><th>Kategoria</th></tr>
+                <tr><th>{S.date}</th><th>{S.merchant}</th><th>{S.account}</th><th className="num">{S.amount}</th><th>{S.category}</th></tr>
               </thead>
               <tbody>
                 {drillRows == null ? (
@@ -206,7 +207,7 @@ export function Expenses({ categories, onDataChanged }: { categories: Category[]
                     ))}</tr>
                   ))
                 ) : !drillRows.length ? (
-                  <tr><td colSpan={5} className="muted">Brak transakcji w tym okresie.</td></tr>
+                  <tr><td colSpan={5} className="muted">{S.noTransactions}</td></tr>
                 ) : drillRows.map((r) => (
                   <tr key={r.id}>
                     <td>{r.date}</td>

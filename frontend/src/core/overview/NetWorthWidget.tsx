@@ -11,8 +11,10 @@ import { Seg } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
 import { getSeries, type SeriesResp } from "../api";
 import { useSlug } from "../context";
+import { intlLocale } from "../../i18n.ts";
+import { S } from "./NetWorthWidget.strings.ts";
 
-const RANGES: [string, number | null][] = [["1M", 31], ["3M", 92], ["6M", 183], ["1R", 366], ["Max", null]];
+const ranges = (): [string, number | null][] => [["1M", 31], ["3M", 92], ["6M", 183], [S.year, 366], ["Max", null]];
 const STACK_RANK: Record<string, number> = { property: 0, vehicle: 1, money: 2, mortgage: 3, loan: 4 };
 const DAY = 86400000;
 
@@ -49,46 +51,46 @@ export function NetWorthWidget() {
   const xl = labelIndices(points.length, 4).map((i) => ({ i, text: monthYearShort(points[i].date) }));
   const y = total.data ? yearChange(total.data) : null;
   const yl = liquid.data ? yearChange(liquid.data) : null;
-  const fmtAxis = (v: number) => hideAmount(new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0, ...GROUP }).format(Math.round(v / 1000) * 1000));
+  const fmtAxis = (v: number) => hideAmount(new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 0, ...GROUP }).format(Math.round(v / 1000) * 1000));
   const tip = (i: number) => (
     <>
-      <div className="k">{new Date(`${points[i].date}T12:00:00`).toLocaleDateString("pl-PL", { day: "numeric", month: "short", year: "numeric" })}</div>
+      <div className="k">{new Date(`${points[i].date}T12:00:00`).toLocaleDateString(intlLocale(), { day: "numeric", month: "short", year: "numeric" })}</div>
       {mode === "stacked" && comps.map((c) => points[i].components[c.key] ? <div key={c.key}>{c.label} <b>{cur(points[i].components[c.key], currency)}</b></div> : null)}
-      <div>wartość netto <b>{cur(points[i].value, currency)}</b></div>
+      <div>{S.netWorthLower} <b>{cur(points[i].value, currency)}</b></div>
     </>
   );
   const empty = resp && !resp.points.length;
   return (
-    <Widget title="Wartość netto w czasie"
+    <Widget title={S.title}
       controls={
         <>
-          <Seg quiet label="Rodzaj wykresu" items={[["Linia", "line"], ["Warstwy", "stacked"]]} value={mode} onChange={setMode} />
-          <select value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Zakres majątku">
-            <option value="total">Całość (z nieruchomością)</option>
-            <option value="liquid">Płynne (tylko konta)</option>
+          <Seg quiet label={S.chartKind} items={[[S.line, "line"], [S.stacked, "stacked"]]} value={mode} onChange={setMode} />
+          <select value={scope} onChange={(e) => setScope(e.target.value)} aria-label={S.scope}>
+            <option value="total">{S.scopeTotal}</option>
+            <option value="liquid">{S.scopeLiquid}</option>
           </select>
-          <Seg quiet label="Zakres czasu" items={RANGES} value={range} onChange={setRange} />
+          <Seg quiet label={S.range} items={ranges()} value={range} onChange={setRange} />
         </>
       }
       body="tight"
       footer={
         <>
           <FootFacts items={[
-            y && <>12 mies. <b className={y.abs >= 0 ? "pos" : "neg"}>{round0(y.abs) > 0 ? "+" : ""}{cur0(round0(y.abs), currency)}{y.pct != null ? ` (${pctSigned(y.pct)})` : ""}</b></>,
-            yl && yl.pct != null && <>bez nieruchomości <b className={yl.pct >= 0 ? "pos" : "neg"}>{pctSigned(yl.pct)}</b></>,
+            y && <>{S.months12}<b className={y.abs >= 0 ? "pos" : "neg"}>{round0(y.abs) > 0 ? "+" : ""}{cur0(round0(y.abs), currency)}{y.pct != null ? ` (${pctSigned(y.pct)})` : ""}</b></>,
+            yl && yl.pct != null && <>{S.noProperty}<b className={yl.pct >= 0 ? "pos" : "neg"}>{pctSigned(yl.pct)}</b></>,
           ]} />
           <span className="spacer" />
-          <Seg quiet label="Krok wykresu" items={[["miesięcznie", "monthly"], ["tygodniowo", "weekly"], ["dziennie", "daily"]]} value={gran} onChange={setGran} />
+          <Seg quiet label={S.step} items={[[S.monthly, "monthly"], [S.weekly, "weekly"], [S.daily, "daily"]]} value={gran} onChange={setGran} />
         </>
       }>
-      {empty ? <div className="empty">Brak danych: dodaj konta lub pozycje.</div>
+      {empty ? <div className="empty">{S.empty}</div>
         : !resp ? <div className="skeleton" style={{ height: 230 }} />
         : mode === "line" ? (
-          <LineChart label={`Wartość netto w czasie, ${currency}`} height={230} padL={60} padR={110} yFmt={fmtAxis} xLabels={xl}
+          <LineChart label={S.lineLabel(currency)} height={230} padL={60} padR={110} yFmt={fmtAxis} xLabels={xl}
             series={[{ values: points.map((p) => p.value), cls: "main", area: true, endLabel: points.length ? cur0(Math.round(points[points.length - 1].value), currency) : undefined }]}
             tooltip={tip} />
         ) : (
-          <StackedChart label={`Składniki wartości netto, ${currency}`} rows={points.map((p) => p.components)} keys={comps.map((c) => c.key)}
+          <StackedChart label={S.stackedLabel(currency)} rows={points.map((p) => p.components)} keys={comps.map((c) => c.key)}
             colors={Object.fromEntries(comps.map((c) => [c.key, `var(${nwColorVar[c.key] ?? "--nw"})`]))} totals={points.map((p) => p.value)}
             xLabels={xl} yFmt={fmtAxis} tooltip={tip} />
         )}

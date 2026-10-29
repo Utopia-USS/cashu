@@ -7,6 +7,8 @@ import { useAsync } from "../hooks";
 import { ck } from "../swr";
 import { Skeleton } from "../ui";
 import { errorText } from "../core/messages";
+import { C } from "../common.strings.ts";
+import { S } from "./CashCard.strings.ts";
 
 export function CashCard({ categories, onChanged }: { categories: Category[]; onChanged: () => void }) {
   const slug = useSlug();
@@ -22,7 +24,7 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
 
   const add = async () => {
     const amt = parseFloat(amount);
-    if (!(amt > 0) || !title.trim()) { setErr("Podaj kwotę i tytuł wydatku."); return; }
+    if (!(amt > 0) || !title.trim()) { setErr(S.needAmountTitle); return; }
     setBusy(true); setErr(null);
     try {
       const res = await postCashExpense(slug, { amount: amt, title: title.trim(), category });
@@ -41,25 +43,25 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
   return (
     <section className="card chart-card">
       <div className="controls">
-        <strong style={{ fontSize: 14 }} title="Wpłata do puli = kategoria „Wypłata gotówki” w Wydatkach. Nie wpływa na wartość netto.">Gotówka</strong>
+        <strong style={{ fontSize: 14 }} title={S.cashHint}>{S.cash}</strong>
         {data
           ? <span style={{ fontSize: 15, fontWeight: 650 }} className={data.balance < 0 ? "neg" : ""}>{cur(data.balance, c)}</span>
           : <Skeleton w={90} h={18} />}
         <span className="spacer" />
         {data
-          ? <span className="muted" style={{ fontSize: 12 }}>wypłacono {cur(data.withdrawals, c)} · wydano {cur(data.expenses, c)}</span>
+          ? <span className="muted" style={{ fontSize: 12 }}>{S.withdrawnSpent(cur(data.withdrawals, c), cur(data.expenses, c))}</span>
           : <Skeleton w={180} h={12} />}
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 14 }}>
-        <input type="number" step="0.01" min="0" placeholder="Kwota" style={{ width: 110 }}
+        <input type="number" step="0.01" min="0" placeholder={S.amount} style={{ width: 110 }}
           value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <input type="text" placeholder="Tytuł" style={{ flex: 1, minWidth: 140 }}
+        <input type="text" placeholder={S.title} style={{ flex: 1, minWidth: 140 }}
           value={title} onChange={(e) => setTitle(e.target.value)} />
         <select value={category} onChange={(e) => setCategory(e.target.value)}>
           {expenseCats.map((cat) => <option key={cat.key} value={cat.key}>{cat.label}</option>)}
         </select>
-        <button className="btn primary" onClick={add} disabled={busy}>Dodaj</button>
+        <button className="btn primary" onClick={add} disabled={busy}>{C.add}</button>
       </div>
 
       {err && <div className="err" style={{ marginBottom: 10 }}>{err}</div>}
@@ -67,7 +69,7 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
       <div className="scroll tall">
         <table>
           <thead>
-            <tr><th>Data</th><th>Tytuł</th><th>Kategoria</th><th className="num">Kwota</th><th /></tr>
+            <tr><th>{S.date}</th><th>{S.title}</th><th>{S.category}</th><th className="num">{S.amount}</th><th /></tr>
           </thead>
           <tbody>
             {!data ? (
@@ -77,14 +79,14 @@ export function CashCard({ categories, onChanged }: { categories: Category[]; on
                 ))}</tr>
               ))
             ) : !data.transactions.length ? (
-              <tr><td colSpan={5} className="muted">Brak wydatków gotówkowych.</td></tr>
+              <tr><td colSpan={5} className="muted">{S.empty}</td></tr>
             ) : data.transactions.map((t) => (
               <tr key={t.id}>
                 <td>{t.date}</td>
                 <td>{t.kind === "withdrawal" ? "⬇︎ " : ""}{t.title}</td>
                 <td className="muted">{t.category_label || "-"}</td>
                 <td className={`num ${t.amount < 0 ? "neg" : "pos"}`}>{cur(t.amount, c)}</td>
-                <td className="num"><button className="icon-btn" title="Usuń" onClick={() => del(t.id)}>✕</button></td>
+                <td className="num"><button className="icon-btn" title={C.remove} onClick={() => del(t.id)}>✕</button></td>
               </tr>
             ))}
           </tbody>

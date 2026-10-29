@@ -4,6 +4,8 @@
 // are assets, a vehicle's monthly loss, the valuation date line, totals per currency. Pure; tested in
 // tests/assets.test.mjs.
 import type { Account } from "../../core/api";
+import { intlLocale, lang, normalizeNumberInput } from "../../i18n.ts";
+import { S } from "./logic.strings.ts";
 
 /** Manually valued assets (property, vehicles, other manual positions): the net-worth rows the widget falls
  * back to on a server without GET /assets/manual. */
@@ -26,18 +28,24 @@ export function monthlyLoss(value: number | null | undefined, dep: Depreciation 
 }
 
 /** "15" / "12,5" (percent per year) of a fraction rate. */
-export const ratePct = (rate: number): string => (rate * 100).toLocaleString("pl-PL", { maximumFractionDigits: 1 });
+export const ratePct = (rate: number): string => (rate * 100).toLocaleString(intlLocale(), { maximumFractionDigits: 1 });
 
 const dayNo = (iso: string) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) / 86400000;
 
-/** "1.09.2026" of "2026-09-01". */
-export const dmy = (iso: string): string => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+/** A calendar day in English ("Sep 1" / "Sep 1, 2026"). */
+const enDay = (iso: string, year: boolean): string =>
+  new Intl.DateTimeFormat(intlLocale(), { day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}), timeZone: "UTC" })
+    .format(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))));
+
+/** "1.09.2026" of "2026-09-01" (English: "Sep 1, 2026"). */
+export const dmy = (iso: string): string => (lang() === "pl" ? `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : enDay(iso, true));
 
 /** "wycena 1.09" (same year as `today`) / "wycena 3.03.2025"; stale = older than 365 days. null without a date. */
 export function valuationLabel(asOf: string | null | undefined, today: string): { text: string; stale: boolean } | null {
   if (!asOf || !/^\d{4}-\d{2}-\d{2}/.test(asOf)) return null;
   const d = asOf.slice(0, 10);
-  const text = d.slice(0, 4) === today.slice(0, 4) ? `wycena ${Number(d.slice(8, 10))}.${d.slice(5, 7)}` : `wycena ${dmy(d)}`;
+  const sameYear = d.slice(0, 4) === today.slice(0, 4);
+  const text = S.valuation(sameYear ? (lang() === "pl" ? `${Number(d.slice(8, 10))}.${d.slice(5, 7)}` : enDay(d, false)) : dmy(d));
   return { text, stale: dayNo(today) - dayNo(d) > 365 };
 }
 
@@ -52,8 +60,6 @@ export function sumByCurrency(rows: { balance: number | null; currency: string }
 export function visibleRows<T>(rows: T[], all: boolean, cap = 5): T[] {
   return all ? rows : rows.slice(0, cap);
 }
-
-const FUTURE = "Data wyceny nie może być z przyszłości.";
 
 /** modules/assets/models.NOTE_MAX. */
 export const NOTE_MAX = 500;
@@ -70,7 +76,7 @@ export function cleanNote(text: string | null | undefined): string | null {
 
 /** Polish-typed amount ("545 000", "1234,50") -> number >= 0, else null. */
 export function parseValue(text: string): number | null {
-  const t = text.replace(/[\s ]/g, "").replace(",", ".");
+  const t = normalizeNumberInput(text);
   if (!t || !/^\d*\.?\d+$/.test(t)) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
@@ -83,25 +89,25 @@ export interface AssetDraft { name: string; type: string; value: string; currenc
 /** A vehicle's depreciation fields as typed: price, purchase date, yearly rate in percent, optional floor. */
 export interface CurveDraft { price: string; purchaseDate: string; ratePct: string; floor: string }
 
-/** The curve as the API takes it (`annual_rate` a fraction), or the first problem in Polish. */
+/** The curve as the API takes it (`annual_rate` a fraction), or the first problem. */
 export function curveBody(c: CurveDraft, today?: string): { ok: true; body: Depreciation } | { ok: false; error: string } {
   const price = parseValue(c.price);
-  if (price == null || !(price > 0)) return { ok: false, error: "Podaj cenę zakupu (liczba większa od 0)." };
+  if (price == null || !(price > 0)) return { ok: false, error: S.price };
   const date = c.purchaseDate.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "Podaj datę zakupu." };
-  if (today && date > today) return { ok: false, error: "Data zakupu nie może być z przyszłości." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: S.purchaseDate };
+  if (today && date > today) return { ok: false, error: S.purchaseFuture };
   const rate = parseValue(c.ratePct);
-  if (rate == null || rate < 0 || rate > 100) return { ok: false, error: "Roczny spadek od 0 do 100 %." };
+  if (rate == null || rate < 0 || rate > 100) return { ok: false, error: S.rate };
   const floor = c.floor.trim() ? parseValue(c.floor) : null;
-  if (c.floor.trim() && floor == null) return { ok: false, error: "Wartość minimalna: liczba, 0 lub więcej." };
-  if (floor != null && floor > price) return { ok: false, error: "Wartość minimalna nie może przekraczać ceny zakupu." };
+  if (c.floor.trim() && floor == null) return { ok: false, error: S.floorInvalid };
+  if (floor != null && floor > price) return { ok: false, error: S.floorAbovePrice };
   return { ok: true, body: { purchase_price: price, purchase_date: date, annual_rate: Math.round(rate * 1e6) / 1e8, floor } };
 }
 
 /** The edit form's curve fields of a vehicle row (rate back in percent). */
 export function curveDraft(dep: Depreciation | null | undefined, today: string): CurveDraft {
   if (!dep) return { price: "", purchaseDate: today, ratePct: "15", floor: "" };
-  const t = (v: number) => v.toLocaleString("pl-PL", { maximumFractionDigits: 2, useGrouping: false });
+  const t = (v: number) => v.toLocaleString(intlLocale(), { maximumFractionDigits: 2, useGrouping: false });
   return { price: t(dep.purchase_price), purchaseDate: dep.purchase_date, ratePct: t(dep.annual_rate * 100), floor: dep.floor != null ? t(dep.floor) : "" };
 }
 
@@ -124,24 +130,24 @@ export function curvePreview(c: CurveDraft, today: string): { value: number; los
   return { value, loss: monthlyLoss(value, d) ?? 0 };
 }
 
-/** POST body of the add form, or the first problem in Polish. `today` (todayLocal()) guards the date. */
+/** POST body of the add form, or the first problem. `today` (todayLocal()) guards the date. */
 export function createBody(d: AssetDraft, today?: string): { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
   const name = d.name.split(/\s+/).filter(Boolean).join(" ");
-  if (!name) return { ok: false, error: "Podaj nazwę." };
+  if (!name) return { ok: false, error: S.name };
   if (d.type === "vehicle") {
     const c = curveBody(d.curve ?? { price: "", purchaseDate: "", ratePct: "", floor: "" }, today);
     if (!c.ok) return c;
     const note = cleanNote(d.note);
-    if (note && note.length > NOTE_MAX) return { ok: false, error: `Notatka: maks. ${NOTE_MAX} znaków.` };
+    if (note && note.length > NOTE_MAX) return { ok: false, error: S.noteMax(NOTE_MAX) };
     const currency = d.currency.trim().toUpperCase();
     return { ok: true, body: { name, type: "vehicle", ...(currency ? { currency } : {}), depreciation: c.body, ...(note ? { note } : {}) } };
   }
   const value = parseValue(d.value);
-  if (value == null) return { ok: false, error: "Podaj wartość (liczba, 0 lub więcej)." };
+  if (value == null) return { ok: false, error: S.value };
   const onDate = d.onDate?.trim() || null;
-  if (onDate && today && onDate > today) return { ok: false, error: FUTURE };
+  if (onDate && today && onDate > today) return { ok: false, error: S.future };
   const note = cleanNote(d.note);
-  if (note && note.length > NOTE_MAX) return { ok: false, error: `Notatka: maks. ${NOTE_MAX} znaków.` };
+  if (note && note.length > NOTE_MAX) return { ok: false, error: S.noteMax(NOTE_MAX) };
   const currency = d.currency.trim().toUpperCase();
   return { ok: true, body: { name, type: d.type, value, ...(currency ? { currency } : {}), ...(onDate ? { on_date: onDate } : {}), ...(note ? { note } : {}) } };
 }
@@ -155,7 +161,7 @@ export function patchBody(
 ): { ok: true; body: Record<string, unknown> } | { ok: false; error: string } {
   const body: Record<string, unknown> = {};
   const note = cleanNote(edit.note);
-  if (note && note.length > NOTE_MAX) return { ok: false, error: `Notatka: maks. ${NOTE_MAX} znaków.` };
+  if (note && note.length > NOTE_MAX) return { ok: false, error: S.noteMax(NOTE_MAX) };
   if (note !== (row.note ?? null)) body.note = note;
   // A vehicle's curve goes only when one of its fields changed (first-steps 11).
   if (edit.curve) {
@@ -168,10 +174,10 @@ export function patchBody(
   }
   if (edit.value != null) {
     const value = parseValue(edit.value);
-    if (value == null) return { ok: false, error: "Podaj wartość (liczba, 0 lub więcej)." };
+    if (value == null) return { ok: false, error: S.value };
     if (row.balance == null || Math.abs(value - row.balance) > 0.005) {
       const onDate = edit.onDate?.trim() || null;
-      if (onDate && today && onDate > today) return { ok: false, error: FUTURE };
+      if (onDate && today && onDate > today) return { ok: false, error: S.future };
       body.value = value;
       if (onDate) body.on_date = onDate;
     }

@@ -8,6 +8,8 @@ import { Shell } from "./Shell";
 import { UpdateNotice } from "./UpdateNotice";
 import { Wizard } from "./Wizard";
 import { errorText } from "./messages";
+import { C } from "../common.strings.ts";
+import { S } from "./chrome.strings.ts";
 
 /** The pywebview desktop window (cashU app), not a browser tab. */
 const inDesktop = () => typeof window !== "undefined" && "pywebview" in window;
@@ -21,11 +23,11 @@ export function App() {
         <div className="wrap" style={{ paddingBottom: 0 }}>
           {/* The desktop window gets the new token on reload; a browser tab needs the new #token= URL (PK1). */}
           {inDesktop() ? (
-            <Notice tone="warn" action={<button className="btn primary" onClick={() => location.reload()}>Odśwież</button>}>
-              <b>Serwer uruchomiony ponownie.</b> Odśwież stronę.
+            <Notice tone="warn" action={<button className="btn primary" onClick={() => location.reload()}>{C.refresh}</button>}>
+              <b>{S.serverRestarted}</b>{S.reloadPage}
             </Notice>
           ) : (
-            <Notice tone="warn"><b>Serwer uruchomiony ponownie.</b> Otwórz nowy adres z <code>cashu serve</code>.</Notice>
+            <Notice tone="warn"><b>{S.serverRestarted}</b>{S.openNewUrlBefore}<code>cashu serve</code>{S.openNewUrlAfter}</Notice>
           )}
         </div>
       )}
@@ -54,7 +56,7 @@ function Root() {
 
   const loadError = err || modules.error;
   if (loadError && (!profiles || !modules.data)) {
-    return <div className="wrap"><div className="err">Błąd: {loadError}</div></div>;
+    return <div className="wrap"><div className="err">{S.error(loadError)}</div></div>;
   }
   if (!profiles || !modules.data) {
     return (

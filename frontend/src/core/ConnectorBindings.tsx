@@ -6,7 +6,7 @@ import { useAsync } from "../hooks";
 import { Notice, Switch, Tag, useToast } from "../ui";
 import { ApiError, getNetworth } from "./api";
 import {
-  AUTO_RULE, backoffActive, effectiveAccount, lastSyncText, newSecrets, problemText, secretChanges, secretMissing, secretsLeftText, secretsText,
+  autoRule, backoffActive, effectiveAccount, lastSyncText, newSecrets, problemText, secretChanges, secretMissing, secretsLeftText, secretsText,
   syncToast, when,
 } from "./connectors";
 import {
@@ -16,6 +16,9 @@ import {
 import { useShell } from "./context";
 import { type Described, describeError, errorText } from "./messages";
 import { RunError } from "./RunError";
+import { C } from "../common.strings.ts";
+import { intlLocale, normalizeNumberInput } from "../i18n.ts";
+import { S } from "./ConnectorBindings.strings.ts";
 import { getAccounts } from "../modules/investments/api";
 import { accountLabel } from "../modules/investments/labels";
 import { bankAccounts } from "../modules/budget/logic";
@@ -47,7 +50,7 @@ export function BindingsPanel({ connector, onChanged, onProposal }: {
   const [syncing, setSyncing] = useState<number | null>(null);
   const [failed, setFailed] = useState<Record<number, RunDict>>({});
   const changed = () => { setN((x) => x + 1); onChanged(); };
-  const labelOf = (x: Binding) => x.account_label || accs.data?.find((a) => a.id === x.account_id)?.label || `konto ${x.account_id}`;
+  const labelOf = (x: Binding) => x.account_label || accs.data?.find((a) => a.id === x.account_id)?.label || S.accountN(x.account_id);
   // null while the accounts or the bindings load: the form says so instead of "every account is bound"
   const free = accs.data && b.data ? accs.data.filter((a) => !mine.some((x) => x.account_id === a.id)) : null;
 
@@ -63,7 +66,7 @@ export function BindingsPanel({ connector, onChanged, onProposal }: {
       if (problem) toast(problem, 5000);
       else if (text && r.proposal_id != null) {
         const pid = r.proposal_id;
-        toast(text, 5000, { label: "Zobacz", onClick: () => onProposal(pid) });
+        toast(text, 5000, { label: S.view, onClick: () => onProposal(pid) });
       } else if (text) toast(text, r.committed?.inserted ? 4000 : 2500);
       if (r.committed?.inserted) refresh?.();
       changed();
@@ -73,24 +76,24 @@ export function BindingsPanel({ connector, onChanged, onProposal }: {
   return (
     <>
       <div className="kick">
-        <span className="kicker">Powiązania · {profile.name}</span>
+        <span className="kicker">{S.bindings(profile.name)}</span>
         <Tag>{mine.length}</Tag>
         <span className="spacer" />
         {form !== "new" && (
-          <button className="btn" disabled={!approved} title={!approved ? "Najpierw zatwierdź konektor" : undefined} onClick={() => setForm("new")}>+ Powiąż konto</button>
+          <button className="btn" disabled={!approved} title={!approved ? S.approveFirst : undefined} onClick={() => setForm("new")}>{S.bindAccount}</button>
         )}
       </div>
       {b.error && <Notice tone="neg">{b.error}</Notice>}
       {form === "new" && (
         <BindingForm connector={connector} accounts={free} onCancel={() => setForm(null)}
-          onSaved={(x) => { toast(`Powiązano ${labelOf(x)}`, 2500); changed(); }} onDone={() => setForm(null)} labelOf={labelOf} />
+          onSaved={(x) => { toast(S.bound(labelOf(x)), 2500); changed(); }} onDone={() => setForm(null)} labelOf={labelOf} />
       )}
       {mine.map((x) => form === x.id ? (
         <BindingForm key={x.id} connector={connector} binding={x} accounts={[]} onCancel={() => setForm(null)} labelOf={labelOf}
-          onSaved={() => { toast("Zapisano", 2000); changed(); }} onDone={() => setForm(null)}
+          onSaved={() => { toast(C.saved, 2000); changed(); }} onDone={() => setForm(null)}
           onRemoved={(left) => {
             const kept = secretsLeftText(left, connector.id);
-            toast(kept ? `Odłączono ${labelOf(x)} · ${kept}` : `Odłączono ${labelOf(x)}`, kept ? 8000 : 2500);
+            toast(kept ? S.unboundKept(labelOf(x), kept) : S.unbound(labelOf(x)), kept ? 8000 : 2500);
             setForm(null); changed();
           }} />
       ) : (
@@ -99,27 +102,27 @@ export function BindingsPanel({ connector, onChanged, onProposal }: {
             <div className="t">
               {labelOf(x)}
               {x.auto_commit
-                ? <Tag tone="pos" title={AUTO_RULE}>automatyczny zapis</Tag>
-                : <Tag title="Każdy wynik czeka na Twoje zatwierdzenie">do zatwierdzenia</Tag>}
-              {!x.has_commit && <Tag title="Pierwsza synchronizacja zawsze czeka na zatwierdzenie">po pierwszym imporcie</Tag>}
+                ? <Tag tone="pos" title={autoRule()}>{S.autoCommit}</Tag>
+                : <Tag title={S.waitsTitle}>{S.toApprove}</Tag>}
+              {!x.has_commit && <Tag title={S.firstSyncTitle}>{S.afterFirstImport}</Tag>}
               {backoffActive(x.backoff_until) && (
-                <Tag tone="warn" title="Serwis ograniczył liczbę zapytań">limit API do {when(x.backoff_until)}</Tag>
+                <Tag tone="warn" title={S.rateLimitedTitle}>{S.apiLimitUntil(when(x.backoff_until))}</Tag>
               )}
-              {secretMissing(x) && <Tag tone="warn" solid>brak sekretu</Tag>}
+              {secretMissing(x) && <Tag tone="warn" solid>{S.secretMissing}</Tag>}
             </div>
-            <div className="d">{lastSyncText(x)} · sekrety: {secretsText(x)}</div>
+            <div className="d">{lastSyncText(x)}{S.secrets(secretsText(x))}</div>
             {failed[x.id] && <RunDictError run={failed[x.id]} timeoutS={connector.timeout_s} />}
           </div>
           <button className="btn" disabled={syncing != null || !approved || secretMissing(x)}
-            title={secretMissing(x) ? "Uzupełnij sekrety (Edytuj)" : undefined} onClick={() => sync(x)}>
-            {syncing === x.id ? "Pobieram…" : "Synchronizuj"}
+            title={secretMissing(x) ? S.fillSecretsTitle : undefined} onClick={() => sync(x)}>
+            {syncing === x.id ? S.fetching : S.sync}
           </button>
-          <button className="lnk" onClick={() => setForm(x.id)}>Edytuj</button>
+          <button className="lnk" onClick={() => setForm(x.id)}>{C.edit}</button>
         </div>
       ))}
       {b.data && !mine.length && form !== "new" && (
         <div className="muted" style={{ fontSize: 13, padding: "6px 0" }}>
-          {approved ? "Brak powiązań w tym profilu. Powiąż konto, wpisz klucz, sprawdź połączenie." : "Powiązania po zatwierdzeniu."}
+          {approved ? S.noBindings : S.bindingsAfterApproval}
         </div>
       )}
     </>
@@ -137,12 +140,12 @@ function paramErrors(e: unknown, params: ConnectorParam[]): Record<string, strin
   const out: Record<string, string> = {};
   const body = e.body as { params?: Record<string, string> } | null;
   if (body?.params) {
-    for (const [k, v] of Object.entries(body.params)) out[k] = /required|missing/i.test(String(v)) ? "Wymagane." : "Nieprawidłowa wartość.";
+    for (const [k, v] of Object.entries(body.params)) out[k] = /required|missing/i.test(String(v)) ? S.required : S.invalidValue;
     return out;
   }
   for (const part of e.message.replace(/^[^:]*params:\s*/, "").split(/;\s*/)) {
     const m = /^([a-z0-9_-]+):\s*(.+)$/i.exec(part);
-    if (m && ids.has(m[1])) out[m[1]] = /required|missing/i.test(m[2]) ? "Wymagane." : "Nieprawidłowa wartość.";
+    if (m && ids.has(m[1])) out[m[1]] = /required|missing/i.test(m[2]) ? S.required : S.invalidValue;
   }
   return out;
 }
@@ -151,7 +154,7 @@ const paramValue = (p: ConnectorParam, raw: unknown): unknown => {
   if (p.type === "boolean") return !!raw;
   const s = String(raw ?? "").trim();
   if (!s) return undefined;
-  if (p.type === "number") { const n = Number(s.replace(",", ".")); return Number.isFinite(n) ? n : s; }
+  if (p.type === "number") { const n = Number(normalizeNumberInput(s)); return Number.isFinite(n) ? n : s; }
   return s;
 };
 
@@ -194,7 +197,7 @@ function BindingForm({ connector, binding, accounts: offered, onCancel, onSaved,
   const save = async () => {
     setTried(true); setErr(null); setAccErr(null); setFieldErr({});
     if (connector.params.some(missing)) return;
-    if (!edit && account == null) { setAccErr(offered ? "Brak konta do powiązania." : "Ładuję konta…"); return; }
+    if (!edit && account == null) { setAccErr(offered ? S.noAccountToBind : S.loadingAccounts); return; }
     if (!edit && connector.secrets.some((s) => missingSecret(s.id))) return;
     setBusy("save");
     try {
@@ -213,7 +216,7 @@ function BindingForm({ connector, binding, accounts: offered, onCancel, onSaved,
       }
       onSaved(b); onDone();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setAccErr("To konto ma już powiązanie z tym konektorem.");
+      if (e instanceof ApiError && e.status === 409) setAccErr(S.alreadyBound);
       else {
         const fe = paramErrors(e, connector.params);
         if (Object.keys(fe).length) setFieldErr(fe); else setErr(describeError(e));
@@ -235,15 +238,15 @@ function BindingForm({ connector, binding, accounts: offered, onCancel, onSaved,
     <div className="bindform">
       {/* created: the bound account by its binding (the offered list no longer holds it once the bindings reload) */}
       {edit || created ? (
-        <div style={{ fontSize: 13, marginBottom: 10 }}>Konto: <b>{labelOf((binding ?? created)!)}</b></div>
+        <div style={{ fontSize: 13, marginBottom: 10 }}>{S.accountLabel}<b>{labelOf((binding ?? created)!)}</b></div>
       ) : (
         <div className="field">
-          <label htmlFor="bf-acc">Konto</label>
+          <label htmlFor="bf-acc">{S.account}</label>
           {accounts.length ? (
             <select id="bf-acc" value={account ?? ""} disabled={done} onChange={(e) => setAccount(Number(e.target.value))}>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
             </select>
-          ) : <span style={{ fontSize: 13 }}>{offered ? "Każde konto tego modułu ma już powiązanie." : "Ładuję konta…"}</span>}
+          ) : <span style={{ fontSize: 13 }}>{offered ? S.allBound : S.loadingAccounts}</span>}
           {accErr && <span className="fe">{accErr}</span>}
         </div>
       )}
@@ -263,7 +266,7 @@ function BindingForm({ connector, binding, accounts: offered, onCancel, onSaved,
                     value={String(params[p.id] ?? "")} onChange={(e) => setParams({ ...params, [p.id]: e.target.value })} />
                 </>
               )}
-              {fe(p.id, missing(p), "Wymagane.")}
+              {fe(p.id, missing(p), S.required)}
             </div>
           ))}
         </div>
@@ -273,23 +276,23 @@ function BindingForm({ connector, binding, accounts: offered, onCancel, onSaved,
           <label htmlFor={`bf-s-${s.id}`}>{s.label}</label>
           {isSet(s.id) ? (
             <div className="inline">
-              <Tag tone="pos">ustawiony</Tag>
-              <button className="lnk" onClick={() => setEditing(new Set([...editing, s.id]))}>zmień</button>
-              <button className="lnk" onClick={() => setSecrets({ ...secrets, [s.id]: null })}>wyczyść</button>
+              <Tag tone="pos">{S.secretSet}</Tag>
+              <button className="lnk" onClick={() => setEditing(new Set([...editing, s.id]))}>{S.change}</button>
+              <button className="lnk" onClick={() => setSecrets({ ...secrets, [s.id]: null })}>{S.clear}</button>
             </div>
           ) : (
-            <input id={`bf-s-${s.id}`} type="password" autoComplete="new-password" spellCheck={false} placeholder="wklej klucz" disabled={done}
+            <input id={`bf-s-${s.id}`} type="password" autoComplete="new-password" spellCheck={false} placeholder={S.pasteKey} disabled={done}
               value={typeof secrets[s.id] === "string" ? secrets[s.id]! : ""}
               onChange={(e) => setSecrets({ ...secrets, [s.id]: e.target.value })} />
           )}
-          {!edit && fe(s.id, missingSecret(s.id), "Podaj klucz.")}
+          {!edit && fe(s.id, missingSecret(s.id), S.enterKey)}
         </div>
       ))}
-      {connector.secrets.length > 0 && <div className="fhint" style={{ margin: "-6px 0 10px" }}>Zostaje w pęku kluczy macOS; konektor dostaje go tylko podczas przebiegu.</div>}
+      {connector.secrets.length > 0 && <div className="fhint" style={{ margin: "-6px 0 10px" }}>{S.keychainHint}</div>}
       <div className="controls" style={{ fontSize: 13, margin: "0 0 10px" }}>
-        <Switch on={auto} label="Automatyczny zapis" title={AUTO_RULE} onChange={setAuto} disabled={done} />
-        <span title={AUTO_RULE}>Automatyczny zapis</span>
-        {!binding?.has_commit && <Tag>po pierwszym imporcie</Tag>}
+        <Switch on={auto} label={S.autoCommitLabel} title={autoRule()} onChange={setAuto} disabled={done} />
+        <span title={autoRule()}>{S.autoCommitLabel}</span>
+        {!binding?.has_commit && <Tag>{S.afterFirstImport}</Tag>}
       </div>
       {err && (
         <Notice tone="neg" style={{ margin: "0 0 8px" }}>
@@ -299,33 +302,33 @@ function BindingForm({ connector, binding, accounts: offered, onCancel, onSaved,
       )}
       {confirm ? (
         <div className="controls" style={{ justifyContent: "flex-end", fontSize: 13 }}>
-          <span>Odłączyć {labelOf(binding!)}? Usunie sekrety tego powiązania.</span>
+          <span>{S.unbindQ(labelOf(binding!))}</span>
           <span className="spacer" />
-          <button className="btn" disabled={busy != null} onClick={() => setConfirm(false)}>Anuluj</button>
-          <button className="btn" disabled={busy != null} style={{ color: "var(--neg)", borderColor: "var(--neg)" }} onClick={remove}>Tak, odłącz</button>
+          <button className="btn" disabled={busy != null} onClick={() => setConfirm(false)}>{C.cancel}</button>
+          <button className="btn" disabled={busy != null} style={{ color: "var(--neg)", borderColor: "var(--neg)" }} onClick={remove}>{S.yesUnbind}</button>
         </div>
       ) : done ? (
         <div className="controls" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" disabled={busy != null} onClick={() => runCheck(created!.id)}>{busy === "check" ? "Sprawdzam…" : "Sprawdź połączenie"}</button>
-          <button className="btn primary" disabled={busy != null} onClick={onDone}>Gotowe</button>
+          <button className="btn" disabled={busy != null} onClick={() => runCheck(created!.id)}>{busy === "check" ? S.checking : S.checkConnection}</button>
+          <button className="btn primary" disabled={busy != null} onClick={onDone}>{C.done}</button>
         </div>
       ) : (
         <div className="controls" style={{ justifyContent: "flex-end" }}>
-          {edit && <button className="lnk" style={{ color: "var(--neg)" }} disabled={busy != null} onClick={() => setConfirm(true)}>Odłącz</button>}
+          {edit && <button className="lnk" style={{ color: "var(--neg)" }} disabled={busy != null} onClick={() => setConfirm(true)}>{S.unbind}</button>}
           <span className="spacer" />
-          <button className="btn" disabled={busy != null} onClick={onCancel}>Anuluj</button>
+          <button className="btn" disabled={busy != null} onClick={onCancel}>{C.cancel}</button>
           {edit && (
-            <button className="btn" disabled={busy != null || secretDirty} title={secretDirty ? "Najpierw zapisz" : undefined} onClick={() => runCheck(binding!.id)}>
-              {busy === "check" ? "Sprawdzam…" : "Sprawdź połączenie"}
+            <button className="btn" disabled={busy != null || secretDirty} title={secretDirty ? S.saveFirst : undefined} onClick={() => runCheck(binding!.id)}>
+              {busy === "check" ? S.checking : S.checkConnection}
             </button>
           )}
           <button className="btn primary" disabled={busy != null || (!edit && !accounts.length)} onClick={save}>
-            {busy === "save" ? "Zapisuję…" : edit ? "Zapisz" : "Zapisz i sprawdź"}
+            {busy === "save" ? S.saving : edit ? C.save : S.saveAndCheck}
           </button>
         </div>
       )}
       {check && (check.ok
-        ? <Notice tone="pos" style={{ margin: "8px 0 0" }}>Połączono · {((check.duration_ms ?? 0) / 1000).toLocaleString("pl-PL", { maximumFractionDigits: 1 })} s</Notice>
+        ? <Notice tone="pos" style={{ margin: "8px 0 0" }}>{S.connected(((check.duration_ms ?? 0) / 1000).toLocaleString(intlLocale(), { maximumFractionDigits: 1 }))}</Notice>
         : <RunDictError run={check} timeoutS={connector.timeout_s} />)}
     </div>
   );

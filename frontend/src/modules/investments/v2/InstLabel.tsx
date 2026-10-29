@@ -14,6 +14,8 @@ import { createPortal } from "react-dom";
 import type { Hint } from "../api";
 import { freshOf, instCardFacts, type InstFactsOpts, instMono, instName, type InstLike, instSummary, PLAN_PATH, planLabel, ringOf } from "./logic";
 import { isHeld, useInstState } from "./instState";
+import { S as L } from "./logic.strings.ts";
+import { S } from "./InstLabel.strings.ts";
 
 export type InstDensity = "row" | "compact" | "inline" | "header";
 export type { InstLike };
@@ -171,7 +173,7 @@ function InstCard({ anchor, id, inst, accounts, stale, hints }: { anchor: HTMLEl
       {f.rows.length > 0 && (
         <div className="kvl">{f.rows.map(([k, v, cls], n) => <Fragment key={`${k}:${n}`}><span className="k">{k}</span><span className={cls ?? (k === "ISIN" ? "tnum" : undefined)}>{v}</span></Fragment>)}</div>
       )}
-      {f.status.length > 0 && <div className="st">{f.status.map((t) => <span key={t} className={`tag ${t === "koszt + odsetki" || t === "wycena ręczna" ? "" : "solid warn"}`}>{t}</span>)}</div>}
+      {f.status.length > 0 && <div className="st">{f.status.map((t) => <span key={t} className={`tag ${t === L.costInterest || t === L.manualValuation ? "" : "solid warn"}`}>{t}</span>)}</div>}
     </HoverCard>
   );
 }
@@ -196,7 +198,7 @@ export function HoverCard({ anchor, id, className, children }: { anchor: HTMLEle
 /** The tag icon that replaces the `sklasyfikuj` pill (opens the existing classification popover). */
 export function ClassifyButton({ name, expanded, onClick }: { name: string; expanded: boolean; onClick: () => void }) {
   return (
-    <button type="button" className="il-cls" title="Sklasyfikuj · poza alokacją i regułami" aria-label={`Sklasyfikuj ${name}`} aria-haspopup="dialog" aria-expanded={expanded} onClick={onClick}>
+    <button type="button" className="il-cls" title={S.classifyTitle} aria-label={S.classifyAria(name)} aria-haspopup="dialog" aria-expanded={expanded} onClick={onClick}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" aria-hidden>
         <path d="M2.75 2.75h4.6c.4 0 .78.16 1.06.44l4.84 4.84a1.5 1.5 0 0 1 0 2.12l-3.1 3.1a1.5 1.5 0 0 1-2.12 0L3.19 8.41A1.5 1.5 0 0 1 2.75 7.35z" />
         <circle cx={5.75} cy={5.75} r={1} fill="currentColor" stroke="none" />

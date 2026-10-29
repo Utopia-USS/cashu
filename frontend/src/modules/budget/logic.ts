@@ -2,7 +2,8 @@
 // view and the cushion form. Tested in tests/budget.test.mjs.
 import type { BudgetCurrencies, CushionSettings, InvestingLink, MonthClose, StatementCommit, StatementRow } from "./api";
 import type { Account } from "../../core/api";
-import { plural } from "../../format.ts";
+import { S } from "./logic.strings.ts";
+import { normalizeNumberInput } from "../../i18n.ts";
 import { ck, invalidate } from "../../swr.ts";
 
 // ---- cached views a budget write makes stale (F7 FIX2 B1 / B2; src/swr.ts) ---------------------------------
@@ -23,12 +24,13 @@ export function recategorized(slug: string): void {
   invalidate(ck(slug, "cash"));
 }
 
-export const MPL = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+/** Short month name of month `m` (1-12): "wrz" / "Sep". */
+export const monthShort = (m: number): string => S.monthsShort[m - 1];
 
 /** "2026-09" -> "wrz 2026". */
 export function monthLabel(ym: string): string {
   const [y, m] = ym.split("-").map(Number);
-  return m ? `${MPL[m - 1]} ${y}` : ym;
+  return m ? `${monthShort(m)} ${y}` : ym;
 }
 
 /** "2026-09" shifted by `delta` months -> "2026-10". */
@@ -94,20 +96,20 @@ export function cushionDraft(s: CushionSettings, baseCurrency: string): CushionD
 }
 
 const num = (v: string): number | null => {
-  const t = v.trim().replace(/\s/g, "").replace(",", ".");
+  const t = normalizeNumberInput(v.trim());
   if (!t) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : NaN;
 };
 
-/** The settings payload of a draft, or a Polish validation message (the server checks again). */
+/** The settings payload of a draft, or a validation message (the server checks again). */
 export function cushionPayload(d: CushionDraft, baseCurrency: string): { ok: true; value: CushionSettings } | { ok: false; error: string } {
   const amount = num(d.amount), months = num(d.months), max = num(d.monthlyMax);
   if (d.enabled) {
-    if (d.mode === "amount" && (amount == null || Number.isNaN(amount) || amount <= 0)) return { ok: false, error: "Podaj kwotę większą od zera." };
-    if (d.mode === "months" && (months == null || !Number.isInteger(months) || months < 1 || months > 36)) return { ok: false, error: "Liczba miesięcy: od 1 do 36." };
+    if (d.mode === "amount" && (amount == null || Number.isNaN(amount) || amount <= 0)) return { ok: false, error: S.cushionAmount };
+    if (d.mode === "months" && (months == null || !Number.isInteger(months) || months < 1 || months > 36)) return { ok: false, error: S.cushionMonths };
   }
-  if (max != null && (Number.isNaN(max) || max <= 0)) return { ok: false, error: "Maks. dopłata: liczba większa od zera albo puste." };
+  if (max != null && (Number.isNaN(max) || max <= 0)) return { ok: false, error: S.cushionMax };
   const okAmount = amount != null && !Number.isNaN(amount) && amount > 0 ? amount : null;
   const okMonths = months != null && Number.isInteger(months) && months >= 1 && months <= 36 ? months : null;
   return {
@@ -127,24 +129,24 @@ export function cushionPayload(d: CushionDraft, baseCurrency: string): { ok: tru
 
 /** The `Bank` select when the server has no GET /budget/import/importers (an older server): `[id, label]`. The list
  * itself comes from that endpoint (institutions.csv_ids() + the cashU format). "auto" = detect from the file. */
-export const BANKS: [string, string][] = [["auto", "rozpoznaj automatycznie"], ["mbank", "mBank"], ["pekao", "Bank Pekao"], ["erste", "Erste Bank Polska"]];
+export const banks = (): [string, string][] => [["auto", S.autoDetect], ["mbank", "mBank"], ["pekao", "Bank Pekao"], ["erste", "Erste Bank Polska"]];
 /** Account types a statement can create, `[id, label]` (format.ts TYPE_LABEL). */
-export const STATEMENT_TYPES: [string, string][] = [["checking", "Konta osobiste"], ["savings", "Oszczędności"], ["credit", "Karty kredytowe"]];
+export const statementTypes = (): [string, string][] => [["checking", S.typeChecking], ["savings", S.typeSavings], ["credit", S.typeCredit]];
 
 /** "mBank" of "mbank" (from `choices`, the importer list, else the fallback list); an unknown id as it is. */
 export const bankName = (id: string | null | undefined, choices?: readonly { id: string; name: string }[] | null): string =>
-  choices?.find((c) => c.id === id)?.name ?? BANKS.find(([k]) => k === id)?.[1] ?? id ?? "";
+  choices?.find((c) => c.id === id)?.name ?? banks().find(([k]) => k === id)?.[1] ?? id ?? "";
 
 /** The `Bank` select's options from the importer list: auto, banks, formats (connectors are sources of their own,
  * importSources.tsx); unavailable entries dropped; the fallback list without one. */
 export function bankOptions(choices: readonly { id: string; name: string; kind: string; available: boolean }[] | null | undefined): [string, string][] {
-  if (!choices?.length) return BANKS;
+  if (!choices?.length) return banks();
   const opts = choices.filter((c) => c.available && c.kind !== "connector").map((c) => [c.id, c.name] as [string, string]);
-  return opts.some(([k]) => k === "auto") ? opts : [["auto", "rozpoznaj automatycznie"], ...opts];
+  return opts.some(([k]) => k === "auto") ? opts : [["auto", S.autoDetect], ...opts];
 }
 
 /** Account types a bank statement (or a budget connector) writes to: the budget module's bank types. */
-export const BANK_TYPES: ReadonlySet<string> = new Set(STATEMENT_TYPES.map(([k]) => k));
+export const BANK_TYPES: ReadonlySet<string> = new Set(["checking", "savings", "credit"]);
 /** The profile's bank accounts: a bank account type (no brokerage, property, loan or cash pool) and not a manual
  * position (a deposit added by hand in Majątek may have the type `savings`). */
 export const bankAccounts = <T extends Pick<Account, "bank" | "type">>(accounts: readonly T[]): T[] =>
@@ -165,7 +167,7 @@ export function statementDone(
   if (!accounts.length) return "";
   const parts = accounts.map((a) => [a.bank_name ?? bankName(a.bank, choices), a.name, a.iban_tail ? `…${a.iban_tail}` : null, a.currency].filter(Boolean).join(" · "));
   const last = accounts.map((a) => a.as_of).filter((d): d is string => !!d).sort().slice(-1)[0];
-  return `${parts.join(" · ")}${last ? ` · ostatni import ${dmShort(last)}` : ""}`;
+  return `${parts.join(" · ")}${last ? S.lastImport(dmShort(last)) : ""}`;
 }
 
 /** The preview table's rows: only the new ones on request, the first `cap` unless `all`; `rest` = hidden rows. */
@@ -177,8 +179,8 @@ export function previewRows<T extends Pick<StatementRow, "status">>(rows: readon
 
 /** The muted line under `Zaimportowano n transakcji.`. */
 export function importDoneLine(d: StatementCommit): string {
-  const acc = `konto ${d.account.name}${d.account.iban_tail ? ` …${d.account.iban_tail}` : ""}${d.account.created ? " (nowe)" : ""}`;
-  return `${d.duplicates ? `${plural(d.duplicates, "duplikat pominięty", "duplikaty pominięte", "duplikatów pominiętych")} · ` : ""}${acc} · ${d.categorized} skategoryzowanych automatycznie${d.transfer_pairs ? ` · ${plural(d.transfer_pairs, "para", "pary", "par")} przelewów` : ""}`;
+  const acc = S.doneAccount(d.account.name, d.account.iban_tail ? ` …${d.account.iban_tail}` : "", !!d.account.created);
+  return `${d.duplicates ? `${S.doneDuplicates(d.duplicates)} · ` : ""}${acc} · ${S.doneCategorized(d.categorized)}${d.transfer_pairs ? ` · ${S.donePairs(d.transfer_pairs)}` : ""}`;
 }
 
 /** Which field a statement upload error belongs to, and its message key: `import.bank_unknown` (or the header form
@@ -207,10 +209,10 @@ export function cliPrefix(info: { cli_prefix?: string | null; steps?: { actions?
 /** The bank part of the tabbar `↻ Synchronizuj` toast (POST /resync). A profile with connector bindings but no
  * Enable Banking session gets `banks: []` and its connector lines only (null here). */
 export function resyncBankText(r: { ok: boolean; error?: string; inserted?: number; banks?: unknown[]; pairs?: number; errors?: string[]; connectors?: unknown[] }): string | null {
-  if (!r.ok) return r.error || "Synchronizacja nieudana";
+  if (!r.ok) return r.error || S.syncFailed;
   if (r.connectors?.length && !r.banks?.length) return null;
-  let msg = `Wgrano ${r.inserted ?? 0} nowych transakcji`;
-  if (r.pairs) msg += `, ${r.pairs} przelewów wewn.`;
-  if (r.errors?.length) msg += ` · ${r.errors.length} konto/a pominięte (limit banku)`;
+  let msg = S.syncInserted(r.inserted ?? 0);
+  if (r.pairs) msg += S.syncPairs(r.pairs);
+  if (r.errors?.length) msg += S.syncSkipped(r.errors.length);
   return msg;
 }

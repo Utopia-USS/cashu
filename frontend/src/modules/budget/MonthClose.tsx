@@ -4,6 +4,7 @@ import { type ReactNode, useRef, useState } from "react";
 import type { Account } from "../../core/api";
 import { ApiError, j, pp } from "../../core/api";
 import { useShell } from "../../core/context";
+import { C } from "../../common.strings.ts";
 import { cur } from "../../format";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
@@ -14,9 +15,9 @@ import "./budget.css";
 import type { BudgetCurrency } from "./currency";
 import type { CushionDraft } from "./logic";
 import { closeFor, cushionDraft, cushionPayload, cushionSaved, monthLabel, planState, shiftMonth } from "./logic";
+import { S } from "./MonthClose.strings.ts";
 
-/** What the cushion level is (backend monthclose.py, F7 R5 variant B: net transfers of the month): one text for the fact and the form. */
-const CUSHION_LEVEL = "Saldo na początek miesiąca plus przelewy netto, bez wydatków z innych kont";
+// What the cushion level is (backend monthclose.py, F7 R5 variant B: net transfers of the month): S.cushionLevel.
 
 const TOP = 3;
 
@@ -41,23 +42,23 @@ export function MonthCloseCard({ bc }: { bc: BudgetCurrency }) {
 
   if (loaded === "unavailable") return null;
   // A failed refresh keeps the last month on screen (F7 PX2); the notice alone only without data.
-  if (error && !loaded) return <Notice tone="warn">Nie wczytano zamknięcia miesiąca: {error}</Notice>;
+  if (error && !loaded) return <Notice tone="warn">{S.loadFailed(error)}</Notice>;
   const data = loaded;
   const nav = (ym: string, first: string | null, last: string | null, tag?: ReactNode) => (
     <div className="controls">
-      <strong style={{ fontSize: 14 }}>Zamknięcie miesiąca</strong>
+      <strong style={{ fontSize: 14 }}>{S.title}</strong>
       {tag}
       <span className="spacer" />
       <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-        <button className="btn" disabled={!!first && ym <= first} aria-label="Poprzedni miesiąc" onClick={() => setMonth(shiftMonth(ym, -1))}>‹</button>
+        <button className="btn" disabled={!!first && ym <= first} aria-label={S.prevMonth} onClick={() => setMonth(shiftMonth(ym, -1))}>‹</button>
         <span style={{ minWidth: 96, textAlign: "center", fontSize: 13, fontWeight: 550 }}>{monthLabel(ym)}</span>
-        <button className="btn" disabled={!last || ym >= last} aria-label="Następny miesiąc" onClick={() => setMonth(shiftMonth(ym, 1))}>›</button>
+        <button className="btn" disabled={!last || ym >= last} aria-label={S.nextMonth} onClick={() => setMonth(shiftMonth(ym, 1))}>›</button>
       </span>
     </div>
   );
   if (!data) {
     return month && range.current ? (
-      <section className="card chart-card" aria-label="Zamknięcie miesiąca" aria-busy>
+      <section className="card chart-card" aria-label={S.title} aria-busy>
         {nav(month, range.current.first, range.current.last)}
         <Skeleton h={54} />
       </section>
@@ -70,32 +71,32 @@ export function MonthCloseCard({ bc }: { bc: BudgetCurrency }) {
   const pct = (a: number) => (spendTotal ? Math.round((a / spendTotal) * 100) : 0);
 
   return (
-    <section className="card chart-card" aria-label="Zamknięcie miesiąca">
-      {nav(data.month, data.first_month, data.last_month, !data.complete && <Tag tone="warn">w toku</Tag>)}
+    <section className="card chart-card" aria-label={S.title}>
+      {nav(data.month, data.first_month, data.last_month, !data.complete && <Tag tone="warn">{S.inProgress}</Tag>)}
 
       {!main ? (
-        <div className="muted" style={{ fontSize: 13 }}>Brak transakcji w {shown}.</div>
+        <div className="muted" style={{ fontSize: 13 }}>{S.noTransactions(shown)}</div>
       ) : (
         <>
           <div className="mc-figs">
-            <Fig label="Przychody" value={cur(main.income, shown)} cls="pos" />
-            <Fig label="Wydatki" value={cur(main.spending, shown)} cls="neg" />
-            <Fig label="Nadwyżka" value={cur(main.surplus, shown)} cls={main.surplus < 0 ? "neg" : "pos"} />
+            <Fig label={S.income} value={cur(main.income, shown)} cls="pos" />
+            <Fig label={S.expenses} value={cur(main.spending, shown)} cls="neg" />
+            <Fig label={S.surplus} value={cur(main.surplus, shown)} cls={main.surplus < 0 ? "neg" : "pos"} />
             <Fig
-              label="Na inwestycje"
+              label={S.toInvest}
               value={cur(main.suggested_transfer, shown)}
               cls="nw"
-              hint={main.cushion_top_up > 0 ? `po dopłacie do poduszki ${cur(main.cushion_top_up, shown)}` : "sugerowany przelew"}
+              hint={main.cushion_top_up > 0 ? S.afterCushion(cur(main.cushion_top_up, shown)) : S.suggested}
             />
           </div>
           {cats.length > 0 && (
             <div className="mc-cats">
-              Najwięcej: {cats.slice(0, TOP).map((c, i) => (
+              {S.top}{cats.slice(0, TOP).map((c, i) => (
                 <span key={c.category}>{i ? " · " : ""}{c.label} <b>{cur(c.amount, shown)}</b></span>
               ))}
               {cats.length > TOP && (
                 <> · <button className="linkish" onClick={() => setAllCats((v) => !v)} aria-expanded={allCats}>
-                  {allCats ? "zwiń" : `wszystkie (${cats.length})`}
+                  {allCats ? S.collapse : S.all(cats.length)}
                 </button></>
               )}
               {allCats && (
@@ -119,7 +120,7 @@ export function MonthCloseCard({ bc }: { bc: BudgetCurrency }) {
         <PlanFact close={data} />
         {others.length > 0 && (
           <div>
-            <span>Inne waluty</span>
+            <span>{S.otherCurrencies}</span>
             <b style={{ fontWeight: 550 }}>{others.map((o) => `${o.currency} ${cur(o.surplus, o.currency)}`).join(" · ")}</b>
           </div>
         )}
@@ -149,33 +150,33 @@ function Fig({ label, value, cls, hint }: { label: string; value: string; cls?: 
 }
 
 function CushionFact({ cushion, editing, onEdit }: { cushion: CushionState | null; editing: boolean; onEdit: () => void }) {
-  const edit = <button className="btn" style={{ marginLeft: 6, padding: "1px 8px", fontSize: 12 }} onClick={onEdit} aria-expanded={editing}>{editing ? "Zamknij" : "Ustaw"}</button>;
-  if (!cushion) return <div><span>Poduszka finansowa</span><b style={{ fontWeight: 550 }}>wyłączona</b>{edit}</div>;
+  const edit = <button className="btn" style={{ marginLeft: 6, padding: "1px 8px", fontSize: 12 }} onClick={onEdit} aria-expanded={editing}>{editing ? C.close : S.set}</button>;
+  if (!cushion) return <div><span>{S.cushion}</span><b style={{ fontWeight: 550 }}>{S.off}</b>{edit}</div>;
   const c = cushion.currency;
   const text = cushion.target == null
-    ? "brak historii wydatków do celu"
+    ? S.noHistory
     : cushion.reached
-      ? `osiągnięta (${cur(cushion.balance, c)})`
-      : `${cur(cushion.balance, c)} z ${cur(cushion.target, c)} · dopłata ${cur(cushion.top_up, c)}`;
+      ? S.reached(cur(cushion.balance, c))
+      : S.progress(cur(cushion.balance, c), cur(cushion.target, c), cur(cushion.top_up, c));
   // The level is the balance at the month start plus the month's transfers to the cushion (F7 FXB V7).
-  return <div><span>Poduszka finansowa</span><b style={{ fontWeight: 550 }} title={CUSHION_LEVEL}>{text}</b>{edit}</div>;
+  return <div><span>{S.cushion}</span><b style={{ fontWeight: 550 }} title={S.cushionLevel}>{text}</b>{edit}</div>;
 }
 
 function PlanFact({ close }: { close: MonthClose }) {
   const plan = planState(close.investing);
   if (plan.kind === "off") return null;
   if (plan.kind === "no_plan") {
-    const why = plan.strategy === "missing" ? "brak strategii" : plan.strategy === "invalid" ? "strategia z błędami" : "brak contributions w strategii";
-    return <div><span>Plan wpłat</span><b style={{ fontWeight: 550 }}>{why}</b></div>;
+    const why = plan.strategy === "missing" ? S.noStrategy : plan.strategy === "invalid" ? S.strategyInvalid : S.noContributions;
+    return <div><span>{S.plan}</span><b style={{ fontWeight: 550 }}>{why}</b></div>;
   }
   const c = plan.currency;
   return (
     <div>
-      <span>Plan wpłat</span>
-      <b style={{ fontWeight: 550 }}>{cur(plan.planned, c)} / mies.</b>{" "}
+      <span>{S.plan}</span>
+      <b style={{ fontWeight: 550 }}>{S.perMonth(cur(plan.planned, c))}</b>{" "}
       {plan.kind === "covered"
-        ? <Tag tone="pos">pokrywa plan{plan.difference > 0 ? ` (+${cur(plan.difference, c)})` : ""}</Tag>
-        : <Tag tone="warn">{plan.hasData ? `brakuje ${cur(-plan.difference, c)}` : `brak danych w ${c}`}</Tag>}
+        ? <Tag tone="pos">{S.covers(plan.difference > 0 ? ` (+${cur(plan.difference, c)})` : "")}</Tag>
+        : <Tag tone="warn">{plan.hasData ? S.short(cur(-plan.difference, c)) : S.noData(c)}</Tag>}
     </div>
   );
 }
@@ -190,7 +191,7 @@ function CushionForm({ currencies, baseCurrency, onClose, onSaved }: {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (!draft && settings.data) setDraft(cushionDraft(settings.data.cushion, baseCurrency));
-  if (settings.error) return <Notice tone="warn">Nie wczytano ustawień: {settings.error}</Notice>;
+  if (settings.error) return <Notice tone="warn">{S.settingsFailed(settings.error)}</Notice>;
   if (!draft) return <div className="mc-form"><Skeleton h={60} /></div>;
   const set = (patch: Partial<CushionDraft>) => setDraft({ ...draft, ...patch });
   const choices = (accounts.data ?? []).filter(
@@ -211,44 +212,44 @@ function CushionForm({ currencies, baseCurrency, onClose, onSaved }: {
   return (
     <div className="mc-form">
       <div className="controls" style={{ marginBottom: 8 }}>
-        <Switch on={draft.enabled} onChange={(v) => set({ enabled: v })} label="Poduszka przed inwestycjami"
-          title="Najpierw dopłać do poduszki, resztę nadwyżki przelej na inwestycje" />
-        <span style={{ fontSize: 13 }} title="Najpierw dopłać do poduszki, resztę nadwyżki przelej na inwestycje">Poduszka przed inwestycjami</span>
+        <Switch on={draft.enabled} onChange={(v) => set({ enabled: v })} label={S.cushionFirst}
+          title={S.cushionFirstTitle} />
+        <span style={{ fontSize: 13 }} title={S.cushionFirstTitle}>{S.cushionFirst}</span>
       </div>
       {draft.enabled && (
         <div className="row">
           <div className="field">
-            <label>Cel poduszki</label>
-            <Seg<"amount" | "months"> items={[["Kwota", "amount"], ["Miesiące wydatków", "months"]]} value={draft.mode} onChange={(m) => set({ mode: m })} />
+            <label>{S.target}</label>
+            <Seg<"amount" | "months"> items={[[S.amount, "amount"], [S.monthsOfSpending, "months"]]} value={draft.mode} onChange={(m) => set({ mode: m })} />
           </div>
           {draft.mode === "amount" ? (
             <div className="field">
-              <label htmlFor="mc-amount">Kwota ({draft.currency})</label>
+              <label htmlFor="mc-amount">{S.amountIn(draft.currency)}</label>
               <input id="mc-amount" inputMode="decimal" value={draft.amount} onChange={(e) => set({ amount: e.target.value })} style={{ width: 130 }} />
             </div>
           ) : (
             <div className="field">
-              <label htmlFor="mc-months">Miesięcy wydatków</label>
+              <label htmlFor="mc-months">{S.months}</label>
               <input id="mc-months" inputMode="numeric" value={draft.months} onChange={(e) => set({ months: e.target.value })} style={{ width: 80 }} />
             </div>
           )}
           {currencies.length > 1 && (
             <div className="field">
-              <label htmlFor="mc-cur">Waluta</label>
+              <label htmlFor="mc-cur">{S.currency}</label>
               <select id="mc-cur" value={draft.currency} onChange={(e) => set({ currency: e.target.value, accountIds: [] })}>
                 {currencies.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           )}
           <div className="field">
-            <label htmlFor="mc-max">Maks. dopłata / mies.</label>
+            <label htmlFor="mc-max">{S.maxTopUp}</label>
             <input id="mc-max" inputMode="decimal" value={draft.monthlyMax} onChange={(e) => set({ monthlyMax: e.target.value })} style={{ width: 130 }} />
           </div>
         </div>
       )}
       {draft.enabled && (
         <div className="field">
-          <label title={`Domyślnie konta oszczędnościowe w ${draft.currency}; ${CUSHION_LEVEL.toLowerCase()}.`}>Konta</label>
+          <label title={S.accountsTitle(draft.currency, S.cushionLevel)}>{S.accounts}</label>
           {choices.length ? (
             <div className="accounts">
               {choices.map((a) => (
@@ -259,13 +260,13 @@ function CushionForm({ currencies, baseCurrency, onClose, onSaved }: {
                 </label>
               ))}
             </div>
-          ) : <span className="hint">Brak kont w {draft.currency}.</span>}
+          ) : <span className="hint">{S.noAccounts(draft.currency)}</span>}
         </div>
       )}
       {err && <Notice tone="neg">{err}</Notice>}
       <div className="controls" style={{ marginBottom: 0 }}>
-        <button className="btn primary" disabled={busy} onClick={save}>Zapisz</button>
-        <button className="btn" disabled={busy} onClick={onClose}>Anuluj</button>
+        <button className="btn primary" disabled={busy} onClick={save}>{C.save}</button>
+        <button className="btn" disabled={busy} onClick={onClose}>{C.cancel}</button>
       </div>
     </div>
   );

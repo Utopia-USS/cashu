@@ -1,0 +1,364 @@
+<title>Research jako opowieść</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one story per screen. Headline first (a human sentence), facts and numbers one click deeper. Tokens = cashU index.css. */
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1a1d21; --muted: #6b7280; --border: #e5e7eb; --subtle: #f9fafb; --chip: #eef1f5; --chipText: #374151;
+  --pos: #16a34a; --neg: #dc2626; --warn: #b45309; --info: #2563eb; --net: #7c3aed; --scrim: rgba(15,18,22,.35);
+  --posBg: rgba(22,163,74,.10); --negBg: rgba(220,38,38,.10); --warnBg: rgba(180,83,9,.12); --infoBg: rgba(37,99,235,.10); --netBg: rgba(124,58,237,.10);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1216; --card: #171b21; --text: #e6e8eb; --muted: #9aa4b2; --border: #262c34; --subtle: #141820; --chip: #232a33; --chipText: #cbd5e1;
+  --pos: #34d399; --neg: #f87171; --warn: #fbbf24; --info: #60a5fa; --net: #a78bfa; --scrim: rgba(0,0,0,.6);
+  --posBg: rgba(52,211,153,.14); --negBg: rgba(248,113,113,.14); --warnBg: rgba(251,191,36,.14); --infoBg: rgba(96,165,250,.14); --netBg: rgba(167,139,250,.14);
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0f1216; --card: #171b21; --text: #e6e8eb; --muted: #9aa4b2; --border: #262c34; --subtle: #141820; --chip: #232a33; --chipText: #cbd5e1;
+  --pos: #34d399; --neg: #f87171; --warn: #fbbf24; --info: #60a5fa; --net: #a78bfa; --scrim: rgba(0,0,0,.6);
+  --posBg: rgba(52,211,153,.14); --negBg: rgba(248,113,113,.14); --warnBg: rgba(251,191,36,.14); --infoBg: rgba(96,165,250,.14); --netBg: rgba(167,139,250,.14);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.45; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+.page { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 40px; display: grid; gap: 14px; }
+.mut { color: var(--muted); }
+
+.proto { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.proto b { color: var(--text); }
+.seg { display: inline-flex; background: var(--chip); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { border: 0; background: transparent; padding: 5px 11px; border-radius: 6px; font-size: 12px; color: var(--chipText); }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+.w { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; }
+.wh { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.wh .t { font-size: 12px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.wh .sp { flex: 1; }
+.lnk { border: 0; background: transparent; color: var(--info); font-weight: 600; padding: 0; font-size: 13px; }
+
+/* mood chips: the one-word state of a topic or a market */
+.mood { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.mood::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.mood.pos { background: var(--posBg); color: var(--pos); } .mood.neg { background: var(--negBg); color: var(--neg); }
+.mood.warn { background: var(--warnBg); color: var(--warn); } .mood.calm { background: var(--chip); color: var(--chipText); }
+
+/* ---- home strip ---- */
+.home { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; }
+.lead { font-size: 22px; line-height: 1.25; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; margin: 0 0 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mchip { border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 4px 10px; font-size: 12px; display: inline-flex; gap: 6px; align-items: center; }
+.mchip b { font-weight: 600; }
+.mchip .new { font-size: 10px; font-weight: 700; color: var(--info); text-transform: uppercase; letter-spacing: .05em; }
+.mchip[aria-expanded="true"] { border-color: var(--info); }
+.mexp { margin-top: 8px; font-size: 13px; color: var(--muted); background: var(--subtle); border-radius: 10px; padding: 9px 11px; }
+.mexp b { color: var(--text); }
+
+.ahead { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+.ahead h4, .col h4 { margin: 0 0 8px; font-size: 12px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.ahead .say { font-weight: 650; font-size: 15px; margin-bottom: 8px; }
+.ev { display: grid; grid-template-columns: 68px 1fr auto; gap: 10px; align-items: baseline; padding: 6px 0; font-size: 13px; }
+.ev + .ev { border-top: 1px dashed var(--border); }
+.ev .d { color: var(--muted); font-size: 12px; }
+.ev .d b { color: var(--text); font-size: 13px; }
+.ev .r { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ev .r.big { color: var(--warn); font-weight: 600; }
+.ev .mine { font-weight: 600; }
+
+.alert { display: flex; gap: 12px; align-items: center; background: var(--negBg); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; }
+.alert .x { flex: 1; min-width: 0; }
+.alert .x b { color: var(--neg); }
+.alert .x span { color: var(--muted); font-size: 13px; }
+.btn { border: 1px solid var(--border); background: var(--card); border-radius: 8px; padding: 5px 11px; font-size: 12px; font-weight: 600; }
+.btn.pri { background: var(--text); color: var(--card); border-color: var(--text); }
+
+.topics { display: grid; }
+.trow { display: grid; grid-template-columns: 116px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 11px 4px; border-top: 1px solid var(--border); text-align: left; width: 100%; background: transparent; border-left: 0; border-right: 0; border-bottom: 0; }
+.trow:first-child { border-top: 0; }
+.trow:hover .hl { color: var(--info); }
+.trow .nm { font-size: 12px; color: var(--muted); font-weight: 600; }
+.trow .hl { font-size: 15px; font-weight: 600; line-height: 1.3; }
+.trow .hl .mood { margin-right: 6px; vertical-align: 1px; }
+.trow .imp { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.texp { padding: 2px 4px 14px 132px; display: grid; gap: 10px; }
+.nowout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.nowout div { background: var(--subtle); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.nowout b { display: block; font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+.nlist { display: grid; gap: 4px; }
+.nlink { border: 0; background: transparent; text-align: left; padding: 3px 0; font-size: 13px; }
+.nlink:hover { color: var(--info); }
+.nlink .mut { font-size: 12px; }
+.lost { margin-top: 12px; font-size: 12px; color: var(--muted); background: var(--subtle); border-radius: 10px; padding: 9px 12px; }
+.lost b { color: var(--text); }
+.foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; flex-wrap: wrap; }
+.foot .sp { flex: 1; }
+.badge { display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 9px; background: var(--warnBg); color: var(--warn); font-weight: 700; font-size: 12px; text-align: center; }
+
+/* ---- research page ---- */
+.story { font-size: 24px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; text-wrap: balance; margin: 0 0 12px; }
+.sents { display: flex; flex-wrap: wrap; gap: 8px; }
+.sent { border-radius: 10px; padding: 7px 12px; font-size: 13px; font-weight: 600; background: var(--chip); }
+.sent.neg { background: var(--negBg); color: var(--neg); } .sent.pos { background: var(--posBg); color: var(--pos); } .sent.info { background: var(--infoBg); color: var(--info); }
+.next { font-size: 12px; color: var(--muted); margin-top: 10px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: -4px 0 16px; overflow-x: auto; }
+.tabs button { border: 0; background: transparent; padding: 9px 12px; font-size: 13px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); }
+.tabs .n { font-weight: 500; color: var(--muted); margin-left: 4px; }
+
+.tgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tcard { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: grid; gap: 10px; align-content: start; }
+.tcard .top { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); font-weight: 600; }
+.tcard .top .sp { flex: 1; }
+.tcard h3 { margin: 0; font-size: 17px; line-height: 1.3; text-wrap: balance; }
+.tcard .tick { font-size: 11px; color: var(--muted); letter-spacing: .03em; }
+.draft { font-size: 11px; font-weight: 600; color: var(--warn); }
+
+.rows { display: grid; }
+.prow { display: grid; grid-template-columns: 170px 120px minmax(0, 1fr) auto; gap: 14px; align-items: baseline; padding: 11px 0; border-top: 1px solid var(--border); }
+.prow:first-child { border-top: 0; }
+.prow .nm { font-weight: 650; }
+.prow .nm small { display: block; font-weight: 500; color: var(--muted); font-size: 11px; }
+.health { font-size: 12px; font-weight: 600; }
+.health.pos { color: var(--pos); } .health.neg { color: var(--neg); } .health.calm { color: var(--muted); }
+.soon { font-size: 11px; font-weight: 700; color: var(--warn); background: var(--warnBg); border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+
+.filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.filters button { border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 4px 11px; font-size: 12px; }
+.filters button[aria-pressed="true"] { background: var(--text); color: var(--card); border-color: var(--text); }
+.day { font-size: 12px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 14px 0 4px; }
+.day:first-child { margin-top: 0; }
+.note { display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 9px 2px; border: 0; background: transparent; text-align: left; width: 100%; border-top: 1px solid var(--border); }
+.note:hover .h { color: var(--info); }
+.note i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); display: block; transform: translateY(-1px); }
+.note i.pos { background: var(--pos); } .note i.neg { background: var(--neg); }
+.note .h { display: block; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.note .m { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.note .m .rel { font-weight: 600; } .note .m .rel.pos { color: var(--pos); } .note .m .rel.neg { color: var(--neg); }
+
+.cand { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--border); }
+.cand:first-child { border-top: 0; }
+.cand .h { font-weight: 650; font-size: 15px; }
+.cand .m { font-size: 13px; color: var(--muted); }
+.cand .acts { display: flex; gap: 6px; }
+
+/* full note (the third level: numbers and sources) */
+.sheet { position: fixed; inset: 0; z-index: 40; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; }
+.sheet .in { background: var(--card); width: min(640px, 100%); max-height: 86%; overflow-y: auto; border-radius: 18px 18px 0 0;
+  padding: 20px max(22px, env(safe-area-inset-right, 0px)) calc(26px + env(safe-area-inset-bottom, 0px)) max(22px, env(safe-area-inset-left, 0px)); }
+.sheet .ey { font-size: 12px; color: var(--muted); }
+.sheet h3 { margin: 6px 0 4px; font-size: 20px; line-height: 1.3; text-wrap: balance; }
+.sheet .tech { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 12px; }
+.sheet p { margin: 0 0 12px; max-width: 65ch; }
+.sheet .srcs { border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; color: var(--muted); }
+.sheet .close { float: right; border: 0; background: var(--chip); color: var(--chipText); border-radius: 8px; padding: 4px 10px; font-size: 12px; }
+
+@media (max-width: 860px) {
+  .home { grid-template-columns: 1fr; gap: 18px; }
+  .tgrid { grid-template-columns: 1fr; }
+  .prow { grid-template-columns: 1fr auto; } .prow .hl2 { grid-column: 1 / -1; } .prow .health { order: 3; }
+  .texp { padding-left: 4px; } .nowout { grid-template-columns: 1fr; }
+  .trow { grid-template-columns: 1fr auto; } .trow .nm { grid-column: 1 / -1; }
+  .lead, .story { font-size: 20px; }
+}
+</style>
+
+<div class="page">
+  <div class="proto">
+    <span><b>Prototyp</b> · dane przykładowe, wymyślone spółki</span>
+    <div class="seg" role="group" aria-label="Widok">
+      <button id="vHome" aria-pressed="true">Ekran Inwestycji</button>
+      <button id="vAll" aria-pressed="false">Research: wszystko</button>
+    </div>
+  </div>
+  <section id="home" class="w" aria-label="Research na ekranie Inwestycji"></section>
+  <section id="all" class="w" aria-label="Research: wszystko" hidden></section>
+</div>
+<div class="sheet" id="sheet" hidden></div>
+
+<script>
+// ---- data: every item has a human headline first; numbers live one level deeper -----------------------------
+const MACRO = [
+  { k: "Akcje", s: "hossa", m: "pos", x: "Akcje na świecie rosną od ponad roku i są tuż pod szczytem. Paliwem są zyski spółek i wydatki na AI." },
+  { k: "Dolar", s: "umacnia się", m: "warn", nw: true, x: "Dolar zaczął się umacniać po trzech miesiącach słabości. Dla Ciebie to <b>plus dla spółek z USA</b> w złotówkach i <b>minus dla złota</b>." },
+  { k: "Rynki wschodzące", s: "słabsze od świata", m: "neg", x: "Akcje krajów rozwijających się rosną wolniej niż reszta świata od września." },
+  { k: "Surowce", s: "drożeją", m: "warn", x: "Ropa i metale drożeją od początku roku. Przy drogim paliwie wolniej spada inflacja." },
+  { k: "Stopy", s: "bez zmian", m: "calm", x: "Oprocentowanie obligacji w USA stoi w miejscu. Fed zdecyduje o stopach w środę." },
+];
+const AHEAD = [
+  { d: "wt", day: "03.11", t: "Nimbus Cloud podaje wyniki", r: "zwykle ±7 %", big: true, mine: true, w: "po sesji" },
+  { d: "śr", day: "04.11", t: "Fed: decyzja o stopach", r: "dolar, złoto" },
+  { d: "śr", day: "04.11", t: "Silica Chips podaje wyniki", r: "zwykle ±11 %", big: true, mine: true, w: "po sesji" },
+  { d: "czw", day: "05.11", t: "Medica Health podaje wyniki", r: "zwykle ±5 %", mine: true, w: "przed sesją" },
+  { d: "pt", day: "06.11", t: "Rynek pracy w USA", r: "stopy, dolar" },
+];
+const N = {}; // notes by id
+const note = (id, o) => (N[id] = { id, ...o });
+const TOPICS = [
+  { id: "chips", nm: "AI: chipy", mood: ["niepewnie", "warn"], imp: "+1,2 pp", hl: "Inwestorzy sprawdzają, ile klienci AI naprawdę zarabiają",
+    now: "Popyt na chipy jest nierówny: centra danych kupują dużo, komputery osobiste mało.", out: "Branża liczy na dalszy wzrost wydatków na AI przez 2-3 lata, ale wolniej niż dotąd.",
+    tick: "SLCA · NMBS · CHPX", draft: true,
+    notes: [
+      note("n1", { h: "Giganci dalej wydają rekordowo na centra danych", t: "III kw.: łączny capex trzech największych chmur 130 mld $ (+48 % r/r)", rel: ["wspiera tezę", "pos"], who: "branża", kind: "wiadomość", day: 0,
+        s: ["Trzy największe chmury wydały w III kwartale łącznie około 130 mld $ na centra danych, prawie połowę więcej niż rok temu.", "Wszystkie trzy zapowiedziały, że w przyszłym roku wydadzą jeszcze więcej. To podtrzymuje popyt na chipy do AI."], src: "Example Markets Daily, 29.10" }),
+      note("n2", { h: "Klienci AI pytani o zwrot z inwestycji", t: "Ankieta Example Research: 41 % firm nie widzi jeszcze zwrotu z wdrożeń AI", rel: ["osłabia tezę", "neg"], who: "branża", kind: "trend", day: 3,
+        s: ["W ankiecie wśród dużych firm 41 % odpowiedziało, że nie widzi jeszcze zwrotu z wdrożeń AI.", "Inwestorzy zaczynają pytać, czy obecne tempo zakupów chipów da się utrzymać."], src: "Example Research, 26.10" }),
+    ] },
+  { id: "soft", nm: "AI i oprogramowanie", mood: ["pod presją", "neg"], imp: "+0,1 pp", hl: "Inwestorzy znów uciekają od spółek z oprogramowaniem",
+    now: "Chmura rośnie bardzo szybko, ale klasyczne oprogramowanie traci klientów na rzecz AI.", out: "Wydatki na IT na świecie mają rosnąć o kilka procent rocznie.",
+    tick: "NMBS · CODX · PLTF", draft: true,
+    notes: [
+      note("n3", { h: "Nimbus Cloud: chmura rośnie najszybciej od trzech lat", t: "III kw.: przychody chmury +39 % r/r, marża operacyjna 13,9 %", rel: ["wspiera tezę", "pos"], who: "Nimbus Cloud", kind: "wyniki", day: 0,
+        s: ["Nimbus podał, że przychody z chmury wzrosły o 39 % rok do roku, najszybciej od trzech lat.", "Marża operacyjna 13,9 % to rekord spółki. Wolne przepływy pieniężne spadły przez inwestycje w centra danych."], src: "Nimbus Cloud, raport kwartalny 29.10" }),
+    ] },
+  { id: "crypto", nm: "Krypto", mood: ["słabnie", "neg"], imp: "-0,6 pp", hl: "Bitcoin traci trzeci tydzień z rzędu", now: "Z funduszy ETF na bitcoina odpływają pieniądze.", out: "Regulacje w USA utknęły w Senacie, więc rynek czeka.", tick: "BTC · ETH", draft: true, notes: [] },
+  { id: "health", nm: "Ochrona zdrowia", mood: ["pod presją", "neg"], imp: "-0,9 pp", hl: "Ubezpieczyciele zdrowotni wciąż walczą z kosztami", now: "Koszty leczenia rosną szybciej, niż ubezpieczyciele zakładali.", out: "Wydatki na zdrowie w USA mają rosnąć około 5 % rocznie przez dekadę.", tick: "MDCA · OSCR", draft: true,
+    notes: [ note("n4", { h: "Medica obniża prognozę na ten rok", t: "Prognoza EPS 2026 obniżona z 6,10 $ do 5,40 $", rel: ["osłabia tezę", "neg"], who: "Medica Health", kind: "wiadomość", day: 1,
+      s: ["Medica obniżyła prognozę zysku na ten rok o około 11 %. Powód: wyższe koszty świadczeń w planach dla seniorów."], src: "Medica Health, komunikat 28.10" }) ] },
+  { id: "atom", nm: "Energetyka: atom", mood: ["wiatr w plecy", "pos"], imp: "+0,8 pp", hl: "Kolejne kraje otwierają drzwi do atomu", now: "Energetyka jądrowa ma najlepszy klimat polityczny od dekad.", out: "Według projekcji moc elektrowni jądrowych na świecie może się podwoić do 2050 r.", tick: "ATMC · URNX", draft: false,
+    notes: [ note("n5", { h: "Włochy wracają do atomu po 40 latach", t: "Parlament przyjął ustawę ramową o energetyce jądrowej", rel: ["wspiera tezę", "pos"], who: "branża", kind: "wiadomość", day: 3,
+      s: ["Włoski parlament przyjął ustawę, która po prawie 40 latach pozwala wrócić do budowy elektrowni jądrowych."], src: "Example Energy Wire, 26.10" }) ] },
+  { id: "games", nm: "Gry", mood: ["czeka", "calm"], imp: "-0,1 pp", hl: "Branża czeka na premierę największej gry roku", now: "Branża rośnie umiarkowanie po latach zastoju.", out: "Wydatki graczy mają w tym roku pobić rekord.", tick: "PXLG · CDRX", draft: true, notes: [] },
+  { id: "gold", nm: "Złoto i górnicy", mood: ["pod presją", "neg"], imp: "0,0 pp", hl: "Mocniejszy dolar ciąży złotu", now: "Złoto jest pod presją rosnących rentowności i mocniejszego dolara.", out: "Banki centralne wciąż kupują złoto w rekordowym tempie.", tick: "AURM", draft: true, notes: [] },
+];
+const QUIET = ["Robotyka", "Nieruchomości", "Konsumpcja"];
+const MINE = [
+  { nm: "Silica Chips", sym: "SLCA", hl: ["wzmocniona", "pos"], line: "Giganci dalej wydają rekordowo na centra danych", soon: "wyniki śr 04.11", n: "n1" },
+  { nm: "Nimbus Cloud", sym: "NMBS", hl: ["wzmocniona", "pos"], line: "Chmura rośnie najszybciej od trzech lat", soon: "wyniki wt 03.11", n: "n3" },
+  { nm: "Medica Health", sym: "MDCA", hl: ["osłabiona", "neg"], line: "Spółka obniża prognozę na ten rok", soon: "wyniki czw 05.11", n: "n4" },
+  { nm: "Atomica Energy", sym: "ATMC", hl: ["osłabiona", "neg"], line: "Opóźnienie pierwszego reaktora o rok" },
+  { nm: "Bitcoin", sym: "BTC", hl: ["osłabiona", "neg"], line: "Odpływy z funduszy ETF trzeci tydzień" },
+  { nm: "Pixel Games", sym: "PXLG", hl: ["bez zmian", "calm"], line: "Nic nowego w tym tygodniu" },
+];
+note("n6", { h: "Atomica: pierwszy reaktor o rok później", t: "Termin uruchomienia SMR przesunięty z 2028 na 2029", rel: ["osłabia tezę", "neg"], who: "Atomica Energy", kind: "wiadomość", day: 1,
+  s: ["Atomica przesunęła uruchomienie pierwszego małego reaktora z 2028 na 2029 rok. Powód: dłuższe pozwolenia."], src: "Atomica Energy, komunikat 28.10" });
+note("n7", { h: "Pieniądze odpływają z funduszy na bitcoina", t: "ETF-y BTC: odpływy netto 1,9 mld $ w 3 tygodnie", rel: ["osłabia tezę", "neg"], who: "Bitcoin", kind: "wiadomość", day: 2,
+  s: ["Z funduszy ETF na bitcoina odpłynęło w trzy tygodnie około 1,9 mld $."], src: "Example Crypto Flows, 27.10" });
+MINE[3].n = "n6"; MINE[4].n = "n7";
+const META = { date: "sobota 31.10", total: 79, lead: "Hossa trwa, ale rynek coraz uważniej liczy pieniądze z AI.",
+  story: "W sobotę research przejrzał 15 Twoich pozycji i 9 tematów. Najważniejsze: AI pod lupą, ubezpieczyciele zdrowotni pod presją.",
+  next: "następny research: sobota 07.11, 07:00 · w Claude Code", srcLabel: "Źródło (przykładowe)" };
+const LOST = null; // with real data: what this view keeps one level deeper (render_real.py fills it)
+const CANDS = [
+  { h: "Gridline Infrastructure", why: "Sieci energetyczne zyskują na budowie centrów danych. Pasuje do Twojej strategii trendu." },
+  { h: "Vita Diagnostics", why: "Tańsza od branży po spadkach, a zyski rosną. Pasuje do korekty sentymentu." },
+  { h: "Orbit Robotics", why: "Dostawy robotów przemysłowych przyspieszają drugi rok z rzędu." },
+];
+
+// ---- rendering ------------------------------------------------------------------------------------------------
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const pl = (n, one, few, many) => `${n} ${n === 1 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many}`;
+const nowOut = (t) => (t.now || t.out ? `<div class="nowout">${t.now ? `<div><b>Teraz</b>${esc(t.now)}</div>` : ""}${t.out ? `<div><b>Perspektywa</b>${esc(t.out)}</div>` : ""}</div>` : "");
+const DAYS = ["Dziś", "Wczoraj", "W tym tygodniu", "W tym tygodniu"];
+let openMacro = null, openTopic = null, tab = "topics", filter = "all";
+
+function home() {
+  const weak = MINE.filter((m) => m.hl[1] === "neg");
+  const drafts = TOPICS.filter((t) => t.draft).length;
+  $("#home").innerHTML = `
+    <div class="wh"><span class="t">Research</span><span class="mut">${esc(META.date)}</span><span class="sp"></span><button class="lnk" data-go="all">Wszystko · ${META.total} notatek</button></div>
+    <div class="home">
+      <div>
+        <p class="lead">${esc(META.lead)}</p>
+        <div class="chips">${MACRO.map((m, i) => `<button class="mchip" aria-expanded="${openMacro === i}" data-m="${i}"><span class="mood ${m.m}">${esc(m.s)}</span><b>${esc(m.k)}</b>${m.nw ? '<span class="new">nowe</span>' : ""}</button>`).join("")}</div>
+        ${openMacro != null ? `<div class="mexp">${MACRO[openMacro].x}</div>` : ""}
+        <div class="ahead">
+          <h4>Nadchodzi</h4>
+          <div class="say">${aheadSay()}</div>
+          ${AHEAD.map((e) => `<div class="ev"><span class="d"><b>${e.day}</b> ${e.d}</span><span class="${e.mine ? "mine" : ""}">${esc(e.t)}${e.w ? ` <span class="mut">· ${e.w}</span>` : ""}</span><span class="r ${e.big ? "big" : ""}">${esc(e.r)}</span></div>`).join("")}
+        </div>
+      </div>
+      <div>
+        ${weak.length ? `<div class="alert"><div class="x"><b>${weak.length === 1 ? "1 teza straciła" : `${weak.length} tezy straciły`} grunt:</b> <span>${weak.map((w) => w.nm).join(", ")}</span></div><button class="btn pri" data-go="all" data-tab="mine">Przejrzyj</button></div>` : ""}
+        <div class="col"><h4>Tematy w tym tygodniu</h4></div>
+        <div class="topics">${TOPICS.map((t) => `
+          <button class="trow" data-t="${t.id}" aria-expanded="${openTopic === t.id}"><span class="nm">${esc(t.nm)}</span><span class="hl"><span class="mood ${t.mood[1]}">${t.mood[0]}</span>${esc(t.hl)}</span><span class="imp">${t.imp}</span></button>
+          ${openTopic === t.id ? topicExp(t) : ""}`).join("")}
+        </div>
+        ${LOST ? `<div class="lost"><b>Schowane głębiej (nic nie znika):</b> ${LOST.map(esc).join(" · ")}</div>` : ""}
+        <div class="foot"><span class="mut">Bez nowości: ${QUIET.join(", ")}</span><span class="sp"></span>${drafts ? `<span><span class="badge">${drafts}</span> ${drafts === 1 ? "szkic tezy czeka" : drafts < 5 ? "szkice tez czekają" : "szkiców tez czeka"} na Ciebie</span><button class="btn">Przejrzyj szkice</button>` : ""}</div>
+      </div>
+    </div>`;
+}
+function aheadSay() {
+  const mine = AHEAD.filter((e) => e.mine).length;
+  if (!AHEAD.length) return "Spokojny tydzień: brak ważnych wydarzeń.";
+  if (!mine) return "W tym tygodniu żadna Twoja spółka nie podaje wyników.";
+  const word = mine === 1 ? "Twoja spółka podaje" : mine < 5 ? "Twoje spółki podają" : "Twoich spółek podaje";
+  return `W tym tygodniu ${mine} ${word} wyniki. ${AHEAD.some((e) => e.big) ? "Po raporcie zwykle mocno się ruszają." : "Po raporcie kurs może mocno się ruszyć."}`;
+}
+function topicExp(t) {
+  return `<div class="texp">${nowOut(t)}
+    ${t.notes.length ? `<div class="nlist">${t.notes.map((n) => `<button class="nlink" data-n="${n.id}">${esc(n.h)} <span class="mut">· ${DAYS[n.day].toLowerCase()}</span></button>`).join("")}</div>` : ""}</div>`;
+}
+
+function all() {
+  const weak = MINE.filter((m) => m.hl[1] === "neg").length, strong = MINE.filter((m) => m.hl[1] === "pos").length;
+  const notes = Object.values(N);
+  const tabs = [["topics", "Tematy", TOPICS.length], ["mine", "Twoje spółki", MINE.length], ["notes", "Notatki", notes.length], ["cal", "Kalendarz", AHEAD.length], ["cand", "Kandydaci", CANDS.length]];
+  $("#all").innerHTML = `
+    <div class="wh"><span class="t">Research</span><span class="sp"></span><button class="lnk" data-go="home">← Inwestycje</button></div>
+    <p class="story">${esc(META.story)}</p>
+    <div class="sents">${weak ? `<span class="sent neg">${pl(weak, "teza straciła", "tezy straciły", "tez straciło")} grunt</span>` : ""}${strong ? `<span class="sent pos">${pl(strong, "teza wzmocniona", "tezy wzmocnione", "tez wzmocnionych")}</span>` : ""}${CANDS.length ? `<span class="sent info">${pl(CANDS.length, "nowa okazja", "nowe okazje", "nowych okazji")}</span>` : ""}<span class="sent">nic nie czeka na decyzję</span></div>
+    <div class="next">${esc(META.next)}</div>
+    <div class="tabs" role="tablist" style="margin-top:18px">${tabs.map(([k, l, n]) => `<button role="tab" aria-selected="${tab === k}" data-tab="${k}">${l}<span class="n">${n}</span></button>`).join("")}</div>
+    <div>${tab === "topics" ? allTopics() : tab === "mine" ? allMine() : tab === "notes" ? allNotes(notes) : tab === "cal" ? allCal() : allCands()}</div>`;
+}
+const allTopics = () => `<div class="tgrid">${TOPICS.map((t) => `
+  <article class="tcard"><div class="top"><span class="mood ${t.mood[1]}">${t.mood[0]}</span><span>${esc(t.nm)}</span><span class="sp"></span>${t.draft ? '<span class="draft">szkic tezy</span>' : ""}<span>${t.imp}</span></div>
+    <h3>${esc(t.hl)}</h3>
+    ${nowOut(t)}
+    ${t.notes.length ? `<div class="nlist">${t.notes.map((n) => `<button class="nlink" data-n="${n.id}">${esc(n.h)}</button>`).join("")}</div>` : ""}
+    <div class="tick">${t.tick}</div></article>`).join("")}</div>`;
+const allMine = () => `<div class="rows">${MINE.map((m) => `
+  <div class="prow"><span class="nm">${esc(m.nm)}<small>${m.sym}</small></span><span class="health ${m.hl[1]}">teza ${m.hl[0]}</span>
+    <span class="hl2">${m.n ? `<button class="nlink" data-n="${m.n}">${esc(m.line)}</button>` : `<span class="mut">${esc(m.line)}</span>`}</span>${m.soon ? `<span class="soon">${m.soon}</span>` : "<span></span>"}</div>`).join("")}</div>`;
+function allNotes(notes) {
+  const f = { all: () => true, thesis: (n) => n.rel, results: (n) => n.kind === "wyniki", news: (n) => n.kind === "wiadomość" }[filter];
+  const list = notes.filter(f).sort((a, b) => a.day - b.day);
+  const groups = [...new Set(list.map((n) => DAYS[n.day]))];
+  return `<div class="filters">${[["all", "Wszystkie"], ["thesis", "Dotyczą moich tez"], ["results", "Wyniki spółek"], ["news", "Wiadomości"]].map(([k, l]) => `<button data-f="${k}" aria-pressed="${filter === k}">${l}</button>`).join("")}</div>
+    ${groups.map((g) => `<div class="day">${g}</div>${list.filter((n) => DAYS[n.day] === g).map((n) => `
+      <button class="note" data-n="${n.id}"><i class="${n.rel ? n.rel[1] : ""}"></i><span><span class="h">${esc(n.h)}</span>
+        <span class="m">${esc(n.who)} · ${n.kind}${n.rel ? ` · <span class="rel ${n.rel[1]}">${n.rel[0]}</span>` : ""}</span></span></button>`).join("")}`).join("")}`;
+}
+const allCal = () => `<div class="say" style="font-weight:650;margin-bottom:8px">${aheadSay()}</div>${AHEAD.map((e) => `<div class="ev"><span class="d"><b>${e.day}</b> ${e.d}</span><span class="${e.mine ? "mine" : ""}">${esc(e.t)}${e.w ? ` <span class="mut">· ${e.w}</span>` : ""}</span><span class="r ${e.big ? "big" : ""}">${esc(e.r)}</span></div>`).join("")}`;
+const allCands = () => `<div class="rows">${CANDS.map((c) => `<div class="cand"><div><div class="h">${esc(c.h)}</div><div class="m">${esc(c.why)}</div></div><div class="acts"><button class="btn pri">Obserwuj</button><button class="btn">Nie interesuje</button></div></div>`).join("")}</div>`;
+
+function openNote(id) {
+  const n = N[id];
+  $("#sheet").innerHTML = `<div class="in" role="dialog" aria-modal="true" aria-label="${esc(n.h)}"><button class="close" id="shc">Zamknij</button>
+    <div class="ey">${esc(n.who)} · ${n.kind}${n.rel ? ` · ${n.rel[0]}` : ""}</div><h3>${esc(n.h)}</h3><div class="tech">${esc(n.t)}</div>
+    ${n.s.map((p) => `<p>${esc(p)}</p>`).join("")}<div class="srcs">${META.srcLabel ?? "Źródło"}: ${esc(n.src)}</div></div>`;
+  $("#sheet").hidden = false;
+  $("#shc").focus();
+}
+
+// ---- events ---------------------------------------------------------------------------------------------------
+function show(view, t) {
+  if (t) tab = t;
+  $("#home").hidden = view !== "home"; $("#all").hidden = view !== "all";
+  $("#vHome").setAttribute("aria-pressed", view === "home"); $("#vAll").setAttribute("aria-pressed", view === "all");
+  view === "home" ? home() : all();
+}
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("button, .sheet");
+  if (!el) return;
+  if (el.id === "sheet" && e.target === el) { el.hidden = true; return; }
+  if (el.id === "shc") { $("#sheet").hidden = true; return; }
+  if (el.id === "vHome") return show("home");
+  if (el.id === "vAll") return show("all");
+  const d = el.dataset;
+  if (d.go) return show(d.go, d.tab);
+  if (d.m != null) { openMacro = openMacro === +d.m ? null : +d.m; return home(); }
+  if (d.t) { openTopic = openTopic === d.t ? null : d.t; return home(); }
+  if (d.n) return openNote(d.n);
+  if (d.tab) { tab = d.tab; return all(); }
+  if (d.f) { filter = d.f; return all(); }
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#sheet").hidden = true; });
+show("home");
+</script>

@@ -5,7 +5,8 @@
 An entry says how to recognise and read that institution's data:
 
 - ``kind``: ``bank`` | ``broker`` | ``exchange`` | ``manual``;
-- ``name``: display name;
+- ``name``: display name; ``name_en`` its English variant when it differs (``display_name``
+  picks the current UI language);
 - ``csv_importer``: ``"package.module:ClassName"`` of its statement parser (imported
   lazily, so core never imports a module's code); None = no CSV import yet;
 - ``aspsp_patterns``: lowercase substrings of the Enable Banking ASPSP name that
@@ -23,6 +24,8 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from .i18n import tr
+
 Kind = Literal["bank", "broker", "exchange", "manual"]
 
 MANUAL = "manual"  # manually tracked positions, the cash pool, loans without a bank feed
@@ -38,6 +41,7 @@ class Institution:
     csv_importer: str | None = None
     aspsp_patterns: tuple[str, ...] = ()
     country: str = "PL"
+    name_en: str | None = None
 
 
 BUILTIN: tuple[Institution, ...] = (
@@ -51,7 +55,7 @@ BUILTIN: tuple[Institution, ...] = (
     Institution("millennium", "bank", "Bank Millennium", None, ("millennium",)),
     # Open Banking only (no CSV parser).
     Institution("revolut", "bank", "Revolut", None, ("revolut",)),
-    Institution(MANUAL, "manual", "Ręcznie"),
+    Institution(MANUAL, "manual", "Ręcznie", name_en="Manual"),
 )
 
 _REGISTRY: dict[str, Institution] = {}
@@ -85,13 +89,13 @@ def get(institution_id: str) -> Institution:
 
 
 def display_name(institution_id: str) -> str:
-    """Display name; for an id no entry knows (an Open Banking bank without an entry,
-    an imported institution id) its words, capitalized: "ing-bank-slaski" ->
+    """Display name in the current UI language; for an id no entry knows (an Open Banking bank
+    without an entry, an imported institution id) its words, capitalized: "ing-bank-slaski" ->
     "Ing Bank Slaski". Never raises."""
     _ensure_loaded()
     inst = _REGISTRY.get(institution_id)
     if inst is not None:
-        return inst.name
+        return tr(pl=inst.name, en=inst.name_en or inst.name)
     words = [w for w in re.split(r"[-_\s]+", institution_id or "") if w]
     return " ".join(w[:1].upper() + w[1:] for w in words) or (institution_id or "")
 

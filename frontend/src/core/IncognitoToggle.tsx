@@ -2,12 +2,13 @@
 // live in src/incognito.ts; the shell remounts the page on a change.
 import { useSyncExternalStore } from "react";
 import { isIncognito, onIncognitoChange, setIncognito } from "../incognito";
+import { S } from "./chrome.strings.ts";
 
 export const useIncognito = (): boolean => useSyncExternalStore(onIncognitoChange, isIncognito);
 
 export function IncognitoToggle() {
   const on = useIncognito();
-  const title = on ? "Pokaż kwoty" : "Ukryj kwoty";
+  const title = on ? S.showAmounts : S.hideAmounts;
   return (
     <button className={`btn incog ${on ? "on" : ""}`} onClick={() => setIncognito(!on)}
       title={title} aria-label={title} aria-pressed={on}>

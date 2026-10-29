@@ -5,12 +5,13 @@
 import type { ModuleDef } from "../../core/types";
 import { AssetsWidget } from "./AssetsWidget";
 import { AssetsStart } from "./Start";
+import { S } from "./index.strings.ts";
 
 export const assets: ModuleDef = {
   id: "assets",
-  name: "Majątek",
-  desc: "Nieruchomości, auta i inne aktywa wyceniane ręcznie",
-  short: "Nieruchomości, auta i inne aktywa wyceniane ręcznie",
+  get name() { return S.name; },
+  get desc() { return S.desc; },
+  get short() { return S.desc; },
   tabs: [],
   // In the side stack right of `Wartość netto w czasie`, above Kredyty (50): assets, then liabilities.
   // `whenEmpty`: the widget is the module's first steps while it has no position (first-steps D6).

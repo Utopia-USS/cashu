@@ -21,6 +21,8 @@ import { BriefList } from "./MacroWidgets";
 import { NoteRow, richSummary } from "./primitives";
 import { canonKey, segmentDisplay, segmentLabel, thesisDraft, topicMembers, topicSavePlan, topicView } from "./segments";
 import type { ResearchNote, TopicThesis } from "./types";
+import { C } from "../../../../common.strings.ts";
+import { S } from "./TopicDrawer.strings.ts";
 
 export const THESIS_MAX = 600;
 export const INVALIDATION_MAX = 400;
@@ -40,7 +42,7 @@ export interface TopicDrawerProps {
 
 /** Crumb of the drawer: `Tematy › <topic>`, `Makro › <regime>` for a macro note key. */
 export const topicCrumb = (key: string): { section: string; name: string } =>
-  (isMacroKey(key) ? { section: "Makro", name: macroLabel(key) } : { section: "Tematy", name: segmentLabel(key) });
+  (isMacroKey(key) ? { section: S.macro, name: macroLabel(key) } : { section: S.topics, name: segmentLabel(key) });
 
 export function TopicDetail(p: TopicDrawerProps) {
   const key = isMacroKey(p.topic) ? p.topic : canonKey(p.topic) ?? p.topic;
@@ -76,9 +78,9 @@ function NotesWidget({ slug, today, notes, onChanged }: { slug: string; today: s
   const [openId, setOpenId] = useState<number | null>(null);
   const list = useMemo(() => (notes ?? []).filter((n) => !n.dismissed_at || canRestore(n)).sort((a, b) => b.observed_at.localeCompare(a.observed_at)), [notes]);
   return (
-    <Widget title="Notatki" id="topic-notes" count={list.length || undefined} body="tight">
+    <Widget title={S.notes} id="topic-notes" count={list.length || undefined} body="tight">
       {notes == null ? <Skeleton h={120} />
-        : !list.length ? <div className="muted" style={{ fontSize: 13 }}>Brak notatek.</div>
+        : !list.length ? <div className="muted" style={{ fontSize: 13 }}>{S.noNotes}</div>
         : list.map((n) => (
           <NoteRow key={n.id} note={n} today={today} open={openId === n.id} onToggle={() => setOpenId((x) => (x === n.id ? null : n.id))}
             onDismiss={isExpired(n, today) ? undefined : actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)} />
@@ -93,16 +95,16 @@ function Members({ slug, topic, symOf, instOf, watchedTopics, onOpenAsset }: Top
   const row = seg.data?.segments.find((s) => s.segment === topic);
   const members = row ? topicMembers(segmentDisplay(row), symOf, watchedTopics) : (watchedTopics.get(topic) ?? []).map((s) => ({ symbol: s, id: null, held: false }));
   return (
-    <Widget title="Instrumenty" id="topic-members" count={members.length || undefined} body="tight">
+    <Widget title={S.instruments} id="topic-members" count={members.length || undefined} body="tight">
       {!seg.data && seg.loading ? <Skeleton h={60} />
-        : !members.length ? <div className="muted" style={{ fontSize: 13 }}>Brak instrumentów.</div>
+        : !members.length ? <div className="muted" style={{ fontSize: 13 }}>{S.noInstruments}</div>
         : <div className="tmem">{members.map((m) => {
           const known = m.id != null ? instOf(m.id) : null;
           const inst: InstLike = known?.inst ?? { id: m.id ?? m.symbol, label: known?.name ?? m.symbol, name: known?.name ?? null, symbol: m.symbol };
           return (
             <div key={m.symbol} className="tm" data-member={m.symbol}>
               <InstLabel density="compact" inst={inst} text={known?.name ?? m.symbol} onOpen={m.id != null ? () => onOpenAsset(m.id!) : undefined}
-                sub={m.held ? undefined : "obserwowany"} />
+                sub={m.held ? undefined : S.watched} />
             </div>
           );
         })}</div>}
@@ -137,20 +139,20 @@ function TopicThesisWidget({ slug, topic, onChanged }: { slug: string; topic: st
       bumpResearch(slug);
       onChanged();
     } catch (e) {
-      setErr(`Nie udało się zapisać: ${errorText(e)}`);
+      setErr(S.saveFailed(errorText(e)));
     } finally { setBusy(false); }
   };
-  const confirm = () => t && run(async () => (await putTopicThesis(slug, topic, { thesis: t.thesis, invalidation: t.invalidation })) ?? { ...t, draft: false }, "Potwierdzono tezę");
+  const confirm = () => t && run(async () => (await putTopicThesis(slug, topic, { thesis: t.thesis, invalidation: t.invalidation })) ?? { ...t, draft: false }, S.confirmed);
   const save = (e: Edit) => {
     const thesis = e.thesis.trim();
-    if (!thesis) return run(async () => { if (t) await deleteTopicThesis(slug, topic); return null; }, "Usunięto tezę");
+    if (!thesis) return run(async () => { if (t) await deleteTopicThesis(slug, topic); return null; }, S.removed);
     const plan = topicSavePlan(t, e);
     return run(async () => {
       let r: TopicThesis | null = t;
       if (plan.thesis) r = (await putTopicThesis(slug, topic, { thesis, invalidation: e.invalidation.trim() || null })) ?? r;
       if (plan.view) r = (await putTopicView(slug, topic, { assessment: e.assessment.trim() || null, outlook: e.outlook.trim() || null })) ?? r;
       return r;
-    }, plan.thesis ? "Zapisano tezę" : plan.view ? "Zapisano ocenę" : "Bez zmian");
+    }, plan.thesis ? S.thesisSaved : plan.view ? S.viewSaved : S.noChanges);
   };
   const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setEdit(null); } };
   const field = (k: keyof Edit, label: string, rows: number, max: number, autoFocus = false) => edit && (
@@ -161,34 +163,34 @@ function TopicThesisWidget({ slug, topic, onChanged }: { slug: string; topic: st
     </div>
   );
   return (
-    <Widget title="Teza" id="topic-thesis" body="tight"
-      tags={draft && !edit ? <span className="tag warn" title="Wersja robocza od agenta">do potwierdzenia</span> : undefined}
+    <Widget title={S.thesis} id="topic-thesis" body="tight"
+      tags={draft && !edit ? <span className="tag warn" title={S.agentDraft}>{S.toConfirm}</span> : undefined}
       controls={!edit && (!q.loading || saved !== undefined) && <>
-        {draft && <button className="btn sm primary" disabled={busy} onClick={confirm}>Potwierdź</button>}
-        <button className="btn sm" onClick={() => { setErr(null); setEdit({ thesis: t?.thesis ?? "", invalidation: t?.invalidation ?? "", assessment: t?.assessment ?? "", outlook: t?.outlook ?? "" }); }}>{t ? "Edytuj" : "Dodaj"}</button>
+        {draft && <button className="btn sm primary" disabled={busy} onClick={confirm}>{S.confirm}</button>}
+        <button className="btn sm" onClick={() => { setErr(null); setEdit({ thesis: t?.thesis ?? "", invalidation: t?.invalidation ?? "", assessment: t?.assessment ?? "", outlook: t?.outlook ?? "" }); }}>{t ? C.edit : C.add}</button>
       </>}>
       {edit ? (
         <div className="form">
-          {field("thesis", "Teza", 4, THESIS_MAX, true)}
-          {field("invalidation", "Unieważnienie", 2, INVALIDATION_MAX)}
+          {field("thesis", S.thesis, 4, THESIS_MAX, true)}
+          {field("invalidation", S.invalidation, 2, INVALIDATION_MAX)}
           {(t || edit.assessment || edit.outlook) && <>
-            {field("assessment", "Ocena teraz", 3, VIEW_MAX)}
-            {field("outlook", "Perspektywa", 3, VIEW_MAX)}
+            {field("assessment", S.assessmentNow, 3, VIEW_MAX)}
+            {field("outlook", S.outlook, 3, VIEW_MAX)}
           </>}
           {err && <div className="neg" style={{ fontSize: 12.5 }}>{err}</div>}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button className="btn sm" disabled={busy} onClick={() => setEdit(null)}>Anuluj</button>
-            <button className="btn sm primary" disabled={busy} onClick={() => save(edit)}>{busy ? "Zapisuję…" : "Zapisz"}</button>
+            <button className="btn sm" disabled={busy} onClick={() => setEdit(null)}>{C.cancel}</button>
+            <button className="btn sm primary" disabled={busy} onClick={() => save(edit)}>{busy ? S.saving : C.save}</button>
           </div>
         </div>
       ) : q.loading && saved === undefined ? <Skeleton h={60} />
         : t ? (
           <div className="tz">
             <p style={{ whiteSpace: "pre-wrap" }}>{t.thesis}</p>
-            {t.invalidation && <p style={{ whiteSpace: "pre-wrap" }}><b>Unieważnienie</b>{t.invalidation}</p>}
+            {t.invalidation && <p style={{ whiteSpace: "pre-wrap" }}><b>{S.invalidation}</b>{t.invalidation}</p>}
             {view && <div className="tview" data-topic-view={topic}>
-              {view.assessment && <div><span className="k">Ocena teraz</span><p>{richSummary(view.assessment)}</p></div>}
-              {view.outlook && <div><span className="k">Perspektywa</span><p>{richSummary(view.outlook)}</p></div>}
+              {view.assessment && <div><span className="k">{S.assessmentNow}</span><p>{richSummary(view.assessment)}</p></div>}
+              {view.outlook && <div><span className="k">{S.outlook}</span><p>{richSummary(view.outlook)}</p></div>}
               {view.sources.length > 0 && <div className="vsrc" data-view-sources={view.sources.length}>
                 {view.sources.map((l, i) => (
                   <Fragment key={i}>
@@ -201,7 +203,7 @@ function TopicThesisWidget({ slug, topic, onChanged }: { slug: string; topic: st
             </div>}
             {err && <div className="neg" style={{ fontSize: 12.5 }}>{err}</div>}
           </div>
-        ) : <div className="muted" style={{ fontSize: 13 }}>Brak tezy.</div>}
+        ) : <div className="muted" style={{ fontSize: 13 }}>{S.noThesis}</div>}
     </Widget>
   );
 }
@@ -210,23 +212,23 @@ function TopicThesisWidget({ slug, topic, onChanged }: { slug: string; topic: st
 function RegimeState({ slug, noteKey }: { slug: string; noteKey: string }) {
   const q = useMacro(slug);
   const r = q.data?.regimes.find((x) => x.key === macroKeyOf(noteKey));
-  if (!r) return <Widget title="Stan" body="tight">{q.loading ? <Skeleton h={80} /> : <div className="muted" style={{ fontSize: 13 }}>Brak danych makro.</div>}</Widget>;
+  if (!r) return <Widget title={S.state} body="tight">{q.loading ? <Skeleton h={80} /> : <div className="muted" style={{ fontSize: 13 }}>{S.noMacroData}</div>}</Widget>;
   const tone = toneCls(r.tone);
   const b = r.missing ? null : r.brief ?? null;
   const ex = explainText(r);
   return (
-    <Widget title="Stan" id="topic-regime" body="tight"
+    <Widget title={S.state} id="topic-regime" body="tight"
       tags={<>{stateParts(r.state_label).map((p, i) => <span key={i} className={`tag ${i === 0 ? tone : "warn"}`}>{p}</span>)}{sinceMonth(r) && <span className="sub">{sinceMonth(r)}</span>}</>}>
       <div className="mrow solo">
         <div className="bh">{macroHeadline(r)}</div>
         {b?.why && <div className="bw">{b.why}</div>}
-        {b && b.supports.length > 0 && <BriefList k="Co sprzyja" items={b.supports} cls="sup" />}
-        {b && b.risks.length > 0 && <BriefList k="Na co uważać" items={b.risks} cls="rsk" />}
+        {b && b.supports.length > 0 && <BriefList k={S.supports} items={b.supports} cls="sup" />}
+        {b && b.risks.length > 0 && <BriefList k={S.risks} items={b.risks} cls="rsk" />}
         {ex && <p className="xt">{ex}</p>}
         {!r.missing && r.metrics.length > 0 && (
           <div className="xm">{r.metrics.slice(0, 3).map((m, i) => <Fragment key={i}><span className="l">{m.label}</span><b className={m.stale ? "stale" : ""}>{m.text}</b></Fragment>)}</div>
         )}
-        {b?.observed_at && <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>research {dm(b.observed_at)}</div>}
+        {b?.observed_at && <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>{S.researchOn(dm(b.observed_at))}</div>}
       </div>
     </Widget>
   );

@@ -8,8 +8,10 @@ protocols declared here and in ``core.networth`` / ``core.account_types``.
 
 What a module declares:
 
-- ``id``, Polish ``name`` and one-line ``description`` (the profile wizard),
-  ``depends_on`` (other module ids, enabled together);
+- ``id``, Polish ``name`` and one-line ``description`` (the profile wizard; MCP, CLI) with their
+  English variants ``name_en`` / ``description_en`` (``display_name()`` / ``display_description()``
+  pick the current UI language, ``GET /api/modules``), ``depends_on`` (other module ids, enabled
+  together);
 - ``tables``: its SQLModel tables;
 - ``router``: FastAPI router, mounted under ``/api/p/{slug}`` (and the legacy
   ``/api`` aliases of the default profile);
@@ -26,7 +28,8 @@ What a module declares:
 - ``recategorize(session, profile_id)``: the module that owns transaction categorization (budget)
   re-runs it for a profile, so another module whose configuration changes what matches (a loan's
   installment phrase) can apply it without importing that module;
-- ``setup_status(session, profile_id)``: steps of the module's blank page;
+- ``setup_status(session, profile_id)``: steps of the module's blank page, texts rendered with
+  ``core.i18n.tr`` (the language of the request);
 - ``skill``: the Claude Code setup skill command (``/budget-setup``).
 """
 
@@ -38,6 +41,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from . import account_types, institutions
+from .i18n import tr
 
 if TYPE_CHECKING:
     from sqlmodel import Session
@@ -54,7 +58,7 @@ MODULE_IDS = ("budget", "assets", "loans", "investments")
 @dataclass(frozen=True)
 class SetupAction:
     kind: str  # "cli" (target = a command to run) | "view" (target = a frontend view id)
-    label: str  # Polish (UI data)
+    label: str  # UI data in the current language (core.i18n.tr)
     target: str
 
     def as_dict(self) -> dict:
@@ -64,8 +68,8 @@ class SetupAction:
 @dataclass(frozen=True)
 class SetupStep:
     id: str
-    title: str  # Polish (UI data)
-    description: str  # Polish (UI data)
+    title: str  # UI data in the current language (core.i18n.tr)
+    description: str  # UI data in the current language (core.i18n.tr)
     done: bool
     actions: tuple[SetupAction, ...] = ()
     # An optional step (e.g. a car) never counts toward the module state and is never "on": it is
@@ -123,8 +127,8 @@ class PaymentPattern:
 @dataclass
 class ModuleSpec:
     id: str
-    name: str  # Polish (UI data)
-    description: str  # Polish (UI data)
+    name: str  # Polish (UI data; MCP, CLI)
+    description: str  # Polish (UI data; MCP, CLI)
     depends_on: tuple[str, ...] = ()
     available: bool = True  # False: listed (wizard) but not implemented in this build
     tables: tuple[type, ...] = ()
@@ -145,6 +149,16 @@ class ModuleSpec:
     setup_status: Callable[[Session, int], SetupStatus] | None = None
     skill: str | None = None  # Claude Code skill command, e.g. "/budget-setup"
     extra: dict[str, Any] = field(default_factory=dict)
+    name_en: str | None = None  # English name (None: the Polish one)
+    description_en: str | None = None  # English description (None: the Polish one)
+
+    def display_name(self) -> str:
+        """The name in the current UI language."""
+        return tr(pl=self.name, en=self.name_en or self.name)
+
+    def display_description(self) -> str:
+        """The description in the current UI language."""
+        return tr(pl=self.description, en=self.description_en or self.description)
 
 
 def cli_prefix(session: Session, profile_id: int) -> str:
@@ -166,26 +180,38 @@ def _investments_placeholder_setup(_session: Session, _profile_id: int) -> Setup
     return SetupStatus(steps=(
         SetupStep(
             "broker_account",
-            "Dodaj rachunek maklerski",
-            "Broker + opakowanie (zwykłe, IKE, IKZE).",
+            tr(pl="Dodaj rachunek maklerski", en="Add a brokerage account"),
+            tr(
+                pl="Broker + opakowanie (zwykłe, IKE, IKZE).",
+                en="Broker + wrapper (regular, IKE, IKZE).",
+            ),
             done=False,
         ),
         SetupStep(
             "strategy",
-            "Zapisz strategię",
-            "strategy.yaml i strategy.md; wywiad w Claude Code albo szablon.",
+            tr(pl="Zapisz strategię", en="Save the strategy"),
+            tr(
+                pl="strategy.yaml i strategy.md; wywiad w Claude Code albo szablon.",
+                en="strategy.yaml and strategy.md; an interview in Claude Code or a template.",
+            ),
             done=False,
         ),
         SetupStep(
             "first_import",
-            "Pierwsza wpłata lub import",
-            "Dodaj transakcję ręcznie albo zaimportuj CSV od brokera.",
+            tr(pl="Pierwsza wpłata lub import", en="First contribution or import"),
+            tr(
+                pl="Dodaj transakcję ręcznie albo zaimportuj CSV od brokera.",
+                en="Add a transaction by hand or import a CSV from your broker.",
+            ),
             done=False,
         ),
         SetupStep(
             "classify",
-            "Sklasyfikuj instrumenty",
-            "Klasa aktywów i koszyk dla każdego instrumentu.",
+            tr(pl="Sklasyfikuj instrumenty", en="Classify instruments"),
+            tr(
+                pl="Klasa aktywów i koszyk dla każdego instrumentu.",
+                en="Asset class and bucket for each instrument.",
+            ),
             done=False,
         ),
     ))
@@ -199,6 +225,8 @@ _PLACEHOLDERS: dict[str, ModuleSpec] = {
         id="investments",
         name="Inwestycje",
         description="Rachunki maklerskie, alokacja vs strategia, sygnały, dziennik decyzji",
+        name_en="Investments",
+        description_en="Brokerage accounts, allocation vs strategy, signals, decision journal",
         available=False,
         setup_status=_investments_placeholder_setup,
         skill="/investments-setup",

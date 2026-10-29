@@ -13,6 +13,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Context, Decimal, DivisionByZero, InvalidOperation, Overflow, localcontext
 
+from cashu.core.i18n import tr
+
 from .checker import CompiledExpression, MetricRef
 from .limits import COMPARISON_TOLERANCE
 from .parser import Binary, Boolean, Call, Compare, Logical, Name, Node, Number, String, Unary
@@ -112,12 +114,33 @@ class _Evaluator:
                     return left * right
                 case _:
                     if right == 0:
-                        return Unknown((f"Dzielenie przez zero (kolumna {node.column})",))
+                        return Unknown(
+                            (
+                                tr(
+                                    pl=f"Dzielenie przez zero (kolumna {node.column})",
+                                    en=f"Division by zero (column {node.column})",
+                                ),
+                            )
+                        )
                     return left / right
         except Overflow:
-            return Unknown((f"Przepełnienie arytmetyczne (kolumna {node.column})",))
+            return Unknown(
+                (
+                    tr(
+                        pl=f"Przepełnienie arytmetyczne (kolumna {node.column})",
+                        en=f"Arithmetic overflow (column {node.column})",
+                    ),
+                )
+            )
         except (InvalidOperation, DivisionByZero):
-            return Unknown((f"Nieprawidłowe działanie (kolumna {node.column})",))
+            return Unknown(
+                (
+                    tr(
+                        pl=f"Nieprawidłowe działanie (kolumna {node.column})",
+                        en=f"Invalid operation (column {node.column})",
+                    ),
+                )
+            )
 
     def _compare(self, node: Compare) -> Value:
         left = self.eval(node.left)

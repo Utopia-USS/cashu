@@ -12,6 +12,8 @@ here. Income rules are therefore kept intentionally minimal.
 import re
 from dataclasses import dataclass
 
+from cashu.core.i18n import tr
+
 
 @dataclass(frozen=True)
 class Category:
@@ -60,7 +62,43 @@ CATEGORY_KEYS: list[str] = [c.key for c in CATEGORIES]
 # cannot know what a payment to a person was for.
 MANUAL_ONLY: frozenset[str] = frozenset({"private"})
 AUTO_CATEGORY_KEYS: list[str] = [k for k in CATEGORY_KEYS if k not in MANUAL_ONLY]
+# Polish labels: the LLM prompt enum (reclassify.py) and MCP; the UI reads label() / ui_label().
 LABELS: dict[str, str] = {c.key: c.label for c in CATEGORIES}
+LABELS_EN: dict[str, str] = {
+    "groceries": "Groceries",
+    "dining": "Dining out",
+    "transport": "Transport",
+    "fuel": "Fuel",
+    "car": "Car",
+    "housing": "Housing/Rent",
+    "loans": "Loan installments",
+    "utilities": "Utilities/Telecom",
+    "health": "Health/Pharmacy",
+    "shopping": "Shopping",
+    "entertainment": "Entertainment",
+    "subscriptions": "Subscriptions",
+    "travel": "Travel",
+    "education": "Education",
+    "personal_care": "Personal care/Beauty",
+    "gifts": "Gifts/Donations",
+    "private": "Private",
+    "cash": "Cash",
+    "fees": "Bank fees",
+    "taxes": "Taxes",
+    "other": "Other",
+    "income_salary": "Salary",
+    "income_refund": "Refunds",
+    "income_other": "Other income",
+    "transfer": "Own transfer",
+    "cash_withdrawal": "Cash withdrawal",
+}
+
+
+def label(key: str | None) -> str:
+    """The display label of a category key in the current UI language (the key itself when
+    unknown). For the dashboard; the LLM prompt and MCP use the Polish ``LABELS``."""
+    k = key or ""
+    return tr(pl=LABELS.get(k, k), en=LABELS_EN.get(k, k))
 
 
 class word(str):

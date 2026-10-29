@@ -1,0 +1,141 @@
+// Texts of the research view (src/modules/investments/v2/research/Page.tsx). See src/i18n.ts.
+import { catalog, enCount, plCount } from "../../../../i18n.ts";
+
+export const PRIVACY_SHORT = catalog({
+  strict: { pl: "ścisły", en: "strict" },
+  amounts: { pl: "z kwotami", en: "with amounts" },
+});
+
+export const S = catalog({
+  crumb: { pl: "Ścieżka", en: "Breadcrumb" },
+  investments: { pl: "Inwestycje", en: "Investments" },
+  research: { pl: "Research", en: "Research" },
+  runNow: { pl: "Uruchom teraz", en: "Run now" },
+  scope: { pl: "Zakres", en: "Scope" },
+  everything: { pl: "Wszystko", en: "Everything" },
+  positionsN: { pl: (n: number) => `Pozycje · ${n}`, en: (n: number) => `Positions · ${n}` },
+  watchedN: { pl: (n: number) => `Obserwowane · ${n}`, en: (n: number) => `Watchlist · ${n}` },
+  candidatesN: { pl: (n: number) => `Kandydaci · ${n}`, en: (n: number) => `Candidates · ${n}` },
+  kind: { pl: "Rodzaj", en: "Kind" },
+  allKinds: { pl: "Wszystkie rodzaje", en: "All kinds" },
+
+  // run strip
+  lastResearch: { pl: "Ostatni research", en: "Latest research" },
+  running: { pl: "trwa", en: "running" },
+  interrupted: { pl: "przerwany", en: "interrupted" },
+  finished: { pl: "zakończony", en: "finished" },
+  notes: { pl: "Notatki", en: "Notes" },
+  nPositions: { pl: (n: number) => plCount(n, "pozycja", "pozycje", "pozycji"), en: (n: number) => enCount(n, "position", "positions") },
+  watchedCount: { pl: (n: number) => ` · ${n} obserwowane`, en: (n: number) => ` · ${n} watched` },
+  theses: { pl: "Tezy", en: "Theses" },
+  weakened: { pl: (n: number) => `${n} osłabione`, en: (n: number) => `${n} weakened` },
+  fulfilled: { pl: (n: number) => `${n} spełnione`, en: (n: number) => `${n} fulfilled` },
+  strengthened: { pl: (n: number) => `${n} wzmocnione`, en: (n: number) => `${n} strengthened` },
+  strengthenedOne: { pl: (n: number) => `${n} wzmocniona`, en: (n: number) => `${n} strengthened` },
+  noChanges: { pl: "bez zmian", en: "no changes" },
+  topics: { pl: "Tematy", en: "Topics" },
+  nNewNotes: {
+    pl: (n: number) => plCount(n, "nowa notatka", "nowe notatki", "nowych notatek"),
+    en: (n: number) => enCount(n, "new note", "new notes"),
+  },
+  noNewNotes: { pl: "bez nowych notatek", en: "no new notes" },
+  candidates: { pl: "Kandydaci", en: "Candidates" },
+  nDismissed: { pl: (n: number) => plCount(n, "odrzucony", "odrzuceni", "odrzuconych"), en: (n: number) => `${n} dismissed` },
+  zeroDismissed: { pl: "0 odrzuconych", en: "0 dismissed" },
+  signalsTitle: { pl: "Z notatek o sile 3 albo podważających tezę", en: "From notes of strength 3 or invalidating the thesis" },
+  signals: { pl: "Sygnały", en: "Signals" },
+  next: { pl: (d: string) => `następny: ${d} 07:00`, en: (d: string) => `next: ${d} 07:00` },
+  strategy: { pl: (v: number) => `strategia v${v}`, en: (v: number) => `strategy v${v}` },
+  level: { pl: (l: string) => `poziom ${l}`, en: (l: string) => `level ${l}` },
+  routineClaude: { pl: "rutyna Claude Code", en: "Claude Code routine" },
+  onDemand: { pl: "na żądanie · Claude Code", en: "on demand · Claude Code" },
+
+  // candidates
+  byStrategy: { pl: (v: number | null) => (v != null ? `wg strategii v${v}` : "wg strategii"), en: (v: number | null) => (v != null ? `by strategy v${v}` : "by the strategy") },
+  noCandidates: { pl: "Brak kandydatów.", en: "No candidates." },
+
+  // notes
+  macro: { pl: "makro", en: "macro" },
+  topic: { pl: "temat", en: "topic" },
+  since: { pl: (d: string) => ` · od ${d}`, en: (d: string) => ` · since ${d}` },
+  dismissedExpired: { pl: "odrzucone i wygasłe", en: "dismissed and expired" },
+  sortAria: { pl: "Sortowanie notatek", en: "Sort notes" },
+  sortDate: { pl: "data", en: "date" },
+  sortStrength: { pl: "siła", en: "strength" },
+  sortRelation: { pl: "relacja z tezą", en: "relation to the thesis" },
+  keysHint: { pl: "j / k · x odrzuca · Enter otwiera źródło", en: "j / k · x dismisses · Enter opens the source" },
+  noNotes: { pl: "Brak notatek.", en: "No notes." },
+  showMore: { pl: (n: number) => `pokaż ${n} kolejnych`, en: (n: number) => `show ${n} more` },
+
+  // runs
+  scopePositions: { pl: "pozycje", en: "positions" },
+  scopeWatched: { pl: "obserwowane", en: "watchlist" },
+  scopeCandidates: { pl: "kandydaci", en: "candidates" },
+  scopeTopics: { pl: "tematy", en: "topics" },
+  runs: { pl: "Przebiegi", en: "Runs" },
+  lastN: { pl: (n: number) => `${n} ost.`, en: (n: number) => `last ${n}` },
+  routine: { pl: "rutyna:", en: "routine:" },
+  saturday: { pl: "sobota 07:00", en: "Saturday 07:00" },
+  colDate: { pl: "Data", en: "Date" },
+  colStatus: { pl: "Status", en: "Status" },
+  colScope: { pl: "Zakres", en: "Scope" },
+  colNotes: { pl: "Notatki", en: "Notes" },
+  colSignalsTitle: {
+    pl: "Sygnał powstaje, gdy notatka podważa tezę (do działania) albo ma siłę 3 (informacja)",
+    en: "A signal is created when a note invalidates the thesis (to act on) or has strength 3 (info)",
+  },
+  colSignals: { pl: "Sygnały", en: "Signals" },
+  colTime: { pl: "Czas", en: "Time" },
+  colStartedBy: { pl: "Uruchomił", en: "Started by" },
+  onDemandSuffix: { pl: " (na żądanie)", en: " (on demand)" },
+  you: { pl: "Ty · Claude Code", en: "You · Claude Code" },
+  routineBy: { pl: (what: string) => `rutyna · ${what}`, en: (what: string) => `routine · ${what}` },
+
+  // scope and rules
+  scopeRules: { pl: "Zakres i zasady", en: "Scope and rules" },
+  scopeLine: {
+    pl: (held: number, watched: number) => `${plCount(held, "pozycja", "pozycje", "pozycji")}, ${plCount(watched, "obserwowana", "obserwowane", "obserwowanych")}`,
+    en: (held: number, watched: number) => `${enCount(held, "position", "positions")}, ${watched} watched`,
+  },
+  scopeRest: {
+    pl: (v: string) => `, kandydaci wg kryteriów wejścia strategii${v}, tematy`,
+    en: (v: string) => `, candidates by the strategy${v} entry criteria, topics`,
+  },
+  sources: { pl: "Źródła", en: "Sources" },
+  sourcesList: { pl: "wiadomości, raporty, społeczność (szum), przepływy ETF, trendy", en: "news, reports, community (noise), ETF flows, trends" },
+  not: { pl: "Nie", en: "Not" },
+  notList: { pl: "rekomendacje, prognozy cen, omijanie paywalli", en: "recommendations, price forecasts, getting around paywalls" },
+  privacy: { pl: "Prywatność", en: "Privacy" },
+  privacyLine: {
+    pl: (level: string, amounts: boolean) => `poziom ${level} · ${amounts ? "także kwoty, bez numerów kont" : "udziały i tezy, bez kwot i rachunków"}`,
+    en: (level: string, amounts: boolean) => `level ${level} · ${amounts ? "amounts too, no account numbers" : "weights and theses, no amounts or accounts"}`,
+  },
+  workspace: { pl: "Workspace", en: "Workspace" },
+  mcpOnly: { pl: " · dane tylko przez MCP", en: " · data only through MCP" },
+  validity: { pl: "Ważność", en: "Validity" },
+  validityLine: {
+    pl: "notatka 30 dni, notatka tematu 1 na tydzień, odrzucony kandydat 90 dni",
+    en: "note 30 days, topic note 1 per week, dismissed candidate 90 days",
+  },
+
+  // never ran
+  createWorkspace: { pl: "Utwórz workspace profilu", en: "Create the profile workspace" },
+  settings: { pl: "Ustawienia › Agent AI", en: "Settings › AI agent" },
+  skill: { pl: "Skill", en: "Skill" },
+  installed: { pl: "zainstalowany", en: "installed" },
+  toInstall: { pl: "do zainstalowania", en: "to install" },
+  inWorkspace: { pl: "w workspace profilu", en: "in the profile workspace" },
+  inWorkspaceAt: { pl: "w workspace", en: "in the workspace" },
+  updateWorkspace: { pl: "Ustawienia › Agent AI › Aktualizuj workspace (albo", en: "Settings › AI agent › Update workspace (or" },
+  firstRun: { pl: "Uruchom pierwszy research w Claude Code", en: "Run the first research in Claude Code" },
+  about30: { pl: "ok. 30 min", en: "about 30 min" },
+  copy: { pl: "Kopiuj", en: "Copy" },
+  scheduleSaturdays: { pl: "Zaplanuj rutynę na soboty", en: "Schedule the Saturday routine" },
+  howToSchedule: { pl: "Jak zaplanować", en: "How to schedule" },
+  neverRan: { pl: "jeszcze nie działał", en: "hasn't run yet" },
+  lead: {
+    pl: "Co sobotę: wiadomości, raporty, sentyment i trendy dla pozycji, obserwowanych i kandydatów.",
+    en: "Every Saturday: news, reports, sentiment and trends for positions, the watchlist and candidates.",
+  },
+  noRecommendations: { pl: "Bez rekomendacji i prognoz.", en: "No recommendations or forecasts." },
+});

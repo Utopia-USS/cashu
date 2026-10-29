@@ -4,6 +4,7 @@
 import { useId } from "react";
 import type { Hint } from "../api";
 import { hintChip, hintCls, hintLine } from "./logic";
+import { S } from "./hints.strings.ts";
 
 /** `all` (the asset header): every hint, main first: the chip becomes focusable and describes all of them (a visually
  * hidden list) besides the native multi-line title, so keyboard and screen-reader users reach hints 2..n too. */
@@ -17,7 +18,7 @@ export function HintChip({ hint, held, title, all }: { hint: Hint; held: boolean
   return (
     <>
       <span className={cls} data-hint={hint.code} title={title ?? lines.join("\n")} tabIndex={0} aria-describedby={id}><span>{chip}</span></span>
-      <span className="sr-only" id={id}><span>Strategia: </span>{lines.map((l, k) => <span key={k}>{l}{k < lines.length - 1 ? "; " : ""}</span>)}</span>
+      <span className="sr-only" id={id}><span>{S.strategyPrefix}</span>{lines.map((l, k) => <span key={k}>{l}{k < lines.length - 1 ? "; " : ""}</span>)}</span>
     </>
   );
 }

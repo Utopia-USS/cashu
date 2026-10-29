@@ -5,7 +5,8 @@ import { useAsync } from "../hooks";
 import { Drawer, Notice, Skeleton, Tag } from "../ui";
 import { describeError, proposalError, proposalSummary } from "./messages";
 import { approveProposal, getProposal, rejectProposal } from "./proposalsApi";
-import { dm, dmy, plural } from "../modules/investments/labels";
+import { dm, dmy } from "../modules/investments/labels";
+import { S } from "./ProposalDrawer.strings.ts";
 import { useState } from "react";
 
 const errText = (e: unknown) => describeError(e).text;
@@ -32,8 +33,8 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
   };
   const budgetImport = data?.kind === "budget_import";
   const isImport = data?.kind === "import" || budgetImport;
-  const failure = proposalError(data?.result); // why applying failed (stable error_code -> Polish)
-  const kindLabel = !data ? "" : budgetImport ? "import wyciągu" : isImport ? "import" : data.kind === "strategy" ? "strategia" : "reguła";
+  const failure = proposalError(data?.result); // why applying failed (stable error_code -> label)
+  const kindLabel = !data ? "" : budgetImport ? S.kindBudgetImport : isImport ? S.kindImport : data.kind === "strategy" ? S.kindStrategy : S.kindRule;
   // A connector sync (contract C8): the payload names the connector and the `since` of the fetch.
   const payload = (data?.payload ?? {}) as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
@@ -46,56 +47,56 @@ export function ProposalDrawer({ slug, id, version, onClose, onDone, onChanged }
   const pv = data?.preview;
   const unsupported = !!data?.converter_unsupported; // a converter script proposal from before connectors: never runs
   return (
-    <Drawer open title="Propozycja agenta" tag={data ? <Tag tone="info">{kindLabel}</Tag> : undefined}
-      width={600} onClose={onClose} label="Propozycja agenta"
+    <Drawer open title={S.title} tag={data ? <Tag tone="info">{kindLabel}</Tag> : undefined}
+      width={600} onClose={onClose} label={S.title}
       footer={data?.status === "pending" ? <>
-        <button className="btn" disabled={busy} onClick={() => act(false)}>Odrzuć</button>
+        <button className="btn" disabled={busy} onClick={() => act(false)}>{S.reject}</button>
         <span style={{ flex: 1 }} />
-        <button className="btn primary" disabled={busy || unsupported} onClick={() => act(true)}>{isImport ? "Zatwierdź import" : `Zatwierdź jako v${(version ?? 0) + 1}`}</button>
+        <button className="btn primary" disabled={busy || unsupported} onClick={() => act(true)}>{isImport ? S.approveImport : S.approveAs((version ?? 0) + 1)}</button>
       </> : undefined}>
       {err && <Notice tone="neg">{failure ? <span title={failure.detail ?? undefined}>{failure.text}</span> : err}</Notice>}
       {!err && data?.status === "failed" && failure && <Notice tone="neg"><span title={failure.detail ?? undefined}>{failure.text}</span></Notice>}
-      {p.error && <Notice tone="neg">Nie udało się wczytać propozycji: {p.error}</Notice>}
+      {p.error && <Notice tone="neg">{S.loadFailed(p.error)}</Notice>}
       {!data && !p.error && <Skeleton h={160} />}
       {data && (
         <>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>{proposalSummary(data) ?? "Propozycja zmiany"}</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>{proposalSummary(data) ?? S.changeProposal}</div>
           <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
-            {data.created_at ? `zgłoszona ${dmy(data.created_at)}` : ""}
-            {data.status !== "pending" ? ` · ${({ approved: "zatwierdzona", rejected: "odrzucona", failed: "nie udało się zastosować" } as Record<string, string>)[data.status] ?? data.status}` : ""}
+            {data.created_at ? S.submitted(dmy(data.created_at)) : ""}
+            {data.status !== "pending" ? ` · ${({ approved: S.approved, rejected: S.rejected, failed: S.failed } as Record<string, string>)[data.status] ?? data.status}` : ""}
           </div>
           {data.detail_error && !unsupported && <Notice tone="warn">{data.detail_error}</Notice>}
-          {unsupported && <Notice tone="warn">Tego skryptu konwertera nie da się zatwierdzić: aplikacja uruchamia tylko konektory zatwierdzone w Ustawieniach › Konektory. Poproś agenta o konektor albo gotowy plik w formacie cashU.</Notice>}
-          {data.base_changed && <Notice tone="warn">Pliki strategii zmieniły się od propozycji: poproś agenta o nową.</Notice>}
-          {data.reason && <div className="thesis" style={{ marginBottom: 12 }}><b>Uzasadnienie agenta:</b> {data.reason}</div>}
-          {yamlDiff && <DiffBlock title="Zmiana w strategy.yaml" text={yamlDiff} />}
-          {mdDiff && <DiffBlock title="Zmiana w strategy.md" text={mdDiff} />}
-          {!yamlDiff && data.rule_yaml && <DiffBlock title="Nowa reguła" text={data.rule_yaml} />}
+          {unsupported && <Notice tone="warn">{S.unsupported}</Notice>}
+          {data.base_changed && <Notice tone="warn">{S.baseChanged}</Notice>}
+          {data.reason && <div className="thesis" style={{ marginBottom: 12 }}><b>{S.agentReason}</b> {data.reason}</div>}
+          {yamlDiff && <DiffBlock title={S.yamlChange} text={yamlDiff} />}
+          {mdDiff && <DiffBlock title={S.mdChange} text={mdDiff} />}
+          {!yamlDiff && data.rule_yaml && <DiffBlock title={S.newRule} text={data.rule_yaml} />}
           {bt && (
             <Notice tone="info" style={{ margin: "12px 0 0" }}>
               {bt.evaluated
-                ? <>Test wsteczny {bt.from ? dm(bt.from) : ""}{bt.to ? ` - ${dm(bt.to)}` : ""}: reguła zadziałałaby w {bt.points_fired ?? 0} z {bt.evaluated} punktów ({plural(bt.episodes ?? 0, "epizod", "epizody", "epizodów")}){bt.last_fired ? `, ostatnio ${dm(bt.last_fired)}` : ""}{bt.instruments?.length ? ` · ${bt.instruments.join(", ")}` : ""}.</>
-                : "Test wsteczny: brak historii transakcji."}
+                ? <>{S.backtest(`${bt.from ? dm(bt.from) : ""}${bt.to ? ` - ${dm(bt.to)}` : ""}`, bt.points_fired ?? 0, bt.evaluated, bt.episodes ?? 0)}{bt.last_fired ? S.lastFired(dm(bt.last_fired)) : ""}{bt.instruments?.length ? ` · ${bt.instruments.join(", ")}` : ""}.</>
+                : S.noHistory}
             </Notice>
           )}
           {isImport && (
             <>
               <div className="kv" style={{ margin: "4px 0 10px" }}>
                 {fromConnector && (
-                  <><span className="k">Źródło</span><span className="v">{connectorName ?? "-"} <Tag>konektor</Tag>{since ? <span className="fhint">od {dm(since)}</span> : null}</span></>
+                  <><span className="k">{S.source}</span><span className="v">{connectorName ?? "-"} <Tag>{S.connector}</Tag>{since ? <span className="fhint">{S.since(dm(since))}</span> : null}</span></>
                 )}
-                {(!fromConnector || data.file_name) && <><span className="k">Plik</span><span className="v"><code>{data.file_name ?? "-"}</code></span></>}
+                {(!fromConnector || data.file_name) && <><span className="k">{S.file}</span><span className="v"><code>{data.file_name ?? "-"}</code></span></>}
                 {budgetImport ? (
                   <>
-                    <span className="k">Konto</span><span className="v">{str(data.account_label) ?? str(payload.account_label) ?? data.account ?? "-"}</span>
-                    {pv && <><span className="k">Podgląd</span><span className="v">{plural(Number(pv.new ?? 0), "nowa transakcja", "nowe transakcje", "nowych transakcji")} · {plural(Number(pv.duplicates ?? 0), "duplikat", "duplikaty", "duplikatów")}{Number(pv.warnings ?? 0) ? ` · ${plural(Number(pv.warnings), "ostrzeżenie", "ostrzeżenia", "ostrzeżeń")}` : ""}</span></>}
+                    <span className="k">{S.account}</span><span className="v">{str(data.account_label) ?? str(payload.account_label) ?? data.account ?? "-"}</span>
+                    {pv && <><span className="k">{S.preview}</span><span className="v">{S.newTxns(Number(pv.new ?? 0))} · {S.duplicates(Number(pv.duplicates ?? 0))}{Number(pv.warnings ?? 0) ? ` · ${S.warnings(Number(pv.warnings))}` : ""}</span></>}
                   </>
-                ) : <><span className="k">Rachunek</span><span className="v">{data.account ?? "-"}</span></>}
-                {pv && !budgetImport && <><span className="k">Podgląd</span><span className="v">{plural(Number(pv.new ?? 0), "nowy wiersz", "nowe wiersze", "nowych wierszy")} · {plural(Number(pv.duplicates ?? 0), "duplikat", "duplikaty", "duplikatów")}{Number(pv.reconciliation_mismatches ?? 0) ? ` · ${plural(Number(pv.reconciliation_mismatches), "różnica", "różnice", "różnic")} ze snapshotem` : ""}{Number(pv.errors ?? 0) ? ` · ${plural(Number(pv.errors), "błąd", "błędy", "błędów")}` : ""}</span></>}
+                ) : <><span className="k">{S.brokerageAccount}</span><span className="v">{data.account ?? "-"}</span></>}
+                {pv && !budgetImport && <><span className="k">{S.preview}</span><span className="v">{S.newRows(Number(pv.new ?? 0))} · {S.duplicates(Number(pv.duplicates ?? 0))}{Number(pv.reconciliation_mismatches ?? 0) ? ` · ${S.mismatches(Number(pv.reconciliation_mismatches))}` : ""}{Number(pv.errors ?? 0) ? ` · ${S.errors(Number(pv.errors))}` : ""}</span></>}
               </div>
             </>
           )}
-          <div className="foot">Odrzucenie niczego nie zmienia.</div>
+          <div className="foot">{S.rejectChangesNothing}</div>
         </>
       )}
     </Drawer>

@@ -23,6 +23,7 @@ import {
   addedToast, defaultRow, enterTarget, highlightIndex, isActionable, isAddable, moveHighlight, normQuery, optionLabel, type SearchRow,
   searchView, typeWord, watchInputOf,
 } from "./searchLogic";
+import { S } from "./InstrumentSearch.strings.ts";
 
 const DEBOUNCE_MS = 250;
 
@@ -123,7 +124,7 @@ export function InstrumentSearch({ slug, onClose, onChanged, onOpen }: {
       setText(""); setRes(null); setActiveKey(null);
       onChanged();
     } catch (e) {
-      setErr(e instanceof ApiError && e.status === 409 && !e.code ? "Już na liście" : errorText(e));
+      setErr(e instanceof ApiError && e.status === 409 && !e.code ? S.alreadyListed : errorText(e));
     } finally {
       setBusy(null);
       input.current?.focus();
@@ -166,12 +167,12 @@ export function InstrumentSearch({ slug, onClose, onChanged, onOpen }: {
     <div className="isearch">
       <input ref={input} value={text} maxLength={60} autoComplete="off" spellCheck={false}
         onChange={(e) => { setText(e.target.value); setErr(null); setActiveKey(null); enterFor.current = null; }} onKeyDown={onKey}
-        placeholder="Nazwa, symbol lub ISIN" aria-label="Szukaj instrumentu"
+        placeholder={S.placeholder} aria-label={S.searchAria}
         role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId}
         aria-activedescendant={open && active != null ? optId(active) : undefined} />
       {err && <div className="ise neg" role="alert">{err}</div>}
-      {open && view.empty && <div className="isn muted" role="status">Brak wyników</div>}
-      <ul className="isl" id={listId} role="listbox" aria-label="Wyniki" hidden={!open} aria-busy={waiting || undefined}
+      {open && view.empty && <div className="isn muted" role="status">{S.noResults}</div>}
+      <ul className="isl" id={listId} role="listbox" aria-label={S.results} hidden={!open} aria-busy={waiting || undefined}
         data-stale={view.stale || undefined} onMouseDown={(e) => e.preventDefault()}>
         {rows.map((row, i) => (
           <li key={row.key} id={optId(i)} role="option" aria-selected={i === active} aria-disabled={view.stale || undefined} className="iso"
@@ -180,7 +181,7 @@ export function InstrumentSearch({ slug, onClose, onChanged, onOpen }: {
             onClick={() => { if (!view.stale && !busy) act(row); }}>
             {row.kind === "free" ? (
               <>
-                <span className="tx"><span className="tk">Dodaj „{row.text}”</span></span>
+                <span className="tx"><span className="tk">{S.addFree(row.text)}</span></span>
                 <span className="isx"><span className="isadd" aria-hidden>+</span></span>
               </>
             ) : <HitRow row={row} />}
@@ -192,7 +193,7 @@ export function InstrumentSearch({ slug, onClose, onChanged, onOpen }: {
           </li>
         )}
       </ul>
-      {open && view.unavailable && <div className="isn muted" role="status">Wyszukiwanie online niedostępne</div>}
+      {open && view.unavailable && <div className="isn muted" role="status">{S.onlineUnavailable}</div>}
     </div>
   );
 }
@@ -207,8 +208,8 @@ function HitRow({ row }: { row: Extract<SearchRow, { kind: "hit" }> }) {
         <span className="tk">{h.symbol}</span>
         {h.name && <span className="nm" title={h.name}>{h.name}</span>}
       </span>
-      {h.state === "saved" && <span className="tag" title="Wróci z researchem i notatkami">zapisany</span>}
-      {h.state === "held" && <span className="tag">w portfelu</span>}
+      {h.state === "saved" && <span className="tag" title={S.savedTitle}>{S.saved}</span>}
+      {h.state === "held" && <span className="tag">{S.held}</span>}
       {(ex || type) && <span className="ism">{ex && <span>{ex}</span>}{type && <span>{type}</span>}</span>}
       <span className="isx">
         {isAddable(h) ? <span className="isadd" aria-hidden>+</span> : h.state === "watched" ? <span className="isok" aria-hidden>✓</span> : null}

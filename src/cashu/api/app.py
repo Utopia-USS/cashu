@@ -20,7 +20,7 @@ from fastapi import Path as PathParam
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..core import modules, networth, security
+from ..core import i18n, modules, networth, security
 from ..core.agent_api import router as agent_router
 from ..core.api import CurrentProfile, breakdown_dict, f, platform_router, profile_only_router
 from ..core.api import router as core_router
@@ -57,6 +57,9 @@ def _prune_staged_imports() -> None:
 
 
 app = FastAPI(title="cashU", docs_url="/api/docs", lifespan=_lifespan)
+# X-Cashu-Lang -> the language of the texts a request renders (core/i18n.py). Added first, so it runs
+# inside the security middleware: a rejected request never touches the stored language.
+app.add_middleware(i18n.LanguageMiddleware)
 # Host allowlist (127.0.0.1/localhost on the serving port) + X-Cashu-Token on
 # every /api/* request; no CORS middleware on purpose. See core/security.py.
 app.add_middleware(security.LocalOnlyMiddleware)

@@ -1,9 +1,10 @@
-// Research: dismiss a note and bring it back with the toast's "Cofnij"; dismiss a candidate and restore
-// it with its "przywróć" link (server restore window).
+// Research: on the Notatki tab, dismiss a note and bring it back with the toast's "Cofnij"; on the Kandydaci tab,
+// dismiss a candidate and restore it with its "przywróć" link (server restore window).
 import { ANNA, expect, go, test, toasts } from "../fixtures";
 
 test("research note dismiss and undo", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio/research`);
+  await page.getByRole("tab", { name: "Notatki" }).click();
   const title = "Rynek oczekuje stabilnych stóp procentowych";
   const note = page.locator("article[data-note]", { hasText: title });
   await expect(note).toBeVisible();
@@ -18,6 +19,7 @@ test("research note dismiss and undo", async ({ app: page }) => {
 
 test("research candidate dismiss and restore", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio/research`);
+  await page.getByRole("tab", { name: "Kandydaci" }).click();
   const card = page.locator(".cand[data-note]", { hasText: "Demo Infrastructure UCITS ETF" });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "Odrzuć" }).click();

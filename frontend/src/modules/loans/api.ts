@@ -1,5 +1,6 @@
 // Loans module endpoints (profile-scoped). One profile can hold many loans.
 import { ApiError, j, jpatch, jpost, pp } from "../../core/api";
+import { S } from "./logic.strings.ts";
 
 export interface LoanInfo {
   // Identity of a list item; the contract keeps the upstream /loan shape per item,
@@ -42,7 +43,7 @@ export const getLoans = async (slug: string): Promise<LoanInfo[]> => {
   return list.filter((l) => l.has_loan !== false);
 };
 
-export const loanName = (l: LoanInfo, i: number): string => l.name || l.account || `Kredyt ${i + 1}`;
+export const loanName = (l: LoanInfo, i: number): string => l.name || l.account || S.loanN(i + 1);
 
 /** POST /loans (`loans add`): 201 one item of GET /loans; 409 `loan_name_taken`. `annual_rate` is a percent. */
 export interface NewLoan {

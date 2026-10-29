@@ -20,10 +20,11 @@ from collections.abc import Iterable
 from sqlmodel import Session, select
 
 from . import modules
+from .i18n import tr
 from .models import Account, Profile, ProfileModule, utcnow
 
 DEFAULT_SLUG = "default"
-DEFAULT_NAME = "Domyślny"  # Polish UI data
+DEFAULT_NAME = "Domyślny"  # Polish UI data, stored; shown localized by display_name()
 # What an upstream installation used: the default profile created on demand gets these.
 UPSTREAM_MODULES = ("budget", "assets", "loans")
 PRIVACY_LEVELS = ("strict", "amounts")
@@ -279,12 +280,20 @@ def module_setup(session: Session, profile_id: int, module_id: str) -> modules.S
     return spec.setup_status(session, profile_id)
 
 
+def display_name(profile: Profile) -> str:
+    """The profile name to show: the stored one, except the untouched default profile
+    (slug ``default`` still named "Domyślny"), whose name follows the UI language."""
+    if profile.slug == DEFAULT_SLUG and profile.name == DEFAULT_NAME:
+        return tr(pl=DEFAULT_NAME, en="Default")
+    return profile.name
+
+
 def as_dict(session: Session, profile: Profile) -> dict:
     """The API shape of a profile (every known module, enabled or not)."""
     enabled = set(enabled_modules(session, profile.id))
     return {
         "slug": profile.slug,
-        "name": profile.name,
+        "name": display_name(profile),
         "base_currency": profile.base_currency,
         "mcp_privacy": profile.mcp_privacy,
         "modules": [

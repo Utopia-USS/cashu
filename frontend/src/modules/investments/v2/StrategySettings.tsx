@@ -11,6 +11,7 @@ import { getProposals, getStrategy, postStrategyInit, postStrategyReload } from 
 import { ProposalDrawer } from "../Drawers";
 import { StrategyPopover, strategyTag } from "../Header";
 import { dropInv, invKey } from "./api";
+import { S } from "./StrategySettings.strings.ts";
 
 export function InvestmentsStrategySettings() {
   const { slug, refresh } = useShell();
@@ -26,19 +27,19 @@ export function InvestmentsStrategySettings() {
   return (
     <div style={{ marginTop: 18 }}>
       <div className="controls" style={{ marginBottom: 6 }}>
-        <strong style={{ fontSize: 14 }}>Strategia inwestycji</strong>{s && strategyTag(brief)}
+        <strong style={{ fontSize: 14 }}>{S.title}</strong>{s && strategyTag(brief)}
       </div>
       {!s && st.loading ? <Skeleton h={60} /> : (
         <div className="card" style={{ padding: "12px 14px", fontSize: 13 }}>
           <StrategyPopover st={s} proposals={props.data ?? []} onProposal={setOpen}
-            onInit={() => { void postStrategyInit(slug).then(() => postStrategyReload(slug).catch(() => null)).then(() => { toast("Utworzono strategię z szablonu", 3000); reload(); }).catch((e: unknown) => toast(`Nie utworzono strategii: ${errorText(e)}`, 4000)); }}
-            onReload={() => { void postStrategyReload(slug).then((r) => { toast(r.version != null ? `Strategia wczytana · v${r.version}` : "Brak pliku strategii", 2500); reload(); }).catch((e: unknown) => toast(`Nie wczytano strategii: ${errorText(e)}`, 4000)); }} />
+            onInit={() => { void postStrategyInit(slug).then(() => postStrategyReload(slug).catch(() => null)).then(() => { toast(S.created, 3000); reload(); }).catch((e: unknown) => toast(S.createFailed(errorText(e)), 4000)); }}
+            onReload={() => { void postStrategyReload(slug).then((r) => { toast(r.version != null ? S.loaded(r.version) : S.noFile, 2500); reload(); }).catch((e: unknown) => toast(S.loadFailed(errorText(e)), 4000)); }} />
         </div>
       )}
       {open != null && (
         <ProposalDrawer slug={slug} id={open} version={s?.version ?? null} onClose={() => setOpen(null)} onChanged={reload}
           onDone={(ok, v) => {
-            setOpen(null); toast(ok ? `Zatwierdzono propozycję${v ? ` · strategia v${v}` : ""}` : "Odrzucono propozycję", 3000); reload();
+            setOpen(null); toast(ok ? S.approved(v) : S.rejected, 3000); reload();
             if (ok) refresh?.(); // an approved import adds transactions: net worth and Przegląd follow (F7 FE7)
           }} />
       )}

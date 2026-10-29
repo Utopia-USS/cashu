@@ -1,0 +1,42 @@
+// Texts of the core Przegląd widgets (src/core/overview/CoreWidgets.tsx). See src/i18n.ts.
+import { catalog, enCount, plForm } from "../../i18n.ts";
+
+export const S = catalog({
+  normTitle: {
+    pl: (n: number) => `średnia z ${n} ${plForm(n, "zamkniętego miesiąca", "zamkniętych miesięcy", "zamkniętych miesięcy")}`,
+    en: (n: number) => `average of ${enCount(n, "closed month", "closed months")}`,
+  },
+  budget: { pl: (month: string) => `Budżet${month ? ` · ${month}` : ""}`, en: (month: string) => `Budget${month ? ` · ${month}` : ""}` },
+  closed: { pl: "zamknięty", en: "closed" },
+  inProgress: { pl: "w toku", en: "in progress" },
+  expenses: { pl: "Wydatki", en: "Expenses" },
+  savingsRate: { pl: "stopa oszczędności ", en: "savings rate " },
+  avg6: { pl: "średnia 6 mies. ", en: "6-mo. average " },
+  percent: { pl: (n: number) => `${n} %`, en: (n: number) => `${n}%` },
+  otherCurrencies: { pl: (list: string) => `inne waluty: ${list}`, en: (list: string) => `other currencies: ${list}` },
+  noLastMonth: { pl: "Brak transakcji z ostatniego miesiąca.", en: "No transactions from last month." },
+  income: { pl: "Przychody", en: "Income" },
+  surplus: { pl: "Nadwyżka", en: "Surplus" },
+  subscriptions: { pl: "Subskrypcje", en: "Subscriptions" },
+  noCharge: {
+    pl: (n: number) => `${n} ${plForm(n, "subskrypcja", "subskrypcje", "subskrypcji")} bez obciążenia`,
+    en: (n: number) => `${enCount(n, "subscription", "subscriptions")} without a charge`,
+  },
+  monthly: { pl: "Miesięcznie", en: "Monthly" },
+  ofSpending: { pl: (pct: string) => `${pct} wydatków`, en: (pct: string) => `${pct} of spending` },
+  thisWeek: { pl: "W tym tygodniu", en: "This week" },
+  manual: { pl: "ręczne", en: "manual" },
+  accounts: { pl: "Konta", en: "Accounts" },
+  hideEmpty: { pl: "ukryj puste", en: "hide empty" },
+  showEmpty: { pl: (n: number) => `pokaż puste (${n})`, en: (n: number) => `show empty (${n})` },
+  walletCash: { pl: "gotówka w portfelu ", en: "cash in the wallet " },
+  addCashExpense: { pl: "+ wydatek gotówkowy", en: "+ cash expense" },
+  cash: { pl: "gotówka", en: "cash" },
+  noBankAccounts: { pl: "Brak kont bankowych.", en: "No bank accounts." },
+  walletTitle: { pl: "Gotówka w portfelu", en: "Cash in the wallet" },
+  hide: { pl: "ukryj", en: "hide" },
+  stepsDone: { pl: (done: number, n: number) => `${done} z ${n} kroków`, en: (done: number, n: number) => `${done} of ${n} ${n === 1 ? "step" : "steps"}` },
+  continue: { pl: "Kontynuuj", en: "Continue" },
+  nextStep: { pl: (step: string) => `Następny krok: ${step}.`, en: (step: string) => `Next step: ${step}.` },
+  waitsForData: { pl: "Moduł czeka na dane.", en: "The module is waiting for data." },
+});

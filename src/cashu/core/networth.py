@@ -186,8 +186,9 @@ def _bucket(account: Account) -> str:
 
 
 def component_labels() -> dict[str, str]:
+    """Bucket labels in the current UI language."""
     modules.registry()
-    return {b.id: b.label for b in account_types.buckets()}
+    return {b.id: b.display_label for b in account_types.buckets()}
 
 
 def component_order() -> list[str]:

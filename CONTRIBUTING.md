@@ -41,6 +41,7 @@ CI runs these on every pull request; run them before you push.
 | Frontend typecheck | `cd frontend && npm run typecheck` |
 | Frontend unit tests | `cd frontend && npm test` |
 | Frontend build | `cd frontend && npm run build` |
+| Connector catalog (informational, macOS) | `pytest -m catalog tests/test_connector_catalog.py` |
 | Browser e2e (not in CI) | `cd frontend && npm run build && npm run e2e` |
 
 The Python tests run on Linux and macOS (required) and Windows (informational for now: cashU is meant
@@ -69,17 +70,20 @@ an API, run by the app in a sandbox after the owner approves it. The contract, p
 command are in [`docs/connectors.md`](docs/connectors.md); working examples are in
 [`examples/connectors/`](examples/connectors/).
 
-A top-level `connectors/` directory for community connectors is coming. Connectors there will have
-contrib status:
+Community connectors live in the top-level [`connectors/`](connectors/) catalog, which ships with
+the app (also the downloaded one). They have contrib status:
 
-- each connector has a named maintainer (usually its author), who keeps it working when the bank or
-  broker changes its format or API;
+- each connector has a named maintainer (usually its author, `maintainer` in its manifest), who keeps
+  it working when the bank or broker changes its format or API;
 - the core team reviews connectors for safety (manifest, network hosts, what they output), not for
   ongoing correctness;
-- a connector that fails its tests is flagged as failing, not fixed by the core team, until its
-  maintainer or another contributor fixes it.
+- a connector that fails its tests or was not verified for 180 days is flagged unmaintained, not fixed
+  by the core team, until its maintainer or another contributor fixes it. The catalog has its own,
+  informational CI job, so a broken connector never blocks a core pull request.
 
-Until that directory exists, open an issue with the "New data source" template to discuss a connector.
+Layout, the pull request checklist and how a user's agent installs an entry:
+[`connectors/README.md`](connectors/README.md). To discuss a source before you write a connector, open
+an issue with the "New data source" template.
 
 ## Code style
 

@@ -8,16 +8,20 @@ from pathlib import Path
 
 import pytest
 
+from cashu.core import i18n
 from cashu.modules.investments.models import RESEARCH_NOTE_KINDS
 from cashu.modules.investments.research.signals import (
     KIND_LABEL,
+    KIND_LABEL_EN,
     RELATION_LABEL,
+    RELATION_LABEL_EN,
     research_message,
     sources_phrase,
 )
 
 FRONTEND_LOGIC = (
-    Path(__file__).resolve().parents[3] / "frontend/src/modules/investments/v2/research/logic.ts"
+    Path(__file__).resolve().parents[3]
+    / "frontend/src/modules/investments/v2/research/logic.strings.ts"
 )
 
 
@@ -75,11 +79,24 @@ def test_every_note_kind_has_a_label():
 def test_labels_match_the_dashboard():
     source = FRONTEND_LOGIC.read_text(encoding="utf-8")
 
-    def labels(name: str) -> dict[str, str]:
-        block = re.search(rf"export const {name}\b[^=]*=\s*\{{(.*?)\}};", source, re.DOTALL)
+    def labels(name: str, lang: str) -> dict[str, str]:
+        block = re.search(rf"export const {name}\b[^=]*=\s*catalog\(\{{(.*?)\}}\);", source, re.DOTALL)
         assert block, name
-        return dict(re.findall(r'(\w+):\s*"([^"]*)"', block.group(1)))
+        return dict(
+            re.findall(rf'(\w+):\s*\{{[^}}]*\b{lang}:\s*"([^"]*)"', block.group(1))
+        )
 
-    assert labels("KIND_LABEL") == KIND_LABEL
-    dashboard = labels("RELATION_LABEL")
-    assert {key: dashboard[key] for key in RELATION_LABEL} == RELATION_LABEL
+    assert labels("KIND_LABEL", "pl") == KIND_LABEL
+    assert labels("KIND_LABEL", "en") == KIND_LABEL_EN
+    for lang, ours in (("pl", RELATION_LABEL), ("en", RELATION_LABEL_EN)):
+        dashboard = labels("RELATION_LABEL", lang)
+        assert {key: dashboard[key] for key in ours} == ours
+
+
+def test_english_message():
+    with i18n.use_language("en"):
+        assert sources_phrase(1) == "1 source"
+        assert sources_phrase(2) == "2 sources"
+        assert research_message("news", "invalidates", "Guidance cut", 3, 2) == (
+            "Analysis (news, invalidates the thesis): Guidance cut; strength 3/3, 2 sources"
+        )

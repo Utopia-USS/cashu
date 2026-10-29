@@ -1,9 +1,11 @@
-"""Investments' blank-page steps (``ModuleSpec.setup_status``). Copy is Polish UI data."""
+"""Investments' blank-page steps (``ModuleSpec.setup_status``). Copy is UI data in the current
+language (``core.i18n``)."""
 
 from __future__ import annotations
 
 from sqlmodel import Session, select
 
+from cashu.core.i18n import tr
 from cashu.core.models import Account, Profile
 from cashu.core.modules import SetupAction, SetupStatus, SetupStep, cli_prefix
 
@@ -32,47 +34,66 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
         ).first()
         is not None
     )
+    copy = tr(pl="Kopiuj polecenie", en="Copy command")
     return SetupStatus(
         steps=(
             SetupStep(
                 "broker_account",
-                "Dodaj rachunek maklerski",
-                "Broker + opakowanie (zwykłe, IKE, IKZE).",
+                tr(pl="Dodaj rachunek maklerski", en="Add a brokerage account"),
+                tr(
+                    pl="Broker + opakowanie (zwykłe, IKE, IKZE).",
+                    en="Broker + wrapper (regular, IKE, IKZE).",
+                ),
                 done=has_account,
                 actions=(
                     SetupAction(
                         "cli",
-                        "Kopiuj polecenie",
+                        copy,
                         f'{cli} invest accounts add "XTB IKE" --broker xtb --wrapper ike',
                     ),
                 ),
             ),
             SetupStep(
                 "strategy",
-                "Zapisz strategię",
-                "strategy.yaml i strategy.md; wywiad w Claude Code albo szablon.",
+                tr(pl="Zapisz strategię", en="Save the strategy"),
+                tr(
+                    pl="strategy.yaml i strategy.md; wywiad w Claude Code albo szablon.",
+                    en="strategy.yaml and strategy.md; an interview in Claude Code or a template.",
+                ),
                 done=has_strategy,
-                actions=(SetupAction("cli", "Utwórz z szablonu", f"{cli} invest strategy init"),),
+                actions=(
+                    SetupAction(
+                        "cli",
+                        tr(pl="Utwórz z szablonu", en="Create from a template"),
+                        f"{cli} invest strategy init",
+                    ),
+                ),
             ),
             SetupStep(
                 "first_import",
-                "Pierwsza wpłata lub import",
-                "Plik od brokera (format cashU albo CSV).",
+                tr(pl="Pierwsza wpłata lub import", en="First contribution or import"),
+                tr(
+                    pl="Plik od brokera (format cashU albo CSV).",
+                    en="A file from your broker (cashU format or CSV).",
+                ),
                 done=has_txn,
                 actions=(
                     SetupAction(
                         "cli",
-                        "Kopiuj polecenie",
-                        f"{cli} invest import PLIK.csv --account ID_RACHUNKU",
+                        copy,
+                        tr(
+                            pl=f"{cli} invest import PLIK.csv --account ID_RACHUNKU",
+                            en=f"{cli} invest import FILE.csv --account ACCOUNT_ID",
+                        ),
                     ),
                 ),
             ),
             SetupStep(
                 "first_run",
-                "Pierwszy przebieg reguł",
-                "Wycena, alokacja, sygnały.",
+                tr(pl="Pierwszy przebieg reguł", en="First rules run"),
+                tr(pl="Wycena, alokacja, sygnały.", en="Valuation, allocation, signals."),
                 done=has_run,
-                actions=(SetupAction("cli", "Kopiuj polecenie", f"{cli} invest run"),),
+                actions=(SetupAction("cli", copy, f"{cli} invest run"),),
             ),
         )
     )

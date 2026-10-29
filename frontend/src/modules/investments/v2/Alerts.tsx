@@ -4,12 +4,15 @@
 // form = the standardized schema, the 12-month triggered history). One schema for the owner and the agent;
 // agent items are badged and removable. Alerts are conditions on hard data, never forecasts.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { C } from "../../../common.strings.ts";
+import { inEveryLang } from "../../../i18n.ts";
+import { CARD_LABEL, S } from "./Alerts.strings.ts";
 import { describeError, errorText } from "../../../core/messages";
 import { useAsync, useInFlight } from "../../../hooks";
 import { Notice, Seg, Skeleton, useToast } from "../../../ui";
 import { AgentTag, AlertIcon, AlertStatus, FootFacts, Grid, PolarityText, Widget } from "../../../widgets";
 import { InstLabel } from "./InstLabel";
-import { bucketLabel, dm, dmy, DECISION_ACTION, hm, parseNum, pct, plural } from "../labels";
+import { bucketLabel, dm, dmy, DECISION_ACTION, hm, parseNum, pct } from "../labels";
 import {
   type Alert, type AlertInput, type AlertKindInfo, type AlertPatch, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, invKey, patchAlert, postAlert, restoreAlert, type SignalV2,
 } from "./api";
@@ -35,7 +38,7 @@ export async function removeAlertWithUndo(slug: string, a: Alert, toast: (t: str
   try {
     await deleteAlert(slug, a.id);
   } catch (e) {
-    toast(`Nie usunięto alertu: ${errorText(e)}`, 5000);
+    toast(S.removeFailed(errorText(e)), 5000);
     return false;
   }
   onChanged();
@@ -43,8 +46,8 @@ export async function removeAlertWithUndo(slug: string, a: Alert, toast: (t: str
   // restore endpoint re-creates the alert, which then comes back as a new alert of the owner: say so.
   let recreated = false;
   const u = alertDeleteUndo(() => restoreAlert(slug, a.id), () => { recreated = true; return postAlert(slug, recreateInput(a) as AlertInput); });
-  offerUndo(toast, `Usunięto alert „${a.title}"`, u, "usunięcie alertu", onChanged, 10000,
-    () => (recreated ? (a.source === "agent" ? "wraca jako Twój nowy alert" : "wraca jako nowy alert") : null));
+  offerUndo(toast, S.removed(a.title), u, S.removeWhat, onChanged, 10000,
+    () => (recreated ? (a.source === "agent" ? S.backAsYourNew : S.backAsNew) : null));
   return true;
 }
 
@@ -67,12 +70,12 @@ export function AlertsWidget({ slug, alerts, near, onManage, onNew, onChanged }:
   const flight = useInFlight();
   const remove = (a: Alert) => { void flight.run(() => removeAlertWithUndo(slug, a, toast, onChanged)); };
   return (
-    <Widget title="Alerty" id="inv-alerts" count={waiting.length || undefined} controls={<button className="btn sm" onClick={onNew}>+ Nowy</button>} body="tight"
-      footer={<><FootFacts items={[nearN > 0 && <><AlertIcon state="near" /><b>{nearN}</b> blisko</>, met > 0 && <><AlertIcon state="met" /><b>{met}</b> w Sygnałach</>]} /><span className="spacer" />
-        <button className="lnk" onClick={onManage}>Wszystkie ({live.length})</button></>}>
+    <Widget title={S.alerts} id="inv-alerts" count={waiting.length || undefined} controls={<button className="btn sm" onClick={onNew}>{S.addNew}</button>} body="tight"
+      footer={<><FootFacts items={[nearN > 0 && <><AlertIcon state="near" /><b>{nearN}</b> {S.near}</>, met > 0 && <><AlertIcon state="met" /><b>{met}</b> {S.inSignals}</>]} /><span className="spacer" />
+        <button className="lnk" onClick={onManage}>{S.allCount(live.length)}</button></>}>
       {!alerts ? <Skeleton h={120} /> : !live.length ? (
-        <div className="empty">Brak alertów.</div>
-      ) : !waiting.length ? <div className="empty">Brak czekających.</div>
+        <div className="empty">{S.noAlerts}</div>
+      ) : !waiting.length ? <div className="empty">{S.noneWaiting}</div>
         : waiting.slice(0, 4).map((a) => <AlertRow key={a.id} a={a} near={th} onRemove={a.source === "agent" ? () => remove(a) : undefined} />)}
     </Widget>
   );
@@ -87,24 +90,24 @@ export function AlertRow({ a, onRemove, compact, near }: { a: Alert; onRemove?: 
   const level = dist?.level ?? alertLevelText(a);
   const now = alertNowText(a);
   const icon = liveA ? <AlertIcon state={alertState(a, near)} title={alertFact(a)} /> : null;
-  const cond = compact && level && (a.kind === "price_below" || a.kind === "price_above") ? `${a.kind === "price_below" ? "poniżej" : "powyżej"} ${level}` : unnameBuckets(a.title);
+  const cond = compact && level && (a.kind === "price_below" || a.kind === "price_above") ? `${a.kind === "price_below" ? S.below : S.above} ${level}` : unnameBuckets(a.title);
   const suffix = alertWhenSuffix(a);
   return (
     <div className={`al ${trig ? "trig" : ""}`}>
       <div>
         <div className="t"><span className="ttl">{icon}{cond}</span>{a.source === "agent" && <AgentTag />}</div>
         <div className="c">
-          {trig ? <>od {dm(a.last_triggered_at)}{now && <> · teraz <b>{now}</b></>}</>
-            : compact ? <>{now ? <>teraz <b>{now}</b></> : alertConditionText(a)}{dist && level ? <> · <b>{dist.text}</b> do {level}</> : ""}</>
-            : <>{a.scope === "portfolio" ? "portfel · " : a.scope === "bucket" ? "koszyk · " : ""}{now ? <>teraz <b>{now}</b></> : alertConditionText(a)}
-              {a.kind === "volume_spike" ? ` średniej ${Number(a.params.window_days ?? 20)} sesji` : ""}{suffix ? ` · ${suffix}` : ""}</>}
+          {trig ? <>{S.since} {dm(a.last_triggered_at)}{now && <> · {S.now} <b>{now}</b></>}</>
+            : compact ? <>{now ? <>{S.now} <b>{now}</b></> : alertConditionText(a)}{dist && level ? <> · <b>{dist.text}</b> {S.to} {level}</> : ""}</>
+            : <>{a.scope === "portfolio" ? S.portfolioPrefix : a.scope === "bucket" ? S.bucketPrefix : ""}{now ? <>{S.now} <b>{now}</b></> : alertConditionText(a)}
+              {a.kind === "volume_spike" ? S.avgOfSessions(Number(a.params.window_days ?? 20)) : ""}{suffix ? ` · ${suffix}` : ""}</>}
         </div>
       </div>
       <div className="r">
         {compact ? (!liveA && <AlertStatus status={a.status} />)
-          : dist && level ? <span className="dist">{dist.text} do {level}<span className="bar" aria-hidden><i style={{ width: `${Math.round(dist.fill * 100)}%` }} /></span></span>
+          : dist && level ? <span className="dist">{dist.text} {S.to} {level}<span className="bar" aria-hidden><i style={{ width: `${Math.round(dist.fill * 100)}%` }} /></span></span>
           : null}
-        {onRemove && <button className="icon-btn" title="Usuń alert agenta" aria-label={`Usuń alert ${a.title}`} onClick={onRemove}>✕</button>}
+        {onRemove && <button className="icon-btn" title={S.removeAgentAlert} aria-label={S.removeAria(a.title)} onClick={onRemove}>✕</button>}
       </div>
     </div>
   );
@@ -157,35 +160,35 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
         return;
       } else {
         await patchAlert(slug, a.id, { status: what === "mute" ? "muted" : "active" });
-        toast(what === "mute" ? "Alert wyciszony" : "Alert włączony", 2500);
+        toast(what === "mute" ? S.muted : S.unmuted, 2500);
       }
       reload();
-    } catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 5000); }
+    } catch (e) { toast(S.saveFailed(errorText(e)), 5000); }
   });
 
   return (
     <>
-      <nav className="crumb" aria-label="Ścieżka"><button onClick={onBack}>Inwestycje</button> › <span>Alerty</span></nav>
+      <nav className="crumb" aria-label={S.breadcrumb}><button onClick={onBack}>{S.investments}</button> › <span>{S.alerts}</span></nav>
       <div className="pagehead">
-        <h2 className="ph">Alerty</h2>
-        <Seg quiet label="Status" value={status} onChange={setStatus} items={[
-          [`Czekają · ${count("active")}`, "active"], [`Spełnione · ${count("triggered")}`, "triggered"], [`Uśpione · ${count("snoozed")}`, "snoozed"],
-          [`Wyciszone · ${count("muted")}`, "muted"], ["Wszystkie", "all"],
+        <h2 className="ph">{S.alerts}</h2>
+        <Seg quiet label={S.status} value={status} onChange={setStatus} items={[
+          [S.waitingN(count("active")), "active"], [S.metN(count("triggered")), "triggered"], [S.snoozedN(count("snoozed")), "snoozed"],
+          [S.mutedN(count("muted")), "muted"], [S.all, "all"],
         ]} />
-        <Seg quiet label="Źródło" value={source} onChange={setSource} items={[["Wszystkie", "all"], ["Moje", "user"], [`Agenta · ${agentCount}`, "agent"]]} />
+        <Seg quiet label={S.source} value={source} onChange={setSource} items={[[S.all, "all"], [S.mine, "user"], [S.agentN(agentCount), "agent"]]} />
         <span className="spacer" />
-        <span className="muted" style={{ fontSize: 12 }}>{lastCheck ? `sprawdzone ${dm(lastCheck)} ${hm(lastCheck)}` : ""}</span>
+        <span className="muted" style={{ fontSize: 12 }}>{lastCheck ? S.checked(dm(lastCheck), hm(lastCheck)) : ""}</span>
       </div>
       <Grid items={[
         {
           id: "list", span: 2, node: (
-            <Widget title={null} label="Lista alertów" body="flush"
-              footer={<><FootFacts items={[<><b>{all.length}</b> {all.length === 1 ? "alert" : "alertów"}</>, <>limit agenta: <b>{agentLive} z 50</b></>]} />
+            <Widget title={null} label={S.listLabel} body="flush"
+              footer={<><FootFacts items={[<><b>{all.length}</b> {S.alertsWord(all.length)}</>, <>{S.agentLimit} <b>{S.xOf50(agentLive)}</b></>]} />
 </>}>
-              {!q.data ? <div style={{ padding: "0 16px" }}><Skeleton h={160} /></div> : !list.length ? <div className="empty">Brak alertów.</div> : (
+              {!q.data ? <div style={{ padding: "0 16px" }}><Skeleton h={160} /></div> : !list.length ? <div className="empty">{S.noAlerts}</div> : (
                 <div className="scroll">
                   <table>
-                    <thead><tr><th>Status</th><th>Alert</th><th>Zakres</th><th className="num">Teraz / poziom</th><th>Typ</th><th>Źródło</th><th>Ostatnio</th><th><span className="sr-only">Akcje</span></th></tr></thead>
+                    <thead><tr><th>{S.status}</th><th>{S.colAlert}</th><th>{S.colScope}</th><th className="num">{S.colNowLevel}</th><th>{S.colType}</th><th>{S.colSource}</th><th>{S.colLast}</th><th><span className="sr-only">{S.colActions}</span></th></tr></thead>
                     <tbody>
                       {list.map((a) => {
                         const dist = a.status === "triggered" ? null : alertDistance(a);
@@ -193,19 +196,19 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
                         return (
                           <tr key={a.id} className={editing === a.id ? "hover" : undefined}>
                             <td>{a.status === "active" || a.status === "triggered" ? <AlertIcon state={alertState(a)} title={alertFact(a)} /> : <AlertStatus status={a.status} />}</td>
-                            <td><span className="nm">{unnameBuckets(a.title)}</span><span className="cond">{alertConditionText(a)}{a.note ? ` · ${a.note.length > 48 ? `${a.note.slice(0, 46)}…` : a.note}` : ""}{suffix ? ` · ${suffix}` : ""}{a.status === "triggered" && a.cooldown_days ? ` · pauza ${plural(a.cooldown_days, "dzień", "dni", "dni")}` : ""}</span></td>
-                            <td>{a.scope === "portfolio" ? "Portfel" : a.scope === "bucket" ? ["Koszyk", bucketLabel(String(a.params.bucket ?? ""))].filter(Boolean).join(" ") : a.instrument ? <InstLabel density="inline" inst={a.instrument} /> : "-"}</td>
+                            <td><span className="nm">{unnameBuckets(a.title)}</span><span className="cond">{alertConditionText(a)}{a.note ? ` · ${a.note.length > 48 ? `${a.note.slice(0, 46)}…` : a.note}` : ""}{suffix ? ` · ${suffix}` : ""}{a.status === "triggered" && a.cooldown_days ? S.pause(a.cooldown_days) : ""}</span></td>
+                            <td>{a.scope === "portfolio" ? S.portfolio : a.scope === "bucket" ? [S.bucket, bucketLabel(String(a.params.bucket ?? ""))].filter(Boolean).join(" ") : a.instrument ? <InstLabel density="inline" inst={a.instrument} /> : "-"}</td>
                             <td className="num"><b>{alertNowText(a) ?? "-"}</b><span className="cond">{alertLevelText(a) ?? ""}{dist ? ` · ${a.kind.startsWith("price") ? (a.kind === "price_below" ? "-" : "+") : ""}${dist.text}` : ""}</span></td>
-                            <td><PolarityText polarity={a.polarity} /><span className="cond">{a.severity === "action" ? "do działania" : "informacja"}</span></td>
-                            <td>{a.source === "agent" ? <AgentTag /> : <span className="muted">ty</span>}</td>
+                            <td><PolarityText polarity={a.polarity} /><span className="cond">{a.severity === "action" ? S.severityAction : S.severityInfo}</span></td>
+                            <td>{a.source === "agent" ? <AgentTag /> : <span className="muted">{S.you}</span>}</td>
                             <td className="muted">{a.last_triggered_at ? dm(a.last_triggered_at) : "-"}</td>
                             <td>
                               <div className="acts">
                                 {a.status === "muted"
-                                  ? <button className="icon-btn quiet" title="Włącz" aria-label={`Włącz alert ${a.title}`} onClick={() => act(a, "unmute")}>●</button>
-                                  : <button className="icon-btn quiet" title="Wycisz" aria-label={`Wycisz alert ${a.title}`} onClick={() => act(a, "mute")} disabled={a.status === "expired"}>◌</button>}
-                                <button className="icon-btn quiet" title="Edytuj" aria-label={`Edytuj alert ${a.title}`} onClick={() => setEditing(a.id)}>✎</button>
-                                <button className="icon-btn" title="Usuń" aria-label={`Usuń alert ${a.title}`} disabled={flight.busy} onClick={() => act(a, "delete")}>✕</button>
+                                  ? <button className="icon-btn quiet" title={S.turnOn} aria-label={S.turnOnAria(a.title)} onClick={() => act(a, "unmute")}>●</button>
+                                  : <button className="icon-btn quiet" title={S.mute} aria-label={S.muteAria(a.title)} onClick={() => act(a, "mute")} disabled={a.status === "expired"}>◌</button>}
+                                <button className="icon-btn quiet" title={C.edit} aria-label={S.editAria(a.title)} onClick={() => setEditing(a.id)}>✎</button>
+                                <button className="icon-btn" title={C.remove} aria-label={S.removeAria(a.title)} disabled={flight.busy} onClick={() => act(a, "delete")}>✕</button>
                               </div>
                             </td>
                           </tr>
@@ -223,7 +226,7 @@ export function AlertsManager({ slug, instruments, buckets, digestWeekday, onBac
             <AlertForm key={`${editing}:${formKey}`} slug={slug} alert={editAlert} instruments={instruments} buckets={buckets} digestWeekday={digestWeekday}
               presetInstrument={editing === "new" && formKey === 0 ? presetInstrument : null}
               onCancel={() => setEditing("new")}
-              onSaved={(a, created) => { toast(created ? `Utworzono alert „${a.title}"` : "Zapisano alert", 2500); setEditing("new"); reload(); }} />
+              onSaved={(a, created) => { toast(created ? S.created(a.title) : S.savedAlert, 2500); setEditing("new"); reload(); }} />
           ),
         },
         { id: "history", span: 3, node: <TriggeredHistory signals={histList} alerts={all} /> },
@@ -243,17 +246,17 @@ const STATIC_KINDS: Record<string, string[]> = {
   sma_cross: ["instrument"], weight_above: ["instrument", "bucket"], weight_below: ["instrument", "bucket"], custom: ["instrument", "portfolio", "bucket"],
   range_breakout: ["instrument"], volume_spike: ["instrument"],
 };
-const CARDS: { card: KindCard; label: string; machine: string; kinds: string[] }[] = [
-  { card: "price_above", label: "Cena powyżej", machine: "price_above", kinds: ["price_above"] },
-  { card: "price_below", label: "Cena poniżej", machine: "price_below", kinds: ["price_below"] },
-  { card: "change_pct", label: "Zmiana % w oknie", machine: "change_pct", kinds: ["change_pct"] },
-  { card: "drawdown_from_high", label: "Spadek od szczytu", machine: "drawdown_from_high", kinds: ["drawdown_from_high"] },
-  { card: "new_high", label: "Nowy szczyt", machine: "new_high", kinds: ["new_high"] },
-  { card: "sma_cross", label: "Przecięcie SMA", machine: "sma_cross", kinds: ["sma_cross"] },
-  { card: "range_breakout", label: "Wybicie z konsolidacji", machine: "range_breakout", kinds: ["range_breakout"] },
-  { card: "volume_spike", label: "Skok wolumenu", machine: "volume_spike", kinds: ["volume_spike"] },
-  { card: "weight", label: "Waga powyżej / poniżej", machine: "weight_above · weight_below", kinds: ["weight_above", "weight_below"] },
-  { card: "custom", label: "Własne wyrażenie", machine: "custom", kinds: ["custom"] },
+const CARDS: { card: KindCard; machine: string; kinds: string[] }[] = [
+  { card: "price_above", machine: "price_above", kinds: ["price_above"] },
+  { card: "price_below", machine: "price_below", kinds: ["price_below"] },
+  { card: "change_pct", machine: "change_pct", kinds: ["change_pct"] },
+  { card: "drawdown_from_high", machine: "drawdown_from_high", kinds: ["drawdown_from_high"] },
+  { card: "new_high", machine: "new_high", kinds: ["new_high"] },
+  { card: "sma_cross", machine: "sma_cross", kinds: ["sma_cross"] },
+  { card: "range_breakout", machine: "range_breakout", kinds: ["range_breakout"] },
+  { card: "volume_spike", machine: "volume_spike", kinds: ["volume_spike"] },
+  { card: "weight", machine: "weight_above · weight_below", kinds: ["weight_above", "weight_below"] },
+  { card: "custom", machine: "custom", kinds: ["custom"] },
 ];
 const DEFAULT_POLARITY: Record<string, string> = {
   price_below: "positive", price_above: "neutral", change_pct: "negative", drawdown_from_high: "positive", new_high: "neutral",
@@ -262,7 +265,8 @@ const DEFAULT_POLARITY: Record<string, string> = {
 };
 /** A breakout's polarity follows its direction until the owner picks one: up = chance, down = risk. */
 const breakoutPolarity = (direction: string) => (direction === "up" ? "positive" : direction === "down" ? "negative" : "neutral");
-const COOLDOWNS: [string, number | null][] = [["bez pauzy", null], ["7 dni", 7], ["14 dni", 14], ["30 dni", 30], ["90 dni", 90]];
+const COOLDOWNS: (number | null)[] = [null, 7, 14, 30, 90];
+const cooldownLabel = (v: number | null) => (v == null ? S.noPause : S.days(v));
 
 function endOfYear(): string { return `${new Date().getFullYear()}-12-31`; }
 /** Local calendar day `days` from today (never the UTC date). */
@@ -296,8 +300,8 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
   const polarityTouched = useRef(!!alert);
   const [severity, setSeverity] = useState<string>(alert?.severity ?? "info");
   const [title, setTitle] = useState(alert?.title ?? "");
-  // An edited alert whose title is still the generated one keeps following the condition.
-  const titleTouched = useRef(!!alert && alert.title !== alertDefaultTitle(alert.kind, alert.params, alert.instrument?.symbol ?? alert.instrument?.label ?? (alert.scope === "bucket" ? bucketLabel(String(alert.params.bucket ?? "")) ?? "Koszyk" : "Portfel"), alert.instrument?.currency));
+  // An edited alert whose title is still the generated one keeps following the condition. Either language counts: the title may have been generated before a language switch.
+  const titleTouched = useRef(!!alert && !inEveryLang(() => alertDefaultTitle(alert.kind, alert.params, alert.instrument?.symbol ?? alert.instrument?.label ?? (alert.scope === "bucket" ? bucketLabel(String(alert.params.bucket ?? "")) ?? S.bucket : S.portfolio), alert.instrument?.currency)).includes(alert.title));
   const [note, setNote] = useState(alert?.note ?? "");
   // "bez pauzy" (null) stays null when editing; 14 days only for a new alert.
   const [cooldown, setCooldown] = useState<number | null>(alert ? alert.cooldown_days : 14);
@@ -323,7 +327,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
     }
     if (kind === "volume_spike") {
       if (!windowDays) setWindowDays("20");
-      if (!multiple) setMultiple("2,5");
+      if (!multiple) setMultiple(S.defaultMultiple);
     }
   }, [kind]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (kind === "range_breakout" && !polarityTouched.current) setPolarity(breakoutPolarity(direction)); }, [kind, direction]);
@@ -335,7 +339,7 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const params = buildParams(kind, scope, { level, threshold, windowDays, direction, expression, bucket, rangePct, multiple });
-  const subject = scope === "instrument" ? (inst?.symbol ?? inst?.label ?? "") : scope === "bucket" ? bucketLabel(bucket) ?? "Koszyk" : "Portfel";
+  const subject = scope === "instrument" ? (inst?.symbol ?? inst?.label ?? "") : scope === "bucket" ? bucketLabel(bucket) ?? S.bucket : S.portfolio;
   const problems = validate(kind, scope, params, inst, bucket);
   // The title follows the condition until the owner edits it; nothing to suggest while the condition is incomplete.
   const autoTitle = problems.length ? "" : alertDefaultTitle(kind, params, subject, inst?.currency);
@@ -373,122 +377,122 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
   return (
     <section className="w hl" ref={ref} aria-labelledby="alert-form-h" onKeyDown={(e) => { if (e.key === "Escape" && alert) { e.stopPropagation(); onCancel(); } }}>
       <div className="wh">
-        <h3 id="alert-form-h">{alert ? "Edycja alertu" : "Nowy alert"}</h3>
+        <h3 id="alert-form-h">{alert ? S.editTitle : S.newTitle}</h3>
         {alert?.source === "agent" && <AgentTag />}
         <span className="spacer" />
-        {alert && <button className="icon-btn quiet" aria-label="Zamknij edycję" title="Zamknij (Esc)" onClick={onCancel}>✕</button>}
+        {alert && <button className="icon-btn quiet" aria-label={S.closeEdit} title={S.closeEsc} onClick={onCancel}>✕</button>}
       </div>
       <div className="wb tight form">
-        <div className="field" title={alert ? "Zakres zmienisz tylko nowym alertem." : undefined}>
-          <label id="af-scope">Zakres</label>
-          <Seg quiet label="Zakres" value={scope} disabled={!!alert} onChange={(v) => !alert && setScope(v)} items={[["Instrument", "instrument"], ["Portfel", "portfolio"], ...(buckets.length || alert?.scope === "bucket" ? [["Koszyk", "bucket"] as [string, Scope]] : [])]} />
+        <div className="field" title={alert ? S.scopeNewOnly : undefined}>
+          <label id="af-scope">{S.colScope}</label>
+          <Seg quiet label={S.colScope} value={scope} disabled={!!alert} onChange={(v) => !alert && setScope(v)} items={[[S.scopeInstrument, "instrument"], [S.portfolio, "portfolio"], ...(buckets.length || alert?.scope === "bucket" ? [[S.bucket, "bucket"] as [string, Scope]] : [])]} />
         </div>
         {scope === "instrument" && (
           <div className="field">
-            <label htmlFor="af-inst">Instrument</label>
-            <input id="af-inst" list="af-inst-list" value={instText} onChange={(e) => pickInstrument(e.target.value)} disabled={!!alert} placeholder="nazwa lub symbol" autoComplete="off" />
+            <label htmlFor="af-inst">{S.scopeInstrument}</label>
+            <input id="af-inst" list="af-inst-list" value={instText} onChange={(e) => pickInstrument(e.target.value)} disabled={!!alert} placeholder={S.instPlaceholder} autoComplete="off" />
             <datalist id="af-inst-list">{instruments.map((i) => <option key={i.id} value={choiceText(i)} />)}</datalist>
-            {!instruments.length && <span className="sub">najpierw dodaj do obserwowanych</span>}
+            {!instruments.length && <span className="sub">{S.watchFirst}</span>}
           </div>
         )}
         {scope === "bucket" && (
           <div className="field">
-            <label htmlFor="af-bucket">Koszyk</label>
+            <label htmlFor="af-bucket">{S.bucket}</label>
             {/* Generic buckets only (F7-generic); an agent's alert on the owner's own bucket keeps it, unnamed. */}
             <select id="af-bucket" value={bucket} onChange={(e) => setBucket(e.target.value)} disabled={!buckets.length || (!!bucket && !bucketLabel(bucket))}>
-              {!buckets.length && !bucket && <option value="">brak koszyków w strategii</option>}
+              {!buckets.length && !bucket && <option value="">{S.noBuckets}</option>}
               {!!bucket && !bucketLabel(bucket) && <option value={bucket}>-</option>}
               {buckets.map((b) => <option key={b} value={b}>{bucketLabel(b)}</option>)}
             </select>
           </div>
         )}
         <div className="field">
-          <label>Warunek</label>
-          <div className="kinds" role="radiogroup" aria-label="Warunek">
+          <label>{S.condition}</label>
+          <div className="kinds" role="radiogroup" aria-label={S.condition}>
             {CARDS.map((c) => (
               <button key={c.card} type="button" role="radio" aria-checked={card === c.card} className={`kind ${card === c.card ? "on" : ""}`}
                 disabled={!cardOk(c) || (!!alert && !c.kinds.includes(alert.kind) && !(c.card === "weight" && alert.kind.startsWith("weight")))}
                 onClick={() => setCard(c.card)}>
-                {c.label}<span>{c.machine}</span>
+                {CARD_LABEL[c.card]}<span>{c.machine}</span>
               </button>
             ))}
           </div>
         </div>
         {(kind === "price_above" || kind === "price_below") && (
           <div className="frow">
-            <div className="field"><label htmlFor="af-level">Poziom{inst ? ` (${inst.currency})` : ""}</label>
+            <div className="field"><label htmlFor="af-level">{S.level}{inst ? ` (${inst.currency})` : ""}</label>
               <input id="af-level" className="num" inputMode="decimal" value={level} onChange={(e) => setLevel(e.target.value)} /></div>
-            <div className="field"><label htmlFor="af-now">Teraz</label>
+            <div className="field"><label htmlFor="af-now">{S.nowLabel}</label>
               <input id="af-now" disabled value={inst?.price != null ? `${price(inst.price, inst.currency)}${distNow != null ? ` · ${pct(distNow, true)}` : ""}` : "-"} /></div>
           </div>
         )}
         {(kind === "change_pct" || kind === "drawdown_from_high" || kind === "new_high" || kind === "sma_cross") && (
           <div className="frow">
-            <div className="field"><label htmlFor="af-win">Okno (sesje)</label>
+            <div className="field"><label htmlFor="af-win">{S.window}</label>
               <input id="af-win" className="num" inputMode="numeric" value={windowDays} onChange={(e) => setWindowDays(e.target.value.replace(/\D/g, ""))} /></div>
             {(kind === "change_pct" || kind === "drawdown_from_high") && (
-              <div className="field"><label htmlFor="af-th">Próg (%)</label>
+              <div className="field"><label htmlFor="af-th">{S.thresholdPct}</label>
                 <input id="af-th" className="num" inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} /></div>
             )}
             {kind === "sma_cross" && (
-              <div className="field"><label>Kierunek</label>
-                <Seg quiet label="Kierunek" value={direction} onChange={setDirection} items={[["w dół", "below"], ["w górę", "above"]]} /></div>
+              <div className="field"><label>{S.direction}</label>
+                <Seg quiet label={S.direction} value={direction} onChange={setDirection} items={[[S.down, "below"], [S.up, "above"]]} /></div>
             )}
           </div>
         )}
         {(kind === "range_breakout" || kind === "volume_spike") && (
           <div className="frow">
-            <div className="field"><label htmlFor="af-win">Okno (sesje)</label>
+            <div className="field"><label htmlFor="af-win">{S.window}</label>
               <input id="af-win" className="num" inputMode="numeric" value={windowDays} onChange={(e) => setWindowDays(e.target.value.replace(/\D/g, ""))} /></div>
             {kind === "range_breakout" ? (
-              <div className="field"><label htmlFor="af-range">Zakres maks. (%)</label>
+              <div className="field"><label htmlFor="af-range">{S.maxRange}</label>
                 <input id="af-range" className="num" inputMode="decimal" value={rangePct} onChange={(e) => setRangePct(e.target.value)} /></div>
             ) : (
-              <div className="field"><label htmlFor="af-mult">Krotność</label>
+              <div className="field"><label htmlFor="af-mult">{S.multiple}</label>
                 <input id="af-mult" className="num" inputMode="decimal" value={multiple} onChange={(e) => setMultiple(e.target.value)} /></div>
             )}
           </div>
         )}
         {kind === "range_breakout" && (
-          <div className="field"><label>Kierunek</label>
-            <Seg quiet label="Kierunek wybicia" value={direction} onChange={setDirection} items={[["w górę", "up"], ["w dół", "down"], ["oba", "any"]]} /></div>
+          <div className="field"><label>{S.direction}</label>
+            <Seg quiet label={S.breakoutDirection} value={direction} onChange={setDirection} items={[[S.up, "up"], [S.down, "down"], [S.both, "any"]]} /></div>
         )}
         {kind === "change_pct" && (
-          <div className="field"><label>Kierunek</label>
-            <Seg quiet label="Kierunek zmiany" value={direction} onChange={setDirection} items={[["spadek", "down"], ["wzrost", "up"], ["oba", "any"]]} /></div>
+          <div className="field"><label>{S.direction}</label>
+            <Seg quiet label={S.changeDirection} value={direction} onChange={setDirection} items={[[S.fall, "down"], [S.rise, "up"], [S.both, "any"]]} /></div>
         )}
         {card === "weight" && (
           <div className="frow">
-            <div className="field"><label>Kierunek</label>
-              <Seg quiet label="Kierunek wagi" value={kind === "weight_above" ? "above" : "below"} disabled={!!alert}
-                title={alert ? "Kierunek zmienisz tylko nowym alertem." : undefined} onChange={(v) => !alert && setAbove(v === "above")} items={[["powyżej", "above"], ["poniżej", "below"]]} /></div>
-            <div className="field"><label htmlFor="af-wth">Próg (% portfela)</label>
+            <div className="field"><label>{S.direction}</label>
+              <Seg quiet label={S.weightDirection} value={kind === "weight_above" ? "above" : "below"} disabled={!!alert}
+                title={alert ? S.directionNewOnly : undefined} onChange={(v) => !alert && setAbove(v === "above")} items={[[S.above, "above"], [S.below, "below"]]} /></div>
+            <div className="field"><label htmlFor="af-wth">{S.thresholdPortfolio}</label>
               <input id="af-wth" className="num" inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} /></div>
           </div>
         )}
         {kind === "custom" && (
-          <div className="field"><label htmlFor="af-expr">Wyrażenie</label>
+          <div className="field"><label htmlFor="af-expr">{S.expression}</label>
             <textarea id="af-expr" rows={2} value={expression} onChange={(e) => setExpression(e.target.value)} placeholder={scope === "portfolio" ? "cash_weight < 4%" : "weight > 10%"} /></div>
         )}
         <div className="frow">
-          <div className="field"><label>Typ</label>
-            <Seg quiet label="Typ" value={polarity} onChange={(v) => { polarityTouched.current = true; setPolarity(v); }} items={[["Szansa", "positive"], ["Ryzyko", "negative"], ["Neutralny", "neutral"]]} /></div>
-          <div className="field"><label>Waga</label>
-            <Seg quiet label="Waga" value={severity} onChange={setSeverity} items={[["Informacja", "info"], ["Do działania", "action"]]} /></div>
+          <div className="field"><label>{S.type}</label>
+            <Seg quiet label={S.type} value={polarity} onChange={(v) => { polarityTouched.current = true; setPolarity(v); }} items={[[S.chance, "positive"], [S.risk, "negative"], [S.neutral, "neutral"]]} /></div>
+          <div className="field"><label>{S.severity}</label>
+            <Seg quiet label={S.severity} value={severity} onChange={setSeverity} items={[[S.info, "info"], [S.action, "action"]]} /></div>
         </div>
-        <div className="field"><label htmlFor="af-title">Tytuł</label>
+        <div className="field"><label htmlFor="af-title">{S.title}</label>
           <input id="af-title" value={title} maxLength={120} onChange={(e) => { titleTouched.current = true; setTitle(e.target.value); }} /></div>
-        <div className="field"><label htmlFor="af-note">Notatka</label>
-          <textarea id="af-note" rows={2} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder="Dlaczego ten poziom?" /></div>
+        <div className="field"><label htmlFor="af-note">{S.note}</label>
+          <textarea id="af-note" rows={2} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder={S.notePlaceholder} /></div>
         <div className="frow">
-          <div className="field"><label htmlFor="af-cool">Cooldown</label>
+          <div className="field"><label htmlFor="af-cool">{S.cooldown}</label>
             <select id="af-cool" value={cooldown ?? ""} onChange={(e) => setCooldown(e.target.value ? Number(e.target.value) : null)}>
-              {COOLDOWNS.map(([l, v]) => <option key={l} value={v ?? ""}>{l}</option>)}
-              {cooldown != null && !COOLDOWNS.some(([, v]) => v === cooldown) && <option value={cooldown}>{plural(cooldown, "dzień", "dni", "dni")}</option>}
+              {COOLDOWNS.map((v) => <option key={v ?? ""} value={v ?? ""}>{cooldownLabel(v)}</option>)}
+              {cooldown != null && !COOLDOWNS.includes(cooldown) && <option value={cooldown}>{S.days(cooldown)}</option>}
             </select></div>
-          <div className="field"><label htmlFor="af-exp">Wygasa</label>
+          <div className="field"><label htmlFor="af-exp">{S.expires}</label>
             <select id="af-exp" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
-              <option value="">nigdy</option>
+              <option value="">{S.never}</option>
               {[inDays(30), inDays(90), endOfYear(), inDays(365)].filter((d, i, a) => a.indexOf(d) === i).map((d) => <option key={d} value={d}>{dmy(d)}</option>)}
               {expiry && ![inDays(30), inDays(90), endOfYear(), inDays(365)].includes(expiry) && <option value={expiry}>{dmy(expiry)}</option>}
             </select></div>
@@ -496,10 +500,10 @@ export function AlertForm({ slug, alert, instruments, buckets, digestWeekday, pr
         {preview && <div className="preview" aria-live="polite">{preview}</div>}
         {err && <Notice tone="neg">{err}</Notice>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn primary" onClick={save} disabled={busy}>{busy ? "Zapisuję…" : alert ? "Zapisz" : "Utwórz"}</button>
-          {alert && <button className="btn" onClick={onCancel}>Anuluj</button>}
+          <button className="btn primary" onClick={save} disabled={busy}>{busy ? S.saving : alert ? C.save : S.create}</button>
+          {alert && <button className="btn" onClick={onCancel}>{C.cancel}</button>}
           <span className="spacer" style={{ flex: 1 }} />
-          <span className="sub">bez prognoz: tylko warunki na danych</span>
+          <span className="sub">{S.noForecasts}</span>
         </div>
       </div>
     </section>
@@ -526,10 +530,10 @@ function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; ale
     return "-";
   };
   const next = (s: SignalV2) => {
-    if (s.status === "active") return "sygnał otwarty";
-    if (s.status === "acknowledged") return `potwierdzony ${dm(s.acknowledged_at)}`;
-    if (s.status === "resolved") return `rozstrzygnięty ${dm(s.closed_at)}`;
-    if (s.status === "expired") return `wygasł ${dm(s.closed_at)}`;
+    if (s.status === "active") return S.signalOpen;
+    if (s.status === "acknowledged") return S.acknowledged(dm(s.acknowledged_at));
+    if (s.status === "resolved") return S.resolved(dm(s.closed_at));
+    if (s.status === "expired") return S.expired(dm(s.closed_at));
     return s.status;
   };
   const decision = (s: SignalV2) => {
@@ -537,24 +541,24 @@ function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; ale
     if (!d) return "-";
     const verb = DECISION_ACTION[d.action] ?? d.action;
     const qty = d.quantity != null && (d.action === "bought" || d.action === "sold") ? ` ${d.quantity}${d.price != null ? ` @ ${price(d.price, d.currency)}` : ""}` : "";
-    return `${verb}${qty}${d.reason ? ` · „${d.reason.length > 40 ? `${d.reason.slice(0, 38)}…` : d.reason}"` : ""}`;
+    return `${verb}${qty}${d.reason ? S.reasonQuoted(d.reason.length > 40 ? `${d.reason.slice(0, 38)}…` : d.reason) : ""}`;
   };
-  const title = (s: SignalV2) => byId.get(s.alert_id ?? -1)?.title ?? (typeof s.payload.title === "string" ? s.payload.title : s.instrument_label ?? "Alert");
+  const title = (s: SignalV2) => byId.get(s.alert_id ?? -1)?.title ?? (typeof s.payload.title === "string" ? s.payload.title : s.instrument_label ?? S.alert);
   const exportCsv = () => {
     // Formula prefixes in agent-written titles / reasons are neutralised (csv.ts, F7 FE16).
-    const lines = [csvLine(["data", "alert", "wartość", "typ", "źródło", "co dalej", "decyzja"]),
+    const lines = [csvLine(S.csvHeader),
       ...rows.map((s) => csvLine([localDay(s.first_seen_at) ?? "", title(s), value(s), s.polarity ?? "", byId.get(s.alert_id ?? -1)?.source ?? "", next(s), decision(s)]))];
     const url = URL.createObjectURL(new Blob([`﻿${lines.join("\n")}`], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
-    a.href = url; a.download = "alerty-historia.csv"; a.click();
+    a.href = url; a.download = S.csvFile; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
-    <Widget title="Historia" count={`12 mies. · ${rows.length}`} controls={rows.length ? <button className="lnk" onClick={exportCsv}>eksport CSV</button> : undefined} body="flush tight">
-      {!signals ? <div style={{ padding: "0 16px" }}><Skeleton h={80} /></div> : !rows.length ? <div className="empty">Brak spełnionych alertów.</div> : (
+    <Widget title={S.history} count={S.historyCount(rows.length)} controls={rows.length ? <button className="lnk" onClick={exportCsv}>{S.exportCsv}</button> : undefined} body="flush tight">
+      {!signals ? <div style={{ padding: "0 16px" }}><Skeleton h={80} /></div> : !rows.length ? <div className="empty">{S.noneMet}</div> : (
         <div className="scroll">
           <table>
-            <thead><tr><th>Data</th><th>Alert</th><th className="num">Wartość</th><th>Typ</th><th>Źródło</th><th>Co dalej</th><th>Decyzja</th></tr></thead>
+            <thead><tr><th>{S.colDate}</th><th>{S.colAlert}</th><th className="num">{S.colValue}</th><th>{S.colType}</th><th>{S.colSource}</th><th>{S.colNext}</th><th>{S.colDecision}</th></tr></thead>
             <tbody>
               {rows.map((s) => {
                 const a = byId.get(s.alert_id ?? -1);
@@ -564,7 +568,7 @@ function TriggeredHistory({ signals, alerts }: { signals: SignalV2[] | null; ale
                     <td>{title(s)}</td>
                     <td className="num">{value(s)}</td>
                     <td><PolarityText polarity={s.polarity ?? "neutral"} /></td>
-                    <td>{a?.source === "agent" ? <AgentTag /> : a ? <span className="muted">ty</span> : <span className="muted">usunięty</span>}</td>
+                    <td>{a?.source === "agent" ? <AgentTag /> : a ? <span className="muted">{S.you}</span> : <span className="muted">{S.deleted}</span>}</td>
                     <td>{next(s)}</td>
                     <td className={s.decisions.length ? undefined : "muted"}>{decision(s)}</td>
                   </tr>

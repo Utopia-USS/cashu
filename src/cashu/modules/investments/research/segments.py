@@ -4,7 +4,7 @@ segment of each instrument and the automatic assignment of well-known funds. Pur
 An instrument's segment is per profile (``inv_profile_instruments.segment``, set by the owner or the
 research agent, ``segment_by``; the agent never changes the owner's choice); without one,
 :func:`auto_segment` guesses from the asset class and a table of well-known fund symbols; otherwise it has none (the attribution shows it as ``unassigned``). Order of
-:data:`SEGMENTS` is the UI tie-break. Labels are Polish (UI data). A third group, :data:`MACRO_SEGMENTS`
+:data:`SEGMENTS` is the UI tie-break. Labels are Polish (UI data; MCP) with English ``label_en``. A third group, :data:`MACRO_SEGMENTS`
 (P6), holds the macro regime cards as segment-note targets only.
 """
 
@@ -13,6 +13,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Literal
+
+from cashu.core.i18n import tr
 
 from ..domain import AliasNamespace, AssetClass, Instrument
 
@@ -29,41 +31,49 @@ class Segment:
     """Polish, UI."""
     group: str
     """``asset`` | ``sector``."""
+    label_en: str = ""
+    """English, UI (the frontend's ``SEGMENT_LABEL`` / macro card titles)."""
+
+    @property
+    def display_label(self) -> str:
+        """The label in the current UI language (``label`` stays Polish: MCP, matching)."""
+        return tr(pl=self.label, en=self.label_en or self.label)
 
 
 SEGMENTS: tuple[Segment, ...] = (
-    Segment("equity_global", "Akcje globalne", "asset"),
-    Segment("equity_pl", "Akcje polskie", "asset"),
-    Segment("equity_em", "Rynki wschodzące", "asset"),
-    Segment("bonds", "Obligacje i stopy", "asset"),
-    Segment("gold", "Złoto i górnicy", "asset"),
-    Segment("energy", "Ropa i gaz", "asset"),
-    Segment("power", "Energetyka: atom i OZE", "asset"),
-    Segment("metals", "Metale i ziemie rzadkie", "asset"),
-    Segment("crypto", "Krypto", "asset"),
-    Segment("real_estate", "Nieruchomości", "asset"),
-    Segment("semis_ai", "AI: chipy i centra danych", "sector"),
-    Segment("software", "AI i oprogramowanie", "sector"),
-    Segment("robotics", "Robotyka", "sector"),
-    Segment("healthcare", "Ochrona zdrowia", "sector"),
-    Segment("financials", "Płatności i finanse", "sector"),
-    Segment("consumer", "Konsumpcja", "sector"),
-    Segment("games_media", "Gry", "sector"),
-    Segment("industrials", "Przemysł i obronność", "sector"),
-    Segment("quantum", "Komputery kwantowe", "sector"),
+    Segment("equity_global", "Akcje globalne", "asset", "Global equities"),
+    Segment("equity_pl", "Akcje polskie", "asset", "Polish equities"),
+    Segment("equity_em", "Rynki wschodzące", "asset", "Emerging markets"),
+    Segment("bonds", "Obligacje i stopy", "asset", "Bonds and rates"),
+    Segment("gold", "Złoto i górnicy", "asset", "Gold and miners"),
+    Segment("energy", "Ropa i gaz", "asset", "Oil and gas"),
+    Segment("power", "Energetyka: atom i OZE", "asset", "Power: nuclear and renewables"),
+    Segment("metals", "Metale i ziemie rzadkie", "asset", "Metals and rare earths"),
+    Segment("crypto", "Krypto", "asset", "Crypto"),
+    Segment("real_estate", "Nieruchomości", "asset", "Real estate"),
+    Segment("semis_ai", "AI: chipy i centra danych", "sector", "AI: chips and data centers"),
+    Segment("software", "AI i oprogramowanie", "sector", "AI and software"),
+    Segment("robotics", "Robotyka", "sector", "Robotics"),
+    Segment("healthcare", "Ochrona zdrowia", "sector", "Healthcare"),
+    Segment("financials", "Płatności i finanse", "sector", "Payments and finance"),
+    Segment("consumer", "Konsumpcja", "sector", "Consumer"),
+    Segment("games_media", "Gry", "sector", "Games"),
+    Segment("industrials", "Przemysł i obronność", "sector", "Industrials and defense"),
+    Segment("quantum", "Komputery kwantowe", "sector", "Quantum computing"),
 )
 SEGMENT_KEYS: tuple[str, ...] = tuple(s.key for s in SEGMENTS)
 SEGMENT_GROUPS = ("asset", "sector")
 UNASSIGNED = "unassigned"
 UNASSIGNED_LABEL = "Bez tematu"
+UNASSIGNED_LABEL_EN = "No topic"
 """Pseudo row of the attribution for holdings without a segment (never a catalog key)."""
 
 MACRO_SEGMENTS: tuple[Segment, ...] = (
-    Segment("macro_risk", "Rynek akcji", "macro"),
-    Segment("macro_dollar", "Dolar", "macro"),
-    Segment("macro_em", "Rynki wschodzące", "macro"),
-    Segment("macro_commodities", "Surowce", "macro"),
-    Segment("macro_rates", "Obligacje i stopy", "macro"),
+    Segment("macro_risk", "Rynek akcji", "macro", "Stock market"),
+    Segment("macro_dollar", "Dolar", "macro", "Dollar"),
+    Segment("macro_em", "Rynki wschodzące", "macro", "Emerging markets"),
+    Segment("macro_commodities", "Surowce", "macro", "Commodities"),
+    Segment("macro_rates", "Obligacje i stopy", "macro", "Bonds and rates"),
 )
 """The macro regime cards as note targets (P6): a segment note may name one, an instrument never
 gets one (not in :data:`SEGMENTS`, never an attribution row). Labels = the regime card titles."""
@@ -150,12 +160,12 @@ def segment(key: str) -> Segment | None:
 
 
 def segment_label(key: str) -> str:
-    """The Polish label of ``key`` (``Bez tematu`` for the unassigned row, the key itself when
-    unknown, e.g. a key dropped from the catalog later)."""
+    """The label of ``key`` in the current UI language (``Bez tematu`` / ``No topic`` for the
+    unassigned row, the key itself when unknown, e.g. a key dropped from the catalog later)."""
     if key == UNASSIGNED:
-        return UNASSIGNED_LABEL
+        return tr(pl=UNASSIGNED_LABEL, en=UNASSIGNED_LABEL_EN)
     found = _BY_KEY.get(key) or _MACRO_BY_KEY.get(key)
-    return found.label if found is not None else key
+    return found.display_label if found is not None else key
 
 
 def segment_group(key: str) -> str | None:
@@ -224,9 +234,9 @@ def segment_of(
 
 def catalog() -> list[dict]:
     """The catalog as JSON rows (API / MCP)."""
-    return [{"segment": s.key, "label": s.label, "group": s.group} for s in SEGMENTS]
+    return [{"segment": s.key, "label": s.display_label, "group": s.group} for s in SEGMENTS]
 
 
 def macro_catalog() -> list[dict]:
     """The macro note targets as JSON rows (API / MCP), apart from the instrument catalog."""
-    return [{"segment": s.key, "label": s.label, "group": s.group} for s in MACRO_SEGMENTS]
+    return [{"segment": s.key, "label": s.display_label, "group": s.group} for s in MACRO_SEGMENTS]

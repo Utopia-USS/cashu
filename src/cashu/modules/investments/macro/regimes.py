@@ -28,6 +28,12 @@ drawdown of exactly -20 % computed in floating point is still ``<= -20 %``).
 
 States describe the present, never the future. ``meaning`` is one factual Polish sentence about the
 usual mechanism (UI tooltip), never a statement about a future price.
+
+Language: a :class:`Regime` keeps the Polish labels (``label``, ``state_label``, ``meaning``, metric
+``label``): they are its identity (the MCP allow-list, ``texts``' metric lookups) and the evaluation is
+cached across requests. The UI texts are rendered per request by :func:`display_label`,
+:func:`state_label`, :func:`display_state_label`, :func:`display_meaning`, :func:`metric_label` and
+:func:`format_metric` in the current language (``core.i18n``).
 """
 
 from __future__ import annotations
@@ -38,6 +44,8 @@ from bisect import bisect_right
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Literal
+
+from cashu.core.i18n import lang, tr
 
 from .series import USDPLN
 
@@ -84,8 +92,11 @@ RATES_MOVE = 0.40
 
 UNKNOWN = "unknown"
 UNKNOWN_LABEL = "brak danych"
+UNKNOWN_LABEL_EN = "no data"
 INVERTED = "inverted"
 INVERTED_SUFFIX = " · krzywa odwrócona"
+INVERTED_SUFFIX_EN = " · inverted curve"
+"""The inversion modifier (the frontend splits ``state_label`` on `` · `` and compares it)."""
 
 LABELS: dict[str, str] = {
     "risk": "Rynek akcji",
@@ -93,6 +104,13 @@ LABELS: dict[str, str] = {
     "em": "Rynki wschodzące",
     "commodities": "Surowce",
     "rates": "Obligacje i stopy",
+}
+LABELS_EN: dict[str, str] = {
+    "risk": "Stock market",
+    "dollar": "Dollar",
+    "em": "Emerging markets",
+    "commodities": "Commodities",
+    "rates": "Bonds and rates",
 }
 
 STATES: dict[str, dict[str, tuple[str, Tone]]] = {
@@ -126,6 +144,29 @@ STATES: dict[str, dict[str, tuple[str, Tone]]] = {
 }
 """Machine state -> (Polish label, tone) per regime. Tone colours the card; it describes, never
 advises (the dollar has none: its direction is not good or bad per se)."""
+
+STATES_EN: dict[str, dict[str, str]] = {
+    "risk": {
+        "bear": "bear market",
+        "correction": "correction",
+        "bull": "bull market",
+        "weak": "weakness",
+        "flat": "no trend",
+    },
+    "dollar": {"strong": "strengthening", "weak": "weakening", "flat": "no trend"},
+    "em": {
+        "leading": "stronger than the world",
+        "lagging": "weaker than the world",
+        "inline": "in line",
+    },
+    "commodities": {
+        "bull": "commodity bull market",
+        "bear": "commodity bear market",
+        "flat": "no trend",
+    },
+    "rates": {"rising": "yields rising", "falling": "yields falling", "stable": "yields stable"},
+}
+"""English state labels (the frontend's ``macro.strings.ts`` uses the same words)."""
 
 MEANINGS: dict[str, dict[str, str]] = {
     "risk": {
@@ -177,6 +218,58 @@ UNKNOWN_MEANING = "Za mało aktualnych notowań, by ustalić stan."
 INVERTED_MEANING = (
     "Krzywa jest odwrócona: bony 3-miesięczne dają więcej niż obligacje 10-letnie, co zwykle ciąży "
     "marżom banków i akcji kredytowej."
+)
+
+MEANINGS_EN: dict[str, dict[str, str]] = {
+    "risk": {
+        "bull": "Global stocks are above a rising 200-session average: a lasting uptrend usually "
+        "favors growth stocks and riskier markets.",
+        "weak": "Global stocks are below their 200-session average: a weaker trend usually weighs on "
+        "growth stocks and riskier markets.",
+        "correction": "Global stocks are 10-20% below their peak of the last year: falling prices "
+        "usually weigh on investor sentiment and riskier markets.",
+        "bear": "Global stocks are at least 20% below their peak of the last year: a bear market "
+        "usually weighs on all risky assets and favors safe bonds.",
+        "flat": "Global stocks are above their 200-session average, but the average is not rising: "
+        "the market has no clear trend.",
+    },
+    "dollar": {
+        "strong": "A strengthening dollar raises the value of USD assets in zloty and usually weighs "
+        "on emerging markets and dollar-priced commodities.",
+        "weak": "A weakening dollar lowers the value of USD assets in zloty and usually favors "
+        "emerging markets and dollar-priced commodities.",
+        "flat": "The dollar index has no clear trend: neither the six-month change nor the "
+        "200-session average points one way.",
+    },
+    "em": {
+        "leading": "Emerging market stocks have done better than global stocks for half a year: "
+        "such a lead usually goes with a weaker dollar and rising commodity prices.",
+        "lagging": "Emerging market stocks have done worse than global stocks for half a year: such "
+        "weakness usually goes with a strong dollar and falling commodity prices.",
+        "inline": "Emerging market stocks have done about as well as global stocks for half a year.",
+    },
+    "commodities": {
+        "bull": "A broad commodity basket is above its 200-session average and over 10% higher than "
+        "a year ago: rising commodity prices usually favor commodity companies and weigh on bonds "
+        "through inflation pressure.",
+        "bear": "A broad commodity basket is below its 200-session average and over 10% lower than "
+        "a year ago: falling commodity prices usually weigh on commodity and mining companies.",
+        "flat": "A broad commodity basket has no clear trend: neither a commodity bull nor a bear "
+        "market.",
+    },
+    "rates": {
+        "rising": "Higher yields raise the cost of money: they usually weigh on growth stock "
+        "valuations and long-term bond prices.",
+        "falling": "Lower yields lower the cost of money: they usually favor growth stock valuations "
+        "and long-term bond prices.",
+        "stable": "The 10-year US Treasury yield moved less than 0.40 pp in 3 months: the cost of "
+        "money is standing still.",
+    },
+}
+UNKNOWN_MEANING_EN = "Too few current prices to determine the state."
+INVERTED_MEANING_EN = (
+    "The curve is inverted: 3-month bills yield more than 10-year bonds, which usually weighs on "
+    "bank margins and lending."
 )
 
 
@@ -245,12 +338,14 @@ class Regime:
 
 
 # --------------------------------------------------------------------------- #
-# Formatting (pl-PL)
+# Formatting (pl-PL, en)
 # --------------------------------------------------------------------------- #
 
 
 def _number(value: float, decimals: int) -> str:
     text = f"{abs(value):,.{decimals}f}"
+    if lang() == "en":
+        return text
     return text.replace(",", " ").replace(".", ",")
 
 
@@ -262,17 +357,20 @@ def _signed(value: float, decimals: int) -> str:
 
 
 def format_metric(metric: Metric) -> str:
-    """The Polish text of a metric: ``+4,1 %``, ``-6,2 pp``, ``+45 bp``, ``98,4``, ``4,23 %``
-    (decimal comma, a sign on changes, never ``-0``)."""
+    """The text of a metric in the current language: ``+4,1 %``, ``-6,2 pp``, ``+45 bp``, ``98,4``,
+    ``4,23 %`` (Polish: decimal comma) / ``+4.1%``, ``-6.2 pp``, ``4.23%`` (English); a sign on
+    changes, never ``-0``."""
+    percent = tr(pl=" %", en="%")
     if metric.unit == "pct":
-        return f"{_signed(metric.value * 100, metric.decimals)} %"
+        return f"{_signed(metric.value * 100, metric.decimals)}{percent}"
     if metric.unit == "pp":
         return f"{_signed(metric.value, metric.decimals)} pp"
     if metric.unit == "bp":
         return f"{_signed(metric.value, 0)} bp"
     value = round(metric.value, metric.decimals)
     sign = "-" if value < 0 else ""
-    return f"{sign}{_number(value, metric.decimals)}{metric.suffix}"
+    suffix = percent if metric.suffix == " %" else metric.suffix
+    return f"{sign}{_number(value, metric.decimals)}{suffix}"
 
 
 # --------------------------------------------------------------------------- #
@@ -653,8 +751,58 @@ METRIC_LABELS: frozenset[str] = frozenset(
 )
 """Every metric label the regimes produce (the MCP ``market`` label allows exactly these)."""
 
+METRIC_LABELS_EN: dict[str, str] = {
+    "ACWI wobec 200 sesji": "ACWI vs 200 sessions",
+    "od szczytu": "from the peak",
+    "S&P 500 od szczytu": "S&P 500 from the peak",
+    "DXY": "DXY",
+    "6 mies.": "6 mo.",
+    "USD/PLN 6 mies.": "USD/PLN 6 mo.",
+    "EEM wobec ACWI 6 mies.": "EEM vs ACWI 6 mo.",
+    "EEM 6 mies.": "EEM 6 mo.",
+    "DBC 12 mies.": "DBC 12 mo.",
+    "wobec ACWI 12 mies.": "vs ACWI 12 mo.",
+    "USA 10 lat": "US 10-year",
+    "3 mies. zmiana": "3 mo. change",
+    "krzywa 10l-3m": "curve 10y-3m",
+}
+"""English display labels of :data:`METRIC_LABELS` (the Polish label stays the metric's identity)."""
+
 
 def state_label(key: str, state: str) -> str:
-    """The Polish label of a machine state (``brak danych`` for unknown)."""
+    """The label of a machine state in the current language (``brak danych`` / ``no data`` for
+    unknown)."""
+    if lang() == "en":
+        return STATES_EN.get(key, {}).get(state, UNKNOWN_LABEL_EN)
     found = STATES.get(key, {}).get(state)
     return found[0] if found is not None else UNKNOWN_LABEL
+
+
+def display_label(key: str) -> str:
+    """The regime card's label in the current language."""
+    return tr(pl=LABELS, en=LABELS_EN)[key]
+
+
+def display_state_label(regime: Regime) -> str:
+    """The regime's ``state_label`` in the current language (with the inversion suffix)."""
+    text = state_label(regime.key, regime.state)
+    if INVERTED in regime.flags:
+        text += tr(pl=INVERTED_SUFFIX, en=INVERTED_SUFFIX_EN)
+    return text
+
+
+def display_meaning(regime: Regime) -> str:
+    """The regime's ``meaning`` in the current language (with the inverted-curve note)."""
+    if lang() != "en":
+        return regime.meaning
+    if regime.missing or regime.state == UNKNOWN:
+        return UNKNOWN_MEANING_EN
+    text = MEANINGS_EN[regime.key][regime.state]
+    return f"{text} {INVERTED_MEANING_EN}" if INVERTED in regime.flags else text
+
+
+def metric_label(metric: Metric) -> str:
+    """A metric's label in the current language."""
+    if lang() == "en":
+        return METRIC_LABELS_EN.get(metric.label, metric.label)
+    return metric.label

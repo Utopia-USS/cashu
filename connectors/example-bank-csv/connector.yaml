@@ -1,0 +1,16 @@
+# EXAMPLE catalog entry: a made-up bank's CSV statement -> cashU budget import JSON. It shows the
+# catalog layout and exercises the catalog test; there is no real "Przykladowy Bank".
+api_version: 1
+id: example-bank-csv
+name: Przykładowy Bank CSV (przykład)
+version: 1.0.0
+author: cashU examples
+maintainer: cashU core team
+last_verified: 2026-10-29
+description: PRZYKŁAD katalogu - wyciąg CSV zmyślonego Przykładowego Banku jako import budżetu. Nie dla prawdziwych danych.
+module: budget
+kind: file
+run: [python3, connector.py]
+timeout_s: 30
+file:
+  extensions: [csv]

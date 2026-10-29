@@ -6,7 +6,7 @@ Read: ``research_context`` (held and watched instruments with weights and market
 (entry type, invalidation, exit plan), thesis health and sentiment, the market segments with the
 week's / 4 weeks' move attribution, the macro regime cards (P6, public data: identical in both
 privacy modes) and their note keys, the strategy's candidate criteria, dismissed candidates in
-cooldown, known upcoming events, the last run, limits), ``research_notes(since?, segment?)``.
+cooldown, known upcoming events, the owner's last review agenda, the last run, limits), ``research_notes(since?, segment?)``.
 Write: ``start_research_run(scope)``, ``add_research_note(...)`` (schema-validated: sources with URL,
 publisher and date required, bounded lengths, no amounts / targets / sizes, no recommendation or price
 prediction, no paywall-bypass links; segment notes (market segments and ``macro_*`` regimes) short,
@@ -159,6 +159,8 @@ def _recommendation(inst: Any) -> dict:
 def _thesis(row) -> dict | None:
     if row is None:
         return None
+    from cashu.modules.investments.research.service import DRAFT_THESIS_PREFIXES
+
     return {
         "thesis_id": L.ref(row.id),
         "entry_type": L.category(row.entry_type),
@@ -166,7 +168,7 @@ def _thesis(row) -> dict | None:
         "invalidation": L.text(row.invalidation),
         "exit_plan": L.text(row.exit_plan),
         "size_plan": L.text(row.size_plan),
-        "draft": L.flag(row.reviewed_at is None and row.thesis.startswith("Szkic z researchu: ")),
+        "draft": L.flag(row.reviewed_at is None and row.thesis.startswith(DRAFT_THESIS_PREFIXES)),
         "updated_at": L.date(row.updated_at),
         "core_changed_at": L.date(row.core_changed_at or row.updated_at),
     }
@@ -231,6 +233,7 @@ def _note(row: dict, owned: set[int], ctx: ToolContext | None = None) -> dict:
             "scale": L.category(details.get("scale")),
             "event": L.text(details.get("event")),
             "event_date": L.date(details.get("event_date")),
+            "headline": L.text(details.get("headline")),
             "brief": _brief_out(details.get("brief")),
         },
         "sources": _sources_out(row.get("sources")),
@@ -531,6 +534,31 @@ def _macro(ctx: ToolContext) -> list[dict]:
 # --------------------------------------------------------------------------- #
 
 
+def _owner_review(ctx: ToolContext) -> dict | None:
+    """The owner's last weekly investments review: its note and the cards the owner sent to the agent
+    (swiped "wróć do tego" or with a note) in the review deck (``stats.deck.agenda``)."""
+    from cashu.core import reviews
+
+    row = reviews.last(ctx.session, ctx.profile_id, "investments")
+    if row is None:
+        return None
+    deck = (row.stats or {}).get("deck") or {}
+    agenda = deck.get("agenda") if isinstance(deck, dict) else None
+    return {
+        "done_at": L.date(row.done_at),
+        "notes": L.text(row.notes),
+        "agenda": [
+            {
+                "card": L.category(item.get("card")),
+                "title": L.text(item.get("title")),
+                "note": L.text(item.get("note")),
+            }
+            for item in (agenda if isinstance(agenda, list) else [])
+            if isinstance(item, dict)
+        ],
+    }
+
+
 def research_context(ctx: ToolContext) -> dict:
     from sqlmodel import select
 
@@ -690,6 +718,7 @@ def research_context(ctx: ToolContext) -> dict:
             for key, until in sorted(_topic_cooldowns(ctx).items())
         ],
         "upcoming_events": events[:30],
+        "owner_review": _owner_review(ctx),
         "last_run": _run(summary.get("last_run")),
         "last_done_run": _run(views.run_dict(s, service.latest_run(s, pid, status="done"), now)),
         "running_run_id": L.ref(running.id if running is not None else None),
@@ -994,8 +1023,9 @@ TOOLS = (
         "{headline, why, supports, risks} or null, since (null + "
         "since_open + since_min when the state began before the data), metrics as text, stale, missing, last_note_at, note_this_week; "
         "public data) and macro_catalog (their note keys); the strategy's entry types and "
-        "candidate criteria, open and dismissed (cooldown) candidates, known upcoming events, the "
-        "last run, limits (incl. the weekly novelty limits) and boundaries.",
+        "candidate criteria, open and dismissed (cooldown) candidates, known upcoming events, "
+        "owner_review (the owner's last weekly review: note and agenda = the review cards the owner "
+        "sent to the agent {card, title, note}; answer them in this run), the last run, limits (incl. the weekly novelty limits) and boundaries.",
         research_context,
     ),
     ToolSpec(

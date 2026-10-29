@@ -2,12 +2,14 @@
 // (no rule ids), alert distance to level, the alert form's default title and preview sentence, weekly change
 // from 30-day closes, re-entry gap, change-log grouping, performance facts. Pure; `npm test` imports it
 // (node strips the types; imports carry their .ts extension).
-import { ASSET_CLASS, bucketLabel, DECISION_ACTION, dm, GENERIC_BUCKET_IDS, isGenericBucket, micName, money, money0, pct, pctTarget, plural, pp, qty, REGION, txnType, WEEKDAY_INDEX } from "../labels.ts";
+import { ASSET_CLASS, bucketLabel, DECISION_ACTION, dm, GENERIC_BUCKET_IDS, isGenericBucket, micName, money, money0, pct, pctTarget, pp, qty, REGION, txnType, WEEKDAY_INDEX } from "../labels.ts";
 import { HEALTH_LABEL, isResearchKind, normHealth, normRelation, RELATION_LABEL, researchSignalText } from "./research/logic.ts";
 import type { HealthKey } from "./research/types.ts";
 import type { FreshReason, Hint, PlanFreshness } from "../api.ts";
 import { localDay, parseServerTime, serverDate } from "../../../time.ts";
 import { describePerfNote } from "../../../core/messages.ts";
+import { inEveryLang, intlLocale, lang } from "../../../i18n.ts";
+import { ALERT_KIND, BUCKET_FN as BUCKET_FN_L, DIR_WORD, FRESH, FRESH_REASON, HEALTH_LOC_L, INST_STATUS_L, PLAN_HELD_L, PLAN_WATCHED_L, RULE_KIND, S as T, STATE, STATE_HEAD_L } from "./logic.strings.ts";
 
 export type Polarity = "positive" | "negative" | "neutral";
 
@@ -63,10 +65,11 @@ export function isShownSignal(sig: Pick<SigLike, "kind" | "payload">): boolean {
   return sig.payload?.bucket_generic !== false && isGenericBucket(id);
 }
 
-/** Expression bucket functions over a non-generic bucket, shown as a Polish phrase instead of the call. */
-const BUCKET_FN: Record<string, string> = { bucket_weight: "waga koszyka", bucket_target: "cel koszyka", bucket_drift_pp: "dryf koszyka", bucket_value: "wartość koszyka" };
+/** Expression bucket functions over a non-generic bucket, shown as a phrase instead of the call. */
+const BUCKET_FN: Record<string, string> = BUCKET_FN_L;
 /** ASCII words that may follow "koszyk" in owner-written text and are never bucket ids. */
-const NOT_BUCKET_IDS = new Set(["na", "do", "od", "nad", "pod", "ponad", "w", "z", "i", "o", "za", "przy", "bez", "ma", "jest", "waga", "udzial", "akcji", "obligacji", "gotowki", "przekracza", "spada", "rosnie", "powyzej", "ponizej"]);
+const NOT_BUCKET_IDS = new Set(["na", "do", "od", "nad", "pod", "ponad", "w", "z", "i", "o", "za", "przy", "bez", "ma", "jest", "waga", "udzial", "akcji", "obligacji", "gotowki", "przekracza", "spada", "rosnie", "powyzej", "ponizej",
+  "is", "at", "of", "in", "to", "from", "over", "under", "above", "below", "weight", "share", "exceeds", "falls", "rises", "has"]);
 const ID_LIKE = /^[A-Za-z][A-Za-z0-9]*(?:[_.-][A-Za-z0-9]+)*$/;
 let labelWords: Set<string> | null = null;
 /** First words of the generic labels (`Akcje`, `Obligacje`, `ETF-y`, ...): already a label, never an id. */
@@ -82,7 +85,7 @@ export function unnameBuckets(text: string): string {
     .replace(/\b(bucket_(?:weight|target|drift_pp|value))\(\s*(["'])([^"']*)\2\s*\)/g, (m, fn: string, _q: string, id: string) => (isGenericBucket(id) ? m : BUCKET_FN[fn]))
     .replace(/\bbucket_id(\s*[!=]=\s*)(["'])([^"']*)\2/g, (m, op: string, q: string, id: string) => (isGenericBucket(id) || id === "…" ? m : `bucket_id${op}${q}…${q}`))
     .replace(/(["'])([^"']*)\1(\s*[!=]=\s*)bucket_id\b/g, (m, q: string, id: string, op: string) => (isGenericBucket(id) || id === "…" ? m : `${q}…${q}${op}bucket_id`))
-    .replace(/\b([Kk]oszyk) ([^\s:,;()"']+)(?=([:\s,;)]|$))/g, (m, kw: string, tok: string, next: string) => {
+    .replace(/\b([Kk]oszyk|[Bb]ucket) ([^\s:,;()"']+)(?=([:\s,;)]|$))/g, (m, kw: string, tok: string, next: string) => {
       if (isLabelWord(tok)) return m;
       const id = next === ":" || (ID_LIKE.test(tok) && !NOT_BUCKET_IDS.has(tok.toLowerCase()));
       if (!id) return m;
@@ -91,14 +94,10 @@ export function unnameBuckets(text: string): string {
     });
 }
 
-/** Rule kinds in Polish (a rule's strategy id never reaches the UI, FE-A A6). */
-export const RULE_KIND_LABEL: Record<string, string> = {
-  drawdown_from_high: "transza spadkowa", gain_from_cost: "zysk od kosztu", loss_from_cost: "strata od kosztu", allocation_drift: "dryf alokacji",
-  position_concentration: "koncentracja", contribution_gap: "brak wpłaty", cash_level: "poziom gotówki", tagged_weight: "udział tagów",
-  custom: "reguła własna", plan: "Rekomendacja",
-};
+/** Rule kinds in words (a rule's strategy id never reaches the UI, FE-A A6). */
+export const RULE_KIND_LABEL: Record<string, string> = RULE_KIND;
 export const ruleKindLabel = (kind: string | null | undefined): string =>
-  (kind ? RULE_KIND_LABEL[kind] ?? (isPlanKind(kind) ? RULE_KIND_LABEL.plan : kind.startsWith("alert:") ? "alert" : "reguła") : "reguła");
+  (kind ? RULE_KIND_LABEL[kind] ?? (isPlanKind(kind) ? RULE_KIND_LABEL.plan : kind.startsWith("alert:") ? T.alert : T.rule) : T.rule);
 /** Recommendation checks: `plan:plan_no_exit`, `plan:plan_vs_thesis` (the model output vs facts). */
 export const isPlanKind = (kind: string | null | undefined) => !!kind && kind.startsWith("plan:");
 
@@ -152,7 +151,7 @@ export function stateOf(pols: Polarity[]): SigState | null {
   return pols.includes("negative") ? "negative" : "neutral";
 }
 /** The glyph's title: `szansa` / `ryzyko` / `sygnał` / `szansa i ryzyko`. */
-export const STATE_LABEL: Record<SigState, string> = { positive: "szansa", negative: "ryzyko", neutral: "sygnał", mixed: "szansa i ryzyko" };
+export const STATE_LABEL: Record<SigState, string> = STATE;
 
 export interface SignalGroup<T> {
   key: string;
@@ -242,7 +241,7 @@ export function signalSubject(sig: SigLike, insts?: Map<number, { symbol?: strin
     const name = i ? instName(i) : s(sig.payload.name) ?? sig.instrument_label ?? "";
     return symbol ? instMono({ symbol, name, label: name }) : name || "Instrument";
   }
-  if (sig.kind === "allocation_drift") return bucketLabel(s(sig.payload.bucket_id)) ?? "Alokacja";
+  if (sig.kind === "allocation_drift") return bucketLabel(s(sig.payload.bucket_id)) ?? T.allocation;
   return signalText(sig).title;
 }
 
@@ -259,23 +258,23 @@ export function signalFact(sig: SigLike): SigFact {
   if (sig.kind.startsWith("alert:")) return alertFactOf(s(p.alert_kind) ?? sig.kind.slice("alert:".length), p);
   if (isPlanKind(sig.kind)) return planFact(sig);
   switch (sig.kind) {
-    case "drawdown_from_high": return { bold: pct(-(n(p.drawdown) ?? 0)), post: `od szczytu ${win(n(p.window_days) ?? 252)}` };
-    case "gain_from_cost": case "loss_from_cost": return { bold: signedPct(n(p.unrealized_pct)), post: "od kosztu" };
-    case "position_concentration": return { bold: pct(n(p.weight)), post: `portfela, maks ${pctTarget(n(p.max_weight))}` };
+    case "drawdown_from_high": return { bold: pct(-(n(p.drawdown) ?? 0)), post: T.fromHighWin(n(p.window_days) ?? 252) };
+    case "gain_from_cost": case "loss_from_cost": return { bold: signedPct(n(p.unrealized_pct)), post: T.fromCost };
+    case "position_concentration": return { bold: pct(n(p.weight)), post: `${T.ofPortfolio}, ${T.max(pctTarget(n(p.max_weight)))}` };
     case "allocation_drift": {
       const d = n(p.drift_pp) ?? 0;
-      return { bold: pp(d), post: `${d > 0 ? "nad celem" : "do celu"} ${pctTarget(n(p.target))}` };
+      return { bold: pp(d), post: T.driftSide(d > 0, pctTarget(n(p.target))) };
     }
     case "contribution_gap": {
       const last = s(p.last_deposit);
-      return last ? { pre: "ostatnia wpłata", bold: dm(last) } : { bold: "brak wpłat" };
+      return last ? { pre: T.lastContribution, bold: dm(last) } : { bold: T.noContributions };
     }
     case "cash_level": {
       const above = p.direction === "above_max";
-      return { pre: "gotówka", bold: pct(n(p.cash_weight)), post: above ? `, maks ${pctTarget(n(p.max_weight))}` : `, min ${pctTarget(n(p.min_weight))}` };
+      return { pre: T.cash, bold: pct(n(p.cash_weight)), post: above ? `, ${T.max(pctTarget(n(p.max_weight)))}` : `, ${T.min(pctTarget(n(p.min_weight)))}` };
     }
-    case "tagged_weight": return { bold: pct(n(p.weight)), post: `portfela, maks ${pctTarget(n(p.max_weight))}` };
-    default: return { pre: unnameBuckets(sig.message || "") || "Reguła własna", bold: "" };
+    case "tagged_weight": return { bold: pct(n(p.weight)), post: `${T.ofPortfolio}, ${T.max(pctTarget(n(p.max_weight)))}` };
+    default: return { pre: unnameBuckets(sig.message || "") || T.customRule, bold: "" };
   }
 }
 
@@ -287,35 +286,35 @@ export function planFact(sig: Pick<SigLike, "kind" | "payload" | "message">): Si
   const health = normHealth(s(p.health));
   if (check === "plan_no_exit") {
     const u = n(p.unrealized);
-    if (p.trigger === "fulfilled" || (p.trigger == null && health === "ful")) return { pre: "teza", bold: HEALTH_LABEL.ful, post: ", brak planu wyjścia" };
-    if (u != null) return { bold: signedPct(u), post: "od kosztu, brak planu wyjścia" };
+    if (p.trigger === "fulfilled" || (p.trigger == null && health === "ful")) return { pre: T.thesisPre, bold: HEALTH_LABEL.ful, post: T.noExitPlanTail };
+    if (u != null) return { bold: signedPct(u), post: T.vsCostNoExit };
   }
   if (check === "plan_vs_thesis" && s(p.plan) && planLabel(s(p.plan), true) && health) {
-    return { pre: "rekomendacja", bold: planLabel(s(p.plan), true), post: `, teza ${HEALTH_LABEL[health]}` };
+    return { pre: T.recommendationPre, bold: planLabel(s(p.plan), true), post: T.thesisHealth(HEALTH_LABEL[health]) };
   }
   return { pre: sig.message || "Plan", bold: "" };
 }
 
 /** `x` ratio with one decimal: 3.4 -> "3,4x". */
-export const ratioX = (v: number | null) => (v == null ? "-" : `${v.toLocaleString("pl-PL", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}x`);
+export const ratioX = (v: number | null) => (v == null ? "-" : `${v.toLocaleString(intlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}x`);
 
 function alertFactOf(kind: string, p: Record<string, unknown>): SigFact {
   const c = s(p.currency);
   switch (kind) {
     case "price_below": case "price_above":
-      return { pre: "cena", bold: price(n(p.close), c), post: `${kind === "price_below" ? "poniżej" : "powyżej"} ${price(n(p.level), c)}` };
-    case "change_pct": return { bold: signedPct(n(p.change)), post: `w ${n(p.window_days) ?? "-"} sesji` };
-    case "drawdown_from_high": return { bold: pct(-(n(p.drawdown) ?? 0)), post: `od szczytu ${win(n(p.window_days) ?? 252)}` };
-    case "new_high": return { pre: p.direction === "low" ? "nowy dołek" : "nowy szczyt", bold: price(n(p.close), c) };
-    case "sma_cross": return { bold: price(n(p.close), c), post: `${p.direction === "above" ? "nad" : "pod"} SMA ${n(p.window_days) ?? 200}` };
+      return { pre: T.price, bold: price(n(p.close), c), post: (kind === "price_below" ? T.below : T.above)(price(n(p.level), c)) };
+    case "change_pct": return { bold: signedPct(n(p.change)), post: T.inSessions(n(p.window_days) ?? "-") };
+    case "drawdown_from_high": return { bold: pct(-(n(p.drawdown) ?? 0)), post: T.fromHighWin(n(p.window_days) ?? 252) };
+    case "new_high": return { pre: p.direction === "low" ? T.newLow : T.newHigh, bold: price(n(p.close), c) };
+    case "sma_cross": return { bold: price(n(p.close), c), post: T.smaSide(p.direction === "above", n(p.window_days) ?? 200) };
     case "weight_above": case "weight_below":
-      return { bold: pct(n(p.weight)), post: `portfela, ${kind === "weight_above" ? "powyżej" : "poniżej"} ${pctTarget(n(p.threshold))}` };
+      return { bold: pct(n(p.weight)), post: `${T.ofPortfolio}, ${(kind === "weight_above" ? T.above : T.below)(pctTarget(n(p.threshold)))}` };
     case "range_breakout": {
       const b = n(p.breakout_pct);
-      return { pre: "wybicie", bold: breakoutPct(b), post: b != null && b < 0 ? `pod ${price(n(p.range_low), c)}` : `nad ${price(n(p.range_high), c)}` };
+      return { pre: T.breakout, bold: breakoutPct(b), post: b != null && b < 0 ? T.overUnder(false, price(n(p.range_low), c)) : T.overUnder(true, price(n(p.range_high), c)) };
     }
-    case "volume_spike": return { pre: "wolumen", bold: ratioX(n(p.ratio)), post: "średniej" };
-    default: return { pre: unnameBuckets(s(p.title) ?? "") || "Alert", bold: "" };
+    case "volume_spike": return { pre: T.volume, bold: ratioX(n(p.ratio)), post: T.ofAverage };
+    default: return { pre: unnameBuckets(s(p.title) ?? "") || T.alertWord, bold: "" };
   }
 }
 
@@ -323,10 +322,10 @@ function alertFactOf(kind: string, p: Record<string, unknown>): SigFact {
 
 export interface SigText { title: string; sym: string | null; lead?: string; bold?: string; tail?: string }
 
-const win = (days: number | null) => (days == null ? "" : days >= 250 ? "52 tyg." : `${days} sesji`);
+const win = (days: number | null) => T.win(days);
 const signedPct = (v: number | null) => (v == null ? "-" : pct(v, true));
 /** A breakout's size vs the range edge; under 0,05 % it would read "+0,0 %", so "tuż" (F8 review BE-7). */
-const breakoutPct = (v: number | null) => (v != null && Math.abs(v) < 0.0005 ? "tuż" : signedPct(v));
+const breakoutPct = (v: number | null) => (v != null && Math.abs(v) < 0.0005 ? T.breakoutJust : signedPct(v));
 
 /** Price with currency (2 decimals): "30,00 €", "148,60 zł". */
 export const price = (v: number | null | undefined, c?: string | null) => (v == null || !Number.isFinite(v) ? "-" : money(v, c || "PLN"));
@@ -349,20 +348,20 @@ export function signalText(sig: SigLike, ctx: { total?: number | null; base?: st
   if (isPlanKind(sig.kind)) {
     // Kind label first, like a rule's lead (`Plan · teza spełniona · brak planu wyjścia`, `Plan · dokup · teza osłabiona`).
     const f = planFact(sig);
-    const pre = f.pre && f.pre !== "rekomendacja" ? ` ${f.pre}` : "";
+    const pre = f.pre && f.pre !== T.recommendationPre ? ` ${f.pre}` : "";
     return { title: name || sig.message, sym, lead: `${RULE_KIND_LABEL.plan} ·${pre}`, bold: f.bold || undefined, tail: f.post ? f.post.replace(/^,\s*/, "· ") : undefined };
   }
   switch (sig.kind) {
     case "drawdown_from_high":
-      return { title: name, sym, lead: "transza spadkowa ·", bold: pct(-(n(p.drawdown) ?? 0)), tail: `od szczytu ${win(n(p.window_days) ?? 252)} · próg -${pctTarget(n(p.threshold))}` };
+      return { title: name, sym, lead: `${RULE_KIND.drawdown_from_high} ·`, bold: pct(-(n(p.drawdown) ?? 0)), tail: `${T.fromHighWin(n(p.window_days) ?? 252)} · ${T.threshold} -${pctTarget(n(p.threshold))}` };
     case "gain_from_cost":
-      return { title: name, sym, lead: "zysk od kosztu ·", bold: signedPct(n(p.unrealized_pct)), tail: `próg +${pctTarget(n(p.threshold))}` };
+      return { title: name, sym, lead: `${RULE_KIND.gain_from_cost} ·`, bold: signedPct(n(p.unrealized_pct)), tail: `${T.threshold} +${pctTarget(n(p.threshold))}` };
     case "loss_from_cost":
-      return { title: name, sym, lead: "strata od kosztu ·", bold: signedPct(n(p.unrealized_pct)), tail: `próg -${pctTarget(n(p.threshold))}` };
+      return { title: name, sym, lead: `${RULE_KIND.loss_from_cost} ·`, bold: signedPct(n(p.unrealized_pct)), tail: `${T.threshold} -${pctTarget(n(p.threshold))}` };
     case "position_concentration": {
       const w = n(p.weight), max = n(p.max_weight);
       const over = w != null && max != null && ctx.total ? (w - max) * ctx.total : null;
-      return { title: `Koncentracja: ${name}`, sym, bold: pct(w), tail: `portfela · maks ${pctTarget(max)}${over != null && over > 0 ? ` · ≈ ${money0(over, base)} nad limitem` : ""}` };
+      return { title: T.concentrationTitle(name), sym, bold: pct(w), tail: `${T.ofPortfolio} · ${T.max(pctTarget(max))}${over != null && over > 0 ? T.overLimit(money0(over, base)) : ""}` };
     }
     case "allocation_drift": {
       const drift = n(p.drift_pp) ?? 0, target = n(p.target);
@@ -370,55 +369,55 @@ export function signalText(sig: SigLike, ctx: { total?: number | null; base?: st
       const half = target != null && rel != null && rel > 0 ? Math.min(abs, rel * target * 100) : abs;
       const value = n(p.drift_value_base);
       // Only generic buckets reach the UI (isShownSignal); the fallback never names an id.
-      const bucket = bucketLabel(s(p.bucket_id)) ?? "Alokacja";
+      const bucket = bucketLabel(s(p.bucket_id)) ?? T.allocation;
       return {
-        title: drift > 0 ? `${bucket} poza pasmem` : `${bucket} poniżej celu`, sym: null, bold: pp(drift),
-        tail: `${drift > 0 ? "nad celem" : "do celu"} ${pctTarget(target)} · pasmo ±${pp(half).replace(/^\+/, "")}${value != null ? ` · ≈ ${money0(Math.abs(value), s(p.currency) ?? base)}` : ""}`,
+        title: drift > 0 ? T.outsideBand(bucket) : T.belowTarget(bucket), sym: null, bold: pp(drift),
+        tail: `${T.driftSide(drift > 0, pctTarget(target))} · ${T.band} ±${pp(half).replace(/^\+/, "")}${value != null ? ` · ≈ ${money0(Math.abs(value), s(p.currency) ?? base)}` : ""}`,
       };
     }
     case "contribution_gap": {
       const day = n(p.day_of_month), last = s(p.last_deposit);
-      return { title: "Brak wpłaty", sym: null, lead: last ? "ostatnia" : undefined, bold: last ? dm(last) : "brak wpłat", tail: `· plan: co miesiąc${day ? ` do ${day}.` : ""} (+${n(p.grace_days) ?? 10} dni)` };
+      return { title: T.noContribution, sym: null, lead: last ? T.last : undefined, bold: last ? dm(last) : T.noContributions, tail: T.contribPlan(day, n(p.grace_days) ?? 10) };
     }
     case "cash_level": {
       const above = p.direction === "above_max";
-      return { title: above ? "Za dużo gotówki" : "Za mało gotówki", sym: null, bold: pct(n(p.cash_weight)), tail: `portfela · ${above ? `maks ${pctTarget(n(p.max_weight))}` : `min ${pctTarget(n(p.min_weight))}`}` };
+      return { title: above ? T.tooMuchCash : T.tooLittleCash, sym: null, bold: pct(n(p.cash_weight)), tail: `${T.ofPortfolio} · ${above ? T.max(pctTarget(n(p.max_weight))) : T.min(pctTarget(n(p.min_weight)))}` };
     }
     case "tagged_weight":
-      return { title: `Udział: ${Array.isArray(p.tags) ? p.tags.join(", ") : "tagi"}`, sym: null, bold: pct(n(p.weight)), tail: `portfela · maks ${pctTarget(n(p.max_weight))}` };
+      return { title: T.shareTitle(Array.isArray(p.tags) ? p.tags.join(", ") : T.tags), sym: null, bold: pct(n(p.weight)), tail: `${T.ofPortfolio} · ${T.max(pctTarget(n(p.max_weight)))}` };
     default:
-      return { title: unnameBuckets(sig.message || "") || "Reguła własna", sym: null, tail: name || undefined };
+      return { title: unnameBuckets(sig.message || "") || T.customRule, sym: null, tail: name || undefined };
   }
 }
 
 function alertSignalText(sig: SigLike, name: string, sym: string | null): SigText {
   const p = sig.payload;
   const kind = s(p.alert_kind) ?? sig.kind.slice("alert:".length);
-  const title = name || unnameBuckets(s(p.title) ?? "") || "Alert";
+  const title = name || unnameBuckets(s(p.title) ?? "") || T.alertWord;
   const c = s(p.currency);
   switch (kind) {
     case "price_below":
     case "price_above":
-      return { title, sym, lead: kind === "price_below" ? "cena poniżej" : "cena powyżej", bold: price(n(p.level), c), tail: `· teraz ${price(n(p.close), c)}` };
+      return { title, sym, lead: kind === "price_below" ? T.priceBelow : T.priceAbove, bold: price(n(p.level), c), tail: `· ${T.now(price(n(p.close), c))}` };
     case "change_pct": {
       const ch = n(p.change);
-      return { title, sym, bold: signedPct(ch), tail: `w ${n(p.window_days) ?? "-"} sesji · próg ${p.direction === "down" ? "-" : p.direction === "up" ? "+" : "±"}${pctTarget(n(p.threshold))}` };
+      return { title, sym, bold: signedPct(ch), tail: `${T.inSessions(n(p.window_days) ?? "-")} · ${T.threshold} ${p.direction === "down" ? "-" : p.direction === "up" ? "+" : "±"}${pctTarget(n(p.threshold))}` };
     }
     case "drawdown_from_high":
-      return { title, sym, lead: "spadek od szczytu", bold: pct(-(n(p.drawdown) ?? 0)), tail: `· ${win(n(p.window_days))} · próg -${pctTarget(n(p.threshold))}` };
+      return { title, sym, lead: T.dropFromHigh, bold: pct(-(n(p.drawdown) ?? 0)), tail: `· ${win(n(p.window_days))} · ${T.threshold} -${pctTarget(n(p.threshold))}` };
     case "new_high":
-      return { title, sym, lead: "nowy szczyt", bold: price(n(p.close), c), tail: `· ${win(n(p.window_days))}` };
+      return { title, sym, lead: T.newHigh, bold: price(n(p.close), c), tail: `· ${win(n(p.window_days))}` };
     case "sma_cross":
-      return { title, sym, lead: `przecięcie SMA ${n(p.window_days) ?? ""} ${p.direction === "above" ? "w górę" : "w dół"} ·`, bold: price(n(p.close), c), tail: n(p.sma) != null ? `· SMA ${price(n(p.sma), c)}` : undefined };
+      return { title, sym, lead: T.smaCrossLead(n(p.window_days) ?? "", p.direction === "above"), bold: price(n(p.close), c), tail: n(p.sma) != null ? `· SMA ${price(n(p.sma), c)}` : undefined };
     case "range_breakout": {
       const b = n(p.breakout_pct);
-      return { title, sym, lead: `wybicie z konsolidacji ${n(p.window_days) ?? 30} sesji ·`, bold: breakoutPct(b), tail: b != null && b < 0 ? `pod ${price(n(p.range_low), c)}` : `nad ${price(n(p.range_high), c)}` };
+      return { title, sym, lead: `${T.breakoutFrom(n(p.window_days) ?? 30)} ·`, bold: breakoutPct(b), tail: b != null && b < 0 ? T.overUnder(false, price(n(p.range_low), c)) : T.overUnder(true, price(n(p.range_high), c)) };
     }
     case "volume_spike":
-      return { title, sym, lead: "wolumen", bold: ratioX(n(p.ratio)), tail: `średniej ${n(p.window_days) ?? 20} sesji · teraz ${price(n(p.close), c)}` };
+      return { title, sym, lead: T.volume, bold: ratioX(n(p.ratio)), tail: `${T.avgOfSessions(n(p.window_days) ?? 20)} · ${T.now(price(n(p.close), c))}` };
     case "weight_above":
     case "weight_below":
-      return { title: bucketLabel(s(p.bucket_id)) ?? title, sym, bold: pct(n(p.weight)), tail: `portfela · ${kind === "weight_above" ? "powyżej" : "poniżej"} ${pctTarget(n(p.threshold))}` };
+      return { title: bucketLabel(s(p.bucket_id)) ?? title, sym, bold: pct(n(p.weight)), tail: `${T.ofPortfolio} · ${(kind === "weight_above" ? T.above : T.below)(pctTarget(n(p.threshold)))}` };
     default:
       return { title: s(p.title) ?? title, sym, tail: s(p.title) && name ? name : undefined };
   }
@@ -446,28 +445,24 @@ export interface AlertLike {
   state?: { range_low?: number | string | null; range_high?: number | string | null; range_pct?: number | string | null; average_volume?: number | string | null } | null;
 }
 
-export const KIND_LABEL: Record<string, string> = {
-  price_above: "Cena powyżej", price_below: "Cena poniżej", change_pct: "Zmiana % w oknie", drawdown_from_high: "Spadek od szczytu",
-  new_high: "Nowy szczyt", sma_cross: "Przecięcie SMA", weight_above: "Waga powyżej", weight_below: "Waga poniżej", custom: "Własne wyrażenie",
-  range_breakout: "Wybicie z konsolidacji", volume_spike: "Skok wolumenu",
-};
-const DIR_WORD: Record<string, string> = { up: "w górę", down: "w dół", any: "w którąkolwiek stronę" };
+export const KIND_LABEL: Record<string, string> = ALERT_KIND;
+const DIR: Record<string, string> = DIR_WORD;
 
 /** Condition in words for the alert table: "cena poniżej poziomu", "zmiana w oknie", "waga koszyka powyżej". */
 export function alertConditionText(a: Pick<AlertLike, "kind" | "scope" | "params">): string {
   const p = a.params;
   switch (a.kind) {
-    case "price_below": return "cena poniżej poziomu";
-    case "price_above": return "cena powyżej poziomu";
-    case "change_pct": return `zmiana w oknie ${n(p.window_days) ?? "-"} sesji`;
-    case "drawdown_from_high": return `spadek od szczytu ${win(n(p.window_days) ?? 252)}`;
-    case "new_high": return `nowy szczyt ${win(n(p.window_days) ?? 252)}`;
-    case "sma_cross": return `przecięcie średniej ${n(p.window_days) ?? 200}-dniowej ${p.direction === "above" ? "w górę" : "w dół"}`;
-    case "weight_above": return a.scope === "bucket" ? "waga koszyka powyżej" : "waga powyżej";
-    case "weight_below": return a.scope === "bucket" ? "waga koszyka poniżej" : "waga poniżej";
-    case "range_breakout": return `wybicie z zakresu ${n(p.window_days) ?? 30} sesji (zakres do ${pctTarget(n(p.max_range_pct) ?? 0.08)})`;
-    case "volume_spike": return `wolumen ${ratioX(n(p.multiple) ?? 2.5)} średniej z ${n(p.window_days) ?? 20} sesji`;
-    case "custom": return `wyrażenie: ${s(p.expression) ? unnameBuckets(s(p.expression)!) : "-"}`;
+    case "price_below": return T.condPriceBelow;
+    case "price_above": return T.condPriceAbove;
+    case "change_pct": return T.condChange(n(p.window_days) ?? "-");
+    case "drawdown_from_high": return T.condDrawdown(n(p.window_days) ?? 252);
+    case "new_high": return T.newExtreme(false, n(p.window_days) ?? 252);
+    case "sma_cross": return T.condSma(n(p.window_days) ?? 200, p.direction === "above");
+    case "weight_above": return a.scope === "bucket" ? T.condBucketWeightAbove : T.condWeightAbove;
+    case "weight_below": return a.scope === "bucket" ? T.condBucketWeightBelow : T.condWeightBelow;
+    case "range_breakout": return T.condRange(n(p.window_days) ?? 30, pctTarget(n(p.max_range_pct) ?? 0.08));
+    case "volume_spike": return T.condVolume(ratioX(n(p.multiple) ?? 2.5), n(p.window_days) ?? 20);
+    case "custom": return T.condExpression(s(p.expression) ? unnameBuckets(s(p.expression)!) : "-");
     default: return a.kind;
   }
 }
@@ -482,7 +477,7 @@ export function alertLevelText(a: AlertLike): string | null {
     case "weight_above": case "weight_below": return pctTarget(n(p.threshold));
     case "range_breakout": {
       const lo = n(a.state?.range_low), hi = n(a.state?.range_high);
-      return lo != null && hi != null ? `zakres ${price(lo, c)}-${price(hi, c)}` : null;
+      return lo != null && hi != null ? T.range(price(lo, c), price(hi, c)) : null;
     }
     case "volume_spike": return ratioX(n(p.multiple));
     default: return null;
@@ -556,19 +551,19 @@ export function alertDistance(a: AlertLike): { text: string; fill: number; pp: b
 /** Default title from the condition ("CDR poniżej 140,00 zł", "KGHM -10 % w 30 sesji"). */
 export function alertDefaultTitle(kind: string, params: Record<string, unknown>, subject: string, currency?: string | null): string {
   const p = params;
-  const who = subject || "Portfel";
+  const who = subject || T.portfolio;
   switch (kind) {
-    case "price_below": return `${who} poniżej ${price(n(p.level), currency)}`;
-    case "price_above": return `${who} powyżej ${price(n(p.level), currency)}`;
-    case "change_pct": return `${who} ${p.direction === "up" ? "+" : p.direction === "down" ? "-" : "±"}${pctTarget(n(p.threshold))} w ${n(p.window_days) ?? "-"} sesji`;
-    case "drawdown_from_high": return `${who}: spadek ${pctTarget(n(p.threshold))} od szczytu`;
-    case "new_high": return `${who}: nowy szczyt ${win(n(p.window_days) ?? 252)}`;
-    case "sma_cross": return `${who}: SMA ${n(p.window_days) ?? 200} ${p.direction === "above" ? "w górę" : "w dół"}`;
-    case "weight_above": return `${who} powyżej ${pctTarget(n(p.threshold))}`;
-    case "weight_below": return `${who} poniżej ${pctTarget(n(p.threshold))}`;
-    case "range_breakout": return `${who}: wybicie z konsolidacji ${n(p.window_days) ?? 30} sesji`;
-    case "volume_spike": return `${who}: wolumen ${ratioX(n(p.multiple) ?? 2.5)} średniej`;
-    default: return `${who}: warunek własny`;
+    case "price_below": return `${who} ${T.below(price(n(p.level), currency))}`;
+    case "price_above": return `${who} ${T.above(price(n(p.level), currency))}`;
+    case "change_pct": return `${who} ${p.direction === "up" ? "+" : p.direction === "down" ? "-" : "±"}${pctTarget(n(p.threshold))} ${T.inSessions(n(p.window_days) ?? "-")}`;
+    case "drawdown_from_high": return `${who}: ${T.dropOf(pctTarget(n(p.threshold)))}`;
+    case "new_high": return `${who}: ${T.newExtreme(false, n(p.window_days) ?? 252)}`;
+    case "sma_cross": return `${who}: SMA ${n(p.window_days) ?? 200} ${p.direction === "above" ? DIR.up : DIR.down}`;
+    case "weight_above": return `${who} ${T.above(pctTarget(n(p.threshold)))}`;
+    case "weight_below": return `${who} ${T.below(pctTarget(n(p.threshold)))}`;
+    case "range_breakout": return `${who}: ${T.breakoutFrom(n(p.window_days) ?? 30)}`;
+    case "volume_spike": return `${who}: ${T.volume} ${ratioX(n(p.multiple) ?? 2.5)} ${T.ofAverage}`;
+    default: return `${who}: ${T.customCondition}`;
   }
 }
 
@@ -578,38 +573,39 @@ export function alertPreview(args: {
   polarity: string; severity: string; cooldown: number | null; digestWeekday?: string;
 }): string {
   const { kind, params: p, subject, currency } = args;
-  const who = subject || "portfela";
+  const who = subject || T.previewWho;
+  const now = args.now != null ? price(args.now, currency) : null;
   let when: string;
   switch (kind) {
-    case "price_below": when = `cena ${who} spadnie poniżej ${price(n(p.level), currency)}${args.now != null ? ` (teraz ${price(args.now, currency)})` : ""}`; break;
-    case "price_above": when = `cena ${who} wzrośnie powyżej ${price(n(p.level), currency)}${args.now != null ? ` (teraz ${price(args.now, currency)})` : ""}`; break;
-    case "change_pct": when = `kurs ${who} ${p.direction === "up" ? "wzrośnie" : p.direction === "down" ? "spadnie" : "zmieni się"} o co najmniej ${pctTarget(n(p.threshold))} w ${n(p.window_days) ?? "-"} sesjach`; break;
-    case "drawdown_from_high": when = `${who} będzie ${pctTarget(n(p.threshold))} poniżej szczytu z ${win(n(p.window_days) ?? 252)}`; break;
-    case "new_high": when = `${who} zamknie się na nowym szczycie z ${win(n(p.window_days) ?? 252)}`; break;
-    case "sma_cross": when = `cena ${who} przetnie średnią ${n(p.window_days) ?? 200}-dniową ${p.direction === "above" ? "w górę" : "w dół"}`; break;
-    case "weight_above": when = `udział ${who} w portfelu przekroczy ${pctTarget(n(p.threshold))}`; break;
-    case "weight_below": when = `udział ${who} w portfelu spadnie poniżej ${pctTarget(n(p.threshold))}`; break;
+    case "price_below": when = T.previewPriceBelow(who, price(n(p.level), currency), now); break;
+    case "price_above": when = T.previewPriceAbove(who, price(n(p.level), currency), now); break;
+    case "change_pct": when = T.previewChange(who, p.direction, pctTarget(n(p.threshold)), n(p.window_days) ?? "-"); break;
+    case "drawdown_from_high": when = T.previewDrawdown(who, pctTarget(n(p.threshold)), n(p.window_days) ?? 252); break;
+    case "new_high": when = T.previewNewHigh(who, n(p.window_days) ?? 252); break;
+    case "sma_cross": when = T.previewSma(who, n(p.window_days) ?? 200, p.direction === "above"); break;
+    case "weight_above": when = T.previewWeightAbove(who, pctTarget(n(p.threshold))); break;
+    case "weight_below": when = T.previewWeightBelow(who, pctTarget(n(p.threshold))); break;
     case "range_breakout":
-      return `Zadziała, gdy kurs ${who} wyjdzie ${DIR_WORD[String(p.direction ?? "any")] ?? DIR_WORD.any} poza zakres ostatnich ${n(p.window_days) ?? 30} sesji, o ile ten zakres był węższy niż ${pctTarget(n(p.max_range_pct) ?? 0.08)}.${tailOf(args)}`;
+      return T.previewRange(who, DIR[String(p.direction ?? "any")] ?? DIR.any, n(p.window_days) ?? 30, pctTarget(n(p.max_range_pct) ?? 0.08), tailOf(args));
     case "volume_spike":
-      return `Zadziała, gdy wolumen ${who} przekroczy ${ratioX(n(p.multiple) ?? 2.5)} średnią z ${n(p.window_days) ?? 20} sesji.${tailOf(args)}`;
-    default: when = `wyrażenie będzie prawdziwe dla ${who}`;
+      return T.previewVolume(who, ratioX(n(p.multiple) ?? 2.5), n(p.window_days) ?? 20, tailOf(args));
+    default: when = T.previewCustom(who);
   }
-  return `Zadziała, gdy ${when}.${tailOf(args)}`;
+  return T.previewWhen(when, tailOf(args));
 }
 
 /** The preview's second sentence: notification, the signal's column, the pause. */
 function tailOf(args: { polarity: string; severity: string; cooldown: number | null }): string {
-  const notify = args.severity === "action" ? "Powiadomienie od razu" : `Bez powiadomienia, w podsumowaniu tygodnia`;
-  const column = args.polarity === "positive" ? "„Szanse\"" : args.polarity === "negative" ? "„Ryzyka i przegląd\"" : "„Ryzyka i przegląd\" (neutralny)";
-  const pause = args.cooldown ? `, pauza ${plural(args.cooldown, "dzień", "dni", "dni")} po spełnieniu` : "";
-  return ` ${notify}, sygnał w ${column}${pause}.`;
+  const notify = args.severity === "action" ? T.notifyNow : T.notifyDigest;
+  const column = args.polarity === "positive" ? T.columnPositive : args.polarity === "negative" ? T.columnNegative : T.columnNeutral;
+  const pause = args.cooldown ? T.pause(args.cooldown) : "";
+  return T.previewTail(notify, column, pause);
 }
 
 /** "wygasa 31.12" / "do 1.11" suffix of an alert condition line. */
 export function alertWhenSuffix(a: Pick<AlertLike, "status" | "expires_at" | "snoozed_until">): string | null {
-  if (a.status === "snoozed" && a.snoozed_until) return `uśpiony do ${dm(a.snoozed_until)}`;
-  if (a.expires_at) return `wygasa ${dm(a.expires_at)}`;
+  if (a.status === "snoozed" && a.snoozed_until) return T.snoozedUntil(dm(a.snoozed_until));
+  if (a.expires_at) return T.expires(dm(a.expires_at));
   return null;
 }
 
@@ -693,16 +689,16 @@ export function alertState(a: AlertLike, near?: { pricePct?: number | null; pp?:
 function alertCondShort(a: AlertLike): string {
   const p = a.params, c = a.instrument?.currency;
   switch (a.kind) {
-    case "price_below": return `poniżej ${price(n(p.level), c)}`;
-    case "price_above": return `powyżej ${price(n(p.level), c)}`;
-    case "change_pct": return `${p.direction === "up" ? "+" : p.direction === "down" ? "-" : "±"}${pctTarget(n(p.threshold))} w ${n(p.window_days) ?? "-"} sesji`;
-    case "drawdown_from_high": return `spadek ${pctTarget(n(p.threshold))} od szczytu`;
-    case "new_high": return `${p.direction === "low" ? "nowy dołek" : "nowy szczyt"} ${win(n(p.window_days) ?? 252)}`;
-    case "sma_cross": return `${p.direction === "above" ? "nad" : "pod"} SMA ${n(p.window_days) ?? 200}`;
-    case "weight_above": return `powyżej ${pctTarget(n(p.threshold))}`;
-    case "weight_below": return `poniżej ${pctTarget(n(p.threshold))}`;
-    case "range_breakout": return `wybicie z konsolidacji ${n(p.window_days) ?? 30} sesji`;
-    case "volume_spike": return `wolumen ${ratioX(n(p.multiple) ?? 2.5)} średniej`;
+    case "price_below": return T.below(price(n(p.level), c));
+    case "price_above": return T.above(price(n(p.level), c));
+    case "change_pct": return `${p.direction === "up" ? "+" : p.direction === "down" ? "-" : "±"}${pctTarget(n(p.threshold))} ${T.inSessions(n(p.window_days) ?? "-")}`;
+    case "drawdown_from_high": return T.dropOf(pctTarget(n(p.threshold)));
+    case "new_high": return T.newExtreme(p.direction === "low", n(p.window_days) ?? 252);
+    case "sma_cross": return T.smaSide(p.direction === "above", n(p.window_days) ?? 200);
+    case "weight_above": return T.above(pctTarget(n(p.threshold)));
+    case "weight_below": return T.below(pctTarget(n(p.threshold)));
+    case "range_breakout": return T.breakoutFrom(n(p.window_days) ?? 30);
+    case "volume_spike": return `${T.volume} ${ratioX(n(p.multiple) ?? 2.5)} ${T.ofAverage}`;
     default: return unnameBuckets(a.title);
   }
 }
@@ -710,10 +706,10 @@ function alertCondShort(a: AlertLike): string {
 /** The icon's tooltip, never a state word: waiting `5,8 % do 140,00 zł · teraz 148,60 zł`; met `poniżej 140,00 zł
  * od 2.10`; no distance `teraz 486,10 zł`. */
 export function alertFact(a: AlertLike): string {
-  if (a.status === "triggered") return `${alertCondShort(a)}${a.last_triggered_at ? ` od ${dm(a.last_triggered_at)}` : ""}`;
+  if (a.status === "triggered") return `${alertCondShort(a)}${a.last_triggered_at ? T.since(dm(a.last_triggered_at)) : ""}`;
   const d = alertDistance(a), level = d?.level ?? alertLevelText(a), now = alertNowText(a);
-  if (d && level) return `${d.text} do ${level}${now ? ` · teraz ${now}` : ""}`;
-  return now ? `teraz ${now}` : alertCondShort(a);
+  if (d && level) return `${T.toLevel(d.text, level)}${now ? ` · ${T.now(now)}` : ""}`;
+  return now ? T.now(now) : alertCondShort(a);
 }
 
 const LIVE = (a: { status: string }) => a.status === "active" || a.status === "triggered";
@@ -768,8 +764,8 @@ export function weekChange(closes: { date: string; close: number }[] | null | un
  * (never a daily move under "tydz.", F7 FE8). */
 export function watchMove(closes: { date: string; close: number }[] | null | undefined, change1d: number | null | undefined): { value: number; label: string } | null {
   const wk = weekChange(closes);
-  if (wk != null) return { value: wk, label: "tydz." };
-  return change1d != null && Number.isFinite(change1d) ? { value: change1d, label: "1 d." } : null;
+  if (wk != null) return { value: wk, label: T.moveWeek };
+  return change1d != null && Number.isFinite(change1d) ? { value: change1d, label: T.moveDay } : null;
 }
 
 // ---- re-entry and change log ---------------------------------------------------------------------------
@@ -795,17 +791,15 @@ export function reentryBaseline(pending: string | null, lastSeen: string | null,
 
 /** "Wracasz po 11 tygodniach" / "po 4 miesiącach" / "po 25 dniach" (locative plural). */
 export function gapText(days: number): string {
-  if (days >= 91) return `Wracasz po ${Math.round(days / 30.4)} miesiącach`;
-  if (days >= 14) return `Wracasz po ${Math.round(days / 7)} tygodniach`;
-  return days === 1 ? "Wracasz po dniu" : `Wracasz po ${days} dniach`;
+  if (days >= 91) return T.gapMonths(Math.round(days / 30.4));
+  if (days >= 14) return T.gapWeeks(Math.round(days / 7));
+  return days === 1 ? T.gapDay : T.gapDays(days);
 }
 
 export interface EventLike { type: string; at: string; date: string; polarity?: string }
 
 const IMPORTANT = new Set(["signal_created", "alert_triggered", "signal_escalated", "import", "proposal", "deposit", "withdrawal"]);
 export const isImportant = (e: EventLike) => IMPORTANT.has(e.type);
-
-const MONTHS = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 
 /** Events newest first, grouped by calendar month ("Październik"; the year is added when it is not the
  * year of `today`). */
@@ -818,7 +812,7 @@ export function groupByMonth<T extends EventLike>(events: T[], today: string): {
     let g = out[out.length - 1];
     if (!g || g.key !== key) {
       const [y, m] = key.split("-").map(Number);
-      g = { key, label: `${MONTHS[m - 1] ?? key}${y !== year ? ` ${y}` : ""}`, items: [] };
+      g = { key, label: `${T.months[m - 1] ?? key}${y !== year ? ` ${y}` : ""}`, items: [] };
       out.push(g);
     }
     g.items.push(e);
@@ -905,11 +899,11 @@ export function contributionFacts(a: {
 /** An account's snapshot cell in the Alokacja `Rachunki` view: the date (or `brak`), the row's tooltip and the
  * warn flag (a snapshot older than 14 days while an import exists: `uzgodnij`). */
 export function accountSnapshot(a: { snapshot_date?: string | null; last_import?: { at: string } | null }, today: string): { cell: string; title: string; warn: boolean } {
-  const imp = a.last_import ? `import ${dm(a.last_import.at)}` : "bez importu";
-  if (!a.snapshot_date) return { cell: "brak", title: `bez snapshotu · ${imp}`, warn: false };
+  const imp = a.last_import ? T.imported(dm(a.last_import.at)) : T.noImport;
+  if (!a.snapshot_date) return { cell: T.none, title: T.noSnapshot(imp), warn: false };
   const age = Math.round((Date.parse(today) - Date.parse(a.snapshot_date)) / 86400000);
   const warn = age > 14 && !!a.last_import;
-  return { cell: dm(a.snapshot_date), title: `snapshot ${dm(a.snapshot_date)} · ${imp}${warn ? " · starszy niż 14 dni" : ""}`, warn };
+  return { cell: dm(a.snapshot_date), title: T.snapshot(dm(a.snapshot_date), imp, warn), warn };
 }
 
 /** The card's flow from the month close of one currency: what is left for investing after the cushion top-up
@@ -924,7 +918,7 @@ export function surplusFlow(close: { surplus: number; cushion_top_up: number; su
 
 /** Deposits per calendar month (positive flows) for the last `months` months ending at `today`'s month. */
 export function monthlyFlows(points: { date: string; flow: number | null }[], today: string, months = 12): { key: string; label: string; value: number }[] {
-  const short = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+  const short = T.monthsShort;
   const [y, m] = today.split("-").map(Number);
   const out: { key: string; label: string; value: number }[] = [];
   for (let i = months - 1; i >= 0; i--) {
@@ -1085,7 +1079,7 @@ export function heroBenchmark(
 ): { value: number; label: string } | null {
   if (!b || b.status !== "ok" || b.covers_range_end === false) return null;
   const name = benchmarkLabel(b);
-  if (b.simulation?.pnl != null && netContributions) return { value: b.simulation.pnl / netContributions, label: `${name}, te same wpłaty` };
+  if (b.simulation?.pnl != null && netContributions) return { value: b.simulation.pnl / netContributions, label: T.sameContributions(name) };
   return b.twr != null ? { value: b.twr, label: `${name}, TWR` } : null;
 }
 
@@ -1095,7 +1089,7 @@ export function staleBenchmark(
   b: { status: string; id?: string | null; covers_range_end?: boolean | null; last_priced?: string | null } | null | undefined,
 ): { label: string; title: string } | null {
   if (!b || b.status !== "ok" || b.covers_range_end !== false) return null;
-  return { label: "benchmark nieaktualny", title: `${benchmarkLabel(b)}: ceny do ${b.last_priced ? dm(b.last_priced) : "-"}` };
+  return { label: T.benchmarkStale, title: T.benchmarkPricesUntil(benchmarkLabel(b), b.last_priced ? dm(b.last_priced) : "-") };
 }
 
 // ---- performance caveats (F7 FE13) -------------------------------------------------------------------------
@@ -1133,8 +1127,8 @@ export interface InstLike {
 export const PLAN_VALUES = ["buy_asap", "buy", "hold", "reduce", "exit_asap"] as const;
 export type PlanValue = (typeof PLAN_VALUES)[number];
 /** Labels for a held instrument (spec table) and for a watched one (`reduce` / `exit_asap` are held only). */
-export const PLAN_HELD: Record<string, string> = { buy_asap: "dokup asap", buy: "dokup", hold: "trzymaj", reduce: "redukuj", exit_asap: "pozbądź się asap" };
-export const PLAN_WATCHED: Record<string, string> = { buy_asap: "kup asap", buy: "kup", hold: "czekam" };
+export const PLAN_HELD: Record<string, string> = PLAN_HELD_L;
+export const PLAN_WATCHED: Record<string, string> = PLAN_WATCHED_L;
 /** Recommendation values: all five for a held instrument, three for a watched one. */
 export const planOptions = (held: boolean): PlanValue[] => (held ? [...PLAN_VALUES] : ["buy_asap", "buy", "hold"]);
 /** The plan's label in the held / watched form; an unknown value (or a held-only one on a watched instrument) -> "". */
@@ -1160,45 +1154,43 @@ export function ringOf(health: HealthKey | null | undefined, stale: boolean): Ri
 // app's voice; the only imperatives are about the owner's own records. Unknown code -> "" (no chip, no row).
 
 const NBSP = " ";
-const int0 = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0 });
+let int0Fmt: { locale: string; f: Intl.NumberFormat } | null = null;
+const int0 = { format: (v: number) => { const locale = intlLocale(); if (int0Fmt?.locale !== locale) int0Fmt = { locale, f: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }) }; return int0Fmt.f.format(v); } };
 /** Fraction -> integer percent: `4.55 -> "+455 %"` (signed), `-0.272 -> "-27 %"`, `0.2 -> "20 %"`. */
 export function pct0(v: number | null | undefined, signed = false): string {
   if (v == null || !Number.isFinite(v)) return "";
   const p = Math.round(v * 100);
-  return `${signed && p > 0 ? "+" : p < 0 ? "-" : ""}${int0.format(Math.abs(p))}${NBSP}%`;
+  return `${signed && p > 0 ? "+" : p < 0 ? "-" : ""}${int0.format(Math.abs(p))}${lang() === "pl" ? NBSP : ""}%`;
 }
 /** The locative after `przy tezie`. */
-export const HEALTH_LOC: Record<string, string> = { weak: "osłabionej", weakened: "osłabionej", inv: "podważonej", invalidated: "podważonej" };
+export const HEALTH_LOC: Record<string, string> = HEALTH_LOC_L;
 const healthLoc = (v: unknown) => (typeof v === "string" ? HEALTH_LOC[v] ?? "" : "");
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const neg = (v: unknown): number | null => { const x = num(v); return x == null ? null : -Math.abs(x); };
 const withNum = (n: string, rest: string) => (n ? `${n}${rest}` : rest.replace(/^ · /, ""));
 
 /** Short words for the P3 reason codes (the recommendation hints' lines). */
-export const FRESH_REASON_SHORT: Record<string, string> = {
-  note_invalidates: "notatka podważa tezę", thesis_invalidated: "teza podważona", fulfilled_buy: "teza spełniona",
-  note_after: "nowe notatki", thesis_changed: "teza zmieniona", rule_fired: "reguła strategii", alert_triggered: "alert", age: "starsza niż 30 dni",
-};
+export const FRESH_REASON_SHORT: Record<string, string> = FRESH_REASON;
 const reasonList = (v: unknown) => (Array.isArray(v) ? v.map((c) => FRESH_REASON_SHORT[String(c)]).filter(Boolean).join(", ") : "");
 
 /** The chip (1-4 words) of a hint in the held / watched form; "" for an unknown code. */
 export function hintChip(h: Pick<Hint, "code" | "params">, held: boolean): string {
   const p = h.params ?? {};
   switch (h.code) {
-    case "recommendation_outdated": return "rekomendacja nieaktualna";
-    case "recommendation_maybe_outdated": return "sprawdź rekomendację"; // spec copy `rekomendacja do sprawdzenia` = 173 px, over the column
-    case "thesis_invalidated": return "teza podważona";
-    case "plan_vs_thesis": return "plan kontra teza";
-    case "thesis_fulfilled": return "teza spełniona";
-    case "gain_review": return withNum(pct0(num(p.gain), true), " · plan wyjścia");
-    case "loss_review": return withNum(pct0(neg(p.loss)), " · przegląd tezy");
-    case "drawdown_review": return pct0(neg(p.drawdown)) ? `${pct0(neg(p.drawdown))} od szczytu` : "spadek od szczytu";
-    case "concentration": return pct0(num(p.max_weight)) ? `ponad ${pct0(num(p.max_weight))}` : "koncentracja";
-    case "thesis_weakened": return "teza osłabiona";
-    case "no_thesis": return held ? "zapisz tezę" : "bez tezy";
-    case "no_exit_plan": return "bez planu wyjścia";
-    case "alert_triggered": return typeof p.title === "string" && p.title ? `alert: ${p.title}` : "alert spełniony";
-    case "plan_without_thesis": return "kup bez tezy";
+    case "recommendation_outdated": return T.recOutdated;
+    case "recommendation_maybe_outdated": return T.recCheckChip; // spec copy `rekomendacja do sprawdzenia` = 173 px, over the column
+    case "thesis_invalidated": return T.thesisInvalidated;
+    case "plan_vs_thesis": return T.planVsThesisChip;
+    case "thesis_fulfilled": return T.thesisFulfilled;
+    case "gain_review": return withNum(pct0(num(p.gain), true), T.exitPlanTail);
+    case "loss_review": return withNum(pct0(neg(p.loss)), T.thesisReviewTail);
+    case "drawdown_review": return pct0(neg(p.drawdown)) ? T.fromHigh(pct0(neg(p.drawdown))) : T.dropFromHigh;
+    case "concentration": return pct0(num(p.max_weight)) ? T.over(pct0(num(p.max_weight))) : T.concentration;
+    case "thesis_weakened": return T.thesisWeakened;
+    case "no_thesis": return held ? T.writeThesis : T.noThesis;
+    case "no_exit_plan": return T.noExitPlan;
+    case "alert_triggered": return typeof p.title === "string" && p.title ? T.alertTitled(p.title) : T.alertTriggered;
+    case "plan_without_thesis": return T.buyWithoutThesis;
     default: return "";
   }
 }
@@ -1209,34 +1201,34 @@ export function hintLine(h: Pick<Hint, "code" | "params">, held: boolean): strin
   const plan = planLabel(typeof p.plan === "string" ? p.plan : null, held);
   const exit = p.has_exit_plan === false;
   switch (h.code) {
-    case "recommendation_outdated": { const r = reasonList(p.reasons); return r ? `rekomendacja nieaktualna: ${r}` : "rekomendacja nieaktualna"; }
-    case "recommendation_maybe_outdated": { const r = reasonList(p.reasons); return r ? `rekomendacja do sprawdzenia: ${r}` : "rekomendacja do sprawdzenia"; }
-    case "thesis_invalidated": return held ? "zaszedł warunek unieważnienia tezy: zanotuj decyzję" : "zaszedł warunek unieważnienia tezy: zweryfikuj plan";
-    case "plan_vs_thesis": return `plan ${plan || "zakupu"} przy tezie ${healthLoc(p.health) || "osłabionej"}: popraw plan albo tezę`;
+    case "recommendation_outdated": { const r = reasonList(p.reasons); return r ? T.withReasons(T.recOutdated, r) : T.recOutdated; }
+    case "recommendation_maybe_outdated": { const r = reasonList(p.reasons); return r ? T.withReasons(T.recToCheck, r) : T.recToCheck; }
+    case "thesis_invalidated": return held ? T.invalidatedHeld : T.invalidatedWatched;
+    case "plan_vs_thesis": return T.planVsThesis(plan, healthLoc(p.health));
     case "thesis_fulfilled":
-      if (!held) return "teza spełniona bez pozycji: zweryfikuj plan";
-      return exit ? "teza spełniona, brak planu wyjścia: zapisz go" : "teza spełniona: sprawdź plan wyjścia";
+      if (!held) return T.fulfilledNoPosition;
+      return exit ? T.fulfilledNoExit : T.fulfilledCheckExit;
     case "gain_review": {
-      const lead = [`${pct0(num(p.gain), true) || "zysk"} od kosztu`, pct0(num(p.threshold)) ? `próg +${pct0(num(p.threshold))}` : null].filter(Boolean).join(", ");
-      return exit ? `${lead}, brak planu wyjścia: zapisz go` : `${lead}: sprawdź plan wyjścia`;
+      const lead = [T.vsCost(pct0(num(p.gain), true) || T.gain), pct0(num(p.threshold)) ? `${T.threshold} +${pct0(num(p.threshold))}` : null].filter(Boolean).join(", ");
+      return exit ? `${lead}${T.noExitWriteTail}` : `${lead}${T.checkExitTail}`;
     }
     case "loss_review": {
-      const lead = [`${pct0(neg(p.loss)) || "strata"} od kosztu`, pct0(neg(p.threshold)) ? `próg ${pct0(neg(p.threshold))}` : null].filter(Boolean).join(", ");
-      return `${lead}: czy teza jest aktualna?`;
+      const lead = [T.vsCost(pct0(neg(p.loss)) || T.loss), pct0(neg(p.threshold)) ? `${T.threshold} ${pct0(neg(p.threshold))}` : null].filter(Boolean).join(", ");
+      return `${lead}${T.thesisValidTail}`;
     }
     case "drawdown_review": {
-      const lead = [`${pct0(neg(p.drawdown)) || "spadek"} od szczytu`, pct0(neg(p.threshold)) ? `próg ${pct0(neg(p.threshold))}` : null].filter(Boolean).join(", ");
-      return `${lead}: czy teza jest aktualna?`;
+      const lead = [T.fromHigh(pct0(neg(p.drawdown)) || T.drop), pct0(neg(p.threshold)) ? `${T.threshold} ${pct0(neg(p.threshold))}` : null].filter(Boolean).join(", ");
+      return `${lead}${T.thesisValidTail}`;
     }
     case "concentration": {
       const w = num(p.weight), m = num(p.max_weight);
-      return `${w != null ? `${pct(w)} portfela` : "udział w portfelu"}${m != null ? `, limit ${pct0(m)}` : ""}: przegląd koncentracji`;
+      return `${w != null ? T.ofPortfolioPct(pct(w)) : T.portfolioShare}${m != null ? `, limit ${pct0(m)}` : ""}${T.concentrationReview}`;
     }
-    case "thesis_weakened": return "research osłabia tezę: przejrzyj notatki";
-    case "no_thesis": return held ? "pozycja bez zapisanej tezy: zapisz tezę i warunek unieważnienia" : "bez zapisanej tezy";
-    case "no_exit_plan": return "teza bez planu wyjścia: uzupełnij go";
-    case "alert_triggered": return typeof p.title === "string" && p.title ? `alert spełniony: ${p.title}. sprawdź tezę i plan` : "alert spełniony: sprawdź tezę i plan";
-    case "plan_without_thesis": return `plan ${plan || "zakupu"} bez tezy: najpierw zapisz tezę`;
+    case "thesis_weakened": return T.researchWeakens;
+    case "no_thesis": return held ? T.noThesisHeld : T.noWrittenThesis;
+    case "no_exit_plan": return T.thesisNoExit;
+    case "alert_triggered": return typeof p.title === "string" && p.title ? T.alertTriggeredTitled(p.title) : T.alertTriggeredCheck;
+    case "plan_without_thesis": return T.planWithoutThesis(plan);
     default: return "";
   }
 }
@@ -1255,29 +1247,19 @@ export type FreshKey = "maybe" | "out";
 export function freshOf(f: Pick<PlanFreshness, "state"> | null | undefined): FreshKey | null {
   return f?.state === "outdated" ? "out" : f?.state === "maybe_outdated" ? "maybe" : null;
 }
-export const FRESH_LABEL: Record<FreshKey, string> = { maybe: "może być nieaktualna", out: "nieaktualna" };
-
-const REL_VERB: Record<string, [string, string, string]> = {
-  invalidates: ["podważa", "podważają", "tezę"], weakens: ["osłabia", "osłabiają", "tezę"], fulfills: ["spełnia", "spełniają", "tezę"],
-  supports: ["wzmacnia", "wzmacniają", "tezę"],
-};
+export const FRESH_LABEL: Record<FreshKey, string> = FRESH;
 /** `notatka podważa tezę` / `3 notatki podważają tezę` / `5 notatek spełnia tezę` (Polish numeral agreement); for the
  * reasons whose notes share one relation (`note_invalidates`, `fulfilled_buy`). */
 export function notesVerb(count: number | null | undefined, relation: string | null | undefined): string {
-  const n = count && count > 1 ? count : 1;
-  const [one, many, obj] = REL_VERB[relation ?? ""] ?? ["dotyczy", "dotyczą", "tezy"];
-  if (n === 1) return `notatka ${one} ${obj}`;
-  const n10 = n % 10, n100 = n % 100;
-  const few = n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14);
-  return `${n} ${few ? "notatki" : "notatek"} ${few ? many : one} ${obj}`;
+  return T.notesVerb(count && count > 1 ? count : 1, relation ?? "");
 }
 
 /** `note_after` mixes relations (the BE sends the newest note's relation and the count of all): one note reads like
  * its chip (`notatka osłabia tezę`, `notatka nie dotyka tezy`), several read neutrally (`3 nowe notatki`). */
 export function noteAfterText(count: number | null | undefined, relation: string | null | undefined): string {
-  if (count && count > 1) return plural(count, "nowa notatka", "nowe notatki", "nowych notatek");
+  if (count && count > 1) return T.newNotes(count);
   const r = normRelation(relation);
-  return r === "none" ? "nowa notatka" : `notatka ${RELATION_LABEL[r]}`;
+  return r === "none" ? T.newNote : T.noteRelation(RELATION_LABEL[r]);
 }
 
 /** Context for the reason lines: the instrument's hints (rule thresholds) and its alerts (titles). */
@@ -1286,10 +1268,10 @@ export interface FreshCtx { hints?: Pick<Hint, "code" | "params">[] | null; aler
 function ruleReasonText(kind: string | null | undefined, ctx: FreshCtx): string {
   const p = (code: string) => (ctx.hints ?? []).find((h) => h.code === code)?.params ?? {};
   switch (kind) {
-    case "gain_from_cost": { const v = pct0(num(p("gain_review").threshold)); return v ? `+${v} od kosztu` : "zysk od kosztu"; }
-    case "loss_from_cost": { const v = pct0(neg(p("loss_review").threshold)); return v ? `${v} od kosztu` : "strata od kosztu"; }
-    case "drawdown_from_high": { const v = pct0(neg(p("drawdown_review").threshold)); return v ? `${v} od szczytu` : "spadek od szczytu"; }
-    case "position_concentration": { const v = pct0(num(p("concentration").max_weight)); return v ? `ponad ${v} portfela` : "koncentracja"; }
+    case "gain_from_cost": { const v = pct0(num(p("gain_review").threshold)); return v ? T.vsCost(`+${v}`) : RULE_KIND.gain_from_cost; }
+    case "loss_from_cost": { const v = pct0(neg(p("loss_review").threshold)); return v ? T.vsCost(v) : RULE_KIND.loss_from_cost; }
+    case "drawdown_from_high": { const v = pct0(neg(p("drawdown_review").threshold)); return v ? T.fromHigh(v) : T.dropFromHigh; }
+    case "position_concentration": { const v = pct0(num(p("concentration").max_weight)); return v ? T.overOfPortfolio(v) : T.concentration; }
     default: return ruleKindLabel(kind);
   }
 }
@@ -1301,14 +1283,14 @@ export function freshReasonText(r: FreshReason, ctx: FreshCtx = {}): string {
     case "note_invalidates": return notesVerb(r.count, r.relation ?? "invalidates");
     case "fulfilled_buy": return notesVerb(r.count, r.relation ?? "fulfills");
     case "note_after": return noteAfterText(r.count, r.relation);
-    case "thesis_invalidated": return "teza podważona";
-    case "thesis_changed": return "teza zmieniona";
+    case "thesis_invalidated": return FRESH_REASON.thesis_invalidated;
+    case "thesis_changed": return FRESH_REASON.thesis_changed;
     case "rule_fired": return ruleReasonText(r.kind, ctx);
     case "alert_triggered": {
       const a = (ctx.alerts ?? []).find((x) => x.id === r.alert_id);
-      return `alert: ${a?.title || (r.kind ? (KIND_LABEL[r.kind] ?? "spełniony").toLowerCase() : "spełniony")}`;
+      return T.alertReason(a?.title || (r.kind ? (KIND_LABEL[r.kind] ?? T.triggered).toLowerCase() : T.triggered));
     }
-    case "age": return "starsza niż 30 dni";
+    case "age": return FRESH_REASON.age;
     default: return "";
   }
 }
@@ -1346,7 +1328,7 @@ export function instMono(i: Pick<InstLike, "symbol" | "name" | "label">): string
 }
 
 /** Instrument status words (never the backend's raw status). */
-export const INST_STATUS: Record<string, string> = { frozen: "zamrożony", delisted: "wycofany z giełdy", inactive: "nieaktywny" };
+export const INST_STATUS: Record<string, string> = INST_STATUS_L;
 
 /** Options of the card and the touch title: accounts, the stale price date, and the owner state behind the tile's marks
  * (P1): whether the profile holds the instrument (label form; unknown = held), its thesis health from the research
@@ -1371,23 +1353,23 @@ export function instCardFacts(i: InstLike, o: InstFactsOpts = {}): { head: [stri
   const held = o.held !== false;
   const plan = planLabel(i.plan, held);
   const fresh = plan ? freshOf(i.plan_freshness) : null;
-  if (plan) rows.push(["rekomendacja", [plan, i.plan_at ? dm(i.plan_at) : null, fresh ? FRESH_LABEL[fresh] : null].filter(Boolean).join(" · ")]);
+  if (plan) rows.push([T.rowRecommendation, [plan, i.plan_at ? dm(i.plan_at) : null, fresh ? FRESH_LABEL[fresh] : null].filter(Boolean).join(" · ")]);
   if (o.health) {
-    const suffix = o.healthStale ? " · research nieaktualny" : o.pre ? " · research sprzed zmiany tezy" : "";
-    rows.push(["teza", `${HEALTH_LABEL[o.health]}${suffix}`]);
+    const suffix = o.healthStale ? T.researchStale : o.pre ? T.researchPre : "";
+    rows.push([T.rowThesis, `${HEALTH_LABEL[o.health]}${suffix}`]);
   }
   // P2: every hint the FE can word (the recommendation's own hints only when no `rekomendacja` row carries it).
   const hints = knownHints(o.hints, held).filter((h) => !plan || !h.code.startsWith("recommendation_"));
-  hints.forEach((h, k) => rows.push([k === 0 ? "strategia" : "", hintLine(h, held), `hv ${hintCls(h.severity)}`]));
-  if (cls) rows.push(["klasa", reg ? `${cls} · ${reg}` : cls]);
-  if (o.accounts?.length) rows.push([o.accounts.length > 1 ? "rachunki" : "rachunek", o.accounts.join(", ")]);
+  hints.forEach((h, k) => rows.push([k === 0 ? T.rowStrategy : "", hintLine(h, held), `hv ${hintCls(h.severity)}`]));
+  if (cls) rows.push([T.rowClass, reg ? `${cls} · ${reg}` : cls]);
+  if (o.accounts?.length) rows.push([o.accounts.length > 1 ? T.rowAccounts : T.rowAccount, o.accounts.join(", ")]);
   if (i.isin) rows.push(["ISIN", i.isin]);
   const status: string[] = [];
-  if (i.needs_classification) status.push("do sklasyfikowania");
-  if (i.valuation_mode === "cost") status.push("koszt + odsetki");
-  else if (i.valuation_mode === "manual") status.push("wycena ręczna");
-  if (o.stale) status.push(`cena z ${dm(o.stale)}`);
-  if (i.status && i.status !== "active") status.push(INST_STATUS[i.status] ?? "nieaktywny");
+  if (i.needs_classification) status.push(T.toClassify);
+  if (i.valuation_mode === "cost") status.push(T.costInterest);
+  else if (i.valuation_mode === "manual") status.push(T.manualValuation);
+  if (o.stale) status.push(T.priceFrom(dm(o.stale)));
+  if (i.status && i.status !== "active") status.push(INST_STATUS[i.status] ?? INST_STATUS.inactive);
   return { head: [instName({ label: i.label, name: i.name, symbol: i.symbol }), [i.symbol, micName(i.mic)].filter(Boolean).join(" · ")], rows, status };
 }
 
@@ -1397,14 +1379,14 @@ export function instSummary(i: InstLike, o: InstFactsOpts = {}): string {
   const f = instCardFacts(i, o);
   const plan = planLabel(i.plan, o.held !== false);
   const main = knownHints(o.hints, o.held !== false)[0];
-  return [f.head[1], ...f.rows.filter((r) => r[0] !== "rekomendacja" && r[0] !== "teza" && r.length === 2).map((r) => r[1]),
-    plan ? `rekomendacja: ${plan}` : null, o.health ? `teza: ${HEALTH_LABEL[o.health]}` : null,
-    main ? `strategia: ${hintChip(main, o.held !== false)}` : null].filter(Boolean).join(" · ");
+  return [f.head[1], ...f.rows.filter((r) => r[0] !== T.rowRecommendation && r[0] !== T.rowThesis && r.length === 2).map((r) => r[1]),
+    plan ? T.labeled(T.rowRecommendation, plan) : null, o.health ? T.labeled(T.rowThesis, HEALTH_LABEL[o.health]) : null,
+    main ? T.labeled(T.rowStrategy, hintChip(main, o.held !== false)) : null].filter(Boolean).join(" · ");
 }
 
 /** The Aktywa row's second line: `koszt + odsetki` and / or the single account in `Per rachunek`. */
 export function subLine(o: { cost: boolean; split: "total" | "account"; accounts: { account_id: number }[]; accLabel: (id: number) => string }): string | undefined {
-  return [o.cost ? "koszt + odsetki" : null, o.split === "account" && o.accounts.length === 1 ? o.accLabel(o.accounts[0].account_id) : null].filter(Boolean).join(" · ") || undefined;
+  return [o.cost ? T.costInterest : null, o.split === "account" && o.accounts.length === 1 ? o.accLabel(o.accounts[0].account_id) : null].filter(Boolean).join(" · ") || undefined;
 }
 
 // ---- asset detail v3 (F9, design/v3/asset-detail/asset-detail.md 3 + 7) -------------------------------------
@@ -1453,10 +1435,10 @@ export function latestThesis<T extends { id: number; created_at: string | null }
 export function headerMeta(o: { lots: number; txns: number | null; dividends: Record<string, number>; fees: number; currency: string }): HeaderMetaItem[] {
   const divs = Object.entries(o.dividends).filter(([, v]) => v);
   return [
-    { kind: "lots", text: o.lots ? plural(o.lots, "lot", "loty", "lotów") : "brak lotów", toggle: o.lots > 1 },
-    { kind: "txns", text: o.txns == null ? "transakcje" : plural(o.txns, "transakcja", "transakcje", "transakcji") },
-    { kind: "dividends", label: "dywidendy", value: divs.length ? divs.map(([k, v]) => money(v, k)).join(", ") : money(0, o.currency) },
-    { kind: "fees", label: "opłaty", value: money(o.fees, o.currency) },
+    { kind: "lots", text: o.lots ? T.lots(o.lots) : T.noLots, toggle: o.lots > 1 },
+    { kind: "txns", text: o.txns == null ? T.txnsLoading : T.txns(o.txns) },
+    { kind: "dividends", label: T.dividends, value: divs.length ? divs.map(([k, v]) => money(v, k)).join(", ") : money(0, o.currency) },
+    { kind: "fees", label: T.fees, value: money(o.fees, o.currency) },
   ];
 }
 
@@ -1469,7 +1451,7 @@ interface TlSignal extends SigLike { closed_at?: string | null }
 
 const isAck = (d: Pick<TlDecision, "action" | "reason">) => (d.action === "held" && d.reason === "acknowledged") || (d.reason ?? "").startsWith("decyzja: ");
 const linkedIds = (d: Pick<TlDecision, "signal_id" | "signal_ids">) => [...new Set([...(d.signal_ids ?? []), ...(d.signal_id != null ? [d.signal_id] : [])])];
-const STATE_HEAD: Record<Polarity, string> = { positive: "Szansa", negative: "Ryzyko", neutral: "Sygnał" };
+const STATE_HEAD: Record<Polarity, string> = STATE_HEAD_L;
 
 /** The timeline (7.3), newest first, at most `limit`: decisions (`Decyzja · dokupuję 10 szt. @ 44,80 $`, the
  * reason as `sub`), acknowledgements (`Potwierdzone · <fact>`; fan-out ones of a decision's minute fold into it),
@@ -1491,7 +1473,9 @@ export function assetTimeline(o: {
   const decisions = o.decisions.filter((d) => d.created_at);
   const real = decisions.filter((d) => !isAck(d));
   // The `decyzja: <tag>` tag a fan-out writes for a decision (decisionTag without the prefix).
-  const tagOf = (d: TlDecision) => `${DECISION_ACTION[d.action] ?? d.action}${d.quantity != null && (d.action === "bought" || d.action === "sold") ? ` ${qty(d.quantity)} szt.` : ""}`;
+  // The stored tag is in the language of the day it was written: match it in any language.
+  const sameTag = (d: TlDecision, tag: string) => inEveryLang(() => tagOf(d).replace(/\s+/g, " ")).includes(tag);
+  const tagOf = (d: TlDecision) => `${DECISION_ACTION[d.action] ?? d.action}${d.quantity != null && (d.action === "bought" || d.action === "sold") ? ` ${T.units(qty(d.quantity))}` : ""}`;
   const folded = new Map<number, string[]>();
   for (const d of decisions) {
     if (!isAck(d)) continue;
@@ -1502,29 +1486,29 @@ export function assetTimeline(o: {
       const t = at(d.created_at);
       const tag = (d.reason ?? "").slice("decyzja: ".length).replace(/\s+/g, " ").trim();
       const near = real.map((r) => ({ r, dt: Math.abs(at(r.created_at) - t) })).filter((x) => Number.isFinite(x.dt) && x.dt <= 60000)
-        .sort((x, y) => Number(tagOf(y.r).replace(/\s+/g, " ") === tag) - Number(tagOf(x.r).replace(/\s+/g, " ") === tag) || x.dt - y.dt);
+        .sort((x, y) => Number(sameTag(y.r, tag)) - Number(sameTag(x.r, tag)) || x.dt - y.dt);
       const host = near[0]?.r;
       if (host) { folded.set(host.id, [...(folded.get(host.id) ?? []), ...ids.map(factOf).filter((x): x is string => !!x)]); continue; }
     }
     const fact = ids.map(factOf).find(Boolean) ?? "";
-    out.push({ at: d.created_at!, dot: "neu", head: "Potwierdzone", fact, key: `a:${d.id}` });
+    out.push({ at: d.created_at!, dot: "neu", head: T.acknowledged, fact, key: `a:${d.id}` });
   }
   for (const d of real) {
     const trade = (d.action === "bought" || d.action === "sold") && d.quantity != null;
-    const fact = `${DECISION_ACTION[d.action] ?? d.action}${trade ? ` ${qty(d.quantity)} szt.${d.price != null ? ` @ ${money(d.price, d.currency ?? o.currency)}` : ""}` : ""}`;
+    const fact = `${DECISION_ACTION[d.action] ?? d.action}${trade ? ` ${T.units(qty(d.quantity))}${d.price != null ? ` @ ${money(d.price, d.currency ?? o.currency)}` : ""}` : ""}`;
     const reason = d.reason && d.reason !== "acknowledged" && !d.reason.startsWith("decyzja: ") ? d.reason : null;
     const facts = [...linkedIds(d).map(factOf).filter((x): x is string => !!x), ...(folded.get(d.id) ?? [])];
     const title = [reason, ...new Set(facts)].filter(Boolean).join("\n") || undefined;
-    out.push({ at: d.created_at!, dot: "nw", head: "Decyzja", fact, ...(reason ? { sub: reason } : {}), ...(title ? { title } : {}), key: `d:${d.id}` });
+    out.push({ at: d.created_at!, dot: "nw", head: T.decision, fact, ...(reason ? { sub: reason } : {}), ...(title ? { title } : {}), key: `d:${d.id}` });
   }
   for (const x of o.signals) {
     if (x.status !== "resolved" && x.status !== "expired") continue;
     const at = x.first_seen_at ?? x.closed_at ?? null;
     if (!at) continue;
-    out.push({ at, dot: "neu", head: STATE_HEAD[polarityOf(x)], fact: factText(signalFact(x)), ...(x.status === "expired" ? { tail: "wygasł" } : {}), title: longOf(x), key: `s:${x.id}` });
+    out.push({ at, dot: "neu", head: STATE_HEAD[polarityOf(x)], fact: factText(signalFact(x)), ...(x.status === "expired" ? { tail: T.expired } : {}), title: longOf(x), key: `s:${x.id}` });
   }
   for (const r of new Set(o.theses.map((t) => t.reviewed_at).filter((v): v is string => !!v))) {
-    out.push({ at: r, dot: "", head: "Przegląd tezy", fact: "", key: `r:${r}` });
+    out.push({ at: r, dot: "", head: T.thesisReview, fact: "", key: `r:${r}` });
   }
   for (const t of o.txns) {
     if (t.type !== "buy" && t.type !== "sell") continue;

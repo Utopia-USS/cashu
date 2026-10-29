@@ -3,8 +3,8 @@ name: investments-setup
 description: >
   Use when the user wants to set up investing in cashU, choose, write or revise their own investment strategy, or run a periodic review of signals and record decisions.
   Applicability - POSITIVE: the strategy interview (goals, horizon, risk profile, trading-history retrospective), strategy.md + strategy.yaml proposals and weekly / monthly / quarterly check-ins.
-  Applicability - NEGATIVE: NOT converting broker exports (import-builder), one custom rule (extension-builder) or market research and recommendations (market-research); never recommends instruments or trades.
-  Triggers: /investments-setup, "wywiad strategiczny", "ustawmy strategię inwestycyjną", "skonfiguruj inwestycje", "napiszmy strategię", "przegląd tygodniowy portfela", "check-in", "co z sygnałami", "zapisz decyzję".
+  Applicability - NEGATIVE: NOT the periodic review deck (review), converting broker exports (import-builder), one custom rule (extension-builder) or market research and recommendations (market-research); never recommends instruments or trades.
+  Triggers: /investments-setup, "wywiad strategiczny", "ustawmy strategię inwestycyjną", "skonfiguruj inwestycje", "napiszmy strategię", "check-in strategii", "check-in", "co z sygnałami", "zapisz decyzję".
 ---
 
 # investments-setup: strategy interview and check-ins

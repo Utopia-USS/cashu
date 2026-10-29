@@ -1,10 +1,11 @@
 // The assets first steps (design/v3/first-steps section 10), shared by the Majątek widget's empty form (compact)
 // and the `setup/assets` page: a position (done with any row), a vehicle with its curve (optional). Statuses come
 // from the rows (logic.ts assetSteps), not from the server.
-import { cur0s, plural } from "../../format";
+import { cur0s } from "../../format";
 import { SetupSteps, type SetupStepItem } from "../../ui";
 import type { ManualAsset } from "./api";
 import { assetSteps, monthlyLoss, ratePct, sumByCurrency } from "./logic";
+import { S } from "./Steps.strings.ts";
 
 type StepRow = Pick<ManualAsset, "name" | "balance" | "currency" | "kind" | "type" | "depreciation">;
 
@@ -14,18 +15,18 @@ export function assetStepItems(rows: StepRow[], base: string, onAdd: (type: stri
   const totals = sumByCurrency(rows, base).map(([c, v]) => cur0s(v, c)).join(" · ");
   return [
     {
-      key: "position", status: st.position, title: "Pozycja",
-      hint: st.position === "done" ? `${plural(rows.length, "pozycja", "pozycje", "pozycji")} · razem ${totals}` : "Mieszkanie, działka, inne aktywa: nazwa, wartość, waluta.",
+      key: "position", status: st.position, title: S.position,
+      hint: st.position === "done" ? S.positionsDone(rows.length, totals) : S.positionHint,
       actions: st.position === "done"
-        ? <button className="btn" onClick={() => onAdd("property")}>Dodaj kolejną</button>
-        : <button className="btn primary" onClick={() => onAdd("property")}>Dodaj pozycję</button>,
+        ? <button className="btn" onClick={() => onAdd("property")}>{S.addAnother}</button>
+        : <button className="btn primary" onClick={() => onAdd("property")}>{S.addPosition}</button>,
     },
     {
-      key: "vehicle", status: st.vehicle, title: "Auto", optional: true,
+      key: "vehicle", status: st.vehicle, title: S.vehicle, optional: true,
       hint: st.vehicle === "done"
-        ? vehicles.map((v) => `${v.name} · ${ratePct(v.depreciation!.annual_rate)} % / rok · -${cur0s(monthlyLoss(v.balance, v.depreciation) ?? 0, v.currency)} / mies.`).join(" · ")
-        : "Cena i data zakupu, roczny spadek; wartość liczy się sama.",
-      actions: <button className="btn" onClick={() => onAdd("vehicle")}>Dodaj auto</button>,
+        ? vehicles.map((v) => S.vehicleDone(v.name, ratePct(v.depreciation!.annual_rate), cur0s(monthlyLoss(v.balance, v.depreciation) ?? 0, v.currency))).join(" · ")
+        : S.vehicleHint,
+      actions: <button className="btn" onClick={() => onAdd("vehicle")}>{S.addVehicle}</button>,
     },
   ];
 }

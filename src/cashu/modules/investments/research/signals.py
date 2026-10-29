@@ -13,9 +13,10 @@ expired): dismissing the last one resolves it with ``payload.closed_reason = "no
 (restoring within the window reopens the same row), expiry resolves it with ``"notes_expired"``
 (housekeeping). ``note.signal_id`` remembers the signal a note created or joined.
 
-The signal message reaches the owner (macOS notification, signal list), so it is Polish, with the
-dashboard's labels for note kinds and thesis relations (frontend ``v2/research/logic.ts``):
-``Analiza (wiadomość, podważa tezę): <title>; siła 3/3, 2 źródła``.
+The signal message reaches the owner (macOS notification, signal list), so it is rendered in the UI
+language at generation time, with the dashboard's labels for note kinds and thesis relations (frontend
+``v2/research/logic.strings.ts``): ``Analiza (wiadomość, podważa tezę): <title>; siła 3/3, 2 źródła``
+(``Analysis (news, invalidates the thesis): <title>; strength 3/3, 2 sources``).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from dataclasses import dataclass
 
 from sqlmodel import Session, select
 
+from cashu.core.i18n import en_count, lang, tr
 from cashu.core.models import Profile
 
 from ..domain import SignalSeverity, SignalStatus, severity_rank
@@ -67,9 +69,29 @@ RELATION_LABEL = {
 """Polish labels of the thesis relations a message names (``RELATION_LABEL`` in v2/research/logic.ts);
 ``neutral`` / ``none`` are left out of the message."""
 
+KIND_LABEL_EN = {
+    "news": "news",
+    "earnings": "earnings",
+    "community": "community · noise",
+    "trend": "trend",
+    "macro": "macro",
+    "candidate": "candidate",
+}
+"""English labels of note kinds (``KIND_LABEL`` in v2/research/logic.strings.ts)."""
+
+RELATION_LABEL_EN = {
+    "invalidates": "invalidates the thesis",
+    "weakens": "weakens the thesis",
+    "supports": "supports the thesis",
+    "fulfills": "fulfills the thesis",
+}
+"""English labels of the thesis relations (``RELATION_LABEL`` in v2/research/logic.strings.ts)."""
+
 
 def sources_phrase(count: int) -> str:
-    """Polish plural: 1 źródło, 2-4 źródła (not 12-14), 0 / 5+ źródeł."""
+    """Polish plural: 1 źródło, 2-4 źródła (not 12-14), 0 / 5+ źródeł; English 1 source, 2 sources."""
+    if lang() == "en":
+        return en_count(count, "source", "sources")
     if count == 1:
         return "1 źródło"
     if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
@@ -82,10 +104,13 @@ def research_message(
 ) -> str:
     """The signal message of a lead note: ``Analiza (<kind>, <relation>): <title>; siła N/3, <sources>``
     (an unknown kind shows as is; a relation outside :data:`RELATION_LABEL` is left out)."""
-    label = KIND_LABEL.get(kind, kind)
-    relation_text = RELATION_LABEL.get(relation or "")
+    label = tr(pl=KIND_LABEL, en=KIND_LABEL_EN).get(kind, kind)
+    relation_text = tr(pl=RELATION_LABEL, en=RELATION_LABEL_EN).get(relation or "")
     head = f"{label}, {relation_text}" if relation_text else label
-    return f"Analiza ({head}): {title}; siła {strength}/3, {sources_phrase(sources)}"
+    return tr(
+        pl=f"Analiza ({head}): {title}; siła {strength}/3, {sources_phrase(sources)}",
+        en=f"Analysis ({head}): {title}; strength {strength}/3, {sources_phrase(sources)}",
+    )
 
 
 def aware(value: dt.datetime | None) -> dt.datetime | None:

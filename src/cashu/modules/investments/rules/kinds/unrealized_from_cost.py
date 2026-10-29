@@ -6,6 +6,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from cashu.core.i18n import tr
+
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
@@ -72,7 +74,7 @@ class _UnrealizedFromCostRule:
             problem = position.manual_problem or position.price_problem or position.cost_problem
             pct = position.unrealized_pct
             if problem is not None or pct is None:
-                outcomes.append(Skipped(spec.id, problem or "Brak wyniku niezrealizowanego", key))
+                outcomes.append(Skipped(spec.id, problem or _no_unrealized(), key))
                 continue
             value = position.market_value_base
             cost = position.cost_basis_base
@@ -94,12 +96,24 @@ class _UnrealizedFromCostRule:
                 outcomes.append(NotFired(spec.id, key, details))
                 continue
             if self.IS_LOSS:
-                message = (
-                    f"{position.label}: -{format_pct(-pct)} od kosztu "
-                    f"(próg -{format_pct(threshold)})."
+                message = tr(
+                    pl=(
+                        f"{position.label}: -{format_pct(-pct)} od kosztu "
+                        f"(próg -{format_pct(threshold)})."
+                    ),
+                    en=(
+                        f"{position.label}: -{format_pct(-pct)} from cost "
+                        f"(threshold -{format_pct(threshold)})."
+                    ),
                 )
             else:
-                message = f"{position.label}: +{format_pct(pct)} od kosztu (próg +{format_pct(threshold)})."
+                message = tr(
+                    pl=f"{position.label}: +{format_pct(pct)} od kosztu (próg +{format_pct(threshold)}).",
+                    en=(
+                        f"{position.label}: +{format_pct(pct)} from cost "
+                        f"(threshold +{format_pct(threshold)})."
+                    ),
+                )
             outcomes.append(
                 Fired(
                     SignalCandidate(
@@ -132,3 +146,7 @@ class GainFromCostRule(_UnrealizedFromCostRule):
     DEFAULT_POLARITY = SignalPolarity.POSITIVE  # a gain target met
     IS_LOSS = False
     MAX_THRESHOLD = None
+
+
+def _no_unrealized() -> str:
+    return tr(pl="Brak wyniku niezrealizowanego", en="No unrealized result")

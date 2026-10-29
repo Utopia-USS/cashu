@@ -2,22 +2,22 @@
 // `INV/research/segments.py`), the tolerant reading of `GET .../research/segments`, the contribution tone and
 // text, the diverging bar geometry, the row selection of the home / review column and the page widget, the sub
 // line and the tooltips. Pure; `npm test` imports it (imports carry .ts).
-import { dateParts, dm, pp } from "../../labels.ts";
+import { dateParts, dm, dmy, pp } from "../../labels.ts";
+import { lang } from "../../../../i18n.ts";
 import type { NoteSource, SegmentAttribution, SegmentInstrument, SegmentMember, SegmentNoteRef, SegmentRow, SegmentWindow, TopicBrief, TopicThesis } from "./types.ts";
+import { S, SEGMENT_LABEL } from "./segments.strings.ts";
 
 export type SegmentGroup = "asset" | "sector";
 
-export const SEGMENTS: { key: string; label: string; group: SegmentGroup }[] = [
-  { key: "equity_global", label: "Akcje globalne", group: "asset" }, { key: "equity_pl", label: "Akcje polskie", group: "asset" },
-  { key: "equity_em", label: "Rynki wschodzące", group: "asset" }, { key: "bonds", label: "Obligacje i stopy", group: "asset" },
-  { key: "gold", label: "Złoto i górnicy", group: "asset" }, { key: "energy", label: "Ropa i gaz", group: "asset" },
-  { key: "power", label: "Energetyka: atom i OZE", group: "asset" }, { key: "metals", label: "Metale i ziemie rzadkie", group: "asset" },
-  { key: "crypto", label: "Krypto", group: "asset" }, { key: "real_estate", label: "Nieruchomości", group: "asset" },
-  { key: "semis_ai", label: "AI: chipy i centra danych", group: "sector" }, { key: "software", label: "AI i oprogramowanie", group: "sector" },
-  { key: "robotics", label: "Robotyka", group: "sector" },
-  { key: "healthcare", label: "Ochrona zdrowia", group: "sector" }, { key: "financials", label: "Płatności i finanse", group: "sector" },
-  { key: "consumer", label: "Konsumpcja", group: "sector" }, { key: "games_media", label: "Gry", group: "sector" },
-  { key: "industrials", label: "Przemysł i obronność", group: "sector" }, { key: "quantum", label: "Komputery kwantowe", group: "sector" },
+/** Topic catalog (order and groups); `label` reads the current language (segments.strings.ts). */
+const seg = (key: keyof typeof SEGMENT_LABEL, group: SegmentGroup) => ({ key, get label() { return SEGMENT_LABEL[key]; }, group });
+export const SEGMENTS: { key: string; readonly label: string; group: SegmentGroup }[] = [
+  seg("equity_global", "asset"), seg("equity_pl", "asset"), seg("equity_em", "asset"), seg("bonds", "asset"),
+  seg("gold", "asset"), seg("energy", "asset"), seg("power", "asset"), seg("metals", "asset"),
+  seg("crypto", "asset"), seg("real_estate", "asset"),
+  seg("semis_ai", "sector"), seg("software", "sector"), seg("robotics", "sector"),
+  seg("healthcare", "sector"), seg("financials", "sector"), seg("consumer", "sector"), seg("games_media", "sector"),
+  seg("industrials", "sector"), seg("quantum", "sector"),
 ];
 /** Renamed keys still found in old URLs, notes or an older server payload. */
 export const LEGACY_KEYS: Record<string, string> = { uranium: "power" };
@@ -65,7 +65,7 @@ export function contribBars(values: number[], floor = BAR_FLOOR): { max: number;
   return { max, bars };
 }
 /** `wkład -0,8 pp · skala ±2,0 pp` (the scale is explained only here). */
-export const barTitle = (c: number, max: number) => `wkład ${ppOf(c)} · skala ±${pp(max * 100).replace(/^\+/, "")}`;
+export const barTitle = (c: number, max: number) => S.barTitle(ppOf(c), pp(max * 100).replace(/^\+/, ""));
 
 // ---- rows -------------------------------------------------------------------------------------------------
 
@@ -117,17 +117,17 @@ export const symbolsOf = (instruments: SegmentInstrument[], symOf: SymOf): strin
 /** Symbols of a row's instruments with a stale price; a row is marked when any is stale. */
 export const staleSymbols = (r: Pick<DisplayRow, "instruments">, stale: number[], symOf: SymOf): string[] =>
   r.instruments.filter((i) => stale.includes(i.instrument_id)).map((i) => instSymbol(i, symOf));
-export const staleTitle = (syms: string[]) => (syms.length ? `notowania nieaktualne: ${syms.join(", ")}` : undefined);
+export const staleTitle = (syms: string[]) => (syms.length ? S.staleQuotes(syms.join(", ")) : undefined);
 
 /** P7 (review LOW-2): one short line when the rows do not add up to the move (|residual| >= 0,1 pp): the gap comes
  * from transactions and position imports inside the window. Null otherwise. */
 export const residualLine = (d: Partial<Pick<SegmentAttribution, "residual">>): string | null =>
-  d.residual != null && ppTone(d.residual) !== "zero" ? `reszta ${ppOf(d.residual)}: transakcje i import pozycji` : null;
+  d.residual != null && ppTone(d.residual) !== "zero" ? S.residual(ppOf(d.residual)) : null;
 
 /** Home header tooltip: `1.10 - 8.10 · TWR portfela` (+ `· brak pełnej historii` without the portfolio move), plus the
  * residual line when it applies. */
 export const windowTitle = (d: Pick<SegmentAttribution, "start" | "end" | "portfolio_return"> & Partial<Pick<SegmentAttribution, "residual">>) =>
-  [`${dm(d.start)} - ${dm(d.end)} · TWR portfela${d.portfolio_return == null ? " · brak pełnej historii" : ""}`, residualLine(d)].filter(Boolean).join("\n");
+  [S.windowTitle(dm(d.start), dm(d.end), d.portfolio_return == null), residualLine(d)].filter(Boolean).join("\n");
 
 // ---- topics (P7 design 1.3) --------------------------------------------------------------------------------
 
@@ -181,7 +181,7 @@ export function withBriefs(rows: DisplayRow[], live: Pick<SegmentRow, "segment" 
 }
 /** Name tooltip of a row: `tylko obserwowane` (watched-only) / `nowa pozycja w tym oknie` (new). */
 export const kindTitle = (kind: TopicKind): string | undefined =>
-  kind === "watched" ? "tylko obserwowane" : kind === "new" ? "nowa pozycja w tym oknie" : undefined;
+  kind === "watched" ? S.watchedOnly : kind === "new" ? S.newInWindow : undefined;
 
 /** `held`: held at the window start or now (clickable to the asset); `member`: the BE member entry, when any. */
 export interface TopicSym { symbol: string; id: number | null; held: boolean; member?: SegmentMember }
@@ -221,10 +221,10 @@ export const thesisDraft = (t: Pick<TopicThesis, "draft"> | null | undefined): b
 export interface ViewSourceLink { href: string | null; text: string; title: string }
 export function viewSourceLink(s: NoteSource): ViewSourceLink {
   let who = (s.publisher || s.title || "").trim();
-  if (!who) { try { who = new URL(s.url).hostname.replace(/^www\./, ""); } catch { who = "źródło"; } }
+  if (!who) { try { who = new URL(s.url).hostname.replace(/^www\./, ""); } catch { who = S.source; } }
   const p = s.published_at ? dateParts(s.published_at) : null;
   const href = /^https?:\/\//i.test(s.url ?? "") ? s.url : null;
-  return { href, text: p ? `${who} · ${p.d}.${String(p.m).padStart(2, "0")}.${p.y}` : who, title: s.title || s.url || who };
+  return { href, text: p ? `${who} · ${lang() === "pl" ? `${p.d}.${String(p.m).padStart(2, "0")}.${p.y}` : dmy(s.published_at)}` : who, title: s.title || s.url || who };
 }
 
 /** P11 market view under a topic thesis (`Ocena teraz` / `Perspektywa`) with its cited sources; null when the
@@ -235,7 +235,7 @@ export function topicView(t: TopicThesis | null | undefined): { assessment: stri
   const names = [...new Set(list.map((s) => (s.publisher || s.title || "").trim()).filter(Boolean))];
   return {
     assessment: t.assessment ?? null, outlook: t.outlook ?? null, at: t.view_updated_at ?? null,
-    sources: list.map(viewSourceLink), publishers: names.length ? `Źródła: ${names.join(", ")}` : null,
+    sources: list.map(viewSourceLink), publishers: names.length ? S.sources(names.join(", ")) : null,
   };
 }
 

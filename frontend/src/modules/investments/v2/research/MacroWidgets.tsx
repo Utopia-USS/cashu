@@ -6,7 +6,7 @@
 import { useId } from "react";
 import { Skeleton } from "../../../../ui";
 import { Mark, Widget } from "../../../../widgets";
-import { dm, plural } from "../../labels";
+import { dm } from "../../labels";
 import { useMacro } from "./data";
 import {
   explainHead, explainText, hasExplain, historyTitle, macroAsOf, macroHeadline, macroNoteKey, macroNumber, sinceMonth, staleText, stateParts, toneCls,
@@ -14,6 +14,7 @@ import {
 import { Explain, useExplainDismiss } from "./primitives";
 import type { StripCtx } from "./Strip";
 import type { MacroChange, MacroRegime } from "./types";
+import { S } from "./MacroWidgets.strings.ts";
 
 type LineCtx = Pick<StripCtx, "slug" | "nonce" | "onOpenTopic">;
 
@@ -25,14 +26,14 @@ export function MacroColumn({ ctx }: { ctx: LineCtx }) {
   const asOf = macroAsOf(q.data);
   return (
     <div className="mcol">
-      <div className="rsec">Makro {asOf && <span className="cnt" title="ostatnia sesja w danych">· stan {dm(asOf)}</span>}</div>
+      <div className="rsec">{S.macro} {asOf && <span className="cnt" title={S.lastSession}>· {S.stateOn(dm(asOf))}</span>}</div>
       {q.data ? <MacroRows regimes={q.data.regimes} onOpen={ctx.onOpenTopic} /> : <Skeleton h={190} r={8} />}
     </div>
   );
 }
 
 export function MacroRows({ regimes, onOpen, wide }: { regimes: MacroRegime[]; onOpen: (noteKey: string) => void; wide?: boolean }) {
-  return <div className={`mrows${wide ? " wide" : ""}`} role="list" aria-label="Makro">{regimes.map((r) => <MacroRow key={r.key} r={r} onOpen={onOpen} />)}</div>;
+  return <div className={`mrows${wide ? " wide" : ""}`} role="list" aria-label={S.macro}>{regimes.map((r) => <MacroRow key={r.key} r={r} onOpen={onOpen} />)}</div>;
 }
 
 export function MacroRow({ r, onOpen }: { r: MacroRegime; onOpen: (noteKey: string) => void }) {
@@ -49,16 +50,16 @@ export function MacroRow({ r, onOpen }: { r: MacroRegime; onOpen: (noteKey: stri
       <div className="mh">
         <button className="t" aria-describedby={explain ? xid : undefined} onClick={() => onOpen(macroNoteKey(r.key))}>{r.label}</button>
         {r.missing
-          ? <b className="st off">brak danych</b>
+          ? <b className="st off">{S.noData}</b>
           : parts.map((p, i) => <b key={i} className={`st ${i === 0 ? tone : "warn"}`}>{p}</b>)}
-        {(since || stale) && <span className="since" title={hist ?? undefined}>{since}{since && stale ? " · " : ""}{stale && <span className="warn" title="ostatnie notowanie w danych">{stale}</span>}</span>}
+        {(since || stale) && <span className="since" title={hist ?? undefined}>{since}{since && stale ? " · " : ""}{stale && <span className="warn" title={S.lastQuote}>{stale}</span>}</span>}
         {num && <span className="since num" title={num.title}>{num.text}</span>}
-        {r.unread > 0 && <Mark kind="notes" title={plural(r.unread, "nowa notatka", "nowe notatki", "nowych notatek")} />}
+        {r.unread > 0 && <Mark kind="notes" title={S.nNewNotes(r.unread)} />}
       </div>
       <div className="bh" data-brief={b?.note_id}>{macroHeadline(r)}</div>
       {b?.why && <div className="bw">{b.why}</div>}
-      {b && b.supports.length > 0 && <BriefList k="Co sprzyja" items={b.supports} cls="sup" />}
-      {b && b.risks.length > 0 && <BriefList k="Na co uważać" items={b.risks} cls="rsk" />}
+      {b && b.supports.length > 0 && <BriefList k={S.supports} items={b.supports} cls="sup" />}
+      {b && b.risks.length > 0 && <BriefList k={S.risks} items={b.risks} cls="rsk" />}
       {explain && <Explain id={xid} head={explainHead(r)} tone={tone} text={explainText(r)!} metrics={r.missing ? [] : r.metrics} />}
     </div>
   );
@@ -81,7 +82,7 @@ export function MacroStrip({ ctx }: { ctx: LineCtx }) {
   if (!q.data?.regimes.length) return null;
   const asOf = macroAsOf(q.data);
   return (
-    <Widget title="Makro" id="inv-macro" body="tight" tags={asOf ? <span className="tag" title="ostatnia sesja w danych">stan {dm(asOf)}</span> : undefined}>
+    <Widget title={S.macro} id="inv-macro" body="tight" tags={asOf ? <span className="tag" title={S.lastSession}>{S.stateOn(dm(asOf))}</span> : undefined}>
       <MacroRows wide regimes={q.data.regimes} onOpen={ctx.onOpenTopic} />
     </Widget>
   );
@@ -93,7 +94,7 @@ export function MacroChanges({ changes, onOpen }: { changes: MacroChange[]; onOp
   if (!changes.length) return null;
   return (
     <>
-      <div className="rsec">Makro <span className="cnt">· {plural(changes.length, "zmiana", "zmiany", "zmian")}</span></div>
+      <div className="rsec">{S.macro} <span className="cnt">· {S.nChanges(changes.length)}</span></div>
       <MacroChangeRows changes={changes} onOpen={onOpen} />
     </>
   );
@@ -103,7 +104,7 @@ export function MacroChanges({ changes, onOpen }: { changes: MacroChange[]; onOp
 export function MacroChangesWidget({ changes, onOpen }: { changes: MacroChange[]; onOpen: (noteKey: string) => void }) {
   if (!changes.length) return null;
   return (
-    <Widget title="Makro" id="inv-review-macro" count={plural(changes.length, "zmiana", "zmiany", "zmian")} body="tight">
+    <Widget title={S.macro} id="inv-review-macro" count={S.nChanges(changes.length)} body="tight">
       <MacroChangeRows changes={changes} onOpen={onOpen} />
     </Widget>
   );
@@ -114,8 +115,8 @@ function MacroChangeRows({ changes, onOpen }: { changes: MacroChange[]; onOpen: 
     <>
       {changes.map((c) => (
         <div key={c.key} className="mchg">
-          <div className="v"><button className="nm" onClick={() => onOpen(macroNoteKey(c.key))}>{c.label}</button>: z {c.from_label} na <b>{c.to_label}</b></div>
-          {c.since && <span className="when">· od {dm(c.since)}</span>}
+          <div className="v"><button className="nm" onClick={() => onOpen(macroNoteKey(c.key))}>{c.label}</button>{S.fromTo(c.from_label)}<b>{c.to_label}</b></div>
+          {c.since && <span className="when">{S.since(dm(c.since))}</span>}
         </div>
       ))}
     </>

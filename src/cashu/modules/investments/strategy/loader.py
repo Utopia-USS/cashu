@@ -40,7 +40,16 @@ from cashu.modules.investments.rules.kind import MAX_UNVERIFIED_DAYS
 from cashu.modules.investments.rules.params import parse_currency
 
 from . import yaml_tree
-from .config import Benchmark, NotificationPolicy, StrategyConfig, WatchlistCriteria, Weekday
+from .config import (
+    REVIEW_CARDS,
+    REVIEW_EVERY,
+    Benchmark,
+    NotificationPolicy,
+    ReviewPolicy,
+    StrategyConfig,
+    WatchlistCriteria,
+    Weekday,
+)
 from .issues import InactiveRule, IssueSeverity, StrategyIssue, StrategyLoadResult
 
 TOP_LEVEL_KEYS = (
@@ -55,6 +64,7 @@ TOP_LEVEL_KEYS = (
     "watchlist",
     "benchmark",
     "notifications",
+    "review",
 )
 """Top-level keys of strategy.yaml, in documentation order."""
 
@@ -158,6 +168,7 @@ class _Parse:
         notifications = (
             self._section(root, "notifications", _read_notifications) or NotificationPolicy()
         )
+        review = self._section(root, "review", _read_review) or ReviewPolicy()
         if self._md is not None and not self._md.strip():
             self._issues.append(
                 StrategyIssue(
@@ -184,6 +195,7 @@ class _Parse:
                 watchlist=watchlist,
                 benchmark=benchmark if isinstance(benchmark, Benchmark) else None,
                 notifications=notifications,
+                review=review,
                 markdown=self._md,
             )
 
@@ -805,6 +817,55 @@ def _read_notifications(reader: ParamReader) -> NotificationPolicy:
                 f'Unknown weekday "{day}"{did_you_mean(day, days)}; allowed: {", ".join(days)}',
             )
     return NotificationPolicy(immediate=immediate, digest_weekday=weekday)
+
+
+REVIEW_NAME_MAX = 40
+
+
+def _read_review(reader: ParamReader) -> ReviewPolicy:
+    every = ReviewPolicy().every
+    raw = reader.optional_string("every")
+    if raw is not None:
+        allowed = list(REVIEW_EVERY)
+        if raw.strip().lower() in allowed:
+            every = raw.strip().lower()
+        else:
+            reader.errors.error(
+                "every",
+                f'Unknown review frequency "{raw}"{did_you_mean(raw, allowed)}; allowed: {", ".join(allowed)}',
+            )
+    day = None
+    raw = reader.optional_string("day")
+    if raw is not None:
+        days = [member.value for member in Weekday]
+        if raw.strip().lower() in days:
+            day = Weekday(raw.strip().lower())
+        else:
+            reader.errors.error(
+                "day", f'Unknown weekday "{raw}"{did_you_mean(raw, days)}; allowed: {", ".join(days)}'
+            )
+    name = reader.optional_string("name")
+    if name is not None:
+        name = name.strip() or None
+        if name is not None and len(name) > REVIEW_NAME_MAX:
+            reader.errors.error("name", f"review.name is longer than {REVIEW_NAME_MAX} characters")
+    cards = REVIEW_CARDS
+    if reader.has("cards"):
+        chosen: list[str] = []
+        for card in reader.strings("cards"):
+            key = card.strip().lower()
+            if key not in REVIEW_CARDS:
+                reader.errors.error(
+                    "cards",
+                    f'Unknown review card "{card}"{did_you_mean(card, list(REVIEW_CARDS))}; '
+                    f"allowed: {', '.join(REVIEW_CARDS)}",
+                )
+            else:
+                chosen.append(key)
+        if not chosen and not reader.errors.has_errors:
+            reader.errors.error("cards", "review.cards needs at least one card")
+        cards = tuple(chosen)
+    return ReviewPolicy(every=every, day=day, name=name, cards=cards)
 
 
 def _bucket_hint(bucket_id: str, bucket_ids: list[str]) -> str:

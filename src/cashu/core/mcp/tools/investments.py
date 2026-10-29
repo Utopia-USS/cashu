@@ -261,6 +261,84 @@ def freshness(ctx: ToolContext) -> dict:
     }
 
 
+CARD_GUIDE = {
+    "world": "history_metrics / portfolio_overview for the move, research_context.macro for why",
+    "sectors": "research_context.segments (contribution_1w, return_1w, briefs)",
+    "positions": "research_context.segments[].instruments (return_1w, contribution_1w)",
+    "events": "research_notes(since) with strength >= 2 or a thesis relation",
+    "decide": "signals (open, undecided), theses, pending proposals in profile_overview",
+    "ideas": "research_context.candidates.open",
+    "calendar": "calendar.events of this tool",
+}
+"""Where the agent finds each review card's facts (the app's review deck builds the same cards)."""
+
+
+def review_context(ctx: ToolContext) -> dict:
+    """The owner's review as the app shows it: the policy from strategy.yaml ``review:`` (name, how often,
+    weekday, cards in order), whether it is due, the period since the last review with its note and
+    agenda, and the market calendar of the next 14 days (public feeds, matched locally)."""
+    from cashu.core import reviews
+    from cashu.modules.investments.market import calendar
+    from cashu.modules.investments.service import strategy as strategy_files
+    from cashu.modules.investments.service.views import review_schedule
+    from cashu.modules.investments.store import convert
+    from cashu.modules.investments.strategy.config import ReviewPolicy
+
+    config = strategy_files.load(ctx.session, ctx.profile).config
+    policy = config.review if config is not None else ReviewPolicy()
+    weekday = policy.day or (config.notifications.digest_weekday if config is not None else None)
+    last = reviews.last(ctx.session, ctx.profile_id, "investments")
+    last_day = convert.aware(last.done_at).astimezone().date() if last is not None else None
+    due, next_on = review_schedule(
+        policy.every, weekday.iso_number if weekday is not None else 7, ctx.today, last_day
+    )
+    try:
+        cal = calendar.calendar_view(ctx.session, ctx.profile, today=ctx.today)
+    except Exception:  # noqa: BLE001 - the calendar is best effort; the review goes on without it
+        cal = {"stale": True, "events": []}
+    deck = ((last.stats or {}).get("deck") if last is not None else None) or {}
+    agenda = deck.get("agenda") if isinstance(deck, dict) else None
+    return {
+        "review": {
+            "name": L.text(policy.title),
+            "every": L.category(policy.every),
+            "day": L.category(weekday.value if weekday is not None else "sunday"),
+            "cards": [L.category(c) for c in policy.cards],
+            "due": L.flag(due),
+            "next_on": L.date(next_on),
+        },
+        "since": L.date(last_day or ctx.today - dt.timedelta(days=7)),
+        "last_review": None
+        if last is None
+        else {
+            "done_at": L.date(last.done_at),
+            "notes": L.text(last.notes),
+            "agenda": [
+                {"card": L.category(a.get("card")), "note": L.text(a.get("note"))}
+                for a in (agenda if isinstance(agenda, list) else [])
+                if isinstance(a, dict)
+            ],
+        },
+        "card_sources": {key: L.text(text) for key, text in CARD_GUIDE.items()},
+        "calendar": {
+            "stale": L.flag(cal.get("stale")),
+            "events": [
+                {
+                    "date": L.date(e["date"]),
+                    "time": L.text(e.get("time")),
+                    "kind": L.category(e["kind"]),
+                    "title": L.text(e["title"]),
+                    "country": L.category(e.get("country_label")),
+                    "instrument_id": L.ref(e.get("instrument_id")),
+                    "label": L.symbol(e.get("label")),
+                    "held": L.flag(e.get("held")),
+                }
+                for e in cal.get("events") or []
+            ],
+        },
+    }
+
+
 def review_stats(ctx: ToolContext) -> dict[str, int]:
     return investments_review_stats(ctx.session, ctx.profile_id)
 
@@ -1252,6 +1330,17 @@ TOOLS = (
         properties={
             "status": {"type": "string", "enum": ["open", "history", "all"], "default": "open"}
         },
+    ),
+    ToolSpec(
+        "review_context",
+        "investments",
+        "The owner's periodic review (strategy.yaml review:): name, every (week | 2weeks | month), day, "
+        "cards in order (world, sectors, positions, events, decide, ideas, calendar), due, next_on; "
+        "since = the last review's date (else 7 days ago), last_review {done_at, notes, agenda = the "
+        "cards the owner sent to the agent {card, note}}; card_sources = which tool has each card's "
+        "facts; calendar: the next 14 days (high-impact macro releases, earnings of held / watched US "
+        "instruments, research note events), stale when a public feed could not be refreshed.",
+        review_context,
     ),
     ToolSpec(
         "strategy_status",

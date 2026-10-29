@@ -22,7 +22,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from ..domain import BUY_PLANS, HELD_ONLY_PLANS, PLAN_LABEL_HELD, SignalSeverity
+from cashu.core.i18n import tr
+
+from ..domain import BUY_PLANS, HELD_ONLY_PLANS, SignalSeverity, plan_label
 from ..research.scoring import Health
 from ..rules import (
     Fired,
@@ -44,6 +46,14 @@ CHECKS = (PLAN_NO_EXIT, PLAN_VS_THESIS)
 
 HEALTH_LABEL = {Health.WEAKENED.value: "osłabiona", Health.INVALIDATED.value: "podważona"}
 """Polish labels of the thesis health states a ``plan_vs_thesis`` message names."""
+
+HEALTH_LABEL_EN = {Health.WEAKENED.value: "weakened", Health.INVALIDATED.value: "invalidated"}
+"""English labels of the same states (``health_label``)."""
+
+
+def health_label(health: str) -> str:
+    """The label of a weakened / invalidated thesis health in the UI language."""
+    return tr(pl=HEALTH_LABEL, en=HEALTH_LABEL_EN)[health]
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,17 +142,22 @@ def check_no_exit(f: PlanFacts) -> RuleOutcome:
             PLAN_NO_EXIT,
             f,
             SignalSeverity.INFO,
-            "Teza spełniona, brak planu wyjścia",
+            tr(pl="Teza spełniona, brak planu wyjścia", en="Thesis fulfilled, no exit plan"),
             trigger="fulfilled",
         )
     if f.unrealized is None or f.price_stale:
-        return Skipped(rule_id, f"Brak aktualnej ceny: {f.label}", key)
+        return Skipped(
+            rule_id, tr(pl=f"Brak aktualnej ceny: {f.label}", en=f"No current price: {f.label}"), key
+        )
     if f.unrealized >= GAIN_REVIEW:
         return _candidate(
             PLAN_NO_EXIT,
             f,
             SignalSeverity.INFO,
-            f"+{GAIN_REVIEW * 100:.0f} % od kosztu, brak planu wyjścia",
+            tr(
+                pl=f"+{GAIN_REVIEW * 100:.0f} % od kosztu, brak planu wyjścia",
+                en=f"+{GAIN_REVIEW * 100:.0f}% from cost, no exit plan",
+            ),
             trigger="gain",
             threshold=GAIN_REVIEW,
         )
@@ -165,7 +180,10 @@ def check_vs_thesis(f: PlanFacts) -> RuleOutcome:
     severity = (
         SignalSeverity.ACTION if f.health == Health.INVALIDATED.value else SignalSeverity.INFO
     )
-    message = f"Rekomendacja: {PLAN_LABEL_HELD[f.plan]}, teza {HEALTH_LABEL[f.health]}"
+    message = tr(
+        pl=f"Rekomendacja: {plan_label(f.plan, held=True)}, teza {health_label(f.health)}",
+        en=f"Recommendation: {plan_label(f.plan, held=True)}, thesis {health_label(f.health)}",
+    )
     return _candidate(PLAN_VS_THESIS, f, severity, message)
 
 

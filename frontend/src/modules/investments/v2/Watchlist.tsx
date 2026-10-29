@@ -8,13 +8,14 @@ import { Spark } from "../../../charts";
 import { useInFlight } from "../../../hooks";
 import { Skeleton, useToast } from "../../../ui";
 import { AgentTag, FootFacts, Widget } from "../../../widgets";
-import { pct, plural } from "../labels";
+import { pct } from "../labels";
 import { deleteWatch, postWatch, type WatchItem } from "./api";
 import { HintChip, mainHint } from "./hints";
 import { InstLabel } from "./InstLabel";
 import { InstrumentSearch } from "./InstrumentSearch";
-import { instName, planLabel, price, watchMove } from "./logic";
+import { instName, planLabel, price, watchMove, weekChange } from "./logic";
 import { offerRecreate } from "./undoFlow";
+import { KIND_WORD, S } from "./Watchlist.strings.ts";
 
 type Toast = ReturnType<typeof useToast>;
 
@@ -26,16 +27,11 @@ export async function removeWatchWithUndo(slug: string, w: Pick<WatchItem, "id" 
   try {
     await deleteWatch(slug, w.id);
     onChanged();
-    offerRecreate(toast, `Usunięto ${label} z obserwowanych`,
+    offerRecreate(toast, S.removed(label),
       () => postWatch(slug, { instrument_id: w.instrument_id, note: w.note, tags: w.tags?.length ? w.tags : null }),
-      "usunięcie z obserwowanych", onChanged, errorText, 10000, () => (w.source === "agent" ? "wraca jako Twoja pozycja" : null));
-  } catch (e) { toast(`Nie usunięto: ${errorText(e)}`, 4000); }
+      S.removeWhat, onChanged, errorText, 10000, () => (w.source === "agent" ? S.backAsYours : null));
+  } catch (e) { toast(S.removeFailed(errorText(e)), 4000); }
 }
-
-const KIND_WORD: Record<string, string> = {
-  price_below: "poniżej", price_above: "powyżej", sma_cross: "SMA", new_high: "nowy szczyt", drawdown_from_high: "spadek od szczytu",
-  range_breakout: "wybicie", volume_spike: "wolumen",
-};
 
 /** "1 alert: poniżej 560,00 $" / "2 alerty" / the note / "bez alertu". */
 export function watchSummary(w: WatchItem): string {
@@ -43,16 +39,16 @@ export function watchSummary(w: WatchItem): string {
   const near = w.alerts.nearest;
   const cur = w.price?.currency ?? w.instrument?.currency;
   if (n && near) {
-    const what = near.level != null ? `${KIND_WORD[near.kind] ?? near.title} ${price(near.level, cur)}` : near.title;
-    return `${plural(n, "alert", "alerty", "alertów")}: ${what}`;
+    const what = near.level != null ? `${(KIND_WORD as Record<string, string | undefined>)[near.kind] ?? near.title} ${price(near.level, cur)}` : near.title;
+    return `${S.alerts(n)}: ${what}`;
   }
-  if (n) return plural(n, "alert", "alerty", "alertów");
-  return w.note ? w.note : "bez alertu";
+  if (n) return S.alerts(n);
+  return w.note ? w.note : S.noAlert;
 }
 
 /** "1 alert: poniżej 560,00 $" / "2 alerty" / "bez alertu" (the Obserwowane tab's Alerty column, no note). */
 export function watchAlerts(w: WatchItem): string {
-  return w.alerts.live ? watchSummary({ ...w, note: null }) : "bez alertu";
+  return w.alerts.live ? watchSummary({ ...w, note: null }) : S.noAlert;
 }
 
 /** The Obserwowane list (home v3 Q6): `wide` = the Aktywa tab (Instrument | Rekomendacja + strategia | 30 dni | Cena | tydz. | Alerty | ✕,
@@ -77,17 +73,19 @@ export function WatchTable({ slug, items, wide, adding, onAdding, onChanged, onO
     removeWatchWithUndo(slug, w, w.instrument ? instName(w.instrument) : "instrument", toast, onChanged));
   const addRow = adding && <InstrumentSearch slug={slug} onClose={() => onAdding(false)} onChanged={onChanged} onOpen={onOpen} />;
   const removeBtn = (w: WatchItem, label: string) => (
-    <button className="icon-btn" title="Przestań obserwować" aria-label={`Przestań obserwować ${label}`} disabled={flight.busy} onClick={() => remove(w)}>✕</button>
+    <button className="icon-btn" title={S.unwatch} aria-label={S.unwatchAria(label)} disabled={flight.busy} onClick={() => remove(w)}>✕</button>
   );
   const body = !items ? <div style={{ padding: "8px 16px" }}><Skeleton h={80} /></div> : !list.length ? (
-    <div className="empty">Brak obserwowanych.</div>
+    <div className="empty">{S.empty}</div>
   ) : wide ? (
     <div className="scroll">
       <table>
-        <thead><tr><th className="c-inst">Instrument</th><th className="c-hint">Rekomendacja <span className="watch-cov">{recommendationCoverage}/{list.length}</span></th><th className="c-spark">30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Alerty</th><th style={{ width: 28 }}><span className="sr-only">Akcje</span></th></tr></thead>
+        <thead><tr><th className="c-inst">Instrument</th><th className="c-hint">{S.colRecommendation} <span className="watch-cov">{recommendationCoverage}/{list.length}</span></th><th className="c-spark">{S.col30d}</th><th className="num">{S.colPrice}</th><th className="num">{S.colWeek}</th><th>{S.colAlerts}</th><th style={{ width: 28 }}><span className="sr-only">{S.colActions}</span></th></tr></thead>
         <tbody>
           {list.map((w) => {
             const mv = watchMove(w.closes_30d, w.price?.change_1d);
+            // A one-session change (no week of closes yet) gets its suffix and title.
+            const daily = mv != null && weekChange(w.closes_30d) == null;
             const label = w.instrument ? instName(w.instrument) : `instrument ${w.instrument_id}`;
             const hint = mainHint(w.hints, w.held);
             const recommendation = planLabel(w.instrument?.plan, false);
@@ -101,13 +99,13 @@ export function WatchTable({ slug, items, wide, adding, onAdding, onChanged, onO
                 </td>
                 <td className="c-hint"><div className="watch-rec">
                   {recommendation
-                    ? <span className="watch-plan" title={w.instrument?.plan_reason ?? undefined} aria-label={`Rekomendacja: ${recommendation}`}>{recommendation}</span>
-                    : <span className="watch-plan unset">brak</span>}
+                    ? <span className="watch-plan" title={w.instrument?.plan_reason ?? undefined} aria-label={S.recommendationAria(recommendation)}>{recommendation}</span>
+                    : <span className="watch-plan unset">{S.none}</span>}
                   {hint && <HintChip hint={hint} held={w.held} />}
                 </div></td>
-                <td className="c-spark"><Spark values={(w.closes_30d ?? []).map((c) => c.close)} label={`${label}: 30 dni`} /></td>
-                <td className="num">{w.price ? price(w.price.close, w.price.currency) : <span className="muted">brak ceny</span>}{w.price?.stale && <> <span className="tag warn">stara</span></>}</td>
-                <td className={`num ${mv == null ? "muted" : mv.value >= 0 ? "pos" : "neg"}`} title={mv?.label === "1 d." ? "zmiana z 1 sesji" : undefined}>{mv ? `${pct(mv.value, true)}${mv.label === "1 d." ? " 1 d." : ""}` : "-"}</td>
+                <td className="c-spark"><Spark values={(w.closes_30d ?? []).map((c) => c.close)} label={S.spark30d(label)} /></td>
+                <td className="num">{w.price ? price(w.price.close, w.price.currency) : <span className="muted">{S.noPrice}</span>}{w.price?.stale && <> <span className="tag warn">{S.stale}</span></>}</td>
+                <td className={`num ${mv == null ? "muted" : mv.value >= 0 ? "pos" : "neg"}`} title={daily ? S.oneSessionTitle : undefined}>{mv ? `${pct(mv.value, true)}${daily ? ` ${S.oneDay}` : ""}` : "-"}</td>
                 <td className={w.alerts.live ? undefined : "muted"}>{watchAlerts(w)}</td>
                 <td style={{ width: 28, paddingLeft: 0 }}>{removeBtn(w, label)}</td>
               </tr>
@@ -133,10 +131,10 @@ export function WatchTable({ slug, items, wide, adding, onAdding, onChanged, onO
                     <span className="sym">{watchSummary(w)}</span></>
                 )}
               </td>
-              <td className="c-spark" style={{ width: 72 }}><Spark values={(w.closes_30d ?? []).map((c) => c.close)} label={`${label}: 30 dni`} /></td>
+              <td className="c-spark" style={{ width: 72 }}><Spark values={(w.closes_30d ?? []).map((c) => c.close)} label={S.spark30d(label)} /></td>
               <td className="num">
-                {w.price ? price(w.price.close, w.price.currency) : <span className="muted">brak ceny</span>}
-                {w.price?.stale && <span className="tag warn" style={{ marginLeft: 4 }}>stara</span>}
+                {w.price ? price(w.price.close, w.price.currency) : <span className="muted">{S.noPrice}</span>}
+                {w.price?.stale && <span className="tag warn" style={{ marginLeft: 4 }}>{S.stale}</span>}
                 <span className={`sym ${wk == null ? "" : wk >= 0 ? "pos" : "neg"}`}>{mv ? `${pct(mv.value, true)} ${mv.label}` : ""}</span>
               </td>
               <td style={{ width: 28, paddingLeft: 0 }}>{removeBtn(w, label)}</td>
@@ -163,10 +161,10 @@ export function WatchlistWidget({ slug, items, onChanged, onOpen, autoAdd }: {
   const list = items ?? [];
   const alerts = list.reduce((a, w) => a + w.alerts.live, 0);
   return (
-    <Widget title="Obserwowane" count={list.length || undefined} id="inv-watch"
-      controls={<button className="btn sm" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>+ Dodaj</button>}
+    <Widget title={S.title} count={list.length || undefined} id="inv-watch"
+      controls={<button className="btn sm" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>{S.add}</button>}
       body="flush tight"
-      footer={<FootFacts items={[alerts > 0 && <><b>{alerts}</b> {alerts === 1 ? "alert" : "alerty"}</>]} />}>
+      footer={<FootFacts items={[alerts > 0 && <><b>{alerts}</b> {S.alertsWord(alerts)}</>]} />}>
       <WatchTable slug={slug} items={items} adding={adding} onAdding={setAdding} onChanged={onChanged} onOpen={onOpen} />
     </Widget>
   );

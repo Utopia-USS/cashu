@@ -4,6 +4,7 @@
 // page visibility or an unload, so nothing can be lost or silently kept. Pure module (tested in
 // tests/undo.test.mjs).
 import { parseServerTime } from "../../time.ts";
+import { S } from "./undo.strings.ts";
 
 /** How long the server accepts an undo (store/journal.py UNDO_WINDOW, core/reviews.py UNDO_WINDOW). */
 export const UNDO_WINDOW_MS = 15 * 60 * 1000;
@@ -94,11 +95,11 @@ export const undoSettled = (r: UndoResult): boolean => r === "done" || r === "go
 /** Toast text after an undo attempt (null: nothing to say, e.g. a second click). */
 export function undoMessage(result: UndoResult, what: string): string | null {
   switch (result) {
-    case "done": return `Cofnięto: ${what}`;
-    case "expired": return `Za późno na cofnięcie: minęło ${UNDO_WINDOW_MS / 60000} minut`;
-    case "failed": return `Nie udało się cofnąć: ${what} - spróbuj jeszcze raz`;
-    case "gone": return `Już cofnięte: ${what}`;
-    case "refused": return `Nie da się cofnąć: ${what}`;
+    case "done": return S.done(what);
+    case "expired": return S.expired(UNDO_WINDOW_MS / 60000);
+    case "failed": return S.failed(what);
+    case "gone": return S.gone(what);
+    case "refused": return S.refused(what);
     default: return null;
   }
 }

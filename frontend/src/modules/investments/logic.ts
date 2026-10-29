@@ -2,9 +2,10 @@
 // decision effect line, allocation bands and scale, manual transaction rules. Unit-tested with
 // `npm test` (node --test strips the types; imports carry their .ts extension for that).
 import {
-  accountLabel, type AccountLike, assetClass, bucketLabel, dm, money, money0, nInstruments, nTxns, pct,
-  pctTarget, plural, pp, qty, txnType, WEEKDAY_INDEX,
+  accountLabel, type AccountLike, assetClass, bucketLabel, DECISION_ACTION, dm, money, money0, nInstruments, nTxns, pct,
+  pctTarget, pp, qty, txnType, WEEKDAY_INDEX,
 } from "./labels.ts";
+import { S } from "./logic.strings.ts";
 
 // Structural types (a subset of api.ts) keep this module free of the transport.
 export interface SignalLike {
@@ -39,20 +40,20 @@ export function signalInstrument(sig: SignalLike): string | null {
   return sym && sym !== name ? `${name} (${sym})` : name;
 }
 
-/** Polish title of a signal by rule kind (copy deck "Signals"). Custom rules keep their message. */
+/** Title of a signal by rule kind (copy deck "Signals"). Custom rules keep their message. */
 export function signalTitle(sig: SignalLike): string {
   const p = sig.payload;
   const inst = s(p.name) ?? sig.instrument_label ?? s(p.symbol) ?? "";
   switch (sig.kind) {
-    case "drawdown_from_high": return `Spadek od szczytu ≥ ${pctTarget(n(p.threshold))}`;
-    case "allocation_drift": { const b = bucketLabel(s(p.bucket_id)); return b ? `Dryf alokacji: ${b}` : "Dryf alokacji"; }
-    case "position_concentration": return `Koncentracja: ${inst}`;
-    case "contribution_gap": return "Brak wpłaty";
-    case "loss_from_cost": return `Strata od kosztu ≥ ${pctTarget(n(p.threshold))}`;
-    case "gain_from_cost": return `Zysk od kosztu ≥ ${pctTarget(n(p.threshold))}`;
-    case "cash_level": return p.direction === "above_max" ? "Za dużo gotówki" : "Za mało gotówki";
-    case "tagged_weight": return `Udział tagów: ${Array.isArray(p.tags) ? p.tags.join(", ") : ""}`;
-    default: return sig.message || "Reguła własna"; // never the strategy's rule id (FE-A A6)
+    case "drawdown_from_high": return S.titleDrawdown(pctTarget(n(p.threshold)));
+    case "allocation_drift": { const b = bucketLabel(s(p.bucket_id)); return b ? S.titleDrift(b) : S.titleDriftPlain; }
+    case "position_concentration": return S.titleConcentration(inst);
+    case "contribution_gap": return S.titleContributionGap;
+    case "loss_from_cost": return S.titleLoss(pctTarget(n(p.threshold)));
+    case "gain_from_cost": return S.titleGain(pctTarget(n(p.threshold)));
+    case "cash_level": return p.direction === "above_max" ? S.titleCashHigh : S.titleCashLow;
+    case "tagged_weight": return S.titleTagged(Array.isArray(p.tags) ? p.tags.join(", ") : "");
+    default: return sig.message || S.titleCustom; // never the strategy's rule id (FE-A A6)
   }
 }
 
@@ -60,32 +61,32 @@ export function signalTitle(sig: SignalLike): string {
 export function signalFacts(sig: SignalLike, base = "PLN"): { measured?: string; limit?: string; extra?: string } {
   const p = sig.payload;
   switch (sig.kind) {
-    case "drawdown_from_high": return { measured: pct(-(n(p.drawdown) ?? 0)), limit: `próg ${pctTarget(n(p.threshold))}` };
+    case "drawdown_from_high": return { measured: pct(-(n(p.drawdown) ?? 0)), limit: S.threshold(pctTarget(n(p.threshold))) };
     case "allocation_drift": {
       const over = n(p.drift_value_base);
       const target = n(p.target), abs = n(p.absolute_band_pp) ?? 5, rel = n(p.relative_band);
       const half = target != null && rel != null && rel > 0 ? Math.min(abs, rel * target * 100) : abs;
       return {
-        measured: pp(n(p.drift_pp)), limit: `pasmo ±${pp(half).replace(/^\+/, "")}`,
-        extra: over == null ? undefined : `≈ ${money0(Math.abs(over), s(p.currency) ?? base)} ${over > 0 ? "nad celem" : "pod celem"}`,
+        measured: pp(n(p.drift_pp)), limit: S.band(pp(half).replace(/^\+/, "")),
+        extra: over == null ? undefined : (over > 0 ? S.aboveTarget : S.belowTarget)(money0(Math.abs(over), s(p.currency) ?? base)),
       };
     }
-    case "position_concentration": return { measured: pct(n(p.weight)), limit: `maks ${pctTarget(n(p.max_weight))}` };
+    case "position_concentration": return { measured: pct(n(p.weight)), limit: S.max(pctTarget(n(p.max_weight))) };
     case "loss_from_cost":
-    case "gain_from_cost": return { measured: pct(n(p.unrealized_pct), true), limit: `próg ${pctTarget(n(p.threshold))}` };
+    case "gain_from_cost": return { measured: pct(n(p.unrealized_pct), true), limit: S.threshold(pctTarget(n(p.threshold))) };
     case "cash_level": {
-      const lim = p.direction === "above_max" ? `maks ${pctTarget(n(p.max_weight))}` : `min ${pctTarget(n(p.min_weight))}`;
+      const lim = p.direction === "above_max" ? S.max(pctTarget(n(p.max_weight))) : S.min(pctTarget(n(p.min_weight)));
       return { measured: pct(n(p.cash_weight)), limit: lim };
     }
     case "contribution_gap": {
       const last = s(p.last_deposit);
       const day = n(p.day_of_month);
       return {
-        measured: last ? `ostatnia wpłata ${dm(last)}` : "brak wpłat w historii",
-        limit: `plan: co miesiąc${day ? ` do ${day}.` : ""} (+${n(p.grace_days) ?? 10} dni)`,
+        measured: last ? S.lastDeposit(dm(last)) : S.noDeposits,
+        limit: S.depositPlan(day, n(p.grace_days) ?? 10),
       };
     }
-    case "tagged_weight": return { measured: pct(n(p.weight)), limit: `maks ${pctTarget(n(p.max_weight))}` };
+    case "tagged_weight": return { measured: pct(n(p.weight)), limit: S.max(pctTarget(n(p.max_weight))) };
     default: return {};
   }
 }
@@ -93,9 +94,8 @@ export function signalFacts(sig: SignalLike, base = "PLN"): { measured?: string;
 /** Latest decision's short label: "decyzja: dokupuję 20 szt." */
 export function decisionTag(d: { action: string; quantity: number | null } | undefined): string | null {
   if (!d) return null;
-  const verb: Record<string, string> = { bought: "dokupuję", sold: "sprzedaję", held: "bez zmian", ignored: "pomijam", other: "odkładam" };
-  const q = d.quantity != null && (d.action === "bought" || d.action === "sold") ? ` ${qty(d.quantity)} szt.` : "";
-  return `decyzja: ${verb[d.action] ?? d.action}${q}`;
+  const q = d.quantity != null && (d.action === "bought" || d.action === "sold") ? S.pieces(qty(d.quantity)) : "";
+  return S.decisionTag(DECISION_ACTION[d.action] ?? d.action, q);
 }
 
 /** Undecided first (action before review, newest first), decided at the bottom (design: a decided
@@ -149,7 +149,7 @@ export function decisionEffect(args: {
   const after = (bucket.value + (side === "buy" ? amount : -amount)) / total;
   const drift = (after - bucket.target) * 100;
   const grows = Math.abs(drift) > Math.abs(bucket.drift_pp) + 1e-9;
-  return `${head} · ${bucketLabel(bucket.bucket_id)} po transakcji: ${pct(after)} (cel ${pctTarget(bucket.target)}, dryf ${grows ? "rośnie" : "maleje"} do ${pp(drift)})`;
+  return S.effect(head, bucketLabel(bucket.bucket_id) ?? "", pct(after), pctTarget(bucket.target), grows, pp(drift));
 }
 
 // ---- weekly review ---------------------------------------------------------------
@@ -197,12 +197,12 @@ export function changeRows(dg: DigestLike, accounts: AccountLike[] = []): Change
   const c = dg.value.currency;
   if (dg.value.change != null && dg.value.then != null) {
     rows.push({
-      key: "value", label: "Wartość", tone: dg.value.change >= 0 ? "pos" : "neg",
+      key: "value", label: S.rowValue, tone: dg.value.change >= 0 ? "pos" : "neg",
       main: `${money(dg.value.change, c, true)}${dg.value.change_pct != null ? ` (${pct(dg.value.change_pct, true)})` : ""}`,
       sub: `${money(dg.value.then, c)} → ${money(dg.value.now, c)} · benchmark: -`,
     });
   } else {
-    rows.push({ key: "value", label: "Wartość", main: money(dg.value.now, c), sub: "brak wyceny z początku okresu" });
+    rows.push({ key: "value", label: S.rowValue, main: money(dg.value.now, c), sub: S.noStartValuation });
   }
   if (dg.imports.length || dg.transactions.count) {
     const imported = dg.imports.reduce((a, b) => a + b.inserted, 0);
@@ -213,48 +213,48 @@ export function changeRows(dg: DigestLike, accounts: AccountLike[] = []): Change
     const types = Object.entries(dg.transactions.by_type).sort((a, b) => b[1] - a[1])
       .map(([t, k]) => `${k} × ${txnType(t)}`).join(", ");
     const newInst = dg.imports.reduce((a, b) => a + b.new_instruments, 0);
-    const parts = [types, newInst ? `do sklasyfikowania: ${nInstruments(newInst)}` : "", dg.transactions.manual ? `${dg.transactions.manual} ręcznie` : ""].filter(Boolean);
+    const parts = [types, newInst ? S.toClassify(nInstruments(newInst)) : "", dg.transactions.manual ? S.manualCount(dg.transactions.manual) : ""].filter(Boolean);
     rows.push({
-      key: "import", label: "Import",
-      main: `${nTxns(imported || dg.transactions.count)}${byAcc.length ? ` z ${byAcc.join(", ")}` : ""}${dg.imports[0] ? ` (${dm(dg.imports[0].created_at)})` : ""}`,
+      key: "import", label: S.rowImport,
+      main: `${nTxns(imported || dg.transactions.count)}${byAcc.length ? S.fromAccounts(byAcc.join(", ")) : ""}${dg.imports[0] ? ` (${dm(dg.imports[0].created_at)})` : ""}`,
       sub: parts.join(" · "),
     });
   }
   const sg = dg.signals;
   if (sg.new.length || sg.escalated.length || sg.resolved.length) {
     const main = [
-      sg.new.length ? plural(sg.new.length, "nowy", "nowe", "nowych") : "",
-      sg.escalated.length ? plural(sg.escalated.length, "eskalował", "eskalowały", "eskalowało") : "",
-      sg.resolved.length ? plural(sg.resolved.length, "wygasł", "wygasły", "wygasło") : "",
+      sg.new.length ? S.nNew(sg.new.length) : "",
+      sg.escalated.length ? S.nEscalated(sg.escalated.length) : "",
+      sg.resolved.length ? S.nResolved(sg.resolved.length) : "",
     ].filter(Boolean).join(", ");
-    const names = (l: SignalLike[]) => l.map((x) => signalTitle(x).replace(/^([A-ZŁŚŻ])/, (m0) => m0.toLowerCase())).join(", ");
+    const names = (l: SignalLike[]) => l.map((x) => signalTitle(x).replace(/^([A-Z\u0141\u015A\u017B])/, (m0) => m0.toLowerCase())).join(", ");
     const sub = [
-      sg.new.length ? `nowe: ${names(sg.new)}` : "",
-      sg.escalated.length ? `eskalacja: ${names(sg.escalated)}` : "",
-      sg.resolved.length ? `wygasłe: ${names(sg.resolved)}` : "",
+      sg.new.length ? S.subNew(names(sg.new)) : "",
+      sg.escalated.length ? S.subEscalated(names(sg.escalated)) : "",
+      sg.resolved.length ? S.subResolved(names(sg.resolved)) : "",
     ].filter(Boolean).join(" · ");
-    rows.push({ key: "signals", label: "Sygnały", main, sub });
+    rows.push({ key: "signals", label: S.rowSignals, main, sub });
   }
   const divs = Object.entries(dg.dividends).filter(([, v]) => v);
   if (divs.length) {
-    rows.push({ key: "dividends", label: "Dywidendy", tone: "pos", main: divs.map(([cc, v]) => money(v, cc, true)).join(" · "), sub: "leży jako gotówka na rachunku" });
+    rows.push({ key: "dividends", label: S.rowDividends, tone: "pos", main: divs.map(([cc, v]) => money(v, cc, true)).join(" · "), sub: S.dividendsSub });
   }
   if (dg.stale_count || dg.price_moves.length) {
     const moves = dg.price_moves.slice(0, 3).map((m) => `${m.label} ${pct(m.change_pct, true)}`).join(", ");
     rows.push({
-      key: "prices", label: "Ceny",
-      main: dg.stale_count ? `${nInstruments(dg.stale_count)} bez świeżego notowania` : `${dg.price_moves.length} ${dg.price_moves.length === 1 ? "duży ruch" : "duże ruchy"} cen`,
-      sub: moves ? `największe ruchy: ${moves}` : "szczegóły w ostrzeżeniach danych",
+      key: "prices", label: S.rowPrices,
+      main: dg.stale_count ? S.noFreshQuote(nInstruments(dg.stale_count)) : S.bigMoves(dg.price_moves.length),
+      sub: moves ? S.biggestMoves(moves) : S.movesInWarnings,
     });
   }
   if (dg.decisions.length) {
-    rows.push({ key: "decisions", label: "Decyzje", main: plural(dg.decisions.length, "decyzja", "decyzje", "decyzji"), sub: "w dzienniku decyzji" });
+    rows.push({ key: "decisions", label: S.rowDecisions, main: S.nDecisions(dg.decisions.length), sub: S.inJournal });
   }
   const st = dg.strategy;
   rows.push({
-    key: "strategy", label: "Strategia",
-    main: st.version == null ? "brak strategii" : st.changed_since ? `nowa wersja v${st.version}` : "bez zmian",
-    sub: st.version == null ? "reguły i alokacja ruszą po zapisaniu strategy.yaml" : `v${st.version}${st.state === "partial" ? " · część reguł nieaktywna" : st.state === "invalid" ? " · błędy w pliku" : ""}`,
+    key: "strategy", label: S.rowStrategy,
+    main: st.version == null ? S.noStrategy : st.changed_since ? S.newVersion(st.version) : S.unchanged,
+    sub: st.version == null ? S.strategyPending : `v${st.version}${st.state === "partial" ? S.someRulesInactive : st.state === "invalid" ? S.fileErrors : ""}`,
   });
   return rows;
 }
@@ -269,7 +269,7 @@ export function changeCount(dg: DigestLike): number {
 // ---- warnings --------------------------------------------------------------------
 export interface WarningItem { key: string; tone: "review" | "resolved"; title: string; hint: string; action?: "snapshot" | "alias" | "classify" | "import" }
 
-/** Data warnings for the rail: portfolio warnings (Polish titles by kind) plus account snapshot age.
+/** Data warnings for the rail: portfolio warnings (titles by kind) plus account snapshot age.
  * `labels`: instrument id -> label; `accounts` for names; `today` for the snapshot age. */
 export function warningItems(args: {
   warnings: { kind: string; message: string; account_id: number | null; instrument_id: number | null }[];
@@ -284,20 +284,20 @@ export function warningItems(args: {
   const add = (w: WarningItem) => { if (!seen.has(w.key)) { seen.add(w.key); out.push(w); } };
   const accName = (id: number | null) => {
     const a = args.accounts.find((x) => x.id === id);
-    return a ? accountLabel(a, args.accounts) : "rachunek";
+    return a ? accountLabel(a, args.accounts) : S.account;
   };
-  const inst = (id: number | null) => (id != null ? args.labels.get(String(id)) ?? `instrument ${id}` : "instrument");
+  const inst = (id: number | null) => (id != null ? args.labels.get(String(id)) ?? S.instrumentN(id) : S.instrument);
   for (const a of args.accounts) {
     if (!a.last_import) continue; // nothing imported yet: nothing to reconcile
     const age = a.snapshot_date ? daysBetween(a.snapshot_date, args.today) : null;
-    if (age == null) add({ key: `snap:${a.id}`, tone: "review", title: `${accountLabel(a, args.accounts)}: brak snapshotu brokera`, hint: "uzgodnienie niemożliwe", action: "snapshot" });
-    else if (age > 14) add({ key: `snap:${a.id}`, tone: "review", title: `${accountLabel(a, args.accounts)}: brak snapshotu od ${dm(a.snapshot_date)}`, hint: "uzgodnienie niemożliwe", action: "snapshot" });
+    if (age == null) add({ key: `snap:${a.id}`, tone: "review", title: S.noSnapshot(accountLabel(a, args.accounts)), hint: S.noReconcile, action: "snapshot" });
+    else if (age > 14) add({ key: `snap:${a.id}`, tone: "review", title: S.snapshotOld(accountLabel(a, args.accounts), dm(a.snapshot_date)), hint: S.noReconcile, action: "snapshot" });
   }
   for (const st of args.stale) {
-    add({ key: `stale:${st.instrument_id}`, tone: "review", title: `${st.label}: nieaktualna cena`, hint: st.price_date ? `ostatnie notowanie ${dm(st.price_date)}` : "brak notowań", action: "alias" });
+    add({ key: `stale:${st.instrument_id}`, tone: "review", title: S.withTitle(st.label, S.stalePrice), hint: st.price_date ? S.lastQuote(dm(st.price_date)) : S.noQuotes, action: "alias" });
   }
   for (const c of args.missingFx) {
-    add({ key: `fx:${c}`, tone: "resolved", title: `Kurs NBP ${c} niedostępny`, hint: "kwoty w tej walucie pominięte · odświeży się przy następnym przebiegu" });
+    add({ key: `fx:${c}`, tone: "resolved", title: S.fxUnavailable(c), hint: S.fxSkipped });
   }
   const unknownCost = new Map<string, number>();
   for (const w of args.warnings) {
@@ -305,14 +305,14 @@ export function warningItems(args: {
     switch (w.kind) {
       case "stale_price":
       case "last_known_price_used":
-        add({ key: `stale:${w.instrument_id}`, tone: "review", title: `${inst(w.instrument_id)}: ${w.kind === "stale_price" ? "nieaktualna cena" : "cena z ostatniej transakcji"}`, hint: "brak świeżego notowania · sprawdź alias Yahoo", action: "alias" });
+        add({ key: `stale:${w.instrument_id}`, tone: "review", title: S.withTitle(inst(w.instrument_id), w.kind === "stale_price" ? S.stalePrice : S.lastTradePrice), hint: S.checkAlias, action: "alias" });
         break;
       case "missing_price":
-        add({ key: `price:${w.instrument_id}`, tone: "review", title: `${inst(w.instrument_id)}: brak ceny`, hint: "pozycja pominięta w udziałach", action: "alias" });
+        add({ key: `price:${w.instrument_id}`, tone: "review", title: S.withTitle(inst(w.instrument_id), S.noPrice), hint: S.positionSkipped, action: "alias" });
         break;
       case "missing_fx_rate":
       case "stale_fx_rate":
-        add({ key: `fx:${fx ?? w.message}`, tone: "resolved", title: `Kurs NBP ${fx ?? ""} ${w.kind === "stale_fx_rate" ? "nieaktualny" : "niedostępny"}`.replace("  ", " "), hint: "odświeży się przy następnym przebiegu" });
+        add({ key: `fx:${fx ?? w.message}`, tone: "resolved", title: S.fxRate(fx ?? "", w.kind === "stale_fx_rate").replace("  ", " "), hint: S.refreshesNextRun });
         break;
       case "unknown_cost_basis":
       case "missing_cost_basis": {
@@ -321,24 +321,24 @@ export function warningItems(args: {
         break;
       }
       case "history_gap":
-        add({ key: `gap:${w.account_id}:${w.instrument_id}`, tone: "review", title: `Luka w historii ${accName(w.account_id)}`, hint: `${inst(w.instrument_id)}: sprzedano więcej, niż wynika z historii · uzgodnij ze snapshotem`, action: "import" });
+        add({ key: `gap:${w.account_id}:${w.instrument_id}`, tone: "review", title: S.historyGap(accName(w.account_id)), hint: S.historyGapHint(inst(w.instrument_id)), action: "import" });
         break;
       case "cash_history_gap":
-        add({ key: `cash:${w.account_id}`, tone: "review", title: `${accName(w.account_id)}: ujemna gotówka w historii`, hint: "brak wpłat w historii? liczona jako 0", action: "import" });
+        add({ key: `cash:${w.account_id}`, tone: "review", title: S.negativeCash(accName(w.account_id)), hint: S.negativeCashHint, action: "import" });
         break;
       case "frozen_valued_at_zero":
       case "missing_manual_valuation":
-        add({ key: `manual:${w.instrument_id}`, tone: "review", title: `${inst(w.instrument_id)}: brak wyceny ręcznej`, hint: "wyceniony na 0 do czasu wyceny" });
+        add({ key: `manual:${w.instrument_id}`, tone: "review", title: S.withTitle(inst(w.instrument_id), S.noManualValuation), hint: S.valuedAtZero });
         break;
       case "missing_instrument":
-        add({ key: `inst:${w.instrument_id}`, tone: "review", title: `${inst(w.instrument_id)}: brak danych instrumentu`, hint: "wyceniony zastępczo" });
+        add({ key: `inst:${w.instrument_id}`, tone: "review", title: S.withTitle(inst(w.instrument_id), S.noInstrumentData), hint: S.substituteValuation });
         break;
       default:
-        add({ key: `${w.kind}:${w.account_id}:${w.instrument_id}`, tone: "resolved", title: "Ostrzeżenie danych", hint: w.message });
+        add({ key: `${w.kind}:${w.account_id}:${w.instrument_id}`, tone: "resolved", title: S.dataWarning, hint: w.message });
     }
   }
   const lots = [...unknownCost.values()].reduce((a, b) => a + b, 0);
-  if (lots) add({ key: "cost", tone: "review", title: `Brak kosztu nabycia dla ${plural(lots, "lotu", "lotów", "lotów")}`, hint: "wynik tych pozycji jest niepełny · uzupełnij cenę w transakcji", action: "import" });
+  if (lots) add({ key: "cost", tone: "review", title: S.noCostBasis(lots), hint: S.noCostBasisHint, action: "import" });
   return out;
 }
 
@@ -371,21 +371,21 @@ export const TXN_RULES: Record<string, TxnRule> = {
 
 export interface TxnFormValues { type: string; hasInstrument: boolean; quantity: number | null; price: number | null; amount: number | null; fee: number | null; split: number | null; date: string }
 
-/** Client-side check of the manual form; returns Polish messages per field (empty = ok). */
+/** Client-side check of the manual form; returns messages per field (empty = ok). */
 export function validateTxn(v: TxnFormValues, today: string): Record<string, string> {
   const r = TXN_RULES[v.type];
   const e: Record<string, string> = {};
-  if (!r) return { type: "Wybierz typ transakcji." };
-  if (!v.date) e.date = "Podaj datę.";
-  else if (v.date > today) e.date = "Data z przyszłości.";
-  if (r.instrument === "required" && !v.hasInstrument) e.instrument = "Wybierz instrument albo wpisz symbol.";
-  if (r.quantity === "required" && !(v.quantity != null && v.quantity > 0)) e.quantity = "Ilość musi być większa od zera.";
-  if (r.quantity === "optional" && v.quantity != null && v.quantity < 0) e.quantity = "Ilość nie może być ujemna.";
-  if (r.price === "required" && !(v.price != null && v.price > 0)) e.price = "Podaj cenę za sztukę.";
-  if (r.price === "optional" && v.price != null && v.price < 0) e.price = "Cena nie może być ujemna.";
-  if (r.amount === "required" && !(v.amount != null && v.amount > 0)) e.amount = "Podaj kwotę (bez znaku).";
-  if (v.fee != null && v.fee < 0) e.fee = "Prowizja nie może być ujemna.";
-  if (r.split && !(v.split != null && v.split > 0)) e.split = "Podaj współczynnik splitu (1:4 = 4).";
+  if (!r) return { type: S.errType };
+  if (!v.date) e.date = S.errDate;
+  else if (v.date > today) e.date = S.errFutureDate;
+  if (r.instrument === "required" && !v.hasInstrument) e.instrument = S.errInstrument;
+  if (r.quantity === "required" && !(v.quantity != null && v.quantity > 0)) e.quantity = S.errQtyPositive;
+  if (r.quantity === "optional" && v.quantity != null && v.quantity < 0) e.quantity = S.errQtyNegative;
+  if (r.price === "required" && !(v.price != null && v.price > 0)) e.price = S.errPrice;
+  if (r.price === "optional" && v.price != null && v.price < 0) e.price = S.errPriceNegative;
+  if (r.amount === "required" && !(v.amount != null && v.amount > 0)) e.amount = S.errAmount;
+  if (v.fee != null && v.fee < 0) e.fee = S.errFee;
+  if (r.split && !(v.split != null && v.split > 0)) e.split = S.errSplit;
   return e;
 }
 
@@ -401,24 +401,22 @@ export function txnCash(v: Pick<TxnFormValues, "type" | "quantity" | "price" | "
 
 /** Import preview counts -> what the commit button says: "Zaimportuj 14 transakcji i 1 korektę". */
 export function commitLabel(newRows: number, corrections: number): string {
-  const t = plural(newRows, "transakcję", "transakcje", "transakcji");
-  if (!corrections) return `Zaimportuj ${t}`;
-  return `Zaimportuj ${t} i ${plural(corrections, "korektę", "korekty", "korekt")}`;
+  return S.commit(newRows, corrections);
 }
 
 /** "{n} koszyk(i) poza pasmem" / "wszystko w paśmie". */
 export function bandTag(outOfBand: number): string {
-  return outOfBand ? `${plural(outOfBand, "koszyk", "koszyki", "koszyków")} poza pasmem` : "wszystko w paśmie";
+  return outOfBand ? S.bandOut(outOfBand) : S.allInBand;
 }
 
 export { assetClass };
 
-/** A rule run error (backend, English) -> short Polish text for the Reguły KPI. */
+/** A rule run error (backend, English) -> short text for the Reguły KPI. */
 export function runError(msg: string | null | undefined): string {
   if (!msg) return "";
   // Never the strategy's rule id (FE-A A6 sweep).
-  if (/^rule (\S+) inactive/i.test(msg)) return "reguła nieaktywna (błąd w strategy.yaml)";
-  if (/stooq|yahoo|nbp|price source|timed? ?out|connect|network|http/i.test(msg)) return "źródło cen lub kursów nie odpowiedziało";
-  if (/strategy/i.test(msg)) return "problem ze strategią";
+  if (/^rule (\S+) inactive/i.test(msg)) return S.ruleInactive;
+  if (/stooq|yahoo|nbp|price source|timed? ?out|connect|network|http/i.test(msg)) return S.priceSourceDown;
+  if (/strategy/i.test(msg)) return S.strategyProblem;
   return msg.length > 80 ? `${msg.slice(0, 77)}…` : msg;
 }

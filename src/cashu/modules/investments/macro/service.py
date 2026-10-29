@@ -34,7 +34,7 @@ _cache_lock = threading.Lock()
 
 
 def _today() -> dt.date:
-    return dt.date.today()  # noqa: DTZ011 - naive local date, like the daily check's as_of
+    return dt.date.today()
 
 
 def regimes(session: Session, as_of: dt.date | None = None) -> tuple[rg.Regime, ...]:
@@ -67,7 +67,7 @@ def _r(value: float) -> float:
 
 def metric_dict(metric: rg.Metric) -> dict:
     return {
-        "label": metric.label,
+        "label": rg.metric_label(metric),
         "value": _r(metric.value),
         "unit": metric.unit,
         "text": metric.text,
@@ -81,12 +81,13 @@ def _iso(day: dt.date | None) -> str | None:
 
 def regime_dict(regime: rg.Regime, currency: texts.CurrencyEffect | None = None) -> dict:
     """A regime without its notes (the card's market part) with its human texts (P7: ``summary``,
-    ``explain``; ``currency`` folds the portfolio's weekly currency effect into the dollar card)."""
+    ``explain``; ``currency`` folds the portfolio's weekly currency effect into the dollar card), in
+    the current UI language (``core.i18n``; the MCP renders Polish)."""
     return {
         "key": regime.key,
-        "label": regime.label,
+        "label": rg.display_label(regime.key),
         "state": regime.state,
-        "state_label": regime.state_label,
+        "state_label": rg.display_state_label(regime),
         "tone": regime.tone,
         "since": _iso(regime.since),
         "since_open": regime.since_open,
@@ -95,7 +96,7 @@ def regime_dict(regime: rg.Regime, currency: texts.CurrencyEffect | None = None)
         "stale": regime.stale,
         "missing": regime.missing,
         "flags": list(regime.flags),
-        "meaning": regime.meaning,
+        "meaning": rg.display_meaning(regime),
         "summary": texts.summary(regime, currency),
         "plain": texts.plain(regime),
         "explain": texts.explain(regime),
@@ -215,7 +216,7 @@ def changes(session: Session, start: dt.date, end: dt.date | None = None) -> lis
         out.append(
             {
                 "key": regime.key,
-                "label": regime.label,
+                "label": rg.display_label(regime.key),
                 "from_label": rg.state_label(regime.key, old),
                 "to_label": rg.state_label(regime.key, new),
                 "since": _iso(regime.since),

@@ -4,6 +4,8 @@
 // fan-out that fails midway keeps what was saved (one undo for those ids). `useDecisionWriter` (Signals.tsx)
 // maps the outcome to toasts; `npm test` covers it (tests/asset-detail.test.mjs).
 
+import { S } from "./decisionFlow.strings.ts";
+
 type Write = () => Promise<{ decision: { id: number } }>;
 
 export type DecisionOutcome =
@@ -48,7 +50,7 @@ export async function writePositionDecision(o: {
  * signal of another instrument. The caller reloads the page data and shows this line; null for anything else. */
 export function staleSignalText(e: unknown): string | null {
   const x = (typeof e === "object" && e !== null ? e : {}) as { status?: number; message?: string };
-  if (x.status === 409) return "Sygnał już zamknięty";
-  if (x.status === 422 && /not about instrument/i.test(x.message ?? "")) return "Sygnał dotyczy innego instrumentu";
+  if (x.status === 409) return S.signalClosed;
+  if (x.status === 422 && /not about instrument/i.test(x.message ?? "")) return S.otherInstrument;
   return null;
 }

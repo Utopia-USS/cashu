@@ -26,6 +26,7 @@ import { decodeSegment, resolveView } from "./util";
 import { Wizard } from "./Wizard";
 import { IconSheet } from "../widgets";
 import { readStored } from "./storage";
+import { S } from "./chrome.strings.ts";
 
 const PROFILE_KEY = "cashu.profile";
 const lastViewKey = (slug: string) => `cashu.lastView.${slug}`;
@@ -136,7 +137,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
     if (!p) return;
     setSlug(s);
     setView(pathToView(store.get(lastViewKey(s)) ?? undefined) ?? OVERVIEW);
-    toast(`Profil: ${p.name}`);
+    toast(S.profileToast(p.name));
   };
 
   // Przegląd when the view points at a module that is off or unknown; a tab route of a module that lives on
@@ -217,12 +218,12 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
           </div>
         </header>
 
-        {loadError && <div className="err">Błąd: {loadError}</div>}
+        {loadError && <div className="err">{S.error(loadError)}</div>}
 
-        <nav className="tabbar" aria-label="Moduły">
+        <nav className="tabbar" aria-label={S.modulesNav}>
           {/* The setup page of a module that lives on Przegląd keeps Przegląd lit. */}
           <button className={`tabbtn ${(resolved.kind === "tab" && resolved.tab === "overview") || (resolved.kind === "setup" && tabless(resolved.module)) ? "on" : ""}`}
-            onClick={() => go(OVERVIEW)}>Przegląd</button>
+            onClick={() => go(OVERVIEW)}>{S.overview}</button>
           {enabled.filter((m) => !tabless(m.id)).map((m) => {
             const def = moduleDef(m.id, modules);
             const pending = m.setup_state !== "ready";
@@ -235,8 +236,8 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
                   const dot = pending && i === 0;
                   return (
                     <button key={key} className={`tabbtn ${on ? "on" : ""}`} onClick={() => go({ kind: "tab", tab: key })}
-                      title={dot ? "Nieskonfigurowany" : undefined}>
-                      {t.label}{dot && <span className="dot" aria-label="nieskonfigurowany" />}
+                      title={dot ? S.notConfiguredTitle : undefined}>
+                      {t.label}{dot && <span className="dot" aria-label={S.notConfigured} />}
                     </button>
                   );
                 })}
@@ -255,13 +256,13 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
       {wizard && (
         <WizardOverlay
           system={system} modules={modules} existing={profiles}
-          onCancel={() => { setWizard(false); toast("Przerwano tworzenie profilu"); }}
+          onCancel={() => { setWizard(false); toast(S.wizardCancelled); }}
           onCreated={async (p) => {
             await reloadProfiles();
             setWizard(false);
             setSlug(p.slug);
             setView(OVERVIEW);
-            toast(`Profil: ${p.name}`);
+            toast(S.profileToast(p.name));
           }} />
       )}
     </ShellContext.Provider>
@@ -279,8 +280,8 @@ function PartialStrip({ moduleId, name, state }: { moduleId: string; name: strin
   return (
     <div className="notice">
       <div className="grow"><b>{name}</b>{data ? ` · ${partialLine(data.steps)}` : ""}</div>
-      <button className="btn sm primary" onClick={() => go({ kind: "setup", module: moduleId })}>Kontynuuj</button>
-      <button className="lnk" onClick={() => hideCard(slug, moduleId, state)}>ukryj</button>
+      <button className="btn sm primary" onClick={() => go({ kind: "setup", module: moduleId })}>{S.continue}</button>
+      <button className="lnk" onClick={() => hideCard(slug, moduleId, state)}>{S.hide}</button>
     </div>
   );
 }

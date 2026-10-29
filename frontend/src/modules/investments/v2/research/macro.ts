@@ -2,18 +2,22 @@
 // the BE `INV/macro/regimes.py`), the state words, the summary / explain texts of the home rows, the tooltips, the ordering and the tolerant
 // reading of `GET .../research/macro` and the digest's `macro_changes`. Pure; `npm test` imports it (imports
 // carry .ts). segments.ts never imports this file (no cycle).
-import { dm } from "../../labels.ts";
+import { dm, dmy } from "../../labels.ts";
+import { lang } from "../../../../i18n.ts";
 import { MONTH_GEN } from "../../../../format.ts";
 import { normNoteRef, segmentLabel } from "./segments.ts";
 import type { MacroBrief, MacroChange, MacroHistoryItem, MacroKey, MacroMetric, MacroRegime, MacroRegimes } from "./types.ts";
+import { COMMODITIES_STATE, DOLLAR_STATE, EM_STATE, MACRO_TEXT, RATES_STATE, RISK_STATE, S } from "./macro.strings.ts";
 
 export const MACRO_PREFIX = "macro_";
-export const MACRO: { key: MacroKey; label: string; noteKey: string; subject: string }[] = [
-  { key: "risk", label: "Rynek akcji", noteKey: "macro_risk", subject: "akcje" },
-  { key: "dollar", label: "Dolar", noteKey: "macro_dollar", subject: "dolar" },
-  { key: "em", label: "Rynki wschodzące", noteKey: "macro_em", subject: "EM" },
-  { key: "commodities", label: "Surowce", noteKey: "macro_commodities", subject: "surowce" },
-  { key: "rates", label: "Obligacje i stopy", noteKey: "macro_rates", subject: "stopy" },
+/** Regime catalog; `label` / `subject` read the current language (macro.strings.ts). */
+const regime = (key: MacroKey) => ({
+  key, noteKey: `macro_${key}`,
+  get label() { return MACRO_TEXT[`${key}Label` as keyof typeof MACRO_TEXT]; },
+  get subject() { return MACRO_TEXT[`${key}Subject` as keyof typeof MACRO_TEXT]; },
+});
+export const MACRO: { key: MacroKey; readonly label: string; noteKey: string; readonly subject: string }[] = [
+  regime("risk"), regime("dollar"), regime("em"), regime("commodities"), regime("rates"),
 ];
 export const MACRO_KEYS: MacroKey[] = MACRO.map((m) => m.key);
 export const macroNoteKey = (key: string): string => `${MACRO_PREFIX}${key}`;
@@ -24,23 +28,20 @@ export const isMacroKey = (noteKey: string | null | undefined): boolean => macro
 export const macroLabel = (noteKey: string | null | undefined): string => MACRO.find((m) => m.noteKey === noteKey)?.label ?? noteKey ?? "";
 /** Label of any note key (chip, note card): `Makro · Obligacje i stopy` for a macro key (two P6 titles collide
  * with P5 segment titles: `Rynki wschodzące`, `Obligacje i stopy`), else the P5 segment label. */
-export const noteKeyLabel = (key: string | null | undefined): string => (isMacroKey(key) ? `Makro · ${macroLabel(key)}` : segmentLabel(key));
+export const noteKeyLabel = (key: string | null | undefined): string => (isMacroKey(key) ? S.macroPrefix(macroLabel(key)) : segmentLabel(key));
 
-/** Polish label per machine state (the BE's `state_label` words, kept in sync with regimes.py): used for past
+/** Label per machine state (the BE's `state_label` words, kept in sync with regimes.py): used for past
  * states in the history tooltip and as the fallback when a payload lacks `state_label`. */
 export const STATE_LABEL: Record<MacroKey, Record<string, string>> = {
-  risk: { bull: "hossa", bear: "bessa", correction: "korekta", weak: "słabość", flat: "bez trendu", unknown: "brak danych" },
-  dollar: { strong: "umacnia się", weak: "słabnie", flat: "bez trendu", unknown: "brak danych" },
-  em: { leading: "silniejsze od świata", lagging: "słabsze od świata", inline: "w linii", unknown: "brak danych" },
-  commodities: { bull: "hossa surowcowa", bear: "bessa surowcowa", flat: "bez trendu", unknown: "brak danych" },
-  rates: { rising: "rentowności rosną", falling: "rentowności spadają", stable: "rentowności stabilne", unknown: "brak danych" },
+  risk: RISK_STATE, dollar: DOLLAR_STATE, em: EM_STATE, commodities: COMMODITIES_STATE, rates: RATES_STATE,
 };
 export const stateLabel = (key: string, state: string, fallback = state): string => (STATE_LABEL as Record<string, Record<string, string>>)[key]?.[state] ?? fallback;
 
-export const INVERTED = "krzywa odwrócona";
+/** The inversion modifier of the rates label in the current language. */
+export const inverted = (): string => S.inverted;
 /** `rentowności rosną · krzywa odwrócona` -> ["rentowności rosną", "krzywa odwrócona"]; one part otherwise. */
 export const stateParts = (label: string): string[] => label.split(" · ").map((s) => s.trim()).filter(Boolean);
-export const isInverted = (r: Pick<MacroRegime, "state_label">): boolean => stateParts(r.state_label).slice(1).some((p) => p.toLowerCase() === INVERTED);
+export const isInverted = (r: Pick<MacroRegime, "state_label">): boolean => stateParts(r.state_label).slice(1).some((p) => p.toLowerCase() === inverted());
 
 /** Tone -> class; anything unexpected is no tone. */
 export const toneCls = (tone: string | null | undefined): "pos" | "neg" | "warn" | "" => (tone === "pos" || tone === "neg" || tone === "warn" ? tone : "");
@@ -49,10 +50,10 @@ const yearOf = (iso: string | null | undefined): string | null => (iso && /^\d{4
 /** `14.08`, or `21.08.2025` when the year differs from the reference date's year (the regime's last bar). */
 export const dateText = (iso: string, ref?: string | null): string => {
   const y = yearOf(iso), ry = yearOf(ref);
-  return y && ry && y !== ry ? `${dm(iso)}.${y}` : dm(iso);
+  return y && ry && y !== ry ? (lang() === "pl" ? `${dm(iso)}.${y}` : dmy(iso)) : dm(iso);
 };
 /** `21.08.2025`: always with the year. */
-const dmYear = (iso: string): string => (yearOf(iso) ? `${dm(iso)}.${yearOf(iso)}` : dm(iso));
+const dmYear = (iso: string): string => (yearOf(iso) ? (lang() === "pl" ? `${dm(iso)}.${yearOf(iso)}` : dmy(iso)) : dm(iso));
 
 /** Whole months from `from` to `to` (calendar dates). */
 export function monthsBetween(from: string, to: string): number {
@@ -64,10 +65,10 @@ export function monthsBetween(from: string, to: string): number {
  * (`ponad miesiąca` for 1), 12-23 months `ponad roku`, from 24 months `ponad N lat`; null under a month. */
 export function openSpan(from: string, to: string): string | null {
   const n = monthsBetween(from, to);
-  if (n >= 24) return `ponad ${Math.floor(n / 12)} lat`;
-  if (n >= 12) return "ponad roku";
-  if (n >= 2) return `ponad ${n} mies.`;
-  return n === 1 ? "ponad miesiąca" : null;
+  if (n >= 24) return S.overYears(Math.floor(n / 12));
+  if (n >= 12) return S.overYear;
+  if (n >= 2) return S.overMonths(n);
+  return n === 1 ? S.overMonth : null;
 }
 
 type SinceLike = Pick<MacroRegime, "since" | "missing"> & Partial<Pick<MacroRegime, "since_open" | "since_min" | "as_of">>;
@@ -78,12 +79,12 @@ export function sinceText(r: SinceLike): string | null {
   if (r.since_open) {
     if (!r.since_min) return null;
     const span = r.as_of ? openSpan(r.since_min, r.as_of) : null;
-    return span ? `od ${span}` : `od ${dateText(r.since_min, r.as_of)}`;
+    return S.since(span ?? dateText(r.since_min, r.as_of));
   }
-  return r.since ? `od ${dateText(r.since, r.as_of)}` : null;
+  return r.since ? S.since(dateText(r.since, r.as_of)) : null;
 }
 /** `dane z 3.10` when stale (as_of = last bar used); null otherwise. */
-export const staleText = (r: Pick<MacroRegime, "stale" | "as_of" | "missing">): string | null => (r.stale && !r.missing && r.as_of ? `dane z ${dm(r.as_of)}` : null);
+export const staleText = (r: Pick<MacroRegime, "stale" | "as_of" | "missing">): string | null => (r.stale && !r.missing && r.as_of ? S.dataFrom(dm(r.as_of)) : null);
 
 /** History tooltip on the `od d.mm` text: the current state first, then the previous changes, newest first,
  * at most 5 lines. The history's last item is the current state's start when its date equals `since`; it is
@@ -96,12 +97,12 @@ export function historyTitle(r: Pick<MacroRegime, "key" | "since" | "state_label
   if (!past.length) return null;
   const head = stateParts(r.state_label)[0] ?? "";
   const since = sinceText(r);
-  const line = (h: MacroHistoryItem) => `${h.open ? `przed ${dmYear(h.date)}` : `od ${dateText(h.date, r.as_of)}`} ${stateLabel(r.key, h.state, h.state_label ?? h.state)}`;
+  const line = (h: MacroHistoryItem) => `${h.open ? S.before(dmYear(h.date)) : S.since(dateText(h.date, r.as_of))} ${stateLabel(r.key, h.state, h.state_label ?? h.state)}`;
   return [since ? `${since} ${head}` : head, ...past.map(line)].slice(0, max).join("\n");
 }
 
 /** A stale metric's note: `dane z 3.10` when the metric carries its date, else `nieaktualne`. */
-export const metricStale = (m: Pick<MacroMetric, "as_of">): string => (m.as_of ? `dane z ${dm(m.as_of)}` : "nieaktualne");
+export const metricStale = (m: Pick<MacroMetric, "as_of">): string => (m.as_of ? S.dataFrom(dm(m.as_of)) : S.outdated);
 /** Metric row tooltip: the stale note for a stale metric, else the BE `change_label` (if any). */
 export const metricTitle = (m: Pick<MacroMetric, "stale" | "as_of" | "change_label">): string | undefined => (m.stale ? metricStale(m) : m.change_label ?? undefined);
 
@@ -117,7 +118,7 @@ export function macroAsOf(d: Pick<MacroRegimes, "as_of" | "regimes"> | null | un
 
 /** The one on-screen sentence: BE `summary`; older server: `meaning`; neither: the metrics joined (`DXY 98,4 · 6 mies. -4,8 %`). */
 export function summaryText(r: Pick<MacroRegime, "summary" | "meaning" | "metrics" | "missing">): string {
-  if (r.missing) return "Brak danych.";
+  if (r.missing) return S.noData;
   return r.summary ?? r.meaning ?? r.metrics.map((m) => `${m.label} ${m.text}`).join(" · ");
 }
 /** The popover exists when there is something longer than the summary to show. */
@@ -145,14 +146,14 @@ export function sinceMonth(r: SinceLike): string | null {
     if (!r.since_min) return null;
     const span = r.as_of ? openSpan(r.since_min, r.as_of) : null;
     const my = monthYear(r.since_min);
-    return span ? `od ${span}` : my ? `od ${my}` : null;
+    return span ? S.since(span) : my ? S.since(my) : null;
   }
   const my = monthYear(r.since);
-  return my ? `od ${my}` : null;
+  return my ? S.since(my) : null;
 }
 /** The bold line: the brief's headline, else the BE's plain sentence, else (older server) the P7 summary. */
 export function macroHeadline(r: Pick<MacroRegime, "summary" | "meaning" | "metrics" | "missing"> & Partial<Pick<MacroRegime, "brief" | "plain">>): string {
-  if (r.missing) return "Brak danych.";
+  if (r.missing) return S.noData;
   return r.brief?.headline ?? r.plain ?? summaryText(r);
 }
 /** The one basic number next to the state: the first change metric (unit `pct`), its label as the tooltip. */
@@ -201,7 +202,7 @@ export function normRegime(v: unknown): MacroRegime | null {
   const missing = o.missing === true || state === "unknown";
   let label = str(o.state_label) ?? stateLabel(key, state);
   // BE extra `flags: ["inverted"]`: the label carries the inversion as the second part (design 2.2).
-  if (!missing && arr(o.flags).includes("inverted") && !isInverted({ state_label: label })) label = `${label} · ${INVERTED}`;
+  if (!missing && arr(o.flags).includes("inverted") && !isInverted({ state_label: label })) label = `${label} · ${inverted()}`;
   const metrics: MacroMetric[] = arr(o.metrics).map((x) => {
     const m = obj(x);
     return { label: str(m.label) ?? "", value: num(m.value), unit: str(m.unit) ?? "level", text: str(m.text) ?? "-", change_label: str(m.change_label), stale: m.stale === true, as_of: str(m.as_of) ?? str(m.date) };

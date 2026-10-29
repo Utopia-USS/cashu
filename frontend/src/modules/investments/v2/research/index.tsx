@@ -10,13 +10,15 @@ import { useMacro, useResearchOverview, useWorkspace } from "./data";
 import { acceptedAt, latestRun, showStrip, watchItemId } from "./logic";
 import { canonKey } from "./segments";
 import { ResearchPage } from "./Page";
+import { ResearchStory } from "./Story";
 import { ReviewResearch, researchChanges, researchEffectLine } from "./ReviewBlock";
-import { CandidatesRail, ResearchStrip, type StripCtx } from "./Strip";
+import { CandidatesRail, type StripCtx } from "./Strip";
 import { MacroChangesWidget, MacroStrip } from "./MacroWidgets";
 import { normMacroChanges } from "./macro";
 import { TopicDetail, topicCrumb } from "./TopicDrawer";
 import type { DigestResearch, ResearchNote } from "./types";
 import { localDay } from "../../../../time";
+import { S } from "./index.strings.ts";
 
 export { AssetResearch, ThesisHealth, useResearchShown } from "./AssetResearch";
 
@@ -80,7 +82,7 @@ export function useResearchHome(input: ResearchHomeInput) {
 
   /** Grid item of the strip; the last cell of the home (Q13). Before the first run only the macro line (P6), when
    * there are regimes. */
-  const strip: GridItem | null = ran && runs ? { id: "research", span: 3, node: <ResearchStrip ctx={ctx} runs={runs} summary={summary} /> }
+  const strip: GridItem | null = ran && runs ? { id: "research", span: 3, node: <ResearchStory ctx={ctx} runs={runs} summary={summary} /> }
     : macro.data?.regimes.length ? { id: "research", span: 3, node: <MacroStrip ctx={ctx} /> } : null;
 
   /** P7: the Kandydaci widget of the home rail (under Alerty); null before the first run. */
@@ -102,7 +104,7 @@ export function useResearchHome(input: ResearchHomeInput) {
   const effect = (instrumentId: number): ReactNode => {
     const l = researchEffectLine({ instrumentId, digest: o.digestResearch, summary, runs, today: o.today });
     if (!l) return null;
-    return <>{l.text} · <button className="lnk" onClick={() => o.openAsset(instrumentId)}>otwórz notatki</button></>;
+    return <>{l.text} · <button className="lnk" onClick={() => o.openAsset(instrumentId)}>{S.openNotes}</button></>;
   };
 
   /** The research view (route `research`). */

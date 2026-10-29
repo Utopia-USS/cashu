@@ -16,7 +16,10 @@ import {
   postConnectorApprove, postConnectorDisable,
 } from "./connectorsApi";
 import { useShell } from "./context";
-import { errorText, plural } from "./messages";
+import { errorText } from "./messages";
+import { C } from "../common.strings.ts";
+import { intlLocale } from "../i18n.ts";
+import { CHANGE_TAG as CHANGE_TAGS, S } from "./ConnectorDrawer.strings.ts";
 import { RunError } from "./RunError";
 
 export function StatusTag({ status }: { status: string }) {
@@ -24,9 +27,7 @@ export function StatusTag({ status }: { status: string }) {
   return <Tag tone={tone} solid={solid}>{text}</Tag>;
 }
 
-const CHANGE_TAG: Record<string, [string, "warn" | "info" | "neg"]> = {
-  modified: ["zmieniony", "warn"], added: ["dodany", "info"], removed: ["usunięty", "neg"],
-};
+const CHANGE_TAG: Record<string, [string, "warn" | "info" | "neg"]> = CHANGE_TAGS;
 function ChangeTag({ change }: { change: string | null }) {
   if (!change) return null;
   const [t, tone] = CHANGE_TAG[change];
@@ -60,11 +61,11 @@ export function ConnectorDrawer({ id, onClose, onChanged, onProposal }: {
     try {
       // the values this drawer showed, never re-read before sending
       await postConnectorApprove(id, { content_sha256: d.content_sha256, interpreter_path: d.interpreter_path });
-      toast(`Zatwierdzono ${d.name}`, 2500);
+      toast(S.approved(d.name), 2500);
       onChanged(); reload();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) { setErr("Konektor zmienił się, odkąd go otworzyłeś: sprawdź pliki jeszcze raz."); reload(); }
-      else setErr(`Nie można zatwierdzić: ${errorText(e)}`);
+      if (e instanceof ApiError && e.status === 409) { setErr(S.changedWhileOpen); reload(); }
+      else setErr(S.cannotApprove(errorText(e)));
     } finally { setBusy(false); }
   };
   const disable = async () => {
@@ -72,7 +73,7 @@ export function ConnectorDrawer({ id, onClose, onChanged, onProposal }: {
     setBusy(true); setErr(null);
     try {
       await postConnectorDisable(id);
-      toast(`Wyłączono ${d.name}`, 2500);
+      toast(S.disabled(d.name), 2500);
       onChanged(); reload();
     } catch (e) { setErr(errorText(e)); } finally { setBusy(false); }
   };
@@ -82,7 +83,7 @@ export function ConnectorDrawer({ id, onClose, onChanged, onProposal }: {
     try {
       const r = await deleteConnector(id);
       const kept = secretsLeftText(r?.secrets_left, d.id);
-      toast(kept ? `Usunięto ${d.name} · ${kept}` : `Usunięto ${d.name}`, kept ? 8000 : 2500);
+      toast(kept ? S.deletedKept(d.name, kept) : S.deleted(d.name), kept ? 8000 : 2500);
       onChanged(); onClose();
     } catch (e) { setErr(errorText(e)); setConfirmDelete(false); } finally { setBusy(false); }
   };
@@ -90,26 +91,26 @@ export function ConnectorDrawer({ id, onClose, onChanged, onProposal }: {
   const blocked = !!d && (d.missing || d.problems.length > 0);
   const footer = !d ? undefined : confirmDelete ? (
     <>
-      <span style={{ fontSize: 13 }}>Usunąć <b>{d.name}</b>?{d.bindings ? ` Usunie też ${plural(d.bindings, "powiązanie", "powiązania", "powiązań")} i ich sekrety.` : ""}</span>
+      <span style={{ fontSize: 13 }}>{S.deleteQ}<b>{d.name}</b>?{d.bindings ? S.deleteBindings(d.bindings) : ""}</span>
       <span style={{ flex: 1 }} />
-      <button className="btn" disabled={busy} onClick={() => setConfirmDelete(false)}>Anuluj</button>
-      <button className="btn" disabled={busy} style={{ color: "var(--neg)", borderColor: "var(--neg)" }} onClick={remove}>Tak, usuń</button>
+      <button className="btn" disabled={busy} onClick={() => setConfirmDelete(false)}>{C.cancel}</button>
+      <button className="btn" disabled={busy} style={{ color: "var(--neg)", borderColor: "var(--neg)" }} onClick={remove}>{S.yesDelete}</button>
     </>
   ) : (
     <>
-      <button className="btn" disabled={busy} onClick={() => setConfirmDelete(true)}>Usuń</button>
-      {(d.status === "changed" || d.status === "approved") && <button className="btn" disabled={busy} onClick={disable}>Wyłącz</button>}
+      <button className="btn" disabled={busy} onClick={() => setConfirmDelete(true)}>{C.remove}</button>
+      {(d.status === "changed" || d.status === "approved") && <button className="btn" disabled={busy} onClick={disable}>{S.turnOff}</button>}
       <span style={{ flex: 1 }} />
       {d.status !== "approved" && (
         <button className="btn primary" disabled={busy || blocked} onClick={approve}>
-          {d.status === "changed" ? "Zatwierdź ponownie" : d.status === "disabled" ? "Zatwierdź i włącz" : "Zatwierdź"}
+          {d.status === "changed" ? S.approveAgain : d.status === "disabled" ? S.approveEnable : S.approve}
         </button>
       )}
     </>
   );
 
   return (
-    <Drawer open title={d?.name ?? "Konektor"} tag={d ? <StatusTag status={d.status} /> : undefined} width={640} footer={footer} onClose={onClose} label="Konektor">
+    <Drawer open title={d?.name ?? S.connector} tag={d ? <StatusTag status={d.status} /> : undefined} width={640} footer={footer} onClose={onClose} label={S.connector}>
       {err && <Notice tone="neg">{err}</Notice>}
       {p.error && !d && <Notice tone="neg">{p.error}</Notice>}
       {!d && !p.error && <Skeleton h={200} />}
@@ -124,7 +125,7 @@ export function ConnectorDrawer({ id, onClose, onChanged, onProposal }: {
               onProposal={(pid) => { onClose(); onProposal(pid); }} />
           )}
           <Runs id={id} kind={d.kind} nonce={nonce} />
-          <div className="foot">Wyłączenie zatrzymuje przebiegi, powiązania zostają. Usunięcie kasuje katalog, powiązania i sekrety.</div>
+          <div className="foot">{S.foot}</div>
         </>
       )}
     </Drawer>
@@ -138,24 +139,24 @@ function Notices({ d }: { d: ConnectorDetail }) {
     <>
       {changedSinceApproval(d) && (
         <Notice tone="warn">
-          Pliki zmieniły się od zatwierdzenia{summary ? ` (${summary})` : ""}.{" "}
-          {d.status === "disabled" ? "Przejrzyj zmiany przed włączeniem." : "Konektor nie uruchomi się do ponownego zatwierdzenia."}
-          {d.interpreter_changed && <> Interpreter: było <code>{d.approved_interpreter}</code>, jest <code>{d.interpreter_path}</code>.</>}
+          {S.filesChanged(summary)}{" "}
+          {d.status === "disabled" ? S.reviewBeforeEnable : S.wontRun}
+          {d.interpreter_changed && <>{S.interpreterWas}<code>{d.approved_interpreter}</code>{S.interpreterIs}<code>{d.interpreter_path}</code>.</>}
         </Notice>
       )}
-      {d.missing && <Notice tone="neg">Katalog konektora zniknął z dysku. Zostaje tylko usunięcie.</Notice>}
+      {d.missing && <Notice tone="neg">{S.missing}</Notice>}
       {d.problems.length > 0 && (
         <Notice tone="neg">
-          <b>Konektor nie przechodzi walidacji:</b>
+          <b>{S.invalid}</b>
           <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
             {shown.map((x, k) => <li key={k}>{x}</li>)}
-            {d.problems.length > shown.length && <li>… i {d.problems.length - shown.length} więcej</li>}
+            {d.problems.length > shown.length && <li>{S.andMore(d.problems.length - shown.length)}</li>}
           </ul>
         </Notice>
       )}
-      {d.status === "disabled" && <Notice>Wyłączony: nie uruchamia się; powiązania i sekrety zostały.</Notice>}
+      {d.status === "disabled" && <Notice>{S.disabledNote}</Notice>}
       {d.status === "pending" && d.source === "mcp" && (
-        <Notice tone="info">Zgłoszony przez agenta. Przejrzyj polecenie, hosty i pliki poniżej; agent nie może go zatwierdzić ani uruchomić.</Notice>
+        <Notice tone="info">{S.byAgent}</Notice>
       )}
     </>
   );
@@ -168,58 +169,58 @@ function Approves({ d }: { d: ConnectorDetail }) {
   const fetch = d.kind === "fetch";
   return (
     <>
-      <Kick>Co zatwierdzasz</Kick>
+      <Kick>{S.whatYouApprove}</Kick>
       <div className="kv ckv">
-        <span className="k">Polecenie</span>
+        <span className="k">{S.command}</span>
         <span className="v block">
           <code style={{ fontWeight: 600 }}>{run.join(" ") || "-"}</code>
           <div style={{ marginTop: 2 }}>
             {local
-              ? <span className="fhint">plik wykonywalny z katalogu konektora (objęty sumą kontrolną)</span>
-              : <><span className="fhint">interpreter </span><code style={{ fontSize: 12 }}>{d.interpreter_path ?? "-"}</code></>}
+              ? <span className="fhint">{S.localExec}</span>
+              : <><span className="fhint">{S.interpreter}</span><code style={{ fontSize: 12 }}>{d.interpreter_path ?? "-"}</code></>}
           </div>
         </span>
-        <span className="k">Limit czasu</span>
-        <span className="v"><b>{d.timeout_s} s</b>{d.kind === "file" && <span className="fhint">rozpoznawanie pliku 10 s</span>}</span>
-        <span className="k">Sieć</span>
+        <span className="k">{S.timeout}</span>
+        <span className="v"><b>{d.timeout_s} s</b>{d.kind === "file" && <span className="fhint">{S.fileDetect}</span>}</span>
+        <span className="k">{S.network}</span>
         <span className="v">
           {fetch
-            ? <>{d.hosts.map((h) => <code key={h} style={{ fontWeight: 600 }}>{h}</code>)}<span className="fhint">tylko te hosty, port 443, przez proxy aplikacji</span></>
-            : <><b>brak</b><span className="fhint">piaskownica bez dostępu do sieci</span></>}
+            ? <>{d.hosts.map((h) => <code key={h} style={{ fontWeight: 600 }}>{h}</code>)}<span className="fhint">{S.hostsOnly}</span></>
+            : <><b>{S.none}</b><span className="fhint">{S.noNetwork}</span></>}
         </span>
         {fetch && d.secrets.length > 0 && (
           <>
-            <span className="k">Sekrety</span>
+            <span className="k">{S.secrets}</span>
             <span className="v block">
               {d.secrets.map((s) => <div key={s.id}><b>{s.label}</b> <span className="fhint">({s.id})</span></div>)}
-              <span className="fhint">wpisujesz w powiązaniu; pęk kluczy; nigdy w logach ani u agenta</span>
+              <span className="fhint">{S.secretsHint}</span>
             </span>
           </>
         )}
         {fetch && d.params.length > 0 && (
           <>
-            <span className="k">Parametry</span>
-            <span className="v">{d.params.map((x) => `${x.label}${x.required ? " *" : ""}`).join(" · ")}{d.params.some((x) => x.required) && <span className="fhint">* wymagany</span>}</span>
+            <span className="k">{S.params}</span>
+            <span className="v">{d.params.map((x) => `${x.label}${x.required ? " *" : ""}`).join(" · ")}{d.params.some((x) => x.required) && <span className="fhint">{S.required}</span>}</span>
           </>
         )}
         {d.kind === "file" && (
-          <><span className="k">Rozszerzenia</span><span className="v">{d.extensions.join(", ") || "-"}</span></>
+          <><span className="k">{S.extensions}</span><span className="v">{d.extensions.join(", ") || "-"}</span></>
         )}
         {fetch && d.history_days != null && (
-          <><span className="k">Historia</span><span className="v">pierwsze pobranie: {d.history_days} dni wstecz</span></>
+          <><span className="k">{S.history}</span><span className="v">{S.firstFetch(d.history_days)}</span></>
         )}
-        <span className="k">Suma kontrolna</span>
+        <span className="k">{S.checksum}</span>
         <span className="v">
           <code title={d.content_sha256}>sha256 {d.content_sha256.slice(0, 12)}…</code>
-          <button className="lnk" onClick={() => copyText(d.content_sha256).then(() => toast("Skopiowano", 1500))}>kopiuj</button>
+          <button className="lnk" onClick={() => copyText(d.content_sha256).then(() => toast(S.copied, 1500))}>{S.copy}</button>
           {d.approved_sha256 && d.approved_sha256 !== d.content_sha256 && (
-            <span style={{ color: "var(--neg)", fontSize: 12.5 }}>zatwierdzona <code title={d.approved_sha256}>{d.approved_sha256.slice(0, 12)}…</code></span>
+            <span style={{ color: "var(--neg)", fontSize: 12.5 }}>{S.approvedSum}<code title={d.approved_sha256}>{d.approved_sha256.slice(0, 12)}…</code></span>
           )}
         </span>
-        <span className="k">Zapis na dysku</span>
-        <span className="v">tylko katalog tymczasowy przebiegu</span>
+        <span className="k">{S.diskWrite}</span>
+        <span className="v">{S.tmpOnly}</span>
       </div>
-      <div className="fhint" style={{ marginTop: 8 }}>Piaskownica: odczyt systemu i własnego katalogu, zapis tylko do katalogu tymczasowego; proces zabijany po limicie czasu.</div>
+      <div className="fhint" style={{ marginTop: 8 }}>{S.sandbox}</div>
     </>
   );
 }
@@ -227,16 +228,16 @@ function Approves({ d }: { d: ConnectorDetail }) {
 function Details({ d }: { d: ConnectorDetail }) {
   return (
     <>
-      <Kick>Szczegóły</Kick>
+      <Kick>{S.details}</Kick>
       <div className="kv ckv" style={{ fontSize: 13 }}>
-        <span className="k">Identyfikator</span><span className="v"><code>{d.id}</code></span>
-        <span className="k">Wersja</span><span className="v">{d.version}</span>
-        <span className="k">Autor</span><span className="v">{d.author ?? "-"}</span>
-        <span className="k">Opis</span><span className="v">{d.description ?? "-"}</span>
-        <span className="k">Moduł</span><span className="v">{MODULE_LABEL[d.module] ?? d.module}</span>
-        <span className="k">Rodzaj</span><span className="v">{KIND_LABEL[d.kind] ?? d.kind}</span>
-        <span className="k">Zainstalowany</span><span className="v">{when(d.installed_at)} · {d.source === "mcp" ? "agent (MCP)" : "CLI"}</span>
-        <span className="k">Zatwierdzony</span><span className="v">{d.approved_at ? when(d.approved_at) : "-"}</span>
+        <span className="k">{S.id}</span><span className="v"><code>{d.id}</code></span>
+        <span className="k">{S.version}</span><span className="v">{d.version}</span>
+        <span className="k">{S.author}</span><span className="v">{d.author ?? "-"}</span>
+        <span className="k">{S.description}</span><span className="v">{d.description ?? "-"}</span>
+        <span className="k">{S.module}</span><span className="v">{MODULE_LABEL[d.module] ?? d.module}</span>
+        <span className="k">{S.kind}</span><span className="v">{KIND_LABEL[d.kind] ?? d.kind}</span>
+        <span className="k">{S.installed}</span><span className="v">{when(d.installed_at)} · {d.source === "mcp" ? "agent (MCP)" : "CLI"}</span>
+        <span className="k">{S.approvedAt}</span><span className="v">{d.approved_at ? when(d.approved_at) : "-"}</span>
       </div>
     </>
   );
@@ -254,9 +255,9 @@ function Files({ d, view, setView, nonce }: { d: ConnectorDetail; view: string |
   const current = rows.find((r) => r.path === view) ?? null;
   return (
     <>
-      <Kick right={<Tag>{plural(d.files.length, "plik", "pliki", "plików")} · {sizeText(total)}</Tag>}>Pliki</Kick>
+      <Kick right={<Tag>{S.fileCount(d.files.length)} · {sizeText(total)}</Tag>}>{S.files}</Kick>
       <table>
-        <thead><tr><th>Plik</th><th className="num">Rozmiar</th>{changed && <th />}</tr></thead>
+        <thead><tr><th>{S.file}</th><th className="num">{S.size}</th>{changed && <th />}</tr></thead>
         <tbody>
           {rows.map((f) => {
             // a removed file has only its diff; any other file opens when the viewer can show it
@@ -266,8 +267,8 @@ function Files({ d, view, setView, nonce }: { d: ConnectorDetail; view: string |
                 <td>
                   {canOpen
                     ? <button className="lnk" style={{ fontWeight: view === f.path ? 700 : undefined }} aria-pressed={view === f.path} onClick={() => setView(view === f.path ? null : f.path)}>{f.path}</button>
-                    : <span className="muted" title="plik binarny albo za duży do podglądu">{f.path}</span>}
-                  {f.executable && <> <Tag title="plik wykonywalny">exec</Tag></>}
+                    : <span className="muted" title={S.noPreviewTitle}>{f.path}</span>}
+                  {f.executable && <> <Tag title={S.execTitle}>exec</Tag></>}
                 </td>
                 <td className="num">{f.size != null ? sizeText(f.size) : ""}</td>
                 {changed && <td><ChangeTag change={f.change} /></td>}
@@ -303,29 +304,29 @@ function CodeViewer({ id, file, onClose }: { id: string; file: FileRow; onClose:
       <div className="cvh">
         <code>{file.path}</code>
         {file.size != null && <span>· {sizeText(file.size)}</span>}
-        {mode === "file" && text != null && <span>· {plural(lines.length, "linia", "linie", "linii")}</span>}
+        {mode === "file" && text != null && <span>· {S.lines(lines.length)}</span>}
         {diff && <span>· <span style={{ color: "var(--pos)" }}>+{diff.added}</span> <span style={{ color: "var(--neg)" }}>-{diff.removed}</span></span>}
         <ChangeTag change={file.change} />
         <span style={{ flex: 1 }} />
         {file.change === "modified" && (
-          <button className="lnk" onClick={() => setMode(mode === "diff" ? "file" : "diff")}>{mode === "diff" ? "cały plik" : "zmiany"}</button>
+          <button className="lnk" onClick={() => setMode(mode === "diff" ? "file" : "diff")}>{mode === "diff" ? S.wholeFile : S.changes}</button>
         )}
-        {text != null && <button className="lnk" onClick={() => copyText(text).then(() => toast("Skopiowano", 1500))}>kopiuj</button>}
-        <button className="lnk" onClick={onClose}>zamknij</button>
+        {text != null && <button className="lnk" onClick={() => copyText(text).then(() => toast(S.copied, 1500))}>{S.copy}</button>}
+        <button className="lnk" onClick={onClose}>{S.close}</button>
       </div>
       {res.error && <Notice tone="neg" style={{ margin: 8 }}>{res.error}</Notice>}
       {!r && !res.error && <div style={{ padding: 8 }}><Skeleton h={160} /></div>}
       {r && "status" in r && (
         <Notice style={{ margin: 8 }}>
-          {r.status === 415 ? "Plik binarny: bez podglądu." : r.status === 413 ? "Plik za duży do podglądu (limit 200 KiB)."
-            : mode === "diff" ? "Porównanie z zatwierdzoną wersją jest niedostępne." : "Nie znaleziono pliku."}
+          {r.status === 415 ? S.binary : r.status === 413 ? S.tooLarge
+            : mode === "diff" ? S.noDiff : S.notFound}
         </Notice>
       )}
       {mode === "file" && text != null && (
         <pre tabIndex={0}><span className="in">{lines.map((l, k) => <span key={k} className="l">{l || " "}</span>)}</span></pre>
       )}
       {diff && (
-        <pre tabIndex={0} aria-label={`Zmiany w ${file.path}`}>
+        <pre tabIndex={0} aria-label={S.changesIn(file.path)}>
           <span className="in">
             {diff.rows.map((row, k) => (
               <span key={k} className={`d ${row.kind}`}>
@@ -334,7 +335,7 @@ function CodeViewer({ id, file, onClose }: { id: string; file: FileRow; onClose:
                 )}
               </span>
             ))}
-            {!diff.rows.length && <span className="d note">Bez różnic w treści.</span>}
+            {!diff.rows.length && <span className="d note">{S.noContentDiff}</span>}
           </span>
         </pre>
       )}
@@ -353,25 +354,25 @@ function Runs({ id, kind, nonce }: { id: string; kind: string; nonce: number }) 
   const toggle = (rid: number) => setOpen((s) => { const x = new Set(s); if (x.has(rid)) x.delete(rid); else x.add(rid); return x; });
   return (
     <>
-      <Kick right={<><Tag>ostatnie {runs.length}</Tag><span className="spacer" /><button className="btn sm" onClick={() => setN((x) => x + 1)} disabled={r.loading}>Odśwież</button></>}>Przebiegi</Kick>
+      <Kick right={<><Tag>{S.lastN(runs.length)}</Tag><span className="spacer" /><button className="btn sm" onClick={() => setN((x) => x + 1)} disabled={r.loading}>{C.refresh}</button></>}>{S.runs}</Kick>
       {r.error && <Notice tone="neg">{r.error}</Notice>}
       <div className="scroll">
         <table>
-          <thead><tr><th>Kiedy</th><th>Polecenie</th><th>Wynik</th><th className="num">Rekordy</th>{fetch && <th className="num">Hosty odrzucone</th>}</tr></thead>
+          <thead><tr><th>{S.colWhen}</th><th>{S.colCommand}</th><th>{S.colResult}</th><th className="num">{S.colRecords}</th>{fetch && <th className="num">{S.colDenied}</th>}</tr></thead>
           <tbody>
             {runs.map((x: ConnectorRun) => {
               const other = x.profile && x.profile !== slug;
               const details = !!x.error_kind || (!!x.stderr_tail && x.outcome !== "ok");
-              const dur = x.duration_ms == null ? "" : x.duration_ms >= 1000 ? `${(x.duration_ms / 1000).toLocaleString("pl-PL", { maximumFractionDigits: 1 })} s` : `${x.duration_ms} ms`;
+              const dur = x.duration_ms == null ? "" : x.duration_ms >= 1000 ? `${(x.duration_ms / 1000).toLocaleString(intlLocale(), { maximumFractionDigits: 1 })} s` : `${x.duration_ms} ms`;
               const hosts = x.denied_hosts ?? [];
               return [
-                <tr key={x.id} className={other ? "muted" : undefined} title={other ? `profil ${x.profile}` : undefined}>
+                <tr key={x.id} className={other ? "muted" : undefined} title={other ? S.profileTitle(x.profile!) : undefined}>
                   <td style={{ whiteSpace: "nowrap" }}>{when(x.started_at)}{dur && <span className="fhint"> · {dur}</span>}</td>
                   <td><code>{x.command}</code></td>
                   <td>
                     <Tag tone={OUTCOME_TONE[x.outcome]}>{OUTCOME_LABEL[x.outcome] ?? x.outcome}</Tag>
                     {x.error_kind && <span className="fhint"> {kindShort(x.error_kind)}</span>}
-                    {details && <> · <button className="lnk" style={{ fontSize: 12 }} aria-expanded={open.has(x.id)} onClick={() => toggle(x.id)}>Szczegóły</button></>}
+                    {details && <> · <button className="lnk" style={{ fontSize: 12 }} aria-expanded={open.has(x.id)} onClick={() => toggle(x.id)}>{C.details}</button></>}
                   </td>
                   <td className="num">{x.records ? x.records : x.outcome === "ok" ? (x.records ?? 0) : "-"}</td>
                   {fetch && (
@@ -385,12 +386,12 @@ function Runs({ id, kind, nonce }: { id: string; kind: string; nonce: number }) 
                 ),
               ];
             })}
-            {!r.loading && !runs.length && !r.error && <tr><td colSpan={cols} className="muted">Jeszcze nie uruchomiony.</td></tr>}
-            {r.loading && !runs.length && <tr><td colSpan={cols} className="muted">Wczytuję…</td></tr>}
+            {!r.loading && !runs.length && !r.error && <tr><td colSpan={cols} className="muted">{S.neverRun}</td></tr>}
+            {r.loading && !runs.length && <tr><td colSpan={cols} className="muted">{C.loading}</td></tr>}
           </tbody>
         </table>
       </div>
-      <div className="foot">Ostatnie 20 z 500 zapisanych · stderr tylko tutaj, nigdy u agenta.</div>
+      <div className="foot">{S.runsFoot}</div>
     </>
   );
 }

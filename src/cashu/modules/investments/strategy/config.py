@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from cashu.core.i18n import tr
 from cashu.modules.investments.domain import AllocationPlan, Currency, SignalSeverity
 from cashu.modules.investments.rules import (
     ContributionPlan,
@@ -85,6 +86,35 @@ class NotificationPolicy:
     digest_weekday: Weekday = Weekday.SUNDAY
 
 
+REVIEW_CARDS = ("world", "sectors", "positions", "events", "decide", "ideas", "calendar")
+"""Cards of the review deck in their default order: Czy świat się wali, Sektory, Pozycje, Wydarzenia, Do
+decyzji, Okazje, Kalendarz."""
+
+REVIEW_EVERY = {"week": "Przegląd tygodnia", "2weeks": "Przegląd dwutygodniowy", "month": "Przegląd miesiąca"}
+"""``review.every`` values and the default name of each."""
+
+REVIEW_EVERY_EN = {"week": "Weekly review", "2weeks": "Biweekly review", "month": "Monthly review"}
+"""English default names (:attr:`ReviewPolicy.title` picks the UI language)."""
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewPolicy:
+    """``review:`` - the owner's periodic review: how often (``every``: week, 2weeks or month; a monthly
+    review falls on the first ``day`` of the month), on which weekday (``day``; default
+    ``notifications.digest_weekday``), its name (default by ``every``) and the cards of the review deck,
+    in order."""
+
+    every: str = "week"
+    day: Weekday | None = None
+    name: str | None = None
+    cards: tuple[str, ...] = REVIEW_CARDS
+
+    @property
+    def title(self) -> str:
+        names = tr(pl=REVIEW_EVERY, en=REVIEW_EVERY_EN)
+        return self.name or names.get(self.every, names["week"])
+
+
 @dataclass(frozen=True, slots=True)
 class StrategyConfig:
     """A profile's strategy as the engine sees it."""
@@ -105,6 +135,8 @@ class StrategyConfig:
     watchlist: WatchlistCriteria = field(default_factory=WatchlistCriteria)
     benchmark: Benchmark | None = None
     notifications: NotificationPolicy = field(default_factory=NotificationPolicy)
+    review: ReviewPolicy = field(default_factory=ReviewPolicy)
+    """``review:`` (defaults when absent: weekly on the digest weekday, every card)."""
     markdown: str | None = None
     """The strategy.md prose passed to the loader, if any."""
 

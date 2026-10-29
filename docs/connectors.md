@@ -42,6 +42,8 @@ name: Przykładowy Bank CSV       # shown to the owner, <= 60 characters
 version: 1.0.0                   # free text, <= 20 characters, shown only
 author: Jan Kowalski             # optional, <= 80 characters
 description: Wyciąg CSV ...      # optional, <= 280 characters
+maintainer: "@jkowalski"         # optional (required in the catalog), <= 80 characters
+last_verified: 2026-10-01        # optional (required in the catalog), ISO date
 module: budget                   # investments | budget
 kind: file                       # file | fetch
 run: [deno, connector.ts]        # argv, see below (deno: the app's own Deno, the default)
@@ -60,9 +62,11 @@ file:                            # kind file only (and required for it)
 | key | rule |
 | --- | --- |
 | `api_version` | the number `1` |
-| `id` | `^[a-z][a-z0-9-]{1,39}$`; installing another connector with the same id needs `--replace` |
+| `id` | `^[a-z][a-z0-9-]{1,39}$`, not the reserved `catalog`; installing another connector with the same id needs `--replace` |
 | `name`, `version` | required, non-empty, <= 60 / <= 20 characters |
 | `author`, `description` | optional, <= 80 / <= 280 characters |
+| `maintainer` | optional, <= 80 characters: who keeps the connector working, a GitHub handle (`@octocat`) or a name. Required for an entry of the connector catalog (`connectors/` in the cashU repository) |
+| `last_verified` | optional, an ISO date `YYYY-MM-DD` (quoted or not; no time): the last day the maintainer checked the connector against a real, current export or API. Required in the catalog, where an entry older than 180 days is shown as stale |
 | `module`, `kind` | see above; `kind: file` needs a `file` section and no `fetch` section, and the other way round |
 | `run` | 1..8 plain strings, each <= 200 characters, no control characters, no `..` path segment, no absolute or `~` paths. No shell: it is an argv, not a command line. An argument that names a file of the connector (`connector.py`) is passed as that file's absolute path, because the process runs in another directory (section 4) |
 | `run[0]` | an interpreter name from the allowlist `deno`, `python3`, `node`, `bun`, `ruby`, `perl`, or `./<file>`: an executable file inside the connector directory (covered by the hash). **`deno` is the default**: the app ships its own Deno, so a Deno connector needs nothing installed (section 4, "Deno connectors") |
@@ -370,6 +374,13 @@ recorded.
   returns the id, status, hash prefix, module, kind, hosts and secret ids, and runs nothing. The read
   tool `connectors()` lists the installed connectors with their status, the last run's outcome, error
   kind and time, and the profile's binding count (never messages, stderr, params or secrets).
+- Catalog: community connectors kept in the cashU repository (`connectors/<id>/`, contrib status, each
+  with a `maintainer` and a `last_verified` date and synthetic `fixtures/`) ship read-only with the app.
+  `cashu connectors catalog list` lists them (and prints the folder, for `cashu connectors test`),
+  `cashu connectors catalog add <id>` installs one; the MCP tool `connectors()` lists them too and
+  `propose_connector(catalog_id=<id>)` installs one. Either way it is the same install as above:
+  `pending` (or `changed` over an approved copy with other content) until the owner approves it. An entry
+  whose `last_verified` is older than 180 days is shown as `stale` (unmaintained).
 - Other commands: `cashu connectors list`, `show <id>` (manifest facts, files with sha, status, diff
   since the approval), `disable <id>` (stops it; bindings and secrets stay), `remove <id>` (deletes the
   files, bindings, their secrets and the run log).

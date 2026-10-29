@@ -201,12 +201,27 @@ def networth_breakdown(ctx: ToolContext) -> dict:
     return {"currencies": out, "note": L.text("currencies are never summed or converted")}
 
 
+REVIEW_CARDS = ("world", "sectors", "positions", "events", "decide", "ideas", "calendar")
+
+
 def mark_review_done(
-    ctx: ToolContext, notes: str | None = None, module: str = "investments"
+    ctx: ToolContext,
+    notes: str | None = None,
+    module: str = "investments",
+    agenda: list[dict] | None = None,
 ) -> dict:
     if module not in profiles.enabled_modules(ctx.session, ctx.profile_id):
         raise ToolError(f"module {module} is not enabled for this profile")
     stats: dict[str, Any] = {"source": "mcp"}
+    if agenda:
+        # The cards the owner wants followed up (the /review skill), stored like the app's review deck
+        # (stats.deck.agenda) so research_context.owner_review shows them to the next run.
+        stats["deck"] = {
+            "agenda": [
+                {"card": a["card"], "title": None, "note": (a.get("note") or "").strip() or None}
+                for a in agenda
+            ]
+        }
     if module == "investments":
         from .investments import review_stats
 
@@ -249,10 +264,26 @@ TOOLS = (
     ToolSpec(
         "mark_review_done",
         "core",
-        "Record that the weekly review of a module (default investments) is done, with notes.",
+        "Record that the periodic review of a module (default investments) is done, with notes and "
+        "(investments) the agenda: the review cards the owner wants followed up, each with a note.",
         mark_review_done,
         properties={
             "notes": {"type": "string", "maxLength": reviews.MAX_NOTES},
+            "agenda": {
+                "type": "array",
+                "maxItems": 20,
+                "description": "investments review cards the owner wants followed up in the next "
+                "research run, each with the owner's note",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "card": {"type": "string", "enum": list(REVIEW_CARDS)},
+                        "note": {"type": "string", "maxLength": 500},
+                    },
+                    "required": ["card"],
+                    "additionalProperties": False,
+                },
+            },
             "module": {
                 "type": "string",
                 "enum": list(modules.MODULE_IDS),

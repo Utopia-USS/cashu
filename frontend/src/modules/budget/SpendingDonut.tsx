@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { cssVar, cur, PALETTE } from "../../format";
 import type { SpendRow } from "./api";
+import { S } from "./SpendingDonut.strings.ts";
 
 interface Slice extends SpendRow { members?: SpendRow[] }
 
@@ -14,7 +15,7 @@ export function SpendingDonut({ rows, currency, onDrill }: { rows: SpendRow[]; c
   const small = rows.filter((r) => roundPct(r.amount) <= 1);
   const big = rows.filter((r) => roundPct(r.amount) > 1);
   const display: Slice[] = small.length >= 2
-    ? [...big, { category: "__rest__", label: "Reszta", amount: small.reduce((s, r) => s + r.amount, 0), members: small }]
+    ? [...big, { category: "__rest__", label: S.rest, amount: small.reduce((s, r) => s + r.amount, 0), members: small }]
     : rows;
   const color = (r: Slice, i: number) => (r.category === "__rest__" ? cssVar("--muted") : PALETTE[i % PALETTE.length]);
 
@@ -61,7 +62,7 @@ export function SpendingDonut({ rows, currency, onDrill }: { rows: SpendRow[]; c
           }
           return <Row key={r.category} r={r} c={color(r, i)} onClick={() => onDrill(r.category, r.label)} />;
         })}
-        <div className="bd-sum"><div><span>Suma wydatków</span><b>{cur(total, currency)}</b></div></div>
+        <div className="bd-sum"><div><span>{S.total}</span><b>{cur(total, currency)}</b></div></div>
       </div>
     </div>
   );

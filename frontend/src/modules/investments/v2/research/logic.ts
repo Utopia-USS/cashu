@@ -2,59 +2,52 @@
 // freshness, the 8-week sentiment score and its bars, the sentiment direction word, thesis health per position,
 // candidate criteria, research signal copy, run state tags, the commands the UI copies, and where the strip
 // sits in the home grid. Pure; `npm test` imports it (node strips the types; imports carry .ts).
-import { dm, ENTRY_TYPE, plural, wdm } from "../../labels.ts";
+import { dm, ENTRY_TYPE, wdm } from "../../labels.ts";
 import { segmentLabel } from "./segments.ts";
 import { isMacroKey, noteKeyLabel } from "./macro.ts";
 import { hmLocal, localDay, parseServerTime } from "../../../../time.ts";
 import type {
   Criterion, Direction, HealthKey, InstrumentSummary, NoteSource, Relation, RelationCounts, ResearchNote, ResearchRun,
 } from "./types.ts";
+import {
+  DIRECTION_LABEL as DIRECTION_LABEL_C, HEALTH_LABEL as HEALTH_LABEL_C, KIND_LABEL as KIND_LABEL_C, NOISE_SCALE as NOISE_SCALE_C,
+  POLARITY_WORD as POLARITY_WORD_C, RELATION_LABEL as RELATION_LABEL_C, S, THESIS_FIELD_LABEL as THESIS_FIELD_LABEL_C,
+} from "./logic.strings.ts";
 
 // ---- copy deck (research.md 8) --------------------------------------------------------------------------
 
-export const KIND_LABEL: Record<string, string> = {
-  news: "wiadomość", earnings: "wyniki", community: "społeczność · szum", trend: "trend", macro: "makro", candidate: "kandydat",
-};
-/** Kind filter of the research view (plural forms). */
-export const KIND_FILTER: [string, string][] = [["wiadomości", "news"], ["wyniki", "earnings"], ["społeczność", "community"], ["trendy", "trend"], ["makro", "macro"]];
+export const KIND_LABEL: Record<string, string> = KIND_LABEL_C;
+/** Kind filter of the research view: [label, kind] (plural forms). */
+export const kindFilter = (): [string, string][] => S.kindFilter;
 
-export const POLARITY_WORD: Record<string, string> = { positive: "pozytywna", negative: "negatywna", neutral: "neutralna" };
+export const POLARITY_WORD: Record<string, string> = POLARITY_WORD_C;
 export const POLARITY_CLS: Record<string, string> = { positive: "pos", negative: "neg", neutral: "neu" };
 export const polarityCls = (p: string | null | undefined) => POLARITY_CLS[p ?? ""] ?? "neu";
 
-export const STRENGTH_WORD = ["", "słaba", "umiarkowana", "silna"];
-export const strengthTitle = (v: number) => `siła ${clampStrength(v)} z 3 (${STRENGTH_WORD[clampStrength(v)]})`;
+export const strengthTitle = (v: number) => S.strengthTitle(clampStrength(v), S.strengthWord[clampStrength(v)]);
 export const clampStrength = (v: number) => Math.max(1, Math.min(3, Math.round(Number(v) || 1)));
 
-export const RELATION_LABEL: Record<Relation, string> = {
-  supports: "wzmacnia tezę", weakens: "osłabia tezę", invalidates: "podważa tezę", fulfills: "spełnia tezę", neutral: "nie dotyka tezy", none: "bez tezy",
-};
+export const RELATION_LABEL: Record<Relation, string> = RELATION_LABEL_C;
 export const RELATION_CLS: Record<Relation, string> = { supports: "sup", weakens: "weak", invalidates: "inv", fulfills: "ful", neutral: "", none: "none" };
 
-export const HEALTH_LABEL: Record<HealthKey, string> = {
-  inv: "podważona", weak: "osłabiona", ful: "spełniona", sup: "wzmocniona", ok: "aktualna", no_thesis: "bez tezy", no_research: "bez researchu",
-};
+export const HEALTH_LABEL: Record<HealthKey, string> = HEALTH_LABEL_C;
 export const HEALTH_CLS: Record<HealthKey, string> = { inv: "inv", weak: "weak", ful: "ful", sup: "sup", ok: "", no_thesis: "none", no_research: "none muted" };
 /** Attention order for lists (RS CONTRACT 1 + P1): invalidated, weakened, fulfilled, no_research, no_thesis, supported, current. */
 export const HEALTH_RANK: Record<HealthKey, number> = { inv: 0, weak: 1, ful: 2, no_research: 3, no_thesis: 4, sup: 5, ok: 6 };
 
-export const DIRECTION_LABEL: Record<Direction, string> = { up: "rośnie", down: "słabnie", flat: "stabilnie" };
+export const DIRECTION_LABEL: Record<Direction, string> = DIRECTION_LABEL_C;
 export const DIRECTION_TONE: Record<Direction, "pos" | "neg" | ""> = { up: "pos", down: "neg", flat: "" };
 
-export const THESIS_FIELD_LABEL: Record<string, string> = {
-  entry_type: "Typ wejścia", thesis: "Wejście", invalidation: "Unieważnienie", exit_plan: "Plan wyjścia", size_plan: "Wielkość i dokupienia",
-};
+export const THESIS_FIELD_LABEL: Record<string, string> = THESIS_FIELD_LABEL_C;
 /** Loose field names (entry, exit, size) to the thesis record's field names. */
 export const normField = (f: string | null | undefined): string | null =>
   !f ? null : ({ entry: "thesis", exit: "exit_plan", size: "size_plan", type: "entry_type" } as Record<string, string>)[f] ?? f;
 
-export const BOUNDARY = "bez rekomendacji i prognoz";
 export const RESEARCH_SKILL = "/market-research";
 /** Prompt of the Saturday routine (the skill reads `rutyna` as a scheduled run). */
 export const ROUTINE_PROMPT = "/market-research rutyna";
 /** Where the owner sets the routine up: a LOCAL routine of the Claude desktop app (a cloud routine, e.g. from
- * `/schedule`, cannot reach the profile's local MCP server). */
-export const ROUTINE_MENU = "Claude (aplikacja) › Code › Routines › Nowa rutyna › Lokalna";
+ * `/schedule`, cannot reach the profile's local MCP server). Texts: `S.boundary`, `S.routineMenu` in logic.strings.ts. */
 
 // ---- normalisation of loose server values ---------------------------------------------------------------
 
@@ -71,9 +64,9 @@ export function normRelation(v: string | null | undefined): Relation {
 
 export function normHealth(v: string | null | undefined): HealthKey | null {
   switch ((v ?? "").toLowerCase()) {
-    case "inv": case "invalidated": case "invalidates": case "podważona": return "inv";
-    case "weak": case "weakened": case "weakens": case "osłabiona": return "weak";
-    case "ful": case "fulfilled": case "fulfills": case "spełniona": return "ful";
+    case "inv": case "invalidated": case "invalidates": case "podwa\u017cona": return "inv";
+    case "weak": case "weakened": case "weakens": case "os\u0142abiona": return "weak";
+    case "ful": case "fulfilled": case "fulfills": case "spe\u0142niona": return "ful";
     case "sup": case "supported": case "supports": case "strengthened": case "wzmocniona": return "sup";
     case "ok": case "current": case "intact": case "neutral": case "aktualna": return "ok";
     case "no_thesis": case "none": case "bez tezy": return "no_thesis";
@@ -99,8 +92,8 @@ export const addDays = (iso: string, n: number) => {
 export function noteWhen(iso: string | null | undefined, today: string): string {
   if (!iso) return "";
   const d = daysBetween(iso, today);
-  if (d <= 0) return "dziś";
-  if (d === 1) return "wczoraj";
+  if (d <= 0) return S.today;
+  if (d === 1) return S.yesterday;
   if (d <= 4) return wdm(iso);
   return dm(iso);
 }
@@ -137,21 +130,21 @@ export function isRestorable(n: Pick<ResearchNote, "dismissed_at" | "restorable_
 export const latestTitle = (s: Pick<InstrumentSummary, "latest_note">) => s.latest_note?.title ?? null;
 /** Signal state word of a note that created or joined a research signal. */
 export const signalWord = (n: Pick<ResearchNote, "signal_id" | "signal">) =>
-  n.signal_id == null ? null : !n.signal || ["active", "acknowledged"].includes(n.signal.status) ? "sygnał otwarty" : "sygnał zamknięty";
+  n.signal_id == null ? null : !n.signal || ["active", "acknowledged"].includes(n.signal.status) ? S.signalOpen : S.signalClosed;
 /** Community noise scale (`details.scale`). */
-export const NOISE_SCALE: Record<string, string> = { small: "szum: skala mała", medium: "szum: skala średnia", large: "szum: skala duża" };
+export const NOISE_SCALE: Record<string, string> = NOISE_SCALE_C;
 export const isLive = (n: Pick<ResearchNote, "expires_at" | "dismissed_at">, today: string) => !n.dismissed_at && !isExpired(n, today);
 
 /** `wygasa 2.11` / `wygasła 2.11`. */
 export function expiryText(n: Pick<ResearchNote, "expires_at">, today: string): string | null {
   if (!n.expires_at) return null;
-  return `${isExpired(n, today) ? "wygasła" : "wygasa"} ${dm(n.expires_at)}`;
+  return S.expiry(isExpired(n, today), dm(n.expires_at));
 }
 
 /** Source footer text: `publisher · d.m` (falls back to the title, then the host). */
 export function sourceText(s: NoteSource): string {
   let who = s.publisher || s.title || "";
-  if (!who) { try { who = new URL(s.url).hostname.replace(/^www\./, ""); } catch { who = "źródło"; } }
+  if (!who) { try { who = new URL(s.url).hostname.replace(/^www\./, ""); } catch { who = S.source; } }
   return s.published_at ? `${who} · ${dm(s.published_at)}` : who;
 }
 
@@ -282,23 +275,21 @@ export function healthOf(s: Pick<InstrumentSummary, "health" | "counts" | "has_t
   return s.last_researched_at && day(s.last_researched_at) >= addDays(today, -30) ? "ok" : "no_research";
 }
 
-const verb = (n: number, one: string, few: string) => plural(n, one, few, one);
-const word = (n: number, one: string, few: string, many: string) => plural(n, one, few, many).replace(/^\d+ /, "");
 
 /** Count line next to the pill: `2 osłabiają · 0 wzmacnia`, `1 wzmacnia · 1 szum`, `3 notatki · ostatnio negatywna`. */
 export function countsText(health: HealthKey, c: RelationCounts, o: { notes?: number; latestPolarity?: string | null } = {}): string {
   const parts: string[] = [];
   if (health === "no_thesis" || health === "no_research") {
-    if (o.notes) parts.push(plural(o.notes, "notatka", "notatki", "notatek"));
-    if (o.latestPolarity && POLARITY_WORD[o.latestPolarity]) parts.push(`ostatnio ${POLARITY_WORD[o.latestPolarity]}`);
-    return parts.join(" · ") || (health === "no_research" ? "brak notatek z 30 dni" : "");
+    if (o.notes) parts.push(S.nNotes(o.notes));
+    if (o.latestPolarity && POLARITY_WORD[o.latestPolarity]) parts.push(S.lately(POLARITY_WORD[o.latestPolarity]));
+    return parts.join(" · ") || (health === "no_research" ? S.noNotes30 : "");
   }
-  if (c.invalidates) parts.push(verb(c.invalidates, "podważa", "podważają"));
-  if (c.weakens || health === "weak") parts.push(verb(c.weakens, "osłabia", "osłabiają"));
-  if (c.fulfills || health === "ful") parts.push(verb(c.fulfills ?? 0, "spełnia", "spełniają"));
-  if (c.supports || health === "weak" || health === "inv") parts.push(verb(c.supports, "wzmacnia", "wzmacniają"));
-  if (c.community) parts.push(`${c.community} szum`);
-  if (!parts.length && c.neutral) parts.push(plural(c.neutral, "neutralna", "neutralne", "neutralnych"));
+  if (c.invalidates) parts.push(S.relCount("invalidates", c.invalidates));
+  if (c.weakens || health === "weak") parts.push(S.relCount("weakens", c.weakens));
+  if (c.fulfills || health === "ful") parts.push(S.relCount("fulfills", c.fulfills ?? 0));
+  if (c.supports || health === "weak" || health === "inv") parts.push(S.relCount("supports", c.supports));
+  if (c.community) parts.push(S.noise(c.community));
+  if (!parts.length && c.neutral) parts.push(S.nNeutral(c.neutral));
   return parts.join(" · ");
 }
 
@@ -315,9 +306,7 @@ export function fieldChips(notes: Pick<ResearchNote, "thesis_relation" | "thesis
   for (const [f, rs] of by) {
     const worst: Relation = rs.includes("invalidates") ? "invalidates" : rs.includes("weakens") ? "weakens" : rs.includes("fulfills") ? "fulfills" : "supports";
     const k = rs.filter((r) => r === worst).length;
-    const v = worst === "invalidates" ? word(k, "podważa", "podważają", "podważa") : worst === "weakens" ? word(k, "osłabia", "osłabiają", "osłabia")
-      : worst === "fulfills" ? word(k, "spełnia", "spełniają", "spełnia") : word(k, "wzmacnia", "wzmacniają", "wzmacnia");
-    out.set(f, { relation: worst, text: `${plural(k, "notatka", "notatki", "notatek")} ${v}` });
+    out.set(f, { relation: worst, text: S.fieldChip(worst, k) });
   }
   return out;
 }
@@ -354,7 +343,7 @@ export function candidateCriteria(n: Pick<ResearchNote, "details" | "summary">):
 export function criterionText(c: Criterion): string {
   if (c.threshold == null || c.threshold === "") return c.text;
   const t = String(c.threshold);
-  return `${c.text} (${/^próg/i.test(t) ? t : `próg ${t}`})`;
+  return `${c.text} (${/^(pr\u00f3g|threshold)\b/i.test(t) ? t : S.threshold(t)})`;
 }
 
 /** Summary text without the criteria list lines (they render as `.crit`). */
@@ -388,9 +377,9 @@ export function researchSignalText(s: SigLike, name: string, sym: string | null)
   const segment = str(p.segment);
   const macro = isMacroKey(segment);
   const title = name || (macro ? noteKeyLabel(segment) : null) || str(p.segment_label) || (segment ? segmentLabel(segment) : null) || str(p.theme) || s.instrument_label || "Research";
-  const who = segment && !name && !s.instrument_label ? (macro ? "makro" : "temat") : sym;
+  const who = segment && !name && !s.instrument_label ? (macro ? S.macro : S.topic) : sym;
   const bold = str(p.title) ?? str(p.note_title) ?? s.message;
-  const tail = [strength != null ? `siła ${clampStrength(strength)}/3` : null, srcs ? plural(srcs, "źródło", "źródła", "źródeł") : null].filter(Boolean).join(" · ");
+  const tail = [strength != null ? S.strength(clampStrength(strength)) : null, srcs ? S.nSources(srcs) : null].filter(Boolean).join(" · ");
   return { title, sym: who, lead: rel !== "none" ? `${RELATION_LABEL[rel]} ·` : str(p.kind) ? `${KIND_LABEL[str(p.kind)!] ?? str(p.kind)} ·` : undefined, bold: bold || undefined, tail: tail ? `· ${tail}` : undefined };
 }
 
@@ -409,7 +398,7 @@ export const latestRun = (runs: ResearchRun[]): ResearchRun | null =>
 export const lastDone = (runs: ResearchRun[]): ResearchRun | null =>
   [...runs].filter((r) => r.status === "done").sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""))[0] ?? null;
 
-export const nNotes = (n: number) => plural(n, "notatka", "notatki", "notatek");
+export const nNotes = (n: number) => S.nNotes(n);
 
 const hmOf = hmLocal;
 
@@ -420,14 +409,14 @@ export interface RunTag { text: string; tone: "" | "warn" | "info" | "neg"; stat
  * notatki zapisane` (neg), `jeszcze nie działał`. */
 export function runTag(runs: ResearchRun[], today: string): RunTag {
   const last = latestRun(runs);
-  if (!last) return { text: "jeszcze nie działał", tone: "", state: "none" };
+  if (!last) return { text: S.neverRan, tone: "", state: "none" };
   const notes = runNotes(last);
-  if (last.status === "running") return { text: `trwa · od ${hmOf(last.started_at)}${notes != null ? ` · ${nNotes(notes)}` : ""}`, tone: "info", state: "running" };
+  if (last.status === "running") return { text: `${S.running(hmOf(last.started_at))}${notes != null ? ` · ${nNotes(notes)}` : ""}`, tone: "info", state: "running" };
   if (last.status === "failed") {
-    return { text: `przerwany ${hmOf(last.finished_at ?? last.started_at)}${notes ? ` · ${plural(notes, "notatka zapisana", "notatki zapisane", "notatek zapisanych")}` : ""}`, tone: "neg", state: "failed" };
+    return { text: S.interrupted(hmOf(last.finished_at ?? last.started_at), notes), tone: "neg", state: "failed" };
   }
   const at = last.finished_at ?? last.started_at;
-  if (daysBetween(at, today) > 7) return { text: `brak w tym tygodniu · ostatni ${dm(at)}`, tone: "warn", state: "stale" };
+  if (daysBetween(at, today) > 7) return { text: S.staleRun(dm(at)), tone: "warn", state: "stale" };
   return { text: `${wdm(at)}${notes != null ? ` · ${nNotes(notes)}` : ""}`, tone: "", state: "fresh" };
 }
 
@@ -460,7 +449,7 @@ export function researchCommand(path: string | null | undefined, slug: string): 
 }
 /** One line of the local routine setup: menu path, day and time, folder, prompt. */
 export const scheduleSteps = (path: string | null | undefined, slug: string) =>
-  `${ROUTINE_MENU}: sobota 07:00, folder ${workspacePath(path, slug)}, polecenie ${ROUTINE_PROMPT}`;
+  S.scheduleSteps(S.routineMenu, workspacePath(path, slug), ROUTINE_PROMPT);
 
 // ---- home grid (research.md 1; ia-v2 density rule) -------------------------------------------------------
 
@@ -476,19 +465,19 @@ export function orderTheses<T extends { health: HealthKey; weight?: number | nul
  * (wzmacnia), minus (osłabia), a filled minus (podważa), tilde (nie dotyczy, also without a thesis). */
 export function relationIcon(rel: string | null | undefined): { cls: "sup" | "weak" | "inv" | "ful" | "neu"; glyph: string; label: string } {
   switch (normRelation(rel)) {
-    case "fulfills": return { cls: "ful", glyph: "✓", label: "spełnia tezę" };
-    case "supports": return { cls: "sup", glyph: "+", label: "wzmacnia tezę" };
-    case "weakens": return { cls: "weak", glyph: "−", label: "osłabia tezę" };
-    case "invalidates": return { cls: "inv", glyph: "−", label: "podważa tezę" };
-    default: return { cls: "neu", glyph: "~", label: "nie dotyczy tezy" };
+    case "fulfills": return { cls: "ful", glyph: "✓", label: S.relFulfills };
+    case "supports": return { cls: "sup", glyph: "+", label: S.relSupports };
+    case "weakens": return { cls: "weak", glyph: "−", label: S.relWeakens };
+    case "invalidates": return { cls: "inv", glyph: "−", label: S.relInvalidates };
+    default: return { cls: "neu", glyph: "~", label: S.relNone };
   }
 }
 
 /** The row tooltip of a note (6): `wyniki · 29.07` (+ `odrzucona d.m` / `wygasła d.m`, + `sprzed zmiany tezy`, P2). */
 export function noteRowTitle(n: Pick<ResearchNote, "kind" | "observed_at" | "dismissed_at" | "expires_at"> & { expired?: boolean; predates_thesis?: boolean }, today: string): string {
-  return [n.kind === "community" ? "społeczność" : KIND_LABEL[n.kind] ?? n.kind, dm(n.observed_at),
-    n.dismissed_at ? `odrzucona ${dm(n.dismissed_at)}` : isExpired(n, today) && n.expires_at ? `wygasła ${dm(n.expires_at)}` : null,
-    n.predates_thesis ? "sprzed zmiany tezy" : null].filter(Boolean).join(" · ");
+  return [n.kind === "community" ? S.community : KIND_LABEL[n.kind] ?? n.kind, dm(n.observed_at),
+    n.dismissed_at ? S.dismissedOn(dm(n.dismissed_at)) : isExpired(n, today) && n.expires_at ? S.expiredOn(dm(n.expires_at)) : null,
+    n.predates_thesis ? S.predatesThesis : null].filter(Boolean).join(" · ");
 }
 
 /** A source in the expanded note row: the publisher (or title / host) without its date, and `d.m` apart. */

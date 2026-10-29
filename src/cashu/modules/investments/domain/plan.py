@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import datetime as dt
 
+from cashu.core.i18n import tr
+
 PLAN_VALUES = ("buy_asap", "buy", "hold", "reduce", "exit_asap")
 HELD_ONLY_PLANS = frozenset({"reduce", "exit_asap"})
 BUY_PLANS = frozenset({"buy", "buy_asap"})
@@ -39,6 +41,18 @@ PLAN_LABEL_HELD = {
 
 PLAN_LABEL_WATCHED = {"buy_asap": "kup asap", "buy": "kup", "hold": "czekam"}
 """Polish labels of a watched (not held) instrument's plan."""
+
+PLAN_LABEL_HELD_EN = {
+    "buy_asap": "buy more asap",
+    "buy": "buy more",
+    "hold": "hold",
+    "reduce": "reduce",
+    "exit_asap": "exit asap",
+}
+"""English labels of a held instrument's plan (the dashboard's ``PLAN_HELD_L``)."""
+
+PLAN_LABEL_WATCHED_EN = {"buy_asap": "buy asap", "buy": "buy", "hold": "wait"}
+"""English labels of a watched instrument's plan."""
 
 
 def is_plan(value: object) -> bool:
@@ -91,10 +105,16 @@ def opened_on(holdings, realized=()) -> dt.date | None:
 
 
 def plan_label(plan: str | None, *, held: bool) -> str | None:
-    """Polish label of ``plan`` for a held or a watched instrument (None: no plan / not allowed)."""
+    """Label of ``plan`` in the UI language for a held or a watched instrument (None: no plan / not
+    allowed)."""
     if plan is None:
         return None
-    return (PLAN_LABEL_HELD if held else PLAN_LABEL_WATCHED).get(plan)
+    labels = (
+        tr(pl=PLAN_LABEL_HELD, en=PLAN_LABEL_HELD_EN)
+        if held
+        else tr(pl=PLAN_LABEL_WATCHED, en=PLAN_LABEL_WATCHED_EN)
+    )
+    return labels.get(plan)
 
 
 __all__ = [
