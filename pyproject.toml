@@ -2,6 +2,38 @@
 name = "cashu"
 version = "0.3.0"
 description = "cashU: local personal finance and investing companion - bank imports, net worth, spending, loans and investments"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "cashU contributors" }]
+keywords = [
+    "personal-finance",
+    "budget",
+    "net-worth",
+    "investments",
+    "open-banking",
+    "polish-banks",
+    "local-first",
+    "mcp",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: English",
+    "Natural Language :: Polish",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Office/Business :: Financial :: Accounting",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
 requires-python = ">=3.12"
 # Upper bounds stop before the next major release (0.x packages: before 1.0, sqlmodel
 # before 0.1). constraints.txt pins the exact tested set:
@@ -27,6 +59,11 @@ dependencies = [
     # Official MCP SDK (v2 API: mcp.server.Server, stdio transport) for `cashu mcp`.
     "mcp>=2.3,<3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Utopia-USS/cashu"
+Repository = "https://github.com/Utopia-USS/cashu"
+Issues = "https://github.com/Utopia-USS/cashu/issues"
 
 [project.optional-dependencies]
 dev = [
