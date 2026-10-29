@@ -1,0 +1,13 @@
+# Example connector: a made-up bank's CSV statement -> cashu-budget-import JSON, in TypeScript on Deno.
+api_version: 1
+id: deno-budget-example
+name: Bank Testowy CSV (przykład Deno)
+version: 1.0.0
+author: cashU examples
+description: Converts the CSV statement of the made-up Bank Testowy into the cashU budget import format (TypeScript on Deno).
+module: budget
+kind: file
+run: [deno, connector.ts]
+timeout_s: 30
+file:
+  extensions: [csv]

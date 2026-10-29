@@ -8,6 +8,7 @@ The samples and the fixture are synthetic; the report must never echo their valu
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 
 import pytest
@@ -21,6 +22,10 @@ from cashu.core.connectors import manifest as mf
 from cashu.core.connectors import runner
 
 pytestmark = needs_python3
+needs_deno = pytest.mark.skipif(
+    shutil.which("deno", path=os.pathsep.join(mf.SYSTEM_SEARCH_PATH)) is None,
+    reason="no deno on the fixed search path",
+)
 
 EXAMPLES = paths.PROJECT_ROOT / "examples" / "connectors"
 # (directory, test option, input file, lines the report must contain)
@@ -35,10 +40,17 @@ CASES = [
     ("fetch-example", "--fixture", "fixture.json",
      ["fetch: ok", "(offline, fixture)", "cursor: 6 characters", "document: OK (cashu-import)",
       "transactions: 4 (buy 2, deposit 1, sell 1)", "errors: 0, warnings: 0"]),
+    pytest.param(
+        "deno-budget-example", "--file", "sample.csv",
+        ["detect: ok", "match: yes", "convert: ok", "document: OK (cashu-budget-import)",
+         "4 transactions"],
+        marks=needs_deno, id="deno-budget-example",
+    ),
 ]
 # Synthetic values from the inputs that a value-free report must not contain.
 VALUES = ["PL99", "9 000,00", "-139", "TX-0001", "KLUB", "PLTEST000010", "9543.82", "OP-1002",
-          "40000", "E-1004", "BTC"]
+          "40000", "E-1004", "BTC", "8 200,00", "-57,30", "DT-000", "PRACODAWCA", "KOMUNIKACJA"]
+INTERPRETERS = {"deno-budget-example": "deno"}  # every other example: python3
 
 real_sandbox = pytest.mark.skipif(
     sys.platform != "darwin" or not os.path.exists("/usr/bin/sandbox-exec"),
@@ -89,11 +101,16 @@ def test_example_passes_in_the_real_sandbox(run, monkeypatch, name, option, inpu
 
 def test_examples_are_valid_connector_dirs():
     names = sorted(p.name for p in EXAMPLES.iterdir() if p.is_dir())
-    assert names == sorted(c[0] for c in CASES)
+    assert names == sorted(c.values[0] if hasattr(c, "values") else c[0] for c in CASES)
     for name in names:
-        loaded = mf.load_dir(EXAMPLES / name)
+        try:
+            loaded = mf.load_dir(EXAMPLES / name)
+        except mf.ManifestError:
+            if name in INTERPRETERS and needs_deno.args[0]:
+                continue  # the interpreter is missing on this machine
+            raise
         assert loaded.manifest.id == name
-        assert loaded.manifest.run[0] == "python3"
+        assert loaded.manifest.run[0] == INTERPRETERS.get(name, "python3")
         # The fixture param is passed only by `connectors test`: a binding can never set it.
         if loaded.manifest.fetch:
             assert "fixture" not in {p.id for p in loaded.manifest.fetch.params}

@@ -23,6 +23,7 @@ EXPRESSIONS = "src/cashu/modules/investments/rules/expr/EXPRESSIONS.md"
 GENERIC_CSV = "src/cashu/modules/investments/importing/generic_csv_example.yaml"
 EXAMPLES = "examples/connectors"
 CONNECTOR_EXAMPLES = ("budget-csv-example", "investments-json-example", "fetch-example")
+DENO_EXAMPLES = {"deno-budget-example": ("connector.yaml", "connector.ts", "parse.ts")}
 SCHEMAS = (
     "connector-manifest.v1.json",
     "connector-protocol.v1.json",
@@ -47,6 +48,11 @@ COPIES: list[tuple[str, str, str]] = [
         ("import-builder", f"references/connector-examples/{example}/{name}", f"{EXAMPLES}/{example}/{name}")
         for example in CONNECTOR_EXAMPLES
         for name in ("connector.yaml", "connector.py")
+    ],
+    *[
+        ("import-builder", f"references/connector-examples/{example}/{name}", f"{EXAMPLES}/{example}/{name}")
+        for example, names in DENO_EXAMPLES.items()
+        for name in names
     ],
 ]
 
@@ -75,6 +81,8 @@ def render(source: Path, dest: str) -> str:
         return text  # JSON has no comments: copied verbatim (its $id / description name the source)
     if dest.endswith(".md"):
         return f"<!-- {NOTE} -->\n\n{text}"
+    if dest.endswith((".ts", ".js")):
+        return f"// {NOTE}\n{text}"
     return f"# {NOTE}\n{text}"
 
 

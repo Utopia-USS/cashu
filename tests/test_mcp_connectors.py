@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import sys
 
 import pytest
 from connector_support import ECHO_CONNECTOR, needs_python3, write_connector
 
 from cashu.core import profiles
 from cashu.core.connectors import runner, service
+from cashu.core.connectors.manifest import SYSTEM_SEARCH_PATH
 from cashu.core.connectors.runner import RunResult
 from cashu.core.db import get_session
 from cashu.core.mcp.registry import all_tools
@@ -405,3 +408,78 @@ def test_test_connector_messages_are_value_free(tester):
     blob = json.dumps(result.data)
     for leak in ("Kowalski", "PL6110", "4321", "10901014"):
         assert leak not in blob, leak
+
+
+# --------------------------------------------------------------------------- #
+# R2 end to end: a Deno connector written in the workspace -> test -> propose -> approve -> run
+# --------------------------------------------------------------------------- #
+
+_DENO = shutil.which("deno", path=os.pathsep.join(SYSTEM_SEARCH_PATH))
+needs_mac_deno = pytest.mark.skipif(
+    _DENO is None or sys.platform != "darwin" or not os.path.exists("/usr/bin/sandbox-exec"),
+    reason="macOS sandbox-exec and a deno on the fixed search path",
+)
+
+
+@needs_mac_deno
+def test_a_deno_connector_goes_from_the_workspace_to_an_approved_run(db_engine):
+    """The real sandbox (deno inside sandbox-exec): the example Deno connector copied into a profile's
+    workspace passes test_connector, is proposed, approved by the owner and then converts the sample
+    as an installed connector."""
+    from cashu.core import paths
+
+    with get_session() as s:
+        p = profiles.create_profile(s, name="Anna Nowak", modules_=["budget"])
+        pid, slug = p.id, p.slug
+    mcp = CashuMcp(pid)
+    example = paths.PROJECT_ROOT / "examples" / "connectors" / "deno-budget-example"
+    root = ws_connectors(slug) / "deno-budget-example"
+    shutil.copytree(example, root)
+    sample = workspace.workspace_path(slug) / "inbox" / "statement.csv"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(example / "sample.csv", sample)
+
+    tested = mcp.call("test_connector", {"path": str(root), "file": str(sample)})
+    assert tested.ok, tested.error
+    assert tested.data["ok"] is True, tested.data["report"]
+    assert tested.data["manifest"]["interpreter"] == "deno"
+    assert tested.data["document"]["counts"]["transactions"] == 4
+
+    proposed = mcp.call("propose_connector", {"path": str(root)})
+    assert proposed.ok and proposed.data["status"] == "pending"
+    with get_session() as s:
+        from cashu.core.connectors.models import Connector
+
+        row = s.get(Connector, "deno-budget-example")
+        sha, interpreter = row.content_sha256, row.interpreter_path
+    service.approve("deno-budget-example", sha, interpreter)  # the owner, in the app
+    result = service.run_file("deno-budget-example", "convert", sample, "statement.csv",
+                              profile_id=pid)
+    assert result.ok, (result.error_kind, result.message, result.stderr_tail)
+    assert result.records == 4
+
+
+@needs_mac_deno
+def test_test_connector_reports_a_forbidden_import(db_engine, tmp_path):
+    with get_session() as s:
+        p = profiles.create_profile(s, name="Anna Nowak", modules_=["budget"])
+        pid, slug = p.id, p.slug
+    secret = tmp_path / "secret.txt"
+    secret.write_text("FAKE SECRET 4321.09", encoding="utf-8")
+    manifest = (
+        "api_version: 1\nid: deno-leak\nname: Test\nversion: 0.1.0\nmodule: budget\nkind: file\n"
+        "run: [deno, connector.ts]\nfile:\n  extensions: [csv]\n"
+    )
+    code = f'import s from {str(secret)!r} with {{ type: "text" }};\nconsole.log(s);\n'
+    root = ws_connectors(slug) / "deno-leak"
+    write_connector(root, cid="deno-leak", manifest=manifest, code="", extra={"connector.ts": code})
+    (root / "main.py").unlink()
+    sample = workspace.workspace_path(slug) / "inbox" / "x.csv"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text("a,b\n", encoding="utf-8")
+    result = CashuMcp(pid).call("test_connector", {"path": str(root), "file": str(sample)})
+    assert result.ok, result.error
+    assert result.data["ok"] is False
+    assert {r["error_kind"] for r in result.data["runs"]} == {"forbidden_import"}
+    blob = json.dumps(result.data)
+    assert "FAKE SECRET" not in blob and "4321" not in blob and str(tmp_path) not in blob
