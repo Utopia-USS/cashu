@@ -380,7 +380,7 @@ def calendar_view(
 
     if not 1 <= days <= 31:
         raise CalendarError("days must be between 1 and 31")
-    today = today or dt.date.today()  # local calendar day
+    today = today or dt.date.today()  # noqa: DTZ011 - local calendar day
     end = today + dt.timedelta(days)
     data, stale = feeds(today, days, fetch=fetch)
     in_range = lambda d: today.isoformat() <= d < end.isoformat()

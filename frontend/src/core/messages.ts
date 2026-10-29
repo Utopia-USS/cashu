@@ -462,6 +462,8 @@ export const LABELS: Record<string, Label> = {
   "connector.missing": "Katalog konektora zniknął z dysku.",
   "connector.bad_request": "Konektor nie przyjmie tego pliku (rozszerzenie albo rozmiar).",
   "connector.denied_host": "Konektor próbował połączyć się poza dozwolonymi hostami.",
+  "connector.forbidden_import": "Import w konektorze łamie regułę importów: tylko pliki z katalogu konektora i wbudowane node:.",
+  "connector.module_parse_error": "Moduł konektora nie wczytuje się albo ma błąd składni.",
   "relocation.moved": "Aplikacja została przeniesiona z {path}",
   "relocation.mcp_readd": "Dodaj ponownie serwer MCP w Claude Code (polecenie w Agent AI).",
 };

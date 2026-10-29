@@ -34,7 +34,7 @@ _cache_lock = threading.Lock()
 
 
 def _today() -> dt.date:
-    return dt.date.today()
+    return dt.date.today()  # noqa: DTZ011 - local calendar day, like booking dates
 
 
 def regimes(session: Session, as_of: dt.date | None = None) -> tuple[rg.Regime, ...]:

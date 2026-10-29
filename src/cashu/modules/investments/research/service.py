@@ -116,7 +116,7 @@ def held_since(
     snapshot = build_snapshot(
         convert.sid(profile_id),
         transactions.transactions(session, profile_id),
-        as_of or dt.date.today(),
+        as_of or dt.date.today(),  # noqa: DTZ011 - local calendar day, like booking dates
         renames=transactions.renames(session, profile_id),
     )
     grouped: dict[int, list] = {}

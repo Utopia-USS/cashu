@@ -78,7 +78,8 @@ test("syncToast: proposal, committed, nothing new, failed run", () => {
 
 test("connector labels: every BE error kind, the timeout param, short forms", () => {
   const kinds = ["bad_file", "unsupported_version", "auth_failed", "rate_limited", "network", "upstream", "internal", "protocol", "timeout",
-    "sandbox_unavailable", "spawn_failed", "not_approved", "interpreter_changed", "missing", "bad_request", "changed", "disabled", "denied_host"];
+    "sandbox_unavailable", "spawn_failed", "not_approved", "interpreter_changed", "missing", "bad_request", "changed", "disabled", "denied_host",
+    "forbidden_import", "module_parse_error"];
   for (const k of kinds) {
     assert.ok(label(`connector.${k}`), `connector.${k}`);
     assert.notEqual(kindShort(k), k, `kindShort ${k}`);

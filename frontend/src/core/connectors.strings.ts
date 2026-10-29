@@ -85,6 +85,8 @@ export const KIND_SHORT = catalog({
   missing: { pl: "brak katalogu", en: "folder missing" },
   bad_request: { pl: "zły plik", en: "bad file" },
   denied_host: { pl: "host poza listą", en: "host not allowed" },
+  forbidden_import: { pl: "niedozwolony import", en: "import not allowed" },
+  module_parse_error: { pl: "błąd modułu", en: "module error" },
 });
 
 /** Why a module sync skipped a binding. */

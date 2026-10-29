@@ -35,4 +35,6 @@ export const EN_LABELS: Record<string, string | ((p: Record<string, unknown>) =>
   "connector.missing": "The connector's folder is gone from the disk.",
   "connector.bad_request": "The connector will not accept this file (extension or size).",
   "connector.denied_host": "The connector tried to connect outside the allowed hosts.",
+  "connector.forbidden_import": "An import in the connector breaks the import rule: only files of the connector folder and node: built-ins.",
+  "connector.module_parse_error": "A module of the connector does not load or parse.",
 };
