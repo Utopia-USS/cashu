@@ -221,6 +221,31 @@ def test_categorize_all_keeps_llm_answers_over_global_installment_phrases(sessio
     assert session.get(Transaction, row.id).category == "shopping"
 
 
+def test_merchant_pin_leaves_rows_with_their_own_decision(session):
+    """recategorize_merchant re-applies to plain rows only: never to a per-transaction
+    choice, a cash mirror leg or an internal transfer of the same merchant."""
+    from cashu.modules.budget.service import recategorize_merchant
+
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL99 1140 0000 0000 0000 2222")
+    session.flush()
+    mk = "SKLEP PIN TEST"
+    plain = _txn(session, acc.id, "-10", cp=mk, cat="other", dh="pin1")
+    chosen = _txn(session, acc.id, "-20", cp=mk, cat="gifts", dh="pin2")
+    chosen.category_source = "manual_txn"
+    leg = _txn(session, acc.id, "30", cp=mk, cat="cash_withdrawal", dh="pin3")
+    leg.category_source = "cash_leg"
+    internal = _txn(session, acc.id, "-40", cp=mk, cat="transfer", internal=True, dh="pin4")
+    internal.category_source = "transfer"
+    session.flush()
+
+    assert recategorize_merchant(session, mk, "shopping") == 1
+    assert session.get(Transaction, plain.id).category == "shopping"
+    assert (session.get(Transaction, chosen.id).category,
+            session.get(Transaction, chosen.id).category_source) == ("gifts", "manual_txn")
+    assert session.get(Transaction, leg.id).category_source == "cash_leg"
+    assert session.get(Transaction, internal.id).category == "transfer"
+
+
 def test_structural_answer_beats_owner_configuration_on_llm_rows(session):
     """A row that later became an internal transfer (or goes to an own IBAN, or is an FX
     conversion) is a transfer, even when a loan pattern or a locked rule would match."""

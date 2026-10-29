@@ -280,11 +280,17 @@ def recategorize_one(session: Session, t: Transaction) -> None:
     session.add(t)
 
 
+# Category sources a merchant pin never overwrites (see ``recategorize_merchant``).
+_KEEP_ON_MERCHANT_PIN = frozenset({"manual_txn", "cash_leg", "transfer"})
+
+
 def recategorize_merchant(
     session: Session, merchant_key_value: str, category: str, *, profile_id: int | None = None
 ) -> int:
     """Pin a merchant to a category (manual, locked) for the profile and re-apply
-    to its rows."""
+    to its rows. Rows with their own decision are left alone: a per-transaction
+    choice (``manual_txn``), a cash-pool mirror leg (``cash_leg``) and structural
+    transfers (internal or to an own account)."""
     from .categorize.rules import upsert_rule
     from .ingestion.normalize import merchant_key
 
@@ -292,6 +298,12 @@ def recategorize_merchant(
     upsert_rule(session, merchant_key_value, category, source="manual", locked=True, profile_id=pid)
     n = 0
     for t in session.exec(transactions(pid)).all():
+        if (
+            t.is_internal_transfer
+            or t.category_source in _KEEP_ON_MERCHANT_PIN
+            or t.category in ("transfer", "cash_withdrawal")
+        ):
+            continue
         if merchant_key(t.counterparty_name, t.reference, t.description) == merchant_key_value:
             t.category, t.category_source = category, "manual"
             session.add(t)
