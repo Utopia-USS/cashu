@@ -88,6 +88,7 @@ def test_maintainer_typo_gets_a_did_you_mean():
         ({"id": "a"}, "id"),  # too short
         ({"id": "a" * 41}, "id"),
         ({"id": "9abc"}, "id"),
+        ({"id": "catalog"}, "id: this id is reserved"),  # GET /api/connectors/catalog
         ({"name": "n" * 61}, "name"),
         ({"name": ""}, "name"),
         ({"version": "v" * 21}, "version"),

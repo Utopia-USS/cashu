@@ -61,7 +61,7 @@ file:                            # kind file only (and required for it)
 | key | rule |
 | --- | --- |
 | `api_version` | the number `1` |
-| `id` | `^[a-z][a-z0-9-]{1,39}$`; installing another connector with the same id needs `--replace` |
+| `id` | `^[a-z][a-z0-9-]{1,39}$`, not the reserved `catalog`; installing another connector with the same id needs `--replace` |
 | `name`, `version` | required, non-empty, <= 60 / <= 20 characters |
 | `author`, `description` | optional, <= 80 / <= 280 characters |
 | `maintainer` | optional, <= 80 characters: who keeps the connector working, a GitHub handle (`@octocat`) or a name. Required for an entry of the connector catalog (`connectors/` in the cashU repository) |

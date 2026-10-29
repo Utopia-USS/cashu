@@ -23,6 +23,7 @@ from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import (
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -63,6 +64,8 @@ DEVELOPER_DIR_LINKS = ("/var/select/developer_dir", "/var/db/xcode_select_link")
 DEFAULT_DEVELOPER_DIR = "/Library/Developer/CommandLineTools"
 
 CONNECTOR_ID = r"^[a-z][a-z0-9-]{1,39}$"
+# Ids that name a route of the connectors API (GET /api/connectors/catalog) instead of a connector.
+RESERVED_IDS = frozenset({"catalog"})
 FIELD_ID = r"^[a-z][a-z0-9_]{0,31}$"
 _HOST = re.compile(
     r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
@@ -108,6 +111,12 @@ def _iso_date(value: Any) -> dt.date:
 
 
 IsoDate = Annotated[dt.date, BeforeValidator(_iso_date)]
+
+
+def _not_reserved(value: str) -> str:
+    if value in RESERVED_IDS:
+        raise ValueError("this id is reserved by cashU; choose another one")
+    return value
 
 
 class _Strict(BaseModel):
@@ -165,7 +174,7 @@ class Manifest(_Strict):
     """``connector.yaml``, api_version 1 (docs/connectors.md)."""
 
     api_version: Literal[1]
-    id: Annotated[str, StringConstraints(pattern=CONNECTOR_ID)]
+    id: Annotated[str, StringConstraints(pattern=CONNECTOR_ID), AfterValidator(_not_reserved)]
     name: Annotated[Text, StringConstraints(max_length=60)]
     version: Annotated[Text, StringConstraints(max_length=20)]
     author: Annotated[Text, StringConstraints(max_length=80)] | None = None
