@@ -4,17 +4,29 @@ The skills ship with cashU (``.claude/skills`` in a checkout, bundled in the pac
 ``core/runtime.skills_dir``). Each skill folder is self-contained: its references live in its own
 ``references/`` folder (copies of package docs are refreshed by ``scripts/sync_skill_references.py``),
 so a copy works anywhere. A skill's version is a short hash of its files.
+
+Skills follow the utopia-ai-arch:layer shape: the frontmatter ``description`` carries an
+``Applicability - POSITIVE:`` and an ``Applicability - NEGATIVE:`` sentence, which the workspace
+CLAUDE.md inventory shows verbatim (render.py).
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+import yaml
+
 from .. import runtime
+
+# Skills every workspace gets, whatever the modules (labelled "core"): the agent layout and the
+# user's own skills.
+CORE_SKILLS: tuple[str, ...] = ("workspace-setup",)
+CORE = "core"
 
 # Which skills an enabled module brings into its profile's workspace (missing ones are skipped,
 # e.g. market-research before it ships). Every skill folder must be listed here
@@ -37,6 +49,8 @@ class SkillSource:
     module: str
     path: Path
     version: str
+    positive: str = ""  # the description's "Applicability - POSITIVE:" sentence
+    negative: str = ""  # its "Applicability - NEGATIVE:" sentence (starts with "NOT")
 
 
 def source_dir() -> Path | None:
@@ -68,7 +82,37 @@ def tree_hash(root: Path) -> str:
     return digest.hexdigest()[:12]
 
 
+_SCOPE = re.compile(
+    r"Applicability - POSITIVE:\s*(?P<pos>.*?)\s*Applicability - NEGATIVE:\s*(?P<neg>.*?)"
+    r"\s*(?:Triggers:|$)",
+    re.DOTALL,
+)
+
+
+def applicability(skill_md: Path) -> tuple[str, str]:
+    """(positive, negative) scope from a SKILL.md frontmatter description; ("", "") when the file
+    has no frontmatter or the description does not follow the layer shape."""
+    try:
+        text = skill_md.read_text(encoding="utf-8")
+    except OSError:
+        return "", ""
+    if not text.startswith("---\n"):
+        return "", ""
+    head, sep, _rest = text[4:].partition("\n---")
+    if not sep:
+        return "", ""
+    try:
+        meta = yaml.safe_load(head)
+    except yaml.YAMLError:
+        return "", ""
+    description = meta.get("description") if isinstance(meta, dict) else None
+    m = _SCOPE.search(" ".join(description.split())) if isinstance(description, str) else None
+    return (m.group("pos"), m.group("neg")) if m else ("", "")
+
+
 def module_of(skill: str) -> str | None:
+    if skill in CORE_SKILLS:
+        return CORE
     for module_id, names in MODULE_SKILLS.items():
         if skill in names:
             return module_id
@@ -85,16 +129,20 @@ def available(source: Path | None = None) -> dict[str, SkillSource]:
         module_id = module_of(folder.name)
         if module_id is None or not (folder / "SKILL.md").is_file():
             continue
-        out[folder.name] = SkillSource(folder.name, module_id, folder, tree_hash(folder))
+        pos, neg = applicability(folder / "SKILL.md")
+        out[folder.name] = SkillSource(
+            folder.name, module_id, folder, tree_hash(folder), positive=pos, negative=neg
+        )
     return out
 
 
 def wanted(
     enabled_modules: list[str], shipped: dict[str, SkillSource] | None = None
 ) -> dict[str, SkillSource]:
-    """The skills of the enabled modules, in module order (``shipped``: from :func:`available`)."""
+    """The core skills, then the skills of the enabled modules, in module order (``shipped``: from
+    :func:`available`)."""
     shipped = available() if shipped is None else shipped
-    out: dict[str, SkillSource] = {}
+    out: dict[str, SkillSource] = {name: shipped[name] for name in CORE_SKILLS if name in shipped}
     for module_id in enabled_modules:
         for name in MODULE_SKILLS.get(module_id, ()):
             if name in shipped and name not in out:

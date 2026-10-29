@@ -38,6 +38,8 @@ become signals.
 | `sentiment_correction` | drawdown from the 52-week high beyond the threshold; the cause is news flow or sentiment, while the business holds (results and the company's guidance stable, no balance-sheet event); sentiment negative (community flagged as noise) | price data, issuer reports, press, community |
 | `special_situation` | a dated, verifiable event with a timeline: tender offer, merger, spin-off, strategic review, restructuring, index inclusion | primary disclosures only |
 
+For an early-stage or hyper-growth company, low current revenue fails a criterion only when the strategy sets a revenue threshold; otherwise score scale potential and execution risk (`references/candidate-evaluation-pattern.md`). For a SPAC with an announced merger a size threshold may be tested on the pro forma equity value, always written next to the shell's market cap; without an announced merger the shell value applies.
+
 Each numeric value needs a dated source. A value you cannot verify from a public source is
 `met: false` with the text `brak danych`.
 

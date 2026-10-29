@@ -1,6 +1,10 @@
 ---
 name: import-builder
-description: Builds an importer for an export cashU cannot read yet - broker / exchange / crypto history (investments) or a bank statement (budget). Preferred result is a reusable connector in the workspace's connectors/ folder that the app runs itself once the owner approves it in Ustawienia > Konektory; also fetch connectors for an API (the owner enters the key in the app). Asks first whether the user hands over the export with values or prefers the blind route (inspect_export); tests with `cashu connectors test`, installs with propose_connector. Alternatives - a one-off converter (validate_import / propose_import) or a generic CSV mapping. Use for an unsupported export (xlsx, csv, json) from a broker (XTB, DIF, Revolut, Binance, Zonda) or a bank, or to pull data from an API. Triggers on /import-builder and Polish requests such as "zaimportuj historię z brokera", "napisz konwerter eksportu", "parser do pliku z XTB", "konektor do banku", "wyciąg z innego banku", "pobieraj z API giełdy".
+description: >
+  Use when the user has an export cashU cannot read yet (xlsx, csv, json from a broker such as XTB, DIF, Revolut, Binance, Zonda, or from a bank) or wants to pull broker, exchange or bank data from an API.
+  Applicability - POSITIVE: broker / exchange / crypto history or bank statements turned into a reusable file or fetch connector (preferred), a one-off converter or a generic CSV mapping.
+  Applicability - NEGATIVE: NOT bank CSV or Open Banking imports the app supports and categories (budget-setup), the strategy and check-ins (investments-setup) or custom rules (extension-builder).
+  Triggers: /import-builder, "zaimportuj historię z brokera", "napisz konwerter eksportu", "parser do pliku z XTB", "konektor do banku", "wyciąg z innego banku", "pobieraj z API giełdy".
 ---
 
 # import-builder: a connector (or converter) for an unsupported export
@@ -8,11 +12,40 @@ description: Builds an importer for an export cashU cannot read yet - broker / e
 cashU ships few importers of its own. Any other export is turned into one of the documented import
 formats: `references/import-format.md` (investments) or `references/budget-import-format.md` (budget,
 bank statements). The preferred way is a **connector**: a small program with a manifest that the app runs
-itself, in a sandbox, after the owner approved it once in the app, so every later export (or API sync)
-goes through the app without you. The full contract is `references/connectors.md`. Conversation in
-Polish, files in English, regular hyphens only.
+itself, in a sandbox, after the owner approved it once in the app (Ustawienia > Konektory), so every
+later export (or API sync) goes through the app without you; a fetch connector reads an API with a key
+the owner enters in the app. The full contract is `references/connectors.md`. You ask first whether the
+user hands over the export with values or prefers the blind route (`inspect_export`), test with `cashu
+connectors test` and install with `propose_connector`. Alternatives: a one-off converter
+(`validate_import` / `propose_import`) or a generic CSV mapping. Conversation in Polish, files in
+English, regular hyphens only.
 
-## Privacy and boundaries (say the first lines at the start, in one or two sentences)
+## Relationship to the workspace
+
+| The workspace CLAUDE.md and MCP server own | This skill adds |
+|---|---|
+| privacy level, boundaries, the MCP tool list, where files go | the opening question: the file with values or the blind route |
+| the folders `inbox/`, `connectors/`, `scripts/` and the `cashu` CLI name | writing, testing and installing a connector in `connectors/<id>/` |
+| the profile's `cashu-<slug>` server | which import tool each step calls and how to read its value-free reports |
+| approval in Ustawienia > Konektory, commits in the app | the converter contract and the generic CSV mapping as alternatives |
+
+## Problem -> reference mapping
+
+| Task / question | Start with |
+|---|---|
+| What I may see, what to say at the start | this file, Non-negotiable |
+| The order of the work | this file, Flow |
+| Fields and records of an investments import | [`references/import-format.md`](references/import-format.md) |
+| Fields and records of a bank statement import | [`references/budget-import-format.md`](references/budget-import-format.md) |
+| Connector manifest, protocol, sandbox, value-free messages | [`references/connectors.md`](references/connectors.md) |
+| Machine-readable contracts | [`references/schemas/connector-manifest.v1.json`](references/schemas/connector-manifest.v1.json), [`references/schemas/connector-protocol.v1.json`](references/schemas/connector-protocol.v1.json), [`references/schemas/cashu-import.v1.json`](references/schemas/cashu-import.v1.json), [`references/schemas/cashu-budget-import.v1.json`](references/schemas/cashu-budget-import.v1.json) |
+| Starting code for a connector | [`references/connector-examples/`](references/connector-examples/) (`budget-csv-example`, `investments-json-example`, `fetch-example`) |
+| A simple CSV without code | [`references/generic_csv_example.yaml`](references/generic_csv_example.yaml) |
+| A one-off converter script | [`references/converter-workflow.md`](references/converter-workflow.md), [`references/converter_template.py`](references/converter_template.py) |
+
+## Non-negotiable
+
+Privacy and boundaries (say the first lines at the start, in one or two sentences):
 
 - The privacy level (`profile_overview`: `strict` = Ścisły, `amounts` = Z kwotami) covers what the app's
   MCP tools give you. Files or rows the user hands you themselves are their choice: use them for the task
@@ -76,7 +109,8 @@ Polish, files in English, regular hyphens only.
      consistent dates and numbers): no code. Model it on `references/generic_csv_example.yaml`, save it
      as `scripts/import_<source>.yaml`, pass its YAML text as `mapping` to `validate_import` /
      `propose_import` with the export as `path`. Steps 4, 10.
-   - One-off converter script: when the user does not want a connector (section "Converter route").
+   - One-off converter script: when the user does not want a connector
+     (`references/converter-workflow.md`, section "Converter route").
 4. **Clarify the semantics** with the user, 1-3 questions per message: what each sheet holds; every
    type label and its cashU type (unknown labels are an error); sign conventions; currencies and FX;
    fees and withholding tax; a stable transaction / order id (only then `external_ref` /
@@ -113,40 +147,40 @@ Polish, files in English, regular hyphens only.
     asset class, tags or a bucket in the app. Delete any converted file from `inbox/converted/`; keep the
     connector (or script, mapping) for the next export.
 
-## Converter route (one-off)
+Converter route (one-off script for investments, or a `cashu-budget-import` file for statements) and
+the converter contract (standard library only, value-free errors, exact decimals, deterministic rows):
+`references/converter-workflow.md`.
 
-For the investments module, when the user prefers a script to a connector:
+## References
 
-- Write `scripts/import_<source>.py` from `references/converter_template.py` (contract below), test it on
-  synthetic data with `cashu invest validate <synthetic output>`.
-- Run it yourself with the system Python in isolated mode (not the cashU app binary, not a venv):
-  `python3 -I scripts/import_<source>.py inbox/<export> inbox/converted/<source>-<YYYY-MM-DD>.csv`
-  (create `inbox/converted` first); tell the user in one line what the command does. Exit 1 = a data
-  problem with a value-free message: fix, test on synthetic data, rerun.
-- `validate_import(<output.csv>)`, fix by kind and row; then `propose_import(<output.csv>, account)`. The
-  owner checks the preview and the reconciliation in Inwestycje > Import and commits. Re-importing an
-  overlapping export does not duplicate rows (`references/import-format.md` section 5). Delete the
-  converted file after the commit.
-- Budget statements: a script may write a `cashu-budget-import` file (CSV or JSON) to `inbox/converted/`;
-  check it with `validate_budget_import(<output>)` and fix by kind and row; the owner imports it in
-  Wydatki > Import (`Format cashU`). Import older periods first: rows older than the account's newest
-  stored day are skipped as overlap (`references/budget-import-format.md` section 4). A connector is the
-  better choice here.
+| File | Style | Impact | Description |
+|---|---|---|---|
+| [`references/converter-workflow.md`](references/converter-workflow.md) | workflow | HIGH | the one-off converter route and the converter contract |
+| [`references/converter_template.py`](references/converter_template.py) | pattern | HIGH | starting point for a converter script (helpers and `main()` to keep) |
+| [`references/connectors.md`](references/connectors.md) | copy | CRITICAL | connector manifest, protocol, sandbox, value-free messages; copy of the app's reference, refreshed with every cashU version |
+| [`references/import-format.md`](references/import-format.md) | copy | CRITICAL | the cashU investments import format; copy of the app's reference, refreshed with every cashU version |
+| [`references/budget-import-format.md`](references/budget-import-format.md) | copy | HIGH | the `cashu-budget-import` format for bank statements; copy of the app's reference, refreshed with every cashU version |
+| [`references/generic_csv_example.yaml`](references/generic_csv_example.yaml) | copy | MEDIUM | generic CSV mapping example; copy of the app's reference, refreshed with every cashU version |
+| `references/schemas/*` ([`connector-manifest.v1.json`](references/schemas/connector-manifest.v1.json), [`connector-protocol.v1.json`](references/schemas/connector-protocol.v1.json), [`cashu-import.v1.json`](references/schemas/cashu-import.v1.json), [`cashu-budget-import.v1.json`](references/schemas/cashu-budget-import.v1.json)) | copy | MEDIUM | JSON schemas of the manifest, the protocol and both import formats; copy of the app's reference, refreshed with every cashU version |
+| `references/connector-examples/**` ([`budget-csv-example`](references/connector-examples/budget-csv-example/), [`investments-json-example`](references/connector-examples/investments-json-example/), [`fetch-example`](references/connector-examples/fetch-example/)) | copy | HIGH | working example connectors (`connector.yaml` + `connector.py`); copy of the app's reference, refreshed with every cashU version |
 
-## Converter contract (scripts) - connectors follow references/connectors.md
+## See also
 
-- Python standard library only (`csv`, `zipfile` + `xml.etree` for xlsx, `json`, `decimal`,
-  `datetime`). No network, no subprocesses, no environment variables, never imports `cashu`, reads
-  only the export and writes only the output file.
-- Invocation: `python3 -I import_<source>.py <export file> <output .csv>`; exit 0 on success, 1 with a
-  message on stderr on a data problem, 2 on wrong usage. Nothing on stdout.
-- Error messages name the row and the field, never the cell value.
-- Deterministic: the same export always gives the same rows, oldest first, `time` filled when known.
-- `external_ref` only from a stable broker id, never from row numbers or counters. Leave
-  `account_hint` empty (the account is chosen in `propose_import`).
-- Numbers as exact decimal text (`decimal.Decimal`, never float). `cash_amount` exactly as the broker
-  booked it, with its sign; `quantity`, `price`, `fee`, `tax` never negative.
-- A trade settled in another currency: `cash_currency` plus `cash_amount` or `fx_rate`.
-- Unknown type labels, unparsable dates or numbers: an error, never a silent skip or a guess.
-- A header docstring: broker, export kind, profile, date, input description, run command.
-- The full field reference and checklist: `references/import-format.md` (sections 3-9 and 11).
+- `/budget-setup` - bank exports the app already reads, Open Banking, categories.
+- `/investments-setup` - the strategy interview and check-ins once the history is imported.
+- `/extension-builder` - a custom rule on the imported data.
+
+## Self-audit checklist
+
+Before telling the user it is done:
+1. The privacy lines were said at the start; the (a) / (b) question was asked once, or skipped because
+   the user had already handed over the file.
+2. No real value, account number or name is in `connectors/<id>/`, `scripts/`, `notes/` or memory;
+   test samples are synthetic; a file name with an account number was renamed.
+3. `cashu connectors test` passed on synthetic data (every label, both signs, an FX row, an error case)
+   and on the real export; every warning was read with the user.
+4. `propose_connector` ran after the last edit, the owner was told what to check in Ustawienia >
+   Konektory, and `connectors()` showed it approved before the import.
+5. Converter or mapping route: `validate_import` / `validate_budget_import` clean before
+   `propose_import`; the converted file was deleted after the commit.
+6. After the commit: `positions` checked and unclassified instruments named for the owner.

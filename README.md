@@ -53,9 +53,10 @@ Open the directory in Claude Code (or another file-aware assistant) and say:
 
 > **"Walk me through the setup following ONBOARDING.md."**
 
-The agent reads [`ONBOARDING.md`](ONBOARDING.md), [`AGENTS.md`](AGENTS.md), and
-[`CLAUDE.md`](CLAUDE.md), then runs the steps with you, asking questions where a
-decision is needed (CSV import or Open Banking, which categorization model, etc.).
+The agent reads [`ONBOARDING.md`](ONBOARDING.md) and [`CLAUDE.md`](CLAUDE.md) (also
+available as `AGENTS.md` for Codex-style tools), then runs the steps with you,
+asking questions where a decision is needed (CSV import or Open Banking, which
+categorization model, etc.).
 The agent knows the safety rules and **won't commit your data**.
 
 ---
@@ -234,7 +235,7 @@ The repo ships Claude Code skills for each module (`/budget-setup`,
 `/assets-setup`, `/loans-setup`, `/investments-setup`) and for investments work
 (`/import-builder` for unsupported broker exports, `/extension-builder` for custom
 rules, `/market-research` for dated, sourced research notes). Details:
-[`AGENTS.md`](AGENTS.md).
+[`docs/agents/skills.md`](docs/agents/skills.md).
 
 ---
 
@@ -258,7 +259,7 @@ through the normal import preview. The contract for authors:
 is idempotent (dedup by `bank_transaction_id` and by content hash). Parsers are
 thin configs on a shared engine (`src/cashu/modules/budget/ingestion/csv_import/`)
 and banks are entries in a registry (`src/cashu/core/institutions.py`) -
-**adding another bank is easy** (see [`AGENTS.md`](AGENTS.md)).
+**adding another bank is easy** (see [`docs/agents/extending.md`](docs/agents/extending.md)).
 
 **Open Banking (Enable Banking, optional).** A free "Restricted Production" tier
 for live sync (~90 days, re-authorize every 90 days). The hybrid is deliberate: OB
@@ -311,10 +312,10 @@ cd frontend && npm run dev           # dashboard with hot-reload (proxies /api â
 ```
 
 Architecture, code map, conventions, and "how to add a bank / feature" -
-[`AGENTS.md`](AGENTS.md).
+[`CLAUDE.md`](CLAUDE.md) and [`docs/agents/`](docs/agents/).
 
 **Contributing.** Issues and pull requests are welcome. Read
-[`AGENTS.md`](AGENTS.md) first, and never include real financial data: tests,
+[`CLAUDE.md`](CLAUDE.md) first, and never include real financial data: tests,
 fixtures and screenshots use synthetic data only.
 
 ---

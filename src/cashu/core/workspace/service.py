@@ -12,6 +12,11 @@ stored in ``<data dir>/profiles/<slug>/workspace.json`` (no table). cashU manage
 - ``.claude/skills/<name>/``: copies of the enabled modules' skills, versioned by content hash in
   ``.claude/cashu-workspace.json`` (the manifest). Skills the user added are never touched; a
   managed copy the user edited is kept and reported (``force`` backs it up, then replaces it),
+- the links ``AGENTS.md`` -> ``CLAUDE.md`` and ``.agents/skills`` -> ``../.claude/skills`` (the
+  utopia-ai-arch:layer convention, so Codex reads the same instructions and skills); a file the user
+  already has at either path is kept and reported, also under ``force`` (its content belongs in
+  CLAUDE.md or ``.claude/skills/``: the ``workspace-setup`` skill merges it with the user); a link the
+  system cannot create (no symlink privilege) is reported as unsupported, not as outdated,
 - the folders ``notes/``, ``research/``, ``scripts/``, ``inbox/`` (and a ``.gitignore`` for
   ``inbox/`` when the folder has none).
 
@@ -384,6 +389,30 @@ def _skill_states(ctx: Context, manifest: dict) -> list[dict]:
     return out
 
 
+def _link_state(ws: Path, rel: Path, target: str, failed: tuple[str, ...] = ()) -> str:
+    """ok (a link to the right place), missing, unsupported (missing and the last attempt to create
+    it failed), or conflict (anything else at that path or a parent folder in its way: the user's)."""
+    path = ws / rel
+    for parent in rel.parents:
+        if parent == Path("."):
+            continue
+        folder = ws / parent
+        if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
+            return "conflict"  # e.g. `.agents` is a file or points elsewhere
+    if path.is_symlink():
+        wanted = os.path.normpath(path.parent / target)
+        same = os.path.normpath(path.parent / os.readlink(path)) == wanted
+        return "ok" if same or path.resolve() == Path(wanted).resolve() else "conflict"
+    if path.exists():
+        return "conflict"
+    return "unsupported" if rel.as_posix() in failed else "missing"
+
+
+def _failed_links(manifest: dict) -> tuple[str, ...]:
+    raw = manifest.get("links_failed")
+    return tuple(r for r in raw if isinstance(r, str)) if isinstance(raw, list) else ()
+
+
 def _outdated(ctx: Context, manifest: dict) -> list[dict]:
     ws = ctx.path
     items: list[dict] = []
@@ -420,6 +449,11 @@ def _outdated(ctx: Context, manifest: dict) -> list[dict]:
     for skill in _skill_states(ctx, manifest):
         if skill["state"] != "ok":
             add("skill", skill["name"], skill["state"])
+    failed = _failed_links(manifest)
+    for rel, target in render.LINKS:
+        state = _link_state(ws, rel, target, failed)
+        if state != "ok":
+            add("link", rel.as_posix(), state)
     return items
 
 
@@ -553,6 +587,30 @@ def _sync_skills(ctx: Context, manifest: dict, force: bool, changes: list, stamp
     return result
 
 
+def _sync_links(ws: Path, changes: list) -> list[str]:
+    """Create the missing links; a user's file in the way is kept (never moved, also not by
+    ``force``). Returns the links that could not be created (kept in the manifest)."""
+    failed: list[str] = []
+    for rel, target in render.LINKS:
+        name = rel.as_posix()
+        state = _link_state(ws, rel, target)
+        if state == "ok":
+            continue
+        if state == "conflict":
+            changes.append({"kind": "link", "name": name, "action": "kept"})
+            continue
+        try:
+            (ws / rel).parent.mkdir(parents=True, exist_ok=True)
+            os.symlink(target, ws / rel)
+        except OSError:  # e.g. no symlink privilege on Windows: reported as unsupported
+            log.warning("cannot link %s -> %s in %s", name, target, ws, exc_info=True)
+            changes.append({"kind": "link", "name": name, "action": "failed"})
+            failed.append(name)
+            continue
+        changes.append({"kind": "link", "name": name, "action": "created"})
+    return failed
+
+
 def _apply(ctx: Context, force: bool) -> list[dict]:
     ws = ctx.path
     changes: list[dict] = []
@@ -585,6 +643,7 @@ def _apply(ctx: Context, force: bool) -> list[dict]:
     owned = render.routine_owned(settings_before, ctx, _previous(manifest, "settings_routine"))
     _sync_json(ws, str(SETTINGS_FILE), _merge_settings(ctx, manifest), "settings", changes, stamp)
     managed_skills = _sync_skills(ctx, manifest, force, changes, stamp)
+    links_failed = _sync_links(ws, changes)
     new_manifest = {
         "format": FORMAT,
         "profile": ctx.slug,
@@ -593,6 +652,8 @@ def _apply(ctx: Context, force: bool) -> list[dict]:
         "settings_deny": render.deny_rules(ctx),
         "settings_routine": owned,
     }
+    if links_failed:
+        new_manifest["links_failed"] = links_failed
     old = {k: v for k, v in manifest.items() if k != "updated_at"}
     if old != new_manifest or not (ws / MANIFEST_FILE).is_file():
         _write_json(ws / MANIFEST_FILE, {**new_manifest, "updated_at": _now()})

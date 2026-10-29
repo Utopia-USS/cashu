@@ -32,6 +32,9 @@ relation and strength: `rubrics.md`. Writing the note: `notes.md`.
 
 - Analyst ratings, brokerage recommendations (`rekomendacje domów maklerskich`), price targets
   (`cena docelowa`), "fair value" estimates, analyst consensus forecasts, model portfolios.
+- Any forecast of the price or valuation of a security, an index or a fund (`S&P 500 na koniec roku`,
+  a bank strategist's index target, `wyceny spadną`), whoever publishes it. Institutions' forecasts
+  of macro and market TRENDS are a different thing and are welcome (section 5).
 - Technical-analysis forecasts (targets, "breakout", support and resistance levels). A
   `range_breakout` alert proposal (`alerts.md`) is not one: the app measures the range on stored
   closes and reports a move after it happened; its reason names only a dated fact or event.
@@ -118,8 +121,9 @@ describes the past only.
 - Then the segment's own hard data, dated: the metal or commodity price and inventories (LBMA, EIA),
   bond yields, flows into the segment's ETFs or listed crypto products, the sector ETF vs a broad
   index (section 3).
-- Institutions' published data counts; their outlooks, scenarios and forecasts never do, not even
-  cited (a bank's gold forecast, an agency's demand outlook, a fund house's year-ahead view).
+- Institutions' published data counts. Their forecasts of macro and market trends count too, cited as
+  estimates (section 5); price forecasts never do (a bank's gold price forecast, a fund house's
+  year-ahead index view, an analyst's sector target).
 - A segment note carries the `segment`, no instrument, `thesis_relation: none` (the app refuses
   anything else there), at most 400 characters, and names the affected holdings by symbol (`notes.md`,
   Segments). A relation is always about one thesis: when the segment fact bears on a specific thesis,
@@ -136,3 +140,39 @@ describes the past only.
 | broad index ETF (world, S&P 500, WIG20 ...) | issuer notices only | no | cover through its segment |
 | bonds, treasury bonds, cash | issuer or state notices only | no | cover through the `bonds` segment (rates, inflation) |
 | crypto | project and exchange announcements, regulators | yes (flagged, extra noisy) | flows of listed products, relative strength |
+
+## 5. Institutional trend forecasts and industry estimates
+
+Owner decision 2026-10-10: the owner wants institutions' forecasts of macro and market trends, and
+the topic market view's outlook must rest on a quantitative estimate of market or demand growth.
+
+Allowed, cited as estimates:
+
+- **Macro:** IMF World Economic Outlook (`MFW`), OECD Economic Outlook, World Bank Global Economic
+  Prospects (GDP, inflation, trade); central bank projections: the Fed's Summary of Economic
+  Projections incl. the dot plot, ECB and NBP staff / inflation projections (`projekcja NBP`),
+  Eurostat / European Commission forecasts.
+- **Energy and commodities demand:** IEA (`MAE`) and EIA demand and supply outlooks (power demand,
+  data-centre electricity, oil demand), OPEC demand estimates (volumes, not prices).
+- **Industry and market size:** IFR (robot installations), SIA / WSTS (chip sales), Gartner and IDC
+  (IT, AI and device spending; their public press releases only), BNEF (energy transition
+  investment), company-reported backlog or order book from the issuer's own report.
+
+How to cite (in the outlook, a brief, a note summary):
+
+- **Who, how much, horizon**, in one sentence: `IFR szacuje ok. 575 tys. instalacji robotów rocznie
+  w 2028`, `MFW prognozuje wzrost PKB USA o 2,1 % w 2027`, `Fed w projekcji (dot plot) zakłada stopy
+  ok. 3,4 % na koniec 2026`. Name the institution in the same sentence as the number (the app checks
+  each sentence on its own).
+- **An estimate, never certainty:** `szacuje`, `prognozuje`, `według projekcji`, `zakłada`; never
+  `będzie` without the institution, never `prognozujemy` or your own extrapolation of their numbers.
+- **The source you opened:** the report, release or data page with its publication date, in
+  `sources` (a view: 1-6 `sources`; a note: the note's sources). Prefer the newest edition; when two
+  institutions differ materially, say so instead of picking one.
+- Public pages only (the rules above): a paywalled full report is cited through its free press
+  release or summary, never through a workaround.
+
+Never, even from these institutions: a forecast of a security's, an index's or a fund's price or
+valuation, a price target, a rating, a buy / sell view, an analyst consensus. The tools refuse the
+obvious wording (`S&P 500 wzrośnie do`, `wyceny spadną`, `kurs ... wzrośnie`, `cel cenowy`,
+`analitycy`, `konsensus`, `prognozujemy`).

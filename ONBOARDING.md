@@ -6,8 +6,8 @@
 >
 > **For the agent:** this is a script to run *together with the user*. Go step by
 > step. After each step, show the result and wait until it works before moving on.
-> Ask questions at the points marked 🔀. Follow the safety rules in
-> [`AGENTS.md`](AGENTS.md) — **never commit the user's data and never ask for bank
+> Ask questions at the points marked 🔀. Follow the data-safety rules in
+> [`CLAUDE.md`](CLAUDE.md) - **never commit the user's data and never ask for bank
 > passwords**.
 
 ---
@@ -98,8 +98,8 @@ Supported formats (verified): **mBank** (cp1250, `;`, multi-currency),
 > skill writes it, the contract is [`docs/connectors.md`](docs/connectors.md).
 > Ask once whether the user hands you the statement with values or wants the
 > blind route (you see only its masked structure). Alternatively write a parser
-> and add the bank to the registry - instructions in [`AGENTS.md`](AGENTS.md) →
-> "Adding a new bank" (test fixtures synthetic).
+> and add the bank to the registry - instructions in
+> [`docs/agents/extending.md`](docs/agents/extending.md) → "Adding a new bank" (test fixtures synthetic).
 
 ```bash
 cashu import-dir statements     # bank from the subdir name, idempotent
@@ -269,8 +269,9 @@ the window quits the app.
 ## Step 8 — Done. What next?
 
 Tell the user they can now:
-- **extend the dashboard** — adding a feature is described in [`AGENTS.md`](AGENTS.md),
-- **add their bank** — a CSV parser per [`AGENTS.md`](AGENTS.md),
+- **extend the dashboard** - adding a feature is described in
+  [`docs/agents/extending.md`](docs/agents/extending.md),
+- **add their bank** - a CSV parser per [`docs/agents/extending.md`](docs/agents/extending.md),
 - **refresh data** - `cashu import-dir statements` (new CSV) or `cashu eb resync` (OB).
 
 Finally, **check `git status`** — if anything under `data/` or `statements/` shows

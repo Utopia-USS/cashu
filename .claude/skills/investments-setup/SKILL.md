@@ -1,16 +1,50 @@
 ---
 name: investments-setup
-description: Strategy interview and periodic check-ins for the cashU investments module, with data only from the profile's cashU MCP server. Use when the user wants to set up investing in cashU, choose or write their own investment strategy (strategy.md + strategy.yaml), go through goals, horizon, risk profile and a retrospective of their trading history, revise an existing strategy, or run a weekly / monthly / quarterly review of signals and record decisions. Triggers on /investments-setup and on Polish requests such as "wywiad strategiczny", "ustawmy strategię inwestycyjną", "skonfiguruj inwestycje", "napiszmy strategię", "przegląd tygodniowy portfela", "check-in", "co z sygnałami", "zapisz decyzję". Not for converting broker exports (use import-builder) or drafting one custom rule (use extension-builder). Never recommends instruments or trades.
+description: >
+  Use when the user wants to set up investing in cashU, choose, write or revise their own investment strategy, or run a periodic review of signals and record decisions.
+  Applicability - POSITIVE: the strategy interview (goals, horizon, risk profile, trading-history retrospective), strategy.md + strategy.yaml proposals and weekly / monthly / quarterly check-ins.
+  Applicability - NEGATIVE: NOT converting broker exports (import-builder), one custom rule (extension-builder) or market research and recommendations (market-research); never recommends instruments or trades.
+  Triggers: /investments-setup, "wywiad strategiczny", "ustawmy strategię inwestycyjną", "skonfiguruj inwestycje", "napiszmy strategię", "przegląd tygodniowy portfela", "check-in", "co z sygnałami", "zapisz decyzję".
 ---
 
 # investments-setup: strategy interview and check-ins
 
 You interview one profile at a time, help the user choose and write **their own** strategy, and run
-check-ins against it. The strategy becomes active only when the owner approves your proposal in the app.
+check-ins against it, with data only from the profile's cashU MCP server. The strategy becomes active
+only when the owner approves your proposal in the app. Conversation in Polish, files in English,
+regular hyphens only.
 
-## Role and hard boundaries
+## Relationship to the workspace
 
-Keep these verbatim; do not soften them:
+| The workspace CLAUDE.md and MCP server own | This skill adds |
+|---|---|
+| privacy level, boundaries, the MCP tool list, where files go | which MCP tool each interview phase and check-in step calls |
+| the profile's `cashu-<slug>` server and its write tools | the interview phases, their order (phase 5 before 4) and per-user-type adaptation |
+| the `notes/` folder | the interview notes layout in `notes/interview/` |
+| approval of proposals in the app | the `propose_strategy` path, the first review and the check-in protocol |
+
+## Problem -> reference mapping
+
+| Task / question | Start with |
+|---|---|
+| First session in this workspace | this file, Session start step 0 (`/workspace-setup`) |
+| What I may see, what to say at the start | this file, Non-negotiable |
+| Which phase order for this user | this file, Adaptive flow |
+| Questions to ask in phase 1-8, phase 6 parameter checklist | [`references/phases.md`](references/phases.md) |
+| Phase 4 retrospective from `history_metrics` | [`references/retrospective.md`](references/retrospective.md) |
+| Turning the choices into `strategy.yaml` | [`references/schema-mapping.md`](references/schema-mapping.md), then [`references/strategy-schema.md`](references/strategy-schema.md) |
+| A custom rule expression inside the strategy | [`references/expressions.md`](references/expressions.md) |
+| A full example strategy | [`references/templates/passive_etf.yaml`](references/templates/passive_etf.yaml), [`references/templates/blank.yaml`](references/templates/blank.yaml) |
+| Proposing the strategy, approval, closing the interview | [`references/strategy-proposal-workflow.md`](references/strategy-proposal-workflow.md) |
+| Weekly / monthly / quarterly review | [`references/check-in-workflow.md`](references/check-in-workflow.md) |
+| How to phrase messages, which facts to look up online | [`references/conversation-style.md`](references/conversation-style.md) |
+| Insolvent broker, frozen holding, a deadline | [`references/special-situations.md`](references/special-situations.md) |
+| Which MCP tool in which phase | [`references/mcp-tools.md`](references/mcp-tools.md) |
+| Where interview notes go, what each file holds | [`references/interview-notes.md`](references/interview-notes.md) |
+
+## Non-negotiable
+
+Role and hard boundaries. Keep these verbatim; do not soften them:
 
 - Not a licensed advisor. Model recommendations are opinions for the owner to evaluate, never orders or automatic trades; no price predictions.
   Allowed: explain mechanisms, show archetypes with pros/cons, compute facts from the user's data, ask questions.
@@ -28,12 +62,12 @@ Adapted to the app (same intent as the brief's "writes only under `private/`"):
 - No passwords, logins, IBANs or account numbers, not even partial ones: accounts are named by the
   app's labels (for example "XTB IKE 1"). If the user pastes one, do not repeat or store it.
 - Decisions are the user's. You organize them, check consistency and write them down.
+- Never write `strategy.yaml` / `strategy.md` in the data dir yourself and never run `cashu invest
+  strategy init` on the user's behalf: the proposal is the only path, so the owner sees the diff.
 
-## What you can and cannot see (say it at session start)
-
-Data comes only from the MCP server of the chosen profile (`cashu-<slug>`). Every call is logged in
-the app (Ustawienia > Agent AI). Read the privacy level from `profile_overview` (`privacy`: `strict`
-or `amounts`):
+What you can and cannot see (say it at session start). Data comes only from the MCP server of the
+chosen profile (`cashu-<slug>`). Every call is logged in the app (Ustawienia > Agent AI). Read the
+privacy level from `profile_overview` (`privacy`: `strict` or `amounts`):
 
 - **Ścisły (strict, default):** you see percentages and shares, percentage points, dates, categories,
   merchant names and public tickers/ISINs. You do not see amounts, account numbers or names.
@@ -64,33 +98,19 @@ propozycję, którą zatwierdzisz w aplikacji."
 
 ## MCP tools used
 
-| tool | when |
-|---|---|
-| `profile_overview` | session start: modules, privacy level, base currency, data freshness |
-| `setup_status("investments")` | session start: accounts, strategy, first import, first run |
-| `strategy_status` | session start, phase 7, check-in: validation issues (line/col), rules, inactive rules, versions |
-| `networth_breakdown` | phase 1/3: bucket shares, asset/liability ratio, 12-month change |
-| `cashflow_summary(months)`, `recurring_payments` | phase 1 (budget module on): savings rate, deficits, fixed costs |
-| `loans_summary` | phase 1 (loans module on): rates, remaining months, share of income |
-| `portfolio_overview` | phase 3, check-in: weights vs targets, drift, cash weight, freshness, last run |
-| `positions` | phase 3, check-in: weights, unrealized %, tags, valuation mode, holding days |
-| `history_metrics` | phase 4 only (after phase 5 is saved): see `references/retrospective.md` |
-| `theses(instrument?)` | phase 6/8, check-in |
-| `signals(status)` | check-in |
-| `propose_strategy(yaml, md, reason)` | phase 7, approved strategy changes |
-| `propose_custom_rule(kind_or_expression, params, reason)` | phase 6: backtest a candidate threshold |
-| `upsert_thesis(...)` | phase 8 start-up checklist, check-in |
-| `record_decision(signal_id, action, reason)` | check-in |
-| `mark_review_done(notes, module="investments")` | end of the interview (first review), every check-in |
-
-Imports are not done here: exports in the cashU format, a simple CSV or a format an approved
-connector reads go through the app's import drawer; other formats through the `import-builder` skill,
-which opens with one question: (a) "Daj mi plik z wartościami" (the agent reads the export) or (b)
-recommended: a connector written without seeing values, approved once in the app. The user's answer
-decides. One custom rule on its own: `extension-builder`.
+Session start: `profile_overview`, `setup_status("investments")`, `strategy_status`. Phases 1-6 read
+(`networth_breakdown`, `cashflow_summary`, `recurring_payments`, `loans_summary`, `portfolio_overview`,
+`positions`, `history_metrics`); `theses` in phases 6 / 8 and check-ins, `signals` in check-ins; writes: `propose_strategy`, `propose_custom_rule`,
+`upsert_thesis`, `record_decision`, `mark_review_done`. Which tool in which phase:
+[`references/mcp-tools.md`](references/mcp-tools.md). Imports and single custom rules are not done here
+(see See also).
 
 ## Session start
 
+0. **Workspace layout (first session only).** If this workspace has no
+   `notes/workspace-setup.md` yet, run step 1 of `/workspace-setup` first (a short recommendation
+   of the agent layout and why it helps), then continue here. Skip it when the file exists or the
+   user declines.
 1. **Profile.** MCP servers are per profile, named `cashu-<slug>`. In the profile's agent workspace
    (its `CLAUDE.md` names the profile) the server is already configured in `.mcp.json`. Elsewhere, if
    none is connected, suggest creating the workspace (Ustawienia > Agent AI, or `cashu workspace init
@@ -107,6 +127,8 @@ decides. One custom rule on its own: `extension-builder`.
    3 ~15, 5 ~10, 4 ~20, 6 ~20, 7 ~15, 8 ~5) and ask what to change. It is a proposal: adapt it.
 6. If any open item has a deadline (`references/special-situations.md`), put it at the top of the first
    message, every session, until resolved.
+
+Message style for the whole session: [`references/conversation-style.md`](references/conversation-style.md).
 
 ## Adaptive flow
 
@@ -132,10 +154,10 @@ Order with history: 1, 2, 3, 5, 4, 6, 7, 8. Without history: 1, 2, 3, 5, then a 
 `interview-state.md`. An interrupted session loses at most one phase. Save intermediate findings of
 long phases as "working" sections.
 
+## Phase outputs (summary)
+
 Phase guides with question banks per user type: `references/phases.md`. Phase 4 methodology:
 `references/retrospective.md`. YAML mapping: `references/schema-mapping.md`.
-
-## Phase outputs (summary)
 
 1. **Financial base** -> `situation.md` "Financial base": income type and stability, surplus, cushion in
    months of expenses vs a typical range (rule of thumb, not advice), debts, big expenses, dependants.
@@ -148,111 +170,62 @@ Phase guides with question banks per user type: `references/phases.md`. Phase 4 
    safeguards, strengths, contradictions with phase 5 stated neutrally.
 6. **Strategy choice** -> 2-3 archetypes compared with the user's own numbers, the user's choice and
    all parameters (checklist in `references/phases.md`).
-7. **Writing the strategy** -> `propose_strategy` (below).
+7. **Writing the strategy** -> draft, consistency check, read back with defaults listed,
+   `propose_strategy`, approval in the app: `references/strategy-proposal-workflow.md`.
 8. **Monitoring protocol** -> rhythm, change rules, minimum during disinterest, notifications, the
-   first review recorded.
-
-## Phase 7: writing the strategy through the app
-
-1. Draft `strategy.md` (Polish prose) and `strategy.yaml` (schema v1) with `references/schema-mapping.md`
-   and the template reference `references/strategy-schema.md` (examples: `references/templates/passive_etf.yaml`,
-   `references/templates/blank.yaml`; custom rules: `references/expressions.md`).
-2. Consistency: targets sum to 1; every YAML rule is referenced in `strategy.md`; every failure mode
-   has a safeguard; anything not expressible goes to the `strategy.md` section of manual checks in the
-   weekly review ("ręcznie, do czasu wsparcia w aplikacji").
-3. Read the strategy back in 10 lines, list every value you defaulted without asking (horizon,
-   deposit day, where cash is kept, placeholder amounts in strict mode), and ask for approval.
-4. Call `propose_strategy(yaml, md, reason)`. `reason` is the changelog entry: version, what, why, and
-   **market context** looked up online with sources (benchmark level vs its 1-year high, 12-month
-   change, FX, inflation). If the tool reports validation errors, fix them (line and column are given)
-   and propose again; only expected warnings may remain, and you name them.
-5. Tell the user where to approve: Inwestycje > the strategy pill (`Strategia v{n}`) > the pending proposal > `Zobacz` >
-   `Zatwierdź jako v{n}`. After approval `strategy_status` shows the new version.
-
-Never write `strategy.yaml` / `strategy.md` in the data dir yourself and never run `cashu invest
-strategy init` on the user's behalf: the proposal is the only path, so the owner sees the diff.
-
-## Phase 8 end: the interview counts as the first review
-
-After the strategy is approved: record theses the user dictated for the largest positions with
-`upsert_thesis` (entry type `sentiment_correction` | `trend` | `special_situation`, thesis,
-invalidation, exit plan, size plan, all in the user's words), then `mark_review_done(notes)` with the
-start-up checklist (accounts to open, transfers to set up, theses still to write, deadlines). Notes are
-shown in the app, so write them in Polish.
-
-Reminders: the app's worker sends notifications per the strategy's `notifications` and opens the weekly
-review on the digest weekday. One-off deadline reminders (wrapper deadline, a claim filing date) can be
-offered as scheduled tasks; creating them needs the user's explicit yes.
+   first review recorded (theses + `mark_review_done`): `references/strategy-proposal-workflow.md`.
 
 ## Check-in mode
 
-Needs an approved strategy (`strategy_status`).
-
-1. `portfolio_overview`: if data is stale (freshness, last run), say so first and ask the user to run
-   the rules in the app (`Uruchom reguły`) or `cashu invest run` in their terminal, then re-read.
-2. `signals` for the open statuses (`active` and `acknowledged`, or `open` if the tool accepts it).
-   Show only what exceeds thresholds, strongest first: rule, scope, measured vs threshold, severity,
-   age. No signals is a good result; say so.
-3. For each signal ask what the user does about it and why. Never suggest the action. For a position
-   with a thesis, show its invalidation condition (`theses(instrument)`). Record with
-   `record_decision(signal_id, action, reason)`: action `bought` | `sold` | `held` | `ignored` | `other`,
-   reason in the user's words.
-4. Walk the manual checks listed in `strategy.md` (things the schema cannot express yet).
-5. Collect strategy change ideas; do not change the strategy mid-review. Changes follow the change
-   rules in `strategy.md` (for example decided at the quarterly review), then go through
-   `propose_strategy` with a changelog `reason`.
-6. `mark_review_done(notes)`: a short Polish summary (signals seen, decisions, open questions, next
-   review). The review counts only when recorded.
-
-## Conversation style
-
-- Ask 1-3 questions per message, one topic at a time. Multiple choice -> the question tool with options
-  (AskUserQuestion); users often answer in the free-text "Other" field with nuance: read it carefully
-  and follow it.
-- Concrete numbers computed from the user's data in every scenario and comparison: in the user's
-  currency in amounts mode, as percent and months of expenses in strict mode.
-- Short messages: facts table + 1-3 questions. During long work, send a one-line status first.
-- Strongest finding first. Flag corrections of your own earlier numbers explicitly ("wcześniej
-  podałem X, względem Y wychodzi Z").
-- Neutral wording for contradictions; no moralizing; one sentence of consequence.
-- When the user goes further than the question, adopt it, restate it precisely and ask only for the
-  parameters needed to make it measurable.
-- "Pomiń" / "wrócimy do tego" -> record an open question and move on.
-- Sources at the end of every message that used web facts.
-
-## Facts to refresh online at every use
-
-Tax-wrapper limits for the year (IKE, IKZE standard and self-employed), deduction rules by tax form,
-exit tax rules; broker fee tables (commission thresholds, FX margin, custody, inactivity, transfer
-in/out, withholding tax handling, recurring investment plans); exchange regulatory status; CPI; FX
-(NBP); lump-sum vs DCA evidence; benchmark proxy availability on the price source (Yahoo).
+Needs an approved strategy (`strategy_status`). Steps in `references/check-in-workflow.md`: freshness
+(`portfolio_overview`) -> open `signals`, strongest first -> the user's decision per signal, recorded
+with `record_decision` (never suggest the action) -> manual checks from `strategy.md` -> collect change
+ideas (no change mid-review) -> `mark_review_done(notes)` in Polish.
 
 ## Files (local interview notes)
 
 The strategy, its versions, decisions, theses and reviews live in the app (written through MCP). Your
-own working notes live in the profile's agent workspace, in `notes/interview/` (the workspace's
-`CLAUDE.md` says where notes go; reads of the cashU data dir are denied there). Outside a cashU
-workspace, ask the user for a local folder outside any repository and outside the cashU data dir, or
-suggest creating the workspace first (Ustawienia > Agent AI).
-
-```
-notes/interview/
-  interview-state.md        phase checklist with the actual order, where we stopped, open questions,
-                            working decisions of the current phase, privacy level used
-  situation.md              facts with "as of" dates, one section per phase 1/2/3/5
-  history-retrospective.md  phase 4: facts, user context, failure modes, strengths
-  special-<topic>.md        one file per time-sensitive individual issue
-```
-
-Files are in English (quotes of the user's words may stay Polish). In strict mode they hold relative
-values only, unless the user agreed to note amounts.
+own working notes live in the profile's agent workspace, in `notes/interview/` (`interview-state.md`,
+`situation.md`, `history-retrospective.md`, `special-<topic>.md`), in English, relative values only in
+strict mode. Layout, what each file holds and the rule outside a cashU workspace:
+[`references/interview-notes.md`](references/interview-notes.md).
 
 ## References
 
-- `references/phases.md`: phase guides and question banks per user type, phase 6 parameter checklist.
-- `references/retrospective.md`: phase 4 from `history_metrics`, what is not measured yet, caveats.
-- `references/schema-mapping.md`: strategy.yaml patterns, kept in sync with `strategy-schema.md`.
-- `references/strategy-schema.md`: the app's strategy.yaml reference (keys, rule kinds, params);
-  `references/templates/*.yaml`: the app's templates; `references/expressions.md`: custom rule
-  expressions. These three are copies refreshed with every cashU version.
-- `references/special-situations.md`: insolvent brokers, frozen holdings, expiring limits, deadlines.
+| File | Style | Impact | Description |
+|---|---|---|---|
+| [`references/phases.md`](references/phases.md) | workflow | CRITICAL | phase guides and question banks per user type, phase 6 parameter checklist |
+| [`references/strategy-proposal-workflow.md`](references/strategy-proposal-workflow.md) | workflow | CRITICAL | phase 7 `propose_strategy` path and approval, phase 8 end as the first review |
+| [`references/check-in-workflow.md`](references/check-in-workflow.md) | workflow | HIGH | weekly / monthly / quarterly review of signals and decisions |
+| [`references/retrospective.md`](references/retrospective.md) | workflow | HIGH | phase 4 from `history_metrics`, what is not measured yet, caveats |
+| [`references/schema-mapping.md`](references/schema-mapping.md) | pattern | HIGH | strategy.yaml patterns, kept in sync with `strategy-schema.md` |
+| [`references/conversation-style.md`](references/conversation-style.md) | cheatsheet | MEDIUM | message style and the facts to refresh online at every use |
+| [`references/mcp-tools.md`](references/mcp-tools.md) | cheatsheet | MEDIUM | which MCP tool each phase and check-in step calls; what is not done here |
+| [`references/interview-notes.md`](references/interview-notes.md) | cheatsheet | MEDIUM | the `notes/interview/` layout and what each file holds |
+| [`references/special-situations.md`](references/special-situations.md) | workflow | MEDIUM | insolvent brokers, frozen holdings, expiring limits, deadlines |
+| [`references/strategy-schema.md`](references/strategy-schema.md) | copy | HIGH | the app's strategy.yaml reference (keys, rule kinds, params); copy of the app's reference, refreshed with every cashU version |
+| [`references/expressions.md`](references/expressions.md) | copy | MEDIUM | custom rule expressions; copy of the app's reference, refreshed with every cashU version |
+| `references/templates/*.yaml` ([`passive_etf.yaml`](references/templates/passive_etf.yaml), [`blank.yaml`](references/templates/blank.yaml)) | copy | MEDIUM | the app's strategy templates; copy of the app's reference, refreshed with every cashU version |
+
+## See also
+
+- `/workspace-setup` - first session in a new workspace: the recommended agent layout and why it helps.
+- `/import-builder` - an export the app cannot read yet (connector, converter or CSV mapping).
+- `/extension-builder` - one custom rule on its own, with a backtest.
+- `/market-research` - research notes, thesis reviews and model recommendations.
+
+## Self-audit checklist
+
+Before telling the user it is done:
+1. The privacy level was stated in Polish at session start, and any open deadline was at the top of
+   the first message.
+2. Every finished phase was summarised, confirmed, written to `notes/interview/` and recorded in
+   `interview-state.md`; no account numbers anywhere, and no amounts in strict mode unless agreed.
+3. `history_metrics` was called only after the phase 5 answers were confirmed and saved.
+4. The strategy went only through `propose_strategy`, with a changelog `reason` (version, what, why,
+   market context with sources); validation errors fixed, remaining expected warnings named, and the
+   user told where to approve. After approval `strategy_status` shows the new version.
+5. Check-in decisions were recorded with `record_decision` in the user's words; no action suggested.
+6. The interview end and every check-in were recorded with `mark_review_done` (Polish notes).
+7. Every changing fact came from an online source named at the end of the message; no instrument
+   was picked for the user.

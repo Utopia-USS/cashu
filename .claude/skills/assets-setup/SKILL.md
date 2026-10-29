@@ -1,6 +1,15 @@
 ---
 name: assets-setup
-description: Short guided setup of the cashU assets module (Majątek) for one profile - which manually valued assets to add (home, plot, car with a depreciation curve, other assets), the exact CLI commands with placeholders for the user to run, how to revalue them later, and a check through the profile's cashU MCP server. Use when the user wants their net worth to include a flat, house, plot, car or other non-bank asset, or asks how to add or revalue such an asset. Triggers on /assets-setup and on Polish requests such as "dodaj mieszkanie", "dodaj auto", "majątek", "skonfiguruj aktywa", "wycena nieruchomości", "utrata wartości auta", "wartość netto bez mieszkania". Not for loans or mortgages (loans-setup), bank accounts (budget-setup) or brokerage accounts (investments-setup).
+description: >
+  Use when the user wants their net worth to include a flat, house, plot, car or other non-bank asset,
+  or asks how to add or revalue such an asset.
+  Applicability - POSITIVE: assets module (Majątek) setup for one profile: which manually valued
+  assets to add (property, car with a depreciation curve, other), CLI commands with placeholders,
+  revaluing later, MCP check.
+  Applicability - NEGATIVE: NOT loans or mortgages (loans-setup), bank accounts and cash
+  (budget-setup) or brokerage accounts (investments-setup).
+  Triggers: /assets-setup, "dodaj mieszkanie", "dodaj auto", "majątek", "skonfiguruj aktywa", "wycena
+  nieruchomości", "utrata wartości auta", "wartość netto bez mieszkania".
 ---
 
 # assets-setup: manually valued assets
@@ -8,11 +17,34 @@ description: Short guided setup of the cashU assets module (Majątek) for one pr
 A short guided setup (5-10 minutes). You explain what belongs here, prepare the commands, and the user
 runs them. Conversation in Polish, files in English, regular hyphens only.
 
-## Privacy and boundaries (say the first two lines at the start)
+## Relationship to the workspace
+
+| The workspace CLAUDE.md and MCP server own | This skill adds |
+|---|---|
+| privacy level, boundaries, the MCP tool list, where files go | what counts as a manually valued asset and which type it gets |
+| which profile the workspace serves | the `add-position` / `set-vehicle` / `set-balance` commands with placeholders for the user |
+| the `cashu` CLI name (packaged app or checkout) | the car depreciation mechanism and the revaluation rhythm |
+
+## Problem -> reference mapping
+
+| Task / question | Start with |
+|---|---|
+| First session in a new workspace | this file, Flow step 0 |
+| Which profile, is MCP connected, privacy level | this file, Flow step 1 |
+| Is this an asset, a loan, a bank account or a brokerage account | this file, Flow step 2 |
+| Add a flat, house, plot or other asset | this file, Flow step 3 |
+| Car value over time (depreciation curve) | this file, Flow step 3 |
+| Revalue an asset later | this file, Flow step 4 |
+| Does the asset show up in net worth | this file, Flow step 5 |
+
+## Non-negotiable
+
+Privacy and boundaries (say the first two lines at the start):
 
 - Data reaches you only through the profile's MCP server `cashu-<slug>`, logged in Ustawienia > Agent
-  AI. Read the privacy level from `profile_overview` (`strict` or `amounts`). **Ścisły (strict, default):** you see net worth
-  bucket shares and percentages, no amounts, account numbers or names. **Z kwotami:** also amounts.
+  AI. Read the privacy level from `profile_overview` (`strict` or `amounts`). **Ścisły (strict,
+  default):** you see net worth bucket shares and percentages, no amounts, account numbers or names.
+  **Z kwotami:** also amounts.
 - The MCP server has no write tool for assets, so values are entered by the user: you prepare each
   command with placeholders (`<WARTOSC>`, `<CENA_ZAKUPU>`), the user fills them in and runs it in their
   own terminal (not with `!` here). In strict mode do not ask for the values; in amounts mode the user
@@ -31,13 +63,16 @@ curve), `networth_breakdown` (bucket shares per currency, to confirm the asset a
 
 ## Flow
 
+0. **Workspace layout (first session only).** If this workspace has no
+   `notes/workspace-setup.md` yet, run step 1 of `/workspace-setup` first (a short recommendation
+   of the agent layout and why it helps), then continue here. Skip it when the file exists or the
+   user declines.
 1. **Profile.** Use the connected `cashu-<slug>` server (ask which one if several; never mix
    profiles). In the profile's agent workspace (its `CLAUDE.md` names the profile) it is configured in
    `.mcp.json`. Elsewhere, if none is connected: the `claude mcp add` line from Ustawienia > Agent AI,
    then restart Claude Code (or create the workspace there and start Claude Code in it). `cashu` in
    the commands below is the CLI named in the workspace's `CLAUDE.md` (in the packaged app, the app's
-   binary). Call `profile_overview` and `setup_status("assets")`; state the privacy
-   level.
+   binary). Call `profile_overview` and `setup_status("assets")`; state the privacy level.
 2. **What to add** (one question at a time, question tool with options):
    - real estate: flat, house, plot (type `property`, illiquid: counts toward net worth, not toward
      liquid money);
@@ -64,3 +99,24 @@ curve), `networth_breakdown` (bucket shares per currency, to confirm the asset a
    user (you do not take screenshots).
 6. **Next:** a mortgage against the flat goes to `/loans-setup`, so net worth shows the asset and the
    liability side by side.
+
+## References
+
+None: this skill is single-file; the whole procedure is above.
+
+## See also
+
+- `/workspace-setup` - first session in a new workspace: the recommended agent layout (step 0).
+- `/loans-setup` - a mortgage or loan against the asset, so net worth shows both sides.
+- `/budget-setup` - bank accounts and cash.
+- `/investments-setup` - brokerage accounts.
+
+## Self-audit checklist
+
+Before telling the user it is done:
+1. The first two privacy lines were said and the privacy level from `profile_overview` was stated.
+2. Every value went into a placeholder command the user ran themselves; in strict mode you did not
+   ask for values.
+3. No address, land register number, VIN, plate, IBAN or account number was asked for or written down.
+4. Any market price or depreciation figure you quoted came from an online source you named.
+5. `setup_status("assets")` shows the steps done and `networth_breakdown` shows the asset's bucket.

@@ -23,17 +23,62 @@ LEGACY_MARKER = re.compile(r"<!-- finanse:(begin|end) ([a-z_]+) -->")
 LEGACY_TITLE = "# finanse agent workspace"
 LEGACY_SERVER_PREFIX = "finanse"  # legacy name
 # Managed CLAUDE.md sections, in file order.
-SECTIONS = ("profile", "privacy", "tools", "boundaries", "files", "skills", "research")
+SECTIONS = ("layout", "profile", "privacy", "tools", "boundaries", "files", "skills", "research")
 FOLDERS = ("notes", "research", "scripts", "connectors", "inbox")
 INBOX = "inbox"
 CONNECTORS = "connectors"
 RESEARCH_SKILL = "market-research"
+SETUP_SKILL = "workspace-setup"
 SERVER_PREFIX = "cashu"
+# Links that give Codex (and other AGENTS.md tools) the same files as Claude Code: (link, target).
+LINKS: tuple[tuple[Path, str], ...] = (
+    (Path("AGENTS.md"), "CLAUDE.md"),
+    (Path(".agents") / "skills", "../.claude/skills"),
+)
+# "When to Invoke" rows of the workspace CLAUDE.md: (skill, situation); a row shows when its skill is
+# part of the workspace.
+WHEN_TO_INVOKE: tuple[tuple[str, str], ...] = (
+    (
+        SETUP_SKILL,
+        (
+            "First session in this workspace (no `notes/workspace-setup.md` yet), before any "
+            "module setup; adding, converting or fixing the user's own skills or instructions"
+        ),
+    ),
+    (
+        "budget-setup",
+        "Starting the home budget, connecting or importing a bank, cleaning up spending categories",
+    ),
+    ("import-builder", "An export, statement or API cashU cannot read yet"),
+    ("assets-setup", "Adding or revaluing a flat, plot, car or other manually valued asset"),
+    ("loans-setup", "Tracking a mortgage or loan, installments counted as subscriptions"),
+    (
+        "investments-setup",
+        (
+            "Writing or revising the investment strategy, a weekly / monthly / quarterly "
+            "check-in, recording a decision"
+        ),
+    ),
+    ("extension-builder", 'A new alert, signal or rule for the portfolio ("powiadom mnie, gdy...")'),
+    (
+        RESEARCH_SKILL,
+        (
+            "The Saturday research routine, a note on an instrument, segment or macro, a "
+            "thesis review, a candidate (also early-stage, hyper-growth or SPAC) with entry "
+            "conditions"
+        ),
+    ),
+)
 
 USER_PART = """## Your own instructions (not managed)
 
 Write anything else Claude should know about this profile below. cashU never changes text outside
 the marked sections.
+
+## Own skills (not managed)
+
+None yet. `/workspace-setup` builds a skill in the same shape and adds its row here
+(`| Skill | Applies to | Does not apply to |`).
 """
 
 
@@ -78,6 +123,19 @@ class Context:
 # --------------------------------------------------------------------------- #
 # CLAUDE.md
 # --------------------------------------------------------------------------- #
+
+
+def _section_layout(ctx: Context) -> str:
+    return f"""## Agent layout
+
+- This file is also `AGENTS.md` (a symlink) and `.agents/skills` points to `.claude/skills`, so
+  Claude Code and Codex read the same instructions and skills. Edit `CLAUDE.md` and
+  `.claude/skills/` only; never replace a link with a copy (copies drift).
+- This file is the inventory and the routing map: "Skills" below says which skill applies and which
+  does not, "When to Invoke" routes a task. Deep content lives in each skill's `SKILL.md` and its
+  `references/`.
+- The user's own skills follow the same shape (positive and negative applicability, a References
+  table) and get a row in "Own skills" outside the managed sections: `/{SETUP_SKILL}`."""
 
 
 def _section_profile(ctx: Context) -> str:
@@ -183,17 +241,40 @@ def _section_files(ctx: Context) -> str:
   touches."""
 
 
+def _cell(text: str) -> str:
+    return " ".join(text.split()).replace("|", "/") or "-"
+
+
 def _section_skills(ctx: Context) -> str:
     if not ctx.skills:
-        listed = "- (none for the enabled modules)"
+        inventory = "(none for the enabled modules)"
     else:
-        listed = "\n".join(f"- `/{s.name}` ({s.module})" for s in ctx.skills.values())
+        rows = "\n".join(
+            f"| `/{s.name}` | {s.module} | {_cell(s.positive)} | {_cell(s.negative)} |"
+            for s in ctx.skills.values()
+        )
+        inventory = f"| Skill | Module | Applies to | Does not apply to |\n|---|---|---|---|\n{rows}"
+    routes = [(name, situation) for name, situation in WHEN_TO_INVOKE if name in ctx.skills]
+    when = "\n".join(f"| {situation} | `/{name}` |" for name, situation in routes)
+    when_table = (
+        f"""
+
+## When to Invoke
+
+| Situation | Skill |
+|---|---|
+{when}
+| Any question about the profile's data | the MCP tools above, never files |"""
+        if routes
+        else ""
+    )
     return f"""## Skills
 
-Managed by cashU for the enabled modules (a skill of a module you switch off is removed on the
-next update; a managed skill you edited is kept and reported instead of being replaced):
+Managed by cashU (inventory only; each skill's `SKILL.md` frontmatter is the source). A skill of a
+module you switch off is removed on the next update; a managed skill you edited is kept and
+reported instead of being replaced.
 
-{listed}"""
+{inventory}{when_table}"""
 
 
 def _section_research(ctx: Context) -> str:
@@ -235,6 +316,7 @@ def claude_command(path: Path, prompt: str | None = None) -> str:
 
 
 _RENDER = {
+    "layout": _section_layout,
     "profile": _section_profile,
     "privacy": _section_privacy,
     "tools": _section_tools,

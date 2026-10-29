@@ -21,4 +21,4 @@ cashu match-transfers           # pair internal transfers between your own accou
 ```
 
 Don't have one of these banks? Ignore or delete the empty subdirectory.
-Want to add a new bank? See `AGENTS.md` → "Adding a new bank".
+Want to add a new bank? See `docs/agents/extending.md` → "Adding a new bank".

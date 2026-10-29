@@ -175,7 +175,7 @@ plan wejścia), wpłaty, konta i podatki, krypto, czego unikam, tryby awarii (ta
 zabezpieczenie), rytm, zasady zmian, minimum na czas braku zainteresowania, kontrole ręczne w
 przeglądzie tygodniowym (things the schema cannot express yet).
 
-`strategy.yaml`: `schema-mapping.md`. Then the approval flow in SKILL.md (read back in 10 lines, list
+`strategy.yaml`: `schema-mapping.md`. Then the approval flow in `references/strategy-proposal-workflow.md` (read back in 10 lines, list
 defaults, `propose_strategy` with a changelog `reason` and market context, approval in the app).
 
 ## Phase 8 - Monitoring protocol (~5 min)

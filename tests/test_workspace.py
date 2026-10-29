@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 from rich.console import Console
 from typer.testing import CliRunner
 
@@ -312,7 +313,7 @@ def test_existing_claude_md_without_markers_keeps_the_user_text(client, tmp_path
     body = client.post("/api/p/anna-test/workspace", json={"path": str(ws)}).json()
     assert body["exists"] and body["custom"] and body["path"] == str(ws.resolve())
     text = (ws / "CLAUDE.md").read_text()
-    assert text.startswith("# Moje\n\n<!-- cashu:begin profile -->")
+    assert text.startswith("# Moje\n\n<!-- cashu:begin layout -->")
     assert text.rstrip().endswith("Tekst użytkownika.")
 
 
@@ -650,9 +651,10 @@ def test_cli_without_profiles(run):
 # --------------------------------------------------------------------------- #
 
 REPO_SKILLS = paths.PROJECT_ROOT / ".claude" / "skills"
-# File references that exist only in a source checkout.
+# File references that exist only in a source checkout (`AGENTS.md` is allowed: every workspace has
+# one, a link to its CLAUDE.md).
 REPO_ONLY = re.compile(
-    r"src/cashu/|docs/import-format|tests/[a-z_/]+\.py|AGENTS\.md|ONBOARDING\.md"
+    r"src/cashu/|docs/import-format|tests/[a-z_/]+\.py|ONBOARDING\.md"
     r"|from cashu\.core import paths"
 )
 
@@ -660,6 +662,28 @@ REPO_ONLY = re.compile(
 def test_every_shipped_skill_belongs_to_a_module():
     shipped = sorted(p.name for p in REPO_SKILLS.iterdir() if (p / "SKILL.md").is_file())
     assert shipped and all(skills.module_of(name) for name in shipped), shipped
+
+
+def test_shipped_skills_follow_the_layer_shape():
+    """utopia-ai-arch:layer: every shipped skill states where it applies and where it does not (the
+    workspace CLAUDE.md inventory shows both), within the 1024-character description Codex accepts,
+    and has a References table and a self-audit."""
+    problems = []
+    for skill_md in sorted(REPO_SKILLS.glob("*/SKILL.md")):
+        name = skill_md.parent.name
+        text = skill_md.read_text(encoding="utf-8")
+        meta = yaml.safe_load(text.split("---\n", 2)[1])
+        if meta.get("name") != name:
+            problems.append(f"{name}: frontmatter name {meta.get('name')!r}")
+        if len(meta.get("description", "")) > 1024:
+            problems.append(f"{name}: description longer than 1024 characters")
+        pos, neg = skills.applicability(skill_md)
+        if not pos or not neg.startswith("NOT "):
+            problems.append(f"{name}: no POSITIVE / NEGATIVE applicability")
+        for heading in ("## References", "## See also", "## Self-audit checklist"):
+            if f"\n{heading}" not in text:
+                problems.append(f"{name}: no {heading!r} section")
+    assert not problems, "\n".join(problems)
 
 
 def test_skills_do_not_reference_repository_files():
@@ -779,3 +803,122 @@ def test_update_rewrites_a_workspace_from_before_the_rename(client, tmp_path):
     assert not any("finanse" in r for r in settings["permissions"]["allow"])  # legacy name
     assert "Bash(ls)" in settings["permissions"]["allow"]
     assert settings["enabledMcpjsonServers"] == ["cashu-anna-test", "mine"]
+
+
+# --------------------------------------------------------------------------- #
+# Agent layout (utopia-ai-arch:layer): Codex links, core skill, inventory
+# --------------------------------------------------------------------------- #
+
+
+def _layered_skill(root: Path, name: str, pos: str, neg: str) -> None:
+    folder = root / name
+    folder.mkdir(parents=True)
+    (folder / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: >\n  Use when testing.\n"
+        f"  Applicability - POSITIVE: {pos}\n  Applicability - NEGATIVE: {neg}\n"
+        f"  Triggers: /{name}, \"test\".\n---\nbody\n"
+    )
+
+
+def test_codex_links_are_created_and_checked(client, tmp_path):
+    body = client.post("/api/p/anna-test/workspace", json={}).json()
+    ws = _ws(tmp_path, "anna-test")
+    assert (ws / "AGENTS.md").is_symlink() and (ws / "AGENTS.md").readlink() == Path("CLAUDE.md")
+    link = ws / ".agents" / "skills"
+    assert link.is_symlink() and link.readlink() == Path("../.claude/skills")
+    assert (link / "investments-setup" / "SKILL.md").is_file()
+    assert (ws / "AGENTS.md").read_text() == (ws / "CLAUDE.md").read_text()
+    created = {(c["kind"], c["name"]) for c in body["changes"] if c["action"] == "created"}
+    assert {("link", "AGENTS.md"), ("link", ".agents/skills")} <= created
+    assert body["up_to_date"]
+
+    (ws / "AGENTS.md").unlink()
+    status = client.get("/api/p/anna-test/workspace").json()
+    assert {"kind": "link", "name": "AGENTS.md", "reason": "missing"} in status["outdated"]
+    again = client.post("/api/p/anna-test/workspace", json={}).json()
+    assert again["up_to_date"] and (ws / "AGENTS.md").is_symlink()
+
+
+def test_a_users_own_agents_md_is_kept_also_when_forced(client, tmp_path):
+    """The user's Codex notes are never moved by cashU, not even by "Zastąp zmienione": the
+    workspace-setup skill merges them into CLAUDE.md with the user."""
+    ws = _ws(tmp_path, "anna-test")
+    ws.mkdir(parents=True)
+    (ws / "AGENTS.md").write_text("my codex notes\n")
+    body = client.post("/api/p/anna-test/workspace", json={}).json()
+    assert {"kind": "link", "name": "AGENTS.md", "action": "kept"} in body["changes"]
+    assert {"kind": "link", "name": "AGENTS.md", "reason": "conflict"} in body["outdated"]
+    assert (ws / ".agents" / "skills").is_symlink()  # the other link does not wait for it
+
+    forced = client.post("/api/p/anna-test/workspace", json={"force": True}).json()
+    assert (ws / "AGENTS.md").read_text() == "my codex notes\n"
+    assert not (ws / "AGENTS.md").is_symlink() and not forced["up_to_date"]
+    assert not list((ws / service.BACKUP_DIR).rglob("AGENTS.md"))
+
+
+def test_link_states(tmp_path):
+    ws = tmp_path / "ws"
+    (ws / ".claude" / "skills").mkdir(parents=True)
+    (ws / "CLAUDE.md").write_text("x\n")
+    agents, skills_rel = render.LINKS
+    (ws / "AGENTS.md").symlink_to("./CLAUDE.md")  # same file, other spelling
+    assert service._link_state(ws, *agents) == "ok"
+    (ws / ".agents").write_text("a file where the folder belongs\n")
+    assert service._link_state(ws, *skills_rel) == "conflict"
+    (ws / ".agents").unlink()
+    (tmp_path / "elsewhere").mkdir()
+    (ws / ".agents").symlink_to(tmp_path / "elsewhere")  # would put the link outside the workspace
+    assert service._link_state(ws, *skills_rel) == "conflict"
+    (ws / ".agents").unlink()
+    assert service._link_state(ws, *skills_rel) == "missing"
+    assert service._link_state(ws, *skills_rel, (".agents/skills",)) == "unsupported"
+
+
+def test_a_link_the_system_cannot_create_is_not_outdated(client, tmp_path, monkeypatch):
+    real_symlink, blocked = service.os.symlink, [True]
+
+    def symlink(*args, **kwargs):
+        if blocked[0]:
+            raise OSError("symlinks need a privilege")
+        return real_symlink(*args, **kwargs)
+
+    monkeypatch.setattr(service.os, "symlink", symlink)
+    body = client.post("/api/p/anna-test/workspace", json={}).json()
+    assert {"kind": "link", "name": "AGENTS.md", "action": "failed"} in body["changes"]
+    assert {"kind": "link", "name": "AGENTS.md", "reason": "unsupported"} in body["outdated"]
+    manifest = _json(_ws(tmp_path, "anna-test") / service.MANIFEST_FILE)
+    assert manifest["links_failed"] == ["AGENTS.md", ".agents/skills"]
+    blocked[0] = False
+    again = client.post("/api/p/anna-test/workspace", json={}).json()  # retried on every update
+    assert again["up_to_date"]
+    assert "links_failed" not in _json(_ws(tmp_path, "anna-test") / service.MANIFEST_FILE)
+
+
+def test_core_skill_and_inventory_tables(client, tmp_path, skill_tree):
+    _layered_skill(
+        skill_tree, "workspace-setup", "the agent layout.", "NOT module setup (budget-setup)."
+    )
+    shutil.rmtree(skill_tree / "budget-setup")
+    _layered_skill(skill_tree, "budget-setup", "bank imports | categories.", "NOT broker exports.")
+    client.post("/api/p/bolek-test/workspace", json={})  # budget only
+    ws = _ws(tmp_path, "bolek-test")
+    assert _skills_in(ws) == {"workspace-setup", "budget-setup", "import-builder"}
+    manifest = _json(ws / service.MANIFEST_FILE)
+    assert manifest["skills"]["workspace-setup"]["module"] == "core"
+
+    text = (ws / "CLAUDE.md").read_text()
+    assert "## Agent layout" in text and "`AGENTS.md` (a symlink)" in text
+    assert text.index("cashu:begin layout") < text.index("cashu:begin profile")
+    assert "| `/workspace-setup` | core | the agent layout. | NOT module setup (budget-setup). |" in text
+    assert "| `/budget-setup` | budget | bank imports / categories. | NOT broker exports. |" in text
+    assert "| `/import-builder` | budget | - | - |" in text  # no layer scope: shown empty
+    assert "## When to Invoke" in text and "| `/workspace-setup` |" in text
+    assert "`/extension-builder`" not in text  # investments is off
+    assert "## Own skills (not managed)" in text
+
+
+def test_core_skill_comes_without_modules(api_empty, skill_tree, tmp_path):
+    _layered_skill(skill_tree, "workspace-setup", "the layout.", "NOT module setup.")
+    api_empty.post("/api/profiles", json={"name": "Zero Test", "modules": []})
+    api_empty.post("/api/p/zero-test/workspace", json={})
+    assert _skills_in(_ws(tmp_path, "zero-test")) == {"workspace-setup"}

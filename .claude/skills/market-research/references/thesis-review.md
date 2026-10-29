@@ -24,7 +24,7 @@ never instead of them.
 
 ## Run
 
-1. Preflight as in the weekly routine (step 0).
+1. Preflight as in the weekly routine (step 0, `references/weekly-routine-workflow.md`).
 2. `research_context` first (read only), then pick the positions and their references.
 3. `start_research_run(scope)` with `{"held": false, "watchlist": false, "candidates": false,
    "scheduled": false, "instruments": ["<id or symbol>", ...]}`: exactly the positions you review. If
