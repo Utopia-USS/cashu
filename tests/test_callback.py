@@ -16,19 +16,26 @@ def _capture_via(redirect: str, verify):
     t.start()
 
     status = None
+    last_error: Exception | None = None
     deadline = time.time() + 6
     while time.time() < deadline:
         try:
             # IPv4 explicitly: the listener binds localhost's IPv4 address, and some hosts resolve
             # localhost to ::1 first
             url = redirect.replace("//localhost:", "//127.0.0.1:")
-            r = httpx.get(f"{url}?code=TESTCODE&state=cashu", timeout=1, verify=verify)
+            # trust_env=False: a system proxy (macOS reads it from the OS settings) must not
+            # carry a request to localhost
+            r = httpx.get(
+                f"{url}?code=TESTCODE&state=cashu", timeout=1, verify=verify, trust_env=False
+            )
             status = r.status_code
             break
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            last_error = exc
             time.sleep(0.1)
 
     t.join(timeout=5)
+    assert status is not None, f"no answer from the listener: {last_error!r}"
     return status, result.get("code")
 
 
