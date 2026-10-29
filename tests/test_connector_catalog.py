@@ -5,7 +5,8 @@ community connector must never block a core pull request. CI runs it in the info
 ``connectors-catalog`` job on macOS; locally: ``pytest -m catalog tests/test_connector_catalog.py``.
 
 For every entry: the manifest and the directory are valid, the catalog fields (maintainer,
-last_verified, README.md, fixtures/) are present, ``last_verified`` is not older than 180 days, and
+last_verified, README.md, fixtures/) are present, a stale ``last_verified`` (older than 180 days) is
+reported as a warning (a flag, not a failure), and
 ``cashu connectors test`` (the devtest path, in the real macOS sandbox the app uses) passes on every
 fixture. Where connectors cannot run (no macOS sandbox) the fixture runs are skipped.
 """
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
+import warnings
 
 import pytest
 
@@ -22,6 +24,11 @@ from cashu.core.connectors import catalog, devtest
 from cashu.core.connectors import manifest as mf
 
 pytestmark = pytest.mark.catalog
+
+
+class StaleCatalogEntry(UserWarning):
+    """A catalog entry not verified for more than 180 days (flagged unmaintained, never a failure)."""
+
 
 CATALOG = paths.PROJECT_ROOT / "connectors"
 ENTRIES = catalog.entry_dirs(CATALOG)
@@ -55,15 +62,19 @@ def test_entry_follows_the_catalog_rules(root):
 
 
 @pytest.mark.parametrize("root", ENTRIES, ids=IDS)
-def test_entry_is_not_stale(root):
+def test_entry_staleness_is_flagged(root):
+    """Stale is a flag, not a failure: a warning in the job's summary (the app shows it as stale)."""
     entry = catalog.read_entry(root)
     if entry.manifest is None:
         pytest.skip("invalid manifest (reported by test_entry_follows_the_catalog_rules)")
-    assert not entry.stale(), (
-        f"{root.name}: last_verified {entry.manifest.last_verified} is older than "
-        f"{catalog.STALE_AFTER_DAYS} days: the entry is flagged unmaintained until its maintainer "
-        "checks it again"
-    )
+    if entry.stale():
+        warnings.warn(
+            f"{root.name}: last_verified {entry.manifest.last_verified} is older than "
+            f"{catalog.STALE_AFTER_DAYS} days: the entry is flagged unmaintained until its "
+            "maintainer checks it again",
+            StaleCatalogEntry,
+            stacklevel=1,
+        )
 
 
 @can_run_connectors
