@@ -9,7 +9,8 @@ to a manifest host bypass the egress proxy, so Linux / Windows stay `sandbox_una
 interpreter until a native layer exists, hook: `default_sandbox` -> `sandbox_linux.native_sandbox()`);
 the module-graph check (`deno info`, error kind `forbidden_import`, rule in `docs/connectors.md`
 section 4); the bundled deno preferred by `resolve_interpreter`; the build step (version + sha256
-pinned, the sha256 values still to be filled in, `packaging/README.md`); `test_connector`; the Deno
+pinned; until the owner pins the sha256 values the app builds without Deno, with a warning,
+`packaging/README.md`); `test_connector`; the Deno
 example `examples/connectors/deno-budget-example`; the import-builder skill. The rest of this document
 is the spike as written; where it says Deno alone runs on Linux / Windows, that was changed as above.
 

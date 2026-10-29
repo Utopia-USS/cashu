@@ -362,14 +362,23 @@ def test_the_bundled_deno_is_pinned_verified_and_signed_on_its_own():
     assert re.search(r'^DENO_VERSION="\d+\.\d+\.\d+"$', script, re.MULTILINE)
     for arch in ("AARCH64", "X86_64"):
         assert re.search(rf'^DENO_SHA256_{arch}="([0-9a-f]{{64}})?"', script, re.MULTILINE), arch
-    assert "[0-9a-f]{64}" in script  # an unpinned hash refuses the build
+    assert "[0-9a-f]{64}" in script  # a malformed hash refuses the build
+    # An unpinned hash never blocks the ship step: the app is built without Deno, with a loud warning
+    # at the start and in the summary.
+    unpinned = script[script.index('if [[ -z "$DENO_SHA256" ]]; then'):]
+    unpinned = unpinned[: unpinned.index("elif")]
+    assert "SKIP_DENO=1" in unpinned and "warn_deno" in unpinned and "die" not in unpinned
+    assert 'if [[ $DENO_UNPINNED == 1 ]]; then warn_deno; fi' in script
+    assert "WARNING: building cashU.app WITHOUT the Deno runtime" in script
     assert 'shasum -a 256 "$DENO_ZIP"' in script and "--proto '=https'" in script
     assert script.index('shasum -a 256 "$DENO_ZIP"') < script.index('ditto -x -k "$DENO_ZIP"')
     assert 'sign --entitlements "$ROOT/packaging/deno-entitlements.plist" "$APP_DENO"' in script
     assert 'CASHU_DENO="$DENO_BIN"' in script
     spec = (ROOT / "packaging" / "cashu.spec").read_text()
     assert 'binaries.append((DENO, "deno"))' in spec and "binaries=binaries," in spec
-    assert 'os.environ.get("CASHU_SKIP_DENO") != "1"' in spec
+    assert "No Deno runtime" not in spec  # the spec builds without Deno instead of refusing
+    readme = (ROOT / "packaging" / "README.md").read_text()
+    assert "### Pinning the Deno release" in readme and ".sha256sum" in readme
     license_text = (ROOT / "packaging" / "third-party" / "deno-LICENSE.md").read_text()
     assert license_text.startswith("MIT License") and "the Deno authors" in license_text
     from cashu.core.connectors import manifest as mf

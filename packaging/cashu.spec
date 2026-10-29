@@ -53,8 +53,8 @@ if SKILLS.is_dir():
 # "deno" of the bundle, preferred over any deno on the search path). scripts/build_macos.sh downloads
 # the pinned official release, checks its sha256 and passes the unpacked binary in CASHU_DENO; it
 # signs it afterwards with packaging/deno-entitlements.plist (allow-jit), never with the app's.
-# CASHU_SKIP_DENO=1 builds without it (local experiments only: deno connectors then need a deno on
-# the search path).
+# Without CASHU_DENO (the release sha256 not pinned yet, or --skip-deno) the app is built without it,
+# with a warning: deno connectors then need a deno on the search path.
 binaries = []
 DENO = os.environ.get("CASHU_DENO", "")
 if DENO:
@@ -62,8 +62,8 @@ if DENO:
         raise SystemExit(f"CASHU_DENO is not an executable file: {DENO}")
     binaries.append((DENO, "deno"))
     datas.append((str(ROOT / "packaging" / "third-party" / "deno-LICENSE.md"), "deno"))
-elif os.environ.get("CASHU_SKIP_DENO") != "1":
-    raise SystemExit("No Deno runtime: set CASHU_DENO (scripts/build_macos.sh does) or CASHU_SKIP_DENO=1")
+else:
+    print("WARNING: building cashU.app without the Deno runtime (CASHU_DENO not set)")
 
 hiddenimports = [
     # Modules are found by id at runtime (core/modules.py), CLI and API wiring is dynamic.

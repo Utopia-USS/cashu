@@ -7,8 +7,9 @@
 # The app bundles the Deno runtime for deno connectors: the official release archive pinned below
 # (DENO_VERSION + sha256 per architecture) is downloaded once into the build folder, checked against
 # the pinned sha256 before it is unpacked, and signed with its own entitlements
-# (packaging/deno-entitlements.plist: allow-jit only). --skip-deno builds without it (local
-# experiments only; deno connectors then need a deno on the search path).
+# (packaging/deno-entitlements.plist: allow-jit only). While the sha256 is not pinned the app is
+# built without Deno and a loud warning is printed (pinning: packaging/README.md). --skip-deno builds
+# without it on purpose. Without Deno, deno connectors need a deno on the search path.
 #
 # Output (git-ignored): build/macos/dist/cashU.app and build/macos/cashU-<version>-macos-<arch>.zip
 # (+ .dmg with --dmg). The script never installs anything into /Applications.
@@ -134,14 +135,30 @@ DENO_VERSION="2.9.1"
 DENO_SHA256_AARCH64=""  # sha256 of deno-aarch64-apple-darwin.zip (v$DENO_VERSION): not pinned yet
 DENO_SHA256_X86_64=""   # sha256 of deno-x86_64-apple-darwin.zip (v$DENO_VERSION): not pinned yet
 DENO_BIN=""
+DENO_UNPINNED=0
+warn_deno() {
+  printf '\n%s\n' "!!! WARNING: building cashU.app WITHOUT the Deno runtime." >&2
+  printf '%s\n' "!!! The sha256 of the Deno $DENO_VERSION release is not pinned in scripts/build_macos.sh" >&2
+  printf '%s\n' "!!! (DENO_SHA256_AARCH64 / DENO_SHA256_X86_64). Deno connectors in this build fail with" >&2
+  printf '%s\n' "!!! \"deno was not found\" unless the Mac has its own deno. Pin it: packaging/README.md." >&2
+}
 if [[ $SKIP_DENO == 0 ]]; then
   case "$ARCH" in
     arm64) DENO_TARGET="aarch64-apple-darwin"; DENO_SHA256="$DENO_SHA256_AARCH64" ;;
     x86_64) DENO_TARGET="x86_64-apple-darwin"; DENO_SHA256="$DENO_SHA256_X86_64" ;;
     *) die "no Deno release for $ARCH" ;;
   esac
-  [[ "$DENO_SHA256" =~ ^[0-9a-f]{64}$ ]] \
-    || die "the sha256 of deno-$DENO_TARGET.zip v$DENO_VERSION is not pinned in this script (DENO_SHA256_*); pin it or build with --skip-deno"
+  if [[ -z "$DENO_SHA256" ]]; then
+    # Not pinned yet (packaging/README.md, "Pinning the Deno release"): the app is built WITHOUT Deno
+    # instead of blocking the build; deno connectors then report their interpreter as missing.
+    DENO_UNPINNED=1
+    SKIP_DENO=1
+    warn_deno
+  elif ! [[ "$DENO_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+    die "DENO_SHA256_* for $DENO_TARGET is not a sha256 (64 lower-case hex characters)"
+  fi
+fi
+if [[ $SKIP_DENO == 0 ]]; then
   DENO_DIR_BUILD="$BUILD/deno/$DENO_VERSION-$DENO_TARGET"
   DENO_ZIP="$BUILD/deno/deno-$DENO_VERSION-$DENO_TARGET.zip"
   mkdir -p "$BUILD/deno"
@@ -170,7 +187,7 @@ say "Running PyInstaller (cashU.app $VERSION, $ARCH${MIN_MACOS:+, macOS $MIN_MAC
 (
   cd "$ROOT"
   CASHU_WEBDIST="$WEBDIST" CASHU_ICNS="$BUILD/icon/cashU.icns" CASHU_MIN_MACOS="$MIN_MACOS" \
-    CASHU_DENO="$DENO_BIN" CASHU_SKIP_DENO="$SKIP_DENO" \
+    CASHU_DENO="$DENO_BIN" \
     "$BUILD/venv/bin/pyinstaller" --noconfirm --clean --log-level WARN \
     --distpath "$BUILD/dist" --workpath "$BUILD/work" "$ROOT/packaging/cashu.spec"
 )
@@ -255,3 +272,5 @@ echo "    app:     $APP ($(du -sh "$APP" | cut -f1))"
 echo "    archive: $ZIP ($(du -sh "$ZIP" | cut -f1))"
 [[ $DMG == 1 ]] && echo "    dmg:     $DMG_PATH"
 echo "    signed:  $([[ $SIGNED == 1 ]] && echo yes || echo 'no (ad-hoc)')"
+echo "    deno:    $([[ -n "$APP_DENO" ]] && echo "$DENO_VERSION (bundled)" || echo 'NOT bundled')"
+if [[ $DENO_UNPINNED == 1 ]]; then warn_deno; fi

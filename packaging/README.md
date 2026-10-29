@@ -56,9 +56,11 @@ without anything installed (docs/agents/connector-runtime.md). Decisions:
   sha256 per architecture of the official `deno-<target>.zip` from github.com/denoland/deno/releases.
   The archive is downloaded once into the build folder and checked against the pinned sha256 on every
   build, before it is unpacked; the unpacked binary must report that version. The app itself never
-  downloads anything. The sha256 constants are **empty until pinned**: the script refuses to build
-  (or use `--skip-deno` for a local build without Deno). Update the version and both hashes together,
-  from the release's `.sha256sum` files, cross-checked against a download on a second machine.
+  downloads anything. The sha256 constants are **empty until pinned**: until then the script builds
+  the app **without Deno** and prints a loud warning (start and end of the build; the summary says
+  `deno: NOT bundled`), so the ship step never blocks; Deno connectors in such a build fail with
+  "deno was not found" unless the Mac has its own deno. `--skip-deno` builds without it on purpose.
+  Pinning the hashes is an owner step: "Pinning the Deno release" below.
 - **Location.** `packaging/cashu.spec` adds it as a binary in folder `deno/` of the bundle
   (`Contents/Frameworks/deno/deno`), with the MIT license (`packaging/third-party/deno-LICENSE.md`).
   `core/connectors/manifest.py` `bundled_interpreter` prefers it over any `deno` on the search path;
@@ -69,6 +71,33 @@ without anything installed (docs/agents/connector-runtime.md). Decisions:
   `--v8-flags=--jitless` without the entitlement, was rejected by the owner (slower, no WebAssembly).
 - **Confinement does not depend on the signature:** deno connectors run with Deno's permission flags
   inside `sandbox-exec`, after the module-graph check (`core/connectors/sandbox.py`).
+
+### Pinning the Deno release
+
+Do this once per Deno version, on a trusted machine, and commit the result on its own
+(`Pin the Deno <version> release`):
+
+1. Pick the version (`DENO_VERSION` in `scripts/build_macos.sh`) on
+   https://github.com/denoland/deno/releases and check the release lists `deno-aarch64-apple-darwin.zip`
+   and `deno-x86_64-apple-darwin.zip`, each with its `<archive>.sha256sum` file.
+2. Download both archives and both `.sha256sum` files into an empty scratch folder:
+   `curl -fLO --proto '=https' https://github.com/denoland/deno/releases/download/v<version>/deno-aarch64-apple-darwin.zip`
+   (and `.sha256sum`, and the same for `x86_64`).
+3. Compute the hashes yourself: `shasum -a 256 deno-*.zip`. Each must equal the value in its
+   `.sha256sum` file (the first field).
+4. Cross-check from an independent source: the same `shasum` of the archives downloaded on a second
+   machine or network, or the asset digests GitHub shows for the release
+   (`gh release view v<version> -R denoland/deno --json assets`, field `digest` `sha256:...`, where
+   available). All three must agree; if anything differs, do not pin.
+5. Unzip the archive of this Mac's architecture and run `./deno --version`: the first line is
+   `deno <version> ...`.
+6. Put the hashes into `DENO_SHA256_AARCH64` and `DENO_SHA256_X86_64` (64 lower-case hex characters;
+   update all three constants together), commit, and run `scripts/build_macos.sh --clean`. The summary
+   must say `deno: <version> (bundled)` and print no warning; a mismatching archive stops the build and
+   is deleted.
+7. With a Developer ID build, `codesign -d --entitlements - cashU.app/Contents/Frameworks/deno/deno`
+   shows only `com.apple.security.cs.allow-jit`, and a Deno connector's `test_connector` reports
+   `interpreter: deno (bundled with the app)`.
 
 ## Where the app keeps data
 
