@@ -24,7 +24,7 @@ from ..models import profile_fk_column, utcnow
 
 CONNECTOR_STATUSES = ("pending", "approved", "changed", "disabled")
 RUN_OUTCOMES = ("ok", "failed", "timeout", "refused")
-SOURCES = ("cli", "mcp")
+SOURCES = ("cli", "mcp", "catalog")  # catalog: from the catalog (app / CLI)
 
 
 class Connector(SQLModel, table=True):
@@ -45,7 +45,7 @@ class Connector(SQLModel, table=True):
     approved_at: dt.datetime | None = None
     installed_at: dt.datetime = Field(default_factory=utcnow)
     updated_at: dt.datetime = Field(default_factory=utcnow)
-    source: str = Field(default="cli")  # cli | mcp
+    source: str = Field(default="cli")  # cli | mcp | catalog
 
 
 class ConnectorBinding(SQLModel, table=True):

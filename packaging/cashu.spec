@@ -31,6 +31,7 @@ if not (WEBDIST / "index.html").is_file():
     raise SystemExit(f"Built SPA not found in {WEBDIST} (run `npm ci && npm run build` in frontend/)")
 ICNS = Path(os.environ.get("CASHU_ICNS") or ROOT / "packaging" / "icon" / "cashU.icns")
 SKILLS = ROOT / ".claude" / "skills"
+CATALOG = ROOT / "connectors"  # the community connector catalog, read-only in the bundle
 
 WEBDIST_DEST = os.path.join("cashu", "api", "webdist")
 
@@ -47,6 +48,18 @@ datas += collect_data_files("cashu.core.migrations", include_py_files=True)
 datas.append((str(WEBDIST), WEBDIST_DEST))
 if SKILLS.is_dir():
     datas.append((str(SKILLS), "skills"))  # core/runtime.py: skills_dir()
+# core/connectors/catalog.py: catalog_dir(). File by file, so a stray hidden file (.DS_Store) or a
+# __pycache__ of a developer checkout never lands in the bundle (the directory rules refuse hidden
+# files except .gitignore; caches would change the content hash).
+if CATALOG.is_dir():
+    for path in sorted(CATALOG.rglob("*")):
+        rel = path.relative_to(CATALOG)
+        skipped = any(
+            part == "__pycache__" or (part.startswith(".") and part != ".gitignore")
+            for part in rel.parts
+        )
+        if path.is_file() and not skipped:
+            datas.append((str(path), str(Path("connectors") / rel.parent)))
 
 hiddenimports = [
     # Modules are found by id at runtime (core/modules.py), CLI and API wiring is dynamic.

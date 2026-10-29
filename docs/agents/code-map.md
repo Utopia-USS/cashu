@@ -58,7 +58,7 @@ but were not listed before.
 | `mcp/` (+) | MCP server (`cashu mcp --profile <slug>`): `server.py`, `registry.py` (`ToolSpec`), `labels.py`, `redaction.py`, `audit.py`, `tools/<module>.py` |
 | `agent_api.py`, `agent_models.py` (+) | agent layer API and tables: proposals, MCP call audit log, weekly reviews, MCP snippet |
 | `proposals.py`, `reviews.py` (+) | agent proposals applied only on owner approval; weekly review records |
-| `connectors/` (+) | owner-approved third-party connectors run out of process in a sandbox (manifest, protocol, runner, sandbox) |
+| `connectors/` (+) | owner-approved third-party connectors run out of process in a sandbox (manifest, protocol, runner, sandbox; `catalog.py` = the shipped community catalog `connectors/`) |
 | `workspace/` (+) | per-profile agent workspace (managed CLAUDE.md, `.mcp.json`, permissions); `skills.py` holds `CORE_SKILLS` / `MODULE_SKILLS` |
 | `uploads.py`, `types.py` (+) | size-capped multipart uploads of the local API; custom SQLAlchemy column types |
 

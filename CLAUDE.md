@@ -19,6 +19,7 @@ cashu/
 ├── tests/              # pytest - synthetic data only
 ├── .claude/skills/     # product skills shipped to each profile's agent workspace
 ├── docs/               # import formats, connector contract + schemas, agents/ = dev guide
+├── connectors/         # community connector catalog (contrib status), shipped read-only with the app
 ├── examples/connectors/, packaging/, scripts/
 └── data/, statements/  # git-ignored: legacy data location, CSV drop folder
 ```
@@ -135,7 +136,7 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 | Add an MCP tool | [extending.md](docs/agents/extending.md) "Adding an MCP tool" | `core/mcp/registry.py`, `labels.py`, `redaction.py`, `tools/<module>.py` |
 | Change a model / add a migration | [data-model.md](docs/agents/data-model.md) rule 15 | `core/migrations/versions/`, `tests/test_migrations.py` |
 | Add a bank CSV parser | [extending.md](docs/agents/extending.md) "Adding a new bank" | `csv_import/base.py`, `core/institutions.py` `BUILTIN`, `tests/test_parsing.py` |
-| Add an importer / connector | [extending.md](docs/agents/extending.md), [docs/connectors.md](docs/connectors.md) | `docs/import-format.md`, `docs/budget-import-format.md`, `examples/connectors/`, `scripts/gen_connector_schemas.py` |
+| Add an importer / connector | [extending.md](docs/agents/extending.md), [docs/connectors.md](docs/connectors.md), [connectors/README.md](connectors/README.md) (catalog) | `docs/import-format.md`, `docs/budget-import-format.md`, `examples/connectors/`, `scripts/gen_connector_schemas.py`, `tests/test_connector_catalog.py` |
 | Add a CLI command | [conventions.md](docs/agents/conventions.md) "CLI" | module `cli.py`, `core/cliutil.py` |
 | Edit or add a shipped skill | [skills.md](docs/agents/skills.md) | `core/workspace/skills.py`, `scripts/sync_skill_references.py`, `tests/test_workspace.py` |
 | Frontend change (UI copy, charts, API client) | [conventions.md](docs/agents/conventions.md) "Frontend copy", [extending.md](docs/agents/extending.md) | `frontend/src/core/messages.ts`, `charts.tsx`, `frontend/e2e/specs/` |

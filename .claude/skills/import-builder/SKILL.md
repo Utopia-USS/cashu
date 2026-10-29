@@ -75,7 +75,8 @@ Privacy and boundaries (say the first lines at the start, in one or two sentence
 | `profile_overview`, `setup_status("investments" / "budget")` | start: privacy level, modules, accounts |
 | `inspect_export(path)` | blind route: the export's structure (masked token shapes, no values) |
 | `propose_connector(path)` | install the connector directory as pending (runs nothing) |
-| `connectors()` | status of installed connectors (pending / approved / changed), last run |
+| `propose_connector(catalog_id)` | install an entry of the connector catalog shipped with the app as pending (runs nothing) |
+| `connectors()` | status of installed connectors (pending / approved / changed), last run; the catalog entries (maintainer, last verified, stale) |
 | `validate_import(path, mapping?)` | converter route: validation report of the converted file |
 | `validate_budget_import(path)` | budget: validation report of a `cashu-budget-import` file (your connector's fixture output or a converter's), by kind / row / field, no values |
 | `propose_import(path, account, mapping?)` | converter / mapping route: pending import for the owner |
@@ -103,6 +104,12 @@ Privacy and boundaries (say the first lines at the start, in one or two sentence
      9.9999 @ 999.99`). Ask the user to describe what you cannot see.
    Both routes end in the same reusable result (step 3), so the next export goes through the app.
 3. **Choose the path.**
+   - **Catalog first:** `connectors()` lists the community connectors shipped with the app (`catalog`).
+     When one fits the source and the module, test it on the export (`cashu connectors catalog list`
+     prints the catalog folder; `cashu connectors test <folder>/<id> --file inbox/<export>`), install it
+     with `propose_connector(catalog_id="<id>")` and continue at step 8. A `stale` entry was not checked
+     by its maintainer for 180 days: test it with extra care. A broken one can be copied into
+     `connectors/<id>/`, fixed there (steps 5-7) and proposed with `propose_connector(path)`.
    - **Connector (preferred):** a `file` connector for exports; a `fetch` connector when the broker,
      exchange or bank has an API with a read-only key (steps 5-9).
    - Generic CSV mapping (investments only, a simple CSV: one row per transaction, a type column,
@@ -132,7 +139,8 @@ Privacy and boundaries (say the first lines at the start, in one or two sentence
 7. **Test on the real export:** `cashu connectors test connectors/<id> --file inbox/<export>`. The
    report is value-free (counts, problem kinds with row numbers and field names), so it is fine on both
    routes. Fix by kind and row and rerun until it says OK; read every warning with the user.
-8. **Install:** `propose_connector(<absolute path of connectors/<id>>)`. Tell the owner, in one or two
+8. **Install:** `propose_connector(<absolute path of connectors/<id>>)` (a catalog entry:
+   `propose_connector(catalog_id="<id>")`). Tell the owner, in one or two
    sentences: open Ustawienia > Konektory, check the command, the network (none, or the hosts), the files
    and the code, and approve. After a later edit run `propose_connector` again: the connector shows as
    changed and needs a new approval.

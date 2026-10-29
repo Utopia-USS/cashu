@@ -1,4 +1,4 @@
-"""``cashu connectors add|list|show|remove|disable|test|secret set``.
+"""``cashu connectors add|list|show|remove|disable|test|secret set|catalog list|catalog add``.
 
 There is deliberately no ``approve`` command: a connector is approved only by the owner in the app
 (Settings > Konektory), after looking at its code. ``test`` runs a connector directory (also an
@@ -23,6 +23,11 @@ connectors_app = typer.Typer(
 )
 secret_app = typer.Typer(help="Secrets of a connector binding (OS keychain).", no_args_is_help=True)
 connectors_app.add_typer(secret_app, name="secret")
+catalog_app = typer.Typer(
+    help="The community connector catalog shipped with cashU (read-only; install = pending).",
+    no_args_is_help=True,
+)
+connectors_app.add_typer(catalog_app, name="catalog")
 
 
 def _fail(message: str, issues=()) -> None:
@@ -119,6 +124,68 @@ def show_cmd(connector_id: Annotated[str, typer.Argument(help="Connector id.")])
     out.print(f"  files ({len(d['files'])}):")
     for f in d["files"]:
         out.print(f"    {f['path']}  {f['size']} B  {f['sha256'][:12]}")
+
+
+@catalog_app.command("list")
+def catalog_list_cmd() -> None:
+    """Catalog entries: maintainer, last verification, stale flag and the installed status."""
+    from ..db import get_session, init_db
+    from . import catalog
+
+    init_db()
+    root = catalog.catalog_dir()
+    if root is None:
+        cliutil.console.print("No connector catalog in this install.")
+        return
+    with get_session() as s:
+        rows = catalog.list_catalog(s)
+    cliutil.console.print(f"Catalog: {root}")
+    table = Table(title="Connector catalog")
+    for column in ("id", "name", "version", "module", "kind", "maintainer", "verified", "installed"):
+        table.add_column(column)
+    for r in rows:
+        verified = (r["last_verified"] or "-") + (" (stale)" if r["stale"] else "")
+        installed = r["installed"]
+        state = "-" if installed is None else installed["status"] + (
+            "" if installed["same_content"] else " (other content)"
+        )
+        if not r["valid"]:
+            state = "invalid entry"
+        table.add_row(
+            r["id"], r["name"] or "-", r["version"] or "-", r["module"] or "-", r["kind"] or "-",
+            r["maintainer"] or "-", verified, state,
+        )
+    cliutil.console.print(table)
+    cliutil.console.print(
+        "Test an entry: cashu connectors test <catalog>/<id> --file <export>; "
+        "install it: cashu connectors catalog add <id>."
+    )
+
+
+@catalog_app.command("add")
+def catalog_add_cmd(
+    connector_id: Annotated[str, typer.Argument(help="Catalog entry id.")],
+    replace: Annotated[
+        bool, typer.Option("--replace", help="Update an installed connector (keeps its bindings).")
+    ] = False,
+) -> None:
+    """Install a catalog entry (pending until the owner approves it in the app)."""
+    from ..db import init_db
+    from . import catalog, service
+
+    init_db()
+    try:
+        done = catalog.install(connector_id, replace=replace, source="catalog")
+    except service.ConnectorError as e:
+        _fail(str(e), e.issues)
+    c = done.connector
+    verb = "Updated" if done.replaced else "Installed"
+    cliutil.console.print(
+        f"[green]{verb}[/] {c.id} {c.version} from the catalog ({c.module}, {c.kind}): status "
+        f"[bold]{c.status}[/], sha256 {c.content_sha256[:12]}"
+    )
+    if c.status != "approved":
+        cliutil.console.print("Approve it in the app: Ustawienia > Konektory.")
 
 
 @connectors_app.command("disable")

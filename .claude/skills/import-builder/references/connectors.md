@@ -309,6 +309,13 @@ Test runs are recorded in the connector's run log without a profile.
   returns the id, status, hash prefix, module, kind, hosts and secret ids, and runs nothing. The read
   tool `connectors()` lists the installed connectors with their status, the last run's outcome, error
   kind and time, and the profile's binding count (never messages, stderr, params or secrets).
+- Catalog: community connectors kept in the cashU repository (`connectors/<id>/`, contrib status, each
+  with a `maintainer` and a `last_verified` date and synthetic `fixtures/`) ship read-only with the app.
+  `cashu connectors catalog list` lists them (and prints the folder, for `cashu connectors test`),
+  `cashu connectors catalog add <id>` installs one; the MCP tool `connectors()` lists them too and
+  `propose_connector(catalog_id=<id>)` installs one. Either way it is the same install as above:
+  `pending` (or `changed` over an approved copy with other content) until the owner approves it. An entry
+  whose `last_verified` is older than 180 days is shown as `stale` (unmaintained).
 - Other commands: `cashu connectors list`, `show <id>` (manifest facts, files with sha, status, diff
   since the approval), `disable <id>` (stops it; bindings and secrets stay), `remove <id>` (deletes the
   files, bindings, their secrets and the run log).
