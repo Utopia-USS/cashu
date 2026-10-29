@@ -21,6 +21,8 @@ export async function authHeaders(): Promise<Record<string, string>> {
 // Dev-only demo backend (`VITE_MOCK=1 npm run dev`). Off by default; the mock
 // module is only loaded when the flag is set at build time.
 const MOCK = import.meta.env.VITE_MOCK === "1";
+/** The dev mock backend is on (no live stream there). */
+export const isMock = (): boolean => MOCK;
 
 /** Error with the server's `detail` message when it sent one (FastAPI style) and the stable code of the
  * `X-Cashu-Error-Code` header (the detail stays English; core/messages.ts `errorText` shows the Polish
@@ -203,6 +205,9 @@ export interface SetupInfo {
 }
 
 export const getSystem = () => j<SystemInfo>("/api/system");
+/** Change events of the profile after id `after` (P10 live data, core/events.py; the fallback poll of core/useLive.ts). */
+export const getChanges = (slug: string, after: number | null) =>
+  j<{ token: string; last_id: number; events: import("./live").LiveEvent[]; reset: boolean }>(pp(slug, `/changes${after == null ? "" : `?after=${after}`}`));
 /** GET /api/system/update (core/updates.py): the running version vs `project.version` of pyproject.toml on
  * the configured GitHub branch. `url` is that branch's commit list; `error` is set when the check is off or
  * failed ("disabled" | "config" | "network" | "parse"), and then `available` is false. */

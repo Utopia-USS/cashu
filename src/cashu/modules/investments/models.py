@@ -4,7 +4,8 @@ Shared reference data (every profile sees the same rows): instruments, their ali
 and FX rates. Everything else belongs to one profile, through its brokerage account (transactions,
 broker position snapshots, account settings) or a ``profile_id`` (renames, manual valuations, strategy
 versions, rule runs, signals, notifications, decisions, theses, import batches, the profile's overrides
-of shared instruments, alerts, watchlist items, planned deposits, research runs and notes).
+of shared instruments, alerts, watchlist items, planned deposits, research runs and notes, topic
+theses).
 
 Money and quantities are exact decimal text (``DecimalText``), enum values are their wire names
 (``cashu.modules.investments.domain`` enums). The pure domain uses ``str`` ids; the persistence layer
@@ -419,6 +420,45 @@ class InvThesis(SQLModel, table=True):
     Research notes stored before it are tagged ``predates_thesis`` (P2), never dropped."""
 
 
+class InvTopicThesis(SQLModel, table=True):
+    """The owner's thesis on a market topic (P9: a segment of ``research/segments.py``), one per
+    profile and topic. The research agent may only write a draft (``draft``, ``created_by`` agent);
+    the owner's save clears ``draft``. Added by migration 0021."""
+
+    __tablename__ = "inv_topic_theses"
+    __table_args__ = (UniqueConstraint("profile_id", "segment", name="uq_inv_topic_thesis"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    profile_id: int = Field(sa_column=profile_fk_column("inv_topic_theses"))
+    segment: str  # a catalog key of research/segments.SEGMENTS (never a macro key)
+    thesis: str  # <= TOPIC_THESIS_MAX
+    invalidation: str | None = None  # <= TOPIC_INVALIDATION_MAX
+    draft: bool = False
+    created_by: str = Field(default="owner")  # TOPIC_THESIS_CREATORS
+    core_changed_at: dt.datetime = Field(default_factory=utcnow)
+    """Last change of ``thesis`` / ``invalidation``."""
+    created_at: dt.datetime = Field(default_factory=utcnow)
+    updated_at: dt.datetime = Field(default_factory=utcnow)
+    rejected_at: dt.datetime | None = None
+    """The owner deleted the thesis (any: his own, a confirmed or an agent draft; added last by
+    migration 0022): the row stays as a rejection, reads as "no thesis", and the agent may not
+    propose a draft for the topic for
+    ``TOPIC_DRAFT_COOLDOWN_DAYS``. The owner's own save clears it."""
+    assessment: str | None = None  # <= TOPIC_MARKET_VIEW_MAX
+    """The market view under the thesis (migration 0024, after ``rejected_at``): how the topic's
+    market looks now (adoption, demand, valuations of the topic as a whole), written by the agent
+    (``set_topic_market_view``) or edited by the owner. Never a buy / sell call."""
+    outlook: str | None = None  # <= TOPIC_MARKET_VIEW_MAX
+    """Where the topic's market / adoption / demand is heading, with a horizon and the main risks.
+    Never a price prediction or price target for a security."""
+    view_updated_at: dt.datetime | None = None
+    """Last write of ``assessment`` / ``outlook``; kept when the thesis text changes."""
+    view_sources: list[dict] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    """The view's cited sources (migration 0025, after ``view_updated_at``): 1-6 of
+    ``{title, url, publisher, published_at}``, required from the agent (its outlook rests on a
+    quantitative industry estimate of market / demand growth), optional for the owner."""
+
+
 # --------------------------------------------------------------------------- #
 # Profile overrides of shared instruments, alerts, the watchlist (F5)
 # --------------------------------------------------------------------------- #
@@ -567,7 +607,8 @@ class InvResearchRun(SQLModel, table=True):
 
 class InvResearchNote(SQLModel, table=True):
     """A sourced fact or sentiment reading about a held, watched or candidate instrument, or a sector /
-    macro theme. Facts and sentiment only: no recommendation, no price prediction, no amounts.
+    macro theme. Facts and sentiment only: no recommendation, no price prediction, no amounts (the
+    agent's market view of a topic lives on its thesis, :class:`InvTopicThesis`, P11).
 
     ``details`` carries structured data of candidate notes (criteria met / unmet vs the strategy's
     thresholds, entry type); ``thesis_field`` names the thesis field the note bears on. Dismissal sets
@@ -634,6 +675,7 @@ TABLES: tuple[type[SQLModel], ...] = (
     InvPlannedDeposit,
     InvResearchRun,
     InvResearchNote,
+    InvTopicThesis,
 )
 
 THESIS_ENTRY_TYPES = ("sentiment_correction", "trend", "special_situation")
@@ -654,3 +696,8 @@ RESEARCH_SUMMARY_MAX = 1200
 RESEARCH_NOTE_TTL_DAYS = 30
 RESEARCH_RESTORE_MINUTES = 15
 RESEARCH_CANDIDATE_COOLDOWN_DAYS = 90
+TOPIC_THESIS_MAX = 600
+TOPIC_INVALIDATION_MAX = 400
+TOPIC_MARKET_VIEW_MAX = 400
+TOPIC_THESIS_CREATORS = ("owner", "agent")
+TOPIC_DRAFT_COOLDOWN_DAYS = 90

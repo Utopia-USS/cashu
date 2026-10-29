@@ -21,6 +21,7 @@ import { deletePlannedDeposit, dropInv, getDigestV2, getOverviewV2, getPerforman
 import { allocGeneric, benchmarkLabel, changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, staleBenchmark, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "./logic";
 import { addDays, todayLocal } from "../../../time";
 import { isMissingEndpoint } from "./undoFlow";
+import { usePriceRefresh } from "./priceRefresh";
 
 const MONTH_ADJ = ["styczniowa", "lutowa", "marcowa", "kwietniowa", "majowa", "czerwcowa", "lipcowa", "sierpniowa", "wrześniowa", "październikowa", "listopadowa", "grudniowa"];
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
@@ -87,6 +88,7 @@ export function InvestmentsHeroFact({ ctx }: { ctx: ModuleCtx }) {
 
 /** Shell header tag (ia-v2.md 10): stale prices of the investments, only when there are some. */
 export function InvestmentsHeaderTag({ slug, go }: { slug: string; go: ModuleCtx["go"] }) {
+  usePriceRefresh(slug); // P10: the app-wide price refresh (on open, then every 15 min while visible)
   const ov = useAsync(() => getOverviewV2(slug), [slug], { key: invKey(slug, "overview", "") });
   const fr = ov.data?.freshness.prices;
   if (!fr?.stale_count) return null;

@@ -18,6 +18,18 @@ test("outdated items read as Polish one-liners", () => {
   assert.equal(outdatedLabel({ kind: "mcp", name: ".mcp.json", reason: "invalid" }), ".mcp.json (serwer MCP): nieczytelny plik");
   assert.equal(outdatedLabel({ kind: "folder", name: "inbox", reason: "missing" }), "folder inbox/: brak");
   assert.equal(outdatedLabel({ kind: "new_kind", name: "x", reason: "odd" }), "x: odd");
+  assert.equal(outdatedLabel({ kind: "claude_md", name: "layout", reason: "missing" }), "CLAUDE.md, sekcja układ agenta: brak");
+  assert.equal(outdatedLabel({ kind: "link", name: "AGENTS.md", reason: "missing" }), "AGENTS.md (dla Codex): brak");
+  assert.equal(outdatedLabel({ kind: "link", name: ".agents/skills", reason: "conflict" }), ".agents/skills (dla Codex): Twój plik o tej nazwie");
+});
+
+test("Codex link items: never forced, an unsupported link is not fixable", () => {
+  const link = (reason) => ({ ...base, up_to_date: false, outdated: [{ kind: "link", name: "AGENTS.md", reason }] });
+  assert.equal(needsForce(link("conflict")), false);
+  assert.deepEqual(workspaceSummary(link("conflict")), { tone: "warn", text: "zmiany lokalne" });
+  assert.deepEqual(workspaceSummary(link("unsupported")), { tone: "warn", text: "zmiany lokalne" });
+  assert.deepEqual(workspaceSummary(link("missing")), { tone: "warn", text: "do aktualizacji · 1" });
+  assert.equal(outdatedLabel({ kind: "link", name: "AGENTS.md", reason: "unsupported" }), "AGENTS.md (dla Codex): system nie pozwala utworzyć linku");
 });
 
 test("status tag: not created, current, fixable, only local edits, other profile", () => {

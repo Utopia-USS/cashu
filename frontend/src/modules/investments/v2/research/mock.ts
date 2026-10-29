@@ -8,12 +8,12 @@ import { ApiError } from "../../../../core/api";
 import { addDays, KIND_LABEL, RELATION_LABEL, relationCounts, sentiment8w } from "./logic";
 import { plural } from "../../labels";
 import { stateLabel } from "./macro";
-import type { DigestResearch, InstrumentSummary, MacroRegime, MacroRegimes, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentRow } from "./types";
+import type { DigestResearch, InstrumentSummary, MacroRegime, MacroRegimes, NoteSource, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentRow, TopicBrief, TopicThesis } from "./types";
 
 const SCENARIO = new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("research") ?? "";
 const TODAY = "2026-10-04";
 
-interface RState { notes: ResearchNote[]; runs: ResearchRun[]; nextId: number }
+interface RState { notes: ResearchNote[]; runs: ResearchRun[]; nextId: number; theses: Map<string, TopicThesis> }
 const states = new Map<string, RState>();
 
 const src = (publisher: string, date: string, path: string) => ({ title: publisher, publisher, url: `https://example.org/${path}`, published_at: date });
@@ -81,7 +81,26 @@ function janNotes(): ResearchNote[] {
       sources: [src("Fed", "2026-10-02", "gold-1")] }),
     note({ id: 902, segment: "semis_ai", segment_label: "AI: chipy i centra danych", kind: "news", polarity: "positive", strength: 2, thesis_relation: "none", observed_at: "2026-09-18T07:00:00+02:00", run_id: 1,
       title: "TSMC: przychody wrzesień +30 % r/r", summary: "Miesięczne przychody TSMC +30 % r/r, popyt na układy do centrów danych. Segment +0,4 pp portfela.",
+      details: { brief: { headline: "Największy producent chipów sprzedaje więcej niż rok temu", why: "Zamówienia na układy do serwerów AI są wyższe niż rok wcześniej." } },
       sources: [src("TSMC", "2026-09-17", "semis-1")] }),
+    // P9 brief notes ("for dummies"): a topic brief this week (unread) and two on games.
+    note({ id: 908, segment: "semis_ai", segment_label: "AI: chipy i centra danych", kind: "trend", polarity: "positive", strength: 2, thesis_relation: "supports", thesis_field: "thesis", observed_at: SAT,
+      title: "Rośnie popyt na chipy do centrów danych", summary: "Duże firmy technologiczne podniosły plany wydatków na centra danych na ten rok; producenci chipów mają pełne portfele zamówień.",
+      details: { brief: { headline: "Rośnie popyt na chipy", why: "Duże firmy technologiczne wydają więcej na centra danych do AI, a producenci chipów mają pełne portfele zamówień." } },
+      expires_at: "2026-12-02T06:52:00+01:00", sources: [src("Reuters", "2026-10-02", "semis-2")] }),
+    note({ id: 909, segment: "games_media", segment_label: "Gry", kind: "trend", polarity: "positive", strength: 1, thesis_relation: "none", observed_at: "2026-10-01T07:00:00+02:00",
+      title: "Badanie: czas spędzany na grach wzrósł r/r", summary: "Badanie rynku: gracze spędzają więcej czasu przy grach niż rok temu, najwięcej na urządzeniach mobilnych.",
+      details: { brief: { headline: "Według nowych badań ludzie grają więcej", why: "Gracze spędzają przy grach więcej czasu niż rok temu, najwięcej na telefonach." } },
+      expires_at: "2026-11-30T07:00:00+01:00", sources: [src("raport branżowy", "2026-09-30", "games-1")] }),
+    // P9 MED-6: a brief on a topic with no held or watched instrument (a big company event for the whole topic).
+    note({ id: 911, segment: "healthcare", segment_label: "Ochrona zdrowia", kind: "news", polarity: "negative", strength: 2, thesis_relation: "none", observed_at: "2026-10-02T07:00:00+02:00",
+      title: "Duży ubezpieczyciel zdrowotny pod presją po zmianach w programie rządowym", summary: "Największy ubezpieczyciel zdrowotny w USA obniżył zapowiedź zysku po zmianach stawek w programie rządowym; akcje całej branży spadły.",
+      details: { brief: { headline: "Ubezpieczyciele zdrowotni pod presją", why: "Największa firma w branży zarobi mniej przez zmiany w rządowym programie, a akcje całej branży potaniały." } },
+      expires_at: "2026-12-01T07:00:00+01:00", sources: [src("Reuters", "2026-10-01", "health-1")] }),
+    note({ id: 910, segment: "games_media", segment_label: "Gry", kind: "news", polarity: "negative", strength: 1, thesis_relation: "none", observed_at: "2026-09-24T07:00:00+02:00", run_id: 2,
+      title: "Mniej finansowania dla studiów gier", summary: "Wartość rund finansowania studiów gier w III kwartale niższa r/r.",
+      details: { brief: { headline: "Mniej pieniędzy napływa do branży gier", why: "Inwestorzy finansują mniej nowych studiów niż rok temu." } },
+      expires_at: "2026-11-23T07:00:00+01:00", sources: [src("raport branżowy", "2026-09-23", "games-2")] }),
     note({ id: 903, segment: "bonds", segment_label: "Obligacje i stopy", kind: "macro", polarity: "neutral", strength: 1, thesis_relation: "none", observed_at: "2026-09-25T07:00:00+02:00", run_id: 2,
       title: "Rynek oczekuje stabilnych stóp procentowych", summary: "Kontrakty na stopę referencyjną wyceniają brak zmian do końca roku. EDO bez wpływu na wycenę (koszt).",
       sources: [src("NBP", "2026-09-24", "bonds-1")] }),
@@ -101,6 +120,13 @@ function janNotes(): ResearchNote[] {
     note({ id: 906, segment: "macro_risk", segment_label: "Rynek akcji", kind: "macro", polarity: "positive", strength: 1, thesis_relation: "none", observed_at: "2026-09-19T07:00:00+02:00", run_id: 1,
       title: "ACWI: nowy szczyt po danych o inflacji",
       summary: "ACWI zamknął tydzień na nowym szczycie; 6,2 % nad średnią 200 sesji. CPI USA 2,6 % r/r zgodnie z oczekiwaniami.",
+      expires_at: "2026-11-18T07:00:00+01:00",
+      details: { brief: {
+        headline: "Trwa hossa na giełdach na świecie",
+        why: "Spółki zarabiają więcej, a duże firmy dużo wydają na sztuczną inteligencję.",
+        supports: ["Banki centralne obniżają stopy", "Zyski spółek rosną"],
+        risks: ["Akcje są drogie, więc rynek mocno reaguje na złe wiadomości", "Wzrosty opierają się na kilku dużych spółkach"],
+      } },
       sources: [src("BLS", "2026-09-17", "macro-3")] }),
     note({ candidate: { symbol: "TXT", name: "Text", exchange: "XWAR", currency: "PLN", key: "TXT" }, kind: "candidate", polarity: "neutral", strength: 2, thesis_relation: "none", observed_at: "2026-10-01T09:00:00+02:00",
       title: "Text: korekta sentymentu przy stabilnych przychodach",
@@ -153,7 +179,15 @@ function stateFor(slug: string, kind: string): RState {
   let st = states.get(slug);
   if (!st) {
     const on = slug === "jan" && kind === "full" && SCENARIO !== "none";
-    st = { notes: on ? janNotes() : [], runs: on ? janRuns() : [], nextId: 9500 };
+    st = { notes: on ? janNotes() : [], runs: on ? janRuns() : [], nextId: 9500, theses: new Map() };
+    // P9: an agent draft of a topic thesis (shown `do potwierdzenia` with Potwierdź in the drawer).
+    if (on) st.theses.set("semis_ai", { id: 1, segment: "semis_ai", draft: true, created_by: "agent", invalidation: "Wydatki na centra danych spadają dwa kwartały z rzędu.",
+      thesis: "Firmy budują centra danych do AI przez kilka lat, więc popyt na chipy i sprzęt rośnie szybciej niż reszta rynku.", core_changed_at: SAT, created_at: SAT, updated_at: SAT,
+      // P11: the agent's market view under the thesis
+      assessment: "Popyt na chipy do AI jest bardzo silny, a najwięksi klienci wciąż podnoszą budżety na centra danych.",
+      outlook: "Example Industry Association szacuje wzrost sprzedaży chipów do AI o ok. 15 % w 2027; ryzykiem są nadwyżki mocy i słabszy zwrot z inwestycji.",
+      view_updated_at: SAT,
+      view_sources: [{ ...src("Example Industry Association", "2026-09-22", "semis-estimate"), title: "Semiconductor market estimate" }] });
     // F8 (Q10): agent notes of this week's run on EIMI, KGHM's community note, this week's segment notes (gold,
     // uranium) and the macro rates note (905) are unread; everything else was opened.
     for (const n of st.notes) {
@@ -240,6 +274,10 @@ const SEG_1W: SegSeed[] = [
   { segment: "quantum", label: "Komputery kwantowe", group: "sector", weight: 0, contribution: 0, return: null, instruments: [],
     note: { id: 907, title: "QUBT: Dirac-3S z pierwszą dostawą komercyjną", observed_at: addDays(TODAY, -1), polarity: "positive", kind: "news", strength: 2 },
     note_this_week: true, notes_8w: 1, trend_1w: 0.098, trend_4w: 0.31, members: 2 },
+  // P9 MED-6: a brief-only topic (no exposure, no member): a muted row after the watched ones.
+  { segment: "healthcare", label: "Ochrona zdrowia", group: "sector", weight: 0, contribution: 0, return: null, instruments: [],
+    note: { id: 911, title: "Duży ubezpieczyciel zdrowotny pod presją po zmianach w programie rządowym", observed_at: "2026-10-02T07:00:00+02:00", polarity: "negative", kind: "news", strength: 2 },
+    note_this_week: true, notes_8w: 1, trend_1w: null, trend_4w: null, members: 0 },
   // A note-only topic (no exposure, no priced member); the BE sends the renamed key.
   { segment: "power", label: "Energetyka: atom i OZE", group: "asset", weight: 0, contribution: 0, return: null, instruments: [],
     note: { id: 904, title: "Kazatomprom: cięcia wydobycia 2027", observed_at: addDays(TODAY, -5), polarity: "positive", kind: "news", strength: 2 },
@@ -254,7 +292,18 @@ function segmentRows(st: RState, window: "1w" | "4w"): SegmentRow[] {
     instruments: r.instruments.map((i) => ({ ...i, contribution: i.contribution * k, return: i.return != null ? i.return * k : null })),
     unread: st.notes.filter((n) => (n.segment === "uranium" ? "power" : n.segment) === r.segment && isUnread(n)).length,
     last_note_at: r.note?.observed_at ?? (r.segment === "equity_pl" ? addDays(TODAY, -40) : null),
+    briefs: briefsOf(st, r.segment).slice(0, 3).map((n): TopicBrief => ({
+      note_id: n.id, headline: brief(n)!.headline as string, why: (brief(n)!.why as string) ?? null, observed_at: n.observed_at, kind: n.kind, polarity: n.polarity, unread: isUnread(n),
+    })),
+    thesis: st.theses.get(r.segment) ?? null,
   }));
+}
+/** `details.brief` of a note (P9). */
+const brief = (n: ResearchNote) => (n.details?.brief && typeof n.details.brief === "object" ? n.details.brief as Record<string, unknown> : null);
+/** Active brief notes of a key, newest first. */
+function briefsOf(st: RState, key: string): ResearchNote[] {
+  return st.notes.filter((n) => n.segment === key && brief(n) && !n.dismissed_at && !(n.expires_at && n.expires_at.slice(0, 10) < TODAY))
+    .sort((a, b) => b.observed_at.localeCompare(a.observed_at));
 }
 function segmentsOf(st: RState, kind: string, window: "1w" | "4w"): SegmentAttribution {
   const k = window === "4w" ? 2 : 1;
@@ -319,6 +368,11 @@ const MACRO_SEED: RegimeSeed[] = [
     history: hist("rates", [[MACRO_WINDOW, "stable", true], ["2025-11-11", "rising"], ["2026-03-02", "stable"], ["2026-09-05", "falling"]]),
     note: { id: 905, title: "Fed: trzecia obniżka, 10Y 3,92 %, krzywa nadal odwrócona", observed_at: SAT, polarity: "neutral", kind: "macro" }, last_note_at: SAT },
 ];
+/** P9 plain sentences (the BE builds one per state; these match the mock states). */
+const PLAIN: Record<string, string> = {
+  risk: "Trwa hossa na giełdach na świecie.", dollar: "Dolar słabnie.", em: "Rynki wschodzące idą równo ze światem.",
+  commodities: "Surowce stoją w miejscu.", rates: "Oprocentowanie obligacji w USA spada.",
+};
 /** The regimes with `unread` / `note_this_week` from the notes (opening a card marks its notes read). */
 function macroOf(st: RState, kind: string): MacroRegimes {
   if (kind !== "full") return { as_of: null, regimes: [] };
@@ -326,6 +380,12 @@ function macroOf(st: RState, kind: string): MacroRegimes {
     as_of: MACRO_AS_OF, regimes: MACRO_SEED.map((r) => ({
       ...r, note_this_week: !!r.note && r.note.observed_at.slice(0, 10) >= "2026-09-28",
       unread: st.notes.filter((n) => n.segment === `macro_${r.key}` && isUnread(n)).length,
+      plain: r.missing ? null : PLAIN[r.key] ?? null,
+      brief: (() => {
+        const n = briefsOf(st, `macro_${r.key}`)[0];
+        const b = n ? brief(n)! : null;
+        return n && b ? { note_id: n.id, headline: String(b.headline), why: (b.why as string) ?? null, supports: (b.supports as string[]) ?? [], risks: (b.risks as string[]) ?? [], observed_at: n.observed_at, unread: isUnread(n) } : null;
+      })(),
     })),
   };
 }
@@ -411,6 +471,44 @@ export function researchMock(slug: string, kind: string, ip: string, q: URLSearc
       .filter((n) => (instrument == null || String(n.instrument_id) === instrument) && (!theme || n.theme === theme) && (!segment || n.segment === segment) && (!k || k.split(",").includes(n.kind)) && (!since || n.observed_at >= since)
         && (withDismissed || !n.dismissed_at) && (withExpired || !n.expired))
       .sort((a, b2) => b2.observed_at.localeCompare(a.observed_at));
+  }
+  const tt = /^\/topics\/([a-z0-9_]+)\/thesis$/.exec(ip);
+  if (tt) {
+    const key = tt[1];
+    if (method === "GET") { const t = st.theses.get(key); if (!t) throw new ApiError(404, "Topic thesis not found"); return t; }
+    if (method === "PUT") {
+      const text = typeof b.thesis === "string" ? b.thesis.trim() : "";
+      if (!text || text.length > 600) throw new ApiError(422, "thesis: 1-600 characters");
+      const inv = typeof b.invalidation === "string" && b.invalidation.trim() ? b.invalidation.trim() : null;
+      if (inv && inv.length > 400) throw new ApiError(422, "invalidation: at most 400 characters");
+      const now = new Date().toISOString();
+      const prev = st.theses.get(key);
+      const t: TopicThesis = { id: prev?.id ?? st.nextId++, segment: key, thesis: text, invalidation: inv, draft: false, created_by: "owner", core_changed_at: now, created_at: prev?.created_at ?? now, updated_at: now,
+        assessment: prev?.assessment ?? null, outlook: prev?.outlook ?? null, view_updated_at: prev?.view_updated_at ?? null, view_sources: prev?.view_sources ?? [] };
+      st.theses.set(key, t);
+      return t;
+    }
+    if (method === "DELETE") { st.theses.delete(key); return { deleted: true }; }
+  }
+  const tv = /^\/topics\/([a-z0-9_]+)\/view$/.exec(ip);
+  if (tv && method === "PUT") {
+    const prev = st.theses.get(tv[1]);
+    if (!prev) throw new ApiError(422, "the topic needs a thesis before its market view");
+    const v = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : null);
+    const assessment = v(b.assessment), outlook = v(b.outlook);
+    if ((assessment?.length ?? 0) > 400 || (outlook?.length ?? 0) > 400) throw new ApiError(422, "at most 400 characters");
+    // sources: left out keeps the stored ones, null / [] clears them, 1-6 http(s) items otherwise
+    let sources = prev.view_sources ?? [];
+    if ("sources" in b) {
+      const list = Array.isArray(b.sources) ? (b.sources as NoteSource[]) : [];
+      if (list.length > 6 || list.some((x) => !/^https?:\/\//i.test(String(x?.url ?? "")) || !x?.publisher || !x?.published_at)) throw new ApiError(422, "sources: 1-6 of {url, publisher, published_at}");
+      sources = list;
+    }
+    if (!assessment && !outlook) sources = [];
+    const now = new Date().toISOString();
+    const t: TopicThesis = { ...prev, assessment, outlook, view_sources: sources, view_updated_at: assessment || outlook ? now : null, updated_at: now };
+    st.theses.set(tv[1], t);
+    return t;
   }
   let m = /^\/research\/(\d+)$/.exec(ip);
   if (m && method === "PATCH") {

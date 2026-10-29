@@ -13,7 +13,7 @@ import { deleteWatch, postWatch, type WatchItem } from "./api";
 import { HintChip, mainHint } from "./hints";
 import { InstLabel } from "./InstLabel";
 import { InstrumentSearch } from "./InstrumentSearch";
-import { instName, price, watchMove } from "./logic";
+import { instName, planLabel, price, watchMove } from "./logic";
 import { offerRecreate } from "./undoFlow";
 
 type Toast = ReturnType<typeof useToast>;
@@ -55,7 +55,7 @@ export function watchAlerts(w: WatchItem): string {
   return w.alerts.live ? watchSummary({ ...w, note: null }) : "bez alertu";
 }
 
-/** The Obserwowane list (home v3 Q6): `wide` = the Aktywa tab (Instrument | Strategia (P2 main hint) | 30 dni | Cena | tydz. | Alerty | ✕,
+/** The Obserwowane list (home v3 Q6): `wide` = the Aktywa tab (Instrument | Rekomendacja + strategia | 30 dni | Cena | tydz. | Alerty | ✕,
  * rows open the asset); narrow = the light grid's widget (name + summary | spark | price | ✕). The instrument search
  * shows while `adding`. */
 export function WatchTable({ slug, items, wide, adding, onAdding, onChanged, onOpen, flags }: {
@@ -71,6 +71,7 @@ export function WatchTable({ slug, items, wide, adding, onAdding, onChanged, onO
 }) {
   const toast = useToast();
   const list = items ?? [];
+  const recommendationCoverage = list.filter((w) => planLabel(w.instrument?.plan, false)).length;
   const flight = useInFlight();
   const remove = (w: WatchItem) => flight.run(() =>
     removeWatchWithUndo(slug, w, w.instrument ? instName(w.instrument) : "instrument", toast, onChanged));
@@ -83,12 +84,13 @@ export function WatchTable({ slug, items, wide, adding, onAdding, onChanged, onO
   ) : wide ? (
     <div className="scroll">
       <table>
-        <thead><tr><th className="c-inst">Instrument</th><th className="c-hint">Strategia</th><th className="c-spark">30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Alerty</th><th style={{ width: 28 }}><span className="sr-only">Akcje</span></th></tr></thead>
+        <thead><tr><th className="c-inst">Instrument</th><th className="c-hint">Rekomendacja <span className="watch-cov">{recommendationCoverage}/{list.length}</span></th><th className="c-spark">30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Alerty</th><th style={{ width: 28 }}><span className="sr-only">Akcje</span></th></tr></thead>
         <tbody>
           {list.map((w) => {
             const mv = watchMove(w.closes_30d, w.price?.change_1d);
             const label = w.instrument ? instName(w.instrument) : `instrument ${w.instrument_id}`;
             const hint = mainHint(w.hints, w.held);
+            const recommendation = planLabel(w.instrument?.plan, false);
             return (
               <tr key={w.id} className="rowlink" onClick={(e) => { if (!(e.target as HTMLElement).closest("button, a, input, select")) onOpen(w.instrument_id); }}>
                 <td className="c-inst">
@@ -97,7 +99,12 @@ export function WatchTable({ slug, items, wide, adding, onAdding, onChanged, onO
                       badges={<>{flags?.(w)}{w.source === "agent" && <AgentTag mono text="agent" />}</>} />
                   ) : <span className="nm"><button className="nm" onClick={() => onOpen(w.instrument_id)}>{label}</button></span>}
                 </td>
-                <td className="c-hint">{hint && <HintChip hint={hint} held={w.held} />}</td>
+                <td className="c-hint"><div className="watch-rec">
+                  {recommendation
+                    ? <span className="watch-plan" title={w.instrument?.plan_reason ?? undefined} aria-label={`Rekomendacja: ${recommendation}`}>{recommendation}</span>
+                    : <span className="watch-plan unset">brak</span>}
+                  {hint && <HintChip hint={hint} held={w.held} />}
+                </div></td>
                 <td className="c-spark"><Spark values={(w.closes_30d ?? []).map((c) => c.close)} label={`${label}: 30 dni`} /></td>
                 <td className="num">{w.price ? price(w.price.close, w.price.currency) : <span className="muted">brak ceny</span>}{w.price?.stale && <> <span className="tag warn">stara</span></>}</td>
                 <td className={`num ${mv == null ? "muted" : mv.value >= 0 ? "pos" : "neg"}`} title={mv?.label === "1 d." ? "zmiana z 1 sesji" : undefined}>{mv ? `${pct(mv.value, true)}${mv.label === "1 d." ? " 1 d." : ""}` : "-"}</td>

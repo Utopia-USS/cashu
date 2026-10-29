@@ -185,6 +185,7 @@ def test_the_owner_topics_labels_and_the_power_rename():
     labels = {
         "semis_ai": "AI: chipy i centra danych",
         "software": "AI i oprogramowanie",
+        "robotics": "Robotyka",
         "quantum": "Komputery kwantowe",
         "power": "Energetyka: atom i OZE",
         "energy": "Ropa i gaz",

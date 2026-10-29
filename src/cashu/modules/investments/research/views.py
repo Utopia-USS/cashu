@@ -113,6 +113,7 @@ def run_dict(
         "finished_at": iso(finished),
         "duration_s": int((finished - started).total_seconds()) if finished and started else None,
         "scheduled": bool(scope.get("scheduled")),
+        "full_refresh": bool(scope.get("full_refresh")),
         "scope": {
             "held": bool(scope.get("held", True)),
             "watchlist": bool(scope.get("watchlist", True)),
@@ -121,6 +122,7 @@ def run_dict(
             "segments": list(scope.get("segments") or []),
             "instrument_ids": list(scope.get("instrument_ids") or []),
             "covered_instrument_ids": list(scope.get("covered_instrument_ids") or []),
+            "full_refresh": bool(scope.get("full_refresh")),
         },
         "counts": {**counts, **live},
         "notes": live["notes"],
@@ -163,6 +165,9 @@ def note_dict(
     }
     for key in ("created_watchlist_item", "created_thesis", "previous_instrument_id"):
         details.pop(key, None)
+    # Legacy topic views were briefly stored on notes. They now live under the topic thesis.
+    details.pop("assessment", None)
+    details.pop("outlook", None)
     signal = (signals or {}).get(row.signal_id) if row.signal_id is not None else None
     dismissed = _aware(row.dismissed_at)
     expires = convert.aware(row.expires_at)

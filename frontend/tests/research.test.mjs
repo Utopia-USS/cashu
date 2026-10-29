@@ -10,13 +10,14 @@ import {
   weekLabels, weekScore, weekStarts, windowStart,
 } from "../src/modules/investments/v2/research/logic.ts";
 import {
-  BAR_FLOOR, barTitle, canonKey, contribBars, currencyFoot, currencySub, exposed, factTitle, homeTopics, isSegment, LEGACY_KEYS, normAttribution, normSegmentRow, pageTopics, ppOf, ppTone,
-  instSymbol, normDigestMarket, reviewTopics, segmentDisplay, segmentLabel, SEGMENTS, staleSymbols, staleTitle, symbolsText, tone, topicColumns, topicKind, topicNote, topicSymbols,
-  trendOf, trendText, trendTitle, windowTitle, withNewNote, residualLine, topicMembers, kindTitle, heldNow,
+  BAR_FLOOR, barTitle, canonKey, contribBars, exposed, homeTopics, isSegment, LEGACY_KEYS, normAttribution, normSegmentRow, ppOf, ppTone,
+  instSymbol, normDigestMarket, reviewTopics, segmentDisplay, segmentLabel, SEGMENTS, staleSymbols, staleTitle, symbolsText, tone, topicColumns, topicKind, topicSymbols,
+  windowTitle, withNewNote, residualLine, topicMembers, kindTitle, heldNow, topicShown, briefLines, normTopicBriefs, normTopicThesis, thesisDraft, withBriefs,
+  topicView, topicSavePlan, viewSourceLink,
 } from "../src/modules/investments/v2/research/segments.ts";
 import {
-  dateText, explainHead, explainText, hasExplain, historyTitle, isInverted, isMacroKey, MACRO, macroAsOf, macroKeyOf, macroLabel, macroSub, metricTitle, monthsBetween, normMacro,
-  normMacroChanges, normRegime, noteKeyLabel, openSpan, orderRegimes, sinceText, staleText, stateParts, summaryText, toneCls,
+  dateText, explainHead, explainText, hasExplain, historyTitle, isInverted, isMacroKey, MACRO, macroAsOf, macroKeyOf, macroLabel, metricTitle, monthsBetween, normMacro,
+  normMacroChanges, normRegime, noteKeyLabel, openSpan, orderRegimes, sinceText, staleText, stateParts, summaryText, toneCls, macroHeadline, macroNumber, monthYear, normMacroBrief, sinceMonth,
 } from "../src/modules/investments/v2/research/macro.ts";
 import { hashWithSegment } from "../src/modules/investments/v2/research/segments.ts";
 import { readFileSync } from "node:fs";
@@ -283,16 +284,17 @@ const segRow = (over) => ({
 });
 const symOf = (id) => ({ 301: "VWRA", 305: "GDXJ", 306: "CDR", 307: "EIMI", 308: "GLD", 309: "SIL" })[id] ?? null;
 
-test("segments: the catalog has 18 unique keys in the BE order, P7 labels, uranium renamed to power", () => {
-  assert.equal(SEGMENTS.length, 18);
-  assert.equal(new Set(SEGMENTS.map((s) => s.key)).size, 18);
+test("segments: the catalog has 19 unique keys in the BE order, P7 labels, uranium renamed to power", () => {
+  assert.equal(SEGMENTS.length, 19);
+  assert.equal(new Set(SEGMENTS.map((s) => s.key)).size, 19);
   assert.equal(SEGMENTS[0].key, "equity_global");
-  assert.equal(SEGMENTS[17].key, "quantum");
-  assert.equal(SEGMENTS.filter((s) => s.group === "sector").length, 8);
+  assert.equal(SEGMENTS[18].key, "quantum");
+  assert.equal(SEGMENTS.filter((s) => s.group === "sector").length, 9);
   assert.ok(SEGMENTS.some((s) => s.key === "power") && !SEGMENTS.some((s) => s.key === "uranium"));
   assert.equal(segmentLabel("gold"), "Złoto i górnicy");
   assert.equal(segmentLabel("semis_ai"), "AI: chipy i centra danych");
   assert.equal(segmentLabel("software"), "AI i oprogramowanie");
+  assert.equal(segmentLabel("robotics"), "Robotyka");
   assert.equal(segmentLabel("power"), "Energetyka: atom i OZE");
   assert.equal(segmentLabel("energy"), "Ropa i gaz");
   assert.equal(segmentLabel("metals"), "Metale i ziemie rzadkie");
@@ -346,7 +348,7 @@ test("segments: diverging bar geometry on a shared scale with a 0,5 pp floor", (
 
 const topicRow = (over) => segRow({ trend_1w: null, trend_4w: null, members: 0, ...over });
 
-test("topics: kind (held, watched-only, note-only) and the home selection (held first, watched after, max 10)", () => {
+test("topics: kind (held, watched-only, note-only) and the home selection (held first, watched after, P9: no cap)", () => {
   assert.equal(topicKind({ weight: 0.1, members: 0 }), "held");
   assert.equal(topicKind({ weight: 0, members: 2 }), "watched");
   assert.equal(topicKind({ weight: 0, members: 0 }), "none");
@@ -357,19 +359,15 @@ test("topics: kind (held, watched-only, note-only) and the home selection (held 
   // payload order as the BE sends it: held, a note-only row in between, watched
   const d = { segments: [...held, noteOnly, ...watched] };
   const a = homeTopics(d);
-  assert.equal(a.rows.length, 10);
-  assert.equal(a.rest, 1);
-  assert.deepEqual(a.rows.map((r) => r.key), [...held.map((r) => r.segment), ...watched.slice(0, 3).map((r) => r.segment)]);
-  assert.ok(!a.rows.some((r) => r.key === "crypto"));
-  const b = homeTopics(d, 4);
-  assert.equal(b.rows.length, 4);
-  assert.equal(b.rest, 7);
+  assert.equal(a.length, 11);
+  assert.deepEqual(a.map((r) => r.key), [...held.map((r) => r.segment), ...watched.map((r) => r.segment)]);
+  assert.ok(!a.some((r) => r.key === "crypto"));
   // P7 trend fields are carried by the display row
   const r = segmentDisplay(topicRow({ trend_1w: 0.031, trend_4w: 0.082, members: 3 }));
   assert.deepEqual([r.trend_1w, r.trend_4w, r.members], [0.031, 0.082, 3]);
 });
 
-test("topics: review (new notes first, held before watched, max 6, no note-only) and page order (held, watched, note-only)", () => {
+test("topics: review (new notes first, held before watched, max 6, no note-only)", () => {
   const h1 = topicRow({ segment: "gold", weight: 0.1, members: 1 });
   const h2 = topicRow({ segment: "bonds", weight: 0.1, members: 1, note_this_week: true });
   const w1 = topicRow({ segment: "quantum", weight: 0, members: 2, note_this_week: true });
@@ -378,10 +376,9 @@ test("topics: review (new notes first, held before watched, max 6, no note-only)
   assert.deepEqual(reviewTopics([h1, w2, n1, w1, h2]).map((r) => r.key), ["bonds", "quantum", "gold", "software"]);
   const many = Array.from({ length: 8 }, (_, i) => topicRow({ segment: SEGMENTS[i].key, weight: 0.1, members: 1 }));
   assert.equal(reviewTopics(many).length, 6);
-  assert.deepEqual(pageTopics({ segments: [n1, w2, h1, w1, h2] }).map((r) => r.key), ["gold", "bonds", "software", "quantum", "power"]);
 });
 
-test("topics: symbols (held, then watched not listed), symbols text, note line (no bez zmian), trend texts, columns", () => {
+test("topics: symbols (held, then watched not listed), symbols text, columns", () => {
   const r = { key: "gold", instruments: [{ instrument_id: 305, contribution: 0, return: 0 }, { instrument_id: 308, contribution: 0, return: 0 }] };
   const syms = topicSymbols(r, symOf, new Map([["gold", ["GLD", "SIL"]]]));
   assert.deepEqual(syms, ["GDXJ", "GLD", "SIL"]);
@@ -390,34 +387,11 @@ test("topics: symbols (held, then watched not listed), symbols text, note line (
   assert.equal(symbolsText(["A", "B", "C", "D", "E"]), "A · B · C +2");
   assert.equal(symbolsText(["A", "B"]), "A · B");
   assert.equal(symbolsText([]), "");
-  const note = { id: 1, title: "Fed: realne stopy w dół", observed_at: "2026-10-06" };
-  assert.deepEqual(topicNote({ note, note_this_week: true, last_note_at: null }), { text: "Fed: realne stopy w dół", title: "Fed: realne stopy w dół", fresh: true });
-  assert.deepEqual(topicNote({ note: { ...note, observed_at: "2026-09-22" }, note_this_week: false, last_note_at: null }), { text: "22.09", title: "ostatnia notatka 22.09", fresh: false });
-  assert.deepEqual(topicNote({ note: null, note_this_week: false, last_note_at: "2026-08-20" }), { text: "20.08", title: "ostatnia notatka 20.08", fresh: false });
-  assert.equal(topicNote({ note: null, note_this_week: false, last_note_at: null }), null);
-  assert.equal(trendText(null), "-");
-  assert.equal(trendText(undefined), "-");
-  assert.equal(trendText(0.031), "+3,1 %");
-  assert.equal(trendText(-0.044), "-4,4 %");
-  assert.equal(trendOf({ trend_1w: 0.01, trend_4w: 0.04 }, "1w"), 0.01);
-  assert.equal(trendOf({ trend_1w: 0.01, trend_4w: 0.04 }, "4w"), 0.04);
-  assert.equal(trendOf({ trend_1w: 0.01 }, "4w"), null);
-  assert.equal(trendTitle({ members: 3, trend_4w: 0.082, return: -0.044, weight: 0.1 }), "3 instrumenty, równe wagi · 4 tyg. +8,2 %");
-  assert.equal(trendTitle({ members: 1, trend_4w: null, return: null, weight: 0 }), "1 instrument, równe wagi");
-  assert.equal(trendTitle({ members: 3, trend_4w: 0.082, return: -0.044, weight: 0.1 }, { page: true }), "3 instrumenty, równe wagi · ważona udziałem -4,4 %");
-  assert.equal(trendTitle({ members: 5, trend_4w: 0.1, return: null, weight: 0 }, { page: true }), "5 instrumentów, równe wagi");
+  assert.equal(symbolsText(["A", "B", "C", "D", "E"], Infinity), "A · B · C · D · E");
   assert.deepEqual(topicColumns(5), { cols: 1, rows: 5 });
   assert.deepEqual(topicColumns(6), { cols: 2, rows: 3 });
   assert.deepEqual(topicColumns(7), { cols: 2, rows: 4 });
   assert.deepEqual(topicColumns(10), { cols: 2, rows: 5 });
-});
-
-test("topics: the currency footer line of the page (no unassigned line, owner P7)", () => {
-  const f = currencyFoot({ currency: { contribution: 0.006, currencies: [
-    { currency: "EUR", weight: 0.08, return: 0.001, contribution: 0.0001 }, { currency: "USD", weight: 0.55, return: 0.006, contribution: 0.0055 },
-  ] } });
-  assert.deepEqual(f, { pp: "+0,6 pp", tone: "pos", detail: "USD +0,6 % · EUR +0,1 %" });
-  assert.equal(currencyFoot({ currency: { contribution: 0, currencies: [] } }), null);
 });
 
 test("topics: member_instruments (review LOW-4): a topic held only through a position bought inside the window", () => {
@@ -454,12 +428,17 @@ test("topics: member_instruments (review LOW-4): a topic held only through a pos
   assert.equal(older.member_instruments, undefined);
   assert.equal(topicKind(older), "watched");
   assert.deepEqual(topicSymbols(older, symOf, new Map([["quantum", ["RGTI"]]])), ["RGTI"]);
-  // ordering: held, new, watched (home, page); review keeps new notes first
+  // ordering without fresh research: held, new, watched (home, page); review keeps new notes first
   const held = topicRow({ segment: "gold", weight: 0.1, members: 1 });
   const watched = topicRow({ segment: "software", weight: 0, members: 1 });
   const fresh = { ...row, segment: "quantum" };
-  assert.deepEqual(homeTopics({ segments: [watched, fresh, held] }).rows.map((x) => x.key), ["gold", "quantum", "software"]);
-  assert.deepEqual(pageTopics({ segments: [watched, fresh, held] }).map((x) => x.key), ["gold", "quantum", "software"]);
+  assert.deepEqual(homeTopics({ segments: [watched, fresh, held] }).map((x) => x.key), ["gold", "quantum", "software"]);
+  // a just-researched topic is surfaced first even when its fact date predates the latest thesis change
+  const researched = topicRow({ segment: "robotics", weight: 0, members: 0, note_this_week: true,
+    last_note_at: "2026-10-08T00:00:00Z", thesis: { thesis: "t", draft: true, created_by: "agent", updated_at: "2026-10-10T13:20:33Z" } });
+  const olderResearch = topicRow({ segment: "healthcare", weight: 0.1, members: 1, note_this_week: true,
+    last_note_at: "2026-10-09T15:00:00Z" });
+  assert.deepEqual(homeTopics({ segments: [held, olderResearch, researched] }).map((x) => x.key), ["robotics", "healthcare", "gold"]);
   assert.deepEqual(reviewTopics([held, fresh, { ...watched, note_this_week: true }]).map((x) => x.key), ["software", "gold", "quantum"]);
 });
 
@@ -475,14 +454,10 @@ test("topics: the reader takes trend_1w / trend_4w / members, maps the renamed k
   assert.equal(normSegmentRow({ segment: "power", label: "BE label" }).label, "BE label");
 });
 
-test("segments: currency text, stale marks, new-note count, exposure count", () => {
+test("segments: stale marks, new-note count, exposure count", () => {
   const today = segRow({ note: { id: 1, title: "Fed: realne stopy w dół", observed_at: "2026-10-06" }, note_this_week: true });
   const older = segRow({ note: { id: 2, title: "x", observed_at: "2026-09-22" } });
   const none = segDisplayOf(segRow({ instruments: [305, 308, 309, 306].map((id) => ({ instrument_id: id, contribution: 0, return: 0 })) }));
-  assert.equal(currencySub([
-    { currency: "EUR", weight: 0.08, return: 0.002, contribution: 0.0002 }, { currency: "USD", weight: 0.55, return: -0.007, contribution: -0.0039 }, { currency: "CHF", weight: 0.01, return: 0, contribution: 0 },
-  ]), "USD -0,7 % · EUR +0,2 %");
-  assert.equal(currencySub([]), "");
   const st = staleSymbols(none, [305, 308], symOf);
   assert.deepEqual(st, ["GDXJ", "GLD"]);
   assert.equal(staleTitle(st), "notowania nieaktualne: GDXJ, GLD");
@@ -493,16 +468,10 @@ test("segments: currency text, stale marks, new-note count, exposure count", () 
 });
 const segDisplayOf = (r) => segmentDisplay(r);
 
-test("segments: header and fact tooltips with and without residual, new positions, stale", () => {
+test("segments: header tooltip with and without residual", () => {
   const d = { start: "2026-10-01", end: "2026-10-08", portfolio_return: -0.012, explained: -0.0118, residual: -0.0004, new_positions: 0 };
   assert.equal(windowTitle(d), "1.10 - 8.10 · TWR portfela");
   assert.equal(windowTitle({ ...d, portfolio_return: null }), "1.10 - 8.10 · TWR portfela · brak pełnej historii");
-  assert.equal(factTitle(d), "wyjaśnione -1,2\u00a0% · reszta 0,0\u00a0% · 1.10 - 8.10");
-  assert.equal(factTitle({ ...d, residual: null }), "wyjaśnione -1,2\u00a0% · reszta - · 1.10 - 8.10");
-  // review LOW-2: from |residual| >= 0,1 pp the residual gets its own line (home header and page fact), not repeated inline
-  assert.equal(factTitle({ ...d, residual: -0.001, new_positions: 1 }, ["GDXJ"]),
-    "wyjaśnione -1,2\u00a0% · 1.10 - 8.10 · 1 nowa pozycja poza oknem · nieaktualne: GDXJ\nreszta -0,1\u00a0pp: transakcje i import pozycji");
-  assert.match(factTitle({ ...d, new_positions: 3 }), /3 nowe pozycje poza oknem$/);
   assert.equal(residualLine(d), null);
   assert.equal(residualLine({ residual: null }), null);
   assert.equal(residualLine({}), null);
@@ -644,14 +613,6 @@ test("macro: history tooltip, current state first, newest first, max 5 lines", (
   assert.equal(historyTitle(regime({ history: [{ date: "2026-01-12", state: "x" }, { date: "2026-09-05", state: "falling" }] })), "od 5.09 rentowności spadają\nod 12.01 x");
   // BE extra: the past state's Polish label is the fallback for a state the catalog does not know.
   assert.equal(historyTitle(regime({ history: [{ date: "2026-01-12", state: "x", state_label: "iks" }] })), "od 5.09 rentowności spadają\nod 12.01 iks");
-});
-
-test("macro: card note line (this week's title, the small date of an older note, nothing; no bez zmian)", () => {
-  const note = { id: 905, title: "Fed: trzecia obniżka", observed_at: "2026-10-03T06:52:00+02:00" };
-  assert.deepEqual(macroSub({ note, note_this_week: true, last_note_at: null }), { text: "Fed: trzecia obniżka", title: "Fed: trzecia obniżka" });
-  assert.equal(macroSub({ note: { ...note, observed_at: "2026-09-19T07:00:00+02:00" }, note_this_week: false, last_note_at: null }).text, "19.09");
-  assert.deepEqual(macroSub({ note: null, note_this_week: false, last_note_at: "2026-09-12T07:00:00+02:00" }), { text: "12.09", title: "ostatnia notatka 12.09" });
-  assert.equal(macroSub({ note: null, note_this_week: false, last_note_at: null }), null);
 });
 
 test("macro: catalog order regardless of payload order, unknown keys last", () => {
@@ -808,4 +769,151 @@ test("research page: the selection is written to the hash query (set, replace, r
   assert.equal(hashWithSegment("#/jan/investments.portfolio/research?segment=bonds", null), "#/jan/investments.portfolio/research");
   assert.equal(hashWithSegment("#/jan/investments.portfolio/research?scope=segments&segment=bonds", null), "#/jan/investments.portfolio/research?scope=segments");
   assert.equal(hashWithSegment("#/jan/investments.portfolio/research", null), "#/jan/investments.portfolio/research");
+});
+
+// ---- P9 briefs, topic theses ------------------------------------------------------------------------------
+
+test("P9 topics: briefs are read tolerantly (headline required, details.brief fallback, newest first, max 3)", () => {
+  const b = normTopicBriefs([
+    { note_id: 1, headline: "Mniej pieniędzy napływa do branży", why: "w", observed_at: "2026-09-24T07:00:00+02:00", kind: "news", unread: false },
+    { id: 2, details: { brief: { headline: "Według nowych badań ludzie grają więcej", why: "x" } }, observed_at: "2026-10-01T07:00:00+02:00", unread: true },
+    { note_id: 3, why: "no headline" },
+    { note_id: 4, headline: "Najstarszy", observed_at: "2026-09-01" },
+    { note_id: 5, headline: "Jeszcze starszy", observed_at: "2026-08-01" },
+    "junk",
+  ]);
+  assert.deepEqual(b.map((x) => x.note_id), [2, 1, 4]);
+  assert.equal(b[0].headline, "Według nowych badań ludzie grają więcej");
+  assert.equal(b[0].why, "x");
+  assert.equal(b[0].unread, true);
+  assert.equal(b[1].kind, "news");
+  assert.deepEqual(normTopicBriefs(undefined), []);
+  // the segments row carries briefs and thesis (absent on an older server: [] / null)
+  const row = normSegmentRow({ segment: "games_media", weight: 0.06, briefs: [{ note_id: 9, headline: "h", observed_at: "2026-10-01" }], thesis: { thesis: "t", draft: true, created_by: "agent" } });
+  assert.equal(row.briefs.length, 1);
+  assert.equal(row.thesis.draft, true);
+  const old = normSegmentRow({ segment: "gold", weight: 0.1 });
+  assert.deepEqual([old.briefs, old.thesis], [[], null]);
+  assert.deepEqual(segmentDisplay(old).briefs, []);
+});
+
+test("P9 topics: brief lines (max 3, newest first, only the first with why, dates d.mm)", () => {
+  const lines = briefLines({ briefs: [
+    { note_id: 1, headline: "A", why: "wa", observed_at: "2026-09-24T07:00:00+02:00", unread: false },
+    { note_id: 2, headline: "B", why: "wb", observed_at: "2026-10-03T07:00:00+02:00", unread: true },
+    { note_id: 3, headline: "C", why: null, observed_at: "2026-09-01", unread: false },
+    { note_id: 4, headline: "D", why: "wd", observed_at: "2026-08-01", unread: false },
+  ] });
+  assert.deepEqual(lines.map((l) => [l.headline, l.why, l.date]), [["B", "wb", "3.10"], ["A", null, "24.09"], ["C", null, "1.09"]]);
+  assert.deepEqual(briefLines({}), []);
+  assert.deepEqual(briefLines({ briefs: [] }), []);
+});
+
+test("P9 topics: thesis reader and the draft state", () => {
+  assert.equal(normTopicThesis(null), null);
+  assert.equal(normTopicThesis({ thesis: "" }), null);
+  const t = normTopicThesis({ id: "7", segment: "semis_ai", thesis: "Popyt na chipy rośnie.", invalidation: "", draft: true, created_by: "agent", updated_at: "2026-10-03" });
+  assert.deepEqual([t.id, t.thesis, t.invalidation, t.draft, t.created_by], [7, "Popyt na chipy rośnie.", null, true, "agent"]);
+  assert.equal(normTopicThesis({ thesis: "x" }).created_by, "owner");
+  assert.equal(thesisDraft(t), true);
+  assert.equal(thesisDraft({ ...t, draft: false }), false);
+  assert.equal(thesisDraft(null), false);
+});
+
+test("P11 topics: the market view under the thesis and what one form save writes", () => {
+  const t = normTopicThesis({ thesis: "Popyt na chipy rośnie.", draft: true, created_by: "agent", assessment: "Popyt jest silny teraz.", outlook: " ", view_updated_at: "2026-10-10T07:00:00Z" });
+  assert.deepEqual(topicView(t), { assessment: "Popyt jest silny teraz.", outlook: null, at: "2026-10-10T07:00:00Z", sources: [], publishers: null });
+  assert.equal(topicView(normTopicThesis({ thesis: "x" })), null);
+  assert.equal(topicView(null), null);
+  const e = { thesis: "Popyt na chipy rośnie.", invalidation: "", assessment: "Popyt jest silny teraz.", outlook: "" };
+  assert.deepEqual(topicSavePlan(t, e), { thesis: false, view: false });
+  // a view-only edit never re-saves the thesis (an owner thesis save would confirm the agent draft)
+  assert.deepEqual(topicSavePlan(t, { ...e, outlook: "W 12 mies. popyt pozostanie wysoki." }), { thesis: false, view: true });
+  assert.deepEqual(topicSavePlan(t, { ...e, thesis: "Inna teza." }), { thesis: true, view: false });
+  assert.deepEqual(topicSavePlan(t, { ...e, assessment: "  " }), { thesis: false, view: true });
+  assert.deepEqual(topicSavePlan(null, { ...e, assessment: "", outlook: "" }), { thesis: true, view: false });
+});
+
+test("P11 topics: the view's cited sources as small links and the publishers tooltip", () => {
+  const t = normTopicThesis({
+    thesis: "Popyt na chipy rośnie.", assessment: "Popyt jest silny teraz.", outlook: "IFR szacuje 575 tys. instalacji w 2028.",
+    view_sources: [
+      { title: "World Robotics", url: "https://example.org/wr", publisher: "IFR", published_at: "2026-09-04" },
+      { url: "javascript:alert(1)", publisher: "Zły link", published_at: "2026-10-01T08:00:00Z" },
+      { url: "https://www.example.com/x", publisher: null, published_at: null },
+      { title: "bez url" },
+      { url: "https://example.org/again", publisher: "IFR", published_at: "2026-09-05" },
+    ],
+  });
+  assert.equal(t.view_sources.length, 4); // the item without a url is dropped
+  const v = topicView(t);
+  assert.deepEqual(v.sources[0], { href: "https://example.org/wr", text: "IFR · 4.09.2026", title: "World Robotics" });
+  assert.equal(v.sources[1].href, null); // never a javascript: link
+  assert.equal(v.sources[1].text, "Zły link · 1.10.2026");
+  assert.equal(v.sources[2].text, "example.com");
+  assert.equal(v.publishers, "Źródła: IFR, Zły link");
+  assert.deepEqual(viewSourceLink({ url: "https://example.org/a", publisher: "IEA", published_at: "2026-01-15" }).text, "IEA · 15.01.2026");
+  assert.deepEqual(normTopicThesis({ thesis: "x" }).view_sources, []);
+  assert.equal(normTopicThesis({ thesis: "x", view_sources: Array.from({ length: 9 }, (_, i) => ({ url: `https://e.org/${i}` })) }).view_sources.length, 6);
+});
+
+test("P9 review: digest rows without briefs take them (and the thesis) from the live rows", () => {
+  const live = [{ segment: "gold", briefs: [{ note_id: 1, headline: "h", why: null, observed_at: "2026-10-01", unread: false }], thesis: { thesis: "t", invalidation: null, draft: false, created_by: "owner", updated_at: null } }];
+  const rows = [segmentDisplay(topicRow({ segment: "gold", weight: 0.1, members: 1 })), segmentDisplay(topicRow({ segment: "bonds", weight: 0.1, members: 1 }))];
+  const out = withBriefs(rows, live);
+  assert.equal(out[0].briefs.length, 1);
+  assert.equal(out[0].thesis.thesis, "t");
+  assert.deepEqual(out[1].briefs, []);
+  // the digest's own briefs win
+  const own = [{ ...rows[0], briefs: [{ note_id: 2, headline: "own", why: null, observed_at: "2026-10-02", unread: false }] }];
+  assert.equal(withBriefs(own, live)[0].briefs[0].headline, "own");
+});
+
+test("P9 macro: brief reader, headline fallbacks (brief, plain, summary), month since, one number", () => {
+  const b = normMacroBrief({ note_id: 906, headline: "Trwa hossa na giełdach", why: "Zyski rosną.", supports: ["a", "", 3, "b", "c", "d"], risks: null, observed_at: "2026-09-19", unread: true });
+  assert.deepEqual(b, { note_id: 906, headline: "Trwa hossa na giełdach", why: "Zyski rosną.", supports: ["a", "b", "c"], risks: [], observed_at: "2026-09-19", unread: true });
+  assert.equal(normMacroBrief({ note_id: 1 }), null);
+  assert.equal(normMacroBrief(null), null);
+  const r = normRegime({ key: "risk", state: "bull", plain: "Trwa hossa na giełdach na świecie.", summary: "s", brief: { note_id: 1, headline: "H" } });
+  assert.equal(macroHeadline(r), "H");
+  assert.equal(macroHeadline({ ...r, brief: null }), "Trwa hossa na giełdach na świecie.");
+  assert.equal(macroHeadline({ ...r, brief: null, plain: null }), "s");
+  // an older server: no brief / plain fields at all
+  const old = normRegime({ key: "risk", state: "bull", summary: "s" });
+  assert.deepEqual([old.brief, old.plain, macroHeadline(old)], [null, null, "s"]);
+  // a missing regime never shows a brief
+  const miss = normRegime({ key: "em", state: "unknown", brief: { note_id: 1, headline: "H" }, plain: "p" });
+  assert.deepEqual([miss.brief, macroHeadline(miss)], [null, "Brak danych."]);
+  assert.equal(monthYear("2026-08-14"), "sierpnia 2026");
+  assert.equal(monthYear("2026-01-02T10:00:00Z"), "stycznia 2026");
+  assert.equal(monthYear(null), null);
+  assert.equal(monthYear("x"), null);
+  assert.equal(sinceMonth({ since: "2026-08-14", missing: false }), "od sierpnia 2026");
+  assert.equal(sinceMonth({ since: null, missing: false }), null);
+  assert.equal(sinceMonth({ since: "2026-08-14", missing: true }), null);
+  assert.equal(sinceMonth({ since: null, missing: false, since_open: true, since_min: "2025-03-10", as_of: "2026-10-02" }), "od ponad roku");
+  assert.equal(sinceMonth({ since: null, missing: false, since_open: true, since_min: "2026-09-20", as_of: "2026-10-02" }), "od września 2026");
+  const metrics = [{ label: "DXY", unit: "level", text: "98,4" }, { label: "6 mies.", unit: "pct", text: "-4,8 %" }, { label: "x", unit: "pct", text: "+1 %" }];
+  assert.deepEqual(macroNumber({ metrics, missing: false }), { text: "-4,8 %", title: "6 mies." });
+  assert.deepEqual(macroNumber({ metrics: [{ label: "DBC 12 mies.", unit: "pct", text: "+4,1 %", stale: true, as_of: "2026-09-26" }], missing: false }), { text: "+4,1 %", title: "DBC 12 mies. · dane z 26.09" });
+  assert.equal(macroNumber({ metrics: [{ label: "bp", unit: "bp", text: "-48 bp" }], missing: false }), null);
+  assert.equal(macroNumber({ metrics, missing: true }), null);
+});
+
+test("P9 review MED-6: a topic with a brief or a thesis but no member is shown muted after the watched ones", () => {
+  const brief = { note_id: 1, headline: "Ubezpieczyciele zdrowotni pod presją", why: null, observed_at: "2026-10-02", unread: false };
+  const held = topicRow({ segment: "gold", weight: 0.1, members: 1 });
+  const watched = topicRow({ segment: "quantum", weight: 0, members: 2 });
+  const briefOnly = topicRow({ segment: "healthcare", weight: 0, members: 0, briefs: [brief] });
+  const thesisOnly = topicRow({ segment: "crypto", weight: 0, members: 0, thesis: { thesis: "t", invalidation: null, draft: false, created_by: "owner", updated_at: null } });
+  const noteOnly = topicRow({ segment: "power", weight: 0, members: 0, note: { id: 9, title: "n", observed_at: "2026-10-01" } });
+  assert.equal(topicKind(segmentDisplay(briefOnly)), "none");
+  assert.equal(topicShown(segmentDisplay(briefOnly)), true);
+  assert.equal(topicShown(segmentDisplay(thesisOnly)), true);
+  assert.equal(topicShown(segmentDisplay(noteOnly)), false);
+  assert.equal(topicShown(segmentDisplay(watched)), true);
+  // payload order mixed: home sorts held, watched, then the brief- / thesis-only rows; a plain note-only row stays out
+  assert.deepEqual(homeTopics({ segments: [briefOnly, noteOnly, watched, thesisOnly, held] }).map((r) => r.key), ["gold", "quantum", "healthcare", "crypto"]);
+  // review: new-note rows first, inside each group held, watched, brief-only
+  assert.deepEqual(reviewTopics([{ ...briefOnly, note_this_week: true }, held, { ...watched, note_this_week: true }, noteOnly]).map((r) => r.key), ["quantum", "healthcare", "gold"]);
 });

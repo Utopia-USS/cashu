@@ -15,6 +15,7 @@ from cashu.modules.investments.service import daily, files, portfolio
 # Every investments GET route ({instrument_id} is filled per test), with the variants worth comparing.
 INVESTMENTS_GETS = [
     "/investments/overview",
+    "/investments/run/status",
     "/investments/performance",
     "/investments/performance?range=max",
     "/investments/performance/attribution",
@@ -47,7 +48,10 @@ INVESTMENTS_GETS = [
     "/investments/research/macro",
     "/investments/research/runs",
     "/investments/planned-deposits",
+    "/investments/topics/semis_ai/thesis",
 ]
+TEMPLATES = {"/investments/topics/semis_ai/thesis": "/investments/topics/{segment}/thesis"}
+"""Concrete paths above that stand for a templated route (P9 topic thesis)."""
 VOLATILE = {
     "id",
     "account_id",
@@ -154,6 +158,11 @@ def household(client, name: str) -> tuple[str, int, int]:
         f"/api/p/{slug}/investments/instruments/{xmpl}/theses",
         json={"entry_type": "trend", "thesis": "Example thesis"},
     )
+    r = client.put(
+        f"/api/p/{slug}/investments/topics/semis_ai/thesis",
+        json={"thesis": "Example topic thesis", "invalidation": "Example invalidation"},
+    )
+    assert r.status_code == 200, r.text
     client.post(
         f"/api/p/{slug}/investments/manual-valuations",
         json={"instrument_id": xmpl, "unit_value": "99", "as_of": "2026-02-01"},
@@ -167,7 +176,7 @@ def test_every_investments_route_is_in_the_isolation_list():
         for path, ops in app.openapi()["paths"].items()
         if path.startswith("/api/p/{slug}/investments/") and "get" in ops
     }
-    covered = {p.split("?")[0] for p in INVESTMENTS_GETS}
+    covered = {TEMPLATES.get(p, p.split("?")[0]) for p in INVESTMENTS_GETS}
     assert templates == covered, templates ^ covered
 
 
@@ -193,6 +202,7 @@ def test_two_profiles_with_the_same_history_do_not_leak(client):
     )
     assert e["/investments/overview"]["kpis"]["value"]["total"] == 0
     assert e["/investments/overview"]["kpis"]["last_run"] is None
+    assert e["/investments/topics/semis_ai/thesis"] is None  # P9: the other profile's thesis
     for path in (
         "/investments/transactions",
         "/investments/signals",

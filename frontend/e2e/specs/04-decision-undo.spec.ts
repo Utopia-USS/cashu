@@ -36,3 +36,36 @@ test("decision undone with the toast", async ({ app: page }) => {
   await expect(toasts(page)).toContainText("Cofnięto: decyzja");
   await expect(row.getByRole("button", { name: "Zanotuj decyzję" })).toBeVisible();
 });
+
+test("signals dialog: one Zanotuj decyzję and one Potwierdź per multi-signal subject, Potwierdź covers the group", async ({ app: page }) => {
+  await go(page, `${ANNA}/investments.portfolio`);
+  await page.getByRole("region", { name: "Sygnały" }).getByRole("button", { name: /^Wszystkie \(\d+\)$/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Sygnały" });
+  // no sub-row carries its own decision buttons (owner: per group, not per signal)
+  await expect(dialog.locator(".sub-sig").getByRole("button", { name: "Zanotuj decyzję" })).toHaveCount(0);
+  await expect(dialog.locator(".sub-sig").getByRole("button", { name: "Potwierdź" })).toHaveCount(0);
+  const group = dialog.locator(".sig.grp:not(.quiet)").first();
+  test.skip(!(await group.count()), "no multi-signal subject in the demo data");
+  const key = await group.getAttribute("data-group");
+  const g = dialog.locator(`.sig.grp[data-group="${key}"]`);
+  const live = await g.locator(".sub-sig:not(.quiet)").count();
+  await expect(g.locator(".gact").getByRole("button", { name: "Zanotuj decyzję" })).toHaveCount(1);
+  await expect(g.locator(".gact").getByRole("button", { name: "Potwierdź" })).toHaveCount(1);
+  // Zanotuj decyzję opens the position's decision dialog with every open signal of the group
+  if (key?.startsWith("i:")) {
+    await g.locator(".gact").getByRole("button", { name: "Zanotuj decyzję" }).click();
+    const decide = page.getByRole("dialog", { name: /^Decyzja · / });
+    await expect(decide).toBeVisible();
+    await expect(decide.locator(".dctx .ln")).toHaveCount(Math.min(live, 5));
+    await page.keyboard.press("Escape");
+    await expect(decide).toBeHidden();
+    await expect(dialog).toBeVisible();
+  }
+  await g.locator(".gact").getByRole("button", { name: "Potwierdź" }).click();
+  const toast = toasts(page).locator(".toast", { hasText: "Potwierdzone bez zmian" });
+  await expect(toast).toBeVisible();
+  await expect(g.locator(".sub-sig:not(.quiet)")).toHaveCount(0);
+  await toast.getByRole("button", { name: "Cofnij" }).click();
+  await expect(toasts(page)).toContainText("Cofnięto");
+  await expect(dialog.locator(`.sig.grp[data-group="${key}"] .sub-sig:not(.quiet)`)).toHaveCount(live);
+});

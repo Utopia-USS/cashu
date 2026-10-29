@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -81,6 +82,7 @@ class CompositePriceSource(PriceSource):
         self._order = order
         self._log = logger or logging.getLogger("cashu.investments.market.composite")
         self._health: dict[str, SourceHealth] = {}
+        self._lock = threading.Lock()  # fetch may run on several worker threads (refresher workers)
 
     @classmethod
     def standard(cls, http: MarketHttp, *, clock: UtcClock = utc_now) -> CompositePriceSource:
@@ -94,7 +96,13 @@ class CompositePriceSource(PriceSource):
     @property
     def health(self) -> dict[str, SourceHealth]:
         """Counters per source id, for sources that were called or blocked in this run."""
-        return dict(self._health)
+        with self._lock:
+            return dict(self._health)
+
+    def blocked(self) -> set[str]:
+        """Source ids blocked earlier in this run."""
+        with self._lock:
+            return {sid for sid, h in self._health.items() if h.blocked}
 
     def history(
         self, instrument: Instrument, start: CalendarDate, end: CalendarDate
@@ -118,7 +126,8 @@ class CompositePriceSource(PriceSource):
         failures: list[SourceException] = []
         answered_empty = False
         for source in candidates:
-            health = self._health.setdefault(source.id, SourceHealth(source.id))
+            with self._lock:
+                health = self._health.setdefault(source.id, SourceHealth(source.id))
             if health.blocked:
                 failures.append(
                     SourceException(

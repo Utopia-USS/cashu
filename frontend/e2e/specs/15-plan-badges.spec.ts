@@ -25,8 +25,10 @@ test("model recommendation: watched asset shows it without a menu", async ({ app
   await go(page, `${ANNA}/investments.portfolio`);
   const assets = page.getByRole("region", { name: "Aktywa" });
   await assets.getByRole("button", { name: /^Obserwowane/ }).click();
+  await expect(assets.getByRole("columnheader", { name: /^Rekomendacja \d+\/\d+$/ })).toBeVisible();
   const row = assets.locator("tr.rowlink").first();
   await expect(row.locator(".avw[data-plan='buy'] svg.pl")).toHaveCount(1);
+  await expect(row.locator(".watch-plan")).toHaveText("kup");
   await row.click();
   const recommendation = page.locator(".adrawer").getByLabel("Rekomendacja modelu: kup");
   await expect(recommendation).toBeVisible();

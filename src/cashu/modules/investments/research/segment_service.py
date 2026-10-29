@@ -11,7 +11,7 @@ Weights, returns and contributions are fractions; the payload carries no amounts
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from sqlmodel import Session, select
@@ -36,7 +36,7 @@ from ..performance.segment_attribution import (
 from ..portfolio import build_snapshot, value_portfolio
 from ..store import convert, market
 from ..store import instruments as instrument_store
-from . import service
+from . import service, topic_theses
 from .scoring import iso_week
 from .segments import (
     UNASSIGNED,
@@ -322,6 +322,8 @@ class SegmentNotes:
     """The newest stored note (not dismissed; expired ones count)."""
     unread: int = 0
     notes_8w: int = 0
+    briefs: list[InvResearchNote] = field(default_factory=list)
+    """Active notes with a ``details.brief`` (P9), newest observation first."""
 
 
 def segment_note_rows(
@@ -361,13 +363,59 @@ def notes_by_segment(
         entry = out.setdefault(r.segment, SegmentNotes())
         if newer(entry.newest, r):
             entry.newest = r
-        if convert.aware(r.expires_at) > now and newer(entry.latest, r):
+        active = convert.aware(r.expires_at) > now
+        if active and newer(entry.latest, r):
             entry.latest = r
+        if active and has_brief(r):
+            entry.briefs.append(r)
         if service.is_unread(r, now):
             entry.unread += 1
         if convert.aware(r.observed_at) >= since_8w:
             entry.notes_8w += 1
+    for entry in out.values():
+        entry.briefs.sort(key=lambda r: (convert.aware(r.observed_at), r.id), reverse=True)
     return out
+
+
+BRIEFS_PER_TOPIC = 3
+
+
+def has_brief(row: InvResearchNote) -> bool:
+    return isinstance((row.details or {}).get("brief"), dict)
+
+
+def topic_brief(row: InvResearchNote, now: dt.datetime) -> dict:
+    """A topic row's brief (P9): ``{note_id, headline, why, observed_at, kind, polarity, unread}``."""
+    from .views import iso
+
+    brief = (row.details or {})["brief"]
+    return {
+        "note_id": row.id,
+        "headline": brief.get("headline"),
+        "why": brief.get("why"),
+        "observed_at": iso(convert.aware(row.observed_at)),
+        "kind": row.kind,
+        "polarity": row.polarity,
+        "unread": service.is_unread(row, now),
+    }
+
+
+def macro_brief(row: InvResearchNote | None, now: dt.datetime) -> dict | None:
+    """A macro card's brief (P9): ``{note_id, headline, why, supports, risks, observed_at, unread}``."""
+    from .views import iso
+
+    if row is None:
+        return None
+    brief = (row.details or {})["brief"]
+    return {
+        "note_id": row.id,
+        "headline": brief.get("headline"),
+        "why": brief.get("why"),
+        "supports": list(brief.get("supports") or []),
+        "risks": list(brief.get("risks") or []),
+        "observed_at": iso(convert.aware(row.observed_at)),
+        "unread": service.is_unread(row, now),
+    }
 
 
 def brief_note(row: InvResearchNote | None) -> dict | None:
@@ -425,6 +473,7 @@ def _row(
     labels: dict[InstrumentId, str],
     now: dt.datetime,
     trends: Trends,
+    thesis: dict | None = None,
 ) -> dict:
     latest = notes.latest if notes is not None else None
     trend = trends.by_segment.get(key)
@@ -448,6 +497,10 @@ def _row(
         "last_note_at": brief_note(notes.newest)["observed_at"]
         if notes is not None and notes.newest is not None
         else None,
+        "briefs": [topic_brief(r, now) for r in notes.briefs[:BRIEFS_PER_TOPIC]]
+        if notes is not None
+        else [],
+        "thesis": thesis,
     }
 
 
@@ -471,7 +524,9 @@ def segments_view(
     topic trend (P7: ``trend_1w`` / ``trend_4w`` / ``members``, :func:`topic_trends`).
 
     Rows: segments with exposure at the start, segments with a held or watched instrument (no
-    exposure: weight and contribution 0) and segments with an active note. Order (the home strip):
+    exposure: weight and contribution 0), segments with an active note and segments with a topic
+    thesis (P9). Each row carries ``briefs`` (up to 3 active brief notes, newest first) and
+    ``thesis`` (the topic thesis or None). Order (the home strip):
     rows with exposure by |contribution|, then the others by |trend_1w| (none last), ties in catalog
     order."""
     assert profile.id is not None
@@ -484,7 +539,20 @@ def segments_view(
     trends = topic_trends(session, profile, found)
     keys = set(moves) | {k for k in trends.by_segment if is_segment(k)}
     keys |= {k for k, n in notes.items() if n.latest is not None and is_segment(k)}
-    rows = [_row(k, moves.get(k), notes.get(k), found.labels, now, trends) for k in keys]
+    theses = topic_theses.by_segment(session, profile.id)
+    keys |= {k for k in theses if is_segment(k)}
+    rows = [
+        _row(
+            k,
+            moves.get(k),
+            notes.get(k),
+            found.labels,
+            now,
+            trends,
+            topic_theses.thesis_dict(theses.get(k)),
+        )
+        for k in keys
+    ]
     rows.sort(key=lambda r: _row_order(r, r["segment"] in moves))
     unassigned = result.unassigned
     explained = _r(result.explained)

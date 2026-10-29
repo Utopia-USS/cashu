@@ -1,7 +1,7 @@
 // Research layer entry for the Inwestycje home (one hook, a few lines in Home.tsx): the strip as a grid item
 // (after Sygnały + Alerty, deferred after the Alerty + Alokacja pair at two columns), the review block and
 // the `Research` row of Co się zmieniło, the hero meta line, the decision form's research line, the research
-// view route and the context the strip / view / block share. Nothing shows before the first run.
+// view route, the topic drawer (P9) and the context the strip / view / block share. Nothing shows before the first run.
 import { type ReactNode, useCallback, useMemo } from "react";
 import type { GridItem } from "../../../../widgets";
 import type { WatchItem } from "../api";
@@ -14,6 +14,7 @@ import { ReviewResearch, researchChanges, researchEffectLine } from "./ReviewBlo
 import { CandidatesRail, ResearchStrip, type StripCtx } from "./Strip";
 import { MacroChangesWidget, MacroStrip } from "./MacroWidgets";
 import { normMacroChanges } from "./macro";
+import { TopicDetail, topicCrumb } from "./TopicDrawer";
 import type { DigestResearch, ResearchNote } from "./types";
 import { localDay } from "../../../../time";
 
@@ -31,9 +32,11 @@ export interface ResearchHomeInput {
   strategyVersion: number | null;
   /** The review digest (its `since` and the `research` block, RS CONTRACT). */
   digest: { since?: string | null; research?: unknown } | null | undefined;
-  /** Navigate inside the investments tab (`research`, `research?segment=…`, `assets/{id}?note=…`). */
+  /** Navigate inside the investments tab (`research`, `assets/{id}?note=…`). */
   go: (sub?: string) => void;
   openAsset: (id: number, noteId?: number) => void;
+  /** P9: the topic / macro regime drawer (`topics/<key>`). */
+  openTopic: (key: string) => void;
   onSettings: () => void;
   onChanged: () => void;
 }
@@ -66,14 +69,14 @@ export function useResearchHome(input: ResearchHomeInput) {
   }, [o.watch]);
   const ctx: StripCtx = {
     slug: o.slug, today: o.today, nonce: o.nonce, held, watched, symOf, watchedTopics, strategyVersion: o.strategyVersion, workspace: ws.data,
-    onOpenAsset: o.openAsset, onOpenResearch: (q) => o.go(q ? `research?${q}` : "research"), onChanged: o.onChanged, onSettings: o.onSettings,
+    onOpenAsset: o.openAsset, onOpenResearch: (q) => o.go(q ? `research?${q}` : "research"), onOpenTopic: o.openTopic, onChanged: o.onChanged, onSettings: o.onSettings,
   };
+  const instOf = useCallback((id: number) => held.get(id) ?? watchedIds.get(id) ?? null, [held, watchedIds]);
   const ran = showStrip(runs);
   const last = latestRun(runs ?? []);
   // P6: the macro regimes come from the daily check, not from research runs: shown before the first run too.
   const macro = useMacro(o.slug, o.nonce);
   const macroChanges = normMacroChanges(o.digestResearch?.macro_changes);
-  const openMacro = (k: string) => o.go(`research?segment=${k}`);
 
   /** Grid item of the strip; the last cell of the home (Q13). Before the first run only the macro line (P6), when
    * there are regimes. */
@@ -87,7 +90,7 @@ export function useResearchHome(input: ResearchHomeInput) {
    * regimes (P6), when any changed. */
   const review = (since: string | null): GridItem | null => ran && runs && since
     ? { id: "review-research", span: 3, node: <ReviewResearch ctx={ctx} runs={runs} summary={summary} candidates={candidates} digest={o.digestResearch} since={since} onSettings={o.onSettings} /> }
-    : since && macroChanges.length ? { id: "review-research", span: 3, node: <MacroChangesWidget changes={macroChanges} onOpen={openMacro} /> } : null;
+    : since && macroChanges.length ? { id: "review-research", span: 3, node: <MacroChangesWidget changes={macroChanges} onOpen={o.openTopic} /> } : null;
 
   /** `Research` row of Co się zmieniło (null when no run in the period). */
   const changesRow = researchChanges({ digest: o.digestResearch, held, onJump: () => document.getElementById("inv-review-research")?.scrollIntoView({ behavior: "smooth", block: "start" }) });
@@ -105,8 +108,14 @@ export function useResearchHome(input: ResearchHomeInput) {
   /** The research view (route `research`). */
   const page = (params: URLSearchParams, onBack: () => void) => (
     <ResearchPage slug={o.slug} today={o.today} privacy={o.privacy} held={held} watchedIds={watchedIds} watched={watched} symOf={symOf} watchedTopics={watchedTopics} strategyVersion={o.strategyVersion}
-      initial={params} onBack={onBack} onOpenAsset={o.openAsset} onSettings={o.onSettings} onChanged={o.onChanged} />
+      initial={params} onBack={onBack} onOpenAsset={o.openAsset} onOpenTopic={o.openTopic} onSettings={o.onSettings} onChanged={o.onChanged} />
   );
 
-  return { ran, runs, summary, strip, candidates: candidatesItem, review, changesRow, ranInPeriod, effect, page };
+  /** P9: the topic drawer's content (route `topics/<key>`) and its title. */
+  const topic = (key: string) => (
+    <TopicDetail key={key} slug={o.slug} topic={key} today={o.today} symOf={symOf} instOf={instOf} watchedTopics={watchedTopics}
+      onOpenAsset={(id) => o.openAsset(id)} onChanged={o.onChanged} />
+  );
+
+  return { ran, runs, summary, strip, candidates: candidatesItem, review, changesRow, ranInPeriod, effect, page, topic, topicCrumb };
 }

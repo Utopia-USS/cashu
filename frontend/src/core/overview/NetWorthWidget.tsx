@@ -5,6 +5,7 @@ import { LineChart, StackedChart } from "../../charts";
 import { labelIndices } from "../../chart";
 import { cur, cur0, GROUP, monthYearShort, nwColorVar, pctSigned, round0 } from "../../format";
 import { useAsync } from "../../hooks";
+import { hideAmount } from "../../incognito";
 import { ck } from "../../swr";
 import { Seg } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
@@ -48,7 +49,7 @@ export function NetWorthWidget() {
   const xl = labelIndices(points.length, 4).map((i) => ({ i, text: monthYearShort(points[i].date) }));
   const y = total.data ? yearChange(total.data) : null;
   const yl = liquid.data ? yearChange(liquid.data) : null;
-  const fmtAxis = (v: number) => new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0, ...GROUP }).format(Math.round(v / 1000) * 1000);
+  const fmtAxis = (v: number) => hideAmount(new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0, ...GROUP }).format(Math.round(v / 1000) * 1000));
   const tip = (i: number) => (
     <>
       <div className="k">{new Date(`${points[i].date}T12:00:00`).toLocaleDateString("pl-PL", { day: "numeric", month: "short", year: "numeric" })}</div>

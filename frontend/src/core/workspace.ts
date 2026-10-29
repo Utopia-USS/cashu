@@ -44,9 +44,11 @@ const REASON: Record<string, string> = {
   modified: "zmienione lokalnie",
   conflict: "Twój folder o tej nazwie",
   invalid: "nieczytelny plik",
+  unsupported: "system nie pozwala utworzyć linku",
 };
 
 const SECTION: Record<string, string> = {
+  layout: "układ agenta",
   profile: "profil",
   privacy: "prywatność",
   tools: "narzędzia MCP",
@@ -72,6 +74,8 @@ export function outdatedLabel(item: WorkspaceItem): string {
       return `skill /${item.name}: ${reason}`;
     case "folder":
       return `folder ${item.name}/: ${reason}`;
+    case "link":
+      return `${item.name} (dla Codex): ${item.reason === "conflict" ? "Twój plik o tej nazwie" : reason}`;
     default:
       return `${item.name}: ${reason}`;
   }
@@ -79,7 +83,12 @@ export function outdatedLabel(item: WorkspaceItem): string {
 
 /** Items only "Zastąp zmienione" fixes (the user's local edits are never replaced silently). */
 export const needsForce = (st: WorkspaceStatus | null): boolean =>
-  !!st && st.outdated.some((i) => i.reason === "modified" || i.reason === "conflict");
+  !!st && st.outdated.some((i) => i.kind !== "link" && (i.reason === "modified" || i.reason === "conflict"));
+
+/** Items neither "Aktualizuj" nor "Zastąp zmienione" changes: local edits, the user's own file where a
+ * Codex link belongs (merged by the workspace-setup skill), a link the system cannot create. */
+const notFixable = (i: WorkspaceItem): boolean =>
+  i.reason === "modified" || i.reason === "conflict" || i.reason === "unsupported";
 
 export type WorkspaceTone = "pos" | "warn" | "neg" | undefined;
 
@@ -89,7 +98,7 @@ export function workspaceSummary(st: WorkspaceStatus | null): { tone: WorkspaceT
   if (st.conflict) return { tone: "neg", text: "folder innego profilu" };
   if (!st.exists) return { tone: undefined, text: "nie utworzono" };
   if (st.up_to_date) return { tone: "pos", text: "aktualny" };
-  const fixable = st.outdated.filter((i) => i.reason !== "modified" && i.reason !== "conflict").length;
+  const fixable = st.outdated.filter((i) => !notFixable(i)).length;
   if (!fixable) return { tone: "warn", text: "zmiany lokalne" };
   return { tone: "warn", text: `do aktualizacji · ${fixable}` };
 }

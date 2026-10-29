@@ -178,10 +178,13 @@ def test_a_blocked_or_retryable_failure_stops_the_remaining_series(error):
 
 
 def test_the_production_macro_source_has_a_short_timeout():
-    sources = daily.default_sources()
+    sources = daily.production_sources()  # conftest keeps the real one aside (default_sources is offline)
     try:
         http = sources.macro._http
         assert (http.timeout, http.max_retries) == (TIMEOUT_SECONDS, MAX_RETRIES) == (10.0, 1)
+        # P10: the batches, 4 workers, and the macro paced on one schedule with the prices
+        assert sources.yahoo is not None and sources.nbp is not None and sources.workers == 4
+        assert http._next_slot is sources.yahoo._http._next_slot
     finally:
         sources.close()
 

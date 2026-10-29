@@ -301,6 +301,7 @@ def start_run(
             "instrument_ids": explicit,
             "covered_instrument_ids": sorted(covered),
             "scheduled": scope.scheduled,
+            "full_refresh": scope.full_refresh,
         },
         counts={},
         created_by=created_by,
@@ -514,16 +515,85 @@ def _duplicate(
     return None
 
 
+def _near_duplicate(
+    session: Session,
+    profile_id: int,
+    data: NoteInput,
+    instrument_id: int | None,
+    candidate_key: str | None,
+    now: dt.datetime,
+) -> InvResearchNote | None:
+    """A non-dismissed note of the same scope (instrument; else candidate; else segment / macro key)
+    observed in the last :data:`similarity.WINDOW_DAYS` days that states the same fact in other words
+    (:func:`similarity.is_near_duplicate` on the title, or the brief headline + summary start). Only
+    that scope's notes are read; old theme notes are not compared."""
+    from . import similarity
+
+    query = select(InvResearchNote).where(
+        InvResearchNote.profile_id == profile_id,
+        InvResearchNote.dismissed_at.is_(None),
+        InvResearchNote.observed_at >= now - dt.timedelta(days=similarity.WINDOW_DAYS),
+    )
+    if instrument_id is not None:
+        query = query.where(InvResearchNote.instrument_id == instrument_id)
+    elif candidate_key is not None:
+        query = query.where(InvResearchNote.candidate_key == candidate_key)
+    elif data.segment is not None:
+        query = query.where(
+            InvResearchNote.segment == data.segment, InvResearchNote.instrument_id.is_(None)
+        )
+    else:
+        return None
+    rows = session.exec(
+        query.order_by(InvResearchNote.observed_at.desc(), InvResearchNote.id.desc())
+    ).all()
+    if not rows:
+        return None
+
+    def fingerprint(title, summary, details, polarity, relation) -> similarity.Fingerprint:
+        brief = (details or {}).get("brief") or {}
+        return similarity.Fingerprint.of(
+            title,
+            summary,
+            brief.get("headline"),
+            why=brief.get("why"),
+            polarity=polarity,
+            relation=relation,
+        )
+
+    new = fingerprint(data.title, data.summary, data.details, data.polarity, data.thesis_relation)
+    return similarity.first_near_duplicate(
+        new,
+        (
+            (r, fingerprint(r.title, r.summary, r.details, r.polarity, r.thesis_relation))
+            for r in rows
+        ),
+    )
+
+
 def _week_start(day: dt.date) -> dt.datetime:
     """Monday 00:00 UTC of the ISO week of ``day`` (note timestamps are UTC)."""
     return dt.datetime.combine(day - dt.timedelta(days=day.weekday()), dt.time(), tzinfo=dt.UTC)
 
 
+def has_brief(details: dict | None) -> bool:
+    """The note carries a ``details.brief`` (P9)."""
+    return isinstance((details or {}).get("brief"), dict)
+
+
 def _segment_week_note(
-    session: Session, profile_id: int, segment: str, observed: dt.datetime, now: dt.datetime
+    session: Session,
+    profile_id: int,
+    segment: str,
+    observed: dt.datetime,
+    now: dt.datetime,
+    *,
+    brief: bool = False,
 ) -> InvResearchNote | None:
     """A note of ``segment`` observed in the ISO week of ``observed`` or stored in the ISO week of
-    ``now`` (dismissed ones included): one segment note per segment and week, back-dating included."""
+    ``now`` (dismissed ones included): one segment note per segment and week, back-dating included.
+    Brief notes and other notes are counted apart (P9 review fix): ``brief`` looks only at brief
+    notes, else only at notes without a brief."""
     observed_week = iso_week(convert.aware(observed).date())
     stored_week = iso_week(convert.aware(now).date())
     observed_from = _week_start(convert.aware(observed).date())
@@ -543,6 +613,8 @@ def _segment_week_note(
         )
         .order_by(InvResearchNote.id)
     ).all():
+        if has_brief(row.details) != brief:
+            continue
         if (
             iso_week(convert.aware(row.observed_at).date()) == observed_week
             or iso_week(convert.aware(row.created_at).date()) == stored_week
@@ -555,6 +627,13 @@ def is_weekly(row: InvResearchRun) -> bool:
     """The weekly run (scheduled or a manual "run now"): its scope covers the held positions. Runs
     with only ``instruments`` / ``segments`` (on demand) are exempt from the novelty limits."""
     return bool((row.scope or {}).get("held"))
+
+
+def is_full_refresh(row: InvResearchRun) -> bool:
+    """A full fresh research the owner asked for (P9, scope ``full_refresh``): exempt from the weekly
+    novelty limits, never from the duplicate, near-duplicate and one-note-per-segment-and-week
+    checks."""
+    return bool((row.scope or {}).get("full_refresh"))
 
 
 def _novelty_rows(session: Session, profile_id: int, now: dt.datetime) -> list[InvResearchNote]:
@@ -597,6 +676,8 @@ def _check_novelty(
         return
     rows = _novelty_rows(session, profile_id, now)
     if data.segment is not None:
+        if data.thesis_relation in NOVELTY_EXEMPT_RELATIONS:
+            return  # a topic note invalidating its topic thesis always passes (P9 review)
         if sum(1 for r in rows if r.segment is not None) >= WEEKLY_SEGMENT_NOTES_MAX:
             raise ResearchConflict(
                 f"this week's research already has {WEEKLY_SEGMENT_NOTES_MAX} segment notes; "
@@ -731,10 +812,24 @@ def add_note(
             raise ResearchError(
                 "a note is about an instrument (instrument) or a market segment (segment)"
             )
-    if data.thesis_relation != "none":
+    if data.thesis_relation != "none" and data.segment is not None:
+        from . import topic_theses
+
+        topic_thesis = topic_theses.get(session, pid, data.segment)
+        if topic_thesis is None:
+            raise ResearchError(
+                "that topic has no thesis: use thesis_relation none (see research_context "
+                "segments[].thesis)"
+            )
+        if topic_thesis.draft:
+            raise ResearchError(
+                "the topic thesis is still a draft the owner has not confirmed: use "
+                "thesis_relation none"
+            )
+    elif data.thesis_relation != "none":
         if instrument_id is None:
             raise ResearchError(
-                "thesis_relation needs an instrument with a thesis (use none for segment notes)"
+                "thesis_relation needs an instrument with a thesis, or a topic with a thesis"
             )
         if not journal.theses(session, pid, instrument_id):
             raise ResearchError(
@@ -747,14 +842,24 @@ def add_note(
             f"duplicate of note {duplicate.id}{state} (same scope, title or source)"
         )
     observed = data.observed_at or now
-    if data.segment is not None:
-        same_week = _segment_week_note(session, pid, data.segment, observed, now)
+    brief = has_brief(data.details)
+    # a full refresh lifts the per-week rule for brief notes only (P9 review fix)
+    if data.segment is not None and not (
+        brief and run_row is not None and is_full_refresh(run_row)
+    ):
+        same_week = _segment_week_note(session, pid, data.segment, observed, now, brief=brief)
         if same_week is not None:
+            what = "brief note" if brief else "note"
             raise ResearchConflict(
-                f"segment {data.segment} already has a note this week (note {same_week.id}); "
+                f"segment {data.segment} already has a {what} this week (note {same_week.id}); "
                 "update nothing, write next week only if something changed"
             )
-    if created_by == AGENT and (run_row is None or is_weekly(run_row)):
+    near = _near_duplicate(session, pid, data, instrument_id, candidate_key, now)
+    if near is not None:
+        raise ResearchConflict(f"near duplicate of note {near.id}: {near.title}")
+    if created_by == AGENT and (
+        run_row is None or (is_weekly(run_row) and not is_full_refresh(run_row))
+    ):
         _check_novelty(session, pid, data, instrument_id, now)
     if instrument_id is not None and instrument_id not in held | watched:
         warnings.append("the instrument is neither held nor watched (it carries an alert)")

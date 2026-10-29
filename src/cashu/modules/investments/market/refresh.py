@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Protocol
 
 from ..domain import (
@@ -69,10 +71,16 @@ class MarketDataRefresher:
         *,
         backfill_days: int = 400,
         refetch_days: int = 1,
+        workers: int = 1,
         logger: logging.Logger | None = None,
     ) -> None:
+        """``workers``: instruments and currencies fetched at once (bounded concurrency; the sources'
+        ``MarketHttp`` still paces each host). Reports keep the input order either way."""
         if refetch_days < 0:
             raise ValueError("refetch_days must not be negative")
+        if workers < 1:
+            raise ValueError("workers must be positive")
+        self.workers = workers
         self._prices = prices
         self._fx = fx
         self.backfill_days = backfill_days
@@ -101,15 +109,21 @@ class MarketDataRefresher:
         history_from = fx_history_from or {}
         splits = split_dates or {}
         unique = list({instrument.id: instrument for instrument in instruments}.values())
-        instrument_results = tuple(
-            self._refresh_instrument(stored, instrument, as_of, splits.get(instrument.id))
+        jobs = [
+            partial(self._refresh_instrument, stored, instrument, as_of, splits.get(instrument.id))
             for instrument in unique
-        )
-        fx_results = tuple(
-            self._refresh_currency(stored, currency, as_of, history_from.get(currency))
+        ] + [
+            partial(self._refresh_currency, stored, currency, as_of, history_from.get(currency))
             for currency in dict.fromkeys(currencies)
             if currency != Currency.PLN
-        )
+        ]
+        if self.workers > 1 and len(jobs) > 1:
+            with ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="market") as pool:
+                results = list(pool.map(lambda job: job(), jobs))
+        else:
+            results = [job() for job in jobs]
+        instrument_results = tuple(results[: len(unique)])
+        fx_results = tuple(results[len(unique) :])
         report = FetchReport(as_of=as_of, instruments=instrument_results, fx=fx_results)
         self._log.info("market refresh %s: %s", as_of, report.to_stats())
         return report

@@ -5,6 +5,7 @@
 import { type ReactNode, useId, useState } from "react";
 import { areaFade, areaPath, bandPath, barLayout, donutArcs, extent, fadeOpacity, linePath, linear, nearestIndex, type Pt, sparkline, stackLabels, stackLayers, ticks } from "./chart";
 import { useWidth } from "./hooks";
+import { hideAmount } from "./incognito";
 
 /** 30-day style sparkline (72 x 22). `tone` overrides the first-vs-last colour ("" = muted). */
 export function Spark({ values, tone, label }: { values: (number | null | undefined)[]; tone?: "pos" | "neg" | ""; label?: string }) {
@@ -186,7 +187,7 @@ export function LineChart({
 /** The accessible name of a bar chart with its values ("Wpłaty: sie 2 000 zł, wrz 500 zł, paź brak"), F7 FE14:
  * a screen reader gets the numbers, not only the title. */
 function barsText(label: string, values: number[], labels?: (string | null)[], valueLabels?: (string | null)[]): string {
-  const parts = values.map((v, i) => `${labels?.[i] ?? i + 1} ${valueLabels?.[i] ?? (v ? v.toLocaleString("pl-PL", { maximumFractionDigits: 0 }) : "brak")}`);
+  const parts = values.map((v, i) => `${labels?.[i] ?? i + 1} ${valueLabels?.[i] ?? (v ? hideAmount(v.toLocaleString("pl-PL", { maximumFractionDigits: 0 })) : "brak")}`);
   return parts.length ? `${label}: ${parts.join(", ")}` : label;
 }
 

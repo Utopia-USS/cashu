@@ -2,6 +2,7 @@
 // open module's action, and the page of the current view. Navigation state lives in the URL hash
 // (#/{slug}/{view}) and the last view per profile is remembered.
 import { Fragment, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useLive } from "./useLive";
 import { useAsync } from "../hooks";
 import { ck, clearCache, swr } from "../swr";
 import { SkeletonChart, SkeletonKpis, useToast } from "../ui";
@@ -11,6 +12,7 @@ import {
 import { Brand } from "./Brand";
 import { hideCard, isHidden, onHiddenChange } from "./hidden";
 import { createReloadHold } from "./hold";
+import { IncognitoToggle, useIncognito } from "./IncognitoToggle";
 import { partialLine } from "./setupSteps";
 import { Overview } from "./Overview";
 import { ProfileMenu } from "./ProfileMenu";
@@ -53,6 +55,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
 }) {
   const toast = useToast();
   const { pref, setPref, version: themeVersion } = useTheme();
+  const incognito = useIncognito();
 
   const pickSlug = (want?: string | null) =>
     (want && profiles.some((p) => p.slug === want) ? want : null)
@@ -111,6 +114,8 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
   // The data cache (src/swr.ts) holds one profile at a time: a different slug clears it before any keyed hook
   // of this render reads it (idempotent, so safe to run on every render).
   swr.setScope(profile.slug);
+  // P10 live data: changes pushed by any process (an agent over MCP, the worker, the app) land in place.
+  useLive(profile.slug);
 
   // Shared per-profile data, keyed by the slug: a keyed useAsync only shows data and errors of its own key
   // (never the previous profile's while the new ones load); a refresh keeps them visible while re-reading.
@@ -208,6 +213,7 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
               const Tag = moduleDef(m.id, modules).HeaderTag;
               return Tag ? <Tag key={`${profile.slug}:${m.id}:${nonce}`} slug={profile.slug} go={go} /> : null;
             })}
+            <IncognitoToggle />
           </div>
         </header>
 
@@ -241,9 +247,9 @@ export function Shell({ profiles, system, modules, reloadProfiles, initialSlug }
           {TabAction && <TabAction key={profile.slug} slug={profile.slug} profileName={profile.name} networth={networthS.data ?? null} refresh={refresh} />}
         </nav>
 
-        {/* Remount per profile, refresh and theme change (charts read tokens at render);
-            Settings has no charts and keeps its scroll position when the theme changes there. */}
-        <div key={resolved.kind === "settings" ? `${profile.slug}:settings` : `${profile.slug}:${nonce}:${themeVersion}`}>{page}</div>
+        {/* Remount per profile, refresh, theme change (charts read tokens at render) and incognito (amounts are
+            formatted at render); Settings has no charts and keeps its scroll position when the theme changes there. */}
+        <div key={resolved.kind === "settings" ? `${profile.slug}:settings` : `${profile.slug}:${nonce}:${themeVersion}:${incognito ? "i" : ""}`}>{page}</div>
       </div>
 
       {wizard && (

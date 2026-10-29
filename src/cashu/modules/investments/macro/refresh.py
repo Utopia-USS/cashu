@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -110,12 +111,42 @@ def window_start(as_of: dt.date) -> dt.date:
 
 
 def refresh_macro(
-    source: MacroChartSource, as_of: dt.date, *, series: Sequence[MacroSeries] = SERIES
+    source: MacroChartSource,
+    as_of: dt.date,
+    *,
+    series: Sequence[MacroSeries] = SERIES,
+    workers: int = 1,
 ) -> MacroReport:
-    """Fetches every series' window (see the module doc) and returns the closes to store."""
+    """Fetches every series' window (see the module doc) and returns the closes to store.
+    ``workers`` > 1 fetches that many series at once (P10; the source's ``MarketHttp`` still paces
+    the host); the circuit breaker then skips every series not started yet."""
     start = window_start(as_of)
     out: list[MacroFetch] = []
     skipped: list[MacroSeries] = []
+    if workers > 1 and len(series) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+
+        state = {"broken": False}
+        guard = threading.Lock()
+
+        def job(item: MacroSeries) -> MacroFetch | None:
+            with guard:
+                if state["broken"]:
+                    return None
+            fetched, broke = _one(source, item, start, as_of)
+            if broke:
+                with guard:
+                    state["broken"] = True
+            return fetched
+
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="macro") as pool:
+            results = list(pool.map(job, series))
+        for item, fetched in zip(series, results, strict=True):
+            if fetched is None:
+                skipped.append(item)
+            else:
+                out.append(fetched)
+        series = ()
     broken = False
     for item in series:
         if broken:

@@ -1395,7 +1395,7 @@ class Seeder:
         from cashu.core.db import get_session
         from cashu.core.models import utcnow
         from cashu.modules.investments.models import InvResearchRun
-        from cashu.modules.investments.research import service
+        from cashu.modules.investments.research import service, topic_theses
         from cashu.modules.investments.research.validation import validate_note, validate_scope
 
         with get_session() as s:
@@ -1418,6 +1418,7 @@ class Seeder:
             ]
 
         held = plan.theses[0][0]
+        risk_brief = self._risk_brief()
         notes = [
             (
                 {
@@ -1469,6 +1470,14 @@ class Seeder:
                     "summary": "Przykładowe dane: szerokie indeksy akcji zakończyły tydzień wyżej; "
                     "GLBA rośnie razem z rynkiem.",
                     "sources": src(5),
+                    "details": {
+                        "brief": {
+                            "headline": "Duże spółki na świecie zarabiają więcej",
+                            "why": "Przykładowe dane: zyski największych firm są wyższe niż rok "
+                            "temu, a szerokie indeksy akcji trzymają się blisko szczytów.",
+                        }
+                    },
+                    "expires_in_days": 60,
                 },
                 None,
             ),
@@ -1483,6 +1492,42 @@ class Seeder:
                     "zakończył tydzień na poziomie z przykładowego źródła. Dotyczy: rynki wschodzące, "
                     "surowce.",
                     "sources": src(6),
+                },
+                None,
+            ),
+            (
+                {
+                    "kind": "trend",
+                    "polarity": "positive",
+                    "strength": 2,
+                    "segment": "semis_ai",
+                    "title": "Sprzedaż chipów wyraźnie wyżej niż przed rokiem",
+                    "summary": "Przykładowe dane branżowe: sprzedaż półprzewodników rośnie rok do "
+                    "roku, najmocniej w układach do centrów danych.",
+                    "sources": src(7),
+                    "details": {
+                        "brief": {
+                            "headline": "Rośnie popyt na chipy",
+                            "why": "Firmy budują centra danych dla sztucznej inteligencji i "
+                            "kupują coraz więcej układów.",
+                        }
+                    },
+                    "expires_in_days": 60,
+                },
+                None,
+            ),
+            (
+                {
+                    "kind": "macro",
+                    "polarity": "neutral",
+                    "strength": 1,
+                    "segment": "macro_risk",
+                    "title": "Rynek akcji: przykładowy przegląd tygodnia",
+                    "summary": "Przykładowe dane: zyski spółek i nakłady na centra danych wyższe niż "
+                    "rok temu; kilka największych spółek odpowiada za dużą część indeksów.",
+                    "sources": src(8),
+                    "details": {"brief": risk_brief},
+                    "expires_in_days": 60,
                 },
                 None,
             ),
@@ -1522,7 +1567,70 @@ class Seeder:
                 instrument_id = service.resolve_reference(s, profile.id, ref) if ref else None
                 service.add_note(s, prof, data, instrument_id=instrument_id, run_id=run.id, now=now)
             service.finish_run(s, prof, run.id, status="done", now=now + dt.timedelta(minutes=12))
-        self.note(profile.slug, "research", f"run done ({len(notes)} notes)")
+            # P9: a topic thesis (Anna: her own; Piotr: an agent draft waiting for confirmation)
+            text = (
+                "Centra danych dla AI potrzebują coraz więcej chipów, a kilku producentów ma "
+                "przewagę technologiczną na lata."
+            )
+            invalidation = "Wydatki na centra danych spadają dwa kwartały z rzędu."
+            if plan is ANNA:
+                topic_theses.save_owner(s, profile.id, "semis_ai", text, invalidation)
+            else:
+                topic_theses.upsert_draft(s, profile.id, "semis_ai", text, invalidation)
+            # P11: the agent's market view under it
+            topic_theses.set_market_view(
+                s,
+                profile.id,
+                "semis_ai",
+                "Popyt na chipy do AI jest bardzo silny, a najwięksi klienci wciąż podnoszą "
+                "budżety na centra danych.",
+                "Example Industry Association szacuje wzrost sprzedaży chipów do AI o ok. 15 % "
+                "w 2027; ryzykiem są nadwyżki mocy i słabszy zwrot z inwestycji.",
+                sources=[
+                    {
+                        "title": "Semiconductor market estimate (demo)",
+                        "url": "https://example.org/demo/semis-estimate",
+                        "publisher": "Example Industry Association",
+                        "published_at": (now - dt.timedelta(days=20)).date().isoformat(),
+                    }
+                ],
+            )
+        self.note(profile.slug, "research", f"run done ({len(notes)} notes, topic thesis)")
+
+    def _risk_brief(self) -> dict:
+        """The demo macro brief of the equity card (P9), worded for the state the synthetic macro
+        series give on the seeding day."""
+        from cashu.core.db import get_session
+        from cashu.modules.investments.macro import service as macro_service
+
+        with get_session() as s:
+            state = macro_service.regimes(s, self.today)[0].state
+        risk = ["Wyceny są wysoko, więc rynek jest wrażliwy na złe wiadomości"]
+        headline, why, supports = {
+            "bull": (
+                "Trwa hossa na giełdach",
+                "Spółki zarabiają coraz więcej, a firmy dużo wydają na sztuczną inteligencję.",
+                ["Zyski spółek rosną", "Banki centralne obniżają stopy"],
+            ),
+            "correction": (
+                "Akcje są w korekcie, ale zyski spółek rosną",
+                "Ceny akcji cofnęły się od szczytu, choć wyniki firm są nadal dobre.",
+                ["Zyski spółek rosną"],
+            ),
+            "bear": (
+                "Na giełdach trwa bessa",
+                "Akcje mocno potaniały od szczytu, inwestorzy unikają ryzyka.",
+                ["Niższe wyceny niż na szczycie"],
+            ),
+        }.get(
+            state,
+            (
+                "Giełdy na świecie bez wyraźnego kierunku",
+                "Dobre wyniki spółek równoważą obawy o wysokie wyceny.",
+                ["Zyski spółek rosną"],
+            ),
+        )
+        return {"headline": headline, "why": why, "supports": supports, "risks": risk}
 
     def journal_and_plans(self, plan: Plan, profile, account_id: int) -> None:
         from sqlmodel import select

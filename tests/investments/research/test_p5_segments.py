@@ -49,7 +49,7 @@ def inst(symbol: str | None, asset_class: AssetClass = AssetClass.ETF, aliases=(
 
 
 def test_catalog_integrity():
-    assert len(SEGMENTS) == 18 and len(set(SEGMENT_KEYS)) == 18
+    assert len(SEGMENTS) == 19 and len(set(SEGMENT_KEYS)) == 19
     assert SEGMENT_KEYS[0] == "equity_global" and SEGMENT_KEYS[-1] == "quantum"
     assert all(re.fullmatch(r"[a-z_]+", k) for k in SEGMENT_KEYS)
     assert {s.group for s in SEGMENTS} == {"asset", "sector"}
@@ -149,12 +149,16 @@ def problems(**changes) -> str:
 def test_segment_note_validation():
     ok = validate_note(raw(), now=NOW)
     assert ok.segment == "gold" and ok.theme is None
+    assert ok.details is None
     for kind in ("trend", "news"):
         assert validate_note(raw(kind=kind), now=NOW).kind == kind
     assert "segment: must be one of" in problems(segment="Gold")
     assert "a segment note is one of: macro, trend, news" in problems(kind="earnings")
     assert "kind: a segment note" in problems(kind="community", details={"scale": "small"})
-    assert "a segment note has no thesis" in problems(thesis_relation="supports")
+    # P9: a topic note may bear on its topic thesis (the service checks the thesis exists)
+    assert validate_note(raw(thesis_relation="supports"), now=NOW).thesis_field == "thesis"
+    assert "a topic note bears on its topic thesis" in problems(thesis_relation="fulfills")
+    assert "a macro note has no thesis" in problems(segment="macro_risk", thesis_relation="supports")
     assert SEGMENT_ONLY in problems(candidate={"symbol_or_isin": "GDXJ.US"})
     assert "segment note has no theme" in problems(theme="Zloto")
     long = "x" * (SEGMENT_SUMMARY_MAX + 1)

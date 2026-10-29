@@ -290,7 +290,7 @@ export function investmentsV2Mock(slug: string, kind: Kind, path: string, q: URL
   if (rv && method === "DELETE") { st.deletedReviews.add(Number(rv[1])); return { deleted: Number(rv[1]) }; }
   if (path === "/reviews" && method === "GET") return (base() as { id: number }[]).filter((r) => !st.deletedReviews.has(r.id));
   if (ip == null) return base();
-  if (ip.startsWith("/research")) {
+  if (ip.startsWith("/research") || ip.startsWith("/topics/")) {
     return researchMock(slug, kind, ip, q, method, body, {
       add: (symbol, name, note) => { const w = watchItem(st.nextId++, st.nextId++, name, symbol, "PLN", 100, st.nextId, 0.001, note, "user", { live: 0, triggered: 0, nearest: null }); st.watch.push(w); return w.id; },
       remove: (id) => { st.watch = st.watch.filter((w) => w.id !== id); },

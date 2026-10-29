@@ -12,7 +12,7 @@ An entry says how to recognise and read that institution's data:
   map an Open Banking session to this institution.
 
 Adding a bank = one ``Institution`` entry here (or registered by a module) + its
-parser config in ``modules/budget/ingestion/csv_import/`` (see AGENTS.md).
+parser config in ``modules/budget/ingestion/csv_import/`` (see docs/agents/extending.md).
 """
 
 from __future__ import annotations

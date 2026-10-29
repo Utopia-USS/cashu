@@ -1042,6 +1042,35 @@ def run_now(profile: CurrentProfile, body: RunBody | None = None) -> dict:
     return out
 
 
+class PriceRefreshBody(BaseModel):
+    force: bool = False
+
+
+@router.post("/prices/refresh")
+def prices_refresh(profile: CurrentProfile, body: PriceRefreshBody | None = None) -> dict:
+    """Latest quotes of the profile's held and watched instruments and the NBP rates of their
+    currencies, batched (P10; no rules or signals). A refresh younger than 10 minutes answers its
+    result again (``cached``) without network; ``busy`` while the daily check holds its lock;
+    ``disabled`` with ``CASHU_PRICE_REFRESH=0``. Never an error status for a market failure."""
+    from .service import prices
+
+    return prices.refresh_prices(profile, force=bool(body and body.force)).to_dict()
+
+
+@router.get("/run/status")
+def run_status(profile: CurrentProfile) -> dict:
+    """``{running, started_at, last}``: a daily check in progress for the profile (any process, from
+    its ``run`` change events; the app runs it on its own, P10) and the newest finished run."""
+    from .service import autorun
+    from .store import signals
+
+    with get_session() as s:
+        state = autorun.running(s, profile.id)
+        newest = next((r for r in signals.runs(s, profile.id, 5) if r.status != "running"), None)
+        state["last"] = None if newest is None else views.run_dict(newest)
+    return state
+
+
 @router.get("/runs")
 def run_list(profile: CurrentProfile, limit: int = 20) -> list[dict]:
     from .store import signals

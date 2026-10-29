@@ -3,8 +3,9 @@
 // reading of `GET .../research/macro` and the digest's `macro_changes`. Pure; `npm test` imports it (imports
 // carry .ts). segments.ts never imports this file (no cycle).
 import { dm } from "../../labels.ts";
+import { MONTH_GEN } from "../../../../format.ts";
 import { normNoteRef, segmentLabel } from "./segments.ts";
-import type { MacroChange, MacroHistoryItem, MacroKey, MacroMetric, MacroRegime, MacroRegimes } from "./types.ts";
+import type { MacroBrief, MacroChange, MacroHistoryItem, MacroKey, MacroMetric, MacroRegime, MacroRegimes } from "./types.ts";
 
 export const MACRO_PREFIX = "macro_";
 export const MACRO: { key: MacroKey; label: string; noteKey: string; subject: string }[] = [
@@ -112,13 +113,6 @@ export function macroAsOf(d: Pick<MacroRegimes, "as_of" | "regimes"> | null | un
   return dates.length ? dates[dates.length - 1] : null;
 }
 
-/** Note line of a card (P7 rule, as the topic rows): the note title this week, the small date of an older note, else null. */
-export function macroSub(r: Pick<MacroRegime, "note" | "note_this_week" | "last_note_at">): { text: string; title: string } | null {
-  if (r.note && r.note_this_week) return { text: r.note.title, title: r.note.title };
-  const at = r.note?.observed_at || r.last_note_at;
-  return at ? { text: dm(at), title: `ostatnia notatka ${dm(at)}` } : null;
-}
-
 // ---- P7 home rows: the one on-screen sentence and the explain popover ----------------------------------------
 
 /** The one on-screen sentence: BE `summary`; older server: `meaning`; neither: the metrics joined (`DXY 98,4 · 6 mies. -4,8 %`). */
@@ -133,6 +127,39 @@ export const explainText = (r: Pick<MacroRegime, "explain" | "meaning" | "summar
 /** Popover head: `Dolar · słabnie · od 2.10` (+ ` · dane z 26.09` when stale). */
 export function explainHead(r: Pick<MacroRegime, "label" | "state_label" | "since" | "missing" | "stale" | "as_of"> & Partial<Pick<MacroRegime, "since_open" | "since_min">>): string {
   return [r.label, stateParts(r.state_label)[0], sinceText(r), staleText(r)].filter(Boolean).join(" · ");
+}
+
+// ---- P9 home rows: the brief "for dummies" -----------------------------------------------------------------
+
+/** `sierpnia 2026` (genitive month + year); null for a bad date. */
+export function monthYear(iso: string | null | undefined): string | null {
+  const m = iso ? /^(\d{4})-(\d{2})/.exec(iso) : null;
+  const i = m ? Number(m[2]) - 1 : -1;
+  return m && i >= 0 && i < 12 ? `${MONTH_GEN[i]} ${m[1]}` : null;
+}
+/** The row's since text: `od sierpnia 2026`; an open-ended state `od ponad roku` (from `since_min` to the last bar), or
+ * `od <month year of since_min>` when the span is under a month; null without a date or when missing. */
+export function sinceMonth(r: SinceLike): string | null {
+  if (r.missing) return null;
+  if (r.since_open) {
+    if (!r.since_min) return null;
+    const span = r.as_of ? openSpan(r.since_min, r.as_of) : null;
+    const my = monthYear(r.since_min);
+    return span ? `od ${span}` : my ? `od ${my}` : null;
+  }
+  const my = monthYear(r.since);
+  return my ? `od ${my}` : null;
+}
+/** The bold line: the brief's headline, else the BE's plain sentence, else (older server) the P7 summary. */
+export function macroHeadline(r: Pick<MacroRegime, "summary" | "meaning" | "metrics" | "missing"> & Partial<Pick<MacroRegime, "brief" | "plain">>): string {
+  if (r.missing) return "Brak danych.";
+  return r.brief?.headline ?? r.plain ?? summaryText(r);
+}
+/** The one basic number next to the state: the first change metric (unit `pct`), its label as the tooltip. */
+export function macroNumber(r: Pick<MacroRegime, "metrics" | "missing">): { text: string; title: string } | null {
+  if (r.missing) return null;
+  const m = r.metrics.find((x) => x.unit === "pct" && x.text && x.text !== "-");
+  return m ? { text: m.text, title: m.stale ? `${m.label} · ${metricStale(m)}` : m.label } : null;
 }
 
 /** Catalog order regardless of payload order; unknown keys at the end in payload order. */
@@ -150,6 +177,20 @@ const num = (v: unknown): number | null => (typeof v === "number" && Number.isFi
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+
+/** P9 `brief`: null without a headline; `supports` / `risks` at most 3 strings each. */
+export function normMacroBrief(v: unknown): MacroBrief | null {
+  const o = obj(v);
+  const d = obj(obj(o.details).brief);
+  const headline = str(o.headline) ?? str(d.headline);
+  const id = num(o.note_id) ?? num(o.id);
+  if (!headline || id == null) return null;
+  const list = (x: unknown) => arr(x).filter((s): s is string => typeof s === "string" && !!s.trim()).slice(0, 3);
+  return {
+    note_id: id, headline, why: str(o.why) ?? str(d.why), supports: list(o.supports ?? d.supports), risks: list(o.risks ?? d.risks),
+    observed_at: str(o.observed_at) ?? "", unread: o.unread === true,
+  };
+}
 
 export function normRegime(v: unknown): MacroRegime | null {
   const o = obj(v);
@@ -176,6 +217,7 @@ export function normRegime(v: unknown): MacroRegime | null {
     since_open: !missing && o.since_open === true, since_min: str(o.since_min),
     metrics, history,
     note: normNoteRef(o.note), last_note_at: str(o.last_note_at), note_this_week: o.note_this_week === true, unread: num(o.unread) ?? 0,
+    brief: missing ? null : normMacroBrief(o.brief), plain: str(o.plain),
   };
 }
 

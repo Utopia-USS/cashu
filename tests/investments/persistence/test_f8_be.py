@@ -17,6 +17,7 @@ from invp_support import (
     FakePrices,
     add_account,
     canonical_csv,
+    distinct_words,
     import_file,
     make_profile,
     sources,
@@ -246,8 +247,8 @@ def add_note(pid: int, n: int, *, instrument: str | None = "XMPL", created_by="a
         "kind": "news",
         "polarity": "negative",
         "strength": 2,
-        "title": f"Example fact {n}",
-        "summary": "Przykladowy fakt ze zrodla, opisany neutralnie.",
+        "title": f"Example fact {n} " + distinct_words(n),
+        "summary": f"Przykladowy fakt {distinct_words(n)} ze zrodla, opisany neutralnie.",
         "sources": [
             {
                 "url": f"https://example.com/f8/{n}",

@@ -179,6 +179,54 @@ class YahooPriceSource(PriceSource):
             splits=history.splits,
         )
 
+    SPARK_RANGE = "1mo"
+    """Window of a spark request: about 21 sessions, enough for a refresh after a few weeks away."""
+
+    def spark(self, symbols: Sequence[str], *, range_: str = SPARK_RANGE) -> dict[str, str]:
+        """Daily closes of many symbols in one request (``/v7/finance/spark``, no crumb): per symbol
+        Yahoo answered for, a chart response body (``{"chart": {"result": [...]}}``) that
+        :meth:`parse_history` reads like the per-symbol chart (meta with the quote currency and
+        ``gmtoffset``, timestamps, closes; no open / high / low / volume, no split events). An unknown
+        symbol is simply absent. HTTP 401/403 is a :class:`SourceBlockedException`, any other non-200
+        a :class:`SourceException`."""
+        if not symbols:
+            return {}
+        what = f"spark ({len(symbols)} symbols)"
+        response = self._http.get(
+            f"https://{self.host}/v7/finance/spark",
+            source_id=self.id,
+            params={"symbols": ",".join(symbols), "range": range_, "interval": "1d"},
+            headers={"User-Agent": self.user_agent, "Accept": "application/json"},
+        )
+        status = response.status_code
+        if status in (401, 403):
+            raise SourceBlockedException(
+                self.id, f"HTTP {status} for {what}: {body_snippet(response.text)}"
+            )
+        if status != 200:
+            raise SourceException(self.id, f"HTTP {status} for {what}: {body_snippet(response.text)}")
+        return self.parse_spark(response.text)
+
+    def parse_spark(self, body: str) -> dict[str, str]:
+        """Splits a spark response into one chart response body per symbol (see :meth:`spark`)."""
+        try:
+            data = json.loads(body)
+            results = data["spark"]["result"]
+        except (ValueError, KeyError, TypeError) as error:
+            raise SourceException(
+                self.id, f"unexpected spark response: {body_snippet(body)}", cause=error
+            ) from error
+        out: dict[str, str] = {}
+        for entry in results if isinstance(results, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            symbol, answers = entry.get("symbol"), entry.get("response")
+            if not isinstance(symbol, str) or not isinstance(answers, list) or not answers:
+                continue
+            if isinstance(answers[0], dict):
+                out[symbol] = json.dumps({"chart": {"result": [answers[0]], "error": None}})
+        return out
+
     def _get_chart(self, symbol: str, start: CalendarDate, end: CalendarDate) -> str:
         # One extra day on each side covers every UTC offset; parsing filters by exchange date.
         response = self._http.get(

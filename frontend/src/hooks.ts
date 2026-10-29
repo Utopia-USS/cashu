@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { errorText } from "./core/messages";
 import { type InFlight, singleFlight } from "./inflight";
-import { swr, swrDone, swrFail, swrInit, swrStart, type SwrState, swrView } from "./swr";
+import { onPatched, onRevalidate, swr, swrDone, swrFail, swrInit, swrStart, type SwrState, swrView, underPrefix } from "./swr";
 
 export interface AsyncState<T> {
   data: T | null;
@@ -29,11 +29,21 @@ function runOnce<T>(fn: () => Promise<T>, key: string | undefined, keep: boolean
   const ticket = key === undefined ? null : swr.begin();
   fn().then(
     (d) => {
-      if (ticket) swr.put(key!, d, ticket);
-      if (alive()) set(() => swrDone(key, d));
+      // a pushed patch newer than this fetch (P10) wins over its answer
+      const shown = ticket && !swr.put(key!, d, ticket) ? swr.peek<T>(key!)?.data ?? d : d;
+      if (alive()) set(() => swrDone(key, shown));
     },
     (e: unknown) => { if (alive()) set((s) => swrFail(swr, s, key, errorText(e), keep)); },
   );
+}
+
+/** A keyed hook re-reads when `revalidate(prefix)` covers its key, and shows a pushed patch of its key at once
+ * (P10 live data). */
+function useRevalidate<T>(key: string | undefined, reload: () => void, set: (f: (s: SwrState<T>) => SwrState<T>) => void): void {
+  useEffect(() => (key === undefined ? undefined : onRevalidate((prefix) => { if (underPrefix(key, prefix)) reload(); })), [key, reload]);
+  useEffect(() => (key === undefined ? undefined : onPatched((k, data) => {
+    if (k === key) set((s) => (s.key === key ? { ...s, data: data as T, error: null } : s));
+  })), [key, set]);
 }
 
 /** Run an async fetcher on mount and whenever `deps` (or the key) change; expose reload(). With `opts.key`
@@ -47,6 +57,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = [], opts?: A
   fnRef.current = fn;
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
+  useRevalidate<T>(key, reload, setSt);
 
   useEffect(() => {
     let alive = true;
@@ -92,6 +103,7 @@ export function usePoll<T>(fn: () => Promise<T>, ms: number, deps: unknown[] = [
   const fnRef = useRef(fn);
   fnRef.current = fn;
   const reload = useCallback(() => setNonce((n) => n + 1), []);
+  useRevalidate<T>(key, reload, setSt);
 
   useEffect(() => {
     let alive = true;

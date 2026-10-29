@@ -2,8 +2,8 @@
 // `INV/research/segments.py`), the tolerant reading of `GET .../research/segments`, the contribution tone and
 // text, the diverging bar geometry, the row selection of the home / review column and the page widget, the sub
 // line and the tooltips. Pure; `npm test` imports it (imports carry .ts).
-import { dm, pct, plural, pp } from "../../labels.ts";
-import type { SegmentAttribution, SegmentCurrency, SegmentInstrument, SegmentMember, SegmentNoteRef, SegmentRow, SegmentWindow } from "./types.ts";
+import { dateParts, dm, pp } from "../../labels.ts";
+import type { NoteSource, SegmentAttribution, SegmentInstrument, SegmentMember, SegmentNoteRef, SegmentRow, SegmentWindow, TopicBrief, TopicThesis } from "./types.ts";
 
 export type SegmentGroup = "asset" | "sector";
 
@@ -14,6 +14,7 @@ export const SEGMENTS: { key: string; label: string; group: SegmentGroup }[] = [
   { key: "power", label: "Energetyka: atom i OZE", group: "asset" }, { key: "metals", label: "Metale i ziemie rzadkie", group: "asset" },
   { key: "crypto", label: "Krypto", group: "asset" }, { key: "real_estate", label: "Nieruchomości", group: "asset" },
   { key: "semis_ai", label: "AI: chipy i centra danych", group: "sector" }, { key: "software", label: "AI i oprogramowanie", group: "sector" },
+  { key: "robotics", label: "Robotyka", group: "sector" },
   { key: "healthcare", label: "Ochrona zdrowia", group: "sector" }, { key: "financials", label: "Płatności i finanse", group: "sector" },
   { key: "consumer", label: "Konsumpcja", group: "sector" }, { key: "games_media", label: "Gry", group: "sector" },
   { key: "industrials", label: "Przemysł i obronność", group: "sector" }, { key: "quantum", label: "Komputery kwantowe", group: "sector" },
@@ -88,6 +89,9 @@ export interface DisplayRow {
   members?: number;
   /** P7 BE extra: the priced members (held now / watched); absent on older servers. */
   member_instruments?: SegmentMember[];
+  /** P9: the topic's latest brief notes (newest first, max 3) and its thesis. */
+  briefs?: TopicBrief[];
+  thesis?: TopicThesis | null;
 }
 
 export const segmentDisplay = (s: SegmentRow): DisplayRow => ({
@@ -95,6 +99,7 @@ export const segmentDisplay = (s: SegmentRow): DisplayRow => ({
   instruments: s.instruments, note: s.note, note_this_week: s.note_this_week, last_note_at: s.last_note_at ?? null, unread: s.unread,
   trend_1w: s.trend_1w ?? null, trend_4w: s.trend_4w ?? null, members: s.members ?? 0,
   ...(s.member_instruments ? { member_instruments: s.member_instruments } : {}),
+  briefs: s.briefs ?? [], thesis: s.thesis ?? null,
 });
 
 /** Topics with held exposure at the window start (the `Tematy · N` count). */
@@ -108,10 +113,6 @@ export type SymOf = (id: number) => string | null;
 /** Symbol of an attributed instrument: the profile's symbol, else the BE label (a position sold inside the window). */
 export const instSymbol = (i: Pick<SegmentInstrument, "instrument_id" | "label">, symOf: SymOf): string => symOf(i.instrument_id) ?? i.label ?? `#${i.instrument_id}`;
 export const symbolsOf = (instruments: SegmentInstrument[], symOf: SymOf): string[] => instruments.map((i) => instSymbol(i, symOf));
-
-/** Top currencies by |contribution|: `USD -0,7 % · EUR +0,2 %`. */
-export const currencySub = (currencies: SegmentCurrency[] | undefined, n = 2): string =>
-  [...(currencies ?? [])].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution)).slice(0, n).map((c) => `${c.currency} ${pct(c.return, true)}`).join(" · ");
 
 /** Symbols of a row's instruments with a stale price; a row is marked when any is stale. */
 export const staleSymbols = (r: Pick<DisplayRow, "instruments">, stale: number[], symOf: SymOf): string[] =>
@@ -128,22 +129,6 @@ export const residualLine = (d: Partial<Pick<SegmentAttribution, "residual">>): 
 export const windowTitle = (d: Pick<SegmentAttribution, "start" | "end" | "portfolio_return"> & Partial<Pick<SegmentAttribution, "residual">>) =>
   [`${dm(d.start)} - ${dm(d.end)} · TWR portfela${d.portfolio_return == null ? " · brak pełnej historii" : ""}`, residualLine(d)].filter(Boolean).join("\n");
 
-/** Page fact tooltip: `wyjaśnione -1,2 % · reszta 0,0 % · 1.10 - 8.10 · 1 nowa pozycja poza oknem · nieaktualne: GDXJ`;
- * from |residual| >= 0,1 pp the residual moves to its own line (`residualLine`) instead of the inline `reszta`. */
-export function factTitle(d: Pick<SegmentAttribution, "explained" | "residual" | "start" | "end" | "new_positions">, staleSyms: string[] = []): string {
-  const line = residualLine(d);
-  const parts = [`wyjaśnione ${pct(d.explained, true)}`];
-  if (!line) parts.push(`reszta ${d.residual != null ? pct(d.residual, true) : "-"}`);
-  parts.push(`${dm(d.start)} - ${dm(d.end)}`);
-  if (d.new_positions > 0) parts.push(`${nPositions(d.new_positions)} poza oknem`);
-  if (staleSyms.length) parts.push(`nieaktualne: ${staleSyms.join(", ")}`);
-  return [parts.join(" · "), line].filter(Boolean).join("\n");
-}
-function nPositions(n: number): string {
-  const n10 = n % 10, n100 = n % 100;
-  return `${n} ${n === 1 ? "nowa pozycja" : n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14) ? "nowe pozycje" : "nowych pozycji"}`;
-}
-
 // ---- topics (P7 design 1.3) --------------------------------------------------------------------------------
 
 export type TopicKind = "held" | "new" | "watched" | "none";
@@ -156,23 +141,44 @@ export const topicKind = (r: Pick<DisplayRow, "weight" | "members" | "member_ins
   r.weight > 0 ? "held" : heldNow(r) ? "new" : (r.members ?? 0) > 0 ? "watched" : "none";
 const KIND_RANK: Record<TopicKind, number> = { held: 0, new: 1, watched: 2, none: 3 };
 
-/** Home column: held topics in payload order (BE: |contribution| desc), then new and watched-only (BE: |trend_1w|
- * desc), max 10. No Waluty, no unassigned, no note-only rows. `rest` = dropped topics. */
-export function homeTopics(d: Pick<SegmentAttribution, "segments">, max = 10): { rows: DisplayRow[]; rest: number } {
-  const all = d.segments.map(segmentDisplay).filter((r) => topicKind(r) !== "none");
-  const shown = all.sort((a, b) => KIND_RANK[topicKind(a)] - KIND_RANK[topicKind(b)]);
-  const rows = shown.slice(0, max);
-  return { rows, rest: shown.length - rows.length };
+/** P9 review MED-6: a topic without held / watched members is still shown when research wrote about it (an active
+ * brief) or it has a thesis: a muted row after the watched-only ones (name, briefs; no tickers, no pp). */
+export const topicShown = (r: Pick<DisplayRow, "weight" | "members" | "member_instruments" | "briefs" | "thesis">): boolean =>
+  topicKind(r) !== "none" || !!r.briefs?.length || !!r.thesis;
+
+/** The latest owner-facing activity on a topic. A note's observed date is intentionally the date of the
+ * fact it describes, so a newly created thesis can be newer than `last_note_at`. */
+const topicActivityAt = (r: Pick<DisplayRow, "last_note_at" | "thesis">): string => {
+  const note = r.last_note_at ?? "";
+  const thesis = r.thesis?.updated_at ?? "";
+  return note.localeCompare(thesis) >= 0 ? note : thesis;
+};
+
+/** Home column: latest research / thesis activity first, then held topics, new and watched-only, then
+ * brief-only topics (`topicShown`). This makes a topic the owner just asked to research immediately visible
+ * instead of burying it below portfolio topics, even when the sourced fact has an older observation date.
+ * P9: no cap (the column is the last widget and expands). No Waluty, no unassigned. */
+export function homeTopics(d: Pick<SegmentAttribution, "segments">): DisplayRow[] {
+  return d.segments.map(segmentDisplay).filter(topicShown).sort((a, b) =>
+    topicActivityAt(b).localeCompare(topicActivityAt(a))
+    || KIND_RANK[topicKind(a)] - KIND_RANK[topicKind(b)]
+  );
 }
-/** Review column: rows with a new note first, then the rest; held, new, watched inside each group; max 6; no fixed rows. */
+/** Review column: rows with a new note first, then the rest; held, new, watched, brief-only inside each group; max 6;
+ * no fixed rows. */
 export function reviewTopics(segments: SegmentRow[], max = 6): DisplayRow[] {
-  const rows = segments.map(segmentDisplay).filter((r) => topicKind(r) !== "none");
+  const rows = segments.map(segmentDisplay).filter(topicShown);
   const rank = (r: DisplayRow) => (r.note_this_week ? 0 : 3) + KIND_RANK[topicKind(r)];
   return rows.sort((a, b) => rank(a) - rank(b)).slice(0, max);
 }
-/** Page widget: held, new, watched-only, then note-only rows (muted `-` rows); never Waluty or the unassigned bucket as rows. */
-export const pageTopics = (d: Pick<SegmentAttribution, "segments">): DisplayRow[] =>
-  d.segments.map(segmentDisplay).sort((a, b) => KIND_RANK[topicKind(a)] - KIND_RANK[topicKind(b)]);
+/** P9 review: the digest rows without `briefs` / `thesis` (older digest) take them from the live topic rows. */
+export function withBriefs(rows: DisplayRow[], live: Pick<SegmentRow, "segment" | "briefs" | "thesis">[]): DisplayRow[] {
+  return rows.map((r) => {
+    const l = live.find((x) => x.segment === r.key);
+    if (!l) return r;
+    return { ...r, briefs: r.briefs?.length ? r.briefs : l.briefs ?? [], thesis: r.thesis ?? l.thesis ?? null };
+  });
+}
 /** Name tooltip of a row: `tylko obserwowane` (watched-only) / `nowa pozycja w tym oknie` (new). */
 export const kindTitle = (kind: TopicKind): string | undefined =>
   kind === "watched" ? "tylko obserwowane" : kind === "new" ? "nowa pozycja w tym oknie" : undefined;
@@ -198,37 +204,53 @@ export function topicMembers(r: Pick<DisplayRow, "key" | "instruments" | "member
 /** The symbols of `topicMembers`. */
 export const topicSymbols = (r: Pick<DisplayRow, "key" | "instruments" | "member_instruments">, symOf: SymOf, watched: Map<string, string[]>): string[] =>
   topicMembers(r, symOf, watched).map((m) => m.symbol);
-/** `NVDA · SMH · AMD +2`: first `n` symbols, the rest as a count. */
+/** `NVDA · SMH · AMD +2`: first `n` symbols, the rest as a count (P9 subtitle: every symbol, `n` = Infinity). */
 export const symbolsText = (syms: string[], n = 3): string => syms.slice(0, n).join(" · ") + (syms.length > n ? ` +${syms.length - n}` : "");
 
-/** Second line of a topic row: this week's note title (fresh), else the small date of the last note, else nothing.
- * No `bez zmian` anywhere. */
-export function topicNote(r: Pick<DisplayRow, "note" | "note_this_week" | "last_note_at">): { text: string; title: string; fresh: boolean } | null {
-  if (r.note && r.note_this_week) return { text: r.note.title, title: r.note.title, fresh: true };
-  const at = r.note?.observed_at || r.last_note_at;
-  return at ? { text: dm(at), title: `ostatnia notatka ${dm(at)}`, fresh: false } : null;
+/** P9: the brief lines under a topic: up to 3, newest first; only the first carries its `why`. */
+export function briefLines(r: Pick<DisplayRow, "briefs">): { id: number; headline: string; why: string | null; date: string; unread: boolean }[] {
+  return [...(r.briefs ?? [])].sort((a, b) => b.observed_at.localeCompare(a.observed_at)).slice(0, 3)
+    .map((b, i) => ({ id: b.note_id, headline: b.headline, why: i === 0 ? b.why : null, date: b.observed_at ? dm(b.observed_at) : "", unread: b.unread }));
 }
 
-/** The trend of a window. */
-export const trendOf = (r: Pick<DisplayRow, "trend_1w" | "trend_4w">, window: SegmentWindow): number | null => (window === "4w" ? r.trend_4w ?? null : r.trend_1w ?? null);
-/** `+3,1 %` / `-`. */
-export const trendText = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? "-" : pct(v, true));
-/** Trend cell tooltip: `3 instrumenty, równe wagi · 4 tyg. +8,2 %` (home) or `… · ważona udziałem -4,4 %` (page). */
-export function trendTitle(r: Pick<DisplayRow, "members" | "trend_4w" | "return" | "weight">, opts: { page?: boolean } = {}): string {
-  const parts = [`${plural(r.members ?? 0, "instrument", "instrumenty", "instrumentów")}, równe wagi`];
-  if (!opts.page && r.trend_4w != null) parts.push(`4 tyg. ${pct(r.trend_4w, true)}`);
-  if (opts.page && r.weight > 0 && r.return != null) parts.push(`ważona udziałem ${pct(r.return, true)}`);
-  return parts.join(" · ");
+/** P9 topic thesis state: `draft` = an agent draft waiting for the owner's confirmation (`do potwierdzenia`). */
+export const thesisDraft = (t: Pick<TopicThesis, "draft"> | null | undefined): boolean => !!t?.draft;
+
+/** A cited view source as a small link: `publisher · d.mm.yyyy` (falls back to the title, then the host);
+ * `href` only for an http(s) URL (the view comes from an agent; never a javascript: URL). */
+export interface ViewSourceLink { href: string | null; text: string; title: string }
+export function viewSourceLink(s: NoteSource): ViewSourceLink {
+  let who = (s.publisher || s.title || "").trim();
+  if (!who) { try { who = new URL(s.url).hostname.replace(/^www\./, ""); } catch { who = "źródło"; } }
+  const p = s.published_at ? dateParts(s.published_at) : null;
+  const href = /^https?:\/\//i.test(s.url ?? "") ? s.url : null;
+  return { href, text: p ? `${who} · ${p.d}.${String(p.m).padStart(2, "0")}.${p.y}` : who, title: s.title || s.url || who };
+}
+
+/** P11 market view under a topic thesis (`Ocena teraz` / `Perspektywa`) with its cited sources; null when the
+ * thesis has neither text. `publishers`: the distinct publishers for the home row tooltip (`Źródła: IFR, IEA`). */
+export function topicView(t: TopicThesis | null | undefined): { assessment: string | null; outlook: string | null; at: string | null; sources: ViewSourceLink[]; publishers: string | null } | null {
+  if (!t || (!t.assessment && !t.outlook)) return null;
+  const list = t.view_sources ?? [];
+  const names = [...new Set(list.map((s) => (s.publisher || s.title || "").trim()).filter(Boolean))];
+  return {
+    assessment: t.assessment ?? null, outlook: t.outlook ?? null, at: t.view_updated_at ?? null,
+    sources: list.map(viewSourceLink), publishers: names.length ? `Źródła: ${names.join(", ")}` : null,
+  };
+}
+
+/** P11 what one save of the thesis form writes: the thesis only when its text / invalidation changed (or there is
+ * none yet: an owner save confirms an agent draft, so editing only the view must not confirm it), the view only
+ * when it changed. Blank fields read as null. */
+export function topicSavePlan(t: TopicThesis | null | undefined, e: { thesis: string; invalidation: string; assessment: string; outlook: string }): { thesis: boolean; view: boolean } {
+  const n = (v: string | null | undefined) => (v ?? "").trim() || null;
+  const thesis = !t || n(e.thesis) !== n(t.thesis) || n(e.invalidation) !== n(t.invalidation);
+  const view = n(e.assessment) !== n(t?.assessment) || n(e.outlook) !== n(t?.outlook);
+  return { thesis, view };
 }
 
 /** Two sub-columns from 6 rows (column-major: the first ceil(n/2) rows left); one column below. */
 export const topicColumns = (n: number): { cols: 1 | 2; rows: number } => (n >= 6 ? { cols: 2, rows: Math.ceil(n / 2) } : { cols: 1, rows: n });
-
-/** Page footer line (muted): `waluty +0,6 pp · USD +0,6 % · EUR +0,1 %`; null without currencies. */
-export function currencyFoot(d: Pick<SegmentAttribution, "currency">): { pp: string; tone: PpTone; detail: string } | null {
-  if (!d.currency?.currencies.length) return null;
-  return { pp: ppOf(d.currency.contribution), tone: ppTone(d.currency.contribution), detail: currencySub(d.currency.currencies) };
-}
 
 // ---- tolerant reading of the payload ----------------------------------------------------------------------
 
@@ -274,6 +296,35 @@ export function normSegmentRow(v: unknown): SegmentRow | null {
     unread: num(o.unread) ?? 0, notes_8w: num(o.notes_8w) ?? 0, last_note_at: str(o.last_note_at),
     trend_1w: num(o.trend_1w), trend_4w: num(o.trend_4w), members: num(o.members) ?? 0,
     ...(Array.isArray(o.member_instruments) ? { member_instruments: normMembers(o.member_instruments) } : {}),
+    briefs: normTopicBriefs(o.briefs), thesis: normTopicThesis(o.thesis),
+  };
+}
+
+/** P9 `briefs`: entries without a headline are dropped; newest first, at most 3. */
+export function normTopicBriefs(v: unknown): TopicBrief[] {
+  return arr(v).map((x): TopicBrief | null => {
+    const o = obj(x);
+    const d = obj(obj(o.details).brief);
+    const headline = str(o.headline) ?? str(d.headline);
+    const id = num(o.note_id) ?? num(o.id);
+    if (!headline || id == null) return null;
+    return { note_id: id, headline, why: str(o.why) ?? str(d.why), observed_at: str(o.observed_at) ?? "", kind: str(o.kind), polarity: str(o.polarity), unread: o.unread === true };
+  }).filter((b): b is TopicBrief => !!b).sort((a, b) => b.observed_at.localeCompare(a.observed_at)).slice(0, 3);
+}
+
+/** P9 topic thesis (the segments row's `thesis`, the thesis endpoint's answer); null without a thesis text. */
+export function normTopicThesis(v: unknown): TopicThesis | null {
+  const o = obj(v);
+  const text = str(o.thesis) ?? str(o.text);
+  if (!text) return null;
+  return {
+    id: num(o.id), segment: str(o.segment), thesis: text, invalidation: str(o.invalidation), draft: o.draft === true, created_by: str(o.created_by) ?? "owner",
+    assessment: str(o.assessment)?.trim() || null, outlook: str(o.outlook)?.trim() || null, view_updated_at: str(o.view_updated_at),
+    view_sources: arr(o.view_sources).flatMap((v): NoteSource[] => {
+      const x = obj(v); const url = str(x.url);
+      return url ? [{ url, title: str(x.title), publisher: str(x.publisher), published_at: str(x.published_at) }] : [];
+    }).slice(0, 6),
+    core_changed_at: str(o.core_changed_at), created_at: str(o.created_at), updated_at: str(o.updated_at),
   };
 }
 

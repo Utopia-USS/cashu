@@ -3,7 +3,8 @@ import preview). The views return absolute amounts; here every field gets its la
 sends weights, percentages and dates only.
 
 Read: ``portfolio_overview``, ``positions``, ``signals``, ``strategy_status``, ``history_metrics``,
-``theses``, ``inspect_export``, ``validate_import``. Write: ``set_recommendation``, ``record_decision``,
+``theses``, ``inspect_export``, ``validate_import``. Write: ``set_recommendation``,
+``set_recommendations``, ``record_decision``,
 ``upsert_thesis``, ``propose_strategy``, ``propose_custom_rule``, ``propose_import``.
 """
 
@@ -974,6 +975,118 @@ def set_recommendation(ctx: ToolContext, instrument: str, recommendation: str, r
     }
 
 
+def set_recommendations(ctx: ToolContext, scope: str, recommendations: list[dict]) -> dict:
+    """Save updates and refuse to finish while the selected universe has recommendation gaps.
+
+    Existing recommendations omitted from ``recommendations`` are preserved. A routine therefore
+    submits changed recommendations and newly seen instruments, while the server proves complete
+    held / watchlist coverage before committing any update.
+    """
+    from cashu.modules.investments.domain.plan import PLAN_VALUES
+    from cashu.modules.investments.research.service import (
+        held_instrument_ids,
+        researchable,
+        watched_instrument_ids,
+    )
+    from cashu.modules.investments.service import plans
+    from cashu.modules.investments.store import instruments
+
+    if len(recommendations) > 250:
+        raise ToolError("too many recommendation updates (max 250)", "invalid_arguments")
+    held_ids = held_instrument_ids(ctx.session, ctx.profile_id, ctx.today)
+    watched_ids = watched_instrument_ids(ctx.session, ctx.profile_id)
+    selected = (
+        held_ids
+        if scope == "held"
+        else watched_ids
+        if scope == "watchlist"
+        else held_ids | watched_ids
+    )
+    loaded = instruments.load(ctx.session, selected, profile_id=ctx.profile_id)
+    expected = {iid for iid, inst in loaded.items() if researchable(inst)}
+    existing = {iid for iid in expected if loaded[iid].plan is not None}
+
+    updates: list[tuple[int, str, str]] = []
+    seen: set[int] = set()
+    allowed = {"instrument", "recommendation", "reason"}
+    for index, item in enumerate(recommendations):
+        if not isinstance(item, dict):
+            raise ToolError(f"recommendations[{index}] must be an object", "invalid_arguments")
+        if set(item) - allowed:
+            raise ToolError(
+                f"recommendations[{index}] has unknown fields; allowed: instrument, recommendation, reason",
+                "invalid_arguments",
+            )
+        instrument = item.get("instrument")
+        recommendation = item.get("recommendation")
+        reason = item.get("reason")
+        if not isinstance(instrument, str) or not instrument.strip() or len(instrument) > 40:
+            raise ToolError(
+                f"recommendations[{index}].instrument must be a non-empty string (max 40)",
+                "invalid_arguments",
+            )
+        if recommendation not in PLAN_VALUES:
+            raise ToolError(
+                f"recommendations[{index}].recommendation must be one of: {', '.join(PLAN_VALUES)}",
+                "invalid_arguments",
+            )
+        if (
+            not isinstance(reason, str)
+            or not reason.strip()
+            or len(reason) > instruments.PLAN_REASON_MAX
+        ):
+            raise ToolError(
+                f"recommendations[{index}].reason must be a non-empty string (max {instruments.PLAN_REASON_MAX})",
+                "invalid_arguments",
+            )
+        iid = profile_instrument(ctx, instrument)
+        if iid not in expected:
+            raise ToolError(
+                f"recommendations[{index}] is outside the selected {scope} scope",
+                "invalid_arguments",
+            )
+        if iid in seen:
+            raise ToolError(
+                f"recommendations[{index}] duplicates an instrument", "invalid_arguments"
+            )
+        seen.add(iid)
+        updates.append((iid, recommendation, reason))
+
+    missing = expected - existing - seen
+    if missing:
+        raise ToolError(
+            f"recommendation coverage incomplete: expected {len(expected)}, covered {len(expected) - len(missing)}, missing {len(missing)}; see research_context for rows with recommendation null",
+            "incomplete_coverage",
+        )
+
+    saved = []
+    for iid, recommendation, reason in updates:
+        try:
+            row = instruments.set_plan(
+                ctx.session,
+                iid,
+                recommendation,
+                profile_id=ctx.profile_id,
+                held=iid in held_ids,
+                reason=reason,
+            )
+        except instruments.PlanError as e:
+            raise ToolError(str(e)) from None
+        saved.append(row)
+    for iid, _recommendation, _reason in updates:
+        plans.sync_instrument(ctx.session, ctx.profile, iid)
+    return {
+        "scope": L.category(scope),
+        "expected": L.count(len(expected)),
+        "covered": L.count(len(expected)),
+        "missing": L.count(0),
+        "updated": L.count(len(saved)),
+        "note": L.text(
+            "complete model recommendation coverage saved; no decision or transaction was recorded"
+        ),
+    }
+
+
 def record_decision(
     ctx: ToolContext, signal_id: int, action: str, reason: str | None = None
 ) -> dict:
@@ -1205,6 +1318,42 @@ TOOLS = (
             "reason": {"type": "string", "maxLength": 280},
         },
         required=("instrument", "recommendation", "reason"),
+        write=True,
+    ),
+    ToolSpec(
+        "set_recommendations",
+        "investments",
+        "End-of-research recommendation gate. Save changed or missing model recommendations, preserve "
+        "omitted existing ones, and commit only when every eligible instrument in scope (all = held "
+        "+ watchlist) has a recommendation. Use this once at the end of a routine or full refresh; "
+        "it returns expected / covered / missing counts. Opinions only, never decisions or trades.",
+        set_recommendations,
+        properties={
+            "scope": {
+                "type": "string",
+                "enum": ["all", "held", "watchlist"],
+                "default": "all",
+            },
+            "recommendations": {
+                "type": "array",
+                "description": "Changed and missing recommendations: {instrument, recommendation, reason}. Existing omitted recommendations are preserved.",
+                "maxItems": 250,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "instrument": {"type": "string", "maxLength": 40},
+                        "recommendation": {
+                            "type": "string",
+                            "enum": ["buy_asap", "buy", "hold", "reduce", "exit_asap"],
+                        },
+                        "reason": {"type": "string", "maxLength": 280},
+                    },
+                    "required": ["instrument", "recommendation", "reason"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        required=("recommendations",),
         write=True,
     ),
     ToolSpec(

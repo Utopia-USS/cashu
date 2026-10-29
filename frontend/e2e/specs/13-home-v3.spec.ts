@@ -104,7 +104,7 @@ test("home v3: an outside click leaves focus where it landed; Potwierdź writes 
   await expect(rail.locator(`.sig.cmp.row[data-group="${key}"]`)).toHaveCount(1);
 });
 
-test("home v3: opening a topic from the home strip marks its research notes read (Q10, P5, P7)", async ({ app: page }) => {
+test("home v3: opening a topic from the home strip marks its research notes read (Q10, P5, P7, P9 drawer)", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio`);
   const strip = page.locator("#inv-research");
   // P7: the strip is Makro | Tematy; no Tezy, no Kandydaci column, no Waluty / Bez tematu rows.
@@ -122,12 +122,15 @@ test("home v3: opening a topic from the home strip marks its research notes read
   const chip = strip.locator(".rs-un");
   await expect(chip).toBeVisible();
   const before = Number(await chip.innerText());
-  // The Tematy column: the topic label opens the research page filtered to the topic.
+  // The Tematy column (P9): the topic label opens the topic drawer over the home (no research page).
   await strip.locator(".tcol").getByRole("button", { name: "Obligacje i stopy", exact: true }).click();
-  await expect(page).toHaveURL(/research\?segment=bonds/);
-  await expect(page.locator("#rsch-notes").getByRole("button", { name: /Obligacje i stopy ✕/ })).toBeVisible();
-  await expect(page.locator("article[data-note]", { hasText: "Rynek oczekuje stabilnych stóp procentowych" })).toBeVisible();
-  await go(page, `${ANNA}/investments.portfolio`);
+  await expect(page).toHaveURL(/investments\.portfolio\/topics\/bonds$/);
+  const drawer = page.getByRole("dialog", { name: "Obligacje i stopy" });
+  await expect(drawer.locator("#topic-thesis")).toBeVisible();
+  await expect(drawer.locator("#topic-notes article[data-note]", { hasText: "Rynek oczekuje stabilnych stóp procentowych" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(page).toHaveURL(/investments\.portfolio$/);
   if (before > 1) await expect(strip.locator(".rs-un")).toHaveText(String(before - 1));
   else await expect(strip.locator(".rs-un")).toHaveCount(0);
 });

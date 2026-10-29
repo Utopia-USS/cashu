@@ -1,5 +1,5 @@
 """`cashu serve` for the e2e suite, with the market sources swapped for the synthetic generator of
-scripts/demo_data.py, so "Synchronizuj" on Inwestycje (POST /run) and the backfill never touch the network,
+scripts/demo_data.py, so a daily check (POST /run, the automatic one is off here) and the backfill never touch the network,
 and the instrument search swapped for recorded Yahoo answers (`VWCE`, `orlen`, `nvidia`; anything else
 finds nothing) with synthetic charts for the pick verification.
 
@@ -93,6 +93,11 @@ def main() -> None:
     from cashu.modules.investments.service import instrument_search
 
     instrument_search.default_sources = offline_search_sources
+    from cashu.modules.investments.service import prices
+
+    prices.default_sources = prices.offline_sources  # the app's refresh on open: no network, no writes
+    # the automatic daily check (P10) stays off: the specs start from the seeded data and run it themselves
+    os.environ["CASHU_AUTO_DAILY"] = "0"
     _refuse_outbound_http()
     from cashu.cli import app
 

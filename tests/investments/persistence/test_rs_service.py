@@ -10,7 +10,7 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
-from invp_support import add_account, canonical_csv, import_file, make_profile
+from invp_support import add_account, canonical_csv, distinct_words, import_file, make_profile
 from sqlmodel import select
 
 from cashu.core.db import get_session
@@ -56,8 +56,8 @@ def raw(n: int = 1, **changes) -> dict:
         "kind": "news",
         "polarity": "negative",
         "strength": 2,
-        "title": f"Example fact number {n}",
-        "summary": "Przykladowy fakt ze zrodla, opisany neutralnie.",
+        "title": f"Example fact number {n} " + distinct_words(n),
+        "summary": f"Przykladowy fakt {distinct_words(n)} ze zrodla, opisany neutralnie.",
         "sources": [
             {
                 **SOURCE,
@@ -190,14 +190,20 @@ def test_duplicates_are_refused(investor):
     pid = investor
     add(pid, 1)
     with pytest.raises(service.ResearchConflict, match="duplicate"):
-        add(pid, 2, title="Example fact number 1")
+        add(pid, 2, title="Example fact number 1 " + distinct_words(1))
     with pytest.raises(service.ResearchConflict, match="duplicate"):
         add(pid, 1, title="Another title")  # same first source URL
     add(pid, 1, instrument="ABC")  # another scope: fine
     theme_note, _ = add(pid, 7, instrument=None, theme="Banki")
     call(pid, service.dismiss, theme_note)
     with pytest.raises(service.ResearchConflict, match="dismissed by the owner"):
-        add(pid, 8, instrument=None, theme="banki", title="Example fact number 7")
+        add(
+            pid,
+            8,
+            instrument=None,
+            theme="banki",
+            title="Example fact number 7 " + distinct_words(7),
+        )
 
 
 def test_owner_named_instruments_are_never_researched(investor):

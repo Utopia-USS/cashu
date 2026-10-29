@@ -6,12 +6,12 @@
 import { type ReactNode, useState } from "react";
 import { Widget } from "../../../../widgets";
 import { dm, hm, plural, wdm } from "../../labels";
-import { canRestore, useResearchActions } from "./data";
+import { canRestore, useResearchActions, useSegments } from "./data";
 import {
   BOUNDARY, countsText, HEALTH_LABEL, healthOf, latestRun, latestTitle, normHealth, nNotes, researchCommand, runMinutes, runNotes, runTag,
 } from "./logic";
 import { CandidateCard } from "./primitives";
-import { normDigestMarket, reviewTopics, withNewNote } from "./segments";
+import { normDigestMarket, reviewTopics, withBriefs, withNewNote } from "./segments";
 import { MacroChanges } from "./MacroWidgets";
 import { normMacroChanges } from "./macro";
 import { NotRun, type StripCtx, ThesisRow, TopicRows, TopicsHead } from "./Strip";
@@ -24,6 +24,8 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
 }) {
   const [rest, setRest] = useState(false);
   const actions = useResearchActions(ctx.slug, ctx.onChanged);
+  // P9: the digest rows may come without briefs / thesis: the live topic rows fill them in (same rows as the home).
+  const live = useSegments(ctx.slug, "1w", ctx.nonce ?? 0);
   const tag = runTag(runs, ctx.today);
   const last = latestRun(runs);
   const ranInPeriod = digest?.ran_in_period ?? (!!last && (localDay(last.started_at) ?? "") >= since);
@@ -33,7 +35,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
       <Widget title="Co mówi research" className="rsch" tags={<span className={`tag ${tag.tone || "warn"}`}>{tag.state === "stale" ? tag.text : `brak w tym tygodniu${last ? ` · ostatni ${dm(last.finished_at ?? last.started_at)}` : ""}`}</span>}
         controls={last ? <button className="lnk" onClick={() => ctx.onOpenResearch()}>notatki z {dm(last.started_at)}{n != null ? ` (${n})` : ""}</button> : undefined} body="tight"
         footer={<><span>rutyna: <b>sobota 07:00</b> · Claude Code · <button className="lnk" onClick={onSettings}>Ustawienia › Agent AI</button></span><span className="spacer" /><span>{BOUNDARY}</span></>}>
-        <MacroChanges changes={normMacroChanges(digest?.macro_changes)} onOpen={(k) => ctx.onOpenResearch(`segment=${k}`)} />
+        <MacroChanges changes={normMacroChanges(digest?.macro_changes)} onOpen={ctx.onOpenTopic} />
         <NotRun ctx={ctx} runs={runs} cmd={researchCommand(ctx.workspace?.path, ctx.slug)} />
       </Widget>
     );
@@ -47,7 +49,7 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   // The digest's 1w attribution as of its end: the top rows + `market` (header move, stale).
   const { segments, market } = normDigestMarket(digest?.segments, digest?.market);
   const newSeg = withNewNote(segments);
-  const topicRows = reviewTopics(segments);
+  const topicRows = withBriefs(reviewTopics(segments), live.data?.segments ?? []);
   const candIds = new Set(digest?.candidates ?? []);
   const cands = (candidates ?? []).filter((n) => candIds.size ? candIds.has(n.id) : (localDay(n.observed_at) ?? "") >= since);
   const newC = cands.filter((n) => !n.dismissed_at).length, dismissedC = cands.filter((n) => n.dismissed_at).length;
@@ -91,10 +93,10 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
           )}
         </div>
         <div>
-          <MacroChanges changes={normMacroChanges(digest?.macro_changes)} onOpen={(k) => ctx.onOpenResearch(`segment=${k}`)} />
+          <MacroChanges changes={normMacroChanges(digest?.macro_changes)} onOpen={ctx.onOpenTopic} />
           <TopicsHead d={market} extra={newSeg ? plural(newSeg, "nowa notatka", "nowe notatki", "nowych notatek") : "bez nowych notatek"} />
           {topicRows.length
-            ? <TopicRows compact rows={topicRows} stale={market?.stale ?? []} symOf={ctx.symOf} watched={ctx.watchedTopics} onOpen={(key) => ctx.onOpenResearch(`segment=${key}`)} />
+            ? <TopicRows compact rows={topicRows} stale={market?.stale ?? []} symOf={ctx.symOf} watched={ctx.watchedTopics} onOpen={ctx.onOpenTopic} />
             : <div className="empty-line">Brak danych tematów w tym okresie.</div>}
         </div>
         <div>

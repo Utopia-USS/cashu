@@ -59,10 +59,11 @@ def test_key_counts(seeded):
     assert count(rows, "inv_transactions") >= 80
     assert count(rows, "inv_price_bars") >= 3000 and count(rows, "inv_fx_rates") >= 500
     assert count(rows, "alerts") == 5 and count(rows, "watchlist_items") == 3
-    assert count(rows, "research_runs") == 2 and count(rows, "research_notes") == 12
+    assert count(rows, "research_runs") == 2 and count(rows, "research_notes") == 16
     assert count(rows, "inv_macro_bars") >= 7 * 500  # P6: ~2 years of every macro series
     assert count(rows, "inv_planned_deposits") == 2 and count(rows, "inv_decisions") == 2
     assert count(rows, "proposals") == 1 and count(rows, "inv_theses") == 3
+    assert count(rows, "inv_topic_theses") == 2  # P9: Anna's own, Piotr's agent draft
     assert count(rows, "inv_rule_runs") == 2 and count(rows, "inv_signals") >= 2
     with sqlite3.connect(f"file:{data / 'cashu.db'}?mode=ro", uri=True) as con:
         names = sorted(r[0] for r in con.execute("select name from profiles"))
@@ -81,7 +82,19 @@ def test_key_counts(seeded):
             "select count(*) from research_notes where segment like 'macro_%'"
         ).fetchone()[0]
         series = {r[0] for r in con.execute("select distinct series from inv_macro_bars")}
-    assert macro_notes == 2  # one per profile
+        views = con.execute(
+            "select segment, draft from inv_topic_theses "
+            "where assessment is not null and outlook is not null order by draft"
+        ).fetchall()
+        briefs = dict(
+            con.execute(
+                "select segment, count(*) from research_notes "
+                "where details like '%\"brief\"%' group by segment"
+            )
+        )
+    assert briefs == {"equity_global": 2, "semis_ai": 2, "macro_risk": 2}  # P9, per profile
+    assert macro_notes == 4  # two per profile (P9: the equity card's brief)
+    assert views == [("semis_ai", 0), ("semis_ai", 1)]  # P11: the market view under both theses
     assert series == {"acwi", "spx", "dxy", "eem", "dbc", "us10y", "us3m"}
     for slug in ("demo-anna", "demo-piotr"):
         assert (data / "profiles" / slug / "strategy.yaml").is_file()

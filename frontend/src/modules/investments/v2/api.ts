@@ -4,6 +4,8 @@
 // CONTRACT). Shapes mirror service/views.py and performance/service.py; fractions stay fractions.
 import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../core/api";
 import { ck, dedupe, invalidate } from "../../../swr";
+import { invalidations } from "../../../core/live";
+import { liveInvalidate } from "../../../core/useLive";
 import type { Decision, DecisionInput, Hint, Instrument, Overview, Position, Positions, ReviewDigest, Signal } from "../api";
 import { digestShown, isShownSignal } from "./logic";
 import { monthCloseStale } from "../../budget/logic";
@@ -227,6 +229,30 @@ export function dropInv(slug: string): void {
   invalidate(ck(slug, "inv"));
   monthCloseStale(slug);
 }
+
+/** After the price refresh stored new quotes (P10): every investments view and the net worth on screen re-read
+ * (their data stays visible meanwhile); unmounted ones read fresh on their next mount. */
+export function pricesChanged(slug: string): void {
+  requests.clear();
+  liveInvalidate(slug, invalidations(slug, { id: 0, entity: "prices", op: "update", ref: null, profile: null, payload: null }));
+}
+
+/** `GET /investments/run/status` (P10): a daily check in progress (any process) and the newest finished run. */
+export interface RunStatus { running: boolean; started_at: string | null; last: { status: string; finished_at: string | null; started_at: string; errors: string[] } | null }
+export const getRunStatus = (slug: string) => j<RunStatus>(inv(slug, "/run/status"));
+
+/** `POST /investments/prices/refresh` (P10, service/prices.py): batched latest quotes, no rules. */
+export interface PriceRefresh {
+  status: "ok" | "partial" | "failed" | "busy" | "disabled" | string;
+  as_of: string | null;
+  finished_at: string | null;
+  updated: number;
+  skipped: number;
+  fx_updated?: number;
+  errors: string[];
+  cached: boolean;
+}
+export const postPriceRefresh = (slug: string, force = false) => jpost<PriceRefresh>(inv(slug, "/prices/refresh"), { force });
 
 export const getOverviewV2 = (slug: string, accounts: number[] | null = null) =>
   cached(`ov:${slug}:${qs(accounts)}`, () => j<OverviewV2>(inv(slug, `/overview${accounts?.length ? `?${qs(accounts)}` : ""}`)));

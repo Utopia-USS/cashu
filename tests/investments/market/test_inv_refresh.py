@@ -667,3 +667,49 @@ def test_r6_valuation_after_the_refetch_uses_adjusted_prices_and_split_quantitie
     high = max(b.close for b in window)
     assert (high - window[-1].close) / high == 0  # no false "75 % below its high"
     assert window[-1].date - window[0].date < timedelta(days=90)
+
+
+def test_p10_workers_fetch_concurrently_and_keep_the_input_order():
+    """Bounded concurrency (P10): several instruments at once, the report in input order."""
+    import threading
+    import time as _time
+
+    from cashu.modules.investments.domain import Currency as _Cur
+    from cashu.modules.investments.domain import PriceBar as _Bar
+    from cashu.modules.investments.market import InMemoryMarketData, MarketDataRefresher
+    from cashu.modules.investments.market import PriceHistory as _PH
+    from cashu.modules.investments.market import PriceSource as _PS
+
+    state = {"now": 0, "max": 0}
+    lock = threading.Lock()
+
+    class Slow(_PS):
+        @property
+        def id(self):
+            return "yahoo"
+
+        def history(self, instrument, start, end):
+            return list(self.fetch(instrument, start, end).bars)
+
+        def fetch(self, instrument, start, end):
+            with lock:
+                state["now"] += 1
+                state["max"] = max(state["max"], state["now"])
+            _time.sleep(0.05)
+            with lock:
+                state["now"] -= 1
+            return _PH(bars=(_Bar(instrument_id=instrument.id, date=end, close=d(1), source="yahoo"),))
+
+    class NoFx:
+        id = "nbp"
+
+        def rates(self, quote, start, end):
+            return []
+
+    instruments = [build_instrument(name=f"I{n}", symbol=f"I{n}") for n in range(8)]
+    report = MarketDataRefresher(Slow(), NoFx(), workers=4).refresh(
+        InMemoryMarketData(), instruments, [_Cur.USD], day("2026-10-02")
+    )
+    assert [i.label for i in report.instruments] == [f"I{n}" for n in range(8)]
+    assert 1 < state["max"] <= 4
+    assert report.fx[0].currency == _Cur.USD

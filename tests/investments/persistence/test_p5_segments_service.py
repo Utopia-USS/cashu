@@ -14,6 +14,7 @@ from invp_support import (
     STRATEGY_YAML,
     add_account,
     canonical_csv,
+    distinct_words,
     import_file,
     make_profile,
     sources,
@@ -63,8 +64,8 @@ def raw(n: int, **changes) -> dict:
         "kind": "news",
         "polarity": "negative",
         "strength": 2,
-        "title": f"Example fact number {n}",
-        "summary": "Przykladowy fakt ze zrodla, opisany neutralnie.",
+        "title": f"Example fact number {n} " + distinct_words(n),
+        "summary": f"Przykladowy fakt {distinct_words(n)} ze zrodla, opisany neutralnie.",
         "sources": [
             {
                 "url": f"https://example.com/p5/{n}",
@@ -236,13 +237,14 @@ def test_segment_note_rules(investor):
     # last ISO week is a different week; the same title within 14 days is still a duplicate
     last_week = (utcnow() - dt.timedelta(days=8)).date().isoformat()
     segment_note(pid, 6, "energy", observed_at=last_week)
+    SIX = "Example fact number 6 " + distinct_words(6)
     with pytest.raises(service.ResearchConflict, match="duplicate of note"):
-        segment_note(pid, 7, "energy", title="Example fact number 6")
+        segment_note(pid, 7, "energy", title=SIX)
     # the same title on another segment is not a duplicate (scope = the segment)
-    segment_note(pid, 8, "metals", title="Example fact number 6")
+    segment_note(pid, 8, "metals", title=SIX)
     with get_session() as s:
         rows = service.notes(s, pid, segment="energy", include_dismissed=True)
-    assert [r.title for r in rows] == ["Example fact number 6"]
+    assert [r.title for r in rows] == [SIX]
 
 
 def test_segment_note_signal_key_and_payload(investor):
@@ -256,7 +258,10 @@ def test_segment_note_signal_key_and_payload(investor):
         ).all()
     assert sig.dedup_key.endswith("|s:power") and sig.severity == "info"
     assert sig.instrument_id is None
-    assert sig.payload["segment"] == "power" and sig.payload["segment_label"] == "Energetyka: atom i OZE"
+    assert (
+        sig.payload["segment"] == "power"
+        and sig.payload["segment_label"] == "Energetyka: atom i OZE"
+    )
     assert sig.payload["note_id"] == note_id and sig.payload["theme"] is None
 
 
@@ -286,9 +291,7 @@ def test_weekly_novelty_limits(investor):
         add(pid, 14, instrument="ABC", run_id=run.id)
     add(pid, 15, instrument="ABC", run_id=run.id, strength=3)
     # six segment notes per week
-    for n, segment in enumerate(
-        ("gold", "crypto", "bonds", "energy", "metals", "power"), start=20
-    ):
+    for n, segment in enumerate(("gold", "crypto", "bonds", "energy", "metals", "power"), start=20):
         segment_note(pid, n, segment, run_id=run.id)
     with pytest.raises(service.ResearchConflict, match="already has 6 segment notes"):
         segment_note(pid, 30, "healthcare", run_id=run.id)

@@ -1,77 +1,23 @@
-// P6 macro regimes ("Makro", design/P6/macro-design.md; P7 strip-design.md 2.1): the research page widget (five
-// regime cards, a card filters Notatki by its macro note key), the home column Makro (five rows: title, toned state,
-// `od d.mm`, the one-sentence summary; hover / focus opens the explain popover) and the Sunday review lines (regimes whose state changed in the digest period). Pure logic lives in macro.ts.
+// P6 macro regimes ("Makro", design/P6/macro-design.md; P7 strip-design.md 2.1; P9 briefs): the home column Makro (five
+// rows: title, toned state, `od <miesiąc rok>`, one basic number, then the brief "for dummies": the headline in bold, why,
+// `Co sprzyja` / `Na co uważać`; the BE's plain sentence until the first brief; hover / focus opens the explain popover;
+// the title opens the regime's drawer with its notes) and the Sunday review lines (regimes whose state changed in the
+// digest period). P9: no research page widget any more. Pure logic lives in macro.ts.
 import { useId } from "react";
 import { Skeleton } from "../../../../ui";
 import { Mark, Widget } from "../../../../widgets";
 import { dm, plural } from "../../labels";
 import { useMacro } from "./data";
 import {
-  explainHead, explainText, hasExplain, historyTitle, macroAsOf, macroNoteKey, macroSub, metricTitle, sinceText, staleText, stateParts, summaryText, toneCls,
+  explainHead, explainText, hasExplain, historyTitle, macroAsOf, macroHeadline, macroNoteKey, macroNumber, sinceMonth, staleText, stateParts, toneCls,
 } from "./macro";
 import { Explain, useExplainDismiss } from "./primitives";
 import type { StripCtx } from "./Strip";
 import type { MacroChange, MacroRegime } from "./types";
 
-const EMPTY = <div className="muted" style={{ fontSize: 13 }}>Brak danych makro.</div>;
+type LineCtx = Pick<StripCtx, "slug" | "nonce" | "onOpenTopic">;
 
-/** `Makro` (span 3, between the run strip and Tematy): five compact regime cards; the tag = the last session in
- * the data. A card selects its macro note key (filters Notatki like a P5 segment row). */
-export function MacroWidget({ slug, nonce, selected, onSelect }: {
-  slug: string; nonce: number; selected: string | null; onSelect: (noteKey: string | null) => void;
-}) {
-  const q = useMacro(slug, nonce);
-  const d = q.data;
-  const asOf = macroAsOf(d);
-  return (
-    <Widget title="Makro" id="rsch-macro" body="tight"
-      tags={asOf ? <span className="tag" title="ostatnia sesja w danych">stan {dm(asOf)}</span> : undefined}>
-      {!d ? (q.loading ? <Skeleton h={132} /> : EMPTY)
-        : !d.regimes.length ? EMPTY
-        : <div className="mcx">{d.regimes.map((r) => <MacroCard key={r.key} r={r} selected={selected === macroNoteKey(r.key)} onSelect={onSelect} />)}</div>}
-    </Widget>
-  );
-}
-
-export function MacroCard({ r, selected, onSelect }: { r: MacroRegime; selected: boolean; onSelect: (noteKey: string | null) => void }) {
-  const key = macroNoteKey(r.key);
-  const toggle = () => onSelect(selected ? null : key);
-  const parts = stateParts(r.state_label);
-  const since = sinceText(r), stale = staleText(r), hist = historyTitle(r), sub = macroSub(r);
-  const tone = toneCls(r.tone);
-  const meaningId = useId();
-  return (
-    <div className={`mc${selected ? " sel" : ""}${r.missing ? " off" : ""}${r.stale && !r.missing ? " stale" : ""}`} data-macro={r.key} data-selectable="" onClick={toggle}>
-      <div className="mh">
-        <button className="t" aria-pressed={selected} aria-describedby={r.meaning ? meaningId : undefined} onClick={(e) => { e.stopPropagation(); toggle(); }}>{r.label}</button>
-        {r.unread > 0 && <Mark kind="notes" title={plural(r.unread, "nowa notatka", "nowe notatki", "nowych notatek")} />}
-      </div>
-      <div className="st" title={r.meaning ?? undefined}>
-        {r.missing
-          ? <span className="tag solid muted">brak danych</span>
-          : parts.map((p, i) => <span key={i} className={`tag ${i === 0 ? tone : "warn"}`}>{p}</span>)}
-        {(since || stale) && (
-          <span className="since" title={hist ?? undefined}>
-            {since}{since && stale ? " · " : ""}{stale && <span className="warn" title="ostatnie notowanie w danych">{stale}</span>}
-          </span>
-        )}
-      </div>
-      <div className="ms">
-        {!r.missing && r.metrics.slice(0, 3).map((m, i) => (
-          <div key={i} className={`m${m.stale ? " stale" : ""}`} title={metricTitle(m)}><span className="l">{m.label}</span><b>{m.text}</b></div>
-        ))}
-      </div>
-      <div className="n" title={sub?.title}>{sub?.text ?? ""}</div>
-      {r.meaning && <span id={meaningId} className="sr-only">{r.meaning}</span>}
-    </div>
-  );
-}
-
-type LineCtx = Pick<StripCtx, "slug" | "nonce" | "onOpenResearch">;
-
-/** Home column `Makro` (P7 design 2.1): five rows, each the regime title, the toned state word, `od d.mm`, and the
- * one-sentence summary (clamped to 2 lines); hover / focus opens the explain popover. The title opens the research
- * page filtered to the regime's notes. Nothing (not even the header) without the endpoint or without regimes. */
+/** Home column `Makro`: five rows. Nothing (not even the header) without the endpoint or without regimes. */
 export function MacroColumn({ ctx }: { ctx: LineCtx }) {
   const q = useMacro(ctx.slug, ctx.nonce ?? 0);
   if (!q.data && !q.loading) return null;
@@ -80,7 +26,7 @@ export function MacroColumn({ ctx }: { ctx: LineCtx }) {
   return (
     <div className="mcol">
       <div className="rsec">Makro {asOf && <span className="cnt" title="ostatnia sesja w danych">· stan {dm(asOf)}</span>}</div>
-      {q.data ? <MacroRows regimes={q.data.regimes} onOpen={(k) => ctx.onOpenResearch(`segment=${k}`)} /> : <Skeleton h={190} r={8} />}
+      {q.data ? <MacroRows regimes={q.data.regimes} onOpen={ctx.onOpenTopic} /> : <Skeleton h={190} r={8} />}
     </div>
   );
 }
@@ -93,9 +39,11 @@ export function MacroRow({ r, onOpen }: { r: MacroRegime; onOpen: (noteKey: stri
   const xid = useId();
   const parts = stateParts(r.state_label);
   const tone = toneCls(r.tone);
-  const since = sinceText(r), stale = staleText(r), hist = historyTitle(r);
+  const since = sinceMonth(r), stale = staleText(r), hist = historyTitle(r);
+  const num = macroNumber(r);
   const explain = hasExplain(r);
   const dismiss = useExplainDismiss();
+  const b = r.missing ? null : r.brief ?? null;
   return (
     <div className={`mrow${r.missing ? " off" : ""}${dismiss.hidden ? " xoff" : ""}`} role="listitem" data-macro={r.key} {...(explain ? dismiss.props : {})}>
       <div className="mh">
@@ -104,10 +52,24 @@ export function MacroRow({ r, onOpen }: { r: MacroRegime; onOpen: (noteKey: stri
           ? <b className="st off">brak danych</b>
           : parts.map((p, i) => <b key={i} className={`st ${i === 0 ? tone : "warn"}`}>{p}</b>)}
         {(since || stale) && <span className="since" title={hist ?? undefined}>{since}{since && stale ? " · " : ""}{stale && <span className="warn" title="ostatnie notowanie w danych">{stale}</span>}</span>}
+        {num && <span className="since num" title={num.title}>{num.text}</span>}
         {r.unread > 0 && <Mark kind="notes" title={plural(r.unread, "nowa notatka", "nowe notatki", "nowych notatek")} />}
       </div>
-      <div className="sum">{summaryText(r)}</div>
+      <div className="bh" data-brief={b?.note_id}>{macroHeadline(r)}</div>
+      {b?.why && <div className="bw">{b.why}</div>}
+      {b && b.supports.length > 0 && <BriefList k="Co sprzyja" items={b.supports} cls="sup" />}
+      {b && b.risks.length > 0 && <BriefList k="Na co uważać" items={b.risks} cls="rsk" />}
       {explain && <Explain id={xid} head={explainHead(r)} tone={tone} text={explainText(r)!} metrics={r.missing ? [] : r.metrics} />}
+    </div>
+  );
+}
+
+/** `Co sprzyja` / `Na co uważać`: a small label and up to 3 short bullets. */
+export function BriefList({ k, items, cls }: { k: string; items: string[]; cls: "sup" | "rsk" }) {
+  return (
+    <div className={`bl ${cls}`}>
+      <span className="k">{k}</span>
+      <ul>{items.map((t, i) => <li key={i}>{t}</li>)}</ul>
     </div>
   );
 }
@@ -120,13 +82,13 @@ export function MacroStrip({ ctx }: { ctx: LineCtx }) {
   const asOf = macroAsOf(q.data);
   return (
     <Widget title="Makro" id="inv-macro" body="tight" tags={asOf ? <span className="tag" title="ostatnia sesja w danych">stan {dm(asOf)}</span> : undefined}>
-      <MacroRows wide regimes={q.data.regimes} onOpen={(k) => ctx.onOpenResearch(`segment=${k}`)} />
+      <MacroRows wide regimes={q.data.regimes} onOpen={ctx.onOpenTopic} />
     </Widget>
   );
 }
 
 /** Review column (P6 design 4): regimes whose state changed in the digest period, one bold line each; the
- * label opens the research page filtered to that regime's notes. Nothing when none changed. */
+ * label opens the regime's drawer. Nothing when none changed. */
 export function MacroChanges({ changes, onOpen }: { changes: MacroChange[]; onOpen: (noteKey: string) => void }) {
   if (!changes.length) return null;
   return (

@@ -23,6 +23,7 @@ import type { Hint } from "../api";
 import { type Alert, invKey, type PositionV2, postPositionDecision, type SignalV2, type WatchItem } from "./api";
 import { staleSignalText, writePositionDecision } from "./decisionFlow";
 import { InstLabel, type InstLike } from "./InstLabel";
+import { PositionDecisionDialog } from "./Decide";
 import {
   cursorOrder, groupPlan, instMono, instName, isDecided, latestThesis, polarityOf, railGroups, type SigFact, signalCurrent, signalFact, signalScope, signalStateKey,
   signalSubject, signalText, splitByPolarity, splitByScope, STATE_LABEL, type SignalFilter, type SignalGroup,
@@ -214,6 +215,53 @@ export function SignalsRail({ signals, ctx, focusId, onAll, hl, paused }: {
   );
 }
 
+/** The writes of a subject group (the rail row's menu, the dialog's group action row): Zanotuj posts the decision to
+ * `primary` and acknowledges the rest with `decyzja: <tag>` (`groupPlan`, one undo); Potwierdź acknowledges every
+ * live signal (one undo). The group stays locked after a write until the reload shows its new state; `onDone` runs
+ * after a successful write (closes the menu / form). */
+export function useGroupWriter(ctx: SignalsCtx, g: Pick<SignalGroup<SignalV2>, "primary" | "live">, onDone: () => void) {
+  const toast = useToast();
+  const flight = useInFlight();
+  const stateKey = g.live.map(signalStateKey).join(";");
+  const [lockKey, setLockKey] = useState<string | null>(null);
+  const locked = stillLocked(lockKey, stateKey);
+  useEffect(() => { if (lockKey != null && lockKey !== stateKey) setLockKey(null); }, [lockKey, stateKey]);
+  const busy = flight.busy || locked;
+  const plan = groupPlan(g);
+  const offer = (ids: number[], text: string, what: string) => {
+    if (!ids.length) return;
+    const u = makeUndo(Date.now(), groupUndoRun(ids, (id) => deleteDecision(ctx.slug, id)));
+    const retry = () => {
+      void u.undo().then((res) => {
+        if (undoSettled(res)) { setLockKey(null); ctx.onChanged(); }
+        const msg = undoMessage(res, what);
+        if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+      });
+    };
+    toast(text, 10000, { label: "Cofnij", onClick: retry });
+  };
+  /** Writes in order; a failure keeps what was saved (with its undo) and says so. */
+  const writeAll = (steps: (() => Promise<{ decision: { id: number } }>)[], text: string, what: string, failText: string) => locked ? undefined : flight.run(async () => {
+    const ids: number[] = [];
+    try {
+      for (const step of steps) ids.push((await step()).decision.id);
+      setLockKey(stateKey);
+      onDone();
+      ctx.onChanged();
+      offer(ids, text, what);
+    } catch (e) {
+      if (ids.length) { ctx.onChanged(); offer(ids, `${failText}: ${errorText(e)}`, what); } else toast(`${failText}: ${errorText(e)}`, 5000);
+    }
+  });
+  const decide = (input: DecisionInput, label: string) => {
+    if (!plan) return;
+    const tag = label.replace("decyzja: ", "");
+    return writeAll(fanOutSteps(ctx.slug, plan.primary, plan.rest, input, tag), `Zapisano decyzję · ${tag}`, "decyzja", "Nie zapisano decyzji");
+  };
+  const ack = (reason?: string) => { void writeAll(g.live.map((x) => () => postAcknowledge(ctx.slug, x.id, reason)), "Potwierdzone bez zmian", "potwierdzenie", "Nie zapisano"); };
+  return { busy, locked, flight, setLockKey, stateKey, offer, decide, ack };
+}
+
 /** One rail row = one subject (rev 2 7.1 + Q17): the glyph, `TICKER date`, one fact per live signal (two lines
  * max, `+n` after the second). A click or Enter opens the subject; the trailing icon button opens the menu; Zanotuj
  * turns the menu into the decision form (decision on the newest signal, the others acknowledged with
@@ -224,18 +272,11 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll, onActivate }: {
   onActivate: () => void;
 }) {
   const toast = useToast();
-  const flight = useInFlight();
   const [mode, setMode] = useState<"menu" | "form">("menu");
-  const stateKey = g.live.map(signalStateKey).join(";");
-  const [lockKey, setLockKey] = useState<string | null>(null);
-  const locked = stillLocked(lockKey, stateKey);
-  useEffect(() => { if (lockKey != null && lockKey !== stateKey) setLockKey(null); }, [lockKey, stateKey]);
-  const busy = flight.busy || locked;
   const row = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const primary = g.primary!;
-  const plan = groupPlan(g);
   const later = nextDeposit(ctx.today, ctx.contributionDay);
   const io = instOf(ctx, g.instrumentId);
   const subject = signalSubject(primary, subjectInsts(ctx));
@@ -255,38 +296,7 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll, onActivate }: {
       if (!a || a === document.body || row.current?.contains(a)) (trigger.current ?? row.current)?.focus({ preventScroll: true });
     });
   };
-
-  const offer = (ids: number[], text: string, what: string) => {
-    if (!ids.length) return;
-    const u = makeUndo(Date.now(), groupUndoRun(ids, (id) => deleteDecision(ctx.slug, id)));
-    const retry = () => {
-      void u.undo().then((res) => {
-        if (undoSettled(res)) { setLockKey(null); ctx.onChanged(); }
-        const msg = undoMessage(res, what);
-        if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
-      });
-    };
-    toast(text, 10000, { label: "Cofnij", onClick: retry });
-  };
-  /** Writes in order; a failure keeps what was saved (with its undo) and says so. */
-  const writeAll = (steps: (() => Promise<{ decision: { id: number } }>)[], text: string, what: string, failText: string) => locked ? undefined : flight.run(async () => {
-    const ids: number[] = [];
-    try {
-      for (const step of steps) ids.push((await step()).decision.id);
-      setLockKey(stateKey);
-      close();
-      ctx.onChanged();
-      offer(ids, text, what);
-    } catch (e) {
-      if (ids.length) { ctx.onChanged(); offer(ids, `${failText}: ${errorText(e)}`, what); } else toast(`${failText}: ${errorText(e)}`, 5000);
-    }
-  });
-  const decide = (input: DecisionInput, label: string) => {
-    if (!plan) return;
-    const tag = label.replace("decyzja: ", "");
-    return writeAll(fanOutSteps(ctx.slug, plan.primary, plan.rest, input, tag), `Zapisano decyzję · ${tag}`, "decyzja", "Nie zapisano decyzji");
-  };
-  const ack = (reason?: string) => { void writeAll(g.live.map((x) => () => postAcknowledge(ctx.slug, x.id, reason)), "Potwierdzone bez zmian", "potwierdzenie", "Nie zapisano"); };
+  const { busy, locked, flight, setLockKey, stateKey, offer, decide, ack } = useGroupWriter(ctx, g, close);
   const snooze = () => locked ? undefined : flight.run(async () => {
     try {
       await postSnooze(ctx.slug, primary.id, later);
@@ -384,7 +394,9 @@ export function SignalsDialog({ signals, ctx, filter: initial = "all", focusId, 
   const order = cursorOrder(list, held, filter);
   const ref = useRef<HTMLDivElement>(null);
   useModal(ref, true, onClose, { focus: "panel" });
-  const { openId, setOpenId, cursor, setCursor } = useCursor(order.map((s) => s.id), ref, true, "data-signal");
+  // A group's decision dialog (Decide.tsx) on top: the cursor keys stay with it.
+  const [modal, setModal] = useState(false);
+  const { openId, setOpenId, cursor, setCursor } = useCursor(order.map((s) => s.id), ref, !modal, "data-signal");
   const theses = useTheses(ctx.slug, list, ctx.positions);
   // Review step 2 puts the cursor on the first undecided signal.
   useEffect(() => { if (review && focusId == null && order[0]) setCursor(order[0].id); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -394,8 +406,8 @@ export function SignalsDialog({ signals, ctx, filter: initial = "all", focusId, 
   const decided = list.filter(isDecided).length;
   const first = order[0]?.id ?? -1;
   const item = (s: SignalV2, sub: boolean) => (
-    <SignalItem key={s.id} s={s} ctx={dctx} thesis={!sub && s.instrument_id != null ? theses.get(s.instrument_id) ?? null : null} sub={sub}
-      open={openId === s.id} cursor={cursor === s.id} primary={s.id === first}
+    <SignalItem key={s.id} s={s} ctx={dctx} thesis={!sub && s.instrument_id != null ? theses.get(s.instrument_id) ?? null : null} sub={sub} grouped={sub}
+      open={!sub && openId === s.id} cursor={cursor === s.id} primary={s.id === first}
       onToggle={(v) => { setOpenId(v ? s.id : null); if (v) setCursor(s.id); }} />
   );
   const group = (g: SignalGroup<SignalV2>) => {
@@ -410,6 +422,8 @@ export function SignalsDialog({ signals, ctx, filter: initial = "all", focusId, 
           <SubjectTitle s={head} ctx={dctx} io={io} extra={<span className="nmm">{plural(g.signals.length, "sygnał", "sygnały", "sygnałów")}</span>} />
           {!g.settled && t && (t.thesis || t.exit_plan) && <ThesisLine t={t} />}
           {[...g.live, ...g.signals.filter((x) => !g.live.includes(x))].map((x) => item(x, true))}
+          <GroupActs g={g} ctx={dctx} thesis={t} primary={g.live.some((x) => x.id === first)} open={g.live.some((x) => x.id === openId)}
+            onToggle={(v) => { setOpenId(v ? g.live[0]?.id ?? null : null); if (v && g.live[0]) setCursor(g.live[0].id); }} onModal={setModal} />
         </div>
       </div>
     );
@@ -452,6 +466,39 @@ export function SignalsDialog({ signals, ctx, filter: initial = "all", focusId, 
         </div>
       </div>
     </>
+  );
+}
+
+/** The one action row of a multi-signal subject in the dialog (owner: one `Zanotuj decyzję` per group, not per
+ * signal): `Zanotuj decyzję` opens the position's decision dialog (Decide.tsx: one decision linked to every open
+ * signal of the group) for an instrument, else the inline form (the decision on the newest signal, `decyzja: <tag>`
+ * on the rest); `Potwierdź` acknowledges every open signal of the group (one undo). Nothing once all are settled. */
+function GroupActs({ g, ctx, thesis, primary, open, onToggle, onModal }: {
+  g: SignalGroup<SignalV2>; ctx: SignalsCtx; thesis: Thesis | null; primary: boolean; open: boolean; onToggle: (open: boolean) => void;
+  onModal: (open: boolean) => void;
+}) {
+  const w = useGroupWriter(ctx, g, () => onToggle(false));
+  const io = instOf(ctx, g.instrumentId);
+  const dialog = open && io != null && g.instrumentId != null;
+  useEffect(() => { onModal(dialog); return () => { if (dialog) onModal(false); }; }, [dialog]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!g.live.length || !g.primary) return null;
+  const n = g.live.length;
+  const name = io ? instName(io.inst) : "";
+  return (
+    <div className="gact">
+      {open && !dialog ? (
+        <DecisionForm s={g.primary} ctx={ctx} pending={w.busy} onCollapse={() => onToggle(false)} onDecide={w.decide} onAck={w.ack} />
+      ) : (
+        <div className="act">
+          <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)} title={n > 1 ? `Jedna decyzja dla ${plural(n, "sygnału", "sygnałów", "sygnałów")}` : undefined}>Zanotuj decyzję</button>
+          <button className="btn sm" disabled={w.busy} onClick={() => w.ack()} title={n > 1 ? `Potwierdza ${plural(n, "sygnał", "sygnały", "sygnałów")}` : undefined}>Potwierdź</button>
+        </div>
+      )}
+      {dialog && (
+        <PositionDecisionDialog instrumentId={g.instrumentId!} name={name} symbol={io!.inst.symbol ?? null} signals={g.live} ctx={ctx} thesis={thesis} held={!!io!.pos}
+          onClose={() => onToggle(false)} />
+      )}
+    </div>
   );
 }
 
@@ -504,9 +551,12 @@ function thesisLine(t: Thesis): string {
 /** A signal in the dialog or on the asset page (rev 2 7.4): the title line (ticker, name, date), one fact (the
  * long form in its tooltip), the thesis, the actions in place (Zanotuj decyzję, Potwierdź, Odłóż do …, notatka)
  * or the decision form. `sub`: a sub-row of a multi-signal subject (small glyph, the fact + date, its actions). */
-export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, sub }: {
+export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, sub, grouped }: {
   s: SignalV2; ctx: SignalsCtx; thesis: Thesis | null; open: boolean; cursor: boolean; primary: boolean; onToggle: (open: boolean) => void;
   sub?: boolean;
+  /** A sub-row of a multi-signal subject: Zanotuj decyzję / Potwierdź live once in the group's action row
+   * (`GroupActs`); the row keeps its own `notatka` (and `Odłóż`). */
+  grouped?: boolean;
 }) {
   const toast = useToast();
   // One request at a time per signal (F7 FE2): a double click must not record two decisions.
@@ -587,12 +637,14 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, su
     : snoozed ? <><span className="tag solid pos">odłożono{s.snoozed_until ? ` do ${dm(s.snoozed_until)}` : ""}</span>{fact.bold ? <> · <Fact1 f={fact} /></> : null}</>
     : <Fact1 f={fact} />;
   const form = <DecisionForm s={s} ctx={ctx} pending={busy} onCollapse={collapse} onDecide={decide} onAck={ack} />;
-  const actions = !quiet && (open ? form : (
+  const snoozeBtn = s.kind === "contribution_gap" && <button className="btn sm" disabled={busy} onClick={() => snooze(later)}>Odłóż do {dm(later)}</button>;
+  const noteBtn = research && ctx.onOpenNote && <button className="lnk" style={{ fontSize: 12 }} onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.segment === "string" ? s.payload.segment : null)}>notatka</button>;
+  const actions = !quiet && (grouped ? ((snoozeBtn || noteBtn) && <div className="act">{snoozeBtn}{noteBtn}</div>) : open ? form : (
     <div className="act">
       <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)}>Zanotuj decyzję</button>
       <button className="btn sm" disabled={busy} onClick={() => ack()}>Potwierdź</button>
-      {s.kind === "contribution_gap" && <button className="btn sm" disabled={busy} onClick={() => snooze(later)}>Odłóż do {dm(later)}</button>}
-      {research && ctx.onOpenNote && <button className="lnk" style={{ fontSize: 12 }} onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.segment === "string" ? s.payload.segment : null)}>notatka</button>}
+      {snoozeBtn}
+      {noteBtn}
     </div>
   ));
   if (sub) {

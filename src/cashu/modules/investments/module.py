@@ -14,6 +14,7 @@ from .store.transactions import BROKERAGE
 
 api.router.include_router(perf_api.router)  # /investments/performance[/attribution]
 api.router.include_router(research_api.router)  # /investments/research[/summary|/runs|/{id}]
+api.router.include_router(research_api.topics_router)  # /investments/topics/{segment}/thesis (P9)
 
 MODULE = ModuleSpec(
     id="investments",

@@ -29,7 +29,7 @@ from ..models import (
     THESIS_ENTRY_TYPES,
 )
 from .scoring import clean_theme
-from .segments import NOTE_SEGMENT_KEYS, is_note_segment
+from .segments import NOTE_SEGMENT_KEYS, is_macro_key, is_note_segment
 
 TITLE_MIN = 3
 SUMMARY_MIN = 10
@@ -42,6 +42,11 @@ CRITERIA_MAX = 12
 CRITERION_TEXT_MAX = 160
 THRESHOLD_TEXT_MAX = 60
 CONTEXT_MAX = 200
+ASSESSMENT_MIN = 20
+ASSESSMENT_MAX = 400
+OUTLOOK_MIN = 20
+OUTLOOK_MAX = 400
+"""The market view under a topic thesis (P11, ``topic_theses.set_market_view``): bounds per field."""
 EVENT_MAX = 80
 EXPIRES_MAX_DAYS = 90
 OBSERVED_MAX_AGE_DAYS = 365
@@ -77,7 +82,26 @@ DETAILS_KEYS = (
     "event_date",
     "scale",
     "criteria_version",
+    "brief",
 )
+BRIEF_HEADLINE_MIN = 8
+BRIEF_HEADLINE_MAX = 80
+BRIEF_WHY_MIN = 10
+BRIEF_WHY_MAX = 280
+BRIEF_ITEMS_MAX = 3
+BRIEF_ITEM_MAX = 90
+BRIEF_KEYS = ("headline", "why", "supports", "risks")
+_FORECAST = re.compile(
+    r"(?i)\b(?:wzro[sś]n(?:ie|[aą])|ur[oó][sś]n(?:ie|[aą])|spadn(?:ie|[aą])|b[eę]dzie|b[eę]d[aą]"
+    r"|podro[zż]eje|podro[zż]ej[aą]|stanieje|staniej[aą]|potanieje|potaniej[aą]|odbij(?:e|[aą])"
+    r"|prognoz\w*|kupuj(?:cie)?|sprzedaj(?:cie)?|cel\w*\s+cenow\w*|cen\w*\s+docelow\w*)(?!\w)"
+)
+"""Words a brief never uses (P9): a forecast (``wzrośnie``, ``urośnie``, ``spadnie``, ``będzie``,
+``podrożeje``, ``stanieje``, ``potanieje``, ``odbije``, plural and ASCII spellings, ``prognoz*``), a
+call (``kupuj``, ``sprzedaj``) or a price target (``cel cenowy``). Company guidance is written as
+``spółka podała wytyczne`` / ``zapowiedź`` / ``oczekiwania firmy``."""
+TOPIC_THESIS_RELATIONS = ("supports", "weakens", "invalidates")
+"""The thesis relations a topic note may carry when its topic has a thesis (P9)."""
 _CANDIDATE_SYMBOL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:\-_^=]{0,39}$")
 _EXCHANGE = re.compile(r"^[A-Za-z0-9 .\-]{1,20}$")
 _CURRENCY = re.compile(r"^[A-Za-z]{3}$")
@@ -101,7 +125,7 @@ BYPASS_HOSTS = (
 )
 """Paywall / bot-protection bypass services: research never cites them (use the original source)."""
 
-_ADVICE = re.compile(
+_ADVICE_CORE = (
     r"(?i)"
     r"\b(?:cen\w*|kurs\w*)\s+docelow\w*"
     r"|\b(?:price|share)[\s-]+targets?\b|\btarget\s+price\b"
@@ -113,9 +137,88 @@ _ADVICE = re.compile(
     r"|\b(?:kupuj|sprzedawaj|kup\s+teraz|sprzedaj\s+teraz|warto\s+(?:kupi[cć]|sprzeda[cć])"
     r"|nale[zż]y\s+(?:kupi[cć]|sprzeda[cć])|buy\s+now|sell\s+now)\b"
     r"|\b(?:you\s+should|we\s+recommend|i\s+recommend)\s+(?:buy|sell)\w*"
-    r"|\b(?:wzro[sś]nie|urośnie|urosnie|spadnie|podro[zż]eje|potanieje|dojdzie)\s+do\s+\d"
+)
+_ADVICE = re.compile(
+    _ADVICE_CORE
+    + r"|\b(?:wzro[sś]nie|urośnie|urosnie|spadnie|podro[zż]eje|potanieje|dojdzie)\s+do\s+\d"
     r"|\bwill\s+(?:rise|fall|reach|hit|drop|climb|trade)\s+(?:(?:to|at)\s+)?\d"
 )
+_MARKET_ADVICE = re.compile(
+    _ADVICE_CORE
+    + r"|\bcen(?:a|y|ie|ę|ą|om|ami|ach)?(?!\w)(?:\s+\S+){0,3}?\s+(?:wzro[sś]n\w*|ur[oó][sś]n\w*|spadn\w*|podro[zż]\w*"
+    r"|potanie\w*|dojd\w*|osi[aą]gn\w*)\s+(?:do|o)\s+\d"
+    r"|\bprices?\s+(?:will|should|could)\s+(?:rise|fall|reach|hit|drop|climb|trade)\b"
+)
+""":data:`_ADVICE` for a topic market view (P11): a sourced market / demand estimate may name a level
+(``popyt wzrośnie do 945 TWh``, ``installations will reach 575,000``), so the generic "rises to a
+number" clauses give way to a price-with-number clause (``cena złota wzrośnie do 3000``); the
+security price calls are :data:`_PRICE_CALL`."""
+
+_PRICE_CALL = re.compile(
+    r"(?i)"
+    r"\bcel\w*\s+cenow\w*|\bcen\w*\s+docelow\w*|\bwycen\w*\s+docelow\w*"
+    r"|\b(?:kurs\w*|notowa\w*|akcj\w*|walor\w*|wycen\w*|indeks\w*|index\w*|S&P(?:\s*500)?"
+    r"|WIG\w*|DAX|Nasdaq\w*|Dow\s+Jones|Nikkei\w*|MSCI(?:\s+\S+)?|Stoxx\w*|FTSE\w*|giełd\w*"
+    r"|rynek\s+akcji|rynk\w*\s+akcji)(?:\s+\S+){0,3}?\s+"
+    r"(?:wzro[sś]n\w*|ur[oó][sś]n\w*|spadn\w*|podwoi\w*|potroi\w*|podro[zż]\w*|potanie\w*"
+    r"|staniej\w*|odbij\w*|dojd\w*|osi[aą]gn\w*|przebij\w*|zyska\w*|straci\w*)"
+    r"|\b(?:price|stock|shares?|index|indices|S&P(?:\s*500)?|Nasdaq|Dow|equities|valuations?)\s+"
+    r"(?:will|should|could)\s+(?:rise|fall|reach|hit|drop|climb|double)"
+    r"|\b(?:upside|downside)\s+(?:of|to)\s+\d"
+    r"|\b(?:kup|kupuj|dokup|dokupuj|sprzedaj|sprzedawaj|zredukuj)\b"
+    r"|\bzrealizuj\w*\s+zysk"
+)
+"""Price-call wording a topic market view never uses (P11), on top of :data:`_MARKET_ADVICE`: a
+price target (``cel cenowy``, ``cena docelowa``), a price / quote / share / valuation / index move
+(``kurs ... wzrośnie``, ``akcje spółki spadną``, ``notowania odbiją``, ``wyceny spadną``,
+``S&P 500 wzrośnie``), an English price call or upside figure, and an imperative buy / sell call
+(``kup``, ``sprzedaj``; ``sprzedaż robotów`` is market data and passes). The outlook is about the
+topic's market, adoption or demand (``popyt na chipy do AI``), never about the price of a security
+or an index. Also refuses an attributed forecast (:func:`attributed_trend_forecast`) that is
+about such a price."""
+
+_SENTENCE = re.compile(r"(?<=[.!?;])\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])")
+_INSTITUTION = re.compile(
+    r"\b(?:MFW|IMF|OECD|Bank\w*\s+Światow\w*|World\s+Bank|Fed\w*|FOMC|Rezerw\w*\s+Federaln\w*"
+    r"|EBC|ECB|NBP|RPP|BoE|BoJ|Bank\w*\s+(?:Anglii|Japonii|Kanady|of\s+England|of\s+Japan)"
+    r"|IEA|MAE|EIA|OPEC\w*|IFR|SIA|WSTS|Gartner\w*|IDC|BNEF|Eurostat\w*|GUS|KE|CBO"
+    r"|Komisj\w*\s+Europejsk\w*|European\s+Commission"
+    r"|Międzynarodow\w*\s+(?:Fundusz\w*\s+Walutow\w*|Agencj\w*\s+Energetyczn\w*"
+    r"|Federacj\w*\s+Robotyki))(?!\w)"
+)
+"""Institutions whose published forecasts of macro and market TRENDS (GDP, inflation, rates incl.
+the Fed dot plot, energy / power demand, robot installations, chip sales, IT spending) a brief, a
+note or a topic view may cite (owner decision 2026-10-10). Case-sensitive (acronyms)."""
+_ATTRIBUTION = re.compile(
+    r"(?i)\b(?:prognoz\w*|projekcj\w*|szacu\w*|szacun\w*|przewidu\w*|oczekuj\w*|zakład\w*"
+    r"|według|wg|dot\s+plot\w*|kropk\w*|forecast\w*|project\w*|estimat\w*|expects?)(?!\w)"
+)
+_NOT_INSTITUTIONAL = re.compile(
+    r"(?i)\b(?:prognozuj(?:emy|ę)|przewiduj(?:emy|ę)|spodziewa(?:my|m)\s+si[eę]|oczekuj(?:emy|ę)"
+    r"|szacuj(?:emy|ę)|uwa[zż]a(?:my|m)|s[aą]dz(?:imy|ę)|naszym\s+zdaniem|moim\s+zdaniem"
+    r"|we\s+(?:expect|forecast|predict)|i\s+(?:expect|forecast|predict)|analityk\w*|analyst\w*"
+    r"|konsensus\w*|consensus|dom\w*\s+maklersk\w*|broker\w*|rekomendacj\w*|rating\w*)(?!\w)"
+)
+
+
+def attributed_trend_forecast(sentence: str | None) -> bool:
+    """True when ``sentence`` cites an institution's forecast of a macro or market trend (owner
+    decision 2026-10-10: ``MFW prognozuje wzrost PKB USA o 2,1 % w 2027``, ``IEA szacuje, że popyt
+    wzrośnie do 945 TWh``): it names an institution of :data:`_INSTITUTION` and an attribution word
+    (``prognozuje``, ``szacuje``, ``według``, ``dot plot``), is not the writer's own or an analyst's
+    forecast (``prognozujemy``, ``analitycy``, ``konsensus``), and is not a call, a price target or a
+    price / valuation / index forecast of a security (:func:`market_view_problem`)."""
+    return (
+        bool(sentence)
+        and _INSTITUTION.search(sentence) is not None
+        and _ATTRIBUTION.search(sentence) is not None
+        and _NOT_INSTITUTIONAL.search(sentence) is None
+        and not market_view_problem(sentence)
+    )
+
+
+def _sentences(text: str) -> list[str]:
+    return [s for s in _SENTENCE.split(text) if s.strip()]
 
 
 class ResearchInputError(ValueError):
@@ -424,7 +527,180 @@ def _criteria(issues: _Issues, raw: Any) -> list[dict] | None:
     return out
 
 
-def _details(issues: _Issues, raw: Any, kind: str, now: dt.datetime) -> dict | None:
+def forecast_problem(text: str | None) -> bool:
+    """True when a sentence of ``text`` uses a word a brief never uses (:data:`_FORECAST`) and is
+    not an institution's cited trend forecast (:func:`attributed_trend_forecast`)."""
+    return bool(text) and any(
+        _FORECAST.search(s) is not None and not attributed_trend_forecast(s)
+        for s in _sentences(text)
+    )
+
+
+def claim_problem(text: str | None) -> bool:
+    """True when a sentence of a note or brief text reads like advice, a rating or a price
+    prediction (:func:`advice_problem`) and is not an institution's cited trend forecast
+    (:func:`attributed_trend_forecast`: ``MFW: inflacja spadnie do 2,4 % w 2027`` passes,
+    ``kurs wzrośnie do 50 zł`` does not)."""
+    return bool(text) and any(
+        advice_problem(s) and not attributed_trend_forecast(s) for s in _sentences(text)
+    )
+
+
+def market_view_problem(text: str | None) -> bool:
+    """True when a topic market view reads like advice or a security price call (P11)."""
+    return bool(text) and (
+        _MARKET_ADVICE.search(text) is not None or _PRICE_CALL.search(text) is not None
+    )
+
+
+_YEAR = re.compile(r"(?<![\d.,])(?:19|20)\d{2}(?![\d.,%])")
+_SPAN = re.compile(
+    r"(?i)(?<![\d.,])\d+(?:\s*[-\u2013]\s*\d+)?\s*(?:lat\w*|rok\w*|mies\w*|kwarta\w*|tygod\w*"
+    r"|dni|years?|months?|quarters?|weeks?|days?)\b"
+)
+_PERIOD = re.compile(r"(?i)\b[QH][1-4]\b")
+
+
+def has_quantitative_estimate(text: str | None) -> bool:
+    """True when ``text`` names at least one number other than a year (``2030``), a horizon
+    (``2-4 lat``, ``12 mies.``) or a quarter (``Q3``): the size or growth of a market or demand
+    (``575 tys. instalacji``, ``+4% rocznie``, ``627 mld USD``)."""
+    if not text:
+        return False
+    rest = _PERIOD.sub(" ", _SPAN.sub(" ", _YEAR.sub(" ", text)))
+    return re.search(r"\d", rest) is not None
+
+
+OUTLOOK_ESTIMATE_MESSAGE = (
+    "outlook needs a sourced quantitative market or demand estimate (who, how much, horizon)"
+)
+
+
+def validate_assessment(value: Any) -> str:
+    """Validate the current market assessment under a topic thesis (P11)."""
+    issues = _Issues()
+    assessment = _text(
+        issues,
+        "assessment",
+        value,
+        minimum=ASSESSMENT_MIN,
+        maximum=ASSESSMENT_MAX,
+        multiline=True,
+    )
+    if market_view_problem(assessment):
+        issues.add(
+            "assessment",
+            "reads like a recommendation or price prediction; give an analytical market view, "
+            "not a buy / sell call or price target",
+        )
+    issues.raise_if_any()
+    assert assessment is not None
+    return assessment
+
+
+def validate_outlook(value: Any, *, quantitative: bool = False) -> str:
+    """Validate a forward market scenario: direction and horizon, never a security price call.
+    ``quantitative`` (the agent's view): it must also name a number, the cited industry estimate of
+    market / demand growth (:func:`has_quantitative_estimate`)."""
+    issues = _Issues()
+    outlook = _text(
+        issues,
+        "outlook",
+        value,
+        minimum=OUTLOOK_MIN,
+        maximum=OUTLOOK_MAX,
+        multiline=True,
+    )
+    if market_view_problem(outlook):
+        issues.add(
+            "outlook",
+            "reads like a recommendation or security price prediction; forecast the market and "
+            "adoption scenario, not a buy / sell call or price target",
+        )
+    elif quantitative and outlook and not has_quantitative_estimate(outlook):
+        issues.add("", OUTLOOK_ESTIMATE_MESSAGE)
+    issues.raise_if_any()
+    assert outlook is not None
+    return outlook
+
+
+VIEW_SOURCES_MAX = 6
+"""Sources of a topic market view (P11): 1-6, the industry estimates the outlook cites."""
+
+
+def validate_view_sources(raw: Any, *, now: dt.datetime) -> list[dict]:
+    """Validate the sources of a topic market view: 1-:data:`VIEW_SOURCES_MAX` items, each like a
+    research note source (``http(s)`` url, publisher, published_at, title?)."""
+    issues = _Issues()
+    if isinstance(raw, list) and len(raw) > VIEW_SOURCES_MAX:
+        issues.add("sources", f"at most {VIEW_SOURCES_MAX} sources")
+        issues.raise_if_any()
+    sources = _sources(issues, raw, now)
+    issues.raise_if_any()
+    return [s.as_json() for s in sources]
+
+
+def _brief(issues: _Issues, raw: Any, *, macro: bool) -> dict | None:
+    """``details.brief`` (P9): ``{headline, why, supports?, risks?}`` in plain Polish for a beginner;
+    ``supports`` / ``risks`` (conditions, never predictions) only on a macro note."""
+    where = "details.brief"
+    if not isinstance(raw, Mapping):
+        issues.add(where, "must be an object {headline, why, supports?, risks?}")
+        return None
+    unknown = sorted(set(raw) - set(BRIEF_KEYS))
+    if unknown:
+        issues.add(where, f"allowed keys: {', '.join(BRIEF_KEYS)}")
+        return None
+    out: dict = {}
+    headline = _text(
+        issues,
+        f"{where}.headline",
+        raw.get("headline"),
+        minimum=BRIEF_HEADLINE_MIN,
+        maximum=BRIEF_HEADLINE_MAX,
+    )
+    why = _text(
+        issues, f"{where}.why", raw.get("why"), minimum=BRIEF_WHY_MIN, maximum=BRIEF_WHY_MAX
+    )
+    texts: list[tuple[str, str | None]] = [("headline", headline), ("why", why)]
+    for key in ("supports", "risks"):
+        items = raw.get(key)
+        if items is None or items == []:
+            out[key] = []
+            continue
+        if not macro:
+            issues.add(f"{where}.{key}", "only a macro brief lists supports / risks")
+            continue
+        if not isinstance(items, list) or len(items) > BRIEF_ITEMS_MAX:
+            issues.add(f"{where}.{key}", f"must be a list of at most {BRIEF_ITEMS_MAX} short texts")
+            continue
+        parsed = []
+        for i, item in enumerate(items):
+            text = _text(issues, f"{where}.{key}[{i}]", item, minimum=3, maximum=BRIEF_ITEM_MAX)
+            if text:
+                parsed.append(text)
+                texts.append((f"{key}[{i}]", text))
+        out[key] = parsed
+    for key, text in texts:
+        if forecast_problem(text) or claim_problem(text):
+            issues.add(
+                f"{where}.{key}",
+                "reads like a forecast, a call or a price target; a brief names facts and "
+                "conditions (what supports / weighs on such a market), never what will happen",
+            )
+    if headline is None or why is None:
+        return None
+    return {"headline": headline, "why": why, **out}
+
+
+def _details(
+    issues: _Issues,
+    raw: Any,
+    kind: str,
+    now: dt.datetime,
+    *,
+    segment: str | None = None,
+) -> dict | None:
     if raw is None:
         if kind == "candidate":
             issues.add("details", "a candidate needs details {entry_type, criteria}")
@@ -491,6 +767,13 @@ def _details(issues: _Issues, raw: Any, kind: str, now: dt.datetime) -> dict | N
                 out["event"] = event
     elif event:
         issues.add("details.event_date", "an event needs its date (YYYY-MM-DD)")
+    if raw.get("brief") is not None:
+        if segment is None:
+            issues.add("details.brief", "only a segment or macro note carries a brief")
+        else:
+            brief = _brief(issues, raw.get("brief"), macro=is_macro_key(segment))
+            if brief is not None:
+                out["brief"] = brief
     return out or None
 
 
@@ -562,7 +845,7 @@ def validate_note(raw: Mapping[str, Any], *, now: dt.datetime) -> NoteInput:
         multiline=True,
     )
     for where, text in (("title", title), ("summary", summary)):
-        if advice_problem(text):
+        if claim_problem(text):
             issues.add(
                 where,
                 "reads like a recommendation, an analyst rating or a price prediction; notes carry "
@@ -585,7 +868,19 @@ def validate_note(raw: Mapping[str, Any], *, now: dt.datetime) -> NoteInput:
             if kind is not None and kind not in SEGMENT_NOTE_KINDS:
                 issues.add("kind", f"a segment note is one of: {', '.join(SEGMENT_NOTE_KINDS)}")
             if relation not in (None, "none"):
-                issues.add("thesis_relation", "a segment note has no thesis: use none")
+                if is_macro_key(segment):
+                    issues.add("thesis_relation", "a macro note has no thesis: use none")
+                elif relation not in TOPIC_THESIS_RELATIONS:
+                    issues.add(
+                        "thesis_relation",
+                        "a topic note bears on its topic thesis with one of: "
+                        + ", ".join(TOPIC_THESIS_RELATIONS)
+                        + " (or none)",
+                    )
+                elif thesis_field not in (None, "thesis"):
+                    issues.add("thesis_field", "a topic note bears on the topic thesis: use thesis")
+                else:
+                    thesis_field = "thesis"
             if summary is not None and len(summary) > SEGMENT_SUMMARY_MAX:
                 issues.add(
                     "summary",
@@ -609,7 +904,9 @@ def validate_note(raw: Mapping[str, Any], *, now: dt.datetime) -> NoteInput:
     elif not 1 <= expires_in <= EXPIRES_MAX_DAYS:
         issues.add("expires_in_days", f"must be between 1 and {EXPIRES_MAX_DAYS}")
         expires_in = RESEARCH_NOTE_TTL_DAYS
-    details = _details(issues, raw.get("details"), kind or "", now) if kind else None
+    details = (
+        _details(issues, raw.get("details"), kind or "", now, segment=segment) if kind else None
+    )
     candidate = _candidate(issues, raw.get("candidate"))
     if kind == "candidate":
         if relation not in (None, "none"):
@@ -656,12 +953,24 @@ class RunScope:
     """Explicit instrument references (ids, symbols, ISINs); resolved by the service."""
     scheduled: bool = False
     """True for the scheduled (Saturday) routine, False on demand."""
+    full_refresh: bool = False
+    """A full fresh research the owner explicitly asked for (P9): exempt from the weekly novelty
+    limits, never from the duplicate checks."""
 
 
 def validate_scope(raw: Mapping[str, Any] | None) -> RunScope:
     issues = _Issues()
     data = dict(raw or {})
-    allowed = {"held", "watchlist", "candidates", "themes", "segments", "instruments", "scheduled"}
+    allowed = {
+        "held",
+        "watchlist",
+        "candidates",
+        "themes",
+        "segments",
+        "instruments",
+        "scheduled",
+        "full_refresh",
+    }
     unknown = sorted(set(data) - allowed)
     if unknown:
         issues.add("scope", f"allowed keys: {', '.join(sorted(allowed))}")
@@ -680,6 +989,15 @@ def validate_scope(raw: Mapping[str, Any] | None) -> RunScope:
     if not isinstance(scheduled, bool):
         issues.add("scope.scheduled", "must be true or false")
         scheduled = False
+    full_refresh = data.get("full_refresh", False)
+    if not isinstance(full_refresh, bool):
+        issues.add("scope.full_refresh", "must be true or false")
+        full_refresh = False
+    if full_refresh and scheduled:
+        issues.add(
+            "scope.full_refresh",
+            "a full refresh comes only from the owner's explicit request, never a scheduled run",
+        )
     themes: list[str] = []
     raw_themes = data.get("themes") or []
     if not isinstance(raw_themes, list) or len(raw_themes) > SCOPE_THEMES_MAX:
@@ -725,6 +1043,7 @@ def validate_scope(raw: Mapping[str, Any] | None) -> RunScope:
         segments=tuple(segments),
         instruments=tuple(dict.fromkeys(instruments)),
         scheduled=scheduled,
+        full_refresh=full_refresh,
     )
 
 

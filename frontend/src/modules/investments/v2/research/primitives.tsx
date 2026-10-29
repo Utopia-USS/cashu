@@ -13,7 +13,7 @@ import {
   acceptedAt, KIND_LABEL, NOISE_SCALE, noteRowTitle, noteSubject, noteWhen, normRelation, polarityCls, watchItemId, POLARITY_WORD, RELATION_CLS, RELATION_LABEL, relationIcon,
   ROUTINE_MENU, ROUTINE_PROMPT, safeUrl, sentimentBars, sourceParts, sourceText, strengthTitle, summaryWithoutCriteria,
 } from "./logic";
-import { type DisplayRow, kindTitle, ppOf, ppTone, type PpTone, staleTitle, symbolsText, type TopicKind, topicNote, tone, trendText, trendTitle } from "./segments";
+import { briefLines, type DisplayRow, kindTitle, ppOf, ppTone, type PpTone, staleTitle, symbolsText, thesisDraft, type TopicKind, topicView } from "./segments";
 import { metricTitle } from "./macro";
 import type { HealthKey, MacroMetric, ResearchNote } from "./types";
 import "./research.css";
@@ -123,35 +123,51 @@ export function Explain({ id, head, tone: t, text, metrics }: { id: string; head
   );
 }
 
-/** One topic row (P7 design 2.3): label + symbols + unread mark, the note line (this week's title or the small
- * date), the topic's own trend (1w, 4w small), and for held topics the contribution bar and pp. Watched-only rows
- * are muted with empty bar / pp slots; a new row (held now, no exposure at the window start) has the empty slots
- * but is not muted. */
+/** One topic row (P9): the name on its own line (never truncated), the tickers as a muted subtitle, for held topics
+ * the contribution bar and pp on the right, then up to 3 brief lines (headline + muted date; the first also its `why`
+ * in one muted line). No trend numbers. Watched-only and brief-only rows (no member, P9 MED-6) are muted with empty
+ * bar / pp slots (brief-only: no tickers line either); a new row (held now,
+ * no exposure at the window start) has the empty slots but is not muted. Under the name the topic's market view
+ * (P11, `Ocena teraz` / `Perspektywa`, one line each, full text in the tooltip) before the briefs. The name opens the
+ * topic drawer. */
 export function TopicRow({ r, kind, bar, syms, stale, first, right, last, onOpen }: {
   r: DisplayRow; kind: TopicKind; bar: { w: number; cls: PpTone; title: string }; syms: string[]; stale: string[];
   /** first watched-only row (dashed group rule), right sub-column (left rule), bottom of the left sub-column (no border). */
   first: boolean; right: boolean; last: boolean; onOpen: () => void;
 }) {
-  const note = topicNote(r);
-  const t1 = r.trend_1w ?? null;
+  const lines = briefLines(r);
+  const draft = thesisDraft(r.thesis);
+  const view = topicView(r.thesis);
   return (
-    <div className={`trow${kind === "watched" ? " wo" : ""}${first ? " grp" : ""}${right ? " c2" : ""}${last ? " last" : ""}`} data-topic={r.key}>
+    <div className={`trow${kind === "watched" || kind === "none" ? " wo" : ""}${first ? " grp" : ""}${right ? " c2" : ""}${last ? " last" : ""}`} data-topic={r.key}>
       <div className="tl">
         <div className="nm">
           <button className="nm" onClick={onOpen} title={kindTitle(kind)}>{r.label}</button>
-          {syms.length > 0 && <span className="sym" title={syms.join(", ")}>{symbolsText(syms)}</span>}
+          {draft && <span className="tag warn" title="Teza tematu od agenta">do potwierdzenia</span>}
           {r.unread > 0 && <Mark kind="notes" title={plural(r.unread, "nowa notatka", "nowe notatki", "nowych notatek")} />}
         </div>
-        <div className="sub" title={note?.title}>{note ? (note.fresh ? <span className="nt">{note.text}</span> : <span className="dt">{note.text}</span>) : ""}</div>
-      </div>
-      <div className="tr" title={trendTitle(r)}>
-        <span className={`v ${tone(t1)}`}>{trendText(t1)}</span>
-        <span className="s">{r.trend_4w != null ? `4 tyg. ${trendText(r.trend_4w)}` : ""}</span>
+        {syms.length > 0 && <div className="sym">{symbolsText(syms, Infinity)}</div>}
       </div>
       {kind === "held" ? <ContribBar {...bar} /> : <span />}
       <div className="r">{kind === "held"
         ? <span className={`pp ${ppTone(r.contribution)}${stale.length ? " stale" : ""}`} title={staleTitle(stale)}>{ppOf(r.contribution)}</span>
         : <span />}</div>
+      {view && (
+        <div className="tv" data-topic-view={r.key}>
+          {view.assessment && <div title={view.assessment}><span className="k">Ocena teraz</span>{view.assessment}</div>}
+          {view.outlook && <div title={view.publishers ? `${view.outlook}\n${view.publishers}` : view.outlook}><span className="k">Perspektywa</span>{view.outlook}</div>}
+        </div>
+      )}
+      {lines.length > 0 && (
+        <ul className="tb">
+          {lines.map((l) => (
+            <li key={l.id} data-brief={l.id}>
+              <span className="bh">{l.headline}</span>{l.date && <span className="dt"> · {l.date}</span>}
+              {l.why && <div className="bw" title={l.why}>{l.why}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

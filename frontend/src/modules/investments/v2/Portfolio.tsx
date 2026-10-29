@@ -7,8 +7,9 @@ import { Fragment, useId, useMemo, useRef, useState } from "react";
 import { Donut, Spark } from "../../../charts";
 import { Drawer, Pop, Seg } from "../../../ui";
 import { FootFacts, Mark, Widget } from "../../../widgets";
+import { hideAmount } from "../../../incognito";
 import type { AccountRow, Instrument, Overview, StrategyStatus } from "../api";
-import { accountLabel, assetClass, bucketColor, bucketLabel, dm, money, money0, nAccountsInv, nBuckets, pct, pctTarget, plural, pp, region } from "../labels";
+import { accountLabel, assetClass, bucketColor, bucketGenitive, bucketLabel, dm, money, money0, nAccountsInv, nBuckets, pct, pctTarget, plural, pp, region } from "../labels";
 import { ClassifyCard, WarningsCard } from "../Rail";
 import { warningItems } from "../logic";
 import type { Alert, PositionV2, PositionsV2, SignalV2, WatchItem } from "./api";
@@ -169,7 +170,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
 
 export type AllocView = "buckets" | "classes" | "regions" | "accounts";
 const PALETTE = ["--inv-global", "--inv-pl", "--inv-bonds", "--inv-cash", "--inv-5", "--inv-6", "--inv-7", "--inv-other"];
-const totalK = (total: number, currency: string) => (total >= 1000 ? `${Math.round(total / 1000).toLocaleString("pl-PL")} tys.` : money0(total, currency));
+const totalK = (total: number, currency: string) => (total >= 1000 ? hideAmount(`${Math.round(total / 1000).toLocaleString("pl-PL")} tys.`) : money0(total, currency));
 
 /** Aktywa `Wynik %` cell: hovering it opens the instrument-card style card with the gain in money and the cost
  * (the Wynik column is hidden when the main column is narrow); without hover a one-line `title`. */
@@ -285,6 +286,15 @@ export function AllocationWidget({ overview, strategy, filtered, wide, today, vi
   const out = alloc.buckets.filter((b) => b.out_of_band).length;
   const band = alloc.band?.absolute_band_pp ?? null;
   const bandTitle = band != null ? `pasmo ±${band} pp` : undefined;
+  const belowTarget = [...alloc.buckets].filter((b) => b.drift_pp < 0).sort((a, b) => a.drift_pp - b.drift_pp)[0];
+  const aboveTarget = [...alloc.buckets].filter((b) => b.drift_pp > 0).sort((a, b) => b.drift_pp - a.drift_pp)[0];
+  const priority = belowTarget ?? aboveTarget;
+  const priorityBucket = priority ? bucketGenitive(priority.bucket_id) : null;
+  const priorityText = priority && priorityBucket
+    ? priority.drift_pp < 0
+      ? `Najpierw zwiększaj udział ${priorityBucket}: ${pp(priority.drift_pp)} do celu. Lokalne „kup” są drugim krokiem.`
+      : `Nie zwiększaj udziału ${priorityBucket}: ${pp(priority.drift_pp)} ponad cel. Lokalne „kup” są drugim krokiem.`
+    : "Utrzymuj docelowe udziały. Lokalne rekomendacje nie powinny naruszać balansu portfela.";
   const rows = view === "buckets"
     ? [
       ...alloc.buckets.map((b) => ({ key: b.bucket_id, name: bucketLabel(b.bucket_id) ?? "", color: bucketColor(b.bucket_id, order), w: b.weight, target: b.target as number | null, drift: b.drift_pp as number | null, out: !!b.out_of_band, value: b.value, toTarget: b.to_target as number | null })),
@@ -330,6 +340,11 @@ export function AllocationWidget({ overview, strategy, filtered, wide, today, vi
               </div>
             ))}
           </div>
+          {view === "buckets" && (
+            <div className={`portfolio-priority ${priority?.out_of_band ? "warn" : ""}`}>
+              <b>Priorytet portfela</b><span>{priorityText}</span>
+            </div>
+          )}
         </div>
       )}
     </Widget>
@@ -350,4 +365,3 @@ export function AccountsWidget({ overview, strategy, onAdd, onReconcile, onAlias
     </Widget>
   );
 }
-

@@ -367,6 +367,10 @@ header.shell { display: flex; align-items: center; justify-content: space-betwee
 :root[data-theme="dark"] .logo .on-dark { display: block; }
 .brand .sub { color: var(--muted); font-size: 12px; margin-left: 2px; }
 .hdr-right { display: flex; align-items: center; gap: 8px; }
+header.shell .btn.incog { width: 28px; height: 28px; padding: 0; margin: 0; min-height: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--card); color: var(--muted); border-radius: 999px; }
+header.shell .btn.incog:hover { color: var(--text); }
+header.shell .btn.incog.on { background: var(--chip); color: var(--text); }
+header.shell .btn.incog svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 header.shell .btn.pill { font-size: 13px; padding: 3px 10px 3px 3px; background: var(--card); }
 header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .tabbar { gap: 2px; margin-bottom: 18px; }
@@ -498,6 +502,8 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .sig .th { font-size: 12px; color: var(--muted); margin-top: 4px; padding-left: 8px; border-left: 2px solid var(--border); line-height: 1.4; }
 .sig .th b { color: var(--text); font-weight: 600; }
 .sig .act { display: flex; gap: 4px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+/* one action row per multi-signal subject (dialog): under its sub-rows */
+.sig .gact { margin-top: 6px; }
 .sig .when { font-size: 11px; color: var(--muted); white-space: nowrap; margin-top: 3px; text-align: right; }
 .sig.quiet .t { font-weight: 500; color: var(--muted); }
 .sig .decide { margin-top: 8px; display: grid; gap: 8px; background: var(--chip); border-radius: 10px; padding: 10px 12px; }
@@ -666,6 +672,11 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .w th.c-hint, .w td.c-hint { width: 168px; }                 /* 158 px chip: `rekomendacja nieaktualna` (600) is 157 px */
 .w td.c-hint { padding-left: 4px; }
 .w td.c-hint .hint { max-width: 158px; }
+.watch-cov { color: var(--muted); font-size: 10.5px; font-weight: 500; margin-left: 3px; white-space: nowrap; }
+.watch-rec { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+.watch-plan { display: inline-flex; max-width: 158px; padding: 1px 7px; border: 1px solid var(--muted); border-radius: 999px;
+  color: var(--text); font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.watch-plan.unset { color: var(--muted); border-style: dashed; font-weight: 500; }
 /* Aktywa sits in the 2/3 main column (~875 px at a 1360 px window): below 1000 px the 9th column would squeeze the names
    to ~110 px, so the sparkline and the absolute result give way (as the <= 1180 px rule above does at ~700 px) */
 #inv-assets { container-type: inline-size; }
@@ -719,6 +730,10 @@ header.shell .avatar { width: 20px; height: 20px; font-size: 10.5px; }
 .arow .num { text-align: right; white-space: nowrap; }
 .arow.head { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; padding-bottom: 2px; }
 .arow.sel { background: var(--chip); border-radius: 6px; }
+.portfolio-priority { grid-column: 1 / -1; display: flex; gap: 6px; align-items: baseline; margin-top: 2px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--chip); color: var(--muted); font-size: 12px; line-height: 1.4; }
+.portfolio-priority b { color: var(--text); white-space: nowrap; }
+.portfolio-priority.warn { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
 
 /* review strip, what changed */
 .w.review { flex-direction: row; align-items: center; gap: 10px 14px; padding: 10px 16px; flex-wrap: wrap; }
@@ -1068,6 +1083,7 @@ td .ai + .status, td .ai { margin-right: 6px; }
 .sig.orow:not(:hover):not(:focus-within) .rt .lnk.quiet { opacity: 0; }
 @media (hover: none) { .sig.orow .rt .lnk.quiet { opacity: 1 !important; } }
 .osig + .tl { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 4px; }
+.osig .oact { display: flex; gap: 4px; padding: 2px 0 6px 18px; }
 .tl .t .sub { color: var(--muted); font-size: 12px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl .m i.neu { background: var(--border); }
 /* the one decision per position (Decide.tsx), over the page or the asset drawer */

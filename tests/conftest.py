@@ -113,6 +113,28 @@ def _offline_instrument_search(monkeypatch):
     instrument_search.clear_cache()
 
 
+@pytest.fixture(autouse=True)
+def _offline_price_refresh(monkeypatch):
+    """The batched price refresh (P10) never reaches the network in tests: its default sources fail
+    every instrument unless a test passes or installs fakes; the throttle cache starts empty."""
+    from cashu.modules.investments.service import prices
+
+    monkeypatch.setattr(prices, "default_sources", prices.offline_sources)
+    monkeypatch.setenv("CASHU_AUTO_DAILY", "0")  # the app's automatic daily check (P10) stays off
+    # and a daily check without sources a test passes never reaches the network either
+    from cashu.modules.investments.service import daily
+
+    def offline_daily_sources():
+        offline = prices.offline_sources()
+        return daily.MarketSources(offline.prices, offline.fx)
+
+    daily.production_sources = getattr(daily, "production_sources", daily.default_sources)
+    monkeypatch.setattr(daily, "default_sources", offline_daily_sources)
+    prices.clear_cache()
+    yield
+    prices.clear_cache()
+
+
 @pytest.fixture
 def session():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False})

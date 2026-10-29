@@ -168,6 +168,8 @@ CARD_KEYS = {
     "last_note_at",
     "note_this_week",
     "unread",
+    "plain",  # P9
+    "brief",  # P9
 }
 
 

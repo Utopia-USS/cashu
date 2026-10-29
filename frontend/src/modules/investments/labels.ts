@@ -2,6 +2,7 @@
 // unit-tested with `npm test`. UI copy rules: Polish, sentence case, regular hyphens only,
 // percentages with one decimal and a space before "%", percentage points as "pp".
 import { cur, GROUP } from "../../format.ts";
+import { hideAmount } from "../../incognito.ts";
 import { hmLocal, localIsoDate, serverDate } from "../../time.ts";
 
 const NBSP = " ";
@@ -43,12 +44,12 @@ export function money(v: number | null | undefined, c = "PLN", signed = false): 
 export function money0(v: number | null | undefined, c = "PLN", signed = false): string {
   if (v == null || !Number.isFinite(v)) return "-";
   const r = Math.round(v) || 0; // no negative zero: -0.3 zł is "0 zł", not "-0 zł" (F7 FE11)
-  const text = new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, maximumFractionDigits: 0, ...GROUP }).format(r);
+  const text = hideAmount(new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, maximumFractionDigits: 0, ...GROUP }).format(r));
   return signed && r > 0 ? `+${text}` : text;
 }
 
 /** Quantity without trailing zeros: 120, 0,5, 1,234567. */
-export const qty = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? "-" : qtyFmt.format(v));
+export const qty = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? "-" : hideAmount(qtyFmt.format(v)));
 
 /** Parse a Polish-typed number ("1 234,56", "148.60") -> number | null. */
 export function parseNum(text: string): number | null {

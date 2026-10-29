@@ -113,62 +113,6 @@
 .rsec .cnt .pos { color: var(--pos); } .rsec .cnt .neg { color: var(--neg); }
 .tag b.pos { color: var(--pos); font-weight: 600; } .tag b.neg { color: var(--neg); font-weight: 600; }
 
-/* ---------- segment rows (research view) ---------- */
-.sgrow { display: grid; grid-template-columns: minmax(0, 1.2fr) 60px 64px 196px minmax(0, 1fr); gap: 0 14px; align-items: center;
-  padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-.sgrow:last-child { border-bottom: none; }
-.sgrow.sel { background: var(--chip); border-radius: 8px; margin: 0 -8px; padding-left: 8px; padding-right: 8px; }
-.sgrow .nm { font-size: 13.5px; font-weight: 600; display: flex; gap: 6px; align-items: center; min-width: 0; }
-.sgrow .nm button.nm { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.sgrow .nm button.nm:hover { color: var(--nw); }
-.sgrow .chips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
-.sgrow .chips button.tag { background: transparent; font: inherit; font-size: 11px; cursor: pointer; color: var(--muted); }
-.sgrow .chips button.tag:hover { color: var(--text); border-color: var(--muted); }
-.sgrow .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.sgrow .num.pos { color: var(--pos); } .sgrow .num.neg { color: var(--neg); }
-.sgrow .wk { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
-.sgrow .wk .pp { min-width: 56px; text-align: right; }
-/* `.note` is also the note card class: reset its grid, padding and border here */
-.sgrow .note { display: block; padding: 0; border: none; font-size: 12.5px; color: var(--muted); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sgrow .note b { color: var(--text); font-weight: 600; }
-.sgrow .note .when { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.sgrow.head { padding: 0 0 4px; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
-.sgrow.head .num, .sgrow.head .wk { justify-content: flex-end; text-align: right; }
-.sgrow[data-selectable] { cursor: pointer; }
-@media (max-width: 760px) {
-  .sgrow { grid-template-columns: minmax(0, 1fr) 150px; }
-  .sgrow .num, .sgrow.head .num { display: none; }
-  .sgrow .note, .sgrow.head .note { grid-column: 1 / -1; padding-top: 2px; }
-  .sgrow .wk .cbar.md { width: 80px; }
-}
-
-/* ---------- macro regime cards (research view, P6) ---------- */
-.mcx { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
-.mc { display: grid; grid-template-rows: auto auto 1fr auto; gap: 6px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
-  background: var(--card); min-width: 0; font-size: 13px; }
-.mc[data-selectable] { cursor: pointer; }
-.mc:hover { border-color: var(--muted); }
-.mc.sel { background: var(--chip); }
-.mc.off { opacity: .62; }
-.mc .mh { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
-.mc .mh button.t { background: none; border: none; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; text-align: left;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.mc .mh button.t:hover { color: var(--text); }
-.mc .st { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 20px; }
-.mc .st .tag { font-weight: 600; }
-.mc .st .since { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.mc .st .since .warn { color: var(--warn); }
-.mc .ms { display: grid; gap: 3px; align-content: start; min-height: 54px; }
-.mc .m { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; font-size: 12.5px; }
-.mc .m .l { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mc .m b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
-.mc.stale .m b, .mc .m.stale b { color: var(--muted); }
-.mc .n { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 17px; }
-@media (max-width: 1180px) { .mcx { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .mcx { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 480px) { .mcx { grid-template-columns: minmax(0, 1fr); } }
-
 /* ---------- macro changes (review column) ---------- */
 .mchg { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .mchg .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -268,8 +212,23 @@ code.cmd.wrap { white-space: normal; word-break: break-all; display: inline; }
 .mrow .mh .st.off { color: var(--muted); font-weight: 500; }
 .mrow .mh .since { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mrow .mh .since .warn { color: var(--warn); }
-.mrow .sum { font-size: 12.5px; color: var(--muted); line-height: 1.4; margin-top: 2px;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mrow .mh .since.num { font-size: 11.5px; }
+/* P9 brief "for dummies": the headline (or the plain sentence), why, Co sprzyja / Na co uważać */
+.mrow .bh { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.4; margin-top: 3px; }
+.mrow .bw { font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-top: 2px; }
+.mrow .bl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 8px; margin-top: 4px; font-size: 12px; line-height: 1.4; }
+.mrow .bl .k { color: var(--muted); font-size: 11px; font-weight: 600; white-space: nowrap; padding-top: 1px; }
+.mrow .bl ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; }
+.mrow .bl li { position: relative; padding-left: 10px; color: var(--text); }
+.mrow .bl li::before { content: ""; position: absolute; left: 0; top: .6em; width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+.mrow .bl.sup li::before { background: var(--pos); }
+.mrow .bl.rsk li::before { background: var(--warn); }
+.mrow.solo { padding: 0; border-bottom: none; }
+.mrow.solo .xt { margin: 8px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.mrow.solo .xm { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 12px; }
+.mrow.solo .xm .l { color: var(--muted); }
+.mrow.solo .xm b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.mrow.solo .xm b.stale { color: var(--muted); }
 /* MacroStrip before the first run: the five rows side by side */
 .mrows.wide { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 20px; }
 .mrows.wide .mrow { border-bottom: none; }
@@ -298,38 +257,54 @@ code.cmd.wrap { white-space: normal; word-break: break-all; display: inline; }
 .topics { display: grid; }
 .topics.c2 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: column; grid-template-rows: repeat(var(--rows, 5), auto); column-gap: 24px; }
 .topics.c2 .trow.c2 { border-left: 1px solid var(--border); padding-left: 24px; margin-left: -12px; }
-.trow { display: grid; grid-template-columns: minmax(0, 1fr) 64px 56px 58px; gap: 0 10px; align-items: center; padding: 6px 0;
+.trow { display: grid; grid-template-columns: minmax(0, 1fr) 56px 58px; gap: 0 10px; align-items: center; padding: 7px 0;
   border-bottom: 1px solid var(--border); font-size: 13px; min-width: 0; }
 .trow:last-child, .topics.c2 .trow.last { border-bottom: none; }   /* `.last` = the bottom row of the left sub-column */
 .trow.grp { border-top: 1px dashed var(--border); }
 /* `.tl` is also the global timeline grid (index.css): reset it here */
 .trow .tl { display: block; min-width: 0; font-size: inherit; }
-.trow div.nm { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-weight: 600; }
-.trow .nm button.nm { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left;
-  min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trow div.nm { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 6px; min-width: 0; font-weight: 600; }
+/* P9: the name is never truncated (it wraps) */
+.trow .nm button.nm { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; min-width: 0; }
 .trow .nm button.nm:hover { color: var(--nw); text-decoration: underline; text-underline-offset: 2px; }
-.trow .nm .sym { color: var(--muted); font-weight: 500; font-size: 12px; white-space: nowrap; flex: none; }
-.trow .sub { font-size: 12px; color: var(--muted); min-height: 17px; line-height: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
-.trow .sub .nt { color: var(--text); font-weight: 500; }
-.trow .sub .dt { font-size: 11px; font-variant-numeric: tabular-nums; }
-.trow .tr { display: grid; justify-items: end; align-content: center; gap: 1px; min-width: 0; }
-.trow .tr .v { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.trow .tr .v.pos { color: var(--pos); } .trow .tr .v.neg { color: var(--neg); }
-.trow .tr .s { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; min-height: 14px; }
+.trow .nm .tag { font-weight: 500; }
+.trow .sym { color: var(--muted); font-weight: 500; font-size: 12px; line-height: 1.4; margin-top: 1px; }
 .trow .r { display: flex; justify-content: flex-end; }
 .trow .r .pp { min-width: 52px; text-align: right; }
+/* P9 briefs under the topic: headline + muted date, the first one's why in one muted line */
+/* P11 market view under a topic thesis: drawer block (`.tview`) and the home row's two one-liners (`.tv`). */
+.tview { border-left: 2px solid var(--nw); padding: 6px 9px; background: var(--infoBg); border-radius: 0 6px 6px 0; display: grid; gap: 7px; margin-top: 8px; }
+.tview .k { display: block; color: var(--nw); font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 2px; }
+.tview p { margin: 0; color: var(--text); font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; }
+.tview p b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tview .at { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.tview .vsrc { display: flex; flex-wrap: wrap; gap: 2px 5px; font-size: 11px; color: var(--muted); line-height: 1.4; }
+.tview .vsrc a { color: var(--muted); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
+.tview .vsrc a:hover { color: var(--text); }
+.trow .tv { grid-column: 1 / -1; margin: 4px 0 0; display: grid; gap: 2px; min-width: 0; }
+.trow .tv div { font-size: 12px; line-height: 1.4; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.trow .tv .k { color: var(--nw); font-weight: 600; margin-right: 5px; }
+.trow .tb { grid-column: 1 / -1; margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; min-width: 0; }
+.trow .tb li { font-size: 12.5px; line-height: 1.4; min-width: 0; }
+.trow .tb .bh { color: var(--text); font-weight: 500; }
+.trow .tb .dt { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.trow .tb .bw { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* watched-only topic: no exposure, muted name and symbols, empty bar / pp slots */
 .trow.wo .nm button.nm { color: var(--muted); font-weight: 500; }
-.trow.wo .nm .sym { opacity: .8; }
+.trow.wo .sym { opacity: .8; }
+
+/* ---------- topic drawer (P9): Teza + Instrumenty | Notatki ---------- */
+.tdw { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 14px; align-items: start; }
+.tdw .stack { display: grid; gap: 14px; min-width: 0; }
+.tdw .tmem { display: grid; gap: 8px; }
+.tdw .form .field label { display: block; font-size: 11px; color: var(--muted); font-weight: 600; margin-bottom: 3px; }
+.tdw .form .field + .field { margin-top: 8px; }
+@media (max-width: 760px) { .tdw { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- candidates in the home rail ---------- */
 .cands { display: grid; gap: 10px; }
 .cands .cand + .cand { margin-top: 0; }
 
-/* ---------- topics widget (research page): watched-only rows, the currency footer line ---------- */
-.sgrow.wo .nm button.nm { color: var(--muted); font-weight: 500; }
-.sgfoot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
-.sgfoot .pp { font-size: 12px; }
 
 /* ---------- responsive (P7) ---------- */
 @media (max-width: 1180px) {
@@ -342,7 +317,6 @@ code.cmd.wrap { white-space: normal; word-break: break-all; display: inline; }
 @media (max-width: 760px) {
   .rsch2 { grid-template-columns: minmax(0, 1fr); }
   .rsch2 > .tcol { border-left: none; padding-left: 0; border-top: 1px solid var(--border); margin-top: 10px; padding-top: 4px; }
-  .trow { grid-template-columns: minmax(0, 1fr) 60px 48px 54px; gap: 0 8px; }
-  .trow .tr .s { display: none; }
+  .trow { grid-template-columns: minmax(0, 1fr) 48px 54px; gap: 0 8px; }
   .mx { left: 0; width: calc(100vw - 32px); }
 }

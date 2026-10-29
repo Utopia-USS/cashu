@@ -369,3 +369,38 @@ def accounts(profile: CurrentProfile) -> list[dict]:
             select(Account).where(Account.profile_id == profile.id, Account.removed_at.is_(None))
         ).all()
         return [account_row(a, None, None) | {"active": a.active} for a in rows]
+
+
+# --------------------------------------------------------------------------- #
+# Live data (P10): typed change events of the profile, polled and pushed (SSE)
+# --------------------------------------------------------------------------- #
+
+
+@profile_only_router.get("/changes")
+def changes_since(profile: CurrentProfile, after: int | None = None) -> dict:
+    """``{token, last_id, events, reset}``: the profile's (and shared) change events after id ``after``
+    (``core/events.py``; list rows carry their wire dict in ``payload.item``); without ``after`` only
+    the baseline id. ``reset``: events may have been pruned since, re-read everything. ``token``
+    changes on any commit by any process (``core/changes.py``). The window's fallback poll (60 s)."""
+    from . import changes, events
+
+    with get_session() as s:
+        out = events.since(s, profile, after)
+    return {"token": changes.token(), **out}
+
+
+@profile_only_router.get("/changes/stream", include_in_schema=False)
+async def changes_stream(profile: CurrentProfile, request: Request, after: int | None = None):
+    """Server-Sent Events of :func:`changes_since`: ``hello`` (baseline id), then one ``change`` per
+    event (``id`` = event id) and ``reset`` when events were pruned; a comment every 15 s keeps it open;
+    the stream ends after a few minutes and the client reconnects with the last id. Not in the schema
+    (a streaming GET): its profile isolation has its own test."""
+    from fastapi.responses import StreamingResponse
+
+    from . import live
+
+    return StreamingResponse(
+        live.stream(profile, request, after),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )

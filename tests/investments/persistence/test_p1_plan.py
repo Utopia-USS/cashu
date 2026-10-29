@@ -395,6 +395,58 @@ def test_mcp_model_sets_recommendation_without_recording_a_decision(api):
         assert s.exec(select(InvDecision).where(InvDecision.profile_id == pid)).all() == []
 
 
+def test_mcp_bulk_recommendations_are_a_complete_coverage_gate(api):
+    client, pid, base, _aid = api
+    watched = client.post(f"{base}/watchlist", json={"symbol_or_isin": "VWCE.DE"}).json()
+    mcp = CashuMcp(pid, today=AS_OF)
+    held = mcp.call("positions").data["positions"]
+    one = {
+        "instrument": str(held[0]["instrument_id"]),
+        "recommendation": "hold",
+        "reason": "Teza bez zmian; model czeka na kolejny punkt kontrolny.",
+    }
+
+    incomplete = mcp.call("set_recommendations", {"scope": "all", "recommendations": [one]})
+    assert not incomplete.ok and incomplete.error_kind == "incomplete_coverage"
+    assert all(r["recommendation"] is None for r in mcp.call("positions").data["positions"])
+
+    updates = [
+        {
+            "instrument": str(row["instrument_id"]),
+            "recommendation": "hold",
+            "reason": "Teza bez zmian; model czeka na kolejny punkt kontrolny.",
+        }
+        for row in held
+    ] + [
+        {
+            "instrument": str(watched["instrument"]["id"]),
+            "recommendation": "buy",
+            "reason": "Kandydat spełnia warunki wejścia po aktualnym researchu.",
+        }
+    ]
+    complete = mcp.call("set_recommendations", {"scope": "all", "recommendations": updates})
+    assert complete.ok, complete.error
+    assert complete.data == {
+        "scope": "all",
+        "expected": len(updates),
+        "covered": len(updates),
+        "missing": 0,
+        "updated": len(updates),
+        "note": "complete model recommendation coverage saved; no decision or transaction was recorded",
+    }
+
+    # The next routine can submit no unchanged rows: stored recommendations are preserved while the
+    # same deterministic coverage assertion still runs.
+    unchanged = mcp.call("set_recommendations", {"scope": "all", "recommendations": []})
+    assert unchanged.ok and unchanged.data["covered"] == len(updates)
+    assert unchanged.data["updated"] == 0
+    context = mcp.call("research_context").data
+    recommendations = [
+        row["recommendation"] for row in [*context["positions"], *context["watchlist"]]
+    ]
+    assert recommendations.count(None) == 0
+
+
 def test_mcp_recommendation_reason_is_shown_and_cleared_with_the_plan(api):
     client, pid, base, _aid = api
     mcp = CashuMcp(pid, today=AS_OF)

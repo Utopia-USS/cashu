@@ -168,3 +168,13 @@ def import_file(
             s, profile, imports.ImportRequest(ImportFile(name, content), account_id)
         )
     return imports.commit(preview, corrections=corrections)
+
+
+def distinct_words(n: int) -> str:
+    """Three words unique to ``n`` (P9): synthetic notes numbered only by ``n`` would otherwise be
+    near duplicates of each other (numbers-only tokens are ignored by ``research.similarity``)."""
+    code, value = "", n
+    for _ in range(4):
+        value, digit = divmod(value, 26)
+        code += chr(ord("a") + digit)
+    return f"a{code} b{code} c{code}"

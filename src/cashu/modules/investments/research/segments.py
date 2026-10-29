@@ -44,6 +44,7 @@ SEGMENTS: tuple[Segment, ...] = (
     Segment("real_estate", "Nieruchomości", "asset"),
     Segment("semis_ai", "AI: chipy i centra danych", "sector"),
     Segment("software", "AI i oprogramowanie", "sector"),
+    Segment("robotics", "Robotyka", "sector"),
     Segment("healthcare", "Ochrona zdrowia", "sector"),
     Segment("financials", "Płatności i finanse", "sector"),
     Segment("consumer", "Konsumpcja", "sector"),

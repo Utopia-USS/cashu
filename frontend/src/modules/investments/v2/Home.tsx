@@ -11,7 +11,7 @@
 //
 // Profile scoping: the shell remounts the page per profile; every request takes the slug; remembered values
 // (account filter, review note, review open, re-entry baseline) live under slug-scoped keys.
-import { INV_PROPOSAL_KINDS, moduleSyncLines } from "../../../core/connectors";
+import { INV_PROPOSAL_KINDS } from "../../../core/connectors";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type InstState, InstStateContext } from "./instState";
 import { healthOf, healthStale } from "./research/logic";
@@ -26,7 +26,7 @@ import { addDays, localDay } from "../../../time";
 import { Code, Notice, SetupSteps, type SetupStepItem, Seg, Skeleton, Tag, useToast } from "../../../ui";
 import { Fact, Grid, type GridItem, Split, Widget } from "../../../widgets";
 import {
-  type CommitResult, deleteReview, getProposals, getStrategy, patchInstrument, type Position, postReview, postRun, postStrategyInit, postStrategyReload,
+  type CommitResult, deleteReview, getProposals, getStrategy, patchInstrument, type Position, postReview, postStrategyInit, postStrategyReload,
   type Thesis,
 } from "../api";
 import { AccountDrawer, ImportDrawer, ProposalDrawer, ThesisDrawer, TxnDrawer, TxnsDrawer } from "../Drawers";
@@ -38,6 +38,8 @@ import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
 import type { Hint } from "../api";
 import { accKey, dropInv, getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, getSignalsV2, getWatchlist, invKey, type PerfPoint } from "./api";
 import { AssetDrawer } from "./AssetDrawer";
+import { usePriceRefreshState } from "./priceRefresh";
+import { useRunState } from "./runState";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
 import {
@@ -48,6 +50,8 @@ import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, ValueChartWidget } from "./Perf";
 import { AccountsWidget, type AllocView, AllocationWidget, AssetList } from "./Portfolio";
 import { useResearchHome } from "./research";
+import { canonKey, isSegment } from "./research/segments";
+import { isMacroKey } from "./research/macro";
 import { ChangeLog, ChangesWidget, ReentryBanner, ReviewStrip, StateToday } from "./Review";
 import { type SignalFilter, type SignalsCtx, SignalsDialog, SignalsRail } from "./Signals";
 import { WatchlistWidget } from "./Watchlist";
@@ -102,6 +106,10 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const assetId = assetRoute ? Number(assetRoute[1]) : null;
   const assetPage = assetId != null && params.get("page") === "1";
   const openAsset = useCallback((id: number | string) => goKeep(`assets/${id}`), [goKeep]);
+  // P9: a topic (or a macro regime) opens in the same drawer panel (`topics/<key>`), never the research page.
+  const topicRoute = /^topics\/([a-z0-9_]+)$/.exec(route ?? "");
+  const topicKey = topicRoute ? topicRoute[1] : null;
+  const openTopic = useCallback((key: string) => goKeep(`topics/${encodeURIComponent(key)}`), [goKeep]);
   const openJournal = useCallback((instrument?: number | string | null) => go(instrument != null ? `journal?instrument=${instrument}` : "journal"), [go]);
 
   const [filter, setFilter] = useStored<number | null>(storedKey("filter", slug), null);
@@ -109,6 +117,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const [note, setNote] = useStored<string>(storedKey("reviewNote", slug), "", "session");
   useEffect(() => { try { localStorage.removeItem(storedKey("reviewNote", slug)); } catch { /* ignore */ } }, [slug]);
   const [nonce, setNonce] = useState(0);
+  const priceRefresh = usePriceRefreshState(slug); // P10: driven by the header tag, re-reads land through revalidate
+  const runState = useRunState(slug); // P10: the automatic daily check (no button), from the pushed run events
   // After a write: every cached investments view is forgotten (other pages read fresh), this page re-reads and
   // keeps showing its data meanwhile (F7 PX4).
   const reload = useCallback(() => { dropInv(slug); setNonce((n) => n + 1); }, [slug]);
@@ -139,7 +149,6 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   // Unread research notes (home v3 Q10): the server's counts minus what this window marked read.
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
   const shellStale = useRef(false);
-  const [runBusy, setRunBusy] = useState(false);
   const [initBusy, setInitBusy] = useState(false);
 
   // A remembered filter that no longer names one of this profile's accounts falls back to all accounts.
@@ -279,21 +288,6 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   }, [positions, watch]);
 
   // ---- actions -------------------------------------------------------------------------------------------------
-  const run = async () => {
-    setRunBusy(true);
-    try {
-      const r = await postRun(slug);
-      const p = r.profiles?.[0];
-      const status = p?.status ?? "ok";
-      const firstErr = p?.errors?.[0] ?? r.market_errors?.[0] ?? r.market_error ?? "";
-      toast(status === "failed" ? `Synchronizacja nieudana${firstErr ? `: ${runError(firstErr)}` : ""}` : status === "partial" ? `Zsynchronizowano częściowo${firstErr ? ` · ${runError(firstErr)}` : ""}` : "Zsynchronizowano", 4000);
-      // the connector lines (a stored proposal shows in the proposals reloaded below)
-      for (const line of moduleSyncLines(r.connectors, (l) => l.connector_id ?? "Konektor")) toast(line.text, line.failed ? 7000 : 5000);
-      reload();
-    } catch (e) {
-      toast(e instanceof ApiError && e.status === 409 ? "Synchronizacja już trwa (praca w tle)" : `Nie udało się zsynchronizować: ${errorText(e)}`, 4000);
-    } finally { setRunBusy(false); }
-  };
   const initStrategy = async () => {
     setInitBusy(true);
     try {
@@ -361,7 +355,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   // Research layer (F6, v2/research): strip, review block, research view, note links; nothing before the first run.
   const research = useResearchHome({
     slug, nonce, today, privacy: ctx.profile.mcp_privacy, positions: positions?.positions ?? [], watch, strategyVersion: strategy?.version ?? null, digest,
-    go, openAsset: (id, noteId) => goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`), onSettings: () => ctx.go({ kind: "settings", section: "agent" }), onChanged: reload,
+    go, openAsset: (id, noteId) => goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`), openTopic, onSettings: () => ctx.go({ kind: "settings", section: "agent" }), onChanged: reload,
   });
   // The tile's marks (P1, design/v3/plan-badges): thesis health from the cached research summary, stale research,
   // held instruments (the plan label's form); one provider for every label under this page.
@@ -403,8 +397,9 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     accounts, today, contributionDay: strategy?.facts?.contributions?.day_of_month ?? null, alertsById, onChanged: reload, held, watch, lastRunAt, onResearchRead: markRead,
     onOpenAsset: (id) => openAsset(id),
     researchOn: research.ran, researchEffect: research.effect,
-    // A segment note's signal opens the research page filtered to the segment; an old theme signal the plain page.
-    onOpenNote: (id, noteId, segment) => (id != null ? goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`) : go(segment ? `research?segment=${encodeURIComponent(segment)}` : "research")),
+    // A segment (or macro) note's signal opens the topic drawer (P9); an old theme signal the plain research page.
+    onOpenNote: (id, noteId, segment) => (id != null ? goKeep(`assets/${id}${noteId != null ? `?note=${noteId}` : ""}`)
+      : segment && (isSegment(segment) || isMacroKey(segment)) ? openTopic(isMacroKey(segment) ? segment : canonKey(segment)!) : go("research")),
   };
 
   // ---- render --------------------------------------------------------------------------------------------------
@@ -465,7 +460,12 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       onCrumb={(where) => { goKeep(); if (where === "assets") setTimeout(() => scrollTo("inv-assets"), 60); }}>
       {assetDetail(assetId, "drawer")}
     </AssetDrawer>
-  );
+  ) || (topicKey != null && (
+    <AssetDrawer {...research.topicCrumb(topicKey)} onClose={() => goKeep()}
+      onCrumb={(where) => { goKeep(); if (where === "assets") setTimeout(() => scrollTo("inv-research"), 60); }}>
+      {research.topic(topicKey)}
+    </AssetDrawer>
+  ));
 
   const fr = overview.freshness;
   const stale = fr.prices.stale_count;
@@ -480,16 +480,17 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
         <Seg<number | null> quiet label="Rachunek" value={filter} onChange={setFilter}
           items={[["Wszystkie", null], ...accounts.map((a) => [accountLabel(a, accounts), a.id] as [string, number])]} />
       )}
-      {hasData && (fr.prices.newest_bar ? <Tag title="Najnowsze notowanie w bazie">ceny {wdm(fr.prices.newest_bar)}</Tag> : <Tag>brak notowań</Tag>)}
+      {hasData && (priceRefresh.running ? <Tag>odświeżam ceny</Tag>
+        : fr.prices.newest_bar ? <Tag title="Najnowsze notowanie w bazie">ceny {wdm(fr.prices.newest_bar)}</Tag> : <Tag>brak notowań</Tag>)}
       {stale > 0 && <button className="tag warn" style={{ background: "transparent", cursor: "pointer", font: "inherit", fontSize: 11 }}
         title={fr.prices.stale.map((s) => `${s.label}: ${s.price_date ? `ostatnie notowanie ${dm(s.price_date)}` : "brak notowań"}`).join("\n")}
         onClick={() => { setAllocView("accounts"); setTimeout(() => scrollTo(light ? "inv-accounts" : "inv-alloc"), 30); }}>{stale === 1 ? "1 nieaktualna" : `${stale} nieaktualne`}</button>}
-      {/* The run status shows only when it is not ok (home v3 Q7); a failed run keeps its Notice. */}
-      {hasData && last?.status === "partial" && <span className="tag warn" title={last.errors[0] ? runError(last.errors[0]) : undefined}>reguły częściowo</span>}
-      {hasData && !last && <span className="tag">reguły jeszcze nie działały</span>}
+      {/* The daily check runs on its own (P10): its state shows only when it runs or is not ok (home v3 Q7). */}
+      {hasData && (runState.running ? <Tag title="Ceny, wycena, reguły i alerty">reguły w toku</Tag>
+        : last?.status === "partial" ? <span className="tag warn" title={`${runDay} ${hm(runAt!)}${last.errors[0] ? ` · ${runError(last.errors[0])}` : ""}`}>reguły częściowo</span>
+        : last?.status === "failed" ? <span className="tag warn" title={`${runDay} ${hm(runAt!)}${last.errors[0] ? ` · ${runError(last.errors[0])}` : ""} · sygnały z poprzedniego przebiegu`}>reguły nieudane</span>
+        : !last ? <span className="tag">reguły jeszcze nie działały</span> : null)}
       <span className="spacer" />
-      <button className="btn ghost" onClick={run} disabled={runBusy || !hasData}
-        title={`Ceny, wycena, reguły i alerty${last && runAt ? ` · ostatni przebieg ${runDay} ${hm(runAt)} · ${last.status === "ok" ? "ok" : last.status === "partial" ? "częściowo" : "błąd"}` : ""}`}>{runBusy ? "Synchronizuję…" : "↻ Synchronizuj"}</button>
       <button className="btn" onClick={() => setDrawer({ kind: "import", account: filter })}>Import</button>
       {!hasData ? <button className="btn" onClick={() => setDrawer({ kind: "txn" })}>Dodaj transakcję</button> : reviewOpen ? (
         <button className="btn" onClick={() => setReviewOpen(false)}>Zamknij przegląd</button>
@@ -564,9 +565,6 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     if (rr) items.push(rr);
   }
   if (!reviewOpen && !reentry) items.push({ id: "hero", span: 3, node: hero });
-  if (last?.status === "failed") {
-    items.push({ id: "failed", span: 3, node: <Notice tone="neg" style={{ margin: 0 }}>Przebieg reguł nieudany{last.errors[0] ? `: ${runError(last.errors[0])}` : ""}. Sygnały z poprzedniego przebiegu.</Notice> });
-  }
   const wSignals: GridItem = { id: "signals", span: 1, node: <SignalsRail signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} focusId={focusSignal}
     paused={!!sigDialog} onAll={(focusId) => setSigDialog({ filter: "all", focusId: focusId ?? null })} /> };
   const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsList} near={strategy?.facts?.alerts ?? null} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };

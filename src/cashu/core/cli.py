@@ -71,7 +71,10 @@ def serve_cmd(
     cliutil.console.print(f"[green]Dashboard:[/] {cfg.token_url()}", soft_wrap=True)
     cliutil.console.print(f"[dim]Data dir: {paths.data_dir()} (API token: {token_file.name})[/]")
     try:
-        uvicorn.run("cashu.api.app:app", host=host, port=port, reload=reload)
+        # an open change stream (SSE) never holds Ctrl+C for long
+        uvicorn.run(
+            "cashu.api.app:app", host=host, port=port, reload=reload, timeout_graceful_shutdown=3
+        )
     finally:
         security.remove_token_file(cfg.token, token_file)
 

@@ -10,7 +10,13 @@ cooldown, known upcoming events, the last run, limits), ``research_notes(since?,
 Write: ``start_research_run(scope)``, ``add_research_note(...)`` (schema-validated: sources with URL,
 publisher and date required, bounded lengths, no amounts / targets / sizes, no recommendation or price
 prediction, no paywall-bypass links; segment notes (market segments and ``macro_*`` regimes) short,
-one per key and week; the weekly run's novelty limits), ``finish_research_run(run_id, ...)``, ``set_instrument_segment(instrument, segment)``
+one per key and week; ``details.brief`` (P9) on segment / macro notes; near duplicates of the last 60
+days refused; the weekly run's novelty limits, lifted for a ``full_refresh`` run),
+``set_topic_market_view(segment, assessment, outlook, sources)`` (P11: the topic's one current market
+view directly under its thesis, separate from notes; the outlook cites a quantitative industry
+estimate of market / demand growth, 1-6 sources required; no buy / sell call, no security price call),
+``upsert_topic_thesis(segment, thesis, invalidation?)`` (a draft only, never over the owner's thesis),
+``finish_research_run(run_id, ...)``, ``set_instrument_segment(instrument, segment)``
 (a direct classification write, like ``set_merchant_category``; macro keys are refused: they are note
 targets, never instrument segments).
 
@@ -41,8 +47,9 @@ _RELATIONS = ["supports", "weakens", "invalidates", "fulfills", "neutral", "none
 _FIELDS = ["entry_type", "thesis", "invalidation", "exit_plan", "size_plan"]
 BOUNDARIES = (
     (
-        "facts and sentiment with sources and dates only; no buy / sell recommendation, no price "
-        "prediction, no price target, no analyst ratings"
+        "research notes contain sourced facts; each topic's thesis may carry one separate current "
+        "market assessment and forward market / adoption outlook; no buy / sell recommendation, "
+        "security price prediction, price target or analyst rating"
     ),
     "never bypass paywalls or bot protection; cite the original publisher's URL",
     "community sentiment (Reddit, X, forums) is noisy: kind community, strength counts as 1",
@@ -89,6 +96,24 @@ def _macro_refusals() -> dict[str, str]:
     return dict.fromkeys(MACRO_KEYS, NOT_INSTRUMENT_SEGMENT)
 
 
+def _topic_cooldowns(ctx: ToolContext) -> dict:
+    from cashu.modules.investments.research import topic_theses
+
+    return topic_theses.cooldowns(ctx.session, ctx.profile_id)
+
+
+def _similarity():
+    from cashu.modules.investments.research import similarity
+
+    return similarity
+
+
+def _topic_limits() -> tuple[int, int]:
+    from cashu.modules.investments.models import TOPIC_INVALIDATION_MAX, TOPIC_THESIS_MAX
+
+    return TOPIC_THESIS_MAX, TOPIC_INVALIDATION_MAX
+
+
 def _research():
     from cashu.modules.investments.research import service, validation, views
 
@@ -118,6 +143,16 @@ def _instrument(inst: dict | None, owned: set[int], ctx: ToolContext | None = No
         else L.text(public_label(ctx, inst.get("name"))),
         "asset_class": L.category(inst.get("asset_class")),
         "currency": L.category(inst.get("currency")),
+    }
+
+
+def _recommendation(inst: Any) -> dict:
+    def value(key: str):
+        return inst.get(key) if isinstance(inst, dict) else getattr(inst, key, None)
+
+    return {
+        "recommendation": L.category(value("plan")),
+        "recommendation_at": L.date(value("plan_at")),
     }
 
 
@@ -196,16 +231,9 @@ def _note(row: dict, owned: set[int], ctx: ToolContext | None = None) -> dict:
             "scale": L.category(details.get("scale")),
             "event": L.text(details.get("event")),
             "event_date": L.date(details.get("event_date")),
+            "brief": _brief_out(details.get("brief")),
         },
-        "sources": [
-            {
-                "publisher": L.text(s.get("publisher")),
-                "title": L.text(s.get("title")),
-                "url": L.text(s.get("url")),
-                "published_at": L.date(s.get("published_at")),
-            }
-            for s in row.get("sources") or []
-        ],
+        "sources": _sources_out(row.get("sources")),
         "signal_id": L.ref(row.get("signal_id")),
         "observed_at": L.date(row.get("observed_at")),
         "expires_at": L.date(row.get("expires_at")),
@@ -213,6 +241,49 @@ def _note(row: dict, owned: set[int], ctx: ToolContext | None = None) -> dict:
         "dismissed": L.flag(bool(row.get("dismissed"))),
         "dismissed_at": L.date(row.get("dismissed_at")),
         "created_at": L.date(row.get("created_at")),
+    }
+
+
+def _brief_out(brief: dict | None, extra: dict | None = None) -> dict | None:
+    """A note's ``details.brief`` (P9) as the owner sees it: plain Polish text (``text`` labels)."""
+    if not isinstance(brief, dict):
+        return None
+    return {
+        "headline": L.text(brief.get("headline")),
+        "why": L.text(brief.get("why")),
+        "supports": [L.text(x) for x in brief.get("supports") or []],
+        "risks": [L.text(x) for x in brief.get("risks") or []],
+    } | (extra or {})
+
+
+def _sources_out(sources: list | None) -> list[dict]:
+    """Note or topic-view sources as the agent reads them."""
+    return [
+        {
+            "publisher": L.text(s.get("publisher")),
+            "title": L.text(s.get("title")),
+            "url": L.text(s.get("url")),
+            "published_at": L.date(s.get("published_at")),
+        }
+        for s in sources or []
+        if isinstance(s, dict)
+    ]
+
+
+def _topic_thesis(row: dict | None) -> dict | None:
+    """``research_context.segments[].thesis`` (P9)."""
+    if not row:
+        return None
+    return {
+        "text": L.text(row["thesis"]),
+        "invalidation": L.text(row.get("invalidation")),
+        "assessment": L.text(row.get("assessment")),
+        "outlook": L.text(row.get("outlook")),
+        "view_updated_at": L.date(row.get("view_updated_at")),
+        "view_sources": _sources_out(row.get("view_sources")),
+        "draft": L.flag(row["draft"]),
+        "created_by": L.category(row["created_by"]),
+        "updated_at": L.date(row["updated_at"]),
     }
 
 
@@ -225,6 +296,7 @@ def _run(run: dict | None) -> dict | None:
         "status": L.category(run["status"]),
         "interrupted": L.flag(bool(run.get("interrupted"))),
         "scheduled": L.flag(bool(run.get("scheduled"))),
+        "full_refresh": L.flag(bool(run.get("full_refresh"))),
         "started_at": L.date(run.get("started_at")),
         "finished_at": L.date(run.get("finished_at")),
         "notes": L.count(run.get("notes")),
@@ -378,6 +450,18 @@ def _segments(ctx: ToolContext, owned: set[int]) -> tuple[list[dict], dict | Non
                 "instruments": _moves(ctx, r["instruments"] if in_week else [], owned),
                 "last_note_at": L.date(r["last_note_at"]),
                 "note_this_week": L.flag(r["note_this_week"]),
+                "briefs": [
+                    {
+                        "note_id": L.ref(b["note_id"]),
+                        "headline": L.text(b["headline"]),
+                        "why": L.text(b["why"]),
+                        "observed_at": L.date(b["observed_at"]),
+                        "kind": L.category(b["kind"]),
+                        "polarity": L.category(b["polarity"]),
+                    }
+                    for b in r.get("briefs") or []
+                ],
+                "thesis": _topic_thesis(r.get("thesis")),
             }
         )
     currency = {
@@ -416,6 +500,16 @@ def _macro(ctx: ToolContext) -> list[dict]:
             "state": L.category(c["state"]),
             "state_label": L.category(c["state_label"]),
             "summary": L.market(c["summary"] if L.market_ok(c["summary"]) else None),
+            "plain": L.text(c["plain"]),
+            "brief": None
+            if c["brief"] is None
+            else _brief_out(
+                c["brief"],
+                {
+                    "note_id": L.ref(c["brief"]["note_id"]),
+                    "observed_at": L.date(c["brief"]["observed_at"]),
+                },
+            ),
             "since": L.date(c["since"]),
             "since_open": L.flag(c["since_open"]),
             "since_min": L.date(c["since_min"]),
@@ -445,6 +539,7 @@ def research_context(ctx: ToolContext) -> dict:
     from cashu.modules.investments.service import views as inv_views
     from cashu.modules.investments.store import alerts as alert_store
     from cashu.modules.investments.store import convert, journal
+    from cashu.modules.investments.store import instruments as instrument_store
 
     service, validation, views = _research()
     s, pid = ctx.session, ctx.profile_id
@@ -452,6 +547,7 @@ def research_context(ctx: ToolContext) -> dict:
     positions = inv_views.positions(s, ctx.profile)["positions"]
     summary = views.summary(s, ctx.profile, positions=positions)
     by_id = {i["instrument_id"]: i for i in summary["instruments"]}
+    profile_instruments = instrument_store.load(s, by_id, profile_id=pid)
     theses: dict[int, Any] = {}
     for t in journal.theses(s, pid):
         theses.setdefault(t.instrument_id, t)
@@ -464,6 +560,7 @@ def research_context(ctx: ToolContext) -> dict:
         held_rows.append(
             _instrument(inst, owned, ctx)
             | {
+                **_recommendation(inst),
                 "bucket": L.category(p.get("bucket")),
                 "weight": L.pct(p.get("weight")),
                 **_segment_fields(inst),
@@ -484,6 +581,7 @@ def research_context(ctx: ToolContext) -> dict:
         watch_rows.append(
             _instrument(by_id[iid]["instrument"], owned, ctx)
             | {
+                **_recommendation(profile_instruments.get(iid)),
                 "item_id": L.ref(item.id),
                 **_segment_fields(by_id[iid]["instrument"]),
                 "source": L.category(item.source),
@@ -587,6 +685,10 @@ def research_context(ctx: ToolContext) -> dict:
         },
         "exposure": _exposure(positions, owned),
         "candidates": {"open": open_candidates, "dismissed_cooldown": cooldown},
+        "topic_thesis_cooldown": [
+            {"segment": L.category(key), "until": L.date(until.date())}
+            for key, until in sorted(_topic_cooldowns(ctx).items())
+        ],
         "upcoming_events": events[:30],
         "last_run": _run(summary.get("last_run")),
         "last_done_run": _run(views.run_dict(s, service.latest_run(s, pid, status="done"), now)),
@@ -604,6 +706,13 @@ def research_context(ctx: ToolContext) -> dict:
             "segment_notes_per_week": L.count(service.SEGMENT_NOTES_PER_WEEK),
             "weekly_segment_notes_max": L.count(service.WEEKLY_SEGMENT_NOTES_MAX),
             "segment_summary_max": L.count(validation.SEGMENT_SUMMARY_MAX),
+            "brief_headline_max": L.count(validation.BRIEF_HEADLINE_MAX),
+            "brief_why_max": L.count(validation.BRIEF_WHY_MAX),
+            "brief_items_max": L.count(validation.BRIEF_ITEMS_MAX),
+            "brief_item_max": L.count(validation.BRIEF_ITEM_MAX),
+            "near_duplicate_days": L.count(_similarity().WINDOW_DAYS),
+            "topic_thesis_max": L.count(_topic_limits()[0]),
+            "topic_invalidation_max": L.count(_topic_limits()[1]),
         },
         "boundaries": [L.text(b) for b in BOUNDARIES],
         "note": L.text(
@@ -688,6 +797,7 @@ def start_research_run(ctx: ToolContext, scope: dict | None = None) -> dict:
             "watchlist": L.flag(stored.get("watchlist")),
             "candidates": L.flag(stored.get("candidates")),
             "scheduled": L.flag(stored.get("scheduled")),
+            "full_refresh": L.flag(bool(stored.get("full_refresh"))),
             "segments": [L.category(k) for k in stored.get("segments") or []],
             "covered_instruments": L.count(len(stored.get("covered_instrument_ids") or [])),
         },
@@ -734,6 +844,35 @@ def add_research_note(ctx: ToolContext, **arguments: Any) -> dict:
             "escalated": L.flag(signal.escalated),
         },
         "warnings": [L.text(w) for w in added.warnings],
+    }
+
+
+def set_topic_market_view(
+    ctx: ToolContext, segment: str, assessment: str, outlook: str, sources: list | None = None
+) -> dict:
+    """Set the topic's current market view (``Ocena teraz`` / ``Perspektywa``) under its thesis,
+    with the sources of the industry estimates its outlook cites."""
+    from cashu.modules.investments.research import topic_theses
+
+    try:
+        row = topic_theses.set_market_view(
+            ctx.session,
+            ctx.profile_id,
+            segment,
+            assessment,
+            outlook,
+            sources=sources,
+            by=topic_theses.AGENT,
+        )
+    except topic_theses.TopicThesisError as e:
+        raise ToolError(str(e)) from None
+    return {
+        "segment": L.category(row.segment),
+        "thesis_draft": L.flag(row.draft),
+        "assessment": L.text(row.assessment),
+        "outlook": L.text(row.outlook),
+        "view_updated_at": L.date(row.view_updated_at),
+        "view_sources": _sources_out(row.view_sources),
     }
 
 
@@ -801,6 +940,32 @@ def set_instrument_segment(ctx: ToolContext, instrument: str, segment: str | Non
     }
 
 
+def upsert_topic_thesis(
+    ctx: ToolContext, segment: str, thesis: str, invalidation: str | None = None
+) -> dict:
+    """A DRAFT thesis on a topic (P9): created, or the agent's own draft updated (``invalidation``
+    omitted keeps the stored one). The owner's thesis (or a draft the owner confirmed) is never
+    overwritten (conflict). The owner confirms or edits the draft in the app."""
+    from cashu.modules.investments.research import topic_theses
+
+    try:
+        row, created = topic_theses.upsert_draft(
+            ctx.session, ctx.profile_id, segment, thesis, invalidation
+        )
+    except topic_theses.OwnerThesis as e:
+        raise ToolError(str(e), "conflict") from None
+    except topic_theses.TopicThesisError as e:
+        raise ToolError(str(e)) from None
+    return {
+        "segment": L.category(row.segment),
+        "created": L.flag(created),
+        "draft": L.flag(row.draft),
+        "note": L.text(
+            "saved as a draft the owner confirms or edits in the app (shown as [do potwierdzenia])"
+        ),
+    }
+
+
 _SOURCE_SCHEMA = {
     "type": "array",
     "description": "1-10 sources: {url (http(s), original publisher), publisher, published_at "
@@ -812,13 +977,21 @@ TOOLS = (
         "research_context",
         "investments",
         "Context for a research run: held instruments (weights as fractions) and watched ones, each "
+        "with its current model recommendation and recommendation date (null means the final "
+        "set_recommendations gate must receive it), "
         "with its market segment (segment, segment_source owner | agent | auto | null), thesis (entry type, "
         "thesis, invalidation, exit plan) and research state (thesis health, relation counts, "
         "8-week sentiment, last researched); segments: what moved the portfolio this week and over 4 "
         "weeks by market segment (weight, contribution, return, instruments, trend_1w / trend_4w = "
         "the equal-weighted price move of its held and watched instruments, members, last_note_at, "
-        "note_this_week; watched-only topics with weight 0), currency and unassigned; "
-        "segment_catalog; macro: the five macro regime cards (state_label, summary, since (null + "
+        "note_this_week; briefs = up to 3 active brief notes (headline, why) the owner reads under the "
+        "topic, newest first; thesis = the topic thesis {text, invalidation, draft, created_by, "
+        "updated_at} or null; watched-only topics with weight 0), currency and unassigned; "
+        "topic_thesis_cooldown: topics whose thesis the owner deleted (no new draft before "
+        "until); "
+        "segment_catalog; macro: the five macro regime cards (state_label, summary, plain = the "
+        "beginner sentence the owner sees until a brief exists, brief = the active macro brief "
+        "{headline, why, supports, risks} or null, since (null + "
         "since_open + since_min when the state began before the data), metrics as text, stale, missing, last_note_at, note_this_week; "
         "public data) and macro_catalog (their note keys); the strategy's entry types and "
         "candidate criteria, open and dismissed (cooldown) candidates, known upcoming events, the "
@@ -851,8 +1024,11 @@ TOOLS = (
         "routine)}. A run covering the held positions is weekly: per ISO week, weekly runs and notes "
         "written without a run cover at most 6 instruments, 2 notes each, and 6 segment notes "
         "(strength 3, invalidates and fulfills always pass). A scope with only instruments or "
-        "segments is on demand (the flags it leaves out default to false) and exempt. Another run "
-        "still running is a conflict: finish it first.",
+        "segments is on demand (the flags it leaves out default to false) and exempt. "
+        "full_refresh: true ONLY when the owner explicitly asks for a full fresh research: the run "
+        "is exempt from the weekly novelty limits and from one brief note per segment and week, never "
+        "from the duplicate / near-duplicate checks or one non-brief note per segment and week; "
+        "never together with scheduled. Another run still running is a conflict: finish it first.",
         start_research_run,
         properties={"scope": {"type": "object"}},
         write=True,
@@ -860,8 +1036,9 @@ TOOLS = (
     ToolSpec(
         "add_research_note",
         "investments",
-        "Store one sourced research note (facts and sentiment only: no recommendation, price "
-        "prediction, target, amounts or sizes). About a held / watched instrument (instrument: id "
+        "Store one sourced research note (facts and sentiment only; no analytical market view, "
+        "recommendation, security price prediction, target, amounts or sizes). About a held / "
+        "watched instrument (instrument: id "
         "or symbol from research_context), a market segment (segment: catalog key; no instrument, "
         "no candidate; kind macro | trend | news; thesis_relation none; summary <= 400 characters; "
         "at most one per segment and ISO week, only when something changed), a macro regime "
@@ -874,8 +1051,25 @@ TOOLS = (
         "a dated fact that the expected outcome happened or the exit target is met, never a sell "
         "call). details.event + event_date record a known "
         "upcoming event; details.scale (small | medium | large) the size of a community discussion. "
-        "Title <= 120, summary <= 1200 characters (Polish). invalidates -> action signal, strength "
-        "3 -> info signal.",
+        "Title <= 120, summary <= 1200 characters (Polish). A topic's current assessment and outlook "
+        "belong in set_topic_market_view, never in note details. invalidates -> action signal, strength "
+        "3 -> info signal. A segment or macro note may carry details.brief {headline (8-80, a plain "
+        "Polish sentence a beginner understands), why (<= 280, plain words), supports [<= 3 x 90] and "
+        "risks [<= 3 x 90] (macro only: conditions that historically supported / weighed on such a "
+        "market)}: the owner reads it on the home page; never wzrośnie / spadnie / będzie / prognoz* / "
+        "kupuj / sprzedaj / cel cenowy, except in a sentence citing an institution's published "
+        "forecast of a macro or market trend with who, how much and horizon (MFW prognozuje wzrost "
+        "PKB USA o 2,1 % w 2027; projekcja Fed (dot plot); IEA szacuje popyt), the same in a note "
+        "summary; never a price, valuation or index forecast, an analyst forecast or your own "
+        "(prognozujemy); expires_in_days up to 90 (60 recommended). A topic note may "
+        "carry thesis_relation supports | weakens | invalidates when the topic has a confirmed "
+        "thesis (research_context segments[].thesis with draft false; thesis_field thesis); such an "
+        "invalidates note passes the weekly segment cap. At most one brief note and one other note "
+        "per segment and ISO week (a full_refresh run lifts it for brief notes). A note restating a "
+        "fact already in a non-dismissed note of the same instrument / candidate / segment from the "
+        "last 60 days (similar title, brief headline or headline + summary, same polarity, relation "
+        "and direction) is refused as a near duplicate (count it skipped); a brief whose why "
+        "changed passes the headline check.",
         add_research_note,
         properties={
             "kind": {"type": "string", "enum": _KINDS},
@@ -907,6 +1101,61 @@ TOOLS = (
             "theme": "themes are gone: a market note takes segment (a catalog key from "
             "research_context.segment_catalog); company facts go on the instrument",
         },
+    ),
+    ToolSpec(
+        "set_topic_market_view",
+        "investments",
+        "Write the topic's ONE current market view, shown to the owner directly under the topic "
+        "thesis (Ocena teraz / Perspektywa), separate from notes; replaces the previous view "
+        "(the owner's edit included), so keep it current after each topic research. The topic must "
+        "have a thesis or your draft (upsert_topic_thesis first). assessment (20-400 Polish "
+        "characters): the topic's market now (adoption, demand, investment, valuations of the topic "
+        "as a whole). outlook (20-400): where the topic's market / adoption / demand is heading, "
+        "resting on at least one quantitative industry estimate of market or demand growth cited "
+        "as an estimate with who, how much and horizon (e.g. IFR szacuje 575 tys. instalacji "
+        "robotów rocznie w 2028; IEA szacuje popyt centrów danych na ok. 945 TWh w 2030) plus the "
+        "main risk; an outlook without a number other than a year / horizon is refused. sources "
+        "(1-6, required): the reports behind those estimates, {url (http(s), original publisher), "
+        "publisher, published_at (YYYY-MM-DD), title?}; they replace the stored ones. Refused: buy "
+        "/ sell / hold wording, ratings, a price target, any price, valuation or index move of a "
+        "security, of shares or of an index (kurs / akcje / notowania / wyceny / S&P 500 ... "
+        "wzrosną), analyst forecasts.",
+        set_topic_market_view,
+        properties={
+            "segment": {"type": "string", "enum": _segment_keys()},
+            "assessment": {"type": "string", "minLength": 20, "maxLength": 400},
+            "outlook": {"type": "string", "minLength": 20, "maxLength": 400},
+            "sources": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 6,
+                "description": "1-6 sources of the cited estimates: {url (http(s), original "
+                "publisher), publisher, published_at (YYYY-MM-DD), title?}",
+            },
+        },
+        required=("segment", "assessment", "outlook", "sources"),
+        write=True,
+        refused_values={"segment": _macro_refusals()},
+    ),
+    ToolSpec(
+        "upsert_topic_thesis",
+        "investments",
+        "Propose a DRAFT thesis on a market topic (segment: a segment_catalog key, never a macro key; "
+        "thesis <= 600 characters, invalidation? <= 400, plain Polish, what has to stay true for the "
+        "topic, never a price forecast or a call). Creates a draft or updates the agent's own draft "
+        "(invalidation omitted keeps it). The owner's thesis (created_by owner, or a draft the owner "
+        "confirmed: draft false) is never overwritten: conflict. Propose once for a held topic "
+        "without a thesis (research_context segments[].thesis null); a topic whose thesis or draft "
+        "the owner deleted is refused for 90 days (research_context topic_thesis_cooldown).",
+        upsert_topic_thesis,
+        properties={
+            "segment": {"type": "string", "enum": _segment_keys()},
+            "thesis": {"type": "string", "maxLength": 600},
+            "invalidation": {"type": "string", "maxLength": 400},
+        },
+        required=("segment", "thesis"),
+        write=True,
+        refused_values={"segment": _macro_refusals()},
     ),
     ToolSpec(
         "finish_research_run",

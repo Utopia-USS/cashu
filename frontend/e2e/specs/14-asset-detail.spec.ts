@@ -53,17 +53,24 @@ const openGlba = async (page: import("@playwright/test").Page) => {
   return drawer;
 };
 
-test("asset detail: potwierdź on an open row and its Cofnij", async ({ app: page }) => {
+test("asset detail: potwierdź on the open rows (one per group) and its Cofnij", async ({ app: page }) => {
   const drawer = await openGlba(page);
   const signals = drawer.getByRole("region", { name: "Sygnały i decyzje" });
   const rows = signals.locator(".sig.orow");
   await expect(rows.first()).toBeVisible();
   const n = await rows.count();
-  await rows.first().hover();
-  await rows.first().getByRole("button", { name: "potwierdź" }).click();
+  if (n > 1) {
+    // Several open signals: no per-row link, one Potwierdź for the group (owner: actions per group, not per signal)
+    await expect(rows.getByRole("button", { name: "potwierdź" })).toHaveCount(0);
+    await expect(signals.locator(".oact").getByRole("button", { name: "Potwierdź" })).toHaveCount(1);
+    await signals.locator(".oact").getByRole("button", { name: "Potwierdź" }).click();
+  } else {
+    await rows.first().hover();
+    await rows.first().getByRole("button", { name: "potwierdź" }).click();
+  }
   const toast = toasts(page).locator(".toast", { hasText: "Potwierdzone bez zmian" });
   await expect(toast).toBeVisible();
-  await expect(rows).toHaveCount(n - 1);
+  await expect(rows).toHaveCount(0);
   await expect(signals.locator(".tl .t", { hasText: /^Potwierdzone/ }).first()).toBeVisible();
   await toast.getByRole("button", { name: "Cofnij" }).click();
   await expect(toasts(page)).toContainText("Cofnięto");

@@ -2,7 +2,9 @@
 like every investments route): ``research`` (notes with filters), ``research/summary``,
 ``research/segments`` (the market segments: move attribution and segment notes, P5), ``research/macro``
 (the macro regime cards and their notes, P6), ``research/runs``, ``POST research/read`` (read marks, F8), ``PATCH research/{id}`` (dismiss /
-restore), ``POST|DELETE research/{id}/accept`` (candidate -> watchlist + draft thesis, and its undo).
+restore), ``POST|DELETE research/{id}/accept`` (candidate -> watchlist + draft thesis, and its undo);
+``GET|PUT|DELETE topics/{segment}/thesis`` (the topic thesis, P9; ``topics_router``),
+``PUT topics/{segment}/view`` (the market view under it, P11).
 Reads and writes only the profile in the URL. Notes are written by the agent through MCP (``core/mcp/tools/research.py``).
 Shapes: the CONTRACT in ``stock/docs/fork/progress/F6-RS.md``.
 """
@@ -219,3 +221,100 @@ def research_candidate_unaccept(profile: CurrentProfile, note_id: int) -> dict:
         except (service.ResearchError, service.ResearchNotFound) as e:
             raise _mapped(e) from None
         return views.one_note(s, profile, row)
+
+
+# --------------------------------------------------------------------------- #
+# Topic theses (P9): /investments/topics/{segment}/thesis
+# --------------------------------------------------------------------------- #
+
+topics_router = APIRouter(prefix="/topics")
+
+
+class TopicThesisBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    thesis: str
+    invalidation: str | None = None
+
+
+class TopicViewBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    assessment: str | None = None
+    outlook: str | None = None
+    sources: list[dict] | None = None
+    """Optional: left out keeps the stored view sources, null or ``[]`` clears them."""
+
+
+def _topic_error(error: Exception) -> HTTPException:
+    return _coded(422, str(error), "research_invalid")
+
+
+@topics_router.get("/{segment}/thesis")
+def topic_thesis_get(profile: CurrentProfile, segment: str) -> dict | None:
+    """The profile's thesis on a topic (a segment catalog key), or ``null`` when it has none."""
+    from .research import topic_theses
+
+    with get_session() as s:
+        try:
+            key = topic_theses.check_segment(segment)
+        except topic_theses.TopicThesisError as e:
+            raise _topic_error(e) from None
+        return topic_theses.thesis_dict(topic_theses.get(s, profile.id, key))
+
+
+@topics_router.put("/{segment}/thesis")
+def topic_thesis_put(profile: CurrentProfile, segment: str, body: TopicThesisBody) -> dict:
+    """The owner writes the topic thesis: creates it or replaces its text (``invalidation`` null
+    clears it); saving clears ``draft`` (confirms an agent draft)."""
+    from .research import topic_theses
+
+    with get_session() as s:
+        try:
+            row, _created = topic_theses.save_owner(
+                s, profile.id, segment, body.thesis, body.invalidation
+            )
+        except topic_theses.TopicThesisError as e:
+            raise _topic_error(e) from None
+        return topic_theses.thesis_dict(row)
+
+
+@topics_router.put("/{segment}/view")
+def topic_view_put(profile: CurrentProfile, segment: str, body: TopicViewBody) -> dict:
+    """The owner edits the market view under the topic thesis (``Ocena teraz`` / ``Perspektywa``);
+    a null or blank field clears it. ``sources`` is optional (left out keeps the stored ones, null
+    or ``[]`` clears them, else 1-6 like a research note's); clearing both fields drops them. 422
+    without a live thesis or for buy / sell or price-call wording. Returns the thesis (with the
+    view)."""
+    from .research import topic_theses
+
+    sources = body.sources if "sources" in body.model_fields_set else topic_theses.KEEP
+    with get_session() as s:
+        try:
+            row = topic_theses.set_market_view(
+                s,
+                profile.id,
+                segment,
+                body.assessment,
+                body.outlook,
+                sources=sources,
+                by=topic_theses.OWNER,
+            )
+        except topic_theses.TopicThesisError as e:
+            raise _topic_error(e) from None
+        return topic_theses.thesis_dict(row)
+
+
+@topics_router.delete("/{segment}/thesis")
+def topic_thesis_delete(profile: CurrentProfile, segment: str) -> dict:
+    """Delete the topic thesis -> ``{"deleted": true}`` (``false`` when there was none). Kept as a
+    rejection: the research agent may not propose a draft for the topic for 90 days. Notes that
+    bore on it keep their ``thesis_relation`` (research is never dropped)."""
+    from .research import topic_theses
+
+    with get_session() as s:
+        try:
+            deleted = topic_theses.delete(s, profile.id, segment)
+        except topic_theses.TopicThesisError as e:
+            raise _topic_error(e) from None
+        return {"deleted": deleted}

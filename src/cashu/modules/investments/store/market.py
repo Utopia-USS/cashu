@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Callable, Collection, Iterable, Mapping
 from contextlib import AbstractContextManager
+from decimal import Decimal
 
 from sqlalchemy import delete, func, or_
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -133,6 +134,10 @@ def apply_fetch_report(
         stats["bars_written"] += upsert_bars(session, item.bars, now=now)
     for fx in report.fx:
         stats["rates_written"] += upsert_rates(session, fx.rates, now=now)
+    if stats["bars_written"] or stats["rates_written"]:
+        from cashu.core import events
+
+        events.emit(session, "prices", "update")  # shared data: every profile's window
     return stats
 
 
@@ -156,20 +161,16 @@ def upsert_bars(session: Session, bars: Iterable[PriceBar], *, now: dt.datetime)
     table = InvPriceBar.__table__
     for start in range(0, len(rows), _CHUNK):
         statement = sqlite_insert(table).values(rows[start : start + _CHUNK])
+        # A close-only bar (the batched price refresh, P10) never erases the stored open / high / low /
+        # volume of that day; a split re-fetch deletes its window first, so nothing unadjusted survives.
         statement = statement.on_conflict_do_update(
             index_elements=["instrument_id", "date"],
             set_={
-                c: statement.excluded[c]
-                for c in (
-                    "close",
-                    "open",
-                    "high",
-                    "low",
-                    "volume",
-                    "currency",
-                    "source",
-                    "fetched_at",
-                )
+                **{c: statement.excluded[c] for c in ("close", "currency", "source", "fetched_at")},
+                **{
+                    c: func.coalesce(statement.excluded[c], table.c[c])
+                    for c in ("open", "high", "low", "volume")
+                },
             },
         )
         session.exec(statement)
@@ -234,6 +235,28 @@ def last_bar_dates(session: Session, instrument_ids: Collection[int]) -> dict[in
         .group_by(InvPriceBar.instrument_id)
     ).all()
     return {i: d for i, d in rows}
+
+
+def last_closes(
+    session: Session, instrument_ids: Collection[int]
+) -> dict[InstrumentId, tuple[CalendarDate, Decimal]]:
+    """The newest stored bar per instrument as ``(date, close)`` (the batched refresh's split guard)."""
+    ids = sorted(set(instrument_ids))
+    if not ids:
+        return {}
+    newest = (
+        select(InvPriceBar.instrument_id, func.max(InvPriceBar.date).label("d"))
+        .where(InvPriceBar.instrument_id.in_(ids))
+        .group_by(InvPriceBar.instrument_id)
+        .subquery()
+    )
+    rows = session.exec(
+        select(InvPriceBar.instrument_id, InvPriceBar.date, InvPriceBar.close).join(
+            newest,
+            (InvPriceBar.instrument_id == newest.c.instrument_id) & (InvPriceBar.date == newest.c.d),
+        )
+    ).all()
+    return {convert.sid(i): (d, Decimal(str(c))) for i, d, c in rows if c is not None}
 
 
 def rates(

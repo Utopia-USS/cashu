@@ -1,17 +1,21 @@
+import { hideAmount } from "./incognito.ts";
+
 /** Group thousands from 1 000 on (pl-PL groups only from 10 000 by default: "8600,00 zł" next to
  * "11 240,00 zł" in one column reads badly). */
 export const GROUP = { useGrouping: "always" } as unknown as Intl.NumberFormatOptions;
 
-export const pln0 = new Intl.NumberFormat("pl-PL", {
+const pln0Fmt = new Intl.NumberFormat("pl-PL", {
   style: "currency", currency: "PLN", maximumFractionDigits: 0, ...GROUP,
 });
+/** Whole PLN; masked in incognito like every amount formatter here. */
+export const pln0 = { format: (v: number): string => hideAmount(pln0Fmt.format(v)) };
 
 export const cur = (v: number | null | undefined, c = "PLN"): string =>
-  v == null ? "-" : new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, ...GROUP }).format(v);
+  v == null ? "-" : hideAmount(new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, ...GROUP }).format(v));
 
 /** Whole units in currency `c` (chart axes): cur0(400000, "EUR") -> "400 000 €". */
 export const cur0 = (v: number, c = "PLN"): string =>
-  new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, maximumFractionDigits: 0, ...GROUP }).format(v);
+  hideAmount(new Intl.NumberFormat("pl-PL", { style: "currency", currency: c, maximumFractionDigits: 0, ...GROUP }).format(v));
 
 export const dtFmt = new Intl.DateTimeFormat("pl-PL", {
   day: "numeric", month: "short", year: "numeric",

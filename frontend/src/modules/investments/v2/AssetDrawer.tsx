@@ -11,12 +11,14 @@ import { type ReactNode, useEffect, useRef } from "react";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function AssetDrawer({ name, onClose, onPage, onCrumb, children }: {
+export function AssetDrawer({ name, section = "Aktywa", onClose, onPage, onCrumb, children }: {
   name: string;
+  /** The middle crumb (P9: `Tematy` for the topic drawer, which reuses this panel). */
+  section?: string;
   onClose: () => void;
-  /** "otwórz jako stronę": the same detail as a full page. */
-  onPage: () => void;
-  /** `Inwestycje` / `Aktywa` in the crumb (close and scroll to the asset list). */
+  /** "otwórz jako stronę": the same detail as a full page (absent: no link). */
+  onPage?: () => void;
+  /** `Inwestycje` / the section in the crumb (close and scroll to the asset list / the section). */
   onCrumb: (where: "home" | "assets") => void;
   children: ReactNode;
 }) {
@@ -55,9 +57,9 @@ export function AssetDrawer({ name, onClose, onPage, onCrumb, children }: {
       <div className="ascrim" onClick={onClose} aria-hidden />
       <div className="adrawer" role="dialog" aria-modal="true" aria-label={name} ref={ref} tabIndex={-1}>
         <div className="adh">
-          <nav aria-label="Ścieżka"><span className="pre"><button onClick={() => onCrumb("home")}>Inwestycje</button> › <button onClick={() => onCrumb("assets")}>Aktywa</button> › </span><b>{name}</b></nav>
+          <nav aria-label="Ścieżka"><span className="pre"><button onClick={() => onCrumb("home")}>Inwestycje</button> › <button onClick={() => onCrumb("assets")}>{section}</button> › </span><b>{name}</b></nav>
           <span className="spacer" />
-          <button className="lnk" onClick={onPage}>otwórz jako stronę</button>
+          {onPage && <button className="lnk" onClick={onPage}>otwórz jako stronę</button>}
           <kbd aria-hidden>Esc</kbd>
           <button className="icon-btn" title="Zamknij (Esc)" aria-label="Zamknij" onClick={onClose}>✕</button>
         </div>

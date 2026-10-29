@@ -1,7 +1,7 @@
-// Research strip on the Inwestycje home (research.md 1, implementation-plan item 30; P7 strip-design.md 2): span 3,
-// two columns `Makro` (1/3: five regime rows with a one-sentence summary, the explanation on hover / focus) |
-// `Tematy` (2/3: the owner's topics, the week's topic trend regardless of weight, the contribution of held topics,
-// the latest topic note; watched-only topics muted after the held ones). Kandydaci live in the home rail
+// Research strip on the Inwestycje home (research.md 1, implementation-plan item 30; P7 strip-design.md 2; P9 briefs):
+// span 3, two columns `Makro` (1/3: five regime rows with the brief "for dummies", the explanation on hover / focus) |
+// `Tematy` (2/3, fully expanded: the owner's topics with their tickers, the contribution of held topics and up to 3
+// research briefs; watched-only topics muted after the held ones; a name opens the topic drawer). Kandydaci live in the home rail
 // (`CandidatesRail`). Rendered only after the first run (density rule).
 // Header tag = the latest run (its title: the next run); a week without a run collapses the strip to the not-run
 // line. Home v3 (Q10 / Q13 / Q14): no footer, the strip is the last cell of the home; the unread count sits at the
@@ -37,6 +37,8 @@ export interface StripCtx {
   workspace: Workspace | null | undefined;
   onOpenAsset: (id: number, noteId?: number) => void;
   onOpenResearch: (query?: string) => void;
+  /** P9: the topic / macro regime drawer (`topics/<key>` over the home; a macro note key opens the regime). */
+  onOpenTopic: (key: string) => void;
   onChanged: () => void;
   /** Ustawienia › Agent AI (workspace and the routine). */
   onSettings?: () => void;
@@ -131,21 +133,19 @@ export function ThesisRow({ s, health, name, symbol, inst, muted, sub, right, on
   );
 }
 
-/** Home column `Tematy` (P7 design 2.3): the week's move by topic, held topics (contribution bar) then watched-only
- * topics (muted, trend only), two sub-columns from 6 rows, `pozostałe N` when topics were dropped. Instruments without
- * a topic are not shown (owner P7: no unassigned bucket anywhere). */
+/** Home column `Tematy` (P9): every topic (no cap, the strip is the last widget and expands), held topics (contribution
+ * bar) then watched-only topics (muted), two sub-columns from 6 rows. Instruments without a topic are not shown. */
 function TopicsColumn({ ctx }: { ctx: StripCtx }) {
   const seg = useSegments(ctx.slug, "1w", ctx.nonce ?? 0);
   const d = seg.data;
   const head = <TopicsHead d={d} />;
   if (!d) return <div className="tcol">{head}{seg.loading ? <Skeleton h={190} r={8} /> : <div className="empty-line">Brak danych tematów.</div>}</div>;
-  const { rows, rest } = homeTopics(d);
+  const rows = homeTopics(d);
   if (!rows.length) return <div className="tcol">{head}<div className="empty-line">Brak tematów.</div></div>;
   return (
     <div className="tcol">
       {head}
-      <TopicRows rows={rows} stale={d.stale} symOf={ctx.symOf} watched={ctx.watchedTopics} onOpen={(key) => ctx.onOpenResearch(`segment=${key}`)} />
-      {rest > 0 && <div className="rsec"><button className="lnk" onClick={() => ctx.onOpenResearch("scope=segments")}>pozostałe {rest}</button></div>}
+      <TopicRows rows={rows} stale={d.stale} symOf={ctx.symOf} watched={ctx.watchedTopics} onOpen={ctx.onOpenTopic} />
     </div>
   );
 }
@@ -163,11 +163,12 @@ export function TopicRows({ rows, stale, symOf, watched, onOpen, compact }: {
 }) {
   const { max, bars } = contribBars(rows.map((r) => (topicKind(r) === "held" ? r.contribution : 0)));
   const { cols, rows: perCol } = compact ? { cols: 1 as const, rows: rows.length } : topicColumns(rows.length);
-  const firstWatched = rows.findIndex((r) => topicKind(r) === "watched");
+  // The dashed rule above the first row without exposure-or-member: watched-only, else brief-only.
+  const firstWatched = rows.findIndex((r) => topicKind(r) === "watched" || topicKind(r) === "none");
   return (
     <div className={`topics c${cols}`} style={{ "--rows": perCol } as CSSProperties}>
       {rows.map((r, i) => (
-        <TopicRow key={r.key} r={r} kind={topicKind(r)} bar={{ ...bars[i], title: barTitle(r.contribution, max) }} syms={topicSymbols(r, symOf, watched)}
+        <TopicRow key={r.key} r={r} kind={topicKind(r)} bar={{ ...bars[i], title: barTitle(r.contribution, max) }} syms={topicKind(r) === "none" ? [] : topicSymbols(r, symOf, watched)}
           stale={staleSymbols(r, stale, symOf)} first={i === firstWatched && i > 0} right={cols === 2 && i >= perCol} last={cols === 2 && i === perCol - 1} onOpen={() => onOpen(r.key)} />
       ))}
     </div>

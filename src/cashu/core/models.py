@@ -12,7 +12,7 @@ import datetime as dt
 import enum
 from decimal import Decimal
 
-from sqlalchemy import Column, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import JSON, Column, ForeignKey, Integer, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from .types import DecimalText
@@ -126,3 +126,20 @@ class Balance(SQLModel, table=True):
     currency: str = Field(default="PLN")
     source: Source = Field(default=Source.OPEN_BANKING)
     created_at: dt.datetime = Field(default_factory=utcnow)
+
+
+class ChangeEvent(SQLModel, table=True):
+    """One committed change for the open app (P10 live data, ``core/events.py``): written in the same
+    transaction as the change by every process (app, worker, an agent's ``cashu mcp``), tailed by the
+    app server by id and pushed to the window; pruned after a day. ``profile_id`` NULL = shared data
+    (prices) or a bulk change. No foreign key: an event never blocks a profile delete."""
+
+    __tablename__ = "change_events"
+
+    id: int | None = Field(default=None, primary_key=True)
+    ts: dt.datetime = Field(default_factory=utcnow, index=True)
+    profile_id: int | None = Field(default=None, index=True)
+    entity: str  # note | thesis | topic_thesis | segment_assignment | alert | watchlist | proposal | signal | prices | run
+    op: str  # add | update | remove
+    ref: str | None = None  # the row id (None for a bulk change or shared data)
+    payload: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))

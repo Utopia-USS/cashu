@@ -199,6 +199,7 @@ class ServerThread:
             access_log=access_log,
             lifespan="on",
             log_config=None,
+            timeout_graceful_shutdown=3,  # an open change stream (SSE) never holds the quit
         )
         self.server = uvicorn.Server(config)
         self.thread = threading.Thread(target=self._run, name="cashu-server", daemon=True)

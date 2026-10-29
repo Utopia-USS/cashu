@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { LineChart, type Level } from "../../../charts";
 import { labelIndices } from "../../../chart";
 import { monthYearShort } from "../../../format";
+import { hideAmount } from "../../../incognito";
 import { useAsync } from "../../../hooks";
 import { Seg, Skeleton, useToast } from "../../../ui";
 import { FootFacts, PolDot, Widget } from "../../../widgets";
@@ -38,7 +39,7 @@ import {
 } from "./logic";
 import { HintChip } from "./hints";
 import { todayLocal } from "../../../time";
-import { Age, Fact1, legacyDecisions, longText, type SignalsCtx, signalAge, useSignalAck } from "./Signals";
+import { Age, Fact1, legacyDecisions, longText, type SignalsCtx, signalAge, useGroupWriter, useSignalAck } from "./Signals";
 
 const MONTHS: [string, number][] = [["6M", 6], ["1R", 12], ["2R", 24], ["Max", 120]];
 
@@ -134,11 +135,11 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
     for (const t of chart.data?.thresholds ?? []) {
       // By rule kind, never the strategy's rule id (FE-A A6): "transza -15 % od szczytu", "zysk +60 % od kosztu".
       const word = ({ drawdown_from_high: "transza", loss_from_cost: "strata", gain_from_cost: "zysk" } as Record<string, string>)[t.kind] ?? "reguła";
-      out.push({ y: t.y, cls: "rule", muted: true, label: `${word} ${t.kind === "gain_from_cost" ? "+" : "-"}${Math.round(t.threshold * 100)} % od ${t.basis === "cost" ? "kosztu" : "szczytu"} · ${t.y.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` });
+      out.push({ y: t.y, cls: "rule", muted: true, label: `${word} ${t.kind === "gain_from_cost" ? "+" : "-"}${Math.round(t.threshold * 100)} % od ${t.basis === "cost" ? "kosztu" : "szczytu"} · ${hideAmount(t.y.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}` });
     }
-    if (high != null) out.push({ y: high, cls: "rule", muted: true, label: `szczyt 52 tyg. · ${high.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` });
+    if (high != null) out.push({ y: high, cls: "rule", muted: true, label: `szczyt 52 tyg. · ${hideAmount(high.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}` });
     const cost = chart.data?.cost?.average;
-    if (cost != null && pos?.valuation_mode === "market") out.push({ y: cost, cls: "cost", muted: true, label: `śr. koszt · ${cost.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` });
+    if (cost != null && pos?.valuation_mode === "market") out.push({ y: cost, cls: "cost", muted: true, label: `śr. koszt · ${hideAmount(cost.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}` });
     return out;
   }, [live, chart.data, high, c, pos?.valuation_mode]);
   // Buy / sell markers inside the shown range, on the line (the close of the trade day).
@@ -304,7 +305,7 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
         <div className="empty">{pos?.valuation_mode === "cost" ? "Wycena po koszcie: bez notowań." : pos?.valuation_mode === "manual" ? "Wycena ręczna: bez notowań." : "Za mało notowań."}</div>
       ) : (
         <LineChart label={`${name}: cena z poziomami alertów i reguł`} height={mode === "drawer" ? 260 : 300} padL={small ? 36 : 46} padR={small ? 150 : 200} yTicks={5}
-          yFmt={(v) => v.toLocaleString("pl-PL", { maximumFractionDigits: v >= 100 ? 0 : 2 })}
+          yFmt={(v) => hideAmount(v.toLocaleString("pl-PL", { maximumFractionDigits: v >= 100 ? 0 : 2 }))}
           xLabels={labelIndices(series.length, small ? 3 : 5).map((i) => ({ i, text: monthYearShort(series[i].date) }))}
           series={[{ values: closes, cls: "main", endLabel: last != null ? money(last, c) : undefined }]} levels={levels} markers={markers}
           tooltip={(i) => <><div className="k">{dmy(series[i].date)}</div><div>cena <b>{money(series[i].close, c)}</b></div></>} />
@@ -361,7 +362,10 @@ export function AssetDetail({ id, ctx, positions, alerts, watch, mode, noteId, o
   const timelineW = (
     <Widget title="Sygnały i decyzje" id={`asset-signals-${id}`} className={thesisW || recW || research ? "s2" : undefined} controls={<button className="lnk" onClick={onJournal}>dziennik</button>} body="tight">
       {undecided.length > 0 && (
-        <div className="osig">{undecided.map((s) => <OpenSignalRow key={s.id} s={s} ctx={ctx} />)}</div>
+        <div className="osig">
+          {undecided.map((s) => <OpenSignalRow key={s.id} s={s} ctx={ctx} grouped={undecided.length > 1} />)}
+          {undecided.length > 1 && <GroupAck signals={undecided} ctx={ctx} />}
+        </div>
       )}
       {!timeline.length && !undecided.length ? <div className="muted" style={{ fontSize: 13 }}>Brak sygnałów i decyzji.</div> : timeline.length > 0 && (
         <div className="tl wide">
@@ -446,8 +450,9 @@ function WatchNote({ slug, item, onChanged }: { slug: string; item: WatchItem; o
 }
 
 /** One open signal of the asset (7.1): the glyph, one fact (+ `notatka` for research), the date and a quiet
- * `potwierdź` (acknowledge, toast + `Cofnij`). The decision is the header's, once per position. */
-function OpenSignalRow({ s, ctx }: { s: SignalV2; ctx: SignalsCtx }) {
+ * `potwierdź` (acknowledge, toast + `Cofnij`). The decision is the header's, once per position. `grouped` (several
+ * open signals): no row link, `GroupAck` under the rows acknowledges them all (owner: actions per group). */
+function OpenSignalRow({ s, ctx, grouped }: { s: SignalV2; ctx: SignalsCtx; grouped?: boolean }) {
   const { ack, busy } = useSignalAck(ctx);
   const research = isResearchKind(s.kind) || s.source === "research";
   const noteId = research ? signalNoteId(s) : null;
@@ -459,7 +464,17 @@ function OpenSignalRow({ s, ctx }: { s: SignalV2; ctx: SignalsCtx }) {
         {research && ctx.onOpenNote && <> · <button className="lnk" onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.segment === "string" ? s.payload.segment : null)}>notatka</button></>}
         <Age a={signalAge(s, ctx)} />
       </div>
-      <div className="rt"><button className="lnk quiet" disabled={busy(s)} onClick={() => ack(s)}>potwierdź</button></div>
+      <div className="rt">{!grouped && <button className="lnk quiet" disabled={busy(s)} onClick={() => ack(s)}>potwierdź</button>}</div>
+    </div>
+  );
+}
+
+/** One `Potwierdź` for every open signal of the asset (one undo); the decision stays the header's. */
+function GroupAck({ signals, ctx }: { signals: SignalV2[]; ctx: SignalsCtx }) {
+  const w = useGroupWriter(ctx, { primary: signals[0] ?? null, live: signals }, () => undefined);
+  return (
+    <div className="oact">
+      <button className="btn sm" disabled={w.busy} onClick={() => w.ack()} title={`Potwierdza ${plural(signals.length, "sygnał", "sygnały", "sygnałów")}`}>Potwierdź</button>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 """Research layer: sourced notes about held, watched and candidate instruments and the market segments
 behind the portfolio (P5; old notes may carry a free-text theme), written by the agent through MCP (``core/mcp/tools/research.py``), shown in the app
-(``research_api.py``). Facts and sentiment with sources only: no recommendation, no price prediction.
+(``research_api.py``). Facts and sentiment with sources only: no recommendation, no price prediction
+(the agent's market view of a topic sits under its thesis, ``topic_theses.set_market_view``, P11).
 
 - ``keys``: identity of research signals (stdlib only; the daily check and views import it).
 - ``scoring``: pure sentiment / direction / thesis health.

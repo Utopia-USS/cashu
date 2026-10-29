@@ -33,8 +33,10 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+import threading
+import time
 from collections.abc import Callable, Collection
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 
 from sqlmodel import Session, select
@@ -48,7 +50,16 @@ from ..alerts import LIVE_STATUSES, is_alert_key
 from ..domain import Currency, Instrument, InstrumentId, MarketView, TxnType
 from ..macro.refresh import MacroChartSource, MacroReport, refresh_macro
 from ..macro.series import BACKFILL_DAYS as MACRO_BACKFILL_DAYS
-from ..market import FetchReport, FetchStatus, FxSource, MarketDataRefresher, PriceSource
+from ..market import (
+    FetchReport,
+    FetchStatus,
+    FxSource,
+    MarketDataRefresher,
+    NbpFxSource,
+    PriceSource,
+    YahooPriceSource,
+)
+from ..market.batched import BatchedFxSource, BatchedPriceSource
 from ..models import InvRuleRun, InvSignal
 from ..plan.keys import is_plan_key
 from ..portfolio import build_snapshot, fx_currencies_for
@@ -92,25 +103,44 @@ class MarketSources:
     fx: FxSource
     close: Callable[[], None] = lambda: None
     macro: MacroChartSource | None = None
+    yahoo: YahooPriceSource | None = None
+    """Spark batches (P10, ``market.batched``): None asks ``prices`` per instrument (test fakes)."""
+    nbp: NbpFxSource | None = None
+    """One NBP table request for every currency (P10): None asks ``fx`` per currency."""
+    workers: int = 1
+    """Instruments / currencies fetched at once; the macro series run beside them when > 1."""
+
+
+WORKERS = 4
 
 
 def default_sources() -> MarketSources:
-    """The production sources: Yahoo / stooq composite and NBP over one HTTP client."""
+    """The production sources: Yahoo / stooq composite and NBP over one HTTP client, the spark and
+    table batches on the same sources, 4 workers; the macro source paces Yahoo together with them."""
     import httpx
 
     from ..macro.refresh import MAX_RETRIES, TIMEOUT_SECONDS
-    from ..market import CompositePriceSource, MarketHttp, NbpFxSource, YahooPriceSource
+    from ..market import CompositePriceSource, MarketHttp, StooqPriceSource
 
     client = httpx.Client(follow_redirects=True)
     http = MarketHttp(client)
     macro_http = MarketHttp(
-        client, timeout=TIMEOUT_SECONDS, max_retries=MAX_RETRIES, max_retry_after=TIMEOUT_SECONDS
+        client,
+        timeout=TIMEOUT_SECONDS,
+        max_retries=MAX_RETRIES,
+        max_retry_after=TIMEOUT_SECONDS,
+        share_slots_with=http,
     )
+    yahoo = YahooPriceSource(http)
+    nbp = NbpFxSource(http)
     return MarketSources(
-        CompositePriceSource.standard(http),
-        NbpFxSource(http),
+        CompositePriceSource([StooqPriceSource(http), yahoo]),
+        nbp,
         client.close,
         macro=YahooPriceSource(macro_http),
+        yahoo=yahoo,
+        nbp=nbp,
+        workers=WORKERS,
     )
 
 
@@ -153,9 +183,13 @@ class DailyCheckReport:
     macro_error: str | None = None
     macro_stats: dict = field(default_factory=dict)
     profiles: list[ProfileRun] = field(default_factory=list)
+    timings: dict = field(default_factory=dict)
+    """Seconds per phase (P10): read, network (market + macro in parallel), market, macro, write,
+    evaluate, total; ``requests`` = how the prices were fetched (spark / batched / per instrument)."""
 
     def to_dict(self) -> dict:
         return {
+            "timings": self.timings,
             "trigger": self.trigger,
             "as_of": self.as_of.isoformat(),
             "offline": self.offline,
@@ -199,8 +233,14 @@ def _profiles_to_check(session: Session, profile_ids: Collection[int] | None) ->
     return [p for p in profiles.list_profiles(session) if p.id in set(enabled)]
 
 
-def _needs(session: Session, profile: Profile, as_of: dt.date) -> _Needs:
-    state = strategy_files.load(session, profile, record=True)
+def price_needs(session: Session, profile: Profile, as_of: dt.date) -> _Needs:
+    """What the profile needs from the market (held and watched instruments, FX currencies, split
+    dates), read without recording a strategy version: the batched price refresh (``service.prices``)."""
+    return _needs(session, profile, as_of, record=False)
+
+
+def _needs(session: Session, profile: Profile, as_of: dt.date, *, record: bool = True) -> _Needs:
+    state = strategy_files.load(session, profile, record=record)
     needs = _Needs(profile, state)
     txns = transactions.transactions(session, profile.id)
     snapshot = build_snapshot(
@@ -269,10 +309,19 @@ def run_daily_check(
 def _run(trigger, profile_ids, as_of, offline, sources, clock, session_factory) -> DailyCheckReport:
     as_of = as_of or portfolio.today()
     report = DailyCheckReport(trigger, as_of, offline, convert.aware(clock()))
+    timer = _Timer(report.timings)
 
     # 1. Read phase (strategy versions are recorded here, before any network call).
-    with session_factory() as s:
+    with timer("read"), session_factory() as s:
         checked = [_needs(s, p, as_of) for p in _profiles_to_check(s, profile_ids)]
+        last_closes = (
+            market.last_closes(
+                s, {convert.pk(i) for n in checked for i in (n.instruments | n.watched)}
+            )
+            if checked and not offline
+            else {}
+        )
+    _emit_run(session_factory, checked, "add")
 
     # 2. Network phase: no transaction is open.
     if not offline and checked:
@@ -299,29 +348,59 @@ def _run(trigger, profile_ids, as_of, offline, sources, clock, session_factory) 
             # The dollar card's USD/PLN over the macro window (NBP; only what is missing is fetched).
             currencies.add(Currency.USD)
             _earliest(history, Currency.USD, as_of - dt.timedelta(days=MACRO_BACKFILL_DAYS))
+        stored = market.DbStoredMarketData(session_factory)
+
+        def market_phase() -> None:
+            with timer("market"):
+                try:
+                    prices = BatchedPriceSource(active.yahoo, active.prices, last_closes=last_closes)
+                    prices.prefetch(held.values())
+                    fx = BatchedFxSource(active.nbp, active.fx)
+                    fx.prefetch(*_fx_window(stored, currencies, as_of))
+                    refresher = MarketDataRefresher(prices, fx, workers=active.workers)
+                    report.market = refresher.refresh(
+                        stored,
+                        held.values(),
+                        sorted(currencies),
+                        as_of,
+                        fx_history_from=history,
+                        split_dates=splits,
+                    )
+                    report.timings["requests"] = {
+                        "spark": prices.requests,
+                        "batched": prices.batched,
+                        "per_instrument": prices.fallbacks,
+                        "fx_tables": fx.requests,
+                    }
+                except Exception as e:  # noqa: BLE001 - the run goes on with the stored data
+                    _log.exception("market refresh failed")
+                    report.market_error = f"{type(e).__name__}: {e}"
+
+        def macro_phase() -> None:
+            with timer("macro"):
+                try:
+                    if active.macro is not None:
+                        report.macro = refresh_macro(active.macro, as_of, workers=active.workers)
+                except Exception as e:  # noqa: BLE001 - macro cards keep the stored data
+                    _log.exception("macro refresh failed")
+                    report.macro_error = f"{type(e).__name__}: {e}"
+
         try:
-            refresher = MarketDataRefresher(active.prices, active.fx)
-            report.market = refresher.refresh(
-                market.DbStoredMarketData(session_factory),
-                held.values(),
-                sorted(currencies),
-                as_of,
-                fx_history_from=history,
-                split_dates=splits,
-            )
-        except Exception as e:  # noqa: BLE001 - the run goes on with the stored data
-            _log.exception("market refresh failed")
-            report.market_error = f"{type(e).__name__}: {e}"
-        try:
-            if active.macro is not None:
-                report.macro = refresh_macro(active.macro, as_of)
-        except Exception as e:  # noqa: BLE001 - macro cards keep the stored data
-            _log.exception("macro refresh failed")
-            report.macro_error = f"{type(e).__name__}: {e}"
+            with timer("network"):
+                if active.workers > 1 and active.macro is not None:
+                    # the macro series beside the instruments (one pacing schedule per host)
+                    side = threading.Thread(target=macro_phase, name="macro-refresh", daemon=True)
+                    side.start()
+                    market_phase()
+                    side.join()
+                else:
+                    market_phase()
+                    macro_phase()
         finally:
             active.close()
 
         # 3. One write transaction for the fetched market data, then one for the macro closes.
+        timer.start("write")
         if report.market is not None:
             with session_factory() as s:
                 report.market_stats = market.apply_fetch_report(
@@ -337,13 +416,69 @@ def _run(trigger, profile_ids, as_of, offline, sources, clock, session_factory) 
                 _log.exception("macro write failed")
                 report.macro_error = f"{type(e).__name__}: {e}"
 
+        timer.stop("write")
+
     # 4. Per profile: evaluate and persist (one transaction each).
-    for needs in checked:
-        report.profiles.append(
-            _evaluate_profile(needs, report, as_of, trigger, clock, session_factory)
-        )
+    with timer("evaluate"):
+        for needs in checked:
+            report.profiles.append(
+                _evaluate_profile(needs, report, as_of, trigger, clock, session_factory)
+            )
     report.finished_at = convert.aware(clock())
+    report.timings["total"] = round(time.monotonic() - timer.began, 3)
+    _emit_run(session_factory, checked, "update", {p.profile_id: p.status for p in report.profiles})
+    _log.info("daily check %s: %s", trigger, report.timings)
     return report
+
+
+class _Timer:
+    """Seconds per phase into ``target`` (rounded to ms)."""
+
+    def __init__(self, target: dict) -> None:
+        self.target = target
+        self.began = time.monotonic()
+        self._open: dict[str, float] = {}
+
+    def start(self, name: str) -> None:
+        self._open[name] = time.monotonic()
+
+    def stop(self, name: str) -> None:
+        began = self._open.pop(name, None)
+        if began is not None:
+            self.target[name] = round(time.monotonic() - began, 3)
+
+    @contextmanager
+    def __call__(self, name: str):
+        self.start(name)
+        try:
+            yield
+        finally:
+            self.stop(name)
+
+
+def _fx_window(stored, currencies, as_of: dt.date) -> tuple[dt.date, dt.date]:
+    """The one NBP table request's range: from the oldest last stored rate of the currencies (at most
+    a month back) to ``as_of``; empty when nothing is stored (the per-currency backfill runs)."""
+    known = [d for d in (stored.last_rate_date(c) for c in currencies if c != Currency.PLN) if d]
+    if not known:
+        return as_of, as_of - dt.timedelta(days=1)
+    return max(min(known), as_of - dt.timedelta(days=30)), as_of
+
+
+def _emit_run(session_factory, checked, op: str, statuses: dict | None = None) -> None:
+    """Change events of the run (P10 live data): ``add`` when it starts, ``update`` when it ends."""
+    if not checked:
+        return
+    try:
+        from cashu.core import events
+
+        with session_factory() as s:
+            for needs in checked:
+                pid = needs.profile.id
+                payload = None if statuses is None else {"status": statuses.get(pid)}
+                events.emit(s, "run", op, profile_id=pid, payload=payload)
+    except Exception:  # noqa: BLE001 - live data is a convenience, never a run failure
+        _log.warning("run change event failed", exc_info=True)
 
 
 def _unpack(sources) -> MarketSources:

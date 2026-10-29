@@ -2,10 +2,10 @@
 // implementation-plan Wave F item 28). Endpoints under /api/p/{slug}/investments/research…, the profile
 // workspace (track AW) and the watchlist for accepted candidates. A server without the research layer
 // answers 404: the runs read as "never ran" so no research UI shows (density rule), nothing breaks.
-import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../../core/api";
+import { ApiError, j, jdel, jpatch, jpost, jput, pp } from "../../../../core/api";
 import { normMacro } from "./macro";
-import { normAttribution } from "./segments";
-import type { MacroRegimes, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentWindow, Workspace } from "./types";
+import { normAttribution, normTopicThesis } from "./segments";
+import type { MacroRegimes, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentWindow, TopicThesis, Workspace } from "./types";
 
 const inv = (slug: string, path: string) => pp(slug, `/investments${path}`);
 /** A server without the research layer: FastAPI's generic 404 / 405 (a missing profile keeps its error). */
@@ -122,3 +122,24 @@ export const postResearchRead = async (slug: string, body: { instrument_id: numb
   try { return await jpost<{ marked: number }>(inv(slug, "/research/read"), body); }
   catch (e) { if (missing(e)) return { marked: 0 }; throw e; }
 };
+
+// ---- P9 topic theses (`/investments/topics/{segment}/thesis`) -----------------------------------------------
+
+const topicThesisPath = (slug: string, segment: string) => inv(slug, `/topics/${encodeURIComponent(segment)}/thesis`);
+/** The topic's thesis; null when none (404) or on a server without topic theses. The answer may be the thesis or
+ * `{thesis: {...} | null}`. */
+export const getTopicThesis = async (slug: string, segment: string): Promise<TopicThesis | null> => {
+  try {
+    const r = await j<Record<string, unknown> | null>(topicThesisPath(slug, segment));
+    return r && typeof r.thesis === "object" ? normTopicThesis(r.thesis) : normTopicThesis(r);
+  } catch (e) { if (e instanceof ApiError && e.status === 404) return null; if (missing(e)) return null; throw e; }
+};
+/** The owner saves (create or edit): saving as the owner clears an agent draft (BE). */
+export const putTopicThesis = async (slug: string, segment: string, b: { thesis: string; invalidation: string | null }): Promise<TopicThesis | null> => {
+  const r = await jput<Record<string, unknown> | null>(topicThesisPath(slug, segment), b);
+  return r && typeof r.thesis === "object" ? normTopicThesis(r.thesis) : normTopicThesis(r);
+};
+export const deleteTopicThesis = (slug: string, segment: string) => jdel<unknown>(topicThesisPath(slug, segment));
+/** P11 the owner edits the market view under the thesis (`null` clears a field); answers the thesis with the view. */
+export const putTopicView = async (slug: string, segment: string, b: { assessment: string | null; outlook: string | null }): Promise<TopicThesis | null> =>
+  normTopicThesis(await jput<Record<string, unknown> | null>(inv(slug, `/topics/${encodeURIComponent(segment)}/view`), b));

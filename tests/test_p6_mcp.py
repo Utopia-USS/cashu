@@ -120,6 +120,8 @@ def test_research_context_macro(host):
         "missing",
         "last_note_at",
         "note_this_week",
+        "plain",  # P9
+        "brief",  # P9
     }
     rates = cards["rates"]
     assert rates["note_key"] == "macro_rates" and rates["state"] == "rising"

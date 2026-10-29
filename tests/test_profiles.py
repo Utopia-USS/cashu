@@ -308,6 +308,8 @@ def test_every_profile_route_is_in_the_isolation_list():
         and path != "/api/p/{slug}/proposals/{proposal_id}"
         # a connector binding by id: cross-profile 404s in tests/test_connectors_api.py
         and path != "/api/p/{slug}/connectors/bindings/{binding_id}"
+        # the change events (volatile token): isolation in tests/investments/persistence/test_p10_events.py
+        and path != "/api/p/{slug}/changes"
     }
     covered = {re.sub(r"/category/[^/]+/", "/category/{key}/", p.split("?")[0]) for p in PROFILE_GETS}
     covered = {re.sub(r"/modules/[^/]+/setup", "/modules/{module_id}/setup", p) for p in covered}

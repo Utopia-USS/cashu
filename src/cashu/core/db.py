@@ -111,3 +111,7 @@ def get_session() -> Iterator[Session]:
         raise
     finally:
         session.close()
+
+
+# Change events for the open app (P10): the session hooks record them in every process.
+from . import events as _events  # noqa: F401

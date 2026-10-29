@@ -97,6 +97,7 @@ def regime_dict(regime: rg.Regime, currency: texts.CurrencyEffect | None = None)
         "flags": list(regime.flags),
         "meaning": regime.meaning,
         "summary": texts.summary(regime, currency),
+        "plain": texts.plain(regime),
         "explain": texts.explain(regime),
         "metrics": [metric_dict(m) for m in regime.metrics],
         "history": [
@@ -138,10 +139,11 @@ def macro_view(
     now: dt.datetime | None = None,
 ) -> dict:
     """``GET /research/macro``: the five cards in :data:`regimes.ORDER`, each with its human texts
-    (``summary``, ``explain``; the dollar card folds in the portfolio's weekly currency effect), its
-    latest macro note (``macro_<key>``), when the last one was observed, whether one is from this
+    (``summary``, ``explain``, ``plain``; the dollar card folds in the portfolio's weekly currency
+    effect), its ``brief`` (P9: the latest active macro note with a ``details.brief``), its latest
+    macro note (``macro_<key>``), when the last one was observed, whether one is from this
     ISO week and the unread count."""
-    from ..research.segment_service import brief_note, notes_by_segment
+    from ..research.segment_service import brief_note, macro_brief, notes_by_segment
     from ..research.segments import macro_key
 
     assert profile.id is not None
@@ -165,10 +167,23 @@ def macro_view(
                 "last_note_at": None if newest is None else brief_note(newest)["observed_at"],
                 "note_this_week": _same_week(latest, now),
                 "unread": entry.unread if entry is not None else 0,
+                "brief": macro_brief(_current_brief(entry, regime), now),
             }
         )
     last = max((r.as_of for r in found if r.as_of is not None), default=None)
     return {"as_of": _iso(last), "regimes": cards}
+
+
+def _current_brief(entry, regime: rg.Regime):
+    """The newest active macro brief, unless it was observed before the current state began (P9
+    review: a brief of the previous state would contradict the card; the card falls back to
+    ``plain``). An open-ended state (``since`` unknown) keeps it."""
+    if entry is None or not entry.briefs:
+        return None
+    row = entry.briefs[0]
+    if regime.since is not None and convert.aware(row.observed_at).date() < regime.since:
+        return None
+    return row
 
 
 def _same_week(row, now: dt.datetime) -> bool:

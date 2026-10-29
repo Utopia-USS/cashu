@@ -46,7 +46,7 @@ export interface ResearchNote {
   /** Candidate notes: criteria vs the strategy thresholds, entry type, context; community notes: scale. */
   details?: {
     criteria?: Criterion[]; entry_type?: string | null; context?: string | null; bucket?: string | null; criteria_version?: number | string | null;
-    scale?: string | null; event?: string | null; event_date?: string | null; [k: string]: unknown;
+    scale?: string | null; event?: string | null; event_date?: string | null; assessment?: string | null; outlook?: string | null; [k: string]: unknown;
   } | null;
   /** The research signal this note created or joined (card tag `sygnał`). */
   signal_id?: number | null;
@@ -181,6 +181,22 @@ export interface SegmentRow {
   members: number;
   /** P7 BE extra: the priced members (held now or watched) with their own returns; missing on older servers. */
   member_instruments?: SegmentMember[];
+  /** P9: up to 3 latest active brief notes of the topic, newest first; missing on older servers. */
+  briefs?: TopicBrief[];
+  /** P9: the topic thesis; null when none, missing on older servers. */
+  thesis?: TopicThesis | null;
+}
+/** P9: a topic brief (a segment note with `details.brief`): a plain headline and what is going on. */
+export interface TopicBrief { note_id: number; headline: string; why: string | null; observed_at: string; kind?: string | null; polarity?: string | null; unread: boolean }
+/** P9: a macro brief: the plain headline, why the state holds, what supports it, what to watch. */
+export interface MacroBrief { note_id: number; headline: string; why: string | null; supports: string[]; risks: string[]; observed_at: string; unread: boolean }
+/** P9: the owner's (or the agent's draft) thesis of a topic (`GET/PUT /investments/topics/{segment}/thesis`). */
+export interface TopicThesis {
+  id?: number | null; segment?: string | null; thesis: string; invalidation: string | null; draft: boolean; created_by: "owner" | "agent" | string;
+  assessment?: string | null; outlook?: string | null; view_updated_at?: string | null;
+  /** P11: the sources of the industry estimates the view cites (empty when none). */
+  view_sources?: NoteSource[];
+  core_changed_at?: string | null; created_at?: string | null; updated_at: string | null;
 }
 /** A topic member: `held` = held at the window end (else watched only). */
 export interface SegmentMember { instrument_id: number; label: string | null; held: boolean; return_1w: number | null; return_4w: number | null }
@@ -221,6 +237,10 @@ export interface MacroRegime {
   /** State changes over the stored window, newest last, at most 12. */
   history: MacroHistoryItem[];
   note: SegmentNoteRef | null; last_note_at: string | null; note_this_week: boolean; unread: number;
+  /** P9: the latest active macro brief of the regime (null until the first one; missing on older servers). */
+  brief?: MacroBrief | null;
+  /** P9: a deterministic beginner sentence from the state only, shown until a brief exists. */
+  plain?: string | null;
 }
 /** `as_of` = the last bar date in the data (null when none). */
 export interface MacroRegimes { as_of: string | null; regimes: MacroRegime[] }

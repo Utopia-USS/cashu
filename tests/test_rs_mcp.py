@@ -160,6 +160,59 @@ def test_fixable_errors(host):
     assert not extra.ok and extra.error_kind == "invalid_arguments"
 
 
+def test_topic_market_view_is_stored_under_the_thesis_not_the_note(host):
+    _pid, _slug, mcp = host
+    added = mcp.call(
+        "add_research_note",
+        {
+            "kind": "trend",
+            "polarity": "positive",
+            "strength": 2,
+            "segment": "robotics",
+            "title": "Roboty trafiają do kolejnych zastosowań",
+            "summary": "Dostawy robotów przemysłowych i usługowych wzrosły według danych branżowych.",
+            "sources": source(40),
+        },
+    )
+    assert added.ok, added.error
+    drafted = mcp.call(
+        "upsert_topic_thesis",
+        {"segment": "robotics", "thesis": "Robotyka automatyzuje pracę w kolejnych branżach."},
+    )
+    assert drafted.ok, drafted.error
+    revised = mcp.call(
+        "set_topic_market_view",
+        {
+            "segment": "robotics",
+            "assessment": (
+                "Ocena agenta: trend adopcji jest realny, lecz wyceny wymagają selekcji spółek."
+            ),
+            "outlook": (
+                "IFR szacuje wzrost instalacji robotów o 7% rocznie w 2-3 lata; humanoidy później."
+            ),
+            "sources": source(41),
+        },
+    )
+    assert revised.ok, revised.error
+    listed = mcp.call("research_notes", {"segment": "robotics"}).data["notes"]
+    assert "assessment" not in (listed[0]["details"] or {})
+    assert "outlook" not in (listed[0]["details"] or {})
+    context = mcp.call("research_context", {}).data
+    thesis = next(x for x in context["segments"] if x["segment"] == "robotics")["thesis"]
+    assert thesis["assessment"] == revised.data["assessment"]
+    assert thesis["outlook"] == revised.data["outlook"]
+    refused = mcp.call(
+        "set_topic_market_view",
+        {
+            "segment": "robotics",
+            "assessment": "Kup teraz, kurs wzrośnie do 100.",
+            "outlook": "W perspektywie roku rynek robotyki może przyspieszyć wraz z adopcją.",
+            "sources": source(41),
+        },
+    )
+    assert not refused.ok and "recommendation" in refused.error
+
+
 def test_candidate_cooldown_is_a_conflict(host):
     pid, _slug, mcp = host
     candidate = {

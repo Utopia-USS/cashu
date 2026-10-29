@@ -37,7 +37,16 @@ WEBDIST = Path(__file__).parent / "webdist"  # built React SPA (frontend/ → np
 async def _lifespan(_app: FastAPI):
     init_db()
     _prune_staged_imports()
-    yield
+    # P10: the daily check runs on its own (at start when it has not run today, then hourly after
+    # 07:30); a daemon thread, never blocking startup or requests (CASHU_AUTO_DAILY=0 turns it off).
+    from ..modules.investments.service import autorun
+
+    runner = autorun.AutoRunner()
+    runner.start()
+    try:
+        yield
+    finally:
+        runner.stop()
 
 
 def _prune_staged_imports() -> None:

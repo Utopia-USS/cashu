@@ -294,6 +294,57 @@ RULE: dict[str, str] = {
 """How the app measures it (the rule in plain words)."""
 
 
+# --------------------------------------------------------------------------- #
+# Plain sentences (P9)
+# --------------------------------------------------------------------------- #
+
+PLAIN: dict[str, dict[str, str]] = {
+    "risk": {
+        "bull": "Trwa hossa: akcje na świecie od dłuższego czasu drożeją.",
+        "flat": "Akcje na świecie stoją w miejscu, bez wyraźnego kierunku.",
+        "weak": "Akcje na świecie tracą siłę: ceny są niżej niż przez ostatnie miesiące.",
+        "correction": "Akcje są w korekcie: spadły o 10-20 % od szczytu.",
+        "bear": "Trwa bessa: akcje spadły o ponad 20 % od szczytu.",
+    },
+    "dollar": {
+        "strong": "Dolar się umacnia.",
+        "weak": "Dolar słabnie.",
+        "flat": "Kurs dolara stoi w miejscu.",
+    },
+    "em": {
+        "leading": "Akcje krajów rozwijających się radzą sobie lepiej niż reszta świata.",
+        "lagging": "Akcje krajów rozwijających się radzą sobie gorzej niż reszta świata.",
+        "inline": "Akcje krajów rozwijających się idą podobnie jak reszta świata.",
+    },
+    "commodities": {
+        "bull": "Surowce drożeją: koszyk ropy, metali i płodów rolnych jest wyraźnie droższy.",
+        "bear": "Surowce tanieją: koszyk ropy, metali i płodów rolnych jest wyraźnie tańszy.",
+        "flat": "Ceny surowców stoją w miejscu.",
+    },
+    "rates": {
+        "rising": "Oprocentowanie obligacji w USA rośnie, więc pożyczanie pieniędzy drożeje.",
+        "falling": "Oprocentowanie obligacji w USA spada, więc pożyczanie pieniędzy tanieje.",
+        "stable": "Oprocentowanie obligacji w USA stoi w miejscu.",
+    },
+}
+"""One beginner sentence per regime state (P9): the card shows it until a research brief exists."""
+PLAIN_INVERTED = "Krótkie obligacje płacą więcej niż długie, co w przeszłości często było sygnałem ostrzegawczym."
+PLAIN_UNKNOWN = "Za mało danych, by opisać ten rynek."
+
+
+def plain(regime: rg.Regime) -> str:
+    """The beginner sentence of the regime's state (:data:`PLAIN`), deterministic: the state only
+    (plus the inverted-curve flag of the rates card), no numbers from the data."""
+    if regime.missing:
+        return PLAIN_UNKNOWN
+    text = PLAIN.get(regime.key, {}).get(regime.state)
+    if text is None:
+        return PLAIN_UNKNOWN
+    if rg.INVERTED in regime.flags:
+        text = f"{text} {PLAIN_INVERTED}"
+    return text
+
+
 def explain(regime: rg.Regime) -> str:
     """The card's hover text: :data:`INTRO`, :data:`RULE`, then the current state and its
     ``meaning`` (module doc)."""

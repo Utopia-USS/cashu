@@ -109,6 +109,15 @@ def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
     )
     assert started.ok, started.error
     run_id = started.data["run_id"]
+    context = host.call("research_context", {}).data
+    complete_recommendations = [
+        {
+            "instrument": str(row["instrument_id"]),
+            "recommendation": "hold",
+            "reason": "Teza pozostaje aktualna; model czeka na kolejny punkt kontrolny.",
+        }
+        for row in [*context["positions"], *context["watchlist"]]
+    ]
 
     def source(n: int) -> list[dict]:
         return [
@@ -146,6 +155,10 @@ def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
                 "recommendation": "hold",
                 "reason": "Teza pozostaje aktualna; model czeka na kolejny punkt kontrolny.",
             },
+        ),
+        (
+            "set_recommendations",
+            {"scope": "all", "recommendations": complete_recommendations},
         ),
         ("signals", {"status": "all"}),
         ("strategy_status", {}),
@@ -231,6 +244,19 @@ def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
         ),
         ("start_research_run", {"scope": {"held": False, "segments": ["energy"]}}),
         ("set_instrument_segment", {"instrument": "CDR.WA", "segment": "games_media"}),
+        (
+            "upsert_topic_thesis",
+            {"segment": "games_media", "thesis": f"Gry rosna {note}", "invalidation": note},
+        ),
+        (
+            "set_topic_market_view",
+            {
+                "segment": "games_media",
+                "assessment": "Rynek gier jest obecnie stabilny według dostępnych danych.",
+                "outlook": "Branża szacuje wzrost rynku gier o ok. 5 % w 12 miesięcy; ryzykiem są koszty.",
+                "sources": source(4),
+            },
+        ),
         ("research_context", {}),
         ("signals", {"status": "open"}),
         ("set_merchant_category", {"merchant": "SKLEP NIEZNANY TEST", "category": "groceries"}),

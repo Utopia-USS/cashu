@@ -54,7 +54,10 @@ class MarketHttp:
         backoff: Backoff = exponential_backoff,
         sleep: Sleep = time.sleep,
         clock: Clock = time.monotonic,
+        share_slots_with: MarketHttp | None = None,
     ) -> None:
+        """``share_slots_with``: pace requests together with another instance (one schedule per host for
+        both, e.g. the price and the macro sources of one run fetching in parallel)."""
         self._client = client
         self.timeout = timeout
         self.max_retries = max_retries
@@ -65,6 +68,9 @@ class MarketHttp:
         self._clock = clock
         self._next_slot: dict[str, float] = {}
         self._lock = threading.Lock()
+        if share_slots_with is not None:
+            self._next_slot = share_slots_with._next_slot
+            self._lock = share_slots_with._lock
 
     def get(
         self,

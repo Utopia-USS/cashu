@@ -42,6 +42,11 @@ export interface SwrCache {
   setScope(slug: string): void;
   /** Drop `prefix` and every key under it (`ck(slug, "budget")` drops `ck(slug, "budget", ...)`). */
   invalidate(prefix: string): number;
+  /** The cached keys of the active scope (live-data patches, P10). */
+  keys(): string[];
+  /** Replace a cached entry's data in place (a pushed change, P10): newer than any fetch begun before, so
+   * an older answer in flight never overwrites it. False when the key is not cached or not in scope. */
+  replace(key: string, data: unknown): boolean;
 }
 
 export function createCache(max = SWR_MAX): SwrCache {
@@ -78,6 +83,13 @@ export function createCache(max = SWR_MAX): SwrCache {
     setScope(slug) {
       const s = encodeURIComponent(slug);
       if (s !== scope) { cache.clear(); scope = s; }
+    },
+    keys() { return [...map.keys()].filter(inScope); },
+    replace(key, data) {
+      if (!inScope(key) || !map.has(key) || data == null) return false;
+      seq += 1;
+      map.set(key, { data, seq });
+      return true;
     },
     invalidate(prefix) {
       let n = 0;
@@ -122,6 +134,47 @@ export const clearCache = (): void => swr.clear();
 export const invalidate = (prefix: string): number => swr.invalidate(prefix);
 /** A request dedupe tied to the app's cache (reset by every clear / invalidate). */
 export const dedupe = (ttl = 4000): Dedupe => createDedupe(swr, ttl);
+
+/** `key` is `prefix` or lies under it (the prefix rule of `invalidate`). */
+export const underPrefix = (key: string, prefix: string): boolean => key === prefix || key.startsWith(`${prefix}/`);
+
+// Revalidation (P10): data that changed without a write on this screen (the price refresh) must reach the views
+// already on screen too, not only the next mount. Keyed hooks (hooks.ts) listen and re-read when their key is
+// under the prefix, keeping their data visible meanwhile.
+const revalidators = new Set<(prefix: string) => void>();
+/** A keyed hook's listener; returns the unsubscribe. */
+export function onRevalidate(f: (prefix: string) => void): () => void {
+  revalidators.add(f);
+  return () => { revalidators.delete(f); };
+}
+// Patches (P10): a pushed change replaces a cached list in place; the mounted views of that key show it at once.
+const patchListeners = new Set<(key: string, data: unknown) => void>();
+export function onPatched(f: (key: string, data: unknown) => void): () => void {
+  patchListeners.add(f);
+  return () => { patchListeners.delete(f); };
+}
+/** Apply `fn` to every cached entry whose key passes `match`; `fn` returns the new data or undefined (no change).
+ * Returns the keys changed. */
+export function patchCache(match: (key: string) => boolean, fn: (key: string, data: unknown) => unknown): string[] {
+  const changed: string[] = [];
+  for (const key of swr.keys()) {
+    if (!match(key)) continue;
+    const cur = swr.peek<unknown>(key);
+    if (!cur) continue;
+    const next = fn(key, cur.data);
+    if (next === undefined || next === cur.data) continue;
+    if (swr.replace(key, next)) changed.push(key);
+  }
+  for (const key of changed) { const d = swr.peek<unknown>(key)?.data; patchListeners.forEach((f) => f(key, d)); }
+  return changed;
+}
+
+/** `invalidate(prefix)`, then every mounted keyed view under it re-reads. */
+export function revalidate(prefix: string): number {
+  const n = swr.invalidate(prefix);
+  revalidators.forEach((f) => f(prefix));
+  return n;
+}
 
 // ---- hook state (pure reducers; hooks.ts keeps one SwrState per hook) ---------------------------
 

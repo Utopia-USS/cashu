@@ -7,6 +7,7 @@
 // performance data-quality notes (`perf.<code>`) and worker job outcomes (`worker.<code>`).
 
 import { serverDate } from "../time.ts";
+import { hideAmount } from "../incognito.ts";
 
 export type Params = Record<string, unknown>;
 /** A template ("{key}" placeholders) or a function; null from a function = fall back to English. */
@@ -31,7 +32,7 @@ const CUR_SIGN: Record<string, string> = { PLN: "zł", EUR: "€", USD: "$", GBP
 const cur = (v: unknown, c?: unknown) => {
   const n = Number(v);
   const txt = Number.isFinite(n) ? n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(v);
-  return c ? `${txt} ${CUR_SIGN[String(c)] ?? String(c)}` : txt;
+  return c ? hideAmount(`${txt} ${CUR_SIGN[String(c)] ?? String(c)}`) : txt;
 };
 /** A fraction as a percent with one decimal: 0.124 -> "12,4 %". */
 const frac = (v: unknown) => {

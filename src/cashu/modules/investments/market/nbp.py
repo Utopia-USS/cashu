@@ -54,6 +54,75 @@ class NbpFxSource:
             chunk_start += timedelta(days=self.max_days_per_request)
         return [by_date[on] for on in sorted(by_date)]
 
+    def table_rates(self, start: CalendarDate, end: CalendarDate) -> dict[Currency, list[FxRate]]:
+        """Every table A currency over ``start..end`` (at most ``max_days_per_request`` days) in one
+        request (``/api/exchangerates/tables/A/<start>/<end>/``): rates per currency, oldest first. A
+        range without a table (HTTP 404) is empty."""
+        if start > end:
+            return {}
+        if (end - start).days + 1 > self.max_days_per_request:
+            raise ValueError("table range longer than max_days_per_request")
+        response = self._http.get(
+            f"https://{self.host}/api/exchangerates/tables/A/{start}/{end}/",
+            source_id=self.id,
+            params={"format": "json"},
+            headers={"Accept": "application/json"},
+        )
+        if response.status_code == 404:
+            return {}
+        if response.status_code != 200:
+            raise SourceException(
+                self.id,
+                f"HTTP {response.status_code} for table A {start}..{end}: "
+                f"{body_snippet(response.text)}",
+            )
+        return self.parse_tables(response.text, start, end)
+
+    def parse_tables(
+        self, body: str, start: CalendarDate, end: CalendarDate
+    ) -> dict[Currency, list[FxRate]]:
+        """Parses a table A tables response into rates per currency dated within ``start..end``."""
+
+        def unexpected(detail: str, cause: BaseException | None = None) -> SourceException:
+            return SourceException(self.id, f"unexpected tables response: {detail}", cause=cause)
+
+        try:
+            data = json.loads(body, parse_float=Decimal)
+        except ValueError as error:
+            raise unexpected(body_snippet(body), error) from error
+        if not isinstance(data, list):
+            raise unexpected(body_snippet(body))
+        fetched_at = self._clock()
+        out: dict[Currency, dict[CalendarDate, FxRate]] = {}
+        for table in data:
+            effective = table.get("effectiveDate") if isinstance(table, dict) else None
+            entries = table.get("rates") if isinstance(table, dict) else None
+            if not isinstance(effective, str) or not isinstance(entries, list):
+                raise unexpected(f"table {body_snippet(str(table))}")
+            try:
+                on = date.fromisoformat(effective)
+            except ValueError as error:
+                raise unexpected(f"table date {effective!r}", error) from error
+            if on < start or on > end:
+                continue
+            for entry in entries:
+                code = entry.get("code") if isinstance(entry, dict) else None
+                mid = entry.get("mid") if isinstance(entry, dict) else None
+                if not isinstance(code, str) or isinstance(mid, bool):
+                    continue
+                if not isinstance(mid, Decimal | int):
+                    continue
+                try:
+                    quote = Currency(code)
+                except ValueError:
+                    continue
+                if quote == Currency.PLN:
+                    continue
+                out.setdefault(quote, {})[on] = FxRate(
+                    quote=quote, date=on, rate=Decimal(mid), source=self.id, fetched_at=fetched_at
+                )
+        return {cur: [rates[d] for d in sorted(rates)] for cur, rates in out.items()}
+
     def _chunk(self, quote: Currency, start: CalendarDate, end: CalendarDate) -> list[FxRate]:
         response = self._http.get(
             f"https://{self.host}/api/exchangerates/rates/A/{quote.lower()}/{start}/{end}/",
