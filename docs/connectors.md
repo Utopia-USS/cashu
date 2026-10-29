@@ -301,7 +301,8 @@ approved. Two ways, same checks, same value-free report:
   `inbox/<export>` or `connectors/<id>/fixtures/<answer>.json`): paths outside it, in another profile's
   workspace, in hidden folders or in the cashU data dir are refused. The app runs a private copy of the
   directory once (a file changed during the test never runs), installs, approves and records nothing,
-  and never opens the network. It returns the manifest facts (the interpreter by name, never a path),
+  and never opens the network. Time limit: `detect` 10 s, `convert` / `fetch` the manifest's
+  `timeout_s` but at most 120 s, so test with a sample that converts within that. It returns the manifest facts (the interpreter by name, never a path),
   each run's outcome and error kind, the detect match, the document's validity, counts and issue kinds,
   and the report lines below.
 - **Terminal:** the CLI, from a source checkout or with the app's binary

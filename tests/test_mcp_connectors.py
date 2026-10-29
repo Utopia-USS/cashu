@@ -483,3 +483,22 @@ def test_test_connector_reports_a_forbidden_import(db_engine, tmp_path):
     assert {r["error_kind"] for r in result.data["runs"]} == {"forbidden_import"}
     blob = json.dumps(result.data)
     assert "FAKE SECRET" not in blob and "4321" not in blob and str(tmp_path) not in blob
+
+
+def test_test_connector_caps_the_run_time(tester):
+    """convert / fetch run at most 120 s inside an MCP call (detect keeps 10 s); a shorter manifest
+    timeout is kept as is; the CLI is not capped."""
+    from cashu.core.connectors import devtest
+
+    mcp, slug, box = tester
+    long = write_connector(ws_connectors(slug) / "slow-conn", cid="slow-conn", timeout=600)
+    assert mcp.call("test_connector", {"path": str(long), "file": str(_sample(slug))}).ok
+    assert [s.timeout_s for s in box.specs] == [10.0, 120.0]
+    box.specs.clear()
+    short = write_connector(ws_connectors(slug) / "quick-conn", cid="quick-conn", timeout=30)
+    result = mcp.call("test_connector", {"path": str(short), "file": str(_sample(slug))})
+    assert result.ok and [s.timeout_s for s in box.specs] == [10.0, 30.0]
+    assert "at most 120 s" in all_tools()["test_connector"].description
+    box.specs.clear()
+    devtest.run_test(long, file=_sample(slug), sandbox=box)  # the CLI path: the manifest's 600 s
+    assert [s.timeout_s for s in box.specs] == [10.0, 600.0]

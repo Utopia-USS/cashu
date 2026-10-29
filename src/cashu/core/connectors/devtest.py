@@ -18,7 +18,7 @@ import importlib
 import json
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from . import manifest as mf
@@ -27,6 +27,7 @@ from .runner import InputFile, RunResult, RunTarget, execute
 from .sandbox import ConnectorSandbox
 
 MAX_FIXTURE_BYTES = 1024 * 1024
+MCP_MAX_TIMEOUT_S = 120  # test_connector: convert / fetch never run longer inside an MCP call
 FIXTURE_PARAM = "fixture"
 PLACEHOLDER_SECRET = "test-not-a-real-secret"
 BUDGET_HOOK = "cashu.modules.budget.ingestion.canonical"
@@ -100,7 +101,10 @@ def run_test(
     fixture: Path | None = None,
     check_manifest: bool = False,
     sandbox: ConnectorSandbox | None = None,
+    max_timeout_s: int | None = None,
 ) -> DevTestReport:
+    """``max_timeout_s`` caps the manifest's ``timeout_s`` for convert / fetch (the MCP tool:
+    :data:`MCP_MAX_TIMEOUT_S`); ``detect`` keeps its own 10 s."""
     report = DevTestReport()
     try:
         loaded = mf.load_dir(source)
@@ -122,6 +126,9 @@ def run_test(
     if check_manifest:
         return report
     target = RunTarget.of(loaded)
+    if max_timeout_s is not None and m.timeout_s > max_timeout_s:
+        target = replace(target, manifest=m.model_copy(update={"timeout_s": int(max_timeout_s)}))
+        report.add(f"  timeout: {m.timeout_s} s in the manifest, capped at {max_timeout_s} s here")
     if m.kind == "file":
         if file is None or fixture is not None:
             report.fail("usage: a file connector is tested with --file <export>")

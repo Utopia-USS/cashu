@@ -147,6 +147,7 @@ def test_connector(ctx: ToolContext, path: str, file: str | None = None,
     report = devtest.run_test_snapshot(
         folder, file=sample if file is not None else None,
         fixture=sample if fixture is not None else None,
+        max_timeout_s=devtest.MCP_MAX_TIMEOUT_S,
     )
     m = report.manifest
     out: dict = {
@@ -254,7 +255,8 @@ TOOLS = (
         "inside this workspace) for a file connector, or fetch offline with `fixture` (a recorded "
         "synthetic API response inside this workspace, passed as the `fixture` param, placeholder "
         "secrets, no network) for a fetch connector, then validates the document like the import "
-        "would. Returns a value-free report: manifest, each run's outcome and error kind, detect "
+        "would. Time limit: detect 10 s, convert / fetch the manifest's timeout_s but at most 120 s "
+        "(test with a sample that converts within that). Returns a value-free report: manifest, each run's outcome and error kind, detect "
         "match, document validity, counts and issue kinds with row numbers and field names; never a "
         "value from the file or the connector's output. Nothing is installed, approved or recorded.",
         test_connector,
