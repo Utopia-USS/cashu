@@ -202,7 +202,8 @@ it. Log counts and steps, never values.
 | platform | interpreters that run | sandbox |
 | --- | --- | --- |
 | macOS | all (`deno`, `python3`, `node`, `bun`, `ruby`, `perl`, `./<file>`) | `sandbox-exec`; Deno connectors also Deno's permissions inside it |
-| Linux, Windows | none yet (`sandbox_unavailable`), Deno included | Deno's permissions alone do not confine raw sockets to the egress proxy; a native layer is planned |
+| Linux | file connectors only (fetch: `sandbox_unavailable` for now) | Landlock + a seccomp filter (x86_64 / aarch64), when the kernel supports them (details: [agents/connector-sandbox-platforms.md](agents/connector-sandbox-platforms.md)); otherwise none run |
+| Windows | none yet (`sandbox_unavailable`), Deno included | Deno's permissions alone are not a sandbox; AppContainer is planned |
 
 **Deno connectors** (`run: [deno, connector.ts]`) get a second layer inside the macOS sandbox: Deno's
 own permissions. The app runs `deno run --no-config --no-lock --no-remote --no-npm --cached-only
