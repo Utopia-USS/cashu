@@ -99,6 +99,23 @@ def test_example_passes_in_the_real_sandbox(run, monkeypatch, name, option, inpu
     _check(run, name, option, input_name, expected)
 
 
+@real_sandbox
+@pytest.mark.parametrize(("name", "option", "input_name", "expected"), CASES)
+def test_example_passes_in_the_narrow_sandbox(db_engine, name, option, input_name, expected):
+    """The narrow read rules of test_connector (no /private/etc, no Homebrew etc/ or var/) still run
+    every example, Python and Deno."""
+    from cashu.core.connectors import devtest
+
+    directory = EXAMPLES / name
+    sample = directory / input_name
+    report = devtest.run_test(
+        directory, file=sample if option == "--file" else None,
+        fixture=sample if option == "--fixture" else None, narrow=True,
+    )
+    assert report.ok, report.text()
+    assert report.document_ok is True
+
+
 def test_examples_are_valid_connector_dirs():
     names = sorted(p.name for p in EXAMPLES.iterdir() if p.is_dir())
     assert names == sorted(c.values[0] if hasattr(c, "values") else c[0] for c in CASES)

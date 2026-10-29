@@ -300,7 +300,8 @@ def test_test_connector_runs_a_private_copy_and_installs_nothing(tester):
     assert doc["valid"] is True and doc["format"] == "cashu-import"
     assert doc["counts"]["transactions"] == 2 and doc["counts"]["errors"] == 0
     assert "propose_connector" in d["note"]
-    assert not any("interpreter" in line and "/" in line for line in d["report"])
+    assert "report" not in d and "duration_ms" not in d["runs"][0] and "confidence" not in d["detect"]
+    assert d["runs"][1]["message"] == "ok"
     # it ran from a private copy, not from the workspace folder, and the copy is gone
     assert len(box.specs) == 2
     for spec in box.specs:
@@ -441,7 +442,7 @@ def test_a_deno_connector_goes_from_the_workspace_to_an_approved_run(db_engine):
 
     tested = mcp.call("test_connector", {"path": str(root), "file": str(sample)})
     assert tested.ok, tested.error
-    assert tested.data["ok"] is True, tested.data["report"]
+    assert tested.data["ok"] is True, tested.data["runs"]
     assert tested.data["manifest"]["interpreter"] == "deno"
     assert tested.data["document"]["counts"]["transactions"] == 4
 
@@ -527,6 +528,128 @@ def test_test_connector_reports_a_module_parse_error(db_engine):
     assert {(r["outcome"], r["error_kind"]) for r in result.data["runs"]} == {
         ("refused", "module_parse_error")
     }
-    assert any("lib/parse.ts" in (r["message"] or "") and "deno check" in r["message"]
+    assert all("deno check" in r["message"] and "parse.ts" not in r["message"]
                for r in result.data["runs"])
     assert "secretValue" not in json.dumps(result.data)
+
+
+# --------------------------------------------------------------------------- #
+# Security review F-D1 / F-D2 (regressions of the reviewer's repro)
+# --------------------------------------------------------------------------- #
+
+# Encodes bytes it can read as lower-case letters a-p in its error message (value_free() lets those
+# through): the review's exfiltration channel.
+HEX_LEAK = (
+    "import json, sys\nreq = json.load(sys.stdin)\n"
+    "data = open(SRC, 'rb').read()[:60]\n"
+    "enc = ''.join('abcdefghijklmnop'[b >> 4] + 'abcdefghijklmnop'[b & 15] for b in data)\n"
+    "print(json.dumps({'error': {'kind': 'bad_file', 'message': 'x ' + enc}}))\nsys.exit(1)\n"
+)
+
+
+def _encoded(text: bytes) -> str:
+    return "".join("abcdefghijklmnop"[b >> 4] + "abcdefghijklmnop"[b & 15] for b in text[:60])
+
+
+def test_test_connector_returns_no_connector_authored_text(tester):
+    """F-D1: whatever the connector prints (here: the sample encoded as a-p letters, which
+    value_free() would keep) never reaches the MCP answer; only the kind's fixed message does."""
+    mcp, slug, _box = tester
+    sample = _sample(slug, text="IBAN PL61109010140000071219812874 4321.09\n")
+    root = write_connector(ws_connectors(slug) / "test-conn", cid="test-conn",
+                           code="SRC = None\n" + HEX_LEAK.replace("open(SRC, 'rb')",
+                                                                  "open(req['file']['path'], 'rb')"))
+    result = mcp.call("test_connector", {"path": str(root), "file": str(sample)})
+    assert result.ok, result.error
+    blob = json.dumps(result.data)
+    assert _encoded(sample.read_bytes())[:20] not in blob
+    assert "x " not in blob
+    (run,) = [r for r in result.data["runs"] if r["command"] == "convert"]
+    assert run["error_kind"] == "bad_file"
+    assert run["message"] == "the connector reported bad_file (its own message is never shown here)"
+    for key in ("exit_code", "duration_ms"):
+        assert key not in run
+
+
+@pytest.mark.skipif(sys.platform != "darwin" or not os.path.exists("/usr/bin/sandbox-exec"),
+                    reason="macOS sandbox-exec only")
+def test_test_connector_cannot_read_system_config_in_the_narrow_sandbox(db_engine):
+    """F-D1 repro in the real sandbox: an unapproved connector under test reads /private/etc/hosts.
+    test_connector runs with the narrow read rules (no /private/etc), and returns no connector text
+    anyway."""
+    from connector_support import PYTHON3
+
+    with get_session() as s:
+        p = profiles.create_profile(s, name="Anna Nowak", modules_=["investments", "budget"])
+        mcp, slug = CashuMcp(p.id), p.slug
+    probe = (
+        "import json, sys\nreq = json.load(sys.stdin)\n"
+        "def can(path):\n"
+        "    try:\n        open(path, 'rb').read(1)\n        return True\n"
+        "    except OSError:\n        return False\n"
+        "kinds = {True: 'upstream', False: 'network'}\n"
+        "if req['command'] == 'detect':\n"
+        "    print(json.dumps({'match': can('/private/etc/hosts'), 'confidence': 0.5}))\n"
+        "else:\n"
+        "    print(json.dumps({'error': {'kind': kinds[can('/opt/homebrew/etc') or "
+        "can('/usr/local/etc')], 'message': 'x'}}))\n    sys.exit(1)\n"
+    )
+    root = write_connector(ws_connectors(slug) / "test-conn", cid="test-conn", code=probe)
+    sample = _sample(slug)
+    result = mcp.call("test_connector", {"path": str(root), "file": str(sample)})
+    assert result.ok, result.error
+    assert PYTHON3 is not None
+    assert result.data["detect"]["match"] is False  # /private/etc/hosts unreadable
+    (convert,) = [r for r in result.data["runs"] if r["command"] == "convert"]
+    assert convert["error_kind"] == "network"  # Homebrew etc/ unreadable
+
+
+def test_test_connector_refuses_a_hard_linked_sample(tester):
+    """F-D2 repro: a hard link in the workspace to a file in the data dir passes the path checks
+    (its path is in the workspace) but is another name of the data-dir file."""
+    from cashu.core import paths
+
+    mcp, slug, box = tester
+    secret = paths.data_dir() / "secret-db.csv"
+    secret.parent.mkdir(parents=True, exist_ok=True)
+    secret.write_text("IBAN PL61109010140000071219812874 4321.09\n", encoding="utf-8")
+    link = workspace.workspace_path(slug) / "inbox" / "h.csv"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    os.link(secret, link)
+    root = write_connector(ws_connectors(slug) / "test-conn", cid="test-conn")
+    result = mcp.call("test_connector", {"path": str(root), "file": str(link)})
+    assert not result.ok and "hard-linked" in result.error
+    assert "PL61" not in result.error and str(paths.data_dir()) not in result.error
+    assert box.specs == []
+
+
+def test_a_hard_linked_file_inside_a_connector_is_refused(tester, tmp_path):
+    """F-D2 for the connector directory: scan_dir, install and test_connector refuse it."""
+    from cashu.core import paths
+    from cashu.core.connectors import manifest as mf
+
+    mcp, slug, box = tester
+    secret = paths.data_dir() / "secret-db.csv"
+    secret.parent.mkdir(parents=True, exist_ok=True)
+    secret.write_text("IBAN PL61109010140000071219812874\n", encoding="utf-8")
+    root = write_connector(ws_connectors(slug) / "test-conn", cid="test-conn")
+    os.link(secret, root / "data.csv")
+    with pytest.raises(mf.ManifestError, match="data.csv: hard-linked files are not allowed"):
+        mf.scan_dir(root)
+    result = mcp.call("test_connector", {"path": str(root), "file": str(_sample(slug))})
+    assert result.ok and result.data["ok"] is False and result.data["manifest"]["valid"] is False
+    assert "PL61" not in json.dumps(result.data)
+    assert not mcp.call("propose_connector", {"path": str(root)}).ok
+    assert box.specs == []
+
+
+def test_copy_private_refuses_a_link_made_after_the_scan(tmp_path):
+    from cashu.core.connectors import manifest as mf
+
+    src = write_connector(tmp_path / "test-conn", cid="test-conn")
+    mf.scan_dir(src)  # clean at scan time
+    outside = tmp_path / "outside.txt"
+    outside.write_text("FAKE", encoding="utf-8")
+    os.link(outside, src / "late.txt")
+    with pytest.raises(mf.ManifestError, match="late.txt: hard-linked"):
+        service._copy_private(src, tmp_path / "copy")

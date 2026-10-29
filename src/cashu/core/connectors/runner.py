@@ -157,9 +157,10 @@ def execute(
     cursor: str | None = None,
     sandbox: ConnectorSandbox | None = None,
     network: bool = True,
+    narrow: bool = False,
 ) -> RunResult:
     """Run ``command`` once (see the module doc). ``network=False`` keeps a fetch run offline (tests
-    with a fixture)."""
+    with a fixture); ``narrow=True`` uses the narrow system read rules (unapproved code, test_connector)."""
     m = target.manifest
     started = dt.datetime.now(dt.UTC)
     if command not in proto.COMMANDS:
@@ -217,6 +218,7 @@ def execute(
             max_stdout=proto.MAX_STDOUT_BYTES,
             proxy_port=port,
             hosts=m.hosts if port is not None else (),
+            narrow=narrow,
         )
         outcome = sandbox.run(spec)
     except Exception as e:  # noqa: BLE001 - a run never raises through (recorded instead)

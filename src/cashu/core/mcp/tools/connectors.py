@@ -19,6 +19,9 @@ anything, and returns a value-free report: kinds, counts and messages with value
 
 from __future__ import annotations
 
+import os
+import shutil
+import stat
 from pathlib import Path
 
 from sqlmodel import col, func, or_, select
@@ -102,6 +105,8 @@ def _workspace_file(raw: str, workspace: Path, what: str) -> Path:
         )
     if not path.is_file():
         raise ToolError(f"{what}: not a regular file")
+    if path.stat().st_nlink > 1:  # another name of a file elsewhere (the data dir, the home)
+        raise ToolError(f"{what}: hard-linked files are not read; copy the file into the workspace")
     if any(part.startswith(".") for part in path.relative_to(base).parts):
         raise ToolError(f"{what}: hidden files and files inside hidden folders are not read")
     if inside(path, paths.data_dir().resolve()) or inside(path, paths.LEGACY_DIR.resolve()):
@@ -117,17 +122,37 @@ def _interpreter_name(path: str) -> str:
     return "deno (bundled with the app)" if bundled is not None and str(bundled) == path else name
 
 
-def _report_line(line: str) -> str:
-    if line.strip().startswith("interpreter: "):
-        indent = line[: len(line) - len(line.lstrip())]
-        return f"{indent}interpreter: {_interpreter_name(line.split(': ', 1)[1])}"
-    return line
+# The only text test_connector returns about a run: fixed app-side messages per error kind. Nothing
+# the connector wrote (its error message, stderr, stdout) and nothing derived from it (row numbers,
+# confidence, durations, exit codes) reaches the agent: unapproved code under test could otherwise
+# encode a file it can read in that text (security review F-D1).
+KIND_MESSAGES = {
+    None: "ok",
+    "bad_file": "the connector reported bad_file (its own message is never shown here)",
+    "unsupported_version": "the connector reported unsupported_version",
+    "auth_failed": "the connector reported auth_failed",
+    "rate_limited": "the connector reported rate_limited",
+    "network": "the connector reported network (test runs are offline)",
+    "upstream": "the connector reported upstream",
+    "internal": "the connector failed with internal (an exception or an unknown error kind)",
+    "protocol": "the output broke the protocol: one JSON object on stdout, exit code 0 or 1, the "
+    "response shape of the command (docs: section 3)",
+    "timeout": "no answer within the time limit (detect 10 s, otherwise at most 120 s here)",
+    "sandbox_unavailable": "no sandbox on this platform: connectors run only on macOS for now",
+    "spawn_failed": "the interpreter could not be started",
+    "forbidden_import": "an import breaks the import rule: only files of the connector directory "
+    "and node: built-ins (docs: section 4)",
+    "module_parse_error": "a module of the connector does not load or parse: run deno check on "
+    "its files",
+    "bad_request": "the app could not build the request (extension, size or fixture)",
+}
+OTHER_KIND = "the run failed with this error kind"
 
 
 def test_connector(ctx: ToolContext, path: str, file: str | None = None,
                    fixture: str | None = None) -> dict:
     from cashu.core.connectors import devtest
-    from cashu.core.connectors.runner import MAX_INPUT_BYTES
+    from cashu.core.connectors.runner import MAX_INPUT_BYTES, make_private_run_dir
     from cashu.core.workspace import service as workspace
 
     from .exports import checked_local_dir
@@ -139,16 +164,36 @@ def test_connector(ctx: ToolContext, path: str, file: str | None = None,
             "give exactly one of file (a file connector's sample export) or fixture (a fetch "
             "connector's recorded synthetic API response, used offline)"
         )
-    sample = _workspace_file(file or fixture or "", root, "file" if file is not None else "fixture")
+    what = "file" if file is not None else "fixture"
+    sample = _workspace_file(file or fixture or "", root, what)
     limit = MAX_INPUT_BYTES if file is not None else devtest.MAX_FIXTURE_BYTES
     if sample.stat().st_size > limit:
         raise ToolError(f"the {'file' if file is not None else 'fixture'} is larger than "
                         f"{limit // 1024} KiB")
-    report = devtest.run_test_snapshot(
-        folder, file=sample if file is not None else None,
-        fixture=sample if fixture is not None else None,
-        max_timeout_s=devtest.MCP_MAX_TIMEOUT_S,
-    )
+    base = make_private_run_dir()
+    try:
+        # A private copy of the sample, checked on the opened file: a hard link made after the
+        # path check is refused here, and the run never reads the workspace path again.
+        copy = base / sample.name
+        try:
+            fd = os.open(sample, os.O_RDONLY | os.O_NOFOLLOW)
+        except OSError:
+            raise ToolError(f"{what}: file not found", "not_found") from None
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink > 1:
+                raise ToolError(f"{what}: hard-linked files are not read; copy the file into the "
+                                "workspace")
+            with open(copy, "xb") as out:
+                shutil.copyfileobj(source, out)
+        report = devtest.run_test_snapshot(
+            folder, file=copy if file is not None else None,
+            fixture=copy if fixture is not None else None,
+            max_timeout_s=devtest.MCP_MAX_TIMEOUT_S,
+            narrow=True,
+        )
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
     m = report.manifest
     out: dict = {
         "ok": L.flag(report.ok),
@@ -166,24 +211,18 @@ def test_connector(ctx: ToolContext, path: str, file: str | None = None,
                 "command": L.category(r.command),
                 "outcome": L.category(r.outcome),
                 "error_kind": L.category(r.error_kind),
-                "exit_code": L.count(r.exit_code),
-                "duration_ms": L.count(r.duration_ms),
                 "records": L.count(r.records),
-                "message": L.text(devtest.value_free(r.message) if r.message else None),
+                "message": L.text(KIND_MESSAGES.get(r.error_kind, OTHER_KIND)),
             }
             for r in report.runs
         ],
-        "detect": None if report.detect is None else {
-            "match": L.flag(report.detect["match"]),
-            "confidence": L.pct(report.detect["confidence"], 2),
-        },
+        "detect": None if report.detect is None else {"match": L.flag(report.detect["match"])},
         "document": None if report.document_ok is None else {
             "valid": L.flag(report.document_ok),
             "format": L.category(report.document_format),
             "counts": {k: L.count(v) for k, v in sorted(report.counts.items())},
             "issue_kinds": {k: L.count(v) for k, v in sorted(report.issue_kinds.items())},
         },
-        "report": [L.text(_report_line(line)) for line in report.lines[:200]],
         "note": L.text(TEST_RULE),
     }
     if m and m.get("id") != folder.name:
@@ -256,9 +295,12 @@ TOOLS = (
         "synthetic API response inside this workspace, passed as the `fixture` param, placeholder "
         "secrets, no network) for a fetch connector, then validates the document like the import "
         "would. Time limit: detect 10 s, convert / fetch the manifest's timeout_s but at most 120 s "
-        "(test with a sample that converts within that). Returns a value-free report: manifest, each run's outcome and error kind, detect "
-        "match, document validity, counts and issue kinds with row numbers and field names; never a "
-        "value from the file or the connector's output. Nothing is installed, approved or recorded.",
+        "(test with a sample that converts within that). Returns a value-free report: manifest "
+        "facts, each run's outcome, error kind, record count and a fixed message for that kind, "
+        "the detect match, document validity, counts and issue kinds with their counts. Nothing the "
+        "connector writes (its error message, stdout, stderr) is ever returned, so give your "
+        "connector precise error kinds and check rows by the issue kinds. Nothing is installed, "
+        "approved or recorded.",
         test_connector,
         properties={
             "path": {"type": "string", "maxLength": 1024},

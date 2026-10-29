@@ -26,14 +26,12 @@
 
 ;; System locations (read only). Not /Library (python3 and node need none of it; an interpreter
 ;; installed there, e.g. the Command Line Tools python, is covered by the interpreter prefix rule) and
-;; not the user's home.
+;; not the user's home. Approved runs: /usr, /bin, /System, /private/etc, the time zone data and
+;; /opt/homebrew. Narrow runs (the MCP test_connector tool, whose code nobody approved): no
+;; /private/etc except the local time zone link, no /usr/local, no Homebrew etc/ or var/ (configs and
+;; databases), only Homebrew's package and library folders the interpreters link against.
 (allow file-read*
-  (subpath "/usr")
-  (subpath "/bin")
-  (subpath "/System")
-  (subpath "/private/etc")
-  (subpath "/private/var/db/timezone")
-  (subpath "/opt/homebrew")
+  ${SYSTEM_READ_RULES}
   (literal "/dev/null")
   (literal "/dev/urandom")
   (literal "/dev/random")

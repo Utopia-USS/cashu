@@ -37,6 +37,9 @@ MAX_MANIFEST_BYTES = 64 * 1024
 MAX_FILES = 200
 MAX_TOTAL_BYTES = 5 * 1024 * 1024
 ALLOWED_HIDDEN = frozenset({".gitignore"})
+# A file with more than one name may be another name of a file outside the directory (the data dir,
+# the home): its content would be copied, installed and readable by the connector. Refused.
+HARD_LINK_ISSUE = "hard-linked files are not allowed (copy the file instead)"
 
 DEFAULT_TIMEOUT_S = 60
 MAX_TIMEOUT_S = 600
@@ -362,6 +365,9 @@ def scan_dir(root: Path) -> list[FileEntry]:
                 continue
             if not child.is_file(follow_symlinks=False):
                 issues.append(f"{rel}: only regular files are allowed")
+                continue
+            if child.stat(follow_symlinks=False).st_nlink > 1:
+                issues.append(f"{rel}: {HARD_LINK_ISSUE}")
                 continue
             if len(entries) >= MAX_FILES:
                 if len(entries) == MAX_FILES:

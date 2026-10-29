@@ -102,6 +102,7 @@ def run_test(
     check_manifest: bool = False,
     sandbox: ConnectorSandbox | None = None,
     max_timeout_s: int | None = None,
+    narrow: bool = False,
 ) -> DevTestReport:
     """``max_timeout_s`` caps the manifest's ``timeout_s`` for convert / fetch (the MCP tool:
     :data:`MCP_MAX_TIMEOUT_S`); ``detect`` keeps its own 10 s."""
@@ -133,7 +134,7 @@ def run_test(
         if file is None or fixture is not None:
             report.fail("usage: a file connector is tested with --file <export>")
             return report
-        document = _test_file(report, target, file, sandbox)
+        document = _test_file(report, target, file, sandbox, narrow)
     else:
         if fixture is None or file is not None:
             report.fail(
@@ -141,7 +142,7 @@ def run_test(
                 "response>; real secrets are never used here"
             )
             return report
-        document = _test_fetch(report, target, fixture, sandbox)
+        document = _test_fetch(report, target, fixture, sandbox, narrow)
     if document is not None:
         _validate(report, m.module, document)
     return report
@@ -172,27 +173,33 @@ def run_test_snapshot(source: Path, **kwargs) -> DevTestReport:
     base = make_private_run_dir()
     try:
         copy = base / source.name
-        service._copy_private(source, copy)
+        try:
+            service._copy_private(source, copy)
+        except mf.ManifestError as e:  # e.g. a file hard-linked after the scan
+            return _invalid_manifest(DevTestReport(), e)
+        except OSError:
+            return _invalid_manifest(DevTestReport(), mf.ManifestError(["the directory cannot be copied"]))
         return run_test(copy, **kwargs)
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
 
 def _test_file(
-    report: DevTestReport, target: RunTarget, file: Path, sandbox: ConnectorSandbox | None
+    report: DevTestReport, target: RunTarget, file: Path, sandbox: ConnectorSandbox | None,
+    narrow: bool = False,
 ) -> dict | None:
     if not file.is_file():
         report.fail("file: not found")
         return None
     input_file = InputFile(file, file.name)
-    detect = execute(target, "detect", file=input_file, sandbox=sandbox)
+    detect = execute(target, "detect", file=input_file, sandbox=sandbox, narrow=narrow)
     report.runs.append(detect)
     report.add(_run_line(detect))
     if detect.ok:
         r = detect.response
         report.detect = {"match": bool(r.match), "confidence": float(r.confidence)}
         report.add(f"  match: {'yes' if r.match else 'no'} (confidence {r.confidence:.2f})")
-    convert = execute(target, "convert", file=input_file, sandbox=sandbox)
+    convert = execute(target, "convert", file=input_file, sandbox=sandbox, narrow=narrow)
     report.runs.append(convert)
     if not convert.ok:
         report.fail(_run_line(convert))
@@ -202,7 +209,8 @@ def _test_file(
 
 
 def _test_fetch(
-    report: DevTestReport, target: RunTarget, fixture: Path, sandbox: ConnectorSandbox | None
+    report: DevTestReport, target: RunTarget, fixture: Path, sandbox: ConnectorSandbox | None,
+    narrow: bool = False,
 ) -> dict | None:
     try:
         raw = fixture.read_bytes()
@@ -222,7 +230,7 @@ def _test_fetch(
     today = dt.datetime.now(dt.UTC).astimezone().date()  # the local calendar day
     since = (today - dt.timedelta(days=days)).isoformat()
     result = execute(
-        target, "fetch", sandbox=sandbox, network=False,
+        target, "fetch", sandbox=sandbox, network=False, narrow=narrow,
         params={FIXTURE_PARAM: raw.decode("utf-8")},
         secrets={sid: PLACEHOLDER_SECRET for sid in m.secret_ids},
         since=since, cursor=None,

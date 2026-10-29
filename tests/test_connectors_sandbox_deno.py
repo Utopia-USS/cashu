@@ -696,3 +696,25 @@ def test_a_missing_module_and_a_broken_entry_script_are_parse_errors(tmp_path, e
     mixed = _deno_connector(tmp_path / "deno-mixed", 'import "/etc/hosts";\nimport "./lib/bad.ts";\n',
                             cid="deno-mixed", extra={"lib/bad.ts": "const x = ;\n"})
     assert execute(mixed, "convert", file=export, sandbox=make_box()).error_kind == "forbidden_import"
+
+
+def test_the_narrow_profile_drops_system_config_and_homebrew_state(tmp_path):
+    from cashu.core.connectors.sandbox import RunSpec, render_profile
+
+    (tmp_path / "conn").mkdir()
+    (tmp_path / "run").mkdir()
+    spec = RunSpec(argv=("/usr/bin/true",), connector_dir=tmp_path / "conn",
+                   interpreter=Path("/usr/bin/true"), run_dir=tmp_path / "run", env={}, stdin=b"",
+                   timeout_s=1, max_stdout=1)
+    wide = render_profile(spec)
+    narrow = render_profile(runner_replace(spec, narrow=True))
+    for rule in ('(subpath "/private/etc")', '(subpath "/opt/homebrew")', '(subpath "/usr")'):
+        assert rule in wide and rule not in narrow, rule
+    assert '(literal "/private/etc/localtime")' in narrow
+    assert '(subpath "/opt/homebrew/Cellar")' in narrow and '(subpath "/usr/lib")' in narrow
+
+
+def runner_replace(spec, **changes):
+    from dataclasses import replace
+
+    return replace(spec, **changes)

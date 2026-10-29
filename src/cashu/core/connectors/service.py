@@ -20,6 +20,7 @@ import datetime as dt
 import os
 import re
 import shutil
+import stat
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -135,19 +136,27 @@ def _ensure_root() -> Path:
     return paths.ensure_private_dir(connectors_root())
 
 
-def _copy_private(src: Path, dst: Path) -> None:
+def _copy_private(src: Path, dst: Path, _rel: str = "") -> None:
     """Copy a validated connector dir: owner-only dirs (0700) and files (0600, or 0700 when the
-    source file is executable)."""
+    source file is executable). A hard-linked file (another name of a file elsewhere, e.g. in the data
+    dir) raises :class:`manifest.ManifestError`; the check is on the opened file, so a link made after
+    the directory scan is caught too."""
     dst.mkdir(mode=0o700)
     os.chmod(dst, 0o700)
     for entry in sorted(os.scandir(src), key=lambda e: e.name):
         target = dst / entry.name
+        rel = f"{_rel}{entry.name}"
         if entry.is_dir(follow_symlinks=False):
-            _copy_private(Path(entry.path), target)
+            _copy_private(Path(entry.path), target, f"{rel}/")
         elif entry.is_file(follow_symlinks=False):
-            shutil.copyfile(entry.path, target, follow_symlinks=False)
-            executable = entry.stat(follow_symlinks=False).st_mode & 0o100
-            os.chmod(target, 0o700 if executable else 0o600)
+            fd = os.open(entry.path, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, "rb") as source:
+                info = os.fstat(source.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_nlink > 1:
+                    raise mf.ManifestError([f"{rel}: {mf.HARD_LINK_ISSUE}"])
+                with open(target, "xb") as out:
+                    shutil.copyfileobj(source, out)
+            os.chmod(target, 0o700 if info.st_mode & 0o100 else 0o600)
 
 
 # --------------------------------------------------------------------------- #

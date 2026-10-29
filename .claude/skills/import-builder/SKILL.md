@@ -140,12 +140,14 @@ Privacy and boundaries (say the first lines at the start, in one or two sentence
    record a synthetic API answer as `connectors/<id>/fixtures/<name>.json` and call
    `test_connector(<dir>, fixture=<that file>)` (no network, placeholder secrets; the fixture arrives as
    `params.fixture`; never declare `fixture` in the manifest). Cover every label, both signs, an FX row
-   and an error case. Read the report: `ok`, each run's `outcome` / `error_kind`, `detect.match`,
-   `document.valid`, `counts` and `issue_kinds`, and the `report` lines.
+   and an error case. Read the report: `ok`, each run's `outcome` / `error_kind` / `records` and its
+   fixed `message`, `detect.match`, `document.valid`, `counts` and `issue_kinds`. Your connector's own
+   error messages and logs are never returned, so give each failure a precise error kind and let the
+   issue kinds of the validation tell you what to fix.
 7. **Test on the real export:** `test_connector(<dir>, file=<workspace>/inbox/<export>)` (the export
-   must be inside the workspace). The report is value-free (counts, problem kinds with row numbers and
-   field names), so it is fine on both routes. Fix by kind and row and rerun until it says OK; read
-   every warning with the user. In a terminal the same test is `cashu connectors test connectors/<id>
+   must be inside the workspace and not a hard link). The report is value-free (counts and kinds), so
+   it is fine on both routes. Fix by kind and rerun until it says OK; read every warning with the
+   user. In a terminal the same test is `cashu connectors test connectors/<id>
    --file <export>` (the CLI named in the workspace `CLAUDE.md`).
 8. **Install:** `propose_connector(<absolute path of connectors/<id>>)`. Tell the owner, in one or two
    sentences: open Ustawienia > Konektory, check the command, the network (none, or the hosts), the files

@@ -79,7 +79,8 @@ file:                            # kind file only (and required for it)
   what a schema cannot express: `run`, the matching section, unique ids, the directory rules).
 
 **Directory rules.** At most 200 regular files and 5 MiB in total; `connector.yaml` at the top; no
-symlinks, no special files, no hidden files except `.gitignore`, UTF-8 file names. Subdirectories are
+symlinks, no hard-linked files (a file with a second name elsewhere), no special files, no hidden
+files except `.gitignore`, UTF-8 file names. Subdirectories are
 fine. Keep test inputs synthetic: every file of the directory is installed and shown to the owner.
 
 **Content hash.** `content_sha256` = sha256 over the sorted lines `<relative path>\0<sha256 of the
@@ -302,12 +303,21 @@ approved. Two ways, same checks, same value-free report:
   no source checkout). `path` is the connector directory `connectors/<id>/` of the profile's agent
   workspace; `file` (file kind) or `fixture` (fetch kind) must be a file inside that workspace (e.g.
   `inbox/<export>` or `connectors/<id>/fixtures/<answer>.json`): paths outside it, in another profile's
-  workspace, in hidden folders or in the cashU data dir are refused. The app runs a private copy of the
-  directory once (a file changed during the test never runs), installs, approves and records nothing,
-  and never opens the network. Time limit: `detect` 10 s, `convert` / `fetch` the manifest's
-  `timeout_s` but at most 120 s, so test with a sample that converts within that. It returns the manifest facts (the interpreter by name, never a path),
-  each run's outcome and error kind, the detect match, the document's validity, counts and issue kinds,
-  and the report lines below.
+  workspace, in hidden folders, in the cashU data dir and hard-linked files are refused. The app runs a
+  private copy of the directory and of the sample once (a file changed or linked during the test never
+  runs), installs, approves and records nothing, and never opens the network. Time limit: `detect`
+  10 s, `convert` / `fetch` the manifest's `timeout_s` but at most 120 s, so test with a sample that
+  converts within that. The code under test is nobody's approved code, so it runs with **narrower read
+  rules** than an approved run: no `/private/etc` (except the local time zone), no `/usr/local`, no
+  Homebrew `etc/` or `var/`; only Homebrew's package and library folders.
+  It returns **no text the connector wrote**: the manifest facts (the interpreter by name, never a
+  path), each run's outcome, error kind, record count and a fixed message for that kind, the detect
+  match, the document's validity, its counts and the issue kinds with their counts. Your error
+  message, stdout and stderr, row numbers, the detect confidence, durations and exit codes are not
+  returned (a connector under test could hide data it can read in them). So use precise error kinds
+  and make the validation issue kinds tell you what to fix. The counts and the match flag remain a
+  low-bandwidth channel (a hostile connector could encode a few bits in them per call), accepted
+  because the code only reads the sample, its own directory and the narrow system set.
 - **Terminal:** the CLI, from a source checkout or with the app's binary
   (`/Applications/cashU.app/Contents/MacOS/cashu`):
 
@@ -318,10 +328,11 @@ cashu connectors test connectors/<id> --check-manifest                # manifest
 cashu connectors test connectors/<id> --file <export> --module budget # also check the module
 ```
 
-The report is **value-free**: manifest facts, the interpreter, the hash, each command's outcome and
-time, then the import validation as counts per record kind and type, and problems by kind with row
+The CLI report (for a person in a terminal) is **value-free**: manifest facts, the interpreter, the
+hash, each command's outcome and time, then the import validation as counts per record kind and type, and problems by kind with row
 numbers and field names. It never prints a value from the file, the document, your error message or
-stderr, so an agent can run it on the user's real export. Exit code 0 = everything OK. Example:
+stderr verbatim (it masks values in your message, which a hostile connector can defeat; the MCP tool
+returns none of it). Exit code 0 = everything OK. Example:
 
 ```
 manifest: OK (budget-csv-example 1.0.0, module budget, kind file)

@@ -59,6 +59,18 @@ class RunSpec:
     max_stdout: int
     proxy_port: int | None = None  # fetch runs: the egress proxy; None = no network at all
     hosts: tuple[str, ...] = ()  # fetch runs: the manifest hosts (DenoSandbox checks them per request)
+    narrow: bool = False  # unapproved code (test_connector): the narrow system read rules
+
+
+# System read rules of the macOS profile (sandbox.sb ``SYSTEM_READ_RULES``).
+SYSTEM_READ = (
+    "/usr", "/bin", "/System", "/private/etc", "/private/var/db/timezone", "/opt/homebrew",
+)
+NARROW_SYSTEM_READ = (
+    "/usr/lib", "/usr/share", "/System", "/private/var/db/timezone",
+    "/opt/homebrew/Cellar", "/opt/homebrew/opt", "/opt/homebrew/lib", "/opt/homebrew/Frameworks",
+)
+NARROW_SYSTEM_LITERALS = ("/private/etc/localtime",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,9 +148,15 @@ def render_profile(spec: RunSpec) -> str:
         network = f'(allow network-outbound (remote tcp "localhost:{port}"))'
     else:
         network = ";; (no network rule: every connection is denied)"
+    if spec.narrow:
+        system = [f"(subpath {sbpl_string(p)})" for p in NARROW_SYSTEM_READ]
+        system += [f"(literal {sbpl_string(p)})" for p in NARROW_SYSTEM_LITERALS]
+    else:
+        system = [f"(subpath {sbpl_string(p)})" for p in SYSTEM_READ]
     template = Template(resources.files(__package__).joinpath(PROFILE_TEMPLATE).read_text("utf-8"))
     indent = "\n  "
     return template.substitute(
+        SYSTEM_READ_RULES=indent.join(system),
         EXEC_RULES=indent.join(exec_rules),
         METADATA_RULES=indent.join(metadata_rules),
         READ_RULES=indent.join(read_rules),
@@ -206,8 +224,10 @@ FORBIDDEN_IMPORT = "forbidden_import"
 MODULE_PARSE_ERROR = "module_parse_error"
 PARSE_SUFFIX = "cannot be loaded or parsed (check it with deno check)"
 # ``file:`` modules must be files of the connector. ``node:`` built-ins are allowed: they are code of the
-# deno binary itself and every file, network, env or process operation they make passes the same
-# permission checks (``node:fs`` or ``createRequire`` reading outside the allow list is ``NotCapable``).
+# deno binary itself and their file, network, env and process operations pass the same permission
+# checks (``node:fs`` reading outside the allow list, or ``createRequire(...)(path)`` with a path built
+# at run time, is ``NotCapable``). A ``require("...")`` with a literal path is NOT checked at run time:
+# Deno loads it with the module graph, so ``deno info`` lists it and this check refuses it.
 # Every other scheme (``data:``, ``blob:``, ``http(s):``, ``npm:``, ``jsr:``) is refused: a connector
 # never needs one, and a ``data:`` module could carry imports of its own.
 GRAPH_SCHEMES = ("file", "node")
