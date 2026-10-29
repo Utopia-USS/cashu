@@ -14,19 +14,23 @@ children):
 - execute: the interpreter, its ELF loader, files of the connector directory (and the interpreter's own
   installation when it is outside the system dirs); never ``/bin/sh`` or anything in the run dir;
 - write: the run directory and ``/dev/null``;
-- network (Landlock ABI >= 4, Linux 6.7+): TCP bind never; TCP connect only to the proxy port for a
-  fetch run, none for a file run. A file run also gets a private network namespace when the kernel
-  allows unprivileged user namespaces; with ABI < 4 that namespace is required, a fetch run is refused.
+- network: none. Landlock ABI >= 4 (Linux 6.7+) denies TCP bind and connect; a private network
+  namespace is added when the kernel allows unprivileged user namespaces (required with ABI < 4).
+  Fetch runs are refused for now (see :class:`LinuxSandbox`).
 - ABI >= 6 (Linux 6.12+): abstract Unix sockets and signals are scoped to the sandbox.
+- seccomp: only TCP sockets, no Unix sockets / UDP / netlink, no io_uring, ptrace, process_vm_*, bpf,
+  perf_event_open, keyrings, mounts, namespaces or personality (EPERM).
 
-Residual risks (UDP, pathname Unix sockets, port-only network rules) are listed in
-``docs/agents/connector-sandbox-platforms.md``.
+The sandbox is offered only when :func:`available` (Landlock present and the seccomp filter installs).
+Residual risks are listed in ``docs/agents/connector-sandbox-platforms.md``.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -58,7 +62,7 @@ DEVICES_RW = ("/dev/null",)
 
 UNAVAILABLE_PL = "Konektory na Linuksie wymagają jądra z Landlock (Linux 5.13 lub nowszy, włączony LSM)."
 FETCH_UNAVAILABLE_PL = (
-    "Konektory pobierające dane na Linuksie wymagają jądra 6.7 lub nowszego (Landlock ABI 4)."
+    "Konektory pobierające dane (fetch) nie działają jeszcze na Linuksie; konektory plikowe tak."
 )
 REFUSED_PL = "Piaskownica Landlock nie mogła zostać założona: konektor nie został uruchomiony."
 
@@ -101,8 +105,23 @@ def build_policy(spec: RunSpec, *, report: bool = False) -> dict:
     return policy
 
 
+PROBE_TIMEOUT_S = 15.0
+
+
+@functools.cache
 def available() -> bool:
-    return ll.abi_version() >= 1
+    """Landlock is there and the launcher could install the seccomp filter (checked once per process
+    by ``<launcher> --probe`` in a child; the app itself is never restricted)."""
+    if not sys.platform.startswith("linux") or ll.machine() not in ll.SYSCALLS or ll.abi_version() < 1:
+        return False
+    try:
+        probe = subprocess.run(
+            [*launcher_argv(), "--probe"], env={}, stdin=subprocess.DEVNULL, capture_output=True,
+            timeout=PROBE_TIMEOUT_S, cwd="/", check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return probe.returncode == 0
 
 
 def native_sandbox() -> LinuxSandbox | None:
@@ -111,7 +130,9 @@ def native_sandbox() -> LinuxSandbox | None:
 
 
 class LinuxSandbox:
-    """Landlock (plus a private network namespace for file runs when allowed)."""
+    """Landlock + seccomp (plus a private network namespace for file runs when allowed). File
+    connectors only: a fetch run is refused until a namespace relay forces its traffic through the proxy
+    (Landlock's TCP rule is port-only; docs/agents/connector-sandbox-platforms.md)."""
 
     name = "linux"
 
@@ -119,6 +140,13 @@ class LinuxSandbox:
         self.report = report
 
     def run(self, spec: RunSpec) -> RunOutcome:
+        if spec.proxy_port is not None:
+            return RunOutcome(error_kind="sandbox_unavailable", message=FETCH_UNAVAILABLE_PL, sandbox=self.name)
+        return self.launch(spec)
+
+    def launch(self, spec: RunSpec) -> RunOutcome:
+        """Start ``spec`` in the sandbox, fetch runs included (the launcher layer, for tests and the
+        future relay; production goes through :meth:`run`)."""
         abi = ll.abi_version()
         if abi < 1:
             return RunOutcome(error_kind="sandbox_unavailable", message=UNAVAILABLE_PL, sandbox=self.name)

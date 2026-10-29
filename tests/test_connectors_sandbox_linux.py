@@ -1,12 +1,15 @@
-"""The Linux connector sandbox (Landlock through the ``landlock_exec`` launcher). Synthetic data only.
+"""The Linux connector sandbox (Landlock + seccomp through the ``landlock_exec`` launcher). Synthetic
+data only.
 
 Two parts:
 
-- portable unit tests (any OS): the policy, the ELF loader lookup, refusals without Landlock or with an
-  ABI too old for a fetch run, the launcher's argument handling, the packaged-app mode;
-- real-kernel tests (Linux with Landlock only): reads and writes outside the allowed places are denied
-  (a file under ``$HOME`` and the data dir included), TCP to anything but the proxy port is denied, the
-  proxy port is reachable, and a real ``python3`` file connector converts a synthetic export.
+- portable unit tests (any OS): the policy, the ELF loader lookup, refusals (no Landlock, fetch runs,
+  other architectures, a failing probe), the seccomp BPF program run through a small interpreter, the
+  launcher's argument handling, the packaged-app mode;
+- real-kernel tests (Linux with Landlock only): the ``--probe``; reads and writes outside the allowed
+  places are denied (a file under ``$HOME`` and the data dir included); TCP, UDP, Unix sockets and the
+  seccomp-denied syscalls fail with EPERM; the launcher's fetch mode reaches only the proxy port; a real
+  ``python3`` file connector converts a synthetic export.
 
 Run on macOS: ``docker run --rm -v "$PWD":/w -w /w python:3.12 bash -c
 'pip install -e .[dev] -c constraints.txt && pytest -s tests/test_connectors_sandbox_linux.py'``.
@@ -132,10 +135,104 @@ def test_no_landlock_refuses(tmp_path, monkeypatch):
     )
 
 
-def test_fetch_on_an_old_abi_refuses(tmp_path, monkeypatch):
-    monkeypatch.setattr(ll, "abi_version", lambda: 3)
+@pytest.mark.parametrize("abi", [3, 4, 6])
+def test_fetch_runs_are_refused_on_linux(tmp_path, monkeypatch, abi):
+    """Until a namespace relay forces traffic through the proxy (Landlock's TCP rule is port-only)."""
+    monkeypatch.setattr(ll, "abi_version", lambda: abi)
     outcome = sl.LinuxSandbox().run(_spec(tmp_path, proxy_port=41234))
-    assert (outcome.error_kind, outcome.message) == ("sandbox_unavailable", sl.FETCH_UNAVAILABLE_PL)
+    assert (outcome.error_kind, outcome.message, outcome.process) == (
+        "sandbox_unavailable", sl.FETCH_UNAVAILABLE_PL, None,
+    )
+
+
+def test_available_needs_linux_landlock_and_a_working_probe(monkeypatch):
+    calls = []
+
+    class _Done:
+        def __init__(self, code):
+            self.returncode = code
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        return _Done(probe_code)
+
+    monkeypatch.setattr(sl.subprocess, "run", fake_run)
+    monkeypatch.setattr(ll, "machine", lambda: "x86_64")
+    for platform, abi, probe_code, expected in (
+        ("darwin", 6, 0, False), ("linux", 0, 0, False), ("linux", 6, ll.REFUSED_EXIT, False),
+        ("linux", 6, 0, True),
+    ):
+        sl.available.cache_clear()
+        monkeypatch.setattr(sys, "platform", platform)
+        monkeypatch.setattr(ll, "abi_version", lambda abi=abi: abi)
+        assert sl.available() is expected, (platform, abi, probe_code)
+    sl.available.cache_clear()
+    assert calls and all(argv[-1] == "--probe" for argv in calls)
+
+
+def test_default_sandbox_without_a_working_probe_is_unsupported(monkeypatch):
+    from cashu.core.connectors import sandbox as sb
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(sl, "available", lambda: False)
+    assert isinstance(sb.default_sandbox(), sb.UnsupportedSandbox)
+    monkeypatch.setattr(sl, "available", lambda: True)
+    assert isinstance(sb.default_sandbox(), sl.LinuxSandbox)
+
+
+# seccomp: the BPF program, checked with the small interpreter (the kernel is the real judge)
+
+ALLOW, EPERM_RET = ll.SECCOMP_RET_ALLOW, ll.SECCOMP_RET_ERRNO | ll.EPERM
+
+
+@pytest.mark.parametrize("arch", ["x86_64", "aarch64"])
+def test_seccomp_program_decisions(arch):
+    prog = ll.seccomp_program(arch)
+    nrs, audit = ll.SYSCALLS[arch], ll.AUDIT_ARCH[arch]
+
+    def decide(name, *args, nr=None, audit_arch=audit):
+        return ll.run_bpf(prog, nrs[name] if nr is None else nr, audit_arch, args + (0,) * (6 - len(args)))
+
+    stream, dgram = 1, 2
+    assert decide("socket", ll.AF_INET, stream) == ALLOW
+    assert decide("socket", ll.AF_INET6, stream | 0o4000 | 0o2000000) == ALLOW  # NONBLOCK | CLOEXEC
+    assert decide("socket", ll.AF_INET, stream, 6) == ALLOW
+    assert decide("socket", ll.AF_INET, stream, 132) == EPERM_RET  # SCTP
+    assert decide("socket", ll.AF_INET, stream, 262) == EPERM_RET  # MPTCP
+    assert decide("socket", ll.AF_INET, dgram) == EPERM_RET
+    assert decide("socket", ll.AF_INET6, 3) == EPERM_RET  # raw
+    for family in (ll.AF_UNIX, 16, 17, 40, 0):  # unix, netlink, packet, vsock, unspec
+        assert decide("socket", family, stream) == EPERM_RET, family
+    for name in ll.DENIED_SYSCALLS:
+        assert decide(name) == EPERM_RET, name
+    assert decide("clone3") == ll.SECCOMP_RET_ERRNO | ll.ENOSYS
+    assert decide("clone", 0x003D0F00) == ALLOW  # glibc pthread_create flags
+    assert decide("clone", 0x01200011) == ALLOW  # fork(): CLONE_CHILD_SETTID | CLEARTID | SIGCHLD
+    for flag in (0x00020000, 0x10000000, 0x40000000, 0x20000000):
+        assert decide("clone", 0x01200011 | flag) == EPERM_RET, hex(flag)
+    for harmless in (0, 1, 59, 221, 231, 444, 446):  # read, write, execve (both), exit_group, landlock
+        assert ll.run_bpf(prog, harmless, audit) == ALLOW
+    assert ll.run_bpf(prog, 0, 0x40000003) == ll.SECCOMP_RET_KILL_PROCESS  # i386
+    if arch == "x86_64":
+        assert ll.run_bpf(prog, ll.X32_SYSCALL_BIT | 41, audit) == EPERM_RET
+
+
+def test_seccomp_syscall_tables_are_complete():
+    needed = set(ll.DENIED_SYSCALLS) | {"socket", "clone", "clone3"}
+    for arch, table in ll.SYSCALLS.items():
+        assert needed <= set(table), (arch, needed - set(table))
+        assert len(set(table.values())) == len(table), arch  # no duplicate numbers
+
+
+def test_seccomp_refuses_other_architectures():
+    with pytest.raises(ll.Refused):
+        ll.seccomp_program("riscv64")
+
+
+def test_launcher_refuses_other_architectures(monkeypatch, capsys):
+    monkeypatch.setattr(ll, "machine", lambda: "armv7l")
+    assert ll.main([json.dumps({"paths": []}), "--", "/bin/true"]) == ll.REFUSED_EXIT
+    assert "architecture" in capsys.readouterr().err
 
 
 def test_launcher_refuses_without_landlock(monkeypatch, capsys):
@@ -225,7 +322,7 @@ class _UdpListener:
 
 
 PROBE = '''\
-import json, os, socket, subprocess, sys
+import ctypes, json, os, socket, subprocess, sys
 req = json.load(sys.stdin)
 out = {{}}
 def attempt(name, fn):
@@ -252,6 +349,19 @@ def udp():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.sendto(b"leak", ("127.0.0.1", {udp}))
 attempt("udp", udp)
+attempt("unix_socket", lambda: socket.socket(socket.AF_UNIX).connect("/run/dbus/system_bus_socket"))
+attempt("socketpair", lambda: socket.socketpair())
+attempt("unshare", lambda: os.unshare(os.CLONE_NEWUSER))
+libc = ctypes.CDLL(None, use_errno=True)
+def raw(nr, *args):
+    if libc.syscall(nr, *args) < 0 and ctypes.get_errno() == 1:
+        raise PermissionError()
+NR = {nrs!r}
+attempt("io_uring_setup", lambda: raw(NR["io_uring_setup"], 1, None))
+attempt("ptrace", lambda: raw(NR["ptrace"], 0, 0, 0, 0))  # PTRACE_TRACEME
+attempt("personality", lambda: raw(NR["personality"], 0xFFFFFFFF))
+attempt("keyctl", lambda: raw(NR["keyctl"], 0, -3, 0))  # KEYCTL_GET_KEYRING_ID, session keyring
+attempt("bpf", lambda: raw(NR["bpf"], 0, None, 0))
 print(json.dumps({{"document": {{"records": [], "probe": out}}}}))
 '''
 
@@ -286,7 +396,7 @@ def test_file_connector_is_confined(tmp_path, export, capsys):
     code = PROBE.format(
         home_file=str(home_file), home=str(home), data_file=str(data_file),
         own=str(root / "connector.yaml"), outside=str(tmp_path / "outside.txt"),
-        denied=denied.port, udp=udp_sink.port,
+        denied=denied.port, udp=udp_sink.port, nrs=ll.SYSCALLS[ll.machine()],
     )
     try:
         target = target_of(write_connector(root, code=code))
@@ -303,17 +413,16 @@ def test_file_connector_is_confined(tmp_path, export, capsys):
     assert probe["read_input"] == "ok" and probe["read_own_dir"] == "ok"
     assert probe["write_run_dir"] == "ok" and probe["write_home_env"] == "ok"
     for name in ("read_home_file", "list_home", "read_data_db", "read_passwd", "read_proc_environ",
-                 "write_outside", "write_tmp", "exec_shell"):
+                 "write_outside", "write_tmp", "exec_shell", "udp", "unix_socket", "socketpair", "unshare",
+                 "io_uring_setup", "ptrace", "personality", "keyctl", "bpf"):
         assert probe[name] == "PermissionError", (name, probe)
     assert not (tmp_path / "outside.txt").exists()
     if applied.get("netns"):  # no interface in the namespace: unreachable / no address
         assert probe["tcp_denied"] != "ok" and probe["tcp_bind"] != "ok", probe
     else:  # Landlock ABI >= 4 alone (the launcher refuses a file run otherwise)
         assert (probe["tcp_denied"], probe["tcp_bind"]) == ("PermissionError", "PermissionError"), probe
-    assert denied.accepted == 0
-    if applied.get("netns"):
-        assert not udp_leaked  # a private network namespace has no route to the host
-    # Without the namespace UDP is NOT restricted by Landlock (docs/agents/connector-sandbox-platforms.md)
+    assert denied.accepted == 0 and not udp_leaked
+    assert applied.get("seccomp") == ll.machine()
 
 
 CONVERTER = '''\
@@ -366,7 +475,8 @@ print(json.dumps(out))
 @linux_landlock
 @needs_net_abi
 @pytest.mark.skipif(PYTHON3 is None, reason="no python3 on the fixed search path")
-def test_fetch_run_reaches_only_the_proxy_port(tmp_path):
+def test_launcher_fetch_mode_reaches_only_the_proxy_port(tmp_path):
+    """The launcher layer for the future relay (LinuxSandbox.run refuses fetch runs today)."""
     proxy, other = _Listener(), _Listener()
     interpreter = os.path.realpath(PYTHON3)
     spec = _spec(tmp_path, proxy_port=proxy.port, interpreter=interpreter)
@@ -374,7 +484,7 @@ def test_fetch_run_reaches_only_the_proxy_port(tmp_path):
         NET_PROBE.format(proxy=proxy.port, other=other.port), encoding="utf-8"
     )
     try:
-        outcome = sl.LinuxSandbox().run(spec)
+        outcome = sl.LinuxSandbox().launch(spec)
     finally:
         proxy.close()
         other.close()
@@ -386,7 +496,17 @@ def test_fetch_run_reaches_only_the_proxy_port(tmp_path):
 
 
 @linux_landlock
-def test_default_sandbox_is_linux():
+def test_probe_passes_and_default_sandbox_is_linux(capsys):
+    """Landlock and the seccomp filter install in a child (``--probe``); the app picks LinuxSandbox."""
+    import subprocess
+
     from cashu.core.connectors.sandbox import default_sandbox
 
+    probe = subprocess.run([*sl.launcher_argv(), "--probe"], env={}, capture_output=True, timeout=30,
+                           check=False)
+    with capsys.disabled():
+        print(f"\n[landlock] probe exit {probe.returncode}: {probe.stdout!r} {probe.stderr!r}")
+    assert probe.returncode == 0, probe.stderr
+    assert json.loads(probe.stdout)["abi"] == ABI
+    sl.available.cache_clear()
     assert default_sandbox().name == "linux"

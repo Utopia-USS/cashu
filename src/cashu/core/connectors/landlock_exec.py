@@ -12,13 +12,19 @@ execute, ``rw`` read and write in the run dir, ``dev`` a read / write device suc
 network mode (``none`` or ``proxy`` with the proxy port) and the minimum Landlock ABI. Every file-system
 right the running kernel knows is handled, so everything not granted is denied. Steps:
 
-1. ABI check (``landlock_create_ruleset(NULL, 0, VERSION)``); below the policy's minimum: refuse.
+1. Architecture (x86_64 / aarch64 only) and ABI check (``landlock_create_ruleset(NULL, 0, VERSION)``);
+   below the policy's minimum: refuse.
 2. File connectors (``net: none``): best effort, a private user + network namespace (no interface, so no
-   TCP, UDP or abstract Unix socket reaches the host). Required when the ABI is below 4, because then
-   Landlock cannot restrict sockets at all.
+   TCP reaches the host). Required when the ABI is below 4, because then Landlock cannot restrict TCP.
 3. Ruleset: file-system rules; with ABI >= 4, TCP bind denied and TCP connect allowed only to the proxy
    port; with ABI >= 6, abstract Unix sockets and signals scoped to the sandbox.
-4. ``PR_SET_NO_NEW_PRIVS``, ``landlock_restrict_self``, ``execv``.
+   ``PR_SET_NO_NEW_PRIVS``, ``landlock_restrict_self``.
+4. seccomp filter (:func:`seccomp_program`): only TCP sockets (no Unix sockets, no UDP, no netlink),
+   no io_uring, ptrace, process_vm_*, bpf, perf_event_open, keyrings, mounts, namespaces,
+   personality. Denials return EPERM so a connector fails cleanly. Then ``execv``.
+
+``--probe`` (no other argument) sets up an empty sandbox in the launcher itself and checks that the filter
+denies a Unix and a UDP socket; ``sandbox_linux.available`` runs it once per app process.
 
 A refusal writes ``cashu-landlock: <reason>`` to stderr and exits with :data:`REFUSED_EXIT`; the sandbox
 maps that to ``sandbox_unavailable``. Only the standard library is imported: this runs before every
@@ -274,8 +280,200 @@ def restrict(policy: dict, abi: int) -> None:
         os.close(ruleset)
 
 
+# --------------------------------------------------------------------------- #
+# seccomp: what Landlock does not cover (Unix sockets, UDP and other protocols, kernel interfaces)
+# --------------------------------------------------------------------------- #
+
+PR_SET_SECCOMP = 22
+SECCOMP_MODE_FILTER = 2
+SECCOMP_RET_KILL_PROCESS = 0x80000000
+SECCOMP_RET_ERRNO = 0x00050000
+SECCOMP_RET_ALLOW = 0x7FFF0000
+EPERM = 1
+ENOSYS = 38
+AUDIT_ARCH_X86_64 = 0xC000003E
+AUDIT_ARCH_AARCH64 = 0xC00000B7
+X32_SYSCALL_BIT = 0x40000000
+
+# classic BPF opcodes
+BPF_LD_W_ABS = 0x20
+BPF_ALU_AND_K = 0x54
+BPF_JEQ_K = 0x15
+BPF_JSET_K = 0x45
+BPF_JGE_K = 0x35
+BPF_RET_K = 0x06
+
+# struct seccomp_data: int nr; __u32 arch; __u64 instruction_pointer; __u64 args[6]
+_OFF_NR, _OFF_ARCH = 0, 4
+
+
+def _off_arg_low(i: int) -> int:
+    return 16 + 8 * i  # low 32 bits on little-endian (both supported architectures)
+
+
+AF_UNIX, AF_INET, AF_INET6 = 1, 2, 10
+SOCK_STREAM, SOCK_TYPE_MASK = 1, 0xF
+IPPROTO_IP, IPPROTO_TCP = 0, 6  # SCTP / MPTCP stream sockets are refused: Landlock rules cover TCP only
+# CLONE_NEWNS | NEWCGROUP | NEWUTS | NEWIPC | NEWUSER | NEWPID | NEWNET
+CLONE_NS_FLAGS = 0x00020000 | 0x02000000 | 0x04000000 | 0x08000000 | 0x10000000 | 0x20000000 | 0x40000000
+
+# Syscalls denied outright (EPERM), by name; numbers per architecture below.
+DENIED_SYSCALLS = (
+    "socketpair",
+    "io_uring_setup", "io_uring_enter", "io_uring_register",
+    "ptrace", "process_vm_readv", "process_vm_writev",
+    "bpf", "perf_event_open",
+    "keyctl", "add_key", "request_key",
+    "mount", "umount2", "pivot_root", "open_tree", "move_mount", "fsopen", "fsconfig", "fsmount",
+    "fspick", "mount_setattr",
+    "unshare", "setns",
+    "personality",
+)
+# Shared by both tables (asm-generic numbers, also used by x86_64 for syscalls added since 5.1).
+_COMMON = {
+    "io_uring_setup": 425, "io_uring_enter": 426, "io_uring_register": 427, "open_tree": 428,
+    "move_mount": 429, "fsopen": 430, "fsconfig": 431, "fsmount": 432, "fspick": 433, "clone3": 435,
+    "mount_setattr": 442,
+}
+SYSCALLS = {
+    "x86_64": {
+        **_COMMON,
+        "socket": 41, "socketpair": 53, "clone": 56, "ptrace": 101, "personality": 135, "pivot_root": 155,
+        "mount": 165, "umount2": 166, "add_key": 248, "request_key": 249, "keyctl": 250, "unshare": 272,
+        "perf_event_open": 298, "setns": 308, "process_vm_readv": 310, "process_vm_writev": 311,
+        "bpf": 321,
+    },
+    "aarch64": {
+        **_COMMON,
+        "umount2": 39, "mount": 40, "pivot_root": 41, "personality": 92, "unshare": 97, "ptrace": 117,
+        "socket": 198, "socketpair": 199, "add_key": 217, "request_key": 218, "keyctl": 219, "clone": 220,
+        "perf_event_open": 241, "setns": 268, "process_vm_readv": 270, "process_vm_writev": 271,
+        "bpf": 280,
+    },
+}
+AUDIT_ARCH = {"x86_64": AUDIT_ARCH_X86_64, "aarch64": AUDIT_ARCH_AARCH64}
+
+
+def machine() -> str:
+    m = os.uname().machine.lower()
+    return {"amd64": "x86_64", "arm64": "aarch64"}.get(m, m)
+
+
+def seccomp_program(arch: str) -> list[tuple[int, int, int, int]]:
+    """The filter as ``(code, jt, jf, k)`` instructions for ``arch`` (``x86_64`` / ``aarch64``).
+
+    Foreign architecture (e.g. i386 ``int 0x80`` on x86_64): kill. x32 syscalls: EPERM. Denied
+    syscalls: EPERM. ``clone3``: ENOSYS (its flags sit behind a pointer; glibc then falls back to
+    ``clone``). ``clone`` with a namespace flag: EPERM. ``socket``: only ``AF_INET`` / ``AF_INET6`` with
+    ``SOCK_STREAM`` and protocol 0 or TCP; everything else (``AF_UNIX``, UDP, raw, netlink, packet,
+    vsock, ...) EPERM. Everything else: allowed.
+    """
+    if arch not in SYSCALLS:
+        raise Refused(f"unsupported architecture {arch!r} (x86_64 and aarch64 only)")
+    nrs = SYSCALLS[arch]
+    labels: dict[str, int] = {}
+    prog: list[tuple] = []  # (code, jt, jf, k) with jt / jf as label names or 0
+
+    def emit(code, k=0, jt=0, jf=0):
+        prog.append((code, jt, jf, k))
+
+    def label(name):
+        labels[name] = len(prog)
+
+    emit(BPF_LD_W_ABS, _OFF_ARCH)
+    emit(BPF_JEQ_K, AUDIT_ARCH[arch], 0, "kill")
+    emit(BPF_LD_W_ABS, _OFF_NR)
+    if arch == "x86_64":
+        emit(BPF_JGE_K, X32_SYSCALL_BIT, "eperm", 0)
+    for name in DENIED_SYSCALLS:
+        emit(BPF_JEQ_K, nrs[name], "eperm", 0)
+    emit(BPF_JEQ_K, nrs["clone3"], "enosys", 0)
+    emit(BPF_JEQ_K, nrs["clone"], "clone", 0)
+    emit(BPF_JEQ_K, nrs["socket"], "socket", 0)
+    emit(BPF_RET_K, SECCOMP_RET_ALLOW)
+    label("clone")
+    emit(BPF_LD_W_ABS, _off_arg_low(0))
+    emit(BPF_JSET_K, CLONE_NS_FLAGS, "eperm", 0)
+    emit(BPF_RET_K, SECCOMP_RET_ALLOW)
+    label("socket")
+    emit(BPF_LD_W_ABS, _off_arg_low(0))
+    emit(BPF_JEQ_K, AF_INET, "sock_type", 0)
+    emit(BPF_JEQ_K, AF_INET6, "sock_type", "eperm")
+    label("sock_type")
+    emit(BPF_LD_W_ABS, _off_arg_low(1))
+    emit(BPF_ALU_AND_K, SOCK_TYPE_MASK)
+    emit(BPF_JEQ_K, SOCK_STREAM, 0, "eperm")
+    emit(BPF_LD_W_ABS, _off_arg_low(2))
+    emit(BPF_JEQ_K, IPPROTO_IP, "allow", 0)
+    emit(BPF_JEQ_K, IPPROTO_TCP, "allow", "eperm")
+    label("allow")
+    emit(BPF_RET_K, SECCOMP_RET_ALLOW)
+    label("eperm")
+    emit(BPF_RET_K, SECCOMP_RET_ERRNO | EPERM)
+    label("enosys")
+    emit(BPF_RET_K, SECCOMP_RET_ERRNO | ENOSYS)
+    label("kill")
+    emit(BPF_RET_K, SECCOMP_RET_KILL_PROCESS)
+
+    out = []
+    for i, (code, jt, jf, k) in enumerate(prog):
+        def rel(target, i=i):
+            if not isinstance(target, str):
+                return target
+            offset = labels[target] - i - 1
+            if not 0 <= offset <= 255:
+                raise ValueError(f"jump to {target} out of range")
+            return offset
+        out.append((code, rel(jt), rel(jf), k))
+    return out
+
+
+def run_bpf(program: list[tuple[int, int, int, int]], nr: int, arch: int, args=(0,) * 6) -> int:
+    """Interpret ``program`` for one syscall (only the opcodes it uses). For tests and the probe:
+    the kernel is the real judge."""
+    acc, pc = 0, 0
+    data = {_OFF_NR: nr & 0xFFFFFFFF, _OFF_ARCH: arch}
+    for i, value in enumerate(args):
+        data[_off_arg_low(i)] = value & 0xFFFFFFFF
+    while True:
+        code, jt, jf, k = program[pc]
+        pc += 1
+        if code == BPF_LD_W_ABS:
+            acc = data[k]
+        elif code == BPF_ALU_AND_K:
+            acc &= k
+        elif code == BPF_JEQ_K:
+            pc += jt if acc == k else jf
+        elif code == BPF_JGE_K:
+            pc += jt if acc >= k else jf
+        elif code == BPF_JSET_K:
+            pc += jt if acc & k else jf
+        elif code == BPF_RET_K:
+            return k
+        else:
+            raise ValueError(f"opcode {code:#x}")
+
+
+def install_seccomp(arch: str | None = None) -> None:
+    """Load the filter into this process (needs NO_NEW_PRIVS, set by :func:`restrict`; irrevocable)."""
+    program = seccomp_program(arch or machine())
+    packed = b"".join(struct.pack("=HBBI", *ins) for ins in program)
+    buf = ctypes.create_string_buffer(packed, len(packed))
+
+    class _SockFprog(ctypes.Structure):
+        _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.c_void_p)]
+
+    fprog = _SockFprog(len(program), ctypes.addressof(buf))
+    libc = ctypes.CDLL(None, use_errno=True)
+    _check(libc.prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0), "prctl(NO_NEW_PRIVS)")
+    _check(libc.prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, ctypes.byref(fprog), 0, 0), "seccomp")
+
+
 def prepare(policy: dict) -> dict:
-    """Steps 1-3 of the module doc for this process; returns what was applied (for tests / diagnostics)."""
+    """Steps 1-4 of the module doc for this process; returns what was applied (for tests / diagnostics)."""
+    arch = machine()
+    if arch not in SYSCALLS:
+        raise Refused(f"unsupported architecture {arch!r} (x86_64 and aarch64 only)")
     abi = abi_version()
     if abi < 1:
         raise Refused("Landlock is not available in this kernel")
@@ -294,11 +492,41 @@ def prepare(policy: dict) -> dict:
                 f"Landlock ABI {abi} cannot restrict sockets and no private network namespace is allowed"
             )
     restrict(policy, abi)
-    return {"abi": abi, "netns": netns}
+    install_seccomp(arch)
+    return {"abi": abi, "netns": netns, "seccomp": arch}
+
+
+def probe() -> int:
+    """``--probe``: set up an empty sandbox in this process and check that the filter bites. Exit 0
+    means connectors can run here (``sandbox_linux.available``)."""
+    import socket
+
+    try:
+        arch = machine()
+        if arch not in SYSCALLS:
+            raise Refused(f"unsupported architecture {arch!r}")
+        abi = abi_version()
+        if abi < 1:
+            raise Refused("Landlock is not available in this kernel")
+        restrict({"paths": [], "net": "none"}, abi)
+        install_seccomp(arch)
+        for family, kind in ((socket.AF_UNIX, socket.SOCK_STREAM), (socket.AF_INET, socket.SOCK_DGRAM)):
+            try:
+                socket.socket(family, kind).close()
+            except PermissionError:
+                continue
+            raise Refused("the seccomp filter did not deny a socket")
+    except (Refused, OSError) as e:
+        sys.stderr.write(f"{MARKER} {e}\n")
+        return REFUSED_EXIT
+    sys.stdout.write(json.dumps({"abi": abi, "seccomp": arch}) + "\n")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if args == ["--probe"]:
+        return probe()
     if len(args) < 3 or args[1] != "--":
         sys.stderr.write(f"{MARKER} usage: <policy json> -- <program> [args...]\n")
         return REFUSED_EXIT
