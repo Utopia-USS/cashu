@@ -164,9 +164,10 @@ def test_reclassify_never_overwrites_owner_decisions(session, monkeypatch):
     assert get(private).category == "private"
     assert get(loan_row).category == "loans"
     assert get(loan_llm).category == "loans"
-    assert get(phrase_row).category == "loans"
+    # A global installment phrase is not owner configuration: the model decides it.
+    assert get(phrase_row).category == "entertainment"
     assert get(free).category == "entertainment"
-    assert res["targets"] == 1 and res["configured_txns"] == 3
+    assert res["targets"] == 2 and res["configured_txns"] == 2
 
 
 def test_fallback_rows_stay_open_to_a_later_loan_pattern(session, monkeypatch):
@@ -205,3 +206,45 @@ def test_categorize_all_applies_a_loan_pattern_to_llm_rows(session):
     categorize_all(session)
     assert session.get(Transaction, row.id).category == "loans"
     assert session.get(Transaction, keep.id).category == "entertainment"
+
+
+def test_categorize_all_keeps_llm_answers_over_global_installment_phrases(session):
+    """Upgrading must not silently move LLM-categorized rows to loans by a global phrase."""
+    from cashu.modules.budget.service import categorize_all
+
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL99 1140 0000 0000 0000 4444")
+    session.flush()
+    row = _txn(session, acc.id, "-300", ref="RATA KREDYTU RATALNEGO SKLEP TEST", cat="shopping", dh="gp")
+    row.category_source = "llm_full"
+    session.flush()
+    categorize_all(session)
+    assert session.get(Transaction, row.id).category == "shopping"
+
+
+def test_structural_answer_beats_owner_configuration_on_llm_rows(session):
+    """A row that later became an internal transfer (or goes to an own IBAN, or is an FX
+    conversion) is a transfer, even when a loan pattern or a locked rule would match."""
+    from cashu.modules.budget.categorize.rules import upsert_rule
+    from cashu.modules.budget.ingestion.normalize import merchant_key
+    from cashu.modules.budget.service import categorize_all
+    from cashu.modules.loans.service import add_loan
+
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL99 1140 0000 0000 0000 3333")
+    own = get_or_create_account(session, bank="pekao", name="Pekao", iban="PL99 1240 0000 0000 0000 3334")
+    session.flush()
+    add_loan(session, name="Auto", principal="30000", annual_rate="8", term_months=48,
+             start_date=date(2025, 1, 1), payment_text="UMOWA 77 AUTO")
+    internal = _txn(session, acc.id, "-700", ref="UMOWA 77 AUTO", cat="subscriptions", dh="st1")
+    internal.category_source = "llm_full"
+    internal.is_internal_transfer = True
+    to_own = _txn(session, acc.id, "-50", cp="SKLEP RULE TEST", cp_iban="PL99 1240 0000 0000 0000 3334",
+                  cat="shopping", dh="st2")
+    to_own.category_source = "llm_full"
+    fx = _txn(session, acc.id, "-100", ref="TRANSAKCJA WALUTOWA UMOWA 77 AUTO", cat="other", dh="st3")
+    fx.category_source = "llm_fallback"
+    upsert_rule(session, merchant_key("SKLEP RULE TEST"), "gifts", source="manual", locked=True)
+    session.flush()
+    assert own.id
+    categorize_all(session)
+    for t in (internal, to_own, fx):
+        assert session.get(Transaction, t.id).category == "transfer", t.reference

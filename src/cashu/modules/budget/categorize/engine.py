@@ -29,30 +29,13 @@ def categorize(
     lender account or title phrase), checked for outflows before cached LLM rules
     and the phrase and seed rules; only a manual (locked) merchant rule beats them.
     """
-    # 1. Structural: a move between the user's own accounts, or an FX conversion
-    #    to/from the user's own currency accounts — neither is spend/income.
-    cp = iban_key(txn.counterparty_iban) if txn.counterparty_iban else ""
+    # 1-3. Structural, the owner's locked merchant rule, a loan's payment pattern.
+    decided = owner_decision(txn, own_ibans=own_ibans, rules=rules, patterns=patterns)
+    if decided is not None:
+        return decided
     mk = merchant_key(txn.counterparty_name, txn.reference, txn.description)
-    if (
-        txn.is_internal_transfer
-        or (cp and cp in own_ibans)
-        or "TRANSAKCJA WALUT" in mk
-        or "PRZEWALUTOWANIE" in mk
-    ):
-        return "transfer", "transfer"
-
-    # 2. Learned rule: a manual (locked) correction wins outright.
     rule = rules.get(mk)
-    if rule is not None and rule.locked:
-        return rule.category, rule.source
-
-    # 3. A payment a module owns (a loan installment to its lender account or with
-    #    its title phrase) is explicit configuration: it beats a cached LLM answer
-    #    for the same merchant (possibly learned before the loan was configured).
     text = _text(txn)
-    hit = _pattern_match(txn, cp, text, patterns)
-    if hit is not None:
-        return hit, "keyword"
 
     # 4. Cached LLM answer for the merchant.
     if rule is not None:
@@ -103,28 +86,36 @@ def _pattern_match(
 def owner_decision(
     txn: Transaction,
     *,
+    own_ibans: set[str],
     rules: dict[str, CategoryRule],
     patterns: Sequence[PaymentPattern] = (),
 ) -> tuple[str, str] | None:
-    """(category, source) when explicit configuration decides the transaction, else None.
+    """(category, source) when structure or the owner's configuration decides the
+    transaction, else None. The first steps of ``categorize``, in its order:
 
-    Explicit configuration is the owner's locked merchant rule, a module's payment
-    pattern (a loan's lender account or title phrase) and a module-registered
-    phrase (the loan installment phrases). An LLM pass must never override these,
-    and they must still apply to rows an earlier LLM pass categorized."""
+    1. structural: a move between the owner's own accounts or an FX conversion
+       ("transfer"), never spend or income;
+    2. the owner's locked (manual) merchant rule;
+    3. the owner's per-loan payment pattern (lender account or title phrase): it beats
+       a cached LLM answer for the same merchant (possibly learned before the loan
+       was configured).
+
+    An LLM pass never overrides these, and they still apply to rows an earlier LLM
+    pass categorized. Global phrases (installment phrases, seed rules) are not owner
+    configuration and do not override an LLM answer."""
+    cp = iban_key(txn.counterparty_iban) if txn.counterparty_iban else ""
     mk = merchant_key(txn.counterparty_name, txn.reference, txn.description)
+    if (
+        txn.is_internal_transfer
+        or (cp and cp in own_ibans)
+        or "TRANSAKCJA WALUT" in mk
+        or "PRZEWALUTOWANIE" in mk
+    ):
+        return "transfer", "transfer"
     rule = rules.get(mk)
     if rule is not None and rule.locked:
         return rule.category, rule.source
-    cp = iban_key(txn.counterparty_iban) if txn.counterparty_iban else ""
-    text = _text(txn)
-    hit = _pattern_match(txn, cp, text, patterns)
+    hit = _pattern_match(txn, cp, _text(txn), patterns)
     if hit is not None:
         return hit, "keyword"
-    if txn.amount <= 0 and text:
-        from cashu.core import modules
-
-        for needle, cat in modules.text_rules():
-            if needle in text:
-                return cat, "keyword"
     return None

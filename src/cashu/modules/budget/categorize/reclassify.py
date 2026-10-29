@@ -17,8 +17,8 @@ them as spending would corrupt net worth and the cash pool.
 The owner's decisions are never overwritten either: a per-transaction choice
 (``manual_txn``), a merchant rule they set (``manual``), a cash-pool mirror leg
 (``cash_leg``), an owner-only category (``taxonomy.MANUAL_ONLY``), and anything
-explicit configuration decides (a locked merchant rule, a loan's payment pattern
-or installment phrase: ``engine.owner_decision``), which is re-applied instead of
+explicit configuration decides (a locked merchant rule or a loan's own payment
+pattern: ``engine.owner_decision``), which is re-applied instead of
 asking the model.
 """
 
@@ -162,7 +162,7 @@ def reclassify_all(
     targets: list[Transaction] = []
     configured = 0
     for t in candidates:
-        decided = engine.owner_decision(t, rules=rules, patterns=patterns)
+        decided = engine.owner_decision(t, own_ibans=own, rules=rules, patterns=patterns)
         if decided is None:
             targets.append(t)
         else:

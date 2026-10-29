@@ -178,11 +178,11 @@ def categorize_all(
         # Preserve manual overrides and full-LLM reclassification; cash-pool
         # entries are managed by hand. Deterministic re-runs must not clobber these,
         # except that explicit configuration set after an LLM pass (a locked merchant
-        # rule, a loan's payment pattern or installment phrase) still applies.
+        # rule, a loan's payment pattern) still applies, and so does a structural transfer.
         if t.account_id in cash_ids or t.category_source == "manual_txn":
             continue
         if t.category_source in ("llm_full", "llm_fallback"):
-            decided = engine.owner_decision(t, rules=rules, patterns=patterns)
+            decided = engine.owner_decision(t, own_ibans=own, rules=rules, patterns=patterns)
             if decided is not None:
                 t.category, t.category_source = decided
                 session.add(t)
