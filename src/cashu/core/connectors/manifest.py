@@ -214,6 +214,11 @@ def run_problems(run: list[str]) -> list[str]:
                 f"run[0]: {first!r} is not an allowed interpreter{_did_you_mean(first, INTERPRETERS)}"
                 f" (allowed: {', '.join(INTERPRETERS)}, or ./<executable in the connector dir>)"
             )
+        elif first == "deno" and (len(run) < 2 or str(run[1]).startswith("-") or run[1] == "run"):
+            problems.append(
+                "run[1]: deno runs a script file of the connector, e.g. [deno, connector.ts]; the app "
+                "sets every deno flag and permission itself"
+            )
     return problems
 
 
@@ -507,6 +512,8 @@ def load_dir(root: Path, *, home: Path | None = None) -> LoadedConnector:
     first = manifest.run[0]
     if first.startswith("./") and not any(e.path == first[2:] for e in files):
         raise ManifestError([f"run[0]: {first} is not a file of the connector"])
+    if first == "deno" and not any(e.path == manifest.run[1].removeprefix("./") for e in files):
+        raise ManifestError([f"run[1]: {manifest.run[1]} is not a file of the connector"])
     try:
         interpreter = resolve_interpreter(first, root, home=home)
     except InterpreterError as e:

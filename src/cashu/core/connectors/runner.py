@@ -20,7 +20,7 @@ from .. import paths
 from . import manifest as mf
 from . import protocol as proto
 from .proxy import EgressProxy
-from .sandbox import ConnectorSandbox, RunSpec, default_sandbox
+from .sandbox import ConnectorSandbox, RunSpec, default_sandbox, sandbox_for
 
 STDERR_STORED = 4 * 1024
 MAX_INPUT_BYTES = 64 * 1024 * 1024
@@ -182,7 +182,7 @@ def execute(
         except OSError:
             return RunResult(command, "refused", "bad_request", "the file cannot be read")
     timeout = mf.DETECT_TIMEOUT_S if command == "detect" else m.timeout_s
-    sandbox = sandbox or default_sandbox()
+    sandbox = sandbox or sandbox_for(m.run[0], default_sandbox())
 
     run_dir = _make_run_dir()
     proxy: EgressProxy | None = None
@@ -216,6 +216,7 @@ def execute(
             timeout_s=float(timeout),
             max_stdout=proto.MAX_STDOUT_BYTES,
             proxy_port=port,
+            hosts=m.hosts if port is not None else (),
         )
         outcome = sandbox.run(spec)
     except Exception as e:  # noqa: BLE001 - a run never raises through (recorded instead)
