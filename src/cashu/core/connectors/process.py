@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Mapping, Sequence
@@ -26,7 +27,10 @@ FSIZE_LIMIT = 128 * 1024 * 1024
 CPU_GRACE_S = 5
 KILL_GRACE_S = 2.0
 _CHUNK = 64 * 1024
-# $1 = CPU seconds, $2 = file size limit in 1024-byte blocks (macOS /bin/sh), then VAR=value pairs and the
+# `ulimit -f` counts 1024-byte blocks in macOS /bin/sh (bash 3.2) but 512-byte blocks (the POSIX unit) in
+# dash, Debian / Ubuntu's /bin/sh, and in bash's POSIX mode. Measured for macOS /bin/sh and dash.
+FSIZE_UNIT = 1024 if sys.platform == "darwin" else 512
+# $1 = CPU seconds, $2 = file size limit in FSIZE_UNIT blocks, then VAR=value pairs and the
 # command for env -i. Nothing is interpolated into the script itself.
 _WRAPPER = 'ulimit -t "$1" && ulimit -f "$2" && shift 2 && exec ' + ENV + ' -i "$@"'
 
@@ -52,7 +56,7 @@ def wrapped_argv(
         if not key or "=" in key or not key.replace("_", "").isalnum():
             raise ValueError(f"bad environment variable name {key!r}")
     pairs = [f"{k}={v}" for k, v in env.items()]
-    blocks = max(1, fsize_bytes // 1024)
+    blocks = max(1, fsize_bytes // FSIZE_UNIT)
     return [SH, "-c", _WRAPPER, "cashu-connector", str(int(cpu_limit_s)), str(blocks), *pairs, *argv]
 
 
