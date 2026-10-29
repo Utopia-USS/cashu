@@ -72,3 +72,6 @@ frontend/e2e/output/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 CLAUDE.local.md
+
+# Release config of this Mac (scripts/release_macos.sh): names and the public update key; secrets stay in the keychain
+packaging/release.local.env

@@ -16,3 +16,8 @@
 .upd-x:focus-visible, .upd-act:focus-visible { outline: 2px solid var(--nw); outline-offset: 2px; }
 @keyframes upd-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .upd { animation: none; } }
+.upd-acts { display: flex; gap: 8px; margin-top: 10px; }
+.upd-acts .upd-act { margin-top: 0; }
+.upd-bar { height: 4px; margin-top: 8px; border-radius: 2px; background: var(--chip); overflow: hidden; }
+.upd-bar > span { display: block; height: 100%; background: var(--nw); transition: width 0.3s ease-out; }
+.upd.warn .upd-ico { background: var(--warnBg); color: var(--warn); }

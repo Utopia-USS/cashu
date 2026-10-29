@@ -49,7 +49,7 @@ from urllib.parse import urlsplit
 
 from ..core import i18n, locks, paths, runtime, security
 from ..core.env import env
-from . import DEBUG_ENV, notify
+from . import DEBUG_ENV, notify, updater
 
 log = logging.getLogger("cashu.desktop")
 
@@ -490,6 +490,8 @@ def _boot(
             return
         _remember(server.port)
         window.load_url(router.ready(window, server.url) if router is not None else server.url)
+        updater.attach_window(window)  # update prompts reach the dashboard's corner card
+        updater.add_menu_item_later()  # the app menu exists once the window is up
     except Exception as e:
         launch.error = launch.error or f"Unexpected error while opening the window: {e}"
         log.exception("the window could not be opened")
@@ -545,6 +547,7 @@ def run(*, debug: bool = False, webview_module=None, log_file: Path | None = Non
             width, height = window_size(screens)
             router = notify.LinkRouter()
             notify.install_app_handlers(router.open)  # cashU.app only; before the event loop
+            updater.start()  # cashU.app built with an update feed only
             window = webview.create_window(
                 TITLE,
                 html=loading_html(),

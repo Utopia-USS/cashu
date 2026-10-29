@@ -10,6 +10,10 @@ tool runs, so a call that cannot be logged is not run; ``audit.finish`` adds the
 Every call renders in Polish (``i18n.use_language("pl")``): MCP output is for the agent, and the
 stored app language of the dashboard must never change it (docs/agents/localization.md).
 
+A server whose app was replaced since it started (an auto-update, ``runtime.bundle_replaced``)
+touches nothing anymore: the next call is refused with a message to reconnect, before the audit and
+the database, and the process exits right after that answer.
+
 ``build_server`` wraps the host in the official MCP SDK's low-level ``Server`` (tools only);
 ``run_stdio`` serves it over stdin/stdout. Nothing else may write to stdout in that process.
 """
@@ -19,6 +23,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -26,7 +32,7 @@ from typing import Any
 from sqlmodel import Session
 
 from ... import __version__
-from .. import profiles
+from .. import profiles, runtime
 from ..db import get_session
 from ..i18n import use_language
 from ..models import Profile
@@ -43,6 +49,11 @@ INSTRUCTIONS = (
     "which modules are enabled and the privacy level. Write tools only create records or proposals; "
     "the owner approves proposals in the app. Do not ask the user for raw exports or database files."
 )
+APP_UPDATED = (
+    "cashU was updated while this MCP server was running, so this server stops now and nothing was "
+    "run. Reconnect it (Claude Code: /mcp) to use the new version, then repeat the call."
+)
+EXIT_DELAY_S = 1.0  # time for the refusal to reach the client before the process exits
 
 
 @dataclass
@@ -58,6 +69,13 @@ class CashuMcp:
         self.profile_id = profile_id
         self._today = today
         self._tools = all_tools()
+        self.stopping = False  # the app was replaced: refuse everything, the process exits
+
+    def _replaced(self) -> bool:
+        if not self.stopping and runtime.bundle_replaced():
+            _log.warning("cashU.app was replaced since this MCP server started: stopping")
+            self.stopping = True
+        return self.stopping
 
     @classmethod
     def for_slug(cls, slug: str) -> CashuMcp:
@@ -80,6 +98,8 @@ class CashuMcp:
     # ------------------------------------------------------------------ #
 
     def list_tools(self) -> list[ToolSpec]:
+        if self._replaced():
+            return []
         with get_session() as s:
             profile = self._profile(s)
             if profile is None:
@@ -89,6 +109,8 @@ class CashuMcp:
     def call(self, name: str, arguments: dict[str, Any] | None = None) -> CallResult:
         """Run one tool call. The audit row is written BEFORE the tool runs (no audit, no call) and
         completed afterwards with the outcome and the duration."""
+        if self._replaced():
+            return CallResult(False, error=APP_UPDATED, error_kind="app_updated")
         started = time.monotonic()
         spec = self._tools.get(name)
         known = set(spec.properties) if spec else set()
@@ -204,6 +226,8 @@ def build_server(host: CashuMcp, name: str):
 
     async def on_list_tools(_ctx, _params) -> types.ListToolsResult:
         specs = await anyio.to_thread.run_sync(host.list_tools)
+        if host.stopping:
+            _exit_soon()
         return types.ListToolsResult(
             tools=[
                 types.Tool(
@@ -222,6 +246,8 @@ def build_server(host: CashuMcp, name: str):
 
     async def on_call_tool(_ctx, params: types.CallToolRequestParams) -> types.CallToolResult:
         result = await anyio.to_thread.run_sync(host.call, params.name, params.arguments or {})
+        if host.stopping:
+            _exit_soon()
         if not result.ok:
             return types.CallToolResult(
                 content=[types.TextContent(text=result.error or "error")], is_error=True
@@ -240,14 +266,20 @@ def build_server(host: CashuMcp, name: str):
     )
 
 
+def _exit_soon() -> None:
+    """Leave the process once the current answer is written (the app was replaced). No database
+    session is open: the replaced host refuses before it opens one."""
+    timer = threading.Timer(EXIT_DELAY_S, os._exit, args=(0,))
+    timer.daemon = True
+    timer.start()
+
+
 def run_stdio(slug: str) -> None:
     import anyio
     from mcp.server.stdio import stdio_server
 
     host = CashuMcp.for_slug(slug)
     server = build_server(host, f"cashu-{slug}")
-    from .. import runtime
-
     runtime.note_mcp_started()
 
     async def main() -> None:

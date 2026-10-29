@@ -146,6 +146,19 @@ info_plist = {
 }
 if MIN_MACOS:
     info_plist["LSMinimumSystemVersion"] = MIN_MACOS
+# Auto-update (desktop/updater.py): build_macos.sh passes both only when it bundles Sparkle. A daily
+# check without a permission prompt (the owner turns it off in Settings); nothing is downloaded
+# until the owner chooses "Aktualizuj" in the dashboard. The signature of a download is checked
+# before it is unpacked; no system profile is ever sent.
+SPARKLE_FEED_URL = os.environ.get("CASHU_SPARKLE_FEED_URL", "")
+SPARKLE_PUBLIC_KEY = os.environ.get("CASHU_SPARKLE_PUBLIC_KEY", "")
+if SPARKLE_FEED_URL and SPARKLE_PUBLIC_KEY:
+    info_plist["SUFeedURL"] = SPARKLE_FEED_URL
+    info_plist["SUPublicEDKey"] = SPARKLE_PUBLIC_KEY
+    info_plist["SUVerifyUpdateBeforeExtraction"] = True
+    info_plist["SUEnableSystemProfiling"] = False
+    info_plist["SUEnableAutomaticChecks"] = True
+    info_plist["SUAllowsAutomaticUpdates"] = False  # never a silent background download
 
 app = BUNDLE(
     coll,

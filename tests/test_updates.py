@@ -159,7 +159,8 @@ def test_fetch_failures_map_to_error_codes(monkeypatch, status_code, body, error
 def test_update_endpoint(api_empty, monkeypatch):
     fake_remote(monkeypatch, "99.0.0")
     body = api_empty.get("/api/system/update").json()
-    assert set(body) == {"current", "latest", "available", "url", "checked_at", "error"}
+    assert set(body) == {"current", "latest", "available", "url", "checked_at", "error", "app"}
+    assert body["app"] is None  # no app updater outside cashU.app
     assert body["available"] is True
     assert body["latest"] == "99.0.0"
     assert body["current"] == __version__

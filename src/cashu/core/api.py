@@ -138,6 +138,50 @@ def update_status() -> dict:
     return updates.check().to_json()
 
 
+def _app_updater():
+    from . import updates
+
+    updater = updates.app_updater()
+    if updater is None:
+        raise HTTPException(409, "This app updates itself only as cashU.app with an update feed")
+    return updater
+
+
+_UPDATE_ACTIONS = {
+    "install": "No update is offered",
+    "skip": "No update is offered",
+    "dismiss": "Nothing to close",
+    "check": "A check or an update is already under way",
+}
+
+
+@platform_router.post("/system/update/{action}")
+def update_action(action: str) -> dict:
+    """The owner's answer to the app's updater (cashU.app only): ``install`` the offered version
+    (download, verify, install, relaunch), ``skip`` it for good, ``dismiss`` the card (an offer
+    comes back later), ``check`` now. Returns the updater state, like ``app`` of
+    ``GET /system/update``; 409 when the action does not apply right now."""
+    if action not in _UPDATE_ACTIONS:
+        raise HTTPException(404, f"Unknown update action: {action}")
+    updater = _app_updater()
+    if not getattr(updater, action)():
+        raise HTTPException(409, _UPDATE_ACTIONS[action])
+    return updater.state()
+
+
+class AutoUpdate(BaseModel):
+    enabled: bool
+
+
+@platform_router.put("/system/update/auto")
+def set_auto_update(body: AutoUpdate) -> dict:
+    """Daily update checks on or off (cashU.app only). Returns the updater state, like ``app`` of
+    ``GET /system/update``."""
+    updater = _app_updater()
+    updater.set_auto(body.enabled)
+    return updater.state()
+
+
 @platform_router.post("/system/relocation/ack")
 def acknowledge_relocation() -> dict:
     """The owner re-added the MCP lines after the app moved: clears ``worker.relocation.mcp``

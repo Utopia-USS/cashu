@@ -344,6 +344,34 @@ const worker = {
 const RELOC_MCP = new URLSearchParams(location.search).get("reloc") === "mcp";
 if (RELOC_MCP) worker.relocation.mcp = { reason: "app_moved", app_moved_from: "/Applications/cashu-stara.app", moved_at: "2026-10-04T08:00:00+02:00", actions: ["mcp_readd"] };
 let wsStale = RELOC_MCP;
+// cashU.app's updater (desktop/updater.py) for ?update=app / ?update=available: the card's stages, simulated.
+const UPDATE_MODE = new URLSearchParams(location.search).get("update");
+const appUpdate: { auto: boolean; stage: string; version: string | null; progress: number | null; error: string | null } = {
+  auto: true, stage: UPDATE_MODE === "available" ? "available" : "idle",
+  version: UPDATE_MODE === "available" ? "0.3.0" : null, progress: null, error: null,
+};
+function mockUpdateAction(action: string): unknown {
+  const s = appUpdate;
+  if (action === "install" && s.stage === "available") {
+    Object.assign(s, { stage: "downloading", progress: 0 });
+    const t = setInterval(() => {
+      s.progress = Math.min(1, (s.progress ?? 0) + 0.2);
+      if (s.progress >= 1) {
+        clearInterval(t);
+        Object.assign(s, { stage: "installing", progress: null });
+        setTimeout(() => location.reload(), 1500); // the app would relaunch as the new version
+      }
+    }, 500);
+  } else if ((action === "skip" || action === "dismiss") && s.stage !== "idle") {
+    Object.assign(s, { stage: "idle", version: null, error: null });
+  } else if (action === "check" && ["idle", "up_to_date", "error"].includes(s.stage)) {
+    s.stage = "checking";
+    setTimeout(() => { s.stage = "up_to_date"; }, 1200);
+  } else {
+    throw new Error("409");
+  }
+  return { ...s };
+}
 function workspaceMock(slug: string, method: string): unknown {
   if (method === "POST") { wsStale = false; worker.relocation = { ...worker.relocation, mcp: null }; }
   const path = `~/cashu-agent/${slug}`;
@@ -367,14 +395,22 @@ function route(method: string, url: string, body: unknown): unknown {
       worker: { ...worker },
     };
   }
-  // ?update=1 shows the update notice (core/UpdateNotice.tsx); otherwise the demo is up to date.
+  // ?update=1 shows the branch notice (core/UpdateNotice.tsx); ?update=app is cashU.app with its own updater
+  // (Settings switch + Sprawdź), ?update=available offers 0.3.0 there; otherwise the demo is up to date.
   if (path === "/api/system/update") {
-    const on = new URLSearchParams(location.search).get("update") === "1";
+    const on = UPDATE_MODE === "1";
+    const app = UPDATE_MODE === "app" || UPDATE_MODE === "available" ? { ...appUpdate } : null;
     return {
-      current: "0.2.0", latest: on ? "0.3.0" : "0.2.0", available: on,
-      url: "https://github.com/Utopia-USS/cashu/commits/main", checked_at: `${TODAY}T08:00:00+00:00`, error: null,
+      current: "0.2.0", latest: on ? "0.3.0" : app ? null : "0.2.0", available: on,
+      url: app ? null : "https://github.com/Utopia-USS/cashu/commits/main", checked_at: `${TODAY}T08:00:00+00:00`, error: null, app,
     };
   }
+  if (path === "/api/system/update/auto" && method === "PUT") {
+    appUpdate.auto = !!(body as { enabled?: boolean } | undefined)?.enabled;
+    return { ...appUpdate };
+  }
+  const updateAction = path.match(/^\/api\/system\/update\/(install|skip|dismiss|check)$/);
+  if (updateAction && method === "POST") return mockUpdateAction(updateAction[1]);
   if (path === "/api/system/relocation/ack" && method === "POST") {
     worker.relocation = { ...worker.relocation, mcp: null };
     return { worker: { ...worker, relocation: { ...worker.relocation } } };

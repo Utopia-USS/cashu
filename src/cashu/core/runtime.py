@@ -244,3 +244,50 @@ def clear_app_move() -> None:
     if data.pop("moved_from", None) is not None:
         data.pop("moved_at", None)
         _write_location(data)
+
+
+# --------------------------------------------------------------------------- #
+# Replaced app (auto-update)
+# --------------------------------------------------------------------------- #
+
+_UNSET = object()
+_bundle_stamp: object = _UNSET
+
+
+def _bundle_file() -> Path | None:
+    """The file whose identity stands for "this copy of the app": the bundle's Info.plist (an
+    update or a new copy replaces it), the binary itself outside a ``.app``."""
+    bundle = app_bundle()
+    return bundle / "Contents" / "Info.plist" if bundle is not None else executable()
+
+
+def _stamp() -> tuple[int, int] | None:
+    path = _bundle_file()
+    if path is None:
+        return None
+    try:
+        st = path.stat()
+    except OSError:
+        return (0, 0)  # gone: never equal to the stamp of a real file
+    return (st.st_ino, st.st_mtime_ns)
+
+
+def remember_bundle() -> None:
+    """Called once when the packaged binary starts (``desktop/entry.py``): which copy of the app
+    this process runs, for :func:`bundle_replaced`."""
+    global _bundle_stamp
+    _bundle_stamp = _stamp()
+
+
+def bundle_replaced() -> bool:
+    """True when the app this process started from was replaced on disk since (Sparkle installed
+    an update, or a new copy was put over it). Such a process runs old code next to a database the
+    new version may already have migrated, and every module it has not imported yet would load
+    from the new copy: a long-lived MCP server or a worker run stops instead (one ``stat``, cheap
+    enough for every call). Always False from source."""
+    if not frozen():
+        return False
+    if _bundle_stamp is _UNSET:
+        remember_bundle()
+        return False
+    return _stamp() != _bundle_stamp

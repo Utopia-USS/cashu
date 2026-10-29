@@ -160,6 +160,20 @@ export const S = catalog({
   themeDark: { pl: "Ciemny", en: "Dark" },
   themeHint: { pl: "zapisany w tej przeglądarce", en: "saved in this browser" },
   version: { pl: "Wersja", en: "Version" },
+  updates: { pl: "Aktualizacje", en: "Updates" },
+  updatesDaily: { pl: "Sprawdzaj codziennie", en: "Check daily" },
+  updatesDailyTitle: {
+    pl: "Raz dziennie sprawdza, czy jest nowa wersja; pobiera ją dopiero po „Aktualizuj”",
+    en: "Checks once a day for a new version; downloads it only after \"Update\"",
+  },
+  updatesDailyHint: { pl: (on: boolean): string => (on ? "codziennie" : "tylko na żądanie"), en: (on: boolean): string => (on ? "daily" : "on demand only") },
+  updatesCheck: { pl: "Sprawdź", en: "Check" },
+  updatesToast: {
+    pl: (on: boolean): string => (on ? "Codzienne sprawdzanie włączone" : "Codzienne sprawdzanie wyłączone"),
+    en: (on: boolean): string => (on ? "Daily check on" : "Daily check off"),
+  },
+  updatesSaveFailed: { pl: (err: string) => `Nie udało się zapisać: ${err}`, en: (err: string) => `Could not save: ${err}` },
+  updatesCheckFailed: { pl: (err: string) => `Nie udało się sprawdzić: ${err}`, en: (err: string) => `Could not check: ${err}` },
   migrationFailed: { pl: "Przeniesienie danych z poprzedniej wersji nie powiodło się.", en: "Moving the data from the previous version failed." },
   migrationFailedHint: { pl: " Zamknij inne okna aplikacji i uruchom ją ponownie.", en: " Close the app's other windows and start it again." },
 });

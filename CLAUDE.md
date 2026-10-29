@@ -148,6 +148,7 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 | Run, demo data, e2e, verify in the browser | [running.md](docs/agents/running.md) | `.claude/launch.json`, `scripts/demo_data.py` |
 | Write tests | [conventions.md](docs/agents/conventions.md) "Tests" | `tests/conftest.py`, `tests/upstream_db.py` |
 | Packaging / desktop app build | [packaging/README.md](packaging/README.md) | `scripts/build_macos.sh`, `packaging/cashu.spec` |
+| Release to installed apps (owner only) | [packaging/RELEASING.md](packaging/RELEASING.md) | `scripts/release_macos.sh`, `scripts/make_appcast.py`, `desktop/updater.py` |
 | Versioning / release | [conventions.md](docs/agents/conventions.md) "Versions" | `.github/workflows/bump-version.yml`, `scripts/bump_version.py` |
 | Help the end user set up | [ONBOARDING.md](ONBOARDING.md) | the module setup skills |
 

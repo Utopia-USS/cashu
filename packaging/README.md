@@ -99,6 +99,53 @@ Do this once per Deno version, on a trusted machine, and commit the result on it
    shows only `com.apple.security.cs.allow-jit`, and a Deno connector's `test_connector` reports
    `interpreter: deno (bundled with the app)`.
 
+## Auto-update (Sparkle 2)
+
+Status: an update between two ad-hoc builds is verified end to end (offer, download, install, relaunch);
+between two Developer ID builds it is not verified yet.
+
+- **Opt-in per build.** `build_macos.sh` bundles Sparkle (release archive pinned by sha256, cached
+  in `build/macos/sparkle/`) and writes `SUFeedURL` / `SUPublicEDKey` into Info.plist only when
+  `SPARKLE_PUBLIC_ED_KEY` is set. Without it nothing changes. With it the minimum macOS becomes
+  12.0 (Sparkle 2.10).
+- **Keys.** Once, on the release Mac: `build/macos/sparkle/bin/generate_keys` puts the private key
+  into the login keychain and prints the public key, which is what `SPARKLE_PUBLIC_ED_KEY` holds.
+  Back the private key up (`generate_keys -x <file>`, stored offline). Losing it means installed
+  apps can never update again. Rotating it needs one release signed with the old key that already
+  carries the new public key.
+- **Signing.** The XPC services are removed (the app is not sandboxed). `Autoupdate`,
+  `Updater.app` and the framework are signed inside-out with the hardened runtime and without
+  `--deep`, and they are left out of the loose-file loop.
+- **Feed.** One appcast per architecture, `appcast-macos-<arch>.xml`, uploaded with the archive to
+  the GitHub release `v<version>`. The app reads
+  `https://github.com/<repo>/releases/latest/download/appcast-macos-<arch>.xml`, so the newest
+  non-prerelease release is what every installed app sees.
+- **Release.** Only from the owner's Mac, with `scripts/release_macos.sh` (or the personal
+  `cashu-release` skill): it builds `origin/main`, signs, notarizes, signs the update with the key in the
+  keychain and publishes an immutable GitHub release. Setup and procedure: [RELEASING.md](RELEASING.md).
+- **In the app** (`desktop/updater.py`). Only from `/Applications`, not translocated, not with
+  `CASHU_UPDATE_CHECK=0`. Sparkle's windows are replaced by our own `SPUUserDriver`, so the
+  dashboard's corner card (`UpdateNotice.tsx`) is the whole UI.
+  - Sparkle checks once a day without asking first (`SUEnableAutomaticChecks`). Daily checks can be
+    switched off in Settings > Aplikacja.
+  - Nothing is downloaded on its own (`SUAllowsAutomaticUpdates` false). A new version waits in
+    the card: "Aktualizuj" downloads, verifies and installs it, then relaunches; "Pomiń" means it
+    is never offered again; closing the card reminds later.
+  - "Sprawdź aktualizacje…" in the app menu and "Sprawdź" in Settings check on demand, and the
+    result shows in the same card.
+  - Installing replaces the bundle at the same path, so the launchd job and the MCP lines stay
+    valid.
+- **Old processes.** An MCP server or a worker run started from the replaced copy would run old
+  code next to a database the new version may already have migrated.
+  `core.runtime.bundle_replaced()` compares the bundle's Info.plist with the one the process
+  started with. On a mismatch, the MCP server refuses the next call (before the audit and the
+  database), asks to reconnect with `/mcp` and exits. The worker stops before its next job and
+  writes no state.
+- **Testing a build outside /Applications.** Run
+  `CASHU_UPDATER_ANYWHERE=1 CASHU_DATA_DIR=<scratch> <app>/Contents/MacOS/cashu` from a folder you
+  own. Keep `CASHU_DATA_DIR` pointed away from the real data dir, and do not install a test build
+  over `/Applications/cashU.app`.
+
 ## Where the app keeps data
 
 - Data dir: `~/Library/Application Support/cashU` (0700), or `CASHU_DATA_DIR`.

@@ -20,7 +20,7 @@ but were not listed before.
 | `config.py` | Settings (pydantic-settings), reads the checkout's `.env`, then `<data dir>/.env` (wins; the packaged app's) (`CASHU_` prefix) |
 | `models.py` | facade: every table (scripts, Alembic env) |
 | `db.py` | alias of `core/db.py` (`cashu.db.engine` still works) |
-| `desktop/` | `cashu app` (pywebview window over in-process uvicorn, single instance), `cashu skills install`, `entry.py` = the packaged app's entry point |
+| `desktop/` | `cashu app` (pywebview window over in-process uvicorn, single instance), `cashu skills install`, `entry.py` = the packaged app's entry point, `updater.py` = Sparkle auto-update of cashU.app (own user driver; the dashboard card is its UI) |
 | `api/app.py` | FastAPI composition: `/api/p/{slug}/...` + legacy `/api/...` aliases, SPA |
 | `api/static/index.html` | fallback page "build the frontend" (when `webdist/` is absent) |
 | `api/webdist/` | built React SPA (git-ignored, `npm run build`) |
@@ -50,7 +50,7 @@ but were not listed before.
 | `security.py` | API token + Host check middleware, token meta tag |
 | `i18n.py` | UI language of backend texts: `tr(pl=, en=)`, `X-Cashu-Lang` middleware, app language in `settings.json` ([localization.md](localization.md)) |
 | `secrets.py` | OS keychain via keyring (`cashu secrets ...`) |
-| `runtime.py` | source checkout vs packaged app: the command other programs run (launchd, MCP snippets), bundled skills |
+| `runtime.py` | source checkout vs packaged app: the command other programs run (launchd, MCP snippets), bundled skills, `bundle_replaced()` (an update replaced the app under a running process) |
 | `worker/` | `cashu worker run|install|uninstall|status`: daily jobs for every profile, notifications, weekly digest, launchd agent (state + log in the data dir) |
 | `events.py` | typed `change_events` written in the same transaction as ORM writes (session hooks; live data) |
 | `live.py` | per-profile SSE change stream `GET /api/p/{slug}/changes/stream`, woken by `PRAGMA data_version` |
@@ -113,7 +113,10 @@ but were not listed before.
 | `connectors/` | community connector catalog (contrib status, one dir per connector with `fixtures/`; shipped with the app, see its `README.md`) |
 | `examples/connectors/` | three tested example connectors (budget CSV, investments JSON, fetch with a fixture) |
 | `packaging/` | PyInstaller spec, entitlements, icon (macOS); `windows/` = documented stub; `README.md` = build decisions |
-| `scripts/build_macos.sh` | builds cashU.app (SPA, icon, bundle; signs/notarizes from env vars) |
+| `scripts/build_macos.sh` | builds cashU.app (SPA, icon, bundle; signs/notarizes from env vars; bundles Sparkle with `SPARKLE_PUBLIC_ED_KEY`) |
+| `scripts/make_appcast.py` | signs a release archive for Sparkle and writes its update feed |
+| `scripts/release_macos.sh` | the owner's local release: preflight, signed + notarized build of `origin/main`, update feed, GitHub release ([RELEASING.md](../../packaging/RELEASING.md)) |
+| `scripts/fetch_sparkle.sh` | fetches the pinned Sparkle release (framework + signing tools) |
 | `scripts/bump_version.py` | version bump run by `.github/workflows/bump-version.yml` on every push to `main` |
 | `scripts/demo_data.py` | two synthetic demo profiles (see [running.md](running.md)) |
 | `scripts/gen_connector_schemas.py` (+) | regenerates `docs/schemas/*.json` from the pydantic models (`--check` in tests) |

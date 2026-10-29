@@ -6,8 +6,8 @@ import { ck } from "../swr";
 import { parseServerTime, serverDate } from "../time";
 import { Code, copyText, Notice, RadioList, Seg, Switch, Tag, useToast } from "../ui";
 import {
-  ApiError, getMcpCalls, getMcpInfo, getSetup, getSystem, mcpAddCommand, type McpCall, type ModuleInfo, patchProfile, postRelocationAck, postWorker, type Privacy,
-  putProfileModules, type ProfileModule, type WorkerInfo,
+  ApiError, getMcpCalls, getMcpInfo, getSetup, getSystem, getUpdate, mcpAddCommand, type McpCall, type ModuleInfo, patchProfile, postRelocationAck, postWorker, type Privacy,
+  postUpdateAction, putAutoUpdate, putProfileModules, type ProfileModule, type WorkerInfo,
 } from "./api";
 import { moduleDef, orderModules } from "./registry";
 import { describeJob, errorText, relocationParts } from "./messages";
@@ -633,6 +633,21 @@ const MIGRATION_STEP: Record<string, string> = MIGRATION_STEPS;
 
 function AppSection({ theme, setTheme }: { theme: ThemePref; setTheme: (t: ThemePref) => void }) {
   const { system } = useShell();
+  const update = useAsync(getUpdate, []);
+  const [auto, setAuto] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+  const app = update.data?.app;
+  const autoOn = auto ?? !!app?.auto;
+  const toggleAuto = (enabled: boolean) => {
+    setSaving(true);
+    putAutoUpdate(enabled)
+      .then((s) => { setAuto(s.auto); toast(S.updatesToast(s.auto)); })
+      .catch((e: unknown) => toast(S.updatesSaveFailed(errorText(e))))
+      .finally(() => setSaving(false));
+  };
+  // The result (found / up to date / error) shows in the corner card (UpdateNotice), like a check from the menu.
+  const checkNow = () => postUpdateAction("check").catch((e: unknown) => toast(S.updatesCheckFailed(errorText(e))));
   return (
     <Card id="app" title={SECTION.app}>
       <div className="kv">
@@ -653,6 +668,17 @@ function AppSection({ theme, setTheme }: { theme: ThemePref; setTheme: (t: Theme
         </span>
         <span className="k">{S.version}</span>
         <span className="v">{system?.version ?? "-"}</span>
+        {app && (
+          <>
+            <span className="k">{S.updates}</span>
+            <span className="v">
+              <Switch on={autoOn} disabled={saving} label={S.updatesDaily} onChange={toggleAuto}
+                title={S.updatesDailyTitle} />
+              <span className="hint">{S.updatesDailyHint(autoOn)}</span>
+              <button className="btn" style={{ marginLeft: 10 }} onClick={checkNow}>{S.updatesCheck}</button>
+            </span>
+          </>
+        )}
       </div>
       {system?.rename_migration?.length ? (
         <Notice tone="warn" style={{ margin: "14px 0 0" }}>

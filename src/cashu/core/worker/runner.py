@@ -6,7 +6,9 @@ profiles, shares the ``investments-daily`` lock with the in-app "run now") follo
 performance price backfill (online runs only, no job row), the budget sync per profile (only when
 configured and not throttled), immediate notifications, the weekly digest. A failing job is
 recorded and never stops the others. The whole run holds the ``worker`` lock, so two worker
-runs never overlap; the summary lands in the worker state (``last_run``).
+runs never overlap; the summary lands in the worker state (``last_run``). When cashU.app is
+replaced during a run (an auto-update, ``runtime.bundle_replaced``), the run stops before the next
+job and writes no state: the new version does the rest on its next run.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .. import locks, profiles
+from .. import locks, profiles, runtime
 from ..db import get_session
 from . import budget as budget_glue
 from . import connectors as connectors_glue
@@ -37,6 +39,8 @@ BUDGET_SYNC = "budget.sync"
 CONNECTORS_FETCH = connectors_glue.JOB
 NOTIFICATIONS = "notifications"
 DIGEST = "digest"
+APP_UPDATED = "app.updated"
+APP_UPDATED_DETAIL = "cashU was updated during this run; the remaining jobs run next time"
 JOB_MODULES = {
     INVESTMENTS_DAILY: "investments",
     BUDGET_SYNC: "budget",
@@ -49,6 +53,15 @@ _RANK = {"skipped": 0, "ok": 1, "partial": 2, "failed": 3}
 
 class WorkerBusy(RuntimeError):
     """Another worker run holds the lock."""
+
+
+class _AppReplaced(Exception):
+    """cashU.app was replaced since this process started."""
+
+
+def _checkpoint() -> None:
+    if runtime.bundle_replaced():
+        raise _AppReplaced
 
 
 @dataclass
@@ -182,6 +195,30 @@ def _run(notifier, offline, budget, now, as_of, sources, lock_wait, session_fact
     def save(st: worker_state.WorkerState) -> None:
         worker_state.save(st, state_path)
 
+    try:
+        _jobs(report, notifier, offline, budget, now, as_of, sources, lock_wait, session_factory,
+              state, save)
+    except _AppReplaced:
+        _log.warning("cashU.app was replaced during the worker run: stopping")
+        report.jobs.append(
+            JobResult(APP_UPDATED, "skipped", detail=APP_UPDATED_DETAIL, code="app_updated")
+        )
+        report.finished_at = max(now, local_now())
+        return report
+
+    pruned = inv.prune_staged()  # housekeeping, not a job row (F5 R9)
+    if pruned and (pruned["removed"] or pruned["errors"]):
+        _log.info("pruned staged import files: %s", pruned)
+
+    report.finished_at = max(now, local_now())
+    state.last_run = report.state_summary()
+    save(state)
+    return report
+
+
+def _jobs(report, notifier, offline, budget, now, as_of, sources, lock_wait, session_factory,
+          state, save) -> None:
+    """The jobs of one run, in order; :func:`_checkpoint` before each stops a replaced app."""
     with session_factory() as s:
         everyone = profiles.list_profiles(s)
         enabled = {p.id: set(profiles.enabled_modules(s, p.id)) for p in everyone}
@@ -192,34 +229,31 @@ def _run(notifier, offline, budget, now, as_of, sources, lock_wait, session_fact
     # Fetch connectors first: what an investments binding commits is in today's daily check
     # (positions, rules, notifications), like the in-app "run now" (sync, then the check).
     for profile in everyone:
+        _checkpoint()
         job = _connectors(profile, enabled[profile.id], offline, notifier, now)
         if job is not None:
             report.jobs.append(job)
     if investors:
+        _checkpoint()
         report.jobs += _investments(offline, as_of, sources, lock_wait)
         if not offline:  # performance history of sold instruments + benchmark (housekeeping, F6)
+            _checkpoint()
             backfilled = inv.backfill_prices(as_of=as_of, sources=sources)
             if backfilled and (backfilled.get("error") or backfilled.get("errors")):
                 _log.warning("price backfill: %s", backfilled)
     if budgeters:
         for profile in budgeters:
+            _checkpoint()
             report.jobs.append(_budget(profile, budget, now, state, save, legacy_owner))
     if investors:
         for profile in investors:
+            _checkpoint()
             report.jobs.append(_notify(profile, notifier, now, session_factory))
         for profile in investors:
+            _checkpoint()
             job = _digest(profile, notifier, now.date(), state, save, session_factory)
             if job is not None:
                 report.jobs.append(job)
-
-    pruned = inv.prune_staged()  # housekeeping, not a job row (F5 R9)
-    if pruned and (pruned["removed"] or pruned["errors"]):
-        _log.info("pruned staged import files: %s", pruned)
-
-    report.finished_at = max(now, local_now())
-    state.last_run = report.state_summary()
-    save(state)
-    return report
 
 
 def _investments(offline: bool, as_of, sources: Any, lock_wait: float) -> list[JobResult]:

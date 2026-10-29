@@ -212,7 +212,8 @@ export const getChanges = (slug: string, after: number | null) =>
   j<{ token: string; last_id: number; events: import("./live").LiveEvent[]; reset: boolean }>(pp(slug, `/changes${after == null ? "" : `?after=${after}`}`));
 /** GET /api/system/update (core/updates.py): the running version vs `project.version` of pyproject.toml on
  * the configured GitHub branch. `url` is that branch's commit list; `error` is set when the check is off or
- * failed ("disabled" | "config" | "network" | "parse"), and then `available` is false. */
+ * failed ("disabled" | "config" | "network" | "parse"), and then `available` is false. In cashU.app with an
+ * update feed `app` is set instead (desktop/updater.py, Sparkle) and the branch is not asked. */
 export interface UpdateInfo {
   current: string;
   latest: string | null;
@@ -220,8 +221,25 @@ export interface UpdateInfo {
   url: string | null;
   checked_at: string;
   error: string | null;
+  app?: AppUpdateState | null;
 }
+/** The packaged app's own updater (Sparkle): daily checks on, where it stands, the offered version, download
+ * progress 0..1, the error message. Nothing is downloaded until the owner answers `install`. */
+export interface AppUpdateState {
+  auto: boolean;
+  stage: "idle" | "checking" | "available" | "downloading" | "installing" | "up_to_date" | "error";
+  version: string | null;
+  progress: number | null;
+  error: string | null;
+}
+export type UpdateAction = "install" | "skip" | "dismiss" | "check";
 export const getUpdate = () => j<UpdateInfo>("/api/system/update");
+/** The owner's answer to the app's updater (cashU.app only; 409 when the action does not apply right now). */
+export const postUpdateAction = (action: UpdateAction) => jpost<AppUpdateState>(`/api/system/update/${action}`);
+/** Daily update checks on or off (cashU.app only). */
+export const putAutoUpdate = (enabled: boolean) => jput<AppUpdateState>("/api/system/update/auto", { enabled });
+/** Fired by the desktop app when its updater's state changes (desktop/updater.py): re-read GET /system/update. */
+export const UPDATE_EVENT = "cashu-update";
 /** The owner re-added the MCP server after the app moved (F7 R8): clears `relocation.mcp`. */
 export const postRelocationAck = () => jpost<{ worker: WorkerInfo }>("/api/system/relocation/ack");
 /** Background worker actions (track W): install / uninstall the launchd agent, run once now. */

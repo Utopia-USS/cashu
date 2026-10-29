@@ -24,9 +24,17 @@
 #                             `xcrun notarytool store-credentials <profile> ...`). Needs a signed build.
 #   CASHU_BUILD_DIR           build folder (default: build/macos)
 #   CASHU_BUILD_NUMBER        CFBundleVersion (default: the pyproject version)
+#   SPARKLE_PUBLIC_ED_KEY     the public half of the update signing key (base64, from Sparkle's
+#                             generate_keys). Set: the app ships Sparkle and checks the update feed
+#                             (packaging/README.md, "Auto-update"). Unset: no updater.
+#   CASHU_UPDATE_REPO         GitHub repo whose latest release holds the update feed
+#                             (default: Utopia-USS/cashu)
+#   CASHU_UPDATE_FEED_URL     the feed URL itself (default: that repo's
+#                             releases/latest/download/appcast-macos-<arch>.xml)
 #
 # No secret is read from or written to the repository: the identity lives in the login keychain,
-# the notary credentials in a keychain profile.
+# the notary credentials in a keychain profile, the update signing key in the login keychain
+# (scripts/make_appcast.py signs with it after the build).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -182,12 +190,25 @@ if [[ $SKIP_DENO == 0 ]]; then
     || die "the unpacked deno is not version $DENO_VERSION"
 fi
 
+# Auto-update (Sparkle, pinned in scripts/fetch_sparkle.sh): only with an update key. Sparkle 2.10 needs
+# macOS 12+.
+SPARKLE=0
+FEED_URL=""
+if [[ -n "${SPARKLE_PUBLIC_ED_KEY:-}" ]]; then
+  SPARKLE=1
+  FEED_URL="${CASHU_UPDATE_FEED_URL:-https://github.com/${CASHU_UPDATE_REPO:-Utopia-USS/cashu}/releases/latest/download/appcast-macos-$ARCH.xml}"
+  if [[ -z "$MIN_MACOS" || "$(printf '%s\n' "$MIN_MACOS" 12.0 | sort -V | head -1)" != "12.0" ]]; then
+    MIN_MACOS="12.0"
+  fi
+fi
+
 # --- 4. PyInstaller.
 say "Running PyInstaller (cashU.app $VERSION, $ARCH${MIN_MACOS:+, macOS $MIN_MACOS+})"
 (
   cd "$ROOT"
   CASHU_WEBDIST="$WEBDIST" CASHU_ICNS="$BUILD/icon/cashU.icns" CASHU_MIN_MACOS="$MIN_MACOS" \
     CASHU_DENO="$DENO_BIN" \
+    CASHU_SPARKLE_FEED_URL="$FEED_URL" CASHU_SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_ED_KEY:-}" \
     "$BUILD/venv/bin/pyinstaller" --noconfirm --clean --log-level WARN \
     --distpath "$BUILD/dist" --workpath "$BUILD/work" "$ROOT/packaging/cashu.spec"
 )
@@ -205,6 +226,26 @@ if [[ $SKIP_DENO == 0 ]]; then
   "$APP_DENO" --version | head -1 | grep -q "^deno $DENO_VERSION " || die "the bundled deno does not start"
 fi
 
+# --- 4b. Sparkle.framework (auto-update), fetched into the build folder by scripts/fetch_sparkle.sh (its
+#         bin/ tools sign the update archive later, scripts/make_appcast.py). The XPC services are only for
+#         sandboxed apps and are left out.
+SPARKLE_FW="$APP/Contents/Frameworks/Sparkle.framework"
+if [[ $SPARKLE == 1 ]]; then
+  say "Adding Sparkle (feed $FEED_URL)"
+  "$ROOT/scripts/fetch_sparkle.sh" "$BUILD/sparkle" || die "could not fetch Sparkle."
+  rm -rf "$SPARKLE_FW"
+  ditto "$BUILD/sparkle/Sparkle.framework" "$SPARKLE_FW"
+  rm -rf "$SPARKLE_FW/XPCServices" "$SPARKLE_FW/Versions/B/XPCServices"
+fi
+
+# Sparkle's helpers are signed inside-out as bundles (never with --deep), before the framework.
+sign_sparkle() {
+  [[ $SPARKLE == 1 ]] || return 0
+  "$@" "$SPARKLE_FW/Versions/B/Autoupdate"
+  "$@" "$SPARKLE_FW/Versions/B/Updater.app"
+  "$@" "$SPARKLE_FW"
+}
+
 # --- 5. Signing (Developer ID + hardened runtime), inside-out: every Mach-O file, then the app.
 SIGNED=0
 if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
@@ -216,7 +257,7 @@ if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
   while IFS= read -r -d '' f; do
     [[ -n "$APP_DENO" && "$f" == "$APP_DENO" ]] && continue
     if file -b "$f" | grep -q 'Mach-O'; then sign "$f"; fi
-  done < <(find "$APP/Contents/Frameworks" "$APP/Contents/Resources" -type f -print0)
+  done < <(find "$APP/Contents/Frameworks" "$APP/Contents/Resources" -type f -not -path '*/Sparkle.framework/*' -print0)
   # deno: hardened runtime + allow-jit only (V8 aborts at start without JIT pages). The main
   # executable keeps packaging/entitlements.plist (none).
   if [[ -n "$APP_DENO" ]]; then
@@ -224,7 +265,8 @@ if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
     "$APP_DENO" --version >/dev/null || die "the signed deno does not start (allow-jit missing?)"
   fi
   # Embedded framework bundles (e.g. Python.framework), if PyInstaller kept any as bundles.
-  while IFS= read -r -d '' fw; do sign "$fw"; done < <(find "$APP/Contents/Frameworks" -type d -name '*.framework' -prune -print0)
+  while IFS= read -r -d '' fw; do sign "$fw"; done < <(find "$APP/Contents/Frameworks" -type d -name '*.framework' -not -name Sparkle.framework -prune -print0)
+  sign_sparkle sign
   # The executable and the bundle carry the hardened-runtime entitlements.
   sign --entitlements "$ENT" "$APP/Contents/MacOS/cashu"
   sign --entitlements "$ENT" "$APP"
@@ -234,6 +276,13 @@ else
   say "Signing skipped: DEVELOPER_ID_APPLICATION is not set."
   echo "    This build is for local use: it runs on this Mac, but Gatekeeper blocks it on other"
   echo "    Macs after a download (see README, \"Installing the macOS app\")."
+  if [[ $SPARKLE == 1 ]]; then
+    # The added framework breaks PyInstaller's ad-hoc seal of the bundle: seal it again.
+    sign_sparkle codesign --force --sign -
+    codesign --force --sign - "$APP/Contents/MacOS/cashu"
+    codesign --force --sign - "$APP"
+    codesign --verify --deep --strict "$APP"
+  fi
 fi
 
 # --- 6. Notarization (needs a signed build).
@@ -274,3 +323,7 @@ echo "    archive: $ZIP ($(du -sh "$ZIP" | cut -f1))"
 echo "    signed:  $([[ $SIGNED == 1 ]] && echo yes || echo 'no (ad-hoc)')"
 echo "    deno:    $([[ -n "$APP_DENO" ]] && echo "$DENO_VERSION (bundled)" || echo 'NOT bundled')"
 if [[ $DENO_UNPINNED == 1 ]]; then warn_deno; fi
+if [[ $SPARKLE == 1 ]]; then
+  echo "    updates: $FEED_URL"
+  echo "    release: python3 scripts/make_appcast.py \"$ZIP\"  (signs it, writes the feed next to it)"
+fi

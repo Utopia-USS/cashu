@@ -32,6 +32,9 @@ def main(argv: list[str] | None = None) -> None:
         from cashu.core.connectors.landlock_exec import main as landlock_main
 
         raise SystemExit(landlock_main(raw[1:]))
+    from cashu.core import runtime
+
+    runtime.remember_bundle()  # before anything loads: an update may replace the app later
     args = _clean(raw)
     if args[:1] == [NOTIFY_HELPER]:
         from cashu.desktop.notify import helper_main

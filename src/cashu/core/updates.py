@@ -9,6 +9,11 @@ branch's commits. ``CASHU_UPDATE_CHECK=0`` turns the check off.
 A successful result is cached in memory for ``CACHE_TTL`` so reloads of the dashboard do not hit
 GitHub again (a failure is not cached: the next request retries); a new process (the next app
 launch) checks afresh.
+
+cashU.app built with an update feed replaces all of this with Sparkle (``desktop/updater.py``),
+which registers itself here as the :class:`AppUpdater`: the branch is not asked then (a version bump
+on ``main`` is not a release yet), and the status carries ``app`` instead, the updater's state that
+the dashboard shows and acts on.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ import re
 import threading
 import tomllib
 from dataclasses import asdict, dataclass
+from typing import Protocol
 
 from .. import __version__
 
@@ -42,9 +48,56 @@ class UpdateStatus:
     checked_at: str
     # None when the check succeeded; else "disabled" | "config" | "network" | "parse".
     error: str | None = None
+    # The app's own updater (AppUpdater.state()); None when this process has none.
+    app: dict | None = None
 
     def to_json(self) -> dict:
         return asdict(self)
+
+
+class AppUpdater(Protocol):
+    """The packaged app's updater, as the API sees it (``desktop/updater.py``). Nothing is
+    downloaded until the owner chooses :meth:`install`."""
+
+    def state(self) -> dict:
+        """``{"auto", "stage", "version", "progress", "error"}``: daily checks on; ``stage`` one of
+        idle | checking | available | downloading | installing | up_to_date | error; the offered
+        version; download progress 0..1; the error message."""
+        ...
+
+    def install(self) -> bool:
+        """Download, verify and install the offered version, then relaunch. False when none is
+        offered."""
+        ...
+
+    def skip(self) -> bool:
+        """Never offer this version again. False when none is offered."""
+        ...
+
+    def dismiss(self) -> bool:
+        """Postpone the offer, or clear a result (up to date, an error). False when nothing is
+        shown."""
+        ...
+
+    def check(self) -> bool:
+        """Check now. False while a check or an update is under way."""
+        ...
+
+    def set_auto(self, enabled: bool) -> None:
+        """Daily checks on or off (kept by the updater)."""
+        ...
+
+
+_app_updater: AppUpdater | None = None
+
+
+def register_app_updater(updater: AppUpdater | None) -> None:
+    global _app_updater
+    _app_updater = updater
+
+
+def app_updater() -> AppUpdater | None:
+    return _app_updater
 
 
 def parse_version(raw: str) -> tuple[tuple[int, ...], bool] | None:
@@ -104,6 +157,8 @@ def check() -> UpdateStatus:
 
     now = dt.datetime.now(dt.UTC)
     stamp = now.isoformat()
+    if _app_updater is not None:
+        return UpdateStatus(__version__, None, False, None, stamp, app=_app_updater.state())
     if not settings.update_check:
         return UpdateStatus(__version__, None, False, None, stamp, "disabled")
     repo, branch = settings.update_repo.strip(), settings.update_branch.strip()
