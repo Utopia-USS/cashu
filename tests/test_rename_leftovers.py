@@ -25,6 +25,7 @@ FILES = {
     "src/cashu/core/migrations/versions/*": "Alembic history is immutable",
     "src/cashu/core/migrate_legacy.py": "moves pre-rename installs: every occurrence is the old name",
     "src/cashu/core/env.py": "the CASHU_* readers with their FINANSE_* fallback",
+    "docs/upgrading-from-finanse.md": "the upgrade guide for pre-rename installs: it is about the old name",
     "tests/test_migrate_legacy.py": "tests of that migration",
     "tests/test_rename_leftovers.py": "this test",
     "frontend/tests/storage.test.mjs": "tests of the finanse.* -> cashu.* browser storage fallback",

@@ -27,7 +27,12 @@ theses and a watchlist, never orders, never price predictions.
 > dashboard listens on `127.0.0.1` only and every API call needs a per-launch
 > token. Bank passwords never pass through this code - you log in (SCA) yourself
 > in the bank's browser. Categorization uses a local offline model by default; the
-> optional cloud mode sends **only merchant names**.
+> optional cloud mode sends **only merchant names**. Besides the sources you
+> switch on yourself (Open Banking, market prices and rates for investments), one
+> network call is **on by default**: the update check, which reads the public
+> `pyproject.toml` of this repository on GitHub when the dashboard starts (one
+> anonymous GET, nothing about you is sent). Set `CASHU_UPDATE_CHECK=false` (in the
+> environment or `.env`) to turn it off; see [Updates and versions](#updates-and-versions).
 
 > 🌐 **Language.** Code, comments, and docs are in English. The **dashboard UI is
 > in Polish** and so are the categorization keywords and LLM prompts - the tool
@@ -119,17 +124,8 @@ happens in place on `data/finanse.db` (legacy name); its copy from before the up
 the data dir (`backups/cashu-legacy-pre-*.db`) and the notice and `migrate-data`
 name it, so deleting `data/` afterwards never loses it.
 
-**Upgrading from finanse (the name before cashU, legacy name)?** The first start of cashU
-(the app or any `cashu` command) moves the old data dir (`~/Library/Application
-Support/finanse`, legacy name) to `~/Library/Application Support/cashU` and renames its
-database to `cashu.db`, unless something still uses it (close the old app first; Ustawienia >
-Aplikacja shows a step that could not run). Secrets move from the keychain service `finanse` to
-`cashu` (legacy name in the first), and an installed background job is reinstalled under its new
-label. The old `finanse` command (legacy name) still works for now and prints a deprecation
-line, `FINANSE_*` variables (legacy name) are read when the `CASHU_*` one is not set, and import
-documents with the old format ids are accepted. Agent workspaces stay where they are: run
-"Aktualizuj workspace" (Ustawienia > Agent AI) or `cashu workspace update` once per profile, and
-re-add a Claude Code MCP server registered by hand as `cashu-<slug>` (`claude mcp add cashu-<slug> -- cashu mcp --profile <slug>`).
+**Upgrading from finanse (the name before cashU, legacy name)?** See
+[`docs/upgrading-from-finanse.md`](docs/upgrading-from-finanse.md).
 
 ---
 
@@ -315,8 +311,9 @@ Architecture, code map, conventions, and "how to add a bank / feature" -
 [`CLAUDE.md`](CLAUDE.md) and [`docs/agents/`](docs/agents/).
 
 **Contributing.** Issues and pull requests are welcome. Read
-[`CLAUDE.md`](CLAUDE.md) first, and never include real financial data: tests,
-fixtures and screenshots use synthetic data only.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CLAUDE.md`](CLAUDE.md) first, and never
+include real financial data: tests, fixtures and screenshots use synthetic data
+only. Security issues: [`SECURITY.md`](SECURITY.md).
 
 ---
 
