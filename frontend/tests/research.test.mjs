@@ -22,6 +22,9 @@ import {
 import { hashWithSegment } from "../src/modules/investments/v2/research/segments.ts";
 import { readFileSync } from "node:fs";
 
+// The expected times are Warsaw local time; CI runners run in UTC.
+process.env.TZ = "Europe/Warsaw";
+
 const note = (over) => ({
   id: 1, instrument_id: 306, theme: null, kind: "news", polarity: "negative", strength: 2, thesis_relation: "none", title: "t", summary: "",
   sources: [{ url: "https://example.org/a", publisher: "Parkiet", published_at: "2026-10-02" }], observed_at: "2026-10-03T06:50:00+02:00",

@@ -19,7 +19,10 @@ def _capture_via(redirect: str, verify):
     deadline = time.time() + 6
     while time.time() < deadline:
         try:
-            r = httpx.get(f"{redirect}?code=TESTCODE&state=cashu", timeout=1, verify=verify)
+            # IPv4 explicitly: the listener binds localhost's IPv4 address, and some hosts resolve
+            # localhost to ::1 first
+            url = redirect.replace("//localhost:", "//127.0.0.1:")
+            r = httpx.get(f"{url}?code=TESTCODE&state=cashu", timeout=1, verify=verify)
             status = r.status_code
             break
         except httpx.HTTPError:

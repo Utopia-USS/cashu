@@ -93,7 +93,7 @@ def test_default_data_dir_uses_platformdirs_without_author(monkeypatch):
     monkeypatch.setattr(paths, "user_data_dir", fake_user_data_dir)
     assert paths.default_data_dir() == Path("/somewhere/cashu")
     # appauthor=False -> %APPDATA%\cashU (not cashU\cashu); roaming -> %APPDATA%
-    assert seen == {"appname": "cashU", "appauthor": False, "roaming": True}
+    assert seen == {"appname": paths.app_dir_name(), "appauthor": False, "roaming": True}
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS location")

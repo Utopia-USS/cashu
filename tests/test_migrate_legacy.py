@@ -24,7 +24,8 @@ from cashu.core.migrate_legacy import DONE, REFUSED, SKIPPED
 from cashu.core.worker import scheduler
 
 NOW = dt.datetime(2026, 10, 6, 12, 0, tzinfo=dt.UTC)
-REAL_HOME = Path(__import__("pwd").getpwuid(os.getuid()).pw_dir).resolve()  # never read, only compared
+pwd = pytest.importorskip("pwd")  # POSIX only: the legacy migration never ran on Windows
+REAL_HOME = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()  # never read, only compared
 
 
 def _make_db(path: Path, *, wal: bool = False) -> None:
