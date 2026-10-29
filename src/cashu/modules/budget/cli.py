@@ -7,7 +7,7 @@ Every command works on the active profile (root ``--profile`` option or
 from __future__ import annotations
 
 import functools
-import re
+from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -54,21 +54,55 @@ def eb_guard(fn):
     return wrapper
 
 
-def _check_bank(bank: str | None, *, csv: bool) -> str | None:
-    """Validate a ``--bank`` institution id: a CSV import needs a bank with a parser;
-    Open Banking takes a known bank or any generic institution id (the id rule of
-    unknown institutions: lower case, starts with a letter, at most 32 characters)."""
+def _stored_banks(profile_id: int) -> list[str]:
+    """Institution ids of the profile's accounts that no registry entry knows (generic
+    Open Banking ids)."""
+    from cashu.core.models import Account
+
+    with get_session() as s:
+        stored = s.exec(select(Account.bank).where(Account.profile_id == profile_id)).all()
+    registry = set(institutions.ids())
+    return sorted({b for b in stored if b and b not in registry})
+
+
+def _session_aspsp(client, session_id: str | None, eb_session: dict | None = None) -> str | None:
+    """The ASPSP name of an Enable Banking session (from ``eb_session`` when it has it)."""
+    name = ((eb_session or {}).get("aspsp") or {}).get("name")
+    if name or not session_id:
+        return name
+    return (client.get_session(session_id).get("aspsp") or {}).get("name")
+
+
+def _check_bank(
+    bank: str | None,
+    *,
+    csv: bool,
+    profile_id: int | None = None,
+    aspsp: Callable[[], str | None] | None = None,
+) -> str | None:
+    """Validate a ``--bank`` institution id. A CSV import needs a bank with a parser.
+    Open Banking takes a registry bank, a generic id already stored on the profile's
+    accounts, or the generic id of the session's own ASPSP (``aspsp`` returns its name,
+    called only when needed); any other id (a typo) would create duplicate accounts."""
     if bank is None:
         return None
-    from .ingestion.canonical import INSTITUTION_PATTERN
-
     known = institutions.csv_ids() if csv else institutions.ids("bank")
     if bank in known:
         return bank
-    if not csv and bank not in institutions.ids() and re.fullmatch(INSTITUTION_PATTERN, bank):
-        return bank
-    hint = "" if csv else " or a lower-case id such as 'ing-bank-slaski'"
-    raise typer.BadParameter(f"Unknown bank '{bank}'. Known: {', '.join(known)}{hint}.")
+    stored = _stored_banks(profile_id) if not csv and profile_id is not None else []
+    if not csv and bank not in institutions.ids():
+        from .ingestion.enable_banking.sync import bank_from_aspsp
+
+        if bank in stored:
+            return bank
+        name = aspsp() if aspsp is not None else None
+        if name:
+            try:
+                if bank == bank_from_aspsp(name):
+                    return bank
+            except ValueError:
+                pass
+    raise typer.BadParameter(f"Unknown bank '{bank}'. Known: {', '.join([*known, *stored])}.")
 
 
 def _check_account_type(value: str) -> str:
@@ -373,15 +407,19 @@ def set_category_cmd(merchant: str, category: str) -> None:
 def _sync_session(client, session_id: str, *, bank: str | None, days: int, profile_id: int) -> str:
     """Fetch one EB session (network, no DB transaction open), then store each
     account in its own short write transaction; prints a line per account.
-    Returns the institution id the session belongs to."""
+    Returns the institution id the session belongs to: the bank id already stored on
+    the profile's matching accounts when there is one (a re-consent under a renamed
+    ASPSP keeps the id), else the one mapped from the ASPSP."""
     from .ingestion.enable_banking.sync import fetch_session, store_account
 
     fetched = fetch_session(client, session_id, bank=bank, days=days)
     errors = list(fetched.errors)
+    stored_banks: list[str] = []
     for fa in fetched.accounts:
         try:
             with get_session() as s:  # commits on exit
                 r = store_account(s, fa, fetched.bank, profile_id=profile_id)
+                stored_banks.append(r.account.bank)
                 cliutil.console.print(
                     f"  {r.account.bank} '{r.account.name}': "
                     f"+{r.batch.num_inserted} ({r.batch.num_duplicates} dup)"
@@ -390,6 +428,8 @@ def _sync_session(client, session_id: str, *, bank: str | None, days: int, profi
             errors.append(f"{fa.uid}: {e}")
     for err in errors:
         cliutil.console.print(f"[yellow]  account skipped (transient? e.g. rate limit) — {err}[/]")
+    if stored_banks and fetched.bank not in stored_banks:
+        return stored_banks[0]
     return fetched.bank
 
 
@@ -489,8 +529,8 @@ def eb_login(
     from .ingestion.enable_banking.callback import wait_for_authorization_code
 
     init_db()
-    bank = _check_bank(bank, csv=False)
     pid, slug = _active_profile()
+    bank = _check_bank(bank, csv=False, profile_id=pid, aspsp=lambda: aspsp)
     client = _client()
     res = client.start_authorization(aspsp, country or settings.eb_country, valid_days=days)
     url = res.get("url")
@@ -532,12 +572,15 @@ def eb_connect(
 ) -> None:
     """Exchange the redirect code for a session and sync it immediately."""
     init_db()
-    bank = _check_bank(bank, csv=False)
     pid, slug = _active_profile()
     client = _client()
     eb_session = client.create_session(code)
     session_id = eb_session.get("session_id")
     cliutil.console.print(f"[green]Session created:[/] {session_id}")
+    # A generic --bank id is checked against this session's ASPSP (known only now).
+    bank = _check_bank(
+        bank, csv=False, profile_id=pid, aspsp=lambda: _session_aspsp(client, session_id, eb_session)
+    )
     institution = _sync_session(client, session_id, bank=bank, days=days, profile_id=pid)
     _save_session(slug, session_id, institution, add_session)
 
@@ -551,9 +594,12 @@ def eb_sync(
 ) -> None:
     """Re-sync an existing authorized session."""
     init_db()
-    bank = _check_bank(bank, csv=False)
     pid, _slug = _active_profile()
-    _sync_session(_client(), session_id, bank=bank, days=days, profile_id=pid)
+    client = _client()
+    bank = _check_bank(
+        bank, csv=False, profile_id=pid, aspsp=lambda: _session_aspsp(client, session_id)
+    )
+    _sync_session(client, session_id, bank=bank, days=days, profile_id=pid)
 
 
 @eb_app.command("sessions")

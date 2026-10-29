@@ -7,10 +7,10 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from cashu.core import institutions, profiles
-from cashu.core.accounts import get_or_create_account, upsert_balance
+from cashu.core.accounts import find_account, get_or_create_account, upsert_balance
 from cashu.core.models import Account, AccountType, Source
 
 from ...models import ImportBatch, Transaction
@@ -263,6 +263,20 @@ def sync_session(
 sync_session.last_errors = []  # type: ignore[attr-defined]
 
 
+def _existing_account(
+    db: Session, uid: str, iban: str | None, profile_id: int | None
+) -> Account | None:
+    """The profile's account with this Enable Banking uid or IBAN, whatever its bank id."""
+    pid = profiles.scope(db, profile_id)
+    if uid:
+        by_uid = db.exec(
+            select(Account).where(Account.profile_id == pid, Account.external_id == uid)
+        ).first()
+        if by_uid is not None:
+            return by_uid
+    return find_account(db, bank=None, iban=iban, profile_id=pid) if iban else None
+
+
 def store_account(
     db: Session,
     fetched: FetchedAccount,
@@ -272,15 +286,21 @@ def store_account(
     profile_id: int | None = None,
 ) -> SyncResult:
     """DB phase for one fetched account: the account row (of the profile), new
-    transactions (above the high-water mark) and the balance. No network calls."""
+    transactions (above the high-water mark) and the balance. No network calls.
+
+    An account the profile already has (same Enable Banking uid or same IBAN, under
+    any institution id) is reused with its stored ``bank``: a generic id slugged from
+    the ASPSP name can change on a re-consent (a renamed ASPSP), and that must not
+    duplicate the account and double net worth."""
     details = fetched.details
     iban = (details.get("account_id") or {}).get("iban") or details.get("iban")
     name = details.get("name") or details.get("product")
     currency = details.get("currency", "PLN")
 
+    existing = _existing_account(db, fetched.uid, iban, profile_id)
     account = get_or_create_account(
         db,
-        bank=bank,
+        bank=existing.bank if existing is not None else bank,
         iban=iban,
         external_id=fetched.uid,
         name=name,

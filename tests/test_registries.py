@@ -187,19 +187,62 @@ def test_open_banking_sync_of_an_unknown_bank_stores_a_generic_account(
     assert institutions.display_name(acc.bank) == "Bank Spoldzielczy Testowy"
 
 
-def test_eb_bank_override_takes_a_generic_id():
+def test_eb_bank_override_takes_only_a_stored_or_the_sessions_generic_id(db_engine):
     import typer
 
+    from cashu.core.accounts import get_or_create_account
+    from cashu.core.db import get_session
     from cashu.modules.budget.cli import _check_bank
 
-    assert _check_bank("mbank", csv=False) == "mbank"
-    assert _check_bank("ing-bank-slaski", csv=False) == "ing-bank-slaski"
-    for bad in ("ING", "1bank", "manual", "a" * 40):
-        with pytest.raises(typer.BadParameter):
-            _check_bank(bad, csv=False)
+    with get_session() as s:
+        pid = get_or_create_account(s, bank="bank-stored-test", name="Konto Test",
+                                    iban="PL99100000000000000000000077").profile_id
+
+    assert _check_bank("mbank", csv=False, profile_id=pid) == "mbank"
+    # a generic id the profile already has
+    assert _check_bank("bank-stored-test", csv=False, profile_id=pid) == "bank-stored-test"
+    # the generic id of this session's ASPSP
+    assert _check_bank("ing-bank-slaski", csv=False, profile_id=pid,
+                       aspsp=lambda: "ING Bank Śląski") == "ing-bank-slaski"
+    # a typo: neither stored nor the session's ASPSP
+    for bad in ("mbnak", "ing-bank-slask", "manual", "1bank"):
+        with pytest.raises(typer.BadParameter, match="Known: .*mbank.*bank-stored-test"):
+            _check_bank(bad, csv=False, profile_id=pid, aspsp=lambda: "ING Bank Śląski")
     # A CSV import still needs a bank with a parser.
     with pytest.raises(typer.BadParameter):
-        _check_bank("ing-bank-slaski", csv=True)
+        _check_bank("bank-stored-test", csv=True, profile_id=pid)
+
+
+def test_reconsent_under_a_renamed_aspsp_keeps_one_account(session, fake_eb, make_eb_txn):
+    """A generic id slugged from the ASPSP name changes when the ASPSP is renamed; the
+    re-consented session must reuse the stored account (by IBAN), not duplicate it."""
+    from decimal import Decimal
+
+    from sqlmodel import select
+
+    from cashu.core.models import Account
+    from cashu.core.networth import net_worth
+    from cashu.modules.budget.ingestion.enable_banking.sync import sync_session
+
+    iban = "PL99100000000000000000000088"
+
+    def sess(aspsp, uid, ref, balance):
+        return {"aspsp": {"name": aspsp},
+                "accounts": [{"uid": uid, "account_id": {"iban": iban}, "currency": "PLN"}],
+                "transactions": {uid: [make_eb_txn("2026-10-01", "12.00", "KAWIARNIA TEST", ref=ref)]},
+                "balances": {uid: [{"balance_amount": {"amount": balance, "currency": "PLN"},
+                                    "balance_type": "CLBD", "reference_date": "2026-10-02"}]}}
+
+    sync_session(session, fake_eb({"s1": sess("Bank Testowy", "uid-old", "r-1", "1000.00")}), "s1")
+    session.flush()
+    # re-consent: new session, new account uid, the ASPSP renamed
+    sync_session(session, fake_eb({"s2": sess("Bank Testowy S.A.", "uid-new", "r-1", "1000.00")}), "s2")
+    session.flush()
+
+    accounts = session.exec(select(Account)).all()
+    assert [(a.bank, a.external_id) for a in accounts] == [("bank-testowy", "uid-old")]
+    totals, _lines = net_worth(session)
+    assert totals["PLN"] == Decimal("1000.00")  # not doubled
 
 
 def test_csv_importers_come_from_the_registry():
