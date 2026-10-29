@@ -2,7 +2,7 @@
 #  cashU - .gitignore
 #  RULE: no financial data or secrets ever land in the repo.
 #  The whole data/ and statements/ dirs are ignored except the empty structure
-#  (.gitkeep).
+#  (data/incoming/.gitkeep: the default folder of `cashu import-dir`; statements/<bank>/).
 # =============================================================================
 
 # --- Secrets & credentials ---------------------------------------------------
@@ -15,15 +15,12 @@
 *.pfx
 
 # --- Local data (never leaves the machine) -----------------------------------
-# SQLite DB, backups, journals, Open Banking sessions, keys — all under data/.
+# Older checkouts kept the SQLite DB, backups, Open Banking sessions and keys under data/
+# (now in the per-user data dir, see core/paths.py). Only data/incoming/ stays tracked.
 data/*
-!data/.gitkeep
 !data/incoming/
-!data/raw/
 data/incoming/*
 !data/incoming/.gitkeep
-data/raw/*
-!data/raw/.gitkeep
 
 # Bank statements (CSV) — real data. We keep only the directory structure.
 statements/**
@@ -73,3 +70,5 @@ frontend/e2e/output/
 .vscode/
 # Local agent config overrides (shared settings stay tracked)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
+CLAUDE.local.md
