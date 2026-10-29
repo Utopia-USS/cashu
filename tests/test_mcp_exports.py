@@ -235,7 +235,7 @@ def test_unicode_variant_of_the_data_dir_is_refused(tmp_path, monkeypatch):
         ("zwrot PL61109010140000071219812874", "<w> [identifier]"),
         ("PROWIZJA 1.50 PLN", "PROWIZJA 9.99 PLN"),
         # BE-8: no letter counts of an e-mail, a nickname with digits or a vocabulary-like surname
-        ("mail jan.kowalski1@gmail.com", "<w> [email]"),
+        ("mail jan.kowalski1@example.com", "<w> [email]"),
         ("Zakup BLIK Anna2000", "Zakup <w> <w>9999"),
         ("PRZELEWSKI 12", "<w> 99"),
         ("PROWIZJI 2.00", "PROWIZJI 9.99"),
