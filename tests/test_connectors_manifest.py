@@ -254,6 +254,58 @@ def test_interpreter_resolves_on_the_fixed_path_to_a_real_path(tmp_path, monkeyp
         mf.resolve_interpreter("ruby", tmp_path, home=tmp_path / "elsewhere")
 
 
+def _fake_binary(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xcf\xfa\xed\xfe fake binary")
+    path.chmod(0o755)
+    return path
+
+
+def test_the_bundled_deno_is_preferred_over_the_search_path(tmp_path, monkeypatch):
+    """The packaged app's deno (folder deno/ of sys._MEIPASS, packaging/cashu.spec) wins over any deno
+    on the search path; from source, or when the bundle has none, the search path is used."""
+    import sys
+
+    on_path = _fake_binary(tmp_path / "bin" / "deno")
+    monkeypatch.setattr(mf, "SYSTEM_SEARCH_PATH", (str(on_path.parent),))
+    home = tmp_path / "home"
+    assert mf.resolve_interpreter("deno", tmp_path, home=home) == Path(os.path.realpath(on_path))
+    assert mf.bundled_interpreter("deno") is None  # from source
+
+    meipass = tmp_path / "cashU.app" / "Contents" / "Frameworks"
+    meipass.mkdir(parents=True)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(meipass), raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "cashU.app" / "Contents" / "MacOS" / "cashu"))
+    assert mf.resolve_interpreter("deno", tmp_path, home=home) == Path(os.path.realpath(on_path))
+
+    bundled = _fake_binary(meipass / "deno" / "deno")
+    assert mf.bundled_interpreter("deno") == Path(os.path.realpath(bundled))
+    assert mf.resolve_interpreter("deno", tmp_path, home=home) == Path(os.path.realpath(bundled))
+    # only deno is bundled: other interpreters keep the search path
+    _fake_binary(meipass / "deno" / "node")
+    assert mf.bundled_interpreter("node") is None
+    # a bundled file that is not executable is not used
+    bundled.chmod(0o644)
+    assert mf.resolve_interpreter("deno", tmp_path, home=home) == Path(os.path.realpath(on_path))
+
+
+def test_the_bundled_deno_is_found_in_the_app_resources_too(tmp_path, monkeypatch):
+    import sys
+
+    app = tmp_path / "cashU.app"
+    meipass = app / "Contents" / "Frameworks"
+    meipass.mkdir(parents=True)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(meipass), raising=False)
+    monkeypatch.setattr(sys, "executable", str(app / "Contents" / "MacOS" / "cashu"))
+    in_resources = _fake_binary(app / "Contents" / "Resources" / "deno" / "deno")
+    monkeypatch.setattr(mf, "SYSTEM_SEARCH_PATH", ())
+    assert mf.resolve_interpreter("deno", tmp_path, home=tmp_path / "home") == Path(
+        os.path.realpath(in_resources)
+    )
+
+
 def test_version_manager_shims_are_not_searched_and_scripts_are_skipped(tmp_path, monkeypatch):
     """BE-C3: ``~/.pyenv/shims`` is not on the search path; a #! script found first (a shim or
     wrapper, which cannot run in the sandbox) is skipped for a real binary later on the path."""

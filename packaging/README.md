@@ -47,6 +47,29 @@ Checklist for a Developer ID build (run before shipping, and before adding an en
    is empty. If a step fails with a code-signing or memory error, add back only the entitlement
    named there and record why in this table.
 
+## Bundled Deno (deno connectors)
+
+The app ships the official Deno release binary so a connector written by the user's agent runs
+without anything installed (docs/agents/connector-runtime.md). Decisions:
+
+- **Pinned, verified, build-time only.** `scripts/build_macos.sh` step 3b holds `DENO_VERSION` and a
+  sha256 per architecture of the official `deno-<target>.zip` from github.com/denoland/deno/releases.
+  The archive is downloaded once into the build folder and checked against the pinned sha256 on every
+  build, before it is unpacked; the unpacked binary must report that version. The app itself never
+  downloads anything. The sha256 constants are **empty until pinned**: the script refuses to build
+  (or use `--skip-deno` for a local build without Deno). Update the version and both hashes together,
+  from the release's `.sha256sum` files, cross-checked against a download on a second machine.
+- **Location.** `packaging/cashu.spec` adds it as a binary in folder `deno/` of the bundle
+  (`Contents/Frameworks/deno/deno`), with the MIT license (`packaging/third-party/deno-LICENSE.md`).
+  `core/connectors/manifest.py` `bundled_interpreter` prefers it over any `deno` on the search path;
+  an app update replaces it at the same path, so approvals that pinned it stay valid.
+- **Signing.** The deno binary is signed on its own with `packaging/deno-entitlements.plist`
+  (`com.apple.security.cs.allow-jit` only): with the hardened runtime and no JIT entitlement V8
+  aborts at start. The main executable keeps `entitlements.plist` (none). The alternative,
+  `--v8-flags=--jitless` without the entitlement, was rejected by the owner (slower, no WebAssembly).
+- **Confinement does not depend on the signature:** deno connectors run with Deno's permission flags
+  inside `sandbox-exec`, after the module-graph check (`core/connectors/sandbox.py`).
+
 ## Where the app keeps data
 
 - Data dir: `~/Library/Application Support/cashU` (0700), or `CASHU_DATA_DIR`.

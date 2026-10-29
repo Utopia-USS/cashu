@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened runtime entitlements of the bundled deno binary only (cashU.app/Contents/Frameworks/deno/deno,
+  signed separately by scripts/build_macos.sh). The app's own executable keeps packaging/entitlements.plist
+  (none). V8 needs JIT pages: re-signed with the hardened runtime and without allow-jit, deno aborts at
+  start ("Failed to reserve virtual memory for CodeRange"), see docs/agents/connector-runtime.md.
+
+  Only allow-jit (MAP_JIT pages, the narrow form). Never: allow-unsigned-executable-memory,
+  disable-library-validation, allow-dyld-environment-variables, get-task-allow. Deno connectors run
+  under Deno's permissions inside sandbox-exec; this entitlement does not widen either.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+</dict>
+</plist>

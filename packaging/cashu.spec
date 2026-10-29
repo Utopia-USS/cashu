@@ -3,13 +3,14 @@
 # signing variables are set. Direct use (from the repo root, inside a venv with .[desktop] and
 # packaging/requirements-build.txt installed):
 #
-#   CASHU_WEBDIST=<built SPA dir> CASHU_ICNS=<icon.icns> \
+#   CASHU_WEBDIST=<built SPA dir> CASHU_ICNS=<icon.icns> CASHU_DENO=<verified deno binary> \
 #     pyinstaller --noconfirm --distpath build/macos/dist --workpath build/macos/work packaging/cashu.spec
 #
 # One binary, Contents/MacOS/cashu: no arguments = the desktop window (Finder), anything else =
 # the cashU CLI (`worker run`, `mcp --profile <slug>`, ...), `--notify-helper` = post one
 # notification for the worker (see src/cashu/desktop/entry.py). It has no mode that runs a script;
-# approved connectors (F10) run only as sandboxed child processes (core/connectors/sandbox.sb).
+# approved connectors (F10) run only as sandboxed child processes (core/connectors/sandbox.sb), deno
+# connectors with the bundled deno (folder deno/, CASHU_DENO below).
 # The bundle registers the cashu:// URL scheme (notification clicks and links open the app on a
 # view, src/cashu/desktop/notify.py).
 # ruff: noqa
@@ -48,6 +49,22 @@ datas.append((str(WEBDIST), WEBDIST_DEST))
 if SKILLS.is_dir():
     datas.append((str(SKILLS), "skills"))  # core/runtime.py: skills_dir()
 
+# The Deno runtime for deno connectors (core/connectors/manifest.py bundled_interpreter: folder
+# "deno" of the bundle, preferred over any deno on the search path). scripts/build_macos.sh downloads
+# the pinned official release, checks its sha256 and passes the unpacked binary in CASHU_DENO; it
+# signs it afterwards with packaging/deno-entitlements.plist (allow-jit), never with the app's.
+# CASHU_SKIP_DENO=1 builds without it (local experiments only: deno connectors then need a deno on
+# the search path).
+binaries = []
+DENO = os.environ.get("CASHU_DENO", "")
+if DENO:
+    if not (Path(DENO).is_file() and os.access(DENO, os.X_OK)):
+        raise SystemExit(f"CASHU_DENO is not an executable file: {DENO}")
+    binaries.append((DENO, "deno"))
+    datas.append((str(ROOT / "packaging" / "third-party" / "deno-LICENSE.md"), "deno"))
+elif os.environ.get("CASHU_SKIP_DENO") != "1":
+    raise SystemExit("No Deno runtime: set CASHU_DENO (scripts/build_macos.sh does) or CASHU_SKIP_DENO=1")
+
 hiddenimports = [
     # Modules are found by id at runtime (core/modules.py), CLI and API wiring is dynamic.
     *collect_submodules("cashu", filter=lambda name: ".migrations.versions" not in name),
@@ -67,6 +84,7 @@ except Exception:
 a = Analysis(
     [str(ROOT / "packaging" / "entry.py")],
     pathex=[str(SRC)],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     excludes=["tkinter", "_tkinter", "pytest", "_pytest", "ruff", "IPython", "matplotlib"],

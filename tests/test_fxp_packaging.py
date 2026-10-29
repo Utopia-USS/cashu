@@ -350,3 +350,28 @@ def test_bundle_names_after_the_rename():
 
     assert notifier_app.INFO_PLIST_KEY == "CashuNotificationHelper"
     assert scheduler.DEFAULT_LABEL == "io.utopiasoft.cashu.worker"
+
+
+def test_the_bundled_deno_is_pinned_verified_and_signed_on_its_own():
+    """The app ships the official Deno release: version + sha256 per architecture pinned in the build
+    script, checked before unpacking, signed with its own entitlements (allow-jit only), MIT license
+    shipped; the spec refuses to build without it unless explicitly skipped."""
+    ent = plistlib.loads((ROOT / "packaging" / "deno-entitlements.plist").read_bytes())
+    assert ent == {"com.apple.security.cs.allow-jit": True}
+    script = (ROOT / "scripts" / "build_macos.sh").read_text()
+    assert re.search(r'^DENO_VERSION="\d+\.\d+\.\d+"$', script, re.MULTILINE)
+    for arch in ("AARCH64", "X86_64"):
+        assert re.search(rf'^DENO_SHA256_{arch}="([0-9a-f]{{64}})?"', script, re.MULTILINE), arch
+    assert "[0-9a-f]{64}" in script  # an unpinned hash refuses the build
+    assert 'shasum -a 256 "$DENO_ZIP"' in script and "--proto '=https'" in script
+    assert script.index('shasum -a 256 "$DENO_ZIP"') < script.index('ditto -x -k "$DENO_ZIP"')
+    assert 'sign --entitlements "$ROOT/packaging/deno-entitlements.plist" "$APP_DENO"' in script
+    assert 'CASHU_DENO="$DENO_BIN"' in script
+    spec = (ROOT / "packaging" / "cashu.spec").read_text()
+    assert 'binaries.append((DENO, "deno"))' in spec and "binaries=binaries," in spec
+    assert 'os.environ.get("CASHU_SKIP_DENO") != "1"' in spec
+    license_text = (ROOT / "packaging" / "third-party" / "deno-LICENSE.md").read_text()
+    assert license_text.startswith("MIT License") and "the Deno authors" in license_text
+    from cashu.core.connectors import manifest as mf
+
+    assert mf.BUNDLED_DIR == "deno" and mf.BUNDLED_INTERPRETERS == ("deno",)

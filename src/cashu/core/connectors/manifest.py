@@ -50,6 +50,10 @@ PARAM_TYPES = ("string", "date", "number", "boolean")
 # argv[0] is one of these interpreter names (resolved on a fixed search path) or ./<file in the dir>.
 INTERPRETERS = ("python3", "node", "deno", "bun", "ruby", "perl")
 SYSTEM_SEARCH_PATH = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
+# Interpreters the packaged app ships (packaging/cashu.spec, folder ``deno/`` of the bundle): preferred
+# over the search path, so a downloaded app runs Deno connectors without anything installed.
+BUNDLED_INTERPRETERS = ("deno",)
+BUNDLED_DIR = "deno"
 # Per-user dirs with real interpreters. Version-manager shim dirs (``~/.pyenv/shims``, rbenv, asdf) are
 # left out: their entries are shell scripts that need the manager's state, which the sandbox does not
 # grant; any other script found on the path is skipped too (see ``resolve_interpreter``).
@@ -421,8 +425,34 @@ def developer_dir() -> Path:
     return Path(DEFAULT_DEVELOPER_DIR)
 
 
+def bundled_interpreter(name: str) -> Path | None:
+    """The interpreter the packaged app ships (only ``deno``), as a real path; None from source or
+    when the bundle has none. PyInstaller puts ``packaging/cashu.spec``'s ``deno/deno`` binary under
+    ``sys._MEIPASS`` (``Contents/Frameworks`` of cashU.app); ``Contents/Resources`` is checked too
+    (PyInstaller links the two folders). An app update replaces it at the same path, so approvals
+    that pinned it stay valid."""
+    from .. import runtime
+
+    if name not in BUNDLED_INTERPRETERS:
+        return None
+    candidates: list[Path] = []
+    base = runtime.bundle_dir()
+    if base is not None:
+        candidates.append(base / BUNDLED_DIR / name)
+    app = runtime.app_bundle()
+    if app is not None:
+        candidates += [app / "Contents" / folder / BUNDLED_DIR / name
+                       for folder in ("Frameworks", "Resources")]
+    for candidate in candidates:
+        real = os.path.realpath(candidate)
+        if os.path.isfile(real) and os.access(real, os.X_OK):
+            return Path(real)
+    return None
+
+
 def resolve_interpreter(argv0: str, connector_dir: Path, *, home: Path | None = None) -> Path:
-    """The real path of the program ``run[0]`` starts. Raises :class:`InterpreterError`."""
+    """The real path of the program ``run[0]`` starts: the app's bundled one first (``deno``), then
+    the fixed search path. Raises :class:`InterpreterError`."""
     if argv0.startswith("./"):
         root = Path(os.path.realpath(connector_dir))
         target = Path(os.path.realpath(root / argv0[2:]))
@@ -433,6 +463,9 @@ def resolve_interpreter(argv0: str, connector_dir: Path, *, home: Path | None = 
         return target
     if argv0 not in INTERPRETERS:
         raise InterpreterError(f"{argv0!r} is not an allowed interpreter")
+    bundled = bundled_interpreter(argv0)
+    if bundled is not None:
+        return bundled
     dirs = search_path(home)
     scripts: list[str] = []
     xcrun_error: str | None = None
@@ -531,6 +564,7 @@ __all__ = [
     "LoadedConnector",
     "Manifest",
     "ManifestError",
+    "bundled_interpreter",
     "content_sha256",
     "interpreter_prefix",
     "load_dir",

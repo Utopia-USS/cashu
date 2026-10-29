@@ -2,7 +2,13 @@
 # Build cashU.app (macOS): the SPA, the icon, a PyInstaller one-folder bundle, and - when the
 # signing variables are set - a Developer ID signature with the hardened runtime and notarization.
 #
-#   scripts/build_macos.sh [--skip-frontend] [--clean] [--dmg]
+#   scripts/build_macos.sh [--skip-frontend] [--clean] [--dmg] [--skip-deno]
+#
+# The app bundles the Deno runtime for deno connectors: the official release archive pinned below
+# (DENO_VERSION + sha256 per architecture) is downloaded once into the build folder, checked against
+# the pinned sha256 before it is unpacked, and signed with its own entitlements
+# (packaging/deno-entitlements.plist: allow-jit only). --skip-deno builds without it (local
+# experiments only; deno connectors then need a deno on the search path).
 #
 # Output (git-ignored): build/macos/dist/cashU.app and build/macos/cashU-<version>-macos-<arch>.zip
 # (+ .dmg with --dmg). The script never installs anything into /Applications.
@@ -28,12 +34,14 @@ PYTHON="${PYTHON:-python3}"
 SKIP_FRONTEND=0
 CLEAN=0
 DMG=0
+SKIP_DENO=0
 for arg in "$@"; do
   case "$arg" in
     --skip-frontend) SKIP_FRONTEND=1 ;;
     --clean) CLEAN=1 ;;
     --dmg) DMG=1 ;;
-    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+    --skip-deno) SKIP_DENO=1 ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -42,7 +50,7 @@ say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(uname -s)" == "Darwin" ]] || die "cashU.app can only be built on macOS."
-for tool in sips iconutil codesign ditto rsync npm; do
+for tool in sips iconutil codesign ditto rsync npm curl shasum; do
   command -v "$tool" >/dev/null || die "$tool not found (Xcode command line tools / Node.js needed)."
 done
 "$PYTHON" -c 'import sys; sys.exit(sys.version_info < (3, 12))' || die "$PYTHON is older than 3.12."
@@ -117,17 +125,68 @@ if [[ -f "$PYLIB" ]]; then
   MIN_MACOS="$(otool -l "$PYLIB" | awk '/LC_BUILD_VERSION/{f=1} f && $1=="minos"{print $2; exit}')"
 fi
 
+# --- 3b. Deno runtime for deno connectors: the official release archive for this architecture,
+#         pinned by version and sha256. Update all three together: the sha256 values come from the
+#         release's <archive>.sha256sum files on github.com/denoland/deno/releases, cross-checked
+#         against a download on a second machine. The archive is checked before it is unpacked; a
+#         cached archive is checked again on every build.
+DENO_VERSION="2.9.1"
+DENO_SHA256_AARCH64=""  # sha256 of deno-aarch64-apple-darwin.zip (v$DENO_VERSION): not pinned yet
+DENO_SHA256_X86_64=""   # sha256 of deno-x86_64-apple-darwin.zip (v$DENO_VERSION): not pinned yet
+DENO_BIN=""
+if [[ $SKIP_DENO == 0 ]]; then
+  case "$ARCH" in
+    arm64) DENO_TARGET="aarch64-apple-darwin"; DENO_SHA256="$DENO_SHA256_AARCH64" ;;
+    x86_64) DENO_TARGET="x86_64-apple-darwin"; DENO_SHA256="$DENO_SHA256_X86_64" ;;
+    *) die "no Deno release for $ARCH" ;;
+  esac
+  [[ "$DENO_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    || die "the sha256 of deno-$DENO_TARGET.zip v$DENO_VERSION is not pinned in this script (DENO_SHA256_*); pin it or build with --skip-deno"
+  DENO_DIR_BUILD="$BUILD/deno/$DENO_VERSION-$DENO_TARGET"
+  DENO_ZIP="$BUILD/deno/deno-$DENO_VERSION-$DENO_TARGET.zip"
+  mkdir -p "$BUILD/deno"
+  if [[ ! -f "$DENO_ZIP" ]]; then
+    say "Downloading Deno $DENO_VERSION ($DENO_TARGET)"
+    curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+      --output "$DENO_ZIP.part" \
+      "https://github.com/denoland/deno/releases/download/v$DENO_VERSION/deno-$DENO_TARGET.zip"
+    mv "$DENO_ZIP.part" "$DENO_ZIP"
+  fi
+  GOT="$(shasum -a 256 "$DENO_ZIP" | cut -d' ' -f1)"
+  if [[ "$GOT" != "$DENO_SHA256" ]]; then
+    rm -f "$DENO_ZIP"
+    die "deno-$DENO_TARGET.zip does not match the pinned sha256 (got $GOT); the archive was deleted"
+  fi
+  rm -rf "$DENO_DIR_BUILD" && mkdir -p "$DENO_DIR_BUILD"
+  ditto -x -k "$DENO_ZIP" "$DENO_DIR_BUILD"
+  DENO_BIN="$DENO_DIR_BUILD/deno"
+  [[ -x "$DENO_BIN" ]] || die "the Deno archive has no deno binary"
+  "$DENO_BIN" --version | head -1 | grep -q "^deno $DENO_VERSION " \
+    || die "the unpacked deno is not version $DENO_VERSION"
+fi
+
 # --- 4. PyInstaller.
 say "Running PyInstaller (cashU.app $VERSION, $ARCH${MIN_MACOS:+, macOS $MIN_MACOS+})"
 (
   cd "$ROOT"
   CASHU_WEBDIST="$WEBDIST" CASHU_ICNS="$BUILD/icon/cashU.icns" CASHU_MIN_MACOS="$MIN_MACOS" \
+    CASHU_DENO="$DENO_BIN" CASHU_SKIP_DENO="$SKIP_DENO" \
     "$BUILD/venv/bin/pyinstaller" --noconfirm --clean --log-level WARN \
     --distpath "$BUILD/dist" --workpath "$BUILD/work" "$ROOT/packaging/cashu.spec"
 )
 [[ -x "$APP/Contents/MacOS/cashu" ]] || die "PyInstaller produced no $APP"
 # Smoke test of the CLI path (no window, no data dir access beyond --help).
 "$APP/Contents/MacOS/cashu" --help >/dev/null || die "the bundled CLI does not start"
+# The bundled deno (core/connectors/manifest.py bundled_interpreter looks in Frameworks/deno/ and
+# Resources/deno/ of the app).
+APP_DENO=""
+if [[ $SKIP_DENO == 0 ]]; then
+  for candidate in "$APP/Contents/Frameworks/deno/deno" "$APP/Contents/Resources/deno/deno"; do
+    if [[ -f "$candidate" && ! -L "$candidate" ]]; then APP_DENO="$candidate"; break; fi
+  done
+  [[ -n "$APP_DENO" ]] || die "the bundle has no deno/deno"
+  "$APP_DENO" --version | head -1 | grep -q "^deno $DENO_VERSION " || die "the bundled deno does not start"
+fi
 
 # --- 5. Signing (Developer ID + hardened runtime), inside-out: every Mach-O file, then the app.
 SIGNED=0
@@ -135,10 +194,18 @@ if [[ -n "${DEVELOPER_ID_APPLICATION:-}" ]]; then
   say "Signing with \"$DEVELOPER_ID_APPLICATION\" (hardened runtime)"
   ENT="$ROOT/packaging/entitlements.plist"
   sign() { codesign --force --timestamp --options runtime --sign "$DEVELOPER_ID_APPLICATION" "$@"; }
-  # Libraries and extension modules (symlinks are skipped: PyInstaller cross-links folders).
+  # Libraries and extension modules (symlinks are skipped: PyInstaller cross-links folders). The
+  # bundled deno is left out here: it gets its own entitlements below.
   while IFS= read -r -d '' f; do
+    [[ -n "$APP_DENO" && "$f" == "$APP_DENO" ]] && continue
     if file -b "$f" | grep -q 'Mach-O'; then sign "$f"; fi
   done < <(find "$APP/Contents/Frameworks" "$APP/Contents/Resources" -type f -print0)
+  # deno: hardened runtime + allow-jit only (V8 aborts at start without JIT pages). The main
+  # executable keeps packaging/entitlements.plist (none).
+  if [[ -n "$APP_DENO" ]]; then
+    sign --entitlements "$ROOT/packaging/deno-entitlements.plist" "$APP_DENO"
+    "$APP_DENO" --version >/dev/null || die "the signed deno does not start (allow-jit missing?)"
+  fi
   # Embedded framework bundles (e.g. Python.framework), if PyInstaller kept any as bundles.
   while IFS= read -r -d '' fw; do sign "$fw"; done < <(find "$APP/Contents/Frameworks" -type d -name '*.framework' -prune -print0)
   # The executable and the bundle carry the hardened-runtime entitlements.
