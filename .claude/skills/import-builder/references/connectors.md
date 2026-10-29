@@ -41,6 +41,8 @@ name: Przykładowy Bank CSV       # shown to the owner, <= 60 characters
 version: 1.0.0                   # free text, <= 20 characters, shown only
 author: Jan Kowalski             # optional, <= 80 characters
 description: Wyciąg CSV ...      # optional, <= 280 characters
+maintainer: "@jkowalski"         # optional (required in the catalog), <= 80 characters
+last_verified: 2026-10-01        # optional (required in the catalog), ISO date
 module: budget                   # investments | budget
 kind: file                       # file | fetch
 run: [python3, connector.py]     # argv, see below
@@ -62,6 +64,8 @@ file:                            # kind file only (and required for it)
 | `id` | `^[a-z][a-z0-9-]{1,39}$`; installing another connector with the same id needs `--replace` |
 | `name`, `version` | required, non-empty, <= 60 / <= 20 characters |
 | `author`, `description` | optional, <= 80 / <= 280 characters |
+| `maintainer` | optional, <= 80 characters: who keeps the connector working, a GitHub handle (`@octocat`) or a name. Required for an entry of the connector catalog (`connectors/` in the cashU repository) |
+| `last_verified` | optional, an ISO date `YYYY-MM-DD` (quoted or not; no time): the last day the maintainer checked the connector against a real, current export or API. Required in the catalog, where an entry older than 180 days is shown as stale |
 | `module`, `kind` | see above; `kind: file` needs a `file` section and no `fetch` section, and the other way round |
 | `run` | 1..8 plain strings, each <= 200 characters, no control characters, no `..` path segment, no absolute or `~` paths. No shell: it is an argv, not a command line. An argument that names a file of the connector (`connector.py`) is passed as that file's absolute path, because the process runs in another directory (section 4) |
 | `run[0]` | an interpreter name from the allowlist `python3`, `node`, `deno`, `bun`, `ruby`, `perl`, or `./<file>`: an executable file inside the connector directory (covered by the hash) |

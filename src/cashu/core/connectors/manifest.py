@@ -9,6 +9,7 @@ will start (pinned at approval: a different resolved path later means the connec
 
 from __future__ import annotations
 
+import datetime as dt
 import difflib
 import hashlib
 import os
@@ -23,6 +24,7 @@ from typing import Annotated, Any, Literal
 import yaml
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StringConstraints,
@@ -90,6 +92,24 @@ Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 FieldId = Annotated[str, StringConstraints(pattern=FIELD_ID)]
 
 
+def _iso_date(value: Any) -> dt.date:
+    """``last_verified``: a calendar date written as ``YYYY-MM-DD`` (YAML may already give a date; a
+    timestamp, a number or another date spelling is refused)."""
+    if isinstance(value, dt.datetime):
+        raise ValueError("must be a date (YYYY-MM-DD), not a timestamp")  # noqa: TRY004 - pydantic
+    if isinstance(value, dt.date):
+        return value
+    if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value.strip()):
+        try:
+            return dt.date.fromisoformat(value.strip())
+        except ValueError:
+            pass
+    raise ValueError("must be an ISO date (YYYY-MM-DD)")
+
+
+IsoDate = Annotated[dt.date, BeforeValidator(_iso_date)]
+
+
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -150,6 +170,10 @@ class Manifest(_Strict):
     version: Annotated[Text, StringConstraints(max_length=20)]
     author: Annotated[Text, StringConstraints(max_length=80)] | None = None
     description: Annotated[Text, StringConstraints(max_length=280)] | None = None
+    # Who keeps the connector working (a GitHub handle or a name) and when they last checked it against
+    # a real export / API. Optional; required for entries of the repository's connector catalog.
+    maintainer: Annotated[Text, StringConstraints(max_length=80)] | None = None
+    last_verified: IsoDate | None = None
     module: Literal["investments", "budget"]
     kind: Literal["file", "fetch"]
     run: Annotated[list[str], Field(min_length=1, max_length=MAX_RUN_ARGS)]

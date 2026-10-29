@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 import stat
 from pathlib import Path
@@ -60,6 +61,25 @@ def test_valid_file_and_fetch_manifests():
     assert mf.parse_manifest(yaml.safe_dump(BASE)) == m
 
 
+def test_maintainer_and_last_verified_are_optional_and_round_trip():
+    assert mf.manifest_from_data(BASE).maintainer is None
+    assert mf.manifest_from_data(BASE).last_verified is None
+    text = yaml.safe_dump(BASE) + 'maintainer: "@octocat"\nlast_verified: 2026-10-01\n'
+    m = mf.parse_manifest(text)  # YAML gives a date object here
+    assert (m.maintainer, m.last_verified) == ("@octocat", dt.date(2026, 10, 1))
+    quoted = mf.manifest_from_data({**BASE, "last_verified": "2026-10-01", "maintainer": "Jan K"})
+    assert quoted.last_verified == dt.date(2026, 10, 1)
+    # What the registry stores (JSON) validates again to the same manifest.
+    stored = m.model_dump(mode="json", exclude_none=True)
+    assert stored["last_verified"] == "2026-10-01"
+    assert mf.Manifest.model_validate(stored) == m
+
+
+def test_maintainer_typo_gets_a_did_you_mean():
+    issues = _issues({**BASE, "maintaner": "@octocat"})
+    assert any('did you mean "maintainer"' in i for i in issues), issues
+
+
 @pytest.mark.parametrize(
     ("changes", "expected"),
     [
@@ -73,6 +93,14 @@ def test_valid_file_and_fetch_manifests():
         ({"version": "v" * 21}, "version"),
         ({"author": "a" * 81}, "author"),
         ({"description": "d" * 281}, "description"),
+        ({"maintainer": "m" * 81}, "maintainer"),
+        ({"maintainer": ""}, "maintainer"),
+        ({"last_verified": "2026-13-01"}, "last_verified: must be an ISO date"),
+        ({"last_verified": "2026-1-2"}, "last_verified: must be an ISO date"),
+        ({"last_verified": "01.10.2026"}, "last_verified: must be an ISO date"),
+        ({"last_verified": 20261001}, "last_verified: must be an ISO date"),
+        ({"last_verified": "2026-10-01T10:00:00"}, "last_verified: must be an ISO date"),
+        ({"last_verified": dt.datetime(2026, 10, 1, 10, tzinfo=dt.UTC)}, "not a timestamp"),
         ({"module": "loans"}, "module"),
         ({"kind": "stream"}, "kind"),
         ({"run": []}, "run"),
