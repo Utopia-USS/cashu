@@ -5,9 +5,11 @@ outflow on one side and an inflow on the other. These are not real income or
 expense — they must be flagged so monthly spending/income stats don't double
 count them (net worth is unaffected either way).
 
-Matching is deliberately conservative: an amount + date match alone is treated
-as coincidence unless there's a counterparty signal (the other account's IBAN,
-or a name pointing at the other bank/account holder).
+Matching is deliberately conservative and IBAN-only: an outflow and an inflow of
+the same amount within a few days pair up only when the counterparty IBAN on one
+leg is the other account's own IBAN. Names are never a signal (bank fee
+descriptions routinely contain the bank's own name), and an amount + date match
+alone is treated as coincidence.
 """
 
 from __future__ import annotations
