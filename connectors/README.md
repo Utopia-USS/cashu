@@ -67,7 +67,7 @@ layout and to exercise the catalog test. Do not install it for real data.
    ```bash
    cashu connectors test connectors/<id> --file connectors/<id>/fixtures/<sample>    # file kind
    cashu connectors test connectors/<id> --fixture connectors/<id>/fixtures/<x>.json # fetch kind
-   pytest tests/test_connector_catalog.py
+   pytest -m catalog tests/test_connector_catalog.py   # what the connectors-catalog CI job runs
    ```
 
 6. For a `fetch` connector, list only the hosts it needs and say in the README which key it needs and

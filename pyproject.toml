@@ -96,3 +96,7 @@ target-version = "py312"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+# The community connector catalog is tested on its own (CI job connectors-catalog, informational):
+# `pytest -m catalog tests/test_connector_catalog.py`. A later -m overrides this one.
+addopts = ["-m", "not catalog"]
+markers = ["catalog: the community connector catalog (connectors/), deselected by default"]

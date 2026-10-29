@@ -41,6 +41,7 @@ CI runs these on every pull request; run them before you push.
 | Frontend typecheck | `cd frontend && npm run typecheck` |
 | Frontend unit tests | `cd frontend && npm test` |
 | Frontend build | `cd frontend && npm run build` |
+| Connector catalog (informational, macOS) | `pytest -m catalog tests/test_connector_catalog.py` |
 | Browser e2e (not in CI) | `cd frontend && npm run build && npm run e2e` |
 
 The Python tests run on Linux and macOS (required) and Windows (informational for now: cashU is meant
