@@ -140,8 +140,8 @@ fi
 #         against a download on a second machine. The archive is checked before it is unpacked; a
 #         cached archive is checked again on every build.
 DENO_VERSION="2.9.1"
-DENO_SHA256_AARCH64=""  # sha256 of deno-aarch64-apple-darwin.zip (v$DENO_VERSION): not pinned yet
-DENO_SHA256_X86_64=""   # sha256 of deno-x86_64-apple-darwin.zip (v$DENO_VERSION): not pinned yet
+DENO_SHA256_AARCH64="ee3473502118eab301eca93aa6b31d6b0b6c1602d0f59e4cb89d4a262b12f6e7"  # deno-aarch64-apple-darwin.zip
+DENO_SHA256_X86_64="89cbc8c974247772d9200724741b4e692ef49fe470b2ff555da905817c3daa11"   # deno-x86_64-apple-darwin.zip
 DENO_BIN=""
 DENO_UNPINNED=0
 warn_deno() {

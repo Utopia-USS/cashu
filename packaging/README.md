@@ -56,11 +56,13 @@ without anything installed (docs/agents/connector-runtime.md). Decisions:
   sha256 per architecture of the official `deno-<target>.zip` from github.com/denoland/deno/releases.
   The archive is downloaded once into the build folder and checked against the pinned sha256 on every
   build, before it is unpacked; the unpacked binary must report that version. The app itself never
-  downloads anything. The sha256 constants are **empty until pinned**: until then the script builds
-  the app **without Deno** and prints a loud warning (start and end of the build; the summary says
-  `deno: NOT bundled`), so the ship step never blocks; Deno connectors in such a build fail with
-  "deno was not found" unless the Mac has its own deno. `--skip-deno` builds without it on purpose.
-  Pinning the hashes is an owner step: "Pinning the Deno release" below.
+  downloads anything. Deno 2.9.1 is pinned (2026-10-30): the GitHub asset digests and the
+  release's `.sha256sum` files agreed for both architectures. If the constants are ever emptied
+  (a new version not pinned yet), the script builds the app **without Deno** and prints a loud
+  warning (start and end of the build; the summary says `deno: NOT bundled`), so the ship step never
+  blocks; Deno connectors in such a build fail with "deno was not found" unless the Mac has its own
+  deno. `--skip-deno` builds without it on purpose. Pinning a new version: "Pinning the Deno release"
+  below.
 - **Location.** `packaging/cashu.spec` adds it as a binary in folder `deno/` of the bundle
   (`Contents/Frameworks/deno/deno`), with the MIT license (`packaging/third-party/deno-LICENSE.md`).
   `core/connectors/manifest.py` `bundled_interpreter` prefers it over any `deno` on the search path;
