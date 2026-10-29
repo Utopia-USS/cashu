@@ -231,8 +231,11 @@ def _section_files(ctx: Context) -> str:
 - `scripts/`: converters and helper scripts you write (Python standard library only). You run them
   with a Bash command the user approves; the app never runs them.
 - `{CONNECTORS}/`: connectors you write (`{CONNECTORS}/<id>/`; the contract is
-  `.claude/skills/import-builder/references/connectors.md`); `propose_connector` submits one. The app
-  runs one only after the owner approves it in Ustawienia > Konektory.
+  `.claude/skills/import-builder/references/connectors.md`); `propose_connector` submits one. Before
+  writing one, check the community catalog shipped with the app (`connectors()` lists it; `cashu
+  connectors catalog list` prints its folder for `cashu connectors test`): `propose_connector(catalog_id=...)`
+  installs an entry the same way. The app runs one only after the owner approves it in Ustawienia >
+  Konektory.
 - `{INBOX}/`: the user saves exports here (renamed if the file name holds an account number). Open
   one when the user hands it to you; with the blind route `inspect_export` shows its masked
   structure. Converter output goes to `{INBOX}/converted/` and is deleted after the owner commits the
