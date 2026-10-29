@@ -10,6 +10,7 @@ cashu invest strategy init [--template passive_etf] [--force]
 cashu invest strategy validate
 cashu invest run [--offline] [--all]
 cashu invest macro refresh
+cashu invest instruments merge SOURCE_ID TARGET_ID [--dry-run]
 """
 
 from __future__ import annotations
@@ -125,9 +126,7 @@ def _read_mapping(mapping: Path | None) -> str | None:
 def import_cmd(
     file: Annotated[
         Path,
-        typer.Argument(
-            exists=True, dir_okay=False, help="cashu-import CSV/JSON or a CSV export."
-        ),
+        typer.Argument(exists=True, dir_okay=False, help="cashu-import CSV/JSON or a CSV export."),
     ],
     account: Annotated[
         int,
@@ -468,6 +467,67 @@ def macro_refresh_cmd() -> None:
         raise typer.Exit(1)
 
 
+def instruments_merge_cmd(
+    source: Annotated[
+        int, typer.Argument(help="Instrument id to merge away (deleted afterwards).")
+    ],
+    target: Annotated[
+        int, typer.Argument(help="Instrument id that stays and receives everything.")
+    ],
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Show what would move, write nothing.")
+    ] = False,
+) -> None:
+    """Merge two instruments that are the same security: theses, notes, alerts, watchlist, prices and
+    aliases move to TARGET, SOURCE is deleted. Backs up the database first."""
+    import datetime as dt
+
+    from cashu.core import paths
+    from cashu.core.legacy import backup_sqlite
+
+    from .store import instrument_merge
+
+    init_db()
+    c = cliutil.console
+    backup = None
+    if not dry_run:
+        with get_session() as s:  # validate before the backup: a refused merge writes nothing
+            try:
+                instrument_merge.merge_instruments(s, source, target, dry_run=True)
+            except instrument_merge.MergeError as e:
+                cliutil.err_console.print(str(e), markup=False)
+                raise typer.Exit(1) from None
+            database = s.get_bind().url.database  # the file the sessions write, not a default path
+        if not database or database == ":memory:" or not Path(database).exists():
+            cliutil.err_console.print("No database file to back up: merge not run.")
+            raise typer.Exit(1)
+        stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%d-%H%M%S")
+        backup = backup_sqlite(
+            Path(database),
+            paths.backups_dir() / f"cashu-pre-merge-{source}-into-{target}-{stamp}.db",
+        )
+    try:
+        with get_session() as s:
+            report = instrument_merge.merge_instruments(s, source, target, dry_run=dry_run)
+    except instrument_merge.MergeError as e:
+        cliutil.err_console.print(str(e), markup=False)
+        raise typer.Exit(1) from None
+    head = "Would merge" if dry_run else "Merged"
+    c.print(
+        f"{head} {report.source_id} ({report.source_name}) into {report.target_id} "
+        f"({report.target_name})",
+        markup=False,
+    )
+    for name, n in sorted(report.moved.items()):
+        c.print(f"  moved {n}: {name}", markup=False)
+    for name, n in sorted(report.dropped.items()):
+        c.print(f"  dropped {n} duplicate(s): {name}", markup=False)
+    for line in report.notes:
+        c.print(f"  {line}", markup=False)
+    if backup is not None:
+        c.print(f"Backup: {backup}", markup=False, soft_wrap=True)
+
+
 def register_module(app: typer.Typer) -> None:
     """Commands of the `cashu invest` sub-app."""
     from .performance.cli import register as register_performance  # backfill, performance
@@ -491,6 +551,9 @@ def register_module(app: typer.Typer) -> None:
     macro_app = typer.Typer(help="Macro reference series (regime cards).", no_args_is_help=True)
     macro_app.command("refresh")(macro_refresh_cmd)
     app.add_typer(macro_app, name="macro")
+    instruments_app = typer.Typer(help="Instrument maintenance.", no_args_is_help=True)
+    instruments_app.command("merge")(instruments_merge_cmd)
+    app.add_typer(instruments_app, name="instruments")
     from .cli_alerts import register as register_alerts  # alerts, watchlist
 
     register_alerts(app)
