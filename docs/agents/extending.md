@@ -14,6 +14,17 @@ Adding a capability rather than fixing one. Read [conventions.md](conventions.md
 (`import-builder` skill). The built-in parsers are frozen (no new ones) and will move to connectors;
 the steps below are only for maintaining the existing mBank / Erste / Pekao parsers.
 
+The three built-ins already have catalog twins, Deno ports that produce the same rows:
+[`connectors/mbank-csv`](../../connectors/mbank-csv/), [`erste-csv`](../../connectors/erste-csv/) and
+[`pekao-csv`](../../connectors/pekao-csv/). The switch-over (removing the built-ins, the import path
+then going through the connectors) is pending the owner's check on real exports. Until then **a fix to
+a built-in parser must be ported to its twin** (`parse.ts`; the shared `pycompat.ts` holds the
+Python-compatible primitives): `tests/test_catalog_bank_parsers.py` asserts that both give the same
+content keys, account, currency and balances on every fixture, and fails otherwise. It also pins the
+differences that remain by design: a connector document goes through the newest-day rule (a late row
+inside the stored span is overlap, not new), and a title over 200 characters or a counterparty
+account number under 8 characters cannot be carried as the built-in keeps them.
+
 1. New file `src/cashu/modules/budget/ingestion/csv_import/<bank>.py` - a thin config on top of the
    engine in `base.py` (model it on `mbank.py`/`pekao.py`: encoding, separator, columns, where
    currency/IBAN/balance come from; set `bank = "<id>"`). Keep the bank's Polish CSV headers verbatim -

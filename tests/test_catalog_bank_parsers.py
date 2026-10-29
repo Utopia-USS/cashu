@@ -16,7 +16,8 @@ run of every fixture is ``tests/test_connector_catalog.py`` (``pytest -m catalog
 3. ``detect``: each connector says yes only for its own bank's files.
 4. Import scenarios on a temp DB through the app's import (HTTP preview / commit, the connector
    installed and approved, NoSandbox): built-in first then the connector, and the reverse; zero
-   duplicates, exactly the new rows. Plus the one case where the rules necessarily differ.
+   duplicates, exactly the new rows. Plus the cases where the results necessarily differ.
+5. The agent's path: MCP ``test_connector`` on a workspace copy, in the real macOS sandbox.
 
 All data is synthetic.
 """
@@ -30,6 +31,7 @@ import os
 import random
 import shutil
 import subprocess
+import sys
 from decimal import Decimal
 from pathlib import Path
 
@@ -580,3 +582,42 @@ def test_where_the_format_forces_a_difference(tmp_path, deno_dir):
     assert base_hash(1, long_title[0]) != base_hash(1, long_title[1])
     assert base_hash(1, short_account[0]) != base_hash(1, short_account[1])
     assert base_hash(1, normal[0]) == base_hash(1, normal[1])
+
+
+# --------------------------------------------------------------------------- #
+# 5. The agent's path: MCP test_connector in the real sandbox (narrow read rules)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or not os.path.exists("/usr/bin/sandbox-exec"),
+    reason="macOS sandbox-exec only",
+)
+@pytest.mark.parametrize("cid", sorted(BANK_OF))
+def test_mcp_test_connector_passes_in_the_real_sandbox(cid, db_engine):
+    """A copy of the entry in a profile's workspace passes ``test_connector`` on its first fixture,
+    as the user's agent would run it before ``propose_connector(catalog_id=...)``."""
+    from cashu.core import profiles
+    from cashu.core.mcp.server import CashuMcp
+    from cashu.core.workspace import service as workspace
+
+    with get_session() as s:
+        p = profiles.create_profile(s, name="Anna Test", modules_=["budget"])
+        pid, slug = p.id, p.slug
+    root = workspace.workspace_path(slug) / "connectors" / cid
+    shutil.copytree(CATALOG / cid, root)
+    fixture = min((CATALOG / cid / "fixtures").glob("*.csv"))
+    sample = workspace.workspace_path(slug) / "inbox" / fixture.name
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(fixture, sample)
+
+    result = CashuMcp(pid).call("test_connector", {"path": str(root), "file": str(sample)})
+    assert result.ok, result.error
+    d = result.data
+    assert d["ok"] is True, d["runs"]
+    assert d["manifest"]["interpreter"] == "deno"
+    assert [(r["command"], r["outcome"]) for r in d["runs"]] == [("detect", "ok"), ("convert", "ok")]
+    assert d["detect"]["match"] is True
+    expected = len(get_importer(BANK_OF[cid]).parse(fixture).transactions)
+    assert d["document"]["valid"] is True
+    assert d["document"]["counts"]["transactions"] == expected

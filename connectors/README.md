@@ -49,8 +49,21 @@ Two manifest keys are optional for any connector but **required in the catalog**
 Every file of the directory is installed and shown to the owner (and covered by the hash), fixtures and
 README included. Keep the directory small and readable: the owner reviews it before approving.
 
-[`example-bank-csv/`](example-bank-csv/) is an example entry for a made-up bank; it exists to show the
-layout and to exercise the catalog test. Do not install it for real data.
+## Entries
+
+| id | bank / source | kind, module | notes |
+| --- | --- | --- | --- |
+| [`mbank-csv`](mbank-csv/) | mBank: account history CSV (incl. eKonto walutowe) | file, budget | Deno; twin of the built-in mBank parser |
+| [`erste-csv`](erste-csv/) | Erste Bank Polska / former Santander Bank Polska: account history CSV (legacy Santander exports too) | file, budget | Deno; twin of the built-in Erste parser |
+| [`pekao-csv`](pekao-csv/) | Bank Pekao: operation history CSV | file, budget | Deno; twin of the built-in Pekao parser |
+| [`example-bank-csv`](example-bank-csv/) | made-up "Przykladowy Bank" | file, budget | example only: shows the layout and exercises the catalog test; never for real data |
+
+The three bank entries are ports of cashU's built-in CSV parsers, kept equivalent to them (same
+rows, content keys, account, currency, balances, institution id) by
+`tests/test_catalog_bank_parsers.py`, which is part of the core test run. They are written so the
+built-ins can be removed from the core later; until that switch-over the app still reads these banks
+with its built-in parsers, and a fix to a built-in parser must be ported to its twin. Their
+`pycompat.ts` (and `connector.ts`) is the same file in all three directories.
 
 ## Adding or updating a connector (pull request checklist)
 
