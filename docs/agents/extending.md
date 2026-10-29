@@ -21,7 +21,9 @@ the steps below are only for maintaining the existing mBank / Erste / Pekao pars
 2. Add one `Institution` entry to `BUILTIN` in `src/cashu/core/institutions.py`: id, kind `bank`,
    display name, `csv_importer="<module path>:<Class>"` and the `aspsp_patterns` that map its Enable
    Banking ASPSP name. Import, auto-detection, `--bank` choices and `statements/<id>/` directories pick
-   it up from there.
+   it up from there. An ASPSP without an entry already syncs under a generic id slugged from its name
+   (`institutions.slug_id`, e.g. `ing-bank-slaski`); when you add an entry for such a bank, use that
+   slug as the id, or its existing Open Banking accounts no longer match the new id.
 3. Add a test in `tests/test_parsing.py` using a **synthetic** sample of the format.
 
 ## Adding a module

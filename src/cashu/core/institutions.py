@@ -18,6 +18,8 @@ parser config in ``modules/budget/ingestion/csv_import/`` (see docs/agents/exten
 from __future__ import annotations
 
 import importlib
+import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -83,10 +85,15 @@ def get(institution_id: str) -> Institution:
 
 
 def display_name(institution_id: str) -> str:
-    """Display name, or the id itself for an id no entry knows (never raises)."""
+    """Display name; for an id no entry knows (an Open Banking bank without an entry,
+    an imported institution id) its words, capitalized: "ing-bank-slaski" ->
+    "Ing Bank Slaski". Never raises."""
     _ensure_loaded()
     inst = _REGISTRY.get(institution_id)
-    return inst.name if inst else institution_id
+    if inst is not None:
+        return inst.name
+    words = [w for w in re.split(r"[-_\s]+", institution_id or "") if w]
+    return " ".join(w[:1].upper() + w[1:] for w in words) or (institution_id or "")
 
 
 def all_institutions(kind: Kind | None = None) -> list[Institution]:
@@ -112,6 +119,22 @@ def csv_importer(institution_id: str):
         module_name, _, attr = inst.csv_importer.partition(":")
         _IMPORTERS[inst.id] = getattr(importlib.import_module(module_name), attr)()
     return _IMPORTERS[inst.id]
+
+
+_MAX_ID = 32  # the institution id rule: ^[a-z][a-z0-9_-]{0,31}$ (canonical.INSTITUTION_PATTERN)
+_NO_DECOMPOSITION = str.maketrans({"ł": "l", "Ł": "L", "ø": "o", "Ø": "O", "ß": "ss", "đ": "d"})
+
+
+def slug_id(name: str) -> str:
+    """A generic institution id from a free-form name: lower case, ASCII, words joined
+    by "-", at most 32 characters, starting with a letter ("ING Bank Śląski S.A." ->
+    "ing-bank-slaski-s-a"). Empty when the name holds no letters or digits."""
+    text = unicodedata.normalize("NFKD", (name or "").translate(_NO_DECOMPOSITION))
+    text = "".join(c for c in text if not unicodedata.combining(c)).lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    if slug and not slug[0].isalpha():
+        slug = f"bank-{slug}"
+    return slug[:_MAX_ID].rstrip("-")
 
 
 def from_aspsp(aspsp_name: str | None) -> Institution | None:

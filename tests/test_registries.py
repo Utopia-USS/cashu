@@ -129,7 +129,10 @@ def test_builtin_institutions_keep_the_upstream_ids():
     assert institutions.get("manual").kind == "manual"
     assert institutions.csv_ids() == ["mbank", "erste", "pekao"]
     assert institutions.display_name("erste") == "Erste Bank Polska"
-    assert institutions.display_name("gone-bank") == "gone-bank"  # never raises
+    # An id no entry knows (a generic Open Banking bank) reads as words; never raises.
+    assert institutions.display_name("gone-bank") == "Gone Bank"
+    assert institutions.display_name("ing-bank-slaski") == "Ing Bank Slaski"
+    assert institutions.display_name("") == ""
 
 
 def test_open_banking_aspsp_mapping():
@@ -140,7 +143,63 @@ def test_open_banking_aspsp_mapping():
     assert bank_from_aspsp("Bank Millennium") == "millennium"
     assert bank_from_aspsp("Revolut") == "revolut"
     with pytest.raises(ValueError, match="pass bank explicitly"):
-        bank_from_aspsp("Bank Test")
+        bank_from_aspsp("")
+    with pytest.raises(ValueError, match="pass bank explicitly"):
+        bank_from_aspsp(None)
+
+
+def test_unknown_aspsp_maps_to_a_generic_institution_id():
+    import re
+
+    from cashu.modules.budget.ingestion.canonical import INSTITUTION_PATTERN
+
+    assert bank_from_aspsp("Bank Test") == "bank-test"
+    assert bank_from_aspsp("ING Bank Śląski S.A.") == "ing-bank-slaski-s-a"
+    assert bank_from_aspsp("Łódzki Bank Spółdzielczy") == "lodzki-bank-spoldzielczy"
+    assert bank_from_aspsp("4finance") == "bank-4finance"
+    long = bank_from_aspsp("Bank Spółdzielczy w Ząbkowicach Śląskich Oddział Bardo")
+    # A slug never collides with another institution's id.
+    assert bank_from_aspsp("Manual") == "ob-manual"
+    for slug in (long, bank_from_aspsp("Bank Test"), bank_from_aspsp("4finance"), "ob-manual"):
+        assert re.fullmatch(INSTITUTION_PATTERN, slug), slug
+    assert institutions.display_name(bank_from_aspsp("Bank Test")) == "Bank Test"
+
+
+def test_open_banking_sync_of_an_unknown_bank_stores_a_generic_account(
+    session, fake_eb, make_eb_txn,
+):
+    from sqlmodel import select
+
+    from cashu.core.models import Account
+    from cashu.modules.budget.ingestion.enable_banking.sync import sync_session
+
+    client = fake_eb({"s1": {
+        "aspsp": {"name": "Bank Spółdzielczy Testowy"},
+        "accounts": [{"uid": "u1", "account_id": {"iban": "PL99100000000000000000000042"},
+                      "currency": "PLN"}],
+        "transactions": {"u1": [make_eb_txn("2026-10-01", "12.00", "KAWIARNIA TEST", ref="g-1")]},
+        "balances": {"u1": []},
+    }})
+    results = sync_session(session, client, "s1")
+    session.flush()
+    assert len(results) == 1
+    (acc,) = session.exec(select(Account).where(Account.bank == "bank-spoldzielczy-testowy")).all()
+    assert institutions.display_name(acc.bank) == "Bank Spoldzielczy Testowy"
+
+
+def test_eb_bank_override_takes_a_generic_id():
+    import typer
+
+    from cashu.modules.budget.cli import _check_bank
+
+    assert _check_bank("mbank", csv=False) == "mbank"
+    assert _check_bank("ing-bank-slaski", csv=False) == "ing-bank-slaski"
+    for bad in ("ING", "1bank", "manual", "a" * 40):
+        with pytest.raises(typer.BadParameter):
+            _check_bank(bad, csv=False)
+    # A CSV import still needs a bank with a parser.
+    with pytest.raises(typer.BadParameter):
+        _check_bank("ing-bank-slaski", csv=True)
 
 
 def test_csv_importers_come_from_the_registry():

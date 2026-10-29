@@ -24,12 +24,20 @@ _BALANCE_PRIORITY = {"CLBD": 0, "ITAV": 1, "XPCD": 2, "PRCD": 3, "OTHR": 4}
 
 
 def bank_from_aspsp(name: str | None) -> str:
-    """Institution id of an Enable Banking ASPSP (``aspsp_patterns`` in the
-    institution registry); ValueError when no institution matches."""
+    """Institution id of an Enable Banking ASPSP: the registry entry whose
+    ``aspsp_patterns`` match, else a generic id slugged from the ASPSP name
+    ("ING Bank Śląski" -> "ing-bank-slaski"), so any Open Banking bank can sync.
+    A slug that is already another institution's id gets an "ob-" prefix.
+    ValueError only for a name with nothing to slug."""
     inst = institutions.from_aspsp(name)
-    if inst is None:
-        raise ValueError(f"Cannot map ASPSP '{name}' to a known bank; pass bank explicitly.")
-    return inst.id
+    if inst is not None:
+        return inst.id
+    slug = institutions.slug_id(name or "")
+    if not slug:
+        raise ValueError(f"Cannot map ASPSP '{name}' to a bank; pass bank explicitly.")
+    if slug in institutions.ids():
+        slug = institutions.slug_id(f"ob-{slug}")
+    return slug
 
 
 def _parse_date(value: Any) -> date | None:

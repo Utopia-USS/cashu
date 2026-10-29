@@ -7,6 +7,7 @@ Every command works on the active profile (root ``--profile`` option or
 from __future__ import annotations
 
 import functools
+import re
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -54,13 +55,20 @@ def eb_guard(fn):
 
 
 def _check_bank(bank: str | None, *, csv: bool) -> str | None:
-    """Validate a ``--bank`` institution id against the registry."""
+    """Validate a ``--bank`` institution id: a CSV import needs a bank with a parser;
+    Open Banking takes a known bank or any generic institution id (the id rule of
+    unknown institutions: lower case, starts with a letter, at most 32 characters)."""
     if bank is None:
         return None
+    from .ingestion.canonical import INSTITUTION_PATTERN
+
     known = institutions.csv_ids() if csv else institutions.ids("bank")
-    if bank not in known:
-        raise typer.BadParameter(f"Unknown bank '{bank}'. Known: {', '.join(known)}.")
-    return bank
+    if bank in known:
+        return bank
+    if not csv and bank not in institutions.ids() and re.fullmatch(INSTITUTION_PATTERN, bank):
+        return bank
+    hint = "" if csv else " or a lower-case id such as 'ing-bank-slaski'"
+    raise typer.BadParameter(f"Unknown bank '{bank}'. Known: {', '.join(known)}{hint}.")
 
 
 def _check_account_type(value: str) -> str:
@@ -428,14 +436,20 @@ def eb_check() -> None:
 @eb_guard
 def eb_banks(country: Annotated[str | None, typer.Option()] = None) -> None:
     """List available banks (ASPSPs) for a country."""
-    aspsps = _client().get_aspsps(country or settings.eb_country)
+    from .ingestion.enable_banking.sync import bank_from_aspsp
+
+    aspsps =_client().get_aspsps(country or settings.eb_country)
     table = Table(title=f"ASPSPs ({country or settings.eb_country})")
     table.add_column("name")
     table.add_column("country")
     table.add_column("institution")
     for a in aspsps:
         inst = institutions.from_aspsp(a.get("name"))
-        table.add_row(str(a.get("name")), str(a.get("country")), inst.id if inst else "-")
+        try:
+            mapped = inst.id if inst else f"{bank_from_aspsp(a.get('name'))} (generic)"
+        except ValueError:
+            mapped = "-"
+        table.add_row(str(a.get("name")), str(a.get("country")), mapped)
     cliutil.console.print(table)
 
 
