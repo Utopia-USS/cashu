@@ -112,7 +112,8 @@ def system() -> dict:
             "anthropic": secrets.get_secret(secrets.ANTHROPIC) is not None,
             "enable_banking_key": settings.eb_key_file.exists(),
         },
-        # Connectors run only inside the macOS sandbox (F10): elsewhere every run is refused.
+        # Connectors run only inside a native sandbox (F10: macOS sandbox-exec, Linux Landlock): elsewhere
+        # every run is refused.
         "connectors": _connectors_platform(),
         # Steps of the move from the pre-rename install that failed or were refused (F11).
         "rename_migration": migrate_legacy.problems(),

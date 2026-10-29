@@ -139,9 +139,9 @@ def test_system(api_empty, tmp_path):
     assert worker["installed"] is False and worker["last_run"] is None
     assert worker["last_status"] is None and worker["next_run"] is None
     assert body["secrets"] == {"anthropic": False, "enable_banking_key": False}
-    # F10 design C1: whether connectors can run here (only inside the macOS sandbox)
-    assert body["connectors"]["platform"] in ("mac", "unsupported")
-    assert body["connectors"]["sandbox"] is (body["connectors"]["platform"] == "mac")
+    # F10 design C1: whether connectors can run here (only inside a native sandbox)
+    assert body["connectors"]["platform"] in ("mac", "linux", "unsupported")
+    assert body["connectors"]["sandbox"] is (body["connectors"]["platform"] != "unsupported")
 
 
 def test_modules(api_empty):

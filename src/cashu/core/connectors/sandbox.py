@@ -12,6 +12,7 @@
   (``forbidden_import``) when a module lies outside the connector dir or is not a ``file:`` / ``node:``
   module (:func:`module_graph_problem`), or with ``module_parse_error`` when a module of the connector
   does not load or parse (its imports would be invisible).
+- ``sandbox_linux.LinuxSandbox`` on Linux with Landlock (see that module).
 - :class:`UnsupportedSandbox` (every other platform): nothing runs, every run fails with
   ``sandbox_unavailable``, Deno connectors included: Deno's permissions alone are not enough (raw
   sockets to a manifest host bypass the egress proxy). There is no unsandboxed fallback in production
