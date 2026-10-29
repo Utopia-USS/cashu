@@ -1,0 +1,54 @@
+name: New data source
+description: A bank, broker, exchange or other source cashU cannot read yet.
+labels: [data source]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        cashU does not add new bank or broker parsers to the core. A new source is a **connector**:
+        a small program with a `connector.yaml` manifest that converts an export file or fetches from
+        an API, approved once by the owner and run in a sandbox. Read
+        [docs/connectors.md](https://github.com/Utopia-USS/cashu/blob/main/docs/connectors.md) and the
+        [examples](https://github.com/Utopia-USS/cashu/tree/main/examples/connectors); the
+        `/import-builder` skill can write one with you. Community connectors will live in a top-level
+        `connectors/` directory, each with its own maintainer (see CONTRIBUTING.md).
+
+        **Never attach a real export.** Describe the format (column names, file type) or attach a
+        file with made-up values only.
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      placeholder: e.g. XTB, Revolut, ING Bank Śląski, Binance
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Export file (CSV, XLSX, JSON, ...)
+        - API (fetch)
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      options:
+        - Budget (bank transactions)
+        - Investments (broker / exchange history)
+    validations:
+      required: true
+  - type: textarea
+    id: format
+    attributes:
+      label: Format
+      description: File type, encoding, column names or a link to the API docs. Synthetic sample rows only.
+  - type: checkboxes
+    id: maintainer
+    attributes:
+      label: Maintainer
+      options:
+        - label: I would write or maintain this connector.

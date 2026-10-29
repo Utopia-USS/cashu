@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in cashU does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste real financial data** here: no statements, balances, account numbers, IBANs,
+        names or screenshots of your own dashboard. Describe the problem on synthetic or made-up
+        values (the demo data from `scripts/demo_data.py` works well). Security issues go through
+        SECURITY.md, not a public issue.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. cashu ...
+        2. Open ...
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      multiple: true
+      options:
+        - Dashboard (cashu serve / cashU.app)
+        - CLI
+        - MCP server / agent skills
+        - Import (CSV, Open Banking, connector)
+        - Background worker
+        - Other
+  - type: input
+    id: version
+    attributes:
+      label: cashU version or commit
+      placeholder: 0.3.0 or a commit hash
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and Python version
+      placeholder: macOS 15, Python 3.12
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines of `<data dir>/logs/*.log` or the terminal output, with any amounts, names and account numbers removed.
+      render: text
