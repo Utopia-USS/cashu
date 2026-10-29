@@ -10,12 +10,12 @@ import { type CSSProperties, type ReactNode, useState } from "react";
 import { useAsync } from "../../../../hooks";
 import { Skeleton } from "../../../../ui";
 import { Mark, UnreadChip, Widget } from "../../../../widgets";
-import { dm, pct, plural, wdm } from "../../labels";
+import { dm, pct, wdm } from "../../labels";
 import { canRestore, useResearchActions, useSegments } from "./data";
 import { getResearch } from "./api";
 import { invKey } from "../api";
 import {
-  BOUNDARY, countsText, healthOf, isLive, lastDone, latestRun, nextSaturday, nNotes,
+  countsText, healthOf, isLive, lastDone, latestRun, nextSaturday, nNotes,
   researchCommand, runNotes, runTag, workspacePath, acceptedAt, watchItemId, latestTitle,
 } from "./logic";
 import { CandidateCard, type CandidateState, CopyCommand, HealthPill, ScheduleHow, SentimentBars, TopicRow } from "./primitives";
@@ -25,6 +25,9 @@ import {
 import type { InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, Workspace } from "./types";
 import { InstLabel, type InstLike } from "../InstLabel";
 import { MacroColumn } from "./MacroWidgets";
+import { S as L } from "./logic.strings.ts";
+import { S as P } from "./primitives.strings.ts";
+import { S } from "./Strip.strings.ts";
 
 export interface StripCtx {
   slug: string;
@@ -58,21 +61,21 @@ export function ResearchStrip({ ctx, runs, summary }: {
   const cmd = researchCommand(ctx.workspace?.path, ctx.slug);
   if (tag.state === "stale") {
     return (
-      <Widget title="Research" className="rsch" tags={<span className={`tag ${tag.tone}`}>{tag.text}</span>}
-        controls={<button className="lnk" onClick={() => ctx.onOpenResearch()}>otwórz notatki</button>} body="tight"
-        footer={<><span>rutyna: <b>sobota 07:00</b> · Claude Code</span><span className="spacer" /><span>{BOUNDARY}</span></>}>
+      <Widget title={S.research} className="rsch" tags={<span className={`tag ${tag.tone}`}>{tag.text}</span>}
+        controls={<button className="lnk" onClick={() => ctx.onOpenResearch()}>{S.openNotes}</button>} body="tight"
+        footer={<><span>{S.routine} <b>{S.saturday}</b> · Claude Code</span><span className="spacer" /><span>{L.boundary}</span></>}>
         <MacroColumn ctx={ctx} />
         <NotRun ctx={ctx} runs={runs} cmd={cmd} />
       </Widget>
     );
   }
   return (
-    <Widget title="Research" className="rsch" id="inv-research"
-      tags={<span className={`tag ${tag.tone}`} title={last?.status === "running" ? "przebieg trwa…" : `następny ${wdm(nextSaturday(ctx.today))} · rutyna Claude Code`}>{tag.text}</span>}
+    <Widget title={S.research} className="rsch" id="inv-research"
+      tags={<span className={`tag ${tag.tone}`} title={last?.status === "running" ? S.running : S.next(wdm(nextSaturday(ctx.today)))}>{tag.text}</span>}
       controls={<>
-        {tag.state === "failed" && <CopyCommand cmd={cmd} label="Uruchom ponownie" primary={false} showCmd={false} />}
+        {tag.state === "failed" && <CopyCommand cmd={cmd} label={S.runAgain} primary={false} showCmd={false} />}
         <UnreadChip n={summary?.totals?.notes_unread ?? 0} />
-        <button className="lnk" onClick={() => ctx.onOpenResearch()}>wszystkie</button>
+        <button className="lnk" onClick={() => ctx.onOpenResearch()}>{S.all}</button>
       </>}
       body="tight">
       <div className="rsch2">
@@ -90,15 +93,15 @@ export function CandidatesRail({ ctx, candidates }: { ctx: StripCtx; candidates:
   const open = (candidates ?? []).filter((n) => !n.dismissed_at);
   const fresh = open.filter((n) => !ctx.watched(n) && !acceptedAt(n) && watchItemId(n) == null);
   return (
-    <Widget title="Kandydaci" id="inv-candidates" body="tight"
-      count={fresh.length ? <span title={`nowi wg strategii${ctx.strategyVersion != null ? ` v${ctx.strategyVersion}` : ""}`}>{fresh.length}</span> : undefined}
-      controls={open.length > 2 ? <button className="lnk" onClick={() => ctx.onOpenResearch("scope=candidates")}>wszyscy ({open.length})</button> : undefined}>
+    <Widget title={S.candidates} id="inv-candidates" body="tight"
+      count={fresh.length ? <span title={S.newByStrategy(ctx.strategyVersion != null ? ` v${ctx.strategyVersion}` : "")}>{fresh.length}</span> : undefined}
+      controls={open.length > 2 ? <button className="lnk" onClick={() => ctx.onOpenResearch("scope=candidates")}>{S.allCandidates(open.length)}</button> : undefined}>
       {candidates === undefined ? <Skeleton h={96} r={8} />
         : open.length ? <div className="cands">{open.slice(0, 2).map((n) => (
             <CandidateCard key={n.id} note={n} compact today={ctx.today} state={ctx.watched(n)} busy={actions.busy === n.id}
               onWatch={actions.watch} onDismiss={actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)} />
           ))}</div>
-        : <div className="empty">Brak nowych kandydatów.</div>}
+        : <div className="empty">{S.noCandidates}</div>}
     </Widget>
   );
 }
@@ -109,18 +112,18 @@ export function ThesisRow({ s, health, name, symbol, inst, muted, sub, right, on
   inst?: InstLike;
   sub?: ReactNode; right?: ReactNode; onOpen?: () => void;
 }) {
-  const line = sub ?? latestTitle(s) ?? (s.last_researched_at ? `research ${dm(s.last_researched_at)}` : "bez notatek");
+  const line = sub ?? latestTitle(s) ?? (s.last_researched_at ? S.researchOn(dm(s.last_researched_at)) : S.noNotes);
   return (
     <div className="rrow">
       {inst ? (
         <div style={{ minWidth: 0 }}>
           <InstLabel density="compact" inst={inst} text={name} onOpen={onOpen ? () => onOpen() : undefined} sub={<span title={latestTitle(s) ?? undefined}>{line}</span>}
-            badges={(s.unread ?? 0) > 0 && <Mark kind="notes" title={plural(s.unread!, "nowa notatka", "nowe notatki", "nowych notatek")} />} />
+            badges={(s.unread ?? 0) > 0 && <Mark kind="notes" title={P.nNewNotes(s.unread!)} />} />
         </div>
       ) : (
         <div style={{ minWidth: 0 }}>
           <div className="nm">{onOpen ? <button className="nm" onClick={onOpen}>{name}</button> : name}{symbol && symbol !== name && <span className="sym">{symbol}</span>}
-            {(s.unread ?? 0) > 0 && <> <Mark kind="notes" title={plural(s.unread!, "nowa notatka", "nowe notatki", "nowych notatek")} /></>}</div>
+            {(s.unread ?? 0) > 0 && <> <Mark kind="notes" title={P.nNewNotes(s.unread!)} /></>}</div>
           <div className="sub" title={latestTitle(s) ?? undefined}>{line}</div>
         </div>
       )}
@@ -139,9 +142,9 @@ function TopicsColumn({ ctx }: { ctx: StripCtx }) {
   const seg = useSegments(ctx.slug, "1w", ctx.nonce ?? 0);
   const d = seg.data;
   const head = <TopicsHead d={d} />;
-  if (!d) return <div className="tcol">{head}{seg.loading ? <Skeleton h={190} r={8} /> : <div className="empty-line">Brak danych tematów.</div>}</div>;
+  if (!d) return <div className="tcol">{head}{seg.loading ? <Skeleton h={190} r={8} /> : <div className="empty-line">{S.noTopicData}</div>}</div>;
   const rows = homeTopics(d);
-  if (!rows.length) return <div className="tcol">{head}<div className="empty-line">Brak tematów.</div></div>;
+  if (!rows.length) return <div className="tcol">{head}<div className="empty-line">{S.noTopics}</div></div>;
   return (
     <div className="tcol">
       {head}
@@ -153,7 +156,7 @@ function TopicsColumn({ ctx }: { ctx: StripCtx }) {
 /** `Tematy · tydzień -1,2 %` (home and review header); `extra` is appended to the count. */
 export function TopicsHead({ d, extra }: { d: (Pick<SegmentAttribution, "start" | "end" | "portfolio_return"> & Partial<Pick<SegmentAttribution, "residual">>) | null | undefined; extra?: string | null }) {
   return (
-    <div className="rsec">Tematy <span className="cnt" title={d ? windowTitle(d) : undefined}>· tydzień{d && d.portfolio_return != null && <> <span className={tone(d.portfolio_return)}>{pct(d.portfolio_return, true)}</span></>}{extra ? ` · ${extra}` : ""}</span></div>
+    <div className="rsec">{S.topics} <span className="cnt" title={d ? windowTitle(d) : undefined}>{S.week}{d && d.portfolio_return != null && <> <span className={tone(d.portfolio_return)}>{pct(d.portfolio_return, true)}</span></>}{extra ? ` · ${extra}` : ""}</span></div>
   );
 }
 
@@ -189,15 +192,15 @@ export function NotRun({ ctx, runs, cmd }: { ctx: Pick<StripCtx, "slug" | "today
   return (
     <div className="norun">
       <div className="grow">
-        <b>Rutyna nie uruchomiła się.</b>
+        <b>{S.routineNotRun}</b>
         {at && (
           <div className="d">
-            ostatni research {wdm(at)}{n != null ? ` · ${nNotes(n)}` : ""}{notesQ.data ? ` · ważnych ${live.length}${lastExpiry ? ` do ${dm(lastExpiry)}` : ""}` : ""}
+            {S.lastResearch(wdm(at))}{n != null ? ` · ${nNotes(n)}` : ""}{notesQ.data ? S.valid(live.length, lastExpiry ? dm(lastExpiry) : null) : ""}
           </div>
         )}
       </div>
       <CopyCommand cmd={cmd} />
-      <button className="btn" onClick={() => setHow((v) => !v)} aria-expanded={how}>Zaplanuj w Claude Code</button>
+      <button className="btn" onClick={() => setHow((v) => !v)} aria-expanded={how}>{S.scheduleIn}</button>
       {how && <ScheduleHow path={workspacePath(ctx.workspace?.path, ctx.slug)} onSettings={ctx.onSettings} />}
     </div>
   );

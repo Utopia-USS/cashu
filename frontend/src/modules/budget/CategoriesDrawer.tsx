@@ -4,13 +4,15 @@
 import { useRef, useState } from "react";
 import type { Category } from "../../core/api";
 import { errorText } from "../../core/messages";
-import { cur0s, plural } from "../../format";
+import { C } from "../../common.strings.ts";
+import { cur0s } from "../../format";
 import { useAsync } from "../../hooks";
 import { Drawer, Notice, Skeleton, Tag, useToast } from "../../ui";
 import { getUncategorized, postMerchantCategory, type UncategorizedRow } from "./api";
 import "./budget.css";
 import { useBudgetCurrency } from "./currency";
 import { recategorized } from "./logic";
+import { S } from "./CategoriesDrawer.strings.ts";
 
 export function CategoriesDrawer({ slug, categories, onClose }: {
   slug: string;
@@ -41,26 +43,26 @@ export function CategoriesDrawer({ slug, categories, onClose }: {
       changed.current = true;
       recategorized(slug);
       setSaved((s) => ({ ...s, [r.merchant_key]: true }));
-      toast(`${r.sample} → ${labelOf(category)} · ${plural(res.updated ?? 0, "transakcja", "transakcje", "transakcji")}`, 2500);
+      toast(`${r.sample} → ${labelOf(category)} · ${S.nTransactions(res.updated ?? 0)}`, 2500);
     } catch (e) {
-      setErr(`Nie zapisano: ${errorText(e)}`);
+      setErr(S.notSaved(errorText(e)));
     }
   };
   const close = () => onClose(changed.current);
 
   return (
-    <Drawer open title="Kategorie" label="Kategorie wydatków" width={560} onClose={close}
-      tag={rows ? <Tag>{plural(rows.length, "sprzedawca bez kategorii", "sprzedawców bez kategorii", "sprzedawców bez kategorii")}</Tag> : undefined}
-      footer={<><span className="fhint">Reguła działa też dla przyszłych importów.</span><span style={{ flex: 1 }} /><button className="btn" onClick={close}>Zamknij</button></>}>
+    <Drawer open title={S.title} label={S.label} width={560} onClose={close}
+      tag={rows ? <Tag>{S.uncategorized(rows.length)}</Tag> : undefined}
+      footer={<><span className="fhint">{S.ruleHint}</span><span style={{ flex: 1 }} /><button className="btn" onClick={close}>{C.close}</button></>}>
       {(err || (list.error && !rows)) && <Notice tone="neg">{err ?? list.error}</Notice>}
       {!rows ? (
         list.error ? null : <div style={{ display: "grid", gap: 10 }}>{[0, 1, 2, 3].map((i) => <Skeleton key={i} h={28} />)}</div>
       ) : !rows.length ? (
-        <div className="empty">Wszyscy sprzedawcy mają kategorię.</div>
+        <div className="empty">{S.allDone}</div>
       ) : (
         <table className="catd">
           <colgroup><col /><col className="c-n" /><col className="c-sum" /><col className="c-cat" /></colgroup>
-          <thead><tr><th>Sprzedawca</th><th className="num">liczba</th><th className="num">suma</th><th>kategoria</th></tr></thead>
+          <thead><tr><th>{S.colMerchant}</th><th className="num">{S.colCount}</th><th className="num">{S.colSum}</th><th>{S.colCategory}</th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.merchant_key}>
@@ -71,12 +73,12 @@ export function CategoriesDrawer({ slug, categories, onClose }: {
                 <td className="num">{r.count}</td>
                 <td className="num">{cur0s(r.total, r.currency)}</td>
                 <td>
-                  <select aria-label={`Kategoria: ${r.sample}`} value={picked[r.merchant_key] ?? ""} onChange={(e) => void choose(r, e.target.value)}>
-                    <option value="">wybierz…</option>
+                  <select aria-label={S.categoryOf(r.sample)} value={picked[r.merchant_key] ?? ""} onChange={(e) => void choose(r, e.target.value)}>
+                    <option value="">{S.choose}</option>
                     {expense.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-                    {other.length > 0 && <optgroup label="Przychody">{other.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</optgroup>}
+                    {other.length > 0 && <optgroup label={S.income}>{other.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</optgroup>}
                   </select>
-                  {saved[r.merchant_key] && <div><Tag tone="pos">zapisano</Tag></div>}
+                  {saved[r.merchant_key] && <div><Tag tone="pos">{S.saved}</Tag></div>}
                 </td>
               </tr>
             ))}

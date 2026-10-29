@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Menu, MenuHead, MenuItem, MenuSep } from "../ui";
 import type { Profile } from "./api";
+import { S } from "./chrome.strings.ts";
 
 // Avatar colours by profile position (tokens, so both themes work).
 const AVATAR = ["var(--nw)", "var(--net)", "var(--nw-property)", "var(--nw-loan)", "var(--nw-vehicle)"];
@@ -27,22 +28,22 @@ export function ProfileMenu({ profiles, active, onSelect, onNew, onSettings }: {
   return (
     <div className="menu-anchor">
       <button className={`btn pill ${open ? "open" : ""}`} aria-haspopup="menu" aria-expanded={open}
-        title="Profil" onClick={() => setOpen((o) => !o)}>
+        title={S.profile} onClick={() => setOpen((o) => !o)}>
         <Avatar name={active.name} color={avatarColor(profiles, active.slug)} />
         {active.name} <span className="muted" style={{ fontSize: 11 }}>{open ? "▴" : "▾"}</span>
       </button>
-      <Menu open={open} onClose={close} label="Profile">
-        <MenuHead>Profile</MenuHead>
+      <Menu open={open} onClose={close} label={S.profiles}>
+        <MenuHead>{S.profiles}</MenuHead>
         {profiles.map((p) => (
           <MenuItem key={p.slug} on={p.slug === active.slug}
             icon={<Avatar name={p.name} color={avatarColor(profiles, p.slug)} />}
             title={p.name}
-            right={p.slug === active.slug && profiles.length > 1 ? <span className="muted" aria-label="aktywny">✓</span> : undefined}
+            right={p.slug === active.slug && profiles.length > 1 ? <span className="muted" aria-label={S.active}>✓</span> : undefined}
             onSelect={() => { close(); if (p.slug !== active.slug) onSelect(p.slug); }} />
         ))}
         <MenuSep />
-        <MenuItem icon={<span className="avatar ghost" aria-hidden>+</span>} title="Nowy profil…" onSelect={() => { close(); onNew(); }} />
-        <MenuItem icon={<span className="muted" style={{ width: 22, textAlign: "center" }} aria-hidden>⚙</span>} title="Ustawienia"
+        <MenuItem icon={<span className="avatar ghost" aria-hidden>+</span>} title={S.newProfile} onSelect={() => { close(); onNew(); }} />
+        <MenuItem icon={<span className="muted" style={{ width: 22, textAlign: "center" }} aria-hidden>⚙</span>} title={S.settings}
           onSelect={() => { close(); onSettings(); }} />
       </Menu>
     </div>

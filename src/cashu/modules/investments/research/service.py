@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import and_, func, or_
 from sqlmodel import Session, select
 
+from cashu.core.i18n import tr
 from cashu.core.models import Profile, utcnow
 
 from ..domain import Instrument, opened_on
@@ -59,6 +60,10 @@ SEGMENT_NOTES_PER_WEEK = 1
 NOVELTY_EXEMPT_RELATIONS = ("invalidates", "fulfills")
 """Notes that always pass the weekly limits: these relations, or strength 3."""
 DRAFT_THESIS_PREFIX = "Szkic z researchu: "
+DRAFT_THESIS_PREFIX_EN = "Research draft: "
+DRAFT_THESIS_PREFIXES = (DRAFT_THESIS_PREFIX, DRAFT_THESIS_PREFIX_EN)
+"""A new draft thesis starts with the prefix of the UI language at accept time; undoing the accept
+recognises either (a draft written before a language switch)."""
 
 
 class ResearchError(ValueError):
@@ -111,7 +116,7 @@ def held_since(
     snapshot = build_snapshot(
         convert.sid(profile_id),
         transactions.transactions(session, profile_id),
-        as_of or dt.date.today(),  # noqa: DTZ011 - naive local date, like trade dates
+        as_of or dt.date.today(),
         renames=transactions.renames(session, profile_id),
     )
     grouped: dict[int, list] = {}
@@ -1181,7 +1186,9 @@ def accept_candidate(
             instrument_id,
             {
                 "entry_type": details.get("entry_type") or "trend",
-                "thesis": (DRAFT_THESIS_PREFIX + row.title)[:500],
+                "thesis": (
+                    tr(pl=DRAFT_THESIS_PREFIX, en=DRAFT_THESIS_PREFIX_EN) + row.title
+                )[:500],
             },
         )
         created_thesis = True
@@ -1242,7 +1249,7 @@ def undo_accept(
         untouched = thesis_row is not None and aware(thesis_row.updated_at) <= aware(
             thesis_row.created_at
         ) + dt.timedelta(seconds=1)
-        if untouched and thesis_row.thesis.startswith(DRAFT_THESIS_PREFIX):
+        if untouched and thesis_row.thesis.startswith(DRAFT_THESIS_PREFIXES):
             journal.delete_thesis(session, thesis_row)
     row.instrument_id = details.get("previous_instrument_id")
     for key in (

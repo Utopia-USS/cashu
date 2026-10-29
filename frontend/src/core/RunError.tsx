@@ -1,9 +1,10 @@
-// The one block for every connector failure (design/v3/connectors 5.4): the kind's Polish line, the
+// The one block for every connector failure (design/v3/connectors 5.4): the kind's line, the
 // connector's own message, the stderr tail behind `Szczegóły` (owner UI only; MCP never gets it).
 import type { CSSProperties } from "react";
 import { kindLine } from "./connectors";
 import { ApiError } from "./api";
 import { Notice } from "../ui";
+import { C } from "../common.strings.ts";
 
 export interface RunFailure { kind: string; message?: string | null; stderr?: string | null; timeoutS?: number | null; connector?: string | null }
 
@@ -14,7 +15,7 @@ export function RunError({ kind, message, stderr, timeoutS, connector, open, sty
       {message && <div style={{ fontSize: 12.5, marginTop: 2 }}>{message}</div>}
       {stderr && (
         <details className="more" open={open}>
-          <summary>Szczegóły</summary>
+          <summary>{C.details}</summary>
           <pre className="diff" style={{ marginTop: 6 }}>{stderr}</pre>
         </details>
       )}

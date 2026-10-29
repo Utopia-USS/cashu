@@ -3,6 +3,8 @@
 // BE's restore endpoint (F6 owner decision 2: delete with undo, the restore keeps the id). Pure apart from
 // the API calls passed in (tested in tests/investments-f6.test.mjs).
 import { makeUndo, type Undo, undoMessage, undoSettled } from "../undo.ts";
+import { C } from "../../../common.strings.ts";
+import { S } from "./undoFlow.strings.ts";
 
 type Toast = (text: string, ms?: number, action?: { label: string; onClick: () => void }) => void;
 
@@ -14,10 +16,10 @@ export function offerUndo(toast: Toast, text: string, u: Undo, what: string, onD
       if (undoSettled(res)) onDone();
       const extra = res === "done" ? note?.() ?? null : null;
       const msg = extra ? `${undoMessage(res, what)} · ${extra}` : undoMessage(res, what);
-      if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+      if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: C.undo, onClick: retry } : undefined);
     });
   };
-  toast(text, ms, { label: "Cofnij", onClick: retry });
+  toast(text, ms, { label: C.undo, onClick: retry });
 }
 
 /** A server without the endpoint answers 404 / 405 without a code (FastAPI's own "Not Found"). */
@@ -90,14 +92,14 @@ export function makeRecreate(run: () => Promise<unknown>): { undo(): Promise<Rec
   };
 }
 
-/** Toast text after a re-create undo; `detail` = the Polish error text of the failed POST. */
+/** Toast text after a re-create undo; `detail` = the error text of the failed POST. */
 export function recreateMessage(result: RecreateResult, what: string, detail: string): string | null {
   switch (result) {
-    case "done": return `Cofnięto: ${what}`;
-    case "exists": return "Już na liście";
-    case "missing": return `Nie przywrócono: ${detail}`;
-    case "refused": return `Nie przywrócono: ${detail}`;
-    case "failed": return `Nie udało się cofnąć: ${what} - spróbuj jeszcze raz`;
+    case "done": return S.undone(what);
+    case "exists": return S.alreadyListed;
+    case "missing": return S.notRestored(detail);
+    case "refused": return S.notRestored(detail);
+    case "failed": return S.undoFailed(what);
     default: return null;
   }
 }
@@ -115,8 +117,8 @@ export function offerRecreate(toast: Toast, text: string, run: () => Promise<unk
       const base = recreateMessage(res, what, describe(u.error));
       const extra = res === "done" ? note?.() ?? null : null;
       const msg = base && extra ? `${base} · ${extra}` : base;
-      if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+      if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: C.undo, onClick: retry } : undefined);
     });
   };
-  toast(text, ms, { label: "Cofnij", onClick: retry });
+  toast(text, ms, { label: C.undo, onClick: retry });
 }

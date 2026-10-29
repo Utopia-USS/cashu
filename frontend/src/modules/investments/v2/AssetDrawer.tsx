@@ -8,10 +8,12 @@
 // Focus moves into the panel, Tab cycles inside it and focus returns to the opener on close. The page under
 // it does not scroll while it is open (its scroll position is kept).
 import { type ReactNode, useEffect, useRef } from "react";
+import { C } from "../../../common.strings.ts";
+import { S } from "./AssetDrawer.strings.ts";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function AssetDrawer({ name, section = "Aktywa", onClose, onPage, onCrumb, children }: {
+export function AssetDrawer({ name, section, onClose, onPage, onCrumb, children }: {
   name: string;
   /** The middle crumb (P9: `Tematy` for the topic drawer, which reuses this panel). */
   section?: string;
@@ -57,11 +59,11 @@ export function AssetDrawer({ name, section = "Aktywa", onClose, onPage, onCrumb
       <div className="ascrim" onClick={onClose} aria-hidden />
       <div className="adrawer" role="dialog" aria-modal="true" aria-label={name} ref={ref} tabIndex={-1}>
         <div className="adh">
-          <nav aria-label="Ścieżka"><span className="pre"><button onClick={() => onCrumb("home")}>Inwestycje</button> › <button onClick={() => onCrumb("assets")}>{section}</button> › </span><b>{name}</b></nav>
+          <nav aria-label={S.breadcrumb}><span className="pre"><button onClick={() => onCrumb("home")}>{S.investments}</button> › <button onClick={() => onCrumb("assets")}>{section ?? S.assets}</button> › </span><b>{name}</b></nav>
           <span className="spacer" />
-          {onPage && <button className="lnk" onClick={onPage}>otwórz jako stronę</button>}
+          {onPage && <button className="lnk" onClick={onPage}>{S.openAsPage}</button>}
           <kbd aria-hidden>Esc</kbd>
-          <button className="icon-btn" title="Zamknij (Esc)" aria-label="Zamknij" onClick={onClose}>✕</button>
+          <button className="icon-btn" title={S.closeEsc} aria-label={C.close} onClick={onClose}>✕</button>
         </div>
         {children}
       </div>

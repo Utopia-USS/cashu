@@ -30,6 +30,7 @@ os.environ.update(
         "CASHU_WORKSPACES_DIR": str(SESSION_ROOT / "workspaces"),
         "CASHU_LAUNCH_AGENTS_DIR": str(SESSION_ROOT / "LaunchAgents"),
         "CASHU_APP_BUNDLE": "none",
+        "CASHU_LANG": "pl",  # backend texts render in Polish unless a test asks otherwise (core/i18n.py)
         "PYTHON_KEYRING_BACKEND": "keyring.backends.fail.Keyring",
     }
 )

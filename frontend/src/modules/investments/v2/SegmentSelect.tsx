@@ -7,6 +7,7 @@ import { errorText } from "../../../core/messages";
 import { patchInstrumentSegment } from "../api";
 import { bumpResearch } from "./research/data";
 import { canonKey, SEGMENTS, segmentLabel } from "./research/segments";
+import { S } from "./SegmentSelect.strings.ts";
 
 export function SegmentSelect({ slug, instrumentId, segment: raw, source, sep, onChanged }: {
   slug: string; instrumentId: number; segment: string | null;
@@ -25,25 +26,25 @@ export function SegmentSelect({ slug, instrumentId, segment: raw, source, sep, o
   // A re-read (after this save or a change elsewhere, e.g. the agent) brings the stored value.
   useEffect(() => { setValue(explicit ? segment! : ""); }, [segment, explicit]);
   const autoLabel = source === "auto" && segment ? segmentLabel(segment) : null;
-  const title = autoLabel ? "auto: po symbolu lub klasie aktywów. Wybór nadpisuje." : source === "agent" && value === segment ? "ustawił Claude" : undefined;
+  const title = autoLabel ? S.autoTitle : source === "agent" && value === segment ? S.setByClaude : undefined;
   const save = async (next: string) => {
     const prev = value;
     setValue(next);
     setBusy(true);
     // The research views (Tematy) re-read too: the instrument moves to another row.
     try { await patchInstrumentSegment(slug, instrumentId, next || null); bumpResearch(slug); onChanged(); }
-    catch (e) { setValue(prev); toast(`Nie zapisano: ${errorText(e)}`, 4000); }
+    catch (e) { setValue(prev); toast(S.saveFailed(errorText(e)), 4000); }
     finally { setBusy(false); }
   };
   return (
     <span className="mi">
       {sep && <span className="msep" aria-hidden>·</span>}
-      <span>Temat</span>
-      <select className="sgsel" aria-label="Temat" value={value} disabled={busy} onChange={(e) => void save(e.target.value)}
+      <span>{S.topic}</span>
+      <select className="sgsel" aria-label={S.topic} value={value} disabled={busy} onChange={(e) => void save(e.target.value)}
         title={title}>
-        <option value="">{autoLabel ? `auto · ${autoLabel}` : "brak"}</option>
-        <optgroup label="Klasy aktywów">{SEGMENTS.filter((s) => s.group === "asset").map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</optgroup>
-        <optgroup label="Sektory">{SEGMENTS.filter((s) => s.group === "sector").map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</optgroup>
+        <option value="">{autoLabel ? `auto · ${autoLabel}` : S.none}</option>
+        <optgroup label={S.assetClasses}>{SEGMENTS.filter((s) => s.group === "asset").map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</optgroup>
+        <optgroup label={S.sectors}>{SEGMENTS.filter((s) => s.group === "sector").map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</optgroup>
       </select>
     </span>
   );

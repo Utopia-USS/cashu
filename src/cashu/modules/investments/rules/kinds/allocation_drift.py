@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from cashu.core.i18n import lang
 from cashu.modules.investments.domain import is_generic_bucket
 
 from ..kind import RuleContext, RuleSpec
@@ -18,7 +19,6 @@ from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, s
 from ..params import ParamErrors, ParamReader
 from ..polarity import SignalPolarity
 from .support import (
-    NO_ALLOCATIONS,
     RATIO_EPSILON,
     bucket_cash_gap_problem,
     bucket_named,
@@ -27,6 +27,7 @@ from .support import (
     format_pct,
     format_pp,
     no_allocation_problem,
+    no_allocations,
     portfolio_data_problem,
     unclassified_problem,
 )
@@ -115,7 +116,7 @@ class AllocationDriftRule:
         if problem is not None:
             return [Skipped(spec.id, problem)]
         if not ctx.allocations:
-            return [Skipped(spec.id, NO_ALLOCATIONS)]
+            return [Skipped(spec.id, no_allocations())]
         unclassified = unclassified_problem(ctx)
         if unclassified is not None:
             return [Skipped(spec.id, unclassified)]
@@ -158,12 +159,20 @@ class AllocationDriftRule:
             over = allocation.drift_pp > 0
             direction = "overweight" if over else "underweight"
             amount = f"{format_amount(abs(allocation.drift_value_base))} {currency}"
-            gap = f"{amount} ponad cel" if over else f"do celu brakuje {amount}"
-            message = (
-                f"{bucket_named('Koszyk', bucket_id)} {'powyżej' if over else 'poniżej'} celu o "
-                f"{format_pp(abs(allocation.drift_pp))} ({format_pct(allocation.weight)} wobec "
-                f"{format_pct(allocation.target)}, {gap})."
-            )
+            drift = format_pp(abs(allocation.drift_pp))
+            weight, target = format_pct(allocation.weight), format_pct(allocation.target)
+            if lang() != "en":
+                gap = f"{amount} ponad cel" if over else f"do celu brakuje {amount}"
+                message = (
+                    f"{bucket_named('Koszyk', bucket_id)} {'powyżej' if over else 'poniżej'} celu o "
+                    f"{drift} ({weight} wobec {target}, {gap})."
+                )
+            else:
+                gap = f"{amount} over the target" if over else f"{amount} short of the target"
+                message = (
+                    f"{bucket_named('Bucket', bucket_id)} {'above' if over else 'below'} the target by "
+                    f"{drift} ({weight} vs {target}, {gap})."
+                )
             outcomes.append(
                 Fired(
                     SignalCandidate(

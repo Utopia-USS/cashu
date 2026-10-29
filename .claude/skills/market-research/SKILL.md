@@ -202,7 +202,11 @@ Full procedure: [`references/weekly-routine-workflow.md`](references/weekly-rout
 1. **Open the run:** `start_research_run(scope)`, keep the `run_id`; never touch another running run
    unattended.
 2. **Load the context:** `research_context`, `research_notes`; assign missing segments; plan the
-   novelty budget in `research/<YYYY-MM-DD>-run.md`.
+   novelty budget in `research/<YYYY-MM-DD>-run.md`. `owner_review.agenda` lists the review cards the
+   owner sent to you with their notes: cover each in this run (a sourced note on that topic, or one
+   line in the summary saying why not).
+   Upcoming events you find (earnings dates outside the US, RPP, a product launch) go on a note as
+   `details.event_date` + `details.event`: the review's calendar card shows them.
 3. **Held positions** and 4. **Watchlist:** sourced passes, rubrics, duplicates; notes in materiality
    order within the budget.
 5. **Candidates:** only from the strategy's criteria (`references/candidates.md`), at most 2.

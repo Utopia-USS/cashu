@@ -9,13 +9,15 @@ import { getBindings, getConnectors } from "../../core/connectorsApi";
 import { type RunFailure, RunError, runFailureOf } from "../../core/RunError";
 import { useShell } from "../../core/context";
 import { describeError, describeImportWarning, label } from "../../core/messages";
-import { cur, plural } from "../../format";
+import { C } from "../../common.strings.ts";
+import { cur } from "../../format";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { Code, Drawer, Notice, RadioList, Stepper, Tag } from "../../ui";
 import { getImporters, postStatementCommit, postStatementPreview, type StatementCommit, type StatementPreview } from "./api";
 import { builtinSources, connectorSources, isFileSource } from "./importSources";
-import { bankName, bankOptions, cliPrefix, dmShort, importDoneLine, previewRows, STATEMENT_TYPES, statementErrorKey } from "./logic";
+import { bankName, bankOptions, cliPrefix, dmShort, importDoneLine, previewRows, statementErrorKey, statementTypes } from "./logic";
+import { S } from "./ImportDrawer.strings.ts";
 
 const signed = (v: number, c: string) => (v > 0.004 ? `+${cur(v, c)}` : cur(v, c));
 
@@ -44,7 +46,7 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
   // existing bank accounts a statement can go to (one without an account number, e.g. a Revolut export,
   // otherwise lands in a new account)
   const accounts = useAsync(() => j<Account[]>(pp(slug, "/accounts")).catch(() => [] as Account[]), [slug]);
-  const bankAccounts = (accounts.data ?? []).filter((a) => STATEMENT_TYPES.some(([k]) => k === a.type));
+  const bankAccounts = (accounts.data ?? []).filter((a) => statementTypes().some(([k]) => k === a.type));
   const connectorItems = budgetConnectorSources(choices, connectors.data);
   const maxBytes = importers.data?.max_bytes ?? null;
   const [step, setStep] = useState<number>(initialStep);
@@ -131,8 +133,8 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
   const cli = cliPrefix(setup.data, slug);
   const importerLabel = preview ? preview.bank.name || bankName(preview.bank.id, choices) : "";
   const viaConnector = !!preview?.bank.id.startsWith("connector:");
-  const bankLine = !preview ? "" : viaConnector && preview.bank.detected ? `rozpoznano: ${importerLabel} (konektor)`
-    : `${importerLabel}${preview.bank.detected ? " (rozpoznany)" : ""}`;
+  const bankLine = !preview ? "" : viaConnector && preview.bank.detected ? S.detectedConnector(importerLabel)
+    : `${importerLabel}${preview.bank.detected ? S.detected : ""}`;
   // A fetch binding of this account (read-only hint, D3: bindings live in Ustawienia › Konektory).
   const bound = preview?.account.id != null ? (bindings.data ?? []).find((b) => b.account_id === preview.account.id && b.module === "budget") : undefined;
 
@@ -140,36 +142,36 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
     source === "open_banking" ? (
       <>
         <span style={{ flex: 1 }} />
-        <button className="btn" onClick={() => { onClose(); go({ kind: "setup", module: "budget", cli: true }); }}>Instrukcja</button>
-        <button className="btn" onClick={onClose}>Zamknij</button>
+        <button className="btn" onClick={() => { onClose(); go({ kind: "setup", module: "budget", cli: true }); }}>{S.instructions}</button>
+        <button className="btn" onClick={onClose}>{C.close}</button>
       </>
     ) : (
-      <><span style={{ flex: 1 }} /><button className="btn primary" disabled={!isFileSource(source)} onClick={() => setStep(1)}>Dalej</button></>
+      <><span style={{ flex: 1 }} /><button className="btn primary" disabled={!isFileSource(source)} onClick={() => setStep(1)}>{C.next}</button></>
     )
   ) : step === 1 ? (
     <>
       {/* the file input remounts empty on step 0 -> 1: no file kept that the input does not show */}
-      <button className="btn" onClick={() => { clearErr(); resetFile(); setStep(0); }}>← Wstecz</button>
+      <button className="btn" onClick={() => { clearErr(); resetFile(); setStep(0); }}>{S.back}</button>
       <span style={{ flex: 1 }} />
-      {connector?.timeout_s != null && <span className="fhint">do {connector.timeout_s} s</span>}
-      <button className="btn primary" disabled={!file || busy} onClick={runPreview}>{busy ? (connector ? "Uruchamiam konektor…" : "Sprawdzam…") : "Podgląd"}</button>
+      {connector?.timeout_s != null && <span className="fhint">{S.timeout(connector.timeout_s)}</span>}
+      <button className="btn primary" disabled={!file || busy} onClick={runPreview}>{busy ? (connector ? S.runningConnector : S.checking) : S.preview}</button>
     </>
   ) : step === 2 && preview ? (
     <>
-      <button className="btn" onClick={() => setStep(1)}>← Wstecz</button>
+      <button className="btn" onClick={() => setStep(1)}>{S.back}</button>
       <span style={{ flex: 1 }} />
       <button className="btn primary" disabled={busy || !counts?.new} onClick={commit}>
-        {busy ? "Importuję…" : `Importuj ${plural(counts?.new ?? 0, "transakcję", "transakcje", "transakcji")}`}
+        {busy ? S.importing : S.importN(counts?.new ?? 0)}
       </button>
     </>
   ) : (
-    <><span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>Zamknij</button></>
+    <><span style={{ flex: 1 }} /><button className="btn" onClick={onClose}>{C.close}</button></>
   );
 
   return (
-    <Drawer open title="Import wyciągu" tag={preview ? <Tag>{accBank || preview.bank.name}</Tag> : undefined}
-      width={600} footer={footer} onClose={onClose} label="Import wyciągu">
-      <Stepper steps={["Źródło", "Plik", "Podgląd", "Gotowe"]} current={step} />
+    <Drawer open title={S.title} tag={preview ? <Tag>{accBank || preview.bank.name}</Tag> : undefined}
+      width={600} footer={footer} onClose={onClose} label={S.title}>
+      <Stepper steps={S.steps} current={step} />
       {err && (
         <Notice tone="neg">
           {err}
@@ -184,12 +186,11 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
           {source === "open_banking" && (ebConfigured ? (
             <>
               <Code cmd={`${cli} eb login "mBank"`} />
-              <div className="fhint">Po zalogowaniu w banku: ↻ Synchronizuj w pasku zakładek pobierze transakcje.</div>
+              <div className="fhint">{S.obHint}</div>
             </>
           ) : (
             <Notice tone="warn">
-              Enable Banking nie jest skonfigurowany: identyfikator aplikacji (<code>CASHU_EB_APP_ID</code>) w pliku
-              {" "}<code>.env</code> w katalogu danych cashU, klucz <code>enablebanking_private.pem</code> obok.
+              {S.ebMissing[0]}<code>CASHU_EB_APP_ID</code>{S.ebMissing[1]}<code>.env</code>{S.ebMissing[2]}<code>enablebanking_private.pem</code>{S.ebMissing[3]}
             </Notice>
           ))}
         </>
@@ -198,20 +199,20 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
       {step === 1 && (
         <>
           <div className="field">
-            <label htmlFor="st-file">Plik z banku</label>
+            <label htmlFor="st-file">{S.bankFile}</label>
             <input id="st-file" ref={fileRef} type="file" accept={connector?.extensions.length ? acceptOf(connector.extensions) : ".csv,.json,text/csv,application/json"} data-autofocus
               onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPreview(null); clearErr(); }} />
-            <span className="fhint">Plik zostaje na tym komputerze.</span>
+            <span className="fhint">{S.fileStays}</span>
           </div>
           {connector && (
             <div className="field">
-              <span style={{ fontSize: 12, color: "var(--muted)" }}>Konektor</span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>{S.connector}</span>
               <span><b>{connector.name}</b>{connector.version && <span className="fhint"> v{connector.version}</span>}</span>
             </div>
           )}
           {!source.startsWith("connector:") && (
             <div className="field">
-              <label htmlFor="st-bank">Bank</label>
+              <label htmlFor="st-bank">{S.bank}</label>
               <select id="st-bank" ref={bankRef} value={bank} onChange={(e) => setBank(e.target.value)}>
                 {bankOptions(choices).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
@@ -219,28 +220,28 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
           )}
           {bankAccounts.length > 0 && (
             <div className="field">
-              <label htmlFor="st-account">Konto</label>
+              <label htmlFor="st-account">{S.account}</label>
               <select id="st-account" value={accountId} onChange={(e) => { setAccountId(e.target.value); setPreview(null); }}>
-                <option value="">z pliku albo nowe konto</option>
+                <option value="">{S.accountAuto}</option>
                 {bankAccounts.map((a) => (
                   <option key={a.id} value={String(a.id)}>
                     {[a.bank_name ?? bankName(a.bank, choices), a.name, a.iban_tail ? `…${a.iban_tail}` : "", a.currency].filter(Boolean).join(" · ")}
                   </option>
                 ))}
               </select>
-              <span className="fhint">Wybierz, gdy plik nie ma numeru konta, a konto już jest (np. z Open Banking).</span>
+              <span className="fhint">{S.accountHint}</span>
             </div>
           )}
           {!accountId && <div className="form-row">
             <div className="field">
-              <label htmlFor="st-type">Typ konta</label>
+              <label htmlFor="st-type">{S.accountType}</label>
               <select id="st-type" value={accountType} onChange={(e) => setAccountType(e.target.value)}>
-                {STATEMENT_TYPES.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {statementTypes().map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div className="field">
-              <label htmlFor="st-name">Nazwa konta (opcjonalnie)</label>
-              <input id="st-name" value={accountName} placeholder="z pliku" maxLength={80} autoComplete="off" onChange={(e) => setAccountName(e.target.value)} />
+              <label htmlFor="st-name">{S.accountName}</label>
+              <input id="st-name" value={accountName} placeholder={S.fromFile} maxLength={80} autoComplete="off" onChange={(e) => setAccountName(e.target.value)} />
             </div>
           </div>}
         </>
@@ -249,39 +250,39 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
       {step === 2 && preview && counts && (
         <>
           <div className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
-            <code>{preview.file_name}</code> · {bankLine} · {plural(counts.rows, "wiersz", "wiersze", "wierszy")}
-            {preview.range ? ` · ${dmShort(preview.range.from)}-${dmShort(preview.range.to)}` : ""} · <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => setStep(1)}>zmień</button>
+            <code>{preview.file_name}</code> · {bankLine} · {S.nRows(counts.rows)}
+            {preview.range ? ` · ${dmShort(preview.range.from)}-${dmShort(preview.range.to)}` : ""} · <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => setStep(1)}>{S.change}</button>
           </div>
           <div style={{ fontSize: 13, marginBottom: 10 }}>
-            Konto: <b>{[accBank, preview.account.name, preview.account.iban_tail ? `…${preview.account.iban_tail}` : null, preview.account.currency].filter(Boolean).join(" · ")}</b>
-            {bound && <span className="muted"> · synchronizowane konektorem {bound.connector_name}</span>}{" "}
+            {S.accountPrefix}<b>{[accBank, preview.account.name, preview.account.iban_tail ? `…${preview.account.iban_tail}` : null, preview.account.currency].filter(Boolean).join(" · ")}</b>
+            {bound && <span className="muted">{S.syncedBy(bound.connector_name)}</span>}{" "}
             {preview.account.existing
-              ? <Tag>istnieje · {plural(preview.account.transactions, "transakcja", "transakcje", "transakcji")}</Tag>
-              : <Tag tone="info">nowe</Tag>}
+              ? <Tag>{S.exists(preview.account.transactions)}</Tag>
+              : <Tag tone="info">{S.newAccount}</Tag>}
           </div>
-          {again0 && <Notice tone="warn">Plik importowany już {dmShort(again0.at)}: powtórzone wiersze to duplikaty.</Notice>}
+          {again0 && <Notice tone="warn">{S.importedBefore(dmShort(again0.at))}</Notice>}
           {!!preview.warnings?.length && (
             <Notice tone="warn">
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {preview.warnings.slice(0, 5).map((w, k) => {
                   const d = describeImportWarning({ kind: w.kind, code: w.code, message: w.message });
-                  return <li key={k}>{w.row != null ? `wiersz ${w.row}: ` : ""}{d.text}</li>;
+                  return <li key={k}>{w.row != null ? S.rowPrefix(w.row) : ""}{d.text}</li>;
                 })}
               </ul>
             </Notice>
           )}
           <div className="controls" style={{ marginBottom: 8 }}>
-            <Tag tone="pos" solid>{plural(counts.new, "nowy", "nowe", "nowych")}</Tag>
-            <Tag title={counts.overlap ? `w tym ${counts.overlap} z innego źródła (bank, CSV)` : undefined}>{plural(counts.duplicates, "duplikat", "duplikaty", "duplikatów")}</Tag>
-            {counts.skipped > 0 && <Tag tone="warn" solid title="wiersze bez daty albo kwoty">{plural(counts.skipped, "pominięty", "pominięte", "pominiętych")}</Tag>}
+            <Tag tone="pos" solid>{S.nNew(counts.new)}</Tag>
+            <Tag title={counts.overlap ? S.overlap(counts.overlap) : undefined}>{S.nDuplicates(counts.duplicates)}</Tag>
+            {counts.skipped > 0 && <Tag tone="warn" solid title={S.skippedTitle}>{S.nSkipped(counts.skipped)}</Tag>}
             <span className="spacer" />
             <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", gap: 6, alignItems: "center" }}>
-              <input type="checkbox" className="check" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} /> pokaż tylko nowe
+              <input type="checkbox" className="check" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} /> {S.onlyNew}
             </label>
           </div>
-          {counts.new === 0 && <Notice tone="info">Wszystkie wiersze już są w bazie.</Notice>}
+          {counts.new === 0 && <Notice tone="info">{S.allInDb}</Notice>}
           <table>
-            <thead><tr><th>Data</th><th>Tytuł</th><th>Kontrahent</th><th className="num">Kwota</th><th>Status</th></tr></thead>
+            <thead><tr><th>{S.colDate}</th><th>{S.colTitle}</th><th>{S.colCounterparty}</th><th className="num">{S.colAmount}</th><th>{S.colStatus}</th></tr></thead>
             <tbody>
               {shown.map((r) => {
                 const dup = r.status === "duplicate";
@@ -291,16 +292,16 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
                     <td>{r.title || <span className="muted">-</span>}</td>
                     <td className={r.counterparty ? undefined : "muted"}>{r.counterparty || "-"}</td>
                     <td className={`num ${dup ? "" : r.amount > 0 ? "pos" : r.amount < 0 ? "neg" : ""}`}>{signed(r.amount, r.currency)}</td>
-                    <td>{dup ? <Tag>duplikat</Tag> : <Tag tone="pos">nowy</Tag>}</td>
+                    <td>{dup ? <Tag>{S.duplicate}</Tag> : <Tag tone="pos">{S.new}</Tag>}</td>
                   </tr>
                 );
               })}
               {rest > 0 && (
                 <tr><td colSpan={5} className="muted" style={{ textAlign: "center", fontSize: 12 }}>
-                  … {rest} kolejnych wierszy · <button className="lnk" style={{ fontSize: 12 }} onClick={() => setAll(true)}>pokaż wszystkie</button>
+                  {S.moreRows(rest)}<button className="lnk" style={{ fontSize: 12 }} onClick={() => setAll(true)}>{S.showAll}</button>
                 </td></tr>
               )}
-              {!shown.length && <tr><td colSpan={5} className="muted">{onlyNew ? "Brak nowych wierszy." : "Plik nie zawiera transakcji."}</td></tr>}
+              {!shown.length && <tr><td colSpan={5} className="muted">{onlyNew ? S.noNewRows : S.noTransactions}</td></tr>}
             </tbody>
           </table>
         </>
@@ -308,11 +309,11 @@ export function StatementImportDrawer({ slug, initialStep = 0, fromTab, onClose,
 
       {step === 3 && done && (
         <div className="empty" style={{ textAlign: "left", padding: "8px 0" }}>
-          <div style={{ color: "var(--text)", fontWeight: 600 }}>Zaimportowano {plural(done.inserted, "transakcję", "transakcje", "transakcji")}.</div>
+          <div style={{ color: "var(--text)", fontWeight: 600 }}>{S.importedN(done.inserted)}</div>
           <div style={{ fontSize: 13, marginTop: 4 }}>{importDoneLine(done)}</div>
           <div className="controls" style={{ justifyContent: "flex-start" }}>
-            <button className="btn" onClick={again}>Importuj kolejny plik</button>
-            {!fromTab && <button className="btn primary" onClick={() => { onClose(); go({ kind: "tab", tab: "budget.expenses" }); }}>Wydatki →</button>}
+            <button className="btn" onClick={again}>{S.importAnother}</button>
+            {!fromTab && <button className="btn primary" onClick={() => { onClose(); go({ kind: "tab", tab: "budget.expenses" }); }}>{S.expensesLink}</button>}
           </div>
         </div>
       )}

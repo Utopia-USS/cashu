@@ -3,12 +3,13 @@
 // Tested in tests/instrument-search.test.mjs.
 import { ASSET_CLASS } from "../labels.ts";
 import type { SearchHit, SearchResult, WatchInput } from "./api.ts";
+import { S, TYPE_WORD_L } from "./searchLogic.strings.ts";
 
 /** Short type word on the right of a row; remote `other` is an index (Yahoo INDEX), a local `other` says nothing. */
-const TYPE_WORD: Record<string, string> = { etf: "ETF", equity: "akcja", fund: "fundusz", crypto: "krypto" };
+const TYPE_WORD: Record<string, string> = TYPE_WORD_L;
 export function typeWord(h: Pick<SearchHit, "asset_class" | "source">): string | null {
   if (TYPE_WORD[h.asset_class]) return TYPE_WORD[h.asset_class];
-  if (h.asset_class === "other") return h.source === "local" ? null : "indeks";
+  if (h.asset_class === "other") return h.source === "local" ? null : S.index;
   return ASSET_CLASS[h.asset_class] ?? null;
 }
 
@@ -106,21 +107,21 @@ export function moveHighlight(cur: number | null, n: number, dir: 1 | -1): numbe
 /** The option's accessible name (an option's children are presentational, so the action is in the name):
  * `Obserwuj VWCE` / `Obserwujesz VWCE` / `VWCE`, then the name, exchange, type and the state tag. */
 export function optionLabel(h: SearchHit, exchange: string | null): string {
-  const head = isAddable(h) ? `Obserwuj ${h.symbol}` : h.state === "watched" ? `Obserwujesz ${h.symbol}` : h.symbol;
-  const tag = h.state === "saved" ? "zapisany" : h.state === "held" ? "w portfelu" : null;
+  const head = isAddable(h) ? S.watch(h.symbol) : h.state === "watched" ? S.watching(h.symbol) : h.symbol;
+  const tag = h.state === "saved" ? S.saved : h.state === "held" ? S.held : null;
   return [head, h.name || null, exchange, typeWord(h), tag].filter(Boolean).join(", ");
 }
 
 /** Toast after an add: `Obserwujesz <name>` / `Przywrócono <name>`, a coded warning appended (`· <warning>`); an older
- * server's English warning on a created instrument becomes one Polish line. `describe` = describeIssue's text. */
+ * server's English warning on a created instrument becomes one line in the UI language. `describe` = describeIssue's text. */
 export function addedToast(
   r: { restored?: boolean; created_instrument?: boolean; warnings?: string[]; warning_codes?: { code: string; params: Record<string, unknown> | null; message: string }[] },
   name: string,
   describe: (w: { code: string; params: Record<string, unknown> | null; message: string }) => string,
 ): string {
-  const head = `${r.restored ? "Przywrócono" : "Obserwujesz"} ${name}`;
+  const head = r.restored ? S.restored(name) : S.watching(name);
   const coded = r.warning_codes?.map(describe) ?? [];
   if (coded.length) return `${head} · ${coded[0]}`;
-  if (r.created_instrument && r.warnings?.length) return `${head} · symbol ceny zgadnięty, sprawdź, czy przyjdą notowania`;
+  if (r.created_instrument && r.warnings?.length) return `${head} · ${S.guessedSymbol}`;
   return head;
 }

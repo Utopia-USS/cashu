@@ -9,20 +9,19 @@ import { useAsync } from "../../../hooks";
 import { hideAmount } from "../../../incognito";
 import { Seg, Skeleton } from "../../../ui";
 import { Facts, FootFacts, Widget } from "../../../widgets";
-import { dm, money0, pct, plural, pp } from "../labels";
+import { dm, money0, pct, pp } from "../labels";
+import { intlLocale } from "../../../i18n.ts";
+import { BENCH_NOTE_L, RANGE_TEXT_L, S } from "./Perf.strings.ts";
 import { nextDeposit } from "../logic";
 import { accKey, getPerformance, invKey, type Performance, type PerfRange } from "./api";
 import { benchmarkLabel, contributionFacts, daysSince, monthlyFlows, staleBenchmark } from "./logic";
 
-const RANGES: [string, PerfRange][] = [["1M", "1m"], ["3M", "3m"], ["YTD", "ytd"], ["1R", "1y"], ["3R", "3y"], ["Max", "max"]];
-const RANGE_TEXT: Record<PerfRange, string> = { "1m": "1 mies.", "3m": "3 mies.", ytd: "od początku roku", "1y": "12 mies.", "3y": "3 lata", max: "całość" };
-const dateLong = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("pl-PL", { day: "numeric", month: "short", year: "numeric" });
-const axisK = (v: number) => hideAmount(new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0, ...GROUP }).format(Math.round(v / 1000) * 1000));
+const ranges = (): [string, PerfRange][] => [["1M", "1m"], ["3M", "3m"], ["YTD", "ytd"], [S.range1y, "1y"], [S.range3y, "3y"], ["Max", "max"]];
+const RANGE_TEXT: Record<PerfRange, string> = RANGE_TEXT_L;
+const dateLong = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(intlLocale(), { day: "numeric", month: "short", year: "numeric" });
+const axisK = (v: number) => hideAmount(new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 0, ...GROUP }).format(Math.round(v / 1000) * 1000));
 
-const BENCH_NOTE: Record<string, string> = {
-  no_strategy: "benchmark: brak strategii", not_configured: "benchmark: ustaw benchmark.proxy w strategii",
-  proxy_not_found: "benchmark: nie znaleziono instrumentu", no_prices: "benchmark: brak notowań (cashu invest backfill)",
-};
+const BENCH_NOTE: Record<string, string> = BENCH_NOTE_L;
 
 export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
   slug: string; accounts: number[] | null; initial?: Performance | null;
@@ -52,15 +51,15 @@ export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
     return (
       <>
         <div className="k">{dateLong(p.date)}</div>
-        <div>portfel <b>{money0(p.value, c)}</b></div>
+        <div>{S.portfolio} <b>{money0(p.value, c)}</b></div>
         {benchOk && p.simulated_value != null && <div>{benchName} <b>{money0(p.simulated_value, c)}</b></div>}
-        {benchOk && diff != null && <div className="k">różnica <b>{pp(diff)}</b></div>}
+        {benchOk && diff != null && <div className="k">{S.difference} <b>{pp(diff)}</b></div>}
       </>
     );
   };
   return (
-    <Widget title="Wartość vs benchmark" id="inv-value"
-      controls={<Seg quiet label="Zakres" value={range} onChange={setRange} items={RANGES} />}
+    <Widget title={S.valueVsBench} id="inv-value"
+      controls={<Seg quiet label={S.range} value={range} onChange={setRange} items={ranges()} />}
       body="tight"
       footer={s ? (
         <>
@@ -68,25 +67,25 @@ export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
             <>{RANGE_TEXT[range]} TWR <b>{pct(s.twr, true)}</b></>,
             // A benchmark whose prices stop early: the short label instead of its figure (F4; FE-A A1 sweep).
             benchOk && staleBenchmark(bench) && <span title={staleBenchmark(bench)!.title}>{staleBenchmark(bench)!.label}</span>,
-            benchOk && !staleBenchmark(bench) && bench?.twr != null && <>benchmark <b>{pct(bench.twr, true)}</b></>,
-            benchOk && !staleBenchmark(bench) && bench?.excess_twr != null && <>różnica <b className={bench.excess_twr >= 0 ? "pos" : "neg"}>{pp(bench.excess_twr * 100)}</b></>,
+            benchOk && !staleBenchmark(bench) && bench?.twr != null && <>{S.benchmark} <b>{pct(bench.twr, true)}</b></>,
+            benchOk && !staleBenchmark(bench) && bench?.excess_twr != null && <>{S.difference} <b className={bench.excess_twr >= 0 ? "pos" : "neg"}>{pp(bench.excess_twr * 100)}</b></>,
             s.xirr != null && <>XIRR <b>{pct(s.xirr)}</b></>,
-            s.net_contributions != null && <>wpłaty {RANGE_TEXT[range]} <b>{money0(s.net_contributions, c)}</b></>,
-            !benchOk && bench && (BENCH_NOTE[bench.status] ?? "benchmark niedostępny"),
+            s.net_contributions != null && <>{S.contributionsIn(RANGE_TEXT[range])} <b>{money0(s.net_contributions, c)}</b></>,
+            !benchOk && bench && (BENCH_NOTE[bench.status] ?? S.benchUnavailable),
           ]} />
-          <span className="spacer" /><button className="lnk" aria-pressed={table} onClick={() => setTable((v) => !v)}>{table ? "wykres" : "tabela"}</button>
+          <span className="spacer" /><button className="lnk" aria-pressed={table} onClick={() => setTable((v) => !v)}>{table ? S.chart : S.table}</button>
         </>
       ) : undefined}>
       <div className="legend" style={{ marginBottom: 6 }}>
-        <span><i className="main" />portfel</span>
-        {benchOk && <span><i className="bench" />{benchName} w {c}, te same wpłaty</span>}
+        <span><i className="main" />{S.portfolio}</span>
+        {benchOk && <span><i className="bench" />{S.sameContributions(benchName, c)}</span>}
       </div>
       {q.loading && !perf ? <Skeleton h={230} /> : !perf || pts.length < 2 ? (
-        <div className="empty">{perf === null ? <>Brak historii: uruchom <code>cashu invest backfill</code>.</> : "Za mało historii."}</div>
+        <div className="empty">{perf === null ? <>{S.noHistoryRun}<code>cashu invest backfill</code>.</> : S.tooLittleHistory}</div>
       ) : table ? (
         <div className="ctable">
           <table>
-            <thead><tr><th>Data</th><th className="num">Portfel</th>{benchOk && <th className="num">{benchName}</th>}<th className="num">TWR</th>{benchOk && <th className="num">Różnica</th>}</tr></thead>
+            <thead><tr><th>{S.thDate}</th><th className="num">{S.thPortfolio}</th>{benchOk && <th className="num">{benchName}</th>}<th className="num">TWR</th>{benchOk && <th className="num">{S.thDifference}</th>}</tr></thead>
             <tbody>
               {labelIndices(pts.length, 13).map((i) => pts[i]).map((p) => (
                 <tr key={p.date}><td>{p.date}</td><td className="num">{money0(p.value, c)}</td>{benchOk && <td className="num">{money0(p.simulated_value, c)}</td>}
@@ -96,10 +95,10 @@ export function ValueChartWidget({ slug, accounts, initial, nonce = 0 }: {
           </table>
         </div>
       ) : (
-        <LineChart label={`Wartość portfela${benchOk ? ` i ${benchName} przy tych samych wpłatach` : ""}, ${RANGE_TEXT[range]}`} height={230} padL={56} padR={150} yFmt={axisK} xLabels={xl}
+        <LineChart label={S.valueChartLabel(benchOk ? benchName : null, RANGE_TEXT[range])} height={230} padL={56} padR={150} yFmt={axisK} xLabels={xl}
           series={[
             ...(benchOk ? [{ values: pts.map((p) => p.simulated_value), cls: "bench" as const, endLabel: lastB != null ? `${benchName} ${money0(lastB, c)}` : undefined }] : []),
-            { values: pts.map((p) => p.value), cls: "main" as const, area: true, endLabel: lastV != null ? `portfel ${money0(lastV, c)}` : undefined },
+            { values: pts.map((p) => p.value), cls: "main" as const, area: true, endLabel: lastV != null ? S.portfolioEnd(money0(lastV, c)) : undefined },
           ]}
           tooltip={tip} />
       )}
@@ -115,15 +114,15 @@ export function DrawdownWidget({ perf }: { perf: Performance | null | undefined 
   const recovered = recoveredDays != null && recoveredDays >= 0 ? recoveredDays : null;
   const xl = labelIndices(pts.length, 3).map((i) => ({ i, text: monthYearShort(pts[i].date) }));
   return (
-    <Widget title="Obsunięcie od szczytu" id="inv-dd" controls={<span className="tag">12 mies.</span>} body="tight">
-      {perf === undefined ? <Skeleton h={150} /> : !pts.length ? <div className="empty">Brak historii.</div> : (
+    <Widget title={S.drawdownTitle} id="inv-dd" controls={<span className="tag">{S.months12}</span>} body="tight">
+      {perf === undefined ? <Skeleton h={150} /> : !pts.length ? <div className="empty">{S.noHistory}</div> : (
         <>
           <Facts style={{ marginBottom: 6 }} items={[
-            { label: "Teraz", value: pct(now) },
-            { label: "Maks.", value: pct(md?.depth ?? null), detail: md?.trough ? `${dm(md.trough)} · ${recovered != null ? `odrobione w ${plural(recovered, "dzień", "dni", "dni")}` : "jeszcze nieodrobione"}` : undefined },
+            { label: S.now, value: pct(now) },
+            { label: S.max, value: pct(md?.depth ?? null), detail: md?.trough ? `${dm(md.trough)} · ${recovered != null ? S.recoveredIn(recovered) : S.notRecovered}` : undefined },
           ]} />
-          <LineChart label="Obsunięcie portfela od szczytu, 12 miesięcy" height={110} padL={40} padR={10} yTicks={2} ymax={0}
-            yFmt={(v) => `${Math.round(v * 100)} %`} xLabels={xl} series={[{ values: pts.map((p) => p.drawdown), cls: "neg", area: true, areaTo: 0 }]} />
+          <LineChart label={S.drawdownChartLabel} height={110} padL={40} padR={10} yTicks={2} ymax={0}
+            yFmt={(v) => S.pctInt(Math.round(v * 100))} xLabels={xl} series={[{ values: pts.map((p) => p.drawdown), cls: "neg", area: true, areaTo: 0 }]} />
         </>
       )}
     </Widget>
@@ -146,18 +145,18 @@ export function ContributionsWidget({ perf, ytd, plan, today, fromBudget }: {
   const { deposits, planYtd, missed } = contributionFacts({ months, deposits: ytd?.summary?.deposits ?? null, plan, firstDeposit: firstFlow, today });
   const next = nextDeposit(today, plan?.day ?? null);
   return (
-    <Widget title="Wpłaty" id="inv-contrib" controls={<span className="tag">12 mies.</span>} body="tight">
+    <Widget title={S.contributions} id="inv-contrib" controls={<span className="tag">{S.months12}</span>} body="tight">
       {perf === undefined ? <Skeleton h={150} /> : (
         <>
           <Facts style={{ marginBottom: 6 }} items={[
-            { label: "W tym roku", value: deposits != null ? money0(deposits, c) : "-", detail: planYtd != null ? `plan ${money0(planYtd, c)}${missed ? ` · ${plural(missed, "miesiąc", "miesiące", "miesięcy")} bez wpłaty` : ""}` : "bez planu w strategii" },
-            { label: "Następna", value: dm(curDone ? nextDeposit(`${today.slice(0, 8)}31`, plan?.day ?? null) : next), detail: plan ? `${money0(plan.amount, c)} ${fromBudget ? "z nadwyżki budżetu" : "wg planu"}` : undefined },
+            { label: S.thisYear, value: deposits != null ? money0(deposits, c) : "-", detail: planYtd != null ? `${S.plan(money0(planYtd, c))}${missed ? S.missed(missed) : ""}` : S.noPlan },
+            { label: S.next, value: dm(curDone ? nextDeposit(`${today.slice(0, 8)}31`, plan?.day ?? null) : next), detail: plan ? `${money0(plan.amount, c)} ${fromBudget ? S.fromBudget : S.byPlan}` : undefined },
           ]} />
           {perf && months.some((m) => m.value > 0) || plan ? (
-            <Bars label="Wpłaty w ostatnich 12 miesiącach" height={120} values={months.map((m) => m.value)} labels={months.map((m) => m.label)}
+            <Bars label={S.contributionsChartLabel} height={120} values={months.map((m) => m.value)} labels={months.map((m) => m.label)}
               cls={months.map((m, i) => (i === months.length - 1 && !m.value && plan ? "plan" : "main"))}
-              plan={plan?.amount ?? null} planLabel={plan ? `plan ${money0(plan.amount, c)}` : undefined} />
-          ) : <div className="empty">Brak wpłat.</div>}
+              plan={plan?.amount ?? null} planLabel={plan ? S.plan(money0(plan.amount, c)) : undefined} />
+          ) : <div className="empty">{S.noContributions}</div>}
         </>
       )}
     </Widget>

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from cashu.core.i18n import tr
+
 from ..kind import RuleContext, RuleSpec
 from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, signal_dedup_key
 from ..params import ParamErrors, ParamReader
@@ -89,9 +91,15 @@ class TaggedWeightRule:
                     dedup_key=key,
                     severity=spec.severity,
                     payload=details,
-                    message=(
-                        f"Pozycje z tagami {tag_text}: {format_pct(weight)} portfela "
-                        f"(maks {format_pct(params.max_weight)}): {', '.join(labels)}."
+                    message=tr(
+                        pl=(
+                            f"Pozycje z tagami {tag_text}: {format_pct(weight)} portfela "
+                            f"(maks {format_pct(params.max_weight)}): {', '.join(labels)}."
+                        ),
+                        en=(
+                            f"Positions tagged {tag_text}: {format_pct(weight)} of the portfolio "
+                            f"(max {format_pct(params.max_weight)}): {', '.join(labels)}."
+                        ),
                     ),
                 )
             )

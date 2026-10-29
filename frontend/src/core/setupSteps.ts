@@ -1,6 +1,7 @@
 // Pure helpers over a module's setup steps (GET /modules/{id}/setup): counts and the next step skip the
 // optional ones (design/v3/first-steps D8: an optional step never counts toward the module state). Tested in
 // tests/first-steps.test.mjs.
+import { S } from "./setupSteps.strings.ts";
 
 export interface StepLike { id?: string; title: string; status: "done" | "on" | "todo"; optional?: boolean }
 
@@ -23,7 +24,7 @@ export const lowerFirst = (t: string): string => t.charAt(0).toLowerCase() + t.s
 export function partialLine(steps: readonly StepLike[] | null | undefined): string {
   const { done, n } = stepCounts(steps);
   const next = nextStep(steps);
-  return `${done} z ${n} ${n === 1 ? "kroku" : "kroków"}${next ? ` · następny: ${lowerFirst(next.title)}` : ""}`;
+  return `${S.stepsOf(done, n)}${next ? S.next(lowerFirst(next.title)) : ""}`;
 }
 
 /** The step of `id`, else of the first of `fallbacks` the server still sends (an older server's step ids). */

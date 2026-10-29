@@ -9,7 +9,7 @@ import { Drawer, Pop, Seg } from "../../../ui";
 import { FootFacts, Mark, Widget } from "../../../widgets";
 import { hideAmount } from "../../../incognito";
 import type { AccountRow, Instrument, Overview, StrategyStatus } from "../api";
-import { accountLabel, assetClass, bucketColor, bucketGenitive, bucketLabel, dm, money, money0, nAccountsInv, nBuckets, pct, pctTarget, plural, pp, region } from "../labels";
+import { accountLabel, assetClass, bucketColor, bucketGenitive, bucketLabel, dm, money, money0, nAccountsInv, nBuckets, pct, pctTarget, pp, region } from "../labels";
 import { ClassifyCard, WarningsCard } from "../Rail";
 import { warningItems } from "../logic";
 import type { Alert, PositionV2, PositionsV2, SignalV2, WatchItem } from "./api";
@@ -17,9 +17,10 @@ import { ClassifyButton, HoverCard, InstLabel, useHoverCard, useTouch } from "./
 import { HintChip, mainHint } from "./hints";
 import { accountSnapshot, alertFact, allocGeneric, instName, rowFlags, ruleKindLabel, STATE_LABEL, subLine, weekChange } from "./logic";
 import { WatchTable } from "./Watchlist";
+import { S } from "./Portfolio.strings.ts";
 
 const FLAG_CLS: Record<string, string> = { positive: "pos", negative: "neg", neutral: "neu", mixed: "mix" };
-const notesTitle = (n: number) => plural(n, "nowa notatka", "nowe notatki", "nowych notatek");
+const notesTitle = (n: number) => S.newNotes(n);
 
 /** The markers after an instrument's name (home v3 Q4 / Q10 / Q14): one signal glyph, the bell, the page. */
 export function RowMarks({ id, signals, alerts, unread }: { id: number | string; signals: SignalV2[]; alerts: Alert[]; unread: number }) {
@@ -69,7 +70,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
   const cash = data.cash.reduce((s, x) => s + (x.amount_base ?? 0), 0);
   const cashAccounts = data.cash.filter((x) => x.amount !== 0).length;
   const maxW = Math.max(0.0001, ...data.positions.map((p) => p.weight ?? 0), data.total ? cash / data.total : 0);
-  const accLabel = (id: number) => { const a = accounts.find((x) => x.id === id); return a ? accountLabel(a, accounts) : `rachunek ${id}`; };
+  const accLabel = (id: number) => { const a = accounts.find((x) => x.id === id); return a ? accountLabel(a, accounts) : S.account(id); };
   const marks = (id: number | string) => <RowMarks id={id} signals={signals} alerts={alerts} unread={unread(id)} />;
   const weightCell = (w: number | null) => (
     <td className="wcell"><span className="wbar" aria-hidden><i style={{ width: `${Math.round(((w ?? 0) / maxW) * 100)}%` }} /></span>{pct(w)}</td>
@@ -78,25 +79,25 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
   const watchList = watch ?? [];
   const watchAlerts = watchList.reduce((a, w) => a + w.alerts.live, 0);
   const tabs = (
-    <Seg<AssetsTab> quiet label="Zakres" value={tab} onChange={setTab}
-      items={[[`Portfel ${data.positions.length}`, "positions"], [`Obserwowane ${watchList.length}`, "watch"]]} />
+    <Seg<AssetsTab> quiet label={S.scope} value={tab} onChange={setTab}
+      items={[[S.tabPortfolio(data.positions.length), "positions"], [S.tabWatch(watchList.length), "watch"]]} />
   );
   return (
-    <Widget title="Aktywa" id="inv-assets" tags={tabs}
+    <Widget title={S.assets} id="inv-assets" tags={tabs}
       controls={tab === "positions" ? (
         <>
-          <Seg quiet label="Podział" value={split} onChange={setSplit} items={[["Razem", "total"], ["Per rachunek", "account"]]} />
-          <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sortowanie">
-            <option value="result">wynik %</option>
-            <option value="value">wartość</option>
-            <option value="week">tydzień</option>
+          <Seg quiet label={S.split} value={split} onChange={setSplit} items={[[S.total, "total"], [S.perAccount, "account"]]} />
+          <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label={S.sorting}>
+            <option value="result">{S.sortResult}</option>
+            <option value="value">{S.sortValue}</option>
+            <option value="week">{S.sortWeek}</option>
           </select>
         </>
-      ) : <button className="btn sm" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>+ Dodaj</button>}
+      ) : <button className="btn sm" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>{S.add}</button>}
       body="flush tight"
       footer={tab === "positions"
-        ? <><span className="spacer" /><button className="lnk" onClick={onAddTxn}>+ transakcja</button></>
-        : <><FootFacts items={[<><b>{watchAlerts}</b> {plural(watchAlerts, "alert", "alerty", "alertów").replace(/^\d+ /, "")}</>]} /><span className="spacer" /></>}>
+        ? <><span className="spacer" /><button className="lnk" onClick={onAddTxn}>{S.addTxn}</button></>
+        : <><FootFacts items={[<><b>{watchAlerts}</b> {S.alertsWord(watchAlerts)}</>]} /><span className="spacer" /></>}>
       {tab === "watch" ? (
         <WatchTable slug={slug} items={watch} wide adding={adding} onAdding={setAdding} onChanged={onWatchChanged} onOpen={(id) => onOpen(id)}
           flags={(w) => marks(w.instrument_id)} />
@@ -104,7 +105,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
         <div className="scroll">
           <table>
             <thead>
-              <tr><th className="c-inst">Instrument</th><th className="c-hint">Strategia</th><th className="c-spark">30 dni</th><th className="num">Cena</th><th className="num">tydz.</th><th>Udział</th><th className="num">Wartość</th><th className="num c-abs" title="Od kosztu (FIFO), ceny zamknięcia">Wynik</th><th className="num">Wynik %</th></tr>
+              <tr><th className="c-inst">Instrument</th><th className="c-hint">{S.colStrategy}</th><th className="c-spark">{S.col30d}</th><th className="num">{S.colPrice}</th><th className="num">{S.colWeek}</th><th>{S.colWeight}</th><th className="num">{S.colValue}</th><th className="num c-abs" title={S.colResultTitle}>{S.colResult}</th><th className="num">{S.colResultPct}</th></tr>
             </thead>
             <tbody>
               {rows.map((p) => {
@@ -123,7 +124,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
                           action={i.needs_classification && (
                             <span className="menu-anchor">
                               <ClassifyButton name={instName(i)} expanded={classify === id} onClick={() => setClassify(classify === id ? null : id)} />
-                              <Pop portal open={classify === id} onClose={() => setClassify(null)} width={460} label="Klasyfikacja">
+                              <Pop portal open={classify === id} onClose={() => setClassify(null)} width={460} label={S.classification}>
                                 <ClassifyCard items={[i]} positions={data.positions} strategy={strategy} accounts={accounts} highlight={false} focusId={id}
                                   onSave={async (inst, patch) => { await onClassify(inst, patch); setClassify(null); }} />
                               </Pop>
@@ -131,7 +132,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
                           )} />
                       </td>
                       <td className="c-hint">{hint && <HintChip hint={hint} held />}</td>
-                      <td className="c-spark"><Spark values={(p.closes_30d ?? []).map((x) => x.close)} tone={cost ? "" : undefined} label={`${i.label}: 30 dni`} /></td>
+                      <td className="c-spark"><Spark values={(p.closes_30d ?? []).map((x) => x.close)} tone={cost ? "" : undefined} label={S.spark30d(i.label)} /></td>
                       <td className="num">{p.price != null ? money(p.price, p.price_currency ?? c) : "-"}{p.is_stale && <> <span className="tag warn">{dm(p.price_date)}</span></>}</td>
                       <td className={`num ${cost || wk == null ? "muted" : wk >= 0 ? "pos" : "neg"}`}>{wk != null ? pct(wk, true) : "-"}</td>
                       {weightCell(p.weight)}
@@ -150,10 +151,10 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
                   </Fragment>
                 );
               })}
-              {!rows.length && <tr><td colSpan={9} className="muted">Brak otwartych pozycji.</td></tr>}
+              {!rows.length && <tr><td colSpan={9} className="muted">{S.noPositions}</td></tr>}
               {data.cash.length > 0 && (
                 <tr className="sum">
-                  <td>Gotówka · {nAccountsInv(cashAccounts)}</td><td className="c-hint" /><td className="c-spark" /><td /><td />
+                  <td>{S.cash} · {nAccountsInv(cashAccounts)}</td><td className="c-hint" /><td className="c-spark" /><td /><td />
                   {weightCell(data.total ? cash / data.total : null)}
                   <td className="num">{money(cash, c)}</td><td className="c-abs" /><td />
                 </tr>
@@ -170,7 +171,7 @@ export function AssetList({ data, accounts, signals, alerts, strategy, onOpen, o
 
 export type AllocView = "buckets" | "classes" | "regions" | "accounts";
 const PALETTE = ["--inv-global", "--inv-pl", "--inv-bonds", "--inv-cash", "--inv-5", "--inv-6", "--inv-7", "--inv-other"];
-const totalK = (total: number, currency: string) => (total >= 1000 ? hideAmount(`${Math.round(total / 1000).toLocaleString("pl-PL")} tys.`) : money0(total, currency));
+const totalK = (total: number, currency: string) => (total >= 1000 ? hideAmount(S.thousands(Math.round(total / 1000))) : money0(total, currency));
 
 /** Aktywa `Wynik %` cell: hovering it opens the instrument-card style card with the gain in money and the cost
  * (the Wynik column is hidden when the main column is narrow); without hover a one-line `title`. */
@@ -179,7 +180,7 @@ function GainCell({ pct: ratio, gain, cost, c }: { pct: number | null; gain: num
   const id = useId();
   const touch = useTouch();
   const hover = useHoverCard(ref, gain != null && !touch);
-  const label = gain != null && gain < 0 ? "strata" : "zysk";
+  const label = gain != null && gain < 0 ? S.loss : S.gain;
   const tone = ratio == null ? "" : ratio >= 0 ? "pos" : "neg";
   return (
     <td ref={ref} className={`num ${tone}`} title={touch && gain != null ? `${label} ${money(gain, c, true)}` : undefined}
@@ -189,7 +190,7 @@ function GainCell({ pct: ratio, gain, cost, c }: { pct: number | null; gain: num
         <HoverCard anchor={ref.current} id={id} className="gain">
           <div className="kvl">
             <span className="k">{label}</span><span className={`tnum ${gain != null && gain < 0 ? "neg" : "pos"}`}>{money(gain, c, true)}</span>
-            {cost != null && <><span className="k">koszt</span><span className="tnum">{money(cost, c)}</span></>}
+            {cost != null && <><span className="k">{S.cost}</span><span className="tnum">{money(cost, c)}</span></>}
           </div>
         </HoverCard>
       )}
@@ -212,16 +213,16 @@ function DataWarnings({ overview, strategy, today, onReconcile, onAlias, onSetti
   const n = warnings.length + (inactive.length ? 1 : 0) + (invalid ? 1 : 0);
   if (!n) return null;
   // Rule kinds, never the strategy's rule ids (FE-A A6).
-  const title = [fr.fx.newest_rate ? `NBP ${dm(fr.fx.newest_rate)}` : null, ...fr.prices.stale.slice(0, 2).map((s) => `${s.label}: cena z ${dm(s.price_date)}`),
-    inactive.length ? plural(inactive.length, "reguła nieaktywna", "reguły nieaktywne", "reguł nieaktywnych") : null, invalid ? "błąd w strategii" : null].filter(Boolean).join(" · ");
+  const title = [fr.fx.newest_rate ? `NBP ${dm(fr.fx.newest_rate)}` : null, ...fr.prices.stale.slice(0, 2).map((s) => S.priceFrom(s.label, dm(s.price_date))),
+    inactive.length ? S.inactiveRules(inactive.length) : null, invalid ? S.strategyError : null].filter(Boolean).join(" · ");
   return (
     <>
-      <button className="lnk" title={title} onClick={() => setOpen(true)}>ostrzeżenia ({n})</button>
-      <Drawer open={open} title="Ostrzeżenia danych" onClose={() => setOpen(false)} width={520}>
+      <button className="lnk" title={title} onClick={() => setOpen(true)}>{S.warnings(n)}</button>
+      <Drawer open={open} title={S.dataWarnings} onClose={() => setOpen(false)} width={520}>
         {(inactive.length > 0 || invalid) && (
           <div className="muted" style={{ fontSize: 12.5, marginBottom: 10, display: "grid", gap: 4 }}>
-            {inactive.length > 0 && <span className="warn" title={inactive.map((r) => ruleKindLabel(r.kind)).join(", ")}>{plural(inactive.length, "reguła nieaktywna", "reguły nieaktywne", "reguł nieaktywnych")} · <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => { setOpen(false); onSettings(); }}>napraw w Ustawieniach</button></span>}
-            {invalid && <span className="warn">błąd w strategii · <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => { setOpen(false); onSettings(); }}>Ustawienia</button></span>}
+            {inactive.length > 0 && <span className="warn" title={inactive.map((r) => ruleKindLabel(r.kind)).join(", ")}>{S.inactiveRules(inactive.length)} · <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => { setOpen(false); onSettings(); }}>{S.fixInSettings}</button></span>}
+            {invalid && <span className="warn">{S.strategyError} · <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => { setOpen(false); onSettings(); }}>{S.settings}</button></span>}
           </div>
         )}
         {warnings.length > 0 && (
@@ -238,24 +239,24 @@ function DataWarnings({ overview, strategy, today, onReconcile, onAlias, onSetti
 export function AccountsRows({ overview, today, wide, onReconcile }: { overview: Overview; today: string; wide?: boolean; onReconcile: (accountId: number | null) => void }) {
   const accounts = overview.accounts;
   const c = overview.base_currency;
-  if (!accounts.length) return <div className="empty">Brak rachunków maklerskich.</div>;
+  if (!accounts.length) return <div className="empty">{S.noAccounts}</div>;
   const total = accounts.reduce((s, a) => s + Math.max(0, a.value ?? 0), 0);
   const rows = accounts.map((a, k) => ({ a, color: `var(${PALETTE[k % 8]})`, snap: accountSnapshot(a, today) }));
   return (
     <div className={`alloc ${wide ? "wide" : ""} acc`}>
-      <Donut size={wide ? 128 : 112} label={`Rachunki: ${rows.map((r) => `${accountLabel(r.a, accounts)} ${pct(r.a.share ?? null)}`).join(", ")}`}
+      <Donut size={wide ? 128 : 112} label={S.accountsDonut(rows.map((r) => `${accountLabel(r.a, accounts)} ${pct(r.a.share ?? null)}`).join(", "))}
         segments={rows.map((r) => ({ value: Math.max(0, r.a.value ?? 0), color: r.color }))}>
         <b>{totalK(total, c)}</b><span>{nAccountsInv(accounts.length)}</span>
       </Donut>
       <div>
-        <div className="arow head"><span /><span>rachunek</span><span className="num">teraz</span><span className="num">wartość</span><span className="num c-snap">snapshot</span></div>
+        <div className="arow head"><span /><span>{S.colAccount}</span><span className="num">{S.colNow}</span><span className="num">{S.colValueLc}</span><span className="num c-snap">{S.colSnapshot}</span></div>
         {rows.map(({ a, color, snap }) => (
           <div className="arow" key={a.id} title={snap.title}>
             <span className="sw" style={{ background: color }} />
             <span className="n">{accountLabel(a, accounts)}</span>
             <span className="num">{a.share != null ? pct(a.share) : ""}</span>
             <span className="num">{a.value != null ? money0(a.value, c) : "-"}</span>
-            <span className="num c-snap snap">{snap.warn ? <button className="lnk" onClick={() => onReconcile(a.id)}>{snap.cell} · uzgodnij</button> : snap.cell}</span>
+            <span className="num c-snap snap">{snap.warn ? <button className="lnk" onClick={() => onReconcile(a.id)}>{snap.cell} · {S.reconcile}</button> : snap.cell}</span>
           </div>
         ))}
       </div>
@@ -285,50 +286,50 @@ export function AllocationWidget({ overview, strategy, filtered, wide, today, vi
   const order = alloc.buckets.map((b) => b.bucket_id);
   const out = alloc.buckets.filter((b) => b.out_of_band).length;
   const band = alloc.band?.absolute_band_pp ?? null;
-  const bandTitle = band != null ? `pasmo ±${band} pp` : undefined;
+  const bandTitle = band != null ? S.band(band) : undefined;
   const belowTarget = [...alloc.buckets].filter((b) => b.drift_pp < 0).sort((a, b) => a.drift_pp - b.drift_pp)[0];
   const aboveTarget = [...alloc.buckets].filter((b) => b.drift_pp > 0).sort((a, b) => b.drift_pp - a.drift_pp)[0];
   const priority = belowTarget ?? aboveTarget;
   const priorityBucket = priority ? bucketGenitive(priority.bucket_id) : null;
   const priorityText = priority && priorityBucket
     ? priority.drift_pp < 0
-      ? `Najpierw zwiększaj udział ${priorityBucket}: ${pp(priority.drift_pp)} do celu. Lokalne „kup” są drugim krokiem.`
-      : `Nie zwiększaj udziału ${priorityBucket}: ${pp(priority.drift_pp)} ponad cel. Lokalne „kup” są drugim krokiem.`
-    : "Utrzymuj docelowe udziały. Lokalne rekomendacje nie powinny naruszać balansu portfela.";
+      ? S.priorityGrow(priorityBucket, pp(priority.drift_pp))
+      : S.priorityHold(priorityBucket, pp(priority.drift_pp))
+    : S.priorityKeep;
   const rows = view === "buckets"
     ? [
       ...alloc.buckets.map((b) => ({ key: b.bucket_id, name: bucketLabel(b.bucket_id) ?? "", color: bucketColor(b.bucket_id, order), w: b.weight, target: b.target as number | null, drift: b.drift_pp as number | null, out: !!b.out_of_band, value: b.value, toTarget: b.to_target as number | null })),
-      ...(alloc.unclassified && alloc.unclassified.value ? [{ key: "_none", name: "Bez koszyka", color: "var(--inv-other)", w: alloc.unclassified.weight, target: null, drift: null, out: false, value: alloc.unclassified.value, toTarget: null }] : []),
+      ...(alloc.unclassified && alloc.unclassified.value ? [{ key: "_none", name: S.noBucket, color: "var(--inv-other)", w: alloc.unclassified.weight, target: null, drift: null, out: false, value: alloc.unclassified.value, toTarget: null }] : []),
     ]
     : view === "accounts" ? [] : (view === "classes" ? alloc.by_asset_class : alloc.by_region).map((s, k) => ({
-      key: s.key, name: view === "classes" ? (s.key === "cash" ? "gotówka" : assetClass(s.key)) : region(s.key), color: `var(${PALETTE[k % 8]})`,
+      key: s.key, name: view === "classes" ? (s.key === "cash" ? S.cashLc : assetClass(s.key)) : region(s.key), color: `var(${PALETTE[k % 8]})`,
       w: s.weight, target: null, drift: null, out: false, value: s.value, toTarget: null as number | null,
     }));
-  const items: [string, AllocView][] = [...(generic ? [["Koszyki", "buckets"] as [string, AllocView]] : []), ["Klasy", "classes"], ["Regiony", "regions"], ["Rachunki", "accounts"]];
+  const items: [string, AllocView][] = [...(generic ? [[S.viewBuckets, "buckets"] as [string, AllocView]] : []), [S.viewClasses, "classes"], [S.viewRegions, "regions"], [S.viewAccounts, "accounts"]];
   return (
-    <Widget title="Alokacja" id="inv-alloc"
-      tags={view === "buckets" ? (out ? <span className="tag warn" title={bandTitle}>{out === 1 ? "1 poza pasmem" : `${out} poza pasmem`}</span> : <span className="tag pos" title={bandTitle}>w paśmie</span>) : undefined}
+    <Widget title={S.allocation} id="inv-alloc"
+      tags={view === "buckets" ? (out ? <span className="tag warn" title={bandTitle}>{S.outOfBand(out)}</span> : <span className="tag pos" title={bandTitle}>{S.inBand}</span>) : undefined}
       controls={
         <>
-          <Seg quiet label="Podział alokacji" value={view} onChange={onView} items={items} />
+          <Seg quiet label={S.allocSplit} value={view} onChange={onView} items={items} />
           {view === "accounts" && (
             <>
               <DataWarnings overview={overview} strategy={strategy} today={today} onReconcile={onReconcile} onAlias={onAlias} onSettings={onSettings} />
-              <button className="btn sm" onClick={onAdd}>+ Rachunek</button>
+              <button className="btn sm" onClick={onAdd}>{S.addAccount}</button>
             </>
           )}
         </>
       }>
-      {view === "accounts" ? <AccountsRows overview={overview} today={today} wide={wide} onReconcile={onReconcile} /> : !rows.length ? <div className="empty">Brak pozycji.</div> : (
+      {view === "accounts" ? <AccountsRows overview={overview} today={today} wide={wide} onReconcile={onReconcile} /> : !rows.length ? <div className="empty">{S.noPositionsShort}</div> : (
         <div className={`alloc ${wide ? "wide" : ""}`}>
-          <Donut size={wide ? 128 : 112} label={`Alokacja: ${rows.map((r) => `${r.name} ${pct(r.w)}`).join(", ")}`} segments={rows.map((r) => ({ value: Math.max(0, r.value), color: r.color }))}>
-            <b>{totalK(alloc.total, alloc.base_currency)}</b><span>{view === "buckets" ? nBuckets(alloc.buckets.length) : plural(rows.length, "pozycja", "pozycje", "pozycji")}</span>
+          <Donut size={wide ? 128 : 112} label={S.allocDonut(rows.map((r) => `${r.name} ${pct(r.w)}`).join(", "))} segments={rows.map((r) => ({ value: Math.max(0, r.value), color: r.color }))}>
+            <b>{totalK(alloc.total, alloc.base_currency)}</b><span>{view === "buckets" ? nBuckets(alloc.buckets.length) : S.positions(rows.length)}</span>
           </Donut>
           <div>
-            <div className="arow head"><span /><span>{view === "buckets" ? "koszyk" : view === "classes" ? "klasa" : "region"}</span><span className="num">teraz</span>
-              <span className="num" title={view === "buckets" && filtered ? "cel dotyczy całego portfela" : undefined}>{view === "buckets" ? "cel" : ""}</span>
-              <span className="num" title={view === "buckets" ? bandTitle : undefined}>{view === "buckets" ? "dryf" : ""}</span>
-              {wide && <><span className="num c-val">wartość</span><span className="num c-to">{view === "buckets" ? "do celu" : ""}</span></>}</div>
+            <div className="arow head"><span /><span>{view === "buckets" ? S.colBucket : view === "classes" ? S.colClass : S.colRegion}</span><span className="num">{S.colNow}</span>
+              <span className="num" title={view === "buckets" && filtered ? S.targetWholeTitle : undefined}>{view === "buckets" ? S.colTarget : ""}</span>
+              <span className="num" title={view === "buckets" ? bandTitle : undefined}>{view === "buckets" ? S.colDrift : ""}</span>
+              {wide && <><span className="num c-val">{S.colValueLc}</span><span className="num c-to">{view === "buckets" ? S.colToTarget : ""}</span></>}</div>
             {rows.map((r) => (
               <div className="arow" key={r.key}>
                 <span className="sw" style={{ background: r.color }} />
@@ -342,7 +343,7 @@ export function AllocationWidget({ overview, strategy, filtered, wide, today, vi
           </div>
           {view === "buckets" && (
             <div className={`portfolio-priority ${priority?.out_of_band ? "warn" : ""}`}>
-              <b>Priorytet portfela</b><span>{priorityText}</span>
+              <b>{S.priority}</b><span>{priorityText}</span>
             </div>
           )}
         </div>
@@ -358,9 +359,9 @@ export function AccountsWidget({ overview, strategy, onAdd, onReconcile, onAlias
   onAlias: (instrumentId: string, yahoo: string) => Promise<void>; onSettings: () => void; today: string;
 }) {
   return (
-    <Widget title="Rachunki" id="inv-accounts" body="tight"
+    <Widget title={S.viewAccounts} id="inv-accounts" body="tight"
       controls={<><DataWarnings overview={overview} strategy={strategy} today={today} onReconcile={onReconcile} onAlias={onAlias} onSettings={onSettings} />
-        <button className="btn sm" onClick={onAdd}>+ Rachunek</button></>}>
+        <button className="btn sm" onClick={onAdd}>{S.addAccount}</button></>}>
       <AccountsRows overview={overview} today={today} onReconcile={onReconcile} />
     </Widget>
   );

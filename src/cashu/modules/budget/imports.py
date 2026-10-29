@@ -53,6 +53,7 @@ from sqlmodel import Session, select
 from cashu.core import account_types, institutions, paths
 from cashu.core.accounts import find_account
 from cashu.core.api import f
+from cashu.core.i18n import tr
 from cashu.core.models import Account, AccountType, Profile, Source
 from cashu.core.text import iban_key, normalize_text
 
@@ -80,6 +81,11 @@ _log = logging.getLogger("cashu.budget.imports")
 FORMAT_NAME = "Format cashU"
 
 
+def format_name() -> str:
+    """The importer name of the cashU format in the current UI language."""
+    return tr(pl=FORMAT_NAME, en="cashU format")
+
+
 class ImportProblem(Exception):
     """A request the import refuses (``code`` -> ``X-Cashu-Error-Code``, HTTP ``status``)."""
 
@@ -98,13 +104,16 @@ def importer_choices() -> list[dict]:
     ``connector``; ``available`` only when approved, plus ``status``, ``extensions``, ``timeout_s``)."""
     from cashu.core.connectors import imports as connector_imports
 
-    out = [{"id": AUTO, "name": "rozpoznaj automatycznie", "kind": "auto", "available": True}]
+    auto_name = tr(pl="rozpoznaj automatycznie", en="detect automatically")
+    out = [{"id": AUTO, "name": auto_name, "kind": "auto", "available": True}]
     out += [
         {"id": inst.id, "name": inst.name, "kind": "bank", "available": True}
         for inst in institutions.all_institutions()
         if inst.csv_importer
     ]
-    out.append({"id": canonical.IMPORTER_ID, "name": FORMAT_NAME, "kind": "format", "available": True})
+    out.append(
+        {"id": canonical.IMPORTER_ID, "name": format_name(), "kind": "format", "available": True}
+    )
     out += connector_imports.importer_entries(MODULE_ID)
     return out
 
@@ -252,7 +261,7 @@ def from_document(
     *,
     detected: bool = False,
     importer: str = canonical.IMPORTER_ID,
-    importer_name: str = FORMAT_NAME,
+    importer_name: str | None = None,  # default: format_name()
     source: Source = Source.CSV,
 ) -> Converted:
     """A ``cashu-budget-import`` document (JSON or CSV) as a statement. Blocking issues ->
@@ -269,7 +278,7 @@ def from_document(
     return Converted(
         stmt,
         importer,
-        importer_name,
+        importer_name or format_name(),
         detected,
         source=source,
         warnings=result.warnings,

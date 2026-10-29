@@ -4,6 +4,7 @@ import { isDark } from "../core/theme";
 import { cssVar, pln0 } from "../format";
 import { useWidth } from "../hooks";
 import { Seg, Skeleton } from "../ui";
+import { S } from "./ScrollableChart.strings.ts";
 
 const MAX_W = 24000;
 const MAX_Y_ZOOM = 60;
@@ -174,8 +175,8 @@ export function ScrollableChart(props: ScrollableChartProps) {
         <strong style={{ fontSize: 14 }}>{title}</strong>
         <span className="spacer" />
         {yZoomable && yView && (
-          <button className="btn" title="Reset zoomu osi Y" onClick={() => setYView(null)}>
-            ⤢ Reset Y
+          <button className="btn" title={S.resetZoomTitle} onClick={() => setYView(null)}>
+            {S.resetZoom}
           </button>
         )}
         {controls}

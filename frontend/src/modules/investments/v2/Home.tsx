@@ -23,7 +23,7 @@ import { AgentWidget } from "../../../core/AgentWidget";
 import type { ModuleCtx } from "../../../core/types";
 import { useAsync, useInFlight } from "../../../hooks";
 import { addDays, localDay } from "../../../time";
-import { Code, Notice, SetupSteps, type SetupStepItem, Seg, Skeleton, Tag, useToast } from "../../../ui";
+import { Code, SetupSteps, type SetupStepItem, Seg, Skeleton, Tag, useToast } from "../../../ui";
 import { Fact, Grid, type GridItem, Split, Widget } from "../../../widgets";
 import {
   type CommitResult, deleteReview, getProposals, getStrategy, patchInstrument, type Position, postReview, postStrategyInit, postStrategyReload,
@@ -31,7 +31,9 @@ import {
 } from "../api";
 import { AccountDrawer, ImportDrawer, ProposalDrawer, ThesisDrawer, TxnDrawer, TxnsDrawer } from "../Drawers";
 import { storedKey, useStored } from "../hooks";
-import { accountLabel, dm, hm, isGenericBucket, isoDate, money, money0, pct, plural, pp, WEEKDAYS, wdm } from "../labels";
+import { accountLabel, dm, hm, isGenericBucket, isoDate, money, money0, pct, pp, WEEKDAYS, wdm } from "../labels";
+import { C } from "../../../common.strings.ts";
+import { S } from "./Home.strings.ts";
 import { runError } from "../logic";
 import { makeUndo, UNDO_WINDOW_MS, undoMessage, undoSettled } from "../undo";
 import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
@@ -43,7 +45,7 @@ import { useRunState } from "./runState";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
 import {
-  benchmarkLabel, contributionFacts, daysSince, instName, isDigestDay, monthlyFlows, nextWeekday, planForMonth, reentryBaseline, reviewAutoOpen, signalLinkTarget, signalPlace, signalText,
+  benchmarkLabel, contributionFacts, daysSince, instName, monthlyFlows, nextWeekday, planForMonth, signalLinkTarget, signalPlace, signalText,
   staleBenchmark,
 } from "./logic";
 import { usePlannedDeposits } from "./Overview";
@@ -52,7 +54,7 @@ import { AccountsWidget, type AllocView, AllocationWidget, AssetList } from "./P
 import { useResearchHome } from "./research";
 import { canonKey, isSegment } from "./research/segments";
 import { isMacroKey } from "./research/macro";
-import { ChangeLog, ChangesWidget, ReentryBanner, ReviewStrip, StateToday } from "./Review";
+import { type DeckStats, ReviewButton, ReviewDeck, useReviewDeckData } from "./ReviewDeck";
 import { type SignalFilter, type SignalsCtx, SignalsDialog, SignalsRail } from "./Signals";
 import { WatchlistWidget } from "./Watchlist";
 import { readStored } from "../../../core/storage.ts";
@@ -69,11 +71,6 @@ const ss = {
   get: (k: string) => { try { return readStored(sessionStorage, k); } catch { return null; } },
   set: (k: string, v: string | null) => { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch { /* ignore */ } },
 };
-const ls = {
-  get: (k: string) => { try { return readStored(localStorage, k); } catch { return null; } },
-  set: (k: string, v: string | null) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* ignore */ } },
-};
-const lastSeenKey = (slug: string) => `cashu.lastSeen.${slug}`;
 
 /** Market change over the last 7 days: money without the flows in between, TWR ratio for the percent. */
 function weekMove(points: PerfPoint[], asOf: string): { money: number; pct: number | null } | null {
@@ -159,33 +156,10 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     if (gone) setFilter(null);
   }, [ov.error, ov.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---- re-entry: compare the last visit on open, remember this visit when leaving -----------------------------
-  // The pending baseline lives in localStorage until "Wszystko jasne" (F7 FE17): leaving the page, closing the
-  // window or a new window keeps it, and the last-visit mark does not move while it is pending.
-  const reentryKey = `cashu.inv.reentry.${slug}`;
-  const [reentry, setReentry] = useState<string | null>(() => {
-    const r = reentryBaseline(ls.get(reentryKey) ?? ss.get(reentryKey), ls.get(lastSeenKey(slug)), new Date().toISOString());
-    if (r.baseline) { ls.set(reentryKey, r.baseline); ss.set(reentryKey, null); }
-    return r.baseline;
-  });
-  useEffect(() => {
-    const save = () => { if (!ls.get(reentryKey)) ls.set(lastSeenKey(slug), new Date().toISOString()); };
-    const onHide = () => { if (document.visibilityState === "hidden") save(); };
-    window.addEventListener("pagehide", save);
-    document.addEventListener("visibilitychange", onHide);
-    if (!ls.get(lastSeenKey(slug))) save();
-    return () => { window.removeEventListener("pagehide", save); document.removeEventListener("visibilitychange", onHide); save(); };
-  }, [slug]); // eslint-disable-line react-hooks/exhaustive-deps
-  const reSince = reentry ? localDay(reentry) ?? reentry.slice(0, 10) : null;
-  const reDigest = useAsync(() => (reSince ? getDigestV2(slug, reSince) : Promise.resolve(null)), [slug, reSince, nonce],
-    { key: reSince ? invKey(slug, "digest", reSince) : undefined });
-  const dismissReentry = () => { ls.set(reentryKey, null); ss.set(reentryKey, null); ls.set(lastSeenKey(slug), new Date().toISOString()); setReentry(null); };
-
   // ---- review strip ------------------------------------------------------------------------------------------
   const reviewKey = `cashu.inv.reviewOpen.${slug}`;
   const [reviewOpen, setReviewOpenState] = useState(() => ss.get(reviewKey) === "1" || params.get("review") === "1");
   const setReviewOpen = (v: boolean) => { setReviewOpenState(v); ss.set(reviewKey, v ? "1" : "0"); };
-  const [step, setStep] = useState(0);
   const started = useRef<number | null>(null);
   const [doneLocal, setDoneLocal] = useState<string | null>(null);
   useEffect(() => { if (params.get("review") === "1") { setReviewOpen(true); started.current ??= Date.now(); } }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -235,14 +209,6 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     return () => setNarrow(false);
   }, [light, homeLike, assetPage, setNarrow]);
 
-  // decisions.md 7: on the digest weekday the review strip opens by itself until the review is marked done.
-  // Closing it keeps it closed for this visit (session); the next visit that day opens it again.
-  useEffect(() => {
-    if (!reviewAutoOpen({ due, light, hasData, today: isoDate(new Date()), weekday, explicit: ss.get(reviewKey) })) return;
-    setReviewOpen(true);
-    started.current ??= Date.now();
-  }, [due, light, hasData, weekday]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // The signals dialog (signals-rail.md 3): `Wszystkie` in the rail, review step 2, a notification link to a
   // signal outside the rail's rows. Local state; leaving the home view closes it.
   const [sigDialog, setSigDialog] = useState<{ filter: SignalFilter; focusId: number | null } | null>(null);
@@ -270,7 +236,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       if (signalPlace(t.id, dropFilter ? sig.data : signals, held) === "rail") setFocusSignal(t.id);
       else setSigDialog({ filter: "all", focusId: t.id });
     } else {
-      toast(`Ten sygnał jest już zamknięty (${t.status === "expired" ? "wygasł" : t.status === "resolved" ? "rozwiązany" : t.status})`, 4000);
+      toast(S.signalClosed(t.status), 4000);
       if (t.kind === "asset") openAsset(t.instrumentId); else openJournal();
     }
   }, [signalParam, sig.data, positions, needHistory, sigHistory.data, sigHistory.loading]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -293,26 +259,20 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     try {
       await postStrategyInit(slug);
       await postStrategyReload(slug).catch(() => null);
-      toast("Strategia z szablonu · uzupełnij strategy.yaml", 4000);
+      toast(S.strategyFromTemplate, 4000);
       reload();
-    } catch (e) { toast(`Nie utworzono strategii: ${errorText(e)}`, 4000); } finally { setInitBusy(false); }
+    } catch (e) { toast(S.strategyFailed(errorText(e)), 4000); } finally { setInitBusy(false); }
   };
   const classify = async (i: { id: number | string }, patch: { asset_class: string; region: string | null; valuation_mode: string; tags: string[] }) => {
-    try { await patchInstrument(slug, i.id, patch); toast("Zapisano klasyfikację", 2500); reload(); }
-    catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 4000); throw e; }
+    try { await patchInstrument(slug, i.id, patch); toast(S.classificationSaved, 2500); reload(); }
+    catch (e) { toast(S.saveFailed(errorText(e)), 4000); throw e; }
   };
   const alias = async (instrumentId: string, yahoo: string) => {
-    try { await patchInstrument(slug, instrumentId, { aliases: [{ namespace: "yahoo", value: yahoo }] }); toast("Zapisano alias · ceny przy następnym przebiegu reguł", 3000); reload(); }
-    catch (e) { toast(`Nie zapisano aliasu: ${errorText(e)}`, 4000); throw e; }
+    try { await patchInstrument(slug, instrumentId, { aliases: [{ namespace: "yahoo", value: yahoo }] }); toast(S.aliasSaved, 3000); reload(); }
+    catch (e) { toast(S.aliasFailed(errorText(e)), 4000); throw e; }
   };
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const openReview = () => { setReviewOpen(true); setStep(0); started.current ??= Date.now(); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  // Review step 2 opens the signals dialog; closing it keeps the review (the strip's chip reopens it).
-  const onStep = (k: number) => {
-    setStep(k);
-    if (k === 1) setSigDialog({ filter: "all", focusId: null });
-    if (k === 2) document.getElementById("inv-review-note")?.focus();
-  };
+  const openReview = () => { setReviewOpen(true); started.current ??= Date.now(); };
   // One review per click (F7 FE2): a double click on "Zamknij przegląd" must not store two reviews.
   const doneFlight = useInFlight();
   // The review undo also sits next to "Przegląd zrobiony" for the server's 15 minutes, not only in the toast
@@ -323,11 +283,13 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     const t = setTimeout(() => setReviewUndo(null), UNDO_WINDOW_MS);
     return () => clearTimeout(t);
   }, [reviewUndo]);
-  const markDone = () => doneFlight.run(async () => {
+  // The deck's cards, verdicts and the agenda for the research agent go with the review (stats.deck; MCP
+  // research_context.owner_review).
+  const markDone = (deck?: DeckStats) => doneFlight.run(async () => {
     const minutes = started.current ? Math.max(1, Math.round((Date.now() - started.current) / 60000)) : null;
     const text = note.trim() || null;
     try {
-      const rv = await postReview(slug, text, { open_signals: signals.length, decided, ...(minutes ? { minutes } : {}) });
+      const rv = await postReview(slug, text, { open_signals: signals.length, decided, ...(minutes ? { minutes } : {}), ...(deck ? { deck } : {}) });
       setReviewOpen(false);
       setDoneLocal(rv.done_at ?? new Date().toISOString());
       setNote("");
@@ -337,21 +299,26 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       const retry = () => {
         if (!u) return;
         void u.undo().then((res) => {
-          const msg = undoMessage(res, "przegląd");
+          const msg = undoMessage(res, S.reviewNoun);
           if (res !== "failed" && res !== "busy") setReviewUndo(null);
           if (undoSettled(res)) { setDoneLocal(null); setReviewOpen(true); setNote(text ?? ""); reload(); }
-          if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+          if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: C.undo, onClick: retry } : undefined);
         });
       };
       setReviewUndo(u ? () => retry : null);
-      toast(`Przegląd zapisany · następny ${dm(nextWeekday(today, weekday))}`, 10000, u ? { label: "Cofnij", onClick: retry } : undefined);
+      toast(S.reviewSaved(dm(digest?.review?.next_on ?? nextWeekday(today, weekday))), 10000, u ? { label: C.undo, onClick: retry } : undefined);
     } catch (e) {
-      toast(e instanceof ApiError && e.status === 404 ? "Serwer nie obsługuje przeglądów: zaktualizuj aplikację." : `Nie zapisano przeglądu: ${errorText(e)}`, 5000);
+      toast(e instanceof ApiError && e.status === 404 ? S.reviewsUnsupported : S.reviewFailed(errorText(e)), 5000);
     }
   });
 
   const names = new Map((positions?.positions ?? []).map((p) => [Number(p.instrument.id), instName(p.instrument)] as [number, string]));
   for (const w of watch) if (w.instrument) names.set(w.instrument_id, instName(w.instrument));
+  // The review deck's data (cards counted on the hero's review button; the calendar only once it is open).
+  const deckData = useReviewDeckData({
+    slug, nonce, digest, perfWeek: perf1m.loading ? undefined : perf1m.data, perfYear: perf1y.loading ? undefined : perf1y.data,
+    signals, proposals: props.data ?? [], names, open: reviewOpen,
+  });
   // Research layer (F6, v2/research): strip, review block, research view, note links; nothing before the first run.
   const research = useResearchHome({
     slug, nonce, today, privacy: ctx.profile.mcp_privacy, positions: positions?.positions ?? [], watch, strategyVersion: strategy?.version ?? null, digest,
@@ -404,11 +371,11 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
 
   // ---- render --------------------------------------------------------------------------------------------------
   const err = ov.error || pos.error;
-  if (err && !overview) return <div className="err">Błąd: {err}</div>;
+  if (err && !overview) return <div className="err">{S.error(String(err))}</div>;
   if (!overview || !positions) {
     return (
       <>
-        <div className="pagehead"><h2 className="ph">Inwestycje</h2><Skeleton w={320} h={26} /><span className="spacer" /><Skeleton w={260} h={26} /></div>
+        <div className="pagehead"><h2 className="ph">{S.investments}</h2><Skeleton w={320} h={26} /><span className="spacer" /><Skeleton w={260} h={26} /></div>
         <div className="g3"><div className="gi s3"><Skeleton h={92} r={12} /></div><div className="gi s2"><Skeleton h={260} r={12} /></div><div className="gi s1"><Skeleton h={260} r={12} /></div></div>
       </>
     );
@@ -448,8 +415,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     const nm = assetName(slug, assetId, positions.positions, watch);
     return provide(
       <>
-        <nav className="crumb" aria-label="Ścieżka"><button onClick={() => go()}>Inwestycje</button> › <button onClick={() => go()}>Aktywa</button> › <span>{nm}</span>
-          <span style={{ flex: 1 }} /><button className="lnk" onClick={() => go(`assets/${assetId}`)}>otwórz w panelu</button></nav>
+        <nav className="crumb" aria-label={S.breadcrumb}><button onClick={() => go()}>{S.investments}</button> › <button onClick={() => go()}>{S.assets}</button> › <span>{nm}</span>
+          <span style={{ flex: 1 }} /><button className="lnk" onClick={() => go(`assets/${assetId}`)}>{S.openInPanel}</button></nav>
         {assetDetail(assetId, "page")}
         {drawers}
       </>
@@ -471,35 +438,27 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const stale = fr.prices.stale_count;
   const last = overview.kpis.last_run;
   const runAt = last ? (last.finished_at ?? last.started_at) : null;
-  const runDay = runAt ? (localDay(runAt) === today ? "dziś" : dm(runAt)) : null;
-  const lastReview = doneLocal ?? digest?.last_review?.done_at ?? null;
+  const runDay = runAt ? (localDay(runAt) === today ? S.today : dm(runAt)) : null;
   const head = (
     <div className="pagehead">
-      <h2 className="ph">Inwestycje</h2>
+      <h2 className="ph">{S.investments}</h2>
       {accounts.length > 1 && (
-        <Seg<number | null> quiet label="Rachunek" value={filter} onChange={setFilter}
-          items={[["Wszystkie", null], ...accounts.map((a) => [accountLabel(a, accounts), a.id] as [string, number])]} />
+        <Seg<number | null> quiet label={S.account} value={filter} onChange={setFilter}
+          items={[[S.all, null], ...accounts.map((a) => [accountLabel(a, accounts), a.id] as [string, number])]} />
       )}
-      {hasData && (priceRefresh.running ? <Tag>odświeżam ceny</Tag>
-        : fr.prices.newest_bar ? <Tag title="Najnowsze notowanie w bazie">ceny {wdm(fr.prices.newest_bar)}</Tag> : <Tag>brak notowań</Tag>)}
+      {hasData && (priceRefresh.running ? <Tag>{S.refreshingPrices}</Tag>
+        : fr.prices.newest_bar ? <Tag title={S.newestQuote}>{S.prices(wdm(fr.prices.newest_bar))}</Tag> : <Tag>{S.noQuotes}</Tag>)}
       {stale > 0 && <button className="tag warn" style={{ background: "transparent", cursor: "pointer", font: "inherit", fontSize: 11 }}
-        title={fr.prices.stale.map((s) => `${s.label}: ${s.price_date ? `ostatnie notowanie ${dm(s.price_date)}` : "brak notowań"}`).join("\n")}
-        onClick={() => { setAllocView("accounts"); setTimeout(() => scrollTo(light ? "inv-accounts" : "inv-alloc"), 30); }}>{stale === 1 ? "1 nieaktualna" : `${stale} nieaktualne`}</button>}
+        title={fr.prices.stale.map((s) => `${s.label}: ${s.price_date ? S.lastQuote(dm(s.price_date)) : S.noQuotes}`).join("\n")}
+        onClick={() => { setAllocView("accounts"); setTimeout(() => scrollTo(light ? "inv-accounts" : "inv-alloc"), 30); }}>{S.staleCount(stale)}</button>}
       {/* The daily check runs on its own (P10): its state shows only when it runs or is not ok (home v3 Q7). */}
-      {hasData && (runState.running ? <Tag title="Ceny, wycena, reguły i alerty">reguły w toku</Tag>
-        : last?.status === "partial" ? <span className="tag warn" title={`${runDay} ${hm(runAt!)}${last.errors[0] ? ` · ${runError(last.errors[0])}` : ""}`}>reguły częściowo</span>
-        : last?.status === "failed" ? <span className="tag warn" title={`${runDay} ${hm(runAt!)}${last.errors[0] ? ` · ${runError(last.errors[0])}` : ""} · sygnały z poprzedniego przebiegu`}>reguły nieudane</span>
-        : !last ? <span className="tag">reguły jeszcze nie działały</span> : null)}
+      {hasData && (runState.running ? <Tag title={S.runTitle}>{S.rulesRunning}</Tag>
+        : last?.status === "partial" ? <span className="tag warn" title={`${runDay} ${hm(runAt!)}${last.errors[0] ? ` · ${runError(last.errors[0])}` : ""}`}>{S.rulesPartial}</span>
+        : last?.status === "failed" ? <span className="tag warn" title={`${runDay} ${hm(runAt!)}${last.errors[0] ? ` · ${runError(last.errors[0])}` : ""}${S.previousRunSignals}`}>{S.rulesFailed}</span>
+        : !last ? <span className="tag">{S.rulesNeverRan}</span> : null)}
       <span className="spacer" />
-      <button className="btn" onClick={() => setDrawer({ kind: "import", account: filter })}>Import</button>
-      {!hasData ? <button className="btn" onClick={() => setDrawer({ kind: "txn" })}>Dodaj transakcję</button> : reviewOpen ? (
-        <button className="btn" onClick={() => setReviewOpen(false)}>Zamknij przegląd</button>
-      ) : (
-        <button className={`btn ${due && !light ? "primary" : ""}`} onClick={openReview} title={`Przegląd tygodnia${lastReview ? ` · ostatni ${dm(lastReview)}` : ""}`}>
-          {doneLocal && !due ? `Przegląd zrobiony ${dm(doneLocal)}` : `Przegląd tygodnia · ${isDigestDay(today, weekday) ? "dziś" : WEEKDAYS[weekday] ?? weekday}`}
-        </button>
-      )}
-      {hasData && !reviewOpen && doneLocal && !due && reviewUndo && <button className="lnk" style={{ fontSize: 12 }} onClick={reviewUndo}>cofnij</button>}
+      <button className="btn" onClick={() => setDrawer({ kind: "import", account: filter })}>{S.import}</button>
+      {!hasData && <button className="btn" onClick={() => setDrawer({ kind: "txn" })}>{S.addTxn}</button>}
     </div>
   );
 
@@ -524,22 +483,32 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     months: monthlyFlows(ddPts, today, 12), deposits: ytd?.summary?.deposits ?? null, plan,
     firstDeposit: ddPts.find((p) => (p.flow ?? 0) > 0)?.date ?? null, today,
   });
+  // The review's only entry: a round button at the hero's right, the deck's card count as a badge while due;
+  // "cofnij" next to it for the server's undo window.
+  const reviewSlot = hasData && digest ? (
+    <div className="rv-slot">
+      {doneLocal && !due && reviewUndo && <button className="lnk" style={{ fontSize: 12 }} onClick={reviewUndo}>{S.undoLower}</button>}
+      <ReviewButton name={digest.review?.name ?? S.weeklyReview} due={due} count={deckData.live.cards.length}
+        last={doneLocal ?? digest.last_review?.done_at ?? null} next={digest.review?.next_on ?? null} onOpen={openReview} />
+    </div>
+  ) : null;
   const hero = (
-    <section className="w hero" aria-label="Wartość portfela">
+    <section className="w hero" aria-label={S.portfolioValue}>
       <div className="h1">
-        <div className="l">Wartość portfela</div>
+        <div className="l">{S.portfolioValue}</div>
         <div className="v">{money(k.value.total, base)}</div>
-        {week && <div className="d"><span className={week.money >= 0 ? "pos" : "neg"}>{money(week.money, base, true)}{week.pct != null ? ` (${pct(week.pct, true)})` : ""}</span> w tym tygodniu</div>}
+        {week && <div className="d"><span className={week.money >= 0 ? "pos" : "neg"}>{money(week.money, base, true)}{week.pct != null ? ` (${pct(week.pct, true)})` : ""}</span>{S.thisWeek}</div>}
       </div>
       <div className="hf">
-        <Fact label="Od początku roku" value={ytd?.summary?.twr != null ? pct(ytd.summary.twr, true) : "-"} title={ybStale?.title}
-          detail={ybStale ? ybStale.label : yb?.twr != null ? <>{benchmarkLabel(yb)} {pct(yb.twr, true)}{yb.excess_twr != null && <> · <span className={yb.excess_twr >= 0 ? "pos" : "neg"}>{pp(yb.excess_twr * 100)}</span></>}</> : ytd === null ? "brak historii" : undefined} />
-        <Fact label="Wynik niezrealizowany" value={money0(k.unrealized.amount, base, true)} detail={k.unrealized.pct != null ? `${pct(k.unrealized.pct, true)} od kosztu` : "koszt nieznany"} />
+        <Fact label={S.ytd} value={ytd?.summary?.twr != null ? pct(ytd.summary.twr, true) : "-"} title={ybStale?.title}
+          detail={ybStale ? ybStale.label : yb?.twr != null ? <>{benchmarkLabel(yb)} {pct(yb.twr, true)}{yb.excess_twr != null && <> · <span className={yb.excess_twr >= 0 ? "pos" : "neg"}>{pp(yb.excess_twr * 100)}</span></>}</> : ytd === null ? S.noHistory : undefined} />
+        <Fact label={S.unrealized} value={money0(k.unrealized.amount, base, true)} detail={k.unrealized.pct != null ? S.vsCost(pct(k.unrealized.pct, true)) : S.costUnknown} />
         {/* The light grid keeps its Wpłaty widget: no duplicate facts there. */}
-        {!light && ddNow != null && <Fact label="Obsunięcie" value={pct(ddNow)} detail={ddMax != null ? `maks. ${pct(ddMax)}` : undefined} title="Od szczytu, 12 mies." />}
-        {!light && perf1y.data !== undefined && <Fact label="Wpłaty" value={contrib.deposits != null ? money0(contrib.deposits, base) : "-"} title="W tym roku"
-          detail={contrib.planYtd != null ? `plan ${money0(contrib.planYtd, base)}${contrib.missed ? ` · ${contrib.missed} mies. bez wpłaty` : ""}` : "bez planu w strategii"} />}
+        {!light && ddNow != null && <Fact label={S.drawdown} value={pct(ddNow)} detail={ddMax != null ? S.max(pct(ddMax)) : undefined} title={S.drawdownTitle} />}
+        {!light && perf1y.data !== undefined && <Fact label={S.contributions} value={contrib.deposits != null ? money0(contrib.deposits, base) : "-"} title={S.thisYear}
+          detail={contrib.planYtd != null ? `${S.plan(money0(contrib.planYtd, base))}${contrib.missed ? S.missedMonths(contrib.missed) : ""}` : S.noPlan} />}
       </div>
+      {reviewSlot}
     </section>
   );
 
@@ -548,24 +517,8 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   // Named by the signal's own title (instrument, bucket label, rule message), never the strategy's rule id (FE-A A6).
   const expired = (digest?.signals.resolved ?? []).filter((s) => s.status === "expired").map((s) => ({ title: s.instrument_label ?? signalText(s).title }));
   const items: (GridItem | false)[] = [];
-  if (reentry) {
-    const days = daysSince(reentry, new Date().toISOString());
-    items.push({ id: "reentry", span: 3, node: <ReentryBanner since={reentry} days={days} digest={reDigest.data} perf={perf1y.data} alerts={alerts} proposals={props.data ?? []}
-      depositPlan={!!plan} onDismiss={dismissReentry} onReview={() => { scrollTo("inv-changelog"); if (due) openReview(); }} /> });
-    items.push({ id: "changelog", span: 2, node: <ChangeLog since={reentry} digest={reDigest.data} alerts={alerts} proposals={props.data ?? []} accounts={accounts} today={today} names={names}
-      onJournal={() => openJournal()} /> });
-    items.push({ id: "today", span: 1, node: <StateToday since={reentry} total={k.value.total} base={base} ytd={ytd} perf={perf1y.data} signals={signals}
-      reviewText={due ? "dziś" : WEEKDAYS[weekday] ?? weekday} onSignals={() => scrollTo("inv-signals")} /> });
-  }
-  if (reviewOpen && digest) {
-    items.push({ id: "review", span: 3, node: <ReviewStrip digest={digest} step={step} onStep={onStep} decided={decided} total={signals.length} note={note} onNote={setNote} onDone={markDone} busy={doneFlight.busy} researchRan={research.ranInPeriod} /> });
-    items.push({ id: "changes", span: 3, node: <ChangesWidget digest={digest} perf={perf1y.data} alerts={alerts} proposals={props.data ?? []} accounts={accounts} names={names}
-      onSignals={() => onStep(1)} onProposal={(id) => setDrawer({ kind: "proposal", id })} onJournal={() => openJournal()} research={research.changesRow} /> });
-    const rr = research.review(digest.since);
-    if (rr) items.push(rr);
-  }
-  if (!reviewOpen && !reentry) items.push({ id: "hero", span: 3, node: hero });
-  const wSignals: GridItem = { id: "signals", span: 1, node: <SignalsRail signals={sig.data ? signals : null} ctx={signalsCtx} hl={reviewOpen && step === 1} focusId={focusSignal}
+  items.push({ id: "hero", span: 3, node: hero });
+  const wSignals: GridItem = { id: "signals", span: 1, node: <SignalsRail signals={sig.data ? signals : null} ctx={signalsCtx} hl={false} focusId={focusSignal}
     paused={!!sigDialog} onAll={(focusId) => setSigDialog({ filter: "all", focusId: focusId ?? null })} /> };
   const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsList} near={strategy?.facts?.alerts ?? null} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
   const wValue: GridItem = { id: "value", span: 2, node: <ValueChartWidget slug={slug} accounts={accountsFilter} nonce={nonce} initial={perf1y.loading ? undefined : perf1y.data} /> };
@@ -593,6 +546,10 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     <>
       {head}
       <Grid items={items.filter(Boolean) as GridItem[]} />
+      {reviewOpen && digest && hasData && (
+        <ReviewDeck slug={slug} data={deckData} digest={digest} perfWeek={perf1m.loading ? undefined : perf1m.data} busy={doneFlight.busy} suspended={drawer != null} note={note} onNote={setNote}
+          onClose={() => setReviewOpen(false)} onDone={markDone} onChanged={reload} onOpenProposal={(id) => setDrawer({ kind: "proposal", id })} />
+      )}
       {sigDialog && !light && (
         <SignalsDialog signals={signals} ctx={signalsCtx} filter={sigDialog.filter} focusId={sigDialog.focusId} review={reviewOpen} expired={expired}
           onHistory={() => openJournal()} onClose={() => setSigDialog(null)} />
@@ -622,23 +579,23 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
       case "import":
         return (
           <ImportDrawer slug={slug} accounts={accounts} initialAccount={drawer.account ?? null} onClose={close}
-            onDone={(r: CommitResult) => { toast(`Zaimportowano ${r.inserted} transakcji${r.planned_booked?.length ? ` · ${plural(r.planned_booked.length, "plan wpłaty zaksięgowany", "plany wpłat zaksięgowane", "planów wpłat zaksięgowanych")}` : ""}`, 3500); shellStale.current = true; reload(); }}
+            onDone={(r: CommitResult) => { toast(S.imported(r.inserted, r.planned_booked?.length ?? 0), 3500); shellStale.current = true; reload(); }}
             onAddAccount={() => setDrawer({ kind: "account" })} onManual={() => setDrawer({ kind: "txn" })}
             onClassify={() => { close(); setTimeout(() => scrollTo("inv-assets"), 50); }} />
         );
       case "txn":
         return (
           <TxnDrawer slug={slug} accounts={accounts} positions={list} preset={{ instrumentId: drawer.instrumentId ?? null, type: drawer.type, accountId: filter }}
-            onClose={close} onSaved={(w) => { shellStale.current = true; close(); toast(w.length ? `Zapisano transakcję · uwaga: ${w[0]}` : "Zapisano transakcję", w.length ? 5000 : 2500); reload(); }} />
+            onClose={close} onSaved={(w) => { shellStale.current = true; close(); toast(w.length ? S.txnSavedWarn(w[0]) : S.txnSaved, w.length ? 5000 : 2500); reload(); }} />
         );
       case "account":
-        return <AccountDrawer slug={slug} onClose={close} onSaved={(a) => { shellStale.current = true; close(); toast(`Dodano rachunek ${a.name}`, 2500); reload(); }} />;
+        return <AccountDrawer slug={slug} onClose={close} onSaved={(a) => { shellStale.current = true; close(); toast(S.accountAdded(a.name), 2500); reload(); }} />;
       case "thesis":
-        return <ThesisDrawer slug={slug} instrumentId={drawer.instrumentId} label={drawer.label} thesis={drawer.thesis} onClose={close} onSaved={() => { close(); toast("Zapisano tezę", 2000); reload(); }} />;
+        return <ThesisDrawer slug={slug} instrumentId={drawer.instrumentId} label={drawer.label} thesis={drawer.thesis} onClose={close} onSaved={() => { close(); toast(S.thesisSaved, 2000); reload(); }} />;
       case "proposal":
         return (
           <ProposalDrawer slug={slug} id={drawer.id} version={strategy?.version ?? null} onClose={close} onChanged={reload}
-            onDone={(ok, v) => { if (ok) shellStale.current = true; close(); toast(ok ? `Zatwierdzono propozycję${v ? ` · strategia v${v}` : ""}` : "Odrzucono propozycję", 3000); reload(); }} />
+            onDone={(ok, v) => { if (ok) shellStale.current = true; close(); toast(ok ? S.proposalApproved(v) : S.proposalRejected, 3000); reload(); }} />
         );
       case "txns":
         return <TxnsDrawer slug={slug} position={drawer.position} accounts={accounts} onClose={close} onAdd={() => setDrawer({ kind: "txn", instrumentId: drawer.position.instrument.id })} />;
@@ -658,33 +615,33 @@ function Start({ accounts, strategy, hasTxn, initBusy, onAddAccount, onInitStrat
   const weekday = strategy?.facts?.notifications.digest_weekday ?? "sunday";
   const steps: SetupStepItem[] = [
     {
-      key: "account", status: hasAccount ? "done" : "on", title: "Rachunek maklerski",
-      hint: hasAccount ? accounts.map((a) => `${accountLabel(a, accounts)} · ${a.currency}`).join(" · ") : "Broker + opakowanie (zwykłe, IKE, IKZE)",
-      actions: <button className={`btn ${hasAccount ? "" : "primary"}`} onClick={onAddAccount}>{hasAccount ? "Dodaj kolejny" : "Dodaj rachunek"}</button>,
+      key: "account", status: hasAccount ? "done" : "on", title: S.brokerageAccount,
+      hint: hasAccount ? accounts.map((a) => `${accountLabel(a, accounts)} · ${a.currency}`).join(" · ") : S.brokerWrapper,
+      actions: <button className={`btn ${hasAccount ? "" : "primary"}`} onClick={onAddAccount}>{hasAccount ? S.addAnother : S.addAccount}</button>,
     },
     {
-      key: "strategy", status: hasStrategy ? "done" : hasAccount ? "on" : "todo", title: "Strategia",
-      tag: hasStrategy ? <Tag tone="pos">{strategy!.version != null ? `v${strategy!.version}` : "zapisana"}</Tag> : <Tag tone="info">zalecane</Tag>,
-      hint: hasStrategy ? undefined : <><code>strategy.yaml</code> albo wywiad w Claude Code: <code>/investments-setup</code></>,
+      key: "strategy", status: hasStrategy ? "done" : hasAccount ? "on" : "todo", title: S.strategy,
+      tag: hasStrategy ? <Tag tone="pos">{strategy!.version != null ? `v${strategy!.version}` : S.saved}</Tag> : <Tag tone="info">{S.recommended}</Tag>,
+      hint: hasStrategy ? undefined : <><code>strategy.yaml</code>{S.orInterview}<code>/investments-setup</code></>,
       actions: hasStrategy ? undefined : (
         <>
-          <button className={`btn ${hasAccount ? "primary" : ""}`} onClick={onInitStrategy} disabled={initBusy}>{initBusy ? "Tworzę…" : "Utwórz z szablonu"}</button>
-          <button className="btn" onClick={() => go({ kind: "setup", module: "investments" })}>Instrukcja Claude Code</button>
+          <button className={`btn ${hasAccount ? "primary" : ""}`} onClick={onInitStrategy} disabled={initBusy}>{initBusy ? S.creating : S.fromTemplate}</button>
+          <button className="btn" onClick={() => go({ kind: "setup", module: "investments" })}>{S.claudeGuide}</button>
         </>
       ),
     },
     {
-      key: "txn", status: hasTxn ? "done" : hasStrategy ? "on" : "todo", title: "Pierwsza wpłata lub zakup",
-      hint: "Ręcznie albo import pliku od brokera.",
-      actions: hasAccount ? <><button className="btn" onClick={onAddTxn}>Dodaj transakcję</button><button className="btn" onClick={onImport}>Import</button></> : undefined,
+      key: "txn", status: hasTxn ? "done" : hasStrategy ? "on" : "todo", title: S.firstTxn,
+      hint: S.firstTxnHint,
+      actions: hasAccount ? <><button className="btn" onClick={onAddTxn}>{S.addTxn}</button><button className="btn" onClick={onImport}>{S.import}</button></> : undefined,
     },
-    { key: "review", status: "todo", title: "Pierwszy przegląd", hint: `${(WEEKDAYS[weekday] ?? weekday).replace(/^./, (m) => m.toUpperCase())} · raz w tygodniu` },
+    { key: "review", status: "todo", title: S.firstReview, hint: S.weekly((WEEKDAYS[weekday] ?? weekday).replace(/^./, (m) => m.toUpperCase())) },
   ];
   return (
     <Grid items={[
       {
         id: "start", span: 2, node: (
-          <Widget title="Pierwsze kroki" body="tight">
+          <Widget title={S.firstSteps} body="tight">
             <SetupSteps steps={steps} />
             {!hasAccount && <Code cmd={`cashu --profile ${slug} invest accounts add "XTB IKE" --broker xtb --wrapper ike`} />}
           </Widget>

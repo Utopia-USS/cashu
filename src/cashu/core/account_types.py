@@ -9,7 +9,8 @@ module-specific meaning spread over the code:
   is available credit and counts 0, only a negative balance is debt);
 - ``liquid``: counts toward "liquid" net worth;
 - ``bucket``: the net-worth chart bucket it stacks into (see ``NetWorthBucket``);
-- ``label``: Polish display label (UI data).
+- ``label``: Polish display label (UI data), ``label_en`` its English variant (None: the Polish
+  one); ``display_label`` is the one of the current UI language (``core.i18n``).
 
 Ids are the stored ``accounts.type`` values (the upstream enum values stay valid).
 """
@@ -19,6 +20,8 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass
 from typing import Literal
+
+from .i18n import tr
 
 Sign = Literal["asset", "liability", "credit"]
 
@@ -31,6 +34,11 @@ class AccountTypeInfo:
     sign: Sign = "asset"
     liquid: bool = True
     bucket: str = "money"
+    label_en: str | None = None
+
+    @property
+    def display_label(self) -> str:
+        return tr(pl=self.label, en=self.label_en or self.label)
 
 
 @dataclass(frozen=True)
@@ -41,13 +49,19 @@ class NetWorthBucket:
     label: str  # Polish display label (UI data)
     order: int  # stacking order: assets bottom-up, then liabilities
     liability: bool = False
+    label_en: str | None = None  # English display label (None: the Polish one)
+
+    @property
+    def display_label(self) -> str:
+        """The label in the current UI language (the API); ``label`` stays Polish (MCP, CLI)."""
+        return tr(pl=self.label, en=self.label_en or self.label)
 
 
 _TYPES: dict[str, AccountTypeInfo] = {}
 _BUCKETS: dict[str, NetWorthBucket] = {}
 
 # Everything liquid that no module claims a special bucket for.
-MONEY = NetWorthBucket("money", "Pieniądze", 0)
+MONEY = NetWorthBucket("money", "Pieniądze", 0, label_en="Money")
 
 
 def type_id(value: object) -> str:

@@ -4,9 +4,11 @@
 // The kind never changes by PATCH (the backend has no `kind` in AlertPatchBody), so the weight direction is
 // fixed while editing. Pure; tested in tests/alertform.test.mjs.
 import { localDay } from "../../../time.ts";
+import { intlLocale, normalizeNumberInput } from "../../../i18n.ts";
+import { S } from "./alertForm.strings.ts";
 
 const fmt = (v: number, maxDigits: number, minDigits: number) =>
-  v.toLocaleString("pl-PL", { minimumFractionDigits: minDigits, maximumFractionDigits: maxDigits, useGrouping: false });
+  v.toLocaleString(intlLocale(), { minimumFractionDigits: minDigits, maximumFractionDigits: maxDigits, useGrouping: false });
 
 /** A price level as input text without losing digits: 4.3175 -> "4,3175", 140 -> "140,00". */
 export function levelText(v: unknown): string {
@@ -44,9 +46,9 @@ export function draftText(params: Record<string, unknown> | null | undefined, de
   };
 }
 
-/** Polish-typed number ("1 234,56", "148.60") -> number | null. */
+/** Typed number ("1 234,56", "148.60"; in English also "1,234.56") -> number | null. */
 function num(text: string): number | null {
-  const t = text.replace(/[\s ]/g, "").replace(",", ".");
+  const t = normalizeNumberInput(text);
   if (!t || !/^-?\d*\.?\d+$/.test(t)) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
@@ -140,23 +142,23 @@ export function formKind(card: string, above: boolean, stored: string | null): s
   return card === "weight" ? (above ? "weight_above" : "weight_below") : card;
 }
 
-/** Client-side checks before the server's catalog validation (Polish messages). */
+/** Client-side checks before the server's catalog validation (messages in the UI language). */
 export function validate(kind: string, scope: string, params: Record<string, unknown>, inst: object | null, bucket: string): string[] {
   const out: string[] = [];
-  if (scope === "instrument" && !inst) out.push("Wybierz instrument z listy.");
-  if (scope === "bucket" && !bucket) out.push("Wybierz koszyk.");
+  if (scope === "instrument" && !inst) out.push(S.pickInstrument);
+  if (scope === "bucket" && !bucket) out.push(S.pickBucket);
   const num = (k: string) => (typeof params[k] === "number" && Number.isFinite(params[k] as number) ? (params[k] as number) : null);
-  if ((kind === "price_above" || kind === "price_below") && !(num("level")! > 0)) out.push("Podaj poziom ceny większy od zera.");
+  if ((kind === "price_above" || kind === "price_below") && !(num("level")! > 0)) out.push(S.priceLevel);
   if ("window_days" in params) {
     // The catalog wants at least 2 sessions for drawdown / new high / SMA (alerts/catalog.py), 1 for a change.
     const w = num("window_days"), min = kind === "change_pct" ? 1 : kind === "range_breakout" ? 10 : kind === "volume_spike" ? 5 : 2;
-    if (w == null || w < min || w > 260 || !Number.isInteger(w)) out.push(`Okno: liczba sesji od ${min} do 260.`);
+    if (w == null || w < min || w > 260 || !Number.isInteger(w)) out.push(S.window(min));
   }
-  if (kind === "change_pct" && !(num("threshold")! > 0)) out.push("Podaj próg zmiany w procentach.");
-  if (kind === "drawdown_from_high" && !(num("threshold")! > 0 && num("threshold")! < 1)) out.push("Próg spadku: od 0 do 100 %.");
-  if ((kind === "weight_above" || kind === "weight_below") && !(num("threshold")! > 0 && num("threshold")! <= 1)) out.push("Próg wagi: od 0 do 100 % portfela.");
-  if (kind === "custom" && !String(params.expression ?? "").trim()) out.push("Wpisz wyrażenie.");
-  if (kind === "range_breakout" && !(num("max_range_pct")! >= 0.01 - 1e-12 && num("max_range_pct")! <= 0.3 + 1e-12)) out.push("Zakres maks.: od 1 do 30 %.");
-  if (kind === "volume_spike" && !(num("multiple")! >= 1.5 && num("multiple")! <= 20)) out.push("Krotność: od 1,5 do 20.");
+  if (kind === "change_pct" && !(num("threshold")! > 0)) out.push(S.changeThreshold);
+  if (kind === "drawdown_from_high" && !(num("threshold")! > 0 && num("threshold")! < 1)) out.push(S.drawdownThreshold);
+  if ((kind === "weight_above" || kind === "weight_below") && !(num("threshold")! > 0 && num("threshold")! <= 1)) out.push(S.weightThreshold);
+  if (kind === "custom" && !String(params.expression ?? "").trim()) out.push(S.expression);
+  if (kind === "range_breakout" && !(num("max_range_pct")! >= 0.01 - 1e-12 && num("max_range_pct")! <= 0.3 + 1e-12)) out.push(S.maxRange);
+  if (kind === "volume_spike" && !(num("multiple")! >= 1.5 && num("multiple")! <= 20)) out.push(S.multiple);
   return out;
 }

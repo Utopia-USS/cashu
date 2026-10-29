@@ -34,6 +34,7 @@ YAML anchors/aliases, merge keys (`<<`), custom tags and duplicate keys are erro
 | `watchlist` | no | `criteria`: criterion -> number (used by a later stage) |
 | `benchmark` | no | `id` (required, id characters), `proxy` (required: a Yahoo symbol or ISIN of an instrument tracking the benchmark), `currency` (default `base_currency`); used by a later stage |
 | `notifications` | no | `immediate`: severities that notify at once (default `[action]`, `[]` = none), `digest_weekday`: `monday` ... `sunday` (default `sunday`) |
+| `review` | no | the owner's periodic review (the review deck in the app, `/review` in the agent): `every`: `week` (default), `2weeks` or `month` (the first `day` of the month), `day`: `monday` ... `sunday` (default `notifications.digest_weekday`), `name` (at most 40 characters; default by `every`: `Przegląd tygodnia`, `Przegląd dwutygodniowy`, `Przegląd miesiąca`), `cards`: the deck's cards in order, any of `world`, `sectors`, `positions`, `events`, `decide`, `ideas`, `calendar` (default all, in this order) |
 
 Asset classes: `equity`, `etf`, `fund`, `bond`, `treasury_bond`, `cash`, `crypto`, `commodity`, `claim`, `other`.
 

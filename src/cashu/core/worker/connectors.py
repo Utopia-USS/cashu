@@ -18,6 +18,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from .. import profiles
+from ..i18n import en_count, pl_form, tr
 from .notifier import Notification, Notifier, investments_link
 
 JOB = "connectors.fetch"
@@ -35,11 +37,10 @@ class FetchOutcome:
 
 
 def _records_phrase(n: int) -> str:
-    if n == 1:
-        return "1 nowy rekord"
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return f"{n} nowe rekordy"
-    return f"{n} nowych rekordów"
+    return tr(
+        pl=f"{n} {pl_form(n, 'nowy rekord', 'nowe rekordy', 'nowych rekordów')}",
+        en=en_count(n, "new record", "new records"),
+    )
 
 
 def notify_proposal(notifier: Notifier, profile, result) -> bool:
@@ -47,8 +48,8 @@ def notify_proposal(notifier: Notifier, profile, result) -> bool:
     new = (result.preview or {}).get("new", 0)
     delivery = notifier.send(
         Notification(
-            title=f"cashU: {profile.name}",
-            subtitle="Import czeka na zatwierdzenie",
+            title=f"cashU: {profiles.display_name(profile)}",
+            subtitle=tr(pl="Import czeka na zatwierdzenie", en="Import awaiting approval"),
             message=f"{result.connector_name}: {_records_phrase(int(new))}",
             group=f"cashu-connector-{result.binding_id}",
             url=investments_link(profile.slug) if result.module == "investments" else None,

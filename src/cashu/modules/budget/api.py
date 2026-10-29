@@ -17,6 +17,7 @@ from sqlmodel import select
 from cashu.core import uploads
 from cashu.core.api import CurrentProfile, f
 from cashu.core.db import get_session
+from cashu.core.i18n import tr
 
 from . import analytics, imports, monthclose
 from . import settings as budget_settings
@@ -70,7 +71,9 @@ def categories() -> list[dict]:
     """The category taxonomy (global, the same for every profile)."""
     from .categorize import taxonomy
 
-    return [{"key": c.key, "label": c.label, "kind": c.kind} for c in taxonomy.CATEGORIES]
+    return [
+        {"key": c.key, "label": taxonomy.label(c.key), "kind": c.kind} for c in taxonomy.CATEGORIES
+    ]
 
 
 @router.get("/spending")
@@ -201,7 +204,7 @@ def cash(profile: CurrentProfile, currency: str | None = None) -> dict:
                     "amount": f(t.amount),
                     "title": t.reference or t.description or t.counterparty_name or "—",
                     "category": t.category,
-                    "category_label": taxonomy.LABELS.get(t.category, t.category),
+                    "category_label": taxonomy.label(t.category),
                     "kind": "withdrawal" if t.amount > 0 else "expense",
                 }
                 for t in rows
@@ -289,14 +292,22 @@ def resync(profile: CurrentProfile, days: int = 90, connectors: bool = True) -> 
     if not settings.eb_configured:
         if synced:
             return _connectors_only(profile, synced)
-        return {"ok": False, "error": "Enable Banking nie jest skonfigurowany: CASHU_EB_APP_ID w pliku .env w katalogu danych cashU."}
+        return {"ok": False, "error": tr(
+            pl="Enable Banking nie jest skonfigurowany: CASHU_EB_APP_ID w pliku .env w katalogu "
+            "danych cashU.",
+            en="Enable Banking is not configured: CASHU_EB_APP_ID in the .env file in the cashU "
+            "data folder.",
+        )}
     with get_session() as s:
         legacy_owner = profiles.legacy_owner_slug(s)
     sessions = load_sessions(profile.slug, legacy_profile=legacy_owner)
     if not sessions:
         if synced:
             return _connectors_only(profile, synced)
-        return {"ok": False, "error": "Brak sesji Enable Banking: zaloguj się: cashu eb login"}
+        return {"ok": False, "error": tr(
+            pl="Brak sesji Enable Banking: zaloguj się: cashu eb login",
+            en="No Enable Banking session: log in with: cashu eb login",
+        )}
 
     client = _eb_client()
     errors: list[str] = []

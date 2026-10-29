@@ -1,6 +1,7 @@
 // Agent workspace (GET/POST /api/p/{slug}/workspace, core/workspace on the server): shapes and pure
 // helpers for the wizard and Settings > Agent AI. No transport here (see workspaceApi.ts), so
 // `npm test` can import it without a DOM.
+import { ERRORS as ERROR_TEXT, REASON as REASONS, SECTION as SECTIONS, WS } from "./workspace.strings.ts";
 
 export interface WorkspaceItem { kind: string; name: string; reason: string }
 export interface WorkspaceSkill { name: string; module: string | null; version: string; state: string }
@@ -37,45 +38,27 @@ export interface WorkspaceResult extends WorkspaceStatus {
 
 export interface WorkspaceDefault { root: string; slug: string | null; path: string | null }
 
-const REASON: Record<string, string> = {
-  missing: "brak",
-  outdated: "nieaktualne",
-  extra: "do usunięcia (moduł wyłączony)",
-  modified: "zmienione lokalnie",
-  conflict: "Twój folder o tej nazwie",
-  invalid: "nieczytelny plik",
-  unsupported: "system nie pozwala utworzyć linku",
-};
+const REASON: Record<string, string> = REASONS;
+const SECTION: Record<string, string> = SECTIONS;
 
-const SECTION: Record<string, string> = {
-  layout: "układ agenta",
-  profile: "profil",
-  privacy: "prywatność",
-  tools: "narzędzia MCP",
-  boundaries: "granice",
-  files: "foldery",
-  skills: "skille",
-  research: "research",
-};
-
-/** Polish one-liner for an outdated item, e.g. "CLAUDE.md, sekcja narzędzia MCP: nieaktualne". */
+/** One-liner for an outdated item, e.g. "CLAUDE.md, sekcja narzędzia MCP: nieaktualne". */
 export function outdatedLabel(item: WorkspaceItem): string {
   const reason = REASON[item.reason] ?? item.reason;
   switch (item.kind) {
     case "claude_md":
       return item.name === "CLAUDE.md"
         ? `CLAUDE.md: ${reason}`
-        : `CLAUDE.md, sekcja ${SECTION[item.name] ?? item.name}: ${reason}`;
+        : WS.claudeMdSection(SECTION[item.name] ?? item.name, reason);
     case "mcp":
-      return `.mcp.json (serwer MCP): ${reason}`;
+      return WS.mcpJson(reason);
     case "settings":
-      return `uprawnienia (.claude/settings.json): ${reason}`;
+      return WS.settingsJson(reason);
     case "skill":
       return `skill /${item.name}: ${reason}`;
     case "folder":
-      return `folder ${item.name}/: ${reason}`;
+      return WS.folder(item.name, reason);
     case "link":
-      return `${item.name} (dla Codex): ${item.reason === "conflict" ? "Twój plik o tej nazwie" : reason}`;
+      return WS.codexLink(item.name, item.reason === "conflict" ? WS.ownFileConflict : reason);
     default:
       return `${item.name}: ${reason}`;
   }
@@ -94,48 +77,27 @@ export type WorkspaceTone = "pos" | "warn" | "neg" | undefined;
 
 /** Status tag of the workspace card. */
 export function workspaceSummary(st: WorkspaceStatus | null): { tone: WorkspaceTone; text: string } {
-  if (!st) return { tone: undefined, text: "nieznany" };
-  if (st.conflict) return { tone: "neg", text: "folder innego profilu" };
-  if (!st.exists) return { tone: undefined, text: "nie utworzono" };
-  if (st.up_to_date) return { tone: "pos", text: "aktualny" };
+  if (!st) return { tone: undefined, text: WS.unknown };
+  if (st.conflict) return { tone: "neg", text: WS.otherProfile };
+  if (!st.exists) return { tone: undefined, text: WS.notCreated };
+  if (st.up_to_date) return { tone: "pos", text: WS.upToDate };
   const fixable = st.outdated.filter((i) => !notFixable(i)).length;
-  if (!fixable) return { tone: "warn", text: "zmiany lokalne" };
-  return { tone: "warn", text: `do aktualizacji · ${fixable}` };
+  if (!fixable) return { tone: "warn", text: WS.localChanges };
+  return { tone: "warn", text: WS.toUpdate(fixable) };
 }
 
 /** Toast after a create / update. */
 export function changesToast(res: WorkspaceResult, created: boolean): string {
-  if (created) return "Utworzono workspace";
-  return res.changes.length ? `Zaktualizowano workspace (${res.changes.length})` : "Workspace jest aktualny";
+  if (created) return WS.created;
+  return res.changes.length ? WS.updated(res.changes.length) : WS.alreadyUpToDate;
 }
 
-/** Copy of the opt-in routine permissions switch (wizard and Settings). */
-export const ROUTINE_PERMISSIONS_LABEL = "Rutyna bez pytań o zgodę";
-export const ROUTINE_PERMISSIONS_HINT =
-  "Sobotni research przeszukuje sieć i zapisuje w research/ i notes/ bez pytania. Dane finansowe nadal tylko przez MCP.";
+// The copy shared by the wizard, Settings and the setup page (routine permissions switch, proposal note,
+// macOS App Translocation text) is `WS` in workspace.strings.ts.
 
-/** The proposal-safety line (wizard and Settings share it). */
-export const PROPOSAL_NOTE = "Zapis przez agenta to zawsze propozycja do zatwierdzenia w aplikacji.";
+const ERRORS: Record<string, string> = ERROR_TEXT;
 
-/** macOS App Translocation (PK3): the MCP snippets are placeholders until the app is moved. Shown for the
- * workspace error code, GET /mcp `translocated` and the setup page's `skill.translocated`. */
-export const TRANSLOCATED_TEXT = "Aplikacja działa z tymczasowej lokalizacji macOS: przenieś cashU.app do folderu Programy i otwórz ją ponownie.";
-
-const ERRORS: Record<string, string> = {
-  path_required: "Podaj folder.",
-  path_relative: "Podaj pełną ścieżkę folderu (od / albo od ~).",
-  path_is_file: "Pod tą ścieżką jest plik, nie folder.",
-  path_home: "Wybierz osobny folder, nie cały katalog domowy ani dysk.",
-  path_hidden: "Folder nie może leżeć w ukrytym katalogu.",
-  path_data_dir: "Workspace musi leżeć poza katalogiem danych cashU i nie może go zawierać.",
-  path_checkout: "Workspace nie może leżeć w katalogu z kodem cashU.",
-  workspace_taken: "Ten folder jest (albo zawiera) workspace innego profilu.",
-  translocated: TRANSLOCATED_TEXT,
-  busy: "Workspace jest właśnie aktualizowany. Spróbuj za chwilę.",
-  write_failed: "Nie udało się zapisać plików w tym folderze (uprawnienia albo dysk).",
-};
-
-/** Polish text of a workspace API error (the `X-Cashu-Error-Code` code on ApiError), else the
+/** Text of a workspace API error (the `X-Cashu-Error-Code` code on ApiError), else the
  * server's English message. */
 export function workspaceErrorText(e: unknown): string {
   const code = (e as { code?: string | null } | null)?.code;

@@ -1,0 +1,32 @@
+// Texts of the topic drawer (src/modules/investments/v2/research/TopicDrawer.tsx). See src/i18n.ts.
+import { catalog } from "../../../../i18n.ts";
+
+export const S = catalog({
+  macro: { pl: "Makro", en: "Macro" },
+  topics: { pl: "Tematy", en: "Topics" },
+  notes: { pl: "Notatki", en: "Notes" },
+  noNotes: { pl: "Brak notatek.", en: "No notes." },
+  instruments: { pl: "Instrumenty", en: "Instruments" },
+  noInstruments: { pl: "Brak instrumentów.", en: "No instruments." },
+  watched: { pl: "obserwowany", en: "watched" },
+  saveFailed: { pl: (e: string) => `Nie udało się zapisać: ${e}`, en: (e: string) => `Couldn't save: ${e}` },
+  confirmed: { pl: "Potwierdzono tezę", en: "Thesis confirmed" },
+  removed: { pl: "Usunięto tezę", en: "Thesis removed" },
+  thesisSaved: { pl: "Zapisano tezę", en: "Thesis saved" },
+  viewSaved: { pl: "Zapisano ocenę", en: "Assessment saved" },
+  noChanges: { pl: "Bez zmian", en: "No changes" },
+  thesis: { pl: "Teza", en: "Thesis" },
+  agentDraft: { pl: "Wersja robocza od agenta", en: "Draft from the agent" },
+  toConfirm: { pl: "do potwierdzenia", en: "to confirm" },
+  confirm: { pl: "Potwierdź", en: "Confirm" },
+  invalidation: { pl: "Unieważnienie", en: "Invalidation" },
+  assessmentNow: { pl: "Ocena teraz", en: "Assessment now" },
+  outlook: { pl: "Perspektywa", en: "Outlook" },
+  saving: { pl: "Zapisuję…", en: "Saving…" },
+  noThesis: { pl: "Brak tezy.", en: "No thesis." },
+  state: { pl: "Stan", en: "State" },
+  noMacroData: { pl: "Brak danych makro.", en: "No macro data." },
+  supports: { pl: "Co sprzyja", en: "Tailwinds" },
+  risks: { pl: "Na co uważać", en: "Watch out for" },
+  researchOn: { pl: (d: string) => `research ${d}`, en: (d: string) => `research ${d}` },
+});

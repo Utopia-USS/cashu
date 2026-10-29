@@ -15,25 +15,28 @@ import { stepsTag } from "./SetupPage";
 import { useShell } from "./context";
 import type { ThemePref } from "./theme";
 import { serialSaver } from "./util";
-import { CURRENCIES, PRIVACY_COMMON, PRIVACY_OPTIONS, PRIVACY_QUESTION } from "./Wizard";
+import { CURRENCIES } from "./Wizard";
+import { PRIVACY } from "./Wizard.strings.ts";
 import {
-  changesToast, needsForce, outdatedLabel, PROPOSAL_NOTE, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, TRANSLOCATED_TEXT, workspaceErrorText, workspaceSummary,
+  changesToast, needsForce, outdatedLabel, workspaceErrorText, workspaceSummary,
 } from "./workspace";
+import { WS } from "./workspace.strings.ts";
 import { getWorkspace, postWorkspace } from "./workspaceApi";
 import { ConnectorsSection } from "./ConnectorsSection";
+import { LANG_NAME, LANGS, type Lang, setLanguage, storedLang } from "../i18n";
+import { JOB_LABEL as JOB_LABELS, JOB_STATUS as JOB_STATUSES, MIGRATION_STEP as MIGRATION_STEPS, OUTCOME as OUTCOMES, PRIVACY_SHORT as PRIVACY_SHORTS, S, SECTION } from "./Settings.strings.ts";
+import { C } from "../common.strings.ts";
+import { intlLocale } from "../i18n.ts";
 import { InvestmentsStrategySettings } from "../modules/investments/v2/StrategySettings";
 
-const SECTIONS: [id: string, label: string][] = [
-  ["profile", "Profil"], ["modules", "Moduły"], ["agent", "Agent AI (MCP)"], ["connectors", "Konektory"], ["data", "Dane"],
-  ["worker", "Praca w tle"], ["secrets", "Sekrety"], ["app", "Aplikacja"],
-];
+const SECTIONS = ["profile", "modules", "agent", "connectors", "data", "worker", "secrets", "app"] as const;
 
 // A write that changes /api/system bumps this and Praca w tle re-reads the status: a workspace update rewrites
 // .mcp.json and clears `relocation.mcp`, the ack and a worker install change it too (F7 FIX2 A5).
 const SystemChanged = createContext<{ tick: number; changed: () => void }>({ tick: 0, changed: () => {} });
 
 export function Settings({ section, theme, setTheme }: { section?: string; theme: ThemePref; setTheme: (t: ThemePref) => void }) {
-  const [active, setActive] = useState(section && SECTIONS.some(([id]) => id === section) ? section : "profile");
+  const [active, setActive] = useState(section && SECTIONS.some((id) => id === section) ? section : "profile");
   const root = useRef<HTMLDivElement>(null);
   const [sysTick, setSysTick] = useState(0);
   const systemChanged = useCallback(() => setSysTick((n) => n + 1), []);
@@ -45,7 +48,7 @@ export function Settings({ section, theme, setTheme }: { section?: string; theme
 
   // Scroll-spy: the nav follows the card nearest the top of the viewport.
   useEffect(() => {
-    const els = SECTIONS.map(([id]) => document.getElementById(`set-${id}`)).filter(Boolean) as HTMLElement[];
+    const els = SECTIONS.map((id) => document.getElementById(`set-${id}`)).filter(Boolean) as HTMLElement[];
     const io = new IntersectionObserver((entries) => {
       const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
       if (top) setActive(top.target.id.slice(4));
@@ -56,11 +59,11 @@ export function Settings({ section, theme, setTheme }: { section?: string; theme
 
   return (
     <div className="settings" ref={root}>
-      <nav aria-label="Sekcje ustawień">
-        {SECTIONS.map(([id, label]) => (
+      <nav aria-label={S.sectionsNav}>
+        {SECTIONS.map((id) => (
           <button key={id} className={active === id ? "on" : ""} aria-current={active === id ? "true" : undefined}
             onClick={() => { setActive(id); document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>
-            {label}
+            {SECTION[id]}
           </button>
         ))}
       </nav>
@@ -101,9 +104,9 @@ function ProfileSection() {
   const dirty = name.trim() !== profile.name || currency !== profile.base_currency;
   const save = async () => {
     const n = name.trim();
-    if (!n) { setErr("Podaj nazwę profilu."); return; }
+    if (!n) { setErr(S.nameRequired); return; }
     if (profiles.some((p) => p.slug !== slug && p.name.trim().toLowerCase() === n.toLowerCase())) {
-      setErr("Profil o tej nazwie już istnieje."); return;
+      setErr(S.nameTaken); return;
     }
     setBusy(true); setErr(null);
     try {
@@ -113,28 +116,28 @@ function ProfileSection() {
       // Every figure in the base currency (summary, net worth, month close, investments) is cached in the old one:
       // forget the cache and re-read the shell's data (F7 FIX2 audit).
       if (currencyChanged) refresh?.();
-      toast("Zapisano");
+      toast(C.saved);
     } catch (e) { setErr(errorText(e)); } finally { setBusy(false); }
   };
 
   return (
-    <Card id="profile" title="Profil">
+    <Card id="profile" title={SECTION.profile}>
       <div className="kv">
-        <label className="k" htmlFor="set-name">Nazwa</label>
+        <label className="k" htmlFor="set-name">{S.name}</label>
         <span className="v"><input id="set-name" value={name} maxLength={40} style={{ width: 220 }} onChange={(e) => setName(e.target.value)} /></span>
-        <label className="k" htmlFor="set-cur">Waluta bazowa</label>
+        <label className="k" htmlFor="set-cur">{S.baseCurrency}</label>
         <span className="v">
           <select id="set-cur" value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {[...new Set([...CURRENCIES, profile.base_currency])].map((c) => <option key={c}>{c}</option>)}
           </select>
-          <span className="hint">inne waluty osobno, bez przeliczania</span>
+          <span className="hint">{S.baseCurrencyHint}</span>
         </span>
-        <span className="k">Identyfikator</span>
-        <span className="v"><code>{slug}</code><span className="hint">w poleceniach CLI i MCP (<code>--profile {slug}</code>)</span></span>
+        <span className="k">{S.slug}</span>
+        <span className="v"><code>{slug}</code><span className="hint">{S.slugHint} (<code>--profile {slug}</code>)</span></span>
       </div>
       {err && <Notice tone="neg" style={{ margin: "14px 0 0" }}>{err}</Notice>}
       <div className="controls" style={{ margin: "16px 0 0" }}>
-        <button className="btn primary" onClick={save} disabled={busy || !dirty}>Zapisz</button>
+        <button className="btn primary" onClick={save} disabled={busy || !dirty}>{C.save}</button>
       </div>
     </Card>
   );
@@ -173,7 +176,7 @@ function ModulesSection() {
       // The month close carries the investments plan only while that module is on (and summaries follow the
       // module set): forget the cached views (F7 FIX2 audit).
       live.current.refresh?.();
-      if (!error) live.current.toast("Zapisano");
+      if (!error) live.current.toast(C.saved);
     },
   ));
   const enabled = wanted ?? server;
@@ -187,7 +190,7 @@ function ModulesSection() {
   };
 
   return (
-    <Card id="modules" title="Moduły">
+    <Card id="modules" title={SECTION.modules}>
       {orderModules(modules).map((m) => {
         const pm = profile.modules.find((x) => x.id === m.id);
         return (
@@ -195,7 +198,7 @@ function ModulesSection() {
             onToggle={(on) => toggle(m.id, on)} />
         );
       })}
-      {err && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Nie udało się zapisać modułów: {err}</Notice>}
+      {err && <Notice tone="neg" style={{ margin: "10px 0 0" }}>{S.modulesSaveFailed(err)}</Notice>}
     </Card>
   );
 }
@@ -211,17 +214,17 @@ function ModuleRow({ info, on, pm, onToggle }: { info: ModuleInfo; on: boolean; 
   );
   return (
     <div className="row">
-      <Switch on={on} disabled={!info.available} label={`Moduł ${def.name}`} onChange={onToggle}
-        title={!info.available ? "Wkrótce" : undefined} />
+      <Switch on={on} disabled={!info.available} label={S.moduleSwitch(def.name)} onChange={onToggle}
+        title={!info.available ? S.soonTitle : undefined} />
       <div className="grow">
         <div className="t">
           {def.name}
-          {!info.available ? <Tag>wkrótce</Tag> : on ? stepsTag(data, pm?.setup_state) : null}
+          {!info.available ? <Tag>{S.soon}</Tag> : on ? stepsTag(data, pm?.setup_state) : null}
         </div>
         {/* "dane zachowane" only when the switched-off module actually holds data for this profile */}
-        <div className="d">{!on && pm && info.available && pm.setup_state !== "empty" ? `${def.short} · wyłączony, dane zachowane` : def.short}</div>
+        <div className="d">{!on && pm && info.available && pm.setup_state !== "empty" ? S.offDataKept(def.short) : def.short}</div>
       </div>
-      {pending && <button className="lnk" onClick={() => go({ kind: "setup", module: info.id })}>Konfiguracja →</button>}
+      {pending && <button className="lnk" onClick={() => go({ kind: "setup", module: info.id })}>{S.configure}</button>}
     </div>
   );
 }
@@ -242,18 +245,18 @@ function AgentSection() {
     try {
       await patchProfile(slug, { mcp_privacy: v });
       await reloadProfiles();
-      toast("Zapisano");
+      toast(C.saved);
     } catch (e) { setErr(errorText(e)); } finally { setBusy(false); }
   };
   return (
-    <Card id="agent" title="Agent AI (MCP)">
-      <RadioList<Privacy> name="set-privacy" label={PRIVACY_QUESTION} value={profile.mcp_privacy} onChange={change} disabled={busy}
-        options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example }))} />
-      <div className="muted" style={{ fontSize: 12.5, margin: "4px 0 0" }}>{PRIVACY_COMMON}</div>
-      {err && <Notice tone="neg">Nie udało się zapisać poziomu: {err}</Notice>}
-      <Notice tone="info">{PROPOSAL_NOTE}</Notice>
+    <Card id="agent" title={SECTION.agent}>
+      <RadioList<Privacy> name="set-privacy" label={PRIVACY.question} value={profile.mcp_privacy} onChange={change} disabled={busy}
+        options={PRIVACY.options.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example }))} />
+      <div className="muted" style={{ fontSize: 12.5, margin: "4px 0 0" }}>{PRIVACY.common}</div>
+      {err && <Notice tone="neg">{S.privacySaveFailed(err)}</Notice>}
+      <Notice tone="info">{WS.proposalNote}</Notice>
       <WorkspacePanel />
-      {mcp?.translocated && <Notice tone="warn">{TRANSLOCATED_TEXT}</Notice>}
+      {mcp?.translocated && <Notice tone="warn">{WS.translocated}</Notice>}
       <div className="kv" style={{ marginTop: 14 }}>
         <span className="k">Claude Code</span>
         <span className="v block"><Code cmd={mcp?.claude_mcp_add ?? mcpAddCommand(slug)} /></span>
@@ -302,60 +305,60 @@ function WorkspacePanel() {
   return (
     <div style={{ margin: "14px 0 0" }}>
       <div className="controls" style={{ margin: "0 0 6px" }}>
-        <strong style={{ fontSize: 14 }} title="CLAUDE.md, .mcp.json, uprawnienia i skille modułów. Dane tylko przez MCP.">Workspace agenta</strong>
+        <strong style={{ fontSize: 14 }} title={S.workspaceTitle}>{S.workspace}</strong>
         {ws && <Tag tone={summary.tone}>{summary.text}</Tag>}
         <span className="spacer" />
-        {ws?.exists && ws.mcp_command_stale && <Tag tone="warn" title="Serwer MCP w .mcp.json wskazuje poprzednią lokalizację aplikacji. Aktualizuj zapisze nową.">MCP: stara ścieżka</Tag>}
+        {ws?.exists && ws.mcp_command_stale && <Tag tone="warn" title={S.mcpStaleTitle}>{S.mcpStale}</Tag>}
         {ws?.exists && (
           <button className="btn" onClick={() => run({})} disabled={busy}
-            title="Odświeża CLAUDE.md, .mcp.json, uprawnienia i skille; Twoje pliki zostają.">{busy ? "Aktualizuję…" : "Aktualizuj"}</button>
+            title={S.updateTitle}>{busy ? S.updating : S.update}</button>
         )}
         {ws && !ws.exists && (
-          <button className="btn primary" onClick={() => run({ path: newPath })} disabled={busy}>{busy ? "Tworzę…" : "Utwórz"}</button>
+          <button className="btn primary" onClick={() => run({ path: newPath })} disabled={busy}>{busy ? S.creating : S.create}</button>
         )}
       </div>
-      {error && <Notice tone="neg">Nie udało się sprawdzić workspace: {error}</Notice>}
-      {loading && !ws && <div className="muted" style={{ fontSize: 13 }}>Sprawdzam…</div>}
+      {error && <Notice tone="neg">{S.workspaceCheckFailed(error)}</Notice>}
+      {loading && !ws && <div className="muted" style={{ fontSize: 13 }}>{S.checking}</div>}
       {ws && (
         <div className="kv">
-          <span className="k">Folder</span>
+          <span className="k">{S.folder}</span>
           <span className="v">
             <code>{ws.path}</code>
-            {ws.custom && <Tag>własny</Tag>}
+            {ws.custom && <Tag>{S.customFolder}</Tag>}
             <button className="lnk" onClick={() => { setEditing(!editing); setPath(ws.path); }} disabled={busy}>
-              {editing ? "Anuluj" : "Zmień folder"}
+              {editing ? C.cancel : S.changeFolder}
             </button>
           </span>
           {editing && (
             <>
-              <span className="k"><label htmlFor="set-ws-path">Nowy folder</label></span>
+              <span className="k"><label htmlFor="set-ws-path">{S.newFolder}</label></span>
               <span className="v">
                 <input id="set-ws-path" value={path} autoComplete="off" spellCheck={false} style={{ flex: 1, minWidth: 220 }}
                   onChange={(e) => setPath(e.target.value)} disabled={busy} />
                 {ws.exists && (
-                  <button className="btn" onClick={() => run({ path: path.trim() })} disabled={busy || !path.trim()}>Przenieś</button>
+                  <button className="btn" onClick={() => run({ path: path.trim() })} disabled={busy || !path.trim()}>{S.move}</button>
                 )}
               </span>
             </>
           )}
           {ws.exists && (
             <>
-              <span className="k">Otwórz w Claude Code</span>
+              <span className="k">{S.openInClaude}</span>
               <span className="v block"><Code cmd={ws.claude_command} /></span>
-              <span className="k">Zarządzane</span>
+              <span className="k">{S.managed}</span>
               <span className="v" style={{ fontSize: 13 }}>
-                cashU {ws.managed_version ?? "-"} · skille: {ws.skills.filter((x) => x.state !== "extra").map((x) => `/${x.name}`).join(", ") || "brak"}
+                cashU {ws.managed_version ?? "-"} · {S.skills}: {ws.skills.filter((x) => x.state !== "extra").map((x) => `/${x.name}`).join(", ") || S.none}
               </span>
             </>
           )}
         </div>
       )}
-      {ws?.conflict && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Ten folder jest workspace innego profilu. Wybierz inny folder.</Notice>}
+      {ws?.conflict && <Notice tone="neg" style={{ margin: "10px 0 0" }}>{S.folderConflict}</Notice>}
       {ws?.exists && ws.outdated.length > 0 && (
         <Notice tone="warn" style={{ margin: "10px 0 0" }} action={needsForce(ws)
-          ? <button className="btn" onClick={() => run({ force: true })} disabled={busy} title="Twoja wersja trafi do .claude/cashu-backup/.">Zastąp zmienione</button>
+          ? <button className="btn" onClick={() => run({ force: true })} disabled={busy} title={S.forceTitle}>{S.force}</button>
           : undefined}>
-          Do aktualizacji:
+          {S.outdated}
           <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
             {ws.outdated.map((i) => <li key={`${i.kind}:${i.name}`}>{outdatedLabel(i)}</li>)}
           </ul>
@@ -364,34 +367,32 @@ function WorkspacePanel() {
       {investments && ws && (
         <div style={{ margin: "12px 0 0" }}>
           <div className="controls" style={{ margin: "0 0 4px", fontSize: 13 }}>
-            <Switch on={ws.routine_permissions} label={ROUTINE_PERMISSIONS_LABEL} disabled={busy || !ws.exists}
-              title={!ws.exists ? "Najpierw utwórz workspace" : undefined} onChange={(v) => run({ routine_permissions: v })} />
-            <span>{ROUTINE_PERMISSIONS_LABEL}</span>
+            <Switch on={ws.routine_permissions} label={WS.routinePermissionsLabel} disabled={busy || !ws.exists}
+              title={!ws.exists ? S.createWorkspaceFirst : undefined} onChange={(v) => run({ routine_permissions: v })} />
+            <span>{WS.routinePermissionsLabel}</span>
           </div>
-          <div className="muted" style={{ fontSize: 12.5 }}>{ROUTINE_PERMISSIONS_HINT}</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>{WS.routinePermissionsHint}</div>
           {ws.exists && (
             <div className="kv" style={{ marginTop: 8 }}>
-              <span className="k" title="Rutyny w chmurze nie widzą serwera MCP na tym komputerze.">Rutyna (lokalna)</span>
-              <span className="v"><code>/market-research rutyna</code><span className="hint">Claude › Code › Routines › Local · sobota 07:00 · ten folder</span></span>
-              <span className="k">Z terminala</span>
+              <span className="k" title={S.routineTitle}>{S.routine}</span>
+              <span className="v"><code>/market-research rutyna</code><span className="hint">{S.routineHint}</span></span>
+              <span className="k">{S.fromTerminal}</span>
               <span className="v block"><Code cmd={ws.routine_command} /></span>
             </div>
           )}
         </div>
       )}
-      {err && <Notice tone="neg" style={{ margin: "10px 0 0" }}>Nie udało się zapisać workspace. {err}</Notice>}
+      {err && <Notice tone="neg" style={{ margin: "10px 0 0" }}>{S.workspaceSaveFailed(err)}</Notice>}
     </div>
   );
 }
 
 // ---- Agent AI: audit log of MCP calls (track M: GET /api/p/{slug}/mcp/calls) -----------------
 
-const OUTCOME: Record<string, [string, "pos" | "neg" | "warn" | undefined]> = {
-  ok: ["ok", "pos"], error: ["błąd", "neg"], refused: ["odmowa", "warn"],
-};
-const PRIVACY_SHORT: Record<string, string> = { strict: "ścisły", amounts: "z kwotami" };
+const OUTCOME: Record<string, [string, "pos" | "neg" | "warn" | undefined]> = OUTCOMES;
+const PRIVACY_SHORT: Record<string, string> = PRIVACY_SHORTS;
 const callTime = (c: McpCall) => c.called_at ?? c.at ?? c.created_at ?? null;
-const timeFmt = new Intl.DateTimeFormat("pl-PL", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+const timeFmt = new Intl.DateTimeFormat(intlLocale(), { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
 
 function AuditLog() {
   const { slug } = useShell();
@@ -402,15 +403,15 @@ function AuditLog() {
   return (
     <>
       <div className="controls" style={{ margin: "14px 0 6px" }}>
-        <strong style={{ fontSize: 14 }}>Dziennik wywołań</strong>
-        <Tag>ostatnie 7 dni · {data === null ? 0 : recent}</Tag>
+        <strong style={{ fontSize: 14 }}>{S.callLog}</strong>
+        <Tag>{S.last7Days(data === null ? 0 : recent)}</Tag>
         <span className="spacer" />
-        {data !== null && <button className="btn" onClick={reload} disabled={loading || refreshing}>Odśwież</button>}
+        {data !== null && <button className="btn" onClick={reload} disabled={loading || refreshing}>{C.refresh}</button>}
       </div>
-      {error && <Notice tone="neg">Nie udało się pobrać dziennika: {error}</Notice>}
+      {error && <Notice tone="neg">{S.callLogFailed(error)}</Notice>}
       <div className="scroll tall">
         <table>
-          <thead><tr><th>Czas</th><th>Narzędzie</th><th>Argumenty</th><th>Poziom</th><th>Wynik</th></tr></thead>
+          <thead><tr><th>{S.colTime}</th><th>{S.colTool}</th><th>{S.colArgs}</th><th>{S.colLevel}</th><th>{S.colResult}</th></tr></thead>
           <tbody>
             {calls.map((c, k) => {
               const t = callTime(c);
@@ -429,13 +430,13 @@ function AuditLog() {
               );
             })}
             {!loading && !calls.length && (
-              <tr><td colSpan={5} className="muted">{data === null ? "Dziennik niedostępny." : "Brak wywołań."}</td></tr>
+              <tr><td colSpan={5} className="muted">{data === null ? S.callLogUnavailable : S.noCalls}</td></tr>
             )}
-            {loading && !calls.length && <tr><td colSpan={5} className="muted">Wczytuję…</td></tr>}
+            {loading && !calls.length && <tr><td colSpan={5} className="muted">{C.loading}</td></tr>}
           </tbody>
         </table>
       </div>
-      <div className="foot">Nazwy argumentów, nigdy wartości.</div>
+      <div className="foot">{S.argNamesOnly}</div>
     </>
   );
 }
@@ -444,20 +445,20 @@ function DataSection() {
   const { system } = useShell();
   const toast = useToast();
   return (
-    <Card id="data" title="Dane">
+    <Card id="data" title={SECTION.data}>
       <div className="kv">
-        <span className="k">Katalog danych</span>
+        <span className="k">{S.dataDir}</span>
         <span className="v">
           <code style={{ fontSize: 13, overflowWrap: "anywhere" }}>{system?.data_dir ?? "-"}</code>
-          {system?.data_dir && <button className="btn" onClick={() => copyText(system.data_dir).then(() => toast("Skopiowano", 1500))}>Kopiuj</button>}
+          {system?.data_dir && <button className="btn" onClick={() => copyText(system.data_dir).then(() => toast(S.copied, 1500))}>{S.copy}</button>}
         </span>
-        <span className="k">Kopie zapasowe</span>
-        <span className="v"><span className="hint" style={{ fontSize: 13 }}>podkatalog <code>backups</code> w katalogu danych</span></span>
+        <span className="k">{S.backups}</span>
+        <span className="v"><span className="hint" style={{ fontSize: 13 }}>{S.backupsHintBefore}<code>backups</code>{S.backupsHintAfter}</span></span>
       </div>
       {system?.legacy_db_detected ? (
         <Notice tone="warn" style={{ margin: "14px 0 0" }}>
           {/* legacy name: the repo-dir database of old checkouts is data/finanse.db */}
-          Stara baza: <code>{system.legacy_db_path || "data/finanse.db"}</code>. Zamknij aplikację i uruchom:
+          {S.legacyDb}<code>{system.legacy_db_path || "data/finanse.db"}</code>{S.legacyDbAfter}
           <Code cmd="cashu migrate-data" />
         </Notice>
       ) : null}
@@ -467,13 +468,8 @@ function DataSection() {
 
 // ---- Praca w tle (track W: worker status in /api/system, install / uninstall / run) ---------
 
-const JOB_LABEL: Record<string, [string, string]> = {
-  "investments.daily": ["Sprawdzenie reguł", "Inwestycje"], "budget.sync": ["Synchronizacja banków", "Budżet"],
-  notifications: ["Powiadomienia", "wszystkie"], digest: ["Podsumowanie tygodnia", "wszystkie"],
-};
-const JOB_STATUS: Record<string, [string, "pos" | "neg" | "warn" | undefined]> = {
-  ok: ["ok", "pos"], partial: ["częściowy", "warn"], failed: ["błąd", "neg"], skipped: ["pominięte", undefined],
-};
+const JOB_LABEL: Record<string, [string, string]> = JOB_LABELS;
+const JOB_STATUS: Record<string, [string, "pos" | "neg" | "warn" | undefined]> = JOB_STATUSES;
 const when = (iso: string | null | undefined) => { const t = serverDate(iso); return t ? timeFmt.format(t) : "-"; };
 
 function WorkerSection() {
@@ -506,15 +502,15 @@ function WorkerSection() {
       const r = await postWorker(action, body);
       if (r.worker) setW(r.worker);
       sys.changed();
-      if (action === "run") toast(`Przebieg zakończony · ${JOB_STATUS[r.run?.status ?? ""]?.[0] ?? r.run?.status ?? "ok"}`, 3000);
-      else toast(action === "install" ? "Praca w tle zainstalowana" : "Praca w tle odinstalowana");
+      if (action === "run") toast(S.runDone(JOB_STATUS[r.run?.status ?? ""]?.[0] ?? r.run?.status ?? "ok"), 3000);
+      else toast(action === "install" ? S.installed : S.uninstalled);
     } catch (e) {
       const status = e instanceof ApiError ? e.status : 0;
-      setErr(status === 409 ? "Praca w tle właśnie działa - spróbuj za chwilę." : status === 501 ? "Ten system nie ma obsługiwanego harmonogramu zadań." : errorText(e));
+      setErr(status === 409 ? S.workerBusy : status === 501 ? S.noScheduler : errorText(e));
     } finally { setBusy(null); }
   };
   const on = (id: string) => profile.modules.some((m) => m.id === id && m.enabled);
-  const schedule = w?.schedule ? `codziennie ${w.schedule}` : "codziennie";
+  const schedule = w?.schedule ? S.dailyAt(w.schedule) : S.daily;
   const jobs = w?.jobs?.length ? w.jobs : [
     ...(on("investments") ? [{ job: "investments.daily", module: "investments", status: "", detail: null }] : []),
     ...(on("budget") ? [{ job: "budget.sync", module: "budget", status: "", detail: null }] : []),
@@ -528,62 +524,62 @@ function WorkerSection() {
       const r = await postRelocationAck();
       if (r.worker) setW(r.worker);
       sys.changed();
-    } catch (e) { setErr(`Nie zapisano: ${errorText(e)}`); } finally { setAcking(false); }
+    } catch (e) { setErr(S.notSaved(errorText(e))); } finally { setAcking(false); }
   };
   return (
-    <Card id="worker" title="Praca w tle">
+    <Card id="worker" title={SECTION.worker}>
       {reloc.worker && (
         <Notice tone="warn" style={{ margin: "0 0 10px" }}
-          action={<button className="btn primary" disabled={!known || busy != null} onClick={() => act("install", { time: w?.schedule ?? time })}>{busy === "install" ? "Instaluję…" : "Zainstaluj ponownie"}</button>}>
+          action={<button className="btn primary" disabled={!known || busy != null} onClick={() => act("install", { time: w?.schedule ?? time })}>{busy === "install" ? S.installing : S.reinstall}</button>}>
           <b>{reloc.worker}.</b>
         </Notice>
       )}
       {reloc.mcp && (
         <Notice tone="warn" style={{ margin: "0 0 10px" }}
-          action={<button className="btn" disabled={acking} title="Serwer MCP dodany ponownie w Claude Code / Claude Desktop" onClick={ackMcp}>{acking ? "Zapisuję…" : "Gotowe"}</button>}>
+          action={<button className="btn" disabled={acking} title={S.mcpReaddedTitle} onClick={ackMcp}>{acking ? S.saving : C.done}</button>}>
           {reloc.mcp}
         </Notice>
       )}
       <div className="row" style={{ paddingTop: 0 }}>
-        <Switch on={!!w?.installed} disabled={!known || !supported || busy != null} label={`Codziennie o ${w?.schedule ?? time}`}
-          title={!known ? "Serwer nie obsługuje jeszcze instalacji z aplikacji" : !supported ? "Ten system nie ma obsługiwanego harmonogramu zadań" : undefined}
+        <Switch on={!!w?.installed} disabled={!known || !supported || busy != null} label={S.everyDayAt(w?.schedule ?? time)}
+          title={!known ? S.noInstallTitle : !supported ? S.noSchedulerTitle : undefined}
           onChange={(v) => act(v ? "install" : "uninstall", v ? { time } : {})} />
         <div className="grow">
-          <div className="t">Codziennie o {w?.schedule ?? time} {w?.installed ? <Tag tone="pos">działa</Tag> : <Tag>nie zainstalowano</Tag>}</div>
+          <div className="t">{S.everyDayAt(w?.schedule ?? time)} {w?.installed ? <Tag tone="pos">{S.running}</Tag> : <Tag>{S.notInstalled}</Tag>}</div>
           <div className="d">
             {w?.platform === "launchd" || !w?.platform ? "launchd" : w.platform} · {schedule}
-            {w?.installed && w.next_run ? ` · następny przebieg ${when(w.next_run)}` : ""}
-            {w?.last_run ? ` · ostatni ${when(w.last_run)}${w.last_status ? ` (${JOB_STATUS[w.last_status]?.[0] ?? w.last_status})` : ""}` : " · jeszcze nie uruchomiono"}
+            {w?.installed && w.next_run ? S.nextRun(when(w.next_run)) : ""}
+            {w?.last_run ? `${S.lastRun(when(w.last_run))}${w.last_status ? ` (${JOB_STATUS[w.last_status]?.[0] ?? w.last_status})` : ""}` : S.neverRun}
           </div>
         </div>
         <button className="btn" disabled={!known || busy != null} onClick={() => act("run")}
-          title="Jeden przebieg teraz: reguły inwestycji, synchronizacja banków (jeśli skonfigurowana), powiadomienia">
-          {busy === "run" ? "Uruchamiam…" : "Uruchom teraz"}
+          title={S.runNowTitle}>
+          {busy === "run" ? S.starting : S.runNow}
         </button>
       </div>
       {known && (
         <div className="kv" style={{ margin: "10px 0" }}>
-          <label className="k" htmlFor="set-worker-time">Godzina</label>
+          <label className="k" htmlFor="set-worker-time">{S.hour}</label>
           <span className="v">
-            <input id="set-worker-time" type="time" title="Czas lokalny. Uśpiony Mac nadrobi po wybudzeniu, wyłączony pominie dzień." value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 110 }} />
-            {w?.installed && time !== w.schedule && <button className="btn primary" disabled={busy != null} onClick={() => act("install", { time })}>Zapisz</button>}
+            <input id="set-worker-time" type="time" title={S.timeTitle} value={time} onChange={(e) => setTime(e.target.value)} style={{ width: 110 }} />
+            {w?.installed && time !== w.schedule && <button className="btn primary" disabled={busy != null} onClick={() => act("install", { time })}>{C.save}</button>}
           </span>
           {w?.log_path && <>
-            <span className="k">Dziennik</span>
+            <span className="k">{S.log}</span>
             <span className="v"><code style={{ fontSize: 12.5, overflowWrap: "anywhere" }}>{w.log_path}</code>
-              <button className="btn" onClick={() => copyText(w.log_path!).then(() => toast("Skopiowano", 1500))}>Kopiuj</button></span>
+              <button className="btn" onClick={() => copyText(w.log_path!).then(() => toast(S.copied, 1500))}>{S.copy}</button></span>
           </>}
         </div>
       )}
       {err && <Notice tone="neg">{err}</Notice>}
       <div className="scroll">
         <table style={{ marginTop: 6 }}>
-          <thead><tr><th>Zadanie</th><th>Moduł</th><th>Harmonogram</th><th>Ostatnio</th><th>Status</th></tr></thead>
+          <thead><tr><th>{S.colJob}</th><th>{S.colModule}</th><th>{S.colSchedule}</th><th>{S.colLast}</th><th>{S.colStatus}</th></tr></thead>
           <tbody>
             {jobs.map((j) => {
               const [label, mod] = JOB_LABEL[j.job] ?? [j.job, j.module ?? "-"];
               const [st, tone] = JOB_STATUS[j.status] ?? [null, undefined];
-              const sched = j.job === "digest" ? "dzień podsumowania ze strategii" : j.job === "budget.sync" ? `${schedule} (limit banku)` : schedule;
+              const sched = j.job === "digest" ? S.digestDay : j.job === "budget.sync" ? S.bankLimit(schedule) : schedule;
               return (
                 <tr key={j.job} className={st ? "" : "muted"}>
                   <td>{label}</td><td>{mod}</td><td>{sched}</td><td>{"last_run" in j && j.last_run ? when(j.last_run) : st ? when(w?.last_run) : "-"}</td>
@@ -594,63 +590,73 @@ function WorkerSection() {
           </tbody>
         </table>
       </div>
-      <div className="foot">Natychmiast tylko sygnały „do działania", reszta w podsumowaniu tygodnia.</div>
+      <div className="foot">{S.workerFoot}</div>
     </Card>
   );
 }
 
 function presence(v: boolean | undefined, yes: string): ReactNode {
-  if (v === undefined) return <Tag title="Serwer nie podaje tego stanu">stan nieznany</Tag>;
-  return v ? <Tag tone="pos">{yes}</Tag> : <Tag>brak</Tag>;
+  if (v === undefined) return <Tag title={S.unknownStateTitle}>{S.unknownState}</Tag>;
+  return v ? <Tag tone="pos">{yes}</Tag> : <Tag>{S.none}</Tag>;
 }
 
 function SecretsSection() {
   const { system } = useShell();
   const s = system?.secrets;
   return (
-    <Card id="secrets" title="Sekrety">
+    <Card id="secrets" title={SECTION.secrets}>
       <div className="row">
         <div className="grow">
-          <div className="t">Klucz API Anthropic {presence(s?.anthropic, "w pęku kluczy")}</div>
-          <div className="d">pęk kluczy · kategoryzacja (Budżet), backend anthropic</div>
+          <div className="t">{S.anthropicKey} {presence(s?.anthropic, S.inKeychain)}</div>
+          <div className="d">{S.anthropicKeyHint}</div>
           <Code cmd="cashu secrets set anthropic" />
         </div>
       </div>
       <div className="row">
         <div className="grow">
-          <div className="t">Enable Banking · klucz prywatny {presence(s?.enable_banking_key, "w katalogu danych")}</div>
-          <div className="d">plik .pem w katalogu danych · sesje per bank w bazie</div>
+          <div className="t">{S.ebKey} {presence(s?.enable_banking_key, S.inDataDir)}</div>
+          <div className="d">{S.ebKeyHint}</div>
         </div>
       </div>
       <div className="row">
         <div className="grow">
-          <div className="t">Token API aplikacji</div>
-          <div className="d">losowy przy starcie · tylko 127.0.0.1</div>
+          <div className="t">{S.apiToken}</div>
+          <div className="d">{S.apiTokenHint}</div>
         </div>
       </div>
-      <div className="foot">Sekrety nie trafiają do logów, eksportów ani do agenta AI.</div>
+      <div className="foot">{S.secretsFoot}</div>
     </Card>
   );
 }
 
-const MIGRATION_STEP: Record<string, string> = { data_dir: "katalog danych", db_file: "plik bazy", keychain: "pęk kluczy", launchd: "praca w tle" };
+const MIGRATION_STEP: Record<string, string> = MIGRATION_STEPS;
 
 function AppSection({ theme, setTheme }: { theme: ThemePref; setTheme: (t: ThemePref) => void }) {
   const { system } = useShell();
   return (
-    <Card id="app" title="Aplikacja">
+    <Card id="app" title={SECTION.app}>
       <div className="kv">
-        <span className="k">Motyw</span>
+        <span className="k">{S.theme}</span>
         <span className="v">
-          <Seg<ThemePref> items={[["Systemowy", "system"], ["Jasny", "light"], ["Ciemny", "dark"]]} value={theme} onChange={setTheme} />
-          <span className="hint">zapisany w tej przeglądarce</span>
+          <Seg<ThemePref> items={[[S.themeSystem, "system"], [S.themeLight, "light"], [S.themeDark, "dark"]]} value={theme} onChange={setTheme} />
+          <span className="hint">{S.themeHint}</span>
         </span>
-        <span className="k">Wersja</span>
+        <span className="k">{S.language}</span>
+        <span className="v">
+          <Seg<Lang | "system">
+            label={S.language}
+            items={[[S.languageSystem, "system"], ...LANGS.map((l): [string, Lang] => [LANG_NAME[l], l])]}
+            value={storedLang() ?? "system"}
+            onChange={(v) => setLanguage(v === "system" ? null : v)}
+          />
+          <span className="hint">{S.languageHint}</span>
+        </span>
+        <span className="k">{S.version}</span>
         <span className="v">{system?.version ?? "-"}</span>
       </div>
       {system?.rename_migration?.length ? (
         <Notice tone="warn" style={{ margin: "14px 0 0" }}>
-          <b>Przeniesienie danych z poprzedniej wersji nie powiodło się.</b> Zamknij inne okna aplikacji i uruchom ją ponownie.
+          <b>{S.migrationFailed}</b>{S.migrationFailedHint}
           <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
             {system.rename_migration.map((p) => <li key={p.step}>{MIGRATION_STEP[p.step] ?? p.step}: <span className="hint">{p.detail}</span></li>)}
           </ul>

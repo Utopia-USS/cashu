@@ -47,7 +47,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from ..core import locks, paths, runtime, security
+from ..core import i18n, locks, paths, runtime, security
 from ..core.env import env
 from . import DEBUG_ENV, notify
 
@@ -292,7 +292,7 @@ def use_dev_identity(icon: Path = DEV_ICON) -> bool:
     return True
 
 
-_PAGE = """<!doctype html><html lang="pl"><head><meta charset="utf-8"><style>
+_PAGE = """<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><style>
 :root {{ color-scheme: light dark; }}
 body {{ font: 14px -apple-system, system-ui, sans-serif; display: flex; align-items: center;
   justify-content: center; height: 100vh; margin: 0; background: #fff; color: #222; }}
@@ -300,16 +300,29 @@ body {{ font: 14px -apple-system, system-ui, sans-serif; display: flex; align-it
 main {{ max-width: 560px; padding: 24px; }} code {{ font-size: 12px; }}
 </style></head><body><main>{body}</main></body></html>"""
 
-LOADING_HTML = _PAGE.format(body="<p>Uruchamianie cashU…</p>")
+
+def _page(body: str) -> str:
+    """A boot page in the app language (no request exists yet: ``i18n.lang()`` is the stored one)."""
+    return _PAGE.format(lang=i18n.lang(), body=body)
+
+
+def loading_html() -> str:
+    return _page(i18n.tr(pl="<p>Uruchamianie cashU…</p>", en="<p>Starting cashU…</p>"))
+
+
+# The Polish loading page (what loading_html() renders in Polish).
+LOADING_HTML = _PAGE.format(lang="pl", body="<p>Uruchamianie cashU…</p>")
 
 
 def error_html(message: str, log_file: Path | None) -> str:
     where = (
-        f"<p>Szczegóły w logu: <code>{html.escape(str(log_file))}</code></p>" if log_file else ""
+        i18n.tr(pl="<p>Szczegóły w logu: ", en="<p>Details in the log: ")
+        + f"<code>{html.escape(str(log_file))}</code></p>"
+        if log_file
+        else ""
     )
-    return _PAGE.format(
-        body=f"<h2>Nie udało się uruchomić cashU</h2><p>{html.escape(message)}</p>{where}"
-    )
+    heading = i18n.tr(pl="Nie udało się uruchomić cashU", en="cashU could not start")
+    return _page(f"<h2>{heading}</h2><p>{html.escape(message)}</p>{where}")
 
 
 def window_size(screens: list | None) -> tuple[int, int]:
@@ -534,7 +547,7 @@ def run(*, debug: bool = False, webview_module=None, log_file: Path | None = Non
             notify.install_app_handlers(router.open)  # cashU.app only; before the event loop
             window = webview.create_window(
                 TITLE,
-                html=LOADING_HTML,
+                html=loading_html(),
                 width=width,
                 height=height,
                 min_size=MIN_SIZE,

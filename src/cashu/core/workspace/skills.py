@@ -36,7 +36,13 @@ MODULE_SKILLS: dict[str, tuple[str, ...]] = {
     "budget": ("budget-setup", "import-builder"),
     "assets": ("assets-setup",),
     "loans": ("loans-setup",),
-    "investments": ("investments-setup", "import-builder", "extension-builder", "market-research"),
+    "investments": (
+        "investments-setup",
+        "import-builder",
+        "extension-builder",
+        "market-research",
+        "review",
+    ),
 }
 
 _IGNORED_NAMES = {"__pycache__", ".DS_Store"}

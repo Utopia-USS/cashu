@@ -8,14 +8,16 @@
 // `npm run dev` the Vite proxy adds the header itself (see vite.config.ts).
 import { clearCache } from "../swr";
 import type { ModuleSyncLine } from "./connectors";
-import { apiToken, forgetToken, NO_TOKEN_TEXT } from "./token";
+import { apiToken, forgetToken, noTokenText } from "./token";
+import { lang } from "../i18n.ts";
 
-/** The token header for a request (`{}` under `npm run dev`); throws a 401 ApiError with a Polish
- * explanation when this page has no token at all. Multipart uploads use it too. */
+/** The headers of every request: the token (none under `npm run dev`) and the UI language
+ * (`X-Cashu-Lang`, the language of the texts the server renders); throws a 401 ApiError with an
+ * explanation when this page has no token at all. Multipart uploads and the live stream use it too. */
 export async function authHeaders(): Promise<Record<string, string>> {
   const token = await apiToken();
-  if (token === null) throw new ApiError(401, NO_TOKEN_TEXT, "auth.no_token");
-  return token ? { "X-Cashu-Token": token } : {};
+  if (token === null) throw new ApiError(401, noTokenText(), "auth.no_token");
+  return token ? { "X-Cashu-Token": token, "X-Cashu-Lang": lang() } : { "X-Cashu-Lang": lang() };
 }
 
 // Dev-only demo backend (`VITE_MOCK=1 npm run dev`). Off by default; the mock

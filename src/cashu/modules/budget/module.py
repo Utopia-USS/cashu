@@ -21,6 +21,8 @@ MODULE = ModuleSpec(
     id="budget",
     name="Budżet domowy",
     description="Konta, wydatki, przepływy, subskrypcje · CSV lub Open Banking",
+    name_en="Home budget",
+    description_en="Accounts, expenses, cash flow, subscriptions · CSV or Open Banking",
     tables=(Transaction, CategoryRule, ImportBatch),
     router=api.router,
     cli=cli.register,
@@ -28,10 +30,12 @@ MODULE = ModuleSpec(
     cli_help="Budget: statement import, categories, cash pool, month close, Open Banking.",
     networth=CashContributor(),
     account_types=(
-        AccountTypeInfo("checking", "budget", "Konta osobiste"),
-        AccountTypeInfo("savings", "budget", "Oszczędności"),
-        AccountTypeInfo("credit", "budget", "Karty kredytowe", sign="credit"),
-        AccountTypeInfo("cash", "budget", "Gotówka"),
+        AccountTypeInfo("checking", "budget", "Konta osobiste", label_en="Checking accounts"),
+        AccountTypeInfo("savings", "budget", "Oszczędności", label_en="Savings"),
+        AccountTypeInfo(
+            "credit", "budget", "Karty kredytowe", sign="credit", label_en="Credit cards"
+        ),
+        AccountTypeInfo("cash", "budget", "Gotówka", label_en="Cash"),
     ),
     recategorize=_recategorize,
     setup_status=setup_status,

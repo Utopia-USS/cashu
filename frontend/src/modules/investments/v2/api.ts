@@ -165,6 +165,9 @@ export interface DigestEvent {
   count?: number;
 }
 export interface DigestV2 extends ReviewDigest {
+  /** The owner's review (strategy.yaml `review:`): name, every (week | 2weeks | month), weekday, the deck's cards
+   * in order and the next scheduled day after a review done today; missing on older servers. */
+  review?: { name: string; every: string; day: string; cards: string[]; next_on: string | null };
   events?: DigestEvent[];
   events_total?: number;
   /** F7 (V4): `market_change` excludes `transfers` (units moved in / out, adjustments, cash transfers) and
@@ -264,6 +267,17 @@ export const getSignalsV2 = (slug: string, status: "open" | "history" | "all" = 
   j<SignalV2[]>(inv(slug, `/signals?status=${status}`)).then((list) => list.filter(isShownSignal));
 export const getDigestV2 = (slug: string, since?: string | null) =>
   j<DigestV2>(inv(slug, `/review-digest${since ? `?since=${since}` : ""}`)).then(digestShown);
+
+/** One dated event of the review's calendar card (`GET /investments/calendar`): a high-impact macro release
+ * (public feed), earnings of a held / watched US instrument (public list, matched on the server) or a research
+ * note's `details.event_date`. `time`: "HH:MM" local, "przed sesją" / "po sesji", or null. */
+export interface CalendarEvent {
+  date: string; time: string | null; kind: "macro" | "earnings" | "research" | string; title: string;
+  country: string | null; country_label: string | null; instrument_id: number | null; label: string | null; held: boolean | null; note_id: number | null;
+}
+/** `stale`: a feed could not be refreshed (the last cache is shown); `errors`: `macro_unavailable`, `earnings_unavailable`, `offline`. */
+export interface MarketCalendar { as_of: string; from: string; to: string; fetched_at: string | null; stale: boolean; errors: string[]; events: CalendarEvent[] }
+export const getCalendar = (slug: string, days = 14) => j<MarketCalendar>(inv(slug, `/calendar?days=${days}`));
 
 /** Performance vs benchmark; null when the server has no performance endpoint yet (404). */
 export const getPerformance = (slug: string, range: PerfRange, accounts: number[] | null = null): Promise<Performance | null> =>

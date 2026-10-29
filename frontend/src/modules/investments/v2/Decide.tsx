@@ -12,6 +12,8 @@ import type { Thesis } from "../api";
 import type { SignalV2 } from "./api";
 import { polarityOf, signalFact } from "./logic";
 import { Age, DecisionForm, Fact1, longText, type SignalsCtx, signalAge, useDecisionWriter } from "./Signals";
+import { C } from "../../../common.strings.ts";
+import { S } from "./Decide.strings.ts";
 
 const MAX_LINES = 5;
 
@@ -43,7 +45,7 @@ export function PositionDecisionDialog({ instrumentId, name, symbol, signals, ct
   const writer = useDecisionWriter(ctx);
   const lines = signals.slice(0, MAX_LINES);
   const more = signals.length - lines.length;
-  const th = thesis?.exit_plan ? ["Plan wyjścia", thesis.exit_plan] : thesis?.thesis ? ["Teza", thesis.thesis] : null;
+  const th = thesis?.exit_plan ? [S.exitPlan, thesis.exit_plan] : thesis?.thesis ? [S.thesis, thesis.thesis] : null;
   const decide = async (input: Parameters<typeof writer.save>[2], label: string) => {
     const r = await writer.save(instrumentId, signals, input, label);
     if (r !== "stay") onClose();
@@ -52,15 +54,15 @@ export function PositionDecisionDialog({ instrumentId, name, symbol, signals, ct
   return createPortal(
     <>
       <div className="ascrim over" onClick={onClose} aria-hidden />
-      <div className="ddlg" role="dialog" aria-modal="true" aria-label={`Decyzja · ${name}`} ref={ref} tabIndex={-1}>
+      <div className="ddlg" role="dialog" aria-modal="true" aria-label={S.dialogLabel(name)} ref={ref} tabIndex={-1}>
         <div className="dh">
-          <strong>Decyzja</strong> ·{symbol && symbol !== name ? <><span className="tk">{symbol}</span><span className="nmm">{name}</span></> : <span className="tk">{name}</span>}
+          <strong>{S.decision}</strong> ·{symbol && symbol !== name ? <><span className="tk">{symbol}</span><span className="nmm">{name}</span></> : <span className="tk">{name}</span>}
           <span className="spacer" />
-          <button className="icon-btn" title="Zamknij (Esc)" aria-label="Zamknij" onClick={onClose}>✕</button>
+          <button className="icon-btn" title={S.closeEsc} aria-label={C.close} onClick={onClose}>✕</button>
         </div>
         <div className="db">
           <div className="dctx">
-            {signals.length ? <div className="kick">otwarte sygnały</div> : <div className="kick">bez otwartych sygnałów</div>}
+            {signals.length ? <div className="kick">{S.openSignals}</div> : <div className="kick">{S.noOpenSignals}</div>}
             {lines.map((s) => (
               <div key={s.id} className="ln" title={longText(s, ctx)}>
                 <PolDot polarity={polarityOf(s)} />

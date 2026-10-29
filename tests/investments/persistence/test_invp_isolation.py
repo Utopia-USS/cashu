@@ -28,6 +28,7 @@ INVESTMENTS_GETS = [
     "/investments/signals?status=all",
     "/investments/decisions",
     "/investments/review-digest",
+    "/investments/calendar",
     "/investments/instruments",
     "/investments/instruments?unclassified=true",
     "/investments/instruments/{instrument_id}/theses",

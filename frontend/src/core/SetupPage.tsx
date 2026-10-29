@@ -10,21 +10,23 @@ import { moduleDef, tabKey } from "./registry";
 import type { View } from "./types";
 import { pathToView, useShell } from "./context";
 import { stepCounts } from "./setupSteps";
-import { TRANSLOCATED_TEXT } from "./workspace";
+import { WS } from "./workspace.strings.ts";
+import { S } from "./SetupPage.strings.ts";
+import { S as STEPS } from "./setupSteps.strings.ts";
 
 const POLL_MS = 5000;
 
 export const stepsTag = (info: SetupInfo | null, state?: SetupState): ReactNode => {
-  if (state === "ready" || info?.state === "ready") return <Tag tone="pos">gotowy</Tag>;
+  if (state === "ready" || info?.state === "ready") return <Tag tone="pos">{S.ready}</Tag>;
   // Required steps only: an optional step never counts toward the state (first-steps D8).
   const { done, n } = stepCounts(info?.steps);
-  if (!info || !n) return <Tag tone="warn">nieskonfigurowany</Tag>;
-  return <Tag tone="warn">{done} z {n} {n === 1 ? "kroku" : "kroków"}</Tag>;
+  if (!info || !n) return <Tag tone="warn">{S.notConfigured}</Tag>;
+  return <Tag tone="warn">{STEPS.stepsOf(done, n)}</Tag>;
 };
 
 export const PRIVACY_PLAIN: Record<string, ReactNode> = {
-  strict: <><b>Poziom ścisły:</b> udziały, kategorie, daty; bez kwot i numerów kont.</>,
-  amounts: <><b>Poziom z kwotami:</b> także kwoty; bez numerów kont, IBAN-ów i danych osobowych.</>,
+  get strict() { return <><b>{S.strictBold}</b>{S.strictText}</>; },
+  get amounts() { return <><b>{S.amountsBold}</b>{S.amountsText}</>; },
 };
 
 /** Target of a "view"/"tab" action -> View. Accepts a view path (see pathToView; "module/tab" and
@@ -53,14 +55,14 @@ function ActionButton({ moduleId, a }: { moduleId: string; a: SetupAction }) {
   } else if (kind === "settings") {
     run = () => go({ kind: "settings", section: a.target || undefined });
   } else if (kind === "copy" || kind === "cli" || kind === "command") {
-    run = () => copyText(a.target).then(() => toast("Skopiowano", 1500));
+    run = () => copyText(a.target).then(() => toast(S.copied, 1500));
   } else if ((kind === "url" || kind === "link") && /^(https?:\/\/|\/)/.test(a.target)) {
     run = () => window.open(a.target, "_blank", "noopener");
   }
   const disabled = a.disabled || !run;
   return (
     <button className="btn" disabled={disabled} onClick={run ?? undefined}
-      title={a.hint ?? (disabled && !a.disabled ? "Dostępne wkrótce" : kind === "copy" || kind === "cli" || kind === "command" ? a.target : undefined)}>
+      title={a.hint ?? (disabled && !a.disabled ? S.soon : kind === "copy" || kind === "cli" || kind === "command" ? a.target : undefined)}>
       {a.label}
     </button>
   );
@@ -84,17 +86,17 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
     <>
       <section className="card chart-card">
         <div className="controls" style={{ marginBottom: 6 }}>
-          <h2 style={{ margin: 0 }}>{def.name} · konfiguracja</h2>
+          <h2 style={{ margin: 0 }}>{S.configTitle(def.name)}</h2>
           {stepsTag(data, data?.state)}
-          {def.Start && <><span className="spacer" /><button className="lnk" onClick={() => go({ kind: "setup", module: moduleId })}>Pierwsze kroki w aplikacji</button></>}
+          {def.Start && <><span className="spacer" /><button className="lnk" onClick={() => go({ kind: "setup", module: moduleId })}>{S.firstSteps}</button></>}
         </div>
-        {error && <Notice tone="neg">Nie udało się pobrać stanu: {error}</Notice>}
+        {error && <Notice tone="neg">{S.loadFailed(error)}</Notice>}
         {data?.state === "ready" && (
           <Notice tone="pos" style={{ margin: "10px 0 0" }}
             action={firstTab
               ? <button className="btn" onClick={() => go({ kind: "tab", tab: tabKey(moduleId, firstTab.id) })}>{firstTab.label} →</button>
-              : <button className="btn" onClick={() => go({ kind: "tab", tab: "overview", sub: moduleId })}>Przegląd →</button>}>
-            Skonfigurowany.
+              : <button className="btn" onClick={() => go({ kind: "tab", tab: "overview", sub: moduleId })}>{S.overview}</button>}>
+            {S.configured}
           </Notice>
         )}
         {!data && !error ? (
@@ -111,28 +113,28 @@ export function SetupPage({ moduleId, state }: { moduleId: string; state: SetupS
               optional: s.optional,
               actions: s.actions.length ? s.actions.map((a, i) => <ActionButton key={i} moduleId={moduleId} a={a} />) : undefined,
             }))} />
-          ) : <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>Brak kroków konfiguracji.</div>
+          ) : <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>{S.noSteps}</div>
         )}
       </section>
 
       {skill && (
         <section className="card chart-card">
-          <h2>Z pomocą Claude Code</h2>
-          {skill.translocated && <Notice tone="warn">{TRANSLOCATED_TEXT}</Notice>}
+          <h2>{S.withClaude}</h2>
+          {skill.translocated && <Notice tone="warn">{WS.translocated}</Notice>}
           <SetupSteps steps={[
             {
-              key: "mcp", status: "on", title: "Podłącz MCP do Claude Code", tag: <Tag>raz na profil</Tag>,
+              key: "mcp", status: "on", title: S.connectMcp, tag: <Tag>{S.oncePerProfile}</Tag>,
               body: <Code cmd={skill.mcp_add} />,
-              hint: "Claude Desktop: Ustawienia › Agent AI.",
+              hint: S.desktopHint,
             },
             {
-              key: "skill", status: "todo", title: "Uruchom skill w Claude Code",
+              key: "skill", status: "todo", title: S.runSkill,
               body: <Code cmd={skill.command} />,
               hint: def.skillHint,
             },
           ]} />
           <Notice tone="info" style={{ margin: "12px 0 0" }}
-            action={<button className="btn" onClick={() => go({ kind: "settings", section: "agent" })}>Ustawienia</button>}>
+            action={<button className="btn" onClick={() => go({ kind: "settings", section: "agent" })}>{S.settings}</button>}>
             {PRIVACY_PLAIN[profile.mcp_privacy] ?? PRIVACY_PLAIN.strict}
           </Notice>
         </section>

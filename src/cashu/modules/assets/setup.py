@@ -1,10 +1,12 @@
-"""Assets' blank-page steps (``ModuleSpec.setup_status``). Copy is Polish UI data."""
+"""Assets' blank-page steps (``ModuleSpec.setup_status``). Copy (and the placeholder names of the
+copyable commands) is UI data in the request's language (``core.i18n.tr``)."""
 
 from __future__ import annotations
 
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from cashu.core.i18n import tr
 from cashu.core.models import Account, AccountType
 from cashu.core.modules import SetupAction, SetupStatus, SetupStep, cli_prefix
 
@@ -26,27 +28,36 @@ def setup_status(session: Session, profile_id: int) -> SetupStatus:
     n_depreciating = int(session.exec(
         select(func.count(Depreciation.id)).where(Depreciation.account_id.in_(vehicles))
     ).one() or 0) if vehicles else 0
+    copy = tr(pl="Kopiuj polecenie", en="Copy command")
+    flat = tr(pl="Mieszkanie", en="Flat")
+    car = tr(pl="Auto", en="Car")
     return SetupStatus(steps=(
         SetupStep(
             "position",
-            "Pozycja",
-            "Mieszkanie, działka, inne aktywa: nazwa, wartość, waluta.",
+            tr(pl="Pozycja", en="Position"),
+            tr(
+                pl="Mieszkanie, działka, inne aktywa: nazwa, wartość, waluta.",
+                en="A flat, a plot, other assets: name, value, currency.",
+            ),
             done=bool(positions),
             actions=(SetupAction(
-                "cli", "Kopiuj polecenie",
-                f'{cli} add-position "Mieszkanie" --type property --value 500000',
+                "cli", copy,
+                f'{cli} add-position "{flat}" --type property --value 500000',
             ),),
         ),
         # Optional (first steps A3 / D8): never counts toward the state; done only when a car with a
         # depreciation curve exists (a profile without a car is not "done", it simply skips it).
         SetupStep(
             "vehicle",
-            "Auto",
-            "Cena i data zakupu, roczny spadek; wartość liczy się sama.",
+            car,
+            tr(
+                pl="Cena i data zakupu, roczny spadek; wartość liczy się sama.",
+                en="Purchase price and date, yearly decline; the value is computed for you.",
+            ),
             done=bool(vehicles) and n_depreciating == len(vehicles),
             actions=(SetupAction(
-                "cli", "Kopiuj polecenie",
-                f'{cli} set-vehicle "Auto" 80000 2025-05-01 --rate 15',
+                "cli", copy,
+                f'{cli} set-vehicle "{car}" 80000 2025-05-01 --rate 15',
             ),),
             optional=True,
         ),

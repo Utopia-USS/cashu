@@ -443,6 +443,20 @@ def review_digest(profile: CurrentProfile, since: dt.date | None = None) -> dict
         return views.review_digest(s, profile, since)
 
 
+@router.get("/calendar")
+def market_calendar(profile: CurrentProfile, days: int = 14) -> dict:
+    """The next ``days`` days of the weekly review: high-impact macro releases (public feed), earnings
+    of the profile's held and watched US instruments (public list, matched locally) and its research
+    notes' events. ``stale``: a feed could not be refreshed and the last cache is served."""
+    from .market import calendar
+
+    with get_session() as s:
+        try:
+            return calendar.calendar_view(s, profile, days=days)
+        except calendar.CalendarError as e:
+            raise _422(str(e)) from None
+
+
 # --------------------------------------------------------------------------- #
 # Instruments: classification, theses, manual valuations
 # --------------------------------------------------------------------------- #

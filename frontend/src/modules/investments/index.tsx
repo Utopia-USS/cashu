@@ -4,7 +4,8 @@ import { useAsync } from "../../hooks";
 import { FactList, Kpi } from "../../ui";
 import { getOverview } from "./api";
 import { invKey } from "./v2/api";
-import { dm, money, pct } from "./labels";
+import { dm, money, pct, RUN_STATUS } from "./labels";
+import { S } from "./index.strings.ts";
 import { InvestmentsV2 } from "./v2/Home";
 import { InvestmentsHeaderTag, InvestmentsHeroFact, InvestmentsSummaryWidget, MinimalOverview, SurplusWidget } from "./v2/Overview";
 
@@ -20,14 +21,14 @@ function InvestmentsKpis({ state, go }: { state: string; go: () => void }) {
   const k = q.data?.kpis;
   if (!k || !k.value.total) {
     return (
-      <Kpi label="Portfel inwestycji" value={<span className="muted">-</span>}
-        hint={<>{state === "ready" ? "brak pozycji" : "moduł nieskonfigurowany"} · <button className="lnk" style={{ fontSize: 12 }} onClick={go}>{state === "ready" ? "otwórz" : "skonfiguruj"}</button></>} />
+      <Kpi label={S.kpiPortfolio} value={<span className="muted">-</span>}
+        hint={<>{state === "ready" ? S.noPositions : S.notConfigured} · <button className="lnk" style={{ fontSize: 12 }} onClick={go}>{state === "ready" ? S.open : S.configure}</button></>} />
     );
   }
   const base = q.data!.base_currency;
   return (
-    <Kpi label={`Portfel inwestycji (${base})`} value={money(k.value.total, base)}
-      hint={k.unrealized.pct != null ? `${pct(k.unrealized.pct, true)} od kosztu` : undefined}
+    <Kpi label={S.kpiPortfolioIn(base)} value={money(k.value.total, base)}
+      hint={k.unrealized.pct != null ? S.fromCost(pct(k.unrealized.pct, true)) : undefined}
       hintCls={k.unrealized.pct == null ? undefined : k.unrealized.pct >= 0 ? "pos" : "neg"} />
   );
 }
@@ -39,22 +40,22 @@ function InvestmentsFacts() {
   const k = q.data.kpis;
   const c = q.data.base_currency;
   const facts: Fact[] = [
-    ["Wartość portfela", money(k.value.total, c)],
-    ["Sygnały", k.signals.action ? `${k.signals.action} do działania · ${k.signals.info} do przeglądu` : `${k.signals.info} do przeglądu`, k.signals.action ? "neg" : undefined],
+    [S.factValue, money(k.value.total, c)],
+    [S.factSignals, k.signals.action ? S.signalsBoth(k.signals.action, k.signals.info) : S.signalsInfo(k.signals.info), k.signals.action ? "neg" : undefined],
   ];
-  if (k.last_run) facts.push(["Reguły", `${dm(k.last_run.finished_at ?? k.last_run.started_at)} · ${k.last_run.status === "ok" ? "ok" : k.last_run.status === "partial" ? "częściowy" : "błąd"}`]);
+  if (k.last_run) facts.push([S.factRules, `${dm(k.last_run.finished_at ?? k.last_run.started_at)} · ${RUN_STATUS[k.last_run.status === "ok" || k.last_run.status === "partial" ? k.last_run.status : "failed"]}`]);
   return <FactList facts={facts} />;
 }
 
 export const investments: ModuleDef = {
   id: "investments",
-  name: "Inwestycje",
-  desc: "Rachunki maklerskie, alokacja vs strategia, sygnały, dziennik decyzji",
-  hint: "Konfiguracja przez skill w Claude Code.",
-  short: "Rachunki maklerskie, alokacja vs strategia, sygnały i dziennik decyzji",
-  skillHint: "Wywiad: ok. 1,5-2 h, można przerwać i wrócić.",
+  get name() { return S.name; },
+  get desc() { return S.desc; },
+  get hint() { return S.hint; },
+  get short() { return S.short; },
+  get skillHint() { return S.skillHint; },
   ownSetup: true,
-  tabs: [{ id: "portfolio", label: "Inwestycje", wide: true, render: (ctx) => <InvestmentsV2 ctx={ctx} /> }],
+  tabs: [{ id: "portfolio", get label() { return S.tab; }, wide: true, render: (ctx) => <InvestmentsV2 ctx={ctx} /> }],
   Kpis: ({ ctx }) => <InvestmentsKpis state={ctx.state} go={() => ctx.go({ kind: "tab", tab: "investments.portfolio" })} />,
   Facts: InvestmentsFacts,
   overview: [

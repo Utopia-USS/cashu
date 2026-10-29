@@ -1,0 +1,58 @@
+// Texts of the decision journal (src/modules/investments/v2/Journal.tsx). See src/i18n.ts.
+import { catalog, enCount, plCount } from "../../../i18n.ts";
+
+/** Signal status words. */
+export const STATUS_L = catalog({
+  active: { pl: "otwarty", en: "open" },
+  acknowledged: { pl: "potwierdzony", en: "acknowledged" },
+  resolved: { pl: "rozwiązany", en: "resolved" },
+  expired: { pl: "wygasł", en: "expired" },
+});
+
+export const S = catalog({
+  /** The undo subject of a decision (undoMessage). */
+  decisionNoun: { pl: "decyzja", en: "decision" },
+  portfolio: { pl: "portfel", en: "portfolio" },
+  instrument: { pl: (id: number) => `instrument ${id}`, en: (id: number) => `instrument ${id}` },
+  decisionHead: { pl: (a: string) => `Decyzja: ${a}`, en: (a: string) => `Decision: ${a}` },
+  reason: { pl: (r: string) => ` · „${r}"`, en: (r: string) => ` · "${r}"` },
+  onSignal: { pl: (t: string) => ` · na sygnał: ${t}`, en: (t: string) => ` · on signal: ${t}` },
+  undoLower: { pl: "cofnij", en: "undo" },
+  opportunity: { pl: "Szansa", en: "Opportunity" },
+  risk: { pl: "Ryzyko", en: "Risk" },
+  signal: { pl: "Sygnał", en: "Signal" },
+  withDecision: { pl: " · z decyzją", en: " · with a decision" },
+  open: { pl: " · otwarty", en: " · open" },
+  expiredNoDecision: { pl: "Wygasł bez decyzji", en: "Expired without a decision" },
+  resolvedNoDecision: { pl: "Rozwiązany bez decyzji", en: "Resolved without a decision" },
+  breadcrumb: { pl: "Ścieżka", en: "Breadcrumb" },
+  investments: { pl: "Inwestycje", en: "Investments" },
+  journal: { pl: "Dziennik decyzji", en: "Decision journal" },
+  show: { pl: "Pokaż", en: "Show" },
+  all: { pl: "Wszystko", en: "All" },
+  decisions: { pl: "Decyzje", en: "Decisions" },
+  signals: { pl: "Sygnały", en: "Signals" },
+  allInstruments: { pl: "wszystkie instrumenty", en: "all instruments" },
+  error: { pl: (e: string) => `Błąd: ${e}`, en: (e: string) => `Error: ${e}` },
+  record: { pl: "Zapis", en: "Record" },
+  showMore: { pl: (n: number) => `pokaż ${n} kolejnych`, en: (n: number) => `show ${n} more` },
+  noDecisions: { pl: "Brak decyzji.", en: "No decisions." },
+  noEntries: { pl: "Brak wpisów.", en: "No entries." },
+  inNumbers: { pl: (y: string) => `W liczbach · ${y}`, en: (y: string) => `In numbers · ${y}` },
+  decidedExpired: { pl: (d: number, e: number) => `${d} z decyzją · ${e} wygasło`, en: (d: number, e: number) => `${d} with a decision · ${e} expired` },
+  timeToDecision: { pl: "Czas do decyzji", en: "Time to decision" },
+  underDay: { pl: "< 1 dnia", en: "< 1 day" },
+  days: { pl: (n: number) => plCount(n, "dzień", "dni", "dni"), en: (n: number) => enCount(n, "day", "days") },
+  medianFromSignal: { pl: "mediana od sygnału", en: "median from the signal" },
+  noDecision: { pl: "Bez decyzji", en: "No decision" },
+  pctInt: { pl: (n: number) => `${n} %`, en: (n: number) => `${n}%` },
+  signalsExpired: { pl: "sygnałów wygasło", en: "of signals expired" },
+  history: { pl: "Historia sygnałów", en: "Signal history" },
+  noSignals: { pl: "Brak sygnałów.", en: "No signals." },
+  thSince: { pl: "Od", en: "Since" },
+  thSignal: { pl: "Sygnał", en: "Signal" },
+  thType: { pl: "Typ", en: "Type" },
+  thStatus: { pl: "Status", en: "Status" },
+  thDecision: { pl: "Decyzja", en: "Decision" },
+  thAccount: { pl: "Rachunek", en: "Account" },
+});

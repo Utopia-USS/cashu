@@ -104,26 +104,23 @@ test("home v3: an outside click leaves focus where it landed; Potwierdź writes 
   await expect(rail.locator(`.sig.cmp.row[data-group="${key}"]`)).toHaveCount(1);
 });
 
-test("home v3: opening a topic from the home strip marks its research notes read (Q10, P5, P7, P9 drawer)", async ({ app: page }) => {
+test("home v3: the research strip tells the week as a story; a topic opens its drawer (P9 drawer)", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio`);
   const strip = page.locator("#inv-research");
-  // P7: the strip is Makro | Tematy; no Tezy, no Kandydaci column, no Waluty / Bez tematu rows.
-  await expect(strip.locator(".rsch2 > .mcol .rsec").first()).toContainText("Makro");
-  await expect(strip.locator(".rsch2 > .tcol .rsec").first()).toContainText("Tematy");
-  await expect(strip.locator(".rsec", { hasText: /^Tezy/ })).toHaveCount(0);
-  await expect(strip.locator(".rsec", { hasText: /^Kandydaci/ })).toHaveCount(0);
-  await expect(strip.locator(".trow", { hasText: /Waluty|Bez tematu|Bez segmentu/ })).toHaveCount(0);
-  await expect(strip.locator(".trow").first()).toBeVisible();
+  // One sentence on the market, the macro regimes as chips, what is coming up, one line per topic.
+  await expect(strip.locator(".st-lead")).not.toBeEmpty();
+  await expect(strip.locator(".st-chips [data-macro]")).toHaveCount(5);
+  await expect(strip.locator(".st-ahead h4")).toHaveText(/Nadchodzi/i);
+  await expect(strip.locator(".st-trow", { hasText: /Waluty|Bez tematu|Bez segmentu/ })).toHaveCount(0);
+  await expect(strip.locator(".st-trow").first()).toBeVisible();
   // Kandydaci live in the home rail, under Alerty.
   const rail = page.locator(".split .rail");
   await expect(rail.locator("#inv-candidates")).toBeVisible();
   const ids = await rail.locator(".w[id]").evaluateAll((els) => els.map((e) => e.id));
   expect(ids.indexOf("inv-candidates")).toBeGreaterThan(ids.indexOf("inv-alerts"));
-  const chip = strip.locator(".rs-un");
-  await expect(chip).toBeVisible();
-  const before = Number(await chip.innerText());
-  // The Tematy column (P9): the topic label opens the topic drawer over the home (no research page).
-  await strip.locator(".tcol").getByRole("button", { name: "Obligacje i stopy", exact: true }).click();
+  // A topic line opens in place; "Cały temat" opens the topic drawer over the home (no research page).
+  await strip.locator('.st-trow[data-topic="bonds"]').click();
+  await strip.getByRole("button", { name: "Cały temat →" }).click();
   await expect(page).toHaveURL(/investments\.portfolio\/topics\/bonds$/);
   const drawer = page.getByRole("dialog", { name: "Obligacje i stopy" });
   await expect(drawer.locator("#topic-thesis")).toBeVisible();
@@ -131,6 +128,4 @@ test("home v3: opening a topic from the home strip marks its research notes read
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
   await expect(page).toHaveURL(/investments\.portfolio$/);
-  if (before > 1) await expect(strip.locator(".rs-un")).toHaveText(String(before - 1));
-  else await expect(strip.locator(".rs-un")).toHaveCount(0);
 });

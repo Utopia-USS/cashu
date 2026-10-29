@@ -16,6 +16,7 @@ import {
 import { HealthPill, NoteRow, SentimentBars } from "./primitives";
 import type { HealthKey } from "./types";
 import { localDay } from "../../../../time";
+import { S } from "./AssetResearch.strings.ts";
 
 const todayIso = () => {
   const t = new Date();
@@ -75,8 +76,8 @@ export function AssetResearch(p: AssetSlotProps) {
 
   if (!r.ran) {
     return (
-      <Widget title="Research" id="asset-research" className="rsch" tags={<span className="tag">jeszcze nie działał</span>} body="tight">
-        <div className="muted" style={{ fontSize: 13 }}>Brak notatek.</div>
+      <Widget title={S.research} id="asset-research" className="rsch" tags={<span className="tag">{S.neverRan}</span>} body="tight">
+        <div className="muted" style={{ fontSize: 13 }}>{S.noNotes}</div>
       </Widget>
     );
   }
@@ -90,17 +91,17 @@ export function AssetResearch(p: AssetSlotProps) {
   const all = notes.filter((n) => !n.dismissed_at).length;
   const shown = older ? [...recent, ...old] : recent;
   return (
-    <Widget title="Research" id="asset-research" className="rsch"
+    <Widget title={S.research} id="asset-research" className="rsch"
       tags={tag.state === "fresh" && last
         ? <span className="sub">{nNotes(live.length)} · {wdm(last.finished_at ?? last.started_at)}</span>
         : <span className={`tag ${tag.tone}`}>{tag.text}</span>}
-      controls={notes.length > recent.length && old.length > 0 ? <button className="lnk" onClick={() => setOlder((v) => !v)}>{older ? "tylko 30 dni" : `wszystkie (${all})`}</button> : undefined}
+      controls={notes.length > recent.length && old.length > 0 ? <button className="lnk" onClick={() => setOlder((v) => !v)}>{older ? S.only30 : S.allN(all)}</button> : undefined}
       body="tight">
       <div className="rsum">
-        <div className="fact"><div className="l">Sentyment 8 tyg.</div><div className={`v sm ${DIRECTION_TONE[dirKey]}`}>{DIRECTION_LABEL[dirKey]}</div></div>
+        <div className="fact"><div className="l">{S.sentiment8w}</div><div className={`v sm ${DIRECTION_TONE[dirKey]}`}>{DIRECTION_LABEL[dirKey]}</div></div>
         <SentimentBars values={values} labels={weekLabels(weeks)} size="lg" />
       </div>
-      {!shown.length ? <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>Brak notatek (30 dni)</div> : shown.map((n) => (
+      {!shown.length ? <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>{S.noNotes30}</div> : shown.map((n) => (
         <NoteRow key={n.id} note={n} today={r.today} hl={hlId === n.id} open={openId === n.id} onToggle={() => setOpenId((v) => (v === n.id ? null : n.id))}
           onDismiss={actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)} />
       ))}
@@ -115,6 +116,6 @@ export function ThesisHealth(p: AssetSlotProps) {
   if (!r.ran || !p.held) return null;
   const latest = (r.notes ?? []).find((n) => !n.dismissed_at);
   const counts = r.row?.counts ?? relationCounts(r.window);
-  const title = [countsText(r.health, counts, { notes: r.window.length, latestPolarity: latest?.polarity }), r.health === "no_thesis" ? null : "30 dni"].filter(Boolean).join(" · ");
+  const title = [countsText(r.health, counts, { notes: r.window.length, latestPolarity: latest?.polarity }), r.health === "no_thesis" ? null : S.days30].filter(Boolean).join(" · ");
   return <HealthPill state={r.health} muted={healthStale(r.runs ?? [], r.today)} pre={!!r.row?.health_predates_thesis} title={title || undefined} />;
 }

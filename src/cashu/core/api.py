@@ -150,8 +150,8 @@ def list_modules() -> list[dict]:
     return [
         {
             "id": spec.id,
-            "name": spec.name,
-            "description": spec.description,
+            "name": spec.display_name(),
+            "description": spec.display_description(),
             "depends_on": list(spec.depends_on),
             "available": spec.available,
         }

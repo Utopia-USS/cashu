@@ -20,6 +20,8 @@ MODULE = ModuleSpec(
     id="investments",
     name="Inwestycje",
     description="Rachunki maklerskie, alokacja vs strategia, sygnały, dziennik decyzji",
+    name_en="Investments",
+    description_en="Brokerage accounts, allocation vs strategy, signals, decision journal",
     available=True,
     tables=TABLES,
     router=api.router,
@@ -27,9 +29,15 @@ MODULE = ModuleSpec(
     cli_name="invest",
     cli_help="Investments: brokerage accounts, imports, positions, strategy, rules.",
     networth=InvestmentsContributor(),
-    networth_buckets=(NetWorthBucket("investments", "Inwestycje", 5),),
+    networth_buckets=(NetWorthBucket("investments", "Inwestycje", 5, label_en="Investments"),),
     account_types=(
-        AccountTypeInfo(BROKERAGE, "investments", "Rachunki maklerskie", bucket="investments"),
+        AccountTypeInfo(
+            BROKERAGE,
+            "investments",
+            "Rachunki maklerskie",
+            bucket="investments",
+            label_en="Brokerage accounts",
+        ),
     ),
     # Display names only: imports go through the cashU format or a CSV mapping.
     institutions=(

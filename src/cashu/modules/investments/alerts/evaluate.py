@@ -14,6 +14,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
 
+from cashu.core.i18n import en_count, tr
+
 from ..domain import (
     AssetClass,
     CalendarDate,
@@ -41,6 +43,7 @@ from ..rules.kinds.support import (
     RATIO_EPSILON,
     InstrumentPosition,
     bucket_named,
+    bucket_word,
     decimal_text,
     format_decimal,
     format_pct,
@@ -53,8 +56,12 @@ from ..rules.kinds.support import (
 from .catalog import AlertKind, AlertScope
 
 ALERT_PREFIX = "alert:"
-NO_INSTRUMENT = "Alert nie ma instrumentu"
-NOT_VALUED = "Nie udało się wycenić portfela"
+def _no_instrument() -> str:
+    return tr(pl="Alert nie ma instrumentu", en="The alert has no instrument")
+
+
+def _not_valued() -> str:
+    return tr(pl="Nie udało się wycenić portfela", en="The portfolio could not be valued")
 
 
 def alert_rule_id(alert_id: int | str) -> str:
@@ -162,11 +169,12 @@ def _price(value: Decimal) -> str:
 
 
 def _shown(value: Decimal) -> str:
-    """A price for the message (Polish notation)."""
+    """A price for the message (the UI language's notation)."""
     return format_decimal(value)
 
 
 _STATUS_TEXT = {"delisted": "wycofany z obrotu", "frozen": "zamrożony"}
+_STATUS_TEXT_EN = {"delisted": "delisted", "frozen": "frozen"}
 
 
 def _skip(alert: AlertDefinition, reason: str) -> AlertCheck:
@@ -209,14 +217,21 @@ def _series(alert: AlertDefinition, data: AlertData, needed: int) -> Sequence[Pr
     """The last ``needed`` bars (oldest first) or why the alert cannot be judged."""
     instrument = alert.instrument
     if instrument is None:
-        return NO_INSTRUMENT
+        return _no_instrument()
     label = _label(instrument)
     if not instrument.fetches_market_data:
         status = instrument.status.value
-        return f"{label}: {_STATUS_TEXT.get(status, status)}, brak bieżących notowań"
+        status_text = tr(pl=_STATUS_TEXT, en=_STATUS_TEXT_EN).get(status, status)
+        return tr(
+            pl=f"{label}: {status_text}, brak bieżących notowań",
+            en=f"{label}: {status_text}, no current prices",
+        )
     bars = [b for b in data.bars.get(instrument.id, ()) if b.date <= data.as_of]
     if not bars:
-        return f"Brak cen: {label} (pobierze je dzienny przebieg)"
+        return tr(
+            pl=f"Brak cen: {label} (pobierze je dzienny przebieg)",
+            en=f"No prices: {label} (the daily run will fetch them)",
+        )
     last = bars[-1]
     age = days_between(last.date, data.as_of)
     if age > data.max_price_age_days:
@@ -225,7 +240,7 @@ def _series(alert: AlertDefinition, data: AlertData, needed: int) -> Sequence[Pr
         return short_series_problem(label, len(bars), needed)
     window = bars[-needed:]
     if any(b.close <= 0 for b in window):
-        return f"Nieprawidłowe ceny w oknie: {label}"
+        return tr(pl=f"Nieprawidłowe ceny w oknie: {label}", en=f"Invalid prices in the window: {label}")
     return window
 
 
@@ -257,9 +272,15 @@ def _price_level(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     if not hit:
         return _not_fired(alert, payload, last.close)
     cur = _currency(alert.instrument, last)
-    detail = (
-        f"{_label(alert.instrument)}: zamknięcie {_shown(last.close)} {cur} ({last.date}), "
-        f"{'powyżej' if above else 'poniżej'} {_shown(level)} {cur}."
+    detail = tr(
+        pl=(
+            f"{_label(alert.instrument)}: zamknięcie {_shown(last.close)} {cur} ({last.date}), "
+            f"{'powyżej' if above else 'poniżej'} {_shown(level)} {cur}."
+        ),
+        en=(
+            f"{_label(alert.instrument)}: close {_shown(last.close)} {cur} ({last.date}), "
+            f"{'above' if above else 'below'} {_shown(level)} {cur}."
+        ),
     )
     return _fired(alert, detail, payload, last.close)
 
@@ -295,9 +316,16 @@ def _change_pct(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     if not hit:
         return _not_fired(alert, payload, change)
     sign = "+" if change > 0 else "-"
-    detail = (
-        f"{_label(alert.instrument)}: {sign}{format_pct(float(abs(change)))} w {window_days} sesji "
-        f"({_shown(first.close)} {first.date} -> {_shown(last.close)} {last.date})."
+    size = f"{sign}{format_pct(float(abs(change)))}"
+    detail = tr(
+        pl=(
+            f"{_label(alert.instrument)}: {size} w {window_days} sesji "
+            f"({_shown(first.close)} {first.date} -> {_shown(last.close)} {last.date})."
+        ),
+        en=(
+            f"{_label(alert.instrument)}: {size} in {_sessions(window_days)} "
+            f"({_shown(first.close)} {first.date} -> {_shown(last.close)} {last.date})."
+        ),
     )
     return _fired(alert, detail, payload, change)
 
@@ -324,9 +352,15 @@ def _drawdown(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     }
     if drawdown < threshold - Decimal(str(RATIO_EPSILON)):
         return _not_fired(alert, payload, drawdown)
-    detail = (
-        f"{_label(alert.instrument)}: -{format_pct(float(drawdown))} od szczytu z {window_days} sesji "
-        f"(zamknięcie {_shown(last.close)} {last.date}, szczyt {_shown(high.close)} {high.date})."
+    detail = tr(
+        pl=(
+            f"{_label(alert.instrument)}: -{format_pct(float(drawdown))} od szczytu z {window_days} sesji "
+            f"(zamknięcie {_shown(last.close)} {last.date}, szczyt {_shown(high.close)} {high.date})."
+        ),
+        en=(
+            f"{_label(alert.instrument)}: -{format_pct(float(drawdown))} from the {window_days}-session "
+            f"high (close {_shown(last.close)} {last.date}, high {_shown(high.close)} {high.date})."
+        ),
     )
     return _fired(alert, detail, payload, drawdown)
 
@@ -348,9 +382,15 @@ def _new_high(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     }
     if last.close <= previous:
         return _not_fired(alert, payload, last.close)
-    detail = (
-        f"{_label(alert.instrument)}: nowy szczyt z {window_days} sesji, {_shown(last.close)} "
-        f"({last.date}; poprzedni {_shown(previous)})."
+    detail = tr(
+        pl=(
+            f"{_label(alert.instrument)}: nowy szczyt z {window_days} sesji, {_shown(last.close)} "
+            f"({last.date}; poprzedni {_shown(previous)})."
+        ),
+        en=(
+            f"{_label(alert.instrument)}: new {window_days}-session high, {_shown(last.close)} "
+            f"({last.date}; previous {_shown(previous)})."
+        ),
     )
     return _fired(alert, detail, payload, last.close)
 
@@ -376,10 +416,16 @@ def _sma_cross(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     }
     if not hit:
         return _not_fired(alert, payload, last.close)
-    detail = (
-        f"{_label(alert.instrument)}: zamknięcie {_shown(last.close)} ({last.date}) "
-        f"{'powyżej' if above else 'poniżej'} SMA {window_days} "
-        f"({_shown(sma.quantize(Decimal('0.0001')))})."
+    sma_shown = _shown(sma.quantize(Decimal("0.0001")))
+    detail = tr(
+        pl=(
+            f"{_label(alert.instrument)}: zamknięcie {_shown(last.close)} ({last.date}) "
+            f"{'powyżej' if above else 'poniżej'} SMA {window_days} ({sma_shown})."
+        ),
+        en=(
+            f"{_label(alert.instrument)}: close {_shown(last.close)} ({last.date}) "
+            f"{'above' if above else 'below'} SMA {window_days} ({sma_shown})."
+        ),
     )
     return _fired(alert, detail, payload, last.close)
 
@@ -427,14 +473,21 @@ def _range_breakout(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     assert breakout is not None and edge is not None
     # under 0,05 % the percent would read "+0,0 %" (F8 review BE-7)
     size = (
-        "tuż"
+        tr(pl="tuż", en="just")
         if abs(breakout) < Decimal("0.0005")
         else f"{'+' if breakout > 0 else '-'}{format_pct(float(abs(breakout)))}"
     )
-    detail = (
-        f"{_label(alert.instrument)}: wybicie z konsolidacji {window_days} sesji, "
-        f"{size} {'nad' if side == 'up' else 'pod'} "
-        f"{_shown(edge)} {cur} (zamknięcie {_shown(last.close)} {cur}, {last.date})."
+    detail = tr(
+        pl=(
+            f"{_label(alert.instrument)}: wybicie z konsolidacji {window_days} sesji, "
+            f"{size} {'nad' if side == 'up' else 'pod'} "
+            f"{_shown(edge)} {cur} (zamknięcie {_shown(last.close)} {cur}, {last.date})."
+        ),
+        en=(
+            f"{_label(alert.instrument)}: breakout from a {window_days}-session range, "
+            f"{size} {'above' if side == 'up' else 'below'} "
+            f"{_shown(edge)} {cur} (close {_shown(last.close)} {cur}, {last.date})."
+        ),
     )
     return _fired(alert, detail, payload, last.close)
 
@@ -448,11 +501,23 @@ def _volume_spike(alert: AlertDefinition, data: AlertData) -> AlertCheck:
         return _skip(alert, window)
     label = _label(alert.instrument)
     if any(b.volume is None for b in window):
-        return _skip(alert, f"Brak wolumenu w oknie: {label} (źródło cen go nie podaje)")
+        return _skip(
+            alert,
+            tr(
+                pl=f"Brak wolumenu w oknie: {label} (źródło cen go nie podaje)",
+                en=f"No volume in the window: {label} (the price source does not provide it)",
+            ),
+        )
     last, previous = window[-1], window[:-1]
     average = sum(int(b.volume) for b in previous) / len(previous)  # type: ignore[arg-type]
     if average <= 0:
-        return _skip(alert, f"Zerowy średni wolumen w oknie: {label}")
+        return _skip(
+            alert,
+            tr(
+                pl=f"Zerowy średni wolumen w oknie: {label}",
+                en=f"Zero average volume in the window: {label}",
+            ),
+        )
     ratio = int(last.volume) / average  # type: ignore[arg-type]
     multiple = float(alert.params.get("multiple", 2.5))
     cur = _currency(alert.instrument, last)
@@ -471,18 +536,27 @@ def _volume_spike(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     value = Decimal(str(round(ratio, 6)))
     if ratio < multiple - RATIO_EPSILON:
         return _not_fired(alert, payload, value)
-    detail = (
-        f"{label}: wolumen {_multiple(ratio)} średniej z {window_days} sesji "
-        f"(zamknięcie {_shown(last.close)} {cur}, {last.date})."
+    detail = tr(
+        pl=(
+            f"{label}: wolumen {_multiple(ratio)} średniej z {window_days} sesji "
+            f"(zamknięcie {_shown(last.close)} {cur}, {last.date})."
+        ),
+        en=(
+            f"{label}: volume {_multiple(ratio)} the {window_days}-session average "
+            f"(close {_shown(last.close)} {cur}, {last.date})."
+        ),
     )
     return _fired(alert, detail, payload, value)
 
 
 def _multiple(ratio: float) -> str:
-    """``3,4x`` (one decimal, Polish comma, no space)."""
-    return f"{Decimal(str(ratio)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}x".replace(
-        ".", ","
-    )
+    """``3,4x`` (one decimal, Polish comma, no space; ``3.4x`` in English)."""
+    text = f"{Decimal(str(ratio)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)}x"
+    return tr(pl=text.replace(".", ","), en=text)
+
+
+def _sessions(days: int) -> str:
+    return en_count(days, "session", "sessions")
 
 
 # --------------------------------------------------------------------------- #
@@ -493,7 +567,7 @@ def _multiple(ratio: float) -> str:
 def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     ctx = data.ctx
     if ctx is None:
-        return _skip(alert, NOT_VALUED)
+        return _skip(alert, _not_valued())
     problem = portfolio_data_problem(ctx)
     if problem is not None:
         return _skip(alert, problem)
@@ -508,19 +582,31 @@ def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
             return _skip(alert, problem)
         allocation = next((a for a in ctx.allocations if a.bucket_id == bucket), None)
         if allocation is None:
-            return _skip(alert, f"{no_allocation_problem(bucket)} (czy jest w strategii?)")
+            return _skip(
+                alert,
+                tr(
+                    pl=f"{no_allocation_problem(bucket)} (czy jest w strategii?)",
+                    en=f"{no_allocation_problem(bucket)} (is it in the strategy?)",
+                ),
+            )
         if allocation.cash_history_gap:
             return _skip(
                 alert,
-                f"Niepełna historia gotówki: wartość {bucket_named('koszyka', bucket)} nieznana",
+                tr(
+                    pl=f"Niepełna historia gotówki: wartość {bucket_named('koszyka', bucket)} nieznana",
+                    en=(
+                        f"Incomplete cash history: value of {bucket_named('the bucket', bucket)} "
+                        "unknown"
+                    ),
+                ),
             )
         # The bucket id (no display label in the backend), only for a generic bucket: the owner's
         # own bucket is never named in owner-facing text (the payload keeps ``bucket_id``).
-        weight, subject = allocation.weight, bucket_named("Koszyk", bucket)
+        weight, subject = allocation.weight, bucket_named(bucket_word(), bucket)
     else:
         instrument = alert.instrument
         if instrument is None:
-            return _skip(alert, NO_INSTRUMENT)
+            return _skip(alert, _no_instrument())
         holdings = tuple(h for h in ctx.portfolio.valued if h.instrument_id == instrument.id)
         subject = _label(instrument)
         if holdings:
@@ -529,7 +615,9 @@ def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
             )
             price_problem = position.price_problem
             if price_problem is not None or position.weight is None:
-                return _skip(alert, price_problem or f"Brak wagi: {subject}")
+                return _skip(
+                    alert, price_problem or tr(pl=f"Brak wagi: {subject}", en=f"No weight: {subject}")
+                )
             weight = position.weight
         else:
             weight = 0.0
@@ -539,9 +627,15 @@ def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     value = Decimal(repr(weight))
     if not hit:
         return _not_fired(alert, payload, value)
-    detail = (
-        f"{subject}: {format_pct(weight)} portfela "
-        f"({'powyżej' if above else 'poniżej'} {format_pct(threshold)})."
+    detail = tr(
+        pl=(
+            f"{subject}: {format_pct(weight)} portfela "
+            f"({'powyżej' if above else 'poniżej'} {format_pct(threshold)})."
+        ),
+        en=(
+            f"{subject}: {format_pct(weight)} of the portfolio "
+            f"({'above' if above else 'below'} {format_pct(threshold)})."
+        ),
     )
     return _fired(alert, detail, payload, value)
 
@@ -549,12 +643,12 @@ def _weight(alert: AlertDefinition, data: AlertData) -> AlertCheck:
 def _custom(alert: AlertDefinition, data: AlertData) -> AlertCheck:
     ctx = data.ctx
     if ctx is None:
-        return _skip(alert, NOT_VALUED)
+        return _skip(alert, _not_valued())
     scope = Scope(alert.scope.value)
     expression = compile_expression(str(alert.params["expression"]), scope)
     if alert.scope == AlertScope.INSTRUMENT:
         if alert.instrument is None:
-            return _skip(alert, NO_INSTRUMENT)
+            return _skip(alert, _no_instrument())
         params = CustomParams(
             expression=expression,
             scope=scope,

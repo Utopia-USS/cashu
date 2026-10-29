@@ -12,10 +12,10 @@ import { ck } from "../../swr";
 import { useShell } from "../../core/context";
 import { errorText } from "../../core/messages";
 import type { TabActionProps } from "../../core/types";
-import { plural } from "../../format";
 import { useToast } from "../../ui";
 import { StatementImportDrawer } from "./ImportDrawer";
 import { bankAccounts, resyncBankText } from "./logic";
+import { S } from "./BankSync.strings.ts";
 
 const running = new Set<string>();
 const listeners = new Set<() => void>();
@@ -51,12 +51,12 @@ export function BankSync({ slug, profileName, networth, refresh, bindings = [], 
       ok = res.ok;
       const msg = resyncBankText(res);
       if (msg) toast(`${profileName}: ${msg}`, 5000);
-      const name = (l: { binding_id?: number; connector_id?: string }) => bindings.find((b) => b.id === l.binding_id)?.connector_name ?? l.connector_id ?? "Konektor";
+      const name = (l: { binding_id?: number; connector_id?: string }) => bindings.find((b) => b.id === l.binding_id)?.connector_name ?? l.connector_id ?? S.connector;
       for (const line of moduleSyncLines(res.connectors, name)) {
         const pid = line.proposalId;
         // the tabbar left (other profile or module): the line names the profile, the proposal waits in its tabbar
         if (!alive.current) toast(`${profileName}: ${line.text}`, 6000);
-        else if (pid != null && onProposal) toast(line.text, 6000, { label: "Zobacz", onClick: () => onProposal(pid) });
+        else if (pid != null && onProposal) toast(line.text, 6000, { label: S.view, onClick: () => onProposal(pid) });
         else toast(line.text, line.failed ? 7000 : 5000);
       }
       onSynced?.();
@@ -72,9 +72,9 @@ export function BankSync({ slug, profileName, networth, refresh, bindings = [], 
 
   return (
     <button className="btn" onClick={sync} disabled={busy || (!banks.length && !connectors)}
-      title={connectors ? "Pobierz nowe transakcje z banków (Enable Banking) i konektorów"
-        : banks.length ? "Pobierz nowe transakcje z banków (Enable Banking)" : "Brak kont bankowych do synchronizacji"}>
-      {busy ? "Synchronizuję…" : "↻ Synchronizuj"}
+      title={connectors ? S.syncTitleConnectors
+        : banks.length ? S.syncTitleBanks : S.syncTitleNone}>
+      {busy ? S.syncing : S.sync}
     </button>
   );
 }
@@ -93,7 +93,7 @@ export function BudgetActions(props: TabActionProps) {
   const bindings = useAsync(() => getBindings(props.slug).catch(() => []), [props.slug]);
   const budgetBindings = (bindings.data ?? []).filter((b) => b.module === "budget");
   const proposalDone = (approved: boolean) => {
-    toast(approved ? "Zaimportowano" : "Odrzucono", 3000);
+    toast(approved ? S.imported : S.rejected, 3000);
     if (approved) props.refresh();
     const next = waiting.find((x) => x.id !== proposal);
     setProposal(next ? next.id : null);
@@ -102,9 +102,9 @@ export function BudgetActions(props: TabActionProps) {
   return (
     <>
       {waiting.length > 0 && (
-        <button className="btn" onClick={() => setProposal(waiting[0].id)} title="Import z konektora czeka na zatwierdzenie">Do zatwierdzenia · {waiting.length}</button>
+        <button className="btn" onClick={() => setProposal(waiting[0].id)} title={S.pendingTitle}>{S.pending(waiting.length)}</button>
       )}
-      <button className="btn" title="Wyciąg CSV z banku" onClick={() => setOpen(true)}>Import</button>
+      <button className="btn" title={S.importTitle} onClick={() => setOpen(true)}>{S.import}</button>
       <BankSync {...props} bindings={budgetBindings} onSynced={pending.reload} onProposal={setProposal} />
       {proposal != null && (
         <ProposalDrawer key={proposal} slug={props.slug} id={proposal} version={null} onClose={() => setProposal(null)} onChanged={pending.reload}
@@ -113,7 +113,7 @@ export function BudgetActions(props: TabActionProps) {
       {open && (
         <StatementImportDrawer slug={props.slug} initialStep={1} fromTab
           onClose={() => { setOpen(false); if (stale.current) { stale.current = false; props.refresh(); void reloadProfiles(); } }}
-          onDone={(r) => { stale.current = true; toast(`Zaimportowano ${plural(r.inserted, "transakcję", "transakcje", "transakcji")}`, 3500); }} />
+          onDone={(r) => { stale.current = true; toast(S.importedN(r.inserted), 3500); }} />
       )}
     </>
   );

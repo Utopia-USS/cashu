@@ -12,6 +12,8 @@ import { useToast } from "../../ui";
 import { getManualAssets } from "./api";
 import { AssetDrawer, type AssetTarget } from "./AssetsWidget";
 import { assetStepItems } from "./Steps";
+import { C } from "../../common.strings.ts";
+import { S } from "./index.strings.ts";
 
 export function AssetsStart({ ctx }: { ctx: ModuleCtx }) {
   const { slug } = ctx;
@@ -24,13 +26,13 @@ export function AssetsStart({ ctx }: { ctx: ModuleCtx }) {
   const rows = manual.data ? manual.data.filter((a) => !a.is_liability) : null;
   const steps = rows ? assetStepItems(rows, base, (type) => setEdit({ kind: "new", type })) : null;
   return (
-    <StartPage moduleId="assets" title="Majątek" setup={setup.data} state={ctx.state} steps={steps} tag={false}>
+    <StartPage moduleId="assets" title={S.name} setup={setup.data} state={ctx.state} steps={steps} tag={false}>
       {edit && (
         <AssetDrawer target={edit} slug={slug} base={base} today={todayLocal()} onClose={() => setEdit(null)}
           onRemoved={() => setEdit(null)}
           onSaved={(created) => {
             setEdit(null);
-            toast(created ? "Dodano" : "Zapisano");
+            toast(created ? S.added : C.saved);
             ctx.refresh();
             void reloadProfiles();
             ctx.go({ kind: "tab", tab: "overview", sub: "assets" });

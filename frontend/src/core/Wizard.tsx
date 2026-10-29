@@ -7,10 +7,13 @@ import { nModules } from "../format";
 import { ChoiceCard, Code, Notice, RadioList, Stepper, Switch, Tag } from "../ui";
 import { createProfile, type ModuleInfo, type Privacy, type Profile, type SystemInfo } from "./api";
 import { moduleDef, orderModules } from "./registry";
-import { PROPOSAL_NOTE, ROUTINE_PERMISSIONS_HINT, ROUTINE_PERMISSIONS_LABEL, workspaceErrorText } from "./workspace";
+import { workspaceErrorText } from "./workspace";
+import { WS } from "./workspace.strings.ts";
 import { getWorkspaceDefault, postWorkspace } from "./workspaceApi";
 import { errorText } from "./messages";
 import { readStored } from "./storage";
+import { C } from "../common.strings.ts";
+import { PRIVACY, S } from "./Wizard.strings.ts";
 
 export const CURRENCIES = ["PLN", "EUR", "USD", "CHF", "GBP"];
 const LEGACY_SKIP_KEY = "cashu.legacySkipped";
@@ -19,21 +22,6 @@ export const legacySkipped = (): boolean => {
   try { return readStored(localStorage, LEGACY_SKIP_KEY) === "1"; } catch { return false; }
 };
 
-// Asked as an open question: neither answer is preselected or marked as the default.
-export const PRIVACY_QUESTION = "Czy agent AI może widzieć kwoty?";
-export const PRIVACY_COMMON = "W obu wariantach bez numerów kont, IBAN-ów i danych osobowych.";
-export const PRIVACY_OPTIONS: { value: Privacy; title: string; desc: string; example: string }[] = [
-  {
-    value: "strict", title: "Ścisły",
-    desc: "Udziały procentowe, kategorie, daty, nazwy instrumentów.",
-    example: "Przykład: zamiast „CD Projekt: 12 400 zł\" agent dostaje „CD Projekt: 6,7 % portfela\".",
-  },
-  {
-    value: "amounts", title: "Z kwotami",
-    desc: "To samo plus kwoty w walucie konta.",
-    example: "Przykład: pytanie „ile wydałam na jedzenie we wrześniu\".",
-  },
-];
 
 /** Module ids `id` needs (transitively), per depends_on. */
 function withDeps(id: string, all: ModuleInfo[], acc = new Set<string>()): Set<string> {
@@ -91,9 +79,9 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
     return () => { alive = false; };
   }, [step, trimmed, wsTouched, created]);
   const validateName = (): boolean => {
-    if (!trimmed) { setNameErr("Podaj nazwę profilu."); return false; }
+    if (!trimmed) { setNameErr(S.nameRequired); return false; }
     if (existing.some((p) => p.name.trim().toLowerCase() === trimmed.toLowerCase())) {
-      setNameErr("Profil o tej nazwie już istnieje."); return false;
+      setNameErr(S.nameTaken); return false;
     }
     setNameErr(null);
     return true;
@@ -143,20 +131,20 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
   };
 
   const pickedNames = ordered.filter((m) => picked.has(m.id)).map((m) => moduleDef(m.id, modules).name);
-  const title = step === 0 ? (firstLaunch ? "Witaj w cashU" : "Nowy profil") : `Nowy profil: ${trimmed}`;
+  const title = step === 0 ? (firstLaunch ? S.welcome : S.newProfile) : S.newProfileNamed(trimmed);
   const lead = [
-    firstLaunch ? "Wszystko działa lokalnie na tym komputerze." : null,
-    "Do zmiany później w Ustawieniach.",
-    "Dotyczy tylko narzędzi MCP (Claude Code, Claude Desktop). Analizy w aplikacji nie wychodzą z komputera.",
+    firstLaunch ? S.leadLocal : null,
+    S.leadLater,
+    S.leadMcp,
   ][step];
   const showLegacy = firstLaunch && step === 0 && system?.legacy_db_detected && !skipLegacy;
 
   return (
-    <div className="wizard" role={firstLaunch ? undefined : "dialog"} aria-modal={firstLaunch ? undefined : true} aria-label="Nowy profil">
-      {!firstLaunch && onCancel && <button className="icon-btn close" title="Zamknij (Esc)" aria-label="Zamknij" onClick={cancel}>✕</button>}
+    <div className="wizard" role={firstLaunch ? undefined : "dialog"} aria-modal={firstLaunch ? undefined : true} aria-label={S.newProfile}>
+      {!firstLaunch && onCancel && <button className="icon-btn close" title={S.closeEsc} aria-label={C.close} onClick={cancel}>✕</button>}
       <h1>{title}</h1>
       {lead && <p className="lead">{lead}</p>}
-      <Stepper steps={["Profil", "Moduły", "Prywatność"]} current={step} />
+      <Stepper steps={[S.stepProfile, S.stepModules, S.stepPrivacy]} current={step} />
 
       <div className="card">
         {step === 0 && (
@@ -166,22 +154,22 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
                 <button type="button" className="btn" onClick={() => {
                   setSkipLegacy(true);
                   try { localStorage.setItem(LEGACY_SKIP_KEY, "1"); } catch { /* ignore */ }
-                }}>Pomiń</button>
+                }}>{S.skip}</button>
               }>
                 {/* legacy name: the repo-dir database of old checkouts is data/finanse.db */}
-                Dane z poprzedniej wersji: <code>{system?.legacy_db_path || "data/finanse.db"}</code>. Zamknij aplikację i uruchom:
+                {S.legacyData}<code>{system?.legacy_db_path || "data/finanse.db"}</code>{S.legacyDataAfter}
                 <Code cmd="cashu migrate-data" />
               </Notice>
             )}
             <div className="form-row">
               <div className="field">
-                <label htmlFor="wz-name">Nazwa profilu</label>
+                <label htmlFor="wz-name">{S.profileName}</label>
                 <input id="wz-name" ref={nameRef} value={name} maxLength={40} autoComplete="off"
                   aria-invalid={!!nameErr} onChange={(e) => { setName(e.target.value); if (nameErr) setNameErr(null); }} />
                 {nameErr && <span className="fe">{nameErr}</span>}
               </div>
               <div className="field">
-                <label htmlFor="wz-cur" title="Waluta nagłówka wartości netto; inne waluty osobno, bez przeliczania.">Waluta bazowa</label>
+                <label htmlFor="wz-cur" title={S.baseCurrencyTitle}>{S.baseCurrency}</label>
                 <select id="wz-cur" value={currency} onChange={(e) => setCurrency(e.target.value)}>
                   {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
                 </select>
@@ -197,9 +185,9 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
               const deps = m.depends_on.map((d) => moduleDef(d, modules).name);
               return (
                 <ChoiceCard key={m.id} checked={picked.has(m.id)} disabled={!m.available}
-                  title={def.name} tag={!m.available ? <Tag>wkrótce</Tag> : undefined}
+                  title={def.name} tag={!m.available ? <Tag>{S.soon}</Tag> : undefined}
                   desc={def.desc || m.description}
-                  hint={[deps.length ? `Wymaga: ${deps.join(", ")}.` : "", def.hint ?? ""].filter(Boolean).join(" ") || undefined}
+                  hint={[deps.length ? S.requires(deps.join(", ")) : "", def.hint ?? ""].filter(Boolean).join(" ") || undefined}
                   onChange={(on) => toggle(m.id, on)} />
               );
             })}
@@ -208,77 +196,77 @@ export function Wizard({ firstLaunch, system, modules, existing, onCreated, onCa
 
         {step === 2 && (
           <>
-            <h2 id="wz-privacy-h" style={{ margin: "0 0 8px" }}>{PRIVACY_QUESTION}</h2>
-            <RadioList<Privacy> name="wz-privacy" label={PRIVACY_QUESTION} value={privacy} onChange={setPrivacy} disabled={!!created}
-              options={PRIVACY_OPTIONS.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example }))} />
-            <div className="muted" style={{ fontSize: 12.5, margin: "4px 0 16px" }}>{PRIVACY_COMMON} {PROPOSAL_NOTE}</div>
+            <h2 id="wz-privacy-h" style={{ margin: "0 0 8px" }}>{PRIVACY.question}</h2>
+            <RadioList<Privacy> name="wz-privacy" label={PRIVACY.question} value={privacy} onChange={setPrivacy} disabled={!!created}
+              options={PRIVACY.options.map((o) => ({ value: o.value, title: o.title, desc: o.desc, tooltip: o.example }))} />
+            <div className="muted" style={{ fontSize: 12.5, margin: "4px 0 16px" }}>{PRIVACY.common} {WS.proposalNote}</div>
             <section style={{ margin: "0 0 16px" }} aria-labelledby="wz-ws-h">
               <div className="controls" style={{ margin: "0 0 6px" }}>
-                <Switch on={wsOn} label="Utwórz workspace agenta" onChange={setWsOn} disabled={busy} />
-                <strong id="wz-ws-h" style={{ fontSize: 14 }} title="CLAUDE.md z kontekstem profilu, tylko serwer MCP tego profilu, skille włączonych modułów, blokada odczytu katalogu danych. Twoje pliki zostają przy aktualizacjach.">Workspace agenta (Claude Code)</strong>
+                <Switch on={wsOn} label={S.createWorkspace} onChange={setWsOn} disabled={busy} />
+                <strong id="wz-ws-h" style={{ fontSize: 14 }} title={S.workspaceTitle}>{S.workspaceHeading}</strong>
               </div>
-              <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>Folder dla Claude Code: CLAUDE.md, serwer MCP profilu, skille modułów. Dane tylko przez MCP.</div>
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>{S.workspaceDesc}</div>
               {wsOn ? (
                 <>
                   <div className="field">
-                    <label htmlFor="wz-ws">Folder workspace</label>
-                    <input id="wz-ws" value={wsPath} placeholder="~/Documents/cashU/<profil>" autoComplete="off" spellCheck={false}
+                    <label htmlFor="wz-ws">{S.workspaceFolder}</label>
+                    <input id="wz-ws" value={wsPath} placeholder={S.workspacePlaceholder} autoComplete="off" spellCheck={false}
                       disabled={busy} onChange={(e) => { setWsPath(e.target.value); setWsTouched(true); }} />
                   </div>
                   {investmentsPicked && (
                     <>
                       <div className="controls" style={{ margin: "0 0 4px", fontSize: 13 }}>
-                        <Switch on={wsRoutine} label={ROUTINE_PERMISSIONS_LABEL} onChange={setWsRoutine} disabled={busy} />
-                        <span>{ROUTINE_PERMISSIONS_LABEL}</span>
+                        <Switch on={wsRoutine} label={WS.routinePermissionsLabel} onChange={setWsRoutine} disabled={busy} />
+                        <span>{WS.routinePermissionsLabel}</span>
                       </div>
-                      <div className="muted" style={{ fontSize: 12.5 }}>{ROUTINE_PERMISSIONS_HINT}</div>
+                      <div className="muted" style={{ fontSize: 12.5 }}>{WS.routinePermissionsHint}</div>
                     </>
                   )}
                 </>
               ) : (
-                <div className="muted" style={{ fontSize: 12.5 }}>Do utworzenia później: Ustawienia › Agent AI.</div>
+                <div className="muted" style={{ fontSize: 12.5 }}>{S.workspaceLater}</div>
               )}
             </section>
             <section className="summary">
-              <h2 style={{ marginBottom: 8 }}>Podsumowanie</h2>
+              <h2 style={{ marginBottom: 8 }}>{S.summary}</h2>
               <div className="kv">
-                <span className="k">Profil</span><span className="v">{trimmed} · {currency}</span>
-                <span className="k">Moduły</span><span className="v">{pickedNames.length ? pickedNames.join(", ") : "wartość netto i gotówka"}</span>
-                <span className="k">Agent AI</span>
+                <span className="k">{S.profile}</span><span className="v">{trimmed} · {currency}</span>
+                <span className="k">{S.modules}</span><span className="v">{pickedNames.length ? pickedNames.join(", ") : S.noModules}</span>
+                <span className="k">{S.agent}</span>
                 <span className="v">
-                  {privacy === "strict" ? <>poziom ścisły · <span className="muted">udziały procentowe, nie kwoty</span></>
-                    : privacy === "amounts" ? <>poziom z kwotami · <span className="muted">kwoty bez numerów kont</span></>
-                    : <span className="muted">do wyboru</span>}
+                  {privacy === "strict" ? <>{S.strictLevel}<span className="muted">{S.strictLevelHint}</span></>
+                    : privacy === "amounts" ? <>{S.amountsLevel}<span className="muted">{S.amountsLevelHint}</span></>
+                    : <span className="muted">{S.toChoose}</span>}
                 </span>
-                <span className="k">Dane</span><span className="v" style={{ fontSize: 13 }}><code>{system?.data_dir ?? "-"}</code></span>
-                <span className="k">Workspace agenta</span>
-                <span className="v" style={{ fontSize: 13 }}>{wsOn ? <code>{wsPath.trim() || "folder domyślny"}</code> : "pominięty"}</span>
+                <span className="k">{S.data}</span><span className="v" style={{ fontSize: 13 }}><code>{system?.data_dir ?? "-"}</code></span>
+                <span className="k">{S.workspace}</span>
+                <span className="v" style={{ fontSize: 13 }}>{wsOn ? <code>{wsPath.trim() || S.defaultFolder}</code> : S.skipped}</span>
               </div>
             </section>
-            {err && <Notice tone="neg" style={{ margin: "14px 0 0" }}>Nie udało się utworzyć profilu: {err}</Notice>}
+            {err && <Notice tone="neg" style={{ margin: "14px 0 0" }}>{S.createFailed(err)}</Notice>}
             {created && wsErr && (
               <Notice tone="warn" style={{ margin: "14px 0 0" }} action={
-                <button type="button" className="btn" onClick={() => onCreated(created)} disabled={busy}>Pomiń</button>
+                <button type="button" className="btn" onClick={() => onCreated(created)} disabled={busy}>{S.skip}</button>
               }>
-                Profil utworzony, workspace nie: {wsErr}
+                {S.workspaceFailed(wsErr)}
               </Notice>
             )}
           </>
         )}
 
         <div className="controls" style={{ margin: "18px 0 0" }}>
-          {step > 0 && !created && <button className="btn" onClick={() => setStep(step - 1)} disabled={busy}>← Wstecz</button>}
+          {step > 0 && !created && <button className="btn" onClick={() => setStep(step - 1)} disabled={busy}>{S.back}</button>}
           <span className="muted" style={{ fontSize: 12 }}>
-            Krok {step + 1} z 3{step === 1 && ` · wybrano ${nModules(picked.size)}`}
+            {S.stepOf(step + 1)}{step === 1 && S.picked(nModules(picked.size))}
           </span>
           <span className="spacer" />
-          {step === 1 && !picked.size && <span className="muted" style={{ fontSize: 12 }}>Bez modułów: tylko wartość netto i gotówka.</span>}
-          {step === 2 && !privacy && <span className="muted" style={{ fontSize: 12 }}>Wybierz, czy agent widzi kwoty.</span>}
-          {step === 0 && <button className="btn primary" type="submit" form="wz-step">Dalej →</button>}
-          {step === 1 && <button className="btn primary" onClick={() => setStep(2)}>Dalej →</button>}
+          {step === 1 && !picked.size && <span className="muted" style={{ fontSize: 12 }}>{S.noModulesHint}</span>}
+          {step === 2 && !privacy && <span className="muted" style={{ fontSize: 12 }}>{S.choosePrivacy}</span>}
+          {step === 0 && <button className="btn primary" type="submit" form="wz-step">{S.next}</button>}
+          {step === 1 && <button className="btn primary" onClick={() => setStep(2)}>{S.next}</button>}
           {step === 2 && (
             <button className="btn primary" onClick={create} disabled={busy || !privacy}>
-              {created ? (busy ? "Tworzę workspace…" : "Spróbuj ponownie") : busy ? "Tworzę profil…" : "Utwórz profil"}
+              {created ? (busy ? S.creatingWorkspace : C.retry) : busy ? S.creatingProfile : S.createProfile}
             </button>
           )}
         </div>

@@ -173,7 +173,7 @@ def spending_by_category(
         cat = t.category or "other"
         buckets[cat] = buckets.get(cat, ZERO) + (-t.amount)
 
-    out = [CategorySpend(k, taxonomy.LABELS.get(k, k), v) for k, v in buckets.items()]
+    out = [CategorySpend(k, taxonomy.label(k), v) for k, v in buckets.items()]
     out.sort(key=lambda c: c.amount, reverse=True)
     return out
 

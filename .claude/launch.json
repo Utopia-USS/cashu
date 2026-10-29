@@ -7,6 +7,12 @@
       "runtimeArgs": ["serve"],
       "autoPort": true,
       "port": 8500
+    },
+    {
+      "name": "dashboard-dev-copy",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "CASHU_DATA_DIR=\"$HOME/Library/Application Support/cashU-dev\" CASHU_WORKSPACES_DIR=\"$HOME/Documents/cashU-dev\" CASHU_AUTO_DAILY=0 exec .venv/bin/cashu serve --port 8510 --reload"],
+      "port": 8510
     }
   ]
 }

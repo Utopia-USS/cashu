@@ -9,7 +9,8 @@ import { changedSinceApproval, CONNECTORS_DOCS_URL, KIND_LABEL, MODULE_LABEL, ro
 import { ConnectorDrawer, StatusTag } from "./ConnectorDrawer";
 import { getConnectors } from "./connectorsApi";
 import { useShell } from "./context";
-import { plural } from "./messages";
+import { C } from "../common.strings.ts";
+import { S } from "./ConnectorsSection.strings.ts";
 import { ProposalDrawer } from "./ProposalDrawer";
 import { useToast } from "../ui";
 
@@ -27,26 +28,26 @@ export function ConnectorsSection() {
 
   return (
     <section className="card chart-card" id="set-connectors" aria-labelledby="set-connectors-h">
-      <h2 id="set-connectors-h">Konektory</h2>
+      <h2 id="set-connectors-h">{S.title}</h2>
       {data && data.length > 0 && (
         <div className="controls" style={{ margin: "0 0 6px" }}>
-          <Tag>{plural(data.length, "konektor", "konektory", "konektorów")}</Tag>
-          {waiting > 0 && <Tag tone="warn" solid>{waiting} do zatwierdzenia</Tag>}
+          <Tag>{S.count(data.length)}</Tag>
+          {waiting > 0 && <Tag tone="warn" solid>{S.toApprove(waiting)}</Tag>}
           <span className="spacer" />
-          <button className="btn" onClick={list.reload} disabled={list.loading || list.refreshing}>Odśwież</button>
+          <button className="btn" onClick={list.reload} disabled={list.loading || list.refreshing}>{C.refresh}</button>
         </div>
       )}
       {system?.connectors?.sandbox === false && (
-        <Notice tone="warn">Konektory działają tylko w aplikacji na macOS (brak piaskownicy).</Notice>
+        <Notice tone="warn">{S.noSandbox}</Notice>
       )}
-      {list.error && <Notice tone="neg">Nie udało się pobrać konektorów: {list.error}</Notice>}
+      {list.error && <Notice tone="neg">{S.loadFailed(list.error)}</Notice>}
       {!data && !list.error && <>{[0, 1, 2].map((k) => <Skeleton key={k} h={40} style={{ margin: "6px 0" }} />)}</>}
       {data && !data.length && (
         <div className="empty" style={{ textAlign: "left", padding: "8px 0" }}>
-          <div style={{ color: "var(--text)", fontWeight: 600 }}>Brak konektorów</div>
+          <div style={{ color: "var(--text)", fontWeight: 600 }}>{S.emptyTitle}</div>
           <div style={{ fontSize: 13, marginTop: 4 }}>
-            Importer innego banku albo brokera pisze Claude Code (skill <code>/import-builder</code> w workspace agenta) i zgłasza go tutaj do zatwierdzenia.{" "}
-            <a className="lnk" href={CONNECTORS_DOCS_URL} target="_blank" rel="noopener noreferrer">Jak działa konektor</a>
+            {S.emptyBefore}<code>/import-builder</code>{S.emptyAfter}{" "}
+            <a className="lnk" href={CONNECTORS_DOCS_URL} target="_blank" rel="noopener noreferrer">{S.howItWorks}</a>
           </div>
         </div>
       )}
@@ -58,24 +59,24 @@ export function ConnectorsSection() {
               <Tag>{MODULE_LABEL[c.module] ?? c.module}</Tag>
               <Tag>{KIND_LABEL[c.kind] ?? c.kind}</Tag>
               <StatusTag status={c.status} />
-              {c.status === "disabled" && c.content_changed && <Tag tone="neg" title="Pliki różnią się od zatwierdzonych">zmieniony</Tag>}
-              {c.source === "mcp" && <Tag title="Zgłoszony przez agenta (propose_connector)">agent</Tag>}
+              {c.status === "disabled" && c.content_changed && <Tag tone="neg" title={S.filesDifferTitle}>{S.changed}</Tag>}
+              {c.source === "mcp" && <Tag title={S.byAgentTitle}>agent</Tag>}
             </div>
             <div className="d">{rowLine(c)}</div>
           </div>
-          {c.status === "pending" ? <button className="btn primary" onClick={() => setOpen(c.id)}>Przejrzyj i zatwierdź</button>
-            : changedSinceApproval(c) ? <button className="btn primary" onClick={() => setOpen(c.id)}>Sprawdź zmiany</button>
-              : <button className="btn" onClick={() => setOpen(c.id)}>Szczegóły</button>}
+          {c.status === "pending" ? <button className="btn primary" onClick={() => setOpen(c.id)}>{S.review}</button>
+            : changedSinceApproval(c) ? <button className="btn primary" onClick={() => setOpen(c.id)}>{S.checkChanges}</button>
+              : <button className="btn" onClick={() => setOpen(c.id)}>{C.details}</button>}
         </div>
       ))}
-      <div className="foot">Konektor działa dopiero po zatwierdzeniu, w piaskownicy, z limitem czasu; każda zmiana plików wymaga ponownego zatwierdzenia.</div>
+      <div className="foot">{S.foot}</div>
       {open && (
         <ConnectorDrawer id={open} onClose={() => setOpen(null)} onChanged={changed}
           onProposal={(pid) => { setOpen(null); setProposal(pid); }} />
       )}
       {proposal != null && (
         <ProposalDrawer slug={slug} id={proposal} version={null} onClose={() => setProposal(null)} onChanged={changed}
-          onDone={(approved) => { setProposal(null); toast(approved ? "Zaimportowano" : "Odrzucono", 3000); if (approved) refresh?.(); changed(); }} />
+          onDone={(approved) => { setProposal(null); toast(approved ? S.imported : S.rejected, 3000); if (approved) refresh?.(); changed(); }} />
       )}
     </section>
   );

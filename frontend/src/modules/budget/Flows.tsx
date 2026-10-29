@@ -9,15 +9,16 @@ import type { CashflowRow } from "./api";
 import { getCashflow } from "./api";
 import { CurrencySwitch, useBudgetCurrency } from "./currency";
 import { MonthCloseCard } from "./MonthClose";
+import { S } from "./Flows.strings.ts";
 
 type Gran = "monthly" | "quarterly" | "yearly";
 
 // Window measured in periods of the current granularity.
-const RANGES: Record<Gran, [string, number | null][]> = {
-  monthly: [["6M", 6], ["12M", 12], ["24M", 24], ["Max", null]],
-  quarterly: [["1R", 4], ["2L", 8], ["3L", 12], ["Max", null]],
-  yearly: [["3L", 3], ["5L", 5], ["10L", 10], ["Max", null]],
-};
+const ranges = (gran: Gran): [string, number | null][] => ({
+  monthly: [["6M", 6], ["12M", 12], ["24M", 24], [S.max, null]] as [string, number | null][],
+  quarterly: [[S.oneYear, 4], [S.years(2), 8], [S.years(3), 12], [S.max, null]] as [string, number | null][],
+  yearly: [[S.years(3), 3], [S.years(5), 5], [S.years(10), 10], [S.max, null]] as [string, number | null][],
+})[gran];
 const DEFAULT_RANGE: Record<Gran, number | null> = { monthly: 12, quarterly: 8, yearly: null };
 
 function aggregate(rows: CashflowRow[], gran: Gran): CashflowRow[] {
@@ -56,10 +57,10 @@ export function Flows() {
   const controls = (
     <>
     <CurrencySwitch bc={bc} />
-    <select value={gran} onChange={(e) => setGran(e.target.value as Gran)} title="Agregacja">
-      <option value="monthly">miesięcznie</option>
-      <option value="quarterly">kwartalnie</option>
-      <option value="yearly">rocznie</option>
+    <select value={gran} onChange={(e) => setGran(e.target.value as Gran)} title={S.aggregation}>
+      <option value="monthly">{S.monthly}</option>
+      <option value="quarterly">{S.quarterly}</option>
+      <option value="yearly">{S.yearly}</option>
     </select>
     </>
   );
@@ -69,12 +70,12 @@ export function Flows() {
     <MonthCloseCard bc={bc} />
     <ScrollableChart
       key={`${gran}:${dataCur}`}
-      title={`Przepływy (${dataCur})`}
+      title={S.title(dataCur)}
       controls={controls}
       data={rows}
       yValues={yValues}
       xAxisProps={{ dataKey: "label", type: "category", minTickGap: 20 }}
-      ranges={RANGES[gran]}
+      ranges={ranges(gran)}
       fullSpan={rows.length}
       defaultRange={DEFAULT_RANGE[gran]}
       yTickFormatter={(v) => cur0(v, dataCur)}
@@ -89,9 +90,9 @@ export function Flows() {
           interpolates from the previous layout (first render uses a 320px fallback
           width, then every range/resize change), so bars and line drift apart and
           stay apart whenever animation frames are throttled. */}
-      <Bar dataKey="income" name="Przychód" fill={cssVar("--pos")} isAnimationActive={false} />
-      <Bar dataKey="expense" name="Wydatki" fill={cssVar("--neg")} isAnimationActive={false} />
-      <Line type="monotone" dataKey="net" name="Wynik" stroke={cssVar("--net")} strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
+      <Bar dataKey="income" name={S.income} fill={cssVar("--pos")} isAnimationActive={false} />
+      <Bar dataKey="expense" name={S.expenses} fill={cssVar("--neg")} isAnimationActive={false} />
+      <Line type="monotone" dataKey="net" name={S.net} stroke={cssVar("--net")} strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
     </ScrollableChart>
     </>
   );

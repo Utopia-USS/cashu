@@ -4,6 +4,7 @@ import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { SkeletonTable } from "../../ui";
 import { getRecurring } from "./api";
+import { S } from "./Subscriptions.strings.ts";
 
 export function Subscriptions() {
   const slug = useSlug();
@@ -13,20 +14,20 @@ export function Subscriptions() {
 
   return (
     <section className="card chart-card">
-      <h2>Subskrypcje</h2>
+      <h2>{S.title}</h2>
       <div className="scroll">
         <table>
           <thead>
-            <tr><th>Odbiorca</th><th className="num">Kwota</th><th className="num">Co</th><th>Ostatnio</th></tr>
+            <tr><th>{S.payee}</th><th className="num">{S.amount}</th><th className="num">{S.every}</th><th>{S.last}</th></tr>
           </thead>
           <tbody>
             {!items.length ? (
-              <tr><td colSpan={4} className="muted">Brak subskrypcji.</td></tr>
+              <tr><td colSpan={4} className="muted">{S.none}</td></tr>
             ) : items.map((r, i) => (
               <tr key={i}>
-                <td>{r.payee} {r.active && <span className="tag live">aktywna</span>}</td>
+                <td>{r.payee} {r.active && <span className="tag live">{S.active}</span>}</td>
                 <td className="num">{cur(r.amount, r.currency)}</td>
-                <td className="num">{r.gap_days}d</td>
+                <td className="num">{S.days(r.gap_days)}</td>
                 <td className="muted">{r.last}</td>
               </tr>
             ))}

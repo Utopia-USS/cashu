@@ -1,64 +1,53 @@
-// P7 / P9 "Tematy" on the home: topics with the newest research / thesis activity first, then held before watched-only
-// (muted, no contribution); P11 the market view under the thesis; every topic expanded
-// (no `pozostałe N`), the tickers as a subtitle, no trend numbers, the research briefs under the topic; the name
-// opens the topic drawer (thesis, notes, members). The research page has no Tematy widget or scope any more.
+// P7 / P9 topics as a story: on the home one line per topic with something to say this week (mood word + plain
+// headline), the pp share of the portfolio's week for held topics and `obserwowany` for watched-only ones, the quiet
+// topics named in one line; a click opens Teraz / Perspektywa and the notes, `Cały temat` the drawer (thesis, notes,
+// members, the market view the owner edits). The research page's Tematy tab shows the same as cards.
 // Demo Anna holds GLBA (Akcje globalne), BNDA (Obligacje i stopy), DMEN (Ropa i gaz) and watches DMSE
 // (AI: chipy i centra danych) and DMWA (no topic).
 import { ANNA, expect, go, test, toasts } from "../fixtures";
 
-test("topics: the home column, latest activity first, briefs, no trend numbers", async ({ app: page }) => {
+test("topics: one line per topic, mood and headline, pp for held, obserwowany for watched-only", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio`);
-  const col = page.locator("#inv-research .tcol");
-  const rows = col.locator(".trow");
+  const strip = page.locator("#inv-research");
+  const rows = strip.locator(".st-trow");
   await expect(rows.first()).toBeVisible();
-  const wo = col.locator(".trow.wo", { hasText: "AI: chipy i centra danych" });
-  await expect(wo).toBeVisible();
-  await expect(wo.locator(".pp")).toHaveCount(0);
-  await expect(wo.locator(".sym")).toContainText("DMSE");
-  // the newest research / thesis activity first (the owner's lasting rule): the demo's thesis and market view on
-  // the watched-only AI topic are written last, so it leads; held rows follow it
-  await expect(rows.first()).toHaveAttribute("data-topic", "semis_ai");
-  await expect(col.locator(".trow:not(.wo)").first()).toBeVisible();
-  await expect(col.getByRole("button", { name: /^pozostałe/ })).toHaveCount(0);
-  // P9: no trend column and no `4 tyg.` anywhere in the rows; held rows keep the pp contribution
-  await expect(rows.locator(".tr")).toHaveCount(0);
-  await expect(col).not.toContainText("4 tyg.");
-  await expect(col.locator(".trow:not(.wo) .pp").first()).toHaveText(/pp$/);
-  // the demo's topic briefs: a headline line (with a date) under its topic
-  await expect(col.locator(".trow .tb li .bh").first()).not.toBeEmpty();
+  const ai = strip.locator('.st-trow[data-topic="semis_ai"]');
+  await expect(ai.locator(".imp")).toHaveText("obserwowany");
+  await expect(ai.locator(".st-mood")).not.toBeEmpty();
+  await expect(strip.locator('.st-trow[data-topic="equity_global"] .imp')).toHaveText(/pp$/);
+  // no trend numbers in the lines, quiet topics named once
+  await expect(strip.locator(".st-topics")).not.toContainText("4 tyg.");
+  await expect(strip.locator(".st-foot")).toContainText("Bez nowości");
   await expect(page.getByText(/bez tematu|bez segmentu/i)).toHaveCount(0);
 });
 
-test("topics: the name opens the drawer with the thesis, the notes and the members", async ({ app: page }) => {
+test("topics: Cały temat opens the drawer with the thesis, the notes and the members; the research page shows cards", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio`);
-  const col = page.locator("#inv-research .tcol");
-  const row = col.locator(".trow", { has: page.locator(".tb li") }).first();
-  const name = (await row.locator("button.nm").innerText()).trim();
-  await row.locator("button.nm").click();
-  await expect(page).toHaveURL(/investments\.portfolio\/topics\/[a-z_]+$/);
-  const drawer = page.getByRole("dialog", { name });
+  const strip = page.locator("#inv-research");
+  await strip.locator('.st-trow[data-topic="bonds"]').click();
+  await strip.getByRole("button", { name: "Cały temat →" }).click();
+  await expect(page).toHaveURL(/investments\.portfolio\/topics\/bonds$/);
+  const drawer = page.getByRole("dialog", { name: "Obligacje i stopy" });
   await expect(drawer.locator("#topic-thesis")).toBeVisible();
   await expect(drawer.locator("#topic-notes article[data-note]").first()).toBeVisible();
   await expect(drawer.locator("#topic-members [data-member]").first()).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
-  // the research page lost its Tematy widget and scope; an unknown key opens it unfiltered
+  // the research page opens on the Tematy tab; an old ?segment= link opens it unfiltered
   await go(page, `${ANNA}/investments.portfolio/research?segment=unassigned`);
-  await expect(page.locator("#rsch-notes article[data-note]").first()).toBeVisible();
+  await expect(page.locator(".st-tcard[data-topic]").first()).toBeVisible();
   await expect(page.locator("#rsch-segments")).toHaveCount(0);
-  await expect(page.locator("#rsch-notes").getByRole("button", { name: /✕$/ })).toHaveCount(0);
 });
 
-test("topics: the market view sits under the thesis on the home row and in the drawer, the owner edits it", async ({ app: page }) => {
+test("topics: Teraz / Perspektywa under the topic line on the home and the market view in the drawer, the owner edits it", async ({ app: page }) => {
   await go(page, `${ANNA}/investments.portfolio`);
-  const row = page.locator("#inv-research .tcol .trow", { hasText: "AI: chipy i centra danych" });
-  const line = row.locator(".tv");
-  await expect(line).toContainText("Ocena teraz");
+  const strip = page.locator("#inv-research");
+  await strip.locator('.st-trow[data-topic="semis_ai"]').click();
+  const line = strip.locator(".st-texp .st-nowout");
+  await expect(line).toContainText("Teraz");
   await expect(line).toContainText("Perspektywa");
   await expect(line).toContainText("szacuje wzrost sprzedaży chipów do AI");
-  // the outlook's tooltip names the publishers of the cited estimates
-  await expect(line.locator("div", { hasText: "Perspektywa" })).toHaveAttribute("title", /Źródła: Example Industry Association/);
-  await row.locator("button.nm").click();
+  await strip.getByRole("button", { name: "Cały temat →" }).click();
   await expect(page).toHaveURL(/investments\.portfolio\/topics\/semis_ai$/);
   const thesis = page.getByRole("dialog", { name: "AI: chipy i centra danych" }).locator("#topic-thesis");
   const view = thesis.locator(".tview");

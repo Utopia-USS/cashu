@@ -48,6 +48,7 @@ but were not listed before.
 | `migrate_legacy.py` | startup move of a pre-rename install (data dir, DB file, keychain, launchd) |
 | `migrations/` | Alembic: `env.py` + `versions/` (0001 baseline = upstream schema, 0002 profiles, ...) |
 | `security.py` | API token + Host check middleware, token meta tag |
+| `i18n.py` | UI language of backend texts: `tr(pl=, en=)`, `X-Cashu-Lang` middleware, app language in `settings.json` ([localization.md](localization.md)) |
 | `secrets.py` | OS keychain via keyring (`cashu secrets ...`) |
 | `runtime.py` | source checkout vs packaged app: the command other programs run (launchd, MCP snippets), bundled skills |
 | `worker/` | `cashu worker run|install|uninstall|status`: daily jobs for every profile, notifications, weekly digest, launchd agent (state + log in the data dir) |
@@ -97,6 +98,7 @@ but were not listed before.
 | `src/widgets.tsx`, `grid.ts` | v2 widget grid on thirds (Grid, Widget, Facts, Hero, badges) |
 | `src/charts.tsx`, `chart.ts` | v2 SVG charts (line + benchmark + levels, bars, donut, sparkline) |
 | `src/ui.tsx`, `format.ts`, `index.css` | shared primitives and tokens |
+| `src/i18n.ts`, `src/common.strings.ts`, `**/*.strings.ts` | UI language, `catalog({ key: { pl, en } })` text catalogs next to their code ([localization.md](localization.md)) |
 | `src/core/api.ts`, `src/modules/<id>/api.ts` | typed API functions; `j` / `jpost` / `jdel` (in `core/api.ts`) send the token |
 | `src/modules/investments/v2/priceRefresh.ts` | open-app quote refresh (on open and every 15 min) |
 | `src/components/ScrollableChart.tsx` | window+scroll+axis+grid charts of the budget and loan pages |
@@ -116,6 +118,7 @@ but were not listed before.
 | `scripts/demo_data.py` | two synthetic demo profiles (see [running.md](running.md)) |
 | `scripts/gen_connector_schemas.py` (+) | regenerates `docs/schemas/*.json` from the pydantic models (`--check` in tests) |
 | `scripts/sync_skill_references.py` (+) | refreshes the reference copies inside `.claude/skills/*/references/` (`--check` in tests) |
+| `scripts/render_research_prototype.py` | renders the headline-first research prototype (`scripts/prototypes/research_story.html`) with a profile's own data from the installed app, locally, into git-ignored `build/prototypes/` |
 | `.claude/skills/` | the shipped product skills (see [skills.md](skills.md)) |
 | `.claude/launch.json` | `dashboard` preview config (`cashu serve`) |
 | `tests/` | pytest - synthetic data, no real data |

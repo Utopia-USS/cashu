@@ -55,19 +55,21 @@ Full "What NOT to do" list with reasons: [docs/agents/conventions.md](docs/agent
 
 ## Language convention
 
-The codebase is English (comments, docstrings, CLI help, docs). Two things are **intentionally Polish
-and must stay Polish** - they are domain data, not code language:
+The codebase is English (comments, docstrings, CLI help, docs). The **UI is Polish and English**:
+every text the app shows lives in both languages (frontend `*.strings.ts` catalogs, backend
+`core/i18n.py` `tr(pl=..., en=...)`); the language follows the OS, else English, and Settings can pin
+it. Agent-written content (research notes, theses) is shown as written. Full contract and glossary:
+[docs/agents/localization.md](docs/agents/localization.md).
 
-- **Dashboard UI strings** in `frontend/` and the category display labels (the tool targets
-  Polish-bank users).
-- **Matching data**: parser CSV headers (`#Data operacji`, `Rachunek źródłowy`, ...), the ~420 PL
-  keyword rules in `taxonomy.py`, installment phrases in `loans/patterns.py`, patterns in
-  `engine.py`/`reclassify.py`, LLM prompts in `local_llm.py`/`reclassify.py`. Translating them breaks
-  categorization on real data.
+**Matching data is intentionally Polish and must stay Polish**: parser CSV headers (`#Data operacji`,
+`Rachunek źródłowy`, ...), the ~420 PL keyword rules in `taxonomy.py`, installment phrases in
+`loans/patterns.py`, patterns in `engine.py`/`reclassify.py`, LLM prompts in
+`local_llm.py`/`reclassify.py`, word lists in `research/validation.py` / `similarity.py`. Translating
+them breaks matching on real data.
 
-Rule of thumb: **explanation for a developer -> English; data** (matched, shown to the user, or sent to
-the LLM as a prompt/enum) **-> Polish**. Never the em dash; use a hyphen. Full form:
-[docs/agents/conventions.md](docs/agents/conventions.md).
+Rule of thumb: **explanation for a developer -> English; text shown to the user -> both languages
+through a catalog / `tr()`; data** (matched, or sent to the LLM as a prompt/enum) **-> Polish**. Never
+the em dash; use a hyphen. Full form: [docs/agents/conventions.md](docs/agents/conventions.md).
 
 ## Required setup
 
@@ -97,7 +99,7 @@ SQLModel/SQLite, Typer (CLI), FastAPI (API), React + Vite + TypeScript + Rechart
 | `src/cashu/api/`, `src/cashu/desktop/` | FastAPI composition + SPA serving; `cashu app` desktop window and packaged-app entry |
 | `frontend/` | React SPA: `src/core/` shell, `src/modules/<id>/` tabs, v2 widgets and SVG charts; `e2e/` Playwright |
 | `tests/` | pytest on synthetic data; guard tests for profile isolation, migrations, skills |
-| `.claude/skills/` | the 8 shipped product skills (inventory below) |
+| `.claude/skills/` | the 9 shipped product skills (inventory below) |
 | `docs/` | `import-format.md`, `budget-import-format.md`, `connectors.md`, `schemas/`, `agents/` |
 | `examples/connectors/`, `packaging/`, `scripts/` | example connectors; macOS app build; build, version bump, demo data, schema / skill-reference sync |
 
@@ -121,6 +123,7 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 | `investments-setup` | investments | Strategy interview (goals, horizon, risk, history retrospective), strategy.md + strategy.yaml proposals, weekly / monthly / quarterly check-ins - NOT broker-export conversion, one custom rule or market research; never recommends instruments or trades |
 | `import-builder` | budget, investments | Broker / exchange / crypto history or bank statements turned into a file or fetch connector (preferred), a one-off converter or a generic CSV mapping - NOT supported bank CSV / Open Banking imports, strategy or custom rules |
 | `extension-builder` | investments | One monitoring idea as a built-in rule kind or safe custom expression (`propose_custom_rule`), backtested and tuned - NOT a whole strategy, imports or alert proposals after a research run |
+| `review` | investments | The periodic review deck in chat (world, sectors, positions, events, decide, ideas, calendar) from `review_context`, decisions, `mark_review_done` with the agenda; the strategy.yaml `review:` section - NOT the strategy, research runs, rules or imports |
 | `market-research` | investments | Held / watched instruments, topics, macro cards, candidates and theses researched over MCP into sourced Polish notes, topic market views and model recommendations - NOT strategy or thesis writing, custom rules, imports or placing trades |
 
 (Inventory only - descriptions live in each `SKILL.md` frontmatter.)
@@ -139,6 +142,7 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 | Add an importer / connector | [extending.md](docs/agents/extending.md), [docs/connectors.md](docs/connectors.md), [connectors/README.md](connectors/README.md) (catalog) | `docs/import-format.md`, `docs/budget-import-format.md`, `examples/connectors/`, `scripts/gen_connector_schemas.py`, `tests/test_connector_catalog.py` |
 | Add a CLI command | [conventions.md](docs/agents/conventions.md) "CLI" | module `cli.py`, `core/cliutil.py` |
 | Edit or add a shipped skill | [skills.md](docs/agents/skills.md) | `core/workspace/skills.py`, `scripts/sync_skill_references.py`, `tests/test_workspace.py` |
+| Add or change any user-visible text (UI copy, backend label, notification) | [localization.md](docs/agents/localization.md) | `frontend/src/i18n.ts`, `*.strings.ts`, `src/cashu/core/i18n.py`, `frontend/tests/i18n-guard.test.mjs` |
 | Frontend change (UI copy, charts, API client) | [conventions.md](docs/agents/conventions.md) "Frontend copy", [extending.md](docs/agents/extending.md) | `frontend/src/core/messages.ts`, `charts.tsx`, `frontend/e2e/specs/` |
 | Research / MCP privacy (what the agent may see) | [skills.md](docs/agents/skills.md) "Rules every skill follows" | `core/mcp/redaction.py`, `core/mcp/labels.py`, `tests/test_fxb_mcp_privacy.py` |
 | Run, demo data, e2e, verify in the browser | [running.md](docs/agents/running.md) | `.claude/launch.json`, `scripts/demo_data.py` |
@@ -175,6 +179,7 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 - [docs/agents/code-map.md](docs/agents/code-map.md) - file-level repository map
 - [docs/agents/data-model.md](docs/agents/data-model.md) - how the numbers work, live data, migrations
 - [docs/agents/conventions.md](docs/agents/conventions.md) - language, versions, CLI, tests, UI copy, what NOT to do
+- [docs/agents/localization.md](docs/agents/localization.md) - Polish / English UI: language choice, catalogs, backend `tr()`, glossary
 - [docs/agents/extending.md](docs/agents/extending.md) - recipes: bank, module, dashboard feature, MCP tool, migration, connector
 - [docs/agents/running.md](docs/agents/running.md) - running, demo data, e2e
 - [docs/agents/skills.md](docs/agents/skills.md) - shipped skills, their rules, editing them

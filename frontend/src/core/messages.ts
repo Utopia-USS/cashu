@@ -5,9 +5,18 @@
 // to that English text. Pure module (no React, no DOM): tested in tests/messages.test.mjs, and the
 // backend test tests/test_message_codes.py checks that every backend code has a label here. Also the
 // performance data-quality notes (`perf.<code>`) and worker job outcomes (`worker.<code>`).
+//
+// English UI (lang() === "en", docs/agents/localization.md): `label()` returns null for every code, so
+// each helper shows the server's own English text. The few codes the UI shows without a server text
+// (frontend-only codes, the moved-app parts, connector failure kinds) take their English from
+// EN_LABELS in messages.strings.ts. The Polish tables and the formatting helpers below (Polish quotes,
+// "pl-PL" numbers, dd.mm.yyyy dates) only build Polish labels and never run in English;
+// exprDetail / yamlProblem return the English sentence unchanged.
 
 import { serverDate } from "../time.ts";
 import { hideAmount } from "../incognito.ts";
+import { lang } from "../i18n.ts";
+import { EN_LABELS, S } from "./messages.strings.ts";
 
 export type Params = Record<string, unknown>;
 /** A template ("{key}" placeholders) or a function; null from a function = fall back to English. */
@@ -176,10 +185,12 @@ function sentence(text: unknown, fixed: Record<string, string>, patterns: Senten
   }
   return null;
 }
+/** In English a sentence is shown as the server wrote it (null when empty). */
+const asIs = (text: unknown) => (text == null || text === "" ? null : String(text));
 /** The Polish form of a condition error's English `detail`, or null for an unknown sentence. */
-export const exprDetail = (detail: unknown) => sentence(detail, EXPR_FIXED, EXPR_RX);
+export const exprDetail = (detail: unknown) => (lang() === "en" ? asIs(detail) : sentence(detail, EXPR_FIXED, EXPR_RX));
 /** The Polish form of a PyYAML problem (its "(while ...)" / "(expected ...)" context dropped), or null. */
-export const yamlProblem = (problem: unknown) =>
+export const yamlProblem = (problem: unknown) => lang() === "en" ? asIs(problem) :
   sentence(String(problem ?? "").replace(/ \((?:while|expected) [^()]*\)$/, ""), YAML_FIXED, YAML_RX);
 
 const ID_WHAT: Record<string, string> = { Bucket: "koszyka", Rule: "reguły", Benchmark: "benchmarku", bucket: "koszyka", rule: "reguły" };
@@ -466,10 +477,11 @@ export function fill(template: string, params: Params): string | null {
   return missing ? null : out;
 }
 
-/** The Polish label of `code` with `params`, or null (unknown code / missing params). */
+/** The Polish label of `code` with `params`, or null (unknown code / missing params). In English null,
+ * so the caller shows the server's English text, except the codes in EN_LABELS (no server text). */
 export function label(code: string | null | undefined, params?: Params | null): string | null {
   if (!code) return null;
-  const l = LABELS[code];
+  const l = lang() === "en" ? EN_LABELS[code] : LABELS[code];
   if (l === undefined) return null;
   const p = params ?? {};
   return typeof l === "string" ? fill(l, p) : l(p);
@@ -523,7 +535,7 @@ export function describeError(e: unknown): Described {
     : null;
   if (pl) return { text: pl, detail: english && english !== pl ? english : null, translated: true };
   if (err.status === undefined && err.name === "TypeError" && /fetch|network|load failed/i.test(english)) {
-    return { text: "Brak połączenia z aplikacją (serwer cashU nie odpowiada)", detail: english, translated: true };
+    return { text: S.offline, detail: english, translated: true };
   }
   return { text: english, detail: null, translated: false };
 }

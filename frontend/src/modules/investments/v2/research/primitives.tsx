@@ -6,33 +6,35 @@ import { type FocusEvent, Fragment, type KeyboardEvent, type ReactNode, useEffec
 import { useWidth } from "../../../../hooks";
 import { copyText, useToast } from "../../../../ui";
 import { AgentTag, Mark } from "../../../../widgets";
-import { dm, micName, plural } from "../../labels";
+import { dm, micName } from "../../labels";
 import { InstLabel, type InstLike } from "../InstLabel";
 import {
   candidateCriteria, candidateReturn, clampStrength, criterionText, entryTypeLabel, expiryText, freshness, HEALTH_CLS, HEALTH_LABEL, isExpired,
   acceptedAt, KIND_LABEL, NOISE_SCALE, noteRowTitle, noteSubject, noteWhen, normRelation, polarityCls, watchItemId, POLARITY_WORD, RELATION_CLS, RELATION_LABEL, relationIcon,
-  ROUTINE_MENU, ROUTINE_PROMPT, safeUrl, sentimentBars, sourceParts, sourceText, strengthTitle, summaryWithoutCriteria,
+  ROUTINE_PROMPT, safeUrl, sentimentBars, sourceParts, sourceText, strengthTitle, summaryWithoutCriteria,
 } from "./logic";
 import { briefLines, type DisplayRow, kindTitle, ppOf, ppTone, type PpTone, staleTitle, symbolsText, thesisDraft, type TopicKind, topicView } from "./segments";
 import { metricTitle } from "./macro";
 import type { HealthKey, MacroMetric, ResearchNote } from "./types";
 import "./research.css";
 import { localDay } from "../../../../time";
+import { S as L } from "./logic.strings.ts";
+import { S } from "./primitives.strings.ts";
 
 /** `pre` (P2): the state rests only on research older than the thesis' last change: the dot goes hollow (stale
  * research, `muted`, wins). */
 export function HealthPill({ state, muted, pre, title }: { state: HealthKey; muted?: boolean; pre?: boolean; title?: string }) {
-  const base = title ?? `teza: ${HEALTH_LABEL[state]}`;
+  const base = title ?? S.thesisState(HEALTH_LABEL[state]);
   const hollow = !!pre && !muted;
   return (
-    <span className={`health ${HEALTH_CLS[state]} ${muted ? "muted" : ""} ${hollow ? "pre" : ""}`} title={hollow ? `${base} · research sprzed zmiany tezy` : base}>
+    <span className={`health ${HEALTH_CLS[state]} ${muted ? "muted" : ""} ${hollow ? "pre" : ""}`} title={hollow ? S.researchPredates(base) : base}>
       <i aria-hidden />{HEALTH_LABEL[state]}
     </span>
   );
 }
 
 /** P2: a note stored before the thesis' last core change (judged against the previous thesis). */
-export const PreTag = () => <span className="tag pre">sprzed zmiany tezy</span>;
+export const PreTag = () => <span className="tag pre">{S.predatesThesis}</span>;
 
 export function RelationChip({ relation, text }: { relation: string | null | undefined; text?: string }) {
   const r = normRelation(relation);
@@ -41,7 +43,7 @@ export function RelationChip({ relation, text }: { relation: string | null | und
 
 export function Strength({ value }: { value: number }) {
   const v = clampStrength(value);
-  return <span className={`str s${v}`} title={strengthTitle(v)} aria-label={`siła ${v} z 3`} role="img"><i /><i /><i /></span>;
+  return <span className={`str s${v}`} title={strengthTitle(v)} aria-label={S.strengthAria(v)} role="img"><i /><i /><i /></span>;
 }
 
 export function KindTag({ kind }: { kind: string }) {
@@ -58,9 +60,9 @@ export function SentimentBars({ values, labels, size = "sm" }: { values: (number
   const w = size === "lg" ? Math.max(120, Math.round(width) || 300) : w0;
   const band = labels ? 13 : 0;
   const { mid, bars, bw } = sentimentBars(values, w, h, band);
-  const desc = values.map((v) => (v == null ? "brak" : v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1))).join(", ");
+  const desc = values.map((v) => (v == null ? S.noWeekData : v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1))).join(", ");
   return (
-    <span ref={ref} className={`sent ${size}`} role="img" aria-label={`Sentyment 8 tygodni, od najstarszego: ${desc}`}>
+    <span ref={ref} className={`sent ${size}`} role="img" aria-label={S.sentimentAria(desc)}>
       <svg viewBox={`0 0 ${w} ${h}`} width={size === "lg" ? undefined : w} height={h} preserveAspectRatio="none" aria-hidden>
         <line x1={0} x2={w} y1={mid} y2={mid} className="base" />
         {bars.map((b, i) => (
@@ -143,8 +145,8 @@ export function TopicRow({ r, kind, bar, syms, stale, first, right, last, onOpen
       <div className="tl">
         <div className="nm">
           <button className="nm" onClick={onOpen} title={kindTitle(kind)}>{r.label}</button>
-          {draft && <span className="tag warn" title="Teza tematu od agenta">do potwierdzenia</span>}
-          {r.unread > 0 && <Mark kind="notes" title={plural(r.unread, "nowa notatka", "nowe notatki", "nowych notatek")} />}
+          {draft && <span className="tag warn" title={S.agentThesis}>{S.toConfirm}</span>}
+          {r.unread > 0 && <Mark kind="notes" title={S.nNewNotes(r.unread)} />}
         </div>
         {syms.length > 0 && <div className="sym">{symbolsText(syms, Infinity)}</div>}
       </div>
@@ -154,8 +156,8 @@ export function TopicRow({ r, kind, bar, syms, stale, first, right, last, onOpen
         : <span />}</div>
       {view && (
         <div className="tv" data-topic-view={r.key}>
-          {view.assessment && <div title={view.assessment}><span className="k">Ocena teraz</span>{view.assessment}</div>}
-          {view.outlook && <div title={view.publishers ? `${view.outlook}\n${view.publishers}` : view.outlook}><span className="k">Perspektywa</span>{view.outlook}</div>}
+          {view.assessment && <div title={view.assessment}><span className="k">{S.assessmentNow}</span>{view.assessment}</div>}
+          {view.outlook && <div title={view.publishers ? `${view.outlook}\n${view.publishers}` : view.outlook}><span className="k">{S.outlook}</span>{view.outlook}</div>}
         </div>
       )}
       {lines.length > 0 && (
@@ -174,7 +176,7 @@ export function TopicRow({ r, kind, bar, syms, stale, first, right, last, onOpen
 
 /** Summary text with numbers and quoted thesis words in bold (rendered as text nodes, never as HTML). */
 export function richSummary(text: string): ReactNode[] {
-  const re = /(„[^”"]{1,80}[”"]|[+\-−]?\d+(?:[.,]\d+)?\s?(?:%|pp|pb|mld\s?\$|mln\s?\$|mld\s?zł|mln\s?zł|zł|\$|€)(?:\s?r\/r|\s?m\/m)?)/g;
+  const re = /(„[^”"]{1,80}[”"]|[+\-−]?\d+(?:[.,]\d+)?\s?(?:%|pp|pb|mld\s?\$|mln\s?\$|mld\s?z\u0142|mln\s?z\u0142|z\u0142|\$|€)(?:\s?r\/r|\s?m\/m)?)/g;
   const out: ReactNode[] = [];
   let last = 0, k = 0;
   for (let m = re.exec(text); m; m = re.exec(text)) {
@@ -216,7 +218,7 @@ export function NoteCard({ note: n, today, context, card, hl, who, signalText, o
   return (
     <article className={`note ${card ? "card" : ""} ${dismissed || expired ? "dim" : ""} ${hl ? "hl" : ""}`} id={`note-${n.id}`} data-note={n.id}>
       <div className="nh">
-        <span className={`pd ${polarityCls(n.polarity)}`} title={`polaryzacja: ${POLARITY_WORD[n.polarity] ?? n.polarity}`} />
+        <span className={`pd ${polarityCls(n.polarity)}`} title={S.polarity(POLARITY_WORD[n.polarity] ?? n.polarity)} />
         {context === "list" && who && (who.inst
           ? <span className="who"><InstLabel density="inline" inst={who.inst} text={who.name} onOpen={onWho ? () => onWho() : undefined} /></span>
           : <span className="who">{onWho ? <button className="lnk who-btn" onClick={(e) => { e.stopPropagation(); onWho(); }}>{who.name}</button> : who.name}{who.sym && <span className="sym">{who.sym}</span>}</span>)}
@@ -227,11 +229,11 @@ export function NoteCard({ note: n, today, context, card, hl, who, signalText, o
         <span className="right">
           {n.created_by === "agent" && <AgentTag text="research" />}
           <span className={`when ${fresh !== "fresh" ? "old" : ""}`} title={localDay(n.observed_at) ?? undefined}>{noteWhen(n.observed_at, today)}</span>
-          {onDismiss && !dismissed && <button className="icon-btn" title="Odrzuć notatkę" aria-label={`Odrzuć notatkę: ${n.title}`} onClick={() => onDismiss(n)}>✕</button>}
+          {onDismiss && !dismissed && <button className="icon-btn" title={S.dismissNote} aria-label={S.dismissNoteAria(n.title)} onClick={() => onDismiss(n)}>✕</button>}
         </span>
       </div>
       <div className="nt">{n.title}</div>
-      {body && <div className={`ns ${open ? "open" : ""}`} onClick={() => setOpen((v) => !v)} title={open ? "Zwiń" : "Rozwiń"}>{richSummary(open ? body : body.split(/\n\s*\n/)[0])}</div>}
+      {body && <div className={`ns ${open ? "open" : ""}`} onClick={() => setOpen((v) => !v)} title={open ? S.collapse : S.expand}>{richSummary(open ? body : body.split(/\n\s*\n/)[0])}</div>}
       <div className="nf">
         {n.sources.map((s, i) => {
           const url = safeUrl(s.url);
@@ -244,9 +246,9 @@ export function NoteCard({ note: n, today, context, card, hl, who, signalText, o
         })}
         <span className="spacer" />
         {community && <span className="noise">{NOISE_SCALE[String(n.details?.scale ?? "small")] ?? NOISE_SCALE.small}</span>}
-        {n.signal_id != null && (signalText ? <span>{signalText}</span> : <span className={`tag solid ${n.polarity === "negative" ? "neg" : n.polarity === "positive" ? "pos" : "muted"}`}>sygnał</span>)}
+        {n.signal_id != null && (signalText ? <span>{signalText}</span> : <span className={`tag solid ${n.polarity === "negative" ? "neg" : n.polarity === "positive" ? "pos" : "muted"}`}>{S.signal}</span>)}
         {dismissed ? (
-          <span>odrzucona {dm(n.dismissed_at)}{onRestore && canRestore && <> · <button className="lnk" onClick={() => onRestore(n)}>przywróć</button></>}</span>
+          <span>{S.dismissedOn(dm(n.dismissed_at))}{onRestore && canRestore && <> · <button className="lnk" onClick={() => onRestore(n)}>{S.restore}</button></>}</span>
         ) : exp && <span>{exp}</span>}
       </div>
     </article>
@@ -270,7 +272,7 @@ export function NoteRow({ note: n, today, hl, open, onToggle, onDismiss, onResto
   const dismissed = !!n.dismissed_at;
   const body = summaryWithoutCriteria(n.summary);
   const restore = dismissed && onRestore && canRestore ? (
-    <span className="nrr">odrzucona {dm(n.dismissed_at)} · <button className="lnk" onClick={(e) => { e.stopPropagation(); onRestore(n); }}>przywróć</button></span>
+    <span className="nrr">{S.dismissedOn(dm(n.dismissed_at))} · <button className="lnk" onClick={(e) => { e.stopPropagation(); onRestore(n); }}>{S.restore}</button></span>
   ) : null;
   return (
     <article className={`nr ${open ? "open" : ""} ${dismissed || isExpired(n, today) ? "dim" : ""} ${hl ? "hl" : ""}`} id={`note-${n.id}`} data-note={n.id}>
@@ -288,9 +290,9 @@ export function NoteRow({ note: n, today, hl, open, onToggle, onDismiss, onResto
           {body && <p className="ns">{richSummary(body)}</p>}
           {(n.sources.length > 0 || (onDismiss && !dismissed)) && (
             <div className="nf">
-              {n.sources.length > 0 && <button className="lnk" aria-expanded={src} onClick={() => setSrc((v) => !v)}>źródła ({n.sources.length})</button>}
+              {n.sources.length > 0 && <button className="lnk" aria-expanded={src} onClick={() => setSrc((v) => !v)}>{S.sourcesN(n.sources.length)}</button>}
               {n.sources.length > 0 && onDismiss && !dismissed && <span aria-hidden>·</span>}
-              {onDismiss && !dismissed && <button className="lnk" onClick={() => onDismiss(n)}>odrzuć</button>}
+              {onDismiss && !dismissed && <button className="lnk" onClick={() => onDismiss(n)}>{S.dismiss}</button>}
             </div>
           )}
           {src && (
@@ -324,7 +326,7 @@ export function CandidateCard({ note: n, compact, today, state, busy, onWatch, o
   const back = n.cooldown_until ?? (n.dismissed_at ? candidateReturn(n.dismissed_at) : null);
   const context = typeof n.details?.context === "string" ? n.details.context : null;
   const watched = state?.watchedSince != null || !!acceptedAt(n) || watchItemId(n) != null;
-  const srcLine = `${plural(n.sources.length, "źródło", "źródła", "źródeł")} · ${dm(n.observed_at)}`;
+  const srcLine = S.srcLine(n.sources.length, dm(n.observed_at));
   return (
     <div className={`cand ${dismissed ? "dim" : ""}`} data-note={n.id}>
       <div className="ch">
@@ -336,20 +338,20 @@ export function CandidateCard({ note: n, compact, today, state, busy, onWatch, o
       </div>
       {dismissed ? (
         <>
-          <div><span className="tag solid muted">odrzucony {dm(n.dismissed_at)}</span></div>
-          <div className="cc">{n.title}{context ? ` · ${context}` : ""}{back ? ` · wraca najwcześniej ${dm(back)}` : ""}</div>
-          {onRestore && canRestore && <div><button className="lnk" onClick={() => onRestore(n)}>przywróć</button></div>}
+          <div><span className="tag solid muted">{S.candDismissedOn(dm(n.dismissed_at))}</span></div>
+          <div className="cc">{n.title}{context ? ` · ${context}` : ""}{back ? S.returnsEarliest(dm(back)) : ""}</div>
+          {onRestore && canRestore && <div><button className="lnk" onClick={() => onRestore(n)}>{S.restore}</button></div>}
         </>
       ) : compact ? (
         <div className="cc">
-          {crit.total > 0 ? <>kryteria <b>{crit.met} z {crit.total}</b>{crit.items.filter((c) => c.met).map((c, k) => <Fragment key={k}> · {richSummary(c.text)}</Fragment>)}</> : n.title}
+          {crit.total > 0 ? <>{S.criteria} <b>{S.metOf(crit.met, crit.total)}</b>{crit.items.filter((c) => c.met).map((c, k) => <Fragment key={k}> · {richSummary(c.text)}</Fragment>)}</> : n.title}
           {context && !crit.total ? ` · ${context}` : ""}
         </div>
       ) : (
         <>
           {crit.total > 0 ? (
             <div className="crit">
-              {crit.items.map((c, k) => <span key={k} className={c.met ? "" : "miss"}><i aria-label={c.met ? "spełnione" : "niespełnione"}>{c.met ? "✓" : "·"}</i>{criterionText(c)}</span>)}
+              {crit.items.map((c, k) => <span key={k} className={c.met ? "" : "miss"}><i aria-label={c.met ? S.met : S.notMet}>{c.met ? "✓" : "·"}</i>{criterionText(c)}</span>)}
             </div>
           ) : <div className="cc">{n.title}</div>}
           {context && <div className="cc">{context}</div>}
@@ -357,11 +359,11 @@ export function CandidateCard({ note: n, compact, today, state, busy, onWatch, o
       )}
       {!dismissed && (
         <div className="cact">
-          {state?.agent ? <span className="tag agent"><i aria-hidden>A</i>dodany przez agenta</span>
-            : watched ? <span className="tag solid muted">obserwowany od {dm(state?.watchedSince ?? acceptedAt(n) ?? today)}</span>
+          {state?.agent ? <span className="tag agent"><i aria-hidden>A</i>{S.addedByAgent}</span>
+            : watched ? <span className="tag solid muted">{S.watchedSince(dm(state?.watchedSince ?? acceptedAt(n) ?? today))}</span>
             : <>
-              <button className="btn sm primary" disabled={busy} onClick={() => onWatch?.(n)} title="Dodaje do Obserwowanych z wersją roboczą tezy">Obserwuj</button>
-              <button className="btn sm" disabled={busy} onClick={() => onDismiss?.(n)} title="Wraca po 90 dniach">Odrzuć</button>
+              <button className="btn sm primary" disabled={busy} onClick={() => onWatch?.(n)} title={S.watchTitle}>{S.watch}</button>
+              <button className="btn sm" disabled={busy} onClick={() => onDismiss?.(n)} title={S.dismissTitle}>{S.dismissBtn}</button>
             </>}
           <span className="spacer" />
           <span className="src">{srcLine}</span>
@@ -372,7 +374,7 @@ export function CandidateCard({ note: n, compact, today, state, busy, onWatch, o
 }
 
 /** Monospace command + `Kopiuj polecenie` (the app copies, Claude Code runs it; design answer 3). */
-export function CopyCommand({ cmd, label = "Kopiuj polecenie", primary = true, showCmd = true, sm, done = "Skopiowano · wklej w Claude Code", title }: {
+export function CopyCommand({ cmd, label = S.copyCommand, primary = true, showCmd = true, sm, done = S.copiedPaste, title }: {
   cmd: string; label?: string; primary?: boolean; showCmd?: boolean; sm?: boolean; done?: string; title?: string;
 }) {
   const toast = useToast();
@@ -389,11 +391,11 @@ export function CopyCommand({ cmd, label = "Kopiuj polecenie", primary = true, s
 export function ScheduleHow({ path, onSettings }: { path: string; onSettings?: () => void }) {
   return (
     <div className="sched">
-      <div><b>{ROUTINE_MENU}</b>: sobota 07:00, folder <code className="cmd wrap">{path}</code>, polecenie <code className="cmd">{ROUTINE_PROMPT}</code></div>
+      <div><b>{L.routineMenu}</b>{S.schedule}<code className="cmd wrap">{path}</code>{S.prompt}<code className="cmd">{ROUTINE_PROMPT}</code></div>
       <div className="acts">
-        <CopyCommand cmd={ROUTINE_PROMPT} label="Kopiuj polecenie rutyny" primary={false} showCmd={false} sm done="Skopiowano · wklej w aplikacji Claude" title="Rutyna lokalna: tylko ona widzi serwer MCP na tym Macu." />
-        <CopyCommand cmd={path} label="Kopiuj folder" primary={false} showCmd={false} sm done="Skopiowano" />
-        {onSettings && <button className="lnk" onClick={onSettings}>Szczegóły: Ustawienia › Agent AI</button>}
+        <CopyCommand cmd={ROUTINE_PROMPT} label={S.copyRoutine} primary={false} showCmd={false} sm done={S.copiedPasteApp} title={S.localRoutineTitle} />
+        <CopyCommand cmd={path} label={S.copyFolder} primary={false} showCmd={false} sm done={S.copied} />
+        {onSettings && <button className="lnk" onClick={onSettings}>{S.settingsLink}</button>}
       </div>
     </div>
   );

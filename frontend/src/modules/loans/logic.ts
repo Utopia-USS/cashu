@@ -1,10 +1,12 @@
 // Pure helpers of the loans widgets (no React, no DOM); tested in tests/loans.test.mjs.
+import { intlLocale, normalizeNumberInput } from "../../i18n.ts";
+import { S } from "./logic.strings.ts";
 
 /** The annual rate as text. The API sends a percent (7.25 = 7,25 %, loans/amortization.py), so a 0,85 %
  * loan is "0,85 %", never 85 % (F7 FE9: no fraction-vs-percent guess). */
 export function rateText(annualRatePct: number | null | undefined): string | null {
   if (annualRatePct == null || !Number.isFinite(annualRatePct)) return null;
-  return `${annualRatePct.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} %`;
+  return S.pct(annualRatePct.toLocaleString(intlLocale(), { maximumFractionDigits: 2 }));
 }
 
 /** Share of the monthly income (complete months) the instalments take; null without an income norm. */
@@ -26,7 +28,7 @@ export const termMonths = (n: number, unit: TermUnit): number => (unit === "year
 
 /** Polish-typed number ("400 000", "6,5") -> number, else null. */
 export function parseNum(text: string): number | null {
-  const t = text.replace(/[\s  ]/g, "").replace(",", ".");
+  const t = normalizeNumberInput(text);
   if (!t || !/^-?\d*\.?\d+$/.test(t)) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
@@ -41,18 +43,18 @@ export interface LoanDraft {
 }
 export type LoanErrors = Partial<Record<"name" | "principal" | "rate" | "term" | "start" | "origination", string>>;
 
-/** The form's problems in Polish (empty object = valid). */
+/** The form's problems (empty object = valid). */
 export function validateLoan(d: LoanDraft): LoanErrors {
   const e: LoanErrors = {};
-  if (!d.name.trim()) e.name = "Podaj nazwę.";
-  if (d.principal == null || !(d.principal > 0)) e.principal = "Podaj kwotę większą od 0.";
-  if (d.rate == null || d.rate < 0 || d.rate > 100) e.rate = "Oprocentowanie od 0 do 100.";
+  if (!d.name.trim()) e.name = S.name;
+  if (d.principal == null || !(d.principal > 0)) e.principal = S.principal;
+  if (d.rate == null || d.rate < 0 || d.rate > 100) e.rate = S.rate;
   const maxTerm = d.unit === "years" ? 50 : 600;
   if (d.term == null || !Number.isInteger(d.term) || d.term < 1 || d.term > maxTerm) {
-    e.term = d.unit === "years" ? "Okres od 1 do 50 lat." : "Okres od 1 do 600 miesięcy.";
+    e.term = d.unit === "years" ? S.termYears : S.termMonths;
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.start)) e.start = "Podaj datę pierwszej raty.";
-  else if (d.origination && d.origination > d.start) e.origination = "Wypłata nie może być po pierwszej racie.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.start)) e.start = S.start;
+  else if (d.origination && d.origination > d.start) e.origination = S.origination;
   return e;
 }
 
@@ -69,9 +71,9 @@ export function installmentCandidates<T extends { active: boolean; gap_days: num
 /** How the loan's installments are recognised: the phrase, the IBAN tail, the built-in phrases (step done
  * without either), else null. */
 export function paymentHint(l: { payment_text?: string | null; payment_iban_tail?: string | null }, stepDone: boolean): string | null {
-  if (l.payment_text) return `fraza „${l.payment_text}"`;
+  if (l.payment_text) return S.phrase(l.payment_text);
   if (l.payment_iban_tail) return `IBAN …${l.payment_iban_tail}`;
-  return stepDone ? "rozpoznane z wbudowanych fraz" : null;
+  return stepDone ? S.builtin : null;
 }
 
 /** Up to `cap` items joined with ` · `, then `+n`. */

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from cashu.core.i18n import tr
 from cashu.modules.investments.domain import CalendarDate, days_between
 
 from ..kind import RuleContext, RuleSpec
@@ -15,7 +16,9 @@ from .support import days_phrase, decimal_text, format_decimal
 
 DEFAULT_PERIOD_DAYS = 31
 DEFAULT_GRACE_DAYS = 10
-NO_CONTRIBUTIONS_PLAN = "Strategia nie ma planu wpłat"
+def no_contributions_plan() -> str:
+    """Skip reason when the strategy has no ``contributions:`` plan."""
+    return tr(pl="Strategia nie ma planu wpłat", en="The strategy has no contributions plan")
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +66,7 @@ class ContributionGapRule:
         plan = ctx.contributions
         key = signal_dedup_key(spec.id)
         if plan is None:
-            return [Skipped(spec.id, NO_CONTRIBUTIONS_PLAN, key)]
+            return [Skipped(spec.id, no_contributions_plan(), key)]
         params = spec.params
         allowed_days = params.period_days + params.grace_days
         plan_details: dict[str, object] = {
@@ -86,9 +89,16 @@ class ContributionGapRule:
                             "last_deposit": None,
                             "days_since_last_deposit": None,
                         },
-                        message=(
-                            f"Brak wpłat, choć plan zakłada {format_decimal(plan.monthly_amount)} "
-                            f"{ctx.portfolio.base_currency} miesięcznie."
+                        message=tr(
+                            pl=(
+                                f"Brak wpłat, choć plan zakłada {format_decimal(plan.monthly_amount)} "
+                                f"{ctx.portfolio.base_currency} miesięcznie."
+                            ),
+                            en=(
+                                f"No contributions, though the plan expects "
+                                f"{format_decimal(plan.monthly_amount)} {ctx.portfolio.base_currency} "
+                                "a month."
+                            ),
                         ),
                     )
                 )
@@ -109,9 +119,15 @@ class ContributionGapRule:
                     dedup_key=key,
                     severity=spec.severity,
                     payload=details,
-                    message=(
-                        f"Brak wpłaty od {days_phrase(days)} (ostatnia {last}); plan dopuszcza "
-                        f"{days_phrase(allowed_days)}."
+                    message=tr(
+                        pl=(
+                            f"Brak wpłaty od {days_phrase(days)} (ostatnia {last}); plan dopuszcza "
+                            f"{days_phrase(allowed_days)}."
+                        ),
+                        en=(
+                            f"No contribution for {days_phrase(days)} (last {last}); the plan allows "
+                            f"{days_phrase(allowed_days)}."
+                        ),
                     ),
                 )
             )

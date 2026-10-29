@@ -6,6 +6,8 @@ import {
   accountLabel, ASSET_CLASS, bucketLabel, dm, isGenericBucket, money, pct, plural, qty, REGION, region as regionLabel, VALUATION,
 } from "./labels";
 import { type WarningItem } from "./logic";
+import { C } from "../../common.strings.ts";
+import { S } from "./Rail.strings.ts";
 
 // ---- classification -------------------------------------------------------------------
 
@@ -30,9 +32,9 @@ export function ClassifyCard({ items, positions, strategy, accounts, onSave, hig
 }) {
   if (!items.length) return null;
   return (
-    <section className={`card ${highlight ? "hl" : ""}`} id="inv-classify" aria-label="Do sklasyfikowania">
+    <section className={`card ${highlight ? "hl" : ""}`} id="inv-classify" aria-label={S.toClassify}>
       <div className="controls" style={{ marginBottom: 4 }}>
-        <h2 style={{ margin: 0 }}>Do sklasyfikowania</h2><Tag tone="warn">{items.length}</Tag>
+        <h2 style={{ margin: 0 }}>{S.toClassify}</h2><Tag tone="warn">{items.length}</Tag>
       </div>
       {items.map((i) => (
         <ClassifyItem key={String(i.id)} i={i} pos={positions.find((p) => String(p.instrument.id) === String(i.id)) ?? null}
@@ -79,50 +81,50 @@ function ClassifyItem({ i, pos, strategy, accounts, onSave, focus }: {
     } finally { setBusy(false); }
   };
   const propose = () => {
-    const text = `Zaproponuj zmianę strategii (propose_strategy): instrument ${i.label}${i.isin ? ` (${i.isin})` : ""}, klasa ${ASSET_CLASS[cls] ?? cls}${regionText ? `, region ${regionText}` : ""} nie pasuje do żadnego koszyka. Dodaj koszyk${regionText ? ` „${regionText}"` : ""} albo rozszerz istniejący i zaproponuj nowe cele.`;
-    void copyText(text).then(() => toast("Skopiowano · wklej w Claude Code", 4000));
+    const text = S.proposePrompt(i.label, i.isin ?? null, ASSET_CLASS[cls] ?? cls, regionText);
+    void copyText(text).then(() => toast(S.copiedPaste, 4000));
   };
   return (
     <div className="signal" style={{ borderBottom: "none" }} ref={ref} data-classify={String(i.id)}>
       <div className="sh">
         <span className="grow">{i.name} {i.symbol && i.symbol !== i.name && <span className="sym">{i.symbol}</span>}</span>
-        {pos && <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{qty(pos.quantity)} szt. · {pct(pos.weight)}</span>}
+        {pos && <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>{S.pieces(qty(pos.quantity))} · {pct(pos.weight)}</span>}
       </div>
       <div className="sm">
-        {first ? `kupno ${dm(first.open_date)}${acc ? ` (${accountLabel(acc, accounts)})` : ""} · ` : ""}poza alokacją i regułami
+        {first ? S.bought(dm(first.open_date), acc ? ` (${accountLabel(acc, accounts)})` : "") : ""}{S.outsideAllocation}
       </div>
       <div className="decide" style={{ marginTop: 8 }}>
         <div className="fr">
-          <label htmlFor={`cc-${i.id}`}>Klasa</label>
+          <label htmlFor={`cc-${i.id}`}>{S.cls}</label>
           <select id={`cc-${i.id}`} value={cls} onChange={(e) => setCls(e.target.value)}>
             {CLASSES.map((c) => <option key={c} value={c}>{ASSET_CLASS[c]}</option>)}
           </select>
-          <label htmlFor={`cr-${i.id}`}>Region</label>
+          <label htmlFor={`cr-${i.id}`}>{S.region}</label>
           <select id={`cr-${i.id}`} value={reg} onChange={(e) => setReg(e.target.value)}>
             <option value="">-</option>
             {[...new Set([...Object.keys(REGION).filter((k) => k !== "unknown"), ...(reg ? [reg] : [])])].map((k) => <option key={k} value={k}>{REGION[k] ?? k}</option>)}
           </select>
-          <label htmlFor={`cv-${i.id}`}>Wycena</label>
+          <label htmlFor={`cv-${i.id}`}>{S.valuation}</label>
           <select id={`cv-${i.id}`} value={mode} onChange={(e) => setMode(e.target.value)}>
             {Object.entries(VALUATION).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         {matches.length > 0 && <div className="fr">
-          <label htmlFor={`cb-${i.id}`}>Koszyk</label>
+          <label htmlFor={`cb-${i.id}`}>{S.bucket}</label>
           <select id={`cb-${i.id}`} value={bucket} onChange={(e) => pickBucket(e.target.value)} disabled={!matches.length}>
-            <option value="">{matches.length ? "bez koszyka" : "brak strategii"}</option>
+            <option value="">{matches.length ? S.noBucket : S.noStrategy}</option>
             {matches.map((m) => <option key={m.id} value={m.id}>{bucketLabel(m.id)}</option>)}
-            {matches.length > 0 && <option value="__new">nowy koszyk…</option>}
+            {matches.length > 0 && <option value="__new">{S.newBucket}</option>}
           </select>
           {(!bucket || bucket === "__new") && strategy?.version != null && (
-            <span className="muted" style={{ fontSize: 12 }}>brak koszyka{regionText ? ` „${regionText}"` : ""} w strategii v{strategy.version}</span>
+            <span className="muted" style={{ fontSize: 12 }}>{S.bucketMissing(regionText, strategy.version)}</span>
           )}
-          {chosen && chosen.tags.length > 0 && <span className="muted" style={{ fontSize: 12 }}>doda tag {chosen.tags.join(", ")}</span>}
-          {!classOk && <span style={{ fontSize: 12, color: "var(--warn)" }}>koszyk wymaga klasy {chosen!.asset_class.map((c) => ASSET_CLASS[c] ?? c).join(" / ")}</span>}
+          {chosen && chosen.tags.length > 0 && <span className="muted" style={{ fontSize: 12 }}>{S.addsTag(chosen.tags.join(", "))}</span>}
+          {!classOk && <span style={{ fontSize: 12, color: "var(--warn)" }}>{S.needsClass(chosen!.asset_class.map((c) => ASSET_CLASS[c] ?? c).join(" / "))}</span>}
         </div>}
         <div className="fr">
-          <button className="btn primary" onClick={save} disabled={busy || !classOk}>{busy ? "Zapisuję…" : "Zapisz"}</button>
-          {strategy?.version != null && <button className="btn" onClick={propose} title="Kopiuje polecenie dla agenta">Zaproponuj zmianę</button>}
+          <button className="btn primary" onClick={save} disabled={busy || !classOk}>{busy ? S.saving : C.save}</button>
+          {strategy?.version != null && <button className="btn" onClick={propose} title={S.proposeTitle}>{S.propose}</button>}
         </div>
       </div>
     </div>
@@ -140,9 +142,9 @@ export function WarningsCard({ items, onAction, onAlias, highlight, aliasHints }
 }) {
   if (!items.length) return null;
   return (
-    <section className={`card ${highlight ? "hl" : ""}`} id="inv-warnings" aria-label="Ostrzeżenia danych">
+    <section className={`card ${highlight ? "hl" : ""}`} id="inv-warnings" aria-label={S.dataWarnings}>
       <div className="controls" style={{ marginBottom: 4 }}>
-        <h2 style={{ margin: 0 }}>Ostrzeżenia danych</h2><Tag tone="warn">{items.length}</Tag>
+        <h2 style={{ margin: 0 }}>{S.dataWarnings}</h2><Tag tone="warn">{items.length}</Tag>
       </div>
       {items.map((w) => <WarningRow key={w.key} w={w} onAction={onAction} onAlias={onAlias} hint={aliasHints.get(w.key.split(":")[1] ?? "")} />)}
     </section>
@@ -161,23 +163,23 @@ function WarningRow({ w, onAction, onAlias, hint }: { w: WarningItem; onAction: 
       </div>
       <div className="sm">
         <span>{w.hint}</span>
-        {w.action === "snapshot" && <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => onAction(w)}>wgraj snapshot</button>}
-        {w.action === "import" && <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => onAction(w)}>import</button>}
+        {w.action === "snapshot" && <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => onAction(w)}>{S.uploadSnapshot}</button>}
+        {w.action === "import" && <button className="lnk" style={{ fontSize: 12.5 }} onClick={() => onAction(w)}>{S.import}</button>}
         {w.action === "alias" && !edit && instId && (
-          <><button className="lnk" style={{ fontSize: 12.5 }} onClick={() => setEdit(true)}>dodaj alias</button>{hint && <span>(podpowiedź: {hint})</span>}</>
+          <><button className="lnk" style={{ fontSize: 12.5 }} onClick={() => setEdit(true)}>{S.addAlias}</button>{hint && <span>{S.hint(hint)}</span>}</>
         )}
       </div>
       {edit && (
         <div className="decide" style={{ marginTop: 6 }}>
           <div className="fr">
-            <label htmlFor={`al-${w.key}`}>Symbol Yahoo</label>
+            <label htmlFor={`al-${w.key}`}>{S.yahooSymbol}</label>
             <input id={`al-${w.key}`} value={val} onChange={(e) => setVal(e.target.value)} style={{ width: 120 }} autoFocus
               onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setEdit(false); } }} />
             <button className="btn primary" disabled={busy || !val.trim()} onClick={async () => {
               setBusy(true);
               try { await onAlias(instId, val.trim()); setEdit(false); } finally { setBusy(false); }
-            }}>Zapisz</button>
-            <button className="lnk" onClick={() => setEdit(false)}>Anuluj</button>
+            }}>{C.save}</button>
+            <button className="lnk" onClick={() => setEdit(false)}>{C.cancel}</button>
           </div>
         </div>
       )}

@@ -358,3 +358,38 @@ test("alert labels of the F8 kinds (F8 review FE-5)", () => {
   assert.equal(sp(label("alert.volume_spike", { ratio: 3.42, window_days: 20 })), "wolumen 3,4x średniej z 20 sesji");
   assert.equal(label("alert.volume_spike", { window_days: 20 }), null);
 });
+
+test("English UI: every helper shows the server's English text; frontend-only texts are English", async () => {
+  const { setLanguageForTests } = await import("../src/i18n.ts");
+  const { describeError, describeJob, describePerfNote, errorText, exprDetail, relocationParts, yamlProblem } = await import("../src/core/messages.ts");
+  setLanguageForTests("en");
+  try {
+    assert.equal(label("strategy.required", { key: "base_currency" }), null);
+    assert.deepEqual(describeIssue({ code: "strategy.required", params: { key: "version" }, message: "version is required" }),
+      { text: "version is required", detail: null, translated: false });
+    assert.deepEqual(describeImportWarning({ kind: "fx_missing", message: "Row 3: no fx_rate" }),
+      { text: "Row 3: no fx_rate", detail: null, translated: false });
+    assert.equal(proposalSummary({ kind: "strategy", summary: "New strategy: 2 rules", summary_params: { rules: 2, buckets: 1 } }), "New strategy: 2 rules");
+    assert.equal(proposalError({ error: "proposal is not pending", error_code: "not_pending" }).text, "proposal is not pending");
+    const err = Object.assign(new Error("loan name already exists"), { status: 409, code: "loan_name_taken" });
+    assert.equal(errorText(Object.assign(new Error("not found"), { status: 404, code: "not_found" })), "not found");
+    assert.equal(describePerfNote({ code: "incomplete_days", params: { days: 3 }, message: "3 days with incomplete prices" }), "3 days with incomplete prices");
+    assert.equal(describeJob({ code: "eb_not_configured", params: {}, detail: "Enable Banking not configured" }), "Enable Banking not configured");
+    assert.equal(exprDetail("Expression is empty"), "Expression is empty");
+    assert.equal(yamlProblem("mapping values are not allowed here"), "mapping values are not allowed here");
+    // texts with no server English of their own
+    assert.equal(errorText(new TypeError("Failed to fetch")), "Can't reach the app (the cashU server is not responding)");
+    assert.equal(label("import.preview_expired"), "The preview expired: choose the file again.");
+    assert.equal(label("error.loan_name_taken"), "A loan with this name already exists.");
+    assert.equal(describeError(err).text, "A loan with this name already exists.");
+    assert.equal(label("connector.timeout", { timeout_s: 30 }), "The connector timed out (30 s).");
+    assert.deepEqual(relocationParts({ worker: { reason: "missing" }, mcp: { app_moved_from: "/x" } }),
+      { worker: "Background work points to a program that no longer exists", mcp: "The app was moved from /x. Add the MCP server in Claude Code again (the command is in AI agent)." });
+    for (const v of Object.values((await import("../src/core/messages.strings.ts")).EN_LABELS)) {
+      const t = typeof v === "string" ? v : v({ timeout_s: 1 });
+      assert.ok(!/[ąćęłńóśźż—]/i.test(t), t);
+    }
+  } finally {
+    setLanguageForTests("pl");
+  }
+});

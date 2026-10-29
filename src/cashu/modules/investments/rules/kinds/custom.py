@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from cashu.core.i18n import tr
 from cashu.modules.investments.domain import is_generic_bucket
 
 from ..expr.catalog import METRICS, Scope, Unit
@@ -24,7 +25,6 @@ from ..outcomes import Fired, NotFired, RuleOutcome, SignalCandidate, Skipped, s
 from ..params import ParamErrors, ParamReader
 from ..polarity import SignalPolarity
 from .support import (
-    NO_ALLOCATIONS,
     InstrumentFilter,
     InstrumentPosition,
     decimal_text,
@@ -33,12 +33,15 @@ from .support import (
     format_pct,
     format_pp,
     no_allocation_problem,
+    no_allocations,
     positions_by_instrument,
 )
 
 MAX_MESSAGE_LENGTH = 200
-CONDITION_MET = "Warunek spełniony"
-"""Default message of a fired custom rule without ``message``: ``Warunek spełniony: <when>``."""
+def condition_met() -> str:
+    """Default message of a fired custom rule without ``message``: ``Warunek spełniony: <when>``
+    (``Condition met: <when>`` in English)."""
+    return tr(pl="Warunek spełniony", en="Condition met")
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +129,15 @@ class CustomRule:
         params = spec.params
         expression = params.expression
         if expression is None:
-            return [Skipped(spec.id, "Nie udało się skompilować warunku reguły")]
+            return [
+                Skipped(
+                    spec.id,
+                    tr(
+                        pl="Nie udało się skompilować warunku reguły",
+                        en="The rule condition could not be compiled",
+                    ),
+                )
+            ]
         match params.scope:
             case Scope.PORTFOLIO:
                 env = MetricEnv(ctx)
@@ -145,7 +156,7 @@ class CustomRule:
                 ]
             case Scope.BUCKET:
                 if not ctx.allocations:
-                    return [Skipped(spec.id, NO_ALLOCATIONS)]
+                    return [Skipped(spec.id, no_allocations())]
                 bucket_ids = list(params.buckets) or [a.bucket_id for a in ctx.allocations]
                 by_id = {allocation.bucket_id: allocation for allocation in ctx.allocations}
                 outcomes: list[RuleOutcome] = []
@@ -190,12 +201,12 @@ class CustomRule:
         # metric naming one, and the ``Koszyk <id>: `` prefix only for a generic bucket (the id: buckets
         # have no display label in the backend).
         private = _private_labels(expression)
-        condition = CONDITION_MET if private else f"{CONDITION_MET}: {expression.normalized}"
+        condition = condition_met() if private else f"{condition_met()}: {expression.normalized}"
         text = params.message or condition
         if position is not None:
             text = f"{position.label}: {text}"
         elif env.bucket_id is not None and is_generic_bucket(env.bucket_id):
-            text = f"Koszyk {env.bucket_id}: {text}"
+            text = f"{tr(pl='Koszyk', en='Bucket')} {env.bucket_id}: {text}"
         shown = _shown_values(evaluation, str(ctx.portfolio.base_currency), hide=private)
         message = f"{text} ({shown})." if shown else f"{text}."
         return Fired(
@@ -260,9 +271,9 @@ def _shown_values(evaluation: Evaluation, currency: str, hide: frozenset[str] = 
 
 def _format(label: str, value: Value, currency: str) -> str:
     if isinstance(value, Unknown):
-        return "nieznane"
+        return tr(pl="nieznane", en="unknown")
     if isinstance(value, bool):
-        return "tak" if value else "nie"
+        return tr(pl="tak", en="yes") if value else tr(pl="nie", en="no")
     if isinstance(value, str):
         return value
     match _unit(label):

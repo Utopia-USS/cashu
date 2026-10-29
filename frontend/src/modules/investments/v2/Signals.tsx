@@ -16,7 +16,7 @@ import {
   type AccountRow, type BucketRow, deleteDecision, type DecisionInput, getPositionDetail, postAcknowledge, postDecision, postSnooze, type Thesis,
 } from "../api";
 import { useShortcuts } from "../hooks";
-import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, plural, qty } from "../labels";
+import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, qty } from "../labels";
 import { decisionEffect, decisionTag, nextDeposit } from "../logic";
 import { canUndo, groupUndoRun, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
 import type { Hint } from "../api";
@@ -31,10 +31,14 @@ import {
 import { stillLocked } from "../../../inflight";
 import { isResearchKind, signalNoteId } from "./research/logic";
 import { localDay, parseServerTime } from "../../../time";
+import { C } from "../../../common.strings.ts";
+import { S } from "./Signals.strings.ts";
 
 export type { SignalFilter };
 type Act = "none" | "buy" | "sell" | "later";
 const ACTION: Record<Act, string> = { none: "held", buy: "bought", sell: "sold", later: "other" };
+/** The tag of a decision label without its `decyzja: ` / `decision: ` prefix (decisionTag). */
+const tagOf = (label: string) => label.replace(/^(decyzja|decision): /, "");
 
 export interface SignalsCtx {
   slug: string;
@@ -71,10 +75,10 @@ export function signalAge(s: SignalV2, ctx: Pick<SignalsCtx, "today" | "lastRunA
   const decided = isDecided(s) ? s.decisions[s.decisions.length - 1] : null;
   if (!decided && !signalCurrent(s, ctx.lastRunAt ?? null) && s.last_seen_at) {
     const d = dm(s.last_seen_at);
-    return { text: d, warn: true, title: `niepotwierdzony od ${d}` };
+    return { text: d, warn: true, title: S.unconfirmedSince(d) };
   }
   const iso = decided?.created_at ?? s.first_seen_at;
-  return { text: !iso ? "" : localDay(iso) === ctx.today ? "dziś" : dm(iso), warn: false };
+  return { text: !iso ? "" : localDay(iso) === ctx.today ? S.today : dm(iso), warn: false };
 }
 export const Age = ({ a }: { a: { text: string; warn: boolean; title?: string } }) => (a.text ? <span className={`age ${a.warn ? "warn" : ""}`} title={a.title}>{a.text}</span> : null);
 
@@ -85,8 +89,8 @@ export const Fact1 = ({ f }: { f: SigFact }) => (
 
 /** Origin prefix of a fact's tooltip (rev 2 7.2): `alert: `, `alert agenta: `, `research: `. */
 function originOf(s: SignalV2, ctx: SignalsCtx): string {
-  if (isResearchKind(s.kind) || s.source === "research") return "research: ";
-  if (s.alert_id != null || s.kind.startsWith("alert:")) return ctx.alertsById.get(s.alert_id ?? -1)?.source === "agent" ? "alert agenta: " : "alert: ";
+  if (isResearchKind(s.kind) || s.source === "research") return S.originResearch;
+  if (s.alert_id != null || s.kind.startsWith("alert:")) return ctx.alertsById.get(s.alert_id ?? -1)?.source === "agent" ? S.originAgentAlert : S.originAlert;
   return "";
 }
 /** The long form of a signal (the fact's tooltip): origin + `signalText` lead / bold / tail. */
@@ -109,7 +113,7 @@ function instOf(ctx: SignalsCtx, id: number | null): { inst: InstLike; pos: Posi
   return w?.instrument ? { inst: w.instrument, pos: null, hints: w.hints ?? null } : null;
 }
 const accLabels = (ctx: SignalsCtx, pos: PositionV2 | null) =>
-  pos?.accounts.map((a) => { const r = ctx.accounts.find((x) => x.id === a.account_id); return r ? accountLabel(r, ctx.accounts) : `rachunek ${a.account_id}`; });
+  pos?.accounts.map((a) => { const r = ctx.accounts.find((x) => x.id === a.account_id); return r ? accountLabel(r, ctx.accounts) : S.account(a.account_id); });
 const subjectInsts = (ctx: SignalsCtx) => {
   const m = new Map<number, { symbol?: string | null; name?: string | null; label: string }>();
   for (const p of ctx.positions) m.set(Number(p.instrument.id), p.instrument);
@@ -194,21 +198,21 @@ export function SignalsRail({ signals, ctx, focusId, onAll, hl, paused }: {
       {groups.length ? groups.map((g) => (
         <GroupRow key={g.key} g={g} ctx={ctx} cursor={cursor === g.key} open={openId === g.key}
           onOpen={(v) => { setOpenId(v ? g.key : null); setCursor(g.key); }} onAll={onAll} onActivate={() => { setCursor(g.key); openSubject(g); }} />
-      )) : <div className="none">Brak</div>}
+      )) : <div className="none">{S.none}</div>}
     </div>
   );
   return (
-    <Widget title="Sygnały" id="inv-signals" hl={hl} count={list.length || undefined} body="tight" className="srail"
+    <Widget title={S.signals} id="inv-signals" hl={hl} count={list.length || undefined} body="tight" className="srail"
       footer={!signals ? undefined : list.length ? (
-        <><span>decyzje: <b>{decidedThisWeek(list)} z {list.length}</b> w tym tygodniu</span><span className="spacer" />
-          <button className="lnk" onClick={() => onAll()}>Wszystkie ({list.length})</button></>
-      ) : <><span className="spacer" /><button className="lnk" disabled>Wszystkie (0)</button></>}>
+        <><span>{S.decisionsLabel} <b>{S.xOfY(decidedThisWeek(list), list.length)}</b> {S.thisWeek}</span><span className="spacer" />
+          <button className="lnk" onClick={() => onAll()}>{S.allCount(list.length)}</button></>
+      ) : <><span className="spacer" /><button className="lnk" disabled>{S.allCount(0)}</button></>}>
       {!signals ? <Skeleton h={140} /> : !list.length ? (
-        <div className="empty">Brak otwartych sygnałów.</div>
+        <div className="empty">{S.noOpen}</div>
       ) : (
         <div ref={ref}>
-          {section("Portfel", nScope("portfolio"), portfolio)}
-          {showWatched && section("Obserwowane", nScope("watched"), watched)}
+          {section(S.portfolio, nScope("portfolio"), portfolio)}
+          {showWatched && section(S.watched, nScope("watched"), watched)}
         </div>
       )}
     </Widget>
@@ -235,10 +239,10 @@ export function useGroupWriter(ctx: SignalsCtx, g: Pick<SignalGroup<SignalV2>, "
       void u.undo().then((res) => {
         if (undoSettled(res)) { setLockKey(null); ctx.onChanged(); }
         const msg = undoMessage(res, what);
-        if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+        if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: C.undo, onClick: retry } : undefined);
       });
     };
-    toast(text, 10000, { label: "Cofnij", onClick: retry });
+    toast(text, 10000, { label: C.undo, onClick: retry });
   };
   /** Writes in order; a failure keeps what was saved (with its undo) and says so. */
   const writeAll = (steps: (() => Promise<{ decision: { id: number } }>)[], text: string, what: string, failText: string) => locked ? undefined : flight.run(async () => {
@@ -255,10 +259,10 @@ export function useGroupWriter(ctx: SignalsCtx, g: Pick<SignalGroup<SignalV2>, "
   });
   const decide = (input: DecisionInput, label: string) => {
     if (!plan) return;
-    const tag = label.replace("decyzja: ", "");
-    return writeAll(fanOutSteps(ctx.slug, plan.primary, plan.rest, input, tag), `Zapisano decyzję · ${tag}`, "decyzja", "Nie zapisano decyzji");
+    const tag = tagOf(label);
+    return writeAll(fanOutSteps(ctx.slug, plan.primary, plan.rest, input, tag), S.decisionSaved(tag), S.whatDecision, S.decisionFailed);
   };
-  const ack = (reason?: string) => { void writeAll(g.live.map((x) => () => postAcknowledge(ctx.slug, x.id, reason)), "Potwierdzone bez zmian", "potwierdzenie", "Nie zapisano"); };
+  const ack = (reason?: string) => { void writeAll(g.live.map((x) => () => postAcknowledge(ctx.slug, x.id, reason)), S.ackDone, S.whatAck, S.notSaved); };
   return { busy, locked, flight, setLockKey, stateKey, offer, decide, ack };
 }
 
@@ -307,17 +311,17 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll, onActivate }: {
       const retry = () => {
         void u.undo().then((res) => {
           if (undoSettled(res)) { setLockKey(null); ctx.onChanged(); }
-          const msg = undoMessage(res, "odłożenie");
-          if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+          const msg = undoMessage(res, S.whatSnooze);
+          if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: C.undo, onClick: retry } : undefined);
         });
       };
-      toast(`Odłożone do ${dm(later)}`, 10000, { label: "Cofnij", onClick: retry });
+      toast(S.snoozedTo(dm(later)), 10000, { label: C.undo, onClick: retry });
     } catch (e) {
       // Older servers without the snooze endpoint: the v1 behaviour (acknowledge with a note).
       if (e instanceof ApiError && e.status === 404 && /not found/i.test(e.message)) {
-        try { const r = await postAcknowledge(ctx.slug, primary.id, `odłożone do ${later}`); setLockKey(stateKey); close(); ctx.onChanged(); offer([r.decision.id], "Potwierdzone bez zmian", "potwierdzenie"); }
-        catch (e2) { toast(`Nie odłożono: ${errorText(e2)}`, 5000); }
-      } else toast(`Nie odłożono: ${errorText(e)}`, 5000);
+        try { const r = await postAcknowledge(ctx.slug, primary.id, S.snoozedReason(later)); setLockKey(stateKey); close(); ctx.onChanged(); offer([r.decision.id], S.ackDone, S.whatAck); }
+        catch (e2) { toast(S.snoozeFailed(errorText(e2)), 5000); }
+      } else toast(S.snoozeFailed(errorText(e)), 5000);
     }
   });
   const onMenuKey = (e: React.KeyboardEvent) => {
@@ -345,21 +349,21 @@ function GroupRow({ g, ctx, cursor, open, onOpen, onAll, onActivate }: {
         ))}
       </div>
       <div className="rt">
-        <button ref={trigger} className="icon-btn quiet rmore" aria-haspopup="menu" aria-expanded={open} aria-label={`Akcje: ${name}`} title="Akcje"
+        <button ref={trigger} className="icon-btn quiet rmore" aria-haspopup="menu" aria-expanded={open} aria-label={S.actionsAria(name)} title={S.actions}
           onClick={() => onOpen(!open)}>⋯</button>
       {/* keyed by mode: the form is taller than the menu, so it is placed again */}
       <Pop key={mode} portal open={open} onClose={close} width={mode === "form" ? 460 : 220} align="right" label={name}>
         {mode === "menu" ? (
           <div className="rmenu" role="menu" aria-label={name} ref={menu} onKeyDown={onMenuKey}>
-            <button role="menuitem" disabled={busy} onClick={() => setMode("form")}>Zanotuj</button>
-            <button role="menuitem" disabled={busy} onClick={() => ack()}>Potwierdź{g.live.length > 1 && <span className="hint">{g.live.length}</span>}</button>
-            {primary.kind === "contribution_gap" && <button role="menuitem" disabled={busy} onClick={() => void snooze()}>Odłóż<span className="hint">do {dm(later)}</span></button>}
+            <button role="menuitem" disabled={busy} onClick={() => setMode("form")}>{S.note}</button>
+            <button role="menuitem" disabled={busy} onClick={() => ack()}>{S.ack}{g.live.length > 1 && <span className="hint">{g.live.length}</span>}</button>
+            {primary.kind === "contribution_gap" && <button role="menuitem" disabled={busy} onClick={() => void snooze()}>{S.snooze}<span className="hint">{S.toDate(dm(later))}</span></button>}
             <div className="sep" role="separator" />
-            <button role="menuitem" onClick={() => { onOpen(false); onAll(primary.id); }}>Wszystkie</button>
+            <button role="menuitem" onClick={() => { onOpen(false); onAll(primary.id); }}>{S.all}</button>
           </div>
         ) : (
           <div className="rform">
-            <div className="rfh"><b>{subject}</b> · <Fact1 f={signalFact(primary)} />{g.live.length > 1 ? ` · +${plural(g.live.length - 1, "sygnał potwierdzony", "sygnały potwierdzone", "sygnałów potwierdzonych")}` : ""}</div>
+            <div className="rfh"><b>{subject}</b> · <Fact1 f={signalFact(primary)} />{g.live.length > 1 ? ` · +${S.plusAcked(g.live.length - 1)}` : ""}</div>
             <DecisionForm s={primary} ctx={ctx} pending={busy} onCollapse={close} onDecide={decide} onAck={ack} />
           </div>
         )}
@@ -419,7 +423,7 @@ export function SignalsDialog({ signals, ctx, filter: initial = "all", focusId, 
       <div key={g.key} className={`sig grp ${g.settled ? "quiet" : ""}`} data-group={g.key}>
         <PolDot state={g.state} title={STATE_LABEL[g.state]} quiet={g.settled} />
         <div>
-          <SubjectTitle s={head} ctx={dctx} io={io} extra={<span className="nmm">{plural(g.signals.length, "sygnał", "sygnały", "sygnałów")}</span>} />
+          <SubjectTitle s={head} ctx={dctx} io={io} extra={<span className="nmm">{S.signalsCount(g.signals.length)}</span>} />
           {!g.settled && t && (t.thesis || t.exit_plan) && <ThesisLine t={t} />}
           {[...g.live, ...g.signals.filter((x) => !g.live.includes(x))].map((x) => item(x, true))}
           <GroupActs g={g} ctx={dctx} thesis={t} primary={g.live.some((x) => x.id === first)} open={g.live.some((x) => x.id === openId)}
@@ -431,38 +435,38 @@ export function SignalsDialog({ signals, ctx, filter: initial = "all", focusId, 
   const col = (label: string, groups: SignalGroup<SignalV2>[], count: number) => (
     <div>
       <div className="polh">{label} <span className="cnt">{count}</span></div>
-      {groups.length ? groups.map(group) : <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Brak</div>}
+      {groups.length ? groups.map(group) : <div className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>{S.none}</div>}
     </div>
   );
   const count = (gs: SignalGroup<SignalV2>[]) => gs.reduce((a, g) => a + g.signals.length, 0);
   return (
     <>
       <div className="scrim" onClick={onClose} aria-hidden />
-      <div className="sdlg" role="dialog" aria-modal="true" aria-label="Sygnały" ref={ref} tabIndex={-1}>
+      <div className="sdlg" role="dialog" aria-modal="true" aria-label={S.signals} ref={ref} tabIndex={-1}>
         <div className="dh">
-          <strong>Sygnały</strong>
+          <strong>{S.signals}</strong>
           {list.length > 0 && <span className="tag">{list.length}</span>}
-          {review && decided > 0 && <span className="tag solid pos">{plural(decided, "rozstrzygnięty", "rozstrzygnięte", "rozstrzygniętych")}</span>}
-          <Seg<SignalFilter> quiet label="Filtr sygnałów" value={filter} onChange={setFilter}
-            items={[["Wszystkie", "all"], [`Szanse ${positive.length}`, "positive"], [`Ryzyka ${negative.length}`, "negative"]]} />
+          {review && decided > 0 && <span className="tag solid pos">{S.decided(decided)}</span>}
+          <Seg<SignalFilter> quiet label={S.filter} value={filter} onChange={setFilter}
+            items={[[S.all, "all"], [S.chancesN(positive.length), "positive"], [S.risksN(negative.length), "negative"]]} />
           <span className="spacer" />
-          <span className="hint">j / k: następny · Enter: decyzja</span>
-          <button className="icon-btn" title="Zamknij (Esc)" aria-label="Zamknij" onClick={onClose}>✕</button>
+          <span className="hint">{S.keysHint}</span>
+          <button className="icon-btn" title={S.closeEsc} aria-label={C.close} onClick={onClose}>✕</button>
         </div>
         <div className="db">
-          {!list.length ? <div className="empty">Brak otwartych sygnałów.</div> : twoCols ? (
-            <div className="scope2">{col("Portfel", cols.portfolio, count(cols.portfolio))}{col("Obserwowane", cols.watched, count(cols.watched))}</div>
-          ) : col("Portfel", cols.portfolio, count(cols.portfolio))}
+          {!list.length ? <div className="empty">{S.noOpen}</div> : twoCols ? (
+            <div className="scope2">{col(S.portfolio, cols.portfolio, count(cols.portfolio))}{col(S.watched, cols.watched, count(cols.watched))}</div>
+          ) : col(S.portfolio, cols.portfolio, count(cols.portfolio))}
         </div>
         <div className="wf">
-          {review ? <span>bez decyzji: <b>{list.length - decided}</b></span> : (
+          {review ? <span>{S.undecided} <b>{list.length - decided}</b></span> : (
             <>
-              <span>decyzje: <b>{decidedThisWeek(list)} z {list.length}</b> w tym tygodniu</span>
-              {expired && expired.length > 0 && <span>{plural(expired.length, "sygnał wygasł", "sygnały wygasły", "sygnałów wygasło")} ({expired.slice(0, 2).map((e) => e.title).join(", ")})</span>}
+              <span>{S.decisionsLabel} <b>{S.xOfY(decidedThisWeek(list), list.length)}</b> {S.thisWeek}</span>
+              {expired && expired.length > 0 && <span>{S.expired(expired.length)} ({expired.slice(0, 2).map((e) => e.title).join(", ")})</span>}
             </>
           )}
           <span className="spacer" />
-          <button className="lnk" onClick={leave(onHistory)}>dziennik</button>
+          <button className="lnk" onClick={leave(onHistory)}>{S.journal}</button>
         </div>
       </div>
     </>
@@ -490,8 +494,8 @@ function GroupActs({ g, ctx, thesis, primary, open, onToggle, onModal }: {
         <DecisionForm s={g.primary} ctx={ctx} pending={w.busy} onCollapse={() => onToggle(false)} onDecide={w.decide} onAck={w.ack} />
       ) : (
         <div className="act">
-          <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)} title={n > 1 ? `Jedna decyzja dla ${plural(n, "sygnału", "sygnałów", "sygnałów")}` : undefined}>Zanotuj decyzję</button>
-          <button className="btn sm" disabled={w.busy} onClick={() => w.ack()} title={n > 1 ? `Potwierdza ${plural(n, "sygnał", "sygnały", "sygnałów")}` : undefined}>Potwierdź</button>
+          <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)} title={n > 1 ? S.oneDecisionFor(n) : undefined}>{S.recordDecision}</button>
+          <button className="btn sm" disabled={w.busy} onClick={() => w.ack()} title={n > 1 ? S.acksN(n) : undefined}>{S.ack}</button>
         </div>
       )}
       {dialog && (
@@ -524,7 +528,7 @@ function SubjectTitle({ s, ctx, io, extra }: { s: SignalV2; ctx: SignalsCtx; io:
 }
 
 const ThesisLine = ({ t }: { t: Thesis }) => (
-  <div className="th"><b>Teza ({t.created_at ? `${t.created_at.slice(5, 7)}.${t.created_at.slice(0, 4)}` : "-"})</b> {thesisLine(t) || t.thesis}</div>
+  <div className="th"><b>{S.thesis} ({t.created_at ? `${t.created_at.slice(5, 7)}.${t.created_at.slice(0, 4)}` : "-"})</b> {thesisLine(t) || t.thesis}</div>
 );
 
 /** Latest thesis of every instrument with an open signal (one detail request per instrument). */
@@ -545,7 +549,7 @@ function useTheses(slug: string, list: SignalV2[], positions: PositionV2[]): Map
 }
 
 function thesisLine(t: Thesis): string {
-  return [t.entry_type ? ENTRY_TYPE[t.entry_type] ?? t.entry_type : null, t.size_plan, t.exit_plan ? `wyjście ${t.exit_plan}` : null].filter(Boolean).join(" · ");
+  return [t.entry_type ? ENTRY_TYPE[t.entry_type] ?? t.entry_type : null, t.size_plan, t.exit_plan ? S.exit(t.exit_plan) : null].filter(Boolean).join(" · ");
 }
 
 /** A signal in the dialog or on the asset page (rev 2 7.4): the title line (ticker, name, date), one fact (the
@@ -580,12 +584,12 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, su
     if (undoSettled(res)) setLockKey(null);
     const msg = undoMessage(res, what);
     if (undoSettled(res)) ctx.onChanged();
-    if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+    if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: C.undo, onClick: retry } : undefined);
   };
   const offerUndo = (decisionId: number, text: string, what: string) => {
     const u = undoFor(decisionId, Date.now(), () => deleteDecision(ctx.slug, decisionId));
     const retry = () => { void runUndo(u, what, retry); };
-    toast(text, 10000, { label: "Cofnij", onClick: retry });
+    toast(text, 10000, { label: C.undo, onClick: retry });
   };
   const decide = (input: DecisionInput, label: string) => locked ? undefined : flight.run(async () => {
     try {
@@ -593,8 +597,8 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, su
       setLockKey(stateKey);
       onToggle(false);
       ctx.onChanged();
-      offerUndo(r.decision.id, `Zapisano decyzję · ${label.replace("decyzja: ", "")}`, "decyzja");
-    } catch (e) { toast(`Nie zapisano decyzji: ${errorText(e)}`, 5000); }
+      offerUndo(r.decision.id, S.decisionSaved(tagOf(label)), S.whatDecision);
+    } catch (e) { toast(S.decisionFailedErr(errorText(e)), 5000); }
   });
   const ackNow = async (reason?: string) => {
     try {
@@ -602,8 +606,8 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, su
       setLockKey(stateKey);
       onToggle(false);
       ctx.onChanged();
-      offerUndo(r.decision.id, "Potwierdzone bez zmian", "potwierdzenie");
-    } catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 5000); }
+      offerUndo(r.decision.id, S.ackDone, S.whatAck);
+    } catch (e) { toast(S.notSavedErr(errorText(e)), 5000); }
   };
   const ack = (reason?: string) => { if (!locked) void flight.run(() => ackNow(reason)); };
   const snooze = (until: string) => locked ? undefined : flight.run(async () => {
@@ -612,17 +616,17 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, su
       setLockKey(stateKey);
       ctx.onChanged();
       const u = makeUndo(Date.now(), () => postSnooze(ctx.slug, s.id, null));
-      const retry = () => { void runUndo(u, "odłożenie", retry); };
-      toast(`Odłożone do ${dm(until)}`, 10000, { label: "Cofnij", onClick: retry });
+      const retry = () => { void runUndo(u, S.whatSnooze, retry); };
+      toast(S.snoozedTo(dm(until)), 10000, { label: C.undo, onClick: retry });
     } catch (e) {
       // Older servers without the snooze endpoint: the v1 behaviour (acknowledge with a note).
-      if (e instanceof ApiError && e.status === 404 && /not found/i.test(e.message)) await ackNow(`odłożone do ${until}`);
-      else toast(`Nie odłożono: ${errorText(e)}`, 5000);
+      if (e instanceof ApiError && e.status === 404 && /not found/i.test(e.message)) await ackNow(S.snoozedReason(until));
+      else toast(S.snoozeFailed(errorText(e)), 5000);
     }
   });
   const rowUndo = decided && canUndo(decided) ? () => {
     const u = undoFor(decided.id, parseServerTime(decided.created_at), () => deleteDecision(ctx.slug, decided.id));
-    const retry = () => { void runUndo(u, "decyzja", retry); };
+    const retry = () => { void runUndo(u, S.whatDecision, retry); };
     retry();
   } : null;
   // Esc or `Zwiń` in the form: back to the row's first action (keeps the keyboard in place).
@@ -632,17 +636,17 @@ export function SignalItem({ s, ctx, thesis, open, cursor, primary, onToggle, su
     requestAnimationFrame(() => row.current?.querySelector<HTMLElement>(".act button:not([disabled])")?.focus());
   };
   const fact = signalFact(s);
-  const metric = decided ? <><span className="tag solid pos">{decisionTag(decided)}</span>{fact.bold ? <> · {fact.bold}</> : null}{s.kind === "position_concentration" || s.kind === "allocation_drift" ? " · wraca w podsumowaniu" : ""}
-    {rowUndo && <> · <button className="lnk" style={{ fontSize: 12 }} onClick={rowUndo}>cofnij</button></>}</>
-    : snoozed ? <><span className="tag solid pos">odłożono{s.snoozed_until ? ` do ${dm(s.snoozed_until)}` : ""}</span>{fact.bold ? <> · <Fact1 f={fact} /></> : null}</>
+  const metric = decided ? <><span className="tag solid pos">{decisionTag(decided)}</span>{fact.bold ? <> · {fact.bold}</> : null}{s.kind === "position_concentration" || s.kind === "allocation_drift" ? S.backInSummary : ""}
+    {rowUndo && <> · <button className="lnk" style={{ fontSize: 12 }} onClick={rowUndo}>{S.undo}</button></>}</>
+    : snoozed ? <><span className="tag solid pos">{S.snoozedTag}{s.snoozed_until ? ` ${S.toDate(dm(s.snoozed_until))}` : ""}</span>{fact.bold ? <> · <Fact1 f={fact} /></> : null}</>
     : <Fact1 f={fact} />;
   const form = <DecisionForm s={s} ctx={ctx} pending={busy} onCollapse={collapse} onDecide={decide} onAck={ack} />;
-  const snoozeBtn = s.kind === "contribution_gap" && <button className="btn sm" disabled={busy} onClick={() => snooze(later)}>Odłóż do {dm(later)}</button>;
-  const noteBtn = research && ctx.onOpenNote && <button className="lnk" style={{ fontSize: 12 }} onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.segment === "string" ? s.payload.segment : null)}>notatka</button>;
+  const snoozeBtn = s.kind === "contribution_gap" && <button className="btn sm" disabled={busy} onClick={() => snooze(later)}>{S.snoozeTo(dm(later))}</button>;
+  const noteBtn = research && ctx.onOpenNote && <button className="lnk" style={{ fontSize: 12 }} onClick={() => ctx.onOpenNote!(s.instrument_id, noteId, typeof s.payload.segment === "string" ? s.payload.segment : null)}>{S.noteLink}</button>;
   const actions = !quiet && (grouped ? ((snoozeBtn || noteBtn) && <div className="act">{snoozeBtn}{noteBtn}</div>) : open ? form : (
     <div className="act">
-      <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)}>Zanotuj decyzję</button>
-      <button className="btn sm" disabled={busy} onClick={() => ack()}>Potwierdź</button>
+      <button className={`btn sm ${primary ? "primary" : ""}`} onClick={() => onToggle(true)}>{S.recordDecision}</button>
+      <button className="btn sm" disabled={busy} onClick={() => ack()}>{S.ack}</button>
       {snoozeBtn}
       {noteBtn}
     </div>
@@ -730,37 +734,37 @@ export function DecisionForm({ s = null, instrumentId = null, ctx, pending, hide
   const save = async () => {
     setBusy(true);
     const input: DecisionInput = { action: ACTION[act], reason: reason.trim() || null, ...(trade && pos ? { quantity: qn, price: pn, currency, account_id: acc } : {}) };
-    try { await onDecide(input, decisionTag({ action: ACTION[act], quantity: trade ? qn : null }) ?? "decyzja"); } finally { setBusy(false); }
+    try { await onDecide(input, decisionTag({ action: ACTION[act], quantity: trade ? qn : null }) ?? S.whatDecision); } finally { setBusy(false); }
   };
   return (
     <div className="decide" ref={ref} data-esc-local onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCollapse(); } }}>
-      <div className="fr"><label>Decyzja</label>
-        <Seg<Act> label="Decyzja" items={[["Nic", "none"], ["Dokupuję", "buy"], ["Sprzedaję", "sell"], ["Odkładam", "later"]]} value={act} onChange={setAct} /></div>
+      <div className="fr"><label>{S.decision}</label>
+        <Seg<Act> label={S.decision} items={[[S.actNone, "none"], [S.actBuy, "buy"], [S.actSell, "sell"], [S.actLater, "later"]]} value={act} onChange={setAct} /></div>
       {instId != null && ctx.researchEffect?.(instId) && <div className="eff">{ctx.researchEffect(instId)}</div>}
       {trade && pos && (
         <>
           <div className="fr">
-            <label htmlFor={`dq-${fid}`}>Ilość</label>
+            <label htmlFor={`dq-${fid}`}>{S.quantity}</label>
             <input id={`dq-${fid}`} className="num" inputMode="decimal" value={q} onChange={(e) => setQ(e.target.value)} />
-            <label htmlFor={`dp-${fid}`}>Cena</label>
+            <label htmlFor={`dp-${fid}`}>{S.price}</label>
             <input id={`dp-${fid}`} className="num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
-            <label htmlFor={`da-${fid}`}>Rachunek</label>
+            <label htmlFor={`da-${fid}`}>{S.accountLabel}</label>
             <select id={`da-${fid}`} value={acc ?? ""} onChange={(e) => setAcc(Number(e.target.value))}>
               {(held.length ? ctx.accounts.filter((a) => held.includes(a.id)) : ctx.accounts).map((a) => <option key={a.id} value={a.id}>{accountLabel(a, ctx.accounts)}</option>)}
             </select>
           </div>
           {effect && <div className="eff">{effect}</div>}
-          {pos.quantity > 0 && act === "sell" && qn != null && qn > pos.quantity && <div className="eff warn">Masz {qty(pos.quantity)} szt.</div>}
+          {pos.quantity > 0 && act === "sell" && qn != null && qn > pos.quantity && <div className="eff warn">{S.youHave(qty(pos.quantity))}</div>}
         </>
       )}
-      <textarea rows={2} placeholder="Dlaczego?" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Powód decyzji" />
+      <textarea rows={2} placeholder={S.why} value={reason} onChange={(e) => setReason(e.target.value)} aria-label={S.reasonAria} />
       <div className="fr">
-        <button className="btn primary" onClick={save} disabled={invalid || busy || pending}>Zapisz decyzję</button>
-        {!hideAck && onAck && <button className="btn" disabled={busy || pending} onClick={() => onAck(reason.trim() || undefined)}>Potwierdź</button>}
+        <button className="btn primary" onClick={save} disabled={invalid || busy || pending}>{S.saveDecision}</button>
+        {!hideAck && onAck && <button className="btn" disabled={busy || pending} onClick={() => onAck(reason.trim() || undefined)}>{S.ack}</button>}
         <span style={{ flex: 1 }} />
-        <button className="lnk" onClick={onCollapse}>Zwiń</button>
+        <button className="lnk" onClick={onCollapse}>{S.collapse}</button>
       </div>
-      {trade && pos && <div className="eff">Aplikacja nie składa zleceń: transakcję zapiszesz po wykonaniu.</div>}
+      {trade && pos && <div className="eff">{S.noOrders}</div>}
     </div>
   );
 }
@@ -771,6 +775,7 @@ export function DecisionForm({ s = null, instrumentId = null, ctx, pending, hide
 /** The home's fan-out for servers without position decisions: the decision on the primary signal, `decyzja:
  * <tag>` acknowledgements on the rest (one journal act, n rows; one undo deletes them all). */
 export function fanOutSteps(slug: string, primary: SignalV2, rest: SignalV2[], input: DecisionInput, tag: string): (() => Promise<{ decision: { id: number } }>)[] {
+  // `decyzja: ` is a stored marker (v2/logic.ts folds these acknowledgements into the decision): never localized.
   return [() => postDecision(slug, primary.id, input), ...rest.map((x) => () => postAcknowledge(slug, x.id, `decyzja: ${tag}`))];
 }
 
@@ -788,10 +793,10 @@ function useUndoToast(ctx: Pick<SignalsCtx, "onChanged">, onUndone?: () => void)
       void u.undo().then((res) => {
         if (undoSettled(res)) { onUndone?.(); ctx.onChanged(); }
         const msg = undoMessage(res, what);
-        if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+        if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: C.undo, onClick: retry } : undefined);
       });
     };
-    toast(text, 10000, { label: "Cofnij", onClick: retry });
+    toast(text, 10000, { label: C.undo, onClick: retry });
   };
 }
 
@@ -806,7 +811,7 @@ export function useDecisionWriter(ctx: SignalsCtx) {
   const offer = useUndoToast(ctx);
   const save = async (instrumentId: number, signals: SignalV2[], input: DecisionInput, label: string): Promise<"saved" | "close" | "stay"> => {
     const r = await flight.run(async () => {
-      const tag = label.replace("decyzja: ", "");
+      const tag = tagOf(label);
       const out = await writePositionDecision({
         legacy: legacyServers.has(ctx.slug),
         post: () => postPositionDecision(ctx.slug, instrumentId, { ...input, signal_ids: signals.map((x) => x.id) }),
@@ -815,13 +820,13 @@ export function useDecisionWriter(ctx: SignalsCtx) {
       });
       if (out.legacy) legacyServers.add(ctx.slug);
       switch (out.kind) {
-        case "saved": ctx.onChanged(); offer(out.ids, `Zapisano decyzję · ${tag}`, "decyzja", ctx.slug); return "saved" as const;
-        case "partial": ctx.onChanged(); offer(out.ids, `Nie zapisano decyzji: ${errorText(out.error)}`, "decyzja", ctx.slug); return "saved" as const;
-        case "needs-signal": toast("Nie zapisano: starszy serwer wymaga otwartego sygnału", 5000); return "close" as const;
+        case "saved": ctx.onChanged(); offer(out.ids, S.decisionSaved(tag), S.whatDecision, ctx.slug); return "saved" as const;
+        case "partial": ctx.onChanged(); offer(out.ids, S.decisionFailedErr(errorText(out.error)), S.whatDecision, ctx.slug); return "saved" as const;
+        case "needs-signal": toast(S.needsSignal, 5000); return "close" as const;
         default: {
           const stale = staleSignalText(out.error);
           // The open signals changed since the list loaded: reload them (the dialog's list refreshes) and say so.
-          if (stale) { ctx.onChanged(); toast(stale, 5000); } else toast(`Nie zapisano decyzji: ${errorText(out.error)}`, 5000);
+          if (stale) { ctx.onChanged(); toast(stale, 5000); } else toast(S.decisionFailedErr(errorText(out.error)), 5000);
           return "stay" as const;
         }
       }
@@ -846,8 +851,8 @@ export function useSignalAck(ctx: SignalsCtx) {
         const r = await postAcknowledge(ctx.slug, s.id);
         setLocks((l) => ({ ...l, [s.id]: signalStateKey(s) }));
         ctx.onChanged();
-        offer([r.decision.id], "Potwierdzone bez zmian", "potwierdzenie", ctx.slug);
-      } catch (e) { toast(`Nie zapisano: ${errorText(e)}`, 5000); }
+        offer([r.decision.id], S.ackDone, S.whatAck, ctx.slug);
+      } catch (e) { toast(S.notSavedErr(errorText(e)), 5000); }
     });
   };
   return { ack, busy };

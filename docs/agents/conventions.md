@@ -18,18 +18,20 @@ Every change to `src/`, `tests/`, `frontend/`, `scripts/` or the docs.
 
 1. **The codebase is English** (comments, docstrings, CLI help, docs). Why: it is code language for
    developers.
-2. **Two things are intentionally Polish and must stay Polish** - they are domain data, not code
-   language:
-   - **Dashboard UI strings** in `frontend/` (tab names, buttons, labels) and the category display
-     labels. Why: the tool targets Polish-bank users.
+2. **The UI is Polish and English; matching data stays Polish.**
+   - **Every text the app shows** (dashboard copy, backend labels, notifications) exists in both
+     languages: frontend `*.strings.ts` catalogs, backend `core/i18n.py` `tr(pl=..., en=...)`. Why: the
+     tool targets Polish-bank users, who do not all use the app in Polish. Contract and glossary:
+     [localization.md](localization.md).
    - **Matching data**: CSV column headers detected in the parsers (`#Data operacji`,
      `Rachunek źródłowy`, ...), the ~420 PL keyword rules in `modules/budget/categorize/taxonomy.py`,
      the installment phrases in `modules/loans/patterns.py`, the patterns in
      `engine.py`/`reclassify.py`, and the LLM prompts in `local_llm.py`/`reclassify.py`. Why: they are
      matched against Polish bank transaction text - translating them breaks categorization on real
      data.
-3. **Rule of thumb:** if a string is **explanation for a developer** -> English. If it is **data**
-   (matched, shown to the user, or sent to the LLM as a prompt/enum) -> leave it Polish.
+3. **Rule of thumb:** if a string is **explanation for a developer** -> English. If it is **shown to
+   the user** -> both languages through a catalog / `tr()`. If it is **data** (matched, or sent to the
+   LLM as a prompt/enum) -> leave it Polish.
 4. **Never the em dash; use a hyphen** (code, UI copy, docs). Product names (Claude Code, MCP, Enable
    Banking) stay as they are.
 
@@ -61,7 +63,7 @@ Every change to `src/`, `tests/`, `frontend/`, `scripts/` or the docs.
 9. Helpers: `conftest.seed_demo(session, profile_id=...)` seeds a synthetic household into any
    profile; `tests/upstream_db.py` builds an upstream-shaped database for migration tests.
 
-### Frontend copy (UI text is Polish, minimal and glanceable)
+### Frontend copy (UI text is minimal and glanceable, in Polish and English)
 
 Before adding or changing a string:
 
@@ -69,7 +71,8 @@ Before adding or changing a string:
     paragraph under a heading; context needed less than monthly goes into a tooltip (`title` on the
     label, switch or button), never an inline `<p className="muted">`.
 11. Labels are 1-3 word nouns (table headers one word where possible); buttons are 1-2 word verbs
-    (Zapisz, Importuj, Cofnij, Utwórz); the object is implied by the card.
+    (Zapisz / Save, Importuj / Import, Cofnij / Undo); the object is implied by the card. The English
+    copy follows the same rules ([localization.md](localization.md)).
 12. Empty state = one line (a state, not an apology) + one action button. Errors say what to do in the
     same line: "Nie udało się X: {detail}" or "{problem}. {action}." (no "Próbuję ponownie", no
     apology).

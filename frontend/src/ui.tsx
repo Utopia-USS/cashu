@@ -1,6 +1,8 @@
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { attachModal, FOCUSABLE } from "./modal";
+import { S } from "./ui.strings.ts";
+import { C } from "./common.strings.ts";
 import { dropToast, MIN_ACTION_MS, pushToast, type ToastAction, type ToastItem, toastTimers } from "./toasts";
 
 export function Skeleton({ w = "100%", h = 14, r = 8, style }: {
@@ -120,7 +122,7 @@ export function Notice({ tone, action, children, style }: {
 /** Horizontal wizard stepper: steps before `current` are done, `current` is on (0-based). */
 export function Stepper({ steps, current }: { steps: string[]; current: number }) {
   return (
-    <ol className="steps" aria-label="Kroki">
+    <ol className="steps" aria-label={S.steps}>
       {steps.map((s, i) => (
         <Fragment key={s}>
           {i > 0 && <li className="ln" aria-hidden />}
@@ -146,9 +148,9 @@ export function SetupSteps({ steps, compact }: { steps: SetupStepItem[]; compact
     <div className={`setup-steps${compact ? " compact" : ""}`}>
       {steps.map((s, i) => (
         <div key={s.key} className={`ss ${s.status}`}>
-          <b className="n" aria-label={s.status === "done" ? "zrobione" : `krok ${i + 1}`}>{s.status === "done" ? "✓" : i + 1}</b>
+          <b className="n" aria-label={s.status === "done" ? S.stepDone : S.stepN(i + 1)}>{s.status === "done" ? "✓" : i + 1}</b>
           <div style={{ minWidth: 0 }}>
-            <div className="t">{s.title} {s.tag ?? (s.optional && s.status !== "done" ? <Tag>opcjonalnie</Tag> : null)}</div>
+            <div className="t">{s.title} {s.tag ?? (s.optional && s.status !== "done" ? <Tag>{S.optional}</Tag> : null)}</div>
             {s.body}
             {s.hint && <div className="h">{s.hint}</div>}
           </div>
@@ -271,7 +273,7 @@ export function Code({ cmd, multiline }: { cmd: string; multiline?: boolean }) {
   return (
     <div className={`code ${multiline ? "multi" : ""}`}>
       <span>{cmd}</span>
-      <button className="btn" onClick={() => copyText(cmd).then(() => toast("Skopiowano", 1500))}>Kopiuj</button>
+      <button className="btn" onClick={() => copyText(cmd).then(() => toast(S.copied, 1500))}>{S.copy}</button>
     </div>
   );
 }
@@ -329,7 +331,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <ToastCloseCtx.Provider value={close}>
       {children}
       {items.length > 0 && (
-        <div className="toasts" role="region" aria-label="Powiadomienia"
+        <div className="toasts" role="region" aria-label={S.notifications}
           onMouseEnter={() => { hover.current = true; sync(); }} onMouseLeave={() => { hover.current = false; sync(); }}
           onFocus={() => { focus.current = true; sync(); }}
           onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { focus.current = false; sync(); } }}>
@@ -338,7 +340,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <div className="toast" key={t.id}>
                 <span className="txt">{t.text}</span>
                 {t.action && <button className="btn" onClick={() => { close(t.id); t.action!.onClick(); }}>{t.action.label}</button>}
-                {t.action && <button className="icon-btn" aria-label="Zamknij" onClick={() => close(t.id)}>✕</button>}
+                {t.action && <button className="icon-btn" aria-label={C.close} onClick={() => close(t.id)}>✕</button>}
               </div>
             ))}
           </div>
@@ -352,7 +354,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 /** Label/value grid of a compact overview card (max ~3 rows). `null` facts render a skeleton. */
 export function FactList({ facts }: { facts: [ReactNode, ReactNode, string?][] | null }) {
   if (!facts) return <div className="mf"><Skeleton w="70%" h={12} /><Skeleton w={70} h={12} /><Skeleton w="60%" h={12} /><Skeleton w={60} h={12} /></div>;
-  if (!facts.length) return <div className="muted" style={{ fontSize: 13 }}>Brak danych.</div>;
+  if (!facts.length) return <div className="muted" style={{ fontSize: 13 }}>{S.noData}</div>;
   return (
     <div className="mf">
       {facts.map(([k, v, cls], i) => (
@@ -394,7 +396,7 @@ export function Drawer({ open, title, tag, width = 520, footer, onClose, childre
           <strong>{title}</strong>
           {tag}
           <span style={{ flex: 1 }} />
-          <button className="icon-btn" title="Zamknij (Esc)" aria-label="Zamknij" onClick={onClose}>✕</button>
+          <button className="icon-btn" title={S.closeEsc} aria-label={C.close} onClick={onClose}>✕</button>
         </div>
         <div className="db">{children}</div>
         {footer && <div className="df">{footer}</div>}

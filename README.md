@@ -35,9 +35,10 @@ theses and a watchlist, never orders, never price predictions.
 > environment or `.env`) to turn it off; see [Updates and versions](#updates-and-versions).
 
 > 🌐 **Language.** Code, comments, and docs are in English. The **dashboard UI is
-> in Polish** and so are the categorization keywords and LLM prompts - the tool
-> targets customers of Polish banks, and those strings are matched against Polish
-> transaction text.
+> in Polish and English**: it follows the system language (English when it is
+> neither) and can be pinned in Settings. The categorization keywords and LLM
+> prompts stay Polish - the tool targets customers of Polish banks, and those
+> strings are matched against Polish transaction text.
 
 Stack: Python 3.12+ · SQLModel/SQLite · Typer (CLI) · FastAPI (API) ·
 React + Vite + TypeScript + Recharts (dashboard).
@@ -209,7 +210,7 @@ adds the request log and the WebKit inspector). A Windows build is planned: see
 The dashboard shows **Przegląd** (overview) plus a tab per enabled module:
 **Wydatki · Przepływy · Subskrypcje** (budget), **Kredyty** (loans) and
 **Inwestycje** (investments), with **Ustawienia** (settings) on the right. The UI is
-in Polish.
+in Polish or English (Settings › App › Language).
 
 ---
 

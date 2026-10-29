@@ -15,6 +15,8 @@ MODULE = ModuleSpec(
     id="loans",
     name="Kredyty",
     description="Hipoteka i kredyty: harmonogram, odsetki, saldo w czasie",
+    name_en="Loans",
+    description_en="Mortgage and loans: repayment schedule, interest, balance over time",
     tables=(Loan,),
     router=api.router,
     cli=cli.register,
@@ -22,14 +24,18 @@ MODULE = ModuleSpec(
     cli_help="Loans: amortization schedules for mortgages and other loans.",
     networth=LoansContributor(),
     networth_buckets=(
-        NetWorthBucket("mortgage", "Hipoteka", 30, liability=True),
-        NetWorthBucket("loan", "Kredyt", 40, liability=True),
+        NetWorthBucket("mortgage", "Hipoteka", 30, liability=True, label_en="Mortgage"),
+        NetWorthBucket("loan", "Kredyt", 40, liability=True, label_en="Loan"),
     ),
     account_types=(
         AccountTypeInfo(
-            "mortgage", "loans", "Hipoteka", sign="liability", liquid=False, bucket="mortgage"
+            "mortgage", "loans", "Hipoteka", sign="liability", liquid=False, bucket="mortgage",
+            label_en="Mortgage",
         ),
-        AccountTypeInfo("loan", "loans", "Pożyczki", sign="liability", liquid=False, bucket="loan"),
+        AccountTypeInfo(
+            "loan", "loans", "Pożyczki", sign="liability", liquid=False, bucket="loan",
+            label_en="Loans",
+        ),
     ),
     # Installments are loan repayments, never subscriptions: phrases for every
     # profile, plus each loan's own lender account / title phrase.

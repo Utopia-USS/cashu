@@ -14,6 +14,8 @@ import { deleteWatch, dropInv, invKey, postWatch } from "../api";
 import { acceptCandidate, dismissNote, getResearch, getResearchRuns, getMacro, getResearchSummary, getSegments, getWorkspace, restoreNote, unacceptCandidate } from "./api";
 import { isRestorable, latestRun, noteSubject } from "./logic";
 import type { ResearchNote, ResearchRun, SegmentWindow } from "./types";
+import { C } from "../../../../common.strings.ts";
+import { S } from "./data.strings.ts";
 
 export const POLL_MS = 30000;
 
@@ -130,10 +132,10 @@ export function useResearchActions(slug: string, onChanged: () => void) {
       void u.undo().then((res) => {
         if (undoSettled(res)) { noteUndos.delete(key); bumpResearch(slug); onChanged(); }
         const msg = undoMessage(res, what);
-        if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: "Cofnij", onClick: retry } : undefined);
+        if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: C.undo, onClick: retry } : undefined);
       });
     };
-    toast(text, 10000, { label: "Cofnij", onClick: retry });
+    toast(text, 10000, { label: C.undo, onClick: retry });
   };
 
   const dismiss = async (n: ResearchNote) => {
@@ -143,14 +145,14 @@ export function useResearchActions(slug: string, onChanged: () => void) {
       bumpResearch(slug);
       onChanged();
       const cand = n.kind === "candidate";
-      offer(`d:${n.id}:${Date.now()}`, cand ? `Odrzucono kandydata: ${noteSubject(n).name}` : "Notatka odrzucona", Date.now(), () => restoreNote(slug, n.id), cand ? "odrzucenie kandydata" : "odrzucenie notatki");
-    } catch (e) { toast(`Nie odrzucono: ${errorText(e)}`, 5000); } finally { setBusy(null); }
+      offer(`d:${n.id}:${Date.now()}`, cand ? S.candidateDismissed(noteSubject(n).name) : S.noteDismissed, Date.now(), () => restoreNote(slug, n.id), cand ? S.whatCandidateDismiss : S.whatNoteDismiss);
+    } catch (e) { toast(S.notDismissed(errorText(e)), 5000); } finally { setBusy(null); }
   };
 
   const restore = async (n: ResearchNote) => {
     setBusy(n.id);
-    try { await restoreNote(slug, n.id); bumpResearch(slug); onChanged(); toast(n.kind === "candidate" ? "Przywrócono kandydata" : "Przywrócono notatkę", 2500); }
-    catch (e) { toast(`Nie przywrócono: ${errorText(e)}`, 5000); } finally { setBusy(null); }
+    try { await restoreNote(slug, n.id); bumpResearch(slug); onChanged(); toast(n.kind === "candidate" ? S.candidateRestored : S.noteRestored, 2500); }
+    catch (e) { toast(S.notRestored(errorText(e)), 5000); } finally { setBusy(null); }
   };
 
   /** `Obserwuj`: watchlist row + draft thesis in one call; servers without it get a plain watchlist row. */
@@ -164,13 +166,13 @@ export function useResearchActions(slug: string, onChanged: () => void) {
         undo = () => unacceptCandidate(slug, n.id);
       } catch (e) {
         if (!isMissingRoute(e)) throw e;
-        const w = await postWatch(slug, { ...(n.instrument_id != null ? { instrument_id: n.instrument_id } : { symbol_or_isin: n.candidate?.symbol ?? n.instrument?.symbol ?? "" }), note: `kandydat: ${n.title}` });
+        const w = await postWatch(slug, { ...(n.instrument_id != null ? { instrument_id: n.instrument_id } : { symbol_or_isin: n.candidate?.symbol ?? n.instrument?.symbol ?? "" }), note: S.candidateNote(n.title) });
         undo = () => deleteWatch(slug, w.id);
       }
       bumpResearch(slug);
       onChanged();
-      offer(`w:${n.id}:${Date.now()}`, `Dodano do obserwowanych: ${name}`, Date.now(), undo, "obserwowanie");
-    } catch (e) { toast(`Nie dodano do obserwowanych: ${errorText(e)}`, 5000); } finally { setBusy(null); }
+      offer(`w:${n.id}:${Date.now()}`, S.watched(name), Date.now(), undo, S.whatWatch);
+    } catch (e) { toast(S.notWatched(errorText(e)), 5000); } finally { setBusy(null); }
   };
 
   return { dismiss, restore, watch, busy };

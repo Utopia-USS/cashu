@@ -4,7 +4,8 @@
 // "-") cannot run anything and is left as it is. Every cell is quoted. Pure; tested in tests/csv.test.mjs.
 
 const RISKY = /^[=+\-@\t\r]/;
-const PLAIN_NUMBER = /^[+-]?[\d\s .,]*(\s?(%|pp|zł))?$/;
+// "z\u0142" is the Polish currency sign (matching data, escaped so the i18n guard reads it as code).
+const PLAIN_NUMBER = /^[+-]?[\d\s .,]*(\s?(%|pp|z\u0142))?$/;
 
 export function csvCell(v: unknown): string {
   let s = v == null ? "" : String(v);

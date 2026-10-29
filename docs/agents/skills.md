@@ -22,9 +22,10 @@ claude mcp add cashu-<slug> -- cashu mcp --profile <slug>   # once per profile
 | `/budget-setup` | ONBOARDING as a dialogue: banks, CSV vs Open Banking, categorization backend, first categorization pass |
 | `/assets-setup` | home, car (depreciation curve) and other manually valued assets |
 | `/loans-setup` | mortgages and loans, installment recognition, balances from the bank |
-| `/investments-setup` | strategy interview (goals, risk, history retrospective, strategy) and weekly check-ins |
+| `/investments-setup` | strategy interview (goals, risk, history retrospective, strategy) and check-ins against the strategy |
 | `/import-builder` | importer for an unsupported broker export or bank statement: preferably a connector (`docs/connectors.md`) the app runs after the owner approves it in Ustawienia > Konektory; else a one-off converter the agent runs, or a generic CSV mapping |
 | `/extension-builder` | one custom rule (expression language) with a backtest on the profile's history |
+| `/review` | the periodic review deck in chat, the same cards as the app (`review_context` + the read tools), the owner's decisions, `mark_review_done` with the agenda the next research run reads (`research_context.owner_review`); rhythm, name and cards live in strategy.yaml `review:` |
 | `/market-research` | weekly research as a local Saturday routine in the profile's workspace (or on demand for one instrument or theme): dated facts, community sentiment flagged as noise and trend data as Polish notes with sources linked to positions and theses; each topic thesis carries one current market view kept by the agent (`set_topic_market_view`: the market now and a market / adoption / demand outlook resting on a sourced quantitative industry estimate (who, how much, horizon; 1-6 `sources` required, stored in `inv_topic_theses.view_sources`, migration 0025), shown as `Ocena teraz` / `Perspektywa` with source links under the thesis, owner-editable via `PUT /investments/topics/{segment}/view`); institutions' forecasts of macro / market trends may be cited as estimates in briefs, segment notes and views; never recommendations, security / index price or valuation predictions, price targets or analyst ratings |
 
 ## Rules every skill follows

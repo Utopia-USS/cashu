@@ -2,7 +2,7 @@
 
 Each resolver applies the same data-quality rules as the built-in kinds: a metric whose inputs are stale,
 missing or untrustworthy resolves to :class:`Unknown` with the reason the built-in rule would give (short
-Polish text: it becomes the custom rule's skip reason, which the owner and the agent can see).
+text in the UI language: it becomes the custom rule's skip reason, which the owner and the agent can see).
 """
 
 from __future__ import annotations
@@ -12,20 +12,21 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 
+from cashu.core.i18n import tr
 from cashu.modules.investments.domain import AssetClass, BucketAllocation, days_between
 
 from ..kind import RuleContext
 from ..kinds.cash_level import cash_value
-from ..kinds.contribution_gap import NO_CONTRIBUTIONS_PLAN, last_deposit_date
+from ..kinds.contribution_gap import last_deposit_date, no_contributions_plan
 from ..kinds.drawdown_from_high import window_bars
 from ..kinds.support import (
-    NO_ALLOCATIONS,
     InstrumentPosition,
     bucket_cash_gap_problem,
     bucket_named,
     cash_history_problem,
     has_all_tags,
     no_allocation_problem,
+    no_allocations,
     portfolio_data_problem,
     portfolio_value_problem,
     positions_by_instrument,
@@ -88,7 +89,7 @@ def _cash_weight(env: MetricEnv, _: tuple) -> Value:
 
 
 def _stale_weight(env: MetricEnv, _: tuple) -> Value:
-    return _ratio(env.ctx.portfolio.stale_weight, "Udział nieaktualnych cen nieznany")
+    return _ratio(env.ctx.portfolio.stale_weight, tr(pl="Udział nieaktualnych cen nieznany", en="Stale price share unknown"))
 
 
 def _unclassified_weight(env: MetricEnv, _: tuple) -> Value:
@@ -97,9 +98,10 @@ def _unclassified_weight(env: MetricEnv, _: tuple) -> Value:
     if problem:
         return _unknown(problem)
     if not ctx.allocations:
-        return _unknown(NO_ALLOCATIONS)
+        return _unknown(no_allocations())
     return _ratio(
-        sum(h.weight or 0.0 for h in ctx.unclassified), "Udział pozycji bez koszyka nieznany"
+        sum(h.weight or 0.0 for h in ctx.unclassified),
+        tr(pl="Udział pozycji bez koszyka nieznany", en="Share of positions without a bucket unknown"),
     )
 
 
@@ -113,9 +115,9 @@ def _max_position_weight(env: MetricEnv, _: tuple) -> Value:
         position_problem = position.price_problem
         weight = position.weight
         if position_problem or weight is None:
-            return _unknown(position_problem or f"Brak wagi: {position.label}")
+            return _unknown(position_problem or _no_weight(position))
         best = max(best, weight)
-    return _ratio(best, "Waga największej pozycji nieznana")
+    return _ratio(best, tr(pl="Waga największej pozycji nieznana", en="Largest position weight unknown"))
 
 
 def _holdings_count(env: MetricEnv, _: tuple) -> Value:
@@ -125,14 +127,14 @@ def _holdings_count(env: MetricEnv, _: tuple) -> Value:
 def _days_since_last_deposit(env: MetricEnv, _: tuple) -> Value:
     last = last_deposit_date(env.ctx)
     if last is None:
-        return _unknown("Brak zapisanych wpłat")
+        return _unknown(tr(pl="Brak zapisanych wpłat", en="No contributions recorded"))
     return _count(days_between(last, env.ctx.as_of))
 
 
 def _monthly_contribution(env: MetricEnv, _: tuple) -> Value:
     plan = env.ctx.contributions
     if plan is None:
-        return _unknown(NO_CONTRIBUTIONS_PLAN)
+        return _unknown(no_contributions_plan())
     return plan.monthly_amount
 
 
@@ -145,7 +147,7 @@ def _bucket(
         if problem:
             return _unknown(problem)
     if not ctx.allocations:
-        return _unknown(NO_ALLOCATIONS)
+        return _unknown(no_allocations())
     if needs_weights:
         problem = unclassified_problem(ctx)
         if problem:
@@ -171,21 +173,31 @@ def _bucket_field(
 
 
 def _bucket_word(allocation: BucketAllocation) -> str:
-    return bucket_named("koszyka", allocation.bucket_id)
+    return bucket_named(tr(pl="koszyka", en="bucket"), allocation.bucket_id)
 
 
 def _allocation_value(allocation: BucketAllocation, field_name: str) -> Value:
+    word = _bucket_word(allocation)
     match field_name:
         case "weight":
-            return _ratio(allocation.weight, f"Waga {_bucket_word(allocation)} nieznana")
+            return _ratio(
+                allocation.weight, tr(pl=f"Waga {word} nieznana", en=f"Weight of the {word} unknown")
+            )
         case "target":
-            return _ratio(allocation.target, f"Cel {_bucket_word(allocation)} nieznany")
+            return _ratio(
+                allocation.target, tr(pl=f"Cel {word} nieznany", en=f"Target of the {word} unknown")
+            )
         case "drift_pp":
-            return _ratio(allocation.drift_pp, f"Dryf {_bucket_word(allocation)} nieznany")
+            return _ratio(
+                allocation.drift_pp, tr(pl=f"Dryf {word} nieznany", en=f"Drift of the {word} unknown")
+            )
         case "drift_rel":
             return _ratio(
                 allocation.drift_rel,
-                f"Względny dryf {_bucket_word(allocation)} nieokreślony (cel 0)",
+                tr(
+                    pl=f"Względny dryf {word} nieokreślony (cel 0)",
+                    en=f"Relative drift of the {word} undefined (target 0)",
+                ),
             )
         case "value":
             return allocation.value_base
@@ -199,7 +211,7 @@ def _tagged_weight(env: MetricEnv, args: tuple) -> Value:
     if problem:
         return _unknown(problem)
     weight, _labels = tagged_weight(ctx, tuple(str(arg) for arg in args))
-    return _ratio(weight, "Waga tagów nieznana")
+    return _ratio(weight, tr(pl="Waga tagów nieznana", en="Tag weight unknown"))
 
 
 def _asset_class_weight(env: MetricEnv, args: tuple) -> Value:
@@ -214,7 +226,13 @@ def _asset_class_weight(env: MetricEnv, args: tuple) -> Value:
     weight = sum(
         h.weight or 0.0 for h in ctx.portfolio.valued if h.instrument.asset_class == asset_class
     )
-    return _ratio(weight, f"Waga klasy aktywów {asset_class} nieznana")
+    return _ratio(
+        weight,
+        tr(
+            pl=f"Waga klasy aktywów {asset_class} nieznana",
+            en=f"Weight of asset class {asset_class} unknown",
+        ),
+    )
 
 
 # --- instrument ---------------------------------------------------------------------------------
@@ -240,7 +258,12 @@ def _currency(env: MetricEnv, _: tuple) -> Value:
 def _mic(env: MetricEnv, _: tuple) -> Value:
     position = _position(env)
     mic = position.instrument.mic
-    return mic.upper() if mic else _unknown(f"{position.label}: brak kodu giełdy (mic)")
+    return mic.upper() if mic else _unknown(
+        tr(
+            pl=f"{position.label}: brak kodu giełdy (mic)",
+            en=f"{position.label}: no exchange code (mic)",
+        )
+    )
 
 
 def _weight(env: MetricEnv, args: tuple) -> Value:
@@ -256,7 +279,7 @@ def _weight(env: MetricEnv, args: tuple) -> Value:
     problem = portfolio_data_problem(env.ctx) or position.price_problem
     if problem:
         return _unknown(problem)
-    return _ratio(position.weight, f"Brak wagi: {position.label}")
+    return _ratio(position.weight, _no_weight(position))
 
 
 def _market_value(env: MetricEnv, _: tuple) -> Value:
@@ -264,7 +287,7 @@ def _market_value(env: MetricEnv, _: tuple) -> Value:
     problem = position.price_problem
     value = position.market_value_base
     if problem or value is None:
-        return _unknown(problem or f"Brak ceny: {position.label}")
+        return _unknown(problem or _no_price(position))
     return value
 
 
@@ -281,7 +304,13 @@ def _unrealized_pct(env: MetricEnv, _: tuple) -> Value:
     problem = position.manual_problem or position.price_problem or position.cost_problem
     if problem:
         return _unknown(problem)
-    return _ratio(position.unrealized_pct, f"Brak wyniku niezrealizowanego: {position.label}")
+    return _ratio(
+        position.unrealized_pct,
+        tr(
+            pl=f"Brak wyniku niezrealizowanego: {position.label}",
+            en=f"No unrealized result: {position.label}",
+        ),
+    )
 
 
 def _unrealized_value(env: MetricEnv, _: tuple) -> Value:
@@ -290,10 +319,18 @@ def _unrealized_value(env: MetricEnv, _: tuple) -> Value:
     cost = position.cost_basis_base
     problem = position.manual_problem or position.price_problem
     if problem or value is None:
-        return _unknown(problem or f"Brak ceny: {position.label}")
+        return _unknown(problem or _no_price(position))
     if cost is None:
         return _unknown(unknown_cost_problem(position.label))
     return value - cost
+
+
+def _no_weight(position: InstrumentPosition) -> str:
+    return tr(pl=f"Brak wagi: {position.label}", en=f"No weight: {position.label}")
+
+
+def _no_price(position: InstrumentPosition) -> str:
+    return tr(pl=f"Brak ceny: {position.label}", en=f"No price: {position.label}")
 
 
 def _window_metric(compute: Callable[[tuple], Decimal]) -> Callable[[MetricEnv, tuple], Value]:

@@ -7,18 +7,19 @@ import { Flows } from "./Flows";
 import { monthLabel } from "./logic";
 import { BudgetStart } from "./Start";
 import { Subscriptions } from "./Subscriptions";
+import { S } from "./index.strings.ts";
 
 // The overview's `summary.month` is in the profile's base currency (the server's budget default).
 
 export const budget: ModuleDef = {
   id: "budget",
-  name: "Budżet domowy",
-  desc: "Konta, wydatki, przepływy, subskrypcje · CSV lub Open Banking",
-  short: "Konta bankowe, wydatki po kategoriach, przepływy i subskrypcje",
+  get name() { return S.name; },
+  get desc() { return S.desc; },
+  get short() { return S.short; },
   tabs: [
-    { id: "expenses", label: "Wydatki", render: (ctx) => <Expenses categories={ctx.categories} onDataChanged={ctx.refresh} /> },
-    { id: "flows", label: "Przepływy", render: () => <Flows /> },
-    { id: "subs", label: "Subskrypcje", render: () => <Subscriptions /> },
+    { id: "expenses", get label() { return S.tabExpenses; }, render: (ctx) => <Expenses categories={ctx.categories} onDataChanged={ctx.refresh} /> },
+    { id: "flows", get label() { return S.tabFlows; }, render: () => <Flows /> },
+    { id: "subs", get label() { return S.tabSubs; }, render: () => <Subscriptions /> },
   ],
   Start: BudgetStart,
   TabAction: BudgetActions,
@@ -28,7 +29,7 @@ export const budget: ModuleDef = {
     const c = ctx.profile.base_currency;
     return (
       <Kpi
-        label={`Wynik ${m.label}`}
+        label={S.kpiResult(m.label)}
         value={cur(m.net, c)}
         hint={`+${cur(m.income, c)} / -${cur(m.expense, c)}`}
         cls={m.net < 0 ? "neg" : "pos"}
@@ -44,9 +45,9 @@ export const budget: ModuleDef = {
       .map((a) => a.as_of).filter(Boolean).sort().slice(-1)[0];
     return (
       <FactList facts={[
-        ...(m ? [[`Wydatki ${monthLabel(m.label)}`, cur(m.expense, ctx.profile.base_currency)] as [string, string]] : []),
-        ["Subskrypcje", subs?.count ? `${subs.count}${totals ? ` · ${totals} / mies` : ""}` : "brak"],
-        ["Ostatnie dane", asof ?? "-"],
+        ...(m ? [[S.factExpenses(monthLabel(m.label)), cur(m.expense, ctx.profile.base_currency)] as [string, string]] : []),
+        [S.factSubs, subs?.count ? `${subs.count}${totals ? ` · ${totals}${S.perMonth}` : ""}` : S.none],
+        [S.factLastData, asof ?? "-"],
       ]} />
     );
   },

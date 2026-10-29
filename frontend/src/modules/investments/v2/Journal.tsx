@@ -8,14 +8,16 @@ import { useAsync } from "../../../hooks";
 import { Seg, Skeleton, useToast } from "../../../ui";
 import { FootFacts, Grid, PolarityText, PolDot, Widget } from "../../../widgets";
 import { type AccountRow, type Decision, deleteDecision, getDecisions } from "../api";
-import { DECISION_ACTION, dm, money, plural, qty } from "../labels";
+import { DECISION_ACTION, dm, money, qty } from "../labels";
+import { intlLocale } from "../../../i18n.ts";
+import { S, STATUS_L } from "./Journal.strings.ts";
 import { canUndo, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
 import type { InstrumentChoice } from "./Alerts";
 import { getSignalsV2, invKey, type SignalV2 } from "./api";
 import { localDay, parseServerTime, todayLocal } from "../../../time";
 import { groupByMonth, type JournalEntry, journalEntries, type JournalFilter, journalStats, polarityOf, signalText } from "./logic";
 
-const STATUS: Record<string, string> = { active: "otwarty", acknowledged: "potwierdzony", resolved: "rozwiązany", expired: "wygasł" };
+const STATUS: Record<string, string> = STATUS_L;
 const PAGE = 40;
 
 export function Journal({ slug, instruments, accounts, initialInstrument, onBack, onOpenAsset, onChanged }: {
@@ -44,7 +46,7 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
     for (const s of sig.data ?? []) if (s.instrument_id != null && !m.has(s.instrument_id) && s.instrument_label) m.set(s.instrument_id, s.instrument_label);
     return m;
   }, [instruments, sig.data]);
-  const choices = [...names].sort((a, b) => a[1].localeCompare(b[1], "pl"));
+  const choices = [...names].sort((a, b) => a[1].localeCompare(b[1], intlLocale()));
   const signals = sig.data ?? [];
   const decisions = dec.data ?? [];
   const entries = journalEntries(signals, decisions, filter, only || null);
@@ -56,14 +58,14 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
     let u = undos.current.get(d.id);
     if (!u) { u = makeUndo(parseServerTime(d.created_at) || Date.now(), () => deleteDecision(slug, d.id)); undos.current.set(d.id, u); }
     void u.undo().then((res) => {
-      const msg = undoMessage(res, "decyzja");
+      const msg = undoMessage(res, S.decisionNoun);
       if (msg) toast(msg, res === "failed" ? 6000 : 3000);
       if (undoSettled(res)) { setNonce((n) => n + 1); onChanged(); }
     });
   };
 
-  const instLink = (id: number | null) => (id == null ? <span className="muted">portfel</span>
-    : <button className="lnk" onClick={() => onOpenAsset(id)}>{names.get(id) ?? `instrument ${id}`}</button>);
+  const instLink = (id: number | null) => (id == null ? <span className="muted">{S.portfolio}</span>
+    : <button className="lnk" onClick={() => onOpenAsset(id)}>{names.get(id) ?? S.instrument(id)}</button>);
   const sigWords = (s: SignalV2) => {
     const t = signalText(s, { names });
     return [t.lead?.replace(/ ·$/, ""), t.bold, t.tail?.replace(/^· /, "")].filter(Boolean).join(" ") || t.title;
@@ -73,18 +75,18 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
     let dot = "", head: string, main: ReactNode = null, tail: ReactNode = null;
     if (d) {
       dot = "nw";
-      head = `Decyzja: ${DECISION_ACTION[d.action] ?? d.action}`;
+      head = S.decisionHead(DECISION_ACTION[d.action] ?? d.action);
       main = <>{instLink(d.instrument_id ?? s?.instrument_id ?? null)}{d.quantity != null && (d.action === "bought" || d.action === "sold") ? ` · ${qty(d.quantity)}${d.price != null ? ` @ ${money(d.price, d.currency ?? "PLN")}` : ""}` : ""}</>;
-      tail = <>{d.reason ? ` · „${d.reason}"` : ""}{s ? ` · na sygnał: ${signalText(s, { names }).title}` : ""}
-        {canUndo(d) && <> · <button className="lnk" onClick={() => undo(d)}>cofnij</button></>}</>;
+      tail = <>{d.reason ? S.reason(d.reason) : ""}{s ? S.onSignal(signalText(s, { names }).title) : ""}
+        {canUndo(d) && <> · <button className="lnk" onClick={() => undo(d)}>{S.undoLower}</button></>}</>;
     } else if (s && e.type === "signal") {
       const pol = polarityOf(s);
       dot = pol === "positive" ? "pos" : pol === "negative" ? "neg" : "";
-      head = pol === "positive" ? "Szansa" : pol === "negative" ? "Ryzyko" : "Sygnał";
+      head = pol === "positive" ? S.opportunity : pol === "negative" ? S.risk : S.signal;
       main = <>{s.instrument_id != null ? <>{instLink(s.instrument_id)} · </> : null}{s.instrument_id != null ? sigWords(s) : signalText(s, { names }).title}</>;
-      tail = s.decisions.length ? " · z decyzją" : s.status === "active" ? " · otwarty" : null;
+      tail = s.decisions.length ? S.withDecision : s.status === "active" ? S.open : null;
     } else if (s) {
-      head = e.type === "expired" ? "Wygasł bez decyzji" : "Rozwiązany bez decyzji";
+      head = e.type === "expired" ? S.expiredNoDecision : S.resolvedNoDecision;
       main = <>{s.instrument_id != null ? <>{instLink(s.instrument_id)} · </> : null}{signalText(s, { names }).title}</>;
     } else return null;
     return (
@@ -102,24 +104,24 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
   const withAccount = sigRows.some((s) => accName(s.account_id));
   return (
     <>
-      <nav className="crumb" aria-label="Ścieżka"><button onClick={onBack}>Inwestycje</button> › <span>Dziennik decyzji</span></nav>
+      <nav className="crumb" aria-label={S.breadcrumb}><button onClick={onBack}>{S.investments}</button> › <span>{S.journal}</span></nav>
       <div className="pagehead">
-        <h2 className="ph">Dziennik decyzji</h2>
-        <Seg quiet label="Pokaż" value={filter} onChange={(v) => { setFilter(v); setShown(PAGE); }} items={[["Wszystko", "all"], ["Decyzje", "decisions"], ["Sygnały", "signals"]]} />
+        <h2 className="ph">{S.journal}</h2>
+        <Seg quiet label={S.show} value={filter} onChange={(v) => { setFilter(v); setShown(PAGE); }} items={[[S.all, "all"], [S.decisions, "decisions"], [S.signals, "signals"]]} />
         <select value={only} onChange={(e) => { setOnly(e.target.value); setShown(PAGE); }} aria-label="Instrument">
-          <option value="">wszystkie instrumenty</option>
+          <option value="">{S.allInstruments}</option>
           {choices.map(([id, label]) => <option key={id} value={String(id)}>{label}</option>)}
         </select>
         <span className="spacer" />
       </div>
-      {(sig.error || dec.error) && <div className="err">Błąd: {sig.error || dec.error}</div>}
+      {(sig.error || dec.error) && <div className="err">{S.error(String(sig.error || dec.error))}</div>}
       <Grid items={[
         {
           id: "log", span: 2, node: (
-            <Widget title="Zapis" count={loading ? undefined : entries.length || undefined} body="tight"
-              footer={<><span className="spacer" />{entries.length > shown && <button className="lnk" onClick={() => setShown((n) => n + PAGE)}>pokaż {Math.min(PAGE, entries.length - shown)} kolejnych</button>}</>}>
+            <Widget title={S.record} count={loading ? undefined : entries.length || undefined} body="tight"
+              footer={<><span className="spacer" />{entries.length > shown && <button className="lnk" onClick={() => setShown((n) => n + PAGE)}>{S.showMore(Math.min(PAGE, entries.length - shown))}</button>}</>}>
               {loading ? <Skeleton h={160} /> : !entries.length ? (
-                <div className="empty">{filter === "decisions" ? "Brak decyzji." : "Brak wpisów."}</div>
+                <div className="empty">{filter === "decisions" ? S.noDecisions : S.noEntries}</div>
               ) : (
                 <div className="tl wide">
                   {groups.map((g) => (
@@ -135,13 +137,13 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
         },
         {
           id: "stats", span: 1, node: (
-            <Widget title={`W liczbach · ${year}`} body="tight">
+            <Widget title={S.inNumbers(year)} body="tight">
               {loading ? <Skeleton h={120} /> : (
                 <div className="facts" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-                  <div className="fact"><div className="l">Decyzje</div><div className="v">{stats.decisions}</div>{acts && <div className="d">{acts}</div>}</div>
-                  <div className="fact"><div className="l">Sygnały</div><div className="v">{stats.signals}</div><div className="d">{stats.decided} z decyzją · {stats.expired} wygasło</div></div>
-                  <div className="fact"><div className="l">Czas do decyzji</div><div className="v">{stats.medianDays == null ? "-" : stats.medianDays < 1 ? "< 1 dnia" : plural(Math.round(stats.medianDays), "dzień", "dni", "dni")}</div><div className="d">mediana od sygnału</div></div>
-                  <div className="fact"><div className="l">Bez decyzji</div><div className="v">{stats.signals ? `${Math.round((stats.expired / stats.signals) * 100)} %` : "-"}</div><div className="d">sygnałów wygasło</div></div>
+                  <div className="fact"><div className="l">{S.decisions}</div><div className="v">{stats.decisions}</div>{acts && <div className="d">{acts}</div>}</div>
+                  <div className="fact"><div className="l">{S.signals}</div><div className="v">{stats.signals}</div><div className="d">{S.decidedExpired(stats.decided, stats.expired)}</div></div>
+                  <div className="fact"><div className="l">{S.timeToDecision}</div><div className="v">{stats.medianDays == null ? "-" : stats.medianDays < 1 ? S.underDay : S.days(Math.round(stats.medianDays))}</div><div className="d">{S.medianFromSignal}</div></div>
+                  <div className="fact"><div className="l">{S.noDecision}</div><div className="v">{stats.signals ? S.pctInt(Math.round((stats.expired / stats.signals) * 100)) : "-"}</div><div className="d">{S.signalsExpired}</div></div>
                 </div>
               )}
             </Widget>
@@ -149,11 +151,11 @@ export function Journal({ slug, instruments, accounts, initialInstrument, onBack
         },
         {
           id: "history", span: 3, node: (
-            <Widget title="Historia sygnałów" count={loading ? undefined : sigRows.length || undefined} body="flush tight">
-              {loading ? <div style={{ padding: "0 16px" }}><Skeleton h={100} /></div> : !sigRows.length ? <div className="empty" style={{ padding: "0 16px 12px" }}>Brak sygnałów.</div> : (
+            <Widget title={S.history} count={loading ? undefined : sigRows.length || undefined} body="flush tight">
+              {loading ? <div style={{ padding: "0 16px" }}><Skeleton h={100} /></div> : !sigRows.length ? <div className="empty" style={{ padding: "0 16px 12px" }}>{S.noSignals}</div> : (
                 <div className="scroll">
                   <table>
-                    <thead><tr><th>Od</th><th>Sygnał</th><th>Typ</th><th>Status</th><th>Decyzja</th>{withAccount && <th>Rachunek</th>}</tr></thead>
+                    <thead><tr><th>{S.thSince}</th><th>{S.thSignal}</th><th>{S.thType}</th><th>{S.thStatus}</th><th>{S.thDecision}</th>{withAccount && <th>{S.thAccount}</th>}</tr></thead>
                     <tbody>
                       {sigRows.slice(0, 200).map((s) => {
                         const last = s.decisions[s.decisions.length - 1];

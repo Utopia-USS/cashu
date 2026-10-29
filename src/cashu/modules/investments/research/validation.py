@@ -83,6 +83,7 @@ DETAILS_KEYS = (
     "scale",
     "criteria_version",
     "brief",
+    "headline",
 )
 BRIEF_HEADLINE_MIN = 8
 BRIEF_HEADLINE_MAX = 80
@@ -767,6 +768,24 @@ def _details(
                 out["event"] = event
     elif event:
         issues.add("details.event_date", "an event needs its date (YYYY-MM-DD)")
+    # The note's headline in plain words (any note): what the app shows first, the title with its figures
+    # one level deeper.
+    headline = _text(
+        issues,
+        "details.headline",
+        raw.get("headline"),
+        minimum=BRIEF_HEADLINE_MIN,
+        maximum=BRIEF_HEADLINE_MAX,
+        required=False,
+    )
+    if headline:
+        if forecast_problem(headline) or claim_problem(headline):
+            issues.add(
+                "details.headline",
+                "reads like a forecast, a call or a price target; say what happened in plain words",
+            )
+        else:
+            out["headline"] = headline
     if raw.get("brief") is not None:
         if segment is None:
             issues.add("details.brief", "only a segment or macro note carries a brief")

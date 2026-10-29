@@ -5,10 +5,10 @@
 // `Research` row of Co się zmieniło and the decision form's `research z soboty: …` line.
 import { type ReactNode, useState } from "react";
 import { Widget } from "../../../../widgets";
-import { dm, hm, plural, wdm } from "../../labels";
+import { dm, hm, wdm } from "../../labels";
 import { canRestore, useResearchActions, useSegments } from "./data";
 import {
-  BOUNDARY, countsText, HEALTH_LABEL, healthOf, latestRun, latestTitle, normHealth, nNotes, researchCommand, runMinutes, runNotes, runTag,
+  countsText, HEALTH_LABEL, healthOf, latestRun, latestTitle, normHealth, nNotes, researchCommand, runMinutes, runNotes, runTag,
 } from "./logic";
 import { CandidateCard } from "./primitives";
 import { normDigestMarket, reviewTopics, withBriefs, withNewNote } from "./segments";
@@ -17,6 +17,8 @@ import { normMacroChanges } from "./macro";
 import { NotRun, type StripCtx, ThesisRow, TopicRows, TopicsHead } from "./Strip";
 import type { DigestResearch, ResearchNote, ResearchRun, ResearchSummary } from "./types";
 import { localDay } from "../../../../time";
+import { S as L } from "./logic.strings.ts";
+import { S } from "./ReviewBlock.strings.ts";
 
 export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, onSettings }: {
   ctx: StripCtx; runs: ResearchRun[]; summary: ResearchSummary | null | undefined; candidates: ResearchNote[] | null | undefined;
@@ -32,9 +34,9 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   if (!ranInPeriod) {
     const n = last ? runNotes(last) : null;
     return (
-      <Widget title="Co mówi research" className="rsch" tags={<span className={`tag ${tag.tone || "warn"}`}>{tag.state === "stale" ? tag.text : `brak w tym tygodniu${last ? ` · ostatni ${dm(last.finished_at ?? last.started_at)}` : ""}`}</span>}
-        controls={last ? <button className="lnk" onClick={() => ctx.onOpenResearch()}>notatki z {dm(last.started_at)}{n != null ? ` (${n})` : ""}</button> : undefined} body="tight"
-        footer={<><span>rutyna: <b>sobota 07:00</b> · Claude Code · <button className="lnk" onClick={onSettings}>Ustawienia › Agent AI</button></span><span className="spacer" /><span>{BOUNDARY}</span></>}>
+      <Widget title={S.title} className="rsch" tags={<span className={`tag ${tag.tone || "warn"}`}>{tag.state === "stale" ? tag.text : S.noneThisWeek(last ? dm(last.finished_at ?? last.started_at) : null)}</span>}
+        controls={last ? <button className="lnk" onClick={() => ctx.onOpenResearch()}>{S.notesFrom(dm(last.started_at), n)}</button> : undefined} body="tight"
+        footer={<><span>{S.routine} <b>{S.saturday}</b> · Claude Code · <button className="lnk" onClick={onSettings}>{S.settings}</button></span><span className="spacer" /><span>{L.boundary}</span></>}>
         <MacroChanges changes={normMacroChanges(digest?.macro_changes)} onOpen={ctx.onOpenTopic} />
         <NotRun ctx={ctx} runs={runs} cmd={researchCommand(ctx.workspace?.path, ctx.slug)} />
       </Widget>
@@ -59,26 +61,26 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
   const sym = (id: number, fallback?: string | null) => ctx.held.get(id)?.symbol ?? fallback ?? null;
   const inst = (id: number) => ctx.held.get(id)?.inst;
   return (
-    <Widget title="Co mówi research" className="rsch" id="inv-review-research"
-      tags={<span className="tag">{wdm(run.started_at)} · {nNotes(digest?.notes_count ?? runNotes(run) ?? 0)} · od {dm(since)}</span>}
-      controls={<button className="lnk" onClick={() => ctx.onOpenResearch()}>wszystkie</button>} body="tight"
+    <Widget title={S.title} className="rsch" id="inv-review-research"
+      tags={<span className="tag">{wdm(run.started_at)} · {nNotes(digest?.notes_count ?? runNotes(run) ?? 0)} · {S.since(dm(since))}</span>}
+      controls={<button className="lnk" onClick={() => ctx.onOpenResearch()}>{S.all}</button>} body="tight"
       footer={<>
         <span>{wdm(run.started_at)} {hm(run.started_at)}{mins ? ` · ${mins} min` : ""}</span>
-        <span><b>{digest?.notes_count ?? runNotes(run) ?? 0}</b> notatek</span>
-        {typeof run.counts?.sources_checked === "number" && <span><b>{run.counts.sources_checked}</b> źródeł</span>}
-        {digest?.counts && <span><b>{digest.counts.community}</b> ze społeczności (szum)</span>}
-        {digest?.signals_count != null && <span><b>{digest.signals_count}</b> {plural(digest.signals_count, "sygnał", "sygnały", "sygnałów").replace(/^\d+ /, "")} z researchu</span>}
-        <span className="spacer" /><span>{BOUNDARY}</span>
+        <span><b>{digest?.notes_count ?? runNotes(run) ?? 0}</b> {S.notes(digest?.notes_count ?? runNotes(run) ?? 0)}</span>
+        {typeof run.counts?.sources_checked === "number" && <span><b>{run.counts.sources_checked}</b> {S.sources(run.counts.sources_checked)}</span>}
+        {digest?.counts && <span><b>{digest.counts.community}</b> {S.community}</span>}
+        {digest?.signals_count != null && <span><b>{digest.signals_count}</b> {S.signalsFromResearch(digest.signals_count)}</span>}
+        <span className="spacer" /><span>{L.boundary}</span>
       </>}>
       <div className="rsch3">
         <div>
-          <div className="rsec">Tezy <span className="cnt">· {changedRows.length ? plural(changedRows.length, "zmiana", "zmiany", "zmian") : "bez zmian"}</span></div>
+          <div className="rsec">{S.theses} <span className="cnt">· {changedRows.length ? S.nChanges(changedRows.length) : S.noChanges}</span></div>
           {changedRows.map(({ c, s }) => {
             const from = normHealth(c.from);
             const h = healthOf(s!, ctx.today);
             return (
               <ThesisRow key={c.instrument_id} s={s!} health={normHealth(c.to) ?? h} name={name(c.instrument_id, c.label ?? s!.label)} symbol={sym(c.instrument_id, c.symbol ?? s!.symbol)} inst={inst(c.instrument_id)}
-                sub={<>{from ? `była ${HEALTH_LABEL[from]}` : "nowa ocena"}{latestTitle(s!) ? ` · ${latestTitle(s!)}` : ""}</>}
+                sub={<>{from ? S.was(HEALTH_LABEL[from]) : S.newAssessment}{latestTitle(s!) ? ` · ${latestTitle(s!)}` : ""}</>}
                 right={countsText(normHealth(c.to) ?? h, c.counts ?? s!.counts, { notes: s!.notes, latestPolarity: s!.latest_polarity })}
                 onOpen={() => ctx.onOpenAsset(c.instrument_id)} />
             );
@@ -86,26 +88,26 @@ export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, 
           {rest && others.map((s) => <ThesisRow key={s.instrument_id} s={s} health={healthOf(s, ctx.today)} name={name(s.instrument_id, s.label)} symbol={sym(s.instrument_id, s.symbol)} inst={inst(s.instrument_id)} onOpen={() => ctx.onOpenAsset(s.instrument_id)} />)}
           {others.length > 0 && !rest && (
             <div className="rrow" style={{ gridTemplateColumns: "minmax(0, 1fr) auto" }}>
-              <div><div className="nm">Pozostałe {plural(others.length, "pozycja", "pozycje", "pozycji")}</div>
-                <div className="sub">{["bez zmian", noThesis.length ? `${noThesis.map((s) => sym(s.instrument_id, s.symbol) ?? name(s.instrument_id)).slice(0, 3).join(" i ")} bez tezy` : null, noNotes.length ? `${noNotes.length} bez notatek` : null].filter(Boolean).join(" · ")}</div></div>
-              <button className="lnk" onClick={() => setRest(true)}>pokaż</button>
+              <div><div className="nm">{S.otherPositions(others.length)}</div>
+                <div className="sub">{[S.noChanges, noThesis.length ? S.noThesisFor(noThesis.map((s) => sym(s.instrument_id, s.symbol) ?? name(s.instrument_id)).slice(0, 3).join(S.and)) : null, noNotes.length ? S.nNoNotes(noNotes.length) : null].filter(Boolean).join(" · ")}</div></div>
+              <button className="lnk" onClick={() => setRest(true)}>{S.show}</button>
             </div>
           )}
         </div>
         <div>
           <MacroChanges changes={normMacroChanges(digest?.macro_changes)} onOpen={ctx.onOpenTopic} />
-          <TopicsHead d={market} extra={newSeg ? plural(newSeg, "nowa notatka", "nowe notatki", "nowych notatek") : "bez nowych notatek"} />
+          <TopicsHead d={market} extra={newSeg ? S.nNewNotes(newSeg) : S.noNewNotes} />
           {topicRows.length
             ? <TopicRows compact rows={topicRows} stale={market?.stale ?? []} symOf={ctx.symOf} watched={ctx.watchedTopics} onOpen={ctx.onOpenTopic} />
-            : <div className="empty-line">Brak danych tematów w tym okresie.</div>}
+            : <div className="empty-line">{S.noTopicData}</div>}
         </div>
         <div>
-          <div className="rsec">Kandydaci <span className="cnt">· {[newC ? plural(newC, "nowy", "nowe", "nowych") : "brak nowych", dismissedC ? plural(dismissedC, "odrzucony", "odrzucone", "odrzuconych") : null].filter(Boolean).join(" · ")}</span></div>
+          <div className="rsec">{S.candidates} <span className="cnt">· {[newC ? S.nNew(newC) : S.noneNew, dismissedC ? S.nDismissed(dismissedC) : null].filter(Boolean).join(" · ")}</span></div>
           {cands.filter((n) => !n.dismissed_at).slice(0, 3).map((n) => (
             <CandidateCard key={n.id} note={n} today={ctx.today} state={ctx.watched(n)} busy={actions.busy === n.id}
               onWatch={actions.watch} onDismiss={actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)} />
           ))}
-          {!newC && <div className="empty-line">Brak nowych kandydatów</div>}
+          {!newC && <div className="empty-line">{S.noNewCandidates}</div>}
         </div>
       </div>
     </Widget>
@@ -122,15 +124,15 @@ export function researchChanges(o: { digest: DigestResearch | null | undefined; 
   const ful = d.theses_changed.filter((c) => normHealth(c.to) === "ful");
   const sup = d.theses_changed.filter((c) => normHealth(c.to) === "sup");
   const parts = [
-    weak.length ? `${plural(weak.length, "teza osłabiona", "tezy osłabione", "tez osłabionych")} (${weak.map(sym).join(", ")})` : null,
-    ful.length ? `${plural(ful.length, "spełniona", "spełnione", "spełnionych")} (${ful.map(sym).join(", ")})` : null,
-    sup.length ? `${plural(sup.length, "wzmocniona", "wzmocnione", "wzmocnionych")} (${sup.map(sym).join(", ")})` : null,
+    weak.length ? `${S.nWeakened(weak.length)} (${weak.map(sym).join(", ")})` : null,
+    ful.length ? `${S.nFulfilled(ful.length)} (${ful.map(sym).join(", ")})` : null,
+    sup.length ? `${S.nStrengthened(sup.length)} (${sup.map(sym).join(", ")})` : null,
   ].filter(Boolean).join(", ");
   return (
     <>
       <b>{nNotes(d.notes_count)}</b>
-      <span className="s">{parts ? ` · ${parts}` : ""}{d.candidates.length ? ` · ${plural(d.candidates.length, "kandydat", "kandydatów", "kandydatów")}` : ""} · </span>
-      <button className="lnk" onClick={o.onJump}>niżej</button>
+      <span className="s">{parts ? ` · ${parts}` : ""}{d.candidates.length ? ` · ${S.nCandidates(d.candidates.length)}` : ""} · </span>
+      <button className="lnk" onClick={o.onJump}>{S.below}</button>
     </>
   );
 }
@@ -144,12 +146,12 @@ export function researchEffectLine(o: {
   if (!row || !last) return null;
   const changed = o.digest?.theses_changed.find((c) => c.instrument_id === o.instrumentId);
   const c = row.counts;
-  const rel = c.invalidates ? `${plural(c.invalidates, "notatka podważa", "notatki podważają", "notatek podważa")} tezę`
-    : c.weakens ? `${plural(c.weakens, "notatka osłabia", "notatki osłabiają", "notatek osłabia")} tezę`
-    : c.fulfills ? `${plural(c.fulfills, "notatka spełnia", "notatki spełniają", "notatek spełnia")} tezę`
-    : c.supports ? `${plural(c.supports, "notatka wzmacnia", "notatki wzmacniają", "notatek wzmacnia")} tezę` : null;
+  const rel = c.invalidates ? S.relThesis("invalidates", c.invalidates)
+    : c.weakens ? S.relThesis("weakens", c.weakens)
+    : c.fulfills ? S.relThesis("fulfills", c.fulfills)
+    : c.supports ? S.relThesis("supports", c.supports) : null;
   if (!rel && !changed) return null;
   const day = new Date(`${localDay(last.started_at)}T12:00:00`).getDay();
-  const weekday = day === 6 ? "z soboty" : `z ${dm(last.started_at)}`;
-  return { text: `research ${weekday}: ${rel ?? "bez zmian"}${latestTitle(row) ? ` (${latestTitle(row)})` : ""}`, weekday };
+  const weekday = day === 6 ? S.fromSaturday : S.fromDate(dm(last.started_at));
+  return { text: S.effect(weekday, rel, latestTitle(row)), weekday };
 }

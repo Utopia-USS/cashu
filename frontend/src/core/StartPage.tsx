@@ -11,6 +11,7 @@ import { AgentWidget } from "./AgentWidget";
 import { getSetup, type SetupInfo, type SetupState } from "./api";
 import { useShell } from "./context";
 import { stepsTag } from "./SetupPage";
+import { S } from "./chrome.strings.ts";
 
 const POLL_MS = 5000;
 
@@ -52,8 +53,8 @@ export function StartPage({ moduleId, title, setup, state, steps, tag = true, ch
       <Grid items={[
         {
           id: "start", span: 2, node: (
-            <Widget title="Pierwsze kroki" body="tight"
-              footer={<button className="lnk" onClick={() => go({ kind: "setup", module: moduleId, cli: true })}>Instrukcja Claude Code i CLI</button>}>
+            <Widget title={S.firstSteps} body="tight"
+              footer={<button className="lnk" onClick={() => go({ kind: "setup", module: moduleId, cli: true })}>{S.cliGuide}</button>}>
               {steps ? <SetupSteps steps={steps} /> : (
                 <div style={{ display: "grid", gap: 14, padding: "12px 0" }}>{[0, 1, 2].map((i) => <Skeleton key={i} h={36} />)}</div>
               )}

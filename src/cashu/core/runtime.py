@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import paths
+from .i18n import tr
 
 CLI_NAME = "cashu"
 # PyInstaller data folder of the bundled Claude Code skills (repo: .claude/skills).
@@ -70,11 +71,21 @@ TRANSLOCATED_HINT = (
     "Move cashU.app to the Applications folder, open it from there, and try again."
 )
 # What the MCP snippets show instead of a command while translocated (PK3): a shell comment, so a
-# copied line does nothing, and the UI text says what to do (Polish: shown in the app as is).
+# copied line does nothing, and the UI text says what to do (shown in the app as is, so in the UI
+# language: translocated_snippet()).
 TRANSLOCATED_SNIPPET = (
     "# cashU.app działa z tymczasowej lokalizacji macOS. Przenieś cashU.app do folderu "
     "Programy, otwórz ją stamtąd i skopiuj to polecenie ponownie."
 )
+TRANSLOCATED_SNIPPET_EN = (
+    "# cashU.app runs from a temporary macOS location. Move cashU.app to the Applications "
+    "folder, open it from there and copy this command again."
+)
+
+
+def translocated_snippet() -> str:
+    """:data:`TRANSLOCATED_SNIPPET` in the current UI language."""
+    return tr(pl=TRANSLOCATED_SNIPPET, en=TRANSLOCATED_SNIPPET_EN)
 
 
 def cli_program() -> list[str]:
@@ -102,7 +113,7 @@ def mcp_command(slug: str) -> str:
     While the app is translocated: :data:`TRANSLOCATED_SNIPPET` (the path would break on the
     next launch)."""
     if translocated():
-        return TRANSLOCATED_SNIPPET
+        return translocated_snippet()
     return shlex.join([*cli_program(), *mcp_args(slug)])
 
 
@@ -110,7 +121,7 @@ def claude_mcp_add(slug: str) -> str:
     """The ``claude mcp add`` line that registers the profile's MCP server in Claude Code
     (:data:`TRANSLOCATED_SNIPPET` while translocated)."""
     if translocated():
-        return TRANSLOCATED_SNIPPET
+        return translocated_snippet()
     return shlex.join(
         ["claude", "mcp", "add", mcp_server_name(slug), "--", *cli_program(), *mcp_args(slug)]
     )
@@ -121,7 +132,7 @@ def mcp_server_entry(slug: str) -> dict:
     translocated the command is empty and ``error`` says why (an MCP client then fails at once
     instead of working until the next launch)."""
     if translocated():
-        return {"command": "", "args": mcp_args(slug), "error": TRANSLOCATED_SNIPPET[2:]}
+        return {"command": "", "args": mcp_args(slug), "error": translocated_snippet()[2:]}
     program = cli_program()
     return {"command": program[0], "args": [*program[1:], *mcp_args(slug)]}
 

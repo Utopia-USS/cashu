@@ -21,7 +21,8 @@ Weekly digest: on the profile's digest weekday, one notification per profile and
 ("N sygnałów do przeglądu", the signals waiting for a decision, without the hidden drift signals),
 recorded in the worker state before it is sent.
 
-Texts are Polish (UI data). Each notification carries a ``cashu://`` link (the signal, the
+Texts are UI data in the app language (``core.i18n``: the worker has no request, so ``tr`` uses the
+language the dashboard last stored). Each notification carries a ``cashu://`` link (the signal, the
 investments view, the weekly review) that cashU.app opens on a click.
 """
 
@@ -31,25 +32,30 @@ import datetime as dt
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from .. import profiles
+from ..i18n import en_count, pl_count, tr
 from . import investments as inv
 from .notifier import Notification, Notifier, investments_link, review_link, signal_link
 from .state import WorkerState
 
 MAX_PER_PROFILE = 3
-SEVERITY_SUBTITLE = {"action": "Sygnał do działania", "info": "Sygnał informacyjny"}
+
+
+def severity_subtitle(severity: str) -> str:
+    if severity == "action":
+        return tr(pl="Sygnał do działania", en="Action signal")
+    if severity == "info":
+        return tr(pl="Sygnał informacyjny", en="Info signal")
+    return tr(pl="Sygnał", en="Signal")
 
 
 def signals_phrase(n: int) -> str:
-    """Polish plural: 1 sygnał, 2-4 sygnały (not 12-14), 0 / 5+ sygnałów."""
-    if n == 1:
-        return "1 sygnał"
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return f"{n} sygnały"
-    return f"{n} sygnałów"
+    """Polish plural: 1 sygnał, 2-4 sygnały (not 12-14), 0 / 5+ sygnałów; English: 1 signal, 2 signals."""
+    return tr(pl=pl_count(n, "sygnał", "sygnały", "sygnałów"), en=en_count(n, "signal", "signals"))
 
 
 def title(profile) -> str:
-    return f"cashU: {profile.name}"
+    return f"cashU: {profiles.display_name(profile)}"
 
 
 @dataclass
@@ -108,7 +114,7 @@ def deliver_pending(
         delivery = notifier.send(
             Notification(
                 title=title(profile),
-                subtitle=SEVERITY_SUBTITLE.get(item.severity, "Sygnał"),
+                subtitle=severity_subtitle(item.severity),
                 message=item.message,
                 group=f"cashu-signal-{item.signal_id}",
                 url=signal_link(profile.slug, item.signal_id),
@@ -129,8 +135,11 @@ def deliver_pending(
             delivery = notifier.send(
                 Notification(
                     title=title(profile),
-                    subtitle="Nowe sygnały",
-                    message=f"Jeszcze {signals_phrase(len(claimed))}",
+                    subtitle=tr(pl="Nowe sygnały", en="New signals"),
+                    message=tr(
+                        pl=f"Jeszcze {signals_phrase(len(claimed))}",
+                        en=f"{signals_phrase(len(claimed))} more",
+                    ),
                     group=f"cashu-signals-{profile.id}",
                     url=investments_link(profile.slug),
                 )
@@ -155,8 +164,8 @@ class DigestResult:
 
 def digest_message(count: int) -> str:
     if count == 0:
-        return "Brak sygnałów do przeglądu"
-    return f"{signals_phrase(count)} do przeglądu"
+        return tr(pl="Brak sygnałów do przeglądu", en="No signals to review")
+    return tr(pl=f"{signals_phrase(count)} do przeglądu", en=f"{signals_phrase(count)} to review")
 
 
 def send_digest(
@@ -184,7 +193,7 @@ def send_digest(
     delivery = notifier.send(
         Notification(
             title=title(profile),
-            subtitle="Przegląd tygodniowy",
+            subtitle=tr(pl="Przegląd tygodniowy", en="Weekly review"),
             message=digest_message(count),
             group=f"cashu-digest-{profile.id}",
             url=review_link(profile.slug),

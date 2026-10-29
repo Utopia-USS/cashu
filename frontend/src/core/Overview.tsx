@@ -16,6 +16,8 @@ import { NetWorthWidget } from "./overview/NetWorthWidget";
 import { hiddenCards, hideCard, onHiddenChange } from "./hidden";
 import { moduleDef } from "./registry";
 import type { ModuleCtx, ModuleDef } from "./types";
+import { intlLocale } from "../i18n.ts";
+import { S } from "./Overview.strings.ts";
 
 const LIQUID = new Set(["checking", "savings", "cash"]);
 /** Whole units for hero facts, rounded (582 986,99 -> "582 987 zł"; no "-0", F7 FE11). */
@@ -81,9 +83,9 @@ export function Overview({ base, enabled }: { base: Omit<ModuleCtx, "state">; en
   if (!enabled.length) {
     items.splice(1, 0, {
       id: "nomods", span: 3, node: (
-        <Widget title="Moduły">
-          <Empty title="Brak modułów."
-            action={<button className="btn" onClick={() => base.go({ kind: "settings", section: "modules" })}>Włącz moduły</button>} />
+        <Widget title={S.modules}>
+          <Empty title={S.noModules}
+            action={<button className="btn" onClick={() => base.go({ kind: "settings", section: "modules" })}>{S.enableModules}</button>} />
         </Widget>
       ),
     });
@@ -115,28 +117,28 @@ function NetHero({ base, mods }: { base: Omit<ModuleCtx, "state">; mods: { m: Pr
   const delta: ReactNode = change != null && prev ? (
     <>
       <span className={change >= 0 ? "pos" : "neg"}>{change >= 0 ? "+" : ""}{whole(change, c)}{changePct != null ? ` (${pctSigned(changePct)})` : ""}</span>
-      {" "}od {MONTH_GEN[Number(prev.date.slice(5, 7)) - 1]}
+      {" "}{S.since(MONTH_GEN[Number(prev.date.slice(5, 7)) - 1])}
     </>
   ) : null;
   return (
-    <section className="w hero" aria-label="Wartość netto">
+    <section className="w hero" aria-label={S.netWorth}>
       <div className="h1">
-        <div className="l">Wartość netto</div>
+        <div className="l">{S.netWorth}</div>
         <div className="v">{cur(bd.net, c)}</div>
         {delta && <div className="d">{delta}</div>}
       </div>
       <div className="hf">
-        <Fact label="Aktywa" value={whole(bd.assets, c)} detail={`${nAccounts(accounts.length)} · ${nModules(mods.length)}`} />
-        {bd.liabilities > 0 && <Fact label="Zobowiązania" value={whole(-bd.liabilities, c)} detail={liabNames || undefined} />}
-        {hasHome ? <Fact label="Home equity" value={whole(bd.home_equity, c)} detail="nieruchomość - hipoteka" /> : null}
+        <Fact label={S.assets} value={whole(bd.assets, c)} detail={`${nAccounts(accounts.length)} · ${nModules(mods.length)}`} />
+        {bd.liabilities > 0 && <Fact label={S.liabilities} value={whole(-bd.liabilities, c)} detail={liabNames || undefined} />}
+        {hasHome ? <Fact label={S.homeEquity} value={whole(bd.home_equity, c)} detail={S.homeEquityDetail} /> : null}
         {mods.filter(({ m, def }) => def.HeroFact && m.setup_state !== "empty").map(({ def, ctx }) => def.HeroFact && <def.HeroFact key={def.id} ctx={ctx} />)}
-        <Fact label="Płynne" value={whole(liquid, c)} title={spend && norm ? normTitle(norm) : undefined}
-          detail={spend ? `${(liquid / spend).toLocaleString("pl-PL", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} mies. wydatków` : "konta i gotówka"} />
+        <Fact label={S.liquid} value={whole(liquid, c)} title={spend && norm ? normTitle(norm) : undefined}
+          detail={spend ? S.monthsOfSpending((liquid / spend).toLocaleString(intlLocale(), { maximumFractionDigits: 1, minimumFractionDigits: 1 })) : S.accountsAndCash} />
       </div>
       {others.length > 0 && (
         <div className="hr">
-          <span className="tag">inne waluty: {others.map(([k, v]) => cur(v, k)).join(" · ")}</span>
-          <div className="meta">bez przeliczenia</div>
+          <span className="tag">{S.otherCurrencies(others.map(([k, v]) => cur(v, k)).join(" · "))}</span>
+          <div className="meta">{S.notConverted}</div>
         </div>
       )}
     </section>

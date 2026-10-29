@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
+from cashu.core.i18n import tr
 from cashu.modules.investments.domain import AssetClass
 
 from ..kind import RuleContext, RuleSpec
@@ -92,12 +93,16 @@ class CashLevelRule:
             return [NotFired(spec.id, key, details)]
         if below:
             assert min_weight is not None
-            message = (
-                f"Gotówka: {format_pct(weight)} portfela, poniżej minimum {format_pct(min_weight)}."
+            message = tr(
+                pl=f"Gotówka: {format_pct(weight)} portfela, poniżej minimum {format_pct(min_weight)}.",
+                en=f"Cash: {format_pct(weight)} of the portfolio, below the minimum {format_pct(min_weight)}.",
             )
         else:
             assert max_weight is not None
-            message = f"Gotówka: {format_pct(weight)} portfela, powyżej maksimum {format_pct(max_weight)}."
+            message = tr(
+                pl=f"Gotówka: {format_pct(weight)} portfela, powyżej maksimum {format_pct(max_weight)}.",
+                en=f"Cash: {format_pct(weight)} of the portfolio, above the maximum {format_pct(max_weight)}.",
+            )
         return [
             Fired(
                 SignalCandidate(
