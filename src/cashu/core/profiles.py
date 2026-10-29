@@ -132,6 +132,14 @@ def scope(session: Session, profile_id: int | None, *, create: bool = False) -> 
     return p.id if p is not None and p.id is not None else NO_PROFILE
 
 
+def base_currency(session: Session, profile_id: int | None, *, create: bool = False) -> str:
+    """The profile's base currency (``profile_id`` or the default profile, created when
+    ``create``); "PLN" when there is no profile. The default for anything a caller
+    creates without naming a currency."""
+    p = session.get(Profile, scope(session, profile_id, create=create))
+    return (p.base_currency if p is not None else None) or "PLN"
+
+
 def legacy_owner_slug(session: Session) -> str | None:
     """Slug of the oldest profile: the one an upstream database was migrated into
     (it owns state that predates profiles, e.g. old Open Banking session files)."""

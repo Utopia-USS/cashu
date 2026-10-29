@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
+from cashu.core import profiles
 from cashu.core.accounts import (
     get_or_create_account,
     park_removed_key,
@@ -96,14 +97,15 @@ def add_manual_position(
     name: str,
     type: str,
     value: Decimal | float | str,
-    currency: str = "PLN",
+    currency: str | None = None,
     on_date: date | None = None,
     profile_id: int | None = None,
     note: str | None = None,
 ) -> Account:
     """Create/update a manually-tracked asset or liability (property, mortgage,
     loan, ...) of the profile and record its current value as a balance snapshot. ``note``
-    (optional, max 500 characters) replaces the stored note when given."""
+    (optional, max 500 characters) replaces the stored note when given. ``currency`` of a
+    new account: the profile's base currency when not given."""
     clean_note(note)  # validate before anything is written
     park_removed_key(session, profile_id, MANUAL, f"manual:{name}")  # a removed one starts fresh
     account = get_or_create_account(
@@ -112,7 +114,7 @@ def add_manual_position(
         name=name,
         external_id=f"manual:{name}",
         type=type,
-        currency=currency,
+        currency=currency or profiles.base_currency(session, profile_id, create=True),
         profile_id=profile_id,
     )
     session.flush()
@@ -133,11 +135,12 @@ def set_vehicle(
     purchase_date: date,
     annual_rate: Decimal | float | str,
     floor: Decimal | float | str | None = None,
-    currency: str = "PLN",
+    currency: str | None = None,
     profile_id: int | None = None,
 ) -> Account:
     """Create/update a depreciating VEHICLE asset of the profile (declining-balance
-    from the purchase price). Counts as illiquid net worth, like property."""
+    from the purchase price). Counts as illiquid net worth, like property. ``currency``
+    of a new account: the profile's base currency when not given."""
     park_removed_key(session, profile_id, MANUAL, f"vehicle:{name}")  # a removed one starts fresh
     account = get_or_create_account(
         session,
@@ -145,7 +148,7 @@ def set_vehicle(
         name=name,
         external_id=f"vehicle:{name}",
         type=AccountType.VEHICLE,
-        currency=currency,
+        currency=currency or profiles.base_currency(session, profile_id, create=True),
         profile_id=profile_id,
     )
     session.flush()

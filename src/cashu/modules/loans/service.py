@@ -163,7 +163,7 @@ def add_loan(
     account: int | str | None = None,
     origination_date: date | None = None,
     type: str = AccountType.LOAN,
-    currency: str = "PLN",
+    currency: str | None = None,
     payment_iban: str | None = None,
     payment_text: str | None = None,
     profile_id: int | None = None,
@@ -174,7 +174,8 @@ def add_loan(
     name of the profile's one mortgage/loan account of that name (re-running
     updates it). ``account``: attach to an existing mortgage/loan account, by id
     or exact name. Never attaches to another account type; an ambiguous name is
-    an error that lists the candidates."""
+    an error that lists the candidates. ``currency`` of a new account: the
+    profile's base currency when not given."""
     if str(type) not in LOAN_TYPES:
         raise ValueError(f"A loan account is 'mortgage' or 'loan', not '{type}'")
     if (name is None) == (account is None):
@@ -194,7 +195,7 @@ def add_loan(
             name=name,
             external_id=f"manual:{name}",
             type=type,
-            currency=currency,
+            currency=currency or profiles.base_currency(session, pid),
             profile_id=pid,
         )
     return set_loan(
@@ -263,6 +264,15 @@ def record_balance(
     return loan
 
 
+def _loan_currency(session: Session, loan: Loan, account: Account | None) -> str:
+    """The loan account's currency (looked up when not passed); the default profile's
+    base currency only when the account is gone."""
+    account = account or session.get(Account, loan.account_id)
+    if account is not None:
+        return account.currency
+    return profiles.base_currency(session, None)
+
+
 def loan_summary(session: Session, loan: Loan, account: Account | None, as_of: date) -> dict:
     """The API shape of one loan (the upstream ``/api/loan`` fields plus identity).
 
@@ -283,7 +293,7 @@ def loan_summary(session: Session, loan: Loan, account: Account | None, as_of: d
         "name": account.name if account else None,
         "type": str(account.type) if account else None,
         "has_loan": True,
-        "currency": account.currency if account else "PLN",
+        "currency": _loan_currency(session, loan, account),
         "principal": f(summ.principal),
         "annual_rate": f(summ.annual_rate),
         "term_months": summ.term_months,

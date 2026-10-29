@@ -121,7 +121,9 @@ def loans_add_cmd(
     start: StartOption = None,
     origination: OriginationOption = None,
     type: Annotated[str, typer.Option(help="mortgage | loan")] = AccountType.LOAN,
-    currency: Annotated[str, typer.Option()] = "PLN",
+    currency: Annotated[
+        str | None, typer.Option(help="Default: the profile's base currency.")
+    ] = None,
     payment_iban: PaymentIbanOption = None,
     payment_text: PaymentTextOption = None,
 ) -> None:

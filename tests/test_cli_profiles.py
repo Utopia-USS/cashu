@@ -164,3 +164,23 @@ def test_configured_default_profile_on_a_fresh_db_is_created_under_its_slug(
     monkeypatch.setattr(settings, "profile", "marta")
     run("add-position", "Konto Test", "--type", "savings", "--value", "100")
     assert _accounts(db_engine) == [("marta", "Konto Test")]
+
+
+def test_cli_creates_accounts_in_the_profile_base_currency(run, db_engine):
+    """Without --currency, assets and loans take the profile's base currency (like the API)."""
+    run("profiles", "add", "Jan")
+    run("profiles", "add", "Anna", "--currency", "EUR")
+    run("-p", "anna", "add-position", "Mieszkanie Test", "--type", "property", "--value", "1000")
+    out = run("-p", "anna", "set-vehicle", "Auto Test", "20000", "2025-01-01").output
+    assert "EUR" in out
+    run("-p", "anna", "loans", "add", "Kredyt Test", "--principal", "5000", "--rate", "5",
+        "--months", "12", "--start", "2025-01-01")
+    run("-p", "anna", "add-position", "Konto Test", "--type", "savings", "--value", "5",
+        "--currency", "USD")
+    run("-p", "jan", "add-position", "Dom Test", "--type", "property", "--value", "1")
+    with Session(db_engine) as s:
+        cur = {a.name: a.currency for a in s.exec(select(Account)).all()}
+    assert cur == {
+        "Mieszkanie Test": "EUR", "Auto Test": "EUR", "Kredyt Test": "EUR",
+        "Konto Test": "USD", "Dom Test": "PLN",
+    }

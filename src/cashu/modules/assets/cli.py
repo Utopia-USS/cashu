@@ -21,7 +21,9 @@ def add_position_cmd(
         str, typer.Option(help="property | mortgage | loan | investment | cash | ...")
     ],
     value: Annotated[float, typer.Option(help="Current value / outstanding balance.")],
-    currency: Annotated[str, typer.Option()] = "PLN",
+    currency: Annotated[
+        str | None, typer.Option(help="Default: the profile's base currency.")
+    ] = None,
     note: Annotated[
         str | None, typer.Option(help="Optional one-line note (max 500 characters).")
     ] = None,
@@ -43,7 +45,7 @@ def add_position_cmd(
             raise typer.BadParameter(str(e)) from None
         cliutil.console.print(
             f"[green]{acc.type}[/] '{acc.name}' = "
-            f"{cliutil.fmt(Decimal(str(value)), currency)} (account id {acc.id})"
+            f"{cliutil.fmt(Decimal(str(value)), acc.currency)} (account id {acc.id})"
         )
 
 
@@ -57,7 +59,9 @@ def set_vehicle_cmd(
     floor: Annotated[
         float | None, typer.Option("--floor", help="Residual value it won't drop below.")
     ] = None,
-    currency: Annotated[str, typer.Option()] = "PLN",
+    currency: Annotated[
+        str | None, typer.Option(help="Default: the profile's base currency.")
+    ] = None,
 ) -> None:
     """Add/update a car (or other depreciating asset) — illiquid, loses value yearly."""
     from datetime import date as _date
@@ -73,11 +77,12 @@ def set_vehicle_cmd(
         )
         dep = s.exec(select(Depreciation).where(Depreciation.account_id == acc.id)).first()
         now_val = depreciation.value_of(dep, _date.today())  # noqa: DTZ011 - local dates
-    floor_txt = f", floor {cliutil.fmt(Decimal(str(floor)), currency)}" if floor else ""
+        label, cur = acc.name, acc.currency
+    floor_txt = f", floor {cliutil.fmt(Decimal(str(floor)), cur)}" if floor else ""
     cliutil.console.print(
-        f"[green]Vehicle[/] '{acc.name}': bought {pd} for "
-        f"{cliutil.fmt(Decimal(str(price)), currency)}, depreciation {rate}%/yr{floor_txt}"
-        f" → value today ≈ {cliutil.fmt(now_val, currency)}"
+        f"[green]Vehicle[/] '{label}': bought {pd} for "
+        f"{cliutil.fmt(Decimal(str(price)), cur)}, depreciation {rate}%/yr{floor_txt}"
+        f" → value today ≈ {cliutil.fmt(now_val, cur)}"
     )
 
 
