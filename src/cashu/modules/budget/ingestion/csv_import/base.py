@@ -51,7 +51,7 @@ def parse_pl_date(value: str | None) -> date | None:
     s = value.strip()
     for fmt in _DATE_FORMATS:
         try:
-            return datetime.strptime(s, fmt).date()
+            return datetime.strptime(s, fmt).date()  # noqa: DTZ007 - a calendar date, no zone
         except ValueError:
             continue
     return None

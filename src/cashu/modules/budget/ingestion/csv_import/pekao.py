@@ -47,7 +47,7 @@ class PekaoImporter(DelimitedImporter):
     delimiters = (";", ",")
     signature = ("rachunek źródłowy", "rachunek docelowy", "numer referencyjny", "typ operacji")
 
-    _COLS = {
+    _COLS = {  # noqa: RUF012 - read-only column aliases
         "booking": ("data księgowania", "data ksiegowania"),
         "value": ("data waluty",),
         "counterparty": ("nadawca / odbiorca", "nadawca/odbiorca"),
@@ -91,7 +91,7 @@ class PekaoImporter(DelimitedImporter):
 
         stmt = ParsedStatement(bank=self.bank, account_number=own, currency=self.default_currency)
         for row in data:
-            def cell(field: str) -> str | None:
+            def cell(field: str, row: list[str] = row) -> str | None:
                 j = idx.get(field)
                 return (row[j].strip() or None) if j is not None and j < len(row) else None
 

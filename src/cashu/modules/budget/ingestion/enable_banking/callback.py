@@ -49,8 +49,9 @@ def _self_signed_context(host: str) -> ssl.SSLContext:
         .add_extension(x509.SubjectAlternativeName([x509.DNSName(host)]), critical=False)
         .sign(key, hashes.SHA256())
     )
-    certf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem")
-    keyf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem")
+    # closed by hand below: ssl.load_cert_chain reads the files by name
+    certf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem")  # noqa: SIM115
+    keyf = tempfile.NamedTemporaryFile(delete=False, suffix=".pem")  # noqa: SIM115
     certf.write(cert.public_bytes(serialization.Encoding.PEM))
     certf.close()
     keyf.write(
