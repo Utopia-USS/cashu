@@ -177,6 +177,7 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 - [docs/agents/extending.md](docs/agents/extending.md) - recipes: bank, module, dashboard feature, MCP tool, migration, connector
 - [docs/agents/running.md](docs/agents/running.md) - running, demo data, e2e
 - [docs/agents/skills.md](docs/agents/skills.md) - shipped skills, their rules, editing them
+- [docs/agents/connector-runtime.md](docs/agents/connector-runtime.md) - design spike: connectors on macOS, Linux and Windows (Deno tier)
 - [ONBOARDING.md](ONBOARDING.md) - end-user setup the agent walks through
 - [README.md](README.md) - product overview
 - [docs/connectors.md](docs/connectors.md), [docs/import-format.md](docs/import-format.md), [docs/budget-import-format.md](docs/budget-import-format.md) - external formats and contracts
