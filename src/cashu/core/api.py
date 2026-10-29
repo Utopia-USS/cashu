@@ -120,10 +120,12 @@ def system() -> dict:
 
 
 def _connectors_platform() -> dict:
-    from .connectors.sandbox import MacSandbox, default_sandbox
+    from .connectors.sandbox import MacSandbox, UnsupportedSandbox, default_sandbox
 
-    sandboxed = isinstance(default_sandbox(), MacSandbox)
-    return {"sandbox": sandboxed, "platform": "mac" if sandboxed else "unsupported"}
+    box = default_sandbox()
+    if isinstance(box, UnsupportedSandbox):
+        return {"sandbox": False, "platform": "unsupported"}
+    return {"sandbox": True, "platform": "mac" if isinstance(box, MacSandbox) else box.name}
 
 
 @platform_router.get("/system/update")

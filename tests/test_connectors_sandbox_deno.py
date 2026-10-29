@@ -136,10 +136,12 @@ await attempt("node_env", async () => {{
   if (v === undefined) throw new Error("hidden");
 }});
 await attempt("sys", () => Deno.hostname());
-await attempt("import_https", () => import("https://deno.land/std@0.224.0/path/mod.ts"));
-await attempt("import_jsr", () => import("jsr:@std/path"));
-await attempt("import_npm", () => import("npm:left-pad"));
-await attempt("import_mapped", () => import("mapped"));
+// Computed specifiers: literal ones never get this far (the module graph check refuses them).
+const spec = (s: string) => [s][0];
+await attempt("import_https", () => import(spec("https://deno.land/std@0.224.0/path/mod.ts")));
+await attempt("import_jsr", () => import(spec("jsr:@std/path")));
+await attempt("import_npm", () => import(spec("npm:left-pad")));
+await attempt("import_mapped", () => import(spec("mapped")));
 await attempt("prompt", async () => {{
   const s = await Deno.permissions.request({{ name: "env" }});
   if (s.state !== "granted") throw new Error(s.state);
@@ -208,11 +210,36 @@ def test_sandbox_for_picks_deno_for_deno_connectors():
     mac = MacSandbox()
     layered = sandbox_for("deno", mac)
     assert isinstance(layered, DenoSandbox) and layered.outer is mac and layered.name == "deno+macos"
-    alone = sandbox_for("deno", UnsupportedSandbox())  # Linux / Windows: Deno is the only layer
-    assert isinstance(alone, DenoSandbox) and alone.outer is None and alone.name == "deno"
-    native = NoSandbox()
+    # Linux / Windows without a native layer: nothing runs, Deno included (Deno alone lets raw sockets
+    # to a manifest host past the egress proxy, and its module graph loads unchecked).
+    for run0 in ("deno", "python3", "node"):
+        assert isinstance(sandbox_for(run0, UnsupportedSandbox()), UnsupportedSandbox), run0
+    native = NoSandbox()  # any other native layer (the Linux hook) wraps Deno the same way
     assert sandbox_for("python3", native) is native
-    assert isinstance(sandbox_for("python3", UnsupportedSandbox()), UnsupportedSandbox)
+    other = sandbox_for("deno", native)
+    assert isinstance(other, DenoSandbox) and other.outer is native and other.name == "deno+none"
+
+
+def test_default_sandbox_off_macos_is_unsupported_until_a_linux_layer_exists(monkeypatch):
+    from cashu.core.connectors import sandbox as sb
+
+    for platform in ("linux", "win32", "freebsd14"):
+        monkeypatch.setattr(sb.sys, "platform", platform)
+        assert isinstance(sb.default_sandbox(), UnsupportedSandbox), platform
+        assert isinstance(sb.sandbox_for("deno"), UnsupportedSandbox), platform
+    # The Linux hook: a sandbox_linux module that offers a native sandbox is used on Linux only.
+    native = NoSandbox()
+    monkeypatch.setattr(sb, "_linux_sandbox", lambda: native)
+    monkeypatch.setattr(sb.sys, "platform", "linux")
+    assert sb.default_sandbox() is native
+    monkeypatch.setattr(sb.sys, "platform", "win32")
+    assert isinstance(sb.default_sandbox(), UnsupportedSandbox)
+
+
+def test_the_linux_hook_is_missing_for_now():
+    from cashu.core.connectors import sandbox as sb
+
+    assert sb._linux_sandbox() is None
 
 
 # --------------------------------------------------------------------------- #
@@ -249,9 +276,13 @@ def test_runner_selects_deno_for_a_deno_connector(tmp_path, export, monkeypatch)
     monkeypatch.setattr(runner, "sandbox_for", spy)
     target = _deno_connector(tmp_path / "deno-test", CONVERTER)
     result = execute(target, "convert", file=export)
-    assert result.ok, (result.error_kind, result.message, result.stderr_tail)
-    assert len(seen) == 1 and isinstance(seen[0], DenoSandbox)
-    assert seen[0].name == ("deno+macos" if HAS_MAC_SANDBOX else "deno")
+    assert len(seen) == 1
+    if HAS_MAC_SANDBOX:
+        assert result.ok, (result.error_kind, result.message, result.stderr_tail)
+        assert isinstance(seen[0], DenoSandbox) and seen[0].name == "deno+macos"
+    else:  # no native layer: refused, never Deno alone
+        assert isinstance(seen[0], UnsupportedSandbox)
+        assert (result.outcome, result.error_kind) == ("refused", "sandbox_unavailable")
 
 
 def _probe(tmp_path: Path, export: InputFile, box) -> tuple[dict, _Listener]:
@@ -373,3 +404,271 @@ def test_fetch_reaches_only_manifest_hosts_through_the_proxy(tmp_path, monkeypat
     assert upstream.accepted >= 1
     assert probe["other"] == "NotCapable"  # Deno refuses before anything leaves the process
     assert result.denied_hosts == []
+
+
+# --------------------------------------------------------------------------- #
+# The module graph check (security review: static imports bypass --allow-read)
+# --------------------------------------------------------------------------- #
+
+
+def _info(root: Path, *deps: str, errors: dict[str, str] | None = None, **extra) -> dict:
+    main = (root / "main.ts").as_uri()
+    modules = [{
+        "kind": "esm", "specifier": main,
+        "dependencies": [{"specifier": d, "code": {"specifier": d}} for d in deps],
+    }]
+    for spec, err in (errors or {}).items():
+        modules.append({"specifier": spec, "error": err})
+    return {"version": 1, "roots": [main], "modules": modules, "redirects": {}, "npmPackages": {},
+            **extra}
+
+
+def test_graph_rule_accepts_connector_files_and_node_builtins(tmp_path):
+    root = tmp_path / "conn"
+    (root / "lib").mkdir(parents=True)
+    info = _info(root, (root / "lib" / "parse.ts").as_uri(), "node:path", (root / "a b.json").as_uri())
+    assert mf_graph(info, root) is None
+
+
+@pytest.mark.parametrize(
+    ("dep", "fragment"),
+    [
+        ("file:///etc/hosts", "outside the connector"),
+        ("file://otherhost/conn/x.ts", "outside the connector"),
+        ("data:text/javascript,export default 1", "not data: modules"),
+        ("blob:null/1234", "not blob: modules"),
+        ("https://deno.land/std/path/mod.ts", "not https: modules"),
+        ("npm:left-pad", "not npm: modules"),
+        ("jsr:@std/path", "not jsr: modules"),
+    ],
+)
+def test_graph_rule_refuses_outside_and_non_file_modules(tmp_path, dep, fragment):
+    root = tmp_path / "conn"
+    root.mkdir()
+    problem = mf_graph(_info(root, dep), root)
+    assert problem is not None and fragment in problem
+    assert "/etc" not in problem and "deno.land" not in problem  # value-free
+
+
+def test_graph_rule_resolves_dotdot_and_symlinks(tmp_path):
+    root = tmp_path / "conn"
+    root.mkdir()
+    (tmp_path / "secret.json").write_text("{}", encoding="utf-8")
+    dotdot = "file://" + str(root) + "/../secret.json"
+    assert "outside" in mf_graph(_info(root, dotdot), root)
+    (root / "link.json").symlink_to(tmp_path / "secret.json")
+    assert "outside" in mf_graph(_info(root, (root / "link.json").as_uri()), root)
+    sibling = tmp_path / "conn-evil" / "x.ts"  # a prefix of the connector path is not inside it
+    assert "outside" in mf_graph(_info(root, sibling.as_uri()), root)
+
+
+def test_graph_rule_refuses_unresolved_broken_and_npm(tmp_path):
+    root = tmp_path / "conn"
+    root.mkdir()
+    bare = _info(root)
+    bare["modules"][0]["dependencies"] = [{"specifier": "foo", "code": {"error": "not a dependency"}}]
+    assert "cannot be resolved" in mf_graph(bare, root)
+    broken = _info(root, errors={(root / "main.ts").as_uri(): "SyntaxError: secret text"})
+    problem = mf_graph(broken, root)
+    assert problem.startswith("main.ts cannot be loaded") and "secret" not in problem
+    assert "npm" in mf_graph(_info(root, npmPackages={"left-pad@1": {}}), root)
+    redirected = _info(root, redirects={"file:///a": "file:///etc/hosts"})
+    assert "outside" in mf_graph(redirected, root)
+    typed = _info(root)
+    typed["modules"][0]["dependencies"] = [{"specifier": "x", "type": {"specifier": "file:///etc/x.d.ts"}}]
+    assert "outside" in mf_graph(typed, root)
+    for junk in (None, [], {"modules": "x"}, {"modules": [1]}):
+        assert mf_graph(junk, root) == "the module graph could not be checked"
+
+
+def mf_graph(info, root):
+    from cashu.core.connectors.sandbox import module_graph_problem
+
+    return module_graph_problem(info, root)
+
+
+SECRET = "FAKE-OUTSIDE-SECRET-7731"
+
+STATIC_IMPORT = """\
+import s from {path!r} with {{ type: "text" }};
+await new Response(Deno.stdin.readable).text();
+console.log(JSON.stringify({{ document: {{ records: [], leak: s }} }}));
+"""
+
+LITERAL_DYNAMIC = """\
+await new Response(Deno.stdin.readable).text();
+const s = (await import({path!r}, {{ with: {{ type: "text" }} }})).default;
+console.log(JSON.stringify({{ document: {{ records: [], leak: s }} }}));
+"""
+
+
+def _outside_secret(tmp_path: Path) -> Path:
+    outside = tmp_path / "outside"
+    outside.mkdir(exist_ok=True)
+    path = outside / "secret.txt"
+    path.write_text(SECRET, encoding="utf-8")
+    return path
+
+
+@needs_deno
+@pytest.mark.parametrize("make_box", SANDBOXES)
+@pytest.mark.parametrize("template", [STATIC_IMPORT, LITERAL_DYNAMIC], ids=["static", "dynamic"])
+@pytest.mark.parametrize("relative", [False, True], ids=["absolute", "dotdot"])
+def test_an_import_outside_the_connector_is_refused_before_the_run(
+    tmp_path, export, make_box, template, relative
+):
+    secret = _outside_secret(tmp_path)
+    path = "../outside/secret.txt" if relative else str(secret)
+    target = _deno_connector(tmp_path / "deno-test", template.format(path=path))
+    for command in ("detect", "convert"):
+        result = execute(target, command, file=export, sandbox=make_box())
+        assert (result.outcome, result.error_kind) == ("refused", "forbidden_import")
+        assert result.message == "a module outside the connector directory is imported"
+        assert SECRET not in (result.stderr_tail or "")
+
+
+@needs_deno
+@pytest.mark.parametrize("make_box", SANDBOXES)
+def test_a_nested_static_import_and_a_data_module_are_refused(tmp_path, export, make_box):
+    secret = _outside_secret(tmp_path)
+    nested = 'import s from "./lib/inner.ts";\nconsole.log(s);\n'
+    inner = f'import s from {str(secret)!r} with {{ type: "text" }};\nexport default s;\n'
+    target = _deno_connector(tmp_path / "deno-test", nested, extra={"lib/inner.ts": inner})
+    result = execute(target, "convert", file=export, sandbox=make_box())
+    assert result.error_kind == "forbidden_import"
+    data = 'import x from "data:text/javascript,export default 1";\nconsole.log(x);\n'
+    target = _deno_connector(tmp_path / "deno-data", data, cid="deno-data")
+    result = execute(target, "convert", file=export, sandbox=make_box())
+    assert result.error_kind == "forbidden_import" and "data:" in result.message
+
+
+@needs_deno
+@pytest.mark.parametrize("make_box", SANDBOXES)
+def test_relative_imports_and_node_builtins_inside_the_connector_run(tmp_path, export, make_box):
+    main = (
+        'import { basename } from "node:path";\n'
+        'import { parse } from "./lib/parse.ts";\n'
+        'import meta from "./lib/meta.json" with { type: "json" };\n'
+        "const req = JSON.parse(await new Response(Deno.stdin.readable).text());\n"
+        "const records = parse(Deno.readTextFileSync(req.file.path));\n"
+        'console.log(JSON.stringify({ document: { format: "cashu-import", format_version: 1,\n'
+        "  source: meta.source + basename(\"/x/y\"), records } }));\n"
+    )
+    parse = (
+        "export function parse(text: string) {\n"
+        '  return text.trim().split("\\n").slice(1).map((line) => {\n'
+        '    const [date, type, amount] = line.split(",");\n'
+        '    return { record: "txn", date, type, currency: "PLN", gross_amount: amount };\n'
+        "  });\n}\n"
+    )
+    target = _deno_connector(tmp_path / "deno-test", main,
+                             extra={"lib/parse.ts": parse, "lib/meta.json": '{"source": "deno_"}'})
+    result = execute(target, "convert", file=export, sandbox=make_box())
+    assert result.ok, (result.error_kind, result.message, result.stderr_tail)
+    assert result.records == 3 and result.response.document["source"] == "deno_y"
+
+
+@needs_deno
+@pytest.mark.parametrize("make_box", SANDBOXES)
+def test_a_syntax_error_is_refused_with_the_file_name_only(tmp_path, export, make_box):
+    target = _deno_connector(tmp_path / "deno-test", 'import "./lib/bad.ts";\n',
+                             extra={"lib/bad.ts": "const x = ;\n"})
+    result = execute(target, "convert", file=export, sandbox=make_box())
+    assert result.error_kind == "forbidden_import"
+    assert result.message == "lib/bad.ts cannot be loaded or parsed (check it with deno check)"
+
+
+# The reviewer's runtime probes: reads that are not in the static graph stay permission-checked.
+RUNTIME_PROBE = """\
+await new Response(Deno.stdin.readable).text();
+// Specifiers built at run time: deno's graph folds string literals and "a" + "b", not these.
+const join = (...parts: string[]) => parts.join("");
+const P = join({outside!r});
+const out: Record<string, string> = {{}};
+async function attempt(name: string, fn: () => unknown) {{
+  try {{
+    const v = String(JSON.stringify(await fn()));
+    out[name] = v.includes({secret!r}) ? "LEAK" : "ok";
+  }} catch (e) {{ out[name] = (e as Error).name; }}
+}}
+const src = (f: string) => 'import j from "file://' + P + f + '" with {{type:"text"}}; export default j;';
+await attempt("computed", async () => (await import(P + "secret.txt", {{ with: {{ type: "text" }} }})).default);
+await attempt("blob", async () => (await import(URL.createObjectURL(new Blob([src("secret.txt")], {{ type: "text/javascript" }})))).default);
+await attempt("data", async () => (await import("data:text/javascript;base64," + btoa(src("secret.txt")))).default);
+await attempt("eval", async () => (await (0, eval)('import("file://' + P + 'secret.txt", {{with:{{type:"text"}}}})')).default);
+await attempt("inner_computed", async () => (await import(join("./lib/", "inner.ts"))).default);
+await attempt("worker_static", () => new Promise((res, rej) => {{
+  const w = new Worker(new URL(join("./lib/", "worker.ts"), import.meta.url), {{ type: "module" }});
+  w.onmessage = (e) => {{ res(e.data); w.terminate(); }};
+  w.onerror = (e) => {{ e.preventDefault(); rej(new Error("worker")); w.terminate(); }};
+}}));
+await attempt("node_require", async () => {{
+  const {{ createRequire }} = await import("node:module");
+  return createRequire(import.meta.url)(P + "secret.json");
+}});
+await attempt("node_fs", async () => (await import("node:fs")).readFileSync(P + "secret.txt", "utf8"));
+console.log(JSON.stringify({{ document: {{ records: [], probe: out }} }}));
+"""
+
+
+@needs_deno
+@pytest.mark.parametrize("make_box", SANDBOXES)
+def test_imports_outside_the_static_graph_stay_permission_checked(tmp_path, export, make_box):
+    secret = _outside_secret(tmp_path)
+    (secret.parent / "secret.json").write_text(f'{{"s": "{SECRET}"}}', encoding="utf-8")
+    outside = str(secret.parent) + "/"
+    inner = f'import s from {str(secret)!r} with {{ type: "text" }};\nexport default s;\n'
+    worker = f'import s from {str(secret)!r} with {{ type: "text" }};\npostMessage(s);\n'
+    target = _deno_connector(
+        tmp_path / "deno-test", RUNTIME_PROBE.format(outside=outside, secret=SECRET),
+        extra={"lib/inner.ts": inner, "lib/worker.ts": worker},
+    )
+    result = execute(target, "convert", file=export, sandbox=make_box())
+    assert result.ok, (result.error_kind, result.message, result.stderr_tail)
+    probe = result.response.document["probe"]
+    assert set(probe) == {"computed", "blob", "data", "eval", "inner_computed", "worker_static",
+                          "node_require", "node_fs"}
+    for name, verdict in probe.items():
+        assert verdict not in ("ok", "LEAK"), (name, verdict)
+
+
+RAW_CONNECT = """\
+await new Response(Deno.stdin.readable).text();
+let verdict = "ok";
+try { (await Deno.connect({ hostname: "127.0.0.1", port: 443 })).close(); }
+catch (e) { verdict = (e as Error).name; }
+console.log(JSON.stringify({ document: { records: [], verdict }, cursor: null }));
+"""
+
+
+@needs_deno
+@pytest.mark.parametrize("make_box", SANDBOXES)
+def test_a_raw_socket_to_an_allowed_host_needs_the_native_layer(tmp_path, make_box):
+    """Deno's --allow-net names hosts, not the proxy: alone, Deno.connect to an allowed host reaches the
+    network stack past the egress proxy (no listener here, so ConnectionRefused). The macOS layer allows
+    only the proxy port, so the connect itself is denied. This is why sandbox_for never runs Deno alone."""
+    root = tmp_path / "deno-test"
+    root.mkdir()
+    (root / "main.ts").write_text(RAW_CONNECT, encoding="utf-8")
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    proxy = _Listener()  # stands in for the egress proxy port
+    try:
+        spec = runner.RunSpec(
+            argv=(DENO, str(root / "main.ts")), connector_dir=root, interpreter=Path(DENO),
+            run_dir=run_dir, env=runner.base_env(run_dir, Path(DENO), proxy.port),
+            stdin=b'{"command": "fetch"}', timeout_s=30, max_stdout=1 << 20,
+            proxy_port=proxy.port, hosts=("127.0.0.1",),
+        )
+        box = make_box()
+        outcome = box.run(spec)
+    finally:
+        proxy.close()
+    assert outcome.error_kind is None, outcome.message
+    import json as _json
+
+    verdict = _json.loads(outcome.process.stdout)["document"]["verdict"]
+    if box.outer is None:
+        assert verdict == "ConnectionRefused"  # the bypass the native layer exists for
+    else:
+        assert verdict not in ("ok", "ConnectionRefused", "NotCapable"), verdict  # the kernel said no

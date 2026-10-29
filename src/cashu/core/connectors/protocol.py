@@ -42,6 +42,7 @@ APP_ERROR_KINDS = (
     "timeout",
     "sandbox_unavailable",  # no sandbox on this platform: nothing runs
     "spawn_failed",  # the process could not be started
+    "forbidden_import",  # a deno connector's module graph leaves its directory: refused before a run
     "not_approved",  # pending, changed or disabled: refused before anything runs
     "interpreter_changed",
     "missing",  # the installed directory is gone

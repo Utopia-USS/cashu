@@ -231,7 +231,8 @@ def execute(
         result.bytes_in, result.bytes_out = proxy.bytes_down, proxy.bytes_up
         result.denied_hosts = list(proxy.denied_hosts)
     if outcome.error_kind:
-        result.outcome = "refused" if outcome.error_kind == "sandbox_unavailable" else "failed"
+        refused = outcome.error_kind in ("sandbox_unavailable", "forbidden_import")
+        result.outcome = "refused" if refused else "failed"
         result.error_kind, result.message = outcome.error_kind, outcome.message
         return result
     p = outcome.process
