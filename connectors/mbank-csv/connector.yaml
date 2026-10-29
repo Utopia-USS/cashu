@@ -1,0 +1,15 @@
+# mBank CSV export -> cashU budget import (TypeScript on Deno). A port of the former built-in parser.
+api_version: 1
+id: mbank-csv
+name: mBank CSV (wyciąg z historii operacji)
+version: 1.0.0
+author: cashU core team
+maintainer: utopia-uss
+last_verified: 2026-10-30
+description: Wyciąg CSV z mBanku (lista operacji / elektroniczne zestawienie operacji, także eKonto walutowe) jako import budżetu. Konto rozpoznawane po numerze rachunku z nagłówka pliku.
+module: budget
+kind: file
+run: [deno, connector.ts]
+timeout_s: 60
+file:
+  extensions: [csv]

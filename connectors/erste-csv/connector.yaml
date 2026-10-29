@@ -1,0 +1,16 @@
+# Erste Bank Polska (formerly Santander Bank Polska) CSV export -> cashU budget import (TypeScript on
+# Deno). A port of the former built-in parser; legacy Santander exports are read the same way.
+api_version: 1
+id: erste-csv
+name: Erste Bank / Santander CSV (historia rachunku)
+version: 1.0.0
+author: cashU core team
+maintainer: utopia-uss
+last_verified: 2026-10-30
+description: Historia rachunku CSV z Erste Bank Polska (dawniej Santander Bank Polska, także starsze eksporty Santandera) jako import budżetu. Konto rozpoznawane po numerze z pierwszego wiersza pliku.
+module: budget
+kind: file
+run: [deno, connector.ts]
+timeout_s: 60
+file:
+  extensions: [csv]

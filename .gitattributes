@@ -1,0 +1,2 @@
+# Connector fixtures are byte-exact export samples (encodings, CRLF line ends): never convert them.
+connectors/*/fixtures/** -text
