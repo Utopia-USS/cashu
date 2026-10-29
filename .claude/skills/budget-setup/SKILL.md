@@ -127,7 +127,7 @@ can be anything, e.g. "dom"), and every later command takes `cashu --profile <sl
 Follow [`references/bank-import-workflow.md`](references/bank-import-workflow.md):
 
 - **Step 4 - Which banks (Decision):** CSV for mBank, Erste / former Santander, Pekao; Bank
-  Millennium via Open Banking only; any other bank via Open Banking, a connector (`/import-builder`,
+  Millennium and Revolut via Open Banking only; any other bank via Open Banking, a connector (`/import-builder`,
   preferred) or a new CSV parser in a source checkout.
 - **Step 5 - CSV import (recommended first):** a supported bank is imported in the app (Wydatki >
   Import); for a bank cashU does not read yet ask once: file with values, or the recommended connector

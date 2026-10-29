@@ -17,7 +17,7 @@ but were not listed before.
 | Path | Purpose |
 |---|---|
 | `cli.py` | Typer root: `--profile`, core + module commands, `stats` (entry point) |
-| `config.py` | Settings (pydantic-settings), reads `.env` (`CASHU_` prefix) |
+| `config.py` | Settings (pydantic-settings), reads the checkout's `.env`, then `<data dir>/.env` (wins; the packaged app's) (`CASHU_` prefix) |
 | `models.py` | facade: every table (scripts, Alembic env) |
 | `db.py` | alias of `core/db.py` (`cashu.db.engine` still works) |
 | `desktop/` | `cashu app` (pywebview window over in-process uvicorn, single instance), `cashu skills install`, `entry.py` = the packaged app's entry point |

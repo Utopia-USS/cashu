@@ -9,7 +9,7 @@ terminal.
 
 Ask which banks the user has. Supported CSV formats (verified): **mBank** (cp1250, `;`,
 multi-currency), **Erste / former Santander** (UTF-8, no header, positional), **Pekao** (UTF-8, `;`).
-Bank Millennium: Open Banking only for now (no CSV parser yet).
+Bank Millennium and Revolut: Open Banking only for now (no CSV parser yet).
 
 A different bank:
 - Open Banking, if Enable Banking lists it (`cashu eb banks --country PL` after step 6 is configured);
@@ -50,7 +50,9 @@ these themselves (you have no access to their bank panel or keys):
 1. Create an app at <https://enablebanking.com/cp/>, generate an RSA key pair, upload the public key,
    save the private key as `enablebanking_private.pem` in the data dir (next to `cashu.db`, outside
    the repo).
-2. In `.env`: `CASHU_EB_APP_ID` (and `CASHU_EB_KEY_PATH` if the key is elsewhere). The user edits it.
+2. In `<data dir>/.env` (next to the key; the packaged app reads only this one, a source checkout also
+   its own `.env`, the data dir's wins): `CASHU_EB_APP_ID` (and `CASHU_EB_KEY_PATH` if the key is
+   elsewhere). The user edits it.
 3. In the EB panel: whitelist the redirect `https://localhost:8000/eb/callback` and click "Activate by
    linking accounts".
 4. In their terminal: `cashu eb check`, `cashu eb banks --country PL`, then
