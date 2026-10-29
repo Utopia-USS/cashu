@@ -38,9 +38,19 @@ MAX_ROWS_SHOWN = 20
 
 @dataclass
 class DevTestReport:
+    """The value-free report: ``lines`` for a terminal, plus the same facts structured for the MCP
+    ``test_connector`` tool (``manifest``, ``detect``, ``document_ok``, ``counts``, ``issue_kinds``)."""
+
     ok: bool = True
     lines: list[str] = field(default_factory=list)
     runs: list[RunResult] = field(default_factory=list)
+    manifest: dict = field(default_factory=dict)  # id, version, module, kind, interpreter (a path)
+    manifest_issues: list[str] = field(default_factory=list)
+    detect: dict | None = None  # match, confidence
+    document_ok: bool | None = None  # None: no document was validated
+    document_format: str | None = None
+    counts: dict[str, int] = field(default_factory=dict)  # transactions, balances, positions, ...
+    issue_kinds: dict[str, int] = field(default_factory=dict)  # "error bad_date" -> 2
 
     def add(self, line: str) -> None:
         self.lines.append(line)
@@ -95,11 +105,10 @@ def run_test(
     try:
         loaded = mf.load_dir(source)
     except mf.ManifestError as e:
-        report.fail("manifest: INVALID")
-        for issue in e.issues:
-            report.add(f"  error {issue}")
-        return report
+        return _invalid_manifest(report, e)
     m = loaded.manifest
+    report.manifest = {"id": m.id, "version": m.version, "module": m.module, "kind": m.kind,
+                       "interpreter": str(loaded.interpreter)}
     report.add(f"manifest: OK ({m.id} {m.version}, module {m.module}, kind {m.kind})")
     report.add(f"  interpreter: {loaded.interpreter}")
     report.add(f"  content sha256: {loaded.content_sha256}")
@@ -131,6 +140,37 @@ def run_test(
     return report
 
 
+def _invalid_manifest(report: DevTestReport, error: mf.ManifestError) -> DevTestReport:
+    report.fail("manifest: INVALID")
+    for issue in error.issues:
+        report.manifest_issues.append(issue)
+        report.add(f"  error {issue}")
+    return report
+
+
+def run_test_snapshot(source: Path, **kwargs) -> DevTestReport:
+    """:func:`run_test` on a private copy of ``source`` (owner-only, under the data dir's run folder,
+    deleted afterwards): what runs is what was checked, a file changed in ``source`` during the test
+    never runs (the MCP ``test_connector`` tool; approved runs use the service's hash-verified
+    snapshot the same way)."""
+    import shutil
+
+    from . import service
+    from .runner import make_private_run_dir
+
+    try:
+        mf.scan_dir(source)  # the directory rules and size limits before anything is copied
+    except mf.ManifestError as e:
+        return _invalid_manifest(DevTestReport(), e)
+    base = make_private_run_dir()
+    try:
+        copy = base / source.name
+        service._copy_private(source, copy)
+        return run_test(copy, **kwargs)
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def _test_file(
     report: DevTestReport, target: RunTarget, file: Path, sandbox: ConnectorSandbox | None
 ) -> dict | None:
@@ -143,6 +183,7 @@ def _test_file(
     report.add(_run_line(detect))
     if detect.ok:
         r = detect.response
+        report.detect = {"match": bool(r.match), "confidence": float(r.confidence)}
         report.add(f"  match: {'yes' if r.match else 'no'} (confidence {r.confidence:.2f})")
     convert = execute(target, "convert", file=input_file, sandbox=sandbox)
     report.runs.append(convert)
@@ -211,6 +252,16 @@ def _validate_investments(report: DevTestReport, data: bytes) -> None:
     verdict = "OK" if result.ok else "INVALID"
     line = f"document: {verdict} ({INVESTMENTS_FORMAT})"
     (report.add if result.ok else report.fail)(line)
+    report.document_ok, report.document_format = bool(result.ok), INVESTMENTS_FORMAT
+    report.counts.update({
+        "transactions": result.txn_count, "positions": result.position_count,
+        "corporate_actions": result.corporate_action_count,
+        "errors": len(result.errors), "warnings": len(result.warnings),
+    })
+    for label, issues in (("error", result.errors), ("warning", result.warnings)):
+        for issue in issues:
+            key = f"{label} {getattr(issue, 'kind', 'other')}"
+            report.issue_kinds[key] = report.issue_kinds.get(key, 0) + 1
     parsed = result.result
     types = Counter(str(t.type) for t in parsed.txns) if parsed else Counter()
     actions = Counter(type(a).__name__ for a in parsed.corporate_actions) if parsed else Counter()
@@ -270,6 +321,17 @@ def _validate_budget(report: DevTestReport, document: dict, data: bytes) -> None
             return
         ok = bool(getattr(result, "ok", False))
         (report.add if ok else report.fail)(f"document: {'OK' if ok else 'INVALID'} ({BUDGET_FORMAT})")
+        report.document_ok, report.document_format = ok, BUDGET_FORMAT
+        issues = list(getattr(result, "issues", []) or [])
+        blocking = [i for i in issues if getattr(i, "blocking", True)]
+        report.counts.update({
+            "transactions": int(getattr(result, "transactions", 0) or 0),
+            "balances": int(getattr(result, "balances", 0) or 0),
+            "errors": len(blocking), "warnings": len(issues) - len(blocking),
+        })
+        for issue in issues:
+            key = f"{'error' if getattr(issue, 'blocking', True) else 'warning'} {issue.kind}"
+            report.issue_kinds[key] = report.issue_kinds.get(key, 0) + 1
         summary = getattr(result, "summary", None)
         if callable(summary):
             for line in str(summary()).splitlines():
@@ -289,6 +351,12 @@ def _validate_budget(report: DevTestReport, document: dict, data: bytes) -> None
     balances = document.get("balances", [])
     if not isinstance(balances, list):
         problems.append("balances must be a list")
+    report.document_ok, report.document_format = not problems, BUDGET_FORMAT
+    report.counts.update({
+        "transactions": len(transactions) if isinstance(transactions, list) else 0,
+        "balances": len(balances) if isinstance(balances, list) else 0,
+        "errors": len(problems),
+    })
     if problems:
         report.fail(f"document: INVALID ({BUDGET_FORMAT}, top-level shape)")
         for p in problems:
@@ -302,5 +370,5 @@ def _validate_budget(report: DevTestReport, document: dict, data: bytes) -> None
     report.add("  budget validation not available yet (only the top-level shape was checked)")
 
 
-__all__ = ["DevTestReport", "budget_validator", "run_test", "value_free"]
+__all__ = ["DevTestReport", "budget_validator", "run_test", "run_test_snapshot", "value_free"]
 

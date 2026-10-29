@@ -10,7 +10,9 @@ exports or pull data from an API. No fork, no rebuild.
 
 The rule behind it: **the app runs only a connector the owner approved in the app, pinned by content
 hash, out of process, in a sandbox, with a timeout.** An agent (MCP) can install a connector as
-pending, but it can never approve one and never make the app run code.
+pending, but it can never approve one. The one exception to "MCP never makes the app run code" is the
+test loop: `test_connector` runs a connector of the agent's own workspace once, in the same sandbox,
+offline, on a file from that workspace, and returns only a value-free report (section 6).
 
 ## 1. What a connector is
 
@@ -251,10 +253,23 @@ refused. Two rules matter most for connectors that run again and again:
 The document's `source` becomes the batch's source label (`[a-z][a-z0-9_]`, <= 32 characters; keep it
 the same for every run).
 
-## 6. Testing: `cashu connectors test`
+## 6. Testing: MCP `test_connector` or `cashu connectors test`
 
 Run your connector exactly as the app does, in the same sandbox, also before it is installed or
-approved:
+approved. Two ways, same checks, same value-free report:
+
+- **Agent (MCP), the default:** `test_connector(path, file=...)` or `test_connector(path,
+  fixture=...)` on the profile's MCP server. It works with the downloaded app alone (no terminal CLI,
+  no source checkout). `path` is the connector directory `connectors/<id>/` of the profile's agent
+  workspace; `file` (file kind) or `fixture` (fetch kind) must be a file inside that workspace (e.g.
+  `inbox/<export>` or `connectors/<id>/fixtures/<answer>.json`): paths outside it, in another profile's
+  workspace, in hidden folders or in the cashU data dir are refused. The app runs a private copy of the
+  directory once (a file changed during the test never runs), installs, approves and records nothing,
+  and never opens the network. It returns the manifest facts (the interpreter by name, never a path),
+  each run's outcome and error kind, the detect match, the document's validity, counts and issue kinds,
+  and the report lines below.
+- **Terminal:** the CLI, from a source checkout or with the app's binary
+  (`/Applications/cashU.app/Contents/MacOS/cashu`):
 
 ```bash
 cashu connectors test connectors/<id> --file inbox/<export>          # file kind: detect + convert
@@ -280,7 +295,7 @@ document: OK (cashu-budget-import)
   cashu-budget-import v1 (json): OK, 4 transactions, 0 balances
 ```
 
-**Fetch connectors are tested offline.** `--fixture <file>` runs `fetch` with no network and the
+**Fetch connectors are tested offline.** `fixture` (MCP) / `--fixture <file>` (CLI) runs `fetch` with no network and the
 fixture file's text (a recorded or synthetic API response, JSON, <= 1 MiB) as `params.fixture`; every
 declared secret is set to the placeholder `test-not-a-real-secret`. The test never uses real secrets.
 Make your connector answer from `params.fixture` when it is present (see
@@ -289,7 +304,8 @@ Make your connector answer from `params.fixture` when it is present (see
 test. `check` and the real network are tried in the app (`Sprawdź połączenie`) once the owner approved
 the connector and entered the key.
 
-Test runs are recorded in the connector's run log without a profile.
+CLI test runs are recorded in the connector's run log without a profile; `test_connector` runs are not
+recorded.
 
 ## 7. Installing
 
@@ -389,7 +405,8 @@ bindings before the investments daily check, so what they commit is in that day'
 
 ## 11. Checklist
 
-1. `connector.yaml` passes `cashu connectors test <dir> --check-manifest`.
+1. `connector.yaml` is valid (`test_connector` reports `manifest.valid`, or `cashu connectors test <dir>
+   --check-manifest`).
 2. Only stdlib or files inside the directory (no `pip install` at run time: there is no network).
 3. One JSON object on stdout, logs on stderr, exit 0 or 1 with an error object.
 4. `detect` answers `false` for foreign files instead of failing.
@@ -397,5 +414,6 @@ bindings before the investments daily check, so what they commit is in that day'
 6. Value-free messages and logs; secrets never printed.
 7. Fetch: `HTTPS_PROXY` honoured, `check` implemented, `params.fixture` path for the offline test, cursor
    tolerant to a repeated fetch.
-8. `cashu connectors test` reports OK on a synthetic sample (and, with the user's consent, on the real
-   export); then install it and tell the owner to approve it in Ustawienia > Konektory.
+8. `test_connector` (or `cashu connectors test`) reports OK on a synthetic sample (and, with the
+   user's consent, on the real export); then install it and tell the owner to approve it in
+   Ustawienia > Konektory.

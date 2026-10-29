@@ -36,7 +36,9 @@ claude mcp add cashu-<slug> -- cashu mcp --profile <slug>   # once per profile
    recommended blind connector).
 3. Configuration changes are proposals the owner approves in the app.
 4. The app runs only a connector the owner approved in the app (pinned by content hash, sandboxed,
-   with a timeout) and an MCP call never makes it run code (`propose_connector` only installs a
+   with a timeout) and an MCP call never makes it run code on the owner's behalf: `test_connector`
+   only runs a connector of the agent's own workspace once, sandboxed and offline, on a workspace file,
+   returning a value-free report, and never installs or approves (`propose_connector` only installs a
    pending connector; `validate_import` / `propose_import` refuse scripts).
 5. No passwords, API keys, IBANs or account numbers (connector keys are entered by the owner in the
    app).

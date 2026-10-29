@@ -1,24 +1,41 @@
-"""Connector MCP tools (module-agnostic, F10): ``propose_connector`` and ``connectors``.
+"""Connector MCP tools (module-agnostic, F10): ``test_connector``, ``propose_connector`` and
+``connectors``.
 
-The rule: the app runs a connector only after the owner approves it in the app (Ustawienia > Konektory),
-pinned by its content hash, in a sandbox, with a timeout. An MCP call never runs code and can never
-approve: ``propose_connector`` installs a copy as ``pending`` (or, for an installed connector, replaces it
-so it waits for approval again); validating the manifest resolves the interpreter path but starts
-nothing. ``connectors`` lists what is installed with run outcomes and error kinds only: never a
-connector's message, its stderr, binding params or secrets (those stay in the owner's app).
+The rule: the app runs an installed connector on the owner's data only after the owner approves it in
+the app (Ustawienia > Konektory), pinned by its content hash, in a sandbox, with a timeout. An MCP call
+can never install as approved or approve: ``propose_connector`` installs a copy as ``pending`` (or, for
+an installed connector, replaces it so it waits for approval again); validating the manifest resolves
+the interpreter path but starts nothing. ``connectors`` lists what is installed with run outcomes and
+error kinds only: never a connector's message, its stderr, binding params or secrets (those stay in the
+owner's app).
+
+``test_connector`` is the one tool that starts a process: the developer loop of ``cashu connectors
+test`` for an agent in a downloaded app (no terminal CLI needed). It runs a connector directory of this
+profile's workspace (``connectors/<id>/``, a private copy of it) once, in the same sandbox as approved
+runs, on a sample file inside the workspace (file kind) or offline with a recorded fixture inside the
+workspace (fetch kind: no network, placeholder secrets). It never installs, approves or records
+anything, and returns a value-free report: kinds, counts and messages with values replaced.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from sqlmodel import col, func, or_, select
+
+from cashu.core import paths
 
 from .. import labels as L
 from ..registry import ToolContext, ToolError, ToolSpec
 
 CONNECTORS_FOLDER = "connectors"
 RULE = (
-    "The app runs a connector only after the owner approves it in the app (Ustawienia > Konektory); "
-    "MCP calls never run code and never approve."
+    "The app runs an installed connector only after the owner approves it in the app (Ustawienia > "
+    "Konektory); MCP calls never install as approved and never approve."
+)
+TEST_RULE = (
+    "test_connector ran a private copy once in the sandbox, offline; nothing was installed, approved "
+    "or recorded. Submit it with propose_connector when the report is clean."
 )
 
 
@@ -64,6 +81,113 @@ def propose_connector(ctx: ToolContext, path: str) -> dict:
                else "")
         ),
     }
+
+
+def _workspace_file(raw: str, workspace: Path, what: str) -> Path:
+    """A regular file inside this profile's workspace (symlinks resolved), outside hidden folders and
+    the cashU data dir."""
+    from .exports import inside
+
+    if not raw or "\x00" in raw:
+        raise ToolError(f"{what} is required")
+    try:
+        path = Path(raw).expanduser().resolve(strict=True)
+        base = workspace.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise ToolError(f"{what}: file not found", "not_found") from None
+    if not inside(path, base):
+        raise ToolError(
+            f"{what} must be a file inside this profile's agent workspace (e.g. connectors/<id>/"
+            "fixtures/ or samples/); copy a sample there first"
+        )
+    if not path.is_file():
+        raise ToolError(f"{what}: not a regular file")
+    if any(part.startswith(".") for part in path.relative_to(base).parts):
+        raise ToolError(f"{what}: hidden files and files inside hidden folders are not read")
+    if inside(path, paths.data_dir().resolve()) or inside(path, paths.LEGACY_DIR.resolve()):
+        raise ToolError(f"{what}: files inside the cashU data dir are not read")
+    return path
+
+
+def _interpreter_name(path: str) -> str:
+    from cashu.core.connectors import manifest as mf
+
+    name = Path(path).name
+    bundled = mf.bundled_interpreter("deno")
+    return "deno (bundled with the app)" if bundled is not None and str(bundled) == path else name
+
+
+def _report_line(line: str) -> str:
+    if line.strip().startswith("interpreter: "):
+        indent = line[: len(line) - len(line.lstrip())]
+        return f"{indent}interpreter: {_interpreter_name(line.split(': ', 1)[1])}"
+    return line
+
+
+def test_connector(ctx: ToolContext, path: str, file: str | None = None,
+                   fixture: str | None = None) -> dict:
+    from cashu.core.connectors import devtest
+    from cashu.core.connectors.runner import MAX_INPUT_BYTES
+    from cashu.core.workspace import service as workspace
+
+    from .exports import checked_local_dir
+
+    root = workspace.workspace_path(ctx.profile.slug)
+    folder = checked_local_dir(path, root / CONNECTORS_FOLDER)
+    if (file is None) == (fixture is None):
+        raise ToolError(
+            "give exactly one of file (a file connector's sample export) or fixture (a fetch "
+            "connector's recorded synthetic API response, used offline)"
+        )
+    sample = _workspace_file(file or fixture or "", root, "file" if file is not None else "fixture")
+    limit = MAX_INPUT_BYTES if file is not None else devtest.MAX_FIXTURE_BYTES
+    if sample.stat().st_size > limit:
+        raise ToolError(f"the {'file' if file is not None else 'fixture'} is larger than "
+                        f"{limit // 1024} KiB")
+    report = devtest.run_test_snapshot(
+        folder, file=sample if file is not None else None,
+        fixture=sample if fixture is not None else None,
+    )
+    m = report.manifest
+    out: dict = {
+        "ok": L.flag(report.ok),
+        "manifest": {
+            "valid": L.flag(bool(m)),
+            "id": L.category(m.get("id")),
+            "version": L.category(m.get("version")),
+            "module": L.category(m.get("module")),
+            "kind": L.category(m.get("kind")),
+            "interpreter": L.category(_interpreter_name(m["interpreter"]) if m else None),
+            "issues": [L.text(i) for i in report.manifest_issues[:20]],
+        },
+        "runs": [
+            {
+                "command": L.category(r.command),
+                "outcome": L.category(r.outcome),
+                "error_kind": L.category(r.error_kind),
+                "exit_code": L.count(r.exit_code),
+                "duration_ms": L.count(r.duration_ms),
+                "records": L.count(r.records),
+                "message": L.text(devtest.value_free(r.message) if r.message else None),
+            }
+            for r in report.runs
+        ],
+        "detect": None if report.detect is None else {
+            "match": L.flag(report.detect["match"]),
+            "confidence": L.pct(report.detect["confidence"], 2),
+        },
+        "document": None if report.document_ok is None else {
+            "valid": L.flag(report.document_ok),
+            "format": L.category(report.document_format),
+            "counts": {k: L.count(v) for k, v in sorted(report.counts.items())},
+            "issue_kinds": {k: L.count(v) for k, v in sorted(report.issue_kinds.items())},
+        },
+        "report": [L.text(_report_line(line)) for line in report.lines[:200]],
+        "note": L.text(TEST_RULE),
+    }
+    if m and m.get("id") != folder.name:
+        out["note"] = L.text(TEST_RULE + f" Rename the directory to connectors/{m['id']}/ first.")
+    return out
 
 
 def _issues(message: str, issues) -> str:
@@ -121,14 +245,42 @@ def connectors(ctx: ToolContext) -> dict:
 
 TOOLS = (
     ToolSpec(
+        "test_connector",
+        "core",
+        "Test a connector you are writing (a directory connectors/<id>/ in this workspace), before "
+        "propose_connector: the app runs a private copy once in the same sandbox as approved runs "
+        "(Deno connectors: Deno permissions inside the macOS sandbox, imports only from the "
+        "connector's own files and node: built-ins), detect + convert on `file` (a sample export "
+        "inside this workspace) for a file connector, or fetch offline with `fixture` (a recorded "
+        "synthetic API response inside this workspace, passed as the `fixture` param, placeholder "
+        "secrets, no network) for a fetch connector, then validates the document like the import "
+        "would. Returns a value-free report: manifest, each run's outcome and error kind, detect "
+        "match, document validity, counts and issue kinds with row numbers and field names; never a "
+        "value from the file or the connector's output. Nothing is installed, approved or recorded.",
+        test_connector,
+        properties={
+            "path": {"type": "string", "maxLength": 1024},
+            "file": {"type": "string", "maxLength": 1024},
+            "fixture": {"type": "string", "maxLength": 1024},
+        },
+        required=("path",),
+        refused={
+            "network": "test_connector never uses the network: test a fetch connector offline with "
+            "fixture; real fetches run only after the owner approves the connector in the app",
+            "secrets": "test_connector passes placeholder secrets; the owner enters real keys in the "
+            "app",
+            "approve": "only the owner approves a connector, in the app (Ustawienia > Konektory)",
+            "install": "test_connector never installs; submit the connector with propose_connector",
+        },
+    ),
+    ToolSpec(
         "propose_connector",
         "core",
         "Submit a connector you wrote (a directory connectors/<id>/ in this workspace with "
         "connector.yaml and its code; the contract is the import-builder skill's references/connectors.md) for the owner's review. It is "
         "installed as pending (an installed one is replaced and waits for approval again). " + RULE
         + " Returns id, status, hash prefix, module, kind, allowed hosts and secret ids. Test it before "
-        "with `cashu connectors test <dir> --file <export>`. Never ask for API keys: the owner enters "
-        "them in the app.",
+        "with test_connector. Never ask for API keys: the owner enters them in the app.",
         propose_connector,
         properties={"path": {"type": "string", "maxLength": 1024}},
         required=("path",),

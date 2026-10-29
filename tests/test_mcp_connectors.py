@@ -174,9 +174,15 @@ def test_tool_descriptions_state_the_rule():
     tools = all_tools()
     for name in ("propose_connector", "connectors"):
         text = tools[name].description
-        assert "only after the owner approves it" in text and "never run code" in text
+        assert "only after the owner approves it" in text and "never approve" in text
         assert "\u2014" not in text
+    test = tools["test_connector"].description
+    assert "Nothing is installed, approved or recorded" in test and "no network" in test
+    assert "\u2014" not in test
+    assert "test_connector" in tools["propose_connector"].description
+    assert "cashu connectors test" not in tools["propose_connector"].description
     assert tools["propose_connector"].write and not tools["connectors"].write
+    assert not tools["test_connector"].write
     for name, spec in tools.items():
         assert "never open the export" not in spec.description.lower(), name
     assert "converter" in tools["validate_import"].refused  # the converter refusal stays
@@ -236,3 +242,166 @@ def test_a_headerless_csv_never_echoes_its_first_row(db_engine, tmp_path):
              b"1,2026-09-01,-1.00,PLN,x,y\n")
     fields = {i.field for i in validate_budget_document(mixed, "m.csv").issues}
     assert fields == {"column 5", "opis"}
+
+
+# --------------------------------------------------------------------------- #
+# test_connector: the agent's test loop without a terminal CLI
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def tester(db_engine, monkeypatch):
+    """A profile whose MCP server runs connectors in ``NoSandbox`` (records every spec)."""
+    from connector_support import NoSandbox
+
+    box = NoSandbox()
+    monkeypatch.setattr(runner, "default_sandbox", lambda: box)
+    with get_session() as s:
+        p = profiles.create_profile(s, name="Anna Nowak", modules_=["investments", "budget"])
+        pid, slug = p.id, p.slug
+    return CashuMcp(pid), slug, box
+
+
+def _sample(slug: str, name: str = "inbox/history.csv", text: str | None = None):
+    path = workspace.workspace_path(slug) / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text or "date,type,amount\n2026-01-05,deposit,1000.00\n", encoding="utf-8")
+    return path
+
+
+def _nothing_installed_or_recorded():
+    from sqlmodel import select
+
+    from cashu.core.connectors.models import Connector, ConnectorRun
+
+    with get_session() as s:
+        assert s.exec(select(Connector)).all() == []
+        assert s.exec(select(ConnectorRun)).all() == []
+    root = service.connectors_root()
+    assert not root.exists() or not any(p for p in root.iterdir() if not p.name.startswith("."))
+
+
+def test_test_connector_runs_a_private_copy_and_installs_nothing(tester):
+    mcp, slug, box = tester
+    root = write_connector(ws_connectors(slug) / "test-conn", cid="test-conn")
+    result = mcp.call("test_connector", {"path": str(root), "file": str(_sample(slug))})
+    assert result.ok, result.error
+    d = result.data
+    assert d["ok"] is True
+    m = d["manifest"]
+    assert (m["valid"], m["id"], m["module"], m["kind"]) == (True, "test-conn", "investments", "file")
+    assert m["interpreter"].startswith("python3")  # a name, never a path
+    assert [(r["command"], r["outcome"]) for r in d["runs"]] == [("detect", "ok"), ("convert", "ok")]
+    assert d["detect"]["match"] is True
+    doc = d["document"]
+    assert doc["valid"] is True and doc["format"] == "cashu-import"
+    assert doc["counts"]["transactions"] == 2 and doc["counts"]["errors"] == 0
+    assert "propose_connector" in d["note"]
+    assert not any("interpreter" in line and "/" in line for line in d["report"])
+    # it ran from a private copy, not from the workspace folder, and the copy is gone
+    assert len(box.specs) == 2
+    for spec in box.specs:
+        assert os.path.realpath(spec.connector_dir) != os.path.realpath(root)
+        assert not spec.connector_dir.exists()
+    _nothing_installed_or_recorded()
+
+
+def test_test_connector_fetch_runs_offline_with_a_fixture(tester, monkeypatch):
+    mcp, slug, box = tester
+
+    def no_proxy(hosts):  # pragma: no cover - must never be called
+        raise AssertionError("test_connector opened the egress proxy")
+
+    monkeypatch.setattr(runner, "EgressProxy", no_proxy)
+    root = write_connector(ws_connectors(slug) / "test-fetch", cid="test-fetch", kind="fetch")
+    fixture = _sample(slug, "connectors/test-fetch/fixtures/answer.json", '{"items": []}')
+    result = mcp.call("test_connector", {"path": str(root), "fixture": str(fixture)})
+    assert result.ok, result.error
+    assert result.data["ok"] is True
+    assert [r["command"] for r in result.data["runs"]] == ["fetch"]
+    (spec,) = box.specs
+    assert spec.proxy_port is None and "HTTPS_PROXY" not in spec.env
+    request = json.loads(spec.stdin)
+    assert request["params"]["fixture"] == '{"items": []}'
+    assert request["secrets"] == {"api_key": "test-not-a-real-secret"}
+    _nothing_installed_or_recorded()
+
+
+def test_test_connector_path_rules(tester, tmp_path):
+    mcp, slug, box = tester
+    base = ws_connectors(slug)
+    good = write_connector(base / "test-conn", cid="test-conn")
+    sample = _sample(slug)
+    outside_conn = write_connector(tmp_path / "elsewhere" / "test-conn", cid="test-conn")
+    outside_file = tmp_path / "elsewhere" / "history.csv"
+    outside_file.write_text("date,type,amount\n", encoding="utf-8")
+    hidden = _sample(slug, ".private/history.csv")
+    linked = workspace.workspace_path(slug) / "inbox" / "linked.csv"
+    linked.symlink_to(outside_file)
+    from cashu.core import paths
+
+    in_data = paths.data_dir() / "profiles" / "x.csv"
+    in_data.parent.mkdir(parents=True, exist_ok=True)
+    in_data.write_text("date,type,amount\n", encoding="utf-8")
+    cases = {
+        "connector outside the workspace": {"path": str(outside_conn), "file": str(sample)},
+        "file outside the workspace": {"path": str(good), "file": str(outside_file)},
+        "file through a symlink out": {"path": str(good), "file": str(linked)},
+        "hidden file": {"path": str(good), "file": str(hidden)},
+        "file in the data dir": {"path": str(good), "file": str(in_data)},
+        "missing file": {"path": str(good), "file": str(sample.parent / "nope.csv")},
+        "no sample": {"path": str(good)},
+        "both samples": {"path": str(good), "file": str(sample), "fixture": str(sample)},
+    }
+    for what, args in cases.items():
+        result = mcp.call("test_connector", args)
+        assert not result.ok, what
+    for name in ("network", "secrets", "approve", "install"):
+        refused = mcp.call("test_connector", {"path": str(good), "file": str(sample), name: "x"})
+        assert not refused.ok and refused.error_kind == "invalid_arguments", name
+    assert box.specs == []  # nothing ran for a refused call
+    _nothing_installed_or_recorded()
+
+
+def test_test_connector_never_reaches_another_profiles_workspace(tester):
+    mcp, slug, box = tester
+    with get_session() as s:
+        other = profiles.create_profile(s, name="Ewa Test", modules_=["investments"])
+        other_slug = other.slug
+    theirs = write_connector(ws_connectors(other_slug) / "test-conn", cid="test-conn")
+    their_sample = _sample(other_slug)
+    mine = write_connector(ws_connectors(slug) / "test-conn", cid="test-conn")
+    my_sample = _sample(slug)
+    assert not mcp.call("test_connector", {"path": str(theirs), "file": str(my_sample)}).ok
+    assert not mcp.call("test_connector", {"path": str(mine), "file": str(their_sample)}).ok
+    assert box.specs == []
+    assert mcp.call("test_connector", {"path": str(mine), "file": str(my_sample)}).ok
+
+
+def test_test_connector_reports_an_invalid_manifest_without_running(tester):
+    mcp, slug, box = tester
+    bad = ws_connectors(slug) / "bad-conn"
+    write_connector(bad, cid="bad-conn", manifest="api_version: 1\nid: bad-conn\nkind: nope\n")
+    result = mcp.call("test_connector", {"path": str(bad), "file": str(_sample(slug))})
+    assert result.ok, result.error
+    assert result.data["ok"] is False and result.data["manifest"]["valid"] is False
+    assert result.data["manifest"]["issues"] and result.data["runs"] == []
+    assert box.specs == []
+
+
+def test_test_connector_messages_are_value_free(tester):
+    mcp, slug, _box = tester
+    leaky = (
+        "import json, sys\nreq = json.load(sys.stdin)\n"
+        "text = open(req['file']['path'], encoding='utf-8').read()\n"
+        "print(json.dumps({'error': {'kind': 'bad_file', 'message': text}}))\nsys.exit(1)\n"
+    )
+    root = write_connector(ws_connectors(slug) / "test-conn", cid="test-conn", code=leaky)
+    sample = _sample(slug, text=f"date,type,amount\n2026-01-05,{SECRET_MESSAGE},4321.09\n")
+    result = mcp.call("test_connector", {"path": str(root), "file": str(sample)})
+    assert result.ok, result.error
+    assert result.data["ok"] is False
+    assert {r["error_kind"] for r in result.data["runs"]} == {"bad_file"}
+    blob = json.dumps(result.data)
+    for leak in ("Kowalski", "PL6110", "4321", "10901014"):
+        assert leak not in blob, leak

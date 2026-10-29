@@ -43,6 +43,18 @@ def _set_privacy(pid: int, level: str) -> None:
         s.add(p)
 
 
+LEAKY_CONNECTOR = '''\
+import json, sys
+req = json.load(sys.stdin)
+text = open(req["file"]["path"], encoding="utf-8").read()
+if req["command"] == "detect":
+    print(json.dumps({"match": True, "confidence": 0.5}))
+else:
+    print(json.dumps({"error": {"kind": "bad_file", "message": text[:400]}}))
+    sys.exit(1)
+'''
+
+
 def _connector_fixtures(host: CashuMcp, tmp_path, note: str):
     from connector_support import write_connector
 
@@ -72,7 +84,14 @@ def _connector_fixtures(host: CashuMcp, tmp_path, note: str):
     }
     budget_doc = tmp_path / "budget-doc.json"
     budget_doc.write_text(json.dumps(doc), encoding="utf-8")
-    return root, budget_doc
+    # test_connector: a sample in the workspace holding the note, and a connector that fails with the
+    # sample's whole text as its message (the report must stay value-free).
+    sample = workspace.workspace_path(slug) / "inbox" / "fuzz-sample.csv"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text(f"date,description,amount\n2026-10-01,{note},-4321.09\n", encoding="utf-8")
+    leaky = workspace.workspace_path(slug) / "connectors" / "fuzz-leak"
+    write_connector(leaky, cid="fuzz-leak", code=LEAKY_CONNECTOR)
+    return root, budget_doc, sample, leaky
 
 
 def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
@@ -131,8 +150,10 @@ def _calls(host: CashuMcp, tmp_path) -> list[tuple[str, dict]]:
 
     # Connectors (F10): one in the workspace's connectors/ folder, a failed run whose message and
     # stderr hold a name and an IBAN (owner-only: never in an MCP answer), a budget document.
-    connector_dir, budget_doc = _connector_fixtures(host, tmp_path, note)
+    connector_dir, budget_doc, sample, leaky = _connector_fixtures(host, tmp_path, note)
     return [
+        ("test_connector", {"path": str(leaky), "file": str(sample)}),
+        ("test_connector", {"path": str(connector_dir), "file": str(sample)}),
         ("propose_connector", {"path": str(connector_dir)}),
         ("connectors", {}),
         ("validate_budget_import", {"path": str(budget_doc)}),
