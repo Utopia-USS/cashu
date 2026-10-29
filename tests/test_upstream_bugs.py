@@ -51,6 +51,48 @@ def test_b1_sephora_is_shopping():
     assert taxonomy.apply_seed_rules("SEPHORA TEST KRAKOW") == "shopping"
 
 
+def test_short_needles_do_not_match_inside_other_words():
+    """Short needles match whole words only: no false positives inside unrelated words."""
+    for key, wrong in (
+        ("SPECSAVERS TEST KRAKOW", "utilities"),     # PEC
+        ("LEONARDO TEST", "utilities"),              # EON
+        ("CUPCAKE STUDIO TEST", "utilities"),        # UPC
+        ("LINEA VERDE TEST", "utilities"),           # INEA
+        ("GENEALOGIA TEST", "utilities"),            # ENEA
+        ("CARD TRANSACTION FEE TEST", "shopping"),   # ACTION
+        ("CERAMIC STUDIO TEST", "fuel"),             # AMIC
+        ("AVIATION MUSEUM TEST", "fuel"),            # AVIA
+        ("VIVALDI TEST", "groceries"),               # ALDI
+        ("DINOZAUR TEST", "groceries"),              # DINO
+        ("SPADEK PO DZIADKU TEST", "personal_care"),  # SPA
+        ("TAXAMO TEST", "other"),                    # AXA
+        ("MELODY TEST", "dining"),                   # LODY
+        ("KALABRIA TEST", "health"),                 # ALAB
+    ):
+        assert taxonomy.apply_seed_rules(key) != wrong, key
+
+
+def test_short_needles_still_match_as_whole_words():
+    for key, cat in (
+        ("PEC GLIWICE TEST", "utilities"),
+        ("E.ON POLSKA TEST", "utilities"),
+        ("EON POLSKA TEST", "utilities"),
+        ("UPC POLSKA TEST", "utilities"),
+        ("INEA S.A. TEST", "utilities"),
+        ("ENEA OPERATOR TEST", "utilities"),
+        ("ACTION 123 KRAKOW", "shopping"),
+        ("AMIC ENERGY 45 TEST", "fuel"),
+        ("AVIA STACJA TEST", "fuel"),
+        ("ALDI SP. Z O.O. TEST", "groceries"),
+        ("DINO POLSKA 1234 TEST", "groceries"),
+        ("DAY SPA TEST", "personal_care"),
+        ("AXA UBEZPIECZENIA TEST", "other"),
+        ("LODY TRADYCYJNE TEST", "dining"),
+        ("ALAB LABORATORIA TEST", "health"),
+    ):
+        assert taxonomy.apply_seed_rules(key) == cat, key
+
+
 # --------------------------------------------------------------------------- #
 # B2 - loan / mortgage / rent / fee installments detected as subscriptions,
 #      and subscription totals mixing currencies
