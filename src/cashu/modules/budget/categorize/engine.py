@@ -49,15 +49,10 @@ def categorize(
     # 3. A payment a module owns (a loan installment to its lender account or with
     #    its title phrase) is explicit configuration: it beats a cached LLM answer
     #    for the same merchant (possibly learned before the loan was configured).
-    text = normalize_text(
-        " ".join(f for f in (txn.reference, txn.description, txn.counterparty_name) if f)
-    )
-    if not txn.amount > 0:
-        for p in patterns:
-            if (p.counterparty_iban and cp and iban_key(p.counterparty_iban) == cp) or (
-                p.text and p.text in text
-            ):
-                return p.category, "keyword"
+    text = _text(txn)
+    hit = _pattern_match(txn, cp, text, patterns)
+    if hit is not None:
+        return hit, "keyword"
 
     # 4. Cached LLM answer for the merchant.
     if rule is not None:
@@ -83,3 +78,53 @@ def categorize(
     if mk and mk in subscription_keys:
         return "subscriptions", "subscription"
     return "other", "default"
+
+
+def _text(txn: Transaction) -> str:
+    return normalize_text(
+        " ".join(f for f in (txn.reference, txn.description, txn.counterparty_name) if f)
+    )
+
+
+def _pattern_match(
+    txn: Transaction, cp: str, text: str, patterns: Sequence[PaymentPattern]
+) -> str | None:
+    """The category of the first module payment pattern an outflow matches."""
+    if txn.amount > 0:
+        return None
+    for p in patterns:
+        if (p.counterparty_iban and cp and iban_key(p.counterparty_iban) == cp) or (
+            p.text and p.text in text
+        ):
+            return p.category
+    return None
+
+
+def owner_decision(
+    txn: Transaction,
+    *,
+    rules: dict[str, CategoryRule],
+    patterns: Sequence[PaymentPattern] = (),
+) -> tuple[str, str] | None:
+    """(category, source) when explicit configuration decides the transaction, else None.
+
+    Explicit configuration is the owner's locked merchant rule, a module's payment
+    pattern (a loan's lender account or title phrase) and a module-registered
+    phrase (the loan installment phrases). An LLM pass must never override these,
+    and they must still apply to rows an earlier LLM pass categorized."""
+    mk = merchant_key(txn.counterparty_name, txn.reference, txn.description)
+    rule = rules.get(mk)
+    if rule is not None and rule.locked:
+        return rule.category, rule.source
+    cp = iban_key(txn.counterparty_iban) if txn.counterparty_iban else ""
+    text = _text(txn)
+    hit = _pattern_match(txn, cp, text, patterns)
+    if hit is not None:
+        return hit, "keyword"
+    if txn.amount <= 0 and text:
+        from cashu.core import modules
+
+        for needle, cat in modules.text_rules():
+            if needle in text:
+                return cat, "keyword"
+    return None

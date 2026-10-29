@@ -270,9 +270,11 @@ def reclassify_cmd(
     ] = "qwen2.5:7b",
     old_model: Annotated[str, typer.Option("--old-model", help="Model for older txns.")] = "qwen2.5:3b",
 ) -> None:
-    """Re-classify ALL income/expense transactions with the local LLM, using full
-    transaction data (overwrites everything, incl. manual). Gateways/BLIK are
-    resolved by their embedded merchant. Structural transfers & cash are preserved.
+    """Re-classify income/expense transactions with the local LLM, using full
+    transaction data. Gateways/BLIK are resolved by their embedded merchant.
+    Never overwrites owner decisions: manual categories, your merchant rules, loan
+    installment matches, cash marking and owner-only categories (e.g. private).
+    Structural transfers & cash are preserved.
 
     With --recent-days, recent transactions get the stronger --recent-model and the
     older tail gets the faster --old-model (both applied in one atomic commit)."""
@@ -317,6 +319,7 @@ def reclassify_cmd(
                 "groups": r1["groups"] + r2["groups"],
                 "classified_txns": r1["classified_txns"] + r2["classified_txns"],
                 "fallback_txns": r1["fallback_txns"] + r2["fallback_txns"],
+                "configured_txns": r1["configured_txns"] + r2["configured_txns"],
                 "distribution": dict(sorted(merged.items(), key=lambda kv: -kv[1])),
                 "model": f"{recent_model} (recent) + {old_model} (older)",
             }
@@ -329,7 +332,8 @@ def reclassify_cmd(
     cliutil.console.print(
         f"[green]Reclassification done[/] (model {res['model']}): "
         f"{res['targets']} transactions in {res['groups']} groups, "
-        f"LLM {res['classified_txns']}, fallback {res['fallback_txns']}."
+        f"LLM {res['classified_txns']}, fallback {res['fallback_txns']}, "
+        f"by your rules / loan patterns {res['configured_txns']}."
     )
     dist = Table(title="Category distribution")
     dist.add_column("category")

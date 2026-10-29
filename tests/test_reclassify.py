@@ -120,3 +120,88 @@ def test_manual_only_categories_are_never_offered_to_the_llm(session, monkeypatc
     reclassify_all(session, model="stub", batch_size=10)
     assert "private" not in seen["keys"] and "private" not in seen["labels"]
     assert "transfer" not in seen["keys"]
+
+
+def _always(category: str):
+    def fake(items, keys, labels, **kw):
+        return {tid: {"category": category, "confidence": 0.9} for tid, _ in items}
+    return fake
+
+
+def test_reclassify_never_overwrites_owner_decisions(session, monkeypatch):
+    """Manual rows, the owner's merchant rules, owner-only categories and loan
+    pattern matches survive a full LLM reclassification."""
+    from cashu.modules.budget.service import recategorize_merchant, set_transaction_category
+    from cashu.modules.loans.service import add_loan
+
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL99 1140 0000 0000 0000 7777")
+    session.flush()
+    manual = _txn(session, acc.id, "-25", ref="KWIACIARNIA ROZA", cat="other", dh="m1")
+    set_transaction_category(session, manual.id, "gifts")
+    ruled = _txn(session, acc.id, "-60", cp="SKLEP ZOOLOGICZNY BUREK", cat="other", dh="r1")
+    session.flush()
+    recategorize_merchant(session, "SKLEP ZOOLOGICZNY BUREK", "shopping")
+    private = _txn(session, acc.id, "-200", ref="ZA BILETY", cat="private", dh="pv")
+    add_loan(session, name="Auto", principal="30000", annual_rate="8", term_months=48,
+             start_date=date(2025, 1, 1), payment_text="UMOWA 123 AUTO")
+    loan_row = _txn(session, acc.id, "-700", ref="UMOWA 123 AUTO", cat="loans", dh="ln")
+    # A row an earlier LLM pass put elsewhere: the loan pattern now decides it.
+    loan_llm = _txn(session, acc.id, "-700", ref="UMOWA 123 AUTO LUTY", cat="subscriptions", dh="ln2")
+    loan_llm.category_source = "llm_full"
+    phrase_row = _txn(session, acc.id, "-1500", ref="SPLATA RATY 05/2026", cat="loans", dh="ph")
+    free = _txn(session, acc.id, "-30", ref="LIDL", cat="other", dh="free")
+    session.flush()
+
+    monkeypatch.setattr(local_llm, "classify_transactions", _always("entertainment"))
+    res = reclassify_all(session, model="stub", batch_size=10)
+    session.flush()
+
+    def get(t):
+        return session.get(Transaction, t.id)
+
+    assert (get(manual).category, get(manual).category_source) == ("gifts", "manual_txn")
+    assert (get(ruled).category, get(ruled).category_source) == ("shopping", "manual")
+    assert get(private).category == "private"
+    assert get(loan_row).category == "loans"
+    assert get(loan_llm).category == "loans"
+    assert get(phrase_row).category == "loans"
+    assert get(free).category == "entertainment"
+    assert res["targets"] == 1 and res["configured_txns"] == 3
+
+
+def test_fallback_rows_stay_open_to_a_later_loan_pattern(session, monkeypatch):
+    """A group the model did not answer is not frozen: a loan pattern set later applies."""
+    from cashu.modules.budget.service import categorize_all
+    from cashu.modules.loans.service import add_loan
+
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL99 1140 0000 0000 0000 6666")
+    session.flush()
+    row = _txn(session, acc.id, "-900", ref="PRZELEW BANK XYZ 4711", cat="other", dh="fb")
+    monkeypatch.setattr(local_llm, "classify_transactions", lambda items, *a, **kw: {})
+    res = reclassify_all(session, model="stub", batch_size=10)
+    session.flush()
+    assert res["fallback_txns"] == 1
+    assert session.get(Transaction, row.id).category_source != "llm_fallback"
+
+    add_loan(session, name="Hipo", principal="300000", annual_rate="7", term_months=300,
+             start_date=date(2025, 1, 1), payment_text="BANK XYZ 4711")
+    categorize_all(session)
+    assert session.get(Transaction, row.id).category == "loans"
+
+
+def test_categorize_all_applies_a_loan_pattern_to_llm_rows(session):
+    from cashu.modules.budget.service import categorize_all
+    from cashu.modules.loans.service import add_loan
+
+    acc = get_or_create_account(session, bank="mbank", name="mBank", iban="PL99 1140 0000 0000 0000 5555")
+    session.flush()
+    row = _txn(session, acc.id, "-900", ref="UMOWA 9 LEASING AUTA", cat="subscriptions", dh="lf")
+    row.category_source = "llm_full"
+    keep = _txn(session, acc.id, "-40", ref="NETFLIX", cat="entertainment", dh="nf")
+    keep.category_source = "llm_full"
+    session.flush()
+    add_loan(session, name="Leasing", principal="50000", annual_rate="9", term_months=36,
+             start_date=date(2025, 1, 1), payment_text="UMOWA 9 LEASING")
+    categorize_all(session)
+    assert session.get(Transaction, row.id).category == "loans"
+    assert session.get(Transaction, keep.id).category == "entertainment"

@@ -13,6 +13,13 @@ Structural money-movement bookkeeping is left untouched: internal transfers,
 own-account moves, FX conversions, and the cash pool (transfer / cash_withdrawal
 categories, and everything on a CASH account) are never reclassified — rewriting
 them as spending would corrupt net worth and the cash pool.
+
+The owner's decisions are never overwritten either: a per-transaction choice
+(``manual_txn``), a merchant rule they set (``manual``), a cash-pool mirror leg
+(``cash_leg``), an owner-only category (``taxonomy.MANUAL_ONLY``), and anything
+explicit configuration decides (a locked merchant rule, a loan's payment pattern
+or installment phrase: ``engine.owner_decision``), which is re-applied instead of
+asking the model.
 """
 
 from __future__ import annotations
@@ -40,6 +47,14 @@ _WS = re.compile(r"\s+")
 
 # Categories that are structural (not spend/income) — never reclassified.
 STRUCTURAL_CATEGORIES = {"transfer", "cash_withdrawal"}
+
+# Category sources that record an owner decision: never reclassified.
+OWNER_SOURCES = frozenset({"manual", "manual_txn", "cash_leg"})
+
+
+def is_owner_decided(t: Transaction) -> bool:
+    """True when the row carries the owner's own decision (by source or category)."""
+    return t.category_source in OWNER_SOURCES or t.category in taxonomy.MANUAL_ONLY
 
 
 def _strip_accents(s: str) -> str:
@@ -107,8 +122,11 @@ def reclassify_all(
     progress=None,
     profile_id: int | None = None,
 ) -> dict:
-    """Reclassify every real income/expense transaction via the local LLM,
-    overwriting whatever was set before (including manual). Returns stats.
+    """Reclassify every real income/expense transaction via the local LLM.
+    Returns stats.
+
+    Owner decisions are never touched (``is_owner_decided``); rows that a locked
+    merchant rule or a loan pattern decides get that answer instead of the model's.
 
     date_from / date_to (inclusive) bound which transactions are targeted — used to
     run a stronger model on recent transactions and a faster one on the older tail."""
@@ -128,13 +146,29 @@ def reclassify_all(
     }
     own = own_ibans(session, pid)
 
+    rules = load_rules(session, pid)
+    patterns = modules.payment_patterns(session, pid)
+
     all_txns = session.exec(transactions(pid)).all()
-    targets = [
+    candidates = [
         t for t in all_txns
         if not _is_structural(t, own, cash_ids)
+        and not is_owner_decided(t)
         and (date_from is None or t.booking_date >= date_from)
         and (date_to is None or t.booking_date <= date_to)
     ]
+    # Explicit configuration (a locked merchant rule, a loan pattern) decides
+    # these rows: apply it and keep them away from the model.
+    targets: list[Transaction] = []
+    configured = 0
+    for t in candidates:
+        decided = engine.owner_decision(t, rules=rules, patterns=patterns)
+        if decided is None:
+            targets.append(t)
+        else:
+            t.category, t.category_source = decided
+            session.add(t)
+            configured += 1
 
     # Group by full-detail signature so identical rows are classified once.
     groups: dict[str, list[Transaction]] = defaultdict(list)
@@ -165,8 +199,6 @@ def reclassify_all(
     )
 
     # Fallback (deterministic engine) for any group the model didn't return.
-    rules = load_rules(session, pid)
-    patterns = modules.payment_patterns(session, pid)
     income_keys = {c.key for c in taxonomy.CATEGORIES if c.kind == "income"}
 
     def _sign_correct(cat: str, amount: Decimal) -> str:
@@ -193,10 +225,11 @@ def reclassify_all(
                 t.category = _sign_correct(res["category"], t.amount)
                 t.category_source = "llm_full"
             else:
-                t.category, _src = engine.categorize(
+                # Keep the engine's own source (not a frozen "llm_fallback"), so a
+                # later categorization run still applies e.g. a newly set loan pattern.
+                t.category, t.category_source = engine.categorize(
                     t, own_ibans=own, rules=rules, subscription_keys=set(), patterns=patterns
                 )
-                t.category_source = "llm_fallback"
             session.add(t)
             dist[t.category] += 1
         classified += len(txns) if res is not None else 0
@@ -207,6 +240,7 @@ def reclassify_all(
         "groups": len(sigs),
         "classified_txns": classified,
         "fallback_txns": fallback,
+        "configured_txns": configured,
         "distribution": dict(sorted(dist.items(), key=lambda kv: -kv[1])),
         "model": model,
     }
