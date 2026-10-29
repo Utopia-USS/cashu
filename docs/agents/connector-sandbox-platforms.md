@@ -5,12 +5,13 @@ model") is the same on every OS: read only the system runtime, the connector's o
 directory; write only the run directory; no network for a `file` connector; only the app's egress proxy
 for a `fetch` connector; timeouts and a process-tree kill. Deno's own permission flags are not enough
 (static imports bypass `--allow-read`), so each OS needs a kernel-enforced layer. macOS has one
-(`sandbox-exec`, `core/connectors/sandbox.py` + `sandbox.sb`). This page covers Linux (built) and
-Windows (study only).
+(`sandbox-exec`, `core/connectors/sandbox.py` + `sandbox.sb`). This page covers Linux (built: file
+connectors only) and Windows (study only: file connectors first).
 
 **Evidence levels.** In this page, *verified* means run on this machine (macOS 15, Darwin 24.6, arm64).
 *Recalled* means from kernel / Win32 documentation as I remember it, not run here. **Nothing below was
 run on a Linux kernel or on Windows**: the Docker daemon was off, and starting it was out of scope.
+What still needs a kernel is listed under "What still needs a Linux kernel to verify".
 
 ## Linux: what is built
 
@@ -27,13 +28,14 @@ binary in `--landlock-exec` mode, the same pattern as `--notify-helper`. The ser
 
 **Launcher steps.**
 
-1. Read the Landlock ABI (`landlock_create_ruleset(NULL, 0, LANDLOCK_CREATE_RULESET_VERSION)`). With no
-   Landlock the parent already refuses (`sandbox_unavailable`); the launcher checks again.
-2. File runs: best effort, `unshare(CLONE_NEWUSER | CLONE_NEWNET)` and map the own uid / gid. A fresh
-   network namespace has only a downed `lo`, so no TCP, UDP or host abstract Unix socket is reachable.
-   This step fails on Ubuntu 23.10+ (AppArmor restricts unprivileged user namespaces) and in Docker's
-   default seccomp profile; then Landlock alone has to do the job.
-3. Ruleset. Every file-system right the kernel knows is handled, so anything not granted is denied:
+1. Check the architecture (x86_64 and aarch64 only; anything else is refused) and read the Landlock ABI
+   (`landlock_create_ruleset(NULL, 0, LANDLOCK_CREATE_RULESET_VERSION)`).
+2. Best effort: `unshare(CLONE_NEWUSER | CLONE_NEWNET)` and map the own uid / gid. A fresh network
+   namespace has only a downed `lo`, so no TCP reaches the host even where Landlock cannot restrict TCP
+   (ABI < 4, where the namespace is required). This step fails on Ubuntu 23.10+ (AppArmor restricts
+   unprivileged user namespaces) and under Docker's default seccomp profile.
+3. Landlock ruleset. Every file-system right the kernel knows is handled, so anything not granted is
+   denied:
 
    | Path | Rights |
    | --- | --- |
@@ -46,95 +48,116 @@ binary in `--landlock-exec` mode, the same pattern as `--notify-helper`. The ser
 
    Not granted: `/home`, the cashU data dir, `/tmp`, `/proc`, `/sys`, `/run`, `/etc/passwd` and the rest of
    `/etc`, every other connector. No `execute` on `/usr/bin`, so `/bin/sh`, `curl` and so on cannot start.
-   ABI >= 4: TCP bind is denied, and TCP connect is denied except to the proxy port on a fetch run.
-   ABI >= 6: abstract Unix sockets and signals are scoped to the sandbox (`LANDLOCK_SCOPE_*`).
-4. `prctl(PR_SET_NO_NEW_PRIVS)`, `landlock_restrict_self`, `execv`. The domain is inherited by every
-   child and cannot be removed.
+   ABI >= 4: TCP bind and connect are denied (the launcher's fetch mode allows connect to the proxy port
+   only; production does not use it yet). ABI >= 6: abstract Unix sockets and signals are scoped to the
+   sandbox. Then `PR_SET_NO_NEW_PRIVS` and `landlock_restrict_self`.
+4. seccomp filter (`seccomp_program`, classic BPF through `prctl(PR_SET_SECCOMP)`):
 
-**Kernel support matrix.**
+   | Call | Decision |
+   | --- | --- |
+   | any syscall from a foreign `AUDIT_ARCH` (e.g. i386 `int 0x80` on x86_64) | kill |
+   | x32 syscalls (x86_64, `nr >= 0x40000000`) | EPERM |
+   | `socket`: `AF_INET` / `AF_INET6`, type `SOCK_STREAM` (flags masked), protocol 0 or TCP | allow |
+   | `socket`: anything else (`AF_UNIX`, UDP, raw, SCTP / MPTCP, netlink, packet, vsock, ...) | EPERM |
+   | `socketpair` | EPERM |
+   | `io_uring_setup` / `_enter` / `_register` (`IORING_OP_SOCKET` would bypass the socket rule) | EPERM |
+   | `ptrace`, `process_vm_readv` / `_writev`, `bpf`, `perf_event_open` | EPERM |
+   | `keyctl`, `add_key`, `request_key` | EPERM |
+   | `mount`, `umount2`, `pivot_root`, `open_tree`, `move_mount`, `fsopen`, `fsconfig`, `fsmount`, `fspick`, `mount_setattr` | EPERM |
+   | `unshare`, `setns`, `clone` with any `CLONE_NEW*` flag | EPERM |
+   | `clone3` (its flags sit behind a pointer) | ENOSYS: glibc falls back to `clone` |
+   | `personality` | EPERM |
+   | everything else | allow |
 
-| Landlock ABI | Linux | File run | Fetch run |
-| --- | --- | --- | --- |
-| none (LSM off or kernel < 5.13) | - | refused | refused |
-| 1-3 | 5.13-6.6 | runs only if the private network namespace works (e.g. Debian 12 with 6.1), else refused | refused |
-| 4-5 | 6.7-6.11 | runs; no TCP; plus the namespace if allowed | runs; TCP only to the proxy port |
-| 6+ | 6.12+ | as above, plus abstract-socket and signal scoping | as above, plus scoping |
+   Denials return an errno, not a kill, so a connector fails cleanly. Then `execv`.
+
+**When Linux is used.** `default_sandbox()` returns `LinuxSandbox` only when `sandbox_linux.available()`
+is true. It runs `<launcher> --probe` once per app process in a child. The child applies an empty
+Landlock ruleset and the filter to itself and checks that an `AF_UNIX` and a UDP socket are refused.
+Otherwise the app keeps `UnsupportedSandbox`. **Fetch connectors are refused on Linux**
+(`sandbox_unavailable`, "fetch connectors do not run on Linux yet") until the relay below exists.
+
+**Kernel support matrix (file connectors).**
+
+| Landlock ABI | Linux | File run |
+| --- | --- | --- |
+| none (LSM off or kernel < 5.13) | - | refused (`UnsupportedSandbox`) |
+| 1-3 | 5.13-6.6 | runs only if the private network namespace works (e.g. Debian 12, kernel 6.1), else refused |
+| 4-5 | 6.7-6.11 | runs; Landlock denies TCP, seccomp everything else; plus the namespace if allowed |
+| 6+ | 6.12+ | as above, plus abstract-socket and signal scoping |
 
 A refusal in the launcher prints `cashu-landlock: <reason>` and exits 97; `LinuxSandbox` turns that into
 `sandbox_unavailable`. A connector that fakes this only gets itself refused.
+
+**Connector compatibility costs.** No `socketpair` and no `AF_UNIX` means Python's `asyncio` event loop
+(its self-pipe is a `socketpair`) and `multiprocessing` do not start. A file connector needs neither,
+but the import-builder skill should say so. Deno / tokio use `eventfd` / `epoll`, so they are probably
+unaffected (recalled; check when Deno lands).
 
 **Process limits (`process.py`).** Process groups, `killpg`, `/bin/sh`, `/usr/bin/env -i` and RLIMIT_CPU
 work the same on Linux (recalled; POSIX). One bug was found and fixed: `ulimit -f` counts 512-byte blocks
 in dash (Debian / Ubuntu `/bin/sh`) but 1024-byte blocks in macOS `/bin/sh`. That would have made the
 128 MiB cap 64 MiB on Linux. *Verified* with macOS `/bin/dash` (same upstream dash): `ulimit -f 2` gives
 RLIMIT_FSIZE 1024 bytes under dash and 2048 bytes under `/bin/sh`. Bash in POSIX mode (Fedora / Arch
-`/bin/sh`) also uses 512 (recalled). `FSIZE_UNIT` is now 1024 on macOS and 512 elsewhere. Memory is not
-limited on either OS (gap, below).
+`/bin/sh`) also uses 512 (recalled). `FSIZE_UNIT` is now 1024 on macOS and 512 elsewhere.
 
-### Linux residual risks (read before enabling it for users)
+### Linux residual risks after seccomp
 
-Ordered by severity. Items 1-3 mean the Linux sandbox is **weaker than the macOS profile**. Of the
-gaps below, 1 is a real **escape**. The `default_sandbox()` hook turns Linux on, so the owner should
-decide whether that hook ships before item 1 is fixed (recommendation: no).
+The escape found earlier is closed: connecting to a pathname Unix socket (session D-Bus ->
+`systemd-run --user`, Secret Service, `docker.sock`, X11 / Wayland, ssh-agent) needs an `AF_UNIX`
+socket, and `socket(AF_UNIX)` / `socketpair` now fail. UDP and every non-TCP protocol are closed the
+same way. What remains, by severity:
 
-1. **Pathname Unix sockets are not covered (escape).** Landlock checks opening files and directories,
-   not `connect()` to an existing socket file (recalled; newer kernels have work on a Unix-socket
-   right, which I cannot confirm and which no current distribution has). Path lookup is never
-   restricted. So a connector can connect to:
-   - `/run/user/<uid>/bus`, the session D-Bus. Through it, `org.freedesktop.systemd1` can start a
-     transient user unit (what `systemd-run --user` does) **outside the sandbox**. That is a full escape.
-     The Secret Service (`org.freedesktop.secrets`) hands out the user's keyring items, cashU's
-     connector secrets included, while the keyring is unlocked.
-   - `/var/run/docker.sock` (root when the user is in the `docker` group), the X11 / Wayland sockets
-     (keystroke capture and input injection), `ssh-agent`, `gpg-agent`.
-
-   The network namespace does not help here: pathname sockets live in the file system.
-   **Fix (needed before shipping):** a seccomp-BPF filter installed by the launcher after Landlock:
-   - `socket()`: `AF_UNIX` -> `EACCES`. `AF_INET` / `AF_INET6` are allowed only with type
-     `SOCK_STREAM` (mask off `SOCK_NONBLOCK | SOCK_CLOEXEC`). `AF_NETLINK`, `AF_PACKET`, `AF_VSOCK` and
-     others -> `EACCES`. `socketpair` stays allowed (asyncio uses it).
-   - `io_uring_setup` -> `EPERM` (`IORING_OP_SOCKET` would bypass the `socket()` rule).
-   - a foreign `AUDIT_ARCH` -> kill (no 32-bit `socketcall` bypass).
-
-   Size: about 80 lines of `ctypes` (filter and `prctl(PR_SET_SECCOMP)`), with x86_64 and aarch64
-   syscall numbers. An alternative is a mount namespace with an empty `tmpfs` over `/run`, `/tmp` and
-   `/var/run`, but that needs user namespaces, which Ubuntu restricts.
-2. **UDP and other non-TCP protocols are not restricted by Landlock** (ABI 4 covers TCP bind / connect
-   only; recalled). A fetch run, or a file run without the namespace, can `sendto()` UDP anywhere. That
-   is a data exfiltration path (DNS to any resolver, QUIC), and on a file run it breaks "no network".
-   The seccomp rule above (inet sockets only with `SOCK_STREAM`) closes it. File runs in the private
-   namespace are already closed. The test reports `udp_leaked` and asserts it only when the namespace
-   was applied.
-3. **The network rule is port-only, not address and port.** A fetch connector may connect to *any*
-   address on the proxy's port number, and it knows that number from `HTTPS_PROXY`. A server that
-   listens on that port anywhere on the internet receives a direct, unproxied, unlogged connection.
-   macOS allows only `localhost:<port>`. So on Linux a fetch connector is limited to "TCP on one port
-   number", **not** to the proxy. Fixes:
-   - (a) A private network namespace for fetch runs too, with a host-side relay. The launcher forks.
-     The child enters the namespace, brings `lo` up, listens on `127.0.0.1:<port>` and hands that
-     listening fd to the parent over `SCM_RIGHTS`. The parent stays in the host namespace and relays
-     each accepted connection to the real proxy. The child then restricts itself and execs. Needs user
-     namespaces (Ubuntu restricts them).
-   - (b) A seccomp filter cannot check `connect()` addresses (pointer argument).
-   - (c) Bind the proxy to a Unix socket and connect through it: connectors cannot use that with
-     `HTTPS_PROXY`.
-
-   Without (a), the fetch tier on Linux is "Deno host allow-list + TCP on one port", the same level the
-   Deno spike called "host-limited but not proxy-limited" for Linux and Windows.
-4. **Abstract Unix sockets and signals before ABI 6** (Linux < 6.12): without the namespace, a connector
-   can reach abstract sockets (`@/tmp/.X11-unix/X0`, D-Bus on older setups). It can also `kill()` any
-   process of the same user, including the cashU server (denial of service). ABI 6 scoping, or the
-   namespace (abstract sockets only), closes this. Ptrace is already limited by Landlock: a sandboxed
-   process cannot trace a process outside its domain (recalled, all ABIs), and Yama usually applies too.
+1. **Unverified on a real kernel.** All of the above is from the kernel ABI as I remember it, checked
+   only by a BPF interpreter in the tests. Watch for:
+   - Python start-up under exactly these rules (locale files, TLS store paths per distribution). A
+     missing read path shows up as a failed run (fail closed), not a leak.
+   - glibc's `clone3` -> `clone` fallback on ENOSYS (recalled for glibc 2.34+, both threads and
+     `posix_spawn`).
+   - Syscall numbers in `SYSCALLS` (recalled from the x86_64 and asm-generic tables).
+   - The `sock_fprog` layout.
+2. **Inherited file descriptors.** seccomp filters `socket()`, not sockets the process already holds.
+   `process.py` starts the chain with `close_fds=True` and only stdin / stdout / stderr pipes. Keep it
+   that way: never pass a socket fd into a run.
+3. **Fetch connectors (deferred).** Landlock's TCP rule is port-only. With it, a fetch connector could
+   connect to *any* address on the proxy's port number, which it knows from `HTTPS_PROXY`. That is why
+   fetch runs are refused on Linux. **Follow-up: namespace + relay.**
+   - The launcher forks. The child enters a user + network namespace, brings `lo` up, listens on
+     `127.0.0.1:<port>` and passes the listening fd to the parent over `SCM_RIGHTS` (on a `socketpair`
+     created before the filter).
+   - The parent stays in the host namespace, outside Landlock and seccomp but running only our code. It
+     relays every accepted connection to the real egress proxy. The child then restricts itself
+     (Landlock, filter) and execs the connector.
+   - Size: about 120-150 lines in `landlock_exec.py` (fork, fd passing, a small select / thread relay,
+     clean shutdown with the process group), plus tests. About 1-2 days with a real kernel to test on.
+   - It needs unprivileged user namespaces, so on Ubuntu 23.10+ (AppArmor) fetch connectors stay
+     refused unless the app ships an AppArmor profile. A distribution package could do that; a
+     downloaded app cannot without root.
+4. **Abstract Unix sockets before ABI 6** are now unreachable anyway (no `AF_UNIX` socket). **Signals
+   before ABI 6** (Linux < 6.12) remain: a connector can `kill()` any process of the same user, the cashU
+   server included (denial of service, no data access). ABI 6 scoping closes it. Ptrace is denied by the
+   filter, and Landlock limits it too.
 5. **No memory or process-count limit.** A fork bomb or a large allocation can hurt the machine (same on
-   macOS today). Options: RLIMIT_AS in the launcher, or a systemd user scope / cgroup (more setup).
-6. **Kernel attack surface.** Without seccomp, every syscall is reachable. The user namespace for file
-   runs widens it (user-namespace-only code paths). That trade-off is accepted for "no network at all".
-7. **System V IPC** (message queues, semaphores, `shmget`) is not a file-system object and is not
-   covered (recalled). Low value to an attacker, but noted.
-8. **Unverified on a real kernel.** Python start-up under exactly these rules (locale files,
-   `ld.so.cache`, TLS store paths per distribution) is untested. If a distribution needs one more read
-   path, the symptom is a failed run (fail closed), not a leak.
+   macOS today). Options: RLIMIT_AS / RLIMIT_NPROC in the launcher (NPROC is per user, so it would also
+   count the user's other processes), or a systemd user scope / cgroup.
+6. **Kernel attack surface.** The filter is a deny-list, not an allow-list: every syscall not listed is
+   reachable. An allow-list (Docker's ~300 entries) is stricter but brittle across interpreters. The
+   user namespace for file runs widens the surface (user-namespace-only code paths); that trade-off is
+   accepted for "no network at all" on old kernels.
+7. **System V IPC** (message queues, semaphores, `shmget`) is not covered by Landlock or the filter.
+   Low value to an attacker, but noted. It could be added to the deny-list.
+
+**What still needs a Linux kernel to verify** (the coordinator is arranging Docker / CI):
+
+- `test_probe_passes_and_default_sandbox_is_linux`: Landlock and the filter install, and the ABI
+  printed with `-s` matches.
+- `test_file_connector_is_confined`: every denial, including EPERM for UDP, `AF_UNIX`, `socketpair`,
+  `unshare`, `io_uring_setup`, `ptrace`, `personality`, `keyctl` and `bpf`, while reads of the input and
+  the connector dir, and writes to the run dir, still work.
+- `test_real_python_file_connector_converts`: a real `python3` starts and converts under both layers.
+- `test_launcher_fetch_mode_reaches_only_the_proxy_port`: the launcher layer the relay will build on.
+- Ideally also on one Ubuntu 24.04 host (namespace refused by AppArmor, ABI 4+) and one Debian 12 host
+  (ABI 2, namespace path required).
 
 **How to run the Linux tests** (from macOS with Docker Desktop running):
 
@@ -143,12 +166,16 @@ docker run --rm -v "$PWD":/w -w /w python:3.12 bash -c \
   'pip install -e ".[dev]" -c constraints.txt && pytest -s tests/test_connectors_sandbox_linux.py'
 ```
 
-`-s` prints the kernel's Landlock ABI and whether the namespace was applied. Docker's default seccomp
-profile blocks `unshare(CLONE_NEWUSER)`, so expect `netns: false` there. Docker Desktop's LinuxKit
-kernel is recent, so expect ABI >= 4 (recalled, not checked). Docker's default profile must also allow
-the `landlock_*` syscalls. If it does not, every real-kernel test fails with a refusal: re-run with
-`--security-opt seccomp=unconfined`. The real-kernel tests are skipped on macOS; the 19 portable tests
-in the same file pass on macOS (verified).
+`-s` prints the kernel's Landlock ABI, the probe output, and whether the namespace was applied.
+
+- Docker's default seccomp profile blocks `unshare(CLONE_NEWUSER)`, so expect `netns: false`.
+- Docker Desktop's LinuxKit kernel is recent, so expect ABI >= 4 (recalled, not checked).
+- Docker's profile must allow the `landlock_*` syscalls and stacking a seccomp filter. If it does not,
+  the probe fails and every real-kernel test is refused: re-run with `--security-opt
+  seccomp=unconfined`.
+
+The real-kernel tests are skipped on macOS. The portable tests in the same file (policy, refusals, the
+BPF program through an interpreter for both architectures) pass on macOS (verified).
 
 ## Windows: options (study, no code)
 
@@ -240,8 +267,12 @@ it was run.
 
 ### Recommendation for Windows
 
-**AppContainer (normal, not LPAC, at first) + Job Object, in a `sandbox_windows.py` built on `ctypes`,
-with one fixed container name (`cashu.connector`).** Rough size:
+**Plan: file connectors first, without admin, on AppContainer (normal, not LPAC, at first) + a Job
+Object, in a `sandbox_windows.py` built on `ctypes`, with one fixed container name (`cashu.connector`).
+Fetch connectors on Windows come later.** This matches Linux: file connectors now, fetch connectors once
+traffic can be forced through the proxy.
+
+**Phase 1: file connectors, no admin.** Rough size:
 
 - process creation, pipes and wait / timeout / kill, replacing `process.py` on Windows: ~250 lines;
 - AppContainer profile and SID: ~60 lines;
@@ -251,52 +282,66 @@ with one fixed container name (`cashu.connector`).** Rough size:
 
 About 3-5 days including CI.
 
-- **File connectors:** full contract (no network, read / write confined by ACLs, no child processes,
-  memory limit).
-- **Fetch connectors:** pick one, in order:
-  1. A per-machine installer (it runs elevated once anyway) registers the loopback exemption for the
-     fixed container SID. Fetch runs then reach the proxy, and only the proxy. A per-user install
-     without it refuses fetch runs.
-  2. If the same-container loopback works (open question), use a proxy helper in the same container:
-     no admin at all.
-  3. Owner decision: `internetClient` + Deno's host allow-list ("host-limited, not proxy-limited"), the
-     same level as Linux today (risk 3 above).
-- Run a new SID per run? `CreateAppContainerProfile` writes registry and profile folders per name. One
-  fixed container is cheaper, and per-run ACEs on fresh dirs give isolation between runs. The rule:
-  never leave an ACE for the container on anything that outlives the run except the interpreter
-  install dir.
+What phase 1 gives, with no network capability:
+
+- no network at all;
+- reads and writes confined by ACLs;
+- no child processes (`ActiveProcessLimit = 1`);
+- memory and CPU limits;
+- no clipboard.
+
+As on Linux, a fetch run on Windows returns `sandbox_unavailable`.
+
+**Phase 2: fetch connectors, later.** Options, in order of preference:
+
+1. A per-machine installer (it runs elevated once anyway) registers the loopback exemption for the
+   fixed container SID. Fetch runs then reach the proxy, and only the proxy. A per-user install without
+   it keeps refusing fetch runs.
+2. If loopback between two processes of the same container works without the exemption (open question,
+   test first), run a proxy helper in the same container: no admin at all.
+3. Owner decision: `internetClient` + Deno's host allow-list ("host-limited, not proxy-limited"). Linux
+   does not accept this level either, so it is not recommended.
+
+**One container for all runs, or one per run?** `CreateAppContainerProfile` writes registry and profile
+folders per name, so one fixed container is cheaper. Per-run ACEs on fresh dirs keep runs apart. The
+rule: never leave an ACE for the container on anything that outlives the run, except the interpreter's
+install dir.
 
 **Open risks (Windows).**
 
-- Loopback without admin (above).
+- Loopback without admin (phase 2, above).
 - Interpreters that write to `%APPDATA%` or read HKCU at start-up. Set `TEMP` / `TMP` /
   `USERPROFILE` / `APPDATA` to the run dir. Python reads `HKLM\Software\Python` (readable by
   `ALL APPLICATION PACKAGES`, recalled) and `HKCU\Software\Python` (denied: harmless).
 - Named pipes and ALPC ports that grant `Everyone` or `ALL APPLICATION PACKAGES` are reachable from
-  AppContainers (the main real-world AppContainer escape class). With LPAC far fewer are reachable.
-  Plan LPAC as the second step.
+  AppContainers. This is the Windows counterpart of the Linux Unix-socket escape, and the main
+  real-world AppContainer escape class. With LPAC far fewer are reachable: plan LPAC as the hardening
+  step right after phase 1.
 - ACL grants on a per-user interpreter dir persist and are visible to every connector run. That is
   read / execute only, the same as the system dirs.
 - Antivirus scanning per process start (Defender) can add 100+ ms per run (recalled, typical).
 
 ## Summary
 
-| | macOS | Linux (built, not run) | Windows (proposed) |
+| | macOS | Linux (built, not run on a kernel) | Windows (proposed, phase 1) |
 | --- | --- | --- | --- |
-| Mechanism | `sandbox-exec` SBPL | Landlock + optional user / network namespace | AppContainer + Job Object |
-| Admin needed | no | no | no (loopback exemption: yes, once) |
+| Mechanism | `sandbox-exec` SBPL | Landlock + seccomp + optional user / network namespace | AppContainer + Job Object |
+| Admin needed | no | no | no |
+| Connector kinds | file and fetch | file only (fetch refused) | file only (fetch later) |
 | File reads outside allow-list | denied | denied | denied (ACLs) |
 | Writes outside run dir | denied | denied | denied |
 | Exec of other programs | denied | denied (no execute right) | denied (`ActiveProcessLimit = 1`) |
-| File run network | none | none (ABI 4 TCP + namespace); **UDP open without the namespace** | none |
-| Fetch run network | `localhost:<proxy port>` only | **any address on the proxy port, plus UDP** | proxy only with the exemption, else refused or direct |
-| Local IPC (Unix sockets / pipes) | denied by default | **pathname sockets open (escape); abstract scoped on ABI 6** | named pipes with broad ACLs reachable |
+| File run network | none | none (Landlock TCP / namespace, seccomp: TCP sockets only) | none (no capability) |
+| Fetch run network | `localhost:<proxy port>` only | refused until the namespace relay | refused until the exemption or same-container proxy |
+| Local IPC (Unix sockets / pipes) | denied by default | no `AF_UNIX` sockets (seccomp) | named pipes with broad ACLs reachable (LPAC narrows) |
+| Signals to the user's other processes | denied | allowed before Linux 6.12 (ABI 6 scoping) | denied (integrity / container) |
 | Memory limit | none | none | Job Object |
 
 Next steps, in order:
 
-1. A seccomp filter in the Linux launcher, before the Linux hook ships (closes risks 1 and 2).
-2. Run the Linux tests in Docker and on one Ubuntu 24.04 and one Debian 12 host.
-3. The netns + relay for Linux fetch runs (risk 3).
-4. A Windows spike: AppContainer + Job Object start of `python.exe` and `deno.exe`, and the
-   same-container loopback test.
+1. Run the Linux tests in Docker or CI, then on one Ubuntu 24.04 and one Debian 12 host (list above).
+2. Mention the Linux limits (file connectors only, no asyncio or multiprocessing) in the import-builder
+   skill.
+3. The namespace + relay for Linux fetch runs (~120-150 lines, 1-2 days).
+4. Windows phase 1: first a spike that starts `python.exe` and `deno.exe` in an AppContainer + Job
+   Object, plus the same-container loopback test, then `sandbox_windows.py`.
