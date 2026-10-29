@@ -4,9 +4,10 @@ The contract for anyone who writes a connector for cashU (cashU): a person, or m
 agent (Claude Code). Read it whole before you start; it is short on purpose. Working examples:
 [`examples/connectors/`](../examples/connectors/). JSON Schemas: [`schemas/`](schemas/).
 
-cashU ships few importers of its own. Instead, anyone can write a small **connector** in any language,
-drop it in, and the owner approves it once in the app. From then on the app runs it itself to read
-exports or pull data from an API. No fork, no rebuild.
+cashU ships few importers of its own. Instead, anyone can write a small **connector** (TypeScript on
+Deno by default, which the app ships; other interpreters on macOS), drop it in, and the owner approves
+it once in the app. From then on the app runs it itself to read exports or pull data from an API. No
+fork, no rebuild.
 
 The rule behind it: **the app runs only a connector the owner approved in the app, pinned by content
 hash, out of process, in a sandbox, with a timeout.** An agent (MCP) can install a connector as
@@ -43,7 +44,7 @@ author: Jan Kowalski             # optional, <= 80 characters
 description: Wyciąg CSV ...      # optional, <= 280 characters
 module: budget                   # investments | budget
 kind: file                       # file | fetch
-run: [python3, connector.py]     # argv, see below
+run: [deno, connector.ts]        # argv, see below (deno: the app's own Deno, the default)
 timeout_s: 60                    # 1..600, default 60 (detect always 10)
 file:                            # kind file only (and required for it)
   extensions: [csv]              # 1..20, lower case, no dot, ^[a-z0-9]{1,10}$
@@ -64,7 +65,8 @@ file:                            # kind file only (and required for it)
 | `author`, `description` | optional, <= 80 / <= 280 characters |
 | `module`, `kind` | see above; `kind: file` needs a `file` section and no `fetch` section, and the other way round |
 | `run` | 1..8 plain strings, each <= 200 characters, no control characters, no `..` path segment, no absolute or `~` paths. No shell: it is an argv, not a command line. An argument that names a file of the connector (`connector.py`) is passed as that file's absolute path, because the process runs in another directory (section 4) |
-| `run[0]` | an interpreter name from the allowlist `python3`, `node`, `deno`, `bun`, `ruby`, `perl`, or `./<file>`: an executable file inside the connector directory (covered by the hash) |
+| `run[0]` | an interpreter name from the allowlist `deno`, `python3`, `node`, `bun`, `ruby`, `perl`, or `./<file>`: an executable file inside the connector directory (covered by the hash). **`deno` is the default**: the app ships its own Deno, so a Deno connector needs nothing installed (section 4, "Deno connectors") |
+| `run[1]` with `deno` | a TypeScript / JavaScript file of the connector (`[deno, connector.ts]`, optionally more arguments after it); never `run` or a flag: the app sets every Deno flag and permission itself |
 | `timeout_s` | wall clock limit of `convert`, `fetch`, `check`; `detect` always has 10 s |
 | `file.extensions` | the file extensions the connector reads; the app offers it only for those |
 | `fetch.hosts` | exact lower-case DNS names with a letter in the last label: no scheme, port, path, wildcard, IP address or `localhost` |
@@ -84,7 +86,9 @@ fine. Keep test inputs synthetic: every file of the directory is installed and s
 file>\n` of every file. The owner approves this hash. Changing any file (also the README) after the
 approval stops the connector until the owner approves it again.
 
-**Interpreter resolution.** An interpreter name is looked up (`which`) on a fixed search path, never the
+**Interpreter resolution.** `deno` is first the Deno bundled with the app (`cashU.app/Contents/
+Frameworks/deno/deno`, a pinned official release); only without one (a source checkout) is it looked
+up like the others. An interpreter name is looked up (`which`) on a fixed search path, never the
 user's `PATH`: `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/bin`, then `~/.local/bin` and
 `~/.nvm/current/bin` when they exist. A `#!` script found there (a version-manager shim or wrapper) is
 skipped for the next match: it cannot run in the sandbox. The result is resolved to its real path, shown
@@ -154,8 +158,9 @@ run fail with `protocol`. Print nothing else on stdout.
 
 `message` (<= 500 characters kept) is shown to the owner only, never to an agent (section 10). The app
 assigns its own kinds: `protocol` (any exit code other than 0 / 1, invalid JSON, wrong shape, oversize
-output), `timeout`, `sandbox_unavailable`, `spawn_failed`, `not_approved`, `interpreter_changed`,
-`missing`, `bad_request`.
+output), `timeout`, `sandbox_unavailable`, `spawn_failed`, `forbidden_import` (a Deno connector
+imports something outside its directory, section 4), `not_approved`, `interpreter_changed`, `missing`,
+`bad_request`.
 
 **stderr** is a free log. The app keeps its last 64 KiB in memory and stores a 4 KiB tail with the
 secrets and anything that looks like an account number, amount or e-mail redacted; only the owner sees
@@ -183,7 +188,37 @@ it. Log counts and steps, never values.
   programs (`/bin/sh`, `curl`, `git` are denied).
 - **Network:** a `file` connector has none at all (no DNS either). A `fetch` connector can reach only the
   app's egress proxy on `127.0.0.1`.
-- On anything but macOS no connector runs (`sandbox_unavailable`); there is no unsandboxed mode.
+
+**Platforms.** There is no unsandboxed mode: without a native sandbox nothing runs.
+
+| platform | interpreters that run | sandbox |
+| --- | --- | --- |
+| macOS | all (`deno`, `python3`, `node`, `bun`, `ruby`, `perl`, `./<file>`) | `sandbox-exec`; Deno connectors also Deno's permissions inside it |
+| Linux, Windows | none yet (`sandbox_unavailable`), Deno included | Deno's permissions alone do not confine raw sockets to the egress proxy; a native layer is planned |
+
+**Deno connectors** (`run: [deno, connector.ts]`) get a second layer inside the macOS sandbox: Deno's
+own permissions. The app runs `deno run --no-config --no-lock --no-remote --no-npm --cached-only
+--deny-import --no-prompt --no-code-cache --allow-read=<connector dir>,<run dir> --allow-write=<run
+dir> [--allow-net=<host>:443,...] <connector dir>/connector.ts`, with `DENO_DIR` inside the run
+directory. So:
+
+- Everything not granted fails with `NotCapable`: environment variables, `Deno.Command` /
+  `node:child_process`, FFI, system info, other files, and for a file connector any network.
+- A `deno.json`, `package.json` or import map in the directory is ignored (`--no-config`): no bare
+  names, no `#imports`, no `"unstable"` flags.
+- `fetch()` goes through the egress proxy (Deno reads `HTTPS_PROXY` itself); a fetch connector may
+  name only its manifest hosts, port 443. Use `fetch`, not `Deno.connect` / `connectTls`.
+- **Import rule.** Deno loads the static module graph of the entry script (static `import`, `export
+  ... from` and `import()` with a literal string) before its permission checks apply, so the app first
+  resolves that graph (`deno info`) and refuses the run with `forbidden_import` unless every module is
+  a file inside the connector directory (relative imports such as `./lib/parse.ts`, also JSON / text
+  imports with `with { type: "json" }`) or a `node:` built-in (`node:path`, `node:buffer`; their file,
+  network and process calls get the same permission checks). Refused: `../` or absolute paths outside
+  the directory, `https:`, `jsr:`, `npm:`, `data:` and `blob:` modules, bare names, and a module that
+  does not parse (its own imports would be hidden; fix it with `deno check`). Imports built at run time
+  (`import(variable)`, a `Worker`) are checked by Deno's read permission instead. Third-party code:
+  copy the files you need into the directory (within the 5 MiB / 200 files limit) and import them
+  relatively.
 
 **Network for fetch connectors.** The proxy (HTTP `CONNECT`) allows a tunnel only to a host listed in
 `fetch.hosts`, port 443, when that name resolves to public addresses only (DNS cannot point a connector at
@@ -193,6 +228,7 @@ name; it counts bytes in and out. Redirects to a host not in the list fail.
 
 Your HTTP client must use `HTTPS_PROXY`; a connector that ignores it cannot reach the network at all.
 
+- Deno: `fetch` reads it from the environment by itself; nothing to do.
 - Python: `urllib.request` reads it from the environment (or pass it explicitly as in the fetch example);
   `requests` and `httpx` read it too.
 - Node: `http`, `https` and `fetch` ignore it. Open the tunnel yourself (standard library only):
@@ -407,7 +443,8 @@ bindings before the investments daily check, so what they commit is in that day'
 
 1. `connector.yaml` is valid (`test_connector` reports `manifest.valid`, or `cashu connectors test <dir>
    --check-manifest`).
-2. Only stdlib or files inside the directory (no `pip install` at run time: there is no network).
+2. Only the standard library, `node:` built-ins or files inside the directory (no `pip install`,
+   `npm:` / `jsr:` / `https:` imports at run time: there is no network, and Deno refuses them).
 3. One JSON object on stdout, logs on stderr, exit 0 or 1 with an error object.
 4. `detect` answers `false` for foreign files instead of failing.
 5. Stable ids, deterministic output, exact decimals, outflows negative.

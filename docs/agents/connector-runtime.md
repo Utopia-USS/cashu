@@ -1,9 +1,17 @@
 # Connector runtime across macOS, Linux and Windows (design spike)
 
-Status: spike, branch `connector-runtime-spike`. A `DenoSandbox` prototype is in
-`src/cashu/core/connectors/sandbox.py` with tests in `tests/test_connectors_sandbox_deno.py`. Nothing
-here is shipped yet: the packaged app does not bundle Deno, the docs and the skill still describe the
-macOS-only runtime.
+Status: the spike below, then branch `connectors-deno` (R2 on macOS). Owner decisions: Deno is bundled
+in the app (open question 1), signed with its own `allow-jit` entitlement (2), the MCP tool
+`test_connector` exists (4), Deno / TypeScript is the default connector language and Python stays
+allowed on macOS (5). Implemented: `DenoSandbox` always inside the macOS sandbox, never alone (a
+security review showed that Deno alone lets static imports read outside `--allow-read` and raw sockets
+to a manifest host bypass the egress proxy, so Linux / Windows stay `sandbox_unavailable` for every
+interpreter until a native layer exists, hook: `default_sandbox` -> `sandbox_linux.native_sandbox()`);
+the module-graph check (`deno info`, error kind `forbidden_import`, rule in `docs/connectors.md`
+section 4); the bundled deno preferred by `resolve_interpreter`; the build step (version + sha256
+pinned, the sha256 values still to be filled in, `packaging/README.md`); `test_connector`; the Deno
+example `examples/connectors/deno-budget-example`; the import-builder skill. The rest of this document
+is the spike as written; where it says Deno alone runs on Linux / Windows, that was changed as above.
 
 Owner requirements this answers:
 
