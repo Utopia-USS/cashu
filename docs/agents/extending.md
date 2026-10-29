@@ -9,8 +9,10 @@ Adding a capability rather than fixing one. Read [conventions.md](conventions.md
 
 ## Adding a new bank (CSV parser)
 
-A bank or broker only one user needs is better served by a connector
-([`docs/connectors.md`](../connectors.md)): no code change.
+**Don't, for a new bank.** New banks, brokers and exchanges are connectors
+([`docs/connectors.md`](../connectors.md)): no code change, and the user's agent can write one
+(`import-builder` skill). The built-in parsers are frozen (no new ones) and will move to connectors;
+the steps below are only for maintaining the existing mBank / Erste / Pekao parsers.
 
 1. New file `src/cashu/modules/budget/ingestion/csv_import/<bank>.py` - a thin config on top of the
    engine in `base.py` (model it on `mbank.py`/`pekao.py`: encoding, separator, columns, where

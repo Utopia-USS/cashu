@@ -254,8 +254,9 @@ through the normal import preview. The contract for authors:
 `statements/<bank>/` - import takes the bank from the subdir name. Repeated import
 is idempotent (dedup by `bank_transaction_id` and by content hash). Parsers are
 thin configs on a shared engine (`src/cashu/modules/budget/ingestion/csv_import/`)
-and banks are entries in a registry (`src/cashu/core/institutions.py`) -
-**adding another bank is easy** (see [`docs/agents/extending.md`](docs/agents/extending.md)).
+and banks are entries in a registry (`src/cashu/core/institutions.py`). Other banks
+are read through **connectors** (below), not new parsers in the app: the built-in
+parsers are frozen and will move to connectors too (see [`CONTRIBUTING.md`](CONTRIBUTING.md)).
 
 **Open Banking (Enable Banking, optional).** A free "Restricted Production" tier
 for live sync (~90 days, re-authorize every 90 days). The hybrid is deliberate: OB
