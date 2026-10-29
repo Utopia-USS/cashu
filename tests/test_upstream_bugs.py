@@ -89,8 +89,24 @@ def test_short_needles_still_match_as_whole_words():
         ("AXA UBEZPIECZENIA TEST", "other"),
         ("LODY TRADYCYJNE TEST", "dining"),
         ("ALAB LABORATORIA TEST", "health"),
+        # heating companies
+        ("GPEC SP. Z O.O. TEST", "utilities"),
+        ("OPEC TEST", "utilities"),
+        ("KPEC TEST", "utilities"),
+        ("LPEC TEST", "utilities"),
+        ("SPEC S.A. TEST", "utilities"),
+        # a store number glued to the name
+        ("ALDI1234 KRAKOW", "groceries"),
+        ("DINO1234 TEST", "groceries"),
+        ("ACTION1234 TEST", "shopping"),
+        ("PHO 24 TEST", "dining"),
     ):
         assert taxonomy.apply_seed_rules(key) == cat, key
+
+
+def test_word_needles_still_refuse_letters_around_them():
+    for key in ("PHOTO TEST", "IPHONE TEST", "SPECSAVERS TEST", "SPECJALISTA TEST", "1ALDI TEST"):
+        assert taxonomy.apply_seed_rules(key) not in {"dining", "utilities", "groceries"}, key
 
 
 # --------------------------------------------------------------------------- #

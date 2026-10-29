@@ -65,12 +65,13 @@ LABELS: dict[str, str] = {c.key: c.label for c in CATEGORIES}
 
 class word(str):
     """A seed needle that must match a whole word of the merchant key (short
-    needles like "PHO" would otherwise hit PHOTO, IPHONE, TELEPHONE, ...)."""
+    needles like "PHO" would otherwise hit PHOTO, IPHONE, TELEPHONE, ...). Trailing
+    digits are allowed: a store number glued to the name (ALDI1234, DINO1234)."""
 
     __slots__ = ()
 
     def found_in(self, merchant_key: str) -> bool:
-        return re.search(rf"(?<![A-Z0-9]){re.escape(self)}(?![A-Z0-9])", merchant_key) is not None
+        return re.search(rf"(?<![A-Z0-9]){re.escape(self)}(?![A-Z])", merchant_key) is not None
 
 
 # Ordered, first-match-wins. Each tuple: (UPPERCASE substring, category_key).
@@ -163,6 +164,13 @@ SEED_RULES: list[tuple[str, str]] = [
     ("WOD-KAN", "utilities"),
     ("WOD KAN", "utilities"),
     ("MPEC", "utilities"),
+    # Heating companies (GPEC Gdańsk, OPEC, KPEC, LPEC, SPEC Warszawa, PEC ...): whole
+    # words, so SPECSAVERS or SPECJALISTA are not heating.
+    (word("GPEC"), "utilities"),
+    (word("OPEC"), "utilities"),
+    (word("KPEC"), "utilities"),
+    (word("LPEC"), "utilities"),
+    (word("SPEC"), "utilities"),
     (word("PEC"), "utilities"),
     ("NETIA", "utilities"),
     ("ORANGE", "utilities"),
