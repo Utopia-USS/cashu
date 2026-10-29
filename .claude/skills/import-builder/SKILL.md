@@ -126,7 +126,8 @@ Privacy and boundaries (say the first lines at the start, in one or two sentence
    `connector.yaml` with `run: [deno, connector.ts]` and TypeScript files (the skeleton below; start
    from `references/connector-examples/deno-budget-example`). Imports only from the connector's own
    files (`./parse.ts`) and `node:` built-ins: `npm:`, `jsr:`, `https:`, bare names and paths outside
-   the directory are refused (`forbidden_import`); copy a small library into the directory if you need
+   the directory are refused (`forbidden_import`), a file that does not parse too (`module_parse_error`:
+   fix the named file); copy a small library into the directory if you need
    one. Python is allowed on macOS when the user has a real `python3` (Homebrew or the Apple developer
    tools; the downloaded app alone has none): `run: [python3, connector.py]`, standard library only,
    examples `budget-csv-example`, `investments-json-example`, `fetch-example`. Follow

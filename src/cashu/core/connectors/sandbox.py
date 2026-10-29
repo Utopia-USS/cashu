@@ -10,7 +10,8 @@
   static module graph of the entry script (static imports and literal ``import()``) without a read
   permission check, so before every run the graph is resolved with ``deno info`` and the run is refused
   (``forbidden_import``) when a module lies outside the connector dir or is not a ``file:`` / ``node:``
-  module (:func:`module_graph_problem`).
+  module (:func:`module_graph_problem`), or with ``module_parse_error`` when a module of the connector
+  does not load or parse (its imports would be invisible).
 - :class:`UnsupportedSandbox` (every other platform): nothing runs, every run fails with
   ``sandbox_unavailable``, Deno connectors included: Deno's permissions alone are not enough (raw
   sockets to a manifest host bypass the egress proxy). There is no unsandboxed fallback in production
@@ -200,6 +201,10 @@ DENO_INFO_FLAGS = ("--json", "--no-config", "--no-lock", "--no-remote", "--no-np
 GRAPH_TIMEOUT_S = 20.0
 MAX_GRAPH_BYTES = 8 * 1024 * 1024
 FORBIDDEN_IMPORT = "forbidden_import"
+# A module of the connector does not load or parse: its own imports are invisible to the check, so the
+# run is refused too, with its own kind (the fix is in the code, not in the imports).
+MODULE_PARSE_ERROR = "module_parse_error"
+PARSE_SUFFIX = "cannot be loaded or parsed (check it with deno check)"
 # ``file:`` modules must be files of the connector. ``node:`` built-ins are allowed: they are code of the
 # deno binary itself and every file, network, env or process operation they make passes the same
 # permission checks (``node:fs`` or ``createRequire`` reading outside the allow list is ``NotCapable``).
@@ -323,9 +328,19 @@ def module_graph_problem(info: object, connector_dir: str | Path) -> str | None:
         parts = urlsplit(url)
         if parts.scheme.lower() == "file":
             rel = os.path.relpath(os.path.realpath(unquote(parts.path)), root)
-            return f"{rel} cannot be loaded or parsed (check it with deno check)"
-        return "a module cannot be loaded"
+            return f"{rel} {PARSE_SUFFIX}"
+        return f"a module {PARSE_SUFFIX}"
     return None
+
+
+def module_graph_check(info: object, connector_dir: str | Path) -> tuple[str, str] | None:
+    """``(error kind, message)`` for :func:`module_graph_problem`, or None: ``module_parse_error`` for
+    a module of the connector that does not load or parse (a syntax error, a missing file), else
+    ``forbidden_import``."""
+    problem = module_graph_problem(info, connector_dir)
+    if problem is None:
+        return None
+    return (MODULE_PARSE_ERROR if problem.endswith(PARSE_SUFFIX) else FORBIDDEN_IMPORT), problem
 
 
 def deno_env(spec: RunSpec) -> dict[str, str]:
@@ -383,16 +398,16 @@ class DenoSandbox:
             return outcome
         p = outcome.process
         if p is None or p.timed_out or p.stdout_overflow or p.exit_code != 0:
-            problem: str | None = GRAPH_UNCHECKED
+            found: tuple[str, str] | None = (FORBIDDEN_IMPORT, GRAPH_UNCHECKED)
         else:
             try:
                 info = json.loads(p.stdout.decode("utf-8"))
             except (UnicodeDecodeError, ValueError):
                 info = None
-            problem = module_graph_problem(info, spec.connector_dir)
-        if problem is None:
+            found = module_graph_check(info, spec.connector_dir)
+        if found is None:
             return None
-        return RunOutcome(error_kind=FORBIDDEN_IMPORT, message=problem, sandbox=self.name)
+        return RunOutcome(error_kind=found[0], message=found[1], sandbox=self.name)
 
     def run(self, spec: RunSpec) -> RunOutcome:
         try:
@@ -454,6 +469,7 @@ def sandbox_for(run0: str, native: ConnectorSandbox | None = None) -> ConnectorS
 
 __all__ = [
     "FORBIDDEN_IMPORT",
+    "MODULE_PARSE_ERROR",
     "ConnectorSandbox",
     "DenoSandbox",
     "MacSandbox",
@@ -463,6 +479,7 @@ __all__ = [
     "default_sandbox",
     "deno_argv",
     "deno_info_argv",
+    "module_graph_check",
     "module_graph_problem",
     "render_profile",
     "sandbox_for",

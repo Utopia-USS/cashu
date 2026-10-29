@@ -471,6 +471,13 @@ def test_graph_rule_refuses_unresolved_broken_and_npm(tmp_path):
     broken = _info(root, errors={(root / "main.ts").as_uri(): "SyntaxError: secret text"})
     problem = mf_graph(broken, root)
     assert problem.startswith("main.ts cannot be loaded") and "secret" not in problem
+    from cashu.core.connectors.sandbox import module_graph_check
+
+    assert module_graph_check(broken, root) == ("module_parse_error", problem)
+    assert module_graph_check(bare, root)[0] == "forbidden_import"
+    outside = module_graph_check(_info(root, "file:///etc/hosts"), root)
+    assert outside == ("forbidden_import", "a module outside the connector directory is imported")
+    assert module_graph_check(_info(root), root) is None
     assert "npm" in mf_graph(_info(root, npmPackages={"left-pad@1": {}}), root)
     redirected = _info(root, redirects={"file:///a": "file:///etc/hosts"})
     assert "outside" in mf_graph(redirected, root)
@@ -574,7 +581,7 @@ def test_a_syntax_error_is_refused_with_the_file_name_only(tmp_path, export, mak
     target = _deno_connector(tmp_path / "deno-test", 'import "./lib/bad.ts";\n',
                              extra={"lib/bad.ts": "const x = ;\n"})
     result = execute(target, "convert", file=export, sandbox=make_box())
-    assert result.error_kind == "forbidden_import"
+    assert (result.outcome, result.error_kind) == ("refused", "module_parse_error")
     assert result.message == "lib/bad.ts cannot be loaded or parsed (check it with deno check)"
 
 
@@ -672,3 +679,20 @@ def test_a_raw_socket_to_an_allowed_host_needs_the_native_layer(tmp_path, make_b
         assert verdict == "ConnectionRefused"  # the bypass the native layer exists for
     else:
         assert verdict not in ("ok", "ConnectionRefused", "NotCapable"), verdict  # the kernel said no
+
+
+@needs_deno
+@pytest.mark.parametrize("make_box", SANDBOXES)
+def test_a_missing_module_and_a_broken_entry_script_are_parse_errors(tmp_path, export, make_box):
+    target = _deno_connector(tmp_path / "deno-test", 'import "./lib/missing.ts";\n')
+    result = execute(target, "convert", file=export, sandbox=make_box())
+    assert (result.outcome, result.error_kind) == ("refused", "module_parse_error")
+    assert result.message.startswith("lib/missing.ts cannot be loaded or parsed")
+    broken = _deno_connector(tmp_path / "deno-bad", "const = 1;\n", cid="deno-bad")
+    result = execute(broken, "detect", file=export, sandbox=make_box())
+    assert (result.outcome, result.error_kind) == ("refused", "module_parse_error")
+    assert result.message == "main.ts cannot be loaded or parsed (check it with deno check)"
+    # an outside import next to a broken module is still a forbidden import (the rule comes first)
+    mixed = _deno_connector(tmp_path / "deno-mixed", 'import "/etc/hosts";\nimport "./lib/bad.ts";\n',
+                            cid="deno-mixed", extra={"lib/bad.ts": "const x = ;\n"})
+    assert execute(mixed, "convert", file=export, sandbox=make_box()).error_kind == "forbidden_import"

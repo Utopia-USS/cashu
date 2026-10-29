@@ -159,8 +159,9 @@ run fail with `protocol`. Print nothing else on stdout.
 `message` (<= 500 characters kept) is shown to the owner only, never to an agent (section 10). The app
 assigns its own kinds: `protocol` (any exit code other than 0 / 1, invalid JSON, wrong shape, oversize
 output), `timeout`, `sandbox_unavailable`, `spawn_failed`, `forbidden_import` (a Deno connector
-imports something outside its directory, section 4), `not_approved`, `interpreter_changed`, `missing`,
-`bad_request`.
+imports something outside its directory, section 4), `module_parse_error` (a module of a Deno
+connector does not load or parse; check it with `deno check`), `not_approved`, `interpreter_changed`,
+`missing`, `bad_request`.
 
 **stderr** is a free log. The app keeps its last 64 KiB in memory and stores a 4 KiB tail with the
 secrets and anything that looks like an account number, amount or e-mail redacted; only the owner sees
@@ -214,8 +215,10 @@ directory. So:
   a file inside the connector directory (relative imports such as `./lib/parse.ts`, also JSON / text
   imports with `with { type: "json" }`) or a `node:` built-in (`node:path`, `node:buffer`; their file,
   network and process calls get the same permission checks). Refused: `../` or absolute paths outside
-  the directory, `https:`, `jsr:`, `npm:`, `data:` and `blob:` modules, bare names, and a module that
-  does not parse (its own imports would be hidden; fix it with `deno check`). Imports built at run time
+  the directory, `https:`, `jsr:`, `npm:`, `data:` and `blob:` modules and bare names. A module of the
+  connector that does not load or parse (a syntax error, a missing file) is refused too, with
+  `module_parse_error` and the file's name: its own imports would be hidden; fix it with `deno check`.
+  Imports built at run time
   (`import(variable)`, a `Worker`) are checked by Deno's read permission instead. Third-party code:
   copy the files you need into the directory (within the 5 MiB / 200 files limit) and import them
   relatively.

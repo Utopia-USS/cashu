@@ -7,7 +7,7 @@ allowed on macOS (5). Implemented: `DenoSandbox` always inside the macOS sandbox
 security review showed that Deno alone lets static imports read outside `--allow-read` and raw sockets
 to a manifest host bypass the egress proxy, so Linux / Windows stay `sandbox_unavailable` for every
 interpreter until a native layer exists, hook: `default_sandbox` -> `sandbox_linux.native_sandbox()`);
-the module-graph check (`deno info`, error kind `forbidden_import`, rule in `docs/connectors.md`
+the module-graph check (`deno info`, error kinds `forbidden_import` and `module_parse_error`, rule in `docs/connectors.md`
 section 4); the bundled deno preferred by `resolve_interpreter`; the build step (version + sha256
 pinned; until the owner pins the sha256 values the app builds without Deno, with a warning,
 `packaging/README.md`); `test_connector`; the Deno

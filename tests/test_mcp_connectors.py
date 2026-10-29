@@ -502,3 +502,31 @@ def test_test_connector_caps_the_run_time(tester):
     box.specs.clear()
     devtest.run_test(long, file=_sample(slug), sandbox=box)  # the CLI path: the manifest's 600 s
     assert [s.timeout_s for s in box.specs] == [10.0, 600.0]
+
+
+@needs_mac_deno
+def test_test_connector_reports_a_module_parse_error(db_engine):
+    with get_session() as s:
+        p = profiles.create_profile(s, name="Anna Nowak", modules_=["budget"])
+        pid, slug = p.id, p.slug
+    manifest = (
+        "api_version: 1\nid: deno-bad\nname: Test\nversion: 0.1.0\nmodule: budget\nkind: file\n"
+        "run: [deno, connector.ts]\nfile:\n  extensions: [csv]\n"
+    )
+    root = ws_connectors(slug) / "deno-bad"
+    write_connector(root, cid="deno-bad", manifest=manifest, code="",
+                    extra={"connector.ts": 'import "./lib/parse.ts";\n',
+                           "lib/parse.ts": "const secretValue4321 = ;\n"})
+    (root / "main.py").unlink()
+    sample = workspace.workspace_path(slug) / "inbox" / "x.csv"
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    sample.write_text("a,b\n", encoding="utf-8")
+    result = CashuMcp(pid).call("test_connector", {"path": str(root), "file": str(sample)})
+    assert result.ok, result.error
+    assert result.data["ok"] is False
+    assert {(r["outcome"], r["error_kind"]) for r in result.data["runs"]} == {
+        ("refused", "module_parse_error")
+    }
+    assert any("lib/parse.ts" in (r["message"] or "") and "deno check" in r["message"]
+               for r in result.data["runs"])
+    assert "secretValue" not in json.dumps(result.data)
