@@ -27,7 +27,7 @@ from cashu.desktop import updater
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-import make_appcast  # noqa: E402
+import make_appcast
 
 
 def make_bundle(where: Path, version: str = "1.0.0", **extra) -> Path:
