@@ -1335,7 +1335,7 @@ TOOLS = (
         "review_context",
         "investments",
         "The owner's periodic review (strategy.yaml review:): name, every (week | 2weeks | month), day, "
-        "cards in order (world, sectors, positions, events, decide, ideas, calendar), due, next_on; "
+        "cards in order (world, sectors, positions, events, ideas, calendar, decide), due, next_on; "
         "since = the last review's date (else 7 days ago), last_review {done_at, notes, agenda = the "
         "cards the owner sent to the agent {card, note}}; card_sources = which tool has each card's "
         "facts; calendar: the next 14 days (high-impact macro releases, earnings of held / watched US "

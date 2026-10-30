@@ -418,6 +418,9 @@ class InvThesis(SQLModel, table=True):
     core_changed_at: dt.datetime | None = None
     """Last change of a core field (entry_type, thesis, invalidation); None reads as ``updated_at``.
     Research notes stored before it are tagged ``predates_thesis`` (P2), never dropped."""
+    exit_plan_changed_at: dt.datetime | None = None
+    """Last change of ``exit_plan`` (None without a plan): the review deck reads a plan changed after a
+    subject's signals as a decision already taken. Added by migration 0026."""
 
 
 class InvTopicThesis(SQLModel, table=True):

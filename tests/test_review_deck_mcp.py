@@ -47,7 +47,7 @@ def test_review_context_and_a_chat_review_with_an_agenda(db_engine):
     context = mcp.call("review_context", {}).data
     review = context["review"]
     assert review["name"] == "Przegląd tygodnia" and review["every"] == "week"
-    assert review["cards"] == ["world", "sectors", "positions", "events", "decide", "ideas", "calendar"]
+    assert review["cards"] == ["world", "sectors", "positions", "events", "ideas", "calendar", "decide"]
     assert review["due"] is True and context["last_review"] is None
     assert context["calendar"]["stale"] is True  # tests never fetch the public feeds
     assert set(context["card_sources"]) == set(review["cards"])

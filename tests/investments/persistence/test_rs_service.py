@@ -239,6 +239,22 @@ def test_owner_named_instruments_are_never_researched(investor):
 # --------------------------------------------------------------------------- #
 
 
+def test_signal_carries_the_notes_plain_headline(investor):
+    pid = investor
+    thesis(pid)
+    add(pid, polarity="negative", thesis_relation="invalidates", details={"headline": "Firma płaci za przejęcie nowymi akcjami"})
+    (sig,) = signals(pid)
+    assert sig.payload["headline"] == "Firma płaci za przejęcie nowymi akcjami"
+
+
+def test_signal_without_a_headline_keeps_the_title_only(investor):
+    pid = investor
+    thesis(pid)
+    add(pid, polarity="negative", thesis_relation="invalidates")
+    (sig,) = signals(pid)
+    assert sig.payload["headline"] is None and sig.payload["title"]
+
+
 def test_invalidating_note_is_an_action_signal_with_a_notification(investor):
     pid = investor
     thesis(pid)

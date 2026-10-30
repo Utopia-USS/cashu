@@ -90,4 +90,4 @@ rules: []
 # Notifications: severities that notify immediately (default [action]) and the weekly digest day
 # (default sunday).
 # notifications: { immediate: [action], digest_weekday: sunday }
-# review: { every: week, cards: [world, sectors, positions, events, decide, ideas, calendar] }
+# review: { every: week, cards: [world, sectors, positions, events, ideas, calendar, decide] }

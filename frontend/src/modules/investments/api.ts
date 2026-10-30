@@ -239,6 +239,8 @@ export interface Thesis {
   reviewed_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  /** The last change of `exit_plan` (null without a plan); older servers omit it. */
+  exit_plan_changed_at?: string | null;
 }
 export interface PositionDetail {
   instrument: Instrument | null;

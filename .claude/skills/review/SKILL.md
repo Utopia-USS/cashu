@@ -65,10 +65,17 @@ minutes. Conversation in Polish, regular hyphens only.
    then one question with options: `Jasne, dalej` / `Wróć do tego (dla agenta)` / `Więcej`. With
    `Więcej`, give the longer view (research notes with sources), then ask again. `Wróć do tego` puts
    the card on the agenda; ask for an optional note for the agent in the owner's words.
-3. **Decisions** (the decide card): for each open signal ask what the owner does and why, never
-   suggest it. Record with `record_decision(signal_id, action, reason)` only for an explicit answer
-   (`bought`, `sold`, `held`, `ignored`, `other`). A weakened thesis or a pending proposal is pointed
-   to the app (theses and proposals are approved there).
+3. **Decisions** (the decide card, last): one item per instrument, and only with a reason: research
+   that weakens, invalidates or fulfills its thesis (`relation` of a `research:*` signal), or a signal
+   first seen since the last review, or the week's thesis health. Threshold rules of one kind and polarity
+   on one instrument (reserve tranches) are one item, told by the deepest step. A thesis whose exit plan changed after the signals is "in progress": ask
+   whether the plan was carried out, not what to decide. Unchanged states and news without a thesis
+   relation are one line ("n unchanged, n news in Research"); portfolio rules open for 2+ weeks without a
+   decision are one "rules to fix" item (likely a wrong target, bucket or deposit plan). For each item ask
+   what the owner does and why, never suggest it. Record with `record_decision(signal_id, action,
+   reason)` only for an explicit answer (`bought`, `sold`, `held`, `ignored`, `other`), once per signal of
+   the item. A weakened thesis or a pending proposal is pointed to the app (theses and proposals are
+   approved there).
 4. **Close.** Summary in at most 6 lines: cards seen, decisions, the agenda, skipped cards. Ask whether
    to close the review; on yes `mark_review_done(notes, agenda)`, `agenda` = the flagged cards with the
    owner's notes. Say when the next one comes (`review.next_on` after closing, from `review_context`).
@@ -81,9 +88,9 @@ minutes. Conversation in Polish, regular hyphens only.
 | `sectors` - Sektory | which segments made the move | `research_context.segments`: `contribution_1w` in pp, `return_1w`, the first brief |
 | `positions` - Pozycje | the biggest fall and rise | `research_context.segments[].instruments`: `return_1w`; skip when no move is 3 % or more |
 | `events` - Wydarzenia | what moved the portfolio | `research_notes` since `since`: strength 2+ or a thesis relation; macro state changes |
-| `decide` - Do decyzji | how many things wait | `signals` (open, no decision, not snoozed), `research_context.positions[].research.health` weakened / invalidated, pending proposals in `profile_overview` |
 | `ideas` - Okazje | candidates outside the portfolio | `research_context.candidates.open` (the app accepts or dismisses them) |
 | `calendar` - Kalendarz 14 dni | what is coming | `review_context.calendar.events`; say when `stale` |
+| `decide` - Do decyzji | how many things wait, grouped risks / opportunities / to review / in progress | `signals` (open, no decision, not snoozed) filtered as in Flow 3, `theses` (exit plan, when it fails), `research_context.positions[].research.health` weakened / invalidated, pending proposals in `profile_overview` |
 
 ## Changing the review
 
@@ -95,7 +102,7 @@ review:
   every: week        # week | 2weeks | month (month: the first `day` of the month)
   day: sunday        # default notifications.digest_weekday
   name: Przegląd tygodnia
-  cards: [world, sectors, positions, events, decide, ideas, calendar]
+  cards: [world, sectors, positions, events, ideas, calendar, decide]
 ```
 
 Ask what the owner wants (how often, which day, which cards, a name), read the current strategy

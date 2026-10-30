@@ -125,7 +125,7 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 | `investments-setup` | investments | Strategy interview (goals, horizon, risk, history retrospective), strategy.md + strategy.yaml proposals, weekly / monthly / quarterly check-ins - NOT broker-export conversion, one custom rule or market research; never recommends instruments or trades |
 | `import-builder` | budget, investments | Broker / exchange / crypto history or bank statements turned into a file or fetch connector (preferred), a one-off converter or a generic CSV mapping - NOT supported bank CSV / Open Banking imports, strategy or custom rules |
 | `extension-builder` | investments | One monitoring idea as a built-in rule kind or safe custom expression (`propose_custom_rule`), backtested and tuned - NOT a whole strategy, imports or alert proposals after a research run |
-| `review` | investments | The periodic review deck in chat (world, sectors, positions, events, decide, ideas, calendar) from `review_context`, decisions, `mark_review_done` with the agenda; the strategy.yaml `review:` section - NOT the strategy, research runs, rules or imports |
+| `review` | investments | The periodic review deck in chat (world, sectors, positions, events, ideas, calendar, decide) from `review_context`, decisions, `mark_review_done` with the agenda; the strategy.yaml `review:` section - NOT the strategy, research runs, rules or imports |
 | `market-research` | investments | Held / watched instruments, topics, macro cards, candidates and theses researched over MCP into sourced Polish notes, topic market views and model recommendations - NOT strategy or thesis writing, custom rules, imports or placing trades |
 
 (Inventory only - descriptions live in each `SKILL.md` frontmatter.)

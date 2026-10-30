@@ -175,6 +175,16 @@ def _week_notes(session: Session, profile_id: int, key: str) -> list[InvResearch
     return [r for r in rows if note_key(r) == key]
 
 
+def _headline(note: InvResearchNote) -> str | None:
+    """The note's plain-language sentence (``details.headline``, else the brief's), for the review deck."""
+    details = note.details if isinstance(note.details, dict) else {}
+    brief = details.get("brief") if isinstance(details.get("brief"), dict) else {}
+    value = details.get("headline") or brief.get("headline")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
+
+
 def _lead(notes: Iterable[InvResearchNote], at: dt.datetime) -> list[InvResearchNote]:
     qualifying = [n for n in notes if severity_of(n, at) is not None]
     return sorted(
@@ -219,6 +229,7 @@ def candidate_for(
             "strength": lead.strength,
             "sources": sources,
             "title": lead.title,
+            "headline": _headline(lead),
             "theme": lead.theme,
             "segment": lead.segment,
             "segment_label": segment_label(lead.segment) if lead.segment else None,

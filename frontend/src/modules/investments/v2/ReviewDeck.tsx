@@ -8,19 +8,20 @@ import { createPortal } from "react-dom";
 import { errorText } from "../../../core/messages";
 import { useAsync } from "../../../hooks";
 import { useModal, useToast } from "../../../ui";
-import { postAcknowledge, postDecision, postSnooze } from "../api";
+import { ApiError, isMissingRoute } from "../../../core/api";
+import { getTheses, postAcknowledge, postDecision, postSnooze } from "../api";
 import { dm, money, pct, pp } from "../labels";
 import { C } from "../../../common.strings.ts";
 import { S } from "./ReviewDeck.strings.ts";
-import { type DigestV2, getCalendar, invKey, type Performance, type SignalV2 } from "./api";
+import { type DigestV2, getCalendar, getSignalsV2, invKey, type Performance, postPositionDecision, type SignalV2 } from "./api";
 import { benchmarkLabel, changeSince, staleBenchmark } from "./logic";
 import { getResearch } from "./research/api";
 import { useMacro, useResearchActions, useResearchOverview, useSegments } from "./research/data";
 import { noteSubject } from "./research/logic";
 import type { DigestResearch, ResearchNote } from "./research/types";
 import {
-  CARD_ORDER, CARD_TITLE, type CardId, type DecideItem, deckCards, decideItems, openIdeas, sectorRows, sectorsTitle, summaryTitle, type Tone, topMovers,
-  type ProposalLike, weekEvents, weeklySigma, worldVerdict,
+  CARD_ORDER, CARD_TITLE, type CardId, DECIDE_GROUPS, type DecideItem, type DecideRest, deckCards, decideItems, decideSubjects, GROUP_LABEL, openIdeas,
+  sectorRows, sectorsTitle, summaryTitle, type ThesisLite, type Tone, topMovers, type ProposalLike, weekEvents, weeklySigma, worldVerdict,
 } from "./reviewDeckLogic";
 import "./reviewDeck.css";
 
@@ -43,13 +44,26 @@ export function useReviewDeckData({ slug, nonce, digest, perfWeek, perfYear, sig
   signals: SignalV2[]; proposals: ProposalLike[]; names: Map<number, string>; open: boolean;
 }) {
   const since = digest?.since ?? null;
+  // "New since the last review" counts from the review's exact time, not its day.
+  const sinceAt = digest?.since_at ?? since;
   const seg = useSegments(slug, "1w", nonce);
   const macro = useMacro(slug, nonce);
   const research = useResearchOverview(slug, nonce);
   const notesQ = useAsync(() => (since ? getResearch(slug, { since, limit: 200 }) : Promise.resolve([] as ResearchNote[])), [slug, since],
     { key: since ? invKey(slug, "research", "since", since) : undefined });
   const cal = useAsync(() => (open ? getCalendar(slug) : Promise.resolve(null)), [slug, open]);
+  // The theses of the Do decyzji subjects (their exit plan and when they fail), newest version per instrument.
   const digestResearch = ((digest as { research?: DigestResearch | null } | null | undefined)?.research ?? null);
+  const subjects = useMemo(() => decideSubjects(signals, sinceAt, digestResearch).sort((a, b) => a - b), [signals, sinceAt, digestResearch]);
+  const thesesQ = useAsync(async () => {
+    const out = new Map<number, ThesisLite>();
+    await Promise.all(subjects.map(async (id) => {
+      const list = await getTheses(slug, id).catch(() => []);
+      const t = [...list].sort((a, b) => String(b.updated_at ?? "").localeCompare(String(a.updated_at ?? "")))[0];
+      if (t) out.set(id, t);
+    }));
+    return out;
+  }, [slug, subjects.join(",")], { key: invKey(slug, "theses", "decide", subjects.join(",")) });
   const order = useMemo(() => {
     const own = (digest?.review?.cards ?? []).filter((c): c is CardId => (CARD_ORDER as string[]).includes(c));
     return own.length ? own : CARD_ORDER;
@@ -66,13 +80,13 @@ export function useReviewDeckData({ slug, nonce, digest, perfWeek, perfYear, sig
   const movers = useMemo(() => topMovers(seg.data, names), [seg.data, names]);
   const events = useMemo(() => weekEvents(notesQ.data ?? []), [notesQ.data]);
   const macroChanges = useMemo(() => digestResearch?.macro_changes ?? [], [digestResearch]);
-  const ready = !!digest && perfWeek !== undefined && perfYear !== undefined && !seg.loading && !notesQ.loading && !research.loading;
+  const ready = !!digest && perfWeek !== undefined && perfYear !== undefined && !seg.loading && !notesQ.loading && !research.loading && !thesesQ.loading;
   const live = useMemo(() => {
-    const d = decideItems(signals, digestResearch, names, proposals);
+    const d = decideItems(signals, digestResearch, names, proposals, { since: sinceAt, theses: thesesQ.data ?? undefined });
     const ideas = openIdeas(research.candidates ?? []);
     const { cards, skipped } = deckCards({ movers, sectors, events, macroChanges, decide: d.items, ideas }, order);
-    return { cards, skipped, decide: d.items, more: d.more, ideas };
-  }, [signals, digestResearch, names, proposals, research.candidates, movers, sectors, events, macroChanges, order]);
+    return { cards, skipped, decide: d.items, more: d.more, rest: d.rest, ideas };
+  }, [signals, digestResearch, names, proposals, sinceAt, thesesQ.data, research.candidates, movers, sectors, events, macroChanges, order]);
   return { seg, macro, research, notesQ, cal, digestResearch, week, benchStale, bench, sigma, verdict, ddNow, ddMax, sectors, movers, events, macroChanges, ready, live };
 }
 
@@ -116,7 +130,7 @@ export function ReviewDeck({ slug, data, digest, perfWeek, busy, suspended, note
   const title = digest.review?.name ?? S.weeklyReview;
 
   // ---- the deck, built once when the data has arrived (decisions taken on it do not reshuffle the cards) ----
-  const [built, setBuilt] = useState<{ cards: Card[]; skipped: { id: CardId; why: string }[]; decide: DecideItem[]; more: number; ideas: ResearchNote[] } | null>(null);
+  const [built, setBuilt] = useState<{ cards: Card[]; skipped: { id: CardId; why: string }[]; decide: DecideItem[]; more: number; rest: DecideRest; ideas: ResearchNote[] } | null>(null);
   useEffect(() => {
     if (built || !data.ready) return;
     setBuilt({ ...data.live, cards: [...data.live.cards, "summary"] });
@@ -175,12 +189,35 @@ export function ReviewDeck({ slug, data, digest, perfWeek, busy, suspended, note
     if (item.kind === "proposal") { onOpenProposal(item.proposalId!); return; }
     if (item.kind === "thesis") { setChoices((c) => ({ ...c, [item.key]: label })); return; }
     setPending(item.key);
+    // A signal of the item may have closed since the deck was built (a 409): the write goes on with the ones still
+    // open, and ones already written in this call are not written twice.
+    const done = new Set<number>();
+    let ids = item.signalIds ?? [];
+    const reopen = async () => { const open = new Set((await getSignalsV2(slug, "open")).map((x) => x.id)); ids = ids.filter((id) => open.has(id) && !done.has(id)); };
+    const retry409 = async (run: () => Promise<void>) => {
+      try { await run(); } catch (e) { if (!(e instanceof ApiError && e.status === 409)) throw e; await reopen(); await run(); }
+    };
+    const each = (write: (id: number) => Promise<unknown>) => retry409(async () => { for (const id of ids) if (!done.has(id)) { await write(id); done.add(id); } });
     try {
       if (action === "snooze") {
         const until = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-        await postSnooze(slug, item.signalId!, until);
-      } else if (action === "ack") await postAcknowledge(slug, item.signalId!);
-      else await postDecision(slug, item.signalId!, { action, reason: S.decisionReason });
+        await each((id) => postSnooze(slug, id, until));
+      } else if (action === "ack") {
+        await each((id) => postAcknowledge(slug, id));
+      } else if (item.instrumentId != null) {
+        // One journal entry for the subject, every open signal of it linked; older servers: the per-signal fan-out.
+        const instrumentId = item.instrumentId;
+        await retry409(async () => {
+          try { await postPositionDecision(slug, instrumentId, { action, reason: S.decisionReason, signal_ids: ids }); }
+          catch (e) {
+            if (!isMissingRoute(e) || !ids.length) throw e;
+            await postDecision(slug, ids[0], { action, reason: S.decisionReason });
+            done.add(ids[0]);
+            // `decyzja: ` is a stored marker (v2/logic.ts folds these acknowledgements into the decision): never localized.
+            for (const id of ids.slice(1)) if (!done.has(id)) { await postAcknowledge(slug, id, `decyzja: ${label}`); done.add(id); }
+          }
+        });
+      } else if (ids.length) await retry409(() => postDecision(slug, ids[0], { action, reason: S.decisionReason }).then(() => undefined));
       setChoices((c) => ({ ...c, [item.key]: label }));
       onChanged();
     } catch (e) { toast(S.decisionFailed(errorText(e)), 5000); } finally { setPending(null); }
@@ -309,21 +346,26 @@ export function ReviewDeck({ slug, data, digest, perfWeek, busy, suspended, note
           body: (
             <>
               <div className="rd-dec">
-                {list.map((d) => (
-                  <div className={`it${choices[d.key] ? " done" : ""}`} key={d.key}>
+                {DECIDE_GROUPS.filter((g) => list.some((d) => d.group === g)).map((g) => [
+                  <div className={`grp ${g}`} key={`g:${g}`}>{GROUP_LABEL[g]} <span>{list.filter((d) => d.group === g).length}</span></div>,
+                  ...list.filter((d) => d.group === g).map((d) => (
+                  <div className={`it ${d.group}${choices[d.key] ? " done" : ""}`} key={d.key}>
                     <div className="h"><span className={`k ${d.tone}`}>{d.tag}</span>{choices[d.key] && <span className="st">✓ {choices[d.key]}</span>}</div>
                     <div className="t">{d.title}</div>
                     <div className="w">{d.why}</div>
+                    {d.context && <div className="c">{d.context}</div>}
                     <div className="acts">
+                      {/* No answer is highlighted (the card never suggests a trade); a proposal's only one is. */}
                       {d.actions.map((a, k) => (
-                        <button key={a.action} className={choices[d.key] === a.label ? "on" : k === 0 && !choices[d.key] ? "pri" : ""} disabled={(!!choices[d.key] && d.kind !== "proposal") || pending === d.key}
+                        <button key={a.action} className={choices[d.key] === a.label ? "on" : k === 0 && d.kind === "proposal" && !choices[d.key] ? "pri" : ""} disabled={(!!choices[d.key] && d.kind !== "proposal") || pending === d.key}
                           onClick={() => decide(d, a.action, a.label)}>{a.label}</button>
                       ))}
                     </div>
                   </div>
-                ))}
+                  )),
+                ])}
               </div>
-              <div className="rd-hint">{S.resolved(done, list.length)}{built?.more ? S.moreInSignals(built.more) : ""}{S.noTrade}</div>
+              <div className="rd-hint">{S.resolved(done, list.length)}{built?.more ? S.moreInSignals(built.more) : ""}{built?.rest ? S.restLine(built.rest.review, built.rest.research) : ""}{S.noTrade}</div>
             </>
           ),
           more: null,
