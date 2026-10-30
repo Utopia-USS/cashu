@@ -317,7 +317,8 @@ Architecture, code map, conventions, and "how to add a bank / feature" -
 **Contributing.** Issues and pull requests are welcome. Read
 [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CLAUDE.md`](CLAUDE.md) first, and never
 include real financial data: tests, fixtures and screenshots use synthetic data
-only. Security issues: [`SECURITY.md`](SECURITY.md).
+only. Security issues: [`SECURITY.md`](SECURITY.md). Where the project is going:
+[`ROADMAP.md`](ROADMAP.md).
 
 ---
 
