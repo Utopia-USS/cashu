@@ -95,6 +95,15 @@ RELEASES_EN: tuple[str, ...] = (
 )
 """English names of :data:`RELEASES`, in the same order."""
 
+_PERIOD = r"(kw\.|kwarta\w*|roczn\w*|półroczn\w*|polroczn\w*|okresow\w*|finansow\w*|q[1-4]\b|quarter\w*|annual|fiscal)"
+_RESULTS = re.compile(
+    rf"\bwyniki\b.*{_PERIOD}|\b(raport|sprawozdani)\w*\b.*{_PERIOD}"
+    rf"|\b(results|report|earnings)\b.*{_PERIOD}|{_PERIOD}.*\b(results|report|earnings)\b|\bearnings\b",
+    re.IGNORECASE,
+)
+"""A research event that names a company's periodic (quarterly / annual) results, which the earnings feed has;
+trial results, vote results or a tender's result are other events and stay."""
+
 US_MICS = {"XNAS", "XNYS", "ARCX", "BATS", "XASE", "XNGS", "XNCM", "XNMS", "IEXG"}
 
 Fetcher = Callable[[dt.date, int], dict]
@@ -446,21 +455,28 @@ def calendar_view(
             }
         )
 
-    earnings_ids = {e["instrument_id"] for e in events if e["kind"] == "earnings"}
+    feed_earnings = {(e["instrument_id"], e["date"]) for e in events if e["kind"] == "earnings"}
+    seen: set[tuple] = set()
     for note in research_service.notes(session, int(profile.id)):
         details = note.details or {}
         when = details.get("event_date")
         if not isinstance(when, str) or not in_range(when[:10]):
             continue
-        if note.kind == "earnings" and note.instrument_id in earnings_ids:
-            continue  # the feed already has it
+        title = str(details.get("event") or note.title)
+        # The feed already has this report; several notes pointing at one event show it once.
+        if (note.instrument_id, when[:10]) in feed_earnings and (note.kind == "earnings" or _RESULTS.search(title)):
+            continue
+        key = (when[:10], note.instrument_id, note.segment, title.strip().lower())
+        if key in seen:
+            continue
+        seen.add(key)
         inst = instruments.get(note.instrument_id) if note.instrument_id is not None else None
         events.append(
             {
                 "date": when[:10],
                 "time": None,
                 "kind": "research",
-                "title": str(details.get("event") or note.title),
+                "title": title,
                 "country": None,
                 "country_label": segment_label(note.segment) if note.segment else None,
                 "instrument_id": note.instrument_id,
@@ -470,7 +486,8 @@ def calendar_view(
             }
         )
 
-    events.sort(key=lambda e: (e["date"], e["time"] or "99", e["kind"] != "earnings"))
+    rank = {"earnings": 0, "macro": 1, "research": 2}
+    events.sort(key=lambda e: (e["date"], rank.get(e["kind"], 3), e["time"] or "99"))
     return {
         "as_of": today.isoformat(),
         "from": today.isoformat(),

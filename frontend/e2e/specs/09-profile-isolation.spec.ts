@@ -27,6 +27,7 @@ test("switching profiles isolates their data", async ({ app: page }) => {
   await expect(page.getByRole("row", { name: /Udział ETF globalnego/ })).toHaveCount(0);
 
   await go(page, `${PIOTR}/investments.portfolio/research`);
+  await page.getByRole("tab", { name: "Notatki" }).click();
   await expect(page.locator("article[data-note]", { hasText: "DMBK" }).first()).toBeVisible();
   await expect(page.locator("article[data-note]", { hasText: "GLBA: napływy" })).toHaveCount(0);
 

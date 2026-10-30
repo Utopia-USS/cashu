@@ -19,6 +19,12 @@ test("topics: one line per topic, mood and headline, pp for held, obserwowany fo
   await expect(strip.locator(".st-topics")).not.toContainText("4 tyg.");
   await expect(strip.locator(".st-foot")).toContainText("Bez nowości");
   await expect(page.getByText(/bez tematu|bez segmentu/i)).toHaveCount(0);
+  // Wycena: the demo's synthetic valuation of global equities (P/E 21,5, forward 18, growth 12 %: PEG 1,5)
+  await strip.locator('.st-trow[data-topic="equity_global"]').click();
+  const val = strip.locator(".st-texp .st-val");
+  await expect(val).toContainText("Wycena");
+  await expect(val.locator(".st-mood")).toHaveText("w normie");
+  await expect(val).toContainText("P/E 21,5, za rok 18");
 });
 
 test("topics: Cały temat opens the drawer with the thesis, the notes and the members; the research page shows cards", async ({ app: page }) => {

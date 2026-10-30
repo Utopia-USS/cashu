@@ -88,7 +88,7 @@ export function ResearchPage(p: ResearchPageProps) {
     ...(tab === "topics" ? [{ id: "st-topics", span: 3 as const, node: <TopicsTab segments={seg.data} notes={notes} symOf={p.symOf} today={p.today} onOpenTopic={p.onOpenTopic} onOpenNote={openNote} /> }]
       : tab === "mine" ? [{ id: "st-mine", span: 3 as const, node: <MineTab summary={summary} notes={notes} today={p.today} cal={cal?.events ?? []} names={p.held} onOpenAsset={p.onOpenAsset} /> }]
       : tab === "notes" ? [{ id: "notes", span: 3 as const, node: <NotesTab slug={p.slug} notes={notes} today={p.today} held={p.held} watchedIds={p.watchedIds} onOpenAsset={p.onOpenAsset} onOpenTopic={p.onOpenTopic} onChanged={refresh} /> }]
-      : tab === "calendar" ? [{ id: "st-cal", span: 3 as const, node: <CalendarTab slug={p.slug} today={p.today} /> }]
+      : tab === "calendar" ? [{ id: "st-cal", span: 3 as const, node: <CalendarTab slug={p.slug} today={p.today} names={(id) => p.held.get(id)?.name ?? p.watchedIds.get(id)?.name ?? null} /> }]
       : tab === "candidates" ? [{ id: "cands", span: 3 as const, node: <CandidatesWidget slug={p.slug} today={p.today} notes={candidates ?? []} watched={p.watched} strategyVersion={p.strategyVersion} onChanged={refresh} /> }]
       : [
         { id: "runs", span: 3 as const, node: <RunsTable runs={runs} symOf={p.symOf} /> },

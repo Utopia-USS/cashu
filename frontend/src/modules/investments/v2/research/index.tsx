@@ -72,6 +72,7 @@ export function useResearchHome(input: ResearchHomeInput) {
   const ctx: StripCtx = {
     slug: o.slug, today: o.today, nonce: o.nonce, held, watched, symOf, watchedTopics, strategyVersion: o.strategyVersion, workspace: ws.data,
     onOpenAsset: o.openAsset, onOpenResearch: (q) => o.go(q ? `research?${q}` : "research"), onOpenTopic: o.openTopic, onChanged: o.onChanged, onSettings: o.onSettings,
+    nameOf: (id) => held.get(id)?.name ?? watchedIds.get(id)?.name ?? null,
   };
   const instOf = useCallback((id: number) => held.get(id) ?? watchedIds.get(id) ?? null, [held, watchedIds]);
   const ran = showStrip(runs);

@@ -96,6 +96,39 @@ previous view, the owner's edit included, so read the current one first and keep
 A topic without a thesis gets no view: propose the draft thesis first (held topics) or leave it.
 Count views in the final summary.
 
+### Topic valuation (held topics; when the figures changed)
+
+The owner sees, next to `Teraz` and `Perspektywa`, whether the topic is priced cheaply or richly **for its
+growth**; the app derives that word from figures you store, never from your opinion. For every held topic
+(`segments[].weight > 0`) whose `segments[].valuation` is missing or older than 4 weeks, or whose figures
+moved, put `details.valuation` on **that week's segment note of the topic** (a topic takes one segment note a
+week: add the valuation to the note you write about the topic anyway; when nothing else changed, the
+valuation note is the week's note), with `expires_in_days: 60` so the figures stay shown between refreshes:
+
+- `pe`: the trailing P/E of the topic as a whole (a fund's or index's weighted P/E, from its factsheet or
+  the index provider), `forward_pe`: the forward (next 12 months) P/E from the same source,
+  `eps_growth`: the expected yearly earnings growth as a decimal fraction (35 % a year is 0.35),
+  `pe_avg_5y`: the 5-year average P/E when the source gives it, `basis`: what the figures describe in a
+  few words (`ETF ROBO, średnia ważona`, `indeks MSCI World Semiconductors`). At least `pe` or `forward_pe`.
+- One source per figure set, the page you opened (factsheet, index fact sheet, provider data page);
+  take every number from it, never compute your own, never mix two sources in one note.
+- `headline` states a fact in plain words, never cheap / expensive (the app says that):
+  `Robotyka: rynek wycenia szybki wzrost zysków`; `title` with the figures
+  (`Robotyka: P/E 60, forward P/E 20, wzrost zysków ok. 45 % r/r`).
+- Forward figures rest on analysts' earnings estimates: say so in the summary (`według konsensusu
+  zebranego przez ...`) and name the date; never a price target, rating or buy / sell wording.
+
+```json
+{"kind": "trend", "segment": "robotics", "strength": 2, "polarity": "neutral", "expires_in_days": 60,
+ "title": "Robotyka: P/E 60, forward P/E 20, wzrost zysków ok. 45 % r/r",
+ "summary": "Według karty funduszu ... (stan na ...) średnie ważone P/E spółek wynosi 60, forward P/E 20 ...",
+ "details": {"headline": "Robotyka: rynek wycenia szybki wzrost zysków",
+             "valuation": {"pe": 60, "forward_pe": 20, "eps_growth": 0.45, "pe_avg_5y": 32, "basis": "ETF ROBO, średnia ważona"}},
+ "sources": [{"title": "<the factsheet you opened>", "url": "<its URL>", "publisher": "<fund or index provider>", "published_at": "<its date>"}]}
+```
+
+(The figures only show the shape.) Count valuation notes in the final summary.
+
 ## 6b. Macro: briefs
 
 Read `research_context.macro`: five regimes computed by the app from public

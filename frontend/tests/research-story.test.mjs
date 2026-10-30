@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  aheadEvents, dayBucket, firstSentence, hasPlainHeadline, moodOf, noteHeadline, storyTopics, thesisMoves,
+  aheadDays, aheadEvents, dayBucket, valuationOf, firstSentence, hasPlainHeadline, moodOf, noteHeadline, storyTopics, thesisMoves,
 } from "../src/modules/investments/v2/research/storyLogic.ts";
 
 test("moodOf: the week's move in one word; a flat week with a negative brief is uncertain", () => {
@@ -49,4 +49,53 @@ test("thesisMoves, dayBucket and aheadEvents", () => {
   const ev = (date, id = null) => ({ date, time: null, kind: id ? "earnings" : "macro", title: "x", instrument_id: id });
   const out = aheadEvents([ev("2026-11-03"), ev("2026-10-30", 5), ev("2026-11-20", 6), ev("2026-10-28")], "2026-10-29", 7);
   assert.deepEqual(out.map((e) => e.date), ["2026-10-30", "2026-11-03"]);
+});
+
+test("aheadDays: one row per day, companies by topic (own first), research events under them, the market apart", () => {
+  const e = (o) => ({ time: null, country: null, country_label: null, instrument_id: null, label: null, held: null, note_id: null, ...o });
+  const events = [
+    e({ date: "2026-10-29", kind: "earnings", title: "Wyniki kwartalne AMZN", instrument_id: 1, label: "AMZN", held: false }),
+    e({ date: "2026-10-29", kind: "earnings", title: "Wyniki kwartalne INTC", instrument_id: 2, label: "INTC", held: true }),
+    e({ date: "2026-10-29", kind: "earnings", title: "Wyniki kwartalne SNDK", instrument_id: 3, label: "SNDK", held: false }),
+    e({ date: "2026-10-29", kind: "macro", title: "Fed: decyzja o stopach", country_label: "USA" }),
+    e({ date: "2026-10-29", kind: "macro", title: "PKB", country_label: "USA" }),
+    e({ date: "2026-11-01", kind: "research", title: "Zapisy na 2027", instrument_id: 4, label: "UNH", held: true }),
+  ];
+  const topics = { 1: "Konsumpcja", 2: "AI: chipy", 3: "AI: chipy", 4: "Ochrona zdrowia" };
+  const names = { 1: "Amazon", 2: "Intel", 3: "SanDisk", 4: "UnitedHealth" };
+  const days = aheadDays(events, (id) => topics[id] ?? null, (ev) => names[ev.instrument_id] ?? ev.label);
+  assert.equal(days.length, 2);
+  assert.equal(days[0].mine, 1);
+  assert.deepEqual(days[0].groups.map((g) => [g.topic, g.items.map((i) => i.name)]), [["AI: chipy", ["Intel", "SanDisk"]], ["Konsumpcja", ["Amazon"]]]);
+  assert.deepEqual(days[0].market, ["Fed: decyzja o stopach", "PKB (USA)"]);
+  assert.deepEqual(days[1].groups[0].items[0], { name: "UnitedHealth", mine: true, earnings: false, title: "Zapisy na 2027" });
+});
+
+test("valuationOf: PEG first (robotics P/E 60, forward 20, 45 % growth is cheap for its growth), then the 5-year average", () => {
+  const robots = valuationOf({ pe: 60, forward_pe: 20, eps_growth: 0.45 });
+  assert.equal(robots.multiple, 3);
+  assert.equal(robots.verdict, "cheap");
+  assert.equal(valuationOf({ pe: 30, forward_pe: 28, eps_growth: 0.08 }).verdict, "rich");
+  assert.equal(valuationOf({ pe: 22, forward_pe: 20 }).verdict, "fair"); // growth implied by P/E / forward P/E: 10 %
+  assert.equal(valuationOf({ forward_pe: 15, pe_avg_5y: 20 }).verdict, "cheap");
+  assert.equal(valuationOf({ pe: 25 }).verdict, null);
+  // review findings: the 5-year average wins over the growth P/E / forward P/E only implies
+  assert.equal(valuationOf({ pe: 25, forward_pe: 24, pe_avg_5y: 30 }).verdict, "cheap");
+  // shrinking earnings never read as cheap
+  assert.equal(valuationOf({ pe: 15, forward_pe: 20 }).verdict, null);
+  assert.equal(valuationOf({ forward_pe: 15, eps_growth: -0.2, pe_avg_5y: 20 }).verdict, null);
+});
+
+test("aheadDays: the own count is distinct companies; a research event named by its own title is not doubled", () => {
+  const e = (o) => ({ time: null, country: null, country_label: null, instrument_id: null, label: null, held: null, note_id: null, ...o });
+  const days = aheadDays([
+    e({ date: "2026-11-03", kind: "earnings", title: "Wyniki kwartalne X", instrument_id: 1, label: "X", held: true }),
+    e({ date: "2026-11-03", kind: "research", title: "Dzień inwestora", instrument_id: 1, label: "X", held: true }),
+    e({ date: "2026-11-03", kind: "research", title: "Dzień inwestora", instrument_id: 1, label: "X", held: true }),
+    e({ date: "2026-11-03", kind: "research", title: "Premiera", instrument_id: 9, label: null, held: null }),
+    e({ date: "2026-11-03", kind: "macro", title: "Fed: decyzja o stopach", time: "19:00" }),
+  ], () => "T", (ev) => (ev.instrument_id === 1 ? "Xco" : ev.title));
+  assert.equal(days[0].mine, 1);
+  assert.deepEqual(days[0].groups[0].items.map((i) => [i.name, i.title]), [["Xco", null], ["Xco", "Dzień inwestora"], ["Premiera", null]]);
+  assert.deepEqual(days[0].market, ["Fed: decyzja o stopach 19:00"]);
 });

@@ -37,7 +37,7 @@
 .st-trow .hl .st-mood { margin-right: 6px; vertical-align: 1px; }
 .st-trow .imp { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .st-texp { padding: 0 2px 12px 134px; display: grid; gap: 6px; justify-items: start; }
-.st-nowout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; width: 100%; margin-bottom: 4px; }
+.st-nowout { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; width: 100%; margin-bottom: 4px; }
 .st-nowout div { background: var(--subtle); border-radius: 10px; padding: 9px 11px; font-size: 13px; }
 .st-nowout b { display: block; font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
 .st-nlink { border: 0; background: transparent; color: var(--text); text-align: left; padding: 2px 0; font: inherit; font-size: 13px; cursor: pointer; }
@@ -45,6 +45,20 @@
 .st-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; flex-wrap: wrap; }
 .st-foot .spacer { flex: 1; }
 .st-badge { display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 9px; background: var(--warnBg); color: var(--warn); font-weight: 700; font-size: 12px; text-align: center; }
+
+.st-dayrow { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 7px 0; font-size: 13px; }
+.st-dayrow + .st-dayrow { border-top: 1px dashed var(--border); }
+.st-dd { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.st-dd b { color: var(--text); font-size: 13px; }
+.st-dg { display: grid; gap: 3px; min-width: 0; }
+.st-dtp { font-size: 12px; font-weight: 650; color: var(--muted); margin-right: 6px; }
+.st-dtp::after { content: ":"; }
+.st-dmine { font-weight: 650; color: var(--text); }
+.st-dgrp.st-dmk { color: var(--muted); }
+.st-dr { font-size: 11px; font-weight: 700; color: var(--warn); white-space: nowrap; }
+
+.st-val .st-mood { margin-right: 4px; }
+.st-val small { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
 
 /* research page */
 .st-story { font-size: 22px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em; text-wrap: balance; margin: 0 0 12px; max-width: 900px; }

@@ -234,6 +234,7 @@ def _note(row: dict, owned: set[int], ctx: ToolContext | None = None) -> dict:
             "event": L.text(details.get("event")),
             "event_date": L.date(details.get("event_date")),
             "headline": L.text(details.get("headline")),
+            "valuation": _valuation_out(details.get("valuation")),
             "brief": _brief_out(details.get("brief")),
         },
         "sources": _sources_out(row.get("sources")),
@@ -257,6 +258,20 @@ def _brief_out(brief: dict | None, extra: dict | None = None) -> dict | None:
         "supports": [L.text(x) for x in brief.get("supports") or []],
         "risks": [L.text(x) for x in brief.get("risks") or []],
     } | (extra or {})
+
+
+def _valuation_out(v: dict | None) -> dict | None:
+    """A topic's or a company's valuation figures: public market levels (both privacy modes)."""
+    if not v:
+        return None
+    return {
+        "pe": L.level(v.get("pe")),
+        "forward_pe": L.level(v.get("forward_pe")),
+        "eps_growth": L.pct(v.get("eps_growth")),
+        "pe_avg_5y": L.level(v.get("pe_avg_5y")),
+        "basis": L.text(v.get("basis")),
+        "observed_at": L.date(v.get("observed_at")),
+    }
 
 
 def _sources_out(sources: list | None) -> list[dict]:
@@ -465,6 +480,7 @@ def _segments(ctx: ToolContext, owned: set[int]) -> tuple[list[dict], dict | Non
                     for b in r.get("briefs") or []
                 ],
                 "thesis": _topic_thesis(r.get("thesis")),
+                "valuation": _valuation_out(r.get("valuation")),
             }
         )
     currency = {
@@ -1015,7 +1031,8 @@ TOOLS = (
         "the equal-weighted price move of its held and watched instruments, members, last_note_at, "
         "note_this_week; briefs = up to 3 active brief notes (headline, why) the owner reads under the "
         "topic, newest first; thesis = the topic thesis {text, invalidation, draft, created_by, "
-        "updated_at} or null; watched-only topics with weight 0), currency and unassigned; "
+        "updated_at} or null; valuation = the newest sourced valuation {pe, forward_pe, eps_growth, "
+        "pe_avg_5y, basis, observed_at} or null; watched-only topics with weight 0), currency and unassigned; "
         "topic_thesis_cooldown: topics whose thesis the owner deleted (no new draft before "
         "until); "
         "segment_catalog; macro: the five macro regime cards (state_label, summary, plain = the "
@@ -1080,7 +1097,11 @@ TOOLS = (
         "else none; thesis_field names the thesis field it bears on (fulfills: thesis or exit_plan, "
         "a dated fact that the expected outcome happened or the exit target is met, never a sell "
         "call). details.event + event_date record a known "
-        "upcoming event; details.scale (small | medium | large) the size of a community discussion. "
+        "upcoming event; details.scale (small | medium | large) the size of a community discussion; "
+        "details.headline the plain-words headline (8-80 characters) the app shows first; "
+        "details.valuation {pe, forward_pe, eps_growth (fraction), pe_avg_5y, basis} the sourced "
+        "valuation of a topic or company (published figures, forward ones from the consensus the "
+        "source states; the app derives cheap / fair / rich, never write that word). "
         "Title <= 120, summary <= 1200 characters (Polish). A topic's current assessment and outlook "
         "belong in set_topic_market_view, never in note details. invalidates -> action signal, strength "
         "3 -> info signal. A segment or macro note may carry details.brief {headline (8-80, a plain "

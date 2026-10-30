@@ -151,3 +151,42 @@ def test_days_out_of_range_are_refused(db_engine):
     pid, _ = make_profile("Anna")
     with get_session() as s, pytest.raises(calendar.CalendarError):
         calendar.calendar_view(s, s.get(Profile, pid), today=TODAY, days=0, fetch=lambda t, d: _feeds())
+
+
+def test_research_events_do_not_repeat_the_feed_or_each_other(db_engine, monkeypatch):
+    from types import SimpleNamespace
+
+    from cashu.modules.investments.research import service as research_service
+
+    anna, _ = make_profile("Anna")
+    with get_session() as s:
+        us = _instrument(s, "Przyklad Corp", symbol="XMPL", yahoo="XMPL")
+        s.add(InvWatchlistItem(profile_id=anna, instrument_id=us, note=None, tags=[]))
+        s.commit()
+    note = lambda i, title, kind="news": SimpleNamespace(
+        id=i, kind=kind, title=title, instrument_id=us, segment=None, details={"event_date": "2026-11-03", "event": title}
+    )
+    notes = [note(1, "Wyniki Przyklad za III kwartał"), note(2, "Wyniki Przyklad za III kwartał"), note(3, "Zapisy na 2027"), note(4, "Zapisy na 2027")]
+    monkeypatch.setattr(research_service, "notes", lambda *a, **k: notes)
+    feed = _feeds(earnings=[{"date": "2026-11-03", "symbol": "XMPL", "name": "Przyklad Corp", "when": "after"}])
+    with get_session() as s:
+        view = calendar.calendar_view(s, s.get(Profile, anna), today=TODAY, fetch=lambda t, d: feed)
+    assert [(e["kind"], e["title"]) for e in view["events"]] == [("earnings", "Wyniki kwartalne XMPL"), ("research", "Zapisy na 2027")]
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Wyniki Amazon za III kwartał 2026", "Wyniki IV kw. roku obrotowego 2026", "Raport za III kwartał", "Q3 report",
+     "Jednostkowe sprawozdanie za III kwartał", "Quarterly results"],
+)
+def test_periodic_results_titles_are_recognised(title):
+    assert calendar._RESULTS.search(title)
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Wynik głosowania WZA nad podziałem spółki", "Wyniki badania klinicznego fazy 3", "Phase 3 trial results",
+     "Wynik wezwania na akcje", "Zapisy ACA na 2027"],
+)
+def test_other_results_stay_on_the_calendar(title):
+    assert not calendar._RESULTS.search(title)

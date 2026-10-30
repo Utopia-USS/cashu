@@ -185,6 +185,14 @@ export interface SegmentRow {
   briefs?: TopicBrief[];
   /** P9: the topic thesis; null when none, missing on older servers. */
   thesis?: TopicThesis | null;
+  /** The newest sourced valuation of the topic (a segment note's `details.valuation`); null when none. */
+  valuation?: Valuation | null;
+}
+/** How the market prices a topic: trailing and forward P/E, expected yearly earnings growth (fraction), the 5-year
+ * average P/E, what the figures describe, when and from whom. */
+export interface Valuation {
+  pe?: number | null; forward_pe?: number | null; eps_growth?: number | null; pe_avg_5y?: number | null; basis?: string | null;
+  note_id?: number; observed_at?: string | null; sources?: string[];
 }
 /** P9: a topic brief (a segment note with `details.brief`): a plain headline and what is going on. */
 export interface TopicBrief { note_id: number; headline: string; why: string | null; observed_at: string; kind?: string | null; polarity?: string | null; unread: boolean }

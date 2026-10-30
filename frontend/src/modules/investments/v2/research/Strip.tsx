@@ -51,6 +51,8 @@ export interface StripCtx {
   symOf: (id: number) => string | null;
   /** P7: topic key -> watched (not held) symbols, from the watchlist's `instrument.segment`. */
   watchedTopics: Map<string, string[]>;
+  /** Display name of a held or watched instrument (the calendar's companies). */
+  nameOf?: (id: number) => string | null;
 }
 
 export function ResearchStrip({ ctx, runs, summary }: {

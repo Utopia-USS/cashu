@@ -84,7 +84,10 @@ DETAILS_KEYS = (
     "criteria_version",
     "brief",
     "headline",
+    "valuation",
 )
+VALUATION_KEYS = ("pe", "forward_pe", "eps_growth", "pe_avg_5y", "basis")
+VALUATION_BASIS_MAX = 80
 BRIEF_HEADLINE_MIN = 8
 BRIEF_HEADLINE_MAX = 80
 BRIEF_WHY_MIN = 10
@@ -694,6 +697,51 @@ def _brief(issues: _Issues, raw: Any, *, macro: bool) -> dict | None:
     return {"headline": headline, "why": why, **out}
 
 
+def _valuation(issues: _Issues, raw: Any) -> dict | None:
+    """``details.valuation``: how the market prices a topic or a company, as sourced figures (never a
+    verdict): ``pe`` (trailing), ``forward_pe``, ``eps_growth`` (expected yearly earnings growth, a
+    fraction: 0.35 = 35 %), ``pe_avg_5y`` and ``basis`` (what the figures describe). The app derives the
+    "cheap / fair / rich for its growth" word from them."""
+    where = "details.valuation"
+    if not isinstance(raw, Mapping):
+        issues.add(where, "must be an object {pe?, forward_pe?, eps_growth?, pe_avg_5y?, basis?}")
+        return None
+    unknown = sorted(set(raw) - set(VALUATION_KEYS))
+    if unknown:
+        issues.add(where, f"allowed keys: {', '.join(VALUATION_KEYS)}")
+        return None
+    out: dict = {}
+    # Messages carry no figures: in strict mode the privacy layer would blank them as amounts.
+    bounds = {
+        "pe": (0.1, 1000.0, "must be a positive P/E of at most a thousand"),
+        "forward_pe": (0.1, 1000.0, "must be a positive P/E of at most a thousand"),
+        "pe_avg_5y": (0.1, 1000.0, "must be a positive P/E of at most a thousand"),
+        "eps_growth": (
+            -0.9,
+            10.0,
+            (
+                "must be the yearly growth as a decimal fraction, not percent points "
+                "(thirty-five percent a year is written as a fraction below one)"
+            ),
+        ),
+    }
+    for key, (low, high, message) in bounds.items():
+        value = raw.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int | float) or not low <= float(value) <= high:
+            issues.add(f"{where}.{key}", message)
+            continue
+        out[key] = round(float(value), 4)
+    basis = _text(issues, f"{where}.basis", raw.get("basis"), maximum=VALUATION_BASIS_MAX, required=False)
+    if basis:
+        out["basis"] = basis
+    if "pe" not in out and "forward_pe" not in out:
+        issues.add(where, "needs pe or forward_pe")
+        return None
+    return out
+
+
 def _details(
     issues: _Issues,
     raw: Any,
@@ -786,6 +834,13 @@ def _details(
             )
         else:
             out["headline"] = headline
+    if raw.get("valuation") is not None:
+        if segment is not None and is_macro_key(segment):
+            issues.add("details.valuation", "a macro note carries no valuation (a topic or a company does)")
+        else:
+            valuation = _valuation(issues, raw.get("valuation"))
+            if valuation is not None:
+                out["valuation"] = valuation
     if raw.get("brief") is not None:
         if segment is None:
             issues.add("details.brief", "only a segment or macro note carries a brief")

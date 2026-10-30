@@ -4,7 +4,7 @@
 // line and the tooltips. Pure; `npm test` imports it (imports carry .ts).
 import { dateParts, dm, dmy, pp } from "../../labels.ts";
 import { lang } from "../../../../i18n.ts";
-import type { NoteSource, SegmentAttribution, SegmentInstrument, SegmentMember, SegmentNoteRef, SegmentRow, SegmentWindow, TopicBrief, TopicThesis } from "./types.ts";
+import type { NoteSource, SegmentAttribution, SegmentInstrument, SegmentMember, SegmentNoteRef, SegmentRow, SegmentWindow, TopicBrief, TopicThesis, Valuation } from "./types.ts";
 import { S, SEGMENT_LABEL } from "./segments.strings.ts";
 
 export type SegmentGroup = "asset" | "sector";
@@ -296,7 +296,18 @@ export function normSegmentRow(v: unknown): SegmentRow | null {
     unread: num(o.unread) ?? 0, notes_8w: num(o.notes_8w) ?? 0, last_note_at: str(o.last_note_at),
     trend_1w: num(o.trend_1w), trend_4w: num(o.trend_4w), members: num(o.members) ?? 0,
     ...(Array.isArray(o.member_instruments) ? { member_instruments: normMembers(o.member_instruments) } : {}),
-    briefs: normTopicBriefs(o.briefs), thesis: normTopicThesis(o.thesis),
+    briefs: normTopicBriefs(o.briefs), thesis: normTopicThesis(o.thesis), valuation: normValuation(o.valuation),
+  };
+}
+
+/** A topic's valuation; null without trailing or forward P/E. */
+export function normValuation(v: unknown): Valuation | null {
+  const o = obj(v);
+  const pe = num(o.pe), fwd = num(o.forward_pe);
+  if (pe == null && fwd == null) return null;
+  return {
+    pe, forward_pe: fwd, eps_growth: num(o.eps_growth), pe_avg_5y: num(o.pe_avg_5y), basis: str(o.basis),
+    note_id: num(o.note_id) ?? undefined, observed_at: str(o.observed_at), sources: arr(o.sources).map((x) => str(x)).filter((x): x is string => !!x),
   };
 }
 

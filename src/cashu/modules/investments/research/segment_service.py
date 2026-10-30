@@ -324,6 +324,8 @@ class SegmentNotes:
     notes_8w: int = 0
     briefs: list[InvResearchNote] = field(default_factory=list)
     """Active notes with a ``details.brief`` (P9), newest observation first."""
+    valuation: InvResearchNote | None = None
+    """The newest active note with a ``details.valuation``."""
 
 
 def segment_note_rows(
@@ -368,6 +370,8 @@ def notes_by_segment(
             entry.latest = r
         if active and has_brief(r):
             entry.briefs.append(r)
+        if active and (r.details or {}).get("valuation") and newer(entry.valuation, r):
+            entry.valuation = r
         if service.is_unread(r, now):
             entry.unread += 1
         if convert.aware(r.observed_at) >= since_8w:
@@ -397,6 +401,20 @@ def topic_brief(row: InvResearchNote, now: dt.datetime) -> dict:
         "kind": row.kind,
         "polarity": row.polarity,
         "unread": service.is_unread(row, now),
+    }
+
+
+def topic_valuation(row: InvResearchNote | None) -> dict | None:
+    """A topic row's valuation: the newest valuation note's figures, its date and its sources' publishers."""
+    from .views import iso
+
+    if row is None:
+        return None
+    return {
+        **(row.details or {})["valuation"],
+        "note_id": row.id,
+        "observed_at": iso(convert.aware(row.observed_at)),
+        "sources": [s.get("publisher") or s.get("url") for s in row.sources or [] if isinstance(s, dict)][:3],
     }
 
 
@@ -501,6 +519,7 @@ def _row(
         if notes is not None
         else [],
         "thesis": thesis,
+        "valuation": topic_valuation(notes.valuation) if notes is not None else None,
     }
 
 

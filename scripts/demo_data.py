@@ -1475,7 +1475,15 @@ class Seeder:
                             "headline": "Duże spółki na świecie zarabiają więcej",
                             "why": "Przykładowe dane: zyski największych firm są wyższe niż rok "
                             "temu, a szerokie indeksy akcji trzymają się blisko szczytów.",
-                        }
+                        },
+                        # Synthetic figures: the topic's valuation (the app's `Wycena` box).
+                        "valuation": {
+                            "pe": 21.5,
+                            "forward_pe": 18.0,
+                            "eps_growth": 0.12,
+                            "pe_avg_5y": 19.0,
+                            "basis": "przykładowy indeks akcji globalnych",
+                        },
                     },
                     "expires_in_days": 60,
                 },

@@ -6,7 +6,8 @@
 import { useMemo, useState } from "react";
 import { useAsync } from "../../../../hooks";
 import { Widget } from "../../../../widgets";
-import { dm, pp, wdm } from "../../labels";
+import { dm, pct, pp, wdm } from "../../labels";
+import { intlLocale } from "../../../../i18n";
 import { type CalendarEvent, getCalendar, invKey } from "../api";
 import { getResearch } from "./api";
 import { useMacro, useResearchActions, useSegments } from "./data";
@@ -14,8 +15,8 @@ import { HEALTH_LABEL, healthOf, KIND_LABEL, latestRun, nextSaturday, normRelati
 import { isMacroKey, macroLabel } from "./macro";
 import { canonKey, isSegment, segmentLabel } from "./segments";
 import type { StripCtx } from "./Strip";
-import type { ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution } from "./types";
-import { aheadEvents, dayBucket, MOOD_TONE, noteHeadline, type StoryTopic, storyTopics, thesisMoves } from "./storyLogic";
+import type { ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, Valuation } from "./types";
+import { aheadDays, aheadEvents, dayBucket, valuationOf, MOOD_TONE, noteHeadline, type StoryTopic, storyTopics, thesisMoves } from "./storyLogic";
 import { MOOD, REL, S } from "./Story.strings.ts";
 import "./story.css";
 
@@ -29,15 +30,44 @@ function Mood({ t }: { t: StoryTopic }) {
   return <span className={`st-mood ${MOOD_TONE[t.mood]}`}>{MOOD[t.mood]}</span>;
 }
 
-function EventRow({ e }: { e: CalendarEvent }) {
-  const title = e.kind === "earnings" && e.label ? S.reports(e.label) : e.title;
+/** The coming events, one row per day: the companies by topic (own positions in bold), then the market. */
+function AheadDays({ events, topicOf, nameOf, maxDays }: {
+  events: CalendarEvent[]; topicOf: (id: number) => string | null; nameOf: (e: CalendarEvent) => string; maxDays?: number;
+}) {
+  const days = aheadDays(events, topicOf, nameOf).slice(0, maxDays ?? 99);
   return (
-    <div className="st-ev">
-      <span className="d"><b>{dm(e.date)}</b> {wdm(e.date).split(" ")[0]}</span>
-      <span className={e.instrument_id != null ? "mine" : ""}>{title}{e.time ? <span className="muted"> · {e.time}</span> : null}</span>
-      <span className="r">{e.held === true ? S.yours : e.held === false ? S.watched : e.kind === "research" ? S.fromResearch : e.country_label ?? ""}</span>
+    <div className="st-days">
+      {days.map((d) => (
+        <div key={d.date} className="st-dayrow">
+          <span className="st-dd"><b>{dm(d.date)}</b> {wdm(d.date).split(" ")[0]}</span>
+          <div className="st-dg">
+            {d.groups.map((g, k) => {
+              const earn = g.items.filter((i) => i.earnings), other = g.items.filter((i) => !i.earnings);
+              return (
+                <div key={k} className="st-dgrp">
+                  <span className="st-dtp">{g.topic ?? S.otherTopic}</span>
+                  {earn.length > 0 && <span>{S.results}: {earn.map((i, j) => <span key={j}>{j ? ", " : ""}<span className={i.mine ? "st-dmine" : "muted"}>{i.name}</span></span>)}</span>}
+                  {other.map((i, j) => <span key={`o${j}`}>{earn.length || j ? " · " : ""}<span className={i.mine ? "st-dmine" : ""}>{i.title ? `${i.name}: ${i.title}` : i.name}</span></span>)}
+                </div>
+              );
+            })}
+            {d.market.length > 0 && <div className="st-dgrp st-dmk"><span className="st-dtp">{S.marketTopic}</span>{d.market.join(", ")}</div>}
+          </div>
+          <span className="st-dr">{d.mine ? S.yoursN(d.mine) : ""}</span>
+        </div>
+      ))}
     </div>
   );
+}
+
+/** Instrument id -> its topic's label, from the segment attribution (held and watched members). */
+function topicMap(att: SegmentAttribution | null | undefined): (id: number) => string | null {
+  const m = new Map<number, string>();
+  for (const s of att?.segments ?? []) {
+    for (const i of s.instruments) m.set(i.instrument_id, s.label);
+    for (const i of s.member_instruments ?? []) if (!m.has(i.instrument_id)) m.set(i.instrument_id, s.label);
+  }
+  return (id) => m.get(id) ?? null;
 }
 
 const aheadSay = (events: CalendarEvent[]) => {
@@ -100,7 +130,8 @@ export function ResearchStory({ ctx, summary, runs }: { ctx: StripCtx; summary: 
           <div className="st-ahead">
             <h4>{S.ahead}</h4>
             <div className="st-say">{aheadSay(events)}</div>
-            {events.map((e, k) => <EventRow key={k} e={e} />)}
+            <AheadDays events={events} topicOf={topicMap(seg.data)} maxDays={5}
+              nameOf={(e) => (e.instrument_id != null ? ctx.held.get(e.instrument_id)?.name ?? ctx.nameOf?.(e.instrument_id) : null) ?? e.label ?? e.title} />
           </div>
         </div>
         <div className="st-right">
@@ -142,11 +173,32 @@ export function ResearchStory({ ctx, summary, runs }: { ctx: StripCtx; summary: 
 }
 
 function NowOutlook({ t }: { t: StoryTopic }) {
-  if (!t.now && !t.outlook) return null;
+  if (!t.now && !t.outlook && !t.valuation) return null;
   return (
     <div className="st-nowout">
       {t.now && <div><b>{S.now}</b>{t.now}</div>}
       {t.outlook && <div><b>{S.outlook}</b>{t.outlook}</div>}
+      {t.valuation && <ValuationBox v={t.valuation} />}
+    </div>
+  );
+}
+
+const num = (v: number) => (Math.round(v * 10) / 10).toLocaleString(intlLocale());
+
+/** Wycena: the verdict word (from the figures, never the agent's opinion), one sentence, then where it comes from. */
+function ValuationBox({ v }: { v: Valuation }) {
+  const { verdict, multiple, growth } = valuationOf(v);
+  const word = verdict === "cheap" ? S.valCheap : verdict === "rich" ? S.valRich : verdict === "fair" ? S.valFair : null;
+  const tone = verdict === "cheap" ? "pos" : verdict === "rich" ? "neg" : "calm";
+  const sentence = (v.pe && v.forward_pe && multiple ? (multiple > 1 ? S.valBoth(num(v.pe), num(v.forward_pe), num(multiple)) : S.valFall(num(v.pe), num(v.forward_pe)))
+    : v.forward_pe ? S.valFwd(num(v.forward_pe)) : v.pe ? S.valPe(num(v.pe)) : "")
+    + (v.eps_growth != null && growth != null ? S.valGrowth(pct(growth)) : "")
+    + (v.pe_avg_5y ? S.valHistory(num(v.pe_avg_5y)) : "");
+  return (
+    <div className="st-val">
+      <b>{S.valuation}</b>
+      {word && <span className={`st-mood ${tone}`}>{word}</span>} {sentence}
+      <small>{S.valFrom(v.basis ?? "", (v.sources ?? []).join(", "), v.observed_at ? dm(v.observed_at) : "")}</small>
     </div>
   );
 }
@@ -259,6 +311,7 @@ export function NotesTab({ slug, notes, today, held, watchedIds, onOpenAsset, on
     if (n.segment) return isMacroKey(n.segment) ? macroLabel(n.segment) : n.segment_label ?? segmentLabel(n.segment);
     return n.theme ?? S.market;
   };
+  const symOfNote = (n: ResearchNote) => (n.instrument_id != null ? held.get(n.instrument_id)?.symbol ?? watchedIds.get(n.instrument_id)?.symbol ?? n.instrument?.symbol ?? null : null);
   const target = (n: ResearchNote) => (n.instrument_id != null && (held.has(n.instrument_id) || watchedIds.has(n.instrument_id)) ? () => onOpenAsset(n.instrument_id!, n.id)
     : n.segment && (isMacroKey(n.segment) || isSegment(n.segment)) ? () => onOpenTopic(isMacroKey(n.segment) ? n.segment! : canonKey(n.segment)!) : null);
   const filters: [NoteFilter, string][] = [["all", S.fAll], ["thesis", S.fThesis], ["earnings", S.fEarnings], ["news", S.fNews]];
@@ -282,7 +335,7 @@ export function NotesTab({ slug, notes, today, held, watchedIds, onOpenAsset, on
               <i className={rel?.tone ?? ""} aria-hidden />
               <div className="body">
                 <button className="h" aria-expanded={open === n.id} onClick={() => setOpen(open === n.id ? null : n.id)}>{noteHeadline(n)}</button>
-                <div className="m">{who(n)} · {KIND_LABEL[n.kind] ?? n.kind}{rel && <> · <span className={`st-rel ${rel.tone}`}>{rel.text}</span></>}</div>
+                <div className="m">{who(n)}{symOfNote(n) ? ` (${symOfNote(n)})` : ""} · {KIND_LABEL[n.kind] ?? n.kind}{rel && <> · <span className={`st-rel ${rel.tone}`}>{rel.text}</span></>}</div>
                 {open === n.id && (
                   <div className="st-full">
                     {noteHeadline(n) !== n.title && <div className="tech">{n.title}</div>}
@@ -302,13 +355,14 @@ export function NotesTab({ slug, notes, today, held, watchedIds, onOpenAsset, on
   );
 }
 
-export function CalendarTab({ slug, today }: { slug: string; today: string }) {
+export function CalendarTab({ slug, today, names }: { slug: string; today: string; names: (id: number) => string | null }) {
   const { cal, calError } = useWeek(slug, today);
-  const events = aheadEvents(cal?.events ?? [], today, 14, 40);
+  const seg = useSegments(slug, "1w");
+  const events = aheadEvents(cal?.events ?? [], today, 14, 60);
   return (
     <Widget title={S.tabCalendar} className="st" body="tight" footer={<span className="muted">{S.calendarSources}</span>}>
       <div className="st-say">{events.length ? aheadSay(aheadEvents(cal?.events ?? [], today, 7)) : S.calendarNone}</div>
-      {events.map((e, k) => <EventRow key={k} e={e} />)}
+      <AheadDays events={events} topicOf={topicMap(seg.data)} nameOf={(e) => (e.instrument_id != null ? names(e.instrument_id) : null) ?? e.label ?? e.title} />
       {(cal?.stale || calError) && <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>{S.calendarStale}</div>}
     </Widget>
   );
