@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Release cashU.app from this Mac (packaging/RELEASING.md): build origin/main in a temporary worktree, sign
+# Release cashU.app from this Mac (packaging/RELEASING.md): build an export of origin/main (git archive, no
+# worktree or second checkout), sign
 # with Developer ID, notarize, sign the update with the Sparkle key, publish the GitHub release that every
 # installed app reads its update feed from.
 #
@@ -93,12 +94,14 @@ changes '    %h %an: %s'
 [[ -z "$PREVIOUS" ]] || git -C "$ROOT" diff --shortstat "$PREVIOUS" "$COMMIT" | sed 's/^/   /'
 [[ "$MODE" == "--check" ]] && { say "Preflight passed (nothing built)."; exit 0; }
 
-# --- Build exactly origin/main in a temporary worktree ------------------------------------------------
+# --- Build exactly origin/main: a plain export of that commit (git archive), never a worktree or a second
+#     checkout, so this checkout's branch, uncommitted work and `main` stay untouched ----------------------
 SRC="$BUILD/src-$TAG"
-cleanup() { git -C "$ROOT" worktree remove --force "$SRC" >/dev/null 2>&1 || true; }
+cleanup() { rm -rf "$SRC"; }
 trap cleanup EXIT
 cleanup
-git -C "$ROOT" worktree add --quiet --detach "$SRC" "$COMMIT"
+mkdir -p "$SRC"
+git -C "$ROOT" archive --format=tar "$COMMIT" | tar -x -C "$SRC"
 say "Building $TAG ($([[ $SIGNED == 1 ]] && echo "Developer ID, notarized" || echo "ad-hoc"), with the update feed)"
 (
   cd "$SRC"

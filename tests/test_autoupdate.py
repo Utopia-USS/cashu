@@ -498,7 +498,9 @@ def test_release_script_keeps_secrets_in_the_keychain_and_publishes_carefully():
     assert 'check-ignore -q "$CONFIG"' in script  # refuses a config git would commit
     assert "--ed-key-file" not in script and "generate_keys\" -x" not in script
     assert '"$BUILD/sparkle/bin/generate_keys" -p' in script  # the keychain key must match the config
-    assert "worktree add --quiet --detach" in script and "origin/main" in script
+    # an export of origin/main: never a worktree or a second checkout (the owner's main folder stays as it is)
+    assert 'git -C "$ROOT" archive --format=tar "$COMMIT"' in script and "origin/main" in script
+    assert not re.search(r"\bworktree (add|remove)\b", script)
     assert "--draft" in script and "--draft=false" in script  # checked as a draft, then published
     assert ".permissions.admin" in script
     # make_appcast needs cryptography: the build venv has it, the system python3 may not

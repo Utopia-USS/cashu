@@ -145,7 +145,7 @@ on every Mac.
    scripts/release_macos.sh --no-publish
    ```
 
-   The script builds `origin/main` in a temporary worktree and signs it (Developer ID and notarization, or
+   The script builds an export of `origin/main` (`git archive`, no worktree) and signs it (Developer ID and notarization, or
    ad-hoc). Then it signs the update. macOS may ask for keychain access; click "Allow".
 3. Try `build/release/macos/cashU-<version>-macos-arm64.dmg` yourself: quit cashU, drag the app over
    `/Applications/cashU.app`, open it. Settings > Aplikacja shows "Aktualizacje".
@@ -197,7 +197,7 @@ scripts/release_macos.sh --yes
 | Situation | What to do |
 |---|---|
 | `--check` fails | It names the step above to fix; nothing was built or published. |
-| A build or notarization fails | Nothing was published. Fix it and run again (the temporary worktree is removed). |
+| A build or notarization fails | Nothing was published. Fix it and run again (the exported sources are removed). |
 | The script stops at the draft check | A draft release is left on GitHub. Delete it in the GitHub UI and run again. |
 | A bad release is out | Sparkle never downgrades: fix on `main` and release the next version. Database migrations must survive a version that was out only briefly. |
 | The Sparkle key may have leaked | Release one version signed with the old key that carries a new public key (rotation), then revoke the old one. Sparkle accepts one key change per update. |
