@@ -1,4 +1,4 @@
-# Lint and tests for every pull request and every push to main. Tests run on synthetic data only
+# Lint and tests for every pull request and every push to main or staging. Tests run on synthetic data only
 # (tests/conftest.py points the data dir, HOME and workspaces at temp dirs).
 # Windows is informational for now: the app is meant to run on every OS eventually, so its
 # failures are visible but do not block a merge.
@@ -7,7 +7,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, staging]
 
 permissions:
   contents: read
