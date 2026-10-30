@@ -39,6 +39,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="${CASHU_BUILD_DIR:-$ROOT/build/macos}"
+# PyInstaller's binary cache lives in the build folder: the shared one in ~/Library is corrupted
+# when two builds (another checkout, another session) run at the same time.
+export PYINSTALLER_CONFIG_DIR="${PYINSTALLER_CONFIG_DIR:-$BUILD/pyinstaller}"
 PYTHON="${PYTHON:-python3}"
 SKIP_FRONTEND=0
 CLEAN=0

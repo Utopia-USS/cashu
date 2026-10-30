@@ -309,6 +309,7 @@ def test_build_script_hygiene():
     assert "--require-hashes" in script and "--no-build-isolation" in script
     assert "constraints.txt" not in script  # the lock replaces the unhashed constraints
     assert "--keychain-profile" in script
+    assert 'export PYINSTALLER_CONFIG_DIR="${PYINSTALLER_CONFIG_DIR:-$BUILD/pyinstaller}"' in script
     for line in script.splitlines():
         if re.match(r"\s*sign\(\)", line):
             assert "--options runtime" in line and "--timestamp" in line

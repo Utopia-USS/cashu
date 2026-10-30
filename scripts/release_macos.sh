@@ -124,7 +124,8 @@ if [[ $SIGNED == 1 ]]; then
 fi
 
 say "Signing the update (Sparkle key from the keychain)"
-python3 "$SRC/scripts/make_appcast.py" "$ZIP" --app "$APP" --sign-update "$BUILD/sparkle/bin/sign_update" \
+# The build venv has cryptography (a cashU dependency), which the signature check needs.
+"$BUILD/macos/venv/bin/python" "$SRC/scripts/make_appcast.py" "$ZIP" --app "$APP" --sign-update "$BUILD/sparkle/bin/sign_update" \
   --repo "$REPO" --out "$FEED"
 shasum -a 256 "$ZIP" "$DMG" | sed 's/^/    /'
 

@@ -501,6 +501,8 @@ def test_release_script_keeps_secrets_in_the_keychain_and_publishes_carefully():
     assert "worktree add --quiet --detach" in script and "origin/main" in script
     assert "--draft" in script and "--draft=false" in script  # checked as a draft, then published
     assert ".permissions.admin" in script
+    # make_appcast needs cryptography: the build venv has it, the system python3 may not
+    assert '"$BUILD/macos/venv/bin/python" "$SRC/scripts/make_appcast.py"' in script
 
 
 def test_release_script_ad_hoc_until_the_developer_id_exists():
