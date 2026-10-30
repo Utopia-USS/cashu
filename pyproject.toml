@@ -1,6 +1,6 @@
 [project]
 name = "cashu"
-version = "0.4.2"
+version = "0.4.3"
 description = "cashU: local personal finance and investing companion - bank imports, net worth, spending, loans and investments"
 readme = "README.md"
 license = "MIT"
