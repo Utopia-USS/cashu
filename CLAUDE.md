@@ -37,6 +37,8 @@ off the machine:
    Tests always set `CASHU_DATA_DIR` to a temp dir; `tests/conftest.py` also points HOME, the
    pre-rename data dir, workspaces and launch agents at temp dirs and sets `CASHU_TESTING=1`, under
    which `core/migrate_legacy.py` refuses any path in the real home.
+   Outside tests, a git-ignored `.env.dev` at the checkout root (also read by every git worktree of
+   it, `src/cashu/_devenv.py`) points CLI, scripts and servers of a dev checkout at a demo data dir.
 2. **Never write balances, IBANs, names, or transactions** into files that could land in the repo
    (code, tests, docs). Tests use synthetic data; never paste real statements.
 3. **Never send data to a cloud LLM.** The `anthropic` backend sends only the merchant-name string -

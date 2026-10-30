@@ -27,6 +27,16 @@ python scripts/demo_data.py --data-dir /tmp/cashu-demo
 CASHU_DATA_DIR=/tmp/cashu-demo cashu serve
 ```
 
+If you also use cashU for your real finances, keep the checkout off your real data dir for good: put
+the dev defaults into a git-ignored `.env.dev` at the checkout root. Every `cashu` command, script
+and server started from this checkout fills unset `CASHU_*` variables from it, and so does every
+`git worktree` of the checkout (it reads the main checkout's file), even with a fresh venv. The
+packaged app and the test suite never read it.
+
+```bash
+printf '%s\n' 'CASHU_DATA_DIR=/tmp/cashu-demo' 'CASHU_WORKSPACES_DIR=/tmp/cashu-demo-ws' 'CASHU_AUTO_DAILY=0' > .env.dev
+```
+
 More on running, demo data and the browser e2e suite: [`docs/agents/running.md`](docs/agents/running.md).
 
 ## Checks
