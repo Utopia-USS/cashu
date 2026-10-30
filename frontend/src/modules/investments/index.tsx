@@ -7,10 +7,12 @@ import { invKey } from "./v2/api";
 import { dm, money, pct, RUN_STATUS } from "./labels";
 import { S } from "./index.strings.ts";
 import { InvestmentsV2 } from "./v2/Home";
+import { InvestmentsStrategies } from "./v2/Strategies";
+import { S as SS } from "./v2/Strategies.strings.ts";
 import { InvestmentsHeaderTag, InvestmentsHeroFact, InvestmentsSummaryWidget, MinimalOverview, SurplusWidget } from "./v2/Overview";
 
 // Frontend half of the investments module: the v2 home (widget grid on thirds, one tab, wide page) with
-// its sub-pages (alerts manager, asset page). The home renders its own first steps for an empty
+// its sub-pages (alerts manager, asset page), and the Strategie tab (strategy documents, docs/agents/strategies.md). The home renders its own first steps for an empty
 // portfolio, so the shell's SetupPage is only reached through Przegląd / the setup view.
 
 function InvestmentsKpis({ state, go }: { state: string; go: () => void }) {
@@ -55,7 +57,10 @@ export const investments: ModuleDef = {
   get short() { return S.short; },
   get skillHint() { return S.skillHint; },
   ownSetup: true,
-  tabs: [{ id: "portfolio", get label() { return S.tab; }, wide: true, render: (ctx) => <InvestmentsV2 ctx={ctx} /> }],
+  tabs: [
+    { id: "portfolio", get label() { return S.tab; }, wide: true, render: (ctx) => <InvestmentsV2 ctx={ctx} /> },
+    { id: "strategies", get label() { return SS.tab; }, wide: true, render: () => <InvestmentsStrategies /> },
+  ],
   Kpis: ({ ctx }) => <InvestmentsKpis state={ctx.state} go={() => ctx.go({ kind: "tab", tab: "investments.portfolio" })} />,
   Facts: InvestmentsFacts,
   overview: [

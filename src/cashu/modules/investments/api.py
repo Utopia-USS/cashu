@@ -25,7 +25,7 @@ from .importing.validation import MAX_FILE_BYTES
 from .models import InvImportBatch, InvInstrument
 from .research.service import held_since
 from .service import accounts as account_service
-from .service import daily, files, imports, views
+from .service import daily, files, imports, strategy_docs, views
 from .service import plans as plan_service
 from .service import strategy as strategy_files
 from .service import transactions as manual_transactions
@@ -720,6 +720,30 @@ def strategy_reload(profile: CurrentProfile) -> dict:
     with get_session() as s:
         strategy_files.load(s, profile, record=True)
         return views.strategy_status(s, profile)
+
+
+@router.get("/strategies")
+def strategy_list(profile: CurrentProfile) -> dict:
+    """The Strategie tab's list (docs/agents/strategies.md): ``main`` (the executed strategy.md /
+    strategy.yaml, with its validation brief) and the read-only documents in ``strategies/``."""
+    with get_session() as s:
+        brief = views.strategy_brief(strategy_files.load(s, profile))
+    items = [strategy_docs.summary(d) for d in strategy_docs.discover(profile.slug)]
+    items[0]["brief"] = brief
+    return {"strategies": items, "folder": str(strategy_docs.strategies_dir(profile.slug))}
+
+
+@router.get("/strategies/{strategy_id}/file")
+def strategy_file(profile: CurrentProfile, strategy_id: str, path: str) -> dict:
+    """One file of a strategy as text (only paths the list shows)."""
+    try:
+        doc = strategy_docs.find(profile.slug, strategy_id)
+        text = strategy_docs.read_text(doc, path)
+    except strategy_docs.StrategyFileError as e:
+        raise _404(str(e)) from None
+    except (OSError, ValueError) as e:
+        raise _422(str(e)) from None
+    return {"strategy": strategy_id, "path": path, "text": text}
 
 
 # --------------------------------------------------------------------------- #

@@ -427,6 +427,25 @@ export const getSignals = (slug: string, status: "open" | "history" | "all" = "o
 export const getDecisions = (slug: string) => j<Decision[]>(inv(slug, "/decisions"));
 export const getUnclassified = (slug: string) => j<Instrument[]>(inv(slug, "/instruments?unclassified=true"));
 export const getStrategy = (slug: string) => j<StrategyStatus>(inv(slug, "/strategy"));
+/** One strategy of the Strategie tab (docs/agents/strategies.md): `_main` is the executed strategy.md / .yaml. */
+export interface StrategyDocFile { path: string; kind: "md" | "yaml" | "text" }
+export interface StrategyDoc {
+  id: string;
+  main: boolean;
+  executed: boolean;
+  title: string | null;
+  status: string | null;
+  description: string | null;
+  main_file: string | null;
+  /** Absolute folder the file paths are relative to. */
+  root: string;
+  files: StrategyDocFile[];
+  /** `_main` only: the validation brief of the executed strategy. */
+  brief?: { state: string; version: number | null; changed: boolean; errors: number; warnings: number; inactive_rules: number };
+}
+export const getStrategies = (slug: string) => j<{ strategies: StrategyDoc[]; folder: string }>(inv(slug, "/strategies"));
+export const getStrategyFile = (slug: string, id: string, path: string) =>
+  j<{ strategy: string; path: string; text: string }>(inv(slug, `/strategies/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`));
 export const getTransactions = (slug: string, instrumentId?: number | string) =>
   j<Txn[]>(inv(slug, `/transactions${instrumentId != null ? `?instrument_id=${instrumentId}` : ""}`));
 export const getImports = (slug: string) => j<Batch[]>(inv(slug, "/imports"));
