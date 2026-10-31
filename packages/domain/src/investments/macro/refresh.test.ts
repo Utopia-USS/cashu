@@ -15,13 +15,13 @@
 import { describe, expect, it } from "vitest";
 import { addDays, type IsoDate } from "../../dates.js";
 import { D, type Decimal } from "../../decimal.js";
+import { FetchStatus } from "../market/fetchReport.js";
+import { SourceBlockedException, SourceException } from "../market/sources.js";
 import {
-  FetchStatus,
   fetchJson,
   MAX_RETRIES,
   type MacroChartQuote,
   type MacroChartSource,
-  MacroSourceError,
   refreshMacro,
   reportErrors,
   reportStats,
@@ -131,7 +131,7 @@ describe("the refresh plan (no store)", () => {
     const levels = Object.fromEntries(Object.entries(LEVELS).filter(([k]) => k !== "DBC"));
     const chart = new FakeChart({
       fail: {
-        "DX-Y.NYB": new MacroSourceError("yahoo", "no such symbol"),
+        "DX-Y.NYB": new SourceException("yahoo", "no such symbol"),
         "^IRX": new TypeError("bad"),
       },
       levels,
@@ -162,8 +162,8 @@ describe("the refresh plan (no store)", () => {
 
   // test_a_blocked_or_retryable_failure_stops_the_remaining_series
   it.each([
-    new MacroSourceError("yahoo", "HTTP 403", { blocked: true }),
-    new MacroSourceError("yahoo", "timed out", { retryable: true }),
+    new SourceBlockedException("yahoo", "HTTP 403"),
+    new SourceException("yahoo", "timed out", { retryable: true }),
   ])("a blocked or retryable failure stops the remaining series (%s)", async (error) => {
     const chart = new FakeChart({ fail: { "^GSPC": error } });
     const report = await refreshMacro(chart, AS_OF);

@@ -18,6 +18,8 @@
 import { addDays, type IsoDate } from "../../dates.js";
 import type { Decimal } from "../../decimal.js";
 import type { PriceBar } from "../domain/marketData.js";
+import { FetchStatus } from "../market/fetchReport.js";
+import { describeError, SourceBlockedException, SourceException } from "../market/sources.js";
 import { BACKFILL_DAYS, type MacroSeries, SERIES } from "./series.js";
 
 export const SKIPPED_MESSAGE = "not asked: the source failed earlier in this run";
@@ -25,40 +27,6 @@ export const SKIPPED_MESSAGE = "not asked: the source failed earlier in this run
 export const TIMEOUT_SECONDS = 10.0;
 /** Retries of a macro request after the first attempt. */
 export const MAX_RETRIES = 1;
-
-/**
- * Outcome of refreshing one series (`market.FetchStatus`, value = wire name).
- * TRANSITIONAL(S18): replace with the market layer's FetchStatus once it is ported.
- */
-export const FetchStatus = Object.freeze({
-  OK: "ok",
-  NO_DATA: "no_data",
-  SKIPPED: "skipped",
-  ERROR: "error",
-});
-export type FetchStatus = (typeof FetchStatus)[keyof typeof FetchStatus];
-
-/**
- * A market source failure (`market.SourceException`; `blocked` = `SourceBlockedException`).
- * TRANSITIONAL(S18): replace with the market layer's source errors once they are ported.
- */
-export class MacroSourceError extends Error {
-  readonly sourceId: string;
-  readonly retryable: boolean;
-  readonly blocked: boolean;
-
-  constructor(
-    sourceId: string,
-    message: string,
-    options: { readonly retryable?: boolean; readonly blocked?: boolean } = {},
-  ) {
-    super(message);
-    this.name = options.blocked ? "SourceBlockedException" : "SourceException";
-    this.sourceId = sourceId;
-    this.retryable = options.retryable ?? false;
-    this.blocked = options.blocked ?? false;
-  }
-}
 
 /** What the refresh reads of a chart answer (`market.ChartQuote`: `bars`, `adjusted`). */
 export interface MacroChartQuote {
@@ -190,17 +158,15 @@ export function failedFetch(
   asOf: IsoDate,
   error: unknown,
 ): [MacroFetch, boolean] {
-  if (error instanceof MacroSourceError) {
-    const message = `${error.sourceId}: ${error.message}`;
+  if (error instanceof SourceException) {
+    const message = `${error.sourceId}: ${error.detail}`;
     return [
       entry(item, start, asOf, FetchStatus.ERROR, { message }),
-      error.blocked || error.retryable,
+      error instanceof SourceBlockedException || error.retryable,
     ];
   }
   // one broken series never aborts the refresh
-  const message =
-    error instanceof Error ? `${error.name}: ${error.message}` : `Error: ${String(error)}`;
-  return [entry(item, start, asOf, FetchStatus.ERROR, { message }), false];
+  return [entry(item, start, asOf, FetchStatus.ERROR, { message: describeError(error) }), false];
 }
 
 /** The entry of a chart answer: the adjusted closes of an ETF, else the raw closes, or `no_data`. */
