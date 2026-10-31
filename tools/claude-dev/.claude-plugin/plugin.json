@@ -1,0 +1,8 @@
+{
+  "name": "cashu-dev",
+  "version": "0.1.0",
+  "description": "Development skills for the cashU TypeScript stack: architecture (layers, screen hook + pure View, data flow, enforcement) and the UI system (tokens, components, Storybook, copy), plus a PostToolUse hook running the per-file architecture check. Dev tooling only; never shipped to profile workspaces.",
+  "author": {
+    "name": "cashU"
+  }
+}

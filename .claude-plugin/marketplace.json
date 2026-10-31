@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "cashu",
+  "description": "Repo-local development plugins of cashU (TypeScript stack). Never shipped to profile workspaces.",
+  "owner": {
+    "name": "cashU"
+  },
+  "plugins": [
+    {
+      "name": "cashu-dev",
+      "description": "Development skills for the cashU TypeScript stack (architecture, UI system).",
+      "source": "./tools/claude-dev",
+      "category": "development"
+    }
+  ]
+}

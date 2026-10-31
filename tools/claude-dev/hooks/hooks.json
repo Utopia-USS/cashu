@@ -1,0 +1,17 @@
+{
+  "description": "cashU dev: after an edit to a .ts / .tsx file under packages/, apps/ or tools/arch/, run the fast architecture check of that file and report violations back to the agent.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/check-file.sh\" --hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
