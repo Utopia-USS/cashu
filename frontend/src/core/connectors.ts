@@ -1,9 +1,9 @@
 // Connectors (F10, design/v3/connectors): pure helpers for Settings > Konektory, the connector drawer, the
 // import drawers and the sync toasts. No React, no DOM: tested in tests/connectors.test.mjs.
-import { label } from "./messages.ts";
-import { parseServerTime, serverDate } from "../time.ts";
-import { intlLocale, lang } from "../i18n.ts";
-import { CS, KIND, KIND_SHORT as KIND_SHORTS, MODULE, OUTCOME, SKIPPED as SKIPPED_WHY, STATUS as STATUSES } from "./connectors.strings.ts";
+import { label } from "@cashu/ui-logic/core/messages";
+import { parseServerTime, serverDate } from "@cashu/ui-logic/core/time";
+import { intlLocale, lang } from "@cashu/i18n";
+import { CS, KIND, KIND_SHORT as KIND_SHORTS, MODULE, OUTCOME, SKIPPED as SKIPPED_WHY, STATUS as STATUSES } from "@cashu/i18n/core/connectors.strings";
 
 type Tone = "pos" | "neg" | "warn" | "info";
 

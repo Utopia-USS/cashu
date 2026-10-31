@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { splitNarrowOrder, twoColumnOrder } from "../src/grid.ts";
-import { areaPath, barLayout, donutArcs, extent, labelIndices, linePath, nearestIndex, sparkline, stackLabels, ticks } from "../src/chart.ts";
+import { areaPath, barLayout, donutArcs, extent, labelIndices, linePath, nearestIndex, sparkline, stackLabels, ticks } from "@cashu/ui-logic/core/chart";
 
 const ordered = (slots) => {
   const { order, alone } = twoColumnOrder(slots);

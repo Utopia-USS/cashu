@@ -2,13 +2,13 @@ import { useState } from "react";
 import type { Category } from "../core/api";
 import { deleteCashTxn, getCash, postCashExpense } from "../core/api";
 import { useSlug } from "../core/context";
-import { cur } from "../format";
+import { cur } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../hooks";
 import { ck } from "../swr";
 import { Skeleton } from "../ui";
-import { errorText } from "../core/messages";
-import { C } from "../common.strings.ts";
-import { S } from "./CashCard.strings.ts";
+import { errorText } from "@cashu/ui-logic/core/messages";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/core/components/CashCard.strings";
 
 export function CashCard({ categories, onChanged }: { categories: Category[]; onChanged: () => void }) {
   const slug = useSlug();

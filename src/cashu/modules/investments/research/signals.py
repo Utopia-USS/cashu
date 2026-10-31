@@ -14,8 +14,8 @@ expired): dismissing the last one resolves it with ``payload.closed_reason = "no
 (housekeeping). ``note.signal_id`` remembers the signal a note created or joined.
 
 The signal message reaches the owner (macOS notification, signal list), so it is rendered in the UI
-language at generation time, with the dashboard's labels for note kinds and thesis relations (frontend
-``v2/research/logic.strings.ts``): ``Analiza (wiadomość, podważa tezę): <title>; siła 3/3, 2 źródła``
+language at generation time, with the dashboard's labels for note kinds and thesis relations
+(``packages/ui-logic/src/investments/v2/research/logic.strings.ts``): ``Analiza (wiadomość, podważa tezę): <title>; siła 3/3, 2 źródła``
 (``Analysis (news, invalidates the thesis): <title>; strength 3/3, 2 sources``).
 """
 

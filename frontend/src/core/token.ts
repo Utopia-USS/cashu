@@ -11,7 +11,7 @@
 //
 // Under `npm run dev` there is no token in the page: the Vite proxy adds the header itself.
 import { readStored } from "./storage.ts";
-import { S } from "./chrome.strings.ts";
+import { S } from "@cashu/i18n/core/chrome.strings";
 
 export const TOKEN_STORAGE_KEY = "cashu.apiToken";
 export const TOKEN_FRAGMENT = "token";

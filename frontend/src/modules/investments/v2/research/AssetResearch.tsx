@@ -6,17 +6,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Widget } from "../../../../widgets";
 import type { AssetSlotProps } from "../assetSlots";
-import { wdm } from "../../labels";
+import { wdm } from "@cashu/ui-logic/investments/labels";
 import { bumpResearch, canRestore, useInstrumentNotes, useResearchActions } from "./data";
 import { postResearchRead } from "./api";
 import {
   addDays, countsText, direction, DIRECTION_LABEL, DIRECTION_TONE, healthOf, healthStale, isExpired, latestRun, nNotes, relationCounts, runTag,
   sentiment8w, thesisHealth, weekLabels, weekStarts, windowStart,
-} from "./logic";
+} from "@cashu/ui-logic/investments/v2/research/logic";
 import { HealthPill, NoteRow, SentimentBars } from "./primitives";
-import type { HealthKey } from "./types";
-import { localDay } from "../../../../time";
-import { S } from "./AssetResearch.strings.ts";
+import type { HealthKey } from "@cashu/ui-logic/investments/v2/research/types";
+import { localDay } from "@cashu/ui-logic/core/time";
+import { S } from "@cashu/i18n/investments/v2/research/AssetResearch.strings";
 
 const todayIso = () => {
   const t = new Date();

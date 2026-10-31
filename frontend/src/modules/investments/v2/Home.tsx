@@ -14,15 +14,15 @@
 import { INV_PROPOSAL_KINDS } from "../../../core/connectors";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type InstState, InstStateContext } from "./instState";
-import { healthOf, healthStale } from "./research/logic";
-import type { HealthKey } from "./research/types";
+import { healthOf, healthStale } from "@cashu/ui-logic/investments/v2/research/logic";
+import type { HealthKey } from "@cashu/ui-logic/investments/v2/research/types";
 import { ApiError } from "../../../core/api";
 import { useShell } from "../../../core/context";
-import { errorText, label } from "../../../core/messages";
+import { errorText, label } from "@cashu/ui-logic/core/messages";
 import { AgentWidget } from "../../../core/AgentWidget";
 import type { ModuleCtx } from "../../../core/types";
 import { useAsync, useInFlight } from "../../../hooks";
-import { addDays, localDay } from "../../../time";
+import { addDays, localDay } from "@cashu/ui-logic/core/time";
 import { Code, SetupSteps, type SetupStepItem, Seg, Skeleton, Tag, useToast } from "../../../ui";
 import { Fact, Grid, type GridItem, Split, Widget } from "../../../widgets";
 import {
@@ -31,13 +31,13 @@ import {
 } from "../api";
 import { AccountDrawer, ImportDrawer, ProposalDrawer, ThesisDrawer, TxnDrawer, TxnsDrawer } from "../Drawers";
 import { storedKey, useStored } from "../hooks";
-import { accountLabel, dm, hm, isGenericBucket, isoDate, money, money0, pct, pp, WEEKDAYS, wdm } from "../labels";
-import { C } from "../../../common.strings.ts";
-import { S } from "./Home.strings.ts";
-import { runError } from "../logic";
+import { accountLabel, dm, hm, isGenericBucket, isoDate, money, money0, pct, pp, WEEKDAYS, wdm } from "@cashu/ui-logic/investments/labels";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/v2/Home.strings";
+import { runError } from "@cashu/ui-logic/investments/logic";
 import { makeUndo, UNDO_WINDOW_MS, undoMessage, undoSettled } from "../undo";
 import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
-import type { Hint } from "../api";
+import type { Hint } from "@cashu/ui-logic/investments/types";
 import { accKey, dropInv, getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, getSignalsV2, getWatchlist, invKey, type PerfPoint } from "./api";
 import { AssetDrawer } from "./AssetDrawer";
 import { usePriceRefreshState } from "./priceRefresh";
@@ -47,13 +47,13 @@ import { Journal } from "./Journal";
 import {
   benchmarkLabel, contributionFacts, daysSince, instName, monthlyFlows, nextWeekday, planForMonth, signalLinkTarget, signalPlace, signalText,
   staleBenchmark,
-} from "./logic";
+} from "@cashu/ui-logic/investments/v2/logic";
 import { usePlannedDeposits } from "./Overview";
 import { ContributionsWidget, ValueChartWidget } from "./Perf";
 import { AccountsWidget, type AllocView, AllocationWidget, AssetList } from "./Portfolio";
 import { useResearchHome } from "./research";
-import { canonKey, isSegment } from "./research/segments";
-import { isMacroKey } from "./research/macro";
+import { canonKey, isSegment } from "@cashu/ui-logic/investments/v2/research/segments";
+import { isMacroKey } from "@cashu/ui-logic/investments/v2/research/macro";
 import { type DeckStats, ReviewButton, ReviewDeck, useReviewDeckData } from "./ReviewDeck";
 import { type SignalFilter, type SignalsCtx, SignalsDialog, SignalsRail } from "./Signals";
 import { WatchlistWidget } from "./Watchlist";

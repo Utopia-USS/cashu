@@ -6,20 +6,20 @@ import { type FocusEvent, Fragment, type KeyboardEvent, type ReactNode, useEffec
 import { useWidth } from "../../../../hooks";
 import { copyText, useToast } from "../../../../ui";
 import { AgentTag, Mark } from "../../../../widgets";
-import { dm, micName } from "../../labels";
+import { dm, micName } from "@cashu/ui-logic/investments/labels";
 import { InstLabel, type InstLike } from "../InstLabel";
 import {
   candidateCriteria, candidateReturn, clampStrength, criterionText, entryTypeLabel, expiryText, freshness, HEALTH_CLS, HEALTH_LABEL, isExpired,
   acceptedAt, KIND_LABEL, NOISE_SCALE, noteRowTitle, noteSubject, noteWhen, normRelation, polarityCls, watchItemId, POLARITY_WORD, RELATION_CLS, RELATION_LABEL, relationIcon,
   ROUTINE_PROMPT, safeUrl, sentimentBars, sourceParts, sourceText, strengthTitle, summaryWithoutCriteria,
-} from "./logic";
-import { briefLines, type DisplayRow, kindTitle, ppOf, ppTone, type PpTone, staleTitle, symbolsText, thesisDraft, type TopicKind, topicView } from "./segments";
-import { metricTitle } from "./macro";
-import type { HealthKey, MacroMetric, ResearchNote } from "./types";
+} from "@cashu/ui-logic/investments/v2/research/logic";
+import { briefLines, type DisplayRow, kindTitle, ppOf, ppTone, type PpTone, staleTitle, symbolsText, thesisDraft, type TopicKind, topicView } from "@cashu/ui-logic/investments/v2/research/segments";
+import { metricTitle } from "@cashu/ui-logic/investments/v2/research/macro";
+import type { HealthKey, MacroMetric, ResearchNote } from "@cashu/ui-logic/investments/v2/research/types";
 import "./research.css";
-import { localDay } from "../../../../time";
-import { S as L } from "./logic.strings.ts";
-import { S } from "./primitives.strings.ts";
+import { localDay } from "@cashu/ui-logic/core/time";
+import { S as L } from "@cashu/ui-logic/investments/v2/research/logic.strings";
+import { S } from "@cashu/i18n/investments/v2/research/primitives.strings";
 
 /** `pre` (P2): the state rests only on research older than the thesis' last change: the dot goes hollow (stale
  * research, `muted`, wins). */

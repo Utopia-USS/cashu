@@ -25,7 +25,7 @@ tags: enforcement, biome, eslint, dependency-cruiser, knip, sherif, hooks, ci
 | dependency-cruiser | `tools/arch/depcruise.config.cjs` | layer direction on the resolved graph, module internals, cross-package relative imports, apps importing apps, pure Views and packages/ui (type-only imports allowed), test code in production, cycles |
 | Knip | `tools/arch/knip.jsonc` | unused files, exports, types, dependencies, unlisted dependencies and binaries |
 | sherif | flags in `tools/arch/src/run.ts` | package.json hygiene, one version per dependency |
-| guard tests | `tools/arch/src/guards/` | raw color / spacing / type literals in `apps/**/*.tsx`; PL / EN catalog parity incl. plural categories; story coverage of packages/ui exports and app Views; exports maps on every package; React Compiler on in every React app; both test tiers wired in every vitest package |
+| guard tests | `tools/arch/src/guards/` | raw color / spacing / type literals in `apps/**/*.tsx`; PL / EN catalog parity incl. plural categories (runtime `catalog()` objects too); Polish UI text outside catalogs in the UI packages and apps; story coverage of packages/ui exports and app Views; exports maps on every package; React Compiler on in every React app; both test tiers wired in every vitest package |
 | TRANSITIONAL report | `tools/arch/src/guards/transitional.ts` | lists every `TRANSITIONAL(<scope>)` marker by scope; a report, never a failure |
 
 Packages are wired so the cheapest layer does the most: `package.json` dependencies + pnpm's isolated

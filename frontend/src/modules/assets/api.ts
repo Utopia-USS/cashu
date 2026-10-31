@@ -1,7 +1,7 @@
 // Assets module endpoints (profile-scoped, F7 OB5): the manually valued positions with their note.
-import type { Account } from "../../core/api";
+import type { Account } from "@cashu/ui-logic/core/account";
 import { jdel, jpatch, jpost, j, pp } from "../../core/api";
-import type { Depreciation } from "./logic";
+import type { Depreciation } from "@cashu/ui-logic/assets/logic";
 
 /** GET /assets/manual row: the core account row + kind + note (the net-worth rows carry no note); a vehicle
  * carries its depreciation terms (F7 merge contract; null / absent otherwise or on an older server). */

@@ -26,7 +26,7 @@ import { decodeSegment, resolveView } from "./util";
 import { Wizard } from "./Wizard";
 import { IconSheet } from "../widgets";
 import { readStored } from "./storage";
-import { S } from "./chrome.strings.ts";
+import { S } from "@cashu/i18n/core/chrome.strings";
 
 const PROFILE_KEY = "cashu.profile";
 const lastViewKey = (slug: string) => `cashu.lastView.${slug}`;

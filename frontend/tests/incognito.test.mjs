@@ -1,9 +1,9 @@
 // Incognito: absolute amounts are masked, percentages stay.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { maskDigits, setIncognito } from "../src/incognito.ts";
-import { cur, cur0, pctSigned, pln0 } from "../src/format.ts";
-import { money, money0, pct, qty } from "../src/modules/investments/labels.ts";
+import { maskDigits, setIncognito } from "@cashu/ui-logic/core/incognito";
+import { cur, cur0, pctSigned, pln0 } from "@cashu/ui-logic/core/format";
+import { money, money0, pct, qty } from "@cashu/ui-logic/investments/labels";
 
 test("maskDigits keeps sign and unit", () => {
   assert.equal(maskDigits("-11 600,00 zł"), "-••• zł");

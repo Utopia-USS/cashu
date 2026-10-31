@@ -6,15 +6,16 @@
 import { useMemo, useState } from "react";
 import { Markdown } from "../../../components/Markdown";
 import { useSlug } from "../../../core/context";
-import { describeIssue, errorText } from "../../../core/messages";
+import { describeIssue, errorText } from "@cashu/ui-logic/core/messages";
 import { useAsync } from "../../../hooks";
 import { copyText, Empty, Seg, Skeleton, Tag, useToast } from "../../../ui";
-import { getStrategies, getStrategy, getStrategyFile, postStrategyInit, postStrategyReload, type StrategyDoc, type StrategyIssue } from "../api";
+import { getStrategies, getStrategy, getStrategyFile, postStrategyInit, postStrategyReload, type StrategyIssue } from "../api";
+import type { StrategyDoc } from "@cashu/ui-logic/investments/types";
 import { strategyTag } from "../Header";
 import { dropInv, invKey } from "./api";
 import { InvestmentsStrategySettings } from "./StrategySettings";
-import { absolutePath, issuesByLine, MAIN_ID, pickSelection, treeRows, type Selection } from "./strategiesLogic";
-import { S } from "./Strategies.strings.ts";
+import { absolutePath, issuesByLine, MAIN_ID, pickSelection, treeRows, type Selection } from "@cashu/ui-logic/investments/v2/strategiesLogic";
+import { S } from "@cashu/i18n/investments/v2/Strategies.strings";
 import "./strategies.css";
 
 const docTitle = (d: StrategyDoc) => d.title ?? (d.main ? S.mainTitle : d.id);

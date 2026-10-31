@@ -87,7 +87,7 @@ Before adding or changing a string:
     versions on two screens.
 14. Numbers first: `12 400 zł · 3 konta`. Status words are single adjectives / short tags (gotowy,
     w toku, nieaktualne). Refresh mechanics stay invisible ("co 5 s", "na żywo", "odświeża się").
-15. Backend codes get Polish labels in `frontend/src/core/messages.ts` (strategy issues, import
+15. Backend codes get Polish labels in `packages/ui-logic/src/core/messages.ts` (strategy issues, import
     warnings, proposals, `X-Cashu-Error-Code` errors, `perf.<code>`, `worker.<code>`); the English text
     is only the fallback.
 16. When you change UI copy or structure, keep the e2e specs on roles, labels and aria names rather

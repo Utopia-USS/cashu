@@ -14,14 +14,14 @@ import {
   putBindingSecrets, type RunDict,
 } from "./connectorsApi";
 import { useShell } from "./context";
-import { type Described, describeError, errorText } from "./messages";
+import { type Described, describeError, errorText } from "@cashu/ui-logic/core/messages";
 import { RunError } from "./RunError";
-import { C } from "../common.strings.ts";
-import { intlLocale, normalizeNumberInput } from "../i18n.ts";
-import { S } from "./ConnectorBindings.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { intlLocale, normalizeNumberInput } from "@cashu/i18n";
+import { S } from "@cashu/i18n/core/ConnectorBindings.strings";
 import { getAccounts } from "../modules/investments/api";
-import { accountLabel } from "../modules/investments/labels";
-import { bankAccounts } from "../modules/budget/logic";
+import { accountLabel } from "@cashu/ui-logic/investments/labels";
+import { bankAccounts } from "@cashu/ui-logic/budget/logic";
 
 interface Acc { id: number; label: string }
 

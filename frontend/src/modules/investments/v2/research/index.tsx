@@ -5,20 +5,20 @@
 import { type ReactNode, useCallback, useMemo } from "react";
 import type { GridItem } from "../../../../widgets";
 import type { WatchItem } from "../api";
-import { instName } from "../logic";
+import { instName } from "@cashu/ui-logic/investments/v2/logic";
 import { useMacro, useResearchOverview, useWorkspace } from "./data";
-import { acceptedAt, latestRun, showStrip, watchItemId } from "./logic";
-import { canonKey } from "./segments";
+import { acceptedAt, latestRun, showStrip, watchItemId } from "@cashu/ui-logic/investments/v2/research/logic";
+import { canonKey } from "@cashu/ui-logic/investments/v2/research/segments";
 import { ResearchPage } from "./Page";
 import { ResearchStory } from "./Story";
 import { ReviewResearch, researchChanges, researchEffectLine } from "./ReviewBlock";
 import { CandidatesRail, type StripCtx } from "./Strip";
 import { MacroChangesWidget, MacroStrip } from "./MacroWidgets";
-import { normMacroChanges } from "./macro";
+import { normMacroChanges } from "@cashu/ui-logic/investments/v2/research/macro";
 import { TopicDetail, topicCrumb } from "./TopicDrawer";
-import type { DigestResearch, ResearchNote } from "./types";
-import { localDay } from "../../../../time";
-import { S } from "./index.strings.ts";
+import type { DigestResearch, ResearchNote } from "@cashu/ui-logic/investments/v2/research/types";
+import { localDay } from "@cashu/ui-logic/core/time";
+import { S } from "@cashu/i18n/investments/v2/research/index.strings";
 
 export { AssetResearch, ThesisHealth, useResearchShown } from "./AssetResearch";
 

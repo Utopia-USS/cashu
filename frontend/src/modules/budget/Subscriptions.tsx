@@ -1,10 +1,10 @@
 import { useSlug } from "../../core/context";
-import { cur } from "../../format";
+import { cur } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { SkeletonTable } from "../../ui";
 import { getRecurring } from "./api";
-import { S } from "./Subscriptions.strings.ts";
+import { S } from "@cashu/i18n/budget/Subscriptions.strings";
 
 export function Subscriptions() {
   const slug = useSlug();

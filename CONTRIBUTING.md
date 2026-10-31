@@ -16,7 +16,7 @@ git clone https://github.com/Utopia-USS/cashu.git && cd cashu
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]" -c constraints.txt   # constraints.txt pins the tested versions
 cashu init-db
-cd frontend && npm ci && npm run build && cd ..   # webdist/ is git-ignored: build once after clone
+cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build && cd ..   # pnpm (corepack enable); webdist/ is git-ignored: build once after clone
 ```
 
 To look at the app without your own data, generate the synthetic demo household in a separate data

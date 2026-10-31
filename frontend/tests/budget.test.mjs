@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   closeFor, cushionDraft, cushionPayload, monthLabel, pickCurrency, planState, resyncBankText, shiftMonth,
-} from "../src/modules/budget/logic.ts";
+} from "@cashu/ui-logic/budget/logic";
 
 const info = (base, def, codes) => ({
   base, default: def, currencies: codes.map((c) => ({ currency: c, transactions: 1, first: "2026-01-01", last: "2026-09-30" })),
@@ -80,7 +80,7 @@ test("cushion form: draft from settings and back, with Polish validation", () =>
 });
 
 // ---- first steps: statement import (design/v3/first-steps sections 3, 4) -------------------------------------
-import { bankAccounts, bankName, bankOptions, banks, cliPrefix, dmShort, importDoneLine, previewRows, statementDone, statementErrorKey } from "../src/modules/budget/logic.ts";
+import { bankAccounts, bankName, bankOptions, banks, cliPrefix, dmShort, importDoneLine, previewRows, statementDone, statementErrorKey } from "@cashu/ui-logic/budget/logic";
 
 test("first steps: bank accounts and the statement step's done line", () => {
   const acc = [

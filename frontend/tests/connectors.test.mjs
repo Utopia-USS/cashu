@@ -7,7 +7,7 @@ import {
   kindLine, kindShort, lastRunText, lastSyncText, moduleSyncLines, newSecrets, parseUnifiedDiff, rowLine, secretChanges, secretsLeftText,
   secretsText, sizeText, sortConnectors, sortFiles, syncToast, viewable, acceptOf,
 } from "../src/core/connectors.ts";
-import { describeError, describeImportWarning, label, proposalSummary } from "../src/core/messages.ts";
+import { describeError, describeImportWarning, label, proposalSummary } from "@cashu/ui-logic/core/messages";
 
 test("sizeText: bytes, KiB with one decimal under 10 KiB, MiB", () => {
   assert.equal(sizeText(412), "412 B");

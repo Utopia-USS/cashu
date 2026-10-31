@@ -7,9 +7,9 @@ import { getModules, getProfiles, getSystem, onAuthLost, type Profile } from "./
 import { Shell } from "./Shell";
 import { UpdateNotice } from "./UpdateNotice";
 import { Wizard } from "./Wizard";
-import { errorText } from "./messages";
-import { C } from "../common.strings.ts";
-import { S } from "./chrome.strings.ts";
+import { errorText } from "@cashu/ui-logic/core/messages";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/core/chrome.strings";
 
 /** The pywebview desktop window (cashU app), not a browser tab. */
 const inDesktop = () => typeof window !== "undefined" && "pywebview" in window;

@@ -1,13 +1,13 @@
 import type { ModuleDef } from "../../core/types";
-import { cur } from "../../format";
+import { cur } from "@cashu/ui-logic/core/format";
 import { FactList, Kpi } from "../../ui";
 import { BudgetActions } from "./BankSync";
 import { Expenses } from "./Expenses";
 import { Flows } from "./Flows";
-import { monthLabel } from "./logic";
+import { monthLabel } from "@cashu/ui-logic/budget/logic";
 import { BudgetStart } from "./Start";
 import { Subscriptions } from "./Subscriptions";
-import { S } from "./index.strings.ts";
+import { S } from "@cashu/i18n/budget/index.strings";
 
 // The overview's `summary.month` is in the profile's base currency (the server's budget default).
 

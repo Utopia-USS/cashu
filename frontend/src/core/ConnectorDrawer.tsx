@@ -16,10 +16,10 @@ import {
   postConnectorApprove, postConnectorDisable,
 } from "./connectorsApi";
 import { useShell } from "./context";
-import { errorText } from "./messages";
-import { C } from "../common.strings.ts";
-import { intlLocale } from "../i18n.ts";
-import { CHANGE_TAG as CHANGE_TAGS, S } from "./ConnectorDrawer.strings.ts";
+import { errorText } from "@cashu/ui-logic/core/messages";
+import { C } from "@cashu/i18n/core/common.strings";
+import { intlLocale } from "@cashu/i18n";
+import { CHANGE_TAG as CHANGE_TAGS, S } from "@cashu/i18n/core/ConnectorDrawer.strings";
 import { RunError } from "./RunError";
 
 export function StatusTag({ status }: { status: string }) {

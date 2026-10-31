@@ -5,8 +5,9 @@
 // instrument, three deposits); `?marta=empty` keeps the empty F3 profile instead.
 import { ApiError } from "../../../core/api";
 import { investmentsMock } from "../mock";
-import type { Hint, PlanFreshness } from "../api";
-import type { Alert, Performance, PerfPoint, PerfRange, PlannedDeposit, WatchItem } from "./api";
+import type { Hint, PlanFreshness } from "@cashu/ui-logic/investments/types";
+import type { Performance, PerfPoint, PerfRange, PlannedDeposit, WatchItem } from "./api";
+import type { Alert } from "@cashu/ui-logic/investments/v2/types";
 import { researchDigest, researchMock, researchSignals, researchUnread } from "./research/mock";
 
 const TODAY = "2026-10-04";

@@ -1,8 +1,8 @@
-// Which cached views a write makes stale (F7 FIX2 B1 / B2, src/modules/budget/logic.ts on src/swr.ts). Run with `npm test`.
+// Which cached views a write makes stale (F7 FIX2 B1 / B2, src/modules/budget/stale.ts on src/swr.ts). Run with `npm test`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ck, swr } from "../src/swr.ts";
-import { cushionSaved, monthCloseStale, recategorized } from "../src/modules/budget/logic.ts";
+import { cushionSaved, monthCloseStale, recategorized } from "../src/modules/budget/stale.ts";
 
 const KEYS = {
   widgetClose: ck("jan", "budget", "monthclose", "2026-09"), // Przegląd budget widget + surplus card

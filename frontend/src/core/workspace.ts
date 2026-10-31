@@ -1,7 +1,7 @@
 // Agent workspace (GET/POST /api/p/{slug}/workspace, core/workspace on the server): shapes and pure
 // helpers for the wizard and Settings > Agent AI. No transport here (see workspaceApi.ts), so
 // `npm test` can import it without a DOM.
-import { ERRORS as ERROR_TEXT, REASON as REASONS, SECTION as SECTIONS, WS } from "./workspace.strings.ts";
+import { ERRORS as ERROR_TEXT, REASON as REASONS, SECTION as SECTIONS, WS } from "@cashu/i18n/core/workspace.strings";
 
 export interface WorkspaceItem { kind: string; name: string; reason: string }
 export interface WorkspaceSkill { name: string; module: string | null; version: string; state: string }

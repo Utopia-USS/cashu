@@ -63,8 +63,8 @@ test("R-09: a malformed hash segment does not throw", () => {
 });
 
 test("F7 FE11: whole money never shows -0 and rounds instead of cutting decimals", async () => {
-  const { cur0s, round0 } = await import("../src/format.ts");
-  const { money0 } = await import("../src/modules/investments/labels.ts");
+  const { cur0s, round0 } = await import("@cashu/ui-logic/core/format");
+  const { money0 } = await import("@cashu/ui-logic/investments/labels");
   const nb = (s) => s.replace(/\s/g, " ");
   assert.equal(nb(cur0s(-0.4)), "0 zł");
   assert.equal(nb(cur0s(582986.99)), "582 987 zł");

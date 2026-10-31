@@ -1,7 +1,7 @@
 // Pure helpers over a module's setup steps (GET /modules/{id}/setup): counts and the next step skip the
 // optional ones (design/v3/first-steps D8: an optional step never counts toward the module state). Tested in
 // tests/first-steps.test.mjs.
-import { S } from "./setupSteps.strings.ts";
+import { S } from "@cashu/i18n/core/setupSteps.strings";
 
 export interface StepLike { id?: string; title: string; status: "done" | "on" | "todo"; optional?: boolean }
 

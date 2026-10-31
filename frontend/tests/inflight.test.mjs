@@ -27,7 +27,7 @@ test("a failing run releases the guard and rethrows", async () => {
 
 // F7 fix pass F1: the row stays locked after a successful write until the reload shows the new state.
 import { stillLocked } from "../src/inflight.ts";
-import { signalStateKey } from "../src/modules/investments/v2/logic.ts";
+import { signalStateKey } from "@cashu/ui-logic/investments/v2/logic";
 
 test("post-write lock holds until the signal state changes (decision, snooze), not when the POST answers", async () => {
   const g = singleFlight();

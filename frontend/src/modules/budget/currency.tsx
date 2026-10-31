@@ -6,9 +6,9 @@ import { useSlug } from "../../core/context";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { Seg } from "../../ui";
-import type { BudgetCurrencies } from "./api";
+import type { BudgetCurrencies } from "@cashu/ui-logic/budget/types";
 import { getBudgetCurrencies } from "./api";
-import { pickCurrency } from "./logic";
+import { pickCurrency } from "@cashu/ui-logic/budget/logic";
 import { readStored } from "../../core/storage.ts";
 
 const KEY = (slug: string) => `cashu.budget.currency.${slug}`;

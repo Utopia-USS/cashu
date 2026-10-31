@@ -1,7 +1,7 @@
 // CSV export cells (F7 FE16): formula prefixes neutralised, plain numbers left alone. Run with `npm test`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { csvCell, csvLine } from "../src/csv.ts";
+import { csvCell, csvLine } from "@cashu/ui-logic/core/csv";
 
 test("cells starting with = + - @ tab CR become text; quotes are doubled", () => {
   assert.equal(csvCell('=HYPERLINK("http://x","Kliknij")'), '"\'=HYPERLINK(""http://x"",""Kliknij"")"');

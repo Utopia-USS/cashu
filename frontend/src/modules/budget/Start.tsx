@@ -3,18 +3,19 @@
 // and for `setup/budget`; every primary action is in the app (drawers, one POST).
 import { useRef, useState } from "react";
 import { useShell } from "../../core/context";
-import { errorText } from "../../core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import { stepById } from "../../core/setupSteps";
 import { StartPage, useSetupPoll } from "../../core/StartPage";
 import type { ModuleCtx } from "../../core/types";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { type SetupStepItem, Tag, useToast } from "../../ui";
-import { getImporters, getUncategorized, postMatchTransfers, type StatementCommit } from "./api";
+import { getImporters, getUncategorized, postMatchTransfers } from "./api";
+import type { StatementCommit } from "@cashu/ui-logic/budget/types";
 import { CategoriesDrawer } from "./CategoriesDrawer";
 import { StatementImportDrawer } from "./ImportDrawer";
-import { bankAccounts, statementDone } from "./logic";
-import { S } from "./Start.strings.ts";
+import { bankAccounts, statementDone } from "@cashu/ui-logic/budget/logic";
+import { S } from "@cashu/i18n/budget/Start.strings";
 
 type DrawerKind = "import" | "categories";
 

@@ -83,7 +83,7 @@ cashu match-transfers        # pair internal transfers (by IBAN)
 cashu categorize             # categories (PL rules; --llm for the tail)
 
 # 3) dashboard
-cd frontend && npm install && npm run build && cd ..
+cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build && cd ..   # needs pnpm: corepack enable
 cashu serve                  # open the printed http://127.0.0.1:8500/#token=... URL
 ```
 
@@ -139,7 +139,7 @@ app and `cashu ...` commands see the same profiles.
 **Build it** (macOS, Python 3.12+, Node.js, Xcode command line tools):
 
 ```bash
-scripts/build_macos.sh          # SPA (npm ci + build), icon, PyInstaller bundle
+scripts/build_macos.sh          # SPA (pnpm install + build), icon, PyInstaller bundle
                                 # -> build/macos/dist/cashU.app and a .zip next to it
 ```
 

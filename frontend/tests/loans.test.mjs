@@ -1,7 +1,7 @@
 // Loans widget helpers (F7 FE9 / FE10) and the Przegląd monthly norm over complete months. Run with `npm test`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { incomeShare, rateText } from "../src/modules/loans/logic.ts";
+import { incomeShare, rateText } from "@cashu/ui-logic/loans/logic";
 import { closedMonthNorm } from "../src/core/util.ts";
 
 test("FE9: the rate is a percent from the API, also below 1 %", () => {
@@ -32,7 +32,7 @@ test("FE10: ratios divide by the average of complete months, never the running o
 });
 
 // ---- first steps (design/v3/first-steps sections 7-9) -------------------------------------------------------
-import { annuity, capJoin, firstOfMonth, installmentCandidates, parseNum, paymentHint, termMonths, validateLoan } from "../src/modules/loans/logic.ts";
+import { annuity, capJoin, firstOfMonth, installmentCandidates, parseNum, paymentHint, termMonths, validateLoan } from "@cashu/ui-logic/loans/logic";
 
 test("first steps: the annuity preview and the term in months", () => {
   // amortization.monthly_payment gives 2 700,83 (the note's 2 700,90 was rounded by hand)

@@ -2,8 +2,8 @@
 // no duplicates), the open rows, the header's lot table and meta line, the note row's relation icon.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assetTimeline, factText, headerMeta, latestThesis, lotRows, openRows } from "../src/modules/investments/v2/logic.ts";
-import { noteRowTitle, relationIcon, sourceParts } from "../src/modules/investments/v2/research/logic.ts";
+import { assetTimeline, factText, headerMeta, latestThesis, lotRows, openRows } from "@cashu/ui-logic/investments/v2/logic";
+import { noteRowTitle, relationIcon, sourceParts } from "@cashu/ui-logic/investments/v2/research/logic";
 import { staleSignalText, writePositionDecision } from "../src/modules/investments/v2/decisionFlow.ts";
 import { isMissingRoute } from "../src/core/missingRoute.ts";
 

@@ -1,8 +1,8 @@
 // The header's incognito toggle: an eye that hides absolute amounts (percentages stay). The flag and the masking
 // live in src/incognito.ts; the shell remounts the page on a change.
 import { useSyncExternalStore } from "react";
-import { isIncognito, onIncognitoChange, setIncognito } from "../incognito";
-import { S } from "./chrome.strings.ts";
+import { isIncognito, onIncognitoChange, setIncognito } from "@cashu/ui-logic/core/incognito";
+import { S } from "@cashu/i18n/core/chrome.strings";
 
 export const useIncognito = (): boolean => useSyncExternalStore(onIncognitoChange, isIncognito);
 

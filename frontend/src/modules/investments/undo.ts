@@ -3,8 +3,8 @@
 // (DELETE /decisions/{id}, snooze until null, DELETE /reviews/{id}). Nothing waits for a timer, the
 // page visibility or an unload, so nothing can be lost or silently kept. Pure module (tested in
 // tests/undo.test.mjs).
-import { parseServerTime } from "../../time.ts";
-import { S } from "./undo.strings.ts";
+import { parseServerTime } from "@cashu/ui-logic/core/time";
+import { S } from "@cashu/i18n/investments/undo.strings";
 
 /** How long the server accepts an undo (store/journal.py UNDO_WINDOW, core/reviews.py UNDO_WINDOW). */
 export const UNDO_WINDOW_MS = 15 * 60 * 1000;

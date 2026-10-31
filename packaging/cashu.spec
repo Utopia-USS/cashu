@@ -29,7 +29,7 @@ MIN_MACOS = os.environ.get("CASHU_MIN_MACOS", "")  # build_macos.sh: the Python'
 
 WEBDIST = Path(os.environ.get("CASHU_WEBDIST") or SRC / "cashu" / "api" / "webdist")
 if not (WEBDIST / "index.html").is_file():
-    raise SystemExit(f"Built SPA not found in {WEBDIST} (run `npm ci && npm run build` in frontend/)")
+    raise SystemExit(f"Built SPA not found in {WEBDIST} (run `pnpm install --filter 'cashu-dashboard...' && pnpm run build` in frontend/)")
 ICNS = Path(os.environ.get("CASHU_ICNS") or ROOT / "packaging" / "icon" / "cashU.icns")
 SKILLS = ROOT / ".claude" / "skills"
 CATALOG = ROOT / "connectors"  # the community connector catalog, read-only in the bundle

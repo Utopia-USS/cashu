@@ -5,7 +5,7 @@
 import type { ModuleDef } from "../../core/types";
 import { AssetsWidget } from "./AssetsWidget";
 import { AssetsStart } from "./Start";
-import { S } from "./index.strings.ts";
+import { S } from "@cashu/i18n/assets/index.strings";
 
 export const assets: ModuleDef = {
   id: "assets",

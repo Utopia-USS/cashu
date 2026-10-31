@@ -1,8 +1,8 @@
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { attachModal, FOCUSABLE } from "./modal";
-import { S } from "./ui.strings.ts";
-import { C } from "./common.strings.ts";
+import { S } from "@cashu/i18n/core/ui.strings";
+import { C } from "@cashu/i18n/core/common.strings";
 import { dropToast, MIN_ACTION_MS, pushToast, type ToastAction, type ToastItem, toastTimers } from "./toasts";
 
 export function Skeleton({ w = "100%", h = 14, r = 8, style }: {

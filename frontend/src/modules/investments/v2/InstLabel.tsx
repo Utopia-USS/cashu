@@ -11,11 +11,11 @@
 // instrument (`plan`) and `InstStateContext` (health, stale research, held), so the call sites pass nothing new.
 import { type CSSProperties, type FocusEvent, Fragment, type MouseEvent, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Hint } from "../api";
-import { freshOf, instCardFacts, type InstFactsOpts, instMono, instName, type InstLike, instSummary, PLAN_PATH, planLabel, ringOf } from "./logic";
+import type { Hint } from "@cashu/ui-logic/investments/types";
+import { freshOf, instCardFacts, type InstFactsOpts, instMono, instName, type InstLike, instSummary, PLAN_PATH, planLabel, ringOf } from "@cashu/ui-logic/investments/v2/logic";
 import { isHeld, useInstState } from "./instState";
-import { S as L } from "./logic.strings.ts";
-import { S } from "./InstLabel.strings.ts";
+import { S as L } from "@cashu/ui-logic/investments/v2/logic.strings";
+import { S } from "@cashu/i18n/investments/v2/InstLabel.strings";
 
 export type InstDensity = "row" | "compact" | "inline" | "header";
 export type { InstLike };

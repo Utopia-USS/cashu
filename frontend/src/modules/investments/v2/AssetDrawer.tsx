@@ -8,8 +8,8 @@
 // Focus moves into the panel, Tab cycles inside it and focus returns to the opener on close. The page under
 // it does not scroll while it is open (its scroll position is kept).
 import { type ReactNode, useEffect, useRef } from "react";
-import { C } from "../../../common.strings.ts";
-import { S } from "./AssetDrawer.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/v2/AssetDrawer.strings";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 

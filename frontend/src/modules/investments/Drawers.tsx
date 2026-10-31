@@ -5,7 +5,7 @@ import { ApiError } from "../../core/api";
 import { acceptOf, importerName, statusOf } from "../../core/connectors";
 import { getBindings, getConnectors } from "../../core/connectorsApi";
 import { type RunFailure, RunError, runFailureOf } from "../../core/RunError";
-import { describeError, describeImportWarning, proposalError, proposalSummary } from "../../core/messages";
+import { describeError, describeImportWarning, proposalError, proposalSummary } from "@cashu/ui-logic/core/messages";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { Drawer, Notice, RadioList, Skeleton, Stepper, Tag, useToast } from "../../ui";
@@ -15,10 +15,10 @@ import {
 } from "./api";
 import {
   accountLabel, dm, ENTRY_TYPE, isoDate, money, nTxns, numInput, parseNum, qty, TXN_TYPE, txnType, WRAPPER,
-} from "./labels";
-import { C } from "../../common.strings.ts";
-import { S } from "./Drawers.strings.ts";
-import { commitLabel, TXN_RULES, txnCash, validateTxn } from "./logic";
+} from "@cashu/ui-logic/investments/labels";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/Drawers.strings";
+import { commitLabel, TXN_RULES, txnCash, validateTxn } from "@cashu/ui-logic/investments/logic";
 import { invKey } from "./v2/api";
 
 /** The label of the error's `X-Cashu-Error-Code` (core/messages.ts), else the server's detail. */

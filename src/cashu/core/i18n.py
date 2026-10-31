@@ -28,7 +28,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from . import paths
 
 Lang = Literal["pl", "en"]
-LANGS: tuple[Lang, ...] = ("pl", "en")  # keep in sync with frontend/src/i18n.ts
+LANGS: tuple[Lang, ...] = ("pl", "en")  # keep in sync with packages/i18n/src/lang.ts
 FALLBACK_LANG: Lang = "en"
 LANG_HEADER = "x-cashu-lang"
 LANG_ENV = "CASHU_LANG"

@@ -62,7 +62,7 @@ say() { printf '\n==> %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(uname -s)" == "Darwin" ]] || die "cashU.app can only be built on macOS."
-for tool in sips iconutil codesign ditto rsync npm curl shasum; do
+for tool in sips iconutil codesign ditto rsync pnpm curl shasum; do
   command -v "$tool" >/dev/null || die "$tool not found (Xcode command line tools / Node.js needed)."
 done
 "$PYTHON" -c 'import sys; sys.exit(sys.version_info < (3, 12))' || die "$PYTHON is older than 3.12."
@@ -73,17 +73,20 @@ APP="$BUILD/dist/cashU.app"
 mkdir -p "$BUILD"
 if [[ $CLEAN == 1 ]]; then
   say "Cleaning $BUILD"
-  rm -rf "$BUILD/dist" "$BUILD/work" "$BUILD/venv" "$BUILD/frontend" "$BUILD/src" "$BUILD/icon"
+  rm -rf "$BUILD/dist" "$BUILD/work" "$BUILD/venv" "$BUILD/frontend" "$BUILD/packages" "$BUILD/node_modules" "$BUILD/src" "$BUILD/icon"
 fi
 
-# --- 1. SPA: npm ci + npm run build in a copy of frontend/ (the dev node_modules and
-#        src/cashu/api/webdist stay untouched). vite's outDir is ../src/cashu/api/webdist
-#        relative to the config, i.e. $BUILD/src/cashu/api/webdist for the copy.
+# --- 1. SPA: pnpm install + build in a copy of the pnpm workspace's frontend/ and the packages/ it
+#        imports (the dev node_modules and src/cashu/api/webdist stay untouched). vite's outDir is
+#        ../src/cashu/api/webdist relative to the config, i.e. $BUILD/src/cashu/api/webdist for the copy.
 WEBDIST="$BUILD/src/cashu/api/webdist"
 if [[ $SKIP_FRONTEND == 0 ]]; then
-  say "Building the dashboard (npm ci && npm run build)"
-  rsync -a --delete --exclude node_modules --exclude dist "$ROOT/frontend/" "$BUILD/frontend/"
-  (cd "$BUILD/frontend" && npm ci --no-audit --no-fund && npm run build)
+  say "Building the dashboard (pnpm install && build)"
+  rsync -a "$ROOT/package.json" "$ROOT/pnpm-lock.yaml" "$ROOT/pnpm-workspace.yaml" "$ROOT/tsconfig.base.json" "$BUILD/"
+  for dir in frontend packages; do
+    rsync -a --delete --exclude node_modules --exclude dist --exclude .turbo "$ROOT/$dir/" "$BUILD/$dir/"
+  done
+  (cd "$BUILD" && pnpm install --frozen-lockfile --filter "cashu-dashboard..." && pnpm --filter cashu-dashboard build)
 fi
 [[ -f "$WEBDIST/index.html" ]] || die "No built dashboard in $WEBDIST (run without --skip-frontend)."
 

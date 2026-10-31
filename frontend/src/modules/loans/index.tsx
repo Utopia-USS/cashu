@@ -1,17 +1,17 @@
 import { useSlug } from "../../core/context";
 import type { Fact, ModuleCtx, ModuleDef } from "../../core/types";
-import { cur } from "../../format";
+import { cur } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { FactList, Skeleton } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
 import { normTitle, useMonthNorm } from "../../core/overview/CoreWidgets";
-import { todayLocal } from "../../time";
+import { todayLocal } from "@cashu/ui-logic/core/time";
 import { getLoans, loanName } from "./api";
-import { incomeShare, rateText } from "./logic";
+import { incomeShare, rateText } from "@cashu/ui-logic/loans/logic";
 import { Loans } from "./Loans";
 import { LoansStart } from "./Start";
-import { S } from "./index.strings.ts";
+import { S } from "@cashu/i18n/loans/index.strings";
 
 /** Przegląd v2: loans as compact rows (instalment, rate, end; balance and principal per month). */
 function LoansWidget({ ctx }: { ctx: ModuleCtx }) {

@@ -3,10 +3,10 @@
 // York. Node applies a runtime change of process.env.TZ, so each case runs in its own zone.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { addDays, hmLocal, localDay, parseServerTime, todayLocal } from "../src/time.ts";
+import { addDays, hmLocal, localDay, parseServerTime, todayLocal } from "@cashu/ui-logic/core/time";
 import { canUndo, UNDO_WINDOW_MS } from "../src/modules/investments/undo.ts";
-import { dm, hm } from "../src/modules/investments/labels.ts";
-import { daysSince } from "../src/modules/investments/v2/logic.ts";
+import { dm, hm } from "@cashu/ui-logic/investments/labels";
+import { daysSince } from "@cashu/ui-logic/investments/v2/logic";
 
 const inZone = (tz, fn) => {
   const prev = process.env.TZ;

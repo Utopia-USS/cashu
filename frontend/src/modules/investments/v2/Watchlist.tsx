@@ -3,19 +3,19 @@
 // search (F12, InstrumentSearch.tsx); agent-added rows carry the badge; removing toasts with undo (re-adds the
 // instrument by id, which restores the same entry with its research, notes and tags).
 import { type ReactNode, useState } from "react";
-import { errorText } from "../../../core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import { Spark } from "../../../charts";
 import { useInFlight } from "../../../hooks";
 import { Skeleton, useToast } from "../../../ui";
 import { AgentTag, FootFacts, Widget } from "../../../widgets";
-import { pct } from "../labels";
+import { pct } from "@cashu/ui-logic/investments/labels";
 import { deleteWatch, postWatch, type WatchItem } from "./api";
 import { HintChip, mainHint } from "./hints";
 import { InstLabel } from "./InstLabel";
 import { InstrumentSearch } from "./InstrumentSearch";
-import { instName, planLabel, price, watchMove, weekChange } from "./logic";
+import { instName, planLabel, price, watchMove, weekChange } from "@cashu/ui-logic/investments/v2/logic";
 import { offerRecreate } from "./undoFlow";
-import { KIND_WORD, S } from "./Watchlist.strings.ts";
+import { KIND_WORD, S } from "@cashu/i18n/investments/v2/Watchlist.strings";
 
 type Toast = ReturnType<typeof useToast>;
 

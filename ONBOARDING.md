@@ -211,7 +211,7 @@ profile can have any number of loans (`cashu loans list`). The older
 ## Step 7 — Dashboard
 
 ```bash
-cd frontend && npm install && npm run build && cd ..
+cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build && cd ..   # needs pnpm: corepack enable
 cashu serve                     # prints http://127.0.0.1:8500/#token=...
 ```
 

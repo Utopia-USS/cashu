@@ -6,11 +6,11 @@ import { test } from "node:test";
 import {
   instCardFacts, instSummary, isPlanKind, PLAN_HELD, PLAN_PATH, PLAN_VALUES, PLAN_WATCHED, planFact, planLabel, planOptions, ringOf, ruleKindLabel,
   signalFact, signalText,
-} from "../src/modules/investments/v2/logic.ts";
+} from "@cashu/ui-logic/investments/v2/logic";
 import {
   chipsFromFields, countsText, fieldChips, HEALTH_CLS, HEALTH_LABEL, HEALTH_RANK, healthOf, normHealth, normRelation, orderTheses, RELATION_CLS,
   RELATION_LABEL, relationCounts, relationIcon, thesisHealth,
-} from "../src/modules/investments/v2/research/logic.ts";
+} from "@cashu/ui-logic/investments/v2/research/logic";
 
 const inst = (over) => ({ id: 1, label: "Vanguard FTSE All-World", name: "Vanguard FTSE All-World", symbol: "VWCE", mic: "XETR", isin: "IE00BK5BQT80", asset_class: "etf", region: "global", status: "active", valuation_mode: "market", needs_classification: false, ...over });
 

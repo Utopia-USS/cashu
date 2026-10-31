@@ -9,8 +9,8 @@ The build venv is installed only from `requirements-build.lock`: every package (
 dependencies with the `desktop` extra, PyInstaller, the hatchling build backend, pip and setuptools)
 at an exact version with sha256 hashes, `pip install --require-hashes --no-deps`. cashU itself is
 installed editable with `--no-deps --no-build-isolation`, so nothing unpinned is downloaded while
-building a bundle that gets signed with the owner's Developer ID. The npm side uses `npm ci`
-(lockfile integrity hashes).
+building a bundle that gets signed with the owner's Developer ID. The SPA side uses
+`pnpm install --frozen-lockfile` (lockfile integrity hashes) on a copy of the pnpm workspace.
 
 Regenerate after changing `pyproject.toml`, `constraints.txt` or `requirements-build.txt`
 (from the repo root, with pip-tools in any scratch venv, on macOS with the build's Python):

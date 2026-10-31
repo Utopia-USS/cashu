@@ -3,9 +3,9 @@
 // threshold, cooldown ("bez pauzy" included) or expiry goes back exactly as stored (or is not sent at all).
 // The kind never changes by PATCH (the backend has no `kind` in AlertPatchBody), so the weight direction is
 // fixed while editing. Pure; tested in tests/alertform.test.mjs.
-import { localDay } from "../../../time.ts";
-import { intlLocale, normalizeNumberInput } from "../../../i18n.ts";
-import { S } from "./alertForm.strings.ts";
+import { localDay } from "@cashu/ui-logic/core/time";
+import { intlLocale, normalizeNumberInput } from "@cashu/i18n";
+import { S } from "@cashu/i18n/investments/v2/alertForm.strings";
 
 const fmt = (v: number, maxDigits: number, minDigits: number) =>
   v.toLocaleString(intlLocale(), { minimumFractionDigits: minDigits, maximumFractionDigits: maxDigits, useGrouping: false });

@@ -25,7 +25,7 @@
 #      unsigned builds trigger SmartScreen.
 #   7. Build: on Windows, in a venv with the hash-pinned lock (like scripts/build_macos.sh):
 #      `pip install --require-hashes --no-deps -r packaging/requirements-build.lock` and
-#      `pip install --no-deps -e .`, after `npm ci && npm run build` in frontend/:
+#      `pip install --no-deps -e .`, after `pnpm install --filter "cashu-dashboard..." && pnpm run build` in frontend/:
 #      pyinstaller --noconfirm packaging/windows/cashu-windows.spec. The lock is resolved on
 #      macOS: regenerate it on Windows (packaging/README.md) if a wheel is missing.
 #   8. Security checks before shipping: desktop/shell.py bind_loopback never sets SO_REUSEADDR on

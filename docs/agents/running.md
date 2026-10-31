@@ -13,7 +13,7 @@ behind them. Everything here runs on synthetic data and temp data dirs.
 |---|---|
 | Environment | `python3 -m venv .venv && source .venv/bin/activate`, `pip install -e ".[dev]"`, `cashu init-db` |
 | Tests (synthetic data - safe) | `pytest` |
-| Dashboard: backend + built frontend | `cd frontend && npm install && npm run build && cd ..`, then `cashu serve` (http://127.0.0.1:8500) |
+| Dashboard: backend + built frontend | `cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build && cd ..` (frontend/ is a pnpm workspace member: it imports `@cashu/i18n` and `@cashu/ui-logic` from packages/), then `cashu serve` (http://127.0.0.1:8500) |
 | Dashboard in dev mode (HMR), terminal 1 | `cashu serve` (API :8500) |
 | Dashboard in dev mode (HMR), terminal 2 | `cd frontend && npm run dev` (Vite :5173, proxies `/api` -> :8500) |
 | Preview tools | `.claude/launch.json` has a `dashboard` config - via the preview tools you can run `cashu serve` and verify changes in the browser (net worth, charts, tabs) |
@@ -44,7 +44,7 @@ a planned deposit, a decision and (Anna) a pending agent import proposal. Dates 
 | Fact | Detail |
 |---|---|
 | Runner | Playwright test runner with the system Chrome (`channel: "chrome"`) |
-| Install | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install` |
+| Install | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 pnpm install --filter "cashu-dashboard..."` |
 | Build | it never builds: run `npm run build` first |
 | Global setup | seeds a temp data dir with the demo script, starts `e2e/serve_offline.py` (`cashu serve` with the synthetic market sources and outbound HTTP refused) on a free port, reads the token from the printed URL, and removes everything afterwards |
 | Order | specs run one after another (some change the data) |

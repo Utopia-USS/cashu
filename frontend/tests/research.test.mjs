@@ -8,18 +8,18 @@ import {
   HEALTH_CLS, HEALTH_LABEL, isResearchKind, nextSaturday, normHealth, noteWhen, orderTheses, relationCounts,
   researchCommand, researchSignalText, runTag, safeUrl, scheduleSteps, workspacePath, sentiment8w, sentimentBars, showStrip, signalNoteId, sourceText, thesisHealth,
   weekLabels, weekScore, weekStarts, windowStart,
-} from "../src/modules/investments/v2/research/logic.ts";
+} from "@cashu/ui-logic/investments/v2/research/logic";
 import {
   BAR_FLOOR, barTitle, canonKey, contribBars, exposed, homeTopics, isSegment, LEGACY_KEYS, normAttribution, normSegmentRow, ppOf, ppTone,
   instSymbol, normDigestMarket, reviewTopics, segmentDisplay, segmentLabel, SEGMENTS, staleSymbols, staleTitle, symbolsText, tone, topicColumns, topicKind, topicSymbols,
   windowTitle, withNewNote, residualLine, topicMembers, kindTitle, heldNow, topicShown, briefLines, normTopicBriefs, normTopicThesis, thesisDraft, withBriefs,
   topicView, topicSavePlan, viewSourceLink,
-} from "../src/modules/investments/v2/research/segments.ts";
+} from "@cashu/ui-logic/investments/v2/research/segments";
 import {
   dateText, explainHead, explainText, hasExplain, historyTitle, isInverted, isMacroKey, MACRO, macroAsOf, macroKeyOf, macroLabel, metricTitle, monthsBetween, normMacro,
   normMacroChanges, normRegime, noteKeyLabel, openSpan, orderRegimes, sinceText, staleText, stateParts, summaryText, toneCls, macroHeadline, macroNumber, monthYear, normMacroBrief, sinceMonth,
-} from "../src/modules/investments/v2/research/macro.ts";
-import { hashWithSegment } from "../src/modules/investments/v2/research/segments.ts";
+} from "@cashu/ui-logic/investments/v2/research/macro";
+import { hashWithSegment } from "../src/modules/investments/v2/research/hash.ts";
 import { readFileSync } from "node:fs";
 
 // The expected times are Warsaw local time; CI runners run in UTC.

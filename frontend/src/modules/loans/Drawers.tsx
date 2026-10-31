@@ -2,17 +2,17 @@
 // instalment preview) and the installment matching (`set-payment`: a title phrase or the bank's IBAN, with the
 // recent regular payments as phrase candidates).
 import { useState } from "react";
-import { describeError, errorText, label } from "../../core/messages";
-import { C } from "../../common.strings.ts";
-import { cur } from "../../format";
-import { intlLocale, lang } from "../../i18n.ts";
+import { describeError, errorText, label } from "@cashu/ui-logic/core/messages";
+import { C } from "@cashu/i18n/core/common.strings";
+import { cur } from "@cashu/ui-logic/core/format";
+import { intlLocale, lang } from "@cashu/i18n";
 import { useAsync } from "../../hooks";
-import { todayLocal } from "../../time";
+import { todayLocal } from "@cashu/ui-logic/core/time";
 import { Drawer, Notice, Seg, Skeleton, Tag, useToast } from "../../ui";
 import { getRecurring } from "../budget/api";
 import { type LoanInfo, loanName, patchLoanPayment, postLoan } from "./api";
-import { annuity, firstOfMonth, installmentCandidates, parseNum, type TermUnit, termMonths, validateLoan } from "./logic";
-import { S } from "./Drawers.strings.ts";
+import { annuity, firstOfMonth, installmentCandidates, parseNum, type TermUnit, termMonths, validateLoan } from "@cashu/ui-logic/loans/logic";
+import { S } from "@cashu/i18n/loans/Drawers.strings";
 
 /** "5.10" (English: "Oct 5") of "2026-10-05". */
 const dmShort = (iso: string) => (lang() === "pl" ? `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`

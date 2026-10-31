@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   accountLabel, bucketLabel, dm, money, parseNum, pct, pctTarget, pp, plural, qty, wdm,
-} from "../src/modules/investments/labels.ts";
+} from "@cashu/ui-logic/investments/labels";
 import {
   allocScale, bandFor, changeCount, changeRows, commitLabel, decisionEffect, decisionTag, nextDeposit, orderSignals, reviewDue,
   runError, signalFacts, signalTitle, txnCash, validateTxn, warningItems,
-} from "../src/modules/investments/logic.ts";
+} from "@cashu/ui-logic/investments/logic";
 
 const NB = " ";
 const sig = (over) => ({ id: 1, rule_id: "r", kind: "custom", severity: "info", status: "active", message: "m", instrument_label: null, payload: {}, first_seen_at: "2026-10-01T07:00:00Z", decisions: [], ...over });

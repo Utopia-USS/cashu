@@ -13,36 +13,37 @@
 // P2: the main strategy hint ends the sub line under the name (its title lists every hint); P3: the Rekomendacja card
 // is tinted yellow / red when data stored after it puts it in question, with the reasons as short lines.
 import { useEffect, useMemo, useState } from "react";
-import { C } from "../../../common.strings.ts";
-import { intlLocale } from "../../../i18n.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { intlLocale } from "@cashu/i18n";
 import { LineChart, type Level } from "../../../charts";
-import { labelIndices } from "../../../chart";
-import { monthYearShort } from "../../../format";
-import { hideAmount } from "../../../incognito";
+import { labelIndices } from "@cashu/ui-logic/core/chart";
+import { monthYearShort } from "@cashu/ui-logic/core/format";
+import { hideAmount } from "@cashu/ui-logic/core/incognito";
 import { useAsync } from "../../../hooks";
 import { Seg, Skeleton, useToast } from "../../../ui";
 import { FootFacts, PolDot, Widget } from "../../../widgets";
 import { getPositionChart, getPositionDetail, getTheses, type Position, type Thesis } from "../api";
-import { accountLabel, bucketLabel, dmy, ENTRY_TYPE, micName, money, money0, pct, qty, wdm } from "../labels";
+import { accountLabel, bucketLabel, dmy, ENTRY_TYPE, micName, money, money0, pct, qty, wdm } from "@cashu/ui-logic/investments/labels";
 import { InstLabel, PlanGlyph } from "./InstLabel";
 import { AlertRow, removeAlertWithUndo } from "./Alerts";
-import { type Alert, getDecisionsFor, getSignalsV2, invKey, patchWatch, postWatch, type SignalV2, type WatchItem } from "./api";
-import { describeIssue, errorText } from "../../../core/messages";
+import { getDecisionsFor, getSignalsV2, invKey, patchWatch, postWatch, type WatchItem } from "./api";
+import type { Alert, SignalV2 } from "@cashu/ui-logic/investments/v2/types";
+import { describeIssue, errorText } from "@cashu/ui-logic/core/messages";
 import { removeWatchWithUndo } from "./Watchlist";
-import { addedToast } from "./searchLogic";
+import { addedToast } from "@cashu/ui-logic/investments/v2/searchLogic";
 import { isHeld, useInstState } from "./instState";
 import { ASSET_SLOTS, type AssetSlotProps } from "./assetSlots";
 import { PositionDecisionDialog } from "./Decide";
 import { SegmentSelect } from "./SegmentSelect";
-import { isResearchKind, signalNoteId } from "./research/logic";
+import { isResearchKind, signalNoteId } from "@cashu/ui-logic/investments/v2/research/logic";
 import {
   assetTimeline, averageCost, FRESH_LABEL, freshOf, freshReasonLines, headerMeta, instName, knownHints, latestThesis, lotRows, openRows, planLabel, polarityOf,
   price as priceText, signalFact, STATE_LABEL, stateOf, tlDate, weekChange,
-} from "./logic";
+} from "@cashu/ui-logic/investments/v2/logic";
 import { HintChip } from "./hints";
-import { todayLocal } from "../../../time";
+import { todayLocal } from "@cashu/ui-logic/core/time";
 import { Age, Fact1, legacyDecisions, longText, type SignalsCtx, signalAge, useGroupWriter, useSignalAck } from "./Signals";
-import { S, THRESHOLD_WORD } from "./AssetPage.strings.ts";
+import { S, THRESHOLD_WORD } from "@cashu/i18n/investments/v2/AssetPage.strings";
 
 const MONTHS = (): [string, number][] => [["6M", 6], [S.year1, 12], [S.year2, 24], ["Max", 120]];
 

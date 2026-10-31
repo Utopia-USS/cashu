@@ -1,7 +1,7 @@
 // Area gradient of the line / stacked charts (F7 PX1), run with `npm test`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { areaFade, fadeOpacity } from "../src/chart.ts";
+import { areaFade, fadeOpacity } from "@cashu/ui-logic/core/chart";
 
 test("the strong end is the flat opacity x 1.6, capped at 0.35", () => {
   assert.equal(fadeOpacity(0.12), 0.192);

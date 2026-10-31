@@ -4,8 +4,8 @@
 // the label's call sites need no new props; without a provider (or before the summary loads) no ring is drawn and
 // plan labels use the held form.
 import { createContext, useContext } from "react";
-import type { Hint } from "../api";
-import type { HealthKey } from "./research/types";
+import type { Hint } from "@cashu/ui-logic/investments/types";
+import type { HealthKey } from "@cashu/ui-logic/investments/v2/research/types";
 
 export interface InstState {
   /** Instrument id (as a string) -> thesis health; an instrument absent from the summary has no entry. */

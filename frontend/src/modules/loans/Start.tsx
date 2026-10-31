@@ -6,14 +6,14 @@ import { useShell } from "../../core/context";
 import { stepById } from "../../core/setupSteps";
 import { StartPage, useSetupPoll } from "../../core/StartPage";
 import type { ModuleCtx } from "../../core/types";
-import { cur } from "../../format";
+import { cur } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { type SetupStepItem, Tag, useToast } from "../../ui";
 import { getLoans, type LoanInfo, loanName } from "./api";
 import { InstallmentDrawer, LoanDrawer } from "./Drawers";
-import { capJoin, paymentHint, rateText } from "./logic";
-import { S } from "./Start.strings.ts";
+import { capJoin, paymentHint, rateText } from "@cashu/ui-logic/loans/logic";
+import { S } from "@cashu/i18n/loans/Start.strings";
 
 type DrawerState = { kind: "loan" } | { kind: "payment"; id: number | null };
 

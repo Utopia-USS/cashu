@@ -2,17 +2,18 @@
 // 12-month change of the total and of the liquid part ("bez nieruchomości").
 import { useMemo, useState } from "react";
 import { LineChart, StackedChart } from "../../charts";
-import { labelIndices } from "../../chart";
-import { cur, cur0, GROUP, monthYearShort, nwColorVar, pctSigned, round0 } from "../../format";
+import { labelIndices } from "@cashu/ui-logic/core/chart";
+import { cur, cur0, GROUP, monthYearShort, pctSigned, round0 } from "@cashu/ui-logic/core/format";
+import { nwColorVar } from "../../css";
 import { useAsync } from "../../hooks";
-import { hideAmount } from "../../incognito";
+import { hideAmount } from "@cashu/ui-logic/core/incognito";
 import { ck } from "../../swr";
 import { Seg } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
 import { getSeries, type SeriesResp } from "../api";
 import { useSlug } from "../context";
-import { intlLocale } from "../../i18n.ts";
-import { S } from "./NetWorthWidget.strings.ts";
+import { intlLocale } from "@cashu/i18n";
+import { S } from "@cashu/i18n/core/overview/NetWorthWidget.strings";
 
 const ranges = (): [string, number | null][] => [["1M", 31], ["3M", 92], ["6M", 183], [S.year, 366], ["Max", null]];
 const STACK_RANK: Record<string, number> = { property: 0, vehicle: 1, money: 2, mortgage: 3, loan: 4 };

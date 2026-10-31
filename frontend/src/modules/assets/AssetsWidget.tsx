@@ -5,24 +5,24 @@
 // form with its depreciation curve (D7). An older server without GET /assets/manual: the net-worth rows, read-only.
 import { useState } from "react";
 import { useShell } from "../../core/context";
-import type { Account } from "../../core/api";
-import { errorText } from "../../core/messages";
+import type { Account } from "@cashu/ui-logic/core/account";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import type { ModuleCtx } from "../../core/types";
-import { cur0s, round0, TYPE_LABEL } from "../../format";
+import { cur0s, round0, TYPE_LABEL } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
-import { todayLocal } from "../../time";
+import { todayLocal } from "@cashu/ui-logic/core/time";
 import { Drawer, Empty, Notice, Skeleton, Tag, useToast } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
 import { deleteManualAsset, getManualAssets, type ManualAsset, patchManualAsset, postManualAsset, restoreManualAsset } from "./api";
 import {
   type AssetDraft, CREATE_TYPES, createBody, type CurveDraft, curveDraft, curvePreview, dmy, isAsset, monthlyLoss, NOTE_MAX, patchBody, ratePct,
   sumByCurrency, valuationLabel, visibleRows,
-} from "./logic";
+} from "@cashu/ui-logic/assets/logic";
 import { AssetsSteps } from "./Steps";
-import { C } from "../../common.strings.ts";
-import { intlLocale, lang } from "../../i18n.ts";
-import { S } from "./AssetsWidget.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { intlLocale, lang } from "@cashu/i18n";
+import { S } from "@cashu/i18n/assets/AssetsWidget.strings";
 
 type Row = Account & Partial<Pick<ManualAsset, "kind" | "note" | "depreciation">>;
 const CAP = 5;

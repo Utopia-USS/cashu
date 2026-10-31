@@ -6,18 +6,19 @@
 import { useMemo, useState } from "react";
 import { useAsync } from "../../../../hooks";
 import { Widget } from "../../../../widgets";
-import { dm, pct, pp, wdm } from "../../labels";
-import { intlLocale } from "../../../../i18n";
-import { type CalendarEvent, getCalendar, invKey } from "../api";
+import { dm, pct, pp, wdm } from "@cashu/ui-logic/investments/labels";
+import { intlLocale } from "@cashu/i18n";
+import { getCalendar, invKey } from "../api";
+import type { CalendarEvent } from "@cashu/ui-logic/investments/v2/types";
 import { getResearch } from "./api";
 import { useMacro, useResearchActions, useSegments } from "./data";
-import { HEALTH_LABEL, healthOf, KIND_LABEL, latestRun, nextSaturday, normRelation } from "./logic";
-import { isMacroKey, macroLabel } from "./macro";
-import { canonKey, isSegment, segmentLabel } from "./segments";
+import { HEALTH_LABEL, healthOf, KIND_LABEL, latestRun, nextSaturday, normRelation } from "@cashu/ui-logic/investments/v2/research/logic";
+import { isMacroKey, macroLabel } from "@cashu/ui-logic/investments/v2/research/macro";
+import { canonKey, isSegment, segmentLabel } from "@cashu/ui-logic/investments/v2/research/segments";
 import type { StripCtx } from "./Strip";
-import type { ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, Valuation } from "./types";
-import { aheadDays, aheadEvents, dayBucket, valuationOf, MOOD_TONE, noteHeadline, type StoryTopic, storyTopics, thesisMoves } from "./storyLogic";
-import { MOOD, REL, S } from "./Story.strings.ts";
+import type { ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, Valuation } from "@cashu/ui-logic/investments/v2/research/types";
+import { aheadDays, aheadEvents, dayBucket, valuationOf, MOOD_TONE, noteHeadline, type StoryTopic, storyTopics, thesisMoves } from "@cashu/ui-logic/investments/v2/research/storyLogic";
+import { MOOD, REL, S } from "@cashu/i18n/investments/v2/research/Story.strings";
 import "./story.css";
 
 const relOf = (n: ResearchNote) => {

@@ -6,15 +6,15 @@
 import { useId } from "react";
 import { Skeleton } from "../../../../ui";
 import { Mark, Widget } from "../../../../widgets";
-import { dm } from "../../labels";
+import { dm } from "@cashu/ui-logic/investments/labels";
 import { useMacro } from "./data";
 import {
   explainHead, explainText, hasExplain, historyTitle, macroAsOf, macroHeadline, macroNoteKey, macroNumber, sinceMonth, staleText, stateParts, toneCls,
-} from "./macro";
+} from "@cashu/ui-logic/investments/v2/research/macro";
 import { Explain, useExplainDismiss } from "./primitives";
 import type { StripCtx } from "./Strip";
-import type { MacroChange, MacroRegime } from "./types";
-import { S } from "./MacroWidgets.strings.ts";
+import type { MacroChange, MacroRegime } from "@cashu/ui-logic/investments/v2/research/types";
+import { S } from "@cashu/i18n/investments/v2/research/MacroWidgets.strings";
 
 type LineCtx = Pick<StripCtx, "slug" | "nonce" | "onOpenTopic">;
 

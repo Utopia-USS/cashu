@@ -5,10 +5,10 @@
 // URLs beyond example.org). Scenarios via the query string: `?research=none` (never ran), `stale` (last run
 // 26.09), `running`, `failed`.
 import { ApiError } from "../../../../core/api";
-import { addDays, KIND_LABEL, RELATION_LABEL, relationCounts, sentiment8w } from "./logic";
-import { plural } from "../../labels";
-import { stateLabel } from "./macro";
-import type { DigestResearch, InstrumentSummary, MacroRegime, MacroRegimes, NoteSource, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentRow, TopicBrief, TopicThesis } from "./types";
+import { addDays, KIND_LABEL, RELATION_LABEL, relationCounts, sentiment8w } from "@cashu/ui-logic/investments/v2/research/logic";
+import { plural } from "@cashu/ui-logic/investments/labels";
+import { stateLabel } from "@cashu/ui-logic/investments/v2/research/macro";
+import type { DigestResearch, InstrumentSummary, MacroRegime, MacroRegimes, NoteSource, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentRow, TopicBrief, TopicThesis } from "@cashu/ui-logic/investments/v2/research/types";
 
 const SCENARIO = new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("research") ?? "";
 const TODAY = "2026-10-04";

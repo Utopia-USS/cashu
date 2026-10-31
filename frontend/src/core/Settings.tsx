@@ -3,30 +3,30 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useAsync } from "../hooks";
 import { ck } from "../swr";
-import { parseServerTime, serverDate } from "../time";
+import { parseServerTime, serverDate } from "@cashu/ui-logic/core/time";
 import { Code, copyText, Notice, RadioList, Seg, Switch, Tag, useToast } from "../ui";
 import {
   ApiError, getMcpCalls, getMcpInfo, getSetup, getSystem, getUpdate, mcpAddCommand, type McpCall, type ModuleInfo, patchProfile, postRelocationAck, postWorker, type Privacy,
   postUpdateAction, putAutoUpdate, putProfileModules, type ProfileModule, type WorkerInfo,
 } from "./api";
 import { moduleDef, orderModules } from "./registry";
-import { describeJob, errorText, relocationParts } from "./messages";
+import { describeJob, errorText, relocationParts } from "@cashu/ui-logic/core/messages";
 import { stepsTag } from "./SetupPage";
 import { useShell } from "./context";
 import type { ThemePref } from "./theme";
 import { serialSaver } from "./util";
 import { CURRENCIES } from "./Wizard";
-import { PRIVACY } from "./Wizard.strings.ts";
+import { PRIVACY } from "@cashu/i18n/core/Wizard.strings";
 import {
   changesToast, needsForce, outdatedLabel, workspaceErrorText, workspaceSummary,
 } from "./workspace";
-import { WS } from "./workspace.strings.ts";
+import { WS } from "@cashu/i18n/core/workspace.strings";
 import { getWorkspace, postWorkspace } from "./workspaceApi";
 import { ConnectorsSection } from "./ConnectorsSection";
-import { LANG_NAME, LANGS, type Lang, setLanguage, storedLang } from "../i18n";
-import { JOB_LABEL as JOB_LABELS, JOB_STATUS as JOB_STATUSES, MIGRATION_STEP as MIGRATION_STEPS, OUTCOME as OUTCOMES, PRIVACY_SHORT as PRIVACY_SHORTS, S, SECTION } from "./Settings.strings.ts";
-import { C } from "../common.strings.ts";
-import { intlLocale } from "../i18n.ts";
+import { LANG_NAME, LANGS, type Lang, pinnedLang, setLanguage } from "@cashu/i18n";
+import { JOB_LABEL as JOB_LABELS, JOB_STATUS as JOB_STATUSES, MIGRATION_STEP as MIGRATION_STEPS, OUTCOME as OUTCOMES, PRIVACY_SHORT as PRIVACY_SHORTS, S, SECTION } from "@cashu/i18n/core/Settings.strings";
+import { C } from "@cashu/i18n/core/common.strings";
+import { intlLocale } from "@cashu/i18n";
 import { InvestmentsStrategySettings } from "../modules/investments/v2/StrategySettings";
 
 const SECTIONS = ["profile", "modules", "agent", "connectors", "data", "worker", "secrets", "app"] as const;
@@ -661,7 +661,7 @@ function AppSection({ theme, setTheme }: { theme: ThemePref; setTheme: (t: Theme
           <Seg<Lang | "system">
             label={S.language}
             items={[[S.languageSystem, "system"], ...LANGS.map((l): [string, Lang] => [LANG_NAME[l], l])]}
-            value={storedLang() ?? "system"}
+            value={pinnedLang() ?? "system"}
             onChange={(v) => setLanguage(v === "system" ? null : v)}
           />
           <span className="hint">{S.languageHint}</span>

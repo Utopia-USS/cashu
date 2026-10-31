@@ -7,19 +7,20 @@ import { useEffect, useState } from "react";
 import { useAsync } from "../../../../hooks";
 import { SetupSteps, type SetupStepItem, Skeleton, Tag } from "../../../../ui";
 import { Grid, type GridItem, Widget } from "../../../../widgets";
-import { dm, hm } from "../../labels";
+import { dm, hm } from "@cashu/ui-logic/investments/labels";
 import { getResearch } from "./api";
 import { invKey } from "../api";
 import type { InstLike } from "../InstLabel";
 import { canRestore, useResearchActions, useResearchOverview, useSegments, useWorkspace } from "./data";
-import { researchCommand, ROUTINE_PROMPT, runMinutes, runNotes, workspacePath } from "./logic";
+import { researchCommand, ROUTINE_PROMPT, runMinutes, runNotes, workspacePath } from "@cashu/ui-logic/investments/v2/research/logic";
 import { CandidateCard, type CandidateState, CopyCommand, ScheduleHow } from "./primitives";
 import { CalendarTab, MineTab, NotesTab, StoryHead, type StoryTab, STORY_TABS, TopicsTab, useWeek } from "./Story";
-import { canonKey, hashWithSegment, isSegment } from "./segments";
-import type { ResearchNote, ResearchRun, Workspace } from "./types";
-import { isMacroKey } from "./macro";
-import { localDay } from "../../../../time";
-import { PRIVACY_SHORT as PRIVACY_SHORT_C, S } from "./Page.strings.ts";
+import { canonKey, isSegment } from "@cashu/ui-logic/investments/v2/research/segments";
+import { hashWithSegment } from "./hash";
+import type { ResearchNote, ResearchRun, Workspace } from "@cashu/ui-logic/investments/v2/research/types";
+import { isMacroKey } from "@cashu/ui-logic/investments/v2/research/macro";
+import { localDay } from "@cashu/ui-logic/core/time";
+import { PRIVACY_SHORT as PRIVACY_SHORT_C, S } from "@cashu/i18n/investments/v2/research/Page.strings";
 
 
 export interface ResearchPageProps {

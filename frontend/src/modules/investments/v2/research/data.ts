@@ -7,15 +7,15 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useAsync } from "../../../../hooks";
 import { dedupe } from "../../../../swr";
 import { useToast } from "../../../../ui";
-import { errorText } from "../../../../core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import { isMissingRoute } from "../../../../core/api";
 import { makeUndo, type Undo, undoMessage, undoSettled } from "../../undo";
 import { deleteWatch, dropInv, invKey, postWatch } from "../api";
 import { acceptCandidate, dismissNote, getResearch, getResearchRuns, getMacro, getResearchSummary, getSegments, getWorkspace, restoreNote, unacceptCandidate } from "./api";
-import { isRestorable, latestRun, noteSubject } from "./logic";
-import type { ResearchNote, ResearchRun, SegmentWindow } from "./types";
-import { C } from "../../../../common.strings.ts";
-import { S } from "./data.strings.ts";
+import { isRestorable, latestRun, noteSubject } from "@cashu/ui-logic/investments/v2/research/logic";
+import type { ResearchNote, ResearchRun, SegmentWindow } from "@cashu/ui-logic/investments/v2/research/types";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/v2/research/data.strings";
 
 export const POLL_MS = 30000;
 

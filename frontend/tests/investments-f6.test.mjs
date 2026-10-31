@@ -3,8 +3,8 @@
 // restore endpoint, allocation drift neutral by default.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describeError, errorText, LABELS } from "../src/core/messages.ts";
-import { journalEntries, journalStats, planForMonth, polarityOf, reviewAutoOpen } from "../src/modules/investments/v2/logic.ts";
+import { describeError, errorText, LABELS } from "@cashu/ui-logic/core/messages";
+import { journalEntries, journalStats, planForMonth, polarityOf, reviewAutoOpen } from "@cashu/ui-logic/investments/v2/logic";
 import { alertDeleteUndo, isMissingEndpoint, offerUndo, recreateInput, restoreOrRecreate } from "../src/modules/investments/v2/undoFlow.ts";
 
 const apiError = (status, message, code = null) => Object.assign(new Error(message), { status, code });
@@ -146,7 +146,7 @@ test("owner decision 1: allocation drift is neutral unless the server says other
 });
 
 test("notification link ?signal=<id>: open -> the widget, closed -> asset drawer or journal, anything else -> home", async () => {
-  const { signalLinkTarget } = await import("../src/modules/investments/v2/logic.ts");
+  const { signalLinkTarget } = await import("@cashu/ui-logic/investments/v2/logic");
   const open = [{ id: 7, instrument_id: 306, status: "active" }, { id: 8, instrument_id: null, status: "acknowledged" }];
   const all = [...open, { id: 3, instrument_id: 305, status: "expired" }, { id: 4, instrument_id: null, status: "resolved" }, { id: 9, instrument_id: 301, status: "active" }];
   assert.deepEqual(signalLinkTarget("7", open, all), { kind: "open", id: 7 });
@@ -158,7 +158,7 @@ test("notification link ?signal=<id>: open -> the widget, closed -> asset drawer
 });
 
 test("alert signal facts and watchlist warnings from their codes (F6 BE message_code / warning_codes)", async () => {
-  const { label, describeIssue } = await import("../src/core/messages.ts");
+  const { label, describeIssue } = await import("@cashu/ui-logic/core/messages");
   const nb = (s) => s.replace(/ | /g, " ");
   assert.equal(nb(label("alert.price_below", { title: "CDR", label: "CDR", close: "138.2", level: "140", currency: "PLN" })), "cena 138,20 zł poniżej 140,00 zł");
   assert.equal(nb(label("alert.change_pct", { window_days: 30, change: 0.124, direction: "down", threshold: 0.1 })), "-12,4 % w 30 sesji (próg 10 %)");

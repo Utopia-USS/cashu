@@ -4,7 +4,7 @@
 // re-read (pricesChanged). The driver is mounted by the investments header tag (always in the shell header).
 import { useEffect, useSyncExternalStore } from "react";
 import { postPriceRefresh, pricesChanged } from "./api";
-import { nextRefreshAt, type PriceRefreshClock, refreshDue, storedNewPrices } from "./priceRefreshLogic";
+import { nextRefreshAt, type PriceRefreshClock, refreshDue, storedNewPrices } from "@cashu/ui-logic/investments/v2/priceRefreshLogic";
 
 export interface PriceRefreshState extends PriceRefreshClock {
   /** Server time of the last answered refresh. */

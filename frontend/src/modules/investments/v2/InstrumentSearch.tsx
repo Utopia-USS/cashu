@@ -14,16 +14,17 @@
 // else the full one), or does nothing.
 import { type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiError } from "../../../core/api";
-import { describeIssue, errorText } from "../../../core/messages";
+import { describeIssue, errorText } from "@cashu/ui-logic/core/messages";
 import { Skeleton, useToast } from "../../../ui";
-import { micName } from "../labels";
-import { postWatch, type SearchResult, searchInstruments } from "./api";
-import { instName } from "./logic";
+import { micName } from "@cashu/ui-logic/investments/labels";
+import { postWatch, searchInstruments } from "./api";
+import type { SearchResult } from "@cashu/ui-logic/investments/v2/types";
+import { instName } from "@cashu/ui-logic/investments/v2/logic";
 import {
   addedToast, defaultRow, enterTarget, highlightIndex, isActionable, isAddable, moveHighlight, normQuery, optionLabel, type SearchRow,
   searchView, typeWord, watchInputOf,
-} from "./searchLogic";
-import { S } from "./InstrumentSearch.strings.ts";
+} from "@cashu/ui-logic/investments/v2/searchLogic";
+import { S } from "@cashu/i18n/investments/v2/InstrumentSearch.strings";
 
 const DEBOUNCE_MS = 250;
 

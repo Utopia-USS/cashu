@@ -4,14 +4,14 @@
 import { INV_PROPOSAL_KINDS } from "../../../core/connectors";
 import { useState } from "react";
 import { useShell } from "../../../core/context";
-import { errorText } from "../../../core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import { useAsync } from "../../../hooks";
 import { Skeleton, useToast } from "../../../ui";
 import { getProposals, getStrategy, postStrategyInit, postStrategyReload } from "../api";
 import { ProposalDrawer } from "../Drawers";
 import { StrategyPopover, strategyTag } from "../Header";
 import { dropInv, invKey } from "./api";
-import { S } from "./StrategySettings.strings.ts";
+import { S } from "@cashu/i18n/investments/v2/StrategySettings.strings";
 
 export function InvestmentsStrategySettings() {
   const { slug, refresh } = useShell();

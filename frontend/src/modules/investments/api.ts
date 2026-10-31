@@ -4,8 +4,7 @@
 // drift is in percentage points.
 import { ApiError, authHeaders, handle401, j, jdel, jpatch, jpost, pp, responseError } from "../../core/api";
 import type { ModuleSyncLine } from "../../core/connectors";
-
-export type Num = number | null;
+import type { Decision, Hint, Num, PlanFreshness, Signal, StrategyDoc } from "@cashu/ui-logic/investments/types";
 
 export interface Alias { namespace: string; value: string; guessed: boolean }
 export interface Instrument {
@@ -38,19 +37,6 @@ export interface Instrument {
   segment?: string | null;
   segment_source?: "owner" | "agent" | "auto" | "set" | null;
 }
-
-/** P2 strategy hint: which of the owner's own rules apply now (BE decides code, severity and order, main first).
- * Params are fractions as in the rules (0.27 = 27 %). */
-export interface Hint { code: string; severity: "rule" | "review" | "info" | string; params: Record<string, unknown> }
-
-/** P3 one reason a recommendation may be outdated: `at` = when it happened (UTC ISO); note reasons carry the newest
- * note, its relation and how many notes qualify; rule / alert reasons the signal / alert id and the kind. */
-export interface FreshReason {
-  code: string; at: string | null;
-  note_id?: number | null; relation?: string | null; count?: number | null;
-  signal_id?: number | null; alert_id?: number | null; kind?: string | null;
-}
-export interface PlanFreshness { state: "fresh" | "maybe_outdated" | "outdated" | string; reasons: FreshReason[] }
 
 export interface PortfolioWarning { kind: string; message: string; account_id: number | null; instrument_id: number | null }
 
@@ -214,20 +200,6 @@ export interface Txn {
   external_ref: string | null;
 }
 
-export interface Decision {
-  id: number;
-  signal_id: number | null;
-  instrument_id: number | null;
-  account_id: number | null;
-  action: string; // bought | sold | held | ignored | other
-  quantity: Num;
-  price: Num;
-  currency: string | null;
-  reason: string | null;
-  created_at: string | null;
-  /** Every signal the decision answers (position decisions link several; F9 BE). Older servers: absent. */
-  signal_ids?: number[];
-}
 export interface Thesis {
   id: number;
   instrument_id: number;
@@ -271,29 +243,7 @@ export interface PositionChart {
   markers: ChartMarker[];
 }
 
-export interface Signal {
-  id: number;
-  rule_id: string;
-  kind: string;
-  dedup_key: string;
-  severity: "info" | "action" | string;
-  status: "active" | "acknowledged" | "resolved" | "expired" | string;
-  message: string;
-  instrument_id: number | null;
-  instrument_label: string | null;
-  account_id: number | null;
-  payload: Record<string, unknown>;
-  first_seen_at: string | null;
-  last_seen_at: string | null;
-  acknowledged_at: string | null;
-  closed_at: string | null;
-  /** "Odłóż do" (track AL, F5 R7): hidden from the to-do list while `snoozed`. */
-  snoozed_until?: string | null;
-  snoozed?: boolean;
-  decisions: Decision[];
-}
-
-/** `code` + `params`: stable code of the message for the Polish label (core/messages.ts); `message` stays English. */
+/** `code` + `params`: stable code of the message for the Polish label (@cashu/ui-logic/core/messages); `message` stays English. */
 export interface StrategyIssue { severity: string; path: string; message: string; line: number | null; column: number | null; code?: string; params?: Record<string, string> }
 export interface BucketMatch { id: string; asset_class: string[]; tags: string[]; mic: string[]; currency: string[]; instrument_ids: (number | string)[] }
 export interface StrategyStatus extends Omit<StrategyBrief, "inactive_rules"> {
@@ -317,7 +267,7 @@ export interface StrategyStatus extends Omit<StrategyBrief, "inactive_rules"> {
   versions: { version: number; state: string; created_at: string | null; sha256: string; issues: number }[];
 }
 
-/** `kind` is the stable code (label `import.<kind>` in core/messages.ts); `code` when the server sends it. */
+/** `kind` is the stable code (label `import.<kind>` in @cashu/ui-logic/core/messages); `code` when the server sends it. */
 export interface ImportWarning { message: string; row: number | null; kind: string; blocking: boolean; code?: string }
 export interface PreviewRow {
   row: number;
@@ -427,22 +377,6 @@ export const getSignals = (slug: string, status: "open" | "history" | "all" = "o
 export const getDecisions = (slug: string) => j<Decision[]>(inv(slug, "/decisions"));
 export const getUnclassified = (slug: string) => j<Instrument[]>(inv(slug, "/instruments?unclassified=true"));
 export const getStrategy = (slug: string) => j<StrategyStatus>(inv(slug, "/strategy"));
-/** One strategy of the Strategie tab (docs/agents/strategies.md): `_main` is the executed strategy.md / .yaml. */
-export interface StrategyDocFile { path: string; kind: "md" | "yaml" | "text" }
-export interface StrategyDoc {
-  id: string;
-  main: boolean;
-  executed: boolean;
-  title: string | null;
-  status: string | null;
-  description: string | null;
-  main_file: string | null;
-  /** Absolute folder the file paths are relative to. */
-  root: string;
-  files: StrategyDocFile[];
-  /** `_main` only: the validation brief of the executed strategy. */
-  brief?: { state: string; version: number | null; changed: boolean; errors: number; warnings: number; inactive_rules: number };
-}
 export const getStrategies = (slug: string) => j<{ strategies: StrategyDoc[]; folder: string }>(inv(slug, "/strategies"));
 export const getStrategyFile = (slug: string, id: string, path: string) =>
   j<{ strategy: string; path: string; text: string }>(inv(slug, `/strategies/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`));

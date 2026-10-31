@@ -6,24 +6,25 @@
 import { useState } from "react";
 import { LineChart, Bars } from "../../../charts";
 import { useShell } from "../../../core/context";
-import { errorText } from "../../../core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import type { ModuleCtx } from "../../../core/types";
-import { MONTH_NOM } from "../../../format";
+import { MONTH_NOM } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../../hooks";
 import { ck } from "../../../swr";
-import { getMonthClose, type MonthClose } from "../../budget/api";
+import { getMonthClose } from "../../budget/api";
+import type { MonthClose } from "@cashu/ui-logic/budget/types";
 import { Skeleton, useToast } from "../../../ui";
 import { Fact, FootFacts, Grid, Widget } from "../../../widgets";
 import { getStrategy } from "../api";
-import { accountLabel, bucketLabel, dm, isoDate, money, money0, nInstruments, parseNum, pct, pp, WEEKDAYS } from "../labels";
-import { nextDeposit } from "../logic";
+import { accountLabel, bucketLabel, dm, isoDate, money, money0, nInstruments, parseNum, pct, pp, WEEKDAYS } from "@cashu/ui-logic/investments/labels";
+import { nextDeposit } from "@cashu/ui-logic/investments/logic";
 import { deletePlannedDeposit, dropInv, getDigestV2, getOverviewV2, getPerformance, getPlannedDeposits, getPositionsV2, getSignalsV2, invKey, type Performance, type PlannedDeposit, postPlannedDeposit } from "./api";
-import { allocGeneric, benchmarkLabel, changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, staleBenchmark, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "./logic";
-import { addDays, todayLocal } from "../../../time";
+import { allocGeneric, benchmarkLabel, changeSince, contributionPp, heroBenchmark, isDigestDay, perfNotes, staleBenchmark, monthlyFlows, planForMonth, planMonthsSoFar, polarityOf, surplusFlow } from "@cashu/ui-logic/investments/v2/logic";
+import { addDays, todayLocal } from "@cashu/ui-logic/core/time";
 import { isMissingEndpoint } from "./undoFlow";
 import { usePriceRefresh } from "./priceRefresh";
-import { C } from "../../../common.strings.ts";
-import { S } from "./Overview.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/v2/Overview.strings";
 
 /** Local calendar date (the UTC date is yesterday between 00:00 and 02:00 in Poland, F7 FE11). */
 const todayIso = () => todayLocal();

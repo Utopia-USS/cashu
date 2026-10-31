@@ -1,6 +1,6 @@
 // Loans module endpoints (profile-scoped). One profile can hold many loans.
 import { ApiError, j, jpatch, jpost, pp } from "../../core/api";
-import { S } from "./logic.strings.ts";
+import { S } from "@cashu/ui-logic/loans/logic.strings";
 
 export interface LoanInfo {
   // Identity of a list item; the contract keeps the upstream /loan shape per item,

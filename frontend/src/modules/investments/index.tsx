@@ -4,11 +4,11 @@ import { useAsync } from "../../hooks";
 import { FactList, Kpi } from "../../ui";
 import { getOverview } from "./api";
 import { invKey } from "./v2/api";
-import { dm, money, pct, RUN_STATUS } from "./labels";
-import { S } from "./index.strings.ts";
+import { dm, money, pct, RUN_STATUS } from "@cashu/ui-logic/investments/labels";
+import { S } from "@cashu/i18n/investments/index.strings";
 import { InvestmentsV2 } from "./v2/Home";
 import { InvestmentsStrategies } from "./v2/Strategies";
-import { S as SS } from "./v2/Strategies.strings.ts";
+import { S as SS } from "@cashu/i18n/investments/v2/Strategies.strings";
 import { InvestmentsHeaderTag, InvestmentsHeroFact, InvestmentsSummaryWidget, MinimalOverview, SurplusWidget } from "./v2/Overview";
 
 // Frontend half of the investments module: the v2 home (widget grid on thirds, one tab, wide page) with

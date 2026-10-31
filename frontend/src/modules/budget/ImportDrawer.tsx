@@ -3,21 +3,23 @@
 // Nothing is written before `Importuj`; the staged file stays on this computer. Opened from the budget first steps
 // (step 0) or from the tabbar `Import` (step 1, the bank file).
 import { useRef, useState } from "react";
-import { type Account, ApiError, getSetup, j, pp } from "../../core/api";
+import { ApiError, getSetup, j, pp } from "../../core/api";
+import type { Account } from "@cashu/ui-logic/core/account";
 import { acceptOf, budgetConnectorSources } from "../../core/connectors";
 import { getBindings, getConnectors } from "../../core/connectorsApi";
 import { type RunFailure, RunError, runFailureOf } from "../../core/RunError";
 import { useShell } from "../../core/context";
-import { describeError, describeImportWarning, label } from "../../core/messages";
-import { C } from "../../common.strings.ts";
-import { cur } from "../../format";
+import { describeError, describeImportWarning, label } from "@cashu/ui-logic/core/messages";
+import { C } from "@cashu/i18n/core/common.strings";
+import { cur } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { Code, Drawer, Notice, RadioList, Stepper, Tag } from "../../ui";
-import { getImporters, postStatementCommit, postStatementPreview, type StatementCommit, type StatementPreview } from "./api";
+import { getImporters, postStatementCommit, postStatementPreview, type StatementPreview } from "./api";
+import type { StatementCommit } from "@cashu/ui-logic/budget/types";
 import { builtinSources, connectorSources, isFileSource } from "./importSources";
-import { bankName, bankOptions, cliPrefix, dmShort, importDoneLine, previewRows, statementErrorKey, statementTypes } from "./logic";
-import { S } from "./ImportDrawer.strings.ts";
+import { bankName, bankOptions, cliPrefix, dmShort, importDoneLine, previewRows, statementErrorKey, statementTypes } from "@cashu/ui-logic/budget/logic";
+import { S } from "@cashu/i18n/budget/ImportDrawer.strings";
 
 const signed = (v: number, c: string) => (v > 0.004 ? `+${cur(v, c)}` : cur(v, c));
 

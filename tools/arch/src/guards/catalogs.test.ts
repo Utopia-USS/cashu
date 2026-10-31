@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { listFiles, REPO_ROOT } from "../repo.ts";
-import { catalogProblems, isCatalog, pluralCategories } from "./catalogs.ts";
+import { catalogEntries, catalogProblems, isCatalog, pluralCategories } from "./catalogs.ts";
 
 describe("catalogProblems (detector)", () => {
   it("accepts a complete catalog with functions and plurals", () => {
@@ -36,6 +36,18 @@ describe("catalogProblems (detector)", () => {
     ]);
   });
 
+  it("reads a runtime catalog through the raw entries it keeps", () => {
+    const entries = { save: { pl: "Zapisz", en: "" } };
+    const runtime = Object.defineProperty({ save: "Zapisz" }, Symbol.for("cashu.catalog.entries"), {
+      value: entries,
+    });
+    expect(isCatalog(runtime)).toBe(false);
+    expect(catalogEntries(runtime)).toBe(entries);
+    expect(catalogProblems("rt", catalogEntries(runtime) as Record<string, unknown>)).toEqual([
+      "rt.save.en: empty text",
+    ]);
+  });
+
   it("knows the plural categories of both UI languages", () => {
     expect(pluralCategories("pl")).toEqual(["few", "many", "one", "other"]);
     expect(pluralCategories("en")).toEqual(["one", "other"]);
@@ -53,7 +65,8 @@ describe("guard: PL / EN catalog parity", () => {
         unknown
       >;
       for (const [name, value] of Object.entries(mod)) {
-        if (isCatalog(value)) problems.push(...catalogProblems(`${file}:${name}`, value));
+        const raw = catalogEntries(value);
+        if (isCatalog(raw)) problems.push(...catalogProblems(`${file}:${name}`, raw));
       }
     }
     expect(problems, `Catalog entries out of parity:\n${problems.join("\n")}`).toEqual([]);

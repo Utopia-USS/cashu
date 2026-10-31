@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Menu, MenuHead, MenuItem, MenuSep } from "../ui";
 import type { Profile } from "./api";
-import { S } from "./chrome.strings.ts";
+import { S } from "@cashu/i18n/core/chrome.strings";
 
 // Avatar colours by profile position (tokens, so both themes work).
 const AVATAR = ["var(--nw)", "var(--net)", "var(--nw-property)", "var(--nw-loan)", "var(--nw-vehicle)"];

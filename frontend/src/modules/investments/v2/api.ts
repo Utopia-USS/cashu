@@ -6,27 +6,13 @@ import { ApiError, j, jdel, jpatch, jpost, pp } from "../../../core/api";
 import { ck, dedupe, invalidate } from "../../../swr";
 import { invalidations } from "../../../core/live";
 import { liveInvalidate } from "../../../core/useLive";
-import type { Decision, DecisionInput, Hint, Instrument, Overview, Position, Positions, ReviewDigest, Signal } from "../api";
-import { digestShown, isShownSignal } from "./logic";
-import { monthCloseStale } from "../../budget/logic";
+import type { DecisionInput, Instrument, Overview, Position, Positions, ReviewDigest } from "../api";
+import type { Decision, Hint, Signal } from "@cashu/ui-logic/investments/types";
+import { digestShown, isShownSignal } from "@cashu/ui-logic/investments/v2/logic";
+import { monthCloseStale } from "../../budget/stale";
+import type { Alert, CalendarEvent, Polarity, SearchResult, SignalV2, WatchInput } from "@cashu/ui-logic/investments/v2/types";
 
-export type Polarity = "positive" | "negative" | "neutral";
 export type Num = number | null;
-
-export interface SignalV2 extends Signal {
-  polarity?: Polarity | string;
-  source?: "rule" | "alert" | string;
-  alert_id?: number | null;
-  snoozed_until?: string | null;
-  snoozed?: boolean;
-  /** Alert signals (F6 BE): `alert.<kind>` + params for the Polish fact (core/messages.ts); null for rules. */
-  message_code?: string | null;
-  message_params?: Record<string, unknown> | null;
-  /** F8 BE: the profile's last non-failed rules run confirmed it (research signals: true); absent on older servers. */
-  current?: boolean | null;
-  /** F8 BE: the instrument is held in any account of the profile (null for portfolio-wide signals). */
-  held?: boolean | null;
-}
 
 export interface AttentionItem {
   type: "signal" | "alert";
@@ -59,37 +45,6 @@ export interface Close { date: string; close: number }
 /** `research_unread` (F8 BE): the instrument's unread agent research notes. */
 export type PositionV2 = Position & { closes_30d?: Close[]; research_unread?: number };
 export type PositionsV2 = Omit<Positions, "positions"> & { positions: PositionV2[] };
-
-export interface Alert {
-  id: number;
-  kind: string;
-  scope: "instrument" | "portfolio" | "bucket" | string;
-  instrument_id: number | null;
-  instrument: { id: number | string; label: string; symbol: string | null; name: string; isin: string | null; currency: string; asset_class: string; valuation_mode: string | null } | null;
-  params: Record<string, unknown>;
-  unit: "price" | "ratio" | "none" | string | null;
-  polarity: Polarity | string;
-  severity: "info" | "action" | string;
-  title: string;
-  note: string | null;
-  source: "user" | "agent" | string;
-  created_by: string | null;
-  status: "active" | "triggered" | "snoozed" | "muted" | "expired" | string;
-  cooldown_days: number | null;
-  expires_at: string | null;
-  snoozed_until: string | null;
-  last_triggered_at: string | null;
-  last_checked_at: string | null;
-  last_value: Num;
-  signal: { id: number; status: string; message: string; first_seen_at: string | null } | null;
-  /** F8 BE (dynamic kinds): the last run's range (range_breakout) or the average volume (volume_spike). */
-  state?: {
-    range_low?: number | string | null; range_high?: number | string | null; range_pct?: number | null; close?: number | null; currency?: string | null;
-    average_volume?: number | string | null; volume?: number | null; ratio?: number | null; window_days?: number | null;
-  } | null;
-  created_at: string | null;
-  updated_at: string | null;
-}
 
 export interface AlertParamInfo { name: string; type: "number" | "integer" | "text" | "choice" | string; required: boolean; doc: string; default: unknown; minimum: Num; maximum: Num; choices: string[] }
 export interface AlertKindInfo { kind: string; scopes: string[]; doc: string; unit: string; params: AlertParamInfo[] }
@@ -152,7 +107,7 @@ export interface DigestEvent {
   severity?: string;
   /** Allocation-drift signal events: the bucket (F6 BE). */
   bucket_id?: string | null;
-  /** Alert signal events: `alert.<kind>` + params (F6 BE), the Polish fact via core/messages.ts. */
+  /** Alert signal events: `alert.<kind>` + params (F6 BE), the Polish fact via @cashu/ui-logic/core/messages. */
   message_code?: string | null;
   message_params?: Record<string, unknown> | null;
   file_name?: string;
@@ -202,7 +157,7 @@ export interface Performance {
     simulation: { end_value: Num; end_value_with_fees: Num; pnl: Num; xirr: Num; mwr: Num; started: string | null; capped: boolean | null } | null;
     excess_twr: Num; excess_value: Num; excess_vs_simulation: Num;
   } | null;
-  /** Caveats of the figures (`code` + `params`, Polish labels `perf.<code>` in core/messages.ts). */
+  /** Caveats of the figures (`code` + `params`, Polish labels `perf.<code>` in @cashu/ui-logic/core/messages). */
   data_quality: { incomplete_days: number; end_complete: boolean; notes: { code: string; params?: Record<string, unknown> | null; message: string }[] } | null;
 }
 
@@ -268,13 +223,6 @@ export const getSignalsV2 = (slug: string, status: "open" | "history" | "all" = 
 export const getDigestV2 = (slug: string, since?: string | null) =>
   j<DigestV2>(inv(slug, `/review-digest${since ? `?since=${since}` : ""}`)).then(digestShown);
 
-/** One dated event of the review's calendar card (`GET /investments/calendar`): a high-impact macro release
- * (public feed), earnings of a held / watched US instrument (public list, matched on the server) or a research
- * note's `details.event_date`. `time`: "HH:MM" local, "przed sesją" / "po sesji", or null. */
-export interface CalendarEvent {
-  date: string; time: string | null; kind: "macro" | "earnings" | "research" | string; title: string;
-  country: string | null; country_label: string | null; instrument_id: number | null; label: string | null; held: boolean | null; note_id: number | null;
-}
 /** `stale`: a feed could not be refreshed (the last cache is shown); `errors`: `macro_unavailable`, `earnings_unavailable`, `offline`. */
 export interface MarketCalendar { as_of: string; from: string; to: string; fetched_at: string | null; stale: boolean; errors: string[]; events: CalendarEvent[] }
 export const getCalendar = (slug: string, days = 14) => j<MarketCalendar>(inv(slug, `/calendar?days=${days}`));
@@ -299,10 +247,6 @@ export const deleteAlert = (slug: string, id: number) => jdel<{ deleted: number 
 export const restoreAlert = (slug: string, id: number) => jpost<Alert>(inv(slug, `/alerts/${id}/restore`));
 
 export const getWatchlist = (slug: string) => j<WatchItem[]>(inv(slug, "/watchlist"));
-/** A search hit picked to watch (F12 B3): the backend verifies the Yahoo symbol and reads the currency from it. */
-export interface SearchPick { yahoo_symbol: string; ticker?: string | null; name?: string | null; asset_class?: string | null; mic?: string | null; isin?: string | null }
-/** Exactly one of `pick`, `instrument_id`, `symbol_or_isin`. */
-export interface WatchInput { symbol_or_isin?: string; instrument_id?: number; pick?: SearchPick; note?: string | null; currency?: string | null; tags?: string[] | null }
 export interface WatchAddResult extends WatchItem {
   created_instrument: boolean;
   /** F12: the profile's removed entry came back (same row, research and notes kept). */
@@ -315,27 +259,6 @@ export const postWatch = (slug: string, b: WatchInput) => jpost<WatchAddResult>(
 export const patchWatch = (slug: string, id: number, b: { note?: string | null; tags?: string[] | null }) => jpatch<WatchItem>(inv(slug, `/watchlist/${id}`), b);
 export const deleteWatch = (slug: string, id: number) => jdel<{ deleted: number }>(inv(slug, `/watchlist/${id}`));
 
-// ---- instrument search (F12 B4) -------------------------------------------------------------------
-/** The profile's entry state of a hit: held (in holdings), watched (active watch row), saved (referenced, e.g. a
- * removed watch row or research notes), new (not in the profile). */
-export type EntryState = "held" | "watched" | "saved" | "new";
-export interface SearchHit {
-  /** Stable per hit: `i:<id>` (instrument), `y:<symbol>` (remote). */
-  key: string;
-  instrument_id: number | null;
-  state: EntryState | string;
-  symbol: string;
-  yahoo_symbol: string | null;
-  name: string;
-  exchange: string | null;
-  mic: string | null;
-  asset_class: string;
-  /** Remote hits: the market's currency hint, may be wrong (never shown). */
-  currency: string | null;
-  isin: string | null;
-  source: "local" | "yahoo" | "openfigi" | string;
-}
-export interface SearchResult { query: string; local: SearchHit[]; remote: SearchHit[]; remote_status: "ok" | "unavailable" | "skipped" | string }
 /** `remote=false`: the profile's own instruments only (instant). */
 export const searchInstruments = (slug: string, q: string, remote = true, signal?: AbortSignal) =>
   j<SearchResult>(inv(slug, `/instruments/search?q=${encodeURIComponent(q)}&remote=${remote ? 1 : 0}`), signal);

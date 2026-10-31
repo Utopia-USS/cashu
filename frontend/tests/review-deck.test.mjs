@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   deckCards, decideItems, decideSubjects, openIdeas, sectorRows, sectorsTitle, shareWords, summaryTitle, topMovers, weekEvents, weeklySigma, worldVerdict,
-} from "../src/modules/investments/v2/reviewDeckLogic.ts";
+} from "@cashu/ui-logic/investments/v2/reviewDeckLogic";
 
 const day = (n) => new Date(Date.UTC(2026, 0, 1 + n)).toISOString().slice(0, 10);
 

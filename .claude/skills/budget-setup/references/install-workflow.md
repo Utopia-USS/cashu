@@ -23,7 +23,7 @@ migrate-data` (copies the DB, Open Banking sessions and key into the data dir wi
 Packaged app: the user opens cashU.app. Source checkout:
 
 ```bash
-cd frontend && npm install && npm run build && cd ..
+cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build && cd ..   # needs pnpm: corepack enable
 cashu serve            # http://127.0.0.1:8500 (127.0.0.1 only, per-launch token)
 ```
 

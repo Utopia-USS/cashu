@@ -4,28 +4,27 @@
 // form = the standardized schema, the 12-month triggered history). One schema for the owner and the agent;
 // agent items are badged and removable. Alerts are conditions on hard data, never forecasts.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { C } from "../../../common.strings.ts";
-import { inEveryLang } from "../../../i18n.ts";
-import { CARD_LABEL, S } from "./Alerts.strings.ts";
-import { describeError, errorText } from "../../../core/messages";
+import { C } from "@cashu/i18n/core/common.strings";
+import { inEveryLang } from "@cashu/i18n";
+import { CARD_LABEL, S } from "@cashu/i18n/investments/v2/Alerts.strings";
+import { describeError, errorText } from "@cashu/ui-logic/core/messages";
 import { useAsync, useInFlight } from "../../../hooks";
 import { Notice, Seg, Skeleton, useToast } from "../../../ui";
 import { AgentTag, AlertIcon, AlertStatus, FootFacts, Grid, PolarityText, Widget } from "../../../widgets";
 import { InstLabel } from "./InstLabel";
-import { bucketLabel, dm, dmy, DECISION_ACTION, hm, parseNum, pct } from "../labels";
-import {
-  type Alert, type AlertInput, type AlertKindInfo, type AlertPatch, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, invKey, patchAlert, postAlert, restoreAlert, type SignalV2,
-} from "./api";
+import { bucketLabel, dm, dmy, DECISION_ACTION, hm, parseNum, pct } from "@cashu/ui-logic/investments/labels";
+import { type AlertInput, type AlertKindInfo, type AlertPatch, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, invKey, patchAlert, postAlert, restoreAlert } from "./api";
+import type { Alert, SignalV2 } from "@cashu/ui-logic/investments/v2/types";
 import {
   alertConditionText, alertDefaultTitle, alertDistance, alertFact, alertLevelText, alertNowText, alertPreview, alertState, alertWhenSuffix, instName, KIND_LABEL, orderAlerts, price,
   ratioX, unnameBuckets, waitingAlerts,
-} from "./logic";
+} from "@cashu/ui-logic/investments/v2/logic";
 import { alertDeleteUndo, offerUndo, recreateInput } from "./undoFlow";
 import { alertPatch, buildParams, draftText, expiryChoice, expiryValue, formKind, validate } from "./alertForm";
 
 export { validate };
-import { csvLine } from "../../../csv";
-import { addDays, localDay, parseServerTime, todayLocal } from "../../../time";
+import { csvLine } from "@cashu/ui-logic/core/csv";
+import { addDays, localDay, parseServerTime, todayLocal } from "@cashu/ui-logic/core/time";
 
 export interface InstrumentChoice { id: number; label: string; symbol: string | null; venue: string | null; currency: string; price: number | null; held: boolean }
 

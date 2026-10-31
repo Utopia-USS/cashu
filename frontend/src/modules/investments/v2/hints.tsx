@@ -2,9 +2,9 @@
 // contrast, never a P/L colour: `rule` = warn solid, `review` = ink outline, `info` = muted outline. The words come
 // from the FE maps (logic.ts `hintChip` / `hintLine`); an unknown code renders nothing.
 import { useId } from "react";
-import type { Hint } from "../api";
-import { hintChip, hintCls, hintLine } from "./logic";
-import { S } from "./hints.strings.ts";
+import type { Hint } from "@cashu/ui-logic/investments/types";
+import { hintChip, hintCls, hintLine } from "@cashu/ui-logic/investments/v2/logic";
+import { S } from "@cashu/i18n/investments/v2/hints.strings";
 
 /** `all` (the asset header): every hint, main first: the chip becomes focusable and describes all of them (a visually
  * hidden list) besides the native multi-line title, so keyboard and screen-reader users reach hints 2..n too. */

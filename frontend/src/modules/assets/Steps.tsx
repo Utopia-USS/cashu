@@ -1,11 +1,11 @@
 // The assets first steps (design/v3/first-steps section 10), shared by the Majątek widget's empty form (compact)
 // and the `setup/assets` page: a position (done with any row), a vehicle with its curve (optional). Statuses come
 // from the rows (logic.ts assetSteps), not from the server.
-import { cur0s } from "../../format";
+import { cur0s } from "@cashu/ui-logic/core/format";
 import { SetupSteps, type SetupStepItem } from "../../ui";
 import type { ManualAsset } from "./api";
-import { assetSteps, monthlyLoss, ratePct, sumByCurrency } from "./logic";
-import { S } from "./Steps.strings.ts";
+import { assetSteps, monthlyLoss, ratePct, sumByCurrency } from "@cashu/ui-logic/assets/logic";
+import { S } from "@cashu/i18n/assets/Steps.strings";
 
 type StepRow = Pick<ManualAsset, "name" | "balance" | "currency" | "kind" | "type" | "depreciation">;
 

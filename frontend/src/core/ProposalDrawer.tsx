@@ -3,10 +3,10 @@
 // `source: connector`, `budget_import`). Approve / reject; a refused approval shows why.
 import { useAsync } from "../hooks";
 import { Drawer, Notice, Skeleton, Tag } from "../ui";
-import { describeError, proposalError, proposalSummary } from "./messages";
+import { describeError, proposalError, proposalSummary } from "@cashu/ui-logic/core/messages";
 import { approveProposal, getProposal, rejectProposal } from "./proposalsApi";
-import { dm, dmy } from "../modules/investments/labels";
-import { S } from "./ProposalDrawer.strings.ts";
+import { dm, dmy } from "@cashu/ui-logic/investments/labels";
+import { S } from "@cashu/i18n/core/ProposalDrawer.strings";
 import { useState } from "react";
 
 const errText = (e: unknown) => describeError(e).text;

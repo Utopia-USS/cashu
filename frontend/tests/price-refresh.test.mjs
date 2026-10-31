@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   nextRefreshAt, PRICE_REFRESH_BUSY_RETRY_MS, PRICE_REFRESH_EVERY_MS, refreshDue, storedNewPrices,
-} from "../src/modules/investments/v2/priceRefreshLogic.ts";
+} from "@cashu/ui-logic/investments/v2/priceRefreshLogic";
 import { profileScope } from "../src/core/live.ts";
 import { ck, onRevalidate, revalidate, underPrefix } from "../src/swr.ts";
 

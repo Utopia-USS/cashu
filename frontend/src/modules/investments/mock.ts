@@ -3,10 +3,8 @@
 // signals, a pending agent proposal) and a fresh profile with one account and nothing else.
 // Implements the investments API plus track M's reviews / proposals contract in memory.
 import { ApiError } from "../../core/api";
-import type {
-  AccountRow, Batch, Decision, ImportPreview, Instrument, Overview, Position, PositionChart, PositionDetail, Positions,
-  Proposal, Review, ReviewDigest, Signal, StrategyStatus, Thesis, Txn,
-} from "./api";
+import type { AccountRow, Batch, ImportPreview, Instrument, Overview, Position, PositionChart, PositionDetail, Positions, Proposal, Review, ReviewDigest, StrategyStatus, Thesis, Txn } from "./api";
+import type { Decision, Signal } from "@cashu/ui-logic/investments/types";
 
 const TODAY = "2026-10-04";
 const NOW = "2026-10-04T09:12:00+02:00";

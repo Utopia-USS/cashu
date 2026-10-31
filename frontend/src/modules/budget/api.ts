@@ -1,6 +1,7 @@
 // Budget module endpoints (profile-scoped). Shapes mirror the server JSON. Every view takes an
 // explicit currency (the server defaults to the profile's base currency, never sums currencies).
 import { j, jpost, jput, jupload, pp } from "../../core/api";
+import type { BudgetCurrencies, CushionSettings, MonthClose, StatementCommit, StatementRow } from "@cashu/ui-logic/budget/types";
 
 export interface CashflowRow { label: string; income: number; expense: number; net: number }
 export interface SpendRow { category: string; label: string; amount: number }
@@ -32,69 +33,6 @@ export const getRecurring = (slug: string) => j<{ items: RecurringItem[] }>(pp(s
 export const getSpending = (slug: string, q: string, currency?: string | null) =>
   j<SpendRow[]>(pp(slug, withCurrency("/spending" + q, currency)));
 
-// ---- currencies, month close, budget settings --------------------------------------------------
-export interface CurrencyUse { currency: string; transactions: number; first: string; last: string }
-/** `default`: the base currency when it has data, else the most used one (the picker's start). */
-export interface BudgetCurrencies { base: string; default: string; currencies: CurrencyUse[] }
-
-export interface CategoryAmount { category: string; label: string; amount: number }
-export interface CurrencyClose {
-  currency: string;
-  income: number;
-  spending: number;
-  surplus: number;
-  cushion_top_up: number;
-  suggested_transfer: number;
-  transactions: number;
-  income_by_category: CategoryAmount[];
-  spending_by_category: CategoryAmount[];
-}
-export interface CushionState {
-  enabled: boolean;
-  currency: string;
-  target: number | null;
-  target_source: "amount" | "months";
-  target_months: number | null;
-  average_spending: number | null;
-  balance: number;
-  missing: number;
-  top_up: number;
-  reached: boolean;
-  accounts: { id: number; name: string }[];
-}
-export interface InvestingLink {
-  enabled: boolean;
-  /** missing | valid | partial | invalid (investments strategy files). */
-  strategy_state: string | null;
-  planned: { amount: number; currency: string; day_of_month: number | null } | null;
-  comparison: {
-    currency: string;
-    has_data: boolean;
-    surplus: number;
-    suggested_transfer: number;
-    difference: number;
-    status: "covered" | "short";
-  } | null;
-}
-export interface MonthClose {
-  month: string;
-  complete: boolean;
-  base_currency: string;
-  first_month: string | null;
-  last_month: string | null;
-  currencies: CurrencyClose[];
-  cushion: CushionState | null;
-  /** null when the investments module is off for the profile. */
-  investing: InvestingLink | null;
-}
-export interface CushionSettings {
-  enabled: boolean;
-  currency: string | null;
-  target_amount: number | null;
-  target_months: number | null;
-  account_ids: number[];
-  monthly_max: number | null;
-}
 export interface BudgetSettings { cushion: CushionSettings }
 
 export const getBudgetCurrencies = (slug: string) => j<BudgetCurrencies>(pp(slug, "/budget/currencies"));
@@ -144,22 +82,6 @@ export interface StatementPreview {
   previous_imports: { at: string; file_name: string; inserted: number; same_file?: boolean }[];
   /** cashU format only: non-blocking issues (`import.<kind>` codes). */
   warnings?: { kind: string; code?: string; row: number | null; field?: string | null; message: string; blocking?: boolean }[];
-}
-export interface StatementRow {
-  row: number; date: string; amount: number; currency: string; title: string | null; counterparty: string | null; status: "new" | "duplicate";
-  /** A duplicate by the cross-source rule (BE-1). */
-  overlap?: boolean;
-}
-/** POST /budget/import/commit. */
-export interface StatementCommit {
-  batch_id: number | null;
-  account: { id: number; name: string; currency: string; iban_tail: string | null; created: boolean };
-  inserted: number;
-  duplicates: number;
-  skipped: number;
-  balances?: number;
-  categorized: number;
-  transfer_pairs: number;
 }
 /** `account_id`: import into this existing bank account (else the file's account number, or a new account). */
 export interface StatementFileInput { file: File; bank: string; account_type: string; account_name: string; account_id?: number | null }

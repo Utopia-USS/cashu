@@ -10,9 +10,9 @@ import { moduleDef, tabKey } from "./registry";
 import type { View } from "./types";
 import { pathToView, useShell } from "./context";
 import { stepCounts } from "./setupSteps";
-import { WS } from "./workspace.strings.ts";
-import { S } from "./SetupPage.strings.ts";
-import { S as STEPS } from "./setupSteps.strings.ts";
+import { WS } from "@cashu/i18n/core/workspace.strings";
+import { S } from "@cashu/i18n/core/SetupPage.strings";
+import { S as STEPS } from "@cashu/i18n/core/setupSteps.strings";
 
 const POLL_MS = 5000;
 

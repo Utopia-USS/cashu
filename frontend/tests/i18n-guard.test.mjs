@@ -1,6 +1,7 @@
-// Guard: user-visible text lives in `*.strings.ts` catalogs (src/i18n.ts), never as a Polish literal in
+// Guard: user-visible text lives in `*.strings.ts` catalogs (@cashu/i18n), never as a Polish literal in
 // code. Heuristic, like the madrosc-tlumu hook: a non-comment line with a Polish letter outside a catalog
-// is a hardcoded UI text. Polish without diacritics slips through; reviews catch those.
+// is a hardcoded UI text. Polish without diacritics slips through; reviews catch those. The same check for the
+// shared packages (@cashu/ui-logic, @cashu/i18n) and apps/ is tools/arch/src/guards/hardcodedText.test.ts.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -12,7 +13,6 @@ const POLISH = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/;
 /** Files whose Polish is data, not UI copy (path relative to src/ -> reason). */
 const ALLOWED = {
   "core/mock.ts": "dev-only mock backend data (VITE_MOCK=1)",
-  "core/messages.ts": "Polish labels of backend codes; in English the server's own English text is shown",
   "modules/investments/mock.ts": "dev-only mock backend data",
   "modules/investments/v2/mock.ts": "dev-only mock backend data",
   "modules/investments/v2/research/mock.ts": "dev-only mock backend data",

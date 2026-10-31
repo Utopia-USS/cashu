@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { errorText } from "./core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import { type InFlight, singleFlight } from "./inflight";
 import { onPatched, onRevalidate, swr, swrDone, swrFail, swrInit, swrStart, type SwrState, swrView, underPrefix } from "./swr";
 

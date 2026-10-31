@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import { kindLine } from "./connectors";
 import { ApiError } from "./api";
 import { Notice } from "../ui";
-import { C } from "../common.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
 
 export interface RunFailure { kind: string; message?: string | null; stderr?: string | null; timeoutS?: number | null; connector?: string | null }
 

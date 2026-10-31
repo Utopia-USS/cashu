@@ -1,21 +1,22 @@
 // "Zamknięcie miesiąca": what the month earned, spent and left over in the chosen currency, the
 // cushion top-up and the suggested transfer to investments vs the strategy's planned contribution.
 import { type ReactNode, useRef, useState } from "react";
-import type { Account } from "../../core/api";
+import type { Account } from "@cashu/ui-logic/core/account";
 import { ApiError, j, pp } from "../../core/api";
 import { useShell } from "../../core/context";
-import { C } from "../../common.strings.ts";
-import { cur } from "../../format";
+import { C } from "@cashu/i18n/core/common.strings";
+import { cur } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { Notice, Seg, Skeleton, Switch, Tag } from "../../ui";
-import type { CushionState, MonthClose } from "./api";
+import type { CushionState, MonthClose } from "@cashu/ui-logic/budget/types";
 import { getBudgetSettings, getMonthClose, putBudgetSettings } from "./api";
 import "./budget.css";
 import type { BudgetCurrency } from "./currency";
-import type { CushionDraft } from "./logic";
-import { closeFor, cushionDraft, cushionPayload, cushionSaved, monthLabel, planState, shiftMonth } from "./logic";
-import { S } from "./MonthClose.strings.ts";
+import type { CushionDraft } from "@cashu/ui-logic/budget/logic";
+import { closeFor, cushionDraft, cushionPayload, monthLabel, planState, shiftMonth } from "@cashu/ui-logic/budget/logic";
+import { cushionSaved } from "./stale";
+import { S } from "@cashu/i18n/budget/MonthClose.strings";
 
 // What the cushion level is (backend monthclose.py, F7 R5 variant B: net transfers of the month): S.cushionLevel.
 

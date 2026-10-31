@@ -5,24 +5,25 @@
 // The deck is built once from the data at hand, so decisions taken on it do not reshuffle the cards.
 import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { errorText } from "../../../core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import { useAsync } from "../../../hooks";
 import { useModal, useToast } from "../../../ui";
 import { ApiError, isMissingRoute } from "../../../core/api";
 import { getTheses, postAcknowledge, postDecision, postSnooze } from "../api";
-import { dm, money, pct, pp } from "../labels";
-import { C } from "../../../common.strings.ts";
-import { S } from "./ReviewDeck.strings.ts";
-import { type DigestV2, getCalendar, getSignalsV2, invKey, type Performance, postPositionDecision, type SignalV2 } from "./api";
-import { benchmarkLabel, changeSince, staleBenchmark } from "./logic";
+import { dm, money, pct, pp } from "@cashu/ui-logic/investments/labels";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/v2/ReviewDeck.strings";
+import { type DigestV2, getCalendar, getSignalsV2, invKey, type Performance, postPositionDecision } from "./api";
+import type { SignalV2 } from "@cashu/ui-logic/investments/v2/types";
+import { benchmarkLabel, changeSince, staleBenchmark } from "@cashu/ui-logic/investments/v2/logic";
 import { getResearch } from "./research/api";
 import { useMacro, useResearchActions, useResearchOverview, useSegments } from "./research/data";
-import { noteSubject } from "./research/logic";
-import type { DigestResearch, ResearchNote } from "./research/types";
+import { noteSubject } from "@cashu/ui-logic/investments/v2/research/logic";
+import type { DigestResearch, ResearchNote } from "@cashu/ui-logic/investments/v2/research/types";
 import {
   CARD_ORDER, CARD_TITLE, type CardId, DECIDE_GROUPS, type DecideItem, type DecideRest, deckCards, decideItems, decideSubjects, GROUP_LABEL, openIdeas,
   sectorRows, sectorsTitle, summaryTitle, type ThesisLite, type Tone, topMovers, type ProposalLike, weekEvents, weeklySigma, worldVerdict,
-} from "./reviewDeckLogic";
+} from "@cashu/ui-logic/investments/v2/reviewDeckLogic";
 import "./reviewDeck.css";
 
 type Verdict = "keep" | "flag";

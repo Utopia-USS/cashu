@@ -7,8 +7,8 @@ import { test } from "node:test";
 import {
   alertConditionText, allocGeneric, benchmarkLabel, digestShown, instCardFacts, instMono, instSummary, isShownSignal, ruleKindLabel, signalText, subLine,
   unnameBuckets,
-} from "../src/modules/investments/v2/logic.ts";
-import { bucketGenitive, bucketLabel, GENERIC_BUCKET_IDS, isGenericBucket, micName } from "../src/modules/investments/labels.ts";
+} from "@cashu/ui-logic/investments/v2/logic";
+import { bucketGenitive, bucketLabel, GENERIC_BUCKET_IDS, isGenericBucket, micName } from "@cashu/ui-logic/investments/labels";
 
 const inst = (over) => ({ id: 1, label: "Intel Corp.", name: "Intel Corp.", symbol: "INTC", mic: "XNAS", isin: "US4581401001", asset_class: "equity", region: "us", status: "active", valuation_mode: "market", needs_classification: false, ...over });
 

@@ -72,7 +72,7 @@ account number under 8 characters cannot be carried as the built-in keeps them.
    `components/ScrollableChart.tsx` (window+scroll+axis+grid). Don't add zoom/pan plugins to
    Chart.js - they were removed as janky.
 7. Copy: follow the frontend copy rules in [conventions.md](conventions.md); new backend codes get a
-   Polish label in `frontend/src/core/messages.ts`; update the matching e2e spec
+   Polish label in `packages/ui-logic/src/core/messages.ts`; update the matching e2e spec
    ([running.md](running.md)).
 
 ## Adding a CLI command

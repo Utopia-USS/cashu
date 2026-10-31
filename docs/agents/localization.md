@@ -25,16 +25,19 @@ UI shows, a notification.
 
 ## The language
 
-- Supported: `pl`, `en` (`LANGS` in `frontend/src/i18n.ts`, `LANGS` in `src/cashu/core/i18n.py`; keep
+- Supported: `pl`, `en` (`LANGS` in `packages/i18n/src/lang.ts`, `LANGS` in `src/cashu/core/i18n.py`; keep
   them in sync).
 - Choice: Settings -> Aplikacja/App -> Język/Language: System, Polski, English. Stored in browser
   storage (`cashu.lang`); changing it reloads the page.
 - Default ("System"): the first supported language of the OS / browser preference list
   (`navigator.languages`, which WKWebView takes from macOS), else **English**.
+- Where it lives: `@cashu/i18n` (`packages/i18n`, platform free) resolves the language from a
+  `LanguageSource` the app installs at startup; the SPA's browser source (storage, `navigator`, reload) is
+  `frontend/src/core/platform.ts`, imported first by `main.tsx`. Without a source the language is English.
 - The frontend sends the effective language on every request as `X-Cashu-Lang` (`authHeaders` in
   `core/api.ts`); the backend renders its texts in that language.
-- Node tests run in Polish (`lang()` outside a browser), so existing assertions keep their Polish text;
-  `setLanguageForTests("en")` switches. Playwright runs with `locale: "pl-PL"`.
+- The frontend's node tests run in Polish (`frontend/tests/setup.mjs` pins it), so existing assertions keep
+  their Polish text; `setLanguageForTests("en")` switches. Playwright runs with `locale: "pl-PL"`.
 
 ## Frontend rules
 
@@ -43,8 +46,8 @@ UI shows, a notification.
    `*.strings.ts` catalog next to the code that uses it:
 
    ```ts
-   // src/modules/loans/Loans.strings.ts
-   import { catalog, enCount, plCount } from "../../i18n.ts";
+   // packages/i18n/src/loans/Loans.strings.ts (the frontend imports @cashu/i18n/loans/Loans.strings)
+   import { catalog, enCount, plCount } from "../index.js";
 
    export const S = catalog({
      title: { pl: "Kredyty", en: "Loans" },
@@ -57,7 +60,9 @@ UI shows, a notification.
 
    Use: `S.title`, `S.installments(3)`. The compiler requires every language in every entry, with the
    same type. Generic words (Zapisz/Save, Anuluj/Cancel, Zamknij/Close, Cofnij/Undo, ...) come from
-   `C` in `src/common.strings.ts`.
+   `C` in `@cashu/i18n/core/common.strings`. Where catalogs live: screen copy in `packages/i18n/src/<core|module>/`
+   (one exports subpath per catalog), the catalogs of the shared pure logic next to it in
+   `packages/ui-logic/src/<core|module>/`. Both packages are platform free (no DOM, React or Node).
 2. **A label map is a catalog.** `const TYPE_LABEL: Record<string, string> = { checking: "Konta
    osobiste", ... }` becomes `catalog({ checking: { pl: "Konta osobiste", en: "Checking accounts" }, ...
    })`: the same shape, the language read on each access.
@@ -66,13 +71,16 @@ UI shows, a notification.
 4. **Numbers, money, dates go through `Intl` with `intlLocale()`** (`pl-PL`, or the OS English variant /
    `en-US`). Never hardcode `"pl-PL"`, never append `" zł"`; hand-built `dd.mm.yyyy` is Polish-only.
 5. **Plurals:** `plCount` / `plForm` (one, few, many) and `enCount` / `enForm` (one, other) from
-   `i18n.ts`.
+   `@cashu/i18n` (through `Intl.PluralRules`).
 6. **Do not translate data:** values sent to or compared with the backend (codes, enum values, category
    keys), CSS classes, test ids, mock data (`mock.ts`).
-7. **Backend codes:** `core/messages.ts` maps backend codes (strategy issues, import warnings,
+7. **Backend codes:** `@cashu/ui-logic/core/messages` maps backend codes (strategy issues, import warnings,
    proposal summaries, worker outcomes, ...) to labels; English labels sit next to the Polish ones.
-8. **The guard:** `tests/i18n-guard.test.mjs` fails on a Polish letter in a non-comment line outside a
-   catalog. It cannot see Polish without diacritics; reviews do.
+8. **The guards:** `frontend/tests/i18n-guard.test.mjs` (frontend/src) and
+   `tools/arch/src/guards/hardcodedText.test.ts` (packages/i18n, packages/ui-logic, packages/ui, apps/) fail
+   on a Polish letter in a non-comment line outside a catalog; they cannot see Polish without diacritics,
+   reviews do. `tools/arch/src/guards/catalogs.test.ts` (`pnpm arch:check`) checks every catalog under
+   packages/ and apps/ for PL / EN parity (a `catalog()` keeps its raw entries for it).
 
 ## Backend rules
 
@@ -153,7 +161,7 @@ UI shows, a notification.
 
 ## Adding a language
 
-`LANGS` in `frontend/src/i18n.ts` and `src/cashu/core/i18n.py`, then the compiler lists every catalog
+`LANGS` in `packages/i18n/src/lang.ts` and `src/cashu/core/i18n.py`, then the compiler lists every catalog
 entry without it (frontend); on the backend `tr()` gets a new keyword argument (every call site, plus the
 `*_en` fields and `*_EN` tables become per-language); `LANG_NAME` gets the language's own name; the
 desktop boot page and `os_language()` need nothing.

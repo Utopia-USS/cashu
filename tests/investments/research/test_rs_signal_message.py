@@ -21,7 +21,7 @@ from cashu.modules.investments.research.signals import (
 
 FRONTEND_LOGIC = (
     Path(__file__).resolve().parents[3]
-    / "frontend/src/modules/investments/v2/research/logic.strings.ts"
+    / "packages/ui-logic/src/investments/v2/research/logic.strings.ts"
 )
 
 

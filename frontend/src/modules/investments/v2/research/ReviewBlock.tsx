@@ -5,20 +5,20 @@
 // `Research` row of Co się zmieniło and the decision form's `research z soboty: …` line.
 import { type ReactNode, useState } from "react";
 import { Widget } from "../../../../widgets";
-import { dm, hm, wdm } from "../../labels";
+import { dm, hm, wdm } from "@cashu/ui-logic/investments/labels";
 import { canRestore, useResearchActions, useSegments } from "./data";
 import {
   countsText, HEALTH_LABEL, healthOf, latestRun, latestTitle, normHealth, nNotes, researchCommand, runMinutes, runNotes, runTag,
-} from "./logic";
+} from "@cashu/ui-logic/investments/v2/research/logic";
 import { CandidateCard } from "./primitives";
-import { normDigestMarket, reviewTopics, withBriefs, withNewNote } from "./segments";
+import { normDigestMarket, reviewTopics, withBriefs, withNewNote } from "@cashu/ui-logic/investments/v2/research/segments";
 import { MacroChanges } from "./MacroWidgets";
-import { normMacroChanges } from "./macro";
+import { normMacroChanges } from "@cashu/ui-logic/investments/v2/research/macro";
 import { NotRun, type StripCtx, ThesisRow, TopicRows, TopicsHead } from "./Strip";
-import type { DigestResearch, ResearchNote, ResearchRun, ResearchSummary } from "./types";
-import { localDay } from "../../../../time";
-import { S as L } from "./logic.strings.ts";
-import { S } from "./ReviewBlock.strings.ts";
+import type { DigestResearch, ResearchNote, ResearchRun, ResearchSummary } from "@cashu/ui-logic/investments/v2/research/types";
+import { localDay } from "@cashu/ui-logic/core/time";
+import { S as L } from "@cashu/ui-logic/investments/v2/research/logic.strings";
+import { S } from "@cashu/i18n/investments/v2/research/ReviewBlock.strings";
 
 export function ReviewResearch({ ctx, runs, summary, candidates, digest, since, onSettings }: {
   ctx: StripCtx; runs: ResearchRun[]; summary: ResearchSummary | null | undefined; candidates: ResearchNote[] | null | undefined;

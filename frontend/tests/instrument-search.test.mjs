@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   addedToast, defaultRow, enterTarget, highlightIndex, isAddable, looksLikeSymbol, moveHighlight, normQuery, optionLabel, searchView, typeWord, watchInputOf,
-} from "../src/modules/investments/v2/searchLogic.ts";
+} from "@cashu/ui-logic/investments/v2/searchLogic";
 
 const hit = (o) => ({
   key: "y:VWCE.DE", instrument_id: null, state: "new", symbol: "VWCE", yahoo_symbol: "VWCE.DE", name: "Vanguard FTSE All-World", exchange: "XETRA",

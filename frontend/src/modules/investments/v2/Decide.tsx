@@ -9,11 +9,11 @@ import { createPortal } from "react-dom";
 import { useModal } from "../../../ui";
 import { PolDot } from "../../../widgets";
 import type { Thesis } from "../api";
-import type { SignalV2 } from "./api";
-import { polarityOf, signalFact } from "./logic";
+import type { SignalV2 } from "@cashu/ui-logic/investments/v2/types";
+import { polarityOf, signalFact } from "@cashu/ui-logic/investments/v2/logic";
 import { Age, DecisionForm, Fact1, longText, type SignalsCtx, signalAge, useDecisionWriter } from "./Signals";
-import { C } from "../../../common.strings.ts";
-import { S } from "./Decide.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/v2/Decide.strings";
 
 const MAX_LINES = 5;
 

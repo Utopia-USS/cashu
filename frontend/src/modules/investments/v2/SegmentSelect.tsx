@@ -3,11 +3,11 @@
 // applies (`auto · Złoto i górnicy`), else `brak`. Choosing a catalog entry sets it, the empty option clears it.
 import { useEffect, useState } from "react";
 import { useToast } from "../../../ui";
-import { errorText } from "../../../core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import { patchInstrumentSegment } from "../api";
 import { bumpResearch } from "./research/data";
-import { canonKey, SEGMENTS, segmentLabel } from "./research/segments";
-import { S } from "./SegmentSelect.strings.ts";
+import { canonKey, SEGMENTS, segmentLabel } from "@cashu/ui-logic/investments/v2/research/segments";
+import { S } from "@cashu/i18n/investments/v2/SegmentSelect.strings";
 
 export function SegmentSelect({ slug, instrumentId, segment: raw, source, sep, onChanged }: {
   slug: string; instrumentId: number; segment: string | null;

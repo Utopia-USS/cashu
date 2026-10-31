@@ -36,6 +36,17 @@ function checkPlural(where: string, lang: string, value: Record<string, unknown>
     : [];
 }
 
+/** Where a runtime catalog (`catalog()` of @cashu/i18n, read in the current language) keeps its raw
+ * `{ pl, en }` entries: a registered symbol, so this guard needs no import of the package. */
+const CATALOG_ENTRIES = Symbol.for("cashu.catalog.entries");
+
+/** The raw entries of a runtime catalog; any other value as it is. */
+export function catalogEntries(value: unknown): unknown {
+  return isRecord(value) && CATALOG_ENTRIES in value
+    ? (value as Record<symbol, unknown>)[CATALOG_ENTRIES]
+    : value;
+}
+
 /** True when an export looks like a catalog: an object of `{ pl, en }` entries. */
 export function isCatalog(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value)) return false;

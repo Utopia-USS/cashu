@@ -4,7 +4,7 @@
 // ModuleDef.overview / HeroFact; a profile with only the investments module gets that module's minimal view
 // in the narrow frame. Every currency other than the base one keeps its own total (never converted).
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { cur, cur0s, MONTH_GEN, nAccounts, nModules, pctSigned, TYPE_LABEL } from "../format";
+import { cur, cur0s, MONTH_GEN, nAccounts, nModules, pctSigned, TYPE_LABEL } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../hooks";
 import { ck } from "../swr";
 import { Empty } from "../ui";
@@ -16,8 +16,8 @@ import { NetWorthWidget } from "./overview/NetWorthWidget";
 import { hiddenCards, hideCard, onHiddenChange } from "./hidden";
 import { moduleDef } from "./registry";
 import type { ModuleCtx, ModuleDef } from "./types";
-import { intlLocale } from "../i18n.ts";
-import { S } from "./Overview.strings.ts";
+import { intlLocale } from "@cashu/i18n";
+import { S } from "@cashu/i18n/core/Overview.strings";
 
 const LIQUID = new Set(["checking", "savings", "cash"]);
 /** Whole units for hero facts, rounded (582 986,99 -> "582 987 zł"; no "-0", F7 FE11). */

@@ -9,20 +9,20 @@ import { Fragment, type KeyboardEvent, useEffect, useMemo, useRef, useState } fr
 import { useAsync } from "../../../../hooks";
 import { Skeleton, useToast } from "../../../../ui";
 import { Widget } from "../../../../widgets";
-import { errorText } from "../../../../core/messages";
-import { dm } from "../../labels";
+import { errorText } from "@cashu/ui-logic/core/messages";
+import { dm } from "@cashu/ui-logic/investments/labels";
 import { invKey } from "../api";
 import { InstLabel, type InstLike } from "../InstLabel";
 import { deleteTopicThesis, getResearch, getTopicThesis, postResearchRead, putTopicThesis, putTopicView } from "./api";
 import { bumpResearch, canRestore, useMacro, useResearchActions, useResearchVersion, useSegments } from "./data";
-import { isExpired } from "./logic";
-import { explainText, isMacroKey, macroHeadline, macroKeyOf, macroLabel, sinceMonth, stateParts, toneCls } from "./macro";
+import { isExpired } from "@cashu/ui-logic/investments/v2/research/logic";
+import { explainText, isMacroKey, macroHeadline, macroKeyOf, macroLabel, sinceMonth, stateParts, toneCls } from "@cashu/ui-logic/investments/v2/research/macro";
 import { BriefList } from "./MacroWidgets";
 import { NoteRow, richSummary } from "./primitives";
-import { canonKey, segmentDisplay, segmentLabel, thesisDraft, topicMembers, topicSavePlan, topicView } from "./segments";
-import type { ResearchNote, TopicThesis } from "./types";
-import { C } from "../../../../common.strings.ts";
-import { S } from "./TopicDrawer.strings.ts";
+import { canonKey, segmentDisplay, segmentLabel, thesisDraft, topicMembers, topicSavePlan, topicView } from "@cashu/ui-logic/investments/v2/research/segments";
+import type { ResearchNote, TopicThesis } from "@cashu/ui-logic/investments/v2/research/types";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/v2/research/TopicDrawer.strings";
 
 export const THESIS_MAX = 600;
 export const INVALIDATION_MAX = 400;

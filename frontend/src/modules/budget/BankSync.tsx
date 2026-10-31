@@ -10,12 +10,12 @@ import { getProposals } from "../../core/proposalsApi";
 import { useAsync, usePoll } from "../../hooks";
 import { ck } from "../../swr";
 import { useShell } from "../../core/context";
-import { errorText } from "../../core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import type { TabActionProps } from "../../core/types";
 import { useToast } from "../../ui";
 import { StatementImportDrawer } from "./ImportDrawer";
-import { bankAccounts, resyncBankText } from "./logic";
-import { S } from "./BankSync.strings.ts";
+import { bankAccounts, resyncBankText } from "@cashu/ui-logic/budget/logic";
+import { S } from "@cashu/i18n/budget/BankSync.strings";
 
 const running = new Set<string>();
 const listeners = new Set<() => void>();

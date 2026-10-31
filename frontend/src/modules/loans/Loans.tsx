@@ -2,13 +2,14 @@ import { useState } from "react";
 import { Line, Tooltip } from "recharts";
 import { ScrollableChart } from "../../components/ScrollableChart";
 import { useShell, useSlug } from "../../core/context";
-import { cssVar, cur, cur0, dtFmt } from "../../format";
-import { intlLocale } from "../../i18n.ts";
+import { cur, cur0, dtFmt } from "@cashu/ui-logic/core/format";
+import { cssVar } from "../../css";
+import { intlLocale } from "@cashu/i18n";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import { Empty, Kpi, SkeletonChart, SkeletonKpis, SkeletonTable } from "../../ui";
 import { getLoans, type LoanInfo, loanName } from "./api";
-import { S } from "./Loans.strings.ts";
+import { S } from "@cashu/i18n/loans/Loans.strings";
 
 const DAY = 86400000;
 const xTickFmt = new Intl.DateTimeFormat(intlLocale(), { month: "short", year: "2-digit" });

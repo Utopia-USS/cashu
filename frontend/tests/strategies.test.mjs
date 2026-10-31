@@ -1,7 +1,7 @@
 // The Strategie tab's pure helpers (v2/strategiesLogic.ts): tree rows, selection, absolute paths, issue lines.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { absolutePath, issuesByLine, pickSelection, treeRows } from "../src/modules/investments/v2/strategiesLogic.ts";
+import { absolutePath, issuesByLine, pickSelection, treeRows } from "@cashu/ui-logic/investments/v2/strategiesLogic";
 
 const doc = (id, files, main_file = null, root = "/data/profiles/x/strategies/" + id) =>
   ({ id, main: id === "_main", executed: id === "_main", title: null, status: null, description: null, main_file, root, files: files.map((path) => ({ path, kind: path.endsWith(".md") ? "md" : "yaml" })) });

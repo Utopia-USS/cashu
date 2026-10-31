@@ -4,10 +4,10 @@ import { copyText, Tag, useToast } from "../../ui";
 import { type AccountRow, type BucketMatch, type Instrument, type Position, type StrategyStatus } from "./api";
 import {
   accountLabel, ASSET_CLASS, bucketLabel, dm, isGenericBucket, money, pct, plural, qty, REGION, region as regionLabel, VALUATION,
-} from "./labels";
-import { type WarningItem } from "./logic";
-import { C } from "../../common.strings.ts";
-import { S } from "./Rail.strings.ts";
+} from "@cashu/ui-logic/investments/labels";
+import { type WarningItem } from "@cashu/ui-logic/investments/logic";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/Rail.strings";
 
 // ---- classification -------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 """Stable codes on backend messages the app shows: strategy issues (``code`` + ``params``), import
 warnings (``import.<kind>``), and the frontend label map covering every backend code
-(``frontend/src/core/messages.ts``)."""
+(``packages/ui-logic/src/core/messages.ts``)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from cashu.modules.investments.strategy.codes import CODES, OTHER, classify
 from cashu.modules.investments.strategy.issues import IssueSeverity, StrategyIssue
 
 ROOT = Path(__file__).resolve().parents[1]
-MESSAGES_TS = ROOT / "frontend" / "src" / "core" / "messages.ts"
+MESSAGES_TS = ROOT / "packages" / "ui-logic" / "src" / "core" / "messages.ts"
 
 H = "version: 1\nbase_currency: PLN\n"
 B2 = H + "buckets:\n  - { id: eq, match: { asset_class: etf } }\n  - { id: cash, match: { asset_class: cash } }\n"

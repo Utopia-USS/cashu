@@ -1,10 +1,11 @@
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, ComposedChart, XAxis, YAxis } from "recharts";
 import { isDark } from "../core/theme";
-import { cssVar, pln0 } from "../format";
+import { pln0 } from "@cashu/ui-logic/core/format";
+import { cssVar } from "../css";
 import { useWidth } from "../hooks";
 import { Seg, Skeleton } from "../ui";
-import { S } from "./ScrollableChart.strings.ts";
+import { S } from "@cashu/i18n/core/components/ScrollableChart.strings";
 
 const MAX_W = 24000;
 const MAX_Y_ZOOM = 60;

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   aheadDays, aheadEvents, dayBucket, valuationOf, firstSentence, hasPlainHeadline, moodOf, noteHeadline, storyTopics, thesisMoves,
-} from "../src/modules/investments/v2/research/storyLogic.ts";
+} from "@cashu/ui-logic/investments/v2/research/storyLogic";
 
 test("moodOf: the week's move in one word; a flat week with a negative brief is uncertain", () => {
   assert.equal(moodOf(0.05), "up");

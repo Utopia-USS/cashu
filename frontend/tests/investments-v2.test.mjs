@@ -5,8 +5,8 @@ import {
   alertConditionText, alertDefaultTitle, alertDistance, alertLevelText, alertNowText, alertPreview, changeSince, cursorOrder, daysSince, gapText,
   groupByMonth, isDigestDay, isImportant, monthlyFlows, nextWeekday, orderAlerts, polarityOf, signalText,
   splitByPolarity, weekChange,
-} from "../src/modules/investments/v2/logic.ts";
-import { bucketGenitive } from "../src/modules/investments/labels.ts";
+} from "@cashu/ui-logic/investments/v2/logic";
+import { bucketGenitive } from "@cashu/ui-logic/investments/labels";
 
 const NB = " ";
 const sig = (over) => ({
@@ -171,7 +171,7 @@ test("performance: change since a date (TWR ratio, money, benchmark), monthly de
 });
 
 test("F7 FE5: surplus card uses the transfer after the cushion top-up; pp a contribution closes; plan months", async () => {
-  const { contributionPp, planMonthsSoFar, surplusFlow } = await import("../src/modules/investments/v2/logic.ts");
+  const { contributionPp, planMonthsSoFar, surplusFlow } = await import("@cashu/ui-logic/investments/v2/logic");
   // surplus 3 000, cushion top-up 2 000 -> 1 000 for investing; plan 2 000 -> 1 000 short, primary 1 000.
   assert.deepEqual(surplusFlow({ surplus: 3000, cushion_top_up: 2000, suggested_transfer: 1000 }, 2000), { available: 1000, topUp: 2000, stays: -1000, primary: 1000 });
   assert.deepEqual(surplusFlow({ surplus: 3000, cushion_top_up: 0, suggested_transfer: 3000 }, 2000), { available: 3000, topUp: 0, stays: 1000, primary: 2000 });
@@ -186,7 +186,7 @@ test("F7 FE5: surplus card uses the transfer after the cushion top-up; pp a cont
 });
 
 test("F7 FE6: the change since a date is the market move (deposits in between removed)", async () => {
-  const { changeSince } = await import("../src/modules/investments/v2/logic.ts");
+  const { changeSince } = await import("@cashu/ui-logic/investments/v2/logic");
   const pt = (date, value, flow, twr) => ({ date, value, flow, twr, benchmark: null, simulated_value: null, drawdown: null });
   const pts = [pt("2026-09-01", 100000, 0, 0), pt("2026-09-15", 103000, 2000, 0.01), pt("2026-10-01", 106400, 3000, 0.014)];
   const r = changeSince(pts, "2026-09-01");
@@ -195,7 +195,7 @@ test("F7 FE6: the change since a date is the market move (deposits in between re
 });
 
 test("F7 FE6: asset average cost over all accounts; the minimal hero compares like with like", async () => {
-  const { averageCost, heroBenchmark } = await import("../src/modules/investments/v2/logic.ts");
+  const { averageCost, heroBenchmark } = await import("@cashu/ui-logic/investments/v2/logic");
   const pos = { quantity: 20, cost: 2400, accounts: [
     { quantity: 10, average_cost: 100, cost_currency: "PLN" }, { quantity: 10, average_cost: 140, cost_currency: "PLN" }] };
   assert.deepEqual(averageCost(pos, "PLN"), { value: 120, currency: "PLN" });
@@ -210,7 +210,7 @@ test("F7 FE6: asset average cost over all accounts; the minimal hero compares li
 });
 
 test("F7 FE8: a watchlist row without a week of closes shows the session move as 1 d., not tydz.", async () => {
-  const { watchMove } = await import("../src/modules/investments/v2/logic.ts");
+  const { watchMove } = await import("@cashu/ui-logic/investments/v2/logic");
   const closes = [{ date: "2026-09-25", close: 100 }, { date: "2026-10-02", close: 110 }];
   assert.deepEqual(watchMove(closes, 0.01), { value: 0.10000000000000009, label: "tydz." });
   assert.deepEqual(watchMove([{ date: "2026-10-01", close: 100 }, { date: "2026-10-02", close: 101 }], 0.014), { value: 0.014, label: "1 d." });
@@ -218,7 +218,7 @@ test("F7 FE8: a watchlist row without a week of closes shows the session move as
 });
 
 test("F7 FE17: the re-entry baseline stays pending until Wszystko jasne; the last visit does not move meanwhile", async () => {
-  const { reentryBaseline } = await import("../src/modules/investments/v2/logic.ts");
+  const { reentryBaseline } = await import("@cashu/ui-logic/investments/v2/logic");
   const now = "2026-10-05T08:00:00Z";
   // six weeks away: the old visit becomes the pending baseline, leaving must not advance it
   assert.deepEqual(reentryBaseline(null, "2026-08-20T18:00:00Z", now), { baseline: "2026-08-20T18:00:00Z", store: true, advance: false });
@@ -230,7 +230,7 @@ test("F7 FE17: the re-entry baseline stays pending until Wszystko jasne; the las
 });
 
 test("F7 FE13: performance caveats read in Polish; a stale benchmark tail is flagged", async () => {
-  const { perfNotes } = await import("../src/modules/investments/v2/logic.ts");
+  const { perfNotes } = await import("@cashu/ui-logic/investments/v2/logic");
   const perf = {
     data_quality: { notes: [{ code: "incomplete_days", params: { days: 2 }, message: "2 days" }, { code: "implied_funding", params: {}, message: "x" }] },
     benchmark: { status: "ok", covers_range_end: false, last_priced: "2026-09-30" },
@@ -247,7 +247,7 @@ test("F7 FE13: performance caveats read in Polish; a stale benchmark tail is fla
 });
 
 // ---- F7 fix pass ---------------------------------------------------------------------------------------
-import { digestValueLine } from "../src/modules/investments/v2/logic.ts";
+import { digestValueLine } from "@cashu/ui-logic/investments/v2/logic";
 
 test("F2 digest value line: market_change null with change set is a value change, not the market move", () => {
   const base = { then: 100000, change: 42300, change_pct: 0.011, contributions: 2000 };
@@ -268,7 +268,7 @@ test("F2 digest value line: market_change null with change set is a value change
 });
 
 test("F4 stale benchmark: no comparison figure on the heroes, a short label with the last priced day", async () => {
-  const { heroBenchmark, staleBenchmark } = await import("../src/modules/investments/v2/logic.ts");
+  const { heroBenchmark, staleBenchmark } = await import("@cashu/ui-logic/investments/v2/logic");
   const b = { status: "ok", id: "msci_acwi", twr: 0.061, simulation: { pnl: 400 }, covers_range_end: false, last_priced: "2026-09-12" };
   assert.equal(heroBenchmark(b, 10000), null);
   assert.deepEqual(staleBenchmark(b), { label: "benchmark nieaktualny", title: "MSCI ACWI: ceny do 12.09" });

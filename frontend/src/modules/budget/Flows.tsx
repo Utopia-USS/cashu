@@ -2,14 +2,15 @@ import { useState } from "react";
 import { Bar, Line, Tooltip } from "recharts";
 import { ScrollableChart } from "../../components/ScrollableChart";
 import { useShell } from "../../core/context";
-import { cssVar, cur, cur0 } from "../../format";
+import { cur, cur0 } from "@cashu/ui-logic/core/format";
+import { cssVar } from "../../css";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
 import type { CashflowRow } from "./api";
 import { getCashflow } from "./api";
 import { CurrencySwitch, useBudgetCurrency } from "./currency";
 import { MonthCloseCard } from "./MonthClose";
-import { S } from "./Flows.strings.ts";
+import { S } from "@cashu/i18n/budget/Flows.strings";
 
 type Gran = "monthly" | "quarterly" | "yearly";
 

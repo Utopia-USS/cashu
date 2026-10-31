@@ -78,7 +78,7 @@ the em dash; use a hyphen. Full form: [docs/agents/conventions.md](docs/agents/c
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]" && cashu init-db
-cd frontend && npm install && npm run build && cd ..   # webdist/ is git-ignored: build once after clone
+cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build && cd ..   # pnpm workspace (corepack enable); webdist/ is git-ignored: build once after clone
 ```
 
 **If the user is just getting started** -> walk them through setup following
@@ -160,8 +160,8 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Add an importer / connector | [extending.md](docs/agents/extending.md), [docs/connectors.md](docs/connectors.md), [connectors/README.md](connectors/README.md) (catalog) | `docs/import-format.md`, `docs/budget-import-format.md`, `examples/connectors/`, `scripts/gen_connector_schemas.py`, `tests/test_connector_catalog.py` |
 | Add a CLI command | [conventions.md](docs/agents/conventions.md) "CLI" | module `cli.py`, `core/cliutil.py` |
 | Edit or add a shipped skill | [skills.md](docs/agents/skills.md) | `core/workspace/skills.py`, `scripts/sync_skill_references.py`, `tests/test_workspace.py` |
-| Add or change any user-visible text (UI copy, backend label, notification) | [localization.md](docs/agents/localization.md) | `frontend/src/i18n.ts`, `*.strings.ts`, `src/cashu/core/i18n.py`, `frontend/tests/i18n-guard.test.mjs` |
-| Frontend change (UI copy, charts, API client) | [conventions.md](docs/agents/conventions.md) "Frontend copy", [extending.md](docs/agents/extending.md) | `frontend/src/core/messages.ts`, `charts.tsx`, `frontend/e2e/specs/` |
+| Add or change any user-visible text (UI copy, backend label, notification) | [localization.md](docs/agents/localization.md) | `packages/i18n` (`@cashu/i18n`), `*.strings.ts`, `src/cashu/core/i18n.py`, `frontend/tests/i18n-guard.test.mjs`, `tools/arch/src/guards/` |
+| Frontend change (UI copy, charts, API client) | [conventions.md](docs/agents/conventions.md) "Frontend copy", [extending.md](docs/agents/extending.md) | `packages/ui-logic/src/core/messages.ts`, `charts.tsx`, `frontend/e2e/specs/` |
 | Research / MCP privacy (what the agent may see) | [skills.md](docs/agents/skills.md) "Rules every skill follows" | `core/mcp/redaction.py`, `core/mcp/labels.py`, `tests/test_fxb_mcp_privacy.py` |
 | Run, demo data, e2e, verify in the browser | [running.md](docs/agents/running.md) | `.claude/launch.json`, `scripts/demo_data.py` |
 | Write tests | [conventions.md](docs/agents/conventions.md) "Tests" | `tests/conftest.py`, `tests/upstream_db.py` |
@@ -178,7 +178,7 @@ whole-repo version (also in CI). Fix the cause a check names; never loosen a rul
 | Create / upgrade the DB | `cashu init-db` (every command and server start also upgrades to head) |
 | Tests (synthetic data - safe) | `pytest` |
 | Lint | `ruff check src tests` (configured in `pyproject.toml`) |
-| Build the dashboard | `cd frontend && npm install && npm run build` |
+| Build the dashboard | `cd frontend && pnpm install --filter "cashu-dashboard..." && pnpm run build` (frontend/ is a pnpm workspace member) |
 | Serve the dashboard | `cashu serve` (http://127.0.0.1:8500) |
 | Dev mode with HMR | `cashu serve` + `cd frontend && npm run dev` (Vite :5173, proxies `/api` -> :8500) |
 | Desktop window | `cashu app` |

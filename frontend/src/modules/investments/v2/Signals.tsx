@@ -8,7 +8,7 @@
 // saved at once; `Cofnij` in the toast deletes it within the server's 15-minute window (F5 R4).
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { ApiError, isMissingRoute } from "../../../core/api";
-import { errorText } from "../../../core/messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import { useAsync, useInFlight } from "../../../hooks";
 import { Pop, Seg, Skeleton, useModal, useToast } from "../../../ui";
 import { PolDot, Widget } from "../../../widgets";
@@ -16,23 +16,24 @@ import {
   type AccountRow, type BucketRow, deleteDecision, type DecisionInput, getPositionDetail, postAcknowledge, postDecision, postSnooze, type Thesis,
 } from "../api";
 import { useShortcuts } from "../hooks";
-import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, qty } from "../labels";
-import { decisionEffect, decisionTag, nextDeposit } from "../logic";
+import { accountLabel, dm, ENTRY_TYPE, numInput, parseNum, qty } from "@cashu/ui-logic/investments/labels";
+import { decisionEffect, decisionTag, nextDeposit } from "@cashu/ui-logic/investments/logic";
 import { canUndo, groupUndoRun, makeUndo, type Undo, undoMessage, undoSettled } from "../undo";
-import type { Hint } from "../api";
-import { type Alert, invKey, type PositionV2, postPositionDecision, type SignalV2, type WatchItem } from "./api";
+import type { Hint } from "@cashu/ui-logic/investments/types";
+import { invKey, type PositionV2, postPositionDecision, type WatchItem } from "./api";
+import type { Alert, SignalV2 } from "@cashu/ui-logic/investments/v2/types";
 import { staleSignalText, writePositionDecision } from "./decisionFlow";
 import { InstLabel, type InstLike } from "./InstLabel";
 import { PositionDecisionDialog } from "./Decide";
 import {
   cursorOrder, groupPlan, instMono, instName, isDecided, latestThesis, polarityOf, railGroups, type SigFact, signalCurrent, signalFact, signalScope, signalStateKey,
   signalSubject, signalText, splitByPolarity, splitByScope, STATE_LABEL, type SignalFilter, type SignalGroup,
-} from "./logic";
+} from "@cashu/ui-logic/investments/v2/logic";
 import { stillLocked } from "../../../inflight";
-import { isResearchKind, signalNoteId } from "./research/logic";
-import { localDay, parseServerTime } from "../../../time";
-import { C } from "../../../common.strings.ts";
-import { S } from "./Signals.strings.ts";
+import { isResearchKind, signalNoteId } from "@cashu/ui-logic/investments/v2/research/logic";
+import { localDay, parseServerTime } from "@cashu/ui-logic/core/time";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/v2/Signals.strings";
 
 export type { SignalFilter };
 type Act = "none" | "buy" | "sell" | "later";

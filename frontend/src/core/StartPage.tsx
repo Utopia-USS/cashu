@@ -11,7 +11,7 @@ import { AgentWidget } from "./AgentWidget";
 import { getSetup, type SetupInfo, type SetupState } from "./api";
 import { useShell } from "./context";
 import { stepsTag } from "./SetupPage";
-import { S } from "./chrome.strings.ts";
+import { S } from "@cashu/i18n/core/chrome.strings";
 
 const POLL_MS = 5000;
 

@@ -1,9 +1,9 @@
-// UI language and text catalogs (src/i18n.ts), run with `npm test`.
+// UI language and text catalogs (@cashu/i18n), run with `npm test`.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   LANGS, catalog, enCount, intlLocale, lang, matchLang, plCount, plForm, setLanguageForTests, tr,
-} from "../src/i18n.ts";
+} from "@cashu/i18n";
 
 test("node tests default to Polish", () => {
   assert.equal(lang(), "pl");
@@ -46,7 +46,7 @@ test("Polish plural forms", () => {
 });
 
 test("number input: decimal comma in Polish, thousands comma in English when unambiguous", async () => {
-  const { normalizeNumberInput: n } = await import("../src/i18n.ts");
+  const { normalizeNumberInput: n } = await import("@cashu/i18n");
   try {
     setLanguageForTests("pl");
     assert.equal(n("1 234,5"), "1234.5");

@@ -1,12 +1,12 @@
 // Strategy status pieces (the tag and the details: validation, inactive rules, versions, pending proposals),
 // shown in Ustawienia > Agent AI since v2 (no strategy pill on the investments page).
 import { useState } from "react";
-import { describeIssue, proposalSummary } from "../../core/messages";
+import { describeIssue, proposalSummary } from "@cashu/ui-logic/core/messages";
 import { copyText, Tag, useToast } from "../../ui";
 import type { Proposal, StrategyStatus } from "./api";
-import { dmy, money0, nBuckets, nRules } from "./labels";
-import { S } from "./Header.strings.ts";
-import { ruleKindLabel } from "./v2/logic";
+import { dmy, money0, nBuckets, nRules } from "@cashu/ui-logic/investments/labels";
+import { S } from "@cashu/i18n/investments/Header.strings";
+import { ruleKindLabel } from "@cashu/ui-logic/investments/v2/logic";
 
 export function strategyTag(st: { state: string; errors: number; warnings: number; inactive_rules: number } | null) {
   if (!st || st.state === "missing") return <Tag tone="warn">{S.none}</Tag>;

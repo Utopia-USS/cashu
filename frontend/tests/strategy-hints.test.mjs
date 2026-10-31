@@ -7,8 +7,8 @@ import { test } from "node:test";
 import {
   FRESH_LABEL, FRESH_REASON_SHORT, freshOf, freshReasonLines, freshReasonText, HEALTH_LOC, hintChip, hintCls, hintLine, instCardFacts, instSummary, knownHints,
   noteAfterText, notesVerb, pct0,
-} from "../src/modules/investments/v2/logic.ts";
-import { noteRowTitle } from "../src/modules/investments/v2/research/logic.ts";
+} from "@cashu/ui-logic/investments/v2/logic";
+import { noteRowTitle } from "@cashu/ui-logic/investments/v2/research/logic";
 
 const sp = (x) => x.replace(/ /g, " ");
 const h = (code, params = {}, severity = "review") => ({ code, severity, params });

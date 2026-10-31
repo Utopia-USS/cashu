@@ -7,13 +7,13 @@ import { StartPage, useSetupPoll } from "../../core/StartPage";
 import type { ModuleCtx } from "../../core/types";
 import { useAsync } from "../../hooks";
 import { ck } from "../../swr";
-import { todayLocal } from "../../time";
+import { todayLocal } from "@cashu/ui-logic/core/time";
 import { useToast } from "../../ui";
 import { getManualAssets } from "./api";
 import { AssetDrawer, type AssetTarget } from "./AssetsWidget";
 import { assetStepItems } from "./Steps";
-import { C } from "../../common.strings.ts";
-import { S } from "./index.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/assets/index.strings";
 
 export function AssetsStart({ ctx }: { ctx: ModuleCtx }) {
   const { slug } = ctx;

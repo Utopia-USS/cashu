@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import type { ConnectorSourceItem } from "../../core/connectors";
 import { StatusTag } from "../../core/ConnectorDrawer";
 import { Tag } from "../../ui";
-import { S } from "./importSources.strings.ts";
+import { S } from "@cashu/i18n/budget/importSources.strings";
 
 export interface ImportSource {
   /** "csv" | "open_banking" | "connector:<id>" (a connector's file goes through `Plik` with bank = this value). */

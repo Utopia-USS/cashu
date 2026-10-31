@@ -3,7 +3,7 @@
 import { Widget } from "../widgets";
 import { useShell } from "./context";
 import { PRIVACY_PLAIN } from "./SetupPage";
-import { S } from "./chrome.strings.ts";
+import { S } from "@cashu/i18n/core/chrome.strings";
 
 export function AgentWidget() {
   const { profile, go } = useShell();

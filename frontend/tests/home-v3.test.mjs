@@ -6,7 +6,7 @@ import {
   accountSnapshot, alertConditionText, alertDefaultTitle, alertDistance, alertFact, alertPreview, alertState, alertStateOf, contributionFacts, cursorOrder,
   groupPlan, groupSignals, railGroups, railRows, rowFlags, signalCurrent, signalFact, signalPlace, signalScope, signalSubject, signalText, splitByScope,
   stateOf, subjectKey, waitingAlerts,
-} from "../src/modules/investments/v2/logic.ts";
+} from "@cashu/ui-logic/investments/v2/logic";
 import { buildParams, draftText } from "../src/modules/investments/v2/alertForm.ts";
 import { validate } from "../src/modules/investments/v2/alertForm.ts";
 import { splitNarrowOrder } from "../src/grid.ts";

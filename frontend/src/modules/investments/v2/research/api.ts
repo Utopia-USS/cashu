@@ -3,9 +3,9 @@
 // workspace (track AW) and the watchlist for accepted candidates. A server without the research layer
 // answers 404: the runs read as "never ran" so no research UI shows (density rule), nothing breaks.
 import { ApiError, j, jdel, jpatch, jpost, jput, pp } from "../../../../core/api";
-import { normMacro } from "./macro";
-import { normAttribution, normTopicThesis } from "./segments";
-import type { MacroRegimes, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentWindow, TopicThesis, Workspace } from "./types";
+import { normMacro } from "@cashu/ui-logic/investments/v2/research/macro";
+import { normAttribution, normTopicThesis } from "@cashu/ui-logic/investments/v2/research/segments";
+import type { MacroRegimes, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, SegmentWindow, TopicThesis, Workspace } from "@cashu/ui-logic/investments/v2/research/types";
 
 const inv = (slug: string, path: string) => pp(slug, `/investments${path}`);
 /** A server without the research layer: FastAPI's generic 404 / 405 (a missing profile keeps its error). */

@@ -9,8 +9,8 @@ import { changedSinceApproval, CONNECTORS_DOCS_URL, KIND_LABEL, MODULE_LABEL, ro
 import { ConnectorDrawer, StatusTag } from "./ConnectorDrawer";
 import { getConnectors } from "./connectorsApi";
 import { useShell } from "./context";
-import { C } from "../common.strings.ts";
-import { S } from "./ConnectorsSection.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/core/ConnectorsSection.strings";
 import { ProposalDrawer } from "./ProposalDrawer";
 import { useToast } from "../ui";
 

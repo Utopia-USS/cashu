@@ -12,7 +12,7 @@ Two processes:
 cashu serve
 
 # 2) frontend dev server with HMR (proxies /api → :8500)
-cd frontend && npm install && npm run dev
+cd frontend && pnpm install --filter "cashu-dashboard..." && npm run dev
 ```
 
 Open the printed Vite URL (http://localhost:5173). Edits hot-reload instantly.

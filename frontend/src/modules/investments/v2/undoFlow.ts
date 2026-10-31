@@ -3,8 +3,8 @@
 // BE's restore endpoint (F6 owner decision 2: delete with undo, the restore keeps the id). Pure apart from
 // the API calls passed in (tested in tests/investments-f6.test.mjs).
 import { makeUndo, type Undo, undoMessage, undoSettled } from "../undo.ts";
-import { C } from "../../../common.strings.ts";
-import { S } from "./undoFlow.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/investments/v2/undoFlow.strings";
 
 type Toast = (text: string, ms?: number, action?: { label: string; onClick: () => void }) => void;
 

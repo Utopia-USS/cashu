@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { nextStep, partialLine, stepById, stepCounts, lowerFirst } from "../src/core/setupSteps.ts";
 import { pathToView, viewToPath } from "../src/core/context.ts";
 import { hideCard, hiddenCards, isHidden, HIDDEN_KEY } from "../src/core/hidden.ts";
-import { label } from "../src/core/messages.ts";
+import { label } from "@cashu/ui-logic/core/messages";
 import { createReloadHold } from "../src/core/hold.ts";
 
 const steps = [

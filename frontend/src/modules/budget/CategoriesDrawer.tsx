@@ -3,16 +3,16 @@
 // Rows stay put while the drawer is open (no jumping); the list re-reads on the next open.
 import { useRef, useState } from "react";
 import type { Category } from "../../core/api";
-import { errorText } from "../../core/messages";
-import { C } from "../../common.strings.ts";
-import { cur0s } from "../../format";
+import { errorText } from "@cashu/ui-logic/core/messages";
+import { C } from "@cashu/i18n/core/common.strings";
+import { cur0s } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../hooks";
 import { Drawer, Notice, Skeleton, Tag, useToast } from "../../ui";
 import { getUncategorized, postMerchantCategory, type UncategorizedRow } from "./api";
 import "./budget.css";
 import { useBudgetCurrency } from "./currency";
-import { recategorized } from "./logic";
-import { S } from "./CategoriesDrawer.strings.ts";
+import { recategorized } from "./stale";
+import { S } from "@cashu/i18n/budget/CategoriesDrawer.strings";
 
 export function CategoriesDrawer({ slug, categories, onClose }: {
   slug: string;

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   LABELS, describeImportWarning, describeIssue, fill, label, plural, proposalError, proposalSummary,
-} from "../src/core/messages.ts";
+} from "@cashu/ui-logic/core/messages";
 
 test("templates fill their params, a missing param falls back (null)", () => {
   assert.equal(fill("Brak {key}", { key: "version" }), "Brak version");
@@ -89,7 +89,7 @@ test("Polish plurals and no em dash anywhere in the copy", () => {
 });
 
 test("F7: performance data-quality notes and worker job codes read in Polish; unknown codes keep the English text", async () => {
-  const { describePerfNote, describeJob } = await import("../src/core/messages.ts");
+  const { describePerfNote, describeJob } = await import("@cashu/ui-logic/core/messages");
   assert.equal(describePerfNote({ code: "incomplete_days", params: { days: 3 }, message: "3 days" }), "niepełna wycena: 3 dni");
   assert.equal(describePerfNote({ code: "benchmark_stale", params: { last_date: "2026-09-30" }, message: "x" }), "benchmark: ceny tylko do 30.09.2026, bez porównania");
   assert.equal(describePerfNote({ code: "benchmark_partial", params: { first_date: "2026-02-01" } }), "benchmark: ceny dopiero od 01.02.2026");
@@ -108,7 +108,7 @@ test("F7: performance data-quality notes and worker job codes read in Polish; un
 });
 
 test("F7 R8: relocation has a worker part and an MCP part, each its own line; the pre-R8 flat shape maps onto them", async () => {
-  const { relocationParts } = await import("../src/core/messages.ts");
+  const { relocationParts } = await import("@cashu/ui-logic/core/messages");
   const none = { worker: null, mcp: null };
   assert.deepEqual(relocationParts(null), none);
   assert.deepEqual(relocationParts({ worker: null, mcp: null }), none);
@@ -326,7 +326,7 @@ test("F7 C2: every backend strategy issue code has a Polish label, filled from t
 });
 
 test("F7 C2: condition errors and YAML problems read in Polish; an unknown sentence is dropped, never English", async () => {
-  const { exprDetail, yamlProblem } = await import("../src/core/messages.ts");
+  const { exprDetail, yamlProblem } = await import("@cashu/ui-logic/core/messages");
   for (const s of EXPR_DETAILS) {
     const pl = exprDetail(s);
     assert.ok(pl, s);
@@ -360,8 +360,8 @@ test("alert labels of the F8 kinds (F8 review FE-5)", () => {
 });
 
 test("English UI: every helper shows the server's English text; frontend-only texts are English", async () => {
-  const { setLanguageForTests } = await import("../src/i18n.ts");
-  const { describeError, describeJob, describePerfNote, errorText, exprDetail, relocationParts, yamlProblem } = await import("../src/core/messages.ts");
+  const { setLanguageForTests } = await import("@cashu/i18n");
+  const { describeError, describeJob, describePerfNote, errorText, exprDetail, relocationParts, yamlProblem } = await import("@cashu/ui-logic/core/messages");
   setLanguageForTests("en");
   try {
     assert.equal(label("strategy.required", { key: "base_currency" }), null);
@@ -385,7 +385,7 @@ test("English UI: every helper shows the server's English text; frontend-only te
     assert.equal(label("connector.timeout", { timeout_s: 30 }), "The connector timed out (30 s).");
     assert.deepEqual(relocationParts({ worker: { reason: "missing" }, mcp: { app_moved_from: "/x" } }),
       { worker: "Background work points to a program that no longer exists", mcp: "The app was moved from /x. Add the MCP server in Claude Code again (the command is in AI agent)." });
-    for (const v of Object.values((await import("../src/core/messages.strings.ts")).EN_LABELS)) {
+    for (const v of Object.values((await import("@cashu/ui-logic/core/messages.strings")).EN_LABELS)) {
       const t = typeof v === "string" ? v : v({ timeout_s: 1 });
       assert.ok(!/[ąćęłńóśźż—]/i.test(t), t);
     }

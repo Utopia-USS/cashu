@@ -3,17 +3,17 @@
 // POST /api/profiles, then (unless skipped) its agent workspace with POST /api/p/{slug}/workspace,
 // and hands the profile back.
 import { useEffect, useRef, useState } from "react";
-import { nModules } from "../format";
+import { nModules } from "@cashu/ui-logic/core/format";
 import { ChoiceCard, Code, Notice, RadioList, Stepper, Switch, Tag } from "../ui";
 import { createProfile, type ModuleInfo, type Privacy, type Profile, type SystemInfo } from "./api";
 import { moduleDef, orderModules } from "./registry";
 import { workspaceErrorText } from "./workspace";
-import { WS } from "./workspace.strings.ts";
+import { WS } from "@cashu/i18n/core/workspace.strings";
 import { getWorkspaceDefault, postWorkspace } from "./workspaceApi";
-import { errorText } from "./messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import { readStored } from "./storage";
-import { C } from "../common.strings.ts";
-import { PRIVACY, S } from "./Wizard.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { PRIVACY, S } from "@cashu/i18n/core/Wizard.strings";
 
 export const CURRENCIES = ["PLN", "EUR", "USD", "CHF", "GBP"];
 const LEGACY_SKIP_KEY = "cashu.legacySkipped";

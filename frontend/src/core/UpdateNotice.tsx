@@ -10,10 +10,10 @@ import { type ReactNode, useEffect, useState } from "react";
 import { usePoll } from "../hooks";
 import { useToast } from "../ui";
 import { type AppUpdateState, getUpdate, postUpdateAction, UPDATE_EVENT, type UpdateAction } from "./api";
-import { errorText } from "./messages";
+import { errorText } from "@cashu/ui-logic/core/messages";
 import "./update.css";
-import { C } from "../common.strings.ts";
-import { S } from "./chrome.strings.ts";
+import { C } from "@cashu/i18n/core/common.strings";
+import { S } from "@cashu/i18n/core/chrome.strings";
 
 const POLL_MS = 10 * 60_000;
 const BUSY_POLL_MS = 1_000; // while checking / downloading / installing, in case a push is missed

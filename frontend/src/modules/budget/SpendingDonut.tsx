@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { cssVar, cur, PALETTE } from "../../format";
+import { cur } from "@cashu/ui-logic/core/format";
+import { cssVar, PALETTE } from "../../css";
 import type { SpendRow } from "./api";
-import { S } from "./SpendingDonut.strings.ts";
+import { S } from "@cashu/i18n/budget/SpendingDonut.strings";
 
 interface Slice extends SpendRow { members?: SpendRow[] }
 

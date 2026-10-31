@@ -3,11 +3,11 @@
 // surface gaps; sparkline. Colours come from CSS classes on the tokens (index.css `.chart`, `.spark`), so a
 // theme switch needs no re-render. The SVG is drawn at the measured pixel width: text keeps its size.
 import { type ReactNode, useId, useState } from "react";
-import { areaFade, areaPath, bandPath, barLayout, donutArcs, extent, fadeOpacity, linePath, linear, nearestIndex, type Pt, sparkline, stackLabels, stackLayers, ticks } from "./chart";
+import { areaFade, areaPath, bandPath, barLayout, donutArcs, extent, fadeOpacity, linePath, linear, nearestIndex, type Pt, sparkline, stackLabels, stackLayers, ticks } from "@cashu/ui-logic/core/chart";
 import { useWidth } from "./hooks";
-import { S } from "./charts.strings.ts";
-import { intlLocale } from "./i18n.ts";
-import { hideAmount } from "./incognito";
+import { S } from "@cashu/i18n/core/charts.strings";
+import { intlLocale } from "@cashu/i18n";
+import { hideAmount } from "@cashu/ui-logic/core/incognito";
 
 /** 30-day style sparkline (72 x 22). `tone` overrides the first-vs-last colour ("" = muted). */
 export function Spark({ values, tone, label }: { values: (number | null | undefined)[]; tone?: "pos" | "neg" | ""; label?: string }) {

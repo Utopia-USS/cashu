@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   cleanNote, createBody, isAsset, monthlyLoss, NOTE_MAX, parseValue, patchBody, ratePct, sumByCurrency, valuationLabel, visibleRows,
-} from "../src/modules/assets/logic.ts";
+} from "@cashu/ui-logic/assets/logic";
 
 test("the note is one line (whitespace folded) and blank clears it", () => {
   assert.equal(cleanNote("  wierzytelność\n w toku \t do 03.2027 "), "wierzytelność w toku do 03.2027");
@@ -96,7 +96,7 @@ test("valuation date: on_date with the add form; with an edit only together with
 });
 
 // ---- first steps: vehicles and the steps (design/v3/first-steps sections 10, 11) ------------------------------
-import { assetSteps, CREATE_TYPES, curveBody, curveDraft, curvePreview, vehicleValue } from "../src/modules/assets/logic.ts";
+import { assetSteps, CREATE_TYPES, curveBody, curveDraft, curvePreview, vehicleValue } from "@cashu/ui-logic/assets/logic";
 
 test("first steps: a vehicle's value follows the declining-balance curve (depreciation.py)", () => {
   // 523 days at 15 % a year: 80 000 * 0.85 ** (523 / 365.25)

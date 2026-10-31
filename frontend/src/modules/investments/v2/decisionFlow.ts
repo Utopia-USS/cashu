@@ -4,7 +4,7 @@
 // fan-out that fails midway keeps what was saved (one undo for those ids). `useDecisionWriter` (Signals.tsx)
 // maps the outcome to toasts; `npm test` covers it (tests/asset-detail.test.mjs).
 
-import { S } from "./decisionFlow.strings.ts";
+import { S } from "@cashu/i18n/investments/v2/decisionFlow.strings";
 
 type Write = () => Promise<{ decision: { id: number } }>;
 

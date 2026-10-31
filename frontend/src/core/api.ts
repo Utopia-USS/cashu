@@ -9,7 +9,8 @@
 import { clearCache } from "../swr";
 import type { ModuleSyncLine } from "./connectors";
 import { apiToken, forgetToken, noTokenText } from "./token";
-import { lang } from "../i18n.ts";
+import { lang } from "@cashu/i18n";
+import type { Account } from "@cashu/ui-logic/core/account";
 
 /** The headers of every request: the token (none under `npm run dev`) and the UI language
  * (`X-Cashu-Lang`, the language of the texts the server renders); throws a 401 ApiError with an
@@ -322,20 +323,6 @@ export interface Breakdown {
   mortgage: number;
   home_equity: number;
   by_type: Record<string, number>;
-}
-
-export interface Account {
-  id: number;
-  bank: string;
-  /** The institution's display name ("Bank Millennium", "Revolut"); older servers leave it out. */
-  bank_name?: string;
-  name: string;
-  type: string;
-  currency: string;
-  iban_tail: string;
-  balance: number | null;
-  as_of: string | null;
-  is_liability: boolean;
 }
 
 export interface Summary {

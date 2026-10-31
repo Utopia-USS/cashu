@@ -3,7 +3,7 @@
 // polarity dots, the agent badge and alert status. Widgets are landmarks (`section` + aria-labelledby).
 import { type CSSProperties, Fragment, type ReactNode, useId } from "react";
 import { type Span, splitNarrowOrder, twoColumnOrder } from "./grid";
-import { ALERT_STATUS as STATUS, POLARITY, S } from "./widgets.strings.ts";
+import { ALERT_STATUS as STATUS, POLARITY, S } from "@cashu/i18n/core/widgets.strings";
 
 export interface GridItem {
   id: string;

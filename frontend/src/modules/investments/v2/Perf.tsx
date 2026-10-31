@@ -3,18 +3,18 @@
 // drawdown, clamped at 0) and Wpłaty (12 months of deposits vs the plan, the next one and its source).
 import { useState } from "react";
 import { Bars, LineChart } from "../../../charts";
-import { labelIndices } from "../../../chart";
-import { GROUP, monthYearShort } from "../../../format";
+import { labelIndices } from "@cashu/ui-logic/core/chart";
+import { GROUP, monthYearShort } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../../hooks";
-import { hideAmount } from "../../../incognito";
+import { hideAmount } from "@cashu/ui-logic/core/incognito";
 import { Seg, Skeleton } from "../../../ui";
 import { Facts, FootFacts, Widget } from "../../../widgets";
-import { dm, money0, pct, pp } from "../labels";
-import { intlLocale } from "../../../i18n.ts";
-import { BENCH_NOTE_L, RANGE_TEXT_L, S } from "./Perf.strings.ts";
-import { nextDeposit } from "../logic";
+import { dm, money0, pct, pp } from "@cashu/ui-logic/investments/labels";
+import { intlLocale } from "@cashu/i18n";
+import { BENCH_NOTE_L, RANGE_TEXT_L, S } from "@cashu/i18n/investments/v2/Perf.strings";
+import { nextDeposit } from "@cashu/ui-logic/investments/logic";
 import { accKey, getPerformance, invKey, type Performance, type PerfRange } from "./api";
-import { benchmarkLabel, contributionFacts, daysSince, monthlyFlows, staleBenchmark } from "./logic";
+import { benchmarkLabel, contributionFacts, daysSince, monthlyFlows, staleBenchmark } from "@cashu/ui-logic/investments/v2/logic";
 
 const ranges = (): [string, PerfRange][] => [["1M", "1m"], ["3M", "3m"], ["YTD", "ytd"], [S.range1y, "1y"], [S.range3y, "3y"], ["Max", "max"]];
 const RANGE_TEXT: Record<PerfRange, string> = RANGE_TEXT_L;

@@ -10,24 +10,24 @@ import { type CSSProperties, type ReactNode, useState } from "react";
 import { useAsync } from "../../../../hooks";
 import { Skeleton } from "../../../../ui";
 import { Mark, UnreadChip, Widget } from "../../../../widgets";
-import { dm, pct, wdm } from "../../labels";
+import { dm, pct, wdm } from "@cashu/ui-logic/investments/labels";
 import { canRestore, useResearchActions, useSegments } from "./data";
 import { getResearch } from "./api";
 import { invKey } from "../api";
 import {
   countsText, healthOf, isLive, lastDone, latestRun, nextSaturday, nNotes,
   researchCommand, runNotes, runTag, workspacePath, acceptedAt, watchItemId, latestTitle,
-} from "./logic";
+} from "@cashu/ui-logic/investments/v2/research/logic";
 import { CandidateCard, type CandidateState, CopyCommand, HealthPill, ScheduleHow, SentimentBars, TopicRow } from "./primitives";
 import {
   barTitle, contribBars, type DisplayRow, homeTopics, staleSymbols, type SymOf, tone, topicColumns, topicKind, topicSymbols, windowTitle,
-} from "./segments";
-import type { InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, Workspace } from "./types";
+} from "@cashu/ui-logic/investments/v2/research/segments";
+import type { InstrumentSummary, ResearchNote, ResearchRun, ResearchSummary, SegmentAttribution, Workspace } from "@cashu/ui-logic/investments/v2/research/types";
 import { InstLabel, type InstLike } from "../InstLabel";
 import { MacroColumn } from "./MacroWidgets";
-import { S as L } from "./logic.strings.ts";
-import { S as P } from "./primitives.strings.ts";
-import { S } from "./Strip.strings.ts";
+import { S as L } from "@cashu/ui-logic/investments/v2/research/logic.strings";
+import { S as P } from "@cashu/i18n/investments/v2/research/primitives.strings";
+import { S } from "@cashu/i18n/investments/v2/research/Strip.strings";
 
 export interface StripCtx {
   slug: string;

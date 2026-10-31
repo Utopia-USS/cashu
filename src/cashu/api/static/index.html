@@ -27,7 +27,7 @@
       <h1>Interfejs nie jest zbudowany</h1>
       <p>Serwer cashU działa, ale brakuje zbudowanego frontendu (<code>src/cashu/api/webdist/</code>).
         Zbuduj go raz w katalogu repozytorium:</p>
-      <pre>cd frontend &amp;&amp; npm ci &amp;&amp; npm run build</pre>
+      <pre>cd frontend &amp;&amp; pnpm install --filter "cashu-dashboard..." &amp;&amp; pnpm run build</pre>
       <p>Potem odśwież tę stronę (albo uruchom ponownie <code>cashu serve</code>).</p>
     </div>
   </main>

@@ -3,21 +3,23 @@
 // accounts list with the cash wallet, and the card of a module that is not set up yet.
 import { useState } from "react";
 import { CashCard } from "../../components/CashCard";
-import { cur, cur0s, MONTH_NOM, nModules, pctSigned } from "../../format";
+import { cur, cur0s, MONTH_NOM, nModules, pctSigned } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../hooks";
 import { ck, dedupe } from "../../swr";
-import { type CashflowRow, getCashflow, getMonthClose, getRecurring, type MonthClose } from "../../modules/budget/api";
-import { todayLocal } from "../../time";
+import { type CashflowRow, getCashflow, getMonthClose, getRecurring } from "../../modules/budget/api";
+import type { MonthClose } from "@cashu/ui-logic/budget/types";
+import { todayLocal } from "@cashu/ui-logic/core/time";
 import { closedMonthNorm } from "../util";
 import { Drawer, Skeleton } from "../../ui";
 import { FootFacts, Widget } from "../../widgets";
-import type { Account, Category, ProfileModule } from "../api";
+import type { Category, ProfileModule } from "../api";
+import type { Account } from "@cashu/ui-logic/core/account";
 import { getSetup } from "../api";
 import { useShell } from "../context";
 import { stepsTag } from "../SetupPage";
 import { lowerFirst, nextStep, stepCounts } from "../setupSteps";
 import type { ModuleCtx, ModuleDef } from "../types";
-import { S } from "./CoreWidgets.strings.ts";
+import { S } from "@cashu/i18n/core/overview/CoreWidgets.strings";
 
 /** "2026-10-05" -> "2026-09" (the last closed month). */
 export function previousMonth(today: string): string {

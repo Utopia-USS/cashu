@@ -43,4 +43,7 @@ reused; money goes through the value components, which use them.
 
 `tools/arch/src/guards/catalogs.test.ts` imports every `*.strings.ts` / `strings.ts` under packages/
 and apps/ and fails on an entry missing a language, a pl / en type or arity mismatch, an empty text,
-or a plural missing a category `Intl.PluralRules` requires.
+or a plural missing a category `Intl.PluralRules` requires (a runtime `catalog()` of `@cashu/i18n` is read
+through the raw entries it keeps under `Symbol.for("cashu.catalog.entries")`).
+`tools/arch/src/guards/hardcodedText.test.ts` fails on a Polish letter in a non-comment line of UI code
+(packages/i18n, packages/ui-logic, packages/ui, apps/) outside a catalog.
