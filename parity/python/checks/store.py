@@ -1053,7 +1053,10 @@ def _project(ctx: Ctx, refs: _Refs, table: str, row: dict, extra: dict) -> dict 
             row["category"] = row["category_source"] = None
     elif table == "accounts":
         if not _valid_iban(row["iban"]):
-            row["iban"] = None  # D-G14 / events.md 6.4 N2: the view shows only a mod-97 valid IBAN
+            # TRANSITIONAL(lead IBAN view fix): the view drops an IBAN failing mod-97 today; the lead
+            # decided the view keeps the stored raw text (keys still need a valid IBAN). Remove this
+            # filter and regenerate the accounts goldens when that materializer commit lands.
+            row["iban"] = None
         ext = row["external_id"]
         if isinstance(ext, str) and ext.endswith(f"~{row['id']}"):
             row["external_id"] = (
