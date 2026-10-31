@@ -4,6 +4,9 @@
 // the `ids` seed list and rows left out by a required reference. Synthetic rows only.
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { detGidFor, vaultSalt } from "../gid.js";
+import { GenesisCounters, GenesisError } from "./report.js";
+import { GidMap } from "./stateIds.js";
 import { gidOf, phase1, TEST_VAULT } from "./testing/phase1.js";
 import { PythonRows } from "./testing/pythonRows.js";
 import { pythonDb } from "./testing/pythonSchema.js";
@@ -348,5 +351,26 @@ describe("ids (impl notes change 3)", () => {
       v?.det("genesis", ["inv_instruments", String(bare)]),
     );
     expect(v?.aliases.map((a) => a.id)).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe("gid map (D-G4, S26 review F5)", () => {
+  it("refuses two rows of one table mapping to one gid, fail closed", () => {
+    const det = detGidFor(vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => i)));
+    const map = new GidMap(det, new GenesisCounters(), 0);
+    const gid = map.genesis("alerts", 1);
+    map.put("alerts", 1, gid);
+    // Another table may hold the same gid text: gids are per table.
+    map.put("reviews", 1, gid);
+    let error: unknown;
+    try {
+      map.put("alerts", 2, gid);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(GenesisError);
+    expect(error).toMatchObject({ code: "gid_collision", exitCode: 65 });
+    expect(map.gid("alerts", "2")).toBeUndefined();
+    expect(map.ids).toHaveLength(2);
   });
 });

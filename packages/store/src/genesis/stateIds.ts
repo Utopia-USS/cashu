@@ -2,7 +2,7 @@
 // gid map builder and the gids of the tables whose rows are keyed by columns (DET) or by their local
 // id (genesis gids of ULID tables). Accounts, instruments and transactions are ids.ts's.
 import type { DetGid, GidTable } from "../gid.js";
-import type { GenesisCounters } from "./report.js";
+import { type GenesisCounters, GenesisError } from "./report.js";
 import type { InvImportBatchRow } from "./rows.js";
 import type { ProfileScope } from "./source.js";
 
@@ -11,6 +11,8 @@ export class GidMap {
   readonly det: DetGid;
   readonly ids: { readonly table: string; readonly localId: string; readonly gid: string }[] = [];
   readonly #byTable = new Map<string, Map<string, string>>();
+  /** Gids taken per table: two rows of one table never share a gid (D-G4, S26 review F5). */
+  readonly #gidsByTable = new Map<string, Set<string>>();
   readonly #counters: GenesisCounters;
   readonly #ordinal: number;
 
@@ -25,16 +27,26 @@ export class GidMap {
     return this.det("genesis", [table, String(id)]);
   }
 
-  /** Records the gid of an exported row (and its `ids` entry). */
+  /**
+   * Records the gid of an exported row (and its `ids` entry). Fails closed when another row of the
+   * table already holds the gid (`gid_collision`): distinct rows never merge (D-G4).
+   */
   put(table: string, localId: string | number, gid: string): void {
     const key = String(localId);
     let rows = this.#byTable.get(table);
-    if (rows === undefined) {
+    let gids = this.#gidsByTable.get(table);
+    if (rows === undefined || gids === undefined) {
       rows = new Map();
+      gids = new Set();
       this.#byTable.set(table, rows);
+      this.#gidsByTable.set(table, gids);
     }
     if (rows.has(key)) throw new Error(`phase 1 assigned ${table} ${key} twice`);
+    if (gids.has(gid)) {
+      throw new GenesisError("gid_collision", `two ${table} rows map to one gid`);
+    }
     rows.set(key, gid);
+    gids.add(gid);
     this.ids.push({ table, localId: key, gid });
   }
 

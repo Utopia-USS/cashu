@@ -5,7 +5,7 @@
 
 /**
  * Why a genesis run refuses its input. Every refusal exits with 65 (EX_DATAERR). Phase 1 (C4):
- * `recon_collision` (6.3), `unmapped_id_key` (6.5 guard), `clock_skew` (gid.md 7.1). Phase 2 (C5):
+ * `recon_collision` (6.3), `gid_collision` (two rows of one table with one gid, D-G4), `unmapped_id_key` (6.5 guard), `clock_skew` (gid.md 7.1). Phase 2 (C5):
  * `missing_keys` (a profile without `VaultKeys`), `invalid_event` (an event fails `parseEvent` or the
  * `detPartsOf` self-check, under `strict`), `strict_counter` (a `bad_*` counter under `strict`).
  * Source: `sync_state_present` (the database already holds sync_ids / sync_vaults / unacked outbox
@@ -19,7 +19,8 @@ type GenesisErrorCode =
   | "missing_keys"
   | "invalid_event"
   | "strict_counter"
-  | "sync_state_present";
+  | "sync_state_present"
+  | "gid_collision";
 
 export class GenesisError extends Error {
   readonly code: GenesisErrorCode;
