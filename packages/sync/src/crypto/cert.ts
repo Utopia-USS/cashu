@@ -37,8 +37,8 @@ export interface CertSubject {
 }
 
 function signedBody(vaultId: string, body: Uint8Array): Uint8Array {
-  // body without the version byte: signer id | subject id | sign pk | box pk
-  return concat(CERT_CONTEXT, lengthPrefixed(utf8(vaultId)), body.subarray(1));
+  // lp(vault id) | body without the version byte; `sign` / verification prepend CERT_CONTEXT.
+  return concat(lengthPrefixed(utf8(vaultId)), body.subarray(1));
 }
 
 /** `signer` (the recovery identity or a trusted device) vouches for `subject` in this vault. */
@@ -63,7 +63,7 @@ export function certifyDevice(
     subject.signPublicKey,
     subject.boxPublicKey,
   );
-  return concat(body, signer.sign(signedBody(vaultId, body)));
+  return concat(body, signer.sign("cashu/cert/v1", signedBody(vaultId, body)));
 }
 
 interface ParsedCert {
@@ -135,7 +135,7 @@ export function verifyCertificates(
       pending.splice(i--, 1);
       const body = c.bytes.subarray(0, BODY_BYTES);
       const signature = c.bytes.subarray(BODY_BYTES);
-      if (verifySignature(signature, signedBody(vaultId, body), key)) {
+      if (verifySignature(signature, concat(CERT_CONTEXT, signedBody(vaultId, body)), key)) {
         trusted.set(c.subjectId, c.signPublicKey);
         changed = true;
       }

@@ -27,6 +27,7 @@ export {
   RECOVERY_SIGNER_ID,
   RecoveryIdentity,
   type RecoveryPublicKeys,
+  type SigningContext,
   type WrapRecipient,
 } from "./identity.js";
 export {

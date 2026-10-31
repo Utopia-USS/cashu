@@ -4,7 +4,7 @@
 // runtime), never stored or accepted next to them, so a public key cannot disagree with its secret.
 
 import { ed25519, x25519 } from "@noble/curves/ed25519.js";
-import { toHex } from "./encoding.js";
+import { concat, toHex, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { Secret } from "./secret.js";
 import { KEY_BYTES, type Sodium } from "./sodium.js";
@@ -13,6 +13,9 @@ export const DEVICE_ID_BYTES = 16;
 export const SIGNATURE_BYTES = 64;
 const DEVICE_ID = /^[0-9a-f]{32}$/;
 const INSPECT = Symbol.for("nodejs.util.inspect.custom");
+
+/** Every purpose a device or recovery key signs for; S28d frame signatures add their own. */
+export type SigningContext = "cashu/wrap/v2" | "cashu/cert/v1";
 
 /** Reserved signer id of the recovery identity (16 zero bytes); never a device's id. */
 export const RECOVERY_SIGNER_ID = "0".repeat(DEVICE_ID_BYTES * 2);
@@ -95,8 +98,12 @@ class SigningIdentity {
     return { deviceId: this.deviceId, boxPublicKey: this.box.publicKey };
   }
 
-  sign(message: Uint8Array): Uint8Array {
-    return ed25519.sign(message, this.signSecretKey.expose());
+  /**
+   * Signs `context | body`. Only the fixed contexts below exist, so this key never signs raw caller
+   * bytes and a signature made for one purpose never verifies for another.
+   */
+  sign(context: SigningContext, body: Uint8Array): Uint8Array {
+    return ed25519.sign(concat(utf8(context), body), this.signSecretKey.expose());
   }
 
   wipe(): void {

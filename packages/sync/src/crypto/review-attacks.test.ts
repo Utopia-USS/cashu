@@ -323,8 +323,7 @@ function forgeSignedWrap(
   const sealed = sodium.seal(payload, recipient.box.publicKey);
   const senderId = fromHex(sender.deviceId);
   const list = concat(Uint8Array.of(0, 1), fromHex(recipient.deviceId));
-  const message = concat(
-    utf8("cashu/wrap/v2"),
+  const body = concat(
     lengthPrefixed(utf8(ring.vaultId)),
     senderId,
     fromHex(recipient.deviceId),
@@ -332,5 +331,5 @@ function forgeSignedWrap(
     list,
     sealed,
   );
-  return concat(Uint8Array.of(2), senderId, sender.sign(message), list, sealed);
+  return concat(Uint8Array.of(2), senderId, sender.sign("cashu/wrap/v2", body), list, sealed);
 }

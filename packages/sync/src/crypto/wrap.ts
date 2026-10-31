@@ -87,8 +87,8 @@ function signedMessage(
   recipients: Uint8Array,
   sealed: Uint8Array,
 ): Uint8Array {
+  // Without the context: `sign` prepends it, verification below prepends WRAP_CONTEXT.
   return concat(
-    WRAP_CONTEXT,
     lengthPrefixed(utf8(vaultId)),
     senderId,
     fromHex(recipient.deviceId),
@@ -142,7 +142,10 @@ export function wrapKeys(
   }
   const senderId = fromHex(sender.deviceId);
   const list = encodeRecipients(recipients);
-  const signature = sender.sign(signedMessage(ring.vaultId, senderId, recipient, list, sealed));
+  const signature = sender.sign(
+    "cashu/wrap/v2",
+    signedMessage(ring.vaultId, senderId, recipient, list, sealed),
+  );
   return concat(Uint8Array.of(WRAP_VERSION), senderId, signature, list, sealed);
 }
 
@@ -180,7 +183,10 @@ export function unwrapKeys(
   if (!isRecipientId(senderDeviceId)) throw new CryptoError("untrusted_sender");
   const signPublicKey = trustedSigner(senderDeviceId);
   if (!signPublicKey) throw new CryptoError("untrusted_sender");
-  const message = signedMessage(vaultId, senderId, recipient.recipient, list, sealed);
+  const message = concat(
+    WRAP_CONTEXT,
+    signedMessage(vaultId, senderId, recipient.recipient, list, sealed),
+  );
   if (!verifySignature(signature, message, signPublicKey)) throw new CryptoError("auth_failed");
 
   // Signed by a trusted sender from here on; a list that does not name this recipient is malformed.
