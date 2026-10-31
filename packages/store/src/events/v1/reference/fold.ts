@@ -7,8 +7,8 @@
 // run by reference/convergence.test.ts and the store's convergence acceptance); they may be
 // incremental, this one is not.
 //
-// Scope: the profile, its modules (enabled register + enabled_at), accounts, balances (row key under
-// account merges), transactions (imported), watchlist, instrument overrides (segment GUARD), manual
+// Scope: the profile, its modules (enabled register + enabled_at), accounts (key parking), balances
+// (row key under account merges), transactions (imported, cash legs, cash expenses + TOMB), watchlist, instrument overrides (segment GUARD), manual
 // valuations, signals + decisions, proposals + caused events, connector bindings. Other tables follow
 // the same patterns (plain LWW-F / CREATE per gid) and are not modelled here.
 
@@ -204,6 +204,10 @@ interface TxnRow {
   /** The derived cash mirror leg, present while the effective claim is cash_withdrawal. */
   leg: { gid: string; claim: string | null } | null;
 }
+interface CashExpenseRow {
+  claim: string | null;
+  claimBy: string;
+}
 interface WatchRow {
   gid: string;
   members: string[];
@@ -254,6 +258,8 @@ export interface RefView {
   modules: Record<string, ModuleRow>;
   balances: Record<string, BalanceRow>;
   accounts: Record<string, AccountRow>;
+  /** Live cash expenses (TOMB on delete) with their claim register. */
+  cashExpenses: Record<string, CashExpenseRow>;
   transactions: Record<string, TxnRow>;
   accountConflicts: string[];
   watchlist: Record<string, WatchRow>;
@@ -287,6 +293,9 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   interface TxnState {
     gid: string;
     members: string[];
+    /** Resolved account and currency of the first applied import (CREATE). */
+    account: string;
+    currency: string;
     claim: string | null;
     claimBy: string;
     legClaim: string | null;
@@ -294,7 +303,10 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   }
   const transactions = new Map<string, TxnState>();
   const ownName = new Map<string, string>(); // account gid -> its own first opened name
-  const bankOf = new Map<string, { bank: string; firstOrd: number }>(); // root -> first applied open
+  const bankOf = new Map<string, { bank: string; type: string; firstOrd: number }>(); // root -> first open
+  const typeSet = new Map<string, string>(); // account root -> latest account.typeSet
+  const expenses = new Map<string, CashExpenseRow>(); // cash expense gid -> live row
+  const deletedExpenses = new Set<string>(); // TOMB
   const removed = new Map<string, boolean>(); // account root -> SOFT register
   const renamed = new Map<string, string>(); // account root -> latest explicit rename
   const memberLive = new Map<string, boolean>(); // watchlist member gid -> its own SOFT register
@@ -388,7 +400,11 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
         if (e.type === "account.opened") {
           openedRoots.add(acc(e.gid));
           if (!bankOf.has(acc(e.gid))) {
-            bankOf.set(acc(e.gid), { bank: String(d.bank), firstOrd: evs.indexOf(e) });
+            bankOf.set(acc(e.gid), {
+              bank: String(d.bank),
+              type: String(d.type),
+              firstOrd: evs.indexOf(e),
+            });
           }
           if (!ownName.has(e.gid)) ownName.set(e.gid, str(d.name) ?? "");
           if (row.name === null) row.name = str(d.name) ?? null;
@@ -397,6 +413,18 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
       }
       case "account.renamed":
         renamed.set(acc(e.gid), str(d.name) ?? "");
+        break;
+      case "account.typeSet":
+        typeSet.set(acc(e.gid), String(d.type));
+        break;
+      case "txn.cashExpenseAdded":
+        // CREATE once per gid; never again after its TOMB.
+        if (!expenses.has(e.gid) && !deletedExpenses.has(e.gid)) {
+          expenses.set(e.gid, { claim: String(d.category), claimBy: "manual_txn" });
+        }
+        break;
+      case "txn.deleted":
+        if (expenses.delete(e.gid)) deletedExpenses.add(e.gid); // a delete of anything else: no-op
         break;
       case "account.removed":
       case "account.restored":
@@ -409,6 +437,8 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
         const t = transactions.get(row) ?? {
           gid: e.gid, // the anchor: first applied member
           members: [],
+          account: acc(String(d.account)),
+          currency: String(d.currency),
           claim: null,
           claimBy: "",
           legClaim: null,
@@ -422,6 +452,14 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
       case "txn.categoryCleared": {
         // The subject is a member gid, or the leg gid of a member: `cashleg:<member>` stands in for
         // DET(transactions)["cashleg", member] (gid.md 4.4). Any member's leg gid reaches the leg.
+        const expense = expenses.get(e.gid);
+        if (expense !== undefined) {
+          const source = e.type === "txn.categoryCleared" ? "" : String(d.source);
+          if (source.startsWith("llm") && expense.claimBy === "manual_txn") break; // GUARD
+          expense.claim = e.type === "txn.categoryCleared" ? null : String(d.category);
+          expense.claimBy = source;
+          break;
+        }
         const isLeg = e.gid.startsWith("cashleg:");
         const member = isLeg ? e.gid.slice("cashleg:".length) : e.gid;
         const t = transactions.get(txnRowOf.get(member) ?? "");
@@ -632,10 +670,17 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   for (const row of watchlist.values()) {
     row.live = row.members.some((m) => memberLive.get(m) === true);
   }
+  // A cash leg needs the manual claim (D-24.3), a row not on a cash account, and the cash pool
+  // account of its currency open (scenario name `pool:<CUR>` stands in for DET(accounts)["ext",
+  // "manual", "cash:<CUR>"]).
+  const accountType = (root: string) => typeSet.get(root) ?? bankOf.get(root)?.type;
   const txnRows = new Map<string, TxnRow>();
   for (const [k, t] of transactions) {
     const leg =
-      t.claim === "cash_withdrawal" && t.claimBy === "manual_txn"
+      t.claim === "cash_withdrawal" &&
+      t.claimBy === "manual_txn" &&
+      accountType(t.account) !== "cash" &&
+      openedRoots.has(acc(`pool:${t.currency}`))
         ? { gid: `cashleg:${t.gid}`, claim: t.legClaim }
         : null;
     txnRows.set(k, { gid: t.gid, members: [...t.members].sort(), claim: t.claim, leg });
@@ -658,6 +703,7 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
     modules: sortRecord(modules),
     balances: sortRecord(balances),
     accounts: sortRecord(accounts),
+    cashExpenses: sortRecord(expenses),
     accountConflicts: [...ids.accounts.conflicts],
     transactions: sortRecord(txnRows),
     watchlist: sortRecord(watchlist),

@@ -27,6 +27,9 @@ export class Names {
     if (g === undefined) {
       if (name === VAULT_NAME) {
         g = TEST_VAULT;
+      } else if (name.startsWith("pool:")) {
+        // the cash pool account of a currency (gid.md 4.3)
+        g = detGid(TEST_SALT, "accounts", ["ext", "manual", `cash:${name.slice(5)}`]);
       } else if (name.startsWith("cashleg:")) {
         g = detGid(TEST_SALT, "transactions", ["cashleg", this.gid(name.slice(8))]);
       } else {
@@ -236,12 +239,32 @@ export function project(store: Store, names: Names): RefView {
     txnMembers.set(key, list);
   }
 
+  // Derived cash legs, by the anchor gid of their source row (`dedup_hash = "cashleg:" + anchor`).
+  const legs = new Map(
+    store
+      .read<{ dedup_hash: string; gid: string }>(
+        "SELECT dedup_hash, gid FROM transactions WHERE dedup_hash LIKE 'cashleg:%'",
+      )
+      .map((r) => [r.dedup_hash.slice("cashleg:".length), r.gid]),
+  );
+  const cashExpenses = store
+    .read<{ gid: string; claim: string | null; claim_by: string | null }>(
+      `SELECT t.gid, c.claim, c.claim_by FROM transactions t
+       LEFT JOIN fold_transaction_claims c ON c.partition = t.dedup_hash
+       WHERE t.dedup_hash LIKE 'cashexp:%'`,
+    )
+    .map((r): [string, RefView["cashExpenses"][string]] => [
+      n(r.gid),
+      { claim: r.claim, claimBy: r.claim_by ?? "" },
+    ]);
   const txRows = store.read<{
     gid: string;
     account_id: number;
     dedup_hash: string;
     occurrence: number;
-  }>("SELECT gid, account_id, dedup_hash, occurrence FROM transactions");
+  }>(
+    "SELECT gid, account_id, dedup_hash, occurrence FROM transactions WHERE dedup_hash NOT LIKE 'cash%:%'",
+  );
   const transactions = txRows.map((r): [string, RefView["transactions"][string]] => {
     const root = gidById.get(r.account_id) ?? "";
     const partition = `${root}|${r.dedup_hash}|${r.occurrence}`;
@@ -253,10 +276,9 @@ export function project(store: Store, names: Names): RefView {
       "SELECT claim, claim_by, leg_claim FROM fold_transaction_claims WHERE partition = ?",
       partition,
     )[0];
+    const legRow = legs.get(r.gid);
     const leg =
-      c?.claim === "cash_withdrawal" && c.claim_by === "manual_txn"
-        ? { gid: `cashleg:${n(r.gid)}`, claim: c.leg_claim }
-        : null;
+      legRow === undefined ? null : { gid: `cashleg:${n(r.gid)}`, claim: c?.leg_claim ?? null };
     return [
       `${n(root)}|${names.hashName(r.dedup_hash)}|${r.occurrence}`,
       {
@@ -393,6 +415,7 @@ export function project(store: Store, names: Names): RefView {
     modules: rec(modules),
     balances: rec(balances),
     accounts: rec(accounts),
+    cashExpenses: rec(cashExpenses),
     accountConflicts: conflicts,
     transactions: rec(transactions),
     watchlist: rec(watchlist),

@@ -76,6 +76,13 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   "connectorBinding.set": { autoCommit: false },
   "profile.created": { slug: "dom", name: "Dom", baseCurrency: "PLN", mcpPrivacy: "strict" },
   "balance.recorded": { source: "csv", currency: "PLN" },
+  "txn.cashExpenseAdded": {
+    bookingDate: "2026-10-20",
+    amount: "-12.50",
+    currency: "PLN",
+    title: "Kawa",
+    category: "food",
+  },
 };
 
 /** A scenario event with the payload fields the zod schemas require filled in. */
@@ -116,6 +123,14 @@ function nrb(bban24: string): string {
   const check = 98n - (BigInt(`${bban24}252100`) % 97n);
   return `${check.toString().padStart(2, "0")}${bban24}`;
 }
+/** The cash pool account `cash:PLN` (gid.md 4.3); scenario name `pool:PLN`. */
+const POOL_PLN = {
+  bank: "manual",
+  name: "Gotówka",
+  externalId: "cash:PLN",
+  type: "cash",
+  keys: ["ext:manual:cash:PLN"],
+};
 const N1 = nrb("114000000000000000000001");
 const N2 = nrb("114000000000000000000002");
 const N3 = nrb("114000000000000000000003");
@@ -477,6 +492,7 @@ scenario(
     ev("a", 12, "txn.imported", "t-a", { account: "A", dedupHash: "h", occurrence: 0 }),
     ev("b", 13, "txn.imported", "t-b", { account: "B", dedupHash: "h", occurrence: 0 }),
     ev("b", 14, "txn.categorySet", "t-b", { category: "cash_withdrawal", source: "manual_txn" }),
+    ev("b", 14, "account.opened", "pool:PLN", POOL_PLN),
     ev("b", 15, "txn.categorySet", "cashleg:t-b", { category: "cash_other", source: "manual_txn" }),
     ev("a", 30, "account.identified", "A", { iban: N2, keys: [`iban:${N2}`] }),
     ev("a", 40, "txn.categorySet", "cashleg:t-a", { category: "cash_food", source: "manual_txn" }),
@@ -814,6 +830,88 @@ const K24 = "S24: account key parking (D-24.7, gid.md 4.3)";
     "PK3 a single removed account keeps its key",
     [manual("A", 10, "Dom"), ev("a", 20, "account.removed", "A", {})],
     (v) => expect(v.accounts.A?.externalId).toBe("manual:Dom"),
+  );
+}
+
+const CASH = "S24: cash expenses (TOMB) and cash legs (events.md 8.3, D-24.3)";
+{
+  const bank = () => ev("a", 1, "account.opened", "A", { name: "A", keys: ["ext:mbank:k-a"] });
+  const pool = (wall: number) => ev("b", wall, "account.opened", "pool:PLN", POOL_PLN);
+  const withdrawal = () =>
+    ev("a", 10, "txn.imported", "t", { account: "A", dedupHash: "h", occurrence: 0 });
+  const markCash = (wall: number) =>
+    ev("a", wall, "txn.categorySet", "t", { category: "cash_withdrawal", source: "manual_txn" });
+  scenario(
+    CASH,
+    "L1 the leg appears only once the cash pool account is open, whatever arrives first",
+    [bank(), withdrawal(), markCash(20), pool(30)],
+    (v) => expect(v.transactions["A|h|0"]?.leg).toEqual({ gid: "cashleg:t", claim: null }),
+  );
+  scenario(
+    CASH,
+    "L2 no pool account: no leg; an llm cash_withdrawal claim or a clear: no leg",
+    [
+      bank(),
+      withdrawal(),
+      ev("a", 11, "txn.imported", "t2", { account: "A", dedupHash: "h2", occurrence: 0 }),
+      markCash(20),
+      ev("a", 21, "txn.categorySet", "t2", { category: "cash_withdrawal", source: "llm_full" }),
+      pool(30),
+      ev("a", 40, "txn.categoryCleared", "t", {}),
+    ],
+    (v) => {
+      expect(v.transactions["A|h|0"]?.leg).toBeNull();
+      expect(v.transactions["A|h2|0"]?.leg).toBeNull();
+    },
+  );
+  scenario(
+    CASH,
+    "L3 a withdrawal on a cash account mirrors nothing; a leg claim persists while the leg is absent",
+    [
+      ev("a", 1, "account.opened", "C", { name: "C", type: "cash", keys: ["ext:manual:k-c"] }),
+      ev("a", 10, "txn.imported", "tc", { account: "C", dedupHash: "h", occurrence: 0 }),
+      ev("a", 20, "txn.categorySet", "tc", { category: "cash_withdrawal", source: "manual_txn" }),
+      bank(),
+      withdrawal(),
+      ev("a", 25, "txn.categorySet", "cashleg:t", { category: "cash_food", source: "manual_txn" }),
+      pool(30),
+      markCash(40),
+    ],
+    (v) => {
+      expect(v.transactions["C|h|0"]?.leg).toBeNull();
+      expect(v.transactions["A|h|0"]?.leg).toEqual({ gid: "cashleg:t", claim: "cash_food" });
+    },
+  );
+  scenario(
+    CASH,
+    "E1 a cash expense: claims after its delete and a second add of its gid are no-ops",
+    [
+      pool(1),
+      ev("a", 10, "txn.cashExpenseAdded", "x1", { account: "pool:PLN" }),
+      ev("a", 11, "txn.cashExpenseAdded", "x2", { account: "pool:PLN", category: "transport" }),
+      ev("a", 20, "txn.categorySet", "x2", { category: "fuel", source: "manual_txn" }),
+      ev("b", 21, "txn.categorySet", "x2", { category: "other", source: "llm_full" }),
+      ev("a", 30, "txn.deleted", "x1", {}),
+      ev("a", 31, "txn.categorySet", "x1", { category: "fuel", source: "manual_txn" }),
+      ev("b", 40, "txn.cashExpenseAdded", "x1", { account: "pool:PLN", title: "Again" }),
+    ],
+    (v) => expect(v.cashExpenses).toEqual({ x2: { claim: "fuel", claimBy: "manual_txn" } }),
+  );
+  scenario(
+    CASH,
+    "E2 a delete addressed to an import row or sorting before the add is a no-op",
+    [
+      pool(1),
+      bank(),
+      withdrawal(),
+      ev("a", 5, "txn.deleted", "x1", {}),
+      ev("a", 10, "txn.cashExpenseAdded", "x1", { account: "pool:PLN" }),
+      ev("a", 30, "txn.deleted", "t", {}),
+    ],
+    (v) => {
+      expect(Object.keys(v.cashExpenses)).toEqual(["x1"]);
+      expect(Object.keys(v.transactions)).toEqual(["A|h|0"]);
+    },
   );
 }
 
