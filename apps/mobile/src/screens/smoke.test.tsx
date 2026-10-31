@@ -1,6 +1,6 @@
 // RNTL smoke test: every story of every View renders and shows its meaning (cashu-ui: stories are
 // the render tests), and the debug screen's hook drives the real store (better-sqlite3 here).
-import { render, screen, userEvent } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, userEvent } from "@testing-library/react-native";
 import type { ComponentType } from "react";
 import benchMeta, { Idle, Running, WithResults } from "./bench/BenchView.stories";
 import cryptoMeta, { BrokenRuntime, Passed } from "./debug/CryptoView.stories";
@@ -37,7 +37,17 @@ describe("DebugView", () => {
     const donut = screen.getByLabelText(/^Spending by account \(PLN\)/);
     expect(donut).toBeOnTheScreen();
     expect(donut.props.accessibilityLabel).toMatch(/Konto osobiste \(demo\)/);
-    expect(screen.getByLabelText(/^Personal account balance at month end/)).toBeOnTheScreen();
+    // The line chart measures its width on layout (RNTL's fireEvent does not deliver layout events, so
+    // the measured width is handed in directly); then it is a VoiceOver / TalkBack adjustable value.
+    const sized = screen.getAllByLabelText(/^Personal account balance at month end/);
+    const onLayout = sized.map((c) => c.props.onLayout).find((f) => typeof f === "function");
+    await act(() => onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 320, height: 160 } } }));
+    const line = screen.getByRole("adjustable", { name: /^Personal account balance at month end/ });
+    expect(line.props.accessibilityActions).toEqual([{ name: "increment" }, { name: "decrement" }]);
+    await fireEvent(line, "accessibilityAction", { nativeEvent: { actionName: "decrement" } });
+    expect(screen.getByRole("adjustable").props.accessibilityValue.text).toBe(
+      "month 11, Balance 70 000 zł",
+    );
   });
 
   it("reports a diverging rebuild and a reader behind the log", async () => {

@@ -28,6 +28,7 @@ export const S = catalog({
     pl: "Saldo konta osobistego na koniec miesiąca",
     en: "Personal account balance at month end",
   },
+  balance: { pl: "Saldo", en: "Balance" },
   spendingByAccount: { pl: "Wydatki według konta (PLN)", en: "Spending by account (PLN)" },
   tables: { pl: "Tabele (wiersze)", en: "Tables (rows)" },
   sync: { pl: "Synchronizacja", en: "Sync" },

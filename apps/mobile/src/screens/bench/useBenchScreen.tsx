@@ -2,20 +2,17 @@
 // shown and appended to documents/bench/results.jsonl. `?autorun=1` runs the S50 sequence by itself
 // (no HID tool on this Mac): 3 x scroll 4k, 1 x scroll 12k, 1 x mount 500.
 import { intlLocale } from "@cashu/i18n";
+import { useQuery } from "@cashu/store-react";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { appendBenchLog } from "../../platform/benchLog";
-import { useServices } from "../../services/ServicesProvider";
-import { useStoreRows } from "../../services/useStoreRows";
 import { S } from "./Bench.strings";
 import type { BenchViewProps } from "./BenchView";
 import { useMountBench } from "./perf/useMountBench";
 import { usePerfHarness } from "./perf/usePerfHarness";
+import { benchTransactions } from "./queries";
 import { type TxItem, TxRow } from "./TxRow";
-
-const SQL =
-  "SELECT id, booking_date, amount, currency, counterparty_name, category FROM transactions ORDER BY booking_date DESC, id DESC";
 
 interface TxDbRow {
   id: number;
@@ -57,9 +54,8 @@ const fmt = (r: { fps: number; droppedPct: number; p95Ms: number; worstMs: numbe
   `${r.fps}fps ${r.droppedPct}% p95 ${r.p95Ms} worst ${r.worstMs}`;
 
 export function useBenchScreen(): BenchViewProps {
-  const { store } = useServices();
   const { autorun } = useLocalSearchParams<{ autorun?: string }>();
-  const items = toItems(useStoreRows<TxDbRow>(store, SQL));
+  const items = toItems(useQuery(benchTransactions));
   const listRef = useRef<FlashListRef<TxItem>>(null);
   const [report, setReport] = useState<readonly string[]>([]);
   const add = (line: string) => setReport((r) => [...r, line]);

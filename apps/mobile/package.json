@@ -17,6 +17,7 @@
   "dependencies": {
     "@cashu/i18n": "workspace:*",
     "@cashu/store": "workspace:*",
+    "@cashu/store-react": "workspace:*",
     "@cashu/sync": "workspace:*",
     "@cashu/ui": "workspace:*",
     "@shopify/flash-list": "2.3.2",

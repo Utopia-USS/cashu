@@ -1,12 +1,29 @@
 // Jest + React Native Testing Library (cashu-ts-architecture testing.md: RNTL for native behaviour).
-// jest-expo mocks the native modules; store tests run the real store on better-sqlite3.
+// Two projects: `native` renders React Native through jest-expo's iOS preset (mocked native modules);
+// `node` runs the pure TypeScript tests (store on better-sqlite3, crypto on libsodium-wrappers) on
+// jest-expo's Node preset, without the React Native runtime globals the iOS preset installs.
+const transformIgnorePatterns = [
+  "node_modules/(?!(?:\\.pnpm/[^/]+/node_modules/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|expo-router|@shopify/flash-list|react-native-svg|uniwind|@cashu/.*|@noble/.*|@scure/.*|zod))",
+];
+// Workspace packages ship TypeScript sources with NodeNext `.js` specifiers.
+const moduleNameMapper = { "^(\\.{1,2}/.*)\\.js$": "$1" };
+
 /** @type {import('jest').Config} */
 module.exports = {
-  preset: "jest-expo/ios",
-  testMatch: ["<rootDir>/src/**/*.test.ts?(x)"],
-  // Workspace packages ship TypeScript sources with NodeNext `.js` specifiers.
-  moduleNameMapper: { "^(\\.{1,2}/.*)\\.js$": "$1" },
-  transformIgnorePatterns: [
-    "node_modules/(?!(?:\\.pnpm/[^/]+/node_modules/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|expo-router|@shopify/flash-list|uniwind|@cashu/.*|@noble/.*|@scure/.*|zod))",
+  projects: [
+    {
+      displayName: "native",
+      preset: "jest-expo/ios",
+      testMatch: ["<rootDir>/src/**/*.test.tsx"],
+      moduleNameMapper,
+      transformIgnorePatterns,
+    },
+    {
+      displayName: "node",
+      preset: "jest-expo/node",
+      testMatch: ["<rootDir>/src/**/*.test.ts"],
+      moduleNameMapper,
+      transformIgnorePatterns,
+    },
   ],
 };

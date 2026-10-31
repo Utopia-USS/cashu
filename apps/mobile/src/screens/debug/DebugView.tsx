@@ -1,6 +1,6 @@
 // The scaffold's debug screen: store and fixture status, live table counts, sync status, crypto
 // self-test. Pure: everything arrives through props from useDebugScreen.
-import { Donut, type DonutSegment, Sparkline } from "@cashu/ui";
+import { type ChartTip, Donut, type DonutSegment, LineChart, Sparkline } from "@cashu/ui";
 import type { ReactNode } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { S } from "./Debug.strings";
@@ -26,6 +26,11 @@ export interface DebugViewProps {
   readonly unfoldedTypes: number;
   /** Month-end balances of the main demo account (oldest first), for the sparkline. */
   readonly balanceTrend: readonly number[];
+  /** Month labels under the balance line (by data index). */
+  readonly balanceMonths: readonly { readonly i: number; readonly text: string }[];
+  /** Axis label and tooltip of the balance line, formatted by the screen hook. */
+  readonly balanceAxis: (v: number) => string;
+  readonly balanceTip: (i: number) => ChartTip;
   /** Outflows per PLN account (shares of one currency only), for the donut. */
   readonly spendingByAccount: readonly DonutSegment[];
   /** The crypto self-test panel (it suspends on its own until the test has run). */
@@ -37,7 +42,7 @@ export interface DebugViewProps {
 
 export function DebugView(props: DebugViewProps) {
   const { vault, openMs, load, tables, cursors, needsUpgrade, unfoldedTypes, cryptoPanel } = props;
-  const { balanceTrend, spendingByAccount } = props;
+  const { balanceTrend, balanceMonths, balanceAxis, balanceTip, spendingByAccount } = props;
   return (
     <ScrollView className="flex-1 bg-surface">
       <View className="gap-3 p-4">
@@ -69,7 +74,16 @@ export function DebugView(props: DebugViewProps) {
         </Section>
         <Section title={S.charts}>
           <Text className="text-body text-fg-secondary">{S.balanceTrend}</Text>
-          <Sparkline values={[...balanceTrend]} label={S.balanceTrend} layout="w-full" />
+          <Sparkline values={[...balanceTrend]} label={S.balanceTrend} />
+          <LineChart
+            label={S.balanceTrend}
+            series={[{ values: [...balanceTrend], area: true, name: S.balance }]}
+            xLabels={[...balanceMonths]}
+            yFormat={balanceAxis}
+            valueKind="amount"
+            height={160}
+            tooltip={balanceTip}
+          />
           <Text className="mt-2 text-body text-fg-secondary">{S.spendingByAccount}</Text>
           <Donut
             label={S.spendingByAccount}

@@ -59,6 +59,9 @@ importers:
       '@cashu/store':
         specifier: workspace:*
         version: link:../../packages/store
+      '@cashu/store-react':
+        specifier: workspace:*
+        version: link:../../packages/store-react
       '@cashu/sync':
         specifier: workspace:*
         version: link:../../packages/sync

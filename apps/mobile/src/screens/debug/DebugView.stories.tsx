@@ -24,6 +24,16 @@ const base: DebugViewProps = {
   balanceTrend: [
     61200, 63100, 62950, 64800, 66010, 65400, 67900, 69300, 68800, 71200, 72950, 74100,
   ],
+  balanceMonths: [
+    { i: 0, text: "2025-11" },
+    { i: 5, text: "2026-04" },
+    { i: 11, text: "2026-10" },
+  ],
+  balanceAxis: (v) => `${Math.round(v / 1000)}k`,
+  balanceTip: (i) => ({
+    title: `month ${i + 1}`,
+    rows: [{ name: "Balance", value: "70 000 zł", amount: true }],
+  }),
   spendingByAccount: [
     { name: "Konto osobiste (demo)", value: 48210, color: 1 },
     { name: "Konto wspolne (demo)", value: 54930, color: 2 },

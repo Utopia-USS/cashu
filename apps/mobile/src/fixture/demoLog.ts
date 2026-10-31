@@ -186,7 +186,7 @@ export function demoLog(): DemoEnvelope[] {
     txn(
       main,
       isoDate(m, 1),
-      1_250_000 + Math.floor(r() * 40_000),
+      1_650_000 + Math.floor(r() * 40_000),
       "PRACODAWCA DEMO",
       "wynagrodzenie",
     );
@@ -197,7 +197,7 @@ export function demoLog(): DemoEnvelope[] {
     for (let i = 0; i < SPEND_PER_MONTH; i++) {
       const merchant = MERCHANTS[Math.floor(r() * MERCHANTS.length)] as (typeof MERCHANTS)[number];
       const cents = -Math.round((merchant.min + r() * (merchant.max - merchant.min)) * 100);
-      const account = r() < 0.7 ? main : joint;
+      const account = r() < 0.55 ? main : joint;
       txn(account, isoDate(m, 1 + Math.floor(r() * 28)), cents, merchant.name, "platnosc karta");
     }
     for (const a of accounts) {

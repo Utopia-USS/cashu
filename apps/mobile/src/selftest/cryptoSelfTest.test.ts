@@ -1,6 +1,3 @@
-/**
- * @jest-environment node
- */
 // The self-test on Node with libsodium-wrappers and an in-memory secure store and files: every check
 // passes, a broken library fails the known-answer test, and a KeyStore that loses values is caught.
 // The device run (debug screen) uses react-native-libsodium, expo-secure-store and real files.

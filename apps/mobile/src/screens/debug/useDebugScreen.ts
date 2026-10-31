@@ -1,57 +1,93 @@
 // Screen hook of the debug screen: reads the store live, rebuilds the demo vault from its log on
 // request, and logs the first frame with data once per launch (the S41 cold start measurement).
+
+import { intlLocale } from "@cashu/i18n";
 import type { Store } from "@cashu/store";
-import type { DonutSegment } from "@cashu/ui";
+import { useQuery } from "@cashu/store-react";
+import type { ChartTip, DonutSegment } from "@cashu/ui";
 import { useRouter } from "expo-router";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import { bootStartedAt } from "../../boot";
 import { type DemoLoad, loadDemo } from "../../fixture/loadDemo";
 import { appendBenchLog } from "../../platform/benchLog";
 import { useServices } from "../../services/ServicesProvider";
-import { useStoreRows } from "../../services/useStoreRows";
+import { S } from "./Debug.strings";
 import type { DebugLoad, DebugViewProps } from "./DebugView";
+import { firstAccountBalances, plnOutflowsByAccount, tableCounts } from "./queries";
 
-const sqlByStore = new WeakMap<Store, string>();
-/** One query counting every public table (the store names them; a closed set). */
-function countsSql(store: Store): string {
-  let sql = sqlByStore.get(store);
-  if (!sql) {
-    sql = store
-      .publicTables()
-      .map((t) => `SELECT '${t.name}' AS "table", COUNT(*) AS rows FROM ${t.name}`)
-      .join(" UNION ALL ");
-    sqlByStore.set(store, sql);
+const tablesByStore = new WeakMap<Store, string[]>();
+/** The store's public view tables (a closed set the store names). */
+function viewTables(store: Store): string[] {
+  let names = tablesByStore.get(store);
+  if (!names) {
+    names = store.publicTables().map((t) => t.name);
+    tablesByStore.set(store, names);
   }
-  return sql;
+  return names;
 }
 
 const ms = (x: number) => String(Math.round(x));
 
-const BALANCES_SQL =
-  "SELECT b.amount AS amount FROM balances b WHERE b.account_id = (SELECT MIN(id) FROM accounts) ORDER BY b.date";
-// One currency only: shares of PLN outflows per PLN account (never summed across currencies).
-const SPENDING_SQL =
-  "SELECT a.name AS name, t.amount AS amount FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.currency = 'PLN' AND t.amount LIKE '-%' ORDER BY a.id";
+interface BalanceRow {
+  date: string;
+  amount: string;
+  currency: string;
+}
 
-const trendCache = new WeakMap<readonly { amount: string }[], number[]>();
-function trend(rows: readonly { amount: string }[]): number[] {
-  let out = trendCache.get(rows);
+// TRANSITIONAL(packages-ui-values): amounts are formatted here until <Money> exists in packages/ui.
+let formats: { money: Map<string, Intl.NumberFormat>; axis: Intl.NumberFormat } | undefined;
+function fmt() {
+  formats ??= {
+    money: new Map(),
+    axis: new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 0 }),
+  };
+  return formats;
+}
+function money(amount: string, currency: string): string {
+  const f = fmt();
+  let m = f.money.get(currency);
+  if (!m) {
+    m = new Intl.NumberFormat(intlLocale(), { style: "currency", currency });
+    f.money.set(currency, m);
+  }
+  return m.format(Number(amount));
+}
+
+interface BalanceChart {
+  values: number[];
+  months: { i: number; text: string }[];
+  tip: (i: number) => ChartTip;
+}
+const chartCache = new WeakMap<readonly BalanceRow[], BalanceChart>();
+function balanceChart(rows: readonly BalanceRow[]): BalanceChart {
+  let out = chartCache.get(rows);
   if (!out) {
-    out = rows.map((r) => Number(r.amount));
-    trendCache.set(rows, out);
+    const last = rows.length - 1;
+    out = {
+      values: rows.map((r) => Number(r.amount)),
+      months: [0, Math.floor(last / 2), last]
+        .filter((i) => i >= 0)
+        .map((i) => ({ i, text: rows[i]?.date.slice(0, 7) ?? "" })),
+      tip: (i) => {
+        const r = rows[i];
+        return {
+          title: r?.date ?? "",
+          rows: r ? [{ name: S.balance, value: money(r.amount, r.currency), amount: true }] : [],
+        };
+      },
+    };
+    chartCache.set(rows, out);
   }
   return out;
 }
 
-const spendingCache = new WeakMap<readonly { name: string; amount: string }[], DonutSegment[]>();
-function spending(rows: readonly { name: string; amount: string }[]): DonutSegment[] {
+const spendingCache = new WeakMap<readonly { name: string; outflow: number }[], DonutSegment[]>();
+function spending(rows: readonly { name: string; outflow: number }[]): DonutSegment[] {
   let out = spendingCache.get(rows);
   if (!out) {
-    const byName = new Map<string, number>();
-    for (const r of rows) byName.set(r.name, (byName.get(r.name) ?? 0) - Number(r.amount));
-    out = [...byName].map(([name, value], i) => ({
-      name,
-      value: Math.round(value),
+    out = rows.map((r, i) => ({
+      name: r.name,
+      value: r.outflow,
       color: (i + 1) as DonutSegment["color"],
     }));
     spendingCache.set(rows, out);
@@ -76,11 +112,9 @@ export function useDebugScreen(cryptoPanel: ReactNode): DebugViewProps {
   const services = useServices();
   const { store } = services;
   const router = useRouter();
-  const counts = useStoreRows<{ table: string; rows: number }>(store, countsSql(store));
-  const balanceTrend = trend(useStoreRows<{ amount: string }>(store, BALANCES_SQL));
-  const spendingByAccount = spending(
-    useStoreRows<{ name: string; amount: string }>(store, SPENDING_SQL),
-  );
+  const counts = useQuery(tableCounts, { tables: viewTables(store) });
+  const balance = balanceChart(useQuery(firstAccountBalances));
+  const spendingByAccount = spending(useQuery(plnOutflowsByAccount));
   const [rebuilt, setRebuilt] = useState<DemoLoad | null>(null);
   const [rebuilding, startRebuild] = useTransition();
   const load = rebuilt ?? services.firstLoad;
@@ -103,7 +137,10 @@ export function useDebugScreen(cryptoPanel: ReactNode): DebugViewProps {
     cursors: store.cursors().size,
     needsUpgrade: store.needsUpgrade(),
     unfoldedTypes: store.unfoldedTypes().length,
-    balanceTrend,
+    balanceTrend: balance.values,
+    balanceMonths: balance.months,
+    balanceAxis: (v) => fmt().axis.format(v),
+    balanceTip: balance.tip,
     spendingByAccount,
     cryptoPanel,
     rebuilding,

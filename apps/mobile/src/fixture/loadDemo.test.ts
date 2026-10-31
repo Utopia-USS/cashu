@@ -1,6 +1,3 @@
-/**
- * @jest-environment node
- */
 // The demo log on the real store over better-sqlite3 (Node): every event valid, duplicates are
 // no-ops, rebuild == incremental apply. `PRINT_DEMO_HASH=1` prints the view hash for the device check.
 import { betterSqlite3Driver, builtinModules, Store } from "@cashu/store";
