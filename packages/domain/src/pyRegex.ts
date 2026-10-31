@@ -21,10 +21,41 @@ export const PY_D = "\\p{Nd}";
 export const PY_B = `(?:(?<=[${PY_W}])(?![${PY_W}])|(?<![${PY_W}])(?=[${PY_W}]))`;
 /** Python `\B`. */
 const PY_NOT_B = `(?:(?<=[${PY_W}])(?=[${PY_W}])|(?<![${PY_W}])(?![${PY_W}]))`;
+/**
+ * Python `[^\W\d_]` (a word character that is neither a digit nor `_`: letters and the non-decimal
+ * numerics) as a character class body. The translator accepts this one idiom with `\W` in a class.
+ */
+export const PY_LETTER = "\\p{L}\\p{Nl}\\p{No}";
 /** Python `$` without MULTILINE: the end, or just before a newline that ends the string. */
 export const PY_END = "(?=\\n?$)";
 /** The four letters Python IGNORECASE treats as one class (`iu` pairs only `i` / `I`). */
 export const PY_IC_I = "[iIİı]";
+
+const SYNTAX_RE = /[\\^$.*+?()[\]{}|/]/g;
+
+/**
+ * A literal text inside a `u` pattern (escapes the syntax characters only; Python `re.escape` also
+ * escapes other punctuation, which matches the same literal).
+ */
+export function escapeRe(text: string): string {
+  return text.replace(SYNTAX_RE, "\\$&");
+}
+
+/**
+ * A literal text for a case-insensitive (`iu`) pattern with Python IGNORECASE semantics: escaped,
+ * and every i-letter widened to `PY_IC_I`.
+ */
+export function ignoreCaseLiteral(text: string): string {
+  return escapeRe(text).replace(/[iIİı]/gu, PY_IC_I);
+}
+
+/**
+ * A `u` regex from a JavaScript source composed of the building blocks above (`PY_W`, `PY_D`,
+ * `PY_B`, `PY_END`, `PY_IC_I`, `PY_WS`, `PY_LETTER`); `pyRegex` translates a Python source instead.
+ */
+export function uRegex(source: string, flags = ""): RegExp {
+  return new RegExp(source, `u${flags}`);
+}
 
 const I_LETTERS = new Set(["i", "I", "İ", "ı"]);
 /** Characters JavaScript `u` patterns accept escaped (`\x`): the syntax characters and `/`. */
@@ -195,6 +226,7 @@ function translateClass(
   start: number,
   ignoreCase: boolean,
 ): [string, number] {
+  if (chars.slice(start, start + 8).join("") === "[^\\W\\d_]") return [`[${PY_LETTER}]`, start + 8];
   let i = start + 1;
   let out = "[";
   if (chars[i] === "^") {

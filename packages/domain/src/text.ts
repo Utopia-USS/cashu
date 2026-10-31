@@ -133,6 +133,13 @@ export function pySplit(s: string): string[] {
   return out;
 }
 
+/** Python `len(s)`: the length in code points (a lone surrogate counts as one). */
+export function pyLen(s: string): number {
+  let n = 0;
+  for (const _ of s) n++;
+  return n;
+}
+
 /** Python `s.upper()` (full case mapping, locale independent). */
 export function pyUpper(s: string): string {
   return s.toUpperCase();

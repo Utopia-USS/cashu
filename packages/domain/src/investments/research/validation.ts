@@ -14,7 +14,7 @@ import { pyCasefold } from "../../casefold.js";
 import { fromIsoFormat, PyValueError, toOrdinal } from "../../dates.js";
 import { roundFloat } from "../../decimal.js";
 import { pyRegex } from "../../pyRegex.js";
-import { PY_WS, pyStrip, pyUpper } from "../../text.js";
+import { PY_WS, pyLen, pyStrip, pyUpper } from "../../text.js";
 import {
   FULFILLS_THESIS_FIELDS,
   RESEARCH_NOTE_KINDS,
@@ -169,10 +169,6 @@ class Issues {
       .join("; ");
     throw new ResearchInputError(text, [...this.items]);
   }
-}
-
-function pyLen(text: string): number {
-  return Array.from(text).length;
 }
 
 // ------------------------------------------------------------------------------- small parsers
