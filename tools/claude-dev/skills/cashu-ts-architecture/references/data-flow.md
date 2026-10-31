@@ -15,6 +15,20 @@ remote events arrive through sync -> the same materializer -> the same push
 
 One path for local and remote changes, so the UI never has two sources of truth.
 
+## One store per vault
+
+- A store is one vault's SQLite database: its decrypted log copy and its view. `Store.open` takes the
+  vault gid and the vault's gid salt and refuses a database of another vault.
+- View tables have no `profile_id`, and queries never filter by profile: the profile is explicit
+  because it is **the store you read**. The app keeps the open stores in a root Context (a stable
+  service, keyed by vault gid); the current profile picks the store that screen hooks and `useQuery`
+  read, and switching profile switches the store, not a filter.
+- A view that combines profiles (a household summary) reads each vault's store and combines the
+  results in a ui-logic hook or a service function. Never `ATTACH` two vault databases into one query:
+  isolation holds by construction, and each vault rebuilds independently.
+- A command writes to exactly one store; an event never names another vault (events.md 1), and the
+  store rejects one whose `vault` differs.
+
 ## Reading: `useQuery(query, args)`
 
 - Returns the rows directly. Built on `useSyncExternalStore` over a snapshot cache keyed by

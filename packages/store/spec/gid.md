@@ -89,6 +89,15 @@ S05's vectors cover all of these (75k vectors); gids MUST be computed only throu
 
 Parts are listed in order. `@x` = gid of x; `R(@x)` = its resolved root (events.md 6.4).
 
+**Payload-derived gids are checked (invalid-gid).** For every event type whose gid is DET over parts
+its own payload carries, the reader recomputes `DET(table)[parts]` from the payload (references as
+written, never resolved) and parks an event whose gid differs ([`events.md`](events.md) 7.10). The
+per-type parts are one table in code, `detPartsOf` in `packages/store/src/events/v1/det-parts.ts`,
+normative like the zod schemas; a type whose payload does not carry its parts (a subject-addressed
+`watchlist.removed`, `txn.categorySet`, ...) or whose gid may be a ULID (`DET-or-ULID`, and a
+manual `invTxn.imported`, 4.6) is not checked. A writer therefore computes such gids only through the same parts, and genesis (section 7)
+and the Python outbox (S30) MUST produce exactly them.
+
 ### 4.1 Vault / profiles
 
 ULID minted when the profile is created (also the vault key id, S27). Genesis mints it once per

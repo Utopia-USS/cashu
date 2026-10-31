@@ -20,9 +20,18 @@ MUST / MUST NOT / SHOULD are used in the RFC 2119 sense.
   vault's key (rule 7 becomes cryptographic). Nothing in an event refers to another vault.
 - The **log** of a vault is the set of all events of all its devices. Each device appends only its
   own events. The log is append-only and immutable: an event is never edited or removed.
-- The **view** (SQLite, today's table and column names plus `gid`) is a pure function of the set of
-  events a device holds. Two devices holding the same set MUST produce the same view, whatever the
-  order or duplication of delivery (convergence). The view is rebuildable at any time.
+- The **view** (SQLite, today's table and column names minus `profile_id`, plus `gid`) is a pure
+  function of the set of events a device holds. Two devices holding the same set MUST produce the same
+  view, whatever the order or duplication of delivery (convergence). The view is rebuildable at any
+  time.
+- **One view database per vault** (lead decision, S23). A device keeps one SQLite database per vault
+  it holds: that vault's decrypted log copy and its view. A store instance is bound to one vault and
+  refuses a database that belongs to another. Hence view tables carry no `profile_id` column and no
+  query filters by profile: isolation between profiles holds by construction (rule 7), each vault
+  rebuilds on its own, and a device may hold any subset of the owner's vaults (a phone with one
+  profile). The vault is chosen by opening its store; a screen that combines profiles reads each
+  vault's store and combines the results in code, never in one SQL statement (no `ATTACH` of two
+  vault databases). Device-local state that does not sync (section 10) lives outside the view tables.
 - Writers never write the view directly: a command validates against the current view, emits one
   batch of events, and the materializer applies it like any inbound batch.
 - **What is plaintext** (own-log carrier, spike-result.md): only the segment address
@@ -311,7 +320,8 @@ one row, in `(hlc, eid)` order, with the table's normal rule:
 
 ### 6.6 Causal suppression and FWW losers
 
-- An event with `cause` = E is applied only if E is held, applied and not an FWW loser.
+- An event with `cause` = E is applied only if E is held, applied and not an FWW loser. A parked E
+  (section 7, including `invalid-gid`) is not applied.
   Suppression is part of the fold: an event arriving later can flip it.
 - An FWW loser MUST NOT have done anything outside the log that the log cannot undo. Therefore:
   - connector fetch cursors live in the log (`connectorBinding.cursorAdvanced`, caused by the
@@ -362,6 +372,17 @@ re-delivered duplicates, invariants checked on every prefix, all final views equ
 9. **After an upgrade the device MUST rebuild the view** (M10): re-applying only the parked events is
    not enough, because events applied earlier with ignored fields may mean more to the new reader.
    View schema changes are rebuilds too (`viewVersion`, spike `Materializer`).
+10. **Invalid deterministic gid** (`invalid-gid`): an event whose type has a payload-derived DET gid
+    ([`gid.md`](gid.md) 4, the per-type parts are `detPartsOf` in
+    `packages/store/src/events/v1/det-parts.ts`) MUST carry exactly `DET(table)[parts]`, the parts read
+    from its payload after upcasting to the reader's version, references **unresolved** (the gid the
+    writer named, not its root). An event whose gid differs is **parked** with reason `invalid-gid`:
+    held in the log, never folded, never a valid `cause` (6.6), counted in `unknown_events` like other
+    parked events, but **not** an upgrade signal (no newer reader would fold it either; it is a writer
+    bug). Without this rule one gid could stand for two row keys and devices would fork on which
+    payload they saw first. The check runs before the fold and depends on the event alone (its type,
+    gid, payload and the vault salt), so every device holding the event parks it, in any order.
+    Upcasters MUST NOT change a DET part.
 
 ## 8. Catalog
 
@@ -524,6 +545,7 @@ over the events of all signal gids whose key resolves to `K`:
 opened(g):   no open episode for K -> g starts a new episode, active
              an episode E is open   -> g becomes an alias of E (refresh semantics: message,
                                        severity, payload updated); events for g go to E
+opened(g) again (same g):  no-op (a ULID is created once; the first applied open stands, 6.2 CREATE)
 refreshed / escalated(g):  on resolve(g)'s episode if open; escalated{reactivate} -> active (ack cleared)
 closed(g, status, reason): resolve(g)'s episode if open -> resolved | expired; K has no open episode
 reopened(g, reason):       resolve(g)'s episode back to active (or acknowledged if a live decision links it)

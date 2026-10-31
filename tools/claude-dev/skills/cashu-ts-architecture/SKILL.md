@@ -39,7 +39,8 @@ Details, module folders, exports maps, where processes run: [layers.md](referenc
 - **Modules** (budget, assets, loans, investments) **never import another module's internals**;
   they meet in `core` or through a module's `index.ts`. Packages are imported by name through their
   `exports` map, never by a relative path.
-- **Profile (vault) is explicit** in every profile-scoped query and command.
+- **Profile (vault) is explicit**: one store (view database) per vault, so the vault is the store a
+  query or command runs against; view tables have no `profile_id`, and no query spans two vaults.
 - **Money is `Decimal` in `Money { amount, currency }`**: never `number`, never summed across currencies.
 - **Screens = headless screen hook + pure View.** Views may use presentational hooks only; never the
   store, commands, navigation or the network.
@@ -94,7 +95,8 @@ After editing TypeScript in this skill's applicability, verify:
    store, sync, ui-logic hook, commands, navigation or network.
 4. Every write goes through a store command that appends events; no SQL outside materializers and
    queries; no hand-listed invalidation.
-5. Money stays `Money` / `Decimal`; no cross-currency sum; the profile is passed explicitly.
+5. Money stays `Money` / `Decimal`; no cross-currency sum; the vault's store is passed explicitly
+   (never a profile filter).
 6. No `useMemo` / `useCallback` / `memo`, no `loading` kind in screen state, lists over 50 rows virtualized.
 7. Tests sit at the lowest layer that shows the behaviour; parity checks added for ported Python.
 8. Temporary code carries `TRANSITIONAL(<scope>)`.
