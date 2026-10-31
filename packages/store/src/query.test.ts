@@ -3,6 +3,7 @@
 // from the apply that triggered it. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { createProfile, openAccount, renameProfile } from "./core/commands.js";
+import { profile } from "./core/index.js";
 import { defineQuery, queryKey, runQuery, watchQuery } from "./query.js";
 import { run, testEnv } from "./testing/commands.js";
 import { openTestStore } from "./testing/store.js";
@@ -33,6 +34,17 @@ describe("queries", () => {
   it("report the tables a run read", () => {
     const store = openTestStore();
     expect([...runQuery(store, profileName, undefined).tables]).toEqual(["profiles"]);
+  });
+
+  it("core.profile decodes the vault's profile", () => {
+    const store = openTestStore();
+    expect(runQuery(store, profile, undefined).value).toBeNull();
+    run(store, testEnv(), createProfile, { slug: "a", name: "Ala", baseCurrency: "EUR" });
+    expect(runQuery(store, profile, undefined).value).toEqual({
+      name: "Ala",
+      baseCurrency: "EUR",
+      mcpPrivacy: "strict",
+    });
   });
 });
 

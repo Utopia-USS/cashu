@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./core": "./src/core/index.ts",
     "./device": "./src/device/index.ts",
     "./query": "./src/query.ts"
   },
