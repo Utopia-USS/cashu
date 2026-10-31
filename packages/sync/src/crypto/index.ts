@@ -8,27 +8,43 @@ export {
   sealFrame,
 } from "./frame.js";
 export {
+  assertDeviceId,
+  BoxKeyPair,
+  createDeviceId,
+  createDeviceIdentity,
+  DeviceIdentity,
+  isDeviceId,
+  RECOVERY_SIGNER_ID,
+  RecoveryIdentity,
+  type RecoveryPublicKeys,
+  type WrapRecipient,
+} from "./identity.js";
+export {
   assertVaultId,
   createKeyring,
   createVaultId,
+  GID_SALT_BYTES,
   type KeyEntry,
+  type KeyMaterial,
   Keyring,
-  keyId,
+  MAX_EPOCH,
+  MAX_GENERATION,
   rotateKeyring,
+  type VaultInfo,
 } from "./keys.js";
 export {
   type BlobFiles,
   createSafeStorageKeyStore,
   createSecureStoreKeyStore,
-  deviceKeyName,
+  deviceIdentityName,
   InMemoryKeyStore,
   type KeyStore,
   keyringName,
-  loadDeviceKeyPair,
+  loadDeviceIdentity,
   loadKeyring,
   type SafeStorageLike,
   type SecureStoreLike,
-  saveDeviceKeyPair,
+  saveDeviceIdentity,
   saveKeyring,
 } from "./keystore.js";
 export {
@@ -36,8 +52,8 @@ export {
   type NewRecoveryKey,
   normalizePhrase,
   RECOVERY_WORDS,
-  recoveryKeyPair,
+  recoveryIdentity,
 } from "./recovery.js";
 export { Secret } from "./secret.js";
 export { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
-export { BoxKeyPair, createDeviceKeyPair, unwrapKeys, wrapKeys } from "./wrap.js";
+export { openPairingWrap, sealForPairing } from "./wrap.js";

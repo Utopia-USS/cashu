@@ -1,24 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { fromUtf8 } from "./encoding.js";
-import { CryptoError, type CryptoErrorCode } from "./errors.js";
 import { FRAME_OVERHEAD, frameKeyId, openFrame, sealFrame } from "./frame.js";
-import { createKeyring, createVaultId, Keyring, rotateKeyring } from "./keys.js";
-import { Secret } from "./secret.js";
-import { ctx, PLAINTEXT_MARKER, samplePlain, sodium } from "./testkit.js";
-
-function code(fn: () => unknown): CryptoErrorCode | "no error" {
-  try {
-    fn();
-    return "no error";
-  } catch (e) {
-    if (e instanceof CryptoError) return e.code;
-    throw e;
-  }
-}
+import { createVaultId, Keyring, rotateKeyring } from "./keys.js";
+import {
+  code,
+  ctx,
+  DEVICE_B,
+  GID_SALT,
+  newRing,
+  PLAINTEXT_MARKER,
+  samplePlain,
+  sodium,
+  testRecovery,
+} from "./testkit.js";
 
 describe("frame roundtrip", () => {
   it("opens what it sealed, ciphertext hides the plaintext, nonces differ", () => {
-    const ring = createKeyring(sodium);
+    const ring = newRing();
     const c = ctx(ring.vaultId);
     const a = sealFrame(sodium, ring, samplePlain(), c);
     const b = sealFrame(sodium, ring, samplePlain(), c);
@@ -29,14 +27,14 @@ describe("frame roundtrip", () => {
   });
 
   it("empty plaintext is a valid frame", () => {
-    const ring = createKeyring(sodium);
+    const ring = newRing();
     const frame = sealFrame(sodium, ring, new Uint8Array(0), ctx(ring.vaultId));
     expect(openFrame(sodium, ring, frame, ctx(ring.vaultId))).toEqual(new Uint8Array(0));
   });
 });
 
 describe("tamper", () => {
-  const ring = createKeyring(sodium);
+  const ring = newRing();
   const c = ctx(ring.vaultId);
   const frame = sealFrame(sodium, ring, samplePlain(), c);
 
@@ -64,36 +62,37 @@ describe("tamper", () => {
     expect(code(() => openFrame(sodium, ring, longer, c))).toBe("auth_failed");
   });
 
-  it("wrong key under the right key id fails authentication", () => {
-    const kid = ring.active.kid;
-    const impostor = new Keyring(ring.vaultId, [
-      { kid, generation: 1, key: new Secret(sodium.randomBytes(32)) },
+  it("a key id cannot be claimed for another key: kids are always computed", () => {
+    const vault = { vaultId: ring.vaultId, recovery: ring.recovery, gidSalt: GID_SALT };
+    const other = Keyring.fromKeys(sodium, vault, [
+      { generation: 1, epoch: 0, key: sodium.randomBytes(32) },
     ]);
-    expect(code(() => openFrame(sodium, impostor, frame, c))).toBe("auth_failed");
-  });
-
-  it("a ring without the frame's key reports unknown_key", () => {
-    const other = createKeyring(sodium, ring.vaultId);
+    expect(other.active.kid).not.toBe(ring.active.kid);
     expect(code(() => openFrame(sodium, other, frame, c))).toBe("unknown_key");
   });
 
-  it("wrong vault id in the AAD fails, even with the right key", () => {
+  it("a ring without the frame's key reports unknown_key", () => {
+    const other = newRing(sodium, ring.vaultId);
+    expect(code(() => openFrame(sodium, other, frame, c))).toBe("unknown_key");
+  });
+
+  it("another vault never matches: the kid binds the vault, the AAD binds it again", () => {
     const otherVault = createVaultId(sodium);
-    const sameKeysOtherVault = new Keyring(otherVault, ring.entries());
+    const sameKeysOtherVault = Keyring.fromKeys(
+      sodium,
+      { vaultId: otherVault, recovery: testRecovery.publicKeys, gidSalt: GID_SALT },
+      ring.entries().map((e) => ({ generation: 1, epoch: 0, key: e.key.expose().slice() })),
+    );
+    expect(sameKeysOtherVault.active.kid).not.toBe(ring.active.kid);
     expect(code(() => openFrame(sodium, sameKeysOtherVault, frame, ctx(otherVault)))).toBe(
-      "auth_failed",
+      "unknown_key",
     );
     // A context naming a vault the ring does not belong to is refused before decrypting.
     expect(code(() => openFrame(sodium, ring, frame, ctx(otherVault)))).toBe("vault_mismatch");
   });
 
   it("wrong device, segment or offset (splice, reorder, replay) fails", () => {
-    for (const over of [
-      { deviceId: "device-b" },
-      { segment: 4 },
-      { offset: 4097 },
-      { offset: 0 },
-    ]) {
+    for (const over of [{ deviceId: DEVICE_B }, { segment: 4 }, { offset: 4097 }, { offset: 0 }]) {
       expect(code(() => openFrame(sodium, ring, frame, { ...c, ...over }))).toBe("auth_failed");
     }
   });
@@ -101,9 +100,9 @@ describe("tamper", () => {
 
 describe("rotation", () => {
   it("new frames use the new key; old frames still open; a device without the new key cannot read new frames", () => {
-    const ring = createKeyring(sodium);
+    const ring = newRing();
     const c = ctx(ring.vaultId);
-    const stale = new Keyring(ring.vaultId, ring.entries());
+    const stale = ring.clone(sodium);
     const before = sealFrame(sodium, ring, samplePlain(), c);
     const gen2 = rotateKeyring(sodium, ring);
     expect(gen2.generation).toBe(2);
@@ -117,17 +116,17 @@ describe("rotation", () => {
   });
 
   it("concurrent rotations on two devices converge on the same active key", () => {
-    const a = createKeyring(sodium);
-    const b = new Keyring(a.vaultId, a.entries());
+    const a = newRing();
+    const b = a.clone(sodium);
     rotateKeyring(sodium, a);
     rotateKeyring(sodium, b);
-    a.merge(new Keyring(b.vaultId, b.entries()));
-    b.merge(new Keyring(a.vaultId, a.entries()));
+    a.merge(b.clone(sodium));
+    b.merge(a.clone(sodium));
     expect(a.size).toBe(3);
     expect(a.active.kid).toBe(b.active.kid);
   });
 
   it("merging another vault's ring is refused", () => {
-    expect(code(() => createKeyring(sodium).merge(createKeyring(sodium)))).toBe("vault_mismatch");
+    expect(code(() => newRing().merge(newRing()))).toBe("vault_mismatch");
   });
 });

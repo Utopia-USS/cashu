@@ -7,6 +7,13 @@ export type CryptoErrorCode =
   | "unknown_key"
   | "auth_failed"
   | "vault_mismatch"
+  | "recovery_key_mismatch"
+  | "gid_salt_mismatch"
+  | "generation_gap"
+  | "untrusted_sender"
+  | "key_not_allowed"
+  | "bad_padding"
+  | "frame_too_large"
   | "bad_payload"
   | "bad_mnemonic"
   | "bad_key_name"
@@ -20,6 +27,13 @@ const MESSAGES: Record<CryptoErrorCode, string> = {
   unknown_key: "encrypted data uses a key this device does not hold",
   auth_failed: "encrypted data failed authentication (wrong key, wrong context or tampered)",
   vault_mismatch: "wrapped keys belong to a different vault",
+  recovery_key_mismatch: "wrapped keys name a different recovery key than this vault",
+  gid_salt_mismatch: "wrapped keys carry a different gid salt than this vault",
+  generation_gap: "wrapped keys skip a key generation; earlier keys are missing",
+  untrusted_sender: "wrapped keys come from a sender this device does not trust",
+  key_not_allowed: "encrypted data uses a key not allowed for its writer",
+  bad_padding: "decrypted data has invalid padding",
+  frame_too_large: "encrypted data exceeds the maximum frame size",
   bad_payload: "wrapped key payload is malformed",
   bad_mnemonic: "recovery key is not a valid 24-word phrase",
   bad_key_name: "key store name is not allowed",
@@ -27,6 +41,8 @@ const MESSAGES: Record<CryptoErrorCode, string> = {
   wiped: "secret was already wiped",
   unsupported_runtime: "the crypto runtime lacks a required primitive",
 };
+
+export const ALL_CODES = Object.keys(MESSAGES) as CryptoErrorCode[];
 
 export class CryptoError extends Error {
   readonly code: CryptoErrorCode;

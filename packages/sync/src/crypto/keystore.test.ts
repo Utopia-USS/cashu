@@ -2,23 +2,23 @@ import { describe, expect, it } from "vitest";
 import { fromBase64, toBase64, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
-import { createKeyring } from "./keys.js";
+import { createDeviceIdentity } from "./identity.js";
 import {
   type BlobFiles,
   createSafeStorageKeyStore,
   createSecureStoreKeyStore,
+  deviceIdentityName,
   InMemoryKeyStore,
   type KeyStore,
   keyringName,
-  loadDeviceKeyPair,
+  loadDeviceIdentity,
   loadKeyring,
   type SafeStorageLike,
   type SecureStoreLike,
-  saveDeviceKeyPair,
+  saveDeviceIdentity,
   saveKeyring,
 } from "./keystore.js";
-import { ctx, samplePlain, sodium } from "./testkit.js";
-import { createDeviceKeyPair } from "./wrap.js";
+import { ctx, newRing, samplePlain, sodium } from "./testkit.js";
 
 // Fake safeStorage: reversible but not identity, so a test can tell stored blobs are not the raw value.
 function fakeSafeStorage(backend = "keychain", available = true): SafeStorageLike {
@@ -66,18 +66,22 @@ function fakeSecureStore(): SecureStoreLike & {
 }
 
 async function roundtrip(store: KeyStore) {
-  const ring = createKeyring(sodium);
+  const ring = newRing();
   const c = ctx(ring.vaultId);
   const frame = sealFrame(sodium, ring, samplePlain(), c);
   await saveKeyring(store, ring);
   const loaded = await loadKeyring(store, sodium, ring.vaultId);
   expect(loaded && openFrame(sodium, loaded, frame, c)).toEqual(samplePlain());
 
-  const pair = createDeviceKeyPair(sodium);
-  await saveDeviceKeyPair(store, "device-a", pair);
-  const back = await loadDeviceKeyPair(store, "device-a");
-  expect(back?.publicKey).toEqual(pair.publicKey);
-  expect(back?.secretKey.expose()).toEqual(pair.secretKey.expose());
+  const identity = createDeviceIdentity(sodium);
+  await saveDeviceIdentity(store, identity);
+  const back = await loadDeviceIdentity(store, identity.deviceId);
+  expect(back?.deviceId).toBe(identity.deviceId);
+  expect(back?.box.publicKey).toEqual(identity.box.publicKey);
+  expect(back?.signPublicKey).toEqual(identity.signPublicKey);
+  expect(back?.box.secretKey.expose()).toEqual(identity.box.secretKey.expose());
+  expect(back?.signSecretKey.expose()).toEqual(identity.signSecretKey.expose());
+  expect(loaded?.recovery).toEqual(ring.recovery);
 
   await store.delete(keyringName(ring.vaultId));
   expect(await loadKeyring(store, sodium, ring.vaultId)).toBeNull();
@@ -92,7 +96,7 @@ describe("KeyStore adapters", () => {
   it("Electron safeStorage keeps only safeStorage ciphertext in files", async () => {
     const files = memoryFiles();
     const store = createSafeStorageKeyStore(fakeSafeStorage(), files);
-    const ring = createKeyring(sodium);
+    const ring = newRing();
     await saveKeyring(store, ring);
     const blob = files.blobs.get(keyringName(ring.vaultId));
     expect(blob && new TextDecoder().decode(blob).startsWith("enc:")).toBe(true);
@@ -102,7 +106,7 @@ describe("KeyStore adapters", () => {
   it("safeStorage refuses to store keys without a real OS keyring", async () => {
     for (const ss of [fakeSafeStorage("basic_text"), fakeSafeStorage("keychain", false)]) {
       const store = createSafeStorageKeyStore(ss, memoryFiles());
-      await expect(saveKeyring(store, createKeyring(sodium))).rejects.toMatchObject({
+      await expect(saveKeyring(store, newRing())).rejects.toMatchObject({
         code: "keystore_unavailable",
       });
     }
@@ -121,12 +125,33 @@ describe("KeyStore adapters", () => {
     }
   });
 
-  it("a corrupt stored device key is reported, not half-loaded", async () => {
+  it("a corrupt or swapped stored device identity is reported, not half-loaded", async () => {
     const store = new InMemoryKeyStore();
-    await store.set("cashu.device.device-a.box", new Uint8Array(10));
-    await expect(loadDeviceKeyPair(store, "device-a")).rejects.toMatchObject({
+    const a = createDeviceIdentity(sodium);
+    const b = createDeviceIdentity(sodium);
+    await store.set(deviceIdentityName(a.deviceId), new Uint8Array(10));
+    await expect(loadDeviceIdentity(store, a.deviceId)).rejects.toMatchObject({
       code: "bad_payload",
     });
+    // B's blob under A's name: the device id inside does not match.
+    await saveDeviceIdentity(store, b);
+    const blob = await store.get(deviceIdentityName(b.deviceId));
+    if (!blob) throw new Error("missing blob");
+    await store.set(deviceIdentityName(a.deviceId), blob);
+    await expect(loadDeviceIdentity(store, a.deviceId)).rejects.toMatchObject({
+      code: "bad_payload",
+    });
+  });
+
+  it("a stored identity keeps no public key: both are recomputed from the secrets", async () => {
+    const store = new InMemoryKeyStore();
+    const a = createDeviceIdentity(sodium);
+    await saveDeviceIdentity(store, a);
+    const blob = await store.get(deviceIdentityName(a.deviceId));
+    expect(blob?.length).toBe("cashu/device/v2".length + 16 + 64);
+    const hex = Buffer.from(blob ?? []).toString("hex");
+    expect(hex).not.toContain(Buffer.from(a.box.publicKey).toString("hex"));
+    expect(hex).not.toContain(Buffer.from(a.signPublicKey).toString("hex"));
   });
 
   it("base64 helpers roundtrip every byte value", () => {

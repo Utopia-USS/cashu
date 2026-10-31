@@ -1,15 +1,21 @@
-// Where a device keeps its secrets (data keyrings, its own X25519 secret key). The platform module
+// Where a device keeps its secrets (data keyrings, its own device identity). The platform module
 // is injected, so this package imports neither Electron nor Expo:
 //   desktop: Electron `safeStorage` (macOS Keychain / Windows DPAPI / libsecret) + files for the blobs
 //   iOS:     `expo-secure-store` (Keychain, this device only, no iCloud Keychain backup)
 //   tests:   in memory
 
-import { fromBase64, toBase64 } from "./encoding.js";
+import { concat, fromBase64, fromHex, Reader, toBase64, toHex, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
-import { decodeKeyPayload, encodeKeyPayload, type Keyring } from "./keys.js";
+import { assertDeviceId, DEVICE_ID_BYTES, DeviceIdentity } from "./identity.js";
+import {
+  assertVaultId,
+  decodeKeyPayload,
+  emptyLike,
+  encodeKeyPayload,
+  type Keyring,
+} from "./keys.js";
 import { Secret } from "./secret.js";
-import type { Sodium } from "./sodium.js";
-import { BoxKeyPair } from "./wrap.js";
+import { KEY_BYTES, type Sodium } from "./sodium.js";
 
 export interface KeyStore {
   get(name: string): Promise<Uint8Array | null>;
@@ -137,8 +143,9 @@ export function createSecureStoreKeyStore(
 }
 
 export const keyringName = (vaultId: string) => `cashu.vault.${vaultId}.keys`;
-export const deviceKeyName = (deviceId: string) => `cashu.device.${deviceId}.box`;
+export const deviceIdentityName = (deviceId: string) => `cashu.device.${deviceId}.identity`;
 
+/** Saves the payload v2 of the whole ring (keys and pinned recovery public keys). */
 export async function saveKeyring(store: KeyStore, ring: Keyring): Promise<void> {
   const payload = encodeKeyPayload(ring);
   try {
@@ -148,47 +155,73 @@ export async function saveKeyring(store: KeyStore, ring: Keyring): Promise<void>
   }
 }
 
+/**
+ * Loads a stored ring. The store is local and trusted, but the loaded ring must still satisfy the
+ * keyring invariants (bounds, generations from 1 without a gap, the right vault).
+ */
 export async function loadKeyring(
   store: KeyStore,
   sodium: Sodium,
   vaultId: string,
 ): Promise<Keyring | null> {
+  assertVaultId(vaultId);
   const payload = await store.get(keyringName(vaultId));
   if (!payload) return null;
+  let incoming: Keyring;
   try {
-    return decodeKeyPayload(sodium, payload, vaultId);
+    incoming = decodeKeyPayload(sodium, payload);
   } finally {
     payload.fill(0);
   }
+  try {
+    if (incoming.vaultId !== vaultId) throw new CryptoError("vault_mismatch");
+    const ring = emptyLike(incoming);
+    ring.merge(incoming);
+    return ring;
+  } finally {
+    incoming.wipe();
+  }
 }
 
-/** Stored as secret key (32) | public key (32). */
-export async function saveDeviceKeyPair(
-  store: KeyStore,
-  deviceId: string,
-  pair: BoxKeyPair,
-): Promise<void> {
-  const blob = new Uint8Array(64);
-  blob.set(pair.secretKey.expose(), 0);
-  blob.set(pair.publicKey, 32);
+const IDENTITY_MAGIC = utf8("cashu/device/v2");
+const IDENTITY_BLOB_BYTES = IDENTITY_MAGIC.length + DEVICE_ID_BYTES + 2 * KEY_BYTES;
+
+/**
+ * Stored as "cashu/device/v2" | device id (16 raw bytes) | box secret key (32) | Ed25519 seed (32).
+ * Nothing public is stored: loading recomputes both public keys, so a blob cannot mismatch.
+ */
+export async function saveDeviceIdentity(store: KeyStore, identity: DeviceIdentity): Promise<void> {
+  const blob = concat(
+    IDENTITY_MAGIC,
+    fromHex(identity.deviceId),
+    identity.box.secretKey.expose(),
+    identity.signSecretKey.expose(),
+  );
   try {
-    await store.set(deviceKeyName(deviceId), blob);
+    await store.set(deviceIdentityName(identity.deviceId), blob);
   } finally {
     blob.fill(0);
   }
 }
 
-export async function loadDeviceKeyPair(
+export async function loadDeviceIdentity(
   store: KeyStore,
   deviceId: string,
-): Promise<BoxKeyPair | null> {
-  const blob = await store.get(deviceKeyName(deviceId));
+): Promise<DeviceIdentity | null> {
+  assertDeviceId(deviceId);
+  const blob = await store.get(deviceIdentityName(deviceId));
   if (!blob) return null;
-  if (blob.length !== 64) {
+  try {
+    if (blob.length !== IDENTITY_BLOB_BYTES) throw new CryptoError("bad_payload");
+    const r = new Reader(blob);
+    const magic = r.take(IDENTITY_MAGIC.length);
+    if (!magic.every((b, i) => b === IDENTITY_MAGIC[i])) throw new CryptoError("bad_payload");
+    if (toHex(r.take(DEVICE_ID_BYTES)) !== deviceId) throw new CryptoError("bad_payload");
+    const boxSecret = new Secret(r.take(KEY_BYTES).slice());
+    const signSeed = new Secret(r.take(KEY_BYTES).slice());
+    r.end();
+    return new DeviceIdentity(deviceId, boxSecret, signSeed);
+  } finally {
     blob.fill(0);
-    throw new CryptoError("bad_payload");
   }
-  const pair = new BoxKeyPair(blob.slice(32), new Secret(blob.slice(0, 32)));
-  blob.fill(0);
-  return pair;
 }

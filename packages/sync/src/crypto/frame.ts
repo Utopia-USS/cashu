@@ -10,7 +10,8 @@
 
 import { concat, fromHex, lengthPrefixed, toHex, u32, u64, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
-import { type Keyring, KID_BYTES } from "./keys.js";
+import { assertDeviceId } from "./identity.js";
+import { assertVaultId, type Keyring, KID_BYTES } from "./keys.js";
 import { NONCE_BYTES, type Sodium, TAG_BYTES } from "./sodium.js";
 
 export const FRAME_VERSION = 1;
@@ -20,6 +21,7 @@ const AAD_CONTEXT = utf8("cashu/frame/v1");
 
 export interface FrameContext {
   vaultId: string;
+  /** The writer device's id: 32 lowercase hex characters (`createDeviceId`). */
   deviceId: string;
   segment: number;
   /** Byte offset of the frame inside its segment file. */
@@ -27,6 +29,8 @@ export interface FrameContext {
 }
 
 function frameAad(kid: Uint8Array, ctx: FrameContext): Uint8Array {
+  assertVaultId(ctx.vaultId);
+  assertDeviceId(ctx.deviceId);
   return concat(
     AAD_CONTEXT,
     Uint8Array.of(FRAME_VERSION),
@@ -60,7 +64,7 @@ export function sealFrameWithNonce(
   if (nonce.length !== NONCE_BYTES) throw new RangeError("nonce must be 24 bytes");
   const active = ring.active;
   const kid = fromHex(active.kid);
-  const cipher = sodium.aeadEncrypt(plain, frameAad(kid, ctx), nonce, active.key.expose());
+  const cipher = sodium.aeadEncrypt(plain, frameAad(kid, ctx), nonce, active.frameKey.expose());
   return concat(Uint8Array.of(FRAME_VERSION), kid, nonce, cipher);
 }
 
@@ -88,5 +92,5 @@ export function openFrame(
   const kid = frame.subarray(1, 1 + KID_BYTES);
   const nonce = frame.subarray(1 + KID_BYTES, FRAME_HEADER_BYTES);
   const cipher = frame.subarray(FRAME_HEADER_BYTES);
-  return sodium.aeadDecrypt(cipher, frameAad(kid, ctx), nonce, entry.key.expose());
+  return sodium.aeadDecrypt(cipher, frameAad(kid, ctx), nonce, entry.frameKey.expose());
 }

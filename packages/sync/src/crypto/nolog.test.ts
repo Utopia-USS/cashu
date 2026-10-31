@@ -4,14 +4,19 @@
 import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fromUtf8, toBase64, toHex } from "./encoding.js";
+import { ALL_CODES, CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
+import { createDeviceIdentity } from "./identity.js";
 import { createKeyring, rotateKeyring } from "./keys.js";
 import { InMemoryKeyStore, loadKeyring, saveKeyring } from "./keystore.js";
-import { createRecoveryKey, recoveryKeyPair } from "./recovery.js";
+import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { ctx, PLAINTEXT_MARKER, samplePlain, sodium } from "./testkit.js";
-import { createDeviceKeyPair, unwrapKeys, wrapKeys } from "./wrap.js";
+import { openPairingWrap, sealForPairing } from "./wrap.js";
 
 const written: string[] = [];
+
+// Every fixed error message: a recovery word that also occurs here (e.g. "device") is not a leak.
+const FIXED_TEXT = ALL_CODES.map((c) => new CryptoError(c).message).join(" ");
 
 beforeEach(() => {
   written.length = 0;
@@ -43,15 +48,15 @@ function secretsOf(bytes: Uint8Array): string[] {
 
 describe("no key or plaintext in logs", () => {
   it("a full flow (create, seal, rotate, pair, store, recover, tamper) writes nothing", async () => {
-    const ring = createKeyring(sodium);
-    const c = ctx(ring.vaultId);
-    const phone = createDeviceKeyPair(sodium);
     const recovery = createRecoveryKey(sodium);
+    const ring = createKeyring(sodium, recovery.publicKeys);
+    const c = ctx(ring.vaultId);
+    const phone = createDeviceIdentity(sodium);
     rotateKeyring(sodium, ring);
     const frame = sealFrame(sodium, ring, samplePlain(), c);
-    const phoneRing = unwrapKeys(
+    const phoneRing = openPairingWrap(
       sodium,
-      wrapKeys(sodium, ring, phone.publicKey),
+      sealForPairing(sodium, ring, phone.box.publicKey),
       phone,
       ring.vaultId,
     );
@@ -59,34 +64,40 @@ describe("no key or plaintext in logs", () => {
     const store = new InMemoryKeyStore();
     await saveKeyring(store, ring);
     await loadKeyring(store, sodium, ring.vaultId);
-    unwrapKeys(
+    openPairingWrap(
       sodium,
-      wrapKeys(sodium, ring, recovery.publicKey),
-      recoveryKeyPair(sodium, recovery.phrase),
+      sealForPairing(sodium, ring, recovery.publicKeys.boxPublicKey),
+      recoveryIdentity(sodium, recovery.phrase),
       ring.vaultId,
     );
     const tampered = frame.slice();
     tampered[tampered.length - 1] = (tampered.at(-1) ?? 0) ^ 1;
     expect(() => openFrame(sodium, ring, tampered, c)).toThrow();
-    expect(() => recoveryKeyPair(sodium, `${recovery.phrase} extra`)).toThrow();
+    expect(() => recoveryIdentity(sodium, `${recovery.phrase} extra`)).toThrow();
     expect(written).toEqual([]);
   });
 
   it("logging secrets, rings, key pairs and errors by mistake shows no key bytes, words or plaintext", () => {
-    const ring = createKeyring(sodium);
-    rotateKeyring(sodium, ring);
-    const pair = createDeviceKeyPair(sodium);
     const recovery = createRecoveryKey(sodium);
-    const recoveryPair = recoveryKeyPair(sodium, recovery.phrase);
+    const ring = createKeyring(sodium, recovery.publicKeys);
+    rotateKeyring(sodium, ring);
+    const pair = createDeviceIdentity(sodium);
+    const recoveryPair = recoveryIdentity(sodium, recovery.phrase);
     const c = ctx(ring.vaultId);
     const frame = sealFrame(sodium, ring, samplePlain(), c);
 
     const errors: unknown[] = [];
     for (const fn of [
-      () => openFrame(sodium, createKeyring(sodium, ring.vaultId), frame, c),
+      () => openFrame(sodium, createKeyring(sodium, recovery.publicKeys, ring.vaultId), frame, c),
       () => openFrame(sodium, ring, frame.subarray(0, frame.length - 1), c),
-      () => recoveryKeyPair(sodium, recovery.phrase.split(" ").slice(0, 23).join(" ")),
-      () => unwrapKeys(sodium, wrapKeys(sodium, ring, pair.publicKey), recoveryPair, ring.vaultId),
+      () => recoveryIdentity(sodium, recovery.phrase.split(" ").slice(0, 23).join(" ")),
+      () =>
+        openPairingWrap(
+          sodium,
+          sealForPairing(sodium, ring, pair.box.publicKey),
+          recoveryPair,
+          ring.vaultId,
+        ),
     ]) {
       try {
         fn();
@@ -109,9 +120,14 @@ describe("no key or plaintext in logs", () => {
 
     const forbidden = [
       ...ring.entries().flatMap((e) => secretsOf(e.key.expose())),
-      ...secretsOf(pair.secretKey.expose()),
-      ...secretsOf(recoveryPair.secretKey.expose()),
-      ...recovery.phrase.split(" ").filter((w) => w.length >= 5),
+      ...ring.entries().flatMap((e) => secretsOf(e.frameKey.expose())),
+      ...secretsOf(ring.gidSalt().expose()),
+      ...secretsOf(pair.box.secretKey.expose()),
+      ...secretsOf(pair.signSecretKey.expose()),
+      ...secretsOf(recoveryPair.box.secretKey.expose()),
+      ...secretsOf(recoveryPair.signSecretKey.expose()),
+      // Words long enough to be meaningful and absent from the fixed error messages.
+      ...recovery.phrase.split(" ").filter((w) => w.length >= 5 && !FIXED_TEXT.includes(w)),
       PLAINTEXT_MARKER,
     ];
     for (const f of forbidden) expect(output).not.toContain(f);

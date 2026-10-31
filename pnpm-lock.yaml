@@ -81,19 +81,21 @@ importers:
 
   packages/sync:
     dependencies:
+      '@noble/ciphers':
+        specifier: ^2.4.0
+        version: 2.4.0
+      '@noble/curves':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@noble/hashes':
         specifier: ^2.4.0
         version: 2.4.0
       '@scure/bip39':
         specifier: ^2.4.0
         version: 2.4.0
-      libsodium-wrappers-sumo:
+      libsodium-wrappers:
         specifier: ^0.8.4
         version: 0.8.4
-    devDependencies:
-      '@noble/ciphers':
-        specifier: ^2.4.0
-        version: 2.4.0
 
   packages/ui-logic: {}
 
@@ -366,6 +368,10 @@ packages:
 
   '@noble/ciphers@2.4.0':
     resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
+    engines: {node: '>= 20.19.0'}
+
+  '@noble/curves@2.4.0':
+    resolution: {integrity: sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==}
     engines: {node: '>= 20.19.0'}
 
   '@noble/hashes@2.4.0':
@@ -1308,11 +1314,11 @@ packages:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
 
-  libsodium-sumo@0.8.4:
-    resolution: {integrity: sha512-TMtHShQfVVsaxDygyapvUC3o7YsPgXa/hRWeIgzyFz6w5k/1hirGptCxp1U7XwW3rCskaTTYKgV10v86UiGgNw==}
+  libsodium-wrappers@0.8.4:
+    resolution: {integrity: sha512-mu8aAWucZjTB5O/BtGXtW4e1agy7uHxNYG7zPthmmD1jU43LCDmSWZLN4JhflbdPXj3yDO4lxM1O9hLDgIOXDw==}
 
-  libsodium-wrappers-sumo@0.8.4:
-    resolution: {integrity: sha512-ql7hcgulKZ3ekfa2DGAogcCKsWU0diA/0nArz1CFzh93WQdb46/Kj18ka/Hifq6uA3Ush34Pc6vU/6HXeRwUkg==}
+  libsodium@0.8.4:
+    resolution: {integrity: sha512-lMcYaRi0zcs7tarATsQUYC7rstliIXZuoq0c6zXSgNtSNtdvBgkSegjWhpMJAXzKX3SUSwIp7+zEsob+j3LuRw==}
 
   lightningcss-android-arm64@1.33.0:
     resolution: {integrity: sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==}
@@ -2103,6 +2109,10 @@ snapshots:
 
   '@noble/ciphers@2.4.0': {}
 
+  '@noble/curves@2.4.0':
+    dependencies:
+      '@noble/hashes': 2.4.0
+
   '@noble/hashes@2.4.0': {}
 
   '@oxc-parser/binding-android-arm-eabi@0.153.0':
@@ -2823,11 +2833,11 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
-  libsodium-sumo@0.8.4: {}
-
-  libsodium-wrappers-sumo@0.8.4:
+  libsodium-wrappers@0.8.4:
     dependencies:
-      libsodium-sumo: 0.8.4
+      libsodium: 0.8.4
+
+  libsodium@0.8.4: {}
 
   lightningcss-android-arm64@1.33.0:
     optional: true

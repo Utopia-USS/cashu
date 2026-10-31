@@ -1,4 +1,4 @@
-// One crypto interface for every runtime. Desktop / Node loads `libsodium-wrappers-sumo`; the mobile
+// One crypto interface for every runtime. Desktop / Node loads `libsodium-wrappers`; the mobile
 // app passes `react-native-libsodium` (same function names) to `fromLibsodium`, so this package never
 // imports a React Native module.
 
@@ -102,7 +102,7 @@ let nodeSodium: Promise<Sodium> | undefined;
 
 /** libsodium (WebAssembly) for Node and Electron; loaded once. */
 export function loadNodeSodium(): Promise<Sodium> {
-  nodeSodium ??= import("libsodium-wrappers-sumo").then(async ({ default: lib }) => {
+  nodeSodium ??= import("libsodium-wrappers").then(async ({ default: lib }) => {
     await lib.ready;
     // The package's overloads (output formats) are wider than LibsodiumLike; the byte forms match.
     return fromLibsodium(lib as unknown as LibsodiumLike);

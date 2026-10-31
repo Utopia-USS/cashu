@@ -1,4 +1,5 @@
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -7,10 +8,9 @@ import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { describe, expect, it } from "vitest";
 import { fromHex, toHex, utf8 } from "./encoding.js";
 import { FRAME_HEADER_BYTES, openFrame, sealFrameWithNonce } from "./frame.js";
-import { Keyring, KID_BYTES, keyId } from "./keys.js";
-import { recoveryKeyPair } from "./recovery.js";
-import { Secret } from "./secret.js";
-import { ctx, range, sodium } from "./testkit.js";
+import { encodeKeyPayload, Keyring, KID_BYTES } from "./keys.js";
+import { recoveryIdentity } from "./recovery.js";
+import { ctx, DEVICE_A, GID_SALT, range, sodium } from "./testkit.js";
 
 describe("published test vectors", () => {
   it("XChaCha20-Poly1305 matches draft-irtf-cfrg-xchacha A.3.1", () => {
@@ -58,31 +58,54 @@ describe("published test vectors", () => {
 describe("cashU format golden vectors", () => {
   const vaultId = "00112233445566778899aabbccddeeff";
   const keyBytes = range(0x00, 0x1f);
+  const recovery = recoveryIdentity(sodium, `${"abandon ".repeat(23)}art`);
   const ring = () =>
-    new Keyring(vaultId, [
-      {
-        kid: keyId(sodium, new Secret(keyBytes.slice())),
-        generation: 1,
-        key: new Secret(keyBytes.slice()),
-      },
+    Keyring.fromKeys(sodium, { vaultId, recovery: recovery.publicKeys, gidSalt: GID_SALT }, [
+      { generation: 1, epoch: 0, key: keyBytes.slice() },
     ]);
-  const frameCtx = ctx(vaultId, { deviceId: "device-a", segment: 7, offset: 128 });
+  const frameCtx = ctx(vaultId, { deviceId: DEVICE_A, segment: 7, offset: 128 });
   const nonce = range(0xa0, 0xb7);
+  const lp = (text: string) => [0, 0, 0, text.length, ...utf8(text)];
 
-  it("key id", () => {
-    expect(ring().active.kid).toBe("899723a0e010c01f493a2cd684f8e9bd");
-    // Same value from an independent BLAKE2b: keyed by the data key, over the fixed context.
-    expect(toHex(blake2b(utf8("cashu/kid/v1"), { key: keyBytes, dkLen: 16 }))).toBe(
-      ring().active.kid,
+  // Subkeys and kid recomputed with an independent BLAKE2b (@noble/hashes), straight from the spec.
+  const frameKey = blake2b(utf8("cashu/subkey/frame/v2"), { key: keyBytes, dkLen: 32 });
+  const kidKey = blake2b(utf8("cashu/subkey/kid/v2"), { key: keyBytes, dkLen: 32 });
+
+  it("key id binds key, vault, generation and epoch", () => {
+    expect(ring().active.kid).toBe("7bd6215fabb945b83e9fe5c54e25bd1d");
+    const message = new Uint8Array([
+      ...utf8("cashu/kid/v2"),
+      ...lp(vaultId),
+      ...[0, 0, 0, 1],
+      ...[0, 0, 0, 0],
+    ]);
+    expect(toHex(blake2b(message, { key: kidKey, dkLen: 16 }))).toBe(ring().active.kid);
+  });
+
+  it("key payload v2", () => {
+    expect(toHex(encodeKeyPayload(ring()))).toBe(
+      toHex(
+        new Uint8Array([
+          ...utf8("cashu/keys/v2"),
+          ...lp(vaultId),
+          ...recovery.box.publicKey,
+          ...recovery.signPublicKey,
+          ...GID_SALT,
+          ...[0, 1],
+          ...[0, 0, 0, 1],
+          ...[0, 0, 0, 0],
+          ...keyBytes,
+        ]),
+      ),
     );
   });
 
   it("frame", () => {
     const frame = sealFrameWithNonce(sodium, ring(), utf8("hello frame"), frameCtx, nonce);
     expect(toHex(frame)).toBe(
-      "01899723a0e010c01f493a2cd684f8e9bd" +
+      "017bd6215fabb945b83e9fe5c54e25bd1d" +
         "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7" +
-        "2d896671d87dc2de000248c307e4445af9846e0321849ae14257f2",
+        "583ad156dc278c2b13deba26c9637656ac21643eacd4e436f7590f",
     );
     expect(openFrame(sodium, ring(), frame, frameCtx)).toEqual(utf8("hello frame"));
   });
@@ -95,23 +118,27 @@ describe("cashU format golden vectors", () => {
       ...utf8("cashu/frame/v1"),
       1,
       ...kid,
-      ...[0, 0, 0, 32],
-      ...utf8(vaultId),
-      ...[0, 0, 0, 8],
-      ...utf8("device-a"),
+      ...lp(vaultId),
+      ...lp(DEVICE_A),
       ...[0, 0, 0, 7],
       ...[0, 0, 0, 0, 0, 0, 0, 128],
     ]);
-    const plain = xchacha20poly1305(keyBytes, nonce, aad).decrypt(
+    const plain = xchacha20poly1305(frameKey, nonce, aad).decrypt(
       frame.subarray(FRAME_HEADER_BYTES),
     );
     expect(plain).toEqual(utf8("hello frame"));
   });
 
-  it("recovery public key for the all-zero phrase", () => {
-    const pair = recoveryKeyPair(sodium, `${"abandon ".repeat(23)}art`);
-    expect(toHex(pair.publicKey)).toBe(
-      "da2d476f72ff4d7f8288cda2798d64425d089c6dc6f5ca4b8febe473ef17363a",
+  it("recovery public keys for the all-zero phrase", () => {
+    expect(toHex(recovery.box.publicKey)).toBe(
+      "3995c11245ef09988fc498c3e4217994f247cae53caa25d135426b2afea92112",
     );
+    expect(toHex(recovery.signPublicKey)).toBe(
+      "2fe7005580ffa0bd2297e199d4bbcea847178e26f908dada33397f26a33b932a",
+    );
+    // Independent derivation: HKDF-SHA256 -> Ed25519 seed (@noble/curves).
+    const entropy = new Uint8Array(32);
+    const seed = hkdf(sha256, entropy, utf8("cashu/recovery/v2"), utf8("ed25519-seed"), 32);
+    expect(ed25519.getPublicKey(seed)).toEqual(recovery.signPublicKey);
   });
 });
