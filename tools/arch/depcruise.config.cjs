@@ -18,9 +18,11 @@ const LAYERS = {
   // Leader-only market data over HTTP (Yahoo, stooq, NBP) behind an injected fetch.
   market: ["domain"],
   store: ["domain", "sync"],
+  // React bindings over the store (useQuery, useCommand, providers) and the store port (both ends).
+  "store-react": ["domain", "store"],
   i18n: ["domain"],
   ui: ["domain", "i18n"],
-  "ui-logic": ["domain", "store", "i18n"],
+  "ui-logic": ["domain", "store", "store-react", "i18n"],
   api: ["domain", "store", "sync", "i18n"],
   mcp: ["domain", "store", "sync", "i18n"],
   parity: ["domain", "store", "mcp"],
@@ -90,22 +92,22 @@ module.exports = {
       name: "view-is-pure",
       severity: "error",
       comment:
-        "A View renders props. It never imports the store, sync, ui-logic feature hooks, commands, navigation, app-state stores or network clients: the screen hook does that and passes the result in. Type-only imports are fine.",
+        "A View renders props. It never imports the store, its React bindings (useQuery, useCommand), sync, ui-logic feature hooks, commands, navigation, app-state stores or network clients: the screen hook does that and passes the result in. Type-only imports are fine.",
       from: { path: "View(\\.(web|native|ios|android))?\\.tsx$" },
       to: {
         dependencyTypesNot: ["type-only"],
-        path: [`^packages/(store|sync|ui-logic)/`, "(^|/)commands(\\.tsx?|/|$)", IMPURE_LIBS],
+        path: [`^packages/(store|store-react|sync|ui-logic)/`, "(^|/)commands(\\.tsx?|/|$)", IMPURE_LIBS],
       },
     },
     {
       name: "ui-is-pure",
       severity: "error",
       comment:
-        "packages/ui components get data through props. No store, sync, ui-logic, navigation, app-state stores or network clients.",
+        "packages/ui components get data through props. No store, store bindings, sync, ui-logic, navigation, app-state stores or network clients.",
       from: { path: "^packages/ui/src/" },
       to: {
         dependencyTypesNot: ["type-only"],
-        path: [`^packages/(store|sync|ui-logic)/`, IMPURE_LIBS],
+        path: [`^packages/(store|store-react|sync|ui-logic)/`, IMPURE_LIBS],
       },
     },
     {
