@@ -212,6 +212,11 @@ new context that neither extends nor is a prefix of these (for example `"cashu/f
   admitted), and revoking the device cuts its whole certificate subtree, which frees the slots on every
   device at the next fold. Follow-up: admit by trusted-path depth with a per-issuer share, or cap a
   subtree's size per first-level issuer.
+- Catch-up waivers (S29c): a trusted device can waive another device's catch-up requirement with the
+  `typed` confirmation, because the expected text (the short ids) is computable; the typed text
+  protects against ACCIDENTAL waivers only. The recovery-signed waiver is the security path: only the
+  words authorize it against a stolen or buggy device. A waiver by a writer that is later revoked or
+  conflicted is refused (the requirement reappears: fail closed).
 
 ### S29c: decision keys (the invariant behind every revocation decision)
 

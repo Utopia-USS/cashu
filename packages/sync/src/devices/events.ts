@@ -131,14 +131,16 @@ export interface KeysRotatedData {
 export type Watermark = Readonly<Record<string, SegmentCursor>>;
 
 /**
- * The owner's confirmation of a waiver (review: a waived requirement re-allows newest-day
- * duplicates, so no key holder may waive on its own):
- * - `typed`: the owner typed `waiveConfirmationText(devices)` (the short ids of the waived devices,
- *   shown next to their names) on a trusted, not revoked device, which then signed the lease event.
- *   S44 UI contract: `text` is set ONLY from what the owner typed in the confirmation dialog, never
- *   computed by the app.
- * - `recovery`: the recovery identity (the words) signed the waiver: `sig` over
- *   `statementBody(vault, LEASE_WAIVER_BODY, eid, { devices })` in context `cashu/lease/v1`.
+ * The owner's confirmation of a waiver (a waived requirement re-allows newest-day duplicates):
+ * - `recovery` (the SECURITY path): the recovery identity (the words) signed the waiver: `sig` over
+ *   `statementBody(vault, LEASE_WAIVER_BODY, eid, { devices })` in context `cashu/lease/v1`, bound
+ *   to the vault, the lease event and the devices.
+ * - `typed` (an ACCIDENT GUARD only, not an authorization): the owner typed
+ *   `waiveConfirmationText(devices)` (the short ids of the waived devices, shown next to their names)
+ *   on a trusted, not revoked device, which then signed the lease event. The text is computable, so
+ *   any trusted device's code (a stolen, not yet revoked one, or a bug) can waive this way; it only
+ *   stops an accidental waiver. S44 UI contract: `text` is set ONLY from what the owner typed in the
+ *   confirmation dialog, never computed by the app (crypto/README.md risk list).
  */
 export type WaiveConfirmation =
   | { readonly kind: "typed"; readonly text: string }
