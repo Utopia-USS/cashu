@@ -8,80 +8,85 @@
  * that are not a year in context). ISO dates, timestamps and periods are protected while the number
  * rules run and restored afterwards.
  *
- * Every pattern is the Python one with Python's Unicode classes (`pyRegex.ts`); the order of the
- * passes is Python's, and so is each replacement.
+ * Every pattern is the Python one with Python's Unicode classes (`PY_*` of `@cashu/domain`); the
+ * order of the passes is Python's, and so is each replacement.
  */
 
-import { pyStrip } from "@cashu/domain";
+import { PY_B, PY_D, PY_END, PY_IC_I, PY_W, PY_WS, pyLen, pyStrip, uRegex } from "@cashu/domain";
 import type { NameGuard } from "./names.js";
-import { B, D, END, IC_I, pyRe, S, W } from "./pyRegex.js";
-import { pyDigitsValue, pyLen } from "./pyText.js";
+import { pyDigitsValue } from "./pyText.js";
 
-const ISO_DATE = pyRe(
-  `${B}${D}{4}-${D}{2}-${D}{2}(?:[T ]${D}{2}:${D}{2}(?::${D}{2}(?:\\.${D}+)?)?(?:Z|[+\\-]${D}{2}:?${D}{2})?)?${B}`,
+const ISO_DATE = uRegex(
+  `${PY_B}${PY_D}{4}-${PY_D}{2}-${PY_D}{2}(?:[T ]${PY_D}{2}:${PY_D}{2}(?::${PY_D}{2}(?:\\.${PY_D}+)?)?(?:Z|[+\\-]${PY_D}{2}:?${PY_D}{2})?)?${PY_B}`,
   "g",
 );
-const PERIOD = pyRe(
-  `${B}${D}{4}-(?:0[1-9]|1[0-2]|Q[1-4])${B}|${B}(?:0[1-9]|1[0-2])/${D}{4}${B}`,
+const PERIOD = uRegex(
+  `${PY_B}${PY_D}{4}-(?:0[1-9]|1[0-2]|Q[1-4])${PY_B}|${PY_B}(?:0[1-9]|1[0-2])/${PY_D}{4}${PY_B}`,
   "g",
 );
 // Account numbers: IBANs (groups split by up to two spaces, dots, slashes, underscores or hyphens),
 // runs of 10+ digits (same separators except dots, so amounts stay amounts), dotted 4-digit groups,
 // broker account ids (U1234567).
-const IBAN_SOURCE = `${B}[A-Z]{2}${D}{2}(?:[ \\u00a0._/\\-]{0,2}[A-Z0-9]{4}){3,8}(?:[ \\u00a0._/\\-]{0,2}[A-Z0-9]{1,4})?${B}`;
-const LONG_DIGITS_SOURCE = `(?<!${D})${D}(?:[ \\u00a0/_\\-]{0,2}${D}){9,}(?!${D})`;
-const DOTTED_ACCOUNT_SOURCE = `(?<![${D}.])${D}{2,4}(?:\\.${D}{4}){3,}(?!${D})`;
-const IBAN = pyRe(IBAN_SOURCE, "g");
-const LONG_DIGITS = pyRe(LONG_DIGITS_SOURCE, "g");
-const DOTTED_ACCOUNT = pyRe(DOTTED_ACCOUNT_SOURCE, "g");
+const IBAN_SOURCE = `${PY_B}[A-Z]{2}${PY_D}{2}(?:[ \\u00a0._/\\-]{0,2}[A-Z0-9]{4}){3,8}(?:[ \\u00a0._/\\-]{0,2}[A-Z0-9]{1,4})?${PY_B}`;
+const LONG_DIGITS_SOURCE = `(?<!${PY_D})${PY_D}(?:[ \\u00a0/_\\-]{0,2}${PY_D}){9,}(?!${PY_D})`;
+const DOTTED_ACCOUNT_SOURCE = `(?<![${PY_D}.])${PY_D}{2,4}(?:\\.${PY_D}{4}){3,}(?!${PY_D})`;
+const IBAN = uRegex(IBAN_SOURCE, "g");
+const LONG_DIGITS = uRegex(LONG_DIGITS_SOURCE, "g");
+const DOTTED_ACCOUNT = uRegex(DOTTED_ACCOUNT_SOURCE, "g");
 // a shorter number right after an account word ("konto nr 12345678")
-const ACCOUNT_WORD = pyRe(
-  `(?i:${B}(?:konto|konta|rachunek|rachunku|account|acct|nr|numer|no)${B}\\.?[${S}:#]{0,3})` +
-    `(?:nr\\.?[${S}]?)?(${D}[${D} \\u00a0\\-]{4,}${D})`,
+const ACCOUNT_WORD = uRegex(
+  `(?i:${PY_B}(?:konto|konta|rachunek|rachunku|account|acct|nr|numer|no)${PY_B}\\.?[${PY_WS}:#]{0,3})` +
+    `(?:nr\\.?[${PY_WS}]?)?(${PY_D}[${PY_D} \\u00a0\\-]{4,}${PY_D})`,
   "g",
 );
-const ACCOUNT_ID = pyRe(`${B}[A-Z]{1,3}${D}{6,9}${B}`, "g");
-const EMAIL = pyRe(`[${W}.+\\-]+@[${W}\\-]+(?:\\.[${W}\\-]+)+`, "g");
+const ACCOUNT_ID = uRegex(`${PY_B}[A-Z]{1,3}${PY_D}{6,9}${PY_B}`, "g");
+const EMAIL = uRegex(`[${PY_W}.+\\-]+@[${PY_W}\\-]+(?:\\.[${PY_W}\\-]+)+`, "g");
 // Money: a number next to a currency (any upper-case 3-letter code, Polish / English words, symbols),
 // with a multiplier (12 tys., 100k), grouped thousands, decimals, and integers of 4+ digits that are
 // not a year in context.
 const CUR =
-  `(?:[A-Z]{3}|(?i:zł|zl|złot[${W}]*|zlot[${W}]*|grosz[${W}]*|euro|eur|usd|pln|gbp|chf|dolar[${W}]*` +
-  `|funt[${W}]*|frank[${W}]*)|€|\\$|£)`;
-const NUM = `[\\-+]?${D}(?:[${D} \\u00a0\\u202f'.,]*${D})?`;
-const MONEY_CUR = pyRe(
-  `(?:${NUM}[${S}]?${CUR}(?![A-Za-z]))|(?:(?<![A-Za-z])${CUR}[${S}]?${NUM})`,
+  `(?:[A-Z]{3}|(?i:zł|zl|złot[${PY_W}]*|zlot[${PY_W}]*|grosz[${PY_W}]*|euro|eur|usd|pln|gbp|chf|dolar[${PY_W}]*` +
+  `|funt[${PY_W}]*|frank[${PY_W}]*)|€|\\$|£)`;
+const NUM = `[\\-+]?${PY_D}(?:[${PY_D} \\u00a0\\u202f'.,]*${PY_D})?`;
+const MONEY_CUR = uRegex(
+  `(?:${NUM}[${PY_WS}]?${CUR}(?![A-Za-z]))|(?:(?<![A-Za-z])${CUR}[${PY_WS}]?${NUM})`,
   "g",
 );
-const MULTIPLIED = pyRe(
-  `(?<![${W}.,])[\\-+]?${D}+(?:[.,]${D}+)?[${S}]?` +
-    `(?i:tys\\.?|tys${IC_I}[eę]c[${W}]*|mln|mld|k|m|mn|bn)(?![${W}])`,
+const MULTIPLIED = uRegex(
+  `(?<![${PY_W}.,])[\\-+]?${PY_D}+(?:[.,]${PY_D}+)?[${PY_WS}]?` +
+    `(?i:tys\\.?|tys${PY_IC_I}[eę]c[${PY_W}]*|mln|mld|k|m|mn|bn)(?![${PY_W}])`,
   "g",
 );
-const NOT_PP = `[${S}]?pp${B}`;
-const GROUPED = pyRe(
-  `(?<![${W}.,])[\\-+]?${D}{1,3}(?:(?:[ \\u00a0\\u202f']${D}{3})+|(?:,${D}{3})+|(?:\\.${D}{3}){2,})` +
-    `(?:[.,]${D}+)?(?![${W}%]|${NOT_PP}|[${S}]?%)`,
+const NOT_PP = `[${PY_WS}]?pp${PY_B}`;
+const GROUPED = uRegex(
+  `(?<![${PY_W}.,])[\\-+]?${PY_D}{1,3}(?:(?:[ \\u00a0\\u202f']${PY_D}{3})+|(?:,${PY_D}{3})+|(?:\\.${PY_D}{3}){2,})` +
+    `(?:[.,]${PY_D}+)?(?![${PY_W}%]|${NOT_PP}|[${PY_WS}]?%)`,
   "g",
 );
-const DECIMAL = pyRe(`(?<![${W}.,])[\\-+]?${D}+[.,]${D}+(?![${D}%]|[${S}]?%|${NOT_PP})`, "g");
-const BIG_INT = pyRe(`(?<![${W}.,])[\\-+]?${D}{4,}(?![${W}%.,]|[${S}]?%|${NOT_PP})`, "g");
-const MONEY_WORD = pyRe(
-  `(?i:${B}(?:pr${IC_I}ce|pr${IC_I}ces|cena|ceny|cash|amount|kwota|kwoty|value|warto[${W}]*|worth|cost|` +
-    `costs|koszt[${W}]*|saldo|balance|depos${IC_I}t[${W}]*|wp[lł]at[${W}]*|wyp[lł]at[${W}]*|fee|fees|tax|` +
-    `prow${IC_I}zj[${W}]*|op[lł]at[${W}]*|proceeds|${IC_I}ncome|expense[${W}]*|przych[${W}]*|wydat[${W}]*|` +
-    `rata|raty|${IC_I}nstallment)${B}[^${D}\\n]{0,24}?)(?<![${W}.,])([\\-+]?${D}+(?:[.,]${D}+)?)` +
-    `(?![${D}%]|[.,]${D}|[${S}]?%|${NOT_PP}|[${S}]?(?:days?|dni)${B})`,
+const DECIMAL = uRegex(
+  `(?<![${PY_W}.,])[\\-+]?${PY_D}+[.,]${PY_D}+(?![${PY_D}%]|[${PY_WS}]?%|${NOT_PP})`,
   "g",
 );
-const YEAR_BEFORE = pyRe(
-  `(?i:${B}(?:${IC_I}n|w|we|rok|roku|year|years|s${IC_I}nce|od|do|unt${IC_I}l|from|of|z|za|before|after|` +
-    `przed|po))[${S}]+${END}`,
+const BIG_INT = uRegex(
+  `(?<![${PY_W}.,])[\\-+]?${PY_D}{4,}(?![${PY_W}%.,]|[${PY_WS}]?%|${NOT_PP})`,
+  "g",
 );
-const YEAR_AFTER = pyRe(`^[${S}]?(?:r\\.|rok)`);
-const ISIN_SOURCE = `${B}[A-Z]{2}[A-Z0-9]{9}${D}${B}`;
-const ISIN = pyRe(ISIN_SOURCE, "g");
-const ISIN_FULL = pyRe(`^[A-Z]{2}[A-Z0-9]{9}${D}$`);
+const MONEY_WORD = uRegex(
+  `(?i:${PY_B}(?:pr${PY_IC_I}ce|pr${PY_IC_I}ces|cena|ceny|cash|amount|kwota|kwoty|value|warto[${PY_W}]*|worth|cost|` +
+    `costs|koszt[${PY_W}]*|saldo|balance|depos${PY_IC_I}t[${PY_W}]*|wp[lł]at[${PY_W}]*|wyp[lł]at[${PY_W}]*|fee|fees|tax|` +
+    `prow${PY_IC_I}zj[${PY_W}]*|op[lł]at[${PY_W}]*|proceeds|${PY_IC_I}ncome|expense[${PY_W}]*|przych[${PY_W}]*|wydat[${PY_W}]*|` +
+    `rata|raty|${PY_IC_I}nstallment)${PY_B}[^${PY_D}\\n]{0,24}?)(?<![${PY_W}.,])([\\-+]?${PY_D}+(?:[.,]${PY_D}+)?)` +
+    `(?![${PY_D}%]|[.,]${PY_D}|[${PY_WS}]?%|${NOT_PP}|[${PY_WS}]?(?:days?|dni)${PY_B})`,
+  "g",
+);
+const YEAR_BEFORE = uRegex(
+  `(?i:${PY_B}(?:${PY_IC_I}n|w|we|rok|roku|year|years|s${PY_IC_I}nce|od|do|unt${PY_IC_I}l|from|of|z|za|before|after|` +
+    `przed|po))[${PY_WS}]+${PY_END}`,
+);
+const YEAR_AFTER = uRegex(`^[${PY_WS}]?(?:r\\.|rok)`);
+const ISIN_SOURCE = `${PY_B}[A-Z]{2}[A-Z0-9]{9}${PY_D}${PY_B}`;
+const ISIN = uRegex(ISIN_SOURCE, "g");
+const ISIN_FULL = uRegex(`^[A-Z]{2}[A-Z0-9]{9}${PY_D}$`);
 // A protected date / ISIN is swapped for NUL + its index + NUL while the number rules run. The index
 // is written in private-use characters, not digits, so no number rule can touch it.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: NUL is the placeholder delimiter this pattern removes
@@ -223,7 +228,7 @@ export function scrubText(
 
 /** The leak check's identifier patterns, unanchored and without the `g` flag (search only). */
 export const LEAK_PATTERNS: readonly RegExp[] = [
-  pyRe(IBAN_SOURCE),
-  pyRe(LONG_DIGITS_SOURCE),
-  pyRe(DOTTED_ACCOUNT_SOURCE),
+  uRegex(IBAN_SOURCE),
+  uRegex(LONG_DIGITS_SOURCE),
+  uRegex(DOTTED_ACCOUNT_SOURCE),
 ];

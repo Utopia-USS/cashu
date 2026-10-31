@@ -5,9 +5,9 @@
 (both read in TS through ``PythonDb``) and the modules' name providers (``NAME_PROVIDERS``:
 ``tools/budget.name_sources`` over the bank transactions, ``tools/investments.strong_names`` /
 ``name_sources`` / ``strict_aliases`` over the instruments). The providers are not ported yet (S38),
-so this script exports their raw outputs; the TS producer runs the ported ``collect`` on them. It also
-exports the macro summary vocabulary (``investments/macro/texts.vocabulary``, public words; S20 ports
-the summary builder) that the ``market`` label's gate needs.
+so this script exports their raw outputs; the TS producer runs the ported ``collect`` on them. The
+macro summary vocabulary the ``market`` label's gate needs comes from the TS port of
+``investments/macro/texts`` (S20).
 
     .venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset demo
 
@@ -39,7 +39,6 @@ CHECK = "mcp.guard_sources"
 
 def guard_sources(ctx) -> dict:
     from cashu.core.mcp.names import NAME_PROVIDERS
-    from cashu.modules.investments.macro.texts import vocabulary
 
     profiles: dict = {}
     for p in ctx.profiles:
@@ -60,7 +59,7 @@ def guard_sources(ctx) -> dict:
             )
         ctx.session.rollback()
         profiles[ctx.pkey(p)] = {"providers": providers}
-    return {"macro_vocabulary": sorted(vocabulary()), "profiles": profiles}
+    return {"profiles": profiles}
 
 
 def child(name: str, run: Path, out: Path) -> int:

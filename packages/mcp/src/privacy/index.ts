@@ -48,7 +48,6 @@ export {
   symbol,
   text,
 } from "./labels.js";
-export { macroSummaryChecker, SUMMARY_MAX } from "./marketText.js";
 export {
   customCondition,
   customSignalMessage,

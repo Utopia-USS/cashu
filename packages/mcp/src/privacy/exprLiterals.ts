@@ -20,8 +20,7 @@
  * `@cashu/domain/investments` and the deps become imports.
  */
 
-import { type Decimal, D as dec } from "@cashu/domain";
-import { D, pyRe, W } from "./pyRegex.js";
+import { type Decimal, D as dec, PY_D, PY_W, uRegex } from "@cashu/domain";
 
 export const AMOUNT_PLACEHOLDER = "[amount]";
 
@@ -82,7 +81,10 @@ const NON_MONEY: ReadonlySet<ExprUnit | null> = new Set([
   "flag",
   "text",
 ]);
-const BARE_NUMBER = pyRe(`(?<![${W}.])${D}+(?:\\.${D}+)?|(?<![${W}.])\\.${D}+`, "g");
+const BARE_NUMBER = uRegex(
+  `(?<![${PY_W}.])${PY_D}+(?:\\.${PY_D}+)?|(?<![${PY_W}.])\\.${PY_D}+`,
+  "g",
+);
 const ONE = dec("1");
 const HUNDRED = dec("100");
 

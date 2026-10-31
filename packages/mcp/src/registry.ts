@@ -10,11 +10,10 @@
  * of the schema.
  */
 
-import { floatRepr, type IsoDate } from "@cashu/domain";
+import { floatRepr, type IsoDate, pyLen } from "@cashu/domain";
 import type { LabelledTree } from "./privacy/labels.js";
 import type { NameGuard } from "./privacy/names.js";
 import { compareCodePoints } from "./privacy/pyJson.js";
-import { pyLen } from "./privacy/pyText.js";
 import type { Privacy } from "./privacy/redactor.js";
 
 /** Provider order (`registry.PROVIDERS`): tools are listed in this order, then in each provider's order. */

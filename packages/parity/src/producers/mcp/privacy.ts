@@ -11,11 +11,11 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { macro } from "@cashu/domain/investments";
 import {
   collectGuard,
   LeakDetected,
   leakCheck,
-  macroSummaryChecker,
   type NameGuard,
   Redactor,
   UnlabelledValue,
@@ -100,7 +100,7 @@ export function produceMcpRead(
     "mcp.read_raw",
   );
   const perProfile = asObject(raw.get(mode), mode);
-  const summaryOk = macroSummaryChecker(bridge.vocabulary);
+  const summaryOk = macro.summaryOk;
   const out: Record<string, OutValue> = {};
   for (const profile of db.profiles()) {
     const pkey = db.keys.key("profiles", profile.id);

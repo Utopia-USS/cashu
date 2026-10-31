@@ -14,7 +14,7 @@
  * `strict` also any number under a money-like key) and throws `LeakDetected` instead of sending.
  */
 
-import { Decimal, formatDateTime, toUtc } from "@cashu/domain";
+import { Decimal, formatDateTime, PY_D, PY_END, pyLen, toUtc, uRegex } from "@cashu/domain";
 import {
   Labelled,
   type LabelledTree,
@@ -25,8 +25,7 @@ import {
 } from "./labels.js";
 import type { NameGuard } from "./names.js";
 import { type JsonValue, pyDumps } from "./pyJson.js";
-import { D, END, pyRe } from "./pyRegex.js";
-import { isDateTime, pyIsDigit, pyLen, pyStr } from "./pyText.js";
+import { isDateTime, pyIsDigit, pyStr } from "./pyText.js";
 import { isinValid, LEAK_PATTERNS, protectDates, scrubText } from "./scrub.js";
 
 export type Privacy = "strict" | "amounts";
@@ -52,10 +51,10 @@ export class LeakDetected extends Error {
 const DROP = Symbol("drop");
 type Walked = JsonValue | typeof DROP;
 
-const KEY = pyRe(`^[a-z_][a-z0-9_]{0,63}${END}`);
-const SYMBOL = pyRe(`^[A-Z0-9][A-Z0-9.\\-:=^_/]{0,19}${END}`);
-const REF = pyRe(`^(?:${D}{1,12}|[a-z][a-z0-9_]*:[0-9a-z]{6,64})${END}`);
-const DATE_STR = pyRe(`^${D}{4}-${D}{2}(?:-${D}{2})?(?:[T ][0-9:.+\\-Z]+)?${END}`);
+const KEY = uRegex(`^[a-z_][a-z0-9_]{0,63}${PY_END}`);
+const SYMBOL = uRegex(`^[A-Z0-9][A-Z0-9.\\-:=^_/]{0,19}${PY_END}`);
+const REF = uRegex(`^(?:${PY_D}{1,12}|[a-z][a-z0-9_]*:[0-9a-z]{6,64})${PY_END}`);
+const DATE_STR = uRegex(`^${PY_D}{4}-${PY_D}{2}(?:-${PY_D}{2})?(?:[T ][0-9:.+\\-Z]+)?${PY_END}`);
 
 function typeName(value: unknown): string {
   if (value instanceof Decimal) return "Decimal";

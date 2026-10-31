@@ -7,10 +7,9 @@
  * is stable while accounts are only added.
  */
 
-import { pyStrip } from "@cashu/domain";
-import { pyRe, W } from "./pyRegex.js";
+import { PY_W, pyStrip, uRegex } from "@cashu/domain";
 
-const UNSAFE = pyRe(`[^${W} .&+\\-]`, "g");
+const UNSAFE = uRegex(`[^${PY_W} .&+\\-]`, "g");
 
 export interface LabelledAccount<Id> {
   readonly id: Id;

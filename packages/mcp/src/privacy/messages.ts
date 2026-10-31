@@ -10,19 +10,18 @@
  * (`line 12`). Amounts mode sends the message as it is (the redactor still runs).
  */
 
-import { pySplit } from "@cashu/domain";
+import { PY_B, PY_D, PY_W, PY_WS, pySplit, uRegex } from "@cashu/domain";
 import { type ExprDeps, scrubAmountLiterals } from "./exprLiterals.js";
 import { type Labelled, text as textLabel } from "./labels.js";
-import { B, D, pyRe, S, W } from "./pyRegex.js";
 
-const NUMBER_OR_KEPT = pyRe(
+const NUMBER_OR_KEPT = uRegex(
   `(?<keep>` +
-    `${B}${D}{4}-${D}{2}-${D}{2}${B}` + // ISO dates
-    `|\\[${D}+\\]` + // list indexes: rules[3]
-    `|${B}(?:rows?|lines?|columns?)[${S}]+${D}+${B}` + // positions in a file
-    `|(?<![${W}.,])[\\-+]?${D}+(?:[.,]${D}+)?[${S}]?(?:%|pp${B})` + // percentages / percentage points
+    `${PY_B}${PY_D}{4}-${PY_D}{2}-${PY_D}{2}${PY_B}` + // ISO dates
+    `|\\[${PY_D}+\\]` + // list indexes: rules[3]
+    `|${PY_B}(?:rows?|lines?|columns?)[${PY_WS}]+${PY_D}+${PY_B}` + // positions in a file
+    `|(?<![${PY_W}.,])[\\-+]?${PY_D}+(?:[.,]${PY_D}+)?[${PY_WS}]?(?:%|pp${PY_B})` + // percentages / percentage points
     `)` +
-    `|(?<number>(?<![${W}.,])[\\-+]?${D}+(?:[ \\u00a0,.]${D}{3})*(?:[.,]${D}+)?(?![${W}%]))`,
+    `|(?<number>(?<![${PY_W}.,])[\\-+]?${PY_D}+(?:[ \\u00a0,.]${PY_D}{3})*(?:[.,]${PY_D}+)?(?![${PY_W}%]))`,
   "g",
 );
 

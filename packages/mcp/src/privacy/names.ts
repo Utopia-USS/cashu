@@ -15,12 +15,24 @@
 
 /// <reference types="node" />
 import { createHmac } from "node:crypto";
-import { isCombining, PY_WS, pySplit, pyStrip, pyUpper } from "@cashu/domain";
-import { END, escapeRe, ignoreCaseLiteral, pyRe, S, W } from "./pyRegex.js";
-import { pyCasefold, pyHasDigit, pyIsDigit, pyLen } from "./pyText.js";
+import {
+  escapeRe,
+  ignoreCaseLiteral,
+  isCombining,
+  PY_END,
+  PY_W,
+  PY_WS,
+  pyCasefold,
+  pyLen,
+  pySplit,
+  pyStrip,
+  pyUpper,
+  uRegex,
+} from "@cashu/domain";
+import { pyHasDigit, pyIsDigit } from "./pyText.js";
 
 export const REF_PREFIX = "payee:";
-const PAYEE_REF = pyRe(`^payee:[a-p]{10}${END}`); // hex digest spelled with letters: never a digit run
+const PAYEE_REF = uRegex(`^payee:[a-p]{10}${PY_END}`); // hex digest spelled with letters: never a digit run
 
 /** Words that mark an organisation, not a person (normalized: upper case, no diacritics, no dots). */
 export const BUSINESS_MARKERS: ReadonlySet<string> = new Set(
@@ -93,7 +105,7 @@ export function fold(text: string): string {
 }
 
 const DOTS_COMMAS = /[.,]/g;
-const SPACES = pyRe(`[${S}]+`, "g");
+const SPACES = uRegex(`[${PY_WS}]+`, "g");
 
 /** Folded, dots and commas removed, whitespace collapsed (merchant comparison key). */
 export function normalize(text: string | null): string {
@@ -101,8 +113,8 @@ export function normalize(text: string | null): string {
   return pyStrip(folded.replace(SPACES, " "));
 }
 
-const TOKEN = pyRe(`^[A-Z][A-Z'\\-]*${END}`);
-const NAME_SPLIT = pyRe(`[^${W}'\\-]+`);
+const TOKEN = uRegex(`^[A-Z][A-Z'\\-]*${PY_END}`);
+const NAME_SPLIT = uRegex(`[^${PY_W}'\\-]+`);
 
 function tokens(text: string | null): string[] {
   return pySplit(normalize(text).replaceAll("-", " - ")).filter((t) => t !== "-");
@@ -156,7 +168,7 @@ export function nameTerms(name: string, { tokens: perWord }: { tokens: boolean }
 }
 
 function containsTerm(folded: string, term: string): boolean {
-  return pyRe(`(?<![${W}])${escapeRe(term)}(?![${W}])`).test(folded);
+  return uRegex(`(?<![${PY_W}])${escapeRe(term)}(?![${PY_W}])`).test(folded);
 }
 
 /** Every ordering of `words` (Python `itertools.permutations`). */
@@ -233,7 +245,7 @@ export class NameGuard {
     let out = text;
     const ordered = [...this.strictAliases].sort((a, b) => pyLen(b[0]) - pyLen(a[0]));
     for (const [alias, publicName] of ordered) {
-      const pattern = pyRe(`(?<![${W}])${ignoreCaseLiteral(alias)}(?![${W}])`, "gi");
+      const pattern = uRegex(`(?<![${PY_W}])${ignoreCaseLiteral(alias)}(?![${PY_W}])`, "gi");
       out = out.replace(pattern, () => publicName);
     }
     return out;
@@ -322,9 +334,11 @@ export class NameGuard {
         for (const p of permutations(words)) orders.set(p.join("\u0000"), p);
       }
       const sorted = [...orders.values()].sort(compareTuples);
-      const pattern = pyRe(
+      const pattern = uRegex(
         sorted
-          .map((order) => `(?<![${W}])${order.map(escapeRe).join(`[${PY_WS},.\\-]+`)}(?![${W}])`)
+          .map(
+            (order) => `(?<![${PY_W}])${order.map(escapeRe).join(`[${PY_WS},.\\-]+`)}(?![${PY_W}])`,
+          )
           .join("|"),
         "g",
       );

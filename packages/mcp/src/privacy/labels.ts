@@ -27,10 +27,13 @@ import {
   D as dec,
   floatRepr,
   formatFloat,
+  PY_D,
+  PY_END,
   roundFloat,
   roundFloatToInt,
+  uRegex,
 } from "@cashu/domain";
-import { D, END, pyRe } from "./pyRegex.js";
+import { macro } from "@cashu/domain/investments";
 
 export type Sensitivity =
   | "identifier"
@@ -202,27 +205,13 @@ export function share(part: Numeric | null, base: Numeric | null): Labelled {
 // --------------------------------------------------------------------------- market text
 
 /**
- * The macro metric labels (P6, `investments.macro.regimes.METRIC_LABELS`): the only words a
- * `market` value may carry besides formatted numbers and macro card summaries.
+ * The macro metric labels (P6, the investments macro module's `METRIC_LABELS`, Polish): the only
+ * words a `market` value may carry besides formatted numbers and macro card summaries.
  */
-export const MARKET_LABELS: ReadonlySet<string> = new Set([
-  "ACWI wobec 200 sesji",
-  "od szczytu",
-  "S&P 500 od szczytu",
-  "DXY",
-  "6 mies.",
-  "USD/PLN 6 mies.",
-  "EEM wobec ACWI 6 mies.",
-  "EEM 6 mies.",
-  "DBC 12 mies.",
-  "wobec ACWI 12 mies.",
-  "USA 10 lat",
-  "3 mies. zmiana",
-  "krzywa 10l-3m",
-]);
+export const MARKET_LABELS: ReadonlySet<string> = macro.METRIC_LABELS;
 
-const MARKET_NUMBER = pyRe(
-  `^[+\\-]?${D}{1,3}(?: ${D}{3})*(?:,${D}+)?(?: (?:%|pp|bp|mln|mld))?${END}`,
+const MARKET_NUMBER = uRegex(
+  `^[+\\-]?${PY_D}{1,3}(?: ${PY_D}{3})*(?:,${PY_D}+)?(?: (?:%|pp|bp|mln|mld))?${PY_END}`,
 );
 
 /** From this absolute value a screening threshold is written compactly (`compactNumber`). */
@@ -230,7 +219,8 @@ export const COMPACT_FROM = 1_000_000;
 
 /**
  * Checks a macro card summary (investments `macro.texts.summary_ok`); the investments module
- * supplies it (`macroSummaryChecker`). Without one, only labels and numbers are market text.
+ * supplies it (`summaryOk` / `summaryChecker` of the domain macro module). Without one, only labels
+ * and numbers are market text.
  */
 export type SummaryCheck = (text: string) => boolean;
 

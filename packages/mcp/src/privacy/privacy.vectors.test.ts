@@ -1,7 +1,10 @@
 /// <reference types="node" />
 // Differential tests against Python (packages/mcp/test/privacy_vectors.py): every section replays
 // the oracle's synthetic inputs through the TS port and expects the same output, byte for byte.
+
 import { createHash } from "node:crypto";
+import { pyCasefold } from "@cashu/domain";
+import { macro } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import {
   enabledIn,
@@ -15,11 +18,10 @@ import {
 } from "../registry.js";
 import { scrubAmountLiterals } from "./exprLiterals.js";
 import { amount, compactNumber, level, marketOk, pct, share } from "./labels.js";
-import { macroSummaryChecker } from "./marketText.js";
 import { scrubNumbers } from "./messages.js";
 import { collectGuard, fold, looksLikePerson, nameTerms, normalize, personPart } from "./names.js";
 import { pyDumps } from "./pyJson.js";
-import { pyCasefold, pyIsDigit } from "./pyText.js";
+import { pyIsDigit } from "./pyText.js";
 import { LeakDetected, leakCheck, Redactor, UnlabelledValue } from "./redactor.js";
 import { isinValid, scrubText } from "./scrub.js";
 import {
@@ -261,7 +263,11 @@ describe("market text", () => {
     summary_max: number;
     rows: { text: string; market_ok: boolean; summary_ok: boolean }[];
   }>("market");
-  const check = macroSummaryChecker(new Set(file.vocabulary), file.summary_max);
+  const check = macro.summaryChecker(new Set(file.vocabulary), file.summary_max);
+  it("the summary vocabulary and maximum are the domain macro module's", () => {
+    expect([...macro.vocabulary()].sort()).toEqual([...file.vocabulary].sort());
+    expect(macro.SUMMARY_MAX).toBe(file.summary_max);
+  });
   it(`replays ${file.rows.length} market texts`, () => {
     const m = new Mismatches();
     for (const [i, r] of file.rows.entries()) {
@@ -282,7 +288,7 @@ describe("Redactor + leakCheck on random labelled trees", () => {
     rows: { guard: number | null; tree: EncodedTree; strict: TreeOutcome; amounts: TreeOutcome }[];
   }>("trees");
   const vocabulary = loadVectors<{ vocabulary: string[] }>("market").vocabulary;
-  const summaryOk = macroSummaryChecker(new Set(vocabulary));
+  const summaryOk = macro.summaryChecker(new Set(vocabulary));
   it(`replays ${file.rows.length} trees in both privacy levels`, () => {
     const m = new Mismatches();
     for (const [i, r] of file.rows.entries()) {
