@@ -29,8 +29,9 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { type Dataset, datasetAsOf, datasetDir, labRoot } from "./datasets.ts";
 import { bool, int, type Row, text, textOrNull } from "./decode.ts";
@@ -193,6 +194,22 @@ export class PythonDb implements SqlRows {
 
   static open(opts: OpenOptions): PythonDb {
     return new PythonDb(opts);
+  }
+
+  /**
+   * The bytes of a file of the dataset's data dir (`relativePath` as the app stores it, e.g. an
+   * archived import), copied into the run dir first like the database; null when it is missing or
+   * outside the data dir.
+   */
+  dataFile(relativePath: string): Uint8Array | null {
+    const from = resolve(this.sourceDir, relativePath);
+    if (!from.startsWith(`${resolve(this.sourceDir)}${sep}`) || !existsSync(from)) return null;
+    if (!statSync(from).isFile()) return null;
+    const dir = join(this.runDir, "files");
+    mkdirSync(dir, { recursive: true });
+    const to = join(dir, createHash("sha256").update(relativePath).digest("hex"));
+    copyFileSync(from, to);
+    return new Uint8Array(readFileSync(to));
   }
 
   /** Close, delete the copy, and throw `SourceChangedError` if the source changed meanwhile. */

@@ -123,14 +123,15 @@ datasets it is enabled for and `produce(db) -> JSON tree`; `<module>/` folders h
 `toJSON()` = Python `str()`, JS numbers refused). The CLI runs under Node's type stripping with
 `src/producers/resolveTs.ts`, which maps the `./x.js` specifiers of workspace TypeScript to `./x.ts`.
 
-| Check                     | Datasets  | Inputs                                                                                                                              |
-| ------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `core.networth`           | demo, lab | accounts, balances, cash-pool transactions, investments rows (`PythonDb`); loans / assets contributors from the bridge              |
-| `budget.dedup`            | demo      | stored transactions (`db.transactions`): v2 hash and occurrence through `@cashu/domain` budget, v1 with `node:crypto`               |
-| `budget.ingest_fixtures`  | demo      | the synthetic CSV fixtures of `packages/domain/test/fixtures/budget-csv` (not dataset state)                                        |
-| `investments.valuation`   | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                                       |
-| `investments.allocation`  | demo, lab | as `investments.valuation`                                                                                                          |
-| `investments.performance` | demo, lab | investments rows, proxy lookup by ISIN / alias (`db.investments`); strategy state, policy, plan, benchmark from the strategy bridge |
+| Check                     | Datasets  | Inputs                                                                                                                                                              |
+| ------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core.networth`           | demo, lab | accounts, balances, cash-pool transactions, investments rows (`PythonDb`); loans / assets contributors from the bridge                                              |
+| `budget.dedup`            | demo      | stored transactions (`db.transactions`): v2 hash and occurrence through `@cashu/domain` budget, v1 with `node:crypto`                                               |
+| `budget.ingest_fixtures`  | demo      | the synthetic CSV fixtures of `packages/domain/test/fixtures/budget-csv` (not dataset state)                                                                        |
+| `investments.valuation`   | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                                                                       |
+| `investments.allocation`  | demo, lab | as `investments.valuation`                                                                                                                                          |
+| `investments.performance` | demo, lab | investments rows, proxy lookup by ISIN / alias (`db.investments`); strategy state, policy, plan, benchmark from the strategy bridge                                 |
+| `investments.import_plan` | demo, lab | import batches, the account's mapping, stored instruments / aliases / hashes (`db.investments`); the archived files through `db.dataFile` (copied into the run dir) |
 
 `investments/portfolioState.ts` is the port of `service/portfolio.build`: rows -> domain values as the
 Python store converts them (`investments/rows.ts`, domain ids are the app's `str(pk)` because the

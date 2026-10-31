@@ -48,6 +48,10 @@ CREATE TABLE inv_price_bars (id INTEGER PRIMARY KEY, instrument_id INTEGER, date
   source VARCHAR, fetched_at DATETIME);
 CREATE TABLE inv_fx_rates (id INTEGER PRIMARY KEY, base VARCHAR, quote VARCHAR, date DATE,
   rate VARCHAR, source VARCHAR, fetched_at DATETIME);
+CREATE TABLE inv_import_batches (id INTEGER PRIMARY KEY, profile_id INTEGER, account_id INTEGER,
+  importer VARCHAR, broker VARCHAR, file_name VARCHAR, file_sha256 VARCHAR, archive_path VARCHAR,
+  created_at DATETIME);
+CREATE TABLE inv_account_settings (account_id INTEGER PRIMARY KEY, mapping_yaml VARCHAR);
 `;
 
 export interface SyntheticDataset {

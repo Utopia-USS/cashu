@@ -163,12 +163,13 @@ function applyOverride(base: inv.Instrument, o: InvProfileInstrumentRow): inv.In
 }
 
 /**
- * `instruments.load(ids, profile_id=...)`: domain instruments by domain id as the profile sees them.
+ * `instruments.load(ids, profile_id=...)`: domain instruments by domain id as the profile sees them
+ * (`profileId` null: the shared defaults).
  * The map is in id order (Python builds it from the rows' order; only lookups use it).
  */
 export function loadInstruments(
   db: PythonDb,
-  profileId: number,
+  profileId: number | null,
   ids: Iterable<number>,
 ): Map<inv.InstrumentId, inv.Instrument> {
   const wanted = [...new Set(ids)].sort((a, b) => a - b);
@@ -178,8 +179,13 @@ export function loadInstruments(
     list.push(a);
     aliases.set(a.instrumentId, list);
   }
+  // without a profile: the shared defaults (`load(..., profile_id=None)`, market identity paths)
   const overrides = new Map(
-    db.investments.profileInstruments(profileId, wanted).map((o) => [o.instrumentId, o] as const),
+    profileId === null
+      ? []
+      : db.investments
+          .profileInstruments(profileId, wanted)
+          .map((o) => [o.instrumentId, o] as const),
   );
   const out = new Map<inv.InstrumentId, inv.Instrument>();
   for (const row of db.investments.instruments(wanted)) {

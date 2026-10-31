@@ -1,6 +1,7 @@
 """Investments checks: the workspace views (``service/views.py``), the pure valuation / allocation
 core (``portfolio/valuation.py``, ``portfolio/allocation.py``), performance (``performance/service.py``),
-the rules engine at the fixed ``as_of`` and the strategy loader (``strategy/loader.py``)."""
+the rules engine at the fixed ``as_of``, the strategy loader (``strategy/loader.py``) and a dry-run
+re-import of every archived import file (``importing/plan.py``)."""
 
 from __future__ import annotations
 
@@ -224,6 +225,210 @@ def strategy_loader(ctx: Ctx) -> dict:
     return out
 
 
+def _plan_id(value):
+    """A plan's instrument id: stored ones are ``str(pk)`` (an int here, so canon writes the natural
+    key), planned ones stay their ``new-<sha12>-<n>`` text."""
+    if value is None:
+        return None
+    return int(value) if value.isdigit() else value
+
+
+def _warning(w) -> dict:
+    return {"message": w.message, "row": w.row, "blocking": w.blocking, "kind": w.kind}
+
+
+def _txn(t) -> dict:
+    return {
+        "type": t.type,
+        "trade_date": t.trade_date,
+        "currency": t.currency,
+        "gross_amount": t.gross_amount,
+        "cash_amount": t.cash_amount,
+        "cash_currency": t.cash_currency,
+        "instrument_id": _plan_id(t.instrument_id),
+        "settle_date": t.settle_date,
+        "quantity": t.quantity,
+        "price": t.price,
+        "fee": t.fee,
+        "tax": t.tax,
+        "fx_rate": t.fx_rate,
+        "split_ratio": t.split_ratio,
+        "note": t.note,
+        "source": t.source,
+        "external_ref": t.external_ref,
+        "dedup_hash": t.dedup_hash,
+        "created_at": t.created_at,
+    }
+
+
+def _instrument(i) -> dict:
+    return {
+        "id": _plan_id(i.id),
+        "name": i.name,
+        "currency": i.currency,
+        "asset_class": i.asset_class,
+        "symbol": i.symbol,
+        "isin": i.isin,
+        "mic": i.mic,
+        "needs_classification": i.needs_classification,
+        "valuation_mode": i.valuation_mode,
+        "status": i.status,
+        "aliases": [
+            {"namespace": a.namespace, "value": a.value, "guessed": a.guessed} for a in i.aliases
+        ],
+    }
+
+
+def _batch_importer(ctx: Ctx, batch):
+    """The importer that parsed the archived file (``imports._choose_importer`` from what the batch
+    and the account remember), or the reason it cannot be rebuilt."""
+    from cashu.modules.investments.importing import (
+        CanonicalImporter,
+        CsvMapping,
+        GenericCsvImporter,
+    )
+    from cashu.modules.investments.importing.canonical import canonical_importer_id
+    from cashu.modules.investments.service import imports
+    from cashu.modules.investments.store import transactions
+
+    if canonical_importer_id(batch.importer) == "cashu":
+        return CanonicalImporter(), None
+    if imports.is_connector_choice(batch.importer):
+        return imports.ConnectorDocumentImporter(batch.importer, batch.importer), None
+    settings = transactions.account_settings(ctx.session, batch.account_id)
+    if not settings.mapping_yaml:
+        return None, "no_mapping"
+    mapping = CsvMapping.from_yaml(settings.mapping_yaml)
+    if mapping.broker_id != batch.importer:
+        return None, "mapping_of_another_importer"
+    return GenericCsvImporter(mapping), None
+
+
+def _replan(ctx: Ctx, batch) -> dict:
+    """``plan_import`` of one archived file against the stored instruments and hashes (the preview
+    of re-importing it), plus whether its hashes are exactly the stored ones."""
+    from itertools import count
+
+    from sqlmodel import select
+
+    from cashu.core import paths
+    from cashu.modules.investments.importing import ImportFile, effective_broker_id, plan_import
+    from cashu.modules.investments.models import InvTransaction
+    from cashu.modules.investments.service import files
+    from cashu.modules.investments.store import convert, instruments, transactions
+
+    path = paths.data_dir() / (batch.archive_path or "")
+    if not batch.archive_path or not path.is_file():
+        return {"archive": "missing"}
+    content = path.read_bytes()
+    importer, problem = _batch_importer(ctx, batch)
+    if importer is None:
+        return {"archive": "ok", "importer": problem}
+    parsed = importer.parse(ImportFile(batch.file_name, content))
+    sha = files.sha256(content)
+    planned, txn_ids = count(1), count(1)
+    plan = plan_import(
+        parsed,
+        account_id=convert.sid(batch.account_id),
+        broker_id=effective_broker_id(importer, parsed),
+        lookup=instruments.DbInstrumentLookup(ctx.session),
+        existing_hashes=lambda hashes: transactions.existing_hashes(
+            ctx.session, batch.account_id, hashes
+        ),
+        instrument_id_factory=lambda: f"new-{sha[:12]}-{next(planned)}",
+        txn_id_factory=lambda: f"t-{next(txn_ids)}",
+    )
+    sources = ctx.session.exec(
+        select(InvTransaction.dedup_hash, InvTransaction.source).where(
+            InvTransaction.import_batch_id == batch.id
+        )
+    ).all()
+    # the batch's own rows; reconciliation corrections applied with the commit are not file rows
+    stored = {digest for digest, source in sources if source == "import"}
+    hashes = {row.txn.dedup_hash for row in plan.rows}
+    return {
+        "archive": "ok",
+        "sha256_matches": sha == batch.file_sha256,
+        "importer": batch.importer,
+        "broker_id": plan.broker_id,
+        "broker_matches": plan.broker_id == batch.broker,
+        "account_hint": plan.account_hint,
+        "rows": [
+            {
+                "row_index": r.parsed.row_index,
+                "match": r.match,
+                "is_duplicate": r.is_duplicate,
+                "txn": _txn(r.txn),
+            }
+            for r in plan.rows
+        ],
+        "positions": [
+            {
+                "parsed_index": p.parsed_index,
+                "match": p.match,
+                "instrument_id": _plan_id(p.position.instrument_id),
+                "quantity": p.position.quantity,
+                "currency": p.position.currency,
+                "as_of": p.position.as_of,
+                "avg_price": p.position.avg_price,
+                "market_value": p.position.market_value,
+            }
+            for p in plan.positions
+        ],
+        "renames": [
+            {
+                "date": r.rename.date,
+                "old_instrument_id": _plan_id(r.rename.old_instrument_id),
+                "new_instrument_id": _plan_id(r.rename.new_instrument_id),
+                "note": r.rename.note,
+            }
+            for r in plan.renames
+        ],
+        "status_changes": [
+            {"instrument_id": _plan_id(c.instrument_id), "status": c.status, "date": c.parsed.date}
+            for c in plan.status_changes
+        ],
+        "new_instruments": [_instrument(i) for i in plan.new_instruments],
+        "new_aliases": [
+            {
+                "instrument_id": _plan_id(instrument_id),
+                "aliases": [
+                    {"namespace": a.namespace, "value": a.value, "guessed": a.guessed}
+                    for a in aliases
+                ],
+            }
+            for instrument_id, aliases in plan.new_aliases.items()
+        ],
+        "warnings": [_warning(w) for w in plan.warnings],
+        "blocking_errors": [_warning(w) for w in plan.blocking_errors],
+        "dedup": {
+            "rows": len(plan.rows),
+            "distinct_hashes": len(hashes),
+            "stored_for_batch": len(stored),
+            "corrections_for_batch": sum(1 for _d, source in sources if source != "import"),
+            "all_rows_stored": all(r.is_duplicate for r in plan.rows),
+            "batch_hashes_in_plan": stored <= hashes,
+        },
+    }
+
+
+def import_plan(ctx: Ctx) -> dict:
+    """Dry-run re-import of every archived file (TS scope S17c): the plan and its dedup hashes."""
+    from sqlmodel import select
+
+    from cashu.modules.investments.models import InvImportBatch
+
+    out = {}
+    for p in ctx.with_module(MODULE):
+        batches = ctx.session.exec(
+            select(InvImportBatch)
+            .where(InvImportBatch.profile_id == p.id)
+            .order_by(InvImportBatch.id)
+        ).all()
+        out[ctx.pkey(p)] = {ctx.ids.key("inv_import_batches", b.id): _replan(ctx, b) for b in batches}
+    return out
+
+
 CHECKS = [
     Check("investments.overview", overview),
     Check("investments.positions", positions),
@@ -240,4 +445,5 @@ CHECKS = [
     Check("investments.performance", performance),
     Check("investments.rules", rules),
     Check("investments.strategy_loader", strategy_loader),
+    Check("investments.import_plan", import_plan),
 ]

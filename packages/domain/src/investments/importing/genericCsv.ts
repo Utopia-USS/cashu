@@ -345,12 +345,22 @@ function currencyCell(row: Row, target: CsvField): RowOutcome<Currency | null> {
 }
 
 class Row {
+  readonly index: number;
+  readonly raw: ReadonlyMap<string, string>;
+  private readonly cells: readonly string[];
+  private readonly columns: ReadonlyMap<CsvField, number>;
+
   constructor(
-    readonly index: number,
-    private readonly cells: readonly string[],
-    private readonly columns: ReadonlyMap<CsvField, number>,
-    readonly raw: ReadonlyMap<string, string>,
-  ) {}
+    index: number,
+    cells: readonly string[],
+    columns: ReadonlyMap<CsvField, number>,
+    raw: ReadonlyMap<string, string>,
+  ) {
+    this.index = index;
+    this.cells = cells;
+    this.columns = columns;
+    this.raw = raw;
+  }
 
   /** Trimmed cell of `target`, or null when unmapped, missing or blank. */
   cell(target: CsvField): string | null {

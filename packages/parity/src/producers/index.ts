@@ -9,6 +9,7 @@ import { produceBudgetDedup } from "./budget/dedup.ts";
 import { produceIngestFixtures } from "./budget/ingestFixtures.ts";
 import { bridgeDir, readBridge } from "./core/bridge.ts";
 import { produceNetworth } from "./core/networth.ts";
+import { produceImportPlan } from "./investments/importPlan.ts";
 import { producePerformance } from "./investments/performance.ts";
 import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
 import { readStrategyBridge, strategyBridgeDir } from "./investments/strategyBridge.ts";
@@ -89,6 +90,12 @@ export const PRODUCERS: readonly Producer[] = [
     datasets: ["demo", "lab"],
     inputs: ["bridge-strategy"],
     produce: (db) => producePerformance(db, readStrategyBridge(db.dataset)),
+  },
+  {
+    check: "investments.import_plan",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceImportPlan,
   },
   {
     check: "mcp.read_strict",

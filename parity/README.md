@@ -82,6 +82,7 @@ and hashes only; tracebacks go to `errors.log` next to the outputs.
 | `investments.performance` | `performance/service.py` (every range + attribution) |
 | `investments.rules` | `rules/engine.py` outcomes at `as_of` (pure, nothing persisted) |
 | `investments.strategy_loader` | `strategy/loader.py` on each profile's files and the bundled templates |
+| `investments.import_plan` | `importing/plan.py`: a dry-run re-import of every archived file (`inv_import_batches`, importer rebuilt from the batch and the account's mapping) against the stored instruments (`DbInstrumentLookup`) and hashes, plus whether the plan's dedup hashes are the batch's stored ones (TS scope S17c) |
 | `mcp.tool_schemas` | `core/mcp/registry.py` (schemas, annotations, listing per profile) |
 | `mcp.read_strict`, `mcp.read_amounts`, `mcp.read_raw` | every read tool of `core/mcp/server.py`, redacted in both privacy levels and the raw labelled trees |
 

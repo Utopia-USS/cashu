@@ -83,6 +83,19 @@ export interface InvAliasRow {
   readonly guessed: boolean;
 }
 
+export interface InvImportBatchRow {
+  readonly id: number;
+  readonly accountId: number;
+  /** Broker id of the importer that parsed the file (`cashu`, a mapping's broker id, `connector:<id>`). */
+  readonly importer: string;
+  /** Effective broker id (alias namespace) of the import. */
+  readonly broker: string;
+  readonly fileName: string;
+  readonly fileSha256: string;
+  /** Relative to the data dir. */
+  readonly archivePath: string | null;
+}
+
 /** A profile's view of an instrument (`inv_profile_instruments`); null = keep the shared value. */
 export interface InvProfileInstrumentRow {
   readonly instrumentId: number;
@@ -268,6 +281,69 @@ export class InvestmentsReader {
       value,
     );
     return row === undefined ? null : int(row, "instrument_id");
+  }
+
+  /**
+   * Instruments with `symbol` upper-cased by SQLite equal to `symbol` (the caller strips and
+   * upper-cases it) listed on `mic`, in id order (`DbInstrumentLookup.by_symbol`).
+   */
+  instrumentIdsBySymbol(symbol: string, mic: string): number[] {
+    return this.query(
+      "SELECT id FROM inv_instruments WHERE upper(symbol) = ? AND mic = ? ORDER BY id",
+      symbol,
+      mic,
+    ).map((r) => int(r, "id"));
+  }
+
+  /** The profile's import batches in id order (the archived file and how it was imported). */
+  importBatches(profileId: number): InvImportBatchRow[] {
+    return this.query(
+      `SELECT id, account_id, importer, broker, file_name, file_sha256, archive_path
+       FROM inv_import_batches WHERE profile_id = ? ORDER BY id`,
+      profileId,
+    ).map((r) => ({
+      id: int(r, "id"),
+      accountId: int(r, "account_id"),
+      importer: text(r, "importer"),
+      broker: text(r, "broker"),
+      fileName: text(r, "file_name"),
+      fileSha256: text(r, "file_sha256"),
+      archivePath: textOrNull(r, "archive_path"),
+    }));
+  }
+
+  /** The generic CSV mapping the account remembers (`inv_account_settings.mapping_yaml`), or null. */
+  mappingYaml(accountId: number): string | null {
+    const [row] = this.query(
+      "SELECT mapping_yaml FROM inv_account_settings WHERE account_id = ?",
+      accountId,
+    );
+    return row === undefined ? null : textOrNull(row, "mapping_yaml");
+  }
+
+  /** The subset of `hashes` stored for the account (`transactions.existing_hashes`, chunks of 500). */
+  existingHashes(accountId: number, hashes: readonly string[]): Set<string> {
+    const found = new Set<string>();
+    for (let start = 0; start < hashes.length; start += 500) {
+      const part = hashes.slice(start, start + 500);
+      for (const r of this.query(
+        `SELECT dedup_hash FROM inv_transactions
+         WHERE account_id = ? AND dedup_hash IN (${placeholders(part.length)})`,
+        accountId,
+        ...part,
+      )) {
+        found.add(text(r, "dedup_hash"));
+      }
+    }
+    return found;
+  }
+
+  /** `(dedup_hash, source)` of the transactions an import batch inserted. */
+  batchTransactions(batchId: number): { readonly dedupHash: string; readonly source: string }[] {
+    return this.query(
+      "SELECT dedup_hash, source FROM inv_transactions WHERE import_batch_id = ?",
+      batchId,
+    ).map((r) => ({ dedupHash: text(r, "dedup_hash"), source: text(r, "source") }));
   }
 
   /** The profile's overrides of the instruments `ids`. */
