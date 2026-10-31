@@ -1,4 +1,5 @@
-"""``cashu sync status|link|ack|prune``: the Python side of the sync outbox (S30).
+"""``cashu sync status|link|ack|prune|apply``: the Python side of the sync bridge (S30 outbox, S31b
+inbound applier).
 
 TRANSITIONAL(S49). Developer / shipper commands, so plain English output (no catalog): counts and
 flags only, never values.
@@ -12,11 +13,11 @@ from typing import Annotated
 
 import typer
 
-from . import cliutil, sync_outbox
+from . import cliutil, sync_apply, sync_outbox
 from .db import get_session, init_db
 
 sync_app = typer.Typer(
-    help="Sync outbox (developer preview, CASHU_SYNC=1): status, vault link, shipper acks.",
+    help="Sync bridge (developer preview, CASHU_SYNC=1): status, vault link, shipper acks, inbound apply.",
     no_args_is_help=True,
 )
 
@@ -104,3 +105,32 @@ def prune_cmd() -> None:
     with get_session() as s:
         n = sync_outbox.prune(s)
     typer.echo(f"pruned {n} acked row(s)")
+
+
+@sync_app.command("apply")
+def apply_cmd(
+    stdin: Annotated[
+        bool, typer.Option("--stdin", help="Read the events as JSON lines from standard input.")
+    ] = False,
+) -> None:
+    """Apply events of other devices (JSON lines of logical envelopes, a JSON array = one batch) to
+    the current profile (``--profile``) through the app's services; parked events are retried.
+    Prints one JSON line of counts (never values)."""
+    import sys
+
+    if not stdin:
+        cliutil.err_console.print("[red]give --stdin (the sync daemon pipes the events)[/]")
+        raise typer.Exit(2)
+    init_db()
+    with get_session() as s:
+        profile = cliutil.profile(s, create=False)
+        pid = profile.id
+    if not pid:  # None or profiles.NO_PROFILE
+        cliutil.err_console.print("[red]no profile to apply to[/]")
+        raise typer.Exit(1)
+    try:
+        summary = sync_apply.apply_lines(sys.stdin, profile_id=pid)
+    except sync_apply.SyncApplyError as e:
+        cliutil.err_console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+    typer.echo(json.dumps(summary, sort_keys=True))

@@ -80,13 +80,15 @@ def mark_done(
     stats: dict[str, Any] | None = None,
     *,
     done_at: dt.date | str | None = None,
+    now: dt.datetime | None = None,
 ) -> Review:
     """Record a review of ``module`` done now, or on ``done_at`` (a past day, e.g. an imported
-    check-in; F7 OB3)."""
+    check-in; F7 OB3). ``now``: the current time unless given (an inbound event's domain time,
+    ``core/sync_apply.py``)."""
     text = (notes or "").strip() or None
     if text is not None and len(text) > MAX_NOTES:
         raise ReviewError(f"notes are too long (max {MAX_NOTES} characters)")
-    now = utcnow()
+    now = now or utcnow()
     done = _done_at(done_at, now)
     stats = dict(stats or {})
     if done != now:

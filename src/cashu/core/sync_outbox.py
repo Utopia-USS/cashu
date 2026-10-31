@@ -288,6 +288,8 @@ NOT_SYNCED: dict[str, str] = {
     "sync_outbox": "the outbox itself",
     "sync_ids": "device-local id map",
     "sync_vaults": "device-local vault link",
+    "sync_inbound": "device-local record of applied inbound events (S31b)",
+    "sync_clock": "device-local field clocks of inbound writes (S31b)",
 }
 
 
@@ -304,6 +306,7 @@ def synced_tables() -> frozenset[str]:
 class _State:
     txn: str = field(default_factory=lambda: uuid.uuid4().hex)
     origin: str = "local"
+    bind: dict[str, str] = field(default_factory=dict)
     inserted: set[tuple[str, str]] = field(default_factory=set)
     covered: set[tuple[str, str]] = field(default_factory=set)
     profiles: dict[tuple[str, str], int | None] = field(default_factory=dict)
@@ -324,15 +327,18 @@ def reset(session) -> None:
 
 
 @contextmanager
-def inbound(session) -> Iterator[None]:
-    """Rows captured inside are tagged ``origin = inbound`` (S31b applies remote events through the
-    services; the shipper never ships them back)."""
+def inbound(session, bind: dict[str, str] | None = None) -> Iterator[None]:
+    """Rows captured inside are tagged ``origin = inbound`` and recorded already acked: S31b applies
+    events of other devices through the services, and the shipper must never ship them back (no echo;
+    ``pending`` never returns them). ``bind``: table -> gid of the row the inbound event creates (a
+    decision, a review, a rule), used instead of a freshly minted or computed gid."""
     st = _state(session)
-    before, st.origin = st.origin, "inbound"
+    before = st.origin, st.bind
+    st.origin, st.bind = "inbound", dict(bind or {})
     try:
         yield
     finally:
-        st.origin = before
+        st.origin, st.bind = before
 
 
 _ready: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
@@ -498,6 +504,8 @@ def _det_gid(conn, st: _State, table_name: str, row: dict, profile_id: int | Non
 
 def _new_gid(conn, st: _State, table_name: str, row: dict, profile_id: int | None) -> tuple[str | None, str]:
     spec = SPECS[table_name]
+    if st.origin == "inbound" and table_name in st.bind and profile_id is not None:
+        return st.bind.pop(table_name), "inbound"
     if spec.gid == "ulid" or (spec.gid == "shipper" and spec.mint and spec.mint(row)):
         return (sync_keys.mint_ulid() if profile_id is not None else None), "minted"
     if spec.gid == "det":
@@ -518,7 +526,7 @@ def _set_gid(conn, st: _State, profile_id: int | None, table_name: str, local_id
         )
     )
     st.gids[(profile_id, table_name, local_id)] = gid
-    if gid is not None and source in ("minted", "det"):
+    if gid is not None and source in ("minted", "det", "inbound"):
         # OR IGNORE: a gid another local row already holds (a duplicate Python kept) stays with that
         # row; this one's later changes carry their key and the shipper resolves them.
         conn.execute(
@@ -554,7 +562,7 @@ def _outbox_row(st: _State, *, profile_id, table_name, op, local_id, gid, fields
         "prev": prev,
         "key": key,
         "origin": st.origin,
-        "acked_at": None,
+        "acked_at": utcnow() if st.origin == "inbound" else None,  # never shipped back (S31b)
     }
 
 

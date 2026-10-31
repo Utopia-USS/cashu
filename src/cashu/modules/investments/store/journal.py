@@ -38,11 +38,13 @@ def record_decision(
     price: Decimal | None = None,
     currency: str | None = None,
     reason: str | None = None,
+    now: dt.datetime | None = None,
 ) -> InvDecision:
     """A journal entry. Linked to signals (``signal_row`` is the one-signal shortcut of
     ``signal_rows``; all of one instrument) it acknowledges every one of them with the same timestamp
     (they stay open until the rule clears) and writes one ``inv_decision_signals`` row per signal;
-    ``signal_id`` keeps the first. It never books a transaction."""
+    ``signal_id`` keeps the first. It never books a transaction. ``now``: when it was recorded (an
+    inbound event's domain time, ``core/sync_apply.py``); default the current time."""
     try:
         action_value = DecisionAction(action).value
     except ValueError:
@@ -62,7 +64,7 @@ def record_decision(
         raise JournalError("The signals belong to different instruments")
     if rows and instrument_id is not None and rows[0].instrument_id not in (None, instrument_id):
         raise JournalError("The signals belong to another instrument")
-    now = utcnow()
+    now = now or utcnow()
     if rows:
         instrument_id = instrument_id if instrument_id is not None else rows[0].instrument_id
         if account_id is None and len({row.account_id for row in rows}) == 1:

@@ -1,4 +1,5 @@
-"""Tables of the sync outbox (S30, the strangler bridge): ``sync_outbox``, ``sync_ids``, ``sync_vaults``.
+"""Tables of the sync bridge (S30 outbox, S31b inbound): ``sync_outbox``, ``sync_ids``, ``sync_vaults``,
+``sync_inbound``, ``sync_clock``.
 
 TRANSITIONAL(S49): these tables exist only while the Python app writes the data and the TS store
 (event log) reads it; they go with the Python write path.
@@ -59,7 +60,7 @@ class SyncId(SQLModel, table=True):
     table_name: str = Field(primary_key=True)
     local_id: str = Field(primary_key=True)
     gid: str
-    source: str  # minted | det | genesis | shipper
+    source: str  # minted | det | genesis | shipper | inbound (S31b: the gid of an inbound create)
 
 
 class SyncVault(SQLModel, table=True):
@@ -70,3 +71,38 @@ class SyncVault(SQLModel, table=True):
     profile_id: int = Field(primary_key=True)
     vault_id: str = Field(unique=True)
     linked_at: dt.datetime = Field(default_factory=utcnow)
+
+
+class SyncInbound(SQLModel, table=True):
+    """One inbound event by ``eid``: ``status`` is ``applied``, ``lost`` (an older edit than the local
+    state: nothing changed), ``covered`` (an effect the service of its batch sibling already produces),
+    ``rejected`` (never applied: disallowed type, bad payload, invalid gid, refused by the service) or
+    ``parked`` (waiting for an unknown gid or the salt; retried by every apply run). ``digest``: sha256
+    of the canonical event, to detect an ``eid`` reused with another body (events.md 2)."""
+
+    __tablename__ = "sync_inbound"
+
+    eid: str = Field(primary_key=True)
+    profile_id: int | None = None
+    type: str
+    hlc: str
+    gid: str | None = None
+    status: str = Field(index=True)
+    reason: str | None = None
+    digest: str
+    body: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    received_at: dt.datetime = Field(default_factory=utcnow)
+    settled_at: dt.datetime | None = None
+
+
+class SyncClock(SQLModel, table=True):
+    """The last inbound write of one synced field of one local row (LWW-F register position)."""
+
+    __tablename__ = "sync_clock"
+
+    profile_id: int = Field(primary_key=True)
+    table_name: str = Field(primary_key=True)
+    local_id: str = Field(primary_key=True)
+    field: str = Field(primary_key=True)
+    hlc: str
+    eid: str
