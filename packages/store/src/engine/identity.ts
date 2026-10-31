@@ -16,7 +16,11 @@ class UnionFind {
   readonly exclusiveOf = new Map<string, string>();
   readonly conflicts: IdentityConflict[] = [];
 
-  constructor(private readonly exclusivePrefix: string | undefined) {}
+  private readonly exclusivePrefix: string | undefined;
+
+  constructor(exclusivePrefix: string | undefined) {
+    this.exclusivePrefix = exclusivePrefix;
+  }
 
   find(g: string): string {
     let r = g;
