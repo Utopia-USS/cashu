@@ -17,7 +17,7 @@ import {
   recoveryIdentity,
   type Sodium,
 } from "../crypto/index.js";
-import { DEVICE_RE, formatHlc, type Hlc, HybridClock } from "../hlc.js";
+import { formatHlc, type Hlc, HybridClock } from "../hlc.js";
 import { buildDeviceAdded, type LogEvent } from "./events.js";
 import type { OwnLeaseRecord } from "./lease.js";
 import { PairingInviter, PairingJoiner } from "./pairing.js";
@@ -42,17 +42,8 @@ export function newEid(): string {
   return out;
 }
 
-/**
- * The HLC device suffix for a 32-hex device id.
- * TRANSITIONAL(S23b): sync's HLC still has 16-char device suffixes while events.md moves to 32-hex
- * device ids; drop this mapping when hlc.ts takes the 32-hex ids.
- */
-function clockId(deviceId: string): string {
-  return DEVICE_RE.test(deviceId) ? deviceId : deviceId.slice(0, 16);
-}
-
 export function hlcAt(deviceId: string, wall: number, counter = 0): Hlc {
-  return formatHlc({ wall, counter, device: clockId(deviceId) });
+  return formatHlc({ wall, counter, device: deviceId });
 }
 
 export const START_TIME = Date.UTC(2026, 9, 31, 12, 0, 0);
@@ -98,7 +89,7 @@ export class SimDevice {
     this.remote = remote;
     this.skewMs = skewMs;
     this.identity = identity ?? createDeviceIdentity(sodium);
-    this.#clock = new HybridClock(clockId(this.identity.deviceId), {
+    this.#clock = new HybridClock(this.identity.deviceId, {
       physical: { now: () => this.now() },
     });
   }
