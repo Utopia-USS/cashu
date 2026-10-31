@@ -3,12 +3,12 @@ import { fromBase64, toBase64, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity } from "./identity.js";
+import { rotateKeyring } from "./keys.js";
 import {
   type BlobFiles,
   createSafeStorageKeyStore,
   createSecureStoreKeyStore,
   deviceIdentityName,
-  InMemoryKeyStore,
   type KeyStore,
   keyringName,
   loadDeviceIdentity,
@@ -18,6 +18,7 @@ import {
   saveDeviceIdentity,
   saveKeyring,
 } from "./keystore.js";
+import { InMemoryKeyStore } from "./testing.js";
 import { ctx, newRing, samplePlain, sodium } from "./testkit.js";
 
 // Fake safeStorage: reversible but not identity, so a test can tell stored blobs are not the raw value.
@@ -49,7 +50,7 @@ function fakeSecureStore(): SecureStoreLike & {
   return {
     items,
     accessible,
-    WHEN_UNLOCKED_THIS_DEVICE_ONLY: 7,
+    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 7,
     getItemAsync: async (k, o) => {
       accessible.push(o?.keychainAccessible);
       return items.get(k) ?? null;
@@ -112,10 +113,50 @@ describe("KeyStore adapters", () => {
     }
   });
 
-  it("expo-secure-store, this device only", async () => {
+  it("expo-secure-store holds one key-encryption key, after first unlock, this device only", async () => {
     const ss = fakeSecureStore();
-    await roundtrip(createSecureStoreKeyStore(ss));
+    const files = memoryFiles();
+    await roundtrip(createSecureStoreKeyStore(sodium, ss, files));
     expect(new Set(ss.accessible)).toEqual(new Set([7]));
+    expect([...ss.items.keys()]).toEqual(["cashu.keystore.kek"]);
+    expect(fromBase64(ss.items.get("cashu.keystore.kek") ?? "").length).toBe(32);
+  });
+
+  it("expo values live sealed in files, so a ring with many generations fits (no 2048-byte limit)", async () => {
+    const ss = fakeSecureStore();
+    const files = memoryFiles();
+    const store = createSecureStoreKeyStore(sodium, ss, files);
+    const ring = newRing();
+    for (let i = 0; i < 100; i++) rotateKeyring(sodium, ring);
+    await saveKeyring(store, ring);
+    const blob = files.blobs.get(keyringName(ring.vaultId));
+    expect(blob && blob.length > 2048).toBe(true);
+    // Sealed: no key bytes in the file.
+    const hex = Buffer.from(blob ?? []).toString("hex");
+    for (const e of ring.entries())
+      expect(hex).not.toContain(Buffer.from(e.key.expose()).toString("hex"));
+    // A fresh store over the same Keychain item and files (app restart) reads it back.
+    const again = await loadKeyring(
+      createSecureStoreKeyStore(sodium, ss, files),
+      sodium,
+      ring.vaultId,
+    );
+    expect(again?.active.kid).toBe(ring.active.kid);
+  });
+
+  it("expo blobs are bound to their name and to this device's key-encryption key", async () => {
+    const ss = fakeSecureStore();
+    const files = memoryFiles();
+    const store = createSecureStoreKeyStore(sodium, ss, files);
+    await store.set("cashu.a", new Uint8Array([1, 2, 3]));
+    await store.set("cashu.b", new Uint8Array([4, 5, 6]));
+    const a = files.blobs.get("cashu.a");
+    if (!a) throw new Error("missing");
+    files.blobs.set("cashu.b", a);
+    await expect(store.get("cashu.b")).rejects.toMatchObject({ code: "auth_failed" });
+    // Files restored onto a phone without the Keychain item cannot be read.
+    const restored = createSecureStoreKeyStore(sodium, fakeSecureStore(), files);
+    await expect(restored.get("cashu.a")).rejects.toMatchObject({ code: "keystore_unavailable" });
   });
 
   it("rejects names expo-secure-store cannot hold", async () => {
@@ -152,6 +193,13 @@ describe("KeyStore adapters", () => {
     const hex = Buffer.from(blob ?? []).toString("hex");
     expect(hex).not.toContain(Buffer.from(a.box.publicKey).toString("hex"));
     expect(hex).not.toContain(Buffer.from(a.signPublicKey).toString("hex"));
+  });
+
+  it("the in-memory store is only on the testing subpath, never the main entry", async () => {
+    const main = await import("../index.js");
+    expect(Object.keys(main.crypto)).not.toContain("InMemoryKeyStore");
+    const testing = await import("../testing/index.js");
+    expect(testing.InMemoryKeyStore).toBe(InMemoryKeyStore);
   });
 
   it("base64 helpers roundtrip every byte value", () => {

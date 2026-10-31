@@ -8,8 +8,9 @@ import { ALL_CODES, CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity } from "./identity.js";
 import { createKeyring, rotateKeyring } from "./keys.js";
-import { InMemoryKeyStore, loadKeyring, saveKeyring } from "./keystore.js";
+import { loadKeyring, saveKeyring } from "./keystore.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
+import { InMemoryKeyStore } from "./testing.js";
 import { ctx, PLAINTEXT_MARKER, samplePlain, sodium } from "./testkit.js";
 import {
   openPairingWrap,

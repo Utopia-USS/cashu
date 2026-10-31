@@ -41,7 +41,6 @@ export {
   createSafeStorageKeyStore,
   createSecureStoreKeyStore,
   deviceIdentityName,
-  InMemoryKeyStore,
   type KeyStore,
   keyringName,
   loadDeviceIdentity,

@@ -1,5 +1,6 @@
 // Test kit for carrier adapters and store tests (`@cashu/sync/testing`). Imports vitest: never import
 // it from runtime code.
+export { InMemoryKeyStore } from "../crypto/testing.js";
 export { insecureTestCodec } from "./codec.js";
 export {
   type CarrierMedium,

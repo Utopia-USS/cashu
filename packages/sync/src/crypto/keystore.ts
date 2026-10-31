@@ -1,8 +1,12 @@
 // Where a device keeps its secrets (data keyrings, its own device identity). The platform module
 // is injected, so this package imports neither Electron nor Expo:
 //   desktop: Electron `safeStorage` (macOS Keychain / Windows DPAPI / libsecret) + files for the blobs
-//   iOS:     `expo-secure-store` (Keychain, this device only, no iCloud Keychain backup)
-//   tests:   in memory
+//   iOS:     `expo-secure-store` holds one key-encryption key; values are sealed under it in files
+//   tests:   in memory (`@cashu/sync/testing`, never the main entry)
+//
+// Best effort, as everywhere in JS: values pass through immutable strings (base64 for safeStorage)
+// and GC copies that cannot be wiped. Any code running as the user (or inside the app) can ask
+// safeStorage / DPAPI / the Keychain to decrypt; that is within this threat model.
 
 import { concat, fromBase64, fromHex, Reader, toBase64, toHex, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
@@ -15,7 +19,7 @@ import {
   type Keyring,
 } from "./keys.js";
 import { Secret } from "./secret.js";
-import { KEY_BYTES, type Sodium } from "./sodium.js";
+import { KEY_BYTES, NONCE_BYTES, type Sodium, TAG_BYTES } from "./sodium.js";
 
 export interface KeyStore {
   get(name: string): Promise<Uint8Array | null>;
@@ -26,30 +30,9 @@ export interface KeyStore {
 // expo-secure-store accepts only these characters in a key; the same rule everywhere keeps names portable.
 const NAME = /^[A-Za-z0-9._-]{1,128}$/;
 
-function checkName(name: string): void {
+/** Not public API: shared name rule for every store (also used by `testing.ts`). */
+export function checkName(name: string): void {
   if (!NAME.test(name)) throw new CryptoError("bad_key_name");
-}
-
-export class InMemoryKeyStore implements KeyStore {
-  #items = new Map<string, Uint8Array>();
-
-  async get(name: string): Promise<Uint8Array | null> {
-    checkName(name);
-    const v = this.#items.get(name);
-    return v ? v.slice() : null;
-  }
-
-  async set(name: string, value: Uint8Array): Promise<void> {
-    checkName(name);
-    this.#items.get(name)?.fill(0);
-    this.#items.set(name, value.slice());
-  }
-
-  async delete(name: string): Promise<void> {
-    checkName(name);
-    this.#items.get(name)?.fill(0);
-    this.#items.delete(name);
-  }
 }
 
 /** The subset of Electron's `safeStorage` used here. */
@@ -108,8 +91,8 @@ export interface SecureStoreLike {
   getItemAsync(key: string, options?: SecureStoreOptions): Promise<string | null>;
   setItemAsync(key: string, value: string, options?: SecureStoreOptions): Promise<void>;
   deleteItemAsync(key: string, options?: SecureStoreOptions): Promise<void>;
-  /** `SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY`: readable after first unlock, never migrated to another device. */
-  WHEN_UNLOCKED_THIS_DEVICE_ONLY: number;
+  /** `SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`. */
+  AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: number;
 }
 
 export interface SecureStoreOptions {
@@ -117,27 +100,75 @@ export interface SecureStoreOptions {
   keychainAccessible?: number;
 }
 
+const KEK_ITEM = "cashu.keystore.kek";
+const SEALED_VERSION = 1;
+
+/**
+ * Mobile store: the Keychain (expo-secure-store) holds ONE random 32-byte key-encryption key; each
+ * value is sealed with XChaCha20-Poly1305 under it (AAD = the name, so blobs cannot be swapped
+ * between names) and kept through `files`, so SecureStore's ~2048-byte value limit never applies
+ * however many key generations a ring collects. Blob: 0x01 | nonce (24) | ciphertext + tag.
+ *
+ * Accessibility is AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY because background sync must read keys while
+ * the phone is locked (WHEN_UNLOCKED would refuse then); THIS_DEVICE_ONLY keeps the key out of
+ * backups and off other devices.
+ */
 export function createSecureStoreKeyStore(
+  sodium: Sodium,
   secureStore: SecureStoreLike,
-  keychainService = "cashu",
+  files: BlobFiles,
 ): KeyStore {
   const options: SecureStoreOptions = {
-    keychainService,
-    keychainAccessible: secureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    keychainService: "cashu",
+    keychainAccessible: secureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+  };
+  let kek: Promise<Secret | null> | undefined;
+  const loadKek = async (create: boolean): Promise<Secret | null> => {
+    kek ??= secureStore.getItemAsync(KEK_ITEM, options).then((v) => {
+      if (v === null) return null;
+      const bytes = fromBase64(v);
+      if (bytes.length !== KEY_BYTES) throw new CryptoError("keystore_unavailable");
+      return new Secret(bytes);
+    });
+    const current = await kek;
+    if (current || !create) return current;
+    kek = (async () => {
+      const fresh = sodium.randomBytes(KEY_BYTES);
+      await secureStore.setItemAsync(KEK_ITEM, toBase64(fresh), options);
+      return new Secret(fresh);
+    })();
+    try {
+      return await kek;
+    } catch (e) {
+      kek = undefined;
+      throw e;
+    }
   };
   return {
     async get(name) {
       checkName(name);
-      const v = await secureStore.getItemAsync(name, options);
-      return v === null ? null : fromBase64(v);
+      const blob = await files.read(name);
+      if (!blob) return null;
+      // A blob without its key (e.g. a restored backup on a new phone) cannot be read.
+      const key = await loadKek(false);
+      if (!key) throw new CryptoError("keystore_unavailable");
+      if (blob.length < 1 + NONCE_BYTES + TAG_BYTES || blob[0] !== SEALED_VERSION) {
+        throw new CryptoError("bad_payload");
+      }
+      const nonce = blob.subarray(1, 1 + NONCE_BYTES);
+      return sodium.aeadDecrypt(blob.subarray(1 + NONCE_BYTES), utf8(name), nonce, key.expose());
     },
     async set(name, value) {
       checkName(name);
-      await secureStore.setItemAsync(name, toBase64(value), options);
+      const key = await loadKek(true);
+      if (!key) throw new CryptoError("keystore_unavailable");
+      const nonce = sodium.randomBytes(NONCE_BYTES);
+      const cipher = sodium.aeadEncrypt(value, utf8(name), nonce, key.expose());
+      await files.write(name, concat(Uint8Array.of(SEALED_VERSION), nonce, cipher));
     },
     async delete(name) {
       checkName(name);
-      await secureStore.deleteItemAsync(name, options);
+      await files.remove(name);
     },
   };
 }
