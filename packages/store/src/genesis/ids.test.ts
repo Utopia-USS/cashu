@@ -179,33 +179,64 @@ describe("accounts (spec 6.2, 6.3)", () => {
     expect(counters.get("accounts", "foreign_park_suffix", 0)).toBe(1);
   });
 
-  it("keeps colliding accounts apart: the lowest id keeps gid and keys", () => {
+  it("keeps colliding live accounts apart: the lowest id keeps gid and keys", () => {
     const { driver, rows } = db();
     const first = rows.insert("accounts", { bank: "mbank", iban: ZERO_KEY_IBAN });
     const sameIban = rows.insert("accounts", { bank: "erste", iban: ZERO_KEY_IBAN });
-    const parked = rows.insert("accounts", { id: 10, external_id: "import:k~10" });
-    const live = rows.insert("accounts", { id: 11, external_id: "import:k" });
-    const sharedExt = rows.insert("accounts", {
-      id: 12,
-      iban: "11123400000000000000000002",
-      external_id: "import:z~12",
-    });
+    // A parked key on a live account (not what Python writes, but readable): both live, id order.
+    const extA = rows.insert("accounts", { id: 10, external_id: "import:k~10" });
+    const extB = rows.insert("accounts", { id: 11, external_id: "import:k" });
     const withIban = rows.insert("accounts", { id: 13, iban: "BW00000000000000000000000000" });
-    const extOnly = rows.insert("accounts", { id: 14, external_id: "import:z" });
     const { vaults, counters } = phase1(driver);
     const a = (id: number) => vaults[0]?.accounts.get(id);
     const genesis = (id: number) => vaults[0]?.det("genesis", ["accounts", String(id)]);
     expect(a(first)?.keys).toEqual([`iban:${"0".repeat(26)}`]);
     expect(a(sameIban)).toMatchObject({ gid: genesis(sameIban), keys: [] });
-    expect(a(parked)?.keys).toEqual(["ext:mbank:import:k"]);
-    expect(a(live)).toMatchObject({ gid: genesis(live), keys: [] });
+    expect(a(extA)?.keys).toEqual(["ext:mbank:import:k"]);
+    expect(a(extB)).toMatchObject({ gid: genesis(extB), keys: [] });
     // Same IBAN key as `first` (another country code, same key): a gid collision.
     expect(a(withIban)).toMatchObject({ gid: genesis(withIban), keys: [] });
-    // A removed account with an IBAN and a parked key, a live one under that key: different gids,
-    // one shared key; kept apart too.
-    expect(a(sharedExt)?.keys).toEqual(["iban:11123400000000000000000002", "ext:mbank:import:z"]);
-    expect(a(extOnly)).toMatchObject({ gid: genesis(extOnly), keys: [] });
-    expect(counters.get("accounts", "account_key_collision", 0)).toBe(4);
+    expect(counters.get("accounts", "account_key_collision", 0)).toBe(3);
+    expect([...(vaults[0]?.accounts.keys() ?? [])]).toEqual([first, sameIban, 10, 11, 13]);
+  });
+
+  it("lets a live account claim first: a removed one never takes the key it (re)uses", () => {
+    const { driver, rows } = db();
+    // Parked ext key: removed A (lower id) and live B under one Enable Banking uid.
+    const parked = rows.insert("accounts", {
+      id: 1,
+      bank: "eb",
+      external_id: "U~1",
+      removed_at: "2026-01-01 00:00:00.000000",
+    });
+    const live = rows.insert("accounts", { id: 2, bank: "eb", external_id: "U" });
+    // Shared IBAN: a removed account and a live one with one IBAN, no external key.
+    const removedIban = rows.insert("accounts", {
+      id: 3,
+      iban: ZERO_KEY_IBAN,
+      removed_at: "2026-01-01 00:00:00.000000",
+    });
+    const liveIban = rows.insert("accounts", { id: 4, iban: ZERO_KEY_IBAN });
+    const { vaults, counters } = phase1(driver);
+    const a = (id: number) => vaults[0]?.accounts.get(id);
+    const det = vaults[0]?.det;
+    const genesis = (id: number) => det?.("genesis", ["accounts", String(id)]);
+    expect(a(live)).toEqual({
+      gid: det?.("accounts", ["ext", "eb", "U"]),
+      keys: ["ext:eb:U"],
+      externalId: "U",
+    });
+    expect(a(parked)).toEqual({ gid: genesis(parked), keys: [], externalId: "U" });
+    expect(a(liveIban)).toEqual({
+      gid: det?.("accounts", ["iban", "0".repeat(26)]),
+      keys: [`iban:${"0".repeat(26)}`],
+      externalId: null,
+    });
+    expect(a(removedIban)).toEqual({ gid: genesis(removedIban), keys: [], externalId: null });
+    expect(counters.get("accounts", "account_key_collision", 0)).toBe(2);
+    // The removed losers keep their rows (and gids in the map, id order).
+    expect([...(vaults[0]?.accounts.keys() ?? [])]).toEqual([1, 2, 3, 4]);
+    expect(gidOf(vaults[0], "accounts", parked)).toBe(genesis(parked));
   });
 });
 

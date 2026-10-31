@@ -2,8 +2,10 @@
 // `external_id` is un-parked (`<key>~<own id>` -> `<key>`); the gid is DET["iban", ibanKey] for an
 // IBAN that passes mod-97, else DET["ext", bank, external_id] for a natural key, else the genesis gid.
 // Keys: `iban:<ibanKey>` (valid IBAN only, N2) and `ext:<bank>:<external_id>` (natural key, bank
-// shaped as a key). Collisions keep the accounts apart: the lowest id keeps its DET gid and keys, a
-// later account whose gid or any key is already taken gets its genesis gid and claims no key.
+// shaped as a key). Collisions keep the accounts apart: live accounts (`removed_at` null) claim first,
+// then removed ones, each group by id; an account whose gid or any key is already taken gets its
+// genesis gid and claims no key. So a removed account never takes the identity a live one (re)uses:
+// Python parks a removed account's key so a new account can take it, and routes imports to the live one.
 import { ibanKey } from "@cashu/domain";
 import { isValidIban } from "../events/v1/identity.js";
 import type { DetGid } from "../gid.js";
@@ -35,8 +37,9 @@ function unpark(row: AccountRow, tally: (reason: string) => void): string | null
 }
 
 /**
- * The identity of every account of one vault, by local id (rows in id order). Counts on `accounts`:
- * `iban_invalid`, `bank_not_key`, `foreign_park_suffix`, `account_key_collision`.
+ * The identity of every account of one vault, by local id (rows and map in id order). Claims run live-first,
+ * then by id (gid.md 7.4). Counts on `accounts`: `iban_invalid`, `bank_not_key`,
+ * `foreign_park_suffix`, `account_key_collision`.
  */
 export function accountIdentities(
   rows: readonly AccountRow[],
@@ -46,8 +49,11 @@ export function accountIdentities(
 ): ReadonlyMap<number, AccountIdentity> {
   const tally = (reason: string) => counters.addVault(ordinal, "accounts", reason);
   const claimed = new Set<string>();
-  const out = new Map<number, AccountIdentity>();
-  for (const row of rows) {
+  const byId = new Map<number, AccountIdentity>();
+  const claimOrder = [...rows].sort(
+    (x, y) => Number(x.removedAt !== null) - Number(y.removedAt !== null) || x.id - y.id,
+  );
+  for (const row of claimOrder) {
     const externalId = unpark(row, tally);
     const natural = externalId !== null && !NOT_NATURAL.test(externalId);
     const ibanOk = row.iban !== null && isValidIban(row.iban);
@@ -64,7 +70,7 @@ export function accountIdentities(
     const taken = (gid !== undefined && claimed.has(gid)) || keys.some((k) => claimed.has(k));
     if (taken) tally("account_key_collision");
     if (gid === undefined || taken) {
-      out.set(row.id, {
+      byId.set(row.id, {
         gid: det("genesis", ["accounts", String(row.id)]),
         keys: [],
         externalId,
@@ -73,7 +79,12 @@ export function accountIdentities(
     }
     claimed.add(gid);
     for (const k of keys) claimed.add(k);
-    out.set(row.id, { gid, keys, externalId });
+    byId.set(row.id, { gid, keys, externalId });
+  }
+  const out = new Map<number, AccountIdentity>();
+  for (const row of rows) {
+    const identity = byId.get(row.id);
+    if (identity !== undefined) out.set(row.id, identity);
   }
   return out;
 }

@@ -324,8 +324,12 @@ Genesis emits no `instrument.merged` (Python keeps no merge record).
 
 ### 7.4 Collisions (D-G4)
 
-Two source rows of one vault that compute one DET gid stay two rows: accounts: the lowest id keeps
-the DET gid and the keys, a later one gets its genesis gid and claims no key; investment transactions
+Two source rows of one vault that compute one DET gid stay two rows: accounts: live accounts
+(`removed_at` null) claim first, then removed ones, each group by id; the first claimant keeps the DET
+gid and the keys, a later one whose gid or any key is taken gets its genesis gid and claims no key
+(counted `account_key_collision`). A removed account never takes the key, IBAN or DET gid a live one
+(re)uses: Python parks a removed account's key so a new account can take it, and writers route by
+key to the live account. The loser keeps its data; investment transactions
 (ref / content path) and budget transactions: the later row takes the smallest free occurrence above
 its own. A reconciliation collision fails the run.
 
