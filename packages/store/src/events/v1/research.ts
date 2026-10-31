@@ -40,7 +40,8 @@ export const WATCHLIST_SOURCES = ["user", "agent"] as const;
 
 const segmentKey = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/, "expected a segment catalog key");
 const source = z.looseObject({
-  title: z.string(),
+  // research/validation.py SourceInput: the title is optional and stored as null when missing.
+  title: z.string().nullable(),
   url: z.string(),
   publisher: z.string().nullable().optional(),
   published_at: z.string().nullable().optional(),

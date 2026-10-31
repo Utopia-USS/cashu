@@ -313,6 +313,14 @@ describe("v1.1 acceptance of real shapes", () => {
     expect(PAYLOADS["topicThesis.marketViewSet"].safeParse(view).success).toBe(true);
   });
 
+  it("accepts a research source without a title (Python stores null, validation.py)", () => {
+    const sources = [{ title: null, url: "https://example.com/a", publisher: "Example" }];
+    const note = { ...VALID_SAMPLES["note.added"], sources };
+    expect(PAYLOADS["note.added"].safeParse(note).success).toBe(true);
+    const missingUrl = { ...note, sources: [{ title: "t" }] };
+    expect(PAYLOADS["note.added"].safeParse(missingUrl).success).toBe(false);
+  });
+
   it("parks instrument.merged whose gid is not the source (m11)", () => {
     const data = VALID_SAMPLES["instrument.merged"];
     expect(parseEvent(envelope("instrument.merged", data, { gid: ULID_B })).status).toBe("known");
