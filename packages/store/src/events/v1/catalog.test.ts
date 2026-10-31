@@ -93,7 +93,10 @@ describe("S25 catalog deltas (optional fields, absent keeps the v1 meaning)", ()
   // may only grow at its end, or stored events decode into the wrong fields after an upgrade.
   it.each([
     ["signal.refreshed", ["severity", "message", "payload", "run", "seenAt", "stamps"]],
-    ["signal.escalated", ["severity", "message", "payload", "reactivate", "run", "seenAt", "stamps"]],
+    [
+      "signal.escalated",
+      ["severity", "message", "payload", "reactivate", "run", "seenAt", "stamps"],
+    ],
     ["signal.closed", ["status", "reason", "stamps"]],
     ["signal.reopened", ["reason", "stamps"]],
     ["alert.restored", ["stamps"]],
