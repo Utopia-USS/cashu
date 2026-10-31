@@ -13,6 +13,7 @@ Labels (contract F4, plus ``count``, ``ref``, ``flag``, ``account`` and ``level`
 | ``level`` (a market price level of a public instrument: an alert level, a close) | sent | sent |
 | ``text`` (scrubbed: identifiers always, money amounts in strict) | sent | sent |
 | ``market`` (server-made text about public market data, e.g. ``USA 10 lat`` / ``4,23 %``; identifiers scrubbed, never amounts) | sent | sent |
+| ``authored`` (cashU's own constant text, never owner data: tool notes, catalog notes; identifiers and names scrubbed, numbers kept) | sent | sent |
 | ``count`` (non-money integers: counts, days, row numbers) | sent | sent |
 | ``ref`` (local row ids the write tools take back) | sent | sent |
 | ``flag`` (booleans) | sent | sent |
@@ -47,6 +48,7 @@ class Sensitivity(StrEnum):
     ACCOUNT = "account"
     LEVEL = "level"
     MARKET = "market"
+    AUTHORED = "authored"
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +162,12 @@ def market(value: str | None) -> Labelled:
 
 def symbol(value: str | None) -> Labelled:
     return Labelled(value, Sensitivity.SYMBOL)
+
+
+def fixed_text(value: str | None) -> Labelled:
+    """Constant text written by cashU code (tool notes, catalog notes): not owner data, so strict
+    mode keeps its numbers; identifiers, names and the leak check still apply (S37fix R3)."""
+    return Labelled(value, Sensitivity.AUTHORED)
 
 
 def count(value: int | None) -> Labelled:

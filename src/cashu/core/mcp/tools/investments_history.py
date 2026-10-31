@@ -75,7 +75,7 @@ def history_metrics(ctx: ToolContext) -> dict:
     s, profile = ctx.session, ctx.profile
     txns = transactions.transactions(s, ctx.profile_id)
     if not txns:
-        return {"note": L.text("no investments history yet"), "trades": L.count(0)}
+        return {"note": L.fixed_text("no investments history yet"), "trades": L.count(0)}
     trades = sorted(
         (t for t in txns if t.type in (TxnType.BUY, TxnType.SELL)), key=lambda t: t.trade_date
     )
@@ -209,7 +209,7 @@ def history_metrics(ctx: ToolContext) -> dict:
             for cur, (fee, gross) in sorted(fees.items())
         ],
         "concentration": concentration,
-        "not_measured": L.text(
+        "not_measured": L.fixed_text(
             "returns vs a benchmark, max drawdown, profit concentration and rolling relative "
             "performance come with the performance metrics (later stage)"
         ),

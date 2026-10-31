@@ -126,7 +126,7 @@ def checked_local_dir(raw: str, root: Path) -> Path:
 def checked_path(raw: str, slug: str) -> Path:
     path = checked_local_file(raw, slug, ALLOWED)
     if path.stat().st_size > MAX_BYTES:
-        raise ToolError(f"file is too large (max {MAX_BYTES // (1024 * 1024)} MB)")
+        raise ToolError(f"file is too large (max {MAX_BYTES // (1024 * 1024)} MB)", system=True)
     return path
 
 
@@ -798,7 +798,7 @@ def inspect_file(path: Path, *, max_samples: int = 5) -> dict:
             {"key": L.text(_safe_label(x["key"])), "type": L.category(x["type"])}
             for x in info.structure
         ],
-        "masking": L.text(
+        "masking": L.fixed_text(
             "numbers are shown as their format (N = digit, separators kept), dates as their pattern, "
             "identifiers as [identifier]; free text token by token: transaction-type words, "
             "currencies and booleans as they are, an e-mail as [email], a token with a digit as its "

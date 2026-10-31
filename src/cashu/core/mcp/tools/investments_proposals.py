@@ -305,7 +305,7 @@ def propose_strategy(
         out["buckets"] = [L.category(b.id) for b in config.allocation.buckets]
     if not valid:
         out["error_code"] = L.category(problem.code)
-        out["note"] = L.text("not stored: fix the errors (line / column above) and propose again")
+        out["note"] = L.fixed_text("not stored: fix the errors (line / column above) and propose again")
         return out
     if dry_run:
         return out
@@ -338,7 +338,7 @@ def propose_strategy(
     )
     out["stored"] = L.flag(True)
     out["proposal_id"] = L.ref(row.id)
-    out["note"] = L.text("stored as a proposal; the owner approves it in the app (Inwestycje)")
+    out["note"] = L.fixed_text("stored as a proposal; the owner approves it in the app (Inwestycje)")
     return out
 
 
@@ -688,13 +688,13 @@ def propose_custom_rule(
         "dry_run": L.flag(dry_run),
     }
     if errors or result is None:
-        out["note"] = L.text("not stored: fix the errors and propose again")
+        out["note"] = L.fixed_text("not stored: fix the errors and propose again")
         return out
     config = result.config or result.partial
     spec = config.rule(entry["id"]) if config is not None else None
     if spec is None:
         out["valid"] = L.flag(False)
-        out["note"] = L.text("not stored: the rule did not load")
+        out["note"] = L.fixed_text("not stored: the rule did not load")
         return out
     bt = backtest(ctx, spec, config)
     out["backtest"] = _backtest_labelled(bt)
@@ -721,7 +721,7 @@ def propose_custom_rule(
     )
     out["stored"] = L.flag(True)
     out["proposal_id"] = L.ref(row.id)
-    out["note"] = L.text("stored as a proposal; the owner approves it in the app (Inwestycje)")
+    out["note"] = L.fixed_text("stored as a proposal; the owner approves it in the app (Inwestycje)")
     return out
 
 
@@ -975,7 +975,7 @@ def propose_import(
         return {
             "stored": L.flag(False),
             "preview": _summary_labelled(summary, pv),
-            "note": L.text("not stored: the preview has blocking errors (by kind above)"),
+            "note": L.fixed_text("not stored: the preview has blocking errors (by kind above)"),
         }
     staged = _stage(ctx.profile.slug, sha, p.name, content)
     label = ctx.account_labels.get(account_id)
@@ -1010,7 +1010,7 @@ def propose_import(
         "account": L.account(label),
         "file": L.identifier(p.name),
         "preview": _summary_labelled(summary, pv),
-        "note": L.text("stored as a pending import; the owner reviews and commits it in the app"),
+        "note": L.fixed_text("stored as a pending import; the owner reviews and commits it in the app"),
     }
 
 

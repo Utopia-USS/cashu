@@ -151,8 +151,8 @@ def spending_breakdown(
     merchants = sorted(by_merchant.items(), key=lambda kv: -kv[1][0])[:top]
     return {
         "currency": L.category(cur),
-        "period": L.text(label),
-        "base_note": L.text("shares are of the period's total spending in this currency"),
+        "period": L.date(label),  # "2026", "2026-Q3", "2026-09": a typed period, kept in strict
+        "base_note": L.fixed_text("shares are of the period's total spending in this currency"),
         "total": L.amount(total),
         "categories": [
             {
@@ -243,7 +243,7 @@ def recurring_payments(ctx: ToolContext) -> dict:
             }
         )
     return {
-        "base_note": L.text(
+        "base_note": L.fixed_text(
             "share_of_monthly_spending: one payment vs the average monthly spending of the last "
             "3 months in that currency"
         ),
@@ -269,7 +269,7 @@ def uncategorized_merchants(ctx: ToolContext, limit: int = 30) -> dict:
         totals[t.currency] += -t.amount
     rows = sorted(agg.items(), key=lambda kv: (-kv[1][0], -kv[1][1]))[:limit]
     return {
-        "base_note": L.text("share: of all uncategorized spending in that currency"),
+        "base_note": L.fixed_text("share: of all uncategorized spending in that currency"),
         "merchants": [
             {
                 "merchant": L.merchant(mk),
@@ -294,6 +294,16 @@ def _category_keys() -> list[str]:
 OWNER_SOURCES = frozenset({"manual", "manual_txn", "cash_leg", "transfer"})
 
 
+def _shown_as(ctx: ToolContext, shown: str, keys: set[str]) -> str | None:
+    """The one merchant key whose redacted form is ``shown`` (the agent sends back a name it saw
+    with a number masked, "SKLEP [amount]"); ``None`` when none or several match."""
+    from ..redaction import Redactor
+
+    redactor = Redactor(ctx.privacy, ctx.guard)
+    hits = [k for k in sorted(keys) if redactor.apply(L.merchant(k)) == shown]
+    return hits[0] if len(hits) == 1 else None
+
+
 def set_merchant_category(ctx: ToolContext, merchant: str, category: str) -> dict:
     """A learned rule from the agent: stored like an LLM rule (not locked), so the owner's manual
     rule for the merchant wins, and only transactions the owner did not categorize by hand change."""
@@ -305,7 +315,7 @@ def set_merchant_category(ctx: ToolContext, merchant: str, category: str) -> dic
     rows = _all_transactions(ctx)
     keys = {merchant_key(t.counterparty_name, t.reference, t.description) for t in rows}
     keys.discard("")
-    key = ctx.guard.resolve(merchant, keys)
+    key = ctx.guard.resolve(merchant, keys) or _shown_as(ctx, merchant, keys)
     if key is None:
         raise ToolError("no such merchant in this profile's transactions", "not_found")
     rule = upsert_rule(
@@ -316,7 +326,7 @@ def set_merchant_category(ctx: ToolContext, merchant: str, category: str) -> dic
             "merchant": L.merchant(key),
             "category": L.category(rule.category),
             "updated_transactions": L.count(0),
-            "rule": L.text("kept: the owner set this merchant's category by hand"),
+            "rule": L.fixed_text("kept: the owner set this merchant's category by hand"),
         }
     updated = 0
     for t in rows:
@@ -331,7 +341,7 @@ def set_merchant_category(ctx: ToolContext, merchant: str, category: str) -> dic
         "merchant": L.merchant(key),
         "category": L.category(category),
         "updated_transactions": L.count(updated),
-        "rule": L.text(
+        "rule": L.fixed_text(
             "learned rule saved for this profile (like an LLM rule: the owner's manual choices win)"
         ),
     }
@@ -348,6 +358,7 @@ _CURRENCY = {
     "maxLength": 3,
     "description": "3-letter code (default: base currency)",
 }
+
 
 def validate_budget_import(ctx: ToolContext, path: str) -> dict:
     from cashu.modules.budget.ingestion.canonical import validate_budget_document

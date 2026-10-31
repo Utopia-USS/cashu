@@ -5,15 +5,15 @@
 - ``identifier`` -> the key is dropped (both modes);
 - ``amount`` -> dropped in ``strict``, a number in ``amounts``;
 - ``merchant`` -> sent, private-person payees as an opaque ``payee:`` reference (``names.NameGuard``);
-- ``text`` / ``category`` / ``account`` / ``symbol`` -> scrubbed (``scrub_text``): IBAN-like strings,
-  runs of 10+ digits (account / card / phone numbers), e-mail addresses and known person names always;
-  money amounts (numbers next to a currency, grouped thousands, decimals, integers of 4+ digits that are
-  not years) in ``strict``;
+- ``text`` / ``category`` / ``account`` / ``symbol`` -> scrubbed (``scrub_text``) on a normalized copy
+  (Unicode spaces, zero-width characters and dashes folded): IBAN-like strings, digit runs with 9+
+  digits (account / card / phone numbers), masked cards, letter-and-digit ids, e-mail addresses and
+  known person names always; in ``strict`` every number with 2+ significant digits except dates;
 - ``percent`` / ``level`` / ``count`` / ``ref`` / ``flag`` / ``date`` -> type-checked and sent.
 
 A raw (unlabelled) leaf raises :class:`UnlabelledValue`: the call fails closed. After redaction,
-``leak_check`` scans the result once more (IBAN-like strings and long digit runs in any mode; in
-``strict`` also any number under a money-like key) and raises :class:`LeakDetected` instead of sending.
+``leak_check`` scans the result once more (identifier-like strings and 10+ digit numbers in any mode;
+in ``strict`` also any number under a money-like key) and raises :class:`LeakDetected` instead of sending.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import unicodedata
 from decimal import Decimal
 from typing import Any
 
@@ -40,62 +41,217 @@ class LeakDetected(RuntimeError):
 
 
 _DROP = object()
+# numbers these labels carry are never money: a money-like key does not refuse them (D6, N7)
+_NON_MONEY_LABELS = (Sensitivity.COUNT, Sensitivity.PERCENT, Sensitivity.REF)
 
 # --------------------------------------------------------------------------- #
 # Text scrubbing
 # --------------------------------------------------------------------------- #
 
+# Matching runs on a normalized copy of the text (S37fix D1): NFKC per character, every Unicode space,
+# tab, line break and zero-width character becomes one ASCII space, soft hyphens are removed and every
+# dash becomes "-". Each normalized character remembers the original one it came from, so the answer
+# keeps the original text everywhere except the masked spans.
+_ZERO_WIDTH = frozenset("\u200b\u200c\u200d\u2060\ufeff")
+_LINE_SPACE = frozenset("\t\n\r\x0b\x0c\x1c\x1d\x1e\x1f\x85\u2028\u2029")
+_REMOVED = frozenset("\u00ad")
+
+
+def _norm_char(ch: str) -> str:
+    if ch in _REMOVED:
+        return ""
+    out: list[str] = []
+    for c in unicodedata.normalize("NFKC", ch):
+        if c in _REMOVED:
+            continue
+        cat = unicodedata.category(c)
+        if c in _ZERO_WIDTH or c in _LINE_SPACE or cat == "Zs":
+            out.append(" ")
+        elif cat == "Pd" or c == "\u2212":
+            out.append("-")
+        else:
+            out.append(c)
+    return "".join(out)
+
+
+def normalize_for_matching(text: str) -> str:
+    """The normalized copy the identifier and amount rules match on (D1)."""
+    return "".join(_norm_char(c) for c in text)
+
+
+class _Work:
+    """The normalized text being scrubbed, each character mapped to its original index (``None`` for
+    a replacement). ``render`` rebuilds the original text with the replacements in place."""
+
+    def __init__(self, text: str) -> None:
+        self.orig = text
+        chars: list[str] = []
+        src: list[int | None] = []
+        self.removed: list[bool] = []
+        for i, ch in enumerate(text):
+            n = _norm_char(ch)
+            self.removed.append(n == "")
+            chars.append(n)
+            src.extend([i] * len(n))
+        self.text = "".join(chars)
+        self.src = src
+        self.touched: set[int] = set()
+
+    def sub(self, pattern: re.Pattern, repl, *, mark: bool = True) -> None:
+        """``pattern.sub`` on the normalized text; ``repl`` is a string or a function returning the
+        replacement, ``None`` (keep the match) or ``(text, sources)`` (restore saved characters)."""
+        out: list[str] = []
+        src: list[int | None] = []
+        last = 0
+        for m in pattern.finditer(self.text):
+            r = repl(m) if callable(repl) else repl
+            if r is None:
+                continue
+            out.append(self.text[last : m.start()])
+            src.extend(self.src[last : m.start()])
+            if mark:
+                self.touched.update(s for s in self.src[m.start() : m.end()] if s is not None)
+            if isinstance(r, tuple):
+                out.append(r[0])
+                src.extend(r[1])
+            else:
+                out.append(r)
+                src.extend([None] * len(r))
+            last = m.end()
+        if not out:
+            return
+        out.append(self.text[last:])
+        src.extend(self.src[last:])
+        self.text = "".join(out)
+        self.src = src
+
+    def render(self) -> str:
+        out: list[str] = []
+        prev: int | None = None
+        for k, c in enumerate(self.text):
+            s = self.src[k]
+            if s is None or s in self.touched:
+                out.append(c)
+                continue
+            if s == prev:
+                continue
+            prev = s
+            j = s - 1
+            pre: list[str] = []
+            while j >= 0 and self.removed[j]:
+                pre.append(self.orig[j])
+                j -= 1
+            out.extend(reversed(pre))
+            out.append(self.orig[s])
+        tail = len(self.orig)
+        while tail > 0 and self.removed[tail - 1]:
+            tail -= 1
+        out.append(self.orig[tail:])  # removed characters at the very end
+        return "".join(out)
+
+
+# Dates kept while the number rules run (D3, D5, S37fix N2 / N6): only valid ones (year 1900-2099,
+# month 01-12, day 01-31): ISO dates and timestamps (a fraction of at most 9 digits), periods
+# (2024-03, 03/2024, 2024-Q1) and DD.MM.YYYY. Any other date shape is plain digits.
+_YEAR = r"(?:19|20)\d{2}"
 _ISO_DATE = re.compile(
-    r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\b"
+    rf"\b{_YEAR}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])"
+    r"(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?\b"
 )
-_PERIOD = re.compile(r"\b\d{4}-(?:0[1-9]|1[0-2]|Q[1-4])\b|\b(?:0[1-9]|1[0-2])/\d{4}\b")
-# Account numbers: IBANs (groups split by up to two spaces, dots, slashes, underscores or hyphens),
-# runs of 10+ digits (same separators except dots, so amounts stay amounts), dotted 4-digit groups,
-# broker account ids (U1234567).
+_PERIOD = re.compile(rf"\b{_YEAR}-(?:0[1-9]|1[0-2]|Q[1-4])\b|\b(?:0[1-9]|1[0-2])/{_YEAR}\b")
+_DMY_DATE = re.compile(
+    rf"(?<![\w.,])(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.{_YEAR}(?![\w]|[.,]\d)"
+)
+# Identifiers, every privacy level (D2, S37fix N4): a run of digit groups joined by any 1-5
+# characters that are neither letters nor digits (spaces, punctuation, brackets: "4532, 0151",
+# "(22) 123 45 67"), optionally led by a country code, with 9+ digits in all (accounts, IBANs, cards,
+# phone numbers); IBANs with letters in the account part; masked cards with their visible digits;
+# letter-and-digit ids (8+ characters, 4+ digits); a number after an account word; e-mail addresses.
+_SEP = r"[\W_]{1,5}"
+_RUN = re.compile(rf"(?:(?<!\w)([A-Z]{{2}}))?(?<!\d)(\d+(?:{_SEP}\d+)*)")
+# the narrower separators of IBAN and masked-card shapes (letters take part in those)
+_ID_SEP = r"(?: ?[/_-]{1,2} ?| {1,3}|[.,])"
 _IBAN = re.compile(
-    r"\b[A-Z]{2}\d{2}(?:[ \u00a0._/-]{0,2}[A-Z0-9]{4}){3,8}(?:[ \u00a0._/-]{0,2}[A-Z0-9]{1,4})?\b"
+    rf"\b[A-Z]{{2}}\d{{2}}(?:{_ID_SEP}?[A-Z0-9]{{4}}){{3,8}}(?:{_ID_SEP}?[A-Z0-9]{{1,4}})?\b"
 )
-_LONG_DIGITS = re.compile(r"(?<!\d)\d(?:[ \u00a0/_-]{0,2}\d){9,}(?!\d)")
-_DOTTED_ACCOUNT = re.compile(r"(?<![\d.])\d{2,4}(?:\.\d{4}){3,}(?!\d)")
+_MASKED_CARD = re.compile(
+    rf"(?<![\w*•])(?:\d{{1,6}}{_ID_SEP}?)?(?:[*xX•]{{2,}}{_ID_SEP}?){{1,4}}\d{{2,6}}(?!\d)"
+)
+# grouped thousands with a decimal part, one separator throughout, at most 14 digits
+_AMOUNT_FORMAT = re.compile(r"(?=(?:\D*\d){9,14}\D*$)\d{1,3}([ .,'])\d{3}(?:\1\d{3})*[.,]\d{1,2}")
+_ALNUM_ID = re.compile(r"(?<!\w)\w{8,}(?!\w)")
+_LETTER = re.compile(r"[^\W\d_]")
+# a lower-case hex digest (a content hash prefix: 12+ characters, 3+ letters, no 9 digits in a row)
+# is kept like a date: it is neither an account id nor an amount
+_HEX_DIGEST = re.compile(r"(?<!\w)(?=(?:[0-9a-f]*[a-f]){3})(?![0-9a-f]*\d{9})[0-9a-f]{12,64}(?!\w)")
+_DIGIT = re.compile(r"\d")
+_ACCOUNT_ID = re.compile(r"\b[A-Za-z]{1,3}\d{6,9}\b")
+_ID_CARD = re.compile(r"\b([A-Z]{3}) \d{6}\b")
+_CURRENCY_CODES = frozenset(
+    {"PLN", "EUR", "USD", "GBP", "CHF", "JPY", "CZK", "HUF", "SEK", "NOK", "DKK", "CAD", "AUD"}
+)
 # a shorter number right after an account word ("konto nr 12345678")
 _ACCOUNT_WORD = re.compile(
-    r"(?i:\b(?:konto|konta|rachunek|rachunku|account|acct|nr|numer|no)\b\.?[\s:#]{0,3})"
-    r"(?:nr\.?\s?)?(\d[\d \u00a0-]{4,}\d)"
+    r"(?i:\b(?:konto|konta|rachunek|rachunku|account|acct|acc|nr|numer|no)\b\.?[ :#]{0,3})"
+    r"(?:nr\.? ?)?(\d[\d -]{4,}\d)"
 )
-_ACCOUNT_ID = re.compile(r"\b[A-Z]{1,3}\d{6,9}\b")
-_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-# Money: a number next to a currency (any upper-case 3-letter code, Polish / English words, symbols),
-# with a multiplier (12 tys., 100k), grouped thousands, decimals, and integers of 4+ digits that are
-# not a year in context.
+_EMAIL = re.compile(r"[\w.+-]+(?:@|\(at\)|\[at\])[\w-]+(?:\.[\w-]+)+")
+# Money (strict): a number next to a currency (any upper-case 3-letter code, Polish / English words,
+# symbols), after a money word, with a multiplier (12 tys., 100k), grouped thousands, decimals; then
+# every other number with 2+ significant digits (D3).
 _CUR = (
     r"(?:[A-Z]{3}|(?i:zł|zl|złot\w*|zlot\w*|grosz\w*|euro|eur|usd|pln|gbp|chf|dolar\w*|funt\w*"
     r"|frank\w*)|€|\$|£)"
 )
-_NUM = r"[-+]?\d(?:[\d \u00a0\u202f'.,]*\d)?"
-_MONEY_CUR = re.compile(rf"(?:{_NUM}\s?{_CUR}(?![A-Za-z]))|(?:(?<![A-Za-z]){_CUR}\s?{_NUM})")
+_NUM = r"[-+]?\d(?:[\d '.,]*\d)?"
+_MONEY_CUR = re.compile(rf"(?:{_NUM} ?{_CUR}(?![A-Za-z]))|(?:(?<![A-Za-z]){_CUR} ?{_NUM})")
 _MULTIPLIED = re.compile(
     r"(?<![\w.,])[-+]?\d+(?:[.,]\d+)?\s?(?i:tys\.?|tysi[eę]c\w*|mln|mld|k|m|mn|bn)(?![\w])"
 )
 _GROUPED = re.compile(
-    r"(?<![\w.,])[-+]?\d{1,3}(?:(?:[ \u00a0\u202f']\d{3})+|(?:,\d{3})+|(?:\.\d{3}){2,})(?:[.,]\d+)?"
+    r"(?<![\w.,])[-+]?\d{1,3}(?:(?:[ ']\d{3})+|(?:,\d{3})+|(?:\.\d{3}){2,})(?:[.,]\d+)?"
     r"(?![\w%]|\s?pp\b|\s?%)"
 )
 _DECIMAL = re.compile(r"(?<![\w.,])[-+]?\d+[.,]\d+(?![\d%]|\s?%|\s?pp\b)")
-_BIG_INT = re.compile(r"(?<![\w.,])[-+]?\d{4,}(?![\w%.,]|\s?%|\s?pp\b)")
 _MONEY_WORD = re.compile(
     r"(?i:\b(?:price|prices|cena|ceny|cash|amount|kwota|kwoty|value|warto\w*|worth|cost|costs|"
     r"koszt\w*|saldo|balance|deposit\w*|wp[lł]at\w*|wyp[lł]at\w*|fee|fees|tax|prowizj\w*|"
     r"op[lł]at\w*|proceeds|income|expense\w*|przych\w*|wydat\w*|rata|raty|installment)\b"
     r"[^\d\n]{0,24}?)(?<![\w.,])([-+]?\d+(?:[.,]\d+)?)(?![\d%]|[.,]\d|\s?%|\s?pp\b|\s?(?:days?|dni)\b)"
 )
-_YEAR_BEFORE = re.compile(
-    r"(?i:\b(?:in|w|we|rok|roku|year|years|since|od|do|until|from|of|z|za|before|after|przed|po))\s+$"
+_ANY_NUMBER = re.compile(r"(?<!\w)[-+]?\d+(?:[.,]\d+)*")
+# Kept in strict free text (S37fix R1, R2, N1, N5): a number with at most 3 integer digits and no
+# grouping right before a percent sign / percentage points (a decimal part of 1-2 digits allowed) or a
+# non-money unit from this closed list (an integer only), or right after a position word ("line 12").
+# A number that touches another digit group through a grouping separator ("1.250 x", "450.000 lat")
+# or has a currency next to it, on either side ("zł 500 dni", "999 x PLN"), is never kept.
+_KEPT_UNITS = (
+    r"sesja|sesji|sesje|sessions?|dzień|dni|days?|tydzień|tygodni|weeks?|miesiąc|miesięcy|miesiące|"
+    r"months?|rok|lat|lata|years?|x|znaków|characters?|linia|lines?|wiersz|rows?|pozycji|positions?"
+)
+_NOT_GROUPED = r"(?<![\w.,])(?<!\d[ '.,_])"
+_KEPT_PERCENT = re.compile(
+    rf"{_NOT_GROUPED}[-+]?\d{{1,3}}(?:[.,]\d{{1,2}})?(?![\d.,'_]\d|\d)"
+    r"(?= ?(?:%|pp\b|p\.p\.|pkt proc\.))"
+)
+_KEPT_UNIT = re.compile(rf"{_NOT_GROUPED}[-+]?\d{{1,3}}(?= ?(?i:{_KEPT_UNITS})(?!\w))")
+_KEPT_POSITION = re.compile(
+    r"((?i:\b(?:line|row|linia|linii|wiersz|wiersza|pozycja|pozycji)) )(\d{1,3})(?![\d\w]|[.,'_ ]\d)"
+)
+_CURRENCY_WORDS = (
+    r"zł|zl|złot\w*|zlot\w*|grosz\w*|gr|pln|eur|euro|usd|chf|gbp|dolar\w*|funt\w*|frank\w*"
+)
+_CURRENCY_BEFORE = re.compile(rf"(?:(?i:\b(?:{_CURRENCY_WORDS}))|[$€£]|\b[A-Z]{{3}}) {{0,3}}[-+]?$")
+_CURRENCY_AFTER = re.compile(
+    rf"^ {{0,3}}(?:(?:%|pp\b|p\.p\.|pkt proc\.|(?i:{_KEPT_UNITS}))(?!\w))? {{0,3}}"
+    rf"(?:(?i:(?:{_CURRENCY_WORDS}))(?!\w)|[$€£]|[A-Z]{{3}}(?![A-Za-z]))"
 )
 _ISIN = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b")
 # A protected date / ISIN is swapped for NUL + its index + NUL while the number rules run. The index is
 # written in private-use characters, not digits, so no number rule (``_MONEY_WORD`` after "[amount]",
 # a decimal, ...) can touch it (F7 re-review B3: the agent got NUL bytes instead of the date).
 _PLACEHOLDER_DIGITS = str.maketrans("0123456789", "".join(chr(0xE000 + d) for d in range(10)))
+_PLACEHOLDER = re.compile("\u0000[\ue000-\ue009]+\u0000")
 _LEFTOVER = re.compile("\u0000[^\u0000]*\u0000|\u0000")
 
 
@@ -118,40 +274,90 @@ def isin_valid(value: str) -> bool:
     return (10 - total % 10) % 10 == int(value[-1])
 
 
-def _protect_dates(text: str, isins: frozenset[str] = frozenset()) -> tuple[str, list[str]]:
-    """Swap ISO dates / timestamps / periods (and the given ISINs) for placeholders, restored after
+def _protect_dates(work: _Work, isins: frozenset[str] = frozenset()) -> list[tuple[str, list]]:
+    """Swap dates, timestamps, periods (and the given ISINs) for placeholders, restored after
     scrubbing, so their digits never look like an account number or an amount. ISINs are protected
     only when a symbol field carried them: in free text an ISIN-shaped token (a VAT id, an account
     number that happens to pass the check digit) is scrubbed like any other number."""
-    saved: list[str] = []
+    saved: list[tuple[str, list]] = []
 
     def keep(m: re.Match) -> str:
-        saved.append(m.group(0))
+        saved.append((m.group(0), work.src[m.start() : m.end()]))
         return _placeholder(len(saved) - 1)
 
-    def keep_isin(m: re.Match) -> str:
-        return keep(m) if m.group(0) in isins else m.group(0)
+    for pattern in (_ISO_DATE, _PERIOD, _DMY_DATE, _HEX_DIGEST):
+        work.sub(pattern, keep, mark=False)
+    if isins:
+        work.sub(_ISIN, lambda m: keep(m) if m.group(0) in isins else None, mark=False)
+    return saved
 
-    text = _ISO_DATE.sub(keep, text)
-    text = _PERIOD.sub(keep, text)
-    return (_ISIN.sub(keep_isin, text) if isins else text), saved
+
+def _protect_kept_numbers(work: _Work, saved: list[tuple[str, list]]) -> None:
+    def near_currency(start: int, end: int) -> bool:
+        return bool(
+            _CURRENCY_BEFORE.search(work.text[:start]) or _CURRENCY_AFTER.match(work.text[end:])
+        )
+
+    def keep(m: re.Match):
+        if near_currency(m.start(), m.end()):
+            return None
+        saved.append((m.group(0), work.src[m.start() : m.end()]))
+        return _placeholder(len(saved) - 1)
+
+    def keep_position(m: re.Match):
+        if near_currency(m.start(2), m.end(2)):
+            return None
+        saved.append((m.group(2), work.src[m.start(2) : m.end(2)]))
+        mark = _placeholder(len(saved) - 1)
+        return m.group(1) + mark, work.src[m.start(1) : m.end(1)] + [None] * len(mark)
+
+    work.sub(_KEPT_PERCENT, keep, mark=False)
+    work.sub(_KEPT_UNIT, keep, mark=False)
+    work.sub(_KEPT_POSITION, keep_position, mark=False)
 
 
-def _restore_dates(text: str, saved: list[str]) -> str:
-    for i, value in enumerate(saved):
-        text = text.replace(_placeholder(i), value)
+def _restore_dates(work: _Work, saved: list[tuple[str, list]]) -> None:
+    def back(m: re.Match):
+        index = int(m.group(0)[1:-1].translate({0xE000 + d: str(d) for d in range(10)}))
+        return saved[index] if index < len(saved) else "[date]"
+
+    if "\u0000" in work.text:
+        work.sub(_PLACEHOLDER, back, mark=False)
     # never hand placeholder internals to the agent: anything left becomes a clean "[date]"
-    return _LEFTOVER.sub("[date]", text) if "\u0000" in text else text
+    if "\u0000" in work.text:
+        work.sub(_LEFTOVER, "[date]")
 
 
-def _big_int(m: re.Match) -> str:
-    raw = m.group(0).lstrip("+-")
-    if len(raw) == 4 and 1900 <= int(raw) <= 2100:
-        before, after = m.string[: m.start()], m.string[m.end() :]
-        whole = not before.strip() and not after.strip()
-        if whole or _YEAR_BEFORE.search(before) or re.match(r"\s?(?:r\.|rok)", after):
-            return m.group(0)  # a year in context
-    return "[amount]"
+def _digit_count(text: str) -> int:
+    return len(_DIGIT.findall(text))
+
+
+def _run(m: re.Match) -> str | None:
+    if _digit_count(m.group(2)) < 9:
+        return None
+    if not m.group(1) and _AMOUNT_FORMAT.fullmatch(m.group(2)):
+        return None  # "1 234 567,89": an amount (strict masks it as one), not an identifier
+    return "[iban]" if m.group(1) else "[number]"
+
+
+def _alnum_id(m: re.Match) -> str | None:
+    token = m.group(0)
+    return "[account]" if _digit_count(token) >= 4 and _LETTER.search(token) else None
+
+
+def _id_card(m: re.Match) -> str | None:
+    return None if m.group(1) in _CURRENCY_CODES else "[account]"
+
+
+def _significant(m: re.Match) -> str | None:
+    digits = _DIGIT.findall(m.group(0))
+    while digits and unicodedata.decimal(digits[0]) == 0:
+        digits.pop(0)
+    return "[amount]" if len(digits) >= 2 else None
+
+
+def _keep_prefix(replacement: str):
+    return lambda m: m.group(0)[: m.start(1) - m.start(0)] + replacement
 
 
 def scrub_text(text: str | None, *, strict: bool, guard: NameGuard | None = None) -> str | None:
@@ -162,24 +368,43 @@ def scrub_text(text: str | None, *, strict: bool, guard: NameGuard | None = None
         # first, before any rewriting: an alias with a number ("IKE Oli 2030") must still match
         # the owner's label as typed (F7 review R6)
         text = guard.swap_aliases(text)
-    text, dates = _protect_dates(text)
-    text = _IBAN.sub("[iban]", text)
-    text = _LONG_DIGITS.sub("[number]", text)
-    text = _DOTTED_ACCOUNT.sub("[number]", text)
-    text = _ACCOUNT_ID.sub("[account]", text)
-    text = _ACCOUNT_WORD.sub(lambda m: m.group(0)[: m.start(1) - m.start(0)] + "[number]", text)
-    text = _EMAIL.sub("[email]", text)
+    work = _Work(text)
+    dates = _protect_dates(work)
+    work.sub(_MASKED_CARD, "[number]")
+    work.sub(_IBAN, "[iban]")
+    work.sub(_RUN, _run)
+    work.sub(_ACCOUNT_ID, "[account]")
+    work.sub(_ALNUM_ID, _alnum_id)
+    work.sub(_ID_CARD, _id_card)
+    work.sub(_ACCOUNT_WORD, _keep_prefix("[number]"))
+    work.sub(_EMAIL, "[email]")
     if strict:
-        text = _MONEY_CUR.sub("[amount]", text)
-        text = _MONEY_WORD.sub(lambda m: m.group(0)[: m.start(1) - m.start(0)] + "[amount]", text)
-        text = _MULTIPLIED.sub("[amount]", text)
-        text = _GROUPED.sub("[amount]", text)
-        text = _DECIMAL.sub("[amount]", text)
-        text = _BIG_INT.sub(_big_int, text)
-    text = _restore_dates(text, dates)
+        _protect_kept_numbers(work, dates)
+        work.sub(_MONEY_CUR, "[amount]")
+        work.sub(_MONEY_WORD, _keep_prefix("[amount]"))
+        work.sub(_MULTIPLIED, "[amount]")
+        work.sub(_GROUPED, "[amount]")
+        work.sub(_DECIMAL, "[amount]")
+        work.sub(_ANY_NUMBER, _significant)
+    _restore_dates(work, dates)
+    text = work.render()
     if guard is not None:
         text = guard.mask(text)
     return text
+
+
+def identifier_in(text: str, isins: frozenset[str] | set[str] = frozenset()) -> bool:
+    """True when ``text`` still holds an identifier-like run (the leak check's string test)."""
+    work = _Work(text)
+    _protect_dates(work, frozenset(isins))
+    t = work.text
+    if _IBAN.search(t) or _MASKED_CARD.search(t):
+        return True
+    if any(_run(m) for m in _RUN.finditer(t)):
+        return True
+    if _REF.match(text):
+        return False
+    return any(_alnum_id(m) for m in _ALNUM_ID.finditer(t))
 
 
 # --------------------------------------------------------------------------- #
@@ -189,7 +414,12 @@ def scrub_text(text: str | None, *, strict: bool, guard: NameGuard | None = None
 _KEY = re.compile(r"^[a-z_][a-z0-9_]{0,63}$")
 _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9.\-:=^_/]{0,19}$")
 _REF = re.compile(r"^(?:\d{1,12}|[a-z][a-z0-9_]*:[0-9a-z]{6,64})$")
-_DATE_STR = re.compile(r"^\d{4}-\d{2}(?:-\d{2})?(?:[T ][0-9:.+\-Z]+)?$")
+# a date label: a year, a quarter, a month, a day or an ISO timestamp (fraction of at most 9 digits)
+_DATE_STR = re.compile(
+    r"^\d{4}(?:-Q[1-4]|-\d{2}(?:-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?"
+    r"(?:Z|[+-]\d{2}:?\d{2})?)?)?)?$"
+)
+_HAS_LETTER = re.compile(r"[A-Z]")
 
 
 def _number(value: Any, path: str) -> float | int | None:
@@ -210,18 +440,23 @@ class Redactor:
         self.strict = self.privacy == STRICT
         self.guard = guard
         self.isins: set[str] = set()
+        self.non_money: set[str] = set()
+        """Paths (in the redacted answer) of count-, percent- and ref-labelled numbers: never money
+        (D6, N7)."""
 
     def text(self, value: str | None) -> str | None:
         return scrub_text(value, strict=self.strict, guard=self.guard)
 
     def apply(self, tree: Any) -> Any:
-        out = self._walk(tree, "$")
+        out = self._walk(tree, "$", "$")
         return None if out is _DROP else out
 
-    def _walk(self, node: Any, path: str) -> Any:
+    def _walk(self, node: Any, path: str, out_path: str) -> Any:
         if node is None:
             return None
         if isinstance(node, Labelled):
+            if node.label in _NON_MONEY_LABELS and node.value is not None:
+                self.non_money.add(out_path)
             return self._leaf(node, path)
         if isinstance(node, dict):
             out: dict[str, Any] = {}
@@ -229,13 +464,17 @@ class Redactor:
                 if not isinstance(key, str) or not _KEY.match(key):
                     # Keys are chosen by code (snake_case); data never becomes a key.
                     raise UnlabelledValue(f"{path}: dict keys must be snake_case names")
-                item = self._walk(value, f"{path}.{key}")
+                item = self._walk(value, f"{path}.{key}", f"{out_path}.{key}")
                 if item is not _DROP:
                     out[key] = item
             return out
         if isinstance(node, (list, tuple)):
-            items = [self._walk(v, f"{path}[{i}]") for i, v in enumerate(node)]
-            return [i for i in items if i is not _DROP]
+            kept: list[Any] = []
+            for i, v in enumerate(node):
+                item = self._walk(v, f"{path}[{i}]", f"{out_path}[{len(kept)}]")
+                if item is not _DROP:
+                    kept.append(item)
+            return kept
         raise UnlabelledValue(f"{path}: unlabelled {type(node).__name__}")
 
     def _leaf(self, node: Labelled, path: str) -> Any:
@@ -281,12 +520,25 @@ class Redactor:
             if isin_valid(symbol):
                 self.isins.add(symbol)  # the leak check lets exactly these through
                 return symbol
-            if _SYMBOL.match(symbol) and not (symbol.isdigit() and len(symbol) >= 5):
-                # a ticker-like token: identifiers and known names are still scrubbed
+            if self.guard is not None and symbol in self.guard.symbols:
+                # a digit-only ticker of one of the profile's instruments (S37fix R5)
+                return scrub_text(symbol, strict=False, guard=self.guard)
+            if (
+                _SYMBOL.match(symbol)
+                and not (symbol.isdigit() and len(symbol) >= 5)
+                and (not self.strict or _HAS_LETTER.search(symbol))
+            ):
+                # a ticker-like token: identifiers and known names are still scrubbed (in strict
+                # a symbol without a letter is a number and goes through the strict scrub, F8)
                 return scrub_text(symbol, strict=False, guard=self.guard)
             return self.text(symbol)
         if label in (Sensitivity.TEXT, Sensitivity.CATEGORY, Sensitivity.ACCOUNT):
             return self.text(str(value))
+        if label is Sensitivity.AUTHORED:
+            authored = str(value)
+            if self.strict and self.guard is not None:
+                authored = self.guard.swap_aliases(authored)
+            return scrub_text(authored, strict=False, guard=self.guard)
         if label is Sensitivity.MARKET:
             if not market_ok(value):
                 raise UnlabelledValue(f"{path}: not market text")
@@ -298,7 +550,11 @@ class Redactor:
 # Final check
 # --------------------------------------------------------------------------- #
 
-# Keys whose numbers are money or quantities: in strict mode none may carry a number.
+# Keys whose numbers are money or quantities: in strict mode none may carry a number. Besides these
+# names, a key is a money key when its normalized form (lower case, separators removed) contains a
+# money word, or one of its parts is "sum" / "net" or a currency code (S37fix D6, N7). Nothing
+# overrides a money word; numbers the tool labelled as counts or percentages are exempt by their path
+# (``Redactor.non_money``), not by their key.
 MONEY_KEYS = frozenset(
     {
         "amount",
@@ -338,31 +594,125 @@ MONEY_KEYS = frozenset(
         "unit_value",
     }
 )
+MONEY_KEY_WORDS = (
+    "amount",
+    "kwota",
+    "balance",
+    "saldo",
+    "value",
+    "wartosc",
+    "price",
+    "cena",
+    "cost",
+    "koszt",
+    "total",
+    "suma",
+    "cash",
+    "income",
+    "przychod",
+    "expense",
+    "fee",
+    "tax",
+    "payment",
+    "platnosc",
+    "principal",
+    "outstanding",
+    "quantity",
+    "gross",
+    "installment",
+    "rata",
+    "kredyt",
+    "loan",
+    "worth",
+    "spend",
+    "deposit",
+    "withdrawal",
+    "proceeds",
+    "pnl",
+    "profit",
+    "gain",
+    "saving",
+    "debt",
+    "salary",
+    "capital",
+    "equity",
+    "budget",
+)
+MONEY_KEY_PARTS = frozenset(
+    {"sum", "sums", "net", "pln", "eur", "usd", "chf", "gbp", "jpy", "czk", "huf", "sek", "nok"}
+)
+# an alert's last public price level or ratio ("last_value": the only level-labelled number under a
+# money word; an owner-named instrument's price is amount-labelled and dropped)
+NOT_MONEY_KEYS = frozenset({"last_value"})
+_KEY_SEPARATORS = re.compile(r"[_\-\s]+")
+
+
+def is_money_key(key: str) -> bool:
+    """True when a number under ``key`` would be money or a quantity (strict mode refuses it)."""
+    if key in MONEY_KEYS:
+        return True
+    if key in NOT_MONEY_KEYS:
+        return False
+    lowered = key.lower()
+    joined = _KEY_SEPARATORS.sub("", lowered)
+    if any(w in joined for w in MONEY_KEY_WORDS):
+        return True
+    return any(part in MONEY_KEY_PARTS for part in _KEY_SEPARATORS.split(lowered))
+
+
+# a number of 10+ digits in its JSON text (an account number stored as a number)
+_LONG_DIGITS = re.compile(r"(?<!\d)\d(?:[ \u00a0/_-]{0,2}\d){9,}(?!\d)")
 
 
 def leak_check(
-    result: Any, *, strict: bool, isins: frozenset[str] | set[str] = frozenset()
+    result: Any,
+    *,
+    strict: bool,
+    isins: frozenset[str] | set[str] = frozenset(),
+    non_money: frozenset[str] | set[str] = frozenset(),
 ) -> None:
     """Raise :class:`LeakDetected` when the redacted ``result`` still holds an identifier-like
-    string, or (strict) a number under a money key. ``isins``: the ISINs symbol fields carried
-    (``Redactor.isins``), the only digit runs of that shape allowed through."""
-    blob, _dates = _protect_dates(json.dumps(result, ensure_ascii=False), frozenset(isins))
-    if _IBAN.search(blob) or _LONG_DIGITS.search(blob) or _DOTTED_ACCOUNT.search(blob):
-        raise LeakDetected("identifier-like value in the response")
+    string (any key or string value, normalized like the scrub), a number of 10+ digits, or
+    (strict) a number under a money key. ``isins``: the ISINs symbol fields carried
+    (``Redactor.isins``), the only digit runs of that shape allowed through; ``non_money``: the
+    paths of count-, percent- and ref-labelled numbers (``Redactor.non_money``), which a money key
+    does not refuse."""
+    _check_identifiers(result, frozenset(isins))
     if strict:
-        _check_money_keys(result, "$")
+        _check_money_keys(result, "$", frozenset(non_money))
 
 
-def _check_money_keys(node: Any, path: str) -> None:
+def _check_identifiers(node: Any, isins: frozenset[str]) -> None:
     if isinstance(node, dict):
         for key, value in node.items():
+            _check_identifiers(key, isins)
+            _check_identifiers(value, isins)
+    elif isinstance(node, (list, tuple)):
+        for value in node:
+            _check_identifiers(value, isins)
+    elif isinstance(node, str):
+        if identifier_in(node, isins):
+            raise LeakDetected("identifier-like value in the response")
+    elif (
+        isinstance(node, (int, float))
+        and not isinstance(node, bool)
+        and _LONG_DIGITS.search(json.dumps(node))
+    ):
+        raise LeakDetected("identifier-like value in the response")
+
+
+def _check_money_keys(node: Any, path: str, non_money: frozenset[str]) -> None:
+    if isinstance(node, dict):
+        for key, value in node.items():
+            where = f"{path}.{key}"
             if (
-                key in MONEY_KEYS
+                is_money_key(key)
                 and isinstance(value, (int, float))
                 and not isinstance(value, bool)
+                and where not in non_money
             ):
-                raise LeakDetected(f"number under the money key {path}.{key} in strict mode")
-            _check_money_keys(value, f"{path}.{key}")
+                raise LeakDetected(f"number under the money key {where} in strict mode")
+            _check_money_keys(value, where, non_money)
     elif isinstance(node, list):
         for i, value in enumerate(node):
-            _check_money_keys(value, f"{path}[{i}]")
+            _check_money_keys(value, f"{path}[{i}]", non_money)

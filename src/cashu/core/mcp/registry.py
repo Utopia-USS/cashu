@@ -36,11 +36,15 @@ MAX_STRING = 200_000  # strategy YAML / markdown are the longest arguments
 
 
 class ToolError(Exception):
-    """A problem the agent can fix (bad argument, missing data). ``kind`` is a fixed audit code."""
+    """A problem the agent can fix (bad argument, missing data). ``kind`` is a fixed audit code.
+    ``system``: the message is cashU's own constant text (a fixed limit, no user input), so strict
+    amount masking skips it; identifiers, names and the leak check still apply (S37fix R3). A message
+    that interpolates user input stays ``system=False`` (or scrubs that part before formatting)."""
 
-    def __init__(self, message: str, kind: str = "invalid") -> None:
+    def __init__(self, message: str, kind: str = "invalid", *, system: bool = False) -> None:
         super().__init__(message)
         self.kind = kind
+        self.system = system
 
 
 @dataclass(frozen=True)
@@ -188,10 +192,14 @@ def validate_arguments(spec: ToolSpec, arguments: dict[str, Any] | None) -> dict
         if isinstance(value, str):
             limit = schema.get("maxLength", MAX_STRING)
             if len(value) > limit:
-                raise ToolError(f"argument {name} is too long (max {limit})", "invalid_arguments")
+                raise ToolError(
+                    f"argument {name} is too long (max {limit})", "invalid_arguments", system=True
+                )
         if kinds == "integer":
             lo, hi = schema.get("minimum"), schema.get("maximum")
             if (lo is not None and value < lo) or (hi is not None and value > hi):
-                raise ToolError(f"argument {name} must be in [{lo}, {hi}]", "invalid_arguments")
+                raise ToolError(
+                    f"argument {name} must be in [{lo}, {hi}]", "invalid_arguments", system=True
+                )
         out[name] = value
     return out

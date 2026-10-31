@@ -185,7 +185,7 @@ def alerts(ctx: ToolContext, status: str = "live") -> dict:
         "alerts": [_alert(ctx, r, owned) for r in rows],
         "limits": _limits(ctx),
         "kinds": [L.category(k) for k in _KINDS],
-        "note": L.text(
+        "note": L.fixed_text(
             "alerts are conditions on stored prices and weights, checked by the daily run; a "
             "triggered alert is a signal (rule alert:<id>) with the alert's polarity and severity; "
             "threshold and weights are fractions (0.1 = 10%), levels are in the instrument's "
@@ -239,13 +239,13 @@ def add_alert(
     except alert_service.AlertNotFound as e:
         raise ToolError(str(e), "not_found") from None
     except alert_service.AlertLimit as e:
-        raise ToolError(str(e), "limit") from None
+        raise ToolError(str(e), "limit", system=True) from None  # a fixed limit, no user input
     except alert_service.AlertError as e:
         raise ToolError(str(e)) from None
     return {
         "alert": _alert(ctx, views.one_alert(ctx.session, ctx.profile, row), owner_named_ids(ctx)),
         "limits": _limits(ctx),
-        "note": L.text(
+        "note": L.fixed_text(
             "created as active (source agent); the daily run checks it, the owner sees it badged in "
             "the app and can mute or delete it"
         ),
@@ -313,7 +313,7 @@ def watchlist(ctx: ToolContext) -> dict:
         "items": [
             _watch_row(r, owned, ctx) for r in views.watchlist_view(ctx.session, ctx.profile)
         ],
-        "note": L.text(
+        "note": L.fixed_text(
             "watched instruments join the daily price refresh; changes and distances are fractions "
             "(0.05 = 5%) from stored closes, never forecasts"
         ),
@@ -412,7 +412,7 @@ def search_instruments(ctx: ToolContext, query: str) -> dict:
         "local": [_search_hit(ctx, h, owned) for h in data["local"]],
         "remote": [_search_hit(ctx, h, owned) for h in data["remote"]],
         "remote_status": L.category(data["remote_status"]),
-        "note": L.text(
+        "note": L.fixed_text(
             "local = the profile's instruments (state held | watched | saved); remote = listings "
             "found online (state new; currency is the market's usual one, only a hint). Pass a "
             "remote yahoo_symbol to add_to_watchlist."

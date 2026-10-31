@@ -8,7 +8,9 @@ merchants (no counterparty account number) are businesses and are sent as they a
 A private-person payee is replaced by an opaque reference ``payee:<10 hex>`` (an HMAC of the merchant
 key with a per-installation secret, so a reference cannot be reversed by guessing names);
 ``set_merchant_category`` accepts the reference instead of the name. Known names inside free text are
-replaced by ``[name]``, matching case- and diacritic-insensitively on word boundaries.
+replaced by ``[name]``, matching case- and diacritic-insensitively on word boundaries, also inflected
+(a Polish ending after the name or its stem), split by any separators, with middle names or initials
+in between, a hyphenated second surname, and Cyrillic / Greek lookalike letters (S37fix D4).
 """
 
 from __future__ import annotations
@@ -71,6 +73,137 @@ def _fold_char(ch: str) -> str:
         return _FOLD_EXTRA[ch]
     decomposed = unicodedata.normalize("NFKD", ch)
     return "".join(c for c in decomposed if not unicodedata.combining(c)).upper()
+
+
+# Cyrillic and Greek letters that look like Latin ones (folded to the Latin letter before matching).
+_CONFUSABLES = str.maketrans(
+    "АВЕЅІЈКМНОРСТУХаеіјорсуххѕԁԛԝҮӏΑΒΕΖΗΙΚΜΝΟΡΤΥΧαικνορτυχ",
+    "ABESIJKMHOPCTYXaeijopcyxxsdqwYlABEZHIKMNOPTYXaikvoptux",
+)
+_MASK_SPACE = frozenset(
+    "\t\n\r\x0b\x0c\x1c\x1d\x1e\x1f\x85\u2028\u2029\u200b\u200c\u200d\u2060\ufeff"
+)
+# Polish endings after a name or its stem (folded: no diacritics, upper case), longest first.
+_SUFFIXES = (
+    "OWEGO",
+    "OWEMU",
+    "OWYCH",
+    "OWEJ",
+    "OWNA",
+    "OWIE",
+    "OWYM",
+    "IEGO",
+    "IEMU",
+    "OWI",
+    "OWA",
+    "ACH",
+    "AMI",
+    "IEJ",
+    "IMI",
+    "YCH",
+    "YMI",
+    "EGO",
+    "EMU",
+    "OW",
+    "IE",
+    "EM",
+    "OM",
+    "AM",
+    "IM",
+    "YM",
+    "EJ",
+    "A",
+    "Y",
+    "I",
+    "E",
+    "U",
+    "O",
+)
+_SUFFIX = "(?:" + "|".join(_SUFFIXES) + ")"
+# after a shortened stem only inflection endings, not the "-ow-" derivations ("MIESZKANIE" must
+# not reach "MIESZKANIOWA"; "NOWAKOWA" still matches as NOWAK + OWA)
+_STEM_SUFFIX = "(?:" + "|".join(s for s in _SUFFIXES if not s.startswith("OW")) + ")"
+
+
+def _mask_fold_char(ch: str) -> str:
+    """One character folded for name matching: soft hyphen removed, spaces and zero-width
+    characters to a space, lookalike letters to Latin, then :func:`fold`."""
+    if ch == "\u00ad":
+        return ""
+    if ch in _MASK_SPACE or unicodedata.category(ch) == "Zs":
+        return " "
+    return _fold_char(ch.translate(_CONFUSABLES))
+
+
+_ZERO_WIDTH = frozenset("\u200b\u200c\u200d\u2060\ufeff\u00ad")
+_LOWER = frozenset("abcdefghijklmnopqrstuvwxyząćęłńóśźż")
+_UPPER = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZĄĆĘŁŃÓŚŹŻ")
+_LETTERS = _LOWER | _UPPER
+
+
+def _mask_folds(text: str) -> list[tuple[str, list[int]]]:
+    """The folded copies of ``text`` names are matched on, each with the original index of every
+    folded character: as written, and split into words where a name is glued to the next one
+    (zero-width characters removed, a split mark U+0001 inserted at "aN" / "ANo" case changes and
+    after "A."; S37fix N8: "AnnaNowak", "A.Nowak", "ANowak", "An<ZWJ>na")."""
+    plain: list[str] = []
+    plain_index: list[int] = []
+    for i, ch in enumerate(text):
+        for c in _mask_fold_char(ch):
+            plain.append(c)
+            plain_index.append(i)
+    kept = [(i, ch) for i, ch in enumerate(text) if ch not in _ZERO_WIDTH]
+    split: list[str] = []
+    split_index: list[int] = []
+    for k, (i, ch) in enumerate(kept):
+        prev = kept[k - 1][1] if k >= 1 else ""
+        prev2 = kept[k - 2][1] if k >= 2 else ""
+        nxt = kept[k + 1][1] if k + 1 < len(kept) else ""
+        if (
+            (prev in _LOWER and ch in _UPPER)
+            or (prev in _UPPER and ch in _UPPER and nxt in _LOWER)
+            or (prev == "." and prev2 in _LETTERS and ch in _LETTERS)
+        ):
+            split.append("\x01")
+            split_index.append(i)
+        for c in _mask_fold_char(ch):
+            split.append(c)
+            split_index.append(i)
+    return [("".join(plain), plain_index), ("".join(split), split_index)]
+
+
+def _word_pattern(word: str, *, min_stem: int, initial: bool) -> str:
+    """A name word: itself with an optional ending, its stem (1-3 letters shorter, at least
+    ``min_stem`` long) with an ending, or (``initial``) its first letter with a dot (or glued to the next word)."""
+    word = "".join(_mask_fold_char(c) for c in word)
+    alternatives = [re.escape(word) + _SUFFIX + "?"]
+    for k in (1, 2, 3):
+        stem = word[:-k]
+        if len(word) > k and len(stem) >= min_stem:
+            alternatives.append(re.escape(stem) + _STEM_SUFFIX)
+    if initial and word:
+        # with a dot, or glued to the next word ("ANowak": a split mark follows, see _mask_folds)
+        alternatives.append(re.escape(word[0]) + r"(?:\.|(?=\x01))")
+    return "(?:" + "|".join(alternatives) + ")"
+
+
+# between the words of a name: any separators, up to two middle names or initials (as few as
+# possible, so a middle word never swallows the start of the next occurrence)
+_NAME_GAP = r"[\W_]+(?:[^\W\d_]+\.?[\W_]+){0,2}?"
+
+
+def _term_pattern(term: str) -> str:
+    words = term.split()
+    many = len(words) >= 2
+    parts = [_word_pattern(w, min_stem=3 if many else 4, initial=many) for w in words]
+    orders = [tuple(words)]
+    if 2 <= len(words) <= 3:
+        orders = sorted(set(permutations(words)))
+    alternatives = []
+    for order in orders:
+        seq = [parts[words.index(w)] for w in order]
+        alternatives.append(_NAME_GAP.join(seq))
+    return r"(?<![\w])(?:[^\W\d_]+-)?(?:" + "|".join(alternatives) + r")(?:-[^\W\d_]+)?(?![\w])"
 
 
 def fold(text: str) -> str:
@@ -175,6 +308,9 @@ class NameGuard:
     """Normalized merchant keys treated as private persons."""
     _secret: bytes | None = field(default=None, repr=False)
     strict_aliases: tuple[tuple[str, str], ...] = ()
+    symbols: frozenset[str] = frozenset()
+    """Digit-only tickers of the profile's (not owner-named) instruments: a ``symbol`` field with one
+    of them is an instrument, not a number (S37fix R5)."""
     """(owner-typed label, public replacement) pairs swapped in free text in strict mode only: a
     profile's display-name override of a market instrument becomes its shared market name (F6 V6)."""
 
@@ -241,26 +377,23 @@ class NameGuard:
         """Replace known names in ``text`` by ``[name]`` (case / diacritic insensitive)."""
         if not text or not self.names:
             return text
-        folded_chars: list[str] = []
-        index: list[int] = []
-        for i, ch in enumerate(text):
-            f = _fold_char(ch)
-            for c in f:
-                folded_chars.append(c)
-                index.append(i)
-        folded = "".join(folded_chars)
+        folds = _mask_folds(text)
         spans: list[tuple[int, int]] = []
-        for term in sorted(self.names, key=len, reverse=True):
-            words = term.split()
-            orders = {tuple(words)} | (set(permutations(words)) if 2 <= len(words) <= 3 else set())
-            pattern = "|".join(
-                r"(?<![\w])" + r"[\s,.-]+".join(map(re.escape, order)) + r"(?![\w])"
-                for order in sorted(orders)
-            )
-            for m in re.finditer(pattern, folded):
-                start, end = index[m.start()], index[m.end() - 1] + 1
-                if not any(s < end and start < e for s, e in spans):
+        for term in sorted(self.names, key=lambda t: (-len(t), t)):
+            if not term.split():
+                continue
+            pattern = re.compile(_term_pattern(term))
+            for folded, index in folds:
+                pos = 0
+                while (m := pattern.search(folded, pos)) is not None:
+                    start, end = index[m.start()], index[m.end() - 1] + 1
+                    if any(s < end and start < e for s, e in spans):
+                        # overlaps a name already masked: look again one character on, so a
+                        # later occurrence is not lost inside the rejected match
+                        pos = m.start() + 1
+                        continue
                     spans.append((start, end))
+                    pos = m.end()
         for start, end in sorted(spans, reverse=True):
             text = text[:start] + "[name]" + text[end:]
         return text
@@ -288,6 +421,7 @@ def collect(session: Session, profile: Profile) -> NameGuard:
         names |= _name_terms(account_name or "", tokens=False)
     payees: set[str] = set()
     aliases: list[tuple[str, str]] = []
+    symbols: set[str] = set()
     for provider in NAME_PROVIDERS:
         module = importlib.import_module(provider)
         for strong in getattr(module, "strong_names", lambda *_: set())(session, profile.id):
@@ -303,7 +437,12 @@ def collect(session: Session, profile: Profile) -> NameGuard:
             if looks_like_person(p):
                 names |= _name_terms(" ".join(person_part(p)), tokens=False)
         aliases.extend(getattr(module, "strict_aliases", lambda *_: [])(session, profile.id))
+        symbols |= set(getattr(module, "known_symbols", lambda *_: set())(session, profile.id))
     names = {n for n in names if fold(n) not in BUSINESS_MARKERS}
     return NameGuard(
-        profile.id, frozenset(names), frozenset(payees), strict_aliases=tuple(aliases)
+        profile.id,
+        frozenset(names),
+        frozenset(payees),
+        strict_aliases=tuple(aliases),
+        symbols=frozenset(symbols),
     )

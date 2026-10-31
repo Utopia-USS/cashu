@@ -223,6 +223,26 @@ def _instrument_label(
     return L.identifier(label) if instrument_id in owned else L.text(public_label(ctx, label))
 
 
+def known_symbols(session, profile_id: int) -> set[str]:
+    """Digit-only tickers ("0700", "7203") of the profile's market instruments: a ``symbol`` field
+    with one of them is that instrument, kept in strict mode (S37fix R5). Owner-named instruments
+    are excluded (their symbols are masked as names)."""
+    from sqlalchemy import inspect as sa_inspect
+
+    if "inv_instruments" not in sa_inspect(session.get_bind()).get_table_names():
+        return set()
+    from cashu.modules.investments.store.instruments import profile_instrument_ids, profile_rows
+
+    rows = profile_rows(session, profile_id, profile_instrument_ids(session, profile_id))
+    return {
+        r.symbol
+        for r in rows
+        if r.symbol
+        and r.symbol.isdigit()
+        and not owner_named(r.asset_class, r.valuation_mode, r.isin)
+    }
+
+
 def strong_names(session, profile_id: int) -> set[str]:
     """Owner-named instruments' names and symbols, masked word by word in free text (a one-word
     name like "KOWALSKI" is still masked)."""
@@ -581,7 +601,7 @@ def positions(ctx: ToolContext) -> dict:
     return {
         "as_of": L.date(view["as_of"]),
         "base_currency": L.category(view["base_currency"]),
-        "base_note": L.text(
+        "base_note": L.fixed_text(
             "weight: share of the portfolio total (holdings + cash) in base currency"
         ),
         "positions": rows,
@@ -919,9 +939,9 @@ def _performance_metrics(ctx: ToolContext) -> dict:
         data = perf.mcp_summary(ctx.session, ctx.profile, as_of=ctx.today)
     except Exception:  # the other history metrics still answer
         logging.getLogger("cashu.mcp").exception("performance metrics failed")
-        return {"note": L.text("performance metrics could not be computed")}
+        return {"note": L.fixed_text("performance metrics could not be computed")}
     if data is None:
-        return {"note": L.text("no investments history yet")}
+        return {"note": L.fixed_text("no investments history yet")}
     s, b, meta, conc = (
         data["summary"],
         data["benchmark"],
@@ -998,7 +1018,7 @@ def _performance_metrics(ctx: ToolContext) -> dict:
             "incomplete_days": L.count(s["incomplete_days"]),
             "implied_funding": L.flag(bool(s["implied_funding"])),
         },
-        "note": L.text(
+        "note": L.fixed_text(
             "values are fractions, not percent; twr is contributions-neutral, money_weighted and "
             "xirr follow the deposits; the benchmark simulation puts the same deposits on the same "
             "days into the proxy; excess = portfolio minus benchmark; rolling windows are "
@@ -1049,7 +1069,7 @@ def set_recommendation(ctx: ToolContext, instrument: str, recommendation: str, r
         "recommendation": L.category(row.plan),
         "generated_at": L.date(row.plan_at),
         "reason_saved": L.flag(row.plan_reason is not None),
-        "note": L.text("model recommendation saved; no decision or transaction was recorded"),
+        "note": L.fixed_text("model recommendation saved; no decision or transaction was recorded"),
     }
 
 
@@ -1116,6 +1136,7 @@ def set_recommendations(ctx: ToolContext, scope: str, recommendations: list[dict
             raise ToolError(
                 f"recommendations[{index}].reason must be a non-empty string (max {instruments.PLAN_REASON_MAX})",
                 "invalid_arguments",
+                system=True,  # an index and a fixed limit, no user input
             )
         iid = profile_instrument(ctx, instrument)
         if iid not in expected:
@@ -1159,7 +1180,7 @@ def set_recommendations(ctx: ToolContext, scope: str, recommendations: list[dict
         "covered": L.count(len(expected)),
         "missing": L.count(0),
         "updated": L.count(len(saved)),
-        "note": L.text(
+        "note": L.fixed_text(
             "complete model recommendation coverage saved; no decision or transaction was recorded"
         ),
     }
@@ -1184,7 +1205,7 @@ def record_decision(
         "signal_id": L.ref(row.id),
         "action": L.category(decision.action),
         "signal_status": L.category(row.status),
-        "note": L.text("recorded in the decision journal; no transaction was booked"),
+        "note": L.fixed_text("recorded in the decision journal; no transaction was booked"),
     }
 
 

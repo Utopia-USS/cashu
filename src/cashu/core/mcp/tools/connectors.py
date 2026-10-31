@@ -220,7 +220,8 @@ def test_connector(ctx: ToolContext, path: str, file: str | None = None,
             "version": L.category(m.get("version")),
             "module": L.category(m.get("module")),
             "kind": L.category(m.get("kind")),
-            "interpreter": L.category(_interpreter_name(m["interpreter"]) if m else None),
+            # a program name cashU resolves ("python3.14"), not owner data (S37fix R3)
+            "interpreter": L.fixed_text(_interpreter_name(m["interpreter"]) if m else None),
             "issues": [L.text(i) for i in report.manifest_issues[:20]],
         },
         "runs": [
@@ -246,7 +247,7 @@ def test_connector(ctx: ToolContext, path: str, file: str | None = None,
                 )
             ],
         },
-        "note": L.text(TEST_RULE),
+        "note": L.fixed_text(TEST_RULE),
     }
     if m and m.get("id") != folder.name:
         out["note"] = L.text(TEST_RULE + f" Rename the directory to connectors/{m['id']}/ first.")
@@ -349,8 +350,8 @@ def connectors(ctx: ToolContext) -> dict:
     return {
         "connectors": items,
         "catalog": _catalog(ctx),
-        "catalog_note": L.text(CATALOG_NOTE),
-        "rule": L.text(RULE),
+        "catalog_note": L.fixed_text(CATALOG_NOTE),
+        "rule": L.fixed_text(RULE),
     }
 
 

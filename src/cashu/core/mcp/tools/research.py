@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from typing import Any
 
 from .. import labels as L
@@ -391,9 +392,24 @@ def _exposure(positions: list[dict], owned: set[int]) -> dict:
     }
 
 
-def _threshold(value: float | None) -> L.Labelled:
+# Criteria that measure an instrument (valuation, size, dividends, risk, returns): their thresholds
+# describe the market, not the owner's money. Any other criterion with a currency or position in its
+# name ("max_position_pln: 50000") is the owner's own amount: strict mode sends it with a null
+# threshold, as a criterion without a number (F11; the market-research skill treats null as "no
+# numeric threshold").
+_INSTRUMENT_METRIC = re.compile(
+    r"(?:^|_)(?:pe|pb|ps|peg|ev|ebitda|eps|dividend|yield|payout|market_cap|cap|roe|roa|roic|margin|"
+    r"growth|beta|volatility|vol|debt|ratio|return|drawdown|rsi|ter|pct|percent|score|rating|age|"
+    r"years|months|days|volume|liquidity|free_float|float)(?:_|$)"
+)
+
+
+def _threshold(value: float | None, criterion: str = "", *, strict: bool = False) -> L.Labelled:
     """A candidate-criteria threshold: a number below :data:`labels.COMPACT_FROM`, else compact
-    Polish text (``min_market_cap_pln: 1000000000`` -> ``1 mld``)."""
+    Polish text (``min_market_cap_pln: 1000000000`` -> ``1 mld``). In strict mode a criterion that is
+    not an instrument metric keeps its name with a null threshold."""
+    if strict and not _INSTRUMENT_METRIC.search(criterion.lower()):
+        return L.level(None)
     if value is None or abs(float(value)) < L.COMPACT_FROM:
         return L.level(value)
     return L.market(L.compact_number(value))
@@ -715,7 +731,10 @@ def research_context(ctx: ToolContext) -> dict:
             "entry_types": [L.category(e) for e in THESIS_ENTRY_TYPES],
             "entry_types_in_use": _entry_types_in_use(theses, set(by_id) - owned),
             "candidate_criteria": [
-                {"criterion": L.category(str(k)), "threshold": _threshold(v)}
+                {
+                    "criterion": L.category(str(k)),
+                    "threshold": _threshold(v, str(k), strict=ctx.strict),
+                }
                 for k, v in sorted(criteria.items())
             ],
             "buckets": _buckets(st.config),
@@ -759,8 +778,8 @@ def research_context(ctx: ToolContext) -> dict:
             "topic_thesis_max": L.count(_topic_limits()[0]),
             "topic_invalidation_max": L.count(_topic_limits()[1]),
         },
-        "boundaries": [L.text(b) for b in BOUNDARIES],
-        "note": L.text(
+        "boundaries": [L.fixed_text(b) for b in BOUNDARIES],
+        "note": L.fixed_text(
             "weights are fractions of the portfolio total (1 = 100%); sentiment_8w has one score "
             "per ISO week (week_starts, oldest first) in [-1, 1], null = no notes that week; "
             "health: invalidated, weakened, fulfilled, supported, current, no_research, no_thesis "
@@ -808,7 +827,7 @@ def research_notes(
     return {
         "since": L.date(moment),
         "notes": [_note(r, owned, ctx) for r in views.notes_view(ctx.session, ctx.profile, rows)],
-        "note": L.text(
+        "note": L.fixed_text(
             "newest observation first; dismissed notes were rejected by the owner: do not add them "
             "again; a dismissed candidate is in cooldown (see research_context)"
         ),
@@ -846,7 +865,7 @@ def start_research_run(ctx: ToolContext, scope: dict | None = None) -> dict:
             "segments": [L.category(k) for k in stored.get("segments") or []],
             "covered_instruments": L.count(len(stored.get("covered_instrument_ids") or [])),
         },
-        "note": L.text(
+        "note": L.fixed_text(
             "add notes with add_research_note (run_id optional while this run is running), then "
             "finish_research_run; research_context lists the instruments, theses and criteria"
         ),
@@ -1005,7 +1024,7 @@ def upsert_topic_thesis(
         "segment": L.category(row.segment),
         "created": L.flag(created),
         "draft": L.flag(row.draft),
-        "note": L.text(
+        "note": L.fixed_text(
             "saved as a draft the owner confirms or edits in the app (shown as [do potwierdzenia])"
         ),
     }

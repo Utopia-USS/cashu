@@ -163,7 +163,7 @@ def networth_breakdown(ctx: ToolContext) -> dict:
         out.append(
             {
                 "currency": L.category(currency),
-                "base_note": L.text(
+                "base_note": L.fixed_text(
                     "bucket and account shares are of gross assets in this currency"
                 ),
                 "buckets": [
@@ -198,7 +198,7 @@ def networth_breakdown(ctx: ToolContext) -> dict:
                 ],
             }
         )
-    return {"currencies": out, "note": L.text("currencies are never summed or converted")}
+    return {"currencies": out, "note": L.fixed_text("currencies are never summed or converted")}
 
 
 REVIEW_CARDS = ("world", "sectors", "positions", "events", "ideas", "calendar", "decide")

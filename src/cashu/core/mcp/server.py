@@ -178,10 +178,17 @@ class CashuMcp:
                 data = redactor.apply(tree)
                 if not isinstance(data, dict):
                     raise UnlabelledValue("a tool must return an object")
-                leak_check(data, strict=redactor.strict, isins=redactor.isins)
+                leak_check(
+                    data, strict=redactor.strict, isins=redactor.isins, non_money=redactor.non_money
+                )
             except ToolError as e:
                 s.rollback()
-                message = scrub_text(str(e), strict=True, guard=_safe_guard(s, profile))
+                message = scrub_text(str(e), strict=not e.system, guard=_safe_guard(s, profile))
+                try:
+                    leak_check({"error": message}, strict=True)
+                except LeakDetected:  # error text goes through the same final check (F13)
+                    _log.error("MCP tool %s: error text withheld by the privacy check", name)
+                    message = "the error text was withheld by the privacy check"
                 return CallResult(False, error=message, error_kind=e.kind), privacy
             except LeakDetected:
                 s.rollback()
