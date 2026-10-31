@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { digest, NaturalKeys, SPECS, type SqlValue } from "./naturalKeys.ts";
 import { PythonDb } from "./pythonDb.ts";
-import { type SyntheticDataset, syntheticDataset, TWO_PROFILES } from "./testing.ts";
+import { INVESTMENTS, type SyntheticDataset, syntheticDataset, TWO_PROFILES } from "./testing.ts";
 
 const CANON_PY = resolve(
   import.meta.dirname,
@@ -59,6 +59,38 @@ describe("natural keys", () => {
       expect(db.keys.key("accounts", 5)).not.toBe(db.keys.key("accounts", 1));
       expect(db.keys.key("accounts", 99)).toBe("account:dangling-99");
       expect(db.keys.dangling).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("the roundtrip tables reference profiles, accounts and instruments by key", () => {
+    ds = syntheticDataset(
+      `${INVESTMENTS}
+      INSERT INTO inv_account_settings VALUES (1, 'ike', 'xtb', NULL, NULL, NULL);
+      INSERT INTO connector_bindings VALUES (1, 1, 1, 'test-connector', '{}', 0, NULL);`,
+    );
+    const db = PythonDb.open({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot });
+    try {
+      const k = db.keys;
+      const profileA = k.key("profiles", 2);
+      const etf = k.key("inv_instruments", 1);
+      expect(k.key("inv_profile_instruments", 2)).toBe(
+        `profile-instrument:${digest([profileA, etf])}`,
+      );
+      expect(k.key("inv_instrument_renames", 1)).toBe(
+        `instrument-rename:${digest([profileA, "2026-06-01", etf, k.key("inv_instruments", 3)])}`,
+      );
+      expect(k.key("inv_account_settings", 1)).toBe(
+        `account-settings:${digest([k.key("accounts", 1)])}`,
+      );
+      expect(k.key("inv_instrument_aliases", 2)).toBe(
+        `instrument-alias:${digest([etf, "isin", "x"])}`,
+      );
+      expect(k.key("connector_bindings", 1)).toBe(
+        `connector-binding:${digest([k.key("accounts", 1), "test-connector"])}`,
+      );
+      expect(k.dangling).toBe(0);
     } finally {
       db.close();
     }

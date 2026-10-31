@@ -159,6 +159,37 @@ SPECS: dict[str, tuple[str, str, tuple[str | None, ...]]] = {
         ("accounts", "inv_instruments", None),
     ),
     "connectors": ("connector", "SELECT id, name FROM connectors", (None,)),
+    # The synced tables the roundtrip goldens (checks/store.py) add; each after the tables it
+    # references (``IdMap`` builds in this order). ``profile_modules`` has no integer id and nothing
+    # references it, so it has no natural key.
+    "inv_profile_instruments": (
+        "profile-instrument",
+        "SELECT id, profile_id, instrument_id FROM inv_profile_instruments",
+        ("profiles", "inv_instruments"),
+    ),
+    "inv_instrument_renames": (
+        "instrument-rename",
+        (
+            "SELECT id, profile_id, date, old_instrument_id, new_instrument_id "
+            "FROM inv_instrument_renames"
+        ),
+        ("profiles", None, "inv_instruments", "inv_instruments"),
+    ),
+    "inv_account_settings": (
+        "account-settings",
+        "SELECT account_id AS id, account_id FROM inv_account_settings",
+        ("accounts",),
+    ),
+    "inv_instrument_aliases": (
+        "instrument-alias",
+        "SELECT id, instrument_id, namespace, value FROM inv_instrument_aliases",
+        ("inv_instruments", None, None),
+    ),
+    "connector_bindings": (
+        "connector-binding",
+        "SELECT id, account_id, connector_id FROM connector_bindings",
+        ("accounts", None),
+    ),
 }
 
 # Field name -> table of the integer (or digit string) it holds; lists of them too.

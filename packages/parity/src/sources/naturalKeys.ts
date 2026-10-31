@@ -146,6 +146,31 @@ export const SPECS: Readonly<Record<string, KeySpec>> = Object.freeze({
     refs: ["accounts", "inv_instruments", null],
   },
   connectors: { prefix: "connector", sql: "SELECT id, name FROM connectors", refs: [null] },
+  inv_profile_instruments: {
+    prefix: "profile-instrument",
+    sql: "SELECT id, profile_id, instrument_id FROM inv_profile_instruments",
+    refs: ["profiles", "inv_instruments"],
+  },
+  inv_instrument_renames: {
+    prefix: "instrument-rename",
+    sql: "SELECT id, profile_id, date, old_instrument_id, new_instrument_id FROM inv_instrument_renames",
+    refs: ["profiles", null, "inv_instruments", "inv_instruments"],
+  },
+  inv_account_settings: {
+    prefix: "account-settings",
+    sql: "SELECT account_id AS id, account_id FROM inv_account_settings",
+    refs: ["accounts"],
+  },
+  inv_instrument_aliases: {
+    prefix: "instrument-alias",
+    sql: "SELECT id, instrument_id, namespace, value FROM inv_instrument_aliases",
+    refs: ["inv_instruments", null, null],
+  },
+  connector_bindings: {
+    prefix: "connector-binding",
+    sql: "SELECT id, account_id, connector_id FROM connector_bindings",
+    refs: ["accounts", null],
+  },
 });
 
 /** A raw SQLite value as `node:sqlite` returns it with `readBigInts`. */

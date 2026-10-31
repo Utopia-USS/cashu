@@ -91,9 +91,17 @@ class Check:
 
 
 def _registry() -> list[Check]:
-    from . import budget, budget_ingestion, core, investments, loans_assets, mcp
+    from . import budget, budget_ingestion, core, investments, loans_assets, mcp, store
 
-    return [*core.CHECKS, *budget.CHECKS, *budget_ingestion.CHECKS, *loans_assets.CHECKS, *investments.CHECKS, *mcp.CHECKS]
+    return [
+        *core.CHECKS,
+        *budget.CHECKS,
+        *budget_ingestion.CHECKS,
+        *loans_assets.CHECKS,
+        *investments.CHECKS,
+        *mcp.CHECKS,
+        *store.CHECKS,
+    ]
 
 
 CHECKS: list[Check] = _registry()

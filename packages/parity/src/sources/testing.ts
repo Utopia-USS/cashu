@@ -46,6 +46,10 @@ CREATE TABLE inv_manual_valuations (id INTEGER PRIMARY KEY, profile_id INTEGER,
 CREATE TABLE inv_price_bars (id INTEGER PRIMARY KEY, instrument_id INTEGER, date DATE,
   close VARCHAR, open VARCHAR, high VARCHAR, low VARCHAR, volume INTEGER, currency VARCHAR,
   source VARCHAR, fetched_at DATETIME);
+CREATE TABLE inv_account_settings (account_id INTEGER PRIMARY KEY, wrapper VARCHAR,
+  importer VARCHAR, mapping_yaml VARCHAR, created_at DATETIME, updated_at DATETIME);
+CREATE TABLE connector_bindings (id INTEGER PRIMARY KEY, profile_id INTEGER, account_id INTEGER,
+  connector_id VARCHAR, params_json JSON, auto_commit BOOLEAN, cursor VARCHAR);
 CREATE TABLE inv_fx_rates (id INTEGER PRIMARY KEY, base VARCHAR, quote VARCHAR, date DATE,
   rate VARCHAR, source VARCHAR, fetched_at DATETIME);
 CREATE TABLE inv_import_batches (id INTEGER PRIMARY KEY, profile_id INTEGER, account_id INTEGER,
