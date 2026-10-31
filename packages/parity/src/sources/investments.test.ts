@@ -24,6 +24,18 @@ describe("PythonDb investments readers", () => {
     });
   });
 
+  it("find an instrument by ISIN (upper-cased) and by a namespaced alias", () => {
+    ds = syntheticDataset(INVESTMENTS);
+    run((db) => {
+      expect(db.investments.instrumentIdByIsin("PL0000000001")).toBe(1);
+      expect(db.investments.instrumentIdByIsin("PL0000000009")).toBeNull();
+      expect(db.investments.instrumentIdByAlias("yahoo", "TSTK")).toBe(2);
+      expect(db.investments.instrumentIdByAlias("stooq", "tetf")).toBe(1);
+      expect(db.investments.instrumentIdByAlias("yahoo", "tstk")).toBeNull();
+      expect(db.investments.instrumentIdByAlias("stooq", "TSTK")).toBeNull();
+    });
+  });
+
   it("keep decimal text, parse JSON lists (SQL NULL and JSON null alike) and booleans", () => {
     ds = syntheticDataset(INVESTMENTS);
     run((db) => {

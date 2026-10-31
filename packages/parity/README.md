@@ -83,11 +83,12 @@ datasets it is enabled for and `produce(db) -> JSON tree`; `<module>/` folders h
 `toJSON()` = Python `str()`, JS numbers refused). The CLI runs under Node's type stripping with
 `src/producers/resolveTs.ts`, which maps the `./x.js` specifiers of workspace TypeScript to `./x.ts`.
 
-| Check                    | Datasets  | Inputs                                                                                                                 |
-| ------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `core.networth`          | demo, lab | accounts, balances, cash-pool transactions, investments rows (`PythonDb`); loans / assets contributors from the bridge |
-| `investments.valuation`  | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                          |
-| `investments.allocation` | demo, lab | as `investments.valuation`                                                                                             |
+| Check                     | Datasets  | Inputs                                                                                                                              |
+| ------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `core.networth`           | demo, lab | accounts, balances, cash-pool transactions, investments rows (`PythonDb`); loans / assets contributors from the bridge              |
+| `investments.valuation`   | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                                       |
+| `investments.allocation`  | demo, lab | as `investments.valuation`                                                                                                          |
+| `investments.performance` | demo, lab | investments rows, proxy lookup by ISIN / alias (`db.investments`); strategy state, policy, plan, benchmark from the strategy bridge |
 
 `investments/portfolioState.ts` is the port of `service/portfolio.build`: rows -> domain values as the
 Python store converts them (`investments/rows.ts`, domain ids are the app's `str(pk)` because the
@@ -98,10 +99,23 @@ writes as floats are wrapped with `pyFloat()` (`output.ts`). Not produced here: 
 S22a; their lots and realized trades are the same values `investments.valuation` already checks:
 `snapshot.holdings[].lots`, `snapshot.realized`, `valued.realized`).
 
+`investments/performance.ts` is the port of `performance/service.load` / `_compute` (rows -> domain
+values as `rows.ts`, `find_proxy` over `instrumentIdByIsin` / `instrumentIdByAlias`, bars and rates
+from 14 days before the first transaction) over the `@cashu/domain` performance core (S19a:
+`buildSeries`, `benchmarkPrices`, `computeRange`, `attribute`, ...). The JSON shaping of
+`performance_view` / `attribution_view` is `investments/performanceView.ts`, TRANSITIONAL(S19b) until
+the service views are ported. Tolerance: the check has no Decimal strings (every number is a Python
+float rounded by `_money` / `_ratio`), so it runs on the S03 float default (abs 1e-9 / rel 1e-12); it
+passes byte-identical on demo and lab, because the TS core repeats Python's float operations in the
+same order (incl. CPython's compensated `sum()`, `floats.ts`). `exp` / `expm1` / `**` are V8's fdlibm
+ports against the platform libm in CPython: should a last-bit difference ever flip a rounding, that
+is the place to look (do not widen the tolerance to hide it).
+
 ### Temporary strategy bridge (S14)
 
 The strategy loader is not ported yet, so `src/producers/investments/strategy_bridge.py` exports what
-`build` takes from a profile's strategy (base currency, `data` thresholds, allocation plan) to
+`build` takes from a profile's strategy (base currency, `data` thresholds, allocation plan; for
+performance also the strategy state and the benchmark id / proxy) to
 `<lab>/parity/bridge-strategy/<dataset>/investments.strategy.json`, through golden.py's harness:
 
 ```bash

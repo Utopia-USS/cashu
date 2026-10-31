@@ -7,6 +7,7 @@
 import type { Dataset, PythonDb } from "../sources/index.ts";
 import { readBridge } from "./core/bridge.ts";
 import { produceNetworth } from "./core/networth.ts";
+import { producePerformance } from "./investments/performance.ts";
 import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
 import { readStrategyBridge } from "./investments/strategyBridge.ts";
 import { produceMcpRead } from "./mcp/privacy.ts";
@@ -35,6 +36,11 @@ export const PRODUCERS: readonly Producer[] = [
     check: "investments.allocation",
     datasets: ["demo", "lab"],
     produce: (db) => produceAllocation(db, readStrategyBridge(db.dataset)),
+  },
+  {
+    check: "investments.performance",
+    datasets: ["demo", "lab"],
+    produce: (db) => producePerformance(db, readStrategyBridge(db.dataset)),
   },
   {
     check: "mcp.read_strict",

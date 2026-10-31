@@ -2,7 +2,8 @@
 /**
  * TRANSITIONAL(S14): reader of the strategy bridge (`strategy_bridge.py`), the strategy values the
  * portfolio pipeline takes from a profile until the TS strategy loader lands (S14): base currency,
- * data-quality thresholds, allocation plan. Delete with the bridge script.
+ * data-quality thresholds, allocation plan, and for performance the strategy state and benchmark.
+ * Delete with the bridge script.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -20,6 +21,8 @@ interface BridgeMatch {
 
 interface BridgeProfile {
   readonly data: { readonly max_price_age_days: number; readonly max_fx_age_days: number };
+  readonly state: StrategyStateName;
+  readonly benchmark: { readonly name: string; readonly proxy: string } | null;
   readonly strategy: {
     readonly base_currency: string;
     readonly buckets: readonly { readonly bucket: string; readonly match: BridgeMatch }[];
@@ -29,8 +32,15 @@ interface BridgeProfile {
 
 type BridgeFile = Readonly<Record<string, BridgeProfile>>;
 
-/** What `service/portfolio.build` reads from the profile's strategy. */
+/** `service/strategy.State`. */
+type StrategyStateName = "missing" | "valid" | "partial" | "invalid";
+
+/** What `service/portfolio.build` (and `performance/service.load`) read from the profile's strategy. */
 export interface StrategyInputs {
+  /** `StrategyState.state`. */
+  readonly state: StrategyStateName;
+  /** `config.benchmark` (`id`, `proxy`), null without a usable strategy or benchmark section. */
+  readonly benchmark: { readonly id: string; readonly proxy: string } | null;
   /** `DataQualityPolicy.max_price_age_days` (the strategy's or the default). */
   readonly maxPriceAgeDays: number;
   readonly maxFxAgeDays: number;
@@ -56,6 +66,8 @@ export function readStrategyBridge(dataset: Dataset, root: string = labRoot()): 
   const out = new Map<string, StrategyInputs>();
   for (const [profileKey, p] of Object.entries(file)) {
     out.set(profileKey, {
+      state: p.state,
+      benchmark: p.benchmark === null ? null : { id: p.benchmark.name, proxy: p.benchmark.proxy },
       maxPriceAgeDays: p.data.max_price_age_days,
       maxFxAgeDays: p.data.max_fx_age_days,
       strategy:

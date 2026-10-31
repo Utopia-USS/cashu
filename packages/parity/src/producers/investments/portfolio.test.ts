@@ -14,7 +14,13 @@ afterEach(() => ds.dispose());
 
 type Tree = Record<string, unknown>;
 
-const NO_STRATEGY: StrategyInputs = { maxPriceAgeDays: 5, maxFxAgeDays: 10, strategy: null };
+const NO_STRATEGY: StrategyInputs = {
+  state: "missing",
+  benchmark: null,
+  maxPriceAgeDays: 5,
+  maxFxAgeDays: 10,
+  strategy: null,
+};
 
 function bridgeFor(db: PythonDb): StrategyBridge {
   const equity = inv.bucketDef({

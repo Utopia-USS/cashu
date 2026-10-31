@@ -6,7 +6,9 @@ TS (``buildSnapshot`` -> ``valuePortfolio`` -> ``allocate``) from the dataset's 
 ``packages/parity/src/sources``. Only the strategy loader (``strategy/loader.py``, scope S14) is not
 ported yet, so this script exports per profile exactly the strategy values ``build`` uses: the base
 currency, the data-quality thresholds (``strategy.data`` or the ``DataQualityPolicy()`` defaults)
-and the allocation plan (buckets in declaration order, targets in their dict order). Instrument
+and the allocation plan (buckets in declaration order, targets in their dict order); for the
+performance producer also the strategy state and the benchmark (its id as ``name``: canon.py would
+treat an ``id`` field as a row id). Instrument
 ids in bucket matches stay the app's domain ids (``str(pk)``), the ids the TS pipeline uses.
 
     .venv/bin/python packages/parity/src/producers/investments/strategy_bridge.py --dataset demo
@@ -55,13 +57,18 @@ def strategies(ctx) -> dict:
 
     out: dict = {}
     for p in ctx.with_module("investments"):
-        config = strategy_files.load(ctx.session, p).config
+        loaded = strategy_files.load(ctx.session, p)
+        config = loaded.config
         data = config.data if config is not None else DataQualityPolicy()
+        bench = config.benchmark if config is not None else None
         entry: dict = {
             "data": {
                 "max_price_age_days": data.max_price_age_days,
                 "max_fx_age_days": data.max_fx_age_days,
             },
+            # what performance/service.load reads besides the portfolio inputs
+            "state": loaded.state,
+            "benchmark": None if bench is None else {"name": bench.id, "proxy": bench.proxy},
             "strategy": None,
         }
         if config is not None:

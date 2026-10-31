@@ -247,6 +247,29 @@ export class InvestmentsReader {
     }));
   }
 
+  /**
+   * The first instrument (id order) whose ISIN upper-cased by SQLite is `isin` (`DbInstrumentLookup.by_isin`
+   * pass `upper(isin) = :wanted`; the caller strips and upper-cases `wanted`).
+   */
+  instrumentIdByIsin(isin: string): number | null {
+    const [row] = this.query(
+      "SELECT id FROM inv_instruments WHERE upper(isin) = ? ORDER BY id LIMIT 1",
+      isin,
+    );
+    return row === undefined ? null : int(row, "id");
+  }
+
+  /** The instrument of the alias `(namespace, value)`, unique per namespace (`by_alias`). */
+  instrumentIdByAlias(namespace: string, value: string): number | null {
+    const [row] = this.query(
+      `SELECT instrument_id FROM inv_instrument_aliases WHERE namespace = ? AND value = ?
+       ORDER BY id LIMIT 1`,
+      namespace,
+      value,
+    );
+    return row === undefined ? null : int(row, "instrument_id");
+  }
+
   /** The profile's overrides of the instruments `ids`. */
   profileInstruments(profileId: number, ids: readonly number[]): InvProfileInstrumentRow[] {
     if (ids.length === 0) return [];
