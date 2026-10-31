@@ -3,7 +3,7 @@
 // `--init-keys` and read by every later run (the same keys give byte-identical logs). The vault ids
 // and salts are secrets of the vault: never printed, logged or put in an error message.
 import { randomBytes } from "node:crypto";
-import { chmodSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { type genesis, newVaultSalt, vaultSalt } from "@cashu/store";
 import { z } from "zod";
 
@@ -38,8 +38,20 @@ const toKeys = (file: KeysFile): ReadonlyMap<string, genesis.VaultKeys> =>
     ]),
   );
 
-/** The `VaultKeys` of every profile slug in the keys file at `path`. */
+/**
+ * The `VaultKeys` of every profile slug in the keys file at `path`. A file readable or writable by
+ * group or others (mode wider than 0600) is refused before it is read.
+ */
 export function readKeys(path: string): ReadonlyMap<string, genesis.VaultKeys> {
+  let mode: number;
+  try {
+    mode = statSync(path).mode;
+  } catch {
+    throw new KeysFileError("the keys file is not readable JSON");
+  }
+  if ((mode & 0o077) !== 0) {
+    throw new KeysFileError("the keys file is open to group or others; chmod 600 it");
+  }
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(path, "utf8"));

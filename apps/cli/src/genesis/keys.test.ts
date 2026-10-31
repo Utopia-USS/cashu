@@ -1,5 +1,5 @@
 // The lab keys file (S26 spec 6.1, impl notes change 1): created 0600, read back, never overwritten.
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { initKeys, KeysFileError, readKeys } from "./keys.ts";
@@ -48,7 +48,7 @@ describe("genesis keys file", () => {
       }),
     };
     for (const [name, text] of Object.entries(cases)) {
-      writeFileSync(join(dir, name), text);
+      writeFileSync(join(dir, name), text, { mode: 0o600 });
       let error: unknown;
       try {
         readKeys(join(dir, name));
@@ -58,5 +58,16 @@ describe("genesis keys file", () => {
       expect(error).toBeInstanceOf(KeysFileError);
       expect((error as Error).message).not.toMatch(/ala|abab|1111|2222/);
     }
+  });
+
+  it("refuses a keys file readable or writable by group or others", () => {
+    const path = join(tempDir("keys"), "keys.json");
+    initKeys(path, ["ala"]);
+    for (const mode of [0o640, 0o604, 0o620, 0o644]) {
+      chmodSync(path, mode);
+      expect(() => readKeys(path)).toThrow(KeysFileError);
+    }
+    chmodSync(path, 0o400);
+    expect([...readKeys(path).keys()]).toEqual(["ala"]);
   });
 });

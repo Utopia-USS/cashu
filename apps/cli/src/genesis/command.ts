@@ -171,9 +171,11 @@ function run(o: Options, env: CliEnv): void {
       if (o.fold) {
         const k = keys.get(vault.slug);
         if (k === undefined) throw new DataError(`no keys for vault ${vault.ordinal}`);
-        const view = foldVault(join(vaultDir(o.out, vault.ordinal), "view.sqlite"), vault, k);
-        say(`vault ${summary.ordinal}: folded, invariants ok, view ${short(view)}`);
-        summary = { ...summary, view };
+        const fold = foldVault(join(vaultDir(o.out, vault.ordinal), "view.sqlite"), vault, k);
+        say(
+          `vault ${summary.ordinal}: folded, invariants ok, view rows ${fold.rows} in ${fold.tables} tables = exported, view ${short(fold.view)}`,
+        );
+        summary = { ...summary, view: fold.view };
       }
       summaries.push(summary);
     }

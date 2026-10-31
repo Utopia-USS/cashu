@@ -196,7 +196,9 @@ describe("genesis command runs", () => {
       view.close();
       expect(accounts.n).toBe(1);
     }
-    expect(s.env.out.filter((l) => l.includes("folded, invariants ok"))).toHaveLength(4);
+    const folded = s.env.out.filter((l) => l.includes("folded, invariants ok"));
+    expect(folded).toHaveLength(4);
+    for (const line of folded) expect(line).toMatch(/view rows \d+ in \d+ tables = exported/);
   });
 
   it("keeps the run copy with --keep-run", () => {
@@ -215,6 +217,7 @@ describe("genesis command failures (exit 65)", () => {
         format: 1,
         vaults: { ala: { vault: "1".repeat(32), salt: "2".repeat(64) } },
       }),
+      { mode: 0o600 },
     );
     const out = join(s.base, "o");
     expect(main(genesisArgs(s, out), s.env)).toBe(65);
