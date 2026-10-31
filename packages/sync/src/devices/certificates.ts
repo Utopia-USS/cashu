@@ -62,6 +62,8 @@ export interface CertificateInput {
 export interface CertificateSelection {
   /** Bootstrap certificates plus the logged ones that count. */
   readonly certificates: Uint8Array[];
+  /** Per `writer|lane issuer` window: the certificates kept (what room a writer has left). */
+  readonly windows: Map<string, number>;
   /** Per device issuer: its own-stream certificates that count (the pairing capacity). */
   readonly issued: Map<string, number>;
   /** `device.added` events whose certificate does not count, with the reason (copies excluded). */
@@ -109,19 +111,21 @@ export function selectCertificates(input: CertificateInput): CertificateSelectio
   // --- Recovery-issued certificates: both signatures, per writer window.
   const certificates: Uint8Array[] = input.bootstrap.map((c) => c.slice());
   const own: Candidate[][] = [];
-  for (const list of groups.values()) {
+  const counts = new Map<string, number>();
+  for (const [window, list] of groups) {
     if (list[0]?.lane === "own") {
       own.push(list);
       continue;
     }
-    const kept = walkWindow(list, rejected, (c) => {
+    const valid = walkWindow(list, rejected, (c) => {
       const bytes = fromHex(c.added.data.certificate);
       if (!checker.isSignedBy(bytes, root.recovery.signPublicKey)) return false;
       const keys =
         c.lane === "recovery" ? input.recoveryKeysFor(c.added.event.eid) : [c.parsed.signPublicKey];
       return statementSignedBy(c, keys);
     });
-    for (const c of kept) certificates.push(fromHex(c.added.data.certificate));
+    counts.set(window, valid.length);
+    for (const c of valid) certificates.push(fromHex(c.added.data.certificate));
   }
 
   // --- Device-issued certificates: checked under the issuer's certified keys (one closure over the
@@ -140,14 +144,15 @@ export function selectCertificates(input: CertificateInput): CertificateSelectio
     const issuer = list[0]?.parsed.signerId;
     if (issuer === undefined) continue;
     const keys = reach.keysOf(issuer).map((k) => k.signPublicKey);
-    const kept = walkWindow(list, rejected, (c) => {
+    const valid = walkWindow(list, rejected, (c) => {
       const bytes = fromHex(c.added.data.certificate);
       return keys.some((k) => pre.isSignedBy(bytes, k));
     });
-    issued.set(issuer, kept.length);
-    for (const c of kept) certificates.push(fromHex(c.added.data.certificate));
+    issued.set(issuer, valid.length);
+    counts.set(`${issuer}|${issuer}`, valid.length);
+    for (const c of valid) certificates.push(fromHex(c.added.data.certificate));
   }
-  return { certificates, issued, rejected };
+  return { certificates, windows: counts, issued, rejected };
 }
 
 function laneOf(added: Decoded<DeviceAddedData>, parsed: ParsedCertificate): Lane | undefined {

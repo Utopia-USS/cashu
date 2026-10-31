@@ -301,9 +301,11 @@ describe("fetch lease", () => {
     // A is revoked: its last import (in A's stream, named by A's own watermark) is still required,
     // up to the lower of the watermark and A's cut (C applied it before revoking A).
     c.pull();
+    // A certified everyone, so revoking it needs the recovery words (they re-certify the others).
     const r = c.devices.prepareRevocation(
       [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
-      { revoke: newEid(), rotate: newEid() },
+      { revoke: newEid(), rotate: newEid(), recertify: newEid },
+      vault.recovery,
     );
     if (!r.ok) throw new Error(r.reason);
     c.write(r.change.events);

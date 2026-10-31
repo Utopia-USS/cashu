@@ -245,6 +245,28 @@ Tests: devices/attestation.test.ts (P2, V1, V2, chains of length 3, controls) an
 certification-graph property (devices/decisionKeysProperty.ts, default seeds in decisionKeys.test.ts,
 the sweep in decisionKeys.property.exhaustive.test.ts).
 
+### S29c: the revoke flow (contract for the S44 UI)
+
+`VaultDevices.prepareRevocation(targets, { revoke, rotate, recertify }, recovery?)` (devices/rotation.ts):
+
+- It returns ONE batch to write (`change.events`, then `change.commit()`): the `device.revoked`, a
+  `device.added` re-certification of every remaining device whose only valid chain ran through a
+  target (certified by this device, or by the recovery identity when it is given), and the key
+  rotation wrapped for the devices trusted afterwards.
+- `change.affected` lists EVERY device that loses its chain, re-certified or not:
+  `{ device, name, recertified, reason? }`, `reason` = `capacity` when the writer's certificate window
+  (64 per issuer and stream) is full. The UI shows the list; a device with `recertified: false` must be
+  re-paired, and the UI says so before the owner confirms.
+- `{ ok: false, reason: "recovery_required", affected }`: this device's own chain runs through a
+  target (or it revokes itself while others would lose their chain), so only the recovery words can
+  re-certify. Nothing is written; the UI asks for the words and calls again with the recovery
+  identity.
+- Atomicity: the revocation names its re-certifications (`recertify`: their eids) and the registry
+  counts it only once all of them are held at its position (`incomplete_batch` until then). The
+  engine applies a frame group only when complete (events.md 5), and even a delivery that stops
+  inside the batch (a truncated frame, a partial group, storage dropping the tail) can delay the
+  revocation, never revoke without re-certifying.
+
 ### Key storage
 
 - `KeyStore` adapters: `createSafeStorageKeyStore(safeStorage, files)` (desktop; refuses Linux

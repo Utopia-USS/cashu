@@ -326,7 +326,11 @@ export class VaultDevices {
 
   prepareRevocation(
     targets: readonly RevokedEntry[],
-    eids: { readonly revoke: string; readonly rotate: string },
+    eids: {
+      readonly revoke: string;
+      readonly rotate: string;
+      readonly recertify?: () => string;
+    },
     recovery?: RecoveryIdentity,
   ): PrepareResult {
     return this.#onCommit(prepareRevocation(this.keyContext(), targets, eids, recovery));

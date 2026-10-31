@@ -38,6 +38,8 @@ export interface TrustContext {
   /** Every event of the fold (lease statements are revokers' attested knowledge). */
   readonly events: readonly LogEvent[];
   readonly revocations: readonly Decoded<DeviceRevokedData>[];
+  /** Every decoded `device.added` as `writer|seg:offset|eid` (a revocation's batch must be whole). */
+  readonly heldAdds: ReadonlySet<string>;
   readonly recoveryKeyFor: (eid: string) => Uint8Array[];
   /** The key among `keys` a registry statement's signature verifies with. */
   readonly verifies: (
@@ -99,6 +101,12 @@ export function decideRevocations(
     }
     if (!data.devices.some((d) => registered.has(d.device))) {
       ignored.push({ eid: event.eid, reason: "no_effect" }); // cheap check first: no signature work
+      continue;
+    }
+    // Revoke flow: the re-certifications of the same batch must all be held (truncation safety).
+    const at = `${event.writer}|${event.position.seg}:${event.position.offset}|`;
+    if (data.recertify?.some((eid) => !ctx.heldAdds.has(at + eid))) {
+      ignored.push({ eid: event.eid, reason: "incomplete_batch" });
       continue;
     }
     const keys = isRecovery

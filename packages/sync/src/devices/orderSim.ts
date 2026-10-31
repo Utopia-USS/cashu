@@ -40,7 +40,7 @@ export async function deliveryOrderRun(seed: number): Promise<void> {
       const target = pick(all.filter((x) => x !== actor));
       const honest = actor.devices.prepareRevocation(
         [{ device: target.id, cut: actor.cursors.get(target.id) ?? START_CURSOR }],
-        { revoke: newEid(), rotate: newEid() },
+        { revoke: newEid(), rotate: newEid(), recertify: newEid },
       );
       if (honest.ok) {
         actor.write(honest.change.events);

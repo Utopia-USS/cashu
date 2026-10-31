@@ -129,6 +129,7 @@ export {
   type TrustRoot,
 } from "./registry.js";
 export {
+  type AffectedDevice,
   applyWrap,
   DEFAULT_RATE_LIMIT,
   type EpochRefusal,

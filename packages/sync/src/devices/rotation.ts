@@ -19,6 +19,7 @@ import type { UnstampedEvent } from "../carrier.js";
 import {
   CryptoError,
   type CryptoErrorCode,
+  certifyDevice,
   type DeviceIdentity,
   type KeyEntry,
   type Keyring,
@@ -33,7 +34,12 @@ import {
   unwrapKeys,
   wrapKeys,
 } from "../crypto/index.js";
-import { buildDeviceRevoked, buildKeysRotated, type RevokedEntry } from "./events.js";
+import {
+  buildDeviceAdded,
+  buildDeviceRevoked,
+  buildKeysRotated,
+  type RevokedEntry,
+} from "./events.js";
 import type { KeyProvenance, ProvenanceStore } from "./provenance.js";
 import type { Registry } from "./registry.js";
 
@@ -235,9 +241,26 @@ export function rotationEpoch(ring: Keyring, revocationCount: number): number {
   return Math.max(ring.active.epoch, Math.min(revocationCount, ring.maxEpoch + 1));
 }
 
+/** A remaining device whose only valid certificate chain ran through a device being revoked. */
+export interface AffectedDevice {
+  readonly device: string;
+  /** Its display name from the registry (undefined when none was announced). */
+  readonly name: string | undefined;
+  /** Re-certified in the revocation's own batch: it stays trusted when the revocation counts. */
+  readonly recertified: boolean;
+  /**
+   * Why not: `recovery_required` (the revoker's own chain runs through a revoked device, or it
+   * revokes itself: only the recovery words can re-certify), `capacity` (the writer's certificate
+   * window is full; the owner re-pairs the device).
+   */
+  readonly reason?: "recovery_required" | "capacity";
+}
+
 export interface PreparedChange {
   /** Write these in ONE batch, before `commit()`. */
   readonly events: readonly UnstampedEvent[];
+  /** Devices that lose their chain with this revocation, re-certified or not (S44 shows them). */
+  readonly affected: readonly AffectedDevice[];
   /** The new data key, when this change rotates. */
   readonly key:
     | { readonly kid: string; readonly generation: number; readonly epoch: number }
@@ -252,7 +275,13 @@ export interface PreparedChange {
 
 export type PrepareResult =
   | { readonly ok: true; readonly change: PreparedChange }
-  | { readonly ok: false; readonly reason: "not_trusted" | "no_effect" };
+  | { readonly ok: false; readonly reason: "not_trusted" | "no_effect" }
+  /** Re-certifying `affected` needs the recovery words: call again with the recovery identity. */
+  | {
+      readonly ok: false;
+      readonly reason: "recovery_required";
+      readonly affected: readonly AffectedDevice[];
+    };
 
 function rotateOnClone(
   ctx: KeyContext,
@@ -260,6 +289,7 @@ function rotateOnClone(
   revocationCount: number,
   eid: string,
   leading: readonly UnstampedEvent[],
+  affected: readonly AffectedDevice[] = [],
 ): PreparedChange {
   const me = ctx.identity.deviceId;
   const clone = ctx.ring.clone(ctx.sodium);
@@ -296,6 +326,7 @@ function rotateOnClone(
     };
     return {
       events: [...leading, buildKeysRotated(eid, wraps)],
+      affected,
       key,
       recipients,
       commit: () => {
@@ -323,30 +354,105 @@ export function prepareRotation(ctx: KeyContext, eid: string): PrepareResult {
 
 /**
  * Revokes `targets` (each with its cut: the revoker's applied cursor of that device's stream) and
- * rotates with the incremented epoch, wrapping only for the devices that remain trusted. Revoking
- * this device itself writes the revocation only; the remaining devices rotate (revocation_pending).
+ * rotates with the incremented epoch, wrapping only for the devices that remain trusted.
+ *
+ * Re-certification (S29c): every remaining device whose only valid chain ran through a target is
+ * re-certified IN THE SAME BATCH, by this device, or by the recovery identity when it is given. The
+ * revocation names those `device.added` eids (`recertify`), and the registry counts it only once all
+ * of them are held at its position, so no delivery (a truncated or partial batch) can revoke without
+ * re-certifying. When this device's own chain runs through a target, or it revokes itself, while
+ * others would lose their chain, only the recovery words can re-certify: without them the result is
+ * `recovery_required` with the affected devices, and nothing is written. Devices that do not fit
+ * the writer's certificate window are listed with `capacity`. `affected` always lists every device
+ * that loses its chain (S44 contract, crypto README).
  */
 export function prepareRevocation(
   ctx: KeyContext,
   targets: readonly RevokedEntry[],
-  eids: { readonly revoke: string; readonly rotate: string },
+  eids: {
+    readonly revoke: string;
+    readonly rotate: string;
+    /** A fresh eid per re-certification (required when some device loses its chain). */
+    readonly recertify?: () => string;
+  },
   /**
-   * Sign the revocation with the recovery identity (restoring from the words: every pre-recovery
-   * device is revoked, and a recovery-signed revocation stays valid whatever a stolen device signs).
+   * Sign the revocation (and the re-certifications) with the recovery identity: restoring from the
+   * words, a revoker whose chain runs through a target, or simply a revocation a stolen device can
+   * never contest.
    */
   recovery?: RecoveryIdentity,
 ): PrepareResult {
+  const { registry } = ctx;
   const me = ctx.identity.deviceId;
-  if (!ctx.registry.isTrusted(me)) return { ok: false, reason: "not_trusted" };
-  const preview = ctx.registry.previewRevocation(targets.map((t) => t.device));
-  if (preview.revocationCount === ctx.registry.revocationCount) {
+  if (!registry.isTrusted(me)) return { ok: false, reason: "not_trusted" };
+  const targetIds = new Set(targets.map((t) => t.device));
+  const preview = registry.previewRevocation([...targetIds]);
+  if (preview.revocationCount === registry.revocationCount) {
     return { ok: false, reason: "no_effect" };
   }
+  const losing = [...registry.trusted.keys()]
+    .filter((d) => !targetIds.has(d) && !preview.trusted.has(d))
+    .sort();
+  const named = (device: string) => registry.devices.get(device)?.name;
+  const others = losing.filter((d) => d !== me);
+  const meStays = preview.trusted.has(me);
+  if (!recovery && (losing.includes(me) || (!meStays && others.length > 0))) {
+    return {
+      ok: false,
+      reason: "recovery_required",
+      affected: losing.map((device) => ({
+        device,
+        name: named(device),
+        recertified: false,
+        reason: "recovery_required",
+      })),
+    };
+  }
   const signer = recovery ?? ctx.identity;
-  const revoked = buildDeviceRevoked(signer, ctx.registry.vaultId, eids.revoke, targets);
-  if (!preview.trusted.has(me)) {
+  const room = registry.certificateRoom(me, signer.deviceId);
+  const recertified = losing.slice(0, room);
+  if (recertified.length > 0 && !eids.recertify) {
+    throw new RangeError("eids.recertify is required when devices lose their chain");
+  }
+  const adds = recertified.map((device) => {
+    const k = registry.trusted.get(device) as TrustedDevice;
+    const subject = {
+      deviceId: device,
+      signPublicKey: k.signPublicKey,
+      boxPublicKey: k.boxPublicKey,
+    };
+    const certificate = certifyDevice(ctx.sodium, signer, subject, registry.vaultId);
+    const eid = (eids.recertify as () => string)();
+    return buildDeviceAdded(
+      signer,
+      registry.vaultId,
+      eid,
+      subject,
+      named(device) ?? "device",
+      certificate,
+    );
+  });
+  const affected: AffectedDevice[] = losing.map((device, i) =>
+    i < recertified.length
+      ? { device, name: named(device), recertified: true }
+      : { device, name: named(device), recertified: false, reason: "capacity" },
+  );
+  const revoked = buildDeviceRevoked(
+    signer,
+    registry.vaultId,
+    eids.revoke,
+    targets,
+    adds.map((a) => a.i),
+  );
+  const after = new Map(preview.trusted);
+  for (const device of recertified)
+    after.set(device, registry.trusted.get(device) as TrustedDevice);
+  if (!after.has(me)) {
+    // Revoking this device itself: the revocation (and re-certifications) only; the remaining
+    // devices rotate (revocation_pending).
     const change: PreparedChange = {
-      events: [revoked],
+      events: [revoked, ...adds],
+      affected,
       key: undefined,
       recipients: [],
       commit: () => undefined,
@@ -356,6 +462,13 @@ export function prepareRevocation(
   }
   return {
     ok: true,
-    change: rotateOnClone(ctx, preview.trusted, preview.revocationCount, eids.rotate, [revoked]),
+    change: rotateOnClone(
+      ctx,
+      after,
+      preview.revocationCount,
+      eids.rotate,
+      [revoked, ...adds],
+      affected,
+    ),
   };
 }

@@ -52,7 +52,9 @@ export type IgnoredReason =
   | "capped"
   | "key_mismatch"
   /** A certificate in a stream other than its issuer's (or its subject's, for a recovery-issued one). */
-  | "foreign_certificate";
+  | "foreign_certificate"
+  /** A revocation whose batch's re-certifications are not all held yet (revoke flow). */
+  | "incomplete_batch";
 
 export interface IgnoredStatement {
   readonly eid: string;

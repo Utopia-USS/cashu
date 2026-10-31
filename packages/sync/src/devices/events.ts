@@ -114,6 +114,12 @@ export interface RevokedEntry {
 
 export interface DeviceRevokedData {
   readonly devices: readonly RevokedEntry[];
+  /**
+   * The eids of the `device.added` re-certifications written in the SAME batch (revoke flow,
+   * rotation.ts): the revocation counts only once every one of them is held at its position, so a
+   * truncated batch never revokes without re-certifying (absent = none).
+   */
+  readonly recertify?: readonly string[];
   readonly signer: string;
   readonly sig: string;
 }
@@ -297,14 +303,23 @@ export function buildDeviceRevoked(
   vaultId: string,
   eid: string,
   entries: readonly RevokedEntry[],
+  recertify: readonly string[] = [],
 ): UnstampedEvent {
   if (entries.length === 0 || entries.length > MAX_LIST)
     throw new RangeError("revoke 1-256 devices");
+  if (
+    recertify.length > MAX_LIST ||
+    !recertify.every(isUlid) ||
+    new Set(recertify).size !== recertify.length
+  ) {
+    throw new RangeError("recertify 0-256 distinct eids");
+  }
   return signed(signer, "cashu/registry/v1", vaultId, DEVICE_REVOKED, eid, {
     devices: entries.map((e) => ({
       device: e.device,
       cut: { seg: e.cut.seg, offset: e.cut.offset },
     })),
+    ...(recertify.length > 0 ? { recertify: [...recertify] } : {}),
     signer: signer.deviceId,
   });
 }
@@ -590,8 +605,21 @@ export function decodeDeviceAdded(
 export function decodeDeviceRevoked(
   data: Readonly<Record<string, unknown>>,
 ): DeviceRevokedData | undefined {
-  if (!hasExactly(data, ["devices", "signer", "sig"])) return undefined;
-  const { devices, signer, sig } = data;
+  const withRecertify = hasExactly(data, ["devices", "recertify", "signer", "sig"]);
+  if (!withRecertify && !hasExactly(data, ["devices", "signer", "sig"])) return undefined;
+  const { devices, recertify, signer, sig } = data;
+  if (
+    withRecertify &&
+    !(
+      Array.isArray(recertify) &&
+      recertify.length > 0 &&
+      recertify.length <= MAX_LIST &&
+      recertify.every((e) => typeof e === "string" && isUlid(e)) &&
+      new Set(recertify).size === recertify.length
+    )
+  ) {
+    return undefined;
+  }
   if (!Array.isArray(devices) || devices.length === 0 || devices.length > MAX_LIST)
     return undefined;
   if (!isSignerId(signer) || !isSig(sig)) return undefined;
@@ -606,7 +634,12 @@ export function decodeDeviceRevoked(
     seen.add(device);
     entries.push({ device, cut: { seg: cut.seg, offset: cut.offset } });
   }
-  return { devices: entries, signer, sig };
+  return {
+    devices: entries,
+    ...(withRecertify ? { recertify: [...(recertify as string[])] } : {}),
+    signer,
+    sig,
+  };
 }
 
 export function decodeKeysRotated(

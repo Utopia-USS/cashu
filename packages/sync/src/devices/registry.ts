@@ -65,7 +65,13 @@ import {
   statementBody,
 } from "./events.js";
 import { beforeCut } from "./positions.js";
-import type { Decoded, IgnoredStatement, Revocation, TrustRoot } from "./registryTypes.js";
+import {
+  type Decoded,
+  type IgnoredStatement,
+  MAX_CERTS_PER_ISSUER,
+  type Revocation,
+  type TrustRoot,
+} from "./registryTypes.js";
 import { type StatementVerifier, verifyStatement } from "./statements.js";
 import { certificateTrust, decideRevocations, type TrustContext } from "./trust.js";
 import { cmp } from "./util.js";
@@ -129,6 +135,7 @@ export class Registry {
   readonly #registered: ReadonlySet<string>;
   readonly #issued: ReadonlyMap<string, number>;
   readonly #keys: DecisionKeys;
+  readonly #windows: ReadonlyMap<string, number>;
 
   /** Not public API: use `foldRegistry`. */
   constructor(parts: {
@@ -145,6 +152,7 @@ export class Registry {
     registered: ReadonlySet<string>;
     issued: ReadonlyMap<string, number>;
     keys: DecisionKeys;
+    windows: ReadonlyMap<string, number>;
   }) {
     this.vaultId = parts.root.vaultId;
     this.recovery = parts.root.recovery;
@@ -160,6 +168,7 @@ export class Registry {
     this.#registered = parts.registered;
     this.#issued = parts.issued;
     this.#keys = parts.keys;
+    this.#windows = parts.windows;
   }
 
   isTrusted(deviceId: string): boolean {
@@ -169,6 +178,14 @@ export class Registry {
   /** A device that some certificate chain registered (trusted, revoked or conflicted). */
   isRegistered(deviceId: string): boolean {
     return this.#registered.has(deviceId);
+  }
+
+  /**
+   * How many more certificates of `issuer` (a device, or RECOVERY_SIGNER_ID) `writer`'s stream can
+   * carry and still have them count (its per-writer window, certificates.ts).
+   */
+  certificateRoom(writer: string, issuer: string): number {
+    return Math.max(0, MAX_CERTS_PER_ISSUER - (this.#windows.get(`${writer}|${issuer}`) ?? 0));
   }
 
   /** Certificates by `issuer` that count (pairing refuses once it reaches MAX_CERTS_PER_ISSUER). */
@@ -262,6 +279,12 @@ export function foldRegistry(
     bootstrap: options.bootstrapCertificates ?? [],
     events,
     revocations,
+    heldAdds: new Set(
+      added.map(
+        ({ event }) =>
+          `${event.writer}|${event.position.seg}:${event.position.offset}|${event.eid}`,
+      ),
+    ),
     recoveryKeyFor,
     verifies,
   };
@@ -373,6 +396,7 @@ export function foldRegistry(
     registered,
     issued: selection.issued,
     keys: decided.result.keys,
+    windows: selection.windows,
   });
 }
 
