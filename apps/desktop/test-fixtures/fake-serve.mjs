@@ -2,7 +2,9 @@
 // stdin, answers GET /api/health (200 with that token, 401 without), and exits when stdin closes
 // (core/parent_pipe.py).
 //   FAKE_MODE=ok (default) | exit-early | hang | stubborn (ignores stdin EOF and SIGTERM) | leaky
-//   (prints the token it was given, to prove the shell redacts it) | foreign (holds another token)
+//   (prints the token it was given, to prove the shell redacts it) | leaky-split (prints the token and
+//   a request log line, each cut in two writes as Python's unbuffered print does) | foreign (holds
+//   another token)
 import { createServer } from "node:http";
 
 const mode = process.env.FAKE_MODE || "ok";
@@ -58,5 +60,15 @@ function start() {
     process.stderr.write(
       'INFO:     127.0.0.1:50000 - "GET /api/p/demo/secret-path HTTP/1.1" 200 OK\n',
     );
+    if (mode === "leaky-split") {
+      // Two writes per line with a pause between: the parent reads each line in two chunks.
+      const half = token.length >> 1;
+      process.stdout.write(`debug: token ${token.slice(0, half)}`);
+      process.stderr.write('INFO:     127.0.0.1:50001 - "GET /api/p/demo/split-');
+      setTimeout(() => {
+        process.stdout.write(`${token.slice(half)}\nsplit done\n`);
+        process.stderr.write('secret-path HTTP/1.1" 200 OK\nsplit done\n');
+      }, 50);
+    }
   });
 }

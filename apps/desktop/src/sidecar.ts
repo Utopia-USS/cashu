@@ -152,6 +152,31 @@ export const defaultProbe: ProbeFn = (url, token) =>
     request.once("error", () => resolve(null));
   });
 
+/**
+ * Splits a stream into whole lines. A pipe chunk is not a line: one write can arrive in two
+ * chunks (Python's unbuffered `print` writes the text and the newline separately) and two writes in
+ * one, so the trailing partial line waits for the next chunk. Only a whole line is filtered
+ * (request log) and redacted (token), never a fragment of one.
+ */
+export class LineBuffer {
+  private partial = "";
+
+  constructor(private readonly onLine: (line: string) => void) {}
+
+  push(chunk: string): void {
+    const parts = (this.partial + chunk).split(/\r?\n/);
+    this.partial = parts.pop() ?? "";
+    for (const line of parts) this.onLine(line);
+  }
+
+  /** The stream ended: a last line without a newline is still a line. */
+  flush(): void {
+    const rest = this.partial;
+    this.partial = "";
+    if (rest) this.onLine(rest);
+  }
+}
+
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
 type Resolved = Required<Omit<SidecarOptions, "preferredPort" | "onLog" | "onExit">> &
@@ -244,16 +269,20 @@ export class Sidecar {
           new SidecarError(`${message}${tail ? `: ${redactToken(tail, token).slice(-400)}` : ""}`),
         );
 
-      const feed = (chunk: Buffer | string) => {
-        for (const raw of stripAnsi(chunk.toString()).split(/\r?\n/)) {
-          const line = raw.trim();
-          if (!line || ACCESS_LINE.test(line)) continue;
-          tail = line;
-          onLog?.(redactToken(line, token));
-        }
+      const logLine = (raw: string) => {
+        const line = stripAnsi(raw).trim();
+        if (!line || ACCESS_LINE.test(line)) return;
+        tail = line;
+        onLog?.(redactToken(line, token));
       };
-      child.stdout?.on("data", feed);
-      child.stderr?.on("data", feed);
+      for (const stream of [child.stdout, child.stderr]) {
+        if (!stream) continue;
+        // utf8 decoding keeps a multi-byte character split across chunks whole.
+        stream.setEncoding("utf8");
+        const lines = new LineBuffer(logLine);
+        stream.on("data", (chunk: string) => lines.push(chunk));
+        stream.once("end", () => lines.flush());
+      }
       child.once("error", (error) => {
         if (this.child === child) this.exited = true;
         fail(`The local server could not be started (${error.message})`);

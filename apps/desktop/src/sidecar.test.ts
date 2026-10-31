@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { isPortFree } from "./net.js";
 import {
   buildSidecarEnv,
+  LineBuffer,
   Sidecar,
   SidecarError,
   type SpawnFn,
@@ -100,6 +101,31 @@ describe("sidecar start and stop (shell.ServerThread)", () => {
     expect(lines.join("\n")).not.toContain(info.token);
   });
 
+  it("redacts and filters whole lines when the child's output arrives in pieces", async () => {
+    // The child cuts each line in two writes, then ends each stream's burst with "split done".
+    const lines: string[] = [];
+    let markers = 0;
+    let bothDone: () => void = () => {};
+    const done = new Promise<void>((resolve) => {
+      bothDone = resolve;
+    });
+    const { sidecar } = make("leaky-split", {
+      onLog: (line) => {
+        lines.push(line);
+        if (line === "split done" && ++markers === 2) bothDone();
+      },
+    });
+    const info = await sidecar.start();
+    await done;
+    await sidecar.stop();
+    const log = lines.join("\n");
+    expect(log).toContain("debug: token <redacted>");
+    expect(log).not.toContain(info.token.slice(0, info.token.length >> 1));
+    expect(log).not.toContain(info.token.slice(info.token.length >> 1));
+    expect(log).not.toContain("secret-path");
+    expect(log).not.toContain("split-");
+  });
+
   it("never takes a server without our token for ours", async () => {
     const { sidecar } = make("foreign", { startupTimeoutMs: 800 });
     const error = await sidecar.start().then(
@@ -186,6 +212,22 @@ async function freePort(): Promise<number> {
   const { chooseLoopbackPort } = await import("./net.js");
   return chooseLoopbackPort();
 }
+
+describe("sidecar output lines", () => {
+  it("joins a line cut across chunks and splits chunks holding several lines", () => {
+    const out: string[] = [];
+    const buffer = new LineBuffer((line) => out.push(line));
+    buffer.push("debug: tok");
+    expect(out).toEqual([]);
+    buffer.push("en abc\r");
+    buffer.push("\nsecond\nthi");
+    buffer.push("rd\n\nlast");
+    expect(out).toEqual(["debug: token abc", "second", "third", ""]);
+    buffer.flush();
+    buffer.flush();
+    expect(out).toEqual(["debug: token abc", "second", "third", "", "last"]);
+  });
+});
 
 describe("sidecar environment and command", () => {
   it("pins the data dir and drops anything that could inject or embed a token", () => {
