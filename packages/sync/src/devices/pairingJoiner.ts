@@ -8,6 +8,7 @@ import {
   type Sodium,
 } from "../crypto/index.js";
 import { DEFAULT_MAX_DRIFT_MS } from "../hlc.js";
+import { accepted } from "./acceptance.js";
 import {
   type CanonicalValue,
   concat,
@@ -199,7 +200,10 @@ export class PairingJoiner {
     });
     const signed = concat(lp(utf8("challenge")), transcriptHash);
     if (
-      !verifyStatement("cashu/pairing/v1", signed, fromHex(g), this.invite.inviterSignPublicKey)
+      !accepted(verifyStatement, "cashu/pairing/v1", signed, fromHex(g), {
+        kind: "invite",
+        signKey: this.invite.inviterSignPublicKey,
+      })
     ) {
       return this.#fail("bad_signature");
     }
@@ -252,7 +256,12 @@ export class PairingJoiner {
       hash(sodium, "cashu/pairing-cert/v1", certificate),
       expected,
     );
-    if (!verifyStatement("cashu/pairing/v1", body, fromHex(g), this.invite.inviterSignPublicKey)) {
+    if (
+      !accepted(verifyStatement, "cashu/pairing/v1", body, fromHex(g), {
+        kind: "invite",
+        signKey: this.invite.inviterSignPublicKey,
+      })
+    ) {
       return this.#fail("bad_signature");
     }
     let ring: Keyring;

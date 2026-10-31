@@ -18,7 +18,7 @@
 // recovery changes and names (under the final revocations).
 
 import type { SegmentCursor } from "../carrier.js";
-import type { CandidateKey, CertificateIndex } from "../crypto/index.js";
+import { type CandidateKey, type CertificateIndex, RECOVERY_SIGNER_ID } from "../crypto/index.js";
 import { beforeCut } from "./positions.js";
 
 export class DecisionKeys {
@@ -26,6 +26,7 @@ export class DecisionKeys {
   readonly #revoked: ReadonlySet<string>;
   readonly #closure: ReturnType<CertificateIndex["closure"]>;
   #trusted: ReturnType<CertificateIndex["verify"]>["devices"] | undefined;
+  readonly #avoiding = new Map<string, Map<string, boolean>>();
 
   constructor(index: CertificateIndex, revoked: ReadonlySet<string>) {
     this.#index = index;
@@ -38,6 +39,33 @@ export class DecisionKeys {
     return this.#revoked.has(device)
       ? this.#closure.certifiedKeysOf(device)
       : this.#closure.keysOf(device);
+  }
+
+  /**
+   * The decision keys of `device` whose certification does not rest on `avoid`: a key counts only
+   * when some chain from the recovery key to it passes neither through `avoid` nor through anything
+   * `avoid` certified (H5': what a revocation's signer vouches for never consents to it).
+   */
+  keysAvoiding(device: string, avoid: string): readonly CandidateKey[] {
+    if (device === avoid) return [];
+    const memo = this.#avoiding.get(avoid) ?? new Map<string, boolean>();
+    this.#avoiding.set(avoid, memo);
+    return this.keysOf(device).filter((k) =>
+      k.issuers.some((i) => this.#rootedAvoiding(i, avoid, memo)),
+    );
+  }
+
+  #rootedAvoiding(id: string, avoid: string, memo: Map<string, boolean>): boolean {
+    if (id === RECOVERY_SIGNER_ID) return true;
+    if (id === avoid) return false;
+    const known = memo.get(id);
+    if (known !== undefined) return known;
+    memo.set(id, false); // a cycle never roots anything
+    const ok = this.keysOf(id).some((k) =>
+      k.issuers.some((i) => this.#rootedAvoiding(i, avoid, memo)),
+    );
+    memo.set(id, ok);
+    return ok;
   }
 
   /** The decision keys' signing keys, as statement verifiers take them. */
@@ -58,8 +86,16 @@ export class DecisionKeys {
   ): Uint8Array[] {
     const revocation = revoked.get(device);
     if (revocation) return beforeCut(position, revocation.cut) ? this.signKeysOf(device) : [];
+    const key = this.trustedKeyOf(device);
+    return key ? [key] : [];
+  }
+
+  /**
+   * The one decision key the trust resolves for a device outside the revocation set (undefined:
+   * revoked, conflicted or unregistered): what verifies its current statements and key wraps.
+   */
+  trustedKeyOf(device: string): Uint8Array | undefined {
     this.#trusted ??= this.#index.verify(this.#revoked).devices;
-    const key = this.#trusted.get(device)?.signPublicKey;
-    return key ? [key.slice()] : [];
+    return this.#trusted.get(device)?.signPublicKey.slice();
   }
 }

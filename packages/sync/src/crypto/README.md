@@ -230,12 +230,16 @@ raise cuts (lease watermarks, `prev` links, earlier revocations; devices/revocat
 the keys of a revoked device (`Revocation.signPublicKeys`), and through `Registry.statementKeys` every
 lease event, watermark, waiver writer, recovery change and name.
 
-One exception, by design: a revocation CONSENT (H2) verifies with any key certified for the target,
-whatever the revocations, because it records what the target agreed to before them, so a key minted
-later can never void a genuine consent. A consent forged with a minted key still needs a revocation
-SIGNER with a decision key: a revoked device and its puppets have none once the words revoked it,
-and a still-trusted device that mints a key for the target makes it conflicted (untrusted) anyway
-(see "who may revoke a device").
+Revocation CONSENTS (H2) use decision keys too, under the words' revocations only (they must not
+depend on the device revocations being decided), minus every key whose chain needs the revocation's
+signer (H5'): a key minted later can neither void a genuine consent nor forge one.
+
+Enforcement: devices/acceptance.ts is the ONE place in devices/ that checks a signature; its key
+sources are decision keys (`device`, `statement`, `consent`), the recovery root, the certificate
+being admitted (certificate admission builds the closure decision keys come from), and the invite
+the owner scanned while pairing. devices/acceptance.guard.test.ts fails when any other file there
+calls a raw verifier (directly, through a member or private field, `.call` / `.apply` / `.bind`, or
+an alias), and proves itself on planted violations.
 
 Why this closes the class (P2, V1, V2 and every longer chain): to raise its own cut, or to make any
 statement count for it, a revoked device X needs a key the fold accepts for a device other than
@@ -261,6 +265,12 @@ the sweep in decisionKeys.property.exhaustive.test.ts).
   (`consentToRevocation` on the target: its signature over the vault, the revocation's eid, the
   entries with their cuts, and the revoker). The owner confirms on the device being retired, which is
   therefore in the owner's hands. A device may always revoke itself.
+- The consent verifies only with a decision key of the target whose chain neither needs the
+  revoker (nor anything it certified, at any depth) nor a device the words revoked (review H5';
+  `keysAvoiding`, consent.ts). So the revoker can never vouch for its own victims: a revoked device
+  that mints keys for them, alone, through a puppet or through an accomplice revoked with the words,
+  forges nothing. Consequence for the UI: a device cannot retire, on consent, a device it paired
+  (directly or below); the owner uses another device, retires the device on itself, or the words.
 - Any other device-signed revocation is refused by every device's fold (`no_consent`), and the flow
   refuses to write it (`authority_required`).
 - Consequences: a revoked or stolen device can no longer retaliate (review H5: its revocations need
@@ -270,6 +280,13 @@ the sweep in decisionKeys.property.exhaustive.test.ts).
 - Residual: a still-trusted (stolen, not yet revoked) device can certify a second key pair for
   another device and forge that device's consent; the target is then conflicted (untrusted) anyway.
   Revoking the thief with the words ends it.
+
+### S29c: asking for the recovery words (S44 UX rule)
+
+H2 makes typing the words a routine step, and whoever sees them holds the vault's root. The UI asks
+for them ONLY on a device the owner already trusts, never on the device being retired or on any
+device the owner suspects; and when any device that ever saw the words is suspect, it offers a
+recovery-key change (new words) right away.
 
 ### S29c: the revoke flow (contract for the S44 UI)
 
@@ -285,7 +302,8 @@ the sweep in decisionKeys.property.exhaustive.test.ts).
   (64 per issuer and stream) is full. The UI shows the list; a device with `recertified: false` must be
   re-paired, and the UI says so before the owner confirms.
 - `{ ok: false, reason: "authority_required", unconsented }`: a target (not this device) has neither
-  consented nor is the recovery identity given. The UI asks: is the device in your hands (confirm on
+  consented (with a key that counts: not one this device vouches for, see H5') nor is the recovery
+  identity given. The UI asks: is the device in your hands (confirm on
   it, then retry with its consent) or lost / stolen (enter the recovery words)? Lost or stolen is the
   default answer.
 - `{ ok: false, reason: "recovery_required", affected }`: this device's own chain runs through a

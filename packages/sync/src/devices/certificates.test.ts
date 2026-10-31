@@ -14,7 +14,7 @@ import {
   recoveryIdentity,
 } from "../crypto/index.js";
 import { concat, fromHex, toHex } from "./bytes.js";
-import { buildDeviceAdded, DEVICE_ADDED, type LogEvent } from "./events.js";
+import { buildDeviceAdded, buildDeviceRevoked, DEVICE_ADDED, type LogEvent } from "./events.js";
 import { foldRegistry, type Registry } from "./registry.js";
 import { CERT_CHECK_BUDGET } from "./registryTypes.js";
 import { type StatementVerifier, verifyStatement } from "./statements.js";
@@ -24,7 +24,6 @@ import {
   newEid,
   pairDevice,
   prepareConsented,
-  revokedWithConsent,
   type SimDevice,
   START_TIME,
   sodium,
@@ -340,15 +339,12 @@ describe("R2 junk certificates", () => {
   });
 
   it("property: the registry is a function of the event set, junk writers and revocations included", async () => {
-    const { a, b, r, c } = await fourDevices();
+    const { a, b, r, c, recovery } = await fourDevices();
     const vaultId = a.ring.vaultId;
     const revokeR = stamp(
-      revokedWithConsent(
-        a.identity,
-        vaultId,
-        [{ device: r.id, cut: { seg: 1, offset: 100 } }],
-        [r],
-      ),
+      buildDeviceRevoked(recovery, vaultId, newEid(), [
+        { device: r.id, cut: { seg: 1, offset: 100 } },
+      ]),
       a.id,
       50_000,
     );

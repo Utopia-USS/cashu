@@ -33,9 +33,9 @@ import {
   type RecoveryPublicKeys,
   recoveryRecipient,
   type Sodium,
-  verifyWrapSignature,
   wrapKeys,
 } from "../crypto/index.js";
+import { accepted, acceptedRecoveryWrap } from "./acceptance.js";
 import { equalBytes, fromHex } from "./bytes.js";
 import {
   buildRecoveryChanged,
@@ -64,22 +64,22 @@ export function authorizedByOldKeys(
   data: RecoveryChangedData,
 ): boolean {
   const { sig: _sig, ...unsigned } = data;
-  return verifyStatement(
+  return accepted(
+    verifyStatement,
     "cashu/registry/v1",
     recoveryChangeAuthorizationBody(vaultId, eid, unsigned),
     fromHex(data.authorization),
-    recoveryKeysOf(data.from).signPublicKey,
+    { kind: "recovery", signKeys: [recoveryKeysOf(data.from).signPublicKey] },
   );
 }
 
 /** The base wrap is signed by the new recovery identity and sealed for its box key. */
 export function baseWrapValid(vaultId: string, data: RecoveryChangedData): boolean {
   const to = recoveryKeysOf(data.to);
-  return verifyWrapSignature(
+  return acceptedRecoveryWrap(
     fromHex(data.baseWrap),
     vaultId,
     { deviceId: RECOVERY_SIGNER_ID, boxPublicKey: to.boxPublicKey },
-    RECOVERY_SIGNER_ID,
     to.signPublicKey,
   );
 }

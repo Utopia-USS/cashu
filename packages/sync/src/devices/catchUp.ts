@@ -14,6 +14,7 @@
 // fold only walks events whose signature verifies with `registry.statementKeys`.
 
 import type { SegmentCursor } from "../carrier.js";
+import { accepted } from "./acceptance.js";
 import { fromHex } from "./bytes.js";
 import { type LeaseWaiver, type Watermark, waiveConfirmationText, waiverBody } from "./events.js";
 import { beforeCut, comparePositions, minPosition } from "./positions.js";
@@ -98,12 +99,10 @@ export class CatchUpFold {
     let reason: WaiverRefusal | undefined;
     if (c.kind === "recovery") {
       const body = waiverBody(registry.vaultId, eid, waiver.devices);
-      const ok = this.#verify(
-        "cashu/lease/v1",
-        body,
-        fromHex(c.sig),
-        registry.recovery.signPublicKey,
-      );
+      const ok = accepted(this.#verify, "cashu/lease/v1", body, fromHex(c.sig), {
+        kind: "recovery",
+        signKeys: [registry.recovery.signPublicKey],
+      });
       if (!ok) reason = "bad_signature";
     } else if (!registry.isTrusted(writer)) {
       reason = "untrusted_writer";

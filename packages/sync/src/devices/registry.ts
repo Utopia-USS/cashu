@@ -48,8 +48,10 @@ import {
   type TrustedDevice,
   type TrustedSigner,
 } from "../crypto/index.js";
+import { acceptedKey, type KeySource } from "./acceptance.js";
 import { canonicalJson, equalBytes, fromHex, isCanonicalValue } from "./bytes.js";
-import type { DecisionKeys } from "./decisionKeys.js";
+import { unconsentedTargets } from "./consent.js";
+import { DecisionKeys } from "./decisionKeys.js";
 import {
   byHlc,
   DEVICE_ADDED,
@@ -200,7 +202,38 @@ export class Registry {
   readonly trustedSigner: TrustedSigner = (deviceId) =>
     deviceId === RECOVERY_SIGNER_ID
       ? this.recovery.signPublicKey.slice()
-      : this.trusted.get(deviceId)?.signPublicKey;
+      : this.#keys.trustedKeyOf(deviceId);
+
+  /** The decision keys under the final revocations (acceptance.ts sources). */
+  get decisionKeys(): DecisionKeys {
+    return this.#keys;
+  }
+
+  /**
+   * Whether `consent` (per target other than `signer`) makes a device-signed revocation by
+   * `signer` count (H2, H5'): each signature verifies with a decision key of its target under the
+   * exclusion of the signer, everything it certified, and the devices revoked with the words.
+   */
+  consentAccepted(
+    eid: string,
+    entries: readonly { readonly device: string; readonly cut: SegmentCursor }[],
+    signer: string,
+    consent: Readonly<Record<string, string>>,
+    verify: StatementVerifier = verifyStatement,
+  ): readonly string[] {
+    const certain = [...this.revoked.values()]
+      .filter((r) => r.signers.includes(RECOVERY_SIGNER_ID))
+      .map((r) => r.device);
+    return unconsentedTargets(
+      verify,
+      new DecisionKeys(this.#index, new Set(certain)),
+      this.vaultId,
+      eid,
+      entries,
+      signer,
+      consent,
+    );
+  }
 
   /**
    * The keys a statement written by `device` at `position` (cursor after its batch) may verify
@@ -266,11 +299,14 @@ export function foldRegistry(
     root.recovery.signPublicKey,
     ...(root.previous ?? []).filter((p) => p.ratified.has(eid)).map((p) => p.keys.signPublicKey),
   ];
-  const verifies = (event: LogEvent, sig: string, keys: readonly Uint8Array[]) => {
-    const body = statementBody(root.vaultId, event.type, event.eid, event.data);
-    const signature = fromHex(sig);
-    return keys.find((k) => verify("cashu/registry/v1", body, signature, k));
-  };
+  const verifies = (event: LogEvent, sig: string, source: KeySource) =>
+    acceptedKey(
+      verify,
+      "cashu/registry/v1",
+      statementBody(root.vaultId, event.type, event.eid, event.data),
+      fromHex(sig),
+      source,
+    );
   const context: TrustContext = {
     sodium,
     root,
@@ -286,7 +322,7 @@ export function foldRegistry(
       ),
     ),
     recoveryKeyFor,
-    verifies,
+    acceptStatement: verifies,
   };
 
   // --- Certificates and revocations (decided once, over every logged certificate), then (R2) the
@@ -354,7 +390,17 @@ export function foldRegistry(
       ignored.push({ eid: event.eid, reason: "key_mismatch" });
       continue;
     }
-    if (!verifies(event, data.sig, keys)) {
+    const source: KeySource =
+      data.signer === RECOVERY_SIGNER_ID
+        ? { kind: "recovery", signKeys: keys }
+        : {
+            kind: "statement",
+            keys: decided.result.keys,
+            device: event.writer,
+            position: event.position,
+            revoked,
+          };
+    if (!verifies(event, data.sig, source)) {
       ignored.push({ eid: event.eid, reason: "bad_signature" });
       continue;
     }
@@ -368,7 +414,14 @@ export function foldRegistry(
   const recoveryChanges: RecoveryChange[] = [];
   for (const { event, data } of changes) {
     const keys = data.signer === event.writer ? statementKeys(event.writer, event.position) : [];
-    if (keys.length === 0 || !verifies(event, data.sig, keys)) {
+    const source: KeySource = {
+      kind: "statement",
+      keys: decided.result.keys,
+      device: event.writer,
+      position: event.position,
+      revoked,
+    };
+    if (keys.length === 0 || !verifies(event, data.sig, source)) {
       ignored.push({
         eid: event.eid,
         reason: keys.length === 0 ? "untrusted_signer" : "bad_signature",

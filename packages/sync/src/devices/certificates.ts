@@ -27,6 +27,7 @@ import {
   RECOVERY_SIGNER_ID,
   type Sodium,
 } from "../crypto/index.js";
+import { accepted, type KeySource } from "./acceptance.js";
 import { fromHex } from "./bytes.js";
 import { type DeviceAddedData, MAX_DEVICES, statementBody } from "./events.js";
 import { comparePositions } from "./positions.js";
@@ -101,11 +102,10 @@ export function selectCertificates(input: CertificateInput): CertificateSelectio
       cache,
     },
   );
-  const statementSignedBy = (c: Candidate, keys: readonly Uint8Array[]): boolean => {
+  const statementSignedBy = (c: Candidate, source: KeySource): boolean => {
     const { event, data } = c.added;
     const body = statementBody(root.vaultId, event.type, event.eid, event.data);
-    const sig = fromHex(data.sig);
-    return keys.some((k) => verify("cashu/registry/v1", body, sig, k));
+    return accepted(verify, "cashu/registry/v1", body, fromHex(data.sig), source);
   };
 
   // --- Recovery-issued certificates: both signatures, per writer window.
@@ -120,9 +120,13 @@ export function selectCertificates(input: CertificateInput): CertificateSelectio
     const valid = walkWindow(list, rejected, (c) => {
       const bytes = fromHex(c.added.data.certificate);
       if (!checker.isSignedBy(bytes, root.recovery.signPublicKey)) return false;
-      const keys =
-        c.lane === "recovery" ? input.recoveryKeysFor(c.added.event.eid) : [c.parsed.signPublicKey];
-      return statementSignedBy(c, keys);
+      // Recovery lane: the root; self lane: the subject key of the certificate being admitted (the
+      // decision keys are built from these certificates, so they cannot be the source here).
+      const source: KeySource =
+        c.lane === "recovery"
+          ? { kind: "recovery", signKeys: input.recoveryKeysFor(c.added.event.eid) }
+          : { kind: "admission", signKey: c.parsed.signPublicKey };
+      return statementSignedBy(c, source);
     });
     counts.set(window, valid.length);
     for (const c of valid) certificates.push(fromHex(c.added.data.certificate));

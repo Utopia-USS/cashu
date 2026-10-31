@@ -13,15 +13,15 @@ import {
   RECOVERY_SIGNER_ID,
   type Sodium,
 } from "../crypto/index.js";
-import { fromHex } from "./bytes.js";
+import type { KeySource } from "./acceptance.js";
 import { type CertificateSelection, selectCertificates } from "./certificates.js";
+import { unconsentedTargets } from "./consent.js";
 import { DecisionKeys } from "./decisionKeys.js";
 import {
   type DeviceAddedData,
   type DeviceRevokedData,
   type LogEvent,
   MAX_DEVICES,
-  revocationConsentBody,
 } from "./events.js";
 import type { Decoded, IgnoredStatement, TrustRoot } from "./registryTypes.js";
 import {
@@ -44,11 +44,11 @@ export interface TrustContext {
   /** Every decoded `device.added` as `writer|seg:offset|eid` (a revocation's batch must be whole). */
   readonly heldAdds: ReadonlySet<string>;
   readonly recoveryKeyFor: (eid: string) => Uint8Array[];
-  /** The key among `keys` a registry statement's signature verifies with. */
-  readonly verifies: (
+  /** The key of `source` a registry statement's signature verifies with (acceptance.ts). */
+  readonly acceptStatement: (
     event: LogEvent,
     sig: string,
-    keys: readonly Uint8Array[],
+    source: KeySource,
   ) => Uint8Array | undefined;
 }
 
@@ -92,7 +92,7 @@ export function decideRevocations(
   certs: CertificateTrust,
 ): { readonly result: RevocationResult; readonly ignored: readonly IgnoredStatement[] } {
   const { root, verify } = ctx;
-  const { index, all, registered } = certs;
+  const { index, registered } = certs;
   const ignored: IgnoredStatement[] = [];
   // H1: a device signer without a decision key under the recovery-signed revocations alone (they
   // count in every fold step) can never sign a revocation that counts: decision keys only shrink as
@@ -101,13 +101,19 @@ export function decideRevocations(
   const certain = new Set<string>();
   for (const { event, data } of ctx.revocations) {
     if (data.signer !== RECOVERY_SIGNER_ID) continue;
-    if (!ctx.verifies(event, data.sig, ctx.recoveryKeyFor(event.eid))) continue;
+    const source: KeySource = { kind: "recovery", signKeys: ctx.recoveryKeyFor(event.eid) };
+    if (!ctx.acceptStatement(event, data.sig, source)) continue;
     for (const d of data.devices) if (registered.has(d.device)) certain.add(d.device);
   }
   const floor =
     certain.size > 0 && registered.size < MAX_DEVICES
       ? new DecisionKeys(index, certain)
       : undefined;
+  // Statement signatures are identified with the decision keys under no revocation (every certified
+  // key); eligibility is decided per fold step with the step's decision keys (revocations.ts).
+  const identify = new DecisionKeys(index, new Set());
+  // Consent keys: decision keys under the words' revocations; the signer is avoided per check.
+  const consentKeys = new DecisionKeys(index, certain);
   // Verify first (forged copies never displace genuine ones), then dedupe.
   const verified: Rev[] = [];
   for (const { event, data } of ctx.revocations) {
@@ -130,36 +136,32 @@ export function decideRevocations(
       ignored.push({ eid: event.eid, reason: "incomplete_batch" });
       continue;
     }
-    const keys = isRecovery
-      ? ctx.recoveryKeyFor(event.eid)
-      : all.keysOf(data.signer).map((k) => k.signPublicKey);
-    if (keys.length === 0) {
+    const source: KeySource = isRecovery
+      ? { kind: "recovery", signKeys: ctx.recoveryKeyFor(event.eid) }
+      : { kind: "device", keys: identify, device: data.signer };
+    if (!isRecovery && identify.keysOf(data.signer).length === 0) {
       ignored.push({ eid: event.eid, reason: "untrusted_signer" });
       continue;
     }
-    const key = ctx.verifies(event, data.sig, keys);
+    const key = ctx.acceptStatement(event, data.sig, source);
     if (!key) {
       ignored.push({ eid: event.eid, reason: "bad_signature" });
       continue;
     }
-    // H2: a device-signed revocation of another device needs that device's consent: a signature by
-    // one of its certified keys (any chain, ignoring revocations: the consent was given before the
-    // revocations being decided and must not depend on them, so a key minted later can never void a
-    // genuine consent). Forging one needs a key certified for the target, which only a trusted
-    // device can mint, making the target conflicted (untrusted) anyway; residual in the README.
+    // H2 / H5': a device-signed revocation of another device needs that device's consent, verified
+    // with its decision keys excluding the signer (and all it certified) and the devices the words
+    // revoked (consent.ts).
     if (!isRecovery) {
-      const body = revocationConsentBody(root.vaultId, event.eid, data.devices, data.signer);
-      const consented = data.devices.every(({ device }) => {
-        if (device === data.signer) return true;
-        const sig = data.consent?.[device];
-        return (
-          sig !== undefined &&
-          all
-            .keysOf(device)
-            .some((k) => verify("cashu/registry/v1", body, fromHex(sig), k.signPublicKey))
-        );
-      });
-      if (!consented) {
+      const missing = unconsentedTargets(
+        verify,
+        consentKeys,
+        root.vaultId,
+        event.eid,
+        data.devices,
+        data.signer,
+        data.consent,
+      );
+      if (missing.length > 0) {
         ignored.push({ eid: event.eid, reason: "no_consent" });
         continue;
       }

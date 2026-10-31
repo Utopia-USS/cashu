@@ -45,11 +45,11 @@ class Stream {
 class CountingCache extends CertificateCache {
   checks = 0;
   misses = 0;
-  override check(key: string, verify: () => boolean): boolean {
+  override check(key: string, compute: () => boolean): boolean {
     this.checks += 1;
     return super.check(key, () => {
       this.misses += 1;
-      return verify();
+      return compute();
     });
   }
 }
@@ -124,7 +124,7 @@ function consentedRevocation(
 
 /** A8: one trusted device certifies `n` puppets, then revokes them one by one. */
 export function puppetsRevokedOneByOne(n: number): Scenario {
-  const { creator: a } = createSimVault();
+  const { creator: a, recovery } = createSimVault();
   const vaultId = a.ring.vaultId;
   const stream = new Stream(a.id);
   const puppets = subjects(n);
@@ -132,13 +132,32 @@ export function puppetsRevokedOneByOne(n: number): Scenario {
     const cert = certifyDevice(sodium, a.identity, p, vaultId);
     stream.add(buildDeviceAdded(a.identity, vaultId, newEid(), p, "puppet", cert));
   }
+  // The revoker is a second device the words certified: A cannot revoke on the consent of devices
+  // it certified itself (H5').
+  const s = createDeviceIdentity(sodium);
+  const sSubject = {
+    deviceId: s.deviceId,
+    signPublicKey: s.signPublicKey,
+    boxPublicKey: s.box.publicKey,
+  };
+  stream.add(
+    buildDeviceAdded(
+      recovery,
+      vaultId,
+      newEid(),
+      sSubject,
+      "revoker",
+      certifyDevice(sodium, recovery, sSubject, vaultId),
+    ),
+  );
+  const revokes = new Stream(s.deviceId);
   for (const p of puppets) {
-    stream.add(consentedRevocation(a.identity, vaultId, p.deviceId));
+    revokes.add(consentedRevocation(s, vaultId, p.deviceId));
   }
   return {
     root: { vaultId, recovery: a.ring.recovery },
-    events: [...a.stream.flatMap((s) => s.events), ...stream.events],
-    certificates: 1 + n,
+    events: [...a.stream.flatMap((x) => x.events), ...stream.events, ...revokes.events],
+    certificates: 2 + n,
   };
 }
 
@@ -157,19 +176,21 @@ export function twoLevelTree(): Scenario {
     const cert = certifyDevice(sodium, a.identity, subject, vaultId);
     top.add(buildDeviceAdded(a.identity, vaultId, newEid(), subject, "issuer", cert));
   }
-  const streams = [top];
-  for (const i of issuers) {
-    const s = new Stream(i.deviceId);
-    const children = subjects(62);
-    for (const c of children) {
+  const streams = issuers.map((i) => new Stream(i.deviceId));
+  const children = issuers.map(() => subjects(62));
+  issuers.forEach((i, n) => {
+    for (const c of children[n] ?? []) {
       const cert = certifyDevice(sodium, i, c, vaultId);
-      s.add(buildDeviceAdded(i, vaultId, newEid(), c, "leaf", cert));
+      streams[n]?.add(buildDeviceAdded(i, vaultId, newEid(), c, "leaf", cert));
     }
-    for (const c of children.slice(0, 10)) {
-      s.add(consentedRevocation(i, vaultId, c.deviceId));
+  });
+  // Each issuer revokes 10 children of the NEXT issuer, on their consent (H5': never its own).
+  issuers.forEach((i, n) => {
+    for (const c of (children[(n + 1) % issuers.length] ?? []).slice(0, 10)) {
+      streams[n]?.add(consentedRevocation(i, vaultId, c.deviceId));
     }
-    streams.push(s);
-  }
+  });
+  streams.unshift(top);
   return {
     root: { vaultId, recovery: a.ring.recovery },
     events: [...a.stream.flatMap((s) => s.events), ...streams.flatMap((s) => s.events)],

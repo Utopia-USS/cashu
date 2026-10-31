@@ -22,11 +22,11 @@ import { devicesNeedingRebuild, type FrameAt } from "./guard.js";
 import { foldLease } from "./lease.js";
 import { type PreparedChange, prepareRotation } from "./rotation.js";
 import {
-  consentsOf,
   createSimVault,
   hlcAt,
   newEid,
   pairDevice,
+  prepareConsented,
   revokedWithConsent,
   type SimDevice,
   sodium,
@@ -75,19 +75,9 @@ function carrierOpen(reader: SimDevice, frame: Uint8Array, at: FrameAt): string 
   });
 }
 
-/** The honest revoke flow; the targets consent (they are in the owner's hands, H2). */
+/** The honest revoke flow: the targets' consent when it counts, else the owner's words (H2). */
 function revoke(revoker: SimDevice, ...targets: SimDevice[]): PreparedChange {
-  const entries = targets.map((t) => ({
-    device: t.id,
-    cut: revoker.cursors.get(t.id) ?? START_CURSOR,
-  }));
-  const eid = newEid();
-  const consent = consentsOf(targets, revoker.ring.vaultId, eid, entries, revoker.id);
-  const result = revoker.devices.prepareRevocation(
-    entries,
-    { revoke: eid, rotate: newEid(), recertify: newEid },
-    { consent },
-  );
+  const result = prepareConsented(revoker, targets);
   if (!result.ok) throw new Error(result.reason);
   revoker.write(result.change.events);
   result.change.commit();
@@ -443,26 +433,26 @@ describe("revocation", () => {
 describe("R1: mutual revocations are contested", () => {
   it("a retaliation that states a cut past the revocation of its signer never shows as uncontested", async () => {
     const { a, b, r } = await threeDevices();
-    a.write([note()]);
+    b.write([note()]);
     syncAll([a, b, r]);
-    revoke(a, r); // A revokes R
-    a.push();
+    revoke(b, r); // B revokes R (R consented: B did not certify it)
+    b.push();
     r.pull();
-    // R (revoked) answers with a revocation of A whose cut covers A's revocation of R; A consented
-    // (the owner confirmed on A: contrived, but the only way a pair can still arise under H2).
+    // R (revoked) answers with a revocation of B whose cut covers B's revocation of R; B consented
+    // (the owner confirmed on B: contrived, but the only way a pair can still arise under H2).
     // Positions alone exempt it (review A1b), so both count; the UI must still see a dispute.
     r.write([
       revokedWithConsent(
         r.identity,
         r.ring.vaultId,
-        [{ device: a.id, cut: r.cursors.get(a.id) ?? START_CURSOR }],
-        [a],
+        [{ device: b.id, cut: r.cursors.get(b.id) ?? START_CURSOR }],
+        [b],
       ),
     ]);
     syncAll([a, b, r]);
     for (const d of [a, b]) {
       const reg = d.devices.registry;
-      expect(reg.revoked.get(a.id)?.contested, d.name).toBe(true);
+      expect(reg.revoked.get(b.id)?.contested, d.name).toBe(true);
       expect(reg.revoked.get(r.id)?.contested, d.name).toBe(true);
     }
   });

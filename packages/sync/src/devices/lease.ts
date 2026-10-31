@@ -34,6 +34,7 @@
 import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
 import { type DeviceIdentity, isDeviceId } from "../crypto/index.js";
 import { DEFAULT_MAX_DRIFT_MS, parseHlc } from "../hlc.js";
+import { accepted } from "./acceptance.js";
 import { canonicalJson, fromHex, isCanonicalValue } from "./bytes.js";
 import {
   behindNeed,
@@ -235,7 +236,13 @@ export function foldLease(
     if (ok === undefined) {
       const keys = registry.statementKeys(c.event.writer, c.event.position);
       const body = statementBody(registry.vaultId, c.event.type, c.event.eid, c.event.data);
-      ok = keys.some((k) => verify("cashu/lease/v1", body, fromHex(c.d.sig), k));
+      ok = accepted(verify, "cashu/lease/v1", body, fromHex(c.d.sig), {
+        kind: "statement",
+        keys: registry.decisionKeys,
+        device: c.event.writer,
+        position: c.event.position,
+        revoked: registry.revoked,
+      });
       checked.set(c, ok);
       if (!ok) reasons.set(c.event.eid, keys.length === 0 ? "untrusted_writer" : "bad_signature");
     }

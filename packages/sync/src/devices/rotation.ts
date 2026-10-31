@@ -31,9 +31,9 @@ import {
   type Sodium,
   type TrustedDevice,
   type UnwrapOptions,
-  unwrapKeys,
   wrapKeys,
 } from "../crypto/index.js";
+import { unwrapFromTrusted } from "./acceptance.js";
 import {
   buildDeviceAdded,
   buildDeviceRevoked,
@@ -144,12 +144,13 @@ export function applyWrap(ctx: KeyContext, wire: Uint8Array): WrapOutcome {
   let sender: string;
   let recipients: string[];
   try {
-    const out = unwrapKeys(
+    const out = unwrapFromTrusted(
       ctx.sodium,
       wire,
       ctx.identity,
       ctx.ring,
-      ctx.registry.trustedSigner,
+      ctx.registry.decisionKeys,
+      ctx.registry.recovery.signPublicKey,
       policy,
     );
     sender = out.senderDeviceId;
@@ -397,7 +398,9 @@ export function prepareRevocation(
   const recovery = authority instanceof RecoveryIdentity ? authority : undefined;
   const consent = authority && !(authority instanceof RecoveryIdentity) ? authority.consent : {};
   if (!recovery) {
-    const unconsented = targets.map((t) => t.device).filter((d) => d !== me && !consent[d]);
+    // The same check every device's fold makes (consent.ts): a consent counts only with the
+    // target's own key, never one this device (or a device it certified) vouches for.
+    const unconsented = registry.consentAccepted(eids.revoke, targets, me, consent);
     if (unconsented.length > 0) return { ok: false, reason: "authority_required", unconsented };
   }
   const targetIds = new Set(targets.map((t) => t.device));

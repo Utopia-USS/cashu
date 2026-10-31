@@ -77,23 +77,25 @@ async function vaultOfThree() {
 describe("device registry", () => {
   it("the fold depends only on the set of events (any order, duplicates)", async () => {
     const { a, b, c } = await vaultOfThree();
+    const d = await pairDevice(a, "watch"); // B's sibling: neither certified the other (H5')
     const vaultId = a.ring.vaultId;
-    // B revokes C while C revokes B, each after the other's cut: no order decides, both are revoked.
+    // B revokes D while D revokes B, each after the other's cut (each consented): no order decides,
+    // both are revoked.
     const bRevokesC = stamp(
-      revokedWithConsent(b.identity, vaultId, [{ device: c.id, cut: { seg: 1, offset: 0 } }], [c]),
+      revokedWithConsent(b.identity, vaultId, [{ device: d.id, cut: { seg: 1, offset: 0 } }], [d]),
       b.id,
       START_TIME + 1e7,
       1e6,
     );
     const cRevokesB = stamp(
-      revokedWithConsent(c.identity, vaultId, [{ device: b.id, cut: { seg: 1, offset: 0 } }], [b]),
-      c.id,
+      revokedWithConsent(d.identity, vaultId, [{ device: b.id, cut: { seg: 1, offset: 0 } }], [b]),
+      d.id,
       START_TIME + 2e7,
       1e6,
     );
-    const events = [...allEvents(a, b, c), bRevokesC, cRevokesB];
+    const events = [...allEvents(a, b, c, d), bRevokesC, cRevokesB];
     const reference = fold(a, events);
-    expect(reference.revoked.has(c.id)).toBe(true);
+    expect(reference.revoked.has(d.id)).toBe(true);
     expect(reference.revoked.has(b.id)).toBe(true);
     expect(reference.revoked.get(b.id)?.contested).toBe(true);
     expect(reference.revocationCount).toBe(2);
@@ -147,15 +149,13 @@ describe("device registry", () => {
   });
 
   it("revoking a device untrusts its certificate subtree until another trusted device re-certifies", async () => {
-    const { a, b, c } = await vaultOfThree();
+    const { a, b, c, recovery } = await vaultOfThree();
     const vaultId = a.ring.vaultId;
     const revokeB = stamp(
-      revokedWithConsent(
-        a.identity,
-        vaultId,
-        [{ device: b.id, cut: { seg: 1, offset: 1e6 } }],
-        [b],
-      ),
+      // A certified B, so it cannot revoke B on B's consent (H5'): the owner uses the words.
+      buildDeviceRevoked(recovery, vaultId, newEid(), [
+        { device: b.id, cut: { seg: 1, offset: 1e6 } },
+      ]),
       a.id,
       START_TIME + 1e8,
       1e6,
@@ -230,8 +230,24 @@ describe("device registry", () => {
 
 describe("registry caps and cut boundary (review M4, m3)", () => {
   it("counts at most 64 certificates per issuer and 64 revocations per signer; unsigned junk counts toward nothing", async () => {
-    const { creator: a } = createSimVault();
+    const { creator: a, recovery } = createSimVault();
     const vaultId = a.ring.vaultId;
+    // The revoker of the puppets A certified must not be A (H5'): a device the words certified,
+    // which takes none of A's 64 certificate slots.
+    const signer = createDeviceIdentity(sodium);
+    const signerAdded = stamp(
+      buildDeviceAdded(
+        recovery,
+        vaultId,
+        newEid(),
+        subjectOf(signer),
+        "revoker",
+        certifyDevice(sodium, recovery, subjectOf(signer), vaultId),
+      ),
+      a.id,
+      START_TIME + 500,
+      500,
+    );
     const puppets = Array.from({ length: 70 }, () => createDeviceIdentity(sodium));
     const adds = puppets.map((p, i) =>
       stamp(
@@ -251,12 +267,12 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
     const revokes = puppets.map((_, i) =>
       stamp(
         revokedWithConsent(
-          a.identity,
+          signer,
           vaultId,
           [{ device: puppets[i % 64]?.deviceId ?? "", cut: { seg: 1, offset: 0 } }],
           [puppets[i % 64] as DeviceIdentity],
         ),
-        a.id,
+        signer.deviceId,
         START_TIME + 2000 + i,
         2000 + i,
       ),
@@ -282,12 +298,12 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
       };
       return stamp(e, stranger, START_TIME + 5000 + i, 5000 + i);
     });
-    const base = allEvents(a);
+    const base = [...allEvents(a), signerAdded];
     const r = fold(a, [...base, ...adds, ...junk]);
     expect(r.certificatesIssuedBy(a.id)).toBe(64);
     expect(puppets.filter((p) => r.isTrusted(p.deviceId))).toHaveLength(64);
     expect(r.isRegistered(puppets[69]?.deviceId ?? "")).toBe(false); // the issuer's 65th onward
-    expect(r.events.length).toBe(1 + 64); // only authentic statements: no junk
+    expect(r.events.length).toBe(2 + 64); // only authentic statements (and the revoker): no junk
     const withRevocations = fold(a, [...base, ...adds, ...revokes, ...junk]);
     expect(withRevocations.revocationCount).toBe(64);
     const capped = withRevocations.ignored.filter((i) => i.reason === "capped");
@@ -353,16 +369,13 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
   });
 
   it("one cut definition: a cut inside a batch rejects that batch's data and its statements alike", async () => {
-    const { a, b, c } = await vaultOfThree();
+    const { a, b, c, recovery } = await vaultOfThree();
     const vaultId = a.ring.vaultId;
     // C is revoked with a cut in the middle of the batch [100, 200).
     const revokeC = stamp(
-      revokedWithConsent(
-        a.identity,
-        vaultId,
-        [{ device: c.id, cut: { seg: 1, offset: 150 } }],
-        [c],
-      ),
+      buildDeviceRevoked(recovery, vaultId, newEid(), [
+        { device: c.id, cut: { seg: 1, offset: 150 } },
+      ]),
       a.id,
       START_TIME + 1e7,
       1e6,

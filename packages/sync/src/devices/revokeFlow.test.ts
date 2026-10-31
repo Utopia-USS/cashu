@@ -85,12 +85,14 @@ describe("H2: who may revoke a device", () => {
   });
 
   it("with the target's consent (in the owner's hands) a device-signed revocation counts", async () => {
+    // B (the tablet) did not certify the desktop, so the desktop's consent counts (H5').
     const { a, desk, b } = await household();
-    const result = prepareConsented(a, [desk]);
+    b.words = undefined; // no fallback to the words: the consent alone must do
+    const result = prepareConsented(b, [desk]);
     if (!result.ok) throw new Error(result.reason);
-    write(a, result.change);
+    write(b, result.change);
     syncAll([a, b]);
-    expect(b.devices.registry.revoked.get(desk.id)?.signers).toEqual([a.id]);
+    expect(a.devices.registry.revoked.get(desk.id)?.signers).toEqual([b.id]);
   });
 
   it("with the recovery words (lost or stolen) no consent is needed and the revocation is recovery-signed", async () => {
@@ -173,20 +175,21 @@ describe("revoke flow with re-certification", () => {
 
   it("a device the flow cannot re-certify (the revoker's certificate window is full) is listed, never silently dropped", async () => {
     const { a, desk, phone, laptop, b } = await household();
-    // A has issued certificates for the desktop and the tablet; 62 more fill its window.
+    // The tablet revokes the desktop on its consent; 64 certificates fill the tablet's window.
     const keys = createDeviceIdentity(sodium);
-    const fill: UnstampedEvent[] = Array.from({ length: 62 }, () => {
+    const fill: UnstampedEvent[] = Array.from({ length: 64 }, () => {
       const subject = {
         deviceId: createDeviceId(sodium),
         signPublicKey: keys.signPublicKey,
         boxPublicKey: keys.box.publicKey,
       };
-      const cert = certifyDevice(sodium, a.identity, subject, a.ring.vaultId);
-      return buildDeviceAdded(a.identity, a.ring.vaultId, newEid(), subject, "spare", cert);
+      const cert = certifyDevice(sodium, b.identity, subject, b.ring.vaultId);
+      return buildDeviceAdded(b.identity, b.ring.vaultId, newEid(), subject, "spare", cert);
     });
-    a.write(fill);
-    expect(a.devices.registry.certificatesIssuedBy(a.id)).toBe(64);
-    const result = revoke(a, desk);
+    b.write(fill);
+    expect(b.devices.registry.certificatesIssuedBy(b.id)).toBe(64);
+    b.words = undefined;
+    const result = revoke(b, desk);
     if (!result.ok) throw new Error(result.reason);
     expect(result.change.affected.map((x) => [x.device, x.recertified, x.reason]).sort()).toEqual(
       [
@@ -194,7 +197,7 @@ describe("revoke flow with re-certification", () => {
         [laptop.id, false, "capacity"],
       ].sort(),
     );
-    write(a, result.change);
+    write(b, result.change);
     syncAll([a, b]);
     expect(a.devices.registry.isTrusted(phone.id)).toBe(false); // as the result told the caller
   });

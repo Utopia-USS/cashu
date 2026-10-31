@@ -119,6 +119,8 @@ export class SimDevice {
   readonly certificateCache = new CertificateCache();
   skewMs: number;
   lastPullAt: number | undefined;
+  /** The vault's recovery words, as the owner knows them (the honest revoke helpers fall back to them). */
+  words: RecoveryIdentity | undefined;
   devices!: VaultDevices;
   #bootstrap: readonly Uint8Array[] = [];
   #clock: HybridClock;
@@ -342,6 +344,7 @@ export function createSimVault(remote = new SimRemote(), skewMs = 0): SimVault {
   const { phrase } = createRecoveryKey(sodium);
   const recovery = recoveryIdentity(sodium, phrase);
   const creator = new SimDevice("creator", remote, skewMs);
+  creator.words = recovery;
   const vault = createVaultWithRecovery(sodium, recovery, creator.identity);
   creator.attach(vault.ring, [vault.creatorCertificate]);
   const subject = {
@@ -421,6 +424,7 @@ export function memoryLinks(
  */
 export async function pairDevice(inviter: SimDevice, name: string, skewMs = 0): Promise<SimDevice> {
   const joiner = new SimDevice(name, inviter.remote, skewMs);
+  joiner.words = inviter.words;
   const created = PairingInviter.create({
     sodium,
     identity: inviter.identity,
@@ -502,19 +506,28 @@ export function consentsOf(
   return out;
 }
 
-/** Prepares the honest revoke flow with the targets' consent (H2); nothing is written. */
-export function prepareConsented(revoker: SimDevice, targets: readonly SimDevice[]) {
+/**
+ * Prepares the honest revoke flow (nothing is written): with the targets' consent when it counts
+ * (H2 / H5': the revoker did not certify them), else with the owner's recovery words.
+ */
+export function prepareConsented(
+  revoker: SimDevice,
+  targets: readonly SimDevice[],
+  recovery?: RecoveryIdentity,
+) {
   const entries = targets.map((t) => ({
     device: t.id,
     cut: revoker.cursors.get(t.id) ?? START_CURSOR,
   }));
   const eid = newEid();
   const consent = consentsOf(targets, revoker.ring.vaultId, eid, entries, revoker.id);
-  return revoker.devices.prepareRevocation(
-    entries,
-    { revoke: eid, rotate: newEid(), recertify: newEid },
-    { consent },
-  );
+  const eids = { revoke: eid, rotate: newEid(), recertify: newEid };
+  const result = revoker.devices.prepareRevocation(entries, eids, { consent });
+  const words = recovery ?? revoker.words;
+  if (!result.ok && result.reason === "authority_required" && words) {
+    return revoker.devices.prepareRevocation(entries, eids, words);
+  }
+  return result;
 }
 
 /**
@@ -524,16 +537,9 @@ export function prepareConsented(revoker: SimDevice, targets: readonly SimDevice
 export function revokeWithConsent(
   revoker: SimDevice,
   targets: readonly SimDevice[],
-  cut: (target: SimDevice) => SegmentCursor = (t) => revoker.cursors.get(t.id) ?? START_CURSOR,
+  recovery?: RecoveryIdentity,
 ): Batch {
-  const entries = targets.map((t) => ({ device: t.id, cut: cut(t) }));
-  const eid = newEid();
-  const consent = consentsOf(targets, revoker.ring.vaultId, eid, entries, revoker.id);
-  const result = revoker.devices.prepareRevocation(
-    entries,
-    { revoke: eid, rotate: newEid(), recertify: newEid },
-    { consent },
-  );
+  const result = prepareConsented(revoker, targets, recovery);
   if (!result.ok) throw new Error(`revocation refused: ${result.reason}`);
   const batch = revoker.write(result.change.events);
   result.change.commit();

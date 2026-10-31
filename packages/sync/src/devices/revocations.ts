@@ -4,6 +4,7 @@
 
 import type { SegmentCursor } from "../carrier.js";
 import type { CertificateIndex } from "../crypto/index.js";
+import { accepted, type KeySource } from "./acceptance.js";
 import { canonicalJson, equalBytes, fromHex, isCanonicalValue } from "./bytes.js";
 import { DecisionKeys } from "./decisionKeys.js";
 import {
@@ -291,7 +292,8 @@ function attestedKnowledge(
     for (const { e, sig, body, seen } of statementsOf(r.signer)) {
       const c = seen.get(target);
       if (!c || comparePositions(e.position, r.event.position) > 0) continue;
-      if (!signKeys.some((k) => verify("cashu/lease/v1", body, sig, k))) continue;
+      const source: KeySource = { kind: "device", keys, device: r.signer };
+      if (!accepted(verify, "cashu/lease/v1", body, sig, source)) continue;
       best = best ? maxPosition(best, c) : c;
     }
     for (const other of revs) {
