@@ -47,21 +47,27 @@ query runs (the store logs runs over budget in development).
 
 Gate (lead decision): bulk apply and full rebuild within 2x of the own-log spike, measured in the same
 run. Workload: `packages/store/src/perf.test.ts` (64,203 events: 60k imports, 2k re-imports, 1,900
-rule edits, 300 decisions) vs `spike/own-log/bench.mjs`; harness `~/cashu-lab/bench/s23b-same-run.sh`
-(3 interleaved rounds, medians, wall ms; file mode = WAL + synchronous NORMAL, the spike's pragmas, is
-the gate). M-series Mac, load average 3-10.
+rule edits, 300 decisions, 1,000-event apply batches, one transaction each) vs
+`spike/own-log/bench.mjs`; harness `~/cashu-lab/bench/s23b-same-run.sh` (interleaved rounds, medians,
+wall ms; file mode with WAL + synchronous NORMAL, the store's own pragmas and the spike's, is the
+gate). M-series Mac; the load average is given per step because other sessions shared the machine.
 
-| Step | Spike bulk / rebuild | Store file bulk / rebuild | Store memory bulk / rebuild | Ratio file bulk / rebuild |
-|---|---|---|---|---|
-| Before (8cb17e5) | 476 / 414 | 6,680 / 1,242 | 3,709 / 984 | 14.0 / 3.00 |
-| Keyed HMAC per vault, no transaction partition index | 474 / 342 | 4,242 / 804 | 2,596 / 732 | 9.0 / 2.35 |
-| Bulk index build on full re-folds | 452 / 336 | 4,225 / 753 | 2,505 / 630 | 9.4 / 2.24 |
-| Batched log writes, one envelope copy (after) | 481 / 325 | 4,471 / 740 | 2,305 / 651 | 9.3 / 2.28 |
+| Step | Load avg | Spike bulk / rebuild | Store file bulk / rebuild | Store memory bulk / rebuild | Ratio file bulk / rebuild |
+|---|---|---|---|---|---|
+| Before (8cb17e5) | 3-8 | 476 / 414 | 6,680 / 1,242 | 3,709 / 984 | 14.0 / 3.00 |
+| Keyed HMAC per vault, no transaction partition index | 4-5 | 474 / 342 | 4,242 / 804 | 2,596 / 732 | 9.0 / 2.35 |
+| Bulk index build on full re-folds | 6-10 | 452 / 336 | 4,225 / 753 | 2,505 / 630 | 9.4 / 2.24 |
+| Batched log writes, one envelope copy | 5-6 | 481 / 325 | 4,471 / 740 | 2,305 / 651 | 9.3 / 2.28 |
+| Cash-leg refs on demand | 166-174 | 667 / 438 | 4,832 / 977 | 2,819 / 858 | 7.3 / 2.23 |
+| Queued multi-row materializer inserts and view ids | 73-77 | 713 / 503 | 5,253 / 973 | 2,182 / 711 | 7.4 / 1.93 |
+| Compact log copy (DB 80.5 -> 62.4 MB) | 93-115 | 759 / 475 | 4,850 / 1,115 | 3,299 / 1,017 | 6.4 / 2.35 |
+| After (WAL pragmas in the store, 5 rounds) | 119-147 | 751 / 458 | 5,319 / 1,212 | 3,229 / 1,050 | 7.1 / 2.65 |
 
-Not met (bulk 9.3x, rebuild 2.3x in file mode; memory 4.8x / 2.0x). Where the bulk time goes (CPU
-profile, file mode): the commit's WAL writes about 30% (the store database is 80 MB after the bulk vs
-the spike's 29 MB of log + view: the log copy is 577 bytes per event and each import inserts into six
-random-key B-trees: the log's gid index, the cash-leg ref, `view_ids`, the transaction's gid, its
-(account, hash, occurrence) key and its booking date), the transaction row insert about 12%, zod and
-the HMACs together under 10%. Options left are design changes for the lead (S23b checkpoint): cash-leg refs
-on demand, a more compact log copy, batched materializer inserts.
+Not met. From the cash-leg step on the machine was shared (load average 70-150), which slows the
+store's longer runs more than the spike's short ones: single rounds of one step spread by 30-40%, so
+read the late rows as ranges and re-measure on an idle machine before a decision. Where the bulk time goes (CPU profile): SQLite B-tree work of the inserts dominates; a
+transaction import still inserts into five random-key B-trees (the log's gid index, `view_ids`, the
+transaction's gid, its (account, hash, occurrence) key, its booking date) where the spike inserts into
+two, plus zod validation and the gid check (one HMAC). File mode adds the WAL page writes of those
+trees on every 1,000-event commit (applying the whole bulk in one transaction, as the spike's sync
+does, measured ~15-25% faster).
