@@ -204,7 +204,7 @@ describe("touched tables and subscriptions", () => {
         ),
       ].sort(),
     ).toEqual(["accounts", "transactions"]);
-    expect(store.unfoldedTypes()).toContain("balance.recorded");
+    expect(store.unfoldedTypes()).not.toContain("balance.recorded");
     expect(store.unfoldedTypes()).not.toContain("txn.imported");
   });
 });

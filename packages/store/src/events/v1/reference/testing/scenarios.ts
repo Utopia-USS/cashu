@@ -74,6 +74,8 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
   },
   "proposal.created": { summary: "", reason: null, payload: {}, source: "mcp" },
   "connectorBinding.set": { autoCommit: false },
+  "profile.created": { slug: "dom", name: "Dom", baseCurrency: "PLN", mcpPrivacy: "strict" },
+  "balance.recorded": { source: "csv", currency: "PLN" },
 };
 
 /** A scenario event with the payload fields the zod schemas require filled in. */
@@ -681,6 +683,86 @@ scenario(
   (v) => {
     expect(Object.keys(v.accounts)).toEqual(["A"]);
     expect(v.accounts.A).toMatchObject({ gid: "A", name: "N", members: ["A", "B"] });
+  },
+);
+
+const P = "S24: profile, modules, balances (events.md 8.2)";
+scenario(
+  P,
+  "P1 the first applied create writes the profile; a rename before it is overwritten, later edits win",
+  [
+    ev("a", 5, "profile.renamed", "vault", { name: "Early" }),
+    ev("a", 10, "profile.created", "vault", { name: "Dom" }),
+    ev("b", 11, "profile.created", "vault", { name: "Second", baseCurrency: "EUR" }),
+    ev("a", 20, "profile.settingsChanged", "vault", { mcpPrivacy: "amounts" }),
+    ev("b", 30, "profile.renamed", "vault", { name: "Dom i praca" }),
+  ],
+  (v) =>
+    expect(v.profile).toEqual({ name: "Dom i praca", baseCurrency: "PLN", mcpPrivacy: "amounts" }),
+);
+scenario(
+  P,
+  "P2 no row before a create",
+  [ev("a", 5, "profile.renamed", "vault", { name: "Early" })],
+  (v) => expect(v.profile).toBeNull(),
+);
+scenario(
+  P,
+  "M1 the enabled register: enabled_at moves only when an enable flips it; no row before an enable",
+  [
+    ev("a", 10, "module.enabled", "m-budget", { moduleId: "budget" }),
+    ev("b", 12, "module.enabled", "m-budget", { moduleId: "budget" }),
+    ev("a", 20, "module.disabled", "m-loans", { moduleId: "loans" }),
+    ev("a", 30, "module.enabled", "m-assets", { moduleId: "assets" }),
+    ev("a", 40, "module.disabled", "m-assets", { moduleId: "assets" }),
+    ev("b", 50, "module.enabled", "m-assets", { moduleId: "assets" }),
+    ev("p", 60, "module.enabled", "m-invest", { moduleId: "investments" }),
+    ev("a", 61, "module.disabled", "m-invest", { moduleId: "investments" }),
+  ],
+  (v) => {
+    const at = (ms: number) => new Date(1_793_448_000_000 + ms).toISOString();
+    expect(v.modules).toEqual({
+      assets: { enabled: true, enabledAt: at(50) },
+      budget: { enabled: true, enabledAt: at(10) },
+      investments: { enabled: false, enabledAt: at(60) },
+    });
+  },
+);
+scenario(
+  P,
+  "BAL1 balances of merged accounts collapse per (date, source): amount LWW, currency first",
+  [
+    ev("a", 1, "account.opened", "A", { name: "A", keys: ["ext:mbank:k1"] }),
+    ev("b", 2, "account.opened", "B", { name: "B", keys: ["ext:mbank:k2"] }),
+    ev("a", 10, "balance.recorded", "bal-a", {
+      account: "A",
+      date: "2026-10-30",
+      amount: "100.00",
+    }),
+    ev("b", 11, "balance.recorded", "bal-b", {
+      account: "B",
+      date: "2026-10-30",
+      amount: "120.50",
+      currency: "EUR",
+    }),
+    ev("b", 12, "balance.recorded", "bal-b2", {
+      account: "B",
+      date: "2026-10-30",
+      source: "open_banking",
+      amount: "7",
+    }),
+    ev("a", 30, "account.identified", "A", { keys: ["ext:mbank:k2"] }),
+  ],
+  (v) => {
+    expect(Object.keys(v.balances).sort()).toEqual([
+      "B|2026-10-30|csv",
+      "B|2026-10-30|open_banking",
+    ]);
+    expect(v.balances["B|2026-10-30|csv"]).toMatchObject({
+      gid: "bal-a",
+      amount: "120.50",
+      currency: "PLN",
+    });
   },
 );
 

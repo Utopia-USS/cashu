@@ -14,6 +14,9 @@ import { TEST_SALT, TEST_VAULT, type TestEnvelope, testUlid } from "./store.js";
 // --------------------------------------------------------------------------------------------- //
 // Names <-> gids
 
+/** The scenario name of the vault (the gid of `profile.*` events). */
+const VAULT_NAME = "vault";
+
 export class Names {
   readonly #toGid = new Map<string, string>();
   readonly #toName = new Map<string, string>();
@@ -22,7 +25,9 @@ export class Names {
   gid(name: string): string {
     let g = this.#toGid.get(name);
     if (g === undefined) {
-      if (name.startsWith("cashleg:")) {
+      if (name === VAULT_NAME) {
+        g = TEST_VAULT;
+      } else if (name.startsWith("cashleg:")) {
         g = detGid(TEST_SALT, "transactions", ["cashleg", this.gid(name.slice(8))]);
       } else {
         this.#n += 1;
@@ -156,6 +161,37 @@ export function project(store: Store, names: Names): RefView {
     ]
       .map(n)
       .sort();
+
+  const profileRow = store.read<{ name: string; base_currency: string; mcp_privacy: string }>(
+    "SELECT name, base_currency, mcp_privacy FROM profiles",
+  )[0];
+  const modules = store
+    .read<{ module_id: string; enabled: number; enabled_at: string }>(
+      "SELECT module_id, enabled, enabled_at FROM profile_modules",
+    )
+    .map((r): [string, RefView["modules"][string]] => [
+      r.module_id,
+      { enabled: r.enabled === 1, enabledAt: eventTimestamp(r.enabled_at) ?? "" },
+    ]);
+  const balances = store
+    .read<{
+      gid: string;
+      account_id: number;
+      date: string;
+      source: string;
+      amount: string;
+      currency: string;
+      created_at: string;
+    }>("SELECT gid, account_id, date, source, amount, currency, created_at FROM balances")
+    .map((r): [string, RefView["balances"][string]] => [
+      `${n(gidById.get(r.account_id) ?? "")}|${r.date}|${r.source}`,
+      {
+        gid: n(r.gid),
+        amount: r.amount,
+        currency: r.currency,
+        at: eventTimestamp(r.created_at) ?? "",
+      },
+    ]);
 
   const accounts = store
     .read<{ gid: string; iban: string | null; external_id: string | null; name: string }>(
@@ -342,6 +378,16 @@ export function project(store: Store, names: Names): RefView {
     .map((c) => `${n(c.account_gid)} ${c.key}`);
 
   return {
+    profile:
+      profileRow === undefined
+        ? null
+        : {
+            name: profileRow.name,
+            baseCurrency: profileRow.base_currency,
+            mcpPrivacy: profileRow.mcp_privacy,
+          },
+    modules: rec(modules),
+    balances: rec(balances),
     accounts: rec(accounts),
     accountConflicts: conflicts,
     transactions: rec(transactions),

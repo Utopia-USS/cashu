@@ -7,7 +7,8 @@
 // run by reference/convergence.test.ts and the store's convergence acceptance); they may be
 // incremental, this one is not.
 //
-// Scope: accounts, transactions (imported), watchlist, instrument overrides (segment GUARD), manual
+// Scope: the profile, its modules (enabled register + enabled_at), accounts, balances (row key under
+// account merges), transactions (imported), watchlist, instrument overrides (segment GUARD), manual
 // valuations, signals + decisions, proposals + caused events, connector bindings. Other tables follow
 // the same patterns (plain LWW-F / CREATE per gid) and are not modelled here.
 
@@ -228,7 +229,30 @@ interface BindingRow {
   cursor: string | null;
 }
 
+interface ProfileRow {
+  name: string;
+  baseCurrency: string;
+  mcpPrivacy: string;
+}
+interface ModuleRow {
+  enabled: boolean;
+  /** Time of the enable that flipped the register to enabled (S24 D-24.4). */
+  enabledAt: string;
+}
+interface BalanceRow {
+  /** The anchor: the first applied member (N1). */
+  gid: string;
+  amount: string;
+  /** The first applied record's currency (S24 D-24.5). */
+  currency: string;
+  /** Time of the latest record (LWW with the amount). */
+  at: string;
+}
+
 export interface RefView {
+  profile: ProfileRow | null;
+  modules: Record<string, ModuleRow>;
+  balances: Record<string, BalanceRow>;
   accounts: Record<string, AccountRow>;
   transactions: Record<string, TxnRow>;
   accountConflicts: string[];
@@ -255,6 +279,9 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   const txnRowOf = new Map<string, string>();
   const bindingRowOf = new Map<string, string>();
 
+  let profile: (ProfileRow & { created: boolean }) | null = null;
+  const moduleRegs = new Map<string, { enabled: boolean; enabledAt: string | null }>();
+  const balances = new Map<string, BalanceRow>();
   const accounts = new Map<string, AccountRow>();
   const openedRoots = new Set<string>(); // roots with an applied account.opened of any member
   interface TxnState {
@@ -298,6 +325,55 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   for (const e of evs) {
     const d = e.data;
     switch (e.type) {
+      case "profile.created":
+      case "profile.renamed":
+      case "profile.settingsChanged": {
+        const p: ProfileRow & { created: boolean } = profile ?? {
+          created: false,
+          name: "",
+          baseCurrency: "",
+          mcpPrivacy: "",
+        };
+        if (e.type === "profile.created") {
+          if (p.created) break; // CREATE: the first applied create stands
+          p.created = true;
+          p.name = String(d.name);
+          p.baseCurrency = String(d.baseCurrency);
+          p.mcpPrivacy = String(d.mcpPrivacy);
+        } else if (e.type === "profile.renamed") {
+          p.name = String(d.name);
+        } else {
+          if ("baseCurrency" in d) p.baseCurrency = String(d.baseCurrency);
+          if ("mcpPrivacy" in d) p.mcpPrivacy = String(d.mcpPrivacy);
+        }
+        profile = p;
+        break;
+      }
+      case "module.enabled":
+      case "module.disabled": {
+        const id = String(d.moduleId);
+        const reg = moduleRegs.get(id) ?? { enabled: false, enabledAt: null };
+        if (e.type === "module.enabled" && !reg.enabled) reg.enabledAt = e.at;
+        reg.enabled = e.type === "module.enabled";
+        moduleRegs.set(id, reg);
+        break;
+      }
+      case "balance.recorded": {
+        const key = `${acc(String(d.account))}|${String(d.date)}|${String(d.source)}`;
+        const row = balances.get(key);
+        if (row === undefined) {
+          balances.set(key, {
+            gid: e.gid,
+            amount: String(d.amount),
+            currency: String(d.currency),
+            at: e.at,
+          });
+        } else {
+          row.amount = String(d.amount);
+          row.at = e.at;
+        }
+        break;
+      }
       case "account.opened":
       case "account.identified": {
         const row = accountRow(acc(e.gid));
@@ -540,7 +616,22 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
     txnRows.set(k, { gid: t.gid, members: [...t.members].sort(), claim: t.claim, leg });
   }
 
+  const modules = new Map<string, ModuleRow>();
+  for (const [id, reg] of moduleRegs) {
+    if (reg.enabledAt !== null) modules.set(id, { enabled: reg.enabled, enabledAt: reg.enabledAt });
+  }
+
   return {
+    profile:
+      profile === null || !profile.created
+        ? null
+        : {
+            name: profile.name,
+            baseCurrency: profile.baseCurrency,
+            mcpPrivacy: profile.mcpPrivacy,
+          },
+    modules: sortRecord(modules),
+    balances: sortRecord(balances),
     accounts: sortRecord(accounts),
     accountConflicts: [...ids.accounts.conflicts],
     transactions: sortRecord(txnRows),
