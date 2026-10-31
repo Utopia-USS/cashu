@@ -234,7 +234,7 @@ describe("the guard walker (6.5, R5)", () => {
       { detail: { instrument_id: 1 } },
       "unmapped_id_key.payload.instrument_id",
     ],
-    ["proposals", "payload", { run_id: 12, binding_id: 3 }, "unmapped_id_key.payload.run_id"],
+    ["proposals", "payload", { run_id: 12 }, "unmapped_id_key.payload.run_id"],
   ])("fails %s.%s on a planted id", (table, column, value, reason) => {
     const { r, count } = setup();
     expect(refusal(() => r.json(table, column, value))?.code).toBe("unmapped_id_key");
