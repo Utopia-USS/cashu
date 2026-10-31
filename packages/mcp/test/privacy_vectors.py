@@ -29,8 +29,11 @@ from cashu.core.mcp.redaction import (
     LeakDetected,
     Redactor,
     UnlabelledValue,
+    identifier_in,
+    is_money_key,
     isin_valid,
     leak_check,
+    normalize_for_matching,
     scrub_text,
 )
 from cashu.core.mcp.registry import ToolError, ToolSpec, validate_arguments
@@ -42,6 +45,8 @@ from cashu.modules.investments.rules.expr.lexer import ExpressionError
 from cashu.modules.investments.rules.expr.privacy import scrub_amount_literals
 
 OUT = Path(__file__).resolve().parent / "vectors"
+# the shared adversarial vectors (S37fix), also read by the Python tests
+SHARED = Path(__file__).resolve().parents[3] / "tests" / "mcp_privacy_vectors.json"
 SECRET = hashlib.sha256(b"cashu-ts-privacy-vectors").digest()
 SEED = 37
 
@@ -546,14 +551,132 @@ def trees_section(rng: random.Random, guards: list[tuple[dict, N.NameGuard]], su
             try:
                 data = r.apply(t)
                 try:
-                    leak_check(data, strict=r.strict, isins=r.isins)
-                    row[privacy] = {"out": json.dumps(data, ensure_ascii=False), "isins": sorted(r.isins)}
+                    leak_check(data, strict=r.strict, isins=r.isins, non_money=r.non_money)
+                    row[privacy] = {
+                        "out": json.dumps(data, ensure_ascii=False),
+                        "isins": sorted(r.isins),
+                        "non_money": sorted(r.non_money),
+                    }
                 except LeakDetected:
                     row[privacy] = {"error": "leak", "isins": sorted(r.isins)}
             except UnlabelledValue:
                 row[privacy] = {"error": "unlabelled"}
         rows.append(row)
     return {"rows": rows}
+
+
+# --- adversarial (S37fix): the shared vectors plus a separator / inflection / number fuzz
+
+ADV_SEPARATORS = [" ", "  ", "   ", ".", ",", "-", "_", "/", " - ", "\u00a0", "\u2009", "\u202f", "\u2007",
+                  "\u2003", "\u3000", "\u200b", "\u200c", "\u2060", "\ufeff", "\u00ad", "\t", "\n", "\r\n",
+                  "\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2212", "\ufe63", "\uff0d", "\u1680",
+                  "\u205f", "\u0085", "\u2028", ", ", " / ", ":", "|",
+                  # S37fix N4: any 1-5 non-alphanumeric characters join a run
+                  ". ", "'", "+", "*", " ; ", "    ", ") ", " (", "~", ",  "]
+ADV_NAMES = ["ANNA NOWAK", "JAN KOWALSKI", "ZOFIA WISNIEWSKA", "KOWALCZYK", "LIS"]
+ADV_SUFFIXES = ["", "a", "y", "ie", "owi", "em", "owa", "owej", "iego", "iemu", "ą", "ę", "u", "o", "ach", "ski"]
+ADV_HOMOGLYPHS = {"A": "\u0410", "O": "\u041e", "o": "\u043e", "a": "\u0430", "N": "\u039d", "K": "\u041a",
+                  "e": "\u0435", "i": "\u0456", "c": "\u0441", "s": "\u0455"}
+ADV_WORDS = ["przelew", "dla", "od", "za", "zwrot", "kwota", "konto", "karta", "tel", "nr", "acc", "saldo", "w",
+             "stycznia", "March", "maj", "rok", "r.", "PLN", "zł", "EUR", "%", "pp", "x", "XXXX", "****", "•••",
+             "kowale", "nowe", "Annapurna", "WIG20", "Q3", "COVID-19", "o", "i", "(at)", "@", "example.com"]
+
+
+def adv_digits(rng: random.Random, n: int) -> str:
+    d = "".join(rng.choice("0123456789") for _ in range(n))
+    return uni(rng, d) if rng.random() < 0.1 else d
+
+
+def adv_fragment(rng: random.Random) -> str:
+    kind = rng.randrange(16)
+    sep = rng.choice(ADV_SEPARATORS)
+    if kind == 0:  # card / account groups
+        groups = [adv_digits(rng, rng.choice([2, 3, 4, 4, 4])) for _ in range(rng.randint(2, 7))]
+        out = sep.join(groups)
+        return (rng.choice(["PL", "DE", "pl", "GB82 WEST"]) + rng.choice(["", " "]) + out) if rng.random() < 0.3 else out
+    if kind == 1:  # amount shapes
+        return rng.choice(["", "-", "+"]) + num(rng) + rng.choice(["", ".", ",", ",-", "%", " %", " pp", " zł", " PLN"])
+    if kind == 2:  # grouped with any separator
+        return adv_digits(rng, rng.randint(1, 3)) + sep + adv_digits(rng, 3) + rng.choice(["", ",50", ".99"])
+    if kind == 3:  # dates in every recognized form and broken ones
+        y = rng.randint(1890, 2110)
+        return rng.choice([
+            f"{y}-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}",
+            f"{rng.randint(1, 31)}.{rng.randint(1, 12)}.{y}",
+            f"{y}-{rng.randint(1, 12):02d}",
+            f"{rng.randint(1, 12):02d}/{y}",
+            f"{rng.choice(['stycznia', 'Maj', 'wrzesnia', 'March', 'sept.', 'Pazdziernik'])} {y}",
+            f"{y}-01-15T00:00:00.{adv_digits(rng, rng.randint(1, 18))}",
+            f"{y}-01-15 10:00:00+0{rng.randint(0, 9)}:00",
+            f"{rng.randint(1000, 9999)}-{rng.randint(0, 99):02d}-{rng.randint(0, 99):02d}",  # N6 shapes
+            str(y),
+        ])
+    if kind == 4:  # names: inflected, separated, homoglyphs, initials, middle names
+        first, *rest = rng.choice(ADV_NAMES).split() + [""]
+        last = rest[0] if rest and rest[0] else rng.choice(["NOWAK", "KOWALSKI"])
+        word = lambda w: (w.capitalize() if rng.random() < 0.5 else w) + rng.choice(ADV_SUFFIXES)
+        parts = [word(first)]
+        if rng.random() < 0.3:
+            parts.append(rng.choice(["Maria", "J.", "K", "de"]))
+        parts.append(word(last))
+        if rng.random() < 0.5:
+            parts.reverse()
+        if rng.random() < 0.2:
+            parts[0] = parts[0][0] + "."
+        text_ = rng.choice([" ", "_", "/", "-", "\u00ad", "\u200b", ", ", "  ", "+"]).join(parts)
+        if rng.random() < 0.2:
+            text_ = "".join(ADV_HOMOGLYPHS.get(c, c) if rng.random() < 0.3 else c for c in text_)
+        if rng.random() < 0.15:
+            text_ += "-" + rng.choice(["Kowalska", "Lis", "Nowak"])
+        return text_
+    if kind == 5:  # masked cards
+        return rng.choice(["", adv_digits(rng, 6)]) + rng.choice(["******", "**** **** ****", "XXXX-XXXX-", "xx", "••••"]) + rng.choice(["", " ", "-"]) + adv_digits(rng, rng.randint(1, 5))
+    if kind == 6:  # letter-and-digit ids and hex digests
+        letters = "".join(rng.choice("ABCUXYZabcdefu") for _ in range(rng.randint(1, 4)))
+        return rng.choice([letters + adv_digits(rng, rng.randint(3, 10)), adv_digits(rng, rng.randint(3, 8)) + letters,
+                           "".join(rng.choice("0123456789abcdef") for _ in range(rng.randint(8, 20)))])
+    if kind == 7:
+        return rng.choice(["jan.kowalski", "a.b", "x"]) + rng.choice(["@", "(at)", "[at]", " @ "]) + rng.choice(["example.com", "ex.pl", "x"])
+    if kind == 8:  # phone numbers
+        return rng.choice(["", "+48 ", "48"]) + sep.join(adv_digits(rng, 3) for _ in range(3))
+    if kind == 9:  # the lead's shape: a number one separator before a dotted card
+        return adv_digits(rng, rng.randint(1, 8)) + sep + ".".join(adv_digits(rng, 4) for _ in range(4))
+    if kind == 10:  # ID cards and account words
+        return rng.choice(["ABC", "PLN", "XYZ", "konto", "acc", "nr"]) + rng.choice([" ", "", ": "]) + adv_digits(rng, rng.randint(5, 9))
+    if kind == 12:  # R1 / R2: numbers before a percent, pp or a unit, and positions after a unit word
+        n = rng.choice(["5", "45", "180", "999", "1000", "5000", "12,5", "1.5", "0", "-12", "5 000", "12 500",
+                         "1.250", "450.000", "250,000", "999,999", "12,50", "1.000"])  # N1 shapes
+        unit = rng.choice(["%", " %", " pp", "pp", " p.p.", " pkt proc.", " dni", " DNI", " sesji", " days",
+                           " lat", "x", " x", " characters", " znaków", " miesięcy", " zł", " PLN", " lines"])
+        lead = rng.choice(["", "", "kwota ", "PLN ", "$", "€ ", "line ", "wiersz ", "row ", "saldo ", "zł ",
+                           "pln ", "usd  ", "w maju "])  # N2 / N5 shapes
+        return lead + n + unit
+    if kind == 13:  # positions after a unit word
+        return rng.choice(["line", "row", "Wiersz", "pozycja", "linii"]) + " " + rng.choice(["7", "12", "999", "1500", "12.5", "3x"])
+    if kind == 11:  # small numbers and leading zeros
+        return rng.choice(["0", "00", "0.5", "05", "1", "9", "10", "007", "0,25", "1.0", "1e4", "12h", "x12"])
+    return rng.choice(ADV_WORDS)  # kinds 14, 15: plain words
+
+
+def adversarial_section(rng: random.Random) -> dict:
+    shared = json.loads(SHARED.read_text("utf-8"))
+    g = N.NameGuard(1, frozenset(ADV_NAMES))
+    texts = [v["text"] for v in shared["texts"]]
+    for _ in range(4000):
+        texts.append(rng.choice([" ", "  ", ", ", " - ", "\u2009"]).join(adv_fragment(rng) for _ in range(rng.randint(1, 5))))
+    rows = []
+    for t in texts:
+        row = {"text": t, "norm": normalize_for_matching(t), "raw_leak": identifier_in(t), "mask": g.mask(t)}
+        for strict in (True, False):
+            for guarded in (False, True):
+                key = ("strict" if strict else "amounts") + ("_guard" if guarded else "")
+                row[key] = scrub_text(t, strict=strict, guard=g if guarded else None)
+                row[key + "_leak"] = identifier_in(row[key])
+        rows.append(row)
+    keys = sorted({k for s_ in ("amount_pln", "value_base", "invalid_value", "summary_max", "balances",
+                                "last_value", "fees_share", "Kwota", "monthly_sum", "net", "network",
+                                "cash-weight", "saldo koncowe", "expense_vs_average") for k in [s_]})
+    return {"guard_names": ADV_NAMES, "money_keys": {k: is_money_key(k) for k in keys}, "rows": rows}
 
 
 # --- expressions
@@ -697,14 +820,16 @@ def build() -> dict[str, str]:
         "trees": {"summaries": summaries, **trees_section(rng, guards, summaries)},
         "expressions": expressions_section(rng),
         "registry": registry_section(rng),
+        "adversarial": adversarial_section(random.Random(SEED + 1)),
     }
-    return {k: _jsonl(v) for k, v in sections.items()}
+    # adversarial texts hold invisible and dash characters on purpose: written as \u escapes
+    return {k: _jsonl(v, ascii=k == "adversarial") for k, v in sections.items()}
 
 
-def _jsonl(section: dict) -> str:
+def _jsonl(section: dict, *, ascii: bool = False) -> str:
     """JSON Lines (as the domain vectors; formatters leave ``.jsonl`` alone): the section's fields
     without its rows on the first line, then one row per line."""
-    dump = lambda v: json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(",", ":"))  # noqa: E731
+    dump = lambda v: json.dumps(v, ensure_ascii=ascii, sort_keys=True, separators=(",", ":"))  # noqa: E731
     head = {k: v for k, v in section.items() if k != "rows"}
     rows = section.get("rows", [])
     return "".join(dump(x) + "\n" for x in [{**head, "count": len(rows)}, *rows])

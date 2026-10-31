@@ -139,8 +139,8 @@ function secretText(g: Gen, planted: Planted, persons: readonly string[]): strin
   return shown;
 }
 
-// Parts are kept apart by a word: two digit groups one space apart form one longer run, and that
-// interplay is a known gap of the Python rules (pinned in "known gaps" below), not this contract.
+// Parts are kept apart by a word: two digit groups one space apart form one longer run (masked as one
+// identifier since S37fix, see "closed gaps" below), which this contract does not need.
 const WORD_GAPS = [" dla ", ", przelew ", " - z - ", "; note "];
 
 function sentence(g: Gen, planted: Planted, persons: readonly string[]): string {
@@ -281,20 +281,19 @@ describe("no identifier, account number, name or strict amount survives redactio
   }
 });
 
-describe("known gaps (same output as Python; reported to the lead, not changed here)", () => {
-  // A number one space before a dotted card / account number joins the long-digit rule first; the
-  // dotted rule then sees only three groups and 12 digits leave, in both modes, and the leak check
-  // (same patterns) lets them through. Python 3.14 gives exactly these strings.
+describe("closed gaps (S37fix: a number one space before a dotted card / account number)", () => {
+  // These leaked 12 digits in both modes before S37fix (the long-digit rule took the first part, the
+  // dotted rule saw three groups). The whole run is one identifier now; Python gives the same text.
   it.each([
-    ["konto 1234567 7942.8841.3456.5750 dla", "konto [number].8841.3456.5750 dla"],
-    ["XY12345678 8771.5052.4115.1224 12.5%", "XY[number].5052.4115.1224 12.5%"],
-    ["U1234567 5846.8915.7764.4910 przelew", "U[number].8915.7764.4910 przelew"],
-  ])("%s", (input, python) => {
+    ["konto 1234567 7942.8841.3456.5750 dla", "konto [number] dla"],
+    ["XY12345678 8771.5052.4115.1224 12.5%", "[iban]%"], // one run from the country-code-like XY
+    ["U1234567 5846.8915.7764.4910 przelew", "U[number] przelew"],
+  ])("%s", (input, expected) => {
     for (const strict of [true, false]) {
       const out = new Redactor({ privacy: strict ? "strict" : "amounts" }).apply({
         n: L.text(input),
       });
-      expect((out as { n: string }).n).toBe(python);
+      expect((out as { n: string }).n).toBe(expected);
       leakCheck(out, { strict });
     }
   });

@@ -118,7 +118,7 @@ it("test_merchant_private_person_becomes_a_ref_in_both_modes", () => {
       b: L.merchant("BIEDRONKA 123"),
     }) as { a: string; b: string };
     expect(out.a.startsWith("payee:") && out.a.length === 16).toBe(true);
-    expect(out.b).toBe("BIEDRONKA 123");
+    expect(out.b).toBe(privacy === "strict" ? "BIEDRONKA [amount]" : "BIEDRONKA 123");
   }
 });
 
@@ -147,18 +147,23 @@ describe("test_identifiers_are_always_scrubbed", () => {
   }
 });
 
-describe("test_strict_scrubs_amounts_keeps_percentages_dates_isins", () => {
+describe("test_strict_scrubs_amounts_and_numbers_keeps_dates", () => {
   it.each([
     ["plan 1500 PLN per month", "plan [amount] per month"],
     ["value 1 234 567,89 zł", "value [amount]"],
     ["worth $1,234.50 now", "worth [amount] now"],
     ["EUR 12.30 fee", "[amount] fee"],
     ["cost 4321.09", "cost [amount]"],
-    ["total 98765 in 2026", "total [amount] in 2026"],
+    // S37fix D3: every other number with 2+ significant digits, bare years too; R1 / R2 keep
+    // percentages, percentage points, non-money units and file positions (up to 3 digits)
+    ["total 98765 in 2026", "total [amount] in [amount]"],
     ["37.3% of the portfolio, 2.5 pp drift", "37.3% of the portfolio, 2.5 pp drift"],
+    ["5000% of the portfolio", "[amount]% of the portfolio"],
     ["No deposit for 45 days (last on 2026-01-05)", "No deposit for 45 days (last on 2026-01-05)"],
-    ["ISIN US0378331005 held", "ISIN US[number] held"], // free text: no ISIN exemption
+    ["1500 days of history", "[amount] days of history"],
+    ["ISIN US0378331005 held", "ISIN [iban] held"], // free text: no ISIN exemption
     ["rule rebalance_check, row 12", "rule rebalance_check, row 12"],
+    ["5 000 dni zaległości kwota 5000", "[amount] dni zaległości kwota [amount]"],
   ])("%s", (t, expected) => {
     expect(scrubText(t, { strict: true })).toBe(expected);
   });
@@ -172,7 +177,8 @@ it("test_amounts_mode_keeps_amounts_but_not_identifiers", () => {
 it("test_known_names_are_masked_case_and_diacritic_insensitive", () => {
   const guard = new NameGuard({ profileId: 1, names: ["ZOFIA WISNIEWSKA", "KOWALCZYK"] });
   const t = "Rozmowa z Zofia Wiśniewska i p. kowalczyk; Kowalczykowa zostaje.";
-  expect(guard.mask(t)).toBe("Rozmowa z [name] i p. [name]; Kowalczykowa zostaje.");
+  // S37fix D4: an inflected form ("Kowalczykowa", Mrs Kowalczyk) is masked too
+  expect(guard.mask(t)).toBe("Rozmowa z [name] i p. [name]; [name] zostaje.");
 });
 
 it("test_isin_check_digit", () => {
@@ -200,7 +206,7 @@ it("test_leak_check_refuses_identifier_like_values_in_any_mode", () => {
 it("test_symbol_fields_carry_isins_and_vat_ids_in_text_are_scrubbed", () => {
   const redactor = new Redactor({ privacy: "strict" });
   const out = redactor.apply({ isin: L.symbol("US0378331005"), note: L.text("NIP PL5260001248") });
-  expect(out).toEqual({ isin: "US0378331005", note: "NIP PL[number]" });
+  expect(out).toEqual({ isin: "US0378331005", note: "NIP [iban]" });
   leakCheck(out, { strict: true, isins: redactor.isins });
 });
 
@@ -257,7 +263,11 @@ it("test_symbol_label_is_scrubbed_for_names_and_amounts", () => {
   }) as Record<string, string>;
   expect(pyDumps(out)).not.toContain("KOWALSKI");
   expect(out.a).not.toContain("15000");
-  expect([out.c, out.d, out.e]).toEqual(["CDR", "0700", "[amount]"]);
+  // S37fix F8: in strict a symbol without a letter is a number ("0700" too)
+  expect([out.c, out.d, out.e]).toEqual(["CDR", "[amount]", "[amount]"]);
+  expect(new Redactor({ privacy: "amounts", guard }).apply({ d: L.symbol("0700") })).toEqual({
+    d: "0700",
+  });
 });
 
 describe("test_account_numbers_with_other_separators", () => {
@@ -300,9 +310,18 @@ describe("test_strict_money_words", () => {
   });
 });
 
-describe("test_years_and_periods_survive", () => {
-  it.each(["2026", "in 2026", "since 2019", "2026-09", "2026-Q3", "09/2026"])("%s", (t) => {
+describe("test_dates_and_periods_survive", () => {
+  it.each(["2026-09", "2026-Q3", "09/2026", "2026-01-05", "05.01.2026"])("%s", (t) => {
     expect(scrubText(t, { strict: true })).toBe(t);
+  });
+});
+
+describe("test_bare_years_are_numbers_in_strict", () => {
+  // S37fix D3, N2: a year is kept only inside a validated date format; "za 2000" may be a price
+  it.each(["2026", "in 2026", "since 2019", "za 2000", "stycznia 2026", "May 2026"])("%s", (t) => {
+    const out = scrubText(t, { strict: true });
+    expect(out.includes("20") || out.includes("19")).toBe(false);
+    expect(scrubText(t, { strict: false })).toBe(t);
   });
 });
 

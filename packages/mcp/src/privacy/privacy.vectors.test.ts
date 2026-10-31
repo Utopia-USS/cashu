@@ -19,11 +19,19 @@ import {
 import { scrubAmountLiterals } from "./exprLiterals.js";
 import { amount, compactNumber, level, marketOk, pct, share } from "./labels.js";
 import { scrubNumbers } from "./messages.js";
-import { collectGuard, fold, looksLikePerson, nameTerms, normalize, personPart } from "./names.js";
+import {
+  collectGuard,
+  fold,
+  looksLikePerson,
+  NameGuard,
+  nameTerms,
+  normalize,
+  personPart,
+} from "./names.js";
 import { pyDumps } from "./pyJson.js";
 import { pyIsDigit } from "./pyText.js";
-import { LeakDetected, leakCheck, Redactor, UnlabelledValue } from "./redactor.js";
-import { isinValid, scrubText } from "./scrub.js";
+import { isMoneyKey, LeakDetected, leakCheck, Redactor, UnlabelledValue } from "./redactor.js";
+import { identifierIn, isinValid, scrubText } from "./scrub.js";
 import {
   decodeTree,
   decodeValue,
@@ -35,6 +43,7 @@ import {
   Mismatches,
   type Typed,
 } from "./testing/vectors.js";
+import { normalizeForMatching } from "./workText.js";
 
 const GUARDS = guardsById();
 const guard = (id: number | null) => (id === null ? null : (GUARDS.get(id) ?? null));
@@ -279,7 +288,7 @@ describe("market text", () => {
 });
 
 type TreeOutcome =
-  | { out: string; isins: string[] }
+  | { out: string; isins: string[]; non_money: string[] }
   | { error: "leak"; isins: string[] }
   | { error: "unlabelled" };
 
@@ -298,8 +307,16 @@ describe("Redactor + leakCheck on random labelled trees", () => {
         try {
           const data = redactor.apply(decodeTree(r.tree));
           try {
-            leakCheck(data, { strict: redactor.strict, isins: redactor.isins });
-            got = { out: pyDumps(data), isins: [...redactor.isins].sort() };
+            leakCheck(data, {
+              strict: redactor.strict,
+              isins: redactor.isins,
+              nonMoney: redactor.nonMoney,
+            });
+            got = {
+              out: pyDumps(data),
+              isins: [...redactor.isins].sort(),
+              non_money: [...redactor.nonMoney].sort(),
+            };
           } catch (e) {
             if (!(e instanceof LeakDetected)) throw e;
             got = { error: "leak", isins: [...redactor.isins].sort() };
@@ -415,3 +432,41 @@ function sortKeys(value: unknown): unknown {
   }
   return value;
 }
+
+interface AdversarialRow {
+  text: string;
+  norm: string;
+  raw_leak: boolean;
+  mask: string;
+  [key: string]: string | boolean;
+}
+
+describe("S37fix adversarial vectors (shared file + separator / inflection / number fuzz)", () => {
+  const file = loadVectors<{
+    guard_names: string[];
+    money_keys: Record<string, boolean>;
+    rows: AdversarialRow[];
+  }>("adversarial");
+  const g = new NameGuard({ profileId: 1, names: file.guard_names });
+  it(`replays ${file.rows.length} texts byte for byte`, () => {
+    const m = new Mismatches();
+    for (const [i, r] of file.rows.entries()) {
+      m.check(`#${i} norm`, normalizeForMatching(r.text), r.norm);
+      m.check(`#${i} raw_leak`, identifierIn(r.text), r.raw_leak);
+      m.check(`#${i} mask`, g.mask(r.text), r.mask);
+      for (const strict of [true, false]) {
+        for (const guarded of [false, true]) {
+          const key = (strict ? "strict" : "amounts") + (guarded ? "_guard" : "");
+          const out = scrubText(r.text, { strict, guard: guarded ? g : null });
+          m.check(`#${i} ${key}`, out, r[key]);
+          m.check(`#${i} ${key}_leak`, identifierIn(out), r[`${key}_leak`]);
+        }
+      }
+    }
+    expect(m.items, m.report()).toEqual([]);
+  });
+  it("classifies money keys like Python", () => {
+    for (const [key, money] of Object.entries(file.money_keys))
+      expect(isMoneyKey(key), key).toBe(money);
+  });
+});
