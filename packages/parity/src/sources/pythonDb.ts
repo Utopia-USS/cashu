@@ -1,0 +1,341 @@
+/// <reference types="node" />
+/**
+ * The one read-only source every TS parity producer reads the Python app's data through.
+ *
+ * `openPythonDb` copies the dataset's SQLite files (`cashu.db` and its `-wal` / `-shm`) into a fresh
+ * `<lab>/parity/ts-run-<stamp>-<dataset>/` and opens the copy with `readOnly: true`. The source dir
+ * is never opened: even a read-only connection to a WAL database creates `-wal` / `-shm` files next
+ * to it. The source is hashed before the copy and again on `close()`, which throws when one byte
+ * changed (as golden.py does) and deletes the copy.
+ *
+ * Readers are typed per table and profile-scoped: every reader of profile data takes the profile id
+ * and filters by it (rule 7: data of one profile never shows up in another). Rows keep SQLite's
+ * stored text for decimals (`amount: "12.50"`, Python's `str(Decimal)`), so producers parse them with
+ * `@cashu/domain`'s `D()` and nothing is ever a JS float. Enums stored by NAME (`balances.source`) come
+ * back as their values (`"csv"`), as Python's ORM gives them. `keys` maps row ids to the goldens'
+ * natural keys (`naturalKeys.ts`).
+ *
+ * Lab rows are real financial data: producers write them only to `<lab>/parity/ts-out/lab/` and
+ * never print them. Add a typed reader here (not ad hoc SQL in a producer) when a producer needs
+ * another table.
+ */
+
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { join, relative } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { type Dataset, datasetAsOf, datasetDir, labRoot } from "./datasets.ts";
+import { NaturalKeys, type SqlRows, type SqlValue } from "./naturalKeys.ts";
+
+const DB_FILES = ["cashu.db", "cashu.db-wal", "cashu.db-shm"] as const;
+
+export class SourceChangedError extends Error {
+  constructor(dataset: string) {
+    super(`the ${dataset} source dataset changed while it was read`);
+    this.name = "SourceChangedError";
+  }
+}
+
+/** sha256 over `<file sha256>  ./<path>` lines of every file, sorted by path (golden.py `manifest`). */
+export function manifest(root: string): string {
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) files.push(`./${relative(root, full).split("\\").join("/")}`);
+    }
+  };
+  walk(root);
+  files.sort();
+  const hash = createHash("sha256");
+  for (const rel of files) {
+    const digest = createHash("sha256")
+      .update(readFileSync(join(root, rel.slice(2))))
+      .digest("hex");
+    hash.update(`${digest}  ${rel}\n`);
+  }
+  return `${files.length}:${hash.digest("hex")}`;
+}
+
+// --------------------------------------------------------------------------- row types
+
+export interface ProfileRow {
+  readonly id: number;
+  readonly slug: string;
+  readonly name: string;
+  readonly baseCurrency: string | null;
+  readonly mcpPrivacy: string | null;
+}
+
+export interface AccountRow {
+  readonly id: number;
+  readonly profileId: number;
+  readonly bank: string;
+  readonly name: string;
+  readonly iban: string | null;
+  readonly externalId: string | null;
+  readonly currency: string;
+  readonly type: string;
+  readonly active: boolean;
+  readonly removedAt: string | null;
+}
+
+export interface BalanceRow {
+  readonly id: number;
+  readonly accountId: number;
+  readonly date: string;
+  /** Stored decimal text. */
+  readonly amount: string;
+  readonly currency: string;
+  /** `Source` value: open_banking | csv | manual | connector. */
+  readonly source: string;
+}
+
+export interface TransactionRow {
+  readonly id: number;
+  readonly accountId: number;
+  readonly bookingDate: string;
+  readonly valueDate: string | null;
+  /** Stored decimal text. */
+  readonly amount: string;
+  readonly currency: string;
+  readonly counterpartyName: string | null;
+  readonly counterpartyIban: string | null;
+  readonly description: string | null;
+  readonly reference: string | null;
+  readonly source: string;
+  readonly dedupHash: string;
+  readonly occurrence: number;
+  readonly transferGroupId: string | null;
+  readonly isInternalTransfer: boolean;
+  readonly category: string | null;
+  readonly categorySource: string | null;
+}
+
+// --------------------------------------------------------------------------- value decoding
+
+type Row = Readonly<Record<string, SqlValue>>;
+
+function int(row: Row, col: string): number {
+  const v = row[col];
+  if (typeof v === "bigint" && v <= BigInt(Number.MAX_SAFE_INTEGER)) return Number(v);
+  if (typeof v === "number" && Number.isSafeInteger(v)) return v;
+  throw new Error(`column ${col} is not an integer`);
+}
+
+function text(row: Row, col: string): string {
+  const v = row[col];
+  if (typeof v === "string") return v;
+  throw new Error(`column ${col} is not text`);
+}
+
+function textOrNull(row: Row, col: string): string | null {
+  return row[col] === null ? null : text(row, col);
+}
+
+function bool(row: Row, col: string): boolean {
+  return int(row, col) !== 0;
+}
+
+/** Python `Source` / sa.Enum: stored by member NAME, read as the member value. */
+const SOURCE_VALUES: Readonly<Record<string, string>> = Object.freeze({
+  OPEN_BANKING: "open_banking",
+  CSV: "csv",
+  MANUAL: "manual",
+  CONNECTOR: "connector",
+});
+
+function source(row: Row, col: string): string {
+  const name = text(row, col);
+  const value = SOURCE_VALUES[name];
+  if (value === undefined) throw new Error(`unknown Source member in ${col}`);
+  return value;
+}
+
+/** Profile-scoped account ids, for `account_id IN (...)` filters. */
+const PROFILE_ACCOUNTS = "SELECT id FROM accounts WHERE profile_id = ?";
+
+// --------------------------------------------------------------------------- the source
+
+export interface OpenOptions {
+  readonly dataset: Dataset;
+  /** Override the dataset's source dir (tests). */
+  readonly sourceDir?: string;
+  /** Where the run copy goes (default `<lab>/parity`). */
+  readonly runRoot?: string;
+}
+
+export class PythonDb implements SqlRows {
+  readonly dataset: Dataset;
+  /** `as_of` of the dataset's goldens (the frozen clock's date). */
+  readonly asOf: string;
+  readonly keys: NaturalKeys;
+  private readonly db: DatabaseSync;
+  private readonly sourceDir: string;
+  private readonly runDir: string;
+  private readonly before: string;
+  private closed = false;
+
+  private constructor(opts: OpenOptions) {
+    this.dataset = opts.dataset;
+    this.asOf = datasetAsOf(opts.dataset);
+    this.sourceDir = opts.sourceDir ?? datasetDir(opts.dataset);
+    if (!existsSync(join(this.sourceDir, "cashu.db"))) {
+      throw new Error(`no ${opts.dataset} dataset (cashu.db) in its source dir`);
+    }
+    this.before = manifest(this.sourceDir);
+    const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
+    const root = opts.runRoot ?? join(labRoot(), "parity");
+    this.runDir = join(root, `ts-run-${stamp}-${process.pid}-${opts.dataset}`);
+    mkdirSync(this.runDir, { recursive: true });
+    chmodSync(this.runDir, 0o700);
+    for (const f of DB_FILES) {
+      const from = join(this.sourceDir, f);
+      if (existsSync(from)) copyFileSync(from, join(this.runDir, f));
+    }
+    this.db = new DatabaseSync(join(this.runDir, "cashu.db"), { readOnly: true });
+    this.keys = new NaturalKeys(this);
+  }
+
+  static open(opts: OpenOptions): PythonDb {
+    return new PythonDb(opts);
+  }
+
+  /** Close, delete the copy, and throw `SourceChangedError` if the source changed meanwhile. */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.db.close();
+    rmSync(this.runDir, { recursive: true, force: true });
+    if (manifest(this.sourceDir) !== this.before) throw new SourceChangedError(this.dataset);
+  }
+
+  /** Positional rows (natural keys and other generic tooling only; producers use typed readers). */
+  rows(sql: string, ...params: (string | number | bigint | null)[]): SqlValue[][] {
+    // Object rows in column order (setReturnArrays needs Node 24); callers check the arity, which
+    // also catches two result columns sharing a name.
+    return this.objects(sql, ...params).map((r) => Object.values(r));
+  }
+
+  private objects(sql: string, ...params: (string | number | bigint | null)[]): Row[] {
+    const stmt = this.db.prepare(sql);
+    stmt.setReadBigInts(true);
+    return stmt.all(...params) as unknown as Row[];
+  }
+
+  /** Alembic revision of the copy (the lab snapshot may be a revision behind the goldens' copy). */
+  schemaVersion(): string {
+    const [row] = this.objects("SELECT version_num FROM alembic_version");
+    return row === undefined ? "" : text(row, "version_num");
+  }
+
+  /** Every profile, ordered by slug (the goldens' `Ctx.profiles` order). */
+  profiles(): ProfileRow[] {
+    return this.objects(
+      "SELECT id, slug, name, base_currency, mcp_privacy FROM profiles ORDER BY slug",
+    ).map((r) => ({
+      id: int(r, "id"),
+      slug: text(r, "slug"),
+      name: text(r, "name"),
+      baseCurrency: textOrNull(r, "base_currency"),
+      mcpPrivacy: textOrNull(r, "mcp_privacy"),
+    }));
+  }
+
+  /** Enabled module ids of a profile (unordered; order them by the module registry). */
+  enabledModules(profileId: number): string[] {
+    return this.objects(
+      "SELECT module_id FROM profile_modules WHERE profile_id = ? AND enabled = 1 ORDER BY id",
+      profileId,
+    ).map((r) => text(r, "module_id"));
+  }
+
+  /** The profile's accounts in id order; removed ones only with `includeRemoved`. */
+  accounts(profileId: number, opts: { includeRemoved?: boolean } = {}): AccountRow[] {
+    const removed = opts.includeRemoved ? "" : " AND removed_at IS NULL";
+    return this.objects(
+      `SELECT id, profile_id, bank, name, iban, external_id, currency, type, active, removed_at
+       FROM accounts WHERE profile_id = ?${removed} ORDER BY id`,
+      profileId,
+    ).map((r) => ({
+      id: int(r, "id"),
+      profileId: int(r, "profile_id"),
+      bank: text(r, "bank"),
+      name: text(r, "name"),
+      iban: textOrNull(r, "iban"),
+      externalId: textOrNull(r, "external_id"),
+      currency: text(r, "currency"),
+      type: text(r, "type"),
+      active: bool(r, "active"),
+      removedAt: textOrNull(r, "removed_at"),
+    }));
+  }
+
+  /** Balance snapshots of the profile's accounts, ordered by account id, then id (insertion). */
+  balances(profileId: number): BalanceRow[] {
+    return this.objects(
+      `SELECT id, account_id, date, amount, currency, source FROM balances
+       WHERE account_id IN (${PROFILE_ACCOUNTS}) ORDER BY account_id, id`,
+      profileId,
+    ).map((r) => ({
+      id: int(r, "id"),
+      accountId: int(r, "account_id"),
+      date: text(r, "date"),
+      amount: text(r, "amount"),
+      currency: text(r, "currency"),
+      source: source(r, "source"),
+    }));
+  }
+
+  /** Budget transactions of the profile's accounts, ordered by account id, then id. */
+  transactions(profileId: number): TransactionRow[] {
+    return this.objects(
+      `SELECT id, account_id, booking_date, value_date, amount, currency, counterparty_name,
+              counterparty_iban, description, reference, source, dedup_hash, occurrence,
+              transfer_group_id, is_internal_transfer, category, category_source
+       FROM transactions WHERE account_id IN (${PROFILE_ACCOUNTS}) ORDER BY account_id, id`,
+      profileId,
+    ).map((r) => ({
+      id: int(r, "id"),
+      accountId: int(r, "account_id"),
+      bookingDate: text(r, "booking_date"),
+      valueDate: textOrNull(r, "value_date"),
+      amount: text(r, "amount"),
+      currency: text(r, "currency"),
+      counterpartyName: textOrNull(r, "counterparty_name"),
+      counterpartyIban: textOrNull(r, "counterparty_iban"),
+      description: textOrNull(r, "description"),
+      reference: textOrNull(r, "reference"),
+      source: source(r, "source"),
+      dedupHash: text(r, "dedup_hash"),
+      occurrence: int(r, "occurrence"),
+      transferGroupId: textOrNull(r, "transfer_group_id"),
+      isInternalTransfer: bool(r, "is_internal_transfer"),
+      category: textOrNull(r, "category"),
+      categorySource: textOrNull(r, "category_source"),
+    }));
+  }
+}
+
+/** Open the dataset, run `fn`, always close (a changed source throws after `fn`). */
+export function withPythonDb<T>(opts: OpenOptions, fn: (db: PythonDb) => T): T {
+  const db = PythonDb.open(opts);
+  let result: T;
+  try {
+    result = fn(db);
+  } catch (e) {
+    db.close();
+    throw e;
+  }
+  db.close();
+  return result;
+}

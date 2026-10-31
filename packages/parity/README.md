@@ -6,6 +6,8 @@ Scope S03 of the TS migration.
 ```bash
 pnpm parity --dataset demo --actual parity/golden-demo      # synthetic goldens, committed
 pnpm parity --dataset lab --actual <dir> [--check core.*]   # real-data goldens, never printed
+pnpm parity:produce --dataset demo [--check core.networth]  # TS producers -> <lab>/parity/ts-out/demo
+pnpm parity --dataset demo --check core.networth            # compare (default actual = ts-out)
 ```
 
 Output per check: `pass` / `fail` / `missing`, row counts, short sha256 of the golden and actual
@@ -46,3 +48,59 @@ goldens `parity/golden-demo`, actual `~/cashu-lab/parity/ts-out/<dataset>`.
 ```
 
 Precedence: built-in defaults < `default` < `checks.<name>`.
+
+## Sources: the one read-only way into the Python data (`src/sources/`)
+
+Every TS producer reads the Python app's data through `PythonDb` (`src/sources/pythonDb.ts`); a
+producer never opens SQLite itself and never carries its own reader.
+
+- `PythonDb.open({ dataset })` copies the dataset's `cashu.db` (+ `-wal` / `-shm`) from its source dir
+  (golden.py `DATASETS`: `demo` = `<lab>/parity/demo-data`, `lab` = `<lab>/data`) into a fresh
+  `<lab>/parity/ts-run-<stamp>-<pid>-<dataset>/` and opens the copy with `node:sqlite` `readOnly`. The
+  source is never opened: even a read-only connection to a WAL database creates `-wal` / `-shm` files
+  next to it. `close()` deletes the copy and throws `SourceChangedError` when the source's manifest
+  (sha256 over every file, as golden.py) changed. `withPythonDb(opts, fn)` always closes.
+- Typed readers per table, profile-scoped: `profiles()` (slug order, the goldens' order),
+  `enabledModules(profileId)`, `accounts(profileId, { includeRemoved })`, `balances(profileId)`,
+  `transactions(profileId)`. Every reader of profile data takes the profile id. Decimals stay the
+  stored text (`"12.50"`, parse with `D()` from `@cashu/domain`), enums stored by NAME come back as
+  their values (`balances.source` `CSV` -> `"csv"`), booleans as booleans.
+- `db.keys.key(table, id)`: the goldens' natural keys (`src/sources/naturalKeys.ts`, a verbatim copy of
+  canon.py `SPECS` / `IdMap`, checked against canon.py by a test). Producers emit these, never row ids.
+- `db.asOf`: the dataset's frozen date (golden.py `CLOCKS`, guarded by a test); pass it as `today`.
+- A producer needs another table: add a typed reader to `PythonDb` with a test on the synthetic dataset
+  (`src/sources/testing.ts`), not ad hoc SQL in the producer.
+- Lab rows are real data: written only to `<lab>/parity/ts-out/lab/`, never printed (the producer CLI
+  prints check names, row counts, hashes and error class names only).
+
+## Producers (`src/producers/`)
+
+`PRODUCERS` in `src/producers/index.ts` lists one producer per golden check: the check name, the
+datasets it is enabled for and `produce(db) -> JSON tree`; `<module>/` folders hold the code
+(`core/networth.ts`). `src/producers/output.ts` writes canonical JSON (sorted keys, Decimals through
+`toJSON()` = Python `str()`, JS numbers refused). The CLI runs under Node's type stripping with
+`src/producers/resolveTs.ts`, which maps the `./x.js` specifiers of workspace TypeScript to `./x.ts`.
+
+| Check | Datasets | Inputs |
+|---|---|---|
+| `core.networth` | demo | accounts, balances, cash-pool transactions (`PythonDb`); loans / assets / investments contributors from the bridge |
+
+### Temporary bridge for contributors not ported yet
+
+Net worth asks every module's contributor. Until loans and assets (S11) and investments (S13) are
+ported, `src/producers/core/networth_bridge.py` exports only those contributors' results (accounts
+each values, `latest()` now and at as_of - 365 days), through golden.py's harness (run copy, offline,
+frozen clock), to `<lab>/parity/bridge/<dataset>/core.networth_contributors.json`:
+
+```bash
+.venv/bin/python packages/parity/src/producers/core/networth_bridge.py --dataset demo
+```
+
+Everything core owns (balance snapshots and their source rank, contributor precedence, signs, per
+currency totals, breakdown) is recomputed in TS; the cash pool runs through a stand-in of budget's
+contributor on the core `RunningValuation` (`core/cashPool.ts`). When a module's TS contributor lands,
+drop it from `BRIDGED` / `BRIDGED_MODULES`; delete the bridge with the last one.
+
+**Lab follow-up:** `core.networth` on `lab` is enabled once the TS brokerage contributor (S13) replaces
+the bridge for investments (`datasets: ["demo", "lab"]` in `PRODUCERS`). `core.networth_series`
+needs `at()` / `axisDates()` of the bridged contributors, so it waits for S11 and S13 too.

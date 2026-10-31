@@ -51,7 +51,11 @@ importers:
 
   packages/mcp: {}
 
-  packages/parity: {}
+  packages/parity:
+    dependencies:
+      '@cashu/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/store:
     dependencies:
