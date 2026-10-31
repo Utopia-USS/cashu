@@ -43,7 +43,14 @@ function utf8(text: string): number[] | null {
 
 /** A C string view: reading at or past the end gives the terminating NUL. */
 class Bytes {
-  constructor(readonly data: readonly number[]) {}
+  // a plain field, not a parameter property: the parity producers load the domain in Node's
+  // strip-only TypeScript mode, which refuses parameter properties
+  readonly data: readonly number[];
+
+  constructor(data: readonly number[]) {
+    this.data = data;
+  }
+
   at(i: number): number {
     return i >= 0 && i < this.data.length ? (this.data[i] as number) : 0;
   }
