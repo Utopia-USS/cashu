@@ -92,6 +92,14 @@ def _profile_or_404(session, slug: str) -> Profile:
 # Platform: system, modules, profiles
 # --------------------------------------------------------------------------- #
 
+@platform_router.get("/health")
+def health() -> dict:
+    """Readiness probe for a parent process (the desktop shell): answered once the app has started.
+    Like every /api route it needs the token, so a 200 also proves that the server on the port is
+    the one holding the token the parent handed it (``cashu serve --parent-pipe``)."""
+    return {"status": "ok"}
+
+
 @platform_router.get("/system")
 def system() -> dict:
     from ..config import settings

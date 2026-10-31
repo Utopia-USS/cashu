@@ -23,7 +23,10 @@ the token out of band (``frontend/src/core/token.ts``):
 - browser (``cashu serve``): from the one-time URL ``http://127.0.0.1:<port>/#token=<token>``
   that the command prints; the fragment never reaches the server, the SPA moves it to
   ``sessionStorage`` and strips it from the address bar;
-- ``npm run dev``: the Vite proxy adds the header itself (from ``<data dir>/api-token``).
+- ``npm run dev``: the Vite proxy adds the header itself (from ``<data dir>/api-token``);
+- Electron desktop shell (``apps/desktop``): it generates the token and hands it to
+  ``cashu serve --parent-pipe`` on stdin (``core/parent_pipe.py``); the server neither prints nor
+  stores it, and the window gets it from the shell's bridge.
 
 ``CASHU_DEV_EMBED_TOKEN=1`` restores the old ``<meta name="cashu-token">`` injection into
 ``/`` for development only (logged as a warning on every launch).

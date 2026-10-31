@@ -39,6 +39,15 @@ def serve_cmd(
         int | None, typer.Option(envvar=env_names("PORT"), show_default="8500", help="Port.")
     ] = None,
     reload: Annotated[bool, typer.Option(help="Auto-reload on code changes (dev).")] = False,
+    parent_pipe: Annotated[
+        bool,
+        typer.Option(
+            "--parent-pipe",
+            help="Run for a parent process (the desktop shell): read the API token from the first "
+            "line of stdin, write no api-token file, print no token, and stop when stdin closes "
+            "(the parent exited or died).",
+        ),
+    ] = False,
 ) -> None:
     """Launch the web dashboard (net worth, cashflow, subscriptions).
 
@@ -51,9 +60,23 @@ def serve_cmd(
 
     host = host or settings.host
     port = port or settings.port
+    token: str | None = None
+    if parent_pipe:
+        from . import parent_pipe as pipe
+
+        if reload:
+            cliutil.console.print("[red]--parent-pipe cannot be combined with --reload.[/]")
+            raise typer.Exit(2)
+        try:
+            token = pipe.read_token(sys.stdin.buffer)
+        except pipe.ParentPipeError as e:
+            cliutil.console.print(f"[red]{e}[/]")
+            raise typer.Exit(2) from None
+        # From here on, a parent that goes away (even SIGKILLed) stops this server.
+        pipe.watch(sys.stdin.buffer, pipe.stop_process)
     init_db()
-    cfg = security.configure(port=port)
-    token_file = security.write_token_file(cfg.token)
+    cfg = security.configure(token=token, port=port)
+    token_file = None if parent_pipe else security.write_token_file(cfg.token)
     if host not in security.LOOPBACK_HOSTS:
         cliutil.console.print(
             f"[yellow]Binding to {host}:[/] the API only answers requests addressed to "
@@ -67,16 +90,21 @@ def serve_cmd(
             f"[yellow]{security.DEV_EMBED_ENV}=1:[/] the token is embedded into the page "
             "(development only: any local client can read it)."
         )
-    # Printed once: the token is in the fragment, never sent to the server (core/security.py).
-    cliutil.console.print(f"[green]Dashboard:[/] {cfg.token_url()}", soft_wrap=True)
-    cliutil.console.print(f"[dim]Data dir: {paths.data_dir()} (API token: {token_file.name})[/]")
+    if token_file is None:  # --parent-pipe: the parent has the token, it is never printed
+        cliutil.console.print(f"[green]Dashboard:[/] {cfg.base_url}/ (API token from the parent)")
+        cliutil.console.print(f"[dim]Data dir: {paths.data_dir()}[/]")
+    else:
+        # Printed once: the token is in the fragment, never sent to the server (core/security.py).
+        cliutil.console.print(f"[green]Dashboard:[/] {cfg.token_url()}", soft_wrap=True)
+        cliutil.console.print(f"[dim]Data dir: {paths.data_dir()} (API token: {token_file.name})[/]")
     try:
         # an open change stream (SSE) never holds Ctrl+C for long
         uvicorn.run(
             "cashu.api.app:app", host=host, port=port, reload=reload, timeout_graceful_shutdown=3
         )
     finally:
-        security.remove_token_file(cfg.token, token_file)
+        if token_file is not None:
+            security.remove_token_file(cfg.token, token_file)
 
 
 def migrate_data_cmd(
