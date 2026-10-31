@@ -1,0 +1,212 @@
+// The sync carrier contract (S28a). Decision: own thin log (spike-result.md). The domain side
+// (store, S23) never sees transports, segments or crypto: it hands batches to `SyncEngine.write` and
+// receives batches through `EventSink.apply`.
+//
+// Model
+// - A vault (= one profile) has a log: per-device, append-only segments `<vault>/<device>/<seg>`,
+//   numbered from 1, one writer each (the device itself). Segments hold frames:
+//   `u32 big-endian length | sealed bytes` where the sealed bytes come from the `FrameCodec`
+//   (compression + XChaCha20-Poly1305 in S27/S28b) bound to the frame position (the AAD).
+// - Each device keeps a full local copy of the log in its `local` transport (own segments are written
+//   there first, so writes work offline) and replicates with zero or more `remotes` (synced folder,
+//   relay) on `sync()`: own bytes are pushed by offset, foreign frames are pulled after the codec
+//   verified them, so the local copy only ever holds frames that open.
+// - A cursor per device segment stream says how far the view has applied. The sink persists it in the
+//   same transaction as the batch, so a crash re-delivers (at least once) and the sink's idempotency
+//   by `eid` (events.md 2) makes that harmless.
+import type { ClockWarning, Hlc, HlcState } from "./hlc.js";
+
+export type Awaitable<T> = T | Promise<T>;
+
+/** Opaque routing id of a vault (S27: 16 random bytes in hex; never the profile slug). */
+export type VaultId = string;
+/** 16 chars `[0-9a-z]`, minted at pairing (S29). */
+export type DeviceId = string;
+
+/**
+ * An event in wire form (events.md 2.1): `t` type, `v` version, `h` HLC, `i` eid, `d` payload, plus
+ * `g` gid, `a` at, `c` cause, `o` origin and any key a newer writer adds. The engine reads only
+ * `t`, `v`, `h`, `i` and `d`; everything else passes through untouched (forward compatibility).
+ * Vault and device are implied by the segment.
+ */
+export interface WireEvent {
+  readonly t: string;
+  readonly v: number;
+  readonly h: Hlc;
+  readonly i: string;
+  readonly d: Readonly<Record<string, unknown>>;
+  readonly [key: string]: unknown;
+}
+
+/** What a command hands to `write`: a wire event without the HLC, which the engine stamps. */
+export interface UnstampedEvent {
+  readonly t: string;
+  readonly v: number;
+  readonly i: string;
+  readonly d: Readonly<Record<string, unknown>>;
+  readonly h?: never;
+  readonly [key: string]: unknown;
+}
+
+/** Position of the next unread frame in one device's segment stream. */
+export interface SegmentCursor {
+  readonly seg: number;
+  readonly offset: number;
+}
+
+export const START_CURSOR: SegmentCursor = { seg: 1, offset: 0 };
+
+// ---------------------------------------------------------------------------------------------
+// Domain side
+
+/** One atomic batch for the view: one frame, or a whole frame group (events.md 5). */
+export interface InboundBatch {
+  readonly vault: VaultId;
+  readonly device: DeviceId;
+  /** True for this device's own events (applied through the same path as remote ones). */
+  readonly own: boolean;
+  /** Strictly increasing `h`, in the writer's order. */
+  readonly events: readonly WireEvent[];
+  /** Where the stream continues after this batch. Persist it in the same transaction. */
+  readonly cursor: SegmentCursor;
+}
+
+export interface ApplyOutcome {
+  /** Events that changed (or were folded into) the view. */
+  readonly applied: number;
+  /** Events whose `eid` was applied before (re-delivery): no-op. */
+  readonly duplicates: number;
+  /** Events stored but not applied: unknown type, newer `v`, failed validation (events.md 7). */
+  readonly parked: number;
+}
+
+/**
+ * The store side of the engine (S23 implements it over SQLite: materializers + `applied_events` +
+ * a cursor table, one transaction per `apply`). The engine guarantees per-device order and at-least-
+ * once delivery; the sink guarantees idempotency by `eid` and order independence across devices.
+ */
+export interface EventSink {
+  /** Cursors persisted with the view (missing device = start of its stream). */
+  cursors(): Awaitable<ReadonlyMap<DeviceId, SegmentCursor>>;
+  /** Apply one batch and persist `batch.cursor` atomically with it. */
+  apply(batch: InboundBatch): Awaitable<ApplyOutcome>;
+  /** Drop the view, parked events and cursors (rebuild, events.md 7.9). */
+  reset(): Awaitable<void>;
+}
+
+/** Durable clock state per device and vault (S23 keeps it in the view DB meta table). */
+export interface ClockStore {
+  load(): Awaitable<HlcState | undefined>;
+  save(state: HlcState): Awaitable<void>;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Carrier side
+
+/** Where a frame sits; the codec binds the sealed bytes to it (AAD). `offset` = start of the length prefix. */
+export interface FramePosition {
+  readonly vault: VaultId;
+  readonly device: DeviceId;
+  readonly seg: number;
+  readonly offset: number;
+}
+
+/**
+ * Seam for compression + authenticated encryption (S27 `sealFrame` / `openFrame`, wrapped by S28b).
+ * `open` MUST throw (preferably a `FrameRejectedError` or an error with a string `code`) when the
+ * bytes were changed, truncated, sealed with another key or for another position. It must never
+ * return partial plaintext.
+ */
+export interface FrameCodec {
+  seal(plain: Uint8Array, at: FramePosition): Awaitable<Uint8Array>;
+  open(sealed: Uint8Array, at: FramePosition): Awaitable<Uint8Array>;
+}
+
+export interface SegmentInfo {
+  readonly device: DeviceId;
+  readonly seg: number;
+  readonly size: number;
+}
+
+/**
+ * Moves opaque bytes: a local log directory, a synced folder (iCloud Drive / Syncthing, S28c) or a
+ * blind relay (S28d). Segments are append-only and have one writer each.
+ */
+export interface Transport {
+  /** Every segment of the vault with its current size. Order is not significant. */
+  list(vault: VaultId): Promise<readonly SegmentInfo[]>;
+  /** Bytes of a segment from `fromOffset` to its current end (empty when past the end or unknown). */
+  read(vault: VaultId, device: DeviceId, seg: number, fromOffset: number): Promise<Uint8Array>;
+  /**
+   * Append at `atOffset`, which MUST equal the segment's current size (0 creates it); otherwise
+   * reject with `TransportError("offset-conflict")` and write nothing. All or nothing.
+   */
+  append(
+    vault: VaultId,
+    device: DeviceId,
+    seg: number,
+    atOffset: number,
+    bytes: Uint8Array,
+  ): Promise<void>;
+  /** Change notification (another writer appended). Optional: callers fall back to polling. */
+  watch?(vault: VaultId, onChange: () => void): () => void;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Engine
+
+export interface RejectedFrame {
+  readonly device: DeviceId;
+  readonly seg: number;
+  readonly offset: number;
+  /** Codec code (tamper, wrong key, ...) or `malformed` / `too-large` / `frame-format`. */
+  readonly code: string;
+}
+
+export interface WriteResult {
+  readonly events: number;
+  readonly frames: number;
+  /** HLC of the first and last stamped event. */
+  readonly first: Hlc;
+  readonly last: Hlc;
+}
+
+export interface SyncResult {
+  /** Own bytes pushed to remotes. */
+  readonly pushedBytes: number;
+  /** Foreign frames verified and copied into the local log. */
+  readonly pulledFrames: number;
+  /** Batches handed to the sink. */
+  readonly batches: number;
+  readonly applied: number;
+  readonly duplicates: number;
+  readonly parked: number;
+  /** True when this pass parked events or met a frame format it cannot read: upgrade the app. */
+  readonly needsUpgrade: boolean;
+  /** Remotes that could not be reached in this pass. */
+  readonly offlineRemotes: number;
+  /** Frames that did not open or parse; that device's stream waits at the frame (retried next pass). */
+  readonly rejected: readonly RejectedFrame[];
+  readonly clockWarnings: readonly ClockWarning[];
+  /** A remote holds more of this device's own log than the local copy: writes are refused. */
+  readonly rolledBack: boolean;
+}
+
+export interface AppliedInfo {
+  readonly types: ReadonlySet<string>;
+  readonly events: number;
+}
+
+export interface SyncEngine {
+  readonly vault: VaultId;
+  readonly device: DeviceId;
+  /** Stamp, append to the own segment as one atomic batch (frame or frame group), apply locally. */
+  write(events: readonly UnstampedEvent[]): Promise<WriteResult>;
+  /** Push own bytes, pull and verify foreign frames, apply everything new. */
+  sync(): Promise<SyncResult>;
+  /** Reset the sink and replay the whole local log (schema change, app upgrade). */
+  rebuild(): Promise<SyncResult>;
+  /** Called after a pass applied events (UI re-query trigger). Returns the unsubscribe function. */
+  onApplied(listener: (info: AppliedInfo) => void): () => void;
+  close(): Promise<void>;
+}
