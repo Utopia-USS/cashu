@@ -176,3 +176,71 @@ export function twoLevelTree(): Scenario {
     certificates: 1 + 16 + 16 * 62,
   };
 }
+
+/**
+ * H1: a still-trusted device M certifies `k` puppets that form a defeat chain (each revokes the next
+ * with its consent: the attacker holds them all); then the owner revokes M with the recovery words.
+ */
+export function puppetDefeatChain(k: number): Scenario {
+  const vault = createSimVault();
+  const a = vault.creator;
+  const vaultId = a.ring.vaultId;
+  const m = createDeviceIdentity(sodium);
+  const top = new Stream(a.id);
+  const mSubject = {
+    deviceId: m.deviceId,
+    signPublicKey: m.signPublicKey,
+    boxPublicKey: m.box.publicKey,
+  };
+  top.add(
+    buildDeviceAdded(
+      a.identity,
+      vaultId,
+      newEid(),
+      mSubject,
+      "stolen",
+      certifyDevice(sodium, a.identity, mSubject, vaultId),
+    ),
+  );
+  const ms = new Stream(m.deviceId);
+  const puppets = Array.from({ length: k }, () => createDeviceIdentity(sodium));
+  for (const p of puppets) {
+    const s = {
+      deviceId: p.deviceId,
+      signPublicKey: p.signPublicKey,
+      boxPublicKey: p.box.publicKey,
+    };
+    ms.add(
+      buildDeviceAdded(m, vaultId, newEid(), s, "puppet", certifyDevice(sodium, m, s, vaultId)),
+    );
+  }
+  const streams = [top, ms];
+  for (let i = 0; i + 1 < k; i++) {
+    const signer = puppets[i] as DeviceIdentity;
+    const target = puppets[i + 1] as DeviceIdentity;
+    const st = new Stream(signer.deviceId);
+    const eid = newEid();
+    const entries = [{ device: target.deviceId, cut: { seg: 1, offset: 0 } }];
+    const sig = signStatement(
+      target,
+      "cashu/registry/v1",
+      revocationConsentBody(vaultId, eid, entries, signer.deviceId),
+    );
+    st.add(
+      buildDeviceRevoked(signer, vaultId, eid, entries, {
+        consent: { [target.deviceId]: toHex(sig) },
+      }),
+    );
+    streams.push(st);
+  }
+  top.add(
+    buildDeviceRevoked(vault.recovery, vaultId, newEid(), [
+      { device: m.deviceId, cut: { seg: 1, offset: 100 * (k + 1) } },
+    ]),
+  );
+  return {
+    root: { vaultId, recovery: a.ring.recovery },
+    events: [...a.stream.flatMap((s) => s.events), ...streams.flatMap((s) => s.events)],
+    certificates: 2 + k,
+  };
+}

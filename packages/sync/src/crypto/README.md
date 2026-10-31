@@ -266,7 +266,7 @@ the sweep in decisionKeys.property.exhaustive.test.ts).
 - Consequences: a revoked or stolen device can no longer retaliate (review H5: its revocations need
   its victims' consent), so a revocation never takes down its revoker or anyone else's subtree; a
   stolen device revoked with the words, and every puppet it paired, signs nothing that counts in any
-  fold step.
+  fold step (review H1: such signers are skipped before any signature work).
 - Residual: a still-trusted (stolen, not yet revoked) device can certify a second key pair for
   another device and forge that device's consent; the target is then conflicted (untrusted) anyway.
   Revoking the thief with the words ends it.

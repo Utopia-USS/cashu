@@ -3,7 +3,7 @@
 // puppets, a 1000-device tree) are registry.cost.exhaustive.test.ts.
 
 import { describe, expect, it } from "vitest";
-import { foldTwice, puppetsRevokedOneByOne } from "./registryCost.js";
+import { foldTwice, puppetDefeatChain, puppetsRevokedOneByOne } from "./registryCost.js";
 
 describe("registry fold cost (M4)", () => {
   it("A8 (70 puppets): linear work, and a warm re-fold verifies nothing again", () => {
@@ -16,5 +16,14 @@ describe("registry fold cost (M4)", () => {
     expect(cold.certificateVerifications).toBeLessThanOrEqual(2 * s.certificates);
     expect(cold.certificateChecks).toBeLessThanOrEqual(20 * s.certificates);
     expect(cold.statementChecks).toBeLessThanOrEqual(3 * s.events.length);
+  });
+});
+
+describe("H1: a defeat chain of a revoked device's puppets costs nothing once it is revoked", () => {
+  it("no statement of a puppet is even checked: the fold's work does not grow with the chain", () => {
+    const work = (k: number) => foldTwice(puppetDefeatChain(k)).warm.statementChecks;
+    // 30 more puppets: one statement check each for their own `device.added` (pre-cut, legitimate
+    // names); their revocations (a signature and a consent check each) are never even checked.
+    expect(work(40) - work(10)).toBeLessThanOrEqual(30 + 2);
   });
 });

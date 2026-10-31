@@ -15,6 +15,7 @@ import {
 } from "../crypto/index.js";
 import { fromHex } from "./bytes.js";
 import { type CertificateSelection, selectCertificates } from "./certificates.js";
+import { DecisionKeys } from "./decisionKeys.js";
 import {
   type DeviceAddedData,
   type DeviceRevokedData,
@@ -93,11 +94,29 @@ export function decideRevocations(
   const { root, verify } = ctx;
   const { index, all, registered } = certs;
   const ignored: IgnoredStatement[] = [];
+  // H1: a device signer without a decision key under the recovery-signed revocations alone (they
+  // count in every fold step) can never sign a revocation that counts: decision keys only shrink as
+  // more devices are revoked (when the closure admitted every id). Skip it before any signature work,
+  // so a revoked device's puppets cost nothing once the words revoked it.
+  const certain = new Set<string>();
+  for (const { event, data } of ctx.revocations) {
+    if (data.signer !== RECOVERY_SIGNER_ID) continue;
+    if (!ctx.verifies(event, data.sig, ctx.recoveryKeyFor(event.eid))) continue;
+    for (const d of data.devices) if (registered.has(d.device)) certain.add(d.device);
+  }
+  const floor =
+    certain.size > 0 && registered.size < MAX_DEVICES
+      ? new DecisionKeys(index, certain)
+      : undefined;
   // Verify first (forged copies never displace genuine ones), then dedupe.
   const verified: Rev[] = [];
   for (const { event, data } of ctx.revocations) {
     const isRecovery = data.signer === RECOVERY_SIGNER_ID;
     if (!isRecovery && data.signer !== event.writer) {
+      ignored.push({ eid: event.eid, reason: "untrusted_signer" });
+      continue;
+    }
+    if (!isRecovery && floor && floor.keysOf(data.signer).length === 0) {
       ignored.push({ eid: event.eid, reason: "untrusted_signer" });
       continue;
     }
