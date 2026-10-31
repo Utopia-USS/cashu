@@ -22,6 +22,8 @@ import { type Restored, type WorkReplacer, WorkText } from "./workText.js";
 // character / after its last one. Same matches as Python's `\b` in these places.
 const WB_START = `(?<![${PY_W}])`;
 const WB_END = `(?![${PY_W}])`;
+/** A Python word list: `i` as Python IGNORECASE reads it, `\w` as Python's word class. */
+const wordList = (source: string) => source.replaceAll("i", PY_IC_I).replaceAll("\\w", `[${PY_W}]`);
 
 // Dates kept while the number rules run (S37fix D3, D5, N2, N6): only valid ones (year 1900-2099,
 // month 01-12, day 01-31): ISO dates and timestamps (a fraction of at most 9 digits), periods
@@ -89,11 +91,17 @@ const EMAIL = uRegex(
 const CUR =
   `(?:[A-Z]{3}|(?i:zł|zl|złot[${PY_W}]*|zlot[${PY_W}]*|grosz[${PY_W}]*|euro|eur|usd|pln|gbp|chf|dolar[${PY_W}]*` +
   `|funt[${PY_W}]*|frank[${PY_W}]*)|€|\\$|£)`;
-const NUM = `[\\-+]?${PY_D}(?:[${PY_D} '.,]*${PY_D})?`;
+// S37fix2 W4: the characters that group digits ("2 000", "2'000", "2.000", "5•0000", "1・000",
+// "1٬000", "2’000"). Unicode spaces (thin, narrow no-break) are already one ASCII space here (D1).
+const GROUP = " '._•·,\u2019\u02bc\u2032\u30fb\u066c\u066b\u2e31\u2027\u2219\u22c5";
+const G = `[${GROUP}]`;
+const NUM = `[\\-+]?${PY_D}(?:[${PY_D}${GROUP}]*${PY_D})?`;
 const MONEY_CUR = uRegex(`(?:${NUM} ?${CUR}(?![A-Za-z]))|(?:(?<![A-Za-z])${CUR} ?${NUM})`, "g");
+// S37fix2 W1 / W2: a scale word takes the whole number before it, digit groups included, across any
+// run of spaces ("2 tysiące", "3  miliony", "1,5 mln", "2 500 tysięcy", "5k", "2 tyś")
 const MULTIPLIED = uRegex(
-  `(?<![${PY_W}.,])[\\-+]?${PY_D}+(?:[.,]${PY_D}+)?[${PY_WS}]?` +
-    `(?i:tys\\.?|tys${PY_IC_I}[eę]c[${PY_W}]*|mln|mld|k|m|mn|bn)(?![${PY_W}])`,
+  `(?<![${PY_W}.,])[\\-+]?${PY_D}+(?:${G}${PY_D}+)*[${PY_WS}]*` +
+    `(?i:${wordList("ty[sś]\\.?|tysi[aąeę]c\\w*|milion\\w*|miliard\\w*|bilion\\w*|mln|mld|k|m|mn|bn")})(?![${PY_W}])`,
   "g",
 );
 const NOT_PP = `[${PY_WS}]?pp${WB_END}`;
@@ -110,8 +118,8 @@ const MONEY_WORD = uRegex(
   `(?i:${WB_START}(?:pr${PY_IC_I}ce|pr${PY_IC_I}ces|cena|ceny|cash|amount|kwota|kwoty|value|warto[${PY_W}]*|worth|cost|` +
     `costs|koszt[${PY_W}]*|saldo|balance|depos${PY_IC_I}t[${PY_W}]*|wp[lł]at[${PY_W}]*|wyp[lł]at[${PY_W}]*|fee|fees|tax|` +
     `prow${PY_IC_I}zj[${PY_W}]*|op[lł]at[${PY_W}]*|proceeds|${PY_IC_I}ncome|expense[${PY_W}]*|przych[${PY_W}]*|wydat[${PY_W}]*|` +
-    `rata|raty|${PY_IC_I}nstallment)${WB_END}[^${PY_D}\\n]{0,24}?)(?<![${PY_W}.,])([\\-+]?${PY_D}+(?:[ '._•·,]${PY_D}+)*)` +
-    `(?![${PY_D}%]|[ '._•·,]${PY_D}|[${PY_WS}]?%|${NOT_PP}|[${PY_WS}]?(?:days?|dni)${WB_END})`,
+    `rata|raty|${PY_IC_I}nstallment)${WB_END}[^${PY_D}\\n]{0,24}?)(?<![${PY_W}.,])([\\-+]?${PY_D}+(?:${G}${PY_D}+)*)` +
+    `(?![${PY_D}%]|${G}${PY_D}|[${PY_WS}]?%|${NOT_PP}|[${PY_WS}]?(?:days?|dni)${WB_END})`,
   "g",
 );
 // S37fix2 N9: a number glued after letters ("kwota950", "nr1500") is a number too; a sign counts
@@ -119,35 +127,44 @@ const MONEY_WORD = uRegex(
 const ANY_NUMBER = uRegex(`(?:(?<![${PY_W}])[\\-+])?(?<!${PY_D})${PY_D}+(?:[.,]${PY_D}+)*`, "g");
 // S37fix2 N10: digit groups joined by one grouping character ("2 000", "3 000 %", "2_000 x",
 // "5•0000") are one number, masked whole by its significant digits, before a percent sign too
-const GROUPED_ANY = uRegex(
-  `(?:(?<![${PY_W}])[\\-+])?(?<!${PY_D})${PY_D}+(?:[ '._•·,]${PY_D}+)+`,
-  "g",
-);
+const GROUPED_ANY = uRegex(`(?:(?<![${PY_W}])[\\-+])?(?<!${PY_D})${PY_D}+(?:${G}${PY_D}+)+`, "g");
 // S37fix2: amounts in words (strict free text). A run of Polish / English number words is masked
 // when it holds a word worth 10 or more or a scale word ("dwa tysiące", "pół miliona", "fifty");
 // units alone ("dwa", "pięć") stay. Bare English "ten" is left out (Polish "ten" = "this").
-const wordList = (source: string) => source.replaceAll("i", PY_IC_I).replaceAll("\\w", `[${PY_W}]`);
+// S37fix2 W1 / W2: words joined by any run of spaces, a comma, a dash, "i" / "and"; a number in
+// digits right before the words joins the run ("2 i pół miliona"); a scale word glued after another
+// word (a soft hyphen removed: "dwatysiące") is a scale word; "kilka", "parę", "półtorej", "kilkaset",
+// "setki" and the slang "stówa" are number words; "koło", "bańka", "patyk" count as a scale word
+// only right after a number or a number word ("dwa koła", "3 patyki"), "bańka spekulacyjna" stays.
 const NUMBER_WORDS_BIG = wordList(
   "dziesi[eę][cć]|dziesi[eę]ciu|\\w+na[sś]cie|\\w+nastu|dwadzie[sś]cia|\\w+dziestu|\\w+dzie[sś]ci|" +
     "\\w+dziesi[aą]t|\\w+dziesi[eę]ciu|sto|stu|dwie[sś]cie|dwustu|trzysta|trzystu|czterysta|" +
     "czterystu|(?:pi[eę][cć]|sze[sś][cć]|siedem|osiem|dziewi[eę][cć])set|" +
-    "(?:pi[eę]ciu|sze[sś]ciu|siedmiu|o[sś]miu|dziewi[eę]ciu)set|tysi[aą]c\\w*|tysi[eę]c\\w*|tys\\.|" +
-    "milion\\w*|miliard\\w*|bilion\\w*|mln\\.?|mld\\.?|eleven|twelve|thirteen|fourteen|fifteen|sixteen|" +
-    "seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|" +
-    "thousands?|millions?|billions?",
+    "(?:pi[eę]ciu|sze[sś]ciu|siedmiu|o[sś]miu|dziewi[eę]ciu)set|(?:kilka|kilku|par[eę]|paru)set|" +
+    "setk\\w*|setek|st[oó]w(?:a|y|ę|ą|ie|ami|ach|om|ka|ki|kę|ką|ek|ce|kami|kach)|stów|tysiak\\w*|" +
+    "\\w*tysi[aąeę]c\\w*|ty[sś]\\.?|\\w*milion\\w*|\\w*miliard\\w*|\\w*bilion\\w*|mln\\.?|mld\\.?|eleven|twelve|" +
+    "thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|" +
+    "seventy|eighty|ninety|hundreds?|\\w*thousands?|\\w*millions?|\\w*billions?",
 );
 const NUMBER_WORDS_SMALL = wordList(
   "zero|jeden|jedna|jedno|jednego|jednej|jednym|dwa|dwie|dw[oó]ch|dwu|dwoma|trzy|trzech|trzema|" +
     "cztery|czterech|pi[eę][cć]|pi[eę]ciu|sze[sś][cć]|sze[sś]ciu|siedem|siedmiu|osiem|o[sś]miu|" +
-    "dziewi[eę][cć]|dziewi[eę]ciu|p[oó][lł]|p[oó][lł]tora|one|two|three|four|five|six|seven|eight|" +
-    "nine|ten|half",
+    "dziewi[eę][cć]|dziewi[eę]ciu|p[oó][lł]|p[oó][lł]tor(?:a|ej)|kilka|kilku|kilkoma|par[eę]|paru|" +
+    "paroma|one|two|three|four|five|six|seven|eight|nine|ten|half",
 );
+const NUMBER_WORDS_AFTER = wordList("ko[lł][oa]|bańk(?:a|i|ę|ą)|baniek|patyk\\w*");
 const NUMBER_WORD = `(?:${NUMBER_WORDS_BIG}|${NUMBER_WORDS_SMALL})(?![${PY_W}])`;
+const WORD_AFTER = `(?:${NUMBER_WORDS_BIG}|${NUMBER_WORDS_SMALL}|${NUMBER_WORDS_AFTER})(?![${PY_W}])`;
+const WORD_JOIN = `(?:[${PY_WS}]+(?:${PY_IC_I}|and)[${PY_WS}]+|[${PY_WS}]*[,\\-][${PY_WS}]*|[${PY_WS}]+)`;
+const DIGITS_BEFORE = `(?<![${PY_W}.,])[\\-+]?${PY_D}+(?:${G}${PY_D}+)*${WORD_JOIN}`;
 const NUMBER_WORDS = uRegex(
-  `(?i:(?<![${PY_W}])${NUMBER_WORD}(?:(?: |-| ${PY_IC_I} | and )${NUMBER_WORD})*)`,
+  `(?i:(?:${DIGITS_BEFORE}|(?<![${PY_W}]))${NUMBER_WORD}(?:${WORD_JOIN}${WORD_AFTER})*` +
+    `|${DIGITS_BEFORE}(?:${NUMBER_WORDS_AFTER})(?![${PY_W}])(?:${WORD_JOIN}${WORD_AFTER})*)`,
   "g",
 );
-const BIG_NUMBER_WORD = uRegex(`(?i:(?<![${PY_W}])(?:${NUMBER_WORDS_BIG})(?![${PY_W}]))`);
+const BIG_NUMBER_WORD = uRegex(
+  `(?i:(?<![${PY_W}])(?:${NUMBER_WORDS_BIG}|${NUMBER_WORDS_AFTER})(?![${PY_W}]))`,
+);
 // Kept in strict free text (S37fix R1, R2, N1, N5): a number with at most 3 integer digits and no
 // grouping right before a percent sign / percentage points (a decimal part of 1-2 digits allowed) or
 // a non-money unit from this closed list (an integer only), or right after a position word ("line
@@ -158,9 +175,9 @@ const KEPT_UNITS = (
   "sesja|sesji|sesje|sessions?|dzień|dni|days?|tydzień|tygodni|weeks?|miesiąc|miesięcy|miesiące|" +
   "months?|rok|lat|lata|years?|x|znaków|characters?|linia|lines?|wiersz|rows?|pozycji|positions?"
 ).replaceAll("i", PY_IC_I);
-const NOT_GROUPED = `(?<![${PY_W}.,])(?<!${PY_D}[ '.,_])`;
+const NOT_GROUPED = `(?<![${PY_W}.,])(?<!${PY_D}${G})`;
 const KEPT_PERCENT = uRegex(
-  `${NOT_GROUPED}[\\-+]?${PY_D}{1,3}(?:[.,]${PY_D}{1,2})?(?![${PY_D}.,'_]${PY_D}|${PY_D})` +
+  `${NOT_GROUPED}[\\-+]?${PY_D}{1,3}(?:[.,]${PY_D}{1,2})?(?!${G}${PY_D}|${PY_D})` +
     `(?= ?(?:%|pp${WB_END}|p\\.p\\.|pkt proc\\.))`,
   "g",
 );
@@ -170,7 +187,7 @@ const KEPT_UNIT = uRegex(
 );
 const KEPT_POSITION = uRegex(
   `((?i:${WB_START}(?:${"line|row|linia|linii|wiersz|wiersza|pozycja|pozycji".replaceAll("i", PY_IC_I)})) )` +
-    `(${PY_D}{1,3})(?![${PY_D}${PY_W}]|[.,'_ ]${PY_D})`,
+    `(${PY_D}{1,3})(?![${PY_D}${PY_W}]|${G}${PY_D})`,
   "g",
 );
 const CURRENCY_WORDS = `zł|zl|złot[${PY_W}]*|zlot[${PY_W}]*|grosz[${PY_W}]*|gr|pln|eur|euro|usd|chf|gbp|dolar[${PY_W}]*|funt[${PY_W}]*|frank[${PY_W}]*`;
@@ -312,9 +329,12 @@ const significant: WorkReplacer = (m) => {
   return digits.length - i >= 2 ? "[amount]" : null;
 };
 
-/** Replace a match with its text before the last group (the number) and `replacement`. */
-/** A link (public source): a number glued to letters in it ("/p11/") is part of a path, not an amount. */
-const IN_LINK = uRegex(`(?:https?://|www\\.)[^${PY_WS}]*$`);
+/**
+ * A link (public source): a number glued to letters in it ("/p11/") is part of a path, not an
+ * amount. S37fix2 W3: only a link that starts the text or follows a space, "(", "<" or a quote
+ * ("xhttps://" is not a link).
+ */
+const IN_LINK = uRegex(`(?:^|(?<=[${PY_WS}(<"'“”„‘’«»]))(?:https?://|www\\.)[^${PY_WS}]*$`);
 const LETTER_CHAR = /^\p{L}$/u;
 
 const anyNumber: WorkReplacer = (m) => {
@@ -327,6 +347,7 @@ const anyNumber: WorkReplacer = (m) => {
 
 const numberWords: WorkReplacer = (m) => (BIG_NUMBER_WORD.test(m[0]) ? "[amount]" : null);
 
+/** Replace a match with its text before the last group (the number) and `replacement`. */
 function keepPrefix(replacement: string): WorkReplacer {
   return (m) => m[0].slice(0, m[0].length - (m[1] ?? "").length) + replacement;
 }
