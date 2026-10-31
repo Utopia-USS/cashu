@@ -18,7 +18,9 @@ Fixture format (JSON object):
 - ``imports``: one entry per import, in commit order:
   ``name`` (file name), ``importer`` (stored ``inv_import_batches.importer``), ``brokerId``
   (``contract.effective_broker_id``: the alias namespace and the stored batch ``broker``; the hash
-  uses its legacy rename), ``accountId`` / ``batchId`` (local ids), ``inserted`` / ``duplicates``,
+  uses its legacy rename; a re-import uses it), ``storedBroker`` (the ``broker`` the stored batch
+  holds: ``brokerId``, or the legacy name for the batch rewritten as a pre-rename one, see
+  ``LEGACY_FILE``), ``accountId`` / ``batchId`` (local ids), ``inserted`` / ``duplicates``,
   and ``parsed``: what a re-import parses, one object per row in FILE order: ``rowIndex``, ``rank``
   (``ordering.chronological_ranks``: the commit counts occurrences in this order), ``tradeDate``,
   ``type``, ``externalRef`` (raw), ``quantity`` / ``price`` / ``grossAmount`` / ``cashAmount`` (decimal
@@ -153,6 +155,32 @@ FILE_3 = [
 ]
 
 
+# File 4: no source (namespace "cashu"), an instrument only this file names. After the commit its
+# batch and that instrument's aliases are rewritten to the legacy namespace, as a database imported
+# before the rename holds them (S26 review F2 class b: genesis names the instrument under the stored
+# broker, a re-import under "cashu").
+LEGACY_FILE = "synthetic_4.csv"
+LEGACY_BROKER = "finanse"  # legacy name: the pre-rename canonical namespace a stored batch can hold
+FILE_4 = [
+    _txn("2026-02-10", "deposit", ref="F-0", cash="1000"),
+    _txn("2026-02-11", "buy", ref="F-1", symbol="FNX", exchange="XWAR", qty="4", price="25",
+         gross="100", cash="-100"),
+    _txn("2026-02-12", "buy", symbol="FNX", exchange="XWAR", qty="2", price="26", gross="52",
+         cash="-52"),
+]
+
+# File 5: a broker symbol change: one ISIN under an old and then a new symbol, so the instrument
+# holds two aliases in one broker namespace (S26 review F2 class c: genesis takes the smallest alias
+# id, a re-import the row's own symbol).
+SRC_RENAME = "renamebroker"
+FILE_5 = [
+    _txn("2026-02-15", "buy", ref="R-1", symbol="OLDX", isin="PLOLDX000018", exchange="XWAR",
+         qty="1", price="10", gross="10", cash="-10", source=SRC_RENAME),
+    _txn("2026-02-20", "buy", ref="R-2", symbol="NEWX", isin="PLOLDX000018", exchange="XWAR",
+         qty="1", price="11", gross="11", cash="-11", source=SRC_RENAME),
+]
+
+
 def _isolate(tmp: Path) -> None:
     """Point every path cashU resolves into ``tmp`` before anything imports it."""
     os.environ.update(
@@ -209,6 +237,7 @@ def build(tmp: Path) -> dict:
             pid = profile.id
             a1 = accounts.add_account(s, pid, name="Konto Testowe 1", broker="dif").id
             a2 = accounts.add_account(s, pid, name="Konto Testowe 2", broker="dif").id
+            a3 = accounts.add_account(s, pid, name="Konto Testowe 3", broker="dif").id
     finally:
         uuid.uuid4 = real_uuid4
 
@@ -219,6 +248,8 @@ def build(tmp: Path) -> dict:
         (a2, "pl_broker.csv", pl_export_utf8_bom(),
          {"importer": "generic_csv", "mapping_yaml": pl_mapping_yaml()},
          dt.datetime(2026, 3, 1, 14, tzinfo=dt.UTC)),
+        (a3, "synthetic_4.csv", _csv(FILE_4), {}, dt.datetime(2026, 3, 1, 15, tzinfo=dt.UTC)),
+        (a3, "synthetic_5.csv", _csv(FILE_5), {}, dt.datetime(2026, 3, 1, 16, tzinfo=dt.UTC)),
     ]
     out_imports = []
     for account_id, name, content, extra, now in plan:
@@ -296,6 +327,7 @@ def build(tmp: Path) -> dict:
                 "name": name,
                 "importer": preview.importer_id,
                 "brokerId": broker_id,
+                "storedBroker": broker_id,
                 "accountId": account_id,
                 "batchId": result.batch_id,
                 "inserted": result.inserted,
@@ -304,6 +336,7 @@ def build(tmp: Path) -> dict:
             }
         )
     db.engine.dispose()
+    _rewrite_legacy(db_file, next(e for e in out_imports if e["name"] == LEGACY_FILE))
 
     stored, version = _dump(db_file)
     stored_v1 = _stored_v1(stored, dedup, Decimal)
@@ -338,6 +371,31 @@ def _import_all() -> None:
 
 def _dec(value: Decimal | None) -> str | None:
     return None if value is None else str(value)
+
+
+def _rewrite_legacy(db_file: Path, entry: dict) -> None:
+    """Turn one committed batch into a pre-rename one: its ``broker`` and the canonical-namespace
+    aliases of the instruments only it references take the legacy name (stored hashes already use
+    it, ``dedup.dedup_hash``)."""
+    if entry["brokerId"] != "cashu":
+        raise SystemExit("the legacy file must import under the canonical namespace")
+    con = sqlite3.connect(db_file)
+    try:
+        with con:
+            batch = entry["batchId"]
+            con.execute(
+                "UPDATE inv_import_batches SET broker = ? WHERE id = ?", (LEGACY_BROKER, batch)
+            )
+            con.execute(
+                "UPDATE inv_instrument_aliases SET namespace = ? WHERE namespace = 'cashu' AND "
+                "instrument_id IN (SELECT instrument_id FROM inv_transactions WHERE "
+                "import_batch_id = ?) AND instrument_id NOT IN (SELECT instrument_id FROM "
+                "inv_transactions WHERE import_batch_id != ? AND instrument_id IS NOT NULL)",
+                (LEGACY_BROKER, batch, batch),
+            )
+    finally:
+        con.close()
+    entry["storedBroker"] = LEGACY_BROKER
 
 
 def _dump(db_file: Path) -> tuple[dict, str]:

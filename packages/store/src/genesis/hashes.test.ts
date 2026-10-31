@@ -140,8 +140,8 @@ describe("investment transactions: the Python fixture", () => {
   const v = vaults[0];
   const txns = new Map((fixture.stored.tables.inv_transactions ?? []).map((t) => [t.id, t]));
 
-  it("recovers every stored occurrence (24 v1 matches, 1 reconciliation match)", () => {
-    expect(counters.get("inv_transactions", "occ_v1_match", 0)).toBe(24);
+  it("recovers every stored occurrence (29 v1 matches, 1 reconciliation match)", () => {
+    expect(counters.get("inv_transactions", "occ_v1_match", 0)).toBe(29);
     expect(counters.get("inv_transactions", "occ_fallback", 0)).toBe(0);
     expect(counters.get("inv_transactions", "recon_match", 0)).toBe(1);
     expect(counters.get("inv_transactions", "recon_mismatch", 0)).toBe(0);
@@ -149,7 +149,7 @@ describe("investment transactions: the Python fixture", () => {
   });
 
   it("builds v2 from Python's 7.2 instrument key and recovered occurrence", () => {
-    expect(fixture.storedV1.length).toBe(25);
+    expect(fixture.storedV1.length).toBe(30);
     for (const entry of fixture.storedV1) {
       const row = txns.get(entry.txnId) as Txn;
       const accountGid = gidOf(v, "accounts", Number(row.account_id));

@@ -119,8 +119,10 @@ describe("investments content-hash parity: re-import side", () => {
       "examplebroker",
       "cashu",
       "generic_csv",
+      "cashu",
+      "renamebroker",
     ]);
-    expect(fixture.imports.flatMap((i) => i.parsed).length).toBe(33);
+    expect(fixture.imports.flatMap((i) => i.parsed).length).toBe(38);
   });
 
   it("v1 from the parsed rows reproduces every stored dedup_hash", () => {
@@ -140,7 +142,7 @@ describe("investments content-hash parity: re-import side", () => {
         }
       });
     }
-    expect(stored).toBe(24);
+    expect(stored).toBe(29);
   });
 
   it("occurrences follow the chronological rank, not the file order (newest-first file)", () => {

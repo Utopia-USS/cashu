@@ -4,8 +4,9 @@
 // testing/invHashParity.json). The `stored` tables are loaded into a synthetic Python database and run
 // through genesis; every `invTxn.imported.dedupHash` must equal the dedupHashV2 a TS re-import of the
 // same file's `parsed` rows computes with the domain `dedupKey` helpers (occurrences counted in
-// chronological rank order, as the Python commit does) and the same account gid. The re-import side's
-// v1 half is dedupKey.parity.test.ts in the domain.
+// chronological rank order, as the Python commit does) and the same account gid, for every row outside
+// the three S17d classes (`differingClass`); each class is pinned by an expected-fail case asserting
+// full equality. The re-import side's v1 half is dedupKey.parity.test.ts in the domain.
 import { readFileSync } from "node:fs";
 import { D, type Decimal, investments } from "@cashu/domain";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -39,7 +40,10 @@ interface ParsedRow {
 }
 
 interface Import {
+  readonly name: string;
   readonly brokerId: string;
+  /** The broker the stored batch holds: `brokerId`, or the legacy name of a pre-rename batch. */
+  readonly storedBroker: string;
   readonly accountId: number;
   readonly parsed: readonly ParsedRow[];
 }
@@ -58,23 +62,39 @@ const tables = fixture.stored.tables;
 const utf8 = new TextEncoder();
 const dec = (text: string | null): Decimal | null => (text === null ? null : D(text));
 
-/** Python `contract.equivalent_namespaces`: `cashu` and its legacy name `finanse` are one. */
+/** Python `contract.equivalent_namespaces`: `cashu` and its legacy name are one. */
 const namespacesOf = (broker: string) =>
-  broker === "cashu" || broker === "finanse" ? ["cashu", "finanse"] : [broker];
+  broker === "cashu" || broker === "finanse" ? ["cashu", "finanse"] : [broker]; // legacy name
+
+/** The stored aliases of an instrument in the namespaces of one broker, ascending id. */
+const brokerAliases = (instrumentId: number, broker: string) =>
+  (tables.inv_instrument_aliases ?? [])
+    .filter(
+      (a) => a.instrument_id === instrumentId && namespacesOf(broker).includes(String(a.namespace)),
+    )
+    .sort((x, y) => Number(x.id) - Number(y.id));
 
 /**
- * TRANSITIONAL(R-G4 lead decision): the one known class where genesis (gid.md 7.2: the instrument's
- * alias in the batch's broker namespace first) and a re-import (gid.md 4.6: the row's own hints) name
- * the instrument differently: a row the broker exported with an ISIN only (no symbol, no name), of an
- * instrument that also holds an alias in that broker's namespace. Open decision R-G4 (S26 progress);
- * 7.2 stays as written until the lead decides, and this gate pins the class instead of hiding it.
+ * TRANSITIONAL(S17d): the three known classes where genesis (gid.md 7.2: the instrument's alias in
+ * the batch's stored broker namespace, smallest alias id first) and a re-import (gid.md 4.6: the
+ * row's own hints under the import's broker id) name the instrument differently, so a TS re-import of
+ * the same file would compute another dedupHashV2 and import the row twice. Lead decision: the fix
+ * lands in S17d's domain importing port (one shared rule over the resolved instrument), not in
+ * genesis. Each class is pinned by an `it.fails` case below that asserts full equality; S17d makes
+ * them pass, then turns them into plain cases and drops this classifier.
  */
-function isIsinOnlyRowOfBrokerAliasedInstrument(p: ParsedRow, entry: Import): boolean {
-  if (p.instrumentId === null || p.brokerSymbol !== null || p.isinKey === null) return false;
-  const namespaces = namespacesOf(entry.brokerId);
-  return (tables.inv_instrument_aliases ?? []).some(
-    (a) => a.instrument_id === p.instrumentId && namespaces.includes(String(a.namespace)),
-  );
+type DifferingClass = "isinOnlyRowOfBrokerAliasedInstrument" | "legacyBatchBroker" | "secondAlias";
+
+function differingClass(p: ParsedRow, entry: Import): DifferingClass | undefined {
+  if (p.instrumentId === null) return undefined;
+  if (entry.storedBroker !== entry.brokerId) return "legacyBatchBroker";
+  const own = brokerAliases(p.instrumentId, entry.storedBroker);
+  if (p.brokerSymbol === null) {
+    return p.isinKey !== null && own.length > 0
+      ? "isinOnlyRowOfBrokerAliasedInstrument"
+      : undefined;
+  }
+  return own.length > 1 && String(own[0]?.value) !== p.brokerSymbol ? "secondAlias" : undefined;
 }
 
 /** Loads the fixture's stored tables (values exactly as SQLite held them) into a Python-schema DB. */
@@ -135,25 +155,76 @@ describe("investments content-hash parity gate", () => {
     }
   });
 
-  it("genesis dedupHashV2 == re-import dedupHashV2 for every stored import row outside R-G4", () => {
-    const equal: number[] = [];
-    const differing: number[] = [];
-    const predicted: number[] = [];
-    for (const entry of fixture.imports) {
-      for (const [p, hash] of reimportHashes(entry)) {
-        if (p.storedTxnId === null) continue;
-        const stored = genesisHash.get(gidOf("inv_transactions", p.storedTxnId) ?? "");
-        expect(stored, `stored txn ${p.storedTxnId}`).toMatch(/^[0-9a-f]{64}$/);
-        (stored === hash ? equal : differing).push(p.storedTxnId);
-        if (isIsinOnlyRowOfBrokerAliasedInstrument(p, entry)) predicted.push(p.storedTxnId);
-      }
+  interface Compared {
+    readonly txnId: number;
+    readonly file: string;
+    readonly genesis: unknown;
+    readonly reimport: string;
+    readonly differing: DifferingClass | undefined;
+  }
+
+  const compared: Compared[] = fixture.imports.flatMap((entry) =>
+    [...reimportHashes(entry)].flatMap(([p, hash]) =>
+      p.storedTxnId === null
+        ? []
+        : [
+            {
+              txnId: p.storedTxnId,
+              file: entry.name,
+              genesis: genesisHash.get(gidOf("inv_transactions", p.storedTxnId) ?? ""),
+              reimport: hash,
+              differing: differingClass(p, entry),
+            },
+          ],
+    ),
+  );
+  const ofClass = (c: DifferingClass) => compared.filter((r) => r.differing === c);
+  const hashes = (rows: readonly Compared[], side: "genesis" | "reimport") =>
+    rows.map((r) => ({ txn: r.txnId, file: r.file, hash: r[side] }));
+
+  it("genesis dedupHashV2 == re-import dedupHashV2 for every stored import row outside the S17d classes", () => {
+    for (const r of compared) expect(r.genesis, `stored txn ${r.txnId}`).toMatch(/^[0-9a-f]{64}$/);
+    const outside = compared.filter((r) => r.differing === undefined);
+    expect(hashes(outside, "genesis")).toEqual(hashes(outside, "reimport"));
+    // Every S17d class is present in the fixture, so its `it.fails` case below tests something.
+    for (const c of [
+      "isinOnlyRowOfBrokerAliasedInstrument",
+      "legacyBatchBroker",
+      "secondAlias",
+    ] as const) {
+      expect(ofClass(c).length, c).toBeGreaterThan(0);
     }
-    // TRANSITIONAL(R-G4 lead decision): the differing rows are exactly the predicted class (1 of 24).
-    expect(differing).toEqual(predicted);
-    expect([equal.length, differing.length]).toEqual([23, 1]);
     expect(result.report.counters.vaults["0"]?.inv_transactions).toMatchObject({
-      occ_v1_match: 24,
+      occ_v1_match: 29,
       recon_match: 1,
     });
+  });
+
+  // S17d: isinOnlyRowOfBrokerAliasedInstrument. Reproduction (fixture, inv_hash_parity.py): file
+  // synthetic_1.csv (source examplebroker) has the dividend row `DV-1` naming ABC by ISIN only
+  // (`isin=PLABC0000016`, no symbol, no name); ABC holds the alias `examplebroker:ABC`. Genesis
+  // (7.2) keys it `examplebroker:ABC`, a re-import (4.6) `isin:PLABC0000016`.
+  it.fails("S17d: genesis == re-import for an ISIN-only row of a broker-aliased instrument", () => {
+    const rows = ofClass("isinOnlyRowOfBrokerAliasedInstrument");
+    expect(hashes(rows, "genesis")).toEqual(hashes(rows, "reimport"));
+  });
+
+  // S17d: legacyBatchBroker. Reproduction: file synthetic_4.csv (no source: namespace `cashu`) buys
+  // FNX (`symbol=FNX`, `exchange=XWAR`, refs F-1 and none); the generator then rewrites its batch
+  // `broker` and FNX's `cashu` alias to the legacy name, as a pre-rename database holds them. Genesis
+  // keys the rows under the stored broker, a re-import under `cashu:FNX`.
+  it.fails("S17d: genesis == re-import for a batch stored under the legacy broker name", () => {
+    const rows = ofClass("legacyBatchBroker");
+    expect(hashes(rows, "genesis")).toEqual(hashes(rows, "reimport"));
+  });
+
+  // S17d: secondAlias. Reproduction: file synthetic_5.csv (source renamebroker) buys one ISIN
+  // (`PLOLDX000018`) first as `OLDX` (ref R-1), then as `NEWX` (ref R-2); the resolver matches NEWX
+  // by ISIN and learns a second alias, so the instrument holds `renamebroker:OLDX` (smaller id) and
+  // `renamebroker:NEWX`. Genesis keys the R-2 row `renamebroker:OLDX`, a re-import
+  // `renamebroker:NEWX`.
+  it.fails("S17d: genesis == re-import for a row naming the second alias of one namespace", () => {
+    const rows = ofClass("secondAlias");
+    expect(hashes(rows, "genesis")).toEqual(hashes(rows, "reimport"));
   });
 });
