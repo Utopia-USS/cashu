@@ -88,10 +88,7 @@ def parent(name: str, keep: bool, out_root: Path) -> int:
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    env = golden.safe_env(run / "home", run / "data", run / "workspaces", run)
-    env["CASHU_PARITY_CLOCK"] = golden.CLOCKS[name]
-    env["CASHU_PARITY_SOURCE"] = f"{before[0]} files, manifest sha256 {before[1]}"
-    env["CASHU_PARITY_COMMIT"] = golden.source_commit()
+    env = golden.child_env(name, run, before)
     cmd = [sys.executable, str(HERE), "--child", name, "--run-dir", str(run), "--child-out", str(out)]
     proc = subprocess.run(cmd, env=env, cwd=run, check=False)
     after = golden.manifest(source)

@@ -60,8 +60,10 @@ else from the check's overrides. An id-like integer that no rule places fails th
 ## Output
 
 `~/cashu-lab/parity/out/<dataset>/<check>.json` and `index.json`:
-`{format, dataset, clock, tz, source, checks: [{check, rows, sha256, network_blocked, dangling_refs}],
-skipped: [{check, item, reason}], natural_keys: {table: count}}`. stdout shows check names, row counts
+`{format, dataset, clock, tz, source, commit, dirty, checks: [{check, rows, sha256, network_blocked,
+dangling_refs}], skipped: [{check, item, reason}], natural_keys: {table: count}}`. `commit` is the repo
+HEAD the run came from, `dirty` whether tracked files differed from it; `pnpm parity` refuses goldens
+of another commit (`packages/parity/README.md` "Staleness guard"). The bridges record the same. stdout shows check names, row counts
 and hashes only; tracebacks go to `errors.log` next to the outputs.
 
 ## Checks

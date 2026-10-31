@@ -18,7 +18,8 @@ copy (``init_db`` upgrades the copy, never the source). The source dir is hashed
 and the run fails if a single byte changed. The child runs offline (``offline.py``), with
 ``CASHU_AUTO_DAILY=0``, ``CASHU_PRICE_REFRESH=0``, ``PYTHONHASHSEED=0``, ``TZ=Europe/Warsaw`` and a
 frozen clock (``frozen.py``). Output: ``<out>/<dataset>/<check>.json`` (canonical JSON, ``canon.py``)
-and ``index.json`` (check, rows, sha256, the repo commit the goldens came from). ``<out>`` defaults to
+and ``index.json`` (check, rows, sha256, the repo ``commit`` the goldens came from and ``dirty``, whether
+tracked files differed from it: ``pnpm parity`` refuses goldens of another commit). ``<out>`` defaults to
 the shared ``~/cashu-lab/parity/out``, which only lab/ts-stack HEAD writes; a branch passes
 ``--out ~/cashu-lab/parity/out-<branch>``.
 
@@ -65,17 +66,32 @@ def manifest(root: Path) -> tuple[int, str]:
     return len(files), hashlib.sha256("".join(lines).encode()).hexdigest()
 
 
-def source_commit() -> str:
-    """The repo commit the goldens come from (``<sha>-dirty`` when tracked files differ from it)."""
+def source_state() -> tuple[str | None, bool]:
+    """(the repo commit the outputs come from, whether tracked files differ from it).
+
+    ``pnpm parity`` refuses inputs whose recorded commit is not the HEAD under test (its staleness
+    guard), so every producer records both in its ``index.json`` (``commit``, ``dirty``).
+    """
 
     def git(*args: str) -> subprocess.CompletedProcess:
         return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=False)
 
     head = git("rev-parse", "HEAD")
     if head.returncode != 0:
-        return "unknown"
+        return None, False
     dirty = git("status", "--porcelain", "--untracked-files=no").stdout.strip()
-    return head.stdout.strip() + ("-dirty" if dirty else "")
+    return head.stdout.strip(), bool(dirty)
+
+
+def child_env(name: str, run: Path, before: tuple[int, str]) -> dict[str, str]:
+    """The child's environment for dataset ``name`` in run dir ``run`` (golden.py and every bridge)."""
+    env = safe_env(run / "home", run / "data", run / "workspaces", run)
+    env["CASHU_PARITY_CLOCK"] = CLOCKS[name]
+    env["CASHU_PARITY_SOURCE"] = f"{before[0]} files, manifest sha256 {before[1]}"
+    commit, dirty = source_state()
+    env["CASHU_PARITY_COMMIT"] = commit or ""
+    env["CASHU_PARITY_DIRTY"] = "1" if dirty else "0"
+    return env
 
 
 def safe_env(home: Path, data_dir: Path, workspaces: Path, extra: Path) -> dict[str, str]:
@@ -147,10 +163,7 @@ def run_dataset(name: str, checks: list[str], keep: bool, out_root: Path = OUT_R
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    env = safe_env(run / "home", run / "data", run / "workspaces", run)
-    env["CASHU_PARITY_CLOCK"] = CLOCKS[name]
-    env["CASHU_PARITY_SOURCE"] = f"{before[0]} files, manifest sha256 {before[1]}"
-    env["CASHU_PARITY_COMMIT"] = source_commit()
+    env = child_env(name, run, before)
     cmd = [
         sys.executable,
         str(Path(__file__).resolve()),
@@ -275,7 +288,8 @@ def child(name: str, run: Path, out: Path, only: list[str]) -> int:
         "clock": os.environ["CASHU_PARITY_CLOCK"],
         "tz": TZ,
         "source": os.environ.get("CASHU_PARITY_SOURCE"),
-        "commit": os.environ.get("CASHU_PARITY_COMMIT"),
+        "commit": os.environ.get("CASHU_PARITY_COMMIT") or None,
+        "dirty": os.environ.get("CASHU_PARITY_DIRTY") == "1",
         "modules_imported": imported,
         "modules_import_failed": import_failed,
         "checks": [],
