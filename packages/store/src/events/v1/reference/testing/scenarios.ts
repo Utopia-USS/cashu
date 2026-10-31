@@ -915,5 +915,93 @@ const CASH = "S24: cash expenses (TOMB) and cash legs (events.md 8.3, D-24.3)";
   );
 }
 
+const LA = "S24: loans and asset notes (events.md 8.4, m7, D-24.9)";
+{
+  const loanAcc = (gid: string, wall: number, key: string) =>
+    ev("a", wall, "account.opened", gid, { name: gid, type: "mortgage", keys: [key] });
+  const terms = (gid: string, wall: number, account: string, principal: string) =>
+    ev("a", wall, "loan.termsSet", gid, {
+      account,
+      principal,
+      annualRate: "6.5",
+      termMonths: 360,
+      startDate: "2026-01-10",
+      originationDate: null,
+    });
+  scenario(
+    LA,
+    "LN1 payment matching before terms: no row until terms, then both; terms LWW",
+    [
+      loanAcc("A", 1, "ext:mbank:loan-1"),
+      ev("b", 10, "loan.paymentMatchingSet", "loan-a", {
+        account: "A",
+        paymentIban: "PL61109010140000071219812874",
+        paymentText: null,
+      }),
+      terms("loan-a", 20, "A", "300000.00"),
+      terms("loan-a", 30, "A", "290000.00"),
+    ],
+    (v) =>
+      expect(v.loans).toEqual({
+        A: {
+          gid: "loan-a",
+          principal: "290000.00",
+          paymentIban: "PL61109010140000071219812874",
+          paymentText: null,
+        },
+      }),
+  );
+  scenario(
+    LA,
+    "LN2 matching only: no loan row",
+    [
+      loanAcc("A", 1, "ext:mbank:loan-1"),
+      ev("b", 10, "loan.paymentMatchingSet", "loan-a", {
+        account: "A",
+        paymentIban: null,
+        paymentText: "RATA",
+      }),
+    ],
+    (v) => expect(v.loans).toEqual({}),
+  );
+  scenario(
+    LA,
+    "LN3 two accounts' loans collapse when the accounts merge (LWW over the merged stream)",
+    [
+      loanAcc("A", 1, "ext:mbank:loan-1"),
+      loanAcc("B", 2, "ext:mbank:loan-2"),
+      terms("loan-a", 10, "A", "100.00"),
+      terms("loan-b", 20, "B", "200.00"),
+      ev("a", 30, "account.identified", "B", { keys: ["ext:mbank:loan-1"] }),
+    ],
+    (v) =>
+      expect(v.loans).toEqual({
+        A: { gid: "loan-a", principal: "200.00", paymentIban: null, paymentText: null },
+      }),
+  );
+  scenario(
+    LA,
+    "N1 a null note creates no row; once a row exists a null note keeps it",
+    [
+      ev("a", 1, "account.opened", "H", {
+        bank: "manual",
+        name: "Dom",
+        type: "property",
+        keys: [],
+      }),
+      ev("a", 2, "account.opened", "K", {
+        bank: "manual",
+        name: "Auto",
+        type: "vehicle",
+        keys: [],
+      }),
+      ev("a", 10, "assetDetails.noteSet", "note-h", { account: "H", note: null }),
+      ev("a", 20, "assetDetails.noteSet", "note-k", { account: "K", note: "garaż" }),
+      ev("b", 30, "assetDetails.noteSet", "note-k", { account: "K", note: null }),
+    ],
+    (v) => expect(v.notes).toEqual({ K: { gid: "note-k", note: null } }),
+  );
+}
+
 /** Every scenario, in a fixed order. */
 export const SCENARIOS: readonly Scenario[] = out;

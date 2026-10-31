@@ -247,6 +247,31 @@ export function project(store: Store, names: Names): RefView {
       )
       .map((r) => [r.dedup_hash.slice("cashleg:".length), r.gid]),
   );
+  const loans = store
+    .read<{
+      gid: string;
+      account_id: number;
+      principal: string;
+      payment_iban: string | null;
+      payment_text: string | null;
+    }>("SELECT gid, account_id, principal, payment_iban, payment_text FROM loans")
+    .map((r): [string, RefView["loans"][string]] => [
+      n(gidById.get(r.account_id) ?? ""),
+      {
+        gid: n(r.gid),
+        principal: r.principal,
+        paymentIban: r.payment_iban,
+        paymentText: r.payment_text,
+      },
+    ]);
+  const notes = store
+    .read<{ gid: string; account_id: number; note: string | null }>(
+      "SELECT gid, account_id, note FROM asset_details",
+    )
+    .map((r): [string, RefView["notes"][string]] => [
+      n(gidById.get(r.account_id) ?? ""),
+      { gid: n(r.gid), note: r.note },
+    ]);
   const cashExpenses = store
     .read<{ gid: string; claim: string | null; claim_by: string | null }>(
       `SELECT t.gid, c.claim, c.claim_by FROM transactions t
@@ -415,6 +440,8 @@ export function project(store: Store, names: Names): RefView {
     modules: rec(modules),
     balances: rec(balances),
     accounts: rec(accounts),
+    loans: rec(loans),
+    notes: rec(notes),
     cashExpenses: rec(cashExpenses),
     accountConflicts: conflicts,
     transactions: rec(transactions),

@@ -105,6 +105,28 @@ const s24Step: fc.Arbitrary<Step> = fc.oneof(
     },
   })),
   pick(EXPENSES).map((gid) => ({ type: "txn.deleted", gid, data: {} })),
+  fc.record({ a: pick(ACCOUNTS), p: pick(["100.00", "200.00"]) }).map(({ a, p }) => ({
+    type: "loan.termsSet",
+    gid: `LOAN-${a}`,
+    data: {
+      account: a,
+      principal: p,
+      annualRate: "6.5",
+      termMonths: 120,
+      startDate: "2026-01-10",
+      originationDate: null,
+    },
+  })),
+  fc.record({ a: pick(ACCOUNTS), t: fc.option(pick(["RATA"])) }).map(({ a, t }) => ({
+    type: "loan.paymentMatchingSet",
+    gid: `LOAN-${a}`,
+    data: { account: a, paymentIban: null, paymentText: t },
+  })),
+  fc.record({ a: pick(NAMED), note: fc.option(pick(["n1", "n2"])) }).map(({ a, note }) => ({
+    type: "assetDetails.noteSet",
+    gid: `NOTE-${a}`,
+    data: { account: a, note },
+  })),
   fc
     .record({ x: pick(EXPENSES), source: pick(["manual_txn", "llm_full"]) })
     .map(({ x, source }) => ({

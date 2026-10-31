@@ -8,7 +8,8 @@
 // incremental, this one is not.
 //
 // Scope: the profile, its modules (enabled register + enabled_at), accounts (key parking), balances
-// (row key under account merges), transactions (imported, cash legs, cash expenses + TOMB), watchlist, instrument overrides (segment GUARD), manual
+// (row key under account merges), loans (visible with terms), asset notes, transactions (imported,
+// cash legs, cash expenses + TOMB), watchlist, instrument overrides (segment GUARD), manual
 // valuations, signals + decisions, proposals + caused events, connector bindings. Other tables follow
 // the same patterns (plain LWW-F / CREATE per gid) and are not modelled here.
 
@@ -204,6 +205,18 @@ interface TxnRow {
   /** The derived cash mirror leg, present while the effective claim is cash_withdrawal. */
   leg: { gid: string; claim: string | null } | null;
 }
+interface LoanRow {
+  /** The anchor: the termsSet that made the row visible. */
+  gid: string;
+  principal: string;
+  paymentIban: string | null;
+  paymentText: string | null;
+}
+interface NoteRow {
+  /** The anchor: the first set with a note (S24 D-24.9). */
+  gid: string;
+  note: string | null;
+}
 interface CashExpenseRow {
   claim: string | null;
   claimBy: string;
@@ -258,6 +271,10 @@ export interface RefView {
   modules: Record<string, ModuleRow>;
   balances: Record<string, BalanceRow>;
   accounts: Record<string, AccountRow>;
+  /** Loans by resolved account: visible once terms exist (m7). */
+  loans: Record<string, LoanRow>;
+  /** Asset notes by resolved account: no row before a non-null note (D-24.9). */
+  notes: Record<string, NoteRow>;
   /** Live cash expenses (TOMB on delete) with their claim register. */
   cashExpenses: Record<string, CashExpenseRow>;
   transactions: Record<string, TxnRow>;
@@ -306,6 +323,11 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   const bankOf = new Map<string, { bank: string; type: string; firstOrd: number }>(); // root -> first open
   const typeSet = new Map<string, string>(); // account root -> latest account.typeSet
   const expenses = new Map<string, CashExpenseRow>(); // cash expense gid -> live row
+  const loanRegs = new Map<
+    string,
+    Partial<LoanRow> & { payment?: [string | null, string | null] }
+  >();
+  const notes = new Map<string, NoteRow>();
   const deletedExpenses = new Set<string>(); // TOMB
   const removed = new Map<string, boolean>(); // account root -> SOFT register
   const renamed = new Map<string, string>(); // account root -> latest explicit rename
@@ -417,6 +439,30 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
       case "account.typeSet":
         typeSet.set(acc(e.gid), String(d.type));
         break;
+      case "loan.termsSet":
+      case "loan.paymentMatchingSet": {
+        const key = acc(String(d.account));
+        const reg = loanRegs.get(key) ?? {};
+        if (e.type === "loan.termsSet") {
+          reg.gid ??= e.gid;
+          reg.principal = String(d.principal);
+        } else {
+          reg.payment = [
+            (d.paymentIban as string | null) ?? null,
+            (d.paymentText as string | null) ?? null,
+          ];
+        }
+        loanRegs.set(key, reg);
+        break;
+      }
+      case "assetDetails.noteSet": {
+        const key = acc(String(d.account));
+        const note = (d.note as string | null) ?? null;
+        const row = notes.get(key);
+        if (row !== undefined) row.note = note;
+        else if (note !== null) notes.set(key, { gid: e.gid, note });
+        break;
+      }
       case "txn.cashExpenseAdded":
         // CREATE once per gid; never again after its TOMB.
         if (!expenses.has(e.gid) && !deletedExpenses.has(e.gid)) {
@@ -686,6 +732,16 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
     txnRows.set(k, { gid: t.gid, members: [...t.members].sort(), claim: t.claim, leg });
   }
 
+  const loans = new Map<string, LoanRow>();
+  for (const [key, reg] of loanRegs) {
+    if (reg.gid === undefined || reg.principal === undefined) continue; // no terms: no row
+    loans.set(key, {
+      gid: reg.gid,
+      principal: reg.principal,
+      paymentIban: reg.payment?.[0] ?? null,
+      paymentText: reg.payment?.[1] ?? null,
+    });
+  }
   const modules = new Map<string, ModuleRow>();
   for (const [id, reg] of moduleRegs) {
     if (reg.enabledAt !== null) modules.set(id, { enabled: reg.enabled, enabledAt: reg.enabledAt });
@@ -703,6 +759,8 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
     modules: sortRecord(modules),
     balances: sortRecord(balances),
     accounts: sortRecord(accounts),
+    loans: sortRecord(loans),
+    notes: sortRecord(notes),
     cashExpenses: sortRecord(expenses),
     accountConflicts: [...ids.accounts.conflicts],
     transactions: sortRecord(txnRows),

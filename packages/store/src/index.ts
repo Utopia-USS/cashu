@@ -1,5 +1,6 @@
 // @cashu/store: the event-sourced store every runtime uses (desktop utility process, phone, CLI).
 // Spec: packages/store/spec/events.md, gid.md. Platform pieces come in through `SqlDriver` adapters.
+export { assetsModule } from "./assets/index.js";
 export { budgetModule } from "./budget/index.js";
 export { canonicalJson } from "./canonical.js";
 export {
@@ -52,6 +53,7 @@ export {
 } from "./gid.js";
 export { HybridClock, type MetaClockStore, metaClockStore } from "./hlc.js";
 export { investmentsModule } from "./investments/index.js";
+export { loansModule } from "./loans/index.js";
 export {
   type ApplyResult,
   isCorruption,
