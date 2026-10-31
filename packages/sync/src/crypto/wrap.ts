@@ -51,12 +51,62 @@ const MAX_WRAP_RECIPIENTS = 1024;
  */
 export type TrustedSigner = (deviceId: string) => Uint8Array | undefined;
 
+/**
+ * The sender id a signed wrap CLAIMS (unauthenticated until `unwrapKeys` checks the signature), or
+ * undefined when the header is malformed. For bookkeeping only (bounding pending wraps per sender).
+ */
+export function wrapSenderId(wire: Uint8Array): string | undefined {
+  if (wire.length < WRAP_HEADER_BYTES + 2 || wire[0] !== WRAP_VERSION) return undefined;
+  const id = toHex(wire.subarray(1, 1 + DEVICE_ID_BYTES));
+  return isRecipientId(id) ? id : undefined;
+}
+
+/**
+ * Checks a signed wrap's signature for `recipient` without opening it, and that `recipient` is in its
+ * signed list: what a device can verify about a wrap sealed for a key it does not hold (S29 n1: the
+ * new recovery identity's base wrap inside "recovery key changed"). Never throws on malformed input.
+ */
+export function verifyWrapSignature(
+  wire: Uint8Array,
+  vaultId: string,
+  recipient: WrapRecipient,
+  expectedSender: string,
+  signPublicKey: Uint8Array,
+): boolean {
+  if (wire.length < WRAP_HEADER_BYTES + 2 || wire[0] !== WRAP_VERSION) return false;
+  const senderId = wire.subarray(1, 1 + DEVICE_ID_BYTES);
+  if (toHex(senderId) !== expectedSender) return false;
+  const signature = wire.subarray(1 + DEVICE_ID_BYTES, WRAP_HEADER_BYTES);
+  const count = new DataView(wire.buffer, wire.byteOffset + WRAP_HEADER_BYTES, 2).getUint16(0);
+  const listEnd = WRAP_HEADER_BYTES + 2 + count * DEVICE_ID_BYTES;
+  if (wire.length <= listEnd) return false;
+  const list = wire.subarray(WRAP_HEADER_BYTES, listEnd);
+  let named = false;
+  for (let i = 0; i < count; i++) {
+    const id = toHex(list.subarray(2 + i * DEVICE_ID_BYTES, 2 + (i + 1) * DEVICE_ID_BYTES));
+    if (id === recipient.deviceId) named = true;
+  }
+  if (!named) return false;
+  const message = concat(
+    WRAP_CONTEXT,
+    signedMessage(vaultId, senderId, recipient, list, wire.subarray(listEnd)),
+  );
+  return verifySignature(signature, message, signPublicKey);
+}
+
 export interface UnwrapOptions {
   /**
    * Checks each new key's claimed epoch against what the caller knows about its sender (S29: the
    * signed registry's revocation count). Returning false refuses the whole wrap (`untrusted_sender`).
    */
   acceptEpoch: (senderDeviceId: string, entry: KeyEntry) => boolean;
+  /**
+   * Recovery public keys this ring pinned BEFORE its current ones (S29 "recovery key changed",
+   * applied in order). A wrap from a trusted device whose payload still pins one of them was made
+   * before its sender applied the change; its keys are merged under the current pin. Recovery-signed
+   * wraps are unaffected (their signer key is always the current recovery key).
+   */
+  previousRecoveryKeys?: readonly RecoveryPublicKeys[];
 }
 
 export interface Unwrapped {
@@ -274,6 +324,13 @@ export function unwrapKeys(
       const ring = emptyLike(incoming);
       ring.merge(incoming);
       return { ring, senderDeviceId, recipients };
+    }
+    if (
+      senderDeviceId !== RECOVERY_SIGNER_ID &&
+      !samePublicKeys(incoming.recovery, existing.recovery) &&
+      (options.previousRecoveryKeys ?? []).some((k) => samePublicKeys(k, incoming.recovery))
+    ) {
+      incoming.replaceRecoveryKey(existing.recovery);
     }
     existing.merge(incoming);
     return { ring: existing, senderDeviceId, recipients };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { START_CURSOR } from "../carrier.js";
+import { buildLeaseClaim } from "./events.js";
 import {
   catchUpMissing,
   foldLease,
@@ -8,9 +9,11 @@ import {
   type LeaseView,
   leaseConfig,
   leaseEventFor,
+  MAX_LEASE_TTL_MS,
   mayRunNewestDayImports,
   nextLeaseStep,
 } from "./lease.js";
+import { comparePositions } from "./positions.js";
 import { createSimVault, newEid, pairDevice, type SimDevice, sodium } from "./testkit.js";
 
 const MIN = 60_000;
@@ -216,13 +219,13 @@ describe("fetch lease", () => {
     }
   });
 
-  it("clock skew beyond 5 minutes: margins absorb up to 2 skew + settle, beyond that beliefs overlap until the next pull, never after convergence", async () => {
-    // A silent holder and a claimer whose clock runs ahead: the holder stops believing at until - 5,
-    // the claimer claims at its until + 5 and believes 7 minutes later, so up to 17 minutes of skew
-    // never overlap; more can, until the holder pulls (pairing refuses more than 5 minutes).
+  it("clock skew beyond 5 minutes never makes beliefs overlap (a holder must have pulled within the deadline)", async () => {
+    // A silent holder and a claimer whose clock runs ahead: the silent holder has not pulled within
+    // the publish deadline, so it no longer acts, whatever its clock says (review M2).
     for (const [skew, overlapExpected] of [
       [15 * MIN, false],
-      [20 * MIN, true],
+      [20 * MIN, false],
+      [2 * 24 * 60 * MIN, false],
     ] as const) {
       const { a, b, c } = await devices([0, skew, 0]);
       let overlap = false;
@@ -240,20 +243,25 @@ describe("fetch lease", () => {
     }
   });
 
-  it("property: after convergence all devices agree and at most one holds, over random schedules", async () => {
+  it("property (rule 6): never two leaders at once, even with a device whose clock runs 2 days ahead; all devices agree after convergence", async () => {
     const base = await devices();
     const runs = 60;
+    const DAY = 24 * 60 * MIN;
+    let someoneHeld = 0;
     for (let run = 0; run < runs; run++) {
       const rand = mulberry32(run + 1);
-      // Fresh clocks and streams on the same paired devices: clone the vault per run cheaply by
-      // re-pairing would be slow, so each run uses new devices.
-      const skewSpan = run % 2 === 0 ? 5 * MIN : 60 * MIN; // within and far beyond the bound
+      // Kinds of run: clocks within the bound; one device 2 days ahead (after pairing, nothing
+      // re-checks it); clocks an hour apart with a lossy remote (convergence only).
+      const kind = run % 3;
+      const skewSpan = kind === 2 ? 60 * MIN : 5 * MIN;
       const skews = [0, 1, 2].map(() => Math.round((rand() - 0.5) * skewSpan));
+      if (kind === 1) skews[1 + (run % 2)] = 2 * DAY;
       const { a, b, c } = run === 0 ? base : await devices(skews);
       const all = [a, b, c];
       const online = new Map(all.map((d) => [d, true]));
       const unpushed = new Set<SimDevice>();
-      const fullVisibility = skewSpan <= 5 * MIN;
+      const fullVisibility = kind !== 2;
+      let held = false;
       for (let minute = 0; minute < 300; minute++) {
         for (const d of all) if (rand() < 0.05) online.set(d, !online.get(d));
         const live = all.filter((d) => online.get(d));
@@ -270,9 +278,11 @@ describe("fetch lease", () => {
             d.push();
           }
         }
-        if (fullVisibility) expect(all.filter(holds).length).toBeLessThanOrEqual(1);
+        if (fullVisibility) expect(all.filter(holds).length, `run ${run}`).toBeLessThanOrEqual(1);
+        held ||= all.some(holds);
         advance(a, MIN);
       }
+      if (fullVisibility && held) someoneHeld += 1;
       for (let i = 0; i < 2; i++) for (const d of all) d.sync();
       const views = all.map(view);
       expect(new Set(views.map((v) => v.head)).size).toBe(1);
@@ -285,7 +295,150 @@ describe("fetch lease", () => {
       expect(again.head).toBe(views[0]?.head);
       expect(again.term).toEqual(views[0]?.term);
     }
-  }, 120_000);
+    expect(someoneHeld).toBeGreaterThanOrEqual(35); // the schedules really exercise the lease
+  }, 180_000);
+
+  it("A3: a holder pre-empted by a device whose clock runs 2 days ahead stops before the other acts; the fast device cannot block fetching for 2 days", async () => {
+    const { a, b, c } = await devices();
+    tick(a);
+    advance(a, 8 * MIN);
+    tick(a);
+    expect(holds(a)).toBe(true);
+    b.skewMs = 2 * 24 * 60 * MIN; // B's clock jumps 2 days ahead after pairing
+    let bHeld = false;
+    // A stops pulling (asleep, offline) while its own clock still says its term runs: B pre-empts.
+    for (let minute = 0; minute < 30; minute++) {
+      for (const d of [b, c]) tick(d);
+      expect([a, b, c].filter(holds).length).toBeLessThanOrEqual(1);
+      bHeld ||= holds(b);
+      advance(a, MIN);
+    }
+    for (let minute = 0; minute < 5; minute++) {
+      for (const d of [a, b, c]) tick(d);
+      expect([a, b, c].filter(holds).length).toBeLessThanOrEqual(1);
+      advance(a, MIN);
+    }
+    expect(bHeld).toBe(true); // B pre-empted A (its clock says A's term expired)
+    expect(holds(a)).toBe(false);
+    // B goes silent. C waits at most one term after it first saw B's last lease event, not 2 days.
+    const lastB = view(c).term[view(c).term.length - 1];
+    const seen = c.devices.firstSeen(lastB?.eid ?? "") ?? 0;
+    let cHeldAt: number | undefined;
+    for (let minute = 0; minute < 3 * 60 && cHeldAt === undefined; minute++) {
+      for (const d of [a, c]) tick(d);
+      expect([a, b, c].filter(holds).length).toBeLessThanOrEqual(1);
+      if (holds(c) || holds(a)) cHeldAt = c.now();
+      advance(a, MIN);
+    }
+    expect(cHeldAt).toBeDefined();
+    expect((cHeldAt ?? 0) - seen).toBeLessThanOrEqual(
+      config.ttlMs + config.maxSkewMs + config.settleMs + 3 * MIN,
+    );
+    // The chain continues through B's far-future events (prev links, not HLC order).
+    for (const d of [a, b, c]) d.sync();
+    expect(new Set([a, b, c].map((d) => view(d).head)).size).toBe(1);
+    expect(view(a).holder).not.toBe(b.id);
+  });
+
+  it("A6: terms longer than 24 hours and lease events whose time disagrees with their own stamp are ignored", async () => {
+    const { a, b } = await devices();
+    a.write([
+      buildLeaseClaim(a.identity, a.ring.vaultId, newEid(), {
+        at: a.now(),
+        until: Number.MAX_SAFE_INTEGER,
+        watermark: {},
+        prev: null,
+      }),
+    ]);
+    a.write([
+      buildLeaseClaim(a.identity, a.ring.vaultId, newEid(), {
+        at: a.now() + 60 * MIN, // not what its own clock stamped
+        until: a.now() + 2 * 60 * MIN,
+        watermark: {},
+        prev: null,
+      }),
+    ]);
+    a.push();
+    b.pull();
+    expect(view(b).holder).toBeNull();
+    expect(
+      view(b)
+        .ignored.map((i) => i.reason)
+        .sort(),
+    ).toEqual(["clock_mismatch", "term_too_long"]);
+    expect(MAX_LEASE_TTL_MS).toBe(24 * 60 * MIN);
+    expect(() => leaseConfig({ ttlMs: MAX_LEASE_TTL_MS + 1 })).toThrow(RangeError);
+  });
+
+  it("A4 / M3: catch-up is the highest watermark of every lease event in the chain, a revoked holder's stream included up to its cut", async () => {
+    const vault = createSimVault();
+    const a = vault.creator;
+    const b = await pairDevice(a, "b");
+    const c = await pairDevice(a, "c");
+    const d = await pairDevice(a, "d");
+    const e = await pairDevice(a, "e");
+    const all = [a, b, c, d, e];
+    c.write([{ t: "note.added", v: 1, i: newEid(), d: {} }]); // everyone applies this one
+    for (let i = 0; i < 2; i++) for (const x of all) x.sync();
+    vault.remote.time += 30 * MIN;
+    // C writes; A applies it, holds and releases with C's cursor in its watermark.
+    c.write([{ t: "note.added", v: 1, i: newEid(), d: {} }]);
+    c.push();
+    tick(a);
+    advance(a, 8 * MIN);
+    tick(a);
+    expect(holds(a)).toBe(true);
+    a.write([{ t: "import.done", v: 1, i: newEid(), d: {} }]); // A's newest-day import
+    expect(tick(a, false)).toBe("release");
+    const cCursor = c.cursors.get(c.id);
+    // B and D never pull C's stream. B claims and releases; D claims next.
+    const notC = (batch: { device: string }) => batch.device !== c.id;
+    b.push();
+    b.pull(notC);
+    expect(decide(b)).toBe("claim");
+    b.push();
+    advance(a, 8 * MIN);
+    b.pull(notC);
+    expect(holds(b)).toBe(true);
+    expect(decide(b, false)).toBe("release");
+    b.push();
+    d.pull(notC);
+    expect(decide(d)).toBe("claim");
+    d.push();
+    advance(a, 8 * MIN);
+    d.pull(notC);
+    expect(holds(d)).toBe(true);
+    expect(view(d).catchUp[c.id]).toEqual(cCursor);
+    expect(catchUpMissing(view(d), d.applied, d.devices.registry)).toContain(c.id);
+    expect(mayRunNewestDayImports(view(d), d.local(), d.applied, d.devices.registry, config)).toBe(
+      false,
+    );
+    d.pull();
+    expect(catchUpMissing(view(d), d.applied, d.devices.registry)).toEqual([]);
+    // A is revoked: its last import (in A's stream, named by A's own watermark) is still required,
+    // up to the lower of the watermark and A's cut (C applied it before revoking A).
+    c.pull();
+    const r = c.devices.prepareRevocation(
+      [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
+      { revoke: newEid(), rotate: newEid() },
+    );
+    if (!r.ok) throw new Error(r.reason);
+    c.write(r.change.events);
+    r.change.commit();
+    c.push();
+    // A device whose store has not applied A's import yet (its data lags behind the statements)
+    // must not run newest-day imports, although A is revoked now: A's stream is required up to the
+    // lower of A's watermark and its cut (here the watermark: C applied the import before revoking).
+    e.pull();
+    expect(e.devices.registry.revoked.has(a.id)).toBe(true);
+    const w = view(e).catchUp[a.id];
+    const cut = e.devices.registry.revoked.get(a.id)?.cut;
+    expect(w && cut && comparePositions(w, cut) <= 0).toBe(true);
+    const lagging = new Map(e.applied);
+    lagging.set(a.id, { seg: 1, offset: (w?.offset ?? 100) - 100 });
+    expect(catchUpMissing(view(e), lagging, e.devices.registry)).toContain(a.id);
+    expect(catchUpMissing(view(e), e.applied, e.devices.registry)).not.toContain(a.id);
+  });
 
   it("rejects lease events that are forged, not signed by their writer, or stale", async () => {
     const { a, b } = await devices();
@@ -294,7 +447,7 @@ describe("fetch lease", () => {
     const events = a.stream.flatMap((s) => s.events);
     const lease = events.filter((e) => e.type === "lease.claimed");
     const forged = lease.map((e) => ({ ...e, eid: newEid(), writer: b.id }));
-    const tampered = lease.map((e) => ({ ...e, data: { ...e.data, until: 1 } }));
+    const tampered = lease.map((e) => ({ ...e, data: { ...e.data, watermark: {} } }));
     const v = foldLease(a.devices.registry, [...forged, ...tampered]);
     expect(v.holder).toBeNull();
     expect(v.ignored.map((i) => i.reason).sort()).toEqual(["bad_signature", "writer_mismatch"]);

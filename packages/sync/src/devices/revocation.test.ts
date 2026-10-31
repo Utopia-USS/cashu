@@ -21,7 +21,8 @@ import {
 import { devicesNeedingRebuild, type FrameAt } from "./guard.js";
 import { foldLease } from "./lease.js";
 import { type PreparedChange, prepareRotation } from "./rotation.js";
-import { createSimVault, newEid, pairDevice, type SimDevice, sodium } from "./testkit.js";
+import { createSimVault, hlcAt, newEid, pairDevice, type SimDevice, sodium } from "./testkit.js";
+import { MAX_PENDING_WRAPS_PER_SENDER } from "./vaultDevices.js";
 
 const plain = new TextEncoder().encode("synthetic frame");
 
@@ -31,7 +32,12 @@ function note() {
 }
 
 function frameCtx(vaultId: string, at: FrameAt) {
-  return { vaultId, deviceId: at.device, segment: at.seg, offset: at.offset };
+  return { vaultId, deviceId: at.device, segment: at.start.seg, offset: at.start.offset };
+}
+
+/** The frame of `device` starting at `offset` (100 bytes long, like the simulator's batches). */
+function frameAt(device: string, offset: number): FrameAt {
+  return { device, start: { seg: 1, offset }, end: { seg: 1, offset: offset + 100 } };
 }
 
 function code(f: () => unknown): string {
@@ -97,7 +103,7 @@ describe("revocation", () => {
     r.sync();
     a.pull();
     b.pull();
-    const beforeAt = { device: r.id, seg: 1, offset: 0 };
+    const beforeAt = frameAt(r.id, 0);
     const before = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, beforeAt));
 
     const change = revoke(a, r);
@@ -115,7 +121,7 @@ describe("revocation", () => {
     expect(a.devices.rotationNeeded()).toBeUndefined();
 
     // New data: readable by B, not by R.
-    const at = { device: a.id, seg: 1, offset: 5000 };
+    const at = frameAt(a.id, 5000);
     const fresh = sealFrame(sodium, a.ring, plain, frameCtx(a.ring.vaultId, at));
     expect(carrierOpen(b, fresh, at)).toBe("ok");
     expect(code(() => openFrame(sodium, r.ring, fresh, frameCtx(r.ring.vaultId, at)))).toBe(
@@ -127,7 +133,7 @@ describe("revocation", () => {
     expect(revocation?.cut).toEqual({ seg: 1, offset: 100 });
     const cut = revocation?.cut ?? START_CURSOR;
     expect(carrierOpen(b, before, beforeAt)).toBe("ok");
-    const afterAt = { device: r.id, seg: cut.seg, offset: cut.offset };
+    const afterAt = frameAt(r.id, cut.offset);
     const after = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, afterAt));
     expect(carrierOpen(b, after, afterAt)).toBe("key_not_allowed");
     expect(b.devices.guard.check(afterAt, r.ring.active)).toEqual({
@@ -136,17 +142,17 @@ describe("revocation", () => {
     });
 
     // Under B's id: once B wrote at the new key, an old-key frame at a later position is rejected.
-    const bAt = { device: b.id, seg: 1, offset: 7000 };
+    const bAt = frameAt(b.id, 7000);
     const bFrame = sealFrame(sodium, b.ring, plain, frameCtx(b.ring.vaultId, bAt));
     expect(carrierOpen(a, bFrame, bAt)).toBe("ok");
-    const forgedAt = { device: b.id, seg: 1, offset: 7100 };
+    const forgedAt = frameAt(b.id, 7100);
     const forged = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, forgedAt));
     expect(carrierOpen(a, forged, forgedAt)).toBe("key_not_allowed");
     // The same frame re-opened at its earlier position (verify, then apply) still passes.
     expect(carrierOpen(a, bFrame, bAt)).toBe("ok");
 
     // Under a fresh id: the key predates the revocation, so it is refused.
-    const strangerAt = { device: createDeviceIdentity(sodium).deviceId, seg: 1, offset: 0 };
+    const strangerAt = frameAt(createDeviceIdentity(sodium).deviceId, 0);
     const stranger = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, strangerAt));
     expect(carrierOpen(a, stranger, strangerAt)).toBe("key_not_allowed");
   });
@@ -156,7 +162,8 @@ describe("revocation", () => {
     revoke(a, r);
     a.push();
     r.pull();
-    // R certifies a sockpuppet, revokes A and claims the lease, all in its own stream after the cut.
+    // R certifies a sockpuppet, revokes B (which never revoked R) and claims the lease, all in its
+    // own stream after the cut.
     const puppet = createDeviceIdentity(sodium);
     const subject = {
       deviceId: puppet.deviceId,
@@ -167,26 +174,89 @@ describe("revocation", () => {
     r.write([
       buildDeviceAdded(r.identity, r.ring.vaultId, newEid(), subject, "puppet", cert),
       buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
-        { device: a.id, cut: START_CURSOR },
+        { device: b.id, cut: START_CURSOR },
       ]),
       buildLeaseClaim(r.identity, r.ring.vaultId, newEid(), {
-        until: r.now() + 1e9,
+        at: r.now(),
+        until: r.now() + 60 * 60 * 1000,
         watermark: {},
         prev: null,
       }),
     ]);
     r.push();
+    for (const d of [a, b]) {
+      d.pull();
+      const reg = d.devices.registry;
+      expect(reg.isTrusted(a.id)).toBe(true);
+      expect(reg.isTrusted(b.id)).toBe(true);
+      expect(reg.isTrusted(puppet.deviceId)).toBe(false);
+      expect(reg.revocationCount).toBe(1);
+      expect(reg.ignored.map((i) => i.reason)).toEqual(
+        expect.arrayContaining(["after_revocation"]),
+      );
+      expect(
+        foldLease(
+          reg,
+          r.stream.flatMap((s) => s.events),
+        ).holder,
+      ).toBeNull();
+    }
+  });
+
+  it("a revoked device that revokes its revoker after its cut takes it down too (fail closed); the recovery words keep the honest device's history", async () => {
+    const { a, b, r, recovery } = await threeDevices();
+    a.write([note()]);
+    a.push();
+    for (const d of [b, r]) d.pull();
+    revoke(a, r);
+    a.push();
+    r.pull();
+    // R answers with a revocation of A at START, after its own cut: positions cannot tell who
+    // revoked first, so both revocations count, on every device and in any order.
+    r.write([
+      buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
+        { device: a.id, cut: START_CURSOR },
+      ]),
+    ]);
+    r.push();
     b.pull();
-    const reg = b.devices.registry;
-    expect(reg.isTrusted(a.id)).toBe(true);
-    expect(reg.isTrusted(puppet.deviceId)).toBe(false);
-    expect(reg.ignored.map((i) => i.reason)).toEqual(expect.arrayContaining(["after_revocation"]));
-    expect(
-      foldLease(
-        reg,
-        r.stream.flatMap((s) => s.events),
-      ).holder,
-    ).toBeNull();
+    a.pull();
+    for (const d of [a, b]) {
+      const reg = d.devices.registry;
+      expect(reg.revoked.has(r.id)).toBe(true);
+      expect(reg.revoked.get(a.id)).toMatchObject({ cut: START_CURSOR, contested: true });
+      // B was certified by A only: it loses trust with A's certificate subtree.
+      expect([...reg.trusted.keys()]).toEqual([]);
+    }
+    // A's data is gone from B's view until the owner acts.
+    expect(b.cursors.get(a.id)).toBeUndefined();
+    // The owner, with the recovery words on B, revokes R and raises A's cut to the end of A's
+    // stream B downloaded: recovery-signed cuts override the malicious one, A's history comes back
+    // (A itself stays revoked: a revoked id is never trusted again; the owner re-pairs it) and B is
+    // re-certified by the recovery identity.
+    const aEnd = a.stream[a.stream.length - 1]?.cursor ?? START_CURSOR;
+    const rCut = a.cursors.get(r.id) ?? START_CURSOR;
+    const bSubject = {
+      deviceId: b.id,
+      signPublicKey: b.identity.signPublicKey,
+      boxPublicKey: b.identity.box.publicKey,
+    };
+    const bCert = certifyDevice(sodium, recovery, bSubject, b.ring.vaultId);
+    b.write([
+      buildDeviceRevoked(recovery, b.ring.vaultId, newEid(), [
+        { device: a.id, cut: aEnd },
+        { device: r.id, cut: rCut },
+      ]),
+      buildDeviceAdded(recovery, b.ring.vaultId, newEid(), bSubject, "phone", bCert),
+    ]);
+    b.push();
+    a.pull();
+    for (const d of [a, b]) {
+      expect(d.devices.registry.revoked.get(a.id)?.cut).toEqual(aEnd);
+      expect(d.devices.registry.revoked.has(r.id)).toBe(true);
+      expect([...d.devices.registry.trusted.keys()]).toEqual([b.id]);
+    }
+    expect(b.cursors.get(a.id)).toEqual(aEnd);
   });
 
   it("concurrent revoke and plain rotate: the revocation key wins on every device, in any order", async () => {
@@ -323,15 +393,21 @@ describe("revocation", () => {
     expect(a.ring.active.kid).toBe(b.ring.active.kid);
   });
 
-  it("a cut below what a device already applied asks for a rebuild", async () => {
+  it("a cut below what a device already applied rejects that data (guard recheck) and asks for a rebuild", async () => {
     const { a, b, r } = await threeDevices();
     r.write([note()]); // a batch only B pulls before the revocation
     r.push();
     b.pull();
+    const before = new Map(b.cursors);
+    expect(before.get(r.id)).toBeDefined();
     revoke(a, r); // A's cut is before that batch
     a.push();
     b.pull();
-    expect(devicesNeedingRebuild(b.devices.registry, b.cursors)).toEqual([r.id]);
+    const cut = b.devices.registry.revoked.get(r.id)?.cut;
+    expect(devicesNeedingRebuild(b.devices.registry, before)).toEqual([r.id]);
+    expect(b.rejections).toContainEqual({ device: r.id, after: cut, reason: "revoked_writer" });
+    expect(b.cursors.get(r.id)).toEqual(a.cursors.get(r.id));
+    expect(devicesNeedingRebuild(b.devices.registry, b.cursors)).toEqual([]);
     expect(devicesNeedingRebuild(a.devices.registry, a.cursors)).toEqual([]);
   });
 
@@ -370,5 +446,53 @@ describe("revocation", () => {
     const change = rotate(b);
     expect(change.recipients).toContain("0".repeat(32));
     expect(recoveryRecipient(b.ring).vaultId).toBe(b.ring.vaultId);
+  });
+});
+
+describe("key wraps under attack (review m2, M4)", () => {
+  it("A5: a junk copy of a rotation event delivered first never hides the genuine wraps", async () => {
+    const { a, b } = await threeDevices();
+    const change = rotate(b);
+    const genuine = b.stream[b.stream.length - 1]?.events[0];
+    if (!genuine) throw new Error("no rotation event");
+    const wraps = genuine.data.wraps as Record<string, string>;
+    const wire = wraps[a.id] ?? "";
+    const junkWire = `${wire.slice(0, -8)}${wire.slice(-8) === "00000000" ? "11111111" : "00000000"}`;
+    const junk = {
+      ...genuine,
+      writer: createDeviceIdentity(sodium).deviceId,
+      data: { wraps: { ...wraps, [a.id]: junkWire } },
+    };
+    const first = a.devices.ingest([junk]);
+    expect(first.wraps.map((w) => w.outcome.status)).toEqual(["refused"]);
+    b.push();
+    a.pull();
+    expect(a.ring.get(change.key?.kid ?? "")).toBeDefined();
+  });
+
+  it("pending wraps are bounded per claimed sender and dropped when the sender is revoked", async () => {
+    const { a } = await threeDevices();
+    const ghost = createDeviceIdentity(sodium).deviceId;
+    const wire = (i: number) => {
+      const bytes = new Uint8Array(1 + 16 + 64 + 2 + 16 + 48);
+      bytes[0] = 3;
+      bytes.set(Buffer.from(ghost, "hex"), 1);
+      bytes[1 + 16 + 64 + 1] = 1;
+      bytes.set(Buffer.from(a.id, "hex"), 1 + 16 + 64 + 2);
+      bytes[bytes.length - 1] = i;
+      return bytes;
+    };
+    const events = Array.from({ length: 40 }, (_, i) => ({
+      eid: newEid(),
+      hlc: hlcAt(ghost, a.now(), i),
+      writer: ghost,
+      position: { seg: 1, offset: 100 * (i + 1) },
+      type: "device.keysRotated",
+      v: 1,
+      data: { wraps: { [a.id]: Buffer.from(wire(i)).toString("hex") } },
+    }));
+    const report = a.devices.ingest(events);
+    expect(report.pending).toHaveLength(MAX_PENDING_WRAPS_PER_SENDER);
+    expect(report.pending.every((p) => p.outcome.status === "retry")).toBe(true);
   });
 });

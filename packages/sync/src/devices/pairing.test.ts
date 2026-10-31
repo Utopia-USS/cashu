@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createDeviceIdentity, openFrame, sealFrame } from "../crypto/index.js";
 import { fromUtf8, toHex } from "./bytes.js";
+import { buildDeviceAdded } from "./events.js";
 import {
   decodeInvite,
   encodeInvite,
+  PAGE_SIZE,
   PairingInviter,
   PairingJoiner,
+  SAS_ATTEMPTS,
+  SAS_TTL_MS,
   shortAuthenticationString,
 } from "./pairing.js";
 import { runInviter, runJoiner } from "./pairingLink.js";
@@ -87,14 +91,14 @@ describe("pairing", () => {
         return sodium.seal(opened, phone.identity.box.publicKey);
       },
     });
-    let inviterSas: string | undefined;
+    let asked = false;
     let phoneSas: string | undefined;
     const [inv, join] = await Promise.all([
       runInviter(inviter, links.inviter, {
         now: () => creator.now(),
-        confirmSas: async (sas) => {
-          inviterSas = sas;
-          return sas === phoneSas; // the owner compares both screens
+        enterCode: async () => {
+          asked = true;
+          return phoneSas; // the owner types what the phone shows: nothing, so the owner cancels
         },
         eid: newEid,
       }),
@@ -105,15 +109,15 @@ describe("pairing", () => {
         },
       }),
     ]);
-    expect(inviterSas).toMatch(/^\d{6}$/);
-    expect(phoneSas).not.toBe(inviterSas);
+    expect(asked).toBe(true);
+    expect(phoneSas).toBeUndefined();
     expect(inv.ok).toBe(false);
     if (!inv.ok) expect(inv.reason).toBe("sas_rejected");
     // The phone refused the challenge signed over Mallory's keys: it never showed a SAS.
     expect(join.ok).toBe(false);
     if (!join.ok) expect(join.reason).toBe("bad_signature");
     expect(inviter.state).toBe("done");
-    expect(inviter.confirm(newEid()).ok).toBe(false);
+    expect(inviter.confirm("000000", newEid(), creator.now()).ok).toBe(false);
   });
 
   it("commit-then-reveal: a nonce other than the committed one is refused", () => {
@@ -134,16 +138,16 @@ describe("pairing", () => {
       new TextEncoder().encode(JSON.stringify(reveal)),
       inviter.invite.ephemeralPublicKey,
     );
-    const out = inviter.receiveReveal(forged);
+    const out = inviter.receiveReveal(forged, creator.now());
     expect(out.ok ? "" : out.reason).toBe("commit_mismatch");
     expect(out.ok ? undefined : out.reply).toBeInstanceOf(Uint8Array);
     // The session is dead: the genuine reveal is not accepted afterwards.
     const genuine = s.value.joiner.receiveChallenge(ch.value.reply, phone.now());
     if (!genuine.ok) throw new Error(genuine.reason);
-    expect(inviter.receiveReveal(genuine.value.reply).ok).toBe(false);
+    expect(inviter.receiveReveal(genuine.value.reply, creator.now()).ok).toBe(false);
   });
 
-  it("both screens show the same SAS on the happy path, and it is bound to both nonces", async () => {
+  it("the code the phone shows is what the inviter expects, and it is bound to both nonces", async () => {
     const { creator } = createSimVault();
     const phone = new SimDevice("phone", creator.remote);
     const { inviter, qr } = invite(creator);
@@ -157,17 +161,17 @@ describe("pairing", () => {
     if (!ch.ok) throw new Error(ch.reason);
     const rv = s.value.joiner.receiveChallenge(ch.value.reply, phone.now());
     if (!rv.ok) throw new Error(rv.reason);
-    const shown = inviter.receiveReveal(rv.value.reply);
+    const shown = inviter.receiveReveal(rv.value.reply, creator.now());
     if (!shown.ok) throw new Error(shown.reason);
-    expect(shown.value.sas).toBe(rv.value.sas);
+    expect(shown.value).toEqual({ awaitingCode: true }); // the inviter shows no code of its own
     const t = sodium.randomBytes(32);
     expect(shortAuthenticationString(sodium, t, new Uint8Array(32))).not.toBe(
       shortAuthenticationString(sodium, t, new Uint8Array(32).fill(1)),
     );
-    const welcome = inviter.confirm(newEid());
+    const welcome = inviter.confirm(rv.value.sas, newEid(), creator.now());
     if (!welcome.ok) throw new Error(welcome.reason);
     const done = s.value.joiner.receiveWelcome(welcome.value.reply);
-    expect(done.ok).toBe(true);
+    expect(done.ok && done.value.done).toBe(true);
   });
 
   it("a tampered welcome (other wrap, other registry) is refused", () => {
@@ -184,8 +188,8 @@ describe("pairing", () => {
     if (!ch.ok) throw new Error(ch.reason);
     const rv = s.value.joiner.receiveChallenge(ch.value.reply, phone.now());
     if (!rv.ok) throw new Error(rv.reason);
-    if (!inviter.receiveReveal(rv.value.reply).ok) throw new Error("reveal");
-    const welcome = inviter.confirm(newEid());
+    if (!inviter.receiveReveal(rv.value.reply, creator.now()).ok) throw new Error("reveal");
+    const welcome = inviter.confirm(rv.value.sas, newEid(), creator.now());
     if (!welcome.ok) throw new Error(welcome.reason);
     // Re-seal the welcome with the registry list emptied (the link can seal for the phone's key).
     const opened = JSON.parse(
@@ -198,7 +202,7 @@ describe("pairing", () => {
       ),
     );
     const forged = sodium.seal(
-      new TextEncoder().encode(JSON.stringify({ ...opened, reg: [] })),
+      new TextEncoder().encode(JSON.stringify({ ...opened, reg: [], n: 0 })),
       phone.identity.box.publicKey,
     );
     const out = s.value.joiner.receiveWelcome(forged);
@@ -255,5 +259,83 @@ describe("pairing", () => {
       now: stranger.now(),
     });
     expect(refused.ok ? "" : refused.reason).toBe("not_trusted");
+  });
+});
+
+describe("pairing: typed code, expiry, registry pages (review m1, M4)", () => {
+  function upToReveal() {
+    const { creator } = createSimVault();
+    const phone = new SimDevice("phone", creator.remote);
+    const { inviter, qr } = invite(creator);
+    const s = PairingJoiner.start(
+      { sodium, identity: phone.identity, name: "phone" },
+      qr,
+      phone.now(),
+    );
+    if (!s.ok) throw new Error("scan failed");
+    const ch = inviter.receiveHello(s.value.hello, creator.now());
+    if (!ch.ok) throw new Error(ch.reason);
+    const rv = s.value.joiner.receiveChallenge(ch.value.reply, phone.now());
+    if (!rv.ok) throw new Error(rv.reason);
+    const shown = inviter.receiveReveal(rv.value.reply, creator.now());
+    if (!shown.ok) throw new Error(shown.reason);
+    const wrong = String((Number(rv.value.sas) + 1) % 1_000_000).padStart(6, "0");
+    return { creator, inviter, joiner: s.value.joiner, code: rv.value.sas, wrong };
+  }
+
+  it("a wrong code costs an attempt; the right one pairs; three wrong ones end the session", () => {
+    const first = upToReveal();
+    const miss = first.inviter.confirm(first.wrong, newEid(), first.creator.now());
+    expect(miss).toMatchObject({
+      ok: false,
+      reason: "sas_mismatch",
+      attemptsLeft: SAS_ATTEMPTS - 1,
+    });
+    const hit = first.inviter.confirm(first.code, newEid(), first.creator.now());
+    expect(hit.ok).toBe(true);
+
+    const second = upToReveal();
+    for (let i = 0; i < SAS_ATTEMPTS; i++) {
+      second.inviter.confirm(second.wrong, newEid(), second.creator.now());
+    }
+    expect(second.inviter.state).toBe("done");
+    expect(second.inviter.confirm(second.code, newEid(), second.creator.now())).toMatchObject({
+      ok: false,
+      reason: "unexpected",
+    });
+  });
+
+  it("the code step expires", () => {
+    const { creator, inviter, code } = upToReveal();
+    const late = inviter.confirm(code, newEid(), creator.now() + SAS_TTL_MS + 1);
+    expect(late).toMatchObject({ ok: false, reason: "expired" });
+  });
+
+  it("a registry larger than one message arrives in pages, bound by the signed hash", async () => {
+    const { creator } = createSimVault();
+    const subject = {
+      deviceId: creator.id,
+      signPublicKey: creator.identity.signPublicKey,
+      boxPublicKey: creator.identity.box.publicKey,
+    };
+    const cert = creator.stream[0]?.events[0]?.data.certificate as string;
+    const certBytes = Uint8Array.from(Buffer.from(cert, "hex"));
+    creator.write(
+      Array.from({ length: PAGE_SIZE + 100 }, () =>
+        buildDeviceAdded(
+          creator.identity,
+          creator.ring.vaultId,
+          newEid(),
+          subject,
+          "creator",
+          certBytes,
+        ),
+      ),
+    );
+    creator.push();
+    expect(creator.devices.registry.events.length).toBeGreaterThan(PAGE_SIZE);
+    const phone = await pairDevice(creator, "phone");
+    expect(phone.devices.registry.isTrusted(phone.id)).toBe(true);
+    expect(phone.devices.registry.events.length).toBe(creator.devices.registry.events.length);
   });
 });

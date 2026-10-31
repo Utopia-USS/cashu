@@ -24,6 +24,7 @@ import {
   type Keyring,
   RECOVERY_SIGNER_ID,
   type RecoveryIdentity,
+  type RecoveryPublicKeys,
   recoveryRecipient,
   rotateKeyring,
   type Sodium,
@@ -60,6 +61,8 @@ export interface KeyContext {
    * in recovery-wrapped keys + 1 (not the log's revocation count) until it has rotated.
    */
   readonly recoveryEpochCap?: number;
+  /** Recovery keys this ring pinned before its current ones (n1): wraps still pinning one merge. */
+  readonly previousRecoveryKeys?: readonly RecoveryPublicKeys[];
 }
 
 export type EpochRefusal = "epoch_above_revocations" | "rate_limited";
@@ -75,6 +78,7 @@ export function epochPolicy(
   const seen = new Map<string, Set<number>>();
   const policy = {
     refusal: undefined as EpochRefusal | undefined,
+    ...(ctx.previousRecoveryKeys ? { previousRecoveryKeys: ctx.previousRecoveryKeys } : {}),
     acceptEpoch: (sender: string, entry: KeyEntry): boolean => {
       if (entry.epoch > cap) {
         policy.refusal = "epoch_above_revocations";
@@ -118,7 +122,14 @@ export type WrapOutcome =
   /** Never acceptable: forged, not for this device, wrong vault, flood (`bad_payload`). */
   | { readonly status: "refused"; readonly code: CryptoErrorCode };
 
-const RETRY_CODES = new Set<CryptoErrorCode>(["untrusted_sender", "generation_gap", "epoch_gap"]);
+// `recovery_key_mismatch`: the sender already applied a recovery-key change this device has not
+// seen yet (n1); the wrap merges once this device applies it.
+const RETRY_CODES = new Set<CryptoErrorCode>([
+  "untrusted_sender",
+  "generation_gap",
+  "epoch_gap",
+  "recovery_key_mismatch",
+]);
 
 /** Verifies, opens and merges one signed wrap into `ctx.ring`, recording provenance. */
 export function applyWrap(ctx: KeyContext, wire: Uint8Array): WrapOutcome {
@@ -191,7 +202,12 @@ export type RotationReason =
   /** The active key's signed recipients include a revoked device (M1). */
   | "recipient_revoked"
   /** Restored from the recovery words: rotate before writing any frame (n3). */
-  | "recovered";
+  | "recovered"
+  /**
+   * The recovery key changed (n1) and the active key predates it: it was wrapped for the old
+   * recovery box key, which a leaked old phrase opens. One rotation wraps only for the new one.
+   */
+  | "recovery_changed";
 
 /** Why this device must rotate before writing, or undefined. */
 export function rotationReason(

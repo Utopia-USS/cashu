@@ -1,8 +1,15 @@
 export {
+  type CandidateKey,
   CERT_BYTES,
+  CertificateCache,
   type CertificateCheck,
+  CertificateClosure,
+  CertificateIndex,
+  type CertificateIndexOptions,
   type CertSubject,
   certifyDevice,
+  type ParsedCertificate,
+  parseCertificate,
   TrustedDevice,
   verifyCertificates,
 } from "./cert.js";
@@ -30,6 +37,8 @@ export {
   RecoveryIdentity,
   type RecoveryPublicKeys,
   type SigningContext,
+  verifyContextSignature,
+  verifySignature,
   type WrapRecipient,
 } from "./identity.js";
 export {
@@ -88,6 +97,8 @@ export {
   type UnwrapOptions,
   type Unwrapped,
   unwrapKeys,
+  verifyWrapSignature,
   WRAP_VERSION,
   wrapKeys,
+  wrapSenderId,
 } from "./wrap.js";

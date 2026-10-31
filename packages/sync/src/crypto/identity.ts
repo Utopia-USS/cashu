@@ -14,8 +14,30 @@ export const SIGNATURE_BYTES = 64;
 const DEVICE_ID = /^[0-9a-f]{32}$/;
 const INSPECT = Symbol.for("nodejs.util.inspect.custom");
 
-/** Every purpose a device or recovery key signs for; S28d frame signatures add their own. */
-export type SigningContext = "cashu/wrap/v3" | "cashu/cert/v1";
+/**
+ * Every purpose a device or recovery key signs for. No context is a prefix of another (they differ by
+ * byte 6 at the latest), so a signature made for one purpose never verifies for another:
+ * - `cashu/wrap/v3`: signed key wraps (wrap.ts); `cashu/cert/v1`: device certificates (cert.ts);
+ * - `cashu/registry/v1`: device registry statements (`device.added`, `device.revoked`,
+ *   `device.recoveryChanged`); `cashu/lease/v1`: fetch-lease statements; `cashu/pairing/v1`: pairing
+ *   messages (challenge, welcome). Bodies are built by `devices/` from length-prefixed fields and
+ *   canonical JSON.
+ * S28d frame signatures must add a new context that neither extends nor is a prefix of these.
+ */
+export type SigningContext =
+  | "cashu/wrap/v3"
+  | "cashu/cert/v1"
+  | "cashu/registry/v1"
+  | "cashu/lease/v1"
+  | "cashu/pairing/v1";
+
+const SIGNING_CONTEXTS: ReadonlySet<string> = new Set<SigningContext>([
+  "cashu/wrap/v3",
+  "cashu/cert/v1",
+  "cashu/registry/v1",
+  "cashu/lease/v1",
+  "cashu/pairing/v1",
+]);
 
 /** Reserved signer id of the recovery identity (16 zero bytes); never a device's id. */
 export const RECOVERY_SIGNER_ID = "0".repeat(DEVICE_ID_BYTES * 2);
@@ -103,6 +125,7 @@ class SigningIdentity {
    * bytes and a signature made for one purpose never verifies for another.
    */
   sign(context: SigningContext, body: Uint8Array): Uint8Array {
+    if (!SIGNING_CONTEXTS.has(context)) throw new RangeError("unknown signing context");
     return ed25519.sign(concat(utf8(context), body), this.signSecretKey.expose());
   }
 
@@ -148,6 +171,20 @@ export function createDeviceIdentity(
     new Secret(sodium.randomBytes(KEY_BYTES)),
     new Secret(sodium.randomBytes(KEY_BYTES)),
   );
+}
+
+/**
+ * Verifies a signature made with `sign(context, body)`: `context | body` under `publicKey`. The
+ * caller names the context, so a signature for one purpose never verifies for another.
+ */
+export function verifyContextSignature(
+  context: SigningContext,
+  body: Uint8Array,
+  signature: Uint8Array,
+  publicKey: Uint8Array,
+): boolean {
+  if (!SIGNING_CONTEXTS.has(context)) throw new RangeError("unknown signing context");
+  return verifySignature(signature, concat(utf8(context), body), publicKey);
 }
 
 /**

@@ -6,6 +6,7 @@ export {
   buildDeviceAdded,
   buildDeviceRevoked,
   buildKeysRotated,
+  buildRecoveryChanged,
   comparePositions,
   DEVICE_ADDED,
   DEVICE_EVENT_VERSION,
@@ -23,6 +24,9 @@ export {
   type LeaseRenewData,
   type LogEvent,
   logEventsFromBatch,
+  MAX_DEVICES,
+  RECOVERY_CHANGED,
+  type RecoveryChangedData,
   type RevokedEntry,
   type Watermark,
 } from "./events.js";
@@ -30,6 +34,8 @@ export {
   devicesNeedingRebuild,
   type FrameAt,
   FrameGuard,
+  type FrameRejection,
+  type FrameRejectionReason,
   type FrameVerdict,
   type KeyOrder,
 } from "./guard.js";
@@ -38,6 +44,7 @@ export {
   DEFAULT_LEASE_CONFIG,
   foldLease,
   holdsLease,
+  LEASE_CLOCK_TOLERANCE_MS,
   type LeaseConfig,
   type LeaseIgnoredReason,
   type LeaseLocal,
@@ -47,9 +54,11 @@ export {
   type LeaseWrite,
   leaseConfig,
   leaseEventFor,
+  MAX_LEASE_TTL_MS,
   mayRunNewestDayImports,
   nextLeaseStep,
   type OwnLeaseRecord,
+  termEndFor,
   watermarkOf,
 } from "./lease.js";
 export {
@@ -60,12 +69,17 @@ export {
   type InviterOptions,
   type InviterWelcome,
   type JoinerOptions,
+  type JoinerProgress,
   type JoinerWelcome,
+  MAX_REGISTRY_EVENTS,
+  PAGE_SIZE,
   type PairingFailed,
   type PairingFailure,
   PairingInviter,
   PairingJoiner,
   type PairingStep,
+  SAS_ATTEMPTS,
+  SAS_TTL_MS,
   shortAuthenticationString,
 } from "./pairing.js";
 export {
@@ -75,6 +89,7 @@ export {
   runInviter,
   runJoiner,
 } from "./pairingLink.js";
+export { beforeCut } from "./positions.js";
 export {
   type KeyProvenance,
   type KeySource,
@@ -82,10 +97,19 @@ export {
   type ProvenanceStore,
 } from "./provenance.js";
 export {
+  buildRecoveryChange,
+  type RecoveryHistory,
+  recoveryHistory,
+} from "./recoveryChange.js";
+export {
   type DeviceRecord,
   foldRegistry,
   type IgnoredReason,
   type IgnoredStatement,
+  MAX_CERTS_PER_ISSUER,
+  MAX_REVOCATIONS_PER_SIGNER,
+  type PreviousRecoveryKey,
+  type RecoveryChange,
   Registry,
   type RegistryOptions,
   type Revocation,
@@ -108,4 +132,10 @@ export {
   rotationReason,
   type WrapOutcome,
 } from "./rotation.js";
-export { type IngestReport, VaultDevices, type VaultDevicesOptions } from "./vaultDevices.js";
+export {
+  type IngestReport,
+  MAX_PENDING_WRAPS,
+  MAX_PENDING_WRAPS_PER_SENDER,
+  VaultDevices,
+  type VaultDevicesOptions,
+} from "./vaultDevices.js";

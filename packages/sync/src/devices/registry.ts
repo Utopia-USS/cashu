@@ -1,57 +1,82 @@
-// The device registry: a pure fold over the signed `device.added` / `device.revoked` statements of a
-// vault's log, rooted at the recovery signing key pinned in the keyring (never read from storage).
+// The device registry: a pure fold over the signed `device.added` / `device.revoked` /
+// `device.recoveryChanged` statements of a vault's log, rooted at the recovery signing key pinned in
+// the keyring (never read from storage). The result depends only on the SET of events: every device
+// that holds the same set computes the same registry, whatever the delivery order (S29b, review B1).
 //
-// - Trust comes ONLY from certificate chains (crypto `verifyCertificates`) over every certificate in
-//   the set, with the revoked set: a revoked device and its certificate subtree are untrusted.
-// - Revocations are resolved in log order (hlc, eid): one counts only if its signer is the recovery
-//   identity, or a device trusted given the revocations before it, and it names at least one
-//   registered device not yet revoked. Each counted event is one epoch step (crypto README: the
-//   number of revocation events), so a device can claim at most `revocationCount` as a key epoch.
-// - A revoked device keeps its statements written before its cut (its revocation point in its own
-//   stream); everything it wrote at or after the cut is ignored, whatever HLC it claims.
-// The result depends only on the SET of events: two devices holding the same set agree.
+// Trust comes ONLY from certificate chains (crypto `CertificateIndex`): a revoked device and its
+// certificate subtree are untrusted, a device id certified with two key pairs is conflicted.
+//
+// Revocations are decided by STREAM POSITIONS, never by a writer-chosen HLC:
+// - A revocation statement r by device S sits at position p(r) of S's own stream. It is eligible
+//   when S's key (the one r verifies with) is certified through a chain avoiding the revoked devices,
+//   and S is not revoked or r lies before S's cut (positions.ts `beforeCut`). A revocation signed
+//   with the recovery key always counts.
+// - Eligibility depends on which revocations count, so the fold computes the grounded fixpoint of
+//   that rule (alternating fixpoint: L grows, U shrinks, both start from nothing / everything):
+//   IN = L (counts in every consistent reading), UNDEC = U \ L (counts in some), OUT = the rest.
+//   Fail closed: IN and UNDEC revocations both revoke their targets. So X revoking Y while Y revokes
+//   X, each after the other's cut, revokes both devices; a revoked signer's revocations never
+//   un-count because of the order in which they arrived.
+// - Mutual revocations where the revoker attests it had applied the other's revocation (q by X of Y
+//   with cut(Y) at or after the position of Y's revocation of X) are the signature of a rewritten
+//   stream (an honest X that applied a revocation of itself cannot revoke anyone): Y's revocation
+//   then cannot defeat q, so both count and both devices are revoked (review A1b).
+// - The cut (review M1): a device revocation's cut of S is raised to what its signer attested it had
+//   applied of S's stream in its own earlier statements (lease watermarks, lease `prev` links into
+//   S's stream, earlier revocations of S), so it cannot erase history the revoker had accepted. The
+//   effective cut of S is the highest recovery-signed cut naming S when there is one (the owner sets
+//   or raises it with the recovery words), else the lowest counted device cut (fail closed).
+// - Each counted revocation event is one epoch step (`revocationCount`, the key-epoch cap).
+//
+// Caps (review M4): at most MAX_CERTS_PER_ISSUER certificates count per issuer (its first, by its
+// own stream order), at most MAX_DEVICES device ids are admitted (breadth first), at most
+// MAX_REVOCATIONS_PER_SIGNER revocation events count per device signer (its first, by its own stream
+// order). Unsigned or forged events never count toward any cap. Cost: one breadth-first certificate
+// closure (linear) per fixpoint step after an O(n log n) sort; every signature is checked once per
+// fold and remembered across folds (`certificateCache`, the memoized statement verifier).
 
 import type { SegmentCursor } from "../carrier.js";
 import {
+  CertificateCache,
+  CertificateIndex,
   RECOVERY_SIGNER_ID,
   type RecoveryPublicKeys,
   type Sodium,
   type TrustedDevice,
   type TrustedSigner,
-  verifyCertificates,
 } from "../crypto/index.js";
 import { canonicalJson, equalBytes, fromHex, isCanonicalValue } from "./bytes.js";
+import { cappedCertificates } from "./certificates.js";
 import {
   byHlc,
-  comparePositions,
   DEVICE_ADDED,
   DEVICE_REVOKED,
   type DeviceAddedData,
   type DeviceRevokedData,
   decodeDeviceAdded,
   decodeDeviceRevoked,
+  decodeRecoveryChanged,
   type LogEvent,
+  MAX_DEVICES,
+  RECOVERY_CHANGED,
+  type RecoveryChangedData,
   statementBody,
 } from "./events.js";
+import { beforeCut } from "./positions.js";
+import type { Decoded, IgnoredStatement, Revocation, TrustRoot } from "./registryTypes.js";
+import { dedupeVerified, type Rev, resolveRevocations } from "./revocations.js";
 import { type StatementVerifier, verifyStatement } from "./statements.js";
+import { cmp } from "./util.js";
 
-/** What the registry is rooted at: the vault id and the recovery keys pinned in the keyring. */
-export interface TrustRoot {
-  readonly vaultId: string;
-  readonly recovery: RecoveryPublicKeys;
-}
-
-export interface Revocation {
-  readonly device: string;
-  readonly eid: string;
-  readonly signer: string;
-  /** First position of the device's own stream that is rejected. */
-  readonly cut: SegmentCursor;
-  /** 1-based count of the revocation event that revoked it (its epoch step). */
-  readonly index: number;
-  /** The device's certified signing key when it was revoked: verifies its statements before the cut. */
-  readonly signPublicKey: Uint8Array | undefined;
-}
+export {
+  type IgnoredReason,
+  type IgnoredStatement,
+  MAX_CERTS_PER_ISSUER,
+  MAX_REVOCATIONS_PER_SIGNER,
+  type PreviousRecoveryKey,
+  type Revocation,
+  type TrustRoot,
+} from "./registryTypes.js";
 
 export interface DeviceRecord {
   readonly deviceId: string;
@@ -59,28 +84,22 @@ export interface DeviceRecord {
   readonly addedEid: string;
 }
 
-export type IgnoredReason =
-  | "malformed"
-  | "duplicate_eid"
-  | "untrusted_signer"
-  | "bad_signature"
-  | "after_revocation"
-  | "no_effect"
-  | "key_mismatch";
-
-export interface IgnoredStatement {
-  readonly eid: string;
-  readonly reason: IgnoredReason;
+/** A `device.recoveryChanged` statement whose signer was trusted under this registry's root. */
+export interface RecoveryChange {
+  readonly event: LogEvent;
+  readonly data: RecoveryChangedData;
 }
 
 export interface RegistryOptions {
-  /** Certificates known out of band: the vault creator's own, a paired device's own (pairing welcome). */
+  /** Certificates known out of band: vault creation, a paired device's own, recovery changes. */
   readonly bootstrapCertificates?: readonly Uint8Array[];
   /** Signature check (default: `verifyStatement`); pass a `memoizedVerifier` when folding repeatedly. */
   readonly verify?: StatementVerifier;
+  /** Certificate signature cache shared across folds. */
+  readonly certificateCache?: CertificateCache;
 }
 
-const REGISTRY_TYPES = new Set<string>([DEVICE_ADDED, DEVICE_REVOKED]);
+const REGISTRY_TYPES = new Set<string>([DEVICE_ADDED, DEVICE_REVOKED, RECOVERY_CHANGED]);
 
 export function isRegistryEvent(event: LogEvent): boolean {
   return REGISTRY_TYPES.has(event.type);
@@ -99,16 +118,18 @@ export class Registry {
   /** Display names of announced devices (trusted or revoked), from signed statements. */
   readonly devices: ReadonlyMap<string, DeviceRecord>;
   readonly ignored: readonly IgnoredStatement[];
-  /** The well-formed registry events this registry was folded from (pairing welcomes carry them). */
+  /** The authentic registry statements (verified signatures), in log order: pairing welcomes carry them. */
   readonly events: readonly LogEvent[];
-  readonly #sodium: Sodium;
-  readonly #certificates: readonly Uint8Array[];
+  /** Recovery-key changes signed by a device trusted (or before its cut) under this root. */
+  readonly recoveryChanges: readonly RecoveryChange[];
+  readonly #index: CertificateIndex;
   readonly #registered: ReadonlySet<string>;
+  readonly #issued: ReadonlyMap<string, number>;
 
   /** Not public API: use `foldRegistry`. */
   constructor(parts: {
-    sodium: Sodium;
     root: TrustRoot;
+    index: CertificateIndex;
     trusted: ReadonlyMap<string, TrustedDevice>;
     conflicts: readonly string[];
     revoked: ReadonlyMap<string, Revocation>;
@@ -116,12 +137,13 @@ export class Registry {
     devices: ReadonlyMap<string, DeviceRecord>;
     ignored: readonly IgnoredStatement[];
     events: readonly LogEvent[];
-    certificates: readonly Uint8Array[];
+    recoveryChanges: readonly RecoveryChange[];
     registered: ReadonlySet<string>;
+    issued: ReadonlyMap<string, number>;
   }) {
-    this.#sodium = parts.sodium;
     this.vaultId = parts.root.vaultId;
     this.recovery = parts.root.recovery;
+    this.#index = parts.index;
     this.trusted = parts.trusted;
     this.conflicts = parts.conflicts;
     this.revoked = parts.revoked;
@@ -129,17 +151,23 @@ export class Registry {
     this.devices = parts.devices;
     this.ignored = parts.ignored;
     this.events = parts.events;
-    this.#certificates = parts.certificates;
+    this.recoveryChanges = parts.recoveryChanges;
     this.#registered = parts.registered;
+    this.#issued = parts.issued;
   }
 
   isTrusted(deviceId: string): boolean {
     return this.trusted.has(deviceId);
   }
 
-  /** A device that some certificate or statement registered (trusted, revoked or conflicted). */
+  /** A device that some certificate chain registered (trusted, revoked or conflicted). */
   isRegistered(deviceId: string): boolean {
     return this.#registered.has(deviceId);
+  }
+
+  /** Certificates by `issuer` that count (pairing refuses once it reaches MAX_CERTS_PER_ISSUER). */
+  certificatesIssuedBy(issuer: string): number {
+    return this.#issued.get(issuer) ?? 0;
   }
 
   /**
@@ -152,18 +180,18 @@ export class Registry {
       : this.trusted.get(deviceId)?.signPublicKey;
 
   /**
-   * The key a statement written by `device` at `position` (cursor after its batch) verifies with:
-   * the trusted key, or for a revoked device its key at revocation when the statement is before
-   * the cut. Undefined otherwise (untrusted, or a revoked device's statement at or after its cut).
+   * The keys a statement written by `device` at `position` (cursor after its batch) may verify
+   * with: the trusted key, or for a revoked device its certified keys when the statement lies
+   * before its cut. Empty otherwise (untrusted, conflicted, or a revoked device after its cut).
    */
-  statementKey(device: string, position: SegmentCursor): Uint8Array | undefined {
+  statementKeys(device: string, position: SegmentCursor): readonly Uint8Array[] {
     const trusted = this.trusted.get(device);
-    if (trusted) return trusted.signPublicKey;
+    if (trusted) return [trusted.signPublicKey];
     const revocation = this.revoked.get(device);
-    if (revocation && comparePositions(position, revocation.cut) <= 0) {
-      return revocation.signPublicKey?.slice();
+    if (revocation && beforeCut(position, revocation.cut)) {
+      return revocation.signPublicKeys.map((k) => k.slice());
     }
-    return undefined;
+    return [];
   }
 
   /** Trusted devices and the revocation count once `devices` are revoked too (before writing it). */
@@ -173,26 +201,15 @@ export class Registry {
   } {
     const fresh = devices.filter((d) => this.#registered.has(d) && !this.revoked.has(d));
     if (fresh.length === 0) return { trusted: this.trusted, revocationCount: this.revocationCount };
-    const revokedIds = new Set([...this.revoked.keys(), ...fresh]);
-    const check = verifyCertificates(
-      this.#sodium,
-      this.vaultId,
-      this.recovery.signPublicKey,
-      this.#certificates,
-      revokedIds,
-    );
+    const check = this.#index.verify(new Set([...this.revoked.keys(), ...fresh]));
     return { trusted: check.devices, revocationCount: this.revocationCount + 1 };
   }
 }
 
-interface Decoded<T> {
-  readonly event: LogEvent;
-  readonly data: T;
-}
-
 /**
- * Folds the registry events of a vault (other event types are skipped). Never throws on log
- * content: malformed, forged or late statements are ignored and listed in `ignored`.
+ * Folds the registry events of a vault (other event types are skipped; lease events are read only
+ * as the revokers' attested knowledge). Never throws on log content: malformed, forged, capped or
+ * late statements are ignored and listed in `ignored`.
  */
 export function foldRegistry(
   sodium: Sodium,
@@ -202,168 +219,201 @@ export function foldRegistry(
 ): Registry {
   const verify = options.verify ?? verifyStatement;
   const ignored: IgnoredStatement[] = [];
-  const { unique, duplicates } = dedupe(events.filter(isRegistryEvent));
-  for (const eid of duplicates) ignored.push({ eid, reason: "duplicate_eid" });
+  const unique = exactUnique(events.filter((e) => REGISTRY_TYPES.has(e.type)));
 
   const added: Decoded<DeviceAddedData>[] = [];
   const revocations: Decoded<DeviceRevokedData>[] = [];
+  const changes: Decoded<RecoveryChangedData>[] = [];
   for (const event of unique) {
-    const data =
-      event.v !== 1
-        ? undefined
-        : event.type === DEVICE_ADDED
-          ? decodeDeviceAdded(event.data)
-          : decodeDeviceRevoked(event.data);
-    if (!data) {
+    if (event.v !== 1) {
       ignored.push({ eid: event.eid, reason: "malformed" });
-    } else if ("certificate" in data) {
-      added.push({ event, data });
+    } else if (event.type === DEVICE_ADDED) {
+      const data = decodeDeviceAdded(event.data);
+      if (data) added.push({ event, data });
+      else ignored.push({ eid: event.eid, reason: "malformed" });
+    } else if (event.type === DEVICE_REVOKED) {
+      const data = decodeDeviceRevoked(event.data);
+      if (data) revocations.push({ event, data });
+      else ignored.push({ eid: event.eid, reason: "malformed" });
     } else {
-      revocations.push({ event, data });
+      const data = decodeRecoveryChanged(event.data);
+      if (data) changes.push({ event, data });
+      else ignored.push({ eid: event.eid, reason: "malformed" });
     }
   }
 
-  const certificates = [
-    ...(options.bootstrapCertificates ?? []).map((c) => c.slice()),
-    ...added.map((a) => fromHex(a.data.certificate)),
+  // --- Certificates: bootstrap ones always count; logged ones within the per-issuer cap.
+  const cache = options.certificateCache ?? new CertificateCache();
+  const { certificates, issued } = cappedCertificates(
+    sodium,
+    root,
+    cache,
+    options.bootstrapCertificates ?? [],
+    added,
+  );
+  const index = new CertificateIndex(
+    sodium,
+    root.vaultId,
+    root.recovery.signPublicKey,
+    certificates,
+    {
+      cache,
+      maxDevices: MAX_DEVICES,
+    },
+  );
+  const all = index.closure(new Set());
+  // Registered = certified through a valid chain ignoring revocations (conflicted ids included).
+  const registered = new Set(all.ids());
+
+  const recoveryKeyFor = (eid: string): Uint8Array[] => [
+    root.recovery.signPublicKey,
+    ...(root.previous ?? []).filter((p) => p.ratified.has(eid)).map((p) => p.keys.signPublicKey),
   ];
-  const trustWith = (revoked: ReadonlySet<string>) =>
-    verifyCertificates(sodium, root.vaultId, root.recovery.signPublicKey, certificates, revoked);
-  const unrevoked = trustWith(new Set());
-  // Registered = certified through a valid chain at some point (revocations ignored). A bare
-  // `device.added` naming an uncertified id registers nothing, so revoking such an id never counts.
-  const registered = new Set<string>([...unrevoked.devices.keys(), ...unrevoked.conflicts]);
-
-  const revoked = new Map<string, Revocation>();
-  let count = 0;
-  let trust = unrevoked;
-  const afterCut = (event: LogEvent) => {
-    const r = revoked.get(event.writer);
-    return r !== undefined && comparePositions(event.position, r.cut) > 0;
+  const verifies = (event: LogEvent, sig: string, keys: readonly Uint8Array[]) => {
+    const body = statementBody(root.vaultId, event.type, event.eid, event.data);
+    const signature = fromHex(sig);
+    return keys.find((k) => verify("cashu/registry/v1", body, signature, k));
   };
-  for (const { event, data } of revocations) {
-    if (afterCut(event)) {
-      ignored.push({ eid: event.eid, reason: "after_revocation" });
-      continue;
-    }
-    const key = signerKey(
-      root,
-      data.signer,
-      event.writer,
-      (id) => trust.devices.get(id)?.signPublicKey,
-    );
-    if (!key) {
-      ignored.push({ eid: event.eid, reason: "untrusted_signer" });
-      continue;
-    }
-    const body = statementBody(root.vaultId, event.type, event.eid, event.data);
-    if (!verify("cashu/registry/v1", body, fromHex(data.sig), key)) {
-      ignored.push({ eid: event.eid, reason: "bad_signature" });
-      continue;
-    }
-    const targets = data.devices.filter((d) => registered.has(d.device) && !revoked.has(d.device));
-    if (targets.length === 0) {
-      ignored.push({ eid: event.eid, reason: "no_effect" });
-      continue;
-    }
-    count += 1;
-    for (const t of targets) {
-      revoked.set(t.device, {
-        device: t.device,
-        eid: event.eid,
-        signer: data.signer,
-        cut: t.cut,
-        index: count,
-        signPublicKey: trust.devices.get(t.device)?.signPublicKey,
-      });
-    }
-    trust = trustWith(new Set(revoked.keys()));
-  }
 
-  const devices = new Map<string, DeviceRecord>();
-  for (const { event, data } of added) {
-    if (afterCut(event)) {
-      ignored.push({ eid: event.eid, reason: "after_revocation" });
-      continue;
-    }
-    const key = signerKey(root, data.signer, event.writer, (id) => {
-      const t = trust.devices.get(id);
-      if (t) return t.signPublicKey;
-      const r = revoked.get(id);
-      return r && comparePositions(event.position, r.cut) <= 0 ? r.signPublicKey : undefined;
-    });
-    if (!key) {
+  // --- Revocations: verify first (forged copies never displace genuine ones), then dedupe.
+  const verified: Rev[] = [];
+  for (const { event, data } of revocations) {
+    const isRecovery = data.signer === RECOVERY_SIGNER_ID;
+    if (!isRecovery && data.signer !== event.writer) {
       ignored.push({ eid: event.eid, reason: "untrusted_signer" });
       continue;
     }
-    const body = statementBody(root.vaultId, event.type, event.eid, event.data);
-    if (!verify("cashu/registry/v1", body, fromHex(data.sig), key)) {
+    if (!data.devices.some((d) => registered.has(d.device))) {
+      ignored.push({ eid: event.eid, reason: "no_effect" }); // cheap check first: no signature work
+      continue;
+    }
+    const keys = isRecovery
+      ? recoveryKeyFor(event.eid)
+      : all.keysOf(data.signer).map((k) => k.signPublicKey);
+    if (keys.length === 0) {
+      ignored.push({ eid: event.eid, reason: "untrusted_signer" });
+      continue;
+    }
+    const key = verifies(event, data.sig, keys);
+    if (!key) {
       ignored.push({ eid: event.eid, reason: "bad_signature" });
       continue;
     }
-    // Names are kept for revoked and subtree-cut devices too (the owner must recognise them), so
-    // the declared keys are checked against the certified keys ignoring revocations.
-    const known = trust.devices.get(data.device) ?? unrevoked.devices.get(data.device);
-    const keysMatch =
-      known !== undefined &&
-      equalBytes(known.signPublicKey, fromHex(data.signPublicKey)) &&
-      equalBytes(known.boxPublicKey, fromHex(data.boxPublicKey));
+    verified.push({
+      id: 0,
+      event,
+      signer: data.signer,
+      recovery: isRecovery,
+      key: isRecovery ? undefined : key,
+      targets: data.devices.map((d) => ({ device: d.device, cut: d.cut })),
+    });
+  }
+  const deduped = dedupeVerified(verified, ignored);
+
+  const { counted, effective, revoked, revokedIds } = resolveRevocations({
+    root,
+    events,
+    verified: deduped,
+    registered,
+    index,
+    all,
+    verify,
+    ignored,
+  });
+  const trust = index.verify(revokedIds);
+
+  // Keys a statement of `device` at `position` may verify with (trusted, or revoked before its cut).
+  const statementKeys = (device: string, position: SegmentCursor): Uint8Array[] => {
+    const t = trust.devices.get(device);
+    if (t) return [t.signPublicKey];
+    const r = revoked.get(device);
+    return r && beforeCut(position, r.cut) ? [...r.signPublicKeys] : [];
+  };
+
+  // --- Names (cosmetic): any authentic `device.added` whose declared keys match a certified pair.
+  const devices = new Map<string, DeviceRecord>();
+  const acceptedAdds: LogEvent[] = [];
+  for (const { event, data } of [...added].sort((a, b) => cmp(a.event.eid, b.event.eid))) {
+    const keys =
+      data.signer === RECOVERY_SIGNER_ID
+        ? recoveryKeyFor(event.eid)
+        : data.signer === event.writer
+          ? statementKeys(event.writer, event.position)
+          : [];
+    if (keys.length === 0) {
+      const r = revoked.get(event.writer);
+      ignored.push({
+        eid: event.eid,
+        reason: r && data.signer === event.writer ? "after_revocation" : "untrusted_signer",
+      });
+      continue;
+    }
+    const declaredSign = fromHex(data.signPublicKey);
+    const declaredBox = fromHex(data.boxPublicKey);
+    const keysMatch = all
+      .keysOf(data.device)
+      .some(
+        (k) => equalBytes(k.signPublicKey, declaredSign) && equalBytes(k.boxPublicKey, declaredBox),
+      );
     if (!keysMatch) {
       ignored.push({ eid: event.eid, reason: "key_mismatch" });
       continue;
     }
+    if (!verifies(event, data.sig, keys)) {
+      ignored.push({ eid: event.eid, reason: "bad_signature" });
+      continue;
+    }
+    acceptedAdds.push(event);
     if (!devices.has(data.device)) {
       devices.set(data.device, { deviceId: data.device, name: data.name, addedEid: event.eid });
     }
   }
 
+  // --- Recovery-key changes signed under this root (VaultDevices decides which one to pin).
+  const recoveryChanges: RecoveryChange[] = [];
+  for (const { event, data } of changes) {
+    const keys = data.signer === event.writer ? statementKeys(event.writer, event.position) : [];
+    if (keys.length === 0 || !verifies(event, data.sig, keys)) {
+      ignored.push({
+        eid: event.eid,
+        reason: keys.length === 0 ? "untrusted_signer" : "bad_signature",
+      });
+      continue;
+    }
+    recoveryChanges.push({ event, data });
+  }
+
   return new Registry({
-    sodium,
     root,
+    index,
     trusted: trust.devices,
     conflicts: trust.conflicts,
     revoked,
-    revocationCount: count,
+    revocationCount: counted.length,
     devices,
     ignored,
-    events: [...added, ...revocations].map((d) => d.event).sort(byHlc),
-    certificates,
+    events: [
+      ...acceptedAdds,
+      ...effective.map((r) => r.event),
+      ...recoveryChanges.map((c) => c.event),
+    ].sort(byHlc),
+    recoveryChanges: recoveryChanges.sort((a, b) => cmp(a.event.eid, b.event.eid)),
     registered,
+    issued,
   });
 }
 
-/** Statements are signed by their writer, or by the recovery identity (vault creation, restore). */
-function signerKey(
-  root: TrustRoot,
-  signer: string,
-  writer: string,
-  deviceKey: (id: string) => Uint8Array | undefined,
-): Uint8Array | undefined {
-  if (signer === RECOVERY_SIGNER_ID) return root.recovery.signPublicKey;
-  if (signer !== writer) return undefined;
-  return deviceKey(signer);
-}
-
-/**
- * Sorts by (hlc, eid) and keeps the first event of each eid; a second event with the same eid and a
- * different body is corruption (events.md 2), reported and ignored.
- */
-export function dedupe(events: readonly LogEvent[]): { unique: LogEvent[]; duplicates: string[] } {
-  const sorted = [...events].sort(byHlc);
-  const seen = new Map<string, string>();
-  const unique: LogEvent[] = [];
-  const duplicates: string[] = [];
-  for (const e of sorted) {
-    const fingerprint = fingerprintOf(e);
-    const first = seen.get(e.eid);
-    if (first === undefined) {
-      seen.set(e.eid, fingerprint);
-      unique.push(e);
-    } else if (first !== fingerprint) {
-      duplicates.push(e.eid);
-    }
+/** Drops exact re-deliveries (same eid, writer, position and content). */
+function exactUnique(events: readonly LogEvent[]): LogEvent[] {
+  const seen = new Set<string>();
+  const out: LogEvent[] = [];
+  for (const e of events) {
+    const key = `${e.eid}|${e.writer}|${e.position.seg}:${e.position.offset}|${fingerprintOf(e)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
   }
-  return { unique, duplicates };
+  return out;
 }
 
 function fingerprintOf(e: LogEvent): string {

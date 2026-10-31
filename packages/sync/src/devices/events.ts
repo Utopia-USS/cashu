@@ -5,7 +5,9 @@
 //   body = lp(vault id) | lp(type) | lp(eid) | lp(canonical JSON of data without "sig")
 // so a statement cannot be moved to another vault, retyped, re-keyed under another eid or edited.
 // `device.keysRotated` carries crypto's signed wraps (`wrapKeys`), which authenticate themselves.
-// The HLC is not signed (the engine stamps it after the command built the event).
+// The HLC is not signed (the engine stamps it after the command built the event), so nothing in the
+// registry or the lease chain is decided by it: revocations by stream positions (registry.ts), the
+// lease by its `prev` links (lease.ts); the HLC only breaks ties between otherwise equal candidates.
 
 import type { InboundBatch, SegmentCursor, UnstampedEvent } from "../carrier.js";
 import {
@@ -14,7 +16,7 @@ import {
   RECOVERY_SIGNER_ID,
   type RecoveryIdentity,
 } from "../crypto/index.js";
-import { type Hlc, isHlc } from "../hlc.js";
+import type { Hlc } from "../hlc.js";
 import {
   type CanonicalValue,
   canonicalJson,
@@ -26,7 +28,10 @@ import {
   toHex,
   utf8,
 } from "./bytes.js";
+import { comparePositions } from "./positions.js";
 import { SIGNATURE_BYTES, type StatementContext, signStatement } from "./statements.js";
+
+export { comparePositions };
 
 export const DEVICE_ADDED = "device.added";
 export const DEVICE_REVOKED = "device.revoked";
@@ -34,6 +39,7 @@ export const KEYS_ROTATED = "device.keysRotated";
 export const LEASE_CLAIMED = "lease.claimed";
 export const LEASE_RENEWED = "lease.renewed";
 export const LEASE_RELEASED = "lease.released";
+export const RECOVERY_CHANGED = "device.recoveryChanged";
 
 /** Every event type this module defines is at schema version 1. */
 export const DEVICE_EVENT_VERSION = 1;
@@ -41,13 +47,15 @@ export const DEVICE_EVENT_VERSION = 1;
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 const MAX_NAME = 64;
 const MAX_LIST = 256;
+/** Largest number of devices a list in a statement may name (the registry admits at most this many). */
+export const MAX_DEVICES = 1024;
 const CERT_HEX = 2 * (1 + 16 + 16 + 32 + 32 + 64);
 const MAX_WRAP_HEX = 2 * 64 * 1024;
 
 /**
- * One event as the store hands it over after applying a batch (`logEventsFromBatch`). `writer` and
- * `position` come from the segment (authenticated as frame AAD): `position` is the cursor after the
- * batch that carried the event, so an event is before a cut `c` exactly when `position <= c`.
+ * One event as the store hands it over (`logEventsFromBatch`). `writer` and `position` come from the
+ * segment (authenticated as frame AAD): `position` is the cursor after the batch that carried the
+ * event, so an event is before a cut `c` exactly when `beforeCut(position, c)` (positions.ts).
  */
 export interface LogEvent {
   readonly eid: string;
@@ -73,10 +81,6 @@ export function logEventsFromBatch(batch: InboundBatch): LogEvent[] {
 
 export function isUlid(value: unknown): value is string {
   return typeof value === "string" && ULID.test(value);
-}
-
-export function comparePositions(a: SegmentCursor, b: SegmentCursor): number {
-  return a.seg - b.seg || a.offset - b.offset;
 }
 
 /** Fold order of the log (events.md 2): HLC, then eid. */
@@ -117,12 +121,18 @@ export interface KeysRotatedData {
   readonly wraps: Readonly<Record<string, string>>;
 }
 
-/** Per writer device: the highest HLC of that device's stream the lease holder had applied. */
-export type Watermark = Readonly<Record<string, Hlc>>;
+/**
+ * Per writer device: the cursor up to which the lease event's writer had applied that device's
+ * stream (positions.ts: the cursor after the last applied batch). Cursors, not HLCs: a stream's
+ * cursor order is exact, a writer-chosen HLC is not (review M3).
+ */
+export type Watermark = Readonly<Record<string, SegmentCursor>>;
 
 export interface LeaseClaimData {
   readonly device: string;
-  /** Wall-clock ms (the claimer's clock) until which the lease is held. */
+  /** The claimer's wall clock (ms) when it wrote the claim. */
+  readonly at: number;
+  /** Wall-clock ms (the claimer's clock) until which the lease is held; `until - at <= MAX`. */
   readonly until: number;
   readonly watermark: Watermark;
   /** Eid of the last valid lease event the claimer saw (null: none yet). Compare-and-set. */
@@ -132,6 +142,7 @@ export interface LeaseClaimData {
 
 export interface LeaseRenewData {
   readonly device: string;
+  readonly at: number;
   readonly until: number;
   readonly watermark: Watermark;
   readonly prev: string;
@@ -140,8 +151,38 @@ export interface LeaseRenewData {
 
 export interface LeaseReleaseData {
   readonly device: string;
+  readonly at: number;
   readonly watermark: Watermark;
   readonly prev: string;
+  readonly sig: string;
+}
+
+/** Recovery public keys as a statement carries them (lowercase hex). */
+export interface RecoveryKeysHex {
+  readonly box: string;
+  readonly sign: string;
+}
+
+/**
+ * The owner replaced the recovery words (crypto README n1). Signed by a trusted device (writer =
+ * signer) AND authorized by the recovery identity it replaces (`authorization`: the old words sign
+ * the statement without `sig` / `authorization`), so neither a stolen device alone nor leaked old
+ * words alone can move the trust root. Carries the replaced keys (`from`), the new keys (`to`), the new base
+ * wrap (the whole ring as of the change, signed by the NEW recovery identity, sealed for its box
+ * key), certificates by the new recovery identity for every device trusted at the change (trust is
+ * rooted at the recovery key, so the old chains end with it), and the eids of the old-key-signed
+ * registry statements the changer had accepted (they keep counting; any other statement signed with
+ * the old words is ignored from then on, so a leaked old phrase is worthless).
+ */
+export interface RecoveryChangedData {
+  readonly from: RecoveryKeysHex;
+  readonly to: RecoveryKeysHex;
+  readonly baseWrap: string;
+  readonly certificates: readonly string[];
+  readonly ratified: readonly string[];
+  readonly signer: string;
+  /** Signature of the replaced recovery identity over `recoveryChangeAuthorizationBody`. */
+  readonly authorization: string;
   readonly sig: string;
 }
 
@@ -223,16 +264,23 @@ export function buildKeysRotated(
   return { t: KEYS_ROTATED, v: DEVICE_EVENT_VERSION, i: eid, d: { wraps: record } };
 }
 
+function watermarkJson(w: Watermark): { [device: string]: CanonicalValue } {
+  const out: { [device: string]: CanonicalValue } = {};
+  for (const [device, c] of Object.entries(w)) out[device] = { seg: c.seg, offset: c.offset };
+  return out;
+}
+
 export function buildLeaseClaim(
   identity: DeviceIdentity,
   vaultId: string,
   eid: string,
-  fields: { until: number; watermark: Watermark; prev: string | null },
+  fields: { at: number; until: number; watermark: Watermark; prev: string | null },
 ): UnstampedEvent {
   return signed(identity, "cashu/lease/v1", vaultId, LEASE_CLAIMED, eid, {
     device: identity.deviceId,
+    at: fields.at,
     until: fields.until,
-    watermark: { ...fields.watermark },
+    watermark: watermarkJson(fields.watermark),
     prev: fields.prev,
   });
 }
@@ -241,12 +289,13 @@ export function buildLeaseRenewal(
   identity: DeviceIdentity,
   vaultId: string,
   eid: string,
-  fields: { until: number; watermark: Watermark; prev: string },
+  fields: { at: number; until: number; watermark: Watermark; prev: string },
 ): UnstampedEvent {
   return signed(identity, "cashu/lease/v1", vaultId, LEASE_RENEWED, eid, {
     device: identity.deviceId,
+    at: fields.at,
     until: fields.until,
-    watermark: { ...fields.watermark },
+    watermark: watermarkJson(fields.watermark),
     prev: fields.prev,
   });
 }
@@ -255,12 +304,63 @@ export function buildLeaseRelease(
   identity: DeviceIdentity,
   vaultId: string,
   eid: string,
-  fields: { watermark: Watermark; prev: string },
+  fields: { at: number; watermark: Watermark; prev: string },
 ): UnstampedEvent {
   return signed(identity, "cashu/lease/v1", vaultId, LEASE_RELEASED, eid, {
     device: identity.deviceId,
-    watermark: { ...fields.watermark },
+    at: fields.at,
+    watermark: watermarkJson(fields.watermark),
     prev: fields.prev,
+  });
+}
+
+/** What the replaced recovery identity signs: the change without `sig` and `authorization`. */
+export function recoveryChangeAuthorizationBody(
+  vaultId: string,
+  eid: string,
+  data: Readonly<Record<string, unknown>>,
+): Uint8Array {
+  const { authorization: _a, ...rest } = data;
+  return concat(
+    lp(utf8("recovery-change-authorization")),
+    statementBody(vaultId, RECOVERY_CHANGED, eid, rest),
+  );
+}
+
+export function buildRecoveryChanged(
+  signer: DeviceIdentity,
+  current: RecoveryIdentity,
+  vaultId: string,
+  eid: string,
+  fields: {
+    from: { boxPublicKey: Uint8Array; signPublicKey: Uint8Array };
+    to: { boxPublicKey: Uint8Array; signPublicKey: Uint8Array };
+    baseWrap: Uint8Array;
+    certificates: readonly Uint8Array[];
+    ratified: readonly string[];
+  },
+): UnstampedEvent {
+  if (fields.certificates.length === 0 || fields.certificates.length > MAX_DEVICES) {
+    throw new RangeError("certify 1-1024 devices");
+  }
+  const unsigned = {
+    from: { box: toHex(fields.from.boxPublicKey), sign: toHex(fields.from.signPublicKey) },
+    to: { box: toHex(fields.to.boxPublicKey), sign: toHex(fields.to.signPublicKey) },
+    baseWrap: toHex(fields.baseWrap),
+    certificates: fields.certificates.map(toHex),
+    ratified: [...new Set(fields.ratified)].sort(),
+    signer: signer.deviceId,
+  };
+  const authorization = toHex(
+    signStatement(
+      current,
+      "cashu/registry/v1",
+      recoveryChangeAuthorizationBody(vaultId, eid, unsigned),
+    ),
+  );
+  return signed(signer, "cashu/registry/v1", vaultId, RECOVERY_CHANGED, eid, {
+    ...unsigned,
+    authorization,
   });
 }
 
@@ -298,7 +398,23 @@ function isWatermark(value: unknown): value is Watermark {
   if (!isRecord(value)) return false;
   const entries = Object.entries(value);
   return (
-    entries.length <= MAX_LIST && entries.every(([device, hlc]) => isDeviceId(device) && isHlc(hlc))
+    entries.length <= MAX_DEVICES &&
+    entries.every(([device, cursor]) => isDeviceId(device) && isCursor(cursor))
+  );
+}
+
+function decodeWatermark(value: Watermark): Watermark {
+  const out: Record<string, SegmentCursor> = {};
+  for (const [device, c] of Object.entries(value)) out[device] = { seg: c.seg, offset: c.offset };
+  return out;
+}
+
+function isRecoveryKeys(value: unknown): value is RecoveryKeysHex {
+  return (
+    isRecord(value) &&
+    hasExactly(value, ["box", "sign"]) &&
+    isHex(value.box, 32) &&
+    isHex(value.sign, 32)
   );
 }
 
@@ -311,7 +427,7 @@ function isSig(value: unknown): value is string {
   return isHex(value, SIGNATURE_BYTES);
 }
 
-function isUntil(value: unknown): value is number {
+function isTime(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) > 0;
 }
 
@@ -388,52 +504,101 @@ export function decodeKeysRotated(
 export function decodeLeaseClaim(
   data: Readonly<Record<string, unknown>>,
 ): LeaseClaimData | undefined {
-  if (!hasExactly(data, ["device", "until", "watermark", "prev", "sig"])) return undefined;
-  const { device, until, watermark, prev, sig } = data;
+  if (!hasExactly(data, ["device", "at", "until", "watermark", "prev", "sig"])) return undefined;
+  const { device, at, until, watermark, prev, sig } = data;
   if (
     typeof device !== "string" ||
     !isDeviceId(device) ||
-    !isUntil(until) ||
+    !isTime(at) ||
+    !isTime(until) ||
     !isWatermark(watermark) ||
     !(prev === null || isUlid(prev)) ||
     !isSig(sig)
   ) {
     return undefined;
   }
-  return { device, until, watermark, prev, sig };
+  return { device, at, until, watermark: decodeWatermark(watermark), prev, sig };
 }
 
 export function decodeLeaseRenewal(
   data: Readonly<Record<string, unknown>>,
 ): LeaseRenewData | undefined {
-  if (!hasExactly(data, ["device", "until", "watermark", "prev", "sig"])) return undefined;
-  const { device, until, watermark, prev, sig } = data;
+  if (!hasExactly(data, ["device", "at", "until", "watermark", "prev", "sig"])) return undefined;
+  const { device, at, until, watermark, prev, sig } = data;
   if (
     typeof device !== "string" ||
     !isDeviceId(device) ||
-    !isUntil(until) ||
+    !isTime(at) ||
+    !isTime(until) ||
     !isWatermark(watermark) ||
     !isUlid(prev) ||
     !isSig(sig)
   ) {
     return undefined;
   }
-  return { device, until, watermark, prev, sig };
+  return { device, at, until, watermark: decodeWatermark(watermark), prev, sig };
 }
 
 export function decodeLeaseRelease(
   data: Readonly<Record<string, unknown>>,
 ): LeaseReleaseData | undefined {
-  if (!hasExactly(data, ["device", "watermark", "prev", "sig"])) return undefined;
-  const { device, watermark, prev, sig } = data;
+  if (!hasExactly(data, ["device", "at", "watermark", "prev", "sig"])) return undefined;
+  const { device, at, watermark, prev, sig } = data;
   if (
     typeof device !== "string" ||
     !isDeviceId(device) ||
+    !isTime(at) ||
     !isWatermark(watermark) ||
     !isUlid(prev) ||
     !isSig(sig)
   ) {
     return undefined;
   }
-  return { device, watermark, prev, sig };
+  return { device, at, watermark: decodeWatermark(watermark), prev, sig };
+}
+
+export function decodeRecoveryChanged(
+  data: Readonly<Record<string, unknown>>,
+): RecoveryChangedData | undefined {
+  const keys = [
+    "from",
+    "to",
+    "baseWrap",
+    "certificates",
+    "ratified",
+    "signer",
+    "authorization",
+    "sig",
+  ];
+  if (!hasExactly(data, keys)) return undefined;
+  const { from, to, baseWrap, certificates, ratified, signer, authorization, sig } = data;
+  if (
+    !isRecoveryKeys(from) ||
+    !isRecoveryKeys(to) ||
+    !isHex(baseWrap) ||
+    baseWrap.length > MAX_WRAP_HEX ||
+    !Array.isArray(certificates) ||
+    certificates.length === 0 ||
+    certificates.length > MAX_DEVICES ||
+    !certificates.every((c) => typeof c === "string" && c.length === CERT_HEX && isHex(c)) ||
+    !Array.isArray(ratified) ||
+    ratified.length > MAX_DEVICES * 4 ||
+    !ratified.every(isUlid) ||
+    typeof signer !== "string" ||
+    !isDeviceId(signer) ||
+    !isSig(authorization) ||
+    !isSig(sig)
+  ) {
+    return undefined;
+  }
+  return {
+    authorization,
+    from: { box: from.box, sign: from.sign },
+    to: { box: to.box, sign: to.sign },
+    baseWrap,
+    certificates: [...certificates] as string[],
+    ratified: [...ratified] as string[],
+    signer,
+    sig,
+  };
 }

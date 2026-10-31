@@ -1,11 +1,18 @@
 // Multi-device simulation for the devices tests (synthetic data only). Not exported from the package.
 //
 // Each simulated device holds its own identity, ring, `VaultDevices` state, HLC clock (with its own
-// skew against the simulated true time) and its own append-only stream of batches. A shared remote
-// keeps every pushed batch; `pull` hands a device the batches it has not seen, in per-device order,
-// as the engine would.
+// skew against the simulated true time) and its own append-only stream of batches. One batch is one
+// frame here, sealed under the writer's active key (its key order is recorded with the batch). A
+// shared remote keeps every pushed batch (and lets a test rewrite one, as untrusted storage can).
+//
+// A device models the store + codec contract of guard.ts: it downloads every batch in per-device
+// order, passes the statements of EVERY downloaded batch to `VaultDevices.ingest` (also batches the
+// guard rejects), and applies a batch's data only through the guard: per writer, the accepted data
+// is the longest prefix that passes `guard.check`; when an ingest reports rejected frames, the
+// device drops that writer's data after the reported position and re-applies from there.
 
 import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
+import { START_CURSOR } from "../carrier.js";
 import {
   createDeviceIdentity,
   createRecoveryKey,
@@ -17,11 +24,13 @@ import {
   recoveryIdentity,
   type Sodium,
 } from "../crypto/index.js";
-import { formatHlc, type Hlc, HybridClock } from "../hlc.js";
+import { formatHlc, type Hlc, HybridClock, parseHlc } from "../hlc.js";
 import { buildDeviceAdded, type LogEvent } from "./events.js";
-import type { OwnLeaseRecord } from "./lease.js";
+import type { FrameRejection, KeyOrder } from "./guard.js";
+import type { LeaseLocal, OwnLeaseRecord } from "./lease.js";
 import { PairingInviter, PairingJoiner } from "./pairing.js";
 import { type PairingLink, runInviter, runJoiner } from "./pairingLink.js";
+import { comparePositions } from "./positions.js";
 import { MemoryProvenanceStore } from "./provenance.js";
 import { recordPairingProvenance } from "./rotation.js";
 import { VaultDevices } from "./vaultDevices.js";
@@ -47,11 +56,16 @@ export function hlcAt(deviceId: string, wall: number, counter = 0): Hlc {
 }
 
 export const START_TIME = Date.UTC(2026, 9, 31, 12, 0, 0);
+const MAX_SKEW = 5 * 60 * 1000;
 
 export interface Batch {
   readonly device: string;
   readonly events: readonly LogEvent[];
+  /** Start of the batch's frame (frame AAD offset) and the cursor after it. */
+  readonly start: SegmentCursor;
   readonly cursor: SegmentCursor;
+  /** The key the writer sealed it under. */
+  readonly key: KeyOrder;
 }
 
 export class SimRemote {
@@ -62,8 +76,23 @@ export class SimRemote {
   publish(batch: Batch): void {
     const list = this.batches.get(batch.device) ?? [];
     if (!list.some((b) => b.cursor.offset === batch.cursor.offset)) list.push(batch);
+    list.sort((x, y) => comparePositions(x.cursor, y.cursor));
     this.batches.set(batch.device, list);
   }
+
+  /** Untrusted storage replaces a stored batch (a device rewriting its own frame, review A1b). */
+  replace(batch: Batch): void {
+    const list = this.batches.get(batch.device) ?? [];
+    this.batches.set(
+      batch.device,
+      list.map((b) => (b.cursor.offset === batch.cursor.offset ? batch : b)),
+    );
+  }
+}
+
+export interface WriteOptions {
+  /** Override the HLC of the i-th event (a writer backdating its stamps). */
+  readonly hlc?: (i: number) => Hlc;
 }
 
 export class SimDevice {
@@ -73,16 +102,23 @@ export class SimDevice {
   readonly provenance = new MemoryProvenanceStore();
   readonly stream: Batch[] = [];
   readonly own = new Map<string, OwnLeaseRecord>();
-  /** Highest applied HLC per writer device (the lease watermark input). */
-  readonly applied = new Map<string, Hlc>();
-  /** Applied cursor per writer device. */
+  /** Data-applied cursor per writer device (the store's view cursors; lease watermarks). */
   readonly cursors = new Map<string, SegmentCursor>();
+  /** Every rejection the guard reported on this device. */
+  readonly rejections: FrameRejection[] = [];
   skewMs: number;
   lastPullAt: number | undefined;
   devices!: VaultDevices;
+  #bootstrap: readonly Uint8Array[] = [];
   #clock: HybridClock;
   #pushed = 0;
   #offset = 0;
+  /** Downloaded batches per writer, in stream order (statements already ingested). */
+  readonly #downloaded = new Map<string, Batch[]>();
+  /** Accepted data per writer: the batches whose data is in this device's view. */
+  readonly #accepted = new Map<string, Batch[]>();
+  /** Peers whose latest events were more than the skew ahead of this clock (HLC warnings). */
+  readonly #farAhead = new Map<string, boolean>();
 
   constructor(name: string, remote: SimRemote, skewMs = 0, identity?: DeviceIdentity) {
     this.name = name;
@@ -102,6 +138,11 @@ export class SimDevice {
     return this.devices.ring;
   }
 
+  /** Lease watermark input: the data-applied cursors. */
+  get applied(): ReadonlyMap<string, SegmentCursor> {
+    return this.cursors;
+  }
+
   /** This device's wall clock. */
   now(): number {
     return this.remote.time + this.skewMs;
@@ -112,6 +153,7 @@ export class SimDevice {
     bootstrapCertificates: readonly Uint8Array[],
     recovering?: { highestRecoveryEpoch: number },
   ): void {
+    this.#bootstrap = bootstrapCertificates;
     this.devices = new VaultDevices({
       sodium,
       identity: this.identity,
@@ -123,25 +165,31 @@ export class SimDevice {
     });
   }
 
-  /** Stamps and appends one batch to this device's own stream and applies it locally. */
-  write(events: readonly UnstampedEvent[]): LogEvent[] {
+  /** Stamps and appends one batch to this device's own stream and applies it. */
+  write(events: readonly UnstampedEvent[], options: WriteOptions = {}): Batch {
+    const writer = this.id;
     this.#offset += 100;
+    const start = { seg: 1, offset: this.#offset - 100 };
     const cursor = { seg: 1, offset: this.#offset };
-    const stamped: LogEvent[] = events.map((e) => ({
+    const stamped: LogEvent[] = events.map((e, i) => ({
       eid: e.i,
-      hlc: this.#clock.tick(),
-      writer: this.id,
+      hlc: options.hlc ? options.hlc(i) : this.#clock.tick(),
+      writer,
       position: cursor,
       type: e.t,
       v: e.v,
       data: e.d,
     }));
-    this.stream.push({ device: this.id, events: stamped, cursor });
+    const active = this.devices.ring.active;
+    const key = { epoch: active.epoch, generation: active.generation };
+    const batch: Batch = { device: writer, events: stamped, start, cursor, key };
+    this.stream.push(batch);
     for (const e of stamped) {
       if (e.type.startsWith("lease.")) this.own.set(e.eid, { writtenAt: this.now() });
     }
-    this.#apply(this.id, stamped, cursor);
-    return stamped;
+    this.#download(batch);
+    this.#settle();
+    return batch;
   }
 
   /** Pushes own unpublished batches to the remote. */
@@ -157,17 +205,19 @@ export class SimDevice {
     this.#pushed = this.stream.length;
   }
 
-  /** Pulls every batch this device has not applied, in per-device order. */
+  /** Downloads every batch not downloaded yet, in per-device order (`filter` false stops a stream). */
   pull(filter: (b: Batch) => boolean = () => true): void {
-    for (const [device, list] of this.remote.batches) {
+    for (const device of [...this.remote.batches.keys()].sort()) {
       if (device === this.id) continue;
-      const from = this.cursors.get(device);
-      for (const b of [...list].sort((x, y) => x.cursor.offset - y.cursor.offset)) {
-        if (from && b.cursor.offset <= from.offset) continue;
+      const have = this.#downloaded.get(device) ?? [];
+      const last = have[have.length - 1]?.cursor;
+      for (const b of this.remote.batches.get(device) ?? []) {
+        if (last && comparePositions(b.cursor, last) <= 0) continue;
         if (!filter(b)) break;
-        this.#apply(device, b.events, b.cursor);
+        this.#download(b);
       }
     }
+    this.#settle();
     this.lastPullAt = this.now();
   }
 
@@ -176,22 +226,91 @@ export class SimDevice {
     this.pull();
   }
 
-  #apply(device: string, events: readonly LogEvent[], cursor: SegmentCursor): void {
-    for (const e of events) {
-      this.#clock.receive(e.hlc);
-      const prev = this.applied.get(device);
-      if (prev === undefined || prev < e.hlc) this.applied.set(device, e.hlc);
-    }
-    this.cursors.set(device, cursor);
-    this.devices?.ingest(events);
+  /** Forgets the view and the devices state and downloads everything again (a store rebuild). */
+  rebuild(): void {
+    this.#downloaded.clear();
+    this.#accepted.clear();
+    this.cursors.clear();
+    const ring = this.devices.ring;
+    this.attach(ring, this.#bootstrap);
+    for (const b of this.stream) this.#download(b);
+    this.pull();
   }
 
-  local() {
+  #download(b: Batch): void {
+    const list = this.#downloaded.get(b.device) ?? [];
+    list.push(b);
+    this.#downloaded.set(b.device, list);
+    for (const e of b.events) {
+      if (e.writer === this.id) continue;
+      const pt = this.now();
+      const warning = this.#clock.receive(e.hlc);
+      this.#farAhead.set(e.writer, warning !== undefined || parseHlc(e.hlc).wall > pt + MAX_SKEW);
+    }
+    if (!this.devices) return;
+    const report = this.devices.ingest(b.events);
+    this.#reject(report.rejectedFrames);
+  }
+
+  #reject(rejections: readonly FrameRejection[]): void {
+    for (const r of rejections) {
+      this.rejections.push(r);
+      const kept = (this.#accepted.get(r.device) ?? []).filter(
+        (b) => comparePositions(b.cursor, r.after) <= 0,
+      );
+      this.#accepted.set(r.device, kept);
+      const last = kept[kept.length - 1];
+      if (last) this.cursors.set(r.device, last.cursor);
+      else this.cursors.delete(r.device);
+    }
+  }
+
+  /** Extends every writer's accepted data as far as the guard allows (until nothing changes). */
+  #settle(): void {
+    if (!this.devices) return;
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const [device, list] of this.#downloaded) {
+        const accepted = this.#accepted.get(device) ?? [];
+        const last = accepted[accepted.length - 1]?.cursor;
+        for (const b of list) {
+          if (last && comparePositions(b.cursor, last) <= 0) continue;
+          const at = { device, start: b.start, end: b.cursor };
+          if (!this.devices.guard.check(at, b.key).ok) break;
+          this.devices.guard.record(at, b.key);
+          accepted.push(b);
+          this.cursors.set(device, b.cursor);
+          changed = true;
+        }
+        this.#accepted.set(device, accepted);
+      }
+      if (changed) this.#reject(this.devices.guard.recheck());
+    }
+  }
+
+  /** Accepted data as `writer@offset`, sorted (for convergence checks). */
+  acceptedData(): string[] {
+    const out: string[] = [];
+    for (const [device, list] of this.#accepted) {
+      for (const b of list) out.push(`${device}@${b.cursor.offset}`);
+    }
+    return out.sort();
+  }
+
+  /** The clock is suspect when most peers heard from are more than the skew ahead of it. */
+  clockOk(): boolean {
+    const flags = [...this.#farAhead.values()];
+    return flags.filter(Boolean).length * 2 <= flags.length;
+  }
+
+  local(): LeaseLocal {
     return {
       me: this.id,
       now: this.now(),
       lastPullAt: this.lastPullAt,
       own: (eid: string) => this.own.get(eid),
+      firstSeen: (eid: string) => this.devices.firstSeen(eid),
+      clockOk: this.clockOk(),
     };
   }
 }
@@ -284,8 +403,8 @@ export function memoryLinks(
 }
 
 /**
- * Pairs a new simulated device through the real protocol over an in-memory link (the owner
- * confirms because both screens match), writes the inviter's `device.added` and pushes it.
+ * Pairs a new simulated device through the real protocol over an in-memory link (the owner types
+ * the code the new device shows into the inviter), writes the inviter's `device.added` and pushes it.
  */
 export async function pairDevice(inviter: SimDevice, name: string, skewMs = 0): Promise<SimDevice> {
   const joiner = new SimDevice(name, inviter.remote, skewMs);
@@ -308,7 +427,7 @@ export async function pairDevice(inviter: SimDevice, name: string, skewMs = 0): 
   const [inv, join] = await Promise.all([
     runInviter(created.value.inviter, links.inviter, {
       now: () => inviter.now(),
-      confirmSas: async (sas) => sas === joinerSas,
+      enterCode: async () => joinerSas,
       eid: newEid,
     }),
     runJoiner(started.value.joiner, started.value.hello, links.joiner, {
@@ -318,7 +437,9 @@ export async function pairDevice(inviter: SimDevice, name: string, skewMs = 0): 
       },
     }),
   ]);
-  if (!inv.ok || !join.ok) throw new Error("pairing failed");
+  if (!inv.ok || !join.ok) {
+    throw new Error(`pairing failed: ${inv.ok ? "" : inv.reason} ${join.ok ? "" : join.reason}`);
+  }
   inviter.write([inv.value.deviceAdded]);
   inviter.push();
   joiner.attach(join.value.ring, [join.value.certificate]);
@@ -327,3 +448,5 @@ export async function pairDevice(inviter: SimDevice, name: string, skewMs = 0): 
   joiner.pull();
   return joiner;
 }
+
+export { START_CURSOR };

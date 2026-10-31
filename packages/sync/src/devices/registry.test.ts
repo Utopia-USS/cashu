@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { UnstampedEvent } from "../carrier.js";
 import { certifyDevice, createDeviceIdentity, type DeviceIdentity } from "../crypto/index.js";
 import { buildDeviceAdded, buildDeviceRevoked, type LogEvent } from "./events.js";
+import { PairingInviter } from "./pairing.js";
 import { foldRegistry, type Registry } from "./registry.js";
 import {
   createSimVault,
@@ -64,7 +65,7 @@ describe("device registry", () => {
   it("the fold depends only on the set of events (any order, duplicates)", async () => {
     const { a, b, c } = await vaultOfThree();
     const vaultId = a.ring.vaultId;
-    // B revokes C while C revokes B: the first by (hlc, eid) wins, the other signer is then revoked.
+    // B revokes C while C revokes B, each after the other's cut: no order decides, both are revoked.
     const bRevokesC = stamp(
       buildDeviceRevoked(b.identity, vaultId, newEid(), [
         { device: c.id, cut: { seg: 1, offset: 0 } },
@@ -84,14 +85,18 @@ describe("device registry", () => {
     const events = [...allEvents(a, b, c), bRevokesC, cRevokesB];
     const reference = fold(a, events);
     expect(reference.revoked.has(c.id)).toBe(true);
-    expect(reference.revoked.has(b.id)).toBe(false);
-    expect(reference.revocationCount).toBe(1);
-    expect(reference.ignored).toContainEqual({ eid: cRevokesB.eid, reason: "after_revocation" });
+    expect(reference.revoked.has(b.id)).toBe(true);
+    expect(reference.revoked.get(b.id)?.contested).toBe(true);
+    expect(reference.revocationCount).toBe(2);
+    expect([...reference.trusted.keys()]).toEqual([a.id]);
     for (let seed = 1; seed <= 25; seed++) {
       const r = fold(a, shuffle([...events, ...events.slice(0, seed % events.length)], seed));
       expect([...r.trusted.keys()].sort()).toEqual([...reference.trusted.keys()].sort());
       expect([...r.revoked.keys()]).toEqual([...reference.revoked.keys()]);
-      expect(r.revocationCount).toBe(1);
+      expect([...r.revoked.values()].map((x) => x.cut)).toEqual(
+        [...reference.revoked.values()].map((x) => x.cut),
+      );
+      expect(r.revocationCount).toBe(2);
     }
   });
 
@@ -149,7 +154,7 @@ describe("device registry", () => {
     expect(fold(a, [...allEvents(a, b, c), revokeB, added]).isTrusted(c.id)).toBe(true);
   });
 
-  it("names need the declared keys to match the certified ones; duplicate eids are corruption", async () => {
+  it("names need the declared keys to match the certified ones; an edited copy of a statement never verifies", async () => {
     const { a, b, c } = await vaultOfThree();
     const vaultId = a.ring.vaultId;
     const other = createDeviceIdentity(sodium);
@@ -171,7 +176,7 @@ describe("device registry", () => {
     const duplicate = { ...first, data: { ...first.data, name: "changed" } };
     const r = fold(a, [...original, lying, duplicate]);
     expect(r.devices.get(c.id)?.name).toBe("laptop");
-    expect(r.ignored.map((i) => i.reason).sort()).toEqual(["duplicate_eid", "key_mismatch"]);
+    expect(r.ignored.map((i) => i.reason).sort()).toEqual(["bad_signature", "key_mismatch"]);
   });
 
   it("a revocation of an unknown device does not count; the recovery identity may revoke from any writer", async () => {
@@ -201,5 +206,150 @@ describe("device registry", () => {
     expect(r.revocationCount).toBe(1); // one event revoking three devices is one epoch step
     expect(r.trusted.size).toBe(0);
     expect(r.trustedSigner("0".repeat(32))).toEqual(a.ring.recovery.signPublicKey);
+  });
+});
+
+describe("registry caps and cut boundary (review M4, m3)", () => {
+  it("counts at most 64 certificates per issuer and 64 revocations per signer; unsigned junk counts toward nothing", async () => {
+    const { creator: a } = createSimVault();
+    const vaultId = a.ring.vaultId;
+    const puppets = Array.from({ length: 70 }, () => createDeviceIdentity(sodium));
+    const adds = puppets.map((p, i) =>
+      stamp(
+        buildDeviceAdded(
+          a.identity,
+          vaultId,
+          newEid(),
+          subjectOf(p),
+          `puppet ${i}`,
+          certifyDevice(sodium, a.identity, subjectOf(p), vaultId),
+        ),
+        a.id,
+        START_TIME + 1000 + i,
+        1000 + i,
+      ),
+    );
+    const revokes = puppets.map((_, i) =>
+      stamp(
+        buildDeviceRevoked(a.identity, vaultId, newEid(), [
+          { device: puppets[i % 64]?.deviceId ?? "", cut: { seg: 1, offset: 0 } },
+        ]),
+        a.id,
+        START_TIME + 2000 + i,
+        2000 + i,
+      ),
+    );
+    // Junk: unsigned statements naming fresh ids, in a stranger's stream.
+    const stranger = createDeviceIdentity(sodium).deviceId;
+    const junk: LogEvent[] = Array.from({ length: 2000 }, (_, i) => {
+      const p = createDeviceIdentity(sodium, undefined);
+      const e = buildDeviceAdded(
+        a.identity,
+        vaultId,
+        newEid(),
+        subjectOf(p),
+        "junk",
+        new Uint8Array(225),
+      );
+      return stamp(
+        { ...e, d: { ...e.d, sig: "00".repeat(64) } },
+        stranger,
+        START_TIME + 5000 + i,
+        5000 + i,
+      );
+    });
+    const base = allEvents(a);
+    const r = fold(a, [...base, ...adds, ...junk]);
+    expect(r.certificatesIssuedBy(a.id)).toBe(64);
+    expect(puppets.filter((p) => r.isTrusted(p.deviceId))).toHaveLength(64);
+    expect(r.isRegistered(puppets[69]?.deviceId ?? "")).toBe(false); // the issuer's 65th onward
+    expect(r.events.length).toBe(1 + 64); // only authentic statements: no junk
+    const withRevocations = fold(a, [...base, ...adds, ...revokes, ...junk]);
+    expect(withRevocations.revocationCount).toBe(64);
+    expect(withRevocations.ignored.filter((i) => i.reason === "capped")).toHaveLength(6);
+    // Pairing refuses at the cap rather than certify a 65th device that would not count.
+    a.devices.ingest([...adds, ...junk]);
+    expect(
+      PairingInviter.create({
+        sodium,
+        identity: a.identity,
+        ring: a.ring,
+        registry: a.devices.registry,
+        now: a.now(),
+      }),
+    ).toMatchObject({ ok: false, reason: "capacity" });
+  });
+
+  it("forged certificates naming a real issuer never consume its quota", async () => {
+    const { creator: a } = createSimVault();
+    const vaultId = a.ring.vaultId;
+    const stranger = createDeviceIdentity(sodium).deviceId;
+    const forged: LogEvent[] = Array.from({ length: 200 }, (_, i) => {
+      const p = createDeviceIdentity(sodium);
+      const cert = certifyDevice(sodium, a.identity, subjectOf(p), vaultId);
+      cert.fill(7, cert.length - 64); // keep "signer = A", break the signature
+      const e = buildDeviceAdded(a.identity, vaultId, newEid(), subjectOf(p), "forged", cert);
+      // Half sit in a stranger's stream, half in frames forged under A's id.
+      return stamp(e, i % 2 === 0 ? stranger : a.id, START_TIME + i, 10_000 + i);
+    });
+    a.devices.ingest(forged);
+    expect(a.devices.registry.certificatesIssuedBy(a.id)).toBe(0);
+    const b = await pairDevice(a, "phone");
+    expect(a.devices.registry.certificatesIssuedBy(a.id)).toBe(1);
+    expect(b.devices.registry.isTrusted(b.id)).toBe(true);
+  });
+
+  it("junk in the log never blocks pairing (the welcome carries authentic statements only)", async () => {
+    const { creator: a } = createSimVault();
+    const vaultId = a.ring.vaultId;
+    const stranger = createDeviceIdentity(sodium).deviceId;
+    const junk: LogEvent[] = Array.from({ length: 5000 }, (_, i) => {
+      const e = buildDeviceRevoked(a.identity, vaultId, newEid(), [
+        { device: a.id, cut: { seg: 1, offset: 0 } },
+      ]);
+      return stamp({ ...e, d: { ...e.d, sig: "11".repeat(64) } }, stranger, START_TIME + i, i + 1);
+    });
+    a.devices.ingest(junk);
+    expect(a.devices.registry.isTrusted(a.id)).toBe(true);
+    const b = await pairDevice(a, "phone");
+    expect(b.devices.registry.isTrusted(b.id)).toBe(true);
+  });
+
+  it("one cut definition: a cut inside a batch rejects that batch's data and its statements alike", async () => {
+    const { a, b, c } = await vaultOfThree();
+    const vaultId = a.ring.vaultId;
+    // C is revoked with a cut in the middle of the batch [100, 200).
+    const revokeC = stamp(
+      buildDeviceRevoked(a.identity, vaultId, newEid(), [
+        { device: c.id, cut: { seg: 1, offset: 150 } },
+      ]),
+      a.id,
+      START_TIME + 1e7,
+      1e6,
+    );
+    const inside = stamp(
+      buildDeviceRevoked(c.identity, vaultId, newEid(), [
+        { device: b.id, cut: { seg: 1, offset: 0 } },
+      ]),
+      c.id,
+      START_TIME + 1,
+      200, // the batch ends at 200, after the cut
+    );
+    const r = fold(a, [...allEvents(a, b, c), revokeC, inside]);
+    expect(r.isTrusted(b.id)).toBe(true);
+    expect(r.ignored).toContainEqual({ eid: inside.eid, reason: "after_revocation" });
+    a.devices.ingest([revokeC, inside]);
+    const guard = a.devices.guard;
+    const key = { epoch: 0, generation: 1 };
+    expect(
+      guard.check(
+        { device: c.id, start: { seg: 1, offset: 100 }, end: { seg: 1, offset: 200 } },
+        key,
+      ),
+    ).toEqual({ ok: false, reason: "revoked_writer" });
+    expect(
+      guard.check({ device: c.id, start: { seg: 1, offset: 0 }, end: { seg: 1, offset: 100 } }, key)
+        .ok,
+    ).toBe(true);
   });
 });

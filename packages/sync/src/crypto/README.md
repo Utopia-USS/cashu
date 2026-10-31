@@ -37,8 +37,11 @@ Generations run 1..2^31 - 1 and epochs 0..2^20; one generation holds at most
 `MAX_KEYS_PER_GENERATION` (8) keys. Payloads are encoded key by key (no argument spread), so every ring
 the acceptance policy admits can be saved and wrapped (a 50k-key ring encodes, pairs and rotates in a
 test).
-Every signature has its own context (`"cashu/wrap/v3"`, `"cashu/cert/v1"`); S28d frame signatures must
-use another one, and nothing signs raw caller bytes.
+Every signature has its own context (`"cashu/wrap/v3"`, `"cashu/cert/v1"`, and for S29's statements
+`"cashu/registry/v1"`, `"cashu/lease/v1"`, `"cashu/pairing/v1"`); no context is a prefix of another, an
+unknown context is refused (`RangeError`), and nothing signs raw caller bytes. `verifyContextSignature`
+checks `context | body`; `verifySignature` is the raw strict check. S28d frame signatures must add a
+new context that neither extends nor is a prefix of these (for example `"cashu/frame-sig/v1"`).
 
 ## What consumers rely on
 
@@ -170,15 +173,36 @@ use another one, and nothing signs raw caller bytes.
   with keys read from storage. Rings from raw key material (`keyringFromKeys`) exist only on
   `@cashu/sync/testing`, for tests and vectors.
 - **S29 notes from the final review (n1-n3)**:
-  - n1: the signed "recovery key changed" event must carry a new recovery-signed base wrap (the whole
-    ring as of the change, signed by the NEW recovery identity, with `createVaultWithRecovery`'s shape);
-    otherwise the new words cannot seed a ring, because a fresh base takes only `RECOVERY_SIGNER_ID`.
+  - n1 (implemented in S29b, `devices/recoveryChange.ts`): `device.recoveryChanged` carries a new
+    recovery-signed base wrap (the whole ring as of the change, signed by the NEW recovery identity, with
+    `createVaultWithRecovery`'s shape, checked with `verifyWrapSignature` by devices that cannot open
+    it), certificates by the new identity for every trusted device, and the eids of old-key statements
+    that keep counting. It is signed by a trusted device AND authorized by the OLD recovery identity, so
+    neither a stolen device alone (which could otherwise move the root to words its thief holds and make
+    every revocation of it worthless) nor leaked old words alone can move the root. Each device pins the
+    new keys locally (`replaceRecoveryKey`) and never goes back; `unwrapKeys(..., { previousRecoveryKeys })`
+    merges wraps a sender made before it applied the change.
   - n2: `acceptEpoch` is also where the per-sender rotation rate limit lives (see ring growth above).
   - n3: a recovering device has no signed revocation count. Its `acceptEpoch` accepts only epochs up to
     the highest epoch seen in recovery-wrapped keys + 1, and it must rotate before writing any frame.
     Otherwise a stolen, still-certified device can climb one epoch per wrap toward `MAX_EPOCH` (2^20),
     where the mandated "rotate above every epoch seen" would throw (impractical, about a million wraps,
     but unbounded).
+
+### S29b (review fixes): what devices/ relies on from crypto
+
+- `CertificateIndex` (cert.ts) parses a vault's certificates once; `closure(excluded)` is a breadth-first
+  search (linear in certificates), `verify(revoked)` resolves conflicts exactly like
+  `verifyCertificates` (which now delegates to it), `CertificateClosure.certifiedKeysOf(id)` gives a cut
+  device's key (what verifies its statements before its cut), `maxDevices` admits at most that many ids
+  breadth first, and a shared `CertificateCache` remembers every signature check across folds (bounded,
+  oldest dropped first). `parseCertificate`, `isSignedBy` and `wrapSenderId` read without trusting.
+- Residual risks the registry documents (devices/registry.ts, revocations.ts): positions cannot tell who
+  revoked first, so a revoked device that revokes its revoker after its cut takes it down too (fail
+  closed; the owner's recovery words raise the honest device's cut and re-certify); a rewrite of a
+  device's own pre-cut frame is only seen by devices that read it (fresh joiners, rebuilds) until S28d
+  signed heads; a revoked device can still forge a trusted writer's frames at positions that writer has
+  not reached until it writes at the new key (S28d per-device frame signatures).
 
 ### Key storage
 
