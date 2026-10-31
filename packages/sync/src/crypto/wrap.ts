@@ -68,22 +68,30 @@ export interface Unwrapped {
 
 /** Where wraps for the vault's recovery key are sealed to. */
 export function recoveryRecipient(ring: Keyring): RecoveryRecipient {
-  return new RecoveryRecipient(INTERNAL, ring.recovery.boxPublicKey);
+  return new RecoveryRecipient(INTERNAL, ring.vaultId, ring.recovery.boxPublicKey);
 }
 
 const INTERNAL = Symbol("recovery-recipient");
 
 /** The vault's recovery key as a wrap recipient; its box key is the one pinned in the keyring. */
 export class RecoveryRecipient {
-  // ES private field: makes the type nominal and backs the runtime check in `is`.
+  // ES private fields: the type is nominal (backs `is`) and the key bytes cannot be changed in place.
   readonly #brand = true;
+  readonly #boxPublicKey: Uint8Array;
   readonly deviceId = RECOVERY_SIGNER_ID;
-  readonly boxPublicKey: Uint8Array;
+  /** The vault whose pinned recovery key this is; `wrapKeys` refuses any other vault. */
+  readonly vaultId: string;
 
   /** Not public API: use `recoveryRecipient(ring)`. */
-  constructor(token: typeof INTERNAL, boxPublicKey: Uint8Array) {
+  constructor(token: typeof INTERNAL, vaultId: string, boxPublicKey: Uint8Array) {
     if (token !== INTERNAL) throw new TypeError("use recoveryRecipient");
-    this.boxPublicKey = boxPublicKey.slice();
+    this.vaultId = vaultId;
+    this.#boxPublicKey = boxPublicKey.slice();
+  }
+
+  /** A copy of the pinned recovery X25519 key. */
+  get boxPublicKey(): Uint8Array {
+    return this.#boxPublicKey.slice();
   }
 
   /** True only for objects made by `recoveryRecipient` (survives no copy or spread). */
@@ -158,12 +166,18 @@ export function wrapKeys(
   if (!(TrustedDevice.is(recipient) || RecoveryRecipient.is(recipient))) {
     throw new TypeError("wrap recipients come from verifyCertificates or recoveryRecipient");
   }
-  checkRecipient(recipient);
-  checkRecipientList(recipient, recipients);
+  if (recipient.vaultId !== ring.vaultId) throw new CryptoError("vault_mismatch");
+  // One snapshot of the key: the bytes sealed for are the bytes signed.
+  const target: WrapRecipient = {
+    deviceId: recipient.deviceId,
+    boxPublicKey: recipient.boxPublicKey,
+  };
+  checkRecipient(target);
+  checkRecipientList(target, recipients);
   const payload = encodeKeyPayload(ring, kids);
   let sealed: Uint8Array;
   try {
-    sealed = sodium.seal(payload, recipient.boxPublicKey);
+    sealed = sodium.seal(payload, target.boxPublicKey);
   } finally {
     payload.fill(0);
   }
@@ -171,7 +185,7 @@ export function wrapKeys(
   const list = encodeRecipients(recipients);
   const signature = sender.sign(
     "cashu/wrap/v3",
-    signedMessage(ring.vaultId, senderId, recipient, list, sealed),
+    signedMessage(ring.vaultId, senderId, target, list, sealed),
   );
   return concat(Uint8Array.of(WRAP_VERSION), senderId, signature, list, sealed);
 }

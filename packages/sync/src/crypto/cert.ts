@@ -75,23 +75,44 @@ const INTERNAL = Symbol("trusted-device");
  * from verified certificates, never from a registry file in storage.
  */
 export class TrustedDevice {
-  // ES private field: makes the type nominal and backs the runtime check in `is`.
+  // ES private fields: the type is nominal (backs `is`) and the key bytes cannot be changed in place.
   readonly #brand = true;
+  readonly #signPublicKey: Uint8Array;
+  readonly #boxPublicKey: Uint8Array;
+  readonly #issuers: readonly string[];
   readonly deviceId: string;
-  readonly signPublicKey: Uint8Array;
-  readonly boxPublicKey: Uint8Array;
+  /** The vault whose certificates vouched for this device; `wrapKeys` refuses any other vault. */
+  readonly vaultId: string;
 
   /** Not public API: use `verifyCertificates`. */
   constructor(
     token: typeof INTERNAL,
+    vaultId: string,
     deviceId: string,
-    signPublicKey: Uint8Array,
-    boxPublicKey: Uint8Array,
+    keys: { signPublicKey: Uint8Array; boxPublicKey: Uint8Array },
+    issuers: readonly string[],
   ) {
     if (token !== INTERNAL) throw new TypeError("use verifyCertificates");
+    this.vaultId = vaultId;
     this.deviceId = deviceId;
-    this.signPublicKey = signPublicKey.slice();
-    this.boxPublicKey = boxPublicKey.slice();
+    this.#signPublicKey = keys.signPublicKey.slice();
+    this.#boxPublicKey = keys.boxPublicKey.slice();
+    this.#issuers = [...issuers];
+  }
+
+  /** A copy of the certified Ed25519 key. */
+  get signPublicKey(): Uint8Array {
+    return this.#signPublicKey.slice();
+  }
+
+  /** A copy of the certified X25519 key: the only box key wraps are sealed for. */
+  get boxPublicKey(): Uint8Array {
+    return this.#boxPublicKey.slice();
+  }
+
+  /** Signer ids (devices, or `RECOVERY_SIGNER_ID`) of the valid certificates that vouch for it. */
+  get issuers(): string[] {
+    return [...this.#issuers];
   }
 
   /** True only for objects made by `verifyCertificates` (survives no copy or spread). */
@@ -123,6 +144,7 @@ interface Node {
   id: string;
   signPublicKey: Uint8Array;
   boxPublicKey?: Uint8Array;
+  issuers?: string[];
 }
 
 function parse(cert: Uint8Array): ParsedCert | undefined {
@@ -158,6 +180,7 @@ export function verifyCertificates(
   vaultId: string,
   recoverySignPublicKey: Uint8Array,
   certs: readonly Uint8Array[],
+  revoked: ReadonlySet<string>,
 ): CertificateCheck {
   assertVaultId(vaultId);
   if (recoverySignPublicKey.length !== PUBLIC_KEY_BYTES) throw new CryptoError("bad_payload");
@@ -175,8 +198,10 @@ export function verifyCertificates(
     return ok;
   };
 
+  // Every candidate key pair reachable from the root, with the signer ids that vouch for it.
   const closure = (excluded: Set<string>): Map<string, Node> => {
     const reached = new Map<string, Node>([[nodeKey(root), root]]);
+    const issuers = new Map<string, Set<string>>();
     let changed = true;
     while (changed) {
       changed = false;
@@ -187,20 +212,27 @@ export function verifyCertificates(
           signPublicKey: c.signPublicKey,
           boxPublicKey: c.boxPublicKey,
         };
-        if (reached.has(nodeKey(subject))) return;
-        for (const signer of reached.values()) {
+        const key = nodeKey(subject);
+        const known = issuers.get(key) ?? new Set<string>();
+        if (known.has(c.signerId)) return;
+        for (const signer of [...reached.values()]) {
           if (signer.id === c.signerId && valid(index, c, signer)) {
-            reached.set(nodeKey(subject), subject);
+            if (!reached.has(key)) reached.set(key, subject);
+            known.add(c.signerId);
+            issuers.set(key, known);
             changed = true;
             return;
           }
         }
       });
     }
+    for (const [key, node] of reached) node.issuers = [...(issuers.get(key) ?? [])].sort();
     return reached;
   };
 
-  const excluded = new Set<string>();
+  // Revoked devices are cut from the start: untrusted, and no trust flows through them, so their
+  // whole certificate subtree loses trust unless another trusted path vouches for a device.
+  const excluded = new Set<string>(revoked);
   for (;;) {
     const byId = new Map<string, Node[]>();
     for (const n of closure(excluded).values()) {
@@ -211,10 +243,13 @@ export function verifyCertificates(
     if (fresh.length === 0) {
       const devices = new Map<string, TrustedDevice>();
       for (const [id, [n]] of byId) {
-        if (n?.boxPublicKey)
-          devices.set(id, new TrustedDevice(INTERNAL, id, n.signPublicKey, n.boxPublicKey));
+        if (n?.boxPublicKey) {
+          const keys = { signPublicKey: n.signPublicKey, boxPublicKey: n.boxPublicKey };
+          devices.set(id, new TrustedDevice(INTERNAL, vaultId, id, keys, n.issuers ?? []));
+        }
       }
-      return { devices, conflicts: [...excluded].sort() };
+      const conflicts = [...excluded].filter((id) => !revoked.has(id)).sort();
+      return { devices, conflicts };
     }
     for (const [id] of fresh) excluded.add(id);
   }

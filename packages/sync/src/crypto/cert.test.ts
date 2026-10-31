@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { certifyDevice, TrustedDevice, verifyCertificates } from "./cert.js";
-import { createDeviceIdentity, DeviceIdentity } from "./identity.js";
+import { createDeviceIdentity, DeviceIdentity, RECOVERY_SIGNER_ID } from "./identity.js";
 import { createKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
@@ -34,7 +34,9 @@ function bothOrders(
   rootKey: Uint8Array,
   certs: Uint8Array[],
 ): ReturnType<typeof verifyCertificates>[] {
-  return [certs, [...certs].reverse()].map((c) => verifyCertificates(sodium, vaultId, rootKey, c));
+  return [certs, [...certs].reverse()].map((c) =>
+    verifyCertificates(sodium, vaultId, rootKey, c, new Set()),
+  );
 }
 
 describe("certificates fail closed on conflicts (D13)", () => {
@@ -116,7 +118,13 @@ describe("certificates fail closed on conflicts (D13)", () => {
       certifyDevice(sodium, c, subjectOf(h), vaultId),
       certifyDevice(sodium, a, subjectOf(h), vaultId),
     ];
-    const { devices, conflicts } = verifyCertificates(sodium, vaultId, root.signPublicKey, certs);
+    const { devices, conflicts } = verifyCertificates(
+      sodium,
+      vaultId,
+      root.signPublicKey,
+      certs,
+      new Set(),
+    );
     expect(conflicts).toEqual([]);
     expect(devices.get(h.deviceId)?.signPublicKey).toEqual(h.signPublicKey);
   });
@@ -133,9 +141,9 @@ describe("certificates fail closed on conflicts (D13)", () => {
       certifyDevice(sodium, c, subjectOf(h), vaultId),
       certifyDevice(sodium, c, swapped, vaultId),
     ];
-    expect(verifyCertificates(sodium, vaultId, root.signPublicKey, certs).conflicts).toEqual([
-      h.deviceId,
-    ]);
+    expect(
+      verifyCertificates(sodium, vaultId, root.signPublicKey, certs, new Set()).conflicts,
+    ).toEqual([h.deviceId]);
   });
 });
 
@@ -149,7 +157,7 @@ describe("box keys only from certificates (D14)", () => {
       certifyDevice(sodium, root, subjectOf(desktop), vaultId),
       certifyDevice(sodium, desktop, subjectOf(phone), vaultId),
     ];
-    const { devices } = verifyCertificates(sodium, vaultId, root.signPublicKey, certs);
+    const { devices } = verifyCertificates(sodium, vaultId, root.signPublicKey, certs, new Set());
     const target = devices.get(phone.deviceId);
     if (!target) throw new Error("phone not trusted");
     expect(target.boxPublicKey).toEqual(phone.box.publicKey);
@@ -181,5 +189,78 @@ describe("box keys only from certificates (D14)", () => {
       "auth_failed",
     );
     expect(() => wrapKeys(sodium, ring, desktop, recoveryRecipient(ring))).not.toThrow();
+  });
+});
+
+describe("revocation cuts certificate subtrees (D17)", () => {
+  it("F1: a revoked device's certificates confer no trust; another trusted path still does", () => {
+    const { root, vaultId } = vault();
+    const [a, r, x, shared] = [0, 1, 2, 3].map(() => createDeviceIdentity(sodium)) as [
+      DeviceIdentity,
+      DeviceIdentity,
+      DeviceIdentity,
+      DeviceIdentity,
+    ];
+    const certs = [
+      certifyDevice(sodium, root, subjectOf(a), vaultId),
+      certifyDevice(sodium, a, subjectOf(r), vaultId),
+      // minted by R (certificates carry no time, so "after the revocation" is invisible):
+      certifyDevice(sodium, r, subjectOf(x), vaultId),
+      certifyDevice(sodium, r, subjectOf(shared), vaultId),
+      certifyDevice(sodium, a, subjectOf(shared), vaultId),
+    ];
+    const before = verifyCertificates(sodium, vaultId, root.signPublicKey, certs, new Set());
+    expect(before.devices.has(x.deviceId)).toBe(true);
+    expect(before.devices.get(shared.deviceId)?.issuers).toEqual([a.deviceId, r.deviceId].sort());
+
+    const after = verifyCertificates(
+      sodium,
+      vaultId,
+      root.signPublicKey,
+      certs,
+      new Set([r.deviceId]),
+    );
+    expect(after.devices.has(r.deviceId)).toBe(false);
+    expect(after.devices.has(x.deviceId)).toBe(false);
+    expect(after.devices.get(a.deviceId)?.issuers).toEqual([RECOVERY_SIGNER_ID]);
+    expect(after.devices.get(shared.deviceId)?.issuers).toEqual([a.deviceId]);
+    expect(after.conflicts).toEqual([]);
+  });
+});
+
+describe("recipients are bound to their vault and immutable (m3)", () => {
+  it("F5: a device certified in another vault is refused, and changing the key bytes changes nothing", () => {
+    const recovery = createRecoveryKey(sodium);
+    const root = recoveryIdentity(sodium, recovery.phrase);
+    const household = createKeyring(sodium, recovery.publicKeys);
+    const personal = createKeyring(sodium, recovery.publicKeys);
+    const [owner, partner, evil] = [0, 1, 2].map(() => createDeviceIdentity(sodium)) as [
+      DeviceIdentity,
+      DeviceIdentity,
+      DeviceIdentity,
+    ];
+    const inHousehold = verifyCertificates(
+      sodium,
+      household.vaultId,
+      root.signPublicKey,
+      [certifyDevice(sodium, root, subjectOf(partner), household.vaultId)],
+      new Set(),
+    ).devices.get(partner.deviceId);
+    if (!inHousehold) throw new Error("partner not trusted");
+    expect(code(() => wrapKeys(sodium, personal, owner, inHousehold))).toBe("vault_mismatch");
+    expect(code(() => wrapKeys(sodium, personal, owner, recoveryRecipient(household)))).toBe(
+      "vault_mismatch",
+    );
+
+    inHousehold.boxPublicKey.set(evil.box.publicKey);
+    expect(inHousehold.boxPublicKey).toEqual(partner.box.publicKey);
+    const wire = wrapKeys(sodium, household, owner, inHousehold);
+    const sealed = wire.subarray(1 + 16 + 64 + 2 + 16);
+    expect(() =>
+      sodium.sealOpen(sealed, evil.box.publicKey, evil.box.secretKey.expose()),
+    ).toThrow();
+    expect(
+      sodium.sealOpen(sealed, partner.box.publicKey, partner.box.secretKey.expose()).length,
+    ).toBeGreaterThan(0);
   });
 });

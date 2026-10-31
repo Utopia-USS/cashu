@@ -95,9 +95,13 @@ export function trustedTo(
   >[1] = testRoot,
 ): TrustedDevice {
   const cert = certifyDevice(sodium, root, subjectOf(d), vaultId);
-  const device = verifyCertificates(sodium, vaultId, root.signPublicKey, [cert]).devices.get(
-    d.deviceId,
-  );
+  const device = verifyCertificates(
+    sodium,
+    vaultId,
+    root.signPublicKey,
+    [cert],
+    new Set(),
+  ).devices.get(d.deviceId);
   if (!device) throw new Error("certificate did not verify");
   return device;
 }

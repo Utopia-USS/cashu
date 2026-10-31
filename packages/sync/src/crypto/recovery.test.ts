@@ -38,7 +38,13 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     recoverySignPublicKey: Uint8Array,
     certs: Uint8Array[],
   ): TrustedSigner {
-    const { devices } = verifyCertificates(sodium, vaultId, recoverySignPublicKey, certs);
+    const { devices } = verifyCertificates(
+      sodium,
+      vaultId,
+      recoverySignPublicKey,
+      certs,
+      new Set(),
+    );
     return (id) =>
       id === RECOVERY_SIGNER_ID ? recoverySignPublicKey : devices.get(id)?.signPublicKey;
   }
@@ -110,6 +116,7 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
       vaultId,
       identity.signPublicKey,
       certs,
+      new Set(),
     );
     expect([...devices.keys()]).toEqual([desktop.deviceId]);
     expect(conflicts).toEqual([]);
@@ -120,6 +127,7 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
         vaultId,
         identity.signPublicKey,
         [...certs].reverse(),
+        new Set(),
       ).devices.keys(),
     ]).toEqual([desktop.deviceId]);
 
