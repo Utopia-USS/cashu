@@ -3,15 +3,22 @@
 export { budgetModule } from "./budget/index.js";
 export { canonicalJson } from "./canonical.js";
 export { coreModule } from "./core/index.js";
-export type {
-  FoldContext,
-  FoldEvent,
-  FoldMembers,
-  IdentityClaim,
-  IdentityConflict,
-  IdentityKind,
-  Materializer,
-  ViewSql,
+export {
+  CONTRIBUTIONS,
+  type Contributions,
+  type DeriveContext,
+  type DerivedWrite,
+  type Deriver,
+  type DirtyPartitions,
+  type FoldContext,
+  type FoldEvent,
+  type FoldMembers,
+  type IdentityClaim,
+  type IdentityConflict,
+  type IdentityKind,
+  type Materializer,
+  type ModuleContributions,
+  type ViewSql,
 } from "./engine/types.js";
 export { type Decoded, decodeEnvelope, decodeWire, type ParkReason } from "./envelope.js";
 export * as v1 from "./events/v1/index.js";

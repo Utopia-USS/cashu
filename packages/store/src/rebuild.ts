@@ -31,6 +31,8 @@ export interface RebuildContext {
     decoded: Exclude<Decoded, { status: "rejected" }>,
     original: unknown,
   ) => Omit<LogRow, "seq">;
+  /** Every deriver's full derivation, after the full re-fold (S24 4.1). */
+  readonly deriveAll: (sql: ViewSql) => void;
 }
 
 /**
@@ -50,6 +52,7 @@ export function rebuildView(
   if (options.redecode === true || options.reindex === true) reindexRefs(ctx);
   ctx.identity.recompute(ctx.log, ctx.sql, true);
   for (const r of ctx.runners) r.refoldAll(ctx.sql);
+  ctx.deriveAll(ctx.sql);
 }
 
 /** Re-decode parked events (always) and every event (after a registry change). */

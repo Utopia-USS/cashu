@@ -11,6 +11,7 @@
 import type { DetGid } from "../gid.js";
 import { bulkIndexes, createIndexSql, indexName, type TableDef } from "../sql/ddl.js";
 import { foldContext, foldMembers, type StatementCache, type ViewIds } from "./context.js";
+import type { DirtyCollector } from "./derive.js";
 import type { IdentityService } from "./identity.js";
 import type { EventLog } from "./log.js";
 import {
@@ -112,6 +113,11 @@ export class MaterializerRunner {
   readonly #deps: FoldDeps;
   readonly #members: ReturnType<typeof foldMembers>;
   #hwm: string;
+  /**
+   * Record the partitions this runner folds (a deriver inputs it): set by the store when its module
+   * registry has a deriver listing this materializer. Off, the runner does no extra work.
+   */
+  track = false;
 
   constructor(mat: Materializer, deps: FoldDeps) {
     this.mat = mat;
@@ -155,17 +161,21 @@ export class MaterializerRunner {
   }
 
   /** Apply events that all sort after the high-water mark. */
-  append(events: readonly FoldEvent[], sql: ViewSql): void {
+  append(events: readonly FoldEvent[], sql: ViewSql, dirty?: DirtyCollector): void {
     const ctx = this.#ctx(sql);
     const sorted = [...events].sort(compareOrd);
-    for (const e of sorted) this.mat.apply(e, ctx);
+    const record = this.track && dirty !== undefined;
+    for (const e of sorted) {
+      if (record) dirty?.add(this.mat.id, this.mat.partitions(e, ctx));
+      this.mat.apply(e, ctx);
+    }
     sql.flush();
     const last = sorted[sorted.length - 1];
     if (last) this.#setHwm(ord(last));
   }
 
   /** Re-fold the partitions affected by `triggers` (new, re-ordered or state-flipped events). */
-  refoldPartitions(triggers: readonly FoldEvent[], sql: ViewSql): void {
+  refoldPartitions(triggers: readonly FoldEvent[], sql: ViewSql, dirty?: DirtyCollector): void {
     const ctx = this.#ctx(sql);
     const m = this.mat;
     const partitions = new Set<string>();
@@ -200,6 +210,7 @@ export class MaterializerRunner {
       }
     }
     const list = [...partitions];
+    if (this.track) dirty?.add(m.id, list);
     m.clear(list, ctx);
     this.#members.clear(list);
     const sorted = [...events.values()].sort(compareOrd);
@@ -214,7 +225,8 @@ export class MaterializerRunner {
    * indexes are dropped for the fold and built again after it (inside the same transaction, so no
    * reader sees a table without them).
    */
-  refoldAll(sql: ViewSql): void {
+  refoldAll(sql: ViewSql, dirty?: DirtyCollector): void {
+    if (this.track) dirty?.all(this.mat.id);
     const ctx = this.#ctx(sql);
     const stmts = this.#deps.stmts;
     const bulk = this.mat.tables.flatMap((t) => bulkIndexes(t).map((ix) => ({ t, ix })));

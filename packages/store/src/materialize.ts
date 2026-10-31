@@ -18,11 +18,19 @@ import type {
 import { canonicalJson, jsonEqual } from "./canonical.js";
 import { encodePayload } from "./engine/compact.js";
 import { StatementCache, TouchedTables, ViewIds, viewSql } from "./engine/context.js";
+import {
+  type DeriveDeps,
+  DirtyCollector,
+  deriveContext,
+  deriveEverything,
+  markContributions,
+  runDerivers,
+} from "./engine/derive.js";
 import { type FoldDeps, LazyRefs, MaterializerRunner } from "./engine/fold.js";
 import { conflictsKey, IdentityService } from "./engine/identity.js";
 import { deviceOf, EventLog, type LogRow, storedBody } from "./engine/log.js";
 import { type StateFlip, updateSuppression } from "./engine/suppression.js";
-import type { FoldEvent } from "./engine/types.js";
+import type { FoldEvent, ViewSql } from "./engine/types.js";
 import { type Decoded, decodeEnvelope, envelopeExtra } from "./envelope.js";
 import { detPartsOf } from "./events/v1/det-parts.js";
 import { fromWire } from "./events/v1/envelope.js";
@@ -114,6 +122,7 @@ export class Store {
   readonly #publicTables: readonly TableDef[];
   readonly #hub = new ChangeHub();
   readonly deps: FoldDeps;
+  readonly #deriveDeps: DeriveDeps;
 
   private constructor(opts: StoreOptions, events: EventRegistry, modules: ModuleRegistry) {
     this.vault = opts.vault;
@@ -136,6 +145,14 @@ export class Store {
       det,
     };
     this.#runners = modules.materializers.map((m) => new MaterializerRunner(m, this.deps));
+    const inputs = new Set(modules.derivers.flatMap((d) => d.inputs));
+    for (const r of this.#runners) r.track = inputs.has(r.mat.id);
+    this.#deriveDeps = {
+      det,
+      ids: this.#ids,
+      identity: this.#identity,
+      contributions: modules.contributions,
+    };
     for (const r of this.#runners) {
       for (const t of r.mat.handles) {
         const list = this.#runnerByType.get(t) ?? [];
@@ -469,6 +486,7 @@ export class Store {
     for (const t of change?.tables ?? []) touched.add(t);
 
     const sql = viewSql(this.#stmts, touched);
+    const dirty = new DirtyCollector();
     const byRunner = new Map<MaterializerRunner, StateFlip[]>();
     for (const f of flips) {
       if (f.from === "new" && f.to !== "applied") continue; // never folded, nothing to undo
@@ -484,15 +502,35 @@ export class Store {
         ((r.mat.identity ?? []).some((k) => change.roots.has(k)) ||
           (r.mat.accepted ?? []).some((k) => change.accepted.has(k)));
       if (full) {
-        r.refoldAll(sql);
+        r.refoldAll(sql, dirty);
         continue;
       }
       const mine = byRunner.get(r);
       if (!mine) continue;
       const events = mine.map((f) => f.event);
-      if (mine.every((f) => f.from === "new") && r.canAppend(events)) r.append(events, sql);
-      else r.refoldPartitions(events, sql);
+      if (mine.every((f) => f.from === "new") && r.canAppend(events)) r.append(events, sql, dirty);
+      else r.refoldPartitions(events, sql, dirty);
     }
+    if (this.modules.derivers.length === 0) return;
+    markContributions(dirty, touched.set, this.modules.contributions);
+    runDerivers(this.modules.derivers, dirty.partitions, deriveContext(this.#deriveDeps, sql));
+  }
+
+  /** Every deriver's full derivation, on `sql` (rebuild). */
+  #deriveAll(sql: ViewSql): void {
+    deriveEverything(this.modules.derivers, deriveContext(this.#deriveDeps, sql));
+  }
+
+  /**
+   * Run every deriver's `deriveAll` over the current view (one transaction) and return the tables it
+   * changed. The derived oracle of the tests (S24 6): after any apply this must change nothing, i.e.
+   * the incremental derivation equals the full one.
+   */
+  rederive(): { readonly touchedTables: ReadonlySet<string> } {
+    const touched = new TouchedTables(this.#internal);
+    this.driver.transaction(() => this.#deriveAll(viewSql(this.#stmts, touched)));
+    this.#hub.notify(touched.set);
+    return { touchedTables: touched.set };
   }
 
   // ------------------------------------------------------------------------------------------- //
@@ -521,6 +559,7 @@ export class Store {
           lazyRefs: this.deps.lazyRefs,
           sql: viewSql(this.#stmts, touched),
           logRow: (decoded, original) => this.#logRow(decoded, original),
+          deriveAll: (sql) => this.#deriveAll(sql),
         },
         options,
       );

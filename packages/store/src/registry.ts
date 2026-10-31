@@ -4,7 +4,13 @@
 import type { z } from "zod";
 import { canonicalJson } from "./canonical.js";
 import { membersTable } from "./engine/fold.js";
-import type { IdentityKind, Materializer } from "./engine/types.js";
+import {
+  CONTRIBUTIONS,
+  type Deriver,
+  type IdentityKind,
+  type Materializer,
+  type ModuleContributions,
+} from "./engine/types.js";
 import { type EventMeta, type EventType, META, PAYLOADS } from "./events/v1/catalog.js";
 import { createTableSql, type TableDef } from "./sql/ddl.js";
 import type { Payload, Upcaster } from "./upcast.js";
@@ -112,6 +118,10 @@ export interface StoreModule {
   readonly materializers: readonly Materializer[];
   readonly identityKinds?: readonly IdentityKind[];
   readonly events?: readonly EventVersionDef[];
+  /** Post-fold steps over several materializers' output (S24 4.1), run in registry order. */
+  readonly derivers?: readonly Deriver[];
+  /** What this module offers other modules' derivers without being imported (S24 4.2). */
+  readonly contributions?: ModuleContributions;
 }
 
 /** The resolved set of modules of one store: lookup by event type, conflicts rejected. */
@@ -119,6 +129,8 @@ export class ModuleRegistry {
   readonly modules: readonly StoreModule[];
   readonly materializers: readonly Materializer[];
   readonly identityKinds: readonly IdentityKind[];
+  readonly derivers: readonly Deriver[];
+  readonly contributions: readonly ModuleContributions[];
   readonly #byType = new Map<string, Materializer[]>();
 
   constructor(modules: readonly StoreModule[]) {
@@ -146,6 +158,9 @@ export class ModuleRegistry {
         tables.add(t.name);
       }
     }
+    this.derivers = modules.flatMap((m) => m.derivers ?? []);
+    this.contributions = modules.flatMap((m) => (m.contributions ? [m.contributions] : []));
+    checkDerivers(this.derivers, ids, tables);
   }
 
   materializersFor(type: string): readonly Materializer[] {
@@ -156,11 +171,12 @@ export class ModuleRegistry {
     return new Set(this.#byType.keys());
   }
 
-  /** Every view table: materializer tables, their partition indexes, identity kind tables. */
+  /** Every view table: materializer tables, their partition indexes, identity and deriver tables. */
   viewTables(): readonly TableDef[] {
     return [
       ...this.materializers.flatMap((m) => [...m.tables, membersTable(m)]),
       ...this.identityKinds.flatMap((k) => k.tables ?? []),
+      ...this.derivers.flatMap((d) => d.tables ?? []),
     ];
   }
 
@@ -169,7 +185,50 @@ export class ModuleRegistry {
     return canonicalJson({
       materializers: this.materializers.map((m) => [m.id, m.version]),
       identity: this.identityKinds.map((k) => [k.id, k.version]),
+      derivers: this.derivers.map((d) => [d.id, d.version]),
       ddl: this.viewTables().map(createTableSql),
     });
+  }
+}
+
+/**
+ * Deriver registry rules (S24 4.1): unique ids, own tables owned once, inputs that name a registered
+ * materializer (or `CONTRIBUTIONS`), every derived column written by exactly one deriver, and at most
+ * one row predicate per table. A row predicate is disjoint from the owning materializer's rows by
+ * construction (the deriver's rows carry its own key prefix, e.g. `dedup_hash LIKE 'cashleg:%'`).
+ */
+function checkDerivers(
+  derivers: readonly Deriver[],
+  materializerIds: ReadonlySet<string>,
+  tables: Set<string>,
+): void {
+  const ids = new Set<string>();
+  const columns = new Set<string>();
+  const rowTables = new Set<string>();
+  for (const d of derivers) {
+    if (ids.has(d.id) || materializerIds.has(d.id)) throw new RangeError(`duplicate id ${d.id}`);
+    ids.add(d.id);
+    if (d.inputs.length === 0) throw new RangeError(`deriver ${d.id} has no inputs`);
+    for (const input of d.inputs) {
+      if (input !== CONTRIBUTIONS && !materializerIds.has(input)) {
+        throw new RangeError(`deriver ${d.id}: unknown input ${input}`);
+      }
+    }
+    for (const t of d.tables ?? []) {
+      if (tables.has(t.name)) throw new RangeError(`table ${t.name} owned twice`);
+      tables.add(t.name);
+    }
+    for (const w of d.writes) {
+      if ("rows" in w) {
+        if (rowTables.has(w.table)) throw new RangeError(`rows of ${w.table} derived twice`);
+        rowTables.add(w.table);
+        continue;
+      }
+      for (const c of w.columns) {
+        const key = `${w.table}.${c}`;
+        if (columns.has(key)) throw new RangeError(`column ${key} derived twice`);
+        columns.add(key);
+      }
+    }
   }
 }

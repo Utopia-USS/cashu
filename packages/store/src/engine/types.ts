@@ -1,4 +1,5 @@
-// Contracts between the fold engine and the module materializers.
+// Contracts between the fold engine and the module materializers and derivers.
+import type { PaymentPattern } from "@cashu/domain/core";
 import type { DetGid } from "../gid.js";
 import type { TableDef } from "../sql/ddl.js";
 import type { SqlRunResult, SqlValue } from "../sql/driver.js";
@@ -121,6 +122,71 @@ export interface Materializer {
   /** Delete the rows (public and internal) of these partitions. */
   clear(partitions: readonly string[], ctx: FoldContext): void;
   apply(e: FoldEvent, ctx: FoldContext): void;
+}
+
+/** What a deriver writes: whole columns of a table, or the rows a SQL predicate selects (S24 4.1). */
+export type DerivedWrite =
+  | { readonly table: string; readonly columns: readonly string[] }
+  | { readonly table: string; readonly rows: string };
+
+/**
+ * Per input (a materializer id, or `CONTRIBUTIONS`): the partitions its runner folded in this apply
+ * (append: the events' partitions; partition re-fold: the closure it cleared), or `"all"` (a full
+ * re-fold, an identity root change, a touched contribution table). Inputs absent from the map did not
+ * change.
+ */
+export type DirtyPartitions = ReadonlyMap<string, ReadonlySet<string> | "all">;
+
+/** The dirty-input id of the cross-module contributions (any table a contribution reads touched). */
+export const CONTRIBUTIONS = "contributions";
+
+/**
+ * What a module contributes to another module's derivation without being imported by it (Python
+ * `core.modules`: `payment_patterns`, `not_subscription_categories`). `reads` names the view tables
+ * the contribution reads: touching one marks `CONTRIBUTIONS` dirty for every deriver that inputs it.
+ */
+export interface ModuleContributions {
+  readonly paymentPatterns?: (sql: ViewSql) => readonly PaymentPattern[];
+  readonly notSubscriptionCategories?: readonly string[];
+  readonly reads: readonly string[];
+}
+
+/** The contributions of every registered module, as a deriver reads them. */
+export interface Contributions {
+  paymentPatterns(): readonly PaymentPattern[];
+  notSubscriptionCategories(): ReadonlySet<string>;
+}
+
+/** What a deriver sees: the view (writes recorded per table for `touchedTables`), gids, identity. */
+export interface DeriveContext {
+  readonly sql: ViewSql;
+  readonly det: DetGid;
+  /** The view-local integer id of a gid (stable for the life of the view). */
+  id(gid: string): number;
+  resolve(kind: string, gid: string): string;
+  identityMembers(kind: string, root: string): readonly string[];
+  readonly contributions: Contributions;
+}
+
+/**
+ * A post-fold step that recomputes derived columns or rows from several materializers' output (S24
+ * 4.1, events.md 9). Runs after every materializer, in registry order, inside the apply transaction;
+ * each deriver sees the previous derivers' writes. Deterministic like a materializer: a function of
+ * the view its inputs produced, never of the previous derived values, a clock or randomness.
+ */
+export interface Deriver {
+  /** `<module>.<name>`, stable. */
+  readonly id: string;
+  /** Bump when the derivation changes: the view is rebuilt on the next open. */
+  readonly version: number;
+  /** Its internal tables. */
+  readonly tables?: readonly TableDef[];
+  readonly writes: readonly DerivedWrite[];
+  /** Materializer ids (and `CONTRIBUTIONS`) whose dirty partitions make it run. */
+  readonly inputs: readonly string[];
+  /** Re-derive what the dirty partitions can affect; must equal `deriveAll` restricted to them. */
+  derive(dirty: DirtyPartitions, ctx: DeriveContext): void;
+  deriveAll(ctx: DeriveContext): void;
 }
 
 export interface IdentityClaim {
