@@ -11,13 +11,7 @@ import { loadKeyring, saveKeyring } from "./keystore.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { InMemoryKeyStore } from "./testing.js";
 import { ctx, PLAINTEXT_MARKER, pairWith, samplePlain, sodium, trustedTo } from "./testkit.js";
-import {
-  openPairingWrap,
-  recoveryRecipient,
-  sealForPairing,
-  unwrapKeys,
-  wrapKeys,
-} from "./wrap.js";
+import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
 const written: string[] = [];
 

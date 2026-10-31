@@ -10,7 +10,7 @@ import { certifyDevice } from "./cert.js";
 import { fromHex, toHex, utf8 } from "./encoding.js";
 import { FRAME_HEADER_BYTES, openFrame, sealFrameWithNonce } from "./frame.js";
 import { createDeviceIdentity, DeviceIdentity } from "./identity.js";
-import { encodeKeyPayload, Keyring, KID_BYTES } from "./keys.js";
+import { encodeKeyPayload, KID_BYTES } from "./keys.js";
 import { recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
 import { keyringFromKeys } from "./testing.js";

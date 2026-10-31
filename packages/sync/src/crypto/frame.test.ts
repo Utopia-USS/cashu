@@ -8,7 +8,7 @@ import {
   padme,
   sealFrame,
 } from "./frame.js";
-import { createVaultId, Keyring, rotateKeyring } from "./keys.js";
+import { createVaultId, rotateKeyring } from "./keys.js";
 import type { Sodium } from "./sodium.js";
 import { keyringFromKeys } from "./testing.js";
 import {

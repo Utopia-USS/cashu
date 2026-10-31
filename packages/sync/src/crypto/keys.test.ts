@@ -17,13 +17,7 @@ import {
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { keyringFromKeys } from "./testing.js";
 import { code, GID_SALT, newRing, pairWith, sodium, testRecovery } from "./testkit.js";
-import {
-  openPairingWrap,
-  recoveryRecipient,
-  sealForPairing,
-  unwrapKeys,
-  wrapKeys,
-} from "./wrap.js";
+import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
 const gid = (ring: Keyring, input: string) => {
   const salt = ring.gidSalt();

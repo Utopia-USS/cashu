@@ -20,14 +20,7 @@ import {
   testRecovery,
   trustedTo,
 } from "./testkit.js";
-import {
-  openPairingWrap,
-  sealForPairing,
-  type TrustedSigner,
-  unwrapKeys,
-  WRAP_VERSION,
-  wrapKeys,
-} from "./wrap.js";
+import { type TrustedSigner, unwrapKeys, WRAP_VERSION, wrapKeys } from "./wrap.js";
 
 function trusting(...devices: DeviceIdentity[]): TrustedSigner {
   const keys = new Map(devices.map((d) => [d.deviceId, d.signPublicKey]));
