@@ -7,9 +7,17 @@
 //
 // Partitions: one per resolved key (`k:<K>`), one per decision (`d:<gid>`). A decision belongs to
 // its own partition and to every linked episode's, so re-folds keep both consistent.
+//
+// S25 completion (spec 4.8): a refresh (and the alias path of an open) rewrites `rule_id`, `kind`,
+// `polarity`, `instrument_id`, `account_id` when present (S25-F1) and sets `last_run_id` from `run`,
+// null included (S25-F2); a close with `run` sets it too; `signal.closed.payloadSet` merges keys into
+// the payload and `signal.reopened.payloadUnset` removes them (D-S3, S25-F3). The public TS-only table
+// `inv_signal_aliases (gid, signal_id)` maps every signal gid to its episode row (D-S2), so a note's
+// `signal_id` or a rule run's report naming an alias resolves in queries.
 import { ACCOUNTS } from "../core/accounts.js";
 import type { FoldContext, FoldEvent, Materializer } from "../engine/types.js";
 import type { TableDef } from "../sql/ddl.js";
+import type { SqlValue } from "../sql/driver.js";
 import { sqlJson, viewTimestamp } from "../sql/values.js";
 import { INSTRUMENTS } from "./instruments.js";
 
@@ -66,6 +74,13 @@ const decisionSignals: TableDef = {
   indexes: [{ columns: ["signal_id"] }],
 };
 
+/** Public TS-only map: every signal gid -> its episode row (D-S2). */
+const publicAliases: TableDef = {
+  name: "inv_signal_aliases",
+  columns: [{ name: "signal_id", type: "INTEGER", notNull: true, ref: "inv_signals" }],
+  indexes: [{ columns: ["signal_id"] }],
+};
+
 /** Signal gid -> its episode (itself when it started one, the open episode it joined otherwise). */
 const aliases: TableDef = {
   name: "fold_signal_aliases",
@@ -79,7 +94,10 @@ const aliases: TableDef = {
   indexes: [{ columns: ["partition"] }, { columns: ["episode"] }],
 };
 
-/** Episode registers Python keeps in the payload; the projection to `payload` is S25's. */
+/**
+ * Episode registers the fold needs beyond the public row (the close reason). The payload keys Python
+ * writes on a close come from `signal.closed.payloadSet` (D-S3), not from this register.
+ */
 const episodes: TableDef = {
   name: "fold_signal_episodes",
   primaryKey: ["gid"],
@@ -144,6 +162,69 @@ const refOrNull = (ctx: FoldContext, kind: string, v: unknown) =>
 
 const runOrNull = (ctx: FoldContext, v: unknown) => (typeof v === "string" ? ctx.id(v) : null);
 
+function linkAlias(ctx: FoldContext, gid: string, episode: string, partition: string): void {
+  ctx.sql.write(
+    aliases.name,
+    "INSERT OR REPLACE INTO fold_signal_aliases (gid, episode, partition) VALUES (?, ?, ?)",
+    gid,
+    episode,
+    partition,
+  );
+  ctx.sql.write(
+    publicAliases.name,
+    "INSERT OR REPLACE INTO inv_signal_aliases (id, gid, signal_id) VALUES (?, ?, ?)",
+    ctx.id(gid),
+    gid,
+    ctx.id(episode),
+  );
+}
+
+/**
+ * The refresh columns an event sets (S25-F1, F2): rule / kind / polarity / instrument / account when
+ * present, `last_run_id` from `run` when present (null clears), severity / message / payload.
+ */
+function refreshSets(e: FoldEvent, ctx: FoldContext): [string[], SqlValue[]] {
+  const d = e.data;
+  const sets: string[] = [];
+  const params: SqlValue[] = [];
+  const set = (column: string, value: SqlValue) => {
+    sets.push(`${column} = ?`);
+    params.push(value);
+  };
+  if ("ruleId" in d) set("rule_id", String(d.ruleId));
+  if ("kind" in d) set("kind", String(d.kind));
+  if ("polarity" in d) set("polarity", String(d.polarity));
+  if ("instrument" in d) set("instrument_id", refOrNull(ctx, INSTRUMENTS, d.instrument));
+  if ("account" in d) set("account_id", refOrNull(ctx, ACCOUNTS, d.account));
+  if ("run" in d) set("last_run_id", runOrNull(ctx, d.run));
+  if ("severity" in d) set("severity", String(d.severity));
+  if ("message" in d) set("message", String(d.message));
+  if ("payload" in d) set("payload", sqlJson(d.payload ?? {}));
+  return [sets, params];
+}
+
+/** Rewrite the episode payload with keys merged in (`set`) or removed (`unset`). */
+function patchPayload(
+  ctx: FoldContext,
+  gid: string,
+  set: Readonly<Record<string, unknown>> | undefined,
+  unset: readonly string[] | undefined,
+): void {
+  if (set === undefined && unset === undefined) return;
+  const row = ctx.sql.get<{ payload: string }>(
+    "SELECT payload FROM inv_signals WHERE gid = ?",
+    gid,
+  );
+  const payload = { ...(JSON.parse(row?.payload ?? "{}") as Record<string, unknown>), ...set };
+  for (const k of unset ?? []) delete payload[k];
+  ctx.sql.write(
+    signals.name,
+    "UPDATE inv_signals SET payload = ? WHERE gid = ?",
+    sqlJson(payload),
+    gid,
+  );
+}
+
 function setStatus(ctx: FoldContext, gid: string, status: string, ackAt: string | null): void {
   ctx.sql.write(
     signals.name,
@@ -169,34 +250,20 @@ function applySignal(e: FoldEvent, ctx: FoldContext): void {
       key,
     );
     if (open) {
-      // B2: joins the open episode with refresh semantics.
-      ctx.sql.write(
-        aliases.name,
-        "INSERT OR REPLACE INTO fold_signal_aliases (gid, episode, partition) VALUES (?, ?, ?)",
-        e.gid,
-        open.gid,
-        partition,
-      );
+      // B2: joins the open episode with refresh semantics (S25-F1, F2: the open's rule, kind,
+      // polarity, instrument, account and run replace the episode's).
+      linkAlias(ctx, e.gid, open.gid, partition);
+      const [sets, params] = refreshSets(e, ctx);
       ctx.sql.write(
         signals.name,
-        `UPDATE inv_signals SET message = ?, severity = ?, payload = ?, last_seen_at = ?,
-           last_run_id = COALESCE(?, last_run_id) WHERE gid = ?`,
-        String(d.message),
-        String(d.severity),
-        sqlJson(d.payload ?? {}),
+        `UPDATE inv_signals SET ${sets.join(", ")}, last_seen_at = ? WHERE gid = ?`,
+        ...params,
         seen,
-        runOrNull(ctx, d.run),
         open.gid,
       );
       return;
     }
-    ctx.sql.write(
-      aliases.name,
-      "INSERT OR REPLACE INTO fold_signal_aliases (gid, episode, partition) VALUES (?, ?, ?)",
-      e.gid,
-      e.gid,
-      partition,
-    );
+    linkAlias(ctx, e.gid, e.gid, partition);
     ctx.sql.write(
       episodes.name,
       "INSERT OR REPLACE INTO fold_signal_episodes (gid, partition, closed_reason) VALUES (?, ?, NULL)",
@@ -234,24 +301,12 @@ function applySignal(e: FoldEvent, ctx: FoldContext): void {
     case "signal.refreshed":
     case "signal.escalated": {
       if (!isOpen) return;
-      const sets = ["last_seen_at = ?", "last_run_id = COALESCE(?, last_run_id)"];
-      const params = [ctx.time(e, "last_seen_at", String(d.seenAt)), runOrNull(ctx, d.run)];
-      for (const [field, column] of [
-        ["severity", "severity"],
-        ["message", "message"],
-      ] as const) {
-        if (!(field in d)) continue;
-        sets.push(`${column} = ?`);
-        params.push(String(d[field]));
-      }
-      if ("payload" in d) {
-        sets.push("payload = ?");
-        params.push(sqlJson(d.payload));
-      }
+      const [sets, params] = refreshSets(e, ctx);
       ctx.sql.write(
         signals.name,
-        `UPDATE inv_signals SET ${sets.join(", ")} WHERE gid = ?`,
+        `UPDATE inv_signals SET ${[...sets, "last_seen_at = ?"].join(", ")} WHERE gid = ?`,
         ...params,
+        ctx.time(e, "last_seen_at", String(d.seenAt)),
         ep.gid,
       );
       if (e.type === "signal.escalated" && d.reactivate === true)
@@ -273,6 +328,15 @@ function applySignal(e: FoldEvent, ctx: FoldContext): void {
         String(d.reason),
         ep.gid,
       );
+      if ("run" in d) {
+        ctx.sql.write(
+          signals.name,
+          "UPDATE inv_signals SET last_run_id = ? WHERE gid = ?",
+          runOrNull(ctx, d.run),
+          ep.gid,
+        );
+      }
+      patchPayload(ctx, ep.gid, d.payloadSet as Record<string, unknown> | undefined, undefined);
       return;
     }
     case "signal.reopened": {
@@ -298,6 +362,7 @@ function applySignal(e: FoldEvent, ctx: FoldContext): void {
         "UPDATE fold_signal_episodes SET closed_reason = NULL WHERE gid = ?",
         ep.gid,
       );
+      patchPayload(ctx, ep.gid, undefined, d.payloadUnset as string[] | undefined);
       return;
     }
     case "signal.snoozed":
@@ -384,8 +449,8 @@ function applyDecision(e: FoldEvent, ctx: FoldContext): void {
 
 export const signalsMaterializer: Materializer = {
   id: "investments.signals",
-  version: 1,
-  tables: [signals, decisions, decisionSignals, aliases, episodes],
+  version: 2,
+  tables: [signals, decisions, decisionSignals, publicAliases, aliases, episodes],
   handles: [
     "signal.opened",
     "signal.refreshed",
@@ -445,6 +510,11 @@ export const signalsMaterializer: Materializer = {
         ctx.sql.write(signals.name, "DELETE FROM inv_signals WHERE gid = ?", gid);
       }
       ctx.sql.write(episodes.name, "DELETE FROM fold_signal_episodes WHERE partition = ?", p);
+      ctx.sql.write(
+        publicAliases.name,
+        "DELETE FROM inv_signal_aliases WHERE gid IN (SELECT gid FROM fold_signal_aliases WHERE partition = ?)",
+        p,
+      );
       ctx.sql.write(aliases.name, "DELETE FROM fold_signal_aliases WHERE partition = ?", p);
     }
   },

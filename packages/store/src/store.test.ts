@@ -136,7 +136,10 @@ describe("touched tables and subscriptions", () => {
       payload: {},
       run: null,
     });
-    expect([...store.applyEnvelopes([opened]).touchedTables]).toEqual(["inv_signals"]);
+    expect([...store.applyEnvelopes([opened]).touchedTables].sort()).toEqual([
+      "inv_signal_aliases",
+      "inv_signals",
+    ]);
     const decision = f.make("decision.recorded", DEC, {
       signals: [SIG],
       instrument: INST,
@@ -153,7 +156,7 @@ describe("touched tables and subscriptions", () => {
       "inv_signals",
     ]);
     expect(seen).toEqual([
-      ["inv_signals"],
+      ["inv_signal_aliases", "inv_signals"],
       ["inv_decision_signals", "inv_decisions", "inv_signals"],
     ]);
     expect(store.version(["inv_signals"])).toBeGreaterThan(v0);
