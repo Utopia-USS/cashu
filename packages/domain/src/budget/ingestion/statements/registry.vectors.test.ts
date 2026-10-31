@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { describe, expect, it } from "vitest";
 import { InstitutionRegistry, institution } from "../../../core/index.js";
 import { loadVectors } from "../../../testing/vectors.js";
@@ -39,6 +40,32 @@ describe("detection (csv_import.detect_importer)", () => {
       const bytes = fixtureBytes(rel);
       expect(parseStatementFile(bytes, registry)).toEqual(parseBankStatement(bytes, "erste"));
     }
+  });
+
+  it("Q4 never overrides Python: a quoted summary row before an mBank export stays mBank (review F1)", () => {
+    const bytes = fixtureBytes("mbank/mbank-quoted-summary-first.csv");
+    expect(files.find((f) => f[1] === "mbank/mbank-quoted-summary-first.csv")?.[3]).toBe("mbank");
+    expect(detectBank(bytes, registry)).toBe("mbank");
+    const parsed = parseStatementFile(bytes, registry);
+    expect(parsed.ok && parsed.statement.transactions.length).toBe(1);
+  });
+
+  it("over the detection sweep: every bank Python detects is TS's; only Python's None may become Erste", () => {
+    const sweep = loadVectors("budget-detect").rows as [string, string, string | null][];
+    const decoder = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
+    let added = 0;
+    for (const [, b64, python] of sweep) {
+      const bytes = decoder(b64);
+      const ts = detectBank(bytes, registry);
+      if (python !== null) {
+        expect([b64, ts]).toEqual([b64, python]);
+      } else if (ts !== null) {
+        expect(ts).toBe("erste");
+        added++;
+      }
+    }
+    expect(sweep.length).toBe(1500);
+    expect(added).toBeGreaterThan(0);
   });
 
   it("parse_file: an explicit unknown or CSV-less institution, and an undetectable file", () => {

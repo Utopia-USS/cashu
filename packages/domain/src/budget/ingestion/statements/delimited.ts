@@ -124,6 +124,7 @@ export function parseDelimited(bytes: Uint8Array, config: DelimitedConfig): Pars
   const text = readStatementText(bytes, config.encodings);
   const delimiter = sniffDelimiter(pySplitlines(text), config.delimiters);
   const records = readCsv(text, { delimiter });
+  // PARITY(Q11): a csv.Error (e.g. a field over 131072 code points) refuses the whole file, as in Python.
   if (!records.ok) refuse({ ok: false, reason: "bad_csv", line: records.lineNum });
   const reader = records.rows;
 

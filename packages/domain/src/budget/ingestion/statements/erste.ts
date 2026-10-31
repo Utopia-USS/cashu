@@ -31,26 +31,38 @@ function looksLikeSummaryRow(cells: readonly string[]): boolean {
   );
 }
 
+/** The first non-blank line (`str.splitlines`, `str.strip`), or undefined. */
+function firstLine(text: string): string | undefined {
+  return pySplitlines(text).find((l) => pyStrip(l) !== "");
+}
+
 /**
- * Signature hits, + 2 when the first non-blank line looks like the summary row (exports carry no bank
- * name). Python split that line at every `,`, so a quoted export never matched; FIX(Q4): the line's
- * csv record is tried as well (detection only, no hash changes).
+ * Python's `ErsteImporter.match_score`, exactly: signature hits, + 2 when the first non-blank line,
+ * split at every `,`, looks like the summary row (exports carry no bank name).
  */
 export function ersteScore(text: string): number {
   const low = pyLower(text);
-  let score = ERSTE_SIGNATURE.filter((sig) => low.includes(pyLower(sig))).length;
-  const line = pySplitlines(text).find((l) => pyStrip(l) !== "");
-  if (line !== undefined) {
-    const parsed = readCsvLines([line], { delimiter: "," });
-    const record = parsed.ok ? (parsed.rows[0] ?? []) : [];
-    if (looksLikeSummaryRow(line.split(",")) || looksLikeSummaryRow(record)) score += 2;
-  }
-  return score;
+  const score = ERSTE_SIGNATURE.filter((sig) => low.includes(pyLower(sig))).length;
+  const line = firstLine(text);
+  return line !== undefined && looksLikeSummaryRow(line.split(",")) ? score + 2 : score;
+}
+
+/**
+ * FIX(Q4): Python split the first line at every `,`, so a quoted export without the bank's name was
+ * never detected. Read as a csv record, that line shows the summary row. Detection uses this only
+ * when Python's own scores pick no bank, so no file Python detected changes bank (or hashes).
+ */
+export function looksLikeQuotedErsteExport(text: string): boolean {
+  const line = firstLine(text);
+  if (line === undefined) return false;
+  const parsed = readCsvLines([line], { delimiter: "," });
+  return parsed.ok && looksLikeSummaryRow(parsed.rows[0] ?? []);
 }
 
 export function parseErste(bytes: Uint8Array): ParsedStatement {
   const text = readStatementText(bytes, ERSTE_ENCODINGS);
   const records = readCsv(text, { delimiter: "," });
+  // PARITY(Q11): a csv.Error (e.g. a field over 131072 code points) refuses the whole file, as in Python.
   if (!records.ok) refuse({ ok: false, reason: "bad_csv", line: records.lineNum });
   // Blank rows are dropped before anything is counted; `record` keeps the 1-based csv record number.
   const rows = records.rows

@@ -68,6 +68,7 @@ export function pekaoScore(text: string): number {
 export function parsePekao(bytes: Uint8Array): ParsedStatement {
   const text = readStatementText(bytes, PEKAO_ENCODINGS);
   const records = readCsv(text, { delimiter: ";" });
+  // PARITY(Q11): a csv.Error (e.g. a field over 131072 code points) refuses the whole file, as in Python.
   if (!records.ok) refuse({ ok: false, reason: "bad_csv", line: records.lineNum });
   const rows = records.rows
     .map((cells, i) => ({ cells, record: i + 1 }))

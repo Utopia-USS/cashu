@@ -6,7 +6,7 @@
 import { decodeFirst, translateNewlines } from "../../../codecs.js";
 import type { InstitutionRegistry } from "../../../core/index.js";
 import { DEFAULT_ENCODINGS } from "./delimited.js";
-import { ersteScore, parseErste } from "./erste.js";
+import { ersteScore, looksLikeQuotedErsteExport, parseErste } from "./erste.js";
 import { mbankScore, parseMbank } from "./mbank.js";
 import { parsePekao, pekaoScore } from "./pekao.js";
 import { type BankId, refusing, type StatementResult } from "./result.js";
@@ -48,20 +48,23 @@ export function matchScore(bank: BankId, text: string): number {
 /**
  * `detect_importer`: the bank with the strictly highest score above 0 (ties: the first in registry
  * order). PARITY(Q13): the text is read with the default encodings, not the bank's own list.
+ * FIX(Q4): only when no bank scores, a quoted Erste export (summary row as a csv record) is Erste.
  */
 export function detectBank(bytes: Uint8Array, registry: InstitutionRegistry): BankId | null {
   const decoded = decodeFirst(bytes, DEFAULT_ENCODINGS);
   if (!decoded.ok) return null;
   const text = translateNewlines(decoded.text);
+  const banks = csvBankIds(registry);
   let best: BankId | null = null;
   let bestScore = 0;
-  for (const bank of csvBankIds(registry)) {
+  for (const bank of banks) {
     const score = matchScore(bank, text);
     if (score > bestScore) {
       best = bank;
       bestScore = score;
     }
   }
+  if (best === null && banks.includes("erste") && looksLikeQuotedErsteExport(text)) return "erste";
   return best;
 }
 

@@ -24,6 +24,6 @@ describe("budget CSV fixtures", () => {
       );
       expect(Buffer.from(fixtureBytes(rel)).equals(source), rel).toBe(true);
     }
-    expect(fixturePaths().length).toBe(27);
+    expect(fixturePaths().length).toBe(28);
   });
 });

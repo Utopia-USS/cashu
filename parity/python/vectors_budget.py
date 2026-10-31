@@ -485,6 +485,13 @@ def fixture_files() -> dict[str, bytes]:
         + "2026-09-02;;JAN TEST;;'99124000000000000000000002;'99124000000000000000000001;B;2,00;;R2;T;K\n"
     ).encode("utf-8")
     files["engine/debit-credit.csv"] = DEBIT_CREDIT_CSV.encode("utf-8")
+    # S07 review F1: Python detects mBank although the first line is a quoted Erste summary row.
+    files["mbank/mbank-quoted-summary-first.csv"] = (
+        '"2026-09-30","01-09-2026","\'99109000000000000000000001","Konto","PLN","30-09-2026","90","2"\n'
+        "mBank S.A.;\n"
+        "#Data księgowania;#Opis operacji;#Tytul;#Nadawca/Odbiorca;#Numer konta;#Kwota;#Saldo po operacji;\n"
+        "2026-09-05;ZAKUP;T;SKLEP TEST;;-1,00;10,00;\n"
+    ).encode("cp1250")
     return files
 
 
@@ -841,6 +848,46 @@ def gen_canonical_docs(_rng: random.Random) -> list:
     return rows
 
 
+# --------------------------------------------------------------------------- detection sweep
+
+DETECT_FRAGMENTS = [
+    '"2026-09-30","01-09-2026","\'99109000000000000000000001","Konto","PLN","30-09-2026","90","2"',
+    "2026-09-30,01-09-2026,'99109000000000000000000001,Konto,PLN,30-09-2026,\"90,00\",2",
+    '"02-09-2026","02-09-2026","ZAKUP","SKLEP TEST","","-10,00","90,00","1",""',
+    "mBank S.A.;", "Elektroniczne zestawienie operacji;", "#Data operacji;#Kwota;",
+    "#Data księgowania;#Opis operacji;#Tytul;#Nadawca/Odbiorca;#Numer konta;#Kwota;#Saldo po operacji;",
+    "2026-09-05;ZAKUP;T;SKLEP TEST;;-1,00;10,00;",
+    "Santander Bank Polska", "Erste Bank", "BZWBK", "Rachunek źródłowy;Rachunek docelowy;",
+    "Numer referencyjny;Typ operacji", "Data księgowania;Kwota operacji;Waluta", "", "  ",
+    '"a,b",c', "x y", "\x85", "'99109000000000000000000004", '"\'1",2,3,4,5,6,7',
+]
+
+
+def gen_detect(rng: random.Random) -> list:
+    rows: list = []
+    for _ in range(1500):
+        lines = [rng.choice(DETECT_FRAGMENTS) for _ in range(rng.randint(1, 6))]
+        if rng.random() < 0.5:  # the quoted summary row first, as in the review's case
+            lines.insert(0, DETECT_FRAGMENTS[0])
+        text = rng.choice(["\n", "\r\n", "\r"]).join(lines) + rng.choice(["", "\n"])
+        encoding = rng.choice(["cp1250", "utf-8", "utf-8-sig"])
+        try:
+            content = text.encode(encoding)
+        except UnicodeEncodeError:
+            content = text.encode("utf-8")
+        if rng.random() < 0.15:
+            b = bytearray(content)
+            for _ in range(rng.randint(1, 3)):
+                b.insert(rng.randint(0, len(b)), rng.choice(b'",;\x00\x81\x98\xff\r\n'))
+            content = bytes(b)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "in.csv"
+            path.write_bytes(content)
+            detected = detect_importer(path)
+        rows.append(["detect", base64.b64encode(content).decode(), detected.bank if detected else None])
+    return rows
+
+
 # --------------------------------------------------------------------------- driver
 
 GENERATORS: dict[str, tuple[Callable, str]] = {
@@ -863,6 +910,7 @@ GENERATORS: dict[str, tuple[Callable, str]] = {
                          "message, blocking]], ok, variant, ..., statement, report, summary, looks_like}]")),
     "budget-canonical-docs": (gen_canonical_docs, ("['fields', ...lists] | ['example', lang, block, outcome] "
                               "(docs/budget-import-format.md)")),
+    "budget-detect": (gen_detect, "['detect', base64 content, detect_importer bank | null]"),
     "budget-matching-data": (gen_matching_data, ("['matching', data, sha256 of json.dumps(data, "
                              "ensure_ascii=False, sort_keys=True, separators=(',', ':'))]")),
 }
