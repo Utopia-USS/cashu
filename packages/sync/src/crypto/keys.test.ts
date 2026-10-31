@@ -41,8 +41,8 @@ const vaultOf = (ring: Keyring) => ({
 describe("key ids", () => {
   it("are computed, never supplied: the public constructor refuses callers", () => {
     const ring = newRing();
-    // biome-ignore lint/suspicious/noExplicitAny: proving the constructor rejects outside callers
-    expect(() => new (Keyring as any)(Symbol("x"), vaultOf(ring))).toThrow(TypeError);
+    const Ctor = Keyring as unknown as new (token: symbol, vault: unknown) => Keyring;
+    expect(() => new Ctor(Symbol("x"), vaultOf(ring))).toThrow(TypeError);
   });
 
   it("bind generation and epoch: the same key bytes relabelled get another kid", () => {
