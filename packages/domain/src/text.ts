@@ -174,3 +174,64 @@ export function normalizeText(value: string | null | undefined): string {
   const replaced = value.replace(L_STROKE, unstroke).normalize("NFKD");
   return pyUpper(pyStrip(replaced.replace(COMBINING_RE, "").replace(WS_RUN, " ")));
 }
+
+/** Line boundaries of Python `str.splitlines()` (`\r\n` counts as one). */
+const LINE_BREAKS: ReadonlySet<number> = new Set([
+  0x0a, 0x0b, 0x0c, 0x0d, 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029,
+]);
+
+/** Python `s.splitlines()`: no line ends kept, no trailing empty line. */
+export function pySplitlines(text: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  let i = 0;
+  while (i < text.length) {
+    const cp = text.charCodeAt(i);
+    if (!LINE_BREAKS.has(cp)) {
+      i++;
+      continue;
+    }
+    out.push(text.slice(start, i));
+    i += cp === 0x0d && text.charCodeAt(i + 1) === 0x0a ? 2 : 1;
+    start = i;
+  }
+  if (start < text.length) out.push(text.slice(start));
+  return out;
+}
+
+/** Python `s.strip(chars)` / `s.lstrip(chars)` / `s.rstrip(chars)` (code points of `chars`). */
+export function pyStripChars(
+  value: string,
+  chars: string,
+  side: "both" | "left" | "right" = "both",
+): string {
+  const set = new Set(Array.from(chars));
+  const cps = Array.from(value);
+  let start = 0;
+  let end = cps.length;
+  if (side !== "right") while (start < end && set.has(cps[start] as string)) start++;
+  if (side !== "left") while (end > start && set.has(cps[end - 1] as string)) end--;
+  return cps.slice(start, end).join("");
+}
+
+/**
+ * Inclusive ranges of the code points with Numeric_Type=Digit that are not decimal digits
+ * (superscripts, circled digits, ...): `str.isdigit()` is true for them and for every Nd digit.
+ */
+const DIGIT_ONLY_RANGES: readonly number[] = [
+  0xb2, 0xb3, 0xb9, 0xb9, 0x1369, 0x1371, 0x19da, 0x19da, 0x2070, 0x2070, 0x2074, 0x2079, 0x2080,
+  0x2089, 0x2460, 0x2468, 0x2474, 0x247c, 0x2488, 0x2490, 0x24ea, 0x24ea, 0x24f5, 0x24fd, 0x24ff,
+  0x24ff, 0x2776, 0x277e, 0x2780, 0x2788, 0x278a, 0x2792, 0x10a40, 0x10a43, 0x10e60, 0x10e68,
+  0x11052, 0x1105a, 0x1f100, 0x1f10a,
+];
+
+/** Python `chr(cp).isdigit()`. */
+export function pyIsDigit(cp: number): boolean {
+  if (unicodeDecimal(cp) >= 0) return true;
+  for (let i = 0; i < DIGIT_ONLY_RANGES.length; i += 2) {
+    if (cp >= (DIGIT_ONLY_RANGES[i] as number) && cp <= (DIGIT_ONLY_RANGES[i + 1] as number)) {
+      return true;
+    }
+  }
+  return false;
+}
