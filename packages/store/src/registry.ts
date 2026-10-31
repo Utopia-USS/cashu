@@ -1,0 +1,175 @@
+// Registries: event types (current version, schemas per version, upcasters) and the store modules
+// (materializers and identity kinds). The v1 catalog (`events/v1`) is the base; a module that evolves
+// a type registers the next version with its upcaster (events.md 7.6), and a new type starts at v1.
+import type { z } from "zod";
+import { canonicalJson } from "./canonical.js";
+import { membersTable } from "./engine/fold.js";
+import type { IdentityKind, Materializer } from "./engine/types.js";
+import { type EventMeta, type EventType, META, PAYLOADS } from "./events/v1/catalog.js";
+import { createTableSql, type TableDef } from "./sql/ddl.js";
+import type { Payload, Upcaster } from "./upcast.js";
+
+export interface EventTypeDef {
+  readonly type: string;
+  /** The version this reader folds; events of a lower version are upcast to it, higher ones park. */
+  readonly current: number;
+  readonly schemas: ReadonlyMap<number, z.ZodType>;
+  /** Keyed by the version they read (`v -> v + 1`). */
+  readonly upcasters: ReadonlyMap<number, Upcaster>;
+  readonly meta: EventMeta;
+  /** Envelope / payload consistency the schema cannot see (e.g. `instrument.merged`: source = gid). */
+  readonly check?: (gid: string, data: Payload) => boolean;
+}
+
+/** A version step a module registers: a new type at v1, or `current + 1` of an existing type. */
+export interface EventVersionDef {
+  readonly type: string;
+  readonly v: number;
+  readonly schema: z.ZodType;
+  /** Required for v > 1: reads `v - 1`, returns `v`. */
+  readonly upcastFrom?: Upcaster;
+  /** Required for a new type. */
+  readonly meta?: EventMeta;
+  readonly check?: (gid: string, data: Payload) => boolean;
+}
+
+export class EventRegistry {
+  readonly #defs = new Map<string, EventTypeDef>();
+
+  /** The normative v1 catalog. */
+  static v1(): EventRegistry {
+    const r = new EventRegistry();
+    for (const type of Object.keys(PAYLOADS) as EventType[]) {
+      r.#defs.set(type, {
+        type,
+        current: 1,
+        schemas: new Map([[1, PAYLOADS[type]]]),
+        upcasters: new Map(),
+        meta: META[type],
+        ...(type === "instrument.merged"
+          ? { check: (gid: string, data: Payload) => data.source === gid }
+          : {}),
+      });
+    }
+    return r;
+  }
+
+  define(def: EventVersionDef): this {
+    const prev = this.#defs.get(def.type);
+    if (!prev) {
+      if (def.v !== 1) throw new RangeError(`${def.type}: a new type starts at v1`);
+      if (!def.meta) throw new RangeError(`${def.type}: a new type needs its meta`);
+      this.#defs.set(def.type, {
+        type: def.type,
+        current: 1,
+        schemas: new Map([[1, def.schema]]),
+        upcasters: new Map(),
+        meta: def.meta,
+        ...(def.check ? { check: def.check } : {}),
+      });
+      return this;
+    }
+    if (def.v !== prev.current + 1) {
+      throw new RangeError(`${def.type}: next version must be v${prev.current + 1}`);
+    }
+    if (!def.upcastFrom) throw new RangeError(`${def.type} v${def.v}: missing upcaster`);
+    const check = def.check ?? prev.check;
+    this.#defs.set(def.type, {
+      type: def.type,
+      current: def.v,
+      schemas: new Map([...prev.schemas, [def.v, def.schema]]),
+      upcasters: new Map([...prev.upcasters, [prev.current, def.upcastFrom]]),
+      meta: def.meta ?? prev.meta,
+      ...(check ? { check } : {}),
+    });
+    return this;
+  }
+
+  get(type: string): EventTypeDef | undefined {
+    return this.#defs.get(type);
+  }
+
+  types(): readonly string[] {
+    return [...this.#defs.keys()].sort();
+  }
+
+  /** Types whose terminal transitions are first-writer-wins (events.md 6.2 FWW, 6.6). */
+  fwwTypes(): ReadonlySet<string> {
+    return new Set(
+      [...this.#defs.values()].filter((d) => d.meta.rule === "FWW").map((d) => d.type),
+    );
+  }
+
+  /** Changes whenever a type's current version changes: a stored log must then be re-decoded. */
+  fingerprint(): string {
+    return canonicalJson(Object.fromEntries(this.types().map((t) => [t, this.get(t)?.current])));
+  }
+}
+
+/** A store module (core, budget, assets, loans, investments): what it folds and how. */
+export interface StoreModule {
+  readonly id: string;
+  readonly materializers: readonly Materializer[];
+  readonly identityKinds?: readonly IdentityKind[];
+  readonly events?: readonly EventVersionDef[];
+}
+
+/** The resolved set of modules of one store: lookup by event type, conflicts rejected. */
+export class ModuleRegistry {
+  readonly modules: readonly StoreModule[];
+  readonly materializers: readonly Materializer[];
+  readonly identityKinds: readonly IdentityKind[];
+  readonly #byType = new Map<string, Materializer[]>();
+
+  constructor(modules: readonly StoreModule[]) {
+    this.modules = modules;
+    const ids = new Set<string>();
+    const tables = new Set<string>();
+    this.materializers = modules.flatMap((m) => m.materializers);
+    this.identityKinds = modules.flatMap((m) => m.identityKinds ?? []);
+    for (const mat of this.materializers) {
+      if (ids.has(mat.id)) throw new RangeError(`duplicate materializer ${mat.id}`);
+      ids.add(mat.id);
+      for (const t of mat.tables) {
+        if (tables.has(t.name)) throw new RangeError(`table ${t.name} owned twice`);
+        tables.add(t.name);
+      }
+      for (const type of mat.handles) {
+        const list = this.#byType.get(type) ?? [];
+        list.push(mat);
+        this.#byType.set(type, list);
+      }
+    }
+    for (const k of this.identityKinds) {
+      for (const t of k.tables ?? []) {
+        if (tables.has(t.name)) throw new RangeError(`table ${t.name} owned twice`);
+        tables.add(t.name);
+      }
+    }
+  }
+
+  materializersFor(type: string): readonly Materializer[] {
+    return this.#byType.get(type) ?? [];
+  }
+
+  handledTypes(): ReadonlySet<string> {
+    return new Set(this.#byType.keys());
+  }
+
+  /** Every view table: materializer tables, their partition indexes, identity kind tables. */
+  viewTables(): readonly TableDef[] {
+    return [
+      ...this.materializers.flatMap((m) => [...m.tables, membersTable(m)]),
+      ...this.identityKinds.flatMap((k) => k.tables ?? []),
+    ];
+  }
+
+  /** Changes whenever a materializer's version or a table's DDL changes: the view must be rebuilt. */
+  fingerprint(): string {
+    return canonicalJson({
+      materializers: this.materializers.map((m) => [m.id, m.version]),
+      identity: this.identityKinds.map((k) => [k.id, k.version]),
+      ddl: this.viewTables().map(createTableSql),
+    });
+  }
+}
