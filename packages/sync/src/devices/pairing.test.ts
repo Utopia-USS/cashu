@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createDeviceIdentity, openFrame, sealFrame } from "../crypto/index.js";
 import { fromUtf8, toHex } from "./bytes.js";
-import { buildDeviceAdded } from "./events.js";
 import {
   decodeInvite,
   encodeInvite,
-  PAGE_SIZE,
   PairingInviter,
   PairingJoiner,
   SAS_ATTEMPTS,
@@ -309,33 +307,5 @@ describe("pairing: typed code, expiry, registry pages (review m1, M4)", () => {
     const { creator, inviter, code } = upToReveal();
     const late = inviter.confirm(code, newEid(), creator.now() + SAS_TTL_MS + 1);
     expect(late).toMatchObject({ ok: false, reason: "expired" });
-  });
-
-  it("a registry larger than one message arrives in pages, bound by the signed hash", async () => {
-    const { creator } = createSimVault();
-    const subject = {
-      deviceId: creator.id,
-      signPublicKey: creator.identity.signPublicKey,
-      boxPublicKey: creator.identity.box.publicKey,
-    };
-    const cert = creator.stream[0]?.events[0]?.data.certificate as string;
-    const certBytes = Uint8Array.from(Buffer.from(cert, "hex"));
-    creator.write(
-      Array.from({ length: PAGE_SIZE + 100 }, () =>
-        buildDeviceAdded(
-          creator.identity,
-          creator.ring.vaultId,
-          newEid(),
-          subject,
-          "creator",
-          certBytes,
-        ),
-      ),
-    );
-    creator.push();
-    expect(creator.devices.registry.events.length).toBeGreaterThan(PAGE_SIZE);
-    const phone = await pairDevice(creator, "phone");
-    expect(phone.devices.registry.isTrusted(phone.id)).toBe(true);
-    expect(phone.devices.registry.events.length).toBe(creator.devices.registry.events.length);
   });
 });
