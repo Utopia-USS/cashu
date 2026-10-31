@@ -17,6 +17,7 @@
     "arch:check": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/arch/src/run.ts",
     "format": "biome format --write .",
     "parity": "node --disable-warning=ExperimentalWarning --experimental-strip-types packages/parity/src/cli.ts",
+    "cashu-next": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tools/node-ts/resolveTs.ts apps/cli/src/index.ts",
     "parity:produce": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tools/node-ts/resolveTs.ts packages/parity/src/producers/cli.ts"
   },
   "devDependencies": {
