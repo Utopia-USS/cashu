@@ -182,9 +182,9 @@ describe("genesis end to end", () => {
     const expected: Record<string, [number, number]> = {
       accounts: [6, 1],
       category_rules: [1, 1],
-      // Source rows minus the documented skips: the cash leg is DERIVED (no event), the cash
-      // expense row is folded by S24 (`txn.cashExpenseAdded` has no materializer yet).
-      transactions: [3, 1],
+      // Source rows minus the documented skip: the cash leg is DERIVED (no event); the cash
+      // expense folds through S24a's `txn.cashExpenseAdded`.
+      transactions: [4, 1],
       watchlist_items: [2, 1],
       inv_profile_instruments: [1, 0],
       inv_manual_valuations: [1, 0],
