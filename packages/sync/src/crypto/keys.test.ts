@@ -240,3 +240,19 @@ describe("large rings (D16)", () => {
     expect(performance.now() - started).toBeLessThan(5_000);
   }, 20_000);
 });
+
+describe("active key order (m2)", () => {
+  it("F3: a stale device's later generations at a lower epoch never override the revocation key", () => {
+    const a = newRing();
+    const stale = a.clone(sodium);
+    const revoke = rotateKeyring(sodium, a, { epoch: 1 });
+    rotateKeyring(sodium, stale); // (2, 0): never saw the revocation
+    rotateKeyring(sodium, stale); // (3, 0)
+    a.merge(stale);
+    expect(a.active.kid).toBe(revoke.kid);
+    // The next rotation on the revoker continues above every generation, at the revocation epoch.
+    const next = rotateKeyring(sodium, a);
+    expect([next.generation, next.epoch]).toEqual([4, 1]);
+    expect(a.active.kid).toBe(next.kid);
+  });
+});

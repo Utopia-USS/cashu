@@ -20,7 +20,7 @@ export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * The new keys of `incoming` (ascending (generation, epoch, kid)) that may join `held`: each
+ * The new keys of `incoming`, taken in ascending (generation, epoch, kid), that may join `held`: each
  * generation at most one above the highest held so far (`generation_gap`), each epoch at most one
  * above the highest held (`epoch_gap`; an empty ring takes its first key's epoch as the base), at
  * most `MAX_KEYS_PER_GENERATION` keys per generation and every key in bounds (`bad_payload`).
@@ -41,7 +41,10 @@ export function selectAcceptedKeys(
     perGeneration.set(e.generation, (perGeneration.get(e.generation) ?? 0) + 1);
   }
   const fresh: KeyEntry[] = [];
-  for (const e of incoming) {
+  const ordered = [...incoming].sort(
+    (a, b) => a.generation - b.generation || a.epoch - b.epoch || (a.kid < b.kid ? -1 : 1),
+  );
+  for (const e of ordered) {
     if (!inBounds(e.generation, e.epoch)) throw new CryptoError("bad_payload");
     if (heldKids.has(e.kid)) continue;
     if (e.generation > max + 1) throw new CryptoError("generation_gap");

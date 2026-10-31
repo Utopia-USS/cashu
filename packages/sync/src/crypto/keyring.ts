@@ -2,7 +2,7 @@
 // so a relay or a synced folder learns nothing from it), the pinned recovery public keys and a
 // keyring of data keys. Each key has a generation (1, 2, ...), an epoch (how many device
 // revocations its creator had applied) and a key id computed from the key and that metadata.
-// The highest (generation, epoch, kid) encrypts; every held key still decrypts older frames.
+// The highest (epoch, generation, kid) encrypts; every held key still decrypts older frames.
 // Rotation adds a generation; it never drops one.
 
 import { toHex } from "./encoding.js";
@@ -40,11 +40,20 @@ export function assertVaultId(vaultId: string): void {
   if (!VAULT_ID.test(vaultId)) throw new RangeError("vault id must be 32 lowercase hex characters");
 }
 
-/** Total order of `active`: generation, then epoch, then kid. */
-function compareEntries(a: KeyEntry, b: KeyEntry): number {
+/** Storage order (`entries()`): generation, then epoch, then kid. */
+function byGeneration(a: KeyEntry, b: KeyEntry): number {
   return (
     a.generation - b.generation || a.epoch - b.epoch || (a.kid < b.kid ? -1 : a.kid > b.kid ? 1 : 0)
   );
+}
+
+/**
+ * Order of `active`: epoch first, so a key from a device that never saw a revocation (a lower
+ * epoch) never overrides the revocation key, however many generations it rotated; then generation,
+ * then kid.
+ */
+function byEpoch(a: KeyEntry, b: KeyEntry): number {
+  return a.epoch - b.epoch || byGeneration(a, b);
 }
 
 function checkRecovery(recovery: RecoveryPublicKeys): RecoveryPublicKeys {
@@ -95,11 +104,11 @@ export class Keyring {
     return new Secret(this.#gidSalt.expose().slice());
   }
 
-  /** The key new frames are encrypted with: highest (generation, epoch, kid). */
+  /** The key new frames are encrypted with: highest (epoch, generation, kid). */
   get active(): KeyEntry {
     let best: KeyEntry | undefined;
     for (const e of this.#entries.values()) {
-      if (!best || compareEntries(e, best) > 0) best = e;
+      if (!best || byEpoch(e, best) > 0) best = e;
     }
     if (!best) throw new CryptoError("unknown_key");
     return best;
@@ -127,7 +136,7 @@ export class Keyring {
 
   /** Ascending (generation, epoch, kid). */
   entries(): KeyEntry[] {
-    return [...this.#entries.values()].sort(compareEntries);
+    return [...this.#entries.values()].sort(byGeneration);
   }
 
   /** An independent copy (own key bytes) of this ring. */
