@@ -1,6 +1,7 @@
 export const PACKAGE_NAME = "@cashu/domain";
 
 export * from "./casefold.js";
+export * from "./codecs.js";
 /** Core module (registries, net worth, profile rules). */
 export * as core from "./core/index.js";
 export * from "./dates.js";
