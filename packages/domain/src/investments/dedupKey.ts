@@ -16,7 +16,7 @@
  */
 
 import { type Decimal, decimalKey } from "../decimal.js";
-import { pyStrip, pyUpper } from "../text.js";
+import { pyStrip } from "../text.js";
 import type { CalendarDate } from "./domain/values.js";
 
 /** The unit separator joining every part (dedup.py `_SEPARATOR`). */
@@ -47,7 +47,8 @@ export type InvHashPath =
 /**
  * The fields of one row that identify it for dedup (dedup.py `DedupInput`). `ref` is already
  * stripped (null when empty), `instrumentKey` is `""` for a cash row: the v1 key is the local
- * instrument id, the v2 key `instrumentKeyOfParsed` (re-import) or gid.md 7.2 (genesis).
+ * instrument id, the v2 key `importing.instrumentKeyV2` over the resolved instrument (gid.md 7.2, one
+ * rule for genesis and a re-import).
  */
 export interface DedupInput {
   readonly tradeDate: CalendarDate;
@@ -214,32 +215,4 @@ export function hashPathsOfFile(rows: readonly DedupInput[], brokerId: string): 
     seen.set(key, occurrence + 1);
     return hashPathOf(row, brokerId, occurrence);
   });
-}
-
-/** Python `_clean` of `importing/resolver.py`: stripped, null when blank. */
-function clean(value: string | null): string | null {
-  if (value === null) return null;
-  const trimmed = pyStrip(value);
-  return trimmed === "" ? null : trimmed;
-}
-
-/**
- * The v2 instrument key of a parsed row (gid.md 4.6): `namespace + ":" + brokerSymbol` when the row
- * names the broker symbol, else `"isin:" + ISIN`, else `""` (a cash row). `namespace` is the
- * import's effective broker id as stored on the batch (`contract.effective_broker_id`, no legacy
- * rename). The broker symbol is the resolver's (`resolver.py` `_HintKey.of`): the symbol as exported,
- * else the name when the row has no symbol, both stripped; the ISIN is stripped and upper-cased.
- */
-export function instrumentKeyOfParsed(
-  row: {
-    readonly symbol: string | null;
-    readonly isin: string | null;
-    readonly name: string | null;
-  },
-  namespace: string,
-): string {
-  const brokerSymbol = clean(row.symbol) ?? clean(row.name);
-  if (brokerSymbol !== null) return `${namespace}:${brokerSymbol}`;
-  const isin = clean(row.isin);
-  return isin === null ? "" : `isin:${pyUpper(isin)}`;
 }

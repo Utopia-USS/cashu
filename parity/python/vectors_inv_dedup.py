@@ -9,8 +9,8 @@ Writes ``packages/domain/test/vectors/inv-dedup.jsonl``, read by
 plus random rows from small pools with a fixed seed, so keys collide and occurrences count up);
 nothing reads a data dir or a database. The oracles are the real Python functions of
 ``importing/dedup.py`` (``dedup_hash``, ``dedup_hashes``, ``reconciliation_hash``,
-``DedupInput.from_parsed``) and ``importing/resolver.py`` (``_HintKey.of`` for the broker symbol and
-ISIN of a row). The exact message each hash covers is captured from ``dedup.py`` itself (its
+``DedupInput.from_parsed``). The v2 broker instrument key has its own vectors
+(``vectors_inv_reimport.py``). The exact message each hash covers is captured from ``dedup.py`` itself (its
 ``hashlib`` is wrapped while generating), never re-built here.
 
 File format as ``vectors.py``: JSON Lines, line 1 ``{"meta": {...}}``, then one JSON array per vector
@@ -33,7 +33,6 @@ from pathlib import Path
 from cashu.modules.investments.domain import Currency, TxnType
 from cashu.modules.investments.importing import dedup
 from cashu.modules.investments.importing.contract import ParsedTxn
-from cashu.modules.investments.importing.resolver import InstrumentHint, _HintKey
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "packages" / "domain" / "test" / "vectors" / "inv-dedup.jsonl"
@@ -42,8 +41,7 @@ LAYOUT = (
     "['file', account_id, broker_id, [row], [message], [sha256]] (dedup_hashes over "
     "DedupInput.from_parsed) | ['hash', input, account_id, broker_id, occurrence, message, sha256] "
     "(dedup_hash over a DedupInput as given, no abs) | ['recon', account_id, instrument_id, as_of, "
-    "type, quantity, message, sha256] | ['ikey', {symbol, isin, name}, namespace, broker_symbol | "
-    "null, isin | null, v2 instrument key]"
+    "type, quantity, message, sha256]"
 )
 
 
@@ -253,39 +251,12 @@ def recon_vectors() -> list[list]:
     return out
 
 
-def ikey_vectors() -> list[list]:
-    """The v2 instrument key of a parsed row (gid.md 4.6) from the resolver's own hint key."""
-    cases = [
-        ({"symbol": "ABC", "isin": "PLABC0000016", "name": "ABC Example SA"}, "examplebroker"),
-        ({"symbol": " PKN.PL ", "isin": None, "name": None}, "xtb"),
-        ({"symbol": None, "isin": "pl0000000002", "name": "Only Name Fund"}, "generic_csv"),
-        ({"symbol": "", "isin": " ie00test0001 ", "name": "  "}, "generic_csv"),
-        ({"symbol": " ", "isin": None, "name": " Nazwa Ź "}, "cashu"),
-        ({"symbol": None, "isin": None, "name": None}, "cashu"),
-        ({"symbol": " ", "isin": "", "name": ""}, "xtb"),
-        ({"symbol": "BTC/USD", "isin": None, "name": None}, "exchange"),
-        ({"symbol": "straße", "isin": "de000test0001", "name": None}, "finanse"),
-    ]
-    out = []
-    for fields, namespace in cases:
-        key = _HintKey.of(InstrumentHint(currency=Currency.PLN, **fields))
-        if key.broker_symbol is not None:
-            ikey = f"{namespace}:{key.broker_symbol}"
-        elif key.isin is not None:
-            ikey = f"isin:{key.isin}"
-        else:
-            ikey = ""
-        out.append(["ikey", fields, namespace, key.broker_symbol, key.isin, ikey])
-    return out
-
-
 def render() -> bytes:
     rows = [
         *hand_files(),
         *random_files(random.Random(SEED)),
         *hash_vectors(),
         *recon_vectors(),
-        *ikey_vectors(),
     ]
     meta = {
         "meta": {

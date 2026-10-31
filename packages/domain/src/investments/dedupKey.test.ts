@@ -18,7 +18,6 @@ import {
   hashPartsV2,
   hashPathOf,
   hashPathsOfFile,
-  instrumentKeyOfParsed,
   occurrenceKey,
   occurrenceKeyOf,
   US,
@@ -123,19 +122,6 @@ describe("v1 parts reproduce importing/dedup.py", () => {
 });
 
 describe("re-import side helpers", () => {
-  it("instrumentKeyOfParsed follows the resolver's broker symbol and ISIN", () => {
-    const m = new Mismatches();
-    for (const [, fields, namespace, , , ikey] of byKind("ikey")) {
-      const f = fields as { symbol: string | null; isin: string | null; name: string | null };
-      m.check(
-        `ikey ${JSON.stringify(fields)}`,
-        instrumentKeyOfParsed(f, namespace as string),
-        ikey,
-      );
-    }
-    expectAll(m);
-  });
-
   it("occurrence keys group rows by ref + fill key or by content key", () => {
     const row = dedupInputFromParsed(
       {
