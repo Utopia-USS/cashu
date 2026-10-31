@@ -5,19 +5,31 @@
 
 import { describe, expect, it } from "vitest";
 import { type SegmentCursor, START_CURSOR } from "../carrier.js";
-import { certifyDevice, createDeviceIdentity } from "../crypto/index.js";
+import {
+  certifyDevice,
+  createDeviceIdentity,
+  createRecoveryKey,
+  recoveryIdentity,
+} from "../crypto/index.js";
 import {
   buildDeviceAdded,
   buildLeaseClaim,
   buildLeaseRenewal,
   decodeLeaseClaim,
   decodeLeaseRenewal,
+  type WaiveRequest,
   type Watermark,
+  waiveConfirmationText,
 } from "./events.js";
 import { catchUpMissing, foldLease, type LeaseView } from "./lease.js";
 import { createSimVault, newEid, pairDevice, type SimDevice, sodium } from "./testkit.js";
 
 const HOUR = 60 * 60 * 1000;
+
+/** A waiver the owner confirmed by typing the short ids on the writing device. */
+function typed(devices: readonly string[], text = waiveConfirmationText(devices)): WaiveRequest {
+  return { devices, confirmation: { kind: "typed", text } };
+}
 
 function view(d: SimDevice): LeaseView {
   return d.devices.lease;
@@ -32,7 +44,7 @@ function watermarkOf(d: SimDevice, extra: Watermark = {}): Watermark {
 }
 
 /** `d` claims the lease (any trusted device may) naming `watermark` and waiving `waive`. */
-function claim(d: SimDevice, watermark: Watermark, waive?: readonly string[]): string {
+function claim(d: SimDevice, watermark: Watermark, waive?: WaiveRequest): string {
   const eid = newEid();
   d.write([
     buildLeaseClaim(d.identity, d.ring.vaultId, eid, {
@@ -92,7 +104,7 @@ describe("R3a: validated catch-up watermarks", () => {
     expect(missing(c)).toEqual([b.id]);
     // The owner confirms on C that B's data up to there does not exist: C's claim waives B, and the
     // requirement for B restarts at C's own entry for it.
-    claim(c, watermarkOf(c), [b.id]);
+    claim(c, watermarkOf(c), typed([b.id]));
     syncAll([a, b, c, r]);
     for (const d of [a, b, c]) {
       expect(missing(d), d.name).toEqual([]);
@@ -174,7 +186,7 @@ describe("R3a: validated catch-up watermarks", () => {
     c.pull(notB);
     expect(missing(c)).toEqual([b.id]);
     expect(view(c).catchUpSources.get(b.id)).toBe(eid);
-    claim(c, watermarkOf(c), [b.id]);
+    claim(c, watermarkOf(c), typed([b.id]));
     c.push();
     for (const d of [a, r]) d.pull(notB);
     for (const d of [a, c, r]) {
@@ -190,7 +202,7 @@ describe("R3a: validated catch-up watermarks", () => {
     const bogus = createDeviceIdentity(sodium).deviceId;
     claim(r, watermarkOf(r, { [bogus]: FAR, [b.id]: FAR }));
     syncAll([a, b, c, r]);
-    claim(c, watermarkOf(c), [b.id]);
+    claim(c, watermarkOf(c), typed([b.id]));
     syncAll([a, b, c, r]);
     claim(a, watermarkOf(a, { [c.id]: { seg: 1, offset: 50_000 } }));
     syncAll([a, b, c, r]);
@@ -204,6 +216,57 @@ describe("R3a: validated catch-up watermarks", () => {
     }
   });
 
+  it("a recovery-signed waiver counts whoever writes it", async () => {
+    const { a, b, c, r, recovery } = await vault();
+    b.write([note()]);
+    syncAll([a, b, c, r]);
+    claim(r, watermarkOf(r, { [b.id]: FAR }));
+    syncAll([a, b, c, r]);
+    expect(missing(c)).toEqual([b.id]);
+    claim(c, watermarkOf(c), { devices: [b.id], confirmation: { kind: "recovery", recovery } });
+    syncAll([a, b, c, r]);
+    expect(missing(a)).toEqual([]);
+    expect(view(a).waiversRefused).toEqual([]);
+  });
+
+  it("refuses a waiver without the owner's confirmation: wrong typed text, a forged recovery signature, a revoked writer", async () => {
+    const { a, b, c, r } = await vault();
+    b.write([note()]);
+    syncAll([a, b, c, r]);
+    claim(r, watermarkOf(r, { [b.id]: FAR }));
+    syncAll([a, b, c, r]);
+    // Typed, but not what the owner was asked to type.
+    const wrong = claim(c, watermarkOf(c), typed([b.id], "yes"));
+    syncAll([a, b, c, r]);
+    expect(missing(a)).toEqual([b.id]);
+    // Signed by words that are not this vault's recovery key.
+    const other = recoveryIdentity(sodium, createRecoveryKey(sodium).phrase);
+    const forged = claim(c, watermarkOf(c), {
+      devices: [b.id],
+      confirmation: { kind: "recovery", recovery: other },
+    });
+    syncAll([a, b, c, r]);
+    expect(missing(a)).toEqual([b.id]);
+    // Typed correctly by R, whose claim lies before its cut but which is revoked now.
+    const late = claim(r, watermarkOf(r), typed([b.id]));
+    syncAll([a, b, c, r]);
+    const p = a.devices.prepareRevocation(
+      [{ device: r.id, cut: a.cursors.get(r.id) ?? START_CURSOR }],
+      { revoke: newEid(), rotate: newEid() },
+    );
+    if (!p.ok) throw new Error(p.reason);
+    a.write(p.change.events);
+    p.change.commit();
+    syncAll([a, b, c]);
+    expect(view(a).head).toBe(late); // R's claim still counts on the chain ...
+    expect(missing(a)).toEqual([b.id]); // ... but not its waiver
+    expect(view(a).waiversRefused).toEqual([
+      { eid: wrong, reason: "unconfirmed" },
+      { eid: forged, reason: "bad_signature" },
+      { eid: late, reason: "untrusted_writer" },
+    ]);
+  });
+
   it("waive is strict: sorted, unique, 1-64 device ids; claims and renewals carry it", async () => {
     const { a } = await vault();
     const ids = Array.from({ length: 3 }, () => createDeviceIdentity(sodium).deviceId);
@@ -212,9 +275,12 @@ describe("R3a: validated catch-up watermarks", () => {
       until: a.now() + HOUR,
       watermark: {},
       prev: newEid(),
-      waive: [ids[2] as string, ids[0] as string, ids[1] as string, ids[0] as string],
+      waive: typed([ids[2] as string, ids[0] as string, ids[1] as string, ids[0] as string]),
     });
-    expect(decodeLeaseRenewal(built.d)?.waive).toEqual([...ids].sort());
+    expect(decodeLeaseRenewal(built.d)?.waive).toEqual({
+      devices: [...ids].sort(),
+      confirmation: { kind: "typed", text: waiveConfirmationText(ids) },
+    });
     const claimed = buildLeaseClaim(a.identity, a.ring.vaultId, newEid(), {
       at: a.now(),
       until: a.now() + HOUR,
@@ -224,12 +290,26 @@ describe("R3a: validated catch-up watermarks", () => {
     expect(decodeLeaseClaim(claimed.d)).toBeDefined();
     expect(decodeLeaseClaim(claimed.d)).not.toHaveProperty("waive");
     const sorted = [...ids].sort();
-    for (const waive of [
+    const text = waiveConfirmationText(sorted);
+    for (const devices of [
       [],
       [...sorted].reverse(),
       [sorted[0], sorted[0]],
       ["x"],
       Array.from({ length: 65 }, (_, i) => (i + 1).toString(16).padStart(32, "0")),
+    ]) {
+      const waive = { devices, by: "typed", text };
+      expect(decodeLeaseClaim({ ...claimed.d, waive }), JSON.stringify(devices)).toBeUndefined();
+    }
+    // Exactly one form of confirmation, never none.
+    for (const waive of [
+      sorted,
+      { devices: sorted },
+      { devices: sorted, by: "typed" },
+      { devices: sorted, by: "recovery", text },
+      { devices: sorted, by: "recovery", sig: "zz" },
+      { devices: sorted, by: "typed", text, sig: "00".repeat(64) },
+      { devices: sorted, by: "device", text },
     ]) {
       expect(decodeLeaseClaim({ ...claimed.d, waive }), JSON.stringify(waive)).toBeUndefined();
     }
@@ -239,7 +319,7 @@ describe("R3a: validated catch-up watermarks", () => {
         until: a.now() + HOUR,
         watermark: {},
         prev: null,
-        waive: ["not a device"],
+        waive: typed(["not a device"]),
       }),
     ).toThrow(RangeError);
   });

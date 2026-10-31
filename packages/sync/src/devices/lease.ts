@@ -35,7 +35,12 @@ import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
 import { type DeviceIdentity, isDeviceId } from "../crypto/index.js";
 import { DEFAULT_MAX_DRIFT_MS, parseHlc } from "../hlc.js";
 import { canonicalJson, fromHex, isCanonicalValue } from "./bytes.js";
-import { behindNeed, CatchUpFold, type DroppedWatermarkEntry } from "./catchUp.js";
+import {
+  behindNeed,
+  CatchUpFold,
+  type DroppedWatermarkEntry,
+  type RefusedWaiver,
+} from "./catchUp.js";
 import {
   buildLeaseClaim,
   buildLeaseRelease,
@@ -51,6 +56,7 @@ import {
   type LeaseRenewData,
   type LogEvent,
   statementBody,
+  type WaiveRequest,
   type Watermark,
 } from "./events.js";
 import { comparePositions } from "./positions.js";
@@ -154,6 +160,8 @@ export interface LeaseView {
   readonly catchUpSources: ReadonlyMap<string, string>;
   /** Watermark entries that never count (unknown or untrusted device). */
   readonly catchUpDropped: readonly DroppedWatermarkEntry[];
+  /** Waivers without the owner's confirmation (refused; the events still count otherwise). */
+  readonly waiversRefused: readonly RefusedWaiver[];
   readonly ignored: readonly { readonly eid: string; readonly reason: LeaseIgnoredReason }[];
 }
 
@@ -272,7 +280,7 @@ export function foldLease(
   let until = 0;
   let term: LeaseTermEntry[] = [];
   let watermark: Watermark = {};
-  const catchUp = new CatchUpFold(registry);
+  const catchUp = new CatchUpFold(registry, verify);
   const onChain = new Set<string>();
 
   for (;;) {
@@ -302,7 +310,7 @@ export function foldLease(
       released = true;
     }
     watermark = d.watermark;
-    catchUp.add(event.eid, d.watermark, d.kind === "released" ? [] : d.waive);
+    catchUp.add(event.eid, event.writer, d.watermark, d.kind === "released" ? undefined : d.waive);
     head = event.eid;
     onChain.add(event.eid);
   }
@@ -329,6 +337,7 @@ export function foldLease(
     catchUp: required.need,
     catchUpSources: required.sources,
     catchUpDropped: required.dropped,
+    waiversRefused: required.waiversRefused,
     ignored,
   };
 }
@@ -531,10 +540,11 @@ export interface LeaseWrite {
   /** Applied cursor per writer device (the store's view cursors). */
   readonly applied: ReadonlyMap<string, SegmentCursor>;
   /**
-   * Devices whose catch-up requirement the OWNER waived after confirming in the UI that their data
-   * is lost or withheld (claims and renewals only; never written automatically).
+   * Devices whose catch-up requirement the OWNER waived after confirming that their data is lost or
+   * withheld, with that confirmation (events.ts `WaiveRequest`; claims and renewals only; never
+   * written automatically).
    */
-  readonly waive?: readonly string[];
+  readonly waive?: WaiveRequest;
 }
 
 /** The event for a `claim` / `renew` / `release` step; record it as an own lease event when written. */

@@ -130,6 +130,50 @@ export interface KeysRotatedData {
  */
 export type Watermark = Readonly<Record<string, SegmentCursor>>;
 
+/**
+ * The owner's confirmation of a waiver (review: a waived requirement re-allows newest-day
+ * duplicates, so no key holder may waive on its own):
+ * - `typed`: the owner typed `waiveConfirmationText(devices)` (the short ids of the waived devices,
+ *   shown next to their names) on a trusted, not revoked device, which then signed the lease event.
+ *   S44 UI contract: `text` is set ONLY from what the owner typed in the confirmation dialog, never
+ *   computed by the app.
+ * - `recovery`: the recovery identity (the words) signed the waiver: `sig` over
+ *   `statementBody(vault, LEASE_WAIVER_BODY, eid, { devices })` in context `cashu/lease/v1`.
+ */
+export type WaiveConfirmation =
+  | { readonly kind: "typed"; readonly text: string }
+  | { readonly kind: "recovery"; readonly sig: string };
+
+export interface LeaseWaiver {
+  /** Sorted, unique, 1-64 device ids. */
+  readonly devices: readonly string[];
+  readonly confirmation: WaiveConfirmation;
+}
+
+/** What a writer asks for: the typed text, or the recovery identity to sign the waiver with. */
+export interface WaiveRequest {
+  readonly devices: readonly string[];
+  readonly confirmation:
+    | { readonly kind: "typed"; readonly text: string }
+    | { readonly kind: "recovery"; readonly recovery: RecoveryIdentity };
+}
+
+/** Signed-body type of a recovery-signed waiver; never the type of a log event. */
+export const LEASE_WAIVER_BODY = "lease.waiver";
+
+/** The text the owner types to confirm a waiver: the first 8 hex digits of each device id. */
+export function waiveConfirmationText(devices: readonly string[]): string {
+  return [...new Set(devices)]
+    .sort()
+    .map((d) => d.slice(0, 8))
+    .join(" ");
+}
+
+/** What the recovery identity signs for a waiver (bound to the vault and the lease event's eid). */
+export function waiverBody(vaultId: string, eid: string, devices: readonly string[]): Uint8Array {
+  return statementBody(vaultId, LEASE_WAIVER_BODY, eid, { devices: [...devices] });
+}
+
 export interface LeaseClaimData {
   readonly device: string;
   /** The claimer's wall clock (ms) when it wrote the claim. */
@@ -141,9 +185,9 @@ export interface LeaseClaimData {
   readonly prev: string | null;
   /**
    * Devices the owner confirmed lost or withheld: their catch-up requirement restarts at this
-   * event's own watermark entry (sorted, unique, 1-64 device ids; absent = none).
+   * event's own watermark entry. Counts only with the owner's confirmation (catchUp.ts).
    */
-  readonly waive?: readonly string[];
+  readonly waive?: LeaseWaiver;
   readonly sig: string;
 }
 
@@ -154,7 +198,7 @@ export interface LeaseRenewData {
   readonly watermark: Watermark;
   readonly prev: string;
   /** As in a claim. */
-  readonly waive?: readonly string[];
+  readonly waive?: LeaseWaiver;
   readonly sig: string;
 }
 
@@ -279,14 +323,21 @@ function watermarkJson(w: Watermark): { [device: string]: CanonicalValue } {
   return out;
 }
 
-/** The `waive` field as written: sorted, unique, 1-64 device ids; omitted when empty. */
-function waiveJson(waive: readonly string[] | undefined): { waive?: string[] } {
-  if (waive === undefined || waive.length === 0) return {};
-  const sorted = [...new Set(waive)].sort();
-  if (sorted.length > MAX_WAIVE || !sorted.every(isDeviceId)) {
+/** The `waive` field as written (devices sorted and unique); omitted when there is no waiver. */
+function waiveJson(
+  vaultId: string,
+  eid: string,
+  waive: WaiveRequest | undefined,
+): { waive?: { [key: string]: CanonicalValue } } {
+  if (waive === undefined) return {};
+  const devices = [...new Set(waive.devices)].sort();
+  if (devices.length === 0 || devices.length > MAX_WAIVE || !devices.every(isDeviceId)) {
     throw new RangeError("waive 1-64 device ids");
   }
-  return { waive: sorted };
+  const c = waive.confirmation;
+  if (c.kind === "typed") return { waive: { devices, by: "typed", text: c.text } };
+  const sig = c.recovery.sign("cashu/lease/v1", waiverBody(vaultId, eid, devices));
+  return { waive: { devices, by: "recovery", sig: toHex(sig) } };
 }
 
 export function buildLeaseClaim(
@@ -298,7 +349,7 @@ export function buildLeaseClaim(
     until: number;
     watermark: Watermark;
     prev: string | null;
-    waive?: readonly string[];
+    waive?: WaiveRequest;
   },
 ): UnstampedEvent {
   return signed(identity, "cashu/lease/v1", vaultId, LEASE_CLAIMED, eid, {
@@ -307,7 +358,7 @@ export function buildLeaseClaim(
     until: fields.until,
     watermark: watermarkJson(fields.watermark),
     prev: fields.prev,
-    ...waiveJson(fields.waive),
+    ...waiveJson(vaultId, eid, fields.waive),
   });
 }
 
@@ -320,7 +371,7 @@ export function buildLeaseRenewal(
     until: number;
     watermark: Watermark;
     prev: string;
-    waive?: readonly string[];
+    waive?: WaiveRequest;
   },
 ): UnstampedEvent {
   return signed(identity, "cashu/lease/v1", vaultId, LEASE_RENEWED, eid, {
@@ -329,7 +380,7 @@ export function buildLeaseRenewal(
     until: fields.until,
     watermark: watermarkJson(fields.watermark),
     prev: fields.prev,
-    ...waiveJson(fields.waive),
+    ...waiveJson(vaultId, eid, fields.waive),
   });
 }
 
@@ -436,8 +487,8 @@ function isWatermark(value: unknown): value is Watermark {
   );
 }
 
-/** Strict: an array of 1-64 device ids in ascending order without repeats. */
-function isWaive(value: unknown): value is readonly string[] {
+/** Strict: 1-64 device ids in ascending order without repeats. */
+function isWaivedDevices(value: unknown): value is readonly string[] {
   return (
     Array.isArray(value) &&
     value.length > 0 &&
@@ -448,10 +499,28 @@ function isWaive(value: unknown): value is readonly string[] {
   );
 }
 
+/** Strict decode of a `waive` object: devices plus exactly one form of owner confirmation. */
+function decodeWaiver(value: unknown): LeaseWaiver | undefined {
+  if (!isRecord(value) || !isWaivedDevices(value.devices)) return undefined;
+  const devices = [...value.devices];
+  if (hasExactly(value, ["devices", "by", "text"]) && value.by === "typed") {
+    const text = value.text;
+    if (typeof text !== "string" || text.length > MAX_WAIVE * 9) return undefined;
+    return { devices, confirmation: { kind: "typed", text } };
+  }
+  if (hasExactly(value, ["devices", "by", "sig"]) && value.by === "recovery" && isSig(value.sig)) {
+    return { devices, confirmation: { kind: "recovery", sig: value.sig } };
+  }
+  return undefined;
+}
+
 /** The fields of a claim or renewal, with the optional `waive`. */
 function hasLeaseTermFields(data: Readonly<Record<string, unknown>>): boolean {
   const keys = ["device", "at", "until", "watermark", "prev", "sig"];
-  return hasExactly(data, keys) || (hasExactly(data, [...keys, "waive"]) && isWaive(data.waive));
+  return (
+    hasExactly(data, keys) ||
+    (hasExactly(data, [...keys, "waive"]) && decodeWaiver(data.waive) !== undefined)
+  );
 }
 
 function decodeWatermark(value: Watermark): Watermark {
@@ -568,7 +637,8 @@ export function decodeLeaseClaim(
   ) {
     return undefined;
   }
-  const waive = data.waive === undefined ? {} : { waive: [...(data.waive as string[])] };
+  const waiver = data.waive === undefined ? undefined : decodeWaiver(data.waive);
+  const waive = waiver ? { waive: waiver } : {};
   return { device, at, until, watermark: decodeWatermark(watermark), prev, ...waive, sig };
 }
 
@@ -588,7 +658,8 @@ export function decodeLeaseRenewal(
   ) {
     return undefined;
   }
-  const waive = data.waive === undefined ? {} : { waive: [...(data.waive as string[])] };
+  const waiver = data.waive === undefined ? undefined : decodeWaiver(data.waive);
+  const waive = waiver ? { waive: waiver } : {};
   return { device, at, until, watermark: decodeWatermark(watermark), prev, ...waive, sig };
 }
 

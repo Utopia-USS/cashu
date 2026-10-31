@@ -2,7 +2,12 @@
 // string, revocation as key rotation going forward, frame enforcement against revoked writers, and
 // the fetch-leader lease. Pure protocol logic; transports and UI plug in from outside.
 
-export type { DroppedWatermarkEntry, WatermarkDrop } from "./catchUp.js";
+export type {
+  DroppedWatermarkEntry,
+  RefusedWaiver,
+  WaiverRefusal,
+  WatermarkDrop,
+} from "./catchUp.js";
 export {
   buildDeviceAdded,
   buildDeviceRevoked,
@@ -20,9 +25,11 @@ export {
   LEASE_CLAIMED,
   LEASE_RELEASED,
   LEASE_RENEWED,
+  LEASE_WAIVER_BODY,
   type LeaseClaimData,
   type LeaseReleaseData,
   type LeaseRenewData,
+  type LeaseWaiver,
   type LogEvent,
   logEventsFromBatch,
   MAX_DEVICES,
@@ -30,7 +37,10 @@ export {
   RECOVERY_CHANGED,
   type RecoveryChangedData,
   type RevokedEntry,
+  type WaiveConfirmation,
+  type WaiveRequest,
   type Watermark,
+  waiveConfirmationText,
 } from "./events.js";
 export {
   devicesNeedingRebuild,
