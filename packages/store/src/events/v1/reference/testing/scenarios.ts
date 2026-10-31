@@ -766,5 +766,56 @@ scenario(
   },
 );
 
+const K24 = "S24: account key parking (D-24.7, gid.md 4.3)";
+{
+  const manual = (gid: string, wall: number, name: string) =>
+    ev("a", wall, "account.opened", gid, {
+      bank: "manual",
+      name,
+      externalId: "manual:Dom",
+      type: "property",
+      keys: [],
+    });
+  scenario(
+    K24,
+    "PK1 A removed, B opened with its name key, B removed, A restored: A holds the key",
+    [
+      manual("A", 10, "Dom"),
+      ev("a", 20, "account.removed", "A", {}),
+      manual("B", 30, "Dom"),
+      ev("a", 40, "account.removed", "B", {}),
+      ev("a", 50, "account.restored", "A", {}),
+    ],
+    (v) => {
+      expect(v.accounts.A?.externalId).toBe("manual:Dom");
+      expect(v.accounts.B?.externalId).toBe("manual:Dom~B");
+    },
+  );
+  scenario(
+    K24,
+    "PK2 two removed accounts: the latest opened keeps the key; two live both show it (m12)",
+    [
+      manual("A", 10, "Dom"),
+      manual("B", 30, "Dom"),
+      ev("a", 40, "account.removed", "B", {}),
+      ev("a", 41, "account.removed", "A", {}),
+      manual("C", 50, "Dom"),
+      manual("D", 51, "Dom"),
+    ],
+    (v) => {
+      expect(v.accounts.A?.externalId).toBe("manual:Dom~A");
+      expect(v.accounts.B?.externalId).toBe("manual:Dom~B");
+      expect(v.accounts.C?.externalId).toBe("manual:Dom");
+      expect(v.accounts.D?.externalId).toBe("manual:Dom");
+    },
+  );
+  scenario(
+    K24,
+    "PK3 a single removed account keeps its key",
+    [manual("A", 10, "Dom"), ev("a", 20, "account.removed", "A", {})],
+    (v) => expect(v.accounts.A?.externalId).toBe("manual:Dom"),
+  );
+}
+
 /** Every scenario, in a fixed order. */
 export const SCENARIOS: readonly Scenario[] = out;

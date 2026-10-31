@@ -6,14 +6,19 @@
 // `external_id` = first non-null; `type` = latest `account.typeSet`, else the first applied open's;
 // `name` = latest explicit rename of any member, else the root's own opened name, else the first
 // applied open's (N4); `removed_at` = SOFT register.
-import type {
-  FoldContext,
-  FoldEvent,
-  IdentityClaim,
-  IdentityConflict,
-  IdentityKind,
-  Materializer,
-  ViewSql,
+// Key parking (S24 D-24.7, gid.md 4.3, events.md 9: DERIVED): the accounts of one (bank, external_id)
+// group (name keys like `manual:<name>` are not identity, so several rows can carry one) show the key
+// on the live ones; with none live, on the latest opened (highest fold order of its first open); every
+// other member shows `<key>~<gid>`. Python `park_removed_key` / `unpark_key` on sequential histories.
+import {
+  type FoldContext,
+  type FoldEvent,
+  type IdentityClaim,
+  type IdentityConflict,
+  type IdentityKind,
+  type Materializer,
+  ord,
+  type ViewSql,
 } from "../engine/types.js";
 import { claimAllowed } from "../events/v1/identity.js";
 import type { TableDef } from "../sql/ddl.js";
@@ -82,7 +87,11 @@ const accountsTable: TableDef = {
     { name: "created_at", type: "TEXT", notNull: true },
     { name: "removed_at", type: "TEXT" },
   ],
-  indexes: [{ columns: ["iban"] }, { columns: ["external_id"] }],
+  indexes: [
+    { columns: ["iban"] },
+    { columns: ["external_id"] },
+    { columns: ["bank", "external_id"] },
+  ],
 };
 
 /** Per-root fold registers; the public row is projected from it after every event. */
@@ -104,7 +113,10 @@ const foldTable: TableDef = {
     { name: "external_id", type: "TEXT" },
     { name: "created_at", type: "TEXT" },
     { name: "removed_at", type: "TEXT" },
+    /** Fold order of the first applied open (parking: the latest opened removed account keeps its key). */
+    { name: "first_ord", type: "TEXT" },
   ],
+  indexes: [{ columns: ["bank", "external_id"] }],
 };
 
 interface AccountState {
@@ -121,6 +133,7 @@ interface AccountState {
   external_id: string | null;
   created_at: string | null;
   removed_at: string | null;
+  first_ord: string | null;
 }
 
 function load(ctx: FoldContext, root: string): AccountState {
@@ -139,16 +152,50 @@ function load(ctx: FoldContext, root: string): AccountState {
       external_id: null,
       created_at: null,
       removed_at: null,
+      first_ord: null,
     }
   );
+}
+
+/**
+ * Show the group's key on its holders and `<key>~<gid>` on every other member (D-24.7). Members are
+ * the visible rows (an open folded) whose un-parked external id is `key` at `bank`.
+ */
+function park(ctx: FoldContext, bank: string, key: string): void {
+  const members = ctx.sql.all<{ root: string; removed_at: string | null; first_ord: string }>(
+    `SELECT root, removed_at, first_ord FROM fold_accounts
+     WHERE bank = ? AND external_id = ? AND first_ord IS NOT NULL`,
+    bank,
+    key,
+  );
+  const live = members.filter((m) => m.removed_at === null);
+  const holders = new Set(
+    (live.length > 0
+      ? live
+      : members.reduce<typeof members>(
+          (best, m) => (best.length === 0 || m.first_ord > (best[0]?.first_ord ?? "") ? [m] : best),
+          [],
+        )
+    ).map((m) => m.root),
+  );
+  for (const m of members) {
+    const shown = holders.has(m.root) ? key : `${key}~${m.root}`;
+    ctx.sql.write(
+      accountsTable.name,
+      "UPDATE accounts SET external_id = ? WHERE gid = ? AND external_id IS NOT ?",
+      shown,
+      m.root,
+      shown,
+    );
+  }
 }
 
 function save(ctx: FoldContext, s: AccountState): void {
   ctx.sql.write(
     foldTable.name,
     `INSERT OR REPLACE INTO fold_accounts (root, bank, currency, open_type, set_type, active, first_name,
-       own_name, renamed, iban, external_id, created_at, removed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       own_name, renamed, iban, external_id, created_at, removed_at, first_ord)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     s.root,
     s.bank,
     s.currency,
@@ -162,6 +209,7 @@ function save(ctx: FoldContext, s: AccountState): void {
     s.external_id,
     s.created_at,
     s.removed_at,
+    s.first_ord,
   );
   // The row is visible once an open of any member is folded (bank / currency / name known).
   if (s.bank === null || s.currency === null || s.open_type === null) return;
@@ -187,11 +235,12 @@ function save(ctx: FoldContext, s: AccountState): void {
     s.created_at ?? "",
     s.removed_at,
   );
+  if (s.external_id !== null) park(ctx, s.bank, s.external_id);
 }
 
 export const accountsMaterializer: Materializer = {
   id: "core.accounts",
-  version: 1,
+  version: 2,
   tables: [accountsTable, foldTable],
   handles: [
     "account.opened",
@@ -206,10 +255,19 @@ export const accountsMaterializer: Materializer = {
   partitions: (e, ctx) => [ctx.resolve(ACCOUNTS, e.gid)],
   subjects: (root, ctx) => ctx.identityMembers(ACCOUNTS, root),
   clear(roots, ctx) {
+    const groups = new Map<string, [string, string]>();
     for (const r of roots) {
+      const g = ctx.sql.get<{ bank: string | null; external_id: string | null }>(
+        "SELECT bank, external_id FROM fold_accounts WHERE root = ?",
+        r,
+      );
+      if (g?.bank && g.external_id)
+        groups.set(`${g.bank}\u0000${g.external_id}`, [g.bank, g.external_id]);
       ctx.sql.write(accountsTable.name, "DELETE FROM accounts WHERE gid = ?", r);
       ctx.sql.write(foldTable.name, "DELETE FROM fold_accounts WHERE root = ?", r);
     }
+    // The rest of each group may hold the key now (re-parked again when the cleared rows replay).
+    for (const [bank, key] of groups.values()) park(ctx, bank, key);
   },
   apply(e, ctx) {
     const root = ctx.resolve(ACCOUNTS, e.gid);
@@ -230,6 +288,7 @@ export const accountsMaterializer: Materializer = {
             s.active = sqlBool(d.active !== false);
             s.first_name = str(d.name);
             s.created_at = ctx.time(e, "created_at");
+            s.first_ord = ord(e);
           }
           if (e.gid === root && s.own_name === null) s.own_name = str(d.name);
         }

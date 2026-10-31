@@ -202,7 +202,11 @@ export function project(store: Store, names: Names): RefView {
       {
         gid: n(r.gid),
         iban: r.iban,
-        externalId: r.external_id,
+        // a parked key carries the account gid: `<key>~<gid>` (D-24.7)
+        externalId:
+          r.external_id === null
+            ? null
+            : r.external_id.replace(/~([^~]+)$/, (_, g: string) => `~${n(g)}`),
         name: r.name,
         members: identityMembers("accounts", r.gid),
       },

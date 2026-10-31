@@ -294,6 +294,8 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   }
   const transactions = new Map<string, TxnState>();
   const ownName = new Map<string, string>(); // account gid -> its own first opened name
+  const bankOf = new Map<string, { bank: string; firstOrd: number }>(); // root -> first applied open
+  const removed = new Map<string, boolean>(); // account root -> SOFT register
   const renamed = new Map<string, string>(); // account root -> latest explicit rename
   const memberLive = new Map<string, boolean>(); // watchlist member gid -> its own SOFT register
   const watchlist = new Map<string, WatchRow>();
@@ -385,6 +387,9 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
           row.externalId = str(d.externalId) ?? null;
         if (e.type === "account.opened") {
           openedRoots.add(acc(e.gid));
+          if (!bankOf.has(acc(e.gid))) {
+            bankOf.set(acc(e.gid), { bank: String(d.bank), firstOrd: evs.indexOf(e) });
+          }
           if (!ownName.has(e.gid)) ownName.set(e.gid, str(d.name) ?? "");
           if (row.name === null) row.name = str(d.name) ?? null;
         }
@@ -392,6 +397,10 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
       }
       case "account.renamed":
         renamed.set(acc(e.gid), str(d.name) ?? "");
+        break;
+      case "account.removed":
+      case "account.restored":
+        removed.set(acc(e.gid), e.type === "account.removed");
         break;
 
       case "txn.imported": {
@@ -602,6 +611,22 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   // N4: an explicit rename wins, else the identity root's own opened name.
   for (const [root, row] of accounts) {
     row.name = renamed.get(root) ?? ownName.get(root) ?? row.name;
+  }
+  // Key parking (S24 D-24.7): per (bank, external id) group the live rows hold the key, else the one
+  // whose first open sorts last; every other member shows `<key>~<gid>`.
+  const groups = new Map<string, AccountRow[]>();
+  for (const [root, row] of accounts) {
+    if (row.externalId === null) continue;
+    const k = `${bankOf.get(root)?.bank}\u0000${row.externalId}`;
+    groups.set(k, [...(groups.get(k) ?? []), row]);
+  }
+  for (const rows of groups.values()) {
+    const live = rows.filter((r) => removed.get(r.gid) !== true);
+    const latest = [...rows].sort(
+      (a, b) => (bankOf.get(b.gid)?.firstOrd ?? 0) - (bankOf.get(a.gid)?.firstOrd ?? 0),
+    )[0];
+    const holders = new Set(live.length > 0 ? live : latest ? [latest] : []);
+    for (const r of rows) if (!holders.has(r)) r.externalId = `${r.externalId}~${r.gid}`;
   }
   // N3: presence of a merged watchlist row = any member's own SOFT register is live.
   for (const row of watchlist.values()) {
