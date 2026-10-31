@@ -146,6 +146,24 @@ describe.each(backends)("frames (%s)", (_name, sodium: Sodium) => {
   });
 
   describe("padding (Padme inside the AEAD)", () => {
+    it("Padme matches an exact BigInt reference around every power of two up to 2^27", () => {
+      const reference = (n: number): number => {
+        if (n < 2) return n;
+        const big = BigInt(n);
+        const e = big.toString(2).length - 1;
+        const s = e.toString(2).length;
+        const mask = 1n << BigInt(e - s);
+        return Number(((big + mask - 1n) / mask) * mask);
+      };
+      for (let k = 1; k <= 27; k++) {
+        for (const n of [2 ** k - 1, 2 ** k, 2 ** k + 1]) expect(padme(n)).toBe(reference(n));
+      }
+      // Frozen vector shared with other runtimes (Hermes must produce the same sizes).
+      expect([9, 17, 33, 65, 129, 1025, 65537, 2 ** 26 + 4].map(padme)).toEqual([
+        10, 18, 36, 72, 144, 1088, 67584, 69206016,
+      ]);
+    });
+
     it("sizes follow Padme(len + 4) and leak at most a few bits of the length", () => {
       expect([0, 1, 4, 9, 100, 1000, 65536].map((n) => padme(n + 4))).toEqual([
         4, 5, 8, 14, 104, 1024, 67584,

@@ -49,12 +49,19 @@ export interface FramePolicy {
  * leak, with at most ~12% overhead.
  */
 export function padme(length: number): number {
+  if (!Number.isInteger(length) || length < 0 || length > 0xffffffff) {
+    throw new RangeError("padme length out of range");
+  }
   if (length < 2) return length;
-  const e = Math.floor(Math.log2(length));
-  const s = Math.floor(Math.log2(e)) + 1;
-  const lastBits = e - s;
-  const mask = 2 ** lastBits;
+  // Integer bit lengths only (no Math.log2), so every JS engine computes the same sizes.
+  const e = bitLength(length) - 1; // floor(log2 length)
+  const s = bitLength(e); // floor(log2 e) + 1
+  const mask = 2 ** (e - s);
   return Math.ceil(length / mask) * mask;
+}
+
+function bitLength(n: number): number {
+  return 32 - Math.clz32(n);
 }
 
 /** Ciphertext size of a frame whose plaintext is `length` bytes. */

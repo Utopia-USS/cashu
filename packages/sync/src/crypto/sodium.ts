@@ -2,10 +2,12 @@
 // build: it has every function used here, the sumo build only adds unused ones such as Argon2id);
 // the mobile app passes `react-native-libsodium` to `fromLibsodium` with `aead: "noble"`, so this
 // package never imports a React Native module. Construction runs a known-answer self-test, so a
-// runtime that lacks or mangles a primitive fails at startup with `unsupported_runtime` instead of
+// runtime that lacks or mangles a primitive (libsodium's, or @noble's Ed25519 / X25519 that identities
+// use) fails at startup with `unsupported_runtime` instead of
 // reporting every frame as tampered.
 
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
+import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { CryptoError } from "./errors.js";
 
 export interface KeyPairBytes {
@@ -193,6 +195,14 @@ const KAT_AEAD = {
 };
 // crypto_box_seed_keypair(32 zero bytes): X25519 of SHA-512(seed)[0..32] (checked with @noble).
 const KAT_SEED_PUBLIC = hex("5bf55c73b82ebe22be80f3430667af570fae2556a6415e6b30d4065300aa947d");
+// RFC 8032 section 7.1, test 1 (Ed25519, empty message), run on @noble/curves.
+const KAT_ED25519 = {
+  secret: hex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"),
+  public: hex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"),
+  signature: hex(
+    "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b",
+  ),
+};
 // BLAKE2b-256(key = 00..1f, "cashu/selftest") (checked with @noble/hashes).
 const KAT_HASH = hex("0a77bc9f206ab9767fc28bd7b79e0336c6a006df046573a09c0b208225a6c19f");
 
@@ -207,6 +217,17 @@ function selfTest(sodium: Sodium): void {
 
     const pair = sodium.boxSeedKeyPair(new Uint8Array(32));
     if (!same(pair.publicKey, KAT_SEED_PUBLIC)) throw new Error("seed keypair");
+    // BoxKeyPair derives public keys with @noble/curves: it must agree with libsodium.
+    if (!same(x25519.getPublicKey(pair.privateKey), pair.publicKey)) throw new Error("x25519");
+    const { secret, public: edPublic, signature } = KAT_ED25519;
+    if (!same(ed25519.getPublicKey(secret), edPublic)) throw new Error("ed25519");
+    if (!same(ed25519.sign(new Uint8Array(0), secret), signature)) throw new Error("ed25519");
+    if (!ed25519.verify(signature, new Uint8Array(0), edPublic, { zip215: false })) {
+      throw new Error("ed25519");
+    }
+    if (ed25519.verify(signature, Uint8Array.of(1), edPublic, { zip215: false })) {
+      throw new Error("ed25519");
+    }
     const box = sodium.seal(plain, pair.publicKey);
     if (!same(sodium.sealOpen(box, pair.publicKey, pair.privateKey), plain))
       throw new Error("seal");
