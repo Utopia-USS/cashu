@@ -176,7 +176,7 @@ export class Events {
     type: string,
     gid: string,
     data: Record<string, unknown> = {},
-    opts: { wall?: number; cause?: string; device?: string } = {},
+    opts: { wall?: number; counter?: number; cause?: string; device?: string } = {},
   ): TestEnvelope {
     return this.#f.make(type, gid, { ...(DEFAULTS[type] ?? {}), ...data }, opts);
   }
