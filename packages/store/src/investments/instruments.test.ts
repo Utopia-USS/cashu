@@ -71,18 +71,28 @@ describe("inv_instruments + inv_instrument_aliases", () => {
     const a = new Events();
     const b = new Events(DEV_B, "01JB");
     // device a creates under an isin alias, device b under a yahoo alias; each claims the other's
-    const ia = instrument(a, ["isin", "PLTEST000002"], {
-      name: "Member name",
-      isin: "PLTEST000002",
-      currency: "PLN",
-    }, { wall: 10 });
-    const ib = instrument(b, ["yahoo", "TST2.WA"], {
-      name: "Other name",
-      symbol: "TST2",
-      mic: "XWAR",
-      currency: "EUR",
-      assetClass: "etf",
-    }, { wall: 20 });
+    const ia = instrument(
+      a,
+      ["isin", "PLTEST000002"],
+      {
+        name: "Member name",
+        isin: "PLTEST000002",
+        currency: "PLN",
+      },
+      { wall: 10 },
+    );
+    const ib = instrument(
+      b,
+      ["yahoo", "TST2.WA"],
+      {
+        name: "Other name",
+        symbol: "TST2",
+        mic: "XWAR",
+        currency: "EUR",
+        assetClass: "etf",
+      },
+      { wall: 20 },
+    );
     const events = [
       ...ia.events,
       ...ib.events,
