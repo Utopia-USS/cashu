@@ -19,10 +19,13 @@
 // - `deviceLocal`: the D-G10 sidecar (notification log, connector fetch state);
 // - `slug`: in memory only, to name the vault's folder; never printed or reported.
 // `report` holds counts only (never values or slugs). Refusals throw `GenesisError` (exit 65):
-// an unsupported schema, a profile without `VaultKeys` (`missing_keys`), `clock_skew`,
-// `recon_collision`, and under `strict` an event failing `parseEvent` / `detPartsOf`
-// (`invalid_event`), an id no rule rewrites (`unmapped_id_key`) or a `bad_*` counter
-// (`strict_counter`). Without `strict` those rows are skipped and counted.
+// an unsupported schema, sync state in the source (`sync_state_present`), a profile without
+// `VaultKeys` (`missing_keys`), `clock_skew`, `recon_collision`, two rows of one table with one gid
+// (`gid_collision`), and under `strict` an event failing `parseEvent` / `detPartsOf`
+// (`invalid_event`), an id no rule rewrites (`unmapped_id_key`) or a strict counter (`bad_*`,
+// `candidate_key_local_id`: `strict_counter`). Without `strict` those rows are skipped and counted;
+// a row skipped after phase 1 keeps its gid (others may reference it) and is counted
+// `(table, dropped_after_phase1)`.
 
 import type { WireEvent } from "../events/v1/envelope.js";
 import { UNIT_SEPARATOR } from "../events/v1/namespaces.js";
@@ -136,6 +139,11 @@ function exportVault(
   const emitted = new Set(
     log.rows.flatMap((r) => (r.localId === undefined ? [] : [rowKey(r.table, r.localId)])),
   );
+  // A row phase 1 gave a gid but phase 2 dropped (lenient runs: an invalid event, an unmapped id
+  // key): other rows may still reference its gid, which no event creates. Named in the report.
+  for (const e of ids.ids) {
+    if (!emitted.has(rowKey(e.table, e.localId))) ctx.count(e.table, "dropped_after_phase1");
+  }
   return {
     ordinal,
     profileId: scope.profile.id,

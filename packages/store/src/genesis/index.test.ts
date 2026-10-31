@@ -132,9 +132,10 @@ describe("refusals", () => {
     const vault = result.vaults[0];
     expect(vault?.events.map((e) => e.t)).toEqual(["profile.created", "alert.created"]);
     expect(vault?.ids.map((e) => `${e.table}:${e.localId}`)).toEqual(["profiles:1", "alerts:3"]);
+    // Phase 1 gave the dropped rows gids (other rows may reference them): named per table.
     expect(result.report.counters.vaults["0"]).toEqual({
-      alerts: { invalid_event: 1, "unmapped_id_key.params.signal_id": 1 },
-      category_rules: { bad_enum: 1 },
+      alerts: { dropped_after_phase1: 2, invalid_event: 1, "unmapped_id_key.params.signal_id": 1 },
+      category_rules: { bad_enum: 1, dropped_after_phase1: 1 },
     });
   });
 });
