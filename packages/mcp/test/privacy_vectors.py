@@ -588,7 +588,7 @@ def adv_digits(rng: random.Random, n: int) -> str:
 
 
 def adv_fragment(rng: random.Random) -> str:
-    kind = rng.randrange(16)
+    kind = rng.randrange(19)
     sep = rng.choice(ADV_SEPARATORS)
     if kind == 0:  # card / account groups
         groups = [adv_digits(rng, rng.choice([2, 3, 4, 4, 4])) for _ in range(rng.randint(2, 7))]
@@ -655,6 +655,19 @@ def adv_fragment(rng: random.Random) -> str:
         return rng.choice(["line", "row", "Wiersz", "pozycja", "linii"]) + " " + rng.choice(["7", "12", "999", "1500", "12.5", "3x"])
     if kind == 11:  # small numbers and leading zeros
         return rng.choice(["0", "00", "0.5", "05", "1", "9", "10", "007", "0,25", "1.0", "1e4", "12h", "x12"])
+    if kind == 16:  # S37fix2 N9 / N10: numbers glued to letters, zero groups
+        return rng.choice(["kwota", "Zwrot", "nr", "PLN", "zł", "x", "abc", ""]) + rng.choice(
+            ["950", "1500", "2 000", "3 000", "2_000", "5\u20220000", "12", "7"]
+        ) + rng.choice(["", "%", " %", " pp", " x", " dni", ",", ", potem", "zł"])
+    if kind == 17:  # S37fix2: amounts in words
+        words = ["dwa", "tysiące", "pół", "miliona", "pięćdziesiąt", "sto", "dwadzieścia", "pięć", "tys.",
+                 "jedenaście", "fifty", "two", "thousand", "ten", "one", "hundred", "and", "i", "koty", "dom"]
+        return " ".join(rng.choice(words) for _ in range(rng.randint(1, 4)))
+    if kind == 18:  # S37fix2 N11: names glued with no case change, digits after, sharp s
+        first, last = rng.choice([("anna", "nowak"), ("jan", "kowalski"), ("zofia", "wisniewska")])
+        glued = rng.choice([first + last, last + first, first + last + "ego", first + last + "123"])
+        glued = glued.upper() if rng.random() < 0.5 else glued
+        return glued.replace("s", "\u00df") if rng.random() < 0.2 else glued
     return rng.choice(ADV_WORDS)  # kinds 14, 15: plain words
 
 

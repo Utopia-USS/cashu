@@ -3,6 +3,7 @@
  * Test helpers for the Python-generated privacy vectors (`packages/mcp/test/privacy_vectors.py`):
  * loading, typed-value decoding (the generator's `enc`), tree decoding and a mismatch collector.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { D, Decimal, floatRepr, formatDateTime, parseDateTime } from "@cashu/domain";
@@ -196,4 +197,33 @@ export function exprDepsFromVectors(): ExprDeps {
     },
     metricUnit: (name) => file.units[name] ?? null,
   };
+}
+
+export const BLOCKS_PER_PLANE = 0x10000 / 4096;
+export const PLANES = 0x110000 / 0x10000;
+
+/**
+ * The per-block digests of one plane (16 blocks of 4096 code points): `fn` of every code point, each
+ * followed by NUL, hashed in one update per block (the same digest as one update per code point).
+ */
+export function planeHashes(fn: (s: string) => string, plane: number): string[] {
+  const out: string[] = [];
+  for (let b = 0; b < BLOCKS_PER_PLANE; b++) {
+    const block = plane * BLOCKS_PER_PLANE + b;
+    const parts: string[] = [];
+    for (let c = block * 4096; c < (block + 1) * 4096; c++) {
+      if (c >= 0xd800 && c <= 0xdfff) continue;
+      parts.push(fn(String.fromCodePoint(c)), "\0");
+    }
+    out.push(createHash("sha256").update(parts.join(""), "utf8").digest("hex").slice(0, 16));
+  }
+  return out;
+}
+
+/** `rows` in consecutive slices of at most `size`, each with the index of its first row. */
+export function slices<T>(rows: readonly T[], size: number): [number, readonly T[]][] {
+  const out: [number, readonly T[]][] = [];
+  for (let from = 0; from < rows.length; from += size)
+    out.push([from, rows.slice(from, from + size)]);
+  return out;
 }
