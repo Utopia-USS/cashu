@@ -250,6 +250,7 @@ def create_thesis(session: Session, profile_id: int, instrument_id: int, values:
         created_at=now,
         updated_at=now,
         core_changed_at=now,
+        exit_plan_changed_at=now if cleaned.get("exit_plan") else None,
         **cleaned,
     )
     session.add(row)
@@ -264,6 +265,8 @@ def update_thesis(
     for key, value in _clean_thesis(values, partial=True).items():
         if key in CORE_THESIS_FIELDS and getattr(row, key) != value:
             row.core_changed_at = now
+        if key == "exit_plan" and getattr(row, key) != value:
+            row.exit_plan_changed_at = now if value else None
         setattr(row, key, value)
     row.updated_at = now
     if reviewed:

@@ -1,0 +1,46 @@
+/* The home rail next to the review deck (HomeRail.tsx, research/Strip.tsx CandidatesRail): one row grammar,
+   a ticker tile + bold subject + plain text, a tag or icon buttons at the right. */
+.hrail .hlead { margin: 2px 0 8px; font-size: 14px; line-height: 1.4; font-weight: 600; }
+.hrail .hlead.hr-soft { font-weight: 400; color: var(--muted); }
+.hrail .hsect { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); }
+.hrail .hsect::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.hrail .hsect.hr-risk { color: var(--neg); } .hrail .hsect.hr-chance { color: var(--pos); } .hrail .hsect.hr-plan { color: var(--info); }
+
+.hr-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0 8px 0; border-top: 1px solid var(--border); }
+.hgrp .hr-row:first-of-type, .hsect + .hr-row { border-top: 0; }
+.hr-row.hr-link { cursor: pointer; border-radius: 6px; }
+.hr-row.hr-link:hover { background: var(--subtle); }
+.hr-row.hr-link:focus-visible { outline: 2px solid var(--info); outline-offset: -2px; }
+.hr-row > .il { flex: none; margin-top: 1px; }
+.hr-row > .il.hr-pf .av { background: var(--chip); color: var(--muted); font-size: 12px; }
+.hr-row .hr-tx { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; }
+.hr-row .hr-tx b { font-weight: 650; }
+.hr-row .hr-tx .hr-m { color: var(--muted); }
+.hr-row .hr-tx .hr-n { color: var(--muted); font-size: 12px; }
+.hr-row .hr-r { flex: none; display: flex; gap: 4px; align-items: center; margin-left: auto; }
+
+.htag { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.htag.hr-near { background: var(--warnBg); color: var(--warn); }
+.htag.hr-met { background: var(--posBg); color: var(--pos); }
+.hlegend { display: inline-flex; gap: 12px; font-size: 12px; color: var(--muted); }
+.hlegend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.hlegend i.hr-near { background: var(--warn); } .hlegend i.hr-met { background: var(--pos); }
+
+.hdeck { margin: 8px 0 4px; padding: 10px 12px; border-radius: 10px; background: var(--subtle); display: grid; gap: 8px; }
+.hdeck .hr-dt { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.hdeck .hr-dt span { color: var(--muted); font-size: 13px; }
+.hdeck .hr-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.hdeck .hr-pill { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.hdeck .hr-pill.hr-risk { background: var(--negBg); color: var(--neg); } .hdeck .hr-pill.hr-chance { background: var(--posBg); color: var(--pos); }
+.hdeck .hr-pill.hr-mixed, .hdeck .hr-pill.hr-plan { background: var(--infoBg); color: var(--info); } .hdeck .hr-pill.hr-fix { background: var(--warnBg); color: var(--warn); }
+
+.hr-ic { width: 28px; height: 28px; display: inline-grid; place-items: center; border: 1px solid var(--border); border-radius: 7px;
+  background: transparent; color: var(--muted); cursor: pointer; padding: 0; }
+.hr-ic svg { width: 15px; height: 15px; }
+.hr-ic:hover:not(:disabled) { color: var(--text); border-color: var(--muted); }
+.hr-ic.hr-ok:hover:not(:disabled) { color: var(--pos); border-color: var(--pos); }
+.hr-ic.hr-no:hover:not(:disabled) { color: var(--neg); border-color: var(--neg); }
+.hr-ic.hr-on { color: var(--info); border-color: transparent; background: var(--infoBg); }
+.hr-ic:disabled { opacity: .45; cursor: default; }
+.hr-why { margin: 0 0 8px 46px; font-size: 12px; color: var(--muted); display: grid; gap: 2px; }

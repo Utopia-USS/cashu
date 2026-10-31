@@ -280,7 +280,7 @@ def test_migration_0024_round_trips_and_refuses_to_drop_a_view(tmp_path):
         return {r[1] for r in _sql(path, "PRAGMA table_info('inv_topic_theses')")}
 
     assert not ({"assessment", "outlook", "view_updated_at"} & columns())
-    assert migrations.upgrade_to_head(engine) == "0025_topic_view_sources"
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
     assert {"assessment", "outlook", "view_updated_at", "view_sources"} <= columns()
     _sql(
         path,
@@ -314,7 +314,7 @@ def test_migration_0025_round_trips_and_refuses_to_drop_view_sources(tmp_path):
         return {r[1] for r in _sql(path, "PRAGMA table_info('inv_topic_theses')")}
 
     assert "view_sources" not in columns() and "outlook" in columns()
-    assert migrations.upgrade_to_head(engine) == "0025_topic_view_sources"
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
     assert "view_sources" in columns()
     _sql(
         path,

@@ -109,11 +109,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     before = legacy.table_counts(path)
     engine = db.make_engine(f"sqlite:///{path}")
     assert migrations.current_revision(engine) == "0007_alerts_watchlist"
-    assert (
-        migrations.upgrade_to_head(engine)
-        == migrations.head_revision()
-        == "0025_topic_view_sources"
-    )
+    assert migrations.upgrade_to_head(engine) == migrations.head_revision() == "0027_alert_tag"
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
     assert legacy.table_counts(backup) == before and not (_tables(backup) & NEW_TABLES)
@@ -123,7 +119,10 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     assert NEW_TABLES <= _tables(path) and all(after[t] == 0 for t in NEW_TABLES)
     assert _sql(path, "SELECT title, deleted_at FROM alerts") == [("Example level", None)]
     # appended by ALTER TABLE ADD COLUMN: the last column, no rebuild
-    assert [r[1] for r in _sql(path, "PRAGMA table_info('alerts')")][-1] == "deleted_at"
+    assert [r[1] for r in _sql(path, "PRAGMA table_info('alerts')")][-2:] == [
+        "deleted_at",
+        "tag",  # 0027
+    ]
     assert [r[1] for r in _sql(path, "PRAGMA table_info('accounts')")][-1] == "removed_at"  # 0010
     assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][-2:] == [
         "read_at",  # 0011
@@ -350,9 +349,9 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
         edited,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0025_topic_view_sources"
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
-    assert columns[-1] == "core_changed_at"
+    assert columns[-2:] == ["core_changed_at", "exit_plan_changed_at"]
     assert _sql(path, "SELECT thesis, core_changed_at FROM inv_theses") == [
         ("Przykladowa teza.", edited)
     ]
@@ -364,7 +363,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0025_topic_view_sources"
+    assert migrations.current_revision(engine) == "0027_alert_tag"
     engine.dispose()
 
 
@@ -390,7 +389,7 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0025_topic_view_sources"
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
     assert columns[-5:] == ["plan", "plan_at", "plan_reason", "segment", "segment_by"]  # 0018
     assert _sql(path, "SELECT plan, plan_reason FROM inv_profile_instruments") == [("hold", None)]
@@ -401,7 +400,7 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
     assert _sql(path, "SELECT plan FROM inv_profile_instruments") == [("hold",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0025_topic_view_sources"
+    assert migrations.current_revision(engine) == "0027_alert_tag"
     engine.dispose()
 
 
@@ -426,7 +425,7 @@ def test_0017_appends_removed_at_and_refuses_to_downgrade_over_removed_rows(tmp_
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0025_topic_view_sources"
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('watchlist_items')")]
     assert columns[-1] == "removed_at"
     assert _sql(path, "SELECT id, note, removed_at FROM watchlist_items") == [
@@ -441,7 +440,7 @@ def test_0017_appends_removed_at_and_refuses_to_downgrade_over_removed_rows(tmp_
     assert _sql(path, "SELECT id, note FROM watchlist_items") == [(7, "moja notatka")]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0025_topic_view_sources"
+    assert migrations.current_revision(engine) == "0027_alert_tag"
     engine.dispose()
 
 
@@ -479,7 +478,7 @@ def test_0018_appends_segment_columns_and_refuses_to_downgrade_over_segments(tmp
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0025_topic_view_sources"
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
     assert columns[-2:] == ["segment", "segment_by"]
     assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][-1] == "segment"
@@ -504,7 +503,7 @@ def test_0018_appends_segment_columns_and_refuses_to_downgrade_over_segments(tmp
     assert _sql(path, "SELECT id, theme FROM research_notes") == [(5, "stopy procentowe")]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0025_topic_view_sources"
+    assert migrations.current_revision(engine) == "0027_alert_tag"
     engine.dispose()
 
 
@@ -515,7 +514,7 @@ def test_0019_creates_the_macro_bars_table_and_drops_it_on_downgrade(tmp_path):
     before = legacy.table_counts(path)
     assert "inv_macro_bars" not in _tables(path)
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0025_topic_view_sources"
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
     after = legacy.table_counts(path)
     assert all(after[t] == n for t, n in before.items()) and after["inv_macro_bars"] == 0
     assert [r[1] for r in _sql(path, "PRAGMA table_info('inv_macro_bars')")] == [
@@ -542,7 +541,7 @@ def test_0019_creates_the_macro_bars_table_and_drops_it_on_downgrade(tmp_path):
     assert "inv_macro_bars" not in _tables(path)
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0025_topic_view_sources"
+    assert migrations.current_revision(engine) == "0027_alert_tag"
     assert _sql(path, "SELECT count(*) FROM inv_macro_bars") == [(0,)]
     engine.dispose()
 
@@ -588,7 +587,7 @@ def test_0020_maps_the_old_uranium_segment_to_power_and_back(tmp_path):
     )
     before = legacy.table_counts(path)
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0025_topic_view_sources"
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
     assert legacy.table_counts(path) == before | {"inv_topic_theses": 0, "change_events": 0}
     assert _sql(path, "SELECT id, segment FROM inv_profile_instruments") == [(3, "power")]
     assert _sql(path, "SELECT id, segment FROM research_notes ORDER BY id") == [
@@ -600,5 +599,77 @@ def test_0020_maps_the_old_uranium_segment_to_power_and_back(tmp_path):
     assert _sql(path, "SELECT segment FROM research_notes ORDER BY id") == [("uranium",), ("gold",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0025_topic_view_sources"
+    assert migrations.current_revision(engine) == "0027_alert_tag"
+    engine.dispose()
+
+
+def test_0026_backfills_exit_plan_changed_at_and_round_trips(tmp_path):
+    """The exit plan's own timestamp is appended (no rebuild) and starts at ``updated_at`` for a thesis
+    with a plan, null without one; the downgrade drops it and keeps the theses."""
+    path = _db_at(tmp_path, "0025_topic_view_sources")
+    pid = _profile_id(path)
+    edited = "2026-10-29 21:29:00"
+    _sql(
+        path,
+        "INSERT INTO inv_instruments (id, name, currency, asset_class, tags, needs_classification, "
+        "valuation_mode, status, created_at, updated_at) VALUES (1, 'Example Corp', 'USD', "
+        "'equity', '[]', 0, 'market', 'active', ?, ?), (2, 'Other Corp', 'USD', 'equity', '[]', 0, "
+        "'market', 'active', ?, ?)",
+        TS,
+        TS,
+        TS,
+        TS,
+    )
+    _sql(
+        path,
+        "INSERT INTO inv_theses (profile_id, instrument_id, entry_type, thesis, exit_plan, created_at, "
+        "updated_at) VALUES (?, 1, 'trend', 'Przykladowa teza.', 'Sprzedam przy 80.', ?, ?), "
+        "(?, 2, 'trend', 'Inna teza.', NULL, ?, ?)",
+        pid,
+        TS,
+        edited,
+        pid,
+        TS,
+        edited,
+    )
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
+    assert _sql(path, "SELECT instrument_id, exit_plan_changed_at FROM inv_theses ORDER BY instrument_id") == [
+        (1, edited),
+        (2, None),
+    ]
+    _to(engine, "0025_topic_view_sources", down=True)
+    assert "exit_plan_changed_at" not in [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
+    assert _sql(path, "SELECT count(*) FROM inv_theses") == [(2,)]
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    _to(engine, "head")
+    assert migrations.current_revision(engine) == "0027_alert_tag"
+    engine.dispose()
+
+
+def test_0027_adds_alert_tag_and_round_trips(tmp_path):
+    """The alert tag is appended (no rebuild) and starts null on existing alerts; the downgrade drops
+    it and keeps the alerts, and refuses while any alert carries a tag."""
+    path = _db_at(tmp_path, "0026_thesis_exit_plan_changed_at")
+    _insert_alert(path, _profile_id(path), "Example level")
+
+    def columns() -> list[str]:
+        return [r[1] for r in _sql(path, "PRAGMA table_info('alerts')")]
+
+    assert "tag" not in columns()
+    engine = db.make_engine(f"sqlite:///{path}")
+    assert migrations.upgrade_to_head(engine) == "0027_alert_tag"
+    assert columns()[-1] == "tag"
+    assert _sql(path, "SELECT title, tag FROM alerts") == [("Example level", None)]
+    _sql(path, "UPDATE alerts SET tag = 'cena'")
+    with pytest.raises(RuntimeError, match="alert tags exist"):
+        _to(engine, "0026_thesis_exit_plan_changed_at", down=True)
+    assert "tag" in columns()
+    _sql(path, "UPDATE alerts SET tag = NULL")
+    _to(engine, "0026_thesis_exit_plan_changed_at", down=True)
+    assert "tag" not in columns()
+    assert _sql(path, "SELECT title FROM alerts") == [("Example level",)]
+    assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
+    _to(engine, "head")
+    assert migrations.current_revision(engine) == "0027_alert_tag"
     engine.dispose()

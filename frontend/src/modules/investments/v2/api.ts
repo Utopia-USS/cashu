@@ -72,6 +72,9 @@ export interface Alert {
   severity: "info" | "action" | string;
   title: string;
   note: string | null;
+  /** Free label by the owner or the agent (`cena`, `wydarzenie`, ...); null: the UI takes one from the kind. Older
+   * servers omit it. */
+  tag?: string | null;
   source: "user" | "agent" | string;
   created_by: string | null;
   status: "active" | "triggered" | "snoozed" | "muted" | "expired" | string;

@@ -1,17 +1,15 @@
 // Sygnały (home v3: design/v3/home-v3/home-v3.md 6-7 rev 2, owner F8 Q17 / Q18): rule signals and met alerts
 // grouped per subject (instrument, bucket, portfolio rule) in two scopes, Portfel (held, portfolio-wide) and
 // Obserwowane (watched only). One glyph per subject (chance dot, risk diamond, review square, mixed half dot).
-// On the home a rail widget shows up to four live subjects per scope as two-line rows (`TICKER date` + one fact
-// per signal); a click (or Enter on the j / k cursor) opens the subject (its asset page, else the dialog at the
-// signal), the trailing icon button opens a small menu anchored to it (Zanotuj, Potwierdź, Odłóż, Wszystkie). `Wszystkie (n)` opens the dialog with both scopes as
-// columns: the thesis once per subject, a subject's signals as sub-rows with their own actions. A decision is
-// saved at once; `Cofnij` in the toast deletes it within the server's 15-minute window (F5 R4).
+// The home rail (HomeRail.tsx) shows subjects next to the review deck; `Wszystkie (n)` there opens this dialog with
+// both scopes as columns: the thesis once per subject, a subject's signals as sub-rows with their own actions. A
+// decision is saved at once; `Cofnij` in the toast deletes it within the server's 15-minute window (F5 R4).
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { ApiError, isMissingRoute } from "../../../core/api";
 import { errorText } from "../../../core/messages";
 import { useAsync, useInFlight } from "../../../hooks";
-import { Pop, Seg, Skeleton, useModal, useToast } from "../../../ui";
-import { PolDot, Widget } from "../../../widgets";
+import { Seg, useModal, useToast } from "../../../ui";
+import { PolDot } from "../../../widgets";
 import {
   type AccountRow, type BucketRow, deleteDecision, type DecisionInput, getPositionDetail, postAcknowledge, postDecision, postSnooze, type Thesis,
 } from "../api";
@@ -25,8 +23,8 @@ import { staleSignalText, writePositionDecision } from "./decisionFlow";
 import { InstLabel, type InstLike } from "./InstLabel";
 import { PositionDecisionDialog } from "./Decide";
 import {
-  cursorOrder, groupPlan, instMono, instName, isDecided, latestThesis, polarityOf, railGroups, type SigFact, signalCurrent, signalFact, signalScope, signalStateKey,
-  signalSubject, signalText, splitByPolarity, splitByScope, STATE_LABEL, type SignalFilter, type SignalGroup,
+  cursorOrder, groupPlan, instMono, instName, isDecided, latestThesis, polarityOf, type SigFact, signalCurrent, signalFact, signalScope, signalStateKey,
+  signalText, splitByPolarity, splitByScope, STATE_LABEL, type SignalFilter, type SignalGroup,
 } from "./logic";
 import { stillLocked } from "../../../inflight";
 import { isResearchKind, signalNoteId } from "./research/logic";
@@ -114,13 +112,6 @@ function instOf(ctx: SignalsCtx, id: number | null): { inst: InstLike; pos: Posi
 }
 const accLabels = (ctx: SignalsCtx, pos: PositionV2 | null) =>
   pos?.accounts.map((a) => { const r = ctx.accounts.find((x) => x.id === a.account_id); return r ? accountLabel(r, ctx.accounts) : S.account(a.account_id); });
-const subjectInsts = (ctx: SignalsCtx) => {
-  const m = new Map<number, { symbol?: string | null; name?: string | null; label: string }>();
-  for (const p of ctx.positions) m.set(Number(p.instrument.id), p.instrument);
-  for (const w of ctx.watch ?? []) if (w.instrument && !m.has(w.instrument_id)) m.set(w.instrument_id, w.instrument);
-  return m;
-};
-
 /** Signals with a decision saved in the last 7 days (footer `decyzje: n z m w tym tygodniu`). */
 const decidedThisWeek = (list: SignalV2[]) => {
   const weekAgo = Date.now() - 7 * 86400000;
@@ -167,58 +158,6 @@ function useFocusItem<K extends string | number>(key: K | null | undefined, root
 /** The home's Sygnały rail widget (rev 2 7.1): sections Portfel (always) and Obserwowane (with a watchlist or
  * a watched signal), each with its count of open signals and up to four live subjects; footer = this week's
  * decisions + `Wszystkie (n)` (the dialog). */
-export function SignalsRail({ signals, ctx, focusId, onAll, hl, paused }: {
-  signals: SignalV2[] | null;
-  ctx: SignalsCtx;
-  /** A notification link (`?signal=<id>`) to a signal live in one of the rail's rows: scroll, flash, cursor. */
-  focusId?: number | null;
-  /** `Wszystkie (n)` or a row's `Wszystkie`: open the dialog (at that signal when given). */
-  onAll: (focusId?: number | null) => void;
-  /** Review step 2 (Sygnały). */
-  hl?: boolean;
-  /** The dialog is open: its keyboard owns j / k / Enter. */
-  paused?: boolean;
-}) {
-  const list = signals ?? [];
-  const held = ctx.held;
-  const portfolio = railGroups(list, held, "portfolio");
-  const watched = railGroups(list, held, "watched");
-  const nScope = (sc: "portfolio" | "watched") => list.filter((s) => signalScope(s, held) === sc).length;
-  const showWatched = (ctx.watch?.length ?? 0) > 0 || nScope("watched") > 0;
-  const rows = [...portfolio, ...(showWatched ? watched : [])];
-  const ref = useRef<HTMLDivElement>(null);
-  const openSubject = (g: SignalGroup<SignalV2>) => { if (g.instrumentId != null) ctx.onOpenAsset(g.instrumentId); else onAll(g.primary!.id); };
-  const { openId, setOpenId, cursor, setCursor } = useCursor(rows.map((g) => g.key), ref, !paused, "data-group",
-    (k) => { const g = rows.find((x) => x.key === k); if (g) openSubject(g); });
-  const focusKey = focusId != null ? rows.find((g) => g.live.some((s) => s.id === focusId))?.key ?? null : null;
-  useFocusItem(focusKey, ref, "data-group", setCursor);
-  const section = (label: string, count: number, groups: SignalGroup<SignalV2>[]) => (
-    <div className="rgrp">
-      <div className="polh">{label} <span className="cnt">{count}</span></div>
-      {groups.length ? groups.map((g) => (
-        <GroupRow key={g.key} g={g} ctx={ctx} cursor={cursor === g.key} open={openId === g.key}
-          onOpen={(v) => { setOpenId(v ? g.key : null); setCursor(g.key); }} onAll={onAll} onActivate={() => { setCursor(g.key); openSubject(g); }} />
-      )) : <div className="none">{S.none}</div>}
-    </div>
-  );
-  return (
-    <Widget title={S.signals} id="inv-signals" hl={hl} count={list.length || undefined} body="tight" className="srail"
-      footer={!signals ? undefined : list.length ? (
-        <><span>{S.decisionsLabel} <b>{S.xOfY(decidedThisWeek(list), list.length)}</b> {S.thisWeek}</span><span className="spacer" />
-          <button className="lnk" onClick={() => onAll()}>{S.allCount(list.length)}</button></>
-      ) : <><span className="spacer" /><button className="lnk" disabled>{S.allCount(0)}</button></>}>
-      {!signals ? <Skeleton h={140} /> : !list.length ? (
-        <div className="empty">{S.noOpen}</div>
-      ) : (
-        <div ref={ref}>
-          {section(S.portfolio, nScope("portfolio"), portfolio)}
-          {showWatched && section(S.watched, nScope("watched"), watched)}
-        </div>
-      )}
-    </Widget>
-  );
-}
-
 /** The writes of a subject group (the rail row's menu, the dialog's group action row): Zanotuj posts the decision to
  * `primary` and acknowledges the rest with `decyzja: <tag>` (`groupPlan`, one undo); Potwierdź acknowledges every
  * live signal (one undo). The group stays locked after a write until the reload shows its new state; `onDone` runs
@@ -264,113 +203,6 @@ export function useGroupWriter(ctx: SignalsCtx, g: Pick<SignalGroup<SignalV2>, "
   };
   const ack = (reason?: string) => { void writeAll(g.live.map((x) => () => postAcknowledge(ctx.slug, x.id, reason)), S.ackDone, S.whatAck, S.notSaved); };
   return { busy, locked, flight, setLockKey, stateKey, offer, decide, ack };
-}
-
-/** One rail row = one subject (rev 2 7.1 + Q17): the glyph, `TICKER date`, one fact per live signal (two lines
- * max, `+n` after the second). A click or Enter opens the subject; the trailing icon button opens the menu; Zanotuj
- * turns the menu into the decision form (decision on the newest signal, the others acknowledged with
- * `decyzja: <tag>`, one undo); Potwierdź acknowledges every live signal (one undo). */
-function GroupRow({ g, ctx, cursor, open, onOpen, onAll, onActivate }: {
-  g: SignalGroup<SignalV2>; ctx: SignalsCtx; cursor: boolean; open: boolean; onOpen: (open: boolean) => void; onAll: (focusId?: number | null) => void;
-  /** A click or Enter on the row: open the subject (asset page, else the dialog at the signal). */
-  onActivate: () => void;
-}) {
-  const toast = useToast();
-  const [mode, setMode] = useState<"menu" | "form">("menu");
-  const row = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const primary = g.primary!;
-  const later = nextDeposit(ctx.today, ctx.contributionDay);
-  const io = instOf(ctx, g.instrumentId);
-  const subject = signalSubject(primary, subjectInsts(ctx));
-  const age = signalAge(primary, ctx);
-  const lines = g.live.slice(0, 2);
-  const more = g.live.length - lines.length;
-  useEffect(() => { if (!open) setMode("menu"); }, [open]);
-  useEffect(() => {
-    if (open && mode === "menu") requestAnimationFrame(() => menu.current?.querySelector<HTMLElement>("[role=menuitem]:not([disabled])")?.focus());
-  }, [open, mode]);
-  // Focus returns to the menu button after Esc or a menu action (the menu's focused button is gone by then); after
-  // an outside click it stays where the click put it (a select, an input), F8 review FE-4.
-  const close = () => {
-    onOpen(false);
-    requestAnimationFrame(() => {
-      const a = document.activeElement;
-      if (!a || a === document.body || row.current?.contains(a)) (trigger.current ?? row.current)?.focus({ preventScroll: true });
-    });
-  };
-  const { busy, locked, flight, setLockKey, stateKey, offer, decide, ack } = useGroupWriter(ctx, g, close);
-  const snooze = () => locked ? undefined : flight.run(async () => {
-    try {
-      await postSnooze(ctx.slug, primary.id, later);
-      setLockKey(stateKey);
-      close();
-      ctx.onChanged();
-      const u = makeUndo(Date.now(), () => postSnooze(ctx.slug, primary.id, null));
-      const retry = () => {
-        void u.undo().then((res) => {
-          if (undoSettled(res)) { setLockKey(null); ctx.onChanged(); }
-          const msg = undoMessage(res, S.whatSnooze);
-          if (msg) toast(msg, res === "failed" ? 8000 : 3000, res === "failed" ? { label: C.undo, onClick: retry } : undefined);
-        });
-      };
-      toast(S.snoozedTo(dm(later)), 10000, { label: C.undo, onClick: retry });
-    } catch (e) {
-      // Older servers without the snooze endpoint: the v1 behaviour (acknowledge with a note).
-      if (e instanceof ApiError && e.status === 404 && /not found/i.test(e.message)) {
-        try { const r = await postAcknowledge(ctx.slug, primary.id, S.snoozedReason(later)); setLockKey(stateKey); close(); ctx.onChanged(); offer([r.decision.id], S.ackDone, S.whatAck); }
-        catch (e2) { toast(S.snoozeFailed(errorText(e2)), 5000); }
-      } else toast(S.snoozeFailed(errorText(e)), 5000);
-    }
-  });
-  const onMenuKey = (e: React.KeyboardEvent) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const items = [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not([disabled])") ?? [])];
-    const i = items.indexOf(document.activeElement as HTMLElement);
-    items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
-  };
-  const tk = io ? (
-    <InstLabel density="inline" inst={io.inst} text={subject} accounts={accLabels(ctx, io.pos)} stale={io.pos?.is_stale ? io.pos.price_date : null} hints={io.hints} />
-  ) : subject;
-  const name = io ? instName(io.inst) : subject;
-  const label = `${name}: ${g.live.map((x) => [signalFact(x).pre, signalFact(x).bold, signalFact(x).post].filter(Boolean).join(" ")).join("; ")}`;
-  return (
-    <div ref={row} role="link" tabIndex={0} aria-label={label}
-      className={`sig cmp row ${g.live.length > 1 ? "grp" : ""} ${cursor && !open ? "cur" : ""} ${open ? "open" : ""}`} data-signal={primary.id} data-group={g.key}
-      onClick={(e) => { if (!(e.target as HTMLElement).closest(".pop, .rt")) onActivate(); }}
-      onKeyDown={(e) => { if (e.target === row.current && e.key === "Enter") { e.preventDefault(); onActivate(); } }}>
-      <PolDot state={g.state} title={STATE_LABEL[g.state]} />
-      <div className="mn">
-        <div className="t"><span className="tk">{tk}</span><Age a={age} /></div>
-        {lines.map((x, i) => (
-          <div key={x.id} className="m f" title={longText(x, ctx)}><Fact1 f={signalFact(x)} />{i === lines.length - 1 && more > 0 && <span className="more">+{more}</span>}</div>
-        ))}
-      </div>
-      <div className="rt">
-        <button ref={trigger} className="icon-btn quiet rmore" aria-haspopup="menu" aria-expanded={open} aria-label={S.actionsAria(name)} title={S.actions}
-          onClick={() => onOpen(!open)}>⋯</button>
-      {/* keyed by mode: the form is taller than the menu, so it is placed again */}
-      <Pop key={mode} portal open={open} onClose={close} width={mode === "form" ? 460 : 220} align="right" label={name}>
-        {mode === "menu" ? (
-          <div className="rmenu" role="menu" aria-label={name} ref={menu} onKeyDown={onMenuKey}>
-            <button role="menuitem" disabled={busy} onClick={() => setMode("form")}>{S.note}</button>
-            <button role="menuitem" disabled={busy} onClick={() => ack()}>{S.ack}{g.live.length > 1 && <span className="hint">{g.live.length}</span>}</button>
-            {primary.kind === "contribution_gap" && <button role="menuitem" disabled={busy} onClick={() => void snooze()}>{S.snooze}<span className="hint">{S.toDate(dm(later))}</span></button>}
-            <div className="sep" role="separator" />
-            <button role="menuitem" onClick={() => { onOpen(false); onAll(primary.id); }}>{S.all}</button>
-          </div>
-        ) : (
-          <div className="rform">
-            <div className="rfh"><b>{subject}</b> · <Fact1 f={signalFact(primary)} />{g.live.length > 1 ? ` · +${S.plusAcked(g.live.length - 1)}` : ""}</div>
-            <DecisionForm s={primary} ctx={ctx} pending={busy} onCollapse={close} onDecide={decide} onAck={ack} />
-          </div>
-        )}
-      </Pop>
-      </div>
-    </div>
-  );
 }
 
 /** All open signals (rev 2 7.4): a centered modal with the scope columns (Portfel 2/3, Obserwowane 1/3; one

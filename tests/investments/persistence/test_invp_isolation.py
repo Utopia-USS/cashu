@@ -35,6 +35,8 @@ INVESTMENTS_GETS = [
     "/investments/instruments/search?q=Example&remote=0",
     "/investments/manual-valuations",
     "/investments/strategy",
+    "/investments/strategies",
+    "/investments/strategies/_main/file?path=strategy.yaml",
     "/investments/accounts",
     "/investments/imports",
     "/investments/reconciliation",
@@ -51,8 +53,13 @@ INVESTMENTS_GETS = [
     "/investments/planned-deposits",
     "/investments/topics/semis_ai/thesis",
 ]
-TEMPLATES = {"/investments/topics/semis_ai/thesis": "/investments/topics/{segment}/thesis"}
+TEMPLATES = {
+    "/investments/topics/semis_ai/thesis": "/investments/topics/{segment}/thesis",
+    "/investments/strategies/_main/file?path=strategy.yaml": "/investments/strategies/{strategy_id}/file",
+}
 """Concrete paths above that stand for a templated route (P9 topic thesis)."""
+FILE_READS = {"/investments/strategies/_main/file?path=strategy.yaml"}
+"""Reads of a profile's strategy file: the empty profile has none (404, never another profile's)."""
 VOLATILE = {
     "id",
     "account_id",
@@ -195,9 +202,12 @@ def test_two_profiles_with_the_same_history_do_not_leak(client):
             r = client.get(f"/api/p/{empty}{path.format(instrument_id=xmpl)}")
             assert r.status_code == 404, path  # not an instrument of this profile
             continue
+        if path in FILE_READS:
+            assert client.get(f"/api/p/{empty}{path}").status_code == 404, path  # no such file here
+            continue
         r = client.get(f"/api/p/{empty}{path}")
         assert r.status_code == 200, (path, r.text)
-    e = {p: client.get(f"/api/p/{empty}{p}").json() for p in INVESTMENTS_GETS if "{" not in p}
+    e = {p: client.get(f"/api/p/{empty}{p}").json() for p in INVESTMENTS_GETS if "{" not in p and p not in FILE_READS}
     assert (
         e["/investments/positions"]["positions"] == [] and e["/investments/positions"]["cash"] == []
     )

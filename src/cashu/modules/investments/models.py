@@ -418,6 +418,9 @@ class InvThesis(SQLModel, table=True):
     core_changed_at: dt.datetime | None = None
     """Last change of a core field (entry_type, thesis, invalidation); None reads as ``updated_at``.
     Research notes stored before it are tagged ``predates_thesis`` (P2), never dropped."""
+    exit_plan_changed_at: dt.datetime | None = None
+    """Last change of ``exit_plan`` (None without a plan): the review deck reads a plan changed after a
+    subject's signals as a decision already taken. Added by migration 0026."""
 
 
 class InvTopicThesis(SQLModel, table=True):
@@ -531,11 +534,16 @@ class InvAlert(SQLModel, table=True):
     last_value: str | None = None  # measured value at the last check (decimal text)
     created_at: dt.datetime = Field(default_factory=utcnow)
     updated_at: dt.datetime = Field(default_factory=utcnow)
-    # Added by 0008 (ALTER TABLE ADD COLUMN appends it, so it stays the last column): soft delete.
+    # Added by 0008 (ALTER TABLE ADD COLUMN appends it after the columns above): soft delete.
     # A deleted alert is never listed or evaluated; `POST alerts/{id}/restore` brings it back with the
     # same id within ``service.alerts.RESTORE_WINDOW`` of the deletion. The row is never purged, so
     # its id is never handed to a new alert.
     deleted_at: dt.datetime | None = None
+    # Added by 0027 (ALTER TABLE ADD COLUMN appends it, so it stays the last column).
+    tag: str | None = None
+    """Free label shown as a chip next to the alert (lowercase, <= 24 chars, e.g. "cena", "rsi"),
+    set by the owner or the agent; None = the UI derives a default from the kind. The chip's colour
+    follows the alert's state and is never stored."""
 
 
 class InvWatchlistItem(SQLModel, table=True):

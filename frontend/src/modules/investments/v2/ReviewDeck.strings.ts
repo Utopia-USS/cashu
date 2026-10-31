@@ -57,6 +57,10 @@ export const S = catalog({
     pl: (n: number) => ` · ${plCount(n, "kolejny czeka", "kolejne czekają", "kolejnych czeka")} w sygnałach`,
     en: (n: number) => ` · ${n} more ${enForm(n, "waits", "wait")} in signals`,
   },
+  restLine: {
+    pl: (review: number, research: number) => [review ? ` · ${plCount(review, "sprawa bez zmian", "sprawy bez zmian", "spraw bez zmian")}` : "", research ? ` · ${plCount(research, "wiadomość", "wiadomości", "wiadomości")} w Researchu` : ""].join(""),
+    en: (review: number, research: number) => [review ? ` · ${enCount(review, "item", "items")} unchanged` : "", research ? ` · ${enCount(research, "news item", "news items")} in Research` : ""].join(""),
+  },
   noTrade: { pl: " · decyzja nie zawiera transakcji", en: " · a decision records no transaction" },
   // ideas
   candidates: { pl: (n: number) => plCount(n, "kandydat", "kandydaci", "kandydatów"), en: (n: number) => enCount(n, "candidate", "candidates") },

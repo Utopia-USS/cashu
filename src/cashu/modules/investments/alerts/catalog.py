@@ -78,6 +78,7 @@ MAX_CHANGE_THRESHOLD = 10.0
 """``change_pct`` threshold as a fraction (10 = 1000%)."""
 MAX_TITLE_LENGTH = 120
 MAX_NOTE_LENGTH = 2000
+MAX_TAG_LENGTH = 24
 MAX_EXPRESSION_LENGTH = 2000
 MAX_COOLDOWN_DAYS = 3650
 MAX_EXPIRY_DAYS = 3650
@@ -549,6 +550,29 @@ def validate_text(
     if issues is None and found:
         raise AlertValidationError(found)
     return clean_title, clean_note
+
+
+def validate_tag(tag: object, issues: list[tuple[str, str]] | None = None) -> str | None:
+    """An optional short label: stripped, lowercased, inner whitespace collapsed; empty -> None. At
+    most MAX_TAG_LENGTH characters of letters (Polish included), digits, spaces and hyphens."""
+    found = issues if issues is not None else []
+    clean: str | None = None
+    if tag is not None:
+        if not isinstance(tag, str):
+            found.append(("tag", "tag must be text"))
+        else:
+            clean = " ".join(tag.split()).lower() or None
+            if clean is not None and len(clean) > MAX_TAG_LENGTH:
+                found.append(("tag", f"tag must be at most {MAX_TAG_LENGTH} characters"))
+                clean = None
+            elif clean is not None and not all(c.isalpha() or c in "0123456789 -" for c in clean):
+                found.append(
+                    ("tag", 'tag may hold only letters, digits, spaces and hyphens (e.g. "cena")')
+                )
+                clean = None
+    if issues is None and found:
+        raise AlertValidationError(found)
+    return clean
 
 
 def catalog_dicts() -> list[dict]:

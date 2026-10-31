@@ -41,6 +41,9 @@ Every change to `src/`, `tests/`, `frontend/`, `scripts/` or the docs.
    `bump-version` workflow (`pyproject.toml` and `src/cashu/__init__.py` together); `[minor]` /
    `[major]` in a commit message asks for a bigger step, `[skip bump]` for none. Pull after pushing
    (the bot commits to `main`). Why: a manual bump collides with the bot's commit.
+   Changes reach `main` through `staging`: every push to `staging` opens or updates the `staging -> main`
+   pull request (`staging-to-main-pr` workflow), and merging it lands them on `main` with the bump.
+   Pushing to `staging` bumps nothing and releases nothing (a release is `packaging/RELEASING.md`).
 
 ### Module boundaries
 

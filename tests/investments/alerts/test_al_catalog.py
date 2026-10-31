@@ -12,6 +12,7 @@ from cashu.modules.investments.alerts import (
     AlertValidationError,
     catalog_dicts,
     validate,
+    validate_tag,
     validate_text,
 )
 
@@ -156,6 +157,18 @@ def test_title_and_note():
             validate_text(bad, None)
     with pytest.raises(AlertValidationError, match="note is too long"):
         validate_text("ok", "x" * 2001)
+
+
+def test_tag_is_normalized_or_rejected():
+    assert validate_tag("  Średnia   Krocząca ") == "średnia krocząca"
+    assert validate_tag("RSI-14") == "rsi-14"
+    assert validate_tag("x" * 24) == "x" * 24
+    for empty in (None, "", "   "):
+        assert validate_tag(empty) is None
+    for bad in ("x" * 25, "cena!", "a_b", "kurs/zysk", "ab\x00", 5):
+        with pytest.raises(AlertValidationError) as info:
+            validate_tag(bad)
+        assert info.value.issues[0][0] == "tag"
 
 
 def test_catalog_lists_every_kind_with_params():

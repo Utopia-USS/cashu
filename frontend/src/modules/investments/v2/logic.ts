@@ -184,19 +184,6 @@ export function groupSignals<T extends SigLike>(list: T[]): SignalGroup<T>[] {
   return groups.sort((a, b) => Number(a.settled) - Number(b.settled) || byTime(a.primary ?? a.signals[0], b.primary ?? b.signals[0]));
 }
 
-/** One rail section: the unsettled groups of the scope, at most `n`. */
-export function railGroups<T extends SigLike>(list: T[], held: Set<string>, scope: SigScope, n = 4): SignalGroup<T>[] {
-  return groupSignals(list.filter((x) => signalScope(x, held) === scope)).filter((g) => !g.settled).slice(0, n);
-}
-
-/** The rail's rows in reading order (Portfel, then Obserwowane): the j / k cursor walks groups. */
-export const railRows = <T extends SigLike>(list: T[], held: Set<string>, n = 4): SignalGroup<T>[] =>
-  [...railGroups(list, held, "portfolio", n), ...railGroups(list, held, "watched", n)];
-
-/** A notification link lands in the rail when its signal is live in one of the rail's groups, else in the dialog. */
-export const signalPlace = (id: number, list: SigLike[], held: Set<string>): "rail" | "dialog" =>
-  (railRows(list, held).some((g) => g.live.some((x) => x.id === id)) ? "rail" : "dialog");
-
 /** Rail group actions (architect default, F8): Potwierdź acknowledges every live signal; Zanotuj posts the
  * decision to `primary` and acknowledges `rest` with the reason `decyzja: <tag>`. */
 export const groupPlan = <T>(g: Pick<SignalGroup<T>, "primary" | "live">): { primary: T; rest: T[] } | null =>

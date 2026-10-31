@@ -201,7 +201,7 @@ def networth_breakdown(ctx: ToolContext) -> dict:
     return {"currencies": out, "note": L.text("currencies are never summed or converted")}
 
 
-REVIEW_CARDS = ("world", "sectors", "positions", "events", "decide", "ideas", "calendar")
+REVIEW_CARDS = ("world", "sectors", "positions", "events", "ideas", "calendar", "decide")
 
 
 def mark_review_done(

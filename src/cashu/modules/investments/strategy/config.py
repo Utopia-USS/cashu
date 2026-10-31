@@ -86,9 +86,9 @@ class NotificationPolicy:
     digest_weekday: Weekday = Weekday.SUNDAY
 
 
-REVIEW_CARDS = ("world", "sectors", "positions", "events", "decide", "ideas", "calendar")
-"""Cards of the review deck in their default order: Czy świat się wali, Sektory, Pozycje, Wydarzenia, Do
-decyzji, Okazje, Kalendarz."""
+REVIEW_CARDS = ("world", "sectors", "positions", "events", "ideas", "calendar", "decide")
+"""Cards of the review deck in their default order: Czy świat się wali, Sektory, Pozycje, Wydarzenia, Okazje,
+Kalendarz, Do decyzji (what needs the owner closes the review)."""
 
 REVIEW_EVERY = {"week": "Przegląd tygodnia", "2weeks": "Przegląd dwutygodniowy", "month": "Przegląd miesiąca"}
 """``review.every`` values and the default name of each."""

@@ -1039,6 +1039,7 @@ def alert_dict(
         "severity": row.severity,
         "title": row.title,
         "note": row.note,
+        "tag": row.tag,
         "source": row.source,
         "created_by": row.created_by,
         "status": row.status,
@@ -1436,6 +1437,7 @@ def thesis_dict(t: InvThesis) -> dict:
         "updated_at": iso(t.updated_at),
         # the last change of entry_type / thesis / invalidation (P2; research before it is tagged)
         "core_changed_at": iso(t.core_changed_at or t.updated_at),
+        "exit_plan_changed_at": iso(t.exit_plan_changed_at),
     }
 
 

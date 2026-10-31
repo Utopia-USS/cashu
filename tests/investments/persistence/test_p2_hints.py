@@ -441,6 +441,25 @@ def test_core_changed_at_moves_only_with_core_fields(api):
     assert thesis_row(created["id"]).core_changed_at > first
 
 
+def test_exit_plan_changed_at_moves_only_with_the_exit_plan(api):
+    client, _pid, base = api
+    abc = instrument_id("ABC")
+    created = client.post(
+        f"{base}/instruments/{abc}/theses",
+        json={"entry_type": "trend", "thesis": "Przykladowa teza", "exit_plan": "Sprzedam przy 80"},
+    ).json()
+    first = thesis_row(created["id"]).exit_plan_changed_at
+    assert first is not None and created["exit_plan_changed_at"] is not None
+    for body in ({"thesis": "Inna teza"}, {"size_plan": "Do 5 %"}, {"exit_plan": "Sprzedam przy 80"}):
+        client.patch(f"{base}/theses/{created['id']}", json=body)
+    client.patch(f"{base}/theses/{created['id']}", json={"reviewed": True})
+    assert thesis_row(created["id"]).exit_plan_changed_at == first
+    client.patch(f"{base}/theses/{created['id']}", json={"exit_plan": "Sprzedam przy 90"})
+    assert thesis_row(created["id"]).exit_plan_changed_at > first
+    client.patch(f"{base}/theses/{created['id']}", json={"exit_plan": None})
+    assert thesis_row(created["id"]).exit_plan_changed_at is None
+
+
 def test_a_thesis_edit_tags_research_and_an_exit_plan_edit_does_not(api):
     client, pid, base = api
     abc = instrument_id("ABC")

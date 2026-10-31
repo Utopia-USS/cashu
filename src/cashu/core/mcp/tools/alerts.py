@@ -118,6 +118,7 @@ def _alert(ctx: ToolContext, row: dict, owned: set[int]) -> dict:
         "created_by": L.category(row["created_by"]),
         "title": L.text(row["title"]),
         "note": L.text(row.get("note")),
+        "tag": L.text(row.get("tag")),
         "cooldown_days": L.count(row.get("cooldown_days")),
         "expires_at": L.date(row.get("expires_at")),
         "snoozed_until": L.date(row.get("snoozed_until")),
@@ -173,6 +174,15 @@ def _limits(ctx: ToolContext) -> dict:
     }
 
 
+def _tags_in_use(ctx: ToolContext) -> list[dict]:
+    from cashu.modules.investments.store import alerts as alert_store
+
+    return [
+        {"tag": L.text(tag), "count": L.count(n)}
+        for tag, n in alert_store.tags_in_use(ctx.session, ctx.profile_id)
+    ]
+
+
 def alerts(ctx: ToolContext, status: str = "live") -> dict:
     alert_service, views, _watch = _services()
     try:
@@ -183,6 +193,7 @@ def alerts(ctx: ToolContext, status: str = "live") -> dict:
     rows = views.alerts_view(ctx.session, ctx.profile, statuses)
     return {
         "alerts": [_alert(ctx, r, owned) for r in rows],
+        "tags_in_use": _tags_in_use(ctx),
         "limits": _limits(ctx),
         "kinds": [L.category(k) for k in _KINDS],
         "note": L.text(
@@ -208,6 +219,7 @@ def add_alert(
     expires_in_days: int | None = None,
     cooldown_days: int | None = None,
     scope: str | None = None,
+    tag: str | None = None,
 ) -> dict:
     alert_service, views, _watch = _services()
     from cashu.modules.investments.alerts import AlertSource
@@ -232,6 +244,7 @@ def add_alert(
                 note=note,
                 cooldown_days=cooldown_days,
                 expires_in_days=expires_in_days,
+                tag=tag,
             ),
             source=AlertSource.AGENT,
             created_by="mcp",
@@ -425,8 +438,9 @@ TOOLS = (
         "alerts",
         "investments",
         "The profile's alerts (status: live = active, triggered or snoozed (default), all, or one "
-        "status) with params, polarity, severity, last check and the open signal; plus the agent "
-        "alert limit.",
+        "status) with params, polarity, severity, tag, last check and the open signal; plus the "
+        "agent alert limit and tags_in_use (the tags of all the profile's alerts with counts, most "
+        "used first).",
         alerts,
         properties={"status": {"type": "string", "enum": _STATUS, "default": "live"}},
     ),
@@ -442,7 +456,11 @@ TOOLS = (
         "volume_spike {window_days 5-260 (20), multiple 1.5-20 (2.5)} (volume vs its average). "
         "instrument: id, symbol, ISIN or Yahoo symbol of a held or watched instrument "
         "(add_to_watchlist first). Thresholds are fractions (0.1 = 10%), window_days counts "
-        "sessions. At most 50 live agent alerts per profile. Conditions on hard data only.",
+        "sessions. At most 50 live agent alerts per profile. Conditions on hard data only. tag: a "
+        "short label shown as a chip; reuse a tag already in use in this profile when one fits "
+        "(tags_in_use in alerts), otherwise a short lowercase Polish noun such as cena, wydarzenie, "
+        "rsi, wybicie, wolumen, średnia. Do not put the ticker in title (the app shows it next to "
+        "the title).",
         add_alert,
         properties={
             "kind": {"type": "string", "enum": _KINDS},
@@ -455,6 +473,7 @@ TOOLS = (
             "expires_in_days": {"type": "integer", "minimum": 1, "maximum": 3650},
             "cooldown_days": {"type": "integer", "minimum": 0, "maximum": 3650},
             "scope": {"type": "string", "enum": ["instrument", "portfolio", "bucket"]},
+            "tag": {"type": "string", "maxLength": 24},
         },
         required=("kind", "params", "polarity", "severity", "title"),
         write=True,
