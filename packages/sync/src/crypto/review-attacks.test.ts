@@ -9,7 +9,16 @@ import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
 import { Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
-import { code, ctx, GID_SALT, newRing, samplePlain, sodium, testRecovery } from "./testkit.js";
+import {
+  code,
+  ctx,
+  GID_SALT,
+  newRing,
+  samplePlain,
+  sodium,
+  testRecovery,
+  trustedTo,
+} from "./testkit.js";
 import {
   openPairingWrap,
   sealForPairing,
@@ -77,13 +86,20 @@ describe("review attacks now fail", () => {
     );
     expect(code(() => unwrapKeys(sodium, asDesktop, phone, phoneRing, trust))).toBe("auth_failed");
     // Even a trusted (later compromised) sender cannot push a generation near u32 max or skip ahead.
-    const signedByDesktop = wrapKeys(sodium, rings[0] as Keyring, desktop, phone.recipient);
+    const signedByDesktop = wrapKeys(
+      sodium,
+      rings[0] as Keyring,
+      desktop,
+      trustedTo(phone, vaultId),
+    );
     expect(unwrapKeys(sodium, signedByDesktop, phone, phoneRing, trust).ring.active.kid).toBe(
       before,
     );
     const ahead = (rings[0] as Keyring).clone(sodium);
     for (let i = 0; i < 5; i++) rotateKeyring(sodium, ahead);
-    const skip = wrapKeys(sodium, ahead, desktop, phone.recipient, [ahead.active.kid]);
+    const skip = wrapKeys(sodium, ahead, desktop, trustedTo(phone, ahead.vaultId), [
+      ahead.active.kid,
+    ]);
     expect(code(() => unwrapKeys(sodium, skip, phone, phoneRing, trust))).toBe("generation_gap");
     expect(phoneRing.active.kid).toBe(before);
     // And rotation keeps working.
@@ -208,11 +224,20 @@ describe("revocation races and hygiene", () => {
       const all = trusting(a, b, r);
       // A revokes R: epoch + 1, wrapped for B (and itself) only.
       const revoke = rotateKeyring(sodium, ringA, { epoch: 1 });
-      const toB = wrapKeys(sodium, ringA, a, b.recipient, [revoke.kid], [a.deviceId, b.deviceId]);
+      const toB = wrapKeys(
+        sodium,
+        ringA,
+        a,
+        trustedTo(b, ringA.vaultId),
+        [revoke.kid],
+        [a.deviceId, b.deviceId],
+      );
       // Concurrently B rotates for its stale view {A, B, R}.
       const plain = rotateKeyring(sodium, ringB);
       const stale = [a.deviceId, b.deviceId, r.deviceId];
-      const fromB = [a, r].map((d) => wrapKeys(sodium, ringB, b, d.recipient, [plain.kid], stale));
+      const fromB = [a, r].map((d) =>
+        wrapKeys(sodium, ringB, b, trustedTo(d, ringB.vaultId), [plain.kid], stale),
+      );
       const atB = unwrapKeys(sodium, toB, b, ringB, all);
       unwrapKeys(sodium, fromB[0] as Uint8Array, a, ringA, all);
       unwrapKeys(sodium, fromB[1] as Uint8Array, r, ringR, all);
@@ -234,7 +259,13 @@ describe("revocation races and hygiene", () => {
     const [ringA, ringB] = rings as [Keyring, Keyring, Keyring];
     const all = trusting(a, b, r);
     const revoke = rotateKeyring(sodium, ringA, { epoch: 1 });
-    unwrapKeys(sodium, wrapKeys(sodium, ringA, a, b.recipient, [revoke.kid]), b, ringB, all);
+    unwrapKeys(
+      sodium,
+      wrapKeys(sodium, ringA, a, trustedTo(b, ringA.vaultId), [revoke.kid]),
+      b,
+      ringB,
+      all,
+    );
     for (const epoch of [MAX_EPOCH, 5, 3]) {
       const forged = forgeSignedWrap(r, a, ringA, [
         { generation: 2, epoch, key: sodium.randomBytes(32) },

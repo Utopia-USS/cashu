@@ -14,6 +14,7 @@
 // the content but NOT the sender, so it is only for the first hop to a new device, and only when the
 // exchange is authenticated out of band (QR scanned in person, or a short authentication string).
 
+import { TrustedDevice } from "./cert.js";
 import { concat, fromHex, lengthPrefixed, toHex, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import {
@@ -66,8 +67,29 @@ export interface Unwrapped {
 }
 
 /** Where wraps for the vault's recovery key are sealed to. */
-export function recoveryRecipient(ring: Keyring): WrapRecipient {
-  return { deviceId: RECOVERY_SIGNER_ID, boxPublicKey: ring.recovery.boxPublicKey };
+export function recoveryRecipient(ring: Keyring): RecoveryRecipient {
+  return new RecoveryRecipient(INTERNAL, ring.recovery.boxPublicKey);
+}
+
+const INTERNAL = Symbol("recovery-recipient");
+
+/** The vault's recovery key as a wrap recipient; its box key is the one pinned in the keyring. */
+export class RecoveryRecipient {
+  // ES private field: makes the type nominal and backs the runtime check in `is`.
+  readonly #brand = true;
+  readonly deviceId = RECOVERY_SIGNER_ID;
+  readonly boxPublicKey: Uint8Array;
+
+  /** Not public API: use `recoveryRecipient(ring)`. */
+  constructor(token: typeof INTERNAL, boxPublicKey: Uint8Array) {
+    if (token !== INTERNAL) throw new TypeError("use recoveryRecipient");
+    this.boxPublicKey = boxPublicKey.slice();
+  }
+
+  /** True only for objects made by `recoveryRecipient` (survives no copy or spread). */
+  static is(value: unknown): value is RecoveryRecipient {
+    return typeof value === "object" && value !== null && #brand in value;
+  }
 }
 
 function isRecipientId(id: string): boolean {
@@ -122,15 +144,20 @@ function checkRecipientList(recipient: WrapRecipient, recipients: readonly strin
  * rotation) for one recipient and signs the result as `sender`. `recipients` lists every device
  * (and `RECOVERY_SIGNER_ID`) this rotation is wrapped for; it is signed, so S29 can tell whether a
  * key ever went to a device it has since revoked. Safe to put in a synced folder or a relay.
+ * `recipient` is a `TrustedDevice` (its box key came from a verified certificate) or the ring's
+ * `recoveryRecipient`: a box key read from storage can never be sealed for.
  */
 export function wrapKeys(
   sodium: Sodium,
   ring: Keyring,
   sender: DeviceIdentity | RecoveryIdentity,
-  recipient: WrapRecipient,
+  recipient: TrustedDevice | RecoveryRecipient,
   kids?: readonly string[],
   recipients: readonly string[] = [recipient.deviceId],
 ): Uint8Array {
+  if (!(TrustedDevice.is(recipient) || RecoveryRecipient.is(recipient))) {
+    throw new TypeError("wrap recipients come from verifyCertificates or recoveryRecipient");
+  }
   checkRecipient(recipient);
   checkRecipientList(recipient, recipients);
   const payload = encodeKeyPayload(ring, kids);
@@ -194,7 +221,11 @@ export function unwrapKeys(
   for (let i = 0; i < count; i++) {
     recipients.push(toHex(list.subarray(2 + i * DEVICE_ID_BYTES, 2 + (i + 1) * DEVICE_ID_BYTES)));
   }
-  if (!recipients.includes(recipient.deviceId) || new Set(recipients).size !== count) {
+  if (
+    !recipients.every(isRecipientId) ||
+    !recipients.includes(recipient.deviceId) ||
+    new Set(recipients).size !== count
+  ) {
     throw new CryptoError("bad_payload");
   }
 

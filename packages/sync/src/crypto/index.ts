@@ -1,7 +1,9 @@
 export {
   CERT_BYTES,
+  type CertificateCheck,
   type CertSubject,
   certifyDevice,
+  TrustedDevice,
   verifyCertificates,
 } from "./cert.js";
 export { CryptoError, type CryptoErrorCode } from "./errors.js";
@@ -68,6 +70,7 @@ export { Secret } from "./secret.js";
 export { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
 export {
   openPairingWrap,
+  RecoveryRecipient,
   recoveryRecipient,
   sealForPairing,
   type TrustedSigner,

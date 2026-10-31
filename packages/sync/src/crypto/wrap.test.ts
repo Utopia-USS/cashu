@@ -4,7 +4,7 @@ import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
 import { createKeyring, createVaultId, type Keyring, rotateKeyring } from "./keys.js";
 import { createRecoveryKey } from "./recovery.js";
 import type { Sodium } from "./sodium.js";
-import { backends, code, ctx, newRing, samplePlain, testRecovery } from "./testkit.js";
+import { backends, code, ctx, newRing, samplePlain, testRecovery, trustedTo } from "./testkit.js";
 import {
   openPairingWrap,
   sealForPairing,
@@ -125,7 +125,13 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     const { devices, trust } = pairedVault(2);
     const [desktop, phone] = devices as [Device, Device];
     const gen2 = rotateKeyring(sodium, desktop.ring);
-    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [gen2.kid]);
+    const wire = wrapKeys(
+      sodium,
+      desktop.ring,
+      desktop.id,
+      trustedTo(phone.id, desktop.ring.vaultId),
+      [gen2.kid],
+    );
     expect(wire[0]).toBe(WRAP_VERSION);
     const out = unwrapKeys(sodium, wire, phone.id, phone.ring, trust);
     expect(out.ring).toBe(phone.ring);
@@ -137,9 +143,13 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     const { devices } = pairedVault(2);
     const [desktop, phone] = devices as [Device, Device];
     rotateKeyring(sodium, desktop.ring);
-    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [
-      desktop.ring.active.kid,
-    ]);
+    const wire = wrapKeys(
+      sodium,
+      desktop.ring,
+      desktop.id,
+      trustedTo(phone.id, desktop.ring.vaultId),
+      [desktop.ring.active.kid],
+    );
     expect(code(() => unwrapKeys(sodium, wire, phone.id, phone.ring, trusting(phone.id)))).toBe(
       "untrusted_sender",
     );
@@ -150,9 +160,13 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     const { devices, trust } = pairedVault(2);
     const [desktop, phone] = devices as [Device, Device];
     rotateKeyring(sodium, desktop.ring);
-    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [
-      desktop.ring.active.kid,
-    ]);
+    const wire = wrapKeys(
+      sodium,
+      desktop.ring,
+      desktop.id,
+      trustedTo(phone.id, desktop.ring.vaultId),
+      [desktop.ring.active.kid],
+    );
     const seen = new Set<string>();
     for (let i = 0; i < wire.length; i += 3) {
       const t = wire.slice();
@@ -176,9 +190,13 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     const { devices, trust } = pairedVault(3);
     const [desktop, phone, tablet] = devices as [Device, Device, Device];
     rotateKeyring(sodium, desktop.ring);
-    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [
-      desktop.ring.active.kid,
-    ]);
+    const wire = wrapKeys(
+      sodium,
+      desktop.ring,
+      desktop.id,
+      trustedTo(phone.id, desktop.ring.vaultId),
+      [desktop.ring.active.kid],
+    );
     expect(code(() => unwrapKeys(sodium, wire, tablet.id, tablet.ring, trust))).toBe("auth_failed");
     const elsewhere = {
       vaultId: createVaultId(sodium),
@@ -194,7 +212,12 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       vaultId: desktop.ring.vaultId,
       recoveryPublicKey: createRecoveryKey(sodium).publicKeys,
     };
-    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient);
+    const wire = wrapKeys(
+      sodium,
+      desktop.ring,
+      desktop.id,
+      trustedTo(phone.id, desktop.ring.vaultId),
+    );
     expect(code(() => unwrapKeys(sodium, wire, phone.id, target, trust))).toBe(
       "recovery_key_mismatch",
     );
@@ -205,13 +228,20 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     const [desktop, phone] = devices as [Device, Device];
     rotateKeyring(sodium, desktop.ring);
     rotateKeyring(sodium, desktop.ring);
-    const all = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient);
+    const all = wrapKeys(
+      sodium,
+      desktop.ring,
+      desktop.id,
+      trustedTo(phone.id, desktop.ring.vaultId),
+    );
     expect(code(() => unwrapKeys(sodium, all, phone.id, phone.ring, trust))).toBe("generation_gap");
     expect(phone.ring.size).toBe(1);
     for (const e of desktop.ring.entries().slice(1)) {
       unwrapKeys(
         sodium,
-        wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [e.kid]),
+        wrapKeys(sodium, desktop.ring, desktop.id, trustedTo(phone.id, desktop.ring.vaultId), [
+          e.kid,
+        ]),
         phone.id,
         phone.ring,
         trust,
@@ -225,7 +255,14 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     const [desktop, phone, tablet] = devices as [Device, Device, Device];
     const gen2 = rotateKeyring(sodium, desktop.ring);
     const list = [phone.id.deviceId, tablet.id.deviceId];
-    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [gen2.kid], list);
+    const wire = wrapKeys(
+      sodium,
+      desktop.ring,
+      desktop.id,
+      trustedTo(phone.id, desktop.ring.vaultId),
+      [gen2.kid],
+      list,
+    );
     expect(unwrapKeys(sodium, wire, phone.id, phone.ring.clone(sodium), trust).recipients).toEqual(
       list,
     );
@@ -241,7 +278,7 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
         sodium,
         desktop.ring,
         desktop.id,
-        phone.id.recipient,
+        trustedTo(phone.id, desktop.ring.vaultId),
         [gen2.kid],
         [tablet.id.deviceId],
       ),
@@ -252,7 +289,11 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     const { devices } = pairedVault(2);
     const [desktop, phone] = devices as [Device, Device];
     expect(
-      code(() => wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, ["00".repeat(16)])),
+      code(() =>
+        wrapKeys(sodium, desktop.ring, desktop.id, trustedTo(phone.id, desktop.ring.vaultId), [
+          "00".repeat(16),
+        ]),
+      ),
     ).toBe("unknown_key");
   });
 });
@@ -270,7 +311,7 @@ describe.each(backends)("revocation is rotation going forward (%s)", (_name, sod
     const lostRing = pair(lost);
 
     const gen2 = rotateKeyring(sodium, ring, { epoch: 1 });
-    const onlyNew = wrapKeys(sodium, ring, desktop, phone.recipient, [gen2.kid]);
+    const onlyNew = wrapKeys(sodium, ring, desktop, trustedTo(phone, ring.vaultId), [gen2.kid]);
     unwrapKeys(sodium, onlyNew, phone, phoneRing, trusting(desktop));
 
     const c = ctx(vaultId, { deviceId: desktop.deviceId });

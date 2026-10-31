@@ -9,11 +9,12 @@ import { describe, expect, it } from "vitest";
 import { certifyDevice } from "./cert.js";
 import { fromHex, toHex, utf8 } from "./encoding.js";
 import { FRAME_HEADER_BYTES, openFrame, sealFrameWithNonce } from "./frame.js";
-import { DeviceIdentity } from "./identity.js";
+import { createDeviceIdentity, DeviceIdentity } from "./identity.js";
 import { encodeKeyPayload, Keyring, KID_BYTES } from "./keys.js";
 import { recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
-import { ctx, DEVICE_A, GID_SALT, range, sodium } from "./testkit.js";
+import { ctx, DEVICE_A, GID_SALT, range, sodium, trustedTo } from "./testkit.js";
+import { wrapKeys } from "./wrap.js";
 
 describe("published test vectors", () => {
   it("XChaCha20-Poly1305 matches draft-irtf-cfrg-xchacha A.3.1", () => {
@@ -178,5 +179,32 @@ describe("cashU format golden vectors", () => {
     expect(
       ed25519.verify(cert.subarray(97), signed, recovery.signPublicKey, { zip215: false }),
     ).toBe(true);
+  });
+
+  it("signed wrap layout, verified with @noble/curves from the README format", () => {
+    const sender = new DeviceIdentity(
+      DEVICE_A,
+      new Secret(range(0x20, 0x3f)),
+      new Secret(range(0x60, 0x7f)),
+    );
+    const phone = createDeviceIdentity(sodium);
+    const wire = wrapKeys(sodium, ring(), sender, trustedTo(phone, vaultId, recovery));
+    expect(wire[0]).toBe(3);
+    expect(toHex(wire.subarray(1, 17))).toBe(DEVICE_A);
+    const signature = wire.subarray(17, 81);
+    expect(toHex(wire.subarray(81, 83 + 16))).toBe(`0001${phone.deviceId}`);
+    const sealed = wire.subarray(83 + 16);
+    const message = new Uint8Array([
+      ...utf8("cashu/wrap/v3"),
+      ...lp(vaultId),
+      ...fromHex(DEVICE_A),
+      ...fromHex(phone.deviceId),
+      ...phone.box.publicKey,
+      0,
+      1,
+      ...fromHex(phone.deviceId),
+      ...sealed,
+    ]);
+    expect(ed25519.verify(signature, message, sender.signPublicKey, { zip215: false })).toBe(true);
   });
 });

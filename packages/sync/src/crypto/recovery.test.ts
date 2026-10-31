@@ -36,8 +36,9 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     recoverySignPublicKey: Uint8Array,
     certs: Uint8Array[],
   ): TrustedSigner {
-    const devices = verifyCertificates(sodium, vaultId, recoverySignPublicKey, certs);
-    return (id) => (id === RECOVERY_SIGNER_ID ? recoverySignPublicKey : devices.get(id));
+    const { devices } = verifyCertificates(sodium, vaultId, recoverySignPublicKey, certs);
+    return (id) =>
+      id === RECOVERY_SIGNER_ID ? recoverySignPublicKey : devices.get(id)?.signPublicKey;
   }
 
   it("roundtrip: all devices lost, the words and the synced vault restore every generation", () => {
@@ -101,11 +102,22 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     const tampered = certifyDevice(sodium, desktop, subjectOf(attacker), vaultId);
     tampered[20] = (tampered[20] ?? 0) ^ 1; // breaks the signature (and the subject id)
     certs.push(tampered);
-    const devices = verifyCertificates(sodium, vaultId, identity.signPublicKey, certs);
+    const { devices, conflicts } = verifyCertificates(
+      sodium,
+      vaultId,
+      identity.signPublicKey,
+      certs,
+    );
     expect([...devices.keys()]).toEqual([desktop.deviceId]);
+    expect(conflicts).toEqual([]);
     // Order does not matter.
     expect([
-      ...verifyCertificates(sodium, vaultId, identity.signPublicKey, [...certs].reverse()).keys(),
+      ...verifyCertificates(
+        sodium,
+        vaultId,
+        identity.signPublicKey,
+        [...certs].reverse(),
+      ).devices.keys(),
     ]).toEqual([desktop.deviceId]);
 
     const trust = trustFromCertificates(vaultId, identity.signPublicKey, certs);

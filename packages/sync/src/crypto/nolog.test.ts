@@ -11,7 +11,7 @@ import { createKeyring, rotateKeyring } from "./keys.js";
 import { loadKeyring, saveKeyring } from "./keystore.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { InMemoryKeyStore } from "./testing.js";
-import { ctx, PLAINTEXT_MARKER, samplePlain, sodium } from "./testkit.js";
+import { ctx, PLAINTEXT_MARKER, samplePlain, sodium, trustedTo } from "./testkit.js";
 import {
   openPairingWrap,
   recoveryRecipient,
@@ -22,8 +22,8 @@ import {
 
 const written: string[] = [];
 
-// Every fixed error message: a recovery word that also occurs here (e.g. "device") is not a leak.
-const FIXED_TEXT = ALL_CODES.map((c) => new CryptoError(c).message).join(" ");
+// Every fixed error code and message: a recovery word that also occurs here (e.g. "device") is not a leak.
+const FIXED_TEXT = ALL_CODES.map((c) => `${c} ${new CryptoError(c).message}`).join(" ");
 
 beforeEach(() => {
   written.length = 0;
@@ -103,7 +103,7 @@ describe("no key or plaintext in logs", () => {
       () =>
         unwrapKeys(
           sodium,
-          wrapKeys(sodium, ring, pair, pair.recipient),
+          wrapKeys(sodium, ring, pair, trustedTo(pair, ring.vaultId)),
           recoveryPair,
           ring,
           () => pair.signPublicKey,

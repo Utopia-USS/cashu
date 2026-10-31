@@ -1,10 +1,12 @@
 // Test helpers (synthetic data only). Not exported from the package.
 
+import { certifyDevice, type TrustedDevice, verifyCertificates } from "./cert.js";
 import { utf8 } from "./encoding.js";
 import { CryptoError, type CryptoErrorCode } from "./errors.js";
 import type { FrameContext } from "./frame.js";
+import type { DeviceIdentity } from "./identity.js";
 import { createKeyring, type Keyring } from "./keys.js";
-import { createRecoveryKey } from "./recovery.js";
+import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
 
 export const sodium: Sodium = await loadNodeSodium();
@@ -75,6 +77,29 @@ export const GID_SALT = range(0x40, 0x5f);
 
 /** One recovery key shared by the tests that do not need its words. */
 export const testRecovery = createRecoveryKey(sodium);
+
+/** The recovery identity behind `testRecovery`: the certificate root for test devices. */
+export const testRoot = recoveryIdentity(sodium, testRecovery.phrase);
+
+export function subjectOf(d: DeviceIdentity) {
+  return { deviceId: d.deviceId, signPublicKey: d.signPublicKey, boxPublicKey: d.box.publicKey };
+}
+
+/** `d` as a wrap recipient: certified by `root` and verified, as S29 will do from stored certificates. */
+export function trustedTo(
+  d: DeviceIdentity,
+  vaultId: string,
+  root: { deviceId: string; signPublicKey: Uint8Array } & Parameters<
+    typeof certifyDevice
+  >[1] = testRoot,
+): TrustedDevice {
+  const cert = certifyDevice(sodium, root, subjectOf(d), vaultId);
+  const device = verifyCertificates(sodium, vaultId, root.signPublicKey, [cert]).devices.get(
+    d.deviceId,
+  );
+  if (!device) throw new Error("certificate did not verify");
+  return device;
+}
 
 export function newRing(s: Sodium = sodium, vaultId?: string): Keyring {
   return createKeyring(s, testRecovery.publicKeys, vaultId);

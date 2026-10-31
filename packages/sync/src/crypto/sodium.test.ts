@@ -11,6 +11,7 @@ import {
   newRing,
   samplePlain,
   sodium,
+  trustedTo,
 } from "./testkit.js";
 import { unwrapKeys, wrapKeys } from "./wrap.js";
 
@@ -49,12 +50,12 @@ describe("runtimes", () => {
     const desktop = createDeviceIdentity(sodium);
     const phone = createDeviceIdentity(mobileSodium);
     const phoneRing = ring.clone(mobileSodium);
-    const wire = wrapKeys(sodium, ring, desktop, phone.recipient);
+    const wire = wrapKeys(sodium, ring, desktop, trustedTo(phone, ring.vaultId));
     const trust = () => desktop.signPublicKey;
     expect(unwrapKeys(mobileSodium, wire, phone, phoneRing, trust).senderDeviceId).toBe(
       desktop.deviceId,
     );
-    const back = wrapKeys(mobileSodium, phoneRing, phone, desktop.recipient);
+    const back = wrapKeys(mobileSodium, phoneRing, phone, trustedTo(desktop, phoneRing.vaultId));
     expect(unwrapKeys(sodium, back, desktop, ring, () => phone.signPublicKey).ring.size).toBe(1);
   });
 
