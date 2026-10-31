@@ -93,3 +93,24 @@ route's error boundary (then the root one), which records them in the **local** 
 `crashReporter` with `uploadToServer: false`, a rotating log in the data dir on mobile) and offers
 retry. Export of a log happens only on the user's action. No cloud crash reporting or analytics SDK,
 ever (Biome bans the imports).
+
+## Crash model of the view database
+
+The durable copy of a vault is its encrypted segment log (the carrier, S28); the store's SQLite
+database (log copy + view) is derived and rebuildable. So the store opens it with `journal_mode = WAL`
+and `synchronous = NORMAL`, and commits once per apply batch (no flush per commit).
+
+- **Power loss or a killed app** loses at most the last committed apply batches since the WAL was last
+  synced. The database stays consistent (a torn WAL tail fails its frame checksums and is dropped),
+  and the sync cursors live in the same transactions as the events they cover, so they roll back
+  together: the carrier re-delivers exactly what was lost, and re-delivery is idempotent by eid.
+  Local commands are appended to the device's own segment log before the store applies them, so a
+  lost local apply is re-applied from there too.
+- **A damaged database** (storage that ignores flushes, a database file copied while written) is
+  detected when SQLite reports it (CORRUPT / NOTADB, `isCorruption`) and, after a session that was
+  not closed cleanly, by `PRAGMA quick_check` on open. `Store.openOrRecover` then deletes the
+  database and opens an empty one without cursors; the carrier replays the whole log into it
+  (`recovery.test.ts`). An error raised later by an apply is handled the same way.
+- Limit: SQLite has no page checksums, so damage confined to cell contents can pass `quick_check`.
+  On honest storage it cannot happen (the main file is written only at checkpoints, after the WAL is
+  synced); otherwise "rebuild the view" (discard and replay) is the owner's remedy.

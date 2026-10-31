@@ -35,7 +35,12 @@ function emptyVaultDriver(modules: readonly StoreModule[]): SqlDriver {
   let t = emptyVaults.get(key);
   if (t === undefined || t.modules.some((m, i) => m !== modules[i])) {
     const db = new Database(":memory:");
-    Store.open({ driver: betterSqlite3Driver(db), vault: TEST_VAULT, salt: TEST_SALT, modules });
+    Store.open({
+      driver: betterSqlite3Driver(db),
+      vault: TEST_VAULT,
+      salt: TEST_SALT,
+      modules,
+    }).detach();
     t = { modules, image: db.serialize() };
     db.close();
     emptyVaults.set(key, t);

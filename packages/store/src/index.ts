@@ -29,7 +29,9 @@ export { HybridClock, type MetaClockStore, metaClockStore } from "./hlc.js";
 export { investmentsModule } from "./investments/index.js";
 export {
   type ApplyResult,
+  isCorruption,
   Store,
+  StoreCorruptError,
   type StoreOptions,
   type WireBatch,
 } from "./materialize.js";

@@ -72,6 +72,29 @@ const META_VAULT = "vault";
 /** Park reason of an event whose deterministic gid does not match its payload (gid.md 4). */
 const INVALID_GID = "invalid-gid";
 const META_SYSTEM = "system_schema";
+/** Set while a store is open on the database; a database opened with it still set was not closed. */
+const META_SESSION = "open_session";
+
+/**
+ * The view database is damaged (a torn write after a power loss on storage that ignores flushes, a
+ * file copied while it was written). The view is derived: discard the database and open a new one;
+ * the carrier replays the encrypted log into it (`Store.openOrRecover`).
+ */
+export class StoreCorruptError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "StoreCorruptError";
+  }
+}
+
+/** Whether `e` reports a damaged database (SQLite CORRUPT / NOTADB, from any driver). */
+export function isCorruption(e: unknown): boolean {
+  if (e instanceof StoreCorruptError) return true;
+  const code = (e as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && /^SQLITE_(CORRUPT|NOTADB)/.test(code)) return true;
+  const message = e instanceof Error ? e.message : String(e);
+  return /database disk image is malformed|file is not a database/i.test(message);
+}
 const META_EVENTS = "events_fingerprint";
 const META_VIEW = "view_fingerprint";
 
@@ -132,10 +155,46 @@ export class Store {
    * (an app upgrade) rebuilds the view from the log before the store is returned (events.md 7.9).
    */
   static open(opts: StoreOptions): Store {
+    try {
+      return Store.#open(opts);
+    } catch (e) {
+      if (isCorruption(e) && !(e instanceof StoreCorruptError)) {
+        throw new StoreCorruptError("the view database is damaged", { cause: e });
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Open the vault's store, or, when its database is damaged, discard it and open a new empty one
+   * (no cursors: the carrier replays the whole encrypted log into it). `connect` opens the database
+   * file, `discard` deletes it (and its WAL files) after the store closed the connection.
+   */
+  static openOrRecover(
+    opts: Omit<StoreOptions, "driver"> & { connect(): SqlDriver; discard(): void },
+  ): { readonly store: Store; readonly recovered: boolean } {
+    const driver = opts.connect();
+    try {
+      return { store: Store.open({ ...opts, driver }), recovered: false };
+    } catch (e) {
+      if (!isCorruption(e)) throw e;
+      driver.close();
+      opts.discard();
+      return { store: Store.open({ ...opts, driver: opts.connect() }), recovered: true };
+    }
+  }
+
+  static #open(opts: StoreOptions): Store {
     const events = EventRegistry.v1();
     for (const m of opts.modules) for (const d of m.events ?? []) events.define(d);
     const modules = new ModuleRegistry(opts.modules);
     const db = opts.driver;
+    // The view is derived from the encrypted log, which is the durable copy: WAL with synchronous
+    // NORMAL (no flush per commit) may lose the last committed applies on a power loss, never tear
+    // the database on honest storage; the cursors roll back with them, so the carrier re-delivers
+    // what was lost (data-flow.md "Crash model"). An in-memory database ignores both.
+    db.exec("PRAGMA journal_mode = WAL");
+    db.exec("PRAGMA synchronous = NORMAL");
     const hasMeta =
       db
         .prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'store_meta'")
@@ -157,6 +216,12 @@ export class Store {
     const vault = meta(META_VAULT);
     if (vault !== undefined && vault !== opts.vault) {
       throw new Error("this database belongs to another vault");
+    }
+    // Not closed last time (a crash, a power loss, a killed app): check the pages before trusting them.
+    if (meta(META_SESSION) !== undefined) {
+      const check = db.prepare("PRAGMA quick_check(1)").all<Record<string, string>>();
+      const verdict = check.length === 1 ? Object.values(check[0] ?? {})[0] : undefined;
+      if (verdict !== "ok") throw new StoreCorruptError(`quick_check: ${String(verdict)}`);
     }
     if (vault === undefined) setMeta(META_VAULT, opts.vault);
     if (system === undefined) setMeta(META_SYSTEM, String(SYSTEM_SCHEMA_VERSION));
@@ -185,6 +250,7 @@ export class Store {
       setMeta(META_VIEW, viewFp);
       setMeta(META_EVENTS, eventsFp);
     }
+    setMeta(META_SESSION, "1");
     return store;
   }
 
@@ -559,7 +625,13 @@ export class Store {
     };
   }
 
+  /** Record a clean shutdown without closing the connection (the caller owns the handle). */
+  detach(): void {
+    this.driver.prepare("DELETE FROM store_meta WHERE key = ?").run(META_SESSION);
+  }
+
   close(): void {
+    this.detach();
     this.driver.close();
   }
 }
