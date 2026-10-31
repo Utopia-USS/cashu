@@ -23,6 +23,7 @@ import { EventLog, type LogRow, storedBody } from "./engine/log.js";
 import { type StateFlip, updateSuppression } from "./engine/suppression.js";
 import type { FoldEvent } from "./engine/types.js";
 import { type Decoded, decodeEnvelope, envelopeExtra } from "./envelope.js";
+import { detPartsOf } from "./events/v1/det-parts.js";
 import { fromWire } from "./events/v1/envelope.js";
 import { detGidFor, type VaultSalt } from "./gid.js";
 import { rebuildView } from "./rebuild.js";
@@ -332,7 +333,7 @@ export class Store {
         data: null,
       };
     }
-    if (!this.#gidMatches(base, decoded.data)) {
+    if (!this.#gidMatches(base.type, base.gid, decoded.data)) {
       // A deterministic gid that does not match its payload (a writer bug): kept, never folded, so
       // one gid can never stand for two row keys. Not an upgrade signal.
       const raw = JSON.stringify(original);
@@ -348,23 +349,10 @@ export class Store {
     };
   }
 
-  #gidMatches(
-    base: {
-      type: string;
-      gid: string;
-      eid: string;
-      hlc: string;
-      at: string;
-      v: number;
-      device: string;
-    },
-    data: Record<string, unknown>,
-  ): boolean {
-    for (const r of this.#runnerByType.get(base.type) ?? []) {
-      const expected = r.mat.gidOf?.({ ...base, data }, this.deps.det);
-      if (expected !== undefined && expected !== base.gid) return false;
-    }
-    return true;
+  /** events.md 7.10: a payload-derived DET gid must equal `DET(table)[parts]` of its payload. */
+  #gidMatches(type: string, gid: string, data: Record<string, unknown>): boolean {
+    const p = detPartsOf(type, data);
+    return p === undefined || this.deps.det(p.table, p.parts) === gid;
   }
 
   #countUnknown(type: string, v: number, reason: string, touched: TouchedTables): void {

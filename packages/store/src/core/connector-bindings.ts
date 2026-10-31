@@ -103,10 +103,6 @@ export const connectorBindingsMaterializer: Materializer = {
     }
     return ctx.members.partitionsOf(e.gid);
   },
-  gidOf: (e, det) =>
-    e.type === "connectorBinding.set"
-      ? det("connector_bindings", [String(e.data.account), String(e.data.connectorId)])
-      : undefined,
   clear(partitions, ctx) {
     for (const p of partitions) {
       const s = ctx.sql.get<{ anchor: string }>(

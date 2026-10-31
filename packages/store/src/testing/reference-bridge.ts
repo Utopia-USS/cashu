@@ -3,10 +3,10 @@
 // gids, and projects the store's view back into the reference's `RefView` shape. Synthetic data only.
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+import { detPartsOf } from "../events/v1/det-parts.js";
 import type { RefEvent, RefView } from "../events/v1/reference/fold.js";
 import { detGid, detGidFor } from "../gid.js";
 import type { Store } from "../materialize.js";
-import { builtinModules } from "../modules.js";
 import { eventTimestamp } from "../sql/values.js";
 import { TEST_SALT, TEST_VAULT, type TestEnvelope, testUlid } from "./store.js";
 
@@ -134,18 +134,10 @@ export class Names {
  * materializer expects for their payload (a first pass binds those names), everything else a ULID.
  */
 export function toEnvelopes(events: readonly RefEvent[], names: Names): TestEnvelope[] {
-  const rules = builtinModules().flatMap((m) => m.materializers);
   const det = detGidFor(TEST_SALT);
   for (const e of events) {
-    const data = mapData(e, names);
-    for (const m of rules) {
-      if (!m.handles.includes(e.type) || !m.gidOf) continue;
-      const g = m.gidOf(
-        { eid: e.eid, hlc: e.hlc, at: e.at, type: e.type, v: 1, gid: "", device: "", data },
-        det,
-      );
-      if (g !== undefined) names.bind(e.gid, g);
-    }
+    const p = detPartsOf(e.type, mapData(e, names));
+    if (p !== undefined) names.bind(e.gid, det(p.table, p.parts));
   }
   return events.map((e) => toEnvelope(e, names, mapData(e, names)));
 }

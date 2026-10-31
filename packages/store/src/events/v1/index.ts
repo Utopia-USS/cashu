@@ -4,6 +4,7 @@ export * from "./assets-loans.js";
 export * from "./budget.js";
 export * from "./catalog.js";
 export * from "./core.js";
+export * from "./det-parts.js";
 export * from "./envelope.js";
 export * from "./hlc-format.js";
 export * from "./identity.js";

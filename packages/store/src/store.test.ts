@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { EventType } from "./events/v1/catalog.js";
+import { detPartsOf } from "./events/v1/det-parts.js";
+import { VALID_SAMPLES } from "./events/v1/test-fixtures.js";
+import { detGidFor } from "./gid.js";
 import { builtinModules } from "./modules.js";
 import { exportSnapshot, importSnapshot, viewHash } from "./snapshot.js";
 import {
@@ -7,6 +11,8 @@ import {
   openTestStore,
   TEST_SALT,
   TEST_VAULT,
+  type TestEnvelope,
+  testUlid,
 } from "./testing/store.js";
 
 const ACC = "70cc61c8-79b5-80ae-b8cc-fdca7caef49e";
@@ -185,6 +191,107 @@ describe("touched tables and subscriptions", () => {
     ).toEqual(["accounts", "transactions"]);
     expect(store.unfoldedTypes()).toContain("balance.recorded");
     expect(store.unfoldedTypes()).not.toContain("txn.imported");
+  });
+});
+
+describe("invalid-gid parking (events.md 7.10)", () => {
+  const det = detGidFor(TEST_SALT);
+  const WRONG = "e912848f-6071-8821-89fb-56c500920eb6"; // a valid gid of another row key
+
+  it("parks a txn.imported whose gid is not DET of its payload; not an upgrade signal", () => {
+    const store = openTestStore();
+    const f = new EventFactory();
+    store.applyEnvelopes([account(f)]);
+    const r = store.applyEnvelopes([txn(f, WRONG)]);
+    expect(r).toMatchObject({ applied: 0, parked: 1, needsUpgrade: false });
+    expect(store.needsUpgrade()).toBe(false);
+    expect(store.read("SELECT type, v, reason, count FROM unknown_events")).toEqual([
+      { type: "txn.imported", v: 1, reason: "invalid-gid", count: 1 },
+    ]);
+    expect(store.read("SELECT gid FROM transactions")).toEqual([]);
+  });
+
+  it("parks a balance.recorded with a wrong gid although no materializer folds balances yet", () => {
+    const store = openTestStore();
+    const f = new EventFactory();
+    const data = {
+      account: ACC,
+      date: "2026-01-31",
+      source: "csv",
+      amount: "1.00",
+      currency: "PLN",
+    };
+    const r = store.applyEnvelopes([
+      f.make("balance.recorded", WRONG.replace("e912", "e913"), data),
+      f.make("balance.recorded", det("balances", [ACC, "2026-01-31", "csv"]), data),
+    ]);
+    expect(r).toMatchObject({ applied: 1, parked: 1, needsUpgrade: false });
+  });
+
+  it("keeps an invalid-gid event parked after a rebuild that re-decodes the log", () => {
+    const store = openTestStore();
+    const f = new EventFactory();
+    store.applyEnvelopes([account(f), txn(f, WRONG)]);
+    const before = viewHash(store).hash;
+    store.rebuild({ redecode: true });
+    expect(viewHash(store).hash).toBe(before);
+    expect(store.read("SELECT state, reason FROM event_log WHERE type = 'txn.imported'")).toEqual([
+      { state: "parked", reason: "invalid-gid" },
+    ]);
+    expect(store.read("SELECT gid FROM transactions")).toEqual([]);
+  });
+
+  it("does not park genesis-shaped or outbox-shaped events whose gid is DET of their parts", () => {
+    // Every payload-derived DET type as genesis (S26: origin genesis, explicit stamps) and as the
+    // Python outbox (S30: origin bridge) would write it: gid = DET(table)[detPartsOf(payload)].
+    const store = openTestStore();
+    const f = new EventFactory();
+    const envs: TestEnvelope[] = [];
+    for (const type of Object.keys(VALID_SAMPLES) as EventType[]) {
+      const p = detPartsOf(type, VALID_SAMPLES[type]);
+      if (p === undefined) continue;
+      const gid = det(p.table, p.parts);
+      for (const origin of ["genesis", "bridge"] as const) {
+        const stamps =
+          origin === "genesis" ? { stamps: { created_at: "2026-01-01T00:00:00.000000Z" } } : {};
+        envs.push({ ...f.make(type, gid, { ...VALID_SAMPLES[type], ...stamps }), origin });
+      }
+    }
+    // genesis specifics (gid.md 7): a legacy budget hash, an instrument without a creation alias
+    // (genesis gid), one created under its stored alias, and a manual investment entry (ULID).
+    const legacy = `legacy:${H1}`;
+    envs.push({
+      ...txn(f, det("transactions", [ACC, legacy, "0"]), legacy),
+      origin: "genesis",
+    });
+    const created = VALID_SAMPLES["instrument.created"];
+    envs.push({
+      ...f.make("instrument.created", det("genesis", ["inv_instruments", "7"]), {
+        ...created,
+        creationAlias: null,
+      }),
+      origin: "genesis",
+    });
+    envs.push({
+      ...f.make("instrument.created", det("inv_instruments", ["yahoo:TST.WA"]), {
+        ...created,
+        creationAlias: "yahoo:TST.WA",
+      }),
+      origin: "genesis",
+    });
+    const manual = testUlid("01JE", 1);
+    envs.push({
+      ...f.make("invTxn.imported", manual, {
+        ...VALID_SAMPLES["invTxn.imported"],
+        source: "manual",
+        dedupHash: `manual:${manual}`,
+      }),
+      origin: "bridge",
+    });
+    const r = store.applyEnvelopes(envs);
+    expect(r.rejected).toEqual([]);
+    expect(r.parked).toBe(0);
+    expect(store.read("SELECT COUNT(*) AS n FROM unknown_events")).toEqual([{ n: 0 }]);
   });
 });
 

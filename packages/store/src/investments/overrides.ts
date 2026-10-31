@@ -60,7 +60,6 @@ export const overridesMaterializer: Materializer = {
   ],
   identity: [INSTRUMENTS],
   partitions: (e, ctx) => [partitionOf(e.data.instrument, ctx)],
-  gidOf: (e, det) => det("inv_profile_instruments", [String(e.data.instrument)]),
   clear(roots, ctx) {
     for (const r of roots) {
       ctx.sql.write(

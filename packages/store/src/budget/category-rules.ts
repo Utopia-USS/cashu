@@ -22,7 +22,6 @@ export const categoryRulesMaterializer: Materializer = {
   tables: [table],
   handles: ["categoryRule.set"],
   partitions: (e) => [e.gid],
-  gidOf: (e, det) => det("category_rules", [String(e.data.merchantKey)]),
   clear(gids, ctx) {
     for (const g of gids) ctx.sql.write(table.name, "DELETE FROM category_rules WHERE gid = ?", g);
   },

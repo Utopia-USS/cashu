@@ -29,7 +29,6 @@ export const valuationsMaterializer: Materializer = {
   handles: ["valuation.set"],
   identity: [INSTRUMENTS],
   partitions: (e, ctx) => [key(ctx, e.data.instrument, e.data.asOf)[0]],
-  gidOf: (e, det) => det("inv_manual_valuations", [String(e.data.instrument), String(e.data.asOf)]),
   clear(partitions, ctx) {
     for (const p of partitions) {
       const [root = "", asOf = ""] = p.split("|");

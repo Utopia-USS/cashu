@@ -22,7 +22,7 @@ export interface ViewHash {
 const hex = (s: string) => bytesToHex(sha256(utf8ToBytes(s)));
 
 export function viewHash(store: Store): ViewHash {
-  const gidOf = new Map(
+  const gidById = new Map(
     store.driver
       .prepare("SELECT id, gid FROM view_ids")
       .all<{ id: number; gid: string }>()
@@ -40,7 +40,7 @@ export function viewHash(store: Store): ViewHash {
           cols.map((c) => {
             const v = r[c.name] ?? null;
             if (v === null) return null;
-            if (c.ref) return `ref:${gidOf.get(Number(v)) ?? `?${String(v)}`}`;
+            if (c.ref) return `ref:${gidById.get(Number(v)) ?? `?${String(v)}`}`;
             if (c.json) return JSON.parse(String(v)) as unknown;
             return typeof v === "bigint" ? Number(v) : v;
           }),

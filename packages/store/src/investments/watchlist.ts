@@ -48,8 +48,6 @@ export const watchlistMaterializer: Materializer = {
     if (e.type === "watchlist.added") return [ctx.resolve(INSTRUMENTS, String(e.data.instrument))];
     return ctx.members.partitionsOf(e.gid);
   },
-  gidOf: (e, det) =>
-    e.type === "watchlist.added" ? det("watchlist_items", [String(e.data.instrument)]) : undefined,
   clear(roots, ctx) {
     for (const r of roots) {
       ctx.sql.write(table.name, "DELETE FROM watchlist_items WHERE instrument_id = ?", ctx.id(r));

@@ -98,12 +98,6 @@ export interface Materializer {
    * also loads the events addressed to them (the signals a decision links, a transaction's leg gid).
    */
   refs?(e: FoldEvent, det: DetGid): readonly string[];
-  /**
-   * The gid an event of this type must carry when it is deterministic from the payload (gid.md 4:
-   * `DET(table)[parts]`). An event whose gid differs is parked (`invalid-gid`): one gid never
-   * stands for two row keys.
-   */
-  gidOf?(e: FoldEvent, det: DetGid): string | undefined;
   /** Delete the rows (public and internal) of these partitions. */
   clear(partitions: readonly string[], ctx: FoldContext): void;
   apply(e: FoldEvent, ctx: FoldContext): void;

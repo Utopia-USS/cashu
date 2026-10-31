@@ -99,14 +99,6 @@ export const transactionsMaterializer: Materializer = {
   partitions(e, ctx) {
     return e.type === "txn.imported" ? [rowKey(e, ctx)] : targets(e, ctx).map((t) => t.key);
   },
-  gidOf: (e, det) =>
-    e.type === "txn.imported"
-      ? det("transactions", [
-          String(e.data.account),
-          String(e.data.dedupHash),
-          String(e.data.occurrence),
-        ])
-      : undefined,
   // Each import refers to its member's cash leg gid (gid.md 4.4): leg claims of any member find the
   // row through it, also while the leg is absent (events.md 8.3).
   refs: (e, det) => (e.type === "txn.imported" ? [det("transactions", ["cashleg", e.gid])] : []),
