@@ -9,9 +9,12 @@ import { alertsMaterializer } from "./alerts.js";
 import { importBatchesMaterializer } from "./import-batches.js";
 import { instrumentIdentity, instrumentsMaterializer } from "./instruments.js";
 import { overridesMaterializer } from "./overrides.js";
+import { plannedMaterializer } from "./planned.js";
 import { positionsMaterializer, renamesMaterializer } from "./positions.js";
 import { signalsMaterializer } from "./signals.js";
 import { ruleRunsMaterializer, strategyMaterializer } from "./strategy.js";
+import { thesesMaterializer } from "./theses.js";
+import { topicThesesMaterializer } from "./topic-theses.js";
 import { transactionsMaterializer } from "./transactions.js";
 import { valuationsMaterializer } from "./valuations.js";
 import { watchlistMaterializer } from "./watchlist.js";
@@ -33,5 +36,8 @@ export const investmentsModule: StoreModule = {
     ruleRunsMaterializer,
     signalsMaterializer,
     alertsMaterializer,
+    thesesMaterializer,
+    topicThesesMaterializer,
+    plannedMaterializer,
   ],
 };
