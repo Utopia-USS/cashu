@@ -1,3 +1,4 @@
+# TRANSITIONAL(S11, S13): supplies the loans, vehicle and brokerage contributors until their TS ports land; remove then.
 """Temporary bridge: the net-worth values of the module contributors the TS port does not have yet.
 
 The TS ``core.networth`` producer recomputes everything core owns from the dataset's rows (accounts,
