@@ -148,19 +148,18 @@ function pairs(map: ReadonlyMap<string, unknown> | Readonly<Record<string, unkno
   return map instanceof Map ? [...map].map(([k, v]) => [k, v]) : Object.entries(map);
 }
 
-/** sha256 per 4096-code-point block of fn(chr(c)) joined by NUL, surrogates skipped. */
-function blockHashes(fn: (s: string) => string): string[] {
-  const out: string[] = [];
-  for (let block = 0; block < 0x110000 / 4096; block++) {
-    const h = createHash("sha256");
-    for (let c = block * 4096; c < (block + 1) * 4096; c++) {
-      if (c >= 0xd800 && c <= 0xdfff) continue;
-      h.update(fn(String.fromCodePoint(c)), "utf8");
-      h.update("\0");
-    }
-    out.push(h.digest("hex").slice(0, 16));
+const BLOCK = 4096;
+const BLOCKS_PER_PLANE = 0x10000 / BLOCK;
+
+/** sha256 (first 16 hex digits) of fn(chr(c)) joined by NUL over one 4096-code-point block, surrogates skipped. */
+function blockHash(fn: (s: string) => string, block: number): string {
+  // One update per block: a hash call per code point (1.1M x 7 functions) cost more than the checks.
+  let joined = "";
+  for (let c = block * BLOCK; c < (block + 1) * BLOCK; c++) {
+    if (c >= 0xd800 && c <= 0xdfff) continue;
+    joined += `${fn(String.fromCodePoint(c))}\0`;
   }
-  return out;
+  return createHash("sha256").update(joined, "utf8").digest("hex").slice(0, 16);
 }
 
 function expectAll(m: Mismatches): void {
@@ -270,18 +269,34 @@ describe("Python regex classes, casefold and normalization over every code point
     nfkc: (c) => c.normalize("NFKC"),
   };
 
-  it("\\w, \\d, \\s, ., casefold, NFKD and NFKC agree block by block", () => {
-    const m = new Mismatches();
-    for (const row of rows as readonly Row[]) {
-      const fn = fns[row[0] as string];
-      if (fn === undefined) continue;
-      const hashes = blockHashes(fn);
-      (row[1] as string[]).forEach((h, i) => {
-        m.check(`${row[0]} block ${i}`, hashes[i], h);
-      });
-    }
-    expectAll(m);
-  });
+  const hexPoint = (cp: number) => `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
+
+  // One test per plane (16 blocks, 65,536 code points) so no single test holds the whole sweep.
+  it.each(Array.from({ length: 0x110000 / 0x10000 }, (_, plane) => plane))(
+    "\\w, \\d, \\s, ., casefold, NFKD and NFKC agree block by block in plane %i",
+    (plane) => {
+      const m = new Mismatches();
+      const tables = (rows as readonly Row[]).filter(
+        (row) => typeof row[0] === "string" && row[0] in fns,
+      );
+      expect(tables.map((row) => row[0]).sort()).toEqual(Object.keys(fns).sort());
+      for (const row of tables) {
+        const fn = fns[row[0] as string] as (c: string) => string;
+        for (
+          let block = plane * BLOCKS_PER_PLANE;
+          block < (plane + 1) * BLOCKS_PER_PLANE;
+          block++
+        ) {
+          m.check(
+            `${String(row[0])} block ${block} (${hexPoint(block * BLOCK)})`,
+            blockHash(fn, block),
+            (row[1] as string[])[block],
+          );
+        }
+      }
+      expectAll(m);
+    },
+  );
 
   it("IGNORECASE units match the same code points (BMP)", () => {
     const m = new Mismatches();
@@ -316,29 +331,36 @@ describe("phrase checks (advice, claims, forecasts, market views, estimates)", (
   };
   const sentence = pyRegex(SENTENCE_PATTERN, "g");
 
-  it("every text gives Python's verdicts, sentence split and pattern matches", () => {
-    const m = new Mismatches();
-    for (const row of rows as readonly Row[]) {
-      const text = row[0] as string;
-      const label = JSON.stringify(text).slice(0, 80);
-      m.check(`advice ${label}`, adviceProblem(text), row[1]);
-      m.check(`claim ${label}`, claimProblem(text), row[2]);
-      m.check(`forecast ${label}`, forecastProblem(text), row[3]);
-      m.check(`market ${label}`, marketViewProblem(text), row[4]);
-      m.check(`attributed ${label}`, attributedTrendForecast(text), row[5]);
-      m.check(`quantitative ${label}`, hasQuantitativeEstimate(text), row[6]);
-      m.check(`sentences ${label}`, text.split(sentence), row[7]);
-      const expected = row[8] as Record<string, string[]>;
-      for (const [name, re] of Object.entries(patterns)) {
-        m.check(
-          `${name} ${label}`,
-          [...text.matchAll(re)].map((x) => x[0]),
-          expected[name],
-        );
+  // The 1,600 texts in 8 slices, so no single test holds all of them.
+  const SLICES = 8;
+  const size = Math.ceil(rows.length / SLICES);
+
+  it.each(Array.from({ length: SLICES }, (_, slice) => slice))(
+    "slice %i of the texts gives Python's verdicts, sentence split and pattern matches",
+    (slice) => {
+      const m = new Mismatches();
+      for (const row of rows.slice(slice * size, (slice + 1) * size) as readonly Row[]) {
+        const text = row[0] as string;
+        const label = JSON.stringify(text).slice(0, 80);
+        m.check(`advice ${label}`, adviceProblem(text), row[1]);
+        m.check(`claim ${label}`, claimProblem(text), row[2]);
+        m.check(`forecast ${label}`, forecastProblem(text), row[3]);
+        m.check(`market ${label}`, marketViewProblem(text), row[4]);
+        m.check(`attributed ${label}`, attributedTrendForecast(text), row[5]);
+        m.check(`quantitative ${label}`, hasQuantitativeEstimate(text), row[6]);
+        m.check(`sentences ${label}`, text.split(sentence), row[7]);
+        const expected = row[8] as Record<string, string[]>;
+        for (const [name, re] of Object.entries(patterns)) {
+          m.check(
+            `${name} ${label}`,
+            [...text.matchAll(re)].map((x) => x[0]),
+            expected[name],
+          );
+        }
       }
-    }
-    expectAll(m);
-  });
+      expectAll(m);
+    },
+  );
 });
 
 describe("check_url (urlsplit + ipaddress semantics)", () => {
