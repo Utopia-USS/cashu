@@ -12,8 +12,8 @@ import { join } from "node:path";
 import { addDays, type core, D, type Decimal, type IsoDate } from "@cashu/domain";
 import { type Dataset, labRoot } from "../../sources/index.ts";
 
-export const BRIDGE_CHECK = "core.networth_contributors";
-export const BRIDGED_MODULES = ["loans", "assets", "investments"] as const;
+const BRIDGE_CHECK = "core.networth_contributors";
+const BRIDGED_MODULES = ["loans", "assets", "investments"] as const;
 
 interface BridgeEntry {
   readonly as_of: string;
@@ -29,7 +29,7 @@ interface BridgeProfile {
 }
 export type BridgeFile = Readonly<Record<string, BridgeProfile>>;
 
-export function bridgePath(dataset: Dataset, root: string = labRoot()): string {
+function bridgePath(dataset: Dataset, root: string = labRoot()): string {
   return join(root, "parity", "bridge", dataset, `${BRIDGE_CHECK}.json`);
 }
 

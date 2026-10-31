@@ -11,3 +11,6 @@ export { CanonParseError, canonType, parseCanonical, sha256Hex } from "./json.ts
 export { formatReport, reportToJson } from "./report.ts";
 export type { CheckReport, Report, RunOptions, Status } from "./run.ts";
 export { goldenChecks, runParity } from "./run.ts";
+
+/** The read-only data source every TS producer uses (README "Sources"). */
+export * from "./sources/index.ts";

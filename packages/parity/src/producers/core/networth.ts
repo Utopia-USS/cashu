@@ -18,7 +18,7 @@ function decimals(map: ReadonlyMap<string, Decimal>): Record<string, Decimal> {
 }
 
 /** The profile's `NetWorthBook`, account ids = the goldens' natural keys. */
-export function profileBook(
+function profileBook(
   db: PythonDb,
   registry: core.CoreRegistry,
   profileId: number,

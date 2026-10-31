@@ -7,7 +7,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const DATASETS = ["demo", "lab"] as const;
+const DATASETS = ["demo", "lab"] as const;
 export type Dataset = (typeof DATASETS)[number];
 
 /** The frozen local wall clock of each dataset: the day its goldens are "as of". */

@@ -81,9 +81,9 @@ datasets it is enabled for and `produce(db) -> JSON tree`; `<module>/` folders h
 `toJSON()` = Python `str()`, JS numbers refused). The CLI runs under Node's type stripping with
 `src/producers/resolveTs.ts`, which maps the `./x.js` specifiers of workspace TypeScript to `./x.ts`.
 
-| Check | Datasets | Inputs |
-|---|---|---|
-| `core.networth` | demo | accounts, balances, cash-pool transactions (`PythonDb`); loans / assets / investments contributors from the bridge |
+| Check           | Datasets | Inputs                                                                                                             |
+| --------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `core.networth` | demo     | accounts, balances, cash-pool transactions (`PythonDb`); loans / assets / investments contributors from the bridge |
 
 ### Temporary bridge for contributors not ported yet
 

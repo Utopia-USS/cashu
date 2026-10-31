@@ -3,7 +3,6 @@
 export type { Dataset } from "./datasets.ts";
 export {
   DATASET_CLOCKS,
-  DATASETS,
   datasetAsOf,
   datasetDir,
   isDataset,
