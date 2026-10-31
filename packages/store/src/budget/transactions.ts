@@ -150,12 +150,12 @@ export const transactionsMaterializer: Materializer = {
       const d = e.data;
       const accountId = ctx.id(ctx.resolve(ACCOUNTS, String(d.account)));
       // CREATE: the first applied import supplies the row; later members only join it.
-      ctx.sql.write(
+      ctx.sql.insert(
         table.name,
         `INSERT OR IGNORE INTO transactions (id, gid, account_id, booking_date, value_date, amount, currency,
            counterparty_name, counterparty_iban, description, reference, bank_transaction_id, source,
-           dedup_hash, occurrence, raw, import_batch_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           dedup_hash, occurrence, raw, import_batch_id, created_at)`,
+        "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ctx.id(e.gid),
         e.gid,
         accountId,

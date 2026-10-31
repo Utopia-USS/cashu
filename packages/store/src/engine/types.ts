@@ -32,6 +32,14 @@ export function compareOrd(a: FoldEvent, b: FoldEvent): number {
 /** SQL access for a materializer: reads anywhere in its own tables, writes recorded per table. */
 export interface ViewSql {
   write(table: string, sql: string, ...params: SqlValue[]): SqlRunResult;
+  /**
+   * Queue one row of `<insert> VALUES <row>` (e.g. `INSERT OR IGNORE INTO t (a, b)`, `(?, ?)`):
+   * consecutive rows of one statement run as multi-row inserts. Every other call on this object
+   * (and `flush`) runs the queue first, in order, so reads and writes see every queued row.
+   */
+  insert(table: string, insert: string, row: string, ...params: SqlValue[]): void;
+  /** Run the queued inserts (the runner calls it at the end of each fold step). */
+  flush(): void;
   get<R>(sql: string, ...params: SqlValue[]): R | undefined;
   all<R>(sql: string, ...params: SqlValue[]): R[];
 }

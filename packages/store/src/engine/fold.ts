@@ -159,6 +159,7 @@ export class MaterializerRunner {
     const ctx = this.#ctx(sql);
     const sorted = [...events].sort(compareOrd);
     for (const e of sorted) this.mat.apply(e, ctx);
+    sql.flush();
     const last = sorted[sorted.length - 1];
     if (last) this.#setHwm(ord(last));
   }
@@ -203,6 +204,7 @@ export class MaterializerRunner {
     this.#members.clear(list);
     const sorted = [...events.values()].sort(compareOrd);
     for (const e of sorted) m.apply(e, ctx);
+    sql.flush();
     const last = sorted[sorted.length - 1];
     if (last && ord(last) > this.#hwm) this.#setHwm(ord(last));
   }
@@ -222,6 +224,7 @@ export class MaterializerRunner {
     this.#members.clearAll();
     const events = this.#deps.log.appliedOfTypes(this.mat.handles);
     for (const e of events) this.mat.apply(e, ctx);
+    sql.flush();
     for (const { t, ix } of bulk) stmts.exec(createIndexSql(t, ix));
     const last = events[events.length - 1];
     this.#hwm = "";
