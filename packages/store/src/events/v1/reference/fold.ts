@@ -9,6 +9,8 @@
 // valuations, signals + decisions, proposals + caused events, connector bindings. Other tables follow
 // the same patterns (plain LWW-F / CREATE per gid) and are not modelled here.
 
+import { claimAllowed } from "../identity.js";
+
 export interface RefEvent {
   eid: string;
   hlc: string;
@@ -69,6 +71,12 @@ export function appliedEvents(evs: readonly RefEvent[]): RefEvent[] {
 export class Identity {
   private parent = new Map<string, string>();
   private keyOwner = new Map<string, string>();
+  /** root -> its exclusive key (accounts: the one `iban:` key a component may hold, review N2). */
+  private exclusiveOf = new Map<string, string>();
+  /** Claims / unions refused by the exclusive-key guard, in fold order (shown as conflicts). */
+  readonly conflicts: string[] = [];
+
+  constructor(private readonly exclusivePrefix: string | null = null) {}
 
   find(g: string): string {
     let r = g;
@@ -76,29 +84,64 @@ export class Identity {
     return r;
   }
 
-  private union(from: string, into: string): void {
-    const a = this.find(from);
-    const b = this.find(into);
-    if (a !== b) this.parent.set(a, b);
+  exclusiveKey(g: string): string | undefined {
+    return this.exclusiveOf.get(this.find(g));
   }
 
-  claim(g: string, key: string): void {
+  /** Fold `from`'s root into `into`'s root unless both hold different exclusive keys. */
+  private union(from: string, into: string, why: string): boolean {
+    const a = this.find(from);
+    const b = this.find(into);
+    if (a === b) return true;
+    const ka = this.exclusiveOf.get(a);
+    const kb = this.exclusiveOf.get(b);
+    if (ka !== undefined && kb !== undefined && ka !== kb) {
+      this.conflicts.push(why);
+      return false;
+    }
+    this.parent.set(a, b);
+    if (kb === undefined && ka !== undefined) this.exclusiveOf.set(b, ka);
+    return true;
+  }
+
+  /** Claim `key` for `g`; true when the key now belongs to g's component. */
+  claim(g: string, key: string): boolean {
+    const exclusive = this.exclusivePrefix !== null && key.startsWith(this.exclusivePrefix);
+    if (exclusive) {
+      const held = this.exclusiveOf.get(this.find(g));
+      if (held !== undefined && held !== key) {
+        this.conflicts.push(`${g} ${key}`);
+        return false;
+      }
+    }
     const owner = this.keyOwner.get(key);
-    if (owner === undefined) this.keyOwner.set(key, g);
-    else this.union(g, owner);
+    if (owner === undefined) {
+      this.keyOwner.set(key, g);
+      if (exclusive) this.exclusiveOf.set(this.find(g), key);
+      return true;
+    }
+    return this.union(g, owner, `${g} ${key}`);
   }
 
   merge(source: string, target: string): void {
-    this.union(source, target);
+    this.union(source, target, `${source}->${target}`);
   }
 }
 
 export function resolveIdentities(evs: readonly RefEvent[]) {
-  const accounts = new Identity();
+  const accounts = new Identity("iban:");
   const instruments = new Identity();
+  /** The raw IBAN of each event whose `iban:` claim was accepted, by eid. */
+  const acceptedIban = new Map<string, string>();
   for (const e of evs) {
     if (e.type === "account.opened" || e.type === "account.identified") {
-      for (const k of (e.data.keys as string[] | undefined) ?? []) accounts.claim(e.gid, k);
+      for (const k of (e.data.keys as string[] | undefined) ?? []) {
+        if (!claimAllowed(k, e.data.iban)) continue; // N2: no checksum, no claim
+        const ok = accounts.claim(e.gid, k);
+        if (ok && k.startsWith("iban:") && !acceptedIban.has(e.eid)) {
+          acceptedIban.set(e.eid, String(e.data.iban));
+        }
+      }
     } else if (e.type === "instrument.aliasAdded") {
       const inst = str(e.data.instrument);
       if (inst) instruments.claim(inst, `${str(e.data.namespace)}:${str(e.data.value)}`);
@@ -106,7 +149,7 @@ export function resolveIdentities(evs: readonly RefEvent[]) {
       instruments.merge(String(e.data.source), String(e.data.target));
     }
   }
-  return { accounts, instruments };
+  return { accounts, instruments, acceptedIban };
 }
 
 /** A dedup key with its `i:` / `a:` gid parts resolved to their roots (gid.md section 6). */
@@ -126,13 +169,24 @@ export function resolveDedupKey(key: string, ids: ReturnType<typeof resolveIdent
 // --------------------------------------------------------------------------------------------- //
 
 export interface AccountRow {
+  /** The identity root: always one of `members` (events.md 6.4, N1). */
   gid: string;
   iban: string | null;
   externalId: string | null;
   name: string | null;
   members: string[];
 }
+export interface TxnRow {
+  /** The anchor: the first applied member (N1); writers may address any member. */
+  gid: string;
+  members: string[];
+  claim: string | null;
+  /** The derived cash mirror leg, present while the effective claim is cash_withdrawal. */
+  leg: { gid: string; claim: string | null } | null;
+}
 export interface WatchRow {
+  gid: string;
+  members: string[];
   live: boolean;
   note: string | null;
   tags: string[];
@@ -157,7 +211,8 @@ export interface BindingRow {
 
 export interface RefView {
   accounts: Record<string, AccountRow>;
-  transactions: Record<string, { gid: string; claim: string | null }>;
+  transactions: Record<string, TxnRow>;
+  accountConflicts: string[];
   watchlist: Record<string, WatchRow>;
   overrides: Record<string, { segment: string | null; segmentBy: string | null; tags: unknown }>;
   valuations: Record<string, string>;
@@ -183,7 +238,18 @@ export function materialize(input: readonly RefEvent[]): RefView {
   const signalKeyOf = new Map<string, string>();
 
   const accounts = new Map<string, AccountRow>();
-  const transactions = new Map<string, { gid: string; claim: string | null; claimBy: string }>();
+  interface TxnState {
+    gid: string;
+    members: string[];
+    claim: string | null;
+    claimBy: string;
+    legClaim: string | null;
+    legClaimBy: string;
+  }
+  const transactions = new Map<string, TxnState>();
+  const ownName = new Map<string, string>(); // account gid -> its own first opened name
+  const renamed = new Map<string, string>(); // account root -> latest explicit rename
+  const memberLive = new Map<string, boolean>(); // watchlist member gid -> its own SOFT register
   const watchlist = new Map<string, WatchRow>();
   const overrides = new Map<
     string,
@@ -217,29 +283,55 @@ export function materialize(input: readonly RefEvent[]): RefView {
       case "account.identified": {
         const row = accountRow(acc(e.gid));
         if (!row.members.includes(e.gid)) row.members.push(e.gid);
-        if (row.iban === null && str(d.iban)) row.iban = str(d.iban) ?? null; // first non-null wins
+        // N2: only an accepted `iban:` claim fills the IBAN (one per component, checksum valid).
+        const accepted = ids.acceptedIban.get(e.eid);
+        if (row.iban === null && accepted !== undefined) row.iban = accepted;
         if (row.externalId === null && str(d.externalId))
           row.externalId = str(d.externalId) ?? null;
-        if (e.type === "account.opened" && row.name === null) row.name = str(d.name) ?? null;
+        if (e.type === "account.opened") {
+          if (!ownName.has(e.gid)) ownName.set(e.gid, str(d.name) ?? "");
+          if (row.name === null) row.name = str(d.name) ?? null;
+        }
         break;
       }
       case "account.renamed":
-        accountRow(acc(e.gid)).name = str(d.name) ?? null;
+        renamed.set(acc(e.gid), str(d.name) ?? "");
         break;
 
       case "txn.imported": {
         const row = `${acc(String(d.account))}|${String(d.dedupHash)}|${String(d.occurrence)}`;
         txnRowOf.set(e.gid, row);
-        if (!transactions.has(row)) transactions.set(row, { gid: e.gid, claim: null, claimBy: "" });
+        const t = transactions.get(row) ?? {
+          gid: e.gid, // the anchor: first applied member
+          members: [],
+          claim: null,
+          claimBy: "",
+          legClaim: null,
+          legClaimBy: "",
+        };
+        if (!t.members.includes(e.gid)) t.members.push(e.gid);
+        transactions.set(row, t);
         break;
       }
-      case "txn.categorySet": {
-        const t = transactions.get(txnRowOf.get(e.gid) ?? "");
+      case "txn.categorySet":
+      case "txn.categoryCleared": {
+        // The subject is a member gid, or the leg gid of a member: `cashleg:<member>` stands in for
+        // DET(transactions)["cashleg", member] (gid.md 4.4). Any member's leg gid reaches the leg.
+        const isLeg = e.gid.startsWith("cashleg:");
+        const member = isLeg ? e.gid.slice("cashleg:".length) : e.gid;
+        const t = transactions.get(txnRowOf.get(member) ?? "");
         if (!t) break; // parked: its import is not held
-        const source = String(d.source);
-        if (source !== "manual_txn" && t.claimBy === "manual_txn") break; // GUARD
-        t.claim = String(d.category);
-        t.claimBy = source;
+        const source = e.type === "txn.categoryCleared" ? "" : String(d.source);
+        const by = isLeg ? t.legClaimBy : t.claimBy;
+        if (source.startsWith("llm") && by === "manual_txn") break; // GUARD
+        const category = e.type === "txn.categoryCleared" ? null : String(d.category);
+        if (isLeg) {
+          t.legClaim = category;
+          t.legClaimBy = source;
+        } else {
+          t.claim = category;
+          t.claimBy = source;
+        }
         break;
       }
 
@@ -251,18 +343,21 @@ export function materialize(input: readonly RefEvent[]): RefView {
         if (member === undefined) break; // parked
         const key = inst(member);
         const row = watchlist.get(key) ?? {
+          gid: e.gid, // the anchor: first applied member
+          members: [],
           live: false,
           note: null,
           tags: [],
           addedAt: null,
           source: null,
         };
+        if (!row.members.includes(e.gid)) row.members.push(e.gid);
         if (e.type === "watchlist.added") {
-          row.live = true; // M2: re-add restores
+          memberLive.set(e.gid, true); // M2: re-add restores
           row.addedAt = e.at;
           row.source = str(d.source) ?? null;
         }
-        if (e.type === "watchlist.removed") row.live = false;
+        if (e.type === "watchlist.removed") memberLive.set(e.gid, false);
         if ("note" in d) row.note = (d.note as string | null) ?? null;
         if ("tags" in d) row.tags = (d.tags as string[]) ?? [];
         watchlist.set(key, row);
@@ -405,11 +500,27 @@ export function materialize(input: readonly RefEvent[]): RefView {
     }
   }
 
+  // N4: an explicit rename wins, else the identity root's own opened name.
+  for (const [root, row] of accounts) {
+    row.name = renamed.get(root) ?? ownName.get(root) ?? row.name;
+  }
+  // N3: presence of a merged watchlist row = any member's own SOFT register is live.
+  for (const row of watchlist.values()) {
+    row.live = row.members.some((m) => memberLive.get(m) === true);
+  }
+  const txnRows = new Map<string, TxnRow>();
+  for (const [k, t] of transactions) {
+    const leg =
+      t.claim === "cash_withdrawal" && t.claimBy === "manual_txn"
+        ? { gid: `cashleg:${t.gid}`, claim: t.legClaim }
+        : null;
+    txnRows.set(k, { gid: t.gid, members: [...t.members].sort(), claim: t.claim, leg });
+  }
+
   return {
     accounts: sortRecord(accounts),
-    transactions: sortRecord(
-      new Map([...transactions].map(([k, v]) => [k, { gid: v.gid, claim: v.claim }])),
-    ),
+    accountConflicts: [...ids.accounts.conflicts],
+    transactions: sortRecord(txnRows),
     watchlist: sortRecord(watchlist),
     overrides: sortRecord(overrides),
     valuations: sortRecord(valuations),

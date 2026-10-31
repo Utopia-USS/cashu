@@ -6,6 +6,7 @@ export * from "./catalog.js";
 export * from "./core.js";
 export * from "./envelope.js";
 export * from "./hlc-format.js";
+export * from "./identity.js";
 export * from "./investments.js";
 export * from "./journal.js";
 export * from "./namespaces.js";

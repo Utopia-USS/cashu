@@ -73,7 +73,14 @@ function converge(events: RefEvent[], orders = 40): RefView {
 }
 
 // Synthetic gids (format irrelevant to the reference fold).
-const IBAN = "iban:00000000000000000000000000";
+/** A synthetic Polish NRB with valid mod-97 check digits for a 24-digit BBAN. */
+function nrb(bban24: string): string {
+  const check = 98n - (BigInt(`${bban24}252100`) % 97n);
+  return `${check.toString().padStart(2, "0")}${bban24}`;
+}
+const N1 = nrb("114000000000000000000001");
+const N2 = nrb("114000000000000000000002");
+const N3 = nrb("114000000000000000000003");
 
 describe("B1 account identity", () => {
   it("CSV without IBAN and Open Banking by IBAN become one account once the IBAN is learned", () => {
@@ -87,18 +94,15 @@ describe("B1 account identity", () => {
         keys: ["ext:mbank:csv-noiban:123"],
       }),
       ev("b", 11, "account.opened", obAcc, {
-        name: "Jan Kowalski",
-        iban: "PL00000000000000000000000000",
+        name: "mBank eKonto",
+        iban: `PL${N1}`,
         externalId: "eb:uid-1",
-        keys: [IBAN, "ext:mbank:eb:uid-1"],
+        keys: [`iban:${N1}`, "ext:mbank:eb:uid-1"],
       }),
       ev("a", 20, "txn.imported", "t-csv", { account: csvAcc, dedupHash: "h1", occurrence: 0 }),
       ev("b", 21, "txn.imported", "t-ob", { account: obAcc, dedupHash: "h1", occurrence: 0 }),
       ev("b", 22, "txn.imported", "t-ob2", { account: obAcc, dedupHash: "h2", occurrence: 0 }),
-      ev("a", 30, "account.identified", csvAcc, {
-        iban: "00000000000000000000000000",
-        keys: [IBAN],
-      }),
+      ev("a", 30, "account.identified", csvAcc, { iban: N1, keys: [`iban:${N1}`] }),
       ev("a", 31, "txn.categorySet", "t-csv", { category: "groceries", source: "manual_txn" }),
       ev("b", 32, "txn.categorySet", "t-ob", { category: "other", source: "llm_full" }),
     ];
@@ -106,26 +110,27 @@ describe("B1 account identity", () => {
     const rows = Object.values(v.accounts);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.members.sort()).toEqual([csvAcc, obAcc]);
-    expect(rows[0]?.name).toBe("Konto z CSV"); // the first open's name; OB never renames
-    expect(rows[0]?.iban).toBe("PL00000000000000000000000000");
+    expect(rows[0]?.gid).toBe(obAcc); // the root: the earlier holder of the IBAN key
+    expect(rows[0]?.name).toBe("mBank eKonto"); // N4: the root's own opened name
+    expect(rows[0]?.iban).toBe(`PL${N1}`);
     const txns = Object.values(v.transactions);
     expect(txns).toHaveLength(2); // cross-source duplicate collapsed, h2 kept
-    expect(txns.find((t) => t.claim !== null)?.claim).toBe("groceries"); // manual claim beats llm
+    expect(txns.find((t) => t.members.length === 2)?.claim).toBe("groceries"); // manual beats llm
   });
 
   it("an Enable Banking re-consent uid joins the account through its IBAN", () => {
     const evs = [
       ev("b", 10, "account.opened", "acc-1", {
         name: "Konto",
-        iban: "PL00000000000000000000000000",
+        iban: `PL${N1}`,
         externalId: "eb:uid-1",
-        keys: [IBAN, "ext:mbank:eb:uid-1"],
+        keys: [`iban:${N1}`, "ext:mbank:eb:uid-1"],
       }),
       ev("b", 50, "account.opened", "acc-2", {
         name: "Konto",
-        iban: "PL00000000000000000000000000",
+        iban: `PL${N1}`,
         externalId: "eb:uid-2",
-        keys: [IBAN, "ext:mbank:eb:uid-2"],
+        keys: [`iban:${N1}`, "ext:mbank:eb:uid-2"],
       }),
       ev("b", 60, "txn.imported", "t2", { account: "acc-2", dedupHash: "h9", occurrence: 0 }),
     ];
@@ -319,5 +324,140 @@ describe("majors with order-sensitive rules", () => {
     expect(v.proposals.p1).toBe("rejected");
     expect(v.bindings["acc|c"]?.cursor).toBe("c-1");
     expect(Object.keys(v.transactions)).toEqual([]);
+  });
+});
+
+describe("v1.2: row addressing after merges (N1)", () => {
+  it("removing a watchlist entry by its member gid after the instrument merged", () => {
+    const evs = [
+      ev("p", 5, "watchlist.added", "w-s", { instrument: "S", source: "user" }),
+      ev("a", 10, "instrument.merged", "S", { source: "S", target: "T", reason: "owner" }),
+      ev("a", 20, "watchlist.removed", "w-s", {}),
+    ];
+    const v = converge(evs);
+    expect(v.watchlist.T).toMatchObject({ gid: "w-s", live: false });
+  });
+
+  it("removing a merged watchlist row removes every live member the view shows", () => {
+    const evs = [
+      ev("a", 5, "watchlist.added", "w-t", { instrument: "T", source: "user" }),
+      ev("p", 6, "watchlist.added", "w-s", { instrument: "S", source: "agent" }),
+      ev("a", 10, "instrument.merged", "S", { source: "S", target: "T", reason: "owner" }),
+      // the view shows the anchor w-t with members [w-t, w-s]: one batch removes both
+      ev("a", 20, "watchlist.removed", "w-t", {}),
+      ev("a", 21, "watchlist.removed", "w-s", {}),
+    ];
+    const v = converge(evs);
+    expect(v.watchlist.T).toMatchObject({ gid: "w-t", live: false });
+  });
+
+  it("a category set on a transaction after its account folded into another", () => {
+    const evs = [
+      ev("a", 10, "account.opened", "A", { name: "A", iban: null, keys: ["ext:mbank:k-a"] }),
+      ev("b", 11, "account.opened", "B", { name: "B", iban: `PL${N2}`, keys: [`iban:${N2}`] }),
+      ev("a", 12, "txn.imported", "t-a", { account: "A", dedupHash: "h", occurrence: 0 }),
+      ev("a", 30, "account.identified", "A", { iban: N2, keys: [`iban:${N2}`] }),
+      // the view shows the row under its anchor t-a (its only member): the owner addresses it
+      ev("a", 40, "txn.categorySet", "t-a", { category: "fuel", source: "manual_txn" }),
+    ];
+    const v = converge(evs);
+    expect(Object.keys(v.transactions)).toEqual(["B|h|0"]);
+    expect(v.transactions["B|h|0"]).toMatchObject({ gid: "t-a", claim: "fuel" });
+  });
+
+  it("cash leg edits reach the leg through any member's leg gid", () => {
+    const evs = [
+      ev("a", 10, "account.opened", "A", { name: "A", iban: null, keys: ["ext:mbank:k-a"] }),
+      ev("b", 11, "account.opened", "B", { name: "B", iban: `PL${N2}`, keys: [`iban:${N2}`] }),
+      ev("a", 12, "txn.imported", "t-a", { account: "A", dedupHash: "h", occurrence: 0 }),
+      ev("b", 13, "txn.imported", "t-b", { account: "B", dedupHash: "h", occurrence: 0 }),
+      ev("b", 14, "txn.categorySet", "t-b", { category: "cash_withdrawal", source: "manual_txn" }),
+      ev("b", 15, "txn.categorySet", "cashleg:t-b", {
+        category: "cash_other",
+        source: "manual_txn",
+      }),
+      ev("a", 30, "account.identified", "A", { iban: N2, keys: [`iban:${N2}`] }),
+      ev("a", 40, "txn.categorySet", "cashleg:t-a", {
+        category: "cash_food",
+        source: "manual_txn",
+      }),
+    ];
+    const v = converge(evs);
+    const row = v.transactions["B|h|0"];
+    expect(row?.members).toEqual(["t-a", "t-b"]);
+    expect(row?.gid).toBe("t-a"); // anchor: the first applied member
+    expect(row?.leg).toEqual({ gid: "cashleg:t-a", claim: "cash_food" });
+  });
+});
+
+describe("v1.2: one IBAN per account, checksum required (N2)", () => {
+  const base = [
+    ev("b", 5, "account.opened", "Y", { name: "Real Y", iban: `PL${N1}`, keys: [`iban:${N1}`] }),
+    ev("a", 6, "account.opened", "A", { name: "A", iban: null, keys: ["ext:mbank:k-a"] }),
+  ];
+
+  it.each([
+    [20, 21],
+    [21, 20],
+  ])(
+    "two concurrent IBANs for one account never fuse a third account (walls %i / %i)",
+    (w3, w1) => {
+      const evs = [
+        ...base,
+        ev("a", w3, "account.identified", "A", { iban: N3, keys: [`iban:${N3}`] }),
+        ev("p", w1, "account.identified", "A", { iban: N1, keys: [`iban:${N1}`] }),
+      ];
+      const v = converge(evs);
+      for (const row of Object.values(v.accounts)) {
+        expect(row.iban === null || [N1, N3, `PL${N1}`].includes(row.iban)).toBe(true);
+      }
+      expect(v.accountConflicts).toHaveLength(1);
+      expect(v.accounts.Y?.name).toBe("Real Y");
+      if (w3 < w1) {
+        expect(Object.keys(v.accounts).sort()).toEqual(["A", "Y"]); // A took N3 first: no fusion
+        expect(v.accounts.A?.iban).toBe(N3);
+      } else {
+        expect(Object.keys(v.accounts)).toEqual(["Y"]); // A joined Y by N1; N3 refused
+      }
+    },
+  );
+
+  it("an IBAN that fails the mod-97 check is never claimed", () => {
+    const masked = `${N1.slice(0, 25)}${N1.endsWith("1") ? "2" : "1"}`; // one digit off
+    const evs = [
+      ...base,
+      ev("a", 20, "account.identified", "A", { iban: masked, keys: [`iban:${masked}`] }),
+    ];
+    const v = converge(evs);
+    expect(Object.keys(v.accounts).sort()).toEqual(["A", "Y"]);
+    expect(v.accounts.A?.iban).toBeNull();
+  });
+});
+
+describe("v1.2: presence and names after merges (N3, N4)", () => {
+  it("N3: removing the duplicate and then merging keeps the target watched", () => {
+    const evs = [
+      ev("a", 5, "watchlist.added", "w-t", { instrument: "T", source: "user" }),
+      ev("a", 6, "watchlist.added", "w-s", { instrument: "S", source: "user" }),
+      ev("a", 7, "watchlist.removed", "w-s", {}),
+      ev("a", 10, "instrument.merged", "S", { source: "S", target: "T", reason: "owner" }),
+    ];
+    const v = converge(evs);
+    expect(v.watchlist.T?.live).toBe(true);
+  });
+
+  it("N4: an explicit rename beats the root's opened name", () => {
+    const evs = [
+      ev("b", 5, "account.opened", "Y", {
+        name: "mBank eKonto",
+        iban: `PL${N1}`,
+        keys: [`iban:${N1}`],
+      }),
+      ev("a", 6, "account.opened", "A", { name: "Z CSV", iban: null, keys: ["ext:mbank:k-a"] }),
+      ev("a", 20, "account.identified", "A", { iban: N1, keys: [`iban:${N1}`] }),
+      ev("p", 30, "account.renamed", "A", { name: "Konto domowe" }),
+    ];
+    const v = converge(evs);
+    expect(v.accounts.Y?.name).toBe("Konto domowe");
   });
 });

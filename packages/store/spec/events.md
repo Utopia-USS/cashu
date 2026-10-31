@@ -1,7 +1,7 @@
-# cashU event catalog v1.1 (normative)
+# cashU event catalog v1.2 (normative)
 
-Status: v1.1 (scope S04, 2026-10-31), after the independent review
-(`~/cashu-lab/checkpoints/S04-review.md`) and the lead's decisions on it. Consumers: S23 store-core,
+Status: v1.2 (scope S04, 2026-10-31), after the independent review and its v1.1 re-check
+(`~/cashu-lab/checkpoints/S04-review.md`) and the lead's decisions on both. Consumers: S23 store-core,
 S24/S25 materializers, S26 genesis, S28a carrier contract, S29 devices / lease, S30 Python outbox,
 S31a/b bridge.
 
@@ -236,12 +236,22 @@ kind:
 - A claim of an unheld key makes the claimer its holder. A claim of a key already held folds the
   claimer's root into the holder's root (`parent[find(claimer)] = find(holder)`), unless they already
   share a root. The earlier holder therefore survives.
+- **One IBAN per account (N2).** An account component holds at most one `iban:` key. An `iban:` claim
+  is accepted only when the same event carries an `iban` that passes the mod-97 check (a bare 26-digit
+  Polish NRB is checked as `PL` + NRB) and whose iban key equals the claimed key (`claimAllowed` in
+  `identity.ts`). A claim of a different `iban:` key by a component that already holds one, and a
+  union (through an `ext:` key) of two components holding different `iban:` keys, are no-ops recorded
+  as **identity conflicts** in the view (`account_conflicts`, shown to the owner), in `(hlc, eid)` order.
+  This mirrors Python's sequential refusal (`budget/imports.py:376`, `import_account_mismatch`) under
+  concurrency, and a malformed number (masked, short, mistyped) can never fuse two accounts. The rest
+  of the event (other keys, fill-if-null of `external_id`) still applies; a refused IBAN does not fill
+  the view's `iban`.
 - A merge folds `find(source)` into `find(target)` unless they already share a root. Concurrent
   opposite merges (A->B and B->A) end in one root: the second is a no-op in the order.
 - `resolve(g)` = `find(g)` over the whole held event set. Resolution is recomputed (per affected
   component) whenever a claim or merge arrives; it never depends on delivery order.
-- Merges are permanent. A wrong identity key merges two accounts for good (as Python's
-  `get_or_create_account` matches them for good); see open item R-1.
+- Merges are permanent, as Python's `get_or_create_account` matches for good; with the N2 guard a
+  merge needs a checksum-valid shared IBAN or a shared external key, never two different IBANs.
 
 **Row keys.** Every table whose row identity contains an account or instrument reference is keyed by
 the **resolved** reference. All events of all member gids that map to one row key fold together as
@@ -262,18 +272,29 @@ one row, in `(hlc, eid)` order, with the table's normal rule:
 | inv_transactions | `resolve(account)`, dedupHash |
 | inv_signals | episode per resolved dedup key (8.7) |
 
-- An event that names no subject in `data` (`watchlist.removed`, `txn.categorySet`, ...) maps through
-  its `gid`'s row key, learned from that gid's keyed events; until one is held it is parked.
-- The view row's `gid` is the root gid (accounts, instruments) or the DET gid of the resolved row key
-  ([`gid.md`](gid.md) 4.8). References in other rows resolve at read time.
+- **Row addressing (N1).** The view row's `gid` is always one of its **member** gids: the identity
+  root for accounts and instruments, and for every other row-keyed table its **anchor**, the first
+  applied keyed member (lowest `(hlc, eid)` among the creates that put a member into the row). A gid
+  that no event carries never appears in the view. Writers address the gid the view shows, or any
+  member gid they hold; every member gid maps to the row through its own keyed events (6.4 row keys),
+  so an edit reaches the merged row whichever member it names. An event that names no subject in
+  `data` (`watchlist.removed`, `txn.categorySet`, ...) maps through its gid's row key; until that gid's
+  keyed event is held it is parked. The anchor may move to an earlier member when a merge brings one
+  in; edits addressed to the old anchor still land, because it stays a member.
+- To change a merged row **as a whole**, the writer emits the change for every member the view lists
+  (one batch): e.g. removing a merged watchlist entry emits `watchlist.removed` for each live member.
 - Field precedence on a collapsed row is the table's rule over the merged event stream (latest write
-  wins per field, GUARDs re-evaluated). This replaces the target-first collision rules of
-  `store/instrument_merge.py` by an order-independent rule; see open item R-2 for the difference.
-- Accounts: the view's `iban` and `external_id` are the first non-null values over the component's
-  `account.opened` / `account.identified` events (fill-if-null); `name` and `type` are LWW over
-  explicit `account.renamed` / `account.typeSet`, initialised from the first applied `account.opened`.
-  Internal transfers keep matching by counterparty IBAN only (rule 5), against the resolved
-  accounts' IBANs.
+  wins per field, GUARDs re-evaluated), replacing the target-first rules of `store/instrument_merge.py`
+  for field registers (lead decision on R-2; the parity notes in `parity/README.md` must list it, S02 / S03). **Presence** combines per
+  member instead (N3): a watchlist row is live when any member's own SOFT register is live, so
+  "remove the duplicate, then merge" keeps the target watched, as Python does.
+- Accounts: the view's `iban` is the IBAN of the component's first accepted `iban:` claim (one key per
+  component, N2); `external_id` is the first non-null over the component's events; `type` is LWW over
+  `account.typeSet` initialised from the first applied open; `name` is the latest explicit
+  `account.renamed` of any member, else the **root's own** opened name (N4), so an older CSV account
+  folding into an Open Banking account does not rename it. Internal transfers match by counterparty
+  IBAN only (rule 5), against every `iban:` key of the resolved account (at most one per component by
+  N2, so the CSV NRB and the Open Banking IBAN of one account both match it; N5).
 
 ### 6.5 Cross-entity effects
 
@@ -370,7 +391,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 | inv_strategy_versions (+ files) | `strategy.versionSaved` | ULID | APPEND; no-op when its sha equals the current version's; current = highest `hlc`; numbers DERIVED |
 | inv_theses | `thesis.created`, `thesis.updated`, `thesis.deleted` | ULID | CREATE; LWW-F; TOMB; `*_changed_at` DERIVED |
 | inv_topic_theses | `topicThesis.ownerSaved`, `topicThesis.draftProposed`, `topicThesis.rejected`, `topicThesis.marketViewSet` | DET(segment) | GUARD + LWW-F; restart on a rejected row (8.9); rejected SOFT |
-| watchlist_items | `watchlist.added`, `watchlist.updated`, `watchlist.removed` | DET(instrument) | row key 6.4; added = create or restore + LWW of `added_at`, `source`, given note / tags (M2); removed SOFT |
+| watchlist_items | `watchlist.added`, `watchlist.updated`, `watchlist.removed` | DET(instrument) | row key 6.4; added = create or restore + LWW of `added_at`, `source`, given note / tags (M2); removed SOFT per member; presence = any member live (N3) |
 | alerts | `alert.created`, `alert.updated`, `alert.statusSet`, `alert.deleted`, `alert.restored`, `alert.evaluated` | ULID | CREATE; config LWW-F; deleted SOFT; runtime LEADER LWW-F; effective status DERIVED |
 | inv_planned_deposits | `plannedDeposit.created`, `plannedDeposit.cancelled`, `plannedDeposit.booked` | ULID | CREATE; cancel / book FWW; a transaction books at most one plan (GUARD, O10) |
 | inv_signals | `signal.opened`, `signal.refreshed`, `signal.escalated`, `signal.closed`, `signal.reopened`, `signal.snoozed`, `signal.woken` | ULID | EPISODE per resolved dedup key (8.7); snooze LWW; woken GUARD; acknowledged DERIVED (6.5) |
@@ -401,7 +422,9 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   "name" is the holder's name); the first applied open supplies the initial name.
 - `account.identified` `{iban?, externalId?, keys[]}` (min 1 key): the account learned an IBAN (Open
   Banking, a statement, a parser that found it) or a new external key (an Enable Banking re-consent
-  uid). Fills `iban` / `external_id` when still null and claims `keys`, which may merge accounts.
+  uid). Fills `iban` / `external_id` when still null and claims `keys`, which may merge accounts; an
+  `iban:` key is claimed only with a checksum-valid `iban` and never as a second IBAN of one account
+  (N2, 6.4).
 - `account.renamed` `{name}`, `account.typeSet` `{type}`, `account.removed` / `account.restored` `{}`
   (SOFT). Key parking (`<key>~<id>`) is DERIVED in the view ([`gid.md`](gid.md) 4.3).
 - `balance.recorded` `{account@, date, source: open_banking|csv|manual|connector, amount, currency}`.
@@ -424,8 +447,10 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   category}`. View: `source = manual`, `category_source = manual_txn`, `dedup_hash = "cashexp:" + gid`.
 - `txn.categorySet` `{category, source: manual_txn|llm_full|llm_fallback}`: a per-transaction claim
   (D8). GUARD: an `llm_*` claim is a no-op while the folded claim is `manual_txn`. A claim may target a
-  derived cash leg's gid (the owner recategorizes a leg); it persists and applies whenever that leg
-  exists (m2).
+  derived cash leg (the owner recategorizes a leg, m2): the view shows the leg as
+  `DET(transactions)["cashleg", anchor]`, and a claim addressed to the leg gid of **any** member of the
+  source row (`DET["cashleg", member]`) applies to that row's leg, so leg edits survive anchor changes
+  after account merges (N1). Leg claims persist while the leg is absent and apply when it reappears.
 - Marking a bank transaction `cash_withdrawal` makes the derived mirror leg appear on the cash pool
   account `cash:<CUR>`; the emitting device MUST include an `account.opened` for that DET account in
   the same batch when its view does not have it (m3; concurrent opens collapse by gid).
@@ -644,29 +669,29 @@ used by 8.3.
   binding removal and every bulk `update()/delete()` on a synced table (R6).
 - Python-side derived writes MUST NOT be shipped. The Python side SHOULD validate outbound events
   against JSON Schema generated from these zod schemas (`z.toJSONSchema`).
+- The outbox computes DET gids itself, so the per-vault gid salt ([`gid.md`](gid.md) 3) MUST be
+  available to the Python outbox (S30) exactly as to the TS store: S27 stores it where both runtimes
+  read it (the device keyring entry next to the data key; Python via `keyring`), never in a file in the
+  data dir.
 
 ## 12. Open items
 
-Resolved in v1.1 (adopted from the review unless noted): O1 (broker instrument key in the hash), O2 /
-G4 (rebuild v2 from columns, `legacy:` only for missing columns), O3, O4, O5, O6 (keep every run; compaction
-is S32's), O7, O8, O9, O10, O11 (inline), O12 (`raw` syncs), G1 (IBAN-first identity), G2 (accepted),
-G3 (episodes). Remaining:
+Resolved in v1.1: O1 (broker instrument key in the hash), O2 / G4 (rebuild v2 from columns, `legacy:`
+only for missing columns), O3, O4, O5, O6 (keep every run; compaction is S32's), O7, O8, O9, O10, O11
+(inline), O12 (`raw` syncs), G1 (IBAN-first identity), G2 (accepted), G3 (episodes).
 
-- **R-1 Account merges are irreversible.** Identity keys merge for good, like Python's matching. A
-  wrong key (a parser bug producing one key for two accounts) cannot be undone except by a future
-  `account.split` type. Accept for v1?
-- **R-2 Collision precedence after merges differs from Python.** `instrument_merge.py` keeps the
-  target's values and fills from the source; v1.1 folds both streams and the latest write wins per
-  field (with GUARDs). Chosen because only a set-based rule is order-independent for writes that
-  arrive after the merge (B3). Visible effect: a newer edit on the source beats an older target value,
-  where Python would keep the target's. Confirm.
-- **R-3 The IBAN key ignores the bank id.** Python matches IBANs only within one `bank`; v1.1's
-  `iban:<key>` is bank-independent because an IBAN identifies one account globally. This also joins
-  a Santander-era and an Erste-era account with the same number if they were stored under different
-  bank ids. Confirm that is wanted.
-- **R-4 Lease watermark (M6)** is specified here as a requirement; the exact `lease.*` payloads and
-  how long a new holder may wait for a lagging old holder are S29's.
-- **R-5 Research signals off the lease.** The research desktop and the leader may both write to the
-  same research episode (refresh vs resolve-on-expiry). The episode fold makes this convergent; the
-  remaining question is product-level: should `notes_expired` also be emitted by the research desktop
-  when it sees expiry first? (v1.1: leader only.)
+Resolved in v1.2 (lead decisions on the re-check):
+
+- R-1 accepted with the N2 guard (one IBAN per component, checksum required).
+- R-2 accepted for field registers; presence combines per member (N3). For the parity notes (S02 / S03):
+  after a merge a newer edit on the source beats an older target value, where Python keeps the
+  target's.
+- R-3 accepted: Python also matches across banks (`budget/imports.py:386`, `by_any_bank`); the N2
+  checksum keeps malformed numbers from fusing.
+- R-4 accepted as a deferral: S29 is a hard gate before two devices may hold or contest the lease
+  (multi-device fetching stays off until then).
+- R-5 accepted: closes from either side converge in the episode fold; leader-only `notes_expired` only
+  delays a close.
+
+Remaining: none from S04. Hand-offs: the lease payloads and watermark wait (S29), the salt wrapping,
+recovery and dual-runtime storage (S27, [`gid.md`](gid.md) G5).

@@ -1,7 +1,7 @@
-# Global ids (gid) v1.1 (normative)
+# Global ids (gid) v1.2 (normative)
 
-Status: v1.1 (scope S04, 2026-10-31), after the review (`~/cashu-lab/checkpoints/S04-review.md`) and
-the lead's decision M8 (keyed deterministic gids). Companion of [`events.md`](events.md). Constants and
+Status: v1.2 (scope S04, 2026-10-31), after the review and its v1.1 re-check
+(`~/cashu-lab/checkpoints/S04-review.md`) and the lead's decisions (M8 keyed gids, N1-N5). Companion of [`events.md`](events.md). Constants and
 the message layout: `packages/store/src/events/v1/namespaces.ts`. The HMAC call lives in S23
 (`packages/store/src/gid.ts`, runtime crypto); the vectors in section 8 are its acceptance test and
 were produced with Python's `hmac` / `hashlib`, so Python (S26 checks, S30 outbox) and TS agree by
@@ -47,6 +47,10 @@ uuid8(d): b = d[0..16); b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80
   gid or any other value that can be public, and it does not change when the data key rotates (gids
   are frozen once written). Losing it with all devices loses the vault anyway (recovery key, S27,
   covers both).
+- **Both runtimes compute gids**: the TS store and the Python outbox (S30, during the strangler) MUST
+  read the same salt, from the device keyring entry next to the vault data key (Python through
+  `keyring`, Electron through `safeStorage` / keychain). It is never written to a file in the data dir,
+  never logged, never sent to the MCP agent.
 - Without the salt a gid confirms nothing: "is this IBAN theirs" or "did they pay merchant X 12.50 on
   D" cannot be tested against a leaked gid. Inside the carrier, gids are encrypted anyway
   (events.md 1); the salt protects gids that leave the ciphertext (logs, bug reports, a future
@@ -111,7 +115,12 @@ DET `[moduleId]`.
   later learns its IBAN, or a re-consent brings a new uid, `account.identified` claims the key and the
   accounts resolve to one (the earlier holder survives). Writers look up the view by IBAN key, then by
   external key, before minting.
-- The `iban:` key ignores the bank id (Python matches within one bank): events.md R-3.
+- **Checksum and one IBAN per account (N2)**: an `iban:` key is claimed only for a number that passes
+  the mod-97 check (`isValidIban` in `packages/store/src/events/v1/identity.ts`; a bare 26-digit NRB is
+  checked as `PL` + NRB), and an account component holds at most one `iban:` key (events.md 6.4).
+  Writers SHOULD not even emit an invalid `iban:` key; the reducer ignores it anyway.
+- The `iban:` key ignores the bank id, like Python's cross-bank matching (`budget/imports.py:386`,
+  `by_any_bank`; lead decision on R-3).
 - Parked keys (`<key>~<local id>`) are derived in the view as `<key>~<@account>`; genesis emits the
   un-parked key.
 
@@ -134,8 +143,10 @@ Open Banking row one transaction once their accounts resolve together (Python's 
 dedup), even though their gids differ.
 
 - Manual cash expenses: ULID; view `dedup_hash = "cashexp:" + gid`.
-- Cash mirror legs: DERIVED view rows, gid = DET(transactions) `["cashleg", @sourceTxn]`; view
-  `dedup_hash = "cashleg:" + @sourceTxn`, `raw = {"cash_leg_of": @sourceTxn}`.
+- Cash mirror legs: DERIVED view rows, gid = DET(transactions) `["cashleg", @anchor]` where `@anchor`
+  is the source row's view gid (4.8); view `dedup_hash = "cashleg:" + @anchor`, `raw = {"cash_leg_of":
+  @anchor}`. A claim addressed to `DET(transactions)["cashleg", @member]` for **any** member of the
+  source row applies to its leg (N1), so leg edits survive an anchor change after an account merge.
 
 ### 4.5 balances, 1:1 settings, rules
 
@@ -192,12 +203,21 @@ in `importing/dedup.py`.
 `research_runs`, `research_notes`, `inv_signals`, cash expenses, manual inv entries, accounts and
 instruments per 4.3 / 4.6.
 
-### 4.8 View row gids of row-keyed tables
+### 4.8 View row gids of row-keyed tables (N1)
 
-A row that collapses several member gids (events.md 6.4) gets a gid independent of its members:
-accounts and instruments use their root gid; every other row-keyed table uses DET over its table with
-the resolved row key as parts (e.g. `DET(watchlist_items) [R(@instrument)]`). It is recomputed when
-resolution changes and never written to the log.
+A row that collapses several member gids (events.md 6.4) shows **one of its members** as its gid,
+never a synthetic id:
+
+- accounts and instruments: the identity root (a member by construction);
+- every other row-keyed table: the **anchor**, the first applied keyed member (lowest `(hlc, eid)`
+  among the events that put a member into the row: `txn.imported`, `watchlist.added`, `balance.recorded`,
+  ...).
+
+Writers address the gid the view shows or any member gid; each member maps to the row through its
+own keyed events, so the edit lands whatever the delivery order. The anchor can move to an earlier
+member when a merge brings one in; the old anchor stays a member and keeps working. (v1.1 proposed a
+DET gid over the resolved row key here; no event would carry it, so edits addressed to it would park
+forever. Withdrawn.)
 
 ## 5. Signals
 
@@ -293,6 +313,6 @@ v1's G1 (resolved by IBAN-first identity and `account.identified`), G2 (accepted
 disjoint aliases wait for an owner merge, which is now order-safe), G3 (removed with episodes) and
 G4 (genesis rebuilds v2 from columns) are closed. Remaining:
 
-- **G5 Salt distribution** is specified here only as "wrapped with the data key at pairing"; the
-  exact wrapping, the recovery-key derivation of the salt and its storage in each keyring are S27 /
-  S29's.
+- **G5 Salt distribution** is specified here only as "wrapped with the data key at pairing" and "read
+  by both runtimes from the keyring"; the exact wrapping, the recovery-key derivation of the salt and
+  its keyring entry (readable by the Python outbox S30 and the TS store) are S27 / S29's.
