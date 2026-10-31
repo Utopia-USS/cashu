@@ -115,7 +115,7 @@ in that millisecond is `0mvwcmtc0-0000-<device>`. 9 base36 digits hold wall time
   cloned disk) can; `eid` then breaks the tie (2). A device that finds its persisted clock behind its
   own events already in the log MUST stop writing and get a new device id (S29).
 
-### 3.3 Generation (normative for S23 `hlc.ts`)
+### 3.3 Generation (normative for the HLC in `@cashu/sync`)
 
 State per device per vault: `last = (wall, counter)`, persisted durably with the events it stamped.
 
@@ -126,8 +126,11 @@ State per device per vault: `last = (wall, counter)`, persisted durably with the
 - **Counter overflow**: `(wall + 1, 0)`.
 - **Emit guard (O7)**: a device MUST refuse to stamp (and show a clock error) while `pt` is behind
   its persisted `last.wall` by more than 5 minutes; receivers accept every event (convergence) and
-  warn when a remote wall is more than 5 minutes ahead of `pt`. Pairing (S29) compares the clocks of
-  the two devices and refuses a skew above 5 minutes.
+  warn when a remote wall is more than 5 minutes ahead of `pt`. Such a far-future remote event is
+  applied but NOT merged into the receiver's `last` (the Receive rule skips its wall), so one device
+  with a wrong clock cannot drag every other device's clock into the future (S28a, `packages/sync`
+  clock). Pairing (S29) compares the clocks of the two devices and refuses a skew above 5 minutes.
+- The single HLC implementation lives in `@cashu/sync` (`./hlc`); the store imports it.
 - Genesis stamps its events with the generating device's clock, in dependency order.
 
 ## 4. Encoding rules
