@@ -397,7 +397,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 | profiles | `profile.created`, `profile.renamed`, `profile.settingsChanged` | vault id | CREATE; LWW-F |
 | profile_modules | `module.enabled`, `module.disabled` | DET(module_id) | `enabled` LWW register |
 | accounts | `account.opened`, `account.identified`, `account.renamed`, `account.typeSet`, `account.removed`, `account.restored` | DET(iban) or DET(ext key), else ULID ([`gid.md`](gid.md) 4.3) | IDENTITY (6.4); name / type LWW-F; iban / externalId fill-if-null; removed SOFT |
-| balances | `balance.recorded` | DET(account, date, source) | row key 6.4; amount / currency LWW-F |
+| balances | `balance.recorded` | DET(account, date, source) | row key 6.4; amount (and `created_at`) LWW; currency = the first applied record's (Python `upsert_balance`, S24 D-24.5) |
 | transactions | `txn.imported`, `txn.cashExpenseAdded`, `txn.categorySet`, `txn.categoryCleared`, `txn.deleted` | imported DET(account, dedupHashV2, occurrence); cash expense ULID | imported CREATE on the row key; claim GUARD; delete TOMB (cash expenses); transfers, rule categories, cash legs DERIVED |
 | category_rules | `categoryRule.set` | DET(merchant_key) | GUARD (locked manual beats llm) + LWW-F |
 | import_batches | `importBatch.recorded` | ULID | APPEND |
@@ -437,8 +437,9 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 - `profile.renamed` `{name}`. `profile.settingsChanged` `{baseCurrency?, mcpPrivacy?}` (LWW-F). The MCP
   server uses the **stricter** of the synced `mcpPrivacy` and the device-local acknowledged level;
   loosening (strict -> amounts) takes effect on a desktop only after its owner confirms it there (O8).
-- `module.enabled` / `module.disabled` `{moduleId}`: one LWW register; `enabled_at` = domain time of
-  the winning `module.enabled`.
+- `module.enabled` / `module.disabled` `{moduleId}`: one LWW register; the row appears with the first
+  applied enable; `enabled_at` = domain time of the `module.enabled` that flipped the register to
+  enabled (a redundant enable never moves it, Python `set_modules`; S24 D-24.4).
 - `account.opened` `{bank, externalId|null, iban|null, currency, type, name, active?, keys[]}`.
   `keys` are the identity keys the writer knows (`iban:<ibanKey(iban)>` when an IBAN is known,
   `ext:<bank>:<key>` for an external natural key); empty for manual, vehicle and brokerage accounts.
@@ -477,8 +478,9 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   `DET(transactions)["cashleg", anchor]`, and a claim addressed to the leg gid of **any** member of the
   source row (`DET["cashleg", member]`) applies to that row's leg, so leg edits survive anchor changes
   after account merges (N1). Leg claims persist while the leg is absent and apply when it reappears.
-- Marking a bank transaction `cash_withdrawal` makes the derived mirror leg appear on the cash pool
-  account `cash:<CUR>`; the emitting device MUST include an `account.opened` for that DET account in
+- Marking a bank transaction `cash_withdrawal` (the `manual_txn` claim, on a row not on a cash account)
+  makes the derived mirror leg appear on the cash pool account `cash:<CUR>` while that account is open
+  (section 9); the emitting device MUST include an `account.opened` for that DET account in
   the same batch when its view does not have it (m3; concurrent opens collapse by gid).
 - `txn.categoryCleared` `{}`: removes the claim (Python `recategorize_one` after the leg is deleted,
   `budget/cash.py:delete_cash_transaction`).
@@ -498,7 +500,9 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 - `loan.paymentMatchingSet` `{account@, paymentIban|null, paymentText|null}`. Either event may come
   first; the loan row is visible once terms exist (m7).
 - `depreciation.set` `{account@, purchasePrice, purchaseDate, annualRate, floor|null}`.
-- `assetDetails.noteSet` `{account@, note|null}` (<= 500 chars).
+- `assetDetails.noteSet` `{account@, note|null}` (<= 500 chars). The row appears with the first applied
+  set carrying a note (a null note creates no row, Python `set_note`); once it exists a null note keeps
+  the row with `note = NULL` (S24 D-24.9).
 
 ### 8.5 Investments: accounts, imports, transactions
 
@@ -683,8 +687,8 @@ LEADER), so the reference fold does not model it.
 |---|---|
 | `transactions.is_internal_transfer`, `transfer_group_id` | the resolved account set, counterparty IBAN only (rule 5) |
 | `transactions.category`, `category_source` | claims + rules + engine (8.3), rule categories on every device (D8) |
-| cash mirror legs (`cashleg:<@txn>`, `raw.cash_leg_of`) | effective category `cash_withdrawal` of bank transactions |
-| account key parking (`<key>~<@account>`) | removed accounts whose name key a live account holds |
+| cash mirror legs (`cashleg:<@txn>`, `raw.cash_leg_of`) | the folded `manual_txn` claim `cash_withdrawal` of a row not on a cash account, while the cash pool account `cash:<CUR>` is open (S24 D-24.3; a locked merchant rule to `cash_withdrawal` makes no leg) |
+| account key parking (`<key>~<@account>`) | per (bank, external id) group: live accounts hold the key (several live all show it, m12), else the latest opened (fold order of its first open); every other member is parked (S24 D-24.7) |
 | `alerts.status` (effective) | 8.7 |
 | `inv_signals.status = acknowledged`, `acknowledged_at` | decisions (6.5) |
 | `inv_theses.core_changed_at`, `exit_plan_changed_at`, `reviewed_at` | 8.8 |
