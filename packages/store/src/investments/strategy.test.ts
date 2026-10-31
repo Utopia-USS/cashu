@@ -1,7 +1,7 @@
 // Strategy versions and rule runs (S25 spec 4.6, 4.7; scenario S1). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { openTestStore } from "../testing/store.js";
-import { converge, DEV_B, Events, rows, ulid } from "./testkit.js";
+import { converge, DEV_B, Events, rows, ulid } from "./testing/kit.js";
 
 const SHA_A = "a".repeat(64);
 const SHA_B = "b".repeat(64);

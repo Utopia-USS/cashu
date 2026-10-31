@@ -2,7 +2,7 @@
 // episode rules themselves are covered by the shared convergence scenarios. Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { openTestStore } from "../testing/store.js";
-import { account, converge, DEV_B, Events, instrument, row, rows, ulid } from "./testkit.js";
+import { account, converge, DEV_B, Events, instrument, row, rows, ulid } from "./testing/kit.js";
 
 const ACC = "01JE0000000000000000000A01";
 const RUN1 = ulid(101);

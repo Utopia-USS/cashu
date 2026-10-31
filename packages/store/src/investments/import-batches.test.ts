@@ -1,7 +1,7 @@
 // Investments import batches (S25 spec 4.3, D-S6). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { openTestStore } from "../testing/store.js";
-import { account, Events, rows, ulid } from "./testkit.js";
+import { account, Events, rows, ulid } from "./testing/kit.js";
 
 const ACC = "01JE0000000000000000000A01";
 

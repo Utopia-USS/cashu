@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import type { Store } from "../materialize.js";
 import { rng } from "../testing/random.js";
 import { openTestStore, type TestEnvelope } from "../testing/store.js";
-import { account, claim, det, Events, ulid } from "./testkit.js";
+import { account, claim, det, Events, ulid } from "./testing/kit.js";
 
 interface Shape {
   instruments: number;

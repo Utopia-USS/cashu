@@ -4,11 +4,11 @@
 // two keys. Test code only; synthetic data only.
 import fc from "fast-check";
 import { expect } from "vitest";
-import type { Store } from "../materialize.js";
-import { viewHash } from "../snapshot.js";
-import { chunked, shuffled } from "../testing/random.js";
-import { openTestStore, type TestEnvelope } from "../testing/store.js";
-import { DEV_A, DEV_B, det, Events, ulid } from "./testkit.js";
+import type { Store } from "../../materialize.js";
+import { viewHash } from "../../snapshot.js";
+import { chunked, shuffled } from "../../testing/random.js";
+import { openTestStore, type TestEnvelope } from "../../testing/store.js";
+import { DEV_A, DEV_B, det, Events, ulid } from "./kit.js";
 
 const DEVICES = [DEV_A, DEV_B, "ffffffffffffffffffffffffffffffff"] as const;
 const pick = <T>(xs: readonly T[]) => fc.constantFrom(...xs);
@@ -204,7 +204,7 @@ const step = fc.oneof(
 );
 
 /** A script with walls that mostly increase (causal) and sometimes repeat (concurrent devices). */
-export const script: fc.Arbitrary<TestEnvelope[]> = fc
+const script: fc.Arbitrary<TestEnvelope[]> = fc
   .array(fc.record({ step, device: fc.nat(2), concurrent: fc.boolean() }), {
     minLength: 1,
     maxLength: 30,

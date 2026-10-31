@@ -3,7 +3,7 @@ import { alerts as domainAlerts } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import type { Store } from "../materialize.js";
 import { openTestStore } from "../testing/store.js";
-import { converge, DEV_B, Events, instrument, row, ulid } from "./testkit.js";
+import { converge, DEV_B, Events, instrument, row, ulid } from "./testing/kit.js";
 
 const AL = ulid(1);
 const T0 = "2026-11-01T12:00:00.000Z";

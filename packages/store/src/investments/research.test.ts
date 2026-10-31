@@ -1,7 +1,7 @@
 // Research runs and notes, reviews (S25 spec 4.14-4.16; scenarios N1, N2). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { openTestStore } from "../testing/store.js";
-import { claim, converge, DEV_B, det, Events, instrument, row, rows, ulid } from "./testkit.js";
+import { claim, converge, DEV_B, det, Events, instrument, row, rows, ulid } from "./testing/kit.js";
 
 const RUN = ulid(1);
 const N = ulid(2);

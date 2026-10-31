@@ -2,17 +2,17 @@
 // with gids in place of view ids, and a convergence driver (shuffled delivery with re-delivered
 // duplicates, random batches, rebuild). Synthetic data only.
 import { expect } from "vitest";
-import { detGid, type GidTable } from "../gid.js";
-import type { Store } from "../materialize.js";
-import { viewHash } from "../snapshot.js";
-import { chunked, shuffled } from "../testing/random.js";
+import { detGid, type GidTable } from "../../gid.js";
+import type { Store } from "../../materialize.js";
+import { viewHash } from "../../snapshot.js";
+import { chunked, shuffled } from "../../testing/random.js";
 import {
   EventFactory,
   openTestStore,
   TEST_SALT,
   type TestEnvelope,
   testUlid,
-} from "../testing/store.js";
+} from "../../testing/store.js";
 
 export const DEV_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 export const DEV_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -21,7 +21,7 @@ export const det = (table: GidTable, ...parts: string[]) => detGid(TEST_SALT, ta
 export const ulid = (n: number) => testUlid("01JE", n);
 
 /** Required payload fields the tests leave out (values irrelevant to the rule under test). */
-export const DEFAULTS: Record<string, Record<string, unknown>> = {
+const DEFAULTS: Record<string, Record<string, unknown>> = {
   "account.opened": {
     bank: "xtb",
     externalId: null,
@@ -257,7 +257,7 @@ export function row(store: Store, table: string, gid: string): Record<string, un
   return rows(store, table).find((r) => r.gid === gid);
 }
 
-export const ORDERS = 40;
+const ORDERS = 40;
 
 /**
  * Deliver `events` in ORDERS shuffles (single events for even k, random batches for odd k) plus three

@@ -1,7 +1,7 @@
 // Instruments + aliases (S25 spec 4.1, D-S5). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { openTestStore } from "../testing/store.js";
-import { claim, converge, DEV_B, Events, instrument, row, rows, ulid } from "./testkit.js";
+import { claim, converge, DEV_B, Events, instrument, row, rows, ulid } from "./testing/kit.js";
 
 describe("inv_instruments + inv_instrument_aliases", () => {
   it("creates the row from the create and an alias row from the claim", () => {

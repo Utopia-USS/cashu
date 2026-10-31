@@ -1,7 +1,7 @@
 // Position snapshots and instrument renames (S25 spec 4.5; scenario I3). Synthetic data only.
 import { describe, expect, it } from "vitest";
 import { openTestStore } from "../testing/store.js";
-import { account, claim, converge, DEV_B, det, Events, instrument, rows } from "./testkit.js";
+import { account, claim, converge, DEV_B, det, Events, instrument, rows } from "./testing/kit.js";
 
 const ACC = "01JE0000000000000000000A01";
 

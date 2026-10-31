@@ -1,7 +1,7 @@
 // Instrument theses and topic theses (S25 spec 4.11, 4.12; scenarios T1, T2, TT1). Synthetic data.
 import { describe, expect, it } from "vitest";
 import { openTestStore } from "../testing/store.js";
-import { converge, DEV_B, det, Events, instrument, row, rows, ulid } from "./testkit.js";
+import { converge, DEV_B, det, Events, instrument, row, rows, ulid } from "./testing/kit.js";
 
 const TH = ulid(1);
 

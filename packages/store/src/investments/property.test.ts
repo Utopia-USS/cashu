@@ -3,7 +3,7 @@
 // property.exhaustive.test.ts.
 import fc from "fast-check";
 import { describe, it } from "vitest";
-import { convergesProperty } from "./property-script.js";
+import { convergesProperty } from "./testing/property-script.js";
 
 describe("investments property: convergence on random synthetic event sets", () => {
   it("permutations and duplicates give identical view hashes; rebuild == incremental", () => {
