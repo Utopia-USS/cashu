@@ -7,7 +7,7 @@ import { type PythonDb, withPythonDb } from "../../sources/index.ts";
 import { INVESTMENTS, type SyntheticDataset, syntheticDataset } from "../../sources/testing.ts";
 import { dumps } from "../output.ts";
 import { findProxy, producePerformance } from "./performance.ts";
-import { sample } from "./performanceView.ts";
+
 import type { StrategyBridge, StrategyInputs } from "./strategyBridge.ts";
 
 let ds: SyntheticDataset;
@@ -136,12 +136,12 @@ describe("investments performance producer", () => {
 
   it("samples daily up to 400 days, weekly from the last day up to 1900, month ends beyond", () => {
     const dates = (n: number) => Array.from({ length: n }, (_, i) => addDays("2020-01-01", i));
-    expect(sample(dates(401))[0]).toBe("day");
-    const [step, picked] = sample(dates(402));
+    expect(inv.performance.sample(dates(401))[0]).toBe("day");
+    const [step, picked] = inv.performance.sample(dates(402));
     expect(step).toBe("week");
     expect(picked.slice(0, 3)).toEqual([0, 2, 9]); // 401 - 2 = 399 = 7 x 57
     expect(picked[picked.length - 1]).toBe(401);
-    const [monthly, ends] = sample(dates(1902));
+    const [monthly, ends] = inv.performance.sample(dates(1902));
     expect(monthly).toBe("month");
     expect(ends.slice(0, 2)).toEqual([0, 30]); // 2020-01-31
   });

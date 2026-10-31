@@ -142,12 +142,15 @@ writes as floats are wrapped with `pyFloat()` (`output.ts`). Not produced here: 
 S22a; their lots and realized trades are the same values `investments.valuation` already checks:
 `snapshot.holdings[].lots`, `snapshot.realized`, `valued.realized`).
 
-`investments/performance.ts` is the port of `performance/service.load` / `_compute` (rows -> domain
-values as `rows.ts`, `find_proxy` over `instrumentIdByIsin` / `instrumentIdByAlias`, bars and rates
-from 14 days before the first transaction) over the `@cashu/domain` performance core (S19a:
-`buildSeries`, `benchmarkPrices`, `computeRange`, `attribute`, ...). The JSON shaping of
-`performance_view` / `attribution_view` is `investments/performanceView.ts`, TRANSITIONAL(S19b) until
-the service views are ported. Tolerance: the check has no Decimal strings (every number is a Python
+`investments/performance.ts` is the port of `performance/service.load` (rows -> domain values as
+`rows.ts`, `find_proxy` over `instrumentIdByIsin` / `instrumentIdByAlias`, bars and rates from 14 days
+before the first transaction) feeding the `@cashu/domain` performance service (S19a core, S19b
+service: `computePerformance`, `performanceView`, `attributionView`), the same functions the store's
+performance service (`@cashu/store` `investmentsPerformance`) runs over a vault and the device's price
+cache. `investments/performanceOut.ts` writes the typed views in the golden's form (Python ints by
+key, other numbers as floats, ids as dataset keys). The store loading path itself is checked once
+genesis (S26) can build a vault from a dataset: then the producer reads the vault instead of the
+Python database. Tolerance: the check has no Decimal strings (every number is a Python
 float rounded by `_money` / `_ratio`), so it runs on the S03 float default (abs 1e-9 / rel 1e-12); it
 passes byte-identical on demo and lab, because the TS core repeats Python's float operations in the
 same order (incl. CPython's compensated `sum()`, `floats.ts`). `exp` / `expm1` / `**` are V8's fdlibm

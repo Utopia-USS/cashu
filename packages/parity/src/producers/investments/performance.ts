@@ -3,21 +3,18 @@
  * profile with the investments module, `performance_view` for every range and `attribution_view` for
  * `max`, as of the dataset's `as_of`, every account.
  *
- * Loading is the port of `performance/service.load` over the read-only source (rows -> domain values
- * as `rows.ts` converts them, domain ids = the app's `str(pk)`); the computation is the
- * `@cashu/domain` performance core (`buildSeries`, `benchmarkPrices`, `computeRange`, `attribute`);
- * the JSON shaping is `performanceView.ts` (TRANSITIONAL until the S19b service lands).
+ * Loading is the port of `performance/service.load` over the read-only Python database (rows ->
+ * domain values as `rows.ts` converts them, domain ids = the app's `str(pk)`); the computation and
+ * the views are the `@cashu/domain` performance service (`computePerformance`, `performanceView`,
+ * `attributionView`), the same functions the store's performance service runs over a vault
+ * (`@cashu/store` investments performance). `performanceOut.ts` writes the views in the golden's
+ * canonical form.
  */
 
-import { addDays, investments as inv, pyLower, pyStrip, pyUpper } from "@cashu/domain";
+import { investments as inv, pyLower, pyStrip, pyUpper } from "@cashu/domain";
 import type { PythonDb } from "../../sources/index.ts";
 import type { OutValue } from "../output.ts";
-import {
-  attributionView,
-  type ComputedPerformance,
-  type LoadedPerformance,
-  performanceView,
-} from "./performanceView.ts";
+import { performanceOut } from "./performanceOut.ts";
 import {
   barsBetween,
   daysBefore,
@@ -37,16 +34,6 @@ const MODULE = "investments";
 const perf = inv.performance;
 type CalendarDate = inv.CalendarDate;
 
-/** Bars and rates are loaded from this many days before the first transaction (`service.py`). */
-const HISTORY_MARGIN_DAYS = 14;
-
-const ISIN = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
-
-/** `service.is_isin`. */
-function isIsin(value: string): boolean {
-  return ISIN.test(pyUpper(pyStrip(value)));
-}
-
 /**
  * `service.find_proxy`: the stored instrument a strategy `benchmark.proxy` names, by ISIN (column,
  * then an `isin` alias), else by its yahoo alias (as written, upper, lower case), else stooq. Returns
@@ -55,7 +42,7 @@ function isIsin(value: string): boolean {
 export function findProxy(db: PythonDb, proxy: string): number | null {
   const value = pyStrip(proxy);
   if (value === "") return null;
-  if (isIsin(value)) {
+  if (perf.isIsin(value)) {
     const wanted = pyUpper(value);
     const byColumn = db.investments.instrumentIdByIsin(wanted);
     if (byColumn !== null) return byColumn;
@@ -85,11 +72,7 @@ function loadPerformance(
   profile: { readonly id: number; readonly baseCurrency: string | null },
   inputs: StrategyInputs,
   end: CalendarDate,
-): LoadedPerformance & {
-  readonly bars: ReadonlyMap<inv.InstrumentId, readonly inv.PriceBar[]>;
-  readonly manual: ReadonlyMap<inv.InstrumentId, readonly inv.ManualValuation[]>;
-  readonly policy: inv.performance.ValuationPolicy;
-} {
+): inv.performance.PerformanceInputs {
   const pid = profile.id;
   const base = baseCurrency(profile.baseCurrency, inputs);
   const policy = { maxPriceAgeDays: inputs.maxPriceAgeDays, maxFxAgeDays: inputs.maxFxAgeDays };
@@ -112,7 +95,7 @@ function loadPerformance(
   const instruments = loadInstruments(db, pid, pks);
   let first = end;
   for (const t of txns) if (t.tradeDate < first) first = t.tradeDate;
-  const since = daysBefore(first, HISTORY_MARGIN_DAYS);
+  const since = daysBefore(first, perf.HISTORY_MARGIN_DAYS);
   const allBars = db.investments.priceBars([...pks]).map(priceBar);
   const ids = new Set([...pks].map((p) => inv.asInstrumentId(sid(p))));
   let bars = barsBetween(allBars, ids, end, since);
@@ -151,7 +134,7 @@ function loadPerformance(
   const accounts = db.investments.brokerageAccounts(pid).map((a) => {
     const row = accountRows.get(a.id);
     if (row === undefined) throw new Error("brokerage account without its account row");
-    return { id: sid(a.id), name: row.name, currency: row.currency };
+    return { id: inv.asAccountId(sid(a.id)), name: row.name, currency: row.currency };
   });
   return {
     base,
@@ -171,47 +154,6 @@ function loadPerformance(
   };
 }
 
-/** `service._compute(loaded, end)`. */
-function computePerformance(
-  loaded: ReturnType<typeof loadPerformance>,
-  end: CalendarDate,
-): ComputedPerformance {
-  const first = loaded.txns[0];
-  if (first === undefined) {
-    return { loaded, end, series: perf.emptySeries(loaded.base, end), benchPrices: null };
-  }
-  let firstDate = first.tradeDate;
-  for (const t of loaded.txns) if (t.tradeDate < firstDate) firstDate = t.tradeDate;
-  const anchor = addDays(firstDate, -1);
-  const captures = new Set<CalendarDate>(perf.RANGES.map((k) => perf.rangeBase(k, end, anchor)));
-  captures.add(end);
-  const series = perf.buildSeries(loaded.txns, {
-    instruments: loaded.instruments,
-    bars: loaded.bars,
-    fx: loaded.fx,
-    base: loaded.base,
-    end,
-    renames: loaded.renames,
-    manualValuations: loaded.manual,
-    policy: loaded.policy,
-    captureDates: captures,
-  });
-  let bench: (number | null)[] | null = null;
-  const proxy = loaded.benchmarkInstrument;
-  if (proxy !== null && loaded.benchmarkBars.length > 0) {
-    bench = perf.benchmarkPrices(
-      series.dates,
-      loaded.benchmarkBars,
-      proxy.currency,
-      loaded.fx,
-      loaded.base,
-      loaded.policy,
-    );
-    if (bench.every((p) => p === null)) bench = null;
-  }
-  return { loaded, end, series, benchPrices: bench };
-}
-
 export function producePerformance(db: PythonDb, bridge: StrategyBridge): OutValue {
   const s = new Serializer(db);
   const out: Record<string, OutValue> = {};
@@ -220,10 +162,15 @@ export function producePerformance(db: PythonDb, bridge: StrategyBridge): OutVal
     const key = db.keys.key("profiles", p.id);
     const inputs = bridge.get(key);
     if (inputs === undefined) throw new Error("the strategy bridge has no entry for a profile");
-    const computed = computePerformance(loadPerformance(db, p, inputs, db.asOf), db.asOf);
+    const computed = perf.computePerformance(loadPerformance(db, p, inputs, db.asOf), db.asOf);
     const views: Record<string, OutValue> = {};
-    for (const range of perf.RANGES) views[range] = performanceView(computed, s, range);
-    out[key] = { performance: views, attribution_max: attributionView(computed, s, "max") };
+    for (const range of perf.RANGES) {
+      views[range] = performanceOut(perf.performanceView(computed, range), s);
+    }
+    out[key] = {
+      performance: views,
+      attribution_max: performanceOut(perf.attributionView(computed, "max"), s),
+    };
   }
   return out;
 }
