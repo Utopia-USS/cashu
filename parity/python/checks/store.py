@@ -299,6 +299,7 @@ ROUNDTRIP_COLUMNS: dict[str, tuple[str, ...]] = {
         "created_by",
         "cooldown_days",
         "expires_at",
+        "status",
         "snoozed_until",
         "last_triggered_at",
         "last_checked_at",
@@ -447,11 +448,7 @@ EXCLUDED: dict[str, dict[str, str]] = {
     "inv_theses": {"id": _ID, "profile_id": _PROFILE},
     "inv_topic_theses": {"id": _ID, "profile_id": _PROFILE},
     "watchlist_items": {"id": _ID, "profile_id": _PROFILE},
-    "alerts": {
-        "id": _ID,
-        "profile_id": _PROFILE,
-        "status": "effective status is DERIVED (events.md 8.7), compared once S25 derives it",
-    },
+    "alerts": {"id": _ID, "profile_id": _PROFILE},
     "inv_planned_deposits": {"id": _ID, "profile_id": _PROFILE},
     "inv_signals": {"id": _ID, "profile_id": _PROFILE},
     "inv_rule_runs": {"id": _ID, "profile_id": _PROFILE},
@@ -1029,16 +1026,23 @@ def _decision_signals(refs: _Refs, row: dict, links: list[int]) -> list[str]:
     return keys
 
 
-def _valid_iban(value: Any) -> bool:
-    """``isValidIban`` of packages/store/src/events/v1/identity.ts: mod-97 over the alphanumerics,
-    upper case; a bare 26-digit NRB is checked as ``PL`` + NRB."""
-    s = re.sub(r"[^0-9A-Za-z]", "", value or "").upper()
-    if re.fullmatch(r"[0-9]{26}", s):
-        s = "PL" + s
-    if not re.fullmatch(r"[A-Z]{2}[0-9]{2}[0-9A-Z]{11,30}", s):
-        return False
-    digits = "".join(str(ord(c) - 55) if c.isalpha() else c for c in s[4:] + s[:4])
-    return int(digits) % 97 == 1
+def _naive_utc(t: dt.datetime) -> dt.datetime:
+    return t if t.tzinfo is None else t.astimezone(dt.UTC).replace(tzinfo=None)
+
+
+def _effective_alert(row: dict, as_of: dt.date) -> tuple[str, dt.datetime | None]:
+    """The alert status and snooze end a reader shows at ``as_of`` 00:00 UTC (lead decision: the
+    effective status is compared on both sides, TS ``effectiveAlertStatus``; mirrors
+    ``service/alerts.py:housekeeping``, ``<=`` at both boundaries, a muted alert never expires)."""
+    status, until, expires = row["status"], row["snoozed_until"], row["expires_at"]
+    if status == "muted":
+        return status, until
+    now = dt.datetime.combine(as_of, dt.time())
+    if expires is not None and _naive_utc(expires) <= now:
+        return "expired", None
+    if status == "snoozed" and until is not None and _naive_utc(until) <= now:
+        return "active", None
+    return status, until
 
 
 def _project(ctx: Ctx, refs: _Refs, table: str, row: dict, extra: dict) -> dict | None:
@@ -1052,16 +1056,13 @@ def _project(ctx: Ctx, refs: _Refs, table: str, row: dict, extra: dict) -> dict 
         if row["category_source"] not in CLAIM_SOURCES:
             row["category"] = row["category_source"] = None
     elif table == "accounts":
-        if not _valid_iban(row["iban"]):
-            # TRANSITIONAL(lead IBAN view fix): the view drops an IBAN failing mod-97 today; the lead
-            # decided the view keeps the stored raw text (keys still need a valid IBAN). Remove this
-            # filter and regenerate the accounts goldens when that materializer commit lands.
-            row["iban"] = None
         ext = row["external_id"]
         if isinstance(ext, str) and ext.endswith(f"~{row['id']}"):
             row["external_id"] = (
                 ext[: -len(f"~{row['id']}")] + "~" + ctx.ids.key("accounts", row["id"])
             )
+    elif table == "alerts":
+        row["status"], row["snoozed_until"] = _effective_alert(row, ctx.as_of)
     elif table == "proposals" and row["status"] == "applying":
         row["status"] = "pending"
     elif table == "inv_signals":
