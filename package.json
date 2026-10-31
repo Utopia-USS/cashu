@@ -12,7 +12,8 @@
     "test": "turbo run test",
     "test:all": "vitest run",
     "check": "turbo run typecheck lint test",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "parity": "node --disable-warning=ExperimentalWarning --experimental-strip-types packages/parity/src/cli.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
