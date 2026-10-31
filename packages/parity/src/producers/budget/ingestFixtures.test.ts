@@ -9,7 +9,7 @@ describe("budget.ingest_fixtures producer", () => {
       forced: Record<string, { error?: string; transactions?: unknown[] }>;
       round_trip: { statuses: string[]; rows: { occurrence: number }[] }[] | null;
     }[];
-    expect(out.length).toBe(27);
+    expect(out.length).toBe(28);
     const edge = out.find((f) => f.file === "mbank/mbank-edge.csv");
     expect(edge?.forced.mbank?.transactions?.length).toBe(4);
     expect(edge?.forced.pekao).toEqual({ error: "no_header" });
