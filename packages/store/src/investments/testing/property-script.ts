@@ -8,7 +8,7 @@ import type { Store } from "../../materialize.js";
 import { viewHash } from "../../snapshot.js";
 import { chunked, shuffled } from "../../testing/random.js";
 import { openTestStore, type TestEnvelope } from "../../testing/store.js";
-import { DEV_A, DEV_B, det, Events, ulid } from "./kit.js";
+import { DEV_A, DEV_B, det, Events, expectReference, ulid } from "./kit.js";
 
 const DEVICES = [DEV_A, DEV_B, "ffffffffffffffffffffffffffffffff"] as const;
 const pick = <T>(xs: readonly T[]) => fc.constantFrom(...xs);
@@ -245,5 +245,14 @@ export const convergesProperty = fc.property(
     expect(viewHash(b).hash).toBe(h);
     a.rebuild();
     expect(viewHash(a).hash).toBe(h);
+  },
+);
+
+/** The store's investments tables equal the reference fold's (fold-investments.ts). */
+export const referenceProperty = fc.property(
+  script,
+  fc.integer({ min: 1, max: 1_000_000 }),
+  (events, seed) => {
+    expectReference(deliver(events, seed), events);
   },
 );
