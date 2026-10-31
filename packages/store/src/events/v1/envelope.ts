@@ -2,20 +2,29 @@
 // ignored (forward compatibility, events.md section 7).
 import { z } from "zod";
 import { hlc } from "./hlc-format.js";
-import { deviceId, EVENT_TYPE_RE, gid, jsonObject, timestamp, ulid } from "./primitives.js";
+import {
+  deviceId,
+  EVENT_TYPE_RE,
+  gid,
+  jsonObject,
+  timestamp,
+  ulid,
+  vaultId,
+} from "./primitives.js";
 
 export const ORIGINS = ["genesis", "bridge"] as const;
 
 export const envelopeSchema = z
   .looseObject({
     eid: ulid,
-    vault: ulid,
+    vault: vaultId,
     device: deviceId,
     hlc,
     at: timestamp,
     type: z.string().regex(EVENT_TYPE_RE, "expected <entity>.<verb>"),
     v: z.int().min(1),
-    gid,
+    /** A gid, or the vault id for the `profile.*` events (gid strategy VAULT, gid.md 2). */
+    gid: z.union([gid, vaultId]),
     data: jsonObject,
     cause: ulid.optional(),
     origin: z.enum(ORIGINS).optional(),
@@ -40,7 +49,7 @@ export const wireEventSchema = z.looseObject({
   h: hlc,
   d: jsonObject,
   i: ulid,
-  g: gid,
+  g: z.union([gid, vaultId]),
   a: timestamp,
   c: ulid.optional(),
   o: z.enum(ORIGINS).optional(),

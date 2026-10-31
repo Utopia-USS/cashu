@@ -81,7 +81,11 @@ export function complete(e: RefEvent): RefEvent {
   return { ...e, data: { ...(DEFAULTS[e.type] ?? {}), ...e.data } };
 }
 
-const DEV = { a: "aaaaaaaaaaaaaaaa", b: "bbbbbbbbbbbbbbbb", p: "pppppppppppppppp" } as const;
+const DEV = {
+  a: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  b: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  p: "ffffffffffffffffffffffffffffffff",
+} as const;
 const BASE_WALL = 1_793_448_000_000; // 2026-10-31T12:00:00.000Z
 let seq = 0;
 

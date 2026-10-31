@@ -23,7 +23,7 @@ const ACCOUNTS = [
 ];
 
 function workload() {
-  const f = new EventFactory("aaaaaaaaaaaaaaaa", "01JC");
+  const f = new EventFactory("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "01JC");
   const r = rng(42);
   const events: TestEnvelope[] = [];
   let wall = 0;
@@ -166,7 +166,7 @@ describe("perf smoke: 64k events", () => {
     const edits10 = ms(t0);
 
     // a late claim from another device that sorts before thousands of applied events
-    const late = new EventFactory("bbbbbbbbbbbbbbbb", "01JH");
+    const late = new EventFactory("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "01JH");
     t0 = now();
     store.applyEnvelopes([
       late.make(

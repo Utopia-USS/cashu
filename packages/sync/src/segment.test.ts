@@ -9,7 +9,7 @@ import {
   scanFrames,
 } from "./segment.js";
 
-const DEV = "k3v9q2m8x1c7b4n6";
+const DEV = "3f9a2c8e1d7b4a6050c3e9f12d8b7a64";
 const h = (n: number, device = DEV) => `0mvwcmtc${n}-0000-${device}`;
 const ev = (n: number, device = DEV) => ({
   t: "test.set",
@@ -61,7 +61,7 @@ describe("frame payload", () => {
       "not json {",
       { f: 1, e: [] },
       { f: 1, e: [{ ...ev(1), h: "bad" }] },
-      { f: 1, e: [ev(1, "a000000000000000")] },
+      { f: 1, e: [ev(1, "a0000000000000000000000000000000")] },
       { f: 1, e: [ev(2), ev(1)] },
       { f: 1, e: [{ ...ev(1), i: "" }] },
       { f: 1, e: [{ ...ev(1), d: [] }] },

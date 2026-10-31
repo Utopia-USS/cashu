@@ -36,7 +36,7 @@ for (const s of SCENARIOS) {
 describe("syntheticDet", () => {
   const e = (gid: string, dedupHash: string): RefEvent => ({
     eid: `01JC${gid}${dedupHash}`.padEnd(26, "0"),
-    hlc: "0mvwcmtc0-0000-aaaaaaaaaaaaaaaa",
+    hlc: "0mvwcmtc0-0000-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     at: "2026-10-31T12:00:00.000Z",
     type: "txn.imported",
     gid,

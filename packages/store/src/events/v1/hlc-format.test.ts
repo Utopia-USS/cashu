@@ -8,8 +8,8 @@ import {
   parseHlc,
 } from "./hlc-format.js";
 
-const D1 = "k3v9q2m8x1c7b4n6";
-const D2 = "a000000000000000";
+const D1 = "3f9a2c8e1d7b4a6050c3e9f12d8b7a64";
+const D2 = "a0000000000000000000000000000000";
 
 describe("HLC format", () => {
   it("encodes the spec example", () => {

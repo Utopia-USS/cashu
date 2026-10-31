@@ -48,9 +48,9 @@ Logical form (what readers, reducers and tests see):
 ```json
 {
   "eid": "01JC0Z9A2B3C4D5E6F7G8H9J0K",
-  "vault": "01JC0Z8Y3K7M4N5P6Q8R9S0T1V",
-  "device": "k3v9q2m8x1c7b4n6",
-  "hlc": "0mvwcmtc0-0000-k3v9q2m8x1c7b4n6",
+  "vault": "5f0c3a9e81d24b7690ae13c7d2f4b856",
+  "device": "3f9a2c8e1d7b4a6050c3e9f12d8b7a64",
+  "hlc": "0mvwcmtc0-0000-3f9a2c8e1d7b4a6050c3e9f12d8b7a64",
   "at": "2026-10-31T12:00:00.000Z",
   "type": "alert.statusSet",
   "v": 1,
@@ -64,13 +64,13 @@ Logical form (what readers, reducers and tests see):
 | Field | Required | Format | Meaning |
 |---|---|---|---|
 | `eid` | yes | ULID (26 chars, Crockford base32, upper case) | Event id. Idempotency key: an event with an `eid` already applied is a no-op. Target of `cause`. |
-| `vault` | yes | ULID | The profile's vault gid (= the profile gid). MUST equal the vault of the segment it was read from. |
-| `device` | yes | 16 chars `[0-9a-z]` | The writing device's id (minted at pairing, S29). MUST equal the segment's device. |
+| `vault` | yes | vault id: 32 lower-case hex ([`gid.md`](gid.md) 2) | The profile's vault gid (= the profile gid, S27 `createVaultId`). MUST equal the vault of the segment it was read from. |
+| `device` | yes | 32 lower-case hex, not all zero | The writing device's id (S27 `DeviceIdentity`, minted at pairing, S29). MUST equal the segment's device. |
 | `hlc` | yes | section 3 | Hybrid logical clock stamp. Its device suffix MUST equal `device`. |
 | `at` | yes | timestamp (section 4) | The writer's wall clock when the event was created. Default domain time (4.4); never used for ordering. |
 | `type` | yes | `<entity>.<verb>`, `^[a-z][a-zA-Z]*\.[a-z][a-zA-Z]*$` | Event type (section 8). |
 | `v` | yes | integer >= 1 | Schema version of this type's payload. Every v1 catalog type is at `v: 1`. |
-| `gid` | yes | gid ([`gid.md`](gid.md)) | The entity the event is about (the row it creates or changes, as the writer saw it; identity resolution may redirect it, 6.4). |
+| `gid` | yes | gid ([`gid.md`](gid.md)); the vault id for `profile.*` events | The entity the event is about (the row it creates or changes, as the writer saw it; identity resolution may redirect it, 6.4). |
 | `data` | yes | JSON object | Payload, validated by the (type, v) schema. |
 | `cause` | no | ULID | The `eid` of the event that caused this one in the same batch (side effects of an approval, a candidate acceptance). Causal suppression (6.6). |
 | `origin` | no | `genesis` \| `bridge` | `genesis`: produced by the genesis exporter (S26); `bridge`: by the Python outbox shipper (S31a). Informational; reducers MUST NOT branch on it. |
@@ -108,8 +108,8 @@ names. A frame event whose HLC device suffix differs from its segment's device i
 <wall>-<counter>-<device>             ("wall36-counter36-device", as in the spike)
 wall    = 9 chars base36 [0-9a-z], zero-padded: milliseconds since 1970-01-01T00:00:00Z
 counter = 4 chars base36, zero-padded: 0 .. 1679615 (zzzz)
-device  = 16 chars [0-9a-z]: the writing device id
-regex   = ^[0-9a-z]{9}-[0-9a-z]{4}-[0-9a-z]{16}$
+device  = 32 chars [0-9a-f]: the writing device id (S27, lower-case hex)
+regex   = ^[0-9a-z]{9}-[0-9a-z]{4}-[0-9a-f]{32}$
 ```
 
 Example: `2026-10-31T12:00:00.000Z` = `1793448000000` ms = `0mvwcmtc0`, so the first event of a device
@@ -118,8 +118,8 @@ in that millisecond is `0mvwcmtc0-0000-<device>`. 9 base36 digits hold wall time
 ### 3.2 Comparison
 
 - `a < b` iff `a` sorts before `b` by plain code-unit string comparison (JS `<`, SQLite `BINARY`,
-  Python `<` on `str`). Fixed widths and lower-case base36 make this the numeric order of
-  `(wall, counter, device)`; the device id is the tie-break between devices.
+  Python `<` on `str`). Fixed widths and lower-case digits (base36, hex) make this the numeric order
+  of `(wall, counter, device)`; the device id is the tie-break between devices.
 - A correct device never reuses an `hlc`. A device whose state was rolled back (restored backup,
   cloned disk) can; `eid` then breaks the tie (2). A device that finds its persisted clock behind its
   own events already in the log MUST stop writing and get a new device id (S29).
@@ -392,7 +392,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 
 | Table | Events (v1) | gid | Rule |
 |---|---|---|---|
-| profiles | `profile.created`, `profile.renamed`, `profile.settingsChanged` | vault ULID | CREATE; LWW-F |
+| profiles | `profile.created`, `profile.renamed`, `profile.settingsChanged` | vault id | CREATE; LWW-F |
 | profile_modules | `module.enabled`, `module.disabled` | DET(module_id) | `enabled` LWW register |
 | accounts | `account.opened`, `account.identified`, `account.renamed`, `account.typeSet`, `account.removed`, `account.restored` | DET(iban) or DET(ext key), else ULID ([`gid.md`](gid.md) 4.3) | IDENTITY (6.4); name / type LWW-F; iban / externalId fill-if-null; removed SOFT |
 | balances | `balance.recorded` | DET(account, date, source) | row key 6.4; amount / currency LWW-F |

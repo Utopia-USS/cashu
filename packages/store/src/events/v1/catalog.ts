@@ -8,6 +8,7 @@ import { coreEvents } from "./core.js";
 import { type Envelope, envelopeSchema } from "./envelope.js";
 import { investmentsEvents } from "./investments.js";
 import { journalEvents } from "./journal.js";
+import { VAULT_ID_RE } from "./primitives.js";
 import { researchEvents } from "./research.js";
 import { signalsEvents } from "./signals.js";
 
@@ -193,8 +194,11 @@ export type ParseResult =
   | { status: "rejected"; error: string };
 
 /** Envelope / payload consistency rules that a payload schema alone cannot see. */
-function crossFieldOk(type: EventType, gid: string, data: unknown): boolean {
-  if (type === "instrument.merged") return (data as { source: string }).source === gid; // m11
+function crossFieldOk(type: EventType, envelope: Envelope, data: unknown): boolean {
+  // gid.md 2: the vault id is the gid of the VAULT-strategy (`profile.*`) events and of nothing else
+  if (META[type].gid === "VAULT") return envelope.gid === envelope.vault;
+  if (VAULT_ID_RE.test(envelope.gid)) return false;
+  if (type === "instrument.merged") return (data as { source: string }).source === envelope.gid; // m11
   return true;
 }
 
@@ -213,7 +217,7 @@ export function parseEvent(raw: unknown): ParseResult {
   }
   const data = PAYLOADS[envelope.type].safeParse(envelope.data);
   if (!data.success) return { status: "parked", reason: "invalid-payload", envelope };
-  if (!crossFieldOk(envelope.type, envelope.gid, data.data)) {
+  if (!crossFieldOk(envelope.type, envelope, data.data)) {
     return { status: "parked", reason: "invalid-payload", envelope };
   }
   return { status: "known", event: { ...envelope, data: data.data } as ParsedEvent };

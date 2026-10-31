@@ -153,7 +153,7 @@ describe("touched tables and subscriptions", () => {
 
   it("a late event that re-folds a partition still reports only that materializer's tables", () => {
     const store = openTestStore();
-    const late = new EventFactory("bbbbbbbbbbbbbbbb", "01JB");
+    const late = new EventFactory("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "01JB");
     const f = new EventFactory();
     store.applyEnvelopes([account(f), txn(f, "0b7c2348-a233-87ef-9f1b-4b5bd5161ee0")]);
     // sorts before everything applied (wall 0, other device): partition re-fold of the transaction

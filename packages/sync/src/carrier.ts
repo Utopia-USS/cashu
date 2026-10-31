@@ -20,7 +20,7 @@ export type Awaitable<T> = T | Promise<T>;
 
 /** Opaque routing id of a vault (S27: 16 random bytes in hex; never the profile slug). */
 export type VaultId = string;
-/** 16 chars `[0-9a-z]`, minted at pairing (S29). */
+/** 32 lower-case hex (S27 `DeviceIdentity`, crypto `assertDeviceId`), minted at pairing (S29). */
 export type DeviceId = string;
 
 /**

@@ -7,8 +7,10 @@ import { z } from "zod";
 export const ULID_RE = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 /** RFC 9562 UUID version 8 (custom: keyed HMAC-SHA256 gids, gid.md section 3), lower case. */
 export const UUID8_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-/** Device id minted at pairing (S29): 16 chars base36 lower case. */
-export const DEVICE_RE = /^[0-9a-z]{16}$/;
+/** Vault id (= profile gid, S27 `createVaultId`): 16 random bytes as 32 lower-case hex. */
+export const VAULT_ID_RE = /^[0-9a-f]{32}$/;
+/** Device id (S27 `DeviceIdentity`, minted at pairing, S29): 32 lower-case hex, never all zero. */
+export const DEVICE_RE = /^[0-9a-f]{32}$/;
 /** Decimal in plain notation, scale preserved, no exponent, no leading zeros. */
 export const DECIMAL_RE = /^-?(0|[1-9][0-9]*)(\.[0-9]+)?$/;
 export const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -30,7 +32,11 @@ export const ulid = z.string().regex(ULID_RE, "expected an upper-case ULID");
 export const uuid8 = z.string().regex(UUID8_RE, "expected a lower-case keyed UUIDv8");
 /** A global id: ULID (minted) or keyed UUIDv8 (deterministic). Never a local integer id. */
 export const gid = z.union([ulid, uuid8]);
-export const deviceId = z.string().regex(DEVICE_RE, "expected a 16-char base36 device id");
+export const vaultId = z.string().regex(VAULT_ID_RE, "expected a 32-char lower-hex vault id");
+export const deviceId = z
+  .string()
+  .regex(DEVICE_RE, "expected a 32-char lower-hex device id")
+  .refine((s) => /[1-9a-f]/.test(s), "the all-zero device id is the recovery signer's");
 export const decimal = z.string().regex(DECIMAL_RE, "expected a plain-notation decimal string");
 export const calendarDate = z
   .string()

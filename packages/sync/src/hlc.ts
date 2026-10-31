@@ -5,11 +5,12 @@
 // import store (layering), so the few format lines live here too. Both are pinned by the spec example.
 import { SyncError } from "./errors.js";
 
-/** `<wall:9 base36>-<counter:4 base36>-<device:16>`; plain string order is the total order. */
+/** `<wall:9 base36>-<counter:4 base36>-<device:32 hex>`; plain string order is the total order. */
 export type Hlc = string;
 
-export const HLC_RE = /^[0-9a-z]{9}-[0-9a-z]{4}-[0-9a-z]{16}$/;
-export const DEVICE_RE = /^[0-9a-z]{16}$/;
+export const HLC_RE = /^[0-9a-z]{9}-[0-9a-z]{4}-[0-9a-f]{32}$/;
+/** The S27 device id (crypto `assertDeviceId`): 32 lower-case hex (events.md 2, 3.1). */
+export const DEVICE_RE = /^[0-9a-f]{32}$/;
 export const HLC_WALL_MAX = 36 ** 9 - 1;
 export const HLC_COUNTER_MAX = 36 ** 4 - 1;
 /** Drift limit of events.md 3.3 (O7): 5 minutes. */
@@ -34,7 +35,7 @@ export function formatHlc({ wall, counter, device }: HlcParts): Hlc {
   if (!Number.isSafeInteger(counter) || counter < 0 || counter > HLC_COUNTER_MAX) {
     throw new RangeError("HLC counter out of range");
   }
-  if (!DEVICE_RE.test(device)) throw new RangeError("HLC device id must be 16 chars [0-9a-z]");
+  if (!DEVICE_RE.test(device)) throw new RangeError("HLC device id must be 32 lower-case hex");
   return `${wall.toString(36).padStart(9, "0")}-${counter.toString(36).padStart(4, "0")}-${device}`;
 }
 
@@ -97,7 +98,7 @@ export class HybridClock {
     device: string,
     options: { physical?: PhysicalClock; maxDriftMs?: number; restore?: HlcState } = {},
   ) {
-    if (!DEVICE_RE.test(device)) throw new RangeError("device id must be 16 chars [0-9a-z]");
+    if (!DEVICE_RE.test(device)) throw new RangeError("device id must be 32 lower-case hex");
     this.device = device;
     this.#physical = options.physical ?? systemClock;
     this.maxDriftMs = options.maxDriftMs ?? DEFAULT_MAX_DRIFT_MS;

@@ -9,8 +9,8 @@ import { viewHash } from "./snapshot.js";
 import { openTestStore, testUlid } from "./testing/store.js";
 
 const ROUTING = "0123456789abcdef0123456789abcdef";
-const A = "deviceaaaaaaaaaa";
-const B = "devicebbbbbbbbbb";
+const A = "daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const B = "dbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const T0 = Date.UTC(2026, 9, 31, 12);
 const ACC = "70cc61c8-79b5-80ae-b8cc-fdca7caef49e";
 const RULE = "cc9078fc-ae3d-8c1d-8381-55311fb4c8b2";

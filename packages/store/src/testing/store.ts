@@ -9,7 +9,7 @@ import type { StoreModule } from "../registry.js";
 import { betterSqlite3Driver } from "../sql/better-sqlite3.js";
 import type { SqlDriver } from "../sql/driver.js";
 
-export const TEST_VAULT = "01JC0Z8Y3K7M4N5P6Q8R9S0T1V";
+export const TEST_VAULT = "5f0c3a9e81d24b7690ae13c7d2f4b856";
 /** The gid.md section 8 test salt (bytes 00..1f). Real salts are random. */
 export const TEST_SALT = vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => i));
 const BASE_WALL = 1_793_448_000_000; // 2026-10-31T12:00:00.000Z
@@ -62,7 +62,7 @@ export interface TestEnvelope {
 export class EventFactory {
   #seq = 0;
   constructor(
-    readonly device = "aaaaaaaaaaaaaaaa",
+    readonly device = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     readonly prefix = "01JC",
   ) {}
 

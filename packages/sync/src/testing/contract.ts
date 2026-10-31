@@ -55,11 +55,11 @@ const MINUTE = 60_000;
 const CANARY = "CANARY-PLAINTEXT-7f3a";
 
 // Fixed 16-char device ids.
-const A = "deviceaaaaaaaaaa";
-const B = "devicebbbbbbbbbb";
-const C = "devicecccccccccc";
-const D = "devicedddddddddd";
-const EVIL = "deviceeeeeeeeeee";
+const A = "daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const B = "dbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const C = "dccccccccccccccccccccccccccccccc";
+const D = "dddddddddddddddddddddddddddddddd";
+const EVIL = "deeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 interface DeviceOptions {
   readonly clockOffsetMs?: number;

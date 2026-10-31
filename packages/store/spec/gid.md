@@ -28,8 +28,12 @@ a **gid**; integer ids survive only inside a device's view.
 |---|---|---|
 | ULID | 26 chars Crockford base32, upper case, first char `0`-`7` | `^[0-7][0-9A-HJKMNP-TV-Z]{25}$` |
 | keyed DET | RFC 9562 UUID **version 8**, lower case, hyphenated, variant `8`-`b` | `^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| vault id | 16 random bytes, 32 lower-case hex (`createVaultId`, S27) | `^[0-9a-f]{32}$` |
 
-Length tells them apart (26 vs 36). The vault gid (= profile gid) is a ULID. View tables keep their
+Length tells them apart (26 vs 32 vs 36). The vault gid (= profile gid) is the vault id: the gid of
+the `profile.*` events (strategy VAULT) and nothing else; payload references are ULIDs or UUIDv8s.
+Device ids (S27 `DeviceIdentity`, minted at pairing, S29) have the same form, 32 lower-case hex, never
+all zero (the all-zero id is the recovery signer's). View tables keep their
 integer `id` plus `gid TEXT NOT NULL UNIQUE`. v1's unkeyed UUIDv5 gids are invalid in v1.1 (the schema
 rejects them); nothing was ever written with them.
 
@@ -95,13 +99,14 @@ written, never resolved) and parks an event whose gid differs ([`events.md`](eve
 per-type parts are one table in code, `detPartsOf` in `packages/store/src/events/v1/det-parts.ts`,
 normative like the zod schemas; a type whose payload does not carry its parts (a subject-addressed
 `watchlist.removed`, `txn.categorySet`, ...) or whose gid may be a ULID (`DET-or-ULID`, and a
-manual `invTxn.imported`, 4.6) is not checked. A writer therefore computes such gids only through the same parts, and genesis (section 7)
-and the Python outbox (S30) MUST produce exactly them.
+manual `invTxn.imported`, 4.6) is not checked. A writer therefore computes such gids only through
+the same parts, and genesis (section 7) and the Python outbox (S30) MUST produce exactly them.
 
 ### 4.1 Vault / profiles
 
-ULID minted when the profile is created (also the vault key id, S27). Genesis mints it once per
-profile and stores it with the salt; a re-run reuses both.
+The vault id (32 lower-case hex, S27 `createVaultId`) minted when the profile is created; it is also
+the carrier's routing id and the keyring's vault id. Genesis mints it once per profile and stores it
+with the salt; a re-run reuses both.
 
 ### 4.2 profile_modules
 

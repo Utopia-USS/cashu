@@ -13,7 +13,11 @@ import { chunked, shuffled } from "./testing/random.js";
 import { Names, normalize, project, toEnvelopes } from "./testing/reference-bridge.js";
 import { openTestStore } from "./testing/store.js";
 
-const DEVICES = ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "pppppppppppppppp"] as const;
+const DEVICES = [
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "ffffffffffffffffffffffffffffffff",
+] as const;
 
 function nrb(bban24: string): string {
   const check = 98n - (BigInt(`${bban24}252100`) % 97n);

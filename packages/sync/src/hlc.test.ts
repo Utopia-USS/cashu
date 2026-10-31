@@ -9,8 +9,8 @@ import {
   parseHlc,
 } from "./hlc.js";
 
-const DEV = "k3v9q2m8x1c7b4n6";
-const OTHER = "a000000000000000";
+const DEV = "3f9a2c8e1d7b4a6050c3e9f12d8b7a64";
+const OTHER = "a0000000000000000000000000000000";
 const T = 1793448000000; // 2026-10-31T12:00:00.000Z, the events.md 3.1 example
 
 function clockAt(ms: number): PhysicalClock & { ms: number } {
@@ -78,7 +78,7 @@ describe("HybridClock (events.md 3.3)", () => {
 
   it("a stamp after receive sorts after the received one, even with a slow physical clock", () => {
     const c = new HybridClock(DEV, { physical: clockAt(T - 60_000) });
-    const remote = formatHlc({ wall: T, counter: 4, device: "zzzzzzzzzzzzzzzz" });
+    const remote = formatHlc({ wall: T, counter: 4, device: "ffffffffffffffffffffffffffffffff" });
     c.receive(remote);
     expect(c.tick() > remote).toBe(true);
   });

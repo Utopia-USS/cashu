@@ -79,7 +79,8 @@ describe("payload schemas: valid samples", () => {
   });
 
   it.each(TYPES)("%s parses as a known event inside an envelope", (type) => {
-    const r = parseEvent(envelope(type, VALID_SAMPLES[type]));
+    const gid = META[type].gid === "VAULT" ? { gid: VAULT } : {};
+    const r = parseEvent(envelope(type, VALID_SAMPLES[type], gid));
     expect(r.status).toBe("known");
   });
 });
@@ -292,7 +293,7 @@ describe("wire form (own-log carrier)", () => {
 
   it("rejects a frame event whose HLC belongs to another device than its segment", () => {
     const wire = toWire(envelopeSchema.parse(envelope("alert.deleted", {})));
-    const back = fromWire(wire, { vault: VAULT, device: "a000000000000000" });
+    const back = fromWire(wire, { vault: VAULT, device: "a0000000000000000000000000000000" });
     expect(parseEvent(back).status).toBe("rejected");
   });
 });
@@ -314,7 +315,7 @@ describe("envelope", () => {
 
   it("requires the HLC device suffix to equal the device", () => {
     const r = envelopeSchema.safeParse(
-      envelope("alert.deleted", {}, { hlc: "0mvwcmtc0-0000-a000000000000000" }),
+      envelope("alert.deleted", {}, { hlc: "0mvwcmtc0-0000-a0000000000000000000000000000000" }),
     );
     expect(r.success).toBe(false);
   });
@@ -330,10 +331,27 @@ describe("envelope", () => {
     ).toBe(false);
   });
 
-  it("rejects a lower-case ULID vault", () => {
-    expect(
-      envelopeSchema.safeParse(envelope("alert.deleted", {}, { vault: VAULT.toLowerCase() }))
-        .success,
-    ).toBe(false);
+  it("rejects a vault id that is not 32 lower-case hex (a ULID, upper case)", () => {
+    for (const vault of [ULID_A, VAULT.toUpperCase(), VAULT.slice(1)]) {
+      expect(envelopeSchema.safeParse(envelope("alert.deleted", {}, { vault })).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it("rejects a 16-char or all-zero device id", () => {
+    for (const device of ["k3v9q2m8x1c7b4n6", "0".repeat(32)]) {
+      const r = envelopeSchema.safeParse(
+        envelope("alert.deleted", {}, { device, hlc: `0mvwcmtc0-0000-${device}` }),
+      );
+      expect(r.success).toBe(false);
+    }
+  });
+
+  it("uses the vault id as the gid of profile events and of nothing else", () => {
+    const sample = VALID_SAMPLES["profile.renamed"];
+    expect(parseEvent(envelope("profile.renamed", sample, { gid: VAULT })).status).toBe("known");
+    expect(parseEvent(envelope("profile.renamed", sample, { gid: ULID_B })).status).toBe("parked");
+    expect(parseEvent(envelope("alert.deleted", {}, { gid: VAULT })).status).toBe("parked");
   });
 });

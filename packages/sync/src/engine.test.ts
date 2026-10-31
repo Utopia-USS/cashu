@@ -10,8 +10,8 @@ import { frameBytes } from "./segment.js";
 import { FaultInjector, insecureTestCodec, ManualClock, MemorySink } from "./testing/index.js";
 
 const VAULT = "0123456789abcdef0123456789abcdef";
-const A = "deviceaaaaaaaaaa";
-const B = "devicebbbbbbbbbb";
+const A = "daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const B = "dbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const T0 = Date.UTC(2026, 9, 31, 12);
 const codec = insecureTestCodec();
 
@@ -64,7 +64,7 @@ describe("SyncEngine", () => {
       { t: "test.set", v: 0, i: "x", d: {} },
       { t: "test.set", v: 1, i: "", d: {} },
       { t: "test.set", v: 1, i: "x", d: null },
-      { t: "test.set", v: 1, i: "x", d: {}, h: "0mvwcmtc0-0000-deviceaaaaaaaaaa" },
+      { t: "test.set", v: 1, i: "x", d: {}, h: "0mvwcmtc0-0000-daaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
     ];
     for (const b of bad) {
       expect(await codeOf(e.write([b as never]))).toBe("invalid-event");
