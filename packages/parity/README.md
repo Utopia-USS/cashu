@@ -129,6 +129,13 @@ datasets it is enabled for and `produce(db) -> JSON tree`; `<module>/` folders h
 | `investments.valuation`   | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                                       |
 | `investments.allocation`  | demo, lab | as `investments.valuation`                                                                                                          |
 | `investments.performance` | demo, lab | investments rows, proxy lookup by ISIN / alias (`db.investments`); strategy state, policy, plan, benchmark from the strategy bridge |
+| Check                    | Datasets  | Inputs                                                                                                                 |
+| ------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `core.networth`          | demo, lab | accounts, balances, cash-pool transactions, investments rows (`PythonDb`); loans / assets contributors from the bridge |
+| `budget.dedup`           | demo      | stored transactions (`db.transactions`): v2 hash and occurrence through `@cashu/domain` budget, v1 with `node:crypto` |
+| `budget.ingest_fixtures` | demo      | the synthetic CSV fixtures of `packages/domain/test/fixtures/budget-csv` (not dataset state)                      |
+| `investments.valuation`  | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                          |
+| `investments.allocation` | demo, lab | as `investments.valuation`                                                                                             |
 
 `investments/portfolioState.ts` is the port of `service/portfolio.build`: rows -> domain values as the
 Python store converts them (`investments/rows.ts`, domain ids are the app's `str(pk)` because the

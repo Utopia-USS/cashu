@@ -71,6 +71,7 @@ and hashes only; tracebacks go to `errors.log` next to the outputs.
 | Check | Source |
 |---|---|
 | `core.networth`, `core.networth_series` | `core/networth.py` (per currency, breakdown, daily / weekly liquid / monthly components) |
+| `budget.dedup`, `budget.ingest_fixtures` | `modules/budget/ingestion/` (v2 content hash and occurrence of stored rows; the bank CSV parsers and dedup on the synthetic fixtures, `checks/budget_ingestion.py`) |
 | `budget.analytics` | `modules/budget/analytics.py` (currencies, cashflow, spending by period, drill-down, recurring) |
 | `budget.month_close` | `modules/budget/monthclose.py` (default month + last 6, API shape and raw) |
 | `loans.valuation` | `modules/loans/service.loan_summary`, `valuation.py`, `amortization.summarize` |
@@ -93,3 +94,8 @@ Not covered (recorded in `skipped`): the MCP read tools that take a file path or
   by last writer (HLC) across the merged members, while Python keeps the target's values. A newer
   edit on the source therefore beats an older target value. Checks that cover merged entities must
   normalise this (compare after applying the same rule) instead of failing on it.
+- Erste detection (S07, quirk Q4): Python's `ErsteImporter.match_score` split the first line at every
+  `,`, so a quoted export without the bank's name was not detected (`detect_importer` -> None). The TS
+  port also reads that line as a csv record and detects it. Detection is therefore not part of the
+  `budget.ingest_fixtures` golden; `registry.vectors.test.ts` asserts Python's answer for every
+  fixture except the listed quoted Erste files. Parsing and hashes are unchanged.

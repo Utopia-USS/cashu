@@ -6,6 +6,9 @@
 
 import type { Dataset, PythonDb } from "../sources/index.ts";
 import { bridgeDir, readBridge } from "./core/bridge.ts";
+import { produceBudgetDedup } from "./budget/dedup.ts";
+import { produceIngestFixtures } from "./budget/ingestFixtures.ts";
+import { readBridge } from "./core/bridge.ts";
 import { produceNetworth } from "./core/networth.ts";
 import { producePerformance } from "./investments/performance.ts";
 import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
@@ -55,6 +58,18 @@ export const PRODUCERS: readonly Producer[] = [
     datasets: ["demo", "lab"],
     inputs: ["bridge"],
     produce: (db) => produceNetworth(db, readBridge(db.dataset)),
+  },
+  {
+    check: "budget.dedup",
+    // lab has no bank transactions yet (R3): enable lab here once it does.
+    datasets: ["demo"],
+    produce: produceBudgetDedup,
+  },
+  {
+    check: "budget.ingest_fixtures",
+    // Synthetic fixtures, not dataset state: one dataset is enough.
+    datasets: ["demo"],
+    produce: () => produceIngestFixtures(),
   },
   {
     check: "investments.valuation",
