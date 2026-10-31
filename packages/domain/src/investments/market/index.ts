@@ -13,6 +13,7 @@ export * from "./composite.js";
 export * from "./fetchReport.js";
 export * from "./nbp.js";
 export * from "./refresh.js";
+export * from "./search.js";
 export * from "./sources.js";
 export * from "./stooq.js";
 export * from "./yahoo.js";

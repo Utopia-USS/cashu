@@ -31,6 +31,7 @@ export {
   type Sleep,
   type TimeoutSignal,
 } from "./http.js";
+export { OpenFigiIsinLookup, type YahooSearchOptions, YahooSymbolSearch } from "./search.js";
 export {
   NbpFxSource,
   StooqPriceSource,

@@ -370,7 +370,7 @@ describe("split events (R6)", () => {
   });
 });
 
-// --- chart of a pick (tests/investments/market/test_f12_search_sources.py, the parts without exchanges) --
+// --- chart of a pick (tests/investments/market/test_f12_search_sources.py; the search parts: search.test.ts) --
 
 const searchFixture = (name: string) => fixture(`search/${name}`);
 
