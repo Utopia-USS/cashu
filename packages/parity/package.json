@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@cashu/domain": "workspace:*"
+    "@cashu/domain": "workspace:*",
+    "@cashu/mcp": "workspace:*"
   }
 }

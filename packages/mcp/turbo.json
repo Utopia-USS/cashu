@@ -1,0 +1,10 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "inputs": ["src/**", "test/**", "package.json", "vitest.config.*"],
+      "outputs": []
+    }
+  }
+}

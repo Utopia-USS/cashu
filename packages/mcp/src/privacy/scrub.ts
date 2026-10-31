@@ -1,0 +1,229 @@
+/**
+ * Text scrubbing (port of the text half of `core/mcp/redaction.py`).
+ *
+ * `scrubText` removes, in both privacy levels, IBAN-like strings, runs of 10+ digits (account, card,
+ * phone numbers), dotted account numbers, broker account ids, numbers after an account word, e-mail
+ * addresses and the guard's known person names; in `strict` also money amounts (numbers next to a
+ * currency, after a money word, with a multiplier, grouped thousands, decimals, integers of 4+ digits
+ * that are not a year in context). ISO dates, timestamps and periods are protected while the number
+ * rules run and restored afterwards.
+ *
+ * Every pattern is the Python one with Python's Unicode classes (`pyRegex.ts`); the order of the
+ * passes is Python's, and so is each replacement.
+ */
+
+import { pyStrip } from "@cashu/domain";
+import type { NameGuard } from "./names.js";
+import { B, D, END, IC_I, pyRe, S, W } from "./pyRegex.js";
+import { pyDigitsValue, pyLen } from "./pyText.js";
+
+const ISO_DATE = pyRe(
+  `${B}${D}{4}-${D}{2}-${D}{2}(?:[T ]${D}{2}:${D}{2}(?::${D}{2}(?:\\.${D}+)?)?(?:Z|[+\\-]${D}{2}:?${D}{2})?)?${B}`,
+  "g",
+);
+const PERIOD = pyRe(
+  `${B}${D}{4}-(?:0[1-9]|1[0-2]|Q[1-4])${B}|${B}(?:0[1-9]|1[0-2])/${D}{4}${B}`,
+  "g",
+);
+// Account numbers: IBANs (groups split by up to two spaces, dots, slashes, underscores or hyphens),
+// runs of 10+ digits (same separators except dots, so amounts stay amounts), dotted 4-digit groups,
+// broker account ids (U1234567).
+const IBAN_SOURCE = `${B}[A-Z]{2}${D}{2}(?:[ \\u00a0._/\\-]{0,2}[A-Z0-9]{4}){3,8}(?:[ \\u00a0._/\\-]{0,2}[A-Z0-9]{1,4})?${B}`;
+const LONG_DIGITS_SOURCE = `(?<!${D})${D}(?:[ \\u00a0/_\\-]{0,2}${D}){9,}(?!${D})`;
+const DOTTED_ACCOUNT_SOURCE = `(?<![${D}.])${D}{2,4}(?:\\.${D}{4}){3,}(?!${D})`;
+const IBAN = pyRe(IBAN_SOURCE, "g");
+const LONG_DIGITS = pyRe(LONG_DIGITS_SOURCE, "g");
+const DOTTED_ACCOUNT = pyRe(DOTTED_ACCOUNT_SOURCE, "g");
+// a shorter number right after an account word ("konto nr 12345678")
+const ACCOUNT_WORD = pyRe(
+  `(?i:${B}(?:konto|konta|rachunek|rachunku|account|acct|nr|numer|no)${B}\\.?[${S}:#]{0,3})` +
+    `(?:nr\\.?[${S}]?)?(${D}[${D} \\u00a0\\-]{4,}${D})`,
+  "g",
+);
+const ACCOUNT_ID = pyRe(`${B}[A-Z]{1,3}${D}{6,9}${B}`, "g");
+const EMAIL = pyRe(`[${W}.+\\-]+@[${W}\\-]+(?:\\.[${W}\\-]+)+`, "g");
+// Money: a number next to a currency (any upper-case 3-letter code, Polish / English words, symbols),
+// with a multiplier (12 tys., 100k), grouped thousands, decimals, and integers of 4+ digits that are
+// not a year in context.
+const CUR =
+  `(?:[A-Z]{3}|(?i:zł|zl|złot[${W}]*|zlot[${W}]*|grosz[${W}]*|euro|eur|usd|pln|gbp|chf|dolar[${W}]*` +
+  `|funt[${W}]*|frank[${W}]*)|€|\\$|£)`;
+const NUM = `[\\-+]?${D}(?:[${D} \\u00a0\\u202f'.,]*${D})?`;
+const MONEY_CUR = pyRe(
+  `(?:${NUM}[${S}]?${CUR}(?![A-Za-z]))|(?:(?<![A-Za-z])${CUR}[${S}]?${NUM})`,
+  "g",
+);
+const MULTIPLIED = pyRe(
+  `(?<![${W}.,])[\\-+]?${D}+(?:[.,]${D}+)?[${S}]?` +
+    `(?i:tys\\.?|tys${IC_I}[eę]c[${W}]*|mln|mld|k|m|mn|bn)(?![${W}])`,
+  "g",
+);
+const NOT_PP = `[${S}]?pp${B}`;
+const GROUPED = pyRe(
+  `(?<![${W}.,])[\\-+]?${D}{1,3}(?:(?:[ \\u00a0\\u202f']${D}{3})+|(?:,${D}{3})+|(?:\\.${D}{3}){2,})` +
+    `(?:[.,]${D}+)?(?![${W}%]|${NOT_PP}|[${S}]?%)`,
+  "g",
+);
+const DECIMAL = pyRe(`(?<![${W}.,])[\\-+]?${D}+[.,]${D}+(?![${D}%]|[${S}]?%|${NOT_PP})`, "g");
+const BIG_INT = pyRe(`(?<![${W}.,])[\\-+]?${D}{4,}(?![${W}%.,]|[${S}]?%|${NOT_PP})`, "g");
+const MONEY_WORD = pyRe(
+  `(?i:${B}(?:pr${IC_I}ce|pr${IC_I}ces|cena|ceny|cash|amount|kwota|kwoty|value|warto[${W}]*|worth|cost|` +
+    `costs|koszt[${W}]*|saldo|balance|depos${IC_I}t[${W}]*|wp[lł]at[${W}]*|wyp[lł]at[${W}]*|fee|fees|tax|` +
+    `prow${IC_I}zj[${W}]*|op[lł]at[${W}]*|proceeds|${IC_I}ncome|expense[${W}]*|przych[${W}]*|wydat[${W}]*|` +
+    `rata|raty|${IC_I}nstallment)${B}[^${D}\\n]{0,24}?)(?<![${W}.,])([\\-+]?${D}+(?:[.,]${D}+)?)` +
+    `(?![${D}%]|[.,]${D}|[${S}]?%|${NOT_PP}|[${S}]?(?:days?|dni)${B})`,
+  "g",
+);
+const YEAR_BEFORE = pyRe(
+  `(?i:${B}(?:${IC_I}n|w|we|rok|roku|year|years|s${IC_I}nce|od|do|unt${IC_I}l|from|of|z|za|before|after|` +
+    `przed|po))[${S}]+${END}`,
+);
+const YEAR_AFTER = pyRe(`^[${S}]?(?:r\\.|rok)`);
+const ISIN_SOURCE = `${B}[A-Z]{2}[A-Z0-9]{9}${D}${B}`;
+const ISIN = pyRe(ISIN_SOURCE, "g");
+const ISIN_FULL = pyRe(`^[A-Z]{2}[A-Z0-9]{9}${D}$`);
+// A protected date / ISIN is swapped for NUL + its index + NUL while the number rules run. The index
+// is written in private-use characters, not digits, so no number rule can touch it.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: NUL is the placeholder delimiter this pattern removes
+const LEFTOVER = /\u0000[^\u0000]*\u0000|\u0000/gu;
+
+function placeholder(index: number): string {
+  let digits = "";
+  for (const ch of String(index)) digits += String.fromCodePoint(0xe000 + Number(ch));
+  return `\u0000${digits}\u0000`;
+}
+
+type Replacer = (
+  match: string,
+  groups: readonly (string | undefined)[],
+  offset: number,
+  input: string,
+) => string;
+
+/** `pattern.sub(fn, text)` with the match, its groups, offset and the whole input. */
+function sub(pattern: RegExp, text: string, fn: Replacer): string {
+  return text.replace(pattern, (...args: unknown[]) => {
+    const match = args[0] as string;
+    const offset = args[args.length - 2] as number;
+    const input = args[args.length - 1] as string;
+    const groups = args.slice(1, -2) as (string | undefined)[];
+    return fn(match, groups, offset, input);
+  });
+}
+
+/** Replace a match with its text before the last group (the number) and `replacement`. */
+function keepPrefix(replacement: string): Replacer {
+  return (match, groups) => {
+    const number = groups[0] ?? "";
+    return match.slice(0, match.length - number.length) + replacement;
+  };
+}
+
+/** ISO 6166 check digit (Luhn over the letters-as-numbers expansion). */
+export function isinValid(value: string | null): boolean {
+  const v = value ?? "";
+  if (!ISIN_FULL.test(v)) return false;
+  const chars = Array.from(v);
+  const last = chars.pop() as string;
+  const digits = chars.map((c) => Number.parseInt(c, 36).toString()).join("");
+  let total = 0;
+  const reversed = Array.from(digits).reverse();
+  reversed.forEach((ch, i) => {
+    let n = Number(ch);
+    if (i % 2 === 0) {
+      n *= 2;
+      n = n > 9 ? n - 9 : n;
+    }
+    total += n;
+  });
+  return (10 - (total % 10)) % 10 === pyDigitsValue(last);
+}
+
+/**
+ * Swap ISO dates / timestamps / periods (and the given ISINs) for placeholders, restored after
+ * scrubbing. ISINs are protected only when a symbol field carried them: in free text an ISIN-shaped
+ * token is scrubbed like any other number.
+ */
+export function protectDates(
+  text: string,
+  isins: ReadonlySet<string> = new Set(),
+): [string, string[]] {
+  const saved: string[] = [];
+  const keep: Replacer = (m) => {
+    saved.push(m);
+    return placeholder(saved.length - 1);
+  };
+  let out = sub(ISO_DATE, text, keep);
+  out = sub(PERIOD, out, keep);
+  if (isins.size > 0) out = sub(ISIN, out, (m, g, o, i) => (isins.has(m) ? keep(m, g, o, i) : m));
+  return [out, saved];
+}
+
+function restoreDates(text: string, saved: readonly string[]): string {
+  let out = text;
+  saved.forEach((value, i) => {
+    out = out.split(placeholder(i)).join(value);
+  });
+  // never hand placeholder internals to the agent: anything left becomes a clean "[date]"
+  return out.includes("\u0000") ? out.replace(LEFTOVER, "[date]") : out;
+}
+
+const bigInt: Replacer = (match, _groups, offset, input) => {
+  const raw = match.replace(/^[+-]+/, "");
+  if (pyLen(raw) === 4) {
+    const year = pyDigitsValue(raw);
+    if (year >= 1900 && year <= 2100) {
+      const before = input.slice(0, offset);
+      const after = input.slice(offset + match.length);
+      const whole = pyStrip(before) === "" && pyStrip(after) === "";
+      if (whole || YEAR_BEFORE.test(before) || YEAR_AFTER.test(after)) return match; // a year in context
+    }
+  }
+  return "[amount]";
+};
+
+export interface ScrubOptions {
+  readonly strict: boolean;
+  readonly guard?: NameGuard | null;
+}
+
+export function scrubText(value: string, options: ScrubOptions): string;
+export function scrubText(value: string | null, options: ScrubOptions): string | null;
+export function scrubText(
+  value: string | null,
+  { strict, guard = null }: ScrubOptions,
+): string | null {
+  if (value === null) return null;
+  let text = value;
+  if (strict && guard !== null) {
+    // first, before any rewriting: an alias with a number ("IKE Oli 2030") must still match the
+    // owner's label as typed (F7 review R6)
+    text = guard.swapAliases(text);
+  }
+  const [guarded, dates] = protectDates(text);
+  text = guarded;
+  text = text.replace(IBAN, "[iban]");
+  text = text.replace(LONG_DIGITS, "[number]");
+  text = text.replace(DOTTED_ACCOUNT, "[number]");
+  text = text.replace(ACCOUNT_ID, "[account]");
+  text = sub(ACCOUNT_WORD, text, keepPrefix("[number]"));
+  text = text.replace(EMAIL, "[email]");
+  if (strict) {
+    text = text.replace(MONEY_CUR, "[amount]");
+    text = sub(MONEY_WORD, text, keepPrefix("[amount]"));
+    text = text.replace(MULTIPLIED, "[amount]");
+    text = text.replace(GROUPED, "[amount]");
+    text = text.replace(DECIMAL, "[amount]");
+    text = sub(BIG_INT, text, bigInt);
+  }
+  text = restoreDates(text, dates);
+  if (guard !== null) text = guard.mask(text);
+  return text;
+}
+
+/** The leak check's identifier patterns, unanchored and without the `g` flag (search only). */
+export const LEAK_PATTERNS: readonly RegExp[] = [
+  pyRe(IBAN_SOURCE),
+  pyRe(LONG_DIGITS_SOURCE),
+  pyRe(DOTTED_ACCOUNT_SOURCE),
+];

@@ -10,5 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@cashu/domain": "workspace:*"
   }
 }

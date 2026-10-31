@@ -49,13 +49,20 @@ importers:
 
   packages/i18n: {}
 
-  packages/mcp: {}
+  packages/mcp:
+    dependencies:
+      '@cashu/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/parity:
     dependencies:
       '@cashu/domain':
         specifier: workspace:*
         version: link:../domain
+      '@cashu/mcp':
+        specifier: workspace:*
+        version: link:../mcp
 
   packages/store:
     dependencies:
