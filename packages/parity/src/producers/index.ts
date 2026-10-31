@@ -16,6 +16,7 @@ import { readStrategyBridge, strategyBridgeDir } from "./investments/strategyBri
 import { guardBridgeDir, readGuardBridge } from "./mcp/guardBridge.ts";
 import { produceMcpRead, rawGoldenDir } from "./mcp/privacy.ts";
 import type { OutValue } from "./output.ts";
+import { produceStoreTable, STORE_TABLES } from "./store/tables.ts";
 
 /** Where the producers read their Python-side inputs (`pnpm parity:produce --golden-root / --bridge-mcp`). */
 export interface ProduceInputs {
@@ -121,4 +122,13 @@ export const PRODUCERS: readonly Producer[] = [
         inputs.goldenRoot,
       ),
   },
+  // S26 genesis roundtrip: one check per synced table (store/tables.ts), no Python-side inputs.
+  ...STORE_TABLES.map(
+    (table): Producer => ({
+      check: `store.table.${table}`,
+      datasets: ["demo", "lab"],
+      inputs: [],
+      produce: (db) => produceStoreTable(db, table),
+    }),
+  ),
 ];
