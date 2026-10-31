@@ -92,3 +92,19 @@ def test_stem_matches_mask_common_words_too(text, masked):
 def test_unrelated_words_stay(text):
     guard = NameGuard(1, frozenset({"ANNA NOWAK", "JAN KOWALSKI"}))
     assert guard.mask(text) == text
+
+
+# S37fix2 N11: a one-word known name of 4+ letters is matched inside letter runs too; these over-masks
+# are accepted (listed so a change is visible). Three-letter names (LIS) are not matched inside runs.
+GLUED_FALSE_POSITIVES = {
+    "Joanna": "Jo[name]",
+    "SAVANNA": "SAV[name]",
+    "annapurna": "[name]purna",
+    "LISTOPAD": "LISTOPAD",
+}
+
+
+@pytest.mark.parametrize(("text", "masked"), sorted(GLUED_FALSE_POSITIVES.items()))
+def test_one_word_names_inside_letter_runs(text, masked):
+    guard = NameGuard(1, frozenset({"ANNA", "LIS"}))
+    assert guard.mask(text) == masked

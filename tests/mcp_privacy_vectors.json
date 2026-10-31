@@ -1302,6 +1302,453 @@
    ]
   },
   {
+   "finding": "N9",
+   "text": "kwota950",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "950"
+   ]
+  },
+  {
+   "finding": "N9",
+   "text": "Zwrot950",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "950"
+   ]
+  },
+  {
+   "finding": "N9",
+   "text": "nr1500",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1500"
+   ]
+  },
+  {
+   "finding": "N9",
+   "text": "PLN950",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "950"
+   ]
+  },
+  {
+   "finding": "N9",
+   "text": "z\u0142950",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "950"
+   ]
+  },
+  {
+   "finding": "N9",
+   "text": "wplata2500zl",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2500"
+   ]
+  },
+  {
+   "finding": "N9",
+   "text": "nr12345678",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "12345678"
+   ],
+   "note": "account word glued to the number"
+  },
+  {
+   "finding": "N10",
+   "text": "3 000 %",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "N10",
+   "text": "5 000 pp",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "N10",
+   "text": "2_000 x",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "N10",
+   "text": "5\u20220000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "0000"
+   ]
+  },
+  {
+   "finding": "N10",
+   "text": "Wp\u0142ata 2 000, potem",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "N10",
+   "text": "kwota 1 000 000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "N10",
+   "text": "3 000 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "N11",
+   "text": "ANNANOWAK",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "ANNA",
+    "anna",
+    "Anna",
+    "NOWAK",
+    "nowak",
+    "Nowak",
+    "KOWALSKI",
+    "Kowal"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N11",
+   "text": "annanowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "ANNA",
+    "anna",
+    "Anna",
+    "NOWAK",
+    "nowak",
+    "Nowak",
+    "KOWALSKI",
+    "Kowal"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N11",
+   "text": "JANKOWALSKIEGO",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "ANNA",
+    "anna",
+    "Anna",
+    "NOWAK",
+    "nowak",
+    "Nowak",
+    "KOWALSKI",
+    "Kowal"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N11",
+   "text": "AnnaNowak123",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "ANNA",
+    "anna",
+    "Anna",
+    "NOWAK",
+    "nowak",
+    "Nowak",
+    "KOWALSKI",
+    "Kowal"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N11",
+   "text": "Jan Kowal\u00dfki",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "ANNA",
+    "anna",
+    "Anna",
+    "NOWAK",
+    "nowak",
+    "Nowak",
+    "KOWALSKI",
+    "Kowal"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N11",
+   "text": "przelewannanowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "ANNA",
+    "anna",
+    "Anna",
+    "NOWAK",
+    "nowak",
+    "Nowak",
+    "KOWALSKI",
+    "Kowal"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "words",
+   "text": "dwa tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa",
+    "tysi"
+   ],
+   "note": "amount in words: dwa tysi\u0105ce"
+  },
+  {
+   "finding": "words",
+   "text": "p\u00f3\u0142 miliona",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "miliona"
+   ],
+   "note": "amount in words: p\u00f3\u0142 miliona"
+  },
+  {
+   "finding": "words",
+   "text": "pi\u0119\u0107dziesi\u0105t z\u0142otych",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "pi\u0119\u0107dziesi\u0105t"
+   ],
+   "note": "amount in words: pi\u0119\u0107dziesi\u0105t z\u0142otych"
+  },
+  {
+   "finding": "words",
+   "text": "trzysta pi\u0119\u0107dziesi\u0105t",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "trzysta"
+   ],
+   "note": "amount in words: trzysta pi\u0119\u0107dziesi\u0105t"
+  },
+  {
+   "finding": "words",
+   "text": "jedena\u015bcie tysi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "jedena"
+   ],
+   "note": "amount in words: jedena\u015bcie tysi\u0119cy"
+  },
+  {
+   "finding": "words",
+   "text": "fifty dollars",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "fifty"
+   ],
+   "note": "amount in words: fifty dollars"
+  },
+  {
+   "finding": "words",
+   "text": "two thousand",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "thousand"
+   ],
+   "note": "amount in words: two thousand"
+  },
+  {
+   "finding": "words",
+   "text": "ten thousand",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "thousand"
+   ],
+   "note": "amount in words: ten thousand"
+  },
+  {
+   "finding": "words",
+   "text": "sto dwadzie\u015bcia",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "sto",
+    "dwadzie"
+   ],
+   "note": "amount in words: sto dwadzie\u015bcia"
+  },
+  {
+   "finding": "words",
+   "text": "dwadzie\u015bcia pi\u0119\u0107 tys.",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwadzie"
+   ],
+   "note": "amount in words: dwadzie\u015bcia pi\u0119\u0107 tys."
+  },
+  {
+   "finding": "words",
+   "text": "one hundred and twenty",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "hundred",
+    "twenty"
+   ],
+   "note": "amount in words: one hundred and twenty"
+  },
+  {
+   "finding": "N9 keep",
+   "text": "https://example.org/p11/world-robotics",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "https://example.org/p11/world-robotics"
+   },
+   "note": "a number glued in a link path stays"
+  },
+  {
+   "finding": "words keep",
+   "text": "dwa koty",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "dwa koty"
+   }
+  },
+  {
+   "finding": "words keep",
+   "text": "pi\u0119\u0107 minut",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "pi\u0119\u0107 minut"
+   }
+  },
+  {
+   "finding": "words keep",
+   "text": "ten dom",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "ten dom"
+   }
+  },
+  {
+   "finding": "words keep",
+   "text": "one of them",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "one of them"
+   }
+  },
+  {
+   "finding": "words keep",
+   "text": "trzy razy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "trzy razy"
+   }
+  },
+  {
    "finding": "keep",
    "text": "2024-01-15",
    "modes": [
@@ -1830,7 +2277,7 @@
    ],
    "absent": [],
    "expect": {
-    "strict": "[amount] [amount] pp"
+    "strict": "[amount] pp"
    },
    "note": "an amount cannot ride on a unit: 12 500 pp"
   },
