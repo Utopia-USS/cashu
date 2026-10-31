@@ -4,9 +4,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** `packages/domain/test/fixtures/budget-csv` (written by `parity/python/vectors_budget.py`). */
-const FIXTURE_DIR = fileURLToPath(
-  new URL("../../../../test/fixtures/budget-csv", import.meta.url),
-);
+const FIXTURE_DIR = fileURLToPath(new URL("../../../../test/fixtures/budget-csv", import.meta.url));
 
 /** The repository root (for byte-comparing fixtures with their sources). */
 export const REPO_ROOT = fileURLToPath(new URL("../../../../../../", import.meta.url));
