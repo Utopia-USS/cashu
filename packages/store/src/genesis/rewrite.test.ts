@@ -207,6 +207,16 @@ describe("JSON rules (6.5)", () => {
   });
 });
 
+describe("connector proposals (open decision)", () => {
+  it("fails closed on a local binding id in a proposal payload", () => {
+    const { r, count } = setup();
+    expect(() => r.json("proposals", "payload", { binding_id: 3, run_id: 7 })).toThrow(
+      GenesisError,
+    );
+    expect(count("proposals", "unmapped_id_key.payload.binding_id")).toBe(1);
+  });
+});
+
 describe("the guard walker (6.5, R5)", () => {
   it("passes vocabulary keys without ids and JSON without id keys", () => {
     const { r } = setup();

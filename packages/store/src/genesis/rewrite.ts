@@ -216,6 +216,12 @@ export class Rewriter {
   /** `proposals.payload` (6.5): `account_id` -> `account`, `staged` -> `blob {sha256, ext}`. */
   proposalPayload(table: string, column: string, value: unknown): unknown {
     if (!isJsonObject(value)) return value;
+    if ("binding_id" in value) {
+      // A connector proposal's local binding id (and its device-local `run_id`) has no 6.5 rule yet
+      // (open lead decision): fail closed instead of letting a local id into the log.
+      this.#count(table, `unmapped_id_key.${column}.binding_id`);
+      throw new GenesisError("unmapped_id_key", "a connector proposal holds a local binding id");
+    }
     const { account_id: accountId, staged, ...rest } = value;
     const out: Record<string, unknown> = { ...rest };
     if ("account_id" in value) {
