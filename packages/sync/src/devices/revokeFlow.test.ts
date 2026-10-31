@@ -48,15 +48,21 @@ async function household() {
 }
 
 /** The revoke flow; without the recovery words the target consents (it is in the owner's hands). */
-function revoke(revoker: SimDevice, target: SimDevice, recovery?: RecoveryIdentity) {
+function revoke(
+  revoker: SimDevice,
+  target: SimDevice,
+  recovery?: RecoveryIdentity,
+  recertify: readonly SimDevice[] = [],
+) {
   if (recovery) {
     return revoker.devices.prepareRevocation(
       [{ device: target.id, cut: revoker.cursors.get(target.id) ?? START_CURSOR }],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
       recovery,
+      { recertify: recertify.map((d) => d.id) },
     );
   }
-  return prepareConsented(revoker, [target]);
+  return prepareConsented(revoker, [target], undefined, recertify);
 }
 
 function write(revoker: SimDevice, change: PreparedChange): Batch {
@@ -120,7 +126,7 @@ describe("H2: who may revoke a device", () => {
 describe("revoke flow with re-certification", () => {
   it("revoking the desktop that certified the phone re-certifies the phone in the same batch; its lease and watermark statements count", async () => {
     const { a, desk, phone, laptop, b } = await household();
-    const result = revoke(a, desk);
+    const result = revoke(a, desk, undefined, [phone, laptop]);
     if (!result.ok) throw new Error(result.reason);
     expect(result.change.affected.map((x) => [x.device, x.name, x.recertified]).sort()).toEqual(
       [
@@ -158,7 +164,7 @@ describe("revoke flow with re-certification", () => {
     expect(refused.affected.every((x) => !x.recertified && x.reason === "recovery_required")).toBe(
       true,
     );
-    const done = revoke(phone, desk, vault.recovery);
+    const done = revoke(phone, desk, vault.recovery, [phone, laptop]);
     if (!done.ok) throw new Error(done.reason);
     expect(done.change.affected.every((x) => x.recertified)).toBe(true);
     write(phone, done.change);
@@ -189,7 +195,7 @@ describe("revoke flow with re-certification", () => {
     b.write(fill);
     expect(b.devices.registry.certificatesIssuedBy(b.id)).toBe(64);
     b.words = undefined;
-    const result = revoke(b, desk);
+    const result = revoke(b, desk, undefined, [phone, laptop]);
     if (!result.ok) throw new Error(result.reason);
     expect(result.change.affected.map((x) => [x.device, x.recertified, x.reason]).sort()).toEqual(
       [
@@ -204,7 +210,7 @@ describe("revoke flow with re-certification", () => {
 
   it("atomicity: a truncated batch (revocation without its re-certifications) never counts; the whole batch does", async () => {
     const { a, desk, phone, laptop, b } = await household();
-    const result = revoke(a, desk);
+    const result = revoke(a, desk, undefined, [phone, laptop]);
     if (!result.ok) throw new Error(result.reason);
     const full = write(a, result.change);
     // Untrusted storage (or a partial delivery) holds the batch without its tail.

@@ -352,8 +352,11 @@ export class VaultDevices {
       readonly recertify?: () => string;
     },
     authority?: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
+    selection: { readonly recertify?: readonly string[] } = {},
   ): PrepareResult {
-    return this.#onCommit(prepareRevocation(this.keyContext(), targets, eids, authority));
+    return this.#onCommit(
+      prepareRevocation(this.keyContext(), targets, eids, authority, selection),
+    );
   }
 
   /**

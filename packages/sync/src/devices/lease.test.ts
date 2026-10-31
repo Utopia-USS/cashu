@@ -300,6 +300,7 @@ describe("fetch lease", () => {
       [{ device: a.id, cut: c.cursors.get(a.id) ?? START_CURSOR }],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
       vault.recovery,
+      { recertify: [b.id, c.id, d.id, e.id] }, // the owner re-certifies every orphan it recognises
     );
     if (!r.ok) throw new Error(r.reason);
     c.write(r.change.events);

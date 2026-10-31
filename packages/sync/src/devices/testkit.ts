@@ -514,7 +514,10 @@ export function prepareConsented(
   revoker: SimDevice,
   targets: readonly SimDevice[],
   recovery?: RecoveryIdentity,
+  /** The orphans the owner chose to re-certify (default none, W1). */
+  recertify: readonly SimDevice[] = [],
 ) {
+  const selection = { recertify: recertify.map((d) => d.id) };
   const entries = targets.map((t) => ({
     device: t.id,
     cut: revoker.cursors.get(t.id) ?? START_CURSOR,
@@ -522,10 +525,10 @@ export function prepareConsented(
   const eid = newEid();
   const consent = consentsOf(targets, revoker.ring.vaultId, eid, entries, revoker.id);
   const eids = { revoke: eid, rotate: newEid(), recertify: newEid };
-  const result = revoker.devices.prepareRevocation(entries, eids, { consent });
+  const result = revoker.devices.prepareRevocation(entries, eids, { consent }, selection);
   const words = recovery ?? revoker.words;
   if (!result.ok && result.reason === "authority_required" && words) {
-    return revoker.devices.prepareRevocation(entries, eids, words);
+    return revoker.devices.prepareRevocation(entries, eids, words, selection);
   }
   return result;
 }

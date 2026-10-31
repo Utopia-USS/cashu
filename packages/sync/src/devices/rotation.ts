@@ -15,7 +15,7 @@
 //   revocations), when its sender is no longer trusted, or when its signed recipients include a
 //   revoked device (M1). A device checks this before writing any frame.
 
-import type { UnstampedEvent } from "../carrier.js";
+import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
 import {
   CryptoError,
   type CryptoErrorCode,
@@ -247,14 +247,22 @@ export interface AffectedDevice {
   readonly device: string;
   /** Its display name from the registry (undefined when none was announced). */
   readonly name: string | undefined;
-  /** Re-certified in the revocation's own batch: it stays trusted when the revocation counts. */
+  /** Who paired it (`RECOVERY_SIGNER_ID` for the words) and when (registry `DeviceRecord`). */
+  readonly pairedBy: string | undefined;
+  readonly pairedAt: { readonly position: SegmentCursor; readonly hlc: string } | undefined;
+  /**
+   * A UI hint for the owner's per-device choice: true on the consent path (the target is in the
+   * owner's hands), never on the words path (lost or stolen: the thief may have paired anything).
+   */
+  readonly suggested: boolean;
+  /** Re-certified in the revocation's own batch (the owner chose it): it stays trusted. */
   readonly recertified: boolean;
   /**
-   * Why not: `recovery_required` (the revoker's own chain runs through a revoked device, or it
-   * revokes itself: only the recovery words can re-certify), `capacity` (the writer's certificate
-   * window is full; the owner re-pairs the device).
+   * Why not: `not_selected` (the owner did not choose it: it stays untrusted and nothing is sealed
+   * for it), `recovery_required` (only the words can re-certify here), `capacity` (the writer's
+   * certificate window is full; the owner re-pairs the device).
    */
-  readonly reason?: "recovery_required" | "capacity";
+  readonly reason?: "not_selected" | "recovery_required" | "capacity";
 }
 
 export interface PreparedChange {
@@ -391,6 +399,11 @@ export function prepareRevocation(
    * targets' consents (devices in the owner's hands, signed on each target for `eids.revoke`).
    */
   authority?: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
+  /**
+   * The orphans the owner chose to re-certify (W1): default none. The S44 UI shows every orphan
+   * (`affected`) unchecked on the words path; the consent path may pre-check them (`suggested`).
+   */
+  selection: { readonly recertify?: readonly string[] } = {},
 ): PrepareResult {
   const { registry } = ctx;
   const me = ctx.identity.deviceId;
@@ -411,26 +424,42 @@ export function prepareRevocation(
   const losing = [...registry.trusted.keys()]
     .filter((d) => !targetIds.has(d) && !preview.trusted.has(d))
     .sort();
-  const named = (device: string) => registry.devices.get(device)?.name;
-  const others = losing.filter((d) => d !== me);
+  // W1 (lead decision): re-certification is the owner's explicit choice per orphan, never automatic.
+  const chosen = new Set(selection.recertify ?? []);
+  for (const d of chosen) {
+    if (!losing.includes(d)) throw new RangeError("recertify names a device that is not an orphan");
+  }
+  const describe = (device: string, recertified: boolean, reason?: AffectedDevice["reason"]) => {
+    const record = registry.devices.get(device);
+    return {
+      device,
+      name: record?.name,
+      pairedBy: record?.pairedBy,
+      pairedAt: record?.pairedAt,
+      suggested: !recovery,
+      recertified,
+      ...(reason ? { reason } : {}),
+    };
+  };
   const meStays = preview.trusted.has(me);
-  if (!recovery && (losing.includes(me) || (!meStays && others.length > 0))) {
+  const meLosing = losing.includes(me);
+  // The revoker must stay trusted (H4), and only a device that stays can re-certify; otherwise the
+  // words are needed (and must re-certify this device when its own chain is cut).
+  if (
+    (!recovery && (meLosing || (!meStays && chosen.size > 0))) ||
+    (recovery && meLosing && !chosen.has(me))
+  ) {
     return {
       ok: false,
       reason: "recovery_required",
-      affected: losing.map((device) => ({
-        device,
-        name: named(device),
-        recertified: false,
-        reason: "recovery_required",
-      })),
+      affected: losing.map((device) => describe(device, false, "recovery_required")),
     };
   }
   const signer = recovery ?? ctx.identity;
   const room = registry.certificateRoom(me, signer.deviceId);
-  const recertified = losing.slice(0, room);
+  const recertified = losing.filter((d) => chosen.has(d)).slice(0, room);
   if (recertified.length > 0 && !eids.recertify) {
-    throw new RangeError("eids.recertify is required when devices lose their chain");
+    throw new RangeError("eids.recertify is required when devices are re-certified");
   }
   const adds = recertified.map((device) => {
     const k = registry.trusted.get(device) as TrustedDevice;
@@ -441,19 +470,13 @@ export function prepareRevocation(
     };
     const certificate = certifyDevice(ctx.sodium, signer, subject, registry.vaultId);
     const eid = (eids.recertify as () => string)();
-    return buildDeviceAdded(
-      signer,
-      registry.vaultId,
-      eid,
-      subject,
-      named(device) ?? "device",
-      certificate,
-    );
+    const name = registry.devices.get(device)?.name ?? "device";
+    return buildDeviceAdded(signer, registry.vaultId, eid, subject, name, certificate);
   });
-  const affected: AffectedDevice[] = losing.map((device, i) =>
-    i < recertified.length
-      ? { device, name: named(device), recertified: true }
-      : { device, name: named(device), recertified: false, reason: "capacity" },
+  const affected: AffectedDevice[] = losing.map((device) =>
+    recertified.includes(device)
+      ? describe(device, true)
+      : describe(device, false, chosen.has(device) ? "capacity" : "not_selected"),
   );
   const revoked = buildDeviceRevoked(signer, registry.vaultId, eids.revoke, targets, {
     recertify: adds.map((a) => a.i),

@@ -281,10 +281,10 @@ the sweep in decisionKeys.property.exhaustive.test.ts).
   or sign for it again.
 - Self-retirement (lead decision: kept). A device may revoke itself without consent; every fold fixes
   the cut at the self-revocation's own position, so a stolen device cannot erase its history by
-  stating an earlier cut. A device that paired others cannot rescue them: the flow returns
-  `recovery_required` listing those orphans, and the owner either enters the words on a trusted
-  device or retires it from a sibling with its consent (`consentToRetirement` on it); both
-  re-certify the orphans in the revocation's batch.
+  stating an earlier cut. A device that paired others cannot rescue them itself: the orphans the
+  owner chooses to keep need the words on a trusted device or a sibling retiring it with its consent
+  (`consentToRetirement` on it), which re-certify them in the revocation's batch; the others stay
+  untrusted, listed for re-pairing.
 - Any other device-signed revocation is refused by every device's fold (`no_consent`), and the flow
   refuses to write it (`authority_required`).
 - Consequences: a revoked or stolen device can no longer retaliate (review H5: its revocations need
@@ -309,26 +309,34 @@ recovery-key change (new words) right away.
 
 ### S29c: the revoke flow (contract for the S44 UI)
 
-`VaultDevices.prepareRevocation(targets, { revoke, rotate, recertify }, authority?)` (devices/rotation.ts),
-`authority` = the recovery identity, or `{ consent: { [target]: signature } }` from the targets:
+`VaultDevices.prepareRevocation(targets, { revoke, rotate, recertify }, authority?, selection?)`
+(devices/rotation.ts): `authority` = the recovery identity, or `{ consent: { [target]: signature } }`
+from the targets; `selection` = `{ recertify: [device ids] }`, the orphans the OWNER chose to
+re-certify (review W1, lead decision: default none).
 
 - It returns ONE batch to write (`change.events`, then `change.commit()`): the `device.revoked`, a
-  `device.added` re-certification of every remaining device whose only valid chain ran through a
-  target (certified by this device, or by the recovery identity when it is given), and the key
-  rotation wrapped for the devices trusted afterwards.
-- `change.affected` lists EVERY device that loses its chain, re-certified or not:
-  `{ device, name, recertified, reason? }`, `reason` = `capacity` when the writer's certificate window
-  (64 per issuer and stream) is full. The UI shows the list; a device with `recertified: false` must be
-  re-paired, and the UI says so before the owner confirms.
+  `device.added` re-certification of each CHOSEN orphan (certified by this device, or by the recovery
+  identity when it is given), and the key rotation wrapped for the devices trusted afterwards. An
+  orphan not chosen stays untrusted and nothing is sealed for it.
+- `change.affected` lists EVERY orphan (a remaining device whose only valid chain ran through a
+  target): `{ device, name, pairedBy, pairedAt: { position, hlc }, suggested, recertified, reason? }`,
+  `reason` = `not_selected`, `capacity` (the writer's certificate window, 64 per issuer and stream, is
+  full) or `recovery_required`. Re-certification is never automatic: revoking a stolen device with
+  the words must not revive what the thief paired (W1: a recovery-signed certificate and the new data
+  key for the thief's "iPad").
+- S44 UX: the UI shows each orphan with its name, who paired it and when, as a checkbox list. On the
+  words path (lost or stolen) every box starts UNCHECKED (`suggested: false`); the owner checks only
+  devices it recognises and holds. On the consent path (the target is in the owner's hands) the UI may
+  pre-check them (`suggested: true`). It then calls again with the chosen ids; unchecked devices are
+  shown as "must be paired again".
 - `{ ok: false, reason: "authority_required", unconsented }`: a target (not this device) has neither
   consented (with a key that counts: not one this device vouches for, see H5') nor is the recovery
-  identity given. The UI asks: is the device in your hands (confirm on
-  it, then retry with its consent) or lost / stolen (enter the recovery words)? Lost or stolen is the
-  default answer.
+  identity given. The UI asks: is the device in your hands (confirm on it, then retry with its
+  consent) or lost / stolen (enter the recovery words)? Lost or stolen is the default answer.
 - `{ ok: false, reason: "recovery_required", affected }`: this device's own chain runs through a
-  target (for example a phone the target paired, revoking it: review H4), or it revokes itself while
-  others would lose their chain, so only the recovery words can re-certify. Nothing is written; the
-  UI asks for the words and calls again with the recovery identity.
+  target (for example a phone the target paired, revoking it: review H4; with the words it must also
+  choose itself), or it revokes itself and the owner chose orphans to keep, so only the words (or a
+  sibling, with this device's consent) can re-certify. Nothing is written.
 - Atomicity: the revocation names its re-certifications (`recertify`: their eids) and the registry
   counts it only once all of them are held at its position (`incomplete_batch` until then). The
   engine applies a frame group only when complete (events.md 5), and even a delivery that stops

@@ -93,6 +93,10 @@ export interface DeviceRecord {
   readonly deviceId: string;
   readonly name: string;
   readonly addedEid: string;
+  /** Who announced it (the writer of its first accepted `device.added`: who paired it). */
+  readonly pairedBy: string;
+  /** When: that event's position in the writer's stream and its HLC stamp. */
+  readonly pairedAt: { readonly position: SegmentCursor; readonly hlc: string };
 }
 
 /** A `device.recoveryChanged` statement whose signer was trusted under this registry's root. */
@@ -409,7 +413,13 @@ export function foldRegistry(
     }
     acceptedAdds.push(event);
     if (!devices.has(data.device)) {
-      devices.set(data.device, { deviceId: data.device, name: data.name, addedEid: event.eid });
+      devices.set(data.device, {
+        deviceId: data.device,
+        name: data.name,
+        addedEid: event.eid,
+        pairedBy: data.signer === RECOVERY_SIGNER_ID ? RECOVERY_SIGNER_ID : event.writer,
+        pairedAt: { position: event.position, hlc: event.hlc },
+      });
     }
   }
 

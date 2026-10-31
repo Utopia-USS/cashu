@@ -186,7 +186,17 @@ describe("self-retirement (lead decision: kept, with conditions)", () => {
     syncAll([a, b, desk, phone]);
     const self = [{ device: desk.id, cut: START_CURSOR }];
     const eids = () => ({ revoke: newEid(), rotate: newEid(), recertify: newEid });
-    const refused = desk.devices.prepareRevocation(self, eids());
+    // Without a choice the orphan is listed and left untrusted (W1: nothing is automatic) ...
+    const plain = desk.devices.prepareRevocation(self, eids());
+    if (!plain.ok) throw new Error(plain.reason);
+    expect(plain.change.affected).toMatchObject([
+      { device: phone.id, recertified: false, reason: "not_selected", pairedBy: desk.id },
+    ]);
+    plain.change.discard();
+    // ... and re-certifying it needs a sibling or the words: alone, the desktop is refused.
+    const refused = desk.devices.prepareRevocation(self, eids(), undefined, {
+      recertify: [phone.id],
+    });
     expect(refused).toMatchObject({ ok: false, reason: "recovery_required" });
     if (refused.ok || refused.reason !== "recovery_required") throw new Error("expected a refusal");
     expect(refused.affected.map((x) => x.device)).toEqual([phone.id]);
@@ -195,10 +205,15 @@ describe("self-retirement (lead decision: kept, with conditions)", () => {
     const ids = eids();
     const consent = desk.devices.consentToRetirement(ids.revoke, entries, b.id);
     expect(() => desk.identity.sign("cashu/registry/v1", new Uint8Array(1))).toThrow();
-    const result = b.devices.prepareRevocation(entries, ids, { consent: { [desk.id]: consent } });
+    const result = b.devices.prepareRevocation(
+      entries,
+      ids,
+      { consent: { [desk.id]: consent } },
+      { recertify: [phone.id] },
+    );
     if (!result.ok) throw new Error(result.reason);
-    expect(result.change.affected).toEqual([
-      { device: phone.id, name: "work phone", recertified: true },
+    expect(result.change.affected).toMatchObject([
+      { device: phone.id, name: "work phone", recertified: true, suggested: true },
     ]);
     b.write(result.change.events);
     result.change.commit();
@@ -218,10 +233,11 @@ describe("self-retirement (lead decision: kept, with conditions)", () => {
       [{ device: desk.id, cut: START_CURSOR }],
       { revoke: newEid(), rotate: newEid(), recertify: newEid },
       words,
+      { recertify: [phone.id] },
     );
     if (!result.ok) throw new Error(result.reason);
-    expect(result.change.affected).toEqual([
-      { device: phone.id, name: "work phone", recertified: true },
+    expect(result.change.affected).toMatchObject([
+      { device: phone.id, name: "work phone", recertified: true, suggested: false },
     ]);
     desk.write(result.change.events);
     result.change.commit();
