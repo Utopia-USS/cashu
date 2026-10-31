@@ -24,7 +24,7 @@ export interface RefEvent {
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 
 /** Sort by (hlc, eid) and drop re-delivered duplicates (same eid). */
-export function ordered(events: readonly RefEvent[]): RefEvent[] {
+function ordered(events: readonly RefEvent[]): RefEvent[] {
   const byEid = new Map<string, RefEvent>();
   for (const e of events) if (!byEid.has(e.eid)) byEid.set(e.eid, e);
   return [...byEid.values()].sort((a, b) =>
@@ -38,7 +38,7 @@ export function ordered(events: readonly RefEvent[]): RefEvent[] {
 
 const PROPOSAL_TERMINALS = new Set(["proposal.approved", "proposal.rejected", "proposal.failed"]);
 
-export function appliedEvents(evs: readonly RefEvent[]): RefEvent[] {
+function appliedEvents(evs: readonly RefEvent[]): RefEvent[] {
   const present = new Map(evs.map((e) => [e.eid, e]));
   const losers = new Set<string>();
   const decided = new Set<string>();
@@ -68,7 +68,7 @@ export function appliedEvents(evs: readonly RefEvent[]): RefEvent[] {
 // folds the source's root into the target's root.
 // --------------------------------------------------------------------------------------------- //
 
-export class Identity {
+class Identity {
   private parent = new Map<string, string>();
   private keyOwner = new Map<string, string>();
   /** root -> its exclusive key (accounts: the one `iban:` key a component may hold, review N2). */
@@ -128,7 +128,7 @@ export class Identity {
   }
 }
 
-export function resolveIdentities(evs: readonly RefEvent[]) {
+function resolveIdentities(evs: readonly RefEvent[]) {
   const accounts = new Identity("iban:");
   const instruments = new Identity();
   /** The raw IBAN of each event whose `iban:` claim was accepted, by eid. */
@@ -153,7 +153,7 @@ export function resolveIdentities(evs: readonly RefEvent[]) {
 }
 
 /** A dedup key with its `i:` / `a:` gid parts resolved to their roots (gid.md section 6). */
-export function resolveDedupKey(key: string, ids: ReturnType<typeof resolveIdentities>): string {
+function resolveDedupKey(key: string, ids: ReturnType<typeof resolveIdentities>): string {
   return key
     .split("|")
     .map((part) => {
@@ -168,7 +168,7 @@ export function resolveDedupKey(key: string, ids: ReturnType<typeof resolveIdent
 // The view
 // --------------------------------------------------------------------------------------------- //
 
-export interface AccountRow {
+interface AccountRow {
   /** The identity root: always one of `members` (events.md 6.4, N1). */
   gid: string;
   iban: string | null;
@@ -176,7 +176,7 @@ export interface AccountRow {
   name: string | null;
   members: string[];
 }
-export interface TxnRow {
+interface TxnRow {
   /** The anchor: the first applied member (N1); writers may address any member. */
   gid: string;
   members: string[];
@@ -184,7 +184,7 @@ export interface TxnRow {
   /** The derived cash mirror leg, present while the effective claim is cash_withdrawal. */
   leg: { gid: string; claim: string | null } | null;
 }
-export interface WatchRow {
+interface WatchRow {
   gid: string;
   members: string[];
   live: boolean;
@@ -193,7 +193,7 @@ export interface WatchRow {
   addedAt: string | null;
   source: string | null;
 }
-export interface SignalEpisode {
+interface SignalEpisode {
   gid: string;
   key: string;
   status: "active" | "acknowledged" | "resolved" | "expired";
@@ -203,7 +203,7 @@ export interface SignalEpisode {
   aliases: string[];
   decisions: string[];
 }
-export interface BindingRow {
+interface BindingRow {
   live: boolean;
   params: unknown;
   cursor: string | null;

@@ -3,7 +3,7 @@
 // en = one / other). Catalog shape: `{ key: { pl, en } }` where a value is a string, a function
 // (same arity in both languages) or a plural object `{ one, few, many, other }`.
 
-export const LANGS = ["pl", "en"] as const;
+const LANGS = ["pl", "en"] as const;
 
 const PLURAL_KEYS = new Set(["zero", "one", "two", "few", "many", "other"]);
 
