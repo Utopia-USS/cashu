@@ -197,14 +197,19 @@ export function project(store: Store, names: Names): RefView {
     ]);
 
   const accounts = store
-    .read<{ gid: string; iban: string | null; external_id: string | null; name: string }>(
-      "SELECT gid, iban, external_id, name FROM accounts",
-    )
+    .read<{
+      gid: string;
+      iban: string | null;
+      iban_key: string | null;
+      external_id: string | null;
+      name: string;
+    }>("SELECT gid, iban, iban_key, external_id, name FROM accounts")
     .map((r): [string, RefView["accounts"][string]] => [
       n(r.gid),
       {
         gid: n(r.gid),
         iban: r.iban,
+        ibanKey: r.iban_key,
         // a parked key carries the account gid: `<key>~<gid>` (D-24.7)
         externalId:
           r.external_id === null

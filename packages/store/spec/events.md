@@ -286,8 +286,8 @@ kind:
   as **identity conflicts** in the view (`account_conflicts`, shown to the owner), in `(hlc, eid)` order.
   This mirrors Python's sequential refusal (`budget/imports.py:376`, `import_account_mismatch`) under
   concurrency, and a malformed number (masked, short, mistyped) can never fuse two accounts. The rest
-  of the event (other keys, fill-if-null of `external_id`) still applies; a refused IBAN does not fill
-  the view's `iban`.
+  of the event (other keys, fill-if-null of `external_id`, the raw `iban` below) still applies; a
+  refused IBAN never becomes the account's identity IBAN (`iban_key`).
 - A merge folds `find(source)` into `find(target)` unless they already share a root. Concurrent
   opposite merges (A->B and B->A) end in one root: the second is a no-op in the order.
 - `resolve(g)` = `find(g)` over the whole held event set. Resolution is recomputed (per affected
@@ -330,13 +330,25 @@ one row, in `(hlc, eid)` order, with the table's normal rule:
   for field registers (lead decision on R-2; the parity notes in `parity/README.md` must list it, S02 / S03). **Presence** combines per
   member instead (N3): a watchlist row is live when any member's own SOFT register is live, so
   "remove the duplicate, then merge" keeps the target watched, as Python does.
-- Accounts: the view's `iban` is the IBAN of the component's first accepted `iban:` claim (one key per
-  component, N2); `external_id` is the first non-null over the component's events; `type` is LWW over
+- Accounts: the view's `iban` is the raw IBAN text exactly as an event carried it (Python stores and
+  shows the number it was given, valid or not, so display, export and parity keep it: no data loss).
+  Which raw value: the `iban` of the component's **first accepted** `iban:` claim in `(hlc, eid)`
+  order when the component holds an `iban:` key; otherwise the **first non-null** `iban` among the
+  component's `account.opened` / `account.identified` events in `(hlc, eid)` order (fill-if-null, the
+  rule of `external_id` and of Python's `get_or_create_account`; a later number never replaces it).
+  A valid claim therefore wins over an earlier raw one in any delivery order, and two devices that
+  learn different invalid numbers converge on the earlier one. The view's `iban_key` is the
+  component's `iban:` key without the prefix (checksum-valid by N2), null when `iban` is raw only.
+  Only `iban_key` is identity: writers resolve by it first (a raw-only `iban` may still route a write
+  to its account, as Python matches it, but never claims a key or merges, so it never fuses two
+  accounts); `external_id` is the first non-null over the component's events; `type` is LWW over
   `account.typeSet` initialised from the first applied open; `name` is the latest explicit
   `account.renamed` of any member, else the **root's own** opened name (N4), so an older CSV account
   folding into an Open Banking account does not rename it. Internal transfers match by counterparty
   IBAN only (rule 5), against every `iban:` key of the resolved account (at most one per component by
-  N2, so the CSV NRB and the Open Banking IBAN of one account both match it; N5).
+  N2, so the CSV NRB and the Open Banking IBAN of one account both match it; N5): the own-IBAN set is
+  the vault's `iban_key` values (`ownIbanKeys`), never the raw `iban` column, so a number failing the
+  checksum never makes a transaction internal.
 
 ### 6.5 Cross-entity effects
 
@@ -479,9 +491,9 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   "name" is the holder's name); the first applied open supplies the initial name.
 - `account.identified` `{iban?, externalId?, keys[]}` (min 1 key): the account learned an IBAN (Open
   Banking, a statement, a parser that found it) or a new external key (an Enable Banking re-consent
-  uid). Fills `iban` / `external_id` when still null and claims `keys`, which may merge accounts; an
-  `iban:` key is claimed only with a checksum-valid `iban` and never as a second IBAN of one account
-  (N2, 6.4).
+  uid). Fills `iban` / `external_id` when still null (a valid accepted `iban` replaces a raw one,
+  6.4) and claims `keys`, which may merge accounts; an `iban:` key is claimed only with a
+  checksum-valid `iban` and never as a second IBAN of one account (N2, 6.4).
 - `account.renamed` `{name}`, `account.typeSet` `{type}`, `account.removed` / `account.restored` `{}`
   (SOFT). Key parking (`<key>~<id>`) is DERIVED in the view ([`gid.md`](gid.md) 4.3).
 - `balance.recorded` `{account@, date, source: open_banking|csv|manual|connector, amount, currency}`.

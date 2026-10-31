@@ -192,7 +192,10 @@ function resolveDedupKey(key: string, ids: ReturnType<typeof resolveIdentities>)
 interface AccountRow {
   /** The identity root: always one of `members` (events.md 6.4, N1). */
   gid: string;
+  /** The raw IBAN as claimed: the first accepted claim's, else the first non-null `iban` (6.4). */
   iban: string | null;
+  /** The component's `iban:` key without the prefix (checksum-valid only, N2), else null. */
+  ibanKey: string | null;
   externalId: string | null;
   name: string | null;
   members: string[];
@@ -306,6 +309,8 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   const moduleRegs = new Map<string, { enabled: boolean; enabledAt: string | null }>();
   const balances = new Map<string, BalanceRow>();
   const accounts = new Map<string, AccountRow>();
+  /** root -> the first non-null raw `iban` of its opens / identifications (shown without a key). */
+  const rawIban = new Map<string, string>();
   const openedRoots = new Set<string>(); // roots with an applied account.opened of any member
   interface TxnState {
     gid: string;
@@ -349,7 +354,7 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   const accountRow = (root: string): AccountRow => {
     let row = accounts.get(root);
     if (!row) {
-      row = { gid: root, iban: null, externalId: null, name: null, members: [] };
+      row = { gid: root, iban: null, ibanKey: null, externalId: null, name: null, members: [] };
       accounts.set(root, row);
     }
     return row;
@@ -414,9 +419,12 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
       case "account.identified": {
         const row = accountRow(acc(e.gid));
         if (!row.members.includes(e.gid)) row.members.push(e.gid);
-        // N2: only an accepted `iban:` claim fills the IBAN (one per component, checksum valid).
+        // N2: only an accepted `iban:` claim sets the identity IBAN (one per component, checksum
+        // valid); without one the first raw `iban` is shown (no data loss), never as a key.
         const accepted = ids.acceptedIban.get(e.eid);
         if (row.iban === null && accepted !== undefined) row.iban = accepted;
+        const raw = str(d.iban);
+        if (raw && !rawIban.has(acc(e.gid))) rawIban.set(acc(e.gid), raw);
         if (row.externalId === null && str(d.externalId))
           row.externalId = str(d.externalId) ?? null;
         if (e.type === "account.opened") {
@@ -695,6 +703,8 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
   // N4: an explicit rename wins, else the identity root's own opened name.
   for (const [root, row] of accounts) {
     row.name = renamed.get(root) ?? ownName.get(root) ?? row.name;
+    row.ibanKey = ids.accounts.exclusiveKey(root)?.slice("iban:".length) ?? null;
+    row.iban ??= rawIban.get(root) ?? null;
   }
   // Key parking (S24 D-24.7): per (bank, external id) group the live rows hold the key, else the one
   // whose first open sorts last; every other member shows `<key>~<gid>`.

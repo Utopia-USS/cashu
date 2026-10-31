@@ -7,7 +7,7 @@ import { vaultSalt } from "../gid.js";
 import { Store } from "../materialize.js";
 import { builtinModules } from "../modules.js";
 import { run, testEnv } from "../testing/commands.js";
-import { memoryDriver, openTestStore } from "../testing/store.js";
+import { EventFactory, memoryDriver, openTestStore } from "../testing/store.js";
 import {
   createProfile,
   openAccount,
@@ -18,6 +18,12 @@ import {
   setModules,
   setProfileSettings,
 } from "./commands.js";
+import { accountByGid, ownIbanKeys, type Read } from "./queries.js";
+
+const reader =
+  (store: Store): Read =>
+  (sql, ...params) =>
+    store.read(sql, ...params);
 
 const types = (out: { ok: boolean; events?: readonly { type: string }[] }) =>
   out.ok ? (out.events ?? []).map((e) => e.type) : [];
@@ -154,6 +160,86 @@ describe("core commands: accounts", () => {
     expect(types(run(store, env, removeAccount, { account: first }))).toEqual([]); // idempotent
     expect(types(run(store, env, restoreAccount, { account: first }))).toEqual([
       "account.restored",
+    ]);
+  });
+
+  // A synthetic NRB with valid mod-97 check digits, and the same number one digit off.
+  const VALID = "61109010140000071219812874";
+  const INVALID = "61109010140000071219812875";
+
+  it("an IBAN failing the checksum is stored and shown raw, but never claimed as a key", () => {
+    const store = openTestStore();
+    const env = testEnv();
+    const a = run(store, env, openAccount, {
+      bank: "mbank",
+      type: "checking",
+      currency: "PLN",
+      iban: INVALID,
+      externalId: "eb-uid-9",
+    });
+    expect(a.ok && a.events[0]?.data).toMatchObject({
+      iban: INVALID,
+      keys: ["ext:mbank:eb-uid-9"],
+    });
+    const account = a.ok ? a.value.account : "";
+    expect(accountByGid(reader(store), account)).toMatchObject({ iban: INVALID, ibanKey: null });
+    // transfer matching (own IBAN keys) never sees it (rule 5)
+    expect(ownIbanKeys(reader(store))).toEqual(new Set());
+    // the same number again lands on the same account, without a key
+    const again = run(store, env, openAccount, {
+      bank: "mbank",
+      type: "checking",
+      currency: "PLN",
+      iban: INVALID,
+    });
+    expect(again.ok && again.value.account).toBe(account);
+    expect(store.read("SELECT COUNT(*) AS n FROM accounts")).toEqual([{ n: 1 }]);
+    expect(store.read("SELECT COUNT(*) AS n FROM account_conflicts")).toEqual([{ n: 0 }]);
+  });
+
+  it("a valid IBAN learned later takes the key and the display from the raw one", () => {
+    const store = openTestStore();
+    const env = testEnv();
+    const spec = { bank: "mbank", type: "checking", currency: "PLN", externalId: "eb-uid-9" };
+    const a = run(store, env, openAccount, { ...spec, iban: INVALID });
+    const b = run(store, env, openAccount, { ...spec, iban: `PL${VALID}` });
+    expect(b.ok && b.value.account).toBe(a.ok && a.value.account);
+    expect(b.ok && b.events.map((e) => [e.type, e.data])).toEqual([
+      ["account.identified", { iban: `PL${VALID}`, keys: [`iban:${VALID}`] }],
+    ]);
+    expect(accountByGid(reader(store), b.ok ? b.value.account : "")).toMatchObject({
+      iban: `PL${VALID}`,
+      ibanKey: VALID,
+    });
+    expect(ownIbanKeys(reader(store))).toEqual(new Set([VALID]));
+  });
+
+  it("an account showing only a raw IBAN is found by it, wherever its gid came from", () => {
+    // e.g. a genesis account keyed by its external id that carries a number failing the checksum
+    const store = openTestStore();
+    const f = new EventFactory();
+    const gid = store.deps.det("accounts", ["ext", "mbank", "eb-uid-7"]);
+    store.applyEnvelopes([
+      f.make("account.opened", gid, {
+        bank: "mbank",
+        externalId: "eb-uid-7",
+        iban: `PL${INVALID}`,
+        currency: "PLN",
+        type: "checking",
+        name: "Konto",
+        keys: ["ext:mbank:eb-uid-7"],
+      }),
+    ]);
+    const out = run(store, testEnv(), openAccount, {
+      bank: "mbank",
+      type: "checking",
+      currency: "PLN",
+      iban: INVALID,
+    });
+    expect(out.ok && out.value).toMatchObject({ account: gid, created: false });
+    expect(types(out)).toEqual([]);
+    expect(store.read("SELECT iban, iban_key FROM accounts")).toEqual([
+      { iban: `PL${INVALID}`, iban_key: null },
     ]);
   });
 

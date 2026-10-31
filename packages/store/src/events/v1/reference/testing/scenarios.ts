@@ -537,21 +537,89 @@ for (const [w3, w1] of [
     },
   );
 }
+/** `n` with its last digit changed: fails the mod-97 check (a masked or mistyped number). */
+const offByOne = (n: string) => `${n.slice(0, -1)}${n.endsWith("1") ? "2" : "1"}`;
 {
-  const masked = `${N1.slice(0, 25)}${N1.endsWith("1") ? "2" : "1"}`; // one digit off
+  const masked = offByOne(N1);
   scenario(
     RN2,
-    "an IBAN that fails the mod-97 check is never claimed",
+    "an IBAN that fails the mod-97 check is never claimed, but its raw text is kept",
     [
       ...n2Base(),
       ev("a", 20, "account.identified", "A", { iban: masked, keys: [`iban:${masked}`] }),
     ],
     (v) => {
       expect(Object.keys(v.accounts).sort()).toEqual(["A", "Y"]);
-      expect(v.accounts.A?.iban).toBeNull();
+      expect(v.accounts.A).toMatchObject({ iban: masked, ibanKey: null });
+      expect(v.accountConflicts).toEqual([]);
     },
   );
 }
+for (const [wBad, wGood] of [
+  [20, 21],
+  [21, 20],
+] as const) {
+  // A shows a raw invalid number until a valid one is claimed; the valid one wins in any order.
+  scenario(
+    RN2,
+    `a valid IBAN wins identity and display over an invalid raw one (walls ${wBad} / ${wGood})`,
+    [
+      ...n2Base(),
+      ev("a", wBad, "account.identified", "A", {
+        iban: offByOne(N3),
+        keys: [`iban:${offByOne(N3)}`],
+      }),
+      ev("p", wGood, "account.identified", "A", { iban: `PL${N3}`, keys: [`iban:${N3}`] }),
+    ],
+    (v) => {
+      expect(Object.keys(v.accounts).sort()).toEqual(["A", "Y"]);
+      expect(v.accounts.A).toMatchObject({ iban: `PL${N3}`, ibanKey: N3 });
+      expect(v.accounts.Y).toMatchObject({ iban: `PL${N1}`, ibanKey: N1 });
+      expect(v.accountConflicts).toEqual([]);
+    },
+  );
+  // Two devices learn different invalid numbers: the first in fold order is shown, none is a key.
+  scenario(
+    RN2,
+    `two invalid raw IBANs: the first in fold order is shown, never a key (walls ${wBad} / ${wGood})`,
+    [
+      ...n2Base(),
+      ev("a", wBad, "account.identified", "A", { iban: offByOne(N2), keys: ["ext:mbank:k-a2"] }),
+      ev("p", wGood, "account.identified", "A", { iban: offByOne(N3), keys: ["ext:mbank:k-a3"] }),
+    ],
+    (v) => {
+      expect(v.accounts.A).toMatchObject({
+        iban: wBad < wGood ? offByOne(N2) : offByOne(N3),
+        ibanKey: null,
+      });
+      expect(v.accountConflicts).toEqual([]);
+    },
+  );
+}
+scenario(
+  RN2,
+  "one invalid IBAN on two accounts never merges them",
+  [
+    ev("a", 5, "account.opened", "A", {
+      name: "A",
+      iban: offByOne(N1),
+      externalId: "k-a",
+      keys: [`iban:${offByOne(N1)}`, "ext:mbank:k-a"],
+    }),
+    ev("b", 5, "account.opened", "B", {
+      name: "B",
+      iban: offByOne(N1),
+      externalId: "k-b",
+      keys: [`iban:${offByOne(N1)}`, "ext:mbank:k-b"],
+    }),
+  ],
+  (v) => {
+    expect(Object.keys(v.accounts).sort()).toEqual(["A", "B"]);
+    for (const row of Object.values(v.accounts)) {
+      expect(row).toMatchObject({ iban: offByOne(N1), ibanKey: null, members: [row.gid] });
+    }
+  },
+);
 
 const RN34 = "v1.2: presence and names after merges (N3, N4)";
 scenario(

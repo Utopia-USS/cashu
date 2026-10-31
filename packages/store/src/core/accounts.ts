@@ -2,8 +2,12 @@
 //
 // Identity: `account.opened` / `account.identified` claim their `keys`; an `iban:` key only with a
 // checksum-valid IBAN whose key equals the claim, and at most one `iban:` key per component (N2).
-// Row: keyed by the identity root (the row gid). `iban` = the component's first accepted IBAN;
-// `external_id` = first non-null; `type` = latest `account.typeSet`, else the first applied open's;
+// Row: keyed by the identity root (the row gid). `iban` = the raw IBAN exactly as claimed: the
+// component's first accepted claim (the one that set its `iban:` key), else the first non-null `iban`
+// of its opens / identifications in fold order (fill-if-null, Python `get_or_create_account`), so a
+// number failing the checksum is still shown and exported (no data loss); `iban_key` = the key of the
+// accepted IBAN only (null when the component holds none): identity lookups and transfer matching
+// read it, never `iban` (rule 5, N2); `external_id` = first non-null; `type` = latest `account.typeSet`, else the first applied open's;
 // `name` = latest explicit rename of any member, else the root's own opened name, else the first
 // applied open's (N4); `removed_at` = SOFT register.
 // Key parking (S24 D-24.7, gid.md 4.3, events.md 9: DERIVED): the accounts of one (bank, external_id)
@@ -20,7 +24,7 @@ import {
   ord,
   type ViewSql,
 } from "../engine/types.js";
-import { claimAllowed } from "../events/v1/identity.js";
+import { claimAllowed, ibanKeyLoose } from "../events/v1/identity.js";
 import type { TableDef } from "../sql/ddl.js";
 import { sqlBool } from "../sql/values.js";
 
@@ -80,6 +84,8 @@ const accountsTable: TableDef = {
     { name: "bank", type: "TEXT", notNull: true },
     { name: "name", type: "TEXT", notNull: true },
     { name: "iban", type: "TEXT" },
+    /** The accepted identity IBAN's key (valid checksum, N2); null when `iban` is raw only. */
+    { name: "iban_key", type: "TEXT" },
     { name: "external_id", type: "TEXT" },
     { name: "currency", type: "TEXT", notNull: true },
     { name: "type", type: "TEXT", notNull: true },
@@ -89,6 +95,7 @@ const accountsTable: TableDef = {
   ],
   indexes: [
     { columns: ["iban"] },
+    { columns: ["iban_key"] },
     { columns: ["external_id"] },
     { columns: ["bank", "external_id"] },
   ],
@@ -109,7 +116,10 @@ const foldTable: TableDef = {
     { name: "first_name", type: "TEXT" },
     { name: "own_name", type: "TEXT" },
     { name: "renamed", type: "TEXT" },
+    /** The first accepted IBAN claim's value (checksum-valid, holds the component's `iban:` key). */
     { name: "iban", type: "TEXT" },
+    /** The first non-null `iban` of any open / identification, valid or not (shown when `iban` is null). */
+    { name: "raw_iban", type: "TEXT" },
     { name: "external_id", type: "TEXT" },
     { name: "created_at", type: "TEXT" },
     { name: "removed_at", type: "TEXT" },
@@ -130,6 +140,7 @@ interface AccountState {
   own_name: string | null;
   renamed: string | null;
   iban: string | null;
+  raw_iban: string | null;
   external_id: string | null;
   created_at: string | null;
   removed_at: string | null;
@@ -149,6 +160,7 @@ function load(ctx: FoldContext, root: string): AccountState {
       own_name: null,
       renamed: null,
       iban: null,
+      raw_iban: null,
       external_id: null,
       created_at: null,
       removed_at: null,
@@ -194,8 +206,8 @@ function save(ctx: FoldContext, s: AccountState): void {
   ctx.sql.write(
     foldTable.name,
     `INSERT OR REPLACE INTO fold_accounts (root, bank, currency, open_type, set_type, active, first_name,
-       own_name, renamed, iban, external_id, created_at, removed_at, first_ord)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       own_name, renamed, iban, raw_iban, external_id, created_at, removed_at, first_ord)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     s.root,
     s.bank,
     s.currency,
@@ -206,6 +218,7 @@ function save(ctx: FoldContext, s: AccountState): void {
     s.own_name,
     s.renamed,
     s.iban,
+    s.raw_iban,
     s.external_id,
     s.created_at,
     s.removed_at,
@@ -215,19 +228,22 @@ function save(ctx: FoldContext, s: AccountState): void {
   if (s.bank === null || s.currency === null || s.open_type === null) return;
   ctx.sql.write(
     accountsTable.name,
-    `INSERT INTO accounts (id, gid, bank, name, iban, external_id, currency, type, active, created_at, removed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO accounts (id, gid, bank, name, iban, iban_key, external_id, currency, type, active,
+       created_at, removed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (gid) DO UPDATE SET bank = excluded.bank, name = excluded.name, iban = excluded.iban,
-       external_id = excluded.external_id, currency = excluded.currency, type = excluded.type,
+       iban_key = excluded.iban_key, external_id = excluded.external_id, currency = excluded.currency, type = excluded.type,
        active = excluded.active, created_at = excluded.created_at, removed_at = excluded.removed_at
      WHERE accounts.name IS NOT excluded.name OR accounts.iban IS NOT excluded.iban
+       OR accounts.iban_key IS NOT excluded.iban_key
        OR accounts.external_id IS NOT excluded.external_id OR accounts.type IS NOT excluded.type
        OR accounts.removed_at IS NOT excluded.removed_at OR accounts.active IS NOT excluded.active`,
     ctx.id(s.root),
     s.root,
     s.bank,
     s.renamed ?? s.own_name ?? s.first_name ?? "",
-    s.iban,
+    s.iban ?? s.raw_iban,
+    s.iban === null ? null : ibanKeyLoose(s.iban),
     s.external_id,
     s.currency,
     s.set_type ?? s.open_type,
@@ -240,7 +256,7 @@ function save(ctx: FoldContext, s: AccountState): void {
 
 export const accountsMaterializer: Materializer = {
   id: "core.accounts",
-  version: 2,
+  version: 3,
   tables: [accountsTable, foldTable],
   handles: [
     "account.opened",
@@ -278,6 +294,8 @@ export const accountsMaterializer: Materializer = {
       case "account.identified": {
         const accepted = ctx.accepted(ACCOUNTS, e.eid);
         if (s.iban === null && accepted !== undefined) s.iban = accepted;
+        const raw = str(d.iban);
+        if (s.raw_iban === null && raw) s.raw_iban = raw;
         if (s.external_id === null) s.external_id = str(d.externalId);
         if (e.type === "account.opened") {
           if (s.bank === null) {

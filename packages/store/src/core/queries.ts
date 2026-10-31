@@ -1,6 +1,7 @@
 // Typed reads of the core view tables the commands need (gid in, gid out). A query takes the
 // vault's read function (`CommandContext.read`, `Store.read`), so it never spans two vaults.
 import { ibanKey } from "@cashu/domain";
+import { defineQuery } from "../query.js";
 import type { SqlValue } from "../sql/driver.js";
 
 export type Read = <R>(sql: string, ...params: SqlValue[]) => R[];
@@ -9,7 +10,10 @@ export interface AccountView {
   readonly gid: string;
   readonly bank: string;
   readonly name: string;
+  /** The raw IBAN as claimed (events.md 6.4): shown and exported, may fail the checksum. */
   readonly iban: string | null;
+  /** The key of the account's identity IBAN (checksum-valid, N2); null when `iban` is raw only. */
+  readonly ibanKey: string | null;
   readonly externalId: string | null;
   readonly currency: string;
   readonly type: string;
@@ -17,7 +21,7 @@ export interface AccountView {
 }
 
 const ACCOUNT_COLUMNS =
-  "gid, bank, name, iban, external_id AS externalId, currency, type, removed_at IS NOT NULL AS removed";
+  "gid, bank, name, iban, iban_key AS ibanKey, external_id AS externalId, currency, type, removed_at IS NOT NULL AS removed";
 
 type AccountRow = Omit<AccountView, "removed"> & { removed: number };
 const toView = (r: AccountRow): AccountView => ({ ...r, removed: r.removed === 1 });
@@ -42,15 +46,35 @@ export function accountByMemberGid(read: Read, gid: string): AccountView | undef
 }
 
 /**
- * The account whose IBAN has key `key` (core/text.py `iban_key`), across banks (gid.md 4.3, R-3);
- * several (concurrent opens): the smallest gid (m12).
+ * The account whose IBAN has key `key` (core/text.py `iban_key`), across banks (gid.md 4.3, R-3):
+ * the holder of that identity key, else an account showing only a raw IBAN (failing the checksum)
+ * with that key, as Python `get_or_create_account` matches it. Writer-side routing only: the raw
+ * match never claims a key or merges accounts (N2). Several: the smallest gid (m12).
  */
 export function accountByIbanKey(read: Read, key: string): AccountView | undefined {
   if (!key) return undefined;
-  const r = read<AccountRow>(
-    `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE iban IS NOT NULL ORDER BY gid`,
-  ).find((a) => ibanKey(a.iban) === key);
+  const r =
+    read<AccountRow>(
+      `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE iban_key = ? ORDER BY gid LIMIT 1`,
+      key,
+    )[0] ??
+    read<AccountRow>(
+      `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE iban IS NOT NULL AND iban_key IS NULL ORDER BY gid`,
+    ).find((a) => ibanKey(a.iban) === key);
   return r === undefined ? undefined : toView(r);
+}
+
+/**
+ * Python `own_ibans` over the view: the identity IBAN keys of every account of the vault (removed
+ * ones included). Transfer matching reads these, never the raw `iban` column, so a number failing
+ * the checksum never makes a transaction internal (rule 5, events.md 6.4 N5).
+ */
+export function ownIbanKeys(read: Read): Set<string> {
+  return new Set(
+    read<{ iban_key: string }>("SELECT iban_key FROM accounts WHERE iban_key IS NOT NULL").map(
+      (r) => r.iban_key,
+    ),
+  );
 }
 
 /**
@@ -89,6 +113,12 @@ export function profileOf(read: Read): ProfileView | undefined {
     "SELECT name, base_currency AS baseCurrency, mcp_privacy AS mcpPrivacy FROM profiles",
   )[0];
 }
+
+/** The current vault's profile (null before `profile.created` was folded). */
+export const profile = defineQuery({
+  id: "core.profile",
+  run: (read): ProfileView | null => profileOf(read) ?? null,
+});
 
 /** Module ids whose register is enabled. */
 export function enabledModuleIds(read: Read): Set<string> {

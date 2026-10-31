@@ -76,8 +76,9 @@ export function ensureAccount(ctx: CommandContext, spec: AccountSpec): EnsuredAc
   const nameKey = isNameKey(spec.externalId);
   const externalId = spec.externalId || (iban ? `csv:${iban}` : null);
   const natural = externalId !== null && !isNameKey(externalId);
-  // By IBAN key, then by the IBAN's DET gid (an IBAN failing the checksum never fills the view's
-  // `iban`, N2, but its account still has that gid), then by (bank, external id).
+  // By IBAN key (identity key, else a raw IBAN shown without one), then by the IBAN's DET gid (an IBAN
+  // failing the checksum never becomes an identity key, N2, but its account still has that gid), then
+  // by (bank, external id).
   let found: AccountView | undefined = key
     ? (accountByIbanKey(ctx.read, key) ??
       accountByMemberGid(ctx.read, ctx.det("accounts", ["iban", key])))
@@ -94,7 +95,8 @@ export function ensureAccount(ctx: CommandContext, spec: AccountSpec): EnsuredAc
   if (found !== undefined) {
     const keys: string[] = [];
     const data: Record<string, unknown> = {};
-    if (iban && found.iban === null && claimAllowed(`iban:${key}`, iban)) {
+    // the account learns a valid IBAN while it holds no identity IBAN (a raw one may be shown)
+    if (iban && found.ibanKey === null && claimAllowed(`iban:${key}`, iban)) {
       keys.push(`iban:${key}`);
       data.iban = iban;
     }
