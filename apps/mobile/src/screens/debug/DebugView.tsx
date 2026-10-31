@@ -1,8 +1,10 @@
 // The scaffold's debug screen: store and fixture status, live table counts, sync status, crypto
 // self-test. Pure: everything arrives through props from useDebugScreen.
+import { Donut, type DonutSegment, Sparkline } from "@cashu/ui";
 import type { ReactNode } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { S } from "./Debug.strings";
+import { Button, Line, Section } from "./parts";
 
 export interface DebugLoad {
   readonly firstLaunch: boolean;
@@ -14,12 +16,6 @@ export interface DebugLoad {
   readonly viewHash: string;
 }
 
-interface DebugCheck {
-  readonly name: string;
-  readonly ok: boolean;
-  readonly code?: string;
-}
-
 export interface DebugViewProps {
   readonly vault: string;
   readonly openMs: string;
@@ -28,71 +24,20 @@ export interface DebugViewProps {
   readonly cursors: number;
   readonly needsUpgrade: boolean;
   readonly unfoldedTypes: number;
-  readonly crypto: {
-    readonly ok: boolean;
-    readonly checks: readonly DebugCheck[];
-    readonly nativeAead: string;
-  };
+  /** Month-end balances of the main demo account (oldest first), for the sparkline. */
+  readonly balanceTrend: readonly number[];
+  /** Outflows per PLN account (shares of one currency only), for the donut. */
+  readonly spendingByAccount: readonly DonutSegment[];
+  /** The crypto self-test panel (it suspends on its own until the test has run). */
+  readonly cryptoPanel: ReactNode;
   readonly rebuilding: boolean;
   readonly onRebuild: () => void;
   readonly onOpenBench: () => void;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <View className="gap-1 rounded-lg bg-surface-raised p-4">
-      <Text role="heading" className="text-title font-strong text-fg">
-        {title}
-      </Text>
-      {children}
-    </View>
-  );
-}
-
-function Line({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "positive" | "negative";
-}) {
-  const valueClass =
-    tone === "positive" ? "text-positive" : tone === "negative" ? "text-negative" : "text-fg";
-  return (
-    <View className="flex-row justify-between gap-3">
-      <Text className="shrink text-body text-fg-secondary">{label}</Text>
-      <Text className={`text-body font-strong tabular-nums ${valueClass}`}>{value}</Text>
-    </View>
-  );
-}
-
-function Button({
-  label,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      role="button"
-      aria-label={label}
-      aria-disabled={disabled === true}
-      disabled={disabled}
-      onPress={onPress}
-      className="mt-2 items-center rounded-md bg-accent px-4 py-3"
-    >
-      <Text className="text-body font-strong text-fg-inverse">{label}</Text>
-    </Pressable>
-  );
-}
-
 export function DebugView(props: DebugViewProps) {
-  const { vault, openMs, load, tables, cursors, needsUpgrade, unfoldedTypes, crypto } = props;
+  const { vault, openMs, load, tables, cursors, needsUpgrade, unfoldedTypes, cryptoPanel } = props;
+  const { balanceTrend, spendingByAccount } = props;
   return (
     <ScrollView className="flex-1 bg-surface">
       <View className="gap-3 p-4">
@@ -112,6 +57,7 @@ export function DebugView(props: DebugViewProps) {
               <Line label={S.events} value={String(load.events)} />
               <Line label={S.applyMs} value={S.ms(load.applyMs)} />
               <Line label={S.rebuildMs} value={S.ms(load.rebuildMs)} />
+              <Line label={S.viewHash} value={load.viewHash.slice(0, 16)} />
               <Line
                 label={load.rebuildMatches ? S.rebuildMatch : S.rebuildMismatch}
                 value={load.rebuildMatches ? S.pass : S.fail}
@@ -120,6 +66,17 @@ export function DebugView(props: DebugViewProps) {
             </>
           )}
           <Button label={S.rebuild} onPress={props.onRebuild} disabled={props.rebuilding} />
+        </Section>
+        <Section title={S.charts}>
+          <Text className="text-body text-fg-secondary">{S.balanceTrend}</Text>
+          <Sparkline values={[...balanceTrend]} label={S.balanceTrend} layout="w-full" />
+          <Text className="mt-2 text-body text-fg-secondary">{S.spendingByAccount}</Text>
+          <Donut
+            label={S.spendingByAccount}
+            segments={[...spendingByAccount]}
+            size={160}
+            layout="self-center"
+          />
         </Section>
         <Section title={S.tables}>
           {tables.map((t) => (
@@ -136,22 +93,7 @@ export function DebugView(props: DebugViewProps) {
           />
           <Line label={S.unfolded} value={String(unfoldedTypes)} />
         </Section>
-        <Section title={S.crypto}>
-          <Line
-            label={crypto.ok ? S.cryptoOk : S.cryptoFailed}
-            value={crypto.ok ? S.pass : S.fail}
-            tone={crypto.ok ? "positive" : "negative"}
-          />
-          {crypto.checks.map((c) => (
-            <Line
-              key={c.name}
-              label={c.name}
-              value={c.ok ? S.pass : `${S.fail} ${c.code ?? ""}`}
-              tone={c.ok ? "positive" : "negative"}
-            />
-          ))}
-          <Line label={S.nativeAead} value={crypto.nativeAead} />
-        </Section>
+        {cryptoPanel}
         <Button label={S.bench} onPress={props.onOpenBench} />
       </View>
     </ScrollView>

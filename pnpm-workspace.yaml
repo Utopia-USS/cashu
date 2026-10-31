@@ -27,3 +27,12 @@ packageExtensions:
   dependency-cruiser:
     peerDependencies:
       typescript: ">=5 <7"
+# TRANSITIONAL(xcode-27): Expo SDK 58 (apps/mobile) targets Xcode 27 / Swift 6.4; with Xcode 26 (Swift 6.2)
+# expo-modules-jsi fails to compile one isolated closure ("sending 'slot' risks causing data races"). The patch
+# passes the same pointer as a Sendable integer (same thread, synchronous). Drop it with Xcode 27 everywhere.
+patchedDependencies:
+  expo-modules-jsi@58.0.21: patches/expo-modules-jsi@58.0.21.patch
+  # TRANSITIONAL(react-native-libsodium-new-arch): react-native-libsodium 1.7.0 (latest) reaches the JS runtime
+  # through RCTCxxBridge, which React Native 0.88 removed; the patch installs its JSI functions through the
+  # public RCTTurboModuleWithJSIBindings protocol instead. Drop it when upstream ships new-architecture support.
+  react-native-libsodium@1.7.0: patches/react-native-libsodium@1.7.0.patch

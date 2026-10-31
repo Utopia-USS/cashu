@@ -7,7 +7,15 @@
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["jest", "expo/types"]
+    "types": ["jest", "expo/types"],
+    "moduleSuffixes": [".ios", ".native", ""]
   },
-  "include": ["index.ts", "app", "src", "uniwind-types.d.ts", ".expo/types/**/*.ts"]
+  "include": [
+    "index.ts",
+    "app",
+    "src",
+    "uniwind-types.d.ts",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ]
 }

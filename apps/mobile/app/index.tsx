@@ -1,17 +1,20 @@
 import { Suspense } from "react";
+import { CryptoView } from "../src/screens/debug/CryptoView";
 import { DebugView } from "../src/screens/debug/DebugView";
+import { useCryptoPanel } from "../src/screens/debug/useCryptoPanel";
 import { useDebugScreen } from "../src/screens/debug/useDebugScreen";
 
 export { ErrorBoundary } from "expo-router";
 
-function DebugScreen() {
-  return <DebugView {...useDebugScreen()} />;
+function CryptoPanel() {
+  return <CryptoView {...useCryptoPanel()} />;
 }
 
 export default function DebugRoute() {
-  return (
+  const props = useDebugScreen(
     <Suspense>
-      <DebugScreen />
-    </Suspense>
+      <CryptoPanel />
+    </Suspense>,
   );
+  return <DebugView {...props} />;
 }

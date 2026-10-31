@@ -4,6 +4,7 @@
 import type { Store } from "@cashu/store";
 import { DEMO_SALT, DEMO_VAULT } from "../fixture/demoLog";
 import { type DemoLoad, loadDemo } from "../fixture/loadDemo";
+import { appendBenchLog } from "../platform/benchLog";
 import { createMobileKeyStore } from "../platform/keystore";
 import { nativeLibsodium } from "../platform/sodium";
 import { openVaultStore } from "../platform/sqlite";
@@ -30,6 +31,10 @@ export function bootServices(): Services {
   const openMs = now() - t0;
   const empty = (store.read<{ n: number }>("SELECT COUNT(*) AS n FROM accounts")[0]?.n ?? 0) === 0;
   const firstLoad = empty ? loadDemo(store, now) : null;
+  if (firstLoad) {
+    const { tables: _tables, ...load } = firstLoad;
+    appendBenchLog({ kind: "fixture", ...load });
+  }
   const cryptoSelfTest = new Promise<void>((resolve) => setTimeout(resolve, 0)).then(() =>
     runCryptoSelfTest({ lib: nativeLibsodium, keyStore: createMobileKeyStore }),
   );

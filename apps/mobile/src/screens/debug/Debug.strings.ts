@@ -23,6 +23,12 @@ export const S = catalog({
   rebuildMismatch: { pl: "Przebudowa różni się od zastosowania", en: "Rebuild differs from apply" },
   viewHash: { pl: "Skrót widoku", en: "View hash" },
   rebuild: { pl: "Przebuduj z dziennika", en: "Rebuild from the log" },
+  charts: { pl: "Wykresy (packages/ui)", en: "Charts (packages/ui)" },
+  balanceTrend: {
+    pl: "Saldo konta osobistego na koniec miesiąca",
+    en: "Personal account balance at month end",
+  },
+  spendingByAccount: { pl: "Wydatki według konta (PLN)", en: "Spending by account (PLN)" },
   tables: { pl: "Tabele (wiersze)", en: "Tables (rows)" },
   sync: { pl: "Synchronizacja", en: "Sync" },
   carrierNone: {
@@ -37,6 +43,10 @@ export const S = catalog({
   cryptoOk: { pl: "Wszystkie testy zaliczone", en: "All checks passed" },
   cryptoFailed: { pl: "Autotest nie przeszedł", en: "Self-test failed" },
   nativeAead: { pl: "Natywne AEAD biblioteki", en: "Library's native AEAD" },
+  webCryptoRandom: {
+    pl: "crypto.getRandomValues w silniku",
+    en: "crypto.getRandomValues in the engine",
+  },
   pass: { pl: "OK", en: "OK" },
   fail: { pl: "BŁĄD", en: "FAIL" },
   bench: { pl: "Pomiar listy", en: "List benchmark" },

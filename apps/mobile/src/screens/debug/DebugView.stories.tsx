@@ -21,15 +21,14 @@ const base: DebugViewProps = {
   cursors: 0,
   needsUpgrade: false,
   unfoldedTypes: 0,
-  crypto: {
-    ok: true,
-    checks: [
-      { name: "knownAnswer", ok: true },
-      { name: "frame", ok: true },
-      { name: "keyStore", ok: true },
-    ],
-    nativeAead: "unsupported_runtime",
-  },
+  balanceTrend: [
+    61200, 63100, 62950, 64800, 66010, 65400, 67900, 69300, 68800, 71200, 72950, 74100,
+  ],
+  spendingByAccount: [
+    { name: "Konto osobiste (demo)", value: 48210, color: 1 },
+    { name: "Konto wspolne (demo)", value: 54930, color: 2 },
+  ],
+  cryptoPanel: null,
   rebuilding: false,
   onRebuild: () => {},
   onOpenBench: () => {},
@@ -45,10 +44,5 @@ export const Failures = {
     ...base,
     load: { ...(base.load as NonNullable<DebugViewProps["load"]>), rebuildMatches: false },
     needsUpgrade: true,
-    crypto: {
-      ok: false,
-      checks: [{ name: "knownAnswer", ok: false, code: "unsupported_runtime" }],
-      nativeAead: "not_run",
-    },
   },
 };
