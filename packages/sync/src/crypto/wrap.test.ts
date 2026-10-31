@@ -1,156 +1,227 @@
 import { describe, expect, it } from "vitest";
-import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
-import { createVaultId, type Keyring, rotateKeyring } from "./keys.js";
-import { ctx, newRing, samplePlain, sodium } from "./testkit.js";
-import { openPairingWrap, sealForPairing } from "./wrap.js";
+import { createKeyring, createVaultId, type Keyring, rotateKeyring } from "./keys.js";
+import { createRecoveryKey } from "./recovery.js";
+import type { Sodium } from "./sodium.js";
+import { backends, code, ctx, newRing, samplePlain, testRecovery } from "./testkit.js";
+import {
+  openPairingWrap,
+  sealForPairing,
+  type TrustedSigner,
+  unwrapKeys,
+  WRAP_VERSION,
+  wrapKeys,
+} from "./wrap.js";
 
-/** One simulated device: its own identity and, once paired, its own copy of the vault's ring. */
+/** One simulated device: its identity and, once paired, its own copy of the vault's ring. */
 interface Device {
-  id: string;
-  pair: DeviceIdentity;
-  ring?: Keyring;
+  id: DeviceIdentity;
+  ring: Keyring;
 }
 
-const device = (_name: string): Device => {
-  const pair = createDeviceIdentity(sodium);
-  return { id: pair.deviceId, pair };
-};
-
-function expectCode(fn: () => unknown, code: string) {
-  expect(fn).toThrowError(CryptoError);
-  try {
-    fn();
-  } catch (e) {
-    expect((e as CryptoError).code).toBe(code);
-  }
+/** A registry view: the signing keys of devices a device trusts. */
+function trusting(...devices: DeviceIdentity[]): TrustedSigner {
+  const keys = new Map(devices.map((d) => [d.deviceId, d.signPublicKey]));
+  return (id) => keys.get(id);
 }
 
-describe("pairing across two simulated devices", () => {
-  it("desktop wraps the ring for the phone; both read each other's frames", () => {
-    const desktop = device("desktop");
-    const phone = device("phone");
-    desktop.ring = newRing();
-    const vaultId = desktop.ring.vaultId;
-
-    // Only the phone's public key crosses to the desktop; only the wrap crosses back.
-    const wrapped = sealForPairing(sodium, desktop.ring, phone.pair.box.publicKey);
-    phone.ring = openPairingWrap(sodium, wrapped, phone.pair, vaultId);
-    expect(phone.ring.active.kid).toBe(desktop.ring.active.kid);
+describe.each(backends)("pairing hop (%s)", (_name, sodium: Sodium) => {
+  it("desktop seals the ring for the phone; both read each other's frames", () => {
+    const desktop = createDeviceIdentity(sodium);
+    const phone = createDeviceIdentity(sodium);
+    const ring = newRing(sodium);
+    const vaultId = ring.vaultId;
+    // Only the phone's public key crosses to the desktop (authenticated out of band); the box crosses back.
+    const phoneRing = openPairingWrap(
+      sodium,
+      sealForPairing(sodium, ring, phone.box.publicKey),
+      phone,
+      vaultId,
+    );
+    expect(phoneRing.active.kid).toBe(ring.active.kid);
+    expect(phoneRing.recovery).toEqual(ring.recovery);
 
     const fromDesktop = sealFrame(
       sodium,
-      desktop.ring,
+      ring,
       samplePlain(),
-      ctx(vaultId, { deviceId: desktop.id }),
+      ctx(vaultId, { deviceId: desktop.deviceId }),
     );
     const fromPhone = sealFrame(
       sodium,
-      phone.ring,
+      phoneRing,
       samplePlain(),
-      ctx(vaultId, { deviceId: phone.id }),
+      ctx(vaultId, { deviceId: phone.deviceId }),
     );
     expect(
-      openFrame(sodium, phone.ring, fromDesktop, ctx(vaultId, { deviceId: desktop.id })),
+      openFrame(sodium, phoneRing, fromDesktop, ctx(vaultId, { deviceId: desktop.deviceId })),
     ).toEqual(samplePlain());
-    expect(
-      openFrame(sodium, desktop.ring, fromPhone, ctx(vaultId, { deviceId: phone.id })),
-    ).toEqual(samplePlain());
+    expect(openFrame(sodium, ring, fromPhone, ctx(vaultId, { deviceId: phone.deviceId }))).toEqual(
+      samplePlain(),
+    );
   });
 
   it("the whole ring travels, so the new device reads frames of older generations", () => {
-    const desktop = device("desktop");
-    const phone = device("phone");
-    desktop.ring = newRing();
-    const c = ctx(desktop.ring.vaultId);
-    const old = sealFrame(sodium, desktop.ring, samplePlain(), c);
-    rotateKeyring(sodium, desktop.ring);
-    phone.ring = openPairingWrap(
+    const phone = createDeviceIdentity(sodium);
+    const ring = newRing(sodium);
+    const c = ctx(ring.vaultId);
+    const old = sealFrame(sodium, ring, samplePlain(), c);
+    rotateKeyring(sodium, ring);
+    const phoneRing = openPairingWrap(
       sodium,
-      sealForPairing(sodium, desktop.ring, phone.pair.box.publicKey),
-      phone.pair,
+      sealForPairing(sodium, ring, phone.box.publicKey),
+      phone,
       c.vaultId,
     );
-    expect(phone.ring.size).toBe(2);
-    expect(openFrame(sodium, phone.ring, old, c)).toEqual(samplePlain());
+    expect(phoneRing.size).toBe(2);
+    expect(openFrame(sodium, phoneRing, old, c)).toEqual(samplePlain());
   });
 
-  it("a third device cannot open a wrap meant for the phone", () => {
-    const ring = newRing();
-    const wrapped = sealForPairing(sodium, ring, device("phone").pair.box.publicKey);
-    expectCode(
-      () => openPairingWrap(sodium, wrapped, device("eavesdropper").pair, ring.vaultId),
-      "auth_failed",
-    );
-  });
-
-  it("a tampered or truncated wrap is rejected", () => {
-    const phone = device("phone");
-    const ring = newRing();
-    const wrapped = sealForPairing(sodium, ring, phone.pair.box.publicKey);
-    for (const i of [0, 31, 32, 47, 48, wrapped.length - 1]) {
-      const t = wrapped.slice();
+  it("a third device cannot open it; tampered, truncated or another vault's boxes are refused", () => {
+    const phone = createDeviceIdentity(sodium);
+    const ring = newRing(sodium);
+    const sealed = sealForPairing(sodium, ring, phone.box.publicKey);
+    expect(
+      code(() => openPairingWrap(sodium, sealed, createDeviceIdentity(sodium), ring.vaultId)),
+    ).toBe("auth_failed");
+    for (const i of [0, 31, 32, 47, 48, sealed.length - 1]) {
+      const t = sealed.slice();
       t[i] = (t[i] ?? 0) ^ 0x01;
-      expectCode(() => openPairingWrap(sodium, t, phone.pair, ring.vaultId), "auth_failed");
+      expect(code(() => openPairingWrap(sodium, t, phone, ring.vaultId))).toBe("auth_failed");
     }
-    expectCode(
-      () => openPairingWrap(sodium, wrapped.subarray(0, 40), phone.pair, ring.vaultId),
+    expect(code(() => openPairingWrap(sodium, sealed.subarray(0, 40), phone, ring.vaultId))).toBe(
       "auth_failed",
     );
-  });
-
-  it("keys of another vault are refused even when sealed for this device", () => {
-    const phone = device("phone");
-    const ring = newRing();
-    const wrapped = sealForPairing(sodium, ring, phone.pair.box.publicKey);
-    expectCode(
-      () => openPairingWrap(sodium, wrapped, phone.pair, createVaultId(sodium)),
+    expect(code(() => openPairingWrap(sodium, sealed, phone, createVaultId(sodium)))).toBe(
       "vault_mismatch",
     );
-  });
-
-  it("a validly sealed but malformed payload is bad_payload", () => {
-    const phone = device("phone");
-    const junk = sodium.seal(new Uint8Array([1, 2, 3]), phone.pair.box.publicKey);
-    expectCode(
-      () => openPairingWrap(sodium, junk, phone.pair, createVaultId(sodium)),
-      "bad_payload",
-    );
+    const junk = sodium.seal(new Uint8Array([1, 2, 3]), phone.box.publicKey);
+    expect(code(() => openPairingWrap(sodium, junk, phone, ring.vaultId))).toBe("bad_payload");
   });
 });
 
-describe("revocation is rotation going forward", () => {
-  it("the new key goes only to remaining devices; the revoked one keeps history but cannot read new frames", () => {
-    const desktop = device("desktop");
-    const phone = device("phone");
-    const lost = device("lost-tablet");
-    desktop.ring = newRing();
-    const vaultId = desktop.ring.vaultId;
-    for (const d of [phone, lost]) {
-      d.ring = openPairingWrap(
-        sodium,
-        sealForPairing(sodium, desktop.ring, d.pair.box.publicKey),
-        d.pair,
-        vaultId,
-      );
+describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
+  function pairedVault(names: number): { devices: Device[]; trust: TrustedSigner } {
+    const first = createDeviceIdentity(sodium);
+    const ring = createKeyring(sodium, testRecovery.publicKeys);
+    const devices: Device[] = [{ id: first, ring }];
+    for (let i = 1; i < names; i++) {
+      const id = createDeviceIdentity(sodium);
+      devices.push({
+        id,
+        ring: openPairingWrap(
+          sodium,
+          sealForPairing(sodium, ring, id.box.publicKey),
+          id,
+          ring.vaultId,
+        ),
+      });
     }
+    return { devices, trust: trusting(...devices.map((d) => d.id)) };
+  }
 
+  it("a rotation wrap from a trusted device merges and names its sender", () => {
+    const { devices, trust } = pairedVault(2);
+    const [desktop, phone] = devices as [Device, Device];
+    const gen2 = rotateKeyring(sodium, desktop.ring);
+    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [gen2.kid]);
+    expect(wire[0]).toBe(WRAP_VERSION);
+    const out = unwrapKeys(sodium, wire, phone.id, phone.ring, trust);
+    expect(out.ring).toBe(phone.ring);
+    expect(out.senderDeviceId).toBe(desktop.id.deviceId);
+    expect(phone.ring.active.kid).toBe(gen2.kid);
+  });
+
+  it("an unknown or untrusted signer is untrusted_sender, checked before opening", () => {
+    const { devices } = pairedVault(2);
+    const [desktop, phone] = devices as [Device, Device];
     rotateKeyring(sodium, desktop.ring);
-    const onlyNew = sealForPairing(sodium, desktop.ring, phone.pair.box.publicKey);
-    phone.ring?.merge(openPairingWrap(sodium, onlyNew, phone.pair, vaultId));
+    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [
+      desktop.ring.active.kid,
+    ]);
+    expect(code(() => unwrapKeys(sodium, wire, phone.id, phone.ring, trusting(phone.id)))).toBe(
+      "untrusted_sender",
+    );
+    expect(phone.ring.size).toBe(1);
+  });
 
-    const c = ctx(vaultId, { deviceId: desktop.id });
-    const frame = sealFrame(sodium, desktop.ring, samplePlain(), c);
-    expect(phone.ring && openFrame(sodium, phone.ring, frame, c)).toEqual(samplePlain());
-    expectCode(() => lost.ring && openFrame(sodium, lost.ring, frame, c), "unknown_key");
+  it("every flipped bit of the header, signature or sealed part is rejected", () => {
+    const { devices, trust } = pairedVault(2);
+    const [desktop, phone] = devices as [Device, Device];
+    rotateKeyring(sodium, desktop.ring);
+    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [
+      desktop.ring.active.kid,
+    ]);
+    const seen = new Set<string>();
+    for (let i = 0; i < wire.length; i += 3) {
+      const t = wire.slice();
+      t[i] = (t[i] ?? 0) ^ 0x01;
+      seen.add(code(() => unwrapKeys(sodium, t, phone.id, phone.ring, trust)));
+    }
+    expect([...seen].sort()).toEqual(["auth_failed", "unsupported_version", "untrusted_sender"]);
+    expect(code(() => unwrapKeys(sodium, wire.subarray(0, 50), phone.id, phone.ring, trust))).toBe(
+      "truncated",
+    );
+    expect(phone.ring.size).toBe(1);
+  });
+
+  it("a wrap for one device is useless for another, and the signature binds the vault", () => {
+    const { devices, trust } = pairedVault(3);
+    const [desktop, phone, tablet] = devices as [Device, Device, Device];
+    rotateKeyring(sodium, desktop.ring);
+    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [
+      desktop.ring.active.kid,
+    ]);
+    expect(code(() => unwrapKeys(sodium, wire, tablet.id, tablet.ring, trust))).toBe("auth_failed");
+    const elsewhere = {
+      vaultId: createVaultId(sodium),
+      recoveryPublicKey: testRecovery.publicKeys,
+    };
+    expect(code(() => unwrapKeys(sodium, wire, phone.id, elsewhere, trust))).toBe("auth_failed");
+  });
+
+  it("the vault's recovery pins must match", () => {
+    const { devices, trust } = pairedVault(2);
+    const [desktop, phone] = devices as [Device, Device];
+    const target = {
+      vaultId: desktop.ring.vaultId,
+      recoveryPublicKey: createRecoveryKey(sodium).publicKeys,
+    };
+    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient);
+    expect(code(() => unwrapKeys(sodium, wire, phone.id, target, trust))).toBe(
+      "recovery_key_mismatch",
+    );
   });
 
   it("wrapping a key id the ring does not hold is refused", () => {
-    const ring = newRing();
-    expectCode(
-      () => sealForPairing(sodium, ring, device("x").pair.box.publicKey, ["00".repeat(16)]),
-      "unknown_key",
-    );
+    const { devices } = pairedVault(2);
+    const [desktop, phone] = devices as [Device, Device];
+    expect(
+      code(() => wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, ["00".repeat(16)])),
+    ).toBe("unknown_key");
+  });
+});
+
+describe.each(backends)("revocation is rotation going forward (%s)", (_name, sodium: Sodium) => {
+  it("the new key goes only to remaining devices; the revoked one keeps history but cannot read new frames", () => {
+    const desktop = createDeviceIdentity(sodium);
+    const phone = createDeviceIdentity(sodium);
+    const lost = createDeviceIdentity(sodium);
+    const ring = newRing(sodium);
+    const vaultId = ring.vaultId;
+    const pair = (d: DeviceIdentity) =>
+      openPairingWrap(sodium, sealForPairing(sodium, ring, d.box.publicKey), d, vaultId);
+    const phoneRing = pair(phone);
+    const lostRing = pair(lost);
+
+    const gen2 = rotateKeyring(sodium, ring, { epoch: 1 });
+    const onlyNew = wrapKeys(sodium, ring, desktop, phone.recipient, [gen2.kid]);
+    unwrapKeys(sodium, onlyNew, phone, phoneRing, trusting(desktop));
+
+    const c = ctx(vaultId, { deviceId: desktop.deviceId });
+    const frame = sealFrame(sodium, ring, samplePlain(), c);
+    expect(openFrame(sodium, phoneRing, frame, c)).toEqual(samplePlain());
+    expect(code(() => openFrame(sodium, lostRing, frame, c))).toBe("unknown_key");
   });
 });

@@ -11,7 +11,13 @@ import { createKeyring, rotateKeyring } from "./keys.js";
 import { InMemoryKeyStore, loadKeyring, saveKeyring } from "./keystore.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { ctx, PLAINTEXT_MARKER, samplePlain, sodium } from "./testkit.js";
-import { openPairingWrap, sealForPairing } from "./wrap.js";
+import {
+  openPairingWrap,
+  recoveryRecipient,
+  sealForPairing,
+  unwrapKeys,
+  wrapKeys,
+} from "./wrap.js";
 
 const written: string[] = [];
 
@@ -64,11 +70,13 @@ describe("no key or plaintext in logs", () => {
     const store = new InMemoryKeyStore();
     await saveKeyring(store, ring);
     await loadKeyring(store, sodium, ring.vaultId);
-    openPairingWrap(
+    const restoring = recoveryIdentity(sodium, recovery.phrase);
+    unwrapKeys(
       sodium,
-      sealForPairing(sodium, ring, recovery.publicKeys.boxPublicKey),
-      recoveryIdentity(sodium, recovery.phrase),
-      ring.vaultId,
+      wrapKeys(sodium, ring, phone, recoveryRecipient(ring)),
+      restoring,
+      { vaultId: ring.vaultId, recoveryPublicKey: recovery.publicKeys },
+      () => phone.signPublicKey,
     );
     const tampered = frame.slice();
     tampered[tampered.length - 1] = (tampered.at(-1) ?? 0) ^ 1;
@@ -92,11 +100,12 @@ describe("no key or plaintext in logs", () => {
       () => openFrame(sodium, ring, frame.subarray(0, frame.length - 1), c),
       () => recoveryIdentity(sodium, recovery.phrase.split(" ").slice(0, 23).join(" ")),
       () =>
-        openPairingWrap(
+        unwrapKeys(
           sodium,
-          sealForPairing(sodium, ring, pair.box.publicKey),
+          wrapKeys(sodium, ring, pair, pair.recipient),
           recoveryPair,
-          ring.vaultId,
+          ring,
+          () => pair.signPublicKey,
         ),
     ]) {
       try {

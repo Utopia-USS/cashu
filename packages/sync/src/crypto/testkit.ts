@@ -11,6 +11,9 @@ export const sodium: Sodium = await loadNodeSodium();
 
 export const PLAINTEXT_MARKER = "SYNTHETIC-CANARY-merchant-7f3a";
 
+/** Every Sodium backend the frame / wrap / recovery suites run against (`describe.each`). */
+export const backends: [string, Sodium][] = [["libsodium", sodium]];
+
 /** Synthetic device ids. */
 export const DEVICE_A = "a1".repeat(16);
 export const DEVICE_B = "b2".repeat(16);

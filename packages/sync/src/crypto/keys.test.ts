@@ -14,7 +14,13 @@ import {
 } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { code, GID_SALT, newRing, sodium, testRecovery } from "./testkit.js";
-import { openPairingWrap, sealForPairing } from "./wrap.js";
+import {
+  openPairingWrap,
+  recoveryRecipient,
+  sealForPairing,
+  unwrapKeys,
+  wrapKeys,
+} from "./wrap.js";
 
 const gid = (ring: Keyring, input: string) => {
   const salt = ring.gidSalt();
@@ -141,11 +147,13 @@ describe("gid salt (D9)", () => {
     rotateKeyring(sodium, desktop);
     expect(gid(desktop, "synthetic-import-row-1")).toBe(before);
 
-    const recovered = openPairingWrap(
+    const restoring = recoveryIdentity(sodium, recovery.phrase);
+    const { ring: recovered } = unwrapKeys(
       sodium,
-      sealForPairing(sodium, desktop, recovery.publicKeys.boxPublicKey),
-      recoveryIdentity(sodium, recovery.phrase),
-      desktop.vaultId,
+      wrapKeys(sodium, desktop, phone, recoveryRecipient(desktop)),
+      restoring,
+      { vaultId: desktop.vaultId, recoveryPublicKey: recovery.publicKeys },
+      () => phone.signPublicKey,
     );
     expect(gid(recovered, "synthetic-import-row-1")).toBe(before);
   });

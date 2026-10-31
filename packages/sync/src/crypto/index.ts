@@ -56,4 +56,12 @@ export {
 } from "./recovery.js";
 export { Secret } from "./secret.js";
 export { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
-export { openPairingWrap, sealForPairing } from "./wrap.js";
+export {
+  openPairingWrap,
+  recoveryRecipient,
+  sealForPairing,
+  type TrustedSigner,
+  unwrapKeys,
+  WRAP_VERSION,
+  wrapKeys,
+} from "./wrap.js";
