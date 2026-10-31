@@ -120,15 +120,21 @@ use another one, and nothing signs raw caller bytes.
   generation has the lower epoch and loses. A malicious device that is still trusted can claim at most
   epoch + 1 (`epoch_gap` beyond), and at epoch + 1 it ties the revoker and can grind its kid to win.
   So `acceptEpoch(sender, entry)` is REQUIRED for every unwrap except pairing: it refuses an epoch above
-  the sender's revocation count in the signed registry (`untrusted_sender`). **S29 rule for what
-  remains**: after merging, if the active key's sender is revoked, or its signed `recipients` include a
+  the sender's revocation count in the signed registry (`untrusted_sender`). Under epoch-first order,
+  `acceptEpoch` is the ONLY guard on `active`: the acceptance policy admits any generation up to the
+  highest + 1, generation 1 included, so a trusted sender's key at epoch + 1 becomes active over every
+  later generation unless `acceptEpoch` refuses an epoch above that sender's signed revocation count.
+  **S29 rule for what remains**: after merging, if the active key's sender is revoked, or its signed `recipients` include a
   device revoked in the merged registry, rotate again with epoch + 1.
 - **Ring growth by a still-trusted device (MA1)**: a stolen device not yet revoked holds every key
-  anyway, and can sign one wrap per new generation. Each costs the victim one merge (about 2 ms per wrap,
-  measured: 2,000 wraps in 3.6 s); 2^31 generations cannot be exhausted, so rotation and revocation always remain
-  possible, and any ring encodes. The bound is memory and storage (40 bytes per key). S29 must
-  rate-limit rotations per device in its signed registry (for example a few per day), treat a burst
-  as grounds to revoke, and then rotate.
+  anyway, and can sign one wrap per new generation. Each costs the victim one merge, linear in ring
+  size (about 2 ms per wrap on a small ring, 37 ms at 100k keys), and growth is permanent because keys
+  are never dropped; 2^31 generations cannot be exhausted, so rotation and revocation always remain
+  possible, and any ring encodes. The bound is memory and storage (40 bytes per key). The per-device
+  rotation rate limit belongs in S29's `acceptEpoch(sender, entry)`, which sees the sender and the whole
+  entry (generation included), so it is enforced at unwrap time, not flagged afterwards: refuse a
+  sender's key beyond its allowance (for example a few rotations per day), treat a burst as grounds to
+  revoke, and then rotate.
 - **Per-generation cap as a lever**: a still-trusted malicious device can fill generation n + 1 with 8
   keys so the revoker's key at n + 1 is refused (`bad_payload`) on that device. The revoker's next
   rotation at n + 2 is accepted, so the S29 rule "rotate again" recovers; S29 must treat a refused
@@ -163,6 +169,16 @@ use another one, and nothing signs raw caller bytes.
   event; `ring.replaceRecoveryKey(publicKeys)` exists only to apply that verified event locally, never
   with keys read from storage. Rings from raw key material (`keyringFromKeys`) exist only on
   `@cashu/sync/testing`, for tests and vectors.
+- **S29 notes from the final review (n1-n3)**:
+  - n1: the signed "recovery key changed" event must carry a new recovery-signed base wrap (the whole
+    ring as of the change, signed by the NEW recovery identity, with `createVaultWithRecovery`'s shape);
+    otherwise the new words cannot seed a ring, because a fresh base takes only `RECOVERY_SIGNER_ID`.
+  - n2: `acceptEpoch` is also where the per-sender rotation rate limit lives (see ring growth above).
+  - n3: a recovering device has no signed revocation count. Its `acceptEpoch` accepts only epochs up to
+    the highest epoch seen in recovery-wrapped keys + 1, and it must rotate before writing any frame.
+    Otherwise a stolen, still-certified device can climb one epoch per wrap toward `MAX_EPOCH` (2^20),
+    where the mandated "rotate above every epoch seen" would throw (impractical, about a million wraps,
+    but unbounded).
 
 ### Key storage
 
