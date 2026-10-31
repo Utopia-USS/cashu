@@ -68,12 +68,7 @@ function selectList(
   fields: readonly string[],
   schema: SchemaVersion,
 ): string {
-  const present = new Set(
-    driver
-      .prepare(`PRAGMA table_info(${quote(spec.table)})`)
-      .all<{ name: string }>()
-      .map((c) => c.name),
-  );
+  const present = columnsOf(driver, spec.table);
   if (present.size === 0)
     throw new GenesisError("unsupported_schema", `missing table ${spec.table}`);
   return fields
@@ -140,9 +135,46 @@ function readTable<R>(
   return out;
 }
 
+const columnsOf = (driver: SqlDriver, table: string): ReadonlySet<string> =>
+  new Set(
+    driver
+      .prepare(`PRAGMA table_info(${quote(table)})`)
+      .all<{ name: string }>()
+      .map((c) => c.name),
+  );
+
+/**
+ * Refuses a database whose Python app already synced (S26 review F3): rows in `sync_ids` or
+ * `sync_vaults`, or `sync_outbox` rows not acked yet (0027 / 0028, found through `PRAGMA
+ * table_info`). Their rows already have gids (ULIDs minted by the outbox, a linked vault, maybe
+ * shipped inserts) that genesis gids would duplicate. Every row counts, whatever its profile (an
+ * outbox row without a profile is a global table's): explicit and fail closed. The message names
+ * counts only.
+ */
+function refuseSyncState(driver: SqlDriver): void {
+  const count = (table: string, where = "") =>
+    driver.prepare(`SELECT COUNT(*) AS n FROM ${quote(table)}${where}`).get<{ n: number }>()?.n ??
+    0;
+  const parts: string[] = [];
+  for (const table of ["sync_ids", "sync_vaults"]) {
+    if (columnsOf(driver, table).size === 0) continue;
+    const n = count(table);
+    if (n > 0) parts.push(`${table} ${n}`);
+  }
+  const outbox = columnsOf(driver, "sync_outbox");
+  if (outbox.size > 0) {
+    const n = count("sync_outbox", outbox.has("acked_at") ? " WHERE acked_at IS NULL" : "");
+    if (n > 0) parts.push(`unacked sync_outbox ${n}`);
+  }
+  if (parts.length > 0) {
+    throw new GenesisError("sync_state_present", `sync state present: ${parts.join(", ")}`);
+  }
+}
+
 /**
  * Reads every table genesis needs from a copy of the Python database. Throws `GenesisError`
- * (`unsupported_schema`) for an Alembic version outside 0025-0028, a missing table or column.
+ * (`unsupported_schema`) for an Alembic version outside 0025-0028, a missing table or column, and
+ * `sync_state_present` for a database that already holds sync state (`refuseSyncState`).
  */
 export function readPythonSource(
   driver: SqlDriver,
@@ -150,6 +182,7 @@ export function readPythonSource(
   counters: GenesisCounters,
 ): PythonSource {
   const schema = readSchemaVersion(driver);
+  refuseSyncState(driver);
   const read = <K extends keyof PythonTables>(k: K): PythonTables[K][number][] =>
     readTable(driver, TABLES[k], schema, counters);
   return {

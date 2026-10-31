@@ -37,6 +37,51 @@ describe("readPythonSource: schema", () => {
     expect(read(pythonDb("0028")).schema).toBe("0028_sync_inbound");
   });
 
+  it("refuses sync state on 0028 (sync_ids, sync_vaults, unacked outbox), naming counts only", () => {
+    const outbox = (driver: SqlDriver, acked: string | null) =>
+      driver
+        .prepare(
+          `INSERT INTO sync_outbox (ts, txn, profile_id, table_name, op, local_id, fields, origin, acked_at)
+           VALUES ('2026-01-02 03:04:05', 't1', 1, 'alerts', 'insert', '3', '{}', 'local', ?)`,
+        )
+        .run(acked);
+    // Acked outbox rows alone are history: accepted.
+    const acked = pythonDb("0028");
+    outbox(acked, "2026-01-02 03:04:06");
+    expect(read(acked).schema).toBe("0028_sync_inbound");
+
+    const db = pythonDb("0028");
+    db.exec(
+      `INSERT INTO sync_vaults (profile_id, vault_id, linked_at) VALUES (1, 'v1', '2026-01-02 03:04:05');
+       INSERT INTO sync_ids (profile_id, table_name, local_id, gid, source)
+         VALUES (1, 'alerts', '3', '01JTESTGID0000000000000000', 'outbox'),
+                (1, 'alerts', '4', '01JTESTGID0000000000000001', 'outbox');`,
+    );
+    outbox(db, null);
+    const e = refusal(() => read(db));
+    expect(e?.code).toBe("sync_state_present");
+    expect(e?.exitCode).toBe(65);
+    expect(e?.message).toBe("sync state present: sync_ids 2, sync_vaults 1, unacked sync_outbox 1");
+
+    for (const [sql, message] of [
+      [
+        "INSERT INTO sync_vaults (profile_id, vault_id, linked_at) VALUES (1, 'v1', '2026-01-02 03:04:05')",
+        "sync state present: sync_vaults 1",
+      ],
+      [
+        "INSERT INTO sync_ids (profile_id, table_name, local_id, gid, source) VALUES (1, 'alerts', '3', 'g', 'outbox')",
+        "sync state present: sync_ids 1",
+      ],
+    ] as const) {
+      const one = pythonDb("0028");
+      one.exec(sql);
+      expect(refusal(() => read(one))?.message).toBe(message);
+    }
+    const unacked = pythonDb("0028");
+    outbox(unacked, null);
+    expect(refusal(() => read(unacked))?.message).toBe("sync state present: unacked sync_outbox 1");
+  });
+
   it.each(["0024_topic_market_view", "0029_future"])("refuses %s with exit code 65", (version) => {
     const driver = pythonDb();
     driver.prepare("UPDATE alembic_version SET version_num = ?").run(version);

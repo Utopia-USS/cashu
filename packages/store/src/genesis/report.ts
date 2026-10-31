@@ -8,6 +8,8 @@
  * `recon_collision` (6.3), `unmapped_id_key` (6.5 guard), `clock_skew` (gid.md 7.1). Phase 2 (C5):
  * `missing_keys` (a profile without `VaultKeys`), `invalid_event` (an event fails `parseEvent` or the
  * `detPartsOf` self-check, under `strict`), `strict_counter` (a `bad_*` counter under `strict`).
+ * Source: `sync_state_present` (the database already holds sync_ids / sync_vaults / unacked outbox
+ * rows, S26 review F3).
  */
 type GenesisErrorCode =
   | "unsupported_schema"
@@ -16,7 +18,8 @@ type GenesisErrorCode =
   | "clock_skew"
   | "missing_keys"
   | "invalid_event"
-  | "strict_counter";
+  | "strict_counter"
+  | "sync_state_present";
 
 export class GenesisError extends Error {
   readonly code: GenesisErrorCode;
