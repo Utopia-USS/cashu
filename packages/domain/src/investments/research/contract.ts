@@ -44,6 +44,8 @@ export const RESEARCH_SUMMARY_MAX = 1200;
 export const RESEARCH_NOTE_TTL_DAYS = 30;
 export const RESEARCH_RESTORE_MINUTES = 15;
 export const RESEARCH_CANDIDATE_COOLDOWN_DAYS = 90;
+/** `investments.models.TOPIC_DRAFT_COOLDOWN_DAYS`: no agent draft on a topic rejected this recently. */
+export const TOPIC_DRAFT_COOLDOWN_DAYS = 90;
 export const THESIS_ENTRY_TYPES: readonly string[] = Object.freeze([
   "sentiment_correction",
   "trend",
