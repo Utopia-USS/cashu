@@ -93,6 +93,7 @@ export {
   dedupRef,
   fillKey,
   HASH_VERSION,
+  HASH_VERSION_V2,
   occurrenceKey,
   parsedDedupInputs,
   reconciliationHash,
@@ -115,6 +116,11 @@ export {
   yahooSymbol,
 } from "./exchanges.js";
 export { GenericCsvImporter, ISIN_PATTERN, SNIFF_BYTES } from "./genericCsv.js";
+export {
+  type InstrumentKeySubject,
+  instrumentKeyV2,
+  reconciliationInstrumentKey,
+} from "./instrumentKey.js";
 export { IMPORT_SCHEMA_FILE, importSchema, importSchemaText, SCHEMA_DRAFT } from "./jsonSchema.js";
 export {
   chronologicalRanks,
@@ -123,6 +129,7 @@ export {
   isNewestFirst,
 } from "./ordering.js";
 export {
+  type DedupIdentityV2,
   type ImportPlan,
   type PlanImportOptions,
   type PlannedPosition,

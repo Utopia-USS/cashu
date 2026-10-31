@@ -59,6 +59,7 @@ describe("investments.import_plan producer", () => {
     const [gsha, grel] = archive(ds.dir, "test-a", GENERIC, "csv");
     ds.exec(`
       INSERT INTO inv_import_batches VALUES
+        -- legacy name: batch 1 holds the pre-rename importer id
         (1, 1, 1, 'finanse', 'cashu', 'export.csv', '${sha}', '${rel}', '2026-02-01 10:00:00'),
         (2, 1, 1, 'cashu', 'cashu', 'gone.csv', '${"0".repeat(64)}', 'imports/test-b/gone.csv',
          '2026-02-02 10:00:00'),

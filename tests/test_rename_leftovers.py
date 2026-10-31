@@ -30,6 +30,7 @@ FILES = {
     "tests/test_rename_leftovers.py": "this test",
     "frontend/tests/storage.test.mjs": "tests of the finanse.* -> cashu.* browser storage fallback",
     "packages/domain/test/vectors/inv-importing-*.jsonl": "Python-generated importing vectors: the legacy format id and source namespace the importer still reads",
+    "packages/domain/test/vectors/inv-reimport.jsonl": "Python-generated re-import vectors: a batch and aliases stored under the pre-rename broker namespace",
     "packages/domain/test/vectors/research-*.jsonl": "Python-generated research vectors: the Polish segment label and casefold probes of the Polish word, JSON-escaped",
 }
 

@@ -34,7 +34,8 @@ import {
   type ParsedRename,
   type ParsedTxn,
 } from "./contract.js";
-import { dedupHashes, dedupInputFromParsed } from "./dedup.js";
+import { dedupHashes, dedupInputFromParsed, HASH_VERSION_V2 } from "./dedup.js";
+import { type InstrumentKeySubject, instrumentKeyV2 } from "./instrumentKey.js";
 import { chronologicalRanks } from "./ordering.js";
 import { type BrokerPosition, brokerPositionFromParsed } from "./reconciler.js";
 import {
@@ -127,6 +128,18 @@ export function transactionsToInsert(plan: ImportPlan): readonly Transaction[] {
     .map((entry) => entry.txn);
 }
 
+/**
+ * The v2 dedup identity of a plan (gid.md 4.6): the account's gid replaces the local account id and
+ * the broker instrument key (`instrumentKeyV2` over the resolved instrument with the import's aliases
+ * added) replaces the local instrument id, so the hashes equal the ones genesis derives from the rows
+ * Python stored (and the ones a later re-import computes).
+ */
+export interface DedupIdentityV2 {
+  readonly accountGid: string;
+  /** The gid of an instrument (stored or planned), read only by the `gid:` step of the key. */
+  readonly instrumentGid: (instrumentId: InstrumentId) => string;
+}
+
 export interface PlanImportOptions {
   readonly accountId: AccountId;
   /** The alias namespace (use `effectiveBrokerId(importer, result)`). */
@@ -139,6 +152,11 @@ export interface PlanImportOptions {
   readonly now?: DateTime;
   readonly txnIdFactory: () => TxnId;
   readonly instrumentIdFactory: () => InstrumentId;
+  /**
+   * Hash with the store's v2 identity instead of Python's v1 (local ids, the default). v2 counts
+   * occurrences in chronological rank order, as the Python commit does when it writes the hashes.
+   */
+  readonly dedupV2?: DedupIdentityV2;
 }
 
 /**
@@ -172,33 +190,6 @@ export function planImport(result: ImportParseResult, options: PlanImportOptions
     resolutions.push(resolution);
     blocking.push(...semanticIssues(txn, resolution !== null));
   }
-
-  const hashes = dedupHashes(
-    txns.map((txn, i) => dedupInputFromParsed(txn, resolutions[i]?.instrumentId ?? null)),
-    { accountId, brokerId },
-  );
-  const existing = new Set(
-    hashes.length > 0 && options.existingHashes ? options.existingHashes(hashes) : [],
-  );
-  const ranks = chronologicalRanks(txns);
-
-  const rows: PlannedRow[] = txns.map((txn, i) => {
-    const resolution = resolutions[i] ?? null;
-    const hash = hashes[i] ?? "";
-    return Object.freeze({
-      parsed: txn,
-      match: resolution === null ? null : resolution.match,
-      isDuplicate: existing.has(hash),
-      txn: plannedTransaction(txn, {
-        txnId: options.txnIdFactory(),
-        accountId,
-        instrumentId: resolution === null ? null : resolution.instrumentId,
-        batchId,
-        dedupHash: hash,
-        createdAt: addMicroseconds(now, (ranks[i] ?? 0) * 1000),
-      }),
-    });
-  });
 
   const positions: PlannedPosition[] = [];
   result.positions.forEach((position, index) => {
@@ -255,6 +246,36 @@ export function planImport(result: ImportParseResult, options: PlanImportOptions
     );
   }
 
+  const ranks = chronologicalRanks(txns);
+  const hashes =
+    options.dedupV2 === undefined
+      ? dedupHashes(
+          txns.map((txn, i) => dedupInputFromParsed(txn, resolutions[i]?.instrumentId ?? null)),
+          { accountId, brokerId },
+        )
+      : dedupHashesV2(txns, resolutions, ranks, resolver, brokerId, options.dedupV2);
+  const existing = new Set(
+    hashes.length > 0 && options.existingHashes ? options.existingHashes(hashes) : [],
+  );
+
+  const rows: PlannedRow[] = txns.map((txn, i) => {
+    const resolution = resolutions[i] ?? null;
+    const hash = hashes[i] ?? "";
+    return Object.freeze({
+      parsed: txn,
+      match: resolution === null ? null : resolution.match,
+      isDuplicate: existing.has(hash),
+      txn: plannedTransaction(txn, {
+        txnId: options.txnIdFactory(),
+        accountId,
+        instrumentId: resolution === null ? null : resolution.instrumentId,
+        batchId,
+        dedupHash: hash,
+        createdAt: addMicroseconds(now, (ranks[i] ?? 0) * 1000),
+      }),
+    });
+  });
+
   const referenced = new Map<InstrumentId, Instrument>();
   const ids: InstrumentId[] = [
     ...resolutions.flatMap((resolution) => (resolution === null ? [] : [resolution.instrumentId])),
@@ -285,6 +306,62 @@ export function planImport(result: ImportParseResult, options: PlanImportOptions
     blockingErrors: Object.freeze(blocking),
     accountHint: result.accountHint,
   });
+}
+
+/**
+ * The instrument as a commit leaves it: a planned one with every alias the import learned, a stored
+ * one with the planned aliases appended (they are the newest), so the key is the one genesis and a
+ * later re-import derive from the stored rows.
+ */
+function committedInstrument(
+  resolver: InstrumentResolver,
+  instrumentId: InstrumentId,
+): InstrumentKeySubject {
+  const current = resolver.instrument(instrumentId);
+  if (current === null) throw new InvariantError("a resolved instrument is always remembered");
+  if (resolver.isPlanned(instrumentId)) return current;
+  const added = resolver.newAliases.get(instrumentId) ?? [];
+  return { isin: current.isin, aliases: [...current.aliases, ...added] };
+}
+
+/** gid.md 4.6 hashes of a file's rows (input order), occurrences counted in chronological order. */
+function dedupHashesV2(
+  txns: readonly ParsedTxn[],
+  resolutions: readonly (ResolvedInstrument | null)[],
+  ranks: readonly number[],
+  resolver: InstrumentResolver,
+  brokerId: string,
+  identity: DedupIdentityV2,
+): readonly string[] {
+  const keys = new Map<InstrumentId, string>();
+  const keyOf = (instrumentId: InstrumentId): string => {
+    let key = keys.get(instrumentId);
+    if (key === undefined) {
+      key = instrumentKeyV2(committedInstrument(resolver, instrumentId), brokerId, () =>
+        identity.instrumentGid(instrumentId),
+      );
+      keys.set(instrumentId, key);
+    }
+    return key;
+  };
+  const order = txns.map((_, i) => i).sort((a, b) => (ranks[a] ?? 0) - (ranks[b] ?? 0));
+  const inputs = order.map((i) => {
+    const instrumentId = resolutions[i]?.instrumentId ?? null;
+    return dedupInputFromParsed(
+      txns[i] as ParsedTxn,
+      instrumentId === null ? null : keyOf(instrumentId),
+    );
+  });
+  const chronological = dedupHashes(inputs, {
+    accountId: identity.accountGid,
+    brokerId,
+    version: HASH_VERSION_V2,
+  });
+  const hashes = new Array<string>(txns.length).fill("");
+  order.forEach((i, position) => {
+    hashes[i] = chronological[position] ?? "";
+  });
+  return Object.freeze(hashes);
 }
 
 function planRename(

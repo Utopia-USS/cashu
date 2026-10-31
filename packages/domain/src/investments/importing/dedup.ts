@@ -10,8 +10,8 @@
  * re-import of the same file is recognized. Decimals compare by value (`10.50` equals `10.5`).
  *
  * The algorithm is versioned (`version`, Python's `v1`); gid.md 4.6 defines `v2` over the same parts
- * with gids and broker instrument keys, which a caller gets by passing its own `instrumentKey` and
- * `version`.
+ * with the account gid and the broker instrument key of `instrumentKey.ts` (`planImport` with
+ * `dedupV2` computes them).
  */
 
 import { type Decimal, decimalKey } from "../../decimal.js";
@@ -28,6 +28,8 @@ import { CASHU_NAMESPACE, LEGACY_NAMESPACE, type ParsedTxn } from "./contract.js
 
 const SEPARATOR = "\u001f";
 export const HASH_VERSION = "v1";
+/** gid.md 4.6: the store's hash version (account gid, broker instrument key). */
+export const HASH_VERSION_V2 = "v2";
 
 export { decimalKey };
 
