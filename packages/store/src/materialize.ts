@@ -16,10 +16,11 @@ import type {
   WireEvent as SyncWireEvent,
 } from "@cashu/sync";
 import { canonicalJson, jsonEqual } from "./canonical.js";
+import { encodePayload } from "./engine/compact.js";
 import { StatementCache, TouchedTables, ViewIds, viewSql } from "./engine/context.js";
 import { type FoldDeps, LazyRefs, MaterializerRunner } from "./engine/fold.js";
 import { conflictsKey, IdentityService } from "./engine/identity.js";
-import { EventLog, type LogRow, storedBody } from "./engine/log.js";
+import { deviceOf, EventLog, type LogRow, storedBody } from "./engine/log.js";
 import { type StateFlip, updateSuppression } from "./engine/suppression.js";
 import type { FoldEvent } from "./engine/types.js";
 import { type Decoded, decodeEnvelope, envelopeExtra } from "./envelope.js";
@@ -303,7 +304,7 @@ export class Store {
         type: row.type,
         v: row.v,
         gid: row.gid,
-        device: row.device,
+        device: deviceOf(row.hlc),
         data: (c.decoded as { data: Record<string, unknown> }).data,
       };
       if (row.cause !== null) e.cause = row.cause;
@@ -343,7 +344,6 @@ export class Store {
       type: env.type,
       v: env.v,
       gid: env.gid,
-      device: env.device,
       cause: env.cause ?? null,
       origin: env.origin ?? null,
       extra: envelopeExtra(env),
@@ -369,7 +369,7 @@ export class Store {
       reason: null,
       // the original payload is kept only when the reader's view of it differs (upcast, stripped)
       raw_data: jsonEqual(original, decoded.data) ? null : JSON.stringify(original),
-      data: JSON.stringify(decoded.data),
+      data: encodePayload(env.type, decoded.data),
     };
   }
 

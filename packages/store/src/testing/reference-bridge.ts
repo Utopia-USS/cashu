@@ -3,6 +3,7 @@
 // `RefView` shape. Synthetic data only.
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+import { decodePayload } from "../engine/compact.js";
 import { detPartsOf } from "../events/v1/det-parts.js";
 import type { RefDet, RefEvent, RefView } from "../events/v1/reference/fold.js";
 import { detGid, detGidFor } from "../gid.js";
@@ -184,7 +185,11 @@ export function project(store: Store, names: Names): RefView {
   for (const r of store.read<{ gid: string; data: string }>(
     "SELECT gid, data FROM event_log WHERE type = 'txn.imported' AND state = 'applied'",
   )) {
-    const d = JSON.parse(r.data) as { account: string; dedupHash: string; occurrence: number };
+    const d = decodePayload("txn.imported", r.data) as {
+      account: string;
+      dedupHash: string;
+      occurrence: number;
+    };
     const key = `${rootOf.get(d.account) ?? d.account}|${d.dedupHash}|${d.occurrence}`;
     const list = txnMembers.get(key) ?? [];
     if (!list.includes(n(r.gid))) list.push(n(r.gid));

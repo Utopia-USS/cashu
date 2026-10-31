@@ -2,7 +2,7 @@
 import type { TableDef } from "./ddl.js";
 
 /** Bump with a migration when a system table changes shape (the log is NOT rebuildable). */
-export const SYSTEM_SCHEMA_VERSION = 1;
+export const SYSTEM_SCHEMA_VERSION = 2;
 
 export const SYSTEM_TABLES: readonly TableDef[] = [
   {
@@ -17,8 +17,9 @@ export const SYSTEM_TABLES: readonly TableDef[] = [
   {
     // Every held event of the vault. `state`: applied (folded) | suppressed (causal suppression or an
     // FWW loser, events.md 6.6) | parked (unknown type, newer version, invalid payload: events.md 7).
-    // The original body is `columns + extra + (raw_data ?? data)`; `data` is the payload upcast to the
-    // reader's current version and validated (NULL while parked).
+    // The original body is `columns + extra + (raw_data ?? data)`, the device being the HLC's suffix;
+    // `data` is the payload upcast to the reader's current version and validated (NULL while parked),
+    // in the compact encoding of engine/compact.ts.
     name: "event_log",
     primaryKey: ["seq"],
     columns: [
@@ -29,7 +30,6 @@ export const SYSTEM_TABLES: readonly TableDef[] = [
       { name: "type", type: "TEXT", notNull: true },
       { name: "v", type: "INTEGER", notNull: true },
       { name: "gid", type: "TEXT", notNull: true },
-      { name: "device", type: "TEXT", notNull: true },
       { name: "cause", type: "TEXT" },
       { name: "origin", type: "TEXT" },
       { name: "extra", type: "TEXT" },

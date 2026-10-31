@@ -1,7 +1,7 @@
 // Access to the store's copy of the log (`event_log`).
 import { canonicalJson } from "../canonical.js";
 import type { SqlDriver, SqlStatement, SqlValue } from "../sql/driver.js";
-import type { Payload } from "../upcast.js";
+import { decodePayload } from "./compact.js";
 import type { FoldEvent } from "./types.js";
 
 export type EventState = "applied" | "suppressed" | "parked";
@@ -14,7 +14,6 @@ export interface LogRow {
   type: string;
   v: number;
   gid: string;
-  device: string;
   cause: string | null;
   origin: string | null;
   extra: string | null;
@@ -26,12 +25,17 @@ export interface LogRow {
 
 export type NewLogRow = Omit<LogRow, "seq">;
 
-const FOLD_COLUMNS = "eid, hlc, at, type, v, gid, device, cause, origin, data";
+const FOLD_COLUMNS = "eid, hlc, at, type, v, gid, cause, origin, data";
 
 type FoldRow = Pick<
   LogRow,
-  "eid" | "hlc" | "at" | "type" | "v" | "gid" | "device" | "cause" | "origin" | "data"
+  "eid" | "hlc" | "at" | "type" | "v" | "gid" | "cause" | "origin" | "data"
 >;
+
+/** The writing device of a stored event: its HLC's device suffix (events.md 2, 3.1). */
+export function deviceOf(hlc: string): string {
+  return hlc.slice(15);
+}
 
 function toFoldEvent(r: FoldRow): FoldEvent {
   return {
@@ -41,8 +45,8 @@ function toFoldEvent(r: FoldRow): FoldEvent {
     type: r.type,
     v: r.v,
     gid: r.gid,
-    device: r.device,
-    data: JSON.parse(r.data ?? "{}") as Payload,
+    device: deviceOf(r.hlc),
+    data: r.data === null ? {} : decodePayload(r.type, r.data),
     ...(r.cause === null ? {} : { cause: r.cause }),
     ...(r.origin === null ? {} : { origin: r.origin }),
   };
@@ -52,8 +56,8 @@ const CHUNK = 512;
 /** Rows per multi-row INSERT (14 columns: far below SQLite's 32,766 bound parameters). */
 const BATCH = 128;
 const LOG_COLUMNS =
-  "eid, hlc, at, type, v, gid, device, cause, origin, extra, state, reason, raw_data, data";
-const LOG_ROW = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  "eid, hlc, at, type, v, gid, cause, origin, extra, state, reason, raw_data, data";
+const LOG_ROW = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 function logValues(r: NewLogRow): SqlValue[] {
   return [
@@ -63,7 +67,6 @@ function logValues(r: NewLogRow): SqlValue[] {
     r.type,
     r.v,
     r.gid,
-    r.device,
     r.cause,
     r.origin,
     r.extra,
@@ -314,13 +317,18 @@ export class EventLog {
 
 /** The original envelope of a stored event, as canonical JSON. */
 export function storedBody(row: LogRow, vault: string): string {
-  const data = JSON.parse(row.raw_data ?? row.data ?? "{}") as unknown;
+  const data =
+    row.raw_data !== null
+      ? (JSON.parse(row.raw_data) as unknown)
+      : row.data !== null
+        ? decodePayload(row.type, row.data)
+        : {};
   const extra = row.extra ? (JSON.parse(row.extra) as Record<string, unknown>) : {};
   return canonicalJson({
     ...extra,
     eid: row.eid,
     vault,
-    device: row.device,
+    device: deviceOf(row.hlc),
     hlc: row.hlc,
     at: row.at,
     type: row.type,
