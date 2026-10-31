@@ -10,6 +10,7 @@ import { instrumentIdentity, instrumentsMaterializer } from "./instruments.js";
 import { overridesMaterializer } from "./overrides.js";
 import { positionsMaterializer, renamesMaterializer } from "./positions.js";
 import { signalsMaterializer } from "./signals.js";
+import { ruleRunsMaterializer, strategyMaterializer } from "./strategy.js";
 import { transactionsMaterializer } from "./transactions.js";
 import { valuationsMaterializer } from "./valuations.js";
 import { watchlistMaterializer } from "./watchlist.js";
@@ -27,6 +28,8 @@ export const investmentsModule: StoreModule = {
     watchlistMaterializer,
     overridesMaterializer,
     valuationsMaterializer,
+    strategyMaterializer,
+    ruleRunsMaterializer,
     signalsMaterializer,
   ],
 };
