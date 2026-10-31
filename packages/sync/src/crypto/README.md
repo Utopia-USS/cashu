@@ -165,8 +165,8 @@ use another one, and nothing signs raw caller bytes.
   produce identical frame sizes (checked against a BigInt reference).
 - **Secrets** (`Secret`, `Keyring`, `BoxKeyPair`, identities, the gid salt) print `[redacted]` through
   `String`, `JSON.stringify` and `util.inspect`, and `structuredClone` (IPC) of them carries no key
-  bytes; error messages are fixed strings and never carry a `cause`. `nolog.test.ts` checks it and a test
-  fails if any crypto source calls `console`. JS cannot guarantee zeroing (m7): GC copies, immutable
+  bytes; error messages are fixed strings and never carry a `cause`. `nolog.test.ts` checks it, and Biome's
+  `noConsole` (an override for this folder in the root `biome.json`) fails lint on any `console` call. JS cannot guarantee zeroing (m7): GC copies, immutable
   strings (safeStorage takes base64 strings, the recovery phrase is a string by necessity) and libsodium's
   WebAssembly buffers are freed without zeroing; `wipe()` and the `fill(0)` calls are best effort.
 - **OS key storage (m12)**: Windows DPAPI, the macOS Keychain and Electron `safeStorage` decrypt for any

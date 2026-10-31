@@ -1,6 +1,5 @@
 // The S27 review's attacks A1-A7, kept as permanent tests: each asserts the attack now FAILS.
 
-import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { concat, fromHex, lengthPrefixed, u32, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
@@ -319,19 +318,6 @@ describe("revocation races and hygiene", () => {
       id.signSecretKey.expose(),
     ]) {
       expect(cloned).not.toContain(hex(s));
-    }
-  });
-
-  it("no source file of the crypto layer calls console", () => {
-    const dir = new URL(".", import.meta.url);
-    const sources = readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
-    expect(sources.length).toBeGreaterThan(5);
-    for (const f of sources) {
-      // Comments may mention console (e.g. "prints [redacted] in console.log"); code may not.
-      const source = readFileSync(new URL(f, dir), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/\/\/.*$/gm, "");
-      expect(source, f).not.toMatch(/\bconsole\s*[.[]/);
     }
   });
 });
