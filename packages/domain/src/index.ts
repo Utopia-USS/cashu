@@ -1,6 +1,8 @@
 export const PACKAGE_NAME = "@cashu/domain";
 
 export * from "./casefold.js";
+/** Budget module (namespaced like investments). */
+export * as budget from "./budget/index.js";
 export * from "./codecs.js";
 /** Core module (registries, net worth, profile rules). */
 export * as core from "./core/index.js";
