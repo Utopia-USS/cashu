@@ -4,8 +4,9 @@
 // (DEFLATE) + S27 frames + manifest gate + folder transport on a real disk. Synthetic data only.
 //
 // The sink only counts (the spike's numbers include its SQLite materializer, which is S23's cost
-// here), so these numbers are the carrier's share. Ceilings are generous for CI machines; measured
-// numbers are printed and recorded in the S28b checkpoint. Spike own-log reference (Node 23.9, M-series):
+// here), so these numbers are the carrier's share. Ceilings are generous for CI machines and apply to
+// the CPU time of this thread: wall time on a loaded machine (a parallel gate, other workers) measures
+// the scheduler, not the carrier. Wall and CPU numbers are printed and recorded in the S28b checkpoint. Spike own-log reference (Node 23.9, M-series):
 // bulk write + apply 453-483 ms, new device build 315-320 ms, full rebuild 324-329 ms, cold start
 // 33-36 ms, incremental 10 edits 0.3 ms / 1000 tx 3.6 ms, log 16.0 MB uncompressed.
 import { mkdtemp, rm } from "node:fs/promises";
@@ -150,10 +151,14 @@ class CountingSink implements EventSink {
   }
 }
 
-async function time<T>(fn: () => Promise<T>): Promise<[T, number]> {
+/** The result, the wall time and this thread's CPU time (ms) of `fn`. */
+async function time<T>(fn: () => Promise<T>): Promise<[T, number, number]> {
   const t = performance.now();
+  const cpu = process.threadCpuUsage();
   const out = await fn();
-  return [out, Math.round((performance.now() - t) * 10) / 10];
+  const used = process.threadCpuUsage(cpu);
+  const round = (ms: number) => Math.round(ms * 10) / 10;
+  return [out, round(performance.now() - t), round((used.user + used.system) / 1000)];
 }
 
 const roots: string[] = [];
@@ -205,8 +210,9 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
     // were sealed and appended once).
     const sinkA = new CountingSink();
     const a = await device(A, new MemoryTransport(), sinkA);
-    const [written, bulk] = await time(() => a.write(events));
+    const [written, bulk, bulkCpu] = await time(() => a.write(events));
     results.bulkWriteAndApply_ms = bulk;
+    results.bulkWriteAndApply_cpu_ms = bulkCpu;
     results.bulkFrames = written.frames;
     expect(sinkA.size).toBe(64_340);
 
@@ -220,12 +226,14 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
     // Device B: new device, builds from the folder (pull + verify + copy + apply).
     const sinkB = new CountingSink();
     const b = await device(B, new MemoryTransport(), sinkB);
-    const [, build] = await time(() => b.sync());
+    const [, build, buildCpu] = await time(() => b.sync());
     results.newDeviceBuild_ms = build;
+    results.newDeviceBuild_cpu_ms = buildCpu;
     expect(sinkB.size).toBe(64_340);
 
-    const [, rebuild] = await time(() => b.rebuild());
+    const [, rebuild, rebuildCpu] = await time(() => b.rebuild());
     results.fullRebuild_ms = rebuild;
+    results.fullRebuild_cpu_ms = rebuildCpu;
     expect(sinkB.size).toBe(64_340);
 
     // Incremental: A writes, pushes; B pulls and applies.
@@ -261,21 +269,22 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
     await c.sync();
     await c.close();
     // Cold start: reopen over the durable local log, one sync pass with nothing new.
-    const [reopened, cold] = await time(async () => {
+    const [reopened, cold, coldCpu] = await time(async () => {
       const engine = await device(C, localC, sinkC, clockC);
       await engine.sync();
       return engine;
     });
     results.coldStart_ms = cold;
+    results.coldStart_cpu_ms = coldCpu;
     await reopened.close();
 
     console.log(`S28b perf ${JSON.stringify(results)}`);
     // Ceilings: 5x the spike's own-log numbers (CI headroom); the target (2x) is checked on the
     // reference machine and recorded in the checkpoint.
-    expect(results.bulkWriteAndApply_ms).toBeLessThan(5 * 483);
-    expect(results.newDeviceBuild_ms).toBeLessThan(5 * 320);
-    expect(results.fullRebuild_ms).toBeLessThan(5 * 329);
-    expect(results.coldStart_ms).toBeLessThan(5 * 36);
+    expect(bulkCpu).toBeLessThan(5 * 483);
+    expect(buildCpu).toBeLessThan(5 * 320);
+    expect(rebuildCpu).toBeLessThan(5 * 329);
+    expect(coldCpu).toBeLessThan(5 * 36);
     expect(results.logBytes).toBeLessThan(16_035_578 / 3);
   });
 });

@@ -1,3 +1,4 @@
+import { randomFillSync } from "node:crypto";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { describe, expect, it } from "vitest";
@@ -221,15 +222,21 @@ describe("gid salt (D9)", () => {
 });
 
 describe("large rings (D16)", () => {
-  it("a 50k-key ring encodes, decodes, pairs and still rotates, in well under 5 s", () => {
+  it("a 50k-key ring encodes, decodes, pairs and still rotates, in well under 5 s of CPU", () => {
     const ring = newRing();
+    // Test key material in one draw: libsodium-wrappers fills random bytes 4 at a time through a JS
+    // callback (~1.6 s of CPU for 50k keys), which only slowed the setup.
+    const material = randomFillSync(new Uint8Array(50_000 * 32));
     const keys = Array.from({ length: 50_000 }, (_, i) => ({
       generation: i + 1,
       epoch: 0,
-      key: sodium.randomBytes(32),
+      key: material.slice(i * 32, i * 32 + 32),
     }));
+    material.fill(0);
     const big = keyringFromKeys(sodium, vaultOf(ring), keys);
-    const started = performance.now();
+    // CPU time of this thread, not wall time: on a loaded machine (a parallel gate, other workers)
+    // wall time measures the scheduler. The budget is about the work (no quadratic step, no spread).
+    const started = process.threadCpuUsage();
     const payload = encodeKeyPayload(big);
     expect(payload.length).toBeGreaterThan(50_000 * 40);
     expect(decodeKeyPayload(sodium, payload).size).toBe(50_000);
@@ -237,7 +244,8 @@ describe("large rings (D16)", () => {
     const phoneRing = pairWith(sodium, big, phone);
     expect(phoneRing.active.kid).toBe(big.active.kid);
     expect(rotateKeyring(sodium, phoneRing, { epoch: 1 }).generation).toBe(50_001);
-    expect(performance.now() - started).toBeLessThan(5_000);
+    const cpu = process.threadCpuUsage(started);
+    expect((cpu.user + cpu.system) / 1000).toBeLessThan(5_000);
   }, 20_000);
 });
 
