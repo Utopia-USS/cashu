@@ -5,6 +5,9 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { REPO_ROOT, readRepoFile } from "../repo.ts";
 
+/** A component name: PascalCase, so SCREAMING_CASE constants (`SPACING_STEPS`) are not components. */
+const COMPONENT_NAME = /^[A-Z](?=[A-Z0-9]*[a-z])\w*$/;
+
 /** PascalCase value exports reachable from an index file (follows `export * from` / `export { } from`). */
 export function componentExports(indexRel: string, seen = new Set<string>()): string[] {
   if (seen.has(indexRel) || !existsSync(join(REPO_ROOT, indexRel))) return [];
@@ -30,11 +33,11 @@ export function componentExports(indexRel: string, seen = new Set<string>()): st
           .split(/\s+as\s+/)
           .pop()
           ?.trim() ?? "";
-      if (/^[A-Z]/.test(exported)) names.add(exported);
+      if (COMPONENT_NAME.test(exported)) names.add(exported);
     }
   }
   for (const m of source.matchAll(/export\s+(?:function|const|class)\s+([A-Z]\w*)/g)) {
-    if (m[1]) names.add(m[1]);
+    if (m[1] && COMPONENT_NAME.test(m[1])) names.add(m[1]);
   }
   return [...names].sort();
 }

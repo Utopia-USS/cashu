@@ -1,0 +1,141 @@
+/* The token source of the cashU UI (cashu-ui skill, references/tokens.md): a Tailwind v4 theme compiled
+   by @tailwindcss/vite for the desktop renderer and Storybook, and by Uniwind (Metro) for apps/mobile.
+   Roles only: the default palette and scales are reset, so `bg-red-500` generates nothing. Light values
+   live in @theme and again in `@variant light` (Uniwind's explicit light theme); the guard
+   tools/arch/src/guards/theme.test.ts keeps the two identical, every role defined in dark, and every
+   text / surface pair at WCAG AA. */
+@import "tailwindcss";
+@import "uniwind";
+
+@source "../../../../apps";
+@source "..";
+
+@theme {
+  --color-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --font-weight-*: initial;
+
+  --color-fg: #15181c;
+  --color-fg-secondary: #374151;
+  --color-fg-muted: #5b6472;
+  --color-fg-inverse: #ffffff;
+  --color-surface: #f4f5f7;
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #eceef1;
+  --color-surface-overlay: #ffffff;
+  --color-border: #dfe3e8;
+  --color-border-strong: #b8c0ca;
+  --color-accent: #1d4ed8;
+  --color-accent-muted: #dbe5fb;
+  --color-positive: #116a33;
+  --color-positive-bg: rgba(17, 106, 51, 0.1);
+  --color-negative: #b91c1c;
+  --color-negative-bg: rgba(185, 28, 28, 0.1);
+  --color-warning: #874d06;
+  --color-warning-bg: rgba(135, 77, 6, 0.12);
+  --color-info: #1d4ed8;
+  --color-info-bg: rgba(29, 78, 216, 0.1);
+  --color-chart-1: #2563eb;
+  --color-chart-2: #db2777;
+  --color-chart-3: #059669;
+  --color-chart-4: #d97706;
+  --color-chart-5: #7c3aed;
+  --color-chart-6: #0891b2;
+  --color-chart-7: #dc2626;
+  --color-chart-8: #4b5563;
+  --color-chart-grid: #eceef1;
+  --color-focus: #2563eb;
+
+  /* 4-point spacing: p-1 = 4px. Uniwind's safe-area utilities need the multiplier, so off-scale
+     steps (p-13) are rejected by the class lint, not by the theme (SPACING_STEPS in src/layout.ts). */
+  --spacing: 4px;
+  --spacing-row: 64px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-body: 15px;
+  --text-body--line-height: 20px;
+  --text-title: 17px;
+  --text-title--line-height: 22px;
+  --text-headline: 22px;
+  --text-headline--line-height: 28px;
+  --text-display: 30px;
+  --text-display--line-height: 36px;
+
+  --font-weight-regular: 400;
+  --font-weight-strong: 600;
+}
+
+@layer theme {
+  :root {
+    @variant dark {
+      --color-fg: #e8eaed;
+      --color-fg-secondary: #c9cfd8;
+      --color-fg-muted: #9aa4b2;
+      --color-fg-inverse: #0f1216;
+      --color-surface: #0f1216;
+      --color-surface-raised: #171b21;
+      --color-surface-sunken: #0a0c0f;
+      --color-surface-overlay: #1e232a;
+      --color-border: #262c34;
+      --color-border-strong: #3a424d;
+      --color-accent: #7aa7ff;
+      --color-accent-muted: #1e2a44;
+      --color-positive: #4ade80;
+      --color-positive-bg: rgba(74, 222, 128, 0.14);
+      --color-negative: #f87171;
+      --color-negative-bg: rgba(248, 113, 113, 0.14);
+      --color-warning: #fbbf24;
+      --color-warning-bg: rgba(251, 191, 36, 0.14);
+      --color-info: #7aa7ff;
+      --color-info-bg: rgba(122, 167, 255, 0.14);
+      --color-chart-1: #60a5fa;
+      --color-chart-2: #f472b6;
+      --color-chart-3: #34d399;
+      --color-chart-4: #fbbf24;
+      --color-chart-5: #a78bfa;
+      --color-chart-6: #22d3ee;
+      --color-chart-7: #f87171;
+      --color-chart-8: #9ca3af;
+      --color-chart-grid: #1f252d;
+      --color-focus: #7aa7ff;
+    }
+    @variant light {
+      --color-fg: #15181c;
+      --color-fg-secondary: #374151;
+      --color-fg-muted: #5b6472;
+      --color-fg-inverse: #ffffff;
+      --color-surface: #f4f5f7;
+      --color-surface-raised: #ffffff;
+      --color-surface-sunken: #eceef1;
+      --color-surface-overlay: #ffffff;
+      --color-border: #dfe3e8;
+      --color-border-strong: #b8c0ca;
+      --color-accent: #1d4ed8;
+      --color-accent-muted: #dbe5fb;
+      --color-positive: #116a33;
+      --color-positive-bg: rgba(17, 106, 51, 0.1);
+      --color-negative: #b91c1c;
+      --color-negative-bg: rgba(185, 28, 28, 0.1);
+      --color-warning: #874d06;
+      --color-warning-bg: rgba(135, 77, 6, 0.12);
+      --color-info: #1d4ed8;
+      --color-info-bg: rgba(29, 78, 216, 0.1);
+      --color-chart-1: #2563eb;
+      --color-chart-2: #db2777;
+      --color-chart-3: #059669;
+      --color-chart-4: #d97706;
+      --color-chart-5: #7c3aed;
+      --color-chart-6: #0891b2;
+      --color-chart-7: #dc2626;
+      --color-chart-8: #4b5563;
+      --color-chart-grid: #eceef1;
+      --color-focus: #2563eb;
+    }
+  }
+}

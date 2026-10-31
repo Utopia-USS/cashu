@@ -12,6 +12,14 @@ allowBuilds:
   # frontend/'s vite 5 bundles esbuild 0.21, whose postinstall only re-checks the binary that its optional
   # @esbuild/<platform> package already installed; nothing needs building.
   esbuild: false
+  # apps/mobile: react-native-libsodium's postinstall only unpacks the prebuilt libsodium it ships
+  # (libsodium/build.tgz) for its iOS / Android build; without it the native module has no library.
+  react-native-libsodium: true
+  # @parcel/watcher (Expo CLI / Tailwind file watching) only compiles from source when no prebuilt
+  # @parcel/watcher-<platform> package matched; unrs-resolver (jest 30's resolver) only re-checks its
+  # prebuilt napi binary. Both ship binaries for every supported platform: nothing needs building.
+  "@parcel/watcher": false
+  unrs-resolver: false
 # TRANSITIONAL(arch-tools): dependency-cruiser parses TypeScript with the classic compiler API, which
 # TS 7 (tsgo) no longer ships. Declaring the peer lets it resolve the TS 6 that tools/arch installs for
 # parsing only. Remove (with the TS 6 pin) once dependency-cruiser and typescript-eslint read TS 7.

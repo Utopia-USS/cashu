@@ -1,0 +1,7 @@
+# Continuous Native Generation: ios/ and android/ come from `expo prebuild` / `expo run:ios`.
+/ios/
+/android/
+.expo/
+expo-env.d.ts
+# Local measurement output (S41)
+/bench/

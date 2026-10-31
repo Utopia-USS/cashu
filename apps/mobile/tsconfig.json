@@ -1,4 +1,13 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "include": ["src"]
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["jest", "expo/types"]
+  },
+  "include": ["index.ts", "app", "src", "uniwind-types.d.ts", ".expo/types/**/*.ts"]
 }

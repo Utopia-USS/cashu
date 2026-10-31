@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "cashU",
+    "slug": "cashu",
+    "scheme": "cashu",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "dev.cashu.mobile",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "dev.cashu.mobile"
+    },
+    "plugins": ["expo-router", "expo-sqlite", "expo-secure-store", "expo-localization"],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "updates": {
+      "enabled": false
+    }
+  }
+}

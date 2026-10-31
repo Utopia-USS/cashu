@@ -1,8 +1,9 @@
 // expo-sqlite adapter (phone). Structural over expo-sqlite's synchronous API (`openDatabaseSync`,
-// `execSync`, `prepareSync`, `withTransactionSync`), which the spike ran on Hermes in Expo Go
-// (spike-result.md, iOS smoke). The app opens the database and passes it in; packages/store never
-// imports expo. Not yet run on a device: S41 wires it in the mobile scaffold and runs the store
-// suite on the simulator.
+// `execSync`, `prepareSync`, `withTransactionSync`); the app opens the database and passes it in, so
+// packages/store never imports expo. Checked against expo-sqlite 58 (SDK 58): `executeSync` resets and
+// rebinds the statement and steps it once; a row read leaves the cursor on that row until the next
+// run, so `get` resets it (no read left open on the connection). Run on the iOS simulator by S41
+// (apps/mobile debug screen: the demo log builds the same view hash as better-sqlite3 on Node).
 import type { SqlDriver, SqlRunResult, SqlStatement, SqlValue } from "./driver.js";
 
 interface ExpoExecuteResult {
@@ -10,12 +11,29 @@ interface ExpoExecuteResult {
   readonly lastInsertRowId: number;
   getFirstSync(): unknown;
   getAllSync(): unknown[];
+  resetSync(): void;
 }
 
+/** What expo-sqlite 58's typings accept as a bind value (`SQLiteBindValue`). */
+type ExpoBindValue = string | number | boolean | null | Uint8Array;
+
 interface ExpoStatement {
-  executeSync(params: SqlValue[]): ExpoExecuteResult;
+  executeSync(params: ExpoBindValue[]): ExpoExecuteResult;
   finalizeSync(): void;
 }
+
+/**
+ * expo-sqlite's typings omit `bigint`, while its native binding takes one as a 64-bit integer
+ * (ios/SQLiteBindValue.swift). A safe integer goes as a number (what the typings promise); a larger
+ * one keeps the bigint so no precision is lost.
+ */
+function bindValue(v: SqlValue): ExpoBindValue {
+  if (typeof v !== "bigint") return v;
+  if (v >= BigInt(Number.MIN_SAFE_INTEGER) && v <= BigInt(Number.MAX_SAFE_INTEGER))
+    return Number(v);
+  return v as unknown as ExpoBindValue;
+}
+const bind = (params: SqlValue[]): ExpoBindValue[] => params.map(bindValue);
 
 /** The part of expo-sqlite's `SQLiteDatabase` the adapter uses. */
 export interface ExpoSqliteDatabase {
@@ -37,14 +55,19 @@ export function expoSqliteDriver(db: ExpoSqliteDatabase): SqlDriver {
       statements.push(stmt);
       return {
         run(...params: SqlValue[]): SqlRunResult {
-          const r = stmt.executeSync(params);
+          const r = stmt.executeSync(bind(params));
           return { changes: r.changes, lastInsertRowid: r.lastInsertRowId };
         },
         get<R>(...params: SqlValue[]) {
-          return (stmt.executeSync(params).getFirstSync() ?? undefined) as R | undefined;
+          const r = stmt.executeSync(bind(params));
+          try {
+            return (r.getFirstSync() ?? undefined) as R | undefined;
+          } finally {
+            r.resetSync();
+          }
         },
         all<R>(...params: SqlValue[]) {
-          return stmt.executeSync(params).getAllSync() as R[];
+          return stmt.executeSync(bind(params)).getAllSync() as R[];
         },
       };
     },

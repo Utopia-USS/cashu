@@ -17,9 +17,9 @@ const uiExports = componentExports(UI_INDEX);
 
 describe("guard: story coverage", () => {
   it.skipIf(uiExports.length === 0)(
-    existsSync(join(REPO_ROOT, UI_INDEX))
+    uiExports.length > 0
       ? `every packages/ui component export has a story (${uiExports.length} exports)`
-      : "every packages/ui component export has a story - SKIPPED: packages/ui has no components yet; the check turns on with the first export",
+      : `every packages/ui component export has a story - SKIPPED: ${existsSync(join(REPO_ROOT, UI_INDEX)) ? "packages/ui exports no component yet" : "packages/ui has no components yet"}; the check turns on with the first export`,
     () => {
       const stories = listFiles(["packages/ui"], /\.stories\.tsx$/).map(readRepoFile);
       const covered = storiedComponents(stories);
