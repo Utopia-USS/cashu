@@ -126,7 +126,7 @@ def test_merchant_private_person_becomes_a_ref_in_both_modes():
             {"a": L.merchant("ZOFIA WISNIEWSKA"), "b": L.merchant("BIEDRONKA 123")}
         )
         assert out["a"].startswith("payee:") and len(out["a"]) == 16
-        assert out["b"] == "BIEDRONKA 123"
+        assert out["b"] == ("BIEDRONKA [amount]" if privacy == "strict" else "BIEDRONKA 123")
 
 
 # --------------------------------------------------------------------------- #
@@ -163,17 +163,22 @@ def test_identifiers_are_always_scrubbed(text, strict):
         ("worth $1,234.50 now", "worth [amount] now"),
         ("EUR 12.30 fee", "[amount] fee"),
         ("cost 4321.09", "cost [amount]"),
-        ("total 98765 in 2026", "total [amount] in 2026"),
+        # S37fix D3: every other number with 2+ significant digits, bare years too; R1 / R2 keep
+        # percentages, percentage points, non-money units and file positions (up to 3 digits)
+        ("total 98765 in 2026", "total [amount] in [amount]"),
         ("37.3% of the portfolio, 2.5 pp drift", "37.3% of the portfolio, 2.5 pp drift"),
+        ("5000% of the portfolio", "[amount]% of the portfolio"),
         (
             "No deposit for 45 days (last on 2026-01-05)",
             "No deposit for 45 days (last on 2026-01-05)",
         ),
-        ("ISIN US0378331005 held", "ISIN US[number] held"),  # free text: no ISIN exemption
+        ("1500 days of history", "[amount] days of history"),
+        ("ISIN US0378331005 held", "ISIN [iban] held"),  # free text: no ISIN exemption
         ("rule rebalance_check, row 12", "rule rebalance_check, row 12"),
+        ("5 000 dni zaległości kwota 5000", "[amount] dni zaległości kwota [amount]"),
     ],
 )
-def test_strict_scrubs_amounts_keeps_percentages_dates_isins(text, expected):
+def test_strict_scrubs_amounts_and_numbers_keeps_dates(text, expected):
     assert scrub_text(text, strict=True) == expected
 
 
@@ -185,7 +190,8 @@ def test_amounts_mode_keeps_amounts_but_not_identifiers():
 def test_known_names_are_masked_case_and_diacritic_insensitive():
     guard = NameGuard(1, frozenset({"ZOFIA WISNIEWSKA", "KOWALCZYK"}))
     text = "Rozmowa z Zofia Wiśniewska i p. kowalczyk; Kowalczykowa zostaje."
-    assert guard.mask(text) == "Rozmowa z [name] i p. [name]; Kowalczykowa zostaje."
+    # S37fix D4: an inflected form ("Kowalczykowa", Mrs Kowalczyk) is masked too
+    assert guard.mask(text) == "Rozmowa z [name] i p. [name]; [name] zostaje."
 
 
 def test_isin_check_digit():
@@ -215,7 +221,7 @@ def test_leak_check_refuses_identifier_like_values_in_any_mode():
 def test_symbol_fields_carry_isins_and_vat_ids_in_text_are_scrubbed():
     redactor = Redactor("strict")
     out = redactor.apply({"isin": L.symbol("US0378331005"), "note": L.text("NIP PL5260001248")})
-    assert out == {"isin": "US0378331005", "note": "NIP PL[number]"}
+    assert out == {"isin": "US0378331005", "note": "NIP [iban]"}
     leak_check(out, strict=True, isins=redactor.isins)
 
 
@@ -283,7 +289,9 @@ def test_symbol_label_is_scrubbed_for_names_and_amounts():
         }
     )
     assert "KOWALSKI" not in json.dumps(out) and "15000" not in out["a"]
-    assert out["c"] == "CDR" and out["d"] == "0700" and out["e"] == "[amount]"
+    # S37fix F8: in strict a symbol without a letter is a number ("0700" too)
+    assert out["c"] == "CDR" and out["d"] == "[amount]" and out["e"] == "[amount]"
+    assert Redactor("amounts", guard).apply({"d": L.symbol("0700")}) == {"d": "0700"}
 
 
 @pytest.mark.parametrize(
@@ -328,9 +336,22 @@ def test_strict_money_words(text):
     assert not any(c.isdigit() for c in scrub_text(text, strict=True)), text
 
 
-@pytest.mark.parametrize("text", ["2026", "in 2026", "since 2019", "2026-09", "2026-Q3", "09/2026"])
-def test_years_and_periods_survive(text):
+@pytest.mark.parametrize(
+    "text",
+    ["2026-09", "2026-Q3", "09/2026", "2026-01-05", "05.01.2026"],
+)
+def test_dates_and_periods_survive(text):
     assert scrub_text(text, strict=True) == text
+
+
+# S37fix N2: no month-name exemption; a year survives only inside a validated date format
+@pytest.mark.parametrize(
+    "text", ["2026", "in 2026", "since 2019", "za 2000", "stycznia 2026", "May 2026"]
+)
+def test_bare_years_are_numbers_in_strict(text):
+    # S37fix D3: a year is kept only inside a date format; "za 2000" may be a price
+    assert "20" not in scrub_text(text, strict=True) and "19" not in scrub_text(text, strict=True)
+    assert scrub_text(text, strict=False) == text
 
 
 def test_payee_refs_never_contain_digits():

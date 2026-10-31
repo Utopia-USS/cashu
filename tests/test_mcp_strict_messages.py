@@ -10,7 +10,7 @@ import json
 import re
 
 import pytest
-from mcp_support import STRATEGY_YAML, TODAY, leaks, seed_profile
+from mcp_support import STRATEGY_YAML, TODAY, check_authored_text, leaks, seed_profile
 
 from cashu.core.db import get_session
 from cashu.core.mcp.server import CashuMcp
@@ -139,15 +139,17 @@ def _messages(node) -> list[str]:
     return []
 
 
-def test_fuzz_every_tool_over_the_gap_history(gaps, tmp_path):
+def test_fuzz_every_tool_over_the_gap_history(gaps, tmp_path, monkeypatch):
     """The full strict fuzz (test_mcp_tools) over a profile whose history has a quantity gap and a
     negative cash balance: no leak, and no system message carries those numbers."""
     from test_mcp_tools import _calls as fuzz_calls
 
     _pid, _slug, host = gaps
+    authored = check_authored_text(monkeypatch)  # constant cashU text keeps numbers (S37fix R3)
     for name, args in fuzz_calls(host, tmp_path):
         result = host.call(name, args)
         assert result.ok, (name, result.error)
         assert not leaks(result.data, strict=True), name
+        assert not authored, (name, authored)
         for message in _messages(result.data):
             assert not any(re.search(rf"\b{n}\b", message) for n in SECRET_NUMBERS), (name, message)

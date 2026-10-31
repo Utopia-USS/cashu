@@ -16,6 +16,7 @@ from mcp_support import (
     PERSON_P2P,
     STRATEGY_YAML,
     TODAY,
+    check_authored_text,
     leaks,
     seed_profile,
     write_canonical,
@@ -353,6 +354,7 @@ def _record_labels(monkeypatch) -> list[tuple[Sensitivity, object]]:
 def test_strict_mode_never_sends_identifiers_names_or_amounts(fuzz, tmp_path, monkeypatch):
     _pid, _slug, host = fuzz
     seen = _record_labels(monkeypatch)
+    authored = check_authored_text(monkeypatch)  # constant cashU text keeps numbers (S37fix R3)
     calls = _calls(host, tmp_path)
     assert {name for name, _ in calls} == set(all_tools()), "every tool must be fuzzed"
     problems = []
@@ -363,6 +365,7 @@ def test_strict_mode_never_sends_identifiers_names_or_amounts(fuzz, tmp_path, mo
         if found:
             problems.append((name, found))
     assert not problems, problems
+    assert not authored, authored
     # Every number that left came from a percent / count / ref label, never an amount.
     assert any(label is Sensitivity.AMOUNT for label, _ in seen)  # amounts existed in the trees
     numeric_amounts = {int(a) for a in (987654, 76543, 12345, 4321, 5667, 2602, 9127)}

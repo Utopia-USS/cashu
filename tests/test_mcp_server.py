@@ -281,3 +281,40 @@ def test_no_audit_row_no_call(db_engine, monkeypatch):
     assert not result.ok and result.error_kind == "audit_unavailable"
     with get_session() as s:
         assert s.exec(select(Review)).all() == []
+
+
+def test_tool_error_text_goes_through_the_leak_check(db_engine, monkeypatch):
+    # S37fix F13: the error text gets the final check too (here the scrub is switched off to
+    # show that the check alone withholds the identifier)
+    from cashu.core.mcp import server
+    from cashu.core.mcp.registry import ToolError
+
+    pid, _slug = seed_profile(run_daily=False)
+    host = CashuMcp(pid, today=TODAY)
+
+    def refuse(ctx):
+        raise ToolError("unknown account PL61,1090,1014,0000,0712,1981,2874", "not_found")
+
+    host._tools["profile_overview"] = ToolSpec("profile_overview", "core", "x", refuse)
+    scrubbed = host.call("profile_overview", {})
+    assert not scrubbed.ok and scrubbed.error == "unknown account [iban]"
+    monkeypatch.setattr(server, "scrub_text", lambda text, **_kw: text)
+    raw = host.call("profile_overview", {})
+    assert not raw.ok and raw.error_kind == "not_found"
+    assert "1090" not in raw.error and "withheld" in raw.error
+
+
+def test_constant_error_text_keeps_its_numbers(db_engine):
+    # S37fix R3: a fixed limit in cashU's own error text is not owner data
+    from cashu.core.mcp.registry import ToolError
+
+    pid, _slug = seed_profile(run_daily=False)
+    host = CashuMcp(pid, today=TODAY)
+    for system, expected in ((True, "At most 50 alerts"), (False, "At most [amount] alerts")):
+
+        def refuse(ctx, system=system):
+            raise ToolError("At most 50 alerts", "limit", system=system)
+
+        host._tools["profile_overview"] = ToolSpec("profile_overview", "core", "x", refuse)
+        result = host.call("profile_overview", {})
+        assert not result.ok and result.error == expected

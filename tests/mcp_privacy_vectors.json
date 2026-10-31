@@ -1,0 +1,2961 @@
+{
+ "about": "Shared synthetic adversarial vectors for the MCP privacy layer (S37fix). Read by tests/test_mcp_privacy_vectors.py (Python) and packages/mcp/src/privacy/sharedVectors.test.ts (TypeScript). Everything is invented: the Visa test card 4532 0151 1283 0366, the textbook IBAN PL61 1090 1014 0000 0712 1981 2874 and the names Anna Nowak / Jan Kowalski. 'absent': substrings the redacted text must not contain; 'expect': the exact text per mode; 'guard': scrub with the name guard; 'authored': agent / cashU text (R3, R4) with the owner-text result; 'symbols_known': symbol fields against the guard's known digit-only symbols (R5).",
+ "guard_names": [
+  "ANNA NOWAK",
+  "JAN KOWALSKI"
+ ],
+ "texts": [
+  {
+   "finding": "F1",
+   "text": "karta 4532\u20090151\u20091283\u20090366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, thin space"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u20091090\u20091014\u20090000\u20090712\u20091981\u20092874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, thin space"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u202f0151\u202f1283\u202f0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, narrow nbsp"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u202f1090\u202f1014\u202f0000\u202f0712\u202f1981\u202f2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, narrow nbsp"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u20070151\u20071283\u20070366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, figure space"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u20071090\u20071014\u20070000\u20070712\u20071981\u20072874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, figure space"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u20030151\u20031283\u20030366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, em space"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u20031090\u20031014\u20030000\u20030712\u20031981\u20032874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, em space"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u30000151\u30001283\u30000366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, ideographic space"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u30001090\u30001014\u30000000\u30000712\u30001981\u30002874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, ideographic space"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u200b0151\u200b1283\u200b0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, zero width space"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u200b1090\u200b1014\u200b0000\u200b0712\u200b1981\u200b2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, zero width space"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\t0151\t1283\t0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, tab"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\t1090\t1014\t0000\t0712\t1981\t2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, tab"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\n0151\n1283\n0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, newline"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\n1090\n1014\n0000\n0712\n1981\n2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, newline"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u20130151\u20131283\u20130366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, en dash"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u20131090\u20131014\u20130000\u20130712\u20131981\u20132874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, en dash"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532,0151,1283,0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, comma"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61,1090,1014,0000,0712,1981,2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, comma"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532   0151   1283   0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, three spaces"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61   1090   1014   0000   0712   1981   2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, three spaces"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532 - 0151 - 1283 - 0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, spaced hyphen"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61 - 1090 - 1014 - 0000 - 0712 - 1981 - 2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, spaced hyphen"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u00a00151\u00a01283\u00a00366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, nbsp"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u00a01090\u00a01014\u00a00000\u00a00712\u00a01981\u00a02874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, nbsp"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u00ad0151\u00ad1283\u00ad0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, soft hyphen"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u00ad1090\u00ad1014\u00ad0000\u00ad0712\u00ad1981\u00ad2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, soft hyphen"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u20600151\u20601283\u20600366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, word joiner"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u20601090\u20601014\u20600000\u20600712\u20601981\u20602874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, word joiner"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532\u22120151\u22121283\u22120366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, minus sign"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61\u22121090\u22121014\u22120000\u22120712\u22121981\u22122874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, minus sign"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532/0151/1283/0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, slash"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61/1090/1014/0000/0712/1981/2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, slash"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532_0151_1283_0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, underscore"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61_1090_1014_0000_0712_1981_2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, underscore"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532.0151.1283.0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "card, dot"
+  },
+  {
+   "finding": "F1",
+   "text": "przelew z PL61.1090.1014.0000.0712.1981.2874 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "IBAN, dot"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532.0151 1283.0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "mixed dots and spaces"
+  },
+  {
+   "finding": "F1",
+   "text": "karta 4532 0151.1283.0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "mixed spaces and dots"
+  },
+  {
+   "finding": "F1",
+   "text": "PL61,1090,1014,0000,0712,1981,2874",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "comma IBAN"
+  },
+  {
+   "finding": "F1",
+   "text": "61,1090,1014,0000,0712,1981,2874",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ],
+   "note": "comma IBAN without country"
+  },
+  {
+   "finding": "F1",
+   "text": "4532,0151,1283,0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "comma card"
+  },
+  {
+   "finding": "lead",
+   "text": "konto 1234567 7942.8841.3456.5750 dla",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1234567",
+    "7942",
+    "8841",
+    "3456",
+    "5750"
+   ],
+   "expect": {
+    "strict": "konto [number] dla",
+    "amounts": "konto [number] dla"
+   },
+   "note": "number one space before a dotted card (was a pinned known gap)"
+  },
+  {
+   "finding": "lead",
+   "text": "XY12345678 8771.5052.4115.1224 12.5%",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "12345678",
+    "8771",
+    "5052",
+    "4115",
+    "1224"
+   ]
+  },
+  {
+   "finding": "lead",
+   "text": "U1234567 5846.8915.7764.4910 przelew",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1234567",
+    "5846",
+    "8915",
+    "7764",
+    "4910"
+   ]
+  },
+  {
+   "finding": "F2",
+   "text": "Przelalem 5000.",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "5000"
+   ]
+  },
+  {
+   "finding": "F2",
+   "text": "Przelalem 5000, potem nic",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "5000"
+   ]
+  },
+  {
+   "finding": "F2",
+   "text": "Rower 1234,-",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1234"
+   ]
+  },
+  {
+   "finding": "F2",
+   "text": "za 1999.",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1999"
+   ]
+  },
+  {
+   "finding": "F3",
+   "text": "Kupilem za 2000 rower",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2000"
+   ]
+  },
+  {
+   "finding": "F3",
+   "text": "oddane z 1950",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1950"
+   ]
+  },
+  {
+   "finding": "F3",
+   "text": "po 2100",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2100"
+   ]
+  },
+  {
+   "finding": "F3",
+   "text": "do 2000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2000"
+   ]
+  },
+  {
+   "finding": "F3",
+   "text": "1999",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1999"
+   ]
+  },
+  {
+   "finding": "F4",
+   "text": "5\u2009000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "5\u2009000",
+    "000"
+   ]
+  },
+  {
+   "finding": "F4",
+   "text": "5\u2009000 zl",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "F4",
+   "text": "12\u2009345,67",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "345",
+    "67"
+   ]
+  },
+  {
+   "finding": "F4",
+   "text": "1.234,56",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "234",
+    "56"
+   ]
+  },
+  {
+   "finding": "F4",
+   "text": "7\u2007500 PLN",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "500"
+   ]
+  },
+  {
+   "finding": "F4",
+   "text": "3\u202f250",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "250"
+   ]
+  },
+  {
+   "finding": "F5",
+   "text": "przelew dla Anny Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Anny",
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Annie Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Annie",
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "NOWAKOWA ANNA",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "NOWAKOWA",
+    "NOWAK"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Anna_Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Anna/Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "An\u00adna Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Anna\u200bNowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "A. Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Anna Maria Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "ANNA NOWAK-KOWALSKA",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "NOWAK",
+    "KOWALSKA"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "\u0410nna Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Anna Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Zwrot Anny Nowak 950",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Anny",
+    "Nowak",
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Janowi Kowalskiemu",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Janowi",
+    "Kowalskiemu",
+    "Kowalski"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "od Jana Kowalskiego",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Jana",
+    "Kowalskiego",
+    "Kowalski"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Kowalski Jan",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Kowalski"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "J. Kowalski",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Kowalski"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F5",
+   "text": "Anna \u039dowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "owak"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "F6",
+   "text": "Termin 2024-01-15T00:00:00.4532015112830366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "4532015112830366",
+    "45320151",
+    "12830366"
+   ]
+  },
+  {
+   "finding": "F7",
+   "text": "Zwrot 950 od Ewy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "950"
+   ]
+  },
+  {
+   "finding": "F7",
+   "text": "oddane 999",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "999"
+   ]
+  },
+  {
+   "finding": "F7",
+   "text": "Rata 12 z 36",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "12",
+    "36"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "tel 600123456",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "600123456"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "tel 600 123 456",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "123 456",
+    "456"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "tel +48 600-123-456",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "123",
+    "456"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "u1234567",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1234567"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "453201******0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "453201",
+    "0366"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "karta **** 1234",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1234"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "XXXX-XXXX-XXXX-1234",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1234"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "acc 12345678",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "12345678"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "ABC 123456",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "123456"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "jan.kowalski(at)example.com",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "kowalski",
+    "example"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "nr dowodu ABC123456",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "123456"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "PESEL 85010112345",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "85010112345"
+   ]
+  },
+  {
+   "finding": "F10",
+   "text": "NIP 526-000-12-46",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "000",
+    "46"
+   ]
+  },
+  {
+   "finding": "keep",
+   "text": "2024-01-15",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "2024-01-15",
+    "amounts": "2024-01-15"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "15.01.2024",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "15.01.2024",
+    "amounts": "15.01.2024"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "stycznia 2024",
+   "modes": [
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "amounts": "stycznia 2024"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "March 2026",
+   "modes": [
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "amounts": "March 2026"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "2026-Q3",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "2026-Q3",
+    "amounts": "2026-Q3"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "09/2026",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "09/2026",
+    "amounts": "09/2026"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "2026-09",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "2026-09",
+    "amounts": "2026-09"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "5%",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "5%",
+    "amounts": "5%"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "0.5",
+   "modes": [
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "amounts": "0.5"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "WIG20 i Q3",
+   "modes": [
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "amounts": "WIG20 i Q3"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "raport za Q3",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "raport za Q3",
+    "amounts": "raport za Q3"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "2024-01-15T10:00:00.123456+00:00",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "2024-01-15T10:00:00.123456+00:00",
+    "amounts": "2024-01-15T10:00:00.123456+00:00"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "1 234 567,89 zl",
+   "modes": [
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "amounts": "1 234 567,89 zl"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "Saldo 12 345,67 PLN",
+   "modes": [
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "amounts": "Saldo 12 345,67 PLN"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "plan 1500 PLN",
+   "modes": [
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "amounts": "plan 1500 PLN"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "hash 3fa9c2e81b07d4",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "hash 3fa9c2e81b07d4",
+    "amounts": "hash 3fa9c2e81b07d4"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "BIEDRONKA 7",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "BIEDRONKA 7",
+    "amounts": "BIEDRONKA 7"
+   },
+   "guard": true
+  },
+  {
+   "finding": "keep",
+   "text": "nowa kanapa i nowe auto",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "nowa kanapa i nowe auto",
+    "amounts": "nowa kanapa i nowe auto"
+   },
+   "guard": true
+  },
+  {
+   "finding": "R1/R2",
+   "text": "37.3% portfela, dryf 2.5 pp",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "37.3% portfela, dryf 2.5 pp"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "12,5 p.p. i 3 pkt proc.",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "12,5 p.p. i 3 pkt proc."
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "wzrost o 5 % w 12 miesi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "wzrost o 5 % w 12 miesi\u0119cy"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "wybicie z konsolidacji 10 sesji",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "wybicie z konsolidacji 10 sesji"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "brak wp\u0142at od 45 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "brak wp\u0142at od 45 dni"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "No deposit for 45 days",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "No deposit for 45 days"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "max 400 characters",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "max 400 characters"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "max 400 znak\u00f3w",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "max 400 znak\u00f3w"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "3x szybciej",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "3x szybciej"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "horyzont 10 lat",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "horyzont 10 lat"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "2 tygodnie, 3 weeks",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "2 tygodnie, 3 weeks"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "rule rebalance_check, row 12",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "rule rebalance_check, row 12"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "wiersz 7: brak daty",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "wiersz 7: brak daty"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "line 12",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "line 12"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "cash_weight > 10%",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "cash_weight > 10%"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "pozycja 5",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "pozycja 5"
+   }
+  },
+  {
+   "finding": "R1/R2",
+   "text": "12 positions",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "12 positions"
+   }
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "5000 z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[amount]"
+   },
+   "note": "an amount cannot ride on a unit: 5000 z\u0142"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "5 000 dni zaleg\u0142o\u015bci kwota 5000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[amount] dni zaleg\u0142o\u015bci kwota [amount]"
+   },
+   "note": "an amount cannot ride on a unit: 5 000 dni zaleg\u0142o\u015bci kwota 5000"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "5000%",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[amount]%"
+   },
+   "note": "an amount cannot ride on a unit: 5000%"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "kwota 5000%",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "kwota [amount]%"
+   },
+   "note": "an amount cannot ride on a unit: kwota 5000%"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "1500 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[amount] dni"
+   },
+   "note": "an amount cannot ride on a unit: 1500 dni"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "5 000 x",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[amount] x"
+   },
+   "note": "an amount cannot ride on a unit: 5 000 x"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "row 1500",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "row [amount]"
+   },
+   "note": "an amount cannot ride on a unit: row 1500"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "PLN 50 %",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[amount] %"
+   },
+   "note": "an amount cannot ride on a unit: PLN 50 %"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "12 500 pp",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[amount] [amount] pp"
+   },
+   "note": "an amount cannot ride on a unit: 12 500 pp"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "USD 50%",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[amount]%"
+   },
+   "note": "an amount cannot ride on a unit: USD 50%"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "$ 75 %",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[amount] %"
+   },
+   "note": "an amount cannot ride on a unit: $ 75 %"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "saldo 120 dni temu 4500",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "saldo 120 dni temu [amount]"
+   },
+   "note": "an amount cannot ride on a unit: saldo 120 dni temu 4500"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "1 2 3 4 5 6 7 8 9 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "[number] dni"
+   },
+   "note": "an amount cannot ride on a unit: 1 2 3 4 5 6 7 8 9 dni"
+  },
+  {
+   "finding": "R1/R2 adversarial",
+   "text": "zwrot 950",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "zwrot [amount]"
+   },
+   "note": "an amount cannot ride on a unit: zwrot 950"
+  },
+  {
+   "finding": "R6",
+   "text": "cash_value > 5000 and cash_weight < 99%",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "cash_value > [amount] and cash_weight < 99%"
+   }
+  },
+  {
+   "finding": "N1",
+   "text": "Rata 1.250 x 360 miesi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1.250"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "Czynsz 1.850 x 12 miesi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1.850"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "Kredyt 450.000 lat",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "450"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "kwota 250,000 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "250"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "1,500 x z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1,500"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "999,999 x",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "999"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "1.000 %",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1.000"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "oddane 999.999 %",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "999"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "Wp\u0142ata 2,500 x 12",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2,500",
+    "12"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "1 250 x",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "250"
+   ]
+  },
+  {
+   "finding": "N1",
+   "text": "12 500 %",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "500"
+   ]
+  },
+  {
+   "finding": "N2",
+   "text": "w maju 2000 z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2000"
+   ]
+  },
+  {
+   "finding": "N2",
+   "text": "wyda\u0142em w marcu 2050 z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2050"
+   ]
+  },
+  {
+   "finding": "N2",
+   "text": "Rata: grudzie\u0144 1980 PLN",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1980"
+   ]
+  },
+  {
+   "finding": "N2",
+   "text": "dec 2050 USD",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2050"
+   ]
+  },
+  {
+   "finding": "N2",
+   "text": "Jan 2000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2000"
+   ]
+  },
+  {
+   "finding": "N2",
+   "text": "stycznia 2024",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2024"
+   ]
+  },
+  {
+   "finding": "N3",
+   "text": "Mam 52 000 z\u0142, rata 2 500 z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "52",
+    "000",
+    "2 500",
+    "500"
+   ],
+   "note": "agent or owner text: no read-back exemption"
+  },
+  {
+   "finding": "N3",
+   "text": "sprzedaj, gdy saldo spadnie poni\u017cej 52 000 z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "52",
+    "000"
+   ]
+  },
+  {
+   "finding": "N4",
+   "text": "4532, 0151, 1283, 0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "run separators: 4532, 0151, 1283, 0366"
+  },
+  {
+   "finding": "N4",
+   "text": "4532. 0151. 1283. 0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "run separators: 4532. 0151. 1283. 0366"
+  },
+  {
+   "finding": "N4",
+   "text": "4532'0151'1283'0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "run separators: 4532'0151'1283'0366"
+  },
+  {
+   "finding": "N4",
+   "text": "4532|0151|1283|0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "run separators: 4532|0151|1283|0366"
+  },
+  {
+   "finding": "N4",
+   "text": "4532:0151:1283:0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "run separators: 4532:0151:1283:0366"
+  },
+  {
+   "finding": "N4",
+   "text": "4532+0151+1283+0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "run separators: 4532+0151+1283+0366"
+  },
+  {
+   "finding": "N4",
+   "text": "4532*0151*1283*0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "run separators: 4532*0151*1283*0366"
+  },
+  {
+   "finding": "N4",
+   "text": "4532 ; 0151 ; 1283 ; 0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "run separators: 4532 ; 0151 ; 1283 ; 0366"
+  },
+  {
+   "finding": "N4",
+   "text": "4532 (0151) 1283 0366",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "0151",
+    "1283",
+    "0366"
+   ],
+   "note": "run separators: 4532 (0151) 1283 0366"
+  },
+  {
+   "finding": "N4",
+   "text": "PL61    1090    1014    0000    0712    1981    2874",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "1014",
+    "0000",
+    "0712",
+    "1981",
+    "2874"
+   ]
+  },
+  {
+   "finding": "N4",
+   "text": "tel +48 (22) 123 45 67",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "123 45 67",
+    "45 67",
+    "(22)"
+   ]
+  },
+  {
+   "finding": "N4",
+   "text": "tel (600) 123 456",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "123 456",
+    "600"
+   ]
+  },
+  {
+   "finding": "N5",
+   "text": "z\u0142 500 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "500"
+   ]
+  },
+  {
+   "finding": "N5",
+   "text": "pln 750 x",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "750"
+   ]
+  },
+  {
+   "finding": "N5",
+   "text": "usd 99 x",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "99"
+   ]
+  },
+  {
+   "finding": "N5",
+   "text": "PLN  999 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "999"
+   ]
+  },
+  {
+   "finding": "N5",
+   "text": "999 x PLN",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "999"
+   ]
+  },
+  {
+   "finding": "N5",
+   "text": "\u20ac 50 dni",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "50"
+   ]
+  },
+  {
+   "finding": "N5",
+   "text": "50 % z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "50"
+   ]
+  },
+  {
+   "finding": "N5",
+   "text": "line 12 PLN",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "12"
+   ]
+  },
+  {
+   "finding": "N6",
+   "text": "1234-56-78 9012 3456",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1234",
+    "9012",
+    "3456"
+   ]
+  },
+  {
+   "finding": "N6",
+   "text": "PL61 1090-10-14 0000 0712 1981 2874",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "1090",
+    "0712",
+    "2874"
+   ]
+  },
+  {
+   "finding": "N6",
+   "text": "2024-13-45 1234",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "2024",
+    "1234"
+   ]
+  },
+  {
+   "finding": "N8",
+   "text": "A.Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "Kowalski",
+    "An\u200dna"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N8",
+   "text": "AnnaNowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "Kowalski",
+    "An\u200dna"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N8",
+   "text": "An\u200dna Nowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "Kowalski",
+    "An\u200dna"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N8",
+   "text": "ANowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "Kowalski",
+    "An\u200dna"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N8",
+   "text": "przelewAnnaNowak",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "Kowalski",
+    "An\u200dna"
+   ],
+   "guard": true
+  },
+  {
+   "finding": "N8",
+   "text": "J.Kowalski",
+   "modes": [
+    "strict",
+    "amounts"
+   ],
+   "absent": [
+    "Nowak",
+    "Kowalski",
+    "An\u200dna"
+   ],
+   "guard": true
+  }
+ ],
+ "symbols": [
+  {
+   "finding": "F8",
+   "symbol": "1234.56",
+   "strict_absent": [
+    "1234",
+    "56"
+   ]
+  },
+  {
+   "finding": "F8",
+   "symbol": "1234",
+   "strict_absent": [
+    "1234"
+   ]
+  },
+  {
+   "finding": "keep",
+   "symbol": "CDR",
+   "expect": {
+    "strict": "CDR",
+    "amounts": "CDR"
+   }
+  },
+  {
+   "finding": "keep",
+   "symbol": "US0378331005",
+   "expect": {
+    "strict": "US0378331005",
+    "amounts": "US0378331005"
+   }
+  }
+ ],
+ "dates_refused": [
+  {
+   "finding": "F6",
+   "date": "2024-01-15T00:00:00.4532015112830366"
+  },
+  {
+   "finding": "F6",
+   "date": "2024-01-15 4532 0151 1283 0366"
+  },
+  {
+   "finding": "F6",
+   "date": "2024-01-15T0:0:0+4532015112830366"
+  }
+ ],
+ "dates_kept": [
+  "2024-01-15",
+  "2024-01",
+  "2024-01-15T10:00:00+00:00",
+  "2024-01-15T10:00:00.123456+00:00",
+  "2024-01-15 10:00:00Z"
+ ],
+ "leaks": [
+  {
+   "finding": "F9",
+   "tree": {
+    "x": {
+     "amount_pln": 1234.5
+    }
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "F9",
+   "tree": {
+    "value_base": 10
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "F9",
+   "tree": {
+    "total_amount": 10.0
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "F9",
+   "tree": {
+    "cash_value": 1.0
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "F9",
+   "tree": {
+    "saldo_koncowe": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "F9",
+   "tree": {
+    "Kwota": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "F9",
+   "tree": {
+    "x": {
+     "amount_pln": 1234.5
+    }
+   },
+   "strict": false,
+   "leak": false
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "value_share": 0.25
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "F9",
+   "tree": {
+    "weight": 0.1,
+    "share": 0.01,
+    "count": 3
+   },
+   "strict": true,
+   "leak": false
+  },
+  {
+   "finding": "F1",
+   "tree": {
+    "note": "PL61,1090,1014,0000,0712,1981,2874"
+   },
+   "strict": false,
+   "leak": true
+  },
+  {
+   "finding": "F1",
+   "tree": {
+    "note": "karta 4532\u20090151\u20091283\u20090366"
+   },
+   "strict": false,
+   "leak": true
+  },
+  {
+   "finding": "lead",
+   "tree": {
+    "note": "konto 1234567 7942.8841.3456.5750"
+   },
+   "strict": false,
+   "leak": true
+  },
+  {
+   "finding": "F6",
+   "tree": {
+    "at": "2024-01-15T00:00:00.4532015112830366"
+   },
+   "strict": false,
+   "leak": true
+  },
+  {
+   "finding": "F10",
+   "tree": {
+    "note": "453201******0366"
+   },
+   "strict": false,
+   "leak": true
+  },
+  {
+   "finding": "F10",
+   "tree": {
+    "note": "id u1234567"
+   },
+   "strict": false,
+   "leak": true
+  },
+  {
+   "finding": "keep",
+   "tree": {
+    "at": "2024-01-15T10:00:00.123456+00:00",
+    "n": 123456789,
+    "f": 1234567.89
+   },
+   "strict": false,
+   "leak": false
+  },
+  {
+   "finding": "keep",
+   "tree": {
+    "n": 1234567890
+   },
+   "strict": false,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "account_balance": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "accounts_value": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "generated_income": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "corporate_cash": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "value_change": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "balance_index": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "cash_vs_target": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "net_worth": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "spend_total": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "deposits": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "withdrawals": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "proceeds": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "pnl": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "profit_ytd": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "gain": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "savings": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "debt": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "loan_left": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "salary": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "capital": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "equity": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "budget": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "limit_pln": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "x_eur": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "rata_kredytu": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "platnosc": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "przychod": 100
+   },
+   "strict": true,
+   "leak": true
+  },
+  {
+   "finding": "N7",
+   "tree": {
+    "suma": 100
+   },
+   "strict": true,
+   "leak": true
+  }
+ ],
+ "authored": [
+  {
+   "finding": "R3",
+   "text": "P/E 15, wzrost 12% r/r, cel 5000 z\u0142 w 2027",
+   "expect": {
+    "strict": "P/E 15, wzrost 12% r/r, cel 5000 z\u0142 w 2027"
+   },
+   "owner_strict": "P/E [amount], wzrost 12% r/r, cel [amount] w [amount]"
+  },
+  {
+   "finding": "R3",
+   "text": "Anna Nowak, konto 4532 0151 1283 0366, 50 tys.",
+   "expect": {
+    "strict": "[name], konto [number] tys.",
+    "amounts": "[name], konto [number] tys."
+   }
+  },
+  {
+   "finding": "R3",
+   "text": "stale = not verified for 180 days (1 = 100%), python3.14",
+   "expect": {
+    "strict": "stale = not verified for 180 days (1 = 100%), python3.14"
+   }
+  }
+ ],
+ "known_symbols": [
+  "0700",
+  "600519"
+ ],
+ "symbols_known": [
+  {
+   "finding": "R5",
+   "symbol": "0700",
+   "expect": {
+    "strict": "0700",
+    "amounts": "0700"
+   }
+  },
+  {
+   "finding": "R5",
+   "symbol": "600519",
+   "expect": {
+    "strict": "600519",
+    "amounts": "600519"
+   }
+  },
+  {
+   "finding": "R5",
+   "symbol": "0701",
+   "expect": {
+    "strict": "[amount]",
+    "amounts": "0701"
+   }
+  },
+  {
+   "finding": "R5",
+   "symbol": "123456",
+   "expect": {
+    "strict": "[amount]",
+    "amounts": "123456"
+   }
+  }
+ ]
+}

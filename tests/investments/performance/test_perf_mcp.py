@@ -23,6 +23,7 @@ ALLOWED = {
     Sensitivity.SYMBOL,
     Sensitivity.FLAG,
     Sensitivity.TEXT,
+    Sensitivity.AUTHORED,  # constant tool notes (S37fix R3)
 }
 BENCHMARK = "\nbenchmark:\n  id: msci_world\n  proxy: EUNL.DE\n"
 

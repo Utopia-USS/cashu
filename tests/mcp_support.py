@@ -543,3 +543,25 @@ def leaks(data, *, strict: bool) -> list[str]:
                 if r in blob:
                     found.append(f"amount {r}")
     return found
+
+
+def check_authored_text(monkeypatch) -> list[str]:
+    """S37fix R3: cashU's own constant text (the ``authored`` label) keeps its numbers in strict
+    mode. Each such answer is checked here for identifiers and names (the rule in every mode) and
+    then replaced by a marker, so a strict amount check of the whole answer covers the rest.
+    Returns the identifier / name findings (empty = clean)."""
+    from cashu.core.mcp import redaction
+    from cashu.core.mcp.labels import Sensitivity
+
+    found: list[str] = []
+    original = redaction.Redactor._leaf
+
+    def leaf(self, node, path):
+        out = original(self, node, path)
+        if node.label is Sensitivity.AUTHORED and isinstance(out, str):
+            found.extend(leaks(out, strict=False))
+            return "<authored>"
+        return out
+
+    monkeypatch.setattr(redaction.Redactor, "_leaf", leaf)
+    return found

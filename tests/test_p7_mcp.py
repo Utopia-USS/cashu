@@ -79,3 +79,18 @@ def test_macro_summary_only_passes_as_summary_text():
     assert not L.market_ok("Dolar słabnie od maja 2025: konto 12345678901.")
     with pytest.raises(ValueError):
         L.market("Akcje na świecie rosną, a Jan Kowalski kupił 12 400 zł.")
+
+
+def test_owner_amount_criteria_lose_their_threshold_in_strict(host):
+    # S37fix F11: a criterion that is not an instrument metric is the owner's own amount
+    pid, slug, mcp = host
+    write_strategy(slug, STRATEGY_YAML + CRITERIA.rstrip("\n") + "\n    max_position_pln: 50000\n")
+    _privacy(pid, "strict")
+    rows = mcp.call("research_context", {}).data["strategy"]["candidate_criteria"]
+    by_name = {c["criterion"]: c for c in rows}
+    assert by_name["max_position_pln"]["threshold"] is None
+    assert by_name["max_pe"]["threshold"] == 25.0
+    assert by_name["min_market_cap_pln"]["threshold"] == "1 mld"
+    _privacy(pid, "amounts")
+    rows = mcp.call("research_context", {}).data["strategy"]["candidate_criteria"]
+    assert {c["criterion"]: c["threshold"] for c in rows}["max_position_pln"] == 50000
