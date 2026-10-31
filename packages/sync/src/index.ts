@@ -3,6 +3,7 @@
 export const PACKAGE_NAME = "@cashu/sync";
 
 export * from "./carrier.js";
+export * from "./carriers/index.js";
 export * as crypto from "./crypto/index.js";
 export { createSyncEngine, type SyncEngineOptions, VAULT_RE } from "./engine.js";
 export * from "./errors.js";
@@ -20,3 +21,4 @@ export {
   type ScanResult,
   scanFrames,
 } from "./segment.js";
+export * from "./transports/index.js";
