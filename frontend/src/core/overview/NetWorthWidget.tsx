@@ -2,7 +2,7 @@
 // 12-month change of the total and of the liquid part ("bez nieruchomości").
 import { useMemo, useState } from "react";
 import { LineChart, StackedChart } from "../../charts";
-import { labelIndices } from "@cashu/ui-logic/core/chart";
+import { labelIndices } from "@cashu/ui/charts/geometry";
 import { cur, cur0, GROUP, monthYearShort, pctSigned, round0 } from "@cashu/ui-logic/core/format";
 import { nwColorVar } from "../../css";
 import { useAsync } from "../../hooks";

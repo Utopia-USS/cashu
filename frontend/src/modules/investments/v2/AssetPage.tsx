@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { C } from "@cashu/i18n/core/common.strings";
 import { intlLocale } from "@cashu/i18n";
 import { LineChart, type Level } from "../../../charts";
-import { labelIndices } from "@cashu/ui-logic/core/chart";
+import { labelIndices } from "@cashu/ui/charts/geometry";
 import { monthYearShort } from "@cashu/ui-logic/core/format";
 import { hideAmount } from "@cashu/ui-logic/core/incognito";
 import { useAsync } from "../../../hooks";

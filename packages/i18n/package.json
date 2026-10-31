@@ -27,7 +27,6 @@
     "./core/Settings.strings": "./src/core/Settings.strings.ts",
     "./core/SetupPage.strings": "./src/core/SetupPage.strings.ts",
     "./core/Wizard.strings": "./src/core/Wizard.strings.ts",
-    "./core/charts.strings": "./src/core/charts.strings.ts",
     "./core/chrome.strings": "./src/core/chrome.strings.ts",
     "./core/common.strings": "./src/core/common.strings.ts",
     "./core/components/CashCard.strings": "./src/core/components/CashCard.strings.ts",

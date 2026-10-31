@@ -1,6 +1,7 @@
-// Chart geometry of the v2 widgets (design/v2/v2.js is the behaviour contract): scales, paths, right-side
-// label stacking with leaders, donut arcs with surface gaps, bars and sparklines. Pure, no DOM: the SVG
-// components in frontend/src/charts.tsx draw what these return, and frontend/tests check the numbers.
+// Chart geometry (design/v2/v2.js is the behaviour contract): scales, paths, right-side label stacking with
+// leaders, donut arcs with surface gaps, bars and sparklines. Pure, no DOM, no React: the scene builders of
+// packages/ui (drawn by the web <svg> and react-native-svg renderers) and the legacy frontend/src/charts.tsx
+// draw what these return. Subpath export `@cashu/ui/charts/geometry`, so the React 18 SPA imports only this.
 
 export type Pt = [x: number, y: number];
 

@@ -152,6 +152,9 @@ importers:
       '@cashu/i18n':
         specifier: workspace:*
         version: link:../packages/i18n
+      '@cashu/ui':
+        specifier: workspace:*
+        version: link:../packages/ui
       '@cashu/ui-logic':
         specifier: workspace:*
         version: link:../packages/ui-logic
@@ -259,6 +262,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@cashu/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3

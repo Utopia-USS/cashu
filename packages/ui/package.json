@@ -5,6 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./charts/geometry": "./src/charts/geometry.ts",
+    "./charts/strings": "./src/charts/charts.strings.ts",
     "./theme.css": "./src/tokens/theme.css"
   },
   "scripts": {
@@ -14,6 +16,7 @@
     "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@cashu/i18n": "workspace:*",
     "tailwindcss": "4.3.3",
     "uniwind": "1.13.1"
   }

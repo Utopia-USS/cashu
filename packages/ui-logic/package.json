@@ -8,7 +8,6 @@
     "./budget/logic": "./src/budget/logic.ts",
     "./budget/types": "./src/budget/types.ts",
     "./core/account": "./src/core/account.ts",
-    "./core/chart": "./src/core/chart.ts",
     "./core/csv": "./src/core/csv.ts",
     "./core/format": "./src/core/format.ts",
     "./core/incognito": "./src/core/incognito.ts",

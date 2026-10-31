@@ -3,7 +3,7 @@
 // drawdown, clamped at 0) and Wpłaty (12 months of deposits vs the plan, the next one and its source).
 import { useState } from "react";
 import { Bars, LineChart } from "../../../charts";
-import { labelIndices } from "@cashu/ui-logic/core/chart";
+import { labelIndices } from "@cashu/ui/charts/geometry";
 import { GROUP, monthYearShort } from "@cashu/ui-logic/core/format";
 import { useAsync } from "../../../hooks";
 import { hideAmount } from "@cashu/ui-logic/core/incognito";
