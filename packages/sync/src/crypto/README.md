@@ -213,6 +213,33 @@ new context that neither extends nor is a prefix of these (for example `"cashu/f
   device at the next fold. Follow-up: admit by trusted-path depth with a per-issuer share, or cap a
   subtree's size per first-level issuer.
 
+### S29c: decision keys (the invariant behind every revocation decision)
+
+Invariant: under a revocation set R (each fixpoint step's assumed set, and the final one), a key may
+back a revocation decision only if it is a DECISION KEY (devices/decisionKeys.ts, the one function every
+acceptance site calls): a key pair certified for the device through a chain of certificates that
+starts at the recovery key (the creator's certificate is recovery-issued) and passes only through
+devices outside R. For a revoked device that is the key a device outside R certified for it, never a
+certificate it issued itself. Acceptance sites: revocation eligibility and the M1 attestations that
+raise cuts (lease watermarks, `prev` links, earlier revocations; devices/revocations.ts, per step),
+the keys of a revoked device (`Revocation.signPublicKeys`), and through `Registry.statementKeys` every
+lease event, watermark, waiver writer, recovery change and name.
+
+Why this closes the class (P2, V1, V2 and every longer chain): to raise its own cut, or to make any
+statement count for it, a revoked device X needs a key the fold accepts for a device other than
+itself, or a second key for itself. Any key X can mint is certified by X or by a device below X (a
+puppet it certified, at any depth, at any position, genuine or written into a rewritten old frame).
+Every such chain passes through X. In every fixpoint step that assumes X revoked, those keys are not
+decision keys, so they verify nothing: no attestation, no revocation, no lease statement. The steps
+that do not assume X revoked are exactly those in which X's own statements count anyway (the grounded
+fixpoint's upper bound), and the fail-closed result takes the revocations counted in any consistent
+reading, so minted keys can at most add revocations, never remove one, raise a cut or add trust. What
+remains are keys of devices outside R: a still-trusted device can mint (and is stopped by revoking
+it), and a rewrite of an honest device's frame needs that device's key (signed heads, S29c phase B).
+Tests: devices/attestation.test.ts (P2, V1, V2, chains of length 3, controls) and the random
+certification-graph property (devices/decisionKeysProperty.ts, default seeds in decisionKeys.test.ts,
+the sweep in decisionKeys.property.exhaustive.test.ts).
+
 ### Key storage
 
 - `KeyStore` adapters: `createSafeStorageKeyStore(safeStorage, files)` (desktop; refuses Linux

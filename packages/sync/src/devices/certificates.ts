@@ -19,7 +19,6 @@
 // Device-issued candidates are checked against their issuer's certified keys once the recovery-rooted
 // certificates are known (one breadth-first closure).
 
-import type { SegmentCursor } from "../carrier.js";
 import {
   type CertificateCache,
   CertificateIndex,
@@ -60,18 +59,9 @@ export interface CertificateInput {
   readonly recoveryKeysFor: (eid: string) => readonly Uint8Array[];
 }
 
-/** A device-issued certificate that counts, where its issuer logged it (the issuer's own stream). */
-export interface IssuedCertificate {
-  readonly certificate: Uint8Array;
-  readonly issuer: string;
-  readonly position: SegmentCursor;
-}
-
 export interface CertificateSelection {
   /** Bootstrap certificates plus the logged ones that count. */
   readonly certificates: Uint8Array[];
-  /** The device-issued ones among them, with the position in their issuer's stream. */
-  readonly deviceIssued: readonly IssuedCertificate[];
   /** Per device issuer: its own-stream certificates that count (the pairing capacity). */
   readonly issued: Map<string, number>;
   /** `device.added` events whose certificate does not count, with the reason (copies excluded). */
@@ -146,7 +136,6 @@ export function selectCertificates(input: CertificateInput): CertificateSelectio
   );
   const reach = pre.closure(new Set());
   const issued = new Map<string, number>();
-  const deviceIssued: IssuedCertificate[] = [];
   for (const list of windows) {
     const issuer = list[0]?.parsed.signerId;
     if (issuer === undefined) continue;
@@ -156,13 +145,9 @@ export function selectCertificates(input: CertificateInput): CertificateSelectio
       return keys.some((k) => pre.isSignedBy(bytes, k));
     });
     issued.set(issuer, kept.length);
-    for (const c of kept) {
-      const certificate = fromHex(c.added.data.certificate);
-      certificates.push(certificate);
-      deviceIssued.push({ certificate, issuer, position: c.added.event.position });
-    }
+    for (const c of kept) certificates.push(fromHex(c.added.data.certificate));
   }
-  return { certificates, deviceIssued, issued, rejected };
+  return { certificates, issued, rejected };
 }
 
 function laneOf(added: Decoded<DeviceAddedData>, parsed: ParsedCertificate): Lane | undefined {

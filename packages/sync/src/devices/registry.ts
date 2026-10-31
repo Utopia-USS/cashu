@@ -49,6 +49,7 @@ import {
   type TrustedSigner,
 } from "../crypto/index.js";
 import { canonicalJson, equalBytes, fromHex, isCanonicalValue } from "./bytes.js";
+import type { DecisionKeys } from "./decisionKeys.js";
 import {
   byHlc,
   DEVICE_ADDED,
@@ -127,6 +128,7 @@ export class Registry {
   readonly #index: CertificateIndex;
   readonly #registered: ReadonlySet<string>;
   readonly #issued: ReadonlyMap<string, number>;
+  readonly #keys: DecisionKeys;
 
   /** Not public API: use `foldRegistry`. */
   constructor(parts: {
@@ -142,6 +144,7 @@ export class Registry {
     recoveryChanges: readonly RecoveryChange[];
     registered: ReadonlySet<string>;
     issued: ReadonlyMap<string, number>;
+    keys: DecisionKeys;
   }) {
     this.vaultId = parts.root.vaultId;
     this.recovery = parts.root.recovery;
@@ -156,6 +159,7 @@ export class Registry {
     this.recoveryChanges = parts.recoveryChanges;
     this.#registered = parts.registered;
     this.#issued = parts.issued;
+    this.#keys = parts.keys;
   }
 
   isTrusted(deviceId: string): boolean {
@@ -183,17 +187,13 @@ export class Registry {
 
   /**
    * The keys a statement written by `device` at `position` (cursor after its batch) may verify
-   * with: the trusted key, or for a revoked device its certified keys when the statement lies
+   * with: its decision key (decisionKeys.ts), for a revoked device only when the statement lies
    * before its cut. Empty otherwise (untrusted, conflicted, or a revoked device after its cut).
+   * Every consumer that accepts a statement as evidence (lease events, watermarks, names, recovery
+   * changes) goes through it.
    */
   statementKeys(device: string, position: SegmentCursor): readonly Uint8Array[] {
-    const trusted = this.trusted.get(device);
-    if (trusted) return [trusted.signPublicKey];
-    const revocation = this.revoked.get(device);
-    if (revocation && beforeCut(position, revocation.cut)) {
-      return revocation.signPublicKeys.map((k) => k.slice());
-    }
-    return [];
+    return this.#keys.statementKeys(device, position, this.revoked);
   }
 
   /** Trusted devices and the revocation count once `devices` are revoked too (before writing it). */
@@ -292,13 +292,9 @@ export function foldRegistry(
   for (const a of late) rejected.set(a, "after_revocation");
   const trust = index.verify(decided.result.revokedIds);
 
-  // Keys a statement of `device` at `position` may verify with (trusted, or revoked before its cut).
-  const statementKeys = (device: string, position: SegmentCursor): Uint8Array[] => {
-    const t = trust.devices.get(device);
-    if (t) return [t.signPublicKey];
-    const r = revoked.get(device);
-    return r && beforeCut(position, r.cut) ? [...r.signPublicKeys] : [];
-  };
+  // Keys a statement of `device` at `position` may verify with (decisionKeys.ts, the one rule).
+  const statementKeys = (device: string, position: SegmentCursor): Uint8Array[] =>
+    decided.result.keys.statementKeys(device, position, revoked);
 
   // --- Names (cosmetic): any authentic `device.added` whose declared keys match a certified pair.
   const devices = new Map<string, DeviceRecord>();
@@ -376,6 +372,7 @@ export function foldRegistry(
     recoveryChanges: recoveryChanges.sort((a, b) => cmp(a.event.eid, b.event.eid)),
     registered,
     issued: selection.issued,
+    keys: decided.result.keys,
   });
 }
 

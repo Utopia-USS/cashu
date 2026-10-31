@@ -3,8 +3,9 @@
 // not revoked, or the revocation lies before the signer's cut" (registry.ts explains the rules).
 
 import type { SegmentCursor } from "../carrier.js";
-import type { CertificateClosure, CertificateIndex } from "../crypto/index.js";
+import type { CertificateIndex } from "../crypto/index.js";
 import { canonicalJson, equalBytes, fromHex, isCanonicalValue } from "./bytes.js";
+import { DecisionKeys } from "./decisionKeys.js";
 import {
   decodeLeaseClaim,
   decodeLeaseRelease,
@@ -35,8 +36,8 @@ export interface Rev {
   readonly recovery: boolean;
   /** The certified key the statement verified with (device revocations). */
   readonly key: Uint8Array | undefined;
-  /** Registered targets with their stated cut (raised to the signer's attested knowledge later). */
-  targets: { readonly device: string; cut: SegmentCursor }[];
+  /** Registered targets with their STATED cut (each fold step raises it with its decision keys). */
+  targets: { readonly device: string; readonly cut: SegmentCursor }[];
 }
 
 export interface RevocationInput {
@@ -47,12 +48,6 @@ export interface RevocationInput {
   readonly verified: readonly Rev[];
   readonly registered: ReadonlySet<string>;
   readonly index: CertificateIndex;
-  /**
-   * The closure whose keys may back a decision about what a device attested or signed before its
-   * cut (M1 attestations, a revoked device's keys): without any certificate a device logged after
-   * its cut (review P2), so a revoked device can never mint keys that raise its own cut.
-   */
-  readonly attest: CertificateClosure;
   readonly verify: StatementVerifier;
   /** Receives the statements that do not count (capped, no effect, defeated). */
   readonly ignored: IgnoredStatement[];
@@ -65,11 +60,13 @@ export interface RevocationResult {
   readonly effective: readonly Rev[];
   readonly revoked: ReadonlyMap<string, Revocation>;
   readonly revokedIds: ReadonlySet<string>;
+  /** The decision keys under the final revocations (Registry.statementKeys). */
+  readonly keys: DecisionKeys;
 }
 
 /** Caps, cut validation, mutual exemptions, the grounded fixpoint and the fail-closed result. */
 export function resolveRevocations(input: RevocationInput): RevocationResult {
-  const { root, events, registered, index, attest, verify, ignored } = input;
+  const { root, events, registered, index, verify, ignored } = input;
   const deduped = input.verified;
   // --- Caps and effect.
   const bySigner = new Map<string, Rev[]>();
@@ -96,82 +93,43 @@ export function resolveRevocations(input: RevocationInput): RevocationResult {
     revs.push({ ...r, id: revs.length });
   }
 
-  // --- M1: raise each device revocation's cut to what its signer had attested of the target.
-  const knowledge = attestedKnowledge(root, events, revs, attest, verify);
-  for (const r of revs) {
-    if (r.recovery) continue;
-    for (const t of r.targets) {
-      const known = knowledge(r, t.device);
-      if (known) t.cut = maxPosition(t.cut, known);
-    }
-  }
-
-  // --- A1b: q (X revokes Y) attests it applied Y's stream past y (Y revokes X): y cannot defeat q.
-  const naming = new Map<string, Rev[]>();
-  for (const r of revs) for (const t of r.targets) push(naming, t.device, r);
-  const exempt = new Map<number, Set<number>>();
-  for (const q of revs) {
-    if (q.recovery) continue;
-    for (const t of q.targets) {
-      for (const y of naming.get(q.signer) ?? []) {
-        if (!y.recovery && y.signer === t.device && beforeCut(y.event.position, t.cut)) {
-          const set = exempt.get(q.id) ?? new Set<number>();
-          set.add(y.id);
-          exempt.set(q.id, set);
-        }
-      }
-    }
-  }
-
-  // --- The grounded fixpoint.
+  // --- The grounded fixpoint. Everything a step decides from keys (who may revoke, a revoked
+  // signer's key, M1 attestations that raise cuts, the A1b exemption built on those cuts) uses the
+  // DECISION KEYS under that step's assumed revocations (decisionKeys.ts): a key certified through a
+  // revoked or conflicted device never contributes.
   const recoveryIds = new Set(revs.filter((r) => r.recovery).map((r) => r.id));
-  // A revoked device's statements before its cut verify with its certified key: the one key pair
-  // ever certified for it (by certificates logged before their issuer's cut), or when it was
-  // certified with several (conflict), only those a signer that is not revoked vouches for.
-  const revokedKeys = (device: string, closure: CertificateClosure) => {
-    const ever = attest.keysOf(device);
-    return ever.length === 1 ? ever : closure.certifiedKeysOf(device);
-  };
-  const cutOf = (device: string, counted: readonly Rev[]): SegmentCursor | undefined => {
-    let rec: SegmentCursor | undefined;
-    let dev: SegmentCursor | undefined;
-    for (const r of counted) {
-      const t = r.targets.find((x) => x.device === device);
-      if (!t) continue;
-      if (r.recovery) rec = rec ? maxPosition(rec, t.cut) : t.cut;
-      else dev = dev ? minPosition(dev, t.cut) : t.cut;
-    }
-    return rec ?? dev;
-  };
-  const gamma = (assumed: ReadonlySet<number>): Set<number> => {
+  const knowledge = attestedKnowledge(root, events, revs, verify);
+  const step = (assumed: ReadonlySet<number>) => {
     const counted = revs.filter((r) => assumed.has(r.id) || recoveryIds.has(r.id));
     const revokedIds = new Set<string>();
+    for (const r of counted) for (const t of r.targets) revokedIds.add(t.device);
+    const keys = new DecisionKeys(index, revokedIds);
+    const cuts = raisedCuts(revs, keys, knowledge);
+    return { counted, revokedIds, keys, cuts };
+  };
+  const gamma = (assumed: ReadonlySet<number>): Set<number> => {
+    const { counted, revokedIds, keys, cuts } = step(assumed);
+    const exempt = exemptions(revs, cuts);
     const countedNaming = new Map<string, Rev[]>();
-    for (const r of counted) {
-      for (const t of r.targets) {
-        revokedIds.add(t.device);
-        push(countedNaming, t.device, r);
-      }
-    }
-    const closure = index.closure(revokedIds);
+    for (const r of counted) for (const t of r.targets) push(countedNaming, t.device, r);
     const out = new Set(recoveryIds);
     for (const r of revs) {
       if (r.recovery) continue;
       const key = r.key as Uint8Array;
-      const keys = revokedIds.has(r.signer)
-        ? revokedKeys(r.signer, closure)
-        : closure.keysOf(r.signer);
-      if (!keys.some((k) => equalBytes(k.signPublicKey, key))) continue;
-      const skip = exempt.get(r.id);
-      const relevant = (countedNaming.get(r.signer) ?? []).filter((y) => !skip?.has(y.id));
-      const cut = relevant.length === 0 ? undefined : cutOf(r.signer, relevant);
-      if (cut === undefined || beforeCut(r.event.position, cut)) out.add(r.id);
+      if (!keys.signKeysOf(r.signer).some((k) => equalBytes(k, key))) continue;
+      if (revokedIds.has(r.signer)) {
+        const skip = exempt.get(r.id);
+        const relevant = (countedNaming.get(r.signer) ?? []).filter((y) => !skip?.has(y.id));
+        const cut = relevant.length === 0 ? undefined : cutOf(r.signer, relevant, cuts);
+        if (cut !== undefined && !beforeCut(r.event.position, cut)) continue;
+      }
+      out.add(r.id);
     }
     return out;
   };
   let lower = new Set<number>();
   let upper = gamma(lower);
-  for (let step = 0; step <= 2 * revs.length + 2; step++) {
+  for (let i = 0; i <= 2 * revs.length + 2; i++) {
     const nextLower = gamma(upper);
     const nextUpper = gamma(nextLower);
     if (sameSet(nextLower, lower) && sameSet(nextUpper, upper)) break;
@@ -180,9 +138,7 @@ export function resolveRevocations(input: RevocationInput): RevocationResult {
   }
 
   // --- Result: IN and UNDEC revoke (fail closed).
-  const counted = revs.filter((r) => upper.has(r.id));
-  const revokedIds = new Set<string>(counted.flatMap((r) => r.targets.map((t) => t.device)));
-  const finalClosure = index.closure(revokedIds);
+  const { counted, revokedIds, keys, cuts } = step(upper);
   // R1: a counted device revocation answered by a counted device revocation of its own signer is
   // contested whatever the exemption decided (retaliation and rewrite look alike by positions).
   const mutual = new Set<number>();
@@ -201,11 +157,11 @@ export function resolveRevocations(input: RevocationInput): RevocationResult {
     const naming = counted.filter((r) => r.targets.some((t) => t.device === device));
     revoked.set(device, {
       device,
-      cut: cutOf(device, naming) as SegmentCursor,
+      cut: cutOf(device, naming, cuts) as SegmentCursor,
       eids: naming.map((r) => r.event.eid).sort(),
       signers: [...new Set(naming.map((r) => r.signer))].sort(),
       contested: naming.some((r) => !lower.has(r.id) || mutual.has(r.id)),
-      signPublicKeys: revokedKeys(device, finalClosure).map((k) => k.signPublicKey),
+      signPublicKeys: keys.signKeysOf(device),
     });
   }
   for (const r of revs) {
@@ -219,22 +175,76 @@ export function resolveRevocations(input: RevocationInput): RevocationResult {
           : "untrusted_signer",
     });
   }
-  return { counted, effective: revs, revoked, revokedIds };
+  return { counted, effective: revs, revoked, revokedIds, keys };
 }
+
+/** Per revocation and target: the effective cut (a device cut raised to its signer's attestations). */
+type Cuts = (r: Rev, device: string) => SegmentCursor;
+
+function raisedCuts(revs: readonly Rev[], keys: DecisionKeys, knowledge: Knowledge): Cuts {
+  const raised = new Map<number, Map<string, SegmentCursor>>();
+  for (const r of revs) {
+    const map = new Map<string, SegmentCursor>();
+    for (const t of r.targets) {
+      const known = r.recovery ? undefined : knowledge(r, t.device, keys);
+      map.set(t.device, known ? maxPosition(t.cut, known) : t.cut);
+    }
+    raised.set(r.id, map);
+  }
+  return (r, device) => raised.get(r.id)?.get(device) as SegmentCursor;
+}
+
+/** The effective cut of `device` among `counted`: the highest recovery cut, else the lowest device cut. */
+function cutOf(device: string, counted: readonly Rev[], cuts: Cuts): SegmentCursor | undefined {
+  let rec: SegmentCursor | undefined;
+  let dev: SegmentCursor | undefined;
+  for (const r of counted) {
+    if (!r.targets.some((x) => x.device === device)) continue;
+    const cut = cuts(r, device);
+    if (r.recovery) rec = rec ? maxPosition(rec, cut) : cut;
+    else dev = dev ? minPosition(dev, cut) : cut;
+  }
+  return rec ?? dev;
+}
+
+/** A1b: q (X revokes Y) attests it applied Y's stream past y (Y revokes X): y cannot defeat q. */
+function exemptions(revs: readonly Rev[], cuts: Cuts): Map<number, Set<number>> {
+  const naming = new Map<string, Rev[]>();
+  for (const r of revs) for (const t of r.targets) push(naming, t.device, r);
+  const exempt = new Map<number, Set<number>>();
+  for (const q of revs) {
+    if (q.recovery) continue;
+    for (const t of q.targets) {
+      for (const y of naming.get(q.signer) ?? []) {
+        if (
+          !y.recovery &&
+          y.signer === t.device &&
+          beforeCut(y.event.position, cuts(q, t.device))
+        ) {
+          const set = exempt.get(q.id) ?? new Set<number>();
+          set.add(y.id);
+          exempt.set(q.id, set);
+        }
+      }
+    }
+  }
+  return exempt;
+}
+
+type Knowledge = (r: Rev, target: string, keys: DecisionKeys) => SegmentCursor | undefined;
 
 /**
  * What a revoker had attested it applied of a target's stream, in its own statements at or before
  * the revocation's position: lease watermarks, lease `prev` links to the target's lease events, and
- * the cuts of its own earlier revocations of the target. Only statements whose signature verifies
- * with one of the revoker's certified keys count.
+ * the stated cuts of its own earlier revocations of the target. Only statements that verify with the
+ * revoker's DECISION key count (decisionKeys.ts).
  */
 function attestedKnowledge(
   root: TrustRoot,
   events: readonly LogEvent[],
   revs: readonly Rev[],
-  attest: CertificateClosure,
   verify: StatementVerifier,
-): (r: Rev, target: string) => SegmentCursor | undefined {
+): Knowledge {
   const revokers = new Set(revs.filter((r) => !r.recovery).map((r) => r.signer));
   const leaseByEid = new Map<string, LogEvent>();
   const leaseByWriter = new Map<string, LogEvent[]>();
@@ -243,12 +253,15 @@ function attestedKnowledge(
     if (!leaseByEid.has(e.eid)) leaseByEid.set(e.eid, e);
     if (revokers.has(e.writer)) push(leaseByWriter, e.writer, e);
   }
-  const cache = new Map<string, Map<string, SegmentCursor>[]>();
-  const attestations = (writer: string) => {
-    let list = cache.get(writer);
+  // Decoded once; verified per decision key (the memoized verifier makes repeats cheap).
+  const decoded = new Map<
+    string,
+    { e: LogEvent; sig: Uint8Array; body: Uint8Array; seen: Map<string, SegmentCursor> }[]
+  >();
+  const statementsOf = (writer: string) => {
+    let list = decoded.get(writer);
     if (list) return list;
     list = [];
-    const keys = attest.keysOf(writer).map((k) => k.signPublicKey);
     for (const e of leaseByWriter.get(writer) ?? []) {
       const d =
         e.v !== 1
@@ -259,30 +272,32 @@ function attestedKnowledge(
               ? decodeLeaseRenewal(e.data)
               : decodeLeaseRelease(e.data);
       if (!d || d.device !== writer) continue;
-      const body = statementBody(root.vaultId, e.type, e.eid, e.data);
-      if (!keys.some((k) => verify("cashu/lease/v1", body, fromHex(d.sig), k))) continue;
       const seen = new Map<string, SegmentCursor>(Object.entries(d.watermark));
       const prev = d.prev === null ? undefined : leaseByEid.get(d.prev);
       if (prev) {
         const before = seen.get(prev.writer);
         seen.set(prev.writer, before ? maxPosition(before, prev.position) : prev.position);
       }
-      seen.set("@position", e.position);
-      list.push(seen);
+      const body = statementBody(root.vaultId, e.type, e.eid, e.data);
+      list.push({ e, sig: fromHex(d.sig), body, seen });
     }
-    cache.set(writer, list);
+    decoded.set(writer, list);
     return list;
   };
-  return (r, target) => {
+  return (r, target, keys) => {
+    const signKeys = keys.signKeysOf(r.signer);
+    if (signKeys.length === 0) return undefined;
     let best: SegmentCursor | undefined;
-    for (const seen of attestations(r.signer)) {
-      const at = seen.get("@position") as SegmentCursor;
+    for (const { e, sig, body, seen } of statementsOf(r.signer)) {
       const c = seen.get(target);
-      if (c && comparePositions(at, r.event.position) <= 0) best = best ? maxPosition(best, c) : c;
+      if (!c || comparePositions(e.position, r.event.position) > 0) continue;
+      if (!signKeys.some((k) => verify("cashu/lease/v1", body, sig, k))) continue;
+      best = best ? maxPosition(best, c) : c;
     }
     for (const other of revs) {
       if (other === r || other.recovery || other.signer !== r.signer) continue;
       if (comparePositions(other.event.position, r.event.position) >= 0) continue;
+      if (!signKeys.some((k) => equalBytes(k, other.key as Uint8Array))) continue;
       const t = other.targets.find((x) => x.device === target);
       if (t) best = best ? maxPosition(best, t.cut) : t.cut;
     }
