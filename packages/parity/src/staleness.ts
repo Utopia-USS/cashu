@@ -26,12 +26,7 @@ interface Recorded {
   readonly dirty: boolean;
 }
 
-type StaleReason =
-  | "no-head"
-  | "no-index"
-  | "no-commit"
-  | "other-commit"
-  | "committed-differs";
+type StaleReason = "no-head" | "no-index" | "no-commit" | "other-commit" | "committed-differs";
 
 interface StaleInput {
   /** `golden`, `ts-out` or the producer input name (`bridge-mcp`, `bridge`, `bridge-strategy`, ...). */
