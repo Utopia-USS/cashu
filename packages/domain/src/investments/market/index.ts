@@ -12,7 +12,6 @@ export * from "./calendar.strings.js";
 export * from "./composite.js";
 export * from "./fetchReport.js";
 export * from "./nbp.js";
-export * from "./pyJson.js";
 export * from "./refresh.js";
 export * from "./sources.js";
 export * from "./stooq.js";

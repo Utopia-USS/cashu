@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Decimal } from "./decimal.js";
-import { lineColumn, parseJson } from "./pyJson.js";
+import { isRecord, lineColumn, PyJsonError, parseJson, parsePyJson } from "./pyJson.js";
 
 // `json.loads` messages as Python 3.14 words them (the importers print them); the replay of
 // truncations and byte flips is `inv-importing-canonical` / `budget-canonical`.
@@ -55,5 +55,39 @@ describe("importer options", () => {
     // PARITY(S17a): Python 3.14 reads about 10^5 levels; documents nest 3.
     const result = parseJson("[".repeat(50_000));
     expect(result).toMatchObject({ ok: false, kind: "value", reason: "depth" });
+  });
+});
+
+describe("parsePyJson (json.loads defaults, same scanner)", () => {
+  it("accepts NaN and the infinities, keeps the last of a repeated key and reads plain records", () => {
+    const value = parsePyJson('{"a":NaN,"b":[Infinity,-Infinity],"a":2,"__proto__":1}');
+    expect(isRecord(value)).toBe(true);
+    const record = value as Record<string, unknown>;
+    expect(record.a).toBe(2);
+    expect(record.b).toEqual([Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]);
+    expect(Object.keys(record)).toEqual(["a", "b", "__proto__"]);
+    expect(parsePyJson("NaN")).toBeNaN();
+  });
+
+  it("hands every number literal to the hook, telling integers from floats", () => {
+    const seen: [string, boolean][] = [];
+    parsePyJson("[1, -2.50, 3e2, 0]", (text, integer) => {
+      seen.push([text, integer]);
+      return 0;
+    });
+    expect(seen).toEqual([
+      ["1", true],
+      ["-2.50", false],
+      ["3e2", false],
+      ["0", true],
+    ]);
+  });
+
+  it("refuses what the strict grammar refuses, as a PyJsonError with Python's message", () => {
+    expect(() => parsePyJson("[1,]")).toThrow(PyJsonError);
+    expect(() => parsePyJson("[1,]")).toThrow(
+      "Illegal trailing comma before end of array: line 1 column 3 (char 2)",
+    );
+    expect(() => parsePyJson("[".repeat(50_000))).toThrow(PyJsonError);
   });
 });

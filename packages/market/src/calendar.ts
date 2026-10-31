@@ -9,13 +9,12 @@
  * Without a fetcher nothing is fetched (the feeds are offline): the leader passes one, tests pass fakes.
  */
 
-import { type DateTime, formatDateTime } from "@cashu/domain";
+import { type DateTime, formatDateTime, PyJsonError } from "@cashu/domain";
 import { market } from "@cashu/domain/investments";
 import { MarketHttp, type MarketHttpOptions } from "./http.js";
 
 const {
   DAYS,
-  PyJsonError,
   SourceException,
   emptyFeeds,
   isFresh,

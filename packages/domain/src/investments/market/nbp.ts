@@ -10,10 +10,10 @@
 
 import { addDays, type DateTime, fromIsoFormat } from "../../dates.js";
 import { Decimal } from "../../decimal.js";
+import { isRecord, PyJsonError, parsePyJson } from "../../pyJson.js";
 import { pyUpper } from "../../text.js";
 import { type FxRate, fxRate } from "../domain/marketData.js";
 import { type CalendarDate, Currencies, type Currency, toCurrency } from "../domain/values.js";
-import { isRecord, PyJsonError, parsePyJson } from "./pyJson.js";
 import { bodySnippet, SourceException } from "./sources.js";
 
 export const NBP_SOURCE_ID = "nbp";

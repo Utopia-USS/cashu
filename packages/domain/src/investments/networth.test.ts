@@ -10,7 +10,6 @@ import {
   netWorth,
   orderContributors,
 } from "../core/index.js";
-import { TxnType } from "./domain/enums.js";
 import { asProfileId, Currencies } from "./domain/values.js";
 import { BrokerageContributor, type BrokerageHistory, monthEnds } from "./networth.js";
 import {

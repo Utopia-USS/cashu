@@ -26,12 +26,12 @@ import {
   parseDateTime,
   weekday,
 } from "../../dates.js";
+import { isRecord, parsePyJson } from "../../pyJson.js";
 import { pyRegex } from "../../pyRegex.js";
 import { pyLower, pyStrip, pyUpper } from "../../text.js";
 import { comparePyStr } from "../domain/values.js";
 import { segmentLabel } from "../research/segments.js";
 import { calendarStrings, centralBanks, countryLabels, releaseNames } from "./calendar.strings.js";
-import { isRecord, parsePyJson } from "./pyJson.js";
 
 export const DAYS = 14;
 /** How long a complete fetch is served from the cache. */

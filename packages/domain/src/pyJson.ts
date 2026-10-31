@@ -1,11 +1,20 @@
 /**
- * Python's `json.loads(text, parse_float=Decimal, parse_constant=<refuse>, object_pairs_hook=<refuse
- * duplicates>)` as the importers call it: the C scanner's grammar and error positions (code points)
- * and messages, integers exact (`bigint`, Python `int` with its 4300-digit limit; or `Decimal` like
- * `parse_int=Decimal`, no limit), numbers with a fraction or an exponent as `Decimal`, a repeated key
- * refused when its object closes (inner objects first).
- * Pinned by `budget-canonical.jsonl` (truncations and byte flips of a valid document) and
- * `inv-importing-json.jsonl` (the `JSONDecodeError` messages).
+ * The one Python `json.loads` of the domain: the C scanner's grammar and error positions (code
+ * points) and messages, with Python's hooks as a `Reader` (what a number, a constant and an object
+ * become). Two callers, one scanner:
+ *
+ * - `parseJson`: as the importers call it, `json.loads(text, parse_float=Decimal,
+ *   parse_constant=<refuse>, object_pairs_hook=<refuse duplicates>)`: integers exact (`bigint`, Python
+ *   `int` with its 4300-digit limit; or `Decimal` like `parse_int=Decimal`, no limit), numbers with a
+ *   fraction or an exponent as `Decimal`, `NaN` / `Infinity` refused, a repeated key refused when its
+ *   object closes (inner objects first). Pinned by `budget-canonical.jsonl` (truncations and byte
+ *   flips of a valid document) and `inv-importing-json.jsonl` (the `JSONDecodeError` messages).
+ * - `parsePyJson`: as the market sources call it, `json.loads` with its defaults (`NaN`, `Infinity`
+ *   and `-Infinity` accepted, the last of a repeated key wins, plain objects) and a hook for numbers
+ *   so a caller can keep their exact text (`parse_float=Decimal`: NBP rates are exact decimals).
+ *   Throws `PyJsonError` (Python `ValueError`) on anything else.
+ *
+ * Whatever the reader, the grammar is the strict one: positions, nesting limit, BOM, trailing commas.
  */
 
 import { Decimal } from "./decimal.js";
@@ -38,7 +47,7 @@ export type JsonResult =
       readonly detail: string;
     };
 
-/** How integers without a fraction or exponent are read. */
+/** How integers without a fraction or exponent are read by `parseJson`. */
 export interface JsonOptions {
   /** `bigint` (Python `int`, 4300-digit limit) or `Decimal` (`parse_int=Decimal`, no limit). */
   readonly integers: "bigint" | "decimal";
@@ -89,15 +98,64 @@ const isWs = (c: string | undefined) => c === " " || c === "\t" || c === "\n" ||
 const isDigit = (c: string | undefined) => c !== undefined && c >= "0" && c <= "9";
 const HEX = /^[0-9a-fA-F]$/;
 
+/** What `json.loads` hooks decide: the value of a number, a constant and a closed object. */
+interface Reader {
+  /** `parse_float` / `parse_int`; `integer` is true for a literal without fraction or exponent. */
+  number(text: string, integer: boolean): unknown;
+  /** `parse_constant`. */
+  constant(name: "NaN" | "Infinity" | "-Infinity"): unknown;
+  /** `object_pairs_hook`: runs as an object closes. */
+  object(pairs: readonly (readonly [string, unknown])[]): unknown;
+}
+
+/** The importers' hooks: exact numbers, constants and repeated keys refused, insertion-ordered maps. */
+const importerReader = (options: JsonOptions): Reader => ({
+  number(text, integer) {
+    if (!integer || options.integers === "decimal") return Decimal.parse(text);
+    const digits = text.replace("-", "").length;
+    if (digits > MAX_INT_DIGITS) {
+      throw new Fail({
+        ok: false,
+        kind: "value",
+        reason: "int_digits",
+        detail: `Exceeds the limit (${MAX_INT_DIGITS} digits) for integer string conversion: value has ${digits} digits; use sys.set_int_max_str_digits() to increase the limit`,
+      });
+    }
+    return BigInt(text);
+  },
+  constant: badConstant,
+  object(pairs) {
+    const map = new Map<string, JsonValue>();
+    for (const [k, v] of pairs) {
+      if (map.has(k)) throw new Fail({ ok: false, kind: "duplicate_key", key: k });
+      map.set(k, v as JsonValue);
+    }
+    return map;
+  },
+});
+
+/** `json.loads` defaults: floats, `NaN` and friends accepted, the last of a repeated key wins. */
+const defaultReader = (number: NumberReader): Reader => ({
+  number,
+  constant: (name) =>
+    name === "NaN"
+      ? Number.NaN
+      : name === "Infinity"
+        ? Number.POSITIVE_INFINITY
+        : Number.NEGATIVE_INFINITY,
+  // fromEntries defines own properties (a `__proto__` key stays data) and the last pair wins.
+  object: (pairs) => Object.fromEntries(pairs),
+});
+
 class Scanner {
   private readonly s: readonly string[];
-  private readonly integers: JsonOptions["integers"];
+  private readonly reader: Reader;
   /** The container being read last: names the recursion error when the JS stack gives out first. */
   innermost: "object" | "array" = "object";
 
-  constructor(text: string, options: JsonOptions) {
+  constructor(text: string, reader: Reader) {
     this.s = Array.from(text);
-    this.integers = options.integers;
+    this.reader = reader;
   }
 
   get length(): number {
@@ -111,7 +169,7 @@ class Scanner {
   }
 
   /** `scan_once(s, idx)` -> [value, next index]. */
-  value(idx: number, depth: number): [JsonValue, number] {
+  value(idx: number, depth: number): [unknown, number] {
     const s = this.s;
     const c = s[idx];
     if (c === undefined) return noValue(idx);
@@ -133,20 +191,20 @@ class Scanner {
         if (word("false")) return [false, idx + 5];
         break;
       case "N":
-        if (word("NaN")) return badConstant("NaN");
+        if (word("NaN")) return [this.reader.constant("NaN"), idx + 3];
         break;
       case "I":
-        if (word("Infinity")) return badConstant("Infinity");
+        if (word("Infinity")) return [this.reader.constant("Infinity"), idx + 8];
         break;
       case "-":
-        if (word("-Infinity")) return badConstant("-Infinity");
+        if (word("-Infinity")) return [this.reader.constant("-Infinity"), idx + 9];
         break;
     }
     return this.number(idx);
   }
 
   /** `_match_number_unicode`. */
-  private number(start: number): [JsonValue, number] {
+  private number(start: number): [unknown, number] {
     const s = this.s;
     const end = s.length - 1;
     let idx = start;
@@ -178,17 +236,7 @@ class Scanner {
       else idx = eStart;
     }
     const text = s.slice(start, idx).join("");
-    if (isFloat || this.integers === "decimal") return [Decimal.parse(text), idx];
-    const digits = text.replace("-", "").length;
-    if (digits > MAX_INT_DIGITS) {
-      throw new Fail({
-        ok: false,
-        kind: "value",
-        reason: "int_digits",
-        detail: `Exceeds the limit (${MAX_INT_DIGITS} digits) for integer string conversion: value has ${digits} digits; use sys.set_int_max_str_digits() to increase the limit`,
-      });
-    }
-    return [BigInt(text), idx];
+    return [this.reader.number(text, !isFloat), idx];
   }
 
   /** `scanstring_unicode(s, end, strict=True)`; `end` is just after the opening quote. */
@@ -257,11 +305,11 @@ class Scanner {
     }
   }
 
-  private object(start: number, depth: number): [JsonValue, number] {
+  private object(start: number, depth: number): [unknown, number] {
     this.innermost = "object";
     if (depth > MAX_DEPTH) return tooDeep("object");
     const s = this.s;
-    const pairs: [string, JsonValue][] = [];
+    const pairs: [string, unknown][] = [];
     let idx = this.skipWs(start);
     if (s[idx] !== "}") {
       for (;;) {
@@ -282,20 +330,14 @@ class Scanner {
           return decodeError(comma, "Illegal trailing comma before end of object");
       }
     }
-    // object_pairs_hook runs as the object closes: a repeated key fails here, inner objects first.
-    const map = new Map<string, JsonValue>();
-    for (const [k, v] of pairs) {
-      if (map.has(k)) throw new Fail({ ok: false, kind: "duplicate_key", key: k });
-      map.set(k, v);
-    }
-    return [map, idx + 1];
+    return [this.reader.object(pairs), idx + 1];
   }
 
-  private array(start: number, depth: number): [JsonValue, number] {
+  private array(start: number, depth: number): [unknown, number] {
     this.innermost = "array";
     if (depth > MAX_DEPTH) return tooDeep("array");
     const s = this.s;
-    const items: JsonValue[] = [];
+    const items: unknown[] = [];
     let idx = this.skipWs(start);
     if (s[idx] !== "]") {
       for (;;) {
@@ -313,11 +355,14 @@ class Scanner {
   }
 }
 
-/** `json.loads(text, ...)` as above. */
-export function parseJson(text: string, options: JsonOptions = { integers: "bigint" }): JsonResult {
-  const scanner = new Scanner(text, options);
+type Scanned = { readonly ok: true; readonly value: unknown } | Exclude<JsonResult, { ok: true }>;
+
+function scan(text: string, reader: Reader): Scanned {
+  const scanner = new Scanner(text, reader);
   try {
-    if (text.startsWith("﻿")) return decodeError(0, "Unexpected UTF-8 BOM (decode using utf-8-sig)");
+    if (text.startsWith("\ufeff")) {
+      return decodeError(0, "Unexpected UTF-8 BOM (decode using utf-8-sig)");
+    }
     const [value, end] = scanner.value(scanner.skipWs(0), 0);
     const after = scanner.skipWs(end);
     if (after !== scanner.length) return decodeError(after, "Extra data");
@@ -328,6 +373,49 @@ export function parseJson(text: string, options: JsonOptions = { integers: "bigi
     if (error instanceof RangeError) return recursionFailure(scanner.innermost);
     throw error;
   }
+}
+
+/** `json.loads(text, ...)` with the importers' hooks (see the header). */
+export function parseJson(text: string, options: JsonOptions = { integers: "bigint" }): JsonResult {
+  const scanned = scan(text, importerReader(options));
+  return scanned.ok ? { ok: true, value: scanned.value as JsonValue } : scanned;
+}
+
+/** Python `json.JSONDecodeError` (a `ValueError`) and the other refusals of `json.loads`. */
+export class PyJsonError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PyJsonError";
+  }
+}
+
+/** Turns one number literal into a value; `integer` is true for a literal without fraction or exponent. */
+export type NumberReader = (text: string, integer: boolean) => unknown;
+
+const asFloat: NumberReader = (text) => Number(text);
+
+/**
+ * `json.loads(text, parse_float=..., parse_int=...)` with Python's defaults otherwise (both numbers
+ * via `number`, a float unless given). Objects are plain records. Throws `PyJsonError`.
+ */
+export function parsePyJson(text: string, number: NumberReader = asFloat): unknown {
+  const scanned = scan(text, defaultReader(number));
+  if (scanned.ok) return scanned.value;
+  if (scanned.kind === "decode") {
+    const { line, column } = lineColumn(text, scanned.pos);
+    throw new PyJsonError(`${scanned.msg}: line ${line} column ${column} (char ${scanned.pos})`);
+  }
+  throw new PyJsonError(scanned.kind === "value" ? scanned.detail : `duplicate key ${scanned.key}`);
+}
+
+/** A plain JSON object (Python `isinstance(x, dict)`). */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Python `isinstance(x, int | float) and not isinstance(x, bool)` for a value of `parsePyJson`. */
+export function isPyNumber(value: unknown): value is number {
+  return typeof value === "number";
 }
 
 /** `JSONDecodeError.lineno` / `colno` of a position (code points). */

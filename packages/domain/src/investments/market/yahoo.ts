@@ -27,6 +27,7 @@
 
 import { addDays, type DateTime, daysBetween } from "../../dates.js";
 import { Decimal, floatRepr, roundFloatToInt } from "../../decimal.js";
+import { isPyNumber, isRecord, PyJsonError, parsePyJson } from "../../pyJson.js";
 import { pySplit, pyStrip } from "../../text.js";
 import { AssetClass } from "../domain/enums.js";
 import {
@@ -46,7 +47,6 @@ import {
   type InstrumentId,
   toCurrency,
 } from "../domain/values.js";
-import { isPyNumber, isRecord, PyJsonError, parsePyJson } from "./pyJson.js";
 import {
   bodySnippet,
   type PriceHistory,
