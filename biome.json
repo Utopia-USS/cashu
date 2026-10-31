@@ -36,11 +36,7 @@
           "options": {
             "paths": {
               "react": {
-                "importNames": [
-                  "useMemo",
-                  "useCallback",
-                  "memo"
-                ],
+                "importNames": ["useMemo", "useCallback", "memo"],
                 "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
               }
             },
@@ -69,11 +65,7 @@
                 "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
               },
               {
-                "group": [
-                  "swr",
-                  "@tanstack/react-query",
-                  "@tanstack/react-query/**"
-                ],
+                "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
                 "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
               }
             ]
@@ -143,11 +135,7 @@
               "options": {
                 "paths": {
                   "react": {
-                    "importNames": [
-                      "useMemo",
-                      "useCallback",
-                      "memo"
-                    ],
+                    "importNames": ["useMemo", "useCallback", "memo"],
                     "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
                   }
                 },
@@ -176,17 +164,11 @@
                     "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
                   },
                   {
-                    "group": [
-                      "swr",
-                      "@tanstack/react-query",
-                      "@tanstack/react-query/**"
-                    ],
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
                     "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
                   },
                   {
-                    "group": [
-                      "@cashu/*"
-                    ],
+                    "group": ["@cashu/*"],
                     "message": "packages/domain imports no other workspace package: Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
                   {
@@ -230,11 +212,7 @@
               "options": {
                 "paths": {
                   "react": {
-                    "importNames": [
-                      "useMemo",
-                      "useCallback",
-                      "memo"
-                    ],
+                    "importNames": ["useMemo", "useCallback", "memo"],
                     "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
                   }
                 },
@@ -263,11 +241,7 @@
                     "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
                   },
                   {
-                    "group": [
-                      "swr",
-                      "@tanstack/react-query",
-                      "@tanstack/react-query/**"
-                    ],
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
                     "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
                   },
                   {
@@ -310,13 +284,7 @@
                     "message": "This package runs on Node, the Electron renderer and Hermes alike: no node:*, Electron, React Native, Expo or DOM imports. Platform needs come in through an interface (SqlDriver, KeyStore, Transport, Clock) wired at the app root."
                   },
                   {
-                    "group": [
-                      "react",
-                      "react/**",
-                      "react-*",
-                      "@types/react",
-                      "@types/react/**"
-                    ],
+                    "group": ["react", "react/**", "react-*", "@types/react", "@types/react/**"],
                     "message": "This layer has no React: it is used by CLI, MCP and API too."
                   }
                 ]
@@ -343,11 +311,7 @@
               "options": {
                 "paths": {
                   "react": {
-                    "importNames": [
-                      "useMemo",
-                      "useCallback",
-                      "memo"
-                    ],
+                    "importNames": ["useMemo", "useCallback", "memo"],
                     "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
                   }
                 },
@@ -376,11 +340,7 @@
                     "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
                   },
                   {
-                    "group": [
-                      "swr",
-                      "@tanstack/react-query",
-                      "@tanstack/react-query/**"
-                    ],
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
                     "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
                   },
                   {
@@ -444,11 +404,7 @@
               "options": {
                 "paths": {
                   "react": {
-                    "importNames": [
-                      "useMemo",
-                      "useCallback",
-                      "memo"
-                    ],
+                    "importNames": ["useMemo", "useCallback", "memo"],
                     "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
                   }
                 },
@@ -477,11 +433,7 @@
                     "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
                   },
                   {
-                    "group": [
-                      "swr",
-                      "@tanstack/react-query",
-                      "@tanstack/react-query/**"
-                    ],
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
                     "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
                   },
                   {
@@ -547,11 +499,7 @@
               "options": {
                 "paths": {
                   "react": {
-                    "importNames": [
-                      "useMemo",
-                      "useCallback",
-                      "memo"
-                    ],
+                    "importNames": ["useMemo", "useCallback", "memo"],
                     "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
                   }
                 },
@@ -580,11 +528,7 @@
                     "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
                   },
                   {
-                    "group": [
-                      "swr",
-                      "@tanstack/react-query",
-                      "@tanstack/react-query/**"
-                    ],
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
                     "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
                   },
                   {
@@ -656,11 +600,7 @@
               "options": {
                 "paths": {
                   "react": {
-                    "importNames": [
-                      "useMemo",
-                      "useCallback",
-                      "memo"
-                    ],
+                    "importNames": ["useMemo", "useCallback", "memo"],
                     "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
                   }
                 },
@@ -689,11 +629,7 @@
                     "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
                   },
                   {
-                    "group": [
-                      "swr",
-                      "@tanstack/react-query",
-                      "@tanstack/react-query/**"
-                    ],
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
                     "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
                   },
                   {
@@ -773,11 +709,7 @@
               "options": {
                 "paths": {
                   "react": {
-                    "importNames": [
-                      "useMemo",
-                      "useCallback",
-                      "memo"
-                    ],
+                    "importNames": ["useMemo", "useCallback", "memo"],
                     "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
                   }
                 },
@@ -806,11 +738,7 @@
                     "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
                   },
                   {
-                    "group": [
-                      "swr",
-                      "@tanstack/react-query",
-                      "@tanstack/react-query/**"
-                    ],
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
                     "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
                   },
                   {
@@ -825,13 +753,7 @@
                     "message": "Service packages never import UI packages. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
                   {
-                    "group": [
-                      "react",
-                      "react/**",
-                      "react-*",
-                      "@types/react",
-                      "@types/react/**"
-                    ],
+                    "group": ["react", "react/**", "react-*", "@types/react", "@types/react/**"],
                     "message": "This layer has no React: it is used by CLI, MCP and API too."
                   }
                 ]
@@ -859,11 +781,7 @@
               "options": {
                 "paths": {
                   "react": {
-                    "importNames": [
-                      "useMemo",
-                      "useCallback",
-                      "memo"
-                    ],
+                    "importNames": ["useMemo", "useCallback", "memo"],
                     "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
                   }
                 },
@@ -892,11 +810,7 @@
                     "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
                   },
                   {
-                    "group": [
-                      "swr",
-                      "@tanstack/react-query",
-                      "@tanstack/react-query/**"
-                    ],
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
                     "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
                   },
                   {
@@ -911,12 +825,7 @@
                     "message": "A View renders props and may use presentational hooks only. Store, sync and feature hooks belong in the screen hook (useXScreen), which passes the result in."
                   },
                   {
-                    "group": [
-                      "**/commands",
-                      "**/commands/**",
-                      "**/commands.*",
-                      "**/commands/**"
-                    ],
+                    "group": ["**/commands", "**/commands/**", "**/commands.*", "**/commands/**"],
                     "message": "A View never calls commands; the screen hook exposes an intent callback (onCategoryPicked) instead."
                   },
                   {
@@ -959,9 +868,7 @@
       }
     },
     {
-      "includes": [
-        "packages/sync/src/crypto/**"
-      ],
+      "includes": ["packages/sync/src/crypto/**"],
       "linter": {
         "rules": {
           "suspicious": {
