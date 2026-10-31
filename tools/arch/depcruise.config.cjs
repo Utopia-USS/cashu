@@ -15,6 +15,8 @@ const MODULES = "(budget|assets|loans|investments)";
 const LAYERS = {
   domain: [],
   sync: ["domain"],
+  // Leader-only market data over HTTP (Yahoo, stooq, NBP) behind an injected fetch.
+  market: ["domain"],
   store: ["domain", "sync"],
   i18n: ["domain"],
   ui: ["domain", "i18n"],

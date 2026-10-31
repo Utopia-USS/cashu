@@ -58,6 +58,7 @@ Need data from another module? Use its public `index.ts`, or move the shared con
 - What one screen shows and does -> its screen hook, next to the screen in the app.
 - Pixels -> `packages/ui` (shared) or the View (one screen's composition).
 - Process, window, notifications, keychain, file system -> the app.
+- Market data from the network -> parsing, planning and the price cache contract in `domain` (`investments/market/`), the HTTP sources (injected `fetch`, leader only) in `packages/market`.
 
 ## Platform code
 

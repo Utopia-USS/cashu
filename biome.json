@@ -261,7 +261,9 @@
                       "@cashu/parity",
                       "@cashu/parity/**",
                       "@cashu/arch-tools",
-                      "@cashu/arch-tools/**"
+                      "@cashu/arch-tools/**",
+                      "@cashu/market",
+                      "@cashu/market/**"
                     ],
                     "message": "packages/sync may import only @cashu/domain. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -282,6 +284,117 @@
                       "react-dom/**"
                     ],
                     "message": "This package runs on Node, the Electron renderer and Hermes alike: no node:*, Electron, React Native, Expo or DOM imports. Platform needs come in through an interface (SqlDriver, KeyStore, Transport, Clock) wired at the app root."
+                  },
+                  {
+                    "group": ["react", "react/**", "react-*", "@types/react", "@types/react/**"],
+                    "message": "This layer has no React: it is used by CLI, MCP and API too."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/market/src/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.stories.tsx",
+        "!**/testing/**",
+        "!**/test-fixtures/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "fetch": "Market sources never reach the network on their own: every request goes through MarketHttp over the fetch the app root injects (tests pass a fake).",
+                  "XMLHttpRequest": "Market sources never reach the network on their own: every request goes through MarketHttp over the fetch the app root injects (tests pass a fake).",
+                  "WebSocket": "Market sources never reach the network on their own: every request goes through MarketHttp over the fetch the app root injects (tests pass a fake)."
+                }
+              }
+            },
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "react": {
+                    "importNames": ["useMemo", "useCallback", "memo"],
+                    "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
+                  }
+                },
+                "patterns": [
+                  {
+                    "group": [
+                      "@sentry/*",
+                      "@sentry/*/**",
+                      "@bugsnag/*",
+                      "@bugsnag/*/**",
+                      "posthog-*",
+                      "@posthog/*",
+                      "@amplitude/*",
+                      "mixpanel*",
+                      "@datadog/*",
+                      "logrocket*",
+                      "@segment/*",
+                      "@react-native-firebase/*",
+                      "firebase/analytics",
+                      "@vercel/analytics",
+                      "@vercel/analytics/**",
+                      "@newrelic/*",
+                      "@honeybadger-io/*",
+                      "rollbar"
+                    ],
+                    "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
+                  },
+                  {
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
+                    "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
+                  },
+                  {
+                    "group": [
+                      "@cashu/sync",
+                      "@cashu/sync/**",
+                      "@cashu/store",
+                      "@cashu/store/**",
+                      "@cashu/i18n",
+                      "@cashu/i18n/**",
+                      "@cashu/ui",
+                      "@cashu/ui/**",
+                      "@cashu/ui-logic",
+                      "@cashu/ui-logic/**",
+                      "@cashu/api",
+                      "@cashu/api/**",
+                      "@cashu/mcp",
+                      "@cashu/mcp/**",
+                      "@cashu/parity",
+                      "@cashu/parity/**",
+                      "@cashu/arch-tools",
+                      "@cashu/arch-tools/**"
+                    ],
+                    "message": "packages/market may import only @cashu/domain. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
+                  },
+                  {
+                    "group": [
+                      "node:*",
+                      "electron",
+                      "electron/**",
+                      "react-native",
+                      "react-native/**",
+                      "react-native-*",
+                      "@react-native/*",
+                      "expo",
+                      "expo/**",
+                      "expo-*",
+                      "@expo/*",
+                      "react-dom",
+                      "react-dom/**"
+                    ],
+                    "message": "packages/market runs in the leader's store process (desktop) but stays platform free: no node:*, Electron, React Native, Expo or DOM imports. fetch, sleep and the clocks come in through MarketHttp and the source options, wired at the app root."
                   },
                   {
                     "group": ["react", "react/**", "react-*", "@types/react", "@types/react/**"],
@@ -358,7 +471,9 @@
                       "@cashu/parity",
                       "@cashu/parity/**",
                       "@cashu/arch-tools",
-                      "@cashu/arch-tools/**"
+                      "@cashu/arch-tools/**",
+                      "@cashu/market",
+                      "@cashu/market/**"
                     ],
                     "message": "packages/store may import only @cashu/domain and @cashu/sync. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -453,7 +568,9 @@
                       "@cashu/parity",
                       "@cashu/parity/**",
                       "@cashu/arch-tools",
-                      "@cashu/arch-tools/**"
+                      "@cashu/arch-tools/**",
+                      "@cashu/market",
+                      "@cashu/market/**"
                     ],
                     "message": "packages/i18n may import only @cashu/domain. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -544,7 +661,9 @@
                       "@cashu/parity",
                       "@cashu/parity/**",
                       "@cashu/arch-tools",
-                      "@cashu/arch-tools/**"
+                      "@cashu/arch-tools/**",
+                      "@cashu/market",
+                      "@cashu/market/**"
                     ],
                     "message": "packages/ui-logic may import only @cashu/domain, @cashu/store and @cashu/i18n; it is headless (no components). Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -647,7 +766,9 @@
                       "@cashu/parity",
                       "@cashu/parity/**",
                       "@cashu/arch-tools",
-                      "@cashu/arch-tools/**"
+                      "@cashu/arch-tools/**",
+                      "@cashu/market",
+                      "@cashu/market/**"
                     ],
                     "message": "packages/ui components get data through props: they may import only @cashu/domain and @cashu/i18n. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },

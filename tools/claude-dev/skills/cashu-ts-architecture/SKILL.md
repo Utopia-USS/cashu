@@ -27,6 +27,7 @@ silence a rule to get green.
 | Store | `packages/store` | domain, sync | events, materializers, queries, commands, the `useQuery` engine |
 | i18n | `packages/i18n` | domain | catalogs runtime, plurals, `Intl` formatters, `useStrings` |
 | Sync | `packages/sync` | domain | log, crypto, transports, lease |
+| Market | `packages/market` | domain | leader-only market data over HTTP (Yahoo, stooq, NBP, calendar feeds) behind an injected `fetch` |
 | Domain | `packages/domain` | nothing (no npm, no node built-ins) | pure functions and types |
 
 Details, module folders, exports maps, where processes run: [layers.md](references/layers.md).
