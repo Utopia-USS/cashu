@@ -184,6 +184,34 @@ payload's explicit field for it (`doneAt`, `observedAt`, `expiresAt`, `seenAt`, 
   stamp of a derived column as its initial value; later events recompute it normally. Native writers
   rarely need `stamps`.
 
+### 4.5 Log copy encoding (store-local)
+
+This section binds the store's `event_log.data` column only; it is not an interchange format. The wire
+form (2.1) carries `d` as a JSON object with field names, so it does not depend on any field order.
+
+- A payload whose top-level keys all have a position in its type's **field table** is stored
+  positionally: `[mask, ...values]`, bit `i` of `mask` set when the field at position `i` is present
+  (absent and `null` stay distinct, 4.2), values in position order. Only positions 0-51 are used (a
+  JSON number is exact to 2^53). Any other payload (a field without a position, a type without a table,
+  a field at position 52 or later) is stored as a JSON object with its names. Decoding gives back the
+  same keys and values; nested objects (`stamps`, `raw`, JSON blobs) keep their names.
+- The field table (`packages/store/src/engine/field-table.ts`) is data checked into the repo: per event
+  type, an ordered list of field names. Positions come only from it, never from a schema's key order,
+  so reordering a schema or adding a field anywhere in it (7.6) changes nothing stored.
+- **One table per type, covering every version.** The table names fields, it gives them no meaning,
+  so a name keeps its position across versions and decoding needs no version. This matters because
+  `data` holds the payload as upcast to the reader's version at write time (the original is kept in
+  `raw_data` only when it differs), a version the row does not record. A field a later version drops
+  keeps its position; a renamed field is a new name appended.
+- **Append-only.** An entry is never edited, reordered or removed. A new field of any registered schema
+  version is appended at the end of its type's list (`CASHU_FIELD_TABLE=append` regenerates the file;
+  it never rewrites an entry). `field-table.test.ts` fails when a locked entry changes (a per-type lock
+  of the entry count and an FNV-1a hash of the entries), when entries are not locked, and when a field
+  of a registered schema version (built-in modules, every version) has no position. A positional row
+  with more values than its mask selects (a shortened table) fails to decode instead of shifting fields.
+- The first table was generated from the v1 schema order of S23b's encoder, so log copies written
+  before the table existed decode unchanged (system schema 2 is kept).
+
 ## 5. Batches
 
 - A **batch** is the unit a device appends atomically (one frame or a frame group, S28a); a
@@ -368,6 +396,8 @@ re-delivered duplicates, invariants checked on every prefix, all final views equ
 6. **Evolving a type**: an optional field whose absence keeps the old meaning MAY keep `v`; anything
    else (new required field, changed meaning, new enum value, changed unit) MUST bump `v`. A type name
    is never reused.
+   Field order in a schema is free: the store's log copy takes positions from the append-only field
+   table (4.5), so a new field may go anywhere in the schema; its name is appended to the table.
 7. **Writers never round-trip records**: they send only the fields they change.
 8. **No write on stale semantics**: a device holding parked events of a row MUST NOT emit GUARD or
    FWW events for it.

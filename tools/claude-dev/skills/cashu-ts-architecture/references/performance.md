@@ -72,6 +72,12 @@ two, plus zod validation and the gid check (one HMAC). File mode adds the WAL pa
 trees on every 1,000-event commit (applying the whole bulk in one transaction, as the spike's sync
 does, measured ~15-25% faster).
 
+Field table for the log copy (S23c, `engine/field-table.ts`, events.md 4.5): positions come from the
+append-only table instead of the live schema order; same bytes on disk. Interleaved before / after in
+one run, 3 rounds each, CPU ms medians, memory mode, load average 128-210: S24a workload bulk 3,300 ->
+3,174, rebuild 1,145 -> 1,112; S25 workload bulk 868 -> 818, rebuild 328 -> 336, owner merge 283 ->
+287 (all within noise).
+
 ## Core and budget vault (S24a)
 
 Workload: `packages/store/src/perf.test.ts` (66,534 events: the S23b workload plus the cash pool, 2,000

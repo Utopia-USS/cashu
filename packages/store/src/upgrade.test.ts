@@ -7,6 +7,7 @@ import { z } from "zod";
 import { canonicalJson } from "./canonical.js";
 import { storedBody } from "./engine/log.js";
 import type { Materializer } from "./engine/types.js";
+import { PAYLOADS } from "./events/v1/catalog.js";
 import { builtinModules } from "./modules.js";
 import type { StoreModule } from "./registry.js";
 import { viewHash } from "./snapshot.js";
@@ -64,6 +65,30 @@ const v2Module: StoreModule = {
       v: 2,
       schema: z.looseObject({ body: z.string() }),
       upcastFrom: ({ text, ...rest }) => ({ ...rest, body: text }),
+    },
+  ],
+};
+
+/**
+ * A v2 of a catalog type whose schema lists the v1 fields in reverse order and inserts a new optional
+ * field first: the log copy's positions come from the field table (events.md 4.5), not the schema.
+ */
+const reorderedRuleModule: StoreModule = {
+  id: "test",
+  materializers: [],
+  events: [
+    {
+      type: "categoryRule.set",
+      v: 2,
+      schema: z.looseObject({
+        confidence: z.number().optional(),
+        ...Object.fromEntries(
+          Object.entries(
+            (PAYLOADS["categoryRule.set"] as unknown as { shape: Record<string, z.ZodType> }).shape,
+          ).reverse(),
+        ),
+      }),
+      upcastFrom: (d) => ({ ...d }),
     },
   ],
 };
@@ -148,5 +173,50 @@ describe("forward compatibility", () => {
     expect(upgraded.needsUpgrade()).toBe(false);
     expect(upgraded.read("SELECT body FROM test_notes")).toEqual([{ body: "second" }]);
     expect(viewHash(upgraded).hash).toBe(viewHash(fresh).hash);
+  });
+
+  it("reads stored payloads identically after an upgrade that reorders and grows the schema", () => {
+    const RULE = "cc9078fc-ae3d-8c1d-8381-55311fb4c8b2";
+    const rule = { merchantKey: "SKLEP TESTOWY", category: "groceries", source: "manual" };
+    const f = new EventFactory();
+    const driver = memoryDriver();
+    const old = openTestStore({ driver });
+    old.applyEnvelopes([
+      f.make("categoryRule.set", RULE, { ...rule, locked: false }),
+      f.make("categoryRule.set", RULE, { ...rule, category: "transport", locked: true }),
+    ]);
+    type Row = Parameters<typeof storedBody>[0];
+    const rows = () => old.read<Row>("SELECT * FROM event_log ORDER BY hlc");
+    const before = rows();
+    expect(before.map((r) => r.data?.startsWith("["))).toEqual([true, true]);
+    const hash = viewHash(old).hash;
+
+    const upgraded = openTestStore({ driver, modules: [...builtinModules(), reorderedRuleModule] });
+    const after = upgraded.read<Row>("SELECT * FROM event_log ORDER BY hlc");
+    expect(after.map((r) => [r.data, r.raw_data, r.state])).toEqual(
+      before.map((r) => [r.data, r.raw_data, r.state]),
+    );
+    expect(after.map((r) => storedBody(r, TEST_VAULT))).toEqual(
+      before.map((r) => storedBody(r, TEST_VAULT)),
+    );
+    expect(viewHash(upgraded).hash).toBe(hash);
+
+    // a v2 event with the new field: no position for it in the table, so it keeps its names
+    const v2 = f.make(
+      "categoryRule.set",
+      RULE,
+      { ...rule, locked: true, confidence: 0.5 },
+      { v: 2 },
+    );
+    expect(upgraded.applyEnvelopes([v2]).applied).toBe(1);
+    const last = upgraded.read<Row>("SELECT * FROM event_log ORDER BY hlc DESC LIMIT 1")[0];
+    expect(last && JSON.parse(last.data ?? "null")).toEqual({
+      ...rule,
+      locked: true,
+      confidence: 0.5,
+    });
+    expect(upgraded.read("SELECT category, locked FROM category_rules")).toEqual([
+      { category: "groceries", locked: 1 },
+    ]);
   });
 });

@@ -86,23 +86,8 @@ describe("payload schemas: valid samples", () => {
 });
 
 describe("S25 catalog deltas (optional fields, absent keeps the v1 meaning)", () => {
-  const shapeKeys = (t: EventType) =>
-    Object.keys((PAYLOADS[t] as unknown as { shape: Record<string, unknown> }).shape);
-
-  // The log copy stores payloads positionally in schema key order (engine/compact.ts): a v1 shape
-  // may only grow at its end, or stored events decode into the wrong fields after an upgrade.
-  it.each([
-    ["signal.refreshed", ["severity", "message", "payload", "run", "seenAt", "stamps"]],
-    [
-      "signal.escalated",
-      ["severity", "message", "payload", "reactivate", "run", "seenAt", "stamps"],
-    ],
-    ["signal.closed", ["status", "reason", "stamps"]],
-    ["signal.reopened", ["reason", "stamps"]],
-    ["alert.restored", ["stamps"]],
-  ] as const)("%s keeps its v1 keys first, in order", (type, v1) => {
-    expect(shapeKeys(type).slice(0, v1.length)).toEqual(v1);
-  });
+  // Field order in these shapes is free: the log copy takes positions from the append-only field
+  // table (engine/field-table.ts, events.md 4.5), whose guard covers every new field.
 
   it("accepts the refresh fields, run / payloadSet on close, payloadUnset, rearm", () => {
     const ok = (t: EventType, d: Record<string, unknown>) =>
