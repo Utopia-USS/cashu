@@ -16,7 +16,10 @@ Options:
   --dataset <lab|demo>   golden set: lab = <lab dir>/parity/out/lab, demo = parity/golden-demo
   --check <name>         only this check (repeatable; a trailing * matches a prefix, e.g. 'investments.*')
   --actual <dir>         the TS output dir (default <lab dir>/parity/ts-out/<dataset>)
-  --golden <dir>         override the golden dir
+  --out <dir>            golden root: compares against <dir>/<dataset> (the dir golden.py --out wrote;
+                         default: the shared <lab dir>/parity/out for lab, which only lab/ts-stack HEAD
+                         writes, and parity/golden-demo for demo)
+  --golden <dir>         override the golden dir (wins over --out)
   --config <file>        tolerance config (default packages/parity/parity.config.json)
   --allow-missing        do not fail on checks that have no actual file yet
   --hash-keys            print every object key in a path as <key:hash> (default: only schema-like keys)
@@ -75,9 +78,11 @@ export async function main(argv: string[], io: Io): Promise<number> {
   const labDir = io.env.CASHU_LAB_DIR ?? join(homedir(), "cashu-lab");
   const goldenDir = abs(
     values.golden ??
-      (dataset === "demo"
-        ? join(REPO_ROOT, "parity", "golden-demo")
-        : join(labDir, "parity", "out", "lab")),
+      (values.out !== undefined
+        ? join(abs(values.out), dataset)
+        : dataset === "demo"
+          ? join(REPO_ROOT, "parity", "golden-demo")
+          : join(labDir, "parity", "out", "lab")),
   );
   const actualDir = abs(values.actual ?? join(labDir, "parity", "ts-out", dataset));
   try {
@@ -116,6 +121,7 @@ function parseCli(argv: string[]) {
       check: { type: "string", multiple: true, default: [] },
       actual: { type: "string" },
       golden: { type: "string" },
+      out: { type: "string" },
       config: { type: "string" },
       "allow-missing": { type: "boolean" },
       "hash-keys": { type: "boolean" },

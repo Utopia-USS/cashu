@@ -9,7 +9,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { NameSources } from "@cashu/mcp";
-import { type Dataset, labRoot } from "../../sources/index.ts";
+import { bridgeMcpRoot, type Dataset } from "../../sources/index.ts";
 
 const BRIDGE_CHECK = "mcp.guard_sources";
 
@@ -32,11 +32,12 @@ export interface GuardBridge {
   providers(profileKey: string): NameSources[];
 }
 
-export function readGuardBridge(dataset: Dataset, root: string = labRoot()): GuardBridge {
-  const path = join(root, "parity", "bridge-mcp", dataset, `${BRIDGE_CHECK}.json`);
+/** `root` is the bridge root `guard_bridge.py --out` wrote (default: the shared `<lab>/parity/bridge-mcp`). */
+export function readGuardBridge(dataset: Dataset, root: string = bridgeMcpRoot()): GuardBridge {
+  const path = join(root, dataset, `${BRIDGE_CHECK}.json`);
   if (!existsSync(path)) {
     throw new Error(
-      `no guard bridge output for ${dataset}: run .venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset ${dataset}`,
+      `no guard bridge output for ${dataset} under ${root}: run .venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset ${dataset} --out ${root}`,
     );
   }
   const file = JSON.parse(readFileSync(path, "utf8")) as BridgeFile;

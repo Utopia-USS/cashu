@@ -19,6 +19,17 @@ failed, 2 only missing (`--allow-missing` turns that into 0), 64 usage, 70 golde
 Defaults: lab goldens `~/cashu-lab/parity/out/lab` (`$CASHU_LAB_DIR` moves the lab root), demo
 goldens `parity/golden-demo`, actual `~/cashu-lab/parity/ts-out/<dataset>`.
 
+Branch runs: the shared `~/cashu-lab/parity/out`, `bridge-mcp` and `ts-out` dirs are written from
+lab/ts-stack HEAD only. A branch writes its own set and points every step at it:
+
+```bash
+B=~/cashu-lab/parity/out-<branch>
+.venv/bin/python parity/python/golden.py --dataset lab --out $B             # $B/lab, index.json records the commit
+.venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset lab --out $B/bridge-mcp
+pnpm parity:produce --dataset lab --golden-root $B --bridge-mcp $B/bridge-mcp --out $B/ts-out/lab
+pnpm parity --dataset lab --out $B --actual $B/ts-out/lab                    # golden = $B/lab
+```
+
 ## Comparison rules
 
 - Objects are unordered, arrays ordered. Duplicate keys and `NaN` literals are parse errors.

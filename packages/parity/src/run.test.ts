@@ -221,6 +221,34 @@ describe("cli", () => {
     ).toBe(70);
   });
 
+  it("compares against <out>/<dataset> with --out, and --golden wins over it", async () => {
+    const outRoot = join(root, "out-branch");
+    writeSet(join(outRoot, "lab"), GOLDEN);
+    writeSet(join(outRoot, "demo"), { "core.networth": GOLDEN["core.networth"] });
+    const lab = await run(["--dataset", "lab", "--out", outRoot, "--actual", join(outRoot, "lab")]);
+    expect(lab.code).toBe(0);
+    expect(lab.out).toContain("2 checks: 2 pass");
+    const demo = await run(
+      ["--dataset", "demo", "--out", "out-branch", "--actual", join(outRoot, "lab")],
+      { INIT_CWD: root },
+    );
+    expect(demo.code).toBe(0);
+    expect(demo.out).toContain("1 checks: 1 pass");
+    const g = join(root, "golden");
+    writeSet(g, { "budget.analytics": GOLDEN["budget.analytics"] });
+    const both = await run([
+      "--dataset",
+      "lab",
+      "--out",
+      outRoot,
+      "--golden",
+      g,
+      "--actual",
+      join(outRoot, "lab"),
+    ]);
+    expect(both.out).toContain("1 checks: 1 pass");
+  });
+
   it("validates usage and prints JSON on request", async () => {
     expect((await run([])).code).toBe(64);
     expect((await run(["--dataset", "prod"])).code).toBe(64);

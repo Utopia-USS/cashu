@@ -4,6 +4,7 @@
     .venv/bin/python parity/python/golden.py --make-demo        # once: synthetic demo dataset
     .venv/bin/python parity/python/golden.py                    # both datasets
     .venv/bin/python parity/python/golden.py --dataset lab --check core.networth
+    .venv/bin/python parity/python/golden.py --dataset lab --out ~/cashu-lab/parity/out-<branch>
 
 Datasets (both live outside git):
 - ``lab``:  ``~/cashu-lab/data`` (a copy of real data; its goldens never go into git);
@@ -16,8 +17,10 @@ agents) point at that copy before cashU is imported; the child asserts ``paths.d
 copy (``init_db`` upgrades the copy, never the source). The source dir is hashed before and after
 and the run fails if a single byte changed. The child runs offline (``offline.py``), with
 ``CASHU_AUTO_DAILY=0``, ``CASHU_PRICE_REFRESH=0``, ``PYTHONHASHSEED=0``, ``TZ=Europe/Warsaw`` and a
-frozen clock (``frozen.py``). Output: ``~/cashu-lab/parity/out/<dataset>/<check>.json`` (canonical
-JSON, ``canon.py``) and ``index.json`` (check, rows, sha256).
+frozen clock (``frozen.py``). Output: ``<out>/<dataset>/<check>.json`` (canonical JSON, ``canon.py``)
+and ``index.json`` (check, rows, sha256, the repo commit the goldens came from). ``<out>`` defaults to
+the shared ``~/cashu-lab/parity/out``, which only lab/ts-stack HEAD writes; a branch passes
+``--out ~/cashu-lab/parity/out-<branch>``.
 
 stdout shows only check names, row counts, hashes and counts: never values from a dataset.
 """
@@ -38,6 +41,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 LAB_ROOT = Path(os.path.expanduser("~")) / "cashu-lab"
 PARITY_ROOT = LAB_ROOT / "parity"
+OUT_ROOT = PARITY_ROOT / "out"  # the shared goldens: written from lab/ts-stack HEAD only
 DATASETS = {"lab": LAB_ROOT / "data", "demo": PARITY_ROOT / "demo-data"}
 DEMO_TODAY = "2026-10-01"
 # The frozen local wall clock of each dataset (the day the dataset is "as of").
@@ -59,6 +63,19 @@ def manifest(root: Path) -> tuple[int, str]:
         digest = hashlib.sha256((root / rel[2:]).read_bytes()).hexdigest()
         lines.append(f"{digest}  {rel}\n")
     return len(files), hashlib.sha256("".join(lines).encode()).hexdigest()
+
+
+def source_commit() -> str:
+    """The repo commit the goldens come from (``<sha>-dirty`` when tracked files differ from it)."""
+
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=False)
+
+    head = git("rev-parse", "HEAD")
+    if head.returncode != 0:
+        return "unknown"
+    dirty = git("status", "--porcelain", "--untracked-files=no").stdout.strip()
+    return head.stdout.strip() + ("-dirty" if dirty else "")
 
 
 def safe_env(home: Path, data_dir: Path, workspaces: Path, extra: Path) -> dict[str, str]:
@@ -115,7 +132,7 @@ def make_demo() -> int:
     return 0
 
 
-def run_dataset(name: str, checks: list[str], keep: bool) -> int:
+def run_dataset(name: str, checks: list[str], keep: bool, out_root: Path = OUT_ROOT) -> int:
     source = DATASETS[name]
     if not (source / "cashu.db").is_file():
         print(f"[{name}] no dataset at {source}" + (" (run --make-demo)" if name == "demo" else ""))
@@ -126,13 +143,14 @@ def run_dataset(name: str, checks: list[str], keep: bool) -> int:
     run.mkdir(parents=True)
     os.chmod(run, 0o700)
     shutil.copytree(source, run / "data")
-    out = PARITY_ROOT / "out" / name
+    out = out_root / name
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
     env = safe_env(run / "home", run / "data", run / "workspaces", run)
     env["CASHU_PARITY_CLOCK"] = CLOCKS[name]
     env["CASHU_PARITY_SOURCE"] = f"{before[0]} files, manifest sha256 {before[1]}"
+    env["CASHU_PARITY_COMMIT"] = source_commit()
     cmd = [
         sys.executable,
         str(Path(__file__).resolve()),
@@ -140,7 +158,7 @@ def run_dataset(name: str, checks: list[str], keep: bool) -> int:
         name,
         "--run-dir",
         str(run),
-        "--out",
+        "--child-out",
         str(out),
     ]
     for c in checks:
@@ -257,6 +275,7 @@ def child(name: str, run: Path, out: Path, only: list[str]) -> int:
         "clock": os.environ["CASHU_PARITY_CLOCK"],
         "tz": TZ,
         "source": os.environ.get("CASHU_PARITY_SOURCE"),
+        "commit": os.environ.get("CASHU_PARITY_COMMIT"),
         "modules_imported": imported,
         "modules_import_failed": import_failed,
         "checks": [],
@@ -324,13 +343,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="After a green demo run, copy its goldens into parity/golden-demo/ (committable).",
     )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=OUT_ROOT,
+        help="Golden root: writes <out>/<dataset>/ (default: the shared ~/cashu-lab/parity/out).",
+    )
     parser.add_argument("--child", choices=list(DATASETS), help=argparse.SUPPRESS)
     parser.add_argument("--run-dir", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--out", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--child-out", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     if args.child:
-        return child(args.child, args.run_dir, args.out, args.check)
+        return child(args.child, args.run_dir, args.child_out, args.check)
     if "cashu" in sys.modules:
         raise SystemExit("the parent process must not import cashu")
     if args.make_demo:
@@ -338,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
     names = list(DATASETS) if args.dataset == "all" else [args.dataset]
     status = 0
     for n in names:
-        status = max(status, run_dataset(n, args.check, args.keep_run))
+        status = max(status, run_dataset(n, args.check, args.keep_run, args.out.expanduser().resolve()))
     if args.update_golden_demo:
         if status != 0 or "demo" not in names or args.check:
             print("golden-demo not updated: needs a full, green demo run")
@@ -346,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         target = REPO / "parity" / "golden-demo"
         if target.exists():
             shutil.rmtree(target)
-        shutil.copytree(PARITY_ROOT / "out" / "demo", target)
+        shutil.copytree(args.out.expanduser().resolve() / "demo", target)
         print(f"golden-demo updated ({len(list(target.glob('*.json')))} files)")
     return status
 

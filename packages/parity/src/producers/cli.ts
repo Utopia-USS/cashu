@@ -1,15 +1,18 @@
 /// <reference types="node" />
 /**
- * `pnpm parity:produce --dataset demo|lab [--check <name>]... [--out <dir>] [--force]`: run the TS
- * producers and write their outputs for the comparer (`pnpm parity`). Prints check names, row counts
- * and hashes only, never values (the lab dataset is real data).
+ * `pnpm parity:produce --dataset demo|lab [--check <name>]... [--out <dir>] [--golden-root <dir>]
+ * [--bridge-mcp <dir>] [--force]`: run the TS producers and write their outputs for the comparer
+ * (`pnpm parity`). `--out` is the TS output dir (default `<lab>/parity/ts-out/<dataset>`);
+ * `--golden-root` / `--bridge-mcp` are where the Python-side inputs were written (`golden.py --out`,
+ * `guard_bridge.py --out`; defaults: the shared dirs, which only lab/ts-stack HEAD writes). Prints
+ * check names, row counts and hashes only, never values (the lab dataset is real data).
  */
 
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { isDataset, labRoot, withPythonDb } from "../sources/index.ts";
+import { bridgeMcpRoot, goldenRoot, isDataset, labRoot, withPythonDb } from "../sources/index.ts";
 import { PRODUCERS } from "./index.ts";
 import { dumps, writeCheck } from "./output.ts";
 
@@ -32,13 +35,15 @@ export function main(argv: string[]): number {
       dataset: { type: "string" },
       check: { type: "string", multiple: true },
       out: { type: "string" },
+      "golden-root": { type: "string" },
+      "bridge-mcp": { type: "string" },
       force: { type: "boolean", default: false },
     },
   });
   const dataset = values.dataset ?? "";
   if (!isDataset(dataset)) {
     process.stderr.write(
-      "usage: pnpm parity:produce --dataset demo|lab [--check name] [--out dir]\n",
+      "usage: pnpm parity:produce --dataset demo|lab [--check name] [--out dir] [--golden-root dir] [--bridge-mcp dir]\n",
     );
     return 64;
   }
@@ -50,6 +55,10 @@ export function main(argv: string[]): number {
     return 64;
   }
   const out = values.out ? resolve(values.out) : join(labRoot(), "parity", "ts-out", dataset);
+  const inputs = {
+    goldenRoot: values["golden-root"] ? resolve(values["golden-root"]) : goldenRoot(),
+    bridgeMcpRoot: values["bridge-mcp"] ? resolve(values["bridge-mcp"]) : bridgeMcpRoot(),
+  };
   return withPythonDb({ dataset }, (db) => {
     let status = 0;
     for (const p of selected) {
@@ -60,7 +69,7 @@ export function main(argv: string[]): number {
         continue;
       }
       try {
-        const value = p.produce(db);
+        const value = p.produce(db, inputs);
         writeCheck(out, p.check, value);
         const sha = createHash("sha256").update(dumps(value)).digest("hex");
         process.stdout.write(

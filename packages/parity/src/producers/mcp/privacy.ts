@@ -21,7 +21,7 @@ import {
   UnlabelledValue,
 } from "@cashu/mcp";
 import { type CanonObject, type CanonValue, parseCanonical } from "../../json.ts";
-import { type Dataset, labRoot, type PythonDb } from "../../sources/index.ts";
+import { type Dataset, goldenRoot, type PythonDb } from "../../sources/index.ts";
 import type { OutValue } from "../output.ts";
 import { type GuardBridge, readGuardBridge } from "./guardBridge.ts";
 import { canonToOut, SyntheticIds, toCanonical, toLabelledTree } from "./rawTrees.ts";
@@ -35,10 +35,11 @@ const PARITY_PAYEE_KEY: Uint8Array = new Uint8Array(
 
 export type PrivacyMode = "strict" | "amounts";
 
-function rawGoldenPath(dataset: Dataset, root: string = labRoot()): string {
+/** The raw golden the trees come from: the committed demo golden, or `<golden root>/lab` (`golden.py --out`). */
+function rawGoldenPath(dataset: Dataset, root: string): string {
   return dataset === "demo"
     ? join(REPO_ROOT, "parity", "golden-demo", "mcp.read_raw.json")
-    : join(root, "parity", "out", "lab", "mcp.read_raw.json");
+    : join(root, "lab", "mcp.read_raw.json");
 }
 
 function asObject(value: CanonValue | undefined, what: string): CanonObject {
@@ -97,10 +98,11 @@ export function produceMcpRead(
   db: PythonDb,
   mode: PrivacyMode,
   bridge: GuardBridge = readGuardBridge(db.dataset),
+  rawRoot: string = goldenRoot(),
 ): OutValue {
   debugDataset = db.dataset;
   const raw = asObject(
-    parseCanonical(readFileSync(rawGoldenPath(db.dataset), "utf8")),
+    parseCanonical(readFileSync(rawGoldenPath(db.dataset, rawRoot), "utf8")),
     "mcp.read_raw",
   );
   const perProfile = asObject(raw.get(mode), mode);

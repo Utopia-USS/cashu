@@ -26,6 +26,16 @@ export function labRoot(env: Record<string, string | undefined> = process.env): 
   return env.CASHU_LAB_DIR || join(homedir(), "cashu-lab");
 }
 
+/** The shared Python golden root (`golden.py` `OUT_ROOT`): `<lab>/parity/out`, written from lab/ts-stack HEAD only. */
+export function goldenRoot(env: Record<string, string | undefined> = process.env): string {
+  return join(labRoot(env), "parity", "out");
+}
+
+/** The shared guard bridge root (`guard_bridge.py --out` default): `<lab>/parity/bridge-mcp`. */
+export function bridgeMcpRoot(env: Record<string, string | undefined> = process.env): string {
+  return join(labRoot(env), "parity", "bridge-mcp");
+}
+
 /** The dataset's source dir (golden.py `DATASETS`): never opened directly, only copied. */
 export function datasetDir(dataset: Dataset, root: string = labRoot()): string {
   return dataset === "lab" ? join(root, "data") : join(root, "parity", "demo-data");

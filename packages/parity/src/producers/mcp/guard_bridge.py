@@ -12,7 +12,9 @@ macro summary vocabulary the ``market`` label's gate needs comes from the TS por
     .venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset demo
 
 It reuses golden.py's harness (run copy, offline, frozen clock, source hashed before and after).
-Output: ``<lab>/parity/bridge-mcp/<dataset>/mcp.guard_sources.json``; stdout shows counts and hashes only.
+Output: ``<out>/<dataset>/mcp.guard_sources.json``, ``<out>`` = ``--out`` or the shared
+``<lab>/parity/bridge-mcp`` (lab/ts-stack HEAD only; a branch passes its own dir and hands the same
+dir to ``pnpm parity:produce --bridge-mcp``); stdout shows counts and hashes only.
 The lab output holds real names: it stays in the lab dir, never in git, never printed.
 """
 
@@ -71,7 +73,7 @@ def child(name: str, run: Path, out: Path) -> int:
     return golden.child(name, run, out, [CHECK])
 
 
-def parent(name: str, keep: bool) -> int:
+def parent(name: str, keep: bool, out_root: Path) -> int:
     source = golden.DATASETS[name]
     if not (source / "cashu.db").is_file():
         print(f"[{name}] no dataset at its source dir")
@@ -82,14 +84,15 @@ def parent(name: str, keep: bool) -> int:
     run.mkdir(parents=True)
     os.chmod(run, 0o700)
     shutil.copytree(source, run / "data")
-    out = golden.PARITY_ROOT / "bridge-mcp" / name
+    out = out_root / name
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
     env = golden.safe_env(run / "home", run / "data", run / "workspaces", run)
     env["CASHU_PARITY_CLOCK"] = golden.CLOCKS[name]
     env["CASHU_PARITY_SOURCE"] = f"{before[0]} files, manifest sha256 {before[1]}"
-    cmd = [sys.executable, str(HERE), "--child", name, "--run-dir", str(run), "--out", str(out)]
+    env["CASHU_PARITY_COMMIT"] = golden.source_commit()
+    cmd = [sys.executable, str(HERE), "--child", name, "--run-dir", str(run), "--child-out", str(out)]
     proc = subprocess.run(cmd, env=env, cwd=run, check=False)
     after = golden.manifest(source)
     if before != after:
@@ -104,17 +107,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--dataset", choices=list(golden.DATASETS))
     parser.add_argument("--keep-run", action="store_true")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=golden.PARITY_ROOT / "bridge-mcp",
+        help="Bridge root: writes <out>/<dataset>/ (default: the shared ~/cashu-lab/parity/bridge-mcp).",
+    )
     parser.add_argument("--child", choices=list(golden.DATASETS), help=argparse.SUPPRESS)
     parser.add_argument("--run-dir", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--out", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--child-out", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.child:
-        return child(args.child, args.run_dir, args.out)
+        return child(args.child, args.run_dir, args.child_out)
     if "cashu" in sys.modules:
         raise SystemExit("the parent process must not import cashu")
     if args.dataset is None:
         parser.error("--dataset is required")
-    return parent(args.dataset, args.keep_run)
+    return parent(args.dataset, args.keep_run, args.out.expanduser().resolve())
 
 
 if __name__ == "__main__":

@@ -2,9 +2,11 @@
 
 export type { Dataset } from "./datasets.ts";
 export {
+  bridgeMcpRoot,
   DATASET_CLOCKS,
   datasetAsOf,
   datasetDir,
+  goldenRoot,
   isDataset,
   labRoot,
 } from "./datasets.ts";
