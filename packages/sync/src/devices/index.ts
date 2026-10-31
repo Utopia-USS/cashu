@@ -2,6 +2,7 @@
 // string, revocation as key rotation going forward, frame enforcement against revoked writers, and
 // the fetch-leader lease. Pure protocol logic; transports and UI plug in from outside.
 
+export type { DroppedWatermarkEntry, WatermarkDrop } from "./catchUp.js";
 export {
   buildDeviceAdded,
   buildDeviceRevoked,
@@ -25,6 +26,7 @@ export {
   type LogEvent,
   logEventsFromBatch,
   MAX_DEVICES,
+  MAX_WAIVE,
   RECOVERY_CHANGED,
   type RecoveryChangedData,
   type RevokedEntry,

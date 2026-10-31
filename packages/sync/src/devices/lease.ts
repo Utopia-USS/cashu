@@ -26,15 +26,16 @@
 //
 // The catch-up watermark (M6): lease events carry, per writer device, the cursor up to which their
 // writer had applied that device's stream. A holder runs newest-day imports only after it applied,
-// for every device, the HIGHEST cursor any valid lease event in the chain names (cumulative, not
-// only the previous holder's), and for a revoked device up to the lower of that and its cut. Imports
-// a holder made after its last lease event are not covered (a holder must not import while it cannot
-// publish).
+// for every device, the HIGHEST valid cursor any lease event in the chain names (cumulative, not
+// only the previous holder's; catchUp.ts: registered devices only, capped at a revoked device's cut,
+// conflicted devices dropped, minus owner waivers). Imports a holder made after its last lease event
+// are not covered (a holder must not import while it cannot publish).
 
 import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
 import { type DeviceIdentity, isDeviceId } from "../crypto/index.js";
 import { DEFAULT_MAX_DRIFT_MS, parseHlc } from "../hlc.js";
 import { canonicalJson, fromHex, isCanonicalValue } from "./bytes.js";
+import { behindNeed, CatchUpFold, type DroppedWatermarkEntry } from "./catchUp.js";
 import {
   buildLeaseClaim,
   buildLeaseRelease,
@@ -52,7 +53,7 @@ import {
   statementBody,
   type Watermark,
 } from "./events.js";
-import { beforeCut, comparePositions, maxPosition, minPosition } from "./positions.js";
+import { comparePositions } from "./positions.js";
 import type { Registry } from "./registry.js";
 import { type StatementVerifier, verifyStatement } from "./statements.js";
 import { cmp, push } from "./util.js";
@@ -144,8 +145,15 @@ export interface LeaseView {
   readonly term: readonly LeaseTermEntry[];
   /** The holder's latest watermark. */
   readonly watermark: Watermark;
-  /** Pointwise highest cursor named by any valid lease event: apply up to it before newest-day imports. */
+  /**
+   * Pointwise highest VALID cursor named by the lease events of the chain (catchUp.ts): apply up to
+   * it before newest-day imports.
+   */
   readonly catchUp: Watermark;
+  /** Per device in `catchUp`: the eid of the lease event that set it (UI: who requires it). */
+  readonly catchUpSources: ReadonlyMap<string, string>;
+  /** Watermark entries that never count (unknown or untrusted device). */
+  readonly catchUpDropped: readonly DroppedWatermarkEntry[];
   readonly ignored: readonly { readonly eid: string; readonly reason: LeaseIgnoredReason }[];
 }
 
@@ -264,7 +272,7 @@ export function foldLease(
   let until = 0;
   let term: LeaseTermEntry[] = [];
   let watermark: Watermark = {};
-  const catchUp: Record<string, SegmentCursor> = {};
+  const catchUp = new CatchUpFold(registry);
   const onChain = new Set<string>();
 
   for (;;) {
@@ -294,10 +302,7 @@ export function foldLease(
       released = true;
     }
     watermark = d.watermark;
-    for (const [device, c] of Object.entries(d.watermark)) {
-      const known = catchUp[device];
-      catchUp[device] = known ? maxPosition(known, c) : c;
-    }
+    catchUp.add(event.eid, d.watermark, d.kind === "released" ? [] : d.waive);
     head = event.eid;
     onChain.add(event.eid);
   }
@@ -312,7 +317,20 @@ export function foldLease(
   }
 
   const free = holder === null || released || !registry.isTrusted(holder);
-  return { head, holder, released, free, until, term, watermark, catchUp, ignored };
+  const required = catchUp.result();
+  return {
+    head,
+    holder,
+    released,
+    free,
+    until,
+    term,
+    watermark,
+    catchUp: required.need,
+    catchUpSources: required.sources,
+    catchUpDropped: required.dropped,
+    ignored,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -473,42 +491,27 @@ export function nextLeaseStep(
 }
 
 /**
- * Writer devices whose streams are not yet applied up to the catch-up watermark (for a revoked
- * device: up to the lower of the watermark and its cut, where its accepted stream ends).
+ * Writer devices whose streams are not yet applied up to the catch-up requirement, with the cursor
+ * needed (already validated and capped by the fold; `catchUpSources` names who requires it).
  */
 export function catchUpMissing(
   view: LeaseView,
   applied: ReadonlyMap<string, SegmentCursor>,
-  registry: Registry,
-): string[] {
-  const missing: string[] = [];
-  for (const [device, cursor] of Object.entries(view.catchUp)) {
-    const revocation = registry.revoked.get(device);
-    const need = revocation ? minPosition(cursor, revocation.cut) : cursor;
-    const have = applied.get(device);
-    if (
-      have === undefined
-        ? comparePositions(need, { seg: 1, offset: 0 }) > 0
-        : !beforeCut(need, have)
-    ) {
-      missing.push(device);
-    }
-  }
-  return missing.sort();
+): { readonly device: string; readonly need: SegmentCursor }[] {
+  return behindNeed(view.catchUp, applied);
 }
 
 /**
  * The gate for newest-day-rule imports (events.md 8.3): hold the lease AND have applied the log up
- * to the catch-up watermark.
+ * to the catch-up requirement.
  */
 export function mayRunNewestDayImports(
   view: LeaseView,
   local: LeaseLocal,
   applied: ReadonlyMap<string, SegmentCursor>,
-  registry: Registry,
   config: LeaseConfig = DEFAULT_LEASE_CONFIG,
 ): boolean {
-  return holdsLease(view, local, config) && catchUpMissing(view, applied, registry).length === 0;
+  return holdsLease(view, local, config) && catchUpMissing(view, applied).length === 0;
 }
 
 /** The watermark of a lease event: per writer device, the applied cursor of its stream. */
@@ -527,6 +530,11 @@ export interface LeaseWrite {
   readonly now: number;
   /** Applied cursor per writer device (the store's view cursors). */
   readonly applied: ReadonlyMap<string, SegmentCursor>;
+  /**
+   * Devices whose catch-up requirement the OWNER waived after confirming in the UI that their data
+   * is lost or withheld (claims and renewals only; never written automatically).
+   */
+  readonly waive?: readonly string[];
 }
 
 /** The event for a `claim` / `renew` / `release` step; record it as an own lease event when written. */
@@ -543,6 +551,7 @@ export function leaseEventFor(
       until: write.now + config.ttlMs,
       watermark,
       prev: view.head,
+      ...(write.waive ? { waive: write.waive } : {}),
     });
   }
   if (view.head === null || view.holder !== write.identity.deviceId) {
@@ -554,6 +563,7 @@ export function leaseEventFor(
       until: write.now + config.ttlMs,
       watermark,
       prev: view.head,
+      ...(write.waive ? { waive: write.waive } : {}),
     });
   }
   return buildLeaseRelease(write.identity, write.vaultId, write.eid, {

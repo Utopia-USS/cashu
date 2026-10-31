@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { START_CURSOR } from "../carrier.js";
+import { type SegmentCursor, START_CURSOR } from "../carrier.js";
 import { buildLeaseClaim } from "./events.js";
 import {
   catchUpMissing,
@@ -27,6 +27,11 @@ const config: LeaseConfig = leaseConfig({
 
 function view(d: SimDevice): LeaseView {
   return d.devices.lease;
+}
+
+/** The devices a holder still has to catch up with. */
+function missing(v: LeaseView, applied: ReadonlyMap<string, SegmentCursor>): string[] {
+  return catchUpMissing(v, applied).map((m) => m.device);
 }
 
 function holds(d: SimDevice): boolean {
@@ -138,14 +143,10 @@ describe("fetch lease", () => {
     expect(handedOverAt ?? 0).toBeGreaterThanOrEqual(until + config.maxSkewMs + config.settleMs);
     expect(holds(a)).toBe(false); // A's own clock says its lease ran out (until - skew)
     expect(view(b).catchUp[c.id]).toBeDefined();
-    expect(catchUpMissing(view(b), b.applied, b.devices.registry)).toEqual([c.id]);
-    expect(mayRunNewestDayImports(view(b), b.local(), b.applied, b.devices.registry, config)).toBe(
-      false,
-    );
+    expect(missing(view(b), b.applied)).toEqual([c.id]);
+    expect(mayRunNewestDayImports(view(b), b.local(), b.applied, config)).toBe(false);
     b.pull();
-    expect(mayRunNewestDayImports(view(b), b.local(), b.applied, b.devices.registry, config)).toBe(
-      true,
-    );
+    expect(mayRunNewestDayImports(view(b), b.local(), b.applied, config)).toBe(true);
     // A wakes up and syncs: it sees B's term and never believes again.
     a.sync();
     expect(view(a).holder).toBe(b.id);
@@ -409,12 +410,10 @@ describe("fetch lease", () => {
     d.pull(notC);
     expect(holds(d)).toBe(true);
     expect(view(d).catchUp[c.id]).toEqual(cCursor);
-    expect(catchUpMissing(view(d), d.applied, d.devices.registry)).toContain(c.id);
-    expect(mayRunNewestDayImports(view(d), d.local(), d.applied, d.devices.registry, config)).toBe(
-      false,
-    );
+    expect(missing(view(d), d.applied)).toContain(c.id);
+    expect(mayRunNewestDayImports(view(d), d.local(), d.applied, config)).toBe(false);
     d.pull();
-    expect(catchUpMissing(view(d), d.applied, d.devices.registry)).toEqual([]);
+    expect(missing(view(d), d.applied)).toEqual([]);
     // A is revoked: its last import (in A's stream, named by A's own watermark) is still required,
     // up to the lower of the watermark and A's cut (C applied it before revoking A).
     c.pull();
@@ -436,8 +435,8 @@ describe("fetch lease", () => {
     expect(w && cut && comparePositions(w, cut) <= 0).toBe(true);
     const lagging = new Map(e.applied);
     lagging.set(a.id, { seg: 1, offset: (w?.offset ?? 100) - 100 });
-    expect(catchUpMissing(view(e), lagging, e.devices.registry)).toContain(a.id);
-    expect(catchUpMissing(view(e), e.applied, e.devices.registry)).not.toContain(a.id);
+    expect(missing(view(e), lagging)).toContain(a.id);
+    expect(missing(view(e), e.applied)).not.toContain(a.id);
   });
 
   it("rejects lease events that are forged, not signed by their writer, or stale", async () => {

@@ -49,6 +49,8 @@ const MAX_NAME = 64;
 const MAX_LIST = 256;
 /** Largest number of devices a list in a statement may name (the registry admits at most this many). */
 export const MAX_DEVICES = 1024;
+/** Devices one claim or renewal may waive from the catch-up requirement (lease.ts, R3a). */
+export const MAX_WAIVE = 64;
 const CERT_HEX = 2 * (1 + 16 + 16 + 32 + 32 + 64);
 const MAX_WRAP_HEX = 2 * 64 * 1024;
 
@@ -137,6 +139,11 @@ export interface LeaseClaimData {
   readonly watermark: Watermark;
   /** Eid of the last valid lease event the claimer saw (null: none yet). Compare-and-set. */
   readonly prev: string | null;
+  /**
+   * Devices the owner confirmed lost or withheld: their catch-up requirement restarts at this
+   * event's own watermark entry (sorted, unique, 1-64 device ids; absent = none).
+   */
+  readonly waive?: readonly string[];
   readonly sig: string;
 }
 
@@ -146,6 +153,8 @@ export interface LeaseRenewData {
   readonly until: number;
   readonly watermark: Watermark;
   readonly prev: string;
+  /** As in a claim. */
+  readonly waive?: readonly string[];
   readonly sig: string;
 }
 
@@ -270,11 +279,27 @@ function watermarkJson(w: Watermark): { [device: string]: CanonicalValue } {
   return out;
 }
 
+/** The `waive` field as written: sorted, unique, 1-64 device ids; omitted when empty. */
+function waiveJson(waive: readonly string[] | undefined): { waive?: string[] } {
+  if (waive === undefined || waive.length === 0) return {};
+  const sorted = [...new Set(waive)].sort();
+  if (sorted.length > MAX_WAIVE || !sorted.every(isDeviceId)) {
+    throw new RangeError("waive 1-64 device ids");
+  }
+  return { waive: sorted };
+}
+
 export function buildLeaseClaim(
   identity: DeviceIdentity,
   vaultId: string,
   eid: string,
-  fields: { at: number; until: number; watermark: Watermark; prev: string | null },
+  fields: {
+    at: number;
+    until: number;
+    watermark: Watermark;
+    prev: string | null;
+    waive?: readonly string[];
+  },
 ): UnstampedEvent {
   return signed(identity, "cashu/lease/v1", vaultId, LEASE_CLAIMED, eid, {
     device: identity.deviceId,
@@ -282,6 +307,7 @@ export function buildLeaseClaim(
     until: fields.until,
     watermark: watermarkJson(fields.watermark),
     prev: fields.prev,
+    ...waiveJson(fields.waive),
   });
 }
 
@@ -289,7 +315,13 @@ export function buildLeaseRenewal(
   identity: DeviceIdentity,
   vaultId: string,
   eid: string,
-  fields: { at: number; until: number; watermark: Watermark; prev: string },
+  fields: {
+    at: number;
+    until: number;
+    watermark: Watermark;
+    prev: string;
+    waive?: readonly string[];
+  },
 ): UnstampedEvent {
   return signed(identity, "cashu/lease/v1", vaultId, LEASE_RENEWED, eid, {
     device: identity.deviceId,
@@ -297,6 +329,7 @@ export function buildLeaseRenewal(
     until: fields.until,
     watermark: watermarkJson(fields.watermark),
     prev: fields.prev,
+    ...waiveJson(fields.waive),
   });
 }
 
@@ -403,6 +436,24 @@ function isWatermark(value: unknown): value is Watermark {
   );
 }
 
+/** Strict: an array of 1-64 device ids in ascending order without repeats. */
+function isWaive(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= MAX_WAIVE &&
+    value.every(
+      (d, i) => typeof d === "string" && isDeviceId(d) && (i === 0 || (value[i - 1] as string) < d),
+    )
+  );
+}
+
+/** The fields of a claim or renewal, with the optional `waive`. */
+function hasLeaseTermFields(data: Readonly<Record<string, unknown>>): boolean {
+  const keys = ["device", "at", "until", "watermark", "prev", "sig"];
+  return hasExactly(data, keys) || (hasExactly(data, [...keys, "waive"]) && isWaive(data.waive));
+}
+
 function decodeWatermark(value: Watermark): Watermark {
   const out: Record<string, SegmentCursor> = {};
   for (const [device, c] of Object.entries(value)) out[device] = { seg: c.seg, offset: c.offset };
@@ -504,7 +555,7 @@ export function decodeKeysRotated(
 export function decodeLeaseClaim(
   data: Readonly<Record<string, unknown>>,
 ): LeaseClaimData | undefined {
-  if (!hasExactly(data, ["device", "at", "until", "watermark", "prev", "sig"])) return undefined;
+  if (!hasLeaseTermFields(data)) return undefined;
   const { device, at, until, watermark, prev, sig } = data;
   if (
     typeof device !== "string" ||
@@ -517,13 +568,14 @@ export function decodeLeaseClaim(
   ) {
     return undefined;
   }
-  return { device, at, until, watermark: decodeWatermark(watermark), prev, sig };
+  const waive = data.waive === undefined ? {} : { waive: [...(data.waive as string[])] };
+  return { device, at, until, watermark: decodeWatermark(watermark), prev, ...waive, sig };
 }
 
 export function decodeLeaseRenewal(
   data: Readonly<Record<string, unknown>>,
 ): LeaseRenewData | undefined {
-  if (!hasExactly(data, ["device", "at", "until", "watermark", "prev", "sig"])) return undefined;
+  if (!hasLeaseTermFields(data)) return undefined;
   const { device, at, until, watermark, prev, sig } = data;
   if (
     typeof device !== "string" ||
@@ -536,7 +588,8 @@ export function decodeLeaseRenewal(
   ) {
     return undefined;
   }
-  return { device, at, until, watermark: decodeWatermark(watermark), prev, sig };
+  const waive = data.waive === undefined ? {} : { waive: [...(data.waive as string[])] };
+  return { device, at, until, watermark: decodeWatermark(watermark), prev, ...waive, sig };
 }
 
 export function decodeLeaseRelease(
