@@ -71,3 +71,17 @@ transaction's gid, its (account, hash, occurrence) key, its booking date) where 
 two, plus zod validation and the gid check (one HMAC). File mode adds the WAL page writes of those
 trees on every 1,000-event commit (applying the whole bulk in one transaction, as the spike's sync
 does, measured ~15-25% faster).
+
+## Investments vault (S25)
+
+Workload: `packages/store/src/investments/perf.test.ts` with `CASHU_PERF=1` (30,133 events: 5k inv
+transactions over 300 instruments with 2 aliases each, 2k signals with refresh churn, 500 notes, 50
+alerts evaluated daily for a year, 200 thesis updates; in memory, 1,000-event batches). CPU ms of the
+test worker, 3 runs, load average 92-112 (shared machine: CPU time only; re-measure idle).
+
+| Phase | CPU ms | Budget |
+|---|---|---|
+| bulk apply (genesis-size) | 817-877 | first sync desktop <= 10 s |
+| full rebuild | 321-346 | desktop <= 3 s |
+| a day's events (1 rule run, 40 signal refreshes, 50 evaluations) | 2 | <= 100 ms |
+| one owner instrument merge (full re-fold of every instrument-keyed table) | 277-287 | (none) |
