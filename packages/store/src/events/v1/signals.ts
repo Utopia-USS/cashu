@@ -53,6 +53,21 @@ const ruleId = z
   .min(1)
   .refine((k) => !/^alert:\d+$/.test(k), { message: "alert rule id embeds a local id" });
 
+/**
+ * Optional fields of `signal.refreshed` / `signal.escalated` (S25-F1): a refresh may rewrite the
+ * episode's rule, kind, polarity, instrument and account; absent = keep.
+ *
+ * Added with `.extend` after `stamps`: the log copy stores catalog payloads positionally in schema
+ * key order (engine/compact.ts), so a v1 shape may only grow at its end (catalog.test.ts pins it).
+ */
+const refreshFields = {
+  ruleId: ruleId.optional(),
+  kind: nonEmpty.optional(),
+  polarity: z.enum(POLARITIES).optional(),
+  instrument: gid.nullable().optional(),
+  account: gid.nullable().optional(),
+};
+
 export const signalsEvents = {
   "signal.opened": payload({
     ruleId,
@@ -72,7 +87,7 @@ export const signalsEvents = {
     payload: jsonObject.optional(),
     run: gid.nullable(),
     seenAt: timestamp,
-  }),
+  }).extend(refreshFields),
   "signal.escalated": payload({
     severity: z.enum(SIGNAL_SEVERITIES),
     message: z.string(),
@@ -80,13 +95,21 @@ export const signalsEvents = {
     reactivate: z.boolean(),
     run: gid.nullable(),
     seenAt: timestamp,
-  }),
+  }).extend(refreshFields),
   "signal.closed": payload({
     status: z.enum(SIGNAL_CLOSE_STATUSES),
     // Rule outcomes (LEADER) use the reconciler's reason text; owner-caused closes use OWNER_CLOSE_REASONS.
     reason: nonEmpty,
+  }).extend({
+    /** Present (null included) sets the episode's `last_run_id`; absent keeps it (S25-F2). */
+    run: gid.nullable().optional(),
+    /** Keys merged (shallow) into the episode payload: `closed_by`, `closed_reason`, ... (S25-F3). */
+    payloadSet: jsonObject.optional(),
   }),
-  "signal.reopened": payload({ reason: z.enum(REOPEN_REASONS) }),
+  "signal.reopened": payload({ reason: z.enum(REOPEN_REASONS) }).extend({
+    /** Payload keys removed by the reopen (S25-F3). */
+    payloadUnset: z.array(z.string()).optional(),
+  }),
   "signal.snoozed": payload({ until: timestamp.nullable() }),
   /** GUARD (M7): applies only while the folded snoozedUntil still equals `until`. */
   "signal.woken": payload({ until: timestamp }),
@@ -133,7 +156,8 @@ export const signalsEvents = {
     message: "snoozedUntil is set exactly when status is snoozed",
   }),
   "alert.deleted": empty,
-  "alert.restored": empty,
+  /** `rearm: true` also clears the triggered register (S25-F6: Python re-arms a restored alert). */
+  "alert.restored": empty.extend({ rearm: z.literal(true).optional() }),
   "alert.evaluated": payload({
     triggered: z.boolean(),
     lastCheckedAt: timestamp.optional(),

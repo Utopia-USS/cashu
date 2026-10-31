@@ -336,6 +336,8 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
   "note.read": {},
   "note.dismissed": { cooldownUntil: null },
   "note.restored": {},
+  "note.candidateUpdated": { instrument: INST, details: { accepted: true } },
+  "note.signalLinked": { signal: SIG },
   "review.done": { module: "investments", notes: null, stats: { open_signals: 2 } },
   "review.undone": {},
   "proposal.created": {

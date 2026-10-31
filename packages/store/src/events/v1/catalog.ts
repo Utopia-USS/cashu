@@ -153,6 +153,8 @@ export const META: Record<EventType, EventMeta> = {
   "note.read": m("research_notes", "LWW-F", "ULID"),
   "note.dismissed": m("research_notes", "LWW-F", "ULID"),
   "note.restored": m("research_notes", "LWW-F", "ULID"),
+  "note.candidateUpdated": m("research_notes", "LWW-F", "ULID"),
+  "note.signalLinked": m("research_notes", "LWW-F", "ULID", "leader-or-research"),
 
   "review.done": m("reviews", "APPEND", "ULID"),
   "review.undone": m("reviews", "TOMB", "ULID"),

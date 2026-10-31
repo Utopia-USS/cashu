@@ -109,4 +109,14 @@ export const researchEvents = {
   "note.read": empty,
   "note.dismissed": payload({ cooldownUntil: timestamp.nullable() }),
   "note.restored": empty,
+  /**
+   * Candidate accept / undo (S25-F4): replaces the note's instrument and details as whole values
+   * (LWW-F), emitted in the accept / undo batch with the watchlist / thesis events.
+   */
+  "note.candidateUpdated": payload({
+    instrument: gid.nullable(),
+    details: jsonObject.nullable(),
+  }),
+  /** The research sync re-points a lead note at the episode's signal (S25-F5). */
+  "note.signalLinked": payload({ signal: gid }),
 } as const;

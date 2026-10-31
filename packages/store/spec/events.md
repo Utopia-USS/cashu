@@ -424,7 +424,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 | reviews | `review.done`, `review.undone` | ULID | APPEND; undo TOMB |
 | proposals | `proposal.created`, `proposal.approved`, `proposal.rejected`, `proposal.failed` | ULID | CREATE; terminal FWW; caused side effects (6.6); import-like kinds leader-only |
 | research_runs | `researchRun.started`, `researchRun.finished` | ULID | APPEND; finish LWW-F |
-| research_notes | `note.added`, `note.read`, `note.dismissed`, `note.restored` | ULID | APPEND; read / dismissed LWW-F |
+| research_notes | `note.added`, `note.read`, `note.dismissed`, `note.restored`, `note.candidateUpdated`, `note.signalLinked` | ULID | APPEND; read / dismissed / candidate / signal link LWW-F |
 | connector_bindings | `connectorBinding.set`, `connectorBinding.removed`, `connectorBinding.cursorAdvanced` | DET(account, connector_id) | LWW-F on the row key; removed SOFT (M1); cursor LWW, LEADER, caused (M5) |
 
 ### 8.2 Core
@@ -559,13 +559,22 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 - `signal.opened` (ULID) `{ruleId, kind, dedupKey (v2), severity, polarity, message, instrument@|null,
   account@|null, payload, run@|null}`. Emitters: the lease holder for rule, plan and alert signals; the
   device running the research agent for `research:` keys (`add_research_note` over MCP).
-- `signal.refreshed` `{severity?, message?, payload?, run@|null, seenAt}`; `signal.escalated`
-  `{severity, message, payload, reactivate, run@|null, seenAt}`: same emitters as `opened`.
-- `signal.closed` `{status: resolved|expired, reason}`. Lease holder for rule outcomes, alert
-  housekeeping (`alert_expired`, m8) and research expiry (`notes_expired`); any device for
-  `snooze|mute|delete` (alert owner actions) and `note_dismissed`.
-- `signal.reopened` `{reason: alert_restored|note_restored}` (any device, in the batch of
-  `alert.restored` / `note.restored`).
+- `signal.refreshed` `{severity?, message?, payload?, run@|null, seenAt, ruleId?, kind?, polarity?,
+  instrument@|null?, account@|null?}`; `signal.escalated` `{severity, message, payload, reactivate,
+  run@|null, seenAt, ruleId?, kind?, polarity?, instrument@|null?, account@|null?}`: same emitters as
+  `opened`. The optional fields rewrite the episode's rule, kind, polarity, instrument and account
+  (Python's refresh and the research sync do, S25-F1); absent = keep. `run` (null included) sets the
+  episode's `last_run_id` (Python sets it from the refreshing run, also to none, S25-F2).
+- `signal.closed` `{status: resolved|expired, reason, run@|null?, payloadSet?}`. Lease holder for rule
+  outcomes, alert housekeeping (`alert_expired`, m8) and research expiry (`notes_expired`); any device
+  for `snooze|mute|delete` (alert owner actions) and `note_dismissed`. `run` present (null included)
+  sets `last_run_id`, absent keeps it (S25-F2). `payloadSet` is merged shallowly into the episode
+  payload: the closing writer puts there exactly the keys Python writes on that close (`closed_by` for
+  an alert owner close, `closed_reason` + `closed_by` for an age-based expiry, `closed_reason` +
+  `previous_status` for a research resolve, S25-F3); the fold applies no policy of its own.
+- `signal.reopened` `{reason: alert_restored|note_restored, payloadUnset?}` (any device, in the batch
+  of `alert.restored` / `note.restored`). `payloadUnset` lists the payload keys the reopen removes
+  (S25-F3).
 - `signal.snoozed` `{until|null}` (any device). `signal.woken` `{until}` (lease holder).
 - `ruleRun.finished` (LEADER) `{trigger, asOf, status, strategyVersion@|null, stats, errors[], report:
   {new: @signal[], escalated: @signal[]}, startedAt, finishedAt|null}`; `trigger` is an open label
@@ -573,10 +582,16 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 - `alert.created` `{instrument@|null, scope, kind, params, polarity, severity, title, note|null,
   source: user|agent, createdBy, cooldownDays|null, expiresAt|null}`; `alert.updated` (patch);
   `alert.statusSet` `{status: active|muted|snoozed, snoozedUntil|null}` (owner state);
-  `alert.deleted` / `alert.restored` (SOFT); `alert.evaluated` (LEADER) `{triggered, lastCheckedAt?,
-  lastValue?, lastTriggeredAt?}` (runtime state).
-- Effective alert status (DERIVED, reader's clock): muted > expired (`expiresAt <= now`) > snoozed
-  (`snoozedUntil > now`) > triggered > active.
+  `alert.deleted` / `alert.restored {rearm?: true}` (SOFT; `rearm` also clears the triggered register:
+  Python re-arms a restored alert whose signal was not reopened, S25-F6); `alert.evaluated` (LEADER)
+  `{triggered, lastCheckedAt?, lastValue?, lastTriggeredAt?}` (runtime state). The view's stored
+  `status` is the clock-free fold status `muted > snoozed > triggered > active` (owner register, then
+  the runtime register; `muted` / `snoozed` clear `triggered`, `active` keeps it); an evaluation whose
+  `lastCheckedAt` is at or after the folded `snoozedUntil` ends the snooze (owner back to `active`).
+- Effective alert status (DERIVED, reader's clock, never in the fold): muted > expired
+  (`expiresAt <= now`) > snoozed (`snoozedUntil > now`) > triggered > active; a snooze that ended
+  (`snoozedUntil <= now`) reads as active with no `snoozedUntil` (`effectiveAlertStatus(row, now)`
+  in `@cashu/domain`).
 - Alert signals: `rule_id = dedup_key = "alert:<alert gid>"`.
 
 ### 8.8 Journal, theses, strategy, planned deposits
@@ -622,10 +637,17 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 - `researchRun.started` `{scope, createdBy}`; `researchRun.finished` `{status, counts}`.
 - `note.added` `{run@|null, instrument@|null, theme|null, segment|null, kind, polarity, strength,
   thesisRelation, thesisField|null, title, summary, sources[], details|null, candidateKey|null,
-  signal@|null, observedAt, expiresAt, createdBy}`; owner notes are born read. `note.read`,
-  `note.dismissed {cooldownUntil|null}`, `note.restored` (LWW-F). Dismissing / restoring the last
-  note of a research signal emits `signal.closed {note_dismissed}` / `signal.reopened {note_restored}`
-  in the same batch. Accepting a candidate emits `watchlist.added` / `thesis.created` with `cause`.
+  signal@|null, observedAt, expiresAt, createdBy}`; owner notes are born read. `note.read` (fills
+  `read_at` only while it is null: the first applied read wins), `note.dismissed {cooldownUntil|null}`
+  (GUARD: no-op while dismissed), `note.restored` (GUARD: only while dismissed) (LWW-F). Dismissing /
+  restoring the last note of a research signal emits `signal.closed {note_dismissed}` /
+  `signal.reopened {note_restored}` in the same batch. Accepting a candidate emits `watchlist.added` /
+  `thesis.created` with `cause`.
+- `note.candidateUpdated {instrument@|null, details|null}` (LWW-F, whole values; `updated_at` = domain
+  time): candidate accept and undo rewrite the note's instrument and details (S25-F4), in the batch of
+  their `watchlist.*` / `thesis.*` events. `note.signalLinked {signal@}` (LWW-F on `signal_id`, no
+  `updated_at` change): the research sync re-points a lead note at its episode (S25-F5); emitted by
+  the leader or the research device.
 
 ### 8.10 Agent layer, connectors
 
@@ -698,6 +720,12 @@ LEADER), so the reference fold does not model it.
 - The outbox captures field diffs of synced columns (section 9 excluded) and maps them to these types;
   explicit emits for `instrument_merge.py`, decision / review undo, thesis delete, cash expense delete,
   binding removal and every bulk `update()/delete()` on a synced table (R6).
+- The S25 deltas (S25-F1..F6: refresh fields, `run` on refresh / close, close `payloadSet` / reopen
+  `payloadUnset`, `note.candidateUpdated`, `note.signalLinked`, `alert.restored.rearm`) come from ORM
+  writes the outbox already captures as field diffs; the shipper maps them by merging the update rows
+  of one row within one transaction, splitting a close / reopen payload diff into `payloadSet` /
+  `payloadUnset`, and telling a restore re-arm (status `triggered -> active` together with
+  `deleted_at -> null`) from the daily re-arm (status alone).
 - Python-side derived writes MUST NOT be shipped. The Python side SHOULD validate outbound events
   against JSON Schema generated from these zod schemas (`z.toJSONSchema`).
 - The outbox computes DET gids itself, so the per-vault gid salt ([`gid.md`](gid.md) 3) MUST be

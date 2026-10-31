@@ -85,6 +85,46 @@ describe("payload schemas: valid samples", () => {
   });
 });
 
+describe("S25 catalog deltas (optional fields, absent keeps the v1 meaning)", () => {
+  const shapeKeys = (t: EventType) =>
+    Object.keys((PAYLOADS[t] as unknown as { shape: Record<string, unknown> }).shape);
+
+  // The log copy stores payloads positionally in schema key order (engine/compact.ts): a v1 shape
+  // may only grow at its end, or stored events decode into the wrong fields after an upgrade.
+  it.each([
+    ["signal.refreshed", ["severity", "message", "payload", "run", "seenAt", "stamps"]],
+    ["signal.escalated", ["severity", "message", "payload", "reactivate", "run", "seenAt", "stamps"]],
+    ["signal.closed", ["status", "reason", "stamps"]],
+    ["signal.reopened", ["reason", "stamps"]],
+    ["alert.restored", ["stamps"]],
+  ] as const)("%s keeps its v1 keys first, in order", (type, v1) => {
+    expect(shapeKeys(type).slice(0, v1.length)).toEqual(v1);
+  });
+
+  it("accepts the refresh fields, run / payloadSet on close, payloadUnset, rearm", () => {
+    const ok = (t: EventType, d: Record<string, unknown>) =>
+      expect(PAYLOADS[t].safeParse(d).success).toBe(true);
+    ok("signal.refreshed", {
+      ...VALID_SAMPLES["signal.refreshed"],
+      ruleId: "research:2026-w44",
+      kind: "research",
+      polarity: "positive",
+      instrument: null,
+      account: ACC,
+    });
+    ok("signal.escalated", { ...VALID_SAMPLES["signal.escalated"], instrument: INST });
+    ok("signal.closed", { status: "resolved", reason: "x", run: null, payloadSet: { a: 1 } });
+    ok("signal.reopened", { reason: "note_restored", payloadUnset: ["closed_reason"] });
+    ok("alert.restored", { rearm: true });
+    ok("alert.restored", {});
+  });
+
+  it("keeps unknown fields of the extended shapes (loose objects)", () => {
+    const r = PAYLOADS["signal.closed"].safeParse({ status: "resolved", reason: "x", future: 1 });
+    expect(r.success && (r.data as Record<string, unknown>).future).toBe(1);
+  });
+});
+
 describe("payload schemas: invalid samples", () => {
   const bad: Array<[EventType, Record<string, unknown>, string]> = [
     [
@@ -140,6 +180,20 @@ describe("payload schemas: invalid samples", () => {
     ],
     ["signal.woken", {}, "wake without the snooze it ends (M7)"],
     ["signal.reopened", { reason: "manual" }, "unknown reopen reason"],
+    [
+      "signal.refreshed",
+      { ...VALID_SAMPLES["signal.refreshed"], instrument: "12" },
+      "refresh to a local instrument id",
+    ],
+    [
+      "signal.closed",
+      { ...VALID_SAMPLES["signal.closed"], payloadSet: ["closed_by"] },
+      "payloadSet as a list",
+    ],
+    ["signal.reopened", { reason: "note_restored", payloadUnset: "closed_by" }, "unset as text"],
+    ["alert.restored", { rearm: false }, "rearm must be true when present"],
+    ["note.candidateUpdated", { details: null }, "candidate update without the instrument"],
+    ["note.signalLinked", { signal: null }, "link to no signal"],
     [
       "invTxn.imported",
       { ...VALID_SAMPLES["invTxn.imported"], source: "manual" },
