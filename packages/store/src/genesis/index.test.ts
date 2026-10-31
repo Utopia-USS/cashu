@@ -95,7 +95,14 @@ describe("refusals", () => {
       // Python's `str(instrument_id)` candidate fallback: a local id as the key (review F6).
       [
         "strict_counter",
-        (r) => r.insert("research_notes", { kind: "candidate", candidate_key: "42" }),
+        (r) => {
+          const inst = r.insert("inv_instruments", { asset_class: "equity" });
+          r.insert("research_notes", {
+            kind: "candidate",
+            instrument_id: inst,
+            candidate_key: String(inst),
+          });
+        },
       ],
     ];
     for (const [code, plant] of cases) {
@@ -106,9 +113,15 @@ describe("refusals", () => {
     }
   });
 
-  it("counts a digits-only candidate key (a local instrument id), strict names it", () => {
+  it("counts a candidate key that is the note's local instrument id, not a numeric ticker", () => {
     const { driver, rows } = db();
-    rows.insert("research_notes", { kind: "candidate", candidate_key: "42" });
+    const inst = rows.insert("inv_instruments", { asset_class: "equity" });
+    rows.insert("research_notes", {
+      kind: "candidate",
+      instrument_id: inst,
+      candidate_key: String(inst),
+    });
+    rows.insert("research_notes", { kind: "candidate", candidate_key: "7203" });
     rows.insert("research_notes", { kind: "candidate", candidate_key: "PLTEST000001" });
     rows.insert("research_notes", { kind: "candidate", candidate_key: "ABC1" });
     const strict = () => genesis({ driver, files: NO_FILES }, KEYS, { strict: true, now: NOW });
@@ -119,7 +132,7 @@ describe("refusals", () => {
     expect(result.report.counters.vaults["0"]?.research_notes).toEqual({
       candidate_key_local_id: 1,
     });
-    expect(result.vaults[0]?.events.filter((e) => e.t === "note.added")).toHaveLength(3);
+    expect(result.vaults[0]?.events.filter((e) => e.t === "note.added")).toHaveLength(4);
   });
 
   it("lenient: the rows are skipped, counted and left out of the ids", () => {

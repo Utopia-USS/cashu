@@ -101,9 +101,6 @@ export function mapResearchRun(r: ResearchRunRow, ctx: MapContext): RowEvents | 
   return rowEvents(t, r.id, events);
 }
 
-/** A digits-only candidate key: a local instrument id, not an ISIN or a symbol. */
-const LOCAL_ID = /^[0-9]+$/;
-
 const NOTE_STAMPS = [
   "createdAt",
   "updatedAt",
@@ -123,9 +120,14 @@ export function mapNote(r: ResearchNoteRow, ctx: MapContext): RowEvents | undefi
   const t = "research_notes";
   const gid = gidOf(ctx, t, r.id);
   if (gid === undefined) return undefined;
-  // Python's candidate fallback `str(instrument_id)` (research/service.py) stores a local id as the
-  // key; it is copied verbatim but counted, and fails a strict run (S26 review F6).
-  if (r.candidateKey !== null && LOCAL_ID.test(r.candidateKey)) {
+  // Python's candidate fallback `str(instrument_id)` (research/service.py) stores the note's own
+  // local instrument id as the key; it is copied verbatim but counted, and fails a strict run (S26
+  // review F6, N2). A numeric ticker that is not that id passes.
+  if (
+    r.candidateKey !== null &&
+    r.instrumentId !== null &&
+    r.candidateKey === String(r.instrumentId)
+  ) {
     ctx.count(t, "candidate_key_local_id");
   }
   const stamps = stampsOf(r, NOTE_STAMPS);
