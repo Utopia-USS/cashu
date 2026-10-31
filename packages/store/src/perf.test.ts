@@ -1,12 +1,16 @@
 // Performance smoke on the spike's workload shape (spike-result.md: 60k unique transactions + 2k
 // duplicate re-imports, 1,900 merchant rule edits over 400 merchants, 300 decisions; 3 accounts).
-// Synthetic data. Budgets are generous ceilings for CI machines; the measured numbers on the owner's
-// Mac are recorded in the S23 checkpoint (spike reference: full rebuild 0.32 s).
+// Synthetic data. Budgets are generous ceilings for CI machines; measured numbers (wall and CPU, same
+// run as the spike's own benchmark) are in the cashu-ts-architecture performance reference. With
+// CASHU_PERF_DB=<path> the store runs on a database file with the spike's pragmas (WAL, synchronous
+// NORMAL); otherwise in memory. One `S23B_PERF {...}` line reports every phase.
 import { sha1 } from "@noble/hashes/legacy.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { detGid } from "./gid.js";
 import { viewHash } from "./snapshot.js";
+import { betterSqlite3Driver } from "./sql/better-sqlite3.js";
 import { rng } from "./testing/random.js";
 import {
   EventFactory,
@@ -126,30 +130,43 @@ function workload() {
   return { events, f, next };
 }
 
-/** CPU time of this worker since `t0` (ms): wall time is meaningless on a loaded machine. */
-function ms(t0: { user: number; system: number }): number {
-  const d = process.cpuUsage(t0);
-  return Math.round((d.user + d.system) / 1000);
+/** Wall and CPU time of this worker since `t0` (ms). On a loaded machine only CPU is comparable. */
+function since(t0: { wall: number; cpu: { user: number; system: number } }) {
+  const d = process.cpuUsage(t0.cpu);
+  return {
+    wall: Math.round(performance.now() - t0.wall),
+    cpu: Math.round((d.user + d.system) / 1000),
+  };
 }
 
-const now = () => process.cpuUsage();
+const now = () => ({ wall: performance.now(), cpu: process.cpuUsage() });
+
+/** The store's database: a file with the spike's pragmas when CASHU_PERF_DB is set, else memory. */
+function perfStore() {
+  const path = process.env.CASHU_PERF_DB;
+  if (path === undefined || path === "") return { store: openTestStore(), mode: "memory" };
+  const db = new Database(path);
+  db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
+  return { store: openTestStore({ driver: betterSqlite3Driver(db) }), mode: "file" };
+}
 
 describe("perf smoke: 64k events", () => {
   it("bulk apply, rebuild, incremental, late re-fold, identity re-fold", {
     timeout: 300_000,
   }, () => {
     const { events, f, next } = workload();
-    const store = openTestStore();
+    const { store, mode } = perfStore();
     let t0 = now();
     for (let i = 0; i < events.length; i += 1000) store.applyEnvelopes(events.slice(i, i + 1000));
-    const bulk = ms(t0);
+    const bulk = since(t0);
     expect(store.read("SELECT COUNT(*) AS n FROM transactions")).toEqual([{ n: 60_000 }]);
     expect(store.read("SELECT COUNT(*) AS n FROM category_rules")).toEqual([{ n: 400 }]);
     const hash = viewHash(store).hash;
 
     t0 = now();
     store.rebuild();
-    const rebuild = ms(t0);
+    const rebuild = since(t0);
     expect(viewHash(store).hash).toBe(hash);
 
     t0 = now();
@@ -163,7 +180,7 @@ describe("perf smoke: 64k events", () => {
         ),
       ),
     );
-    const edits10 = ms(t0);
+    const edits10 = since(t0);
 
     // a late claim from another device that sorts before thousands of applied events
     const late = new EventFactory("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "01JH");
@@ -176,7 +193,7 @@ describe("perf smoke: 64k events", () => {
         { wall: 5001 },
       ),
     ]);
-    const lateRefold = ms(t0);
+    const lateRefold = since(t0);
 
     // an account learns an external key held by another: identity change -> full transactions re-fold
     t0 = now();
@@ -188,13 +205,25 @@ describe("perf smoke: 64k events", () => {
         { wall: next() },
       ),
     ]);
-    const identityRefold = ms(t0);
+    const identityRefold = since(t0);
+    store.close();
 
-    const report = { events: events.length, bulk, rebuild, edits10, lateRefold, identityRefold };
-    console.log(`S23 perf (CPU ms): ${JSON.stringify(report)}`);
-    // Ceilings, not targets (CI machines, a loaded dev Mac): see the checkpoint for measured numbers.
-    expect(bulk).toBeLessThan(30_000);
-    expect(rebuild).toBeLessThan(10_000);
-    expect(lateRefold).toBeLessThan(1_000);
+    const report = {
+      events: events.length,
+      mode,
+      bulkWall: bulk.wall,
+      bulkCpu: bulk.cpu,
+      rebuildWall: rebuild.wall,
+      rebuildCpu: rebuild.cpu,
+      edits10Wall: edits10.wall,
+      lateRefoldWall: lateRefold.wall,
+      identityRefoldWall: identityRefold.wall,
+    };
+    console.log(`S23B_PERF ${JSON.stringify(report)}`);
+    // Ceilings, not targets (CI machines, a loaded dev Mac), on CPU time: measured numbers are in
+    // the performance reference.
+    expect(bulk.cpu).toBeLessThan(30_000);
+    expect(rebuild.cpu).toBeLessThan(10_000);
+    expect(lateRefold.cpu).toBeLessThan(1_000);
   });
 });
