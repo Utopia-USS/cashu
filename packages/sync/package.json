@@ -12,5 +12,13 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "@scure/bip39": "^2.4.0",
+    "libsodium-wrappers-sumo": "^0.8.4"
+  },
+  "devDependencies": {
+    "@noble/ciphers": "^2.4.0"
   }
 }

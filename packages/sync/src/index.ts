@@ -19,3 +19,4 @@ export {
   type ScanResult,
   scanFrames,
 } from "./segment.js";
+export * as crypto from "./crypto/index.js";
