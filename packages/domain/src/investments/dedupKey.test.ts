@@ -165,7 +165,9 @@ describe("re-import side helpers", () => {
   });
 
   it("brokerIdForHash renames only the canonical namespace", () => {
+    // legacy name: hashes keep the pre-rename broker id
     expect(brokerIdForHash("cashu")).toBe("finanse");
+    // legacy name, idempotent
     expect(brokerIdForHash("finanse")).toBe("finanse");
     expect(brokerIdForHash("xtb")).toBe("xtb");
   });
@@ -198,7 +200,9 @@ describe("v2 parts (gid.md 4.6)", () => {
 
   it("ref path renames the legacy broker like v1", () => {
     const path = { kind: "ref", brokerId: "cashu", ref: "R", fillKey: "f", occurrence: 2 } as const;
+    // legacy name in the v2 parts
     expect(hashPartsV2(path, "g")).toEqual(["v2", "ref", "g", "finanse", "R", "f", "2"]);
+    // legacy name in the v1 parts
     expect(hashPartsV1(path, "1")).toEqual(["v1", "ref", "1", "finanse", "R", "f", "2"]);
   });
 });

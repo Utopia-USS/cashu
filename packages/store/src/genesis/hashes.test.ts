@@ -234,12 +234,14 @@ describe("investment transactions: synthetic", () => {
     expect(v?.invDedupHashes.get(late)).toBe(v2Of(buy, accountGid, "", "cashu", 1));
   });
 
+  // legacy name: the pre-rename broker namespace is equivalent
   it("walks the 7.2 steps and the cashu / finanse namespace equivalence", () => {
     const { driver, rows, account, batch } = setup();
     const inst = (isin: string | null = null) => rows.insert("inv_instruments", { isin });
     const [broker, isinAlias, isinCol, bare] = [inst(), inst(), inst("XX0000000009"), inst()];
     rows.insert("inv_instrument_aliases", {
       instrument_id: broker,
+      // legacy name
       namespace: "finanse",
       value: "OLD",
     });

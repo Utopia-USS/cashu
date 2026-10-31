@@ -21,6 +21,7 @@ const K_MAX = 1000;
 /** Python `service/transactions.py` MANUAL_BROKER_ID: the broker of a row without a batch. */
 const NO_BATCH_BROKER = "manual";
 /** Python `contract.py` CASHU_NAMESPACE / LEGACY_NAMESPACE: one namespace under two names. */
+// legacy name: Python's equivalent_namespaces treats the pre-rename broker id as `cashu`
 const CANONICAL_NAMESPACES: readonly string[] = ["cashu", "finanse"];
 const TABLE = "inv_transactions";
 

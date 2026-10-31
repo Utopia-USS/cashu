@@ -32,6 +32,10 @@ FILES = {
     "packages/domain/test/vectors/inv-importing-*.jsonl": "Python-generated importing vectors: the legacy format id and source namespace the importer still reads",
     "packages/domain/test/vectors/inv-reimport.jsonl": "Python-generated re-import vectors: a batch and aliases stored under the pre-rename broker namespace",
     "packages/domain/test/vectors/research-*.jsonl": "Python-generated research vectors: the Polish segment label and casefold probes of the Polish word, JSON-escaped",
+    "packages/domain/test/vectors/inv-dedup.jsonl": "Python-generated investment hash vectors: hashes keep the legacy broker namespace",
+    "packages/store/src/genesis/testing/invHashParity.json": "Python-generated hash parity fixture: v1 hash messages under the legacy namespace",
+    "parity/python/vectors_inv_dedup.py": "generator of the investment hash vectors, covers the legacy namespace",
+    "parity/python/inv_hash_parity.py": "generator of the hash parity fixture, rebuilds legacy-namespace hashes",
 }
 
 
