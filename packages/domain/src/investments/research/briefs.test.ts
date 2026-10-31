@@ -2,13 +2,24 @@
  * Test-for-test translation of `tests/investments/research/test_p9_briefs.py`, the research parts:
  * `details.brief` validation (lengths, forbidden words, supports / risks on macro notes only, briefs
  * only on segment / macro notes, TTL up to 90 days), the topic-note thesis relation, the
- * near-duplicate similarity (Polish examples) and the `full_refresh` run scope. Synthetic input only.
- *
- * Not translated here: `test_every_state_has_a_plain_beginner_sentence` and
- * `test_plain_of_an_inverted_curve_and_a_missing_card` test `macro.texts.plain` / `macro.regimes`
- * (scope S20); they call `forecastProblem` from this port once S20 lands.
+ * near-duplicate similarity (Polish examples), the macro cards' plain sentences and the
+ * `full_refresh` run scope. Synthetic input only.
  */
 import { describe, expect, it } from "vitest";
+import { pyLen } from "../../text.js";
+import { macroStrings, plainSentences } from "../macro/macro.strings.js";
+import {
+  INVERTED,
+  ORDER,
+  type Regime,
+  type RegimeKey,
+  regime,
+  regimeLabel,
+  STATE_TONES,
+  stateLabel,
+  UNKNOWN,
+} from "../macro/regimes.js";
+import { plain } from "../macro/texts.js";
 import { utcInstant } from "./instant.js";
 import { claimProblem, forecastProblem } from "./patterns.js";
 import {
@@ -386,6 +397,51 @@ describe("near duplicates (test_p9_briefs.py)", () => {
     expect(tokens("prognozę prognozy")).toEqual(new Set(["prog"]));
     expect(tokens(null)).toEqual(new Set());
     expect(jaccard(new Set(), new Set(["a"]))).toBe(0.0);
+  });
+});
+
+function macroRegime(key: RegimeKey, state: string, changes: Partial<Regime> = {}): Regime {
+  return regime({
+    key,
+    label: regimeLabel(key),
+    state,
+    stateLabel: stateLabel(key, state, "pl"),
+    tone: "",
+    since: "2025-05-02",
+    metrics: [],
+    asOf: "2026-10-08",
+    stale: false,
+    missing: false,
+    meaning: "",
+    ...changes,
+  });
+}
+
+describe("macro plain sentences (test_p9_briefs.py)", () => {
+  // test_every_state_has_a_plain_beginner_sentence
+  it("every state has a plain beginner sentence", () => {
+    const sentences = plainSentences as Readonly<Record<string, { pl: string }>>;
+    const ids = ORDER.flatMap((key) => Object.keys(STATE_TONES[key]).map((s) => `${key}.${s}`));
+    expect(Object.keys(sentences).sort()).toEqual([...ids].sort());
+    for (const key of ORDER) {
+      for (const state of Object.keys(STATE_TONES[key])) {
+        const text = plain(macroRegime(key, state), "pl");
+        expect(text).toBe(sentences[`${key}.${state}`]?.pl);
+        expect(text.endsWith(".") && pyLen(text) <= 120 && !text.includes("\u2014")).toBe(true);
+        expect(forecastProblem(text), text).toBe(false);
+      }
+    }
+    expect(plainSentences["risk.bull"].pl.startsWith("Trwa hossa")).toBe(true);
+    expect(plainSentences["dollar.strong"].pl).toBe("Dolar się umacnia.");
+  });
+
+  // test_plain_of_an_inverted_curve_and_a_missing_card
+  it("plain of an inverted curve and a missing card", () => {
+    const inverted = plain(macroRegime("rates", "falling", { flags: [INVERTED] }), "pl");
+    expect(inverted).toBe(`${plainSentences["rates.falling"].pl} ${macroStrings.plainInverted.pl}`);
+    expect(plain(macroRegime("risk", UNKNOWN, { missing: true }), "pl")).toBe(
+      macroStrings.plainUnknown.pl,
+    );
   });
 });
 
