@@ -987,6 +987,50 @@ def ack(session, through: int, gids: Iterable[dict] = (), *, now: dt.datetime | 
     return result.rowcount or 0
 
 
+GENESIS_SOURCE = "genesis"
+
+
+def seed_ids(session, profile_id: int, rows: Iterable[dict]) -> dict:
+    """Seed ``sync_ids`` (and the vault link) of one profile from the genesis exporter's ``ids.jsonl``
+    (S26): ``{"table", "localId", "gid"}`` per exported row, ``localId`` in :func:`_local_id` form;
+    the ``profiles`` entry carries the vault id and must name ``profile_id``. Idempotent: a mapping
+    already held is kept; a row or gid mapped to something else is a conflict, never overwritten.
+    Returns counts (never values). Raises ``ValueError`` on a malformed file or another profile's."""
+    conn = session.connection()
+    entries = list(rows)
+    vaults = [e for e in entries if e.get("table") == "profiles"]
+    if len(vaults) != 1 or str(vaults[0].get("localId")) != str(profile_id):
+        raise ValueError("the ids file has no entry for this profile (another profile's file?)")
+    out = {"inserted": 0, "kept": 0, "conflicts": 0}
+    for e in entries:
+        name, local_id, gid = e.get("table"), e.get("localId"), e.get("gid")
+        if name == "profiles":
+            continue
+        spec = SPECS.get(name) if isinstance(name, str) else None
+        if spec is None or spec.gid == "none" or not isinstance(local_id, str) or not _GID.match(gid or ""):
+            raise ValueError("bad entry in the ids file")
+        held = conn.execute(
+            select(IDS.c.local_id, IDS.c.gid).where(
+                IDS.c.profile_id == profile_id,
+                IDS.c.table_name == name,
+                or_(IDS.c.local_id == local_id, IDS.c.gid == gid),
+            )
+        ).all()
+        if any(h.local_id == local_id and h.gid == gid for h in held):
+            out["kept"] += 1
+        elif held:
+            out["conflicts"] += 1
+        else:
+            conn.execute(
+                insert(IDS).values(
+                    profile_id=profile_id, table_name=name, local_id=local_id, gid=gid, source=GENESIS_SOURCE
+                )
+            )
+            out["inserted"] += 1
+    link_vault(session, profile_id, str(vaults[0].get("gid")))
+    return out
+
+
 def prune(session) -> int:
     """Delete acked rows only: an unacked row is never pruned."""
     conn = session.connection()

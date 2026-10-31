@@ -1,4 +1,4 @@
-"""``cashu sync status|link|ack|prune|apply``: the Python side of the sync bridge (S30 outbox, S31b
+"""``cashu sync status|link|seed|ack|prune|apply``: the Python side of the sync bridge (S30 outbox, S31b
 inbound applier).
 
 TRANSITIONAL(S49). Developer / shipper commands, so plain English output (no catalog): counts and
@@ -96,6 +96,27 @@ def ack_cmd(
             cliutil.err_console.print(f"[red]{e}[/]")
             raise typer.Exit(1) from None
     typer.echo(f"acked {n} row(s), {len(gids)} gid(s) stored")
+
+
+@sync_app.command("seed")
+def seed_cmd(
+    ids: Annotated[
+        Path,
+        typer.Option(help="The genesis exporter's ids.jsonl of this profile's vault (S26)."),
+    ],
+) -> None:
+    """Seed the gid map of the current profile (``--profile``) from a genesis export and link its
+    vault, so existing rows resolve for the outbox and the inbound applier. Counts only."""
+    init_db()
+    entries = [json.loads(line) for line in ids.read_text(encoding="utf-8").splitlines() if line.strip()]
+    with get_session() as s:
+        profile = cliutil.profile(s, create=False)
+        try:
+            counts = sync_outbox.seed_ids(s, profile.id, entries)
+        except ValueError as e:
+            cliutil.err_console.print(f"[red]{e}[/]")
+            raise typer.Exit(1) from None
+    typer.echo(json.dumps(counts, sort_keys=True))
 
 
 @sync_app.command("prune")
