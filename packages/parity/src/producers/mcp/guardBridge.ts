@@ -1,0 +1,57 @@
+/// <reference types="node" />
+/**
+ * TRANSITIONAL(S38): reader of the guard bridge (`guard_bridge.py`): per profile, the raw outputs of
+ * the MCP name providers (budget `name_sources`, investments `strong_names` / `name_sources` /
+ * `strict_aliases`) that `collectGuard` runs on, until those providers are ported (S38). It also carries
+ * the macro summary vocabulary (TRANSITIONAL(S20): the summary builder's words, public). Delete with
+ * the bridge script.
+ */
+
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { NameSources } from "@cashu/mcp";
+import { type Dataset, labRoot } from "../../sources/index.ts";
+
+const BRIDGE_CHECK = "mcp.guard_sources";
+
+interface BridgeProvider {
+  readonly provider: string;
+  readonly strong: readonly string[];
+  readonly persons: readonly string[];
+  readonly private: readonly string[];
+  readonly aliases: readonly (readonly [string, string])[];
+}
+
+interface BridgeFile {
+  readonly macro_vocabulary: readonly string[];
+  readonly profiles: Readonly<Record<string, { readonly providers: readonly BridgeProvider[] }>>;
+}
+
+export interface GuardBridge {
+  readonly vocabulary: ReadonlySet<string>;
+  /** The name sources of a profile (by natural key), in provider order. */
+  providers(profileKey: string): NameSources[];
+}
+
+export function readGuardBridge(dataset: Dataset, root: string = labRoot()): GuardBridge {
+  const path = join(root, "parity", "bridge-mcp", dataset, `${BRIDGE_CHECK}.json`);
+  if (!existsSync(path)) {
+    throw new Error(
+      `no guard bridge output for ${dataset}: run .venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset ${dataset}`,
+    );
+  }
+  const file = JSON.parse(readFileSync(path, "utf8")) as BridgeFile;
+  return {
+    vocabulary: new Set(file.macro_vocabulary),
+    providers(profileKey) {
+      const entry = file.profiles[profileKey];
+      if (entry === undefined) throw new Error("a profile without guard sources in the bridge");
+      return entry.providers.map((p) => ({
+        strongNames: p.strong,
+        persons: p.persons,
+        privatePayees: p.private,
+        strictAliases: p.aliases,
+      }));
+    },
+  };
+}

@@ -9,6 +9,7 @@ import { readBridge } from "./core/bridge.ts";
 import { produceNetworth } from "./core/networth.ts";
 import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
 import { readStrategyBridge } from "./investments/strategyBridge.ts";
+import { produceMcpRead } from "./mcp/privacy.ts";
 import type { OutValue } from "./output.ts";
 
 export interface Producer {
@@ -34,5 +35,15 @@ export const PRODUCERS: readonly Producer[] = [
     check: "investments.allocation",
     datasets: ["demo", "lab"],
     produce: (db) => produceAllocation(db, readStrategyBridge(db.dataset)),
+  },
+  {
+    check: "mcp.read_strict",
+    datasets: ["demo", "lab"],
+    produce: (db) => produceMcpRead(db, "strict"),
+  },
+  {
+    check: "mcp.read_amounts",
+    datasets: ["demo", "lab"],
+    produce: (db) => produceMcpRead(db, "amounts"),
   },
 ];
