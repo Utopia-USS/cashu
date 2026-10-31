@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { UnstampedEvent } from "../carrier.js";
-import { certifyDevice, createDeviceIdentity, type DeviceIdentity } from "../crypto/index.js";
-import { buildDeviceAdded, buildDeviceRevoked, type LogEvent } from "./events.js";
+import {
+  certifyDevice,
+  createDeviceId,
+  createDeviceIdentity,
+  type DeviceIdentity,
+} from "../crypto/index.js";
+import { toHex } from "./bytes.js";
+import {
+  buildDeviceAdded,
+  buildDeviceRevoked,
+  DEVICE_ADDED,
+  DEVICE_REVOKED,
+  type LogEvent,
+} from "./events.js";
 import { PairingInviter } from "./pairing.js";
 import { foldRegistry, type Registry } from "./registry.js";
 import {
@@ -241,22 +253,24 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
     );
     // Junk: unsigned statements naming fresh ids, in a stranger's stream.
     const stranger = createDeviceIdentity(sodium).deviceId;
+    // Built without signing (the junk is unsigned anyway): fresh ids, one key pair, zero certificate.
+    const junkKeys = createDeviceIdentity(sodium);
     const junk: LogEvent[] = Array.from({ length: 2000 }, (_, i) => {
-      const p = createDeviceIdentity(sodium, undefined);
-      const e = buildDeviceAdded(
-        a.identity,
-        vaultId,
-        newEid(),
-        subjectOf(p),
-        "junk",
-        new Uint8Array(225),
-      );
-      return stamp(
-        { ...e, d: { ...e.d, sig: "00".repeat(64) } },
-        stranger,
-        START_TIME + 5000 + i,
-        5000 + i,
-      );
+      const e: UnstampedEvent = {
+        t: DEVICE_ADDED,
+        v: 1,
+        i: newEid(),
+        d: {
+          device: createDeviceId(sodium),
+          signPublicKey: toHex(junkKeys.signPublicKey),
+          boxPublicKey: toHex(junkKeys.box.publicKey),
+          name: "junk",
+          certificate: "00".repeat(225),
+          signer: a.id,
+          sig: "00".repeat(64),
+        },
+      };
+      return stamp(e, stranger, START_TIME + 5000 + i, 5000 + i);
     });
     const base = allEvents(a);
     const r = fold(a, [...base, ...adds, ...junk]);
@@ -307,13 +321,20 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
 
   it("junk in the log never blocks pairing (the welcome carries authentic statements only)", async () => {
     const { creator: a } = createSimVault();
-    const vaultId = a.ring.vaultId;
     const stranger = createDeviceIdentity(sodium).deviceId;
+    // Built without signing (the junk carries a junk signature anyway).
     const junk: LogEvent[] = Array.from({ length: 5000 }, (_, i) => {
-      const e = buildDeviceRevoked(a.identity, vaultId, newEid(), [
-        { device: a.id, cut: { seg: 1, offset: 0 } },
-      ]);
-      return stamp({ ...e, d: { ...e.d, sig: "11".repeat(64) } }, stranger, START_TIME + i, i + 1);
+      const e: UnstampedEvent = {
+        t: DEVICE_REVOKED,
+        v: 1,
+        i: newEid(),
+        d: {
+          devices: [{ device: a.id, cut: { seg: 1, offset: 0 } }],
+          signer: a.id,
+          sig: "11".repeat(64),
+        },
+      };
+      return stamp(e, stranger, START_TIME + i, i + 1);
     });
     a.devices.ingest(junk);
     expect(a.devices.registry.isTrusted(a.id)).toBe(true);

@@ -4,89 +4,19 @@ import { buildLeaseClaim } from "./events.js";
 import {
   catchUpMissing,
   foldLease,
-  holdsLease,
-  type LeaseConfig,
   type LeaseView,
   leaseConfig,
-  leaseEventFor,
   MAX_LEASE_TTL_MS,
   mayRunNewestDayImports,
   nextLeaseStep,
 } from "./lease.js";
+import { advance, config, decide, devices, holds, MIN, rule6Run, tick, view } from "./leaseSim.js";
 import { comparePositions } from "./positions.js";
-import { createSimVault, newEid, pairDevice, type SimDevice, sodium } from "./testkit.js";
-
-const MIN = 60_000;
-const config: LeaseConfig = leaseConfig({
-  ttlMs: 60 * MIN,
-  renewBeforeMs: 30 * MIN,
-  maxSkewMs: 5 * MIN,
-  publishDeadlineMs: MIN,
-  settleMs: 7 * MIN,
-});
-
-function view(d: SimDevice): LeaseView {
-  return d.devices.lease;
-}
+import { createSimVault, newEid, pairDevice, sodium } from "./testkit.js";
 
 /** The devices a holder still has to catch up with. */
 function missing(v: LeaseView, applied: ReadonlyMap<string, SegmentCursor>): string[] {
   return catchUpMissing(v, applied).map((m) => m.device);
-}
-
-function holds(d: SimDevice): boolean {
-  return holdsLease(view(d), d.local(), config);
-}
-
-/** One lease round on a device: decide, write the lease event if any. Returns the step kind. */
-function decide(d: SimDevice, eligible = true): string {
-  const step = nextLeaseStep(view(d), d.local(), eligible, config);
-  if (step.kind === "claim" || step.kind === "renew" || step.kind === "release") {
-    d.write([
-      leaseEventFor(
-        step.kind,
-        view(d),
-        {
-          identity: d.identity,
-          vaultId: d.ring.vaultId,
-          eid: newEid(),
-          now: d.now(),
-          applied: d.applied,
-        },
-        config,
-      ),
-    ]);
-  }
-  return step.kind;
-}
-
-/** sync, decide, push: what an online device does each minute. */
-function tick(d: SimDevice, eligible = true): string {
-  d.sync();
-  const kind = decide(d, eligible);
-  d.push();
-  return kind;
-}
-
-/**
- * Three paired devices. Pairing refuses more than 5 minutes of skew, so the clocks drift apart only
- * afterwards: half an hour later, each clock moves by its skew (never behind its own last stamp).
- */
-async function devices(skews: readonly number[] = [0, 0, 0]) {
-  const vault = createSimVault();
-  const a = vault.creator;
-  const b = await pairDevice(a, "phone");
-  const c = await pairDevice(a, "laptop");
-  for (let i = 0; i < 2; i++) for (const d of [a, b, c]) d.sync();
-  vault.remote.time += 30 * MIN;
-  [a, b, c].forEach((d, i) => {
-    d.skewMs = skews[i] ?? 0;
-  });
-  return { a, b, c, remote: vault.remote };
-}
-
-function advance(d: SimDevice, ms: number): void {
-  d.remote.time += ms;
 }
 
 describe("fetch lease", () => {
@@ -244,60 +174,14 @@ describe("fetch lease", () => {
     }
   });
 
-  it("property (rule 6): never two leaders at once, even with a device whose clock runs 2 days ahead; all devices agree after convergence", async () => {
-    const base = await devices();
-    const runs = 60;
-    const DAY = 24 * 60 * MIN;
-    let someoneHeld = 0;
-    for (let run = 0; run < runs; run++) {
-      const rand = mulberry32(run + 1);
-      // Kinds of run: clocks within the bound; one device 2 days ahead (after pairing, nothing
-      // re-checks it); clocks an hour apart with a lossy remote (convergence only).
-      const kind = run % 3;
-      const skewSpan = kind === 2 ? 60 * MIN : 5 * MIN;
-      const skews = [0, 1, 2].map(() => Math.round((rand() - 0.5) * skewSpan));
-      if (kind === 1) skews[1 + (run % 2)] = 2 * DAY;
-      const { a, b, c } = run === 0 ? base : await devices(skews);
-      const all = [a, b, c];
-      const online = new Map(all.map((d) => [d, true]));
-      const unpushed = new Set<SimDevice>();
-      const fullVisibility = kind !== 2;
-      let held = false;
-      for (let minute = 0; minute < 300; minute++) {
-        for (const d of all) if (rand() < 0.05) online.set(d, !online.get(d));
-        const live = all.filter((d) => online.get(d));
-        for (const d of live) {
-          if (!unpushed.has(d)) d.push();
-          d.pull(fullVisibility ? undefined : () => rand() < 0.7);
-        }
-        for (const d of live) decide(d, d !== c || run % 3 !== 0);
-        for (const d of live) {
-          if (rand() < 0.03)
-            unpushed.add(d); // crashed before pushing: published late
-          else {
-            unpushed.delete(d);
-            d.push();
-          }
-        }
-        if (fullVisibility) expect(all.filter(holds).length, `run ${run}`).toBeLessThanOrEqual(1);
-        held ||= all.some(holds);
-        advance(a, MIN);
-      }
-      if (fullVisibility && held) someoneHeld += 1;
-      for (let i = 0; i < 2; i++) for (const d of all) d.sync();
-      const views = all.map(view);
-      expect(new Set(views.map((v) => v.head)).size).toBe(1);
-      expect(new Set(views.map((v) => v.holder)).size).toBe(1);
-      expect(all.filter(holds).length).toBeLessThanOrEqual(1);
-      // The fold depends only on the set: a shuffled delivery gives the same view.
-      const events = all.flatMap((d) => d.stream.flatMap((s) => s.events));
-      const shuffled = [...events].sort(() => rand() - 0.5);
-      const again = foldLease(a.devices.registry, shuffled);
-      expect(again.head).toBe(views[0]?.head);
-      expect(again.term).toEqual(views[0]?.term);
-    }
-    expect(someoneHeld).toBeGreaterThanOrEqual(35); // the schedules really exercise the lease
-  }, 180_000);
+  // The full sweep (60 seeded schedules) is lease.rule6.exhaustive.test.ts; one schedule per kind here.
+  it.each([0, 1, 2])(
+    "property (rule 6), schedule %i: never two leaders at once; all devices agree after convergence",
+    async (run) => {
+      const { held, fullVisibility } = await rule6Run(run);
+      if (fullVisibility) expect(held).toBe(true);
+    },
+  );
 
   it("A3: a holder pre-empted by a device whose clock runs 2 days ahead stops before the other acts; the fast device cannot block fetching for 2 days", async () => {
     const { a, b, c } = await devices();
@@ -454,14 +338,3 @@ describe("fetch lease", () => {
     expect(sodium).toBeDefined();
   });
 });
-
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
