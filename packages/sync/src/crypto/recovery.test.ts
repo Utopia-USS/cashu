@@ -1,4 +1,5 @@
 import { inspect } from "node:util";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { describe, expect, it } from "vitest";
 import { certifyDevice, verifyCertificates } from "./cert.js";
 import { toHex } from "./encoding.js";
@@ -177,17 +178,13 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
 
   it("rejects a wrong checksum, a wrong length and unknown words without echoing them", () => {
     const words = createRecoveryKey(sodium).phrase.reveal().split(" ");
-    const swapped = [...words];
-    // Replacing the last word almost always breaks the 8-bit checksum; pick one that does.
-    for (const candidate of ["abandon", "ability", "able", "about"]) {
-      swapped[23] = candidate;
-      try {
-        recoveryIdentity(sodium, swapped.join(" "));
-      } catch {
-        break;
-      }
-    }
-    badMnemonic(swapped.join(" "));
+    // Only 8 of the 2048 last words complete a valid checksum: take the first that does not.
+    const first23 = words.slice(0, 23);
+    const wrong = wordlist.find(
+      (w) => code(() => recoveryIdentity(sodium, [...first23, w].join(" "))) === "bad_mnemonic",
+    );
+    if (wrong === undefined) throw new Error("every last word passed the checksum");
+    badMnemonic([...first23, wrong].join(" "));
     badMnemonic(words.slice(0, 12).join(" "));
     badMnemonic([...words.slice(0, 23), "notaword"].join(" "));
     badMnemonic("");

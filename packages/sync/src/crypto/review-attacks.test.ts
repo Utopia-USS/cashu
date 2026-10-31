@@ -200,8 +200,10 @@ describe("review attacks now fail", () => {
     ).publicKeys;
     expect(keys).toEqual(r.publicKeys);
     const w = r.phrase.reveal().split(" ");
+    // A 4-letter prefix of a longer word is never a word, so the prefixes are rejected unless every
+    // word has at most 4 letters (then they are the phrase itself).
     expect(code(() => recoveryIdentity(sodium, w.map((x) => x.slice(0, 4)).join(" ")))).toBe(
-      "bad_mnemonic",
+      w.some((x) => x.length > 4) ? "bad_mnemonic" : "no error",
     );
     const swapped = [...w];
     [swapped[0], swapped[1]] = [swapped[1] ?? "", swapped[0] ?? ""];

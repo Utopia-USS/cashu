@@ -8,7 +8,7 @@ import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity } from "./identity.js";
 import { createKeyring, rotateKeyring } from "./keys.js";
 import { loadKeyring, saveKeyring } from "./keystore.js";
-import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
+import { createRecoveryKey, type NewRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { InMemoryKeyStore } from "./testing.js";
 import {
   anyEpoch,
@@ -91,59 +91,86 @@ describe("no key or plaintext in logs", () => {
 
   it("logging secrets, rings, key pairs and errors by mistake shows no key bytes, words or plaintext", () => {
     const recovery = createRecoveryKey(sodium);
-    const ring = createKeyring(sodium, recovery.publicKeys);
-    rotateKeyring(sodium, ring);
-    const pair = createDeviceIdentity(sodium);
-    const recoveryPair = recoveryIdentity(sodium, recovery.phrase);
-    const c = ctx(ring.vaultId);
-    const frame = sealFrame(sodium, ring, samplePlain(), c);
+    const { output, secrets, opened } = logEverything(recovery);
+    for (const f of [...secrets, PLAINTEXT_MARKER]) expect(output).not.toContain(f);
+    expect(fromUtf8(opened)).toContain(PLAINTEXT_MARKER);
 
-    const errors: unknown[] = [];
-    for (const fn of [
-      () => openFrame(sodium, createKeyring(sodium, recovery.publicKeys, ring.vaultId), frame, c),
-      () => openFrame(sodium, ring, frame.subarray(0, frame.length - 1), c),
-      () => recoveryIdentity(sodium, recovery.phrase.reveal().split(" ").slice(0, 23).join(" ")),
-      () =>
-        unwrapKeys(
-          sodium,
-          wrapKeys(sodium, ring, pair, trustedTo(pair, ring.vaultId)),
-          recoveryPair,
-          ring,
-          () => pair.signPublicKey,
-          anyEpoch,
-        ),
-    ]) {
-      try {
-        fn();
-      } catch (e) {
-        errors.push(e);
-      }
-    }
-    expect(errors).toHaveLength(4);
-
-    const things: unknown[] = [ring, ring.active, ring.entries(), pair, recoveryPair, ...errors];
-    const output = things
-      .flatMap((t) => [
-        inspect(t, { depth: 10, showHidden: true }),
-        JSON.stringify(t),
-        String(t),
-        `${t}`,
-      ])
-      .concat(errors.map((e) => `${(e as Error).message}\n${(e as Error).stack ?? ""}`))
-      .join("\n");
-
-    const forbidden = [
-      ...ring.entries().flatMap((e) => secretsOf(e.key.expose())),
-      ...ring.entries().flatMap((e) => secretsOf(e.frameKey.expose())),
-      ...secretsOf(ring.gidSalt().expose()),
-      ...secretsOf(pair.box.secretKey.expose()),
-      ...secretsOf(pair.signSecretKey.expose()),
-      ...secretsOf(recoveryPair.box.secretKey.expose()),
-      ...secretsOf(recoveryPair.signSecretKey.expose()),
-      ...phraseFragments(recovery.phrase.reveal()),
-      PLAINTEXT_MARKER,
-    ];
-    for (const f of forbidden) expect(output).not.toContain(f);
-    expect(fromUtf8(openFrame(sodium, ring, frame, c))).toContain(PLAINTEXT_MARKER);
+    // Fixed text holds BIP39 word pairs too ("wrong key", "this device", "word phrase"), so a
+    // random phrase sometimes shares one with it. A pair is a leak only if it is missing from the
+    // same output rendered for another phrase that shares no pair with this one.
+    const fragments = phraseFragments(recovery.phrase.reveal());
+    const baseline = logEverything(recoveryKeySharingNoPair(fragments)).output;
+    expect(fragments.filter((f) => output.includes(f) && !baseline.includes(f))).toEqual([]);
   });
 });
+
+/** Another recovery key whose phrase has none of the given word pairs. */
+function recoveryKeySharingNoPair(fragments: readonly string[]): NewRecoveryKey {
+  for (;;) {
+    const other = createRecoveryKey(sodium);
+    if (!phraseFragments(other.phrase.reveal()).some((f) => fragments.includes(f))) return other;
+  }
+}
+
+/**
+ * Logs by mistake everything a caller holds after a flow with `recovery` (rings, key pairs, errors,
+ * in every way a value turns into text) and returns that text, the encodings of every secret, and
+ * a frame opened with the ring.
+ */
+function logEverything(recovery: NewRecoveryKey): {
+  output: string;
+  secrets: string[];
+  opened: Uint8Array;
+} {
+  const ring = createKeyring(sodium, recovery.publicKeys);
+  rotateKeyring(sodium, ring);
+  const pair = createDeviceIdentity(sodium);
+  const recoveryPair = recoveryIdentity(sodium, recovery.phrase);
+  const c = ctx(ring.vaultId);
+  const frame = sealFrame(sodium, ring, samplePlain(), c);
+
+  const errors: unknown[] = [];
+  for (const fn of [
+    () => openFrame(sodium, createKeyring(sodium, recovery.publicKeys, ring.vaultId), frame, c),
+    () => openFrame(sodium, ring, frame.subarray(0, frame.length - 1), c),
+    () => recoveryIdentity(sodium, recovery.phrase.reveal().split(" ").slice(0, 23).join(" ")),
+    () =>
+      unwrapKeys(
+        sodium,
+        wrapKeys(sodium, ring, pair, trustedTo(pair, ring.vaultId)),
+        recoveryPair,
+        ring,
+        () => pair.signPublicKey,
+        anyEpoch,
+      ),
+  ]) {
+    try {
+      fn();
+    } catch (e) {
+      errors.push(e);
+    }
+  }
+  expect(errors).toHaveLength(4);
+
+  const things: unknown[] = [ring, ring.active, ring.entries(), pair, recoveryPair, ...errors];
+  const output = things
+    .flatMap((t) => [
+      inspect(t, { depth: 10, showHidden: true }),
+      JSON.stringify(t),
+      String(t),
+      `${t}`,
+    ])
+    .concat(errors.map((e) => `${(e as Error).message}\n${(e as Error).stack ?? ""}`))
+    .join("\n");
+
+  const secrets = [
+    ...ring.entries().flatMap((e) => secretsOf(e.key.expose())),
+    ...ring.entries().flatMap((e) => secretsOf(e.frameKey.expose())),
+    ...secretsOf(ring.gidSalt().expose()),
+    ...secretsOf(pair.box.secretKey.expose()),
+    ...secretsOf(pair.signSecretKey.expose()),
+    ...secretsOf(recoveryPair.box.secretKey.expose()),
+    ...secretsOf(recoveryPair.signSecretKey.expose()),
+  ];
+  return { output, secrets, opened: openFrame(sodium, ring, frame, c) };
+}
