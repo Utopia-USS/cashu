@@ -65,7 +65,7 @@ describe("investments.import_plan producer", () => {
          '2026-02-02 10:00:00'),
         (3, 2, 3, 'dif', 'dif', 'dif.csv', '${gsha}', '${grel}', '2026-02-03 10:00:00'),
         (4, 2, 3, 'other', 'other', 'dif.csv', '${gsha}', '${grel}', '2026-02-04 10:00:00');
-      INSERT INTO inv_account_settings VALUES (3, '${MAPPING}');
+      INSERT INTO inv_account_settings (account_id, mapping_yaml) VALUES (3, '${MAPPING}');
     `);
     const first = run();
     const batch = (first.tree[first.p1] as Tree)[first.batch(1)] as Tree;
