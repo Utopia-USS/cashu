@@ -34,14 +34,25 @@ import {
   type ParsedRename,
   type ParsedTxn,
 } from "./contract.js";
-import { dedupHashes, dedupInputFromParsed, HASH_VERSION_V2 } from "./dedup.js";
-import { type InstrumentKeySubject, instrumentKeyV2 } from "./instrumentKey.js";
+import {
+  dedupHash,
+  dedupHashes,
+  dedupInputFromParsed,
+  HASH_VERSION_V2,
+  occurrenceKey,
+} from "./dedup.js";
+import {
+  candidateInstrumentKeys,
+  type InstrumentKeySubject,
+  instrumentKeyV2,
+} from "./instrumentKey.js";
 import { chronologicalRanks } from "./ordering.js";
 import { type BrokerPosition, brokerPositionFromParsed } from "./reconciler.js";
 import {
   CurrencyEvidence,
   hintFromPosition,
   hintFromTxn,
+  hintIdentifiers,
   hintIsEmpty,
   type InstrumentLookup,
   type InstrumentMatch,
@@ -154,7 +165,9 @@ export interface PlanImportOptions {
   readonly instrumentIdFactory: () => InstrumentId;
   /**
    * Hash with the store's v2 identity instead of Python's v1 (local ids, the default). v2 counts
-   * occurrences in chronological rank order, as the Python commit does when it writes the hashes.
+   * occurrences in chronological rank order, as the Python commit does when it writes the hashes,
+   * and a row is a duplicate when its hash OR the hash under any other key its instrument has had
+   * (`candidateInstrumentKeys`) is stored; each stored hash absorbs at most one row of the file.
    */
   readonly dedupV2?: DedupIdentityV2;
 }
@@ -247,16 +260,22 @@ export function planImport(result: ImportParseResult, options: PlanImportOptions
   }
 
   const ranks = chronologicalRanks(txns);
-  const hashes =
+  const v2 =
     options.dedupV2 === undefined
-      ? dedupHashes(
-          txns.map((txn, i) => dedupInputFromParsed(txn, resolutions[i]?.instrumentId ?? null)),
-          { accountId, brokerId },
-        )
+      ? null
       : dedupHashesV2(txns, resolutions, ranks, resolver, brokerId, options.dedupV2);
+  const hashes =
+    v2?.hashes ??
+    dedupHashes(
+      txns.map((txn, i) => dedupInputFromParsed(txn, resolutions[i]?.instrumentId ?? null)),
+      { accountId, brokerId },
+    );
+  const asked = v2 === null ? hashes : [...new Set([...hashes, ...v2.candidates.flat()])];
   const existing = new Set(
-    hashes.length > 0 && options.existingHashes ? options.existingHashes(hashes) : [],
+    asked.length > 0 && options.existingHashes ? options.existingHashes(asked) : [],
   );
+  const duplicates =
+    v2 === null ? hashes.map((hash) => existing.has(hash)) : claimDuplicates(v2, ranks, existing);
 
   const rows: PlannedRow[] = txns.map((txn, i) => {
     const resolution = resolutions[i] ?? null;
@@ -264,7 +283,7 @@ export function planImport(result: ImportParseResult, options: PlanImportOptions
     return Object.freeze({
       parsed: txn,
       match: resolution === null ? null : resolution.match,
-      isDuplicate: existing.has(hash),
+      isDuplicate: duplicates[i] ?? false,
       txn: plannedTransaction(txn, {
         txnId: options.txnIdFactory(),
         accountId,
@@ -324,7 +343,18 @@ function committedInstrument(
   return { isin: current.isin, aliases: [...current.aliases, ...added] };
 }
 
-/** gid.md 4.6 hashes of a file's rows (input order), occurrences counted in chronological order. */
+interface V2Hashes {
+  /** Per row (input order): the hash it is stored under (`instrumentKeyV2`). */
+  readonly hashes: readonly string[];
+  /** Per row: its hashes under every candidate key (`candidateInstrumentKeys`). */
+  readonly candidates: readonly (readonly string[])[];
+}
+
+/**
+ * gid.md 4.6 hashes of a file's rows (input order), occurrences counted in chronological order, and
+ * the candidate hashes of each row. A candidate key's occurrence counts the earlier rows that have
+ * that key among theirs with the same occurrence key (the count a file stored under that key gave).
+ */
 function dedupHashesV2(
   txns: readonly ParsedTxn[],
   resolutions: readonly (ResolvedInstrument | null)[],
@@ -332,7 +362,7 @@ function dedupHashesV2(
   resolver: InstrumentResolver,
   brokerId: string,
   identity: DedupIdentityV2,
-): readonly string[] {
+): V2Hashes {
   const keys = new Map<InstrumentId, string>();
   const keyOf = (instrumentId: InstrumentId): string => {
     let key = keys.get(instrumentId);
@@ -344,6 +374,7 @@ function dedupHashesV2(
     }
     return key;
   };
+  const scope = { accountId: identity.accountGid, brokerId, version: HASH_VERSION_V2 };
   const order = txns.map((_, i) => i).sort((a, b) => (ranks[a] ?? 0) - (ranks[b] ?? 0));
   const inputs = order.map((i) => {
     const instrumentId = resolutions[i]?.instrumentId ?? null;
@@ -352,16 +383,72 @@ function dedupHashesV2(
       instrumentId === null ? null : keyOf(instrumentId),
     );
   });
-  const chronological = dedupHashes(inputs, {
-    accountId: identity.accountGid,
-    brokerId,
-    version: HASH_VERSION_V2,
-  });
+  const chronological = dedupHashes(inputs, scope);
   const hashes = new Array<string>(txns.length).fill("");
+  const candidates = new Array<readonly string[]>(txns.length).fill([]);
+  const seen = new Map<string, number>();
   order.forEach((i, position) => {
     hashes[i] = chronological[position] ?? "";
+    const instrumentId = resolutions[i]?.instrumentId ?? null;
+    if (instrumentId === null) return;
+    const txn = txns[i] as ParsedTxn;
+    candidates[i] = candidateKeysOf(txn, instrumentId, resolver, brokerId, identity).map((key) => {
+      const input = dedupInputFromParsed(txn, key);
+      const occurrenceText = occurrenceKey(input);
+      const occurrence = seen.get(occurrenceText) ?? 0;
+      seen.set(occurrenceText, occurrence + 1);
+      return dedupHash(input, scope, occurrence);
+    });
   });
-  return Object.freeze(hashes);
+  return { hashes: Object.freeze(hashes), candidates: Object.freeze(candidates) };
+}
+
+function candidateKeysOf(
+  txn: ParsedTxn,
+  instrumentId: InstrumentId,
+  resolver: InstrumentResolver,
+  brokerId: string,
+  identity: DedupIdentityV2,
+): readonly string[] {
+  const current = resolver.instrument(instrumentId);
+  const hint = hintIdentifiers(hintFromTxn(txn));
+  return candidateInstrumentKeys({
+    subject: { ...committedInstrument(resolver, instrumentId), symbol: current?.symbol ?? null },
+    brokerId,
+    gid: identity.instrumentGid(instrumentId),
+    rowSymbol: hint.brokerSymbol,
+    rowIsin: hint.isin,
+    free: (namespace, value) => {
+      const owner = resolver.ownerOf(namespace, value);
+      return owner === null || owner === instrumentId;
+    },
+  });
+}
+
+/**
+ * Which rows are duplicates: first every row whose own hash is stored, then (chronological order)
+ * every other row with a stored candidate hash no row has absorbed yet.
+ */
+function claimDuplicates(
+  v2: V2Hashes,
+  ranks: readonly number[],
+  existing: ReadonlySet<string>,
+): readonly boolean[] {
+  const claimed = new Set<string>();
+  const duplicates = v2.hashes.map((hash) => {
+    if (!existing.has(hash)) return false;
+    claimed.add(hash);
+    return true;
+  });
+  const order = v2.hashes.map((_, i) => i).sort((a, b) => (ranks[a] ?? 0) - (ranks[b] ?? 0));
+  for (const i of order) {
+    if (duplicates[i]) continue;
+    const match = (v2.candidates[i] ?? []).find((hash) => existing.has(hash) && !claimed.has(hash));
+    if (match === undefined) continue;
+    claimed.add(match);
+    duplicates[i] = true;
+  }
+  return Object.freeze(duplicates);
 }
 
 function planRename(

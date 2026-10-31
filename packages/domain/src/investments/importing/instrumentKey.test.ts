@@ -12,7 +12,11 @@ import {
 } from "../domain/index.js";
 import { CanonicalImporter } from "./canonical/index.js";
 import { effectiveBrokerId } from "./contract.js";
-import { instrumentKeyV2, reconciliationInstrumentKey } from "./instrumentKey.js";
+import {
+  candidateInstrumentKeys,
+  instrumentKeyV2,
+  reconciliationInstrumentKey,
+} from "./instrumentKey.js";
 import { type ImportPlan, planImport } from "./plan.js";
 import { InMemoryInstrumentLookup } from "./resolver.js";
 import { enc } from "./testing/support.js";
@@ -158,5 +162,121 @@ describe("planImport with dedupV2", () => {
       const again = plan(f, new InMemoryInstrumentLookup(instruments.values()), stored);
       expect(again.rows.every((r) => r.isDuplicate)).toBe(true);
     }
+  });
+});
+
+describe("candidateInstrumentKeys", () => {
+  const free = () => true;
+  it("lists every key the instrument may have been stored under, the stored key first", () => {
+    const keys = candidateInstrumentKeys({
+      subject: {
+        // legacy name: an alias stored under the pre-rename namespace
+        aliases: [alias("finanse", "OLD"), alias("cashu", "NEW"), alias("isin", "XX0000000001")],
+        isin: "XX0000000002",
+        symbol: "TCK",
+      },
+      brokerId: "cashu",
+      gid: "G1",
+      rowSymbol: "ROW",
+      rowIsin: "XX0000000003",
+      free,
+    });
+    expect(keys).toEqual([
+      "cashu:OLD",
+      // legacy name: the pre-S17d genesis prefix
+      "finanse:OLD",
+      "cashu:NEW",
+      "isin:XX0000000001",
+      "isin:XX0000000002",
+      "cashu:TCK",
+      "cashu:ROW",
+      "isin:XX0000000003",
+      "gid:G1",
+    ]);
+  });
+
+  it("keeps a ticker or row hint another instrument owns out of the candidates", () => {
+    const keys = candidateInstrumentKeys({
+      subject: { aliases: [alias("xtb", "S")], isin: null, symbol: "PKN" },
+      brokerId: "xtb",
+      gid: "G1",
+      rowSymbol: "OTHER",
+      rowIsin: "XX0000000003",
+      free: (_, value) => value !== "PKN" && value !== "XX0000000003",
+    });
+    expect(keys).toEqual(["xtb:S", "xtb:OTHER", "gid:G1"]);
+  });
+});
+
+describe("planImport with dedupV2: a re-import never duplicates, whatever the alias history", () => {
+  const BROKER = "examplebroker";
+  const isinOnly = (extra = "") =>
+    `1,txn,2026-03-02,,buy,,,XX0000000001,,,2,10,PLN,20,,,-20,,,${extra},${BROKER}`;
+
+  function store() {
+    const instruments = new Map<string, Instrument>();
+    const stored = new Set<string>();
+    const run = (f: ReturnType<typeof file>, write = true) => {
+      const p = plan(f, new InMemoryInstrumentLookup(instruments.values()), stored);
+      if (write) commit(p, instruments, stored);
+      return p;
+    };
+    return { instruments, stored, run };
+  }
+
+  it("recognizes a row stored before its instrument learned a broker alias", () => {
+    const s = store();
+    const fileA = file("a.csv", [
+      isinOnly(),
+      "1,txn,2026-03-02,,fee,,,,,,,,PLN,,,,-1,,,,examplebroker",
+    ]);
+    const first = s.run(fileA);
+    expect(first.rows.map((r) => r.isDuplicate)).toEqual([false, false]);
+    // a later file names the instrument by its broker symbol: it learns examplebroker:NEWSYM
+    s.run(
+      file("b.csv", [
+        `1,txn,2026-03-05,,buy,B-1,NEWSYM,XX0000000001,,,1,11,PLN,11,,,-11,,,,${BROKER}`,
+      ]),
+    );
+    const again = s.run(fileA, false);
+    // the ISIN-only row is now keyed by the broker alias, which is not the key it was stored under
+    expect(s.stored.has(again.rows[0]?.txn.dedupHash ?? "")).toBe(false);
+    expect(again.rows[0]?.txn.dedupHash).not.toBe(first.rows[0]?.txn.dedupHash);
+    expect(again.rows.map((r) => r.isDuplicate)).toEqual([true, true]);
+  });
+
+  it("still imports a second identical trade the stored file did not have", () => {
+    const s = store();
+    s.run(file("a.csv", [isinOnly()]));
+    s.run(
+      file("b.csv", [
+        `1,txn,2026-03-05,,buy,B-1,NEWSYM,XX0000000001,,,1,11,PLN,11,,,-11,,,,${BROKER}`,
+      ]),
+    );
+    const twice = s.run(file("a2.csv", [isinOnly(), isinOnly()]), false);
+    expect(twice.rows.map((r) => r.isDuplicate)).toEqual([true, false]);
+  });
+
+  it("never matches another instrument's row through a shared display ticker", () => {
+    const s = store();
+    const make = (id: string, symbol: string, isin: string | null, aliases: InstrumentAlias[]) =>
+      instrument({
+        id: asInstrumentId(id),
+        name: id,
+        currency: Currencies.PLN,
+        assetClass: AssetClass.EQUITY,
+        symbol,
+        isin,
+        aliases,
+      });
+    s.instruments.set("1", make("1", "PKN", "XX0000000001", [alias(BROKER, "S")]));
+    s.instruments.set("2", make("2", "PKN", null, [alias(BROKER, "PKN")]));
+    const same = (hint: string) =>
+      `1,txn,2026-03-02,,buy,,${hint},,,2,10,PLN,20,,,-20,,,,${BROKER}`;
+    // instrument 2 (broker symbol PKN), then the same content for instrument 1 by its ISIN
+    s.run(file("j.csv", [same("PKN,")]));
+    const other = s.run(file("i.csv", [same(",XX0000000001")]), false);
+    expect(other.rows[0]?.txn.instrumentId).toBe("1");
+    expect(other.rows[0]?.isDuplicate).toBe(false);
   });
 });

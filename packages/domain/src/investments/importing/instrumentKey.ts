@@ -23,6 +23,11 @@
  * A row without a batch (no broker) starts at step 3. Reconciliation rows always use step 5
  * (`reconciliationInstrumentKey`).
  *
+ * The key a row is stored under is `instrumentKeyV2` (byte-compatible with genesis). Which key an older
+ * row was stored under depends on the instrument's aliases at that time, so the duplicate check of a
+ * re-import also tries `candidateInstrumentKeys`: every key the instrument has had or has now (lead
+ * decision S17d: a re-import never duplicates, whatever the alias history).
+ *
  * The alias list must be oldest first within each (namespace, guessed) group: the domain
  * `Instrument.aliases` order (Python `convert.instrument`: namespace, guessed, id) and the stored alias
  * rows by ascending id both qualify, and give the same key.
@@ -79,4 +84,56 @@ export function instrumentKeyV2(
 /** The v2 instrument key of a reconciliation row: always the instrument's gid. */
 export function reconciliationInstrumentKey(instrumentGid: string): string {
   return `gid:${instrumentGid}`;
+}
+
+/** What `candidateInstrumentKeys` reads besides the instrument's aliases and ISIN. */
+export interface CandidateKeyInput {
+  readonly subject: InstrumentKeySubject & {
+    /** The display ticker (not unique: kept only when no other instrument owns it). */
+    readonly symbol: string | null;
+  };
+  /** The import's broker id (alias namespace). */
+  readonly brokerId: string;
+  readonly gid: string;
+  /** The row's broker symbol as the resolver reads it (the symbol, else the name), stripped. */
+  readonly rowSymbol: string | null;
+  /** The row's ISIN, stripped and upper-cased. */
+  readonly rowIsin: string | null;
+  /**
+   * Whether alias (`namespace`, `value`) belongs to no OTHER instrument (any equivalent namespace;
+   * for `isin` also the ISIN column). Keys not taken from the instrument's own aliases are kept only
+   * then, so a candidate never names another instrument's rows.
+   */
+  readonly free: (namespace: string, value: string) => boolean;
+}
+
+/**
+ * Every instrument key a row of this instrument may have been stored under, `instrumentKeyV2` first,
+ * without repeats: each own alias in the broker's equivalent namespaces under the canonical name and
+ * under the name it is stored with (legacy name: `finanse:` keys of the pre-S17d genesis rule), each
+ * `isin` alias, the ISIN column, the display ticker and the row's own symbol and ISIN (the gid.md 4.6
+ * hint rule) when no other instrument owns them, and the gid.
+ */
+export function candidateInstrumentKeys(input: CandidateKeyInput): readonly string[] {
+  const { subject, brokerId } = input;
+  const canonical = namespaceOf(brokerId);
+  const keys = new Set<string>([instrumentKeyV2(subject, brokerId, () => input.gid)]);
+  const namespaces = equivalentNamespaces(brokerId);
+  for (const alias of subject.aliases) {
+    if (namespaces.includes(alias.namespace)) {
+      keys.add(`${canonical}:${alias.value}`);
+      keys.add(`${alias.namespace}:${alias.value}`);
+    } else if (alias.namespace === AliasNamespace.ISIN) {
+      keys.add(`isin:${alias.value}`);
+    }
+  }
+  if (subject.isin) keys.add(`isin:${subject.isin}`);
+  for (const symbol of [subject.symbol, input.rowSymbol]) {
+    if (symbol && input.free(brokerId, symbol)) keys.add(`${canonical}:${symbol}`);
+  }
+  if (input.rowIsin && input.free(AliasNamespace.ISIN, input.rowIsin)) {
+    keys.add(`isin:${input.rowIsin}`);
+  }
+  keys.add(reconciliationInstrumentKey(input.gid));
+  return Object.freeze([...keys]);
 }

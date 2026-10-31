@@ -270,6 +270,15 @@ function hintKey(hint: InstrumentHint): HintKey {
   return { isin, brokerSymbol, ticker, exchange };
 }
 
+/** The broker symbol (the symbol as exported, else the name) and the ISIN a hint is matched by. */
+export function hintIdentifiers(hint: InstrumentHint): {
+  readonly brokerSymbol: string | null;
+  readonly isin: string | null;
+} {
+  const { brokerSymbol, isin } = hintKey(hint);
+  return { brokerSymbol, isin };
+}
+
 /** Python dataclass hash of a hint: one string per distinct hint value. */
 function cacheKey(hint: InstrumentHint): string {
   return JSON.stringify([
@@ -326,6 +335,14 @@ export class InstrumentResolver {
 
   isPlanned(instrumentId: InstrumentId): boolean {
     return this.planned.has(instrumentId);
+  }
+
+  /**
+   * The instrument (planned or stored) owning alias (`namespace`, `value`) in any equivalent
+   * namespace, the ISIN column counting for `isin`; null when nobody owns it. Plans nothing.
+   */
+  ownerOf(namespace: string, value: string): InstrumentId | null {
+    return this.owner(namespace, value);
   }
 
   /**
