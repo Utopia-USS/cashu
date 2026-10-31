@@ -266,7 +266,13 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
     expect(r.events.length).toBe(1 + 64); // only authentic statements: no junk
     const withRevocations = fold(a, [...base, ...adds, ...revokes, ...junk]);
     expect(withRevocations.revocationCount).toBe(64);
-    expect(withRevocations.ignored.filter((i) => i.reason === "capped")).toHaveLength(6);
+    const capped = withRevocations.ignored.filter((i) => i.reason === "capped");
+    const revokeEids = new Set(revokes.map((e) => e.eid));
+    expect(capped.filter((i) => revokeEids.has(i.eid))).toHaveLength(6);
+    // The issuer's 65th to 70th certificates are capped too (S29c R2: a reason, not a key mismatch).
+    expect(capped.filter((i) => !revokeEids.has(i.eid))).toHaveLength(6);
+    // The junk sits in a stranger's stream: never even a candidate (malformed bytes here).
+    expect(r.ignored.filter((i) => i.reason === "malformed")).toHaveLength(2000);
     // Pairing refuses at the cap rather than certify a 65th device that would not count.
     a.devices.ingest([...adds, ...junk]);
     expect(

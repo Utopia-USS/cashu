@@ -6,6 +6,8 @@ import type { LogEvent } from "./events.js";
 
 /** Certificates that count per issuer (its first, by the position of its own `device.added`). */
 export const MAX_CERTS_PER_ISSUER = 64;
+/** Certificate signature checks per writer stream and lane issuer (bounds the work junk can cause). */
+export const CERT_CHECK_BUDGET = 4 * MAX_CERTS_PER_ISSUER;
 /** Revocation events that count per device signer (its first, by its own stream order). */
 export const MAX_REVOCATIONS_PER_SIGNER = 64;
 
@@ -45,7 +47,9 @@ export type IgnoredReason =
   | "after_revocation"
   | "no_effect"
   | "capped"
-  | "key_mismatch";
+  | "key_mismatch"
+  /** A certificate in a stream other than its issuer's (or its subject's, for a recovery-issued one). */
+  | "foreign_certificate";
 
 export interface IgnoredStatement {
   readonly eid: string;

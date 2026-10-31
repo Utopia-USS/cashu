@@ -102,6 +102,7 @@ export {
   recoveryHistory,
 } from "./recoveryChange.js";
 export {
+  CERT_CHECK_BUDGET,
   type DeviceRecord,
   foldRegistry,
   type IgnoredReason,
