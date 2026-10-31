@@ -7,6 +7,7 @@
  */
 
 export { allocate, matchesBucket, matchesCashBucket } from "./allocation.js";
+export { orderEvents, type PortfolioEvent } from "./events.js";
 export { Fraction } from "./fraction.js";
 export {
   convert,
@@ -19,8 +20,12 @@ export {
 export { lastTradePrices, SPLIT_DEDUP_WINDOW_DAYS } from "./lastTradePrices.js";
 export {
   fractionToDecimal,
+  IncrementalLotEngine,
   type LotEngineResult,
   QUANTITY_DIGITS,
+  type RunningCash,
+  type RunningLot,
+  type RunningQueue,
   runLots,
   SPLIT_REMAINDER_TOLERANCE,
 } from "./lotEngine.js";

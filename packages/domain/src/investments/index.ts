@@ -2,4 +2,5 @@
 
 export * from "./domain/index.js";
 export * from "./networth.js";
+export * as performance from "./performance/index.js";
 export * from "./portfolio/index.js";

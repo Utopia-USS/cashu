@@ -95,6 +95,60 @@ export const runLots = exact(
   },
 );
 
+/** A lot while the engine runs, as an incremental reader sees it (`IncrementalLotEngine`). */
+export interface RunningLot {
+  readonly accountId: AccountId;
+  readonly instrumentId: InstrumentId;
+  readonly openTxnId: TxnId;
+  /** Exact quantity (split ratios applied). */
+  readonly quantity: Fraction;
+  /** Exact total cost, null when unknown. */
+  readonly cost: Decimal | null;
+  toOpenLot(): OpenLot;
+}
+
+/** The open lots of one (account, instrument), FIFO order. */
+export interface RunningQueue {
+  readonly accountId: AccountId;
+  readonly instrumentId: InstrumentId;
+  readonly lots: readonly RunningLot[];
+}
+
+/** The running cash of one (account, currency). */
+export interface RunningCash {
+  readonly accountId: AccountId;
+  readonly currency: Currency;
+  readonly amount: Decimal;
+}
+
+/**
+ * The lot engine fed one event at a time, for readers that need the state after every day without
+ * replaying the history (Python's `performance/series.py` drives the private `_EngineState` the same
+ * way). Feed it the events of `orderEvents` in order, inside `exactDecimals` like `runLots`; the
+ * queues keep Python's dict order (a group keeps its position; a renamed group moves last).
+ */
+export class IncrementalLotEngine {
+  private readonly state = new EngineState();
+
+  apply(txn: Transaction): void {
+    this.state.apply(txn);
+  }
+
+  rename(rename: InstrumentRename): void {
+    this.state.rename(rename);
+  }
+
+  /** Every (account, instrument) queue seen so far, empty ones included. */
+  queues(): Iterable<RunningQueue> {
+    return this.state.openQueues();
+  }
+
+  /** Every (account, currency) cash entry seen so far, zero ones included. */
+  cash(): Iterable<RunningCash> {
+    return this.state.cashEntries();
+  }
+}
+
 /** `value` exactly when it has a finite decimal, else rounded to `QUANTITY_DIGITS` digits (half-up). */
 export function fractionToDecimal(value: Fraction): Decimal {
   const places = decimalPlaces(value);
@@ -438,6 +492,14 @@ class EngineState {
     this.warnings.push(
       invalidTransaction({ accountId: txn.accountId, txnId: txn.id, date: txn.tradeDate, reason }),
     );
+  }
+
+  openQueues(): Iterable<RunningQueue> {
+    return this.lots.values();
+  }
+
+  cashEntries(): Iterable<RunningCash> {
+    return this.cash.values();
   }
 
   result(): LotEngineResult {
