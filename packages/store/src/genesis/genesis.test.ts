@@ -178,6 +178,23 @@ describe("genesis end to end", () => {
     ]);
   });
 
+  it("stamps the row's updated_at on alert.statusSet (the S25 fold bumps it there)", () => {
+    const stampOf = (w: { d: Record<string, unknown> }) =>
+      (w.d.stamps as Record<string, unknown> | undefined)?.updated_at;
+    let checked = 0;
+    for (const v of result.vaults) {
+      const created = new Map(
+        v.events.filter((w) => w.t === "alert.created").map((w) => [w.g, stampOf(w)]),
+      );
+      for (const w of v.events.filter((e) => e.t === "alert.statusSet")) {
+        expect(stampOf(w)).toBeTypeOf("string");
+        expect(stampOf(w)).toBe(created.get(w.g));
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it("folds into fresh stores: nothing parked, view rows equal the source (spec 8.4)", () => {
     const expected: Record<string, [number, number]> = {
       accounts: [6, 1],
