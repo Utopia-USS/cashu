@@ -236,6 +236,9 @@ importers:
       '@cashu/mcp':
         specifier: workspace:*
         version: link:../mcp
+      '@cashu/store':
+        specifier: workspace:*
+        version: link:../store
 
   packages/store:
     dependencies:

@@ -25,6 +25,7 @@ export { digest, NaturalKeys, SPECS } from "./naturalKeys.ts";
 export type {
   AccountRow,
   BalanceRow,
+  GenesisFiles,
   OpenOptions,
   ProfileRow,
   TransactionRow,

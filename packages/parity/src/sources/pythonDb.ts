@@ -2,11 +2,16 @@
 /**
  * The one read-only source every TS parity producer reads the Python app's data through.
  *
- * `openPythonDb` copies the dataset's SQLite files (`cashu.db` and its `-wal` / `-shm`) into a fresh
- * `<lab>/parity/ts-run-<stamp>-<dataset>/` and opens the copy with `readOnly: true`. The source dir
- * is never opened: even a read-only connection to a WAL database creates `-wal` / `-shm` files next
- * to it. The source is hashed before the copy and again on `close()`, which throws when one byte
- * changed (as golden.py does) and deletes the copy.
+ * `openPythonDb` copies the dataset's SQLite files (`cashu.db` and its `-wal` / `-shm`) and the
+ * `profiles/**` and `imports/**` side files (regular files only, symlinks are not followed) into a
+ * fresh `<lab>/parity/ts-run-<stamp>-<dataset>/` and opens the copy with `readOnly: true`. The source
+ * dir is never opened: even a read-only connection to a WAL database creates `-wal` / `-shm` files
+ * next to it. The source is hashed before the copy and again on `close()`, which throws when one
+ * byte changed (as golden.py does) and deletes the copy.
+ *
+ * Code that takes platform seams instead of typed readers (the genesis exporter) gets them over the
+ * copy: `sqlDriver()` (a read-only `SqlDriver`) and `files()` (`GenesisFiles`, side files by
+ * data-dir-relative path).
  *
  * Readers are typed per table and profile-scoped: every reader of profile data takes the profile id
  * and filters by it (rule 7: data of one profile never shows up in another). Rows keep SQLite's
@@ -31,14 +36,55 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { SqlDriver } from "@cashu/store";
 import { type Dataset, datasetAsOf, datasetDir, labRoot } from "./datasets.ts";
 import { bool, int, type Row, text, textOrNull } from "./decode.ts";
 import { InvestmentsReader } from "./investments.ts";
 import { NaturalKeys, type SqlRows, type SqlValue } from "./naturalKeys.ts";
+import { openReadOnlyDriver } from "./nodeSqliteDriver.ts";
 
 const DB_FILES = ["cashu.db", "cashu.db-wal", "cashu.db-shm"] as const;
+/** Side-file dirs of the data dir the copy takes (genesis reads budget.json, archives, staged files). */
+const SIDE_DIRS = ["profiles", "imports"] as const;
+
+/**
+ * Side files of a data dir by relative path (`profiles/<slug>/budget.json`, `imports/<slug>/<sha>.csv`).
+ * Structural twin of the genesis source's interface in `@cashu/store` (aligned in S26 C8).
+ */
+export interface GenesisFiles {
+  /** The file's bytes; undefined when there is no regular file at `rel`. */
+  read(rel: string): Uint8Array | undefined;
+  /** Names of the entries (files and dirs) directly in `dir` (`""` = the root), sorted; [] when absent. */
+  list(dir: string): readonly string[];
+}
+
+export class UnsafePathError extends Error {
+  constructor() {
+    super("side-file path refused: absolute, empty segment, '.', '..' or backslash");
+    this.name = "UnsafePathError";
+  }
+}
+
+/** `rel` split into its segments, refused unless it stays inside the root. `""` is the root. */
+function segments(rel: string, allowRoot: boolean): string[] {
+  if (rel === "" && allowRoot) return [];
+  if (isAbsolute(rel) || rel.includes("\\") || rel.includes("\0")) throw new UnsafePathError();
+  const parts = rel.split("/");
+  if (parts.some((p) => p === "" || p === "." || p === "..")) throw new UnsafePathError();
+  return parts;
+}
+
+/** Copy the regular files and dirs under `from` to `to` (symlinks and specials are skipped). */
+function copyTree(from: string, to: string): void {
+  mkdirSync(to, { recursive: true });
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    const src = join(from, entry.name);
+    if (entry.isDirectory()) copyTree(src, join(to, entry.name));
+    else if (entry.isFile()) copyFileSync(src, join(to, entry.name));
+  }
+}
 
 export class SourceChangedError extends Error {
   constructor(dataset: string) {
@@ -165,6 +211,7 @@ export class PythonDb implements SqlRows {
   private readonly sourceDir: string;
   private readonly runDir: string;
   private readonly before: string;
+  private readonly drivers: SqlDriver[] = [];
   private closed = false;
 
   private constructor(opts: OpenOptions) {
@@ -183,6 +230,11 @@ export class PythonDb implements SqlRows {
     for (const f of DB_FILES) {
       const from = join(this.sourceDir, f);
       if (existsSync(from)) copyFileSync(from, join(this.runDir, f));
+    }
+    for (const d of SIDE_DIRS) {
+      const from = join(this.sourceDir, d);
+      if (statSync(from, { throwIfNoEntry: false })?.isDirectory())
+        copyTree(from, join(this.runDir, d));
     }
     this.db = new DatabaseSync(join(this.runDir, "cashu.db"), { readOnly: true });
     this.keys = new NaturalKeys(this);
@@ -216,9 +268,35 @@ export class PythonDb implements SqlRows {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    for (const d of this.drivers.splice(0)) d.close();
     this.db.close();
     rmSync(this.runDir, { recursive: true, force: true });
     if (manifest(this.sourceDir) !== this.before) throw new SourceChangedError(this.dataset);
+  }
+
+  /** A read-only `SqlDriver` over the copy (its own connection, closed by `close()`). */
+  sqlDriver(): SqlDriver {
+    if (this.closed) throw new Error("PythonDb is closed");
+    const driver = openReadOnlyDriver(join(this.runDir, "cashu.db"));
+    this.drivers.push(driver);
+    return driver;
+  }
+
+  /** The copy's side files (`profiles/**`, `imports/**`) by data-dir-relative path. */
+  files(): GenesisFiles {
+    const root = this.runDir;
+    return {
+      read(rel) {
+        const full = join(root, ...segments(rel, false));
+        if (!statSync(full, { throwIfNoEntry: false })?.isFile()) return undefined;
+        return readFileSync(full);
+      },
+      list(dir) {
+        const full = join(root, ...segments(dir, true));
+        if (!statSync(full, { throwIfNoEntry: false })?.isDirectory()) return [];
+        return readdirSync(full).sort();
+      },
+    };
   }
 
   /** Positional rows (natural keys and other generic tooling only; producers use typed readers). */

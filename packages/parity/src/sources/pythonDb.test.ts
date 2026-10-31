@@ -1,7 +1,13 @@
 /// <reference types="node" />
 import { existsSync, readdirSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
-import { manifest, PythonDb, SourceChangedError, withPythonDb } from "./pythonDb.ts";
+import {
+  manifest,
+  PythonDb,
+  SourceChangedError,
+  UnsafePathError,
+  withPythonDb,
+} from "./pythonDb.ts";
 import { type SyntheticDataset, syntheticDataset, TWO_PROFILES } from "./testing.ts";
 
 let ds: SyntheticDataset;
@@ -72,5 +78,75 @@ describe("PythonDb", () => {
       const [eur] = db.transactions(2);
       expect(eur).toMatchObject({ amount: "-1.00", isInternalTransfer: true, category: null });
     });
+  });
+
+  it("sqlDriver reads the copy read-only and close closes it", () => {
+    ds = syntheticDataset(TWO_PROFILES);
+    const before = manifest(ds.dir);
+    const db = open();
+    const driver = db.sqlDriver();
+    const version = driver.prepare("SELECT version_num FROM alembic_version").get();
+    expect(version).toEqual({ version_num: "0026_test" });
+    const ids = driver.prepare("SELECT id FROM accounts WHERE profile_id = ? ORDER BY id").all(2);
+    expect(ids).toEqual([{ id: 5 }]);
+    expect(() => driver.exec("DELETE FROM accounts")).toThrow(/refused/);
+    const stmt = driver.prepare("SELECT count(*) AS n FROM profiles");
+    db.close();
+    expect(() => stmt.get()).toThrow();
+    expect(() => db.sqlDriver()).toThrow(/closed/);
+    expect(manifest(ds.dir)).toBe(before);
+  });
+
+  it("files reads the copied profiles and imports side files, never the source", () => {
+    ds = syntheticDataset(TWO_PROFILES);
+    ds.writeFile("profiles/test-a/budget.json", '{"cushion": null}');
+    ds.writeFile("profiles/test-a/strategy.md", "# Test");
+    ds.writeFile("imports/test-a/abc.csv", new Uint8Array([1, 2, 3]));
+    ds.writeFile("imports/test-a/.staging/def.csv", "x");
+    ds.writeFile("other/ignored.txt", "not copied");
+    const db = open();
+    ds.writeFile("profiles/test-a/later.json", "{}"); // after the copy: not visible
+    const files = db.files();
+    expect(new TextDecoder().decode(files.read("profiles/test-a/budget.json"))).toBe(
+      '{"cushion": null}',
+    );
+    expect([...(files.read("imports/test-a/abc.csv") ?? [])]).toEqual([1, 2, 3]);
+    expect(files.read("imports/test-a/.staging/def.csv")).toBeDefined();
+    expect(files.read("other/ignored.txt")).toBeUndefined();
+    expect(files.read("profiles/test-a/later.json")).toBeUndefined();
+    expect(files.read("profiles/test-a/missing.json")).toBeUndefined();
+    expect(files.read("profiles/test-a")).toBeUndefined(); // a dir is not a file
+    expect(files.list("profiles/test-a")).toEqual(["budget.json", "strategy.md"]);
+    expect(files.list("imports/test-a")).toEqual([".staging", "abc.csv"]);
+    expect(files.list("profiles/nobody")).toEqual([]);
+    expect(files.list("")).toContain("profiles");
+    expect(() => db.close()).toThrow(SourceChangedError); // the later write changed the source
+  });
+
+  it("files refuses paths that could leave the copy", () => {
+    ds = syntheticDataset(TWO_PROFILES);
+    withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, (db) => {
+      const files = db.files();
+      for (const bad of [
+        "../data/cashu.db",
+        "profiles/../../x",
+        "/etc/hosts",
+        "profiles//x",
+        "./profiles",
+        "profiles\\x",
+        "",
+      ]) {
+        expect(() => files.read(bad), bad).toThrow(UnsafePathError);
+      }
+      expect(() => files.list("..")).toThrow(UnsafePathError);
+    });
+  });
+
+  it("a side file changed while it was read fails the close", () => {
+    ds = syntheticDataset(TWO_PROFILES);
+    ds.writeFile("profiles/test-a/budget.json", "{}");
+    const db = open();
+    ds.writeFile("profiles/test-a/budget.json", '{"changed": true}');
+    expect(() => db.close()).toThrow(SourceChangedError);
   });
 });

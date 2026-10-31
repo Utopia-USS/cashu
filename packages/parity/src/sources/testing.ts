@@ -4,9 +4,9 @@
  * columns the readers select (the real schema has more). Invented values only.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const SCHEMA = `
@@ -59,6 +59,8 @@ export interface SyntheticDataset {
   readonly runRoot: string;
   /** Run SQL against the source (to seed it, or to change it behind an open source). */
   exec(sql: string): void;
+  /** Write a side file (`profiles/...`, `imports/...`) at a data-dir-relative path. */
+  writeFile(rel: string, data: string | Uint8Array): void;
   dispose(): void;
 }
 
@@ -81,6 +83,11 @@ export function syntheticDataset(seed: string): SyntheticDataset {
       const w = new DatabaseSync(join(dir, "cashu.db"));
       w.exec(sql);
       w.close();
+    },
+    writeFile(rel: string, data: string | Uint8Array) {
+      const full = join(dir, rel);
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, data);
     },
     dispose() {
       rmSync(root, { recursive: true, force: true });
