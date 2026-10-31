@@ -137,6 +137,39 @@ describe("inv_instruments + inv_instrument_aliases", () => {
     });
   });
 
+  it("a confirming claim confirms a guessed alias in any order; a later guess never un-confirms", () => {
+    const a = new Events();
+    const b = new Events(DEV_B, "01JB");
+    const i = instrument(a, ["isin", "PLTEST000003"], { name: "Guess SA" }, { wall: 10 });
+    const yahoo: [string, string] = ["yahoo", "GSS.WA"];
+    const guess = (ev: Events, wall: number) =>
+      ev.make(
+        "instrument.aliasAdded",
+        claim(ev, i.gid, yahoo).gid,
+        { instrument: i.gid, namespace: yahoo[0], value: yahoo[1], guessed: true },
+        { wall },
+      );
+    const confirm = (ev: Events, wall: number) =>
+      ev.make(
+        "instrument.aliasAdded",
+        claim(ev, i.gid, yahoo).gid,
+        { instrument: i.gid, namespace: yahoo[0], value: yahoo[1], guessed: false },
+        { wall },
+      );
+    const guessed = (store: Parameters<typeof rows>[0]) =>
+      rows(store, "inv_instrument_aliases")
+        .filter((r) => r.namespace === "yahoo")
+        .map((r) => r.guessed);
+    // guess first, confirmed later by another device, then guessed again by a third claim
+    converge([...i.events, guess(a, 20), confirm(b, 30), guess(a, 40)], (store) => {
+      expect(guessed(store)).toEqual([0]);
+    });
+    // only guesses: stays guessed
+    converge([...i.events, guess(a, 20), guess(b, 30)], (store) => {
+      expect(guessed(store)).toEqual([1]);
+    });
+  });
+
   it("declares the Python indexes", () => {
     const store = openTestStore();
     const idx = store.read<{ name: string }>(

@@ -10,6 +10,7 @@ import {
 } from "@cashu/domain/investments";
 import { describe, expect, it } from "vitest";
 import {
+  aliasOwner,
   allInstruments,
   findConfirmed,
   instrumentByAlias,
@@ -161,9 +162,10 @@ describe("classifyInstrument (test_classify_and_aliases)", () => {
     expect(overrides(read, [other]).get(other)?.valuationMode).toBe("cost");
   });
 
-  it("re-claims a confirmed guess (the fold keeps the first claim's flag: lead follow-up)", () => {
+  it("confirms a guessed alias: the re-claim takes effect in the view (events.md 8.6)", () => {
     const v = vault();
     const iid = storedInstrument(v);
+    expect(aliasOwner(v.store.read.bind(v.store), "yahoo", "XMPL")?.guessed).toBe(true);
     const out = v.run(addInstrumentAliases, {
       instrument: iid,
       aliases: [{ namespace: "yahoo", value: "XMPL" }],
@@ -171,6 +173,18 @@ describe("classifyInstrument (test_classify_and_aliases)", () => {
     expect(out.ok && out.events.map((e) => [e.type, e.data.guessed])).toEqual([
       ["instrument.aliasAdded", false],
     ]);
+    expect(aliasOwner(v.store.read.bind(v.store), "yahoo", "XMPL")).toEqual({
+      instrument: iid,
+      guessed: false,
+    });
+    const confirmed = domainInstrument({
+      id: asInstrumentId("planned"),
+      name: "Planned",
+      currency: toCurrency("USD"),
+      assetClass: "equity",
+      aliases: [instrumentAlias("yahoo", "XMPL")],
+    });
+    expect(findConfirmed(v.store.read.bind(v.store), confirmed)?.id).toBe(iid);
   });
 
   it("an ISIN alias fills the display ISIN when the instrument has none", () => {

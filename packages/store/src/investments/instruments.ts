@@ -12,7 +12,8 @@
 // component. The row is recomputed from per-partition registers on every apply, so the result is a
 // function of the set (the base does not depend on which create arrived first).
 // Aliases: one `inv_instrument_aliases` row per alias gid (DET(namespace, value)), created by its first
-// applied claim; `instrument_id` = the claimer's root (every later claimer joins that root).
+// applied claim; `instrument_id` = the claimer's root (every later claimer joins that root); `guessed`
+// stays 1 only while every applied claim is a guess (one confirming claim confirms it).
 import type { FoldContext, IdentityKind, Materializer } from "../engine/types.js";
 import type { TableDef } from "../sql/ddl.js";
 import { sqlBool, sqlJson } from "../sql/values.js";
@@ -230,6 +231,15 @@ export const instrumentsMaterializer: Materializer = {
         sqlBool(d.guessed === true),
         ctx.time(e, "created_at"),
       );
+      // Confirm (events.md 8.6): `guessed` is the AND over the applied claims of the alias, so a
+      // confirming claim wins in any delivery order and a later guess never un-confirms it.
+      if (d.guessed !== true) {
+        ctx.sql.write(
+          aliases.name,
+          "UPDATE inv_instrument_aliases SET guessed = 0 WHERE gid = ? AND guessed = 1",
+          e.gid,
+        );
+      }
       return;
     }
     const root = ctx.resolve(INSTRUMENTS, e.gid);

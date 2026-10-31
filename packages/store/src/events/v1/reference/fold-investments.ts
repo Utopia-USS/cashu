@@ -214,8 +214,9 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
         fieldRegs.set(root, regs);
         break;
       }
-      case "instrument.aliasAdded":
-        if (!aliases.has(e.gid)) {
+      case "instrument.aliasAdded": {
+        const held = aliases.get(e.gid);
+        if (held === undefined) {
           aliases.set(e.gid, {
             gid: e.gid,
             instrument_id: inst(d.instrument),
@@ -224,8 +225,11 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
             guessed: d.guessed === true ? 1 : 0,
             created_at: time(e, "created_at"),
           });
+        } else if (d.guessed !== true) {
+          held.guessed = 0; // any confirming claim confirms the alias (events.md 8.6)
         }
         break;
+      }
 
       case "invAccount.settingsSet": {
         const key = String(acc(d.account));

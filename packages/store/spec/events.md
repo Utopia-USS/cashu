@@ -560,7 +560,10 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 - `instrument.updated` `{...patch of the shared fields}` (LWW-F on the resolved row).
 - `instrument.aliasAdded` (gid DET(namespace, value)) `{instrument@, namespace, value, guessed}`: an
   IDENTITY claim (6.4). A claim of an alias another instrument holds merges the claimer into it: no
-  leader action is needed (v1's leader-emitted collision merge is gone).
+  leader action is needed (v1's leader-emitted collision merge is gone). The row's `guessed` is the
+  AND over every applied claim of the alias gid: a claim with `guessed: false` confirms a guessed
+  alias (Python `add_aliases` / `classify` confirming a guess), in any delivery order, and a later
+  guessed claim never un-confirms it. `created_at` stays the first applied claim's.
 - `instrument.merged` (gid = source, checked by `parseEvent`) `{source@, target@, reason:
   owner|alias_collision}`: an owner merge. With claims handling collisions, `alias_collision` is kept
   only for genesis of merges Python recorded.

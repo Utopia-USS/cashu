@@ -56,8 +56,7 @@ export function addAliases(
     const owner = aliasOwner(ctx.read, alias.namespace, value);
     if (owner !== undefined) {
       if (owner.instrument === instrument && owner.guessed && !alias.guessed) {
-        // FOLLOW-UP(S22d -> lead): the alias fold keeps the first claim's `guessed`; confirming a
-        // guess needs a fold rule (guessed = false once a claim of the same root confirms it).
+        // confirm the guess: the fold ANDs `guessed` over the alias's claims (events.md 8.6)
         ctx.emit(
           "instrument.aliasAdded",
           ctx.det("inv_instrument_aliases", [alias.namespace, value]),
