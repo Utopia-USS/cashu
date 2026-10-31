@@ -116,6 +116,19 @@ describe("performance pipeline (test_perf_pipeline)", () => {
     expect(a.concentration?.top[0]).toEqual({ n: 1, share: Math.round((1000 / 1430) * 1e6) / 1e6 });
     approx(a.concentration?.benchmark_pnl, units * benchPln("2025-09-30") - 12000, 0.01);
 
+    // mcp_summary (the MCP history_metrics tool): plain values over the whole history
+    const m = service.historyMetrics(v.store, at.raw);
+    expect([m?.since, m?.asOf, m?.baseCurrency, m?.benchmarkMeta.status]).toEqual([
+      "2025-01-02",
+      AS_OF,
+      "PLN",
+      "ok",
+    ]);
+    approx(m?.summary.endValue, 13430, 1e-6);
+    approx(m?.pnlPctOfContributions, 1430 / 12000, 1e-9);
+    expect(m?.rolling.map((r) => r.months)).toEqual([12, 24, 36]);
+    expect(m?.perYear.map((y) => y.year)).toEqual([2025]);
+
     // a second backfill only asks for what is new (the last day again, no history)
     const prices2 = new FakePrices();
     const fx2 = new FakeFx();
@@ -228,6 +241,7 @@ describe("performance pipeline (test_perf_pipeline)", () => {
       modules: ["investments"],
     });
     const e = views(service, empty, cache);
+    expect(service.historyMetrics(empty.store, e.raw)).toBeNull(); // mcp_summary without history
     const ep = e.perf();
     expect([ep.points, ep.summary, ep.accounts]).toEqual([[], null, []]);
     const ea = e.attribution();
