@@ -15,7 +15,7 @@ import { produceMcpRead } from "./mcp/privacy.ts";
 import type { OutValue } from "./output.ts";
 
 /** Where the producers read their Python-side inputs (`pnpm parity:produce --golden-root / --bridge-mcp`). */
-export interface ProduceInputs {
+interface ProduceInputs {
   /** The Python golden root (`golden.py --out`); the MCP producers read `<root>/lab/mcp.read_raw.json`. */
   readonly goldenRoot: string;
   /** The guard bridge root (`guard_bridge.py --out`). */
