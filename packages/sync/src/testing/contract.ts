@@ -24,6 +24,7 @@ import { MemoryClockStore, MemoryTransport } from "../memory.js";
 import { settlesWithin, utf8Encode } from "../runtime.js";
 import { scanFrames } from "../segment.js";
 import { FaultInjector, ManualClock } from "./faults.js";
+import { checkPropagationClaim } from "./propagation.js";
 import { MemorySink } from "./sink.js";
 
 /** One shared remote medium for one vault: what several devices replicate through. */
@@ -36,6 +37,11 @@ export interface CarrierMedium {
   localFor?(device: DeviceId): Awaitable<Transport>;
   /** Resolve once appends through one handle are visible through every other handle. */
   settle?(): Promise<void>;
+  /**
+   * Let `ms` of the medium's time pass without forcing anything visible (simulated clock, or a real
+   * wait). Needed by the propagation check when the transport declares a non-zero bound.
+   */
+  elapse?(ms: number): Promise<void>;
   dispose?(): Promise<void>;
 }
 
@@ -224,6 +230,17 @@ export function describeCarrierContract(carrier: CarrierUnderTest): void {
     }
 
     describe("transport", () => {
+      it(
+        "keeps its declared consistency: every append reaches every other handle within the bound",
+        async () => {
+          const ctx = await setup();
+          const verdict = await checkPropagationClaim(ctx.medium, ctx.vault);
+          expect(verdict.violations).toEqual([]);
+          expect(verdict.ok).toBe(true);
+        },
+        timeout,
+      );
+
       it(
         "lists nothing for an empty vault and reads nothing from an unknown segment",
         async () => {

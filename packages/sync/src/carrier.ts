@@ -129,10 +129,40 @@ export interface SegmentInfo {
 }
 
 /**
+ * What a transport promises about when an `append` becomes visible to `list` / `read` calls through
+ * OTHER handles (other devices). Declared by the transport author from the backend's documented
+ * guarantee, never inferred at runtime; the fetch lease relies on it (devices/lease.ts, rule 6):
+ * - `linearizable`: visible to every call that starts after the `append` resolved (memory, one local
+ *   directory no sync tool touches, a single relay process with read-after-write storage);
+ * - `bounded`: visible to every call that starts at least `propagationMs` after the `append`
+ *   resolved (a relay whose storage replicates with a documented bound). A transport may declare it
+ *   only when `checkPropagationClaim` (testing/propagation.ts, part of the contract suite) passes
+ *   for it: the claim is tested, not assumed;
+ * - `eventual`: no bound (iCloud Drive, Syncthing, Dropbox, any synced folder).
+ */
+export type TransportConsistency =
+  | { readonly kind: "linearizable" }
+  | { readonly kind: "bounded"; readonly propagationMs: number }
+  | { readonly kind: "eventual" };
+
+/** The propagation bound of a declaration in ms (linearizable = 0), or undefined for `eventual`. */
+export function propagationBound(c: TransportConsistency): number | undefined {
+  if (c.kind === "linearizable") return 0;
+  if (c.kind === "bounded") {
+    return Number.isSafeInteger(c.propagationMs) && c.propagationMs >= 0
+      ? c.propagationMs
+      : undefined;
+  }
+  return undefined;
+}
+
+/**
  * Moves opaque bytes: a local log directory, a synced folder (iCloud Drive / Syncthing, S28c) or a
  * blind relay (S28d). Segments are append-only and have one writer each.
  */
 export interface Transport {
+  /** REQUIRED: what the backend promises about visibility to other devices (see the type). */
+  readonly consistency: TransportConsistency;
   /** Every segment of the vault with its current size. Order is not significant. */
   list(vault: VaultId): Promise<readonly SegmentInfo[]>;
   /** Bytes of a segment from `fromOffset` to its current end (empty when past the end or unknown). */
@@ -197,9 +227,28 @@ export interface AppliedInfo {
   readonly events: number;
 }
 
+/**
+ * What the last sync pass proved about this device's remotes, for the fetch lease's automatic mode
+ * (devices/lease.ts `LeaseLocal.transport`). `bounded` only when the engine has at least one remote
+ * declaring a propagation bound and EVERY such remote was reachable in the last pass; then
+ * `propagationMs` is the largest bound, `lastPullAt` the earliest start of that pass's pulls through
+ * them and `lastPushAt` the latest completion of its pushes (physical clock of the engine). A device
+ * whose relay is offline is `eventual` for that pass.
+ */
+export type LeaseTransport =
+  | {
+      readonly kind: "bounded";
+      readonly propagationMs: number;
+      readonly lastPullAt: number;
+      readonly lastPushAt: number;
+    }
+  | { readonly kind: "eventual" };
+
 export interface SyncEngine {
   readonly vault: VaultId;
   readonly device: DeviceId;
+  /** The lease transport report of the last `sync()` pass (`eventual` before the first one). */
+  leaseTransport(): LeaseTransport;
   /** Stamp, append to the own segment as one atomic batch (frame or frame group), apply locally. */
   write(events: readonly UnstampedEvent[]): Promise<WriteResult>;
   /** Push own bytes, pull and verify foreign frames, apply everything new. */

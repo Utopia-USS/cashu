@@ -1,7 +1,14 @@
 // In-memory carrier pieces: a transport (a device's local log, or a shared "relay" that several
 // engines use as their remote) and a clock store. Reference implementations for the contract suite
 // and for store / ui-logic tests; nothing here touches disk or network.
-import type { ClockStore, DeviceId, SegmentInfo, Transport, VaultId } from "./carrier.js";
+import type {
+  ClockStore,
+  DeviceId,
+  SegmentInfo,
+  Transport,
+  TransportConsistency,
+  VaultId,
+} from "./carrier.js";
 import { TransportError } from "./errors.js";
 import type { HlcState } from "./hlc.js";
 import { queueTask } from "./runtime.js";
@@ -13,6 +20,8 @@ interface MemorySegment {
 }
 
 export class MemoryTransport implements Transport {
+  /** One in-process map: every handle sees an append once it resolved. */
+  readonly consistency: TransportConsistency = { kind: "linearizable" };
   readonly #vaults = new Map<VaultId, Map<string, MemorySegment>>();
   readonly #watchers = new Map<VaultId, Set<() => void>>();
 

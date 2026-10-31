@@ -1,12 +1,19 @@
 // Test doubles around any transport: a fault injector (offline, a segment tail still arriving, a
 // flipped byte) and a manual physical clock. Being decorators, they let the contract suite drive every
 // carrier adapter through the same failures without adapter-specific hooks.
-import type { DeviceId, SegmentInfo, Transport, VaultId } from "../carrier.js";
+import type {
+  DeviceId,
+  SegmentInfo,
+  Transport,
+  TransportConsistency,
+  VaultId,
+} from "../carrier.js";
 import { TransportError } from "../errors.js";
 import type { PhysicalClock } from "../hlc.js";
 
 export class FaultInjector implements Transport {
   readonly inner: Transport;
+  readonly consistency: TransportConsistency;
   readonly watch?: (vault: VaultId, onChange: () => void) => () => void;
   #online = true;
   readonly #caps = new Map<string, number>();
@@ -14,6 +21,7 @@ export class FaultInjector implements Transport {
 
   constructor(inner: Transport) {
     this.inner = inner;
+    this.consistency = inner.consistency;
     const innerWatch = inner.watch?.bind(inner);
     if (innerWatch) this.watch = (vault, onChange) => innerWatch(vault, onChange);
   }

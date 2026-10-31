@@ -17,6 +17,7 @@ import type {
   EventSink,
   FrameCodec,
   FramePosition,
+  LeaseTransport,
   RejectedFrame,
   SegmentCursor,
   SegmentInfo,
@@ -28,9 +29,15 @@ import type {
   WireEvent,
   WriteResult,
 } from "./carrier.js";
-import { START_CURSOR } from "./carrier.js";
+import { propagationBound, START_CURSOR } from "./carrier.js";
 import { isTransportUnavailable, rejectionCode, SyncError, TransportError } from "./errors.js";
-import { type ClockWarning, DEVICE_RE, HybridClock, type PhysicalClock } from "./hlc.js";
+import {
+  type ClockWarning,
+  DEVICE_RE,
+  HybridClock,
+  type PhysicalClock,
+  systemClock,
+} from "./hlc.js";
 import { queueTask } from "./runtime.js";
 import {
   decodePayload,
@@ -146,7 +153,9 @@ class OwnLogEngine implements SyncEngine {
   readonly #maxFrameEvents: number;
   readonly #maxFrameBytes: number;
   readonly #maxSegmentBytes: number;
+  readonly #physical: PhysicalClock;
   readonly #listeners = new Set<(info: AppliedInfo) => void>();
+  #leaseTransport: LeaseTransport = { kind: "eventual" };
   #tail: Promise<unknown> = Promise.resolve();
   #closed = false;
   #rolledBack = false;
@@ -161,6 +170,7 @@ class OwnLogEngine implements SyncEngine {
     this.#codec = o.codec;
     this.#sink = o.sink;
     this.#clockStore = o.clockStore;
+    this.#physical = o.physicalClock ?? systemClock;
     this.#clock = new HybridClock(o.device, {
       ...(o.physicalClock ? { physical: o.physicalClock } : {}),
       ...(o.maxDriftMs === undefined ? {} : { maxDriftMs: o.maxDriftMs }),
@@ -251,14 +261,32 @@ class OwnLogEngine implements SyncEngine {
     return this.#run(async () => {
       this.#assertOpen();
       const pass = newPass();
+      this.#leaseTransport = { kind: "eventual" };
+      const bounded: { propagationMs: number; pullAt: number; pushAt: number }[] = [];
+      let boundedOffline = false;
       for (const remote of this.#remotes) {
+        const bound = propagationBound(remote.consistency);
+        const pullAt = this.#physical.now();
         try {
           await this.#replicate(remote, pass);
+          if (bound !== undefined) {
+            bounded.push({ propagationMs: bound, pullAt, pushAt: this.#physical.now() });
+          }
         } catch (e) {
           if (!isTransportUnavailable(e)) throw e;
           pass.offlineRemotes += 1;
+          if (bound !== undefined) boundedOffline = true;
         }
       }
+      this.#leaseTransport =
+        bounded.length > 0 && !boundedOffline
+          ? {
+              kind: "bounded",
+              propagationMs: Math.max(...bounded.map((b) => b.propagationMs)),
+              lastPullAt: Math.min(...bounded.map((b) => b.pullAt)),
+              lastPushAt: Math.max(...bounded.map((b) => b.pushAt)),
+            }
+          : { kind: "eventual" };
       await this.#applyLocal(pass);
       return this.#finish(pass);
     });
@@ -272,6 +300,10 @@ class OwnLogEngine implements SyncEngine {
       await this.#applyLocal(pass);
       return this.#finish(pass);
     });
+  }
+
+  leaseTransport(): LeaseTransport {
+    return this.#leaseTransport;
   }
 
   onApplied(listener: (info: AppliedInfo) => void): () => void {

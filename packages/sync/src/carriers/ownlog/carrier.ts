@@ -23,6 +23,7 @@ import type {
   SegmentCursor,
   SegmentInfo,
   Transport,
+  TransportConsistency,
   VaultId,
 } from "../../carrier.js";
 import { rejectionCode, TransportError } from "../../errors.js";
@@ -102,6 +103,8 @@ function key(vault: VaultId, device: DeviceId): string {
 
 export class OwnLogCarrier implements Transport {
   readonly device: DeviceId;
+  /** The wrapped transport's declaration: gating only hides bytes, it never speeds them up. */
+  readonly consistency: TransportConsistency;
   readonly watch?: (vault: VaultId, onChange: () => void) => () => void;
   readonly #raw: Transport;
   readonly #codec: FrameCodec;
@@ -112,6 +115,7 @@ export class OwnLogCarrier implements Transport {
   constructor(options: OwnLogCarrierOptions) {
     this.device = options.device;
     this.#raw = options.transport;
+    this.consistency = options.transport.consistency;
     this.#codec = options.codec;
     this.#resumeFrom = options.resumeFrom;
     const rawWatch = options.transport.watch?.bind(options.transport);

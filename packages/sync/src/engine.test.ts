@@ -129,4 +129,58 @@ describe("SyncEngine", () => {
     expect(r.rejected).toEqual([{ device: A, seg: 1, offset: 0, code: "frame-format" }]);
     expect(r.applied).toBe(0);
   });
+
+  it("reports bounded propagation for the lease only while every bounded remote was reachable", async () => {
+    const clock = new ManualClock(T0);
+    // A relay whose calls take a second each (so pull start and push end differ).
+    const slow = (inner: Transport, ms: number): Transport => ({
+      consistency: { kind: "bounded", propagationMs: ms },
+      list: async (v) => {
+        clock.advance(1000);
+        return inner.list(v);
+      },
+      read: (v, d, s, o) => inner.read(v, d, s, o),
+      append: async (v, d, s, at, b) => {
+        clock.advance(1000);
+        return inner.append(v, d, s, at, b);
+      },
+    });
+    const relay = new FaultInjector(slow(new MemoryTransport(), 120_000));
+    const folder = new FaultInjector(new MemoryTransport());
+    const eventualFolder: Transport = {
+      consistency: { kind: "eventual" },
+      list: (v) => folder.list(v),
+      read: (v, d, s, o) => folder.read(v, d, s, o),
+      append: (v, d, s, at, b) => folder.append(v, d, s, at, b),
+    };
+    const e = await createSyncEngine({
+      vault: VAULT,
+      device: A,
+      local: new MemoryTransport(),
+      remotes: [eventualFolder, relay],
+      codec,
+      sink: new MemorySink(),
+      clockStore: new MemoryClockStore(),
+      physicalClock: clock,
+    });
+    expect(e.leaseTransport()).toEqual({ kind: "eventual" }); // before the first pass
+    await e.write([ev("e1")]);
+    await e.sync();
+    expect(e.leaseTransport()).toEqual({
+      kind: "bounded",
+      propagationMs: 120_000,
+      lastPullAt: T0,
+      lastPushAt: T0 + 2000,
+    });
+    relay.setOnline(false);
+    await e.sync();
+    expect(e.leaseTransport()).toEqual({ kind: "eventual" });
+    relay.setOnline(true);
+    await e.sync();
+    expect(e.leaseTransport().kind).toBe("bounded");
+    // Only eventual remotes (a synced folder): never bounded.
+    const f = await engine(B, new MemoryTransport(), [eventualFolder]);
+    await f.sync();
+    expect(f.leaseTransport()).toEqual({ kind: "eventual" });
+  });
 });

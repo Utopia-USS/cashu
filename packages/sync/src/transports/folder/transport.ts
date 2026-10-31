@@ -14,7 +14,13 @@
 //   append). When two versions diverge (a cloned or reinstalled device id), only their common prefix
 //   is shown and `status` reports a fork; the writer refuses to append to a forked segment.
 // - Evicted placeholders are reported, not read (downloading them needs the platform, risk R7).
-import type { DeviceId, SegmentInfo, Transport, VaultId } from "../../carrier.js";
+import type {
+  DeviceId,
+  SegmentInfo,
+  Transport,
+  TransportConsistency,
+  VaultId,
+} from "../../carrier.js";
 import { VAULT_RE } from "../../engine.js";
 import { TransportError } from "../../errors.js";
 import { DEVICE_RE } from "../../hlc.js";
@@ -105,6 +111,11 @@ function commonPrefix(a: Uint8Array, b: Uint8Array): number {
 }
 
 export class FolderTransport implements Transport {
+  /**
+   * Always `eventual`, even for a plain local directory: a vault folder is shared through a sync
+   * tool (iCloud Drive, Syncthing, Dropbox) that promises no propagation bound.
+   */
+  readonly consistency: TransportConsistency = { kind: "eventual" };
   readonly watch?: (vault: VaultId, onChange: () => void) => () => void;
   readonly #fs: FolderFs;
   readonly #owner: DeviceId | undefined;

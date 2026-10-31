@@ -10,4 +10,10 @@ export {
 } from "./contract.js";
 export { FaultInjector, ManualClock } from "./faults.js";
 export { memoryCarrier } from "./memory-carrier.js";
+export {
+  checkPropagationClaim,
+  type PropagationMedium,
+  type PropagationVerdict,
+} from "./propagation.js";
+export { SimulatedRelay, type SimulatedRelayOptions } from "./relay-sim.js";
 export { type Delivery, MemorySink } from "./sink.js";
