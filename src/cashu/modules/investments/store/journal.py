@@ -9,6 +9,7 @@ from decimal import Decimal
 from sqlalchemy import delete, or_
 from sqlmodel import Session, select
 
+from cashu.core import sync_outbox
 from cashu.core.models import utcnow
 
 from ..domain import DecisionAction, SignalStatus
@@ -129,6 +130,11 @@ def undo_decision(
         )
     ids = decision_signal_ids(session, [row]).get(row.id, [])
     linked = [r for r in (signal(session, profile_id, i) for i in ids) if r is not None]
+    # ``decision.undone`` (a tombstone) stands for the decision and its links; the acknowledgement
+    # reverts below are derived (events.md 6.5) and not captured.
+    sync_outbox.emit_row(
+        session, row, "undo", covers=[("inv_decision_signals", f"{row.id}|{i}") for i in ids]
+    )
     session.exec(delete(InvDecisionSignal).where(InvDecisionSignal.decision_id == row.id))
     session.delete(row)
     session.flush()

@@ -41,6 +41,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
+from cashu.core import sync_outbox
+
 INSTRUMENTS = "inv_instruments"
 
 # Tables with a unique key on the instrument reference whose collisions are dropped on the source side
@@ -428,3 +430,6 @@ def _apply(
     session.connection().execute(
         text("DELETE FROM inv_instruments WHERE id = :id"), {"id": source_id}
     )
+    # Raw SQL bypasses the session hooks: one ``instrument.merged`` stands for every write above (the
+    # fold remaps the references, events.md 6.4).
+    sync_outbox.emit_instrument_merge(session, source_id, target_id)

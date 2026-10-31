@@ -371,6 +371,10 @@ def register(app: typer.Typer) -> None:
 
     app.add_typer(worker_app, name="worker")
 
+    from .sync_cli import sync_app  # TRANSITIONAL(S49)
+
+    app.add_typer(sync_app, name="sync")
+
     from .connectors.cli import register as register_connectors
 
     register_connectors(app)  # cashu connectors ...

@@ -16,6 +16,7 @@ from __future__ import annotations
 from .core.agent_models import McpCall, Proposal, Review
 from .core.connectors.models import Connector, ConnectorBinding, ConnectorRun
 from .core.models import Account, AccountType, Balance, Profile, ProfileModule, Source
+from .core.sync_models import SyncId, SyncOutbox, SyncVault
 from .modules.assets.models import AssetDetails, Depreciation
 from .modules.budget.models import CategoryRule, ImportBatch, Transaction
 from .modules.investments import (
@@ -41,5 +42,8 @@ __all__ = [
     "Proposal",
     "Review",
     "Source",
+    "SyncId",
+    "SyncOutbox",
+    "SyncVault",
     "Transaction",
 ]

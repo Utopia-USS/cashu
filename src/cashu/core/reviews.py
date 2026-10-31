@@ -13,7 +13,7 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from . import modules
+from . import modules, sync_outbox
 from .agent_models import Review
 from .models import Profile, utcnow
 
@@ -148,6 +148,7 @@ def undo(
     if (now or utcnow()) - done > UNDO_WINDOW:
         minutes = int(UNDO_WINDOW.total_seconds() // 60)
         raise ReviewUndoExpired(f"A review can be undone for {minutes} minutes after it is saved")
+    sync_outbox.emit_row(session, row, "undo")  # ``review.undone``, a tombstone
     session.delete(row)
     session.flush()
 

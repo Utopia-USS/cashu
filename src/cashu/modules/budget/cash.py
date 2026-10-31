@@ -12,7 +12,7 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
-from cashu.core import profiles
+from cashu.core import profiles, sync_outbox
 from cashu.core.institutions import MANUAL
 from cashu.core.models import Account, AccountType, Source
 
@@ -158,6 +158,10 @@ def delete_cash_transaction(
     if t is None or t.account_id not in cash_account_ids(session, profile_id):
         return False
     src_id = (t.raw or {}).get("cash_leg_of")
+    if src_id is not None:
+        # A mirror leg is derived (never captured); deleting it clears the claim on its source bank
+        # transaction (``txn.categoryCleared``, events.md 8.3). A cash expense's delete is captured.
+        sync_outbox.emit_row(session, t, "leg_delete", fields={"cash_leg_of": src_id})
     session.delete(t)
     if src_id is not None:
         bank_txn = session.get(Transaction, src_id)

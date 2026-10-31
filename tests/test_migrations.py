@@ -103,7 +103,7 @@ HEAD_TABLES = migrations.BASELINE_TABLES | {"profiles", "profile_modules"} | {
     "alerts", "watchlist_items", "inv_profile_instruments",
 } | {"inv_planned_deposits", "research_runs", "research_notes"} | {"asset_details"} | {
     "connectors", "connector_bindings", "connector_runs",
-} | {"inv_macro_bars", "inv_topic_theses"}
+} | {"inv_macro_bars", "inv_topic_theses"} | {"sync_outbox", "sync_ids", "sync_vaults"}
 
 
 def test_head_equals_create_all(tmp_path):
@@ -120,7 +120,8 @@ def test_head_equals_create_all(tmp_path):
     # + 7 planned deposits / research + 1 asset details (F7 OB5) + 1 unread research notes (F8)
     # + 1 decision links by signal (F9) + 5 connectors (bindings: profile, account, connector; runs:
     # connector, profile; F10) + 1 topic theses by profile (P9) + 2 change events (ts, profile; P10)
-    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 67
+    # + 3 sync outbox (profile, acked, row; S30)
+    assert sum(k.startswith("ddl:index:ix_") for k in expected) == 70
     reference.dispose()
     migrated.dispose()
 

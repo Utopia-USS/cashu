@@ -8,6 +8,11 @@ a row id, and code that writes with plain SQL (prices) calls :func:`emit`. The a
 table by id (:func:`tail`, only after ``PRAGMA data_version`` moved, ``core/changes.py``) and pushes the
 events to the window; :func:`prune` drops rows older than a day.
 
+The same hooks feed the sync outbox (``core/sync_outbox.py``, S30) when ``CASHU_SYNC=1``: field-level
+changes of every synced table, recorded in the transaction of the change. Unlike change events, an
+outbox failure fails the write (a lost change would make devices diverge); with the flag off the
+outbox code returns at once.
+
 Watched tables and the payload builders come from the modules: core imports
 ``cashu.modules.<id>.live`` when it exists (``register(watch, register_payload)``), on first use, so a
 module never needs core to know its tables. Payloads (the full wire dict of a list row, built by the
@@ -29,6 +34,7 @@ from sqlalchemy import delete, event, func, insert, inspect
 from sqlalchemy.orm import Session as OrmSession
 from sqlmodel import select
 
+from . import sync_outbox
 from .models import ChangeEvent, utcnow
 
 ENTITIES = (
@@ -159,8 +165,14 @@ def _entity_of(obj) -> str | None:
     return _tables.get(getattr(obj, "__tablename__", None) or "")
 
 
+@event.listens_for(OrmSession, "before_flush")
+def _before_flush(session, _context, _instances) -> None:
+    sync_outbox.prepare_flush(session)
+
+
 @event.listens_for(OrmSession, "after_flush")
 def _after_flush(session, _context) -> None:
+    sync_outbox.capture_flush(session)  # first, and outside the guard below: it must fail the write
     load()
     rows: list[dict] = []
     for objs, op in ((session.new, "add"), (session.dirty, "update"), (session.deleted, "remove")):
@@ -182,19 +194,25 @@ def _after_flush(session, _context) -> None:
 
 
 @event.listens_for(OrmSession, "do_orm_execute")
-def _bulk(state) -> None:
-    if not (state.is_update or state.is_delete):
-        return
-    mapper = state.bind_mapper
-    table = getattr(getattr(mapper, "local_table", None), "name", None)
-    load()
-    entity = _tables.get(table or "")
-    if entity is None:
-        return
-    try:
-        _insert(state.session.connection(), [_row(entity, "update", None, None, None)])
-    except Exception:  # noqa: BLE001
-        _log.warning("bulk change event not recorded", exc_info=True)
+def _bulk(state):
+    if state.is_update or state.is_delete:
+        mapper = state.bind_mapper
+        table = getattr(getattr(mapper, "local_table", None), "name", None)
+        load()
+        entity = _tables.get(table or "")
+        if entity is not None:
+            try:
+                _insert(state.session.connection(), [_row(entity, "update", None, None, None)])
+            except Exception:  # noqa: BLE001
+                _log.warning("bulk change event not recorded", exc_info=True)
+    # The outbox runs the statement itself (rows read before / after); None = run it normally.
+    return sync_outbox.capture_bulk(state)
+
+
+@event.listens_for(OrmSession, "after_transaction_end")
+def _transaction_end(session, transaction) -> None:
+    if transaction.parent is None:  # the root transaction: commit or rollback
+        sync_outbox.reset(session)
 
 
 # --------------------------------------------------------------------------- #
