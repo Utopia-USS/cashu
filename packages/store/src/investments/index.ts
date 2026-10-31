@@ -4,9 +4,13 @@
 // alerts, theses, topic theses, planned deposits, research runs + notes, reviews). Price, FX and macro
 // caches and the notification log are device-local and never in the view (events.md 10).
 import type { StoreModule } from "../registry.js";
+import { accountSettingsMaterializer } from "./account-settings.js";
+import { importBatchesMaterializer } from "./import-batches.js";
 import { instrumentIdentity, instrumentsMaterializer } from "./instruments.js";
 import { overridesMaterializer } from "./overrides.js";
+import { positionsMaterializer, renamesMaterializer } from "./positions.js";
 import { signalsMaterializer } from "./signals.js";
+import { transactionsMaterializer } from "./transactions.js";
 import { valuationsMaterializer } from "./valuations.js";
 import { watchlistMaterializer } from "./watchlist.js";
 
@@ -15,6 +19,11 @@ export const investmentsModule: StoreModule = {
   identityKinds: [instrumentIdentity],
   materializers: [
     instrumentsMaterializer,
+    accountSettingsMaterializer,
+    importBatchesMaterializer,
+    transactionsMaterializer,
+    positionsMaterializer,
+    renamesMaterializer,
     watchlistMaterializer,
     overridesMaterializer,
     valuationsMaterializer,
