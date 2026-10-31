@@ -179,10 +179,19 @@ export function buildReport(
   return { schema, vaults, fk: pick(snapshot.global, isDangling), counters: snapshot };
 }
 
-/** `strict`: the `bad_*` counters (rows that do not decode or map) that fail the run, as `table.reason`. */
+/** Non-`bad_*` reasons that fail a strict run: a value genesis copies but cannot trust. */
+const STRICT_REASONS: ReadonlySet<string> = new Set([
+  // A research note's candidate key holding a local instrument id (S26 review F6).
+  "candidate_key_local_id",
+]);
+
+/**
+ * `strict`: the counters that fail the run, as `table.reason`: every `bad_*` counter (rows that do
+ * not decode or map) and the reasons of `STRICT_REASONS`.
+ */
 export function strictFailures(counters: GenesisCounters): readonly string[] {
   const snapshot = counters.snapshot();
-  const bad = (r: string) => r.startsWith("bad_");
+  const bad = (r: string) => r.startsWith("bad_") || STRICT_REASONS.has(r);
   return [
     ...Object.keys(pick(snapshot.global, bad)),
     ...Object.values(snapshot.vaults).flatMap((v) => Object.keys(pick(v, bad))),

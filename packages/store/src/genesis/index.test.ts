@@ -92,6 +92,11 @@ describe("refusals", () => {
       ["strict_counter", (r) => r.insert("category_rules", { source: "auto" })],
       ["invalid_event", (r) => r.insert("alerts", { ...ALERT, kind: "bogus" })],
       ["unmapped_id_key", (r) => r.insert("alerts", { ...ALERT, params: '{"signal_id": 5}' })],
+      // Python's `str(instrument_id)` candidate fallback: a local id as the key (review F6).
+      [
+        "strict_counter",
+        (r) => r.insert("research_notes", { kind: "candidate", candidate_key: "42" }),
+      ],
     ];
     for (const [code, plant] of cases) {
       const { driver, rows } = db();
@@ -99,6 +104,22 @@ describe("refusals", () => {
       const run = () => genesis({ driver, files: NO_FILES }, KEYS, { strict: true, now: NOW });
       expect(errorOf(run).code, code).toBe(code);
     }
+  });
+
+  it("counts a digits-only candidate key (a local instrument id), strict names it", () => {
+    const { driver, rows } = db();
+    rows.insert("research_notes", { kind: "candidate", candidate_key: "42" });
+    rows.insert("research_notes", { kind: "candidate", candidate_key: "PLTEST000001" });
+    rows.insert("research_notes", { kind: "candidate", candidate_key: "ABC1" });
+    const strict = () => genesis({ driver, files: NO_FILES }, KEYS, { strict: true, now: NOW });
+    expect(errorOf(strict).message).toBe(
+      "strict run refused: research_notes.candidate_key_local_id",
+    );
+    const result = genesis({ driver, files: NO_FILES }, KEYS, { strict: false, now: NOW });
+    expect(result.report.counters.vaults["0"]?.research_notes).toEqual({
+      candidate_key_local_id: 1,
+    });
+    expect(result.vaults[0]?.events.filter((e) => e.t === "note.added")).toHaveLength(3);
   });
 
   it("lenient: the rows are skipped, counted and left out of the ids", () => {

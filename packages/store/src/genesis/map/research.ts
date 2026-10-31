@@ -101,6 +101,9 @@ export function mapResearchRun(r: ResearchRunRow, ctx: MapContext): RowEvents | 
   return rowEvents(t, r.id, events);
 }
 
+/** A digits-only candidate key: a local instrument id, not an ISIN or a symbol. */
+const LOCAL_ID = /^[0-9]+$/;
+
 const NOTE_STAMPS = [
   "createdAt",
   "updatedAt",
@@ -114,11 +117,17 @@ const NOTE_STAMPS = [
 /**
  * `note.added` (stamps include `read_at` and `dismissed_at`, so an owner note born read keeps its
  * read time), `note.read` for an agent note the owner read (spec 4.9) and `note.dismissed`.
+ * Counts `(research_notes, candidate_key_local_id)`.
  */
 export function mapNote(r: ResearchNoteRow, ctx: MapContext): RowEvents | undefined {
   const t = "research_notes";
   const gid = gidOf(ctx, t, r.id);
   if (gid === undefined) return undefined;
+  // Python's candidate fallback `str(instrument_id)` (research/service.py) stores a local id as the
+  // key; it is copied verbatim but counted, and fails a strict run (S26 review F6).
+  if (r.candidateKey !== null && LOCAL_ID.test(r.candidateKey)) {
+    ctx.count(t, "candidate_key_local_id");
+  }
   const stamps = stampsOf(r, NOTE_STAMPS);
   const data = {
     run: ctx.rw.ref(t, "run_id", "research_runs", r.runId),
