@@ -640,6 +640,207 @@ def gen_person(rng: random.Random) -> list:
     return rows
 
 
+# --------------------------------------------------------------------------- canonical budget documents
+
+
+def canonical_out(content: bytes, name: str, source: str) -> dict:
+    from cashu.modules.budget.ingestion import canonical as C
+
+    r = C.parse_budget_document(content, name, source=Source(source))
+    stmt = r.statement
+    report = C.validate_budget_document(content, name) if source == "csv" else None
+    return {
+        "issues": [[i.kind, i.row, i.field, i.message, i.blocking] for i in r.issues],
+        "ok": r.ok,
+        "variant": r.variant,
+        "source": r.source,
+        "institution": r.institution,
+        "transactions": r.transactions,
+        "balances": r.balances,
+        "statement": None if stmt is None else {
+            "bank": stmt.bank,
+            "account_number": stmt.account_number,
+            "account_name": stmt.account_name,
+            "currency": stmt.currency,
+            "transactions": [{**raw_json(t), "raw": t.raw} for t in stmt.transactions],
+            "balances": [[d.isoformat(), str(a)] for d, a in stmt.balances],
+            "closing_balances": [[d.isoformat(), str(a)] for d, a in stmt.closing_balances],
+        },
+        "report": None if report is None else report.as_dict(),
+        "summary": None if report is None else report.summary(),
+        "looks_like": C.looks_like_budget_document(content, name),
+    }
+
+
+def base_doc() -> dict:
+    import test_budget_import_format as tbif
+
+    return tbif.doc()
+
+
+MUTATION_VALUES: list = [
+    "<missing>", None, "", "  ", 0, 1, -1, Decimal("1.5"), True, False, [], {}, "x", "x" * 501, "x" * 201,
+    "x" * 121, "2026-02-30", "2026-10-04", "04.10.2026", "1,5", "1e5", "-12.345", "12.5", "PLN", "pln", "ZLOTY",
+    "Bad Source", "my_src", "a" * 33, "PL99114000000000000000000001", "12", "٣.٥", "٢٠٢٦-١٠-٠٤", "1.0",
+    Decimal("1.0"), Decimal("1E+2"), 2, "mbank", "nowybank", "-", "a\n", "1", Decimal("1.00"), Decimal("1E0"),
+    Decimal("10E-1"), Decimal("-0"),
+]
+FIELD_PATHS = [
+    ("format",), ("format_version",), ("source",), ("account",), ("transactions",), ("balances",),
+    ("account", "currency"), ("account", "iban"), ("account", "name"), ("account", "institution"),
+    *[("transactions", 0, f) for f in ("booking_date", "amount", "currency", "value_date", "counterparty_name",
+                                      "counterparty_iban", "description", "reference", "transaction_id",
+                                      "balance_after")],
+    ("transactions", 1, "amount"), ("transactions", 1), ("balances", 0, "date"), ("balances", 0, "amount"),
+    ("balances", 0),
+]
+
+
+def mutate(d: dict, path: tuple, value) -> dict:
+    import copy
+
+    d = copy.deepcopy(d)
+    target = d
+    for p in path[:-1]:
+        target = target[p]
+    if value == "<missing>":
+        if isinstance(target, dict):
+            target.pop(path[-1], None)
+        else:
+            del target[path[-1]]
+    else:
+        target[path[-1]] = value
+    return d
+
+
+def _wrap_decimals(o):
+    if isinstance(o, Decimal):
+        return f"__DEC__{o}__"
+    if isinstance(o, dict):
+        return {k: _wrap_decimals(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_wrap_decimals(v) for v in o]
+    return o
+
+
+def as_json(d) -> bytes:
+    """JSON with Decimal values written as number literals (``1.5``, ``1E+2``)."""
+    text = json.dumps(_wrap_decimals(d), ensure_ascii=False)
+    return re.sub(r'"__DEC__([^"]*)__"', r"\1", text).encode("utf-8")
+
+
+CSV_HEADER_POOL = ["format_version", "booking_date", "amount", "currency", "value_date", "counterparty_name",
+                   "counterparty_iban", "description", "reference", "transaction_id", "balance_after",
+                   "account_iban", "account_currency", "account_name", "account_institution", "source",
+                   "descripton", "Anna Testowa", "kwota 1234", "note", "  Amount ", "﻿format_version", ""]
+CSV_CELL_POOL = ["1", "2", "2026-10-01", "-10.00", "25.5", "PLN", "EUR", "", " ", "x", "C1", "my_conv",
+                 "PL99114000000000000000000001", "1,5", "a,b", "\"q\"", "ŁÓDŹ", "KWD", "1.234"]
+
+
+def csv_line(cells: list[str]) -> str:
+    out = []
+    for c in cells:
+        out.append('"' + c.replace('"', '""') + '"' if any(ch in c for ch in ',"\n\r') else c)
+    return ",".join(out)
+
+
+def gen_canonical(rng: random.Random) -> list:
+    import test_budget_import_format as tbif
+
+    rows: list = []
+
+    def add(content: bytes, name: str, source: str = "csv") -> None:
+        rows.append(["doc", base64.b64encode(content).decode(), name, source, canonical_out(content, name, source)])
+
+    base = base_doc()
+    add(as_json(base), "x.json")
+    add(as_json(base), "x.json", "connector")
+    for path in FIELD_PATHS:
+        for value in MUTATION_VALUES:
+            add(as_json(mutate(base, path, value)), "x.json")
+    for parent in ((), ("account",), ("transactions", 0), ("balances", 0)):
+        d = mutate(base, (*parent, "extra_key"), 1) if parent else {**base, "descripton": 1}
+        add(as_json(d), "x.json")
+    add(as_json({**base, "format": "finanse-budget-import"}), "x.json")
+    add(as_json({**base, "transactions": []}), "x.json")
+    add(as_json({**base, "balances": [{"date": "2026-10-01", "amount": "1"}] * 10001}), "x.json")
+    many = {**base, "transactions": [{**base["transactions"][1], "currency": "EUR"}] * 25}
+    add(as_json(many), "x.json")
+    for content in (b"{", b"[1, 2]", b'{"a": 1, "a": 2}', b"\xff\xfe", b'{"x": NaN}', b"", b"  ", b'"x"',
+                    b'{"a": {"b": 1, "b": 2}}', b"\xef\xbb\xbf{}", b'\xef\xbb\xbf\xef\xbb\xbf{}', b'{"a": 1e999}',
+                    b'{"a": -Infinity}', b'{"a": "\\ud800"}', b'{"a": 1' + b"0" * 5000 + b"}", b"[" * 600 + b"]" * 600,
+                    b'{"a":\n [1,\n 2,]}', b'{"a": "x\ty"}', b'{"a": 01}', b"{\"a\": \"\xc5\x82\"} x"):
+        add(content, "x.json")
+    valid = as_json(base)
+    for _ in range(250):
+        cut = rng.randint(0, len(valid))
+        add(valid[:cut], "x.json")
+    for _ in range(250):
+        b = bytearray(valid)
+        b[rng.randrange(len(b))] = rng.choice(b'{}[]",:0a \\\n\xff')
+        add(bytes(b), "x.json")
+    # CSV variant: the oracle tables plus random headers / rows
+    add(("﻿" + tbif.CSV_OK).encode(), "x.csv")
+    add(tbif.CSV_OK.encode(), "x.csv", "connector")
+    for content, _ in [(b"format_version,booking_date,amount,currency\n1,2026-10-01,-1.00,EUR\n", None),
+                       ((b"format_version,booking_date,amount,currency\n1,2026-10-01,-1.00,EUR\n"
+                        b"1,2026-10-02,-1.00,PLN\n"), None)]:
+        add(content, "x.csv")
+    for content in (b"format_version,booking_date,amount\n1,2026-10-01,1\n",
+                    b"format_version,booking_date,amount,currency,descripton\n",
+                    b"format_version,booking_date,amount,currency,amount\n",
+                    b"format_version,booking_date,amount,currency\n2,2026-10-01,1,PLN\n",
+                    b"format_version,booking_date,amount,currency\n1,2026-10-01,1\n",
+                    b"format_version,booking_date,amount,currency,source\n1,2026-10-01,1,PLN,a\n1,2026-10-01,1,PLN,b\n",
+                    b"format_version,booking_date,amount,currency,account_currency\n1,2026-10-01,1,PLN,PLNX\n",
+                    b"format_version,booking_date,amount,currency\n1,,1,PLN\n", b"", b"\n\n", b"a,b\n1,2\n",
+                    b'format_version,booking_date\n"1,x', b"format_version,amount\r\n1,\"a\"b\r\n",
+                    b"#Data operacji;#Kwota\n", b"\x00\x01\x02", b"format_version,booking_date,amount,currency\r1,2026-10-01,1,PLN\r"):
+        add(content, "x.csv")
+    for _ in range(400):
+        header = rng.sample(CSV_HEADER_POOL[:4], k=rng.randint(2, 4)) + rng.sample(CSV_HEADER_POOL[4:], k=rng.randint(0, 4))
+        rng.shuffle(header)
+        lines = [csv_line(header)]
+        for _ in range(rng.randint(0, 4)):
+            n = len(header) + (rng.choice([-1, 1]) if rng.random() < 0.1 else 0)
+            cells = []
+            for col in header[:n] + [""] * max(0, n - len(header)):
+                name = col.strip().lstrip("﻿").strip().lower()
+                if name == "format_version":
+                    cells.append(rng.choice(["1", "1", "1", "2", " 1 "]))
+                elif rng.random() < 0.15:
+                    cells.append(rng.choice(CSV_CELL_POOL))
+                else:
+                    cells.append({"booking_date": "2026-10-01", "amount": "-10.00", "currency": "PLN",
+                                  "account_currency": "PLN", "source": "my_conv",
+                                  "account_iban": "PL99114000000000000000000001"}.get(name, rng.choice(CSV_CELL_POOL)))
+            lines.append(csv_line(cells) if rng.random() < 0.95 else "")
+        text = rng.choice(["\n", "\r\n"]).join(lines) + rng.choice(["", "\n"])
+        add((("﻿" if rng.random() < 0.1 else "") + text).encode("utf-8"), rng.choice(["x.csv", "x", "x.JSON"]))
+    # detection only
+    for content, name in [(as_json(base), "statement.json"), (as_json(base), "noext"),
+                          (b'{"format": "cashu-import"}', "x.json"), (b"#Data operacji;#Kwota\n", "mbank.csv"),
+                          (b"\x00\x01\x02", "x.bin"), (b'\xef\xbb\xbf  {"format": "finanse-budget-import"', "x"),
+                          (b'format_version,"booking_date\n', "x.csv"), (b"\xff" * 10, "x.csv")]:
+        add(content, name)
+    return rows
+
+
+def gen_canonical_docs(_rng: random.Random) -> list:
+    """The documented full examples (docs/budget-import-format.md section 5) and the field lists."""
+    import test_budget_import_format as tbif
+
+    from cashu.modules.budget.ingestion import canonical as C
+
+    rows: list = [["fields", list(C.TRANSACTION_FIELDS), list(C.ACCOUNT_FIELDS), list(C.TOP_LEVEL_KEYS),
+                   list(C.CSV_COLUMNS), list(C.REQUIRED_CSV_COLUMNS), sorted(C.THREE_DECIMAL_CURRENCIES)]]
+    for lang, name in (("json", "example.json"), ("csv", "example.csv")):
+        for block in tbif._doc_blocks(lang):
+            content = block.encode()
+            rows.append(["example", lang, block, canonical_out(content, name, "csv")])
+    return rows
+
+
 # --------------------------------------------------------------------------- driver
 
 GENERATORS: dict[str, tuple[Callable, str]] = {
@@ -658,6 +859,10 @@ GENERATORS: dict[str, tuple[Callable, str]] = {
                         "1, 0.75)] | ['ratio', a, b, ratio] | ['close_n', word, pool, n, cutoff, matches]")),
     "budget-person": (gen_person, ("['sets', business, ambiguous, address, fold_extra] | ['name', text, fold, "
                       "normalize, person_part, looks_like_person]")),
+    "budget-canonical": (gen_canonical, ("['doc', base64 content, name, source, {issues: [[kind, row, field, "
+                         "message, blocking]], ok, variant, ..., statement, report, summary, looks_like}]")),
+    "budget-canonical-docs": (gen_canonical_docs, ("['fields', ...lists] | ['example', lang, block, outcome] "
+                              "(docs/budget-import-format.md)")),
     "budget-matching-data": (gen_matching_data, ("['matching', data, sha256 of json.dumps(data, "
                              "ensure_ascii=False, sort_keys=True, separators=(',', ':'))]")),
 }
