@@ -1,27 +1,30 @@
 // Errors carry a fixed code and a fixed message: never key bytes, plaintext, ids of a wrong key or
 // recovery words, so an error that reaches a log cannot leak a secret.
 
-export type CryptoErrorCode =
-  | "truncated"
-  | "unsupported_version"
-  | "unknown_key"
-  | "auth_failed"
-  | "vault_mismatch"
-  | "recovery_key_mismatch"
-  | "gid_salt_mismatch"
-  | "generation_gap"
-  | "epoch_gap"
-  | "keystore_corrupt"
-  | "untrusted_sender"
-  | "key_not_allowed"
-  | "bad_padding"
-  | "frame_too_large"
-  | "bad_payload"
-  | "bad_mnemonic"
-  | "bad_key_name"
-  | "keystore_unavailable"
-  | "wiped"
-  | "unsupported_runtime";
+export const ALL_CODES = [
+  "truncated",
+  "unsupported_version",
+  "unknown_key",
+  "auth_failed",
+  "vault_mismatch",
+  "recovery_key_mismatch",
+  "gid_salt_mismatch",
+  "generation_gap",
+  "epoch_gap",
+  "keystore_corrupt",
+  "untrusted_sender",
+  "key_not_allowed",
+  "bad_padding",
+  "frame_too_large",
+  "bad_payload",
+  "bad_mnemonic",
+  "bad_key_name",
+  "keystore_unavailable",
+  "wiped",
+  "unsupported_runtime",
+] as const;
+
+export type CryptoErrorCode = (typeof ALL_CODES)[number];
 
 const MESSAGES: Record<CryptoErrorCode, string> = {
   truncated: "encrypted data is truncated",
@@ -45,8 +48,6 @@ const MESSAGES: Record<CryptoErrorCode, string> = {
   wiped: "secret was already wiped",
   unsupported_runtime: "the crypto runtime lacks a required primitive",
 };
-
-export const ALL_CODES = Object.keys(MESSAGES) as CryptoErrorCode[];
 
 export class CryptoError extends Error {
   readonly code: CryptoErrorCode;

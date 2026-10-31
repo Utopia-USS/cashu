@@ -116,25 +116,28 @@ function runtime<T>(fn: () => T): T {
 
 export function fromLibsodium(lib: LibsodiumLike, options: SodiumOptions = {}): Sodium {
   const aead = options.aead ?? "libsodium";
-  const required: readonly string[] =
+  const required: readonly (keyof LibsodiumLike)[] =
     aead === "libsodium" ? [...BASE_REQUIRED, ...AEAD_REQUIRED] : BASE_REQUIRED;
-  const table = lib as unknown as Record<string, unknown>;
   for (const name of required) {
-    if (typeof table[name] !== "function") throw new CryptoError("unsupported_runtime");
+    if (typeof lib[name] !== "function") throw new CryptoError("unsupported_runtime");
   }
 
   const aeadEncrypt: Sodium["aeadEncrypt"] =
     aead === "noble"
       ? (plain, aad, nonce, key) => runtime(() => xchacha20poly1305(key, nonce, aad).encrypt(plain))
       : (plain, aad, nonce, key) =>
-          runtime(() => libAead(lib, "encrypt")(plain, aad, null, nonce, key));
+          runtime(() => {
+            const encrypt = lib.crypto_aead_xchacha20poly1305_ietf_encrypt;
+            if (!encrypt) throw new CryptoError("unsupported_runtime");
+            return encrypt.call(lib, plain, aad, null, nonce, key);
+          });
   const aeadDecrypt: Sodium["aeadDecrypt"] = (cipher, aad, nonce, key) => {
     // Too short to hold a tag: reject here, before any library sees a length it may mishandle.
     if (cipher.length < TAG_BYTES) throw new CryptoError("auth_failed");
     try {
       return aead === "noble"
         ? xchacha20poly1305(key, nonce, aad).decrypt(cipher)
-        : libAead(lib, "decrypt")(null, cipher, aad, nonce, key);
+        : libDecrypt(lib)(null, cipher, aad, nonce, key);
     } catch (e) {
       throw classify(e, AEAD_AUTH_FAILURES);
     }
@@ -163,13 +166,12 @@ export function fromLibsodium(lib: LibsodiumLike, options: SodiumOptions = {}): 
   return sodium;
 }
 
-function libAead<K extends "encrypt" | "decrypt">(
+function libDecrypt(
   lib: LibsodiumLike,
-  kind: K,
-): NonNullable<LibsodiumLike[`crypto_aead_xchacha20poly1305_ietf_${K}`]> {
-  const fn = lib[`crypto_aead_xchacha20poly1305_ietf_${kind}`];
-  if (!fn) throw new CryptoError("unsupported_runtime");
-  return fn.bind(lib) as NonNullable<LibsodiumLike[`crypto_aead_xchacha20poly1305_ietf_${K}`]>;
+): NonNullable<LibsodiumLike["crypto_aead_xchacha20poly1305_ietf_decrypt"]> {
+  const decrypt = lib.crypto_aead_xchacha20poly1305_ietf_decrypt;
+  if (!decrypt) throw new CryptoError("unsupported_runtime");
+  return decrypt.bind(lib);
 }
 
 // ---- known-answer self-test -------------------------------------------------------------------
@@ -257,8 +259,7 @@ let nodeSodium: Promise<Sodium> | undefined;
 function loadWith(options: SodiumOptions): Promise<Sodium> {
   return import("libsodium-wrappers").then(async ({ default: lib }) => {
     await lib.ready;
-    // The package's overloads (output formats) are wider than LibsodiumLike; the byte forms match.
-    return fromLibsodium(lib as unknown as LibsodiumLike, options);
+    return fromLibsodium(lib, options);
   });
 }
 

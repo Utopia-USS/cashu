@@ -43,7 +43,7 @@ export const WRAP_VERSION = 3;
 const WRAP_CONTEXT = utf8("cashu/wrap/v3");
 const WRAP_HEADER_BYTES = 1 + DEVICE_ID_BYTES + SIGNATURE_BYTES;
 /** Most recipients one rotation can list (devices + recovery). */
-export const MAX_WRAP_RECIPIENTS = 1024;
+const MAX_WRAP_RECIPIENTS = 1024;
 
 /**
  * Returns the Ed25519 public key of a sender this device trusts (certified, registered and not

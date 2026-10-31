@@ -79,7 +79,7 @@ export const GID_SALT = range(0x40, 0x5f);
 export const testRecovery = createRecoveryKey(sodium);
 
 /** The recovery identity behind `testRecovery`: the certificate root for test devices. */
-export const testRoot = recoveryIdentity(sodium, testRecovery.phrase);
+const testRoot = recoveryIdentity(sodium, testRecovery.phrase);
 
 export function subjectOf(d: DeviceIdentity) {
   return { deviceId: d.deviceId, signPublicKey: d.signPublicKey, boxPublicKey: d.box.publicKey };

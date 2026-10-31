@@ -56,6 +56,7 @@ export {
   loadKeyring,
   type SafeStorageLike,
   type SecureStoreLike,
+  type SecureStoreOptions,
   saveDeviceIdentity,
   saveKeyring,
 } from "./keystore.js";
@@ -67,7 +68,14 @@ export {
   recoveryIdentity,
 } from "./recovery.js";
 export { Secret } from "./secret.js";
-export { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
+export {
+  fromLibsodium,
+  type KeyPairBytes,
+  type LibsodiumLike,
+  loadNodeSodium,
+  type Sodium,
+  type SodiumOptions,
+} from "./sodium.js";
 export {
   openPairingWrap,
   RecoveryRecipient,

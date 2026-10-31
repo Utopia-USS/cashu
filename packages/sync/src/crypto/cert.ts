@@ -25,7 +25,7 @@ import {
 import { assertVaultId } from "./keys.js";
 import { PUBLIC_KEY_BYTES, type Sodium } from "./sodium.js";
 
-export const CERT_VERSION = 1;
+const CERT_VERSION = 1;
 const CERT_CONTEXT = utf8("cashu/cert/v1");
 const BODY_BYTES = 1 + 2 * DEVICE_ID_BYTES + 2 * PUBLIC_KEY_BYTES;
 export const CERT_BYTES = BODY_BYTES + SIGNATURE_BYTES;
