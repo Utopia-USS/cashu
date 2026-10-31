@@ -83,3 +83,10 @@ and hashes only; tracebacks go to `errors.log` next to the outputs.
 
 Not covered (recorded in `skipped`): the MCP read tools that take a file path or run connector code
 (`validate_budget_import`, `inspect_export`, `validate_import`, `test_connector`).
+
+## Known intentional differences
+
+- Account / instrument merges (event spec v1.2, R-2): after a merge the TS store resolves each field
+  by last writer (HLC) across the merged members, while Python keeps the target's values. A newer
+  edit on the source therefore beats an older target value. Checks that cover merged entities must
+  normalise this (compare after applying the same rule) instead of failing on it.
