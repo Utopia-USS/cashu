@@ -64,6 +64,12 @@ export interface FoldContext {
   /** Gids of applied events (of any materializer) whose `refs` include `subject`. */
   referrers(subject: string): readonly string[];
   /**
+   * The first applied event of `type` carrying `gid`, in fold order. For a payload-derived DET type
+   * every applied event of one gid names the same row key (events.md 7.10), so this maps a member gid
+   * to its row without a partition index.
+   */
+  keyedEvent(gid: string, type: string): FoldEvent | undefined;
+  /**
    * Domain time of `e` for view column `column` (events.md 4.4): `data.stamps[column]`, else the
    * payload's explicit time, else `at`; as a view timestamp.
    */

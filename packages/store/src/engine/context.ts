@@ -142,6 +142,7 @@ export function foldContext(args: {
   identity: IdentityService;
   det: DetGid;
   referrers: (subject: string) => readonly string[];
+  keyedEvent: (gid: string, type: string) => FoldEvent | undefined;
 }): FoldContext {
   const { ids, identity } = args;
   return {
@@ -154,6 +155,7 @@ export function foldContext(args: {
     identityMembers: (kind, root) => identity.members(kind, root),
     accepted: (kind, eid) => identity.accepted(kind, eid),
     referrers: args.referrers,
+    keyedEvent: args.keyedEvent,
     time: domainTime,
   };
 }

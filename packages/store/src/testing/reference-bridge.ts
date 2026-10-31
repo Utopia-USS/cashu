@@ -171,6 +171,26 @@ export function project(store: Store, names: Names): RefView {
       },
     ]);
 
+  // Transaction members are not indexed (each gid maps to its row through its own import): the
+  // applied imports of the log, keyed by their resolved row key.
+  const rootOf = new Map(
+    store
+      .read<{ gid: string; root: string }>(
+        "SELECT gid, root FROM identity_roots WHERE kind = 'accounts'",
+      )
+      .map((r) => [r.gid, r.root]),
+  );
+  const txnMembers = new Map<string, string[]>();
+  for (const r of store.read<{ gid: string; data: string }>(
+    "SELECT gid, data FROM event_log WHERE type = 'txn.imported' AND state = 'applied'",
+  )) {
+    const d = JSON.parse(r.data) as { account: string; dedupHash: string; occurrence: number };
+    const key = `${rootOf.get(d.account) ?? d.account}|${d.dedupHash}|${d.occurrence}`;
+    const list = txnMembers.get(key) ?? [];
+    if (!list.includes(n(r.gid))) list.push(n(r.gid));
+    txnMembers.set(key, list);
+  }
+
   const txRows = store.read<{
     gid: string;
     account_id: number;
@@ -196,7 +216,7 @@ export function project(store: Store, names: Names): RefView {
       `${n(root)}|${names.hashName(r.dedup_hash)}|${r.occurrence}`,
       {
         gid: n(r.gid),
-        members: members("budget.transactions", partition),
+        members: [...(txnMembers.get(partition) ?? [])].sort(),
         claim: c?.claim ?? null,
         leg,
       },

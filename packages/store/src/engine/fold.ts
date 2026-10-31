@@ -75,6 +75,7 @@ export class MaterializerRunner {
       identity: d.identity,
       det: d.det,
       referrers: (subject) => d.log.referrers(subject),
+      keyedEvent: (gid, type) => d.log.keyedEvent(gid, type),
     });
   }
 

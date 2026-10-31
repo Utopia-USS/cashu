@@ -74,6 +74,7 @@ export class EventLog {
   readonly #setState: SqlStatement;
   readonly #insertRef: SqlStatement;
   readonly #referrers: SqlStatement;
+  readonly #keyed: SqlStatement;
   /** Statements of the variable-shape reads: a type list (fixed per materializer) x a padded size. */
   readonly #shapes = new Map<string, SqlStatement>();
 
@@ -89,6 +90,10 @@ export class EventLog {
     this.#referrers = db.prepare(
       `SELECT e.gid FROM event_refs r JOIN event_log e ON e.eid = r.eid
        WHERE r.subject = ? AND e.state = 'applied'`,
+    );
+    this.#keyed = db.prepare(
+      `SELECT ${FOLD_COLUMNS} FROM event_log WHERE gid = ? AND type = ? AND state = 'applied'
+       ORDER BY hlc, eid LIMIT 1`,
     );
   }
 
@@ -141,6 +146,12 @@ export class EventLog {
       );
     }
     return out;
+  }
+
+  /** The first applied event of `type` with `gid`, in fold order (served by the gid index). */
+  keyedEvent(gid: string, type: string): FoldEvent | undefined {
+    const r = this.#keyed.get<FoldRow>(gid, type);
+    return r === undefined ? undefined : toFoldEvent(r);
   }
 
   /** Gids of applied events whose refs include `subject`. */

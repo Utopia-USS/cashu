@@ -7,7 +7,7 @@
 // S24 completes this table: cash expenses (`txn.cashExpenseAdded`, `txn.deleted`), the derived
 // columns (transfer groups, effective category from claims + rules + engine, cash mirror legs).
 import { ACCOUNTS } from "../core/accounts.js";
-import type { FoldContext, FoldEvent, Materializer } from "../engine/types.js";
+import { type FoldContext, type FoldEvent, type Materializer, ord } from "../engine/types.js";
 import type { TableDef } from "../sql/ddl.js";
 import { sqlJson } from "../sql/values.js";
 
@@ -69,20 +69,35 @@ interface Target {
   readonly isLeg: boolean;
 }
 
+const IMPORTED = "txn.imported";
+
+function rowKey(e: FoldEvent, ctx: FoldContext): string {
+  return `${ctx.resolve(ACCOUNTS, String(e.data.account))}|${String(e.data.dedupHash)}|${String(e.data.occurrence)}`;
+}
+
+/**
+ * The row key of a member gid at `e`'s position in the fold: through its own import (events.md 7.10:
+ * one row key per gid), which must sort before `e` (until then an event addressed to it is a no-op).
+ */
+function rowOf(gid: string, e: FoldEvent, ctx: FoldContext): string | undefined {
+  const keyed = ctx.keyedEvent(gid, IMPORTED);
+  return keyed === undefined || ord(keyed) > ord(e) ? undefined : rowKey(keyed, ctx);
+}
+
 /**
  * Rows a claim addresses: the row of a member gid, or (for a leg gid) the row of the member whose
  * import refers to that leg gid. Leg gids are never computed backwards: each import records its leg
  * gid as a ref once, when it enters the log.
  */
 function targets(e: FoldEvent, ctx: FoldContext): Target[] {
-  const direct = ctx.members.partitionsOf(e.gid);
-  if (direct.length > 0) return direct.map((key) => ({ key, isLeg: false }));
-  const keys = new Set(ctx.referrers(e.gid).flatMap((g) => ctx.members.partitionsOf(g)));
+  const direct = rowOf(e.gid, e, ctx);
+  if (direct !== undefined) return [{ key: direct, isLeg: false }];
+  const keys = new Set<string>();
+  for (const g of ctx.referrers(e.gid)) {
+    const key = rowOf(g, e, ctx);
+    if (key !== undefined) keys.add(key);
+  }
   return [...keys].map((key) => ({ key, isLeg: true }));
-}
-
-function rowKey(e: FoldEvent, ctx: FoldContext): string {
-  return `${ctx.resolve(ACCOUNTS, String(e.data.account))}|${String(e.data.dedupHash)}|${String(e.data.occurrence)}`;
 }
 
 function splitKey(key: string): [string, string, number] {
@@ -97,11 +112,23 @@ export const transactionsMaterializer: Materializer = {
   handles: ["txn.imported", "txn.categorySet", "txn.categoryCleared"],
   identity: [ACCOUNTS],
   partitions(e, ctx) {
-    return e.type === "txn.imported" ? [rowKey(e, ctx)] : targets(e, ctx).map((t) => t.key);
+    return e.type === IMPORTED ? [rowKey(e, ctx)] : targets(e, ctx).map((t) => t.key);
+  },
+  // A row's members are the imports of its key under every account of the resolved component (a
+  // valid import's gid is DET over its key, events.md 7.10), plus each member's cash leg gid, so a
+  // re-fold finds every import and claim of the row without a partition index.
+  subjects(key, ctx) {
+    const [root, hash, occurrence] = splitKey(key);
+    const out: string[] = [];
+    for (const account of ctx.identityMembers(ACCOUNTS, root)) {
+      const member = ctx.det("transactions", [account, hash, String(occurrence)]);
+      out.push(member, ctx.det("transactions", ["cashleg", member]));
+    }
+    return out;
   },
   // Each import refers to its member's cash leg gid (gid.md 4.4): leg claims of any member find the
   // row through it, also while the leg is absent (events.md 8.3).
-  refs: (e, det) => (e.type === "txn.imported" ? [det("transactions", ["cashleg", e.gid])] : []),
+  refs: (e, det) => (e.type === IMPORTED ? [det("transactions", ["cashleg", e.gid])] : []),
   clear(keys, ctx) {
     for (const key of keys) {
       const [account, hash, occurrence] = splitKey(key);
@@ -116,9 +143,7 @@ export const transactionsMaterializer: Materializer = {
     }
   },
   apply(e, ctx) {
-    if (e.type === "txn.imported") {
-      const key = rowKey(e, ctx);
-      ctx.members.add(key, e.gid);
+    if (e.type === IMPORTED) {
       const d = e.data;
       const accountId = ctx.id(ctx.resolve(ACCOUNTS, String(d.account)));
       // CREATE: the first applied import supplies the row; later members only join it.
