@@ -15,10 +15,8 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     } catch (e) {
       expect(e).toBeInstanceOf(CryptoError);
       expect((e as CryptoError).code).toBe("bad_mnemonic");
-      // The message never echoes what the user typed.
-      for (const word of phrase.split(/\s+/).filter(Boolean)) {
-        expect((e as Error).message.split(/\W+/)).not.toContain(word);
-      }
+      // The message is the fixed text, so it never echoes what the user typed.
+      expect((e as Error).message).toBe(new CryptoError("bad_mnemonic").message);
       return;
     }
     throw new Error("expected bad_mnemonic");

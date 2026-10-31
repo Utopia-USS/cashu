@@ -5,14 +5,66 @@ import { CryptoError, type CryptoErrorCode } from "./errors.js";
 import type { FrameContext } from "./frame.js";
 import { createKeyring, type Keyring } from "./keys.js";
 import { createRecoveryKey } from "./recovery.js";
-import { loadNodeSodium, type Sodium } from "./sodium.js";
+import { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
 
 export const sodium: Sodium = await loadNodeSodium();
+
+/**
+ * A stand-in for react-native-libsodium 1.7 built from libsodium-wrappers: the same function names
+ * as named exports, an AEAD that throws "input type not yet implemented" unless the additional
+ * data is a string, react-native-libsodium's failure message for seal_open, and a default export
+ * object that lacks crypto_box_seal / crypto_box_seal_open.
+ */
+export async function fakeReactNativeLibsodium(): Promise<{
+  namespace: LibsodiumLike;
+  defaultExport: Partial<LibsodiumLike>;
+}> {
+  const { default: lib } = await import("libsodium-wrappers");
+  await lib.ready;
+  const real = lib as unknown as Required<LibsodiumLike>;
+  const notImplemented = (name: string) => new Error(`${name}: input type not yet implemented`);
+  const namespace: Required<LibsodiumLike> = {
+    randombytes_buf: (n) => real.randombytes_buf(n),
+    crypto_box_keypair: () => real.crypto_box_keypair(),
+    crypto_box_seed_keypair: (seed) => real.crypto_box_seed_keypair(seed),
+    crypto_box_seal: (m, pk) => real.crypto_box_seal(m, pk),
+    crypto_box_seal_open: (c, pk, sk) => {
+      try {
+        return real.crypto_box_seal_open(c, pk, sk);
+      } catch {
+        throw new Error(
+          "[react-native-libsodium][crypto_box_seal_open] crypto_box_seal_open failed",
+        );
+      }
+    },
+    crypto_generichash: (n, m, k) => real.crypto_generichash(n, m, k),
+    crypto_aead_xchacha20poly1305_ietf_encrypt: (m, ad, sn, pn, k) => {
+      if (typeof ad !== "string")
+        throw notImplemented("crypto_aead_xchacha20poly1305_ietf_encrypt");
+      return real.crypto_aead_xchacha20poly1305_ietf_encrypt(m, ad, sn, pn, k);
+    },
+    crypto_aead_xchacha20poly1305_ietf_decrypt: (sn, c, ad, pn, k) => {
+      if (typeof ad !== "string")
+        throw notImplemented("crypto_aead_xchacha20poly1305_ietf_decrypt");
+      return real.crypto_aead_xchacha20poly1305_ietf_decrypt(sn, c, ad, pn, k);
+    },
+  };
+  const { crypto_box_seal: _s, crypto_box_seal_open: _o, ...defaultExport } = namespace;
+  return { namespace, defaultExport };
+}
+
+/** The mobile wiring: react-native-libsodium (faked) with the @noble/ciphers AEAD. */
+export const mobileSodium: Sodium = fromLibsodium((await fakeReactNativeLibsodium()).namespace, {
+  aead: "noble",
+});
 
 export const PLAINTEXT_MARKER = "SYNTHETIC-CANARY-merchant-7f3a";
 
 /** Every Sodium backend the frame / wrap / recovery suites run against (`describe.each`). */
-export const backends: [string, Sodium][] = [["libsodium", sodium]];
+export const backends: [string, Sodium][] = [
+  ["libsodium-wrappers", sodium],
+  ["react-native-libsodium + noble AEAD", mobileSodium],
+];
 
 /** Synthetic device ids. */
 export const DEVICE_A = "a1".repeat(16);
