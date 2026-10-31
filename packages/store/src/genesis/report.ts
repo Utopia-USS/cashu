@@ -3,8 +3,11 @@
 // value, a name or a slug; vaults are reported by ordinal (impl notes, change 5). C5 completes the
 // report (events by type, the final JSON shape).
 
-/** Why a genesis run refuses its input. Every refusal exits with 65 (EX_DATAERR). */
-type GenesisErrorCode = "unsupported_schema";
+/**
+ * Why a genesis run refuses its input. Every refusal exits with 65 (EX_DATAERR). Phase 1 (C4):
+ * `recon_collision` (6.3), `unmapped_id_key` (6.5 guard), `clock_skew` (gid.md 7.1).
+ */
+type GenesisErrorCode = "unsupported_schema" | "recon_collision" | "unmapped_id_key" | "clock_skew";
 
 export class GenesisError extends Error {
   readonly code: GenesisErrorCode;
