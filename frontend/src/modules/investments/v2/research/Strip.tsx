@@ -11,14 +11,15 @@ import { useAsync } from "../../../../hooks";
 import { Skeleton } from "../../../../ui";
 import { Mark, UnreadChip, Widget } from "../../../../widgets";
 import { dm, pct, wdm } from "../../labels";
-import { canRestore, useResearchActions, useSegments } from "./data";
+import { useResearchActions, useSegments } from "./data";
 import { getResearch } from "./api";
 import { invKey } from "../api";
 import {
   countsText, healthOf, isLive, lastDone, latestRun, nextSaturday, nNotes,
-  researchCommand, runNotes, runTag, workspacePath, acceptedAt, watchItemId, latestTitle,
+  researchCommand, runNotes, runTag, workspacePath, acceptedAt, watchItemId, latestTitle, candidateCriteria, criterionText, noteSubject,
 } from "./logic";
-import { CandidateCard, type CandidateState, CopyCommand, HealthPill, ScheduleHow, SentimentBars, TopicRow } from "./primitives";
+import { RailRow } from "../HomeRail";
+import { type CandidateState, CopyCommand, HealthPill, ScheduleHow, SentimentBars, TopicRow } from "./primitives";
 import {
   barTitle, contribBars, type DisplayRow, homeTopics, staleSymbols, type SymOf, tone, topicColumns, topicKind, topicSymbols, windowTitle,
 } from "./segments";
@@ -88,25 +89,86 @@ export function ResearchStrip({ ctx, runs, summary }: {
   );
 }
 
-/** Home rail widget under Alerty (P7 design 3): up to two compact candidate cards with Obserwuj / Odrzuć, the new
- * count as the tag, `wszyscy (N)` to the research page. The hook returns no item before the first run. */
+/** Home rail widget under Alerty: one row per open candidate (ticker tile, name, the note's plain sentence), the
+ * actions as icons at the right (Dlaczego pasuje opens the criteria under the row, Obserwuj, Odrzuć); no date, the
+ * research agent dismisses a candidate that is no longer current. `wszyscy (N)` to the research page. The hook
+ * returns no item before the first run. */
 export function CandidatesRail({ ctx, candidates }: { ctx: StripCtx; candidates: ResearchNote[] | null | undefined }) {
   const actions = useResearchActions(ctx.slug, ctx.onChanged);
-  const open = (candidates ?? []).filter((n) => !n.dismissed_at);
+  const [why, setWhy] = useState<number | null>(null);
+  // An expired candidate is gone: the agent gives each one 30 days and writes a fresh note when it still fits.
+  const open = (candidates ?? []).filter((n) => !n.dismissed_at && !n.expired && (!n.expires_at || Date.parse(n.expires_at) > Date.now()));
   const fresh = open.filter((n) => !ctx.watched(n) && !acceptedAt(n) && watchItemId(n) == null);
+  const shown = (fresh.length ? fresh : open).slice(0, 3);
   return (
-    <Widget title={S.candidates} id="inv-candidates" body="tight"
-      count={fresh.length ? <span title={S.newByStrategy(ctx.strategyVersion != null ? ` v${ctx.strategyVersion}` : "")}>{fresh.length}</span> : undefined}
-      controls={open.length > 2 ? <button className="lnk" onClick={() => ctx.onOpenResearch("scope=candidates")}>{S.allCandidates(open.length)}</button> : undefined}>
+    <Widget title={S.candidates} id="inv-candidates" body="tight" className="hrail"
+      controls={open.length > 3 ? <button className="lnk" onClick={() => ctx.onOpenResearch("scope=candidates")}>{S.allCandidates(open.length)}</button> : undefined}>
       {candidates === undefined ? <Skeleton h={96} r={8} />
-        : open.length ? <div className="cands">{open.slice(0, 2).map((n) => (
-            <CandidateCard key={n.id} note={n} compact today={ctx.today} state={ctx.watched(n)} busy={actions.busy === n.id}
-              onWatch={actions.watch} onDismiss={actions.dismiss} onRestore={actions.restore} canRestore={canRestore(n)} />
-          ))}</div>
+        : shown.length ? (
+          <>
+            {fresh.length > 0 && <p className="hlead">{S.candidatesLead(fresh.length)}</p>}
+            {shown.map((n) => {
+              const { name } = noteSubject(n);
+              const watched = !!ctx.watched(n) || !!acceptedAt(n) || watchItemId(n) != null;
+              const text = noteSentence(n);
+              const crit = candidateCriteria(n);
+              const context = typeof n.details?.context === "string" ? n.details.context : null;
+              const busy = actions.busy === n.id;
+              return (
+                <div key={n.id} data-note={n.id}>
+                  <RailRow inst={{ id: n.instrument?.id ?? `c:${n.id}`, label: name, name, symbol: n.instrument?.symbol ?? n.candidate?.symbol ?? null }}
+                    title={name} text={text} right={(
+                      <>
+                        <button className={`hr-ic${why === n.id ? " hr-on" : ""}`} title={S.whyFits} aria-label={S.whyFitsAria(name)} aria-expanded={why === n.id}
+                          onClick={() => setWhy(why === n.id ? null : n.id)}>{ICON_WHY}</button>
+                        <button className={`hr-ic hr-ok${watched ? " hr-on" : ""}`} title={watched ? S.watching : P.watch} aria-label={`${P.watch}: ${name}`}
+                          disabled={busy || watched} onClick={() => actions.watch(n)}>{ICON_WATCH}</button>
+                        <button className="hr-ic hr-no" title={S.dismissTitle} aria-label={`${S.dismissTitle}: ${name}`} disabled={busy}
+                          onClick={() => actions.dismiss(n)}>{ICON_DISMISS}</button>
+                      </>
+                    )} />
+                  {why === n.id && (
+                    <div className="hr-why">
+                      {crit.items.map((c, k) => <span key={k}>{c.met ? "✓" : "·"} {criterionText(c)}</span>)}
+                      {context && <span>{context}</span>}
+                      {!crit.total && !context && <span>{n.title}</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )
         : <div className="empty">{S.noCandidates}</div>}
     </Widget>
   );
 }
+
+/** The candidate note's plain sentence: the agent's headline (or its brief's), else the context, else the met
+ * criteria, else the title (older notes; it often just repeats the name). */
+function noteSentence(n: ResearchNote): string {
+  const d = n.details as Record<string, unknown> | null | undefined;
+  const brief = d && typeof d.brief === "object" && d.brief ? (d.brief as Record<string, unknown>).headline : null;
+  const head = typeof d?.headline === "string" ? d.headline : typeof brief === "string" ? brief : null;
+  if (head?.trim()) return head.trim();
+  if (typeof d?.context === "string" && d.context.trim()) return d.context.trim();
+  const met = candidateCriteria(n).items.filter((c) => c.met).slice(0, 2).map(criterionText);
+  return met.length ? met.join(" · ") : n.title;
+}
+
+const ICON_WHY = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 0 1 4.8 1c0 1.7-2.3 2.2-2.3 3.5" /><path d="M12 17h.01" />
+  </svg>
+);
+const ICON_WATCH = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />
+  </svg>
+);
+const ICON_DISMISS = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+);
 
 export function ThesisRow({ s, health, name, symbol, inst, muted, sub, right, onOpen }: {
   s: InstrumentSummary; health: ReturnType<typeof healthOf>; name: string; symbol: string | null; muted?: boolean;

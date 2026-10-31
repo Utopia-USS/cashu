@@ -1207,6 +1207,7 @@ class AlertBody(BaseModel):
     cooldown_days: int | None = None
     expires_at: dt.datetime | None = None
     expires_in_days: int | None = None
+    tag: str | None = None
 
 
 class AlertPatchBody(BaseModel):
@@ -1214,6 +1215,7 @@ class AlertPatchBody(BaseModel):
 
     title: str | None = None
     note: str | None = None
+    tag: str | None = None  # "" or null clears it
     params: dict[str, Any] | None = None
     polarity: str | None = None
     severity: str | None = None
@@ -1263,7 +1265,7 @@ def alert_create(profile: CurrentProfile, body: AlertBody) -> dict:
 
 @router.patch("/alerts/{alert_id}")
 def alert_update(profile: CurrentProfile, alert_id: int, body: AlertPatchBody) -> dict:
-    """Update texts / params / polarity / severity / cooldown / expiry, or snooze (``status:
+    """Update texts (``tag`` "" or null clears it) / params / polarity / severity / cooldown / expiry, or snooze (``status:
     snoozed`` with ``snooze_days`` or ``snoozed_until``), mute (``status: muted``) or re-arm
     (``status: active``). Snoozing and muting close the alert's open signal at once."""
     from .service import alerts as alert_service

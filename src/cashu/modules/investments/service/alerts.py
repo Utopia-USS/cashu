@@ -30,6 +30,7 @@ from ..alerts import (
     evaluate_alert,
     is_alert_key,
     validate,
+    validate_tag,
     validate_text,
 )
 from ..alerts.catalog import MAX_COOLDOWN_DAYS, MAX_EXPIRY_DAYS
@@ -194,6 +195,7 @@ class AlertInput:
     cooldown_days: int | None = None
     expires_at: dt.datetime | None = None
     expires_in_days: int | None = None
+    tag: str | None = None
 
 
 def create(
@@ -213,6 +215,7 @@ def create(
             data.kind, data.params, scope=data.scope, has_instrument=data.instrument_id is not None
         )
         title, note = validate_text(data.title, data.note)
+        tag = validate_tag(data.tag)
     except AlertValidationError as e:
         raise _invalid(e) from None
     _check_instrument(session, profile, data.instrument_id)
@@ -240,6 +243,7 @@ def create(
         severity=severity,
         title=title,
         note=note,
+        tag=tag,
         source=source.value,
         created_by=created_by,
         status=AlertStatus.ACTIVE.value,
@@ -256,6 +260,7 @@ def create(
 UPDATABLE = (
     "title",
     "note",
+    "tag",
     "params",
     "polarity",
     "severity",
@@ -276,7 +281,7 @@ def update(
     *,
     now: dt.datetime | None = None,
 ) -> InvAlert:
-    """Change an alert: texts, params (same kind, re-validated), polarity, severity, cooldown, expiry
+    """Change an alert: texts (``tag`` "" or null clears it), params (same kind, re-validated), polarity, severity, cooldown, expiry
     (``expires_at`` null clears it), or its status: ``muted`` / ``snoozed`` (``snooze_days`` or
     ``snoozed_until``) close its open signal at once; ``active`` re-arms a muted, snoozed or expired
     one. The kind and the instrument never change (create a new alert instead)."""
@@ -298,6 +303,11 @@ def update(
         except AlertValidationError as e:
             raise _invalid(e) from None
         row.title, row.note = title, note
+    if "tag" in changes:
+        try:
+            row.tag = validate_tag(changes["tag"])
+        except AlertValidationError as e:
+            raise _invalid(e) from None
     if "params" in changes:
         try:
             valid = validate(

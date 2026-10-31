@@ -57,6 +57,19 @@ def live_agent_alerts(session: Session, profile_id: int) -> int:
     ).one()
 
 
+def tags_in_use(session: Session, profile_id: int) -> list[tuple[str, int]]:
+    """Distinct tags of the profile's alerts (any status) with how many alerts carry each, most used
+    first (ties by tag)."""
+    count = func.count(InvAlert.id)
+    rows = session.exec(
+        select(InvAlert.tag, count)
+        .where(InvAlert.profile_id == profile_id, _LIVE_ROW, InvAlert.tag.is_not(None))
+        .group_by(InvAlert.tag)
+        .order_by(count.desc(), InvAlert.tag)
+    ).all()
+    return [(tag, n) for tag, n in rows]
+
+
 def open_alert_signals(session: Session, profile_id: int) -> dict[int, InvSignal]:
     """Open signals of alerts, by alert id."""
     rows = session.exec(

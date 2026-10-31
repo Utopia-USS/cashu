@@ -36,7 +36,8 @@ import { C } from "../../../common.strings.ts";
 import { S } from "./Home.strings.ts";
 import { runError } from "../logic";
 import { makeUndo, UNDO_WINDOW_MS, undoMessage, undoSettled } from "../undo";
-import { AlertsManager, AlertsWidget, type InstrumentChoice } from "./Alerts";
+import { AlertsManager, type InstrumentChoice } from "./Alerts";
+import { AlertsBrief, SignalsBrief } from "./HomeRail";
 import type { Hint } from "../api";
 import { accKey, dropInv, getAlerts, getDigestV2, getOverviewV2, getPerformance, getPositionsV2, getSignalsV2, getWatchlist, invKey, type PerfPoint } from "./api";
 import { AssetDrawer } from "./AssetDrawer";
@@ -45,7 +46,7 @@ import { useRunState } from "./runState";
 import { AssetDetail, assetName } from "./AssetPage";
 import { Journal } from "./Journal";
 import {
-  benchmarkLabel, contributionFacts, daysSince, instName, monthlyFlows, nextWeekday, planForMonth, signalLinkTarget, signalPlace, signalText,
+  benchmarkLabel, contributionFacts, daysSince, type InstLike, instName, monthlyFlows, nextWeekday, planForMonth, signalLinkTarget, signalText,
   staleBenchmark,
 } from "./logic";
 import { usePlannedDeposits } from "./Overview";
@@ -55,7 +56,7 @@ import { useResearchHome } from "./research";
 import { canonKey, isSegment } from "./research/segments";
 import { isMacroKey } from "./research/macro";
 import { type DeckStats, ReviewButton, ReviewDeck, useReviewDeckData } from "./ReviewDeck";
-import { type SignalFilter, type SignalsCtx, SignalsDialog, SignalsRail } from "./Signals";
+import { type SignalFilter, type SignalsCtx, SignalsDialog } from "./Signals";
 import { WatchlistWidget } from "./Watchlist";
 import { readStored } from "../../../core/storage.ts";
 
@@ -214,15 +215,13 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const [sigDialog, setSigDialog] = useState<{ filter: SignalFilter; focusId: number | null } | null>(null);
   useEffect(() => { setSigDialog(null); }, [route]);
 
-  // A notification click opens `?signal=<id>` (F6 NT): an open signal is scrolled to and highlighted in the
-  // Sygnały rail when it is one of its rows, else in the signals dialog (the account filter is dropped when it
-  // hides it); a closed one opens its asset drawer (the timeline) or the journal; an unknown or foreign id
-  // leaves just the home. Handled once per id.
+  // A notification click opens `?signal=<id>` (F6 NT): an open signal opens the signals dialog at it (the account
+  // filter is dropped when it hides it; the rail shows subjects, not signals); a closed one opens its asset drawer
+  // (the timeline) or the journal; an unknown or foreign id leaves just the home. Handled once per id.
   const signalParam = params.get("signal");
   const needHistory = !!signalParam && !!sig.data && !sig.data.some((s) => String(s.id) === signalParam);
   const sigHistory = useAsync(() => (needHistory ? getSignalsV2(slug, "all").catch(() => []) : Promise.resolve([])).then((list) => ({ for: signalParam, list })),
     [slug, needHistory, signalParam]);
-  const [focusSignal, setFocusSignal] = useState<number | null>(null);
   const linkDone = useRef<string | null>(null);
   useEffect(() => {
     if (!signalParam || linkDone.current === signalParam || !sig.data || !positions) return;
@@ -233,8 +232,7 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
     if (t.kind === "open") {
       const dropFilter = filter != null && !signals.some((s) => s.id === t.id);
       if (dropFilter) setFilter(null);
-      if (signalPlace(t.id, dropFilter ? sig.data : signals, held) === "rail") setFocusSignal(t.id);
-      else setSigDialog({ filter: "all", focusId: t.id });
+      setSigDialog({ filter: "all", focusId: t.id });
     } else {
       toast(S.signalClosed(t.status), 4000);
       if (t.kind === "asset") openAsset(t.instrumentId); else openJournal();
@@ -518,9 +516,17 @@ export function InvestmentsV2({ ctx }: { ctx: ModuleCtx }) {
   const expired = (digest?.signals.resolved ?? []).filter((s) => s.status === "expired").map((s) => ({ title: s.instrument_label ?? signalText(s).title }));
   const items: (GridItem | false)[] = [];
   items.push({ id: "hero", span: 3, node: hero });
-  const wSignals: GridItem = { id: "signals", span: 1, node: <SignalsRail signals={sig.data ? signals : null} ctx={signalsCtx} hl={false} focusId={focusSignal}
-    paused={!!sigDialog} onAll={(focusId) => setSigDialog({ filter: "all", focusId: focusId ?? null })} /> };
-  const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsWidget slug={slug} alerts={alertsList} near={strategy?.facts?.alerts ?? null} onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} onChanged={reload} /> };
+  // The rail next to the review deck (HomeRail.tsx): what is new since the review and what it put off, the alerts
+  // close to their level or fired lately; the decisions themselves are on the deck's Do decyzji card.
+  const insts = new Map<number, InstLike>();
+  for (const p of positions?.positions ?? []) insts.set(Number(p.instrument.id), p.instrument);
+  for (const w of watch) if (w.instrument) insts.set(w.instrument_id, w.instrument);
+  const wSignals: GridItem = { id: "signals", span: 1, node: <SignalsBrief items={deckData.live.rail} deck={deckData.live.decide} rest={deckData.live.railRest}
+    total={signals.length} loading={!sig.data || !deckData.ready} reviewDue={due} reviewName={digest?.review?.name ?? S.weeklyReview}
+    lastReviewAt={doneLocal ?? digest?.last_review?.done_at ?? null} nextOn={digest?.review?.next_on ?? null} insts={insts}
+    onOpenAsset={(id) => openAsset(id)} onOpenReview={openReview} onAll={(focusId) => setSigDialog({ filter: "all", focusId: focusId ?? null })} /> };
+  const wAlerts: GridItem = { id: "alerts", span: 1, node: <AlertsBrief alerts={alertsList} near={strategy?.facts?.alerts ?? null} sinceAt={digest?.since_at ?? null}
+    onManage={() => go("alerts")} onNew={() => go("alerts?new=1")} /> };
   const wValue: GridItem = { id: "value", span: 2, node: <ValueChartWidget slug={slug} accounts={accountsFilter} nonce={nonce} initial={perf1y.loading ? undefined : perf1y.data} /> };
   const wAlloc: GridItem = { id: "alloc", span: 1, node: <AllocationWidget overview={overview} strategy={strategy ?? null} filtered={filter != null} wide today={today}
     view={allocView} onView={setAllocView} onAdd={() => setDrawer({ kind: "account" })} onReconcile={(id) => setDrawer({ kind: "import", account: id })} onAlias={alias}

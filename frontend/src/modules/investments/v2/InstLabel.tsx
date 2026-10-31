@@ -26,7 +26,7 @@ const OPEN_DELAY = 350;
 
 /** The tile: same width for every monogram of a density; a 5-character one (`00241`, `BRK-B`), or 4 capitals with
  * two or more of the widest letters (`WWWW`, `MMMM`), steps the type down (`data-n="5"`) instead of widening it. */
-function Tile({ inst }: { inst: InstLike }) {
+export function InstTile({ inst }: { inst: InstLike }) {
   const st = useInstState();
   const mono = instMono(inst);
   const dense = mono.length >= 5 || (mono.length === 4 && (mono.match(/[WM]/g) ?? []).length >= 2);
@@ -108,7 +108,7 @@ export function InstLabel({ inst, density = "row", onOpen, text, accounts, stale
   }
   return (
     <span className={CLS[density]} ref={ref} title={title} {...hover.handlers}>
-      <Tile inst={inst} />
+      <InstTile inst={inst} />
       <span className="tx">
         <span className="ln">{nameNode}{badges}{action}{density === "header" && sub != null && sub !== "" && <span className="sub">{sub}</span>}</span>
         {density !== "header" && sub != null && sub !== "" && <span className="sub">{sub}</span>}
@@ -169,7 +169,7 @@ function InstCard({ anchor, id, inst, accounts, stale, hints }: { anchor: HTMLEl
   const f = instCardFacts(inst, useFacts(inst, accounts, stale, hints));
   return (
     <HoverCard anchor={anchor} id={id}>
-      <div className="ih"><span className="il"><Tile inst={inst} /></span><div><b>{f.head[0]}</b>{f.head[1] && <span>{f.head[1]}</span>}</div></div>
+      <div className="ih"><span className="il"><InstTile inst={inst} /></span><div><b>{f.head[0]}</b>{f.head[1] && <span>{f.head[1]}</span>}</div></div>
       {f.rows.length > 0 && (
         <div className="kvl">{f.rows.map(([k, v, cls], n) => <Fragment key={`${k}:${n}`}><span className="k">{k}</span><span className={cls ?? (k === "ISIN" ? "tnum" : undefined)}>{v}</span></Fragment>)}</div>
       )}

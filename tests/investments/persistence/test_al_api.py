@@ -116,6 +116,39 @@ def test_alert_kinds_and_alert_crud(client):
     assert client.delete(f"{base}/alerts/{aid}").status_code == 404
 
 
+def test_alert_tag_is_normalized_patched_and_cleared(client):
+    slug, _ = household(client)
+    base = f"/api/p/{slug}/investments"
+    body = {
+        "kind": "price_above",
+        "params": {"level": 90},
+        "instrument_id": ids(client, slug)["XMPL"],
+    }
+    r = client.post(f"{base}/alerts", json={**body, "title": "x", "tag": "cena!"})
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "alert_invalid"
+    assert "tag:" in r.json()["detail"]
+    r = client.post(
+        f"{base}/alerts", json={**body, "title": "Nad 90", "tag": "  Średnia  Krocząca "}
+    )
+    assert r.status_code == 201, r.text
+    aid = r.json()["id"]
+    assert r.json()["tag"] == "średnia krocząca"
+    untagged = client.post(f"{base}/alerts", json={**body, "title": "Bez tagu"}).json()
+    assert untagged["tag"] is None
+    assert {a["id"]: a["tag"] for a in client.get(f"{base}/alerts").json()} == {
+        aid: "średnia krocząca",
+        untagged["id"]: None,
+    }
+    assert client.patch(f"{base}/alerts/{aid}", json={"tag": "Wybicie"}).json()["tag"] == "wybicie"
+    r = client.patch(f"{base}/alerts/{aid}", json={"tag": "x" * 25})
+    assert r.status_code == 422 and r.headers["X-Cashu-Error-Code"] == "alert_invalid"
+    r = client.patch(f"{base}/alerts/{aid}", json={"title": "Nad 90 zł"})
+    assert r.json()["tag"] == "wybicie"  # untouched when not sent
+    assert client.patch(f"{base}/alerts/{aid}", json={"tag": ""}).json()["tag"] is None
+    client.patch(f"{base}/alerts/{aid}", json={"tag": "rsi"})
+    assert client.patch(f"{base}/alerts/{aid}", json={"tag": None}).json()["tag"] is None
+
+
 def test_watchlist_api(client):
     slug, _ = household(client)
     base = f"/api/p/{slug}/investments"

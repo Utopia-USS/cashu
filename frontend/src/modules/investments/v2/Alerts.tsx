@@ -17,8 +17,8 @@ import {
   type Alert, type AlertInput, type AlertKindInfo, type AlertPatch, deleteAlert, getAlertKinds, getAlerts, getSignalsV2, invKey, patchAlert, postAlert, restoreAlert, type SignalV2,
 } from "./api";
 import {
-  alertConditionText, alertDefaultTitle, alertDistance, alertFact, alertLevelText, alertNowText, alertPreview, alertState, alertWhenSuffix, instName, KIND_LABEL, orderAlerts, price,
-  ratioX, unnameBuckets, waitingAlerts,
+  alertConditionText, alertDefaultTitle, alertDistance, alertFact, alertLevelText, alertNowText, alertPreview, alertState, alertWhenSuffix, KIND_LABEL, orderAlerts, price,
+  ratioX, unnameBuckets,
 } from "./logic";
 import { alertDeleteUndo, offerUndo, recreateInput } from "./undoFlow";
 import { alertPatch, buildParams, draftText, expiryChoice, expiryValue, formKind, validate } from "./alertForm";
@@ -53,33 +53,6 @@ export async function removeAlertWithUndo(slug: string, a: Alert, toast: (t: str
 
 // ---- widget on the home ------------------------------------------------------------------------------------
 
-/** Thresholds of "close to the level" from the strategy facts (null: the defaults). */
-type Near = { near_price_pct?: number | null; near_pp?: number | null } | null | undefined;
-const nearOf = (n: Near) => (n ? { pricePct: n.near_price_pct ?? null, pp: n.near_pp ?? null } : null);
-
-export function AlertsWidget({ slug, alerts, near, onManage, onNew, onChanged }: {
-  slug: string; alerts: Alert[] | null; near?: Near; onManage: () => void; onNew: () => void; onChanged: () => void;
-}) {
-  const toast = useToast();
-  const all = alerts ?? [];
-  const live = all.filter((a) => a.status === "active" || a.status === "triggered");
-  const waiting = waitingAlerts(all);
-  const th = nearOf(near);
-  const nearN = waiting.filter((a) => alertState(a, th) === "near").length;
-  const met = live.length - waiting.length;
-  const flight = useInFlight();
-  const remove = (a: Alert) => { void flight.run(() => removeAlertWithUndo(slug, a, toast, onChanged)); };
-  return (
-    <Widget title={S.alerts} id="inv-alerts" count={waiting.length || undefined} controls={<button className="btn sm" onClick={onNew}>{S.addNew}</button>} body="tight"
-      footer={<><FootFacts items={[nearN > 0 && <><AlertIcon state="near" /><b>{nearN}</b> {S.near}</>, met > 0 && <><AlertIcon state="met" /><b>{met}</b> {S.inSignals}</>]} /><span className="spacer" />
-        <button className="lnk" onClick={onManage}>{S.allCount(live.length)}</button></>}>
-      {!alerts ? <Skeleton h={120} /> : !live.length ? (
-        <div className="empty">{S.noAlerts}</div>
-      ) : !waiting.length ? <div className="empty">{S.noneWaiting}</div>
-        : waiting.slice(0, 4).map((a) => <AlertRow key={a.id} a={a} near={th} onRemove={a.source === "agent" ? () => remove(a) : undefined} />)}
-    </Widget>
-  );
-}
 
 /** An alert as a row: the state icon + title (+ agent badge), `teraz <b>now</b>`, the distance to the level with
  * its bar (home); `compact` (the asset page): the condition, `od d.m · teraz now` when met, else the distance. */

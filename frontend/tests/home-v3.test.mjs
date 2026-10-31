@@ -1,10 +1,10 @@
 // Inwestycje home v3 pure logic (design/v3/home-v3/home-v3.md rev 2, F8): signals by subject and scope, the
-// facts of the rail rows, freshness, alert states, table markers, the Rachunki view and the new alert kinds.
+// facts of the signal rows, freshness, alert states, table markers, the Rachunki view and the new alert kinds.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   accountSnapshot, alertConditionText, alertDefaultTitle, alertDistance, alertFact, alertPreview, alertState, alertStateOf, contributionFacts, cursorOrder,
-  groupPlan, groupSignals, railGroups, railRows, rowFlags, signalCurrent, signalFact, signalPlace, signalScope, signalSubject, signalText, splitByScope,
+  groupPlan, groupSignals, rowFlags, signalCurrent, signalFact, signalScope, signalSubject, signalText, splitByScope,
   stateOf, subjectKey, waitingAlerts,
 } from "../src/modules/investments/v2/logic.ts";
 import { buildParams, draftText } from "../src/modules/investments/v2/alertForm.ts";
@@ -64,20 +64,6 @@ test("groupSignals: a good and a bad signal of one instrument are one mixed grou
   eq(g[2].primary, null);
   assert.deepEqual(groupPlan(g[0]), { primary: g[0].live[0], rest: [g[0].live[1]] });
   eq(groupPlan(g[2]), null);
-});
-
-test("railGroups / railRows / signalPlace: scope sections, cap 4, a group's second line lands in the rail", () => {
-  const held = new Set(["1", "2", "3", "4", "5"]);
-  const list = [1, 2, 3, 4, 5].map((i) => sig({ id: i, instrument_id: i, polarity: "positive", first_seen_at: `2026-10-0${i}T07:00:00Z` }))
-    .concat([sig({ id: 50, instrument_id: 5, polarity: "negative", first_seen_at: "2026-09-20T07:00:00Z" })])
-    .concat([sig({ id: 90, instrument_id: 9, polarity: "negative", first_seen_at: "2026-10-03T07:00:00Z" })]);
-  assert.deepEqual(railGroups(list, held, "portfolio").map((g) => g.key), ["i:5", "i:4", "i:3", "i:2"]);
-  assert.deepEqual(railGroups(list, held, "watched").map((g) => g.key), ["i:9"]);
-  assert.deepEqual(railRows(list, held).map((g) => g.key), ["i:5", "i:4", "i:3", "i:2", "i:9"]);
-  eq(signalPlace(50, list, held), "rail"); // the second line of the QUBT-like group
-  eq(signalPlace(1, list, held), "dialog"); // fifth subject of Portfel
-  eq(signalPlace(90, list, held), "rail");
-  eq(signalPlace(77, list, held), "dialog");
 });
 
 test("splitByScope and cursorOrder: polarity filter drops lines and empty groups", () => {

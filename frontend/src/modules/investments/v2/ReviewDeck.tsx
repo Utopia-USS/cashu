@@ -85,8 +85,12 @@ export function useReviewDeckData({ slug, nonce, digest, perfWeek, perfYear, sig
     const d = decideItems(signals, digestResearch, names, proposals, { since: sinceAt, theses: thesesQ.data ?? undefined });
     const ideas = openIdeas(research.candidates ?? []);
     const { cards, skipped } = deckCards({ movers, sectors, events, macroChanges, decide: d.items, ideas }, order);
-    return { cards, skipped, decide: d.items, more: d.more, rest: d.rest, ideas };
-  }, [signals, digestResearch, names, proposals, sinceAt, thesesQ.data, research.candidates, movers, sectors, events, macroChanges, order]);
+    // The home rail sorts the same subjects, snoozed ones included, into new and put off (railLogic.ts).
+    const rail = decideItems(signals, digestResearch, names, [], {
+      since: sinceAt, theses: thesesQ.data ?? undefined, includeSnoozed: true, lastReviewAt: digest?.last_review?.done_at ?? null, limit: Infinity,
+    });
+    return { cards, skipped, decide: d.items, more: d.more, rest: d.rest, ideas, rail: rail.items, railRest: rail.rest };
+  }, [signals, digestResearch, names, proposals, sinceAt, digest, thesesQ.data, research.candidates, movers, sectors, events, macroChanges, order]);
   return { seg, macro, research, notesQ, cal, digestResearch, week, benchStale, bench, sigma, verdict, ddNow, ddMax, sectors, movers, events, macroChanges, ready, live };
 }
 

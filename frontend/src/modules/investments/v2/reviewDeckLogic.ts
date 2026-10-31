@@ -163,6 +163,12 @@ export interface DecideItem {
   /** What it means for the owner: the other facts in words, then the thesis line (exit plan / when it fails). */
   context?: string;
   actions: DecideAction[]; signalIds?: number[]; instrumentId?: number | null; proposalId?: number;
+  /** A subject: a signal of it is new since the last review (the home rail's "Nowe"). */
+  fresh?: boolean;
+  /** A subject: when its newest signal was first seen (ms; the rail tells what predates the last review). */
+  seenAt?: number;
+  /** A subject whose every signal is snoozed (`includeSnoozed` only): the earliest end of the snooze. */
+  snoozedUntil?: string | null;
 }
 /** The undecided rest: subjects whose state did not change (the review's "bez zmian") and news for Research. */
 export interface DecideRest { review: number; research: number }
@@ -188,8 +194,12 @@ const isResearch = (s: SignalV2) => s.kind.startsWith("research:");
 const relationOf = (s: SignalV2) => (isResearch(s) ? str(s.payload.relation) : null);
 const ts = parseServerTime;
 const newer = (s: SignalV2, since: number) => Number.isFinite(since) && ts(s.first_seen_at) > since;
-/** The baseline of "new": the last review, at most NEW_MAX_DAYS back. */
-const newSince = (since: string | null | undefined, now: number) => Math.max(ts(since ?? null), now - NEW_MAX_DAYS * DAY);
+/** The baseline of "new" (ms): the last review, at most NEW_MAX_DAYS back. */
+export const newSinceMs = (since: string | null | undefined, now: number) => {
+  const cap = now - NEW_MAX_DAYS * DAY, at = ts(since ?? null);
+  return Number.isFinite(at) ? Math.max(at, cap) : cap;
+};
+const newSince = newSinceMs;
 
 /** A share in words: "ponad 1/3", "ok. połowę"; below a tenth the percentage. */
 export function shareWords(x: number): string {
@@ -268,14 +278,21 @@ function subjectsOf(open: SignalV2[]): Subject[] {
 }
 
 /** What waits for the owner (see the section comment): subject items grouped risk / chance / mixed / plan and the
- * thesis changes of the week (at most 6 together), the agent's proposals (never cut), then one "rules to fix"
- * item. `since` = the last review (signals first seen after it are new), `theses` = the subjects' theses by
- * instrument id. */
+ * thesis changes of the week (at most `limit`, 6, together), the agent's proposals (never cut), then one "rules to
+ * fix" item. `since` = the last review (signals first seen after it are new), `theses` = the subjects' theses by
+ * instrument id. The home rail adds `includeSnoozed` and `lastReviewAt`: a subject the last review put off (every
+ * signal snoozed, or a rule signal that was new in that review and is still undecided) is an item too. */
 export function decideItems(signals: SignalV2[], research: DigestResearch | null | undefined, names?: Map<number, string>, proposals: ProposalLike[] = [],
-  opts: { since?: string | null; theses?: Map<number, ThesisLite>; now?: number } = {}): { items: DecideItem[]; more: number; rest: DecideRest } {
+  opts: { since?: string | null; theses?: Map<number, ThesisLite>; now?: number; includeSnoozed?: boolean; lastReviewAt?: string | null; limit?: number } = {},
+): { items: DecideItem[]; more: number; rest: DecideRest } {
   const now = opts.now ?? Date.now();
   const since = newSince(opts.since, now);
-  const open = signals.filter((s) => !s.snoozed && !s.decisions.length && (s.status === "active" || s.status === "acknowledged"));
+  const reviewed = ts(opts.lastReviewAt ?? null);
+  const limit = opts.limit ?? MAX_DECIDE;
+  // In the last review's deck: a rule signal new then (at most NEW_MAX_DAYS before it) and still undecided now.
+  const wasInReview = (s: SignalV2) => Number.isFinite(reviewed) && !isResearch(s) && ts(s.first_seen_at) <= reviewed && ts(s.first_seen_at) > reviewed - NEW_MAX_DAYS * DAY;
+  // Snoozed signals wait out of the deck; the home rail asks for them (what the review put off).
+  const open = signals.filter((s) => (opts.includeSnoozed || !s.snoozed) && !s.decisions.length && (s.status === "active" || s.status === "acknowledged"));
   const rest: DecideRest = { review: 0, research: 0 };
   const items: DecideItem[] = [];
   const stale: SignalV2[] = [];
@@ -286,25 +303,32 @@ export function decideItems(signals: SignalV2[], research: DigestResearch | null
     // A thesis weakened by a note too weak for its own signal still gives the instrument's open signals a reason.
     const healthRel = !changing && sub.instrumentId != null ? health.get(sub.instrumentId) ?? null : null;
     const fresh = sub.live.filter((s) => !isResearch(s) && newer(s, since));
-    if (!changing && !healthRel && !fresh.length) {
+    const carried = opts.includeSnoozed ? sub.live.filter((s) => s.snoozed || wasInReview(s)) : [];
+    const putOff = carried.length > 0 && (all.every((s) => s.snoozed) || carried.some(wasInReview));
+    if (!changing && !healthRel && !fresh.length && !putOff) {
       if (sub.instrumentId == null && !isResearch(sub.live[0]) && sub.live.every((s) => now - ts(s.first_seen_at) > STALE_RULE_DAYS * DAY)) stale.push(...all);
       else if (sub.live.some((s) => !isResearch(s) || relationOf(s) === "supports")) rest.review++;
       else rest.research++;
       continue;
     }
-    items.push(subjectItem(sub, changing ?? null, healthRel, fresh, names, sub.instrumentId != null ? opts.theses?.get(sub.instrumentId) : undefined));
+    // New for the rail: a new rule signal, research that changed the thesis since the review, or the week's health.
+    const isNew = fresh.length > 0 || (!!changing && newer(changing, since)) || !!healthRel;
+    items.push(subjectItem(sub, changing ?? null, healthRel, fresh.length ? fresh : carried, isNew, fresh.length > 0, names,
+      sub.instrumentId != null ? opts.theses?.get(sub.instrumentId) : undefined));
   }
   const covered = new Set(items.map((d) => d.instrumentId).filter((x) => x != null));
   const theses = (research?.theses_changed ?? []).filter((c) => !covered.has(c.instrument_id)).map((c) => thesisItem(c, names)).filter((x): x is DecideItem => !!x);
   const ordered = [...items, ...theses].sort((a, b) => DECIDE_GROUPS.indexOf(a.group) - DECIDE_GROUPS.indexOf(b.group));
   // The agent's proposals wait for an approval only the owner can give: never cut by the limit.
-  const shown = [...ordered.slice(0, MAX_DECIDE), ...proposals.map(proposalItem)];
+  const shown = [...ordered.slice(0, limit), ...proposals.map(proposalItem)];
   if (stale.length) shown.push(rulesItem(stale, names));
-  return { items: shown, more: Math.max(0, ordered.length - MAX_DECIDE), rest };
+  return { items: shown, more: Math.max(0, ordered.length - limit), rest };
 }
 
-function subjectItem(sub: Subject, changing: SignalV2 | null, healthRel: string | null, fresh: SignalV2[], names: Map<number, string> | undefined,
-  thesis: ThesisLite | undefined): DecideItem {
+/** `fresh`: the signals that speak when no thesis change does (the new ones, else the ones the review put off);
+ * `isNew` / `newTag`: the subject counts as new for the rail / its tag says "nowe". */
+function subjectItem(sub: Subject, changing: SignalV2 | null, healthRel: string | null, fresh: SignalV2[], isNew: boolean, newTag: boolean,
+  names: Map<number, string> | undefined, thesis: ThesisLite | undefined): DecideItem {
   const all = [...sub.live, ...sub.ladder];
   const rel = changing ? relationOf(changing) : healthRel;
   const fulfilled = rel === "fulfills";
@@ -322,9 +346,11 @@ function subjectItem(sub: Subject, changing: SignalV2 | null, healthRel: string 
   const steps = lead ? sub.ladder.filter((s) => s.kind === lead.kind) : [];
   if (steps.length) facts.unshift(S.ladder(steps.length + 1, dmIso(steps.map((s) => s.first_seen_at ?? "").sort()[0])));
   const context = [...facts, thesisLine(thesis, group, fulfilled)].filter(Boolean).join(" ") || undefined;
-  const tag = `${GROUP_TAG[group]}${rel ? ` · ${REL_TAG[rel] ?? ""}` : fresh.length ? ` · ${S.newSignal}` : ""}`;
+  const tag = `${GROUP_TAG[group]}${rel ? ` · ${REL_TAG[rel] ?? ""}` : newTag ? ` · ${S.newSignal}` : ""}`;
+  const snoozed = all.every((s) => s.snoozed) ? all.map((s) => s.snoozed_until ?? "").filter(Boolean).sort()[0] ?? null : null;
   return {
     key: `s:${sub.key}`, kind: "subject", group, tone: GROUP_TONE[group], tag, title: name, why, context,
+    fresh: isNew, seenAt: lastSeen, snoozedUntil: snoozed,
     // A portfolio rule (no instrument) has nothing to buy or sell: it is noted or snoozed.
     actions: sub.instrumentId == null ? ACTIONS.mixed() : ACTIONS[group](), signalIds: all.map((s) => s.id), instrumentId: sub.instrumentId,
   };
