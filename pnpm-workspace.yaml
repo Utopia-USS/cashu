@@ -2,8 +2,11 @@ packages:
   - "packages/*"
   - "apps/*"
   - "tools/arch"
-minimumReleaseAgeExclude:
-  - electron@45.2.1
+# Install scripts run only for packages listed here as true. electron (45+) ships none: its binary is
+# downloaded and checksum-verified on the first `require("electron")` (node_modules/electron/index.js),
+# so there is nothing to build; pnpm still asks, and the answer is no.
+allowBuilds:
+  electron: false
 # TRANSITIONAL(arch-tools): dependency-cruiser parses TypeScript with the classic compiler API, which
 # TS 7 (tsgo) no longer ships. Declaring the peer lets it resolve the TS 6 that tools/arch installs for
 # parsing only. Remove (with the TS 6 pin) once dependency-cruiser and typescript-eslint read TS 7.

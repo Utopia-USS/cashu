@@ -34,8 +34,8 @@ importers:
         specifier: 1.64.1
         version: 1.64.1
       electron:
-        specifier: 45.2.1
-        version: 45.2.1(supports-color@7.2.0)
+        specifier: 45.1.0
+        version: 45.1.0(supports-color@7.2.0)
 
   apps/mobile: {}
 
@@ -1002,8 +1002,8 @@ packages:
   electron-to-chromium@1.5.468:
     resolution: {integrity: sha512-8XdEp3sIqO+PzmVPxhzqHq/3+yCxp44m27cm2WY1sRn3ZhwKyKmqSi2hx6gEhmnOXmh8NUuYE00z6Onzn5m6DA==}
 
-  electron@45.2.1:
-    resolution: {integrity: sha512-t433yuo8Kh8WG/mTStnPRT/NtpWw8A+caNLJgeU0tS/FlfOkeNEntFsac4ViLgDxZOmDe7BeSkOANVqrqNHhDA==}
+  electron@45.1.0:
+    resolution: {integrity: sha512-i7qKVAh/KR5v1pf56NhGGX2QYHcdjvLgS7koL6ui50c+zUDGLRunR95nXcTpHPURKOQ4GDBG8BmXiDgOQ8DD0A==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -2485,7 +2485,7 @@ snapshots:
 
   electron-to-chromium@1.5.468: {}
 
-  electron@45.2.1(supports-color@7.2.0):
+  electron@45.1.0(supports-color@7.2.0):
     dependencies:
       '@electron-internal/extract-zip': 1.0.8
       '@electron/get': 5.1.0(supports-color@7.2.0)
