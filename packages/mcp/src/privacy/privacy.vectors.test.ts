@@ -92,12 +92,20 @@ interface TextRow {
 
 describe("scrubText, isinValid, scrubNumbers, leakCheck (texts)", () => {
   const { rows } = loadVectors<{ rows: TextRow[] }>("texts");
-  it(`replays ${rows.length} synthetic texts`, () => {
+  // One `it` per variant, so each gets its own timeout budget on a loaded machine.
+  for (const strict of [true, false]) {
+    const key = strict ? "strict" : "amounts";
+    it(`replays ${rows.length} synthetic texts (scrubText ${key})`, () => {
+      const m = new Mismatches();
+      for (const [i, r] of rows.entries()) {
+        m.check(`#${i} ${key}`, scrubText(r.text, { strict, guard: guard(r.guard) }), r[key]);
+      }
+      expect(m.items, m.report()).toEqual([]);
+    });
+  }
+  it(`replays ${rows.length} synthetic texts (isinValid, scrubNumbers, leakCheck)`, () => {
     const m = new Mismatches();
     for (const [i, r] of rows.entries()) {
-      const g = guard(r.guard);
-      m.check(`#${i} strict`, scrubText(r.text, { strict: true, guard: g }), r.strict);
-      m.check(`#${i} amounts`, scrubText(r.text, { strict: false, guard: g }), r.amounts);
       m.check(`#${i} isin`, isinValid(r.text), r.isin);
       m.check(`#${i} numbers`, scrubNumbers(r.text), r.numbers);
       if (r.leak) {
@@ -298,10 +306,11 @@ describe("Redactor + leakCheck on random labelled trees", () => {
   }>("trees");
   const vocabulary = loadVectors<{ vocabulary: string[] }>("market").vocabulary;
   const summaryOk = macro.summaryChecker(new Set(vocabulary));
-  it(`replays ${file.rows.length} trees in both privacy levels`, () => {
-    const m = new Mismatches();
-    for (const [i, r] of file.rows.entries()) {
-      for (const privacy of ["strict", "amounts"] as const) {
+  // One `it` per privacy level, so each gets its own timeout budget on a loaded machine.
+  for (const privacy of ["strict", "amounts"] as const) {
+    it(`replays ${file.rows.length} trees in privacy level ${privacy}`, () => {
+      const m = new Mismatches();
+      for (const [i, r] of file.rows.entries()) {
         const redactor = new Redactor({ privacy, guard: guard(r.guard), summaryOk });
         let got: TreeOutcome;
         try {
@@ -327,9 +336,9 @@ describe("Redactor + leakCheck on random labelled trees", () => {
         }
         m.check(`#${i} ${privacy}`, got, r[privacy]);
       }
-    }
-    expect(m.items, m.report()).toEqual([]);
-  });
+      expect(m.items, m.report()).toEqual([]);
+    });
+  }
 });
 
 describe("scrubAmountLiterals over the Python parser's trees", () => {
@@ -448,23 +457,30 @@ describe("S37fix adversarial vectors (shared file + separator / inflection / num
     rows: AdversarialRow[];
   }>("adversarial");
   const g = new NameGuard({ profileId: 1, names: file.guard_names });
-  it(`replays ${file.rows.length} texts byte for byte`, () => {
+  it(`replays ${file.rows.length} texts byte for byte (normalize, identifierIn, mask)`, () => {
     const m = new Mismatches();
     for (const [i, r] of file.rows.entries()) {
       m.check(`#${i} norm`, normalizeForMatching(r.text), r.norm);
       m.check(`#${i} raw_leak`, identifierIn(r.text), r.raw_leak);
       m.check(`#${i} mask`, g.mask(r.text), r.mask);
-      for (const strict of [true, false]) {
-        for (const guarded of [false, true]) {
-          const key = (strict ? "strict" : "amounts") + (guarded ? "_guard" : "");
+    }
+    expect(m.items, m.report()).toEqual([]);
+  });
+  // One `it` per scrub variant, so each gets its own timeout budget on a loaded machine.
+  for (const strict of [true, false]) {
+    for (const guarded of [false, true]) {
+      const key = (strict ? "strict" : "amounts") + (guarded ? "_guard" : "");
+      it(`replays ${file.rows.length} texts byte for byte (scrubText ${key})`, () => {
+        const m = new Mismatches();
+        for (const [i, r] of file.rows.entries()) {
           const out = scrubText(r.text, { strict, guard: guarded ? g : null });
           m.check(`#${i} ${key}`, out, r[key]);
           m.check(`#${i} ${key}_leak`, identifierIn(out), r[`${key}_leak`]);
         }
-      }
+        expect(m.items, m.report()).toEqual([]);
+      });
     }
-    expect(m.items, m.report()).toEqual([]);
-  });
+  }
   it("classifies money keys like Python", () => {
     for (const [key, money] of Object.entries(file.money_keys))
       expect(isMoneyKey(key), key).toBe(money);

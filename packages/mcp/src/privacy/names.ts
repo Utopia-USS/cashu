@@ -330,8 +330,9 @@ export function nameTerms(name: string, { tokens: perWord }: { tokens: boolean }
   return out;
 }
 
-function containsTerm(folded: string, term: string): boolean {
-  return uRegex(`(?<![${PY_W}])${escapeRe(term)}(?![${PY_W}])`).test(folded);
+/** A whole-word match of `term` in a folded text (`containsTerm` in Python). */
+function termRe(term: string): RegExp {
+  return uRegex(`(?<![${PY_W}])${escapeRe(term)}(?![${PY_W}])`);
 }
 
 /** Every ordering of `words` (Python `itertools.permutations`). */
@@ -397,6 +398,12 @@ export class NameGuard {
   readonly symbols: ReadonlySet<string>;
   private secretSource: SecretSource | null;
   private secret: Uint8Array | null = null;
+  // The guard's compiled patterns, built once on first use (the inputs are fixed at construction):
+  // Python's `re` caches compiled patterns, so the port compiles each one once per guard instead of
+  // once per call (`mask` runs on every string a tool returns).
+  private aliasPatterns: readonly (readonly [RegExp, string])[] | null = null;
+  private namePatterns: readonly RegExp[] | null = null;
+  private maskPatterns: readonly RegExp[] | null = null;
 
   constructor(init: NameGuardInit) {
     this.profileId = init.profileId;
@@ -410,10 +417,14 @@ export class NameGuard {
   /** `text` with every owner-typed alias replaced by its public name (case-insensitive, whole words, longest first). */
   swapAliases(text: string): string {
     if (!text || this.strictAliases.length === 0) return text;
+    this.aliasPatterns ??= [...this.strictAliases]
+      .sort((a, b) => pyLen(b[0]) - pyLen(a[0]))
+      .map(([alias, publicName]) => [
+        uRegex(`(?<![${PY_W}])${ignoreCaseLiteral(alias)}(?![${PY_W}])`, "gi"),
+        publicName,
+      ]);
     let out = text;
-    const ordered = [...this.strictAliases].sort((a, b) => pyLen(b[0]) - pyLen(a[0]));
-    for (const [alias, publicName] of ordered) {
-      const pattern = uRegex(`(?<![${PY_W}])${ignoreCaseLiteral(alias)}(?![${PY_W}])`, "gi");
+    for (const [pattern, publicName] of this.aliasPatterns) {
       out = out.replace(pattern, () => publicName);
     }
     return out;
@@ -435,7 +446,8 @@ export class NameGuard {
   isPrivate(merchant: string): boolean {
     if (this.privatePayees.has(normalize(merchant))) return true;
     const folded = pyStrip(fold(merchant).split(NAME_SPLIT).join(" "));
-    for (const term of this.names) if (containsTerm(folded, term)) return true;
+    this.namePatterns ??= [...this.names].map(termRe);
+    for (const pattern of this.namePatterns) if (pattern.test(folded)) return true;
     // the same words in another order ("NOWAK ANNA" for a known "ANNA NOWAK")
     const words = new Set(pySplit(folded));
     for (const n of this.names) {
@@ -486,12 +498,8 @@ export class NameGuard {
     const chars = Array.from(text);
     const folds = maskFolds(chars); // folded UTF-16 unit -> code point index in `text`
     const spans: [number, number][] = [];
-    // longest first; equal lengths in code point order (as Python sorts them)
-    const terms = [...this.names].sort((a, b) => pyLen(b) - pyLen(a) || compareStr(a, b));
-    for (const term of terms) {
-      const words = pySplit(term);
-      if (words.length === 0) continue; // an empty term (never collected) would match everywhere
-      const pattern = uRegex(termPattern(words), "g");
+    this.maskPatterns ??= this.buildMaskPatterns();
+    for (const pattern of this.maskPatterns) {
       for (const [folded, index] of folds) {
         pattern.lastIndex = 0;
         for (let m = pattern.exec(folded); m !== null; m = pattern.exec(folded)) {
@@ -512,6 +520,18 @@ export class NameGuard {
     spans.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
     for (const [start, end] of spans) chars.splice(start, end - start, "[name]");
     return chars.join("");
+  }
+
+  /** One `g` pattern per name term: longest first, equal lengths in code point order (as Python sorts them). */
+  private buildMaskPatterns(): RegExp[] {
+    const terms = [...this.names].sort((a, b) => pyLen(b) - pyLen(a) || compareStr(a, b));
+    const patterns: RegExp[] = [];
+    for (const term of terms) {
+      const words = pySplit(term);
+      if (words.length === 0) continue; // an empty term (never collected) would match everywhere
+      patterns.push(uRegex(termPattern(words), "g"));
+    }
+    return patterns;
   }
 }
 
