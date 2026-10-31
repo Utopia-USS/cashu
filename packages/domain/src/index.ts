@@ -3,5 +3,7 @@ export const PACKAGE_NAME = "@cashu/domain";
 export * from "./dates.js";
 export * from "./decimal.js";
 export * from "./iban.js";
+/** Investments module (namespaced: its names would collide with other modules', e.g. `Transaction`). */
+export * as investments from "./investments/index.js";
 export * from "./money.js";
 export * from "./text.js";
