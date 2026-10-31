@@ -1,6 +1,13 @@
 // @cashu/store: the event-sourced store every runtime uses (desktop utility process, phone, CLI).
 // Spec: packages/store/spec/events.md, gid.md. Platform pieces come in through `SqlDriver` adapters.
+export {
+  addManualPosition,
+  revalue,
+  setDepreciation,
+  setNote,
+} from "./assets/commands.js";
 export { assetsModule } from "./assets/index.js";
+export { deleteCashTransaction, importStatement, setCushion } from "./budget/commands.js";
 export { budgetModule } from "./budget/index.js";
 export { canonicalJson } from "./canonical.js";
 export {
@@ -21,6 +28,18 @@ export {
   runCommand,
   storeWriter,
 } from "./command.js";
+export {
+  createProfile,
+  openAccount,
+  recordBalance,
+  removeAccount,
+  renameAccount,
+  renameProfile,
+  restoreAccount,
+  setAccountType,
+  setModules,
+  setProfileSettings,
+} from "./core/commands.js";
 export { coreModule } from "./core/index.js";
 export {
   CONTRIBUTIONS,
@@ -53,6 +72,7 @@ export {
 } from "./gid.js";
 export { HybridClock, type MetaClockStore, metaClockStore } from "./hlc.js";
 export { investmentsModule } from "./investments/index.js";
+export { addLoan, setLoan, setPaymentMatching } from "./loans/commands.js";
 export { loansModule } from "./loans/index.js";
 export {
   type ApplyResult,
