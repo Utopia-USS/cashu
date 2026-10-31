@@ -106,7 +106,8 @@ def seed_cmd(
     ],
 ) -> None:
     """Seed the gid map of the current profile (``--profile``) from a genesis export and link its
-    vault, so existing rows resolve for the outbox and the inbound applier. Counts only."""
+    vault, so existing rows resolve for the outbox and the inbound applier. All or nothing: any
+    conflict writes nothing and exits 1. Counts only."""
     init_db()
     entries = [json.loads(line) for line in ids.read_text(encoding="utf-8").splitlines() if line.strip()]
     with get_session() as s:
@@ -117,6 +118,9 @@ def seed_cmd(
             cliutil.err_console.print(f"[red]{e}[/]")
             raise typer.Exit(1) from None
     typer.echo(json.dumps(counts, sort_keys=True))
+    if counts["conflicts"]:
+        cliutil.err_console.print("[red]conflicting mappings: nothing was seeded[/]")
+        raise typer.Exit(1)
 
 
 @sync_app.command("prune")

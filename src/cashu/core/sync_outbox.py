@@ -993,22 +993,49 @@ GENESIS_SOURCE = "genesis"
 def seed_ids(session, profile_id: int, rows: Iterable[dict]) -> dict:
     """Seed ``sync_ids`` (and the vault link) of one profile from the genesis exporter's ``ids.jsonl``
     (S26): ``{"table", "localId", "gid"}`` per exported row, ``localId`` in :func:`_local_id` form;
-    the ``profiles`` entry carries the vault id and must name ``profile_id``. Idempotent: a mapping
-    already held is kept; a row or gid mapped to something else is a conflict, never overwritten.
-    Returns counts (never values). Raises ``ValueError`` on a malformed file or another profile's."""
+    the ``profiles`` entry carries the vault id and must name ``profile_id``. All or nothing: every
+    entry is classified first (held = kept; a row or gid mapped to something else, in the map or twice
+    in the file, = conflict) and on any conflict nothing is written. Idempotent for the same vault.
+    Returns counts (never values). Raises ``ValueError`` on a malformed file, another profile's file
+    or a profile already linked to another vault (never relinked silently)."""
     conn = session.connection()
     entries = list(rows)
     vaults = [e for e in entries if e.get("table") == "profiles"]
     if len(vaults) != 1 or str(vaults[0].get("localId")) != str(profile_id):
         raise ValueError("the ids file has no entry for this profile (another profile's file?)")
+    vault = vaults[0].get("gid")
+    if not isinstance(vault, str) or not _VAULT_ID.match(vault):
+        raise ValueError("a vault id is 32 lower-case hex characters")
+    linked = _vault_of(conn, profile_id)
+    if linked is not None and linked != vault:
+        raise ValueError("this profile is linked to another vault; unlink it first (never relinked silently)")
+    clash = conn.execute(
+        select(VAULTS.c.profile_id).where(VAULTS.c.vault_id == vault, VAULTS.c.profile_id != profile_id)
+    ).first()
+    if clash is not None:
+        raise ValueError("that vault is linked to another profile")
     out = {"inserted": 0, "kept": 0, "conflicts": 0}
+    fresh: list[tuple[str, str, str]] = []
+    seen_ids: set[tuple[str, str]] = set()
+    seen_gids: set[tuple[str, str]] = set()
     for e in entries:
         name, local_id, gid = e.get("table"), e.get("localId"), e.get("gid")
         if name == "profiles":
             continue
         spec = SPECS.get(name) if isinstance(name, str) else None
-        if spec is None or spec.gid == "none" or not isinstance(local_id, str) or not _GID.match(gid or ""):
+        if (
+            spec is None
+            or spec.gid == "none"
+            or not isinstance(local_id, str)
+            or not isinstance(gid, str)
+            or not _GID.match(gid)
+        ):
             raise ValueError("bad entry in the ids file")
+        if (name, local_id) in seen_ids or (name, gid) in seen_gids:
+            out["conflicts"] += 1
+            continue
+        seen_ids.add((name, local_id))
+        seen_gids.add((name, gid))
         held = conn.execute(
             select(IDS.c.local_id, IDS.c.gid).where(
                 IDS.c.profile_id == profile_id,
@@ -1021,13 +1048,18 @@ def seed_ids(session, profile_id: int, rows: Iterable[dict]) -> dict:
         elif held:
             out["conflicts"] += 1
         else:
-            conn.execute(
-                insert(IDS).values(
-                    profile_id=profile_id, table_name=name, local_id=local_id, gid=gid, source=GENESIS_SOURCE
-                )
+            fresh.append((name, local_id, gid))
+    if out["conflicts"]:
+        return out
+    for name, local_id, gid in fresh:
+        conn.execute(
+            insert(IDS).values(
+                profile_id=profile_id, table_name=name, local_id=local_id, gid=gid, source=GENESIS_SOURCE
             )
-            out["inserted"] += 1
-    link_vault(session, profile_id, str(vaults[0].get("gid")))
+        )
+    out["inserted"] = len(fresh)
+    if linked is None:
+        link_vault(session, profile_id, vault)
     return out
 
 
