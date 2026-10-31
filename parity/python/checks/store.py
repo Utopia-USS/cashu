@@ -1029,6 +1029,18 @@ def _decision_signals(refs: _Refs, row: dict, links: list[int]) -> list[str]:
     return keys
 
 
+def _valid_iban(value: Any) -> bool:
+    """``isValidIban`` of packages/store/src/events/v1/identity.ts: mod-97 over the alphanumerics,
+    upper case; a bare 26-digit NRB is checked as ``PL`` + NRB."""
+    s = re.sub(r"[^0-9A-Za-z]", "", value or "").upper()
+    if re.fullmatch(r"[0-9]{26}", s):
+        s = "PL" + s
+    if not re.fullmatch(r"[A-Z]{2}[0-9]{2}[0-9A-Z]{11,30}", s):
+        return False
+    digits = "".join(str(ord(c) - 55) if c.isalpha() else c for c in s[4:] + s[:4])
+    return int(digits) % 97 == 1
+
+
 def _project(ctx: Ctx, refs: _Refs, table: str, row: dict, extra: dict) -> dict | None:
     """The canonical row, or None when it is left out (a derived row, a dangling SKIP ref)."""
     from cashu.core.sync_outbox import CLAIM_SOURCES
@@ -1040,6 +1052,8 @@ def _project(ctx: Ctx, refs: _Refs, table: str, row: dict, extra: dict) -> dict 
         if row["category_source"] not in CLAIM_SOURCES:
             row["category"] = row["category_source"] = None
     elif table == "accounts":
+        if not _valid_iban(row["iban"]):
+            row["iban"] = None  # D-G14 / events.md 6.4 N2: the view shows only a mod-97 valid IBAN
         ext = row["external_id"]
         if isinstance(ext, str) and ext.endswith(f"~{row['id']}"):
             row["external_id"] = (
