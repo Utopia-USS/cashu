@@ -1,71 +1,14 @@
-// Bridge between the reference fold (`events/v1/reference/fold.ts`) and the store: completes the
-// reference scenarios' payloads with the fields the zod schemas require, maps synthetic names to valid
-// gids, and projects the store's view back into the reference's `RefView` shape. Synthetic data only.
+// Bridge between the reference fold (`events/v1/reference/fold.ts`) and the store: maps the shared
+// scenarios' synthetic names to valid gids, and projects the store's view back into the reference's
+// `RefView` shape. Synthetic data only.
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { detPartsOf } from "../events/v1/det-parts.js";
-import type { RefEvent, RefView } from "../events/v1/reference/fold.js";
+import type { RefDet, RefEvent, RefView } from "../events/v1/reference/fold.js";
 import { detGid, detGidFor } from "../gid.js";
 import type { Store } from "../materialize.js";
 import { eventTimestamp } from "../sql/values.js";
 import { TEST_SALT, TEST_VAULT, type TestEnvelope, testUlid } from "./store.js";
-
-// --------------------------------------------------------------------------------------------- //
-// Required payload fields the reference scenarios leave out (values irrelevant to the rules).
-
-const DEFAULTS: Record<string, Record<string, unknown>> = {
-  "account.opened": {
-    bank: "mbank",
-    externalId: null,
-    iban: null,
-    currency: "PLN",
-    type: "checking",
-    name: "Konto",
-    keys: [],
-  },
-  "txn.imported": {
-    batch: null,
-    bookingDate: "2026-01-15",
-    valueDate: null,
-    amount: "-1.00",
-    currency: "PLN",
-    counterpartyName: null,
-    counterpartyIban: null,
-    description: null,
-    reference: null,
-    bankTransactionId: null,
-    source: "csv",
-    raw: {},
-  },
-  "valuation.set": { currency: "PLN", note: null },
-  "instrument.aliasAdded": { guessed: false },
-  "signal.opened": {
-    ruleId: "rule",
-    kind: "test",
-    severity: "info",
-    polarity: "neutral",
-    message: "",
-    instrument: null,
-    account: null,
-    payload: {},
-    run: null,
-  },
-  "decision.recorded": {
-    instrument: null,
-    account: null,
-    action: "held",
-    quantity: null,
-    price: null,
-    currency: null,
-    reason: null,
-  },
-  "proposal.created": { summary: "", reason: null, payload: {}, source: "mcp" },
-  "connectorBinding.set": { autoCommit: false },
-};
-
-export function complete(e: RefEvent): RefEvent {
-  return { ...e, data: { ...(DEFAULTS[e.type] ?? {}), ...e.data } };
-}
 
 // --------------------------------------------------------------------------------------------- //
 // Names <-> gids
@@ -130,14 +73,22 @@ export class Names {
 }
 
 /**
- * Map a scenario to envelopes. Types with deterministic gids (gid.md 4) get the gid the store's
- * materializer expects for their payload (a first pass binds those names), everything else a ULID.
+ * Map a scenario to envelopes. An event whose gid is payload-derived (events.md 7.10) and valid under
+ * the scenario's DET gets the real DET gid of its mapped payload (a first pass binds those names); an
+ * invalid one keeps whatever its name maps to (a valid binding or a ULID), which differs from its
+ * real DET, so the store parks it as the reference does. Everything else gets a ULID.
  */
-export function toEnvelopes(events: readonly RefEvent[], names: Names): TestEnvelope[] {
+export function toEnvelopes(
+  events: readonly RefEvent[],
+  names: Names,
+  synthetic: RefDet,
+): TestEnvelope[] {
   const det = detGidFor(TEST_SALT);
   for (const e of events) {
-    const p = detPartsOf(e.type, mapData(e, names));
-    if (p !== undefined) names.bind(e.gid, det(p.table, p.parts));
+    const p = detPartsOf(e.type, e.data);
+    if (p === undefined || synthetic(p.table, p.parts) !== e.gid) continue;
+    const real = detPartsOf(e.type, mapData(e, names));
+    if (real !== undefined) names.bind(e.gid, det(real.table, real.parts));
   }
   return events.map((e) => toEnvelope(e, names, mapData(e, names)));
 }

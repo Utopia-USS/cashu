@@ -1,15 +1,19 @@
-// Executable reference semantics for the convergence-critical rules of events.md v1.1:
-// identity resolution (6.4), row-keyed folds over resolved keys (6.5), signal episodes (8.7),
-// FWW + causal suppression (6.6), SOFT re-creation, GUARDed wake. It is a pure function of the SET
-// of events (sorted by (hlc, eid), duplicates by eid ignored), so any delivery order or duplication
-// gives the same view. S23 / S25 materializers MUST produce the same results on the same scenarios
-// (reference/convergence.test.ts); they may be incremental, this one is not.
+// Executable reference semantics for the convergence-critical rules of events.md v1.2:
+// deterministic gid check (7.10, invalid-gid), identity resolution (6.4), row-keyed folds over
+// resolved keys (6.4), signal episodes (8.7), FWW + causal suppression (6.6), CREATE (6.2), SOFT
+// re-creation, GUARDed wake. It is a pure function of the SET of events (sorted by (hlc, eid),
+// duplicates by eid ignored), so any delivery order or duplication gives the same view. The store's
+// materializers MUST produce the same results on the shared scenarios (reference/testing/scenarios.ts,
+// run by reference/convergence.test.ts and the store's convergence acceptance); they may be
+// incremental, this one is not.
 //
 // Scope: accounts, transactions (imported), watchlist, instrument overrides (segment GUARD), manual
 // valuations, signals + decisions, proposals + caused events, connector bindings. Other tables follow
 // the same patterns (plain LWW-F / CREATE per gid) and are not modelled here.
 
+import { detPartsOf } from "../det-parts.js";
 import { claimAllowed } from "../identity.js";
+import type { GidTable } from "../namespaces.js";
 
 export interface RefEvent {
   eid: string;
@@ -22,6 +26,21 @@ export interface RefEvent {
 }
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+
+// --------------------------------------------------------------------------------------------- //
+// Deterministic gids (events.md 7.10): an event whose gid is DET over parts its payload carries MUST
+// carry exactly DET(table)[parts]; otherwise it is parked (`invalid-gid`): held, never folded, never
+// a valid cause. DET is a parameter (the store computes the keyed HMAC, the scenarios bind synthetic
+// names), so this module stays free of salts and crypto.
+// --------------------------------------------------------------------------------------------- //
+
+/** `DET(table)[parts]` (gid.md 3). */
+export type RefDet = (table: GidTable, parts: readonly string[]) => string;
+
+function gidValid(e: RefEvent, det: RefDet): boolean {
+  const p = detPartsOf(e.type, e.data);
+  return p === undefined || det(p.table, p.parts) === e.gid;
+}
 
 /** Sort by (hlc, eid) and drop re-delivered duplicates (same eid). */
 function ordered(events: readonly RefEvent[]): RefEvent[] {
@@ -225,8 +244,8 @@ function sortRecord<T>(m: Map<string, T>): Record<string, T> {
   return Object.fromEntries([...m.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
-export function materialize(input: readonly RefEvent[]): RefView {
-  const evs = appliedEvents(ordered(input));
+export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
+  const evs = appliedEvents(ordered(input).filter((e) => gidValid(e, det)));
   const ids = resolveIdentities(evs);
   const acc = (g: string) => ids.accounts.find(g);
   const inst = (g: string) => ids.instruments.find(g);
@@ -235,9 +254,9 @@ export function materialize(input: readonly RefEvent[]): RefView {
   const watchInstrument = new Map<string, string>();
   const txnRowOf = new Map<string, string>();
   const bindingRowOf = new Map<string, string>();
-  const signalKeyOf = new Map<string, string>();
 
   const accounts = new Map<string, AccountRow>();
+  const openedRoots = new Set<string>(); // roots with an applied account.opened of any member
   interface TxnState {
     gid: string;
     members: string[];
@@ -289,6 +308,7 @@ export function materialize(input: readonly RefEvent[]): RefView {
         if (row.externalId === null && str(d.externalId))
           row.externalId = str(d.externalId) ?? null;
         if (e.type === "account.opened") {
+          openedRoots.add(acc(e.gid));
           if (!ownName.has(e.gid)) ownName.set(e.gid, str(d.name) ?? "");
           if (row.name === null) row.name = str(d.name) ?? null;
         }
@@ -387,8 +407,8 @@ export function materialize(input: readonly RefEvent[]): RefView {
         break;
 
       case "signal.opened": {
+        if (episodeOf.has(e.gid)) break; // CREATE: a signal gid is opened once
         const key = resolveDedupKey(String(d.dedupKey), ids);
-        signalKeyOf.set(e.gid, key);
         const open = openByKey.get(key);
         if (open !== undefined) {
           const ep = episodes.get(open);
@@ -472,7 +492,7 @@ export function materialize(input: readonly RefEvent[]): RefView {
       }
 
       case "proposal.created":
-        proposals.set(e.gid, "pending");
+        if (!proposals.has(e.gid)) proposals.set(e.gid, "pending"); // CREATE: the first create stands
         break;
       case "proposal.approved":
       case "proposal.rejected":
@@ -500,6 +520,9 @@ export function materialize(input: readonly RefEvent[]): RefView {
     }
   }
 
+  // An account row exists once an open of any member is applied (its bank, currency and name come
+  // from the first applied open); a component known only through `account.identified` has no row.
+  for (const root of [...accounts.keys()]) if (!openedRoots.has(root)) accounts.delete(root);
   // N4: an explicit rename wins, else the identity root's own opened name.
   for (const [root, row] of accounts) {
     row.name = renamed.get(root) ?? ownName.get(root) ?? row.name;

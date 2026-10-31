@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { ULID_RE, UUID8_RE } from "./events/v1/primitives.js";
 import { detGid, mintUlid, newVaultSalt, vaultSalt } from "./gid.js";
-import { rng, TEST_SALT } from "./testing/store.js";
+import { rng } from "./testing/random.js";
+import { TEST_SALT } from "./testing/store.js";
 
 const IBAN_ACC = "70cc61c8-79b5-80ae-b8cc-fdca7caef49e";
 const EXT_ACC = "a1bb665d-9bf1-81e3-916c-f49d32db099a";

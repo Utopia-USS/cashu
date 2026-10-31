@@ -6,10 +6,12 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { formatHlc } from "./events/v1/hlc-format.js";
-import { materialize, type RefEvent, type RefView } from "./events/v1/reference/fold.js";
+import { materialize, type RefEvent } from "./events/v1/reference/fold.js";
+import { complete, syntheticDet } from "./events/v1/reference/testing/scenarios.js";
 import { viewHash } from "./snapshot.js";
-import { complete, Names, normalize, project, toEnvelopes } from "./testing/reference-bridge.js";
-import { chunked, openTestStore, shuffled } from "./testing/store.js";
+import { chunked, shuffled } from "./testing/random.js";
+import { Names, normalize, project, toEnvelopes } from "./testing/reference-bridge.js";
+import { openTestStore } from "./testing/store.js";
 
 const DEVICES = ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "pppppppppppppppp"] as const;
 
@@ -67,6 +69,18 @@ const step: fc.Arbitrary<Step> = fc.oneof(
       data: { account, dedupHash: h, occurrence: Number(o) },
     };
   }),
+  // An invalid-gid import (events.md 7.10): the gid name of another row key.
+  fc
+    .tuple(pick(TXNS), pick(TXNS))
+    .filter(([g, k]) => g !== k)
+    .map(([gid, key]) => {
+      const [, account, h, o] = key.split("-");
+      return {
+        type: "txn.imported",
+        gid,
+        data: { account, dedupHash: h, occurrence: Number(o) },
+      };
+    }),
   fc
     .record({
       t: pick(TXNS),
@@ -228,35 +242,11 @@ const script = fc
       if (s.type === "proposal.approved") lastApproval = eid;
     }
     return out;
-  })
-  // A ULID created twice (`signal.opened`, `proposal.created` with one gid) is a writer bug where the
-  // reference overwrites the row and the store keeps the first create (CREATE rule, events.md 6.2);
-  // not generated (noted for the lead in the S23 checkpoint).
-  .filter((evs) =>
-    ["signal.opened", "proposal.created"].every((type) => {
-      const gids = evs.filter((e) => e.type === type).map((e) => e.gid);
-      return new Set(gids).size === gids.length;
-    }),
-  );
-
-/**
- * The reference shows an account row as soon as any account event of its component is held; the
- * store shows it once an `account.opened` is held (the view's bank / name / currency are NOT NULL,
- * as in Python). Partial sets differ only there: drop reference rows without an open.
- */
-function withoutUnopenedAccounts(v: RefView, events: readonly RefEvent[]): RefView {
-  const opened = new Set(events.filter((e) => e.type === "account.opened").map((e) => e.gid));
-  return {
-    ...v,
-    accounts: Object.fromEntries(
-      Object.entries(v.accounts).filter(([, row]) => row.members.some((m) => opened.has(m))),
-    ),
-  };
-}
+  });
 
 function deliver(events: RefEvent[], seed: number) {
   const names = new Names();
-  const envs = toEnvelopes(events, names);
+  const envs = toEnvelopes(events, names, syntheticDet(events));
   const order = shuffled(envs, seed);
   const withDupes = [...order, ...shuffled(order, seed + 99).slice(0, 2)];
   const store = openTestStore();
@@ -283,9 +273,7 @@ describe("property: convergence on random synthetic event sets", () => {
     fc.assert(
       fc.property(script, fc.integer({ min: 1, max: 1_000_000 }), (events, seed) => {
         const { store, names } = deliver(events, seed);
-        expect(project(store, names)).toEqual(
-          withoutUnopenedAccounts(normalize(materialize(events)), events),
-        );
+        expect(project(store, names)).toEqual(normalize(materialize(events, syntheticDet(events))));
       }),
       { numRuns: 150 },
     );

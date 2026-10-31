@@ -7,10 +7,10 @@ import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import { detGid } from "./gid.js";
 import { viewHash } from "./snapshot.js";
+import { rng } from "./testing/random.js";
 import {
   EventFactory,
   openTestStore,
-  rng,
   TEST_SALT,
   type TestEnvelope,
   testUlid,

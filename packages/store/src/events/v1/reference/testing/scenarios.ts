@@ -1,0 +1,684 @@
+// The convergence scenarios of the event catalog (events.md 6.7): every review blocker (B1-B3), the
+// order-sensitive majors (M1, M2, M5, M7), the v1.2 rules (N1-N4), invalid-gid parking (G, 7.10),
+// CREATE-once (C, 6.2) and account rows after an open (A). One list, two drivers: the reference fold
+// (reference/convergence.test.ts) and the store's acceptance (src/convergence.test.ts), so the
+// expectations cannot drift. Payloads are complete (zod-valid) so both folds see the same data.
+// Synthetic names stand for gids; `syntheticDet` gives them DET semantics. Test code only: imports
+// nothing from the store.
+import { expect } from "vitest";
+import { shuffled } from "../../../../testing/random.js";
+import { detPartsOf } from "../../det-parts.js";
+import { formatHlc } from "../../hlc-format.js";
+import type { RefDet, RefEvent, RefView } from "../fold.js";
+
+export interface Scenario {
+  /** The group (describe title) the scenario belongs to. */
+  readonly group: string;
+  /** The test title. */
+  readonly name: string;
+  /** Complete payloads (zod-valid), in declaration order. */
+  readonly events: readonly RefEvent[];
+  /** Assertions on the folded view (reference view, or the store's projection of it). */
+  readonly check: (view: RefView) => void;
+}
+
+// --------------------------------------------------------------------------------------------- //
+// Event builder
+
+/** Required payload fields the scenarios leave out (values irrelevant to the rules). */
+const DEFAULTS: Record<string, Record<string, unknown>> = {
+  "account.opened": {
+    bank: "mbank",
+    externalId: null,
+    iban: null,
+    currency: "PLN",
+    type: "checking",
+    name: "Konto",
+    keys: [],
+  },
+  "txn.imported": {
+    batch: null,
+    bookingDate: "2026-01-15",
+    valueDate: null,
+    amount: "-1.00",
+    currency: "PLN",
+    counterpartyName: null,
+    counterpartyIban: null,
+    description: null,
+    reference: null,
+    bankTransactionId: null,
+    source: "csv",
+    raw: {},
+  },
+  "valuation.set": { currency: "PLN", note: null },
+  "instrument.aliasAdded": { guessed: false },
+  "signal.opened": {
+    ruleId: "rule",
+    kind: "test",
+    severity: "info",
+    polarity: "neutral",
+    message: "",
+    instrument: null,
+    account: null,
+    payload: {},
+    run: null,
+  },
+  "decision.recorded": {
+    instrument: null,
+    account: null,
+    action: "held",
+    quantity: null,
+    price: null,
+    currency: null,
+    reason: null,
+  },
+  "proposal.created": { summary: "", reason: null, payload: {}, source: "mcp" },
+  "connectorBinding.set": { autoCommit: false },
+};
+
+/** A scenario event with the payload fields the zod schemas require filled in. */
+export function complete(e: RefEvent): RefEvent {
+  return { ...e, data: { ...(DEFAULTS[e.type] ?? {}), ...e.data } };
+}
+
+const DEV = { a: "aaaaaaaaaaaaaaaa", b: "bbbbbbbbbbbbbbbb", p: "pppppppppppppppp" } as const;
+const BASE_WALL = 1_793_448_000_000; // 2026-10-31T12:00:00.000Z
+let seq = 0;
+
+function ev(
+  device: keyof typeof DEV,
+  wall: number,
+  type: string,
+  gid: string,
+  data: Record<string, unknown>,
+  cause?: string,
+): RefEvent {
+  seq += 1;
+  return complete({
+    eid: `01JC${String(seq).padStart(22, "0")}`,
+    hlc: formatHlc({ wall: BASE_WALL + wall, counter: 0, device: DEV[device] }),
+    at: new Date(BASE_WALL + wall).toISOString(),
+    type,
+    gid,
+    data,
+    ...(cause === undefined ? {} : { cause }),
+  });
+}
+
+/** A synthetic Polish NRB with valid mod-97 check digits for a 24-digit BBAN. */
+function nrb(bban24: string): string {
+  const check = 98n - (BigInt(`${bban24}252100`) % 97n);
+  return `${check.toString().padStart(2, "0")}${bban24}`;
+}
+const N1 = nrb("114000000000000000000001");
+const N2 = nrb("114000000000000000000002");
+const N3 = nrb("114000000000000000000003");
+
+// --------------------------------------------------------------------------------------------- //
+// Synthetic DET and delivery
+
+/**
+ * DET over synthetic names (events.md 7.10): the first declared event of a row key defines that
+ * key's gid, so a second gid for one key, or a second key for one gid, is invalid. Injective per row
+ * key and independent of delivery order (it depends on the scenario only, like a vault salt).
+ */
+export function syntheticDet(events: readonly RefEvent[]): RefDet {
+  const key = (table: string, parts: readonly string[]) => [table, ...parts].join("\u001f");
+  const byParts = new Map<string, string>();
+  const nameOf = new Map<string, string>();
+  for (const e of events) {
+    const p = detPartsOf(e.type, e.data);
+    if (p === undefined) continue;
+    const k = key(p.table, p.parts);
+    if (byParts.has(k) || nameOf.has(e.gid)) continue;
+    byParts.set(k, e.gid);
+    nameOf.set(e.gid, k);
+  }
+  return (table, parts) => byParts.get(key(table, parts)) ?? `det:${key(table, parts)}`;
+}
+
+/** Delivery k of a scenario: shuffled order (seed k + 1) plus 3 re-delivered duplicates. */
+export function delivery<T>(items: readonly T[], k: number): T[] {
+  const order = shuffled(items, k + 1);
+  return [...order, ...shuffled(order, k + 1000).slice(0, 3)];
+}
+
+export const ORDERS = 40;
+
+// --------------------------------------------------------------------------------------------- //
+// Scenarios
+
+const out: Scenario[] = [];
+const scenario = (group: string, name: string, events: RefEvent[], check: Scenario["check"]) =>
+  out.push({ group, name, events, check });
+
+const B1 = "B1 account identity";
+scenario(
+  B1,
+  "CSV without IBAN and Open Banking by IBAN become one account once the IBAN is learned",
+  [
+    ev("a", 10, "account.opened", "acc-csv", {
+      name: "Konto z CSV",
+      iban: null,
+      externalId: "csv-noiban:123",
+      keys: ["ext:mbank:csv-noiban:123"],
+    }),
+    ev("b", 11, "account.opened", "acc-ob", {
+      name: "mBank eKonto",
+      iban: `PL${N1}`,
+      externalId: "eb:uid-1",
+      keys: [`iban:${N1}`, "ext:mbank:eb:uid-1"],
+    }),
+    ev("a", 20, "txn.imported", "t-csv", { account: "acc-csv", dedupHash: "h1", occurrence: 0 }),
+    ev("b", 21, "txn.imported", "t-ob", { account: "acc-ob", dedupHash: "h1", occurrence: 0 }),
+    ev("b", 22, "txn.imported", "t-ob2", { account: "acc-ob", dedupHash: "h2", occurrence: 0 }),
+    ev("a", 30, "account.identified", "acc-csv", { iban: N1, keys: [`iban:${N1}`] }),
+    ev("a", 31, "txn.categorySet", "t-csv", { category: "groceries", source: "manual_txn" }),
+    ev("b", 32, "txn.categorySet", "t-ob", { category: "other", source: "llm_full" }),
+  ],
+  (v) => {
+    const rows = Object.values(v.accounts);
+    expect(rows).toHaveLength(1);
+    expect([...(rows[0]?.members ?? [])].sort()).toEqual(["acc-csv", "acc-ob"]);
+    expect(rows[0]?.gid).toBe("acc-ob"); // the root: the earlier holder of the IBAN key
+    expect(rows[0]?.name).toBe("mBank eKonto"); // N4: the root's own opened name
+    expect(rows[0]?.iban).toBe(`PL${N1}`);
+    const txns = Object.values(v.transactions);
+    expect(txns).toHaveLength(2); // cross-source duplicate collapsed, h2 kept
+    expect(txns.find((t) => t.members.length === 2)?.claim).toBe("groceries"); // manual beats llm
+  },
+);
+scenario(
+  B1,
+  "an Enable Banking re-consent uid joins the account through its IBAN",
+  [
+    ev("b", 10, "account.opened", "acc-1", {
+      name: "Konto",
+      iban: `PL${N1}`,
+      externalId: "eb:uid-1",
+      keys: [`iban:${N1}`, "ext:mbank:eb:uid-1"],
+    }),
+    ev("b", 50, "account.opened", "acc-2", {
+      name: "Konto",
+      iban: `PL${N1}`,
+      externalId: "eb:uid-2",
+      keys: [`iban:${N1}`, "ext:mbank:eb:uid-2"],
+    }),
+    ev("b", 60, "txn.imported", "t2", { account: "acc-2", dedupHash: "h9", occurrence: 0 }),
+  ],
+  (v) => {
+    expect(Object.keys(v.accounts)).toEqual(["acc-1"]);
+    expect(Object.keys(v.transactions)).toEqual(["acc-1|h9|0"]);
+  },
+);
+
+const B2 = "B2 signal episodes";
+const K = "drawdown|i:inst-1";
+scenario(
+  B2,
+  "lease handover: a new leader that has not seen the open signal joins it",
+  [
+    ev("a", 10, "signal.opened", "s1", { dedupKey: K, message: "old leader" }),
+    ev("b", 20, "signal.opened", "s2", { dedupKey: K, message: "new leader" }),
+    ev("p", 30, "decision.recorded", "d1", { signals: ["s2"] }),
+  ],
+  (v) => {
+    expect(Object.keys(v.signals)).toEqual(["s1"]);
+    expect(v.signals.s1?.status).toBe("acknowledged");
+    expect(v.signals.s1?.aliases).toEqual(["s2"]);
+  },
+);
+scenario(
+  B2,
+  "split brain: concurrent opens at any hlc give one open episode; a close ends it",
+  [
+    ev("b", 10, "signal.opened", "s2", { dedupKey: K, message: "b" }),
+    ev("a", 10, "signal.opened", "s1", { dedupKey: K, message: "a" }),
+    ev("a", 40, "signal.closed", "s1", { status: "resolved", reason: "condition cleared" }),
+    ev("b", 50, "signal.opened", "s3", { dedupKey: K, message: "fired again" }),
+  ],
+  (v) => {
+    const open = Object.values(v.signals).filter((e) => e.status === "active");
+    expect(open.map((e) => e.gid)).toEqual(["s3"]);
+    expect(Object.keys(v.signals).sort()).toEqual(["s1", "s3"]);
+  },
+);
+scenario(
+  B2,
+  "research signal opened off the lease, dismissed on the phone, restored",
+  [
+    ev("a", 10, "signal.opened", "r1", { dedupKey: "research:2026-W44|i:inst-1", message: "note" }),
+    ev("p", 20, "signal.closed", "r1", { status: "resolved", reason: "note_dismissed" }),
+    ev("p", 30, "signal.reopened", "r1", { reason: "note_restored" }),
+  ],
+  (v) => expect(v.signals.r1?.status).toBe("active"),
+);
+scenario(
+  B2,
+  "a reopen is a no-op while another episode of the key is open",
+  [
+    ev("a", 10, "signal.opened", "s1", { dedupKey: K }),
+    ev("a", 20, "signal.closed", "s1", { status: "expired", reason: "delete" }),
+    ev("b", 30, "signal.opened", "s2", { dedupKey: K }),
+    ev("a", 40, "signal.reopened", "s1", { reason: "alert_restored" }),
+  ],
+  (v) => {
+    expect(v.signals.s1?.status).toBe("expired");
+    expect(v.signals.s2?.status).toBe("active");
+  },
+);
+scenario(
+  B2,
+  "M7: a stale wake never erases a newer owner snooze",
+  [
+    ev("a", 10, "signal.opened", "s1", { dedupKey: K }),
+    ev("p", 15, "signal.snoozed", "s1", { until: "2026-11-01T00:00:00.000Z" }),
+    ev("p", 90, "signal.snoozed", "s1", { until: "2026-11-30T00:00:00.000Z" }),
+    ev("a", 95, "signal.woken", "s1", { until: "2026-11-01T00:00:00.000Z" }),
+  ],
+  (v) => expect(v.signals.s1?.snoozedUntil).toBe("2026-11-30T00:00:00.000Z"),
+);
+scenario(
+  B2,
+  "decision undo returns the episode to active unless another decision links it",
+  [
+    ev("a", 10, "signal.opened", "s1", { dedupKey: K }),
+    ev("p", 20, "decision.recorded", "d1", { signals: ["s1"] }),
+    ev("p", 21, "decision.recorded", "d2", { signals: ["s1"] }),
+    ev("p", 30, "decision.undone", "d1", {}),
+  ],
+  (v) => expect(v.signals.s1).toMatchObject({ status: "acknowledged", decisions: ["d2"] }),
+);
+
+const B3 = "B3 instrument merge is a redirect in the fold";
+const S = "inst-s";
+const T = "inst-t";
+for (const phoneWall of [3, 20]) {
+  scenario(
+    B3,
+    `writes against the merged source from a device that missed the merge (phone at ${phoneWall})`,
+    [
+      ev("a", 5, "instrument.aliasAdded", "al-1", {
+        instrument: T,
+        namespace: "isin",
+        value: "X1",
+      }),
+      ev("a", 6, "watchlist.added", "w-t", { instrument: T, note: "target note", source: "user" }),
+      ev("a", 7, "valuation.set", "v-t", { instrument: T, asOf: "2026-10-01", unitValue: "10" }),
+      ev("a", 8, "instrumentOverride.segmentSet", "o-t", {
+        instrument: T,
+        segment: "gold",
+        by: "owner",
+      }),
+      ev("a", 10, "instrument.merged", S, { source: S, target: T, reason: "owner" }),
+      ev("p", phoneWall, "watchlist.added", "w-s", { instrument: S, tags: ["x"], source: "agent" }),
+      ev("p", phoneWall + 1, "valuation.set", "v-s", {
+        instrument: S,
+        asOf: "2026-10-01",
+        unitValue: "12",
+      }),
+      ev("p", phoneWall + 2, "instrumentOverride.segmentSet", "o-s", {
+        instrument: S,
+        segment: "energy",
+        by: "agent",
+      }),
+      ev("p", phoneWall + 3, "signal.opened", "sig-s", { dedupKey: `rule|i:${S}` }),
+      ev("a", 11, "signal.opened", "sig-t", { dedupKey: `rule|i:${T}` }),
+    ],
+    (v) => {
+      expect(Object.keys(v.watchlist)).toEqual([T]);
+      expect(v.watchlist[T]?.live).toBe(true);
+      expect(v.watchlist[T]?.note).toBe("target note");
+      expect(Object.keys(v.valuations)).toEqual([`${T}|2026-10-01`]);
+      expect(Object.keys(v.overrides)).toEqual([T]);
+      expect(v.overrides[T]?.segment).toBe("gold"); // the agent never overrides the owner's segment
+      const open = Object.values(v.signals).filter((e) => e.status === "active");
+      expect(open).toHaveLength(1);
+      expect(open[0]?.key).toBe(`rule|i:${T}`);
+    },
+  );
+}
+scenario(
+  B3,
+  "concurrent opposite merges resolve to one canonical instrument",
+  [
+    ev("a", 10, "instrument.merged", "A", { source: "A", target: "B", reason: "owner" }),
+    ev("b", 10, "instrument.merged", "B", { source: "B", target: "A", reason: "owner" }),
+    ev("a", 20, "watchlist.added", "w-a", { instrument: "A", source: "user" }),
+    ev("b", 20, "watchlist.added", "w-b", { instrument: "B", source: "user" }),
+  ],
+  (v) => expect(Object.keys(v.watchlist)).toHaveLength(1),
+);
+scenario(
+  B3,
+  "an alias collision folds the later claimer into the first holder",
+  [
+    ev("a", 10, "instrument.aliasAdded", "al-a", {
+      instrument: "I1",
+      namespace: "yahoo",
+      value: "T.WA",
+    }),
+    ev("b", 11, "instrument.aliasAdded", "al-a", {
+      instrument: "I2",
+      namespace: "yahoo",
+      value: "T.WA",
+    }),
+    ev("b", 12, "watchlist.added", "w2", { instrument: "I2", source: "user" }),
+  ],
+  (v) => expect(Object.keys(v.watchlist)).toEqual(["I1"]),
+);
+
+const M = "majors with order-sensitive rules";
+scenario(
+  M,
+  "M1: a connector binding can be removed and created again",
+  [
+    ev("a", 10, "connectorBinding.set", "b1", { account: "acc", connectorId: "c", params: {} }),
+    ev("a", 20, "connectorBinding.removed", "b1", {}),
+    ev("a", 30, "connectorBinding.set", "b1", {
+      account: "acc",
+      connectorId: "c",
+      params: { x: 1 },
+    }),
+  ],
+  (v) => expect(v.bindings["acc|c"]?.live).toBe(true),
+);
+scenario(
+  M,
+  "M2: re-adding a removed watchlist entry restores it with the new adder",
+  [
+    ev("a", 10, "watchlist.added", "w", { instrument: "I", note: "n", source: "user" }),
+    ev("a", 20, "watchlist.removed", "w", {}),
+    ev("b", 30, "watchlist.added", "w", { instrument: "I", source: "agent" }),
+  ],
+  (v) => expect(v.watchlist.I).toMatchObject({ live: true, note: "n", source: "agent" }),
+);
+{
+  const approve = ev("a", 30, "proposal.approved", "p1", { result: {} });
+  scenario(
+    M,
+    "M5: a losing approval rolls back its caused cursor and imports",
+    [
+      ev("a", 5, "connectorBinding.set", "b1", { account: "acc", connectorId: "c", params: {} }),
+      ev("a", 6, "connectorBinding.cursorAdvanced", "b1", { cursor: "c-1" }),
+      ev("a", 10, "proposal.created", "p1", { kind: "budget_import" }),
+      ev("p", 20, "proposal.rejected", "p1", { note: null }),
+      approve,
+      ev(
+        "a",
+        31,
+        "txn.imported",
+        "t1",
+        { account: "acc", dedupHash: "h", occurrence: 0 },
+        approve.eid,
+      ),
+      ev("a", 32, "connectorBinding.cursorAdvanced", "b1", { cursor: "c-2" }, approve.eid),
+    ],
+    (v) => {
+      expect(v.proposals.p1).toBe("rejected");
+      expect(v.bindings["acc|c"]?.cursor).toBe("c-1");
+      expect(Object.keys(v.transactions)).toEqual([]);
+    },
+  );
+}
+
+const RN1 = "v1.2: row addressing after merges (N1)";
+scenario(
+  RN1,
+  "removing a watchlist entry by its member gid after the instrument merged",
+  [
+    ev("p", 5, "watchlist.added", "w-s", { instrument: "S", source: "user" }),
+    ev("a", 10, "instrument.merged", "S", { source: "S", target: "T", reason: "owner" }),
+    ev("a", 20, "watchlist.removed", "w-s", {}),
+  ],
+  (v) => expect(v.watchlist.T).toMatchObject({ gid: "w-s", live: false }),
+);
+scenario(
+  RN1,
+  "removing a merged watchlist row removes every live member the view shows",
+  [
+    ev("a", 5, "watchlist.added", "w-t", { instrument: "T", source: "user" }),
+    ev("p", 6, "watchlist.added", "w-s", { instrument: "S", source: "agent" }),
+    ev("a", 10, "instrument.merged", "S", { source: "S", target: "T", reason: "owner" }),
+    // the view shows the anchor w-t with members [w-t, w-s]: one batch removes both
+    ev("a", 20, "watchlist.removed", "w-t", {}),
+    ev("a", 21, "watchlist.removed", "w-s", {}),
+  ],
+  (v) => expect(v.watchlist.T).toMatchObject({ gid: "w-t", live: false }),
+);
+scenario(
+  RN1,
+  "a category set on a transaction after its account folded into another",
+  [
+    ev("a", 10, "account.opened", "A", { name: "A", iban: null, keys: ["ext:mbank:k-a"] }),
+    ev("b", 11, "account.opened", "B", { name: "B", iban: `PL${N2}`, keys: [`iban:${N2}`] }),
+    ev("a", 12, "txn.imported", "t-a", { account: "A", dedupHash: "h", occurrence: 0 }),
+    ev("a", 30, "account.identified", "A", { iban: N2, keys: [`iban:${N2}`] }),
+    // the view shows the row under its anchor t-a (its only member): the owner addresses it
+    ev("a", 40, "txn.categorySet", "t-a", { category: "fuel", source: "manual_txn" }),
+  ],
+  (v) => {
+    expect(Object.keys(v.transactions)).toEqual(["B|h|0"]);
+    expect(v.transactions["B|h|0"]).toMatchObject({ gid: "t-a", claim: "fuel" });
+  },
+);
+scenario(
+  RN1,
+  "cash leg edits reach the leg through any member's leg gid",
+  [
+    ev("a", 10, "account.opened", "A", { name: "A", iban: null, keys: ["ext:mbank:k-a"] }),
+    ev("b", 11, "account.opened", "B", { name: "B", iban: `PL${N2}`, keys: [`iban:${N2}`] }),
+    ev("a", 12, "txn.imported", "t-a", { account: "A", dedupHash: "h", occurrence: 0 }),
+    ev("b", 13, "txn.imported", "t-b", { account: "B", dedupHash: "h", occurrence: 0 }),
+    ev("b", 14, "txn.categorySet", "t-b", { category: "cash_withdrawal", source: "manual_txn" }),
+    ev("b", 15, "txn.categorySet", "cashleg:t-b", { category: "cash_other", source: "manual_txn" }),
+    ev("a", 30, "account.identified", "A", { iban: N2, keys: [`iban:${N2}`] }),
+    ev("a", 40, "txn.categorySet", "cashleg:t-a", { category: "cash_food", source: "manual_txn" }),
+  ],
+  (v) => {
+    const row = v.transactions["B|h|0"];
+    expect(row?.members).toEqual(["t-a", "t-b"]);
+    expect(row?.gid).toBe("t-a"); // anchor: the first applied member
+    expect(row?.leg).toEqual({ gid: "cashleg:t-a", claim: "cash_food" });
+  },
+);
+
+const RN2 = "v1.2: one IBAN per account, checksum required (N2)";
+const n2Base = () => [
+  ev("b", 5, "account.opened", "Y", { name: "Real Y", iban: `PL${N1}`, keys: [`iban:${N1}`] }),
+  ev("a", 6, "account.opened", "A", { name: "A", iban: null, keys: ["ext:mbank:k-a"] }),
+];
+for (const [w3, w1] of [
+  [20, 21],
+  [21, 20],
+] as const) {
+  scenario(
+    RN2,
+    `two concurrent IBANs for one account never fuse a third account (walls ${w3} / ${w1})`,
+    [
+      ...n2Base(),
+      ev("a", w3, "account.identified", "A", { iban: N3, keys: [`iban:${N3}`] }),
+      ev("p", w1, "account.identified", "A", { iban: N1, keys: [`iban:${N1}`] }),
+    ],
+    (v) => {
+      for (const row of Object.values(v.accounts)) {
+        expect(row.iban === null || [N1, N3, `PL${N1}`].includes(row.iban)).toBe(true);
+      }
+      expect(v.accountConflicts).toHaveLength(1);
+      expect(v.accounts.Y?.name).toBe("Real Y");
+      if (w3 < w1) {
+        expect(Object.keys(v.accounts).sort()).toEqual(["A", "Y"]); // A took N3 first: no fusion
+        expect(v.accounts.A?.iban).toBe(N3);
+      } else {
+        expect(Object.keys(v.accounts)).toEqual(["Y"]); // A joined Y by N1; N3 refused
+      }
+    },
+  );
+}
+{
+  const masked = `${N1.slice(0, 25)}${N1.endsWith("1") ? "2" : "1"}`; // one digit off
+  scenario(
+    RN2,
+    "an IBAN that fails the mod-97 check is never claimed",
+    [
+      ...n2Base(),
+      ev("a", 20, "account.identified", "A", { iban: masked, keys: [`iban:${masked}`] }),
+    ],
+    (v) => {
+      expect(Object.keys(v.accounts).sort()).toEqual(["A", "Y"]);
+      expect(v.accounts.A?.iban).toBeNull();
+    },
+  );
+}
+
+const RN34 = "v1.2: presence and names after merges (N3, N4)";
+scenario(
+  RN34,
+  "N3: removing the duplicate and then merging keeps the target watched",
+  [
+    ev("a", 5, "watchlist.added", "w-t", { instrument: "T", source: "user" }),
+    ev("a", 6, "watchlist.added", "w-s", { instrument: "S", source: "user" }),
+    ev("a", 7, "watchlist.removed", "w-s", {}),
+    ev("a", 10, "instrument.merged", "S", { source: "S", target: "T", reason: "owner" }),
+  ],
+  (v) => expect(v.watchlist.T?.live).toBe(true),
+);
+scenario(
+  RN34,
+  "N4: an explicit rename beats the root's opened name",
+  [
+    ev("b", 5, "account.opened", "Y", {
+      name: "mBank eKonto",
+      iban: `PL${N1}`,
+      keys: [`iban:${N1}`],
+    }),
+    ev("a", 6, "account.opened", "A", { name: "Z CSV", iban: null, keys: ["ext:mbank:k-a"] }),
+    ev("a", 20, "account.identified", "A", { iban: N1, keys: [`iban:${N1}`] }),
+    ev("p", 30, "account.renamed", "A", { name: "Konto domowe" }),
+  ],
+  (v) => expect(v.accounts.Y?.name).toBe("Konto domowe"),
+);
+
+const G = "v1.2: invalid deterministic gids are parked (events.md 7.10)";
+const openA = () => ev("a", 1, "account.opened", "A", { name: "A", keys: ["ext:mbank:k-a"] });
+scenario(
+  G,
+  "G1 invalid-gid: a txn gid that does not match its payload",
+  [
+    openA(),
+    ev("a", 10, "txn.imported", "t1", { account: "A", dedupHash: "h1", occurrence: 0 }),
+    ev("b", 11, "txn.imported", "t1", { account: "A", dedupHash: "h2", occurrence: 0 }),
+  ],
+  (v) => {
+    expect(Object.keys(v.transactions)).toEqual(["A|h1|0"]);
+    expect(v.transactions["A|h1|0"]?.members).toEqual(["t1"]);
+  },
+);
+scenario(
+  G,
+  "G2 invalid-gid: two gids for one row key",
+  [
+    openA(),
+    ev("a", 10, "txn.imported", "t1", { account: "A", dedupHash: "h1", occurrence: 0 }),
+    ev("b", 5, "txn.imported", "t2", { account: "A", dedupHash: "h1", occurrence: 0 }),
+  ],
+  (v) => {
+    expect(Object.keys(v.transactions)).toEqual(["A|h1|0"]);
+    expect(v.transactions["A|h1|0"]).toMatchObject({ gid: "t1", members: ["t1"] });
+  },
+);
+{
+  // b1 is bound to (A, c0) by its first declared set; the set of (A, c) under b1 is invalid, so
+  // it is never applied and never a valid cause.
+  const approve = ev("a", 20, "proposal.approved", "p1", { result: {} });
+  const invalidSet = ev(
+    "a",
+    21,
+    "connectorBinding.set",
+    "b1",
+    { account: "A", connectorId: "c", params: { x: 1 } },
+    approve.eid,
+  );
+  scenario(
+    G,
+    "G3 a caused event of an invalid-gid event is suppressed",
+    [
+      ev("a", 5, "connectorBinding.set", "b1", { account: "A", connectorId: "c0", params: {} }),
+      ev("a", 10, "proposal.created", "p1", { kind: "budget_import" }),
+      approve,
+      invalidSet,
+      ev("a", 22, "connectorBinding.cursorAdvanced", "b1", { cursor: "c-9" }, invalidSet.eid),
+    ],
+    (v) => {
+      expect(v.proposals.p1).toBe("approved");
+      expect(v.bindings["A|c"]).toBeUndefined();
+      expect(v.bindings["A|c0"]).toEqual({ live: true, params: {}, cursor: null });
+    },
+  );
+}
+scenario(
+  G,
+  "G4 invalid watchlist add",
+  [
+    ev("a", 10, "watchlist.added", "w1", { instrument: "I1", source: "user" }),
+    ev("b", 11, "watchlist.added", "w1", { instrument: "I2", source: "agent" }),
+  ],
+  (v) => {
+    expect(Object.keys(v.watchlist)).toEqual(["I1"]);
+    expect(v.watchlist.I1).toMatchObject({ gid: "w1", live: true, source: "user" });
+  },
+);
+
+const C = "v1.2: a ULID is created once (events.md 6.2 CREATE)";
+scenario(
+  C,
+  "C1 a signal ULID opened twice",
+  [
+    ev("a", 10, "signal.opened", "S", { dedupKey: K, message: "m1" }),
+    ev("a", 20, "signal.closed", "S", { status: "resolved", reason: "x" }),
+    ev("b", 30, "signal.opened", "S", { dedupKey: K, message: "m2" }),
+  ],
+  (v) => {
+    expect(Object.keys(v.signals)).toEqual(["S"]);
+    expect(v.signals.S).toMatchObject({ status: "resolved", message: "m1", aliases: [] });
+  },
+);
+scenario(
+  C,
+  "C2 a proposal created twice",
+  [
+    ev("a", 10, "proposal.created", "P", { kind: "budget_import" }),
+    ev("a", 20, "proposal.approved", "P", { result: {} }),
+    ev("b", 30, "proposal.created", "P", { kind: "budget_import" }),
+  ],
+  (v) => expect(v.proposals).toEqual({ P: "approved" }),
+);
+
+const A = "v1.2: an account row exists once an open is applied";
+scenario(
+  A,
+  "A1 an identified-only account has no row",
+  [
+    ev("a", 10, "account.identified", "A", { keys: ["ext:mbank:k1"] }),
+    ev("a", 20, "txn.imported", "t", { account: "A", dedupHash: "h1", occurrence: 0 }),
+  ],
+  (v) => {
+    expect(v.accounts).toEqual({});
+    expect(Object.keys(v.transactions)).toEqual(["A|h1|0"]);
+  },
+);
+scenario(
+  A,
+  "A2 the row appears with the first open of any member",
+  [
+    ev("a", 10, "account.identified", "A", { keys: ["ext:mbank:k1"] }),
+    ev("b", 20, "account.opened", "B", { name: "N", keys: ["ext:mbank:k1"] }),
+  ],
+  (v) => {
+    expect(Object.keys(v.accounts)).toEqual(["A"]);
+    expect(v.accounts.A).toMatchObject({ gid: "A", name: "N", members: ["A", "B"] });
+  },
+);
+
+/** Every scenario, in a fixed order. */
+export const SCENARIOS: readonly Scenario[] = out;
