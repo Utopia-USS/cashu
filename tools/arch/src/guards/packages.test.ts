@@ -61,3 +61,19 @@ describe("guard: React Compiler is on in every React app", () => {
     ).toEqual([]);
   });
 });
+
+describe("guard: every vitest package wires both test tiers", () => {
+  const vitestPackages = packages.filter((p) => p.manifest.scripts?.test?.startsWith("vitest"));
+
+  it.each(vitestPackages.map((p) => [p.dir, p] as const))("%s", (_dir, pkg) => {
+    const config = join(pkg.dir, "vitest.config.ts");
+    expect(
+      existsSync(join(REPO_ROOT, config)) && /\btiered\(/.test(readRepoFile(config)),
+      `${config} must be \`export default tiered(...)\` from vitest.tiers.ts: without it a *.exhaustive.test.ts file here would run in the fast tier (references/testing.md, "Test tiers")`,
+    ).toBe(true);
+    expect(
+      pkg.manifest.scripts?.["test:exhaustive"],
+      `${pkg.dir}/package.json needs "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"`,
+    ).toBe("CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests");
+  });
+});

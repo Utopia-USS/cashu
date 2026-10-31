@@ -87,7 +87,7 @@ Details, module folders, exports maps, where processes run: [layers.md](referenc
 
 After editing TypeScript in this skill's applicability, verify:
 
-1. `pnpm arch:check` and `pnpm turbo run typecheck lint test` are green (or each remaining failure is
+1. `pnpm arch:check`, `pnpm turbo run typecheck lint test` and `pnpm test:exhaustive` (or `pnpm check:handoff`) are green (or each remaining failure is
    in another scope and reported); no rule disabled, no ignore comment without a reason.
 2. No import goes up the layer table, into another module's internals, or across packages by a
    relative path; new public API is exported from the module `index.ts` and the package `exports`.

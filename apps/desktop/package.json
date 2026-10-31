@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
     "lint": "biome check .",
     "test": "vitest run",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests",
     "dev": "node scripts/dev.mjs",
     "e2e": "playwright test -c e2e/playwright.config.ts"
   },

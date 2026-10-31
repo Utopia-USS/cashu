@@ -39,6 +39,11 @@ jobs:
       - name: Typecheck, lint, test
         run: pnpm turbo run typecheck lint test
 
+      # The exhaustive tier (*.exhaustive.test.ts: code point sweeps, vector replays, property searches,
+      # multi-device simulations), one package at a time so each suite has the runner's cores to itself.
+      - name: Exhaustive tests
+        run: pnpm test:exhaustive
+
       # Layers, module boundaries, pure Views, React hooks / Compiler rules, unused code, package
       # hygiene and the UI guards (tools/arch). Prints the TRANSITIONAL report too.
       - name: Architecture checks

@@ -11,6 +11,7 @@ tags: enforcement, biome, eslint, dependency-cruiser, knip, sherif, hooks, ci
 | `tools/claude-dev/scripts/check-file.sh <file>` | after every edit (the `cashu-dev` plugin runs it as a PostToolUse hook on `.ts` / `.tsx` under packages/, apps/, tools/arch/) | one file, well under 3 s: Biome (safe fixes applied), dependency-cruiser for this file's imports, ESLint react-hooks for React files |
 | `pnpm arch:check` | before a commit, in CI (`.github/workflows/ts.yml`) | the whole repo, all checks below, plus the TRANSITIONAL report |
 | `pnpm turbo run typecheck lint test` | before a commit, in CI | types (TS 7), Biome per package, unit tests |
+| `pnpm test:exhaustive` | in CI, in the pre-handoff gate (`pnpm check:handoff` = check + exhaustive + arch:check) | the exhaustive tier: `*.exhaustive.test.ts` sweeps, property searches, simulations, one package at a time (see [testing.md](testing.md), "Test tiers") |
 
 ## What each check catches
 
@@ -24,7 +25,7 @@ tags: enforcement, biome, eslint, dependency-cruiser, knip, sherif, hooks, ci
 | dependency-cruiser | `tools/arch/depcruise.config.cjs` | layer direction on the resolved graph, module internals, cross-package relative imports, apps importing apps, pure Views and packages/ui (type-only imports allowed), test code in production, cycles |
 | Knip | `tools/arch/knip.jsonc` | unused files, exports, types, dependencies, unlisted dependencies and binaries |
 | sherif | flags in `tools/arch/src/run.ts` | package.json hygiene, one version per dependency |
-| guard tests | `tools/arch/src/guards/` | raw color / spacing / type literals in `apps/**/*.tsx`; PL / EN catalog parity incl. plural categories; story coverage of packages/ui exports and app Views; exports maps on every package; React Compiler on in every React app |
+| guard tests | `tools/arch/src/guards/` | raw color / spacing / type literals in `apps/**/*.tsx`; PL / EN catalog parity incl. plural categories; story coverage of packages/ui exports and app Views; exports maps on every package; React Compiler on in every React app; both test tiers wired in every vitest package |
 | TRANSITIONAL report | `tools/arch/src/guards/transitional.ts` | lists every `TRANSITIONAL(<scope>)` marker by scope; a report, never a failure |
 
 Packages are wired so the cheapest layer does the most: `package.json` dependencies + pnpm's isolated

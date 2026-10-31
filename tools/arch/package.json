@@ -8,7 +8,8 @@
   "scripts": {
     "typecheck": "../../node_modules/.bin/tsc --noEmit",
     "lint": "biome check .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
   },
   "devDependencies": {
     "@typescript-eslint/parser": "8.71.2",

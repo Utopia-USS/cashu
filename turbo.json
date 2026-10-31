@@ -11,7 +11,20 @@
       "outputs": []
     },
     "test": {
-      "inputs": ["src/**", "spec/**", "package.json", "vitest.config.*"],
+      "inputs": ["src/**", "spec/**", "package.json", "vitest.config.*", "../../vitest.tiers.ts"],
+      "env": ["CASHU_TEST_TIER"],
+      "outputs": []
+    },
+    "test:exhaustive": {
+      "inputs": [
+        "src/**",
+        "spec/**",
+        "test/**",
+        "package.json",
+        "vitest.config.*",
+        "../../vitest.tiers.ts"
+      ],
+      "env": ["CASHU_TEST_TIER"],
       "outputs": []
     }
   }

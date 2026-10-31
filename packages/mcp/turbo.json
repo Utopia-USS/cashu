@@ -3,7 +3,7 @@
   "extends": ["//"],
   "tasks": {
     "test": {
-      "inputs": ["src/**", "test/**", "package.json", "vitest.config.*"],
+      "inputs": ["src/**", "test/**", "package.json", "vitest.config.*", "../../vitest.tiers.ts"],
       "outputs": []
     }
   }

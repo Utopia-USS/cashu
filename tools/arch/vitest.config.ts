@@ -1,5 +1,3 @@
-import { defineConfig } from "vitest/config";
+import { tiered } from "../../vitest.tiers.ts";
 
-export default defineConfig({
-  test: { include: ["src/**/*.test.ts"] },
-});
+export default tiered({ include: ["src/**/*.test.ts"] });
