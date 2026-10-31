@@ -83,11 +83,11 @@ datasets it is enabled for and `produce(db) -> JSON tree`; `<module>/` folders h
 `toJSON()` = Python `str()`, JS numbers refused). The CLI runs under Node's type stripping with
 `src/producers/resolveTs.ts`, which maps the `./x.js` specifiers of workspace TypeScript to `./x.ts`.
 
-| Check                    | Datasets  | Inputs                                                                                                             |
-| ------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------ |
-| `core.networth`          | demo      | accounts, balances, cash-pool transactions (`PythonDb`); loans / assets / investments contributors from the bridge |
-| `investments.valuation`  | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                      |
-| `investments.allocation` | demo, lab | as `investments.valuation`                                                                                         |
+| Check                    | Datasets  | Inputs                                                                                                                 |
+| ------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `core.networth`          | demo, lab | accounts, balances, cash-pool transactions, investments rows (`PythonDb`); loans / assets contributors from the bridge |
+| `investments.valuation`  | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                          |
+| `investments.allocation` | demo, lab | as `investments.valuation`                                                                                             |
 
 `investments/portfolioState.ts` is the port of `service/portfolio.build`: rows -> domain values as the
 Python store converts them (`investments/rows.ts`, domain ids are the app's `str(pk)` because the
@@ -112,8 +112,10 @@ Delete it (and `strategyBridge.ts`) when the TS strategy loader lands; both carr
 
 ### Temporary bridge for contributors not ported yet
 
-Net worth asks every module's contributor. Until loans and assets (S11) and investments (S13) are
-ported, `src/producers/core/networth_bridge.py` exports only those contributors' results (accounts
+Net worth asks every module's contributor. The investments contributor is the domain
+`BrokerageContributor` (S13) over the profile's investments rows (`investments/brokerage.ts`). Until
+loans and assets (S11) are ported, `src/producers/core/networth_bridge.py` exports only those
+contributors' results (accounts
 each values, `latest()` now and at as_of - 365 days), through golden.py's harness (run copy, offline,
 frozen clock), to `<lab>/parity/bridge/<dataset>/core.networth_contributors.json`:
 
@@ -126,6 +128,5 @@ currency totals, breakdown) is recomputed in TS; the cash pool runs through a st
 contributor on the core `RunningValuation` (`core/cashPool.ts`). When a module's TS contributor lands,
 drop it from `BRIDGED` / `BRIDGED_MODULES`; delete the bridge with the last one.
 
-**Lab follow-up:** `core.networth` on `lab` is enabled once the TS brokerage contributor (S13) replaces
-the bridge for investments (`datasets: ["demo", "lab"]` in `PRODUCERS`). `core.networth_series`
-needs `at()` / `axisDates()` of the bridged contributors, so it waits for S11 and S13 too.
+`core.networth` runs on `demo` and `lab`. `core.networth_series` needs `at()` / `axisDates()` of the
+bridged contributors, so it waits for S11 (the brokerage contributor has them since S13).

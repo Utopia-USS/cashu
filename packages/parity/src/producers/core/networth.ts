@@ -3,12 +3,15 @@
  * and 365 days before as_of, the lines, the breakdown per currency, the bucket order.
  *
  * Inputs: accounts, balance snapshots and the cash pool's transactions from the read-only source
- * (`sources/pythonDb.ts`); the loans / assets / investments contributors from the Python bridge
- * until their ports land (`bridge.ts`). Everything core owns runs in `@cashu/domain` core.
+ * (`sources/pythonDb.ts`); the investments contributor is the domain `BrokerageContributor` over the
+ * profile's investments rows (`../investments/brokerage.ts`); the loans / assets contributors come
+ * from the Python bridge until their ports land (`bridge.ts`). Everything core owns runs in
+ * `@cashu/domain` core.
  */
 
 import { addDays, core, D, type Decimal } from "@cashu/domain";
 import type { PythonDb } from "../../sources/index.ts";
+import { brokerageContributor } from "../investments/brokerage.ts";
 import type { OutValue } from "../output.ts";
 import { type BridgeFile, bridgedContributors } from "./bridge.ts";
 import { CashPoolContributor } from "./cashPool.ts";
@@ -52,6 +55,7 @@ function profileBook(
   const profileKey = db.keys.key("profiles", profileId);
   const contributors = core.orderContributors(registry, {
     budget: cash,
+    investments: brokerageContributor(db, profileId),
     ...bridgedContributors(bridge, profileKey, db.asOf),
   });
   return {

@@ -1,10 +1,10 @@
-# TRANSITIONAL(S11, S13): supplies the loans, vehicle and brokerage contributors until their TS ports land; remove then.
+# TRANSITIONAL(S11): supplies the loans and vehicle contributors until their TS ports land; remove then.
 """Temporary bridge: the net-worth values of the module contributors the TS port does not have yet.
 
 The TS ``core.networth`` producer recomputes everything core owns from the dataset's rows (accounts,
-balance snapshots, the cash pool's transactions) through ``packages/parity/src/sources``. The loans
-(S11), assets (S11) and investments (S13) contributors are not ported yet, so this script exports
-only their results: per profile and module, the accounts that module values and its
+balance snapshots, the cash pool's transactions) through ``packages/parity/src/sources``, and the
+investments contributor runs in TS since S13. The loans and assets (S11) contributors are not ported
+yet, so this script exports only their results: per profile and module, the accounts that module values and its
 ``Valuation.latest(as_of)`` for "now" and for as_of - 365 days (what ``checks/core.py`` asks).
 A module drops out of ``BRIDGED`` the day its TS contributor lands; the bridge is deleted with the
 last one.
@@ -35,7 +35,7 @@ sys.path.insert(0, str(PARITY_PY))
 import golden  # parity/python is on the path; golden never imports cashu at import time
 
 CHECK = "core.networth_contributors"
-BRIDGED = ("loans", "assets", "investments")
+BRIDGED = ("loans", "assets")
 
 
 def contributors(ctx) -> dict:

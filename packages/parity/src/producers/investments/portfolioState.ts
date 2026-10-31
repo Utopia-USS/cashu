@@ -14,7 +14,6 @@ import {
   manualValuation,
   pk,
   priceBar,
-  ratesBetween,
   rename,
   sid,
   transaction,
@@ -82,7 +81,7 @@ export function buildPortfolioState(
   const base = baseCurrency(profile.baseCurrency, inputs);
   // market.fx_lookup: every rate value_portfolio may ask for, preloaded.
   const needs = inv.fxCurrenciesFor(snapshot, market, base);
-  const rates = ratesBetween(
+  const rates = inv.preloadRates(
     db.investments.fxRates().map(fxRate),
     needs.currencies,
     snapshot.asOf,

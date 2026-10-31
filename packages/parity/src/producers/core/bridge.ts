@@ -1,7 +1,7 @@
 /// <reference types="node" />
 /**
- * Reader of the temporary Python bridge (`networth_bridge.py`): the net-worth values of the module
- * contributors not ported to TS yet (loans, assets: S11; investments: S13), replayed as
+ * TRANSITIONAL(S11): reader of the temporary Python bridge (`networth_bridge.py`): the net-worth values of the module
+ * contributors not ported to TS yet (loans, assets: S11), replayed as
  * `NetWorthContributor`s. Each answers `latest()` only for the two dates `core.networth` asks
  * ("now" and as_of - 365 days); the history series would need more (`at`, `axisDates`) and throws.
  * A module leaves the bridge when its TS contributor lands.
@@ -13,7 +13,7 @@ import { addDays, type core, D, type Decimal, type IsoDate } from "@cashu/domain
 import { type Dataset, labRoot } from "../../sources/index.ts";
 
 const BRIDGE_CHECK = "core.networth_contributors";
-const BRIDGED_MODULES = ["loans", "assets", "investments"] as const;
+const BRIDGED_MODULES = ["loans", "assets"] as const;
 
 interface BridgeEntry {
   readonly as_of: string;

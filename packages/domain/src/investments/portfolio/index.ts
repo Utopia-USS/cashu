@@ -8,7 +8,14 @@
 
 export { allocate, matchesBucket, matchesCashBucket } from "./allocation.js";
 export { Fraction } from "./fraction.js";
-export { convert, type FxNeeds, fxCurrenciesFor, InMemoryFxLookup } from "./fxLookup.js";
+export {
+  convert,
+  FX_BASE,
+  type FxNeeds,
+  fxCurrenciesFor,
+  InMemoryFxLookup,
+  preloadRates,
+} from "./fxLookup.js";
 export { lastTradePrices, SPLIT_DEDUP_WINDOW_DAYS } from "./lastTradePrices.js";
 export {
   fractionToDecimal,

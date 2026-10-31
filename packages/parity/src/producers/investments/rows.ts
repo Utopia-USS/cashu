@@ -210,36 +210,5 @@ export function barsBetween(
   return out;
 }
 
-/** The FX base of stored rates (`store/market.py:FX_BASE`, NBP: PLN per 1 unit of the quote). */
-const FX_BASE = inv.Currencies.PLN;
-
-/**
- * `market.rates`: PLN rates of `currencies` dated `since..until` plus the newest one before `since`,
- * per currency in code order.
- */
-export function ratesBetween(
-  rates: readonly inv.FxRate[],
-  currencies: Iterable<inv.Currency>,
-  until: string,
-  since: string | null,
-): inv.FxRate[] {
-  const codes = [...new Set([...currencies].map(String))]
-    .filter((c) => c !== FX_BASE)
-    .sort(inv.comparePyStr);
-  const out: inv.FxRate[] = [];
-  for (const code of codes) {
-    const series = rates.filter((r) => r.base === FX_BASE && r.quote === code && r.date <= until);
-    if (since !== null) {
-      const before = series.filter((r) => r.date < since);
-      const newest = before[before.length - 1];
-      if (newest !== undefined) out.push(newest);
-      out.push(...series.filter((r) => r.date >= since));
-    } else {
-      out.push(...series);
-    }
-  }
-  return out;
-}
-
 /** `as_of - days` (Python `as_of - dt.timedelta(days=...)`). */
 export const daysBefore = (asOf: string, days: number): string => addDays(asOf, -days);

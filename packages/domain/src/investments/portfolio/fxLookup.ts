@@ -17,6 +17,7 @@ import {
   type CalendarDate,
   Currencies,
   type Currency,
+  comparePyStr,
   dividedBy,
   exact,
   type InstrumentId,
@@ -180,4 +181,35 @@ export function fxCurrenciesFor(
     if (trade.openDate < oldest) oldest = trade.openDate;
   }
   return Object.freeze({ currencies, oldest });
+}
+
+/** The FX base of stored rates (`store/market.py:FX_BASE`, NBP: PLN per 1 unit of the quote). */
+export const FX_BASE: Currency = Currencies.PLN;
+
+/**
+ * The rates a loader preloads for `fxCurrenciesFor` (Python `store/market.py:rates` over every stored
+ * rate): per currency in code order (the base itself excluded), the `FX_BASE` rates dated
+ * `since..until` plus the newest one before `since` (a weekend or holiday at the start still finds
+ * its rate); all up to `until` when `since` is null. `stored` must be in date order per currency.
+ */
+export function preloadRates(
+  stored: readonly FxRate[],
+  currencies: Iterable<Currency>,
+  until: CalendarDate,
+  since: CalendarDate | null,
+): FxRate[] {
+  const codes = [...new Set(currencies)].filter((c) => c !== FX_BASE).sort(comparePyStr);
+  const out: FxRate[] = [];
+  for (const code of codes) {
+    const series = stored.filter((r) => r.base === FX_BASE && r.quote === code && r.date <= until);
+    if (since === null) {
+      out.push(...series);
+      continue;
+    }
+    const before = series.filter((r) => r.date < since);
+    const newest = before[before.length - 1];
+    if (newest !== undefined) out.push(newest);
+    out.push(...series.filter((r) => r.date >= since));
+  }
+  return out;
 }

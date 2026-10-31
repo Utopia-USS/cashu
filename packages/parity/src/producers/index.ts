@@ -22,8 +22,7 @@ export interface Producer {
 export const PRODUCERS: readonly Producer[] = [
   {
     check: "core.networth",
-    // Lab waits for the brokerage contributor (S13): see packages/parity/README.md.
-    datasets: ["demo"],
+    datasets: ["demo", "lab"],
     produce: (db) => produceNetworth(db, readBridge(db.dataset)),
   },
   {
