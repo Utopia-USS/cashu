@@ -104,6 +104,12 @@ export interface Materializer {
    * also loads the events addressed to them (the signals a decision links, a transaction's leg gid).
    */
   refs?(e: FoldEvent, det: DetGid): readonly string[];
+  /**
+   * Index this materializer's refs lazily (the first `referrers` call after new events) instead of
+   * on every apply. Only for a fold whose `subjects` already yield every gid a ref reaches, so a
+   * partition re-fold never needs the refs index to find an event.
+   */
+  readonly refsOnDemand?: boolean;
   /** Delete the rows (public and internal) of these partitions. */
   clear(partitions: readonly string[], ctx: FoldContext): void;
   apply(e: FoldEvent, ctx: FoldContext): void;

@@ -3,7 +3,7 @@
 // another version, and on demand. The result equals the incremental view (tested on every
 // convergence scenario and on random event sets).
 
-import type { MaterializerRunner } from "./engine/fold.js";
+import type { LazyRefs, MaterializerRunner } from "./engine/fold.js";
 import type { IdentityService } from "./engine/identity.js";
 import { type EventLog, type LogRow, storedBody } from "./engine/log.js";
 import { recomputeAllSuppression } from "./engine/suppression.js";
@@ -23,6 +23,7 @@ export interface RebuildContext {
   readonly runners: readonly MaterializerRunner[];
   readonly fww: ReadonlySet<string>;
   readonly det: DetGid;
+  readonly lazyRefs: LazyRefs;
   /** Writes through it are reported as touched. */
   readonly sql: ViewSql;
   /** The store's decoded-event -> log-row mapping (states, park reasons, gid checks). */
@@ -86,9 +87,10 @@ function redecode(ctx: RebuildContext, all: boolean): void {
 /** Recompute `event_refs` for every held event (refs are a function of the log + materializers). */
 function reindexRefs(ctx: RebuildContext): void {
   ctx.driver.exec("DELETE FROM event_refs");
+  ctx.lazyRefs.reset(); // on-demand refs are indexed again when first asked
   const byType = new Map<string, MaterializerRunner[]>();
   for (const r of ctx.runners) {
-    if (!r.mat.refs) continue;
+    if (!r.mat.refs || r.mat.refsOnDemand === true) continue;
     for (const t of r.mat.handles) byType.set(t, [...(byType.get(t) ?? []), r]);
   }
   for (const e of ctx.log.heldOfTypes([...byType.keys()])) {

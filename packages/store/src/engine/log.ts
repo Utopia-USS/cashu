@@ -198,6 +198,25 @@ export class EventLog {
     return out;
   }
 
+  /** Held (non-parked) events of `types` stored after log position `seq`, with their positions. */
+  heldAfter(types: readonly string[], seq: number): (FoldEvent & { seq: number })[] {
+    if (types.length === 0) return [];
+    return this.#cached(
+      `SELECT seq, ${FOLD_COLUMNS} FROM event_log
+         WHERE seq > ? AND state != 'parked' AND type IN (${placeholders(types.length)}) ORDER BY seq`,
+    )
+      .all<FoldRow & { seq: number }>(seq, ...types)
+      .map((r) => ({ ...toFoldEvent(r), seq: r.seq }));
+  }
+
+  /** The highest log position (0 for an empty log). */
+  lastSeq(): number {
+    return (
+      this.#cached("SELECT COALESCE(MAX(seq), 0) AS seq FROM event_log").get<{ seq: number }>()
+        ?.seq ?? 0
+    );
+  }
+
   /** The first applied event of `type` with `gid`, in fold order (served by the gid index). */
   keyedEvent(gid: string, type: string): FoldEvent | undefined {
     const r = this.#keyed.get<FoldRow>(gid, type);

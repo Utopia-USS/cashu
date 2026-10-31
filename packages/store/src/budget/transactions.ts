@@ -128,7 +128,10 @@ export const transactionsMaterializer: Materializer = {
   },
   // Each import refers to its member's cash leg gid (gid.md 4.4): leg claims of any member find the
   // row through it, also while the leg is absent (events.md 8.3).
+  // Indexed on demand (the first leg claim after new imports): subjects() already yields each
+  // member's leg gid, so re-folds never need the index.
   refs: (e, det) => (e.type === IMPORTED ? [det("transactions", ["cashleg", e.gid])] : []),
+  refsOnDemand: true,
   clear(keys, ctx) {
     for (const key of keys) {
       const [account, hash, occurrence] = splitKey(key);

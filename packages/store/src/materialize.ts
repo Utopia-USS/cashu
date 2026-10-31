@@ -17,7 +17,7 @@ import type {
 } from "@cashu/sync";
 import { canonicalJson, jsonEqual } from "./canonical.js";
 import { StatementCache, TouchedTables, ViewIds, viewSql } from "./engine/context.js";
-import { type FoldDeps, MaterializerRunner } from "./engine/fold.js";
+import { type FoldDeps, LazyRefs, MaterializerRunner } from "./engine/fold.js";
 import { conflictsKey, IdentityService } from "./engine/identity.js";
 import { EventLog, type LogRow, storedBody } from "./engine/log.js";
 import { type StateFlip, updateSuppression } from "./engine/suppression.js";
@@ -101,13 +101,15 @@ export class Store {
     this.#log = new EventLog(opts.driver);
     this.#ids = new ViewIds(this.#stmts);
     this.#identity = new IdentityService(opts.driver, modules.identityKinds);
+    const det = detGidFor(opts.salt);
     this.deps = {
       vault: opts.vault,
       log: this.#log,
+      lazyRefs: new LazyRefs(this.#log, this.#stmts, det, modules.materializers),
       stmts: this.#stmts,
       ids: this.#ids,
       identity: this.#identity,
-      det: detGidFor(opts.salt),
+      det,
     };
     this.#runners = modules.materializers.map((m) => new MaterializerRunner(m, this.deps));
     for (const r of this.#runners) {
@@ -307,6 +309,7 @@ export class Store {
       if (row.cause !== null) e.cause = row.cause;
       if (row.origin !== null) e.origin = row.origin;
       for (const r of this.#runnerByType.get(e.type) ?? []) {
+        if (r.mat.refsOnDemand === true) continue; // indexed when first asked (LazyRefs)
         for (const subject of r.mat.refs?.(e, this.deps.det) ?? []) refs.push([subject, e.eid]);
       }
       fresh.push(e);
@@ -449,6 +452,7 @@ export class Store {
           runners: this.#runners,
           fww: this.#fww,
           det: this.deps.det,
+          lazyRefs: this.deps.lazyRefs,
           sql: viewSql(this.#stmts, touched),
           logRow: (decoded, original) => this.#logRow(decoded, original),
         },
@@ -535,6 +539,7 @@ export class Store {
     });
     this.#ids.reset();
     this.#identity.load();
+    this.deps.lazyRefs.reset();
     this.#hub.notify(touched.set);
   }
 

@@ -41,9 +41,66 @@ export function membersTable(mat: { readonly id: string }): TableDef {
   };
 }
 
+/**
+ * The refs index of `refsOnDemand` materializers (events.md 6.6 does not depend on it; it only finds
+ * the event a derived gid belongs to, e.g. a cash leg's import): caught up from the log position it
+ * last indexed, when `referrers` is asked. A rebuild that re-indexes refs resets it.
+ */
+export class LazyRefs {
+  static readonly KEY = "lazy_refs_seq";
+  readonly #log: EventLog;
+  readonly #stmts: StatementCache;
+  readonly #det: DetGid;
+  readonly #byType = new Map<string, Materializer[]>();
+  #seq: number;
+
+  constructor(log: EventLog, stmts: StatementCache, det: DetGid, mats: readonly Materializer[]) {
+    this.#log = log;
+    this.#stmts = stmts;
+    this.#det = det;
+    for (const m of mats.filter((x) => x.refsOnDemand === true && x.refs !== undefined)) {
+      for (const t of m.handles) this.#byType.set(t, [...(this.#byType.get(t) ?? []), m]);
+    }
+    this.#seq = Number(
+      stmts.get("SELECT value FROM store_meta WHERE key = ?").get<{ value: string }>(LazyRefs.KEY)
+        ?.value ?? 0,
+    );
+  }
+
+  /** Index the refs of every event stored since the last call. */
+  catchUp(): void {
+    if (this.#byType.size === 0) return;
+    const last = this.#log.lastSeq();
+    if (last <= this.#seq) return;
+    const refs: [string, string][] = [];
+    for (const e of this.#log.heldAfter([...this.#byType.keys()], this.#seq)) {
+      for (const m of this.#byType.get(e.type) ?? []) {
+        for (const s of m.refs?.(e, this.#det) ?? []) refs.push([s, e.eid]);
+      }
+    }
+    this.#log.addRefs(refs);
+    this.#setSeq(last);
+  }
+
+  /** Forget the index position (the refs were dropped: a re-index or a reset). */
+  reset(): void {
+    this.#setSeq(0);
+  }
+
+  #setSeq(seq: number): void {
+    this.#seq = seq;
+    this.#stmts
+      .get(
+        "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      )
+      .run(LazyRefs.KEY, String(seq));
+  }
+}
+
 export interface FoldDeps {
   readonly vault: string;
   readonly log: EventLog;
+  readonly lazyRefs: LazyRefs;
   readonly stmts: StatementCache;
   readonly ids: ViewIds;
   readonly identity: IdentityService;
@@ -74,7 +131,10 @@ export class MaterializerRunner {
       ids: d.ids,
       identity: d.identity,
       det: d.det,
-      referrers: (subject) => d.log.referrers(subject),
+      referrers: (subject) => {
+        d.lazyRefs.catchUp();
+        return d.log.referrers(subject);
+      },
       keyedEvent: (gid, type) => d.log.keyedEvent(gid, type),
     });
   }
