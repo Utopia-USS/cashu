@@ -33,11 +33,17 @@ export const MAX_STRING = 200_000;
 /** A problem the agent can fix (bad argument, missing data). `kind` is a fixed audit code. */
 export class ToolError extends Error {
   readonly kind: string;
+  /**
+   * The message is cashU's own constant text (a fixed limit, no user input): strict amount masking
+   * skips it; identifiers, names and the leak check still apply (S37fix R3).
+   */
+  readonly system: boolean;
 
-  constructor(message: string, kind = "invalid") {
+  constructor(message: string, kind = "invalid", { system = false }: { system?: boolean } = {}) {
     super(message);
     this.name = "ToolError";
     this.kind = kind;
+    this.system = system;
   }
 }
 
@@ -282,7 +288,9 @@ export function validateArguments(
     if (typeof value === "string") {
       const limit = schema.maxLength ?? MAX_STRING;
       if (pyLen(value) > limit)
-        throw new ToolError(`argument ${name} is too long (max ${limit})`, "invalid_arguments");
+        throw new ToolError(`argument ${name} is too long (max ${limit})`, "invalid_arguments", {
+          system: true,
+        });
     }
     if (kind === "integer") {
       const lo = schema.minimum;
@@ -292,6 +300,7 @@ export function validateArguments(
         throw new ToolError(
           `argument ${name} must be in [${show(lo)}, ${show(hi)}]`,
           "invalid_arguments",
+          { system: true },
         );
       }
     }

@@ -10,7 +10,9 @@
  * A private-person payee is replaced by an opaque reference `payee:<10 letters>` (an HMAC of the
  * merchant key with a per-installation secret spelled in the letters a-p, so a reference is never a
  * digit run and cannot be reversed by guessing names). Known names inside free text are replaced by
- * `[name]`, matching case- and diacritic-insensitively on word boundaries.
+ * `[name]`, matching case- and diacritic-insensitively on word boundaries, also inflected (a Polish
+ * ending after the name or its stem), split by any separators, with middle names or initials in
+ * between, a hyphenated second surname, and Cyrillic / Greek lookalike letters (S37fix D4).
  */
 
 /// <reference types="node" />
@@ -102,6 +104,167 @@ export function fold(text: string): string {
   let out = "";
   for (const ch of text) out += foldChar(ch);
   return out;
+}
+
+/** Cyrillic and Greek letters that look like Latin ones (folded to the Latin letter before matching). */
+const CONFUSABLES: ReadonlyMap<string, string> = (() => {
+  const from = Array.from("АВЕЅІЈКМНОРСТУХаеіјорсуххѕԁԛԝҮӏΑΒΕΖΗΙΚΜΝΟΡΤΥΧαικνορτυχ");
+  const to = Array.from("ABESIJKMHOPCTYXaeijopcyxxsdqwYlABEZHIKMNOPTYXaikvoptux");
+  return new Map(from.map((c, i) => [c, to[i] as string]));
+})();
+const MASK_SPACE: ReadonlySet<string> = new Set(
+  Array.from(
+    "\t\n\r\u000b\u000c\u001c\u001d\u001e\u001f\u0085\u2028\u2029\u200b\u200c\u200d\u2060\ufeff",
+  ),
+);
+const ZS = /^\p{Zs}$/u;
+/** Polish endings after a name or its stem (folded: no diacritics, upper case), longest first. */
+const SUFFIXES = [
+  "OWEGO",
+  "OWEMU",
+  "OWYCH",
+  "OWEJ",
+  "OWNA",
+  "OWIE",
+  "OWYM",
+  "IEGO",
+  "IEMU",
+  "OWI",
+  "OWA",
+  "ACH",
+  "AMI",
+  "IEJ",
+  "IMI",
+  "YCH",
+  "YMI",
+  "EGO",
+  "EMU",
+  "OW",
+  "IE",
+  "EM",
+  "OM",
+  "AM",
+  "IM",
+  "YM",
+  "EJ",
+  "A",
+  "Y",
+  "I",
+  "E",
+  "U",
+  "O",
+];
+const SUFFIX = `(?:${SUFFIXES.join("|")})`;
+/**
+ * After a shortened stem only inflection endings, not the "-ow-" derivations ("MIESZKANIE" must not
+ * reach "MIESZKANIOWA"; "NOWAKOWA" still matches as NOWAK + OWA).
+ */
+const STEM_SUFFIX = `(?:${SUFFIXES.filter((s) => !s.startsWith("OW")).join("|")})`;
+/** Python `[^\W\d_]` (a letter or a non-decimal number) and `[\W_]` as class bodies. */
+const LETTER = "\\p{L}\\p{Nl}\\p{No}";
+const NOT_ALNUM = "^\\p{L}\\p{N}";
+/**
+ * Between the words of a name: any separators, up to two middle names or initials (as few as
+ * possible, so a middle word never swallows the start of the next occurrence).
+ */
+const NAME_GAP = `[${NOT_ALNUM}]+(?:[${LETTER}]+\\.?[${NOT_ALNUM}]+){0,2}?`;
+
+/**
+ * One character folded for name matching: soft hyphen removed, spaces and zero-width characters to
+ * a space, lookalike letters to Latin, then `fold`.
+ */
+function maskFoldChar(ch: string): string {
+  if (ch === "\u00ad") return "";
+  if (MASK_SPACE.has(ch) || ZS.test(ch)) return " ";
+  return foldChar(CONFUSABLES.get(ch) ?? ch);
+}
+
+/**
+ * A name word: itself with an optional ending, its stem (1-3 letters shorter, at least `minStem`
+ * long) with an ending, or (`initial`) its first letter with a dot (or glued to the next word).
+ */
+/** Zero-width characters and the soft hyphen, removed in the split fold. */
+const MASK_ZERO_WIDTH: ReadonlySet<string> = new Set(
+  [0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0xad].map((cp) => String.fromCodePoint(cp)),
+);
+const LOWER: ReadonlySet<string> = new Set(Array.from("abcdefghijklmnopqrstuvwxyząćęłńóśźż"));
+const UPPER: ReadonlySet<string> = new Set(Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZĄĆĘŁŃÓŚŹŻ"));
+const isLetter = (c: string) => LOWER.has(c) || UPPER.has(c);
+const SPLIT_MARK = String.fromCodePoint(1);
+
+/**
+ * The folded copies of `text` names are matched on, each with the original code point index of
+ * every folded UTF-16 unit: as written, and split into words where a name is glued to the next one
+ * (zero-width characters removed, a split mark U+0001 inserted at "aN" / "ANo" case changes and
+ * after "A."; S37fix N8: "AnnaNowak", "A.Nowak", "ANowak", "An<ZWJ>na").
+ */
+function maskFolds(chars: readonly string[]): [string, number[]][] {
+  let plain = "";
+  const plainIndex: number[] = [];
+  chars.forEach((ch, i) => {
+    const f = maskFoldChar(ch);
+    plain += f;
+    for (let k = 0; k < f.length; k++) plainIndex.push(i);
+  });
+  const kept: [number, string][] = [];
+  chars.forEach((ch, i) => {
+    if (!MASK_ZERO_WIDTH.has(ch)) kept.push([i, ch]);
+  });
+  let split = "";
+  const splitIndex: number[] = [];
+  kept.forEach(([i, ch], k) => {
+    const prev = k >= 1 ? (kept[k - 1] as [number, string])[1] : "";
+    const prev2 = k >= 2 ? (kept[k - 2] as [number, string])[1] : "";
+    const next = k + 1 < kept.length ? (kept[k + 1] as [number, string])[1] : "";
+    if (
+      (LOWER.has(prev) && UPPER.has(ch)) ||
+      (UPPER.has(prev) && UPPER.has(ch) && LOWER.has(next)) ||
+      (prev === "." && isLetter(prev2) && isLetter(ch))
+    ) {
+      split += SPLIT_MARK;
+      splitIndex.push(i);
+    }
+    const f = maskFoldChar(ch);
+    split += f;
+    for (let u = 0; u < f.length; u++) splitIndex.push(i);
+  });
+  return [
+    [plain, plainIndex],
+    [split, splitIndex],
+  ];
+}
+
+function wordPattern(word: string, minStem: number, initial: boolean): string {
+  let folded = "";
+  for (const c of word) folded += maskFoldChar(c);
+  const chars = Array.from(folded);
+  const alternatives = [`${escapeRe(folded)}${SUFFIX}?`];
+  for (const k of [1, 2, 3]) {
+    const stem = chars.slice(0, chars.length - k);
+    if (chars.length > k && stem.length >= minStem) {
+      alternatives.push(escapeRe(stem.join("")) + STEM_SUFFIX);
+    }
+  }
+  // with a dot, or glued to the next word ("ANowak": a split mark follows, see maskFolds)
+  if (initial && chars.length > 0) {
+    alternatives.push(`${escapeRe(chars[0] as string)}(?:\\.|(?=\\u0001))`);
+  }
+  return `(?:${alternatives.join("|")})`;
+}
+
+function termPattern(words: readonly string[]): string {
+  const many = words.length >= 2;
+  const parts = words.map((w) => wordPattern(w, many ? 3 : 4, many));
+  let orders: string[][] = [Array.from(words)];
+  if (words.length >= 2 && words.length <= 3) {
+    const unique = new Map<string, string[]>();
+    for (const p of permutations(words)) unique.set(p.join("\u0000"), p);
+    orders = [...unique.values()].sort(compareTuples);
+  }
+  const alternatives = orders.map((order) =>
+    order.map((w) => parts[words.indexOf(w)] as string).join(NAME_GAP),
+  );
+  return `(?<![${PY_W}])(?:[${LETTER}]+-)?(?:${alternatives.join("|")})(?:-[${LETTER}]+)?(?![${PY_W}])`;
 }
 
 const DOTS_COMMAS = /[.,]/g;
@@ -221,6 +384,8 @@ export interface NameGuardInit {
    * profile's display-name override of a market instrument becomes its shared market name.
    */
   readonly strictAliases?: Iterable<readonly [string, string]>;
+  /** Digit-only tickers of the profile's (not owner-named) instruments (S37fix R5). */
+  readonly symbols?: Iterable<string>;
 }
 
 export class NameGuard {
@@ -228,6 +393,8 @@ export class NameGuard {
   readonly names: ReadonlySet<string>;
   readonly privatePayees: ReadonlySet<string>;
   readonly strictAliases: readonly (readonly [string, string])[];
+  /** Digit-only tickers of the profile's instruments: a `symbol` field with one is an instrument. */
+  readonly symbols: ReadonlySet<string>;
   private secretSource: SecretSource | null;
   private secret: Uint8Array | null = null;
 
@@ -237,6 +404,7 @@ export class NameGuard {
     this.privatePayees = new Set(init.privatePayees ?? []);
     this.secretSource = init.secret ?? null;
     this.strictAliases = Array.from(init.strictAliases ?? [], ([a, p]) => [a, p] as const);
+    this.symbols = new Set(init.symbols ?? []);
   }
 
   /** `text` with every owner-typed alias replaced by its public name (case-insensitive, whole words, longest first). */
@@ -316,36 +484,29 @@ export class NameGuard {
   mask(text: string): string {
     if (!text || this.names.size === 0) return text;
     const chars = Array.from(text);
-    let folded = "";
-    const index: number[] = []; // folded UTF-16 unit -> code point index in `text`
-    chars.forEach((ch, i) => {
-      const f = foldChar(ch);
-      folded += f;
-      for (let k = 0; k < f.length; k++) index.push(i);
-    });
+    const folds = maskFolds(chars); // folded UTF-16 unit -> code point index in `text`
     const spans: [number, number][] = [];
-    // longest first; equal lengths in code point order (Python: frozenset order, hash-seed dependent)
+    // longest first; equal lengths in code point order (as Python sorts them)
     const terms = [...this.names].sort((a, b) => pyLen(b) - pyLen(a) || compareStr(a, b));
     for (const term of terms) {
       const words = pySplit(term);
       if (words.length === 0) continue; // an empty term (never collected) would match everywhere
-      const orders = new Map<string, string[]>([[words.join("\u0000"), words]]);
-      if (words.length >= 2 && words.length <= 3) {
-        for (const p of permutations(words)) orders.set(p.join("\u0000"), p);
-      }
-      const sorted = [...orders.values()].sort(compareTuples);
-      const pattern = uRegex(
-        sorted
-          .map(
-            (order) => `(?<![${PY_W}])${order.map(escapeRe).join(`[${PY_WS},.\\-]+`)}(?![${PY_W}])`,
-          )
-          .join("|"),
-        "g",
-      );
-      for (const m of folded.matchAll(pattern)) {
-        const start = index[m.index] as number;
-        const end = (index[m.index + m[0].length - 1] as number) + 1;
-        if (!spans.some(([s, e]) => s < end && start < e)) spans.push([start, end]);
+      const pattern = uRegex(termPattern(words), "g");
+      for (const [folded, index] of folds) {
+        pattern.lastIndex = 0;
+        for (let m = pattern.exec(folded); m !== null; m = pattern.exec(folded)) {
+          const start = index[m.index] as number;
+          const end = (index[m.index + m[0].length - 1] as number) + 1;
+          if (spans.some(([s, e]) => s < end && start < e)) {
+            // overlaps a name already masked: look again one code point on, so a later
+            // occurrence is not lost inside the rejected match
+            pattern.lastIndex =
+              m.index + ((folded.codePointAt(m.index) as number) > 0xffff ? 2 : 1);
+            continue;
+          }
+          spans.push([start, end]);
+          pattern.lastIndex = m.index + m[0].length;
+        }
       }
     }
     spans.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
@@ -367,6 +528,8 @@ export interface NameSources {
   /** Merchant names of private-person payees. */
   readonly privatePayees: Iterable<string>;
   readonly strictAliases?: Iterable<readonly [string, string]>;
+  /** Digit-only tickers of the module's (not owner-named) instruments (`known_symbols`). */
+  readonly knownSymbols?: Iterable<string>;
 }
 
 export interface CollectInput {
@@ -390,6 +553,7 @@ export function collectGuard(input: CollectInput): NameGuard {
     add(nameTerms(accountName ?? "", { tokens: false }));
   const payees = new Set<string>();
   const aliases: (readonly [string, string])[] = [];
+  const symbols = new Set<string>();
   for (const provider of input.providers) {
     for (const strong of provider.strongNames ?? []) {
       add(nameTerms(strong, { tokens: true }));
@@ -406,6 +570,7 @@ export function collectGuard(input: CollectInput): NameGuard {
       if (looksLikePerson(p)) add(nameTerms(personPart(p).join(" "), { tokens: false }));
     }
     for (const alias of provider.strictAliases ?? []) aliases.push(alias);
+    for (const symbol of provider.knownSymbols ?? []) symbols.add(symbol);
   }
   const kept = [...names].filter((n) => !BUSINESS_MARKERS.has(fold(n)));
   return new NameGuard({
@@ -413,6 +578,7 @@ export function collectGuard(input: CollectInput): NameGuard {
     names: kept,
     privatePayees: payees,
     strictAliases: aliases,
+    symbols,
     secret: input.secret ?? null,
   });
 }

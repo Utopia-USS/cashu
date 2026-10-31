@@ -12,6 +12,7 @@
  * | `level` (a market price level of a public instrument) | sent | sent |
  * | `text` (scrubbed: identifiers always, money amounts in strict) | sent | sent |
  * | `market` (server-made text about public market data; identifiers scrubbed) | sent | sent |
+ * | `authored` (cashU's own constant text, never owner data; identifiers and names scrubbed, numbers kept) | sent | sent |
  * | `count` (non-money integers), `ref` (local row ids), `flag` (booleans) | sent | sent |
  * | `account` (the generated "<institution> <type> <n>" label, never the stored name) | sent | sent |
  *
@@ -49,7 +50,8 @@ export type Sensitivity =
   | "flag"
   | "account"
   | "level"
-  | "market";
+  | "market"
+  | "authored";
 
 export const SENSITIVITIES: readonly Sensitivity[] = [
   "identifier",
@@ -66,6 +68,7 @@ export const SENSITIVITIES: readonly Sensitivity[] = [
   "account",
   "level",
   "market",
+  "authored",
 ];
 
 /** What a labelled leaf may hold (see the module doc for the Python type each stands for). */
@@ -135,6 +138,14 @@ export function category(value: string | null): Labelled {
 
 export function text(value: string | null): Labelled {
   return new Labelled(value, "text");
+}
+
+/**
+ * Constant text written by cashU code (tool notes, catalog notes): not owner data, so strict mode
+ * keeps its numbers; identifiers, names and the leak check still apply (S37fix R3).
+ */
+export function fixedText(value: string | null): Labelled {
+  return new Labelled(value, "authored");
 }
 
 export function symbol(value: string | null): Labelled {
