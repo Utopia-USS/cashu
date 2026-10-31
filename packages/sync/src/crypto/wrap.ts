@@ -1,10 +1,10 @@
 // Key wrapping: the key payload (keys.ts) sealed for one recipient.
 //
 // Signed wrap (`wrapKeys` / `unwrapKeys`), for every hop after pairing:
-//   wire = 0x02 | sender device id (16) | Ed25519 signature (64) | recipients | sealed
+//   wire = 0x03 | sender device id (16) | Ed25519 signature (64) | recipients | sealed
 //   recipients = u16 count | device ids (16 each) the rotation was wrapped for
-//   sealed = crypto_box_seal(key payload v2, recipient box public key)
-//   signature over "cashu/wrap/v2" | lp(vault id) | sender id | recipient id | recipient box pk |
+//   sealed = crypto_box_seal(key payload v3, recipient box public key)
+//   signature over "cashu/wrap/v3" | lp(vault id) | sender id | recipient id | recipient box pk |
 //                  recipients | sealed
 // The recipient verifies the signature against the sender's signing key BEFORE opening, and only
 // for senders the caller trusts (registered and not revoked, S29), so storage or a relay cannot
@@ -38,8 +38,8 @@ import {
 } from "./keys.js";
 import { PUBLIC_KEY_BYTES, SEAL_OVERHEAD, type Sodium } from "./sodium.js";
 
-export const WRAP_VERSION = 2;
-const WRAP_CONTEXT = utf8("cashu/wrap/v2");
+export const WRAP_VERSION = 3;
+const WRAP_CONTEXT = utf8("cashu/wrap/v3");
 const WRAP_HEADER_BYTES = 1 + DEVICE_ID_BYTES + SIGNATURE_BYTES;
 /** Most recipients one rotation can list (devices + recovery). */
 export const MAX_WRAP_RECIPIENTS = 1024;
@@ -143,7 +143,7 @@ export function wrapKeys(
   const senderId = fromHex(sender.deviceId);
   const list = encodeRecipients(recipients);
   const signature = sender.sign(
-    "cashu/wrap/v2",
+    "cashu/wrap/v3",
     signedMessage(ring.vaultId, senderId, recipient, list, sealed),
   );
   return concat(Uint8Array.of(WRAP_VERSION), senderId, signature, list, sealed);

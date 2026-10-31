@@ -22,7 +22,7 @@ export const MAX_EPOCH = 1_048_576;
 const KID_CONTEXT = utf8("cashu/kid/v2");
 const FRAME_SUBKEY_CONTEXT = utf8("cashu/subkey/frame/v2");
 const KID_SUBKEY_CONTEXT = utf8("cashu/subkey/kid/v2");
-const PAYLOAD_MAGIC = utf8("cashu/keys/v2");
+const PAYLOAD_MAGIC = utf8("cashu/keys/v3");
 /** Keys one generation may hold (devices that rotated concurrently); more is a flood, `bad_payload`. */
 export const MAX_KEYS_PER_GENERATION = 8;
 /** Consistent with the bounds above, so every ring `merge` accepts can be saved and wrapped. */
@@ -376,8 +376,8 @@ export function rotateKeyring(
 }
 
 /**
- * Binary key payload v2:
- *   "cashu/keys/v2" | lp(vault id) | recovery box pk (32) | recovery sign pk (32) | gid salt (32) | u32 count |
+ * Binary key payload v3:
+ *   "cashu/keys/v3" | lp(vault id) | recovery box pk (32) | recovery sign pk (32) | gid salt (32) | u32 count |
  *   (u32 generation | u32 epoch | 32-byte key)*
  * It is the plaintext of a wrap and the value kept in a KeyStore. Key ids are not on the wire; the
  * reader recomputes them. The caller wipes the returned bytes once sealed or stored.

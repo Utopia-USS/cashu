@@ -22,9 +22,9 @@ Test helpers that must never reach the app (`InMemoryKeyStore`) live on the `@ca
 | Frame       | `0x02` \| key id (16) \| nonce (24) \| XChaCha20-Poly1305(frameKey) ciphertext + tag (16)                                                                                      |
 | Frame AAD   | `"cashu/frame/v2"` \| `0x02` \| key id \| lp(vault id) \| lp(device id) \| u32 segment \| u64 offset                                                                           |
 | Frame plain | u32 length \| data \| zero padding to Padme(length + 4); max 64 MiB of data                                                                                                    |
-| Key payload | `"cashu/keys/v2"` \| lp(vault id) \| recovery box pk (32) \| recovery sign pk (32) \| gid salt (32) \| u32 count \| (u32 generation \| u32 epoch \| key 32)*                   |
-| Signed wrap | `0x02` \| sender device id (16) \| Ed25519 signature (64) \| u16 count \| recipient ids (16 each) \| `crypto_box_seal(payload, recipient box pk)`                              |
-| Wrap signed | `"cashu/wrap/v2"` \| lp(vault id) \| sender id \| recipient id \| recipient box pk \| u16 count \| recipient ids \| sealed                                                     |
+| Key payload | `"cashu/keys/v3"` \| lp(vault id) \| recovery box pk (32) \| recovery sign pk (32) \| gid salt (32) \| u32 count \| (u32 generation \| u32 epoch \| key 32)*                   |
+| Signed wrap | `0x03` \| sender device id (16) \| Ed25519 signature (64) \| u16 count \| recipient ids (16 each) \| `crypto_box_seal(payload, recipient box pk)`                              |
+| Wrap signed | `"cashu/wrap/v3"` \| lp(vault id) \| sender id \| recipient id \| recipient box pk \| u16 count \| recipient ids \| sealed                                                     |
 | Certificate | `0x01` \| signer id (16) \| subject id (16) \| subject sign pk (32) \| subject box pk (32) \| Ed25519 signature (64) over `"cashu/cert/v1"` \| lp(vault id) \| the four fields |
 | Pairing box | `crypto_box_seal(payload, new device box pk)` (first hop only, see below)                                                                                                      |
 | Device blob | `"cashu/device/v2"` \| device id (16) \| box secret key (32) \| Ed25519 seed (32); public keys recomputed on load                                                              |
@@ -35,7 +35,7 @@ Ids: vault id and device id are 16 random bytes as 32 lowercase hex characters (
 `createDeviceId`), validated everywhere. The all-zero id is `RECOVERY_SIGNER_ID`, never a device.
 Generations and epochs are bounded to 1..2^20 and 0..2^20; one generation holds at most
 `MAX_KEYS_PER_GENERATION` (8) keys, so every ring the acceptance policy admits can be saved and wrapped.
-Every signature has its own context (`"cashu/wrap/v2"`, `"cashu/cert/v1"`); S28d frame signatures must
+Every signature has its own context (`"cashu/wrap/v3"`, `"cashu/cert/v1"`); S28d frame signatures must
 use another one, and nothing signs raw caller bytes.
 
 ## What consumers rely on

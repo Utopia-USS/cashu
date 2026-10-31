@@ -15,7 +15,7 @@ const DEVICE_ID = /^[0-9a-f]{32}$/;
 const INSPECT = Symbol.for("nodejs.util.inspect.custom");
 
 /** Every purpose a device or recovery key signs for; S28d frame signatures add their own. */
-export type SigningContext = "cashu/wrap/v2" | "cashu/cert/v1";
+export type SigningContext = "cashu/wrap/v3" | "cashu/cert/v1";
 
 /** Reserved signer id of the recovery identity (16 zero bytes); never a device's id. */
 export const RECOVERY_SIGNER_ID = "0".repeat(DEVICE_ID_BYTES * 2);
@@ -38,7 +38,7 @@ export function assertDeviceId(deviceId: string): void {
   }
 }
 
-/** The public half of a recovery identity: pinned in every keyring of the vault (key payload v2). */
+/** The public half of a recovery identity: pinned in every keyring of the vault (key payload v3). */
 export interface RecoveryPublicKeys {
   readonly boxPublicKey: Uint8Array;
   readonly signPublicKey: Uint8Array;

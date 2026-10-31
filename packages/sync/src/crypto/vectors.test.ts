@@ -1,15 +1,18 @@
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
-import { ed25519 } from "@noble/curves/ed25519.js";
+import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { entropyToMnemonic, mnemonicToEntropy } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { describe, expect, it } from "vitest";
+import { certifyDevice } from "./cert.js";
 import { fromHex, toHex, utf8 } from "./encoding.js";
 import { FRAME_HEADER_BYTES, openFrame, sealFrameWithNonce } from "./frame.js";
+import { DeviceIdentity } from "./identity.js";
 import { encodeKeyPayload, Keyring, KID_BYTES } from "./keys.js";
 import { recoveryIdentity } from "./recovery.js";
+import { Secret } from "./secret.js";
 import { ctx, DEVICE_A, GID_SALT, range, sodium } from "./testkit.js";
 
 describe("published test vectors", () => {
@@ -82,11 +85,11 @@ describe("cashU format golden vectors", () => {
     expect(toHex(blake2b(message, { key: kidKey, dkLen: 16 }))).toBe(ring().active.kid);
   });
 
-  it("key payload v2", () => {
+  it("key payload v3", () => {
     expect(toHex(encodeKeyPayload(ring()))).toBe(
       toHex(
         new Uint8Array([
-          ...utf8("cashu/keys/v2"),
+          ...utf8("cashu/keys/v3"),
           ...lp(vaultId),
           ...recovery.box.publicKey,
           ...recovery.signPublicKey,
@@ -142,5 +145,38 @@ describe("cashU format golden vectors", () => {
     const entropy = new Uint8Array(32);
     const seed = hkdf(sha256, entropy, utf8("cashu/recovery/v2"), utf8("ed25519-seed"), 32);
     expect(ed25519.getPublicKey(seed)).toEqual(recovery.signPublicKey);
+  });
+
+  it("device certificate (deterministic Ed25519), checked with @noble/curves", () => {
+    const device = new DeviceIdentity(
+      DEVICE_A,
+      new Secret(range(0x20, 0x3f)),
+      new Secret(range(0x60, 0x7f)),
+    );
+    expect(toHex(device.box.publicKey)).toBe(toHex(x25519.getPublicKey(range(0x20, 0x3f))));
+    expect(toHex(device.signPublicKey)).toBe(toHex(ed25519.getPublicKey(range(0x60, 0x7f))));
+    const subject = {
+      deviceId: device.deviceId,
+      signPublicKey: device.signPublicKey,
+      boxPublicKey: device.box.publicKey,
+    };
+    const cert = certifyDevice(sodium, recovery, subject, vaultId);
+    expect(toHex(cert)).toBe(
+      "01" +
+        "00000000000000000000000000000000" +
+        "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1" +
+        "174553b456dddfc6908ecab1c101fe6ab21e2baa0617795b7d43a63482993fd5" +
+        "358072d6365880d1aeea329adf9121383851ed21a28e3b75e965d0d2cd166254" +
+        "c18ebd3bc96125700ff5dc2f8415b52d65dbd8d231c433ddf568660ebbec130e" +
+        "8b6f102d2341fc31ff6c0d73f0ba0f3b60ee818e27d6b20fb4baad13774e9006",
+    );
+    const signed = new Uint8Array([
+      ...utf8("cashu/cert/v1"),
+      ...lp(vaultId),
+      ...cert.subarray(1, 1 + 16 + 16 + 32 + 32),
+    ]);
+    expect(
+      ed25519.verify(cert.subarray(97), signed, recovery.signPublicKey, { zip215: false }),
+    ).toBe(true);
   });
 });

@@ -197,7 +197,7 @@ export function createSecureStoreKeyStore(
 export const keyringName = (vaultId: string) => `cashu.vault.${vaultId}.keys`;
 export const deviceIdentityName = (deviceId: string) => `cashu.device.${deviceId}.identity`;
 
-/** Saves the payload v2 of the whole ring (keys and pinned recovery public keys). */
+/** Saves the payload v3 of the whole ring (keys and pinned recovery public keys). */
 export async function saveKeyring(store: KeyStore, ring: Keyring): Promise<void> {
   const payload = encodeKeyPayload(ring);
   try {

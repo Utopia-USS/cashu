@@ -15,6 +15,7 @@ import {
   sealForPairing,
   type TrustedSigner,
   unwrapKeys,
+  WRAP_VERSION,
   wrapKeys,
 } from "./wrap.js";
 
@@ -43,7 +44,7 @@ describe("review attacks now fail", () => {
     const before = phoneRing.active.kid;
     // The attacker's best payload: right vault and recovery pins, guessed gid salt, huge generation.
     const forged = concat(
-      utf8("cashu/keys/v2"),
+      utf8("cashu/keys/v3"),
       lengthPrefixed(utf8(vaultId)),
       testRecovery.publicKeys.boxPublicKey,
       testRecovery.publicKeys.signPublicKey,
@@ -58,14 +59,14 @@ describe("review attacks now fail", () => {
     // No signing key: an unknown sender id, or the desktop's id with a junk signature.
     const list = concat(Uint8Array.of(0, 1), Buffer.from(phone.deviceId, "hex"));
     const asStranger = concat(
-      Uint8Array.of(2),
+      Uint8Array.of(WRAP_VERSION),
       sodium.randomBytes(16),
       new Uint8Array(64),
       list,
       sealed,
     );
     const asDesktop = concat(
-      Uint8Array.of(2),
+      Uint8Array.of(WRAP_VERSION),
       Buffer.from(desktop.deviceId, "hex"),
       new Uint8Array(64),
       list,
@@ -312,7 +313,7 @@ function forgeSignedWrap(
   keys: { generation: number; epoch: number; key: Uint8Array }[],
 ): Uint8Array {
   const payload = concat(
-    utf8("cashu/keys/v2"),
+    utf8("cashu/keys/v3"),
     lengthPrefixed(utf8(ring.vaultId)),
     ring.recovery.boxPublicKey,
     ring.recovery.signPublicKey,
@@ -331,5 +332,11 @@ function forgeSignedWrap(
     list,
     sealed,
   );
-  return concat(Uint8Array.of(2), senderId, sender.sign("cashu/wrap/v2", body), list, sealed);
+  return concat(
+    Uint8Array.of(WRAP_VERSION),
+    senderId,
+    sender.sign("cashu/wrap/v3", body),
+    list,
+    sealed,
+  );
 }
