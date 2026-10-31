@@ -4,7 +4,6 @@
 import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fromUtf8, toBase64, toHex } from "./encoding.js";
-import { ALL_CODES, CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity } from "./identity.js";
 import { createKeyring, rotateKeyring } from "./keys.js";
@@ -22,8 +21,14 @@ import {
 
 const written: string[] = [];
 
-// Every fixed error code and message: a recovery word that also occurs here (e.g. "device") is not a leak.
-const FIXED_TEXT = ALL_CODES.map((c) => `${c} ${new CryptoError(c).message}`).join(" ");
+/**
+ * The phrase leaks if its words appear in sequence. Single words are no signal: BIP39 words such as
+ * "device", "length" or "object" occur in error messages, `inspect` output and stack traces.
+ */
+function phraseFragments(phrase: string): string[] {
+  const words = phrase.split(" ");
+  return [phrase, ...words.slice(1).map((w, i) => `${words[i]} ${w}`)];
+}
 
 beforeEach(() => {
   written.length = 0;
@@ -136,8 +141,7 @@ describe("no key or plaintext in logs", () => {
       ...secretsOf(pair.signSecretKey.expose()),
       ...secretsOf(recoveryPair.box.secretKey.expose()),
       ...secretsOf(recoveryPair.signSecretKey.expose()),
-      // Words long enough to be meaningful and absent from the fixed error messages.
-      ...recovery.phrase.split(" ").filter((w) => w.length >= 5 && !FIXED_TEXT.includes(w)),
+      ...phraseFragments(recovery.phrase),
       PLAINTEXT_MARKER,
     ];
     for (const f of forbidden) expect(output).not.toContain(f);

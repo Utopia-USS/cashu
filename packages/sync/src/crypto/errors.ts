@@ -1,7 +1,7 @@
 // Errors carry a fixed code and a fixed message: never key bytes, plaintext, ids of a wrong key or
 // recovery words, so an error that reaches a log cannot leak a secret.
 
-export const ALL_CODES = [
+const ALL_CODES = [
   "truncated",
   "unsupported_version",
   "unknown_key",
