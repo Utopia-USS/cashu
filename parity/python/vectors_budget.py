@@ -22,6 +22,7 @@ import base64
 import csv
 import dataclasses
 import datetime as dt
+import difflib
 import hashlib
 import inspect
 import io
@@ -572,6 +573,73 @@ def gen_matching_data(_rng: random.Random) -> list:
     return [["matching", obj, hashlib.sha256(text.encode("utf-8")).hexdigest()]]
 
 
+# --------------------------------------------------------------------------- difflib and person names
+
+TYPO_ALPHABET = "abcdefghijklmnopqrstuvwxyz_ "
+
+
+def typo(rng: random.Random, word: str) -> str:
+    chars = list(word)
+    for _ in range(rng.randint(1, 3)):
+        op = rng.randint(0, 3)
+        i = rng.randint(0, max(0, len(chars) - 1))
+        if op == 0 and chars:
+            del chars[i]
+        elif op == 1:
+            chars.insert(i, rng.choice(TYPO_ALPHABET))
+        elif op == 2 and chars:
+            chars[i] = rng.choice(TYPO_ALPHABET)
+        elif len(chars) > 1:
+            j = min(i + 1, len(chars) - 1)
+            chars[i], chars[j] = chars[j], chars[i]
+    return "".join(chars)
+
+
+def gen_difflib(rng: random.Random) -> list:
+    from cashu.modules.budget.ingestion.canonical import CSV_COLUMNS
+
+    rows: list = [["columns", list(CSV_COLUMNS)]]
+    for _ in range(700):
+        word = typo(rng, rng.choice(CSV_COLUMNS)) if rng.random() < 0.8 else rand_text(rng, TYPO_ALPHABET, 14)
+        rows.append(["close", word, difflib.get_close_matches(word, CSV_COLUMNS, n=1, cutoff=0.75)])
+    for _ in range(250):
+        a = rand_text(rng, "abcab ł", 30)
+        b = rand_text(rng, "abcab ł", 30)
+        rows.append(["ratio", a, b, difflib.SequenceMatcher(None, a, b).ratio()])
+    for n in (199, 200, 260):  # autojunk applies from 200 elements of b
+        a = rand_text(rng, "ab", 60)
+        b = "".join(rng.choice("aab c") for _ in range(n))
+        rows.append(["ratio", a, b, difflib.SequenceMatcher(None, a, b).ratio()])
+    for _ in range(50):
+        word = rand_text(rng, "abc", 5)
+        pool = [rand_text(rng, "abc", 5) for _ in range(rng.randint(0, 8))]
+        n = rng.randint(1, 4)
+        cutoff = rng.choice([0.0, 0.3, 0.6, 0.75, 1.0])
+        rows.append(["close_n", word, pool, n, cutoff, difflib.get_close_matches(word, pool, n=n, cutoff=cutoff)])
+    return rows
+
+
+FIRST = ["ANNA", "JAN", "Łucja", "józef", "Zoë", "Ørjan", "O'NEIL", "MARIA-ANNA", "A.", "X"]
+LAST = ["TESTOWA", "NOWAK", "Kowalska-Test", "Æbelø", "BAR", "DOM", "Straße", "ĐURIC"]
+BUSINESS_WORDS = ["SKLEP", "SP. Z O.O.", "BANK", "PHU", "APTEKA", "STUDIO", "SALON", "AUTO", "ZUS"]
+ADDRESS_WORDS = ["UL. POLNA 5", "AL. TESTOWA 12", "OS. ZIELONE 3", "WARSZAWA", "00-001", "PL. X 1"]
+
+
+def gen_person(rng: random.Random) -> list:
+    from cashu.core.mcp import names as N
+
+    rows: list = [["sets", sorted(N.BUSINESS_MARKERS), sorted(N.AMBIGUOUS_MARKERS), sorted(N._ADDRESS),
+                   N._FOLD_EXTRA]]
+    pool = FIRST + LAST + BUSINESS_WORDS + ADDRESS_WORDS + ["", "  ", "1234", "A1", "-", "x\u0301", "\xa0"]
+    for _ in range(1000):
+        text = " ".join(rng.choice(pool) for _ in range(rng.randint(0, 6)))
+        if rng.random() < 0.1:
+            text = rand_text(rng, "ab .,-'1Łł\u0301\t", 12)
+        rows.append(["name", text, N.fold(text), N.normalize(text), N.person_part(text), N.looks_like_person(text)])
+    rows.append(["name", None, N.fold(""), N.normalize(None), N.person_part(None), N.looks_like_person(None)])
+    return rows
+
+
 # --------------------------------------------------------------------------- driver
 
 GENERATORS: dict[str, tuple[Callable, str]] = {
@@ -586,6 +654,10 @@ GENERATORS: dict[str, tuple[Callable, str]] = {
     "budget-hash": (gen_hash, "['hash', raw, content_key_v2, v2, {account_id: v1}] | ['merchant', fields, key]"),
     "budget-dedup": (gen_dedup, ("['scenario', newest_day_rule, pre_rows, [{raws, statuses, num_duplicates, "
                      "num_overlap, inserted: [[v2, occurrence]]}]]")),
+    "budget-difflib": (gen_difflib, ("['columns', CSV_COLUMNS] | ['close', word, get_close_matches(word, CSV_COLUMNS, "
+                        "1, 0.75)] | ['ratio', a, b, ratio] | ['close_n', word, pool, n, cutoff, matches]")),
+    "budget-person": (gen_person, ("['sets', business, ambiguous, address, fold_extra] | ['name', text, fold, "
+                      "normalize, person_part, looks_like_person]")),
     "budget-matching-data": (gen_matching_data, ("['matching', data, sha256 of json.dumps(data, "
                              "ensure_ascii=False, sort_keys=True, separators=(',', ':'))]")),
 }
