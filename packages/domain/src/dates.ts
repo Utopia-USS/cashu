@@ -69,25 +69,68 @@ export function checkYmd(year: number, month: number, day: number): Ymd {
 
 /** `YYYY-MM-DD` of a valid date. */
 export function formatDate(ymd: Ymd): IsoDate {
-  return `${pad(ymd.year, 4)}-${pad(ymd.month, 2)}-${pad(ymd.day, 2)}`;
+  const { year, month, day } = ymd;
+  // The common shapes without padStart (called once per generated or shifted date).
+  const y = year >= 1000 && year <= 9999 ? String(year) : pad(year, 4);
+  return `${y}-${month < 10 ? "0" : ""}${month}-${day < 10 ? "0" : ""}${day}`;
+}
+
+function invalidIso(text: string): PyValueError {
+  return new PyValueError(`Invalid isoformat string: ${JSON.stringify(text)}`);
+}
+
+/**
+ * Strict `YYYY-MM-DD` to `year * 10000 + month * 100 + day`, validated like `checkYmd`. Reads the char
+ * codes directly (same strictness as `^\d{4}-\d{2}-\d{2}$`: ASCII digits, nothing after) and
+ * allocates nothing: dates are parsed once per bar and per shifted day in the series code.
+ */
+function packDate(text: IsoDate): number {
+  if (text.length !== 10 || text.charCodeAt(4) !== 45 || text.charCodeAt(7) !== 45) {
+    throw invalidIso(text);
+  }
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  for (let i = 0; i < 10; i++) {
+    if (i === 4 || i === 7) continue;
+    const digit = text.charCodeAt(i) - 48;
+    if (digit < 0 || digit > 9) throw invalidIso(text);
+    if (i < 4) year = year * 10 + digit;
+    else if (i < 7) month = month * 10 + digit;
+    else day = day * 10 + digit;
+  }
+  if (year < MINYEAR || month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+    checkYmd(year, month, day); // throws the field error
+  }
+  return year * 10000 + month * 100 + day;
 }
 
 /** Strict `YYYY-MM-DD` (the stored form) to its fields; ValueError otherwise. */
 export function parseDate(text: IsoDate): Ymd {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (!m) throw new PyValueError(`Invalid isoformat string: ${JSON.stringify(text)}`);
-  return checkYmd(Number(m[1]), Number(m[2]), Number(m[3]));
+  const packed = packDate(text);
+  return {
+    year: Math.floor(packed / 10000),
+    month: Math.floor(packed / 100) % 100,
+    day: packed % 100,
+  };
 }
 
-/** Python `date.toordinal()` (0001-01-01 is 1). */
-export function toOrdinal(date: IsoDate | Ymd): number {
-  const { year, month, day } = typeof date === "string" ? parseDate(date) : date;
+function ordinalOf(year: number, month: number, day: number): number {
   return (
     daysBeforeYear(year) +
     (DAYS_BEFORE_MONTH[month] as number) +
     (month > 2 && isLeap(year) ? 1 : 0) +
     day
   );
+}
+
+/** Python `date.toordinal()` (0001-01-01 is 1). */
+export function toOrdinal(date: IsoDate | Ymd): number {
+  if (typeof date === "string") {
+    const packed = packDate(date);
+    return ordinalOf(Math.floor(packed / 10000), Math.floor(packed / 100) % 100, packed % 100);
+  }
+  return ordinalOf(date.year, date.month, date.day);
 }
 
 /** Python `date.fromordinal(n)`. */

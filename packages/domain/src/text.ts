@@ -150,6 +150,16 @@ export function pyLower(s: string): string {
   return s.toLowerCase();
 }
 
+/** Every code point with `unicodedata.combining(c) != 0`, as one class (built from `COMBINING_RANGES`). */
+const COMBINING_RE = new RegExp(
+  `[${Array.from({ length: COMBINING_RANGES.length / 2 }, (_, i) => {
+    const from = COMBINING_RANGES[2 * i] as number;
+    const to = COMBINING_RANGES[2 * i + 1] as number;
+    const lo = `\\u{${from.toString(16)}}`;
+    return from === to ? lo : `${lo}-\\u{${to.toString(16)}}`;
+  }).join("")}]`,
+  "gu",
+);
 const WS_RUN = new RegExp(`[${PY_WS}]+`, "gu");
 /** `ł`/`Ł` have no NFKD decomposition: replaced by hand, in one pass. */
 const L_STROKE = /[łŁ]/g;
@@ -162,9 +172,5 @@ const unstroke = (ch: string): string => (ch === "ł" ? "l" : "L");
 export function normalizeText(value: string | null | undefined): string {
   if (!value) return "";
   const replaced = value.replace(L_STROKE, unstroke).normalize("NFKD");
-  let kept = "";
-  for (const ch of replaced) {
-    if (!isCombining(ch.codePointAt(0) as number)) kept += ch;
-  }
-  return pyUpper(pyStrip(kept.replace(WS_RUN, " ")));
+  return pyUpper(pyStrip(replaced.replace(COMBINING_RE, "").replace(WS_RUN, " ")));
 }

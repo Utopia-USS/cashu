@@ -272,11 +272,29 @@ function cmp(a: number, b: number): number {
   return 0;
 }
 
-/** One date-sorted series of closes with O(1) moving means. */
+/** `out[i]` = the maximum of `values[i - n + 1 .. i]` (a monotonic deque; undefined entries before `n - 1`). */
+function rollingMax(values: readonly number[], n: number): number[] {
+  const out: number[] = new Array(values.length);
+  const deque: number[] = [];
+  let head = 0;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i] as number;
+    while (deque.length > head && (values[deque[deque.length - 1] as number] as number) <= v) {
+      deque.pop();
+    }
+    deque.push(i);
+    if ((deque[head] as number) <= i - n) head++;
+    out[i] = values[deque[head] as number] as number;
+  }
+  return out;
+}
+
+/** One date-sorted series of closes with O(1) moving means and window peaks. */
 class Line {
   readonly dates: readonly IsoDate[];
   readonly closes: readonly number[];
   private readonly sums: readonly number[];
+  private peaks: number[] | null = null;
 
   constructor(dates: readonly IsoDate[], closes: readonly number[]) {
     this.dates = dates;
@@ -314,7 +332,12 @@ class Line {
     return this.close(i) - this.close(i - n);
   }
 
+  /** The maximum of the last `n` closes up to `i`; the default window is answered from one O(n) pass. */
   peak(i: number, n: number = PEAK_WINDOW): number {
+    if (n === PEAK_WINDOW && i + 1 >= n) {
+      this.peaks ??= rollingMax(this.closes, n);
+      return this.peaks[i] as number;
+    }
     let best = this.close(i + 1 - n);
     for (let j = i + 2 - n; j <= i; j++) best = Math.max(best, this.close(j));
     return best;
