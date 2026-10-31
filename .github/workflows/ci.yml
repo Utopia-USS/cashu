@@ -70,8 +70,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # The whole workspace, not only this package's closure: what the other members pull in (React 19 types
+      # for apps/mobile) changes what is hoisted for frontend/, and the typecheck must see the same tree as a
+      # developer's checkout.
       - name: Install
-        run: pnpm install --frozen-lockfile --filter "cashu-dashboard..."
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: npm run typecheck
