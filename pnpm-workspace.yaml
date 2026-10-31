@@ -1,5 +1,13 @@
 packages:
   - "packages/*"
   - "apps/*"
+  - "tools/arch"
 minimumReleaseAgeExclude:
   - electron@45.2.1
+# TRANSITIONAL(arch-tools): dependency-cruiser parses TypeScript with the classic compiler API, which
+# TS 7 (tsgo) no longer ships. Declaring the peer lets it resolve the TS 6 that tools/arch installs for
+# parsing only. Remove (with the TS 6 pin) once dependency-cruiser and typescript-eslint read TS 7.
+packageExtensions:
+  dependency-cruiser:
+    peerDependencies:
+      typescript: ">=5 <7"

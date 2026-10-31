@@ -38,3 +38,8 @@ jobs:
 
       - name: Typecheck, lint, test
         run: pnpm turbo run typecheck lint test
+
+      # Layers, module boundaries, pure Views, React hooks / Compiler rules, unused code, package
+      # hygiene and the UI guards (tools/arch). Prints the TRANSITIONAL report too.
+      - name: Architecture checks
+        run: pnpm arch:check

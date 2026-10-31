@@ -1,0 +1,22 @@
+{
+  "name": "@cashu/arch-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Architecture checks of the TypeScript monorepo (`pnpm arch:check`): linters, the dependency graph and guard tests. Dev tooling only.",
+  "exports": {},
+  "scripts": {
+    "typecheck": "../../node_modules/.bin/tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "8.71.2",
+    "dependency-cruiser": "18.6.0",
+    "eslint": "10.13.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "knip": "6.41.0",
+    "sherif": "1.13.0",
+    "typescript": "6.0.3"
+  }
+}

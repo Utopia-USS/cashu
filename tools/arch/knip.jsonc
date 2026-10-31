@@ -1,0 +1,37 @@
+// Knip: unused files, exports, types and dependencies of the TypeScript workspaces.
+// Run from the repo root by `pnpm arch:check` (tools/arch/src/run.ts).
+{
+  "$schema": "../../node_modules/.pnpm/knip@6.41.0/node_modules/knip/schema-jsonc.json",
+  "workspaces": {
+    // The root holds only tooling; frontend/ and the Python app are not part of the TS monorepo.
+    ".": {
+      "entry": [],
+      "project": [],
+      // The frontend and e2e jobs in ci.yml, and the root vitest's catch-all *.spec.ts pattern, would
+      // pull frontend/ in; each TS workspace below runs its own vitest plugin.
+      "github-actions": false,
+      "playwright": false,
+      "vitest": { "config": ["vitest.config.ts"], "entry": [] }
+    },
+    "packages/*": {
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "apps/*": {
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "apps/desktop": {
+      "entry": ["src/main.ts", "src/preload.cts", "scripts/*.mjs", "e2e/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx,cts}", "scripts/**/*.mjs", "e2e/**/*.ts"],
+      // Loading its Playwright config would run prepareSpecs() (writes a spec tree); list e2e/ instead.
+      "playwright": false,
+      // macOS system tool the quit spec calls, not an npm package.
+      "ignoreBinaries": ["pgrep"]
+    },
+    "tools/arch": {
+      "entry": ["src/run.ts", "src/depcruise.ts", "depcruise.config.cjs"],
+      "project": ["src/**/*.ts"],
+      // Spawned by src/run.ts through its bin path, which knip cannot follow.
+      "ignoreDependencies": ["sherif"]
+    }
+  }
+}

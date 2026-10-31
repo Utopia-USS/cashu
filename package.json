@@ -12,6 +12,7 @@
     "test": "turbo run test",
     "test:all": "vitest run",
     "check": "turbo run typecheck lint test",
+    "arch:check": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/arch/src/run.ts",
     "format": "biome format --write .",
     "parity": "node --disable-warning=ExperimentalWarning --experimental-strip-types packages/parity/src/cli.ts"
   },
