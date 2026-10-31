@@ -84,8 +84,8 @@ export function parseCsvDocument(
       variant: "csv",
       source: null,
       institution: null,
-      transactions: 0,
-      balances: 0,
+      transactionCount: 0,
+      closingCount: 0,
     };
   }
 

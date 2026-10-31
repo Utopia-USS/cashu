@@ -191,7 +191,7 @@ describe("test_budget_import_format.py", () => {
   it("reports counts, dates and currencies without values", () => {
     const report = validateBudgetDocument(asJson(doc()), "x.json", registry);
     const out = reportAsDict(report);
-    expect([report.ok, report.transactions, report.balances]).toEqual([true, 2, 1]);
+    expect([report.ok, report.transactionCount, report.closingCount]).toEqual([true, 2, 1]);
     expect([out.date_range, out.currencies, out.issues, out.variant]).toEqual([
       { from: "2026-10-03", to: "2026-10-04" },
       ["PLN"],
@@ -201,7 +201,7 @@ describe("test_budget_import_format.py", () => {
     const bad = doc();
     ((bad.transactions as Record<string, unknown>[])[0] as Record<string, unknown>).amount = "abc";
     const badReport = validateBudgetDocument(asJson(bad), "x.json", registry);
-    expect([badReport.ok, badReport.transactions]).toEqual([false, 2]);
+    expect([badReport.ok, badReport.transactionCount]).toEqual([false, 2]);
     expect(reportAsDict(badReport).issue_counts).toEqual({ invalid_value: 1 });
     expect(reportSummary(badReport)).toContain("row 1: amount:");
     expect(reportSummary(badReport)).not.toContain("abc");

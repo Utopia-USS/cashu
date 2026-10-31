@@ -33,8 +33,9 @@ export interface CanonicalResult {
   readonly variant: Variant;
   readonly source: string | null;
   readonly institution: string | null;
-  readonly transactions: number;
-  readonly balances: number;
+  /** How many transactions and closing balances the document holds (also when it is refused). */
+  readonly transactionCount: number;
+  readonly closingCount: number;
 }
 
 export function canonicalOk(r: CanonicalResult): boolean {
@@ -48,8 +49,8 @@ export function fileError(message: string, variant: Variant): CanonicalResult {
     variant,
     source: null,
     institution: null,
-    transactions: 0,
-    balances: 0,
+    transactionCount: 0,
+    closingCount: 0,
   };
 }
 
@@ -208,8 +209,8 @@ export function validateDocument(
       variant: opts.variant,
       source: null,
       institution: null,
-      transactions: lengthOf(document.get("transactions")),
-      balances: lengthOf(document.get("balances")),
+      transactionCount: lengthOf(document.get("transactions")),
+      closingCount: lengthOf(document.get("balances")),
     };
   }
   const { doc } = validated;
@@ -297,7 +298,7 @@ export function validateDocument(
     variant: opts.variant,
     source: doc.source,
     institution,
-    transactions: doc.transactions.length,
-    balances: doc.balances.length,
+    transactionCount: doc.transactions.length,
+    closingCount: doc.balances.length,
   };
 }

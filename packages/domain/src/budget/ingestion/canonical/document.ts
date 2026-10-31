@@ -113,8 +113,8 @@ export interface BudgetValidationReport {
   readonly ok: boolean;
   readonly format: string;
   readonly variant: Variant;
-  readonly transactions: number;
-  readonly balances: number;
+  readonly transactionCount: number;
+  readonly closingCount: number;
   readonly issues: readonly BudgetIssue[];
   readonly dateRange: readonly [IsoDate, IsoDate] | null;
   readonly currencies: readonly string[];
@@ -133,8 +133,8 @@ export function validateBudgetDocument(
     ok: canonicalOk(result),
     format: BUDGET_IMPORT_FORMAT,
     variant: result.variant,
-    transactions: result.transactions,
-    balances: result.balances,
+    transactionCount: result.transactionCount,
+    closingCount: result.closingCount,
     issues: result.issues,
     dateRange: dates.length ? [dates[0] as IsoDate, dates[dates.length - 1] as IsoDate] : null,
     currencies: [...new Set(txns.map((t) => pyUpper(t.currency)))].sort(),
@@ -149,8 +149,8 @@ export function reportAsDict(r: BudgetValidationReport): Record<string, unknown>
     ok: r.ok,
     format: r.format,
     variant: r.variant,
-    transactions: r.transactions,
-    balances: r.balances,
+    transactions: r.transactionCount,
+    balances: r.closingCount,
     date_range: r.dateRange === null ? null : { from: r.dateRange[0], to: r.dateRange[1] },
     currencies: r.currencies,
     issue_counts: counts,
@@ -162,7 +162,7 @@ export function reportAsDict(r: BudgetValidationReport): Record<string, unknown>
 export function reportSummary(r: BudgetValidationReport): string {
   const head =
     `${BUDGET_IMPORT_FORMAT} v${BUDGET_IMPORT_FORMAT_VERSION} (${r.variant}): ${r.ok ? "OK" : "BLOCKED"}, ` +
-    `${r.transactions} transactions, ${r.balances} balances`;
+    `${r.transactionCount} transactions, ${r.closingCount} balances`;
   return [
     head,
     ...r.issues.map((i) => `  ${i.blocking ? "error" : "warning"} [${i.kind}] ${formatIssue(i)}`),
