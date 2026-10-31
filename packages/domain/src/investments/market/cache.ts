@@ -88,9 +88,13 @@ export interface CachedRate {
  *   batched refresh) never erases the stored open / high / low / volume of that day;
  * - a bar or rate without a fetch time is stored with `now` (the split check needs to know);
  * - `deleteBars` removes a date window (a split re-fetch deletes before it upserts, so nothing
- *   unadjusted survives).
+ *   unadjusted survives);
+ * - `version` changes with every write (a counter of this cache object): readers that derive heavy
+ *   results from the cache (the performance computation) key them by it instead of re-reading series.
  */
 export interface PriceCache {
+  /** Bumped by every `upsertBars` / `deleteBars` / `upsertRates` call. */
+  version(): number;
   /** Bars of `key`, oldest first. */
   bars(key: MarketSymbol): readonly CachedBar[];
   upsertBars(key: MarketSymbol, bars: readonly CachedBar[], now: DateTime): void;
@@ -104,12 +108,18 @@ export interface PriceCache {
 export class InMemoryPriceCache implements PriceCache {
   private readonly barSeries = new Map<string, Map<CalendarDate, CachedBar>>();
   private readonly rateSeries = new Map<string, Map<CalendarDate, CachedRate>>();
+  private writes = 0;
+
+  version(): number {
+    return this.writes;
+  }
 
   bars(key: MarketSymbol): readonly CachedBar[] {
     return sortedValues(this.barSeries.get(marketSymbolKey(key)));
   }
 
   upsertBars(key: MarketSymbol, bars: readonly CachedBar[], now: DateTime): void {
+    this.writes += 1;
     const series = getOrCreate(this.barSeries, marketSymbolKey(key));
     for (const bar of bars) {
       const old = series.get(bar.date);
@@ -130,6 +140,7 @@ export class InMemoryPriceCache implements PriceCache {
   }
 
   deleteBars(key: MarketSymbol, from: CalendarDate, to: CalendarDate): void {
+    this.writes += 1;
     const series = this.barSeries.get(marketSymbolKey(key));
     if (series === undefined) return;
     for (const on of [...series.keys()]) if (from <= on && on <= to) series.delete(on);
@@ -145,6 +156,7 @@ export class InMemoryPriceCache implements PriceCache {
     rates: readonly CachedRate[],
     now: DateTime,
   ): void {
+    this.writes += 1;
     const series = getOrCreate(this.rateSeries, `${provider}:${quote}`);
     for (const rate of rates) {
       series.set(rate.date, Object.freeze({ ...rate, fetchedAt: rate.fetchedAt ?? now }));

@@ -56,6 +56,18 @@ describe("market symbols", () => {
 });
 
 describe("InMemoryPriceCache", () => {
+  it("bumps its version on every write, never on a read", () => {
+    const cache = new InMemoryPriceCache();
+    const key = marketSymbol("yahoo", "XMPL");
+    expect(cache.version()).toBe(0);
+    cache.upsertBars(key, [cached("2026-10-02", "100")], NOW);
+    cache.bars(key);
+    expect(cache.version()).toBe(1);
+    cache.deleteBars(key, "2026-10-01", "2026-10-03");
+    cache.upsertRates("nbp", Currencies.USD, [], NOW);
+    expect(cache.version()).toBe(3);
+  });
+
   it("a close-only bar keeps the stored open / high / low / volume; a missing fetch time becomes now", () => {
     const cache = new InMemoryPriceCache();
     const key = marketSymbol("yahoo", "XMPL");

@@ -73,6 +73,7 @@ export {
 export { HybridClock, type MetaClockStore, metaClockStore } from "./hlc.js";
 export * as investmentsCommands from "./investments/commands/index.js";
 export { investmentsModule } from "./investments/index.js";
+export * as investmentsPerformance from "./investments/performance/index.js";
 export * as investmentsQueries from "./investments/queries/index.js";
 export { addLoan, setLoan, setPaymentMatching } from "./loans/commands.js";
 export { loansModule } from "./loans/index.js";
