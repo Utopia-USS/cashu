@@ -96,7 +96,11 @@ module.exports = {
       from: { path: "View(\\.(web|native|ios|android))?\\.tsx$" },
       to: {
         dependencyTypesNot: ["type-only"],
-        path: [`^packages/(store|store-react|sync|ui-logic)/`, "(^|/)commands(\\.tsx?|/|$)", IMPURE_LIBS],
+        path: [
+          `^packages/(store|store-react|sync|ui-logic)/`,
+          "(^|/)commands(\\.tsx?|/|$)",
+          IMPURE_LIBS,
+        ],
       },
     },
     {
