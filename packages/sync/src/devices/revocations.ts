@@ -47,8 +47,12 @@ export interface RevocationInput {
   readonly verified: readonly Rev[];
   readonly registered: ReadonlySet<string>;
   readonly index: CertificateIndex;
-  /** The certificate closure ignoring revocations. */
-  readonly all: CertificateClosure;
+  /**
+   * The closure whose keys may back a decision about what a device attested or signed before its
+   * cut (M1 attestations, a revoked device's keys): without any certificate a device logged after
+   * its cut (review P2), so a revoked device can never mint keys that raise its own cut.
+   */
+  readonly attest: CertificateClosure;
   readonly verify: StatementVerifier;
   /** Receives the statements that do not count (capped, no effect, defeated). */
   readonly ignored: IgnoredStatement[];
@@ -65,7 +69,7 @@ export interface RevocationResult {
 
 /** Caps, cut validation, mutual exemptions, the grounded fixpoint and the fail-closed result. */
 export function resolveRevocations(input: RevocationInput): RevocationResult {
-  const { root, events, registered, index, all, verify, ignored } = input;
+  const { root, events, registered, index, attest, verify, ignored } = input;
   const deduped = input.verified;
   // --- Caps and effect.
   const bySigner = new Map<string, Rev[]>();
@@ -93,7 +97,7 @@ export function resolveRevocations(input: RevocationInput): RevocationResult {
   }
 
   // --- M1: raise each device revocation's cut to what its signer had attested of the target.
-  const knowledge = attestedKnowledge(root, events, revs, all, verify);
+  const knowledge = attestedKnowledge(root, events, revs, attest, verify);
   for (const r of revs) {
     if (r.recovery) continue;
     for (const t of r.targets) {
@@ -122,10 +126,10 @@ export function resolveRevocations(input: RevocationInput): RevocationResult {
   // --- The grounded fixpoint.
   const recoveryIds = new Set(revs.filter((r) => r.recovery).map((r) => r.id));
   // A revoked device's statements before its cut verify with its certified key: the one key pair
-  // ever certified for it, or when it was certified with several (conflict), only those a signer
-  // that is not revoked vouches for.
+  // ever certified for it (by certificates logged before their issuer's cut), or when it was
+  // certified with several (conflict), only those a signer that is not revoked vouches for.
   const revokedKeys = (device: string, closure: CertificateClosure) => {
-    const ever = all.keysOf(device);
+    const ever = attest.keysOf(device);
     return ever.length === 1 ? ever : closure.certifiedKeysOf(device);
   };
   const cutOf = (device: string, counted: readonly Rev[]): SegmentCursor | undefined => {
@@ -228,7 +232,7 @@ function attestedKnowledge(
   root: TrustRoot,
   events: readonly LogEvent[],
   revs: readonly Rev[],
-  all: CertificateClosure,
+  attest: CertificateClosure,
   verify: StatementVerifier,
 ): (r: Rev, target: string) => SegmentCursor | undefined {
   const revokers = new Set(revs.filter((r) => !r.recovery).map((r) => r.signer));
@@ -244,7 +248,7 @@ function attestedKnowledge(
     let list = cache.get(writer);
     if (list) return list;
     list = [];
-    const keys = all.keysOf(writer).map((k) => k.signPublicKey);
+    const keys = attest.keysOf(writer).map((k) => k.signPublicKey);
     for (const e of leaseByWriter.get(writer) ?? []) {
       const d =
         e.v !== 1
