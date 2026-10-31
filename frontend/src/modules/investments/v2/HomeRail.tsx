@@ -17,16 +17,16 @@ import "./homeRail.css";
 /** A subject without an instrument (a portfolio rule) gets a neutral tile. */
 const PORTFOLIO: InstLike = { id: "portfolio", label: "Σ", symbol: "Σ", name: "Σ" };
 
-/** One rail row: the tile, the bold subject and the text; `right` holds a tag or icon buttons. A row with
- * `onOpen` is a link (click or Enter). */
-export function RailRow({ inst, title, text, note, right, tone, onOpen }: {
-  inst: InstLike | null; title: ReactNode; text?: ReactNode; note?: ReactNode; right?: ReactNode; tone?: "risk" | "chance" | null; onOpen?: () => void;
+/** One rail row: a plain tile (no health ring: the section header carries the colour), the bold subject and the
+ * text; `right` holds a tag or icon buttons. A row with `onOpen` is a link (click or Enter). */
+export function RailRow({ inst, title, text, note, right, onOpen }: {
+  inst: InstLike | null; title: ReactNode; text?: ReactNode; note?: ReactNode; right?: ReactNode; onOpen?: () => void;
 }) {
   const key = (e: KeyboardEvent) => { if (onOpen && e.target === e.currentTarget && e.key === "Enter") { e.preventDefault(); onOpen(); } };
   return (
-    <div className={`hr-row${tone ? ` hr-${tone}` : ""}${onOpen ? " hr-link" : ""}`} role={onOpen ? "link" : undefined} tabIndex={onOpen ? 0 : undefined}
+    <div className={`hr-row${onOpen ? " hr-link" : ""}`} role={onOpen ? "link" : undefined} tabIndex={onOpen ? 0 : undefined}
       onClick={onOpen ? (e) => { if (!(e.target as HTMLElement).closest("button")) onOpen(); } : undefined} onKeyDown={key}>
-      <span className={`il cmp${inst ? "" : " hr-pf"}`}><InstTile inst={inst ?? PORTFOLIO} /></span>
+      <span className={`il cmp${inst ? "" : " hr-pf"}`}><InstTile inst={inst ?? PORTFOLIO} plain /></span>
       <span className="hr-tx"><b>{title}</b>{text && <> <span className="hr-m">{text}</span></>}{note && <span className="hr-n"> · {note}</span>}</span>
       {right && <span className="hr-r">{right}</span>}
     </div>
@@ -35,7 +35,6 @@ export function RailRow({ inst, title, text, note, right, tone, onOpen }: {
 
 const ROW_GROUPS: DecideGroup[] = ["risk", "chance", "mixed", "plan"];
 const MAX_ROWS = 6;
-const TONE: Partial<Record<DecideGroup, "risk" | "chance">> = { risk: "risk", chance: "chance" };
 
 export function SignalsBrief({ items, deck, rest, total, loading, reviewDue, reviewName, lastReviewAt, nextOn, insts, onOpenAsset, onOpenReview, onAll }: {
   /** `decideItems(..., { includeSnoozed: true })`: the subjects the rail sorts into new and put off. */
@@ -79,7 +78,7 @@ export function SignalsBrief({ items, deck, rest, total, loading, reviewDue, rev
                 const inst = d.instrumentId != null ? insts.get(d.instrumentId) ?? { id: d.instrumentId, label: d.title, name: d.title } : null;
                 const note = d.snoozedUntil ? S.snoozedTo(dm(d.snoozedUntil)) : leftKeys.has(d.key) ? S.undecided : null;
                 return (
-                  <RailRow key={d.key} inst={inst} title={d.title} text={d.why} note={note} tone={TONE[d.group]}
+                  <RailRow key={d.key} inst={inst} title={d.title} text={d.why} note={note}
                     onOpen={() => (d.instrumentId != null ? onOpenAsset(d.instrumentId) : onAll(d.signalIds?.[0] ?? null))} />
                 );
               })}

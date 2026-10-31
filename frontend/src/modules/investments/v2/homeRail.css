@@ -12,8 +12,6 @@
 .hr-row.hr-link { cursor: pointer; border-radius: 6px; }
 .hr-row.hr-link:hover { background: var(--subtle); }
 .hr-row.hr-link:focus-visible { outline: 2px solid var(--info); outline-offset: -2px; }
-.hr-row.hr-risk { box-shadow: inset 3px 0 0 var(--neg); padding-left: 9px; }
-.hr-row.hr-chance { box-shadow: inset 3px 0 0 var(--pos); padding-left: 9px; }
 .hr-row > .il { flex: none; margin-top: 1px; }
 .hr-row > .il.hr-pf .av { background: var(--chip); color: var(--muted); font-size: 12px; }
 .hr-row .hr-tx { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; }
