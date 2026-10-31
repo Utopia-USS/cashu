@@ -494,7 +494,25 @@ def _findings(out_imports: list[dict], stored: dict, stored_v1: list[dict]) -> d
 def render() -> bytes:
     with tempfile.TemporaryDirectory(prefix="cashu-inv-hash-parity-") as tmp:
         result = build(Path(tmp))
-    return (json.dumps(result, ensure_ascii=False, indent=1) + "\n").encode("utf-8")
+    raw = json.dumps(result, ensure_ascii=False, indent=1) + "\n"
+    return _biome_format(raw).encode("utf-8")
+
+
+def _biome_format(text: str) -> str:
+    """The repo's Biome formatting of the fixture, so the committed file passes `pnpm lint` and
+    `--check` compares exactly what is committed."""
+    import subprocess
+
+    biome = ROOT / "node_modules" / ".bin" / "biome"
+    done = subprocess.run(
+        [str(biome), "format", f"--stdin-file-path={OUT.relative_to(ROOT)}"],
+        input=text,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        check=True,
+    )
+    return done.stdout
 
 
 def main(argv: Iterable[str] | None = None) -> int:
