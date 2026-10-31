@@ -1,5 +1,7 @@
 export const PACKAGE_NAME = "@cashu/domain";
 
+/** Core module (registries, net worth, profile rules). */
+export * as core from "./core/index.js";
 export * from "./dates.js";
 export * from "./decimal.js";
 export * from "./iban.js";
