@@ -4,9 +4,19 @@ import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
 import { createKeyring, createVaultId, type Keyring, rotateKeyring } from "./keys.js";
 import { createRecoveryKey } from "./recovery.js";
 import type { Sodium } from "./sodium.js";
-import { backends, code, ctx, newRing, samplePlain, testRecovery, trustedTo } from "./testkit.js";
+import {
+  backends,
+  code,
+  ctx,
+  newRing,
+  pairWith,
+  samplePlain,
+  testRecovery,
+  trustedTo,
+} from "./testkit.js";
 import {
   openPairingWrap,
+  pairingWrapHash,
   sealForPairing,
   type TrustedSigner,
   unwrapKeys,
@@ -33,12 +43,7 @@ describe.each(backends)("pairing hop (%s)", (_name, sodium: Sodium) => {
     const ring = newRing(sodium);
     const vaultId = ring.vaultId;
     // Only the phone's public key crosses to the desktop (authenticated out of band); the box crosses back.
-    const phoneRing = openPairingWrap(
-      sodium,
-      sealForPairing(sodium, ring, phone.box.publicKey),
-      phone,
-      vaultId,
-    );
+    const phoneRing = pairWith(sodium, ring, phone);
     expect(phoneRing.active.kid).toBe(ring.active.kid);
     expect(phoneRing.recovery).toEqual(ring.recovery);
 
@@ -68,12 +73,7 @@ describe.each(backends)("pairing hop (%s)", (_name, sodium: Sodium) => {
     const c = ctx(ring.vaultId);
     const old = sealFrame(sodium, ring, samplePlain(), c);
     rotateKeyring(sodium, ring);
-    const phoneRing = openPairingWrap(
-      sodium,
-      sealForPairing(sodium, ring, phone.box.publicKey),
-      phone,
-      c.vaultId,
-    );
+    const phoneRing = pairWith(sodium, ring, phone);
     expect(phoneRing.size).toBe(2);
     expect(openFrame(sodium, phoneRing, old, c)).toEqual(samplePlain());
   });
@@ -82,22 +82,31 @@ describe.each(backends)("pairing hop (%s)", (_name, sodium: Sodium) => {
     const phone = createDeviceIdentity(sodium);
     const ring = newRing(sodium);
     const sealed = sealForPairing(sodium, ring, phone.box.publicKey);
-    expect(
-      code(() => openPairingWrap(sodium, sealed, createDeviceIdentity(sodium), ring.vaultId)),
-    ).toBe("auth_failed");
+    const open = (box: Uint8Array, who = phone, vaultId = ring.vaultId) =>
+      code(() => openPairingWrap(sodium, box, who, vaultId, pairingWrapHash(sodium, box)));
+    expect(open(sealed, createDeviceIdentity(sodium))).toBe("auth_failed");
     for (const i of [0, 31, 32, 47, 48, sealed.length - 1]) {
       const t = sealed.slice();
       t[i] = (t[i] ?? 0) ^ 0x01;
-      expect(code(() => openPairingWrap(sodium, t, phone, ring.vaultId))).toBe("auth_failed");
+      expect(open(t)).toBe("auth_failed");
     }
-    expect(code(() => openPairingWrap(sodium, sealed.subarray(0, 40), phone, ring.vaultId))).toBe(
+    expect(open(sealed.subarray(0, 40))).toBe("auth_failed");
+    expect(open(sealed, phone, createVaultId(sodium))).toBe("vault_mismatch");
+    expect(open(sodium.seal(new Uint8Array([1, 2, 3]), phone.box.publicKey))).toBe("bad_payload");
+  });
+
+  it("the SAS-compared hash is required: a box with another hash is refused before opening", () => {
+    const phone = createDeviceIdentity(sodium);
+    const ring = newRing(sodium);
+    const honest = sealForPairing(sodium, ring, phone.box.publicKey);
+    const swapped = sealForPairing(sodium, newRing(sodium, ring.vaultId), phone.box.publicKey);
+    const compared = pairingWrapHash(sodium, honest);
+    expect(code(() => openPairingWrap(sodium, swapped, phone, ring.vaultId, compared))).toBe(
       "auth_failed",
     );
-    expect(code(() => openPairingWrap(sodium, sealed, phone, createVaultId(sodium)))).toBe(
-      "vault_mismatch",
+    expect(openPairingWrap(sodium, honest, phone, ring.vaultId, compared).active.kid).toBe(
+      ring.active.kid,
     );
-    const junk = sodium.seal(new Uint8Array([1, 2, 3]), phone.box.publicKey);
-    expect(code(() => openPairingWrap(sodium, junk, phone, ring.vaultId))).toBe("bad_payload");
   });
 });
 
@@ -110,12 +119,7 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       const id = createDeviceIdentity(sodium);
       devices.push({
         id,
-        ring: openPairingWrap(
-          sodium,
-          sealForPairing(sodium, ring, id.box.publicKey),
-          id,
-          ring.vaultId,
-        ),
+        ring: pairWith(sodium, ring, id),
       });
     }
     return { devices, trust: trusting(...devices.map((d) => d.id)) };
@@ -305,8 +309,7 @@ describe.each(backends)("revocation is rotation going forward (%s)", (_name, sod
     const lost = createDeviceIdentity(sodium);
     const ring = newRing(sodium);
     const vaultId = ring.vaultId;
-    const pair = (d: DeviceIdentity) =>
-      openPairingWrap(sodium, sealForPairing(sodium, ring, d.box.publicKey), d, vaultId);
+    const pair = (d: DeviceIdentity) => pairWith(sodium, ring, d);
     const phoneRing = pair(phone);
     const lostRing = pair(lost);
 

@@ -10,6 +10,7 @@ import {
 } from "./frame.js";
 import { createVaultId, Keyring, rotateKeyring } from "./keys.js";
 import type { Sodium } from "./sodium.js";
+import { keyringFromKeys } from "./testing.js";
 import {
   backends,
   code,
@@ -73,7 +74,7 @@ describe.each(backends)("frames (%s)", (_name, sodium: Sodium) => {
 
     it("a key id cannot be claimed for another key: kids are always computed", () => {
       const vault = { vaultId: ring.vaultId, recovery: ring.recovery, gidSalt: GID_SALT };
-      const other = Keyring.fromKeys(sodium, vault, [
+      const other = keyringFromKeys(sodium, vault, [
         { generation: 1, epoch: 0, key: sodium.randomBytes(32) },
       ]);
       expect(other.active.kid).not.toBe(ring.active.kid);
@@ -87,7 +88,7 @@ describe.each(backends)("frames (%s)", (_name, sodium: Sodium) => {
 
     it("another vault never matches: the kid binds the vault, the AAD binds it again", () => {
       const otherVault = createVaultId(sodium);
-      const sameKeysOtherVault = Keyring.fromKeys(
+      const sameKeysOtherVault = keyringFromKeys(
         sodium,
         { vaultId: otherVault, recovery: testRecovery.publicKeys, gidSalt: GID_SALT },
         ring.entries().map((e) => ({ generation: 1, epoch: 0, key: e.key.expose().slice() })),

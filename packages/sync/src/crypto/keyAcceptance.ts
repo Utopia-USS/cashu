@@ -4,12 +4,12 @@
 
 import { CryptoError } from "./errors.js";
 import type { RecoveryPublicKeys } from "./identity.js";
-import { inBounds, type KeyEntry, MAX_GENERATION } from "./keyEntry.js";
+import { inBounds, type KeyEntry } from "./keyEntry.js";
 
 /** Keys one generation may hold (devices that rotated concurrently); more is a flood, `bad_payload`. */
 export const MAX_KEYS_PER_GENERATION = 8;
-/** Consistent with the bounds above, so every ring `merge` accepts can be saved and wrapped. */
-export const MAX_KEYS = MAX_GENERATION * MAX_KEYS_PER_GENERATION;
+/** The payload's u32 key count: `merge` never lets a ring grow past what one payload can carry. */
+export const MAX_KEYS = 0xffffffff;
 
 export function samePublicKeys(a: RecoveryPublicKeys, b: RecoveryPublicKeys): boolean {
   return equalBytes(a.boxPublicKey, b.boxPublicKey) && equalBytes(a.signPublicKey, b.signPublicKey);
@@ -53,5 +53,6 @@ export function selectAcceptedKeys(
     maxEpoch = Math.max(maxEpoch ?? e.epoch, e.epoch);
     fresh.push(e);
   }
+  if (held.length + fresh.length > MAX_KEYS) throw new CryptoError("bad_payload");
   return fresh;
 }

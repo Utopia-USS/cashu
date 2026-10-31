@@ -8,6 +8,8 @@ import { assertVaultId, decodedRing, GID_SALT_BYTES, type Keyring } from "./keyr
 import { KEY_BYTES, PUBLIC_KEY_BYTES, type Sodium } from "./sodium.js";
 
 const PAYLOAD_MAGIC = utf8("cashu/keys/v3");
+/** u32 generation | u32 epoch | 32-byte key. */
+const ENTRY_BYTES = 4 + 4 + KEY_BYTES;
 
 /**
  * Binary key payload v3:
@@ -19,19 +21,29 @@ const PAYLOAD_MAGIC = utf8("cashu/keys/v3");
 export function encodeKeyPayload(ring: Keyring, kids?: readonly string[]): Uint8Array {
   const chosen = kids ? kids.map((kid) => ring.get(kid) ?? missing()) : ring.entries();
   if (chosen.length === 0 || chosen.length > MAX_KEYS) throw new CryptoError("bad_payload");
-  const count = u32(chosen.length);
   const { boxPublicKey, signPublicKey } = ring.recovery;
   const gidSalt = ring.gidSalt();
   try {
-    return concat(
+    const head = concat(
       PAYLOAD_MAGIC,
       lengthPrefixed(utf8(ring.vaultId)),
       boxPublicKey,
       signPublicKey,
       gidSalt.expose(),
-      count,
-      ...chosen.flatMap((e) => [u32(e.generation), u32(e.epoch), e.key.expose()]),
+      u32(chosen.length),
     );
+    // Written key by key into one buffer: no argument spread, so a ring of any accepted size encodes.
+    const out = new Uint8Array(head.length + chosen.length * ENTRY_BYTES);
+    out.set(head, 0);
+    const view = new DataView(out.buffer);
+    let at = head.length;
+    for (const e of chosen) {
+      view.setUint32(at, e.generation);
+      view.setUint32(at + 4, e.epoch);
+      out.set(e.key.expose(), at + 8);
+      at += ENTRY_BYTES;
+    }
+    return out;
   } finally {
     gidSalt.wipe();
   }

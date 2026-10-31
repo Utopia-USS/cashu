@@ -10,7 +10,7 @@ import { createKeyring, rotateKeyring } from "./keys.js";
 import { loadKeyring, saveKeyring } from "./keystore.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { InMemoryKeyStore } from "./testing.js";
-import { ctx, PLAINTEXT_MARKER, samplePlain, sodium, trustedTo } from "./testkit.js";
+import { ctx, PLAINTEXT_MARKER, pairWith, samplePlain, sodium, trustedTo } from "./testkit.js";
 import {
   openPairingWrap,
   recoveryRecipient,
@@ -66,12 +66,7 @@ describe("no key or plaintext in logs", () => {
     const phone = createDeviceIdentity(sodium);
     rotateKeyring(sodium, ring);
     const frame = sealFrame(sodium, ring, samplePlain(), c);
-    const phoneRing = openPairingWrap(
-      sodium,
-      sealForPairing(sodium, ring, phone.box.publicKey),
-      phone,
-      ring.vaultId,
-    );
+    const phoneRing = pairWith(sodium, ring, phone);
     openFrame(sodium, phoneRing, frame, c);
     const store = new InMemoryKeyStore();
     await saveKeyring(store, ring);

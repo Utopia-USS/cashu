@@ -5,14 +5,16 @@ import { concat, fromHex, lengthPrefixed, u32, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
-import { Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
+import { type Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
+import { keyringFromKeys } from "./testing.js";
 import {
   code,
   ctx,
   GID_SALT,
   newRing,
+  pairWith,
   samplePlain,
   sodium,
   testRecovery,
@@ -36,11 +38,7 @@ function trusting(...devices: DeviceIdentity[]): TrustedSigner {
 function vault(n: number) {
   const ring = newRing();
   const ids = Array.from({ length: n }, () => createDeviceIdentity(sodium));
-  const rings = ids.map((id, i) =>
-    i === 0
-      ? ring
-      : openPairingWrap(sodium, sealForPairing(sodium, ring, id.box.publicKey), id, ring.vaultId),
-  );
+  const rings = ids.map((id, i) => (i === 0 ? ring : pairWith(sodium, ring, id)));
   return { ids, rings, vaultId: ring.vaultId };
 }
 
@@ -138,10 +136,10 @@ describe("review attacks now fail", () => {
     const ring = newRing();
     const vaultInfo = { vaultId: ring.vaultId, recovery: ring.recovery, gidSalt: GID_SALT };
     const k = sodium.randomBytes(32);
-    const asGen1 = Keyring.fromKeys(sodium, vaultInfo, [
+    const asGen1 = keyringFromKeys(sodium, vaultInfo, [
       { generation: 1, epoch: 0, key: k.slice() },
     ]);
-    const relabelled = Keyring.fromKeys(sodium, vaultInfo, [
+    const relabelled = keyringFromKeys(sodium, vaultInfo, [
       { generation: 1, epoch: 0, key: sodium.randomBytes(32) },
       { generation: 2, epoch: 0, key: k.slice() },
     ]);

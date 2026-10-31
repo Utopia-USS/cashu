@@ -8,6 +8,7 @@ import type { DeviceIdentity } from "./identity.js";
 import { createKeyring, type Keyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
+import { openPairingWrap, pairingWrapHash, sealForPairing } from "./wrap.js";
 
 export const sodium: Sodium = await loadNodeSodium();
 
@@ -126,4 +127,10 @@ export function code(fn: () => unknown): CryptoErrorCode | "no error" {
     if (e instanceof CryptoError) return e.code;
     throw e;
   }
+}
+
+/** The pairing hop as S29 will run it: seal, compare the hash out of band, open. */
+export function pairWith(s: Sodium, ring: Keyring, device: DeviceIdentity): Keyring {
+  const sealed = sealForPairing(s, ring, device.box.publicKey);
+  return openPairingWrap(s, sealed, device, ring.vaultId, pairingWrapHash(s, sealed));
 }

@@ -61,7 +61,7 @@ function checkRecovery(recovery: RecoveryPublicKeys): RecoveryPublicKeys {
 }
 
 /**
- * A vault's keys on one device. Built only by `createKeyring`, `rotateKeyring`, `Keyring.fromKeys`
+ * A vault's keys on one device. Built only by `createKeyring`, `rotateKeyring`, `keyringFromKeys` (tests)
  * and the payload decoder; every key that arrives from outside goes through `merge`, the one
  * acceptance policy (same vault, same recovery key, no generation gap, all-or-nothing).
  */
@@ -71,29 +71,14 @@ export class Keyring {
   #gidSalt: Secret;
   #entries = new Map<string, KeyEntry>();
 
-  /** Not public API: use `createKeyring` or `Keyring.fromKeys`. */
+  /** Not public API: use `createKeyring`. */
   constructor(token: typeof INTERNAL, vault: VaultInfo) {
-    if (token !== INTERNAL) throw new TypeError("use createKeyring or Keyring.fromKeys");
+    if (token !== INTERNAL) throw new TypeError("use createKeyring");
     assertVaultId(vault.vaultId);
     if (vault.gidSalt.length !== GID_SALT_BYTES) throw new RangeError("gid salt must be 32 bytes");
     this.vaultId = vault.vaultId;
     this.#recovery = checkRecovery(vault.recovery);
     this.#gidSalt = new Secret(vault.gidSalt.slice());
-  }
-
-  /**
-   * A ring from raw key material (e.g. fixed test keys); kids are computed here, and the keys
-   * must satisfy the same acceptance policy as a merge (start at generation 1, no gap).
-   */
-  static fromKeys(sodium: Sodium, vault: VaultInfo, keys: readonly KeyMaterial[]): Keyring {
-    const ring = new Keyring(INTERNAL, vault);
-    const incoming = decodedRing(sodium, vault, keys);
-    try {
-      ring.merge(incoming);
-    } finally {
-      incoming.wipe();
-    }
-    return ring;
   }
 
   /** The recovery public keys pinned for this vault (never read from a plain vault file). */
@@ -147,7 +132,7 @@ export class Keyring {
 
   /** An independent copy (own key bytes) of this ring. */
   clone(sodium: Sodium): Keyring {
-    return Keyring.fromKeys(
+    return keyringFromKeys(
       sodium,
       { vaultId: this.vaultId, recovery: this.#recovery, gidSalt: this.#gidSalt.expose() },
       this.entries().map((e) => ({
@@ -216,6 +201,28 @@ export class Keyring {
   [INSPECT](): string {
     return `Keyring(${this.vaultId}, ${this.#entries.size} keys)`;
   }
+}
+
+/**
+ * A ring from raw key material and caller-chosen vault info (recovery keys, gid salt): for tests and
+ * golden vectors only, exported from `@cashu/sync/testing`, never from the main entry, because a
+ * ring built from storage data this way would skip the pinning that payloads give (B2, D9). Kids are
+ * computed here and the keys pass the same acceptance policy as a merge.
+ * @package
+ */
+export function keyringFromKeys(
+  sodium: Sodium,
+  vault: VaultInfo,
+  keys: readonly KeyMaterial[],
+): Keyring {
+  const ring = new Keyring(INTERNAL, vault);
+  const incoming = decodedRing(sodium, vault, keys);
+  try {
+    ring.merge(incoming);
+  } finally {
+    incoming.wipe();
+  }
+  return ring;
 }
 
 /** Not public API: an unchecked ring of decoded entries; only ever merged into a checked ring. */

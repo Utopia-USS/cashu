@@ -268,6 +268,16 @@ function samePublicKeys(a: RecoveryPublicKeys, b: RecoveryPublicKeys): boolean {
   return eq(a.boxPublicKey, b.boxPublicKey) && eq(a.signPublicKey, b.signPublicKey);
 }
 
+const PAIRING_HASH_CONTEXT = utf8("cashu/pairing-hash/v1");
+
+/**
+ * BLAKE2b-256 of a pairing box under its own context: the value the pairing protocol (S29) binds into
+ * the short authentication string or commitment, and that `openPairingWrap` requires.
+ */
+export function pairingWrapHash(sodium: Sodium, sealed: Uint8Array): Uint8Array {
+  return sodium.hash(32, concat(PAIRING_HASH_CONTEXT, sealed));
+}
+
 /**
  * FIRST PAIRING HOP ONLY. Seals the ring's keys (with the pinned recovery public keys) for a new
  * device's X25519 public key, which the sender must have authenticated out of band (QR scanned in
@@ -293,16 +303,24 @@ export function sealForPairing(
 
 /**
  * FIRST PAIRING HOP ONLY: opens a `sealForPairing` box whose authenticity the pairing protocol
- * established out of band. Returns a new ring for `expectedVaultId` carrying the recovery public
- * keys from the payload (this is how they get pinned on a new device). Throws `auth_failed`,
- * `vault_mismatch`, `generation_gap` or `bad_payload`.
+ * established out of band. `expectedHash` is the `pairingWrapHash` both devices compared through the
+ * short authentication string (or the commitment): a box whose hash differs is refused before
+ * opening (`auth_failed`), so the SAS check cannot be skipped by accident. Returns a new ring for
+ * `expectedVaultId` carrying the recovery public keys and gid salt from the payload (this is how they
+ * get pinned on a new device). Throws `auth_failed`, `vault_mismatch`, `generation_gap`, `epoch_gap`
+ * or `bad_payload`.
  */
 export function openPairingWrap(
   sodium: Sodium,
   sealed: Uint8Array,
   recipient: DeviceIdentity,
   expectedVaultId: string,
+  expectedHash: Uint8Array,
 ): Keyring {
+  const actual = pairingWrapHash(sodium, sealed);
+  if (expectedHash.length !== actual.length || !expectedHash.every((b, i) => b === actual[i])) {
+    throw new CryptoError("auth_failed");
+  }
   const payload = openSealed(sodium, sealed, recipient);
   let incoming: Keyring;
   try {

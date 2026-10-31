@@ -13,6 +13,7 @@ import { createDeviceIdentity, DeviceIdentity } from "./identity.js";
 import { encodeKeyPayload, Keyring, KID_BYTES } from "./keys.js";
 import { recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
+import { keyringFromKeys } from "./testing.js";
 import { ctx, DEVICE_A, GID_SALT, range, sodium, trustedTo } from "./testkit.js";
 import { wrapKeys } from "./wrap.js";
 
@@ -64,7 +65,7 @@ describe("cashU format golden vectors", () => {
   const keyBytes = range(0x00, 0x1f);
   const recovery = recoveryIdentity(sodium, `${"abandon ".repeat(23)}art`);
   const ring = () =>
-    Keyring.fromKeys(sodium, { vaultId, recovery: recovery.publicKeys, gidSalt: GID_SALT }, [
+    keyringFromKeys(sodium, { vaultId, recovery: recovery.publicKeys, gidSalt: GID_SALT }, [
       { generation: 1, epoch: 0, key: keyBytes.slice() },
     ]);
   const frameCtx = ctx(vaultId, { deviceId: DEVICE_A, segment: 7, offset: 128 });

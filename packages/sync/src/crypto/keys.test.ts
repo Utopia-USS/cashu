@@ -8,13 +8,15 @@ import {
   decodeKeyPayload,
   encodeKeyPayload,
   Keyring,
+  MAX_EPOCH,
   MAX_GENERATION,
   MAX_KEYS_PER_GENERATION,
   mergeKeyPayload,
   rotateKeyring,
 } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
-import { code, GID_SALT, newRing, sodium, testRecovery } from "./testkit.js";
+import { keyringFromKeys } from "./testing.js";
+import { code, GID_SALT, newRing, pairWith, sodium, testRecovery } from "./testkit.js";
 import {
   openPairingWrap,
   recoveryRecipient,
@@ -52,8 +54,8 @@ describe("key ids", () => {
       recovery: testRecovery.publicKeys,
       gidSalt: GID_SALT,
     };
-    const a = Keyring.fromKeys(sodium, vault, [{ generation: 1, epoch: 0, key: key.slice() }]);
-    const b = Keyring.fromKeys(sodium, vault, [{ generation: 1, epoch: 1, key: key.slice() }]);
+    const a = keyringFromKeys(sodium, vault, [{ generation: 1, epoch: 0, key: key.slice() }]);
+    const b = keyringFromKeys(sodium, vault, [{ generation: 1, epoch: 1, key: key.slice() }]);
     expect(a.active.kid).not.toBe(b.active.kid);
   });
 });
@@ -78,7 +80,7 @@ describe("acceptance policy", () => {
     const gen2 = encodeKeyPayload(ring, [ring.active.kid]);
     expect(
       code(() =>
-        Keyring.fromKeys(sodium, vaultOf(ring), [
+        keyringFromKeys(sodium, vaultOf(ring), [
           { generation: 2, epoch: 0, key: sodium.randomBytes(32) },
         ]),
       ),
@@ -92,11 +94,11 @@ describe("acceptance policy", () => {
       [0, 0],
       [MAX_GENERATION + 1, 0],
       [0xffffffff, 0],
-      [1, MAX_GENERATION + 1],
+      [1, MAX_EPOCH + 1],
     ] as const) {
       expect(
         code(() =>
-          Keyring.fromKeys(sodium, vaultOf(ring), [
+          keyringFromKeys(sodium, vaultOf(ring), [
             { generation, epoch, key: sodium.randomBytes(32) },
           ]),
         ),
@@ -136,7 +138,7 @@ describe("epochs and flood limits", () => {
     const ring = newRing();
     expect(
       code(() =>
-        Keyring.fromKeys(sodium, vaultOf(ring), [
+        keyringFromKeys(sodium, vaultOf(ring), [
           { generation: 1, epoch: 0, key: sodium.randomBytes(32) },
           { generation: 2, epoch: 2, key: sodium.randomBytes(32) },
         ]),
@@ -148,7 +150,7 @@ describe("epochs and flood limits", () => {
 
   it("an empty ring takes the first key's epoch as its base", () => {
     const ring = newRing();
-    const late = Keyring.fromKeys(sodium, vaultOf(ring), [
+    const late = keyringFromKeys(sodium, vaultOf(ring), [
       { generation: 1, epoch: 7, key: sodium.randomBytes(32) },
       { generation: 2, epoch: 8, key: sodium.randomBytes(32) },
     ]);
@@ -164,10 +166,10 @@ describe("epochs and flood limits", () => {
     }));
     // fromKeys takes ownership of (and wipes) the bytes it is given, so each call gets copies.
     const copies = (n: number) => keys.slice(0, n).map((k) => ({ ...k, key: k.key.slice() }));
-    expect(code(() => Keyring.fromKeys(sodium, vaultOf(ring), copies(keys.length)))).toBe(
+    expect(code(() => keyringFromKeys(sodium, vaultOf(ring), copies(keys.length)))).toBe(
       "bad_payload",
     );
-    expect(Keyring.fromKeys(sodium, vaultOf(ring), copies(MAX_KEYS_PER_GENERATION)).size).toBe(
+    expect(keyringFromKeys(sodium, vaultOf(ring), copies(MAX_KEYS_PER_GENERATION)).size).toBe(
       MAX_KEYS_PER_GENERATION,
     );
   });
@@ -184,12 +186,7 @@ describe("gid salt (D9)", () => {
     const recovery = createRecoveryKey(sodium);
     const desktop = createKeyring(sodium, recovery.publicKeys);
     const phone = createDeviceIdentity(sodium);
-    const phoneRing = openPairingWrap(
-      sodium,
-      sealForPairing(sodium, desktop, phone.box.publicKey),
-      phone,
-      desktop.vaultId,
-    );
+    const phoneRing = pairWith(sodium, desktop, phone);
     const before = gid(desktop, "synthetic-import-row-1");
     expect(gid(phoneRing, "synthetic-import-row-1")).toBe(before);
 
@@ -209,7 +206,7 @@ describe("gid salt (D9)", () => {
 
   it("a payload carrying a different salt is rejected atomically", () => {
     const ring = newRing();
-    const forged = Keyring.fromKeys(sodium, { ...vaultOf(ring), gidSalt: sodium.randomBytes(32) }, [
+    const forged = keyringFromKeys(sodium, { ...vaultOf(ring), gidSalt: sodium.randomBytes(32) }, [
       { generation: 1, epoch: 0, key: sodium.randomBytes(32) },
     ]);
     rotateKeyring(sodium, forged);
@@ -225,4 +222,25 @@ describe("gid salt (D9)", () => {
     expect(String(a.gidSalt())).toBe("[redacted]");
     expect(JSON.stringify(a)).not.toContain(toHex(a.gidSalt().expose()));
   });
+});
+
+describe("large rings (D16)", () => {
+  it("a 50k-key ring encodes, decodes, pairs and still rotates, in well under 5 s", () => {
+    const ring = newRing();
+    const keys = Array.from({ length: 50_000 }, (_, i) => ({
+      generation: i + 1,
+      epoch: 0,
+      key: sodium.randomBytes(32),
+    }));
+    const big = keyringFromKeys(sodium, vaultOf(ring), keys);
+    const started = performance.now();
+    const payload = encodeKeyPayload(big);
+    expect(payload.length).toBeGreaterThan(50_000 * 40);
+    expect(decodeKeyPayload(sodium, payload).size).toBe(50_000);
+    const phone = createDeviceIdentity(sodium);
+    const phoneRing = pairWith(sodium, big, phone);
+    expect(phoneRing.active.kid).toBe(big.active.kid);
+    expect(rotateKeyring(sodium, phoneRing, { epoch: 1 }).generation).toBe(50_001);
+    expect(performance.now() - started).toBeLessThan(5_000);
+  }, 20_000);
 });

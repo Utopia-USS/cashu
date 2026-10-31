@@ -9,8 +9,12 @@ import { Secret } from "./secret.js";
 import { KEY_BYTES, type Sodium } from "./sodium.js";
 
 export const KID_BYTES = 16;
-/** Upper bound for generations and epochs (2^20): far above any real use, far below u32 overflow. */
-export const MAX_GENERATION = 1_048_576;
+/**
+ * Generations go up to 2^31 - 1 (u32 on the wire): at one generation per signed wrap, a device that
+ * floods the ring cannot exhaust rotation (and so revocation) in any practical time. Epochs count
+ * revocation events and stay bounded at 2^20.
+ */
+export const MAX_GENERATION = 2_147_483_647;
 export const MAX_EPOCH = 1_048_576;
 const KID_CONTEXT = utf8("cashu/kid/v2");
 const FRAME_SUBKEY_CONTEXT = utf8("cashu/subkey/frame/v2");

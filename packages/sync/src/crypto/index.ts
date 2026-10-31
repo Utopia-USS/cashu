@@ -78,6 +78,7 @@ export {
 } from "./sodium.js";
 export {
   openPairingWrap,
+  pairingWrapHash,
   RecoveryRecipient,
   recoveryRecipient,
   sealForPairing,
