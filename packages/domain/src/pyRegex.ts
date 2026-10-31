@@ -123,7 +123,7 @@ export function translatePyPattern(python: string): Translation {
           out += `\\P{Nd}`;
           break;
         case "b":
-          out += PY_B;
+          out += boundary(chars, i - 2);
           break;
         case "B":
           out += PY_NOT_B;
@@ -176,6 +176,97 @@ export function translatePyPattern(python: string): Translation {
     else out += ch;
   }
   return { source: out, ignoreCase };
+}
+
+const WORD_CHAR = /^[\p{L}\p{N}_]$/u;
+const WORD_BEFORE = `(?<![${PY_W}])`;
+const WORD_AFTER = `(?![${PY_W}])`;
+
+function isWordLiteral(ch: string | undefined): boolean {
+  return ch !== undefined && WORD_CHAR.test(ch);
+}
+
+/** A quantifier that may allow zero repetitions (`{` is treated as one without parsing it). */
+function isOptionalMark(ch: string | undefined): boolean {
+  return ch === "?" || ch === "*" || ch === "{";
+}
+
+/** True when `chars[at]` is the last digit of a `\xhh` or `\uhhhh` escape (it matched another character). */
+function endsHexEscape(chars: readonly string[], at: number): boolean {
+  const x = at - 2;
+  const u = at - 4;
+  return (
+    (chars[x] === "x" && chars[x - 1] === "\\" && !isEscaped(chars, x - 1)) ||
+    (chars[u] === "u" && chars[u - 1] === "\\" && !isEscaped(chars, u - 1))
+  );
+}
+
+/** True when `chars[at]` is escaped, i.e. preceded by an odd number of backslashes. */
+function isEscaped(chars: readonly string[], at: number): boolean {
+  let slashes = 0;
+  while (at - 1 - slashes >= 0 && chars[at - 1 - slashes] === "\\") slashes++;
+  return slashes % 2 === 1;
+}
+
+/** The index after the class starting at `chars[start] === "["` (`]` first in the class is literal). */
+function skipClass(chars: readonly string[], start: number): number {
+  let i = start + 1;
+  if (chars[i] === "^") i++;
+  if (chars[i] === "]") i++;
+  while (i < chars.length && chars[i] !== "]") i += chars[i] === "\\" ? 2 : 1;
+  return i + 1;
+}
+
+/**
+ * True when every match of the pattern from `chars[at]` on starts with a word character. Answers
+ * false whenever unsure (an optional atom, a class, a lookaround, an empty alternative).
+ */
+function startsWithWord(chars: readonly string[], at: number): boolean {
+  const ch = chars[at];
+  if (ch === undefined) return false;
+  if (ch === "\\") return chars[at + 1] === "w" || chars[at + 1] === "d";
+  if (ch === "(") {
+    const open = chars[at + 1] === "?" ? (chars[at + 2] === ":" ? at + 3 : -1) : at + 1;
+    if (open < 0) return false;
+    const starts = [open];
+    let depth = 1;
+    let i = open;
+    while (i < chars.length && depth > 0) {
+      const c = chars[i] as string;
+      if (c === "\\") i += 2;
+      else if (c === "[") i = skipClass(chars, i);
+      else {
+        if (c === "(") depth++;
+        else if (c === ")") depth--;
+        else if (c === "|" && depth === 1) starts.push(i + 1);
+        i++;
+      }
+    }
+    if (depth > 0 || isOptionalMark(chars[i])) return false;
+    return starts.every((start) => startsWithWord(chars, start));
+  }
+  if (!isWordLiteral(ch)) return false;
+  return !isOptionalMark(chars[at + 1]);
+}
+
+/**
+ * Python `\b` at `chars[at..at + 1]`. When the next match character is certainly a word character
+ * the boundary is just "not after a word character", and when the previous one is, "not before a
+ * word character": one lookaround instead of the two-sided alternation (about 3x faster on the
+ * phrase patterns). Otherwise the general `PY_B`.
+ */
+function boundary(chars: readonly string[], at: number): string {
+  if (startsWithWord(chars, at + 2)) return WORD_BEFORE;
+  const prev = at - 1;
+  if (
+    prev >= 0 &&
+    isWordLiteral(chars[prev]) &&
+    !isEscaped(chars, prev) &&
+    !endsHexEscape(chars, prev)
+  ) {
+    return WORD_AFTER;
+  }
+  return PY_B;
 }
 
 interface ClassAtom {

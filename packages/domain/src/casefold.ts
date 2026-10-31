@@ -57,8 +57,18 @@ const CASEFOLD: ReadonlyMap<number, string> = new Map(
     }),
 );
 
+/**
+ * Strings with none of these go through `toLowerCase()` as a whole: the table keys, and U+03A3 (the one
+ * context-sensitive lowercase mapping, final sigma, which `casefold()` never applies).
+ */
+const NEEDS_TABLE = new RegExp(
+  `[${[...CASEFOLD.keys(), 0x3a3].map((cp) => `\\u{${cp.toString(16)}}`).join("")}]`,
+  "u",
+);
+
 /** Python `s.casefold()`. */
 export function pyCasefold(s: string): string {
+  if (!NEEDS_TABLE.test(s)) return s.toLowerCase();
   let out = "";
   for (const ch of s) {
     out += CASEFOLD.get(ch.codePointAt(0) as number) ?? ch.toLowerCase();
