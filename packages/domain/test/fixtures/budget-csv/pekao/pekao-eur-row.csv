@@ -1,0 +1,3 @@
+Data księgowania;Data waluty;Nadawca / Odbiorca;Adres nadawcy / odbiorcy;Rachunek źródłowy;Rachunek docelowy;Tytułem;Kwota operacji;Waluta;Numer referencyjny;Typ operacji;Kategoria
+2026-09-01;;JAN TEST;;'99124000000000000000000001;'99124000000000000000000002;A;-1,00;EUR;R1;T;K
+2026-09-02;;JAN TEST;;'99124000000000000000000002;'99124000000000000000000001;B;2,00;;R2;T;K
