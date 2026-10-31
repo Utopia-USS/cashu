@@ -45,7 +45,7 @@ import {
   rotationReason,
   type WrapOutcome,
 } from "./rotation.js";
-import { memoizedVerifier } from "./statements.js";
+import { memoizedVerifier, type StatementVerifier } from "./statements.js";
 
 /** Pending (not yet acceptable) wraps kept per claimed sender, and in all (review M4). */
 export const MAX_PENDING_WRAPS_PER_SENDER = 32;
@@ -63,6 +63,9 @@ export interface VaultDevicesOptions {
   readonly rateLimit?: RateLimit;
   /** Restored from the recovery words and not rotated yet (n3). */
   readonly recovering?: { readonly highestRecoveryEpoch: number };
+  /** Shared with the pairing joiner (JoinerOptions) so the welcome's registry is verified once. */
+  readonly verify?: StatementVerifier;
+  readonly certificateCache?: CertificateCache;
 }
 
 export interface IngestReport {
@@ -100,8 +103,8 @@ export class VaultDevices {
   readonly #seenEvents = new Set<string>();
   readonly #firstSeen = new Map<string, number>();
   readonly #pending = new Map<string, PendingWrap>();
-  readonly #verify = memoizedVerifier();
-  readonly #certificateCache = new CertificateCache();
+  readonly #verify: StatementVerifier;
+  readonly #certificateCache: CertificateCache;
   #history: RecoveryHistory = { previous: [], certificates: [] };
   #registry: Registry;
   #lease: LeaseView;
@@ -113,6 +116,8 @@ export class VaultDevices {
 
   constructor(options: VaultDevicesOptions) {
     this.#o = options;
+    this.#verify = options.verify ?? memoizedVerifier();
+    this.#certificateCache = options.certificateCache ?? new CertificateCache();
     this.#recovering = options.recovering;
     this.#registry = this.#foldRegistry();
     this.#lease = foldLease(this.#registry, this.#leaseEvents, this.#verify);

@@ -1,4 +1,5 @@
 import {
+  type CertificateCache,
   CryptoError,
   type DeviceIdentity,
   type Keyring,
@@ -44,7 +45,7 @@ import {
 } from "./pairingProtocol.js";
 import { recoveryHistory } from "./recoveryChange.js";
 import { foldRegistry, type Registry } from "./registry.js";
-import { verifyStatement } from "./statements.js";
+import { type StatementVerifier, verifyStatement } from "./statements.js";
 
 // ---------------------------------------------------------------------------------------------
 // Joiner
@@ -55,6 +56,12 @@ export interface JoinerOptions {
   /** This device's display name (shown in the registry). */
   readonly name: string;
   readonly maxSkewMs?: number;
+  /**
+   * Signature and certificate checks of the welcome's registry fold: pass the ones this device's
+   * `VaultDevices` will use, so the registry it seeds is not verified a second time.
+   */
+  readonly verify?: StatementVerifier;
+  readonly certificateCache?: CertificateCache;
 }
 
 export interface JoinerWelcome {
@@ -324,7 +331,11 @@ export class PairingJoiner {
       sodium,
       { vaultId: ring.vaultId, recovery, previous: history.previous },
       events,
-      { bootstrapCertificates: [certificate, ...history.certificates] },
+      {
+        bootstrapCertificates: [certificate, ...history.certificates],
+        ...(this.#o.verify ? { verify: this.#o.verify } : {}),
+        ...(this.#o.certificateCache ? { certificateCache: this.#o.certificateCache } : {}),
+      },
     );
     const me = registry.trusted.get(identity.deviceId);
     const inviter = registry.trusted.get(this.invite.inviter);

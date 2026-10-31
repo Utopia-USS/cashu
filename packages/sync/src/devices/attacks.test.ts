@@ -56,8 +56,9 @@ function syncAll(devices: readonly SimDevice[], rounds = 2): void {
 }
 
 describe("review attacks", () => {
-  it("A1: a revoked device backdates a revocation of its revoker; every device ends with both revoked, in any delivery order", async () => {
-    for (const order of ["revoker-first", "attacker-first"] as const) {
+  // One test per delivery order (each pairs a joiner and rebuilds: two in one test ran too long under load).
+  for (const order of ["revoker-first", "attacker-first"] as const) {
+    it(`A1 (${order}): a revoked device backdates a revocation of its revoker; every device ends with both revoked`, async () => {
       const { a, b, r, c } = await fourDevices();
       r.write([note()]);
       syncAll([a, b, r, c]);
@@ -109,8 +110,8 @@ describe("review attacks", () => {
       if (!rotation.ok) throw new Error(rotation.reason);
       expect(rotation.change.recipients).toEqual(expect.not.arrayContaining([b.id, r.id]));
       rotation.change.discard();
-    }
-  });
+    });
+  }
 
   it("A1b: a revoked device rewrites one of its own frames before its cut; fresh joiners and rebuilds never trust it again", async () => {
     const { a, b, r, c } = await fourDevices();

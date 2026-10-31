@@ -14,6 +14,7 @@
 import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
 import { START_CURSOR } from "../carrier.js";
 import {
+  CertificateCache,
   createDeviceIdentity,
   createRecoveryKey,
   createVaultWithRecovery,
@@ -33,6 +34,7 @@ import { type PairingLink, runInviter, runJoiner } from "./pairingLink.js";
 import { comparePositions } from "./positions.js";
 import { MemoryProvenanceStore } from "./provenance.js";
 import { recordPairingProvenance } from "./rotation.js";
+import { memoizedVerifier, type StatementVerifier } from "./statements.js";
 import { VaultDevices } from "./vaultDevices.js";
 
 export const sodium: Sodium = await loadNodeSodium();
@@ -106,6 +108,9 @@ export class SimDevice {
   readonly cursors = new Map<string, SegmentCursor>();
   /** Every rejection the guard reported on this device. */
   readonly rejections: FrameRejection[] = [];
+  /** Signature and certificate caches of this device (shared by pairing and its devices state). */
+  readonly verify: StatementVerifier = memoizedVerifier();
+  readonly certificateCache = new CertificateCache();
   skewMs: number;
   lastPullAt: number | undefined;
   devices!: VaultDevices;
@@ -161,6 +166,8 @@ export class SimDevice {
       provenance: this.provenance,
       clock: () => this.now(),
       bootstrapCertificates,
+      verify: this.verify,
+      certificateCache: this.certificateCache,
       ...(recovering ? { recovering } : {}),
     });
   }
@@ -417,7 +424,13 @@ export async function pairDevice(inviter: SimDevice, name: string, skewMs = 0): 
   });
   if (!created.ok) throw new Error(`invite failed: ${created.reason}`);
   const started = PairingJoiner.start(
-    { sodium, identity: joiner.identity, name },
+    {
+      sodium,
+      identity: joiner.identity,
+      name,
+      verify: joiner.verify,
+      certificateCache: joiner.certificateCache,
+    },
     created.value.qr,
     joiner.now(),
   );
