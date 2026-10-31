@@ -103,14 +103,18 @@ export function unicodeDecimal(cp: number): number {
   return -1;
 }
 
-/** Python `s.strip()` (no argument: strips `str.isspace` characters). */
+/**
+ * Python `s.strip()` (no argument: strips `str.isspace` characters). Scans UTF-16 code units: every
+ * Python whitespace character is a single BMP code unit and no surrogate is whitespace, so a scan by
+ * code unit stops exactly where a scan by code point would, without splitting the string into an
+ * array of code points (the hot path of `normalizeText`).
+ */
 export function pyStrip(s: string): string {
-  const chars = Array.from(s);
   let start = 0;
-  let end = chars.length;
-  while (start < end && isPySpace((chars[start] as string).codePointAt(0) as number)) start++;
-  while (end > start && isPySpace((chars[end - 1] as string).codePointAt(0) as number)) end--;
-  return chars.slice(start, end).join("");
+  let end = s.length;
+  while (start < end && PY_SPACE_SET.has(s.charCodeAt(start))) start++;
+  while (end > start && PY_SPACE_SET.has(s.charCodeAt(end - 1))) end--;
+  return start === 0 && end === s.length ? s : s.slice(start, end);
 }
 
 /** Python `s.split()` (no argument): runs of whitespace separate, no empty strings. */
@@ -140,6 +144,9 @@ export function pyLower(s: string): string {
 }
 
 const WS_RUN = new RegExp(`[${PY_WS}]+`, "gu");
+/** `ł`/`Ł` have no NFKD decomposition: replaced by hand, in one pass. */
+const L_STROKE = /[łŁ]/g;
+const unstroke = (ch: string): string => (ch === "ł" ? "l" : "L");
 
 /**
  * `core/text.py:normalize_text`: upper case, diacritics stripped (NFKD minus combining marks, with
@@ -147,7 +154,7 @@ const WS_RUN = new RegExp(`[${PY_WS}]+`, "gu");
  */
 export function normalizeText(value: string | null | undefined): string {
   if (!value) return "";
-  const replaced = value.replaceAll("ł", "l").replaceAll("Ł", "L").normalize("NFKD");
+  const replaced = value.replace(L_STROKE, unstroke).normalize("NFKD");
   let kept = "";
   for (const ch of replaced) {
     if (!isCombining(ch.codePointAt(0) as number)) kept += ch;

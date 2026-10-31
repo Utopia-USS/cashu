@@ -17,17 +17,20 @@ import {
   unicodeDecimal,
 } from "./text.js";
 
-/** sha256 per 4096-code-point block of fn(chr(c)) joined by NUL, surrogates skipped (as vectors.py). */
+/**
+ * sha256 per 4096-code-point block of fn(chr(c)) joined by NUL, surrogates skipped (as vectors.py).
+ * One digest input per block: the same bytes as feeding the hash per code point, without ~2 native
+ * hash calls per code point (8.9M for the four functions).
+ */
 function blockHashes(fn: (s: string) => string): string[] {
   const out: string[] = [];
   for (let block = 0; block < 0x110000 / 4096; block++) {
-    const h = createHash("sha256");
+    let joined = "";
     for (let c = block * 4096; c < (block + 1) * 4096; c++) {
       if (c >= 0xd800 && c <= 0xdfff) continue;
-      h.update(fn(String.fromCodePoint(c)), "utf8");
-      h.update("\0");
+      joined += `${fn(String.fromCodePoint(c))}\0`;
     }
-    out.push(h.digest("hex").slice(0, 16));
+    out.push(createHash("sha256").update(joined, "utf8").digest("hex").slice(0, 16));
   }
   return out;
 }
@@ -62,25 +65,31 @@ describe("text vectors (parity/python/vectors.py)", () => {
     expect(unicodeDecimal(0x41)).toBe(-1);
   });
 
-  it("every code point: normalize_text, upper, lower, strip", () => {
-    const fns: Record<string, (s: string) => string> = {
-      normalize_text: normalizeText,
-      upper: pyUpper,
-      lower: pyLower,
-      strip: (s) => pyStrip(`x${s}x${s}`),
-    };
-    const m = new Mismatches();
-    for (const row of text.rows.filter((r) => r[0] === "blocks")) {
-      const [, name, hashes] = row as [string, string, string[]];
-      const fn = fns[name];
+  // One test per function: each is one exhaustive scan of every code point, reported on its own.
+  const perCodePoint: Record<string, (s: string) => string> = {
+    normalize_text: normalizeText,
+    upper: pyUpper,
+    lower: pyLower,
+    strip: (s) => pyStrip(`x${s}x${s}`),
+  };
+  const blockRows = text.rows.filter((r) => r[0] === "blocks") as [string, string, string[]][];
+
+  it("block hashes cover exactly the per-code-point functions", () => {
+    expect(blockRows.map(([, name]) => name).sort()).toEqual(Object.keys(perCodePoint).sort());
+  });
+
+  for (const [, name, hashes] of blockRows) {
+    it(`every code point: ${name}`, () => {
+      const fn = perCodePoint[name];
       if (!fn) throw new Error(`no TS function for ${name}`);
+      const m = new Mismatches();
       blockHashes(fn).forEach((hash, block) => {
         m.check(`${name} block U+${(block * 4096).toString(16)}`, hash, hashes[block]);
       });
-    }
-    expect(m.checked).toBe(4 * 272);
-    expect(m.items, m.report()).toEqual([]);
-  });
+      expect(m.checked).toBe(272);
+      expect(m.items, m.report()).toEqual([]);
+    });
+  }
 
   it("strings: normalize_text, upper, lower, strip, split", () => {
     const m = new Mismatches();
