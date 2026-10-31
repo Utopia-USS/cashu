@@ -2,6 +2,24 @@
 // Spec: packages/store/spec/events.md, gid.md. Platform pieces come in through `SqlDriver` adapters.
 export { budgetModule } from "./budget/index.js";
 export { canonicalJson } from "./canonical.js";
+export {
+  type Clock,
+  type Command,
+  type CommandContext,
+  type CommandEnv,
+  type CommandOutcome,
+  type CommandRefusal,
+  type CommandResult,
+  defineCommand,
+  type EmitOptions,
+  type EventWriter,
+  InvalidEmitError,
+  type Lease,
+  ok,
+  refuse,
+  runCommand,
+  storeWriter,
+} from "./command.js";
 export { coreModule } from "./core/index.js";
 export {
   CONTRIBUTIONS,
