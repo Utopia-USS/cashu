@@ -1,7 +1,10 @@
 /** The importers the app knows, keyed by broker id. */
 
 import { pyReprStr } from "../../pyRepr.js";
+import { CanonicalImporter } from "./canonical/index.js";
 import type { BrokerImporter, ImportFile } from "./contract.js";
+import type { CsvMapping } from "./csvMapping.js";
+import { GenericCsvImporter } from "./genericCsv.js";
 
 /** An importer with the same broker id is already registered. */
 export class DuplicateImporterError extends Error {
@@ -59,4 +62,12 @@ export function safeCanParse(importer: BrokerImporter, file: ImportFile): boolea
   } catch {
     return false;
   }
+}
+
+/** `default_registry(*mappings)`: the canonical importer first, then one generic CSV importer per mapping. */
+export function defaultRegistry(...mappings: readonly CsvMapping[]): ImporterRegistry {
+  return new ImporterRegistry([
+    new CanonicalImporter(),
+    ...mappings.map((mapping) => new GenericCsvImporter(mapping)),
+  ]);
 }

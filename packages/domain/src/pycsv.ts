@@ -8,6 +8,8 @@
 export interface CsvOptions {
   /** One code point. */
   readonly delimiter: string;
+  /** `quotechar`, one code point (default `"`); must differ from the delimiter and the line breaks. */
+  readonly quotechar?: string;
   /** `strict=True`: a stray character after a closing quote and end of data inside quotes fail. */
   readonly strict?: boolean;
   /**
@@ -31,15 +33,19 @@ export type CsvResult =
 /** `csv.field_size_limit()` default, in code points. */
 export const CSV_FIELD_LIMIT = 131072;
 
-/** The text of the `csv.Error` CPython raises for `reason` (`delimiter` as given to the reader). */
-export function csvErrorMessage(reason: CsvErrorReason, delimiter: string): string {
+/** The text of the `csv.Error` CPython raises for `reason` (`delimiter` / `quotechar` as given to the reader). */
+export function csvErrorMessage(
+  reason: CsvErrorReason,
+  delimiter: string,
+  quotechar = '"',
+): string {
   switch (reason) {
     case "field_limit":
       return `field larger than field limit (${CSV_FIELD_LIMIT})`;
     case "newline_in_unquoted":
       return "new-line character seen in unquoted field - do you need to open the file with newline=''?";
     case "quote_expected":
-      return `'${delimiter}' expected after '"'`;
+      return `'${delimiter}' expected after '${quotechar}'`;
     case "unexpected_eof":
       return "unexpected end of data";
   }
@@ -86,10 +92,12 @@ class Reader {
   lineNum = 0;
 
   private readonly delimiter: string;
+  private readonly quotechar: string;
   private readonly strict: boolean;
 
-  constructor(delimiter: string, strict: boolean) {
+  constructor(delimiter: string, quotechar: string, strict: boolean) {
     this.delimiter = delimiter;
+    this.quotechar = quotechar;
     this.strict = strict;
   }
 
@@ -124,7 +132,7 @@ class Reader {
         return this.step(c);
       case State.StartField:
         if (newline || c === EOL) this.endField(c);
-        else if (c === '"') this.state = State.InQuotedField;
+        else if (c === this.quotechar) this.state = State.InQuotedField;
         else if (c === this.delimiter) this.save();
         else {
           this.state = State.InField;
@@ -140,11 +148,11 @@ class Reader {
         return null;
       case State.InQuotedField:
         if (c === EOL) return null;
-        if (c === '"') this.state = State.QuoteInQuotedField;
+        if (c === this.quotechar) this.state = State.QuoteInQuotedField;
         else return this.add(c);
         return null;
       case State.QuoteInQuotedField:
-        if (c === '"') {
+        if (c === this.quotechar) {
           this.state = State.InQuotedField;
           return this.add(c);
         }
@@ -195,7 +203,7 @@ class Reader {
 }
 
 function run(lines: readonly string[], opts: CsvOptions): CsvResult {
-  const reader = new Reader(opts.delimiter, opts.strict ?? false);
+  const reader = new Reader(opts.delimiter, opts.quotechar ?? '"', opts.strict ?? false);
   for (const line of lines) {
     const reason = reader.feed(line);
     if (reason) return { ok: false, lineNum: reader.lineNum, reason };

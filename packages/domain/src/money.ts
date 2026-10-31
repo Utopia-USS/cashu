@@ -25,6 +25,12 @@ export function toCurrency(code: string): Currency {
   return normalized as Currency;
 }
 
+/** `toCurrency` for input that may be anything: null where Python's `Currency(code)` raises. */
+export function tryCurrency(code: string): Currency | null {
+  const normalized = pyUpper(pyStrip(code));
+  return /^[A-Z]{3}$/.test(normalized) ? (normalized as Currency) : null;
+}
+
 export class Money {
   readonly amount: Decimal;
   readonly currency: Currency;

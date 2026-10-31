@@ -393,6 +393,27 @@ export function formatDateTime(value: DateTime, sep = "T"): string {
   return `${value.date}${sep}${time}${micro}${offset}`;
 }
 
+/**
+ * Python `dt + timedelta(microseconds=micros)`: wall-clock arithmetic, the offset (or naivety) kept.
+ * `micros` must be an integer.
+ */
+export function addMicroseconds(value: DateTime, micros: number): DateTime {
+  const DAY = 86_400_000_000;
+  const total =
+    ((value.hour * 60 + value.minute) * 60 + value.second) * 1_000_000 + value.microsecond + micros;
+  const dayShift = Math.floor(total / DAY);
+  const rest = total - dayShift * DAY;
+  const seconds = Math.floor(rest / 1_000_000);
+  return {
+    date: dayShift === 0 ? value.date : addDays(value.date, dayShift),
+    hour: Math.floor(seconds / 3600),
+    minute: Math.floor((seconds % 3600) / 60),
+    second: seconds % 60,
+    microsecond: rest % 1_000_000,
+    offsetSeconds: value.offsetSeconds,
+  };
+}
+
 /** Python `dt.astimezone(UTC)`; a naive value is taken as UTC (the SQLite convention). */
 export function toUtc(value: DateTime): DateTime {
   const offset = value.offsetSeconds ?? 0;

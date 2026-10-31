@@ -10,8 +10,20 @@ import { fileURLToPath } from "node:url";
 import { decodeStrict } from "../../../codecs.js";
 import type { IsoDate } from "../../../dates.js";
 import { Decimal } from "../../../decimal.js";
-import { Currencies, type Currency, type TxnType, toCurrency } from "../../domain/index.js";
+import {
+  AssetClass,
+  asInstrumentId,
+  Currencies,
+  type Currency,
+  type Instrument,
+  type InstrumentAlias,
+  type InstrumentId,
+  instrument,
+  type TxnType,
+  toCurrency,
+} from "../../domain/index.js";
 import { type ImportFile, type ParsedTxn, parsedTxn, type TimeOfDay } from "../contract.js";
+import { CsvField, type CsvMapping, csvMapping, csvMappingFromYaml } from "../csvMapping.js";
 
 export const REPO_ROOT = fileURLToPath(new URL("../../../../../../", import.meta.url));
 
@@ -112,3 +124,112 @@ export const plExportCp1250 = (): Uint8Array => encodeCp1250(`${PL_EXPORT_LINES.
 
 /** A currency code from a vector (already upper-case ISO). */
 export const currencyOf = (code: string): Currency => toCurrency(code);
+
+const PL_MAPPING_YAML = `# Synthetic Polish broker export mapping used by the import tests (no real data).
+version: 1
+name: "Synthetic PL broker"
+broker_id: generic_csv
+encoding: utf-8
+delimiter: ";"
+decimal_separator: ","
+thousands_separator: " "
+date_formats: ["dd.MM.yyyy"]
+default_currency: PLN
+amount_sign: signed
+columns:
+  trade_date: "Data"
+  type: "Typ"
+  symbol: "Symbol"
+  isin: "ISIN"
+  name: "Nazwa"
+  exchange: "Giełda"
+  quantity: "Ilość"
+  price: "Cena"
+  currency: "Waluta"
+  fee: "Prowizja"
+  cash_amount: "Kwota"
+  note: "Opis"
+types:
+  "Kupno": buy
+  "Sprzedaż": sell
+  "Dywidenda": dividend
+  "Wpłata": deposit
+  "Opłata": fee
+  "Blokada środków": ignore
+`;
+
+export const plMappingYaml = (encoding = "utf-8"): string =>
+  PL_MAPPING_YAML.replace("encoding: utf-8", `encoding: ${encoding}`);
+
+/** The fixture mapping (`pl_mapping`); a parse failure is a broken test fixture. */
+export function plMapping(encoding = "utf-8"): CsvMapping {
+  const parsed = csvMappingFromYaml(plMappingYaml(encoding));
+  if (!parsed.ok) throw new Error(`fixture mapping is invalid: ${JSON.stringify(parsed.issues)}`);
+  return parsed.mapping;
+}
+
+export const SIMPLE_HEADER = "ref,date,type,symbol,isin,exchange,qty,price,ccy,fee,cash";
+
+/** A comma / dot mapping for in-memory CSVs (header `SIMPLE_HEADER`); dates accept a time. */
+export function simpleMapping(
+  options: { readonly brokerId?: string; readonly withRef?: boolean } = {},
+): CsvMapping {
+  const columns: [CsvField, string][] = [
+    [CsvField.TRADE_DATE, "date"],
+    [CsvField.TYPE, "type"],
+    [CsvField.SYMBOL, "symbol"],
+    [CsvField.ISIN, "isin"],
+    [CsvField.EXCHANGE, "exchange"],
+    [CsvField.QUANTITY, "qty"],
+    [CsvField.PRICE, "price"],
+    [CsvField.CURRENCY, "ccy"],
+    [CsvField.FEE, "fee"],
+    [CsvField.CASH_AMOUNT, "cash"],
+  ];
+  if (options.withRef ?? true) columns.unshift([CsvField.EXTERNAL_REF, "ref"]);
+  return csvMapping({
+    brokerId: options.brokerId ?? "generic_csv",
+    defaultCurrency: Currencies.PLN,
+    columns: new Map(columns),
+  });
+}
+
+/** A deterministic id factory: `prefix-1`, `prefix-2`... */
+export function counterIds(prefix: string): () => string {
+  let next = 0;
+  return () => {
+    next += 1;
+    return `${prefix}-${next}`;
+  };
+}
+
+/** `counterIds` for instrument ids. */
+export function counterInstrumentIds(prefix: string): () => InstrumentId {
+  const ids = counterIds(prefix);
+  return () => asInstrumentId(ids());
+}
+
+/** `imp_support.instrument`: an Orlen-like stored instrument with overridable fields. */
+export function instrumentOf(
+  instrumentId: string,
+  options: {
+    readonly name?: string;
+    readonly symbol?: string | null;
+    readonly isin?: string | null;
+    readonly mic?: string | null;
+    readonly currency?: Currency;
+    readonly assetClass?: AssetClass;
+    readonly aliases?: readonly InstrumentAlias[];
+  } = {},
+): Instrument {
+  return instrument({
+    id: asInstrumentId(instrumentId),
+    name: options.name ?? "Orlen",
+    currency: options.currency ?? Currencies.PLN,
+    assetClass: options.assetClass ?? AssetClass.EQUITY,
+    symbol: options.symbol === undefined ? "PKN" : options.symbol,
+    isin: options.isin ?? null,
+    mic: options.mic === undefined ? "XWAR" : options.mic,
+    aliases: options.aliases ?? [],
+  });
+}

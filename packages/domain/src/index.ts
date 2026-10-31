@@ -17,5 +17,7 @@ export * from "./pycsv.js";
 export * from "./pyJson.js";
 export * from "./pyRegex.js";
 export * from "./pyRepr.js";
+export * from "./pyYaml/index.js";
 export * from "./sha1.js";
+export * from "./sha256.js";
 export * from "./text.js";

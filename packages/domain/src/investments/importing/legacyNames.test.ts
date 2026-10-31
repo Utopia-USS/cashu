@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { Decimal } from "../../decimal.js";
+import { Currencies, instrumentAlias, TxnType } from "../domain/index.js";
 import {
   CANONICAL_BROKER_ID,
   CanonicalImporter,
@@ -14,11 +15,19 @@ import {
   importParseResult,
   namespaceOf,
 } from "./contract.js";
-import { enc } from "./testing/support.js";
+import { dedupHash, dedupInput } from "./dedup.js";
+import {
+  CurrencyEvidence,
+  InMemoryInstrumentLookup,
+  InstrumentMatch,
+  InstrumentResolver,
+  instrumentHint,
+} from "./resolver.js";
+import { counterInstrumentIds, d, day, enc, instrumentOf } from "./testing/support.js";
 
 // Translation of tests/investments/importing/test_imp_legacy_names.py (F11: the format and alias
-// namespace from before the rename (legacy name: "finanse") keep working). The alias resolution and dedup hash tests
-// need the resolver and dedup (scope S17c) and are listed there.
+// namespace from before the rename (legacy name: "finanse") keep working: old documents parse, stored
+// aliases resolve, dedup hashes stay stable). All four Python tests are here.
 const RECORD = {
   record: "txn",
   date: "2026-10-01",
@@ -65,4 +74,37 @@ it("the legacy namespace is the same namespace as the current one", () => {
   expect(equivalentNamespaces("cashu")).toEqual(["cashu", "finanse"]); // legacy name
   expect(equivalentNamespaces("finanse")).toEqual(["cashu", "finanse"]); // legacy name
   expect(equivalentNamespaces("xtb")).toEqual(["xtb"]);
+});
+
+// test_aliases_stored_under_the_legacy_namespace_still_resolve
+it("aliases stored under the legacy namespace still resolve", () => {
+  const old = instrumentOf("old", {
+    name: "Old alias",
+    symbol: "QQQ",
+    aliases: [instrumentAlias(LEGACY_BROKER_ID, "ZZZ")],
+  });
+  const resolver = new InstrumentResolver(
+    new InMemoryInstrumentLookup([old]),
+    "cashu",
+    counterInstrumentIds("new"),
+  );
+  const resolved = resolver.resolve(
+    instrumentHint({ symbol: "ZZZ", currency: Currencies.PLN, evidence: CurrencyEvidence.WEAK }),
+  );
+  expect([resolved.match, resolved.instrumentId]).toEqual([InstrumentMatch.BROKER_ALIAS, "old"]);
+  expect(resolver.newAliases).toEqual(new Map()); // not learned a second time under the new name
+});
+
+// test_dedup_hashes_of_the_canonical_namespace_do_not_change
+it("dedup hashes of the canonical namespace do not change", () => {
+  const row = dedupInput({
+    tradeDate: day("2026-10-01"),
+    type: TxnType.DEPOSIT,
+    grossAmount: d("100"),
+    cashAmount: d("100"),
+    externalRef: "R1",
+  });
+  const beforeRename = dedupHash(row, { accountId: "a1", brokerId: LEGACY_BROKER_ID });
+  expect(dedupHash(row, { accountId: "a1", brokerId: "cashu" })).toBe(beforeRename);
+  expect(dedupHash(row, { accountId: "a1", brokerId: "xtb" })).not.toBe(beforeRename);
 });

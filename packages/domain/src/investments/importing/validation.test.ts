@@ -1,14 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { TxnType } from "../domain/index.js";
 import {
   type BrokerImporter,
   type ImportFile,
   ImportWarningKind,
   importParseResult,
   importWarning,
-  parsedTxn,
 } from "./contract.js";
-import { csvFile, enc, parsedTxnOf, specBlocks } from "./testing/support.js";
+import { csvMappingFromYaml } from "./csvMapping.js";
+import { GenericCsvImporter } from "./genericCsv.js";
+import {
+  csvFile,
+  enc,
+  plExportUtf8Bom,
+  plMappingYaml,
+  SIMPLE_HEADER,
+  simpleMapping,
+  specBlocks,
+} from "./testing/support.js";
 import {
   MAX_FILE_BYTES,
   reportCorporateActionCount,
@@ -20,9 +28,13 @@ import {
   validateImportFile,
 } from "./validation.js";
 
-// Translation of tests/investments/importing/test_imp_validation.py. The tests that go through a
-// mapping file or the file system (generic CSV, `OSError`, `CsvMappingError`) are the caller's or scope
-// S17b's: the domain gets bytes and an importer.
+// Translation of tests/investments/importing/test_imp_validation.py, every test. The TS boundary is
+// bytes plus an importer: Python's `validate_import_file(path, mapping=...)` reads the data file and
+// the mapping YAML and builds the `GenericCsvImporter` itself; here the test does that part (what the
+// caller does) and hands `validateImportFile` an `ImportFile` and the importer.
+// Not translatable: `pytest.raises(OSError)` for a missing data file (the domain never touches the
+// file system; reading is the caller's job) and the monkeypatched `MAX_FILE_BYTES` (the limit is the
+// `maxBytes` parameter instead).
 const spec = (language: string, needle: string) =>
   specBlocks(language).find((block) => block.includes(needle)) as string;
 
@@ -75,27 +87,32 @@ it("unrecognized file", () => {
   expect(error?.message).toContain("docs/import-format.md");
 });
 
-// test_generic_csv_gets_the_semantic_checks (with the generic importer: scope S17b; here an importer
-// that returns rows without an instrument and a split without a ratio)
-it("every importer's rows get the semantic checks", () => {
-  const rowsOnly: BrokerImporter = {
-    brokerId: "fake",
-    displayName: "Fake",
-    version: 1,
-    canParse: () => true,
-    parse: () =>
-      importParseResult({
-        txns: [
-          parsedTxnOf(TxnType.BUY, { symbol: null, row: 0 }),
-          parsedTxn({ ...parsedTxnOf(TxnType.SPLIT, { row: 1, symbol: "PKN" }), splitRatio: null }),
-        ],
-      }),
-  };
-  const report = validateImport(csvFile("x"), rowsOnly);
-  expect(new Set(report.errors.map((issue) => issue.kind))).toEqual(
-    new Set([ImportWarningKind.MISSING_INSTRUMENT, ImportWarningKind.UNKNOWN_SPLIT_RATIO]),
+// test_generic_csv_with_a_mapping_file
+it("generic CSV with a mapping file", () => {
+  const data: ImportFile = { name: "pl_broker.csv", content: plExportUtf8Bom() };
+  // validate_import_file(data, mapping=path): the caller reads the YAML and builds the importer
+  const parsed = csvMappingFromYaml(plMappingYaml());
+  if (!parsed.ok) throw new Error("fixture mapping is invalid");
+  const report = validateImportFile(data, new GenericCsvImporter(parsed.mapping));
+  expect(reportOk(report)).toBe(true);
+  expect(report.importerId).toBe("generic_csv");
+  expect(reportTxnCount(report)).toBe(7);
+  expect(report.warnings.map((w) => w.kind)).toEqual([ImportWarningKind.IGNORED_ROW]);
+  // pytest.raises(CsvMappingError): an invalid mapping never reaches validation
+  expect(csvMappingFromYaml("version: 1\n").ok).toBe(false);
+  // pytest.raises(OSError) for a missing file: not translatable (see the header)
+});
+
+// test_generic_csv_gets_the_semantic_checks
+it("generic CSV gets the semantic checks", () => {
+  const content = `${SIMPLE_HEADER}\na,2026-01-05,buy,,,,1,10,PLN,0,-10\nb,2026-01-05,split,PKN,,GPW,,,PLN,,\n`;
+  const report = validateImport(
+    { name: "x.csv", content: enc(content) },
+    new GenericCsvImporter(simpleMapping()),
   );
-  expect(reportOk(report)).toBe(false);
+  const kinds = new Set(report.errors.map((issue) => issue.kind));
+  expect(kinds.has(ImportWarningKind.MISSING_INSTRUMENT)).toBe(true);
+  expect(kinds.has(ImportWarningKind.UNKNOWN_SPLIT_RATIO)).toBe(true);
 });
 
 // test_too_large_and_crashing_importers

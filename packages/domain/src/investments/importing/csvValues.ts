@@ -123,6 +123,17 @@ export interface DatedTime {
 
 /** `DatePattern(...)`: throws `InvariantError` unless the pattern has a year, a month and a day token. */
 export function datePattern(pattern: string): DatePattern {
+  const parsed = parseDatePattern(pattern);
+  if (!parsed.ok) throw new InvariantError(parsed.message);
+  return parsed.value;
+}
+
+/** `DatePattern(...)` for user input (a mapping file): Python's `ValueError` text instead of a throw. */
+export function parseDatePattern(
+  pattern: string,
+):
+  | { readonly ok: true; readonly value: DatePattern }
+  | { readonly ok: false; readonly message: string } {
   const parts = ["^"];
   const groups: string[] = [];
   const chars = Array.from(pattern);
@@ -144,11 +155,15 @@ export function datePattern(pattern: string): DatePattern {
   const hasMonth = groups.includes("MM") || groups.includes("M");
   const hasDay = groups.includes("dd") || groups.includes("d");
   if (!(hasYear && hasMonth && hasDay)) {
-    throw new InvariantError(
-      `A date pattern needs yyyy, MM (or M) and dd (or d): ${pyReprStr(pattern)}`,
-    );
+    return {
+      ok: false,
+      message: `A date pattern needs yyyy, MM (or M) and dd (or d): ${pyReprStr(pattern)}`,
+    };
   }
-  return Object.freeze({ pattern, groups, regex: new RegExp(parts.join(""), "su") });
+  return {
+    ok: true,
+    value: Object.freeze({ pattern, groups, regex: new RegExp(parts.join(""), "su") }),
+  };
 }
 
 function timeOfDay(
