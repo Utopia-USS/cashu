@@ -37,4 +37,9 @@ export const agentEvents = {
     autoCommit: z.boolean(),
   }),
   "connectorBinding.removed": empty,
+  /**
+   * The fetch cursor a committed connector fetch advanced to (M5): emitted by the lease holder in the
+   * approval / auto-commit batch with `cause`, so a suppressed approval rolls the cursor back too.
+   */
+  "connectorBinding.cursorAdvanced": payload({ cursor: z.string().nullable() }),
 } as const;

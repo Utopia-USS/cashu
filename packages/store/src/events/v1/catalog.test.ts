@@ -9,7 +9,7 @@ import {
   parseEvent,
   RESERVED_PREFIXES,
 } from "./catalog.js";
-import { envelopeSchema } from "./envelope.js";
+import { envelopeSchema, fromWire, toWire } from "./envelope.js";
 import { ACC, DEVICE, INST, ULID_A, ULID_B, VALID_SAMPLES, VAULT } from "./test-fixtures.js";
 
 const HLC = `0mvwcmtc0-0000-${DEVICE}`;
@@ -64,10 +64,8 @@ describe("catalog shape", () => {
     expect(leader).toEqual(
       [
         "alert.evaluated",
+        "connectorBinding.cursorAdvanced",
         "ruleRun.finished",
-        "signal.escalated",
-        "signal.opened",
-        "signal.refreshed",
         "signal.woken",
       ].sort(),
     );
@@ -138,6 +136,27 @@ describe("payload schemas: invalid samples", () => {
       "signal.opened",
       { ...VALID_SAMPLES["signal.opened"], dedupKey: "drawdown|i:12" },
       "int in key",
+    ],
+    ["signal.woken", {}, "wake without the snooze it ends (M7)"],
+    ["signal.reopened", { reason: "manual" }, "unknown reopen reason"],
+    [
+      "invTxn.imported",
+      { ...VALID_SAMPLES["invTxn.imported"], source: "manual" },
+      "manual entry with a content hash (m1)",
+    ],
+    ["txn.cashExpenseAdded", { ...VALID_SAMPLES["txn.cashExpenseAdded"], amount: "-0.00" }, "zero"],
+    ["account.opened", { ...VALID_SAMPLES["account.opened"], keys: ["iban:pl00"] }, "bad key"],
+    ["account.identified", { iban: "XX00", keys: [] }, "identify without a key"],
+    ["loan.paymentMatchingSet", { paymentIban: null, paymentText: "rata" }, "no account (m7)"],
+    [
+      "balance.recorded",
+      { ...VALID_SAMPLES["balance.recorded"], account: "98ff7ab1-8526-5a5c-815d-422cd15b31c2" },
+      "unkeyed UUIDv5 gid",
+    ],
+    [
+      "profile.created",
+      { ...VALID_SAMPLES["profile.created"], stamps: { createdAt: "x" } },
+      "stamps",
     ],
     ["signal.opened", { ...VALID_SAMPLES["signal.opened"], ruleId: "alert:4" }, "alert int id"],
     ["signal.opened", { ...VALID_SAMPLES["signal.opened"], dedupKey: "alert:4" }, "alert int key"],
@@ -221,6 +240,60 @@ describe("parseEvent: forward compatibility (events.md section 7)", () => {
     expect(parseEvent(envelope("alert.deleted", {}, { gid: 42 })).status).toBe("rejected");
     expect(parseEvent(envelope("Alert.Deleted", {})).status).toBe("rejected");
     expect(parseEvent(envelope("alert.deleted", {}, { origin: "python" })).status).toBe("rejected");
+  });
+});
+
+describe("v1.1 acceptance of real shapes", () => {
+  it("accepts the rule-run trigger `app` and other open informational labels (M4)", () => {
+    const run = { ...VALID_SAMPLES["ruleRun.finished"], trigger: "app" };
+    expect(PAYLOADS["ruleRun.finished"].safeParse(run).success).toBe(true);
+    const alert = { ...VALID_SAMPLES["alert.created"], createdBy: "worker" };
+    expect(PAYLOADS["alert.created"].safeParse(alert).success).toBe(true);
+  });
+
+  it("accepts genesis stamps on any payload (M3)", () => {
+    const thesis = {
+      ...VALID_SAMPLES["thesis.created"],
+      stamps: {
+        created_at: "2025-01-02T03:04:05.123456Z",
+        core_changed_at: "2025-02-01T00:00:00Z",
+        exit_plan_changed_at: null,
+      },
+    };
+    expect(PAYLOADS["thesis.created"].safeParse(thesis).success).toBe(true);
+  });
+
+  it("keeps absent vs null for topic invalidation and market-view sources (M9)", () => {
+    const draft = { segment: "gold", thesis: "Szkic" };
+    expect(PAYLOADS["topicThesis.draftProposed"].safeParse(draft).success).toBe(true);
+    const view = { segment: "gold", assessment: "a", outlook: null, by: "owner" };
+    expect(PAYLOADS["topicThesis.marketViewSet"].safeParse(view).success).toBe(true);
+  });
+
+  it("parks instrument.merged whose gid is not the source (m11)", () => {
+    const data = VALID_SAMPLES["instrument.merged"];
+    expect(parseEvent(envelope("instrument.merged", data, { gid: ULID_B })).status).toBe("known");
+    const r = parseEvent(envelope("instrument.merged", data, { gid: INST }));
+    expect(r.status === "parked" && r.reason === "invalid-payload").toBe(true);
+  });
+});
+
+describe("wire form (own-log carrier)", () => {
+  it("round-trips through the spike's {t, v, h, d} keys plus i, g, a, c, o", () => {
+    const env = envelope("alert.deleted", {}, { cause: ULID_B, origin: "bridge", sig: "x" });
+    const wire = toWire(envelopeSchema.parse(env));
+    expect(wire).toMatchObject({ t: "alert.deleted", v: 1, h: HLC, d: {}, i: ULID_A, c: ULID_B });
+    expect(wire).not.toHaveProperty("vault");
+    expect(wire).not.toHaveProperty("device");
+    const back = fromWire(wire, { vault: VAULT, device: DEVICE });
+    expect(back).toEqual(env);
+    expect(parseEvent(back).status).toBe("known");
+  });
+
+  it("rejects a frame event whose HLC belongs to another device than its segment", () => {
+    const wire = toWire(envelopeSchema.parse(envelope("alert.deleted", {})));
+    const back = fromWire(wire, { vault: VAULT, device: "a000000000000000" });
+    expect(parseEvent(back).status).toBe("rejected");
   });
 });
 

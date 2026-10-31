@@ -11,12 +11,38 @@ import { journalEvents } from "./journal.js";
 import { researchEvents } from "./research.js";
 import { signalsEvents } from "./signals.js";
 
-/** Conflict rule codes (events.md 6.2). LEADER is an emitter constraint, see `emitter`. */
-export type Rule = "CREATE" | "LWW-F" | "SOFT" | "TOMB" | "APPEND" | "FWW" | "GUARD" | "LIFECYCLE";
+/**
+ * Conflict rule codes (events.md 6.2). LEADER is an emitter constraint, see `emitter`. IDENTITY =
+ * an identity claim or merge (events.md 6.4); EPISODE = the signal episode fold (events.md 8.7).
+ */
+export type Rule =
+  | "CREATE"
+  | "LWW-F"
+  | "SOFT"
+  | "TOMB"
+  | "APPEND"
+  | "FWW"
+  | "GUARD"
+  | "IDENTITY"
+  | "EPISODE";
 /** How the event's `gid` is minted (gid.md section 4). */
 export type GidStrategy = "VAULT" | "DET" | "ULID" | "DET-or-ULID";
-/** Who may emit it: any device, only the fetch-lease holder, or the leader for rule outcomes and any device for owner-caused ones. */
-export type Emitter = "any" | "leader" | "leader-or-owner";
+/**
+ * Who may emit it (an emit-side constraint; reducers accept every device, events.md 6.2 LEADER):
+ * - any: every device;
+ * - leader: only the fetch-lease holder;
+ * - leader-or-owner: the leader for rule outcomes, any device for owner-caused closes / reopens;
+ * - leader-or-research: the leader for rule / plan / alert signals, the device running the research
+ *   agent for research signals (`research:` keys);
+ * - leader-for-imports: any device for strategy / custom_rule proposals, only the leader for the
+ *   import-like kinds (`import`, `budget_import`, O3 / O4).
+ */
+export type Emitter =
+  | "any"
+  | "leader"
+  | "leader-or-owner"
+  | "leader-or-research"
+  | "leader-for-imports";
 
 export interface EventMeta {
   /** View table the event's `gid` belongs to. */
@@ -52,7 +78,8 @@ export const META: Record<EventType, EventMeta> = {
   "profile.settingsChanged": m("profiles", "LWW-F", "VAULT"),
   "module.enabled": m("profile_modules", "LWW-F", "DET"),
   "module.disabled": m("profile_modules", "LWW-F", "DET"),
-  "account.opened": m("accounts", "CREATE", "DET-or-ULID"),
+  "account.opened": m("accounts", "IDENTITY", "DET-or-ULID"),
+  "account.identified": m("accounts", "IDENTITY", "DET-or-ULID"),
   "account.renamed": m("accounts", "LWW-F", "DET-or-ULID"),
   "account.typeSet": m("accounts", "LWW-F", "DET-or-ULID"),
   "account.removed": m("accounts", "SOFT", "DET-or-ULID"),
@@ -81,19 +108,19 @@ export const META: Record<EventType, EventMeta> = {
   "valuation.set": m("inv_manual_valuations", "LWW-F", "DET"),
   "instrument.created": m("inv_instruments", "CREATE", "DET-or-ULID"),
   "instrument.updated": m("inv_instruments", "LWW-F", "DET-or-ULID"),
-  "instrument.aliasAdded": m("inv_instrument_aliases", "CREATE", "DET"),
-  "instrument.merged": m("inv_instruments", "TOMB", "DET-or-ULID"),
+  "instrument.aliasAdded": m("inv_instrument_aliases", "IDENTITY", "DET"),
+  "instrument.merged": m("inv_instruments", "IDENTITY", "DET-or-ULID"),
   "instrumentOverride.set": m("inv_profile_instruments", "LWW-F", "DET"),
   "instrumentOverride.planSet": m("inv_profile_instruments", "LWW-F", "DET"),
   "instrumentOverride.segmentSet": m("inv_profile_instruments", "GUARD", "DET"),
 
-  "signal.opened": m("inv_signals", "LIFECYCLE", "DET", "leader"),
-  "signal.refreshed": m("inv_signals", "LIFECYCLE", "DET", "leader"),
-  "signal.escalated": m("inv_signals", "LIFECYCLE", "DET", "leader"),
-  "signal.closed": m("inv_signals", "LIFECYCLE", "DET", "leader-or-owner"),
-  "signal.reopened": m("inv_signals", "LIFECYCLE", "DET"),
-  "signal.snoozed": m("inv_signals", "LWW-F", "DET"),
-  "signal.woken": m("inv_signals", "LIFECYCLE", "DET", "leader"),
+  "signal.opened": m("inv_signals", "EPISODE", "ULID", "leader-or-research"),
+  "signal.refreshed": m("inv_signals", "EPISODE", "ULID", "leader-or-research"),
+  "signal.escalated": m("inv_signals", "EPISODE", "ULID", "leader-or-research"),
+  "signal.closed": m("inv_signals", "EPISODE", "ULID", "leader-or-owner"),
+  "signal.reopened": m("inv_signals", "EPISODE", "ULID", "leader-or-owner"),
+  "signal.snoozed": m("inv_signals", "LWW-F", "ULID"),
+  "signal.woken": m("inv_signals", "GUARD", "ULID", "leader"),
   "ruleRun.finished": m("inv_rule_runs", "APPEND", "ULID", "leader"),
   "alert.created": m("alerts", "CREATE", "ULID"),
   "alert.updated": m("alerts", "LWW-F", "ULID"),
@@ -110,9 +137,9 @@ export const META: Record<EventType, EventMeta> = {
   "strategy.versionSaved": m("inv_strategy_versions", "APPEND", "ULID"),
   "plannedDeposit.created": m("inv_planned_deposits", "CREATE", "ULID"),
   "plannedDeposit.cancelled": m("inv_planned_deposits", "FWW", "ULID"),
-  "plannedDeposit.booked": m("inv_planned_deposits", "FWW", "ULID"),
+  "plannedDeposit.booked": m("inv_planned_deposits", "FWW", "ULID", "any"),
 
-  "watchlist.added": m("watchlist_items", "CREATE", "DET"),
+  "watchlist.added": m("watchlist_items", "LWW-F", "DET"),
   "watchlist.updated": m("watchlist_items", "LWW-F", "DET"),
   "watchlist.removed": m("watchlist_items", "SOFT", "DET"),
   "topicThesis.ownerSaved": m("inv_topic_theses", "GUARD", "DET"),
@@ -129,11 +156,12 @@ export const META: Record<EventType, EventMeta> = {
   "review.done": m("reviews", "APPEND", "ULID"),
   "review.undone": m("reviews", "TOMB", "ULID"),
   "proposal.created": m("proposals", "CREATE", "ULID"),
-  "proposal.approved": m("proposals", "FWW", "ULID"),
-  "proposal.rejected": m("proposals", "FWW", "ULID"),
-  "proposal.failed": m("proposals", "FWW", "ULID"),
+  "proposal.approved": m("proposals", "FWW", "ULID", "leader-for-imports"),
+  "proposal.rejected": m("proposals", "FWW", "ULID", "leader-for-imports"),
+  "proposal.failed": m("proposals", "FWW", "ULID", "leader-for-imports"),
   "connectorBinding.set": m("connector_bindings", "LWW-F", "DET"),
-  "connectorBinding.removed": m("connector_bindings", "TOMB", "DET"),
+  "connectorBinding.removed": m("connector_bindings", "SOFT", "DET"),
+  "connectorBinding.cursorAdvanced": m("connector_bindings", "LWW-F", "DET", "leader"),
 };
 
 /** The payload schema version of every v1 type (events.md section 2: all start at 1). */
@@ -164,6 +192,12 @@ export type ParseResult =
   /** Not a valid envelope at all: reject and report (corrupt or foreign data). */
   | { status: "rejected"; error: string };
 
+/** Envelope / payload consistency rules that a payload schema alone cannot see. */
+function crossFieldOk(type: EventType, gid: string, data: unknown): boolean {
+  if (type === "instrument.merged") return (data as { source: string }).source === gid; // m11
+  return true;
+}
+
 /**
  * Validate one raw event. Envelope errors reject; an unknown type, a newer version or a payload
  * that fails this reader's schema parks the event (never dropped, never half applied). Unknown
@@ -179,5 +213,8 @@ export function parseEvent(raw: unknown): ParseResult {
   }
   const data = PAYLOADS[envelope.type].safeParse(envelope.data);
   if (!data.success) return { status: "parked", reason: "invalid-payload", envelope };
+  if (!crossFieldOk(envelope.type, envelope.gid, data.data)) {
+    return { status: "parked", reason: "invalid-payload", envelope };
+  }
   return { status: "known", event: { ...envelope, data: data.data } as ParsedEvent };
 }

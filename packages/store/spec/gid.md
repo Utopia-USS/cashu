@@ -1,307 +1,298 @@
-# Global ids (gid) v1 (normative)
+# Global ids (gid) v1.1 (normative)
 
-Status: v1 draft for lead review (scope S04, 2026-10-31). Companion of [`events.md`](events.md).
-Constants: `packages/store/src/events/v1/namespaces.ts`. The UUIDv5 function itself lives in S23
-(`packages/store/src/gid.ts`); the vectors in section 8 are its acceptance test and were produced
-with Python's `uuid.uuid5`, so Python (S26 genesis checks, S30 outbox) and TS agree by construction.
+Status: v1.1 (scope S04, 2026-10-31), after the review (`~/cashu-lab/checkpoints/S04-review.md`) and
+the lead's decision M8 (keyed deterministic gids). Companion of [`events.md`](events.md). Constants and
+the message layout: `packages/store/src/events/v1/namespaces.ts`. The HMAC call lives in S23
+(`packages/store/src/gid.ts`, runtime crypto); the vectors in section 8 are its acceptance test and
+were produced with Python's `hmac` / `hashlib`, so Python (S26 checks, S30 outbox) and TS agree by
+construction. Canonical text uses the S05 primitives in `packages/domain/src` (`@cashu/domain`):
+`decimalKey`, `format2`, `floatRepr` (`decimal.ts`), `normalizeText` (`text.ts`), `ibanKey`,
+`normalizeIban` (`iban.ts`).
 
 ## 1. Why
 
-Today 43 tables use autoincrement integer keys. They are local to one SQLite file and collide across
-devices. In the event log every entity has a **gid**; integer ids survive only inside a device's
-materialized view. Two strategies:
+Today 43 tables use autoincrement integer keys, local to one SQLite file. In the log every entity has
+a **gid**; integer ids survive only inside a device's view.
 
-- **DET**: a deterministic UUIDv5 over a canonical input, for facts that two devices can observe
-  independently (an imported row, an account seen in two statements, a 1:1 settings row, a merchant
-  rule, a signal). Both devices compute the same gid without coordination and the log dedups the fact
-  (CREATE rule, `events.md` 6.2).
+- **DET**: a deterministic, keyed id for facts two devices can observe independently (an imported row,
+  an account seen in two statements, a 1:1 settings row, a merchant rule). Both compute the same gid
+  without coordination; the log dedups the fact (CREATE, events.md 6.2). Where one fact can still get
+  two gids (a CSV account without IBAN vs the same account by IBAN; an instrument created under two
+  aliases), identity resolution joins them in the fold (events.md 6.4).
 - **ULID**: minted at creation, for things that exist because someone created them (a decision, a
-  thesis, an alert, a note). Two devices creating "the same" thing twice really created two things.
+  thesis, an alert, a note, a signal).
 
 ## 2. Formats
 
 | Kind | Format | Regex |
 |---|---|---|
-| ULID | 26 chars Crockford base32, **upper case**, first char `0`-`7` | `^[0-7][0-9A-HJKMNP-TV-Z]{25}$` |
-| UUIDv5 | RFC 9562, lower case, hyphenated, version nibble `5`, variant `8`-`b` | `^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
+| ULID | 26 chars Crockford base32, upper case, first char `0`-`7` | `^[0-7][0-9A-HJKMNP-TV-Z]{25}$` |
+| keyed DET | RFC 9562 UUID **version 8**, lower case, hyphenated, variant `8`-`b` | `^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
 
-A gid is either; length tells them apart (26 vs 36). The vault gid (= profile gid) is always a ULID.
-View tables keep their integer `id` (so ported queries map 1:1) plus a `gid TEXT NOT NULL UNIQUE`.
+Length tells them apart (26 vs 36). The vault gid (= profile gid) is a ULID. View tables keep their
+integer `id` plus `gid TEXT NOT NULL UNIQUE`. v1's unkeyed UUIDv5 gids are invalid in v1.1 (the schema
+rejects them); nothing was ever written with them.
 
-## 3. DET construction
+## 3. Keyed DET construction (M8)
 
 ```
-gid = uuidv5(NS[table], vaultGid + US + part1 + US + part2 + ...)        (UTF-8 bytes)
+gid = uuid8( HMAC-SHA256( key = vaultSalt, msg = UTF-8( "cashu.gid.v1/" + table + US + part1 + US + ... ) ) )
 US  = U+001F (unit separator)
-NS[table] = uuidv5(ROOT, "cashu.gid.v1/" + table)
-ROOT = 6f1c2a4e-9b3d-4c57-8e21-5a0d7f3b9c64
+uuid8(d): b = d[0..16); b[6] = (b[6] & 0x0f) | 0x80; b[8] = (b[8] & 0x3f) | 0x80; lower-case hex 8-4-4-4-12
 ```
 
-- The vault gid is always the first part: the same fact in two profiles gets two gids (instruments
-  are duplicated per vault, D3), and gids never leak across vaults.
-- A part MUST NOT contain U+001F; a writer that meets one fails loudly (it never happens with real
-  bank data; the Python dedup code uses the same separator).
-- Parts are canonical text:
+- **vaultSalt**: 32 bytes from a CSPRNG, generated when the vault is created (genesis included),
+  stored in the device keyring next to the vault data key, and handed to a new device only wrapped,
+  together with the data key, at pairing (S27 / S29). It is never derived from the slug, the vault
+  gid or any other value that can be public, and it does not change when the data key rotates (gids
+  are frozen once written). Losing it with all devices loses the vault anyway (recovery key, S27,
+  covers both).
+- Without the salt a gid confirms nothing: "is this IBAN theirs" or "did they pay merchant X 12.50 on
+  D" cannot be tested against a leaked gid. Inside the carrier, gids are encrypted anyway
+  (events.md 1); the salt protects gids that leave the ciphertext (logs, bug reports, a future
+  plaintext index).
+- Each vault has its own salt, so the same fact in two profiles gets unrelated gids (D3), and the
+  vault gid is not part of the message.
+- `table` is a domain name from `GID_TABLES` (section 3.2). A part MUST NOT contain U+001F (the writer
+  fails loudly).
+
+### 3.1 Canonical text of parts
 
 | Value | Canonical text |
 |---|---|
-| string | exact UTF-8 as stored (no Unicode normalization, no trim, no case change unless the row says so) |
-| gid reference | the gid string as in section 2 (ULID upper case, UUID lower case) |
-| integer | base 10, no sign for >= 0, no leading zeros (`0`, `1`, `12`) |
+| string | exact UTF-8 as stored (no normalization, no trim, no case change unless the row says so) |
+| gid | as in section 2 (ULID upper case, UUID lower case); a reference is first resolved where the table says so |
+| integer | base 10, no sign for >= 0, no leading zeros |
 | calendar date | `YYYY-MM-DD` |
-| decimal (value key) | `decimal_key` of `importing/dedup.py`: plain notation, exact (no context rounding), trailing fractional zeros and a trailing `.` removed, `-0` -> `0`, `1E+1` -> `10`; null -> empty string |
-| decimal (2-place key) | Python `format(d, ".2f")`: quantized to 2 places with ROUND_HALF_EVEN, sign kept even for a zero result (`-0.001` -> `-0.00`); only inside the budget content key (4.4) |
-| null | empty string, only for the parts listed as nullable below |
+| decimal (value key) | `decimalKey` (Python `importing/dedup.py:decimal_key`): plain, exact, trailing fractional zeros and `.` removed, `-0` -> `0`, `1E+1` -> `10`; null -> `""` |
+| decimal (2 places) | `format2` (Python `format(d, ".2f")`): ROUND_HALF_EVEN, sign kept for a zero result (`-0.001` -> `-0.00`); only in the budget content key |
+| merchant / memo / counterparty text | `normalizeText` (upper case, diacritics stripped, `ł` -> `L`, whitespace collapsed with Python's `\s` set, which includes `\x1c`-`\x1f` and `\x85`, unlike JS `\s`) |
+| IBAN | `ibanKey` (`normalizeIban`, then a leading 2-letter country code dropped, so CSV NRB and Open Banking IBAN agree) |
+| null | `""`, only for the parts listed as nullable |
 
-These rules are parity hazard R1: S05's vectors MUST cover `decimal_key` and `.2f` (half-even ties,
-negative zero, 21 fractional digits, exponent inputs) before any DET gid is computed in TS.
+S05's vectors cover all of these (75k vectors); gids MUST be computed only through those functions.
 
-### 3.1 Namespaces
+### 3.2 Domains
 
-| Table (namespace name) | NS UUID |
-|---|---|
-| profile_modules | `ae8339c1-283e-5550-84fa-274e723dd162` |
-| accounts | `5e032984-5b89-5761-bbbc-f53689111b44` |
-| balances | `1c4a87c8-065d-550a-95ae-3970b6c12576` |
-| transactions | `2ac77d85-bd6b-5882-a51b-1da9990aa103` |
-| category_rules | `c3f19568-8eaf-53dc-a19b-8688fa73633a` |
-| loans | `c8f3125f-7d82-5112-9c82-9235f2176ee4` |
-| depreciations | `bf2fa9d6-93a6-5b45-a307-5b0f1f6564c5` |
-| asset_details | `5f94e262-12b0-591e-a93a-8979cbb1c782` |
-| budget_settings | `e73dca20-09fc-5f75-ae5f-d6747e0500f9` |
-| inv_account_settings | `2a3c7835-76ab-522f-b08f-9841695358e9` |
-| inv_transactions | `712ba648-fe9e-5e86-817c-483ed84b1ad6` |
-| inv_position_snapshots | `6ae75ae0-0a5a-56ed-b125-bda1aa32e768` |
-| inv_instrument_renames | `e9c83675-d928-5a25-b47c-bab14bce9c31` |
-| inv_manual_valuations | `a831c985-29d4-525e-83da-0c52879590cd` |
-| inv_instruments | `5f9b3de7-fec7-51e5-bbb3-ab9433f84320` |
-| inv_instrument_aliases | `5282adad-b002-593a-ba08-1d3a514b1d0b` |
-| inv_profile_instruments | `5b2e0283-11b1-5551-a874-ad4806a1b5e1` |
-| inv_topic_theses | `c7403439-dbbf-5dfe-9f55-b7d2f323bc0a` |
-| watchlist_items | `d4505731-2d11-5325-a79a-a315935900bb` |
-| inv_signals | `f24f120c-f299-59b7-959e-4a262e046665` |
-| connector_bindings | `8b227d76-c7a5-5b99-bad8-d30c4d4337f8` |
-| genesis | `91808c46-334e-558b-9528-dfb40bce3a13` (section 7 only) |
-
-Adding a namespace = adding a row here and in `namespaces.ts` (the unit test recomputes every row
-from ROOT). A namespace is never renamed or reused.
+`profile_modules`, `accounts`, `balances`, `transactions`, `category_rules`, `loans`, `depreciations`,
+`asset_details`, `budget_settings`, `inv_account_settings`, `inv_transactions`, `inv_position_snapshots`,
+`inv_instrument_renames`, `inv_manual_valuations`, `inv_instruments`, `inv_instrument_aliases`,
+`inv_profile_instruments`, `inv_topic_theses`, `watchlist_items`, `connector_bindings`, `genesis`
+(section 7). Never rename or reuse a domain; adding one = a new entry here and in `GID_TABLES`.
+(`inv_signals` left the list in v1.1: signals are ULIDs, section 5.)
 
 ## 4. Strategy per table
 
-`@x` = the gid of the referenced entity. Parts are listed after the implicit vault gid.
+Parts are listed in order. `@x` = gid of x; `R(@x)` = its resolved root (events.md 6.4).
 
 ### 4.1 Vault / profiles
 
-ULID minted when the profile is created (it is also the key id of the vault, S27). Genesis mints it
-once per profile and stores it next to the vault key; a re-run of genesis reuses it.
+ULID minted when the profile is created (also the vault key id, S27). Genesis mints it once per
+profile and stores it with the salt; a re-run reuses both.
 
 ### 4.2 profile_modules
 
-DET `[moduleId]` (`budget`, `assets`, `loans`, `investments`).
+DET `[moduleId]`.
 
-### 4.3 accounts
+### 4.3 accounts (B1: IBAN first, as in Python)
 
-- DET `[bank, externalId]` when `externalId` is an **external or implicit natural key**: an Enable
-  Banking account uid, `csv:<IBAN>` (`core/accounts.py:78`), a statement's account key
-  (`budget/imports.py`), or the cash pool `cash:<CUR>` (`budget/cash.py`). Two devices importing the
-  same account or auto-creating the same cash pool converge to one account.
-- ULID otherwise: `externalId` null (a CSV account without an IBAN), name-derived keys
-  `manual:<name>`, `vehicle:<name>` (assets, loans) and `brokerage:<uuid4>`. Name-derived keys are
-  not identity: a new position with a removed one's name must not revive its history
-  (`core/accounts.py:park_removed_key`), which a DET gid would do.
-- Parked keys (`<key>~<local id>`) are an artifact of Python's UNIQUE constraint. In the event model
-  `account.opened.externalId` keeps the key as opened; the view derives parking (a removed account
-  whose key a live account holds shows `<key>~<gid>`), and restore un-parks in the view. Genesis
-  emits the un-parked key (strip `~<id>`), never the local id.
+- **IBAN known** at open (from any source): DET `["iban", ibanKey(iban)]`. A CSV account and an Open
+  Banking account of one IBAN compute the same gid.
+- **Else an external natural key**: DET `["ext", bank, externalId]` for an Enable Banking uid, a
+  statement's account key (`budget/imports.py`), a parser key of a CSV without IBAN, or the cash pool
+  `cash:<CUR>` (`budget/cash.py`).
+- **Else ULID**: name-derived keys `manual:<name>`, `vehicle:<name>`, random `brokerage:<uuid4>`, or no
+  key at all. Name keys are not identity (a new position with a removed one's name must not revive its
+  history, `core/accounts.py:park_removed_key`), and two devices creating `manual:<name>` concurrently
+  get two accounts that both show (no UNIQUE on live `(bank, external_id)` in the view; lookups take
+  the smallest gid, m12).
+- **Identity keys** (claimed by `account.opened` / `account.identified`, events.md 6.4):
+  `iban:<ibanKey>` and `ext:<bank>:<externalId>` for natural keys. When a CSV account without IBAN
+  later learns its IBAN, or a re-consent brings a new uid, `account.identified` claims the key and the
+  accounts resolve to one (the earlier holder survives). Writers look up the view by IBAN key, then by
+  external key, before minting.
+- The `iban:` key ignores the bank id (Python matches within one bank): events.md R-3.
+- Parked keys (`<key>~<local id>`) are derived in the view as `<key>~<@account>`; genesis emits the
+  un-parked key.
 
 ### 4.4 transactions (budget)
 
-The stored `dedup_hash` is id-coupled: `base_hash` = `sha1(str(account_id) + "|" + contentKey)`
-(`ingestion/normalize.py:82`). v2 removes the account from the hash (the account is a gid part):
+The stored `dedup_hash` is `sha1(str(account_id) + "|" + contentKey)` (`ingestion/normalize.py:82`):
+id-coupled. v2 drops the account (it is a gid part, resolved by the row key):
 
 ```
-contentKeyV2 = bookingDate "|" format(amount, ".2f") "|" upper(currency) "|" counterparty "|" normalize_text(memo)
-  counterparty = iban_key(counterpartyIban) or normalize_text(counterpartyName)
+contentKeyV2 = bookingDate "|" format2(amount) "|" upper(currency) "|" counterparty "|" normalizeText(memo)
+  counterparty = ibanKey(counterpartyIban) or normalizeText(counterpartyName)
   memo         = " ".join(non-empty of [description, reference])
 dedupHashV2  = lower-hex sha1(UTF-8(contentKeyV2))
 gid          = DET(transactions) [@account, dedupHashV2, occurrence]
+row key      = (R(@account), dedupHashV2, occurrence)          (events.md 6.4)
 ```
 
-`normalize_text` and `iban_key` are `core/text.py` (ported by S05 with vectors). `occurrence` keeps
-Python's meaning (stored rows with the same hash on the account + surplus in this batch,
-`ingestion/dedup.py`). `txn.imported.dedupHash` carries `dedupHashV2`; the view stores it in
-`dedup_hash`.
+`occurrence` keeps Python's meaning (`ingestion/dedup.py`). The row key makes a CSV row and the same
+Open Banking row one transaction once their accounts resolve together (Python's cross-source content
+dedup), even though their gids differ.
 
-- Manual cash expenses: ULID; view `dedup_hash = "cashexp:" + gid` (was `cashexp:<uuid4 hex>`).
-- Cash pool mirror legs are DERIVED view rows, gid = DET(transactions) `["cashleg", @sourceTxn]`,
-  view `dedup_hash = "cashleg:" + @sourceTxn` and `raw = {"cash_leg_of": @sourceTxn}` (was the local
-  id). They never appear in the log.
+- Manual cash expenses: ULID; view `dedup_hash = "cashexp:" + gid`.
+- Cash mirror legs: DERIVED view rows, gid = DET(transactions) `["cashleg", @sourceTxn]`; view
+  `dedup_hash = "cashleg:" + @sourceTxn`, `raw = {"cash_leg_of": @sourceTxn}`.
 
 ### 4.5 balances, 1:1 settings, rules
 
-| Table | DET parts |
-|---|---|
-| balances | `[@account, date, source]` (`source` = the enum value: `open_banking`, `csv`, `manual`, `connector`) |
-| category_rules | `[merchantKey]` |
-| loans | `[@account]` |
-| depreciations | `[@account]` |
-| asset_details | `[@account]` |
-| inv_account_settings | `[@account]` |
-| budget_settings | `["cushion"]` (singleton per vault) |
-| connector_bindings | `[@account, connectorId]` |
+| Table | DET parts | Row key |
+|---|---|---|
+| balances | `[@account, date, source]` | `R(@account)`, date, source |
+| category_rules | `[normalized merchantKey]` | same |
+| loans, depreciations, asset_details, inv_account_settings | `[@account]` | `R(@account)` |
+| budget_settings | `["cushion"]` | singleton |
+| connector_bindings | `[@account, connectorId]` | `R(@account)`, connectorId |
+
+`merchantKey` is what Python stores (`ingestion/normalize.py:merchant_key`, upper-case
+`normalizeText` output).
 
 ### 4.6 Investments
 
-| Table | Strategy |
-|---|---|
-| inv_instruments | DET `[creationAlias]` where `creationAlias` = `"isin:" + ISIN` when the instrument is created with an ISIN, else `namespace + ":" + value` of the alias it was created under (the importer's broker symbol alias, or the `yahoo` alias of a watchlist pick). ULID when created without any alias (a manual instrument; 7 of 64 on the lab profile). Concurrent creation of the same instrument on two devices (two imports, or the app and an agent picking the same listing: today's `_insert_once` race undo in `service/watchlist.py:249-251`) yields the same gid. |
-| inv_instrument_aliases | DET `[namespace, value]` (unique per namespace per vault, as today's UNIQUE). |
-| inv_profile_instruments | DET `[@instrument]` |
-| watchlist_items | DET `[@instrument]` |
-| inv_manual_valuations | DET `[@instrument, asOf]` |
-| inv_position_snapshots | DET `[@account, @instrument, asOf]` |
-| inv_instrument_renames | DET `[date, @oldInstrument, @newInstrument]` |
-| inv_topic_theses | DET `[segment]` |
-| inv_transactions | DET `[@account, dedupHashV2]`, below |
-| inv_signals | DET `[dedupKeyV2, firstSeenOn, seq]`, section 5 |
+| Table | Strategy | Row key |
+|---|---|---|
+| inv_instruments | DET `[creationAlias]` (`isin:<ISIN>` when created with an ISIN, else the `namespace:value` it was created under); ULID without any alias | `R(gid)` |
+| inv_instrument_aliases | DET `[namespace, value]` | the alias |
+| inv_profile_instruments, watchlist_items | DET `[@instrument]` | `R(@instrument)` |
+| inv_manual_valuations | DET `[@instrument, asOf]` | `R(@instrument)`, asOf |
+| inv_position_snapshots | DET `[@account, @instrument, asOf]` | `R(@account)`, `R(@instrument)`, asOf |
+| inv_instrument_renames | DET `[date, @old, @new]` | date, `R(@old)`, `R(@new)` |
+| inv_topic_theses | DET `[segment]` | segment |
+| inv_transactions | DET `[@account, dedupHashV2]`; manual entries ULID with `dedupHash = "manual:" + gid` (m1) | `R(@account)`, dedupHash |
 
-**inv_transactions dedupHashV2.** The stored hash includes the local account id and the local
-instrument id (`importing/dedup.py:dedup_hash`, `reconciliation_hash`). v2 is the same algorithm
-with gids and the version tag `v2`, joined by U+001F, lower-hex sha256:
+**inv_transactions dedupHashV2 (O1).** Same algorithm as `importing/dedup.py`, with the account gid,
+version tag `v2`, and the **broker's own instrument key** instead of the local instrument id, so the
+hash does not change when instruments merge and does not depend on any device's gids:
 
 ```
-ref path:            ["v2", "ref", @account, brokerId, ref, fillKey, occurrence]
-content path:        ["v2", "content", @account, contentKey, occurrence]
-reconciliation:      ["v2", "reconciliation", @account, @instrument, asOf, type, decimal_key(quantity)]
-fillKey    = type US instrumentKey US decimal_key(quantity) US decimal_key(price) US (currency or "")
-contentKey = tradeDate US type US instrumentKey US decimal_key(quantity) US decimal_key(price)
-             US decimal_key(grossAmount) US decimal_key(cashAmount)
-instrumentKey = @instrument (merge-resolved at import time) or "" for cash rows
-brokerId   = the importer's broker id, with the legacy rename applied (CASHU_NAMESPACE -> LEGACY_NAMESPACE)
+ref path:        ["v2", "ref", @account, brokerId, ref, fillKey, occurrence]
+content path:    ["v2", "content", @account, contentKey, occurrence]
+reconciliation:  ["v2", "reconciliation", @account, instrumentKey, asOf, type, decimalKey(quantity)]
+fillKey    = type US instrumentKey US decimalKey(quantity) US decimalKey(price) US (currency or "")
+contentKey = tradeDate US type US instrumentKey US decimalKey(quantity) US decimalKey(price)
+             US decimalKey(grossAmount) US decimalKey(cashAmount)
+instrumentKey = brokerId ":" symbol   when the parsed row names the broker's symbol
+              | "isin:" ISIN          else, when it has an ISIN
+              | "gid:" R(@instrument) else (reconciliation rows, rare manual-like imports)
+              | ""                    for cash rows
+brokerId   = the importer's broker id, legacy rename applied (CASHU_NAMESPACE -> LEGACY_NAMESPACE)
+parts joined by US, dedupHashV2 = lower-hex sha256
 ```
 
-Everything else (abs of parsed gross / quantity, occurrence counted per occurrence key within one
-file, manual entries with broker `manual` and the smallest free occurrence) is unchanged from
-`importing/dedup.py` and `service/transactions.py:_free_dedup_hash`.
+Occurrence counting per occurrence key within one file and the abs of parsed gross / quantity are as
+in `importing/dedup.py`.
 
 ### 4.7 ULID tables
 
-`import_batches`, `inv_import_batches`, `inv_strategy_versions` (not DET(sha256): a revert A -> B -> A
-would collide with the first A), `inv_theses` (several per instrument are allowed; 1 instrument on lab
-has 2), `alerts`, `inv_planned_deposits`, `inv_rule_runs`, `inv_decisions`, `reviews`, `proposals`,
-`research_runs`, `research_notes`, cash expenses, accounts per 4.3, instruments per 4.6.
+`import_batches`, `inv_import_batches`, `inv_strategy_versions` (a revert A -> B -> A must not collide),
+`inv_theses`, `alerts`, `inv_planned_deposits`, `inv_rule_runs`, `inv_decisions`, `reviews`, `proposals`,
+`research_runs`, `research_notes`, `inv_signals`, cash expenses, manual inv entries, accounts and
+instruments per 4.3 / 4.6.
+
+### 4.8 View row gids of row-keyed tables
+
+A row that collapses several member gids (events.md 6.4) gets a gid independent of its members:
+accounts and instruments use their root gid; every other row-keyed table uses DET over its table with
+the resolved row key as parts (e.g. `DET(watchlist_items) [R(@instrument)]`). It is recomputed when
+resolution changes and never written to the log.
 
 ## 5. Signals
 
-```
-dedupKeyV2 = Python's dedup key with every embedded local id replaced by a gid (section 6)
-firstSeenOn = as_of (YYYY-MM-DD) of the run that opened the signal
-seq        = number of signals of this vault with the same (dedupKeyV2, firstSeenOn) that sort before it
-             (in the opening device's view; 0 in practice)
-gid        = DET(inv_signals) [dedupKeyV2, firstSeenOn, seq]
-```
-
-Two lease holders in a split brain that open the same finding for the same day produce one signal.
-A signal resolved and reopened on the same day gets `seq` 1.
+Signals are ULIDs (v1.1, B2). Identity across devices comes from the episode rule (events.md 8.7)
+on the **resolved dedup key**: Python's key with each embedded local id replaced by a gid (section 6),
+and at fold time each `i:<@instrument>` / `a:<@account>` part replaced by its root. Two leaders, a
+leader and a research desktop, or a new leader that missed the open signal all converge on one open
+episode; v1's `firstSeenOn` / `seq` and their failure modes (G3) are gone.
 
 ## 6. Id-coupled strings (refactor 1, risk R5)
 
-Every place where a local integer id is embedded in a string or JSON value, and its v1 form.
-JSON key names stay as they are (readers keep working); only the values become gids.
+JSON key names stay (readers keep working); values become gids.
 
-| Where | Today | v1 (events and TS view) |
+| Where | Today | v1.1 |
 |---|---|---|
-| signal dedup key, instrument scope | `<rule>\|i:<instrument id>` (`rules/outcomes.py:80`) | `<rule>\|i:<@instrument>` |
-| signal dedup key, account scope | `<rule>\|a:<account id>` | `<rule>\|a:<@account>` |
-| plan-check key | `plan:<check>\|i:<id>` (`plan/keys.py`) | `plan:<check>\|i:<@instrument>` |
-| research key | `research:<week>\|i:<id>` (`research/keys.py`) | `research:<week>\|i:<@instrument>`; `\|s:<segment>`, `\|t:<theme>` unchanged |
-| alert signal rule id and dedup key | `alert:<alert id>` (`service/alerts.py:536,587`) | `alert:<@alert>` |
-| bucket scope | `<rule>\|s:<bucket id>` | unchanged (strategy-defined string) |
+| signal dedup key, instrument / account scope | `<rule>\|i:<id>`, `<rule>\|a:<id>` (`rules/outcomes.py:80`) | `<rule>\|i:<@instrument>`, `<rule>\|a:<@account>` (resolved at fold time) |
+| plan-check key | `plan:<check>\|i:<id>` | `plan:<check>\|i:<@instrument>` |
+| research key | `research:<week>\|i:<id>` | `research:<week>\|i:<@instrument>`; `\|s:`, `\|t:` unchanged |
+| alert signal rule id / key | `alert:<id>` | `alert:<@alert>` |
+| bucket scope `\|s:<bucket>` | strategy string | unchanged |
 | budget `dedup_hash` | sha1 with the account id | `dedupHashV2` (4.4) |
 | inv `dedup_hash`, reconciliation hash | sha256 with account and instrument ids | `dedupHashV2` (4.6) |
-| cash leg `dedup_hash`, `raw.cash_leg_of` | `cashleg:<txn id>`, int | derived, `cashleg:<@txn>` (4.4) |
+| cash leg `dedup_hash`, `raw.cash_leg_of` | `cashleg:<id>`, int | derived, `cashleg:<@txn>` |
 | cash expense `dedup_hash` | `cashexp:<uuid4>` | `cashexp:<gid>` |
-| parked account key | `<key>~<account id>` | derived, `<key>~<@account>` (4.3) |
-| `inv_signals.payload` | `instrument_id` (str), `alert_id`, `note_id`, `note_ids[]`, `accounts[]` | gids |
-| `inv_rule_runs.report` | `{new: [signal id], escalated: [signal id]}` | `@signal[]` |
+| parked account key | `<key>~<id>` | derived, `<key>~<@account>` |
+| `inv_signals.payload` | `instrument_id`, `alert_id`, `note_id`, `note_ids[]`, `accounts[]` | gids |
+| `inv_rule_runs.report` | signal ids | signal gids |
 | `research_notes.details` | `watchlist_item_id`, `thesis_id`, `previous_instrument_id` | gids |
 | `research_runs.scope` | `instrument_ids[]`, `covered_instrument_ids[]` | gids |
-| `proposals.payload` | `account_id`, `staged` (device path) | `account@`, `blob: {sha256, ext}` |
-| `budget.json` cushion | `account_ids[]` | `accounts: @account[]` |
-| `inv_import_batches.archive_path` | data-dir path | `archive: {sha256, ext}` (D9 blob) |
+| `proposals.payload` | `account_id`, `staged` path | `account`, `blob: {sha256, ext}` (schema rejects the old keys) |
+| `budget.json` cushion | `account_ids[]` (floats for amounts) | `accounts: @account[]`, decimals (events.md 4.3) |
+| `inv_import_batches.archive_path` | data-dir path | `archive: {sha256, ext}` (D9) |
 
-Not affected (device-local, never synced): `connector_runs.batch_ref` (`investments:<batch id>`),
-keychain secret names keyed by the binding's local id, `instrument_search` result keys (UI only),
-`inv_notification_log.signal_id`.
+Not affected (device-local): `connector_runs.batch_ref`, keychain secret names keyed by binding id,
+`instrument_search` result keys, `inv_notification_log.signal_id`.
 
-Guard (S26 / S30 acceptance, R5): a test that greps the Python key builders for f-strings embedding
-`*id` (`f"...{...id}"`, `"|i:"`, `"alert:"`) and fails on any site not listed here; and the TS
-materializer rejects a dedup key or payload id that parses as a bare integer.
+Guard (S26 / S30 acceptance): a test that greps Python key builders for f-strings embedding `*id`
+and fails on any site not listed here; the zod schemas reject `i:<digits>`, `a:<digits>` and
+`alert:<digits>` keys.
 
 ## 7. Genesis gids (S26)
 
-Genesis turns one Python database into the first events of each vault. It MUST be deterministic:
-running it twice on the same database yields the same gids.
+Deterministic: two runs on one database with one stored salt give the same gids.
 
-- DET tables: the normal DET inputs, with local references mapped to the referenced row's gid.
-- ULID tables: `uuidv5(NS[genesis], [vault, table, str(local id)])` (a UUID, not a ULID; both are valid
-  gids). New rows after genesis get ULIDs.
-- Instruments: `creationAlias` = the `isin` alias if the instrument has one, else its alias with the
-  smallest local id; without any alias, the genesis rule above. `instrument.created.creationAlias`
-  records the choice.
-- Budget transactions: rebuild `contentKeyV2` from the stored columns and verify
-  `sha1(str(account_id) + "|" + contentKeyV2) == dedup_hash`. On a match use 4.4. On a mismatch
-  (normalization drift) use DET(transactions) `[@account, "legacy:" + stored dedup_hash, occurrence]`
-  and count it in the genesis report.
-- Investment transactions: recover the occurrence by recomputing the v1 hash with the local ids for
-  `occurrence = 0, 1, ...` (bounded by the rows sharing the occurrence key) until it equals the stored
-  hash, then compute v2. No match (e.g. the instrument was merged, `instrument_merge.py` does not
-  rewrite these hashes) -> DET(inv_transactions) `[@account, "legacy:" + stored dedup_hash]`, counted.
-  Reconciliation rows (`source = reconciliation`) use the reconciliation formula. Lab: 262 rows, 2
-  reconciliation, 0 null hashes.
-- Signals: `firstSeenOn` = as_of of `created_run_id`'s run, else the UTC date of `first_seen_at`;
-  `seq` = rank by local id among the same (dedupKeyV2, firstSeenOn).
-- Cash legs and other derived rows are not emitted.
+- DET tables: normal DET inputs, local references mapped to the referenced row's gid.
+- ULID tables: `DET(genesis) [table, str(local id)]` (a UUIDv8; valid as a gid). New rows get ULIDs.
+- Accounts: 4.3 from the stored `iban` / `external_id`; `keys` emitted for both.
+- Instruments: `creationAlias` = the `isin` alias if any, else the alias with the smallest local id;
+  none -> the genesis rule. Every stored alias becomes an `instrument.aliasAdded`.
+- Budget transactions (O2): **always** compute `dedupHashV2` from the stored columns (what a TS
+  re-import of the same file produces) and report rows where `sha1(str(account_id) + "|" +
+  contentKeyV2)` differs from the stored hash (counts only). `legacy:<stored hash>` is used only when
+  a column needed by the key is missing.
+- Investment transactions: rebuild `instrumentKey` from the instrument's aliases (the alias in the
+  batch's broker namespace, else `isin:`, else `gid:`); recover `occurrence` by recomputing the v1 hash
+  with the local ids for k = 0, 1, ... until it matches; if nothing matches (e.g. a merged instrument),
+  take the rank of the row among rows of the same batch with the same occurrence key, ordered by
+  `created_at` then id. `legacy:` only for missing columns. Lab: 262 rows, 2 reconciliation.
+- Signals: genesis emits one `signal.opened` (ULID per the genesis rule) per row with its state; the
+  episode fold groups them (lab has no duplicate open keys).
 
 ## 8. Test vectors
 
-Vault `01JC0Z8Y3K7M4N5P6Q8R9S0T1V` (synthetic). Produced with Python `uuid.uuid5`; also in
-`namespaces.test.ts`.
+Fixed TEST salt = bytes `00 01 02 ... 1f` (real salts are random). Produced with Python
+`hmac.new(salt, msg, hashlib.sha256)`; also asserted in `namespaces.test.ts`.
 
-| Case | Input parts after the vault | gid |
+| Case | Domain and parts | gid |
 |---|---|---|
-| account | `mbank`, `csv:XX00TEST0000` | `98ff7ab1-8526-5a5c-815d-422cd15b31c2` |
-| module | `budget` | `1239cec0-c343-59e3-bdfe-159fcca7620a` |
-| balance | `<account>`, `2026-01-31`, `csv` | `2895fd82-83e5-516f-b529-dd8b14b9d593` |
-| budget txn | contentKeyV2 `2026-01-15\|-12.50\|PLN\|sklep testowy\|zakup testowy` -> dedupHashV2 `2568e841250298bd2055a257b85edbbc85c62f4d`; `<account>`, hash, `0` | `e54226c2-20a0-5446-87ad-434dcaba844f` |
-| same, occurrence 1 | `<account>`, hash, `1` | `fb31828f-c74f-5e66-9fbc-1697ae297b62` |
-| category rule | `sklep testowy` | `de31fa28-417c-5ae4-bc5a-0c5fb76447cd` |
-| loan | `<account>` | `c204aed4-bddb-5da2-ad36-d809765bff6d` |
-| instrument | `isin:XX0000000001` | `ebc1e39a-6334-5bf0-b460-b9c91d334f08` |
-| alias | `yahoo`, `TEST.WA` | `4df2d5a6-39dd-535f-b365-779154d394db` |
-| inv txn | content path, tradeDate `2026-02-03`, type `buy`, `<instrument>`, qty `10`, price `12.5`, gross `125`, cash `-125.5`, occurrence `0` -> dedupHashV2 `7c0d704bad6cb7238245d48c90add9638e576044f2c77f6cfb037562957f6b44`; `<account>`, hash | `316c3ae3-40c0-5245-8e9b-867aafe9bfe4` |
-| signal | `drawdown_check\|i:<instrument>`, `2026-03-02`, `0` | `df88f798-b625-59cb-a6c9-376b4d9d27fa` |
-| watchlist item | `<instrument>` | `d5e6bdd6-3558-56be-b446-ec83cddc4c8c` |
-| topic thesis | `gold` | `d09c21ce-7d2e-57fa-8a1a-4cb8590c8df4` |
-| cushion | `cushion` | `6134d30b-4490-5b3b-97d7-6aaf8e817e96` |
-| genesis ULID-table row | `inv_theses`, `7` (namespace `genesis`) | `84370644-081f-547f-91bc-baab644fc5c8` |
+| account by IBAN | `accounts`: `iban`, `00000000000000000000000000` | `70cc61c8-79b5-80ae-b8cc-fdca7caef49e` |
+| account by external key | `accounts`: `ext`, `mbank`, `eb:TESTUID0001` | `a1bb665d-9bf1-81e3-916c-f49d32db099a` |
+| module | `profile_modules`: `budget` | `fdb0a016-38e3-8d64-8dec-88673f5cdcda` |
+| balance | `balances`: `<iban account>`, `2026-01-31`, `csv` | `e912848f-6071-8821-89fb-56c500920eb6` |
+| budget txn | contentKeyV2 `2026-01-15\|-12.50\|PLN\|SKLEP TESTOWY\|ZAKUP TESTOWY` (normalizeText output is upper case) -> dedupHashV2 `451a4e645c5442bf030c14db4e9674a3592a8486`; `transactions`: `<iban account>`, hash, `0` | `0b7c2348-a233-87ef-9f1b-4b5bd5161ee0` |
+| same, occurrence 1 | `transactions`: `<iban account>`, hash, `1` | `7a9a8c41-5f11-8b3c-94d7-114812fc0227` |
+| cash leg of that txn | `transactions`: `cashleg`, `<txn gid>` | `95c48228-d6ec-8832-83ad-15ba530cfe8f` |
+| category rule | `category_rules`: `SKLEP TESTOWY` | `cc9078fc-ae3d-8c1d-8381-55311fb4c8b2` |
+| loan | `loans`: `<iban account>` | `b3120349-b79c-869e-819b-cd2c34f608d0` |
+| cushion | `budget_settings`: `cushion` | `d3f2d51c-4a38-8fbf-be36-7abc2d765266` |
+| connector binding | `connector_bindings`: `<ext account>`, `example-broker` | `6ad703ab-383d-8c73-82a5-1ee2d6742735` |
+| instrument | `inv_instruments`: `isin:XX0000000001` | `fc9daa13-f073-8a72-8cd0-c1345436bc05` |
+| alias | `inv_instrument_aliases`: `yahoo`, `TEST.WA` | `20157f67-f236-82f9-ab83-c6d176f65f27` |
+| inv txn | content path, `2026-02-03`, `buy`, instrumentKey `testbroker:TST`, qty `10`, price `12.5`, gross `125`, cash `-125.5`, occurrence `0`, account = `<ext account>` -> dedupHashV2 `a75921e3e5f26dd7918d9b26f7237fbd4cb84d1ffd71686d37f64e6b2eba912e`; `inv_transactions`: `<ext account>`, hash | `f4948051-edd0-8710-babe-0f15b44cc19a` |
+| watchlist item | `watchlist_items`: `<instrument>` | `d0a95ad2-2211-8a30-b04b-809c6be84b30` |
+| topic thesis | `inv_topic_theses`: `gold` | `21465e71-86fc-8535-ab21-87bbe3ca85ba` |
+| genesis ULID-table row | `genesis`: `inv_theses`, `7` | `c1e52d4d-d9a5-84e6-8d7a-c21b36691202` |
 
-`<account>` = the account vector's gid, `<instrument>` = the instrument vector's gid.
+S05 owns the raw-fields -> key vectors (`normalizeText`, `ibanKey`, `format2` on real-looking
+synthetic bank rows); these vectors start from canonical keys.
 
-## 9. Open items (gid-specific; see also events.md O1, O2)
+## 9. Open items
 
-- **G1 CSV accounts without an IBAN** get a ULID: two devices importing the first statement of such
-  an account concurrently create two accounts (Python's UNIQUE does not catch a NULL `external_id`
-  either). Proposal: derive `csv-noiban:<bank>:<statement account key>` when the parser has any stable
-  key; needs a look at the three bank parsers (S07).
-- **G2 Instruments created without an ISIN under different aliases on two devices** (one by a broker
-  symbol, one by a Yahoo pick) get different DET gids and rely on the alias-collision merge, which
-  happens only when an alias actually collides. Two duplicate instruments with disjoint aliases stay
-  duplicates until the owner merges them (same as today).
-- **G3 `seq` of signals** counts in the opening device's view; two split-brain leaders that both
-  already hold a closed same-day signal agree, but one that does not yet hold it would pick seq 0 and
-  collide with the closed one (the fold then treats `opened` on a closed gid as a no-op and the
-  finding is lost until the next run). Rare (same key resolved and reopened on one day during a
-  lease split); acceptable?
-- **G4 Genesis `legacy:` gids** (section 7, events.md O2) are stable but never equal a TS re-import's
-  gid; only the view-level dedup check catches such a re-import.
+v1's G1 (resolved by IBAN-first identity and `account.identified`), G2 (accepted: duplicates with
+disjoint aliases wait for an owner merge, which is now order-safe), G3 (removed with episodes) and
+G4 (genesis rebuilds v2 from columns) are closed. Remaining:
+
+- **G5 Salt distribution** is specified here only as "wrapped with the data key at pairing"; the
+  exact wrapping, the recovery-key derivation of the salt and its storage in each keyring are S27 /
+  S29's.

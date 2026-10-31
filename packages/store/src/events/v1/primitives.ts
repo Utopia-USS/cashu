@@ -5,8 +5,8 @@ import { z } from "zod";
 
 /** ULID, Crockford base32, upper case, first char 0-7 (fits 48-bit time). */
 export const ULID_RE = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
-/** RFC 9562 UUID version 5, lower case, hyphenated. */
-export const UUID5_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+/** RFC 9562 UUID version 8 (custom: keyed HMAC-SHA256 gids, gid.md section 3), lower case. */
+export const UUID8_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 /** Device id minted at pairing (S29): 16 chars base36 lower case. */
 export const DEVICE_RE = /^[0-9a-z]{16}$/;
 /** Decimal in plain notation, scale preserved, no exponent, no leading zeros. */
@@ -27,9 +27,9 @@ function isRealDate(y: number, m: number, d: number): boolean {
 }
 
 export const ulid = z.string().regex(ULID_RE, "expected an upper-case ULID");
-export const uuid5 = z.string().regex(UUID5_RE, "expected a lower-case UUIDv5");
-/** A global id: ULID (minted) or UUIDv5 (deterministic). Never a local integer id. */
-export const gid = z.union([ulid, uuid5]);
+export const uuid8 = z.string().regex(UUID8_RE, "expected a lower-case keyed UUIDv8");
+/** A global id: ULID (minted) or keyed UUIDv8 (deterministic). Never a local integer id. */
+export const gid = z.union([ulid, uuid8]);
 export const deviceId = z.string().regex(DEVICE_RE, "expected a 16-char base36 device id");
 export const decimal = z.string().regex(DECIMAL_RE, "expected a plain-notation decimal string");
 export const calendarDate = z
@@ -61,3 +61,11 @@ export const blobRef = z.looseObject({
 export const nonEmpty = z.string().min(1);
 /** A lower-case key: module ids, account types, categories, rule ids parts. */
 export const key = z.string().regex(/^[a-z][a-z0-9_]*$/, "expected a lower-case key");
+/**
+ * Explicit domain timestamps of a row, keyed by view column (events.md 4.4): genesis snapshots carry
+ * every timestamp column here so the view stays byte-equal; native writers rarely need it.
+ */
+export const stamps = z.record(
+  z.string().regex(/^[a-z][a-z0-9_]*$/, "expected a view column name"),
+  timestamp.nullable(),
+);

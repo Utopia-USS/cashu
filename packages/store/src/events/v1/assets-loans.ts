@@ -16,6 +16,7 @@ export const assetsLoansEvents = {
     originationDate: calendarDate.nullable(),
   }),
   "loan.paymentMatchingSet": payload({
+    account: gid,
     paymentIban: z.string().min(1).nullable(),
     paymentText: z.string().min(1).nullable(),
   }),

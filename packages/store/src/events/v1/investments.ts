@@ -52,7 +52,15 @@ export const MERGE_REASONS = ["owner", "alias_collision"] as const;
 
 const segmentKey = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/, "expected a segment catalog key");
 const aliasNamespace = z.string().regex(/^[a-z0-9_]+$/, "expected an alias namespace");
-const dedupHashV2 = z.union([sha256Hex, z.string().regex(/^legacy:[0-9a-f]{64}$/)]);
+/**
+ * dedupHashV2 (gid.md 4.6): sha256 hex; `manual:<gid>` for manual entries (gid ULID, m1);
+ * `legacy:<v1 hash>` only for genesis rows whose columns cannot rebuild v2 (gid.md section 7).
+ */
+const dedupHashV2 = z.union([
+  sha256Hex,
+  z.string().regex(/^manual:[0-7][0-9A-HJKMNP-TV-Z]{25}$/),
+  z.string().regex(/^legacy:[0-9a-f]{64}$/),
+]);
 
 const instrumentFields = {
   name: nonEmpty,
@@ -94,7 +102,6 @@ export const investmentsEvents = {
     instrumentCount: z.int().min(0),
     correctionCount: z.int().min(0),
     warnings: z.array(jsonObject),
-    createdAt: timestamp.optional(),
   }),
 
   "invTxn.imported": payload({
@@ -120,6 +127,8 @@ export const investmentsEvents = {
     dedupHash: dedupHashV2,
     /** Required: the chronological rank of same-day rows (domain.chronological_key). */
     createdAt: timestamp,
+  }).refine((v) => (v.source === "manual") === v.dedupHash.startsWith("manual:"), {
+    message: "manual entries (and only they) use dedupHash manual:<gid>",
   }),
 
   "position.snapshotImported": payload({
@@ -156,7 +165,6 @@ export const investmentsEvents = {
       .string()
       .regex(/^[a-z0-9_]+:.+$/)
       .nullable(),
-    createdAt: timestamp.optional(),
   }),
   "instrument.updated": patchOf(instrumentFields),
   "instrument.aliasAdded": payload({

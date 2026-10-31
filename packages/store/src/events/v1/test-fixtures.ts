@@ -3,8 +3,9 @@ import type { EventType } from "./catalog.js";
 
 export const VAULT = "01JC0Z8Y3K7M4N5P6Q8R9S0T1V";
 export const DEVICE = "k3v9q2m8x1c7b4n6";
-export const ACC = "98ff7ab1-8526-5a5c-815d-422cd15b31c2";
-export const INST = "ebc1e39a-6334-5bf0-b460-b9c91d334f08";
+export const ACC = "70cc61c8-79b5-80ae-b8cc-fdca7caef49e";
+export const INST = "fc9daa13-f073-8a72-8cd0-c1345436bc05";
+export const SIG = "01JC0ZB5C6D7E8F9G0H1J2K3M4";
 export const ULID_A = "01JC0ZA1B2C3D4E5F6G7H8J9K0";
 export const ULID_B = "01JC0ZA1B2C3D4E5F6G7H8J9K1";
 const SHA256 = "7c0d704bad6cb7238245d48c90add9638e576044f2c77f6cfb037562957f6b44";
@@ -24,7 +25,9 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
     currency: "PLN",
     type: "checking",
     name: "Konto testowe",
+    keys: ["iban:00TEST0000", "ext:mbank:csv:XX00TEST0000"],
   },
+  "account.identified": { iban: "XX00TEST0000", keys: ["iban:00TEST0000"] },
   "account.renamed": { name: "Konto główne" },
   "account.typeSet": { type: "savings" },
   "account.removed": {},
@@ -99,7 +102,7 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
     startDate: "2024-02-10",
     originationDate: "2024-01-15",
   },
-  "loan.paymentMatchingSet": { paymentIban: null, paymentText: "rata kredytu" },
+  "loan.paymentMatchingSet": { account: ACC, paymentIban: null, paymentText: "rata kredytu" },
   "depreciation.set": {
     account: ACC,
     purchasePrice: "80000",
@@ -208,7 +211,6 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
     account: null,
     payload: { instrument_id: INST, drawdown: "0.21" },
     run: ULID_A,
-    firstSeenOn: "2026-03-02",
   },
   "signal.refreshed": { message: "Spadek od szczytu", run: ULID_A, seenAt: TS },
   "signal.escalated": {
@@ -222,7 +224,7 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
   "signal.closed": { status: "expired", reason: "mute" },
   "signal.reopened": { reason: "alert_restored" },
   "signal.snoozed": { until: "2026-11-07T12:00:00.000Z" },
-  "signal.woken": {},
+  "signal.woken": { until: "2026-11-07T12:00:00.000Z" },
   "ruleRun.finished": {
     trigger: "worker",
     asOf: "2026-03-02",
@@ -230,7 +232,7 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
     strategyVersion: ULID_A,
     stats: { rules: 5 },
     errors: [],
-    report: { new: ["df88f798-b625-59cb-a6c9-376b4d9d27fa"], escalated: [] },
+    report: { new: [SIG], escalated: [] },
     startedAt: TS,
     finishedAt: TS,
   },
@@ -254,7 +256,7 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
   "alert.restored": {},
   "alert.evaluated": { triggered: true, lastCheckedAt: TS, lastValue: "9.80", lastTriggeredAt: TS },
   "decision.recorded": {
-    signals: ["df88f798-b625-59cb-a6c9-376b4d9d27fa"],
+    signals: [SIG],
     instrument: INST,
     account: null,
     action: "held",
@@ -289,7 +291,7 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
     note: null,
   },
   "plannedDeposit.cancelled": {},
-  "plannedDeposit.booked": { txn: "316c3ae3-40c0-5245-8e9b-867aafe9bfe4" },
+  "plannedDeposit.booked": { txn: "f4948051-edd0-8710-babe-0f15b44cc19a" },
   "watchlist.added": { instrument: INST, note: null, tags: [], source: "user" },
   "watchlist.updated": { tags: ["obserwuj"] },
   "watchlist.removed": {},
@@ -353,4 +355,5 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
     autoCommit: false,
   },
   "connectorBinding.removed": {},
+  "connectorBinding.cursorAdvanced": { cursor: "2026-10-30T00:00:00Z" },
 };

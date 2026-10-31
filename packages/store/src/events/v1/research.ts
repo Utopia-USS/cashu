@@ -61,29 +61,29 @@ export const researchEvents = {
     thesis: z.string().min(1).max(TOPIC_THESIS_MAX),
     invalidation: z.string().max(TOPIC_INVALIDATION_MAX).nullable(),
   }),
+  /** `invalidation` absent = keep the stored one (topic_theses.upsert_draft), null = clear. */
   "topicThesis.draftProposed": payload({
     segment: segmentKey,
     thesis: z.string().min(1).max(TOPIC_THESIS_MAX),
-    invalidation: z.string().max(TOPIC_INVALIDATION_MAX).nullable(),
+    invalidation: z.string().max(TOPIC_INVALIDATION_MAX).nullable().optional(),
   }),
   "topicThesis.rejected": empty,
   "topicThesis.marketViewSet": payload({
     segment: segmentKey,
     assessment: z.string().max(TOPIC_MARKET_VIEW_MAX).nullable(),
     outlook: z.string().max(TOPIC_MARKET_VIEW_MAX).nullable(),
-    sources: z.array(source).max(6).nullable(),
+    /** Absent = keep the stored sources (Python KEEP), null = clear. */
+    sources: z.array(source).max(6).nullable().optional(),
     by: z.enum(TOPIC_WRITERS),
   }),
 
   "researchRun.started": payload({
     scope: jsonObject,
     createdBy: z.enum(RESEARCH_CREATORS),
-    startedAt: timestamp.optional(),
   }),
   "researchRun.finished": payload({
     status: z.enum(RESEARCH_RUN_FINISH_STATUSES),
     counts: jsonObject,
-    finishedAt: timestamp.optional(),
   }),
 
   "note.added": payload({

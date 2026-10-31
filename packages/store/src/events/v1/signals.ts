@@ -1,14 +1,20 @@
 // Signals, rule runs and alerts payloads (events.md 8.7).
 import { z } from "zod";
 import { empty, patchOf, payload } from "./helpers.js";
-import { calendarDate, gid, jsonObject, nonEmpty, timestamp } from "./primitives.js";
+import { calendarDate, gid, jsonObject, key, nonEmpty, timestamp } from "./primitives.js";
 
 export const SIGNAL_SEVERITIES = ["info", "action"] as const;
 export const POLARITIES = ["positive", "negative", "neutral"] as const;
 export const SIGNAL_CLOSE_STATUSES = ["resolved", "expired"] as const;
-/** Owner-caused close reasons any device may emit (Python: payload.closed_by). */
-export const OWNER_CLOSE_REASONS = ["snooze", "mute", "delete", "alert_expired"] as const;
-export const RULE_RUN_TRIGGERS = ["worker", "api", "cli"] as const;
+/**
+ * Close reasons any device may emit: owner actions on an alert (Python payload.closed_by) and the
+ * dismissal of a research note (payload.closed_reason). Every other reason (rule outcomes,
+ * `alert_expired` from housekeeping, `notes_expired`) comes from the lease holder.
+ */
+export const OWNER_CLOSE_REASONS = ["snooze", "mute", "delete", "note_dismissed"] as const;
+export const REOPEN_REASONS = ["alert_restored", "note_restored"] as const;
+/** Known rule-run triggers (informational, open set: `app` is service/autorun.py's TRIGGER). */
+export const KNOWN_RULE_RUN_TRIGGERS = ["worker", "api", "cli", "app"] as const;
 export const RULE_RUN_STATUSES = ["ok", "partial", "failed"] as const;
 export const ALERT_SCOPES = ["instrument", "portfolio", "bucket"] as const;
 export const ALERT_KINDS = [
@@ -27,7 +33,8 @@ export const ALERT_KINDS = [
 /** Owner-settable alert states; triggered / expired are runtime or time-derived (events.md 8.7). */
 export const ALERT_OWNER_STATUSES = ["active", "muted", "snoozed"] as const;
 export const ALERT_SOURCES = ["user", "agent"] as const;
-export const ALERT_CREATORS = ["app", "cli", "mcp"] as const;
+/** Known alert creators (informational, open set). */
+export const KNOWN_ALERT_CREATORS = ["app", "cli", "mcp"] as const;
 
 /**
  * A v2 dedup key (gid.md section 5 and 6): `<rule>[|i:<gid>][|a:<gid>][|s:<scope>]`,
@@ -58,8 +65,6 @@ export const signalsEvents = {
     account: gid.nullable(),
     payload: jsonObject,
     run: gid.nullable(),
-    firstSeenOn: calendarDate,
-    firstSeenAt: timestamp.optional(),
   }),
   "signal.refreshed": payload({
     severity: z.enum(SIGNAL_SEVERITIES).optional(),
@@ -81,12 +86,13 @@ export const signalsEvents = {
     // Rule outcomes (LEADER) use the reconciler's reason text; owner-caused closes use OWNER_CLOSE_REASONS.
     reason: nonEmpty,
   }),
-  "signal.reopened": payload({ reason: z.literal("alert_restored") }),
+  "signal.reopened": payload({ reason: z.enum(REOPEN_REASONS) }),
   "signal.snoozed": payload({ until: timestamp.nullable() }),
-  "signal.woken": empty,
+  /** GUARD (M7): applies only while the folded snoozedUntil still equals `until`. */
+  "signal.woken": payload({ until: timestamp }),
 
   "ruleRun.finished": payload({
-    trigger: z.enum(RULE_RUN_TRIGGERS),
+    trigger: key,
     asOf: calendarDate,
     status: z.enum(RULE_RUN_STATUSES),
     strategyVersion: gid.nullable(),
@@ -107,7 +113,7 @@ export const signalsEvents = {
     title: nonEmpty,
     note: z.string().nullable(),
     source: z.enum(ALERT_SOURCES),
-    createdBy: z.enum(ALERT_CREATORS),
+    createdBy: key,
     cooldownDays: z.int().min(0).nullable(),
     expiresAt: timestamp.nullable(),
   }),

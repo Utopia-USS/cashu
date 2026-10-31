@@ -1,12 +1,16 @@
-# cashU event catalog v1 (normative)
+# cashU event catalog v1.1 (normative)
 
-Status: v1 draft for lead review (scope S04, 2026-10-31). Consumers: S23 store-core, S24/S25
-materializers, S26 genesis, S28a carrier contract, S30 Python outbox, S31a/b bridge.
+Status: v1.1 (scope S04, 2026-10-31), after the independent review
+(`~/cashu-lab/checkpoints/S04-review.md`) and the lead's decisions on it. Consumers: S23 store-core,
+S24/S25 materializers, S26 genesis, S28a carrier contract, S29 devices / lease, S30 Python outbox,
+S31a/b bridge.
 
-Companion documents: [`gid.md`](gid.md) (global ids, canonical inputs, id-coupled strings). Machine
-schemas: `packages/store/src/events/v1/*.ts` (zod). The zod schemas are normative for field names
-and types; this document is normative for semantics (ordering, conflict rules, compatibility).
-Where they disagree it is a bug in one of them: fix both in the same change.
+Companion documents: [`gid.md`](gid.md) (global ids, keyed DET construction, id-coupled strings).
+Machine schemas: `packages/store/src/events/v1/*.ts` (zod). Executable reference semantics for the
+convergence-critical rules: `packages/store/src/events/v1/reference/fold.ts`, with shuffled-delivery
+tests in `reference/convergence.test.ts`; S23/S25 MUST give the same results on those scenarios.
+The zod schemas are normative for field names and types, this document for semantics. Where they
+disagree it is a bug in one of them: fix both in the same change.
 
 MUST / MUST NOT / SHOULD are used in the RFC 2119 sense.
 
@@ -21,8 +25,16 @@ MUST / MUST NOT / SHOULD are used in the RFC 2119 sense.
   order or duplication of delivery (convergence). The view is rebuildable at any time.
 - Writers never write the view directly: a command validates against the current view, emits one
   batch of events, and the materializer applies it like any inbound batch.
+- **What is plaintext** (own-log carrier, spike-result.md): only the segment address
+  (`<vault routing id>/<device>/<seq>.seg`), the frame offset and length, and the AEAD nonce. Every
+  envelope field (`eid`, `hlc`, `type`, `gid`, `data`, ...) is inside the ciphertext, and the segment
+  address is the frame's AAD. Gids are additionally keyed with a per-vault secret salt
+  ([`gid.md`](gid.md) 3), so a gid that leaks (a log line, a bug report) confirms nothing. The MCP server
+  never returns gids to an agent; it keeps opaque per-session refs (`core/mcp/labels.py` REF ids).
 
 ## 2. Envelope
+
+Logical form (what readers, reducers and tests see):
 
 ```json
 {
@@ -42,553 +54,619 @@ MUST / MUST NOT / SHOULD are used in the RFC 2119 sense.
 
 | Field | Required | Format | Meaning |
 |---|---|---|---|
-| `eid` | yes | ULID (26 chars, Crockford base32, upper case) | Event id. Globally unique. Idempotency key: an event with an `eid` already applied is a no-op. |
-| `vault` | yes | ULID | The profile's vault gid (= the profile gid). MUST equal the vault of the segment it was read from; a mismatch is rejected (never applied, logged). |
-| `device` | yes | 16 chars `[0-9a-z]` | The writing device's id (minted at pairing, S29). |
-| `hlc` | yes | see section 3 | Hybrid logical clock stamp. Its device suffix MUST equal `device`. |
-| `at` | yes | timestamp (section 4) | The writer's wall clock when the event was created. Informational and the default source of domain timestamps (section 4.4); never used for ordering. |
+| `eid` | yes | ULID (26 chars, Crockford base32, upper case) | Event id. Idempotency key: an event with an `eid` already applied is a no-op. Target of `cause`. |
+| `vault` | yes | ULID | The profile's vault gid (= the profile gid). MUST equal the vault of the segment it was read from. |
+| `device` | yes | 16 chars `[0-9a-z]` | The writing device's id (minted at pairing, S29). MUST equal the segment's device. |
+| `hlc` | yes | section 3 | Hybrid logical clock stamp. Its device suffix MUST equal `device`. |
+| `at` | yes | timestamp (section 4) | The writer's wall clock when the event was created. Default domain time (4.4); never used for ordering. |
 | `type` | yes | `<entity>.<verb>`, `^[a-z][a-zA-Z]*\.[a-z][a-zA-Z]*$` | Event type (section 8). |
-| `v` | yes | integer >= 1 | Schema version of this type's payload. Every v1 catalog type starts at `v: 1`. |
-| `gid` | yes | gid ([`gid.md`](gid.md)) | The primary entity the event is about (the row it creates or changes). |
+| `v` | yes | integer >= 1 | Schema version of this type's payload. Every v1 catalog type is at `v: 1`. |
+| `gid` | yes | gid ([`gid.md`](gid.md)) | The entity the event is about (the row it creates or changes, as the writer saw it; identity resolution may redirect it, 6.4). |
 | `data` | yes | JSON object | Payload, validated by the (type, v) schema. |
-| `cause` | no | ULID | The `eid` of the event that caused this one in the same batch (side effects of a proposal approval, a candidate acceptance, a decision). Used for causal suppression (section 6.6). |
-| `origin` | no | `genesis` \| `bridge` | `genesis`: produced by the genesis exporter (S26) from an existing database. `bridge`: produced by the Python outbox shipper (S31a). Absent: a native TS writer. Informational; reducers MUST NOT branch on it. |
+| `cause` | no | ULID | The `eid` of the event that caused this one in the same batch (side effects of an approval, a candidate acceptance). Causal suppression (6.6). |
+| `origin` | no | `genesis` \| `bridge` | `genesis`: produced by the genesis exporter (S26); `bridge`: by the Python outbox shipper (S31a). Informational; reducers MUST NOT branch on it. |
 
 Rules:
 
-- `eid` collision with a different body (any field differs) is corruption: keep the first applied,
-  reject the other, report it. It never happens with correct writers.
-- The envelope schema is a loose object: unknown envelope fields MUST be preserved in the log and
-  ignored by the reader (future fields, e.g. a signature).
-- The total order of events is the order of `hlc` strings (section 3). `eid` is not an ordering key.
+- The total order of events is `(hlc, eid)`: `hlc` first, `eid` only breaks the tie that a
+  rolled-back device could create (3.2).
+- An `eid` seen again with a different body is corruption: keep the first applied, reject the other,
+  report it.
+- The envelope is a loose object: unknown envelope fields MUST be preserved and ignored.
+
+### 2.1 Wire form (own-log carrier)
+
+The decided carrier (spike-result.md, "own thin log") frames events as `EventEnvelope { t, v, h, d }`
+with the device implied by the segment. v1.1 keeps those keys and adds what the domain needs:
+
+| Wire key | Logical field | Why the spike did not have it |
+|---|---|---|
+| `t`, `v`, `h`, `d` | `type`, `v`, `hlc`, `data` | (same) |
+| `i` | `eid` | `cause` references, rollback tie-break, idempotency independent of segment offsets |
+| `g` | `gid` | delete / mark events carry no subject in `data` |
+| `a` | `at` | domain timestamps (4.4) |
+| `c`, `o` | `cause`, `origin` | causal suppression, provenance |
+| (segment) | `vault`, `device` | implied by `<vault>/<device>/<seq>.seg` and authenticated as AAD; re-attached on read |
+
+`toWire` / `fromWire` in `envelope.ts` implement the mapping; unknown keys travel under their own
+names. A frame event whose HLC device suffix differs from its segment's device is rejected.
 
 ## 3. Hybrid logical clock
 
 ### 3.1 Format
 
 ```
-<wall>-<counter>-<device>
+<wall>-<counter>-<device>             ("wall36-counter36-device", as in the spike)
 wall    = 9 chars base36 [0-9a-z], zero-padded: milliseconds since 1970-01-01T00:00:00Z
 counter = 4 chars base36, zero-padded: 0 .. 1679615 (zzzz)
 device  = 16 chars [0-9a-z]: the writing device id
 regex   = ^[0-9a-z]{9}-[0-9a-z]{4}-[0-9a-z]{16}$
 ```
 
-Example: `2026-10-31T12:00:00.000Z` = `1793448000000` ms = `0mvwcmtc0` (base36, lower case, padded to
-9), so the first event of a device in that millisecond is `0mvwcmtc0-0000-<device>`. 9 base36 digits
-hold wall times up to year 5188.
+Example: `2026-10-31T12:00:00.000Z` = `1793448000000` ms = `0mvwcmtc0`, so the first event of a device
+in that millisecond is `0mvwcmtc0-0000-<device>`. 9 base36 digits hold wall times up to year 5188.
 
 ### 3.2 Comparison
 
-- `a < b` iff `a` sorts before `b` by plain code-unit string comparison (JS `<`, SQLite `BINARY`
-  collation, Python `<` on `str`). Fixed widths and lower-case base36 make this equal to the numeric
-  order of `(wall, counter, device)`.
-- A device never emits two events with the same `hlc` (the counter or the wall strictly increases),
-  and the device id is part of the string, so `hlc` is unique across the vault: it is a strict total
-  order of all events. The device id is the deterministic tie-break between devices that share
-  `(wall, counter)`.
+- `a < b` iff `a` sorts before `b` by plain code-unit string comparison (JS `<`, SQLite `BINARY`,
+  Python `<` on `str`). Fixed widths and lower-case base36 make this the numeric order of
+  `(wall, counter, device)`; the device id is the tie-break between devices.
+- A correct device never reuses an `hlc`. A device whose state was rolled back (restored backup,
+  cloned disk) can; `eid` then breaks the tie (2). A device that finds its persisted clock behind its
+  own events already in the log MUST stop writing and get a new device id (S29).
 
-### 3.3 Generation (normative behaviour for S23 `hlc.ts`)
+### 3.3 Generation (normative for S23 `hlc.ts`)
 
-State per device per vault: `last = (wall, counter)`, persisted durably together with the events it
-stamped (a restart MUST NOT go backwards; the spike found this bug class).
+State per device per vault: `last = (wall, counter)`, persisted durably with the events it stamped.
 
-- **Send / local event**: `pt` = physical time ms. If `pt > last.wall`: `(pt, 0)`. Else
-  `(last.wall, last.counter + 1)`.
-- **Receive** (every event applied from another device, before stamping the next local event):
-  `w = max(pt, last.wall, remote.wall)`; counter = `max of the counters of those equal to w` + 1, or
-  0 when only `pt` equals `w`. Standard HLC.
-- **Counter overflow** (would exceed `zzzz`): use `(wall + 1, 0)`.
-- **Drift**: a received event whose wall is more than 5 minutes ahead of `pt` is accepted (the log
-  must converge) and the clock advances, but the device SHOULD warn (clock skew); see Open item O7.
-- Genesis (S26) stamps its events with the generating device's clock like any local writer, in
-  dependency order (an entity's create before its changes, a referenced entity before the reference).
+- **Send**: `pt` = physical ms. If `pt > last.wall`: `(pt, 0)`, else `(last.wall, last.counter + 1)`.
+- **Receive** (every applied remote event, before the next local stamp): `w = max(pt, last.wall,
+  remote.wall)`; counter = 1 + the max counter among the inputs equal to `w`, or 0 when only `pt`
+  equals `w`.
+- **Counter overflow**: `(wall + 1, 0)`.
+- **Emit guard (O7)**: a device MUST refuse to stamp (and show a clock error) while `pt` is behind
+  its persisted `last.wall` by more than 5 minutes; receivers accept every event (convergence) and
+  warn when a remote wall is more than 5 minutes ahead of `pt`. Pairing (S29) compares the clocks of
+  the two devices and refuses a skew above 5 minutes.
+- Genesis stamps its events with the generating device's clock, in dependency order.
 
 ## 4. Encoding rules
 
 ### 4.1 JSON
 
-UTF-8 JSON. No `NaN` / `Infinity`. Object key order is irrelevant. Strings are stored exactly as
-written (no Unicode normalization, no trimming) except where a field says otherwise; matching data
-(Polish texts, merchant keys) stays byte-identical.
+UTF-8 JSON, no `NaN` / `Infinity`, key order irrelevant. Strings stored exactly as written (no Unicode
+normalization, no trimming) unless a field says otherwise; matching data stays byte-identical.
 
 ### 4.2 Absent vs null
 
-In change events (`*.updated`, `*.set` patches) a key that is **absent** leaves the field unchanged;
-a key present with `null` **clears** it. In create events an absent optional key means null.
+In change events a key that is **absent** leaves the field unchanged; present with `null` **clears**
+it. In create events an absent optional key means null unless the type says "absent = keep" (topic
+draft `invalidation`, market-view `sources`).
 
 ### 4.3 Values
 
 | Kind | Format |
 |---|---|
-| Decimal (money, quantity, rate, price) | JSON string, plain notation, `^-?(0\|[1-9][0-9]*)(\.[0-9]+)?$`. Scale preserved as written (`"10.50"` stays `"10.50"`); exponent forms (`1E+1`) MUST be rewritten to plain notation by the writer (Python: `format(d, "f")`). Never a JSON number. Compare by value, never by text, except in gid inputs where [`gid.md`](gid.md) section 3 defines the canonical text. |
-| Calendar date | `YYYY-MM-DD` (local calendar date as today, no time zone). |
-| Timestamp | UTC, `YYYY-MM-DDTHH:MM:SS[.f{1,6}]Z`. TS writers emit milliseconds (3 digits); genesis keeps the microseconds Python stored. Naive datetimes from SQLite are UTC (as `reviews.py` assumes). |
-| Currency | `^[A-Z]{3}$`. Exception: instrument and quote currencies may be any upper-case code the importers produce (`^[A-Z0-9]{2,10}$`, e.g. crypto). |
-| Reference to another entity | its gid (ULID or UUIDv5, [`gid.md`](gid.md)). Never a local integer id. |
-| JSON blobs (`params`, `raw`, `stats`, `payload`, `scope`, ...) | JSON object; any id inside MUST be a gid ([`gid.md`](gid.md) section 6). |
+| Decimal | JSON string, plain notation, `^-?(0\|[1-9][0-9]*)(\.[0-9]+)?$`, scale preserved (`"10.50"`). Exponent forms rewritten by the writer (Python `format(d, "f")`). Never a JSON number. Floats stored by Python (the `budget.json` cushion) are rendered with Python `repr` then `format(Decimal(repr(x)), "f")` (TS `floatRepr` in `packages/domain/src/decimal.ts`). |
+| Calendar date | `YYYY-MM-DD`. |
+| Timestamp | UTC `YYYY-MM-DDTHH:MM:SS[.f{1,6}]Z`; TS writers emit 3 fractional digits, genesis keeps Python's 6. Naive SQLite datetimes are UTC. |
+| Currency | `^[A-Z]{3}$`; instrument / quote currencies `^[A-Z0-9]{2,10}$`. |
+| Reference | a gid ([`gid.md`](gid.md)), never a local integer id. |
+| JSON blob | JSON object; every id inside is a gid ([`gid.md`](gid.md) 6). |
+| Informational labels | open lower-case keys, not enums, where Python treats them as free labels (rule-run `trigger`, alert `createdBy`, proposal `source`) so real data never parks (M4). Enums stay for values with behaviour. |
 
 ### 4.4 Domain timestamps
 
-A view column like `created_at`, `updated_at`, `done_at`, `acknowledged_at`, `plan_at` is set from
-the `at` of the event that sets it, unless the payload carries an explicit value for it (payload
-fields named like the column, camelCase: `createdAt`, `doneAt`, ...). Payloads carry explicit
-timestamps only where the time is not "now" (a backdated review, `observedAt` of a research note,
-`expiresAt`, `snoozedUntil`) and in genesis events (`origin: "genesis"`), which carry every
-timestamp column of the row they snapshot so the view stays byte-equal to the Python database.
+The **domain time** of an event for a view column `c` is `data.stamps[c]` when present, else the
+payload's explicit field for it (`doneAt`, `observedAt`, `expiresAt`, `seenAt`, ...), else `at`.
+
+- Every column set "when this happened" (`created_at`, `updated_at`, `added_at`, `enabled_at`,
+  `plan_at`, `view_updated_at`, `acknowledged_at`, ...) takes the domain time of the event that set
+  it. Derived timestamps (section 9) take the domain time of the event that triggered the change.
+- `stamps` is an optional typed object on every payload: view column name -> timestamp or null.
+  Genesis events (`origin: "genesis"`) MUST carry every timestamp column of the row they snapshot,
+  derived ones included (`core_changed_at`, `exit_plan_changed_at`, `acknowledged_at` as the linked
+  decision's `created_at`, `loans.updated_at`, `profile_modules.enabled_at`, ...). A reducer uses a
+  stamp of a derived column as its initial value; later events recompute it normally. Native writers
+  rarely need `stamps`.
 
 ## 5. Batches
 
-- A **batch** is the unit a device appends atomically (carrier contract, S28a): its events become
-  visible together or not at all. A materializer applies a batch in one SQLite transaction.
-- Events of one batch have strictly increasing `hlc` from one device. A command that produces
-  several events (an import, a proposal approval with its side effects, a decision that links
-  signals) MUST put them in one batch.
-- Batches carry no semantics beyond atomicity: every event is ordered by its own `hlc`.
+- A **batch** is the unit a device appends atomically (one frame or a frame group, S28a); a
+  materializer applies it in one SQLite transaction.
+- Events of a batch have strictly increasing `hlc`. A command producing several events (an import,
+  an approval with its side effects, a decision linking signals, an alert mute with its signal close)
+  MUST put them in one batch.
+- Batches carry no semantics beyond atomicity.
 
 ## 6. Conflict rules (reducers)
 
 ### 6.1 The fold
 
-The state of an entity is the left fold of its relevant events sorted ascending by `hlc`:
-
 ```
-state(gid) = events touching gid (own events + cross-entity effects, 6.5), sorted by hlc
-             .reduce(reducer[type], initial = absent)
+view = fold over the applied events (6.6) sorted by (hlc, eid), after identity resolution (6.4)
 ```
 
-Every reducer is a pure function of (state, event). Validation guards that must hold under
-concurrency are re-evaluated **inside** the reducer against the folded state, not only at emit
-time (e.g. "the agent never overwrites the owner's segment"): a guarded event that fails its guard
-at its position in the order is a **no-op** (it stays in the log). This makes every rule below
-convergent by construction. An implementation MAY apply incrementally when a new event sorts after
-everything already applied to that entity, and MUST re-fold the entity (or rebuild) when an event
-arrives that sorts before already-applied events of it.
+Every reducer is a pure function of (state, event). Guards that must hold under concurrency are
+re-evaluated **inside** the reducer against the folded state: a guarded event that fails its guard at
+its position in the order is a **no-op** (it stays in the log). An implementation MAY apply
+incrementally when a new event sorts after everything already applied to the affected rows, and MUST
+re-fold those rows (or rebuild) when an event arrives that sorts before already-applied ones, or that
+changes identity resolution (6.4) or causal suppression (6.6).
 
 ### 6.2 Rule vocabulary
 
 | Code | Rule | Reducer behaviour |
 |---|---|---|
-| **CREATE** | create-once (union) | The first create event (lowest `hlc`) creates the entity and supplies initial field values. Later create events for the same gid are no-ops (dedup of the same fact seen twice: imports, DET gids). |
-| **LWW-F** | last writer wins per field | Each field is a register; an event sets the fields present in its `data` (4.2). The later `hlc` wins per field. A "record" event (`*.set` with all fields of its version) is LWW-F over the fields its version defines: fields added by newer versions survive an older writer's set. There is no whole-record replacement in v1. |
-| **SOFT** | soft delete register | `removed`/`deleted` sets a timestamp register, `restored`/re-`added` clears it; LWW by `hlc`. The row stays (Python keeps it too). |
-| **TOMB** | tombstone | A delete event ends the entity: every later event for that gid (by `hlc`) is a no-op, and the view drops the row. An explicit `restore` type exists only where named; there is no implicit resurrection. Earlier events (lower `hlc`) still fold before it. |
-| **APPEND** | append-only | Each event creates its own immutable entity (decisions, reviews, notes, runs, versions). Its only later change is the listed TOMB or LWW-F side fields. |
-| **FWW** | first writer wins (state transition) | Among concurrent terminal transitions of one entity (approve / reject / fail, book / cancel), the lowest `hlc` wins; later terminal transitions are no-ops and their caused events are suppressed (6.6). Used for actions with side effects. |
-| **GUARD** | precedence register | LWW-F whose reducer first checks a precedence condition against the folded state (owner > agent, locked manual > learned). |
-| **LEADER** | emit constraint | Only the current fetch-lease holder (S29) emits it. Reducers accept it from any device (lease state is not part of the fold); split-brain duplicates converge because LEADER entities have DET gids or are append-only. |
-| **DERIVED** | not an event | The column is recomputed by the materializer from other state after apply (section 9). Never carried in a payload, never captured by the outbox. |
+| **CREATE** | create-once (union) | The first **applied** create event (lowest `(hlc, eid)` among creates that are not suppressed and not parked) creates the row and supplies initial values. Later creates for the same row are no-ops. |
+| **LWW-F** | last writer wins per field | Each field is a register; an event sets the fields present in its `data` (4.2). There is no whole-record replacement: a "record" event (`*.set`) is LWW-F over the fields its version defines. |
+| **SOFT** | soft delete register | `removed` / `deleted` sets a register, `restored` / a later `added` / `set` clears it; LWW by order. The row stays (Python keeps it too). Used where re-creation is a normal flow (accounts, alerts, watchlist, topic theses, connector bindings). |
+| **TOMB** | tombstone | A delete ends the row: later events for it are no-ops, the view drops it. Only for rows that are never re-created under the same gid (ULID rows: decisions, reviews, theses, cash expenses). |
+| **APPEND** | append-only | Each event creates its own immutable row; later changes only via listed TOMB / LWW-F side fields. |
+| **FWW** | first writer wins (transition) | Among terminal transitions of one row the lowest `(hlc, eid)` wins; later ones are no-ops and their caused events are suppressed (6.6). |
+| **GUARD** | precedence register | LWW-F whose reducer first checks a condition against the folded state. |
+| **IDENTITY** | identity claim / merge | Feeds identity resolution (6.4). |
+| **EPISODE** | signal episode fold | Signal lifecycle per resolved dedup key (8.7). |
+| **LEADER** | emit constraint | Only the current fetch-lease holder emits it. Reducers accept it from any device; convergence never depends on lease state. |
+| **DERIVED** | not an event | Recomputed after apply (section 9). Never in a payload except as a genesis stamp (4.4); never captured by the outbox. |
 
-### 6.3 Tombstones and soft deletes
+### 6.3 Tombstones, soft deletes, windows
 
-- Hard deletes in Python become TOMB events: decision undo, review undo, thesis delete, cash expense
-  delete, connector binding removal. The view row disappears; the log keeps the history.
-- Soft deletes stay SOFT (accounts `removed_at`, alerts `deleted_at`, watchlist `removed_at`,
-  topic thesis `rejected_at`).
-- Undo windows (review, decision: 15 minutes; alert restore window) are checked at emit time against
-  the view; the reducer applies an emitted undo unconditionally (a window is not a concurrency
-  invariant).
+- Python hard deletes become TOMB events where the row is never re-created under its gid: decision
+  undo, review undo, thesis delete, cash expense delete. A connector binding removal is SOFT (M1): the
+  same (account, connector) is bound again with a higher-`hlc` `connectorBinding.set`.
+- Undo / restore windows (review, decision, alert restore, note restore) are checked at emit time
+  against the view; the reducer applies an emitted undo unconditionally.
 
-### 6.4 References, dangling references, merges
+### 6.4 Identity resolution and row keys
 
-- A reference to a gid the view does not have yet (its creating event has not arrived) **parks**
-  the referencing event: kept, not applied, re-applied when the target arrives. Partial delivery of
-  per-device segments makes this normal. Parked events never block other entities.
-- A reference to a TOMB-ended entity applies normally to the referencing entity (e.g. a research
-  note pointing at a deleted thesis keeps the pointer); views decide what to show.
-- Instrument merges (`instrument.merged`, section 8.6) form a union-find: every reference to a
-  merged source gid resolves to its final target at materialize time. A merge whose source is
-  already merged, or whose source and target resolve to the same gid, is a no-op. Merges are never
-  undone.
+Some facts reach the log under several gids: one bank account seen by CSV (no IBAN) and by Open
+Banking (IBAN, uid); one instrument created by two devices under different aliases, or merged by the
+owner. The view resolves them deterministically **inside the fold**, so writes that target an old gid
+from a device that has not seen the merge land on the canonical entity, in any delivery order.
+
+**Claims and merges.** Processed in `(hlc, eid)` order over the applied events with a union-find per
+kind:
+
+| Kind | Claim events (gid, key) | Merge events |
+|---|---|---|
+| accounts | `account.opened` and `account.identified`: each `data.keys[]` item (`iban:<ibanKey>`, `ext:<bank>:<key>`) claimed by the event's `gid` | none (accounts merge only through shared keys) |
+| instruments | `instrument.aliasAdded`: `namespace:value` claimed by `data.instrument` | `instrument.merged {source, target}` |
+
+- A claim of an unheld key makes the claimer its holder. A claim of a key already held folds the
+  claimer's root into the holder's root (`parent[find(claimer)] = find(holder)`), unless they already
+  share a root. The earlier holder therefore survives.
+- A merge folds `find(source)` into `find(target)` unless they already share a root. Concurrent
+  opposite merges (A->B and B->A) end in one root: the second is a no-op in the order.
+- `resolve(g)` = `find(g)` over the whole held event set. Resolution is recomputed (per affected
+  component) whenever a claim or merge arrives; it never depends on delivery order.
+- Merges are permanent. A wrong identity key merges two accounts for good (as Python's
+  `get_or_create_account` matches them for good); see open item R-1.
+
+**Row keys.** Every table whose row identity contains an account or instrument reference is keyed by
+the **resolved** reference. All events of all member gids that map to one row key fold together as
+one row, in `(hlc, eid)` order, with the table's normal rule:
+
+| Table | Row key |
+|---|---|
+| accounts | `resolve(gid)` |
+| balances | `resolve(account)`, date, source |
+| transactions (imported) | `resolve(account)`, dedupHash, occurrence (so a CSV row and the same Open Banking row collapse once their accounts resolve together: Python's cross-source content dedup) |
+| loans, depreciations, asset_details, inv_account_settings | `resolve(account)` |
+| connector_bindings | `resolve(account)`, connectorId |
+| inv_instruments | `resolve(gid)` |
+| inv_profile_instruments, watchlist_items | `resolve(instrument)` |
+| inv_manual_valuations | `resolve(instrument)`, asOf |
+| inv_position_snapshots | `resolve(account)`, `resolve(instrument)`, asOf |
+| inv_instrument_renames | date, `resolve(old)`, `resolve(new)`; dropped when both resolve to one instrument |
+| inv_transactions | `resolve(account)`, dedupHash |
+| inv_signals | episode per resolved dedup key (8.7) |
+
+- An event that names no subject in `data` (`watchlist.removed`, `txn.categorySet`, ...) maps through
+  its `gid`'s row key, learned from that gid's keyed events; until one is held it is parked.
+- The view row's `gid` is the root gid (accounts, instruments) or the DET gid of the resolved row key
+  ([`gid.md`](gid.md) 4.8). References in other rows resolve at read time.
+- Field precedence on a collapsed row is the table's rule over the merged event stream (latest write
+  wins per field, GUARDs re-evaluated). This replaces the target-first collision rules of
+  `store/instrument_merge.py` by an order-independent rule; see open item R-2 for the difference.
+- Accounts: the view's `iban` and `external_id` are the first non-null values over the component's
+  `account.opened` / `account.identified` events (fill-if-null); `name` and `type` are LWW over
+  explicit `account.renamed` / `account.typeSet`, initialised from the first applied `account.opened`.
+  Internal transfers keep matching by counterparty IBAN only (rule 5), against the resolved
+  accounts' IBANs.
 
 ### 6.5 Cross-entity effects
 
-Some events change entities other than their `gid`. These are part of the target entity's fold:
-
 | Event | Also affects | Effect |
 |---|---|---|
-| `decision.recorded` | each signal in `data.signals` | marks it acknowledged at this `hlc` if open |
-| `decision.undone` | the undone decision's signals | reverts acknowledged to active if no other live decision links the signal at this point of the order |
-| `signal.escalated` with `reactivate: true`, `signal.woken` | itself | clears acknowledged |
-| `instrument.merged` | every entity referencing the source | references redirect (6.4); per-table collision rules of section 8.6 |
-| `alert.statusSet` (muted / snoozed), `alert.deleted` | that alert's open signal | the acting device also emits `signal.closed` in the same batch (no implicit effect) |
+| `decision.recorded` | the episode of each signal in `data.signals` | acknowledged if active |
+| `decision.undone` | the undone decision's episodes | back to active if no other live decision links the episode at this point of the order |
+| `signal.escalated {reactivate: true}`, `signal.woken` (guard passed) | its episode | clears acknowledged |
+| `account.*`, `instrument.aliasAdded`, `instrument.merged` | every row keyed by them | row keys re-resolve (6.4) |
+| `alert.statusSet` (muted / snoozed), `alert.deleted`, `alert.restored` | that alert's episode | the acting device emits `signal.closed` / `signal.reopened` in the same batch (no implicit effect) |
 
-### 6.6 Causal suppression
+### 6.6 Causal suppression and FWW losers
 
-An event with `cause` = E is applied only if E is applied and not a no-op. When a proposal approval
-loses an FWW race, every event it caused is suppressed. Suppression is part of the fold (an event
-that arrives later can flip it), so implementations re-fold affected entities like any out-of-order
-arrival.
+- An event with `cause` = E is applied only if E is held, applied and not an FWW loser.
+  Suppression is part of the fold: an event arriving later can flip it.
+- An FWW loser MUST NOT have done anything outside the log that the log cannot undo. Therefore:
+  - connector fetch cursors live in the log (`connectorBinding.cursorAdvanced`, caused by the
+    approval or auto-commit batch, M5): a suppressed approval rolls the cursor back, and the next
+    fetch re-reads the gap;
+  - projection files (strategy files) are written from the view's current state, never from the
+    approving command, so a suppressed version disappears from them on the next projection write;
+  - approvals never delete blobs (staged files, archives); blob garbage collection (S28) deletes only
+    blobs no applied event references;
+  - import-like proposals (`import`, `budget_import`) are approved, rejected and failed only on the
+    lease holder (O3, O4), which makes a concurrent terminal transition a lease-handover edge case
+    that the rules above still repair.
+
+### 6.7 Convergence argument (B2 and the rest)
+
+1. Every reducer reads only the folded state and the event, and the fold order `(hlc, eid)` is a
+   strict total order on the event **set**; identity resolution and causal suppression are functions
+   of the set as well. Hence two devices with the same set compute the same view (determinism), and
+   delivery order or duplication cannot matter (re-delivery is a no-op by `eid`).
+2. Lease handover, split brain, non-leader opens: the episode rule (8.7) keys "at most one open
+   signal" by the **resolved dedup key**, not by who opened it. Two `signal.opened` for one key
+   (old and new leader, two leaders in a split, a research desktop and the leader) are ordered; the
+   later one joins the open episode as an alias. No lease state enters the fold, so a lease conflict
+   cannot fork the view; it can only add events, and added events are ordered like any others.
+3. Partial sets: a device holding a prefix of another device's events computes the fold of that
+   subset. When the rest arrives, rows touched by earlier-sorting events are re-folded (6.1), giving
+   the fold of the union. The invariants (one open episode per key, one row per row key) hold for
+   every subset because they are properties of the reducer, not of the arrival order.
+4. Causality keeps the guards meaningful: a device that emits an event has applied everything it saw,
+   and its HLC is above all of it (3.3), so an event never sorts before the state its writer checked.
+
+`reference/convergence.test.ts` exercises 1-3 on every blocker scenario: 40 shuffled deliveries plus
+re-delivered duplicates, invariants checked on every prefix, all final views equal.
 
 ## 7. Forward compatibility and upcasting
 
-1. **Unknown type** (a newer client's event): store it, do not apply it, do not drop it. The view
-   records `unknown_events` (count per type) so the UI can say "update the app to see everything".
-   After an upgrade the device rebuilds (or re-applies the parked events).
-2. **Known type, newer `v`** than the reader knows: same as an unknown type.
-3. **Known (type, v), unknown fields** in `data`: ignored by the reader, preserved in the log
-   (payload schemas are loose objects).
-4. **Known (type, v) that fails validation** (e.g. a new enum value an old schema rejects): same as
-   an unknown type. Never partially applied, never dropped.
-5. **Old events on a new reader**: upcasters `(type, v) -> (type, v + 1)` are pure functions applied
-   on read, chained up to the current version. The stored event never changes.
-6. **Evolving a type**: adding an optional field whose absence keeps the old meaning MAY keep `v`.
-   Any other change (new required field, changed meaning, new enum value, changed unit) MUST bump `v`
-   and ship an upcaster. A type name is never reused for a different meaning; removing a type means
-   no new writer emits it while readers keep its reducer.
-7. **Writers never round-trip records.** An older client changes only the fields it edits (LWW-F
-   patches), so it cannot clear a field it does not know.
-8. **No write on stale semantics.** A device that holds parked events of an entity (unknown type or
-   newer `v`) MUST NOT emit GUARD or FWW events for that entity (its guard check may be wrong); it
-   shows the entity read-only until upgraded.
-9. Schema changes of the view are rebuilds, not migrations (the view is derived).
+1. **Unknown type**: store, do not apply, do not drop. The view counts `unknown_events` per type.
+2. **Known type, newer `v`**: same as an unknown type.
+3. **Known (type, v), unknown fields**: ignored, preserved in the log (loose schemas).
+4. **Known (type, v) failing validation** (e.g. a new enum value): same as an unknown type.
+5. **Upcasters** `(type, v) -> (type, v + 1)` are pure, applied on read; stored events never change.
+6. **Evolving a type**: an optional field whose absence keeps the old meaning MAY keep `v`; anything
+   else (new required field, changed meaning, new enum value, changed unit) MUST bump `v`. A type name
+   is never reused.
+7. **Writers never round-trip records**: they send only the fields they change.
+8. **No write on stale semantics**: a device holding parked events of a row MUST NOT emit GUARD or
+   FWW events for it.
+9. **After an upgrade the device MUST rebuild the view** (M10): re-applying only the parked events is
+   not enough, because events applied earlier with ignored fields may mean more to the new reader.
+   View schema changes are rebuilds too (`viewVersion`, spike `Materializer`).
 
 ## 8. Catalog
 
-Payload fields are listed in camelCase (the zod schemas hold types and optionality). `@x` = a gid
-reference to entity x. All money / quantities are decimal strings.
+Payload fields in camelCase; `@x` = gid reference to x. Every payload also accepts `stamps` (4.4).
 
 ### 8.1 Per-table summary
 
-Every user-authored table of the data profile (scopes.md section 1) is listed. "gid" codes are
-defined in [`gid.md`](gid.md): **DET(...)** = UUIDv5 over the named canonical input, **ULID** = minted
-at creation (genesis: `DET-G`).
-
 | Table | Events (v1) | gid | Rule |
 |---|---|---|---|
-| profiles | `profile.created`, `profile.renamed`, `profile.settingsChanged` | vault ULID | CREATE; fields LWW-F |
+| profiles | `profile.created`, `profile.renamed`, `profile.settingsChanged` | vault ULID | CREATE; LWW-F |
 | profile_modules | `module.enabled`, `module.disabled` | DET(module_id) | `enabled` LWW register |
-| accounts | `account.opened`, `account.renamed`, `account.typeSet`, `account.removed`, `account.restored` | DET(bank, external_id) for external / implicit keys (bank uid, `csv:<IBAN>`, `cash:<CUR>`), else ULID ([`gid.md`](gid.md) 4.3) | CREATE (identity first-wins); name, type LWW-F; removed SOFT |
-| balances | `balance.recorded` | DET(account, date, source) | CREATE + amount/currency LWW-F |
-| transactions | `txn.imported`, `txn.cashExpenseAdded`, `txn.categorySet`, `txn.categoryCleared`, `txn.deleted` | imported: DET(account, dedupHashV2, occurrence); cash expense: ULID | CREATE; category claim GUARD+LWW; delete TOMB (cash expenses only); transfer columns, rule categories and cash legs DERIVED |
+| accounts | `account.opened`, `account.identified`, `account.renamed`, `account.typeSet`, `account.removed`, `account.restored` | DET(iban) or DET(ext key), else ULID ([`gid.md`](gid.md) 4.3) | IDENTITY (6.4); name / type LWW-F; iban / externalId fill-if-null; removed SOFT |
+| balances | `balance.recorded` | DET(account, date, source) | row key 6.4; amount / currency LWW-F |
+| transactions | `txn.imported`, `txn.cashExpenseAdded`, `txn.categorySet`, `txn.categoryCleared`, `txn.deleted` | imported DET(account, dedupHashV2, occurrence); cash expense ULID | imported CREATE on the row key; claim GUARD; delete TOMB (cash expenses); transfers, rule categories, cash legs DERIVED |
 | category_rules | `categoryRule.set` | DET(merchant_key) | GUARD (locked manual beats llm) + LWW-F |
 | import_batches | `importBatch.recorded` | ULID | APPEND |
-| loans | `loan.termsSet`, `loan.paymentMatchingSet` | DET(account) | CREATE on first termsSet; LWW-F |
+| loans | `loan.termsSet`, `loan.paymentMatchingSet` | DET(account) | LWW-F; the row is visible once terms exist |
 | depreciations | `depreciation.set` | DET(account) | LWW-F |
 | asset_details | `assetDetails.noteSet` | DET(account) | LWW-F |
 | budget.json (cushion) | `budgetSettings.cushionSet` | DET("cushion") | LWW-F |
 | inv_account_settings | `invAccount.settingsSet` | DET(account) | LWW-F |
 | inv_import_batches | `invImport.recorded` | ULID | APPEND |
-| inv_transactions | `invTxn.imported` | DET(account, dedupHashV2) | CREATE |
-| inv_position_snapshots | `position.snapshotImported` | DET(account, instrument, as_of) | CREATE; later identical key = no-op (the first import's line stays, as Python's UNIQUE does) |
-| inv_instrument_renames | `instrumentRename.recorded` | DET(date, old, new) | CREATE |
-| inv_manual_valuations | `valuation.set` | DET(instrument, as_of) | LWW-F |
-| inv_instruments | `instrument.created`, `instrument.updated`, `instrument.merged` | DET(creation alias), else ULID | CREATE; fields LWW-F; merge union-find |
-| inv_instrument_aliases | `instrument.aliasAdded` | DET(namespace, value) | CREATE (first claim owns the alias; a second instrument's claim is a no-op and flags a collision, 8.6) |
-| inv_profile_instruments | `instrumentOverride.set`, `instrumentOverride.planSet`, `instrumentOverride.segmentSet` | DET(instrument) | LWW-F; segment GUARD |
-| inv_strategy_versions (+ strategy files) | `strategy.versionSaved` | ULID | APPEND; current = highest `hlc`; version numbers DERIVED |
+| inv_transactions | `invTxn.imported` | DET(account, dedupHashV2); manual entries ULID | CREATE on the row key |
+| inv_position_snapshots | `position.snapshotImported` | DET(account, instrument, as_of) | CREATE on the row key |
+| inv_instrument_renames | `instrumentRename.recorded` | DET(date, old, new) | CREATE on the row key |
+| inv_manual_valuations | `valuation.set` | DET(instrument, as_of) | LWW-F on the row key |
+| inv_instruments | `instrument.created`, `instrument.updated`, `instrument.merged` | DET(creation alias), else ULID | CREATE; LWW-F; IDENTITY (merge) |
+| inv_instrument_aliases | `instrument.aliasAdded` | DET(namespace, value) | IDENTITY (claim) |
+| inv_profile_instruments | `instrumentOverride.set`, `instrumentOverride.planSet`, `instrumentOverride.segmentSet` | DET(instrument) | LWW-F on the row key; segment GUARD |
+| inv_strategy_versions (+ files) | `strategy.versionSaved` | ULID | APPEND; no-op when its sha equals the current version's; current = highest `hlc`; numbers DERIVED |
 | inv_theses | `thesis.created`, `thesis.updated`, `thesis.deleted` | ULID | CREATE; LWW-F; TOMB; `*_changed_at` DERIVED |
-| inv_topic_theses | `topicThesis.ownerSaved`, `topicThesis.draftProposed`, `topicThesis.rejected`, `topicThesis.marketViewSet` | DET(segment) | GUARD (owner > agent draft, rejection cooldown) + LWW-F; rejected SOFT |
-| watchlist_items | `watchlist.added`, `watchlist.updated`, `watchlist.removed` | DET(instrument) | CREATE; note/tags LWW-F; removed SOFT |
+| inv_topic_theses | `topicThesis.ownerSaved`, `topicThesis.draftProposed`, `topicThesis.rejected`, `topicThesis.marketViewSet` | DET(segment) | GUARD + LWW-F; restart on a rejected row (8.9); rejected SOFT |
+| watchlist_items | `watchlist.added`, `watchlist.updated`, `watchlist.removed` | DET(instrument) | row key 6.4; added = create or restore + LWW of `added_at`, `source`, given note / tags (M2); removed SOFT |
 | alerts | `alert.created`, `alert.updated`, `alert.statusSet`, `alert.deleted`, `alert.restored`, `alert.evaluated` | ULID | CREATE; config LWW-F; deleted SOFT; runtime LEADER LWW-F; effective status DERIVED |
-| inv_planned_deposits | `plannedDeposit.created`, `plannedDeposit.cancelled`, `plannedDeposit.booked` | ULID | CREATE; cancel / book FWW |
-| inv_signals | `signal.opened`, `signal.refreshed`, `signal.escalated`, `signal.closed`, `signal.woken` (LEADER); `signal.snoozed`, `signal.closed` (owner-caused), `signal.reopened` (any device) | DET(dedupKeyV2, firstSeenOn, seq) | lifecycle state machine in fold order (8.7); snooze LWW; acknowledged DERIVED from decisions (6.5) |
-| inv_rule_runs | `ruleRun.finished` | ULID | APPEND, LEADER (D5: view keeps the last N) |
+| inv_planned_deposits | `plannedDeposit.created`, `plannedDeposit.cancelled`, `plannedDeposit.booked` | ULID | CREATE; cancel / book FWW; a transaction books at most one plan (GUARD, O10) |
+| inv_signals | `signal.opened`, `signal.refreshed`, `signal.escalated`, `signal.closed`, `signal.reopened`, `signal.snoozed`, `signal.woken` | ULID | EPISODE per resolved dedup key (8.7); snooze LWW; woken GUARD; acknowledged DERIVED (6.5) |
+| inv_rule_runs | `ruleRun.finished` | ULID | APPEND, LEADER (D5: the view keeps the last N) |
 | inv_decisions + inv_decision_signals | `decision.recorded`, `decision.undone` | ULID | APPEND; links embedded; undo TOMB |
 | reviews | `review.done`, `review.undone` | ULID | APPEND; undo TOMB |
-| proposals | `proposal.created`, `proposal.approved`, `proposal.rejected`, `proposal.failed` | ULID | CREATE; terminal FWW; side effects caused (6.6) |
+| proposals | `proposal.created`, `proposal.approved`, `proposal.rejected`, `proposal.failed` | ULID | CREATE; terminal FWW; caused side effects (6.6); import-like kinds leader-only |
 | research_runs | `researchRun.started`, `researchRun.finished` | ULID | APPEND; finish LWW-F |
 | research_notes | `note.added`, `note.read`, `note.dismissed`, `note.restored` | ULID | APPEND; read / dismissed LWW-F |
-| connector_bindings | `connectorBinding.set`, `connectorBinding.removed` | DET(account, connector_id) | LWW-F; removed TOMB; cursor / backoff / last_* leader-local, never synced (D7) |
+| connector_bindings | `connectorBinding.set`, `connectorBinding.removed`, `connectorBinding.cursorAdvanced` | DET(account, connector_id) | LWW-F on the row key; removed SOFT (M1); cursor LWW, LEADER, caused (M5) |
 
 ### 8.2 Core
 
-- `profile.created` (gid = vault) `{slug, name, baseCurrency, mcpPrivacy: strict|amounts, createdAt?}`.
-  The first event of every vault. `slug` is the device-local folder / URL key; see O9.
-- `profile.renamed` `{name}`. `profile.settingsChanged` `{baseCurrency?, mcpPrivacy?}` (LWW-F; O8).
-- `module.enabled` / `module.disabled` `{moduleId}`. `enabled` is one LWW register; `enabled_at` =
-  `at` of the winning `module.enabled`. Disabling keeps the data (as today).
-- `account.opened` `{bank, externalId|null, iban|null, currency, type, name, active?}`. CREATE:
-  identity fields (`bank`, `externalId`, `currency`, `iban`) come from the first open and never change;
-  `name` and `type` are initial values of LWW registers. A second `account.opened` for the same gid
-  (two devices importing the same account) is a no-op, which is how the materializer guard "an Open
-  Banking import never overwrites the type or the owner's name" holds: OB code emits `opened`, never
-  `renamed`.
-- `account.renamed` `{name}`, `account.typeSet` `{type}`, `account.removed` `{}`, `account.restored`
-  `{}` (SOFT on `removed_at`). Key parking (`<key>~<id>`, `core/accounts.py:park_removed_key`) is
-  DERIVED in the view, never an event ([`gid.md`](gid.md) 4.3).
+- `profile.created` (gid = vault) `{slug, name, baseCurrency, mcpPrivacy: strict|amounts}`. `slug` is
+  a device-local alias for folders and URLs (O9): a device that already has a vault with that slug
+  maps it to a local alias; the vault gid is the identity.
+- `profile.renamed` `{name}`. `profile.settingsChanged` `{baseCurrency?, mcpPrivacy?}` (LWW-F). The MCP
+  server uses the **stricter** of the synced `mcpPrivacy` and the device-local acknowledged level;
+  loosening (strict -> amounts) takes effect on a desktop only after its owner confirms it there (O8).
+- `module.enabled` / `module.disabled` `{moduleId}`: one LWW register; `enabled_at` = domain time of
+  the winning `module.enabled`.
+- `account.opened` `{bank, externalId|null, iban|null, currency, type, name, active?, keys[]}`.
+  `keys` are the identity keys the writer knows (`iban:<ibanKey(iban)>` when an IBAN is known,
+  `ext:<bank>:<key>` for an external natural key); empty for manual, vehicle and brokerage accounts.
+  Writers resolve first: look up the view by IBAN key, then by external key, and emit
+  `account.identified` on the found account instead of opening a new one; concurrent opens that miss
+  each other are joined by identity resolution. Open Banking never emits `account.renamed` (its
+  "name" is the holder's name); the first applied open supplies the initial name.
+- `account.identified` `{iban?, externalId?, keys[]}` (min 1 key): the account learned an IBAN (Open
+  Banking, a statement, a parser that found it) or a new external key (an Enable Banking re-consent
+  uid). Fills `iban` / `external_id` when still null and claims `keys`, which may merge accounts.
+- `account.renamed` `{name}`, `account.typeSet` `{type}`, `account.removed` / `account.restored` `{}`
+  (SOFT). Key parking (`<key>~<id>`) is DERIVED in the view ([`gid.md`](gid.md) 4.3).
 - `balance.recorded` `{account@, date, source: open_banking|csv|manual|connector, amount, currency}`.
-  Same key recorded again = LWW on `amount`/`currency` (a corrected statement). Loans
-  `record_balance` and the assets revaluation emit this type.
 - `budgetSettings.cushionSet` `{enabled, currency|null, targetAmount|null, targetMonths|null,
-  accounts: @account[], monthlyMax|null}`. Replaces `profiles/<slug>/budget.json`, which becomes a
-  projection (or is dropped once readers use the view). `account_ids` are rewritten to gids.
+  accounts: @account[], monthlyMax|null}`. Replaces `profiles/<slug>/budget.json` (a projection while
+  Python reads it). Genesis renders the stored floats per 4.3 (m13).
 
 ### 8.3 Budget
 
-- `txn.imported` (gid DET, [`gid.md`](gid.md) 4.4) `{account@, batch@|null, bookingDate, valueDate|null,
-  amount, currency, counterpartyName|null, counterpartyIban|null, description|null, reference|null,
-  bankTransactionId|null, source, dedupHash (v2), occurrence, raw}`. CREATE. One event per row.
-  Union by gid reproduces Python's multiset rule for the content path: two devices importing
-  overlapping CSVs converge to max(multiplicity) per content key, exactly like sequential imports.
-  The newest-day rule (Open Banking, connectors, cashu-format documents) depends on what the view
-  holds at import time, so those imports are LEADER (Open Banking and connectors already are, rule 6);
-  cashu-format uploads are O3.
-- `txn.cashExpenseAdded` (gid ULID) `{account@ (a cash account), bookingDate, amount (negative), currency,
-  title, category}`. View: `source = manual`, `category_source = manual_txn`, `dedup_hash =
-  "cashexp:" + gid`, `raw = {"cash_expense": true}`.
-- `txn.categorySet` `{category, source: manual_txn|llm_full|llm_fallback}`: a **per-transaction
-  claim** (D8). `manual_txn` = the owner's choice (`set_transaction_category`), `llm_full` = the full
-  LLM reclassification result per transaction, `llm_fallback` = legacy value, genesis only. LWW
-  register of the claim with GUARD: an `llm_*` claim is a no-op while the folded claim is
-  `manual_txn` (a deterministic re-run never clobbers a manual choice).
-- `txn.categoryCleared` `{}`: removes the claim (Python `recategorize_one` after the transaction's cash
-  mirror leg is deleted, `budget/cash.py:delete_cash_transaction`); the effective category falls back
-  to the engine.
-- `txn.deleted` `{}`: TOMB, valid only for cash-account entries (`delete_cash_transaction`). Deleting
-  a withdrawal **mirror leg** is not a delete: legs are DERIVED (section 9), so it emits
-  `txn.categoryCleared` on the source bank transaction, which removes the leg.
-- Effective `category` / `category_source` (DERIVED, after apply, S08/S09): `manual_txn` claim >
-  structural transfer / locked merchant rule / loan pattern (`engine.owner_decision`) > `llm_full`
-  claim > engine (`keyword`, `subscription`, cached `llm` / `manual` merchant rule, `default`). This
-  is today's precedence in `budget/service.py` and `engine.py`.
-- `categoryRule.set` (gid DET(merchant_key)) `{merchantKey, category, source: manual|llm, locked}`.
-  GUARD: a `source: llm` set is a no-op while the folded rule is `locked` (`rules.upsert_rule`).
-  No remove type in v1 (no Python writer removes rules).
-- `importBatch.recorded` `{source, bank|null, account@|null, filename|null, startedAt, finishedAt|null,
-  numSeen, numInserted, numDuplicates, notes|null, archive?: {sha256, ext}}`. `archive` points to the
-  encrypted content-addressed blob of the imported file (D9).
+- `txn.imported` `{account@, batch@|null, bookingDate, valueDate|null, amount, currency,
+  counterpartyName|null, counterpartyIban|null, description|null, reference|null,
+  bankTransactionId|null, source, dedupHash (v2), occurrence, raw}`. CREATE on the row key (6.4).
+  Union by row key reproduces Python's multiset rule for the content path (max multiplicity).
+- **Newest-day-rule imports** (Open Banking, connectors, cashu-format documents) depend on the view
+  at import time and MUST be emitted by the lease holder only. A non-leader that receives a
+  cashu-format document creates an `import`-like proposal instead (O3). A new lease holder MUST NOT run
+  them before it has applied the previous holder's events up to the watermark of that holder's last
+  lease renewal (M6; `lease.claimed` / `lease.renewed` carry `{watermark: hlc}`, S29).
+- `txn.cashExpenseAdded` (ULID) `{account@ (cash account), bookingDate, amount (< 0), currency, title,
+  category}`. View: `source = manual`, `category_source = manual_txn`, `dedup_hash = "cashexp:" + gid`.
+- `txn.categorySet` `{category, source: manual_txn|llm_full|llm_fallback}`: a per-transaction claim
+  (D8). GUARD: an `llm_*` claim is a no-op while the folded claim is `manual_txn`. A claim may target a
+  derived cash leg's gid (the owner recategorizes a leg); it persists and applies whenever that leg
+  exists (m2).
+- Marking a bank transaction `cash_withdrawal` makes the derived mirror leg appear on the cash pool
+  account `cash:<CUR>`; the emitting device MUST include an `account.opened` for that DET account in
+  the same batch when its view does not have it (m3; concurrent opens collapse by gid).
+- `txn.categoryCleared` `{}`: removes the claim (Python `recategorize_one` after the leg is deleted,
+  `budget/cash.py:delete_cash_transaction`).
+- `txn.deleted` `{}`: TOMB, only for cash expenses. Deleting a mirror leg emits `txn.categoryCleared`
+  on the source bank transaction.
+- Effective category (DERIVED, S08/S09): `manual_txn` claim > structural transfer / locked merchant
+  rule / loan pattern (`engine.owner_decision`) > `llm_full` claim > engine.
+- `categoryRule.set` `{merchantKey, category, source: manual|llm, locked}`; GUARD: `llm` is a no-op
+  while the folded rule is locked.
+- `importBatch.recorded` `{source, bank|null, account@|null, filename|null, startedAt,
+  finishedAt|null, numSeen, numInserted, numDuplicates, notes|null, archive?: {sha256, ext}}`.
 
 ### 8.4 Loans and assets
 
-- `loan.termsSet` (gid DET(account)) `{account@, principal, annualRate, termMonths, startDate,
-  originationDate|null}`. View `updated_at` = `at` of the latest `termsSet` (the balance-precedence
-  rule in `loans/valuation.py` compares balances against it).
-- `loan.paymentMatchingSet` `{paymentIban|null, paymentText|null}`.
+- `loan.termsSet` `{account@, principal, annualRate, termMonths, startDate, originationDate|null}`;
+  `loans.updated_at` = domain time of the latest `termsSet`.
+- `loan.paymentMatchingSet` `{account@, paymentIban|null, paymentText|null}`. Either event may come
+  first; the loan row is visible once terms exist (m7).
 - `depreciation.set` `{account@, purchasePrice, purchaseDate, annualRate, floor|null}`.
-- `assetDetails.noteSet` `{account@, note|null}` (`note` <= 500 chars, `NOTE_MAX`).
+- `assetDetails.noteSet` `{account@, note|null}` (<= 500 chars).
 
 ### 8.5 Investments: accounts, imports, transactions
 
-- `invAccount.settingsSet` `{account@, wrapper?, importer?|null, mappingYaml?|null}`.
-- `invImport.recorded` `{account@, importer, broker, fileName, fileSha256, archive?: {sha256, ext},
-  txnCount, duplicateCount, positionCount, renameCount, statusChangeCount, instrumentCount,
-  correctionCount, warnings[]}`. `archive_path` (a device path) is replaced by the blob ref.
-- `invTxn.imported` (gid DET(account, dedupHashV2)) `{account@, batch@|null, type, tradeDate,
-  settleDate|null, instrument@|null, quantity|null, price|null, currency, grossAmount, fee, tax,
-  cashAmount, cashCurrency, fxRate|null, splitRatio|null, note|null, source: import|manual|reconciliation,
-  externalRef|null, dedupHash (v2), createdAt}`. `createdAt` is REQUIRED: it is the chronological rank
-  of same-day rows (`domain.chronological_key`), not just a timestamp. No edit or delete type: Python
-  has none (`service/transactions.py` only adds).
+- `invAccount.settingsSet` `{account@, wrapper?, importer?, mappingYaml?}`.
+- `invImport.recorded` `{account@, importer, broker, fileName, fileSha256, archive?, txnCount,
+  duplicateCount, positionCount, renameCount, statusChangeCount, instrumentCount, correctionCount,
+  warnings[]}`.
+- `invTxn.imported` `{account@, batch@|null, type, tradeDate, settleDate|null, instrument@|null,
+  quantity|null, price|null, currency, grossAmount, fee, tax, cashAmount, cashCurrency, fxRate|null,
+  splitRatio|null, note|null, source: import|manual|reconciliation, externalRef|null, dedupHash,
+  createdAt}`. `createdAt` is required (chronological rank of same-day rows). `dedupHash` is
+  dedupHashV2 built from the broker's own instrument key, not the instrument gid, so it is
+  merge-invariant (O1, [`gid.md`](gid.md) 4.6). Manual entries (`source = manual`) get a ULID gid and
+  `dedupHash = "manual:" + gid`: two identical manual rows from two devices stay two rows (m1).
 - `position.snapshotImported` `{account@, instrument@, asOf, quantity, currency, avgPrice|null,
   marketValue|null, batch@|null}`.
-- `instrumentRename.recorded` `{date, old@instrument, new@instrument, note|null, batch@|null}`.
+- `instrumentRename.recorded` `{date, old@, new@, note|null, batch@|null}`.
 - `valuation.set` `{instrument@, asOf, unitValue, currency, note|null}`.
 
 ### 8.6 Instruments (per vault, D3)
 
 - `instrument.created` `{name, currency, assetClass, symbol|null, isin|null, mic|null, region|null,
-  sector|null, tags[], needsClassification, valuationMode, status, creationAlias|null}`.
-  `creationAlias` = the `namespace:value` the gid was derived from ([`gid.md`](gid.md) 4.6), null for a
-  ULID instrument.
-- `instrument.updated` `{...patch of the shared fields}` (LWW-F): metadata refresh, classification,
-  symbol / ISIN filled in.
-- `instrument.aliasAdded` (gid DET(namespace, value)) `{instrument@, namespace, value, guessed}`. The
-  first claim (lowest `hlc`) owns the alias. A later claim by another instrument is a no-op that
-  records a collision in the view; the lease holder then emits `instrument.merged` with the
-  lexicographically smaller gid as target and `reason: alias_collision` (two devices that both emit
-  it produce the same pair: idempotent).
-- `instrument.merged` (gid = source) `{source@, target@, reason: owner|alias_collision}`. Applied
-  through union-find (6.4). Per-table collisions follow `store/instrument_merge.py` deterministically,
-  the target always winning: watchlist (target entry stays; empty note takes the source's; tags
-  joined; watched again when only the source's was live), profile overrides (target identity stays;
-  plan group, tags, region, sector move only when the target has none; an owner segment beats an
-  agent segment), position snapshots / manual valuations (target row for the same key stays),
-  renames (X to X dropped, duplicates dropped), signals (dedup keys rewritten to the target gid; an
-  open source signal whose new key is already open for the target is resolved). This replaces the
-  raw SQL of `instrument_merge.py` (refactor 3).
-- `instrumentOverride.set` (gid DET(instrument)) `{instrument@, name?, assetClass?, tags?, region?,
-  sector?, valuationMode?, status?, needsClassification?}`. `null` = back to the shared default; `""`
-  clears a text attribute for this profile (as today).
-- `instrumentOverride.planSet` `{instrument@, plan|null, reason|null}`. `plan_at` = `at`; the plan
-  group (`plan`, `plan_at`, `plan_reason`) is one register (set and cleared together).
-- `instrumentOverride.segmentSet` `{instrument@, segment|null, by: owner|agent}`. GUARD: `by: agent`
-  is a no-op while the folded segment is non-null and set by the owner (`store/instruments.py:388`).
-  `segment_by` becomes null when `segment` is null.
+  sector|null, tags[], needsClassification, valuationMode, status, creationAlias|null}`. Writers also
+  emit `instrument.aliasAdded` for every alias, the creation alias included.
+- `instrument.updated` `{...patch of the shared fields}` (LWW-F on the resolved row).
+- `instrument.aliasAdded` (gid DET(namespace, value)) `{instrument@, namespace, value, guessed}`: an
+  IDENTITY claim (6.4). A claim of an alias another instrument holds merges the claimer into it: no
+  leader action is needed (v1's leader-emitted collision merge is gone).
+- `instrument.merged` (gid = source, checked by `parseEvent`) `{source@, target@, reason:
+  owner|alias_collision}`: an owner merge. With claims handling collisions, `alias_collision` is kept
+  only for genesis of merges Python recorded.
+- `instrumentOverride.set` `{instrument@, name?, assetClass?, tags?, region?, sector?, valuationMode?,
+  status?, needsClassification?}` (null = shared default, `""` clears for this profile).
+- `instrumentOverride.planSet` `{instrument@, plan|null, reason|null}` (one register; `plan_at` =
+  domain time).
+- `instrumentOverride.segmentSet` `{instrument@, segment|null, by: owner|agent}`; GUARD: `agent` is a
+  no-op while the folded segment is non-null and set by the owner.
 
 ### 8.7 Signals, rule runs, alerts
 
-Signal lifecycle is a state machine folded in `hlc` order; a transition not allowed from the
-current state is a no-op:
+**Episodes (B2).** "At most one open signal per dedup key" (Python's partial UNIQUE index) is a fold
+rule keyed by the **resolved** dedup key `K` ([`gid.md`](gid.md) 5), processed in `(hlc, eid)` order
+over the events of all signal gids whose key resolves to `K`:
 
 ```
-(absent) --opened--> active
-active|acknowledged --refreshed/escalated--> same (escalated{reactivate} -> active)
-active|acknowledged --closed{resolved|expired}--> resolved|expired
-expired --reopened{alert_restored}--> previous open state (alert restore within the window)
-acknowledged: DERIVED overlay from decisions (6.5), cleared by escalated{reactivate} and woken
+opened(g):   no open episode for K -> g starts a new episode, active
+             an episode E is open   -> g becomes an alias of E (refresh semantics: message,
+                                       severity, payload updated); events for g go to E
+refreshed / escalated(g):  on resolve(g)'s episode if open; escalated{reactivate} -> active (ack cleared)
+closed(g, status, reason): resolve(g)'s episode if open -> resolved | expired; K has no open episode
+reopened(g, reason):       resolve(g)'s episode back to active (or acknowledged if a live decision links it)
+                           only if alert_restored on an expired one / note_restored on a resolved one,
+                           and no other episode of K is open (Python reopen_dismissed / alert restore)
+snoozed(g, until):         LWW on the episode
+woken(g, until):           GUARD: only while the episode's snoozedUntil == until (M7); clears ack
+acknowledged:              DERIVED overlay from decisions (6.5)
 ```
 
-- `signal.opened` (LEADER, gid DET) `{ruleId, kind, dedupKey (v2), severity, polarity, message,
-  instrument@|null, account@|null, payload, run@|null, firstSeenOn}`.
-- `signal.refreshed` (LEADER) `{severity?, message?, payload?, run@|null, seenAt}`.
-- `signal.escalated` (LEADER) `{severity, message, payload, reactivate, run@|null, seenAt}`.
-- `signal.closed` `{status: resolved|expired, reason}`. LEADER for rule outcomes; any device for
-  owner-caused closes with `reason` in `snooze|mute|delete|alert_expired` (Python writes it as
-  `payload.closed_by`).
-- `signal.reopened` `{reason: alert_restored}` (any device, same batch as `alert.restored`).
-- `signal.snoozed` `{until|null}` (any device, LWW). `signal.woken` (LEADER) `{}`: snooze passed,
-  ack cleared (`store/signals.py:wake_snoozed`).
-- `ruleRun.finished` (LEADER) `{trigger, asOf, status, strategyVersion@|null, stats, errors[],
-  report: {new: @signal[], escalated: @signal[]}, startedAt, finishedAt|null}`.
-- `alert.created` `{instrument@|null, scope, kind, params, polarity, severity, title, note|null, source:
-  user|agent, createdBy: app|cli|mcp, cooldownDays|null, expiresAt|null}`.
-- `alert.updated` `{title?, note?, params?, polarity?, severity?, cooldownDays?, expiresAt?}` (kind
-  and instrument never change, as today).
-- `alert.statusSet` `{status: active|muted|snoozed, snoozedUntil|null}`: the **owner state**.
-- `alert.deleted` `{}` / `alert.restored` `{}`: SOFT on `deleted_at` (restore window at emit time).
-- `alert.evaluated` (LEADER) `{triggered, lastCheckedAt?, lastValue?, lastTriggeredAt?}`: the
-  **runtime state**.
-- Effective `alerts.status` (DERIVED at read, evaluated with the reader's clock): `muted` if owner
-  state muted; else `expired` if `expiresAt <= now`; else `snoozed` if owner state snoozed and
-  `snoozedUntil > now`; else `triggered` if runtime triggered; else `active`. This splits today's
-  mixed column (`service/alerts.py:594-598`, `housekeeping`) into owner and runtime registers.
-- Signals of an alert use `rule_id = dedup_key = "alert:<alert gid>"` ([`gid.md`](gid.md) section 6).
+- `signal.opened` (ULID) `{ruleId, kind, dedupKey (v2), severity, polarity, message, instrument@|null,
+  account@|null, payload, run@|null}`. Emitters: the lease holder for rule, plan and alert signals; the
+  device running the research agent for `research:` keys (`add_research_note` over MCP).
+- `signal.refreshed` `{severity?, message?, payload?, run@|null, seenAt}`; `signal.escalated`
+  `{severity, message, payload, reactivate, run@|null, seenAt}`: same emitters as `opened`.
+- `signal.closed` `{status: resolved|expired, reason}`. Lease holder for rule outcomes, alert
+  housekeeping (`alert_expired`, m8) and research expiry (`notes_expired`); any device for
+  `snooze|mute|delete` (alert owner actions) and `note_dismissed`.
+- `signal.reopened` `{reason: alert_restored|note_restored}` (any device, in the batch of
+  `alert.restored` / `note.restored`).
+- `signal.snoozed` `{until|null}` (any device). `signal.woken` `{until}` (lease holder).
+- `ruleRun.finished` (LEADER) `{trigger, asOf, status, strategyVersion@|null, stats, errors[], report:
+  {new: @signal[], escalated: @signal[]}, startedAt, finishedAt|null}`; `trigger` is an open label
+  (`worker`, `api`, `cli`, `app`).
+- `alert.created` `{instrument@|null, scope, kind, params, polarity, severity, title, note|null,
+  source: user|agent, createdBy, cooldownDays|null, expiresAt|null}`; `alert.updated` (patch);
+  `alert.statusSet` `{status: active|muted|snoozed, snoozedUntil|null}` (owner state);
+  `alert.deleted` / `alert.restored` (SOFT); `alert.evaluated` (LEADER) `{triggered, lastCheckedAt?,
+  lastValue?, lastTriggeredAt?}` (runtime state).
+- Effective alert status (DERIVED, reader's clock): muted > expired (`expiresAt <= now`) > snoozed
+  (`snoozedUntil > now`) > triggered > active.
+- Alert signals: `rule_id = dedup_key = "alert:<alert gid>"`.
 
 ### 8.8 Journal, theses, strategy, planned deposits
 
-- `decision.recorded` (APPEND) `{signals: @signal[], instrument@|null, account@|null, action,
-  quantity|null, price|null, currency|null, reason|null}`. `inv_decisions.signal_id` (first link)
-  is DERIVED = `signals[0]`; `inv_decision_signals` rows come from `signals`.
-- `decision.undone` `{}` (TOMB; cross-entity revert of acks, 6.5).
-- `thesis.created` `{instrument@, entryType, thesis, invalidation|null, exitPlan|null, sizePlan|null}`;
-  `thesis.updated` `{entryType?, thesis?, invalidation?, exitPlan?, sizePlan?, reviewed?: true}`;
-  `thesis.deleted` `{}`. DERIVED: `core_changed_at` = `at` of the latest event that changed
-  (by value, in fold order) `entryType`, `thesis` or `invalidation`; `exit_plan_changed_at` = `at` of
-  the latest change of `exitPlan`, null when the plan is null; `reviewed_at` = `at` of the latest
-  `reviewed: true`.
-- `strategy.versionSaved` (gid ULID) `{yamlText, mdText|null, sha256, state: valid|partial|invalid,
-  issues[]}`. The current version = highest `hlc`; `version` numbers are DERIVED (1, 2, ... in `hlc`
-  order). `strategy.yaml` / `strategy.md` are a projection written from the current version (D15).
-  A desktop that detects an external edit of the projection files emits a new version (O5).
+- `decision.recorded` `{signals: @signal[], instrument@|null, account@|null, action, quantity|null,
+  price|null, currency|null, reason|null}`; `inv_decisions.signal_id` = first link (DERIVED).
+  `decision.undone` `{}` (TOMB).
+- `thesis.created` / `thesis.updated {..., reviewed?: true}` / `thesis.deleted`. DERIVED:
+  `core_changed_at` = domain time of the latest change by value of `entryType`, `thesis` or
+  `invalidation`; `exit_plan_changed_at` = of the latest change of `exitPlan` (null without a plan);
+  `reviewed_at` = of the latest `reviewed: true`. Genesis stamps seed them (4.4).
+- `strategy.versionSaved` (ULID) `{yamlText, mdText|null, sha256, state, issues[]}`. A version whose
+  `sha256` equals the current version's at its position in the order is a no-op (m9; two desktops
+  detecting one external edit). Current = highest applied `hlc`; numbers DERIVED. The strategy files
+  are a projection (D15); the projection writer MUST compare the files on disk with the last
+  projected content before writing and, on a difference, ingest the external edit as a new version
+  first (detect-before-write, O5). It never overwrites silently.
 - `plannedDeposit.created` `{account@|null, amount, currency, plannedDate, note|null}`;
-  `plannedDeposit.cancelled` `{}`; `plannedDeposit.booked` `{txn@invTxn}`. Booked and cancelled are
-  terminal FWW.
+  `plannedDeposit.cancelled` `{}`; `plannedDeposit.booked` `{txn@}`. Booked / cancelled are terminal
+  FWW; GUARD: a booking whose transaction already books another plan (earlier in the order) is a
+  no-op (O10).
 
-### 8.9 Topic theses, research
+### 8.9 Watchlist, topic theses, research
 
-- `topicThesis.ownerSaved` (gid DET(segment)) `{segment, thesis, invalidation|null}`: clears `draft`
-  and `rejected_at`, `created_by` stays the creator, `core_changed_at` = `at` when text changed.
-- `topicThesis.draftProposed` `{segment, thesis, invalidation|null}`. GUARD (`topic_theses.upsert_draft`):
-  no-op if an owner thesis exists (non-draft, not rejected) or the topic was rejected less than
-  `TOPIC_DRAFT_COOLDOWN_DAYS` before this event's `at`.
-- `topicThesis.rejected` `{}`: SOFT `rejected_at` (the row stays as a rejection).
-- `topicThesis.marketViewSet` `{segment, assessment|null, outlook|null, sources|null, by: owner|agent}`;
-  `view_updated_at` = `at`.
-- `researchRun.started` `{scope, createdBy}` (`scope.instrument_ids`, `scope.covered_instrument_ids`
-  rewritten to gids); `researchRun.finished` `{status: done|failed, counts}`.
+- `watchlist.added` `{instrument@, note?, tags?, source}`: creates the row or restores a removed one
+  (SOFT cleared); `added_at` = domain time and `source` = this adder (LWW); `note` / `tags` set only
+  when present (M2, Python `service/watchlist.py:add`). `watchlist.updated` `{note?, tags?}`;
+  `watchlist.removed` `{}`.
+- `topicThesis.ownerSaved` `{segment, thesis, invalidation|null}` and `topicThesis.draftProposed`
+  `{segment, thesis, invalidation?}` (absent = keep the stored invalidation, null = clear). Reducer,
+  mirroring `research/topic_theses.py:_write` (M9):
+  - on a **rejected** row (folded `rejected_at` set) a write **restarts** it: `rejected_at` cleared,
+    `created_by` = the writer, `draft` = (writer is the agent), `created_at` = `core_changed_at` =
+    domain time, `invalidation` cleared (then set from the event), the whole market view cleared
+    (`assessment`, `outlook`, `view_updated_at`, `view_sources`);
+  - GUARD for `draftProposed`: a no-op if the folded row is a live owner thesis (not rejected, not a
+    draft), or if it was rejected less than `TOPIC_DRAFT_COOLDOWN_DAYS` before the event's domain time;
+  - otherwise text LWW; `core_changed_at` = domain time when `thesis` / `invalidation` changed by
+    value; `ownerSaved` clears `draft`.
+- `topicThesis.rejected` `{}` (SOFT `rejected_at`).
+- `topicThesis.marketViewSet` `{segment, assessment|null, outlook|null, sources?, by}`: `sources`
+  absent = keep (Python `KEEP`), null = clear; `view_updated_at` = domain time.
+- `researchRun.started` `{scope, createdBy}`; `researchRun.finished` `{status, counts}`.
 - `note.added` `{run@|null, instrument@|null, theme|null, segment|null, kind, polarity, strength,
   thesisRelation, thesisField|null, title, summary, sources[], details|null, candidateKey|null,
-  signal@|null, observedAt, expiresAt, createdBy}`. Owner-written notes are born read (`readAt` = `at`).
-- `note.read` `{}`, `note.dismissed` `{cooldownUntil|null}`, `note.restored` `{}` (LWW-F on `read_at`,
-  `dismissed_at`, `cooldown_until`). Accepting a candidate emits `watchlist.added` / `thesis.created`
-  with `cause` = the accepting event and writes the ids into `details` as gids.
+  signal@|null, observedAt, expiresAt, createdBy}`; owner notes are born read. `note.read`,
+  `note.dismissed {cooldownUntil|null}`, `note.restored` (LWW-F). Dismissing / restoring the last
+  note of a research signal emits `signal.closed {note_dismissed}` / `signal.reopened {note_restored}`
+  in the same batch. Accepting a candidate emits `watchlist.added` / `thesis.created` with `cause`.
 
 ### 8.10 Agent layer, connectors
 
-- `review.done` `{module, doneAt?, notes|null, stats}`; `review.undone` `{}` (TOMB).
+- `review.done` `{module, doneAt?, notes|null, stats}`; `review.undone` (TOMB).
 - `proposal.created` `{kind: strategy|custom_rule|import|budget_import, summary, reason|null, payload,
-  source}`. `payload` uses gids and blob refs: `account_id` -> `account@`, `staged` (a device path)
-  -> `blob: {sha256, ext}` ([`gid.md`](gid.md) section 6).
-- `proposal.approved` `{result}` / `proposal.rejected` `{note|null}` / `proposal.failed` `{result}`:
-  terminal FWW. The approving device emits the side-effect events (`strategy.versionSaved`,
-  `invImport.recorded` + `invTxn.imported` ..., `txn.imported` ...) in the same batch with `cause` =
-  the `proposal.approved` eid. `applying` is a device-local lock state and never synced. Approval is
-  desktop only for now (D14).
-- `connectorBinding.set` (gid DET(account, connector_id)) `{account@, connectorId, params, autoCommit}`;
-  `connectorBinding.removed` `{}` (TOMB). `params` holds no secrets (secrets stay in the device
-  keychain, keyed per device).
+  source}`; `payload` uses gids and blob refs (`account@`, `blob: {sha256, ext}`, never `account_id` or
+  `staged`). `proposal.approved {result}` / `rejected {note|null}` / `failed {result}`: terminal FWW;
+  side-effect events in the approval batch carry `cause`. Approval is desktop only (D14); for
+  `import` and `budget_import` all three terminal types are emitted by the lease holder only (O3, O4).
+  `applying` is a device-local lock state.
+- `connectorBinding.set` `{account@, connectorId, params, autoCommit}` (creates or re-creates);
+  `connectorBinding.removed` `{}` (SOFT); `connectorBinding.cursorAdvanced` `{cursor|null}` (LEADER,
+  `cause` = the approval when it comes from one). The cursor now syncs, so a new lease holder resumes
+  where the old one stopped; backoff and `last_*` stay leader-local (refines D7).
 
 ### 8.11 Reserved
 
-Type prefixes `device.*`, `lease.*` (S29: device registry, fetch lease) and `snapshot.*` (S32
-projection channel) are reserved and defined by those scopes against this envelope.
+`device.*`, `lease.*` (S29) and `snapshot.*` (S32) are defined by those scopes. Requirement on S29
+from this spec: lease claims and renewals carry `{watermark: hlc}` (the holder's highest applied hlc),
+used by 8.3.
 
-## 9. Derived columns (never in a payload, never captured by the outbox)
+## 9. Derived columns (never in a payload except as genesis stamps)
 
 | Column | Recomputed from |
 |---|---|
-| `transactions.is_internal_transfer`, `transfer_group_id` | the whole account set, `ingestion/transfers.py` (counterparty IBAN only, rule 5) |
-| `transactions.category`, `category_source` | claims + rules + engine (8.3); rule-engine categories recomputed on every device (D8) |
-| cash pool mirror legs (`dedup_hash = cashleg:<id>`, `raw.cash_leg_of`) and the cash account they need | bank transactions whose effective category is `cash_withdrawal` (`budget/cash.py:sync_cash_leg`) |
-| `alerts.status` (effective), `last_*` come from `alert.evaluated` | 8.7 |
+| `transactions.is_internal_transfer`, `transfer_group_id` | the resolved account set, counterparty IBAN only (rule 5) |
+| `transactions.category`, `category_source` | claims + rules + engine (8.3), rule categories on every device (D8) |
+| cash mirror legs (`cashleg:<@txn>`, `raw.cash_leg_of`) | effective category `cash_withdrawal` of bank transactions |
+| account key parking (`<key>~<@account>`) | removed accounts whose name key a live account holds |
+| `alerts.status` (effective) | 8.7 |
 | `inv_signals.status = acknowledged`, `acknowledged_at` | decisions (6.5) |
 | `inv_theses.core_changed_at`, `exit_plan_changed_at`, `reviewed_at` | 8.8 |
-| `inv_topic_theses.core_changed_at`, `view_updated_at` | 8.9 |
-| `inv_strategy_versions.version`, "current" | `hlc` order (8.8) |
+| `inv_topic_theses.core_changed_at`, `view_updated_at`, restart fields | 8.9 |
+| `inv_strategy_versions.version`, "current" | order (8.8) |
 | `inv_decisions.signal_id` | first of `signals` |
-| `loans.updated_at`, `profile_modules.enabled_at`, `plan_at` | `at` of the setting event |
-| `research_notes.signal_id` when the note joined a signal | carried in `note.added` (`signal@`) because the join is a leader-time fact; not recomputed |
+| `loans.updated_at`, `profile_modules.enabled_at`, `plan_at`, `watchlist_items.added_at` | domain time of the setting event |
+| view row gids of row-keyed tables | [`gid.md`](gid.md) 4.8 |
 
 ## 10. What never syncs
 
 | Data | Why |
 |---|---|
-| `inv_price_bars`, `inv_fx_rates`, `inv_macro_bars`, `market/calendar.json` | refetchable caches (D4: the phone gets leader projections) |
+| `inv_price_bars`, `inv_fx_rates`, `inv_macro_bars`, `market/calendar.json` | refetchable caches (D4) |
 | `change_events` | replaced by store subscriptions |
 | `mcp_calls` | per-device audit (D6) |
-| `inv_notification_log` | each device notifies itself; dedup by (signal gid, severity) |
-| `connectors`, `connector_runs` | code + approval is a security act on that machine (D7) |
-| `connector_bindings.cursor`, `last_run_at`, `last_status`, `last_ok_at`, `backoff_until` | leader-local fetch state (D7) |
-| `proposals.status = applying` | device-local approval lock |
-| `alembic_version`, `settings.json`, `desktop.json`, `profiles/<slug>/workspace.json` | per device (absolute paths, window state); app language pin may sync later |
-| Enable Banking keys / sessions, connector secrets, the API token, run locks | device keychain / per device |
-| local integer ids | view-internal only |
+| `inv_notification_log` | each device notifies itself; dedup by (signal episode gid, severity) |
+| `connectors`, `connector_runs` | code + approval is a security act on one machine (D7) |
+| `connector_bindings.last_run_at`, `last_status`, `last_ok_at`, `backoff_until` | leader-local fetch state (the cursor syncs, 8.10) |
+| `proposals.status = applying` | device-local lock |
+| `alembic_version`, `settings.json`, `desktop.json`, `profiles/<slug>/workspace.json` | per device |
+| Enable Banking keys / sessions, connector secrets, API token, run locks, the vault salt and data key in plaintext | device keychain (the salt and key travel only wrapped, at pairing) |
+| local integer ids | view-internal |
 
 ## 11. Notes for genesis (S26) and the outbox (S30)
 
-- Genesis emits, per vault, one create / snapshot event per row in dependency order, with
-  `origin: "genesis"` and every timestamp column explicit (4.4). Soft-deleted rows are emitted with
-  their deletion state (`account.removed`, `alert.deleted`, `watchlist.removed`, `topicThesis.rejected`)
-  so the view round-trips; derived columns are not emitted (section 9).
-- Genesis gids follow [`gid.md`](gid.md) section 7 (deterministic, re-runnable).
-- The outbox captures field diffs of synced columns only (section 9 excluded) and maps them to the
-  types above; the explicit-emit sites are `instrument_merge.py` (-> `instrument.merged`), decision
-  undo, review undo, thesis delete, cash expense delete, binding removal, and every bulk
-  `update()/delete()` on a synced table (risk R6).
-- Python-side derived writes (rule-engine categories, cash legs, transfer groups, alert expiry /
-  wake, version numbers) MUST NOT be shipped as events.
-- The Python side SHOULD validate outbound events against JSON Schema generated from the zod
-  schemas (`z.toJSONSchema`), so both runtimes share one definition.
+- Genesis emits per vault one create / snapshot event per row in dependency order, `origin:
+  "genesis"`, every timestamp column in `stamps` (4.4), soft-deleted rows with their deletion state.
+  Derived columns appear only as stamps.
+- Accounts: genesis emits `keys` from the stored IBAN (`iban:<ibanKey>`) and the external natural key;
+  instruments: an `instrument.aliasAdded` per stored alias; signals: one `signal.opened` per row plus
+  its lifecycle state; no open episodes collide on lab (0 duplicate open keys).
+- Genesis gids follow [`gid.md`](gid.md) 7. A conformance test validates real lab rows through the zod
+  schemas (counts only): `lab-conformance.test.ts`, enabled by `CASHU_LAB_DB`.
+- The outbox captures field diffs of synced columns (section 9 excluded) and maps them to these types;
+  explicit emits for `instrument_merge.py`, decision / review undo, thesis delete, cash expense delete,
+  binding removal and every bulk `update()/delete()` on a synced table (R6).
+- Python-side derived writes MUST NOT be shipped. The Python side SHOULD validate outbound events
+  against JSON Schema generated from these zod schemas (`z.toJSONSchema`).
 
-## 12. Open items (not decided here)
+## 12. Open items
 
-- **O1 Instrument merge vs dedup keys.** `invTxn` gids are fixed at import with the instrument gid of
-  that moment. A re-import after a merge computes `dedupHashV2` with the target gid, so the same
-  broker row gets a new gid. Proposal: the import command dedups by `dedupHashV2` recomputed with
-  merge-resolved instrument gids against the view (as Python's UNIQUE check does today) before
-  emitting; concurrent pre/post-merge imports on two devices can still duplicate. Python has the same
-  gap today (`instrument_merge.py` never rewrites `inv_transactions.dedup_hash`). Needs a decision on
-  whether to also emit `invTxn.superseded` or accept the rare duplicate.
-- **O2 Genesis rows whose stored hash cannot be reproduced** (merged instruments, legacy namespace,
-  normalization drift) get a `legacy:` gid input ([`gid.md`](gid.md) 7). A later TS re-import of the
-  same file will not match them by gid, only by the view-level dedup check. Acceptable?
-- **O3 cashu-format budget documents uploaded manually** use the newest-day rule, which is
-  order-dependent. Restrict them to the lease holder, or accept possible duplicates when two devices
-  import overlapping documents concurrently?
-- **O4 `budget_import` proposals** (connector fetches) save the binding cursor on approval, but the
-  cursor is leader-local (D7). Proposal: only the lease holder may approve them; confirm.
-- **O5 Strategy projection files edited outside the app** (an editor, the agent despite D15):
-  last-writer by detection time decides. Two desktops detecting different external edits produce two
-  versions; the higher `hlc` becomes current and the other is history. Confirm that is acceptable,
-  and whether the projection writer should refuse to overwrite an unsaved external edit.
-- **O6 `inv_rule_runs` retention** (D5 "last N"): the log keeps every `ruleRun.finished` forever
-  (append-only). Should old run reports be omitted from the log altogether (keep only the run summary
-  without `report`) to bound growth?
-- **O7 Future-dated device clocks.** A device whose clock runs hours ahead wins LWW races until real
-  time catches up (the spike documented this). Options: refuse to emit while `pt` is behind the HLC
-  wall by more than X, or cap remote wall advancement. Needs a policy.
-- **O8 `mcp_privacy` syncs** (LWW). A phone could loosen what the desktop MCP server may send. Should
-  loosening (strict -> amounts) be desktop-only or require confirmation on each desktop?
-- **O9 Slug collisions across vaults** on one device (two vaults both named `profile-a`): `slug` is a
-  device-local folder key today. Proposal: keep `slug` in the vault but let a device map a colliding
-  slug to a local alias; decide in S29 pairing.
-- **O10 `plannedDeposit.booked` from two devices** could book two different transactions to one plan
-  (FWW keeps the first) or one transaction to two plans (both apply). Python prevents the latter in
-  one transaction. Add a GUARD (a transaction books at most one plan, lowest `hlc` wins)?
-- **O11 Research note payload size**: `note.added` carries full Polish summaries and sources; 211
-  notes on lab are small, but a research-heavy profile grows the log permanently. Accept, or move
-  note bodies to blobs?
-- **O12 `txn.imported.raw`** carries the bank's raw row (all CSV columns / OB fields) into the
-  encrypted log on every device. Needed for re-parsing; confirm it should sync (it contains the same
-  personal data as the other columns, under the vault key).
+Resolved in v1.1 (adopted from the review unless noted): O1 (broker instrument key in the hash), O2 /
+G4 (rebuild v2 from columns, `legacy:` only for missing columns), O3, O4, O5, O6 (keep every run; compaction
+is S32's), O7, O8, O9, O10, O11 (inline), O12 (`raw` syncs), G1 (IBAN-first identity), G2 (accepted),
+G3 (episodes). Remaining:
+
+- **R-1 Account merges are irreversible.** Identity keys merge for good, like Python's matching. A
+  wrong key (a parser bug producing one key for two accounts) cannot be undone except by a future
+  `account.split` type. Accept for v1?
+- **R-2 Collision precedence after merges differs from Python.** `instrument_merge.py` keeps the
+  target's values and fills from the source; v1.1 folds both streams and the latest write wins per
+  field (with GUARDs). Chosen because only a set-based rule is order-independent for writes that
+  arrive after the merge (B3). Visible effect: a newer edit on the source beats an older target value,
+  where Python would keep the target's. Confirm.
+- **R-3 The IBAN key ignores the bank id.** Python matches IBANs only within one `bank`; v1.1's
+  `iban:<key>` is bank-independent because an IBAN identifies one account globally. This also joins
+  a Santander-era and an Erste-era account with the same number if they were stored under different
+  bank ids. Confirm that is wanted.
+- **R-4 Lease watermark (M6)** is specified here as a requirement; the exact `lease.*` payloads and
+  how long a new holder may wait for a lagging old holder are S29's.
+- **R-5 Research signals off the lease.** The research desktop and the leader may both write to the
+  same research episode (refresh vs resolve-on-expiry). The episode fold makes this convergent; the
+  remaining question is product-level: should `notes_expired` also be emitted by the research desktop
+  when it sees expiry first? (v1.1: leader only.)

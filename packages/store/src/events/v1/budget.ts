@@ -37,12 +37,14 @@ export const budgetEvents = {
     dedupHash: z.union([sha1Hex, z.string().regex(/^legacy:[0-9a-f]{40}$/)]),
     occurrence: z.int().min(0),
     raw: jsonObject,
-    createdAt: timestamp.optional(),
   }),
   "txn.cashExpenseAdded": payload({
     account: gid,
     bookingDate: calendarDate,
-    amount: decimal.refine((s) => s.startsWith("-"), "a cash expense is negative"),
+    amount: decimal.refine(
+      (s) => s.startsWith("-") && /[1-9]/.test(s),
+      "a cash expense is negative",
+    ),
     currency,
     title: nonEmpty,
     category: key,
