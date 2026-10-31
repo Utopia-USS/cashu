@@ -8,7 +8,9 @@ S31a/b bridge.
 Companion documents: [`gid.md`](gid.md) (global ids, keyed DET construction, id-coupled strings).
 Machine schemas: `packages/store/src/events/v1/*.ts` (zod). Executable reference semantics for the
 convergence-critical rules: `packages/store/src/events/v1/reference/fold.ts`, with shuffled-delivery
-tests in `reference/convergence.test.ts`; S23/S25 MUST give the same results on those scenarios.
+tests in `reference/convergence.test.ts`; S23/S25 MUST give the same results on those scenarios. The
+investments tables S25 folds have their own reference, `reference/fold-investments.ts`, compared row by
+row with the store in every investments convergence test and property search.
 The zod schemas are normative for field names and types, this document for semantics. Where they
 disagree it is a bug in one of them: fix both in the same change.
 
