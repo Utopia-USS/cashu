@@ -171,6 +171,9 @@ export interface ThesisLite { invalidation: string | null; exit_plan: string | n
 
 /** A rule signal of a portfolio rule (no instrument) hanging this long without a decision is suspect. */
 export const STALE_RULE_DAYS = 14;
+/** "New" counts from the last review, but never further back than this: without a review for weeks, a state that
+ * has lasted that long is not news (it is counted as unchanged). */
+export const NEW_MAX_DAYS = 14;
 const MAX_DECIDE = 6;
 const DAY = 86400000;
 const CHANGING = new Set(["weakens", "invalidates", "fulfills"]);
@@ -185,6 +188,8 @@ const isResearch = (s: SignalV2) => s.kind.startsWith("research:");
 const relationOf = (s: SignalV2) => (isResearch(s) ? str(s.payload.relation) : null);
 const ts = parseServerTime;
 const newer = (s: SignalV2, since: number) => Number.isFinite(since) && ts(s.first_seen_at) > since;
+/** The baseline of "new": the last review, at most NEW_MAX_DAYS back. */
+const newSince = (since: string | null | undefined, now: number) => Math.max(ts(since ?? null), now - NEW_MAX_DAYS * DAY);
 
 /** A share in words: "ponad 1/3", "ok. połowę"; below a tenth the percentage. */
 export function shareWords(x: number): string {
@@ -268,8 +273,8 @@ function subjectsOf(open: SignalV2[]): Subject[] {
  * instrument id. */
 export function decideItems(signals: SignalV2[], research: DigestResearch | null | undefined, names?: Map<number, string>, proposals: ProposalLike[] = [],
   opts: { since?: string | null; theses?: Map<number, ThesisLite>; now?: number } = {}): { items: DecideItem[]; more: number; rest: DecideRest } {
-  const since = ts(opts.since ?? null);
   const now = opts.now ?? Date.now();
+  const since = newSince(opts.since, now);
   const open = signals.filter((s) => !s.snoozed && !s.decisions.length && (s.status === "active" || s.status === "acknowledged"));
   const rest: DecideRest = { review: 0, research: 0 };
   const items: DecideItem[] = [];
@@ -373,8 +378,8 @@ function proposalItem(p: ProposalLike): DecideItem {
 }
 
 /** Instruments whose thesis the card needs (subjects with a reason), so the caller can load them first. */
-export function decideSubjects(signals: SignalV2[], since?: string | null, research?: DigestResearch | null): number[] {
-  const s0 = ts(since ?? null);
+export function decideSubjects(signals: SignalV2[], since?: string | null, research?: DigestResearch | null, now = Date.now()): number[] {
+  const s0 = newSince(since, now);
   const health = healthChanges(research);
   const open = signals.filter((s) => !s.snoozed && !s.decisions.length && (s.status === "active" || s.status === "acknowledged"));
   return subjectsOf(open)

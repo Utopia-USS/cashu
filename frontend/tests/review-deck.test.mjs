@@ -212,3 +212,10 @@ test("decideItems: server times without a zone and with microseconds parse like 
   assert.equal(items.length, 1);
   assert.match(items[0].tag, /nowe$/);
 });
+
+test("decideItems: without a review for weeks, old states are not new; the same four subjects remain", () => {
+  const { items, rest } = decideItems(WEEK, null, NAMES, [], { since: "2026-10-05T14:16:48Z", theses: THESES, now: NOW });
+  assert.deepEqual(items.map((i) => i.group), ["risk", "risk", "chance", "plan", "fix"]);
+  assert.deepEqual(rest, { review: 6, research: 4 });
+  assert.deepEqual(decideSubjects(WEEK, "2026-10-05T14:16:48Z", null, NOW).sort((a, b) => a - b), [3, 19, 20, 40]);
+});
