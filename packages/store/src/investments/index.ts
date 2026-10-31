@@ -11,6 +11,8 @@ import { instrumentIdentity, instrumentsMaterializer } from "./instruments.js";
 import { overridesMaterializer } from "./overrides.js";
 import { plannedMaterializer } from "./planned.js";
 import { positionsMaterializer, renamesMaterializer } from "./positions.js";
+import { researchNotesMaterializer, researchRunsMaterializer } from "./research.js";
+import { reviewsMaterializer } from "./reviews.js";
 import { signalsMaterializer } from "./signals.js";
 import { ruleRunsMaterializer, strategyMaterializer } from "./strategy.js";
 import { thesesMaterializer } from "./theses.js";
@@ -39,5 +41,8 @@ export const investmentsModule: StoreModule = {
     thesesMaterializer,
     topicThesesMaterializer,
     plannedMaterializer,
+    researchRunsMaterializer,
+    researchNotesMaterializer,
+    reviewsMaterializer,
   ],
 };
