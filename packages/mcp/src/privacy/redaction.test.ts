@@ -369,3 +369,19 @@ describe("test_a_date_after_an_amount_stays_a_date_and_no_placeholder_leaks", ()
 it("test_stray_nul_characters_never_reach_the_agent", () => {
   expect(scrubText("a\u0000b 2026-10-01", { strict: true })).toBe("a[date]b 2026-10-01");
 });
+
+// S37fix2 W1 / W2 (tests/test_mcp_s37fix.py): number words and slang amounts mask some ordinary
+// words too; these over-masks are accepted (listed so a change is visible)
+describe("test_number_words_mask_some_ordinary_words", () => {
+  it.each([
+    ["dwa koła roweru", "[amount] roweru"],
+    ["jeden koło drugiego", "[amount] drugiego"],
+    ["kilkutysięczny tłum", "[amount] tłum"],
+    ["milioner", "[amount]"],
+    ["multimillions", "[amount]"],
+    ["setka na bieżni", "[amount] na bieżni"],
+    ["tysiąclecie", "[amount]"],
+  ])("%s", (text, masked) => {
+    expect(scrubText(text, { strict: true })).toBe(masked);
+  });
+});
