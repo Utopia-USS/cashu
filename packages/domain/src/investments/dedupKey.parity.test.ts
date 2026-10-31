@@ -17,7 +17,6 @@ import {
   hashPartsV1,
   hashPathOf,
   hashPathsOfFile,
-  instrumentKeyOfParsed,
   US,
 } from "./dedupKey.js";
 
@@ -32,11 +31,7 @@ interface ParsedRow {
   readonly currency: string;
   readonly grossAmount: string;
   readonly cashAmount: string;
-  readonly symbol: string | null;
-  readonly isin: string | null;
-  readonly name: string | null;
   readonly instrumentId: number | null;
-  readonly instrumentKeyV2: string;
   readonly v1Hash: string;
   readonly storedTxnId: number | null;
 }
@@ -153,16 +148,6 @@ describe("investments content-hash parity: re-import side", () => {
     // Three same-key pairs swap occurrences (the two XYZ buys with different notes, the two fee rows,
     // the two O-7 fills): same hash set, different row -> hash assignment.
     expect(byFile.filter((hash, i) => hash !== byRank[i]).length).toBe(6);
-  });
-
-  it("instrumentKeyOfParsed matches the Python reference of every parsed row", () => {
-    for (const entry of fixture.imports) {
-      for (const p of entry.parsed) {
-        expect(instrumentKeyOfParsed(p, entry.brokerId), `${entry.name} row ${p.rowIndex}`).toBe(
-          p.instrumentKeyV2,
-        );
-      }
-    }
   });
 
   it("v1 rebuilt from the stored columns with the recovered occurrence (genesis inputs)", () => {

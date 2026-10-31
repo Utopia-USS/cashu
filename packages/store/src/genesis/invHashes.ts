@@ -2,7 +2,8 @@
 // 7.4). Per non-manual row: the path (reconciliation, else ref when the stripped ref is non-empty,
 // else content); the occurrence recovered by recomputing the stored v1 hash with the local ids for
 // k = 0..K_MAX (else the rank among rows of one account, batch and v1 occurrence key by
-// (created_at, id)); v2 with the account gid and the instrumentKey of 7.2; collisions per 7.4 (a
+// (created_at, id)); v2 with the account gid and the shared broker instrument key of the domain
+// importing port (`instrumentKeyV2`, the rule a TS re-import uses); collisions per 7.4 (a
 // reconciliation collision fails the run). Parts come from the domain `dedupKey` module; this file
 // hashes them with sha256 (lower hex). Manual rows get the genesis gid instead (ids.ts).
 import { D, type Decimal, investments } from "@cashu/domain";
@@ -12,7 +13,7 @@ import { type AccountGids, resolveCollisions } from "./hashes.js";
 import { type GenesisCounters, GenesisError } from "./report.js";
 import type { InvImportBatchRow, InvInstrumentAliasRow, InvTransactionRow } from "./rows.js";
 
-const { US } = investments;
+const { US, importing } = investments;
 const utf8 = new TextEncoder();
 const sha256Hex = (parts: readonly string[]) => bytesToHex(sha256(utf8.encode(parts.join(US))));
 
@@ -20,15 +21,7 @@ const sha256Hex = (parts: readonly string[]) => bytesToHex(sha256(utf8.encode(pa
 const K_MAX = 1000;
 /** Python `service/transactions.py` MANUAL_BROKER_ID: the broker of a row without a batch. */
 const NO_BATCH_BROKER = "manual";
-/** Python `contract.py` CASHU_NAMESPACE / LEGACY_NAMESPACE: one namespace under two names. */
-// legacy name: Python's equivalent_namespaces treats the pre-rename broker id as `cashu`
-const CANONICAL_NAMESPACES: readonly string[] = ["cashu", "finanse"];
 const TABLE = "inv_transactions";
-
-/** Python `contract.equivalent_namespaces`: `cashu` and its legacy name `finanse` are one. */
-function equivalentNamespaces(namespace: string): readonly string[] {
-  return CANONICAL_NAMESPACES.includes(namespace) ? CANONICAL_NAMESPACES : [namespace];
-}
 
 /** An instrument of the vault's closure (ids.ts): its gid, ISIN column and aliases by ascending id. */
 export interface InstrumentRef {
@@ -49,8 +42,16 @@ export interface InvHashSource {
   readonly missingInstrumentGid: (instrumentId: number) => string;
 }
 
-/** gid.md 7.2 for one row: none, broker alias, ISIN alias, ISIN column, else the instrument gid. */
-function instrumentKeyV2(
+/** The gid of a row's instrument: the closure's, else the missing-instrument rule of 7.6. */
+function instrumentGid(source: InvHashSource, instrumentId: number): string {
+  return source.instruments.get(instrumentId)?.gid ?? source.missingInstrumentGid(instrumentId);
+}
+
+/**
+ * gid.md 7.2 for one row: `importing.instrumentKeyV2` over the row's instrument (aliases by ascending
+ * id) and the batch's broker (null without a batch). The tallies name the step the key came from.
+ */
+function instrumentKeyOfRow(
   row: InvTransactionRow,
   batch: InvImportBatchRow | undefined,
   source: InvHashSource,
@@ -61,29 +62,25 @@ function instrumentKeyV2(
   const instrument = source.instruments.get(row.instrumentId);
   if (instrument === undefined) {
     tally("ikey_gid");
-    return `gid:${source.missingInstrumentGid(row.instrumentId)}`;
+    return importing.reconciliationInstrumentKey(source.missingInstrumentGid(row.instrumentId));
   }
   if (batch !== undefined) {
-    const namespaces = equivalentNamespaces(batch.broker);
-    const own = instrument.aliases.filter((a) => namespaces.includes(a.namespace));
-    if (own.length > 1) ambiguous.add(row.instrumentId);
-    const first = own[0];
-    if (first !== undefined) {
-      tally("ikey_broker");
-      return `${batch.broker}:${first.value}`;
+    const namespaces = importing.equivalentNamespaces(batch.broker);
+    if (instrument.aliases.filter((a) => namespaces.includes(a.namespace)).length > 1) {
+      ambiguous.add(row.instrumentId);
     }
   }
-  const isinAlias = instrument.aliases.find((a) => a.namespace === "isin");
-  if (isinAlias !== undefined) {
-    tally("ikey_isin_alias");
-    return `isin:${isinAlias.value}`;
-  }
-  if (instrument.isin !== null && instrument.isin !== "") {
-    tally("ikey_isin_col");
-    return `isin:${instrument.isin}`;
-  }
-  tally("ikey_gid");
-  return `gid:${instrument.gid}`;
+  const key = importing.instrumentKeyV2(instrument, batch?.broker ?? null, () => instrument.gid);
+  tally(
+    key.startsWith("gid:")
+      ? "ikey_gid"
+      : !key.startsWith("isin:")
+        ? "ikey_broker"
+        : instrument.aliases.some((a) => a.namespace === investments.AliasNamespace.ISIN)
+          ? "ikey_isin_alias"
+          : "ikey_isin_col",
+  );
+  return key;
 }
 
 const decimal = (text: string | null): Decimal | null => (text === null ? null : D(text));
@@ -163,7 +160,7 @@ export function invHashes(
       const key =
         row.instrumentId === null
           ? ""
-          : `gid:${source.instruments.get(row.instrumentId)?.gid ?? source.missingInstrumentGid(row.instrumentId)}`;
+          : importing.reconciliationInstrumentKey(instrumentGid(source, row.instrumentId));
       const hash = sha256Hex(investments.hashPartsV2(path(key), accountGid));
       const claim = `${accountGid}|${hash}`;
       if (reconClaims.has(claim)) {
@@ -181,7 +178,7 @@ export function invHashes(
       if (sha256Hex(investments.hashPartsV1(path, account)) === row.dedupHash) occurrence = k;
     }
     tally(occurrence === undefined ? "occ_fallback" : "occ_v1_match");
-    const v2Input = stored(row, instrumentKeyV2(row, batch, source, tally, ambiguous));
+    const v2Input = stored(row, instrumentKeyOfRow(row, batch, source, tally, ambiguous));
     paths.push({
       id: row.id,
       row,

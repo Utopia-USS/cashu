@@ -26,7 +26,9 @@ Fixture format (JSON object):
   ``type``, ``externalRef`` (raw), ``quantity`` / ``price`` / ``grossAmount`` / ``cashAmount`` (decimal
   text as parsed, before ``copy_abs``), ``currency``, ``symbol`` / ``isin`` / ``name`` (raw hints),
   ``brokerSymbol`` / ``isinKey`` (the resolver's ``_HintKey``), ``instrumentId`` (final local id, null
-  for cash rows), ``instrumentKeyV2`` (gid.md 4.6 from the row, Python reference), ``v1Hash`` (the hash
+  for cash rows), ``instrumentKeyV2`` (the key a re-import after every commit derives: gid.md 4.6 /
+  7.2, ``importing/instrumentKey.ts``, over the resolved instrument as stored, with ``brokerId``;
+  Python reference, ``gid:@<id>`` standing for the instrument's gid), ``v1Hash`` (the hash
   the commit computed for the row) and ``storedTxnId`` (the row it inserted, null for a duplicate).
 - ``stored``: ``alembic_version`` and ``tables``: table -> rows (column -> value exactly as SQLite
   holds it: text, integer or null; ``ORDER BY`` the primary key) of ``profiles``, ``accounts``,
@@ -35,8 +37,8 @@ Fixture format (JSON object):
   columns (``DedupInput.from_transaction``): ``txnId``, ``kind`` (ref / content / reconciliation),
   ``accountId``, ``brokerId`` (the batch broker, before the legacy rename), ``instrumentKey`` (local
   id or ""), ``occurrence`` (smallest k whose hash equals the stored one; null for reconciliation),
-  ``message`` (the hashed text) and ``ikeyGenesis`` (gid.md 7.2 from the stored aliases, ``gid:@<id>``
-  standing for the instrument's gid; Python reference for genesis).
+  ``message`` (the hashed text) and ``ikeyGenesis`` (gid.md 7.2 from the stored aliases and the stored
+  batch broker, ``gid:@<id>`` standing for the instrument's gid; Python reference for genesis).
 - ``findings``: counts of stored rows whose columns do not reproduce the parsed row (per field), v1
   recovery results and v2 instrument key agreement between the two sides (R-G2 / R-G4).
 """
@@ -157,8 +159,8 @@ FILE_3 = [
 
 # File 4: no source (namespace "cashu"), an instrument only this file names. After the commit its
 # batch and that instrument's aliases are rewritten to the legacy namespace, as a database imported
-# before the rename holds them (S26 review F2 class b: genesis names the instrument under the stored
-# broker, a re-import under "cashu").
+# before the rename holds them (S26 review F2 class b: the stored broker and the re-import's "cashu"
+# must give one key).
 LEGACY_FILE = "synthetic_4.csv"
 LEGACY_BROKER = "finanse"  # legacy name: the pre-rename canonical namespace a stored batch can hold
 FILE_4 = [
@@ -170,8 +172,8 @@ FILE_4 = [
 ]
 
 # File 5: a broker symbol change: one ISIN under an old and then a new symbol, so the instrument
-# holds two aliases in one broker namespace (S26 review F2 class c: genesis takes the smallest alias
-# id, a re-import the row's own symbol).
+# holds two aliases in one broker namespace (S26 review F2 class c: the key is the instrument's, not
+# the row's own symbol).
 SRC_RENAME = "renamebroker"
 FILE_5 = [
     _txn("2026-02-15", "buy", ref="R-1", symbol="OLDX", isin="PLOLDX000018", exchange="XWAR",
@@ -295,10 +297,6 @@ def build(tmp: Path) -> dict:
             if planned_id is not None:
                 instrument_id = result.instrument_map.get(planned_id) or int(planned_id)
             key = _HintKey.of(InstrumentHint.from_txn(txn))
-            if key.broker_symbol is not None:
-                ikey = f"{broker_id}:{key.broker_symbol}"
-            else:
-                ikey = "" if key.isin is None else f"isin:{key.isin}"
             rows.append(
                 {
                     "rowIndex": txn.row_index,
@@ -317,7 +315,7 @@ def build(tmp: Path) -> dict:
                     "brokerSymbol": key.broker_symbol,
                     "isinKey": key.isin,
                     "instrumentId": instrument_id,
-                    "instrumentKeyV2": ikey,
+                    "instrumentKeyV2": None,  # filled from the final stored state below
                     "v1Hash": recorded[0][ranks[i]],
                     "storedTxnId": stored_by_rank.get(ranks[i]),
                 }
@@ -339,6 +337,10 @@ def build(tmp: Path) -> dict:
     _rewrite_legacy(db_file, next(e for e in out_imports if e["name"] == LEGACY_FILE))
 
     stored, version = _dump(db_file)
+    instruments, aliases = _instrument_index(stored)
+    for entry in out_imports:
+        for p in entry["parsed"]:
+            p["instrumentKeyV2"] = _ikey(p["instrumentId"], entry["brokerId"], instruments, aliases)
     stored_v1 = _stored_v1(stored, dedup, Decimal)
     return {
         "meta": {
@@ -417,10 +419,7 @@ def _stored_v1(stored: dict, dedup, D) -> list[dict]:
     from cashu.modules.investments.domain import TxnType
 
     batches = {b["id"]: b for b in stored["inv_import_batches"]}
-    instruments = {i["id"]: i for i in stored["inv_instruments"]}
-    aliases: dict[int, list[dict]] = {}
-    for alias in stored["inv_instrument_aliases"]:
-        aliases.setdefault(alias["instrument_id"], []).append(alias)
+    instruments, aliases = _instrument_index(stored)
     out = []
     for row in stored["inv_transactions"]:
         batch = batches.get(row["import_batch_id"])
@@ -466,24 +465,48 @@ def _stored_v1(stored: dict, dedup, D) -> list[dict]:
         parts.append("" if occurrence is None else str(occurrence))
         entry |= {"kind": kind, "occurrence": occurrence, "message": "\x1f".join(parts),
                   "matches": occurrence is not None,
-                  "ikeyGenesis": _ikey_genesis(row, broker, instruments, aliases)}
+                  "ikeyGenesis": _ikey(row["instrument_id"], broker, instruments, aliases)}
         out.append(entry)
     return out
 
 
-def _ikey_genesis(row: dict, broker: str | None, instruments: dict, aliases: dict) -> str:
-    """gid.md 7.2 from the stored rows."""
-    instrument_id = row["instrument_id"]
+def _instrument_index(stored: dict) -> tuple[dict, dict[int, list[dict]]]:
+    """Stored instruments by id and their alias rows by instrument (ascending id)."""
+    instruments = {i["id"]: i for i in stored["inv_instruments"]}
+    aliases: dict[int, list[dict]] = {}
+    for alias in stored["inv_instrument_aliases"]:
+        aliases.setdefault(alias["instrument_id"], []).append(alias)
+    return instruments, aliases
+
+
+def _canonical(namespace: str) -> str:
+    return "cashu" if namespace == LEGACY_BROKER else namespace
+
+
+def _equivalent(namespace: str) -> tuple[str, ...]:
+    return ("cashu", LEGACY_BROKER) if namespace in ("cashu", LEGACY_BROKER) else (namespace,)
+
+
+def _ikey(instrument_id: int | None, broker: str | None, instruments: dict, aliases: dict) -> str:
+    """gid.md 7.2 (``importing/instrumentKey.ts``): the alias in a namespace equivalent to the
+    broker's (legacy namespace first, confirmed first, smallest id) under the canonical namespace,
+    else the isin alias, the ISIN column, the gid."""
     if instrument_id is None:
         return ""
-    own = sorted(aliases.get(instrument_id, []), key=lambda a: a["id"])
+    own = aliases.get(instrument_id, [])
+
+    def first(namespaces: tuple[str, ...]) -> dict | None:
+        found = [a for a in own if a["namespace"] in namespaces]
+        found.sort(key=lambda a: (a["namespace"] != LEGACY_BROKER, bool(a["guessed"]), a["id"]))
+        return found[0] if found else None
+
     if broker is not None:
-        for alias in own:
-            if alias["namespace"] == broker:
-                return f"{broker}:{alias['value']}"
-    for alias in own:
-        if alias["namespace"] == "isin":
-            return f"isin:{alias['value']}"
+        alias = first(_equivalent(broker))
+        if alias is not None:
+            return f"{_canonical(broker)}:{alias['value']}"
+    alias = first(("isin",))
+    if alias is not None:
+        return f"isin:{alias['value']}"
     isin = instruments[instrument_id]["isin"]
     return f"isin:{isin}" if isin else f"gid:@{instrument_id}"
 

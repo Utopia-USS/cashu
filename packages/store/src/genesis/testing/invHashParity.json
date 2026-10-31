@@ -200,7 +200,7 @@
           "brokerSymbol": null,
           "isinKey": "PLABC0000016",
           "instrumentId": 1,
-          "instrumentKeyV2": "isin:PLABC0000016",
+          "instrumentKeyV2": "examplebroker:ABC",
           "v1Hash": "3e2ec5dbb97e6de3c519bd2de1ac43c8e3ca5b33b8ad2869fb5269625f520584",
           "storedTxnId": 9
         },
@@ -380,7 +380,7 @@
           "brokerSymbol": null,
           "isinKey": "PLABC0000016",
           "instrumentId": 1,
-          "instrumentKeyV2": "isin:PLABC0000016",
+          "instrumentKeyV2": "examplebroker:ABC",
           "v1Hash": "3e2ec5dbb97e6de3c519bd2de1ac43c8e3ca5b33b8ad2869fb5269625f520584",
           "storedTxnId": null
         },
@@ -869,7 +869,7 @@
           "brokerSymbol": "NEWX",
           "isinKey": "PLOLDX000018",
           "instrumentId": 9,
-          "instrumentKeyV2": "renamebroker:NEWX",
+          "instrumentKeyV2": "renamebroker:OLDX",
           "v1Hash": "625b8dab6bc64c885c36c2dfc90ccc0af9dc5a1d5668b1e20aa88e7cb1f7acc3",
           "storedTxnId": 30
         }
@@ -2415,7 +2415,7 @@
       "occurrence": 0,
       "message": "v1\u001fref\u001f3\u001ffinanse\u001fF-1\u001fbuy\u001f8\u001f4\u001f25\u001fPLN\u001f0",
       "matches": true,
-      "ikeyGenesis": "finanse:FNX"
+      "ikeyGenesis": "cashu:FNX"
     },
     {
       "txnId": 28,
@@ -2426,7 +2426,7 @@
       "occurrence": 0,
       "message": "v1\u001fcontent\u001f3\u001f2026-02-12\u001fbuy\u001f8\u001f2\u001f26\u001f52\u001f-52\u001f0",
       "matches": true,
-      "ikeyGenesis": "finanse:FNX"
+      "ikeyGenesis": "cashu:FNX"
     },
     {
       "txnId": 29,
@@ -2459,8 +2459,7 @@
       "recon_match": 1
     },
     "ikeyV2GenesisVsParsed": {
-      "differ": 4,
-      "equal": 25
+      "equal": 29
     }
   }
 }

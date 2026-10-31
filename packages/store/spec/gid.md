@@ -199,13 +199,30 @@ reconciliation:  ["v2", "reconciliation", @account, instrumentKey, asOf, type, d
 fillKey    = type US instrumentKey US decimalKey(quantity) US decimalKey(price) US (currency or "")
 contentKey = tradeDate US type US instrumentKey US decimalKey(quantity) US decimalKey(price)
              US decimalKey(grossAmount) US decimalKey(cashAmount)
-instrumentKey = brokerId ":" symbol   when the parsed row names the broker's symbol
-              | "isin:" ISIN          else, when it has an ISIN
-              | "gid:" R(@instrument) else (reconciliation rows, rare manual-like imports)
-              | ""                    for cash rows
+instrumentKey = ""                       for cash rows
+              | "gid:" R(@instrument)    for reconciliation rows
+              | else the key of the instrument the row RESOLVES to (below), never the row's own hints
 brokerId   = the importer's broker id, legacy rename applied (CASHU_NAMESPACE -> LEGACY_NAMESPACE)
 parts joined by US, dedupHashV2 = lower-hex sha256
 ```
+
+**instrumentKey of a resolved instrument (S17d).** One rule for a TS re-import and genesis (7.2), in
+`packages/domain/src/investments/importing/instrumentKey.ts` (`instrumentKeyV2`,
+`reconciliationInstrumentKey`); nothing else re-implements it. Over the instrument as a commit leaves
+it (a re-import: the resolved instrument with the import's new aliases appended; genesis: the stored
+instrument, alias rows by ascending id) and the import's broker id (`null` without a batch):
+
+1. the alias in the broker's namespace or an equivalent one (`cashu` and its legacy name are one),
+   ranked legacy namespace first, confirmed before guessed, then oldest first ->
+   `<canonical namespace>:<value>` (the legacy name never reaches the key);
+2. else the `isin` alias (confirmed first, oldest first) -> `isin:<value>`;
+3. else the instrument's `isin` column -> `isin:<isin>`;
+4. else `gid:` R(@instrument).
+
+A row without a broker starts at step 2. A key from the row's hints (symbol, else ISIN) is wrong: it
+differs from the stored instrument's key for an ISIN-only row of a broker-aliased instrument, a batch
+stored under the legacy broker name and an instrument with two aliases in one namespace, and the
+re-import would insert the row again.
 
 Occurrence counting per occurrence key within one file and the abs of parsed gross / quantity are as
 in `importing/dedup.py`.
@@ -289,8 +306,9 @@ those rows already carry gids that genesis gids would duplicate.
   re-import of the same file produces) and report rows where `sha1(str(account_id) + "|" +
   contentKeyV2)` differs from the stored hash (counts only). `legacy:<stored hash>` is used only when
   a column needed by the key is missing.
-- Investment transactions: rebuild `instrumentKey` from the instrument's aliases (the alias in the
-  batch's broker namespace, else `isin:`, else `gid:`); recover `occurrence` by recomputing the v1 hash
+- Investment transactions: rebuild `instrumentKey` from the stored instrument with the shared 4.6
+  rule (7.2; the alias in a namespace equivalent to the batch's broker, else `isin:`, else `gid:`);
+  recover `occurrence` by recomputing the v1 hash
   with the local ids for k = 0, 1, ... until it matches; if nothing matches (e.g. a merged instrument),
   take the rank of the row among rows of the same batch with the same occurrence key, ordered by
   `created_at` then id. `legacy:` only for missing columns. Lab: 262 rows, 2 reconciliation.
@@ -314,11 +332,12 @@ those rows already carry gids that genesis gids would duplicate.
 
 ### 7.2 instrumentKey of a migrated investment transaction
 
-In this order: none for a cash row (`""`); the alias in the batch's broker namespace (the batch's
-`broker` as stored; smallest alias id) -> `broker:value`; else the `isin` alias -> `isin:value`; else
-the instrument's `isin` column -> `isin:<isin>`; else `gid:@instrument`. A row without a batch starts
-at the `isin` steps. The hash's `brokerId` part is the batch's broker with the legacy rename applied.
-Reconciliation rows always use `gid:@instrument`.
+The 4.6 rule (`importing/instrumentKey.ts` `instrumentKeyV2`, imported by genesis through
+`@cashu/domain` `investments.importing`) over the row's stored instrument (alias rows by ascending id)
+with the batch's `broker` as stored (a legacy batch keys under the canonical namespace); none for a
+cash row (`""`); a row without an exported batch starts at the `isin` steps; an instrument outside the
+vault keys `gid:` with the 7.6 missing-instrument gid. The hash's `brokerId` part is the batch's
+broker with the legacy rename applied. Reconciliation rows always use `gid:@instrument`.
 
 ### 7.3 Instruments per vault (D-G1)
 
