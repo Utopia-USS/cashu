@@ -3,8 +3,12 @@ export {
   FRAME_OVERHEAD,
   FRAME_VERSION,
   type FrameContext,
+  type FramePolicy,
   frameKeyId,
+  frameSize,
+  MAX_FRAME_PLAINTEXT,
   openFrame,
+  padme,
   sealFrame,
 } from "./frame.js";
 export {

@@ -103,20 +103,21 @@ describe("cashU format golden vectors", () => {
   it("frame", () => {
     const frame = sealFrameWithNonce(sodium, ring(), utf8("hello frame"), frameCtx, nonce);
     expect(toHex(frame)).toBe(
-      "017bd6215fabb945b83e9fe5c54e25bd1d" +
+      "027bd6215fabb945b83e9fe5c54e25bd1d" +
         "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7" +
-        "583ad156dc278c2b13deba26c9637656ac21643eacd4e436f7590f",
+        "305fbd31db6286351d93b9be644b2e26" +
+        "3b20b134d1674ab17236387ff34b1c43",
     );
     expect(openFrame(sodium, ring(), frame, frameCtx)).toEqual(utf8("hello frame"));
   });
 
-  it("an independent implementation (@noble/ciphers, Hermes-safe) opens the frame", () => {
+  it("an independent implementation (@noble/ciphers + @noble/hashes) opens and unpads the frame", () => {
     const frame = sealFrameWithNonce(sodium, ring(), utf8("hello frame"), frameCtx, nonce);
     const kid = frame.subarray(1, 1 + KID_BYTES);
     // AAD spelled out byte by byte from the format comment in frame.ts.
     const aad = new Uint8Array([
-      ...utf8("cashu/frame/v1"),
-      1,
+      ...utf8("cashu/frame/v2"),
+      2,
       ...kid,
       ...lp(vaultId),
       ...lp(DEVICE_A),
@@ -126,7 +127,8 @@ describe("cashU format golden vectors", () => {
     const plain = xchacha20poly1305(frameKey, nonce, aad).decrypt(
       frame.subarray(FRAME_HEADER_BYTES),
     );
-    expect(plain).toEqual(utf8("hello frame"));
+    // u32 length 11 | "hello frame" | zero padding up to Padme(15) = 16.
+    expect(plain).toEqual(new Uint8Array([0, 0, 0, 11, ...utf8("hello frame"), 0]));
   });
 
   it("recovery public keys for the all-zero phrase", () => {
