@@ -5,5 +5,5 @@
     "rootDir": "..",
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["./*.ts", "./desktop-specs/*.ts"]
+  "include": ["./*.ts", "./desktop-specs/*.ts", "./store-harness/*.ts"]
 }

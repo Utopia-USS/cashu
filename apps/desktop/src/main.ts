@@ -8,10 +8,13 @@ import {
   BrowserWindow,
   ipcMain,
   Menu,
+  MessageChannelMain,
+  type MessagePortMain,
   Notification,
   screen,
   session,
   Tray,
+  utilityProcess,
 } from "electron/main";
 import { DesktopApp, type WindowHandle } from "./app.js";
 import {
@@ -21,6 +24,8 @@ import {
   MIN_SIZE,
   repoRoot,
   resolveDataDir,
+  STORE_PROCESS_ENTRY,
+  STORE_SUBDIR,
   TITLE,
   USER_DATA_SUBDIR,
 } from "./config.js";
@@ -30,6 +35,8 @@ import { Notifier } from "./notify.js";
 import { ALLOW, EXTERNAL, navigationDecision, redactToken } from "./security.js";
 import { Sidecar, sidecarSpec, verifyDataDir } from "./sidecar.js";
 import { ensurePrivateDir, loadState, rememberedPort, rememberPort, statePath } from "./state.js";
+import { storeProcessArgv } from "./storeControl.js";
+import { StoreProcess } from "./storeHost.js";
 import { pickLang, t } from "./strings.js";
 import { windowSize } from "./window.js";
 
@@ -233,6 +240,35 @@ ipcMain.handle("cashu:token", (event) => {
   return token;
 });
 
+// ---- store process (TRANSITIONAL(desktop-renderer): behind CASHU_DESKTOP_STORE=1) ---------------
+
+const storeProcess =
+  env[ENV.store] === "1"
+    ? new StoreProcess<MessagePortMain>({
+        fork: () =>
+          utilityProcess.fork(
+            join(here, STORE_PROCESS_ENTRY),
+            storeProcessArgv({ storeDir: join(dataDir, STORE_SUBDIR), demo: true }),
+            { serviceName: `${TITLE} store` },
+          ),
+        createChannel: () => new MessageChannelMain(),
+        log,
+      })
+    : null;
+
+// A page of the app's own origin asks for a port into the store process (the preload forwards the
+// request); the port goes back to that frame only.
+ipcMain.on("cashu:store-port", (event) => {
+  if (storeProcess === null) return;
+  if (!desktop.exposesBridgeTo(fromMainFrame(event))) {
+    log("store port request from a page outside the app refused");
+    return;
+  }
+  if (!storeProcess.connect((port) => event.sender.postMessage("cashu:store-port", null, [port]))) {
+    log("store port requested while the store process is not running");
+  }
+});
+
 // ---- lifecycle -----------------------------------------------------------------------------------
 
 app.on("second-instance", (_event, argv) => desktop.secondInstance(argv));
@@ -246,7 +282,7 @@ let shutDown = false;
 app.on("before-quit", (event) => {
   if (shutDown) return;
   event.preventDefault();
-  void desktop.shutdown().finally(() => {
+  void Promise.all([desktop.shutdown(), storeProcess?.stop()]).finally(() => {
     shutDown = true;
     app.quit();
   });
@@ -286,6 +322,9 @@ if (!hasLock) {
     if (process.platform === "darwin" && existsSync(iconPath)) {
       app.dock?.setIcon(nativeImage.createFromPath(iconPath));
     }
+    storeProcess?.start().catch((error: unknown) => {
+      log(`store process failed to start: ${error instanceof Error ? error.message : "error"}`);
+    });
     const result = await desktop.start(linkFromArgv(process.argv.slice(1)));
     log(`start: ${result}${desktop.error ? ` (${desktop.error})` : ""}`);
   });

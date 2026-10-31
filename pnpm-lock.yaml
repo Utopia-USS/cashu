@@ -33,6 +33,13 @@ importers:
   apps/cli: {}
 
   apps/desktop:
+    dependencies:
+      '@cashu/store':
+        specifier: workspace:*
+        version: link:../../packages/store
+      '@cashu/store-react':
+        specifier: workspace:*
+        version: link:../../packages/store-react
     devDependencies:
       '@playwright/test':
         specifier: 1.64.1
@@ -40,6 +47,9 @@ importers:
       electron:
         specifier: 45.1.0
         version: 45.1.0(supports-color@7.2.0)
+      rolldown:
+        specifier: 1.2.16
+        version: 1.2.16
 
   apps/mobile:
     dependencies:

@@ -17,6 +17,8 @@ packages/store/src/<module>/events.ts         zod event schemas (v1 under src/ev
 packages/store/src/<module>/materialize.ts    event -> view tables (the only SQL writer)
 packages/store/src/<module>/queries.ts        typed read queries
 packages/store/src/<module>/commands.ts       input schema + validate -> append events
+packages/store/src/query.ts, device/          defineQuery / watchQuery; the device-local store
+packages/store-react/src/                     useQuery / useCommand / providers, client (cache, port), host
 packages/ui-logic/src/<module>/useX.ts        reusable feature hooks (useUncategorizedMerchants)
 apps/mobile/app/...                           Expo Router route files (routes only)
 apps/mobile/src/screens/<screen>/             useXScreen.ts, XView.tsx, XView.stories.tsx, X.strings.ts
@@ -45,7 +47,8 @@ overrides in `biome.json`; the table in `SKILL.md` mirrors it. Additional rules:
 | production code never imports tests, fixtures or test helpers | depcruise `no-test-code-in-prod` |
 | no import cycles (type-only edges excepted) | depcruise `no-circular` (full run) |
 | a symbol tagged `/** @package */` or `/** @private */` stays in its package / folder | Biome `noPrivateImports` |
-| store, sync, i18n, ui-logic stay platform free (no `node:*`, Electron, React Native, Expo, DOM) | Biome overrides |
+| store, store-react, sync, i18n, ui-logic stay platform free (no `node:*`, Electron, React Native, Expo, DOM) | Biome overrides |
+| Views and packages/ui never import store-react (`useQuery` / `useCommand` belong in the screen hook) | depcruise `view-is-pure`, `ui-is-pure`, Biome View override |
 
 Need data from another module? Use its public `index.ts`, or move the shared concept to `core`.
 
@@ -53,7 +56,12 @@ Need data from another module? Use its public `index.ts`, or move the shared con
 
 - A rule that stays the same with a different UI (net worth, transfer matching, a signal) -> `domain`.
 - Turning events into rows, or reading rows -> `store` (materializer / query).
-- "When the user taps X, record Y" -> a `store` command, called from a screen hook.
+- "When the user taps X, record Y" -> a `store` command, called from a screen hook (`useCommand`).
+- Live reads in React, the store client, the port between renderer and store process -> `store-react`
+  (React-free subpaths: `./client` for the renderer, `./local` for an in-process engine, `./host` for
+  the store process, `./protocol` for both ends).
+- Device-local app state (current profile, device settings) -> the device store
+  (`@cashu/store/device`), read with `useQuery`, written by device commands; never synced.
 - A data need two screens (or two platforms) share -> a feature hook in `ui-logic`.
 - What one screen shows and does -> its screen hook, next to the screen in the app.
 - Pixels -> `packages/ui` (shared) or the View (one screen's composition).
@@ -71,9 +79,17 @@ desktop, expo-sqlite or op-sqlite on mobile), `KeyStore`, `Transport`, `Clock`.
 | Process | Runs | Talks to |
 |---|---|---|
 | Electron main | windows, tray, menus, deep links, auto-update, spawns the utility process | renderer over the typed preload bridge |
-| Electron utility process (`utilityProcess.fork`) | the store engine: SQLite, materializer, sync, the daily worker, MCP server | renderer over a `MessagePort` (query snapshots pushed, commands in) |
+| Electron utility process (`utilityProcess.fork`, `apps/desktop/src/storeProcess`) | the store engine: SQLite (`node:sqlite`, no native module for Electron's ABI), materializer, sync, the daily worker, MCP server | renderer over a `MessagePort` (`serveStore`: query snapshots pushed, commands in, only registered ids) |
 | Electron renderer (sandboxed, `contextIsolation`) | React UI only; never opens SQLite | utility process through the port |
 | Expo app (Hermes) | UI and the store engine in-process (sync SQLite driver) | the relay / folder transport |
 
 This placement is why `useQuery` suspends on the desktop's first read (an async hop) and never on
 mobile (a sync read); see [data-flow.md](data-flow.md).
+
+How a renderer gets its port: the page posts `{ cashu: "store-port-request" }` to its own window; the
+preload (which alone can talk to main) forwards it; main checks that the sending frame is the app's
+own origin, creates a `MessageChannelMain`, sends one end to the store process (`connect`) and the
+other back to that frame, which receives it as a window message (`{ cashu: "store-port" }`).
+MessagePorts cannot cross `contextBridge`, hence the window message. Main routes ports and never
+reads store data. Until the first TS screen reads the store, this runs only behind
+`CASHU_DESKTOP_STORE=1` next to the Python sidecar (TRANSITIONAL(desktop-renderer)).

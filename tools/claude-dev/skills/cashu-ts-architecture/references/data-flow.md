@@ -32,11 +32,24 @@ One path for local and remote changes, so the UI never has two sources of truth.
 ## Reading: `useQuery(query, args)`
 
 - Returns the rows directly. Built on `useSyncExternalStore` over a snapshot cache keyed by
-  `query.key(args)`, with ref-counted subscriptions and structural sharing (unchanged rows keep their
-  identity, so list rows and the compiler skip work).
+  target + `queryKey(query, args)` (canonical JSON args), with ref-counted subscriptions (the last
+  reader leaving releases the live query after a short linger) and structural sharing (unchanged rows
+  keep their identity, and a re-run with an equal result re-renders nobody, so list rows and the
+  compiler skip work). Code: `packages/store-react` (`useQuery`, `QueryCache`), live re-runs by
+  `watchQuery` in `packages/store/src/query.ts`.
+- A query is `defineQuery({ id, scope?, run(read, args) })`: `scope` `vault` (default, the current
+  profile's store) or `device` (the device store). The id is what crosses the desktop port, so it is
+  stable and unique (`<module>.<name>`); args are JSON.
 - **Suspends only on the first read when the read is async**: in the Electron renderer the store runs
-  in the utility process, so a query with no cached snapshot throws a promise to the route's
-  `<Suspense>`; later changes are pushed. On mobile the driver is synchronous and it never suspends.
+  in the utility process, so a query with no cached snapshot suspends to the route's `<Suspense>`
+  (`use(entry.ready)`, called unconditionally: React tracks `use` by position, and the thenable carries
+  React's `status` fields so a settled read returns at once); later changes are pushed. On mobile the
+  driver is synchronous (`createSyncClient`) and it never suspends.
+- Clients: `createSyncClient(stores)` (`@cashu/store-react/local`, phone and tests: the engine in
+  process) and `createPortClient(channel)` (`@cashu/store-react/client`, desktop renderer). The store
+  process serves a port with `serveStore` (`./host`): zod-validated messages both ways
+  (`./protocol`), only registered query / command ids, `Decimal` and `Money` tagged across the port
+  (structured clone drops prototypes), a snapshot pushed only when its encoded value changed.
 - A query is a typed object from `packages/store/src/<module>/queries.ts` (typed builder, row decoder
   returning domain types: `Money`, gids). The UI never sees raw rows.
 - **Invalidation is by tables, tracked by the store**: the store records each prepared query's read
@@ -55,7 +68,9 @@ One path for local and remote changes, so the UI never has two sources of truth.
   for expected outcomes (`{ ok: true } | { ok: false; reason: "duplicate" }`). Never writes view tables.
 - `const { run, isPending } = useCommand(budget.setMerchantCategory)` wraps `run` in a React 19
   transition. Expected failures come back as the union; unexpected throws reach the nearest error
-  boundary. No `error` state to forget.
+  boundary (React 19 rethrows an error of an async transition there; `run`'s promise then never
+  settles). No `error` state to forget. `run` accepts the command's input before zod defaults
+  (`Command<I, R, In>`). A device command (`defineDeviceCommand`) writes the device store instead.
 - No `useOptimistic`: the local apply is the optimistic update.
 - Commands with side effects outside the log (connector cursors, notifications, approvals) follow the
   first-writer-wins rules of the event spec and run only on the device that owns them.
@@ -72,7 +87,7 @@ the trust boundary. No hand-rolled field state.
 | Kind | Mechanism |
 |---|---|
 | Stable services (store engine, clock, key store, catalogs) | React Context whose value never changes identity, provided at the app root |
-| Persistent app state (current profile, settings, privacy mode, language pin) | device-local store tables, read with `useQuery` |
+| Persistent app state (current profile, settings, privacy mode, language pin) | device-local store tables (`@cashu/store/device`: `device_settings`), read with `useQuery`, written by device commands; `ProfileProvider` reads `device.currentVault` and makes that vault the store of every vault query |
 | Ephemeral cross-screen UI state (a shared date range, a multi-select) | Zustand with selectors, in the app or ui-logic (never in Views or packages/ui) |
 | Remote data | never in the UI: services write it into the store |
 

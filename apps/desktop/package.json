@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-store.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
     "lint": "biome check .",
     "test": "vitest run",
@@ -15,10 +15,15 @@
     "dev": "node scripts/dev.mjs",
     "e2e": "playwright test -c e2e/playwright.config.ts"
   },
+  "dependencies": {
+    "@cashu/store": "workspace:*",
+    "@cashu/store-react": "workspace:*"
+  },
   "devDependencies": {
     "@playwright/test": "1.64.1",
-    "electron": "45.1.0"
+    "electron": "45.1.0",
+    "rolldown": "1.2.16"
   },
   "main": "dist/main.js",
-  "description": "cashU desktop shell (Electron). Strangler v1: spawns the Python `cashu serve` as a sidecar."
+  "description": "cashU desktop shell (Electron). Strangler v1: spawns the Python `cashu serve` as a sidecar; the TS store process (utility process) runs beside it behind CASHU_DESKTOP_STORE=1."
 }

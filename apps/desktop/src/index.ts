@@ -10,6 +10,8 @@ export * from "./pages.js";
 export * from "./security.js";
 export * from "./sidecar.js";
 export * from "./state.js";
+export * from "./storeControl.js";
+export * from "./storeHost.js";
 export * from "./strings.js";
 export * from "./tray.js";
 export * from "./window.js";

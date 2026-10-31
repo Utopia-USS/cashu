@@ -8,10 +8,34 @@
 // this frame shows the app's own origin, and the token itself is again checked on every call.
 import electron = require("electron");
 
+/** The page's window as this preload uses it (the shell's tsconfig has no DOM lib). */
+interface PageWindow {
+  addEventListener(
+    type: "message",
+    listener: (event: { readonly source: unknown; readonly data: unknown }) => void,
+  ): void;
+  postMessage(message: unknown, targetOrigin: string, transfer: unknown[]): void;
+  readonly location: { readonly origin: string };
+}
+
 if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
   electron.contextBridge.exposeInMainWorld("pywebview", {
     api: {
       token: (): Promise<string | null> => electron.ipcRenderer.invoke("cashu:token"),
     },
+  });
+
+  // Store port (TRANSITIONAL(desktop-renderer): the main process answers only with
+  // CASHU_DESKTOP_STORE=1). A MessagePort cannot cross the context bridge, so the page asks with
+  // `window.postMessage({ cashu: "store-port-request" })` and receives the port the same way, from
+  // this frame's own origin; the main process checks the sending frame again before it routes a port.
+  const page = (globalThis as { window?: PageWindow }).window;
+  page?.addEventListener("message", (event) => {
+    const data = event.data as { cashu?: unknown } | null;
+    if (event.source !== page || data?.cashu !== "store-port-request") return;
+    electron.ipcRenderer.send("cashu:store-port");
+  });
+  electron.ipcRenderer.on("cashu:store-port", (event) => {
+    page?.postMessage({ cashu: "store-port" }, page.location.origin, [...event.ports]);
   });
 }

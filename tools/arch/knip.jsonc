@@ -24,7 +24,13 @@
       "project": ["src/**/*.{ts,tsx}"]
     },
     "apps/desktop": {
-      "entry": ["src/main.ts", "src/preload.cts", "scripts/*.mjs", "e2e/**/*.ts"],
+      "entry": [
+        "src/main.ts",
+        "src/preload.cts",
+        "src/storeProcess/main.ts",
+        "scripts/*.mjs",
+        "e2e/**/*.ts"
+      ],
       "project": ["src/**/*.{ts,tsx,cts}", "scripts/**/*.mjs", "e2e/**/*.ts"],
       // Loading its Playwright config would run prepareSpecs() (writes a spec tree); list e2e/ instead.
       "playwright": false,

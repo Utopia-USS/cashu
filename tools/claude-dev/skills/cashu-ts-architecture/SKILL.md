@@ -22,9 +22,10 @@ silence a rule to get green.
 |---|---|---|---|
 | Apps | `apps/desktop`, `apps/mobile`, `apps/cli`, `apps/sync-daemon`, `apps/relay` | any package, never another app | route files, screen hooks, Views, platform adapters, process lifecycle |
 | Services | `packages/api`, `packages/mcp` | domain, store, sync, i18n | HTTP / MCP surfaces |
-| UI logic | `packages/ui-logic` | domain, store, i18n | reusable feature hooks shared by desktop and mobile (no screens, no JSX) |
+| UI logic | `packages/ui-logic` | domain, store, store-react, i18n | reusable feature hooks shared by desktop and mobile (no screens, no JSX) |
 | UI system | `packages/ui` | domain, i18n | tokens, display components, platform controls (see `cashu-ui`) |
-| Store | `packages/store` | domain, sync | events, materializers, queries, commands, the `useQuery` engine |
+| Store bindings | `packages/store-react` | domain, store | `useQuery`, `useCommand`, `StoreProvider` / `ProfileProvider`, the snapshot cache, the store port (both ends) |
+| Store | `packages/store` | domain, sync | events, materializers, queries (`defineQuery`, `watchQuery`), commands, the device-local store |
 | i18n | `packages/i18n` | domain | catalogs runtime, plurals, `Intl` formatters, `useStrings` |
 | Sync | `packages/sync` | domain | log, crypto, transports, lease |
 | Market | `packages/market` | domain | leader-only market data over HTTP (Yahoo, stooq, NBP, calendar feeds) behind an injected `fetch` |
