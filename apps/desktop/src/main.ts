@@ -210,14 +210,25 @@ export const notifier = new Notifier({
 
 // ---- token bridge (PK1): the page asks, the main process answers for the app's origin only ------
 
-ipcMain.handle("cashu:token", (event) => {
+/** The sender is the main window's top frame (no iframe, no other window). */
+function fromMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): string | null {
   const frame = event.senderFrame;
-  const fromMain =
+  const ok =
     mainWindow !== null &&
     event.sender === mainWindow.webContents &&
     frame !== null &&
     frame === event.sender.mainFrame;
-  const token = fromMain ? desktop.tokenFor(frame.url) : null;
+  return ok ? frame.url : null;
+}
+
+// TRANSITIONAL(S36): the preload asks (synchronously, before page scripts run) whether to expose
+// the `window.pywebview` shim at all; only the app's own origin gets it.
+ipcMain.on("cashu:bridge-allowed", (event) => {
+  event.returnValue = desktop.exposesBridgeTo(fromMainFrame(event));
+});
+
+ipcMain.handle("cashu:token", (event) => {
+  const token = desktop.tokenFor(fromMainFrame(event));
   if (token === null) log("token request from a page outside the app refused");
   return token;
 });

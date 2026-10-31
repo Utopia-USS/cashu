@@ -3,49 +3,36 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { dashboardWindow, expect, launchDesktop, launchEnv, test } from "../electron-test.ts";
+import {
+  alive,
+  dashboardWindow,
+  expect,
+  launchDesktop,
+  launchEnv,
+  portFree,
+  sidecarPids,
+  test,
+} from "../electron-test.ts";
 
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function serving(port: number): string {
-  const r = spawnSync("pgrep", ["-f", "--", `serve_offline.py --port ${port}( |$)`], {
-    encoding: "utf8",
-  });
-  return r.stdout.trim();
-}
-
-async function portFree(port: number): Promise<boolean> {
-  const { createServer } = await import("node:net");
-  return new Promise((resolve) => {
-    const s = createServer();
-    s.once("error", () => resolve(false));
-    s.listen(port, "127.0.0.1", () => s.close(() => resolve(true)));
-  });
+/** A demo data dir of its own for a test that launches its own shell. */
+function seed(name: string): string {
+  const dataDir = join(process.env.E2E_ROOT as string, name);
+  const result = spawnSync(
+    process.env.E2E_PYTHON as string,
+    [join(process.env.E2E_REPO ?? "", "scripts", "demo_data.py"), "--data-dir", dataDir],
+    { env: launchEnv(dataDir), encoding: "utf8" },
+  );
+  expect(result.status).toBe(0);
+  return dataDir;
 }
 
 test("quit stops the sidecar and frees the port", async () => {
-  const root = process.env.E2E_ROOT as string;
-  const dataDir = join(root, "data-quit");
-  const env = launchEnv(dataDir);
-  const seed = spawnSync(
-    process.env.E2E_PYTHON as string,
-    [join(process.env.E2E_REPO ?? "", "scripts", "demo_data.py"), "--data-dir", dataDir],
-    { env, encoding: "utf8" },
-  );
-  expect(seed.status).toBe(0);
-
+  const dataDir = seed("data-quit");
   const app = await launchDesktop({ dataDir });
   const { origin } = await dashboardWindow(app);
   const port = Number(new URL(origin).port);
-  expect(serving(port)).not.toBe("");
-  const pids = serving(port).split("\n").map(Number);
+  const pids = sidecarPids(app.process().pid as number);
+  expect(pids).toHaveLength(1);
 
   await app.evaluate(({ app: electronApp }) => electronApp.quit());
   const closed = new Promise<void>((done) => app.process().once("exit", () => done()));
@@ -54,8 +41,25 @@ test("quit stops the sidecar and frees the port", async () => {
     new Promise((_, no) => setTimeout(() => no(new Error("electron did not quit")), 30_000)),
   ]);
 
-  expect(serving(port)).toBe("");
   for (const pid of pids) expect(alive(pid)).toBe(false);
   expect(await portFree(port)).toBe(true);
+  expect(existsSync(join(dataDir, "api-token"))).toBe(false);
+});
+
+test("a SIGKILLed shell leaves no orphan sidecar behind", async () => {
+  const dataDir = seed("data-orphan");
+  const app = await launchDesktop({ dataDir });
+  const { origin } = await dashboardWindow(app);
+  const port = Number(new URL(origin).port);
+  const [pid, ...others] = sidecarPids(app.process().pid as number);
+  expect(pid).toBeDefined();
+  expect(others).toHaveLength(0);
+
+  // No handler, no before-quit: only the closed stdin pipe tells the sidecar (core/parent_pipe.py).
+  const exited = new Promise<void>((done) => app.process().once("exit", () => done()));
+  app.process().kill("SIGKILL");
+  await exited;
+  await expect.poll(() => alive(pid as number), { timeout: 15_000, intervals: [100] }).toBe(false);
+  await expect.poll(() => portFree(port), { timeout: 5_000 }).toBe(true);
   expect(existsSync(join(dataDir, "api-token"))).toBe(false);
 });

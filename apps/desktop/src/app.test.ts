@@ -168,6 +168,16 @@ describe("opening the window (shell.run)", () => {
     expect(app.tokenFor("data:text/html,x")).toBeNull();
     expect(app.tokenFor(undefined)).toBeNull();
   });
+
+  it("exposes the pywebview shim to the app's own origin only", async () => {
+    const { app } = setup();
+    expect(app.exposesBridgeTo(`${INFO.origin}/`)).toBe(false); // the loading page: no origin yet
+    await app.start();
+    expect(app.exposesBridgeTo(`${INFO.origin}/#/demo-anna/overview`)).toBe(true);
+    expect(app.exposesBridgeTo("data:text/html,loading")).toBe(false);
+    expect(app.exposesBridgeTo("https://evil.example/")).toBe(false);
+    expect(app.exposesBridgeTo(null)).toBe(false);
+  });
 });
 
 describe("single instance (test_second_instance_is_refused_and_focuses_the_first)", () => {

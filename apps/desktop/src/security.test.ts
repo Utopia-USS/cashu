@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   ALLOW,
   BLOCK,
+  bridgeAllowed,
   EXTERNAL,
+  generateToken,
   navigationDecision,
-  parseDashboardLine,
   redactToken,
   sameOrigin,
   tokenForSender,
@@ -50,27 +51,38 @@ describe("navigation is pinned to the app origin (PK5)", () => {
   });
 });
 
-describe("the one-time Dashboard line", () => {
-  it("is parsed from the sidecar output, also when the console wrapped it", () => {
-    const line = `Dashboard: http://127.0.0.1:8500/#token=${TOKEN}`;
-    expect(parseDashboardLine(`noise\n${line}\n`)).toEqual({ port: 8500, token: TOKEN });
-    expect(parseDashboardLine(`Dashboard: http://127.0.0.1:8500/#token=\n${TOKEN}`)).toEqual({
-      port: 8500,
-      token: TOKEN,
-    });
-    expect(parseDashboardLine(`Dashboard: http://example.com:8500/#token=${TOKEN}`)).toBeNull();
-    expect(parseDashboardLine("nothing here")).toBeNull();
-  });
-
-  it("is parsed and redacted through terminal colour codes", () => {
-    const coloured = `\u001b[32mDashboard:\u001b[0m \u001b[4;94mhttp://127.0.0.1:8500/#\u001b[0m\u001b[4;94mtoken\u001b[0m\u001b[4;94m=\u001b[0m\u001b[4;94m${TOKEN}\u001b[0m`;
-    expect(parseDashboardLine(coloured)).toEqual({ port: 8500, token: TOKEN });
-    expect(redactToken(coloured)).not.toContain(TOKEN);
+describe("the per-launch token", () => {
+  it("is 32 random bytes in URL-safe base64, the shape core/parent_pipe.py accepts", () => {
+    const token = generateToken();
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(generateToken()).not.toBe(token);
+    expect(generateToken(() => Buffer.alloc(32, 0xff))).toBe(`${"_".repeat(42)}8`);
   });
 
   it("is redacted before anything is logged", () => {
     expect(redactToken(`Dashboard: http://127.0.0.1:8500/#token=${TOKEN} done`)).toBe(
       "Dashboard: http://127.0.0.1:8500/#token=<redacted> done",
     );
+    expect(redactToken(`\u001b[32mgot ${TOKEN}\u001b[0m`, TOKEN)).toBe("got <redacted>");
+  });
+});
+
+describe("the pywebview shim is exposed to the app origin only", () => {
+  it("allows the app's own page and nothing else", () => {
+    expect(bridgeAllowed(`${ORIGIN}/#/demo-anna/overview`, ORIGIN)).toBe(true);
+    for (const url of [
+      "data:text/html,loading",
+      "about:blank",
+      "https://evil.example/",
+      "http://127.0.0.1:8501/",
+      "http://localhost:8500/",
+      "",
+      null,
+      undefined,
+    ]) {
+      expect(bridgeAllowed(url, ORIGIN)).toBe(false);
+    }
+    // before the sidecar answered there is no app origin: nothing is exposed
+    expect(bridgeAllowed(`${ORIGIN}/`, null)).toBe(false);
   });
 });

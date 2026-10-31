@@ -1,14 +1,16 @@
 /// <reference types="node" />
 import { type SpawnOptions, spawn, type spawnSync } from "node:child_process";
+import { type AddressInfo, createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { isPortFree } from "./net.js";
 import {
   buildSidecarEnv,
   Sidecar,
   SidecarError,
   type SpawnFn,
+  sidecarArgs,
   sidecarSpec,
   verifyDataDir,
 } from "./sidecar.js";
@@ -40,20 +42,23 @@ function make(mode: string, extra: Partial<ConstructorParameters<typeof Sidecar>
   return { sidecar, lines };
 }
 
+const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/;
+
 describe("sidecar start and stop (shell.ServerThread)", () => {
-  it("starts on a free port, learns the token and stops the child", async () => {
+  it("generates the token, hands it over stdin, waits for the health probe and stops the child", async () => {
     const { sidecar, lines } = make("ok");
     const info = await sidecar.start();
     expect(info.port).toBeGreaterThan(1023);
     expect(info.origin).toBe(`http://127.0.0.1:${info.port}`);
     expect(info.url).toBe(`${info.origin}/`);
-    expect(info.token).toBe("fakeToken_0123456789abcdefghijklmnop");
+    expect(info.token).toMatch(TOKEN_SHAPE);
     expect(sidecar.running).toBe(true);
-    expect(await (await fetch(info.url)).text()).toContain("<html>");
+    const health = `${info.origin}/api/health`;
+    expect((await fetch(health, { headers: { "X-Cashu-Token": info.token } })).status).toBe(200);
+    expect((await fetch(health)).status).toBe(401);
 
-    // The token and the request log never reach the log.
-    expect(lines.join("\n")).not.toContain(info.token);
-    expect(lines.join("\n")).toContain("#token=<redacted>");
+    // The request log never reaches the log.
+    expect(lines.join("\n")).toContain("Application startup complete");
     expect(lines.join("\n")).not.toContain("secret-path");
 
     const pid = info.pid;
@@ -64,15 +69,62 @@ describe("sidecar start and stop (shell.ServerThread)", () => {
     expect(sidecar.running).toBe(false);
   });
 
-  it("escalates to SIGKILL when the child ignores SIGINT", async () => {
+  it("keeps the token off the command line and out of the environment", async () => {
+    const seen: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
+    const spawnFn: SpawnFn = (command, args, options: SpawnOptions) => {
+      seen.push({ args, env: options.env ?? {} });
+      return spawn(command, args, options);
+    };
+    const { sidecar } = make("ok", { spawn: spawnFn });
+    const info = await sidecar.start();
+    await sidecar.stop();
+    const [call] = seen;
+    expect(call?.args.slice(-3)).toEqual(["--parent-pipe", "--port", String(info.port)]);
+    expect(call?.args.join(" ")).not.toContain(info.token);
+    expect(Object.values(call?.env ?? {}).join(" ")).not.toContain(info.token);
+  });
+
+  it("uses a fresh token per launch", async () => {
+    const a = make("ok").sidecar;
+    const b = make("ok").sidecar;
+    const [ia, ib] = [await a.start(), await b.start()];
+    await Promise.all([a.stop(), b.stop()]);
+    expect(ia.token).not.toBe(ib.token);
+  });
+
+  it("redacts the token should the child ever print it", async () => {
+    const { sidecar, lines } = make("leaky");
+    const info = await sidecar.start();
+    await vi.waitFor(() => expect(lines.join("\n")).toContain("debug: token <redacted>"));
+    await sidecar.stop();
+    expect(lines.join("\n")).not.toContain(info.token);
+  });
+
+  it("never takes a server without our token for ours", async () => {
+    const { sidecar } = make("foreign", { startupTimeoutMs: 800 });
+    const error = await sidecar.start().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect((error as Error).message).toMatch(/did not start within/);
+    expect(sidecar.running).toBe(false);
+  });
+
+  it("escalates to SIGKILL when the child ignores the closed pipe", async () => {
     const { sidecar } = make("stubborn", { stopTimeoutMs: 300 });
     const info = await sidecar.start();
     await sidecar.stop();
     expect(alive(info.pid)).toBe(false);
   });
 
-  it("reports a failed start with the child's last line", async () => {
-    const { sidecar } = make("exit-early");
+  it("reports a failed start with the child's last line and does not retry", async () => {
+    const ports: (number | null | undefined)[] = [];
+    const { sidecar } = make("exit-early", {
+      choosePort: async (preferred) => {
+        ports.push(preferred);
+        return freePort();
+      },
+    });
     const error = await sidecar.start().then(
       () => null,
       (e: unknown) => e,
@@ -80,6 +132,7 @@ describe("sidecar start and stop (shell.ServerThread)", () => {
     expect(error).toBeInstanceOf(SidecarError);
     expect((error as Error).message).toMatch(/stopped during startup \(exit 3\)/);
     expect((error as Error).message).toContain("boom");
+    expect(ports).toHaveLength(1);
     expect(sidecar.running).toBe(false);
   });
 
@@ -93,28 +146,29 @@ describe("sidecar start and stop (shell.ServerThread)", () => {
     expect(sidecar.running).toBe(false);
   });
 
-  it("retries on another port when its own child could not bind", async () => {
-    const modes = ["busy", "ok"];
-    let attempt = 0;
-    const spawnFn: SpawnFn = (command, args, options: SpawnOptions) =>
-      spawn(command, args, {
-        ...options,
-        env: { ...options.env, FAKE_MODE: modes[attempt++] ?? "ok" },
+  it("retries on another port when the chosen one was taken before the child bound it", async () => {
+    // Another process on the port (it drops every connection, so it never answers a probe).
+    const taken = createServer((socket) => socket.destroy());
+    const takenPort = await new Promise<number>((done) =>
+      taken.listen(0, "127.0.0.1", () => done((taken.address() as AddressInfo).port)),
+    );
+    try {
+      const ports: (number | null | undefined)[] = [];
+      const { sidecar } = make("ok", {
+        preferredPort: takenPort,
+        // The race: the port was free when chosen, another process bound it before the child.
+        choosePort: async (preferred) => {
+          ports.push(preferred);
+          return preferred ?? (await freePort());
+        },
       });
-    const ports: (number | null | undefined)[] = [];
-    const { sidecar } = make("ok", {
-      spawn: spawnFn,
-      preferredPort: 51111,
-      choosePort: async (preferred) => {
-        ports.push(preferred);
-        return preferred ? 51111 : await freePort();
-      },
-    });
-    const info = await sidecar.start();
-    expect(attempt).toBe(2);
-    expect(ports).toEqual([51111, null]);
-    expect(info.port).not.toBe(51111);
-    await sidecar.stop();
+      const info = await sidecar.start();
+      expect(ports).toEqual([takenPort, null]);
+      expect(info.port).not.toBe(takenPort);
+      await sidecar.stop();
+    } finally {
+      await new Promise((done) => taken.close(done));
+    }
   });
 
   it("tells the shell when the sidecar dies after it started", async () => {
@@ -122,8 +176,7 @@ describe("sidecar start and stop (shell.ServerThread)", () => {
     const { sidecar } = make("ok", { onExit: (m) => messages.push(m) });
     const info = await sidecar.start();
     process.kill(info.pid as number, "SIGKILL");
-    await new Promise((done) => setTimeout(done, 300));
-    expect(messages).toHaveLength(1);
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(messages[0]).toMatch(/stopped unexpectedly/);
     expect(sidecar.running).toBe(false);
   });
@@ -153,7 +206,17 @@ describe("sidecar environment and command", () => {
     expect(env.CASHU_DEV_EMBED_TOKEN).toBe("");
     expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
     expect(env.CASHU_HOST).toBe("127.0.0.1");
+    expect(env.COLUMNS).toBeUndefined(); // nothing is parsed from the output any more
     expect(env.KEEP).toBe("yes");
+  });
+
+  it("appends the parent-pipe contract and the port", () => {
+    expect(sidecarArgs({ command: "x", args: ["serve"], cwd: "/" }, 51234)).toEqual([
+      "serve",
+      "--parent-pipe",
+      "--port",
+      "51234",
+    ]);
   });
 
   it("defaults to the checkout's venv and accepts an override", () => {

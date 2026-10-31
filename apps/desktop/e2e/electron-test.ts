@@ -1,9 +1,8 @@
 /// <reference types="node" />
 // The `page` of every test is the Electron window. One Electron app per worker (the specs run one
 // after another), launched on the demo data dir the global setup seeded.
-import type { ChildProcess } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { type ChildProcess, spawnSync } from "node:child_process";
+import { createServer } from "node:net";
 import { _electron, test as base, type ElectronApplication, type Page } from "@playwright/test";
 
 export interface DesktopOptions {
@@ -63,10 +62,43 @@ export async function dashboardWindow(
   return { page, origin: new URL(page.url()).origin };
 }
 
-export function readApiToken(dataDir: string): string {
-  const file = join(dataDir, "api-token");
-  if (!existsSync(file)) throw new Error(`no ${file}`);
-  return readFileSync(file, "utf8").trim();
+/**
+ * The API token, asked the way the SPA asks it: through the window's TRANSITIONAL(S36) bridge. The
+ * shell generates it and hands it to the sidecar over a pipe; no file or output carries it.
+ */
+export async function bridgeToken(page: Page): Promise<string> {
+  const token = await page.evaluate(() =>
+    (
+      window as unknown as { pywebview?: { api: { token(): Promise<string | null> } } }
+    ).pywebview?.api.token(),
+  );
+  if (!token) throw new Error("the window's token bridge did not answer");
+  return token;
+}
+
+/** The sidecar process of a shell: the child of the Electron main that runs the offline server. */
+export function sidecarPids(electronPid: number): number[] {
+  const r = spawnSync("pgrep", ["-P", String(electronPid), "-f", "serve_offline\\.py"], {
+    encoding: "utf8",
+  });
+  return r.stdout.split("\n").filter(Boolean).map(Number);
+}
+
+export function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function portFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = createServer();
+    s.once("error", () => resolve(false));
+    s.listen(port, "127.0.0.1", () => s.close(() => resolve(true)));
+  });
 }
 
 export interface Desktop {
@@ -83,10 +115,10 @@ export const test = base.extend<{ page: Page }, { desktop: Desktop }>({
       const dataDir = process.env.E2E_DATA_DIR;
       if (!dataDir) throw new Error("E2E_DATA_DIR is not set (global setup did not run)");
       const app = await launchDesktop({ dataDir });
-      const { origin } = await dashboardWindow(app);
+      const { page, origin } = await dashboardWindow(app);
       // The specs (and their own API calls) address the sidecar through these.
       process.env.E2E_BASE_URL = origin;
-      process.env.E2E_TOKEN = readApiToken(dataDir);
+      process.env.E2E_TOKEN = await bridgeToken(page);
       await use({ app, origin, dataDir, process: app.process() });
       await app.close().catch(() => {});
     },
