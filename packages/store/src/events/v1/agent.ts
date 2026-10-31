@@ -1,0 +1,40 @@
+// Reviews, proposals and connector bindings payloads (events.md 8.10).
+import { z } from "zod";
+import { empty, payload } from "./helpers.js";
+import { gid, jsonObject, nonEmpty, timestamp } from "./primitives.js";
+
+export const PROPOSAL_KINDS = ["strategy", "custom_rule", "import", "budget_import"] as const;
+
+/** Proposal payloads use gids and blob refs: a local `account_id` or a `staged` path is rejected. */
+const proposalPayload = jsonObject.refine((p) => !("account_id" in p) && !("staged" in p), {
+  message: "proposal payload must use `account` (gid) and `blob` instead of account_id / staged",
+});
+
+export const agentEvents = {
+  "review.done": payload({
+    module: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    doneAt: timestamp.optional(),
+    notes: z.string().nullable(),
+    stats: jsonObject,
+  }),
+  "review.undone": empty,
+
+  "proposal.created": payload({
+    kind: z.enum(PROPOSAL_KINDS),
+    summary: z.string(),
+    reason: z.string().nullable(),
+    payload: proposalPayload,
+    source: nonEmpty,
+  }),
+  "proposal.approved": payload({ result: jsonObject }),
+  "proposal.rejected": payload({ note: z.string().nullable() }),
+  "proposal.failed": payload({ result: jsonObject }),
+
+  "connectorBinding.set": payload({
+    account: gid,
+    connectorId: nonEmpty,
+    params: jsonObject,
+    autoCommit: z.boolean(),
+  }),
+  "connectorBinding.removed": empty,
+} as const;
