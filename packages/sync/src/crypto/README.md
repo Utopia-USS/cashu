@@ -230,6 +230,13 @@ raise cuts (lease watermarks, `prev` links, earlier revocations; devices/revocat
 the keys of a revoked device (`Revocation.signPublicKeys`), and through `Registry.statementKeys` every
 lease event, watermark, waiver writer, recovery change and name.
 
+One exception, by design: a revocation CONSENT (H2) verifies with any key certified for the target,
+whatever the revocations, because it records what the target agreed to before them, so a key minted
+later can never void a genuine consent. A consent forged with a minted key still needs a revocation
+SIGNER with a decision key: a revoked device and its puppets have none once the words revoked it,
+and a still-trusted device that mints a key for the target makes it conflicted (untrusted) anyway
+(see "who may revoke a device").
+
 Why this closes the class (P2, V1, V2 and every longer chain): to raise its own cut, or to make any
 statement count for it, a revoked device X needs a key the fold accepts for a device other than
 itself, or a second key for itself. Any key X can mint is certified by X or by a device below X (a
@@ -245,9 +252,29 @@ Tests: devices/attestation.test.ts (P2, V1, V2, chains of length 3, controls) an
 certification-graph property (devices/decisionKeysProperty.ts, default seeds in decisionKeys.test.ts,
 the sweep in decisionKeys.property.exhaustive.test.ts).
 
+### S29c: who may revoke a device (H2, lead decision; a protocol rule)
+
+- A device that is NOT in the owner's hands (lost, stolen) is revoked with the recovery words: a
+  recovery-signed revocation needs nothing else, can never be contested or retaliated against, and
+  its re-certifications are recovery-issued.
+- A device-signed revocation of ANOTHER device counts only with that device's consent
+  (`consentToRevocation` on the target: its signature over the vault, the revocation's eid, the
+  entries with their cuts, and the revoker). The owner confirms on the device being retired, which is
+  therefore in the owner's hands. A device may always revoke itself.
+- Any other device-signed revocation is refused by every device's fold (`no_consent`), and the flow
+  refuses to write it (`authority_required`).
+- Consequences: a revoked or stolen device can no longer retaliate (review H5: its revocations need
+  its victims' consent), so a revocation never takes down its revoker or anyone else's subtree; a
+  stolen device revoked with the words, and every puppet it paired, signs nothing that counts in any
+  fold step.
+- Residual: a still-trusted (stolen, not yet revoked) device can certify a second key pair for
+  another device and forge that device's consent; the target is then conflicted (untrusted) anyway.
+  Revoking the thief with the words ends it.
+
 ### S29c: the revoke flow (contract for the S44 UI)
 
-`VaultDevices.prepareRevocation(targets, { revoke, rotate, recertify }, recovery?)` (devices/rotation.ts):
+`VaultDevices.prepareRevocation(targets, { revoke, rotate, recertify }, authority?)` (devices/rotation.ts),
+`authority` = the recovery identity, or `{ consent: { [target]: signature } }` from the targets:
 
 - It returns ONE batch to write (`change.events`, then `change.commit()`): the `device.revoked`, a
   `device.added` re-certification of every remaining device whose only valid chain ran through a
@@ -257,10 +284,14 @@ the sweep in decisionKeys.property.exhaustive.test.ts).
   `{ device, name, recertified, reason? }`, `reason` = `capacity` when the writer's certificate window
   (64 per issuer and stream) is full. The UI shows the list; a device with `recertified: false` must be
   re-paired, and the UI says so before the owner confirms.
+- `{ ok: false, reason: "authority_required", unconsented }`: a target (not this device) has neither
+  consented nor is the recovery identity given. The UI asks: is the device in your hands (confirm on
+  it, then retry with its consent) or lost / stolen (enter the recovery words)? Lost or stolen is the
+  default answer.
 - `{ ok: false, reason: "recovery_required", affected }`: this device's own chain runs through a
-  target (or it revokes itself while others would lose their chain), so only the recovery words can
-  re-certify. Nothing is written; the UI asks for the words and calls again with the recovery
-  identity.
+  target (for example a phone the target paired, revoking it: review H4), or it revokes itself while
+  others would lose their chain, so only the recovery words can re-certify. Nothing is written; the
+  UI asks for the words and calls again with the recovery identity.
 - Atomicity: the revocation names its re-certifications (`recertify`: their eids) and the registry
   counts it only once all of them are held at its position (`incomplete_batch` until then). The
   engine applies a frame group only when complete (events.md 5), and even a delivery that stops

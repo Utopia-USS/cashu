@@ -9,6 +9,7 @@ import type { UnstampedEvent } from "../carrier.js";
 import { buildDeviceRevoked } from "./events.js";
 import { foldRegistry, type Registry } from "./registry.js";
 import {
+  consentsOf,
   createSimVault,
   hlcAt,
   mulberry32,
@@ -38,9 +39,15 @@ export async function deliveryOrderRun(seed: number): Promise<void> {
       actor.write([note()]);
     } else if (roll < 0.42 && revocations < 3) {
       const target = pick(all.filter((x) => x !== actor));
+      // Honest: the target consents (H2), half the time; a revocation without consent is refused.
+      const entries = [{ device: target.id, cut: actor.cursors.get(target.id) ?? START_CURSOR }];
+      const eid = newEid();
+      const consent =
+        rand() < 0.5 ? consentsOf([target], actor.ring.vaultId, eid, entries, actor.id) : {};
       const honest = actor.devices.prepareRevocation(
-        [{ device: target.id, cut: actor.cursors.get(target.id) ?? START_CURSOR }],
-        { revoke: newEid(), rotate: newEid(), recertify: newEid },
+        entries,
+        { revoke: eid, rotate: newEid(), recertify: newEid },
+        { consent },
       );
       if (honest.ok) {
         actor.write(honest.change.events);

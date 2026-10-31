@@ -54,7 +54,9 @@ export type IgnoredReason =
   /** A certificate in a stream other than its issuer's (or its subject's, for a recovery-issued one). */
   | "foreign_certificate"
   /** A revocation whose batch's re-certifications are not all held yet (revoke flow). */
-  | "incomplete_batch";
+  | "incomplete_batch"
+  /** A device-signed revocation of another device without that device's consent (H2). */
+  | "no_consent";
 
 export interface IgnoredStatement {
   readonly eid: string;

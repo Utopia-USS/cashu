@@ -26,7 +26,13 @@ import {
   type Sodium,
 } from "../crypto/index.js";
 import { formatHlc, type Hlc, HybridClock, parseHlc } from "../hlc.js";
-import { buildDeviceAdded, type LogEvent } from "./events.js";
+import {
+  buildDeviceAdded,
+  buildDeviceRevoked,
+  consentToRevocation,
+  type LogEvent,
+  type RevokedEntry,
+} from "./events.js";
 import type { FrameRejection, KeyOrder } from "./guard.js";
 import type { LeaseLocal, OwnLeaseRecord } from "./lease.js";
 import { PairingInviter, PairingJoiner } from "./pairing.js";
@@ -474,4 +480,74 @@ export function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/**
+ * The consents of `targets` (devices in the owner's hands) to the revocation `eid` of `entries` by
+ * `signer` (H2): what each target signs when the owner confirms on it.
+ */
+export function consentsOf(
+  targets: readonly (SimDevice | DeviceIdentity)[],
+  vaultId: string,
+  eid: string,
+  entries: readonly RevokedEntry[],
+  signer: string,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const t of targets) {
+    const identity = t instanceof SimDevice ? t.identity : t;
+    if (identity.deviceId === signer) continue;
+    out[identity.deviceId] = consentToRevocation(identity, vaultId, eid, entries, signer);
+  }
+  return out;
+}
+
+/** Prepares the honest revoke flow with the targets' consent (H2); nothing is written. */
+export function prepareConsented(revoker: SimDevice, targets: readonly SimDevice[]) {
+  const entries = targets.map((t) => ({
+    device: t.id,
+    cut: revoker.cursors.get(t.id) ?? START_CURSOR,
+  }));
+  const eid = newEid();
+  const consent = consentsOf(targets, revoker.ring.vaultId, eid, entries, revoker.id);
+  return revoker.devices.prepareRevocation(
+    entries,
+    { revoke: eid, rotate: newEid(), recertify: newEid },
+    { consent },
+  );
+}
+
+/**
+ * The honest revoke flow with the targets' consent: prepares, writes the batch and commits. Throws
+ * when the flow refuses (tests that expect a refusal call `prepareRevocation` themselves).
+ */
+export function revokeWithConsent(
+  revoker: SimDevice,
+  targets: readonly SimDevice[],
+  cut: (target: SimDevice) => SegmentCursor = (t) => revoker.cursors.get(t.id) ?? START_CURSOR,
+): Batch {
+  const entries = targets.map((t) => ({ device: t.id, cut: cut(t) }));
+  const eid = newEid();
+  const consent = consentsOf(targets, revoker.ring.vaultId, eid, entries, revoker.id);
+  const result = revoker.devices.prepareRevocation(
+    entries,
+    { revoke: eid, rotate: newEid(), recertify: newEid },
+    { consent },
+  );
+  if (!result.ok) throw new Error(`revocation refused: ${result.reason}`);
+  const batch = revoker.write(result.change.events);
+  result.change.commit();
+  return batch;
+}
+
+/** A device-signed `device.revoked` carrying the consents of `consenters` (fold-level tests). */
+export function revokedWithConsent(
+  signer: DeviceIdentity,
+  vaultId: string,
+  entries: readonly RevokedEntry[],
+  consenters: readonly (SimDevice | DeviceIdentity)[],
+  eid: string = newEid(),
+): UnstampedEvent {
+  const consent = consentsOf(consenters, vaultId, eid, entries, signer.deviceId);
+  return buildDeviceRevoked(signer, vaultId, eid, entries, { consent });
 }

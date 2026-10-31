@@ -21,7 +21,16 @@ import {
 import { devicesNeedingRebuild, type FrameAt } from "./guard.js";
 import { foldLease } from "./lease.js";
 import { type PreparedChange, prepareRotation } from "./rotation.js";
-import { createSimVault, hlcAt, newEid, pairDevice, type SimDevice, sodium } from "./testkit.js";
+import {
+  consentsOf,
+  createSimVault,
+  hlcAt,
+  newEid,
+  pairDevice,
+  revokedWithConsent,
+  type SimDevice,
+  sodium,
+} from "./testkit.js";
 import { MAX_PENDING_WRAPS_PER_SENDER } from "./vaultDevices.js";
 
 const plain = new TextEncoder().encode("synthetic frame");
@@ -66,10 +75,18 @@ function carrierOpen(reader: SimDevice, frame: Uint8Array, at: FrameAt): string 
   });
 }
 
+/** The honest revoke flow; the targets consent (they are in the owner's hands, H2). */
 function revoke(revoker: SimDevice, ...targets: SimDevice[]): PreparedChange {
+  const entries = targets.map((t) => ({
+    device: t.id,
+    cut: revoker.cursors.get(t.id) ?? START_CURSOR,
+  }));
+  const eid = newEid();
+  const consent = consentsOf(targets, revoker.ring.vaultId, eid, entries, revoker.id);
   const result = revoker.devices.prepareRevocation(
-    targets.map((t) => ({ device: t.id, cut: revoker.cursors.get(t.id) ?? START_CURSOR })),
-    { revoke: newEid(), rotate: newEid() },
+    entries,
+    { revoke: eid, rotate: newEid(), recertify: newEid },
+    { consent },
   );
   if (!result.ok) throw new Error(result.reason);
   revoker.write(result.change.events);
@@ -207,60 +224,30 @@ describe("revocation", () => {
     }
   });
 
-  it("a revoked device that revokes its revoker after its cut takes it down too (fail closed); the recovery words keep the honest device's history", async () => {
-    const { a, b, r, recovery } = await threeDevices();
+  it("a revoked device's retaliation against its revoker is refused without the revoker's consent (H2)", async () => {
+    const { a, b, r } = await threeDevices();
     a.write([note()]);
     a.push();
     for (const d of [b, r]) d.pull();
     revoke(a, r);
     a.push();
     r.pull();
-    // R answers with a revocation of A at START, after its own cut: positions cannot tell who
-    // revoked first, so both revocations count, on every device and in any order.
-    r.write([
-      buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
-        { device: a.id, cut: START_CURSOR },
-      ]),
+    // R answers with a revocation of A at START, after its own cut, signed with its own key only.
+    const retaliation = buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
+      { device: a.id, cut: START_CURSOR },
     ]);
+    r.write([retaliation]);
     r.push();
     b.pull();
     a.pull();
     for (const d of [a, b]) {
       const reg = d.devices.registry;
       expect(reg.revoked.has(r.id)).toBe(true);
-      expect(reg.revoked.get(a.id)).toMatchObject({ cut: START_CURSOR, contested: true });
-      // B was certified by A only: it loses trust with A's certificate subtree.
-      expect([...reg.trusted.keys()]).toEqual([]);
+      expect(reg.revoked.has(a.id)).toBe(false);
+      expect([...reg.trusted.keys()].sort()).toEqual([a.id, b.id].sort());
+      expect(reg.ignored).toContainEqual({ eid: retaliation.i, reason: "no_consent" });
     }
-    // A's data is gone from B's view until the owner acts.
-    expect(b.cursors.get(a.id)).toBeUndefined();
-    // The owner, with the recovery words on B, revokes R and raises A's cut to the end of A's
-    // stream B downloaded: recovery-signed cuts override the malicious one, A's history comes back
-    // (A itself stays revoked: a revoked id is never trusted again; the owner re-pairs it) and B is
-    // re-certified by the recovery identity.
-    const aEnd = a.stream[a.stream.length - 1]?.cursor ?? START_CURSOR;
-    const rCut = a.cursors.get(r.id) ?? START_CURSOR;
-    const bSubject = {
-      deviceId: b.id,
-      signPublicKey: b.identity.signPublicKey,
-      boxPublicKey: b.identity.box.publicKey,
-    };
-    const bCert = certifyDevice(sodium, recovery, bSubject, b.ring.vaultId);
-    b.write([
-      buildDeviceRevoked(recovery, b.ring.vaultId, newEid(), [
-        { device: a.id, cut: aEnd },
-        { device: r.id, cut: rCut },
-      ]),
-      buildDeviceAdded(recovery, b.ring.vaultId, newEid(), bSubject, "phone", bCert),
-    ]);
-    b.push();
-    a.pull();
-    for (const d of [a, b]) {
-      expect(d.devices.registry.revoked.get(a.id)?.cut).toEqual(aEnd);
-      expect(d.devices.registry.revoked.has(r.id)).toBe(true);
-      expect([...d.devices.registry.trusted.keys()]).toEqual([b.id]);
-    }
-    expect(b.cursors.get(a.id)).toEqual(aEnd);
+    expect(b.cursors.get(a.id)).toBeDefined();
   });
 
   it("concurrent revoke and plain rotate: the revocation key wins on every device, in any order", async () => {
@@ -461,12 +448,16 @@ describe("R1: mutual revocations are contested", () => {
     revoke(a, r); // A revokes R
     a.push();
     r.pull();
-    // R (revoked, malicious) answers with a revocation of A whose cut covers A's revocation of R:
-    // positions alone exempt it (review A1b), so both count; the UI must still see a dispute.
+    // R (revoked) answers with a revocation of A whose cut covers A's revocation of R; A consented
+    // (the owner confirmed on A: contrived, but the only way a pair can still arise under H2).
+    // Positions alone exempt it (review A1b), so both count; the UI must still see a dispute.
     r.write([
-      buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
-        { device: a.id, cut: r.cursors.get(a.id) ?? START_CURSOR },
-      ]),
+      revokedWithConsent(
+        r.identity,
+        r.ring.vaultId,
+        [{ device: a.id, cut: r.cursors.get(a.id) ?? START_CURSOR }],
+        [a],
+      ),
     ]);
     syncAll([a, b, r]);
     for (const d of [a, b]) {
@@ -485,11 +476,14 @@ describe("R1: mutual revocations are contested", () => {
 
   it("a recovery-signed revocation is never contested, even when its target revoked someone", async () => {
     const { a, b, r, recovery } = await threeDevices();
-    // R revokes B (one-sided, contested by nobody), then the owner revokes R with the words.
+    // R revokes B (one-sided, with B's consent), then the owner revokes R with the words.
     r.write([
-      buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
-        { device: b.id, cut: r.cursors.get(b.id) ?? START_CURSOR },
-      ]),
+      revokedWithConsent(
+        r.identity,
+        r.ring.vaultId,
+        [{ device: b.id, cut: r.cursors.get(b.id) ?? START_CURSOR }],
+        [b],
+      ),
     ]);
     syncAll([a, b, r]);
     a.write([

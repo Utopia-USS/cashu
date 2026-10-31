@@ -14,6 +14,7 @@ export {
   buildKeysRotated,
   buildRecoveryChanged,
   comparePositions,
+  consentToRevocation,
   DEVICE_ADDED,
   DEVICE_EVENT_VERSION,
   DEVICE_REVOKED,

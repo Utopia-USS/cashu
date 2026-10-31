@@ -13,7 +13,14 @@ import {
 import { buildDeviceRevoked, buildRecoveryChanged, decodeRecoveryChanged } from "./events.js";
 import { buildRecoveryChange } from "./recoveryChange.js";
 import { epochPolicy } from "./rotation.js";
-import { createSimVault, newEid, pairDevice, SimDevice, sodium } from "./testkit.js";
+import {
+  createSimVault,
+  newEid,
+  pairDevice,
+  prepareConsented,
+  SimDevice,
+  sodium,
+} from "./testkit.js";
 
 describe("recovery (n3)", () => {
   it("a device restored from the words caps epochs, revokes every pre-recovery device and rotates first", async () => {
@@ -170,10 +177,7 @@ describe("recovery key changed (n1)", () => {
     const a = vault.creator;
     const r = await pairDevice(a, "stolen");
     for (const d of [a, r]) d.sync();
-    const result = a.devices.prepareRevocation(
-      [{ device: r.id, cut: a.cursors.get(r.id) ?? START_CURSOR }],
-      { revoke: newEid(), rotate: newEid() },
-    );
+    const result = prepareConsented(a, [r]);
     if (!result.ok) throw new Error(result.reason);
     a.write(result.change.events);
     result.change.commit();

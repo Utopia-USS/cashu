@@ -120,8 +120,54 @@ export interface DeviceRevokedData {
    * truncated batch never revokes without re-certifying (absent = none).
    */
   readonly recertify?: readonly string[];
+  /**
+   * H2 (lead decision): a device-signed revocation of ANOTHER device counts only with that device's
+   * consent: per target other than the signer, its signature over `revocationConsentBody` (the owner
+   * confirms on the device being retired). A device not in the owner's hands is revoked with the
+   * recovery words instead (a recovery-signed revocation needs no consent).
+   */
+  readonly consent?: Readonly<Record<string, string>>;
   readonly signer: string;
   readonly sig: string;
+}
+
+/** Signed-body type of a revocation consent; never the type of a log event. */
+const REVOCATION_CONSENT_BODY = "device.revoked.consent";
+
+/** What a target signs to consent to its revocation: the vault, the eid, the entries and the signer. */
+export function revocationConsentBody(
+  vaultId: string,
+  eid: string,
+  entries: readonly RevokedEntry[],
+  signer: string,
+): Uint8Array {
+  return statementBody(vaultId, REVOCATION_CONSENT_BODY, eid, {
+    devices: entries.map((e) => ({
+      device: e.device,
+      cut: { seg: e.cut.seg, offset: e.cut.offset },
+    })),
+    signer,
+  });
+}
+
+/** `target` consents to the revocation `eid` of `entries` by `signer` (lowercase hex signature). */
+export function consentToRevocation(
+  target: DeviceIdentity,
+  vaultId: string,
+  eid: string,
+  entries: readonly RevokedEntry[],
+  signer: string,
+): string {
+  if (!entries.some((e) => e.device === target.deviceId)) {
+    throw new RangeError("a device consents only to its own revocation");
+  }
+  return toHex(
+    signStatement(
+      target,
+      "cashu/registry/v1",
+      revocationConsentBody(vaultId, eid, entries, signer),
+    ),
+  );
 }
 
 export interface KeysRotatedData {
@@ -303,8 +349,13 @@ export function buildDeviceRevoked(
   vaultId: string,
   eid: string,
   entries: readonly RevokedEntry[],
-  recertify: readonly string[] = [],
+  options: {
+    readonly recertify?: readonly string[];
+    readonly consent?: Readonly<Record<string, string>>;
+  } = {},
 ): UnstampedEvent {
+  const recertify = options.recertify ?? [];
+  const consent = options.consent ?? {};
   if (entries.length === 0 || entries.length > MAX_LIST)
     throw new RangeError("revoke 1-256 devices");
   if (
@@ -320,6 +371,7 @@ export function buildDeviceRevoked(
       cut: { seg: e.cut.seg, offset: e.cut.offset },
     })),
     ...(recertify.length > 0 ? { recertify: [...recertify] } : {}),
+    ...(Object.keys(consent).length > 0 ? { consent: { ...consent } } : {}),
     signer: signer.deviceId,
   });
 }
@@ -605,9 +657,17 @@ export function decodeDeviceAdded(
 export function decodeDeviceRevoked(
   data: Readonly<Record<string, unknown>>,
 ): DeviceRevokedData | undefined {
-  const withRecertify = hasExactly(data, ["devices", "recertify", "signer", "sig"]);
-  if (!withRecertify && !hasExactly(data, ["devices", "signer", "sig"])) return undefined;
-  const { devices, recertify, signer, sig } = data;
+  const keys = Object.keys(data);
+  const optional = new Set(["recertify", "consent"]);
+  const required = ["devices", "signer", "sig"];
+  if (
+    !required.every((k) => k in data) ||
+    !keys.every((k) => required.includes(k) || optional.has(k))
+  ) {
+    return undefined;
+  }
+  const withRecertify = "recertify" in data;
+  const { devices, recertify, consent, signer, sig } = data;
   if (
     withRecertify &&
     !(
@@ -634,9 +694,19 @@ export function decodeDeviceRevoked(
     seen.add(device);
     entries.push({ device, cut: { seg: cut.seg, offset: cut.offset } });
   }
+  let consents: Record<string, string> | undefined;
+  if ("consent" in data) {
+    if (!isRecord(consent)) return undefined;
+    const pairs = Object.entries(consent);
+    if (pairs.length === 0 || !pairs.every(([d, s]) => seen.has(d) && d !== signer && isSig(s))) {
+      return undefined;
+    }
+    consents = Object.fromEntries(pairs as [string, string][]);
+  }
   return {
     devices: entries,
     ...(withRecertify ? { recertify: [...(recertify as string[])] } : {}),
+    ...(consents ? { consent: consents } : {}),
     signer,
     sig,
   };

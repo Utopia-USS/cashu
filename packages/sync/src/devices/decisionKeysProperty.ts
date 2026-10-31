@@ -24,7 +24,15 @@ import { buildDeviceAdded, buildDeviceRevoked, buildLeaseClaim, type LogEvent } 
 import { comparePositions } from "./positions.js";
 import { foldRegistry, type Registry } from "./registry.js";
 import { memoizedVerifier } from "./statements.js";
-import { createSimVault, hlcAt, mulberry32, newEid, START_TIME, sodium } from "./testkit.js";
+import {
+  createSimVault,
+  hlcAt,
+  mulberry32,
+  newEid,
+  revokedWithConsent,
+  START_TIME,
+  sodium,
+} from "./testkit.js";
 
 class Streams {
   readonly events: LogEvent[] = [];
@@ -133,7 +141,11 @@ export async function decisionKeysRun(seed: number): Promise<{ minters: number }
     if (rand() < 0.25) s.add(a.id, revoke(vaultId, vault.recovery, target.deviceId, cut));
     else {
       const signer = pick(devices.filter((d) => d !== target));
-      s.add(signer.deviceId, revoke(vaultId, signer, target.deviceId, cut));
+      // Honest device revocations carry the target's consent (H2).
+      s.add(
+        signer.deviceId,
+        revokedWithConsent(signer, vaultId, [{ device: target.deviceId, cut }], [target]),
+      );
     }
   }
   const root = { vaultId, recovery: a.ring.recovery };

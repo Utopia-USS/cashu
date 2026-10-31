@@ -21,6 +21,7 @@ import {
   hlcAt,
   newEid,
   pairDevice,
+  revokedWithConsent,
   type SimDevice,
   START_TIME,
   sodium,
@@ -79,17 +80,13 @@ describe("device registry", () => {
     const vaultId = a.ring.vaultId;
     // B revokes C while C revokes B, each after the other's cut: no order decides, both are revoked.
     const bRevokesC = stamp(
-      buildDeviceRevoked(b.identity, vaultId, newEid(), [
-        { device: c.id, cut: { seg: 1, offset: 0 } },
-      ]),
+      revokedWithConsent(b.identity, vaultId, [{ device: c.id, cut: { seg: 1, offset: 0 } }], [c]),
       b.id,
       START_TIME + 1e7,
       1e6,
     );
     const cRevokesB = stamp(
-      buildDeviceRevoked(c.identity, vaultId, newEid(), [
-        { device: b.id, cut: { seg: 1, offset: 0 } },
-      ]),
+      revokedWithConsent(c.identity, vaultId, [{ device: b.id, cut: { seg: 1, offset: 0 } }], [b]),
       c.id,
       START_TIME + 2e7,
       1e6,
@@ -115,9 +112,12 @@ describe("device registry", () => {
   it("ignores forged statements: tampered, another eid, another vault, signer not the writer", async () => {
     const { a, b, c } = await vaultOfThree();
     const vaultId = a.ring.vaultId;
-    const revoke = buildDeviceRevoked(b.identity, vaultId, newEid(), [
-      { device: c.id, cut: { seg: 1, offset: 0 } },
-    ]);
+    const revoke = revokedWithConsent(
+      b.identity,
+      vaultId,
+      [{ device: c.id, cut: { seg: 1, offset: 0 } }],
+      [c],
+    );
     const tampered = stamp(
       { ...revoke, d: { ...revoke.d, devices: [{ device: a.id, cut: { seg: 1, offset: 0 } }] } },
       b.id,
@@ -125,19 +125,23 @@ describe("device registry", () => {
     );
     const reKeyed = stamp({ ...revoke, i: newEid() }, b.id, START_TIME + 1e7 + 1);
     const otherVault = stamp(
-      buildDeviceRevoked(b.identity, "ab".repeat(16), newEid(), [
-        { device: c.id, cut: { seg: 1, offset: 0 } },
-      ]),
+      revokedWithConsent(
+        b.identity,
+        "ab".repeat(16),
+        [{ device: c.id, cut: { seg: 1, offset: 0 } }],
+        [c],
+      ),
       b.id,
       START_TIME + 1e7 + 2,
     );
     const wrongWriter = stamp({ ...revoke, i: newEid() }, a.id, START_TIME + 1e7 + 3);
     const r = fold(a, [...allEvents(a, b, c), tampered, reKeyed, otherVault, wrongWriter]);
     expect(r.revocationCount).toBe(0);
+    // The tampered copy names a target its consent does not cover: malformed before any signature.
     expect(r.ignored.map((i) => i.reason).sort()).toEqual([
       "bad_signature",
       "bad_signature",
-      "bad_signature",
+      "malformed",
       "untrusted_signer",
     ]);
   });
@@ -146,9 +150,12 @@ describe("device registry", () => {
     const { a, b, c } = await vaultOfThree();
     const vaultId = a.ring.vaultId;
     const revokeB = stamp(
-      buildDeviceRevoked(a.identity, vaultId, newEid(), [
-        { device: b.id, cut: { seg: 1, offset: 1e6 } },
-      ]),
+      revokedWithConsent(
+        a.identity,
+        vaultId,
+        [{ device: b.id, cut: { seg: 1, offset: 1e6 } }],
+        [b],
+      ),
       a.id,
       START_TIME + 1e8,
       1e6,
@@ -243,9 +250,12 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
     );
     const revokes = puppets.map((_, i) =>
       stamp(
-        buildDeviceRevoked(a.identity, vaultId, newEid(), [
-          { device: puppets[i % 64]?.deviceId ?? "", cut: { seg: 1, offset: 0 } },
-        ]),
+        revokedWithConsent(
+          a.identity,
+          vaultId,
+          [{ device: puppets[i % 64]?.deviceId ?? "", cut: { seg: 1, offset: 0 } }],
+          [puppets[i % 64] as DeviceIdentity],
+        ),
         a.id,
         START_TIME + 2000 + i,
         2000 + i,
@@ -347,17 +357,18 @@ describe("registry caps and cut boundary (review M4, m3)", () => {
     const vaultId = a.ring.vaultId;
     // C is revoked with a cut in the middle of the batch [100, 200).
     const revokeC = stamp(
-      buildDeviceRevoked(a.identity, vaultId, newEid(), [
-        { device: c.id, cut: { seg: 1, offset: 150 } },
-      ]),
+      revokedWithConsent(
+        a.identity,
+        vaultId,
+        [{ device: c.id, cut: { seg: 1, offset: 150 } }],
+        [c],
+      ),
       a.id,
       START_TIME + 1e7,
       1e6,
     );
     const inside = stamp(
-      buildDeviceRevoked(c.identity, vaultId, newEid(), [
-        { device: b.id, cut: { seg: 1, offset: 0 } },
-      ]),
+      revokedWithConsent(c.identity, vaultId, [{ device: b.id, cut: { seg: 1, offset: 0 } }], [b]),
       c.id,
       START_TIME + 1,
       200, // the batch ends at 200, after the cut

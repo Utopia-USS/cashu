@@ -12,9 +12,15 @@ import {
   createDeviceIdentity,
   type DeviceIdentity,
 } from "../crypto/index.js";
-import { buildDeviceAdded, buildDeviceRevoked, type LogEvent } from "./events.js";
+import { toHex } from "./bytes.js";
+import {
+  buildDeviceAdded,
+  buildDeviceRevoked,
+  type LogEvent,
+  revocationConsentBody,
+} from "./events.js";
 import { foldRegistry, type Registry, type TrustRoot } from "./registry.js";
-import { memoizedVerifier, type StatementVerifier } from "./statements.js";
+import { memoizedVerifier, type StatementVerifier, signStatement } from "./statements.js";
 import { createSimVault, hlcAt, newEid, START_TIME, sodium } from "./testkit.js";
 
 class Stream {
@@ -100,6 +106,22 @@ function subjects(n: number, keys: DeviceIdentity = KEYS) {
   }));
 }
 
+/** `signer` revokes the synthetic subject `device` (cut START) with its consent (shared KEYS, H2). */
+function consentedRevocation(
+  signer: DeviceIdentity,
+  vaultId: string,
+  device: string,
+): UnstampedEvent {
+  const eid = newEid();
+  const entries = [{ device, cut: { seg: 1, offset: 0 } }];
+  const sig = signStatement(
+    KEYS,
+    "cashu/registry/v1",
+    revocationConsentBody(vaultId, eid, entries, signer.deviceId),
+  );
+  return buildDeviceRevoked(signer, vaultId, eid, entries, { consent: { [device]: toHex(sig) } });
+}
+
 /** A8: one trusted device certifies `n` puppets, then revokes them one by one. */
 export function puppetsRevokedOneByOne(n: number): Scenario {
   const { creator: a } = createSimVault();
@@ -111,11 +133,7 @@ export function puppetsRevokedOneByOne(n: number): Scenario {
     stream.add(buildDeviceAdded(a.identity, vaultId, newEid(), p, "puppet", cert));
   }
   for (const p of puppets) {
-    stream.add(
-      buildDeviceRevoked(a.identity, vaultId, newEid(), [
-        { device: p.deviceId, cut: { seg: 1, offset: 0 } },
-      ]),
-    );
+    stream.add(consentedRevocation(a.identity, vaultId, p.deviceId));
   }
   return {
     root: { vaultId, recovery: a.ring.recovery },
@@ -148,11 +166,7 @@ export function twoLevelTree(): Scenario {
       s.add(buildDeviceAdded(i, vaultId, newEid(), c, "leaf", cert));
     }
     for (const c of children.slice(0, 10)) {
-      s.add(
-        buildDeviceRevoked(i, vaultId, newEid(), [
-          { device: c.deviceId, cut: { seg: 1, offset: 0 } },
-        ]),
-      );
+      s.add(consentedRevocation(i, vaultId, c.deviceId));
     }
     streams.push(s);
   }

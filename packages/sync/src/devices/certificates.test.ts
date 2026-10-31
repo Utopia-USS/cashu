@@ -14,7 +14,7 @@ import {
   recoveryIdentity,
 } from "../crypto/index.js";
 import { concat, fromHex, toHex } from "./bytes.js";
-import { buildDeviceAdded, buildDeviceRevoked, DEVICE_ADDED, type LogEvent } from "./events.js";
+import { buildDeviceAdded, DEVICE_ADDED, type LogEvent } from "./events.js";
 import { foldRegistry, type Registry } from "./registry.js";
 import { CERT_CHECK_BUDGET } from "./registryTypes.js";
 import { type StatementVerifier, verifyStatement } from "./statements.js";
@@ -23,8 +23,9 @@ import {
   hlcAt,
   newEid,
   pairDevice,
+  prepareConsented,
+  revokedWithConsent,
   type SimDevice,
-  START_CURSOR,
   START_TIME,
   sodium,
 } from "./testkit.js";
@@ -248,10 +249,7 @@ describe("R2 junk certificates", () => {
 
   it("a revoked writer's certificates after its cut never register a device (second pass)", async () => {
     const { a, b, r, c } = await fourDevices();
-    const result = a.devices.prepareRevocation(
-      [{ device: r.id, cut: a.cursors.get(r.id) ?? START_CURSOR }],
-      { revoke: newEid(), rotate: newEid() },
-    );
+    const result = prepareConsented(a, [r]);
     if (!result.ok) throw new Error(result.reason);
     a.write(result.change.events);
     result.change.commit();
@@ -345,9 +343,12 @@ describe("R2 junk certificates", () => {
     const { a, b, r, c } = await fourDevices();
     const vaultId = a.ring.vaultId;
     const revokeR = stamp(
-      buildDeviceRevoked(a.identity, vaultId, newEid(), [
-        { device: r.id, cut: { seg: 1, offset: 100 } },
-      ]),
+      revokedWithConsent(
+        a.identity,
+        vaultId,
+        [{ device: r.id, cut: { seg: 1, offset: 100 } }],
+        [r],
+      ),
       a.id,
       50_000,
     );

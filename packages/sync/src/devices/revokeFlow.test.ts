@@ -5,7 +5,12 @@
 
 import { describe, expect, it } from "vitest";
 import type { UnstampedEvent } from "../carrier.js";
-import { certifyDevice, createDeviceId, createDeviceIdentity } from "../crypto/index.js";
+import {
+  certifyDevice,
+  createDeviceId,
+  createDeviceIdentity,
+  type RecoveryIdentity,
+} from "../crypto/index.js";
 import {
   buildDeviceAdded,
   buildLeaseClaim,
@@ -20,6 +25,7 @@ import {
   createSimVault,
   newEid,
   pairDevice,
+  prepareConsented,
   type SimDevice,
   START_CURSOR,
   sodium,
@@ -41,16 +47,16 @@ async function household() {
   return { vault, a, desk, phone, laptop, b };
 }
 
-function revoke(
-  revoker: SimDevice,
-  target: SimDevice,
-  recovery?: Parameters<SimDevice["devices"]["prepareRevocation"]>[2],
-) {
-  return revoker.devices.prepareRevocation(
-    [{ device: target.id, cut: revoker.cursors.get(target.id) ?? START_CURSOR }],
-    { revoke: newEid(), rotate: newEid(), recertify: newEid },
-    recovery,
-  );
+/** The revoke flow; without the recovery words the target consents (it is in the owner's hands). */
+function revoke(revoker: SimDevice, target: SimDevice, recovery?: RecoveryIdentity) {
+  if (recovery) {
+    return revoker.devices.prepareRevocation(
+      [{ device: target.id, cut: revoker.cursors.get(target.id) ?? START_CURSOR }],
+      { revoke: newEid(), rotate: newEid(), recertify: newEid },
+      recovery,
+    );
+  }
+  return prepareConsented(revoker, [target]);
 }
 
 function write(revoker: SimDevice, change: PreparedChange): Batch {
@@ -67,6 +73,47 @@ function claim(d: SimDevice): UnstampedEvent {
     prev: d.devices.lease.head,
   });
 }
+
+describe("H2: who may revoke a device", () => {
+  it("a device-signed revocation of another device without its consent is refused up front (authority_required)", async () => {
+    const { a, desk } = await household();
+    const result = a.devices.prepareRevocation(
+      [{ device: desk.id, cut: a.cursors.get(desk.id) ?? START_CURSOR }],
+      { revoke: newEid(), rotate: newEid(), recertify: newEid },
+    );
+    expect(result).toEqual({ ok: false, reason: "authority_required", unconsented: [desk.id] });
+  });
+
+  it("with the target's consent (in the owner's hands) a device-signed revocation counts", async () => {
+    const { a, desk, b } = await household();
+    const result = prepareConsented(a, [desk]);
+    if (!result.ok) throw new Error(result.reason);
+    write(a, result.change);
+    syncAll([a, b]);
+    expect(b.devices.registry.revoked.get(desk.id)?.signers).toEqual([a.id]);
+  });
+
+  it("with the recovery words (lost or stolen) no consent is needed and the revocation is recovery-signed", async () => {
+    const { vault, a, desk, b } = await household();
+    const result = revoke(a, desk, vault.recovery);
+    if (!result.ok) throw new Error(result.reason);
+    write(a, result.change);
+    syncAll([a, b]);
+    expect(b.devices.registry.revoked.get(desk.id)?.signers).toEqual(["0".repeat(32)]);
+    expect(b.devices.registry.revoked.get(desk.id)?.contested).toBe(false);
+  });
+
+  it("H4: a device paired by the target, revoking it, is refused up front (its own chain needs the words)", async () => {
+    const { desk, phone } = await household();
+    const refused = revoke(phone, desk);
+    expect(refused).toMatchObject({ ok: false, reason: "recovery_required" });
+    if (refused.ok || refused.reason !== "recovery_required") throw new Error("expected a refusal");
+    expect(refused.affected.find((x) => x.device === phone.id)).toMatchObject({
+      recertified: false,
+      reason: "recovery_required",
+    });
+  });
+});
 
 describe("revoke flow with re-certification", () => {
   it("revoking the desktop that certified the phone re-certifies the phone in the same batch; its lease and watermark statements count", async () => {

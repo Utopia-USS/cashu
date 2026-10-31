@@ -13,12 +13,14 @@ import {
   RECOVERY_SIGNER_ID,
   type Sodium,
 } from "../crypto/index.js";
+import { fromHex } from "./bytes.js";
 import { type CertificateSelection, selectCertificates } from "./certificates.js";
 import {
   type DeviceAddedData,
   type DeviceRevokedData,
   type LogEvent,
   MAX_DEVICES,
+  revocationConsentBody,
 } from "./events.js";
 import type { Decoded, IgnoredStatement, TrustRoot } from "./registryTypes.js";
 import {
@@ -120,6 +122,28 @@ export function decideRevocations(
     if (!key) {
       ignored.push({ eid: event.eid, reason: "bad_signature" });
       continue;
+    }
+    // H2: a device-signed revocation of another device needs that device's consent: a signature by
+    // one of its certified keys (any chain, ignoring revocations: the consent was given before the
+    // revocations being decided and must not depend on them, so a key minted later can never void a
+    // genuine consent). Forging one needs a key certified for the target, which only a trusted
+    // device can mint, making the target conflicted (untrusted) anyway; residual in the README.
+    if (!isRecovery) {
+      const body = revocationConsentBody(root.vaultId, event.eid, data.devices, data.signer);
+      const consented = data.devices.every(({ device }) => {
+        if (device === data.signer) return true;
+        const sig = data.consent?.[device];
+        return (
+          sig !== undefined &&
+          all
+            .keysOf(device)
+            .some((k) => verify("cashu/registry/v1", body, fromHex(sig), k.signPublicKey))
+        );
+      });
+      if (!consented) {
+        ignored.push({ eid: event.eid, reason: "no_consent" });
+        continue;
+      }
     }
     verified.push({
       id: 0,

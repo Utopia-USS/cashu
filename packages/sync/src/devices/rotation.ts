@@ -24,7 +24,7 @@ import {
   type KeyEntry,
   type Keyring,
   RECOVERY_SIGNER_ID,
-  type RecoveryIdentity,
+  RecoveryIdentity,
   type RecoveryPublicKeys,
   recoveryRecipient,
   rotateKeyring,
@@ -276,6 +276,15 @@ export interface PreparedChange {
 export type PrepareResult =
   | { readonly ok: true; readonly change: PreparedChange }
   | { readonly ok: false; readonly reason: "not_trusted" | "no_effect" }
+  /**
+   * H2: revoking another device needs the recovery words, or that device's consent (it is in the
+   * owner's hands: `consentToRevocation` on it). `unconsented` lists the targets lacking both.
+   */
+  | {
+      readonly ok: false;
+      readonly reason: "authority_required";
+      readonly unconsented: readonly string[];
+    }
   /** Re-certifying `affected` needs the recovery words: call again with the recovery identity. */
   | {
       readonly ok: false;
@@ -376,15 +385,21 @@ export function prepareRevocation(
     readonly recertify?: () => string;
   },
   /**
-   * Sign the revocation (and the re-certifications) with the recovery identity: restoring from the
-   * words, a revoker whose chain runs through a target, or simply a revocation a stolen device can
-   * never contest.
+   * The recovery identity (sign the revocation and the re-certifications with the words: a lost or
+   * stolen device, a revoker whose chain runs through a target, restoring from the words), or the
+   * targets' consents (devices in the owner's hands, signed on each target for `eids.revoke`).
    */
-  recovery?: RecoveryIdentity,
+  authority?: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
 ): PrepareResult {
   const { registry } = ctx;
   const me = ctx.identity.deviceId;
   if (!registry.isTrusted(me)) return { ok: false, reason: "not_trusted" };
+  const recovery = authority instanceof RecoveryIdentity ? authority : undefined;
+  const consent = authority && !(authority instanceof RecoveryIdentity) ? authority.consent : {};
+  if (!recovery) {
+    const unconsented = targets.map((t) => t.device).filter((d) => d !== me && !consent[d]);
+    if (unconsented.length > 0) return { ok: false, reason: "authority_required", unconsented };
+  }
   const targetIds = new Set(targets.map((t) => t.device));
   const preview = registry.previewRevocation([...targetIds]);
   if (preview.revocationCount === registry.revocationCount) {
@@ -437,13 +452,10 @@ export function prepareRevocation(
       ? { device, name: named(device), recertified: true }
       : { device, name: named(device), recertified: false, reason: "capacity" },
   );
-  const revoked = buildDeviceRevoked(
-    signer,
-    registry.vaultId,
-    eids.revoke,
-    targets,
-    adds.map((a) => a.i),
-  );
+  const revoked = buildDeviceRevoked(signer, registry.vaultId, eids.revoke, targets, {
+    recertify: adds.map((a) => a.i),
+    ...(recovery ? {} : { consent }),
+  });
   const after = new Map(preview.trusted);
   for (const device of recertified)
     after.set(device, registry.trusted.get(device) as TrustedDevice);

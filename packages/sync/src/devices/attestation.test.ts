@@ -8,19 +8,21 @@
 // - V1: R itself, at a position before its cut (a rewrite of R's old frame, or genuine);
 // - V2: a puppet R certified while trusted, in the puppet's own stream;
 // - a chain of length 3 below R (R -> P1 -> P2 -> K').
-// Controls: honest attestations (B's real key; a device three certifications below the creator)
+// Every device-signed revocation here carries its target's consent (H2), so that only the keys and
+// cuts decide. Controls: honest attestations (B's real key; a device three certifications below the creator)
 // still raise cuts.
 
 import { describe, expect, it } from "vitest";
 import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
 import { certifyDevice, createDeviceIdentity, type DeviceIdentity } from "../crypto/index.js";
-import { buildDeviceAdded, buildDeviceRevoked, buildLeaseClaim, type LogEvent } from "./events.js";
+import { buildDeviceAdded, buildLeaseClaim, type LogEvent } from "./events.js";
 import { foldRegistry, type Registry } from "./registry.js";
 import {
   createSimVault,
   hlcAt,
   newEid,
   pairDevice,
+  revokedWithConsent,
   type SimDevice,
   START_TIME,
   sodium,
@@ -89,7 +91,7 @@ async function scenario(
   const events: LogEvent[] = [...[a, b, r, c].flatMap((d) => d.stream.flatMap((s) => s.events))];
   events.push(
     stamp(
-      buildDeviceRevoked(b.identity, vaultId, newEid(), [{ device: r.id, cut: CUT }]),
+      revokedWithConsent(b.identity, vaultId, [{ device: r.id, cut: CUT }], [r]),
       b.id,
       100_000,
     ),
@@ -123,9 +125,7 @@ async function scenario(
   if (options.forgedRevocation) {
     events.push(
       stamp(
-        buildDeviceRevoked(fakeB, vaultId, newEid(), [
-          { device: c.id, cut: { seg: 1, offset: 0 } },
-        ]),
+        revokedWithConsent(fakeB, vaultId, [{ device: c.id, cut: { seg: 1, offset: 0 } }], [c]),
         b.id,
         60_000,
       ),
@@ -133,9 +133,7 @@ async function scenario(
   }
   events.push(
     stamp(
-      buildDeviceRevoked(r.identity, vaultId, newEid(), [
-        { device: c.id, cut: { seg: 1, offset: 0 } },
-      ]),
+      revokedWithConsent(r.identity, vaultId, [{ device: c.id, cut: { seg: 1, offset: 0 } }], [c]),
       r.id,
       2_000,
     ),
@@ -143,9 +141,12 @@ async function scenario(
   if (options.revokesCreator) {
     events.push(
       stamp(
-        buildDeviceRevoked(r.identity, vaultId, newEid(), [
-          { device: a.id, cut: { seg: 1, offset: 0 } },
-        ]),
+        revokedWithConsent(
+          r.identity,
+          vaultId,
+          [{ device: a.id, cut: { seg: 1, offset: 0 } }],
+          [a],
+        ),
         r.id,
         2_100,
       ),
@@ -233,7 +234,7 @@ describe("decision keys: no key certified through a revoked device backs a revoc
         100,
       ),
       stamp(
-        buildDeviceRevoked(d3, vaultId, newEid(), [{ device: r.id, cut: { seg: 1, offset: 0 } }]),
+        revokedWithConsent(d3, vaultId, [{ device: r.id, cut: { seg: 1, offset: 0 } }], [r]),
         d3.deviceId,
         200,
       ),

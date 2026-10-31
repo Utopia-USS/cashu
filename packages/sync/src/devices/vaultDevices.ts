@@ -331,9 +331,9 @@ export class VaultDevices {
       readonly rotate: string;
       readonly recertify?: () => string;
     },
-    recovery?: RecoveryIdentity,
+    authority?: RecoveryIdentity | { readonly consent: Readonly<Record<string, string>> },
   ): PrepareResult {
-    return this.#onCommit(prepareRevocation(this.keyContext(), targets, eids, recovery));
+    return this.#onCommit(prepareRevocation(this.keyContext(), targets, eids, authority));
   }
 
   /**

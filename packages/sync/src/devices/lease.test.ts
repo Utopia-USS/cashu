@@ -12,7 +12,7 @@ import {
 } from "./lease.js";
 import { advance, config, decide, devices, holds, MIN, rule6Run, tick, view } from "./leaseSim.js";
 import { comparePositions } from "./positions.js";
-import { createSimVault, newEid, pairDevice, sodium } from "./testkit.js";
+import { createSimVault, newEid, pairDevice, prepareConsented, sodium } from "./testkit.js";
 
 /** The devices a holder still has to catch up with. */
 function missing(v: LeaseView, applied: ReadonlyMap<string, SegmentCursor>): string[] {
@@ -111,13 +111,7 @@ describe("fetch lease", () => {
     tick(b);
     expect(holds(b)).toBe(true);
     // B is revoked by C: the lease is free for others immediately (no wait for expiry).
-    const r = c.devices.prepareRevocation(
-      [{ device: b.id, cut: c.cursors.get(b.id) ?? START_CURSOR }],
-      {
-        revoke: newEid(),
-        rotate: newEid(),
-      },
-    );
+    const r = prepareConsented(c, [b]);
     if (!r.ok) throw new Error(r.reason);
     c.write(r.change.events);
     r.change.commit();

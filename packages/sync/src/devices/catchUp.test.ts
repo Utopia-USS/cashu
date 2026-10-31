@@ -4,7 +4,7 @@
 // data is lost or withheld. R3b (signed heads) comes later.
 
 import { describe, expect, it } from "vitest";
-import { type SegmentCursor, START_CURSOR } from "../carrier.js";
+import type { SegmentCursor } from "../carrier.js";
 import {
   certifyDevice,
   createDeviceIdentity,
@@ -22,7 +22,14 @@ import {
   waiveConfirmationText,
 } from "./events.js";
 import { catchUpMissing, foldLease, type LeaseView } from "./lease.js";
-import { createSimVault, newEid, pairDevice, type SimDevice, sodium } from "./testkit.js";
+import {
+  createSimVault,
+  newEid,
+  pairDevice,
+  prepareConsented,
+  type SimDevice,
+  sodium,
+} from "./testkit.js";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -123,10 +130,7 @@ describe("R3a: validated catch-up watermarks", () => {
     claim(r, watermarkOf(r, { [c.id]: high }));
     syncAll([a, b, c, r]);
     const revoke = (target: SimDevice) => {
-      const p = a.devices.prepareRevocation(
-        [{ device: target.id, cut: a.cursors.get(target.id) ?? START_CURSOR }],
-        { revoke: newEid(), rotate: newEid() },
-      );
+      const p = prepareConsented(a, [target]);
       if (!p.ok) throw new Error(p.reason);
       a.write(p.change.events);
       p.change.commit();
@@ -250,10 +254,7 @@ describe("R3a: validated catch-up watermarks", () => {
     // Typed correctly by R, whose claim lies before its cut but which is revoked now.
     const late = claim(r, watermarkOf(r), typed([b.id]));
     syncAll([a, b, c, r]);
-    const p = a.devices.prepareRevocation(
-      [{ device: r.id, cut: a.cursors.get(r.id) ?? START_CURSOR }],
-      { revoke: newEid(), rotate: newEid() },
-    );
+    const p = prepareConsented(a, [r]);
     if (!p.ok) throw new Error(p.reason);
     a.write(p.change.events);
     p.change.commit();

@@ -12,19 +12,15 @@ import {
   hlcAt,
   newEid,
   pairDevice,
+  revokedWithConsent,
+  revokeWithConsent,
   type SimDevice,
   START_CURSOR,
 } from "./testkit.js";
 
+/** The honest revoke flow (the targets consent, H2). */
 function honestRevoke(revoker: SimDevice, ...targets: SimDevice[]): LogEvent {
-  const result = revoker.devices.prepareRevocation(
-    targets.map((t) => ({ device: t.id, cut: revoker.cursors.get(t.id) ?? START_CURSOR })),
-    { revoke: newEid(), rotate: newEid() },
-  );
-  if (!result.ok) throw new Error(result.reason);
-  const batch = revoker.write(result.change.events);
-  result.change.commit();
-  return batch.events[0] as LogEvent;
+  return revokeWithConsent(revoker, targets).events[0] as LogEvent;
 }
 
 async function fourDevices() {
@@ -40,7 +36,7 @@ async function fourDevices() {
 describe("review attacks", () => {
   // One test per delivery order (each pairs a joiner and rebuilds: two in one test ran too long under load).
   for (const order of ["revoker-first", "attacker-first"] as const) {
-    it(`A1 (${order}): a revoked device backdates a revocation of its revoker; every device ends with both revoked`, async () => {
+    it(`A1 (${order}): a revoked device backdates a revocation of its revoker; it never counts (no consent, H2), in any order`, async () => {
       const { a, b, r, c } = await fourDevices();
       r.write([note()]);
       syncAll([a, b, r, c]);
@@ -69,12 +65,12 @@ describe("review attacks", () => {
         c.pull((batch) => batch.device === b.id);
       }
       syncAll([a, b, r, c]);
-      // ... and every device converges: R stays revoked, B is revoked too (mutual: fail closed).
+      // ... and every device converges: R stays revoked; B never consented, so it stays trusted.
       const reference = summary(a.devices.registry);
-      expect(reference.revoked.map((x) => x[0]).sort()).toEqual([b.id, r.id].sort());
-      expect(reference.trusted).toEqual([a.id, c.id].sort());
+      expect(reference.revoked.map((x) => x[0])).toEqual([r.id]);
+      expect(reference.trusted).toEqual([a.id, b.id, c.id].sort());
       for (const d of [b, r, c]) expect(summary(d.devices.registry)).toEqual(reference);
-      expect(a.devices.registry.revoked.get(b.id)?.contested).toBe(true);
+      expect(a.devices.registry.revoked.get(r.id)?.contested).toBe(false);
       for (const d of [b, r, c]) expect(d.acceptedData()).toEqual(a.acceptedData());
       if (order === "attacker-first") {
         expect(c.rejections.some((x) => x.device === r.id)).toBe(true);
@@ -85,12 +81,13 @@ describe("review attacks", () => {
       syncAll([a, b, r, c, j]);
       const after = summary(a.devices.registry);
       for (const d of [b, c, j]) expect(summary(d.devices.registry)).toEqual(after);
-      expect(after.revoked.map((x) => x[0]).sort()).toEqual([b.id, r.id].sort());
+      expect(after.revoked.map((x) => x[0])).toEqual([r.id]);
       for (const d of [c, j]) expect(d.acceptedData()).toEqual(a.acceptedData());
       // The next rotation wraps for neither of them.
       const rotation = a.devices.prepareRotation(newEid());
       if (!rotation.ok) throw new Error(rotation.reason);
-      expect(rotation.change.recipients).toEqual(expect.not.arrayContaining([b.id, r.id]));
+      expect(rotation.change.recipients).not.toContain(r.id);
+      expect(rotation.change.recipients).toContain(b.id);
       rotation.change.discard();
     });
   }
@@ -127,11 +124,11 @@ describe("review attacks", () => {
     syncAll([a, b, c, j]);
     for (const d of [j, c]) {
       const reg = d.devices.registry;
-      // The rewritten revocation attests nothing B did not see: B revoked R with a cut past it,
-      // so it cannot defeat B's revocation; both count, R is never trusted again.
+      // The rewritten revocation of B carries no consent of B (H2): it never counts; R is never
+      // trusted again and B stays trusted, on joiners and rebuilds alike.
       expect(reg.revoked.has(r.id)).toBe(true);
       expect(reg.isTrusted(r.id)).toBe(false);
-      expect(reg.revoked.has(b.id)).toBe(true);
+      expect(reg.isTrusted(b.id)).toBe(true);
     }
     expect(summary(c.devices.registry)).toEqual(summary(j.devices.registry));
     // Devices that applied the original frame never saw the rewrite (no signed heads yet, S28d).
@@ -143,7 +140,8 @@ describe("review attacks", () => {
     const { a, b, r, c, recovery } = await fourDevices();
     b.write([note()]);
     syncAll([a, b, r, c]);
-    // R (still trusted, stolen) once attested B's stream in a lease claim, then revokes B at START.
+    // R (still trusted) once attested B's stream in a lease claim, then revokes B at START; B
+    // consented (H2: the owner confirmed on B, with a cut that loses history).
     const attested = r.cursors.get(b.id);
     expect(attested).toBeDefined();
     r.write([
@@ -155,9 +153,7 @@ describe("review attacks", () => {
       }),
     ]);
     r.write([
-      buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
-        { device: b.id, cut: START_CURSOR },
-      ]),
+      revokedWithConsent(r.identity, r.ring.vaultId, [{ device: b.id, cut: START_CURSOR }], [b]),
     ]);
     syncAll([a, b, r, c]);
     expect(a.devices.registry.revoked.get(b.id)?.cut).toEqual(attested);
