@@ -5,6 +5,7 @@
 // caches and the notification log are device-local and never in the view (events.md 10).
 import type { StoreModule } from "../registry.js";
 import { accountSettingsMaterializer } from "./account-settings.js";
+import { alertsMaterializer } from "./alerts.js";
 import { importBatchesMaterializer } from "./import-batches.js";
 import { instrumentIdentity, instrumentsMaterializer } from "./instruments.js";
 import { overridesMaterializer } from "./overrides.js";
@@ -31,5 +32,6 @@ export const investmentsModule: StoreModule = {
     strategyMaterializer,
     ruleRunsMaterializer,
     signalsMaterializer,
+    alertsMaterializer,
   ],
 };
