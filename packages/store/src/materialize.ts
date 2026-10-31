@@ -239,8 +239,10 @@ export class Store {
     let duplicates = 0;
     let parked = 0;
     let upgrade = false;
-    const seen = new Map<string, unknown>(); // eid -> body, within this batch
 
+    // 1. Decode; reject what is not a valid envelope of this vault.
+    const candidates: { decoded: Exclude<Decoded, { status: "rejected" }>; original: unknown }[] =
+      [];
     for (const raw of raws) {
       const decoded = decodeEnvelope(raw, this.events);
       if (decoded.status === "rejected") {
@@ -251,36 +253,48 @@ export class Store {
           .run(device, decoded.error, safeJson(raw));
         continue;
       }
-      const env = decoded.envelope;
-      if (env.vault !== this.vault) {
-        rejected.push({ eid: env.eid, error: "event of another vault" });
+      if (decoded.envelope.vault !== this.vault) {
+        rejected.push({ eid: decoded.envelope.eid, error: "event of another vault" });
         continue;
       }
-      const original = (raw as { data: Record<string, unknown> }).data;
-      const earlier = seen.get(env.eid);
-      if (earlier !== undefined) {
-        // the same eid twice in one batch
-        const same = canonicalJson(earlier) === canonicalJson({ ...env, data: original });
-        if (same) duplicates += 1;
-        else conflicts.push(env.eid);
+      candidates.push({ decoded, original: (raw as { data: unknown }).data });
+    }
+
+    // 2. Split held from new (one query per chunk); a held eid or a repeat within the batch is a
+    //    duplicate when its body is the same, else a conflict (the first stays).
+    const held = this.#log.held(candidates.map((c) => c.decoded.envelope.eid));
+    const body = (c: (typeof candidates)[number]) =>
+      canonicalJson({ ...c.decoded.envelope, data: c.original });
+    const accepted = new Map<string, (typeof candidates)[number]>(); // new eids of this batch
+    const rows: Omit<LogRow, "seq">[] = [];
+    const kept: { c: (typeof candidates)[number]; row: Omit<LogRow, "seq"> }[] = [];
+    for (const c of candidates) {
+      const eid = c.decoded.envelope.eid;
+      const first = accepted.get(eid);
+      if (held.has(eid) || first !== undefined) {
+        const prior =
+          first !== undefined ? body(first) : storedBody(this.#log.get(eid) as LogRow, this.vault);
+        if (prior === body(c)) duplicates += 1;
+        else conflicts.push(eid);
         continue;
       }
-      const row = this.#logRow(decoded, original);
-      if (!this.#log.insert(row)) {
-        const prior = this.#log.get(env.eid) as LogRow;
-        if (storedBody(prior, this.vault) === canonicalJson({ ...env, data: original }))
-          duplicates += 1;
-        else conflicts.push(env.eid);
-        continue;
-      }
-      seen.set(env.eid, { ...env, data: original });
+      accepted.set(eid, c);
+      const row = this.#logRow(c.decoded, c.original);
+      rows.push(row);
+      kept.push({ c, row });
+    }
+
+    // 3. Store the new events (multi-row inserts), count the parked ones, fold the rest.
+    this.#log.insertMany(rows);
+    const refs: [string, string][] = [];
+    for (const { c, row } of kept) {
       if (row.state === "parked") {
         parked += 1;
         if (row.reason !== INVALID_GID) upgrade = true;
-        this.#countUnknown(env.type, env.v, row.reason ?? "", touched);
+        this.#countUnknown(row.type, row.v, row.reason ?? "", touched);
         continue;
       }
-      const e: FoldEvent = {
+      const e: { -readonly [K in keyof FoldEvent]: FoldEvent[K] } = {
         eid: row.eid,
         hlc: row.hlc,
         at: row.at,
@@ -288,15 +302,16 @@ export class Store {
         v: row.v,
         gid: row.gid,
         device: row.device,
-        data: (decoded as { data: Record<string, unknown> }).data,
-        ...(row.cause === null ? {} : { cause: row.cause }),
-        ...(row.origin === null ? {} : { origin: row.origin }),
+        data: (c.decoded as { data: Record<string, unknown> }).data,
       };
+      if (row.cause !== null) e.cause = row.cause;
+      if (row.origin !== null) e.origin = row.origin;
       for (const r of this.#runnerByType.get(e.type) ?? []) {
-        for (const s of r.mat.refs?.(e, this.deps.det) ?? []) this.#log.addRef(s, e.eid);
+        for (const subject of r.mat.refs?.(e, this.deps.det) ?? []) refs.push([subject, e.eid]);
       }
       fresh.push(e);
     }
+    this.#log.addRefs(refs);
 
     const flips = fresh.length > 0 ? updateSuppression(this.#log, fresh, this.#fww) : [];
     const applied = flips.filter((f) => f.from === "new" && f.to === "applied").length;

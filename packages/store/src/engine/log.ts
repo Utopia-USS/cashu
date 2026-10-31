@@ -49,6 +49,30 @@ function toFoldEvent(r: FoldRow): FoldEvent {
 }
 
 const CHUNK = 512;
+/** Rows per multi-row INSERT (14 columns: far below SQLite's 32,766 bound parameters). */
+const BATCH = 128;
+const LOG_COLUMNS =
+  "eid, hlc, at, type, v, gid, device, cause, origin, extra, state, reason, raw_data, data";
+const LOG_ROW = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+function logValues(r: NewLogRow): SqlValue[] {
+  return [
+    r.eid,
+    r.hlc,
+    r.at,
+    r.type,
+    r.v,
+    r.gid,
+    r.device,
+    r.cause,
+    r.origin,
+    r.extra,
+    r.state,
+    r.reason,
+    r.raw_data,
+    r.data,
+  ];
+}
 
 function placeholders(n: number): string {
   return Array.from({ length: n }, () => "?").join(", ");
@@ -80,10 +104,7 @@ export class EventLog {
 
   constructor(db: SqlDriver) {
     this.#db = db;
-    this.#insert = db.prepare(
-      `INSERT OR IGNORE INTO event_log (eid, hlc, at, type, v, gid, device, cause, origin, extra, state, reason, raw_data, data)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
+    this.#insert = db.prepare(`INSERT OR IGNORE INTO event_log (${LOG_COLUMNS}) VALUES ${LOG_ROW}`);
     this.#byEid = db.prepare("SELECT * FROM event_log WHERE eid = ?");
     this.#setState = db.prepare("UPDATE event_log SET state = ? WHERE eid = ?");
     this.#insertRef = db.prepare("INSERT OR IGNORE INTO event_refs (subject, eid) VALUES (?, ?)");
@@ -97,26 +118,55 @@ export class EventLog {
     );
   }
 
+  /** The eids of `eids` already held (one query per padded chunk). */
+  held(eids: readonly string[]): Set<string> {
+    const out = new Set<string>();
+    for (let i = 0; i < eids.length; i += CHUNK) {
+      const { list, values } = padded(eids.slice(i, i + CHUNK));
+      for (const r of this.#cached(`SELECT eid FROM event_log WHERE eid IN (${list})`).all<{
+        eid: string;
+      }>(...values)) {
+        out.add(r.eid);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Insert rows whose eids are not held (checked with `held`): multi-row statements of BATCH rows,
+   * the remainder row by row, so one batch costs a few statement runs instead of one per event.
+   */
+  insertMany(rows: readonly NewLogRow[]): void {
+    let i = 0;
+    if (rows.length >= BATCH) {
+      const many = this.#cached(
+        `INSERT INTO event_log (${LOG_COLUMNS}) VALUES ${Array.from({ length: BATCH }, () => LOG_ROW).join(", ")}`,
+      );
+      for (; i + BATCH <= rows.length; i += BATCH) {
+        many.run(...rows.slice(i, i + BATCH).flatMap(logValues));
+      }
+    }
+    for (; i < rows.length; i++) this.#insert.run(...logValues(rows[i] as NewLogRow));
+  }
+
+  /** Record `[subject, eid]` refs (idempotent), in multi-row statements like `insertMany`. */
+  addRefs(refs: readonly (readonly [string, string])[]): void {
+    let i = 0;
+    if (refs.length >= BATCH) {
+      const many = this.#cached(
+        `INSERT OR IGNORE INTO event_refs (subject, eid) VALUES ${Array.from({ length: BATCH }, () => "(?, ?)").join(", ")}`,
+      );
+      for (; i + BATCH <= refs.length; i += BATCH) many.run(...refs.slice(i, i + BATCH).flat());
+    }
+    for (; i < refs.length; i++) {
+      const [subject, eid] = refs[i] as readonly [string, string];
+      this.#insertRef.run(subject, eid);
+    }
+  }
+
   /** Insert unless the eid is already held; false when it was (the caller compares bodies). */
   insert(r: NewLogRow): boolean {
-    return (
-      this.#insert.run(
-        r.eid,
-        r.hlc,
-        r.at,
-        r.type,
-        r.v,
-        r.gid,
-        r.device,
-        r.cause,
-        r.origin,
-        r.extra,
-        r.state,
-        r.reason,
-        r.raw_data,
-        r.data,
-      ).changes === 1
-    );
+    return this.#insert.run(...logValues(r)).changes === 1;
   }
 
   get(eid: string): LogRow | undefined {
