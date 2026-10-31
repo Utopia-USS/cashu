@@ -1,13 +1,22 @@
-// Genesis report, start (S26 spec 9.2 `report.ts`, impl notes "C3 provides"): the counters every
-// phase adds to and the run's typed error. Counters are keyed by (table, reason) only, never by a
-// value, a name or a slug; vaults are reported by ordinal (impl notes, change 5). C5 completes the
-// report (events by type, the final JSON shape).
+// Genesis report (S26 spec 9.2 `report.ts`): the counters every phase adds to, the run's typed error
+// and the report of a run (events by type per vault, counters, the gid.md 7.6 dangling references
+// grouped per reference, the side-file counters). Counters are keyed by (table, reason) only, never
+// by a value, a name or a slug; vaults are reported by ordinal (impl notes, change 5).
 
 /**
  * Why a genesis run refuses its input. Every refusal exits with 65 (EX_DATAERR). Phase 1 (C4):
- * `recon_collision` (6.3), `unmapped_id_key` (6.5 guard), `clock_skew` (gid.md 7.1).
+ * `recon_collision` (6.3), `unmapped_id_key` (6.5 guard), `clock_skew` (gid.md 7.1). Phase 2 (C5):
+ * `missing_keys` (a profile without `VaultKeys`), `invalid_event` (an event fails `parseEvent` or the
+ * `detPartsOf` self-check, under `strict`), `strict_counter` (a `bad_*` counter under `strict`).
  */
-type GenesisErrorCode = "unsupported_schema" | "recon_collision" | "unmapped_id_key" | "clock_skew";
+type GenesisErrorCode =
+  | "unsupported_schema"
+  | "recon_collision"
+  | "unmapped_id_key"
+  | "clock_skew"
+  | "missing_keys"
+  | "invalid_event"
+  | "strict_counter";
 
 export class GenesisError extends Error {
   readonly code: GenesisErrorCode;
@@ -95,4 +104,83 @@ export class GenesisCounters {
     }
     return { global: render(this.#global), vaults };
   }
+}
+
+/** Reasons of the side files (spec 4.3, 4.4 archive, 4.8 D-G7, 6.5 staged): the report's `files`. */
+const FILE_REASONS: ReadonlySet<string> = new Set([
+  "budget_json_invalid",
+  "strategy_files_differ",
+  "strategy_same_sha",
+  "archive_missing",
+  "archive_hash_mismatch",
+  "archive_invalid",
+  "staged_missing",
+  "staged_hash_mismatch",
+  "staged_invalid",
+]);
+
+/** gid.md 7.6: every dangling reference is a named counter (`unscoped`, `dangling_*`). */
+const isDangling = (reason: string) => reason === "unscoped" || reason.startsWith("dangling_");
+
+/** The `table.reason` pairs of `counts` whose reason passes `keep`, sorted. */
+function pick(counts: CountTable, keep: (reason: string) => boolean): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [table, reasons] of Object.entries(counts)) {
+    for (const [reason, n] of Object.entries(reasons))
+      if (keep(reason)) out[`${table}.${reason}`] = n;
+  }
+  return out;
+}
+
+/** One vault of the report: by ordinal (profiles ordered by id), never by slug. */
+interface GenesisVaultReport {
+  readonly ordinal: number;
+  readonly events: number;
+  /** Events by type, sorted by type. */
+  readonly byType: Readonly<Record<string, number>>;
+  /** gid.md 7.6 dangling references as `table.reason` (`dangling_required`, `dangling_<column>`, ...). */
+  readonly fk: Readonly<Record<string, number>>;
+  /** budget.json, strategy files, archives and staged files as `table.reason`. */
+  readonly files: Readonly<Record<string, number>>;
+}
+
+/** The report of a run: counts only, never values, names or slugs. */
+export interface GenesisReport {
+  readonly schema: string;
+  readonly vaults: readonly GenesisVaultReport[];
+  /** Rows no profile owns and other source-level counts (`table.reason`). */
+  readonly fk: Readonly<Record<string, number>>;
+  readonly counters: GenesisCountersSnapshot;
+}
+
+/** Builds the report from the event types per vault (in log order) and the run's counters. */
+export function buildReport(
+  schema: string,
+  types: readonly (readonly string[])[],
+  counters: GenesisCounters,
+): GenesisReport {
+  const snapshot = counters.snapshot();
+  const vaults = types.map((list, ordinal) => {
+    const byType: Record<string, number> = {};
+    for (const t of [...list].sort()) byType[t] = (byType[t] ?? 0) + 1;
+    const own = snapshot.vaults[String(ordinal)] ?? {};
+    return {
+      ordinal,
+      events: list.length,
+      byType,
+      fk: pick(own, isDangling),
+      files: pick(own, (r) => FILE_REASONS.has(r)),
+    };
+  });
+  return { schema, vaults, fk: pick(snapshot.global, isDangling), counters: snapshot };
+}
+
+/** `strict`: the `bad_*` counters (rows that do not decode or map) that fail the run, as `table.reason`. */
+export function strictFailures(counters: GenesisCounters): readonly string[] {
+  const snapshot = counters.snapshot();
+  const bad = (r: string) => r.startsWith("bad_");
+  return [
+    ...Object.keys(pick(snapshot.global, bad)),
+    ...Object.values(snapshot.vaults).flatMap((v) => Object.keys(pick(v, bad))),
+  ];
 }

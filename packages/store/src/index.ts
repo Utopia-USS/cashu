@@ -60,6 +60,7 @@ export {
 } from "./engine/types.js";
 export { type Decoded, decodeEnvelope, decodeWire, type ParkReason } from "./envelope.js";
 export * as v1 from "./events/v1/index.js";
+export * as genesis from "./genesis/index.js";
 export {
   type DetGid,
   detGid,
