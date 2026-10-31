@@ -1,0 +1,111 @@
+// Devices of a vault (S29): the signed device registry, QR pairing with a short authentication
+// string, revocation as key rotation going forward, frame enforcement against revoked writers, and
+// the fetch-leader lease. Pure protocol logic; transports and UI plug in from outside.
+
+export {
+  buildDeviceAdded,
+  buildDeviceRevoked,
+  buildKeysRotated,
+  comparePositions,
+  DEVICE_ADDED,
+  DEVICE_EVENT_VERSION,
+  DEVICE_REVOKED,
+  type DeviceAddedData,
+  type DeviceRevokedData,
+  isDeviceName,
+  KEYS_ROTATED,
+  type KeysRotatedData,
+  LEASE_CLAIMED,
+  LEASE_RELEASED,
+  LEASE_RENEWED,
+  type LeaseClaimData,
+  type LeaseReleaseData,
+  type LeaseRenewData,
+  type LogEvent,
+  logEventsFromBatch,
+  type RevokedEntry,
+  type Watermark,
+} from "./events.js";
+export {
+  devicesNeedingRebuild,
+  type FrameAt,
+  FrameGuard,
+  type FrameVerdict,
+  type KeyOrder,
+} from "./guard.js";
+export {
+  catchUpMissing,
+  DEFAULT_LEASE_CONFIG,
+  foldLease,
+  holdsLease,
+  type LeaseConfig,
+  type LeaseIgnoredReason,
+  type LeaseLocal,
+  type LeaseStep,
+  type LeaseTermEntry,
+  type LeaseView,
+  type LeaseWrite,
+  leaseConfig,
+  leaseEventFor,
+  mayRunNewestDayImports,
+  nextLeaseStep,
+  type OwnLeaseRecord,
+  watermarkOf,
+} from "./lease.js";
+export {
+  DEFAULT_INVITE_TTL_MS,
+  decodeInvite,
+  encodeInvite,
+  type Invite,
+  type InviterOptions,
+  type InviterWelcome,
+  type JoinerOptions,
+  type JoinerWelcome,
+  type PairingFailed,
+  type PairingFailure,
+  PairingInviter,
+  PairingJoiner,
+  type PairingStep,
+  shortAuthenticationString,
+} from "./pairing.js";
+export {
+  type InviterDriver,
+  type JoinerDriver,
+  type PairingLink,
+  runInviter,
+  runJoiner,
+} from "./pairingLink.js";
+export {
+  type KeyProvenance,
+  type KeySource,
+  MemoryProvenanceStore,
+  type ProvenanceStore,
+} from "./provenance.js";
+export {
+  type DeviceRecord,
+  foldRegistry,
+  type IgnoredReason,
+  type IgnoredStatement,
+  Registry,
+  type RegistryOptions,
+  type Revocation,
+  type TrustRoot,
+} from "./registry.js";
+export {
+  applyWrap,
+  DEFAULT_RATE_LIMIT,
+  type EpochRefusal,
+  epochPolicy,
+  type KeyContext,
+  type PreparedChange,
+  type PrepareResult,
+  prepareRevocation,
+  prepareRotation,
+  type RateLimit,
+  type RotationReason,
+  recordPairingProvenance,
+  rotationEpoch,
+  rotationReason,
+  type WrapOutcome,
+} from "./rotation.js";
+export { type IngestReport, VaultDevices, type VaultDevicesOptions } from "./vaultDevices.js";

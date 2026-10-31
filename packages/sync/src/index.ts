@@ -5,6 +5,7 @@ export const PACKAGE_NAME = "@cashu/sync";
 export * from "./carrier.js";
 export * from "./carriers/index.js";
 export * as crypto from "./crypto/index.js";
+export * as devices from "./devices/index.js";
 export { createSyncEngine, type SyncEngineOptions, VAULT_RE } from "./engine.js";
 export * from "./errors.js";
 export * from "./hlc.js";

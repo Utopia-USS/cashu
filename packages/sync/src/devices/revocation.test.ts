@@ -1,0 +1,374 @@
+import { describe, expect, it } from "vitest";
+import { START_CURSOR } from "../carrier.js";
+import {
+  CryptoError,
+  certifyDevice,
+  createDeviceIdentity,
+  frameKeyId,
+  type Keyring,
+  openFrame,
+  recoveryRecipient,
+  rotateKeyring,
+  sealFrame,
+  wrapKeys,
+} from "../crypto/index.js";
+import {
+  buildDeviceAdded,
+  buildDeviceRevoked,
+  buildKeysRotated,
+  buildLeaseClaim,
+} from "./events.js";
+import { devicesNeedingRebuild, type FrameAt } from "./guard.js";
+import { foldLease } from "./lease.js";
+import { type PreparedChange, prepareRotation } from "./rotation.js";
+import { createSimVault, newEid, pairDevice, type SimDevice, sodium } from "./testkit.js";
+
+const plain = new TextEncoder().encode("synthetic frame");
+
+/** A data event of another module (ignored by the devices state). */
+function note() {
+  return { t: "note.added", v: 1, i: newEid(), d: {} };
+}
+
+function frameCtx(vaultId: string, at: FrameAt) {
+  return { vaultId, deviceId: at.device, segment: at.seg, offset: at.offset };
+}
+
+function code(f: () => unknown): string {
+  try {
+    f();
+    return "ok";
+  } catch (e) {
+    if (e instanceof CryptoError) return e.code;
+    throw e;
+  }
+}
+
+/** Opens a frame the way the carrier will: guard policy first, record after success. */
+function carrierOpen(reader: SimDevice, frame: Uint8Array, at: FrameAt): string {
+  return code(() => {
+    const out = openFrame(
+      sodium,
+      reader.ring,
+      frame,
+      frameCtx(reader.ring.vaultId, at),
+      reader.devices.guard.policy(at),
+    );
+    const entry = reader.ring.get(frameKeyId(frame));
+    if (entry) reader.devices.guard.record(at, entry);
+    return out;
+  });
+}
+
+function revoke(revoker: SimDevice, ...targets: SimDevice[]): PreparedChange {
+  const result = revoker.devices.prepareRevocation(
+    targets.map((t) => ({ device: t.id, cut: revoker.cursors.get(t.id) ?? START_CURSOR })),
+    { revoke: newEid(), rotate: newEid() },
+  );
+  if (!result.ok) throw new Error(result.reason);
+  revoker.write(result.change.events);
+  result.change.commit();
+  return result.change;
+}
+
+function rotate(device: SimDevice): PreparedChange {
+  const result = device.devices.prepareRotation(newEid());
+  if (!result.ok) throw new Error(result.reason);
+  device.write(result.change.events);
+  result.change.commit();
+  return result.change;
+}
+
+async function threeDevices() {
+  const vault = createSimVault();
+  const a = vault.creator;
+  const b = await pairDevice(a, "phone");
+  const r = await pairDevice(a, "laptop");
+  for (const d of [a, b, r]) d.sync();
+  for (const d of [a, b, r]) d.sync();
+  return { ...vault, a, b, r };
+}
+
+describe("revocation", () => {
+  it("revoke then rotate: the revoked device cannot read new frames nor get its frames accepted", async () => {
+    const { a, b, r } = await threeDevices();
+    // R writes one legitimate batch before the revocation; everyone applied it.
+    r.write([note()]);
+    r.sync();
+    a.pull();
+    b.pull();
+    const beforeAt = { device: r.id, seg: 1, offset: 0 };
+    const before = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, beforeAt));
+
+    const change = revoke(a, r);
+    expect(change.key?.epoch).toBe(1);
+    expect(change.recipients).not.toContain(r.id);
+    a.push();
+    b.pull();
+    r.pull();
+
+    for (const d of [a, b, r]) expect(d.devices.registry.revoked.has(r.id)).toBe(true);
+    expect(b.ring.active.kid).toBe(change.key?.kid);
+    expect(a.ring.active.kid).toBe(change.key?.kid);
+    expect(r.ring.get(change.key?.kid ?? "")).toBeUndefined();
+    expect(b.devices.rotationNeeded()).toBeUndefined();
+    expect(a.devices.rotationNeeded()).toBeUndefined();
+
+    // New data: readable by B, not by R.
+    const at = { device: a.id, seg: 1, offset: 5000 };
+    const fresh = sealFrame(sodium, a.ring, plain, frameCtx(a.ring.vaultId, at));
+    expect(carrierOpen(b, fresh, at)).toBe("ok");
+    expect(code(() => openFrame(sodium, r.ring, fresh, frameCtx(r.ring.vaultId, at)))).toBe(
+      "unknown_key",
+    );
+
+    // R's own stream: history before its cut still opens; anything at or after the cut is rejected.
+    const revocation = b.devices.registry.revoked.get(r.id);
+    expect(revocation?.cut).toEqual({ seg: 1, offset: 100 });
+    const cut = revocation?.cut ?? START_CURSOR;
+    expect(carrierOpen(b, before, beforeAt)).toBe("ok");
+    const afterAt = { device: r.id, seg: cut.seg, offset: cut.offset };
+    const after = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, afterAt));
+    expect(carrierOpen(b, after, afterAt)).toBe("key_not_allowed");
+    expect(b.devices.guard.check(afterAt, r.ring.active)).toEqual({
+      ok: false,
+      reason: "revoked_writer",
+    });
+
+    // Under B's id: once B wrote at the new key, an old-key frame at a later position is rejected.
+    const bAt = { device: b.id, seg: 1, offset: 7000 };
+    const bFrame = sealFrame(sodium, b.ring, plain, frameCtx(b.ring.vaultId, bAt));
+    expect(carrierOpen(a, bFrame, bAt)).toBe("ok");
+    const forgedAt = { device: b.id, seg: 1, offset: 7100 };
+    const forged = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, forgedAt));
+    expect(carrierOpen(a, forged, forgedAt)).toBe("key_not_allowed");
+    // The same frame re-opened at its earlier position (verify, then apply) still passes.
+    expect(carrierOpen(a, bFrame, bAt)).toBe("ok");
+
+    // Under a fresh id: the key predates the revocation, so it is refused.
+    const strangerAt = { device: createDeviceIdentity(sodium).deviceId, seg: 1, offset: 0 };
+    const stranger = sealFrame(sodium, r.ring, plain, frameCtx(r.ring.vaultId, strangerAt));
+    expect(carrierOpen(a, stranger, strangerAt)).toBe("key_not_allowed");
+  });
+
+  it("statements a revoked device writes after its cut are ignored (no re-admission, no lease)", async () => {
+    const { a, b, r } = await threeDevices();
+    revoke(a, r);
+    a.push();
+    r.pull();
+    // R certifies a sockpuppet, revokes A and claims the lease, all in its own stream after the cut.
+    const puppet = createDeviceIdentity(sodium);
+    const subject = {
+      deviceId: puppet.deviceId,
+      signPublicKey: puppet.signPublicKey,
+      boxPublicKey: puppet.box.publicKey,
+    };
+    const cert = certifyDevice(sodium, r.identity, subject, r.ring.vaultId);
+    r.write([
+      buildDeviceAdded(r.identity, r.ring.vaultId, newEid(), subject, "puppet", cert),
+      buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
+        { device: a.id, cut: START_CURSOR },
+      ]),
+      buildLeaseClaim(r.identity, r.ring.vaultId, newEid(), {
+        until: r.now() + 1e9,
+        watermark: {},
+        prev: null,
+      }),
+    ]);
+    r.push();
+    b.pull();
+    const reg = b.devices.registry;
+    expect(reg.isTrusted(a.id)).toBe(true);
+    expect(reg.isTrusted(puppet.deviceId)).toBe(false);
+    expect(reg.ignored.map((i) => i.reason)).toEqual(expect.arrayContaining(["after_revocation"]));
+    expect(
+      foldLease(
+        reg,
+        r.stream.flatMap((s) => s.events),
+      ).holder,
+    ).toBeNull();
+  });
+
+  it("concurrent revoke and plain rotate: the revocation key wins on every device, in any order", async () => {
+    for (const order of ["a-first", "b-first"] as const) {
+      const { a, b, r } = await threeDevices();
+      const revocation = revoke(a, r); // epoch 1, wrapped for B only
+      const plainRotation = rotate(b); // epoch 0, B has not seen the revocation: wrapped for R too
+      expect(plainRotation.recipients).toContain(r.id);
+      if (order === "a-first") {
+        a.push();
+        b.pull();
+        b.push();
+        a.pull();
+      } else {
+        b.push();
+        a.pull();
+        a.push();
+        b.pull();
+      }
+      r.pull();
+      for (const d of [a, b]) {
+        expect(d.ring.active.kid).toBe(revocation.key?.kid);
+        expect(d.devices.rotationNeeded()).toBeUndefined();
+      }
+      expect(r.ring.get(revocation.key?.kid ?? "")).toBeUndefined();
+      // R may hold B's epoch-0 key, but it is never active anywhere.
+      expect(a.ring.active.epoch).toBe(1);
+    }
+  });
+
+  it("two concurrent revocations: the S29 rule rotates again so no revoked device holds the active key", async () => {
+    const vault = createSimVault();
+    const a = vault.creator;
+    const b = await pairDevice(a, "phone");
+    const r1 = await pairDevice(a, "old laptop");
+    const r2 = await pairDevice(a, "old tablet");
+    for (let i = 0; i < 2; i++) for (const d of [a, b, r1, r2]) d.sync();
+
+    const fromA = revoke(a, r1); // wraps for B and R2
+    const fromB = revoke(b, r2); // wraps for A and R1
+    expect(fromA.recipients).toContain(r2.id);
+    expect(fromB.recipients).toContain(r1.id);
+    a.push();
+    b.push();
+    a.pull();
+    b.pull();
+    for (const d of [a, b]) {
+      expect(d.devices.registry.revocationCount).toBe(2);
+      expect(d.ring.active.epoch).toBe(1);
+      expect(d.devices.rotationNeeded()).toBe("revocation_pending");
+    }
+    const again = rotate(a);
+    expect(again.key?.epoch).toBe(2);
+    expect(again.recipients).toEqual(expect.not.arrayContaining([r1.id, r2.id]));
+    a.push();
+    b.pull();
+    r1.pull();
+    r2.pull();
+    expect(b.ring.active.kid).toBe(again.key?.kid);
+    expect(b.devices.rotationNeeded()).toBeUndefined();
+    expect(a.devices.rotationNeeded()).toBeUndefined();
+    for (const r of [r1, r2]) expect(r.ring.get(again.key?.kid ?? "")).toBeUndefined();
+  });
+
+  it("a revoked device's own rotation (even claiming epoch + 1) is never accepted", async () => {
+    const { a, b, r } = await threeDevices();
+    // R rotates claiming the revoker's epoch before the revocation lands.
+    const clone = r.ring.clone(sodium);
+    const entry = rotateKeyring(sodium, clone, { epoch: 1 });
+    const bDevice = r.devices.registry.trusted.get(b.id);
+    if (!bDevice) throw new Error("B not trusted on R");
+    const wire = wrapKeys(sodium, clone, r.identity, bDevice, [entry.kid], [b.id]);
+    r.write([buildKeysRotated(newEid(), new Map([[b.id, wire]]))]);
+    r.push();
+    b.pull();
+    expect(b.ring.get(entry.kid)).toBeUndefined(); // epoch 1 > 0 counted revocations
+    revoke(a, r);
+    a.push();
+    b.pull();
+    expect(b.ring.get(entry.kid)).toBeUndefined(); // R is now untrusted
+    expect(b.ring.active.epoch).toBe(1);
+    expect(b.ring.active.kid).toBe(a.ring.active.kid);
+  });
+
+  it("a refused revocation wrap (generation filled by a still-trusted device) makes devices rotate again", async () => {
+    const { a, b, r } = await threeDevices();
+    // R, still trusted, fills generation n + 1 with 8 keys and wraps them all for B.
+    const n = r.ring.maxGeneration;
+    const flood: Keyring = r.ring.clone(sodium);
+    for (let i = 0; i < 8; i++) {
+      const c = r.ring.clone(sodium);
+      rotateKeyring(sodium, c);
+      flood.merge(c);
+    }
+    expect(flood.entries().filter((e) => e.generation === n + 1)).toHaveLength(8);
+    const bDevice = r.devices.registry.trusted.get(b.id);
+    if (!bDevice) throw new Error("B not trusted on R");
+    r.write([
+      buildKeysRotated(
+        newEid(),
+        new Map([[b.id, wrapKeys(sodium, flood, r.identity, bDevice, undefined, [b.id])]]),
+      ),
+    ]);
+    r.push();
+    b.pull();
+    expect(b.ring.entries().filter((e) => e.generation === n + 1)).toHaveLength(8);
+
+    const revocation = revoke(a, r); // generation n + 1 on A
+    a.push();
+    b.pull();
+    expect(b.ring.get(revocation.key?.kid ?? "")).toBeUndefined(); // refused: 9th key in n + 1
+    expect(b.devices.rotationNeeded()).toBe("revocation_pending");
+    const again = rotate(b);
+    expect(again.key).toMatchObject({ epoch: 1, generation: n + 2 });
+    b.push();
+    a.pull();
+    expect(a.ring.active.kid).toBe(again.key?.kid);
+    expect(b.ring.active.kid).toBe(again.key?.kid);
+    r.pull();
+    expect(r.ring.get(again.key?.kid ?? "")).toBeUndefined();
+  });
+
+  it("rate-limits rotations per sender and accepts them again after the window", async () => {
+    const { a, b } = await threeDevices();
+    for (let i = 0; i < 7; i++) rotate(b);
+    b.push();
+    a.pull();
+    const report = a.devices.ingest([]);
+    expect(report.pending).toHaveLength(1);
+    expect(report.pending[0]?.outcome).toMatchObject({ status: "retry", refusal: "rate_limited" });
+    expect(a.ring.active.kid).not.toBe(b.ring.active.kid);
+    a.remote.time += 25 * 60 * 60 * 1000;
+    expect(a.devices.ingest([]).pending).toHaveLength(0);
+    expect(a.ring.active.kid).toBe(b.ring.active.kid);
+  });
+
+  it("a cut below what a device already applied asks for a rebuild", async () => {
+    const { a, b, r } = await threeDevices();
+    r.write([note()]); // a batch only B pulls before the revocation
+    r.push();
+    b.pull();
+    revoke(a, r); // A's cut is before that batch
+    a.push();
+    b.pull();
+    expect(devicesNeedingRebuild(b.devices.registry, b.cursors)).toEqual([r.id]);
+    expect(devicesNeedingRebuild(a.devices.registry, a.cursors)).toEqual([]);
+  });
+
+  it("revoking itself writes the revocation only; the others rotate", async () => {
+    const { a, b, r } = await threeDevices();
+    const result = r.devices.prepareRevocation(
+      [{ device: r.id, cut: { seg: 1, offset: 1_000_000 } }],
+      {
+        revoke: newEid(),
+        rotate: newEid(),
+      },
+    );
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.change.key).toBeUndefined();
+    r.write(result.change.events);
+    r.push();
+    a.pull();
+    b.pull();
+    expect(a.devices.rotationNeeded()).toBe("revocation_pending");
+    rotate(a);
+    a.push();
+    b.pull();
+    expect(b.devices.rotationNeeded()).toBeUndefined();
+    expect(b.ring.active.kid).toBe(a.ring.active.kid);
+  });
+
+  it("an untrusted device cannot prepare a rotation, and the recovery recipient always gets a wrap", async () => {
+    const { a, b, r } = await threeDevices();
+    revoke(a, r);
+    a.push();
+    r.pull();
+    expect(prepareRotation(r.devices.keyContext(), newEid())).toEqual({
+      ok: false,
+      reason: "not_trusted",
+    });
+    const change = rotate(b);
+    expect(change.recipients).toContain("0".repeat(32));
+    expect(recoveryRecipient(b.ring).vaultId).toBe(b.ring.vaultId);
+  });
+});
