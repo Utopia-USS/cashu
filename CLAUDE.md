@@ -130,6 +130,22 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 
 (Inventory only - descriptions live in each `SKILL.md` frontmatter.)
 
+## Development skills
+
+The skills above are **product skills** (they ship to users' workspaces; `.claude/skills/` is guarded
+by tests and holds nothing else). Skills for **developing** the TypeScript stack live in the repo-local
+plugin `cashu-dev` (`tools/claude-dev/`, marketplace `.claude-plugin/marketplace.json`), which
+`.claude/settings.json` enables for every session in this checkout:
+
+| Skill | Applicability |
+|---|---|
+| `cashu-ts-architecture` | TypeScript in `packages/` and `apps/`: layers, module boundaries, screen hook + pure View, `useQuery` / commands / forms, performance budgets, testing, the machine checks - NOT visuals or copy |
+| `cashu-ui` | the UI system: tokens, shared and platform components, value components, lists, charts, Storybook, copy and Polish plurals - NOT logic, data or navigation |
+
+The plugin's PostToolUse hook runs `tools/claude-dev/scripts/check-file.sh` on every edited `.ts` /
+`.tsx` under `packages/`, `apps/` or `tools/arch/` and reports violations back; `pnpm arch:check` is the
+whole-repo version (also in CI). Fix the cause a check names; never loosen a rule to get green.
+
 ## When to Invoke
 
 | Situation | Read first | Files / guards |
@@ -176,6 +192,7 @@ rules: [docs/agents/skills.md](docs/agents/skills.md).
 | Profile agent workspace | `cashu workspace init` / `cashu workspace update` |
 | Move legacy `data/` into the data dir | `cashu migrate-data` |
 | Build cashU.app (macOS) | `scripts/build_macos.sh` |
+| TS architecture checks | `pnpm arch:check` (whole repo); `tools/claude-dev/scripts/check-file.sh <file>` (one file) |
 
 ## Documentation
 

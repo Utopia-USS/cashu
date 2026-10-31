@@ -124,6 +124,8 @@ but were not listed before.
 | `scripts/render_research_prototype.py` | renders the headline-first research prototype (`scripts/prototypes/research_story.html`) with a profile's own data from the installed app, locally, into git-ignored `build/prototypes/` |
 | `.claude/skills/` | the shipped product skills (see [skills.md](skills.md)) |
 | `.claude/launch.json` | `dashboard` preview config (`cashu serve`) |
+| `.claude/settings.json`, `.claude-plugin/`, `tools/claude-dev/` | repo-local dev plugin `cashu-dev`: the TS development skills (`cashu-ts-architecture`, `cashu-ui`), `scripts/check-file.sh` and its PostToolUse hook; never shipped to workspaces |
+| `tools/arch/` | `pnpm arch:check`: Biome layer overrides live in `biome.json`; here the ESLint (react-hooks), dependency-cruiser and Knip configs, the runner and the guard tests (`src/guards/`) |
 | `tests/` | pytest - synthetic data, no real data |
 | `data/` | (git-ignored) legacy location of DB/keys/sessions (see `cashu migrate-data`) |
 | `statements/` | (git-ignored) drop CSV statements here - empty in the repo |
