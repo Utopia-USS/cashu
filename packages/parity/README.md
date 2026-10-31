@@ -121,7 +121,8 @@ producer never opens SQLite itself and never carries its own reader.
 datasets it is enabled for and `produce(db) -> JSON tree`; `<module>/` folders hold the code
 (`core/networth.ts`). `src/producers/output.ts` writes canonical JSON (sorted keys, Decimals through
 `toJSON()` = Python `str()`, JS numbers refused). The CLI runs under Node's type stripping with
-`src/producers/resolveTs.ts`, which maps the `./x.js` specifiers of workspace TypeScript to `./x.ts`.
+`tools/node-ts/resolveTs.ts` (shared with the `cashu-next` CLI), which maps the `./x.js` specifiers
+of workspace TypeScript to `./x.ts`.
 
 | Check                     | Datasets  | Inputs                                                                                                                                                              |
 | ------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
