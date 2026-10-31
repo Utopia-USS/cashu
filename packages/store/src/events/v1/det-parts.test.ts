@@ -40,12 +40,11 @@ describe("detPartsOf covers the catalog", () => {
     });
   });
 
-  it("does not check a manual investment entry (its gid is a ULID, gid.md 4.6)", () => {
-    const manual = {
-      ...VALID_SAMPLES["invTxn.imported"],
-      dedupHash: "manual:01JC0ZA1B2C3D4E5F6G7H8J9K0",
-    };
-    expect(detPartsOf("invTxn.imported", manual)).toBeUndefined();
+  it("does not check a manual investment entry (ULID or genesis gid, gid.md 4.6 / 7)", () => {
+    for (const gid of ["01JC0ZA1B2C3D4E5F6G7H8J9K0", "c1e52d4d-d9a5-84e6-8d7a-c21b36691202"]) {
+      const manual = { ...VALID_SAMPLES["invTxn.imported"], dedupHash: `manual:${gid}` };
+      expect(detPartsOf("invTxn.imported", manual)).toBeUndefined();
+    }
   });
 
   it("reads parts as written: unknown types and payload-free types give nothing", () => {

@@ -319,6 +319,25 @@ describe("v1.1 acceptance of real shapes", () => {
     const r = parseEvent(envelope("instrument.merged", data, { gid: INST }));
     expect(r.status === "parked" && r.reason === "invalid-payload").toBe(true);
   });
+
+  it("accepts a manual inv txn whose dedupHash names its own ULID or genesis gid (S26-F1)", () => {
+    const genesisGid = "c1e52d4d-d9a5-84e6-8d7a-c21b36691202";
+    const manual = { ...VALID_SAMPLES["invTxn.imported"], source: "manual" };
+    for (const gid of [ULID_B, genesisGid]) {
+      const data = { ...manual, dedupHash: `manual:${gid}` };
+      expect(parseEvent(envelope("invTxn.imported", data, { gid })).status).toBe("known");
+    }
+  });
+
+  it("parks a manual inv txn whose dedupHash names another gid (S26-F1)", () => {
+    const data = {
+      ...VALID_SAMPLES["invTxn.imported"],
+      source: "manual",
+      dedupHash: `manual:${ULID_A}`,
+    };
+    const r = parseEvent(envelope("invTxn.imported", data, { gid: ULID_B }));
+    expect(r.status === "parked" && r.reason === "invalid-payload").toBe(true);
+  });
 });
 
 describe("wire form (own-log carrier)", () => {

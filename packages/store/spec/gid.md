@@ -186,7 +186,7 @@ dedup), even though their gids differ.
 | inv_position_snapshots | DET `[@account, @instrument, asOf]` | `R(@account)`, `R(@instrument)`, asOf |
 | inv_instrument_renames | DET `[date, @old, @new]` | date, `R(@old)`, `R(@new)` |
 | inv_topic_theses | DET `[segment]` | segment |
-| inv_transactions | DET `[@account, dedupHashV2]`; manual entries ULID with `dedupHash = "manual:" + gid` (m1) | `R(@account)`, dedupHash |
+| inv_transactions | DET `[@account, dedupHashV2]`; manual entries ULID (genesis: the row's genesis gid, 7) with `dedupHash = "manual:" + gid` (m1) | `R(@account)`, dedupHash |
 
 **inv_transactions dedupHashV2 (O1).** Same algorithm as `importing/dedup.py`, with the account gid,
 version tag `v2`, and the **broker's own instrument key** instead of the local instrument id, so the
@@ -292,6 +292,66 @@ Deterministic: two runs on one database with one stored salt give the same gids.
   `created_at` then id. `legacy:` only for missing columns. Lab: 262 rows, 2 reconciliation.
 - Signals: genesis emits one `signal.opened` (ULID per the genesis rule) per row with its state; the
   episode fold groups them (lab has no duplicate open keys).
+- Manual investment entries (S26-F1): gid = the genesis gid of the row, `dedupHash = "manual:" + gid`
+  (the zod alternative accepts a ULID or a UUIDv8 there, `parseEvent` checks it names the event's own
+  gid, and `detPartsOf` does not check it).
+
+### 7.1 Genesis device, clock and eids (S26, D-G2 / D-G3)
+
+- Device: a per-vault pseudo-device that never writes again: the first 16 bytes of
+  `HMAC-SHA256(salt, UTF-8("cashu.genesis.device.v1"))` as 32 lower-case hex (all zero is refused).
+  S29 must accept it as the author of the genesis segment.
+- Base wall `W = 1 + max(ms)` over every "happened-at" timestamp of the vault's exported rows (stamps
+  and payload timestamps except the future-dated `expires_at`, `snoozed_until`, `cooldown_until`);
+  a run with `W > now + 5 min` fails (`clock_skew`). Event n of the vault (n = 0, 1, ...) has the HLC
+  wall `W + floor(n / 1679616)`, counter `n mod 1679616`; `at` = W (milliseconds).
+- `eid = ULID(time = W, random = first 10 bytes of HMAC-SHA256(salt, UTF-8("cashu.genesis.eid.v1" US
+  type US gid US k)))`, k = the index of the event among the vault's events with the same (type, gid).
+
+### 7.2 instrumentKey of a migrated investment transaction
+
+In this order: none for a cash row (`""`); the alias in the batch's broker namespace (the batch's
+`broker` as stored; smallest alias id) -> `broker:value`; else the `isin` alias -> `isin:value`; else
+the instrument's `isin` column -> `isin:<isin>`; else `gid:@instrument`. A row without a batch starts
+at the `isin` steps. The hash's `brokerId` part is the batch's broker with the legacy rename applied.
+Reconciliation rows always use `gid:@instrument`.
+
+### 7.3 Instruments per vault (D-G1)
+
+The reference closure of the profile: every instrument a row of the profile references (columns,
+signal keys and payloads, research details and scopes). Unreferenced instruments are not exported.
+Genesis emits no `instrument.merged` (Python keeps no merge record).
+
+### 7.4 Collisions (D-G4)
+
+Two source rows of one vault that compute one DET gid stay two rows: accounts: the lowest id keeps
+the DET gid and the keys, a later one gets its genesis gid and claims no key; investment transactions
+(ref / content path) and budget transactions: the later row takes the smallest free occurrence above
+its own. A reconciliation collision fails the run.
+
+### 7.5 Vault keys
+
+The genesis core never mints keys: the caller passes, per profile, the vault id (32 hex) and the
+salt. Production: the S27 keyring (`Keyring.gidSalt()`); lab / dev: a keys file outside the data dir
+and the repo; parity: fixed keys derived from the slug (gids never reach parity output).
+
+### 7.6 Dangling references (D-G13)
+
+A reference whose target is missing, not exported or in another profile, per field:
+
+| Reference | Rule |
+|---|---|
+| the account a row is scoped through (balances, transactions, loans, depreciations, asset_details, inv_account_settings, inv_transactions, inv_position_snapshots) | row skipped, counted `unscoped` |
+| `balance.recorded.account`, `txn.imported.account`, `txn.cashExpenseAdded.account`, `loan.*.account`, `depreciation.set.account`, `assetDetails.noteSet.account`, `invAccount.settingsSet.account`, `invImport.recorded.account`, `invTxn.imported.account`, `position.snapshotImported.account`, `connectorBinding.set.account` | row skipped, counted `dangling_required_<table>` |
+| `position.snapshotImported.instrument`, `instrumentRename.recorded.old` / `.new`, `valuation.set.instrument`, `instrumentOverride.*.instrument`, `watchlist.added.instrument`, `thesis.created.instrument` | row skipped, counted `dangling_required_<table>` |
+| a cash leg's source transaction (leg claim) | claim skipped, counted `dangling_required_transactions` |
+| `txn.imported.batch`, `importBatch.recorded.account`, `invTxn.imported.batch` / `.instrument`, `position.snapshotImported.batch`, `instrumentRename.recorded.batch`, `ruleRun.finished.strategyVersion`, `alert.created.instrument`, `signal.opened.instrument` / `.account` / `.run`, `signal.refreshed.run`, `decision.recorded.instrument` / `.account`, `plannedDeposit.created.account`, `note.added.run` / `.instrument` / `.signal` | `null`, counted `dangling_<table>.<column>` |
+| `plannedDeposit.booked.txn` | no `booked` event, counted `dangling_inv_planned_deposits.booked_txn_id` |
+| id lists: `decision.recorded.signals`, `ruleRun.finished.report.new` / `.escalated`, `budgetSettings.cushionSet.accounts`, `researchRun.started.scope` lists, `inv_signals.payload` `note_ids` / `accounts` | the id dropped, counted `dangling_<table>.<key>` |
+| scalar ids inside JSON (`inv_signals.payload` `instrument_id` / `alert_id` / `note_id`, `research_notes.details` ids, `proposals.payload.account_id` -> `account`) | `null`, counted `dangling_<table>.<key>` |
+| ids embedded in signal dedup keys and rule ids (`i:`, `a:`, `alert:`) | the genesis gid of the missing row (`DET(genesis)[table, id]`), counted `dangling_key_id` |
+
+Nothing is dropped silently: every case is a named counter in the genesis report.
 
 ## 8. Test vectors
 

@@ -201,6 +201,11 @@ function crossFieldOk(type: EventType, envelope: Envelope, data: unknown): boole
   if (META[type].gid === "VAULT") return envelope.gid === envelope.vault;
   if (VAULT_ID_RE.test(envelope.gid)) return false;
   if (type === "instrument.merged") return (data as { source: string }).source === envelope.gid; // m11
+  if (type === "invTxn.imported") {
+    // gid.md 4.6 / 7: a manual entry's dedupHash names its own gid (ULID, or a genesis UUIDv8)
+    const hash = (data as { dedupHash: string }).dedupHash;
+    return !hash.startsWith("manual:") || hash === `manual:${envelope.gid}`;
+  }
   return true;
 }
 

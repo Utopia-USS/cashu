@@ -53,12 +53,17 @@ export const MERGE_REASONS = ["owner", "alias_collision"] as const;
 const segmentKey = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/, "expected a segment catalog key");
 const aliasNamespace = z.string().regex(/^[a-z0-9_]+$/, "expected an alias namespace");
 /**
- * dedupHashV2 (gid.md 4.6): sha256 hex; `manual:<gid>` for manual entries (gid ULID, m1);
+ * dedupHashV2 (gid.md 4.6): sha256 hex; `manual:<gid>` for manual entries (the event gid: a ULID, or
+ * the genesis UUIDv8 of a migrated row, gid.md 7; `parseEvent` checks it equals `manual:` + gid);
  * `legacy:<v1 hash>` only for genesis rows whose columns cannot rebuild v2 (gid.md section 7).
  */
 const dedupHashV2 = z.union([
   sha256Hex,
-  z.string().regex(/^manual:[0-7][0-9A-HJKMNP-TV-Z]{25}$/),
+  z
+    .string()
+    .regex(
+      /^manual:([0-7][0-9A-HJKMNP-TV-Z]{25}|[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/,
+    ),
   z.string().regex(/^legacy:[0-9a-f]{64}$/),
 ]);
 

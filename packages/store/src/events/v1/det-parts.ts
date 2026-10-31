@@ -40,7 +40,7 @@ export function detPartsOf(
     case "invAccount.settingsSet":
       return det("inv_account_settings", s(data.account));
     case "invTxn.imported":
-      // A manual entry's gid is a ULID, its dedupHash `manual:<gid>` (gid.md 4.6, m1).
+      // A manual entry's gid is a ULID (or a genesis gid), its dedupHash `manual:<gid>` (gid.md 4.6, 7).
       if (s(data.dedupHash).startsWith("manual:")) return undefined;
       return det("inv_transactions", s(data.account), s(data.dedupHash));
     case "position.snapshotImported":

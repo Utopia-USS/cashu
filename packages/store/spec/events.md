@@ -557,8 +557,9 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   splitRatio|null, note|null, source: import|manual|reconciliation, externalRef|null, dedupHash,
   createdAt}`. `createdAt` is required (chronological rank of same-day rows). `dedupHash` is
   dedupHashV2 built from the broker's own instrument key, not the instrument gid, so it is
-  merge-invariant (O1, [`gid.md`](gid.md) 4.6). Manual entries (`source = manual`) get a ULID gid and
-  `dedupHash = "manual:" + gid`: two identical manual rows from two devices stay two rows (m1).
+  merge-invariant (O1, [`gid.md`](gid.md) 4.6). Manual entries (`source = manual`) get a ULID gid (a
+  migrated row: its genesis gid, [`gid.md`](gid.md) 7) and `dedupHash = "manual:" + gid`, checked by
+  `parseEvent`: two identical manual rows from two devices stay two rows (m1).
 - `position.snapshotImported` `{account@, instrument@, asOf, quantity, currency, avgPrice|null,
   marketValue|null, batch@|null}`.
 - `instrumentRename.recorded` `{date, old@, new@, note|null, batch@|null}`.
@@ -766,6 +767,13 @@ LEADER), so the reference fold does not model it.
 - Accounts: genesis emits `keys` from the stored IBAN (`iban:<ibanKey>`) and the external natural key;
   instruments: an `instrument.aliasAdded` per stored alias; signals: one `signal.opened` per row plus
   its lifecycle state; no open episodes collide on lab (0 duplicate open keys).
+- Genesis emits no `instrument.merged` (Python keeps no merge record; `alias_collision` stays reserved).
+- Signals are emitted grouped by their rewritten dedup key, keys in the order of their smallest signal
+  id; within a key the closed signals first, ordered by (`closed_at`, id), each followed directly by
+  its lifecycle events, then the at most one open signal. Plain id order would let an old reopened
+  signal followed by a newer closed one alias the newer `signal.opened` to the open episode, whose
+  `signal.closed` would then close the reopened one (8.7).
+- Genesis clock, device, eids, collisions and dangling references: [`gid.md`](gid.md) 7.1-7.6.
 - Genesis gids follow [`gid.md`](gid.md) 7. A conformance test validates real lab rows through the zod
   schemas (counts only): `lab-conformance.test.ts`, enabled by `CASHU_LAB_DB`.
 - The outbox captures field diffs of synced columns (section 9 excluded) and maps them to these types;
