@@ -21,7 +21,7 @@ const LAYERS = {
   "ui-logic": ["domain", "store", "i18n"],
   api: ["domain", "store", "sync", "i18n"],
   mcp: ["domain", "store", "sync", "i18n"],
-  parity: ["domain", "store"],
+  parity: ["domain", "store", "mcp"],
 };
 
 const layerRules = Object.entries(LAYERS).map(([pkg, allowed]) => ({
