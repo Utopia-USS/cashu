@@ -10,7 +10,7 @@ import { detPartsOf } from "../det-parts.js";
 import { claimAllowed } from "../identity.js";
 import type { RefDet, RefEvent } from "./fold.js";
 
-export type Row = Record<string, unknown>;
+type Row = Record<string, unknown>;
 export type InvRefView = Record<(typeof INV_REF_TABLES)[number], Row[]>;
 
 /** The public tables this reference models. */
