@@ -4,6 +4,7 @@ import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity } from "./identity.js";
 import { fromLibsodium, type LibsodiumLike, loadNodeSodium } from "./sodium.js";
 import {
+  anyEpoch,
   code,
   ctx,
   fakeReactNativeLibsodium,
@@ -52,11 +53,13 @@ describe("runtimes", () => {
     const phoneRing = ring.clone(mobileSodium);
     const wire = wrapKeys(sodium, ring, desktop, trustedTo(phone, ring.vaultId));
     const trust = () => desktop.signPublicKey;
-    expect(unwrapKeys(mobileSodium, wire, phone, phoneRing, trust).senderDeviceId).toBe(
+    expect(unwrapKeys(mobileSodium, wire, phone, phoneRing, trust, anyEpoch).senderDeviceId).toBe(
       desktop.deviceId,
     );
     const back = wrapKeys(mobileSodium, phoneRing, phone, trustedTo(desktop, phoneRing.vaultId));
-    expect(unwrapKeys(sodium, back, desktop, ring, () => phone.signPublicKey).ring.size).toBe(1);
+    expect(
+      unwrapKeys(sodium, back, desktop, ring, () => phone.signPublicKey, anyEpoch).ring.size,
+    ).toBe(1);
   });
 
   it("the Node loader with the noble AEAD passes the self-test", async () => {

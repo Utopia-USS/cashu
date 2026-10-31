@@ -5,6 +5,7 @@ import { createKeyring, createVaultId, type Keyring, rotateKeyring } from "./key
 import { createRecoveryKey } from "./recovery.js";
 import type { Sodium } from "./sodium.js";
 import {
+  anyEpoch,
   backends,
   code,
   ctx,
@@ -137,7 +138,7 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       [gen2.kid],
     );
     expect(wire[0]).toBe(WRAP_VERSION);
-    const out = unwrapKeys(sodium, wire, phone.id, phone.ring, trust);
+    const out = unwrapKeys(sodium, wire, phone.id, phone.ring, trust, anyEpoch);
     expect(out.ring).toBe(phone.ring);
     expect(out.senderDeviceId).toBe(desktop.id.deviceId);
     expect(phone.ring.active.kid).toBe(gen2.kid);
@@ -154,9 +155,9 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       trustedTo(phone.id, desktop.ring.vaultId),
       [desktop.ring.active.kid],
     );
-    expect(code(() => unwrapKeys(sodium, wire, phone.id, phone.ring, trusting(phone.id)))).toBe(
-      "untrusted_sender",
-    );
+    expect(
+      code(() => unwrapKeys(sodium, wire, phone.id, phone.ring, trusting(phone.id), anyEpoch)),
+    ).toBe("untrusted_sender");
     expect(phone.ring.size).toBe(1);
   });
 
@@ -175,7 +176,7 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     for (let i = 0; i < wire.length; i += 3) {
       const t = wire.slice();
       t[i] = (t[i] ?? 0) ^ 0x01;
-      seen.add(code(() => unwrapKeys(sodium, t, phone.id, phone.ring, trust)));
+      seen.add(code(() => unwrapKeys(sodium, t, phone.id, phone.ring, trust, anyEpoch)));
     }
     // A flipped recipient count that overruns the wire is truncated before the signature check.
     expect([...seen].sort()).toEqual([
@@ -184,9 +185,9 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       "unsupported_version",
       "untrusted_sender",
     ]);
-    expect(code(() => unwrapKeys(sodium, wire.subarray(0, 50), phone.id, phone.ring, trust))).toBe(
-      "truncated",
-    );
+    expect(
+      code(() => unwrapKeys(sodium, wire.subarray(0, 50), phone.id, phone.ring, trust, anyEpoch)),
+    ).toBe("truncated");
     expect(phone.ring.size).toBe(1);
   });
 
@@ -201,12 +202,16 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       trustedTo(phone.id, desktop.ring.vaultId),
       [desktop.ring.active.kid],
     );
-    expect(code(() => unwrapKeys(sodium, wire, tablet.id, tablet.ring, trust))).toBe("auth_failed");
+    expect(code(() => unwrapKeys(sodium, wire, tablet.id, tablet.ring, trust, anyEpoch))).toBe(
+      "auth_failed",
+    );
     const elsewhere = {
       vaultId: createVaultId(sodium),
       recoveryPublicKey: testRecovery.publicKeys,
     };
-    expect(code(() => unwrapKeys(sodium, wire, phone.id, elsewhere, trust))).toBe("auth_failed");
+    expect(code(() => unwrapKeys(sodium, wire, phone.id, elsewhere, trust, anyEpoch))).toBe(
+      "auth_failed",
+    );
   });
 
   it("the vault's recovery pins must match", () => {
@@ -222,7 +227,7 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       desktop.id,
       trustedTo(phone.id, desktop.ring.vaultId),
     );
-    expect(code(() => unwrapKeys(sodium, wire, phone.id, target, trust))).toBe(
+    expect(code(() => unwrapKeys(sodium, wire, phone.id, target, trust, anyEpoch))).toBe(
       "recovery_key_mismatch",
     );
   });
@@ -238,7 +243,9 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       desktop.id,
       trustedTo(phone.id, desktop.ring.vaultId),
     );
-    expect(code(() => unwrapKeys(sodium, all, phone.id, phone.ring, trust))).toBe("generation_gap");
+    expect(code(() => unwrapKeys(sodium, all, phone.id, phone.ring, trust, anyEpoch))).toBe(
+      "generation_gap",
+    );
     expect(phone.ring.size).toBe(1);
     for (const e of desktop.ring.entries().slice(1)) {
       unwrapKeys(
@@ -249,6 +256,7 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
         phone.id,
         phone.ring,
         trust,
+        anyEpoch,
       );
     }
     expect(phone.ring.active.kid).toBe(desktop.ring.active.kid);
@@ -267,14 +275,14 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       [gen2.kid],
       list,
     );
-    expect(unwrapKeys(sodium, wire, phone.id, phone.ring.clone(sodium), trust).recipients).toEqual(
-      list,
-    );
+    expect(
+      unwrapKeys(sodium, wire, phone.id, phone.ring.clone(sodium), trust, anyEpoch).recipients,
+    ).toEqual(list);
     // Swap the listed tablet id for another id: the signature no longer matches.
     const altered = wire.slice();
     const at = 1 + 16 + 64 + 2 + 16;
     altered.set(Buffer.from(desktop.id.deviceId, "hex"), at);
-    expect(code(() => unwrapKeys(sodium, altered, phone.id, phone.ring, trust))).toBe(
+    expect(code(() => unwrapKeys(sodium, altered, phone.id, phone.ring, trust, anyEpoch))).toBe(
       "auth_failed",
     );
     expect(() =>
@@ -315,7 +323,7 @@ describe.each(backends)("revocation is rotation going forward (%s)", (_name, sod
 
     const gen2 = rotateKeyring(sodium, ring, { epoch: 1 });
     const onlyNew = wrapKeys(sodium, ring, desktop, trustedTo(phone, ring.vaultId), [gen2.kid]);
-    unwrapKeys(sodium, onlyNew, phone, phoneRing, trusting(desktop));
+    unwrapKeys(sodium, onlyNew, phone, phoneRing, trusting(desktop), anyEpoch);
 
     const c = ctx(vaultId, { deviceId: desktop.deviceId });
     const frame = sealFrame(sodium, ring, samplePlain(), c);

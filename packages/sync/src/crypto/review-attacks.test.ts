@@ -10,6 +10,7 @@ import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
 import { keyringFromKeys } from "./testing.js";
 import {
+  anyEpoch,
   code,
   ctx,
   GID_SALT,
@@ -71,10 +72,12 @@ describe("review attacks now fail", () => {
       list,
       sealed,
     );
-    expect(code(() => unwrapKeys(sodium, asStranger, phone, phoneRing, trust))).toBe(
+    expect(code(() => unwrapKeys(sodium, asStranger, phone, phoneRing, trust, anyEpoch))).toBe(
       "untrusted_sender",
     );
-    expect(code(() => unwrapKeys(sodium, asDesktop, phone, phoneRing, trust))).toBe("auth_failed");
+    expect(code(() => unwrapKeys(sodium, asDesktop, phone, phoneRing, trust, anyEpoch))).toBe(
+      "auth_failed",
+    );
     // Even a trusted (later compromised) sender cannot push a generation near u32 max or skip ahead.
     const signedByDesktop = wrapKeys(
       sodium,
@@ -82,15 +85,17 @@ describe("review attacks now fail", () => {
       desktop,
       trustedTo(phone, vaultId),
     );
-    expect(unwrapKeys(sodium, signedByDesktop, phone, phoneRing, trust).ring.active.kid).toBe(
-      before,
-    );
+    expect(
+      unwrapKeys(sodium, signedByDesktop, phone, phoneRing, trust, anyEpoch).ring.active.kid,
+    ).toBe(before);
     const ahead = (rings[0] as Keyring).clone(sodium);
     for (let i = 0; i < 5; i++) rotateKeyring(sodium, ahead);
     const skip = wrapKeys(sodium, ahead, desktop, trustedTo(phone, ahead.vaultId), [
       ahead.active.kid,
     ]);
-    expect(code(() => unwrapKeys(sodium, skip, phone, phoneRing, trust))).toBe("generation_gap");
+    expect(code(() => unwrapKeys(sodium, skip, phone, phoneRing, trust, anyEpoch))).toBe(
+      "generation_gap",
+    );
     expect(phoneRing.active.kid).toBe(before);
     // And rotation keeps working.
     expect(rotateKeyring(sodium, phoneRing).generation).toBe(2);
@@ -228,9 +233,9 @@ describe("revocation races and hygiene", () => {
       const fromB = [a, r].map((d) =>
         wrapKeys(sodium, ringB, b, trustedTo(d, ringB.vaultId), [plain.kid], stale),
       );
-      const atB = unwrapKeys(sodium, toB, b, ringB, all);
-      unwrapKeys(sodium, fromB[0] as Uint8Array, a, ringA, all);
-      unwrapKeys(sodium, fromB[1] as Uint8Array, r, ringR, all);
+      const atB = unwrapKeys(sodium, toB, b, ringB, all, anyEpoch);
+      unwrapKeys(sodium, fromB[0] as Uint8Array, a, ringA, all, anyEpoch);
+      unwrapKeys(sodium, fromB[1] as Uint8Array, r, ringR, all, anyEpoch);
       // Both remaining devices converge on the revoke key, whose signed recipient list excludes R ...
       expect(ringA.active.kid).toBe(revoke.kid);
       expect(ringB.active.kid).toBe(revoke.kid);
@@ -255,12 +260,13 @@ describe("revocation races and hygiene", () => {
       b,
       ringB,
       all,
+      anyEpoch,
     );
     for (const epoch of [MAX_EPOCH, 5, 3]) {
       const forged = forgeSignedWrap(r, a, ringA, [
         { generation: 2, epoch, key: sodium.randomBytes(32) },
       ]);
-      expect(code(() => unwrapKeys(sodium, forged, a, ringA, all))).toBe("epoch_gap");
+      expect(code(() => unwrapKeys(sodium, forged, a, ringA, all, anyEpoch))).toBe("epoch_gap");
     }
     expect(ringA.size).toBe(2);
     expect(ringA.active.kid).toBe(revoke.kid);

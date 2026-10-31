@@ -8,7 +8,7 @@ import type { DeviceIdentity } from "./identity.js";
 import { createKeyring, type Keyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { fromLibsodium, type LibsodiumLike, loadNodeSodium, type Sodium } from "./sodium.js";
-import { openPairingWrap, pairingWrapHash, sealForPairing } from "./wrap.js";
+import { openPairingWrap, pairingWrapHash, sealForPairing, type UnwrapOptions } from "./wrap.js";
 
 export const sodium: Sodium = await loadNodeSodium();
 
@@ -134,3 +134,9 @@ export function pairWith(s: Sodium, ring: Keyring, device: DeviceIdentity): Keyr
   const sealed = sealForPairing(s, ring, device.box.publicKey);
   return openPairingWrap(s, sealed, device, ring.vaultId, pairingWrapHash(s, sealed));
 }
+
+/**
+ * An `acceptEpoch` that accepts every claimed epoch: for tests that are not about epochs. S29 passes
+ * a check against the signed registry's revocation counts instead.
+ */
+export const anyEpoch: UnwrapOptions = { acceptEpoch: () => true };

@@ -6,7 +6,7 @@ import { createDeviceIdentity, type DeviceIdentity, RECOVERY_SIGNER_ID } from ".
 import { createKeyring, createVaultId, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, RECOVERY_WORDS, recoveryIdentity } from "./recovery.js";
 import type { Sodium } from "./sodium.js";
-import { backends, code, ctx, samplePlain } from "./testkit.js";
+import { anyEpoch, backends, code, ctx, samplePlain } from "./testkit.js";
 import { recoveryRecipient, type TrustedSigner, unwrapKeys, wrapKeys } from "./wrap.js";
 
 describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
@@ -77,8 +77,9 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
       identity,
       { vaultId, recoveryPublicKey: recovery.publicKeys },
       trust,
+      anyEpoch,
     );
-    for (const w of rest) unwrapKeys(sodium, w, identity, restored, trust);
+    for (const w of rest) unwrapKeys(sodium, w, identity, restored, trust, anyEpoch);
     expect(restored.active.kid).toBe(gen3.kid);
     expect(openFrame(sodium, restored, old, c)).toEqual(samplePlain());
     expect(openFrame(sodium, restored, recent, c)).toEqual(samplePlain());
@@ -124,11 +125,11 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     const target = { vaultId, recoveryPublicKey: recovery.publicKeys };
     // The attacker knows the recovery public keys (every device does) and signs its own wrap.
     const planted = wrapKeys(sodium, ring, attacker, recoveryRecipient(ring));
-    expect(code(() => unwrapKeys(sodium, planted, identity, target, trust))).toBe(
+    expect(code(() => unwrapKeys(sodium, planted, identity, target, trust, anyEpoch))).toBe(
       "untrusted_sender",
     );
     const byDesktop = wrapKeys(sodium, ring, desktop, recoveryRecipient(ring));
-    expect(unwrapKeys(sodium, byDesktop, identity, target, trust).senderDeviceId).toBe(
+    expect(unwrapKeys(sodium, byDesktop, identity, target, trust, anyEpoch).senderDeviceId).toBe(
       desktop.deviceId,
     );
   });
@@ -164,9 +165,9 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     const wrap = wrapKeys(sodium, ring, desktop, recoveryRecipient(ring));
     const other = recoveryIdentity(sodium, createRecoveryKey(sodium).phrase);
     const target = { vaultId: ring.vaultId, recoveryPublicKey: recovery.publicKeys };
-    expect(code(() => unwrapKeys(sodium, wrap, other, target, () => desktop.signPublicKey))).toBe(
-      "auth_failed",
-    );
+    expect(
+      code(() => unwrapKeys(sodium, wrap, other, target, () => desktop.signPublicKey, anyEpoch)),
+    ).toBe("auth_failed");
   });
 });
 

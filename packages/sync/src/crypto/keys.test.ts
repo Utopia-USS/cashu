@@ -16,7 +16,7 @@ import {
 } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { keyringFromKeys } from "./testing.js";
-import { code, GID_SALT, newRing, pairWith, sodium, testRecovery } from "./testkit.js";
+import { anyEpoch, code, GID_SALT, newRing, pairWith, sodium, testRecovery } from "./testkit.js";
 import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
 const gid = (ring: Keyring, input: string) => {
@@ -194,6 +194,7 @@ describe("gid salt (D9)", () => {
       restoring,
       { vaultId: desktop.vaultId, recoveryPublicKey: recovery.publicKeys },
       () => phone.signPublicKey,
+      anyEpoch,
     );
     expect(gid(recovered, "synthetic-import-row-1")).toBe(before);
   });

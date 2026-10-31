@@ -4,7 +4,7 @@ import { createDeviceIdentity, DeviceIdentity } from "./identity.js";
 import { createKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
-import { code, sodium, subjectOf } from "./testkit.js";
+import { anyEpoch, code, sodium, subjectOf } from "./testkit.js";
 import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
 function vault() {
@@ -173,8 +173,12 @@ describe("box keys only from certificates (D14)", () => {
     const wire = wrapKeys(sodium, ring, desktop, target);
     const trust = (id: string) => devices.get(id)?.signPublicKey;
     const pinned = { vaultId, recoveryPublicKey: ring.recovery };
-    expect(unwrapKeys(sodium, wire, phone, pinned, trust).senderDeviceId).toBe(desktop.deviceId);
-    expect(code(() => unwrapKeys(sodium, wire, storage, pinned, trust))).toBe("auth_failed");
+    expect(unwrapKeys(sodium, wire, phone, pinned, trust, anyEpoch).senderDeviceId).toBe(
+      desktop.deviceId,
+    );
+    expect(code(() => unwrapKeys(sodium, wire, storage, pinned, trust, anyEpoch))).toBe(
+      "auth_failed",
+    );
     expect(() => wrapKeys(sodium, ring, desktop, recoveryRecipient(ring))).not.toThrow();
   });
 });

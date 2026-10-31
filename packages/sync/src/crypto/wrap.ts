@@ -56,7 +56,7 @@ export interface UnwrapOptions {
    * Checks each new key's claimed epoch against what the caller knows about its sender (S29: the
    * signed registry's revocation count). Returning false refuses the whole wrap (`untrusted_sender`).
    */
-  acceptEpoch?: (senderDeviceId: string, entry: KeyEntry) => boolean;
+  acceptEpoch: (senderDeviceId: string, entry: KeyEntry) => boolean;
 }
 
 export interface Unwrapped {
@@ -193,7 +193,7 @@ export function unwrapKeys(
   recipient: DeviceIdentity | RecoveryIdentity,
   target: Keyring | { vaultId: string; recoveryPublicKey: RecoveryPublicKeys },
   trustedSigner: TrustedSigner,
-  options: UnwrapOptions = {},
+  options: UnwrapOptions,
 ): Unwrapped {
   const vaultId = target.vaultId;
   assertVaultId(vaultId);
@@ -243,7 +243,7 @@ export function unwrapKeys(
     if (existing && fresh.some((e) => e.generation > existing.maxGeneration + 1)) {
       throw new CryptoError("generation_gap");
     }
-    if (options.acceptEpoch && !fresh.every((e) => options.acceptEpoch?.(senderDeviceId, e))) {
+    if (!fresh.every((e) => options.acceptEpoch(senderDeviceId, e))) {
       throw new CryptoError("untrusted_sender");
     }
     if (!existing) {

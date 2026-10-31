@@ -10,7 +10,15 @@ import { createKeyring, rotateKeyring } from "./keys.js";
 import { loadKeyring, saveKeyring } from "./keystore.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { InMemoryKeyStore } from "./testing.js";
-import { ctx, PLAINTEXT_MARKER, pairWith, samplePlain, sodium, trustedTo } from "./testkit.js";
+import {
+  anyEpoch,
+  ctx,
+  PLAINTEXT_MARKER,
+  pairWith,
+  samplePlain,
+  sodium,
+  trustedTo,
+} from "./testkit.js";
 import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
 const written: string[] = [];
@@ -72,6 +80,7 @@ describe("no key or plaintext in logs", () => {
       restoring,
       { vaultId: ring.vaultId, recoveryPublicKey: recovery.publicKeys },
       () => phone.signPublicKey,
+      anyEpoch,
     );
     const tampered = frame.slice();
     tampered[tampered.length - 1] = (tampered.at(-1) ?? 0) ^ 1;
@@ -101,6 +110,7 @@ describe("no key or plaintext in logs", () => {
           recoveryPair,
           ring,
           () => pair.signPublicKey,
+          anyEpoch,
         ),
     ]) {
       try {
