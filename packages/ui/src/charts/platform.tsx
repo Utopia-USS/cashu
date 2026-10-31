@@ -1,0 +1,331 @@
+// Desktop renderer of the chart scenes: DOM <svg> (Electron renderer, Storybook). Colours are Tailwind
+// classes of the theme (a theme switch needs no re-render), numbers in tabular figures. The frame owns the
+// width (ResizeObserver), the hover / keyboard crosshair and the tooltip live region (F7 FE14 roles).
+import { type KeyboardEvent, type PointerEvent, useEffect, useId, useRef, useState } from "react";
+import { layoutClass } from "../layout.js";
+import { S } from "./charts.strings.js";
+import { type ChartFrameProps, stepIndex } from "./frame.js";
+import { nearestIndex } from "./geometry.js";
+import { type ChartRole, type Focus, ROLE_VAR, type Scene, type SceneNode } from "./scene.js";
+
+const STROKE: Record<ChartRole, string> = {
+  series1: "stroke-chart-1",
+  series2: "stroke-chart-2",
+  series3: "stroke-chart-3",
+  series4: "stroke-chart-4",
+  series5: "stroke-chart-5",
+  series6: "stroke-chart-6",
+  series7: "stroke-chart-7",
+  series8: "stroke-chart-8",
+  grid: "stroke-chart-grid",
+  text: "stroke-fg",
+  muted: "stroke-fg-muted",
+  positive: "stroke-positive",
+  negative: "stroke-negative",
+  warning: "stroke-warning",
+  info: "stroke-info",
+  plan: "stroke-accent-muted",
+  surface: "stroke-surface-raised",
+};
+
+const FILL: Record<ChartRole, string> = {
+  series1: "fill-chart-1",
+  series2: "fill-chart-2",
+  series3: "fill-chart-3",
+  series4: "fill-chart-4",
+  series5: "fill-chart-5",
+  series6: "fill-chart-6",
+  series7: "fill-chart-7",
+  series8: "fill-chart-8",
+  grid: "fill-chart-grid",
+  text: "fill-fg",
+  muted: "fill-fg-muted",
+  positive: "fill-positive",
+  negative: "fill-negative",
+  warning: "fill-warning",
+  info: "fill-info",
+  plan: "fill-accent-muted",
+  surface: "fill-surface-raised",
+};
+
+const cls = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
+
+function Node({ node, prefix }: { node: SceneNode; prefix: string }) {
+  switch (node.k) {
+    case "line":
+      return (
+        <line
+          x1={node.x1}
+          y1={node.y1}
+          x2={node.x2}
+          y2={node.y2}
+          className={STROKE[node.stroke]}
+          strokeWidth={node.width ?? 1}
+          strokeDasharray={node.dash}
+        />
+      );
+    case "path": {
+      const gradient = typeof node.fill === "object" ? node.fill.gradient : null;
+      return (
+        <path
+          d={node.d}
+          className={cls(
+            node.stroke && STROKE[node.stroke],
+            node.fill == null ? "fill-none" : typeof node.fill === "string" && FILL[node.fill],
+          )}
+          fill={gradient ? `url(#${prefix}${gradient})` : undefined}
+          fillRule={node.evenOdd ? "evenodd" : undefined}
+          strokeWidth={node.stroke ? (node.width ?? 1) : undefined}
+          strokeDasharray={node.dash}
+          strokeLinejoin={node.stroke ? "round" : undefined}
+          strokeLinecap={node.stroke ? "round" : undefined}
+          opacity={node.opacity}
+        />
+      );
+    }
+    case "rect":
+      return (
+        <rect
+          x={node.x}
+          y={node.y}
+          width={node.w}
+          height={node.h}
+          rx={node.rx}
+          className={FILL[node.fill]}
+          opacity={node.opacity}
+        />
+      );
+    case "circle":
+      return (
+        <circle
+          cx={node.cx}
+          cy={node.cy}
+          r={node.r}
+          className={cls(FILL[node.fill], node.ring && "stroke-surface-raised")}
+          strokeWidth={node.ring ? 2 : undefined}
+        />
+      );
+    case "text":
+      return (
+        <text
+          x={node.x}
+          y={node.y}
+          textAnchor={node.anchor}
+          className={cls(
+            "text-caption tabular-nums",
+            node.tone === "muted" ? "fill-fg-muted" : "fill-fg",
+          )}
+        >
+          {node.text}
+        </text>
+      );
+  }
+}
+
+function SvgScene({
+  scene,
+  prefix,
+  focus,
+  label,
+  onPointerMove,
+  onPointerLeave,
+}: {
+  scene: Scene;
+  prefix: string;
+  focus: Focus | null;
+  /** The image's name when the frame is a group (interactive); otherwise the frame carries it. */
+  label: string | null;
+  onPointerMove?: (e: PointerEvent<SVGSVGElement>) => void;
+  onPointerLeave?: () => void;
+}) {
+  const { width: w, height: h } = scene;
+  return (
+    <svg
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      className="block overflow-visible"
+      onPointerMove={onPointerMove}
+      onPointerLeave={onPointerLeave}
+      role={label != null ? "img" : undefined}
+      aria-label={label ?? undefined}
+      aria-hidden={label == null ? true : undefined}
+    >
+      {scene.gradients.length > 0 && (
+        <defs>
+          {scene.gradients.map((g) => (
+            <linearGradient
+              key={g.id}
+              id={`${prefix}${g.id}`}
+              gradientUnits="userSpaceOnUse"
+              x1={0}
+              x2={0}
+              y1={g.y1}
+              y2={g.y2}
+            >
+              <stop
+                offset={0}
+                style={{ stopColor: `var(${ROLE_VAR[g.color]})`, stopOpacity: g.strong }}
+              />
+              <stop offset={1} style={{ stopColor: `var(${ROLE_VAR[g.color]})`, stopOpacity: 0 }} />
+            </linearGradient>
+          ))}
+        </defs>
+      )}
+      {scene.nodes.map((node, k) => (
+        // A scene is rebuilt whole; the node order is fixed per input, so the index is a stable key.
+        // biome-ignore lint/suspicious/noArrayIndexKey: scene nodes have no identity beyond their order
+        <Node key={k} node={node} prefix={prefix} />
+      ))}
+      {focus && (
+        <g>
+          <line
+            x1={focus.x}
+            x2={focus.x}
+            y1={focus.top}
+            y2={focus.bottom}
+            className="stroke-fg-muted"
+            strokeWidth={1}
+            strokeDasharray="2 3"
+          />
+          {focus.dots.map((d) => (
+            <circle
+              key={`${d.fill}${d.cy}`}
+              cx={focus.x}
+              cy={d.cy}
+              r={3.5}
+              className={cls(FILL[d.fill], "stroke-surface-raised")}
+              strokeWidth={2}
+            />
+          ))}
+        </g>
+      )}
+    </svg>
+  );
+}
+
+function useMeasuredWidth(fixed: number | undefined) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [measured, setMeasured] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (fixed != null || !el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect;
+      if (box) setMeasured(Math.round(box.width));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fixed]);
+  return { ref, width: fixed ?? measured };
+}
+
+/** Measures, draws and makes a chart scene interactive on the desktop. */
+export function ChartFrame({
+  width: fixed,
+  height,
+  layout,
+  label,
+  build,
+  tooltip,
+  center,
+  decorative,
+  inline,
+}: ChartFrameProps) {
+  const { ref, width } = useMeasuredWidth(fixed);
+  const [hover, setHover] = useState<number | null>(null);
+  // A per-instance gradient id usable inside url(#...) (React's useId contains colons).
+  const prefix = `g${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const built = width > 0 ? build(width) : null;
+  const scrub = tooltip && built?.scrub ? built.scrub : null;
+  const summary = built?.summary || label;
+  const focused = scrub && hover != null && hover < scrub.n ? hover : null;
+  const focus = scrub && focused != null ? scrub.focus(focused) : null;
+  const tip = tooltip && focused != null ? tooltip(focused) : null;
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!scrub) return;
+    const delta = { ArrowRight: 1, ArrowLeft: -1, End: scrub.n, Home: -scrub.n }[e.key];
+    if (delta != null) {
+      e.preventDefault();
+      setHover((cur) => stepIndex(cur, delta, scrub.n));
+    } else if (e.key === "Escape") setHover(null);
+  };
+  const onPointerMove = (e: PointerEvent<SVGSVGElement>) => {
+    if (!scrub || !built) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const px = ((e.clientX - box.left) / (box.width || 1)) * built.scene.width;
+    setHover(nearestIndex(px, scrub.n, scrub.x0, scrub.x1));
+  };
+  const roles = decorative
+    ? { "aria-hidden": true }
+    : scrub
+      ? {
+          role: "group",
+          "aria-roledescription": S.chart,
+          "aria-label": S.interactive(label),
+          tabIndex: 0,
+          onKeyDown,
+          onBlur: () => setHover(null),
+        }
+      : { role: "img", "aria-label": summary };
+  const right = focus != null && built != null && focus.x > built.scene.width * 0.6;
+
+  return (
+    <div
+      ref={ref}
+      className={cls(
+        "relative",
+        inline ? "inline-block align-middle" : "w-full",
+        scrub != null &&
+          "rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus",
+        layoutClass(layout),
+      )}
+      style={{ height, width: fixed }}
+      {...roles}
+    >
+      {built && (
+        <SvgScene
+          scene={built.scene}
+          prefix={prefix}
+          focus={focus}
+          label={scrub ? summary : null}
+          onPointerMove={scrub ? onPointerMove : undefined}
+          onPointerLeave={scrub ? () => setHover(null) : undefined}
+        />
+      )}
+      {center && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden>
+          <span className="text-title font-strong tabular-nums text-fg">{center.title}</span>
+          {center.caption && <span className="text-caption text-fg-muted">{center.caption}</span>}
+        </div>
+      )}
+      {/* The live region stays mounted (visually hidden while idle), so the first arrow press is announced. */}
+      {scrub &&
+        (tip && focus ? (
+          <div
+            role="status"
+            className={cls(
+              "pointer-events-none absolute z-10 whitespace-nowrap rounded-md border border-border bg-surface-raised px-2 py-1 text-caption text-fg",
+              right ? "-ml-2 -translate-x-full" : "ml-2",
+              !focus.tipBelow && "-translate-y-full",
+            )}
+            style={{
+              left: focus.x,
+              top: focus.tipBelow ? focus.tipY : Math.max(0, focus.tipY - 8),
+            }}
+          >
+            <div className="font-strong">{tip.title}</div>
+            {tip.rows.map((r) => (
+              <div key={r.name} className="flex gap-1">
+                <span className="text-fg-muted">{r.name}</span>
+                <span className="font-strong tabular-nums">{r.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div role="status" className="sr-only" />
+        ))}
+    </div>
+  );
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "typecheck": {
+      "inputs": [
+        "src/**",
+        "tsconfig.json",
+        "tsconfig.native.json",
+        "package.json",
+        "../../tsconfig.base.json"
+      ]
+    },
+    "test": {
+      "inputs": [
+        "src/**",
+        "package.json",
+        "vitest.config.*",
+        "jest.config.cjs",
+        "../../vitest.tiers.ts"
+      ]
+    }
+  }
+}

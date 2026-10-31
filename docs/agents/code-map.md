@@ -96,9 +96,9 @@ but were not listed before.
 | `src/core/` | shell, profile switcher, wizard, settings, API client; `messages.ts` (Polish labels for backend codes), `live.ts` + `useLive.ts` |
 | `src/modules/<id>/` | each module's tabs and its SetupPage |
 | `src/widgets.tsx`, `grid.ts` | v2 widget grid on thirds (Grid, Widget, Facts, Hero, badges) |
-| `src/charts.tsx` (geometry: `@cashu/ui-logic/core/chart`) | v2 SVG charts (line + benchmark + levels, bars, donut, sparkline) |
+| `src/charts.tsx` (geometry and texts: `@cashu/ui/charts/geometry`, `@cashu/ui/charts/strings`) | v2 SVG charts (line + benchmark + levels, bars, donut, sparkline); the TS stack's charts (web + native) are `packages/ui/src/charts/` on the same geometry |
 | `src/ui.tsx`, `css.ts`, `index.css` (formatters: `@cashu/ui-logic/core/format`) | shared primitives and tokens |
-| `src/core/platform.ts`; `packages/i18n` (`@cashu/i18n`), `packages/ui-logic` (`@cashu/ui-logic`) | browser wiring of the platform-free packages: UI language and `catalog({ key: { pl, en } })` text catalogs, the pure logic (formatters, time, chart geometry, backend code labels, module `logic.ts`) ([localization.md](localization.md)) |
+| `src/core/platform.ts`; `packages/i18n` (`@cashu/i18n`), `packages/ui-logic` (`@cashu/ui-logic`) | browser wiring of the platform-free packages: UI language and `catalog({ key: { pl, en } })` text catalogs, the pure logic (formatters, time, backend code labels, module `logic.ts`) ([localization.md](localization.md)) |
 | `src/core/api.ts`, `src/modules/<id>/api.ts` | typed API functions; `j` / `jpost` / `jdel` (in `core/api.ts`) send the token |
 | `src/modules/investments/v2/priceRefresh.ts` | open-app quote refresh (on open and every 15 min) |
 | `src/components/ScrollableChart.tsx` | window+scroll+axis+grid charts of the budget and loan pages |

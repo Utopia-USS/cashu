@@ -1,3 +1,25 @@
 // @cashu/ui: the shared display layer of desktop and mobile (cashu-ui skill). The token source is
-// `./theme.css` (exported for the desktop renderer, Storybook and Metro); components land here.
+// `./theme.css` (exported for the desktop renderer, Storybook and Metro). Platform pairs (`x.tsx` for the
+// DOM, `x.native.tsx` for React Native) resolve per bundler: Vite / tsc take the default file, Metro and
+// jest-expo the native one (tsconfig.native.json checks that side with `moduleSuffixes`).
+export { AreaChart } from "./charts/AreaChart.js";
+export { BarChart } from "./charts/BarChart.js";
+export { Donut } from "./charts/Donut.js";
+export { LineChart } from "./charts/LineChart.js";
+export { Sparkline } from "./charts/Sparkline.js";
+export type { ChartRole, SeriesColor } from "./charts/scene.js";
+export type {
+  AreaChartProps,
+  AreaLayer,
+  BarChartProps,
+  ChartTip,
+  DonutProps,
+  DonutSegment,
+  Level,
+  LineChartProps,
+  LineSeries,
+  SparklineProps,
+  ValueKind,
+} from "./charts/types.js";
+export { type UiEnv, UiEnvProvider, useUiEnv } from "./environment/UiEnv.js";
 export { type Layout, type LayoutClass, layoutClass, SPACING_STEPS, type Step } from "./layout.js";
