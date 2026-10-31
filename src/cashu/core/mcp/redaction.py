@@ -203,10 +203,17 @@ _CUR = (
     r"(?:[A-Z]{3}|(?i:zł|zl|złot\w*|zlot\w*|grosz\w*|euro|eur|usd|pln|gbp|chf|dolar\w*|funt\w*"
     r"|frank\w*)|€|\$|£)"
 )
-_NUM = r"[-+]?\d(?:[\d '.,]*\d)?"
+# S37fix2 W4: the characters that group digits ("2 000", "2'000", "2.000", "5•0000", "1・000",
+# "1٬000", "2’000"). Unicode spaces (thin, narrow no-break) are already one ASCII space here (D1).
+_GROUP = " '._•·,\u2019\u02bc\u2032\u30fb\u066c\u066b\u2e31\u2027\u2219\u22c5"
+_G = f"[{_GROUP}]"
+_NUM = rf"[-+]?\d(?:[\d{_GROUP}]*\d)?"
 _MONEY_CUR = re.compile(rf"(?:{_NUM} ?{_CUR}(?![A-Za-z]))|(?:(?<![A-Za-z]){_CUR} ?{_NUM})")
+# S37fix2 W1 / W2: a scale word takes the whole number before it, digit groups included, across any
+# run of spaces ("2 tysiące", "3  miliony", "1,5 mln", "2 500 tysięcy", "5k", "2 tyś")
 _MULTIPLIED = re.compile(
-    r"(?<![\w.,])[-+]?\d+(?:[.,]\d+)?\s?(?i:tys\.?|tysi[eę]c\w*|mln|mld|k|m|mn|bn)(?![\w])"
+    rf"(?<![\w.,])[-+]?\d+(?:{_G}\d+)*\s*"
+    r"(?i:ty[sś]\.?|tysi[aąeę]c\w*|milion\w*|miliard\w*|bilion\w*|mln|mld|k|m|mn|bn)(?![\w])"
 )
 _GROUPED = re.compile(
     r"(?<![\w.,])[-+]?\d{1,3}(?:(?:[ ']\d{3})+|(?:,\d{3})+|(?:\.\d{3}){2,})(?:[.,]\d+)?"
@@ -217,36 +224,52 @@ _MONEY_WORD = re.compile(
     r"(?i:\b(?:price|prices|cena|ceny|cash|amount|kwota|kwoty|value|warto\w*|worth|cost|costs|"
     r"koszt\w*|saldo|balance|deposit\w*|wp[lł]at\w*|wyp[lł]at\w*|fee|fees|tax|prowizj\w*|"
     r"op[lł]at\w*|proceeds|income|expense\w*|przych\w*|wydat\w*|rata|raty|installment)\b"
-    r"[^\d\n]{0,24}?)(?<![\w.,])([-+]?\d+(?:[ '._•·,]\d+)*)"
-    r"(?![\d%]|[ '._•·,]\d|\s?%|\s?pp\b|\s?(?:days?|dni)\b)"
+    rf"[^\d\n]{{0,24}}?)(?<![\w.,])([-+]?\d+(?:{_G}\d+)*)"
+    rf"(?![\d%]|{_G}\d|\s?%|\s?pp\b|\s?(?:days?|dni)\b)"
 )
 # S37fix2 N9: a number glued after letters ("kwota950", "nr1500") is a number too; a sign counts only
 # when no letter or digit stands before it ("COVID-19" keeps its dash)
 _ANY_NUMBER = re.compile(r"(?:(?<!\w)[-+])?(?<!\d)\d+(?:[.,]\d+)*")
 # S37fix2 N10: digit groups joined by one grouping character ("2 000", "3 000 %", "2_000 x", "5•0000")
 # are one number, masked whole by its significant digits, before a percent sign too
-_GROUPED_ANY = re.compile(r"(?:(?<!\w)[-+])?(?<!\d)\d+(?:[ '._•·,]\d+)+")
+_GROUPED_ANY = re.compile(rf"(?:(?<!\w)[-+])?(?<!\d)\d+(?:{_G}\d+)+")
 # S37fix2: amounts in words (strict free text). A run of Polish / English number words is masked when
 # it holds a word worth 10 or more or a scale word ("dwa tysiące", "pół miliona", "fifty"); units
 # alone ("dwa", "pięć") stay. Bare English "ten" is left out (Polish "ten" = "this").
+# S37fix2 W1 / W2: words joined by any run of spaces, a comma, a dash, "i" / "and"; a number in
+# digits right before the words joins the run ("2 i pół miliona"); a scale word glued after another
+# word (a soft hyphen removed: "dwatysiące") is a scale word; "kilka", "parę", "półtorej", "kilkaset",
+# "setki" and the slang "stówa" are number words; "koło", "bańka", "patyk" count as a scale word only
+# right after a number or a number word ("dwa koła", "3 patyki"), "bańka spekulacyjna" stays.
 _NUMBER_WORDS_BIG = (
     r"dziesi[eę][cć]|dziesi[eę]ciu|\w+na[sś]cie|\w+nastu|dwadzie[sś]cia|\w+dziestu|\w+dzie[sś]ci|"
     r"\w+dziesi[aą]t|\w+dziesi[eę]ciu|sto|stu|dwie[sś]cie|dwustu|trzysta|trzystu|czterysta|"
     r"czterystu|(?:pi[eę][cć]|sze[sś][cć]|siedem|osiem|dziewi[eę][cć])set|"
-    r"(?:pi[eę]ciu|sze[sś]ciu|siedmiu|o[sś]miu|dziewi[eę]ciu)set|tysi[aą]c\w*|tysi[eę]c\w*|tys\.|"
-    r"milion\w*|miliard\w*|bilion\w*|mln\.?|mld\.?|eleven|twelve|thirteen|fourteen|fifteen|sixteen|"
+    r"(?:pi[eę]ciu|sze[sś]ciu|siedmiu|o[sś]miu|dziewi[eę]ciu)set|(?:kilka|kilku|par[eę]|paru)set|"
+    r"setk\w*|setek|st[oó]w(?:a|y|ę|ą|ie|ami|ach|om|ka|ki|kę|ką|ek|ce|kami|kach)|stów|tysiak\w*|"
+    r"\w*tysi[aąeę]c\w*|ty[sś]\.?|\w*milion\w*|\w*miliard\w*|\w*bilion\w*|mln\.?|mld\.?|eleven|twelve|thirteen|fourteen|fifteen|sixteen|"
     r"seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|"
-    r"thousands?|millions?|billions?"
+    r"\w*thousands?|\w*millions?|\w*billions?"
 )
 _NUMBER_WORDS_SMALL = (
     r"zero|jeden|jedna|jedno|jednego|jednej|jednym|dwa|dwie|dw[oó]ch|dwu|dwoma|trzy|trzech|trzema|"
     r"cztery|czterech|pi[eę][cć]|pi[eę]ciu|sze[sś][cć]|sze[sś]ciu|siedem|siedmiu|osiem|o[sś]miu|"
-    r"dziewi[eę][cć]|dziewi[eę]ciu|p[oó][lł]|p[oó][lł]tora|one|two|three|four|five|six|seven|eight|"
+    r"dziewi[eę][cć]|dziewi[eę]ciu|p[oó][lł]|p[oó][lł]tor(?:a|ej)|kilka|kilku|kilkoma|par[eę]|paru|"
+    r"paroma|one|two|three|four|five|six|seven|eight|"
     r"nine|ten|half"
 )
+_NUMBER_WORDS_AFTER = r"ko[lł][oa]|bańk(?:a|i|ę|ą)|baniek|patyk\w*"
 _NUMBER_WORD = rf"(?:{_NUMBER_WORDS_BIG}|{_NUMBER_WORDS_SMALL})(?!\w)"
-_NUMBER_WORDS = re.compile(rf"(?i:(?<!\w){_NUMBER_WORD}(?:(?: |-| i | and ){_NUMBER_WORD})*)")
-_BIG_NUMBER_WORD = re.compile(rf"(?i:(?<!\w)(?:{_NUMBER_WORDS_BIG})(?!\w))")
+_WORD_AFTER = rf"(?:{_NUMBER_WORDS_BIG}|{_NUMBER_WORDS_SMALL}|{_NUMBER_WORDS_AFTER})(?!\w)"
+_WORD_JOIN = r"(?:\s+(?:i|and)\s+|\s*[,-]\s*|\s+)"
+_DIGITS_BEFORE = rf"(?<![\w.,])[-+]?\d+(?:{_G}\d+)*{_WORD_JOIN}"
+_NUMBER_WORDS = re.compile(
+    rf"(?i:(?:{_DIGITS_BEFORE}|(?<!\w)){_NUMBER_WORD}(?:{_WORD_JOIN}{_WORD_AFTER})*"
+    rf"|{_DIGITS_BEFORE}(?:{_NUMBER_WORDS_AFTER})(?!\w)(?:{_WORD_JOIN}{_WORD_AFTER})*)"
+)
+_BIG_NUMBER_WORD = re.compile(
+    rf"(?i:(?<!\w)(?:{_NUMBER_WORDS_BIG}|{_NUMBER_WORDS_AFTER})(?!\w))"
+)
 # Kept in strict free text (S37fix R1, R2, N1, N5): a number with at most 3 integer digits and no
 # grouping right before a percent sign / percentage points (a decimal part of 1-2 digits allowed) or a
 # non-money unit from this closed list (an integer only), or right after a position word ("line 12").
@@ -256,14 +279,15 @@ _KEPT_UNITS = (
     r"sesja|sesji|sesje|sessions?|dzień|dni|days?|tydzień|tygodni|weeks?|miesiąc|miesięcy|miesiące|"
     r"months?|rok|lat|lata|years?|x|znaków|characters?|linia|lines?|wiersz|rows?|pozycji|positions?"
 )
-_NOT_GROUPED = r"(?<![\w.,])(?<!\d[ '.,_])"
+_NOT_GROUPED = rf"(?<![\w.,])(?<!\d{_G})"
 _KEPT_PERCENT = re.compile(
-    rf"{_NOT_GROUPED}[-+]?\d{{1,3}}(?:[.,]\d{{1,2}})?(?![\d.,'_]\d|\d)"
+    rf"{_NOT_GROUPED}[-+]?\d{{1,3}}(?:[.,]\d{{1,2}})?(?!{_G}\d|\d)"
     r"(?= ?(?:%|pp\b|p\.p\.|pkt proc\.))"
 )
 _KEPT_UNIT = re.compile(rf"{_NOT_GROUPED}[-+]?\d{{1,3}}(?= ?(?i:{_KEPT_UNITS})(?!\w))")
 _KEPT_POSITION = re.compile(
-    r"((?i:\b(?:line|row|linia|linii|wiersz|wiersza|pozycja|pozycji)) )(\d{1,3})(?![\d\w]|[.,'_ ]\d)"
+    r"((?i:\b(?:line|row|linia|linii|wiersz|wiersza|pozycja|pozycji)) )(\d{1,3})"
+    rf"(?![\d\w]|{_G}\d)"
 )
 _CURRENCY_WORDS = (
     r"zł|zl|złot\w*|zlot\w*|grosz\w*|gr|pln|eur|euro|usd|chf|gbp|dolar\w*|funt\w*|frank\w*"
@@ -384,7 +408,9 @@ def _significant(m: re.Match) -> str | None:
 
 
 # a link (public source): a number glued to letters in it ("/p11/") is part of a path, not an amount
-_IN_LINK = re.compile(r"(?:https?://|www\.)\S*$")
+# S37fix2 W3: only a link that starts the text or follows a space, "(", "<" or a quote ("xhttps://"
+# is not a link)
+_IN_LINK = re.compile(r"(?:^|(?<=[\s(<\"'“”„‘’«»]))(?:https?://|www\.)\S*$")
 
 
 def _any_number(m: re.Match) -> str | None:
