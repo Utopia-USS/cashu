@@ -6,6 +6,7 @@
  * store.py: timestamps canonical, booleans from 0 / 1, integers as `bigint`.
  */
 
+import { alerts } from "@cashu/domain/investments";
 import type { Store, TableDef } from "@cashu/store";
 import type { OutValue } from "../output.ts";
 import { bool, type CanonRow, compareUtf8, int, json, text, timestamp } from "./canonical.ts";
@@ -144,14 +145,31 @@ function archiveBlob(value: unknown): OutValue {
   return { sha256: m[1] ?? "", ext: m[2] ?? "" };
 }
 
-export function projectView(store: Store, table: string, keys: GidKeys): GidRow[] {
+/**
+ * `alerts.status` / `snoozed_until` as a reader sees them at the dataset's `as_of` 00:00 UTC (lead
+ * decision: the effective status is compared on both sides; store.py `_effective_alert`).
+ */
+function effectiveAlert(row: ViewRow, asOf: string): ViewRow {
+  const shown = alerts.effectiveAlertStatus(
+    {
+      status: String(row.status) as alerts.StoredAlertStatus,
+      expires_at: row.expires_at === null ? null : String(row.expires_at),
+      snoozed_until: row.snoozed_until === null ? null : String(row.snoozed_until),
+    },
+    `${asOf}T00:00:00Z`,
+  );
+  return { ...row, status: shown.status, snoozed_until: shown.snoozed_until };
+}
+
+export function projectView(store: Store, table: string, keys: GidKeys, asOf: string): GidRow[] {
   const def = store.publicTables().find((t) => t.name === table);
   if (def === undefined) throw new ViewProjectionError(table, "no such view table");
   const columns = ROUNDTRIP_COLUMNS[table];
   if (columns === undefined) throw new ViewProjectionError(table, "no roundtrip columns");
   const gids = viewGids(store);
   const rows = store.read<ViewRow>(`SELECT * FROM ${table} ORDER BY id`);
-  return rows
+  const shown = table === "alerts" ? rows.map((row) => effectiveAlert(row, asOf)) : rows;
+  return shown
     .filter((row) => !isDerivedLeg(table, row))
     .map((row) => {
       const out: Record<string, OutValue> = {};

@@ -35,8 +35,8 @@ function assertViewCount(table: string, vault: VaultRun, viewRows: number): void
 }
 
 /** One vault's rows of a table, from its folded view. */
-function viewRows(table: string, vault: VaultRun, keys: GidKeys): GidRow[] {
-  const view = projectView(vault.store, table, keys);
+function viewRows(table: string, vault: VaultRun, keys: GidKeys, asOf: string): GidRow[] {
+  const view = projectView(vault.store, table, keys, asOf);
   assertViewCount(table, vault, view.length - claimedLegs(vault.store, table));
   return view;
 }
@@ -59,7 +59,7 @@ export function produceStoreTable(db: PythonDb, table: string): OutValue {
     const vault = run.vaults.get(p.id);
     if (vault === undefined) throw new RoundtripError(table, -1, "a profile without a vault");
     const keys = new GidKeys(vault, db.keys);
-    const built = viewRows(table, vault, keys);
+    const built = viewRows(table, vault, keys, db.asOf);
     profiles[db.keys.key("profiles", p.id)] = sortRows(
       built.map((r) => shaped(table, vault.ordinal, r.row)),
     );

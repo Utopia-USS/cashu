@@ -7,7 +7,8 @@
  *
  * Left out of every table: `id`, `profile_id`, device-local connector fetch state, the id-coupled
  * `dedup_hash` columns and the DERIVED columns whose deriving scope has not landed (transactions
- * `transfer_group_id` / `is_internal_transfer` until S24, alerts `status` until S25). `inv_decisions`
+ * `transfer_group_id` / `is_internal_transfer` until S24). Alerts `status` / `snoozed_until` are the
+ * effective values at the dataset's `as_of` 00:00 UTC (lead decision). `inv_decisions`
  * carries the pseudo-column `signals` (its `inv_decision_signals` links, natural keys, sorted).
  */
 export const ROUNDTRIP_COLUMNS: Readonly<Record<string, readonly string[]>> = Object.freeze({
@@ -231,6 +232,7 @@ export const ROUNDTRIP_COLUMNS: Readonly<Record<string, readonly string[]>> = Ob
     "created_by",
     "cooldown_days",
     "expires_at",
+    "status",
     "snoozed_until",
     "last_triggered_at",
     "last_checked_at",

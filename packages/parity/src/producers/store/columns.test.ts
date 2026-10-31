@@ -44,7 +44,7 @@ describe("ROUNDTRIP_COLUMNS", () => {
       }
     }
     expect(ROUNDTRIP_COLUMNS.transactions).not.toContain("is_internal_transfer");
-    expect(ROUNDTRIP_COLUMNS.alerts).not.toContain("status");
+    expect(ROUNDTRIP_COLUMNS.alerts).toContain("status"); // effective status (lead decision)
     expect(ROUNDTRIP_COLUMNS.inv_decisions).toContain("signals");
   });
 });

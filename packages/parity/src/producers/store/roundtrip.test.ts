@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import { dumps } from "../output.ts";
 import { compareUtf8, json, sortRows, timestamp } from "./canonical.ts";
-import { ROUNDTRIP_COLUMNS } from "./columns.ts";
 import { parityKeys, parityNow } from "./genesisRun.ts";
 import { GidKeys } from "./gidKeys.ts";
 import { STORE_TABLES } from "./tables.ts";
