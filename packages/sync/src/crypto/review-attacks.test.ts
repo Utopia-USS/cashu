@@ -1,10 +1,11 @@
+import { ed25519 } from "@noble/curves/ed25519.js";
 // The S27 review's attacks A1-A7, kept as permanent tests: each asserts the attack now FAILS.
 
 import { describe, expect, it } from "vitest";
 import { concat, fromHex, lengthPrefixed, u32, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
-import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
+import { createDeviceIdentity, type DeviceIdentity, verifySignature } from "./identity.js";
 import { decodeKeyPayload, type Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
@@ -294,6 +295,22 @@ describe("revocation races and hygiene", () => {
     revocationsApplied.set(r.deviceId, 1);
     unwrapKeys(sodium, forged(), a, ringA, all, { acceptEpoch });
     expect(ringA.size).toBe(2);
+  });
+
+  it("F6: malformed Ed25519 signatures and keys are invalid, never a runtime error", () => {
+    const id = createDeviceIdentity(sodium);
+    const message = utf8("m");
+    const good = ed25519.sign(message, id.signSecretKey.expose());
+    for (const signature of [
+      concat(new Uint8Array(32).fill(0xff), good.subarray(32)), // R not on the curve
+      concat(good.subarray(0, 32), new Uint8Array(32).fill(0xff)), // S >= L
+      new Uint8Array(64),
+      good.subarray(0, 63),
+    ]) {
+      expect(verifySignature(signature, message, id.signPublicKey)).toBe(false);
+    }
+    expect(verifySignature(good, message, new Uint8Array(32).fill(0xff))).toBe(false);
+    expect(verifySignature(good, message, id.signPublicKey)).toBe(true);
   });
 
   it("structuredClone (IPC) of secrets, rings and identities carries no key bytes", () => {

@@ -178,8 +178,9 @@ export class Keyring {
   }
 
   /**
-   * Replaces the pinned recovery public keys. A local, explicit operation only (the owner made a
-   * new recovery key on this device); spreading it to other devices is a signed event (S29).
+   * Replaces the pinned recovery public keys. Only for applying a verified, signed S29 "recovery key
+   * changed" event (or the owner creating a new recovery key on this device); never with keys read
+   * from storage, which would reintroduce B2.
    */
   replaceRecoveryKey(publicKeys: RecoveryPublicKeys): void {
     this.#recovery = checkRecovery(publicKeys);
