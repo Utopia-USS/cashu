@@ -85,7 +85,7 @@ describe("no key or plaintext in logs", () => {
     const tampered = frame.slice();
     tampered[tampered.length - 1] = (tampered.at(-1) ?? 0) ^ 1;
     expect(() => openFrame(sodium, ring, tampered, c)).toThrow();
-    expect(() => recoveryIdentity(sodium, `${recovery.phrase} extra`)).toThrow();
+    expect(() => recoveryIdentity(sodium, `${recovery.phrase.reveal()} extra`)).toThrow();
     expect(written).toEqual([]);
   });
 
@@ -102,7 +102,7 @@ describe("no key or plaintext in logs", () => {
     for (const fn of [
       () => openFrame(sodium, createKeyring(sodium, recovery.publicKeys, ring.vaultId), frame, c),
       () => openFrame(sodium, ring, frame.subarray(0, frame.length - 1), c),
-      () => recoveryIdentity(sodium, recovery.phrase.split(" ").slice(0, 23).join(" ")),
+      () => recoveryIdentity(sodium, recovery.phrase.reveal().split(" ").slice(0, 23).join(" ")),
       () =>
         unwrapKeys(
           sodium,
@@ -140,7 +140,7 @@ describe("no key or plaintext in logs", () => {
       ...secretsOf(pair.signSecretKey.expose()),
       ...secretsOf(recoveryPair.box.secretKey.expose()),
       ...secretsOf(recoveryPair.signSecretKey.expose()),
-      ...phraseFragments(recovery.phrase),
+      ...phraseFragments(recovery.phrase.reveal()),
       PLAINTEXT_MARKER,
     ];
     for (const f of forbidden) expect(output).not.toContain(f);

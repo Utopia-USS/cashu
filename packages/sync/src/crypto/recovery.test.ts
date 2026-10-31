@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { describe, expect, it } from "vitest";
 import { certifyDevice, verifyCertificates } from "./cert.js";
 import { toHex } from "./encoding.js";
@@ -27,7 +28,7 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
 
   it("is 24 words and reproduces the same public keys", () => {
     const { phrase, publicKeys } = createRecoveryKey(sodium);
-    expect(phrase.split(" ")).toHaveLength(RECOVERY_WORDS);
+    expect(phrase.reveal().split(" ")).toHaveLength(RECOVERY_WORDS);
     expect(recoveryIdentity(sodium, phrase).publicKeys).toEqual(publicKeys);
     expect(recoveryIdentity(sodium, phrase).deviceId).toBe(RECOVERY_SIGNER_ID);
   });
@@ -153,14 +154,29 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     );
   });
 
+  it("F8: logging or serializing a new recovery key shows no words", () => {
+    const created = createRecoveryKey(sodium);
+    const words = created.phrase.reveal().split(" ");
+    const shown = [
+      JSON.stringify(created),
+      String(created.phrase),
+      `${created.phrase}`,
+      inspect(created, { depth: 5, showHidden: true }),
+    ].join("\n");
+    for (let i = 1; i < words.length; i++) {
+      expect(shown).not.toContain(`${words[i - 1]} ${words[i]}`);
+    }
+    expect(recoveryIdentity(sodium, created.phrase).publicKeys).toEqual(created.publicKeys);
+  });
+
   it("accepts case and whitespace variations of the same words", () => {
     const { phrase, publicKeys } = createRecoveryKey(sodium);
-    const messy = `  ${phrase.toUpperCase().split(" ").join("   \n")} `;
+    const messy = `  ${phrase.reveal().toUpperCase().split(" ").join("   \n")} `;
     expect(recoveryIdentity(sodium, messy).publicKeys).toEqual(publicKeys);
   });
 
   it("rejects a wrong checksum, a wrong length and unknown words without echoing them", () => {
-    const words = createRecoveryKey(sodium).phrase.split(" ");
+    const words = createRecoveryKey(sodium).phrase.reveal().split(" ");
     const swapped = [...words];
     // Replacing the last word almost always breaks the 8-bit checksum; pick one that does.
     for (const candidate of ["abandon", "ability", "able", "about"]) {

@@ -65,6 +65,7 @@ export {
   type NewRecoveryKey,
   normalizePhrase,
   RECOVERY_WORDS,
+  RecoveryPhrase,
   recoveryIdentity,
 } from "./recovery.js";
 export { Secret } from "./secret.js";

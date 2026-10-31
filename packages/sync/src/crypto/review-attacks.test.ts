@@ -193,10 +193,10 @@ describe("review attacks now fail", () => {
     const r = createRecoveryKey(sodium);
     const keys = recoveryIdentity(
       sodium,
-      `  ${r.phrase.toUpperCase().split(" ").join("\n  ")} `,
+      `  ${r.phrase.reveal().toUpperCase().split(" ").join("\n  ")} `,
     ).publicKeys;
     expect(keys).toEqual(r.publicKeys);
-    const w = r.phrase.split(" ");
+    const w = r.phrase.reveal().split(" ");
     expect(code(() => recoveryIdentity(sodium, w.map((x) => x.slice(0, 4)).join(" ")))).toBe(
       "bad_mnemonic",
     );

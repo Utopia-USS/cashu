@@ -28,9 +28,43 @@ const HKDF_SALT = utf8("cashu/recovery/v2");
 const HKDF_INFO_BOX = utf8("x25519-seed");
 const HKDF_INFO_SIGN = utf8("ed25519-seed");
 
+const INSPECT = Symbol.for("nodejs.util.inspect.custom");
+const INTERNAL = Symbol("recovery-phrase");
+
+/**
+ * The 24 words, behind a wrapper that prints `[redacted]` through `String`, `JSON.stringify` and
+ * `util.inspect`, so logging a `NewRecoveryKey` by mistake shows no words. `reveal()` returns them,
+ * right where the UI shows them to the owner once.
+ */
+export class RecoveryPhrase {
+  readonly #words: string;
+
+  /** Not public API: made by `createRecoveryKey`. */
+  constructor(token: typeof INTERNAL, words: string) {
+    if (token !== INTERNAL) throw new TypeError("use createRecoveryKey");
+    this.#words = words;
+  }
+
+  reveal(): string {
+    return this.#words;
+  }
+
+  toString(): string {
+    return "[redacted]";
+  }
+
+  toJSON(): string {
+    return "[redacted]";
+  }
+
+  [INSPECT](): string {
+    return "RecoveryPhrase([redacted])";
+  }
+}
+
 export interface NewRecoveryKey {
-  /** Shown to the owner once, to write down; never stored, logged or synced. */
-  phrase: string;
+  /** Shown to the owner once, to write down (`reveal()`); never stored, logged or synced. */
+  phrase: RecoveryPhrase;
   /** Pinned in the vault's keyrings (`createKeyring`); rotated data keys are wrapped for it. */
   publicKeys: RecoveryPublicKeys;
 }
@@ -57,15 +91,21 @@ export function createRecoveryKey(sodium: Sodium): NewRecoveryKey {
     const identity = identityFromEntropy(sodium, entropy);
     const publicKeys = identity.publicKeys;
     identity.wipe();
-    return { phrase: entropyToMnemonic(entropy, wordlist), publicKeys };
+    return {
+      phrase: new RecoveryPhrase(INTERNAL, entropyToMnemonic(entropy, wordlist)),
+      publicKeys,
+    };
   } finally {
     entropy.fill(0);
   }
 }
 
 /** The recovery identity for a phrase; throws `bad_mnemonic` (without echoing the words) when invalid. */
-export function recoveryIdentity(sodium: Sodium, phrase: string): RecoveryIdentity {
-  const normalized = normalizePhrase(phrase);
+export function recoveryIdentity(
+  sodium: Sodium,
+  phrase: string | RecoveryPhrase,
+): RecoveryIdentity {
+  const normalized = normalizePhrase(typeof phrase === "string" ? phrase : phrase.reveal());
   if (normalized.split(" ").length !== RECOVERY_WORDS) throw new CryptoError("bad_mnemonic");
   let entropy: Uint8Array;
   try {
