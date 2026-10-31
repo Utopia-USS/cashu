@@ -74,7 +74,8 @@ and hashes only; tracebacks go to `errors.log` next to the outputs.
 | `loans.valuation` | `modules/loans/service.loan_summary`, `valuation.py`, `amortization.summarize` |
 | `assets.depreciation` | `modules/assets/depreciation.py`, the assets manual rows |
 | `investments.overview`, `.positions`, `.position_detail`, `.signals`, `.alerts`, `.watchlist`, `.strategy_status`, `.accounts`, `.review_digest` | `modules/investments/service/views.py` |
-| `investments.valuation`, `investments.allocation` | `portfolio/valuation.py`, `portfolio/allocation.py` via `service/portfolio.build` |
+| `investments.valuation`, `investments.allocation` | `portfolio/valuation.py`, `portfolio/allocation.py` via `service/portfolio.build` (the pure pipeline; TS scope S13) |
+| `investments.allocation_view` | `service/views.allocation_view` on the same state (needs the allocation_drift rule; TS scopes S15b + S22a) |
 | `investments.performance` | `performance/service.py` (every range + attribution) |
 | `investments.rules` | `rules/engine.py` outcomes at `as_of` (pure, nothing persisted) |
 | `investments.strategy_loader` | `strategy/loader.py` on each profile's files and the bundled templates |

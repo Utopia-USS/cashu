@@ -8,6 +8,16 @@ export {
   isDataset,
   labRoot,
 } from "./datasets.ts";
+export type {
+  InvAliasRow,
+  InvFxRateRow,
+  InvInstrumentRow,
+  InvManualValuationRow,
+  InvPriceBarRow,
+  InvProfileInstrumentRow,
+  InvRenameRow,
+  InvTransactionRow,
+} from "./investments.ts";
 export type { KeySpec, SqlRows, SqlValue } from "./naturalKeys.ts";
 export { digest, NaturalKeys, SPECS } from "./naturalKeys.ts";
 export type {

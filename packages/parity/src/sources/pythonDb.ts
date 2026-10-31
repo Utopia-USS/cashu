@@ -33,6 +33,8 @@ import {
 import { join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { type Dataset, datasetAsOf, datasetDir, labRoot } from "./datasets.ts";
+import { bool, int, type Row, text, textOrNull } from "./decode.ts";
+import { InvestmentsReader } from "./investments.ts";
 import { NaturalKeys, type SqlRows, type SqlValue } from "./naturalKeys.ts";
 
 const DB_FILES = ["cashu.db", "cashu.db-wal", "cashu.db-shm"] as const;
@@ -123,29 +125,6 @@ export interface TransactionRow {
 
 // --------------------------------------------------------------------------- value decoding
 
-type Row = Readonly<Record<string, SqlValue>>;
-
-function int(row: Row, col: string): number {
-  const v = row[col];
-  if (typeof v === "bigint" && v <= BigInt(Number.MAX_SAFE_INTEGER)) return Number(v);
-  if (typeof v === "number" && Number.isSafeInteger(v)) return v;
-  throw new Error(`column ${col} is not an integer`);
-}
-
-function text(row: Row, col: string): string {
-  const v = row[col];
-  if (typeof v === "string") return v;
-  throw new Error(`column ${col} is not text`);
-}
-
-function textOrNull(row: Row, col: string): string | null {
-  return row[col] === null ? null : text(row, col);
-}
-
-function bool(row: Row, col: string): boolean {
-  return int(row, col) !== 0;
-}
-
 /** Python `Source` / sa.Enum: stored by member NAME, read as the member value. */
 const SOURCE_VALUES: Readonly<Record<string, string>> = Object.freeze({
   OPEN_BANKING: "open_banking",
@@ -179,6 +158,8 @@ export class PythonDb implements SqlRows {
   /** `as_of` of the dataset's goldens (the frozen clock's date). */
   readonly asOf: string;
   readonly keys: NaturalKeys;
+  /** Typed readers of the investments module's tables (`investments.ts`). */
+  readonly investments: InvestmentsReader;
   private readonly db: DatabaseSync;
   private readonly sourceDir: string;
   private readonly runDir: string;
@@ -204,6 +185,10 @@ export class PythonDb implements SqlRows {
     }
     this.db = new DatabaseSync(join(this.runDir, "cashu.db"), { readOnly: true });
     this.keys = new NaturalKeys(this);
+    this.investments = new InvestmentsReader(
+      (sql, ...params) => this.objects(sql, ...params),
+      (profileId) => this.accounts(profileId, { includeRemoved: true }),
+    );
   }
 
   static open(opts: OpenOptions): PythonDb {
@@ -254,7 +239,7 @@ export class PythonDb implements SqlRows {
   /** Enabled module ids of a profile (unordered; order them by the module registry). */
   enabledModules(profileId: number): string[] {
     return this.objects(
-      "SELECT module_id FROM profile_modules WHERE profile_id = ? AND enabled = 1 ORDER BY id",
+      "SELECT module_id FROM profile_modules WHERE profile_id = ? AND enabled = 1 ORDER BY module_id",
       profileId,
     ).map((r) => text(r, "module_id"));
   }

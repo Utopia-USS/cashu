@@ -131,15 +131,22 @@ def valuation(ctx: Ctx) -> dict:
 
 
 def allocation(ctx: Ctx) -> dict:
+    """The pure ``allocate`` result (TS: S13 portfolio math)."""
+    out = {}
+    for p in ctx.with_module(MODULE):
+        _st, state = _state(ctx, p)
+        out[ctx.pkey(p)] = {"allocation": state.allocation}
+    return out
+
+
+def allocation_view(ctx: Ctx) -> dict:
+    """The allocation view (TS: needs the allocation_drift rule, S15b, and the views, S22a)."""
     from cashu.modules.investments.service import views
 
     out = {}
     for p in ctx.with_module(MODULE):
         st, state = _state(ctx, p)
-        out[ctx.pkey(p)] = {
-            "allocation": state.allocation,
-            "view": views.allocation_view(state, st.config),
-        }
+        out[ctx.pkey(p)] = {"view": views.allocation_view(state, st.config)}
     return out
 
 
@@ -229,6 +236,7 @@ CHECKS = [
     Check("investments.review_digest", review_digest, {"id": "inv_signals"}),
     Check("investments.valuation", valuation),
     Check("investments.allocation", allocation),
+    Check("investments.allocation_view", allocation_view),
     Check("investments.performance", performance),
     Check("investments.rules", rules),
     Check("investments.strategy_loader", strategy_loader),

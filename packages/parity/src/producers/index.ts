@@ -7,6 +7,8 @@
 import type { Dataset, PythonDb } from "../sources/index.ts";
 import { readBridge } from "./core/bridge.ts";
 import { produceNetworth } from "./core/networth.ts";
+import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
+import { readStrategyBridge } from "./investments/strategyBridge.ts";
 import type { OutValue } from "./output.ts";
 
 export interface Producer {
@@ -23,5 +25,15 @@ export const PRODUCERS: readonly Producer[] = [
     // Lab waits for the brokerage contributor (S13): see packages/parity/README.md.
     datasets: ["demo"],
     produce: (db) => produceNetworth(db, readBridge(db.dataset)),
+  },
+  {
+    check: "investments.valuation",
+    datasets: ["demo", "lab"],
+    produce: (db) => produceValuation(db, readStrategyBridge(db.dataset)),
+  },
+  {
+    check: "investments.allocation",
+    datasets: ["demo", "lab"],
+    produce: (db) => produceAllocation(db, readStrategyBridge(db.dataset)),
   },
 ];

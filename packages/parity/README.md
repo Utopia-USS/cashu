@@ -62,7 +62,9 @@ producer never opens SQLite itself and never carries its own reader.
   (sha256 over every file, as golden.py) changed. `withPythonDb(opts, fn)` always closes.
 - Typed readers per table, profile-scoped: `profiles()` (slug order, the goldens' order),
   `enabledModules(profileId)`, `accounts(profileId, { includeRemoved })`, `balances(profileId)`,
-  `transactions(profileId)`. Every reader of profile data takes the profile id. Decimals stay the
+  `transactions(profileId)`; the investments tables under `db.investments` (`src/sources/investments.ts`):
+  `brokerageAccounts`, `transactions`, `renames`, `manualValuations`, `profileInstruments` (profile-scoped)
+  and the shared reference data `instruments`, `aliases`, `priceBars`, `fxRates`. Every reader of profile data takes the profile id. Decimals stay the
   stored text (`"12.50"`, parse with `D()` from `@cashu/domain`), enums stored by NAME come back as
   their values (`balances.source` `CSV` -> `"csv"`), booleans as booleans.
 - `db.keys.key(table, id)`: the goldens' natural keys (`src/sources/naturalKeys.ts`, a verbatim copy of
@@ -81,9 +83,32 @@ datasets it is enabled for and `produce(db) -> JSON tree`; `<module>/` folders h
 `toJSON()` = Python `str()`, JS numbers refused). The CLI runs under Node's type stripping with
 `src/producers/resolveTs.ts`, which maps the `./x.js` specifiers of workspace TypeScript to `./x.ts`.
 
-| Check           | Datasets | Inputs                                                                                                             |
-| --------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `core.networth` | demo     | accounts, balances, cash-pool transactions (`PythonDb`); loans / assets / investments contributors from the bridge |
+| Check                    | Datasets  | Inputs                                                                                                             |
+| ------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------ |
+| `core.networth`          | demo      | accounts, balances, cash-pool transactions (`PythonDb`); loans / assets / investments contributors from the bridge |
+| `investments.valuation`  | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                      |
+| `investments.allocation` | demo, lab | as `investments.valuation`                                                                                         |
+
+`investments/portfolioState.ts` is the port of `service/portfolio.build`: rows -> domain values as the
+Python store converts them (`investments/rows.ts`, domain ids are the app's `str(pk)` because the
+portfolio math breaks ties in Python `str` order of ids; `serialize.ts` maps them to natural keys when
+writing), then `buildSnapshot` -> `valuePortfolio` -> `allocate` from `@cashu/domain`. Floats Python
+writes as floats are wrapped with `pyFloat()` (`output.ts`). Not produced here: `investments.allocation_view`
+(the allocation_drift rule, S15b, and the views, S22a), `investments.positions` / `position_detail` (views,
+S22a; their lots and realized trades are the same values `investments.valuation` already checks:
+`snapshot.holdings[].lots`, `snapshot.realized`, `valued.realized`).
+
+### Temporary strategy bridge (S14)
+
+The strategy loader is not ported yet, so `src/producers/investments/strategy_bridge.py` exports what
+`build` takes from a profile's strategy (base currency, `data` thresholds, allocation plan) to
+`<lab>/parity/bridge-strategy/<dataset>/investments.strategy.json`, through golden.py's harness:
+
+```bash
+.venv/bin/python packages/parity/src/producers/investments/strategy_bridge.py --dataset lab
+```
+
+Delete it (and `strategyBridge.ts`) when the TS strategy loader lands; both carry the S14 transitional marker.
 
 ### Temporary bridge for contributors not ported yet
 
