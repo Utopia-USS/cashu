@@ -9,7 +9,7 @@
 // - Full re-fold: identity roots changed (rows re-key), the view version changed, or a rebuild.
 
 import type { DetGid } from "../gid.js";
-import type { TableDef } from "../sql/ddl.js";
+import { bulkIndexes, createIndexSql, indexName, type TableDef } from "../sql/ddl.js";
 import { foldContext, foldMembers, type StatementCache, type ViewIds } from "./context.js";
 import type { IdentityService } from "./identity.js";
 import type { EventLog } from "./log.js";
@@ -147,14 +147,22 @@ export class MaterializerRunner {
     if (last && ord(last) > this.#hwm) this.#setHwm(ord(last));
   }
 
-  /** Clear every table of the materializer and fold all its applied events again. */
+  /**
+   * Clear every table of the materializer and fold all its applied events again. Plain secondary
+   * indexes are dropped for the fold and built again after it (inside the same transaction, so no
+   * reader sees a table without them).
+   */
   refoldAll(sql: ViewSql): void {
     const ctx = this.#ctx(sql);
+    const stmts = this.#deps.stmts;
+    const bulk = this.mat.tables.flatMap((t) => bulkIndexes(t).map((ix) => ({ t, ix })));
     // DELETE without WHERE is SQLite's truncate: cheap even for 60k rows.
     for (const t of this.mat.tables) ctx.sql.write(t.name, `DELETE FROM ${t.name}`);
+    for (const { t, ix } of bulk) stmts.exec(`DROP INDEX IF EXISTS ${indexName(t, ix)}`);
     this.#members.clearAll();
     const events = this.#deps.log.appliedOfTypes(this.mat.handles);
     for (const e of events) this.mat.apply(e, ctx);
+    for (const { t, ix } of bulk) stmts.exec(createIndexSql(t, ix));
     const last = events[events.length - 1];
     this.#hwm = "";
     this.#setHwm(last ? ord(last) : "");

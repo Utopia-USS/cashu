@@ -54,6 +54,26 @@ function ident(name: string): string {
   return name;
 }
 
+/** The name of an index of `t` (one generator for create and drop). */
+export function indexName(t: TableDef, ix: IndexDef): string {
+  return ident(`${t.name}_${ix.columns.join("_")}${ix.unique ? "_uq" : "_ix"}`);
+}
+
+/** `CREATE INDEX` for one index of `t`. */
+export function createIndexSql(t: TableDef, ix: IndexDef): string {
+  const where = ix.where ? ` WHERE ${ix.where}` : "";
+  return `CREATE ${ix.unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${indexName(t, ix)} ON ${t.name} (${ix.columns.map(ident).join(", ")})${where};`;
+}
+
+/**
+ * Indexes a full re-fold may drop and build again after the rows are in (one sort instead of a
+ * B-tree insert per row): plain secondary indexes. Unique ones stay (they carry the folds' CREATE /
+ * `INSERT OR IGNORE` semantics), partial ones too.
+ */
+export function bulkIndexes(t: TableDef): readonly IndexDef[] {
+  return (t.indexes ?? []).filter((ix) => !ix.unique && ix.where === undefined);
+}
+
 export function createTableSql(t: TableDef): string {
   const cols = allColumns(t).map((c) => {
     if (!t.primaryKey && c.name === "id") return "id INTEGER PRIMARY KEY";
@@ -68,12 +88,6 @@ export function createTableSql(t: TableDef): string {
   const parts = [
     `CREATE TABLE IF NOT EXISTS ${ident(t.name)} (\n  ${cols.join(",\n  ")}\n)${tail};`,
   ];
-  for (const ix of t.indexes ?? []) {
-    const name = `${t.name}_${ix.columns.join("_")}${ix.unique ? "_uq" : "_ix"}`;
-    const where = ix.where ? ` WHERE ${ix.where}` : "";
-    parts.push(
-      `CREATE ${ix.unique ? "UNIQUE " : ""}INDEX IF NOT EXISTS ${ident(name)} ON ${t.name} (${ix.columns.map(ident).join(", ")})${where};`,
-    );
-  }
+  for (const ix of t.indexes ?? []) parts.push(createIndexSql(t, ix));
   return parts.join("\n");
 }

@@ -22,6 +22,11 @@ export class StatementCache {
     }
     return s;
   }
+
+  /** Run DDL (index drops and builds of a full re-fold). */
+  exec(sql: string): void {
+    this.#db.exec(sql);
+  }
 }
 
 /** Collects the public tables written during one apply (the useQuery invalidation set). */
