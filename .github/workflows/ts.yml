@@ -1,0 +1,40 @@
+# TypeScript monorepo (pnpm + turbo): typecheck, lint and tests for every package and app.
+# The Python and frontend jobs live in ci.yml.
+name: TypeScript
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging, ts-stack]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ts-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ts:
+    name: TypeScript (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      # The pnpm version comes from "packageManager" in the root package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck, lint, test
+        run: pnpm turbo run typecheck lint test
