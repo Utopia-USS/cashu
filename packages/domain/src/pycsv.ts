@@ -85,6 +85,7 @@ class Reader {
   }
 
   private add(c: string): CsvErrorReason | null {
+    // PARITY(Q11): CPython refuses the character that would exceed the limit (code points).
     if (this.field.length >= CSV_FIELD_LIMIT) return "field_limit";
     this.field.push(c);
     return null;
