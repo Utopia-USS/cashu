@@ -2916,6 +2916,840 @@
     "An\u200dna"
    ],
    "guard": true
+  },
+  {
+   "finding": "W1",
+   "text": "2 tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ]
+  },
+  {
+   "finding": "W1",
+   "text": "2 tysi\u0105c",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ]
+  },
+  {
+   "finding": "W1",
+   "text": "3 miliony",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "3"
+   ]
+  },
+  {
+   "finding": "W1",
+   "text": "3 milion\u00f3w",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "3"
+   ]
+  },
+  {
+   "finding": "W1",
+   "text": "7 miliard\u00f3w",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "7"
+   ]
+  },
+  {
+   "finding": "W1",
+   "text": "2 tys.",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ]
+  },
+  {
+   "finding": "W1",
+   "text": "1,5 mln",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "1,5",
+    "5"
+   ]
+  },
+  {
+   "finding": "W1",
+   "text": "2 500 tysi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "500"
+   ]
+  },
+  {
+   "finding": "W1",
+   "text": "Mam 4  tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "4"
+   ]
+  },
+  {
+   "finding": "W1",
+   "text": "dwa  tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   },
+   "note": "W1: two spaces between the words"
+  },
+  {
+   "finding": "W1",
+   "text": "dwa, tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W1",
+   "text": "dwa - tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W1",
+   "text": "dwa\u00adtysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   },
+   "note": "W1: soft hyphen glues the words"
+  },
+  {
+   "finding": "W1",
+   "text": "dwa\u2009tysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   },
+   "note": "W1: thin space between the words"
+  },
+  {
+   "finding": "W1",
+   "text": "2\u202ftysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   },
+   "note": "W1: narrow no-break space after the digit"
+  },
+  {
+   "finding": "W1",
+   "text": "2 i p\u00f3\u0142 miliona",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W1",
+   "text": "dwatysi\u0105ce",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "dwa tys",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "dwa ty\u015b",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "2 ty\u015b",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "2 tys",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "5 mln",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "5"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "5 mld",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "5"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "5k",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "5"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "2,5k",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2,5"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "p\u00f3\u0142tora tysi\u0105ca",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "p\u00f3\u0142tora"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "p\u00f3\u0142torej miliona",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "p\u00f3\u0142torej"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "kilka tysi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "kilka"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "par\u0119 tysi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "par\u0119"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "kilkaset",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "kilkaset"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "kilkuset",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "kilkuset"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "kilkadziesi\u0105t",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "kilkadziesi\u0105t"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "kilkana\u015bcie",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "kilkana\u015bcie"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "setki tysi\u0119cy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "setki"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "st\u00f3wa",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "st\u00f3wa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "2 st\u00f3wy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "2",
+    "st\u00f3wy"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "dwie st\u00f3wki",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwie",
+    "st\u00f3wki"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "trzy st\u00f3w",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "trzy"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "dwa ko\u0142a",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa",
+    "ko\u0142a"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "5 ko\u0142a",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "5"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "dwie ba\u0144ki",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwie",
+    "ba\u0144ki"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "3 ba\u0144ki",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "3 patyki",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "3"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "dwa patyki",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "dwa"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "pi\u0119\u0107 patyk\u00f3w",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "pi\u0119\u0107"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W2",
+   "text": "tysiak",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "tysiak"
+   ],
+   "expect": {
+    "strict": "[amount]"
+   }
+  },
+  {
+   "finding": "W3",
+   "text": "xhttps://y/a950",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "950"
+   ]
+  },
+  {
+   "finding": "W3",
+   "text": "xwww.y.pl/a950",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "950"
+   ]
+  },
+  {
+   "finding": "W3",
+   "text": "kwotahttps://y/a77",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "77"
+   ]
+  },
+  {
+   "finding": "W4",
+   "text": "1\u30fb000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "W4",
+   "text": "1\u066c000 z\u0142",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "W4",
+   "text": "1\u2009000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "W4",
+   "text": "1\u202f000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "W4",
+   "text": "2\u2019000",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "W4",
+   "text": "3\u02bc500",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "500"
+   ]
+  },
+  {
+   "finding": "W4",
+   "text": "1\u30fb000 %",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "000"
+   ]
+  },
+  {
+   "finding": "W4",
+   "text": "Wp\u0142ata 1\u066c500",
+   "modes": [
+    "strict"
+   ],
+   "absent": [
+    "500"
+   ]
+  },
+  {
+   "finding": "W3 keep",
+   "text": "https://x.pl/a950b",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "https://x.pl/a950b"
+   }
+  },
+  {
+   "finding": "W3 keep",
+   "text": "see https://x.pl/p11/",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "see https://x.pl/p11/"
+   }
+  },
+  {
+   "finding": "W3 keep",
+   "text": "(https://x.pl/a95)",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "(https://x.pl/a95)"
+   }
+  },
+  {
+   "finding": "W3 keep",
+   "text": "<https://x.pl/a95>",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "<https://x.pl/a95>"
+   }
+  },
+  {
+   "finding": "W3 keep",
+   "text": "\"https://x.pl/a95\"",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "\"https://x.pl/a95\""
+   }
+  },
+  {
+   "finding": "W3 keep",
+   "text": "\u201ewww.x.pl/a95\u201d",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "\u201ewww.x.pl/a95\u201d"
+   }
+  },
+  {
+   "finding": "W2 keep",
+   "text": "ba\u0144ka spekulacyjna",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "ba\u0144ka spekulacyjna"
+   }
+  },
+  {
+   "finding": "W2 keep",
+   "text": "ko\u0142o domu",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "ko\u0142o domu"
+   }
+  },
+  {
+   "finding": "W2 keep",
+   "text": "patyk",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "patyk"
+   }
+  },
+  {
+   "finding": "W2 keep",
+   "text": "kilka razy",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "kilka razy"
+   }
+  },
+  {
+   "finding": "W2 keep",
+   "text": "dwa banki",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "dwa banki"
+   }
+  },
+  {
+   "finding": "W2 keep",
+   "text": "stow away",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "stow away"
+   }
+  },
+  {
+   "finding": "W2 keep",
+   "text": "millionaire",
+   "modes": [
+    "strict"
+   ],
+   "absent": [],
+   "expect": {
+    "strict": "millionaire"
+   }
   }
  ],
  "symbols": [

@@ -1,6 +1,6 @@
 """S37fix: redaction rules that are not plain text vectors (those are in
 ``mcp_privacy_vectors.json``): count paths, money keys, the merchant the agent was shown, the
-original text around masked spans, and the stem over-masking the name rule accepts."""
+original text around masked spans, and the over-masking the name and number-word rules accept."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 
 from cashu.core.mcp import labels as L
 from cashu.core.mcp.names import NameGuard
-from cashu.core.mcp.redaction import LeakDetected, Redactor, is_money_key, leak_check
+from cashu.core.mcp.redaction import LeakDetected, Redactor, is_money_key, leak_check, scrub_text
 from cashu.core.mcp.tools.budget import _shown_as
 
 
@@ -108,3 +108,21 @@ GLUED_FALSE_POSITIVES = {
 def test_one_word_names_inside_letter_runs(text, masked):
     guard = NameGuard(1, frozenset({"ANNA", "LIS"}))
     assert guard.mask(text) == masked
+
+
+# S37fix2 W1 / W2: number words and slang amounts mask some ordinary words too; these over-masks are
+# accepted (listed so a change is visible)
+NUMBER_WORD_FALSE_POSITIVES = {
+    "jeden koło drugiego": "[amount] drugiego",
+    "dwa koła roweru": "[amount] roweru",
+    "setka na bieżni": "[amount] na bieżni",
+    "tysiąclecie": "[amount]",
+    "milioner": "[amount]",
+    "kilkutysięczny tłum": "[amount] tłum",
+    "multimillions": "[amount]",
+}
+
+
+@pytest.mark.parametrize(("text", "masked"), sorted(NUMBER_WORD_FALSE_POSITIVES.items()))
+def test_number_words_mask_some_ordinary_words(text, masked):
+    assert scrub_text(text, strict=True) == masked
