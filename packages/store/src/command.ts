@@ -70,13 +70,17 @@ export interface CommandRefusal {
 
 export type CommandResult<R> = { readonly ok: true; readonly value: R } | CommandRefusal;
 
-export interface Command<I, R> {
+/**
+ * `I` is the validated input the command runs with; `In` what callers may pass before zod applies
+ * defaults (the type `useCommand(...).run` accepts).
+ */
+export interface Command<I, R, In = unknown> {
   readonly id: string;
-  readonly input: z.ZodType<I>;
+  readonly input: z.ZodType<I, In>;
   run(ctx: CommandContext, input: I): CommandResult<R>;
 }
 
-export function defineCommand<I, R>(cmd: Command<I, R>): Command<I, R> {
+export function defineCommand<I, R, In = unknown>(cmd: Command<I, R, In>): Command<I, R, In> {
   return cmd;
 }
 
