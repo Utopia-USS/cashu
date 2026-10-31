@@ -179,6 +179,19 @@ export function resolveRevocations(input: RevocationInput): RevocationResult {
   const counted = revs.filter((r) => upper.has(r.id));
   const revokedIds = new Set<string>(counted.flatMap((r) => r.targets.map((t) => t.device)));
   const finalClosure = index.closure(revokedIds);
+  // R1: a counted device revocation answered by a counted device revocation of its own signer is
+  // contested whatever the exemption decided (retaliation and rewrite look alike by positions).
+  const mutual = new Set<number>();
+  for (const r of counted) {
+    if (r.recovery) continue;
+    const answered = counted.some(
+      (y) =>
+        !y.recovery &&
+        r.targets.some((t) => t.device === y.signer) &&
+        y.targets.some((t) => t.device === r.signer),
+    );
+    if (answered) mutual.add(r.id);
+  }
   const revoked = new Map<string, Revocation>();
   for (const device of [...revokedIds].sort()) {
     const naming = counted.filter((r) => r.targets.some((t) => t.device === device));
@@ -187,7 +200,7 @@ export function resolveRevocations(input: RevocationInput): RevocationResult {
       cut: cutOf(device, naming) as SegmentCursor,
       eids: naming.map((r) => r.event.eid).sort(),
       signers: [...new Set(naming.map((r) => r.signer))].sort(),
-      contested: naming.some((r) => !lower.has(r.id)),
+      contested: naming.some((r) => !lower.has(r.id) || mutual.has(r.id)),
       signPublicKeys: revokedKeys(device, finalClosure).map((k) => k.signPublicKey),
     });
   }

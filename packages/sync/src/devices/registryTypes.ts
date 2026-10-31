@@ -33,7 +33,10 @@ export interface Revocation {
   readonly eids: readonly string[];
   /** Their signers (device ids or `RECOVERY_SIGNER_ID`), sorted, unique. */
   readonly signers: readonly string[];
-  /** Revoked through a revocation that only counts because the fold fails closed (mutual). */
+  /**
+   * Revoked through a revocation that only counts because the fold fails closed, or one answered by
+   * a counted revocation of its own signer (mutual: never shown as a clean revocation).
+   */
   readonly contested: boolean;
   /** The device's certified signing keys when it was revoked: verify its statements before the cut. */
   readonly signPublicKeys: readonly Uint8Array[];

@@ -85,6 +85,10 @@ function rotate(device: SimDevice): PreparedChange {
   return result.change;
 }
 
+function syncAll(devices: readonly SimDevice[], rounds = 2): void {
+  for (let i = 0; i < rounds; i++) for (const d of devices) d.sync();
+}
+
 async function threeDevices() {
   const vault = createSimVault();
   const a = vault.creator;
@@ -446,6 +450,57 @@ describe("revocation", () => {
     const change = rotate(b);
     expect(change.recipients).toContain("0".repeat(32));
     expect(recoveryRecipient(b.ring).vaultId).toBe(b.ring.vaultId);
+  });
+});
+
+describe("R1: mutual revocations are contested", () => {
+  it("a retaliation that states a cut past the revocation of its signer never shows as uncontested", async () => {
+    const { a, b, r } = await threeDevices();
+    a.write([note()]);
+    syncAll([a, b, r]);
+    revoke(a, r); // A revokes R
+    a.push();
+    r.pull();
+    // R (revoked, malicious) answers with a revocation of A whose cut covers A's revocation of R:
+    // positions alone exempt it (review A1b), so both count; the UI must still see a dispute.
+    r.write([
+      buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
+        { device: a.id, cut: r.cursors.get(a.id) ?? START_CURSOR },
+      ]),
+    ]);
+    syncAll([a, b, r]);
+    for (const d of [a, b]) {
+      const reg = d.devices.registry;
+      expect(reg.revoked.get(a.id)?.contested, d.name).toBe(true);
+      expect(reg.revoked.get(r.id)?.contested, d.name).toBe(true);
+    }
+  });
+
+  it("a one-sided revocation is not contested", async () => {
+    const { a, b, r } = await threeDevices();
+    revoke(a, r);
+    syncAll([a, b]);
+    expect(b.devices.registry.revoked.get(r.id)?.contested).toBe(false);
+  });
+
+  it("a recovery-signed revocation is never contested, even when its target revoked someone", async () => {
+    const { a, b, r, recovery } = await threeDevices();
+    // R revokes B (one-sided, contested by nobody), then the owner revokes R with the words.
+    r.write([
+      buildDeviceRevoked(r.identity, r.ring.vaultId, newEid(), [
+        { device: b.id, cut: r.cursors.get(b.id) ?? START_CURSOR },
+      ]),
+    ]);
+    syncAll([a, b, r]);
+    a.write([
+      buildDeviceRevoked(recovery, a.ring.vaultId, newEid(), [
+        { device: r.id, cut: a.cursors.get(r.id) ?? START_CURSOR },
+      ]),
+    ]);
+    syncAll([a, b, r]);
+    const reg = a.devices.registry;
+    expect(reg.revoked.get(r.id)?.contested).toBe(false);
+    expect(reg.revoked.has(b.id)).toBe(true);
   });
 });
 
