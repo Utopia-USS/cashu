@@ -472,7 +472,7 @@ def fixture_files() -> dict[str, bytes]:
         ";;;;;;--5;;\n").encode("cp1250")
     files["mbank/mbank-utf8-diacritics.csv"] = (
         "mBank S.A.;\n#Waluta;\nPLN;\n" + header
-        + "2026-09-05;2026-09-05;ZAKUP ą;TYTUŁ ż;SKLEP Ę;'';-1,00;10,00;\n").encode("utf-8")
+        + "2026-09-05;2026-09-05;ZAKUP ą;TYTUL ż;SKLEP;'';-1,00;10,00;\n").encode("utf-8")
     files["erste/erste-quoted-no-bank.csv"] = (
         '"2026-09-30","01-09-2026","\'99109000000000000000000001","Konto","PLN","30-09-2026","90,00","2"\n'
         '"02-09-2026","02-09-2026","ZAKUP","SKLEP TEST","","-10,00","90,00","1",""\n'

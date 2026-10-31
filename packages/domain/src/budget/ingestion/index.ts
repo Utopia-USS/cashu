@@ -5,6 +5,14 @@ export { type ImportPlan, planImport, type RowStatus, type StoredTxn } from "./d
 export { type NewTransaction, toNewTransaction } from "./newTransaction.js";
 export { findAccountNumber, parsePlAmount, parsePlDate } from "./plFormats.js";
 export {
+  csvBankIds,
+  detectBank,
+  matchScore,
+  parseBankStatement,
+  parseStatementFile,
+} from "./statements/registry.js";
+export type { BankId, StatementFailure, StatementResult } from "./statements/result.js";
+export {
   type AccountNumberOrigin,
   type DatedAmount,
   memo,
