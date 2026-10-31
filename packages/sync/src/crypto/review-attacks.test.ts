@@ -5,7 +5,7 @@ import { concat, fromHex, lengthPrefixed, u32, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
-import { type Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
+import { decodeKeyPayload, type Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
 import { keyringFromKeys } from "./testing.js";
@@ -49,11 +49,13 @@ describe("review attacks now fail", () => {
       testRecovery.publicKeys.boxPublicKey,
       testRecovery.publicKeys.signPublicKey,
       new Uint8Array(32),
-      Uint8Array.of(0, 1),
+      u32(1),
       u32(0xffffffff),
       u32(0),
       sodium.randomBytes(32),
     );
+    // Well formed up to the generation bound: the decoder reaches the key and refuses it.
+    expect(code(() => decodeKeyPayload(sodium, forged))).toBe("bad_payload");
     const sealed = sodium.seal(forged, phone.box.publicKey);
     const trust = trusting(desktop);
     // No signing key: an unknown sender id, or the desktop's id with a junk signature.

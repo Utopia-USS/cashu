@@ -72,7 +72,14 @@ export function createSafeStorageKeyStore(
       checkName(name);
       ensure();
       const blob = await files.read(name);
-      return blob ? fromBase64(safeStorage.decryptString(blob)) : null;
+      if (!blob) return null;
+      // Electron's decryptString and atob throw plain errors on a damaged blob: report them as
+      // keystore_corrupt, like the mobile store, never as an unclassified exception.
+      try {
+        return fromBase64(safeStorage.decryptString(blob));
+      } catch {
+        throw new CryptoError("keystore_corrupt");
+      }
     },
     async set(name, value) {
       checkName(name);

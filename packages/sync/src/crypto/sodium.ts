@@ -239,7 +239,13 @@ function selfTest(sodium: Sodium): void {
     if (!same(sodium.hash(32, new TextEncoder().encode("cashu/selftest"), seq(0, 32)), KAT_HASH)) {
       throw new Error("generichash");
     }
-    if (sodium.randomBytes(32).length !== 32) throw new Error("random");
+    // A stuck or zero RNG would make every nonce and key predictable: two draws must differ and
+    // neither may be all zero (a 2^-256 false alarm).
+    const first = sodium.randomBytes(32);
+    const second = sodium.randomBytes(32);
+    if (first.length !== 32 || second.length !== 32 || same(first, second))
+      throw new Error("random");
+    if (first.every((b) => b === 0) || second.every((b) => b === 0)) throw new Error("random");
   } catch {
     throw new CryptoError("unsupported_runtime");
   }

@@ -104,6 +104,26 @@ describe("KeyStore adapters", () => {
     await roundtrip(store);
   });
 
+  it("a damaged safeStorage blob is keystore_corrupt, not a raw Electron or atob error", async () => {
+    const files = memoryFiles();
+    const failing: SafeStorageLike = {
+      ...fakeSafeStorage(),
+      decryptString: () => {
+        throw new Error(
+          "Error while decrypting the ciphertext provided to safeStorage.decryptString.",
+        );
+      },
+    };
+    files.blobs.set("cashu.a", new Uint8Array([1, 2, 3]));
+    await expect(createSafeStorageKeyStore(failing, files).get("cashu.a")).rejects.toMatchObject({
+      code: "keystore_corrupt",
+    });
+    const notBase64: SafeStorageLike = { ...fakeSafeStorage(), decryptString: () => "%%%" };
+    await expect(createSafeStorageKeyStore(notBase64, files).get("cashu.a")).rejects.toMatchObject({
+      code: "keystore_corrupt",
+    });
+  });
+
   it("safeStorage refuses to store keys without a real OS keyring", async () => {
     for (const ss of [fakeSafeStorage("basic_text"), fakeSafeStorage("keychain", false)]) {
       const store = createSafeStorageKeyStore(ss, memoryFiles());
