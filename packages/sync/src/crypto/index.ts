@@ -76,6 +76,7 @@ export {
   type Sodium,
   type SodiumOptions,
 } from "./sodium.js";
+export { createVaultWithRecovery, type NewVault } from "./vault.js";
 export {
   openPairingWrap,
   pairingWrapHash,

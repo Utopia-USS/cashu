@@ -190,10 +190,11 @@ describe("gid salt (D9)", () => {
     const restoring = recoveryIdentity(sodium, recovery.phrase);
     const { ring: recovered } = unwrapKeys(
       sodium,
-      wrapKeys(sodium, desktop, phone, recoveryRecipient(desktop)),
+      // The base wrap the recovery identity signs while the words are on screen.
+      wrapKeys(sodium, desktop, restoring, recoveryRecipient(desktop)),
       restoring,
       { vaultId: desktop.vaultId, recoveryPublicKey: recovery.publicKeys },
-      () => phone.signPublicKey,
+      () => restoring.signPublicKey,
       anyEpoch,
     );
     expect(gid(recovered, "synthetic-import-row-1")).toBe(before);

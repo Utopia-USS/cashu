@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
 import { createKeyring, createVaultId, type Keyring, rotateKeyring } from "./keys.js";
-import { createRecoveryKey } from "./recovery.js";
+import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import type { Sodium } from "./sodium.js";
 import {
   anyEpoch,
@@ -205,31 +205,25 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     expect(code(() => unwrapKeys(sodium, wire, tablet.id, tablet.ring, trust, anyEpoch))).toBe(
       "auth_failed",
     );
-    const elsewhere = {
-      vaultId: createVaultId(sodium),
-      recoveryPublicKey: testRecovery.publicKeys,
-    };
+    const elsewhere = newRing(sodium);
     expect(code(() => unwrapKeys(sodium, wire, phone.id, elsewhere, trust, anyEpoch))).toBe(
       "auth_failed",
     );
   });
 
   it("the vault's recovery pins must match", () => {
-    const { devices, trust } = pairedVault(2);
+    const { devices } = pairedVault(2);
     const [desktop, phone] = devices as [Device, Device];
     const target = {
       vaultId: desktop.ring.vaultId,
       recoveryPublicKey: createRecoveryKey(sodium).publicKeys,
     };
-    const wire = wrapKeys(
-      sodium,
-      desktop.ring,
-      desktop.id,
-      trustedTo(phone.id, desktop.ring.vaultId),
-    );
-    expect(code(() => unwrapKeys(sodium, wire, phone.id, target, trust, anyEpoch))).toBe(
-      "recovery_key_mismatch",
-    );
+    // Only the words may seed a base ring, so the base wrap is recovery-signed.
+    const words = recoveryIdentity(sodium, testRecovery.phrase);
+    const wire = wrapKeys(sodium, desktop.ring, words, trustedTo(phone.id, desktop.ring.vaultId));
+    expect(
+      code(() => unwrapKeys(sodium, wire, phone.id, target, () => words.signPublicKey, anyEpoch)),
+    ).toBe("recovery_key_mismatch");
   });
 
   it("one wrap adds at most one generation; the whole ring travels only by pairing", () => {

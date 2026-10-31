@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { certifyDevice, verifyCertificates } from "./cert.js";
+import { toHex } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity, type DeviceIdentity, RECOVERY_SIGNER_ID } from "./identity.js";
@@ -7,6 +8,7 @@ import { createKeyring, createVaultId, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, RECOVERY_WORDS, recoveryIdentity } from "./recovery.js";
 import type { Sodium } from "./sodium.js";
 import { anyEpoch, backends, code, ctx, samplePlain } from "./testkit.js";
+import { createVaultWithRecovery } from "./vault.js";
 import { recoveryRecipient, type TrustedSigner, unwrapKeys, wrapKeys } from "./wrap.js";
 
 describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
@@ -128,8 +130,17 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     expect(code(() => unwrapKeys(sodium, planted, identity, target, trust, anyEpoch))).toBe(
       "untrusted_sender",
     );
+    // A certified desktop still cannot seed the base: only the words' own wrap can (D18).
     const byDesktop = wrapKeys(sodium, ring, desktop, recoveryRecipient(ring));
-    expect(unwrapKeys(sodium, byDesktop, identity, target, trust, anyEpoch).senderDeviceId).toBe(
+    expect(code(() => unwrapKeys(sodium, byDesktop, identity, target, trust, anyEpoch))).toBe(
+      "untrusted_sender",
+    );
+    // Seeded from the recovery-signed wrap, the certified desktop's wrap extends the base.
+    const base = wrapKeys(sodium, ring, identity, recoveryRecipient(ring));
+    const { ring: restored } = unwrapKeys(sodium, base, identity, target, trust, anyEpoch);
+    rotateKeyring(sodium, ring);
+    const next = wrapKeys(sodium, ring, desktop, recoveryRecipient(ring), [ring.active.kid]);
+    expect(unwrapKeys(sodium, next, identity, restored, trust, anyEpoch).senderDeviceId).toBe(
       desktop.deviceId,
     );
   });
@@ -158,15 +169,46 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     badMnemonic("");
   });
 
+  it("D18: a certified device's whole-ring wrap cannot seed a recovering device (salt and base come from the words)", () => {
+    const recovery = createRecoveryKey(sodium);
+    const words = recoveryIdentity(sodium, recovery.phrase);
+    const creator = createDeviceIdentity(sodium);
+    const thief = createDeviceIdentity(sodium);
+    const vault = createVaultWithRecovery(sodium, words, creator);
+    const vaultId = vault.ring.vaultId;
+    const certs = [
+      vault.creatorCertificate,
+      certifyDevice(sodium, creator, subjectOf(thief), vaultId),
+    ];
+    const trust = trustFromCertificates(vaultId, words.signPublicKey, certs);
+    // The thief (certified, its revocation withheld by storage) offers its own vault-shaped ring.
+    const evil = createKeyring(sodium, recovery.publicKeys, vaultId);
+    const poisoned = wrapKeys(sodium, evil, thief, recoveryRecipient(evil));
+    const restoring = recoveryIdentity(sodium, recovery.phrase);
+    const target = { vaultId, recoveryPublicKey: recovery.publicKeys };
+    expect(code(() => unwrapKeys(sodium, poisoned, restoring, target, trust, anyEpoch))).toBe(
+      "untrusted_sender",
+    );
+    const { ring } = unwrapKeys(sodium, vault.recoveryWrap, restoring, target, trust, anyEpoch);
+    expect(toHex(ring.gidSalt().expose())).toBe(toHex(vault.ring.gidSalt().expose()));
+    expect(ring.active.kid).toBe(vault.ring.active.kid);
+    // Extending from the thief is still refused: its salt differs from the pinned one.
+    rotateKeyring(sodium, evil);
+    const extend = wrapKeys(sodium, evil, thief, recoveryRecipient(evil), [evil.active.kid]);
+    expect(code(() => unwrapKeys(sodium, extend, restoring, ring, trust, anyEpoch))).toBe(
+      "gid_salt_mismatch",
+    );
+  });
+
   it("a different phrase cannot open the recovery wrap", () => {
     const recovery = createRecoveryKey(sodium);
     const ring = createKeyring(sodium, recovery.publicKeys);
-    const desktop = createDeviceIdentity(sodium);
-    const wrap = wrapKeys(sodium, ring, desktop, recoveryRecipient(ring));
+    const words = recoveryIdentity(sodium, recovery.phrase);
+    const wrap = wrapKeys(sodium, ring, words, recoveryRecipient(ring));
     const other = recoveryIdentity(sodium, createRecoveryKey(sodium).phrase);
     const target = { vaultId: ring.vaultId, recoveryPublicKey: recovery.publicKeys };
     expect(
-      code(() => unwrapKeys(sodium, wrap, other, target, () => desktop.signPublicKey, anyEpoch)),
+      code(() => unwrapKeys(sodium, wrap, other, target, () => words.signPublicKey, anyEpoch)),
     ).toBe("auth_failed");
   });
 });

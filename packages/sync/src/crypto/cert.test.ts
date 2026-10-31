@@ -4,7 +4,7 @@ import { createDeviceIdentity, DeviceIdentity } from "./identity.js";
 import { createKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
-import { anyEpoch, code, sodium, subjectOf } from "./testkit.js";
+import { anyEpoch, code, pairWith, sodium, subjectOf } from "./testkit.js";
 import { recoveryRecipient, unwrapKeys, wrapKeys } from "./wrap.js";
 
 function vault() {
@@ -172,11 +172,12 @@ describe("box keys only from certificates (D14)", () => {
     // The real wrap goes to the certified key: the phone opens it, the swapped key cannot.
     const wire = wrapKeys(sodium, ring, desktop, target);
     const trust = (id: string) => devices.get(id)?.signPublicKey;
-    const pinned = { vaultId, recoveryPublicKey: ring.recovery };
-    expect(unwrapKeys(sodium, wire, phone, pinned, trust, anyEpoch).senderDeviceId).toBe(
+    const phoneRing = pairWith(sodium, ring, phone);
+    expect(unwrapKeys(sodium, wire, phone, phoneRing, trust, anyEpoch).senderDeviceId).toBe(
       desktop.deviceId,
     );
-    expect(code(() => unwrapKeys(sodium, wire, storage, pinned, trust, anyEpoch))).toBe(
+    const storageRing = pairWith(sodium, ring, storage);
+    expect(code(() => unwrapKeys(sodium, wire, storage, storageRing, trust, anyEpoch))).toBe(
       "auth_failed",
     );
     expect(() => wrapKeys(sodium, ring, desktop, recoveryRecipient(ring))).not.toThrow();

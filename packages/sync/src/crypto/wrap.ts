@@ -181,7 +181,8 @@ export function wrapKeys(
  * - into `target` when it is a Keyring (mutated in place, all or nothing; a wrap may add at most
  *   one generation above the highest held, so one wrap cannot flood the ring), or
  * - into a new ring when `target` names the vault and its recovery public keys (a device with no
- *   keys yet, e.g. one recovering from the words).
+ *   keys yet, recovering from the words): only a wrap signed by the recovery identity
+ *   (`RECOVERY_SIGNER_ID`) may seed it, so the base ring and the gid salt come from the words.
  * Throws `truncated` / `unsupported_version` (malformed header), `untrusted_sender` (signer unknown
  * to `trustedSigner`, or an epoch refused by `acceptEpoch`), `auth_failed` (bad signature, or not
  * sealed for `recipient`), `vault_mismatch`, `recovery_key_mismatch`, `gid_salt_mismatch`,
@@ -208,6 +209,11 @@ export function unwrapKeys(
   const sealed = wire.subarray(listEnd);
   const senderDeviceId = toHex(senderId);
   if (!isRecipientId(senderDeviceId)) throw new CryptoError("untrusted_sender");
+  // A fresh base (no ring yet: a device recovering from the words) is seeded only by the recovery
+  // identity's own wrap, made at vault creation; device-signed wraps may only extend a base.
+  if ("recoveryPublicKey" in target && senderDeviceId !== RECOVERY_SIGNER_ID) {
+    throw new CryptoError("untrusted_sender");
+  }
   const signPublicKey = trustedSigner(senderDeviceId);
   if (!signPublicKey) throw new CryptoError("untrusted_sender");
   const message = concat(

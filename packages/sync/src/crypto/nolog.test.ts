@@ -76,10 +76,10 @@ describe("no key or plaintext in logs", () => {
     const restoring = recoveryIdentity(sodium, recovery.phrase);
     unwrapKeys(
       sodium,
-      wrapKeys(sodium, ring, phone, recoveryRecipient(ring)),
+      wrapKeys(sodium, ring, restoring, recoveryRecipient(ring)),
       restoring,
       { vaultId: ring.vaultId, recoveryPublicKey: recovery.publicKeys },
-      () => phone.signPublicKey,
+      () => restoring.signPublicKey,
       anyEpoch,
     );
     const tampered = frame.slice();
