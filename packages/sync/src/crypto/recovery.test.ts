@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { certifyDevice, verifyCertificates } from "./cert.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
-import { createDeviceIdentity, RECOVERY_SIGNER_ID } from "./identity.js";
-import { createKeyring, rotateKeyring } from "./keys.js";
+import { createDeviceIdentity, type DeviceIdentity, RECOVERY_SIGNER_ID } from "./identity.js";
+import { createKeyring, createVaultId, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, RECOVERY_WORDS, recoveryIdentity } from "./recovery.js";
 import type { Sodium } from "./sodium.js";
 import { backends, code, ctx, samplePlain } from "./testkit.js";
@@ -29,32 +30,44 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     expect(recoveryIdentity(sodium, phrase).deviceId).toBe(RECOVERY_SIGNER_ID);
   });
 
+  /** The trustedSigner a recovering device builds: the recovery key plus certified devices only. */
+  function trustFromCertificates(
+    vaultId: string,
+    recoverySignPublicKey: Uint8Array,
+    certs: Uint8Array[],
+  ): TrustedSigner {
+    const devices = verifyCertificates(sodium, vaultId, recoverySignPublicKey, certs);
+    return (id) => (id === RECOVERY_SIGNER_ID ? recoverySignPublicKey : devices.get(id));
+  }
+
   it("roundtrip: all devices lost, the words and the synced vault restore every generation", () => {
     const recovery = createRecoveryKey(sodium);
     const desktop = createDeviceIdentity(sodium);
+    const phone = createDeviceIdentity(sodium);
     const ring = createKeyring(sodium, recovery.publicKeys);
     const vaultId = ring.vaultId;
     const c = ctx(vaultId, { deviceId: desktop.deviceId });
-    // At vault creation the words are on screen: the recovery identity signs the first wrap.
+    // At vault creation the words are on screen: the recovery identity certifies the desktop and
+    // signs the first recovery wrap. Storage keeps certificates next to the wraps.
     const creator = recoveryIdentity(sodium, recovery.phrase);
+    const certs = [certifyDevice(sodium, creator, subjectOf(desktop), vaultId)];
     const wraps = [wrapKeys(sodium, ring, creator, recoveryRecipient(ring))];
     creator.wipe();
+    // Later the desktop pairs the phone and certifies it (a chain).
+    certs.push(certifyDevice(sodium, desktop, subjectOf(phone), vaultId));
     const old = sealFrame(sodium, ring, samplePlain(), c);
 
-    // A later rotation is wrapped for the recovery key by a device; no device needs the words.
+    // Later rotations are wrapped for the recovery key by devices; no device needs the words.
     const gen2 = rotateKeyring(sodium, ring);
     wraps.push(wrapKeys(sodium, ring, desktop, recoveryRecipient(ring), [gen2.kid]));
+    const gen3 = rotateKeyring(sodium, ring);
+    wraps.push(wrapKeys(sodium, ring, phone, recoveryRecipient(ring), [gen3.kid]));
     const recent = sealFrame(sodium, ring, samplePlain(), c);
     ring.wipe();
 
     const identity = recoveryIdentity(sodium, recovery.phrase);
-    // Trust root: the recovery signing key; the desktop's key would come from the registry it signs (S29).
-    const trust: TrustedSigner = (id) =>
-      id === RECOVERY_SIGNER_ID
-        ? identity.signPublicKey
-        : id === desktop.deviceId
-          ? desktop.signPublicKey
-          : undefined;
+    // Trust comes ONLY from the certificate chain rooted at the recovery signing key.
+    const trust = trustFromCertificates(vaultId, identity.signPublicKey, [...certs].reverse());
     const [first, ...rest] = wraps;
     if (!first) throw new Error("no wraps");
     const { ring: restored } = unwrapKeys(
@@ -65,42 +78,47 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
       trust,
     );
     for (const w of rest) unwrapKeys(sodium, w, identity, restored, trust);
-    expect(restored.active.kid).toBe(gen2.kid);
+    expect(restored.active.kid).toBe(gen3.kid);
     expect(openFrame(sodium, restored, old, c)).toEqual(samplePlain());
     expect(openFrame(sodium, restored, recent, c)).toEqual(samplePlain());
   });
 
-  it("a recovering device accepts only wraps signed by the recovery identity or a device it trusts", () => {
+  it("storage cannot add a device: self-signed or uncertified-signer certificates are not trusted", () => {
     const recovery = createRecoveryKey(sodium);
     const ring = createKeyring(sodium, recovery.publicKeys);
-    const target = { vaultId: ring.vaultId, recoveryPublicKey: recovery.publicKeys };
+    const vaultId = ring.vaultId;
     const identity = recoveryIdentity(sodium, recovery.phrase);
-    const trusted = createDeviceIdentity(sodium);
-    const stranger = createDeviceIdentity(sodium);
-    const trust: TrustedSigner = (id) =>
-      id === RECOVERY_SIGNER_ID
-        ? identity.signPublicKey
-        : id === trusted.deviceId
-          ? trusted.signPublicKey
-          : undefined;
+    const desktop = createDeviceIdentity(sodium);
+    const attacker = createDeviceIdentity(sodium);
+    const accomplice = createDeviceIdentity(sodium);
+    const certs = [
+      certifyDevice(sodium, identity, subjectOf(desktop), vaultId),
+      certifyDevice(sodium, attacker, subjectOf(attacker), vaultId), // self-signed
+      certifyDevice(sodium, accomplice, subjectOf(attacker), vaultId), // uncertified signer
+      certifyDevice(sodium, attacker, subjectOf(accomplice), vaultId), // cycle
+      certifyDevice(sodium, identity, subjectOf(attacker), createVaultId(sodium)), // another vault
+    ];
+    const tampered = certifyDevice(sodium, desktop, subjectOf(attacker), vaultId);
+    tampered[20] = (tampered[20] ?? 0) ^ 1; // breaks the signature (and the subject id)
+    certs.push(tampered);
+    const devices = verifyCertificates(sodium, vaultId, identity.signPublicKey, certs);
+    expect([...devices.keys()]).toEqual([desktop.deviceId]);
+    // Order does not matter.
+    expect([
+      ...verifyCertificates(sodium, vaultId, identity.signPublicKey, [...certs].reverse()).keys(),
+    ]).toEqual([desktop.deviceId]);
 
-    const bySelf = wrapKeys(sodium, ring, identity, recoveryRecipient(ring));
-    const byTrusted = wrapKeys(sodium, ring, trusted, recoveryRecipient(ring));
-    const byStranger = wrapKeys(sodium, ring, stranger, recoveryRecipient(ring));
-    expect(unwrapKeys(sodium, bySelf, identity, target, trust).senderDeviceId).toBe(
-      RECOVERY_SIGNER_ID,
-    );
-    expect(unwrapKeys(sodium, byTrusted, identity, target, trust).senderDeviceId).toBe(
-      trusted.deviceId,
-    );
-    expect(code(() => unwrapKeys(sodium, byStranger, identity, target, trust))).toBe(
+    const trust = trustFromCertificates(vaultId, identity.signPublicKey, certs);
+    const target = { vaultId, recoveryPublicKey: recovery.publicKeys };
+    // The attacker knows the recovery public keys (every device does) and signs its own wrap.
+    const planted = wrapKeys(sodium, ring, attacker, recoveryRecipient(ring));
+    expect(code(() => unwrapKeys(sodium, planted, identity, target, trust))).toBe(
       "untrusted_sender",
     );
-
-    // A stranger claiming the recovery signer id fails the signature check.
-    const forged = byStranger.slice();
-    forged.fill(0, 1, 17);
-    expect(code(() => unwrapKeys(sodium, forged, identity, target, trust))).toBe("auth_failed");
+    const byDesktop = wrapKeys(sodium, ring, desktop, recoveryRecipient(ring));
+    expect(unwrapKeys(sodium, byDesktop, identity, target, trust).senderDeviceId).toBe(
+      desktop.deviceId,
+    );
   });
 
   it("accepts case and whitespace variations of the same words", () => {
@@ -139,3 +157,7 @@ describe.each(backends)("recovery key (%s)", (_name, sodium: Sodium) => {
     );
   });
 });
+
+function subjectOf(d: DeviceIdentity) {
+  return { deviceId: d.deviceId, signPublicKey: d.signPublicKey, boxPublicKey: d.box.publicKey };
+}

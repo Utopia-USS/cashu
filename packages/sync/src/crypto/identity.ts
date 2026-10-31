@@ -5,6 +5,7 @@
 
 import { ed25519, x25519 } from "@noble/curves/ed25519.js";
 import { toHex } from "./encoding.js";
+import { CryptoError } from "./errors.js";
 import { Secret } from "./secret.js";
 import { KEY_BYTES, type Sodium } from "./sodium.js";
 
@@ -142,7 +143,11 @@ export function createDeviceIdentity(
   );
 }
 
-/** Ed25519 verification (ZIP-215 off: strict RFC 8032); any malformed input is simply invalid. */
+/**
+ * Ed25519 verification (ZIP-215 off: strict RFC 8032). Wrong lengths and every malformed or forged
+ * signature are simply invalid (@noble returns false for them); an exception from the library is a
+ * runtime problem, reported as `unsupported_runtime`, never as an authentication failure.
+ */
 export function verifySignature(
   signature: Uint8Array,
   message: Uint8Array,
@@ -152,6 +157,6 @@ export function verifySignature(
   try {
     return ed25519.verify(signature, message, publicKey, { zip215: false });
   } catch {
-    return false;
+    throw new CryptoError("unsupported_runtime");
   }
 }

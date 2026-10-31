@@ -1,3 +1,9 @@
+export {
+  CERT_BYTES,
+  type CertSubject,
+  certifyDevice,
+  verifyCertificates,
+} from "./cert.js";
 export { CryptoError, type CryptoErrorCode } from "./errors.js";
 export {
   FRAME_OVERHEAD,
@@ -64,6 +70,8 @@ export {
   recoveryRecipient,
   sealForPairing,
   type TrustedSigner,
+  type UnwrapOptions,
+  type Unwrapped,
   unwrapKeys,
   WRAP_VERSION,
   wrapKeys,
