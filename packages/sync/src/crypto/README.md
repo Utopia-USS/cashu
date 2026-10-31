@@ -66,8 +66,8 @@ use another one, and nothing signs raw caller bytes.
 ### S29 (pairing, registry, rotation, revocation)
 
 - Each device has a `DeviceIdentity` (`createDeviceIdentity`): an X25519 box key and an Ed25519 signing
-  key, stored with `saveDeviceIdentity` / `loadDeviceIdentity`. The registry publishes
-  `{deviceId, boxPublicKey, signPublicKey}`.
+  key, stored with `saveDeviceIdentity` / `loadDeviceIdentity`. Other devices learn its public keys ONLY
+  from verified certificates (below), never from a registry file in storage.
 - **Pairing, first hop only**: `sealForPairing(ring, newDeviceBoxPk)` / `openPairingWrap`. A sealed box
   authenticates nothing about its sender, so S29 must guarantee: the desktop seals only for a public key
   it authenticated (QR scanned in person, or a short authentication string); the SAS covers both
@@ -76,12 +76,16 @@ use another one, and nothing signs raw caller bytes.
   the registry root (owner device signing keys) from that same authenticated exchange. The payload
   carries the recovery public keys and the gid salt, which is how they get pinned on the new device.
 - **Every later wrap is signed**: `wrapKeys(ring, sender, recipient, kids?, recipients?)` and
-  `unwrapKeys(wire, recipient, ring | {vaultId, recoveryPublicKey}, trustedSigner, { acceptEpoch? })`.
+  `unwrapKeys(wire, recipient, ring | {vaultId, recoveryPublicKey}, trustedSigner, { acceptEpoch })`.
+  `recipient` must be a `TrustedDevice` from `verifyCertificates` (its box key is the certified one) or
+  `recoveryRecipient(ring)`; S29 seals rotations only for those, so storage cannot swap in its own box key.
   `trustedSigner(id)` returns the signing key of a device that is certified, registered and NOT revoked
   (S29's registry), else undefined (`untrusted_sender`). The signature is checked before opening
   (`auth_failed`). `unwrapKeys` returns `{ ring, senderDeviceId, recipients }`, where `recipients` is
   the signed list of every device (and `RECOVERY_SIGNER_ID`) the sender wrapped this rotation for; the
-  rotator passes the full list in every wrap of one rotation.
+  rotator passes the full list in every wrap of one rotation. The list is the SENDER's claim (a malicious
+  sender can leave itself out), so S29 must also persist kid -> `senderDeviceId` for every unwrapped key;
+  the ring does not record it.
 - **Acceptance policy** (`Keyring.merge`, used by every path that adds keys): same vault id
   (`vault_mismatch`), same pinned recovery keys (`recovery_key_mismatch`), same gid salt
   (`gid_salt_mismatch`), and new keys taken in ascending (generation, epoch, kid) with each generation
@@ -97,15 +101,26 @@ use another one, and nothing signs raw caller bytes.
   Revoking = rotate with epoch + 1 and wrap the new kid for every remaining device and for
   `recoveryRecipient(ring)`, listing them all as `recipients`. A concurrent plain rotation at the same
   generation has the lower epoch and loses. A malicious device that is still trusted can claim at most
-  epoch + 1 (`epoch_gap` beyond); S29 passes `acceptEpoch(sender, entry)` and refuses an epoch above the
-  sender's revocation count in the signed registry (`untrusted_sender`). **S29 rule for what remains**:
-  after merging, if the active key's signed `recipients` include a device revoked in the merged registry
-  (or its sender is revoked), rotate again with epoch + 1.
+  epoch + 1 (`epoch_gap` beyond), and at epoch + 1 it ties the revoker and can grind its kid to win.
+  So `acceptEpoch(sender, entry)` is REQUIRED for every unwrap except pairing: it refuses an epoch above
+  the sender's revocation count in the signed registry (`untrusted_sender`). **S29 rule for what
+  remains**: after merging, if the active key's sender is revoked, or its signed `recipients` include a
+  device revoked in the merged registry, rotate again with epoch + 1.
+- **Per-generation cap as a lever**: a still-trusted malicious device can fill generation n + 1 with 8
+  keys so the revoker's key at n + 1 is refused (`bad_payload`) on that device. The revoker's next
+  rotation at n + 2 is accepted, so the S29 rule "rotate again" recovers; S29 must treat a refused
+  revocation wrap as a reason to rotate again.
 - **Device certificates (trust root)**: `certifyDevice(signer, {deviceId, signPublicKey, boxPublicKey},
-  vaultId)` and `verifyCertificates(vaultId, recoverySignPublicKey, certs)` -> device id -> signing key.
+  vaultId)` and `verifyCertificates(vaultId, recoverySignPublicKey, certs)` ->
+  `{ devices: Map<deviceId, TrustedDevice>, conflicts }`, where `TrustedDevice` carries the certified
+  signing AND box keys.
   At vault creation, while the words are on screen, the recovery identity certifies the creating device
   (and signs the first recovery wrap); every paired device is certified by an already trusted device.
   A device is trusted only through a chain rooted at the recovery signing key; storage cannot add one.
+  **Conflicts fail closed**: if valid chains give one device id two different key pairs (a certified
+  device certifying its own key under an honest id), that id is untrusted, reported in `conflicts` for
+  the app to show, and passes no trust on; order, chain depth and id order never pick a winner. The
+  cost is a visible denial of service on that id, which a trusted device could cause anyway.
   **Known gap, owner S29**: revoking a certified device needs the signed registry; until then a revoked
   device's certificate still validates.
 - **Recovery**: `createRecoveryKey` -> `{ phrase, publicKeys }`; `createKeyring(sodium, publicKeys)` pins
@@ -125,7 +140,9 @@ use another one, and nothing signs raw caller bytes.
   chosen because background sync must read keys while the phone is locked; THIS_DEVICE_ONLY keeps it out
   of backups. Values are sealed under it and kept in files, so SecureStore's ~2048-byte value limit never
   applies however many generations a ring collects. Getting or creating the KEK is single flight, so
-  concurrent first writes share one KEK. Files without their KEK (restored elsewhere) report
+  concurrent first writes share one KEK. That holds within one JS runtime: an iOS background task in a
+  separate runtime could still race on the very first run; "adopt what is stored after writing" covers
+  it except for a blob the losing runtime wrote between its write and its re-read. Files without their KEK (restored elsewhere) report
   `keystore_unavailable`; a blob that does not open under the KEK reports `keystore_corrupt`. Rolling a
   blob back to an older one of the same name is not detected (needs local access to the app's files).
 
