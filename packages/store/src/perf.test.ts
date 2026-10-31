@@ -108,6 +108,76 @@ function workload() {
       ),
     );
   }
+  // S24 additions: 2k claims (10 % manual cash withdrawals, so legs exist), the cash pool, 300 cash
+  // expenses, 30 loan events on one loan account.
+  const pool = detGid(TEST_SALT, "accounts", ["ext", "manual", "cash:PLN"]);
+  events.push(
+    f.make(
+      "account.opened",
+      pool,
+      {
+        bank: "manual",
+        externalId: "cash:PLN",
+        iban: null,
+        currency: "PLN",
+        type: "cash",
+        name: "Gotówka",
+        keys: ["ext:manual:cash:PLN"],
+      },
+      { wall: next() },
+    ),
+  );
+  for (let n = 0; n < 2_000; n++) {
+    const t = imports[(n * 29) % imports.length] as TestEnvelope;
+    events.push(
+      f.make(
+        "txn.categorySet",
+        t.gid,
+        {
+          category: n % 10 === 0 ? "cash_withdrawal" : "groceries",
+          source: n % 10 === 0 || n % 2 ? "manual_txn" : "llm_full",
+        },
+        { wall: next() },
+      ),
+    );
+  }
+  for (let n = 0; n < 300; n++) {
+    events.push(
+      f.make(
+        "txn.cashExpenseAdded",
+        testUlid("01JK", n + 1),
+        {
+          account: pool,
+          bookingDate: "2024-06-01",
+          amount: "-12.50",
+          currency: "PLN",
+          title: `Kawa ${n}`,
+          category: "dining",
+        },
+        { wall: next() },
+      ),
+    );
+  }
+  const loanAccount = (ACCOUNTS[0] as (typeof ACCOUNTS)[number]).gid;
+  for (let n = 0; n < 30; n++) {
+    events.push(
+      f.make(
+        n % 2 ? "loan.paymentMatchingSet" : "loan.termsSet",
+        detGid(TEST_SALT, "loans", [loanAccount]),
+        n % 2
+          ? { account: loanAccount, paymentIban: null, paymentText: `RATA ${n}` }
+          : {
+              account: loanAccount,
+              principal: `${100000 + n}.00`,
+              annualRate: "6.5",
+              termMonths: 360,
+              startDate: "2024-01-10",
+              originationDate: null,
+            },
+        { wall: next() },
+      ),
+    );
+  }
   for (let n = 0; n < 300; n++) {
     events.push(
       f.make(
@@ -160,7 +230,9 @@ describe("perf smoke: 64k events", () => {
     let t0 = now();
     for (let i = 0; i < events.length; i += 1000) store.applyEnvelopes(events.slice(i, i + 1000));
     const bulk = since(t0);
-    expect(store.read("SELECT COUNT(*) AS n FROM transactions")).toEqual([{ n: 60_000 }]);
+    // 60k imports + 300 cash expenses + the legs of the 133 manual cash_withdrawal claims on the
+    // two PLN accounts (the EUR account has no cash pool)
+    expect(store.read("SELECT COUNT(*) AS n FROM transactions")).toEqual([{ n: 60_433 }]);
     expect(store.read("SELECT COUNT(*) AS n FROM category_rules")).toEqual([{ n: 400 }]);
     const hash = viewHash(store).hash;
 
@@ -181,6 +253,48 @@ describe("perf smoke: 64k events", () => {
       ),
     );
     const edits10 = since(t0);
+
+    // a day's events (performance.md budget: <= 100 ms): 200 imports and a few claims
+    const day = Array.from({ length: 200 }, (_, n) => {
+      const a = ACCOUNTS[n % 3] as (typeof ACCOUNTS)[number];
+      const hash = bytesToHex(sha1(utf8ToBytes(`perf-day-${n}`)));
+      return f.make(
+        "txn.imported",
+        detGid(TEST_SALT, "transactions", [a.gid, hash, "0"]),
+        {
+          account: a.gid,
+          batch: null,
+          bookingDate: "2025-01-02",
+          valueDate: null,
+          amount: "-10.00",
+          currency: a.currency,
+          counterpartyName: `SKLEP ${n % 400}`,
+          counterpartyIban: null,
+          description: "zakup",
+          reference: null,
+          bankTransactionId: null,
+          source: "csv",
+          dedupHash: hash,
+          occurrence: 0,
+          raw: {},
+        },
+        { wall: next() },
+      );
+    });
+    const claims = day
+      .slice(0, 5)
+      .map((t) =>
+        f.make(
+          "txn.categorySet",
+          t.gid,
+          { category: "cash_withdrawal", source: "manual_txn" },
+          { wall: next() },
+        ),
+      );
+    t0 = now();
+    store.applyEnvelopes([...day, ...claims]);
+    const dayBatch = since(t0);
+    expect(store.rederive().touchedTables).toEqual(new Set());
 
     // a late claim from another device that sorts before thousands of applied events
     const late = new EventFactory("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "01JH");
@@ -216,6 +330,8 @@ describe("perf smoke: 64k events", () => {
       rebuildWall: rebuild.wall,
       rebuildCpu: rebuild.cpu,
       edits10Wall: edits10.wall,
+      dayBatchWall: dayBatch.wall,
+      dayBatchCpu: dayBatch.cpu,
       lateRefoldWall: lateRefold.wall,
       identityRefoldWall: identityRefold.wall,
     };

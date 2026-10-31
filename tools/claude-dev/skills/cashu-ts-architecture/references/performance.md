@@ -72,6 +72,26 @@ two, plus zod validation and the gid check (one HMAC). File mode adds the WAL pa
 trees on every 1,000-event commit (applying the whole bulk in one transaction, as the spike's sync
 does, measured ~15-25% faster).
 
+## Core and budget vault (S24a)
+
+Workload: `packages/store/src/perf.test.ts` (66,534 events: the S23b workload plus the cash pool, 2,000
+category claims of which 133 make cash legs, 300 cash expenses, 30 loan events; 1,000-event batches),
+with the budget derivers (cash legs, claim categories) and `fold_txn_keys` (anchor order, amount and
+merchant keys) on. One run each, wall (CPU) ms, load average 6-7, same machine.
+
+| Phase | Memory | File (WAL, synchronous NORMAL) | Budget |
+|---|---|---|---|
+| bulk apply (genesis-size) | 2,644 (3,034) | 5,441-7,241 (5,054-5,754) | first sync desktop <= 10 s |
+| full rebuild | 952-979 (1,066-1,103) | 1,235-1,257 (1,351-1,381) | desktop <= 3 s |
+| a day's events (200 imports, 5 cash withdrawal claims) | 11 (16) | 48-51 (37-39) | <= 100 ms |
+| late claim re-fold / identity re-fold of 60k rows | 12 / 876-883 | 18 / 1,125-1,418 | (none) |
+
+Two plans found by profiling this workload, both fixed: `EventLog.keyedEvent` (gid + type) let SQLite
+walk the `(type, hlc, eid)` index for the ORDER BY instead of the gid index (7 ms per claim at 60k
+imports; now `+type`), and rows addressed by `dedup_hash` alone scan `transactions` (cash expenses are
+addressed by gid). The derived oracle (`Store.rederive`, every deriver's deriveAll) costs ~1 s at this
+size: tests only.
+
 ## Investments vault (S25)
 
 Workload: `packages/store/src/investments/perf.test.ts` with `CASHU_PERF=1` (30,133 events: 5k inv

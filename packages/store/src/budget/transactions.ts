@@ -281,8 +281,14 @@ function applyCashExpense(e: FoldEvent, ctx: FoldContext): void {
 
 function applyDelete(e: FoldEvent, ctx: FoldContext): void {
   const key = CASHEXP + e.gid;
-  // GUARD: only a held, live cash expense is deleted; anything else is a no-op.
-  const r = ctx.sql.write(table.name, "DELETE FROM transactions WHERE dedup_hash = ?", key);
+  // GUARD: only a held, live cash expense is deleted; anything else is a no-op. (By gid: the
+  // unique index; dedup_hash alone has none.)
+  const r = ctx.sql.write(
+    table.name,
+    "DELETE FROM transactions WHERE gid = ? AND dedup_hash = ?",
+    e.gid,
+    key,
+  );
   if (r.changes === 0) return;
   ctx.sql.write(claims.name, "DELETE FROM fold_transaction_claims WHERE partition = ?", key);
   ctx.sql.write(keys.name, "DELETE FROM fold_txn_keys WHERE row = ?", key);
@@ -346,7 +352,12 @@ export const transactionsMaterializer: Materializer = {
   clear(partitions, ctx) {
     for (const key of partitions) {
       if (key.startsWith(CASHEXP)) {
-        ctx.sql.write(table.name, "DELETE FROM transactions WHERE dedup_hash = ?", key);
+        ctx.sql.write(
+          table.name,
+          "DELETE FROM transactions WHERE gid = ? AND dedup_hash = ?",
+          key.slice(CASHEXP.length),
+          key,
+        );
         ctx.sql.write(tombs.name, "DELETE FROM fold_txn_tombs WHERE partition = ?", key);
       } else {
         const [account, hash, occurrence] = splitKey(key);

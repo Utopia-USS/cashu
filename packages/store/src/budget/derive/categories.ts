@@ -28,10 +28,10 @@ function setRow(ctx: DeriveContext, key: string, value: [string | null, string |
     ctx.sql.write(
       TRANSACTIONS,
       `UPDATE transactions SET category = ?, category_source = ?
-       WHERE dedup_hash = ? AND (category IS NOT ? OR category_source IS NOT ?)`,
+       WHERE gid = ? AND (category IS NOT ? OR category_source IS NOT ?)`,
       category,
       source,
-      key,
+      key.slice(CASHEXP.length),
       category,
       source,
     );

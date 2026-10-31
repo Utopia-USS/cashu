@@ -115,8 +115,11 @@ export class EventLog {
       `SELECT e.gid FROM event_refs r JOIN event_log e ON e.eid = r.eid
        WHERE r.subject = ? AND e.state = 'applied'`,
     );
+    // `+type`: without statistics SQLite may pick the (type, hlc, eid) index for the ORDER BY and
+    // walk every event of the type until the gid matches (O(log) per call becomes O(n), measured
+    // 7 ms per call at 60k imports); the gid index finds the few events of one gid directly.
     this.#keyed = db.prepare(
-      `SELECT ${FOLD_COLUMNS} FROM event_log WHERE gid = ? AND type = ? AND state = 'applied'
+      `SELECT ${FOLD_COLUMNS} FROM event_log WHERE gid = ? AND +type = ? AND state = 'applied'
        ORDER BY hlc, eid LIMIT 1`,
     );
   }
