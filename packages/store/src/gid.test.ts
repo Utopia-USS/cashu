@@ -1,7 +1,7 @@
 // gid.md section 8 vectors (produced with Python hmac / hashlib) against the runtime HMAC.
 import { describe, expect, it } from "vitest";
 import { ULID_RE, UUID8_RE } from "./events/v1/primitives.js";
-import { detGid, mintUlid, newVaultSalt, vaultSalt } from "./gid.js";
+import { detGid, detGidFor, mintUlid, newVaultSalt, vaultSalt } from "./gid.js";
 import { rng } from "./testing/random.js";
 import { TEST_SALT } from "./testing/store.js";
 
@@ -49,6 +49,20 @@ describe("keyed DET gids", () => {
     const other = vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => 31 - i));
     expect(detGid(other, "category_rules", ["SKLEP TESTOWY"])).not.toBe(VECTORS[7]?.[2]);
     expect(newVaultSalt().bytes).toHaveLength(32);
+  });
+
+  it("a vault's keyed gid function agrees with one-off gids on random part lists", () => {
+    const r = rng(7);
+    const det = detGidFor(TEST_SALT);
+    for (let n = 0; n < 1000; n++) {
+      const parts = Array.from({ length: 1 + Math.floor(r() * 4) }, () =>
+        String.fromCodePoint(
+          ...Array.from({ length: Math.floor(r() * 12) }, () => 0x20 + Math.floor(r() * 0x2000)),
+        ),
+      );
+      expect(det("transactions", parts)).toBe(detGid(TEST_SALT, "transactions", parts));
+    }
+    expect(() => det("nope" as Parameters<typeof det>[0], [])).toThrow(RangeError);
   });
 
   it("refuses a salt of the wrong length and a part with the unit separator", () => {

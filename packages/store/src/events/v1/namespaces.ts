@@ -54,12 +54,19 @@ export function detMessage(table: GidTable, parts: readonly string[]): string {
   return [GID_DOMAIN_PREFIX + table, ...parts].join(UNIT_SEPARATOR);
 }
 
+const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
+
 /** Format the first 16 bytes of an HMAC-SHA256 digest as an RFC 9562 UUIDv8 (lower case). */
 export function uuid8FromDigest(digest: Uint8Array): string {
   if (digest.length < 16) throw new RangeError("digest too short for a UUID");
-  const b = Array.from(digest.subarray(0, 16));
-  b[6] = ((b[6] ?? 0) & 0x0f) | 0x80;
-  b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
-  const h = b.map((x) => x.toString(16).padStart(2, "0")).join("");
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  let out = "";
+  for (let i = 0; i < 16; i++) {
+    let b = digest[i] as number;
+    if (i === 6)
+      b = (b & 0x0f) | 0x80; // version 8
+    else if (i === 8) b = (b & 0x3f) | 0x80; // variant 10
+    if (i === 4 || i === 6 || i === 8 || i === 10) out += "-";
+    out += HEX[b];
+  }
+  return out;
 }

@@ -3,7 +3,7 @@
 // never derived from anything public. ULIDs are minted for created entities.
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
+import { randomBytes } from "@noble/hashes/utils.js";
 import {
   detMessage,
   GID_TABLES,
@@ -31,19 +31,32 @@ export function newVaultSalt(): VaultSalt {
   return vaultSalt(randomBytes(VAULT_SALT_BYTES));
 }
 
-/** DET gid (gid.md 3): uuid8(HMAC-SHA256(salt, "cashu.gid.v1/" + table + US + parts...)). */
-export function detGid(salt: VaultSalt, table: GidTable, parts: readonly string[]): string {
-  if (!(GID_TABLES as readonly string[]).includes(table)) {
-    throw new RangeError(`unknown gid domain: ${table}`);
-  }
-  return uuid8FromDigest(hmac(sha256, salt.bytes, utf8ToBytes(detMessage(table, parts))));
-}
-
 /** A DET gid function bound to one vault's salt, as the materializers and commands get it. */
 export type DetGid = (table: GidTable, parts: readonly string[]) => string;
 
+const utf8 = new TextEncoder();
+const GID_TABLE_SET: ReadonlySet<string> = new Set(GID_TABLES);
+
+/**
+ * DET gids of one vault (gid.md 3): uuid8(HMAC-SHA256(salt, "cashu.gid.v1/" + table + US + parts)).
+ * The keyed HMAC state (the salt's inner and outer pads) is built once and cloned per gid.
+ */
 export function detGidFor(salt: VaultSalt): DetGid {
-  return (table, parts) => detGid(salt, table, parts);
+  const keyed = hmac.create(sha256, salt.bytes);
+  return (table, parts) => {
+    if (!GID_TABLE_SET.has(table)) throw new RangeError(`unknown gid domain: ${table}`);
+    return uuid8FromDigest(
+      keyed
+        .clone()
+        .update(utf8.encode(detMessage(table, parts)))
+        .digest(),
+    );
+  };
+}
+
+/** One DET gid (a one-off caller; folds and commands hold a `detGidFor` function). */
+export function detGid(salt: VaultSalt, table: GidTable, parts: readonly string[]): string {
+  return detGidFor(salt)(table, parts);
 }
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
