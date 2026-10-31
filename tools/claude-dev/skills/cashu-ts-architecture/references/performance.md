@@ -42,3 +42,26 @@ profile. A change that breaks a budget needs a measurement and the lead's OK, no
 Mobile: Flashlight / the Perf Monitor for FPS, `expo-dev-client` release builds for startup, Reassure
 for render counts. Desktop: Chrome DevTools performance panel on the renderer, `performance.mark` around
 query runs (the store logs runs over budget in development).
+
+## Store apply and rebuild against the spike (S23b)
+
+Gate (lead decision): bulk apply and full rebuild within 2x of the own-log spike, measured in the same
+run. Workload: `packages/store/src/perf.test.ts` (64,203 events: 60k imports, 2k re-imports, 1,900
+rule edits, 300 decisions) vs `spike/own-log/bench.mjs`; harness `~/cashu-lab/bench/s23b-same-run.sh`
+(3 interleaved rounds, medians, wall ms; file mode = WAL + synchronous NORMAL, the spike's pragmas, is
+the gate). M-series Mac, load average 3-10.
+
+| Step | Spike bulk / rebuild | Store file bulk / rebuild | Store memory bulk / rebuild | Ratio file bulk / rebuild |
+|---|---|---|---|---|
+| Before (8cb17e5) | 476 / 414 | 6,680 / 1,242 | 3,709 / 984 | 14.0 / 3.00 |
+| Keyed HMAC per vault, no transaction partition index | 474 / 342 | 4,242 / 804 | 2,596 / 732 | 9.0 / 2.35 |
+| Bulk index build on full re-folds | 452 / 336 | 4,225 / 753 | 2,505 / 630 | 9.4 / 2.24 |
+| Batched log writes, one envelope copy (after) | 481 / 325 | 4,471 / 740 | 2,305 / 651 | 9.3 / 2.28 |
+
+Not met (bulk 9.3x, rebuild 2.3x in file mode; memory 4.8x / 2.0x). Where the bulk time goes (CPU
+profile, file mode): the commit's WAL writes about 30% (the store database is 80 MB after the bulk vs
+the spike's 29 MB of log + view: the log copy is 577 bytes per event and each import inserts into six
+random-key B-trees: the log's gid index, the cash-leg ref, `view_ids`, the transaction's gid, its
+(account, hash, occurrence) key and its booking date), the transaction row insert about 12%, zod and
+the HMACs together under 10%. Options left are design changes for the lead (S23b checkpoint): cash-leg refs
+on demand, a more compact log copy, batched materializer inserts.
