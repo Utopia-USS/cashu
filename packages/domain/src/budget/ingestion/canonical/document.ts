@@ -8,6 +8,7 @@ import { decodeReplace, decodeStrict } from "../../../codecs.js";
 import type { InstitutionRegistry } from "../../../core/index.js";
 import type { IsoDate } from "../../../dates.js";
 import { readCsvLines } from "../../../pycsv.js";
+import { lineColumn, parseJson } from "../../../pyJson.js";
 import { PY_WHITESPACE, pyLower, pySplitlines, pyStripChars, pyUpper } from "../../../text.js";
 import type { TxnSource } from "../types.js";
 import {
@@ -19,7 +20,6 @@ import {
 } from "./constants.js";
 import { headerName, parseCsvDocument } from "./csvVariant.js";
 import { type BudgetIssue, formatIssue, issueAsDict } from "./issues.js";
-import { lineColumn, parseJson } from "./json.js";
 import {
   type CanonicalResult,
   canonicalOk,

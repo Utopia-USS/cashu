@@ -8,6 +8,7 @@
  */
 
 import { floatRepr } from "../../decimal.js";
+import { pyReprStr } from "../../pyRepr.js";
 
 export type JsonObject = Readonly<Record<string, unknown>>;
 
@@ -61,35 +62,12 @@ export function truthy(value: unknown): boolean {
   return !!value;
 }
 
-const NOT_PRINTABLE = /[\p{C}\p{Z}]/u;
-
-/** Python `repr(str)`: single quotes unless the text has `'` and no `"`; escapes as CPython. */
-function reprString(text: string): string {
-  const quote = text.includes("'") && !text.includes('"') ? '"' : "'";
-  let out = quote;
-  for (const ch of text) {
-    const cp = ch.codePointAt(0) as number;
-    if (ch === quote || ch === "\\") out += `\\${ch}`;
-    else if (ch === "\t") out += "\\t";
-    else if (ch === "\n") out += "\\n";
-    else if (ch === "\r") out += "\\r";
-    else if (cp < 0x20 || cp === 0x7f) out += `\\x${cp.toString(16).padStart(2, "0")}`;
-    else if (cp < 0x7f) out += ch;
-    else if (ch !== " " && NOT_PRINTABLE.test(ch)) {
-      if (cp <= 0xff) out += `\\x${cp.toString(16).padStart(2, "0")}`;
-      else if (cp <= 0xffff) out += `\\u${cp.toString(16).padStart(4, "0")}`;
-      else out += `\\U${cp.toString(16).padStart(8, "0")}`;
-    } else out += ch;
-  }
-  return out + quote;
-}
-
 function repr(value: unknown): string {
-  if (typeof value === "string") return reprString(value);
+  if (typeof value === "string") return pyReprStr(value);
   if (Array.isArray(value)) return `[${value.map(repr).join(", ")}]`;
   if (isMapping(value)) {
     return `{${Object.entries(value)
-      .map(([k, v]) => `${reprString(k)}: ${repr(v)}`)
+      .map(([k, v]) => `${pyReprStr(k)}: ${repr(v)}`)
       .join(", ")}}`;
   }
   return pyStr(value);

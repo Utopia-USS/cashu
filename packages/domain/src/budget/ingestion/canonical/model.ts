@@ -7,6 +7,7 @@
 
 import type { IsoDate } from "../../../dates.js";
 import { Decimal, ONE } from "../../../decimal.js";
+import type { JsonObject, JsonValue } from "../../../pyJson.js";
 import {
   ACCOUNT_FIELDS,
   BALANCE_FIELDS,
@@ -33,7 +34,6 @@ import {
   patterned,
   text,
 } from "./fields.js";
-import type { JsonObject, JsonValue } from "./json.js";
 
 export type Loc = readonly (string | number)[];
 export interface PlacedError extends FieldError {

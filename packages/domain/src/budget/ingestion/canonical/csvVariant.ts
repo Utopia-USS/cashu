@@ -9,6 +9,7 @@ import { decodeStrict } from "../../../codecs.js";
 import type { InstitutionRegistry } from "../../../core/index.js";
 import { looksLikePerson } from "../../../core/index.js";
 import { readCsv } from "../../../pycsv.js";
+import type { JsonValue } from "../../../pyJson.js";
 import { pyIsDigit, pyLower, pySplit, pyStrip, pyStripChars, pyUpper } from "../../../text.js";
 import type { TxnSource } from "../types.js";
 import {
@@ -19,7 +20,6 @@ import {
   REQUIRED_CSV_COLUMNS,
 } from "./constants.js";
 import { type BudgetIssue, budgetIssue } from "./issues.js";
-import type { JsonValue } from "./json.js";
 import { type CanonicalResult, didYouMean, fileError, validateDocument } from "./validate.js";
 
 /** `_header_name`. */

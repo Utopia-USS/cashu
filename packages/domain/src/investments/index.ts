@@ -1,6 +1,7 @@
 /** Public entry point of the investments module of `@cashu/domain`. */
 
 export * from "./domain/index.js";
+export * as importing from "./importing/index.js";
 export * as macro from "./macro/index.js";
 export * from "./networth.js";
 export * as performance from "./performance/index.js";

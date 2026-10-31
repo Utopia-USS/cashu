@@ -7,6 +7,7 @@
 import type { InstitutionRegistry } from "../../../core/index.js";
 import { DEFAULT_CONTEXT, type Decimal } from "../../../decimal.js";
 import { getCloseMatches } from "../../../difflib.js";
+import type { JsonObject, JsonValue } from "../../../pyJson.js";
 import type { ParsedStatement, RawTransaction, TxnSource } from "../types.js";
 import {
   ACCOUNT_FIELDS,
@@ -21,7 +22,6 @@ import {
   TRANSACTION_FIELDS,
 } from "./constants.js";
 import { type BudgetIssue, budgetIssue, dedupeIssues } from "./issues.js";
-import type { JsonObject, JsonValue } from "./json.js";
 import { type BudgetImportDocument, type Loc, type PlacedError, validateModel } from "./model.js";
 
 export type Variant = "json" | "csv";

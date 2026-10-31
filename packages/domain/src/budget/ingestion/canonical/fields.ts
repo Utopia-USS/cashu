@@ -8,9 +8,9 @@
 import { fromIsoFormat, type IsoDate, PyValueError } from "../../../dates.js";
 import { Decimal } from "../../../decimal.js";
 import { normalizeIban } from "../../../iban.js";
+import type { JsonValue } from "../../../pyJson.js";
 import { pyStrip, pyUpper } from "../../../text.js";
 import { CURRENCY_RE, DATE_RE, IBAN_MAX, IBAN_MIN, NUMBER_RE } from "./constants.js";
-import type { JsonValue } from "./json.js";
 
 export interface FieldError {
   readonly type: string;

@@ -768,6 +768,7 @@ def gen_canonical(rng: random.Random) -> list:
     for parent in ((), ("account",), ("transactions", 0), ("balances", 0)):
         d = mutate(base, (*parent, "extra_key"), 1) if parent else {**base, "descripton": 1}
         add(as_json(d), "x.json")
+    # legacy name: the pre-rename format id is still read
     add(as_json({**base, "format": "finanse-budget-import"}), "x.json")
     add(as_json({**base, "transactions": []}), "x.json")
     add(as_json({**base, "balances": [{"date": "2026-10-01", "amount": "1"}] * 10001}), "x.json")
@@ -827,6 +828,7 @@ def gen_canonical(rng: random.Random) -> list:
     # detection only
     for content, name in [(as_json(base), "statement.json"), (as_json(base), "noext"),
                           (b'{"format": "cashu-import"}', "x.json"), (b"#Data operacji;#Kwota\n", "mbank.csv"),
+                          # legacy name: the pre-rename format id is still read
                           (b"\x00\x01\x02", "x.bin"), (b'\xef\xbb\xbf  {"format": "finanse-budget-import"', "x"),
                           (b'format_version,"booking_date\n', "x.csv"), (b"\xff" * 10, "x.csv")]:
         add(content, name)

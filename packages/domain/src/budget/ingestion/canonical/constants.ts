@@ -3,7 +3,7 @@
 export const BUDGET_IMPORT_FORMAT = "cashu-budget-import";
 export const BUDGET_IMPORT_FORMAT_VERSION = 1;
 export const BUDGET_IMPORTER_ID = "cashu-budget";
-/** The pre-rename format id (deprecated, still read). */
+/** The pre-rename format id (legacy name, deprecated, still read). */
 export const LEGACY_BUDGET_IMPORT_FORMAT = "finanse-budget-import";
 export const LEGACY_BUDGET_IMPORTER_ID = "finanse-budget";
 /** The statement's bank when the document names neither an institution nor a source. */

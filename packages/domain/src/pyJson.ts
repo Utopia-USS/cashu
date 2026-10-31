@@ -1,12 +1,14 @@
 /**
  * Python's `json.loads(text, parse_float=Decimal, parse_constant=<refuse>, object_pairs_hook=<refuse
- * duplicates>)` as the budget import calls it: the C scanner's grammar and error positions (code
- * points), integers exact (`bigint`, Python `int` with its 4300-digit limit), numbers with a fraction
- * or an exponent as `Decimal`, a repeated key refused when its object closes (inner objects first).
- * Pinned by `budget-canonical.jsonl` (truncations and byte flips of a valid document).
+ * duplicates>)` as the importers call it: the C scanner's grammar and error positions (code points)
+ * and messages, integers exact (`bigint`, Python `int` with its 4300-digit limit; or `Decimal` like
+ * `parse_int=Decimal`, no limit), numbers with a fraction or an exponent as `Decimal`, a repeated key
+ * refused when its object closes (inner objects first).
+ * Pinned by `budget-canonical.jsonl` (truncations and byte flips of a valid document) and
+ * `inv-importing-json.jsonl` (the `JSONDecodeError` messages).
  */
 
-import { Decimal } from "../../../decimal.js";
+import { Decimal } from "./decimal.js";
 
 export type JsonValue =
   | null
@@ -21,11 +23,26 @@ export type JsonObject = ReadonlyMap<string, JsonValue>;
 
 export type JsonResult =
   | { readonly ok: true; readonly value: JsonValue }
-  /** `JSONDecodeError` at `pos` (code point index). */
-  | { readonly ok: false; readonly kind: "decode"; readonly pos: number }
-  | { readonly ok: false; readonly kind: "duplicate_key" }
-  /** Any other `ValueError` (NaN / Infinity, an over-long integer) or too deep nesting. */
-  | { readonly ok: false; readonly kind: "value" };
+  /** `JSONDecodeError` at `pos` (code point index) with its `msg`. */
+  | { readonly ok: false; readonly kind: "decode"; readonly pos: number; readonly msg: string }
+  /** `object_pairs_hook` refused a repeated key. */
+  | { readonly ok: false; readonly kind: "duplicate_key"; readonly key: string }
+  /**
+   * Any other `ValueError` (NaN / Infinity, an over-long integer) or too deep nesting; `detail` is
+   * the constant's name for `constant`, else a description.
+   */
+  | {
+      readonly ok: false;
+      readonly kind: "value";
+      readonly reason: "constant" | "int_digits" | "depth";
+      readonly detail: string;
+    };
+
+/** How integers without a fraction or exponent are read. */
+export interface JsonOptions {
+  /** `bigint` (Python `int`, 4300-digit limit) or `Decimal` (`parse_int=Decimal`, no limit). */
+  readonly integers: "bigint" | "decimal";
+}
 
 /**
  * Nesting deeper than this is refused like Python's `RecursionError` (Python's own depth depends on
@@ -44,11 +61,29 @@ class Fail extends Error {
   }
 }
 
-const decodeError = (pos: number): never => {
-  throw new Fail({ ok: false, kind: "decode", pos });
+const decodeError = (pos: number, msg: string): never => {
+  throw new Fail({ ok: false, kind: "decode", pos, msg });
 };
-/** The scanner's `StopIteration(idx)`: no value starts here ("Expecting value"). */
-const noValue = decodeError;
+/** The scanner's `StopIteration(idx)`: no value starts here. */
+const noValue = (pos: number): never => decodeError(pos, "Expecting value");
+const badConstant = (name: string): never => {
+  throw new Fail({ ok: false, kind: "value", reason: "constant", detail: name });
+};
+/** Python's own depth depends on the C stack; the message is the same for every depth. */
+const recursionFailure = (
+  container: "object" | "array",
+): Extract<JsonResult, { kind: "value" }> => ({
+  ok: false,
+  kind: "value",
+  reason: "depth",
+  detail: `maximum recursion depth exceeded while decoding a JSON ${container} from a unicode string`,
+});
+const tooDeep = (container: "object" | "array"): never => {
+  throw new Fail(recursionFailure(container));
+};
+
+const unterminated = (begin: number): never =>
+  decodeError(begin, "Unterminated string starting at");
 
 const isWs = (c: string | undefined) => c === " " || c === "\t" || c === "\n" || c === "\r";
 const isDigit = (c: string | undefined) => c !== undefined && c >= "0" && c <= "9";
@@ -56,9 +91,13 @@ const HEX = /^[0-9a-fA-F]$/;
 
 class Scanner {
   private readonly s: readonly string[];
+  private readonly integers: JsonOptions["integers"];
+  /** The container being read last: names the recursion error when the JS stack gives out first. */
+  innermost: "object" | "array" = "object";
 
-  constructor(text: string) {
+  constructor(text: string, options: JsonOptions) {
     this.s = Array.from(text);
+    this.integers = options.integers;
   }
 
   get length(): number {
@@ -94,13 +133,13 @@ class Scanner {
         if (word("false")) return [false, idx + 5];
         break;
       case "N":
-        if (word("NaN")) throw new Fail({ ok: false, kind: "value" });
+        if (word("NaN")) return badConstant("NaN");
         break;
       case "I":
-        if (word("Infinity")) throw new Fail({ ok: false, kind: "value" });
+        if (word("Infinity")) return badConstant("Infinity");
         break;
       case "-":
-        if (word("-Infinity")) throw new Fail({ ok: false, kind: "value" });
+        if (word("-Infinity")) return badConstant("-Infinity");
         break;
     }
     return this.number(idx);
@@ -139,8 +178,16 @@ class Scanner {
       else idx = eStart;
     }
     const text = s.slice(start, idx).join("");
-    if (isFloat) return [Decimal.parse(text), idx];
-    if (text.replace("-", "").length > MAX_INT_DIGITS) throw new Fail({ ok: false, kind: "value" });
+    if (isFloat || this.integers === "decimal") return [Decimal.parse(text), idx];
+    const digits = text.replace("-", "").length;
+    if (digits > MAX_INT_DIGITS) {
+      throw new Fail({
+        ok: false,
+        kind: "value",
+        reason: "int_digits",
+        detail: `Exceeds the limit (${MAX_INT_DIGITS} digits) for integer string conversion: value has ${digits} digits; use sys.set_int_max_str_digits() to increase the limit`,
+      });
+    }
     return [BigInt(text), idx];
   }
 
@@ -157,13 +204,14 @@ class Scanner {
       for (; next < len; next++) {
         c = s[next] as string;
         if (c === '"' || c === "\\") break;
-        if ((c.codePointAt(0) as number) <= 0x1f) return decodeError(next);
+        if ((c.codePointAt(0) as number) <= 0x1f)
+          return decodeError(next, "Invalid control character at");
       }
-      if (next >= len) return decodeError(begin); // unterminated
+      if (next >= len) return unterminated(begin);
       out += s.slice(end, next).join("");
       next++;
       if (c === '"') return [out, next];
-      if (next === len) return decodeError(begin);
+      if (next === len) return unterminated(begin);
       const esc = s[next] as string;
       if (esc !== "u") {
         end = next + 1;
@@ -173,16 +221,17 @@ class Scanner {
             string
           >
         )[esc];
-        if (mapped === undefined) return decodeError(end - 2);
+        if (mapped === undefined) return decodeError(end - 2, "Invalid \\escape");
         out += mapped;
         continue;
       }
       next++;
       end = next + 4;
-      if (end >= len) return decodeError(next - 1);
+      if (end >= len) return decodeError(next - 1, "Invalid \\uXXXX escape");
       const hex4 = (from: number) => {
         const digits = s.slice(from, from + 4);
-        if (!digits.every((d) => HEX.test(d))) return decodeError(from - 1);
+        if (!digits.every((d) => HEX.test(d)))
+          return decodeError(from - 1, "Invalid \\uXXXX escape");
         return Number.parseInt(digits.join(""), 16);
       };
       let cp = hex4(next);
@@ -209,38 +258,42 @@ class Scanner {
   }
 
   private object(start: number, depth: number): [JsonValue, number] {
-    if (depth > MAX_DEPTH) throw new Fail({ ok: false, kind: "value" });
+    this.innermost = "object";
+    if (depth > MAX_DEPTH) return tooDeep("object");
     const s = this.s;
     const pairs: [string, JsonValue][] = [];
     let idx = this.skipWs(start);
     if (s[idx] !== "}") {
       for (;;) {
-        if (s[idx] !== '"') return decodeError(idx);
+        if (s[idx] !== '"')
+          return decodeError(idx, "Expecting property name enclosed in double quotes");
         const [key, afterKey] = this.string(idx + 1);
         idx = this.skipWs(afterKey);
-        if (s[idx] !== ":") return decodeError(idx);
+        if (s[idx] !== ":") return decodeError(idx, "Expecting ':' delimiter");
         idx = this.skipWs(idx + 1);
         const [val, afterVal] = this.value(idx, depth);
         pairs.push([key, val]);
         idx = this.skipWs(afterVal);
         if (s[idx] === "}") break;
-        if (s[idx] !== ",") return decodeError(idx);
+        if (s[idx] !== ",") return decodeError(idx, "Expecting ',' delimiter");
         const comma = idx;
         idx = this.skipWs(idx + 1);
-        if (s[idx] === "}") return decodeError(comma); // illegal trailing comma
+        if (s[idx] === "}")
+          return decodeError(comma, "Illegal trailing comma before end of object");
       }
     }
     // object_pairs_hook runs as the object closes: a repeated key fails here, inner objects first.
     const map = new Map<string, JsonValue>();
     for (const [k, v] of pairs) {
-      if (map.has(k)) throw new Fail({ ok: false, kind: "duplicate_key" });
+      if (map.has(k)) throw new Fail({ ok: false, kind: "duplicate_key", key: k });
       map.set(k, v);
     }
     return [map, idx + 1];
   }
 
   private array(start: number, depth: number): [JsonValue, number] {
-    if (depth > MAX_DEPTH) throw new Fail({ ok: false, kind: "value" });
+    this.innermost = "array";
+    if (depth > MAX_DEPTH) return tooDeep("array");
     const s = this.s;
     const items: JsonValue[] = [];
     let idx = this.skipWs(start);
@@ -250,10 +303,10 @@ class Scanner {
         items.push(val);
         idx = this.skipWs(after);
         if (s[idx] === "]") break;
-        if (s[idx] !== ",") return decodeError(idx);
+        if (s[idx] !== ",") return decodeError(idx, "Expecting ',' delimiter");
         const comma = idx;
         idx = this.skipWs(idx + 1);
-        if (s[idx] === "]") return decodeError(comma); // illegal trailing comma
+        if (s[idx] === "]") return decodeError(comma, "Illegal trailing comma before end of array");
       }
     }
     return [items, idx + 1];
@@ -261,16 +314,18 @@ class Scanner {
 }
 
 /** `json.loads(text, ...)` as above. */
-export function parseJson(text: string): JsonResult {
-  const scanner = new Scanner(text);
+export function parseJson(text: string, options: JsonOptions = { integers: "bigint" }): JsonResult {
+  const scanner = new Scanner(text, options);
   try {
-    if (text.startsWith("﻿")) return decodeError(0); // "Unexpected UTF-8 BOM"
+    if (text.startsWith("﻿")) return decodeError(0, "Unexpected UTF-8 BOM (decode using utf-8-sig)");
     const [value, end] = scanner.value(scanner.skipWs(0), 0);
     const after = scanner.skipWs(end);
-    if (after !== scanner.length) return decodeError(after); // "Extra data"
+    if (after !== scanner.length) return decodeError(after, "Extra data");
     return { ok: true, value };
   } catch (error) {
     if (error instanceof Fail) return error.result;
+    // The JS stack gave out before `MAX_DEPTH`: Python's RecursionError, the same refusal.
+    if (error instanceof RangeError) return recursionFailure(scanner.innermost);
     throw error;
   }
 }

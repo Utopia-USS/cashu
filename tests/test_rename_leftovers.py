@@ -29,6 +29,7 @@ FILES = {
     "tests/test_migrate_legacy.py": "tests of that migration",
     "tests/test_rename_leftovers.py": "this test",
     "frontend/tests/storage.test.mjs": "tests of the finanse.* -> cashu.* browser storage fallback",
+    "packages/domain/test/vectors/inv-importing-*.jsonl": "Python-generated importing vectors: the legacy format id and source namespace the importer still reads",
     "packages/domain/test/vectors/research-*.jsonl": "Python-generated research vectors: the Polish segment label and casefold probes of the Polish word, JSON-escaped",
 }
 

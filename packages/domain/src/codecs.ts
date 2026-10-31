@@ -93,6 +93,52 @@ function decodeSingleByte(
   return { ok: true, text: out.build() };
 }
 
+/** What the first byte of a UTF-8 sequence promises: continuation bytes owed and their first range. */
+function leadByte(b: number): { need: number; bits: number; lower: number; upper: number } {
+  if (b >= 0xc2 && b <= 0xdf) return { need: 1, bits: b & 0x1f, lower: 0x80, upper: 0xbf };
+  if (b >= 0xe0 && b <= 0xef) {
+    return {
+      need: 2,
+      bits: b & 0x0f,
+      lower: b === 0xe0 ? 0xa0 : 0x80,
+      upper: b === 0xed ? 0x9f : 0xbf,
+    };
+  }
+  if (b >= 0xf0 && b <= 0xf4) {
+    return {
+      need: 3,
+      bits: b & 0x07,
+      lower: b === 0xf0 ? 0x90 : 0x80,
+      upper: b === 0xf4 ? 0x8f : 0xbf,
+    };
+  }
+  return { need: 0, bits: 0, lower: 0x80, upper: 0xbf };
+}
+
+/**
+ * CPython's `UnicodeDecodeError.reason` for the UTF-8 error at `start` (as reported by
+ * `decodeStrict`; `bytes` is the decoded body, after a BOM).
+ */
+export type Utf8ErrorReason =
+  | "invalid start byte"
+  | "invalid continuation byte"
+  | "unexpected end of data";
+
+/** The reason `bytes.decode("utf-8")` gives for the invalid sequence starting at `start`. */
+export function utf8ErrorReason(bytes: Uint8Array, start: number): Utf8ErrorReason {
+  const lead = leadByte(bytes[start] as number);
+  if (lead.need === 0) return "invalid start byte";
+  let { lower, upper } = lead;
+  for (let k = 1; k <= lead.need; k++) {
+    const c = bytes[start + k];
+    if (c === undefined) return "unexpected end of data";
+    if (c < lower || c > upper) return "invalid continuation byte";
+    lower = 0x80;
+    upper = 0xbf;
+  }
+  throw new RangeError(`no UTF-8 error at byte ${start}`);
+}
+
 /**
  * CPython's UTF-8 decoder: an invalid sequence is its maximal valid prefix (at least one byte),
  * replaced by one U+FFFD (`errors="replace"`) or reported at its first byte (strict). Overlong forms,
@@ -109,24 +155,11 @@ function decodeUtf8(bytes: Uint8Array, from: number, replace: boolean): DecodeRe
       i++;
       continue;
     }
-    let need = 0;
-    let cp = 0;
-    let lower = 0x80;
-    let upper = 0xbf;
-    if (b >= 0xc2 && b <= 0xdf) {
-      need = 1;
-      cp = b & 0x1f;
-    } else if (b >= 0xe0 && b <= 0xef) {
-      need = 2;
-      cp = b & 0x0f;
-      if (b === 0xe0) lower = 0xa0;
-      if (b === 0xed) upper = 0x9f;
-    } else if (b >= 0xf0 && b <= 0xf4) {
-      need = 3;
-      cp = b & 0x07;
-      if (b === 0xf0) lower = 0x90;
-      if (b === 0xf4) upper = 0x8f;
-    }
+    const lead = leadByte(b);
+    const need = lead.need;
+    let cp = lead.bits;
+    let lower = lead.lower;
+    let upper = lead.upper;
     let j = i + 1;
     let valid = need > 0;
     for (let k = 0; valid && k < need; k++) {

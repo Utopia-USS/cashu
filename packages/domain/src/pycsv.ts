@@ -31,6 +31,20 @@ export type CsvResult =
 /** `csv.field_size_limit()` default, in code points. */
 export const CSV_FIELD_LIMIT = 131072;
 
+/** The text of the `csv.Error` CPython raises for `reason` (`delimiter` as given to the reader). */
+export function csvErrorMessage(reason: CsvErrorReason, delimiter: string): string {
+  switch (reason) {
+    case "field_limit":
+      return `field larger than field limit (${CSV_FIELD_LIMIT})`;
+    case "newline_in_unquoted":
+      return "new-line character seen in unquoted field - do you need to open the file with newline=''?";
+    case "quote_expected":
+      return `'${delimiter}' expected after '"'`;
+    case "unexpected_eof":
+      return "unexpected end of data";
+  }
+}
+
 /** Reader states (`_csv.c` names); plain constants so Node's type stripping can run this file. */
 const State = {
   StartRecord: 0,
