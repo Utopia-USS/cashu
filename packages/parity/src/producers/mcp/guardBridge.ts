@@ -32,9 +32,14 @@ export interface GuardBridge {
   providers(profileKey: string): NameSources[];
 }
 
+/** The dir `guard_bridge.py --out <root>` writes for a dataset (its `index.json` records the commit). */
+export function guardBridgeDir(dataset: Dataset, root: string = bridgeMcpRoot()): string {
+  return join(root, dataset);
+}
+
 /** `root` is the bridge root `guard_bridge.py --out` wrote (default: the shared `<lab>/parity/bridge-mcp`). */
 export function readGuardBridge(dataset: Dataset, root: string = bridgeMcpRoot()): GuardBridge {
-  const path = join(root, dataset, `${BRIDGE_CHECK}.json`);
+  const path = join(guardBridgeDir(dataset, root), `${BRIDGE_CHECK}.json`);
   if (!existsSync(path)) {
     throw new Error(
       `no guard bridge output for ${dataset} under ${root}: run .venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset ${dataset} --out ${root}`,

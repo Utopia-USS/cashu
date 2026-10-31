@@ -5,16 +5,23 @@
  * (`pnpm parity`). `--out` is the TS output dir (default `<lab>/parity/ts-out/<dataset>`);
  * `--golden-root` / `--bridge-mcp` are where the Python-side inputs were written (`golden.py --out`,
  * `guard_bridge.py --out`; defaults: the shared dirs, which only lab/ts-stack HEAD writes). Prints
- * check names, row counts and hashes only, never values (the lab dataset is real data).
+ * check names, row counts and hashes only, never values (the lab dataset is real data). `index.json`
+ * in the output dir records, per check, the source commit, the dirty state and the inputs' commits
+ * (`tsIndex.ts`), which the comparer's staleness guard checks.
  */
 
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { bridgeMcpRoot, goldenRoot, isDataset, labRoot, withPythonDb } from "../sources/index.ts";
-import { PRODUCERS } from "./index.ts";
+import { readTreeState } from "../staleness.ts";
+import { inputDir, PRODUCERS } from "./index.ts";
 import { dumps, writeCheck } from "./output.ts";
+import { indexEntry, type TsIndexEntry, updateTsIndex } from "./tsIndex.ts";
+
+/** The repository root: this file is `packages/parity/src/producers/cli.ts`. */
+const REPO_ROOT = resolve(import.meta.dirname, "..", "..", "..", "..");
 
 function rows(value: unknown): number {
   if (Array.isArray(value)) return value.length;
@@ -59,7 +66,14 @@ export function main(argv: string[]): number {
     goldenRoot: values["golden-root"] ? resolve(values["golden-root"]) : goldenRoot(),
     bridgeMcpRoot: values["bridge-mcp"] ? resolve(values["bridge-mcp"]) : bridgeMcpRoot(),
   };
-  return withPythonDb({ dataset }, (db) => {
+  const tree = readTreeState(REPO_ROOT);
+  if (tree === null)
+    process.stdout.write(`[${dataset}] warning: no git HEAD, no source commit recorded\n`);
+  else if (tree.dirty)
+    process.stdout.write(`[${dataset}] note: dirty tree at ${tree.commit.slice(0, 12)}\n`);
+  const produced: TsIndexEntry[] = [];
+  const failed: string[] = [];
+  const status = withPythonDb({ dataset }, (db) => {
     let status = 0;
     for (const p of selected) {
       if (!p.datasets.includes(dataset) && !values.force) {
@@ -72,11 +86,23 @@ export function main(argv: string[]): number {
         const value = p.produce(db, inputs);
         writeCheck(out, p.check, value);
         const sha = createHash("sha256").update(dumps(value)).digest("hex");
+        const dirs = Object.fromEntries(p.inputs.map((n) => [n, inputDir(n, dataset, inputs)]));
+        produced.push(indexEntry(p.check, rows(value), sha, tree, dirs));
+        for (const [name, rec] of Object.entries(produced.at(-1)?.inputs ?? {})) {
+          // A committed input (golden-demo) is versioned with the code; the comparer cross-checks it.
+          if (rec.commit === tree?.commit || !relative(REPO_ROOT, rec.dir).startsWith(".."))
+            continue;
+          const from = rec.commit === null ? "no recorded commit" : rec.commit.slice(0, 12);
+          process.stdout.write(
+            `[${dataset}] ${p.check.padEnd(34)} warning: input ${name} is from ${from}\n`,
+          );
+        }
         process.stdout.write(
           `[${dataset}] ${p.check.padEnd(34)} rows=${rows(value)} sha256=${sha.slice(0, 16)}\n`,
         );
       } catch (e) {
         status = 1;
+        failed.push(p.check);
         // The error class only: messages could carry data.
         process.stdout.write(`[${dataset}] ${p.check.padEnd(34)} ERROR ${(e as Error).name}\n`);
         if (process.env.CASHU_PARITY_DEBUG && dataset === "demo") console.error(e);
@@ -84,6 +110,8 @@ export function main(argv: string[]): number {
     }
     return status;
   });
+  updateTsIndex(out, dataset, produced, failed);
+  return status;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

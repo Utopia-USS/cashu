@@ -55,8 +55,13 @@ export type StrategyBridge = ReadonlyMap<string, StrategyInputs>;
 
 const CHECK = "investments.strategy";
 
+/** The dir `strategy_bridge.py` writes (its `index.json` records the source commit). */
+export function strategyBridgeDir(dataset: Dataset, root: string = labRoot()): string {
+  return join(root, "parity", "bridge-strategy", dataset);
+}
+
 export function readStrategyBridge(dataset: Dataset, root: string = labRoot()): StrategyBridge {
-  const path = join(root, "parity", "bridge-strategy", dataset, `${CHECK}.json`);
+  const path = join(strategyBridgeDir(dataset, root), `${CHECK}.json`);
   if (!existsSync(path)) {
     throw new Error(
       `no strategy bridge output for ${dataset}: run .venv/bin/python packages/parity/src/producers/investments/strategy_bridge.py --dataset ${dataset}`,

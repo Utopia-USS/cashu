@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 import { ConfigError, loadConfig } from "./config.ts";
 import { formatReport, reportToJson } from "./report.ts";
 import { goldenChecks, RunError, runParity } from "./run.ts";
+import { checkStaleness, formatStaleness, readTreeState, type TreeState } from "./staleness.ts";
 
 const USAGE = `Usage: pnpm parity --dataset lab|demo [options]
 
@@ -22,13 +23,19 @@ Options:
   --golden <dir>         override the golden dir (wins over --out)
   --config <file>        tolerance config (default packages/parity/parity.config.json)
   --allow-missing        do not fail on checks that have no actual file yet
+  --allow-stale          compare even when an input is not from the commit under test (git HEAD of
+                         this tree); reported loudly. Without it such a run is refused (exit 70).
   --hash-keys            print every object key in a path as <key:hash> (default: only schema-like keys)
   --deep                 compare parsed trees even when the files are byte-identical
   --json                 print the report as JSON (full hashes)
   -h, --help
 
 Lab dir: $CASHU_LAB_DIR or ~/cashu-lab. Relative paths resolve against the directory pnpm was run in.
-Exit code: 0 all pass, 1 a check failed, 2 only missing checks, 64 bad usage, 70 golden or config problem.
+Staleness guard: the golden dir, the actual dir and every input its producers recorded in index.json
+must carry the source commit of HEAD; a committed golden set (parity/golden-demo) must equal the
+shared goldens of its dataset when those are at HEAD.
+Exit code: 0 all pass, 1 a check failed, 2 only missing checks, 64 bad usage, 70 golden or config
+problem or stale inputs.
 `;
 
 export interface Io {
@@ -36,6 +43,8 @@ export interface Io {
   err: (text: string) => void;
   env: Record<string, string | undefined>;
   cwd: string;
+  /** The commit under test (tests inject it); default: git HEAD of this repo. */
+  tree?: () => TreeState | null;
 }
 
 /** The repository root: this file is `packages/parity/src/cli.ts`. */
@@ -89,6 +98,24 @@ export async function main(argv: string[], io: Io): Promise<number> {
     const config = loadConfig(abs(values.config ?? DEFAULT_CONFIG));
     const only =
       values.check.length > 0 ? selectChecks(values.check, goldenChecks(goldenDir)) : undefined;
+    const checks = only ?? goldenChecks(goldenDir);
+    const staleness = checkStaleness({
+      dataset,
+      goldenDir,
+      actualDir,
+      checks,
+      head: (io.tree ?? (() => readTreeState(REPO_ROOT)))(),
+      repoRoot: REPO_ROOT,
+      labDir,
+    });
+    const allowStale = values["allow-stale"] === true;
+    const stale = staleness.stale.length > 0;
+    if (stale && !allowStale) {
+      io.err(formatStaleness(staleness, false));
+      return 70;
+    }
+    const banner = stale ? formatStaleness(staleness, true) : "";
+    const notes = staleness.notes.map((n) => `note: ${n}\n`).join("");
     const report = runParity({
       goldenDir,
       actualDir,
@@ -97,9 +124,12 @@ export async function main(argv: string[], io: Io): Promise<number> {
       deep: values.deep === true,
       ...(only ? { only } : {}),
     });
-    io.out(
-      values.json === true ? reportToJson(report) : formatReport(report, `parity: ${dataset}`),
-    );
+    if (values.json === true) {
+      io.out(reportToJson({ ...report, staleness: { ...staleness, allowed: stale } }));
+      if (stale) io.err(banner);
+    } else {
+      io.out(`${banner}${notes}${formatReport(report, `parity: ${dataset}`)}${banner}`);
+    }
     if (report.counts.fail > 0) return 1;
     if (report.counts.missing > 0 && values["allow-missing"] !== true) return 2;
     return 0;
@@ -124,6 +154,7 @@ function parseCli(argv: string[]) {
       out: { type: "string" },
       config: { type: "string" },
       "allow-missing": { type: "boolean" },
+      "allow-stale": { type: "boolean" },
       "hash-keys": { type: "boolean" },
       deep: { type: "boolean" },
       json: { type: "boolean" },

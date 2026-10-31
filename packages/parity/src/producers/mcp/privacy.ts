@@ -36,10 +36,13 @@ const PARITY_PAYEE_KEY: Uint8Array = new Uint8Array(
 export type PrivacyMode = "strict" | "amounts";
 
 /** The raw golden the trees come from: the committed demo golden, or `<golden root>/lab` (`golden.py --out`). */
+/** The golden dir the MCP producers read `mcp.read_raw.json` from (demo: the committed set). */
+export function rawGoldenDir(dataset: Dataset, root: string = goldenRoot()): string {
+  return dataset === "demo" ? join(REPO_ROOT, "parity", "golden-demo") : join(root, "lab");
+}
+
 function rawGoldenPath(dataset: Dataset, root: string): string {
-  return dataset === "demo"
-    ? join(REPO_ROOT, "parity", "golden-demo", "mcp.read_raw.json")
-    : join(root, "lab", "mcp.read_raw.json");
+  return join(rawGoldenDir(dataset, root), "mcp.read_raw.json");
 }
 
 function asObject(value: CanonValue | undefined, what: string): CanonObject {

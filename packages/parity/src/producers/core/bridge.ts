@@ -29,8 +29,13 @@ interface BridgeProfile {
 }
 export type BridgeFile = Readonly<Record<string, BridgeProfile>>;
 
+/** The dir `networth_bridge.py` writes (its `index.json` records the source commit). */
+export function bridgeDir(dataset: Dataset, root: string = labRoot()): string {
+  return join(root, "parity", "bridge", dataset);
+}
+
 function bridgePath(dataset: Dataset, root: string = labRoot()): string {
-  return join(root, "parity", "bridge", dataset, `${BRIDGE_CHECK}.json`);
+  return join(bridgeDir(dataset, root), `${BRIDGE_CHECK}.json`);
 }
 
 export function readBridge(dataset: Dataset, root?: string): BridgeFile {

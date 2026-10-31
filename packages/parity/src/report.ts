@@ -45,7 +45,7 @@ export function formatReport(report: Report, title?: string): string {
   return `${lines.join("\n")}\n`;
 }
 
-/** The report as JSON (full hashes). Contains paths and counts only, like the table. */
-export function reportToJson(report: Report): string {
+/** The report as JSON (full hashes, plus the staleness guard's result when given). Paths and counts only. */
+export function reportToJson(report: Report & { readonly staleness?: unknown }): string {
   return `${JSON.stringify(report, null, 2)}\n`;
 }

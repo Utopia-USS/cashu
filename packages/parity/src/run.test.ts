@@ -26,8 +26,11 @@ function writeSet(dir: string, files: Record<string, string>, rows: Record<strin
     writeFileSync(join(dir, `${check}.json`), text);
     return { check, rows: rows[check] ?? 1, sha256: sha256Hex(text) };
   });
-  writeFileSync(join(dir, "index.json"), JSON.stringify({ format: 1, checks }));
+  writeFileSync(join(dir, "index.json"), JSON.stringify({ format: 1, commit: HEAD, checks }));
 }
+
+/** The commit under test the CLI tests inject (the staleness guard; `staleness.test.ts`). */
+const HEAD = "0123456789abcdef0123456789abcdef01234567";
 
 const GOLDEN = {
   "core.networth":
@@ -183,6 +186,7 @@ describe("cli", () => {
       },
       env,
       cwd: root,
+      tree: () => ({ commit: HEAD, dirty: false }),
     });
     return { code, out, err };
   };

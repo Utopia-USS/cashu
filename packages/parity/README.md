@@ -14,7 +14,8 @@ Output per check: `pass` / `fail` / `missing`, row counts, short sha256 of the g
 files and, on failure, the JSON path and kind of the **first** difference. Values are never printed
 (the lab goldens are real data). A missing actual dir or file gives `missing`; byte-identical files
 pass without parsing (`--deep` forces the tree comparison). Exit code: 0 all pass, 1 a check
-failed, 2 only missing (`--allow-missing` turns that into 0), 64 usage, 70 golden/config problem.
+failed, 2 only missing (`--allow-missing` turns that into 0), 64 usage, 70 golden/config problem or
+stale inputs (below).
 
 Defaults: lab goldens `~/cashu-lab/parity/out/lab` (`$CASHU_LAB_DIR` moves the lab root), demo
 goldens `parity/golden-demo`, actual `~/cashu-lab/parity/ts-out/<dataset>`.
@@ -29,6 +30,34 @@ B=~/cashu-lab/parity/out-<branch>
 pnpm parity:produce --dataset lab --golden-root $B --bridge-mcp $B/bridge-mcp --out $B/ts-out/lab
 pnpm parity --dataset lab --out $B --actual $B/ts-out/lab                    # golden = $B/lab
 ```
+
+## Staleness guard
+
+A comparison is only meaningful when every input comes from the commit under test, so `pnpm parity`
+checks that first (`src/staleness.ts`). The commit under test is the git HEAD of the tree the comparer
+runs from. Every producer records its source commit and `dirty` (tracked files differed from HEAD)
+in its `index.json`:
+
+- `golden.py`, `guard_bridge.py`, `networth_bridge.py`, `strategy_bridge.py`: `commit` / `dirty` at
+  the top of the dir's index (`golden.child_env`).
+- `pnpm parity:produce`: per check in the TS output dir's index, with the Python-side dirs the check
+  read (`inputs`: `golden`, `bridge`, `bridge-strategy`, `bridge-mcp`) and the commits their indexes
+  recorded at that moment. A `--check` run updates only its own entries; a failed check's old file
+  and entry are removed.
+
+The run is refused (exit 70, nothing compared) when the golden dir, a compared TS output or one of its
+inputs has no index, records no commit or records another commit than HEAD (an input is checked both
+as the producer read it and as it is now). The message names each dir, the check and the recorded
+commit. A golden set committed in the repo (`parity/golden-demo`, also the demo MCP producers' raw
+input) cannot record its own commit; it is compared check by check with the shared
+`<lab>/parity/out/<dataset>` when that is at HEAD, refused when they differ, and noted as not
+cross-checked otherwise. A dirty producer is noted, not refused (the usual state while porting).
+
+`--allow-stale` compares anyway: the list of stale inputs is printed as a `!!` banner before and after
+the table (stderr with `--json`, where `staleness` is also part of the report). Use it only to look
+at a known-stale set; a result produced with it is never a parity result. The fix for a refusal is
+to regenerate the named dirs from the commit under test (the commands above, or the shared ones from
+lab/ts-stack HEAD).
 
 ## Comparison rules
 
