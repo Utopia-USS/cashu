@@ -18,7 +18,7 @@ import type {
 import { canonicalJson, jsonEqual } from "./canonical.js";
 import { StatementCache, TouchedTables, ViewIds, viewSql } from "./engine/context.js";
 import { type FoldDeps, MaterializerRunner } from "./engine/fold.js";
-import { IdentityService } from "./engine/identity.js";
+import { conflictsKey, IdentityService } from "./engine/identity.js";
 import { EventLog, type LogRow, storedBody } from "./engine/log.js";
 import { type StateFlip, updateSuppression } from "./engine/suppression.js";
 import type { FoldEvent } from "./engine/types.js";
@@ -133,7 +133,10 @@ export class Store {
     for (const m of opts.modules) for (const d of m.events ?? []) events.define(d);
     const modules = new ModuleRegistry(opts.modules);
     const db = opts.driver;
-    db.exec(SYSTEM_TABLES.map(createTableSql).join("\n"));
+    const hasMeta =
+      db
+        .prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'store_meta'")
+        .get() !== undefined;
     const meta = (key: string) =>
       db.prepare("SELECT value FROM store_meta WHERE key = ?").get<{ value: string }>(key)?.value;
     const setMeta = (key: string, value: string) =>
@@ -142,37 +145,40 @@ export class Store {
           "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
         )
         .run(key, value);
+    // The system schema is created once (a new database); a changed one bumps its version.
+    const system = hasMeta ? meta(META_SYSTEM) : undefined;
+    if (system === undefined) db.exec(SYSTEM_TABLES.map(createTableSql).join("\n"));
+    else if (Number(system) !== SYSTEM_SCHEMA_VERSION) {
+      throw new Error(`unsupported store schema ${system}`);
+    }
     const vault = meta(META_VAULT);
     if (vault !== undefined && vault !== opts.vault) {
       throw new Error("this database belongs to another vault");
     }
-    const system = meta(META_SYSTEM);
-    if (system !== undefined && Number(system) !== SYSTEM_SCHEMA_VERSION) {
-      throw new Error(`unsupported store schema ${system}`);
-    }
-    setMeta(META_VAULT, opts.vault);
-    setMeta(META_SYSTEM, String(SYSTEM_SCHEMA_VERSION));
+    if (vault === undefined) setMeta(META_VAULT, opts.vault);
+    if (system === undefined) setMeta(META_SYSTEM, String(SYSTEM_SCHEMA_VERSION));
 
     const viewFp = modules.fingerprint();
     const eventsFp = events.fingerprint();
     const viewChanged = meta(META_VIEW) !== viewFp;
     const eventsChanged = meta(META_EVENTS) !== eventsFp;
-    const allTables = modules.viewTables();
     if (viewChanged) {
-      // View tables are derived: an upgraded definition drops and recreates them.
-      const known = db
-        .prepare("SELECT value FROM store_meta WHERE key = 'view_tables'")
-        .get<{ value: string }>()?.value;
+      // View tables are derived: an upgraded definition drops and recreates them. The view
+      // fingerprint covers their exact DDL, so an unchanged one means they exist as defined.
+      const allTables = modules.viewTables();
+      const known = meta("view_tables");
       for (const name of known ? (JSON.parse(known) as string[]) : []) {
         db.exec(`DROP TABLE IF EXISTS ${name}`);
       }
+      db.exec(allTables.map(createTableSql).join("\n"));
+      setMeta("view_tables", JSON.stringify(allTables.map((t) => t.name)));
     }
-    db.exec(allTables.map(createTableSql).join("\n"));
-    setMeta("view_tables", JSON.stringify(allTables.map((t) => t.name)));
 
     const store = new Store(opts, events, modules);
     if (viewChanged || eventsChanged) {
-      store.rebuild({ redecode: eventsChanged, reindex: true });
+      // An empty log has an empty view (a new vault, a reset store): nothing to recompute.
+      const held = db.prepare("SELECT 1 AS held FROM event_log LIMIT 1").get();
+      if (held !== undefined) store.rebuild({ redecode: eventsChanged, reindex: true });
       setMeta(META_VIEW, viewFp);
       setMeta(META_EVENTS, eventsFp);
     }
@@ -509,6 +515,7 @@ export class Store {
       this.driver.exec(
         "DELETE FROM event_log; DELETE FROM event_refs; DELETE FROM event_rejects; DELETE FROM unknown_events; DELETE FROM materializer_state; DELETE FROM identity_roots; DELETE FROM identity_accepted; DELETE FROM view_ids; DELETE FROM sync_cursors;",
       );
+      this.driver.prepare("DELETE FROM store_meta WHERE key LIKE ?").run(conflictsKey("%"));
       touched.add("unknown_events");
     });
     this.#ids.reset();

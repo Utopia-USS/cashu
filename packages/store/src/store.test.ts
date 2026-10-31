@@ -76,6 +76,21 @@ describe("store basics", () => {
     expect(viewHash(store).hash).toBe(before);
   });
 
+  it("opens on an empty database, and a reopened store reports only the tables an apply changed", () => {
+    const driver = memoryDriver();
+    const f = new EventFactory();
+    expect([...openTestStore({ driver }).applyEnvelopes([account(f)]).touchedTables]).toEqual([
+      "accounts",
+    ]);
+    const reopened = openTestStore({ driver });
+    const r = reopened.applyEnvelopes([account(f, "a1bb665d-9bf1-81e3-916c-f49d32db099a")]);
+    expect([...r.touchedTables]).toEqual(["accounts"]); // no identity conflict changed
+    reopened.reset();
+    expect([...openTestStore({ driver }).applyEnvelopes([account(f)]).touchedTables]).toEqual([
+      "accounts",
+    ]);
+  });
+
   it("is idempotent by eid and reports a conflicting body", () => {
     const store = openTestStore();
     const f = new EventFactory();

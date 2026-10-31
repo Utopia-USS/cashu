@@ -23,18 +23,16 @@ const hex = (s: string) => bytesToHex(sha256(utf8ToBytes(s)));
 
 export function viewHash(store: Store): ViewHash {
   const gidById = new Map(
-    store.driver
-      .prepare("SELECT id, gid FROM view_ids")
-      .all<{ id: number; gid: string }>()
+    store
+      .read<{ id: number; gid: string }>("SELECT id, gid FROM view_ids")
       .map((r) => [r.id, r.gid]),
   );
   const tables: Record<string, { rows: number; hash: string }> = {};
   const defs = [...store.publicTables()].sort((a, b) => (a.name < b.name ? -1 : 1));
   for (const t of defs) {
     const cols = allColumns(t).filter((c) => !(t.primaryKey === undefined && c.name === "id"));
-    const rows = store.driver
-      .prepare(`SELECT ${cols.map((c) => c.name).join(", ")} FROM ${t.name}`)
-      .all<Record<string, SqlValue>>()
+    const rows = store
+      .read<Record<string, SqlValue>>(`SELECT ${cols.map((c) => c.name).join(", ")} FROM ${t.name}`)
       .map((r) =>
         canonicalJson(
           cols.map((c) => {

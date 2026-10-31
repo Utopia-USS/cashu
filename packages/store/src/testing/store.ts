@@ -14,20 +14,45 @@ export const TEST_VAULT = "5f0c3a9e81d24b7690ae13c7d2f4b856";
 export const TEST_SALT = vaultSalt(Uint8Array.from({ length: 32 }, (_, i) => i));
 const BASE_WALL = 1_793_448_000_000; // 2026-10-31T12:00:00.000Z
 
+/** A new, empty in-memory database. */
 export function memoryDriver(): SqlDriver {
   const db = new Database(":memory:");
   db.pragma("journal_mode = MEMORY");
   return betterSqlite3Driver(db);
 }
 
+/** Images of an empty test vault database (opened once by `Store.open`), one per module list. */
+const emptyVaults = new Map<string, { modules: readonly StoreModule[]; image: Buffer }>();
+
+/**
+ * A new in-memory copy of an empty TEST_VAULT database that `Store.open` already initialised with
+ * `modules`, so a test that opens hundreds of stores reopens an existing empty vault (the path every
+ * app start takes) instead of creating ~70 tables each time. The new-database path is covered by
+ * the tests that pass `memoryDriver()`.
+ */
+function emptyVaultDriver(modules: readonly StoreModule[]): SqlDriver {
+  const key = modules.map((m) => m.id).join(",");
+  let t = emptyVaults.get(key);
+  if (t === undefined || t.modules.some((m, i) => m !== modules[i])) {
+    const db = new Database(":memory:");
+    Store.open({ driver: betterSqlite3Driver(db), vault: TEST_VAULT, salt: TEST_SALT, modules });
+    t = { modules, image: db.serialize() };
+    db.close();
+    emptyVaults.set(key, t);
+  }
+  // A deserialized database lives in memory, journal included (what `memoryDriver` sets).
+  return betterSqlite3Driver(new Database(t.image));
+}
+
 export function openTestStore(
   options: { driver?: SqlDriver; modules?: readonly StoreModule[] } = {},
 ): Store {
+  const modules = options.modules ?? builtinModules();
   return Store.open({
-    driver: options.driver ?? memoryDriver(),
+    driver: options.driver ?? emptyVaultDriver(modules),
     vault: TEST_VAULT,
     salt: TEST_SALT,
-    modules: options.modules ?? builtinModules(),
+    modules,
   });
 }
 

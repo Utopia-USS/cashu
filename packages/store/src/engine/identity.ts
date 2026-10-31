@@ -101,6 +101,8 @@ export class IdentityService {
   readonly #byType = new Map<string, IdentityKind>();
   readonly #loadRoots: SqlStatement;
   readonly #loadAccepted: SqlStatement;
+  readonly #loadConflicts: SqlStatement;
+  readonly #saveConflicts: SqlStatement;
 
   constructor(db: SqlDriver, kinds: readonly IdentityKind[]) {
     this.#db = db;
@@ -108,6 +110,12 @@ export class IdentityService {
     for (const k of kinds) for (const t of k.handles) this.#byType.set(t, k);
     this.#loadRoots = db.prepare("SELECT gid, root FROM identity_roots WHERE kind = ?");
     this.#loadAccepted = db.prepare("SELECT eid, value FROM identity_accepted WHERE kind = ?");
+    // The conflict list a kind last wrote, so a reopened store reports its table as touched only
+    // when the list really changes.
+    this.#loadConflicts = db.prepare("SELECT value FROM store_meta WHERE key = ?");
+    this.#saveConflicts = db.prepare(
+      "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    );
     this.load();
   }
 
@@ -122,7 +130,9 @@ export class IdentityService {
       for (const r of this.#loadAccepted.all<{ eid: string; value: string }>(k.id)) {
         accepted.set(r.eid, r.value);
       }
-      this.#state.set(k.id, { roots, members: membersOf(roots), accepted, conflicts: "" });
+      const conflicts =
+        this.#loadConflicts.get<{ value: string }>(conflictsKey(k.id))?.value ?? NO_CONFLICTS;
+      this.#state.set(k.id, { roots, members: membersOf(roots), accepted, conflicts });
     }
   }
 
@@ -194,6 +204,7 @@ export class IdentityService {
       const conflictsChanged = force || !prev || prev.conflicts !== conflicts;
       if (conflictsChanged && kind.writeConflicts) {
         kind.writeConflicts(uf.conflicts, sql);
+        this.#saveConflicts.run(conflictsKey(kind.id), conflicts);
         for (const t of kind.tables ?? []) tables.add(t.name);
       }
       this.#state.set(kind.id, {
@@ -206,6 +217,13 @@ export class IdentityService {
     return { roots, accepted, tables };
   }
 }
+
+/** store_meta key of a kind's last written conflict list (cleared by `Store.reset`). */
+export function conflictsKey(kind: string): string {
+  return `identity_conflicts:${kind}`;
+}
+
+const NO_CONFLICTS = JSON.stringify([]);
 
 function sameMap(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, string>): boolean {
   if (a.size !== b.size) return false;

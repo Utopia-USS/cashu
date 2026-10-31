@@ -48,10 +48,23 @@ function toFoldEvent(r: FoldRow): FoldEvent {
   };
 }
 
-const CHUNK = 500;
+const CHUNK = 512;
 
 function placeholders(n: number): string {
   return Array.from({ length: n }, () => "?").join(", ");
+}
+
+/**
+ * A chunk of values for an `IN (...)` list, padded with NULLs to the next power of two (`x IN (a,
+ * NULL)` matches exactly `a`), so each chunked query has at most 10 shapes and its statement is
+ * prepared once instead of on every call.
+ */
+function padded(part: readonly SqlValue[]): { list: string; values: SqlValue[] } {
+  let n = 1;
+  while (n < part.length) n *= 2;
+  const values = [...part];
+  while (values.length < n) values.push(null);
+  return { list: placeholders(n), values };
 }
 
 export class EventLog {
@@ -61,6 +74,8 @@ export class EventLog {
   readonly #setState: SqlStatement;
   readonly #insertRef: SqlStatement;
   readonly #referrers: SqlStatement;
+  /** Statements of the variable-shape reads: a type list (fixed per materializer) x a padded size. */
+  readonly #shapes = new Map<string, SqlStatement>();
 
   constructor(db: SqlDriver) {
     this.#db = db;
@@ -115,14 +130,13 @@ export class EventLog {
   causedBy(eids: readonly string[]): (FoldEvent & { state: EventState })[] {
     const out: (FoldEvent & { state: EventState })[] = [];
     for (let i = 0; i < eids.length; i += CHUNK) {
-      const part = eids.slice(i, i + CHUNK);
+      const { list, values } = padded(eids.slice(i, i + CHUNK));
       out.push(
-        ...this.#db
-          .prepare(
-            `SELECT ${FOLD_COLUMNS}, state FROM event_log
-             WHERE cause IN (${placeholders(part.length)}) AND state != 'parked'`,
-          )
-          .all<FoldRow & { state: EventState }>(...part)
+        ...this.#cached(
+          `SELECT ${FOLD_COLUMNS}, state FROM event_log
+             WHERE cause IN (${list}) AND state != 'parked'`,
+        )
+          .all<FoldRow & { state: EventState }>(...values)
           .map((r) => ({ ...toFoldEvent(r), state: r.state })),
       );
     }
@@ -141,28 +155,35 @@ export class EventLog {
   ): (FoldEvent & { state: EventState })[] {
     const out: (FoldEvent & { state: EventState })[] = [];
     for (let i = 0; i < gids.length; i += CHUNK) {
-      const part = gids.slice(i, i + CHUNK);
+      const { list, values } = padded(gids.slice(i, i + CHUNK));
       out.push(
-        ...this.#db
-          .prepare(
-            `SELECT ${FOLD_COLUMNS}, state FROM event_log
-             WHERE state != 'parked' AND type IN (${placeholders(types.length)}) AND gid IN (${placeholders(part.length)})`,
-          )
-          .all<FoldRow & { state: EventState }>(...types, ...part)
+        ...this.#cached(
+          `SELECT ${FOLD_COLUMNS}, state FROM event_log
+             WHERE state != 'parked' AND type IN (${placeholders(types.length)}) AND gid IN (${list})`,
+        )
+          .all<FoldRow & { state: EventState }>(...types, ...values)
           .map((r) => ({ ...toFoldEvent(r), state: r.state })),
       );
     }
     return out;
   }
 
+  #cached(sql: string): SqlStatement {
+    let s = this.#shapes.get(sql);
+    if (s === undefined) {
+      s = this.#db.prepare(sql);
+      this.#shapes.set(sql, s);
+    }
+    return s;
+  }
+
   /** Every applied event of `types` in fold order. */
   appliedOfTypes(types: readonly string[]): FoldEvent[] {
     if (types.length === 0) return [];
-    return this.#db
-      .prepare(
-        `SELECT ${FOLD_COLUMNS} FROM event_log
+    return this.#cached(
+      `SELECT ${FOLD_COLUMNS} FROM event_log
          WHERE state = 'applied' AND type IN (${placeholders(types.length)}) ORDER BY hlc, eid`,
-      )
+    )
       .all<FoldRow>(...types)
       .map(toFoldEvent);
   }
@@ -172,16 +193,14 @@ export class EventLog {
     const out: FoldEvent[] = [];
     const typeList = placeholders(types.length);
     for (let i = 0; i < subjects.length; i += CHUNK) {
-      const part = subjects.slice(i, i + CHUNK) as SqlValue[];
-      const ph = placeholders(part.length);
+      const { list, values } = padded(subjects.slice(i, i + CHUNK));
       out.push(
-        ...this.#db
-          .prepare(
-            `SELECT ${FOLD_COLUMNS} FROM event_log
+        ...this.#cached(
+          `SELECT ${FOLD_COLUMNS} FROM event_log
              WHERE state = 'applied' AND type IN (${typeList})
-               AND (gid IN (${ph}) OR eid IN (SELECT eid FROM event_refs WHERE subject IN (${ph})))`,
-          )
-          .all<FoldRow>(...types, ...part, ...part)
+               AND (gid IN (${list}) OR eid IN (SELECT eid FROM event_refs WHERE subject IN (${list})))`,
+        )
+          .all<FoldRow>(...types, ...values, ...values)
           .map(toFoldEvent),
       );
     }
@@ -196,21 +215,18 @@ export class EventLog {
     cause: string | null;
     state: EventState;
   }[] {
-    return this.#db
-      .prepare(
-        "SELECT eid, gid, type, cause, state FROM event_log WHERE state != 'parked' ORDER BY hlc, eid",
-      )
-      .all();
+    return this.#cached(
+      "SELECT eid, gid, type, cause, state FROM event_log WHERE state != 'parked' ORDER BY hlc, eid",
+    ).all();
   }
 
   /** Non-parked events of `types` in fold order (re-index of refs). */
   heldOfTypes(types: readonly string[]): FoldEvent[] {
     if (types.length === 0) return [];
-    return this.#db
-      .prepare(
-        `SELECT ${FOLD_COLUMNS} FROM event_log
+    return this.#cached(
+      `SELECT ${FOLD_COLUMNS} FROM event_log
          WHERE state != 'parked' AND type IN (${placeholders(types.length)}) ORDER BY hlc, eid`,
-      )
+    )
       .all<FoldRow>(...types)
       .map(toFoldEvent);
   }
