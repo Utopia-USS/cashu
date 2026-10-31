@@ -465,8 +465,8 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 - **Newest-day-rule imports** (Open Banking, connectors, cashu-format documents) depend on the view
   at import time and MUST be emitted by the lease holder only. A non-leader that receives a
   cashu-format document creates an `import`-like proposal instead (O3). A new lease holder MUST NOT run
-  them before it has applied the previous holder's events up to the watermark of that holder's last
-  lease renewal (M6; `lease.claimed` / `lease.renewed` carry `{watermark: hlc}`, S29).
+  them before it has applied, for every writer device, that device's events up to the previous
+  holder's last watermark (M6; lease events carry a per-device `watermark`, 8.11, S29).
 - `txn.cashExpenseAdded` (ULID) `{account@ (cash account), bookingDate, amount (< 0), currency, title,
   category}`. View: `source = manual`, `category_source = manual_txn`, `dedup_hash = "cashexp:" + gid`.
 - `txn.categorySet` `{category, source: manual_txn|llm_full|llm_fallback}`: a per-transaction claim
@@ -643,9 +643,15 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 
 ### 8.11 Reserved
 
-`device.*`, `lease.*` (S29) and `snapshot.*` (S32) are defined by those scopes. Requirement on S29
-from this spec: lease claims and renewals carry `{watermark: hlc}` (the holder's highest applied hlc),
-used by 8.3.
+`device.*`, `lease.*` (S29) and `snapshot.*` (S32) are defined by those scopes (schemas and fold:
+`packages/sync/src/devices/events.ts`, `lease.ts`). Requirement on S29 from this spec: lease claims,
+renewals and releases carry `watermark: {<device id>: hlc}`, per writer device (32 lower-case hex) the
+highest HLC of that device's own stream the holder had applied. One HLC for the whole log cannot be
+checked: events of different devices interleave in HLC order but arrive per device stream, so
+"applied up to hlc X" says nothing about a slower device's gap. A device's own stream is in HLC order,
+so the per-device check `applied[d] >= watermark[d]` for every trusted writer `d` is exact (a revoked
+writer's stream ends at its cut). Used by 8.3 (M6). Lease state never enters the view fold (6.2
+LEADER), so the reference fold does not model it.
 
 ## 9. Derived columns (never in a payload except as genesis stamps)
 
