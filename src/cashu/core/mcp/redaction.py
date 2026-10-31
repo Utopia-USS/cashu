@@ -192,7 +192,7 @@ _CURRENCY_CODES = frozenset(
 )
 # a shorter number right after an account word ("konto nr 12345678")
 _ACCOUNT_WORD = re.compile(
-    r"(?i:\b(?:konto|konta|rachunek|rachunku|account|acct|acc|nr|numer|no)\b\.?[ :#]{0,3})"
+    r"(?i:\b(?:konto|konta|rachunek|rachunku|account|acct|acc|nr|numer|no)(?:\b\.?|(?=\d))[ :#]{0,3})"
     r"(?:nr\.? ?)?(\d[\d -]{4,}\d)"
 )
 _EMAIL = re.compile(r"[\w.+-]+(?:@|\(at\)|\[at\])[\w-]+(?:\.[\w-]+)+")
@@ -217,9 +217,36 @@ _MONEY_WORD = re.compile(
     r"(?i:\b(?:price|prices|cena|ceny|cash|amount|kwota|kwoty|value|warto\w*|worth|cost|costs|"
     r"koszt\w*|saldo|balance|deposit\w*|wp[lł]at\w*|wyp[lł]at\w*|fee|fees|tax|prowizj\w*|"
     r"op[lł]at\w*|proceeds|income|expense\w*|przych\w*|wydat\w*|rata|raty|installment)\b"
-    r"[^\d\n]{0,24}?)(?<![\w.,])([-+]?\d+(?:[.,]\d+)?)(?![\d%]|[.,]\d|\s?%|\s?pp\b|\s?(?:days?|dni)\b)"
+    r"[^\d\n]{0,24}?)(?<![\w.,])([-+]?\d+(?:[ '._•·,]\d+)*)"
+    r"(?![\d%]|[ '._•·,]\d|\s?%|\s?pp\b|\s?(?:days?|dni)\b)"
 )
-_ANY_NUMBER = re.compile(r"(?<!\w)[-+]?\d+(?:[.,]\d+)*")
+# S37fix2 N9: a number glued after letters ("kwota950", "nr1500") is a number too; a sign counts only
+# when no letter or digit stands before it ("COVID-19" keeps its dash)
+_ANY_NUMBER = re.compile(r"(?:(?<!\w)[-+])?(?<!\d)\d+(?:[.,]\d+)*")
+# S37fix2 N10: digit groups joined by one grouping character ("2 000", "3 000 %", "2_000 x", "5•0000")
+# are one number, masked whole by its significant digits, before a percent sign too
+_GROUPED_ANY = re.compile(r"(?:(?<!\w)[-+])?(?<!\d)\d+(?:[ '._•·,]\d+)+")
+# S37fix2: amounts in words (strict free text). A run of Polish / English number words is masked when
+# it holds a word worth 10 or more or a scale word ("dwa tysiące", "pół miliona", "fifty"); units
+# alone ("dwa", "pięć") stay. Bare English "ten" is left out (Polish "ten" = "this").
+_NUMBER_WORDS_BIG = (
+    r"dziesi[eę][cć]|dziesi[eę]ciu|\w+na[sś]cie|\w+nastu|dwadzie[sś]cia|\w+dziestu|\w+dzie[sś]ci|"
+    r"\w+dziesi[aą]t|\w+dziesi[eę]ciu|sto|stu|dwie[sś]cie|dwustu|trzysta|trzystu|czterysta|"
+    r"czterystu|(?:pi[eę][cć]|sze[sś][cć]|siedem|osiem|dziewi[eę][cć])set|"
+    r"(?:pi[eę]ciu|sze[sś]ciu|siedmiu|o[sś]miu|dziewi[eę]ciu)set|tysi[aą]c\w*|tysi[eę]c\w*|tys\.|"
+    r"milion\w*|miliard\w*|bilion\w*|mln\.?|mld\.?|eleven|twelve|thirteen|fourteen|fifteen|sixteen|"
+    r"seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|"
+    r"thousands?|millions?|billions?"
+)
+_NUMBER_WORDS_SMALL = (
+    r"zero|jeden|jedna|jedno|jednego|jednej|jednym|dwa|dwie|dw[oó]ch|dwu|dwoma|trzy|trzech|trzema|"
+    r"cztery|czterech|pi[eę][cć]|pi[eę]ciu|sze[sś][cć]|sze[sś]ciu|siedem|siedmiu|osiem|o[sś]miu|"
+    r"dziewi[eę][cć]|dziewi[eę]ciu|p[oó][lł]|p[oó][lł]tora|one|two|three|four|five|six|seven|eight|"
+    r"nine|ten|half"
+)
+_NUMBER_WORD = rf"(?:{_NUMBER_WORDS_BIG}|{_NUMBER_WORDS_SMALL})(?!\w)"
+_NUMBER_WORDS = re.compile(rf"(?i:(?<!\w){_NUMBER_WORD}(?:(?: |-| i | and ){_NUMBER_WORD})*)")
+_BIG_NUMBER_WORD = re.compile(rf"(?i:(?<!\w)(?:{_NUMBER_WORDS_BIG})(?!\w))")
 # Kept in strict free text (S37fix R1, R2, N1, N5): a number with at most 3 integer digits and no
 # grouping right before a percent sign / percentage points (a decimal part of 1-2 digits allowed) or a
 # non-money unit from this closed list (an integer only), or right after a position word ("line 12").
@@ -356,6 +383,21 @@ def _significant(m: re.Match) -> str | None:
     return "[amount]" if len(digits) >= 2 else None
 
 
+# a link (public source): a number glued to letters in it ("/p11/") is part of a path, not an amount
+_IN_LINK = re.compile(r"(?:https?://|www\.)\S*$")
+
+
+def _any_number(m: re.Match) -> str | None:
+    start = m.start()
+    if start > 0 and m.string[start - 1].isalpha() and _IN_LINK.search(m.string[:start]):
+        return None
+    return _significant(m)
+
+
+def _number_words(m: re.Match) -> str | None:
+    return "[amount]" if _BIG_NUMBER_WORD.search(m.group(0)) else None
+
+
 def _keep_prefix(replacement: str):
     return lambda m: m.group(0)[: m.start(1) - m.start(0)] + replacement
 
@@ -383,9 +425,11 @@ def scrub_text(text: str | None, *, strict: bool, guard: NameGuard | None = None
         work.sub(_MONEY_CUR, "[amount]")
         work.sub(_MONEY_WORD, _keep_prefix("[amount]"))
         work.sub(_MULTIPLIED, "[amount]")
+        work.sub(_NUMBER_WORDS, _number_words)
+        work.sub(_GROUPED_ANY, _significant)  # before the decimal rule: "1.2.3" is one number
         work.sub(_GROUPED, "[amount]")
         work.sub(_DECIMAL, "[amount]")
-        work.sub(_ANY_NUMBER, _significant)
+        work.sub(_ANY_NUMBER, _any_number)
     _restore_dates(work, dates)
     text = work.render()
     if guard is not None:

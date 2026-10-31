@@ -143,9 +143,11 @@ _LETTERS = _LOWER | _UPPER
 
 def _mask_folds(text: str) -> list[tuple[str, list[int]]]:
     """The folded copies of ``text`` names are matched on, each with the original index of every
-    folded character: as written, and split into words where a name is glued to the next one
+    folded character: as written; split into words where a name is glued to the next one
     (zero-width characters removed, a split mark U+0001 inserted at "aN" / "ANo" case changes and
-    after "A."; S37fix N8: "AnnaNowak", "A.Nowak", "ANowak", "An<ZWJ>na")."""
+    after "A."; S37fix N8: "AnnaNowak", "A.Nowak", "ANowak", "An<ZWJ>na"); and as one letter run
+    without marks, for names glued with no case change ("ANNANOWAK", "AnnaNowak123"; S37fix2 N11).
+    The split and run copies read "ß" as the "s" it imitates ("Kowalßki")."""
     plain: list[str] = []
     plain_index: list[int] = []
     for i, ch in enumerate(text):
@@ -155,6 +157,8 @@ def _mask_folds(text: str) -> list[tuple[str, list[int]]]:
     kept = [(i, ch) for i, ch in enumerate(text) if ch not in _ZERO_WIDTH]
     split: list[str] = []
     split_index: list[int] = []
+    run: list[str] = []
+    run_index: list[int] = []
     for k, (i, ch) in enumerate(kept):
         prev = kept[k - 1][1] if k >= 1 else ""
         prev2 = kept[k - 2][1] if k >= 2 else ""
@@ -166,10 +170,16 @@ def _mask_folds(text: str) -> list[tuple[str, list[int]]]:
         ):
             split.append("\x01")
             split_index.append(i)
-        for c in _mask_fold_char(ch):
+        for c in _mask_fold_char("s" if ch == "ß" else ch):
             split.append(c)
             split_index.append(i)
-    return [("".join(plain), plain_index), ("".join(split), split_index)]
+            run.append(c)
+            run_index.append(i)
+    return [
+        ("".join(plain), plain_index),
+        ("".join(split), split_index),
+        ("".join(run), run_index),
+    ]
 
 
 def _word_pattern(word: str, *, min_stem: int, initial: bool) -> str:
@@ -204,6 +214,20 @@ def _term_pattern(term: str) -> str:
         seq = [parts[words.index(w)] for w in order]
         alternatives.append(_NAME_GAP.join(seq))
     return r"(?<![\w])(?:[^\W\d_]+-)?(?:" + "|".join(alternatives) + r")(?:-[^\W\d_]+)?(?![\w])"
+
+
+def _run_pattern(term: str) -> str | None:
+    """A known name glued inside a letter run, with no boundaries (S37fix2 N11): the words in any
+    order with no gap, no initials; a one-word name only from 4 letters on."""
+    words = term.split()
+    many = len(words) >= 2
+    if not many and len(words[0]) < 4:
+        return None
+    parts = [_word_pattern(w, min_stem=3 if many else 4, initial=False) for w in words]
+    orders = [tuple(words)]
+    if 2 <= len(words) <= 3:
+        orders = sorted(set(permutations(words)))
+    return "(?:" + "|".join("".join(parts[words.index(w)] for w in o) for o in orders) + ")"
 
 
 def fold(text: str) -> str:
@@ -382,8 +406,12 @@ class NameGuard:
         for term in sorted(self.names, key=lambda t: (-len(t), t)):
             if not term.split():
                 continue
-            pattern = re.compile(_term_pattern(term))
-            for folded, index in folds:
+            bounded = re.compile(_term_pattern(term))
+            glued = _run_pattern(term)
+            patterns = [bounded, bounded, re.compile(glued) if glued is not None else None]
+            for (folded, index), pattern in zip(folds, patterns, strict=True):
+                if pattern is None:
+                    continue
                 pos = 0
                 while (m := pattern.search(folded, pos)) is not None:
                     start, end = index[m.start()], index[m.end() - 1] + 1

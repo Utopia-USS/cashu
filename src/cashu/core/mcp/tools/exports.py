@@ -752,7 +752,8 @@ def _describe(table: Table, max_samples: int) -> dict:
             "index": L.count(idx + 1),
             "header": L.text(_safe_label(name)),
             "type": L.category(kind),
-            "format": L.text(fmt_text),
+            # built by cashU from the detected separators / date patterns, never owner text (R3)
+            "format": L.fixed_text(fmt_text),
             "empty_share": L.share(len(values) - filled, len(values)),
             "distinct": L.count(len(distinct)),
             "negatives": L.flag(any(v.startswith(("-", "−")) for v in values if v))
