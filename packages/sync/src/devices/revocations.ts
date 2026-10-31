@@ -187,7 +187,8 @@ function raisedCuts(revs: readonly Rev[], keys: DecisionKeys, knowledge: Knowled
   for (const r of revs) {
     const map = new Map<string, SegmentCursor>();
     for (const t of r.targets) {
-      const known = r.recovery ? undefined : knowledge(r, t.device, keys);
+      // A self-revocation's cut is its own position (trust.ts): nothing raises it.
+      const known = r.recovery || t.device === r.signer ? undefined : knowledge(r, t.device, keys);
       map.set(t.device, known ? maxPosition(t.cut, known) : t.cut);
     }
     raised.set(r.id, map);

@@ -15,6 +15,7 @@ import {
 import { canonicalJson, fromHex, isCanonicalValue } from "./bytes.js";
 import {
   byHlc,
+  consentToRevocation,
   decodeKeysRotated,
   KEYS_ROTATED,
   type LogEvent,
@@ -318,6 +319,25 @@ export class VaultDevices {
     if (reason) return reason;
     if (this.#keysAtPin?.has(this.#o.ring.active.kid)) return "recovery_changed";
     return undefined;
+  }
+
+  /**
+   * Consents (H2) to this device's retirement by `revoker` (the revocation `eid` of `entries`), then
+   * WIPES this device's vault keys and identity: a retired device that is later sold or stolen can
+   * neither read the vault nor mint consent keys (review H5''). The caller passes the consent to the
+   * revoker and deletes the keys from its KeyStore too (S44 flow).
+   */
+  consentToRetirement(eid: string, entries: readonly RevokedEntry[], revoker: string): string {
+    const consent = consentToRevocation(
+      this.#o.identity,
+      this.#o.ring.vaultId,
+      eid,
+      entries,
+      revoker,
+    );
+    this.#o.ring.wipe();
+    this.#o.identity.wipe();
+    return consent;
   }
 
   prepareRotation(eid: string): PrepareResult {

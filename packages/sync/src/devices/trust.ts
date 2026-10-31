@@ -15,7 +15,7 @@ import {
 } from "../crypto/index.js";
 import type { KeySource } from "./acceptance.js";
 import { type CertificateSelection, selectCertificates } from "./certificates.js";
-import { unconsentedTargets } from "./consent.js";
+import { retiredDevices, unconsentedTargets } from "./consent.js";
 import { DecisionKeys } from "./decisionKeys.js";
 import {
   type DeviceAddedData,
@@ -90,7 +90,12 @@ export function certificateTrust(
 export function decideRevocations(
   ctx: TrustContext,
   certs: CertificateTrust,
-): { readonly result: RevocationResult; readonly ignored: readonly IgnoredStatement[] } {
+): {
+  readonly result: RevocationResult;
+  readonly ignored: readonly IgnoredStatement[];
+  /** Devices retired by the words or by a consented revocation (consent keys avoid them, H5''). */
+  readonly retired: ReadonlySet<string>;
+} {
   const { root, verify } = ctx;
   const { index, registered } = certs;
   const ignored: IgnoredStatement[] = [];
@@ -112,10 +117,8 @@ export function decideRevocations(
   // Statement signatures are identified with the decision keys under no revocation (every certified
   // key); eligibility is decided per fold step with the step's decision keys (revocations.ts).
   const identify = new DecisionKeys(index, new Set());
-  // Consent keys: decision keys under the words' revocations; the signer is avoided per check.
-  const consentKeys = new DecisionKeys(index, certain);
   // Verify first (forged copies never displace genuine ones), then dedupe.
-  const verified: Rev[] = [];
+  const signed: { event: LogEvent; data: DeviceRevokedData; key: Uint8Array | undefined }[] = [];
   for (const { event, data } of ctx.revocations) {
     const isRecovery = data.signer === RECOVERY_SIGNER_ID;
     if (!isRecovery && data.signer !== event.writer) {
@@ -148,31 +151,58 @@ export function decideRevocations(
       ignored.push({ eid: event.eid, reason: "bad_signature" });
       continue;
     }
-    // H2 / H5': a device-signed revocation of another device needs that device's consent, verified
-    // with its decision keys excluding the signer (and all it certified) and the devices the words
-    // revoked (consent.ts).
-    if (!isRecovery) {
-      const missing = unconsentedTargets(
+    signed.push({ event, data, key: isRecovery ? undefined : key });
+  }
+
+  // H2 / H5' / H5'': a device-signed revocation of another device needs that device's consent,
+  // verified with its decision keys avoiding the signer (and all it certified) and every retired
+  // device (consent.ts). A self-revocation is its own consent (its signer's decision key).
+  const consentsOk = (event: LogEvent, data: DeviceRevokedData, keys: DecisionKeys): boolean => {
+    const self = data.devices.some((d) => d.device === data.signer);
+    const source: KeySource = { kind: "device", keys, device: data.signer };
+    return (
+      unconsentedTargets(
         verify,
-        consentKeys,
+        keys,
         root.vaultId,
         event.eid,
         data.devices,
         data.signer,
         data.consent,
-      );
-      if (missing.length > 0) {
-        ignored.push({ eid: event.eid, reason: "no_consent" });
-        continue;
-      }
+      ).length === 0 &&
+      (!self || ctx.acceptStatement(event, data.sig, source) !== undefined)
+    );
+  };
+  const retired = retiredDevices(
+    index,
+    certain,
+    signed
+      .filter(({ data }) => data.signer !== RECOVERY_SIGNER_ID)
+      .map(({ event, data }) => ({
+        targets: data.devices.map((d) => d.device).filter((d) => registered.has(d)),
+        ok: (keys: DecisionKeys) => consentsOk(event, data, keys),
+      })),
+  );
+  const consentKeys = new DecisionKeys(index, retired);
+  const verified: Rev[] = [];
+  for (const { event, data, key } of signed) {
+    const isRecovery = data.signer === RECOVERY_SIGNER_ID;
+    if (!isRecovery && !consentsOk(event, data, consentKeys)) {
+      ignored.push({ eid: event.eid, reason: "no_consent" });
+      continue;
     }
     verified.push({
       id: 0,
       event,
       signer: data.signer,
       recovery: isRecovery,
-      key: isRecovery ? undefined : key,
-      targets: data.devices.map((d) => ({ device: d.device, cut: d.cut })),
+      key,
+      // A self-revocation's cut is fixed at its own position: a device retiring itself (or a thief
+      // holding it) can never erase its history by stating an earlier cut.
+      targets: data.devices.map((d) => ({
+        device: d.device,
+        cut: d.device === data.signer && !isRecovery ? event.position : d.cut,
+      })),
     });
   }
   const deduped = dedupeVerified(verified, ignored);
@@ -186,5 +216,5 @@ export function decideRevocations(
     verify,
     ignored,
   });
-  return { result, ignored };
+  return { result, ignored, retired };
 }

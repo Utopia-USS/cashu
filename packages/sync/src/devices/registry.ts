@@ -138,6 +138,7 @@ export class Registry {
   readonly #issued: ReadonlyMap<string, number>;
   readonly #keys: DecisionKeys;
   readonly #windows: ReadonlyMap<string, number>;
+  readonly #retired: ReadonlySet<string>;
 
   /** Not public API: use `foldRegistry`. */
   constructor(parts: {
@@ -155,6 +156,7 @@ export class Registry {
     issued: ReadonlyMap<string, number>;
     keys: DecisionKeys;
     windows: ReadonlyMap<string, number>;
+    retired: ReadonlySet<string>;
   }) {
     this.vaultId = parts.root.vaultId;
     this.recovery = parts.root.recovery;
@@ -171,6 +173,7 @@ export class Registry {
     this.#issued = parts.issued;
     this.#keys = parts.keys;
     this.#windows = parts.windows;
+    this.#retired = parts.retired;
   }
 
   isTrusted(deviceId: string): boolean {
@@ -211,8 +214,8 @@ export class Registry {
 
   /**
    * Whether `consent` (per target other than `signer`) makes a device-signed revocation by
-   * `signer` count (H2, H5'): each signature verifies with a decision key of its target under the
-   * exclusion of the signer, everything it certified, and the devices revoked with the words.
+   * `signer` count (H2, H5', H5''): each signature verifies with a decision key of its target
+   * avoiding the signer, everything it certified, and every retired device (consent.ts).
    */
   consentAccepted(
     eid: string,
@@ -221,12 +224,9 @@ export class Registry {
     consent: Readonly<Record<string, string>>,
     verify: StatementVerifier = verifyStatement,
   ): readonly string[] {
-    const certain = [...this.revoked.values()]
-      .filter((r) => r.signers.includes(RECOVERY_SIGNER_ID))
-      .map((r) => r.device);
     return unconsentedTargets(
       verify,
-      new DecisionKeys(this.#index, new Set(certain)),
+      new DecisionKeys(this.#index, this.#retired),
       this.vaultId,
       eid,
       entries,
@@ -334,6 +334,9 @@ export function foldRegistry(
   ignored.push(...decided.ignored);
   const late = new Set(
     added.filter((a) => {
+      // A recovery-signed statement does not rest on its carrier: a device retiring itself with
+      // the words writes the re-certifications of its orphans in its own (now cut) stream.
+      if (a.data.signer === RECOVERY_SIGNER_ID) return false;
       const r = revoked.get(a.event.writer);
       return r !== undefined && !beforeCut(a.event.position, r.cut);
     }),
@@ -450,6 +453,7 @@ export function foldRegistry(
     issued: selection.issued,
     keys: decided.result.keys,
     windows: selection.windows,
+    retired: decided.retired,
   });
 }
 

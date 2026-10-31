@@ -271,6 +271,20 @@ the sweep in decisionKeys.property.exhaustive.test.ts).
   that mints keys for them, alone, through a puppet or through an accomplice revoked with the words,
   forges nothing. Consequence for the UI: a device cannot retire, on consent, a device it paired
   (directly or below); the owner uses another device, retires the device on itself, or the words.
+- The consent keys also avoid every RETIRED device (H5''): revoked with the words, or retired by a
+  revocation its targets genuinely consented to, computed to a fixpoint (consent.ts
+  `retiredDevices`; junk can never retire an honest device, which would need its genuine consent).
+  An old phone retired on consent and later sold therefore mints nothing that counts.
+- Retiring wipes: the device being retired (`VaultDevices.consentToRetirement`, or a self-retirement
+  once its batch is written) wipes its vault keys and identity in memory. S44 contract: the app then
+  deletes them from its KeyStore and shows the device as retired; nothing on it can read the vault
+  or sign for it again.
+- Self-retirement (lead decision: kept). A device may revoke itself without consent; every fold fixes
+  the cut at the self-revocation's own position, so a stolen device cannot erase its history by
+  stating an earlier cut. A device that paired others cannot rescue them: the flow returns
+  `recovery_required` listing those orphans, and the owner either enters the words on a trusted
+  device or retires it from a sibling with its consent (`consentToRetirement` on it); both
+  re-certify the orphans in the revocation's batch.
 - Any other device-signed revocation is refused by every device's fold (`no_consent`), and the flow
   refuses to write it (`authority_required`).
 - Consequences: a revoked or stolen device can no longer retaliate (review H5: its revocations need
@@ -280,6 +294,11 @@ the sweep in decisionKeys.property.exhaustive.test.ts).
 - Residual: a still-trusted (stolen, not yet revoked) device can certify a second key pair for
   another device and forge that device's consent; the target is then conflicted (untrusted) anyway.
   Revoking the thief with the words ends it.
+- Residual (phase B): a forged self-revocation of an honest device, written into a REWRITTEN early
+  frame of its stream with a key minted for it, can still make it undecided (both it and its
+  revoker revoked, fail closed) with its history after that position cut. That is the A1b rewrite
+  class; signed heads close it, and the fixed self-revocation cut already caps it at the rewritten
+  position.
 
 ### S29c: asking for the recovery words (S44 UX rule)
 

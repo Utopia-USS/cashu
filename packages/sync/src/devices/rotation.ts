@@ -463,14 +463,22 @@ export function prepareRevocation(
   for (const device of recertified)
     after.set(device, registry.trusted.get(device) as TrustedDevice);
   if (!after.has(me)) {
-    // Revoking this device itself: the revocation (and re-certifications) only; the remaining
-    // devices rotate (revocation_pending).
+    // Retiring this device itself: the revocation (and re-certifications) only; the remaining
+    // devices rotate (revocation_pending). Its cut is fixed at the statement's own position by every
+    // fold. After the batch is written, this device wipes its vault keys and identity: a retired
+    // device that is later sold or stolen holds nothing (the app also deletes them from its KeyStore).
+    const retiring = targetIds.has(me);
     const change: PreparedChange = {
       events: [revoked, ...adds],
       affected,
       key: undefined,
       recipients: [],
-      commit: () => undefined,
+      commit: () => {
+        if (retiring) {
+          ctx.ring.wipe();
+          ctx.identity.wipe();
+        }
+      },
       discard: () => undefined,
     };
     return { ok: true, change };

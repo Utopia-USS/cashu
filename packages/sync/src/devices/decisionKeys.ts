@@ -26,7 +26,8 @@ export class DecisionKeys {
   readonly #revoked: ReadonlySet<string>;
   readonly #closure: ReturnType<CertificateIndex["closure"]>;
   #trusted: ReturnType<CertificateIndex["verify"]>["devices"] | undefined;
-  readonly #avoiding = new Map<string, Map<string, boolean>>();
+  readonly #avoiding = new Map<string, ReadonlySet<string>>();
+  #children: Map<string, string[]> | undefined;
 
   constructor(index: CertificateIndex, revoked: ReadonlySet<string>) {
     this.#index = index;
@@ -44,28 +45,46 @@ export class DecisionKeys {
   /**
    * The decision keys of `device` whose certification does not rest on `avoid`: a key counts only
    * when some chain from the recovery key to it passes neither through `avoid` nor through anything
-   * `avoid` certified (H5': what a revocation's signer vouches for never consents to it).
+   * `avoid` certified (H5': what a revocation's signer vouches for never consents to it). The set
+   * of devices rooted while avoiding `avoid` is a breadth-first walk from the recovery key per
+   * `avoid` (loops are walked once), cached on this instance, so the answer belongs to exactly this
+   * decision context (these revocations, this `avoid`).
    */
   keysAvoiding(device: string, avoid: string): readonly CandidateKey[] {
     if (device === avoid) return [];
-    const memo = this.#avoiding.get(avoid) ?? new Map<string, boolean>();
-    this.#avoiding.set(avoid, memo);
-    return this.keysOf(device).filter((k) =>
-      k.issuers.some((i) => this.#rootedAvoiding(i, avoid, memo)),
-    );
+    let rooted = this.#avoiding.get(avoid);
+    if (!rooted) {
+      rooted = this.#rootedAvoiding(avoid);
+      this.#avoiding.set(avoid, rooted);
+    }
+    const reached = rooted;
+    return this.keysOf(device).filter((k) => k.issuers.some((i) => reached.has(i)));
   }
 
-  #rootedAvoiding(id: string, avoid: string, memo: Map<string, boolean>): boolean {
-    if (id === RECOVERY_SIGNER_ID) return true;
-    if (id === avoid) return false;
-    const known = memo.get(id);
-    if (known !== undefined) return known;
-    memo.set(id, false); // a cycle never roots anything
-    const ok = this.keysOf(id).some((k) =>
-      k.issuers.some((i) => this.#rootedAvoiding(i, avoid, memo)),
-    );
-    memo.set(id, ok);
-    return ok;
+  #rootedAvoiding(avoid: string): ReadonlySet<string> {
+    if (!this.#children) {
+      const children = new Map<string, string[]>();
+      for (const id of this.#closure.ids()) {
+        for (const k of this.#closure.keysOf(id)) {
+          for (const issuer of k.issuers) {
+            const list = children.get(issuer) ?? [];
+            list.push(id);
+            children.set(issuer, list);
+          }
+        }
+      }
+      this.#children = children;
+    }
+    const reached = new Set<string>([RECOVERY_SIGNER_ID]);
+    const queue = [RECOVERY_SIGNER_ID];
+    for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+      for (const child of this.#children.get(next) ?? []) {
+        if (child === avoid || reached.has(child)) continue;
+        reached.add(child);
+        queue.push(child);
+      }
+    }
+    return reached;
   }
 
   /** The decision keys' signing keys, as statement verifiers take them. */
