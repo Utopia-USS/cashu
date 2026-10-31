@@ -17,22 +17,22 @@ import {
   unicodeDecimal,
 } from "./text.js";
 
+const BLOCK = 4096;
+const BLOCKS_PER_PLANE = 0x10000 / BLOCK;
+const PLANES = Array.from({ length: 0x110000 / 0x10000 }, (_, plane) => plane);
+
 /**
- * sha256 per 4096-code-point block of fn(chr(c)) joined by NUL, surrogates skipped (as vectors.py).
+ * sha256 of fn(chr(c)) joined by NUL over one 4096-code-point block, surrogates skipped (as vectors.py).
  * One digest input per block: the same bytes as feeding the hash per code point, without ~2 native
  * hash calls per code point (8.9M for the four functions).
  */
-function blockHashes(fn: (s: string) => string): string[] {
-  const out: string[] = [];
-  for (let block = 0; block < 0x110000 / 4096; block++) {
-    let joined = "";
-    for (let c = block * 4096; c < (block + 1) * 4096; c++) {
-      if (c >= 0xd800 && c <= 0xdfff) continue;
-      joined += `${fn(String.fromCodePoint(c))}\0`;
-    }
-    out.push(createHash("sha256").update(joined, "utf8").digest("hex").slice(0, 16));
+function blockHash(fn: (s: string) => string, block: number): string {
+  let joined = "";
+  for (let c = block * BLOCK; c < (block + 1) * BLOCK; c++) {
+    if (c >= 0xd800 && c <= 0xdfff) continue;
+    joined += `${fn(String.fromCodePoint(c))}\0`;
   }
-  return out;
+  return createHash("sha256").update(joined, "utf8").digest("hex").slice(0, 16);
 }
 
 const text = loadVectors("text");
@@ -65,7 +65,7 @@ describe("text vectors (parity/python/vectors.py)", () => {
     expect(unicodeDecimal(0x41)).toBe(-1);
   });
 
-  // One test per function: each is one exhaustive scan of every code point, reported on its own.
+  // One test per function and plane (16 blocks, 65,536 code points): no single test is a whole scan.
   const perCodePoint: Record<string, (s: string) => string> = {
     normalize_text: normalizeText,
     upper: pyUpper,
@@ -79,14 +79,19 @@ describe("text vectors (parity/python/vectors.py)", () => {
   });
 
   for (const [, name, hashes] of blockRows) {
-    it(`every code point: ${name}`, () => {
+    it.each(PLANES)(`every code point: ${name} in plane %i`, (plane) => {
       const fn = perCodePoint[name];
       if (!fn) throw new Error(`no TS function for ${name}`);
+      expect(hashes).toHaveLength(272);
       const m = new Mismatches();
-      blockHashes(fn).forEach((hash, block) => {
-        m.check(`${name} block U+${(block * 4096).toString(16)}`, hash, hashes[block]);
-      });
-      expect(m.checked).toBe(272);
+      for (let block = plane * BLOCKS_PER_PLANE; block < (plane + 1) * BLOCKS_PER_PLANE; block++) {
+        m.check(
+          `${name} block U+${(block * BLOCK).toString(16)}`,
+          blockHash(fn, block),
+          hashes[block],
+        );
+      }
+      expect(m.checked).toBe(BLOCKS_PER_PLANE);
       expect(m.items, m.report()).toEqual([]);
     });
   }

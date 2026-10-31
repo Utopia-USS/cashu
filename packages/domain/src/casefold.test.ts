@@ -24,14 +24,17 @@ describe("pyCasefold", () => {
       expect(pyCasefold(text), JSON.stringify(text)).toBe(perCodePoint(text));
   });
 
-  it("folds every code point block with its neighbours like each code point alone", () => {
-    for (let block = 0; block < 0x110000; block += 0x400) {
-      let text = "";
-      for (let cp = block; cp < block + 0x400; cp++) {
-        if (cp >= 0xd800 && cp <= 0xdfff) continue;
-        text += String.fromCodePoint(cp);
+  it.each(Array.from({ length: 0x110000 / 0x10000 }, (_, plane) => plane))(
+    "folds every code point block of plane %i with its neighbours like each code point alone",
+    (plane) => {
+      for (let block = plane * 0x10000; block < (plane + 1) * 0x10000; block += 0x400) {
+        let text = "";
+        for (let cp = block; cp < block + 0x400; cp++) {
+          if (cp >= 0xd800 && cp <= 0xdfff) continue;
+          text += String.fromCodePoint(cp);
+        }
+        expect(pyCasefold(text), `block ${block.toString(16)}`).toBe(perCodePoint(text));
       }
-      expect(pyCasefold(text), `block ${block.toString(16)}`).toBe(perCodePoint(text));
-    }
-  });
+    },
+  );
 });

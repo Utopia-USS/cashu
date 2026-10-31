@@ -5,7 +5,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { UiLang } from "../../core/i18n.js";
-import { addDays, type IsoDate, weekday } from "../../dates.js";
+import { fromOrdinal, type IsoDate, toOrdinal } from "../../dates.js";
 import { loadVectors, Mismatches } from "../../testing/vectors.js";
 import { formatPct, formatPp } from "./format.js";
 import {
@@ -243,10 +243,9 @@ interface SeriesSpec {
 
 function weekdays(start: IsoDate, n: number): IsoDate[] {
   const out: IsoDate[] = [];
-  let day = start;
-  while (out.length < n) {
-    if (weekday(day) < 5) out.push(day);
-    day = addDays(day, 1);
+  // Walk ordinals (weekday = (ordinal + 6) % 7, Monday 0) instead of parsing a date text per day.
+  for (let ordinal = toOrdinal(start); out.length < n; ordinal++) {
+    if ((ordinal + 6) % 7 < 5) out.push(fromOrdinal(ordinal));
   }
   return out;
 }
@@ -294,33 +293,47 @@ describe("macro regimes over synthetic series", () => {
     [IsoDate, object[], object[]][],
   ][];
 
-  it(`evaluate + regime_dict + changes agree with Python (${rows.length} cases)`, () => {
-    const m = new Mismatches();
-    rows.forEach(([specs, asOf, rawCurrency, pl, en, full, changes], i) => {
-      const closes: Record<string, MacroClose[]> = {};
-      for (const [key, spec] of Object.entries(specs)) closes[key] = buildCloses(spec);
-      const found = evaluate(closes as MacroCloses, asOf);
-      const currency = currencyOf(rawCurrency);
-      const cards = (lang: UiLang) =>
-        found.map((r) => withoutExplain(regimeDict(r, lang, r.key === "dollar" ? currency : null)));
-      m.check(`#${i} pl`, cards("pl"), pl);
-      m.check(`#${i} en`, cards("en"), en);
-      m.check(
-        `#${i} history`,
-        found.map((r) => [
-          r.key,
-          r.history.map((h) => [h.date, h.state, h.confirmed, h.open]),
-          r.usdpln1w,
-        ]),
-        full,
-      );
-      for (const [start, wantPl, wantEn] of changes) {
-        m.check(`#${i} changes ${start} pl`, macroChanges(found, start, asOf, "pl"), wantPl);
-        m.check(`#${i} changes ${start} en`, macroChanges(found, start, asOf, "en"), wantEn);
-      }
-    });
-    expect(m.items, m.report()).toEqual([]);
-  });
+  // The cases in slices of 10 so no single test holds the whole set.
+  const PER_SLICE = 10;
+  const slices = Array.from({ length: Math.ceil(rows.length / PER_SLICE) }, (_, i) => i);
+
+  it.each(slices)(
+    "evaluate + regime_dict + changes agree with Python (slice %i of the cases)",
+    (slice) => {
+      const m = new Mismatches();
+      const from = slice * PER_SLICE;
+      rows
+        .slice(from, from + PER_SLICE)
+        .forEach(([specs, asOf, rawCurrency, pl, en, full, changes], k) => {
+          const i = from + k;
+          const closes: Record<string, MacroClose[]> = {};
+          for (const [key, spec] of Object.entries(specs)) closes[key] = buildCloses(spec);
+          const found = evaluate(closes as MacroCloses, asOf);
+          const currency = currencyOf(rawCurrency);
+          const cards = (lang: UiLang) =>
+            found.map((r) =>
+              withoutExplain(regimeDict(r, lang, r.key === "dollar" ? currency : null)),
+            );
+          m.check(`#${i} pl`, cards("pl"), pl);
+          m.check(`#${i} en`, cards("en"), en);
+          m.check(
+            `#${i} history`,
+            found.map((r) => [
+              r.key,
+              r.history.map((h) => [h.date, h.state, h.confirmed, h.open]),
+              r.usdpln1w,
+            ]),
+            full,
+          );
+          for (const [start, wantPl, wantEn] of changes) {
+            m.check(`#${i} changes ${start} pl`, macroChanges(found, start, asOf, "pl"), wantPl);
+            m.check(`#${i} changes ${start} en`, macroChanges(found, start, asOf, "en"), wantEn);
+          }
+        });
+      expect(m.checked).toBeGreaterThan(0);
+      expect(m.items, m.report()).toEqual([]);
+    },
+  );
 });
 
 // --------------------------------------------------------------------------- texts
