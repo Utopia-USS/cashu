@@ -12,22 +12,28 @@
  * order of the passes is Python's, and so is each replacement.
  */
 
-import { PY_B, PY_D, PY_END, PY_IC_I, PY_W, PY_WS, uRegex } from "@cashu/domain";
+import { PY_D, PY_END, PY_IC_I, PY_W, PY_WS, uRegex } from "@cashu/domain";
 import type { NameGuard } from "./names.js";
 import { pyDigitsValue } from "./pyText.js";
 import { type Restored, type WorkReplacer, WorkText } from "./workText.js";
+
+// Python `\b` next to a character that is certainly a word character, as one lookaround (the general
+// two-sided `PY_B` alternation costs a lookaround pair at every position): before the token's first
+// character / after its last one. Same matches as Python's `\b` in these places.
+const WB_START = `(?<![${PY_W}])`;
+const WB_END = `(?![${PY_W}])`;
 
 // Dates kept while the number rules run (S37fix D3, D5, N2, N6): only valid ones (year 1900-2099,
 // month 01-12, day 01-31): ISO dates and timestamps (a fraction of at most 9 digits), periods
 // (2024-03, 03/2024, 2024-Q1) and DD.MM.YYYY. Any other date shape is plain digits.
 const YEAR = `(?:19|20)${PY_D}{2}`;
 const ISO_DATE = uRegex(
-  `${PY_B}${YEAR}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]${PY_D}|3[01])` +
-    `(?:[T ]${PY_D}{2}:${PY_D}{2}(?::${PY_D}{2}(?:\\.${PY_D}{1,9})?)?(?:Z|[+\\-]${PY_D}{2}:?${PY_D}{2})?)?${PY_B}`,
+  `${WB_START}${YEAR}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]${PY_D}|3[01])` +
+    `(?:[T ]${PY_D}{2}:${PY_D}{2}(?::${PY_D}{2}(?:\\.${PY_D}{1,9})?)?(?:Z|[+\\-]${PY_D}{2}:?${PY_D}{2})?)?${WB_END}`,
   "g",
 );
 const PERIOD = uRegex(
-  `${PY_B}${YEAR}-(?:0[1-9]|1[0-2]|Q[1-4])${PY_B}|${PY_B}(?:0[1-9]|1[0-2])/${YEAR}${PY_B}`,
+  `${WB_START}${YEAR}-(?:0[1-9]|1[0-2]|Q[1-4])${WB_END}|${WB_START}(?:0[1-9]|1[0-2])/${YEAR}${WB_END}`,
   "g",
 );
 const DMY_DATE = uRegex(
@@ -49,7 +55,7 @@ const SEP = "[^\\p{L}\\p{N}]{1,5}";
 /** The narrower separators of IBAN and masked-card shapes (letters take part in those). */
 const ID_SEP = "(?: ?[/_\\-]{1,2} ?| {1,3}|[.,])";
 const RUN_SOURCE = `(?:(?<![${PY_W}])([A-Z]{2}))?(?<!${PY_D})(${PY_D}+(?:${SEP}${PY_D}+)*)`;
-const IBAN_SOURCE = `${PY_B}[A-Z]{2}${PY_D}{2}(?:${ID_SEP}?[A-Z0-9]{4}){3,8}(?:${ID_SEP}?[A-Z0-9]{1,4})?${PY_B}`;
+const IBAN_SOURCE = `${WB_START}[A-Z]{2}${PY_D}{2}(?:${ID_SEP}?[A-Z0-9]{4}){3,8}(?:${ID_SEP}?[A-Z0-9]{1,4})?${WB_END}`;
 const MASKED_CARD_SOURCE = `(?<![${PY_W}*•])(?:${PY_D}{1,6}${ID_SEP}?)?(?:[*xX•]{2,}${ID_SEP}?){1,4}${PY_D}{2,6}(?!${PY_D})`;
 const ALNUM_ID_SOURCE = `(?<![${PY_W}])[${PY_W}]{8,}(?![${PY_W}])`;
 const RUN = uRegex(RUN_SOURCE, "g");
@@ -62,14 +68,14 @@ const AMOUNT_FORMAT = uRegex(
 );
 const LETTER = uRegex(`[\\p{L}\\p{Nl}\\p{No}]`);
 const DIGIT = uRegex(PY_D, "g");
-const ACCOUNT_ID = uRegex(`${PY_B}[A-Za-z]{1,3}${PY_D}{6,9}${PY_B}`, "g");
-const ID_CARD = uRegex(`${PY_B}([A-Z]{3}) ${PY_D}{6}${PY_B}`, "g");
+const ACCOUNT_ID = uRegex(`${WB_START}[A-Za-z]{1,3}${PY_D}{6,9}${WB_END}`, "g");
+const ID_CARD = uRegex(`${WB_START}([A-Z]{3}) ${PY_D}{6}${WB_END}`, "g");
 const CURRENCY_CODES: ReadonlySet<string> = new Set(
   "PLN EUR USD GBP CHF JPY CZK HUF SEK NOK DKK CAD AUD".split(" "),
 );
 // a shorter number right after an account word ("konto nr 12345678")
 const ACCOUNT_WORD = uRegex(
-  `(?i:${PY_B}(?:konto|konta|rachunek|rachunku|account|acct|acc|nr|numer|no)${PY_B}\\.?[ :#]{0,3})` +
+  `(?i:${WB_START}(?:konto|konta|rachunek|rachunku|account|acct|acc|nr|numer|no)(?:${WB_END}\\.?|(?=${PY_D}))[ :#]{0,3})` +
     `(?:nr\\.? ?)?(${PY_D}[${PY_D} \\-]{4,}${PY_D})`,
   "g",
 );
@@ -90,7 +96,7 @@ const MULTIPLIED = uRegex(
     `(?i:tys\\.?|tys${PY_IC_I}[eę]c[${PY_W}]*|mln|mld|k|m|mn|bn)(?![${PY_W}])`,
   "g",
 );
-const NOT_PP = `[${PY_WS}]?pp${PY_B}`;
+const NOT_PP = `[${PY_WS}]?pp${WB_END}`;
 const GROUPED = uRegex(
   `(?<![${PY_W}.,])[\\-+]?${PY_D}{1,3}(?:(?:[ ']${PY_D}{3})+|(?:,${PY_D}{3})+|(?:\\.${PY_D}{3}){2,})` +
     `(?:[.,]${PY_D}+)?(?![${PY_W}%]|${NOT_PP}|[${PY_WS}]?%)`,
@@ -101,14 +107,47 @@ const DECIMAL = uRegex(
   "g",
 );
 const MONEY_WORD = uRegex(
-  `(?i:${PY_B}(?:pr${PY_IC_I}ce|pr${PY_IC_I}ces|cena|ceny|cash|amount|kwota|kwoty|value|warto[${PY_W}]*|worth|cost|` +
+  `(?i:${WB_START}(?:pr${PY_IC_I}ce|pr${PY_IC_I}ces|cena|ceny|cash|amount|kwota|kwoty|value|warto[${PY_W}]*|worth|cost|` +
     `costs|koszt[${PY_W}]*|saldo|balance|depos${PY_IC_I}t[${PY_W}]*|wp[lł]at[${PY_W}]*|wyp[lł]at[${PY_W}]*|fee|fees|tax|` +
     `prow${PY_IC_I}zj[${PY_W}]*|op[lł]at[${PY_W}]*|proceeds|${PY_IC_I}ncome|expense[${PY_W}]*|przych[${PY_W}]*|wydat[${PY_W}]*|` +
-    `rata|raty|${PY_IC_I}nstallment)${PY_B}[^${PY_D}\\n]{0,24}?)(?<![${PY_W}.,])([\\-+]?${PY_D}+(?:[.,]${PY_D}+)?)` +
-    `(?![${PY_D}%]|[.,]${PY_D}|[${PY_WS}]?%|${NOT_PP}|[${PY_WS}]?(?:days?|dni)${PY_B})`,
+    `rata|raty|${PY_IC_I}nstallment)${WB_END}[^${PY_D}\\n]{0,24}?)(?<![${PY_W}.,])([\\-+]?${PY_D}+(?:[ '._•·,]${PY_D}+)*)` +
+    `(?![${PY_D}%]|[ '._•·,]${PY_D}|[${PY_WS}]?%|${NOT_PP}|[${PY_WS}]?(?:days?|dni)${WB_END})`,
   "g",
 );
-const ANY_NUMBER = uRegex(`(?<![${PY_W}])[\\-+]?${PY_D}+(?:[.,]${PY_D}+)*`, "g");
+// S37fix2 N9: a number glued after letters ("kwota950", "nr1500") is a number too; a sign counts
+// only when no letter or digit stands before it ("COVID-19" keeps its dash)
+const ANY_NUMBER = uRegex(`(?:(?<![${PY_W}])[\\-+])?(?<!${PY_D})${PY_D}+(?:[.,]${PY_D}+)*`, "g");
+// S37fix2 N10: digit groups joined by one grouping character ("2 000", "3 000 %", "2_000 x",
+// "5•0000") are one number, masked whole by its significant digits, before a percent sign too
+const GROUPED_ANY = uRegex(
+  `(?:(?<![${PY_W}])[\\-+])?(?<!${PY_D})${PY_D}+(?:[ '._•·,]${PY_D}+)+`,
+  "g",
+);
+// S37fix2: amounts in words (strict free text). A run of Polish / English number words is masked
+// when it holds a word worth 10 or more or a scale word ("dwa tysiące", "pół miliona", "fifty");
+// units alone ("dwa", "pięć") stay. Bare English "ten" is left out (Polish "ten" = "this").
+const wordList = (source: string) => source.replaceAll("i", PY_IC_I).replaceAll("\\w", `[${PY_W}]`);
+const NUMBER_WORDS_BIG = wordList(
+  "dziesi[eę][cć]|dziesi[eę]ciu|\\w+na[sś]cie|\\w+nastu|dwadzie[sś]cia|\\w+dziestu|\\w+dzie[sś]ci|" +
+    "\\w+dziesi[aą]t|\\w+dziesi[eę]ciu|sto|stu|dwie[sś]cie|dwustu|trzysta|trzystu|czterysta|" +
+    "czterystu|(?:pi[eę][cć]|sze[sś][cć]|siedem|osiem|dziewi[eę][cć])set|" +
+    "(?:pi[eę]ciu|sze[sś]ciu|siedmiu|o[sś]miu|dziewi[eę]ciu)set|tysi[aą]c\\w*|tysi[eę]c\\w*|tys\\.|" +
+    "milion\\w*|miliard\\w*|bilion\\w*|mln\\.?|mld\\.?|eleven|twelve|thirteen|fourteen|fifteen|sixteen|" +
+    "seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|" +
+    "thousands?|millions?|billions?",
+);
+const NUMBER_WORDS_SMALL = wordList(
+  "zero|jeden|jedna|jedno|jednego|jednej|jednym|dwa|dwie|dw[oó]ch|dwu|dwoma|trzy|trzech|trzema|" +
+    "cztery|czterech|pi[eę][cć]|pi[eę]ciu|sze[sś][cć]|sze[sś]ciu|siedem|siedmiu|osiem|o[sś]miu|" +
+    "dziewi[eę][cć]|dziewi[eę]ciu|p[oó][lł]|p[oó][lł]tora|one|two|three|four|five|six|seven|eight|" +
+    "nine|ten|half",
+);
+const NUMBER_WORD = `(?:${NUMBER_WORDS_BIG}|${NUMBER_WORDS_SMALL})(?![${PY_W}])`;
+const NUMBER_WORDS = uRegex(
+  `(?i:(?<![${PY_W}])${NUMBER_WORD}(?:(?: |-| ${PY_IC_I} | and )${NUMBER_WORD})*)`,
+  "g",
+);
+const BIG_NUMBER_WORD = uRegex(`(?i:(?<![${PY_W}])(?:${NUMBER_WORDS_BIG})(?![${PY_W}]))`);
 // Kept in strict free text (S37fix R1, R2, N1, N5): a number with at most 3 integer digits and no
 // grouping right before a percent sign / percentage points (a decimal part of 1-2 digits allowed) or
 // a non-money unit from this closed list (an integer only), or right after a position word ("line
@@ -122,7 +161,7 @@ const KEPT_UNITS = (
 const NOT_GROUPED = `(?<![${PY_W}.,])(?<!${PY_D}[ '.,_])`;
 const KEPT_PERCENT = uRegex(
   `${NOT_GROUPED}[\\-+]?${PY_D}{1,3}(?:[.,]${PY_D}{1,2})?(?![${PY_D}.,'_]${PY_D}|${PY_D})` +
-    `(?= ?(?:%|pp${PY_B}|p\\.p\\.|pkt proc\\.))`,
+    `(?= ?(?:%|pp${WB_END}|p\\.p\\.|pkt proc\\.))`,
   "g",
 );
 const KEPT_UNIT = uRegex(
@@ -130,19 +169,19 @@ const KEPT_UNIT = uRegex(
   "g",
 );
 const KEPT_POSITION = uRegex(
-  `((?i:${PY_B}(?:${"line|row|linia|linii|wiersz|wiersza|pozycja|pozycji".replaceAll("i", PY_IC_I)})) )` +
+  `((?i:${WB_START}(?:${"line|row|linia|linii|wiersz|wiersza|pozycja|pozycji".replaceAll("i", PY_IC_I)})) )` +
     `(${PY_D}{1,3})(?![${PY_D}${PY_W}]|[.,'_ ]${PY_D})`,
   "g",
 );
 const CURRENCY_WORDS = `zł|zl|złot[${PY_W}]*|zlot[${PY_W}]*|grosz[${PY_W}]*|gr|pln|eur|euro|usd|chf|gbp|dolar[${PY_W}]*|funt[${PY_W}]*|frank[${PY_W}]*`;
 const CURRENCY_BEFORE = uRegex(
-  `(?:(?i:${PY_B}(?:${CURRENCY_WORDS}))|[$€£]|${PY_B}[A-Z]{3}) {0,3}[\\-+]?${PY_END}`,
+  `(?:(?i:${WB_START}(?:${CURRENCY_WORDS}))|[$€£]|${WB_START}[A-Z]{3}) {0,3}[\\-+]?${PY_END}`,
 );
 const CURRENCY_AFTER = uRegex(
-  `^ {0,3}(?:(?:%|pp${PY_B}|p\\.p\\.|pkt proc\\.|(?i:${KEPT_UNITS}))(?![${PY_W}]))? {0,3}` +
+  `^ {0,3}(?:(?:%|pp${WB_END}|p\\.p\\.|pkt proc\\.|(?i:${KEPT_UNITS}))(?![${PY_W}]))? {0,3}` +
     `(?:(?i:(?:${CURRENCY_WORDS}))(?![${PY_W}])|[$€£]|[A-Z]{3}(?![A-Za-z]))`,
 );
-const ISIN_SOURCE = `${PY_B}[A-Z]{2}[A-Z0-9]{9}${PY_D}${PY_B}`;
+const ISIN_SOURCE = `${WB_START}[A-Z]{2}[A-Z0-9]{9}${PY_D}${WB_END}`;
 const ISIN = uRegex(ISIN_SOURCE, "g");
 const ISIN_FULL = uRegex(`^[A-Z]{2}[A-Z0-9]{9}${PY_D}$`);
 // A protected date / ISIN is swapped for NUL + its index + NUL while the number rules run. The index
@@ -274,6 +313,20 @@ const significant: WorkReplacer = (m) => {
 };
 
 /** Replace a match with its text before the last group (the number) and `replacement`. */
+/** A link (public source): a number glued to letters in it ("/p11/") is part of a path, not an amount. */
+const IN_LINK = uRegex(`(?:https?://|www\\.)[^${PY_WS}]*$`);
+const LETTER_CHAR = /^\p{L}$/u;
+
+const anyNumber: WorkReplacer = (m) => {
+  const start = m.index as number;
+  const before = (m.input as string).slice(0, start);
+  const previous = Array.from(before.slice(-2)).pop() ?? "";
+  if (LETTER_CHAR.test(previous) && IN_LINK.test(before)) return null;
+  return significant(m);
+};
+
+const numberWords: WorkReplacer = (m) => (BIG_NUMBER_WORD.test(m[0]) ? "[amount]" : null);
+
 function keepPrefix(replacement: string): WorkReplacer {
   return (m) => m[0].slice(0, m[0].length - (m[1] ?? "").length) + replacement;
 }
@@ -311,9 +364,11 @@ export function scrubText(
     work.sub(MONEY_CUR, "[amount]");
     work.sub(MONEY_WORD, keepPrefix("[amount]"));
     work.sub(MULTIPLIED, "[amount]");
+    work.sub(NUMBER_WORDS, numberWords);
+    work.sub(GROUPED_ANY, significant); // before the decimal rule: "1.2.3" is one number
     work.sub(GROUPED, "[amount]");
     work.sub(DECIMAL, "[amount]");
-    work.sub(ANY_NUMBER, significant);
+    work.sub(ANY_NUMBER, anyNumber);
   }
   restoreDates(work, dates);
   text = work.render();

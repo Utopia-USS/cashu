@@ -194,9 +194,11 @@ const SPLIT_MARK = String.fromCodePoint(1);
 
 /**
  * The folded copies of `text` names are matched on, each with the original code point index of
- * every folded UTF-16 unit: as written, and split into words where a name is glued to the next one
+ * every folded UTF-16 unit: as written; split into words where a name is glued to the next one
  * (zero-width characters removed, a split mark U+0001 inserted at "aN" / "ANo" case changes and
- * after "A."; S37fix N8: "AnnaNowak", "A.Nowak", "ANowak", "An<ZWJ>na").
+ * after "A."; S37fix N8: "AnnaNowak", "A.Nowak", "ANowak", "An<ZWJ>na"); and as one letter run
+ * without marks, for names glued with no case change ("ANNANOWAK", "AnnaNowak123"; S37fix2 N11).
+ * The split and run copies read "ß" as the "s" it imitates ("Kowalßki").
  */
 function maskFolds(chars: readonly string[]): [string, number[]][] {
   let plain = "";
@@ -212,6 +214,8 @@ function maskFolds(chars: readonly string[]): [string, number[]][] {
   });
   let split = "";
   const splitIndex: number[] = [];
+  let run = "";
+  const runIndex: number[] = [];
   kept.forEach(([i, ch], k) => {
     const prev = k >= 1 ? (kept[k - 1] as [number, string])[1] : "";
     const prev2 = k >= 2 ? (kept[k - 2] as [number, string])[1] : "";
@@ -224,13 +228,18 @@ function maskFolds(chars: readonly string[]): [string, number[]][] {
       split += SPLIT_MARK;
       splitIndex.push(i);
     }
-    const f = maskFoldChar(ch);
+    const f = maskFoldChar(ch === "ß" ? "s" : ch);
     split += f;
-    for (let u = 0; u < f.length; u++) splitIndex.push(i);
+    run += f;
+    for (let u = 0; u < f.length; u++) {
+      splitIndex.push(i);
+      runIndex.push(i);
+    }
   });
   return [
     [plain, plainIndex],
     [split, splitIndex],
+    [run, runIndex],
   ];
 }
 
@@ -265,6 +274,45 @@ function termPattern(words: readonly string[]): string {
     order.map((w) => parts[words.indexOf(w)] as string).join(NAME_GAP),
   );
   return `(?<![${PY_W}])(?:[${LETTER}]+-)?(?:${alternatives.join("|")})(?:-[${LETTER}]+)?(?![${PY_W}])`;
+}
+
+/**
+ * A known name glued inside a letter run, with no boundaries (S37fix2 N11): the words in any order
+ * with no gap, no initials; a one-word name only from 4 letters on.
+ */
+function runPattern(words: readonly string[]): string | null {
+  const many = words.length >= 2;
+  if (!many && pyLen(words[0] as string) < 4) return null;
+  const parts = words.map((w) => wordPattern(w, many ? 3 : 4, false));
+  let orders: string[][] = [Array.from(words)];
+  if (words.length >= 2 && words.length <= 3) {
+    const unique = new Map<string, string[]>();
+    for (const p of permutations(words)) unique.set(p.join("\u0000"), p);
+    orders = [...unique.values()].sort(compareTuples);
+  }
+  const alternatives = orders.map((order) =>
+    order.map((w) => parts[words.indexOf(w)] as string).join(""),
+  );
+  return `(?:${alternatives.join("|")})`;
+}
+
+/**
+ * Compiled mask patterns per term, shared by every guard: the MCP server collects a new guard on
+ * each call, and compiling a term's patterns (large Unicode classes) costs far more than running
+ * them. Python's `re` keeps a compiled-pattern cache the same way. Bounded: cleared when full.
+ */
+const TERM_PATTERNS = new Map<string, readonly [RegExp, RegExp | null]>();
+const TERM_PATTERNS_MAX = 4096;
+
+function termPatterns(term: string, words: readonly string[]): readonly [RegExp, RegExp | null] {
+  let entry = TERM_PATTERNS.get(term);
+  if (entry === undefined) {
+    const glued = runPattern(words);
+    entry = [uRegex(termPattern(words), "g"), glued === null ? null : uRegex(glued, "g")];
+    if (TERM_PATTERNS.size >= TERM_PATTERNS_MAX) TERM_PATTERNS.clear();
+    TERM_PATTERNS.set(term, entry);
+  }
+  return entry;
 }
 
 const DOTS_COMMAS = /[.,]/g;
@@ -403,7 +451,8 @@ export class NameGuard {
   // once per call (`mask` runs on every string a tool returns).
   private aliasPatterns: readonly (readonly [RegExp, string])[] | null = null;
   private namePatterns: readonly RegExp[] | null = null;
-  private maskPatterns: readonly RegExp[] | null = null;
+  /** Per term: the bounded pattern (plain and split folds) and the glued one (run fold, or null). */
+  private maskPatterns: readonly (readonly [RegExp, RegExp | null])[] | null = null;
 
   constructor(init: NameGuardInit) {
     this.profileId = init.profileId;
@@ -499,8 +548,11 @@ export class NameGuard {
     const folds = maskFolds(chars); // folded UTF-16 unit -> code point index in `text`
     const spans: [number, number][] = [];
     this.maskPatterns ??= this.buildMaskPatterns();
-    for (const pattern of this.maskPatterns) {
-      for (const [folded, index] of folds) {
+    for (const [bounded, glued] of this.maskPatterns) {
+      const patterns = [bounded, bounded, glued];
+      for (const [f, [folded, index]] of folds.entries()) {
+        const pattern = patterns[f];
+        if (pattern === null || pattern === undefined) continue;
         pattern.lastIndex = 0;
         for (let m = pattern.exec(folded); m !== null; m = pattern.exec(folded)) {
           const start = index[m.index] as number;
@@ -522,14 +574,14 @@ export class NameGuard {
     return chars.join("");
   }
 
-  /** One `g` pattern per name term: longest first, equal lengths in code point order (as Python sorts them). */
-  private buildMaskPatterns(): RegExp[] {
+  /** The `g` patterns per name term: longest first, equal lengths in code point order (as Python sorts them). */
+  private buildMaskPatterns(): (readonly [RegExp, RegExp | null])[] {
     const terms = [...this.names].sort((a, b) => pyLen(b) - pyLen(a) || compareStr(a, b));
-    const patterns: RegExp[] = [];
+    const patterns: (readonly [RegExp, RegExp | null])[] = [];
     for (const term of terms) {
       const words = pySplit(term);
       if (words.length === 0) continue; // an empty term (never collected) would match everywhere
-      patterns.push(uRegex(termPattern(words), "g"));
+      patterns.push(termPatterns(term, words));
     }
     return patterns;
   }
