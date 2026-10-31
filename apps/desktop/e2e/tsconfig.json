@@ -1,0 +1,9 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "rootDir": "..",
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["./*.ts", "./desktop-specs/*.ts"]
+}

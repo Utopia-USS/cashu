@@ -7,8 +7,17 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
     "lint": "biome check .",
-    "test": "vitest run"
-  }
+    "test": "vitest run",
+    "dev": "node scripts/dev.mjs",
+    "e2e": "playwright test -c e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "electron": "45.2.1"
+  },
+  "main": "dist/main.js",
+  "description": "cashU desktop shell (Electron). Strangler v1: spawns the Python `cashu serve` as a sidecar."
 }
