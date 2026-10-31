@@ -105,9 +105,11 @@ const SEALED_VERSION = 1;
 
 /**
  * Mobile store: the Keychain (expo-secure-store) holds ONE random 32-byte key-encryption key; each
- * value is sealed with XChaCha20-Poly1305 under it (AAD = the name, so blobs cannot be swapped
- * between names) and kept through `files`, so SecureStore's ~2048-byte value limit never applies
- * however many key generations a ring collects. Blob: 0x01 | nonce (24) | ciphertext + tag.
+ * value is sealed with XChaCha20-Poly1305 under it (AAD = 0x01 | the name, so blobs cannot be
+ * swapped between names or versions) and kept through `files`, so SecureStore's ~2048-byte value
+ * limit never applies however many key generations a ring collects.
+ * Blob: 0x01 | nonce (24) | ciphertext + tag. A blob that does not open is `keystore_corrupt`.
+ * Rolling a blob back to an older one of the same name is not detected (local attacker only).
  *
  * Accessibility is AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY because background sync must read keys while
  * the phone is locked (WHEN_UNLOCKED would refuse then); THIS_DEVICE_ONLY keeps the key out of
@@ -122,28 +124,40 @@ export function createSecureStoreKeyStore(
     keychainService: "cashu",
     keychainAccessible: secureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
   };
-  let kek: Promise<Secret | null> | undefined;
-  const loadKek = async (create: boolean): Promise<Secret | null> => {
-    kek ??= secureStore.getItemAsync(KEK_ITEM, options).then((v) => {
-      if (v === null) return null;
-      const bytes = fromBase64(v);
-      if (bytes.length !== KEY_BYTES) throw new CryptoError("keystore_unavailable");
-      return new Secret(bytes);
-    });
-    const current = await kek;
-    if (current || !create) return current;
-    kek = (async () => {
-      const fresh = sodium.randomBytes(KEY_BYTES);
-      await secureStore.setItemAsync(KEK_ITEM, toBase64(fresh), options);
-      return new Secret(fresh);
-    })();
-    try {
-      return await kek;
-    } catch (e) {
-      kek = undefined;
-      throw e;
-    }
+  // Single flight: one get-or-create at a time, so concurrent first writes cannot create two KEKs.
+  // Only a successful result is cached; a failure is retried on the next call.
+  let cached: Secret | undefined;
+  let inFlight: Promise<Secret | null> | undefined;
+  const readKek = async (): Promise<Secret | null> => {
+    const v = await secureStore.getItemAsync(KEK_ITEM, options);
+    if (v === null) return null;
+    const bytes = fromBase64(v);
+    if (bytes.length !== KEY_BYTES) throw new CryptoError("keystore_corrupt");
+    return new Secret(bytes);
   };
+  const loadKek = (create: boolean): Promise<Secret | null> => {
+    if (cached) return Promise.resolve(cached);
+    const previous = inFlight ?? Promise.resolve(null);
+    const run = previous
+      .catch(() => null)
+      .then(async () => {
+        if (cached) return cached;
+        let kek = await readKek();
+        if (!kek && create) {
+          const fresh = sodium.randomBytes(KEY_BYTES);
+          await secureStore.setItemAsync(KEK_ITEM, toBase64(fresh), options);
+          fresh.fill(0);
+          // Adopt what the Keychain actually holds, not what we meant to write.
+          kek = await readKek();
+          if (!kek) throw new CryptoError("keystore_unavailable");
+        }
+        if (kek) cached = kek;
+        return kek;
+      });
+    inFlight = run;
+    return run;
+  };
+  const aad = (name: string) => concat(Uint8Array.of(SEALED_VERSION), utf8(name));
   return {
     async get(name) {
       checkName(name);
@@ -153,17 +167,24 @@ export function createSecureStoreKeyStore(
       const key = await loadKek(false);
       if (!key) throw new CryptoError("keystore_unavailable");
       if (blob.length < 1 + NONCE_BYTES + TAG_BYTES || blob[0] !== SEALED_VERSION) {
-        throw new CryptoError("bad_payload");
+        throw new CryptoError("keystore_corrupt");
       }
       const nonce = blob.subarray(1, 1 + NONCE_BYTES);
-      return sodium.aeadDecrypt(blob.subarray(1 + NONCE_BYTES), utf8(name), nonce, key.expose());
+      try {
+        return sodium.aeadDecrypt(blob.subarray(1 + NONCE_BYTES), aad(name), nonce, key.expose());
+      } catch (e) {
+        if (e instanceof CryptoError && e.code === "auth_failed") {
+          throw new CryptoError("keystore_corrupt");
+        }
+        throw e;
+      }
     },
     async set(name, value) {
       checkName(name);
       const key = await loadKek(true);
       if (!key) throw new CryptoError("keystore_unavailable");
       const nonce = sodium.randomBytes(NONCE_BYTES);
-      const cipher = sodium.aeadEncrypt(value, utf8(name), nonce, key.expose());
+      const cipher = sodium.aeadEncrypt(value, aad(name), nonce, key.expose());
       await files.write(name, concat(Uint8Array.of(SEALED_VERSION), nonce, cipher));
     },
     async delete(name) {

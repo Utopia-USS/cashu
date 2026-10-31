@@ -153,7 +153,7 @@ describe("KeyStore adapters", () => {
     const a = files.blobs.get("cashu.a");
     if (!a) throw new Error("missing");
     files.blobs.set("cashu.b", a);
-    await expect(store.get("cashu.b")).rejects.toMatchObject({ code: "auth_failed" });
+    await expect(store.get("cashu.b")).rejects.toMatchObject({ code: "keystore_corrupt" });
     // Files restored onto a phone without the Keychain item cannot be read.
     const restored = createSecureStoreKeyStore(sodium, fakeSecureStore(), files);
     await expect(restored.get("cashu.a")).rejects.toMatchObject({ code: "keystore_unavailable" });
@@ -193,6 +193,32 @@ describe("KeyStore adapters", () => {
     const hex = Buffer.from(blob ?? []).toString("hex");
     expect(hex).not.toContain(Buffer.from(a.box.publicKey).toString("hex"));
     expect(hex).not.toContain(Buffer.from(a.signPublicKey).toString("hex"));
+  });
+
+  it("concurrent first writes share one key-encryption key; a fresh store reads both", async () => {
+    const ss = fakeSecureStore();
+    const files = memoryFiles();
+    const store = createSecureStoreKeyStore(sodium, ss, files);
+    const identity = createDeviceIdentity(sodium);
+    const ring = newRing();
+    await Promise.all([saveDeviceIdentity(store, identity), saveKeyring(store, ring)]);
+    const restarted = createSecureStoreKeyStore(sodium, ss, files);
+    expect((await loadDeviceIdentity(restarted, identity.deviceId))?.signPublicKey).toEqual(
+      identity.signPublicKey,
+    );
+    expect((await loadKeyring(restarted, sodium, ring.vaultId))?.active.kid).toBe(ring.active.kid);
+  });
+
+  it("a malformed stored key-encryption key is keystore_corrupt and is not cached", async () => {
+    const ss = fakeSecureStore();
+    const files = memoryFiles();
+    await createSecureStoreKeyStore(sodium, ss, files).set("cashu.a", new Uint8Array([1]));
+    const good = ss.items.get("cashu.keystore.kek") ?? "";
+    ss.items.set("cashu.keystore.kek", "AAAA");
+    const store = createSecureStoreKeyStore(sodium, ss, files);
+    await expect(store.get("cashu.a")).rejects.toMatchObject({ code: "keystore_corrupt" });
+    ss.items.set("cashu.keystore.kek", good);
+    expect(await store.get("cashu.a")).toEqual(new Uint8Array([1]));
   });
 
   it("the in-memory store is only on the testing subpath, never the main entry", async () => {
