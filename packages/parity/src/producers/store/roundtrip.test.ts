@@ -5,11 +5,8 @@ import { describe, expect, it } from "vitest";
 import { dumps } from "../output.ts";
 import { compareUtf8, json, sortRows, timestamp } from "./canonical.ts";
 import { ROUNDTRIP_COLUMNS } from "./columns.ts";
-import { type GenesisEvent, parityKeys, parityNow } from "./genesisRun.ts";
+import { parityKeys, parityNow } from "./genesisRun.ts";
 import { GidKeys } from "./gidKeys.ts";
-import { cashExpenses, inverseRows } from "./inverse.ts";
-import { JOURNAL_INVERSE } from "./inverseJournal.ts";
-import { modeOf, PENDING_COLUMNS, PENDING_ROWS, VIEW_TABLES } from "./modes.ts";
 import { STORE_TABLES } from "./tables.ts";
 
 const ACC = "0a1b2c3d-0000-8000-8000-000000000001";
@@ -87,75 +84,8 @@ describe("GidKeys", () => {
   });
 });
 
-const ev = (type: string, gid: string, data: Record<string, unknown>): GenesisEvent => ({
-  type,
-  gid,
-  at: "2026-10-31T12:00:00.001Z",
-  data,
-});
-
-describe("inverse builders", () => {
-  it("shape a cash expense as Python stores it", () => {
-    const g = "0a1b2c3d-0000-8000-8000-0000000000aa";
-    const [row] = inverseRows(
-      cashExpenses,
-      [
-        ev("txn.cashExpenseAdded", g, {
-          account: ACC,
-          bookingDate: "2026-09-16",
-          amount: "-45.00",
-          currency: "PLN",
-          title: "Targ Test",
-          category: "groceries",
-          stamps: { created_at: "2026-10-01T10:00:00.5Z" },
-        }),
-      ],
-      keysOf(),
-    );
-    expect(row?.row).toMatchObject({
-      account_id: "accounts:7",
-      counterparty_name: "Targ Test",
-      reference: "Targ Test",
-      source: "manual",
-      occurrence: 0n,
-      category_source: "manual_txn",
-      raw: { cash_expense: true },
-      created_at: "2026-10-01T10:00:00.500000",
-    });
-    expect(Object.keys(row?.row ?? {}).sort()).toEqual(
-      [...(ROUNDTRIP_COLUMNS.transactions ?? [])].sort(),
-    );
-  });
-
-  it("number strategy versions over applied versions and skip a repeated sha (m9)", () => {
-    const save = (gid: string, sha: string) =>
-      ev("strategy.versionSaved", gid, {
-        yamlText: "y",
-        mdText: null,
-        sha256: sha,
-        state: "ok",
-        issues: [],
-      });
-    const rows = inverseRows(
-      JOURNAL_INVERSE.inv_strategy_versions as never,
-      [save("A".repeat(26), "s1"), save("B".repeat(26), "s1"), save("C".repeat(26), "s2")],
-      keysOf(),
-    );
-    expect(rows.map((r) => [r.row.version, r.row.sha256])).toEqual([
-      [1n, "s1"],
-      [2n, "s2"],
-    ]);
-  });
-});
-
-describe("modes", () => {
-  it("cover every synced table; pending entries belong to view-mode tables", () => {
+describe("store tables", () => {
+  it("cover every synced table of the goldens", () => {
     expect(STORE_TABLES.length).toBe(33);
-    expect(STORE_TABLES.filter((t) => modeOf(t) === "view").sort()).toEqual(
-      [...VIEW_TABLES].sort(),
-    );
-    for (const t of [...Object.keys(PENDING_ROWS), ...Object.keys(PENDING_COLUMNS)]) {
-      expect(VIEW_TABLES.has(t), t).toBe(true);
-    }
   });
 });

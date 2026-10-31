@@ -24,6 +24,10 @@ const BOOLEAN_COLUMNS: ReadonlySet<string> = new Set([
   "category_rules.locked",
   "inv_profile_instruments.needs_classification",
   "connector_bindings.auto_commit",
+  "profile_modules.enabled",
+  "inv_instruments.needs_classification",
+  "inv_instrument_aliases.guessed",
+  "inv_topic_theses.draft",
 ]);
 
 /** Compared values that are no view column (store.py `PSEUDO_COLUMNS`). */
@@ -79,6 +83,7 @@ function columnValue(
       ? null
       : json(JSON.parse(String(value)), keys.mapString);
   }
+  if (table === "inv_import_batches" && column === "archive_path") return archiveBlob(value);
   if (table === "inv_signals" && column === "dedup_key") return keys.dedupKey(value);
   if (table === "inv_signals" && column === "rule_id") return keys.ruleId(value);
   if (BOOLEAN_COLUMNS.has(`${table}.${column}`)) return bool(value);
@@ -108,19 +113,53 @@ function decisionSignals(
 }
 
 /** Every row of view table `table`, projected to the golden's columns. */
+/**
+ * A cash mirror leg the view derives (events.md 9) and store.py leaves out: every leg except one
+ * whose category is a manual claim.
+ */
+function isDerivedLeg(table: string, row: ViewRow): boolean {
+  return (
+    table === "transactions" &&
+    String(row.dedup_hash ?? "").startsWith("cashleg:") &&
+    row.category_source !== "manual_txn"
+  );
+}
+
+/** Manual-claim cash legs of the view: compared rows that are no exported source row. */
+export function claimedLegs(store: Store, table: string): number {
+  if (table !== "transactions") return 0;
+  return (
+    store.read<{ n: number }>(
+      "SELECT count(*) AS n FROM transactions WHERE dedup_hash LIKE 'cashleg:%' AND category_source = 'manual_txn'",
+    )[0]?.n ?? 0
+  );
+}
+
+/** `inv_import_batches.archive_path`: the view keeps the blob key `<sha256>.<ext>`; store.py the blob. */
+function archiveBlob(value: unknown): OutValue {
+  if (value === null || value === undefined) return null;
+  const m = /^([0-9a-f]{64})\.([a-z0-9]{1,10})$/.exec(String(value));
+  if (m === null)
+    throw new ViewProjectionError("inv_import_batches", "archive_path is no blob key");
+  return { sha256: m[1] ?? "", ext: m[2] ?? "" };
+}
+
 export function projectView(store: Store, table: string, keys: GidKeys): GidRow[] {
   const def = store.publicTables().find((t) => t.name === table);
   if (def === undefined) throw new ViewProjectionError(table, "no such view table");
   const columns = ROUNDTRIP_COLUMNS[table];
   if (columns === undefined) throw new ViewProjectionError(table, "no roundtrip columns");
   const gids = viewGids(store);
-  return store.read<ViewRow>(`SELECT * FROM ${table} ORDER BY id`).map((row) => {
-    const out: Record<string, OutValue> = {};
-    for (const column of columns) {
-      out[column] = PSEUDO.has(`${table}.${column}`)
-        ? decisionSignals(store, Number(row.id), keys, gids)
-        : columnValue(table, def, column, row, keys, gids);
-    }
-    return { gid: String(row.gid), row: out };
-  });
+  const rows = store.read<ViewRow>(`SELECT * FROM ${table} ORDER BY id`);
+  return rows
+    .filter((row) => !isDerivedLeg(table, row))
+    .map((row) => {
+      const out: Record<string, OutValue> = {};
+      for (const column of columns) {
+        out[column] = PSEUDO.has(`${table}.${column}`)
+          ? decisionSignals(store, Number(row.id), keys, gids)
+          : columnValue(table, def, column, row, keys, gids);
+      }
+      return { gid: String(row.gid), row: out };
+    });
 }

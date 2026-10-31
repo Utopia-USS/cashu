@@ -34,15 +34,6 @@ const US = "\x1f";
  */
 const SKEW_ALLOWANCE_MS = 366 * 24 * 60 * 60 * 1000;
 
-/** A genesis event as the inverse projections read it (wire envelope, decoded fields only). */
-export interface GenesisEvent {
-  readonly type: string;
-  readonly gid: string;
-  /** The envelope's `at` (the genesis wall): the domain time of a column no stamp sets. */
-  readonly at: string;
-  readonly data: Readonly<Record<string, unknown>>;
-}
-
 /** Where a gid came from: the Python table and its `sync_outbox._local_id`. */
 export interface GidSource {
   readonly table: string;
@@ -54,8 +45,6 @@ export interface VaultRun {
   readonly profileId: number;
   /** The folded view of the vault's log. */
   readonly store: Store;
-  /** The vault's events in log order. */
-  readonly events: readonly GenesisEvent[];
   /** Every exported row's gid -> its source row (genesis `ids`). */
   readonly sources: ReadonlyMap<string, GidSource>;
   /** The vault's DET gids (resolves the genesis gid of a dangling id inside a key, gid.md 7.6). */
@@ -139,7 +128,6 @@ function runGenesis(db: PythonDb): GenesisRun {
       ordinal: v.ordinal,
       profileId: v.profileId,
       store: fold(v, k),
-      events: v.events.map((e) => ({ type: e.t, gid: e.g, at: e.a, data: e.d })),
       sources,
       det: detGidFor(k.salt),
     });
