@@ -203,6 +203,15 @@ new context that neither extends nor is a prefix of these (for example `"cashu/f
   device's own pre-cut frame is only seen by devices that read it (fresh joiners, rebuilds) until S28d
   signed heads; a revoked device can still forge a trusted writer's frames at positions that writer has
   not reached until it writes at the new key (S28d per-device frame signatures).
+- Device-limit crowding (S29c review, minor): `maxDevices` (MAX_DEVICES = 1024) admits ids breadth first,
+  each BFS level sorted by key. A still-trusted malicious device can certify 64 puppets
+  (MAX_CERTS_PER_ISSUER), each writing under its own id and certifying 64 more: about 4096 nodes at one
+  depth, which crowd out honest devices at that depth or deeper (pairing chains deepen over the years
+  when each new phone is paired by the last one). Mitigation today: the existing caps bound the tree
+  (64 certificates counted per issuer, per writer stream; at most CERT_CHECK_BUDGET checked; 1024 ids
+  admitted), and revoking the device cuts its whole certificate subtree, which frees the slots on every
+  device at the next fold. Follow-up: admit by trusted-path depth with a per-issuer share, or cap a
+  subtree's size per first-level issuer.
 
 ### Key storage
 
