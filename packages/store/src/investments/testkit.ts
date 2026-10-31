@@ -6,7 +6,13 @@ import { detGid, type GidTable } from "../gid.js";
 import type { Store } from "../materialize.js";
 import { viewHash } from "../snapshot.js";
 import { chunked, shuffled } from "../testing/random.js";
-import { EventFactory, openTestStore, TEST_SALT, type TestEnvelope, testUlid } from "../testing/store.js";
+import {
+  EventFactory,
+  openTestStore,
+  TEST_SALT,
+  type TestEnvelope,
+  testUlid,
+} from "../testing/store.js";
 
 export const DEV_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 export const DEV_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -227,23 +233,23 @@ export function rows(store: Store, table: string): Record<string, unknown>[] {
   const def = store.publicTables().find((t) => t.name === table);
   if (def === undefined) throw new Error(`no public table ${table}`);
   const gidOf = new Map(
-    store.read<{ id: number; gid: string }>("SELECT id, gid FROM view_ids").map((r) => [r.id, r.gid]),
+    store
+      .read<{ id: number; gid: string }>("SELECT id, gid FROM view_ids")
+      .map((r) => [r.id, r.gid]),
   );
-  return store
-    .read<Record<string, unknown>>(`SELECT * FROM ${table} ORDER BY gid`)
-    .map((r) => {
-      const out: Record<string, unknown> = { ...r };
-      delete out.id;
-      for (const c of def.columns) {
-        if (c.ref !== undefined && typeof r[c.name] === "number") {
-          out[c.name] = gidOf.get(r[c.name] as number);
-        }
-        if (c.json === true && typeof r[c.name] === "string") {
-          out[c.name] = JSON.parse(r[c.name] as string) as unknown;
-        }
+  return store.read<Record<string, unknown>>(`SELECT * FROM ${table} ORDER BY gid`).map((r) => {
+    const out: Record<string, unknown> = { ...r };
+    delete out.id;
+    for (const c of def.columns) {
+      if (c.ref !== undefined && typeof r[c.name] === "number") {
+        out[c.name] = gidOf.get(r[c.name] as number);
       }
-      return out;
-    });
+      if (c.json === true && typeof r[c.name] === "string") {
+        out[c.name] = JSON.parse(r[c.name] as string) as unknown;
+      }
+    }
+    return out;
+  });
 }
 
 /** The one row of `table` with `gid` (with references as gids). */
