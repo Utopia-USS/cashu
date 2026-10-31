@@ -1,9 +1,11 @@
 // Key wrapping: the key payload (keys.ts) sealed for one recipient.
 //
 // Signed wrap (`wrapKeys` / `unwrapKeys`), for every hop after pairing:
-//   wire = 0x02 | sender device id (16) | Ed25519 signature (64) | sealed
+//   wire = 0x02 | sender device id (16) | Ed25519 signature (64) | recipients | sealed
+//   recipients = u16 count | device ids (16 each) the rotation was wrapped for
 //   sealed = crypto_box_seal(key payload v2, recipient box public key)
-//   signature over "cashu/wrap/v2" | lp(vault id) | sender id | recipient id | recipient box pk | sealed
+//   signature over "cashu/wrap/v2" | lp(vault id) | sender id | recipient id | recipient box pk |
+//                  recipients | sealed
 // The recipient verifies the signature against the sender's signing key BEFORE opening, and only
 // for senders the caller trusts (registered and not revoked, S29), so storage or a relay cannot
 // plant keys.
@@ -31,6 +33,7 @@ import {
   decodeKeyPayload,
   emptyLike,
   encodeKeyPayload,
+  type KeyEntry,
   type Keyring,
 } from "./keys.js";
 import { PUBLIC_KEY_BYTES, SEAL_OVERHEAD, type Sodium } from "./sodium.js";
@@ -38,22 +41,50 @@ import { PUBLIC_KEY_BYTES, SEAL_OVERHEAD, type Sodium } from "./sodium.js";
 export const WRAP_VERSION = 2;
 const WRAP_CONTEXT = utf8("cashu/wrap/v2");
 const WRAP_HEADER_BYTES = 1 + DEVICE_ID_BYTES + SIGNATURE_BYTES;
+/** Most recipients one rotation can list (devices + recovery). */
+export const MAX_WRAP_RECIPIENTS = 1024;
 
 /**
- * Returns the Ed25519 public key of a sender this device trusts (registered and not revoked;
- * for `RECOVERY_SIGNER_ID`, the vault's recovery signing key if the caller accepts it), else undefined.
+ * Returns the Ed25519 public key of a sender this device trusts (certified, registered and not
+ * revoked; for `RECOVERY_SIGNER_ID`, the vault's recovery signing key), else undefined.
  */
 export type TrustedSigner = (deviceId: string) => Uint8Array | undefined;
+
+export interface UnwrapOptions {
+  /**
+   * Checks each new key's claimed epoch against what the caller knows about its sender (S29: the
+   * signed registry's revocation count). Returning false refuses the whole wrap (`untrusted_sender`).
+   */
+  acceptEpoch?: (senderDeviceId: string, entry: KeyEntry) => boolean;
+}
+
+export interface Unwrapped {
+  ring: Keyring;
+  senderDeviceId: string;
+  /** Every device (and `RECOVERY_SIGNER_ID`) the sender wrapped these keys for in this rotation; signed. */
+  recipients: string[];
+}
 
 /** Where wraps for the vault's recovery key are sealed to. */
 export function recoveryRecipient(ring: Keyring): WrapRecipient {
   return { deviceId: RECOVERY_SIGNER_ID, boxPublicKey: ring.recovery.boxPublicKey };
 }
 
+function isRecipientId(id: string): boolean {
+  return isDeviceId(id) || id === RECOVERY_SIGNER_ID;
+}
+
+function encodeRecipients(ids: readonly string[]): Uint8Array {
+  const count = new Uint8Array(2);
+  new DataView(count.buffer).setUint16(0, ids.length);
+  return concat(count, ...ids.map(fromHex));
+}
+
 function signedMessage(
   vaultId: string,
   senderId: Uint8Array,
   recipient: WrapRecipient,
+  recipients: Uint8Array,
   sealed: Uint8Array,
 ): Uint8Array {
   return concat(
@@ -62,23 +93,35 @@ function signedMessage(
     senderId,
     fromHex(recipient.deviceId),
     recipient.boxPublicKey,
+    recipients,
     sealed,
   );
 }
 
 function checkRecipient(recipient: WrapRecipient): void {
-  if (!isDeviceId(recipient.deviceId) && recipient.deviceId !== RECOVERY_SIGNER_ID) {
-    throw new RangeError("recipient device id is invalid");
-  }
+  if (!isRecipientId(recipient.deviceId)) throw new RangeError("recipient device id is invalid");
   if (recipient.boxPublicKey.length !== PUBLIC_KEY_BYTES) {
     throw new RangeError("public key must be 32 bytes");
   }
 }
 
+function checkRecipientList(recipient: WrapRecipient, recipients: readonly string[]): void {
+  if (
+    recipients.length === 0 ||
+    recipients.length > MAX_WRAP_RECIPIENTS ||
+    new Set(recipients).size !== recipients.length ||
+    !recipients.every(isRecipientId) ||
+    !recipients.includes(recipient.deviceId)
+  ) {
+    throw new RangeError("recipients must be distinct valid ids including the recipient");
+  }
+}
+
 /**
  * Seals the ring's keys (all of them, or only `kids`, e.g. just the new generation after a
- * revocation) for one recipient and signs the result as `sender`. Safe to put in a synced folder
- * or a relay.
+ * rotation) for one recipient and signs the result as `sender`. `recipients` lists every device
+ * (and `RECOVERY_SIGNER_ID`) this rotation is wrapped for; it is signed, so S29 can tell whether a
+ * key ever went to a device it has since revoked. Safe to put in a synced folder or a relay.
  */
 export function wrapKeys(
   sodium: Sodium,
@@ -86,8 +129,10 @@ export function wrapKeys(
   sender: DeviceIdentity | RecoveryIdentity,
   recipient: WrapRecipient,
   kids?: readonly string[],
+  recipients: readonly string[] = [recipient.deviceId],
 ): Uint8Array {
   checkRecipient(recipient);
+  checkRecipientList(recipient, recipients);
   const payload = encodeKeyPayload(ring, kids);
   let sealed: Uint8Array;
   try {
@@ -96,18 +141,21 @@ export function wrapKeys(
     payload.fill(0);
   }
   const senderId = fromHex(sender.deviceId);
-  const signature = sender.sign(signedMessage(ring.vaultId, senderId, recipient, sealed));
-  return concat(Uint8Array.of(WRAP_VERSION), senderId, signature, sealed);
+  const list = encodeRecipients(recipients);
+  const signature = sender.sign(signedMessage(ring.vaultId, senderId, recipient, list, sealed));
+  return concat(Uint8Array.of(WRAP_VERSION), senderId, signature, list, sealed);
 }
 
 /**
  * Verifies and opens a signed wrap, then merges its keys under the acceptance policy:
- * - into `target` when it is a Keyring (mutated in place, all or nothing), or
+ * - into `target` when it is a Keyring (mutated in place, all or nothing; a wrap may add at most
+ *   one generation above the highest held, so one wrap cannot flood the ring), or
  * - into a new ring when `target` names the vault and its recovery public keys (a device with no
  *   keys yet, e.g. one recovering from the words).
- * Throws `truncated` / `unsupported_version` (malformed header), `untrusted_sender` (the signer
- * is unknown to `trustedSigner`), `auth_failed` (bad signature, or not sealed for `recipient`),
- * `vault_mismatch`, `recovery_key_mismatch`, `gid_salt_mismatch`, `generation_gap`, `bad_payload`.
+ * Throws `truncated` / `unsupported_version` (malformed header), `untrusted_sender` (signer unknown
+ * to `trustedSigner`, or an epoch refused by `acceptEpoch`), `auth_failed` (bad signature, or not
+ * sealed for `recipient`), `vault_mismatch`, `recovery_key_mismatch`, `gid_salt_mismatch`,
+ * `generation_gap`, `epoch_gap`, `bad_payload`.
  */
 export function unwrapKeys(
   sodium: Sodium,
@@ -115,22 +163,34 @@ export function unwrapKeys(
   recipient: DeviceIdentity | RecoveryIdentity,
   target: Keyring | { vaultId: string; recoveryPublicKey: RecoveryPublicKeys },
   trustedSigner: TrustedSigner,
-): { ring: Keyring; senderDeviceId: string } {
+  options: UnwrapOptions = {},
+): Unwrapped {
   const vaultId = target.vaultId;
   assertVaultId(vaultId);
-  if (wire.length < WRAP_HEADER_BYTES) throw new CryptoError("truncated");
+  if (wire.length < WRAP_HEADER_BYTES + 2) throw new CryptoError("truncated");
   if (wire[0] !== WRAP_VERSION) throw new CryptoError("unsupported_version");
   const senderId = wire.subarray(1, 1 + DEVICE_ID_BYTES);
   const signature = wire.subarray(1 + DEVICE_ID_BYTES, WRAP_HEADER_BYTES);
-  const sealed = wire.subarray(WRAP_HEADER_BYTES);
+  const count = new DataView(wire.buffer, wire.byteOffset + WRAP_HEADER_BYTES, 2).getUint16(0);
+  const listEnd = WRAP_HEADER_BYTES + 2 + count * DEVICE_ID_BYTES;
+  if (wire.length < listEnd) throw new CryptoError("truncated");
+  const list = wire.subarray(WRAP_HEADER_BYTES, listEnd);
+  const sealed = wire.subarray(listEnd);
   const senderDeviceId = toHex(senderId);
-  if (!isDeviceId(senderDeviceId) && senderDeviceId !== RECOVERY_SIGNER_ID) {
-    throw new CryptoError("untrusted_sender");
-  }
+  if (!isRecipientId(senderDeviceId)) throw new CryptoError("untrusted_sender");
   const signPublicKey = trustedSigner(senderDeviceId);
   if (!signPublicKey) throw new CryptoError("untrusted_sender");
-  const message = signedMessage(vaultId, senderId, recipient.recipient, sealed);
+  const message = signedMessage(vaultId, senderId, recipient.recipient, list, sealed);
   if (!verifySignature(signature, message, signPublicKey)) throw new CryptoError("auth_failed");
+
+  // Signed by a trusted sender from here on; a list that does not name this recipient is malformed.
+  const recipients: string[] = [];
+  for (let i = 0; i < count; i++) {
+    recipients.push(toHex(list.subarray(2 + i * DEVICE_ID_BYTES, 2 + (i + 1) * DEVICE_ID_BYTES)));
+  }
+  if (!recipients.includes(recipient.deviceId) || new Set(recipients).size !== count) {
+    throw new CryptoError("bad_payload");
+  }
 
   const payload = openSealed(sodium, sealed, recipient);
   let incoming: Keyring;
@@ -141,16 +201,25 @@ export function unwrapKeys(
   }
   try {
     if (incoming.vaultId !== vaultId) throw new CryptoError("vault_mismatch");
-    if ("recoveryPublicKey" in target) {
-      if (!samePublicKeys(incoming.recovery, target.recoveryPublicKey)) {
+    const existing = "recoveryPublicKey" in target ? undefined : target;
+    const fresh = incoming.entries().filter((e) => !existing?.get(e.kid));
+    if (existing && fresh.some((e) => e.generation > existing.maxGeneration + 1)) {
+      throw new CryptoError("generation_gap");
+    }
+    if (options.acceptEpoch && !fresh.every((e) => options.acceptEpoch?.(senderDeviceId, e))) {
+      throw new CryptoError("untrusted_sender");
+    }
+    if (!existing) {
+      const pinned = (target as { recoveryPublicKey: RecoveryPublicKeys }).recoveryPublicKey;
+      if (!samePublicKeys(incoming.recovery, pinned)) {
         throw new CryptoError("recovery_key_mismatch");
       }
       const ring = emptyLike(incoming);
       ring.merge(incoming);
-      return { ring, senderDeviceId };
+      return { ring, senderDeviceId, recipients };
     }
-    target.merge(incoming);
-    return { ring: target, senderDeviceId };
+    existing.merge(incoming);
+    return { ring: existing, senderDeviceId, recipients };
   } finally {
     incoming.wipe();
   }

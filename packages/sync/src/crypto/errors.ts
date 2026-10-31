@@ -10,6 +10,8 @@ export type CryptoErrorCode =
   | "recovery_key_mismatch"
   | "gid_salt_mismatch"
   | "generation_gap"
+  | "epoch_gap"
+  | "keystore_corrupt"
   | "untrusted_sender"
   | "key_not_allowed"
   | "bad_padding"
@@ -30,6 +32,8 @@ const MESSAGES: Record<CryptoErrorCode, string> = {
   recovery_key_mismatch: "wrapped keys name a different recovery key than this vault",
   gid_salt_mismatch: "wrapped keys carry a different gid salt than this vault",
   generation_gap: "wrapped keys skip a key generation; earlier keys are missing",
+  epoch_gap: "wrapped keys skip a revocation epoch",
+  keystore_corrupt: "a stored key could not be decrypted with this device's storage key",
   untrusted_sender: "wrapped keys come from a sender this device does not trust",
   key_not_allowed: "encrypted data uses a key not allowed for its writer",
   bad_padding: "decrypted data has invalid padding",

@@ -9,6 +9,7 @@ import {
   encodeKeyPayload,
   Keyring,
   MAX_GENERATION,
+  MAX_KEYS_PER_GENERATION,
   mergeKeyPayload,
   rotateKeyring,
 } from "./keys.js";
@@ -130,7 +131,55 @@ describe("acceptance policy", () => {
   });
 });
 
+describe("epochs and flood limits", () => {
+  it("an epoch more than one above the highest held is epoch_gap; rotation cannot jump either", () => {
+    const ring = newRing();
+    expect(
+      code(() =>
+        Keyring.fromKeys(sodium, vaultOf(ring), [
+          { generation: 1, epoch: 0, key: sodium.randomBytes(32) },
+          { generation: 2, epoch: 2, key: sodium.randomBytes(32) },
+        ]),
+      ),
+    ).toBe("epoch_gap");
+    expect(() => rotateKeyring(sodium, ring, { epoch: 2 })).toThrow(RangeError);
+    expect(rotateKeyring(sodium, ring, { epoch: 1 }).epoch).toBe(1);
+  });
+
+  it("an empty ring takes the first key's epoch as its base", () => {
+    const ring = newRing();
+    const late = Keyring.fromKeys(sodium, vaultOf(ring), [
+      { generation: 1, epoch: 7, key: sodium.randomBytes(32) },
+      { generation: 2, epoch: 8, key: sodium.randomBytes(32) },
+    ]);
+    expect(late.active.epoch).toBe(8);
+  });
+
+  it("one generation holds at most MAX_KEYS_PER_GENERATION keys", () => {
+    const ring = newRing();
+    const keys = Array.from({ length: MAX_KEYS_PER_GENERATION + 1 }, () => ({
+      generation: 1,
+      epoch: 0,
+      key: sodium.randomBytes(32),
+    }));
+    // fromKeys takes ownership of (and wipes) the bytes it is given, so each call gets copies.
+    const copies = (n: number) => keys.slice(0, n).map((k) => ({ ...k, key: k.key.slice() }));
+    expect(code(() => Keyring.fromKeys(sodium, vaultOf(ring), copies(keys.length)))).toBe(
+      "bad_payload",
+    );
+    expect(Keyring.fromKeys(sodium, vaultOf(ring), copies(MAX_KEYS_PER_GENERATION)).size).toBe(
+      MAX_KEYS_PER_GENERATION,
+    );
+  });
+});
+
 describe("gid salt (D9)", () => {
+  it("a wiped ring refuses to hand out its salt", () => {
+    const ring = newRing();
+    ring.wipe();
+    expect(code(() => ring.gidSalt())).toBe("wiped");
+  });
+
   it("paired devices and a recovered device derive identical gids; rotation keeps the salt", () => {
     const recovery = createRecoveryKey(sodium);
     const desktop = createKeyring(sodium, recovery.publicKeys);

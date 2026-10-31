@@ -23,7 +23,10 @@ const KID_CONTEXT = utf8("cashu/kid/v2");
 const FRAME_SUBKEY_CONTEXT = utf8("cashu/subkey/frame/v2");
 const KID_SUBKEY_CONTEXT = utf8("cashu/subkey/kid/v2");
 const PAYLOAD_MAGIC = utf8("cashu/keys/v2");
-const MAX_KEYS = 1024;
+/** Keys one generation may hold (devices that rotated concurrently); more is a flood, `bad_payload`. */
+export const MAX_KEYS_PER_GENERATION = 8;
+/** Consistent with the bounds above, so every ring `merge` accepts can be saved and wrapped. */
+const MAX_KEYS = MAX_GENERATION * MAX_KEYS_PER_GENERATION;
 const VAULT_ID = /^[0-9a-f]{32}$/;
 const INSPECT = Symbol.for("nodejs.util.inspect.custom");
 const INTERNAL = Symbol("keyring-internal");
@@ -144,7 +147,7 @@ function checkRecovery(recovery: RecoveryPublicKeys): RecoveryPublicKeys {
 export class Keyring {
   readonly vaultId: string;
   #recovery: RecoveryPublicKeys;
-  #gidSalt: Uint8Array;
+  #gidSalt: Secret;
   #entries = new Map<string, KeyEntry>();
 
   /** Not public API: use `createKeyring` or `Keyring.fromKeys`. */
@@ -154,7 +157,7 @@ export class Keyring {
     if (vault.gidSalt.length !== GID_SALT_BYTES) throw new RangeError("gid salt must be 32 bytes");
     this.vaultId = vault.vaultId;
     this.#recovery = checkRecovery(vault.recovery);
-    this.#gidSalt = vault.gidSalt.slice();
+    this.#gidSalt = new Secret(vault.gidSalt.slice());
   }
 
   /**
@@ -182,7 +185,8 @@ export class Keyring {
    * wipe. Generated with the vault, never rotated, never derived from a data key.
    */
   gidSalt(): Secret {
-    return new Secret(this.#gidSalt.slice());
+    // expose() throws `wiped` after `wipe()`: never derive gids under a zeroed salt.
+    return new Secret(this.#gidSalt.expose().slice());
   }
 
   /** The key new frames are encrypted with: highest (generation, epoch, kid). */
@@ -197,6 +201,12 @@ export class Keyring {
 
   get size(): number {
     return this.#entries.size;
+  }
+
+  get maxEpoch(): number {
+    let max = 0;
+    for (const e of this.#entries.values()) max = Math.max(max, e.epoch);
+    return max;
   }
 
   get maxGeneration(): number {
@@ -218,7 +228,7 @@ export class Keyring {
   clone(sodium: Sodium): Keyring {
     return Keyring.fromKeys(
       sodium,
-      { vaultId: this.vaultId, recovery: this.#recovery, gidSalt: this.#gidSalt },
+      { vaultId: this.vaultId, recovery: this.#recovery, gidSalt: this.#gidSalt.expose() },
       this.entries().map((e) => ({
         generation: e.generation,
         epoch: e.epoch,
@@ -239,14 +249,27 @@ export class Keyring {
     if (!samePublicKeys(other.#recovery, this.#recovery)) {
       throw new CryptoError("recovery_key_mismatch");
     }
-    if (!equalBytes(other.#gidSalt, this.#gidSalt)) throw new CryptoError("gid_salt_mismatch");
+    if (!equalBytes(other.#gidSalt.expose(), this.#gidSalt.expose())) {
+      throw new CryptoError("gid_salt_mismatch");
+    }
     let max = this.maxGeneration;
+    // An empty ring takes its first key's epoch as the base (pairing / recovery initial load).
+    let maxEpoch: number | undefined = this.size > 0 ? this.maxEpoch : undefined;
+    const perGeneration = new Map<number, number>();
+    for (const e of this.#entries.values()) {
+      perGeneration.set(e.generation, (perGeneration.get(e.generation) ?? 0) + 1);
+    }
     const fresh: KeyEntry[] = [];
     for (const e of other.entries()) {
       if (!inBounds(e.generation, e.epoch)) throw new CryptoError("bad_payload");
       if (this.#entries.has(e.kid)) continue;
       if (e.generation > max + 1) throw new CryptoError("generation_gap");
+      if (maxEpoch !== undefined && e.epoch > maxEpoch + 1) throw new CryptoError("epoch_gap");
+      const inGeneration = (perGeneration.get(e.generation) ?? 0) + 1;
+      if (inGeneration > MAX_KEYS_PER_GENERATION) throw new CryptoError("bad_payload");
+      perGeneration.set(e.generation, inGeneration);
       max = Math.max(max, e.generation);
+      maxEpoch = Math.max(maxEpoch ?? e.epoch, e.epoch);
       fresh.push(e);
     }
     for (const e of fresh) {
@@ -278,7 +301,7 @@ export class Keyring {
       e.frameKey.wipe();
     }
     this.#entries.clear();
-    this.#gidSalt.fill(0);
+    this.#gidSalt.wipe();
   }
 
   toJSON(): { vaultId: string; keys: { kid: string; generation: number; epoch: number }[] } {
@@ -333,8 +356,13 @@ export function rotateKeyring(
 ): KeyEntry {
   const active = ring.active;
   const epoch = options.epoch ?? active.epoch;
-  if (!Number.isInteger(epoch) || epoch < active.epoch || epoch > MAX_EPOCH) {
-    throw new RangeError("epoch must be an integer >= the active key's epoch");
+  if (
+    !Number.isInteger(epoch) ||
+    epoch < active.epoch ||
+    epoch > ring.maxEpoch + 1 ||
+    epoch > MAX_EPOCH
+  ) {
+    throw new RangeError("epoch must be an integer from the active key's epoch to the highest + 1");
   }
   const generation = ring.maxGeneration + 1;
   if (generation > MAX_GENERATION) throw new RangeError("generation limit reached");
@@ -349,7 +377,7 @@ export function rotateKeyring(
 
 /**
  * Binary key payload v2:
- *   "cashu/keys/v2" | lp(vault id) | recovery box pk (32) | recovery sign pk (32) | gid salt (32) | u16 count |
+ *   "cashu/keys/v2" | lp(vault id) | recovery box pk (32) | recovery sign pk (32) | gid salt (32) | u32 count |
  *   (u32 generation | u32 epoch | 32-byte key)*
  * It is the plaintext of a wrap and the value kept in a KeyStore. Key ids are not on the wire; the
  * reader recomputes them. The caller wipes the returned bytes once sealed or stored.
@@ -357,8 +385,7 @@ export function rotateKeyring(
 export function encodeKeyPayload(ring: Keyring, kids?: readonly string[]): Uint8Array {
   const chosen = kids ? kids.map((kid) => ring.get(kid) ?? missing()) : ring.entries();
   if (chosen.length === 0 || chosen.length > MAX_KEYS) throw new CryptoError("bad_payload");
-  const count = new Uint8Array(2);
-  new DataView(count.buffer).setUint16(0, chosen.length);
+  const count = u32(chosen.length);
   const { boxPublicKey, signPublicKey } = ring.recovery;
   const gidSalt = ring.gidSalt();
   try {
@@ -400,7 +427,7 @@ export function decodeKeyPayload(sodium: Sodium, payload: Uint8Array): Keyring {
     signPublicKey: r.take(PUBLIC_KEY_BYTES).slice(),
   };
   const gidSalt = r.take(GID_SALT_BYTES).slice();
-  const count = r.u16();
+  const count = r.u32();
   if (count === 0 || count > MAX_KEYS) throw new CryptoError("bad_payload");
   const keys: KeyMaterial[] = [];
   for (let i = 0; i < count; i++) {

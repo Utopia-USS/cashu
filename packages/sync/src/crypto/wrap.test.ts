@@ -159,7 +159,13 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
       t[i] = (t[i] ?? 0) ^ 0x01;
       seen.add(code(() => unwrapKeys(sodium, t, phone.id, phone.ring, trust)));
     }
-    expect([...seen].sort()).toEqual(["auth_failed", "unsupported_version", "untrusted_sender"]);
+    // A flipped recipient count that overruns the wire is truncated before the signature check.
+    expect([...seen].sort()).toEqual([
+      "auth_failed",
+      "truncated",
+      "unsupported_version",
+      "untrusted_sender",
+    ]);
     expect(code(() => unwrapKeys(sodium, wire.subarray(0, 50), phone.id, phone.ring, trust))).toBe(
       "truncated",
     );
@@ -192,6 +198,54 @@ describe.each(backends)("signed wraps (%s)", (_name, sodium: Sodium) => {
     expect(code(() => unwrapKeys(sodium, wire, phone.id, target, trust))).toBe(
       "recovery_key_mismatch",
     );
+  });
+
+  it("one wrap adds at most one generation; the whole ring travels only by pairing", () => {
+    const { devices, trust } = pairedVault(2);
+    const [desktop, phone] = devices as [Device, Device];
+    rotateKeyring(sodium, desktop.ring);
+    rotateKeyring(sodium, desktop.ring);
+    const all = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient);
+    expect(code(() => unwrapKeys(sodium, all, phone.id, phone.ring, trust))).toBe("generation_gap");
+    expect(phone.ring.size).toBe(1);
+    for (const e of desktop.ring.entries().slice(1)) {
+      unwrapKeys(
+        sodium,
+        wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [e.kid]),
+        phone.id,
+        phone.ring,
+        trust,
+      );
+    }
+    expect(phone.ring.active.kid).toBe(desktop.ring.active.kid);
+  });
+
+  it("the signed recipient list comes back and cannot be altered", () => {
+    const { devices, trust } = pairedVault(3);
+    const [desktop, phone, tablet] = devices as [Device, Device, Device];
+    const gen2 = rotateKeyring(sodium, desktop.ring);
+    const list = [phone.id.deviceId, tablet.id.deviceId];
+    const wire = wrapKeys(sodium, desktop.ring, desktop.id, phone.id.recipient, [gen2.kid], list);
+    expect(unwrapKeys(sodium, wire, phone.id, phone.ring.clone(sodium), trust).recipients).toEqual(
+      list,
+    );
+    // Swap the listed tablet id for another id: the signature no longer matches.
+    const altered = wire.slice();
+    const at = 1 + 16 + 64 + 2 + 16;
+    altered.set(Buffer.from(desktop.id.deviceId, "hex"), at);
+    expect(code(() => unwrapKeys(sodium, altered, phone.id, phone.ring, trust))).toBe(
+      "auth_failed",
+    );
+    expect(() =>
+      wrapKeys(
+        sodium,
+        desktop.ring,
+        desktop.id,
+        phone.id.recipient,
+        [gen2.kid],
+        [tablet.id.deviceId],
+      ),
+    ).toThrow(RangeError);
   });
 
   it("wrapping a key id the ring does not hold is refused", () => {

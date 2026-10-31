@@ -91,7 +91,7 @@ describe("cashU format golden vectors", () => {
           ...recovery.box.publicKey,
           ...recovery.signPublicKey,
           ...GID_SALT,
-          ...[0, 1],
+          ...[0, 0, 0, 1],
           ...[0, 0, 0, 1],
           ...[0, 0, 0, 0],
           ...keyBytes,

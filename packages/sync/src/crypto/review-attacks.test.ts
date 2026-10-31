@@ -2,11 +2,11 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { concat, lengthPrefixed, u32, utf8 } from "./encoding.js";
+import { concat, fromHex, lengthPrefixed, u32, utf8 } from "./encoding.js";
 import { CryptoError } from "./errors.js";
 import { openFrame, sealFrame } from "./frame.js";
 import { createDeviceIdentity, type DeviceIdentity } from "./identity.js";
-import { Keyring, rotateKeyring } from "./keys.js";
+import { Keyring, MAX_EPOCH, rotateKeyring } from "./keys.js";
 import { createRecoveryKey, recoveryIdentity } from "./recovery.js";
 import { Secret } from "./secret.js";
 import { code, ctx, GID_SALT, newRing, samplePlain, sodium, testRecovery } from "./testkit.js";
@@ -56,11 +56,19 @@ describe("review attacks now fail", () => {
     const sealed = sodium.seal(forged, phone.box.publicKey);
     const trust = trusting(desktop);
     // No signing key: an unknown sender id, or the desktop's id with a junk signature.
-    const asStranger = concat(Uint8Array.of(2), sodium.randomBytes(16), new Uint8Array(64), sealed);
+    const list = concat(Uint8Array.of(0, 1), Buffer.from(phone.deviceId, "hex"));
+    const asStranger = concat(
+      Uint8Array.of(2),
+      sodium.randomBytes(16),
+      new Uint8Array(64),
+      list,
+      sealed,
+    );
     const asDesktop = concat(
       Uint8Array.of(2),
       Buffer.from(desktop.deviceId, "hex"),
       new Uint8Array(64),
+      list,
       sealed,
     );
     expect(code(() => unwrapKeys(sodium, asStranger, phone, phoneRing, trust))).toBe(
@@ -193,23 +201,69 @@ describe("review attacks now fail", () => {
 describe("revocation races and hygiene", () => {
   it("3 devices: revoke vs concurrent rotate, the revoked device never holds the final active key", () => {
     for (let round = 0; round < 16; round++) {
-      const { ids, rings } = vault(3);
+      const { ids, rings, vaultId } = vault(3);
       const [a, b, r] = ids as [DeviceIdentity, DeviceIdentity, DeviceIdentity];
       const [ringA, ringB, ringR] = rings as [Keyring, Keyring, Keyring];
       const all = trusting(a, b, r);
-      // A revokes R: epoch + 1, wrapped for B only.
+      // A revokes R: epoch + 1, wrapped for B (and itself) only.
       const revoke = rotateKeyring(sodium, ringA, { epoch: 1 });
-      const toB = wrapKeys(sodium, ringA, a, b.recipient, [revoke.kid]);
-      // Concurrently B rotates for its stale view {A, R}.
+      const toB = wrapKeys(sodium, ringA, a, b.recipient, [revoke.kid], [a.deviceId, b.deviceId]);
+      // Concurrently B rotates for its stale view {A, B, R}.
       const plain = rotateKeyring(sodium, ringB);
-      const fromB = [a, r].map((d) => wrapKeys(sodium, ringB, b, d.recipient, [plain.kid]));
-      unwrapKeys(sodium, toB, b, ringB, all);
+      const stale = [a.deviceId, b.deviceId, r.deviceId];
+      const fromB = [a, r].map((d) => wrapKeys(sodium, ringB, b, d.recipient, [plain.kid], stale));
+      const atB = unwrapKeys(sodium, toB, b, ringB, all);
       unwrapKeys(sodium, fromB[0] as Uint8Array, a, ringA, all);
       unwrapKeys(sodium, fromB[1] as Uint8Array, r, ringR, all);
+      // Both remaining devices converge on the revoke key, whose signed recipient list excludes R ...
       expect(ringA.active.kid).toBe(revoke.kid);
       expect(ringB.active.kid).toBe(revoke.kid);
-      expect(ringR.get(revoke.kid)).toBeUndefined();
+      expect(atB.recipients).not.toContain(r.deviceId);
+      // ... and R, which holds B's concurrent key, cannot read what A and B write next.
+      expect(ringR.get(plain.kid)).toBeDefined();
+      const c = ctx(vaultId, { deviceId: a.deviceId });
+      const next = sealFrame(sodium, ringA, samplePlain(), c);
+      expect(code(() => openFrame(sodium, ringR, next, c))).toBe("unknown_key");
     }
+  });
+
+  it("N1: a still-trusted malicious device cannot win the race by claiming a high epoch", () => {
+    const { ids, rings } = vault(3);
+    const [a, b, r] = ids as [DeviceIdentity, DeviceIdentity, DeviceIdentity];
+    const [ringA, ringB] = rings as [Keyring, Keyring, Keyring];
+    const all = trusting(a, b, r);
+    const revoke = rotateKeyring(sodium, ringA, { epoch: 1 });
+    unwrapKeys(sodium, wrapKeys(sodium, ringA, a, b.recipient, [revoke.kid]), b, ringB, all);
+    for (const epoch of [MAX_EPOCH, 5, 3]) {
+      const forged = forgeSignedWrap(r, a, ringA, [
+        { generation: 2, epoch, key: sodium.randomBytes(32) },
+      ]);
+      expect(code(() => unwrapKeys(sodium, forged, a, ringA, all))).toBe("epoch_gap");
+    }
+    expect(ringA.size).toBe(2);
+    expect(ringA.active.kid).toBe(revoke.kid);
+    // Revocation keeps working: the next revoke-rotation is still possible.
+    expect(rotateKeyring(sodium, ringA, { epoch: 2 }).epoch).toBe(2);
+  });
+
+  it("N1: an epoch + 1 claim is accepted only if the acceptEpoch hook (S29 registry) allows it", () => {
+    const { ids, rings } = vault(2);
+    const [a, r] = ids as [DeviceIdentity, DeviceIdentity];
+    const ringA = rings[0] as Keyring;
+    const all = trusting(a, r);
+    const forged = () =>
+      forgeSignedWrap(r, a, ringA, [{ generation: 2, epoch: 1, key: sodium.randomBytes(32) }]);
+    // The registry knows R applied no revocation, so R may not claim epoch 1.
+    const revocationsApplied = new Map([[r.deviceId, 0]]);
+    const acceptEpoch = (sender: string, e: { epoch: number }) =>
+      e.epoch <= (revocationsApplied.get(sender) ?? 0);
+    expect(code(() => unwrapKeys(sodium, forged(), a, ringA, all, { acceptEpoch }))).toBe(
+      "untrusted_sender",
+    );
+    expect(ringA.size).toBe(1);
+    revocationsApplied.set(r.deviceId, 1);
+    unwrapKeys(sodium, forged(), a, ringA, all, { acceptEpoch });
+    expect(ringA.size).toBe(2);
   });
 
   it("structuredClone (IPC) of secrets, rings and identities carries no key bytes", () => {
@@ -249,3 +303,34 @@ describe("revocation races and hygiene", () => {
     }
   });
 });
+
+/** A signed wrap with arbitrary key material, as a malicious but trusted device could build it. */
+function forgeSignedWrap(
+  sender: DeviceIdentity,
+  recipient: DeviceIdentity,
+  ring: Keyring,
+  keys: { generation: number; epoch: number; key: Uint8Array }[],
+): Uint8Array {
+  const payload = concat(
+    utf8("cashu/keys/v2"),
+    lengthPrefixed(utf8(ring.vaultId)),
+    ring.recovery.boxPublicKey,
+    ring.recovery.signPublicKey,
+    ring.gidSalt().expose(),
+    u32(keys.length),
+    ...keys.flatMap((k) => [u32(k.generation), u32(k.epoch), k.key]),
+  );
+  const sealed = sodium.seal(payload, recipient.box.publicKey);
+  const senderId = fromHex(sender.deviceId);
+  const list = concat(Uint8Array.of(0, 1), fromHex(recipient.deviceId));
+  const message = concat(
+    utf8("cashu/wrap/v2"),
+    lengthPrefixed(utf8(ring.vaultId)),
+    senderId,
+    fromHex(recipient.deviceId),
+    recipient.box.publicKey,
+    list,
+    sealed,
+  );
+  return concat(Uint8Array.of(2), senderId, sender.sign(message), list, sealed);
+}
