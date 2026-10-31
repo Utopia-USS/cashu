@@ -320,6 +320,21 @@ include real financial data: tests, fixtures and screenshots use synthetic data
 only. Security issues: [`SECURITY.md`](SECURITY.md). Where the project is going:
 [`ROADMAP.md`](ROADMAP.md).
 
+## TypeScript workspace
+
+A pnpm + turbo monorepo for the TypeScript stack lives next to the Python app (`packages/*`, `apps/*`;
+`frontend/` joins later). Node 22 (`.nvmrc`), strict ESM TypeScript (`tsconfig.base.json`: NodeNext,
+`noUncheckedIndexedAccess`), vitest for tests.
+
+```bash
+pnpm install
+pnpm turbo run typecheck lint test    # or: pnpm check
+pnpm test:all                         # one vitest run over every member
+```
+
+Lint and format use Biome, not ESLint + Prettier: one dependency and one config file for both jobs,
+fast enough to run in every package on every push, and no plugin set to keep compatible.
+
 ---
 
 ## Disclaimers

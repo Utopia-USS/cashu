@@ -1,0 +1,18 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "tasks": {
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "inputs": ["src/**", "tsconfig.json", "package.json", "../../tsconfig.base.json"],
+      "outputs": []
+    },
+    "lint": {
+      "inputs": ["src/**", "package.json", "../../biome.json"],
+      "outputs": []
+    },
+    "test": {
+      "inputs": ["src/**", "spec/**", "package.json", "vitest.config.*"],
+      "outputs": []
+    }
+  }
+}

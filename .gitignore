@@ -75,3 +75,9 @@ CLAUDE.local.md
 
 # Release config of this Mac (scripts/release_macos.sh): names and the public update key; secrets stay in the keychain
 packaging/release.local.env
+
+# --- TypeScript monorepo (pnpm + turbo) -------------------------------------
+node_modules/
+.turbo/
+parity/out/
+**/golden-lab/

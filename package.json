@@ -1,0 +1,25 @@
+{
+  "name": "cashu-ts",
+  "private": true,
+  "type": "module",
+  "description": "cashU TypeScript monorepo (migration lab). Python app and frontend/ live beside it.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:all": "vitest run",
+    "check": "turbo run typecheck lint test",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@types/node": "^22.20.5",
+    "turbo": "^2.11.10",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "packageManager": "pnpm@11.28.9"
+}
