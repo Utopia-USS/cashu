@@ -46,7 +46,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import JSON, and_, delete, func, insert, inspect, or_, select, update
+from sqlalchemy import JSON, Integer, and_, delete, func, insert, inspect, or_, select, update
 from sqlalchemy.orm import object_mapper
 
 from . import sync_keys
@@ -990,14 +990,64 @@ def ack(session, through: int, gids: Iterable[dict] = (), *, now: dt.datetime | 
 GENESIS_SOURCE = "genesis"
 
 
+def _seed_row(conn, name: str, local_id: str) -> dict | None:
+    """The local row a seed entry names (``local_id`` in :func:`_local_id` form), None when absent."""
+    table = IDS.metadata.tables.get(name)
+    if table is None:
+        return None
+    cols = list(table.primary_key.columns)
+    values = local_id.split("|")
+    if len(values) != len(cols):
+        return None
+    where = []
+    for col, raw in zip(cols, values, strict=True):
+        if isinstance(col.type, Integer):
+            if not raw.isdigit():
+                return None
+            where.append(col == int(raw))
+        else:
+            where.append(col == raw)
+    row = conn.execute(select(table).where(*where)).mappings().first()
+    return dict(row) if row is not None else None
+
+
+def _verify_seed_salt(conn, profile_id: int, vault: str, entries: list[dict]) -> None:
+    """F4: the export's DET gids must be the ones Python computes with the vault's keychain salt.
+    Recomputes the first verifiable DET entry (a ``profile_modules`` one first; refs resolve through
+    the file itself) and raises ``ValueError`` when the salt is missing, the gid differs or no entry
+    can be recomputed from local data."""
+    salt = sync_keys.gid_salt(vault)
+    if salt is None:
+        raise ValueError("the keychain holds no gid salt for this vault; store it before seeding")
+    st = _State()
+    st.salts[profile_id] = salt
+    for e in entries:
+        if e.get("table") != "profiles":
+            st.gids[(profile_id, e["table"], e["localId"])] = e["gid"]
+    det = [e for e in entries if e.get("table") != "profiles" and SPECS[e["table"]].gid == "det"]
+    det.sort(key=lambda e: e["table"] != "profile_modules")
+    for e in det:
+        row = _seed_row(conn, e["table"], e["localId"])
+        if row is None or _profile_of(conn, st, e["table"], row, IDS.metadata) != profile_id:
+            continue
+        computed = _det_gid(conn, st, e["table"], row, profile_id)
+        if computed is None:
+            continue
+        if computed != e["gid"]:
+            raise ValueError("the export's gids do not match this vault's keychain salt; nothing was seeded")
+        return
+    raise ValueError("no entry of the ids file can be recomputed to verify the gid salt; nothing was seeded")
+
+
 def seed_ids(session, profile_id: int, rows: Iterable[dict]) -> dict:
     """Seed ``sync_ids`` (and the vault link) of one profile from the genesis exporter's ``ids.jsonl``
     (S26): ``{"table", "localId", "gid"}`` per exported row, ``localId`` in :func:`_local_id` form;
     the ``profiles`` entry carries the vault id and must name ``profile_id``. All or nothing: every
     entry is classified first (held = kept; a row or gid mapped to something else, in the map or twice
     in the file, = conflict) and on any conflict nothing is written. Idempotent for the same vault.
-    Returns counts (never values). Raises ``ValueError`` on a malformed file, another profile's file
-    or a profile already linked to another vault (never relinked silently)."""
+    Returns counts (never values). Raises ``ValueError`` on a malformed file, another profile's file,
+    a profile already linked to another vault (never relinked silently) or a gid salt that is missing
+    from the keychain or does not reproduce the export's DET gids (:func:`_verify_seed_salt`)."""
     conn = session.connection()
     entries = list(rows)
     vaults = [e for e in entries if e.get("table") == "profiles"]
@@ -1049,6 +1099,7 @@ def seed_ids(session, profile_id: int, rows: Iterable[dict]) -> dict:
             out["conflicts"] += 1
         else:
             fresh.append((name, local_id, gid))
+    _verify_seed_salt(conn, profile_id, vault, [e for e in entries if e.get("table") != "profiles"])
     if out["conflicts"]:
         return out
     for name, local_id, gid in fresh:
