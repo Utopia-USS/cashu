@@ -81,7 +81,11 @@ function redactEntry(
     throw e;
   }
   try {
-    leakCheck(data, { strict: redactor.strict, isins: redactor.isins });
+    leakCheck(data, {
+      strict: redactor.strict,
+      isins: redactor.isins,
+      nonMoney: redactor.nonMoney,
+    });
   } catch (e) {
     if (e instanceof LeakDetected) return { error_kind: "privacy_check" };
     throw e;

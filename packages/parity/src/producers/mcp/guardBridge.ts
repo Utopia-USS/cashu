@@ -19,6 +19,8 @@ interface BridgeProvider {
   readonly persons: readonly string[];
   readonly private: readonly string[];
   readonly aliases: readonly (readonly [string, string])[];
+  /** Digit-only tickers of the profile's instruments (S37fix R5; absent in older bridge files). */
+  readonly symbols?: readonly string[];
 }
 
 interface BridgeFile {
@@ -47,6 +49,7 @@ export function readGuardBridge(dataset: Dataset, root: string = labRoot()): Gua
         persons: p.persons,
         privatePayees: p.private,
         strictAliases: p.aliases,
+        knownSymbols: p.symbols ?? [],
       }));
     },
   };

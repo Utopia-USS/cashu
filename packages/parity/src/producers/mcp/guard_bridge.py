@@ -48,6 +48,7 @@ def guard_sources(ctx) -> dict:
             strong = getattr(module, "strong_names", lambda *_: set())(ctx.session, p.id)
             persons, private = module.name_sources(ctx.session, p.id)
             aliases = getattr(module, "strict_aliases", lambda *_: [])(ctx.session, p.id)
+            symbols = getattr(module, "known_symbols", lambda *_: set())(ctx.session, p.id)
             providers.append(
                 {
                     "provider": provider.rsplit(".", 1)[-1],
@@ -55,6 +56,7 @@ def guard_sources(ctx) -> dict:
                     "persons": sorted(persons),
                     "private": sorted(private),
                     "aliases": [list(a) for a in aliases],
+                    "symbols": sorted(symbols),  # S37fix R5: digit-only tickers
                 }
             )
         ctx.session.rollback()

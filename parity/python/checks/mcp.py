@@ -113,10 +113,19 @@ def _run_all(ctx: Ctx) -> dict:
                         data = redactor.apply(tree)
                         if not isinstance(data, dict):
                             raise UnlabelledValue("a tool must return an object")
-                        leak_check(data, strict=redactor.strict, isins=redactor.isins)
+                        leak_check(
+                            data,
+                            strict=redactor.strict,
+                            isins=redactor.isins,
+                            non_money=redactor.non_money,
+                        )
                         entry["redacted"] = canon_.value(data, f"$.{name}")
                 except ToolError as e:
-                    message = scrub_text(str(e), strict=True, guard=_safe_guard(s, p))
+                    message = scrub_text(str(e), strict=not e.system, guard=_safe_guard(s, p))
+                    try:  # the server's final check on error text (S37fix F13)
+                        leak_check({"error": message}, strict=True)
+                    except LeakDetected:
+                        message = "the error text was withheld by the privacy check"
                     entry = {"error": message, "error_kind": e.kind}
                 except LeakDetected:
                     entry = {"error_kind": "privacy_check", "raw": entry.get("raw")}
