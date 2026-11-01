@@ -164,9 +164,15 @@ export const commitImport = defineCommand({
     //    of the same figures writes nothing (S31a F2); changed figures are written again.
     //    PARITY(S22b): the fold keeps the first applied snapshot of a row key (CREATE, events.md 8.5)
     //    while Python updates the row; the writer already emits the change (follow-up: LWW-F).
-    const positions = plan.positions
-      .map((p) => ({ ...p.position, instrument: resolve(p.position.instrumentId, mapping) }))
-      .filter((p) => !sameSnapshot(ctx, account, p));
+    // Two lines of one file for the same instrument and date: the last one wins (Python's upsert).
+    const lastLines = new Map<string, BrokerPosition & { readonly instrument: string }>();
+    for (const p of plan.positions) {
+      const instrument = resolve(p.position.instrumentId, mapping);
+      const key = `${instrument}|${p.position.asOf}`;
+      lastLines.delete(key);
+      lastLines.set(key, { ...p.position, instrument });
+    }
+    const positions = [...lastLines.values()].filter((p) => !sameSnapshot(ctx, account, p));
 
     // 4. Renames, once per (date, old, new).
     const renames: { g: string; rename: InstrumentRename }[] = [];

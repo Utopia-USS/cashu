@@ -505,6 +505,56 @@ describe("import service (S22b)", () => {
     expect(preview(s, twice).plan?.rows.map((r) => r.isDuplicate)).toEqual([true, false]);
   });
 
+  it("the same trades through another importer are duplicates (content rows carry no broker)", async () => {
+    const s = setup();
+    const canonical = text([
+      HEADER,
+      "1,txn,2026-01-05,,deposit,,,,,,,,PLN,,,,1000,,,,examplebroker",
+      "1,txn,2026-01-06,,buy,,ABC,,,XWAR,2,50,PLN,100,,,-100,,,,examplebroker",
+    ]);
+    await importFile(s, canonical);
+    const again = preview(s, GENERIC_FILE, "gen.csv", {
+      importer: "generic_csv",
+      mappingYaml: GENERIC,
+    });
+    expect(again.plan?.rows.map((r) => r.isDuplicate)).toEqual([true, true]);
+  });
+
+  it("two position lines of one file for the same instrument and date: the last one wins", async () => {
+    const s = setup();
+    await importFile(
+      s,
+      text([HEADER, ...ROWS, ...positionRows(20).slice(2), ...positionRows(25).slice(2)]),
+    );
+    const rows = latestPositionSnapshot(read(s.v), s.account).rows;
+    expect(rows.map((r) => r.quantity)).toEqual(["25"]);
+    expect(s.p.archived.size).toBe(1);
+  });
+
+  it("an import refused at commit archives nothing", async () => {
+    const s = setup();
+    const bad = new TextEncoder().encode("not,an,export\n1,2,3\n");
+    const staged = await previewAndStage(
+      { store: s.v.store, staging: s.p.staging, env: s.v.env },
+      { file: { name: "x.csv", content: bad }, account: s.account },
+    );
+    if (!staged.ok) throw new Error(staged.reason);
+    const deps = {
+      store: s.v.store,
+      staging: s.p.staging,
+      archive: s.p.archive,
+      writer: s.writer,
+      env: s.v.env,
+    };
+    expect(
+      await commitStaged(deps, { fileId: staged.fileId, fileName: "x.csv", account: s.account }),
+    ).toEqual({
+      ok: false,
+      reason: "cannot_commit",
+    });
+    expect(s.p.archived.size).toBe(0);
+  });
+
   it("the merge record supplies the merged-away instrument gids to the dedup", async () => {
     const s = setup();
     const a = s.v.value(createInstrument, {

@@ -6,6 +6,7 @@
 // event log, only its blob reference. Imports run on the fetch leader (lead decision D, S64: another
 // device hands the file over instead, see the scope's follow-up).
 import { type CommandEnv, type EventWriter, runCommand } from "../../command.js";
+import { accountByMemberGid } from "../../core/queries.js";
 import type { Store } from "../../materialize.js";
 import { archiveExtension, type CommitResult, commitImport } from "../commands/imports.js";
 import {
@@ -13,6 +14,7 @@ import {
   type ImportRequest,
   previewImport,
 } from "../queries/import-preview.js";
+import type { Read } from "../queries/shared.js";
 
 /** An encrypted content-addressed blob reference (events.md 8.5 `archive`). */
 export interface BlobRef {
@@ -60,7 +62,9 @@ export async function previewAndStage(
 ): Promise<StagedPreview> {
   if (request.file.content.length === 0) return { ok: false, reason: "empty_file" };
   const now = new Date(deps.env.clock.now()).toISOString();
-  const result = previewImport((sql, ...p) => deps.store.read(sql, ...p), request, now);
+  const read: Read = (sql, ...p) => deps.store.read(sql, ...p);
+  const account = accountByMemberGid(read, request.account)?.gid ?? request.account;
+  const result = previewImport(read, { ...request, account }, now);
   if (!result.ok) return result;
   const ext = archiveExtension(request.file.name);
   // A connector import stages its converted document: the commit never runs the connector again.
@@ -95,6 +99,17 @@ export async function commitStaged(
   const ext = archiveExtension(request.fileName);
   const content = await deps.staging.get(request.fileId, ext);
   if (content === null) return { ok: false, reason: "no_staged_file" };
+  // Python never archives a file whose re-preview cannot commit: check before the blob is written
+  // (the command checks again against the view it writes to).
+  const read: Read = (sql, ...p) => deps.store.read(sql, ...p);
+  const account = accountByMemberGid(read, request.account)?.gid ?? request.account;
+  const checked = previewImport(
+    read,
+    { ...request, account, file: { name: request.fileName, content } },
+    new Date(deps.env.clock.now()).toISOString(),
+  );
+  if (!checked.ok) return checked;
+  if (!checked.preview.canCommit) return { ok: false, reason: "cannot_commit" };
   const archive = await deps.archive.put(content, ext);
   const out = runCommand(
     deps.store,
