@@ -1,10 +1,11 @@
 // The client side of the store bindings: what `useQuery` / `useCommand` talk to. One client serves the
 // device store and every vault open on this device; a `Target` names which one. Two adapters fill it:
-// in-process (the phone, tests: synchronous reads, never suspends) and a MessagePort to the desktop's
-// store process (asynchronous first read, snapshots pushed afterwards).
+// in-process (the phone, tests: synchronous reads, never suspends) and a MessagePort that Electron main
+// relays to the local host (asynchronous first read, snapshots pushed afterwards).
 import type { Command, CommandResult } from "@cashu/store";
 import type { DeviceCommand } from "@cashu/store/device";
 import type { Query, QueryArgs } from "@cashu/store/query";
+import type { ConnectionSource } from "./connection.js";
 
 /** The store a query or command runs against: the device store, or one vault's store. */
 export type Target =
@@ -57,6 +58,8 @@ export interface StoreClient {
   readonly vaults: readonly string[];
   /** Whether a first read waits for another process (the desktop renderer) and may suspend. */
   readonly async: boolean;
+  /** The link to the process that runs the store (always `online` in process). */
+  readonly connection: ConnectionSource;
   entry<A extends QueryArgs, R>(target: Target, query: Query<A, R>, args: A): QueryEntry<R>;
   run<I, R, In>(
     target: Target,
@@ -65,7 +68,7 @@ export interface StoreClient {
   ): Promise<CommandResult<R>>;
 }
 
-/** A message channel (a DOM / Node MessagePort, Electron's MessagePortMain), adapted by the app. */
+/** A message channel (a DOM / Node MessagePort), adapted by the app. */
 export interface Channel {
   post(message: unknown): void;
   listen(handler: (message: unknown) => void): () => void;

@@ -1,30 +1,63 @@
-// The asynchronous adapter: the desktop renderer talks to the store process over a MessagePort. A
-// query is subscribed by id (the store process runs it and pushes a snapshot after every change that
-// touched its tables), so the first read waits one hop and `useQuery` suspends once; commands go by id
-// and come back as their result union, or as a `RemoteStoreError` for an unexpected failure.
-import type { CommandResult } from "@cashu/store";
+// The asynchronous adapter: the desktop renderer talks to the local host over a MessagePort that
+// Electron main relays into its `ui` session (store channel v2, @cashu/host-protocol/store). A query is
+// subscribed by id (the host runs it and pushes a snapshot after every change that touched its tables),
+// so the first read waits one hop and `useQuery` suspends once; commands go by id with an idempotency
+// key minted once per command, and come back as their result union, or as a `RemoteStoreError` for an
+// unexpected failure.
+//
+// The host can go away while the window is open (killed, crashed, replaced by an update). Main then
+// says so with `link` messages and reconnects (starting a host when none answers). Meanwhile the
+// snapshots stay as they are (stale) and new subscriptions and commands wait. When the new session
+// announces itself (`ready`), every live subscription is sent again and every command still waiting
+// for its answer is sent again with the same key: the host answers a command it already committed from
+// its request table, so a command is never lost and never applied twice.
+
 import {
   decodeValue,
   type JsonValue,
-  PROTOCOL_VERSION,
-  RemoteStoreError,
-  type ToClient,
-  type ToHost,
-  toClientSchema,
+  type LinkState,
+  type RelayToClient,
+  relayToClientSchema,
+  STORE_PROTOCOL_VERSION,
+  type StoreToHost,
   toJson,
-} from "../protocol/index.js";
+} from "@cashu/host-protocol/store";
+import type { CommandResult } from "@cashu/store";
+import { mintUlid } from "@cashu/store";
 import { type CacheOptions, QueryCache } from "./cache.js";
+import { ConnectionState, type ConnectionStatus } from "./connection.js";
+import { RemoteStoreError } from "./errors.js";
 import type { Adapter, Channel, Sink } from "./types.js";
 
-export interface PortClientOptions extends Omit<CacheOptions, "async"> {
+export interface PortClientOptions extends Omit<CacheOptions, "async" | "connection"> {
   /**
-   * A message from the store process that does not validate (a version skew or a bug). Default:
-   * thrown from the message handler, where the renderer's global error handler records it.
+   * A message from the relay that does not validate (a version skew or a bug). Default: thrown from
+   * the message handler, where the renderer's global error handler records it.
    */
   readonly onProtocolError?: (error: unknown) => void;
+  /** How long `recovered` is shown after the host came back, before `online` (default 4 s). */
+  readonly recoveredMs?: number;
+  /** Mints a command's idempotency key (default: a ULID of now). */
+  readonly mintKey?: () => string;
+  /**
+   * Every status change, also before the client exists (the first connect may have to start the
+   * host); React code reads `useConnection()` instead.
+   */
+  readonly onStatus?: (status: ConnectionStatus) => void;
 }
 
-/** Connect to a store process; resolves once it announced itself (`ready`). */
+const DEFAULT_RECOVERED_MS = 4_000;
+
+const LINK_STATUS: Readonly<Record<Exclude<LinkState, "connected">, ConnectionStatus>> = {
+  connecting: "connecting",
+  starting: "starting",
+  unavailable: "unavailable",
+};
+
+type Run = Extract<StoreToHost, { t: "run" }>;
+type Sub = Extract<StoreToHost, { t: "sub" }>;
+
+/** Connect through the relay; resolves once the host announced itself (`ready`). */
 export function createPortClient(
   channel: Channel,
   options: PortClientOptions = {},
@@ -34,54 +67,106 @@ export function createPortClient(
     ((error: unknown) => {
       throw error;
     });
-  const subs = new Map<number, Sink>();
+  const mintKey = options.mintKey ?? (() => mintUlid(Date.now()));
+  const recoveredMs = options.recoveredMs ?? DEFAULT_RECOVERED_MS;
+  const connection = new ConnectionState("connecting");
+  if (options.onStatus) connection.subscribe(() => options.onStatus?.(connection.getSnapshot()));
+
+  const subs = new Map<number, { readonly sink: Sink; readonly message: Sub }>();
   const runs = new Map<
     number,
-    { resolve(r: CommandResult<unknown>): void; reject(e: unknown): void }
+    {
+      readonly message: Run;
+      resolve(r: CommandResult<unknown>): void;
+      reject(e: unknown): void;
+    }
   >();
   let nextId = 0;
-  const post = (message: ToHost) => channel.post(message);
+  /** True between a session's `ready` and the next link loss: only then do messages go out. */
+  let live = false;
+  let lost = false;
+  let recoveredTimer: ReturnType<typeof setTimeout> | undefined;
+  const post = (message: StoreToHost) => {
+    if (live) channel.post(message);
+  };
+
+  const onLink = (state: LinkState) => {
+    if (state === "connected") return; // the session's `ready` follows
+    if (live) lost = true;
+    live = false;
+    clearTimeout(recoveredTimer);
+    connection.set(LINK_STATUS[state]);
+  };
 
   return new Promise((resolveClient) => {
     let client: QueryCache | null = null;
-    const handle = (message: ToClient): void => {
+
+    const onReady = (vaults: readonly string[]) => {
+      live = true;
+      if (client === null) {
+        connection.set("online");
+        const adapter: Adapter = {
+          vaults,
+          open(target, query, args, sink) {
+            const sid = nextId++;
+            const message: Sub = { t: "sub", sid, target, query: query.id, args: toJson(args) };
+            subs.set(sid, { sink, message });
+            post(message);
+            return () => {
+              if (subs.delete(sid)) post({ t: "unsub", sid });
+            };
+          },
+          run(target, command, input) {
+            const rid = nextId++;
+            let payload: JsonValue;
+            try {
+              payload = toJson(input);
+            } catch (error) {
+              return Promise.reject(error);
+            }
+            const message: Run = {
+              t: "run",
+              rid,
+              key: mintKey(),
+              target,
+              command: command.id,
+              input: payload,
+            };
+            return new Promise((resolve, reject) => {
+              runs.set(rid, { message, resolve, reject });
+              post(message);
+            });
+          },
+        };
+        client = new QueryCache(adapter, { ...options, async: true, connection });
+        resolveClient(client);
+        return;
+      }
+      // A new session (the host came back, or a new host took over): it knows nothing of ours.
+      for (const { message } of subs.values()) post(message);
+      for (const { message } of runs.values()) post(message);
+      if (lost) {
+        lost = false;
+        connection.set("recovered");
+        recoveredTimer = setTimeout(() => connection.set("online"), recoveredMs);
+      } else {
+        connection.set("online");
+      }
+    };
+
+    const handle = (message: RelayToClient): void => {
       switch (message.t) {
-        case "ready": {
-          if (client !== null) return;
-          const adapter: Adapter = {
-            vaults: message.vaults,
-            open(target, query, args, sink) {
-              const sid = nextId++;
-              subs.set(sid, sink);
-              post({ t: "sub", sid, target, query: query.id, args: toJson(args) });
-              return () => {
-                subs.delete(sid);
-                post({ t: "unsub", sid });
-              };
-            },
-            run(target, command, input) {
-              const rid = nextId++;
-              let payload: JsonValue;
-              try {
-                payload = toJson(input);
-              } catch (error) {
-                return Promise.reject(error);
-              }
-              return new Promise((resolve, reject) => {
-                runs.set(rid, { resolve, reject });
-                post({ t: "run", rid, target, command: command.id, input: payload });
-              });
-            },
-          };
-          client = new QueryCache(adapter, { ...options, async: true });
-          resolveClient(client);
+        case "link":
+          onLink(message.state);
           return;
-        }
+        case "ready":
+          onReady(message.vaults);
+          return;
         case "value":
-          subs.get(message.sid)?.value(decodeValue(message.value));
+          subs.get(message.sid)?.sink.value(decodeValue(message.value));
           return;
         case "error":
-          subs.get(message.sid)?.error(new RemoteStoreError(message.error));
+          subs.get(message.sid)?.sink.error(new RemoteStoreError(message.error));
           return;
         case "result": {
           const pending = runs.get(message.rid);
@@ -102,9 +187,11 @@ export function createPortClient(
       }
     };
     channel.listen((raw) => {
-      const parsed = toClientSchema.safeParse(raw);
+      const parsed = relayToClientSchema.safeParse(raw);
       if (!parsed.success) {
-        onProtocolError(new Error(`invalid store port message (protocol ${PROTOCOL_VERSION})`));
+        onProtocolError(
+          new Error(`invalid store channel message (protocol ${STORE_PROTOCOL_VERSION})`),
+        );
         return;
       }
       try {

@@ -5,6 +5,7 @@
 // the previous one, and an unchanged value notifies nobody.
 import type { CommandResult } from "@cashu/store";
 import { type Query, type QueryArgs, queryKey } from "@cashu/store/query";
+import { ALWAYS_ONLINE, type ConnectionSource } from "./connection.js";
 import { replaceEqual } from "./structural.js";
 import type {
   Adapter,
@@ -22,6 +23,8 @@ export interface CacheOptions {
   readonly lingerMs?: number;
   /** How long an entry opened by a render that never subscribed stays open (default 10 s). */
   readonly idleMs?: number;
+  /** The link to the store's process (default: always online, the in-process client). */
+  readonly connection?: ConnectionSource;
 }
 
 function targetKey(target: Target): string {
@@ -176,6 +179,7 @@ export class QueryCache implements StoreClient {
   readonly async: boolean;
   readonly lingerMs: number;
   readonly idleMs: number;
+  readonly connection: ConnectionSource;
   readonly #entries = new Map<string, Entry<unknown>>();
 
   constructor(adapter: Adapter, options: CacheOptions) {
@@ -183,6 +187,7 @@ export class QueryCache implements StoreClient {
     this.async = options.async;
     this.lingerMs = options.lingerMs ?? 1_000;
     this.idleMs = options.idleMs ?? 10_000;
+    this.connection = options.connection ?? ALWAYS_ONLINE;
   }
 
   get vaults(): readonly string[] {

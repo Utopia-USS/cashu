@@ -813,11 +813,9 @@
                       "@cashu/market",
                       "@cashu/market/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**",
-                      "@cashu/host-protocol",
-                      "@cashu/host-protocol/**"
+                      "@cashu/node-host/**"
                     ],
-                    "message": "packages/store-react may import only @cashu/domain and @cashu/store: it binds the store to React and carries the store port, nothing of the UI. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
+                    "message": "packages/store-react may import only @cashu/domain, @cashu/store and @cashu/host-protocol: it binds the store to React and carries the renderer's store channel to the local host, nothing of the UI. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
                   {
                     "group": [

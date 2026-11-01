@@ -3,7 +3,7 @@ name: cashu-ts-architecture
 description: |
   Architecture of the cashU TypeScript stack: package layers and dependency direction, module boundaries, the headless screen hook + pure View pattern for the Electron desktop and the Expo app, data flow over the local event store (live useQuery, commands, forms), errors, money and TypeScript conventions, performance budgets, how each layer is tested and which machine check enforces which rule.
 
-  Applicability - POSITIVE: any TypeScript in packages/ or apps/ of the cashU monorepo: domain ports, store events / materializers / queries / commands, sync, ui-logic feature hooks, screen hooks and route files on desktop and mobile, Electron main / utility process / preload, MCP / CLI / API code; reviewing such code; reading a `pnpm arch:check` or check-file.sh failure.
+  Applicability - POSITIVE: any TypeScript in packages/ or apps/ of the cashU monorepo: domain ports, store events / materializers / queries / commands, sync, ui-logic feature hooks, screen hooks and route files on desktop and mobile, Electron main / preload, the local host (apps/host), MCP / CLI / API code; reviewing such code; reading a `pnpm arch:check` or check-file.sh failure.
 
   Applicability - NEGATIVE: NOT what a View looks like (tokens, components, Storybook, copy: cashu-ui), NOT Expo / React Native platform mechanics (expo-* and Callstack skills), NOT the Python app under src/cashu, the legacy frontend/ SPA, or the shipped product skills in .claude/skills.
 ---
@@ -81,7 +81,7 @@ Details, module folders, exports maps, where processes run: [layers.md](referenc
 |---|---|---|---|
 | [layers.md](references/layers.md) | pattern | CRITICAL | Packages, module folders, exports maps, allowed imports, platform code, which process runs what |
 | [screen-hook-view.md](references/screen-hook-view.md) | pattern | CRITICAL | Route file + screen hook + pure View, feature hooks in ui-logic, Suspense and error boundaries, typed routes |
-| [data-flow.md](references/data-flow.md) | pattern | CRITICAL | `useQuery` on `useSyncExternalStore`, table-based invalidation, `useCommand`, forms, global state, Electron store process |
+| [data-flow.md](references/data-flow.md) | pattern | CRITICAL | `useQuery` on `useSyncExternalStore`, table-based invalidation, `useCommand`, forms, global state, the desktop store channel to the local host |
 | [typescript.md](references/typescript.md) | pattern | HIGH | Strictness, branded ids, unions, zod boundaries, errors, money, compiler idioms, naming |
 | [performance.md](references/performance.md) | cheatsheet | HIGH | Written budgets, virtualization, compiler, measuring |
 | [testing.md](references/testing.md) | pattern | HIGH | What to test per layer and how |

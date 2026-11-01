@@ -17,10 +17,6 @@ export const STATE_FILE = "desktop.json";
 export const LOG_FILE = "electron.log";
 /** Subdirectory of the data dir that holds Electron's profile (cookies, cache, single-instance lock). */
 export const USER_DATA_SUBDIR = "desktop-electron";
-/** Subdirectory of the data dir that holds the TS store (device database, vault databases). */
-export const STORE_SUBDIR = "store";
-/** The bundled store process entry next to main.js (scripts/build-store.mjs). */
-export const STORE_PROCESS_ENTRY = "store-process.mjs";
 
 /** Environment variables of the shell (everything else is the sidecar's own CASHU_* contract). */
 export const ENV = {
@@ -41,12 +37,6 @@ export const ENV = {
   noTray: "CASHU_DESKTOP_NO_TRAY",
   /** Pin the UI language (`pl` / `en`); default: the OS locale. */
   lang: "CASHU_LANG",
-  /**
-   * `1`: also start the TS store process (utility process) on a synthetic demo vault in
-   * `<data dir>/store`, and hand the window a store port when it asks. TRANSITIONAL(S55a):
-   * the dev flag goes when the first TS screen reads the store.
-   */
-  store: "CASHU_DESKTOP_STORE",
 } as const;
 
 /** The repo checkout this dev shell runs from (apps/desktop/{src,dist} -> repo root). */

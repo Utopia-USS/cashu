@@ -2,8 +2,9 @@
 //   pnpm --filter @cashu/desktop dev
 // Seed the demo data dir first (once, never with --force):
 //   .venv/bin/python scripts/demo_data.py --data-dir ~/cashu-lab/desktop-demo
-// With CASHU_DESKTOP_STORE=1 the TS store process also starts, on a synthetic demo vault in
-// <data dir>/store (TRANSITIONAL(S55a)).
+// A page that asks for a store port gets one relayed to the data dir's local host (apps/host), started
+// on demand on a synthetic demo vault in <data dir>/stores; it lingers while idle, then exits by itself
+// (`node --import tools/node-ts/resolveTs.ts apps/host/src/cli.ts stop --data-dir <dir>` stops it).
 import { spawn, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";

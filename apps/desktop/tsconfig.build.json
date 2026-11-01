@@ -6,6 +6,5 @@
     "rootDir": "src",
     "sourceMap": true
   },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/storeProcess"]
+  "include": ["src/preload.cts"]
 }

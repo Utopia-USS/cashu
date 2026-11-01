@@ -25,10 +25,11 @@ if (electron.ipcRenderer.sendSync("cashu:bridge-allowed") === true) {
     },
   });
 
-  // Store port (TRANSITIONAL(S55a): the main process answers only with
-  // CASHU_DESKTOP_STORE=1). A MessagePort cannot cross the context bridge, so the page asks with
+  // Store port: the renderer's store channel, which the main process relays to the local host. A
+  // MessagePort cannot cross the context bridge, so the page asks with
   // `window.postMessage({ cashu: "store-port-request" })` and receives the port the same way, from
-  // this frame's own origin; the main process checks the sending frame again before it routes a port.
+  // this frame's own origin; the main process checks the sending frame again before it opens a host
+  // session for it.
   const page = (globalThis as { window?: PageWindow }).window;
   page?.addEventListener("message", (event) => {
     const data = event.data as { cashu?: unknown } | null;

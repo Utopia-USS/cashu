@@ -57,9 +57,9 @@ Need data from another module? Use its public `index.ts`, or move the shared con
 - A rule that stays the same with a different UI (net worth, transfer matching, a signal) -> `domain`.
 - Turning events into rows, or reading rows -> `store` (materializer / query).
 - "When the user taps X, record Y" -> a `store` command, called from a screen hook (`useCommand`).
-- Live reads in React, the store client, the port between renderer and store process -> `store-react`
-  (React-free subpaths: `./client` for the renderer, `./local` for an in-process engine, `./host` for
-  the store process, `./protocol` for both ends).
+- Live reads in React, the store client and its connection status -> `store-react` (React-free
+  subpaths: `./client` for the desktop renderer, which speaks the host's store channel v2
+  (`@cashu/host-protocol/store`) through main's relay; `./local` for an in-process engine).
 - Device-local app state (current profile, device settings) -> the device store
   (`@cashu/store/device`), read with `useQuery`, written by device commands; never synced.
 - A data need two screens (or two platforms) share -> a feature hook in `ui-logic`.
@@ -83,16 +83,15 @@ client over an authenticated Unix socket (`@cashu/host-protocol`, platform glue 
 | Process | Runs | Talks to |
 |---|---|---|
 | Local host (`apps/host`, S56a2; one per data dir, started on demand by its first client, lingers when idle) | holds the machine lock (`run/host.lock.db`) for life; vault and device stores (exclusive SQLite open that requires the lock), materializer, sync, the worker, MCP sessions, the CLI command tree; keys through the OS keychain module | every client over `<data dir>/run/host.sock` (0600, never TCP): length-prefixed JSON frames, mutual HMAC handshake, role-bound sessions (`ui`, `mcp`, `cli`, `admin`) |
-| Electron main | windows, tray, menus, deep links, auto-update; one host connection per renderer frame, relayed without parsing (S56b) | renderer over the typed preload bridge; the host as a `ui` client |
+| Electron main (`apps/desktop`) | windows, tray, menus, deep links, auto-update; one host session per renderer frame (`HostRelay`), relayed without parsing; starts the host when none answers (detached, Electron in Node mode) | renderer over the typed preload bridge and its store MessagePort; the host as a `ui` client |
 | Electron renderer (sandboxed, `contextIsolation`) | React UI only; never opens SQLite | the host's store channel v2 (`@cashu/host-protocol/store`) through main's relay |
 | `cashu` shim (CLI, `cashu mcp`; S56d) | data dir resolution, connect-or-start, stdio / argv relay | the host as a `cli` or `mcp` client |
 | Expo app (Hermes) | UI and the store engine in-process (sync SQLite driver) | the relay / folder transport |
-| Electron utility process (`apps/desktop/src/storeProcess`, behind `CASHU_DESKTOP_STORE=1`; replaced by the host in S56b) | today's store engine for the store-backed renderer | renderer over a `MessagePort` (`serveStore`, store protocol v1) |
 
 Only the host (and the Expo app, in-process) opens stores. depcruise `only-host-opens-stores`: an app
 other than `apps/host` and `apps/mobile` imports no SQLite binding (`node:sqlite`, `better-sqlite3`,
 `expo-sqlite`, op-sqlite) and not node-host's driver entry (`@cashu/node-host/sqlite`); test code is
-exempt. Marked exceptions until their scopes land: the S53 utility process (TRANSITIONAL(S56b)), the
+exempt. Marked exceptions until their scopes land: the
 sync daemon's harness and its use of node-host's root re-export of the driver (TRANSITIONAL(S56c)),
 `cashu-next genesis` (TRANSITIONAL(S56d)). Inside the host, a store file opens only under the
 `WriterLease` (apps/host `lease.ts`), which wraps the held machine lock that the exclusive open
@@ -110,10 +109,16 @@ events, so a resent command is answered from the table. It exits 0 after a 10-mi
 This placement is why `useQuery` suspends on the desktop's first read (an async hop) and never on
 mobile (a sync read); see [data-flow.md](data-flow.md).
 
-How a renderer gets its port: the page posts `{ cashu: "store-port-request" }` to its own window; the
-preload (which alone can talk to main) forwards it; main checks that the sending frame is the app's
-own origin, creates a `MessageChannelMain`, sends one end to the store process (`connect`) and the
-other back to that frame, which receives it as a window message (`{ cashu: "store-port" }`).
-MessagePorts cannot cross `contextBridge`, hence the window message. Main routes ports and never
-reads store data. Until the first TS screen reads the store, this runs only behind
-`CASHU_DESKTOP_STORE=1` next to the Python sidecar (TRANSITIONAL(S55a)).
+How a renderer gets its store channel: the page posts `{ cashu: "store-port-request" }` to its own
+window; the preload (which alone can talk to main) forwards it; main checks that the sending frame is
+the app's own origin, creates a `MessageChannelMain`, keeps one end for that frame's `HostRelay` and
+sends the other back to the frame, which receives it as a window message (`{ cashu: "store-port" }`).
+MessagePorts cannot cross `contextBridge`, hence the window message. The relay connects to the data
+dir's host as a `ui` client (connect-or-start), puts what the renderer posts into `store` frames as it
+is and posts the host's `store` frames back as they came; it adds only `link` messages (`connecting`,
+`starting`, `connected`, `unavailable`). Main never reads store data. When the host goes away (killed,
+crashed, replaced) the relay reconnects, starting a new host; the renderer's client keeps its snapshots
+(stale, `useConnection()` says so), and after the new session's `ready` re-sends its live queries and
+its unanswered commands with the same idempotency keys, so a command is never lost or applied twice
+(e2e `93-host-restart`). The host is started on demand by the first page that asks and outlives the
+window (it exits when idle); a dev or lab shell never registers a launch agent or login item.

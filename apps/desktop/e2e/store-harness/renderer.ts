@@ -1,16 +1,21 @@
-// Page-side harness of the store port spec (92-store-port): bundled to one script and evaluated in
-// the Electron window, it asks the preload for a store port, connects the real port client and reads
-// a query / runs commands through it. The real renderer bootstrap does the same once a TS screen
-// reads the store (TRANSITIONAL(S55a) in the preload).
+// Page-side harness of the store specs (92-store-port, 93-host-restart): bundled to one script and
+// evaluated in the Electron window, it asks the preload for a store port (which main relays to the local
+// host), connects the real port client and reads queries / runs commands through it. It also shows the
+// connection status the way a TS screen will (the catalog texts, the stale-data note) and records every
+// status and text, so the specs can check what the user saw. The real renderer bootstrap does the same
+// once the TS renderer lands (S55a).
+import { S } from "@cashu/i18n/core/hostConnection.strings";
 import { createProfile, renameProfile } from "@cashu/store";
 import { profile } from "@cashu/store/core";
 import { currentVault } from "@cashu/store/device";
 import type { Query } from "@cashu/store/query";
 import {
+  type ConnectionStatus,
   createPortClient,
   DEVICE_TARGET,
+  isStale,
   messagePortChannel,
-  type StoreClient,
+  type QueryCache,
   type Target,
 } from "@cashu/store-react/client";
 
@@ -28,14 +33,39 @@ function requestStorePort(): Promise<MessagePort> {
   });
 }
 
+const statuses: ConnectionStatus[] = [];
+const shown: string[] = [];
+
+function showStatus(status: ConnectionStatus): void {
+  statuses.push(status);
+  let element = document.getElementById("cashu-connection");
+  if (element === null) {
+    element = document.createElement("p");
+    element.id = "cashu-connection";
+    element.setAttribute("role", "status");
+    document.body.append(element);
+  }
+  const text = isStale(status) ? `${S[status]} ${S.stale}` : S[status];
+  element.textContent = text;
+  shown.push(text);
+}
+
+let connecting: Promise<QueryCache> | null = null;
+function client(): Promise<QueryCache> {
+  connecting ??= requestStorePort().then((port) =>
+    createPortClient(messagePortChannel(port), { onStatus: showStatus, recoveredMs: 1_000 }),
+  );
+  return connecting;
+}
+
 /** The first value of `query` whose snapshot satisfies `accept`, live through the port. */
 function settledValue<R>(
-  client: StoreClient,
+  store: QueryCache,
   target: Target,
   query: Query<undefined, R>,
   accept: (value: R) => boolean = () => true,
 ): Promise<R> {
-  const entry = client.entry(target, query, undefined);
+  const entry = store.entry(target, query, undefined);
   return new Promise((resolve, reject) => {
     const check = () => {
       const state = entry.getSnapshot();
@@ -50,17 +80,22 @@ function settledValue<R>(
   });
 }
 
-async function run() {
-  const client = await createPortClient(messagePortChannel(await requestStorePort()));
-  const vault = await settledValue(client, DEVICE_TARGET, currentVault);
+async function vaultTarget(store: QueryCache): Promise<Target> {
+  const vault = await settledValue(store, DEVICE_TARGET, currentVault);
   if (vault === null) throw new Error("no current vault");
-  const target: Target = { kind: "vault", vault };
-  const before = await settledValue(client, target, profile);
-  const renamed = await client.run(target, renameProfile, { name: "Demo E2E" });
-  const after = await settledValue(client, target, profile, (p) => p?.name === "Demo E2E");
-  const refused = await client.run(target, createProfile, { slug: "again", name: "Again" });
+  return { kind: "vault", vault };
+}
+
+/** 92: one read, a rename and a refusal through the port. */
+async function run() {
+  const store = await client();
+  const target = await vaultTarget(store);
+  const before = await settledValue(store, target, profile);
+  const renamed = await store.run(target, renameProfile, { name: "Demo E2E" });
+  const after = await settledValue(store, target, profile, (p) => p?.name === "Demo E2E");
+  const refused = await store.run(target, createProfile, { slug: "again", name: "Again" });
   return {
-    vaults: client.vaults.length,
+    vaults: store.vaults.length,
     before: before?.name ?? null,
     renamed,
     after: after?.name ?? null,
@@ -68,4 +103,53 @@ async function run() {
   };
 }
 
-(window as unknown as { cashuStoreHarness: typeof run }).cashuStoreHarness = run;
+/** 93: a live profile reader that stays subscribed, and commands whose answers arrive later. */
+let target: Target | null = null;
+let readName: () => string | null | undefined = () => undefined;
+const results = new Map<number, unknown>();
+let nextRun = 0;
+
+const live = {
+  async open(): Promise<string | null> {
+    const store = await client();
+    target = await vaultTarget(store);
+    const entry = store.entry(target, profile, undefined);
+    entry.subscribe(() => {});
+    readName = () => {
+      const state = entry.getSnapshot();
+      return state.status === "value" ? (state.value?.name ?? null) : undefined;
+    };
+    return (await settledValue(store, target, profile))?.name ?? null;
+  },
+  /** The profile name the window shows now (the last snapshot, stale or not). */
+  name: () => readName(),
+  status: () => statuses.at(-1) ?? null,
+  statuses: () => [...statuses],
+  shown: () => [...shown],
+  statusText: () => document.getElementById("cashu-connection")?.textContent ?? null,
+  /** Starts a rename and returns at once; `result(id)` waits for its answer. */
+  async rename(name: string): Promise<number> {
+    const store = await client();
+    if (target === null) throw new Error("open() first");
+    const id = nextRun++;
+    const done = store.run(target, renameProfile, { name });
+    done.then(
+      (r) => results.set(id, r),
+      (e: unknown) => results.set(id, { thrown: e instanceof Error ? e.name : "error" }),
+    );
+    return id;
+  },
+  async result(id: number): Promise<unknown> {
+    while (!results.has(id)) await new Promise((resolve) => setTimeout(resolve, 20));
+    return results.get(id);
+  },
+  async nameBecomes(name: string): Promise<void> {
+    const store = await client();
+    if (target === null) throw new Error("open() first");
+    await settledValue(store, target, profile, (p) => p?.name === name);
+  },
+};
+
+const page = window as unknown as { cashuStoreHarness: typeof run; cashuStoreLive: typeof live };
+page.cashuStoreHarness = run;
+page.cashuStoreLive = live;

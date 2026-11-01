@@ -2,8 +2,11 @@
 // The `page` of every test is the Electron window. One Electron app per worker (the specs run one
 // after another), launched on the demo data dir the global setup seeded.
 import { type ChildProcess, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
+import { join } from "node:path";
 import { _electron, test as base, type ElectronApplication, type Page } from "@playwright/test";
+import { build } from "rolldown";
 
 export interface DesktopOptions {
   dataDir: string;
@@ -90,6 +93,54 @@ export function alive(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** The page-side store harness (store-harness/renderer.ts) as one script to evaluate in the window. */
+export async function storeHarnessScript(): Promise<string> {
+  const out = await build({
+    input: join(appDir(), "e2e", "store-harness", "renderer.ts"),
+    platform: "browser",
+    write: false,
+    resolve: { extensionAlias: { ".js": [".ts", ".tsx", ".js"] } },
+    output: { format: "iife" },
+    logLevel: "warn",
+  });
+  const chunk = out.output[0];
+  if (chunk.type !== "chunk") throw new Error("the harness bundle has no code");
+  return chunk.code;
+}
+
+/** The pid in the data dir's host discovery file (`run/host.json`), or null when no host wrote one. */
+export function hostPid(dataDir: string): number | null {
+  const file = join(dataDir, "run", "host.json");
+  if (!existsSync(file)) return null;
+  const pid = (JSON.parse(readFileSync(file, "utf8")) as { pid?: unknown }).pid;
+  return typeof pid === "number" ? pid : null;
+}
+
+/** Waits until `check` holds (polling), or throws after `timeoutMs`. */
+export async function until(check: () => boolean, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error("condition not reached in time");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+/**
+ * Stops the data dir's local host (started on demand, it outlives the window and lingers while idle):
+ * SIGTERM (it drains, closes its stores, releases its lock), SIGKILL as the last resort.
+ */
+export async function stopHost(dataDir: string): Promise<void> {
+  const pid = hostPid(dataDir);
+  if (pid === null || !alive(pid)) return;
+  process.kill(pid, "SIGTERM");
+  try {
+    await until(() => !alive(pid), 10_000);
+  } catch {
+    process.kill(pid, "SIGKILL");
+    await until(() => !alive(pid), 5_000);
   }
 }
 

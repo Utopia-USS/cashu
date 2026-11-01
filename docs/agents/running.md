@@ -30,16 +30,18 @@ selected checks and branch-specific output directories. Shared lab outputs are w
 `lab/ts-stack`; a stale-input comparison is not acceptance evidence.
 
 Desktop development still requires the Python environment and built legacy SPA described below.
-Seed the default synthetic demo directory once, then launch the shell with its TS store process:
+Seed the default synthetic demo directory once, then launch the shell:
 
 ```bash
 .venv/bin/python scripts/demo_data.py --data-dir ~/cashu-lab/desktop-demo
-CASHU_DESKTOP_STORE=1 pnpm --filter @cashu/desktop dev
+pnpm --filter @cashu/desktop dev
 ```
 
 The launcher builds Electron, defaults data/workspaces to the lab's demo directories and starts the
-Python sidecar. `CASHU_DESKTOP_STORE=1` additionally starts the TS store utility process; the renderer
-still uses the legacy SPA. Mobile uses a native development client with SQLite and Sodium adapters;
+Python sidecar; the renderer still uses the legacy SPA. A page that asks for a store port gets one that
+main relays to the data dir's local host (`apps/host`), started on demand on a synthetic demo vault in
+`<data dir>/stores`; it outlives the window and exits after 10 idle minutes (stop it earlier with
+`node --experimental-strip-types --import ./tools/node-ts/resolveTs.ts apps/host/src/cli.ts stop --data-dir <dir>`). Mobile uses a native development client with SQLite and Sodium adapters;
 build it locally for the chosen simulator/emulator before using the dev-client bundler.
 
 ## Running and verifying

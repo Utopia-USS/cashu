@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/build-store.mjs",
+    "build": "node scripts/build-main.mjs && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
     "lint": "biome check .",
     "test": "vitest run",
@@ -16,6 +16,9 @@
     "e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
+    "@cashu/host-protocol": "workspace:*",
+    "@cashu/i18n": "workspace:*",
+    "@cashu/node-host": "workspace:*",
     "@cashu/store": "workspace:*",
     "@cashu/store-react": "workspace:*"
   },
@@ -25,5 +28,5 @@
     "rolldown": "1.2.16"
   },
   "main": "dist/main.js",
-  "description": "cashU desktop shell (Electron). Strangler v1: spawns the Python `cashu serve` as a sidecar; the TS store process (utility process) runs beside it behind CASHU_DESKTOP_STORE=1."
+  "description": "cashU desktop shell (Electron). Strangler v1: spawns the Python `cashu serve` as a sidecar; the renderer's store port is relayed by main to the local host (apps/host), started on demand."
 }

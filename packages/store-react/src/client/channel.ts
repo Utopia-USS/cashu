@@ -8,7 +8,7 @@ export interface MessagePortLike {
   start(): void;
 }
 
-/** A DOM-style MessagePort (the desktop renderer's store port) as a `Channel`. */
+/** A DOM-style MessagePort (the desktop renderer's store port, relayed by main to the host) as a `Channel`. */
 export function messagePortChannel(port: MessagePortLike): Channel {
   return {
     post: (message) => port.postMessage(message),

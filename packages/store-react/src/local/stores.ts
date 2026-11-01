@@ -1,4 +1,4 @@
-// The in-process side shared by the sync adapter (phone, tests) and the store process host (desktop):
+// The in-process side of the sync adapter (phone, tests) and of the test host (testing/host.ts):
 // the open stores of this device and how a target, a query or a command is run against them.
 import {
   type CommandEnv,

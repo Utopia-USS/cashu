@@ -18,11 +18,12 @@ const LAYERS = {
   // Leader-only market data over HTTP (Yahoo, stooq, NBP) behind an injected fetch.
   market: ["domain"],
   store: ["domain", "sync"],
-  // React bindings over the store (useQuery, useCommand, providers) and the store port (both ends).
-  "store-react": ["domain", "store"],
+  // React bindings over the store (useQuery, useCommand, providers) and the renderer's store client,
+  // which speaks the host's store channel v2 (@cashu/host-protocol/store) through Electron main's relay.
+  "store-react": ["domain", "store", "host-protocol"],
   i18n: ["domain"],
   // The local host protocol (frames, handshake, roles, store channel v2): platform free, under the
-  // host (apps/host), Electron main, the shim and, from S56b, the renderer's store client.
+  // host (apps/host), Electron main, the shim and the renderer's store client (store-react).
   "host-protocol": ["domain"],
   ui: ["domain", "i18n"],
   "ui-logic": ["domain", "store", "store-react", "i18n"],
@@ -106,8 +107,6 @@ module.exports = {
         pathNot: [
           TEST,
           "^apps/(host|mobile)/",
-          // TRANSITIONAL(S56b): the S53 Electron utility process; S56b relays the renderer's store port to the host and deletes it.
-          "^apps/desktop/src/storeProcess/",
           // TRANSITIONAL(S56c): the lab outbox bridge harness; S56c moves the bridge loop into the host.
           "^apps/sync-daemon/src/harness/main\\.ts$",
           // TRANSITIONAL(S56d): `cashu-next genesis` builds vault stores from the Python data dir; with the thin clients it runs as a host command.

@@ -41,15 +41,19 @@ One path for local and remote changes, so the UI never has two sources of truth.
   profile's store) or `device` (the device store). The id is what crosses the desktop port, so it is
   stable and unique (`<module>.<name>`); args are JSON.
 - **Suspends only on the first read when the read is async**: in the Electron renderer the store runs
-  in the utility process, so a query with no cached snapshot suspends to the route's `<Suspense>`
+  in the local host process (`apps/host`, reached through main's relay), so a query with no cached snapshot suspends to the route's `<Suspense>`
   (`use(entry.ready)`, called unconditionally: React tracks `use` by position, and the thenable carries
   React's `status` fields so a settled read returns at once); later changes are pushed. On mobile the
   driver is synchronous (`createSyncClient`) and it never suspends.
 - Clients: `createSyncClient(stores)` (`@cashu/store-react/local`, phone and tests: the engine in
-  process) and `createPortClient(channel)` (`@cashu/store-react/client`, desktop renderer). The store
-  process serves a port with `serveStore` (`./host`): zod-validated messages both ways
-  (`./protocol`), only registered query / command ids, `Decimal` and `Money` tagged across the port
-  (structured clone drops prototypes), a snapshot pushed only when its encoded value changed.
+  process) and `createPortClient(channel)` (`@cashu/store-react/client`, desktop renderer). The host
+  serves the store channel v2 (`@cashu/host-protocol/store`, apps/host `storeChannel.ts`):
+  zod-validated messages both ways, only registered query / command ids, a JSON value codec (`Decimal`,
+  `Money`, `Date`, bytes, bigint tagged), a snapshot pushed only when its encoded value changed, and an
+  idempotency key on every command (recorded with its events, so a re-sent command is answered, not
+  re-applied). Across a host restart the client keeps its snapshots (stale; `useConnection()` gives
+  `connecting` / `starting` / `recovered` / `unavailable` / `online`) and re-sends its live queries
+  and unanswered commands after the new session's `ready`.
 - A query is a typed object from `packages/store/src/<module>/queries.ts` (typed builder, row decoder
   returning domain types: `Money`, gids). The UI never sees raw rows.
 - **Invalidation is by tables, tracked by the store**: the store records each prepared query's read

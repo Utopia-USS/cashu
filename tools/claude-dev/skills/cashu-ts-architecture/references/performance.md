@@ -14,7 +14,7 @@ profile. A change that breaks a budget needs a measurement and the lead's OK, no
 | Budget | Target |
 |---|---|
 | Mobile cold start to first data on screen (snapshot present) | p50 <= 1.5 s, p95 <= 2.5 s |
-| Desktop window shown to first data | <= 1.0 s after the utility process is ready |
+| Desktop window shown to first data | <= 1.0 s after the local host is ready |
 | Snapshot load (mobile) / full rebuild from the log | <= 0.5 s / <= 10 s desktop, <= 30 s mobile in the background |
 | Store apply (lead, 2026-10-31): first sync / genesis of ~5 years (~64k events) / a day's events / rebuild after an upgrade | desktop <= 10 s, phone <= 30 s with progress / <= 100 ms / desktop <= 3 s; measured on an idle machine |
 | One live query on a UI-facing thread | <= 8 ms per run (half a 60 Hz frame); slower moves to a derived table or off-thread |
@@ -45,7 +45,7 @@ is lowered to 6.73 MB (the larger measurement rounded up to 0.01 MB); the 6.0 MB
   or windows, so JS never holds all 60k rows.
 - **Hoist `Intl` formatters** (`NumberFormat`, `DateTimeFormat`, `PluralRules`) per locale in the i18n
   layer; never construct them in render.
-- Heavy work belongs in the store (derived tables, indexed queries) or the utility process, never in
+- Heavy work belongs in the store (derived tables, indexed queries) or the local host, never in
   render or on the Electron main process.
 - Mobile animation: Reanimated, transform and opacity only.
 

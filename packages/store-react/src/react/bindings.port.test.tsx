@@ -1,14 +1,14 @@
-// The bindings over the MessagePort adapter, as in the desktop renderer: the store host runs on real
-// in-memory stores at the other end of a Node MessageChannel. Synthetic data only.
+// The bindings over the port adapter, as in the desktop renderer: a stand-in for the local host's
+// store channel v2 serves real in-memory stores behind a stand-in for Electron main's relay
+// (testing/host.ts). Synthetic data only.
 import { createProfile, renameProfile } from "@cashu/store";
 import { currentVault, setCurrentVault } from "@cashu/store/device";
 import type { Query, QueryArgs } from "@cashu/store/query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { type ReactNode, Suspense } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RemoteStoreError } from "../client/errors.js";
 import { createPortClient } from "../client/port.js";
-import { serveStore } from "../host/serve.js";
-import { RemoteStoreError } from "../protocol/messages.js";
 import {
   accountRows,
   Bomb,
@@ -20,7 +20,8 @@ import {
   fragileName,
   profileName,
 } from "../testing/fixtures.js";
-import { channelPair, memoryStores, VAULT_A } from "../testing/memory.js";
+import { TestHost, testRelay } from "../testing/host.js";
+import { memoryStores, VAULT_A } from "../testing/memory.js";
 import { ProfileProvider } from "./ProfileProvider.js";
 import { StoreProvider } from "./StoreProvider.js";
 import { useCommand } from "./useCommand.js";
@@ -37,13 +38,13 @@ const COMMANDS = [createProfile, renameProfile, setCurrentVault, explode];
 
 async function setup(options: { onError?: (e: unknown) => void } = {}) {
   const stores = memoryStores();
-  const pair = channelPair();
-  const stop = serveStore(pair.host, {
-    ...stores,
+  const host = new TestHost({
+    stores,
     queries: QUERIES,
     commands: COMMANDS,
     ...(options.onError ? { onError: options.onError } : {}),
   });
+  const pair = testRelay(host);
   const client = await createPortClient(pair.client, { lingerMs: 0 });
   fallbackMounts.count = 0;
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -57,7 +58,6 @@ async function setup(options: { onError?: (e: unknown) => void } = {}) {
   );
   closers.push(() => {
     client.dispose();
-    stop();
     pair.close();
     stores.close();
   });
@@ -179,19 +179,5 @@ describe("useCommand (port adapter)", () => {
     await expect(
       client.run({ kind: "vault", vault: VAULT_A }, unknown, { name: "x" }),
     ).rejects.toBeInstanceOf(RemoteStoreError);
-  });
-});
-
-describe("store host", () => {
-  it("ignores and reports messages that do not validate", async () => {
-    const reported: unknown[] = [];
-    const { pair, client } = await setup({ onError: (e) => reported.push(e) });
-    pair.client.post({ t: "run", rid: -1, command: "x" });
-    pair.client.post({ t: "sub", sid: 1, target: { kind: "vault", vault: "nope" }, query: "q" });
-    await waitFor(() => expect(reported).toHaveLength(2));
-    // The connection still serves valid messages.
-    expect(
-      await client.run({ kind: "vault", vault: VAULT_A }, renameProfile, { name: "Ela" }),
-    ).toEqual({ ok: true, value: null });
   });
 });

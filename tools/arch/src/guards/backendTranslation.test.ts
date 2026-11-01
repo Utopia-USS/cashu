@@ -55,7 +55,7 @@ describe("backend translation scope", () => {
     "apps/sync-daemon/src/index.ts",
     "apps/desktop/src/main.ts",
     "apps/desktop/src/preload.cts",
-    "apps/desktop/src/storeProcess/main.ts",
+    "apps/desktop/src/hostRelay.ts",
   ])("covers %s", (file) => expect(isBackendTranslationFile(file)).toBe(true));
 
   it.each([

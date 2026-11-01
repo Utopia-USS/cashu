@@ -2,6 +2,7 @@
 import { appendFileSync, chmodSync, existsSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { connectOrStart, hostRunPaths, spawnDetachedHost } from "@cashu/node-host";
 import { nativeImage, shell } from "electron/common";
 import {
   app,
@@ -9,12 +10,10 @@ import {
   ipcMain,
   Menu,
   MessageChannelMain,
-  type MessagePortMain,
   Notification,
   screen,
   session,
   Tray,
-  utilityProcess,
 } from "electron/main";
 import { DesktopApp, type WindowHandle } from "./app.js";
 import {
@@ -24,19 +23,17 @@ import {
   MIN_SIZE,
   repoRoot,
   resolveDataDir,
-  STORE_PROCESS_ENTRY,
-  STORE_SUBDIR,
   TITLE,
   USER_DATA_SUBDIR,
 } from "./config.js";
 import { shouldRegisterProtocol } from "./deeplink.js";
+import { hostLaunch } from "./hostLaunch.js";
+import { HostRelay, HostRelays, type RelayPort } from "./hostRelay.js";
 import { linkFromArgv } from "./links.js";
 import { Notifier } from "./notify.js";
 import { ALLOW, EXTERNAL, navigationDecision, redactToken } from "./security.js";
 import { Sidecar, sidecarSpec, verifyDataDir } from "./sidecar.js";
 import { ensurePrivateDir, loadState, rememberedPort, rememberPort, statePath } from "./state.js";
-import { storeProcessArgv } from "./storeControl.js";
-import { StoreProcess } from "./storeHost.js";
 import { pickLang, t } from "./strings.js";
 import { windowSize } from "./window.js";
 
@@ -240,33 +237,74 @@ ipcMain.handle("cashu:token", (event) => {
   return token;
 });
 
-// ---- store process (TRANSITIONAL(S55a): behind CASHU_DESKTOP_STORE=1) ------------------------
+// ---- the renderer's store channel, relayed to the local host (S56b) -----------------------------
 
-const storeProcess =
-  env[ENV.store] === "1"
-    ? new StoreProcess<MessagePortMain>({
-        fork: () =>
-          utilityProcess.fork(
-            join(here, STORE_PROCESS_ENTRY),
-            storeProcessArgv({ storeDir: join(dataDir, STORE_SUBDIR), demo: true }),
-            { serviceName: `${TITLE} store` },
-          ),
-        createChannel: () => new MessageChannelMain(),
-        log,
-      })
-    : null;
+// The data dir's host (apps/host): connected to as a `ui` client per renderer frame, started on demand
+// (detached, it outlives the window and exits by itself when idle). Never a launch agent or login item.
+const HOST_BUILD = `desktop-${app.isPackaged ? app.getVersion() : "dev"}`;
 
-// A page of the app's own origin asks for a port into the store process (the preload forwards the
-// request); the port goes back to that frame only.
+function startHost(): void {
+  const launch = hostLaunch({
+    root,
+    dataDir,
+    execPath: process.execPath,
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    env,
+    build: HOST_BUILD,
+  });
+  spawnDetachedHost({ ...launch, logPath: hostRunPaths(dataDir).logPath });
+  log("local host started");
+}
+
+const relays = new HostRelays(
+  (port) =>
+    new HostRelay({
+      port,
+      connect: async (onStarting) =>
+        (
+          await connectOrStart({
+            dataDir,
+            role: "ui",
+            build: HOST_BUILD,
+            start: () => {
+              onStarting();
+              startHost();
+            },
+          })
+        ).connection,
+      log,
+    }),
+);
+
+const watchedPages = new Set<number>();
+
+// A page of the app's own origin asks for a store port (the preload forwards the request): main keeps
+// one end and relays it to its own host session for that frame; the other end goes back to that frame.
 ipcMain.on("cashu:store-port", (event) => {
-  if (storeProcess === null) return;
-  if (!desktop.exposesBridgeTo(fromMainFrame(event))) {
+  const frame = event.senderFrame;
+  if (frame === null || !desktop.exposesBridgeTo(fromMainFrame(event))) {
     log("store port request from a page outside the app refused");
     return;
   }
-  if (!storeProcess.connect((port) => event.sender.postMessage("cashu:store-port", null, [port]))) {
-    log("store port requested while the store process is not running");
+  const { port1, port2 } = new MessageChannelMain();
+  const port: RelayPort = {
+    post: (message) => port1.postMessage(message),
+    onMessage: (handler) => port1.on("message", (e) => handler(e.data)),
+    onClose: (handler) => port1.on("close", handler),
+    close: () => port1.close(),
+  };
+  const page = event.sender.id;
+  relays.open(`${page}:${frame.processId}:${frame.routingId}`, port);
+  if (!watchedPages.has(page)) {
+    watchedPages.add(page);
+    event.sender.once("destroyed", () => {
+      watchedPages.delete(page);
+      relays.closePage(String(page));
+    });
   }
+  port1.start();
+  event.sender.postMessage("cashu:store-port", null, [port2]);
 });
 
 // ---- lifecycle -----------------------------------------------------------------------------------
@@ -282,7 +320,8 @@ let shutDown = false;
 app.on("before-quit", (event) => {
   if (shutDown) return;
   event.preventDefault();
-  void Promise.all([desktop.shutdown(), storeProcess?.stop()]).finally(() => {
+  relays.closeAll();
+  void desktop.shutdown().finally(() => {
     shutDown = true;
     app.quit();
   });
@@ -322,9 +361,6 @@ if (!hasLock) {
     if (process.platform === "darwin" && existsSync(iconPath)) {
       app.dock?.setIcon(nativeImage.createFromPath(iconPath));
     }
-    storeProcess?.start().catch((error: unknown) => {
-      log(`store process failed to start: ${error instanceof Error ? error.message : "error"}`);
-    });
     const result = await desktop.start(linkFromArgv(process.argv.slice(1)));
     log(`start: ${result}${desktop.error ? ` (${desktop.error})` : ""}`);
   });

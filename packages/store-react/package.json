@@ -4,13 +4,11 @@
   "private": true,
   "type": "module",
   "sideEffects": false,
-  "description": "React bindings over the event store (useQuery, useCommand, providers) and the store port between the desktop renderer and the store process.",
+  "description": "React bindings over the event store (useQuery, useCommand, useConnection, providers) and the desktop renderer's store client (store channel v2 through Electron main's relay to the local host).",
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client/index.ts",
-    "./host": "./src/host/index.ts",
-    "./local": "./src/local/index.ts",
-    "./protocol": "./src/protocol/index.ts"
+    "./local": "./src/local/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -20,6 +18,7 @@
   },
   "dependencies": {
     "@cashu/domain": "workspace:*",
+    "@cashu/host-protocol": "workspace:*",
     "@cashu/store": "workspace:*",
     "zod": "^4.6.7"
   },

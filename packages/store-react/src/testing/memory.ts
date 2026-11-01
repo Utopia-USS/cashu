@@ -11,8 +11,6 @@ import {
 } from "@cashu/store";
 import { DeviceStore } from "@cashu/store/device";
 import Database from "better-sqlite3";
-import { messagePortChannel } from "../client/channel.js";
-import type { Channel } from "../client/types.js";
 import type { LocalStores, VaultHandle } from "../local/stores.js";
 
 export const VAULT_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1";
@@ -77,28 +75,6 @@ export function memoryStores(options: { current?: string | null } = {}): LocalSt
     close() {
       device.close();
       for (const v of vaults.values()) v.store.close();
-    },
-  };
-}
-
-/** Both ends of a Node MessageChannel as `Channel`s, plus every message the client side posted. */
-export function channelPair(): { client: Channel; host: Channel; sent: unknown[]; close(): void } {
-  const { port1, port2 } = new MessageChannel();
-  const sent: unknown[] = [];
-  const client = messagePortChannel(port1);
-  return {
-    client: {
-      post(message) {
-        sent.push(message);
-        client.post(message);
-      },
-      listen: client.listen,
-    },
-    host: messagePortChannel(port2),
-    sent,
-    close() {
-      port1.close();
-      port2.close();
     },
   };
 }

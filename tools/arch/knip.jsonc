@@ -37,7 +37,6 @@
       "entry": [
         "src/main.ts",
         "src/preload.cts",
-        "src/storeProcess/main.ts",
         "scripts/*.mjs",
         "e2e/**/*.ts"
       ],
