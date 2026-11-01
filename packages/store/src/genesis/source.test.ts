@@ -24,20 +24,22 @@ function refusal(fn: () => unknown): GenesisError | undefined {
 }
 
 describe("readPythonSource: schema", () => {
-  it.each(["0025_topic_view_sources", "0026_thesis_exit_plan_changed_at", "0027_sync_outbox"])(
-    "accepts %s",
-    (version) => {
-      const driver = pythonDb(version === "0025_topic_view_sources" ? "0025" : "0026");
-      driver.prepare("UPDATE alembic_version SET version_num = ?").run(version);
-      expect(read(driver).schema).toBe(version);
-    },
-  );
-
-  it("accepts 0028 (sync tables present, not read)", () => {
-    expect(read(pythonDb("0028")).schema).toBe("0028_sync_inbound");
+  it.each([
+    "0025_topic_view_sources",
+    "0026_thesis_exit_plan_changed_at",
+    "0027_alert_tag",
+    "0028_sync_outbox",
+  ])("accepts %s", (version) => {
+    const driver = pythonDb(version === "0025_topic_view_sources" ? "0025" : "0026");
+    driver.prepare("UPDATE alembic_version SET version_num = ?").run(version);
+    expect(read(driver).schema).toBe(version);
   });
 
-  it("refuses sync state on 0028 (sync_ids, sync_vaults, unacked outbox), naming counts only", () => {
+  it("accepts 0029 (sync tables present, not read)", () => {
+    expect(read(pythonDb("0029")).schema).toBe("0029_sync_inbound");
+  });
+
+  it("refuses sync state on 0029 (sync_ids, sync_vaults, unacked outbox), naming counts only", () => {
     const outbox = (driver: SqlDriver, acked: string | null) =>
       driver
         .prepare(
@@ -46,11 +48,11 @@ describe("readPythonSource: schema", () => {
         )
         .run(acked);
     // Acked outbox rows alone are history: accepted.
-    const acked = pythonDb("0028");
+    const acked = pythonDb("0029");
     outbox(acked, "2026-01-02 03:04:06");
-    expect(read(acked).schema).toBe("0028_sync_inbound");
+    expect(read(acked).schema).toBe("0029_sync_inbound");
 
-    const db = pythonDb("0028");
+    const db = pythonDb("0029");
     db.exec(
       `INSERT INTO sync_vaults (profile_id, vault_id, linked_at) VALUES (1, 'v1', '2026-01-02 03:04:05');
        INSERT INTO sync_ids (profile_id, table_name, local_id, gid, source)
@@ -73,16 +75,31 @@ describe("readPythonSource: schema", () => {
         "sync state present: sync_ids 1",
       ],
     ] as const) {
-      const one = pythonDb("0028");
+      const one = pythonDb("0029");
       one.exec(sql);
       expect(refusal(() => read(one))?.message).toBe(message);
     }
-    const unacked = pythonDb("0028");
+    const unacked = pythonDb("0029");
     outbox(unacked, null);
     expect(refusal(() => read(unacked))?.message).toBe("sync state present: unacked sync_outbox 1");
   });
 
-  it.each(["0024_topic_market_view", "0029_future"])("refuses %s with exit code 65", (version) => {
+  it("refuses alert tags the event log cannot carry yet, naming the count only", () => {
+    const driver = pythonDb("0029");
+    const rows = new PythonRows(driver);
+    const tag = (id: number, value: string | null) =>
+      driver.prepare("UPDATE alerts SET tag = ? WHERE id = ?").run(value, id);
+    tag(rows.insert("alerts"), null);
+    tag(rows.insert("alerts"), " ");
+    expect(read(driver).schema).toBe("0029_sync_inbound");
+    tag(rows.insert("alerts"), "wydarzenie");
+    const e = refusal(() => read(driver));
+    expect(e?.code).toBe("unported_field");
+    expect(e?.exitCode).toBe(65);
+    expect(e?.message).toBe("alert tags present: alerts.tag 1");
+  });
+
+  it.each(["0024_topic_market_view", "0030_future"])("refuses %s with exit code 65", (version) => {
     const driver = pythonDb();
     driver.prepare("UPDATE alembic_version SET version_num = ?").run(version);
     const e = refusal(() => read(driver));
@@ -117,7 +134,7 @@ describe("readPythonSource: schema", () => {
 });
 
 describe("readPythonSource: rows", () => {
-  it.each(["0025", "0026", "0028"] as const)(
+  it.each(["0025", "0026", "0029"] as const)(
     "reads one default row of every table on %s",
     (schema) => {
       const driver = pythonDb(schema);

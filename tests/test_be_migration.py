@@ -109,7 +109,7 @@ def test_0008_on_a_copy_of_a_0007_database(tmp_path):
     before = legacy.table_counts(path)
     engine = db.make_engine(f"sqlite:///{path}")
     assert migrations.current_revision(engine) == "0007_alerts_watchlist"
-    assert migrations.upgrade_to_head(engine) == migrations.head_revision() == "0028_sync_inbound"
+    assert migrations.upgrade_to_head(engine) == migrations.head_revision() == "0029_sync_inbound"
     backup = migrations.last_backup
     assert backup is not None and backup.is_file() and backup != path
     assert legacy.table_counts(backup) == before and not (_tables(backup) & NEW_TABLES)
@@ -349,7 +349,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
         edited,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0028_sync_inbound"
+    assert migrations.upgrade_to_head(engine) == "0029_sync_inbound"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_theses')")]
     assert columns[-2:] == ["core_changed_at", "exit_plan_changed_at"]
     assert _sql(path, "SELECT thesis, core_changed_at FROM inv_theses") == [
@@ -363,7 +363,7 @@ def test_0014_backfills_core_changed_at_and_round_trips(tmp_path):
     assert _sql(path, "PRAGMA foreign_key_check") == []
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0028_sync_inbound"
+    assert migrations.current_revision(engine) == "0029_sync_inbound"
     engine.dispose()
 
 
@@ -389,7 +389,7 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0028_sync_inbound"
+    assert migrations.upgrade_to_head(engine) == "0029_sync_inbound"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
     assert columns[-5:] == ["plan", "plan_at", "plan_reason", "segment", "segment_by"]  # 0018
     assert _sql(path, "SELECT plan, plan_reason FROM inv_profile_instruments") == [("hold", None)]
@@ -400,7 +400,7 @@ def test_0015_appends_plan_reason_and_round_trips(tmp_path):
     assert _sql(path, "SELECT plan FROM inv_profile_instruments") == [("hold",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0028_sync_inbound"
+    assert migrations.current_revision(engine) == "0029_sync_inbound"
     engine.dispose()
 
 
@@ -425,7 +425,7 @@ def test_0017_appends_removed_at_and_refuses_to_downgrade_over_removed_rows(tmp_
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0028_sync_inbound"
+    assert migrations.upgrade_to_head(engine) == "0029_sync_inbound"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('watchlist_items')")]
     assert columns[-1] == "removed_at"
     assert _sql(path, "SELECT id, note, removed_at FROM watchlist_items") == [
@@ -440,7 +440,7 @@ def test_0017_appends_removed_at_and_refuses_to_downgrade_over_removed_rows(tmp_
     assert _sql(path, "SELECT id, note FROM watchlist_items") == [(7, "moja notatka")]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0028_sync_inbound"
+    assert migrations.current_revision(engine) == "0029_sync_inbound"
     engine.dispose()
 
 
@@ -478,7 +478,7 @@ def test_0018_appends_segment_columns_and_refuses_to_downgrade_over_segments(tmp
         TS,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0028_sync_inbound"
+    assert migrations.upgrade_to_head(engine) == "0029_sync_inbound"
     columns = [r[1] for r in _sql(path, "PRAGMA table_info('inv_profile_instruments')")]
     assert columns[-2:] == ["segment", "segment_by"]
     assert [r[1] for r in _sql(path, "PRAGMA table_info('research_notes')")][-1] == "segment"
@@ -503,7 +503,7 @@ def test_0018_appends_segment_columns_and_refuses_to_downgrade_over_segments(tmp
     assert _sql(path, "SELECT id, theme FROM research_notes") == [(5, "stopy procentowe")]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0028_sync_inbound"
+    assert migrations.current_revision(engine) == "0029_sync_inbound"
     engine.dispose()
 
 
@@ -514,7 +514,7 @@ def test_0019_creates_the_macro_bars_table_and_drops_it_on_downgrade(tmp_path):
     before = legacy.table_counts(path)
     assert "inv_macro_bars" not in _tables(path)
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0028_sync_inbound"
+    assert migrations.upgrade_to_head(engine) == "0029_sync_inbound"
     after = legacy.table_counts(path)
     assert all(after[t] == n for t, n in before.items()) and after["inv_macro_bars"] == 0
     assert [r[1] for r in _sql(path, "PRAGMA table_info('inv_macro_bars')")] == [
@@ -541,7 +541,7 @@ def test_0019_creates_the_macro_bars_table_and_drops_it_on_downgrade(tmp_path):
     assert "inv_macro_bars" not in _tables(path)
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0028_sync_inbound"
+    assert migrations.current_revision(engine) == "0029_sync_inbound"
     assert _sql(path, "SELECT count(*) FROM inv_macro_bars") == [(0,)]
     engine.dispose()
 
@@ -587,7 +587,7 @@ def test_0020_maps_the_old_uranium_segment_to_power_and_back(tmp_path):
     )
     before = legacy.table_counts(path)
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0028_sync_inbound"
+    assert migrations.upgrade_to_head(engine) == "0029_sync_inbound"
     assert legacy.table_counts(path) == before | {
         "inv_topic_theses": 0,
         "change_events": 0,
@@ -607,7 +607,7 @@ def test_0020_maps_the_old_uranium_segment_to_power_and_back(tmp_path):
     assert _sql(path, "SELECT segment FROM research_notes ORDER BY id") == [("uranium",), ("gold",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0028_sync_inbound"
+    assert migrations.current_revision(engine) == "0029_sync_inbound"
     engine.dispose()
 
 
@@ -641,7 +641,7 @@ def test_0026_backfills_exit_plan_changed_at_and_round_trips(tmp_path):
         edited,
     )
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0028_sync_inbound"
+    assert migrations.upgrade_to_head(engine) == "0029_sync_inbound"
     assert _sql(path, "SELECT instrument_id, exit_plan_changed_at FROM inv_theses ORDER BY instrument_id") == [
         (1, edited),
         (2, None),
@@ -651,7 +651,7 @@ def test_0026_backfills_exit_plan_changed_at_and_round_trips(tmp_path):
     assert _sql(path, "SELECT count(*) FROM inv_theses") == [(2,)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0028_sync_inbound"
+    assert migrations.current_revision(engine) == "0029_sync_inbound"
     engine.dispose()
 
 
@@ -666,7 +666,7 @@ def test_0027_adds_alert_tag_and_round_trips(tmp_path):
 
     assert "tag" not in columns()
     engine = db.make_engine(f"sqlite:///{path}")
-    assert migrations.upgrade_to_head(engine) == "0028_sync_inbound"
+    assert migrations.upgrade_to_head(engine) == "0029_sync_inbound"
     assert columns()[-1] == "tag"
     assert _sql(path, "SELECT title, tag FROM alerts") == [("Example level", None)]
     _sql(path, "UPDATE alerts SET tag = 'cena'")
@@ -679,5 +679,5 @@ def test_0027_adds_alert_tag_and_round_trips(tmp_path):
     assert _sql(path, "SELECT title FROM alerts") == [("Example level",)]
     assert _sql(path, "PRAGMA integrity_check") == [("ok",)]
     _to(engine, "head")
-    assert migrations.current_revision(engine) == "0028_sync_inbound"
+    assert migrations.current_revision(engine) == "0029_sync_inbound"
     engine.dispose()

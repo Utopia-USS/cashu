@@ -1,7 +1,7 @@
 {
   "meta": {
     "generator": "parity/python/inv_hash_parity.py",
-    "alembic_version": "0028_sync_inbound",
+    "alembic_version": "0029_sync_inbound",
     "frozen_clock": "2026-03-01T10:00:00Z"
   },
   "imports": [
@@ -877,7 +877,7 @@
     }
   ],
   "stored": {
-    "alembic_version": "0028_sync_inbound",
+    "alembic_version": "0029_sync_inbound",
     "tables": {
       "profiles": [
         {

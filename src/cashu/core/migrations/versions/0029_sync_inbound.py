@@ -1,7 +1,7 @@
 """Sync inbound applier (S31b): ``sync_inbound`` (applied / parked event ids) and ``sync_clock``.
 
-Revision ID: 0028_sync_inbound
-Revises: 0027_sync_outbox
+Revision ID: 0029_sync_inbound
+Revises: 0028_sync_outbox
 Create Date: 2026-10-31
 
 TRANSITIONAL(S49). ``core/sync_apply.py`` applies events from other devices through the services:
@@ -20,8 +20,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "0028_sync_inbound"
-down_revision: str | Sequence[str] | None = "0027_sync_outbox"
+revision: str = "0029_sync_inbound"
+down_revision: str | Sequence[str] | None = "0028_sync_outbox"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

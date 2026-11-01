@@ -1,6 +1,6 @@
 """Sync outbox (S30, the strangler bridge to the event log): ``sync_outbox``, ``sync_ids``, ``sync_vaults``.
 
-Revision ID: 0027_sync_outbox
+Revision ID: 0028_sync_outbox
 Revises: 0027_alert_tag
 Create Date: 2026-10-31
 
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "0027_sync_outbox"
+revision: str = "0028_sync_outbox"
 down_revision: str | Sequence[str] | None = "0027_alert_tag"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

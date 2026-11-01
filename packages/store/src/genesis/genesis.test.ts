@@ -1,5 +1,5 @@
 // S26 spec 10 `genesis.test.ts`, 8.4, 7, 4.7: end to end on a synthetic two-profile Python database
-// (every table genesis reads, schemas 0025 / 0026 / 0028): every event parses, every payload-derived
+// (every table genesis reads, schemas 0025 / 0026 / 0029): every event parses, every payload-derived
 // gid equals DET(detPartsOf), the logs fold into fresh stores without parking, rejects, suppression
 // or account conflicts, view row counts equal the source, two runs are byte-identical, 0025 == 0026,
 // profiles stay apart, and the signals of one key are emitted closed-first. Synthetic only.
@@ -14,7 +14,7 @@ import { memoryDriver, openTestStore, TEST_VAULT } from "../testing/store.js";
 import { GENESIS_CHUNK, type GenesisResult, type GenesisVault, genesis } from "./index.js";
 import { FILES, KEYS, NOW, seededDb } from "./testing/genesisData.js";
 
-const run = (schema: "0025" | "0026" | "0028" = "0026"): GenesisResult =>
+const run = (schema: "0025" | "0026" | "0029" = "0026"): GenesisResult =>
   genesis({ driver: seededDb(schema), files: FILES }, KEYS, { strict: true, now: NOW });
 
 function keysOf(v: GenesisVault) {
@@ -226,13 +226,13 @@ describe("genesis end to end", () => {
 });
 
 describe("genesis determinism and isolation", () => {
-  it("is byte-identical across runs and across schemas 0025 / 0026 / 0028 (spec 7, G7)", () => {
+  it("is byte-identical across runs and across schemas 0025 / 0026 / 0029 (spec 7, G7)", () => {
     const a = run("0026");
     const b = run("0026");
     expect(a.vaults.map((v) => v.lines)).toEqual(b.vaults.map((v) => v.lines));
     const shas = (r: GenesisResult) => r.vaults.map((v) => v.logSha256);
     expect(shas(run("0025"))).toEqual(shas(a));
-    expect(shas(run("0028"))).toEqual(shas(a));
+    expect(shas(run("0029"))).toEqual(shas(a));
     expect(shas(a)[0]).toMatch(/^[0-9a-f]{64}$/);
   });
 

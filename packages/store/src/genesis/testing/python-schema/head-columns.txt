@@ -32,6 +32,7 @@ alerts.last_value:VARCHAR:0:0
 alerts.created_at:DATETIME:1:0
 alerts.updated_at:DATETIME:1:0
 alerts.deleted_at:DATETIME:0:0
+alerts.tag:VARCHAR:0:0
 asset_details.id:INTEGER:1:1
 asset_details.account_id:INTEGER:1:0
 asset_details.note:VARCHAR:0:0

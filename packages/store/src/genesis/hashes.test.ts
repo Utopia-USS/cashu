@@ -19,7 +19,7 @@ const hex = (algo: "sha1" | "sha256", text: string) =>
   createHash(algo).update(text, "utf8").digest("hex");
 
 function db() {
-  const driver = pythonDb("0028");
+  const driver = pythonDb("0029");
   const rows = new PythonRows(driver);
   rows.insert("profiles", {});
   return { driver, rows };
@@ -134,7 +134,7 @@ function v2Of(row: Txn, accountGid: string, instrumentKey: string, broker: strin
 }
 
 describe("investment transactions: the Python fixture", () => {
-  const driver = pythonDb("0028");
+  const driver = pythonDb("0029");
   loadFixture(driver);
   const { vaults, counters } = phase1(driver);
   const v = vaults[0];

@@ -6,36 +6,39 @@
 // - `python-schema/0025.sql`: revision 0025_topic_view_sources, verbatim.
 // - 0026 = 0025 + migration 0026's own `ALTER TABLE inv_theses ADD COLUMN exit_plan_changed_at`
 //   (its backfill UPDATE has no rows to touch in a new database).
-// - `python-schema/sync-0027-0028.sql`: the sync_* tables and indexes of revision 0028_sync_inbound
-//   (`SELECT sql FROM sqlite_master WHERE tbl_name LIKE 'sync\_%'`); 0028 = 0026 + these.
+// - 0027 adds migration 0027's own `ALTER TABLE alerts ADD COLUMN tag`.
+// - `python-schema/sync-0028-0029.sql`: the sync_* tables and indexes of revision 0029_sync_inbound
+//   (`SELECT sql FROM sqlite_master WHERE tbl_name LIKE 'sync\_%'`); 0029 = 0026 + the alert tag +
+//   these.
 // - `python-schema/head-columns.txt`: `table.column:type:notnull:pk` of every table of a fresh
-//   `cashu init-db` database (head = 0028), from `pragma_table_info`; the test compares the
-//   databases built here against it. The 0028 listing matched the alembic-built 0028 database.
+//   `cashu init-db` database (head = 0029), from `pragma_table_info`; the test compares the
+//   databases built here against it. The 0029 listing matched a fresh `cashu init-db` database.
 // Regenerate all four when a Python migration lands.
 import { readFileSync } from "node:fs";
 import Database from "better-sqlite3";
 import { betterSqlite3Driver } from "../../sql/better-sqlite3.js";
 import type { SqlDriver } from "../../sql/driver.js";
 
-type PythonSchema = "0025" | "0026" | "0028";
+type PythonSchema = "0025" | "0026" | "0029";
 
 const REVISION: Readonly<Record<PythonSchema, string>> = {
   "0025": "0025_topic_view_sources",
   "0026": "0026_thesis_exit_plan_changed_at",
-  "0028": "0028_sync_inbound",
+  "0029": "0029_sync_inbound",
 };
 
 const file = (name: string) =>
   readFileSync(new URL(`./python-schema/${name}`, import.meta.url), "utf8");
 
 const EXIT_PLAN_COLUMN = "ALTER TABLE inv_theses ADD COLUMN exit_plan_changed_at DATETIME;\n";
+const ALERT_TAG_COLUMN = "ALTER TABLE alerts ADD COLUMN tag VARCHAR;\n";
 
 /** The DDL of a Python schema revision (without the `alembic_version` row). */
 function pythonSchemaDdl(schema: PythonSchema): string {
   const ddl = file("0025.sql");
   if (schema === "0025") return ddl;
   if (schema === "0026") return ddl + EXIT_PLAN_COLUMN;
-  return ddl + EXIT_PLAN_COLUMN + file("sync-0027-0028.sql");
+  return ddl + EXIT_PLAN_COLUMN + ALERT_TAG_COLUMN + file("sync-0028-0029.sql");
 }
 
 /**
@@ -63,7 +66,7 @@ export function schemaListing(driver: SqlDriver): string[] {
     .map((r) => r.line);
 }
 
-/** The committed listing of a fresh head (0028) database. */
+/** The committed listing of a fresh head (0029) database. */
 export function headListing(): string[] {
   return file("head-columns.txt")
     .split("\n")

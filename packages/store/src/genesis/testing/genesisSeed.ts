@@ -93,7 +93,7 @@ function seedBudget(r: PythonRows): void {
   r.insert("asset_details", { account_id: 6, note: "Auto testowe" });
 }
 
-function seedInvestments(r: PythonRows, schema: "0025" | "0026" | "0028"): void {
+function seedInvestments(r: PythonRows, schema: "0025" | "0026" | "0029"): void {
   r.insert("inv_instruments", { name: "Test SA", asset_class: "equity", symbol: "TST" }); // 1
   r.insert("inv_instruments", { name: "ABC Inc", asset_class: "equity", currency: "USD" }); // 2
   r.insert("inv_instruments", { name: "Obligacja", asset_class: "bond" }); // 3
@@ -279,7 +279,7 @@ function seedAgent(r: PythonRows): void {
 }
 
 /** Every table of both profiles (`schema` decides whether theses carry `exit_plan_changed_at`). */
-export function seedAll(r: PythonRows, schema: "0025" | "0026" | "0028"): void {
+export function seedAll(r: PythonRows, schema: "0025" | "0026" | "0029"): void {
   seedCore(r);
   seedBudget(r);
   seedInvestments(r, schema);

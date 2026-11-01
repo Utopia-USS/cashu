@@ -294,8 +294,11 @@ and fails on any site not listed here; the zod schemas reject `i:<digits>`, `a:<
 Deterministic: two runs on one database with one stored salt give the same gids.
 
 A database whose Python app already synced (rows in `sync_ids` or `sync_vaults`, or unacked
-`sync_outbox` rows; schema 0027 / 0028) is refused (`sync_state_present`, exit 65, counts only):
+`sync_outbox` rows; schema 0028 / 0029) is refused (`sync_state_present`, exit 65, counts only):
 those rows already carry gids that genesis gids would duplicate.
+
+A database where any alert carries a tag (`alerts.tag`, schema 0027 on) is refused (`unported_field`,
+exit 65, counts only) until the event log carries the alert tag: genesis never drops a stored value.
 
 - DET tables: normal DET inputs, local references mapped to the referenced row's gid.
 - ULID tables: `DET(genesis) [table, str(local id)]` (a UUIDv8; valid as a gid). New rows get ULIDs.

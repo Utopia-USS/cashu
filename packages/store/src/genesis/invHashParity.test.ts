@@ -104,7 +104,7 @@ function s17dClass(p: ParsedRow, entry: Import): S17dClass | undefined {
 
 /** Loads the fixture's stored tables (values exactly as SQLite held them) into a Python-schema DB. */
 function storedDb() {
-  const driver = pythonDb("0028");
+  const driver = pythonDb("0029");
   for (const [table, rows] of Object.entries(tables)) {
     for (const row of rows) {
       const columns = Object.keys(row);

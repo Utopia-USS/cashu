@@ -52,7 +52,7 @@ export const FILES = memoryFiles([
 ]);
 
 /** A Python database at `schema` with the two synthetic profiles. */
-export function seededDb(schema: "0025" | "0026" | "0028" = "0026"): SqlDriver {
+export function seededDb(schema: "0025" | "0026" | "0029" = "0026"): SqlDriver {
   const driver = pythonDb(schema);
   seedAll(new PythonRows(driver), schema);
   return driver;

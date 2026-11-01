@@ -1,4 +1,4 @@
-// TRANSITIONAL(S49): the genesis folder reads the Python schema (Alembic 0025-0028) and goes away
+// TRANSITIONAL(S49): the genesis folder reads the Python schema (Alembic 0025-0029) and goes away
 // when the Python app is retired (spec D-G15).
 //
 // Genesis source reader (S26 spec 2.2 schema versions, 2.3 value decoding, 2.4 profile scoping,
@@ -22,12 +22,16 @@ export interface GenesisFiles {
   list(dir: string): readonly string[];
 }
 
-/** Alembic revisions genesis reads (impl notes, change 2): 0027 / 0028 add only sync_* tables. */
+/**
+ * Alembic revisions genesis reads (impl notes, change 2): 0027 adds `alerts.tag` (refused while set,
+ * `refuseAlertTags`), 0028 / 0029 add only sync_* tables.
+ */
 const SCHEMA_VERSIONS = [
   "0025_topic_view_sources",
   "0026_thesis_exit_plan_changed_at",
-  "0027_sync_outbox",
-  "0028_sync_inbound",
+  "0027_alert_tag",
+  "0028_sync_outbox",
+  "0029_sync_inbound",
 ] as const;
 
 type SchemaVersion = (typeof SCHEMA_VERSIONS)[number];
@@ -145,7 +149,7 @@ const columnsOf = (driver: SqlDriver, table: string): ReadonlySet<string> =>
 
 /**
  * Refuses a database whose Python app already synced (S26 review F3): rows in `sync_ids` or
- * `sync_vaults`, or `sync_outbox` rows not acked yet (0027 / 0028, found through `PRAGMA
+ * `sync_vaults`, or `sync_outbox` rows not acked yet (0028 / 0029, found through `PRAGMA
  * table_info`). Their rows already have gids (ULIDs minted by the outbox, a linked vault, maybe
  * shipped inserts) that genesis gids would duplicate. Every row counts, whatever its profile (an
  * outbox row without a profile is a global table's): explicit and fail closed. The message names
@@ -172,9 +176,24 @@ function refuseSyncState(driver: SqlDriver): void {
 }
 
 /**
+ * TRANSITIONAL(S16): the event log has no alert tag yet (migration 0027_alert_tag added
+ * `alerts.tag` on the Python side), so a database where any alert carries one is refused instead of
+ * dropping the tags. Removed when `alert.created` / the alert patch carry the tag and genesis maps it.
+ */
+function refuseAlertTags(driver: SqlDriver): void {
+  if (!columnsOf(driver, "alerts").has("tag")) return;
+  const n =
+    driver
+      .prepare("SELECT COUNT(*) AS n FROM alerts WHERE tag IS NOT NULL AND TRIM(tag) != ''")
+      .get<{ n: number }>()?.n ?? 0;
+  if (n > 0) throw new GenesisError("unported_field", `alert tags present: alerts.tag ${n}`);
+}
+
+/**
  * Reads every table genesis needs from a copy of the Python database. Throws `GenesisError`
- * (`unsupported_schema`) for an Alembic version outside 0025-0028, a missing table or column, and
- * `sync_state_present` for a database that already holds sync state (`refuseSyncState`).
+ * (`unsupported_schema`) for an Alembic version outside 0025-0029, a missing table or column,
+ * `sync_state_present` for a database that already holds sync state (`refuseSyncState`) and
+ * `unported_field` for a stored value the event log cannot carry yet (`refuseAlertTags`).
  */
 export function readPythonSource(
   driver: SqlDriver,
@@ -183,6 +202,7 @@ export function readPythonSource(
 ): PythonSource {
   const schema = readSchemaVersion(driver);
   refuseSyncState(driver);
+  refuseAlertTags(driver);
   const read = <K extends keyof PythonTables>(k: K): PythonTables[K][number][] =>
     readTable(driver, TABLES[k], schema, counters);
   return {

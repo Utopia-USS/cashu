@@ -1,4 +1,4 @@
-// TRANSITIONAL(S49): the genesis exporter reads the Python schema (Alembic 0025-0028) and goes away
+// TRANSITIONAL(S49): the genesis exporter reads the Python schema (Alembic 0025-0029) and goes away
 // when the Python app is retired (spec D-G15).
 //
 // Public API of genesis (S26 spec 9.2 `index.ts`): one Python data dir (a COPY of `cashu.db` behind a
@@ -19,7 +19,8 @@
 // - `deviceLocal`: the D-G10 sidecar (notification log, connector fetch state);
 // - `slug`: in memory only, to name the vault's folder; never printed or reported.
 // `report` holds counts only (never values or slugs). Refusals throw `GenesisError` (exit 65):
-// an unsupported schema, sync state in the source (`sync_state_present`), a profile without
+// an unsupported schema, sync state in the source (`sync_state_present`), alert tags the log cannot
+// carry yet (`unported_field`), a profile without
 // `VaultKeys` (`missing_keys`), `clock_skew`, `recon_collision`, two rows of one table with one gid
 // (`gid_collision`), and under `strict` an event failing `parseEvent` / `detPartsOf`
 // (`invalid_event`), an id no rule rewrites (`unmapped_id_key`) or a strict counter (`bad_*`,

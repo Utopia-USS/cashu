@@ -5,18 +5,22 @@ import { headListing, pythonDb, schemaListing } from "./pythonSchema.js";
 
 const isSync = (line: string) => line.startsWith("sync_");
 const EXIT_PLAN = "inv_theses.exit_plan_changed_at:";
+const ALERT_TAG = "alerts.tag:";
 
 describe("python schema DDL", () => {
-  it("0028 equals the head listing", () => {
-    expect(schemaListing(pythonDb("0028"))).toEqual(headListing());
+  it("0029 equals the head listing", () => {
+    expect(schemaListing(pythonDb("0029"))).toEqual(headListing());
   });
 
-  it("0026 equals the head listing minus the sync tables", () => {
-    expect(schemaListing(pythonDb("0026"))).toEqual(headListing().filter((l) => !isSync(l)));
+  it("0026 equals the head listing minus the sync tables and alerts.tag", () => {
+    const expected = headListing().filter((l) => !isSync(l) && !l.startsWith(ALERT_TAG));
+    expect(schemaListing(pythonDb("0026"))).toEqual(expected);
   });
 
-  it("0025 lacks only inv_theses.exit_plan_changed_at", () => {
-    const expected = headListing().filter((l) => !isSync(l) && !l.startsWith(EXIT_PLAN));
+  it("0025 lacks inv_theses.exit_plan_changed_at too", () => {
+    const expected = headListing().filter(
+      (l) => !isSync(l) && !l.startsWith(ALERT_TAG) && !l.startsWith(EXIT_PLAN),
+    );
     expect(schemaListing(pythonDb("0025"))).toEqual(expected);
   });
 

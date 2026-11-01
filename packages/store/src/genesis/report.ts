@@ -9,7 +9,7 @@
  * `missing_keys` (a profile without `VaultKeys`), `invalid_event` (an event fails `parseEvent` or the
  * `detPartsOf` self-check, under `strict`), `strict_counter` (a `bad_*` counter under `strict`).
  * Source: `sync_state_present` (the database already holds sync_ids / sync_vaults / unacked outbox
- * rows, S26 review F3).
+ * rows, S26 review F3), `unported_field` (a stored value the event log cannot carry yet: alert tags).
  */
 type GenesisErrorCode =
   | "unsupported_schema"
@@ -20,6 +20,7 @@ type GenesisErrorCode =
   | "invalid_event"
   | "strict_counter"
   | "sync_state_present"
+  | "unported_field"
   | "gid_collision";
 
 export class GenesisError extends Error {
