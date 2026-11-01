@@ -55,6 +55,30 @@ describe("budget.transfers producer", () => {
       // profile 2's outflow names profile 1's account but its rows never see profile 1's.
       expect(out.tree[out.b].pairs).toBe(0);
       expect(out.tree[out.b].groups).toEqual([]);
+      expect(a).not.toHaveProperty("skipped_non_finite");
+    } finally {
+      ds.dispose();
+    }
+  });
+
+  it("skips and counts non-finite amounts (Q14) instead of crashing", () => {
+    const ds = syntheticDataset(`${SEED}
+INSERT INTO transactions VALUES
+  (7, 1, '2026-08-03', NULL, 'NaN', 'PLN', NULL, NULL, 'P', NULL, 'MANUAL', 'h7', 0, NULL, 0, NULL, NULL, NULL),
+  (8, 2, '2026-08-03', NULL, '-Infinity', 'PLN', NULL, NULL, 'P', NULL, 'MANUAL', 'h8', 0, NULL, 0, NULL,
+   NULL, NULL);`);
+    try {
+      const out = withPythonDb(
+        { dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot },
+        (db) => ({
+          tree: JSON.parse(dumps(produceBudgetTransfers(db))),
+          a: db.keys.key("profiles", 1),
+          t: (id: number) => db.keys.key("transactions", id),
+        }),
+      );
+      const a = out.tree[out.a];
+      expect(a.groups).toEqual([[out.t(5), out.t(2)]]);
+      expect(a.skipped_non_finite).toBe(2);
     } finally {
       ds.dispose();
     }

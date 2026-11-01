@@ -80,6 +80,19 @@ describe("core.networth producer", () => {
       net: "9279.50",
     });
     expect(p.liability_components).toEqual(["loan", "mortgage"]);
+    expect(p).not.toHaveProperty("skipped_non_finite");
+  });
+
+  it("skips and counts non-finite cash expenses Python stored (Q14) instead of crashing", () => {
+    ds.dispose();
+    ds = syntheticDataset(`${SEED}
+INSERT INTO transactions VALUES
+  (3, 2, '2026-08-03', NULL, 'NaN', 'PLN', NULL, NULL, 'X', NULL, 'MANUAL', 'h3', 0, NULL, 0, NULL, NULL, NULL),
+  (4, 2, '2026-08-04', NULL, '-Infinity', 'PLN', NULL, NULL, 'X', NULL, 'MANUAL', 'h4', 0, NULL, 0, NULL,
+   NULL, NULL);`);
+    const p = run(produceNetworth).p as Tree;
+    expect(p.totals).toEqual({ PLN: "9279.50", EUR: "10.00" });
+    expect(p.skipped_non_finite).toBe(2);
   });
 });
 

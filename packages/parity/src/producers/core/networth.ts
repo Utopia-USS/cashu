@@ -32,7 +32,7 @@ export function produceNetworth(db: PythonDb): OutValue {
   const registry = core.builtinRegistry();
   const out: Record<string, OutValue> = {};
   for (const p of db.profiles()) {
-    const { book } = profileBook(db, registry, p.id);
+    const { book, skippedNonFinite } = profileBook(db, registry, p.id);
     const now = core.netWorth(book);
     const yearAgo = core.netWorth(book, addDays(db.asOf, -365));
     const breakdown: Record<string, OutValue> = {};
@@ -55,6 +55,7 @@ export function produceNetworth(db: PythonDb): OutValue {
       breakdown,
       component_order: core.componentOrder(registry.accountTypes),
       liability_components: [...core.liabilityComponents(registry.accountTypes)].sort(),
+      ...(skippedNonFinite > 0 ? { skipped_non_finite: BigInt(skippedNonFinite) } : {}),
     };
   }
   return out;

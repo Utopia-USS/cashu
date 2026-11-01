@@ -7,6 +7,7 @@
 
 import { assets, budget, core, D, type IsoDate, loans } from "@cashu/domain";
 import type { PythonDb } from "../../sources/index.ts";
+import { finiteRows } from "../finite.ts";
 import { brokerageContributor } from "../investments/brokerage.ts";
 
 export interface ProfileBook {
@@ -17,6 +18,8 @@ export interface ProfileBook {
   readonly recorded: ReadonlyMap<string, readonly loans.RecordedBalance[]>;
   /** The profile's depreciation curves (natural keys), in id order. */
   readonly curves: readonly assets.DepreciationTerms[];
+  /** Transactions left out of the cash pool valuation for a non-finite amount (`finite.ts`). */
+  readonly skippedNonFinite: number;
 }
 
 /** `loans` rows -> domain terms (ids as natural keys). */
@@ -86,11 +89,12 @@ export function profileBook(
   }
   // `transactions` is in (account_id, id) order: per account that is id order, the anchor order
   // budget's contributor needs (it values each pool from that pool's rows only).
+  const txns = finiteRows(db.transactions(profileId));
   const cash = budget.cashContributor(
-    db.transactions(profileId).map((t) => ({
+    txns.rows.map((t) => ({
       account: key(t.accountId),
       bookingDate: t.bookingDate,
-      amount: D(t.amount),
+      amount: t.value,
     })),
   );
   const terms = loanTerms(db, profileId);
@@ -107,5 +111,6 @@ export function profileBook(
     loans: terms,
     recorded,
     curves,
+    skippedNonFinite: txns.skipped,
   };
 }
