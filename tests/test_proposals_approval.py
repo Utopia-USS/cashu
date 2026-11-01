@@ -250,6 +250,45 @@ def test_a_file_failure_removes_the_version_and_keeps_the_old_files(setup, monke
     assert _versions(pid) == [1]
 
 
+def test_a_file_failure_after_the_approval_is_captured_as_one_outcome_transaction(setup, monkeypatch):
+    """S31c: under sync, approved -> failed and the undone version share one outbox transaction, so
+    the shipper maps it to ``proposal.applyFailed`` and the version delete is covered by it (the
+    approval's ``strategy.versionSaved`` is revoked, events.md 6.6). A rejection keeps its note."""
+    from cashu.core import sync_keys, sync_outbox
+
+    monkeypatch.setenv("CASHU_SYNC", "1")
+    sync_keys.forget_cached_salts()
+    _pid, slug, host, api = setup
+    proposal_id, _new_yaml = _propose_strategy(host, slug)
+
+    def disk_full(_writes):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(investments_proposals, "replace_files", disk_full)
+    assert api.post(f"/api/p/{slug}/proposals/{proposal_id}/approve").status_code == 422
+    with get_session() as s:
+        rows = [r for r in sync_outbox.rows_of(s) if r["table_name"] in ("proposals", "inv_strategy_versions")]
+    changes = [r for r in rows if r["table_name"] == "proposals" and r["op"] == "update"]
+    approved = [r for r in changes if r["fields"].get("status") == "approved"]
+    failed = [r for r in changes if r["fields"].get("status") == "failed"]
+    assert len(approved) == len(failed) == 1
+    assert failed[0]["prev"]["status"] == "approved"
+    assert failed[0]["fields"]["result"]["error_code"] == "write_failed"
+    version_ops = {r["op"]: r["txn"] for r in rows if r["table_name"] == "inv_strategy_versions"}
+    assert version_ops["insert"] == approved[0]["txn"] and version_ops["delete"] == failed[0]["txn"]
+
+    other_id, _ = _propose_strategy(host, slug)
+    proposals.reject(_profile(_pid), other_id, note="  za wczesnie  ")
+    with get_session() as s:
+        [rejected] = [
+            r
+            for r in sync_outbox.rows_of(s, table_name="proposals")
+            if r["op"] == "update" and r["fields"].get("status") == "rejected"
+        ]
+    assert rejected["fields"]["result"] == {"note": "za wczesnie"}
+    sync_keys.forget_cached_salts()
+
+
 def test_replace_files_puts_back_what_it_replaced(tmp_path, monkeypatch):
     yaml_path, md_path = tmp_path / "strategy.yaml", tmp_path / "strategy.md"
     yaml_path.write_text("old yaml")
