@@ -134,7 +134,9 @@ export function mapRow(row: LogicalRow, vm: VaultMapping): MappedRow {
     events = settleDet(row, bridge.insert(change, vm.ctx), vm);
   } else {
     const gid = row.gid ?? vm.existing(row.table, row.localId);
-    if (gid === undefined && bridge.gid !== "none") {
+    // An explicit op's handler resolves what it addresses (a cash leg has no gid of its own).
+    const explicit = row.op !== "update" && row.op !== "delete";
+    if (gid === undefined && bridge.gid !== "none" && !explicit) {
       throw new BridgeBlock(`unresolved:${row.table}`);
     }
     if (row.op === "update") {
