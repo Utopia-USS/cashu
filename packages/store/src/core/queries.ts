@@ -1,6 +1,5 @@
 // Typed reads of the core view tables the commands need (gid in, gid out). A query takes the
 // vault's read function (`CommandContext.read`, `Store.read`), so it never spans two vaults.
-import { ibanKey } from "@cashu/domain";
 import { defineQuery } from "../query.js";
 import type { SqlValue } from "../sql/driver.js";
 
@@ -59,8 +58,10 @@ export function accountByIbanKey(read: Read, key: string): AccountView | undefin
       key,
     )[0] ??
     read<AccountRow>(
-      `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE iban IS NOT NULL AND iban_key IS NULL ORDER BY gid`,
-    ).find((a) => ibanKey(a.iban) === key);
+      `SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE iban_key IS NULL AND iban_match = ?
+       ORDER BY gid LIMIT 1`,
+      key,
+    )[0];
   return r === undefined ? undefined : toView(r);
 }
 

@@ -212,6 +212,34 @@ describe("core commands: accounts", () => {
       ibanKey: VALID,
     });
     expect(ownIbanKeys(reader(store))).toEqual(new Set([VALID]));
+    expect(store.read("SELECT iban_match FROM accounts")).toEqual([{ iban_match: VALID }]);
+  });
+
+  it("keeps the match key of a removed account and leaves it null without an IBAN", () => {
+    const store = openTestStore();
+    const env = testEnv();
+    const a = run(store, env, openAccount, {
+      bank: "mbank",
+      type: "checking",
+      currency: "PLN",
+      iban: ` pl ${INVALID} `,
+    });
+    run(store, env, openAccount, {
+      bank: "manual",
+      name: "Sejf",
+      type: "savings",
+      currency: "PLN",
+      externalId: "manual:Sejf",
+    });
+    run(store, env, removeAccount, { account: a.ok ? a.value.account : "" });
+    expect(
+      store.read(
+        "SELECT iban_match, removed_at IS NOT NULL AS removed FROM accounts ORDER BY iban_match",
+      ),
+    ).toEqual([
+      { iban_match: null, removed: 0 },
+      { iban_match: INVALID, removed: 1 },
+    ]);
   });
 
   it("an account showing only a raw IBAN is found by it, wherever its gid came from", () => {
@@ -238,8 +266,9 @@ describe("core commands: accounts", () => {
     });
     expect(out.ok && out.value).toMatchObject({ account: gid, created: false });
     expect(types(out)).toEqual([]);
-    expect(store.read("SELECT iban, iban_key FROM accounts")).toEqual([
-      { iban: `PL${INVALID}`, iban_key: null },
+    // the match column (D-08.1) is Python's iban_key of the raw number, checksum or not
+    expect(store.read("SELECT iban, iban_key, iban_match FROM accounts")).toEqual([
+      { iban: `PL${INVALID}`, iban_key: null, iban_match: INVALID },
     ]);
   });
 

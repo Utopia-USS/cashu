@@ -7,13 +7,16 @@
 // of its opens / identifications in fold order (fill-if-null, Python `get_or_create_account`), so a
 // number failing the checksum is still shown and exported (no data loss); `iban_key` = the key of the
 // accepted IBAN only (null when the component holds none): identity lookups and transfer matching
-// read it, never `iban` (rule 5, N2); `external_id` = first non-null; `type` = latest `account.typeSet`, else the first applied open's;
+// read it, never `iban` (rule 5, N2); `iban_match` = Python `iban_key` of the raw `iban` (no checksum,
+// null when empty): the match key of internal transfers and own-IBAN categories (D-08.1, rule 5:
+// counterparty IBAN only), indexed, kept on removed accounts too; `external_id` = first non-null; `type` = latest `account.typeSet`, else the first applied open's;
 // `name` = latest explicit rename of any member, else the root's own opened name, else the first
 // applied open's (N4); `removed_at` = SOFT register.
 // Key parking (S24 D-24.7, gid.md 4.3, events.md 9: DERIVED): the accounts of one (bank, external_id)
 // group (name keys like `manual:<name>` are not identity, so several rows can carry one) show the key
 // on the live ones; with none live, on the latest opened (highest fold order of its first open); every
 // other member shows `<key>~<gid>`. Python `park_removed_key` / `unpark_key` on sequential histories.
+import { ibanKey } from "@cashu/domain";
 import {
   type FoldContext,
   type FoldEvent,
@@ -86,6 +89,8 @@ const accountsTable: TableDef = {
     { name: "iban", type: "TEXT" },
     /** The accepted identity IBAN's key (valid checksum, N2); null when `iban` is raw only. */
     { name: "iban_key", type: "TEXT" },
+    /** Python `iban_key(iban)` of the raw `iban`, no checksum (D-08.1); null when empty. */
+    { name: "iban_match", type: "TEXT" },
     { name: "external_id", type: "TEXT" },
     { name: "currency", type: "TEXT", notNull: true },
     { name: "type", type: "TEXT", notNull: true },
@@ -96,6 +101,7 @@ const accountsTable: TableDef = {
   indexes: [
     { columns: ["iban"] },
     { columns: ["iban_key"] },
+    { columns: ["iban_match"] },
     { columns: ["external_id"] },
     { columns: ["bank", "external_id"] },
   ],
@@ -226,13 +232,14 @@ function save(ctx: FoldContext, s: AccountState): void {
   );
   // The row is visible once an open of any member is folded (bank / currency / name known).
   if (s.bank === null || s.currency === null || s.open_type === null) return;
+  const shown = s.iban ?? s.raw_iban;
   ctx.sql.write(
     accountsTable.name,
-    `INSERT INTO accounts (id, gid, bank, name, iban, iban_key, external_id, currency, type, active,
-       created_at, removed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO accounts (id, gid, bank, name, iban, iban_key, iban_match, external_id, currency,
+       type, active, created_at, removed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (gid) DO UPDATE SET bank = excluded.bank, name = excluded.name, iban = excluded.iban,
-       iban_key = excluded.iban_key, external_id = excluded.external_id, currency = excluded.currency, type = excluded.type,
+       iban_key = excluded.iban_key, iban_match = excluded.iban_match, external_id = excluded.external_id, currency = excluded.currency, type = excluded.type,
        active = excluded.active, created_at = excluded.created_at, removed_at = excluded.removed_at
      WHERE accounts.name IS NOT excluded.name OR accounts.iban IS NOT excluded.iban
        OR accounts.iban_key IS NOT excluded.iban_key
@@ -242,8 +249,9 @@ function save(ctx: FoldContext, s: AccountState): void {
     s.root,
     s.bank,
     s.renamed ?? s.own_name ?? s.first_name ?? "",
-    s.iban ?? s.raw_iban,
+    shown,
     s.iban === null ? null : ibanKeyLoose(s.iban),
+    ibanKey(shown) || null,
     s.external_id,
     s.currency,
     s.set_type ?? s.open_type,
@@ -256,7 +264,7 @@ function save(ctx: FoldContext, s: AccountState): void {
 
 export const accountsMaterializer: Materializer = {
   id: "core.accounts",
-  version: 3,
+  version: 4,
   tables: [accountsTable, foldTable],
   handles: [
     "account.opened",
