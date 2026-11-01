@@ -12,7 +12,8 @@
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
-    "test": "jest"
+    "test": "jest",
+    "bundle:check": "node scripts/bundle-size.mjs"
   },
   "dependencies": {
     "@cashu/i18n": "workspace:*",
