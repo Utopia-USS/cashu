@@ -177,6 +177,25 @@ describe("host socket", () => {
     await bad.closed;
   });
 
+  it("delivers frames the host pushes right after ready once the client sets its handler", async () => {
+    const dir = trackDir(tempDir());
+    const h = await startHost({
+      dataDir: dir,
+      build: "test-host",
+      onSession(session) {
+        session.send({ t: "note", method: "store.ready", params: { pushed: 1 } });
+        session.send({ t: "note", method: "store.ready", params: { pushed: 2 } });
+      },
+    });
+    hosts.push(h);
+    const c = await connectHost({ dataDir: dir, role: "ui", build: "c" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const seen: unknown[] = [];
+    c.onFrame((frame) => seen.push(frame.t === "note" ? frame.params : frame.t));
+    expect(seen).toEqual([{ pushed: 1 }, { pushed: 2 }]);
+    c.close();
+  });
+
   it("a second host on the same data dir is refused", async () => {
     const dir = trackDir(tempDir());
     await host(dir);

@@ -81,7 +81,11 @@ export interface HostConnection {
   readonly role: Role;
   readonly host: HostInfo;
   send(frame: ClientFrame): void;
-  /** Every frame from the host except `res` frames answering `call`. */
+  /**
+   * Every frame from the host except `res` frames answering `call`. Frames that arrive before the
+   * handler is set (the host may push right after `ready`, e.g. the store channel's own `ready`) are
+   * kept and delivered when it is set.
+   */
   onFrame(handler: (frame: HostFrame) => void): void;
   onClose(handler: () => void): void;
   /** One request / response; rejects with `HostCallError`, or when the connection closes. */
@@ -181,6 +185,7 @@ function openConnection(conn: FrameSocket, role: Role, host: HostInfo): HostConn
   const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   let nextId = 1;
   let handler: ((frame: HostFrame) => void) | undefined;
+  const early: HostFrame[] = [];
   conn.onMessage((raw) => {
     const parsed = hostFrameSchema.safeParse(raw);
     if (!parsed.success) {
@@ -197,7 +202,8 @@ function openConnection(conn: FrameSocket, role: Role, host: HostInfo): HostConn
         return;
       }
     }
-    handler?.(frame);
+    if (handler === undefined) early.push(frame);
+    else handler(frame);
   });
   conn.onClose(() => {
     for (const call of pending.values()) call.reject(new Error("the host connection closed"));
@@ -209,6 +215,7 @@ function openConnection(conn: FrameSocket, role: Role, host: HostInfo): HostConn
     send: (frame) => conn.send(frame),
     onFrame: (h) => {
       handler = h;
+      for (const frame of early.splice(0)) h(frame);
     },
     onClose: (h) => conn.onClose(() => h()),
     call(method, params = {}) {
