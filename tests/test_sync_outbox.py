@@ -16,7 +16,7 @@ from pathlib import Path
 import keyring
 import pytest
 from mcp_support import TODAY, seed_profile
-from sqlalchemy import delete, func, insert, inspect, text, update
+from sqlalchemy import JSON, delete, func, insert, inspect, text, update
 from sqlmodel import SQLModel, select
 
 from cashu.core import accounts, profiles, reviews, sync_keys, sync_outbox
@@ -317,6 +317,90 @@ def test_an_object_kept_across_a_commit_still_carries_its_profile_and_last_state
     assert (upd["op"], upd["profile_id"], upd["fields"], upd["key"]["account_id"]) == ("update", pid, {"amount": "6.00"}, acc.id)
     assert dele["op"] == "delete" and dele["profile_id"] == pid
     assert dele["fields"]["amount"] == "6.00" and dele["fields"]["date"] == "2026-01-31"
+
+
+def stored(table: str, local_id: str) -> dict:
+    """The row as SQLite stores it (raw driver values, JSON parsed), without ``profile_id``."""
+    import json
+
+    t = SQLModel.metadata.tables[table]
+    with get_session() as s:
+        conn = s.connection()
+        cur = conn.exec_driver_sql(f"SELECT * FROM {table} WHERE id = ?", (int(local_id),))
+        names = [d[0] for d in cur.cursor.description]
+        raw = dict(zip(names, cur.fetchone(), strict=True))
+    out = {}
+    for name, value in raw.items():
+        if name == "profile_id":
+            continue
+        is_json = isinstance(t.c[name].type, JSON) or isinstance(getattr(t.c[name].type, "impl", None), JSON)
+        out[name] = json.loads(value) if is_json and isinstance(value, str) else value
+    return out
+
+
+def test_inserts_and_updates_carry_the_whole_stored_row_in_post(db_engine, sync_on):
+    """P-B: ``post`` = every column as stored after the change, derived and excluded timestamps
+    included (``added_at``, ``updated_at``, ``acknowledged_at``, ``core_changed_at``); ``fields`` and
+    ``prev`` are unchanged; deletes and explicit ops carry no ``post``."""
+    pid = new_profile("Post")
+    inst = new_instrument()
+    item = watch(pid, inst, note="old")
+    [ins] = outbox(table_name="watchlist_items", op="insert")
+    assert "added_at" in ins["post"] and "added_at" not in ins["fields"]
+    assert "profile_id" not in ins["post"] and ins["post"] == stored("watchlist_items", str(item))
+    with get_session() as s:
+        row = s.get(InvWatchlistItem, item)
+        row.note = "new"
+        s.add(row)
+    [upd] = outbox(table_name="watchlist_items", op="update")
+    assert upd["fields"] == {"note": "new"} and upd["prev"] == {"note": "old"}
+    assert upd["post"] == stored("watchlist_items", str(item)) and upd["post"]["note"] == "new"
+    sig = new_signal(pid, inst)
+    with get_session() as s:
+        row = s.get(InvSignal, sig)
+        row.status = "resolved"
+        row.acknowledged_at = dt.datetime(2026, 1, 1, 12, 0, 0, 123456, tzinfo=dt.UTC)
+        s.add(row)
+    upd = outbox(table_name="inv_signals", op="update")[-1]
+    assert upd["fields"] == {"status": "resolved"}
+    assert upd["post"] == stored("inv_signals", str(sig)) and upd["post"]["acknowledged_at"]
+    with get_session() as s:
+        th = InvThesis(profile_id=pid, instrument_id=inst, entry_type="long", thesis="Teza")
+        s.add(th)
+        s.flush()
+        th.core_changed_at = th.updated_at = dt.datetime.now(dt.UTC)
+        th.thesis = "Teza 2"
+        s.add(th)
+        s.flush()
+        thesis_id = th.id
+    ins, upd = outbox(table_name="inv_theses")
+    assert upd["post"] == stored("inv_theses", str(thesis_id)) and upd["post"]["core_changed_at"]
+    assert upd["fields"] == {"thesis": "Teza 2"} and upd["post"]["updated_at"] != ins["post"]["updated_at"]
+    assert ins["post"]["thesis"] == "Teza" and ins["post"]["core_changed_at"] is None
+    with get_session() as s:  # a bulk update has the row after the statement
+        s.exec(update(InvWatchlistItem).where(InvWatchlistItem.id == item).values(note="bulk"))
+    bulk = outbox(table_name="watchlist_items", op="update")[-1]
+    assert bulk["fields"] == {"note": "bulk"} and bulk["post"] == stored("watchlist_items", str(item))
+    with get_session() as s:
+        s.delete(s.get(InvWatchlistItem, item))
+    [dele] = outbox(table_name="watchlist_items", op="delete")
+    assert dele["post"] is None and dele["fields"]["note"] == "bulk"
+    with get_session() as s:
+        instrument_merge.merge_instruments(s, new_instrument("Dup"), inst)
+    [merge] = outbox(op="merge")
+    assert merge["post"] is None
+
+
+def test_post_reads_back_a_column_missing_from_the_flushed_state(db_engine, sync_on):
+    """A column the flush expired (a server-side default) is not in the object's state: ``post``
+    reads the stored value back instead of leaving it out."""
+    pid = new_profile("Expire")
+    item = watch(pid, new_instrument(), note="n")
+    table = SQLModel.metadata.tables["watchlist_items"]
+    with get_session() as s:
+        row = {"id": item, "profile_id": pid, "note": "n"}  # the rest "expired"
+        post = sync_outbox._Capture(s, s.connection()).post(table, row)
+    assert post == stored("watchlist_items", str(item)) and post["added_at"]
 
 
 def test_derived_only_changes_record_nothing(db_engine, sync_on):

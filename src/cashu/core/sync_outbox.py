@@ -12,7 +12,9 @@ the devices diverge).
 What is captured (hooks in ``core/events.py``):
 
 - ORM flushes: an insert records every synced column, an update the changed synced columns (attribute
-  history: new values in ``fields``, previous ones in ``prev``), a delete the row's last state. Derived
+  history: new values in ``fields``, previous ones in ``prev``), a delete the row's last state. Inserts
+  and updates also carry ``post``, the whole row after the change as stored (derived columns and
+  ``updated_at`` included; S31a P-B): the shipper stamps events with the row's own timestamps from it. Derived
   columns (events.md 9) and ``updated_at`` (the outbox ``ts`` is the domain time) are never captured;
   derived rows (cash mirror legs) neither. A row inserted and deleted in one transaction leaves nothing.
 - Bulk ORM ``update()`` / ``delete()`` of a synced table: the affected rows are read before (and, for
@@ -551,7 +553,7 @@ def _drop_gid(conn, st: _State, profile_id: int | None, table_name: str, local_i
 # --------------------------------------------------------------------------- #
 
 
-def _outbox_row(st: _State, *, profile_id, table_name, op, local_id, gid, fields, prev=None, key=None) -> dict:
+def _outbox_row(st: _State, *, profile_id, table_name, op, local_id, gid, fields, prev=None, key=None, post=None) -> dict:
     return {
         "ts": utcnow(),
         "txn": st.txn,
@@ -565,6 +567,7 @@ def _outbox_row(st: _State, *, profile_id, table_name, op, local_id, gid, fields
         "key": key,
         "origin": st.origin,
         "acked_at": utcnow() if st.origin == "inbound" else None,  # never shipped back (S31b)
+        "post": post,
     }
 
 
@@ -588,6 +591,24 @@ class _Capture:
         self.st = _state(session)
         self.dialect = conn.dialect
         self.rows: list[dict] = []
+
+    def post(self, table, row: dict) -> dict:
+        """The whole row after an insert / update as stored (S31a P-B): every column but
+        ``profile_id``, derived and excluded ones included, encoded like ``fields``. ``row`` is the
+        flushed object's state (Python-side defaults are in it); a column missing from it (expired by
+        the flush: a server-side default or a SQL expression) is read back from the row itself, so
+        every value equals the stored text."""
+        missing = [c for c in table.columns if c.name not in row]
+        pk = list(table.primary_key.columns)
+        if missing and all(row.get(c.name) is not None for c in pk):
+            current = self.conn.execute(
+                select(*missing).where(and_(*(c == row[c.name] for c in pk)))
+            ).first()
+            if current is not None:
+                row = {**row, **dict(current._mapping)}
+        return {
+            c.name: _encoder(c, self.dialect)(row.get(c.name)) for c in table.columns if c.name != "profile_id"
+        }
 
     def insert(self, table, row: dict) -> None:
         name = table.name
@@ -613,6 +634,7 @@ class _Capture:
                 gid=gid,
                 fields=fields,
                 key=_key(name, table, row, self.dialect),
+                post=self.post(table, row),
             )
         )
 
@@ -649,6 +671,7 @@ class _Capture:
                 fields=fields,
                 prev=prev or None,
                 key=_key(name, table, row, self.dialect),
+                post=self.post(table, row),
             )
         )
 

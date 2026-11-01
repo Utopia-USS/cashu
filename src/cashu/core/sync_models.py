@@ -30,7 +30,8 @@ class SyncOutbox(SQLModel, table=True):
     explicit semantic op (``merge``, ``undo``, ``leg_delete``). ``fields``: the synced columns'
     values as stored in SQLite (insert: all, update: the changed ones, delete: the last state);
     ``prev``: an update's previous values; ``key``: the DET gid parts in local form (columns and
-    referenced local ids) so the shipper can compute a gid Python left NULL."""
+    referenced local ids) so the shipper can compute a gid Python left NULL; ``post``: an insert's or
+    update's whole row after the change (S31a P-B)."""
 
     __tablename__ = "sync_outbox"
     __table_args__ = (Index("ix_sync_outbox_row", "table_name", "local_id"),)
@@ -48,6 +49,9 @@ class SyncOutbox(SQLModel, table=True):
     key: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     origin: str = Field(default="local")  # local | inbound (S31b applies; never shipped back)
     acked_at: dt.datetime | None = Field(default=None, index=True)
+    # S31a P-B: insert / update rows: the whole row after the change as stored (every column but
+    # profile_id, derived ones included; encoded like ``fields``). NULL for delete and explicit ops.
+    post: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 
 
 class SyncId(SQLModel, table=True):

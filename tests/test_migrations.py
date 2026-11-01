@@ -302,3 +302,25 @@ def test_0010_downgrade_refuses_while_a_position_is_removed(tmp_path):
     assert "removed_at" not in {col[0] for col in columns(engine)["accounts"]}
     assert migrations.current_revision(engine) == "0009_asset_details"
     engine.dispose()
+
+
+def test_0030_adds_the_outbox_post_column_and_keeps_rows(tmp_path):
+    """S31a P-B: ``sync_outbox.post`` is a nullable column; rows captured before it read NULL, and a
+    downgrade drops only the column."""
+    engine = _engine(tmp_path / "post.db")
+    with migrations.migration_connection(engine) as conn, conn.begin():
+        command.upgrade(migrations.alembic_config(conn), "0029_sync_inbound")
+    with engine.begin() as c:
+        c.exec_driver_sql(
+            "INSERT INTO sync_outbox (id, ts, txn, table_name, op, local_id, fields, origin) "
+            "VALUES (1, '2026-01-01 00:00:00.000000', 't', 'alerts', 'insert', '1', '{}', 'local')"
+        )
+    assert migrations.upgrade_to_head(engine) == "0030_sync_outbox_post"
+    with engine.connect() as c:
+        assert c.exec_driver_sql("SELECT id, post FROM sync_outbox").all() == [(1, None)]
+    with migrations.migration_connection(engine) as conn, conn.begin():
+        command.downgrade(migrations.alembic_config(conn), "0029_sync_inbound")
+    assert "post" not in {col[0] for col in columns(engine)["sync_outbox"]}
+    with engine.connect() as c:
+        assert c.exec_driver_sql("SELECT count(*) FROM sync_outbox").scalar() == 1
+    engine.dispose()

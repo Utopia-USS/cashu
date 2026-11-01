@@ -24,7 +24,7 @@ export interface GenesisFiles {
 
 /**
  * Alembic revisions genesis reads (impl notes, change 2): 0027 adds `alerts.tag` (refused while set,
- * `refuseAlertTags`), 0028 / 0029 add only sync_* tables.
+ * `refuseAlertTags`), 0028 / 0029 add only sync_* tables, 0030 only a sync_* column.
  */
 const SCHEMA_VERSIONS = [
   "0025_topic_view_sources",
@@ -32,6 +32,7 @@ const SCHEMA_VERSIONS = [
   "0027_alert_tag",
   "0028_sync_outbox",
   "0029_sync_inbound",
+  "0030_sync_outbox_post", // adds only a sync_* column (sync_outbox.post, S31a P-B)
 ] as const;
 
 type SchemaVersion = (typeof SCHEMA_VERSIONS)[number];
