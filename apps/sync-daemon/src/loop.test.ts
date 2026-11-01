@@ -93,6 +93,7 @@ async function runLoop(w: World, crashAt?: CrashPoint | "vaultWritten") {
     vaults,
     slugs: new Map(vaults.map((v) => [v.profileId, `syn-${v.profileId}`])),
     ports,
+    now: () => Date.UTC(2026, 2, 2),
     out: (l) => lines.push({ ...l }),
     at: (p) => {
       if (p === crashAt) throw new Crash(p);
@@ -206,6 +207,7 @@ describe("the loop", () => {
       vaults,
       slugs: new Map([[1, "syn-1"]]),
       ports,
+      now: () => Date.UTC(2026, 2, 2),
       out: () => undefined,
     });
     await expect(loop.iteration()).rejects.toThrow(BlockedError);

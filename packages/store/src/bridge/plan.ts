@@ -118,6 +118,25 @@ function instrumentsOf(row: LogicalRow): readonly string[] {
   return id === null || id === undefined ? [] : [String(id)];
 }
 
+/** `parseEvent` + the DET self-check of every draft (genesis `checkEvent`); a failure blocks. */
+export function validate(drafts: readonly EventDraft[], vm: VaultMapping): void {
+  const device = genesisDevice(vm.input.salt);
+  const placeholder = {
+    eid: "00000000000000000000000000",
+    vault: vm.input.vault,
+    device,
+    hlc: formatHlc({ wall: 0, counter: 0, device }),
+    at: "1970-01-01T00:00:00Z",
+    v: 1,
+    origin: "bridge",
+  };
+  for (const d of drafts) {
+    if (checkEvent(d, placeholder, vm.det) !== "ok") {
+      throw new BridgeBlock(`invalid-event:${d.type}`);
+    }
+  }
+}
+
 class Planner {
   readonly #input: PlanInput;
   readonly #states: VaultState[];
@@ -228,20 +247,10 @@ class Planner {
       this.counts.notLeader += 1;
       return false;
     });
-    const device = genesisDevice(s.vm.input.salt);
-    const placeholder = {
-      eid: "00000000000000000000000000",
-      vault,
-      device,
-      hlc: formatHlc({ wall: 0, counter: 0, device }),
-      at: "1970-01-01T00:00:00Z",
-      v: 1,
-      origin: "bridge",
-    };
-    for (const d of kept) {
-      const check = checkEvent(d.draft, placeholder, s.vm.det);
-      if (check !== "ok") throw new BridgeBlock(`invalid-event:${d.draft.type}`);
-    }
+    validate(
+      kept.map((d) => d.draft),
+      s.vm,
+    );
     const eids = kept.map(() => this.#input.ports.ulid());
     const causeIndex = kept.findIndex((d) => CAUSES.includes(d.draft.type));
     const noteIndex = kept.findIndex((d) => d.draft.type === "note.candidateUpdated");

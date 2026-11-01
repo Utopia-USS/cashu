@@ -36,6 +36,8 @@ export interface LoopDeps {
   /** Profile id -> slug (in memory only; passed to `cashu --profile`). */
   readonly slugs: ReadonlyMap<number, string>;
   readonly ports: bridge.BridgePorts;
+  /** Wall clock (ms): the `at` of a shipped cushion edit. */
+  readonly now: () => number;
   /** One JSON line per step (counts only). */
   readonly out: (line: Readonly<Record<string, unknown>>) => void;
   /** Test hook: called at each crash point (a test throws there to simulate a kill). */
@@ -219,14 +221,55 @@ export class Loop {
     return { rows: c.rows, events: c.events };
   }
 
-  /** Ships until the outbox is empty (or `MAX_PLANS` plans). */
+  /**
+   * The cushion of each vault's `budget.json` when it differs from the last shipped value (spec 4.6,
+   * D7a). A crash between the write and the record ships the same value again: an LWW register, so
+   * the second event changes nothing.
+   */
+  async #shipCushions(): Promise<number> {
+    let shipped = 0;
+    for (const v of this.#d.vaults) {
+      const slug = this.#d.slugs.get(v.profileId);
+      if (slug === undefined) continue;
+      const input: bridge.VaultInput = {
+        ordinal: v.ordinal,
+        profileId: v.profileId,
+        vault: v.vaultId,
+        salt: v.salt,
+        syncIds: this.#d.reader.syncIds(v.profileId),
+        current: () => {
+          throw new bridge.BridgeBlock("cushion-needs-no-rows");
+        },
+        files: this.#d.reader.files,
+      };
+      const at = new Date(this.#d.now()).toISOString();
+      let ship: bridge.CushionShip | undefined;
+      try {
+        ship = bridge.cushionShip(input, slug, v.state.cushionShipped(), at, this.#d.ports);
+      } catch (e) {
+        if (e instanceof bridge.BridgeBlock) throw new BlockedError(e.reason);
+        throw e;
+      }
+      if (ship === undefined) continue;
+      await v.engine.write(ship.events);
+      v.state.setCushionShipped(ship.value);
+      shipped += 1;
+    }
+    if (shipped > 0) this.#d.out({ step: "cushion", shipped });
+    return shipped;
+  }
+
+  /** Ships until the outbox is empty (or `MAX_PLANS` plans), then a changed cushion. */
   async ship(): Promise<ShipResult> {
     let plans = 0;
     let rows = 0;
     let events = 0;
     while (plans < MAX_PLANS) {
       const r = await this.#shipOne();
-      if (r === undefined) return { plans, rows, events, idle: true };
+      if (r === undefined) {
+        events += await this.#shipCushions();
+        return { plans, rows, events, idle: true };
+      }
       plans += 1;
       rows += r.rows;
       events += r.events;

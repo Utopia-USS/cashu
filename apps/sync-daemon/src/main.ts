@@ -75,6 +75,7 @@ async function run(config: DaemonConfig, env: MainEnv, once: boolean): Promise<n
       // pinned fetch leader by construction; B1 replaces this with the registry query.
       isLeader: () => true,
     },
+    now: () => Date.now(),
     out: env.out,
   });
   let stop = false;
