@@ -40,8 +40,8 @@ export interface EngineContext {
   readonly moduleTextRules: readonly (readonly [string, string])[];
 }
 
-/** The two rule lookups the engine repeats per row; `createCategorizer` memoizes them. */
-interface EngineLookups {
+/** @package The two rule lookups the engine repeats per row; `createCategorizer` memoizes them. */
+export interface EngineLookups {
   seed(merchantKey: string): string | null;
   text(text: string, moduleTextRules: readonly (readonly [string, string])[]): string | null;
 }
@@ -108,8 +108,8 @@ export function ownerDecision(t: EngineTxn, ctx: EngineContext): Categorization 
   return ownerDecisionAt(t, txnMerchantKey(t), ctx);
 }
 
-/** `categorize` with the given lookups (plain or memoized). */
-function categorizeWith(
+/** @package `categorize` with the given lookups (plain or memoized). */
+export function categorizeWith(
   t: EngineTxn,
   ctx: EngineContext,
   subscriptionKeys: ReadonlySet<string>,

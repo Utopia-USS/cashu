@@ -59,3 +59,6 @@ export const ENGINE_OWN_IBANS: readonly string[] = [
   "99 1000 0000 0000 0000 0000 0001",
   "DE89370400440532013000",
 ];
+
+/** `all` scenarios in the fast tier (the spec's fast slice). */
+export const ALL_FAST = 60;

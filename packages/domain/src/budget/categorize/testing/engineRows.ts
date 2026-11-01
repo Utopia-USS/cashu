@@ -6,14 +6,7 @@ import { categorize, type EngineContext, type EngineTxn, ownerDecision } from ".
 import { type MerchantRule, type RuleSource, rulesByMerchant } from "../rules.js";
 import { ENGINE_OWN_IBANS } from "./vectors.js";
 
-type TxnVector = [
-  string,
-  string | null,
-  string | null,
-  string | null,
-  string | null,
-  boolean,
-];
+type TxnVector = [string, string | null, string | null, string | null, string | null, boolean];
 export type RuleVector = [string, string, string, boolean];
 export type PatternVector = [string, string | null, string | null];
 
@@ -41,11 +34,7 @@ function ruleFromVector([merchantKey, category, source, locked]: RuleVector): Me
   return { merchantKey, category, source: source as RuleSource, locked };
 }
 
-function patternFromVector([
-  category,
-  counterpartyIban,
-  text,
-]: PatternVector): PaymentPattern {
+function patternFromVector([category, counterpartyIban, text]: PatternVector): PaymentPattern {
   return { category, counterpartyIban, text };
 }
 
