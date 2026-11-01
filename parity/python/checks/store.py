@@ -827,7 +827,12 @@ def _timestamp(value: dt.datetime) -> str:
     return value.strftime("%Y-%m-%dT%H:%M:%S.%f")
 
 
-def _json(value: Any) -> Any:
+def _json(value: Any, *, nested: bool = False) -> Any:
+    """A JSON value in canonical form. Inside a JSON column (``nested``) an integral float is written
+    as an integer: the event log carries JSON numbers with one numeric type (canonical JSON, events.md
+    2), so ``18.0`` stored by Python reads back as ``18`` on every TS device; writing ``18.0`` here made
+    the golden file bytes differ from the TS output while the comparer saw equal values (S31a addendum,
+    research_notes ``details``). A top-level float column keeps its float form."""
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, float):
@@ -835,11 +840,13 @@ def _json(value: Any) -> Any:
             return "NaN"
         if math.isinf(value):
             return "Infinity" if value > 0 else "-Infinity"
+        if nested and value.is_integer():
+            return int(value)
         return value
     if isinstance(value, dict):
-        return {str(k): _json(v) for k, v in value.items()}
+        return {str(k): _json(v, nested=True) for k, v in value.items()}
     if isinstance(value, list):
-        return [_json(v) for v in value]
+        return [_json(v, nested=True) for v in value]
     raise TypeError(f"no canonical JSON form for {type(value).__name__}")
 
 
