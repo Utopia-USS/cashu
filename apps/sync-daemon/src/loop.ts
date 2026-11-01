@@ -25,8 +25,17 @@ const PIPE_PAGE = 500;
 /** Plans per ship step before the loop yields to sync / pipe (a large backlog ships over iterations). */
 const MAX_PLANS = 50;
 
-/** Printed crash points, and `vaultWritten` (one vault of a multi-vault plan written; tests only). */
-export type CrashPoint = "intent" | "written" | "acked" | "cleared" | "vaultWritten";
+/**
+ * Printed crash points, and `vaultWritten` / `vaultCleared` (one vault of a multi-vault plan written /
+ * cleared; tests only).
+ */
+export type CrashPoint =
+  | "intent"
+  | "written"
+  | "acked"
+  | "cleared"
+  | "vaultWritten"
+  | "vaultCleared";
 
 export interface LoopDeps {
   readonly reader: PythonReader;
@@ -96,24 +105,40 @@ export class Loop {
     const first = open[0];
     if (first === undefined) return false;
     const expected = first.intent.vaults;
-    const present = new Map<OpenVault, ReadonlyMap<string, string>>();
+    // Per open intent after a catch-up: are its events in the vault's log (all), not yet (none)?
+    // One frame per batch, so a mix inside one batch is impossible (block if seen).
+    const written = new Map<OpenVault, boolean>();
     for (const { v, intent } of open) {
       await v.engine.sync(); // catch up: own durable frames the store missed are applied now
       const eids = intent.batch.events.map((e) => e.i);
-      const held = v.store.eventHlcs(eids);
-      if (held.size !== 0 && held.size !== eids.length) throw new BlockedError("partial-intent");
-      present.set(v, held);
+      const held = v.store.eventHlcs(eids).size;
+      if (held !== 0 && held !== eids.length) throw new BlockedError("partial-intent");
+      written.set(v, held === eids.length);
     }
+    const allWritten = [...written.values()].every(Boolean);
     if (open.length < expected) {
+      if (allWritten) {
+        // A crash between the per-vault clears: the ack already ran (clears follow it); acking
+        // again is idempotent, so re-ack what is left and clear it (review F1).
+        this.#ack(open);
+        this.#d.out({ step: "recover", vaults: open.length, reacked: true });
+        return true;
+      }
       // A crash while the intents were stored: writes start only after all are stored.
-      if ([...present.values()].some((h) => h.size > 0)) throw new BlockedError("partial-intent");
+      if (
+        [...written.entries()].some(
+          ([v, w]) => w && (open.find((o) => o.v === v)?.intent.batch.events.length ?? 0) > 0,
+        )
+      ) {
+        throw new BlockedError("partial-intent");
+      }
       for (const { v } of open) v.state.clearIntent();
       this.#d.out({ step: "recover", discarded: open.length });
       return true;
     }
     let rewritten = 0;
     for (const { v, intent } of open) {
-      if ((present.get(v)?.size ?? 0) === 0 && intent.batch.events.length > 0) {
+      if (written.get(v) !== true && intent.batch.events.length > 0) {
         await v.engine.write(intent.batch.events);
         rewritten += 1;
       }
@@ -150,7 +175,10 @@ export class Loop {
     const entries = bridge.ackEntries(plan, hlcs);
     this.#d.cli.ack(first.intent.through, entries, this.#tmpDir(first.v));
     this.#point("acked");
-    for (const { v } of members) v.state.clearIntent();
+    for (const { v } of members) {
+      v.state.clearIntent();
+      this.#d.at?.("vaultCleared");
+    }
     this.#point("cleared");
     return entries.length;
   }

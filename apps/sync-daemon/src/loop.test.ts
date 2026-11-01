@@ -82,7 +82,7 @@ const ports = {
   isLeader: () => true,
 };
 
-async function runLoop(w: World, crashAt?: CrashPoint | "vaultWritten") {
+async function runLoop(w: World, crashAt?: CrashPoint) {
   const vaults = await openAll(w);
   const reader = new PythonReader(w.py.dir);
   const cli = w.py.cli();
@@ -159,7 +159,7 @@ describe("the loop", () => {
     await run.close();
   });
 
-  it.each(["intent", "vaultWritten", "written", "acked", "cleared"] as const)(
+  it.each(["intent", "vaultWritten", "written", "acked", "vaultCleared", "cleared"] as const)(
     "recovers a crash after %s: every event once, nothing pending",
     async (point) => {
       const w = await world(2);
