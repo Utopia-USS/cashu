@@ -1,7 +1,10 @@
-// Exhaustive tier: a registry larger than one pairing message (PAGE_SIZE + 100 authentic statements)
-// arrives in pages, bound by the signed hash. It stays the only test of paging: every statement must
-// be signed and verified (about 1,200 Ed25519 checks on @noble), which no default-tier case can
-// afford; a cheaper verifier (the follow-up the S29c spec measures in 12.4) brings it back.
+// Exhaustive tier: a registry larger than one pairing message (PAGE_SIZE + 1 authentic statements)
+// arrives in pages, bound by the signed hash. It stays the only test of paging. Cost (S29c B2): the
+// statements are signed once (~0.5 ms each on @noble) and verified once in the process: the joiner's
+// signature caches are seeded with the inviter's (verification results are a function of the bytes,
+// so the fold computes the same registry; per-device verification is covered by every other pairing
+// test), and the registry is one statement past a page instead of 100. A cheaper verifier (the S29c
+// spec 12.4 follow-up) would bring it back to the default tier.
 
 import { describe, expect, it } from "vitest";
 import { buildDeviceAdded } from "./events.js";
@@ -19,7 +22,7 @@ describe("pairing: registry pages (review M4)", () => {
     const cert = creator.stream[0]?.events[0]?.data.certificate as string;
     const certBytes = Uint8Array.from(Buffer.from(cert, "hex"));
     creator.write(
-      Array.from({ length: PAGE_SIZE + 100 }, () =>
+      Array.from({ length: PAGE_SIZE + 1 }, () =>
         buildDeviceAdded(
           creator.identity,
           creator.ring.vaultId,
@@ -32,7 +35,7 @@ describe("pairing: registry pages (review M4)", () => {
     );
     creator.push();
     expect(creator.devices.registry.events.length).toBeGreaterThan(PAGE_SIZE);
-    const phone = await pairDevice(creator, "phone");
+    const phone = await pairDevice(creator, "phone", 0, { sharedCaches: true });
     expect(phone.devices.registry.isTrusted(phone.id)).toBe(true);
     expect(phone.devices.registry.events.length).toBe(creator.devices.registry.events.length);
   });

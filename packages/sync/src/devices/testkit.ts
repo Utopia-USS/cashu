@@ -252,8 +252,8 @@ export class SimDevice {
   /** Every rejection the guard reported on this device. */
   readonly rejections: FrameRejection[] = [];
   /** Signature and certificate caches of this device (shared by pairing and its devices state). */
-  readonly verify: StatementVerifier = memoizedVerifier();
-  readonly certificateCache = new CertificateCache();
+  readonly verify: StatementVerifier;
+  readonly certificateCache: CertificateCache;
   skewMs: number;
   lastPullAt: number | undefined;
   lastPushAt: number | undefined;
@@ -281,7 +281,16 @@ export class SimDevice {
   /** Peers whose latest events were more than the skew ahead of this clock (HLC warnings). */
   readonly #farAhead = new Map<string, boolean>();
 
-  constructor(name: string, remote: SimRemote, skewMs = 0, identity?: DeviceIdentity) {
+  constructor(
+    name: string,
+    remote: SimRemote,
+    skewMs = 0,
+    identity?: DeviceIdentity,
+    /** Signature caches seeded by another device (results are a function of the bytes). */
+    caches?: { readonly verify: StatementVerifier; readonly certificateCache: CertificateCache },
+  ) {
+    this.verify = caches?.verify ?? memoizedVerifier();
+    this.certificateCache = caches?.certificateCache ?? new CertificateCache();
     this.name = name;
     this.remote = remote;
     this.skewMs = skewMs;
@@ -684,8 +693,16 @@ export function memoryLinks(
  * Pairs a new simulated device through the real protocol over an in-memory link (the owner types
  * the code the new device shows into the inviter), writes the inviter's `device.added` and pushes it.
  */
-export async function pairDevice(inviter: SimDevice, name: string, skewMs = 0): Promise<SimDevice> {
-  const joiner = new SimDevice(name, inviter.remote, skewMs);
+export async function pairDevice(
+  inviter: SimDevice,
+  name: string,
+  skewMs = 0,
+  options: { readonly sharedCaches?: boolean } = {},
+): Promise<SimDevice> {
+  const caches = options.sharedCaches
+    ? { verify: inviter.verify, certificateCache: inviter.certificateCache }
+    : undefined;
+  const joiner = new SimDevice(name, inviter.remote, skewMs, undefined, caches);
   joiner.words = inviter.words;
   const created = PairingInviter.create({
     sodium,
