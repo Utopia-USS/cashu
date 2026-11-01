@@ -114,12 +114,7 @@ function computeLeg(ctx: DeriveContext, key: string, c: ClaimRow | undefined): L
   };
 }
 
-function writeLeg(ctx: DeriveContext, key: string, leg: Leg | undefined, prev: string | undefined) {
-  if (prev !== undefined && prev !== leg?.gid) {
-    ctx.sql.write(TRANSACTIONS, "DELETE FROM transactions WHERE gid = ?", prev);
-    ctx.sql.write(legsTable.name, "DELETE FROM fold_txn_legs WHERE partition = ?", key);
-  }
-  if (leg === undefined) return;
+function writeLeg(ctx: DeriveContext, key: string, leg: Leg, prev: string | undefined) {
   ctx.sql.write(
     TRANSACTIONS,
     `INSERT INTO transactions (id, gid, account_id, booking_date, value_date, amount, currency,
@@ -167,12 +162,23 @@ function deriveKeys(ctx: DeriveContext, keys: readonly string[]): void {
       keys,
     ).map((r) => [r.partition, r.leg_gid]),
   );
+  const next = new Map<string, Leg | undefined>();
   for (const key of keys) {
     const c = claims.get(key);
-    const was = prev.get(key);
-    if (was === undefined && (c === undefined || !legClaimed(c))) continue;
-    writeLeg(ctx, key, computeLeg(ctx, key, c), was);
+    if (prev.get(key) === undefined && (c === undefined || !legClaimed(c))) continue;
+    next.set(key, computeLeg(ctx, key, c));
   }
+  // Drop stale legs first: when an identity change re-keys a row, its leg gid (DET over the source
+  // gid) moves from the old partition to the new one, and both are in `keys`.
+  const produced = new Set([...next.values()].flatMap((l) => (l === undefined ? [] : [l.gid])));
+  for (const [key, leg] of next) {
+    const was = prev.get(key);
+    if (was === undefined || was === leg?.gid) continue;
+    ctx.sql.write(legsTable.name, "DELETE FROM fold_txn_legs WHERE partition = ?", key);
+    if (!produced.has(was))
+      ctx.sql.write(TRANSACTIONS, "DELETE FROM transactions WHERE gid = ?", was);
+  }
+  for (const [key, leg] of next) if (leg !== undefined) writeLeg(ctx, key, leg, prev.get(key));
 }
 
 export const legsDeriver: Deriver = {
