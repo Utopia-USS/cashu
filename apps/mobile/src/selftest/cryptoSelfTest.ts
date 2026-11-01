@@ -57,6 +57,108 @@ function throwsCode(fn: () => unknown, code: string): string | undefined {
 
 const SELFTEST_ITEM = "cashu.selftest.probe";
 
+/**
+ * Which of the library's primitives are missing or throw on valid input (names only), so a failed
+ * known-answer test says where the runtime breaks. Random inputs, never reported.
+ */
+function brokenPrimitives(lib: crypto.LibsodiumLike): string[] {
+  const out: string[] = [];
+  const probe = (name: string, fn: () => unknown) => {
+    try {
+      const v = fn();
+      if (!(v instanceof Uint8Array) && !(typeof v === "object" && v !== null))
+        out.push(`${name} (bad result)`);
+    } catch (e) {
+      out.push(`${name} (${e instanceof Error ? e.name : typeof e})`);
+    }
+  };
+  const probeValue = (name: string, expected: string, fn: () => string) => {
+    try {
+      if (fn() !== expected) out.push(`${name} (wrong value)`);
+    } catch (e) {
+      out.push(`${name} (${e instanceof Error ? e.name : typeof e})`);
+    }
+  };
+  const seed = new Uint8Array(32).fill(7);
+  probe("randombytes_buf", () => lib.randombytes_buf(32));
+  probe("crypto_box_keypair", () => lib.crypto_box_keypair());
+  probe("crypto_box_seed_keypair", () => lib.crypto_box_seed_keypair(seed));
+  probe("crypto_generichash", () => lib.crypto_generichash(32, seed, null));
+  probe("crypto_generichash (keyed)", () => lib.crypto_generichash(32, seed, seed));
+  probe("crypto_box_seal", () =>
+    lib.crypto_box_seal(seed, lib.crypto_box_seed_keypair(seed).publicKey),
+  );
+  probe("crypto_box_seal_open", () => {
+    const kp = lib.crypto_box_seed_keypair(seed);
+    return lib.crypto_box_seal_open(
+      lib.crypto_box_seal(seed, kp.publicKey),
+      kp.publicKey,
+      kp.privateKey,
+    );
+  });
+  try {
+    const a = lib.randombytes_buf(32);
+    const b = lib.randombytes_buf(32);
+    if (a.length !== 32 || b.length !== 32) out.push("randombytes_buf (wrong length)");
+    else if (a.every((x, i) => x === b[i])) out.push("randombytes_buf (two draws equal)");
+    else if (a.every((x) => x === 0) || b.every((x) => x === 0)) out.push("randombytes_buf (zero)");
+  } catch (e) {
+    out.push(`randombytes_buf (${e instanceof Error ? e.name : typeof e})`);
+  }
+  // Known answers the library must reproduce (public test values, the same as the Sodium self-test).
+  const hexOf = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  const zeroSeedPublic = "5bf55c73b82ebe22be80f3430667af570fae2556a6415e6b30d4065300aa947d";
+  probeValue("crypto_box_seed_keypair (zero seed)", zeroSeedPublic, () =>
+    hexOf(lib.crypto_box_seed_keypair(new Uint8Array(32)).publicKey),
+  );
+  const keyedHash = "0a77bc9f206ab9767fc28bd7b79e0336c6a006df046573a09c0b208225a6c19f";
+  probeValue("crypto_generichash (known answer)", keyedHash, () =>
+    hexOf(
+      lib.crypto_generichash(
+        32,
+        new TextEncoder().encode("cashu/selftest"),
+        Uint8Array.from({ length: 32 }, (_, i) => i),
+      ),
+    ),
+  );
+  try {
+    const kp = lib.crypto_box_seed_keypair(seed);
+    const box = lib.crypto_box_seal(seed, kp.publicKey);
+    box[box.length - 1] = (box[box.length - 1] ?? 0) ^ 1;
+    lib.crypto_box_seal_open(box, kp.publicKey, kp.privateKey);
+    out.push("crypto_box_seal_open (opened a tampered box)");
+  } catch (e) {
+    if (!KNOWN_SEAL_FAILURES.has(e instanceof Error ? e.message : String(e))) {
+      out.push(`tampered seal_open failure "${firstLine(e)}"`);
+    }
+  }
+  // The self-test maps the library's exact "does not authenticate" message to auth_failed; report a
+  // message it does not know (library text only, no data).
+  try {
+    const kp = lib.crypto_box_seed_keypair(seed);
+    const other = lib.crypto_box_seed_keypair(new Uint8Array(32).fill(9));
+    lib.crypto_box_seal_open(
+      lib.crypto_box_seal(seed, kp.publicKey),
+      other.publicKey,
+      other.privateKey,
+    );
+    out.push("crypto_box_seal_open (opened with the wrong key)");
+  } catch (e) {
+    if (!KNOWN_SEAL_FAILURES.has(e instanceof Error ? e.message : String(e))) {
+      out.push(`crypto_box_seal_open failure "${firstLine(e)}"`);
+    }
+  }
+  return out;
+}
+
+/** The first line of an error message (JSI wraps host errors with a stack; never data). */
+const firstLine = (e: unknown) => (e instanceof Error ? e.message : String(e)).split("\n")[0] ?? "";
+
+const KNOWN_SEAL_FAILURES = new Set([
+  "incorrect key pair for the given ciphertext",
+  "[react-native-libsodium][crypto_box_seal_open] crypto_box_seal_open failed",
+]);
+
 export async function runCryptoSelfTest(deps: CryptoSelfTestDeps): Promise<CryptoSelfTest> {
   const checks: CryptoCheck[] = [];
   const add = (name: CryptoCheckName, failure: string | undefined) =>
@@ -67,7 +169,8 @@ export async function runCryptoSelfTest(deps: CryptoSelfTestDeps): Promise<Crypt
     sodium = crypto.fromLibsodium(deps.lib, { aead: "noble" });
     add("knownAnswer", undefined);
   } catch (e) {
-    add("knownAnswer", codeOf(e));
+    const broken = brokenPrimitives(deps.lib);
+    add("knownAnswer", broken.length ? `${codeOf(e)}: ${broken.join(", ")}` : codeOf(e));
     return { checks, ok: false, nativeAead: "not_run" };
   }
 
