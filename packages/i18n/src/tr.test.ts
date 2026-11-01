@@ -71,7 +71,7 @@ describe("Python tests/test_i18n.py", () => {
 
   // test_app_language_order
   it("resolves environment, stored dashboard choice, OS, then English in that order", () => {
-    const { state, backend } = settings();
+    const { source, state, backend } = settings();
     state.os = "pl";
     expect(backend.appLanguage()).toBe("pl");
     backend.forRequest("en");
@@ -84,7 +84,9 @@ describe("Python tests/test_i18n.py", () => {
     state.stored = null;
     expect(backend.appLanguage()).toBe("pl");
     state.os = null;
-    expect(backend.appLanguage()).toBe("en");
+    // Python monkeypatches os_language itself here, replacing its cached function. A fresh source
+    // context models that replacement; the existing context deliberately keeps its cached OS value.
+    expect(createBackendI18n(source).appLanguage()).toBe("en");
   });
 
   // test_middleware_sets_the_request_language (sync)
@@ -128,6 +130,53 @@ describe("Python tests/test_i18n.py", () => {
 });
 
 describe("backend boundaries and request isolation", () => {
+  it("memoizes the OS lookup while re-reading environment and stored choices", () => {
+    const { source, state } = settings();
+    let lookups = 0;
+    const backend = createBackendI18n({
+      ...source,
+      osLanguage: () => {
+        lookups += 1;
+        return "pl";
+      },
+    });
+    expect(backend.appLanguage()).toBe("pl");
+    expect(backend.forRequest().language).toBe("pl");
+    state.environment = "en";
+    expect(backend.appLanguage()).toBe("en");
+    state.environment = null;
+    state.stored = "en";
+    expect(backend.appLanguage()).toBe("en");
+    state.stored = null;
+    expect(backend.appLanguage()).toBe("pl");
+    expect(lookups).toBe(1);
+  });
+
+  it("memoizes an unsupported OS language too", () => {
+    const { source } = settings();
+    let lookups = 0;
+    const backend = createBackendI18n({
+      ...source,
+      osLanguage: () => {
+        lookups += 1;
+        return null;
+      },
+    });
+    expect(backend.appLanguage()).toBe("en");
+    expect(backend.forRequest().language).toBe("en");
+    expect(lookups).toBe(1);
+  });
+
+  it.each([
+    ["pl, en", "pl"],
+    ["en-GB, pl", "en"],
+    ["de, pl", "en"],
+    [", pl", "en"],
+  ])("uses only the first duplicate request header: %s", (header, expected) => {
+    const { backend } = settings();
+    expect(backend.forRequest(header).language).toBe(expected);
+  });
+
   it("lets the request outrank the environment pin and ignores invalid headers without writing", () => {
     const { state, backend } = settings();
     state.environment = "pl";

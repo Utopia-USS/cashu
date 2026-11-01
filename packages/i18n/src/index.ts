@@ -1,5 +1,6 @@
 // @cashu/i18n: the UI language, text catalogs and plurals (docs/agents/localization.md). Platform free:
-// no DOM, React or Node; the app installs a `LanguageSource` at startup. Screen copy catalogs live under
+// no DOM, React or Node; UI uses a `LanguageSource`, backend contexts use a `BackendLanguageSource`.
+// Screen copy catalogs live under
 // src/<core|module>/ and are imported by their own subpath (`@cashu/i18n/core/common.strings`).
 export { catalog } from "./catalog.js";
 export {

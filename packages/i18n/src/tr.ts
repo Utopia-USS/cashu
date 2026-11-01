@@ -41,7 +41,9 @@ export interface BackendLanguageSource {
   environmentLanguage(): unknown;
   /** The language field of settings.json, or null if absent / malformed. */
   storedLanguage(): unknown;
-  /** First supported OS preference, else the effective locale environment value, else null. */
+  /** First supported OS preference, else the effective locale environment value, else null.
+   * Memoized lazily by BackendI18n, including null; adapters shared between instances may also
+   * memoize this for the process lifetime (Python os_language is lru_cached). */
   osLanguage(): unknown;
   /** Atomically update only the language field, preserving other settings. May throw on IO failure. */
   rememberLanguage(language: Lang): void;
@@ -67,12 +69,18 @@ function readValue(read: () => unknown): unknown {
  * outrank the app override, matching Python's ContextVar; persistence failure never drops a request. */
 export function createBackendI18n(source: BackendLanguageSource): BackendI18n {
   let remembered: Lang | null = null;
+  let osLanguage: Lang | null | undefined;
+
+  function systemLanguage(): Lang | null {
+    if (osLanguage === undefined) osLanguage = parseLang(readValue(() => source.osLanguage()));
+    return osLanguage;
+  }
 
   function appLanguage(): Lang {
     return (
       parseLang(readValue(() => source.environmentLanguage())) ??
       parseLang(readValue(() => source.storedLanguage())) ??
-      parseLang(readValue(() => source.osLanguage())) ??
+      systemLanguage() ??
       FALLBACK_LANG
     );
   }
@@ -90,7 +98,9 @@ export function createBackendI18n(source: BackendLanguageSource): BackendI18n {
   return Object.freeze({
     appLanguage,
     forRequest(headerValue?: unknown): Translator {
-      const requested = parseLang(headerValue);
+      // Fetch joins duplicate header lines; Python's Headers.get returns only the first line.
+      const firstValue = typeof headerValue === "string" ? headerValue.split(",")[0] : headerValue;
+      const requested = parseLang(firstValue);
       if (requested !== null) remember(requested);
       return createTranslator(requested ?? appLanguage());
     },

@@ -13,14 +13,16 @@ framework APIs. The adapter reads:
 - `environmentLanguage()`: `CASHU_LANG`, if present.
 - `storedLanguage()`: the `language` field from `settings.json`; missing / malformed files mean null.
 - `osLanguage()`: the first supported OS preference, or the effective locale environment value.
+  BackendI18n memoizes this lazily for its lifetime, including an unsupported / missing language;
+  an adapter shared across instances may memoize it for the process lifetime, like Python's cache.
   A Node adapter follows Python: macOS AppleLanguages first; otherwise the first nonempty LC_ALL,
   LC_MESSAGES, LANG value (an unsupported effective locale means no match).
 - `rememberLanguage(language)`: atomically update only that settings field, preserving other keys
   and private file permissions. This callback must complete synchronously, like the existing
   platform source and Python middleware. It must not return an unawaited persistence promise.
 
-`appLanguage()` re-reads the environment override, stored choice, OS and finally English, in that
-order. It does not cache a worker's language forever.
+`appLanguage()` re-reads the environment override and stored choice, then uses the cached OS choice
+and finally English, in that order. It does not cache a worker's effective language forever.
 
 At the HTTP / websocket boundary, use the framework's case-insensitive header getter:
 
@@ -31,7 +33,8 @@ const context = backendI18n.forRequest(request.headers.get(LANG_HEADER));
 return handleRequest(context);
 ```
 
-`forRequest` normalizes a valid header (`en-GB`, `pl_PL.UTF-8`, etc.), remembers it for the worker
+`forRequest` takes only the first value of a Fetch-joined duplicate header (`pl, en` means `pl`),
+matching Python's first header line, then normalizes it (`en-GB`, `pl_PL.UTF-8`, etc.), remembers it for the worker
 and returns an immutable context. A request header outranks even CASHU_LANG, matching Python's
 request ContextVar. Missing / invalid headers use `appLanguage()` without writing. Consecutive
 identical header choices do not cause repeated writes. Failed reads use the next fallback;
