@@ -20,6 +20,38 @@ export {
   txnMerchantKey,
   txnText,
 } from "./engine.js";
+export type {
+  Answer,
+  ClassifierFailure,
+  MerchantClassifier,
+  TransactionClassifier,
+} from "./llm/port.js";
+export {
+  ANTHROPIC_MERCHANT_PREFIX,
+  anthropicSystemText,
+  OLLAMA_MERCHANT_PREFIX,
+  OLLAMA_TXN_PREFIX,
+  ollamaMerchantSystemPrompt,
+  ollamaTxnSystemPrompt,
+} from "./llm/prompts.js";
+export {
+  type BatchResult,
+  parseAnthropicReply,
+  parseOllamaMerchantReply,
+  parseOllamaTxnReply,
+} from "./llm/replies.js";
+export {
+  ANTHROPIC_BATCH_SIZE,
+  ANTHROPIC_DEFAULT_MODEL,
+  anthropicMerchantBatches,
+  type MerchantBatch,
+  OLLAMA_BATCH_SIZE,
+  OLLAMA_DEFAULT_MODEL,
+  ollamaMerchantBatches,
+  ollamaTxnBatches,
+  type TxnBatch,
+} from "./llm/requests.js";
+export { anthropicSchema, ollamaSchema } from "./llm/schemas.js";
 export { acceptMerchantAnswer, codePointCompare, unknownMerchants } from "./llmPass.js";
 export {
   applyReclassify,

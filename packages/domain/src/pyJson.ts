@@ -424,3 +424,47 @@ export function lineColumn(text: string, pos: number): { line: number; column: n
   const lastNl = cps.lastIndexOf("\n");
   return { line: cps.filter((c) => c === "\n").length + 1, column: pos - lastNl };
 }
+
+const DUMP_ESCAPES: Readonly<Record<string, string>> = {
+  '"': '\\"',
+  "\\": "\\\\",
+  "\n": "\\n",
+  "\r": "\\r",
+  "\t": "\\t",
+  "\b": "\\b",
+  "\f": "\\f",
+};
+
+/** Python `json.dumps(s, ensure_ascii=False)` of one str; null for a lone surrogate (not encodable). */
+function dumpStr(s: string): string | null {
+  let out = '"';
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) as number;
+    if (cp >= 0xd800 && cp <= 0xdfff) return null;
+    const esc = DUMP_ESCAPES[ch];
+    if (esc !== undefined) out += esc;
+    else if (cp < 0x20) out += `\\u${cp.toString(16).padStart(4, "0")}`;
+    else out += ch;
+  }
+  return `${out}"`;
+}
+
+/**
+ * Python `json.dumps(items, ensure_ascii=False)` of a list of str -> str dicts (keys in insertion
+ * order, default separators `", "` and `": "`). Null when a string holds a lone surrogate: Python
+ * would fail to encode the request, so the caller refuses it (value-free).
+ */
+export function pyDumpsStrList(items: readonly Readonly<Record<string, string>>[]): string | null {
+  const parts: string[] = [];
+  for (const item of items) {
+    const fields: string[] = [];
+    for (const [k, v] of Object.entries(item)) {
+      const key = dumpStr(k);
+      const value = dumpStr(v);
+      if (key === null || value === null) return null;
+      fields.push(`${key}: ${value}`);
+    }
+    parts.push(`{${fields.join(", ")}}`);
+  }
+  return `[${parts.join(", ")}]`;
+}

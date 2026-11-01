@@ -1,6 +1,7 @@
 /** Checks of the `budget-categorize-all` scenarios (tests only). */
 import type { Mismatches } from "../../../testing/vectors.js";
 import { categorizeAll } from "../effective.js";
+import { codePointCompare } from "../llmPass.js";
 import {
   categorizeRow,
   inQueryOrder,
@@ -64,17 +65,6 @@ export function checkAll(
       ]),
       recurring,
     );
-    m.check(`#${n} payees`, [...out.subscriptionPayees].sort(cpCompare), payees);
+    m.check(`#${n} payees`, [...out.subscriptionPayees].sort(codePointCompare), payees);
   }
-}
-
-/** Python `sorted` of str: code point order. */
-function cpCompare(a: string, b: string): number {
-  const x = Array.from(a);
-  const y = Array.from(b);
-  for (let i = 0; i < Math.min(x.length, y.length); i++) {
-    const d = (x[i] as string).codePointAt(0)! - (y[i] as string).codePointAt(0)!;
-    if (d !== 0) return d;
-  }
-  return x.length - y.length;
 }

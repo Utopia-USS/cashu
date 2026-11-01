@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Decimal } from "./decimal.js";
-import { isRecord, lineColumn, PyJsonError, parseJson, parsePyJson } from "./pyJson.js";
+import {
+  isRecord,
+  lineColumn,
+  PyJsonError,
+  parseJson,
+  parsePyJson,
+  pyDumpsStrList,
+} from "./pyJson.js";
 
 // `json.loads` messages as Python 3.14 words them (the importers print them); the replay of
 // truncations and byte flips is `inv-importing-canonical` / `budget-canonical`.
@@ -89,5 +96,23 @@ describe("parsePyJson (json.loads defaults, same scanner)", () => {
       "Illegal trailing comma before end of array: line 1 column 3 (char 2)",
     );
     expect(() => parsePyJson("[".repeat(50_000))).toThrow(PyJsonError);
+  });
+});
+
+describe("pyDumpsStrList (json.dumps(list[dict[str, str]], ensure_ascii=False))", () => {
+  it("default separators, Python's escapes, non-ASCII kept", () => {
+    expect(
+      pyDumpsStrList([
+        { id: "m0", merchant: 'Ł "q" \\ \n\r\t\b\f\u0000\u001f\u007f😀' },
+        { id: "m1", merchant: "" },
+      ]),
+    ).toBe(
+      '[{"id": "m0", "merchant": "Ł \\"q\\" \\\\ \\n\\r\\t\\b\\f\\u0000\\u001f\u007f😀"}, {"id": "m1", "merchant": ""}]',
+    );
+    expect(pyDumpsStrList([])).toBe("[]");
+  });
+
+  it("a lone surrogate is refused", () => {
+    expect(pyDumpsStrList([{ id: "m0", merchant: "\ud800" }])).toBeNull();
   });
 });

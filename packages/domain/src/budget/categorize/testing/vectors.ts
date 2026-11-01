@@ -65,3 +65,6 @@ export const ALL_FAST = 60;
 
 /** Reclassify text vectors in the fast tier. */
 export const TEXT_FAST = 400;
+
+/** LLM merchant / pass cases and reclassify scenarios in the fast tier (each). */
+export const LLM_FAST = 20;

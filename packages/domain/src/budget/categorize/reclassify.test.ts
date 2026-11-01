@@ -25,11 +25,7 @@ const answerAll = (plan: ReturnType<typeof planReclassify>, pick: (context: stri
   new Map(plan.groups.map((g) => [g.id, { category: pick(g.context) }]));
 const byKey = (rows: readonly ReclassifyRow[]) => new Map(rows.map((r) => [r.key, r]));
 /** The effective category after the claims (S24c emits them as `llm_full`) and the recompute. */
-function after(
-  rows: readonly ReclassifyRow[],
-  ctx: EngineContext,
-  claims: { key: string; category: string }[],
-) {
+function after(ctx: EngineContext, claims: { key: string; category: string }[]) {
   const c = createCategorizer(ctx);
   const claimOf = new Map(claims.map((x) => [x.key, x.category]));
   return (r: ReclassifyRow) => {
@@ -131,7 +127,7 @@ describe("test_reclassify.py", () => {
       byKey(rows),
       answerAll(plan, () => "entertainment"),
     );
-    const eff = after(rows, ctx, claims);
+    const eff = after(ctx, claims);
     expect([eff(manual), eff(ruled)]).toEqual([
       { category: "gifts", source: "manual_txn" },
       { category: "shopping", source: "manual" },
@@ -158,7 +154,7 @@ describe("test_reclassify.py", () => {
         { category: "loans", counterpartyIban: null, text: normalizeText("BANK XYZ 4711") },
       ],
     };
-    expect(after([row], withLoan, claims)(row)?.category).toBe("loans");
+    expect(after(withLoan, claims)(row)?.category).toBe("loans");
   });
 
   // test_categorize_all_applies_a_loan_pattern_to_llm_rows
@@ -171,7 +167,7 @@ describe("test_reclassify.py", () => {
         { category: "loans", counterpartyIban: null, text: normalizeText("UMOWA 9 LEASING") },
       ],
     };
-    const eff = after([leasing, keep], ctx, [
+    const eff = after(ctx, [
       { key: leasing.key, category: "subscriptions" },
       { key: keep.key, category: "entertainment" },
     ]);
@@ -181,9 +177,9 @@ describe("test_reclassify.py", () => {
   // test_categorize_all_keeps_llm_answers_over_global_installment_phrases
   it("llm answers beat global installment phrases", () => {
     const row = rrow("-300", { ref: "RATA KREDYTU RATALNEGO SKLEP TEST" });
-    expect(
-      after([row], EMPTY_CONTEXT, [{ key: row.key, category: "shopping" }])(row)?.category,
-    ).toBe("shopping");
+    expect(after(EMPTY_CONTEXT, [{ key: row.key, category: "shopping" }])(row)?.category).toBe(
+      "shopping",
+    );
   });
 
   // test_structural_answer_beats_owner_configuration_on_llm_rows
