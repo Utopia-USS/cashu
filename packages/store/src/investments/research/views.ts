@@ -27,10 +27,10 @@ import {
 } from "./queries.js";
 import {
   earlier,
-  gidRanks,
   instantView,
   iso,
   later,
+  noteRanks,
   type ResearchNote,
   type ResearchRun,
   scoredNote,
@@ -295,7 +295,7 @@ export function healthByInstrument(
   >();
   if (wanted.size === 0) return out;
   const rows = recentNotes(read, now - BigInt(HISTORY_DAYS) * DAY);
-  const ranks = gidRanks(rows);
+  const ranks = noteRanks(rows);
   const byRank = new Map([...ranks].map(([g, r]) => [r, g]));
   const byInstrument = new Map<string, ResearchNote[]>();
   for (const r of rows) {
@@ -400,7 +400,7 @@ export function researchSummary(read: Read, o: SummaryOptions) {
   const held = new Set(o.weights.keys());
   const watched = watchedInstrumentGids(read);
   const rows = recentNotes(read, now - BigInt(HISTORY_DAYS) * DAY);
-  const ranks = gidRanks(rows);
+  const ranks = noteRanks(rows);
   const byRank = new Map([...ranks].map(([g, r]) => [r, g]));
   const byInstrument = new Map<string, ResearchNote[]>();
   for (const r of rows) {
@@ -539,7 +539,7 @@ export function researchDigest(read: Read, o: DigestOptions) {
   const start = o.since ?? now - 7n * DAY;
   const from = earlier(start, now) - BigInt(HISTORY_DAYS) * DAY;
   const rows = recentNotes(read, from);
-  const ranks = gidRanks(rows);
+  const ranks = noteRanks(rows);
   const byRank = new Map([...ranks].map(([g, r]) => [r, g]));
   const fresh = rows.filter((r) => r.createdAt >= start);
   const active = fresh.filter((r) => r.dismissedAt === null);

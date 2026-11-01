@@ -19,7 +19,7 @@ import { watchedInstrumentGids } from "../queries/alerts.js";
 import { loadInstruments } from "../queries/instruments.js";
 import type { Read } from "../queries/shared.js";
 import { isUnread, noteRows, topicThesesBySegment } from "./queries.js";
-import { gidRanks, hasBrief, instantView, iso, type ResearchNote, truthy } from "./rows.js";
+import { hasBrief, instantView, iso, noteRanks, type ResearchNote, truthy } from "./rows.js";
 import { topicThesisView } from "./topics.js";
 
 type Instant = research.Instant;
@@ -106,7 +106,7 @@ export function notesBySegment(read: Read, now: Instant): Map<string, Notes> {
   const rows = noteRows(read, "n.segment IS NOT NULL AND n.observed_at >= ?", [
     instantView(now - BigInt(reach) * DAY),
   ]);
-  const ranks = gidRanks(rows);
+  const ranks = noteRanks(rows);
   const key = (r: ResearchNote) => [r.observedAt, ranks.get(r.gid) ?? 0] as const;
   const newer = (a: ResearchNote | undefined, b: ResearchNote) => {
     if (a === undefined) return true;

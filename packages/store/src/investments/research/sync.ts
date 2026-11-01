@@ -19,8 +19,8 @@ import type { CommandContext } from "../../command.js";
 import { openSignalOfKey, type SignalView, signalByGid } from "../queries/signals.js";
 import { weekNoteRows } from "./queries.js";
 import {
-  gidRanks,
   instantEvent,
+  noteRanks,
   type ResearchNote,
   signalRecord,
   viewInstantOrNull,
@@ -75,7 +75,7 @@ function weekNotes(
 export function syncResearchSignal(ctx: CommandContext, key: string, o: SyncOptions): SyncResult {
   const overlay = o.overlay ?? new Map<string, ResearchNote>();
   const all = weekNotes(ctx, key, overlay);
-  const ranks = gidRanks(all);
+  const ranks = noteRanks(all);
   const byRank = new Map([...ranks].map(([g, r]) => [r, g]));
   const records = all.map((n) => signalRecord(n, ranks.get(n.gid) as number));
   const mine = all.filter(

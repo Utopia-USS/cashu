@@ -255,15 +255,22 @@ export function hasBrief(details: Readonly<Record<string, unknown>> | null): boo
 }
 
 /**
- * Notes ordered by gid get dense ranks (1, 2, ...): ULIDs sort by creation, so the rank is the
- * convergent stand-in for Python's autoincrement id where the pure code breaks ties by id.
+ * Dense ranks (1, 2, ...) of notes in storing order (`created_at`, then gid): the convergent stand-in
+ * for Python's autoincrement id where the pure code breaks ties by id (Python's ids follow the
+ * storing order; genesis gids are keyed hashes, so gid order alone would not).
  */
-export function gidRanks(notes: Iterable<{ readonly gid: string }>): Map<string, number> {
-  const gids = [...new Set([...notes].map((n) => n.gid))].sort();
-  return new Map(gids.map((g, i) => [g, i + 1]));
+export function noteRanks(
+  notes: Iterable<{ readonly gid: string; readonly createdAt: Instant }>,
+): Map<string, number> {
+  const unique = new Map<string, Instant>();
+  for (const n of notes) unique.set(n.gid, n.createdAt);
+  const ordered = [...unique].sort(([ga, ca], [gb, cb]) =>
+    ca !== cb ? (ca < cb ? -1 : 1) : ga < gb ? -1 : ga > gb ? 1 : 0,
+  );
+  return new Map(ordered.map(([g], i) => [g, i + 1]));
 }
 
-/** What the domain scoring reads from a note (`views.scored`), with `id` = its gid rank. */
+/** What the domain scoring reads from a note (`views.scored`), with `id` = its storing rank. */
 export function scoredNote(n: ResearchNote, rank: number): research.ScoredNote {
   return {
     id: rank,
@@ -279,7 +286,7 @@ export function scoredNote(n: ResearchNote, rank: number): research.ScoredNote {
   };
 }
 
-/** What the research signal logic reads from a note, with `id` = its gid rank. */
+/** What the research signal logic reads from a note, with `id` = its storing rank. */
 export function signalRecord(n: ResearchNote, rank: number): research.ResearchNoteRecord {
   return {
     id: rank,
