@@ -12,7 +12,7 @@ import {
   HostStartError,
   nodeLanguageSource,
 } from "@cashu/node-host";
-import { forwardedEnv, HostLostError, runExec } from "./cliClient.js";
+import { forwardedEnv, HostLostError, ProtocolError, runExec } from "./cliClient.js";
 import { type ResolvedDataDir, resolveDataDir } from "./dataDir.js";
 import { delegateEnv, runDelegate } from "./delegate.js";
 import { checkoutRoot } from "./devenv.js";
@@ -84,8 +84,13 @@ function unreachable(ctx: Context, error: unknown): MainOutcome {
     say(ctx.proc, "stderr", ctx.t.tr(S.hostLost));
     return { code: FAILURE_EXIT };
   }
+  if (error instanceof ProtocolError) {
+    say(ctx.proc, "stderr", ctx.t.tr(S.hostOutdated));
+    return { code: FAILURE_EXIT };
+  }
+  // Anything else on the way to a host (e.g. its log or run dir cannot be created): no host.
   say(ctx.proc, "stderr", ctx.t.tr(S.hostUnavailable)(hostLogPath(ctx.dataDir.path)));
-  return { code: FAILURE_EXIT };
+  return { code: HOST_UNAVAILABLE_EXIT };
 }
 
 function requireFeature(ctx: Context, conn: HostConnection, feature: string): boolean {

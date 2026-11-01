@@ -9,8 +9,8 @@
 //     error), never replayed: a write may or may not have run, and only the agent can check;
 //   - while no host can be reached, requests are answered with an error and the next request tries
 //     again. Lines that arrive during a reconnect wait for it.
-// The session ends when stdin ends, or when the host says the server exited (`mcp.exit`): then the
-// shim exits with the server's code and does not reconnect.
+// The session ends when the server exits (`mcp.exit`, also after stdin ended and `mcp.eof` closed its
+// input): the shim exits with the server's code and does not reconnect.
 import { type HostFrame, mcpExitNoteSchema, mcpStderrNoteSchema } from "@cashu/host-protocol";
 import type { HostConnection } from "@cashu/node-host";
 
@@ -90,11 +90,19 @@ export class McpRelay {
     if (this.state === "down") void this.reconnect();
   }
 
-  /** The client closed stdin: end the session (the host stops the server). */
+  /**
+   * The client closed stdin: the server's input ends too, and the relay exits with the server's code
+   * when it is gone (as the Python server ran directly would). Without a session there is nothing to
+   * wait for.
+   */
   stdinEnd(): void {
     this.stdinEnded = true;
-    if (this.conn !== undefined && this.state === "open") this.conn.close();
-    else this.finish(0);
+    if (this.conn !== undefined && this.state === "open") this.endInput(this.conn);
+    else if (this.state !== "connecting") this.finish(0);
+  }
+
+  private endInput(conn: HostConnection): void {
+    conn.call("mcp.eof").catch(() => conn.close());
   }
 
   private attach(conn: HostConnection): void {
@@ -181,7 +189,7 @@ export class McpRelay {
     }
     this.state = "open";
     for (const line of this.queue.splice(0)) conn.send({ t: "mcp", line });
-    if (this.stdinEnded) conn.close();
+    if (this.stdinEnded) this.endInput(conn);
   }
 
   private replayInitialize(conn: HostConnection): Promise<boolean> {

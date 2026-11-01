@@ -1,5 +1,5 @@
 // The host side of an `mcp` session (S56d): `mcp.open {cwd, env}` first, then MCP JSON-RPC lines both
-// ways between the shim and the session's server (a backend; today the Python child, python.ts,
+// ways (and `mcp.eof` when the client's stdin ended) between the shim and the session's server (a backend; today the Python child, python.ts,
 // TRANSITIONAL(S38f); the S38 slices plug the host's own tool registry in here). The session is bound
 // to the profile named at hello. The transport adds one thing to the server's answer: the reply to
 // `initialize` advertises `tools.listChanged`, because the shim sends
@@ -12,6 +12,8 @@ import type { HostLog } from "../log.js";
 /** A running MCP server for one session. */
 export interface McpBackend {
   send(line: string): void;
+  /** Ends the server's input (the client closed its stdin); the server exits on its own. */
+  endInput(): void;
   onLine(handler: (line: string) => void): void;
   onStderr(handler: (data: string) => void): void;
   /** Called once when the server exited (code 0-255). */
@@ -71,6 +73,11 @@ export function serveMcpSession(session: HostSession, deps: McpSessionDeps): voi
 
   session.onFrame((frame) => {
     if (frame.t === "req") {
+      if (frame.method === "mcp.eof" && backend !== undefined) {
+        backend.endInput();
+        session.send({ t: "res", id: frame.id, outcome: { ok: true, result: {} } });
+        return;
+      }
       if (frame.method !== "mcp.open" || backend !== undefined) {
         session.send({
           t: "res",

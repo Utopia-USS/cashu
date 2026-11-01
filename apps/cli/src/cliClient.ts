@@ -30,7 +30,7 @@ export class HostLostError extends Error {
 }
 
 /** The host broke the shim's protocol (a bug, refused loudly). */
-class ProtocolError extends Error {
+export class ProtocolError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ProtocolError";
@@ -59,8 +59,9 @@ export interface ExecOptions {
 }
 
 function execParams(options: ExecOptions): CliExecParams {
-  const columns = options.terminal.columns();
-  const rows = options.terminal.rows();
+  // A terminal that reports no size (0, e.g. a fresh pty) sends none.
+  const columns = options.terminal.columns() || undefined;
+  const rows = options.terminal.rows() || undefined;
   return {
     argv: [...options.argv],
     cwd: options.cwd,

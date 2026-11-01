@@ -4,6 +4,8 @@
 // as an `mcp` frame and writes each `mcp` frame from the host as a line on its stdout. The MCP server
 // runs in the host, bound to the profile named at hello. Besides the lines:
 //
+//   shim -> host  req  mcp.eof {}           the client closed stdin: the server's input ends (it then
+//                                          exits on its own and the shim exits with its code)
 //   host -> shim  note mcp.stderr {data}   diagnostics the server wrote (the shim's stderr, as today)
 //   host -> shim  note mcp.exit {code}     the server ended on its own (e.g. an unknown profile, or
 //                                          the app was replaced): the shim exits with `code` and does

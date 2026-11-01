@@ -79,6 +79,9 @@ export function startPythonMcp(options: PythonMcpOptions): McpBackend {
     send(line) {
       if (exitCode === undefined && child.stdin.writable) child.stdin.write(`${line}\n`);
     },
+    endInput() {
+      if (child.stdin.writable) child.stdin.end();
+    },
     onLine: (handler) => {
       lineHandler = handler;
     },
