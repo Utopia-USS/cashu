@@ -12,7 +12,7 @@
 // This materializer writes the rows, the claim registers and `fold_txn_keys`; the derived parts
 // (cash mirror legs, the effective `category` / `category_source`, transfer groups) are written by
 // the budget derivers (`derive/`), never here.
-import { budget, Decimal, format2 } from "@cashu/domain";
+import { budget, D } from "@cashu/domain";
 import { merchantKey } from "@cashu/domain/budget";
 import { ACCOUNTS } from "../core/accounts.js";
 import { type FoldContext, type FoldEvent, type Materializer, ord } from "../engine/types.js";
@@ -72,8 +72,9 @@ const claims: TableDef = {
 
 /**
  * Per-row keys the derivers group by (written at insert, CREATE with the row): `anchor_ord` = fold
- * order of the anchor (Python's id order stand-in, D-24.2), `amount_key` = `format2(abs(amount))`
- * (S08 grouping), `merchant_key` = Python `merchant_key(counterparty_name, reference, description)`.
+ * order of the anchor (Python's id order stand-in, D-24.2), `amount_key` = `budget.transferAmountKey`
+ * (the S08 grouping of internal transfers, D-08.2; `""` for a zero amount, which never matches),
+ * `merchant_key` = Python `merchant_key(counterparty_name, reference, description)`.
  */
 const keys: TableDef = {
   name: "fold_txn_keys",
@@ -168,7 +169,7 @@ export function splitKey(key: string): [string, string, number] {
   return [account, hash, Number(occurrence)];
 }
 
-const amountKey = (amount: string) => format2(Decimal.parse(amount.replace(/^-/, "")));
+const amountKey = (amount: string) => budget.transferAmountKey(D(amount)) ?? "";
 
 function insertKeys(ctx: FoldContext, row: string, e: FoldEvent, merchant: string): void {
   ctx.sql.insert(
@@ -322,7 +323,7 @@ function applyClaim(e: FoldEvent, ctx: FoldContext): void {
 
 export const transactionsMaterializer: Materializer = {
   id: "budget.transactions",
-  version: 2,
+  version: 3,
   tables: [table, claims, keys, tombs],
   handles: [IMPORTED, CASH_EXPENSE, DELETED, "txn.categorySet", "txn.categoryCleared"],
   identity: [ACCOUNTS],
