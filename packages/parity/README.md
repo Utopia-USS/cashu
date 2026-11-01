@@ -20,16 +20,14 @@ stale inputs (below).
 Defaults: lab goldens `~/cashu-lab/parity/out/lab` (`$CASHU_LAB_DIR` moves the lab root), demo
 goldens `parity/golden-demo`, actual `~/cashu-lab/parity/ts-out/<dataset>`.
 
-Branch runs: the shared `~/cashu-lab/parity/out`, `bridge-strategy`, `bridge-mcp` and `ts-out` dirs are written from
+Branch runs: the shared `~/cashu-lab/parity/out`, `bridge-mcp` and `ts-out` dirs are written from
 lab/ts-stack HEAD only. A branch writes its own set and points every step at it:
 
 ```bash
 B=~/cashu-lab/parity/out-<branch>
 .venv/bin/python parity/python/golden.py --dataset lab --out $B             # $B/lab, index.json records the commit
-.venv/bin/python packages/parity/src/producers/investments/strategy_bridge.py --dataset lab --out $B/bridge-strategy
 .venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset lab --out $B/bridge-mcp
-pnpm parity:produce --dataset lab --golden-root $B --bridge-strategy $B/bridge-strategy \
-  --bridge-mcp $B/bridge-mcp --out $B/ts-out/lab
+pnpm parity:produce --dataset lab --golden-root $B --bridge-mcp $B/bridge-mcp --out $B/ts-out/lab
 pnpm parity --dataset lab --out $B --actual $B/ts-out/lab                    # golden = $B/lab
 ```
 
@@ -40,10 +38,10 @@ checks that first (`src/staleness.ts`). The commit under test is the git HEAD of
 runs from. Every producer records its source commit and `dirty` (tracked files differed from HEAD)
 in its `index.json`:
 
-- `golden.py`, `guard_bridge.py`, `strategy_bridge.py`: `commit` / `dirty` at
+- `golden.py`, `guard_bridge.py`: `commit` / `dirty` at
   the top of the dir's index (`golden.child_env`).
 - `pnpm parity:produce`: per check in the TS output dir's index, with the Python-side dirs the check
-  read (`inputs`: `golden`, `bridge-strategy`, `bridge-mcp`) and the commits their indexes
+  read (`inputs`: `golden`, `bridge-mcp`) and the commits their indexes
   recorded at that moment. A `--check` run updates only its own entries; a failed check's old file
   and entry are removed.
 
@@ -128,19 +126,20 @@ datasets it is enabled for and `produce(db) -> JSON tree`; `<module>/` folders h
 `tools/node-ts/resolveTs.ts` (shared with the `cashu-next` CLI), which maps the `./x.js` specifiers
 of workspace TypeScript to `./x.ts`.
 
-| Check                     | Datasets  | Inputs                                                                                                                                                              |
-| ------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core.networth`           | demo, lab | accounts, balances, cash-pool transactions, loans, curves, investments rows (`PythonDb`): every module contributor in TS (`core/book.ts`)                           |
-| `core.networth_series`    | demo, lab | as `core.networth`; daily total, weekly liquid and monthly components per currency of the profile's accounts                                                        |
-| `loans.valuation`         | demo, lab | loans and the loan accounts' balances with `created_at` (`db.loansAssets`): `@cashu/domain` loans                                                                   |
-| `assets.depreciation`     | demo, lab | as `core.networth` plus curves and notes (`db.loansAssets`): the manual positions list and each curve at the probe dates                                            |
-| `budget.dedup`            | demo      | stored transactions (`db.transactions`): v2 hash and occurrence through `@cashu/domain` budget, v1 with `node:crypto`                                               |
-| `budget.ingest_fixtures`  | demo      | the synthetic CSV fixtures of `packages/domain/test/fixtures/budget-csv` (not dataset state)                                                                        |
-| `budget.transfers`        | demo      | stored transactions in id order and every account incl. removed (`db.transactions`, `db.accounts`): `budget.matchTransfers`, drift from the stored groups           |
-| `investments.valuation`   | demo, lab | investments rows (`db.investments`); strategy inputs from the strategy bridge                                                                                       |
-| `investments.allocation`  | demo, lab | as `investments.valuation`                                                                                                                                          |
-| `investments.performance` | demo, lab | investments rows, proxy lookup by ISIN / alias (`db.investments`); strategy state, policy, plan, benchmark from the strategy bridge                                 |
-| `investments.import_plan` | demo, lab | import batches, the account's mapping, stored instruments / aliases / hashes (`db.investments`); the archived files through `db.dataFile` (copied into the run dir) |
+| Check                         | Datasets  | Inputs                                                                                                                                                              |
+| ----------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core.networth`               | demo, lab | accounts, balances, cash-pool transactions, loans, curves, investments rows (`PythonDb`): every module contributor in TS (`core/book.ts`)                           |
+| `core.networth_series`        | demo, lab | as `core.networth`; daily total, weekly liquid and monthly components per currency of the profile's accounts                                                        |
+| `loans.valuation`             | demo, lab | loans and the loan accounts' balances with `created_at` (`db.loansAssets`): `@cashu/domain` loans                                                                   |
+| `assets.depreciation`         | demo, lab | as `core.networth` plus curves and notes (`db.loansAssets`): the manual positions list and each curve at the probe dates                                            |
+| `budget.dedup`                | demo      | stored transactions (`db.transactions`): v2 hash and occurrence through `@cashu/domain` budget, v1 with `node:crypto`                                               |
+| `budget.ingest_fixtures`      | demo      | the synthetic CSV fixtures of `packages/domain/test/fixtures/budget-csv` (not dataset state)                                                                        |
+| `budget.transfers`            | demo      | stored transactions in id order and every account incl. removed (`db.transactions`, `db.accounts`): `budget.matchTransfers`, drift from the stored groups           |
+| `investments.valuation`       | demo, lab | investments rows (`db.investments`); strategy inputs from the TS strategy loader (`investments/strategy.ts`)                                                        |
+| `investments.allocation`      | demo, lab | as `investments.valuation`                                                                                                                                          |
+| `investments.performance`     | demo, lab | investments rows, proxy lookup by ISIN / alias (`db.investments`); strategy state, policy, plan, benchmark from the TS strategy loader                              |
+| `investments.strategy_loader` | demo, lab | `profiles/<slug>/strategy.{yaml,md}` of the copy (`db.files()`), the newest `inv_strategy_versions` row: state, digest, load result; the shipped templates          |
+| `investments.import_plan`     | demo, lab | import batches, the account's mapping, stored instruments / aliases / hashes (`db.investments`); the archived files through `db.dataFile` (copied into the run dir) |
 
 `investments/portfolioState.ts` is the port of `service/portfolio.build`: rows -> domain values as the
 Python store converts them (`investments/rows.ts`, domain ids are the app's `str(pk)` because the
@@ -166,18 +165,15 @@ same order (incl. CPython's compensated `sum()`, `floats.ts`). `exp` / `expm1` /
 ports against the platform libm in CPython: should a last-bit difference ever flip a rounding, that
 is the place to look (do not widen the tolerance to hide it).
 
-### Temporary strategy bridge (S14)
+### Strategy: the TS loader
 
-The strategy loader is not ported yet, so `src/producers/investments/strategy_bridge.py` exports what
-`build` takes from a profile's strategy (base currency, `data` thresholds, allocation plan; for
-performance also the strategy state and the benchmark id / proxy) to
-`<lab>/parity/bridge-strategy/<dataset>/investments.strategy.json`, through golden.py's harness:
-
-```bash
-.venv/bin/python packages/parity/src/producers/investments/strategy_bridge.py --dataset lab
-```
-
-Delete it (and `strategyBridge.ts`) when the TS strategy loader lands; both carry the S14 transitional marker.
+`investments/strategy.ts` reads a profile's strategy files from the dataset copy like
+`service/strategy.read_files` (strict UTF-8 with universal newlines, the size cap) and the newest
+stored version, then runs `@cashu/domain`'s `strategyStatus` (the loader on the PyYAML compose port, the
+rule kinds' params, the custom-expression compiler). The portfolio, performance and month close
+producers take their strategy inputs from it (the S14 strategy bridge is gone);
+`investments/strategyLoader.ts` writes `investments.strategy_loader` (every profile's state and load
+result, the templates). `investments.strategy_status` is a view with paths and versions (S22a).
 
 ### Net worth: every contributor in TS
 

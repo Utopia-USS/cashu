@@ -65,6 +65,8 @@ CREATE TABLE inv_fx_rates (id INTEGER PRIMARY KEY, base VARCHAR, quote VARCHAR, 
 CREATE TABLE inv_import_batches (id INTEGER PRIMARY KEY, profile_id INTEGER, account_id INTEGER,
   importer VARCHAR, broker VARCHAR, file_name VARCHAR, file_sha256 VARCHAR, archive_path VARCHAR,
   created_at DATETIME);
+CREATE TABLE inv_strategy_versions (id INTEGER PRIMARY KEY, profile_id INTEGER, version INTEGER,
+  sha256 VARCHAR, yaml_text VARCHAR, md_text VARCHAR, state VARCHAR, issues JSON, created_at DATETIME);
 `;
 
 export interface SyntheticDataset {

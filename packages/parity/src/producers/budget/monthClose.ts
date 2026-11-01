@@ -6,14 +6,13 @@
  * Inputs: the profile's rows (`book.ts`), `profiles/<slug>/budget.json` from the dataset copy
  * (`budget.loadBudgetSettings`), the balances through `core.latestBalancePerAccount` (every module's
  * contributor, `../core/book.ts`), the enabled modules and, for a profile with investments, the
- * strategy's contributions plan from the strategy bridge (TRANSITIONAL(S14): read from the TS strategy
- * loader once it lands, with the bridge).
+ * strategy's contributions plan from the TS strategy loader (`../investments/strategy.ts`).
  */
 
 import { budget, core, type Decimal } from "@cashu/domain";
 import type { PythonDb } from "../../sources/index.ts";
 import { profileBook } from "../core/book.ts";
-import type { StrategyBridge } from "../investments/strategyBridge.ts";
+import type { StrategyInputsByProfile } from "../investments/strategy.ts";
 import { type OutValue, pyFloat } from "../output.ts";
 import { budgetBook } from "./book.ts";
 
@@ -166,7 +165,7 @@ function settingsOut(s: budget.BudgetSettings): OutValue {
 function profileOut(
   db: PythonDb,
   profile: ReturnType<PythonDb["profiles"]>[number],
-  strategies: StrategyBridge,
+  strategies: StrategyInputsByProfile,
 ): OutValue {
   const book = budgetBook(db, profile.id, profile.baseCurrency);
   const stored = budget.loadBudgetSettings(db.dataFile(`profiles/${profile.slug}/budget.json`));
@@ -181,8 +180,7 @@ function profileOut(
   let planned: budget.PlannedContribution | null = null;
   if (investmentsEnabled) {
     const s = strategies.get(db.keys.key("profiles", profile.id));
-    if (s === undefined)
-      throw new Error("the strategy bridge has no entry for an investments profile");
+    if (s === undefined) throw new Error("no strategy inputs for an investments profile");
     planned = budget.plannedContribution(
       s.state,
       s.strategy === null
@@ -214,7 +212,10 @@ function profileOut(
   return { settings: settingsOut(settings), closes };
 }
 
-export function produceBudgetMonthClose(db: PythonDb, strategies: StrategyBridge): OutValue {
+export function produceBudgetMonthClose(
+  db: PythonDb,
+  strategies: StrategyInputsByProfile,
+): OutValue {
   const out: Record<string, OutValue> = {};
   for (const p of db.profiles()) out[db.keys.key("profiles", p.id)] = profileOut(db, p, strategies);
   return out;

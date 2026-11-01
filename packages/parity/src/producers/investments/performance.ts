@@ -28,7 +28,7 @@ import {
   transaction,
 } from "./rows.ts";
 import { Serializer } from "./serialize.ts";
-import type { StrategyBridge, StrategyInputs } from "./strategyBridge.ts";
+import type { StrategyInputs, StrategyInputsByProfile } from "./strategy.ts";
 
 const MODULE = "investments";
 const perf = inv.performance;
@@ -154,14 +154,14 @@ function loadPerformance(
   };
 }
 
-export function producePerformance(db: PythonDb, bridge: StrategyBridge): OutValue {
+export function producePerformance(db: PythonDb, strategies: StrategyInputsByProfile): OutValue {
   const s = new Serializer(db);
   const out: Record<string, OutValue> = {};
   for (const p of db.profiles()) {
     if (!db.enabledModules(p.id).includes(MODULE)) continue;
     const key = db.keys.key("profiles", p.id);
-    const inputs = bridge.get(key);
-    if (inputs === undefined) throw new Error("the strategy bridge has no entry for a profile");
+    const inputs = strategies.get(key);
+    if (inputs === undefined) throw new Error("no strategy inputs for a profile");
     const computed = perf.computePerformance(loadPerformance(db, p, inputs, db.asOf), db.asOf);
     const views: Record<string, OutValue> = {};
     for (const range of perf.RANGES) {

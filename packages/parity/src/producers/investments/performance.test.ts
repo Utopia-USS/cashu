@@ -8,7 +8,7 @@ import { INVESTMENTS, type SyntheticDataset, syntheticDataset } from "../../sour
 import { dumps } from "../output.ts";
 import { findProxy, producePerformance } from "./performance.ts";
 
-import type { StrategyBridge, StrategyInputs } from "./strategyBridge.ts";
+import type { StrategyInputs, StrategyInputsByProfile } from "./strategy.ts";
 
 let ds: SyntheticDataset;
 afterEach(() => ds.dispose());
@@ -24,7 +24,7 @@ const NO_STRATEGY: StrategyInputs = {
   strategy: null,
 };
 
-function bridgeFor(db: PythonDb, proxy: string): StrategyBridge {
+function strategiesFor(db: PythonDb, proxy: string): StrategyInputsByProfile {
   const equity = inv.bucketDef({
     id: "equity",
     match: inv.bucketMatch({ assetClasses: [inv.AssetClass.ETF] }),
@@ -51,7 +51,7 @@ const run = <T>(fn: (db: PythonDb) => T): T =>
 
 function produce(proxy: string): { out: Tree; p1: string; p2: string; keys: Tree } {
   return run((db) => ({
-    out: JSON.parse(dumps(producePerformance(db, bridgeFor(db, proxy)))) as Tree,
+    out: JSON.parse(dumps(producePerformance(db, strategiesFor(db, proxy)))) as Tree,
     p1: db.keys.key("profiles", 1),
     p2: db.keys.key("profiles", 2),
     keys: {

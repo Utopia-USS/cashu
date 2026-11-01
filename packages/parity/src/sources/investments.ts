@@ -219,6 +219,18 @@ export class InvestmentsReader {
     }));
   }
 
+  /** The newest stored strategy version of a profile (`service/strategy.latest_version`), or null. */
+  latestStrategyVersion(
+    profileId: number,
+  ): { readonly version: number; readonly sha256: string } | null {
+    const [row] = this.query(
+      `SELECT version, sha256 FROM inv_strategy_versions WHERE profile_id = ?
+       ORDER BY version DESC LIMIT 1`,
+      profileId,
+    );
+    return row === undefined ? null : { version: int(row, "version"), sha256: text(row, "sha256") };
+  }
+
   /** Shared instrument rows of `ids`, in id order. */
   instruments(ids: readonly number[]): InvInstrumentRow[] {
     if (ids.length === 0) return [];

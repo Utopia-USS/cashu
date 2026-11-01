@@ -7,7 +7,7 @@ import { type PythonDb, withPythonDb } from "../../sources/index.ts";
 import { INVESTMENTS, type SyntheticDataset, syntheticDataset } from "../../sources/testing.ts";
 import { dumps } from "../output.ts";
 import { produceAllocation, produceValuation } from "./portfolio.ts";
-import type { StrategyBridge, StrategyInputs } from "./strategyBridge.ts";
+import type { StrategyInputs, StrategyInputsByProfile } from "./strategy.ts";
 
 let ds: SyntheticDataset;
 afterEach(() => ds.dispose());
@@ -23,7 +23,7 @@ const NO_STRATEGY: StrategyInputs = {
   strategy: null,
 };
 
-function bridgeFor(db: PythonDb): StrategyBridge {
+function strategiesFor(db: PythonDb): StrategyInputsByProfile {
   const equity = inv.bucketDef({
     id: "equity",
     match: inv.bucketMatch({ assetClasses: [inv.AssetClass.ETF] }),
@@ -56,10 +56,10 @@ function bridgeFor(db: PythonDb): StrategyBridge {
 
 function produce(): { valuation: Tree; allocation: Tree; p1: string; p2: string; keys: Tree } {
   return withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, (db) => {
-    const bridge = bridgeFor(db);
+    const strategies = strategiesFor(db);
     return {
-      valuation: JSON.parse(dumps(produceValuation(db, bridge))) as Tree,
-      allocation: JSON.parse(dumps(produceAllocation(db, bridge))) as Tree,
+      valuation: JSON.parse(dumps(produceValuation(db, strategies))) as Tree,
+      allocation: JSON.parse(dumps(produceAllocation(db, strategies))) as Tree,
       p1: db.keys.key("profiles", 1),
       p2: db.keys.key("profiles", 2),
       keys: {

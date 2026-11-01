@@ -3,7 +3,7 @@ import { D, investments as inv } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
 import { withPythonDb } from "../../sources/index.ts";
 import { syntheticDataset } from "../../sources/testing.ts";
-import type { StrategyBridge } from "../investments/strategyBridge.ts";
+import type { StrategyInputsByProfile } from "../investments/strategy.ts";
 import { dumps } from "../output.ts";
 import { produceBudgetAnalytics } from "./analytics.ts";
 import { produceBudgetMonthClose } from "./monthClose.ts";
@@ -32,7 +32,7 @@ INSERT INTO transactions VALUES
   (8, 3, '2026-09-15', NULL, '100.00', 'PLN', 'Wypłata gotówki', NULL, 'BANKOMAT', 'Wypłata gotówki', 'MANUAL', 'cashleg:7', 0, NULL, 0, 'cash_withdrawal', 'cash_leg', NULL);
 `;
 
-const STRATEGIES = (key: string): StrategyBridge =>
+const STRATEGIES = (key: string): StrategyInputsByProfile =>
   new Map([
     [
       key,

@@ -8,27 +8,27 @@ import type { PythonDb } from "../../sources/index.ts";
 import type { OutValue } from "../output.ts";
 import { buildPortfolioState, type PortfolioState } from "./portfolioState.ts";
 import { Serializer } from "./serialize.ts";
-import type { StrategyBridge } from "./strategyBridge.ts";
+import type { StrategyInputsByProfile } from "./strategy.ts";
 
 const MODULE = "investments";
 
 /** The state of every profile with the investments module, keyed by the profile's natural key. */
-function states(db: PythonDb, bridge: StrategyBridge): Map<string, PortfolioState> {
+function states(db: PythonDb, strategies: StrategyInputsByProfile): Map<string, PortfolioState> {
   const out = new Map<string, PortfolioState>();
   for (const p of db.profiles()) {
     if (!db.enabledModules(p.id).includes(MODULE)) continue;
     const key = db.keys.key("profiles", p.id);
-    const inputs = bridge.get(key);
-    if (inputs === undefined) throw new Error("the strategy bridge has no entry for a profile");
+    const inputs = strategies.get(key);
+    if (inputs === undefined) throw new Error("no strategy inputs for a profile");
     out.set(key, buildPortfolioState(db, p, inputs));
   }
   return out;
 }
 
-export function produceValuation(db: PythonDb, bridge: StrategyBridge): OutValue {
+export function produceValuation(db: PythonDb, strategies: StrategyInputsByProfile): OutValue {
   const s = new Serializer(db);
   const out: Record<string, OutValue> = {};
-  for (const [key, state] of states(db, bridge)) {
+  for (const [key, state] of states(db, strategies)) {
     out[key] = {
       as_of: state.asOf,
       base: state.base,
@@ -39,10 +39,10 @@ export function produceValuation(db: PythonDb, bridge: StrategyBridge): OutValue
   return out;
 }
 
-export function produceAllocation(db: PythonDb, bridge: StrategyBridge): OutValue {
+export function produceAllocation(db: PythonDb, strategies: StrategyInputsByProfile): OutValue {
   const s = new Serializer(db);
   const out: Record<string, OutValue> = {};
-  for (const [key, state] of states(db, bridge)) {
+  for (const [key, state] of states(db, strategies)) {
     out[key] = { allocation: state.allocation === null ? null : s.allocation(state.allocation) };
   }
   return out;

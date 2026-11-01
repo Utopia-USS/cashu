@@ -18,7 +18,7 @@ import {
   sid,
   transaction,
 } from "./rows.ts";
-import type { StrategyInputs } from "./strategyBridge.ts";
+import type { StrategyInputs } from "./strategy.ts";
 
 /** Bars loaded for the market view (`build(history_days=800)`). */
 const HISTORY_DAYS = 800;

@@ -29,7 +29,7 @@ interface Recorded {
 type StaleReason = "no-head" | "no-index" | "no-commit" | "other-commit" | "committed-differs";
 
 interface StaleInput {
-  /** `golden`, `ts-out` or the producer input name (`bridge-mcp`, `bridge`, `bridge-strategy`, ...). */
+  /** `golden`, `ts-out` or the producer input name (`bridge-mcp`, ...). */
   readonly role: string;
   readonly dir: string;
   /** The check whose TS output or input it is (per-check TS index entries). */

@@ -17,7 +17,8 @@ import { produceNetworthSeries } from "./core/networthSeries.ts";
 import { produceImportPlan } from "./investments/importPlan.ts";
 import { producePerformance } from "./investments/performance.ts";
 import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
-import { readStrategyBridge, strategyBridgeDir } from "./investments/strategyBridge.ts";
+import { strategyInputs } from "./investments/strategy.ts";
+import { produceStrategyLoader } from "./investments/strategyLoader.ts";
 import { produceLoansValuation } from "./loans/valuation.ts";
 import { guardBridgeDir, readGuardBridge } from "./mcp/guardBridge.ts";
 import { produceMcpRead, rawGoldenDir } from "./mcp/privacy.ts";
@@ -26,27 +27,23 @@ import { produceStoreTable, STORE_TABLES } from "./store/tables.ts";
 
 /**
  * Where the producers read their Python-side inputs (`pnpm parity:produce --golden-root /
- * --bridge-strategy / --bridge-mcp`).
+ * --bridge-mcp`).
  */
 export interface ProduceInputs {
   /** The Python golden root (`golden.py --out`); the MCP producers read `<root>/lab/mcp.read_raw.json`. */
   readonly goldenRoot: string;
-  /** The strategy bridge root (`strategy_bridge.py --out`). */
-  readonly bridgeStrategyRoot: string;
   /** The guard bridge root (`guard_bridge.py --out`). */
   readonly bridgeMcpRoot: string;
 }
 
 /** The Python-side dirs a producer reads; their commits go into the TS index (staleness guard). */
-export type InputName = "golden" | "bridge-strategy" | "bridge-mcp";
+export type InputName = "golden" | "bridge-mcp";
 
 /** The dir an input is read from for a dataset (where its producer wrote its `index.json`). */
 export function inputDir(name: InputName, dataset: Dataset, inputs: ProduceInputs): string {
   switch (name) {
     case "golden":
       return rawGoldenDir(dataset, inputs.goldenRoot);
-    case "bridge-strategy":
-      return strategyBridgeDir(dataset, inputs.bridgeStrategyRoot);
     case "bridge-mcp":
       return guardBridgeDir(dataset, inputs.bridgeMcpRoot);
   }
@@ -126,30 +123,32 @@ export const PRODUCERS: readonly Producer[] = [
     check: "budget.month_close",
     // lab has no bank transactions yet (R3): enable lab here once it does.
     datasets: ["demo"],
-    inputs: ["bridge-strategy"],
-    produce: (db, inputs) =>
-      produceBudgetMonthClose(db, readStrategyBridge(db.dataset, inputs.bridgeStrategyRoot)),
+    inputs: [],
+    produce: (db) => produceBudgetMonthClose(db, strategyInputs(db)),
   },
   {
     check: "investments.valuation",
     datasets: ["demo", "lab"],
-    inputs: ["bridge-strategy"],
-    produce: (db, inputs) =>
-      produceValuation(db, readStrategyBridge(db.dataset, inputs.bridgeStrategyRoot)),
+    inputs: [],
+    produce: (db) => produceValuation(db, strategyInputs(db)),
   },
   {
     check: "investments.allocation",
     datasets: ["demo", "lab"],
-    inputs: ["bridge-strategy"],
-    produce: (db, inputs) =>
-      produceAllocation(db, readStrategyBridge(db.dataset, inputs.bridgeStrategyRoot)),
+    inputs: [],
+    produce: (db) => produceAllocation(db, strategyInputs(db)),
   },
   {
     check: "investments.performance",
     datasets: ["demo", "lab"],
-    inputs: ["bridge-strategy"],
-    produce: (db, inputs) =>
-      producePerformance(db, readStrategyBridge(db.dataset, inputs.bridgeStrategyRoot)),
+    inputs: [],
+    produce: (db) => producePerformance(db, strategyInputs(db)),
+  },
+  {
+    check: "investments.strategy_loader",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceStrategyLoader,
   },
   {
     check: "investments.import_plan",
