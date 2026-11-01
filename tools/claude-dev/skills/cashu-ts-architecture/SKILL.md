@@ -50,7 +50,8 @@ Details, module folders, exports maps, where processes run: [layers.md](referenc
   (a measured exception carries a `biome-ignore` with the profiler evidence).
 - **Reads are live and local**: `useQuery(query, args)` returns rows; no loading flags, no fetch caches.
 - **Data never leaves the device**: no cloud crash reporting or analytics SDKs.
-- **Transitional code is marked** `TRANSITIONAL(<scope that removes it>)`; `arch:check` lists every marker.
+- **Transitional code is marked** `TRANSITIONAL(<scope that removes it>)`; `arch:check` lists every marker and
+  fails when its scope is not live in `tools/arch/scopes.json`.
 - Matching data stays Polish; UI text goes through catalogs (PL + EN). No em dash anywhere.
 
 ## Problem -> reference

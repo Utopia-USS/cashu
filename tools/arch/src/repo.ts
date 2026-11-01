@@ -6,7 +6,16 @@ import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
-const SKIP_DIRS = new Set(["node_modules", "dist", ".turbo", "coverage", "build", "test-results"]);
+const SKIP_DIRS = new Set([
+  "node_modules",
+  "dist",
+  ".turbo",
+  "coverage",
+  "build",
+  "test-results",
+  "webdist",
+  "__pycache__",
+]);
 
 /** Repo-relative paths of files under `dirs` (repo-relative) whose path matches `include`. */
 export function listFiles(dirs: readonly string[], include: RegExp): string[] {

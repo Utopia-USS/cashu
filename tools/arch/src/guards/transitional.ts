@@ -1,5 +1,9 @@
-// Report (never a failure): strangler shims and other temporary code are marked
-// `TRANSITIONAL(<scope that removes it>)` so they stay visible until that scope removes them.
+// Strangler shims and other temporary code are marked `TRANSITIONAL(<scope that removes it>)` so they
+// stay visible until that scope removes them. `arch:check` reports every marker by scope, and the guard
+// test fails when a marker names a scope that is not live: the ids of the plan of record that are in
+// flight, queued, planned or on hold, plus external upstream conditions, are listed in
+// tools/arch/scopes.json. A done or unknown id means the marker outlived its scope (remove the code)
+// or names the wrong one (re-point it).
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { listFiles, REPO_ROOT, readRepoFile } from "../repo.ts";
@@ -29,11 +33,27 @@ export function findMarkers(file: string, source: string): TransitionalMarker[] 
   return out;
 }
 
-/** Every marker in the TS monorepo and its tooling (the definition in this file excluded). */
+/**
+ * Every marker in the repo: the TS monorepo and its tooling, the pnpm patches, the Python app and its
+ * parity scripts, the legacy SPA and the docs (this file and its test excluded).
+ */
 export function transitionalMarkers(): TransitionalMarker[] {
   const files = listFiles(
-    ["packages", "apps", "tools", ".github"],
-    /\.(ts|tsx|cts|mts|js|mjs|cjs|json|jsonc|yaml|yml|sh|md)$/,
+    [
+      "packages",
+      "apps",
+      "tools",
+      ".github",
+      "patches",
+      "src",
+      "parity",
+      "scripts",
+      "frontend/src",
+      "frontend/tests",
+      "frontend/e2e",
+      "docs",
+    ],
+    /\.(ts|tsx|cts|mts|js|mjs|cjs|json|jsonc|yaml|yml|sh|md|py|patch)$/,
   ).filter(
     (f) =>
       !f.endsWith("tools/arch/src/guards/transitional.ts") && !f.endsWith("transitional.test.ts"),
@@ -50,13 +70,44 @@ export function transitionalMarkers(): TransitionalMarker[] {
   );
 }
 
-export function formatMarkers(markers: readonly TransitionalMarker[]): string {
+/** The live scope registry (tools/arch/scopes.json). */
+export interface ScopeRegistry {
+  /** Scope ids of the plan of record that are in flight, queued, planned or on hold. */
+  live: Record<string, string>;
+  /** Upstream conditions (a tool or platform release) that end a marker, not a scope of ours. */
+  external: Record<string, string>;
+}
+
+const SCOPE_REGISTRY = "tools/arch/scopes.json";
+
+export function scopeRegistry(): ScopeRegistry {
+  const raw = JSON.parse(readRepoFile(SCOPE_REGISTRY)) as Partial<ScopeRegistry>;
+  return { live: raw.live ?? {}, external: raw.external ?? {} };
+}
+
+function isLiveScope(scope: string, registry: ScopeRegistry): boolean {
+  return Object.hasOwn(registry.live, scope) || Object.hasOwn(registry.external, scope);
+}
+
+/** Markers whose scope is done, dropped or unknown: each is a guard failure. */
+export function deadMarkers(
+  markers: readonly TransitionalMarker[],
+  registry: ScopeRegistry,
+): TransitionalMarker[] {
+  return markers.filter((m) => !isLiveScope(m.scope, registry));
+}
+
+export function formatMarkers(
+  markers: readonly TransitionalMarker[],
+  registry?: ScopeRegistry,
+): string {
   if (!markers.length) return "no TRANSITIONAL( markers";
   const byScope = new Map<string, TransitionalMarker[]>();
   for (const m of markers) byScope.set(m.scope, [...(byScope.get(m.scope) ?? []), m]);
   const lines = [`${markers.length} TRANSITIONAL( marker(s), by the scope that removes them:`];
   for (const [scope, ms] of [...byScope].sort()) {
-    lines.push(`  ${scope} (${ms.length})`);
+    const dead = registry && !isLiveScope(scope, registry) ? `  NOT LIVE in ${SCOPE_REGISTRY}` : "";
+    lines.push(`  ${scope} (${ms.length})${dead}`);
     for (const m of ms) lines.push(`    ${m.file}:${m.line}  ${m.text}`);
   }
   return lines.join("\n");

@@ -5,7 +5,7 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { depcruise, formatViolation } from "./depcruise.ts";
-import { formatMarkers, transitionalMarkers } from "./guards/transitional.ts";
+import { formatMarkers, scopeRegistry, transitionalMarkers } from "./guards/transitional.ts";
 import { REPO_ROOT } from "./repo.ts";
 
 interface StepResult {
@@ -86,9 +86,9 @@ const steps: Promise<StepResult>[] = [
   ]),
   // TRANSITIONAL(arch-tools): TS 6 pinned in tools/arch for parsing only, until typescript-eslint and
   // dependency-cruiser read TS 7; so sherif sees two typescript versions. All else stays single-version.
-  // TRANSITIONAL(frontend-retirement): the legacy SPA (frontend/, package cashu-dashboard) stays on React 18
+  // TRANSITIONAL(S55z): the legacy SPA (frontend/, package cashu-dashboard) stays on React 18
   // while apps/mobile (Expo SDK 58) needs React 19; like knip, sherif does not judge the legacy SPA. Drop the
-  // flag with frontend/ once the renderer lives in apps/.
+  // flag with frontend/ once the renderer lives in apps/ (S55z retires the SPA).
   run("sherif", "package.json hygiene, one version per dependency", join(TOOLS_BIN, "sherif"), [
     "--ignore-dependency",
     "typescript",
@@ -97,7 +97,7 @@ const steps: Promise<StepResult>[] = [
   ]),
   run(
     "guards",
-    "raw style literals in apps, PL/EN catalog parity, story coverage, exports maps, React Compiler",
+    "raw style literals in apps, PL/EN catalog parity, story coverage, exports maps, React Compiler, TRANSITIONAL markers name live scopes",
     join(ROOT_BIN, "vitest"),
     ["run", "--reporter=verbose"],
     join(REPO_ROOT, "tools/arch"),
@@ -117,7 +117,7 @@ for (const r of results) {
   }
 }
 console.log(
-  `\nREPORT  transitional code (not a failure)\n${formatMarkers(transitionalMarkers()).replace(/^/gm, "    ")}`,
+  `\nREPORT  transitional code (a marker whose scope is not live fails the guards)\n${formatMarkers(transitionalMarkers(), scopeRegistry()).replace(/^/gm, "    ")}`,
 );
 const seconds = ((Date.now() - started) / 1000).toFixed(1);
 console.log(
