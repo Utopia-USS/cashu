@@ -76,12 +76,22 @@ desktop, expo-sqlite or op-sqlite on mobile), `KeyStore`, `Transport`, `Clock`.
 
 ## Which process runs what
 
+Target (S56 design, owner decision: host on demand with idle linger and a daily wake, macOS 13+): one
+local host process per data dir is the only process that opens a vault store; everything else is a
+client over an authenticated Unix socket (`@cashu/host-protocol`, platform glue in `@cashu/node-host`).
+
 | Process | Runs | Talks to |
 |---|---|---|
-| Electron main | windows, tray, menus, deep links, auto-update, spawns the utility process | renderer over the typed preload bridge |
-| Electron utility process (`utilityProcess.fork`, `apps/desktop/src/storeProcess`) | the store engine: SQLite (`node:sqlite`, no native module for Electron's ABI), materializer, sync, the daily worker, MCP server | renderer over a `MessagePort` (`serveStore`: query snapshots pushed, commands in, only registered ids) |
-| Electron renderer (sandboxed, `contextIsolation`) | React UI only; never opens SQLite | utility process through the port |
+| Local host (`apps/host`, S56a2; one per data dir, started on demand by its first client, lingers when idle) | holds the machine lock (`run/host.lock.db`) for life; vault and device stores (exclusive SQLite open that requires the lock), materializer, sync, the worker, MCP sessions, the CLI command tree; keys through the OS keychain module | every client over `<data dir>/run/host.sock` (0600, never TCP): length-prefixed JSON frames, mutual HMAC handshake, role-bound sessions (`ui`, `mcp`, `cli`, `admin`) |
+| Electron main | windows, tray, menus, deep links, auto-update; one host connection per renderer frame, relayed without parsing (S56b) | renderer over the typed preload bridge; the host as a `ui` client |
+| Electron renderer (sandboxed, `contextIsolation`) | React UI only; never opens SQLite | the host's store channel v2 (`@cashu/host-protocol/store`) through main's relay |
+| `cashu` shim (CLI, `cashu mcp`; S56d) | data dir resolution, connect-or-start, stdio / argv relay | the host as a `cli` or `mcp` client |
 | Expo app (Hermes) | UI and the store engine in-process (sync SQLite driver) | the relay / folder transport |
+| Electron utility process (`apps/desktop/src/storeProcess`, behind `CASHU_DESKTOP_STORE=1`; replaced by the host in S56b) | today's store engine for the store-backed renderer | renderer over a `MessagePort` (`serveStore`, store protocol v1) |
+
+Only the host (and the Expo app, in-process) opens stores: once `apps/host` exists, a depcruise rule
+"only apps/host and apps/mobile open stores" enforces it (S56a2), next to the structural `HostLock`
+requirement of the exclusive open.
 
 This placement is why `useQuery` suspends on the desktop's first read (an async hop) and never on
 mobile (a sync read); see [data-flow.md](data-flow.md).
