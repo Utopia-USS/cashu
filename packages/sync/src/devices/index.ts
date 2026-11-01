@@ -87,6 +87,14 @@ export {
   watermarkOf,
 } from "./lease.js";
 export {
+  LEADER_SILENCE_WARNING_MS,
+  type LeaderLiveness,
+  type LeaderState,
+  type LivenessLocal,
+  leaderLiveness,
+  type RepinAction,
+} from "./liveness.js";
+export {
   DEFAULT_INVITE_TTL_MS,
   decodeInvite,
   encodeInvite,
