@@ -30,3 +30,28 @@ export function metaClockStore(driver: SqlDriver, device: string): MetaClockStor
     },
   };
 }
+
+/** The sync engine's `GateStateStore` (S29c-B3) for one device, in `store_meta`. */
+export interface MetaGateStateStore {
+  load(): string | undefined;
+  save(state: string): void;
+}
+
+/**
+ * The frame gate's snapshot of `device` in `store_meta` (`gate:<device>`). The gate authenticates
+ * its own text; the store only keeps it. It survives `reset()` (the snapshot describes the log, not
+ * the view) and goes with the database file (`openOrRecover`: a new database replays the log).
+ */
+export function metaGateStateStore(driver: SqlDriver, device: string): MetaGateStateStore {
+  const key = `gate:${device}`;
+  const get = driver.prepare("SELECT value FROM store_meta WHERE key = ?");
+  const put = driver.prepare(
+    "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+  );
+  return {
+    load: () => get.get<{ value: string }>(key)?.value,
+    save(state) {
+      put.run(key, state);
+    },
+  };
+}

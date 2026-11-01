@@ -3,7 +3,7 @@
 import { createSyncEngine, MemoryTransport, type Transport } from "@cashu/sync";
 import { insecureTestCodec, insecureTestGate, ManualClock } from "@cashu/sync/testing";
 import { describe, expect, it } from "vitest";
-import { metaClockStore } from "./hlc.js";
+import { metaClockStore, metaGateStateStore } from "./hlc.js";
 import type { Store } from "./materialize.js";
 import { viewHash } from "./snapshot.js";
 import { openTestStore, testUlid } from "./testing/store.js";
@@ -230,5 +230,15 @@ describe("Store as EventSink", () => {
     expect(() => failing.applyWireBatches([batches[0] as never, broken])).toThrow();
     expect(failing.read("SELECT COUNT(*) AS n FROM event_log")).toEqual([{ n: 0 }]);
     expect(failing.cursors().size).toBe(0);
+  });
+
+  it("keeps a device's gate snapshot in store_meta, across a view reset (S29c-B3)", () => {
+    const s = openTestStore();
+    const gate = metaGateStateStore(s.driver, A);
+    expect(gate.load()).toBeUndefined();
+    gate.save('{"v":1}\nab');
+    s.reset();
+    expect(metaGateStateStore(s.driver, A).load()).toBe('{"v":1}\nab');
+    expect(metaGateStateStore(s.driver, B).load()).toBeUndefined();
   });
 });

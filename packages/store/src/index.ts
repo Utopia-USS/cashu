@@ -77,7 +77,13 @@ export {
   type VaultSalt,
   vaultSalt,
 } from "./gid.js";
-export { HybridClock, type MetaClockStore, metaClockStore } from "./hlc.js";
+export {
+  HybridClock,
+  type MetaClockStore,
+  type MetaGateStateStore,
+  metaClockStore,
+  metaGateStateStore,
+} from "./hlc.js";
 export * as investmentsCommands from "./investments/commands/index.js";
 export { investmentsModule } from "./investments/index.js";
 export * as investmentsPerformance from "./investments/performance/index.js";
