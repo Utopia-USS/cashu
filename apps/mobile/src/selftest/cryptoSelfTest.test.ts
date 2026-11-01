@@ -1,35 +1,65 @@
 // The self-test on Node with libsodium-wrappers and an in-memory secure store and files: every check
 // passes, a broken library fails the known-answer test, and a KeyStore that loses values is caught.
 // The device run (debug screen) uses react-native-libsodium, expo-secure-store and real files.
-import { crypto } from "@cashu/sync";
-import sodiumWrappers from "libsodium-wrappers";
+import type { crypto } from "@cashu/sync";
 import { runCryptoSelfTest } from "./cryptoSelfTest";
-
-function memoryKeyStore(sodium: crypto.Sodium): crypto.KeyStore {
-  const items = new Map<string, string>();
-  const blobs = new Map<string, Uint8Array>();
-  return crypto.createSecureStoreKeyStore(
-    sodium,
-    {
-      getItemAsync: async (k) => items.get(k) ?? null,
-      setItemAsync: async (k, v) => void items.set(k, v),
-      deleteItemAsync: async (k) => void items.delete(k),
-      AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 7,
-    },
-    {
-      read: async (n) => blobs.get(n) ?? null,
-      write: async (n, v) => void blobs.set(n, v),
-      remove: async (n) => void blobs.delete(n),
-    },
-  );
-}
-
-async function lib(): Promise<crypto.LibsodiumLike> {
-  await sodiumWrappers.ready;
-  return sodiumWrappers as unknown as crypto.LibsodiumLike;
-}
+import { runtime as lib, memoryKeyStore, withOpenFailure } from "./testing/runtime";
 
 describe("crypto self-test", () => {
+  it.each([
+    ["iOS", () => new Error("incorrect key pair for the given ciphertext")],
+    ["Android", () => new Error("Exception in HostFunction: native failure\n\nError: JSI stack")],
+    ["new binding wording", () => new Error("a completely different authentication error")],
+  ])(
+    "uses classified failure kinds for %s without matching messages",
+    async (_platform, failure) => {
+      const r = await runCryptoSelfTest({
+        lib: withOpenFailure(await lib(), failure),
+        keyStore: memoryKeyStore,
+      });
+      expect(r.ok).toBe(true);
+      expect(r.checks.find((check) => check.name === "sealedBoxWrongKey")).toEqual({
+        name: "sealedBoxWrongKey",
+        ok: true,
+      });
+    },
+  );
+
+  it.each([
+    ["TypeError", () => new TypeError("synthetic backend detail")],
+    ["string", () => "synthetic backend detail"],
+    ["object", () => ({ message: "synthetic backend detail" })],
+    ["null", () => null],
+  ])(
+    "fails closed on an unknown %s error shape without exposing backend details",
+    async (_kind, failure) => {
+      const r = await runCryptoSelfTest({
+        lib: withOpenFailure(await lib(), failure),
+        keyStore: memoryKeyStore,
+      });
+      expect(r).toEqual({
+        ok: false,
+        nativeAead: "not_run",
+        checks: [{ name: "knownAnswer", ok: false, code: "unsupported_runtime" }],
+      });
+    },
+  );
+
+  it("never reports a backend that throws on every open as a working runtime", async () => {
+    const real = await lib();
+    const r = await runCryptoSelfTest({
+      lib: {
+        ...real,
+        crypto_box_seal_open: () => {
+          throw new Error("synthetic backend detail");
+        },
+      },
+      keyStore: memoryKeyStore,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.checks).toEqual([{ name: "knownAnswer", ok: false, code: "unsupported_runtime" }]);
+  });
+
   it("passes every check on a working runtime", async () => {
     const r = await runCryptoSelfTest({ lib: await lib(), keyStore: memoryKeyStore });
     expect(r.checks.filter((c) => !c.ok)).toEqual([]);
@@ -55,28 +85,9 @@ describe("crypto self-test", () => {
       {
         name: "knownAnswer",
         ok: false,
-        code: "unsupported_runtime: crypto_generichash (known answer) (wrong value)",
+        code: "unsupported_runtime",
       },
     ]);
-  });
-
-  it("names the failure message a library uses that the mapping does not know", async () => {
-    const real = await lib();
-    // Android's JSI wraps a host function's error: "Exception in HostFunction: <message>" + stack.
-    const wrapped = {
-      ...real,
-      crypto_box_seal_open: (c: Uint8Array, pk: Uint8Array, sk: Uint8Array) => {
-        try {
-          return real.crypto_box_seal_open(c, pk, sk);
-        } catch {
-          throw new Error("Exception in HostFunction: seal failed\n\nError: seal failed\n    at x");
-        }
-      },
-    };
-    const r = await runCryptoSelfTest({ lib: wrapped, keyStore: memoryKeyStore });
-    expect(r.checks[0]?.code).toBe(
-      'unsupported_runtime: tampered seal_open failure "Exception in HostFunction: seal failed", crypto_box_seal_open failure "Exception in HostFunction: seal failed"',
-    );
   });
 
   it("catches a KeyStore that does not keep values", async () => {
