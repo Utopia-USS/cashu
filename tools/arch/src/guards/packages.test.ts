@@ -2,10 +2,33 @@
 // React Compiler being on wherever React renders.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { configDefaults } from "vitest/config";
+import { EXHAUSTIVE_GLOB, tiered } from "../../../../vitest.tiers.js";
 import { REPO_ROOT, readRepoFile, workspacePackages } from "../repo.ts";
 
 const packages = workspacePackages();
+
+describe("test tiers keep dependency and platform exclusions", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["default", "exhaustive"])("%s never collects dependency tests", (tier) => {
+    vi.stubEnv("CASHU_TEST_TIER", tier);
+    // packages/ui customizes exclude for native tests. It must not replace Vitest's dependency
+    // exclusions: a workspace dependency may itself have dependencies with exhaustive tests.
+    const config = tiered({ environment: "jsdom", exclude: ["**/*.native.test.tsx"] });
+    expect(config.test?.exclude).toEqual(
+      expect.arrayContaining([...configDefaults.exclude, "**/*.native.test.tsx"]),
+    );
+    expect(config.test?.environment).toBe("jsdom");
+    if (tier === "exhaustive") {
+      expect(config.test?.include).toEqual([EXHAUSTIVE_GLOB]);
+      expect(config.test?.exclude).not.toContain(EXHAUSTIVE_GLOB);
+    } else {
+      expect(config.test?.exclude).toContain(EXHAUSTIVE_GLOB);
+    }
+  });
+});
 
 /** Leaf targets of an exports map (conditions flattened). */
 function exportTargets(value: unknown): string[] {

@@ -19,9 +19,14 @@ export function tiered(options: Options = {}) {
   return defineProject({
     test: {
       ...options,
-      ...(exhaustive
-        ? { include: [EXHAUSTIVE_GLOB] }
-        : { exclude: [...configDefaults.exclude, ...(options.exclude ?? []), EXHAUSTIVE_GLOB] }),
+      // Keep dependency exclusions in both tiers even when a package adds platform exclusions.
+      // Otherwise exhaustive discovery follows workspace links into another package's tests.
+      exclude: [
+        ...configDefaults.exclude,
+        ...(options.exclude ?? []),
+        ...(exhaustive ? [] : [EXHAUSTIVE_GLOB]),
+      ],
+      ...(exhaustive ? { include: [EXHAUSTIVE_GLOB] } : {}),
     },
   });
 }
