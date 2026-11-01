@@ -7,6 +7,7 @@
 // come in through `BridgePorts`), so the lab daemon and later the desktop utility process run the
 // same code. Re-exported from the package as `bridge` (`import { bridge } from "@cashu/store"`).
 export { type Coverage, coverage, type TableCoverage } from "./coverage.js";
+export { readLiveRows } from "./live.js";
 export { BridgeBlock } from "./map/types.js";
 export type { LogicalRow } from "./merge.js";
 export {

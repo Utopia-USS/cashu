@@ -47,6 +47,7 @@ import {
 import { Rewriter } from "./rewrite.js";
 import { type GenesisFiles, type ProfileScope, readPythonSource, scopeProfiles } from "./source.js";
 
+export { genesisDevice } from "./clock.js";
 export { GENESIS_CHUNK } from "./emit.js";
 export type { VaultKeys } from "./ids.js";
 export type { DeviceLocal } from "./map/agent.js";

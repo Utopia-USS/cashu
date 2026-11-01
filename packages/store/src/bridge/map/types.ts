@@ -32,11 +32,11 @@ export interface RowChange<R> {
   readonly txn: readonly LogicalRow[];
 }
 
-export type Handler<R> = (change: RowChange<R>, ctx: MapContext) => readonly EventDraft[];
+type Handler<R> = (change: RowChange<R>, ctx: MapContext) => readonly EventDraft[];
 
 /** The bridge of one Python table. */
 /** Who fills a table's gid (Python `sync_outbox.SPECS[...].gid`; `global` = shared instruments). */
-export type GidKind = "ulid" | "det" | "shipper" | "vault" | "none" | "global";
+type GidKind = "ulid" | "det" | "shipper" | "vault" | "none" | "global";
 
 export interface TableBridge<R = never> {
   readonly table: string;
@@ -103,9 +103,4 @@ export function carried(
   ...columns: string[]
 ): Record<string, ColumnRule> {
   return Object.fromEntries(columns.map((c) => [c, { carriedBy: types }]));
-}
-
-/** Classifies `columns` as not shipped, with the reason. */
-export function notShipped(reason: string, ...columns: string[]): Record<string, ColumnRule> {
-  return Object.fromEntries(columns.map((c) => [c, { notShipped: reason }]));
 }

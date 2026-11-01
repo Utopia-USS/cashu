@@ -7,7 +7,7 @@
 // transactions a page holds whole (the reader reads on until the last one ends).
 import { z } from "zod";
 
-export const OUTBOX_OPS = ["insert", "update", "delete", "merge", "undo", "leg_delete"] as const;
+const OUTBOX_OPS = ["insert", "update", "delete", "merge", "undo", "leg_delete"] as const;
 export type OutboxOp = (typeof OUTBOX_OPS)[number];
 /** The explicit ops of Python `sync_outbox.EXPLICIT_OPS`: barriers, never merged. */
 export const EXPLICIT_OPS: readonly OutboxOp[] = ["merge", "undo", "leg_delete"];

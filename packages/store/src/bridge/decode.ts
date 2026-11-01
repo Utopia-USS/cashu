@@ -16,7 +16,7 @@ const SPECS: ReadonlyMap<string, TableSpec<unknown>> = new Map(
 const JSON_CODECS: ReadonlySet<unknown> = new Set([jsonObject, jsonList, jsonN]);
 
 /** The genesis table spec of a Python table, undefined for a table genesis does not read. */
-export function specOf(table: string): TableSpec<unknown> | undefined {
+function specOf(table: string): TableSpec<unknown> | undefined {
   return SPECS.get(table);
 }
 
