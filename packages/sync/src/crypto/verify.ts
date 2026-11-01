@@ -5,6 +5,9 @@
 // inputs alone whether a correct implementation would have refused them. They run only on that
 // failure path, never on a successful open; the AEAD one computes only the tag.
 
+// @noble/ciphers has no public Poly1305 export; `_poly1305.js` is listed in its exports map but
+// internal by name, so the version is pinned exactly in package.json and verify.poly1305.test.ts fails
+// when the module's shape or output changes on an upgrade.
 import { poly1305 } from "@noble/ciphers/_poly1305.js";
 import { xchacha20 } from "@noble/ciphers/chacha.js";
 import { hsalsa, xsalsa20, xsalsa20poly1305 } from "@noble/ciphers/salsa.js";
