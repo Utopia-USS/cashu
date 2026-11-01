@@ -40,6 +40,14 @@ const AMOUNT = pyRegex(`(?i)${RECLASSIFY_PATTERNS.amount}`, "g");
 const LONG_NUM = pyRegex(RECLASSIFY_PATTERNS.longNum, "g");
 const WS = pyRegex(RECLASSIFY_PATTERNS.ws, "g");
 
+/**
+ * The category keys the transaction classifier may answer (reclassify.py `allowed`): the automatic
+ * keys without the structural ones. An `llm_full` claim outside them is refused (D-09.5a).
+ */
+export const RECLASSIFY_KEYS: readonly string[] = Object.freeze(
+  AUTO_CATEGORY_KEYS.filter((k) => !STRUCTURAL_CATEGORIES.has(k)),
+);
+
 /** `reclassify.OWNER_SOURCES`: sources that record an owner decision. */
 export const OWNER_SOURCES: ReadonlySet<string> = new Set(["manual", "manual_txn", "cash_leg"]);
 
@@ -201,7 +209,7 @@ export function planReclassify(
       ),
     };
   });
-  const allowedKeys = AUTO_CATEGORY_KEYS.filter((k) => !STRUCTURAL_CATEGORIES.has(k));
+  const allowedKeys = [...RECLASSIFY_KEYS];
   return {
     targets,
     configured,

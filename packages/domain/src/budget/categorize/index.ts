@@ -66,6 +66,7 @@ export {
   isStructural,
   OWNER_SOURCES,
   planReclassify,
+  RECLASSIFY_KEYS,
   RECLASSIFY_PATTERNS,
   type ReclassifyGroup,
   type ReclassifyOptions,

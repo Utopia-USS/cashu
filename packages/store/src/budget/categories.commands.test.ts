@@ -359,6 +359,75 @@ describe("LLM result commands (D-09.5)", () => {
     });
   });
 
+  it("setLlmCategories: no claim on structural, owner-decided or configured rows (Python planReclassify)", () => {
+    const { store, env } = vault();
+    ingest(store, env, [], OWN);
+    ingest(store, env, [
+      raw("-11.00", { cp: "ZXQ WLASNE", iban: OWN }), // own-IBAN counterparty: structural
+      raw("-12.00", { ref: "PRZEWALUTOWANIE EUR" }), // FX conversion: transfer, structural
+      raw("-13.00", { cp: "ZXQ PIN" }), // locked manual rule: owner-decided
+      raw("-14.00", { cp: "ZXQ RATA", iban: "PL10114000000000000000007777" }), // loan account
+      raw("-15.00", { cp: "ZXQ WOLNY" }), // a target
+    ]);
+    run(store, env, setMerchantCategory, { merchantKey: "ZXQ PIN", category: "gifts" });
+    const opened = run(store, env, openAccount, {
+      bank: "manual",
+      name: "Auto",
+      type: "loan",
+      currency: "PLN",
+      externalId: "manual:Auto",
+    });
+    const loan = opened.ok ? (opened.value as { account: string }).account : "";
+    const f = new EventFactory("dddddddddddddddddddddddddddddddd");
+    const loanGid = store.deps.det("loans", [loan]);
+    store.applyEnvelopes([
+      f.make(
+        "loan.termsSet",
+        loanGid,
+        {
+          account: loan,
+          principal: "1000",
+          annualRate: "5",
+          termMonths: 12,
+          startDate: "2025-01-01",
+          originationDate: null,
+        },
+        { wall: 120_000 },
+      ),
+      f.make(
+        "loan.paymentMatchingSet",
+        loanGid,
+        { account: loan, paymentIban: "PL10114000000000000000007777", paymentText: null },
+        { wall: 121_000 },
+      ),
+    ]);
+    const amounts = ["-11.00", "-12.00", "-13.00", "-14.00", "-15.00"];
+    const out = run(store, env, setLlmCategories, {
+      items: amounts.map((a) => ({ txn: gidOf(store, a), category: "health" })),
+    });
+    expect(out.ok && out.events.map((e) => e.gid)).toEqual([gidOf(store, "-15.00")]);
+    expect(amounts.map((a) => catOf(store, gidOf(store, a))?.category_source)).toEqual([
+      "transfer",
+      "transfer",
+      "manual",
+      "keyword",
+      "llm_full",
+    ]);
+  });
+
+  it("setLlmCategories: transfer, cash_withdrawal and keys outside the reclassify set are refused", () => {
+    const { store, env } = vault();
+    ingest(store, env, [raw("-5.00", { cp: "ZXQ SKLEP" })]);
+    const txn = gidOf(store, "-5.00");
+    for (const category of ["transfer", "cash_withdrawal", "private", "nope"]) {
+      expect(run(store, env, setLlmCategories, { items: [{ txn, category }] })).toEqual({
+        ok: false,
+        reason: "invalid_input",
+      });
+    }
+    expect(catOf(store, txn)?.category_source).toBe("default");
+  });
+
   it("classifierMerchants: PRIVACY(D-09.5) the cloud list never holds a merchant seen with an IBAN or a P2P marker", () => {
     const { store, env } = vault();
     ingest(store, env, [

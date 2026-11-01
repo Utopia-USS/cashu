@@ -17,7 +17,7 @@ import { type Command, type CommandEnv, runCommand } from "./command.js";
 import { createProfile, openAccount, recordBalance, setModules } from "./core/commands.js";
 import { addLoan } from "./loans/commands.js";
 import type { Store } from "./materialize.js";
-import { testEnv } from "./testing/commands.js";
+import { run, testEnv } from "./testing/commands.js";
 import { EventFactory, openTestStore } from "./testing/store.js";
 
 /** Run `cmd`, returning the touched tables of its apply and whether a query's subscriber fired. */
@@ -221,6 +221,19 @@ describe("command batches invalidate the queries that read their tables", () => 
               source: "csv",
               raw: {},
             },
+            {
+              bookingDate: "2026-10-02",
+              valueDate: null,
+              amount: D("-7.00"),
+              currency: "PLN",
+              counterpartyName: "ZXQ INNY",
+              counterpartyIban: null,
+              description: null,
+              reference: null,
+              bankTransactionId: null,
+              source: "csv",
+              raw: {},
+            },
           ],
           balances: [],
           closingBalances: [],
@@ -229,7 +242,9 @@ describe("command batches invalidate the queries that read their tables", () => 
       env,
     );
     expect(imp.ok).toBe(true);
-    const txn = store.read<{ gid: string }>("SELECT gid FROM transactions")[0]?.gid;
+    const gidOf = (amount: string) =>
+      store.read<{ gid: string }>("SELECT gid FROM transactions WHERE amount = ?", amount)[0]?.gid;
+    const txn = gidOf("-5.00");
     const spending = "SELECT category, SUM(amount) FROM transactions GROUP BY category";
     expect(
       touched(
@@ -245,13 +260,22 @@ describe("command batches invalidate the queries that read their tables", () => 
         store,
         env,
         cacheLlmRules,
-        { items: [{ merchantKey: "ZXQ INNY", category: "dining" }] },
+        { items: [{ merchantKey: "ZXQ BRAK", category: "dining" }] },
         "SELECT * FROM category_rules",
       ),
     ).toEqual({ tables: ["category_rules"], notified: 1 });
+    // the row a locked rule decides gets no claim at all (Python: configured, never reclassified)
+    const decided = run(store, env, setLlmCategories, { items: [{ txn, category: "health" }] });
+    expect(decided.ok && decided.events).toEqual([]);
     expect(
-      touched(store, env, setLlmCategories, { items: [{ txn, category: "health" }] }, spending),
-    ).toEqual({ tables: [], notified: 0 }); // the locked rule beats an llm claim: nothing visible changed
+      touched(
+        store,
+        env,
+        setLlmCategories,
+        { items: [{ txn: gidOf("-7.00"), category: "health" }] },
+        spending,
+      ),
+    ).toEqual({ tables: ["transactions"], notified: 1 });
     expect(
       touched(store, env, setTransactionCategory, { txn, category: "cash_withdrawal" }, spending),
     ).toEqual({ tables: ["accounts", "transactions"], notified: 1 });

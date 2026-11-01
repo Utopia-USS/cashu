@@ -18,8 +18,12 @@ import {
   type DatedAmount,
   defaultBudgetSettings,
   isCategoryKey,
+  isOwnerDecided,
+  isStructural,
+  ownerDecision,
   planImport,
   type RawTransaction,
+  RECLASSIFY_KEYS,
   ruleUpsert,
 } from "@cashu/domain/budget";
 import { pyStrip, pyUpper } from "@cashu/domain/text";
@@ -29,7 +33,14 @@ import { emitBalance, ensureAccount } from "../core/commands.js";
 import { accountByGid, profileOf } from "../core/queries.js";
 import { BALANCE_SOURCES } from "../events/v1/core.js";
 import { blobRef, calendarDate, gid } from "../events/v1/primitives.js";
-import { ruleByMerchant, storedTxnsOfAccount, transactionByGid } from "./queries.js";
+import { vaultPaymentPatterns } from "../overview/index.js";
+import {
+  reclassifyRowByGid,
+  ruleByMerchant,
+  storedTxnsOfAccount,
+  transactionByGid,
+} from "./queries.js";
+import { budgetEngineContext } from "./read-models.js";
 import { CASHEXP, CASHLEG } from "./transactions.js";
 
 const ISO_CURRENCY = /^[A-Z]{3}$/;
@@ -275,20 +286,33 @@ export const cacheLlmRules = defineCommand({
 
 /**
  * Store the transaction classifier's answers (`reclassify_all` after `applyReclassify`): an
- * `llm_full` claim per row, except rows holding a manual claim (the claim GUARD, checked here too so
- * nothing redundant is emitted) and rows on a cash account (structural, never reclassified).
- * Unknown rows are skipped; the result counts the claims written.
+ * `llm_full` claim per row the classifier may decide, exactly the rows Python's `planReclassify`
+ * targets: never a structural row (`isStructural`: cash account, internal transfer, own-IBAN
+ * counterparty, structural category), an owner-decided one (`isOwnerDecided`: manual / manual_txn /
+ * cash_leg source, manual-only category) or one the owner's configuration decides (`ownerDecision`:
+ * locked rule, payment pattern). Only `RECLASSIFY_KEYS` are accepted (never `transfer` /
+ * `cash_withdrawal`, D-09.5a): any other key refuses the whole input. Unknown rows are skipped; the
+ * result counts the claims written.
  */
 export const setLlmCategories = defineCommand({
   id: "budget.setLlmCategories",
-  input: z.object({ items: z.array(z.object({ txn: gid, category: categoryKey })) }),
+  input: z.object({
+    items: z.array(
+      z.object({
+        txn: gid,
+        category: z.string().refine((k) => RECLASSIFY_KEYS.includes(k), "not a reclassify key"),
+      }),
+    ),
+  }),
   run(ctx, input) {
+    const engine = budgetEngineContext(ctx.read, vaultPaymentPatterns(ctx.read));
     let set = 0;
     for (const it of input.items) {
-      const t = transactionByGid(ctx.read, it.txn);
-      if (t === undefined || t.accountType === CASH_ACCOUNT_TYPE) continue;
-      if (t.categorySource === "manual_txn") continue;
-      ctx.emit("txn.categorySet", t.gid, { category: it.category, source: "llm_full" });
+      const row = reclassifyRowByGid(ctx.read, it.txn);
+      if (row === undefined) continue;
+      if (isStructural(row, engine.ownIbans) || isOwnerDecided(row)) continue;
+      if (ownerDecision(row, engine) !== null) continue;
+      ctx.emit("txn.categorySet", row.key, { category: it.category, source: "llm_full" });
       set += 1;
     }
     return ok({ set });

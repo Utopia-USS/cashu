@@ -2,10 +2,12 @@
 
 import { D } from "@cashu/domain";
 import {
+  CASH_ACCOUNT_TYPE,
   type CloudMerchant,
   cloudMerchants,
   type MerchantRule,
   merchantKey,
+  type ReclassifyRow,
   type RuleSource,
   type StoredTxn,
   unknownMerchants,
@@ -67,6 +69,50 @@ export function transactionByGid(read: Read, gid: string): TxnView | undefined {
         currency: r.currency,
         categorySource: r.category_source,
         raw: JSON.parse(r.raw),
+      };
+}
+
+/**
+ * The row `gid` as the transaction classifier sees it (`ReclassifyRow`: its fields, whether it is on
+ * a cash account, its effective category and source), or undefined.
+ */
+export function reclassifyRowByGid(read: Read, gid: string): ReclassifyRow | undefined {
+  const r = read<{
+    gid: string;
+    booking_date: string;
+    currency: string;
+    amount: string;
+    counterparty_name: string | null;
+    counterparty_iban: string | null;
+    description: string | null;
+    reference: string | null;
+    is_internal_transfer: number;
+    category: string | null;
+    category_source: string | null;
+    type: string | null;
+  }>(
+    `SELECT t.gid, t.booking_date, t.currency, t.amount, t.counterparty_name, t.counterparty_iban,
+       t.description, t.reference, t.is_internal_transfer, t.category, t.category_source, a.type
+     FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.gid = ?`,
+    gid,
+  )[0];
+  return r === undefined
+    ? undefined
+    : {
+        key: r.gid,
+        bookingDate: r.booking_date,
+        currency: r.currency,
+        amount: D(r.amount),
+        counterpartyName: r.counterparty_name,
+        counterpartyIban: r.counterparty_iban,
+        description: r.description,
+        reference: r.reference,
+        // TRANSITIONAL(S24b): always 0 until the transfers deriver writes it, so a one-sided transfer
+        // leg is not structural here yet.
+        isInternalTransfer: r.is_internal_transfer === 1,
+        onCashAccount: r.type === CASH_ACCOUNT_TYPE,
+        category: r.category,
+        source: r.category_source,
       };
 }
 
