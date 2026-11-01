@@ -1,5 +1,7 @@
 // Test fixtures for the research services (the Python `invp_support` investor: a brokerage account
 // holding ABC, WRLD and XMPL from a canonical import). Synthetic data only.
+import { addDays, D, parseDateTime } from "@cashu/domain";
+import { market } from "@cashu/domain/investments";
 import { expect } from "vitest";
 import type { CommandOutcome } from "../../../command.js";
 import { createThesis } from "../../commands/journal.js";
@@ -18,7 +20,7 @@ export const HOUR = 3_600_000;
 export const MINUTE = 60_000;
 export const DAY = 24 * HOUR;
 /** The fixture clock's day (testEnv: 2026-10-31T12:00Z, a Saturday of ISO week 2026-W44). */
-const TODAY = "2026-10-31";
+export const TODAY = "2026-10-31";
 
 export interface Investor {
   readonly v: Vault;
@@ -74,17 +76,22 @@ function txn(
 export function investor(): Investor {
   const v = vault();
   const account = brokerage(v);
-  const abc = stock(v, "ABC", "PLABC0000016", { name: "ABC Example SA" });
+  const abc = stock(v, "ABC", "PLABC0000016", {
+    name: "ABC Example SA",
+    aliases: [yahoo("ABC.WA")],
+  });
   const wrld = stock(v, "WRLD", "IE00BEXAMPL1", {
     name: "World Equity UCITS ETF",
     currency: "EUR",
     assetClass: "etf",
     mic: "XETR",
+    aliases: [yahoo("WRLD.DE")],
   });
   const xmpl = stock(v, "XMPL", "US0000000001", {
     name: "Example Corp",
     currency: "USD",
     mic: "XNAS",
+    aliases: [yahoo("XMPL")],
   });
   applyRaw(v, [
     txn(v, account, null, {
@@ -120,6 +127,51 @@ export function investor(): Investor {
     }),
   ]);
   return { v, account, abc, wrld, xmpl, read: v.store.read.bind(v.store) };
+}
+
+/** A Yahoo price alias (the price cache keys bars by provider symbol). */
+export const yahoo = (value: string) => ({ namespace: "yahoo", value, guessed: false });
+
+const FETCHED_AT = parseDateTime("2026-10-31T06:00:00Z");
+
+/** Daily closes of `symbol` (Yahoo) for the `days` up to `end`, from `close(day)`. */
+export function putBars(
+  cache: market.PriceCache,
+  symbol: string,
+  end: string,
+  days: number,
+  close: (day: string) => string,
+  currency: string,
+): void {
+  const bars = Array.from({ length: days + 1 }, (_, i) => {
+    const date = addDays(end, i - days);
+    return {
+      date,
+      close: D(close(date)),
+      open: null,
+      high: null,
+      low: null,
+      volume: null,
+      currency: currency as never,
+      fetchedAt: FETCHED_AT,
+    };
+  });
+  cache.upsertBars(market.marketSymbol("yahoo", symbol), bars, FETCHED_AT);
+}
+
+/** NBP rates (PLN per unit) of `quote` for the given days. */
+export function putRates(
+  cache: market.PriceCache,
+  quote: string,
+  days: readonly string[],
+  rate: (day: string) => string,
+): void {
+  cache.upsertRates(
+    "nbp",
+    quote as never,
+    days.map((date) => ({ date, rate: D(rate(date)), fetchedAt: FETCHED_AT })),
+    FETCHED_AT,
+  );
 }
 
 /** Python `distinct_words`: three words unique to `n` (synthetic notes are never near duplicates). */

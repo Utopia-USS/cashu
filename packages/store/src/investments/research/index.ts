@@ -15,6 +15,7 @@ export {
   type TopicThesis,
   viewInstant,
 } from "./rows.js";
+export * from "./segments.js";
 export { NO_SYNC, type SyncResult } from "./sync.js";
 export * from "./topics.js";
 export * from "./views.js";

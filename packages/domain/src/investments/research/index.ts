@@ -31,6 +31,7 @@ export {
 } from "./patterns.js";
 export * from "./scoring.js";
 export * from "./segments.js";
+export * from "./segmentView.js";
 export * from "./signals.js";
 export * as similarity from "./similarity.js";
 export * from "./strategyText.js";
