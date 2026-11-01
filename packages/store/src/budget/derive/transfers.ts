@@ -17,8 +17,10 @@
 // matching never lets rows of two keys interact. Dirty keys = the keys of the dirty rows now, plus the
 // keys of dirty rows that were matched before (`fold_transfer_pairs`: a deleted or re-folded matched
 // row frees its partner; an unmatched row never changed anyone's match, so its removal changes
-// nothing). A change of the accounts' match keys (signature in `fold_transfer_env`), a full re-fold or
-// a bulk dirty set runs `deriveAll`.
+// nothing). Dirty rows include the source partitions whose cash leg the legs deriver changed
+// (`takeLegChanges`: an account-only change, e.g. the source account set to cash, drops a leg without a
+// dirty transaction partition). A change of the accounts' match keys (signature in
+// `fold_transfer_env`), a full re-fold or a bulk dirty set runs `deriveAll`.
 //
 // The categories deriver reads `is_internal_transfer` (a structural transfer, recurring groups skip
 // internal rows): the bank rows whose flag flipped are queued in `fold_transfer_flips`, which that
@@ -29,6 +31,7 @@ import type { DeriveContext, Deriver } from "../../engine/types.js";
 import type { TableDef } from "../../sql/ddl.js";
 import { CASHEXP, CASHLEG, splitKey, TRANSACTIONS } from "../transactions.js";
 import { selectIn } from "./keys.js";
+import { takeLegChanges } from "./legs.js";
 
 /** The rows matched by the last derivation: row gid -> its partition (dirty unit) and amount key. */
 const pairsTable: TableDef = {
@@ -312,6 +315,7 @@ const byGid = (rows: StoredPair[]) =>
   new Map(rows.map((r) => [r.gid, { part: r.part, amount_key: r.amount_key }]));
 
 function deriveAll(ctx: DeriveContext): void {
+  takeLegChanges(ctx); // every row is re-matched below
   const accounts = matchKeys(ctx);
   const matched = matchAndWrite(ctx, allRows(ctx), accounts);
   savePairs(
@@ -379,12 +383,13 @@ export const transfersDeriver: Deriver = {
       return;
     }
     const txns = dirty.get("budget.transactions");
-    if (txns === undefined) return;
     if (txns === "all") {
       deriveAll(ctx);
       return;
     }
-    const parts = [...txns];
+    // the source partitions whose cash leg changed (also through an account-only change)
+    const parts = [...new Set([...(txns ?? []), ...takeLegChanges(ctx)])];
+    if (parts.length === 0) return;
     if (parts.length >= FULL_PASS_MIN) {
       const total = ctx.sql.get<{ n: number }>("SELECT count(*) AS n FROM fold_txn_keys")?.n ?? 0;
       if (parts.length * FULL_PASS_SHARE > total) {

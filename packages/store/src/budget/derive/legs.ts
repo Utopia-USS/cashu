@@ -25,6 +25,36 @@ const legsTable: TableDef = {
   ],
 };
 
+/**
+ * Source partitions whose leg appeared, vanished, moved or changed in this apply, until the transfers
+ * deriver takes them (a leg can change through an account-only change, e.g. the source account set
+ * to cash, which marks no transaction partition dirty; a leg is a transfer candidate).
+ */
+const changesTable: TableDef = {
+  name: "fold_txn_leg_changes",
+  primaryKey: ["partition"],
+  internal: true,
+  withoutRowid: true,
+  columns: [{ name: "partition", type: "TEXT", notNull: true }],
+};
+
+function legChanged(ctx: DeriveContext, key: string): void {
+  ctx.sql.write(
+    changesTable.name,
+    "INSERT OR IGNORE INTO fold_txn_leg_changes (partition) VALUES (?)",
+    key,
+  );
+}
+
+/** The source partitions whose leg changed since the last call, emptied (the transfers deriver). */
+export function takeLegChanges(ctx: DeriveContext): string[] {
+  const rows = ctx.sql
+    .all<{ partition: string }>("SELECT partition FROM fold_txn_leg_changes")
+    .map((r) => r.partition);
+  if (rows.length > 0) ctx.sql.write(changesTable.name, "DELETE FROM fold_txn_leg_changes");
+  return rows;
+}
+
 interface Source {
   gid: string;
   booking_date: string;
@@ -115,7 +145,7 @@ function computeLeg(ctx: DeriveContext, key: string, c: ClaimRow | undefined): L
 }
 
 function writeLeg(ctx: DeriveContext, key: string, leg: Leg, prev: string | undefined) {
-  ctx.sql.write(
+  const r = ctx.sql.write(
     TRANSACTIONS,
     `INSERT INTO transactions (id, gid, account_id, booking_date, value_date, amount, currency,
        counterparty_name, counterparty_iban, description, reference, bank_transaction_id, source,
@@ -136,6 +166,7 @@ function writeLeg(ctx: DeriveContext, key: string, leg: Leg, prev: string | unde
        OR transactions.raw IS NOT excluded.raw OR transactions.created_at IS NOT excluded.created_at`,
     ...leg.values,
   );
+  if (r.changes > 0 || prev !== leg.gid) legChanged(ctx, key);
   if (prev !== leg.gid) {
     ctx.sql.write(
       legsTable.name,
@@ -175,6 +206,7 @@ function deriveKeys(ctx: DeriveContext, keys: readonly string[]): void {
     const was = prev.get(key);
     if (was === undefined || was === leg?.gid) continue;
     ctx.sql.write(legsTable.name, "DELETE FROM fold_txn_legs WHERE partition = ?", key);
+    legChanged(ctx, key);
     if (!produced.has(was))
       ctx.sql.write(TRANSACTIONS, "DELETE FROM transactions WHERE gid = ?", was);
   }
@@ -184,7 +216,7 @@ function deriveKeys(ctx: DeriveContext, keys: readonly string[]): void {
 export const legsDeriver: Deriver = {
   id: "budget.legs",
   version: 2,
-  tables: [legsTable],
+  tables: [legsTable, changesTable],
   writes: [{ table: TRANSACTIONS, rows: `dedup_hash LIKE '${CASHLEG}%'` }],
   inputs: ["budget.transactions", "core.accounts"],
   derive(dirty, ctx) {

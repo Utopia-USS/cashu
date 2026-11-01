@@ -228,3 +228,44 @@ describe("budget.transfers deriver", () => {
     expect(flags(store, names, "in")).toEqual([1, names.gid("X2")]);
   });
 });
+
+/** A pool account carrying an IBAN (Python never creates one; the store must still be exact). */
+const POOL_N = "11114000000000000000000009";
+const pool: Spec = [
+  "account.opened",
+  "pool:PLN",
+  {
+    bank: "manual",
+    name: "Gotówka",
+    iban: POOL_N,
+    externalId: "cash:PLN",
+    type: "cash",
+    keys: ["ext:manual:cash:PLN"],
+  },
+];
+const base: Spec[] = [
+  A1,
+  A2,
+  pool,
+  imp("w", "A1", "-40.00", "2026-10-01"),
+  ["txn.categorySet", "T-w", { category: "cash_withdrawal", source: "manual_txn" }],
+  imp("o", "A2", "-40.00", "2026-10-01", POOL_N),
+];
+describe("budget.transfers deriver: legs changed by an account-only change", () => {
+  it("typeSet of the source account to cash drops the leg; its partner is freed", () => {
+    const { store, names } = history([...base, ["account.typeSet", "A1", { type: "cash" }]]);
+    expect(flags(store, names, "o")).toEqual([0, null]);
+  });
+  it("the leg pairs first, and pairs again when the account is a bank account again", () => {
+    const back = history([
+      ...base,
+      ["account.typeSet", "A1", { type: "cash" }],
+      ["account.typeSet", "A1", { type: "checking" }],
+    ]);
+    expect(flags(back.store, back.names, "o")[0]).toBe(1);
+    const { store } = history(base);
+    expect(
+      store.read("SELECT count(*) AS n FROM transactions WHERE is_internal_transfer = 1"),
+    ).toEqual([{ n: 2 }]);
+  });
+});

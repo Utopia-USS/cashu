@@ -1,8 +1,9 @@
 // Random synthetic budget scripts for internal transfers (S24b, D-24.1 / D-24.2): imports of
 // opposite amounts over a small universe of accounts, dates a few days apart and counterparty IBANs
 // (own valid, own raw, foreign, the cash pool's, none), so pairs form, compete and dissolve; accounts
-// learning or merging IBANs and being removed; manual cash withdrawals (mirror legs), cash expenses
-// and their deletes on a pool that may carry an IBAN. The properties: two delivery orders give one
+// learning or merging IBANs, turning into cash accounts and back, and being removed; manual cash
+// withdrawals (mirror legs), cash expenses and their deletes on a pool that may carry an IBAN. The
+// properties: two delivery orders give one
 // view hash (order independence); after every batch the incremental derivation equals `deriveAll`
 // (derived oracle); the transfer columns equal the domain recompute and the categories theirs; a
 // rebuild keeps the hash (rebuild == incremental). Used by `budget/derive/transfers.property.test.ts`
@@ -61,6 +62,10 @@ const step: fc.Arbitrary<Step> = fc.oneof(
     gid: "A3",
     data: { iban: n, keys: [`iban:${n}`] },
   })),
+  // a bank account turned into a cash account and back (its withdrawals' legs vanish and return)
+  fc
+    .record({ gid: pick(BANK), type: pick(["cash", "checking"]) })
+    .map(({ gid, type }) => ({ type: "account.typeSet", gid, data: { type } })),
   fc.record({ gid: pick(BANK), removed: fc.boolean() }).map(({ gid, removed }) => ({
     type: removed ? "account.removed" : "account.restored",
     gid,
