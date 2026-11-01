@@ -320,13 +320,13 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
       }
       case "position.snapshotImported":
       case "position.snapshotUpdated": {
-        // CREATE keeps the first; an update (S31c) replaces the figures, batch and time (LWW, fold
-        // order) and keeps the row's gid.
+        // Newest wins in fold order for the anchor's own gid (create or update, S31c); another
+        // member gid (a merge collision) leaves the first applied member's row.
         const key = `${acc(d.account)}|${inst(d.instrument)}|${d.asOf}`;
         const held = snapshots.get(key);
-        if (held !== undefined && e.type === "position.snapshotImported") break;
+        if (held !== undefined && held.gid !== e.gid) break;
         snapshots.set(key, {
-          gid: held?.gid ?? e.gid,
+          gid: e.gid,
           account_id: acc(d.account),
           instrument_id: inst(d.instrument),
           as_of: d.asOf,

@@ -34,7 +34,7 @@ describe("inv_position_snapshots", () => {
     ]);
   });
 
-  it("S31c: overlapping re-imports with changed figures: the newest update wins in every order", () => {
+  it("S31c F2: newest import wins by HLC on the row key, create or update, in every order", () => {
     const a = new Events();
     const b = new Events(DEV_B, "01JB");
     const i = instrument(a, ["xtb", "AAA"], {}, { wall: 1 });
@@ -46,20 +46,61 @@ describe("inv_position_snapshots", () => {
       quantity: q,
       marketValue: mv,
     });
-    const events = [
-      account(a, ACC, [], { wall: 0 }),
-      ...i.events,
-      a.make("position.snapshotImported", g, snap("10", "100.00"), { wall: 10 }),
-      a.make("position.snapshotUpdated", g, snap("12", "120.00"), { wall: 20 }),
-      // a second device's later re-import of the same day (a moved market value)
-      b.make("position.snapshotUpdated", g, snap("12", "126.00"), { wall: 30 }),
-      // a re-delivered first import (same gid, a fresh eid): CREATE, ignored
-      b.make("position.snapshotImported", g, snap("10", "100.00"), { wall: 40 }),
-    ];
-    converge(events, (store) => {
+    const setup = [account(a, ACC, [], { wall: 0 }), ...i.events];
+    const aCreate = a.make("position.snapshotImported", g, snap("10", "100.00"), { wall: 10 });
+    const aUpdate = a.make("position.snapshotUpdated", g, snap("12", "120.00"), { wall: 20 });
+    // B, offline and without the row, imports the same day later: its Python inserted, so a create.
+    const bCreate = b.make("position.snapshotImported", g, snap("15", "150.00"), { wall: 30 });
+    converge([...setup, aCreate, aUpdate, bCreate], (store) => {
       const all = rows(store, "inv_position_snapshots");
-      expect(all.map((r) => [r.gid, r.quantity, r.market_value])).toEqual([[g, "12", "126.00"]]);
+      expect(all.map((r) => [r.gid, r.quantity, r.market_value])).toEqual([[g, "15", "150.00"]]);
       expect(all[0]?.created_at).toBe("2026-10-31 12:00:00.030000");
+    });
+    // Swap the HLCs: B's create is the older one, A's update the newest: the update wins.
+    const bOld = b.make("position.snapshotImported", g, snap("15", "150.00"), { wall: 15 });
+    converge([...setup, aCreate, bOld, aUpdate], (store) => {
+      expect(rows(store, "inv_position_snapshots").map((r) => r.quantity)).toEqual(["12"]);
+    });
+  });
+
+  it("S31c F2: a genesis-exported snapshot loses to any later import of the same day", () => {
+    const a = new Events();
+    const b = new Events(DEV_B, "01JB");
+    const i = instrument(a, ["xtb", "AAA"], {}, { wall: 1 });
+    const g = det("inv_position_snapshots", ACC, i.gid, "2026-03-31");
+    const base = { account: ACC, instrument: i.gid, asOf: "2026-03-31" };
+    const setup = [account(a, ACC, [], { wall: 0 }), ...i.events];
+    // genesis: the stored figures with their stored time as a stamp, at the genesis clock
+    const genesis = a.make(
+      "position.snapshotImported",
+      g,
+      { ...base, quantity: "9", stamps: { created_at: "2026-03-31T18:00:00.000000Z" } },
+      { wall: 2 },
+    );
+    const aUpdate = a.make(
+      "position.snapshotUpdated",
+      g,
+      { ...base, quantity: "12" },
+      { wall: 20 },
+    );
+    const bCreate = b.make(
+      "position.snapshotImported",
+      g,
+      { ...base, quantity: "15" },
+      { wall: 30 },
+    );
+    converge([...setup, genesis], (store) => {
+      expect(rows(store, "inv_position_snapshots").map((r) => [r.quantity, r.created_at])).toEqual([
+        ["9", "2026-03-31 18:00:00.000000"],
+      ]);
+    });
+    converge([...setup, genesis, aUpdate], (store) => {
+      expect(rows(store, "inv_position_snapshots").map((r) => r.quantity)).toEqual(["12"]);
+    });
+    converge([...setup, genesis, aUpdate, bCreate], (store) => {
+      expect(rows(store, "inv_position_snapshots").map((r) => [r.gid, r.quantity])).toEqual([
+        [g, "15"],
+      ]);
     });
   });
 

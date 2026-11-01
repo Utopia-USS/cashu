@@ -456,7 +456,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 | inv_account_settings | `invAccount.settingsSet` | DET(account) | LWW-F |
 | inv_import_batches | `invImport.recorded` | ULID | APPEND |
 | inv_transactions | `invTxn.imported` | DET(account, dedupHashV2); manual entries ULID | CREATE on the row key |
-| inv_position_snapshots | `position.snapshotImported`, `position.snapshotUpdated` | DET(account, instrument, as_of) | CREATE on the row key; update LWW on the row key |
+| inv_position_snapshots | `position.snapshotImported`, `position.snapshotUpdated` | DET(account, instrument, as_of) | newest wins on the row key in fold order (create or update, same gid); another member gid keeps the first applied (merge collision) |
 | inv_instrument_renames | `instrumentRename.recorded` | DET(date, old, new) | CREATE on the row key |
 | inv_manual_valuations | `valuation.set` | DET(instrument, as_of) | LWW-F on the row key |
 | inv_instruments | `instrument.created`, `instrument.updated`, `instrument.merged` | DET(creation alias), else ULID | CREATE; LWW-F; IDENTITY (merge) |
@@ -573,10 +573,13 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 - `position.snapshotImported` `{account@, instrument@, asOf, quantity, currency, avgPrice|null,
   marketValue|null, batch@|null}`. `position.snapshotUpdated` (same payload, S31c): a re-import whose
   figures for a held (account, instrument, asOf) differ (Python's import upsert keeps the newest
-  import's figures, batch and `created_at`); LWW on the row key, so it replaces the figures, batch and
-  `created_at` of the row (or creates it while no create is held; a create after it in fold order is
-  then a no-op). Its gid is the row's DET gid, the same as the create's. A re-import of the same
-  figures writes nothing (Python skips the row), and a provenance-only rewrite never ships.
+  import's figures, batch and `created_at`). Both types fold newest-wins in fold order `(hlc, eid)`,
+  never wall time: an event with the row's anchor gid (the DET gid both types share) replaces the
+  figures, batch and `created_at`, so the newest import wins whichever device made it and whether its
+  Python inserted (create) or updated (update); a genesis snapshot sorts before every later import. An
+  event of another member gid (two instrument gids an identity merge collapsed) is ignored: the first
+  applied member keeps the row (R-2). A re-import of the same figures writes nothing (Python skips
+  the row), and a provenance-only rewrite never ships.
 - `instrumentRename.recorded` `{date, old@, new@, note|null, batch@|null}`.
 - `valuation.set` `{instrument@, asOf, unitValue, currency, note|null}`.
 
