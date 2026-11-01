@@ -44,7 +44,9 @@ Every signature has its own context (`"cashu/wrap/v3"`, `"cashu/cert/v1"`, and f
 `"cashu/registry/v1"`, `"cashu/lease/v1"`, `"cashu/pairing/v1"`); no context is a prefix of another, an
 unknown context is refused (`RangeError`), and nothing signs raw caller bytes. `verifyContextSignature`
 checks `context | body`; `verifySignature` is the raw strict check. Frame heads (S29c phase B2) sign
-under `"cashu/head/v1"`, which neither extends nor is a prefix of the others (signing.test.ts).
+under `"cashu/head/v1"`, which neither extends nor is a prefix of the others (signing.test.ts). A
+device signs its own frame gate snapshot (S29c-B3, devices/gateState.ts) under `"cashu/state/v1"` and
+checks it only with its own key when it reads the snapshot back after a restart.
 
 ## What consumers rely on
 

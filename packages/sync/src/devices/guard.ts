@@ -102,6 +102,11 @@ export class FrameGuard {
   reset(): void {
     this.#applied.clear();
   }
+
+  /** Per writer, the end of the accepted data recorded (the gate snapshot, gateState.ts). */
+  entries(): [string, SegmentCursor][] {
+    return [...this.#applied.entries()].map(([d, at]) => [d, { seg: at.seg, offset: at.offset }]);
+  }
 }
 
 /**

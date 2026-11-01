@@ -195,6 +195,16 @@ export class VaultDevices {
     return this.#o.identity.deviceId;
   }
 
+  /** This device's public signing key (checks the gate snapshot it signed, gateState.ts). */
+  get signPublicKey(): Uint8Array {
+    return this.#o.identity.signPublicKey;
+  }
+
+  /** Signs this device's own gate snapshot (throws once the identity is wiped). */
+  signLocalState(body: Uint8Array): Uint8Array {
+    return this.#o.identity.sign("cashu/state/v1", body);
+  }
+
   /** The position of the last lease event `device` wrote that this device holds (undefined: none). */
   lastLeaseEventOf(device: string): SegmentCursor | undefined {
     let last: SegmentCursor | undefined;

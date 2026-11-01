@@ -25,6 +25,11 @@
 //   every frame's statements first, then data judged from the start without re-delivering it).
 // - D8: when the gate reports that data the view holds is no longer accepted, the pass ends with a
 //   full rebuild (sink reset, gate reset, replay).
+// - Gate snapshot (S29c-B3): with a `gateState` store and a gate that exports its state, every sync
+//   pass that judged new frames saves the gate's state with the head of the last accepted frame per
+//   writer. After a restart the engine checks the snapshot (the gate authenticates it; the engine
+//   finds each head's frame in the local log, with the same chain and signature) and replays only
+//   the frames after those heads; a snapshot that fails any check is ignored (full replay).
 // - Every public operation runs serialized on one queue.
 import type {
   AppliedInfo,
@@ -35,6 +40,7 @@ import type {
   FrameGate,
   FrameHead,
   FramePosition,
+  GateStateStore,
   InboundBatch,
   LeaseTransport,
   RejectedFrame,
@@ -91,6 +97,8 @@ export interface SyncEngineOptions {
   readonly gate: FrameGate;
   readonly sink: EventSink;
   readonly clockStore: ClockStore;
+  /** Where the gate's state snapshot is kept (absent: every start replays the whole local log). */
+  readonly gateState?: GateStateStore;
   readonly physicalClock?: PhysicalClock;
   /** Drift limit for both clock guards (default 5 minutes, events.md 3.3). */
   readonly maxDriftMs?: number;
@@ -222,6 +230,12 @@ class OwnLogEngine implements SyncEngine {
   readonly #gate: FrameGate;
   readonly #sink: EventSink;
   readonly #clockStore: ClockStore;
+  readonly #gateState: GateStateStore | undefined;
+  /** Per writer, the head of the last data frame the gate accepted (in stream order). */
+  #judged = new Map<DeviceId, FrameHead>();
+  /** The judged positions of the last snapshot saved or restored. */
+  #savedKey = "";
+  #restoreTried = false;
   readonly #clock: HybridClock;
   readonly #maxFrameEvents: number;
   readonly #maxFrameBytes: number;
@@ -250,6 +264,7 @@ class OwnLogEngine implements SyncEngine {
     this.#gate = o.gate;
     this.#sink = o.sink;
     this.#clockStore = o.clockStore;
+    this.#gateState = o.gateState;
     this.#physical = o.physicalClock ?? systemClock;
     this.#clock = new HybridClock(o.device, {
       ...(o.physicalClock ? { physical: o.physicalClock } : {}),
@@ -417,6 +432,7 @@ class OwnLogEngine implements SyncEngine {
           : { kind: "eventual" };
       await this.#applyLocal(pass);
       await this.#rebuildIfNeeded(pass);
+      await this.#saveGate();
       return this.#finish(pass);
     });
   }
@@ -426,6 +442,7 @@ class OwnLogEngine implements SyncEngine {
       this.#assertOpen();
       const pass = newPass();
       await this.#rebuildView(pass);
+      await this.#saveGate();
       return this.#finish(pass);
     });
   }
@@ -580,6 +597,7 @@ class OwnLogEngine implements SyncEngine {
   async #rebuildView(pass: Pass): Promise<void> {
     await this.#sink.reset();
     this.#gate.reset();
+    this.#judged = new Map();
     pass.rebuilt = true;
     await this.#applyLocal(pass);
   }
@@ -717,10 +735,19 @@ class OwnLogEngine implements SyncEngine {
     for (const [device, segs] of streams) {
       if (!this.#chains.has(device)) await this.#indexStream(device, segs);
     }
-    if (replay) await this.#observeAll(streams, pass);
+    const restored = replay ? await this.#restoreGate(pass) : undefined;
+    if (replay) await this.#observeAll(streams, pass, restored);
     for (const [device, segs] of streams) {
       const cursor = cursors.get(device) ?? START_CURSOR;
-      await this.#applyStream(device, segs, replay ? START_CURSOR : cursor, cursor, pass);
+      let from = replay ? START_CURSOR : cursor;
+      const at = restored?.get(device);
+      if (at) {
+        // Restored: frames up to `at` were judged before the restart; judge again only from the
+        // earlier of it and the view's cursor (a view ahead of the snapshot re-judges the gap).
+        const judged = { seg: at.seg, offset: at.offset };
+        from = comparePositions(judged, cursor) < 0 ? judged : cursor;
+      }
+      await this.#applyStream(device, segs, from, cursor, pass);
     }
     await this.#flush(pass);
     this.#primed = true;
@@ -731,16 +758,24 @@ class OwnLogEngine implements SyncEngine {
    * (a revocation in one stream decides data in another), repeated while frames of writers that
    * became known in a round verify in the next.
    */
-  async #observeAll(streams: ReadonlyMap<DeviceId, SegmentInfo[]>, pass: Pass): Promise<void> {
+  async #observeAll(
+    streams: ReadonlyMap<DeviceId, SegmentInfo[]>,
+    pass: Pass,
+    restored: ReadonlyMap<DeviceId, FrameHead> | undefined,
+  ): Promise<void> {
     const done = new Map<DeviceId, number>();
     for (let round = 0, progress = true; progress && round < MAX_ROUNDS * 4; round++) {
       progress = false;
       for (const [device, segs] of streams) {
-        let prev = this.#codec.genesis(this.vault, device, 1);
+        // A restored gate saw every frame up to its position: the walk starts after it.
+        const at = restored?.get(device);
+        let prev = at?.chain ?? this.#codec.genesis(this.vault, device, 1);
         let index = 0;
         frames: for (const s of segs) {
-          const bytes = await this.#local.read(this.vault, device, s.seg, 0);
-          for (const f of scanFrames(bytes, 0).frames) {
+          if (at && s.seg < at.seg) continue;
+          const start = at && s.seg === at.seg ? at.offset : 0;
+          const bytes = await this.#local.read(this.vault, device, s.seg, start);
+          for (const f of scanFrames(bytes, start).frames) {
             const at = { vault: this.vault, device, seg: s.seg, offset: f.offset };
             let opened: Opened;
             try {
@@ -819,6 +854,7 @@ class OwnLogEngine implements SyncEngine {
           if (!delivered) pass.staleView = true;
           return;
         }
+        this.#noteJudged(opened.head);
         const { events: batch, part } = decoded.payload;
         const next = { seg: s.seg, offset: f.end };
         if (!part) {
@@ -863,6 +899,75 @@ class OwnLogEngine implements SyncEngine {
         return;
       }
       if (scan.tail === "partial") return;
+    }
+  }
+
+  #noteJudged(head: FrameHead): void {
+    const known = this.#judged.get(head.device);
+    if (!known || comparePositions(head, known) > 0) this.#judged.set(head.device, head);
+  }
+
+  #judgedKey(): string {
+    return [...this.#judged.values()]
+      .map((h) => `${h.device}:${h.seg}:${h.offset}`)
+      .sort()
+      .join(",");
+  }
+
+  /** Save the gate's snapshot when it judged new frames since the last one (S29c-B3). */
+  async #saveGate(): Promise<void> {
+    if (!this.#gateState || !this.#gate.exportState || this.#judged.size === 0) return;
+    const key = this.#judgedKey();
+    if (key === this.#savedKey) return;
+    const state = this.#gate.exportState(this.#judged);
+    if (state === undefined) return;
+    await this.#gateState.save(state);
+    this.#savedKey = key;
+  }
+
+  /**
+   * The first replay after start: restore the gate from its snapshot when it authenticates and
+   * every position is a frame of the local log with the same chain and signature; the positions,
+   * or undefined (no snapshot, or one that fails a check: the caller replays everything).
+   */
+  async #restoreGate(pass: Pass): Promise<ReadonlyMap<DeviceId, FrameHead> | undefined> {
+    if (this.#restoreTried || !this.#gateState || !this.#gate.importState) return undefined;
+    this.#restoreTried = true;
+    let state: string | undefined;
+    try {
+      state = await this.#gateState.load();
+    } catch {
+      return undefined;
+    }
+    if (state === undefined) return undefined;
+    const imported = this.#gate.importState(state);
+    if (!imported) return undefined;
+    for (const [device, head] of imported.positions) {
+      if (!(await this.#matchesLog(device, head, pass))) return undefined;
+    }
+    imported.restore();
+    this.#judged = new Map(imported.positions);
+    this.#savedKey = this.#judgedKey();
+    return imported.positions;
+  }
+
+  /** Whether the local log holds `device`'s data frame ending at `head`, with its chain and signature. */
+  async #matchesLog(device: DeviceId, head: FrameHead, pass: Pass): Promise<boolean> {
+    if (head.device !== device || head.stream !== 1) return false;
+    const entry = this.#chains
+      .get(device)
+      ?.find((e) => e.seg === head.seg && e.end === head.offset);
+    if (!entry || !equalBytes(entry.chain, head.chain)) return false;
+    const bytes = await this.#local.read(this.vault, device, head.seg, 0);
+    const frame = scanFrames(bytes, 0).frames.find((f) => f.end === head.offset);
+    const prev = frame ? this.#chainBefore(device, head.seg, frame.offset) : undefined;
+    if (!frame || !prev) return false;
+    try {
+      const at = { vault: this.vault, device, seg: head.seg, offset: frame.offset };
+      const opened = await this.#open(frame.sealed, at, prev, pass);
+      return equalBytes(opened.head.chain, head.chain) && equalBytes(opened.head.sig, head.sig);
+    } catch {
+      return false;
     }
   }
 

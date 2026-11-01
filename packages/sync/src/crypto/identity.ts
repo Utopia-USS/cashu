@@ -21,7 +21,9 @@ const INSPECT = Symbol.for("nodejs.util.inspect.custom");
  * - `cashu/registry/v1`: device registry statements (`device.added`, `device.revoked`,
  *   `device.recoveryChanged`); `cashu/lease/v1`: fetch-lease statements; `cashu/pairing/v1`: pairing
  *   messages (challenge, welcome). Bodies are built by `devices/` from length-prefixed fields and
- *   canonical JSON; `cashu/head/v1`: signed stream heads, one per frame (head.ts, S29c phase B2).
+ *   canonical JSON; `cashu/head/v1`: signed stream heads, one per frame (head.ts, S29c phase B2);
+ *   `cashu/state/v1`: a device's own local state snapshot (the frame gate's, S29c-B3), checked only
+ *   with that device's own key when it reads the snapshot back.
  */
 export type SigningContext =
   | "cashu/wrap/v3"
@@ -29,7 +31,8 @@ export type SigningContext =
   | "cashu/registry/v1"
   | "cashu/lease/v1"
   | "cashu/pairing/v1"
-  | "cashu/head/v1";
+  | "cashu/head/v1"
+  | "cashu/state/v1";
 
 const SIGNING_CONTEXTS: ReadonlySet<string> = new Set<SigningContext>([
   "cashu/wrap/v3",
@@ -38,6 +41,7 @@ const SIGNING_CONTEXTS: ReadonlySet<string> = new Set<SigningContext>([
   "cashu/lease/v1",
   "cashu/pairing/v1",
   "cashu/head/v1",
+  "cashu/state/v1",
 ]);
 
 /** Reserved signer id of the recovery identity (16 zero bytes); never a device's id. */

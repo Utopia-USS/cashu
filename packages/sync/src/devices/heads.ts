@@ -81,6 +81,38 @@ export class StreamIndex {
     }
   }
 
+  /** Stream keys as `[device, stream, key]` (the gate snapshot, gateState.ts). */
+  exportKeys(): [string, 0 | 1, Uint8Array][] {
+    return [...this.#keys.entries()].map(([k, key]) => {
+      const [device, stream] = k.split("|");
+      return [device ?? "", stream === "0" ? 0 : 1, key.slice()];
+    });
+  }
+
+  /** Every verified data-stream head held, with the other chains seen at its end (snapshot). */
+  exportHeads(): { readonly head: SignedHead; readonly others: readonly string[] }[] {
+    const out: { head: SignedHead; others: string[] }[] = [];
+    for (const byEnd of this.#chains.values()) {
+      for (const known of byEnd.values())
+        out.push({ head: known.head, others: known.chains.slice(1) });
+    }
+    return out;
+  }
+
+  /** Restores what `exportKeys` / `exportHeads` returned (into an empty index; attestations are re-derived). */
+  restore(
+    keys: readonly (readonly [string, 0 | 1, Uint8Array])[],
+    heads: readonly { readonly head: SignedHead; readonly others: readonly string[] }[],
+  ): void {
+    for (const [device, stream, key] of keys) this.bind(device, stream, key);
+    for (const { head, others } of heads) {
+      this.observe(head);
+      const known = this.#chains.get(head.device)?.get(positionKey(cursorOf(head)));
+      for (const chain of others)
+        if (known && !known.chains.includes(chain)) known.chains.push(chain);
+    }
+  }
+
   /** The end of the last verified frame of `device` this device holds (undefined: none). */
   held(device: string): SegmentCursor | undefined {
     return this.#held.get(device);

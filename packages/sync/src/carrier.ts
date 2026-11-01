@@ -108,6 +108,15 @@ export interface ClockStore {
   save(state: HlcState): Awaitable<void>;
 }
 
+/**
+ * Durable snapshot of the frame gate's state per device and vault (S29c-B3; the store keeps it in its
+ * meta table). Opaque text the gate produced and authenticates itself (`FrameGate.exportState`).
+ */
+export interface GateStateStore {
+  load(): Awaitable<string | undefined>;
+  save(state: string): Awaitable<void>;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Carrier side
 
@@ -197,6 +206,22 @@ export interface FrameGate {
   takeRebuild(): boolean;
   /** Forget which data was accepted (the engine resets the sink and replays the log next). */
   reset(): void;
+  /**
+   * Persistence of a gate with statement state (S29c-B3, optional): its state after it judged every
+   * frame up to `positions` (per writer, the head of the last data frame it accepted, in stream
+   * order), as text the gate authenticates (signed by this device). Undefined: not exportable now.
+   */
+  exportState?(positions: ReadonlyMap<DeviceId, FrameHead>): string | undefined;
+  /**
+   * Checks an exported state without changing the gate: undefined when it does not authenticate
+   * (corrupt, forged, another device or vault) or a position's head is not signed by the key its
+   * stream is bound to. Otherwise its positions, which the engine checks against the local log
+   * (chains and signatures of the frames there) before it calls `restore`; it then replays only the
+   * frames after them.
+   */
+  importState?(
+    state: string,
+  ): { readonly positions: ReadonlyMap<DeviceId, FrameHead>; restore(): void } | undefined;
 }
 
 export interface SegmentInfo {

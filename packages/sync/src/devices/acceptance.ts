@@ -15,7 +15,9 @@
 //   narrowed to the one key the writer's stream is bound to (heads.ts). A head signature says WHO
 //   wrote a frame, never what counts: the frame's data is judged by cuts and fork freezes, its
 //   statements by decision keys, as before. A stream's first frame may instead introduce its writer
-//   with a recovery-issued certificate it carries (`admission`, checked against the recovery key).
+//   with a recovery-issued certificate it carries (`admission`, checked against the recovery key);
+// - `self`: this device's own signing key, for local state it signed itself and reads back (the gate
+//   snapshot, gateState.ts, S29c-B3); never for anything that came from the log.
 // Key wraps go through `unwrapFromTrusted`, whose sender keys are decision keys too.
 
 import type { SegmentCursor } from "../carrier.js";
@@ -56,7 +58,8 @@ export type KeySource =
   | { readonly kind: "recovery"; readonly signKeys: readonly Uint8Array[] }
   | { readonly kind: "admission"; readonly signKey: Uint8Array }
   | { readonly kind: "invite"; readonly signKey: Uint8Array }
-  | { readonly kind: "author"; readonly keys: readonly Uint8Array[] };
+  | { readonly kind: "author"; readonly keys: readonly Uint8Array[] }
+  | { readonly kind: "self"; readonly signKey: Uint8Array };
 
 function keysOf(source: KeySource): readonly Uint8Array[] {
   switch (source.kind) {
@@ -70,6 +73,7 @@ function keysOf(source: KeySource): readonly Uint8Array[] {
       return source.signKeys;
     case "admission":
     case "invite":
+    case "self":
       return [source.signKey];
     case "author":
       return source.keys;

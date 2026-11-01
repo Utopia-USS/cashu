@@ -21,7 +21,9 @@ export type StatementContext =
   | "cashu/lease/v1"
   | "cashu/pairing/v1"
   /** Signed stream heads (crypto head.ts): one per frame, checked only through acceptance.ts. */
-  | "cashu/head/v1";
+  | "cashu/head/v1"
+  /** A device's own gate state snapshot (gateState.ts), checked only with its own key. */
+  | "cashu/state/v1";
 
 export const SIGNATURE_BYTES = 64;
 

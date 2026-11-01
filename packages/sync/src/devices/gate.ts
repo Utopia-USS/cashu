@@ -16,7 +16,14 @@
 // after the next registry change; the frame is neither copied nor ingested). Candidates but no
 // signature match: `bad_head_signature` (tampered, forged, rewritten or reordered).
 
-import type { FrameGate, FrameHead, GateVerdict, SegmentCursor, WireEvent } from "../carrier.js";
+import type {
+  DeviceId,
+  FrameGate,
+  FrameHead,
+  GateVerdict,
+  SegmentCursor,
+  WireEvent,
+} from "../carrier.js";
 import {
   decodeHead,
   encodeHead,
@@ -34,6 +41,7 @@ import {
   type LogEvent,
   type RevokedEntry,
 } from "./events.js";
+import { decodeGateState, encodeGateState } from "./gateState.js";
 import type { FrameRejection } from "./guard.js";
 import { type BehindReport, type ForkReport, StreamIndex } from "./heads.js";
 import { comparePositions } from "./positions.js";
@@ -69,6 +77,8 @@ export class DeviceFrameGate implements FrameGate {
   #rebuild = false;
   /** Every rejection reported (data no longer accepted), for tests and the UI's history. */
   readonly rejections: FrameRejection[] = [];
+  /** Every `device.*` / `lease.*` event ingested, by copy (the snapshot replays them). */
+  readonly #statements = new Map<string, LogEvent>();
 
   constructor(devices: VaultDevices, options: DeviceFrameGateOptions) {
     this.#devices = devices;
@@ -127,6 +137,11 @@ export class DeviceFrameGate implements FrameGate {
    */
   ingest(events: readonly LogEvent[]): IngestReport {
     for (const e of events) {
+      if (e.type.startsWith("device.") || e.type.startsWith("lease.")) {
+        this.#statements.set(statementKey(e), e);
+      }
+    }
+    for (const e of events) {
       if (e.type !== DEVICE_REVOKED) continue;
       for (const entry of decodeDeviceRevoked(e.data)?.devices ?? []) {
         const head = entry.head === undefined ? undefined : decodeHead(entry.head);
@@ -169,11 +184,54 @@ export class DeviceFrameGate implements FrameGate {
   }
 
   /**
-   * The devices state is rebuilt from the log on every start (its persistence is a follow-up,
-   * S29c spec 11.3), so an engine replays the local log into this gate once after it starts.
+   * The devices state is rebuilt from the log on every start, from the snapshot's positions when the
+   * engine restored one (`importState`, S29c-B3), else from the start of every stream.
    */
   needsReplay(): boolean {
     return true;
+  }
+
+  exportState(positions: ReadonlyMap<DeviceId, FrameHead>): string | undefined {
+    const devices = this.#devices;
+    try {
+      return encodeGateState(
+        devices.ring.vaultId,
+        devices.deviceId,
+        {
+          positions: [...positions.values()],
+          keys: this.heads.exportKeys(),
+          heads: this.heads.exportHeads(),
+          statements: [...this.#statements.values()],
+          applied: devices.guard.entries(),
+        },
+        (body) => devices.signLocalState(body),
+      );
+    } catch {
+      return undefined; // the identity is wiped (a retired device): nothing to persist
+    }
+  }
+
+  importState(
+    state: string,
+  ): { readonly positions: ReadonlyMap<DeviceId, FrameHead>; restore(): void } | undefined {
+    const devices = this.#devices;
+    const snapshot = decodeGateState(
+      state,
+      devices.ring.vaultId,
+      devices.deviceId,
+      devices.signPublicKey,
+      this.#verify,
+    );
+    if (!snapshot) return undefined;
+    return {
+      positions: new Map(snapshot.positions.map((h) => [h.device, h])),
+      restore: () => {
+        this.heads.restore(snapshot.keys, snapshot.heads);
+        this.ingest(snapshot.statements);
+        for (const [device, end] of snapshot.applied) devices.guard.record({ device, end });
+        this.#rebuild = false;
+      },
+    };
   }
 
   takeRebuild(): boolean {
@@ -276,4 +334,10 @@ export class DeviceFrameGate implements FrameGate {
     }
     return out;
   }
+}
+
+function statementKey(e: LogEvent): string {
+  // The content is part of the key: a junk copy of a statement never replaces the genuine one.
+  const at = `${e.position.seg}:${e.position.offset}`;
+  return `${e.eid}|${e.writer}|${at}|${e.hlc}|${e.type}|${e.v}|${JSON.stringify(e.data)}`;
 }
