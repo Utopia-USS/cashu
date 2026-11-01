@@ -11,6 +11,7 @@
 // half is dedupKey.parity.test.ts in the domain.
 import { readFileSync } from "node:fs";
 import { D, type Decimal, investments } from "@cashu/domain";
+import * as importing from "@cashu/domain/investments/importing";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
@@ -76,7 +77,7 @@ const aliasesOf = (instrumentId: number): investments.InstrumentAlias[] =>
     .map((a) => investments.instrumentAlias(String(a.namespace), String(a.value), a.guessed === 1));
 
 /** The stored instrument a parsed row resolved to, as the shared key reads it. */
-function subjectOf(instrumentId: number): investments.importing.InstrumentKeySubject {
+function subjectOf(instrumentId: number): importing.InstrumentKeySubject {
   const row = (tables.inv_instruments ?? []).find((i) => i.id === instrumentId);
   return { aliases: aliasesOf(instrumentId), isin: (row?.isin as string | null) ?? null };
 }
@@ -129,7 +130,7 @@ describe("investments content-hash parity gate", () => {
   const reimportKey = (p: ParsedRow, entry: Import) =>
     p.instrumentId === null
       ? ""
-      : investments.importing.instrumentKeyV2(
+      : importing.instrumentKeyV2(
           subjectOf(p.instrumentId),
           entry.brokerId,
           () => gidOf("inv_instruments", p.instrumentId as number) ?? "",

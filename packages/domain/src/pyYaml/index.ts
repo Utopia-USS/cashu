@@ -17,13 +17,8 @@ import { Parser } from "./parser.js";
 import { Reader } from "./reader.js";
 import { Scanner } from "./scanner.js";
 
-export type {
-  YamlMappingNode,
-  YamlNode,
-  YamlScalarNode,
-  YamlSequenceNode,
-} from "./composer.js";
-export type { YamlError, YamlMark } from "./errors.js";
+export type { YamlNode } from "./composer.js";
+export type { YamlMark } from "./errors.js";
 
 export type YamlComposeResult =
   | { readonly ok: true; readonly node: YamlNode | null }

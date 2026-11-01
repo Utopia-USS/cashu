@@ -10,16 +10,16 @@
  */
 
 import { formatDateTime, investments as inv, pyStrip, pyUpper, sha256Hex } from "@cashu/domain";
+import * as imp from "@cashu/domain/investments/importing";
 import type { PythonDb } from "../../sources/index.ts";
 import type { InvImportBatchRow } from "../../sources/investments.ts";
 import type { OutValue } from "../output.ts";
 import { loadInstruments, sid } from "./rows.ts";
 
 const MODULE = "investments";
-const imp = inv.importing;
 
 /** `DbInstrumentLookup(session)`: read-only lookups over the stored instruments, shared view. */
-class DbLookup implements inv.importing.InstrumentLookup {
+class DbLookup implements imp.InstrumentLookup {
   private readonly db: PythonDb;
 
   constructor(db: PythonDb) {
@@ -54,7 +54,7 @@ class DbLookup implements inv.importing.InstrumentLookup {
 }
 
 /** `imports.ConnectorDocumentImporter`: a connector's converted document read as canonical JSON. */
-class ConnectorDocumentImporter implements inv.importing.BrokerImporter {
+class ConnectorDocumentImporter implements imp.BrokerImporter {
   private readonly canonical = new imp.CanonicalImporter();
   readonly brokerId = this.canonical.brokerId;
   readonly displayName: string;
@@ -64,15 +64,15 @@ class ConnectorDocumentImporter implements inv.importing.BrokerImporter {
     this.displayName = importerId;
   }
 
-  private static asJson(file: inv.importing.ImportFile): inv.importing.ImportFile {
+  private static asJson(file: imp.ImportFile): imp.ImportFile {
     return { name: `${file.name}.json`, content: file.content };
   }
 
-  canParse(file: inv.importing.ImportFile): boolean {
+  canParse(file: imp.ImportFile): boolean {
     return this.canonical.canParse(ConnectorDocumentImporter.asJson(file));
   }
 
-  parse(file: inv.importing.ImportFile): inv.importing.ImportParseResult {
+  parse(file: imp.ImportFile): imp.ImportParseResult {
     return this.canonical.parse(ConnectorDocumentImporter.asJson(file));
   }
 }
@@ -83,7 +83,7 @@ const CONNECTOR_PREFIX = "connector:";
 function batchImporter(
   db: PythonDb,
   batch: InvImportBatchRow,
-): { importer: inv.importing.BrokerImporter } | { problem: string } {
+): { importer: imp.BrokerImporter } | { problem: string } {
   if (imp.canonicalImporterId(batch.importer) === imp.CANONICAL_BROKER_ID) {
     return { importer: new imp.CanonicalImporter() };
   }
@@ -107,7 +107,7 @@ function planId(db: PythonDb, value: string | null): string | null {
   return /^[0-9]+$/u.test(value) ? db.keys.key("inv_instruments", Number(value)) : value;
 }
 
-function warning(w: inv.importing.ImportWarning): OutValue {
+function warning(w: imp.ImportWarning): OutValue {
   return {
     message: w.message,
     row: w.row === null ? null : BigInt(w.row),

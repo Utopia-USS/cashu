@@ -20,7 +20,7 @@ export interface YamlScalarNode {
   readonly style: string | null;
 }
 
-export interface YamlSequenceNode {
+interface YamlSequenceNode {
   readonly kind: "sequence";
   readonly tag: string;
   readonly value: readonly YamlNode[];
@@ -29,7 +29,7 @@ export interface YamlSequenceNode {
   readonly flowStyle: boolean | null;
 }
 
-export interface YamlMappingNode {
+interface YamlMappingNode {
   readonly kind: "mapping";
   readonly tag: string;
   readonly value: readonly (readonly [YamlNode, YamlNode])[];

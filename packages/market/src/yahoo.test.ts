@@ -7,10 +7,10 @@ import {
   type Currency,
   instrumentAlias,
   market as m,
-  type macro,
   priceBar,
   toCurrency,
 } from "@cashu/domain/investments";
+import type * as macro from "@cashu/domain/investments/macro";
 import { describe, expect, it } from "vitest";
 import { YahooPriceSource } from "./sources.js";
 import {

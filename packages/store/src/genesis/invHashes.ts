@@ -7,13 +7,14 @@
 // reconciliation collision fails the run). Parts come from the domain `dedupKey` module; this file
 // hashes them with sha256 (lower hex). Manual rows get the genesis gid instead (ids.ts).
 import { D, type Decimal, investments } from "@cashu/domain";
+import * as importing from "@cashu/domain/investments/importing";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { type AccountGids, resolveCollisions } from "./hashes.js";
 import { type GenesisCounters, GenesisError } from "./report.js";
 import type { InvImportBatchRow, InvInstrumentAliasRow, InvTransactionRow } from "./rows.js";
 
-const { US, importing } = investments;
+const { US } = investments;
 const utf8 = new TextEncoder();
 const sha256Hex = (parts: readonly string[]) => bytesToHex(sha256(utf8.encode(parts.join(US))));
 

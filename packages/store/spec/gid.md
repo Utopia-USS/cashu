@@ -333,7 +333,7 @@ those rows already carry gids that genesis gids would duplicate.
 ### 7.2 instrumentKey of a migrated investment transaction
 
 The 4.6 rule (`importing/instrumentKey.ts` `instrumentKeyV2`, imported by genesis through
-`@cashu/domain` `investments.importing`) over the row's stored instrument (alias rows by ascending id)
+`@cashu/domain/investments/importing`) over the row's stored instrument (alias rows by ascending id)
 with the batch's `broker` as stored (a legacy batch keys under the canonical namespace); none for a
 cash row (`""`); a row without an exported batch starts at the `isin` steps; an instrument outside the
 vault keys `gid:` with the 7.6 missing-instrument gid. The hash's `brokerId` part is the batch's

@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { macro } from "@cashu/domain/investments";
+import * as macro from "@cashu/domain/investments/macro";
 import {
   collectGuard,
   LeakDetected,

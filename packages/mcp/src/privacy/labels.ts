@@ -34,7 +34,7 @@ import {
   roundFloatToInt,
   uRegex,
 } from "@cashu/domain";
-import { macro } from "@cashu/domain/investments";
+import * as macro from "@cashu/domain/investments/macro";
 
 export type Sensitivity =
   | "identifier"

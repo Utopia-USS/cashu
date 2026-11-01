@@ -3,11 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
     "./budget": "./src/budget/index.ts",
     "./core": "./src/core/index.ts",
-    "./investments": "./src/investments/index.ts"
+    "./investments": "./src/investments/index.ts",
+    "./investments/importing": "./src/investments/importing/index.ts",
+    "./investments/macro": "./src/investments/macro/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

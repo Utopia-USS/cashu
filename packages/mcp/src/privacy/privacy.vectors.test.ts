@@ -3,7 +3,7 @@
 // (privacy.vectors.exhaustive.test.ts); the shared adversarial vectors stay fast in
 // sharedVectors.test.ts.
 
-import { macro } from "@cashu/domain/investments";
+import * as macro from "@cashu/domain/investments/macro";
 import { describe, expect, it } from "vitest";
 import {
   enabledIn,

@@ -5,7 +5,7 @@
 // checks of the same vector files stay in privacy.vectors.test.ts.
 
 import { pyCasefold } from "@cashu/domain";
-import { macro } from "@cashu/domain/investments";
+import * as macro from "@cashu/domain/investments/macro";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   type PropertySchema,
