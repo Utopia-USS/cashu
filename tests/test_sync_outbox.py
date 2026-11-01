@@ -633,7 +633,9 @@ def test_instrument_merge_is_one_explicit_row_then_the_rows_it_rewrote(db_engine
     assert by[("watchlist_items", "update", str(dst_item))]["fields"] == {"note": "from the duplicate"}
     assert next(r for r in rest if r["table_name"] == "watchlist_items" and r["op"] == "update" and r["profile_id"] == other_pid)["fields"] == {"instrument_id": dst}
     assert [r for r in rest if r["table_name"] == "inv_profile_instruments" and r["op"] == "delete"]
-    assert next(r for r in rest if r["table_name"] == "inv_profile_instruments" and r["op"] == "update")["fields"] == {"sector": "tech"}
+    override = next(r for r in rest if r["table_name"] == "inv_profile_instruments" and r["op"] == "update")
+    assert override["fields"]["sector"] == "tech"  # (+ created_at when the source's override is older)
+    assert set(override["fields"]) <= {"sector", "created_at"}
     sig = by[("inv_signals", "update", str(src_sig))]
     assert sig["fields"]["instrument_id"] == dst and sig["fields"]["dedup_key"] == f"drawdown|i:{dst}"
     assert sig["fields"]["status"] == "resolved" and sig["prev"]["status"] == "active"

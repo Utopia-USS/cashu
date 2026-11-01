@@ -361,7 +361,7 @@ def test_a_merged_override_exists_since_the_earlier_of_the_two(db_engine):
     """S31a review F2 run: the surviving override keeps the earlier creation time, as the event fold's
     CREATE does."""
     profile_id, _ = make_profile("Inwestor")
-    early, late = dt.datetime(2026, 1, 1, 9), dt.datetime(2026, 2, 1, 9)
+    early, late = dt.datetime(2026, 1, 1, 9, tzinfo=dt.UTC), dt.datetime(2026, 2, 1, 9, tzinfo=dt.UTC)
     with get_session() as s:
         source = _instrument(s, "A", isin=ISIN)
         target = _instrument(s, "A", symbol="A")
@@ -371,4 +371,4 @@ def test_a_merged_override_exists_since_the_earlier_of_the_two(db_engine):
         instrument_merge.merge_instruments(s, source, target)
     with get_session() as s:
         [row] = s.exec(select(InvProfileInstrument).where(InvProfileInstrument.profile_id == profile_id)).all()
-        assert (row.instrument_id, row.created_at.replace(tzinfo=None)) == (target, early)
+        assert (row.instrument_id, row.created_at.replace(tzinfo=None)) == (target, early.replace(tzinfo=None))
