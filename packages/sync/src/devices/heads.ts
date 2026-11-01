@@ -15,6 +15,11 @@
 //   D5): the highest attested end whose chain matches what this device holds, with no conflict at or
 //   before it, else the start. Its data and statements after that are not accepted; the owner is
 //   told (`forks`) and revokes it. No automatic revocation.
+// - Evidence (S29c-B3 review): every conflict is proven by two heads of the writer at one end with
+//   different chains (`proofs`). The gate keeps them in an append-only record outside its snapshot
+//   (gateState.ts), so a rolled-back snapshot never loses a proven fork; restoring the record
+//   attests both heads, and two genuine attestations at one end with different chains are a
+//   conflict by themselves.
 // - Behind: an attestation that names a later end than this device holds proves the writer wrote
 //   more (truncation or withholding by storage, or simply not synced yet); reported, never frozen.
 //   Detecting withholding beyond what cuts attest (head gossip) is deferred (lead decision D10).
@@ -51,7 +56,10 @@ export class StreamIndex {
   /** `device|stream` -> the key that verified the stream's first frame. */
   readonly #keys = new Map<string, Uint8Array>();
   /** device -> end -> every verified chain at that end (data stream), first one first. */
-  readonly #chains = new Map<string, Map<string, { head: SignedHead; chains: string[] }>>();
+  readonly #chains = new Map<
+    string,
+    Map<string, { head: SignedHead; chains: string[]; others: SignedHead[] }>
+  >();
   /** device -> the end of the last verified frame held (data stream). */
   readonly #held = new Map<string, SegmentCursor>();
   /** device -> attested heads by their hex, unverified (judged against the stream key on use). */
@@ -72,8 +80,11 @@ export class StreamIndex {
     const key = positionKey(cursorOf(head));
     const chain = toHexBytes(head.chain);
     const known = byEnd.get(key);
-    if (!known) byEnd.set(key, { head, chains: [chain] });
-    else if (!known.chains.includes(chain)) known.chains.push(chain);
+    if (!known) byEnd.set(key, { head, chains: [chain], others: [] });
+    else if (!known.chains.includes(chain)) {
+      known.chains.push(chain);
+      known.others.push(head);
+    }
     this.#chains.set(head.device, byEnd);
     const held = this.#held.get(head.device);
     if (!held || comparePositions(cursorOf(head), held) > 0) {
@@ -155,9 +166,15 @@ export class StreamIndex {
       for (const known of this.#chains.get(device)?.values() ?? []) {
         if (known.chains.length > 1) conflicts.push(cursorOf(known.head));
       }
+      const attestedAt = new Map<string, Set<string>>();
       for (const head of this.attestations(device)) {
         if (!genuine(head)) continue;
-        const held = this.#chains.get(device)?.get(positionKey(cursorOf(head)));
+        const at = positionKey(cursorOf(head));
+        const seen = attestedAt.get(at) ?? new Set<string>();
+        seen.add(toHexBytes(head.chain));
+        attestedAt.set(at, seen);
+        if (seen.size === 2) conflicts.push(cursorOf(head)); // two signed histories at one end
+        const held = this.#chains.get(device)?.get(at);
         if (!held) continue; // not held (yet): undecided, see `behind`
         if (held.chains.length === 1 && held.chains[0] === toHexBytes(head.chain)) {
           matches.push(cursorOf(head));
@@ -171,6 +188,34 @@ export class StreamIndex {
         .filter((m) => comparePositions(m, firstConflict) < 0)
         .reduce((a, b) => (comparePositions(a, b) >= 0 ? a : b), START);
       out.push({ device, agreed });
+    }
+    return out;
+  }
+
+  /**
+   * Pairs of genuine heads of one writer at one end with different chains: each proves a fork on
+   * its own (evidence the gate persists outside its snapshot).
+   */
+  proofs(genuine: (head: SignedHead) => boolean): [SignedHead, SignedHead][] {
+    const out: [SignedHead, SignedHead][] = [];
+    const devices = new Set([...this.#chains.keys(), ...this.#attested.keys()]);
+    for (const device of [...devices].sort()) {
+      const held = this.#chains.get(device);
+      for (const known of held?.values() ?? []) {
+        const other = known.others[0];
+        if (other) out.push([known.head, other]);
+      }
+      const firstAt = new Map<string, SignedHead>();
+      for (const head of this.attestations(device)) {
+        if (!genuine(head)) continue;
+        const at = positionKey(cursorOf(head));
+        const chain = toHexBytes(head.chain);
+        const mine = held?.get(at);
+        if (mine && mine.chains[0] !== chain) out.push([mine.head, head]);
+        const first = firstAt.get(at);
+        if (!first) firstAt.set(at, head);
+        else if (toHexBytes(first.chain) !== chain) out.push([first, head]);
+      }
     }
     return out;
   }

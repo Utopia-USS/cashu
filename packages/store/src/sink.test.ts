@@ -240,5 +240,11 @@ describe("Store as EventSink", () => {
     s.reset();
     expect(metaGateStateStore(s.driver, A).load()).toBe('{"v":1}\nab');
     expect(metaGateStateStore(s.driver, B).load()).toBeUndefined();
+    gate.appendEvidence(["p1", "p2"]);
+    gate.appendEvidence(["p1"]);
+    gate.save("{}\ncd");
+    s.reset();
+    expect(metaGateStateStore(s.driver, A).loadEvidence()).toEqual(["p1", "p2"]);
+    expect(metaGateStateStore(s.driver, B).loadEvidence()).toEqual([]);
   });
 });

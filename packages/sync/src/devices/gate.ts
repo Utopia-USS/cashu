@@ -41,7 +41,7 @@ import {
   type LogEvent,
   type RevokedEntry,
 } from "./events.js";
-import { decodeGateState, encodeGateState } from "./gateState.js";
+import { decodeEvidence, decodeGateState, encodeEvidence, encodeGateState } from "./gateState.js";
 import type { FrameRejection } from "./guard.js";
 import { type BehindReport, type ForkReport, StreamIndex } from "./heads.js";
 import { comparePositions } from "./positions.js";
@@ -79,6 +79,9 @@ export class DeviceFrameGate implements FrameGate {
   readonly rejections: FrameRejection[] = [];
   /** Every `device.*` / `lease.*` event ingested, by copy (the snapshot replays them). */
   readonly #statements = new Map<string, LogEvent>();
+  /** Fork proofs held (recorded or imported), and those not handed out for persistence yet. */
+  readonly #evidence = new Set<string>();
+  #newEvidence: string[] = [];
 
   constructor(devices: VaultDevices, options: DeviceFrameGateOptions) {
     this.#devices = devices;
@@ -150,6 +153,7 @@ export class DeviceFrameGate implements FrameGate {
     }
     const report = this.#devices.ingest(events);
     const frozen = this.#devices.freeze(this.#freezes());
+    if (frozen !== undefined) this.#recordProofs();
     const rejected = [...report.rejectedFrames, ...(frozen?.rejectedFrames ?? [])];
     if (rejected.length > 0) {
       this.rejections.push(...rejected);
@@ -189,6 +193,39 @@ export class DeviceFrameGate implements FrameGate {
    */
   needsReplay(): boolean {
     return true;
+  }
+
+  /** Fork proofs found since the last call, for the append-only evidence record. */
+  takeEvidence(): readonly string[] {
+    const out = this.#newEvidence;
+    this.#newEvidence = [];
+    return out;
+  }
+
+  /**
+   * Restores fork proofs from the evidence record (before the snapshot and the replay): each one
+   * that decodes as two heads of one writer at one end with different chains is attested; its
+   * signatures are judged against the writer's stream key whenever freezes are computed.
+   */
+  importEvidence(records: readonly string[]): void {
+    let added = false;
+    for (const record of records) {
+      const pair = decodeEvidence(record);
+      if (!pair || this.#evidence.has(record)) continue;
+      this.#evidence.add(record);
+      for (const head of pair) this.heads.attest(head);
+      added = true;
+    }
+    if (added) this.ingest([]);
+  }
+
+  #recordProofs(): void {
+    for (const pair of this.heads.proofs((h) => this.#genuine(h))) {
+      const record = encodeEvidence(pair);
+      if (this.#evidence.has(record)) continue;
+      this.#evidence.add(record);
+      this.#newEvidence.push(record);
+    }
   }
 
   exportState(positions: ReadonlyMap<DeviceId, FrameHead>): string | undefined {

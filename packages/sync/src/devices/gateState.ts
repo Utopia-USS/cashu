@@ -16,7 +16,8 @@
 // frame in the local log with the same chain and signature (a rewritten or truncated log, or a
 // snapshot of another log, fails there). Any failure: the snapshot is ignored and the log replayed.
 // A genuine older snapshot (a view database rolled back) is harmless: everything after its
-// positions is replayed.
+// positions is replayed. Proven forks are NOT in the snapshot: they live in their own append-only
+// evidence record (`encodeEvidence`), restored before any snapshot, so a rollback cannot lose one.
 
 import { decodeHead, encodeHead, type SignedHead } from "../crypto/index.js";
 import { accepted, acceptedHead } from "./acceptance.js";
@@ -156,4 +157,24 @@ export function decodeGateState(
     if (!acceptedHead(verify, vaultId, head, { kind: "author", keys: [key] })) return undefined;
   }
   return { positions, keys, heads, statements, applied };
+}
+
+/**
+ * A fork proof of the evidence record (kept outside the snapshot, append only): two heads of one
+ * writer at one end with different chains, as `<head hex> <head hex>`.
+ */
+export function encodeEvidence(pair: readonly [SignedHead, SignedHead]): string {
+  return `${encodeHead(pair[0])} ${encodeHead(pair[1])}`;
+}
+
+/** Strict decode of `encodeEvidence`: undefined unless it is such a pair. */
+export function decodeEvidence(record: string): [SignedHead, SignedHead] | undefined {
+  const [a, b, ...rest] = record.split(" ");
+  const x = decodeHead(a);
+  const y = decodeHead(b);
+  if (!x || !y || rest.length > 0) return undefined;
+  const sameEnd =
+    x.device === y.device && x.stream === y.stream && x.seg === y.seg && x.offset === y.offset;
+  if (!sameEnd || x.stream !== 1 || toHex(x.chain) === toHex(y.chain)) return undefined;
+  return [x, y];
 }

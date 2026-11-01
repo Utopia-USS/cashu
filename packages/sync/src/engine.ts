@@ -238,6 +238,7 @@ class OwnLogEngine implements SyncEngine {
   /** The judged positions of the last snapshot saved or restored. */
   #savedKey = "";
   #restoreTried = false;
+  #evidenceLoaded = false;
   readonly #clock: HybridClock;
   readonly #maxFrameEvents: number;
   readonly #maxFrameBytes: number;
@@ -376,6 +377,7 @@ class OwnLogEngine implements SyncEngine {
       pass.cache = cache;
       await this.#applyLocal(pass);
       await this.#rebuildIfNeeded(pass);
+      await this.#saveEvidence();
       this.#emit(pass);
       const first = stamped[0]?.h ?? "";
       const last = stamped.at(-1)?.h ?? "";
@@ -737,6 +739,7 @@ class OwnLogEngine implements SyncEngine {
     for (const [device, segs] of streams) {
       if (!this.#chains.has(device)) await this.#indexStream(device, segs);
     }
+    if (replay) await this.#loadEvidence();
     const restored = replay ? await this.#restoreGate(pass) : undefined;
     if (replay) await this.#observeAll(streams, pass, restored);
     for (const [device, segs] of streams) {
@@ -916,8 +919,23 @@ class OwnLogEngine implements SyncEngine {
       .join(",");
   }
 
+  /** Restore the gate's evidence record once after start (independent of the snapshot). */
+  async #loadEvidence(): Promise<void> {
+    if (this.#evidenceLoaded || !this.#gateState?.loadEvidence || !this.#gate.importEvidence)
+      return;
+    this.#evidenceLoaded = true;
+    this.#gate.importEvidence(await this.#gateState.loadEvidence());
+  }
+
+  /** Append new fork proofs to the evidence record (after every write and sync pass). */
+  async #saveEvidence(): Promise<void> {
+    const evidence = this.#gate.takeEvidence?.() ?? [];
+    if (evidence.length > 0) await this.#gateState?.appendEvidence?.(evidence);
+  }
+
   /** Save the gate's snapshot when it judged new frames since the last one (S29c-B3). */
   async #saveGate(): Promise<void> {
+    await this.#saveEvidence();
     if (!this.#gateState || !this.#gate.exportState || this.#judged.size === 0) return;
     const key = this.#judgedKey();
     if (key === this.#savedKey) return;

@@ -35,12 +35,16 @@ export function metaClockStore(driver: SqlDriver, device: string): MetaClockStor
 export interface MetaGateStateStore {
   load(): string | undefined;
   save(state: string): void;
+  loadEvidence(): readonly string[];
+  appendEvidence(records: readonly string[]): void;
 }
 
 /**
  * The frame gate's snapshot of `device` in `store_meta` (`gate:<device>`). The gate authenticates
  * its own text; the store only keeps it. It survives `reset()` (the snapshot describes the log, not
  * the view) and goes with the database file (`openOrRecover`: a new database replays the log).
+ * The gate's evidence record (proven forks) is append only, one row per record
+ * (`gate-evidence:<device>:<record>`), never replaced with the snapshot.
  */
 export function metaGateStateStore(driver: SqlDriver, device: string): MetaGateStateStore {
   const key = `gate:${device}`;
@@ -48,10 +52,17 @@ export function metaGateStateStore(driver: SqlDriver, device: string): MetaGateS
   const put = driver.prepare(
     "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
   );
+  const evidence = `gate-evidence:${device}:`;
+  const add = driver.prepare("INSERT OR IGNORE INTO store_meta (key, value) VALUES (?, ?)");
+  const all = driver.prepare("SELECT value FROM store_meta WHERE key LIKE ? ORDER BY rowid");
   return {
     load: () => get.get<{ value: string }>(key)?.value,
     save(state) {
       put.run(key, state);
+    },
+    loadEvidence: () => all.all<{ value: string }>(`${evidence}%`).map((r) => r.value),
+    appendEvidence(records) {
+      for (const record of records) add.run(`${evidence}${record}`, record);
     },
   };
 }

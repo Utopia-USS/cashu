@@ -115,6 +115,9 @@ export interface ClockStore {
 export interface GateStateStore {
   load(): Awaitable<string | undefined>;
   save(state: string): Awaitable<void>;
+  /** The gate's append-only evidence record (proven forks), never rolled back with the snapshot. */
+  loadEvidence?(): Awaitable<readonly string[]>;
+  appendEvidence?(records: readonly string[]): Awaitable<void>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -222,6 +225,10 @@ export interface FrameGate {
   importState?(
     state: string,
   ): { readonly positions: ReadonlyMap<DeviceId, FrameHead>; restore(): void } | undefined;
+  /** Evidence (proven forks) found since the last call: the engine appends it to its record. */
+  takeEvidence?(): readonly string[];
+  /** The evidence record, restored after a start before the snapshot and any replay. */
+  importEvidence?(records: readonly string[]): void;
 }
 
 export interface SegmentInfo {

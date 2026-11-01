@@ -12,8 +12,10 @@ import {
   createRecoveryKey,
   createVaultWithRecovery,
   type DeviceIdentity,
+  encodeHead,
   type Keyring,
   recoveryIdentity,
+  signHead,
 } from "../crypto/index.js";
 import { createSyncEngine } from "../engine.js";
 import { MemoryClockStore, MemoryTransport } from "../memory.js";
@@ -44,6 +46,13 @@ class MemoryGateState implements GateStateStore {
   save(state: string) {
     this.value = state;
     this.saves += 1;
+  }
+  evidence: string[] = [];
+  loadEvidence() {
+    return [...this.evidence];
+  }
+  appendEvidence(records: readonly string[]) {
+    for (const r of records) if (!this.evidence.includes(r)) this.evidence.push(r);
   }
 }
 
@@ -152,8 +161,9 @@ async function world() {
   ]);
   for (let i = 0; i < 2; i++) for (const d of [a, b]) await d.engine.sync();
   // Restart A over the same disk (fresh devices state, gate and engine).
-  const restart = (d: Disk, persist = true) => node(ids[0], ring(), cert(0), remote, d, persist);
-  return { a, b, c, ids, vaultId, restart };
+  const restart = (d: Disk, persist = true, from: Transport = remote) =>
+    node(ids[0], ring(), cert(0), from, d, persist);
+  return { a, b, c, ids, vaultId, recovery, restart };
 }
 
 function summary(n: Awaited<ReturnType<typeof node>>) {
@@ -261,5 +271,50 @@ describe("persisted gate state", () => {
     expect(again.devices.registry.revoked.has(w.ids[2].deviceId)).toBe(true);
     expect(again.disk.sink.value("b12")).toBe("b12");
     expect(again.disk.sink.value("c1")).toBeUndefined();
+  });
+
+  it("keeps a proven fork outside the snapshot: a rolled-back snapshot still freezes the writer", async () => {
+    const w = await world();
+    const bId = w.ids[1].deviceId;
+    // The device as it was before the fork was proven: its snapshot and a copy of its local log.
+    const older = w.a.disk.state.value;
+    const backup = new MemoryTransport();
+    for (const s of await w.a.disk.local.list(w.vaultId)) {
+      const bytes = await w.a.disk.local.read(w.vaultId, s.device, s.seg, 0);
+      await backup.append(w.vaultId, s.device, s.seg, 0, bytes);
+    }
+    // B signed a second history ending where A holds B's stream: the words revoke B and carry that
+    // head in the cut, which proves the fork (B is frozen at the start: all its data rejected).
+    const end = w.a.gate.heads.held(bId) ?? { seg: 1, offset: 0 };
+    const forked = signHead(w.ids[1], w.vaultId, {
+      device: bId,
+      stream: 1,
+      seg: end.seg,
+      offset: end.offset,
+      chain: new Uint8Array(32).fill(7),
+    });
+    await w.a.engine.write([
+      buildDeviceRevoked(w.recovery, w.vaultId, newEid(), [
+        { device: bId, cut: end, head: encodeHead(forked) },
+      ]),
+    ]);
+    await w.a.engine.sync();
+    expect(w.a.devices.frozen.get(bId)).toEqual({ seg: 1, offset: 0 });
+    expect(w.a.disk.sink.value("b0")).toBeUndefined();
+    expect(w.a.disk.state.evidence.length).toBeGreaterThan(0);
+
+    // Roll the device back (snapshot and log from before), offline (nothing to re-pull the proof
+    // from): with the evidence record B stays frozen; without it B's data would be accepted again.
+    for (const kept of [true, false]) {
+      const state = new MemoryGateState();
+      state.value = older;
+      if (kept) state.evidence = [...w.a.disk.state.evidence];
+      const d = { local: backup, sink: new MemorySink(), clock: new MemoryClockStore(), state };
+      const again = await w.restart(d, true, new MemoryTransport());
+      await again.engine.sync();
+      expect(again.counter.restored, `kept ${kept}`).toBe(1);
+      expect(again.disk.sink.value("b0"), `kept ${kept}`).toBe(kept ? undefined : "b0");
+      expect(again.devices.frozen.has(bId), `kept ${kept}`).toBe(kept);
+    }
   });
 });
