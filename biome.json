@@ -280,7 +280,9 @@
                       "@cashu/store-react",
                       "@cashu/store-react/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**"
+                      "@cashu/node-host/**",
+                      "@cashu/host-protocol",
+                      "@cashu/host-protocol/**"
                     ],
                     "message": "packages/sync may import only @cashu/domain. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -395,7 +397,9 @@
                       "@cashu/store-react",
                       "@cashu/store-react/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**"
+                      "@cashu/node-host/**",
+                      "@cashu/host-protocol",
+                      "@cashu/host-protocol/**"
                     ],
                     "message": "packages/market may import only @cashu/domain. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -498,7 +502,9 @@
                       "@cashu/store-react",
                       "@cashu/store-react/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**"
+                      "@cashu/node-host/**",
+                      "@cashu/host-protocol",
+                      "@cashu/host-protocol/**"
                     ],
                     "message": "packages/store may import only @cashu/domain and @cashu/sync. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -599,7 +605,9 @@
                       "@cashu/store-react",
                       "@cashu/store-react/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**"
+                      "@cashu/node-host/**",
+                      "@cashu/host-protocol",
+                      "@cashu/host-protocol/**"
                     ],
                     "message": "packages/i18n may import only @cashu/domain. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -620,6 +628,113 @@
                       "react-dom/**"
                     ],
                     "message": "This package runs on Node, the Electron renderer and Hermes alike: no node:*, Electron, React Native, Expo or DOM imports. Platform needs come in through an interface (SqlDriver, KeyStore, Transport, Clock) wired at the app root."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/host-protocol/src/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.stories.tsx",
+        "!**/testing/**",
+        "!**/test-fixtures/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "react": {
+                    "importNames": ["useMemo", "useCallback", "memo"],
+                    "message": "React Compiler memoizes for you: drop manual useMemo / useCallback / memo. A measured exception needs `// biome-ignore lint/style/noRestrictedImports: <profiler evidence>` on the import."
+                  }
+                },
+                "patterns": [
+                  {
+                    "group": [
+                      "@sentry/*",
+                      "@sentry/*/**",
+                      "@bugsnag/*",
+                      "@bugsnag/*/**",
+                      "posthog-*",
+                      "@posthog/*",
+                      "@amplitude/*",
+                      "mixpanel*",
+                      "@datadog/*",
+                      "logrocket*",
+                      "@segment/*",
+                      "@react-native-firebase/*",
+                      "firebase/analytics",
+                      "@vercel/analytics",
+                      "@vercel/analytics/**",
+                      "@newrelic/*",
+                      "@honeybadger-io/*",
+                      "rollbar"
+                    ],
+                    "message": "No cloud crash reporting or analytics: financial data never leaves the device (data-safety rule 3). Crashes go to the local crash log."
+                  },
+                  {
+                    "group": ["swr", "@tanstack/react-query", "@tanstack/react-query/**"],
+                    "message": "Store data is read with useQuery from the store (live, local). No fetch cache for it; a genuine remote read needs the owner's OK first."
+                  },
+                  {
+                    "group": [
+                      "@cashu/sync",
+                      "@cashu/sync/**",
+                      "@cashu/store",
+                      "@cashu/store/**",
+                      "@cashu/ui",
+                      "@cashu/ui/**",
+                      "@cashu/ui-logic",
+                      "@cashu/ui-logic/**",
+                      "@cashu/api",
+                      "@cashu/api/**",
+                      "@cashu/mcp",
+                      "@cashu/mcp/**",
+                      "@cashu/parity",
+                      "@cashu/parity/**",
+                      "@cashu/arch-tools",
+                      "@cashu/arch-tools/**",
+                      "@cashu/market",
+                      "@cashu/market/**",
+                      "@cashu/store-react",
+                      "@cashu/store-react/**",
+                      "@cashu/node-host",
+                      "@cashu/node-host/**",
+                      "@cashu/i18n",
+                      "@cashu/i18n/**"
+                    ],
+                    "message": "packages/host-protocol may import only @cashu/domain. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
+                  },
+                  {
+                    "group": [
+                      "node:*",
+                      "electron",
+                      "electron/**",
+                      "react-native",
+                      "react-native/**",
+                      "react-native-*",
+                      "@react-native/*",
+                      "expo",
+                      "expo/**",
+                      "expo-*",
+                      "@expo/*",
+                      "react-dom",
+                      "react-dom/**"
+                    ],
+                    "message": "packages/host-protocol is platform free (the host, Electron main, the shim and the renderer share it): no node:*, Electron, React Native, Expo or DOM imports. Sockets, files and randomness live in @cashu/node-host."
+                  },
+                  {
+                    "group": ["react", "react/**", "react-*", "@types/react", "@types/react/**"],
+                    "message": "packages/host-protocol has no React: the host and the shim use it too."
                   }
                 ]
               }
@@ -698,7 +813,9 @@
                       "@cashu/market",
                       "@cashu/market/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**"
+                      "@cashu/node-host/**",
+                      "@cashu/host-protocol",
+                      "@cashu/host-protocol/**"
                     ],
                     "message": "packages/store-react may import only @cashu/domain and @cashu/store: it binds the store to React and carries the store port, nothing of the UI. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -803,7 +920,9 @@
                       "@cashu/market",
                       "@cashu/market/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**"
+                      "@cashu/node-host/**",
+                      "@cashu/host-protocol",
+                      "@cashu/host-protocol/**"
                     ],
                     "message": "packages/ui-logic may import only @cashu/domain, @cashu/store, @cashu/store-react and @cashu/i18n; it is headless (no components). Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -912,7 +1031,9 @@
                       "@cashu/store-react",
                       "@cashu/store-react/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**"
+                      "@cashu/node-host/**",
+                      "@cashu/host-protocol",
+                      "@cashu/host-protocol/**"
                     ],
                     "message": "packages/ui components get data through props: they may import only @cashu/domain and @cashu/i18n. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -1017,7 +1138,9 @@
                       "@cashu/store-react",
                       "@cashu/store-react/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**"
+                      "@cashu/node-host/**",
+                      "@cashu/host-protocol",
+                      "@cashu/host-protocol/**"
                     ],
                     "message": "Service packages never import UI packages (ui, ui-logic, the React store bindings) or @cashu/node-host (Node adapters for apps only). Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
@@ -1102,7 +1225,7 @@
                       "@cashu/store-react",
                       "@cashu/store-react/**"
                     ],
-                    "message": "packages/node-host may import only @cashu/domain, @cashu/store and @cashu/sync. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
+                    "message": "packages/node-host may import only @cashu/domain, @cashu/store, @cashu/sync and @cashu/host-protocol. Dependencies point down the layer table only (cashu-ts-architecture, layers.md)."
                   },
                   {
                     "group": [
@@ -1194,7 +1317,9 @@
                       "@cashu/store-react",
                       "@cashu/store-react/**",
                       "@cashu/node-host",
-                      "@cashu/node-host/**"
+                      "@cashu/node-host/**",
+                      "@cashu/host-protocol",
+                      "@cashu/host-protocol/**"
                     ],
                     "message": "A View renders props and may use presentational hooks only. Store, sync, node-host, useQuery / useCommand and feature hooks belong in the screen hook (useXScreen), which passes the result in."
                   },

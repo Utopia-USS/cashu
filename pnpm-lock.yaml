@@ -247,6 +247,18 @@ importers:
 
   packages/domain: {}
 
+  packages/host-protocol:
+    dependencies:
+      '@cashu/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+
   packages/i18n:
     dependencies:
       '@cashu/domain':
@@ -267,6 +279,9 @@ importers:
 
   packages/node-host:
     dependencies:
+      '@cashu/host-protocol':
+        specifier: workspace:*
+        version: link:../host-protocol
       '@cashu/store':
         specifier: workspace:*
         version: link:../store

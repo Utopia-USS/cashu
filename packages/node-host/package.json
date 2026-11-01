@@ -13,6 +13,7 @@
     "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@cashu/host-protocol": "workspace:*",
     "@cashu/store": "workspace:*",
     "@cashu/sync": "workspace:*"
   }

@@ -21,13 +21,17 @@ const LAYERS = {
   // React bindings over the store (useQuery, useCommand, providers) and the store port (both ends).
   "store-react": ["domain", "store"],
   i18n: ["domain"],
+  // The local host protocol (frames, handshake, roles, store channel v2): platform free, under the
+  // host (apps/host), Electron main, the shim and, from S56b, the renderer's store client.
+  "host-protocol": ["domain"],
   ui: ["domain", "i18n"],
   "ui-logic": ["domain", "store", "store-react", "i18n"],
   api: ["domain", "store", "sync", "i18n"],
   mcp: ["domain", "store", "sync", "i18n"],
   parity: ["domain", "store", "mcp"],
   // Node-only adapters shared by apps (guard, FolderFs, node:sqlite SqlDriver); only apps import it.
-  "node-host": ["domain", "store", "sync"],
+  // Also the local host's platform glue: machine lock, socket server / client, connect-or-start.
+  "node-host": ["domain", "store", "sync", "host-protocol"],
 };
 
 const layerRules = Object.entries(LAYERS).map(([pkg, allowed]) => ({

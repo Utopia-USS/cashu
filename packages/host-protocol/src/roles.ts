@@ -1,0 +1,26 @@
+// Which session frames each role may send. The host closes a session that sends anything else (an
+// unknown method of an allowed namespace is answered `unknown-method` by the host's dispatcher).
+import type { ClientFrame, Role } from "./messages.js";
+
+const NAMESPACE: Readonly<Record<Role, string | undefined>> = {
+  ui: undefined,
+  mcp: undefined,
+  cli: "cli.",
+  admin: "admin.",
+};
+
+/** True when a session of `role` may send `frame`. */
+export function roleAllows(role: Role, frame: ClientFrame): boolean {
+  switch (frame.t) {
+    case "store":
+      return role === "ui";
+    case "mcp":
+      return role === "mcp";
+    case "req": {
+      const prefix = NAMESPACE[role];
+      return prefix !== undefined && frame.method.startsWith(prefix);
+    }
+    case "cancel":
+      return NAMESPACE[role] !== undefined;
+  }
+}
