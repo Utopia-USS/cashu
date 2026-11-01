@@ -93,7 +93,7 @@ function alertSnapshot(row: AlertRow, ctx: MapContext): readonly EventDraft[] {
 }
 
 function alertUpdate(c: RowChange<AlertRow>, ctx: MapContext): readonly EventDraft[] {
-  refuseChanged(c, "alerts", ["instrument_id", "scope", "kind", "source", "created_by"]);
+  refuseChanged(c, "alerts", ["instrument_id", "scope", "kind", "source", "created_by", "tag"]);
   const post = need(c.post);
   const pre = need(c.pre);
   const snap = alertSnapshot(post, ctx);
@@ -158,8 +158,16 @@ const alerts: TableBridge<AlertRow> = {
     ...carried(["alert.statusSet"], "snoozed_until"),
     ...carried(["alert.evaluated"], ...ALERT_RUNTIME),
     ...carried(["alert.deleted", "alert.restored"], "deleted_at"),
+    // TRANSITIONAL(S16): set or changed, it blocks the row (insert / update above); never shipped half.
+    tag: { notShipped: "no catalog field yet (S16); a tagged alert blocks the loop (D4)" },
   },
-  insert: (c, ctx) => alertSnapshot(need(c.post), ctx),
+  insert: (c, ctx) => {
+    // TRANSITIONAL(S16): the catalog has no alert tag yet; a tagged alert blocks like genesis refuses.
+    if (c.row.post?.tag !== null && c.row.post?.tag !== undefined) {
+      throw new BridgeBlock("unsupported:alerts:tag");
+    }
+    return alertSnapshot(need(c.post), ctx);
+  },
   update: alertUpdate,
 };
 

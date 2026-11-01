@@ -316,3 +316,39 @@ describe("signals", () => {
     expect(p.through).toBeGreaterThan(0);
   });
 });
+
+describe("alert tags (TRANSITIONAL(S16))", () => {
+  it("block a tagged alert insert and a tag change instead of shipping them half", () => {
+    const insert = plan({
+      rows: [
+        outboxRow({
+          table: "alerts",
+          localId: "5",
+          op: "insert",
+          gid: ALERT_GID,
+          fields: alertPost({ tag: "x" }),
+          post: alertPost({ tag: "x" }),
+        }),
+      ],
+      vaults: [vaultInput(ids)],
+      ports: testPorts(),
+    });
+    expect(insert).toMatchObject({ ok: false, reason: "unsupported:alerts:tag" });
+    const update = plan({
+      rows: [
+        outboxRow({
+          table: "alerts",
+          localId: "5",
+          op: "update",
+          gid: ALERT_GID,
+          fields: { tag: "x" },
+          prev: { tag: null },
+          post: alertPost({ tag: "x" }),
+        }),
+      ],
+      vaults: [vaultInput(ids)],
+      ports: testPorts(),
+    });
+    expect(update).toMatchObject({ ok: false, reason: "immutable:alerts:tag" });
+  });
+});

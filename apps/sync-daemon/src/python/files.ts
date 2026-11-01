@@ -5,7 +5,7 @@
 // copy; both move into @cashu/node-host when a third host needs it.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
-import type { genesis } from "@cashu/store";
+import type * as genesis from "@cashu/store/genesis";
 
 export function dataDirFiles(root: string): genesis.GenesisFiles {
   const base = resolve(root);

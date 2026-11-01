@@ -7,7 +7,6 @@ export {
   setNote,
 } from "./assets/commands.js";
 export { assetsModule } from "./assets/index.js";
-export * as bridge from "./bridge/index.js";
 export { deleteCashTransaction, importStatement, setCushion } from "./budget/commands.js";
 export { budgetModule } from "./budget/index.js";
 export { canonicalJson } from "./canonical.js";

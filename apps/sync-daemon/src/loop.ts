@@ -14,7 +14,7 @@
 // test targets. Output: counts only.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { bridge } from "@cashu/store";
+import * as bridge from "@cashu/store/bridge";
 import type { PythonCli } from "./python/cli.js";
 import type { PythonReader } from "./python/reader.js";
 import type { Intent } from "./state.js";

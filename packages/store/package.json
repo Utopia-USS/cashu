@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./core": "./src/core/index.ts",
     "./device": "./src/device/index.ts",
+    "./bridge": "./src/bridge/index.ts",
     "./genesis": "./src/genesis/index.ts",
     "./query": "./src/query.ts"
   },

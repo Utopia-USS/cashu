@@ -15,7 +15,9 @@
 // push); the S29 registry's first device statement is out of phase 1 (TRANSITIONAL(S44)).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { bridge, type genesis, vaultSalt } from "@cashu/store";
+import { vaultSalt } from "@cashu/store";
+import * as bridge from "@cashu/store/bridge";
+import type * as genesis from "@cashu/store/genesis";
 import type { crypto } from "@cashu/sync";
 import type { DaemonConfig } from "./config.js";
 import { writePythonGidSalt } from "./keys/labFile.js";

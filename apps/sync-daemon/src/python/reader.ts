@@ -5,7 +5,9 @@
 // daemon never writes Python's schema; writes go through the `cashu` CLI (`cli.ts`).
 import { join } from "node:path";
 import { openNodeSqlite } from "@cashu/node-host";
-import { bridge, genesis, type SqlDriver } from "@cashu/store";
+import { type SqlDriver } from "@cashu/store";
+import * as bridge from "@cashu/store/bridge";
+import * as genesis from "@cashu/store/genesis";
 import { dataDirFiles } from "./files.js";
 
 const PAGE = 1000;

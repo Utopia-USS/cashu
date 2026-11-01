@@ -6,7 +6,8 @@
 // mapping), the pipe cursor, the last shipped cushion and the genesis progress. Plaintext domain
 // data: the state dir is private (0700), the same trust as the view database.
 
-import type { bridge, SqlDriver } from "@cashu/store";
+import type { SqlDriver } from "@cashu/store";
+import type * as bridge from "@cashu/store/bridge";
 
 /** One vault's part of a plan, stored before the append (spec 6.1, 6.2). */
 export interface Intent {

@@ -5,7 +5,7 @@
 // linked vault, built on the genesis mappers (one owner of the Python-row -> event semantics), and
 // the ack plan back to Python. Platform free and clock free (randomness and the leader question
 // come in through `BridgePorts`), so the lab daemon and later the desktop utility process run the
-// same code. Re-exported from the package as `bridge` (`import { bridge } from "@cashu/store"`).
+// same code. Exported as the package subpath `@cashu/store/bridge` (lab / desktop hosts only).
 export { type Coverage, coverage, type TableCoverage } from "./coverage.js";
 export { type CushionShip, cushionShip } from "./cushion.js";
 export { readLiveRows } from "./live.js";

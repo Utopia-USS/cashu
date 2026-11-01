@@ -7,14 +7,8 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { NodeFolderFs, openNodeSqlite } from "@cashu/node-host";
-import {
-  builtinModules,
-  genesis,
-  metaClockStore,
-  Store,
-  type VaultSalt,
-  vaultSalt,
-} from "@cashu/store";
+import { builtinModules, metaClockStore, Store, type VaultSalt, vaultSalt } from "@cashu/store";
+import * as genesis from "@cashu/store/genesis";
 import {
   createOwnLogCarrier,
   createOwnLogCodec,
