@@ -13,7 +13,6 @@ import {
   mulberry32,
   pairDevice,
   revokeWithConsent,
-  type SimDevice,
 } from "./testkit.js";
 
 export async function fourDevices() {
