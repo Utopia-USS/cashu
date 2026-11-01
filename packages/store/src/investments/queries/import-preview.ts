@@ -139,10 +139,13 @@ class ConnectorDocumentImporter implements BrokerImporter {
   readonly brokerId = this.canonical.brokerId;
   readonly version = this.canonical.version;
 
-  constructor(
-    readonly importerId: string,
-    readonly displayName: string,
-  ) {}
+  readonly importerId: string;
+  readonly displayName: string;
+
+  constructor(importerId: string, displayName: string) {
+    this.importerId = importerId;
+    this.displayName = displayName;
+  }
 
   private static asJson(file: ImportFile): ImportFile {
     return { name: `${file.name}.json`, content: file.content };
@@ -260,7 +263,11 @@ function pyQuote(text: string): string {
 
 /** The `InstrumentLookup` of a plan over this vault's view (Python `DbInstrumentLookup`). */
 export class ViewInstrumentLookup implements InstrumentLookup {
-  constructor(private readonly read: Read) {}
+  private readonly read: Read;
+
+  constructor(read: Read) {
+    this.read = read;
+  }
 
   byIsin(isin: string): Instrument | null {
     return instrumentByIsin(this.read, isin) ?? null;
