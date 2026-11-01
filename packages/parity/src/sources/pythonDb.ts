@@ -38,6 +38,7 @@ import {
 } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { core, normalizeText } from "@cashu/domain";
 import type { SqlDriver } from "@cashu/store";
 import { type Dataset, datasetAsOf, datasetDir, labRoot } from "./datasets.ts";
 import { bool, int, type Row, text, textOrNull } from "./decode.ts";
@@ -168,6 +169,13 @@ export interface TransactionRow {
   readonly isInternalTransfer: boolean;
   readonly category: string | null;
   readonly categorySource: string | null;
+}
+
+export interface CategoryRuleRow {
+  readonly merchantKey: string;
+  readonly category: string;
+  readonly source: string;
+  readonly locked: boolean;
 }
 
 // --------------------------------------------------------------------------- value decoding
@@ -403,6 +411,37 @@ export class PythonDb implements SqlRows {
       category: textOrNull(r, "category"),
       categorySource: textOrNull(r, "category_source"),
     }));
+  }
+
+  /** `load_rules`: the profile's merchant rules (`category_rules`), in id order. */
+  categoryRules(profileId: number): CategoryRuleRow[] {
+    return this.objects(
+      "SELECT merchant_key, category, source, locked FROM category_rules WHERE profile_id = ? ORDER BY id",
+      profileId,
+    ).map((r) => ({
+      merchantKey: text(r, "merchant_key"),
+      category: text(r, "category"),
+      source: text(r, "source"),
+      locked: bool(r, "locked"),
+    }));
+  }
+
+  /**
+   * `loans/patterns.py:payment_patterns`: one pattern per loan of the profile's accounts (removed ones
+   * too) with a truthy lender IBAN or title phrase; the phrase normalized, empty ones as null.
+   */
+  loanPaymentPatterns(profileId: number): core.PaymentPattern[] {
+    return this.objects(
+      `SELECT payment_iban, payment_text FROM loans WHERE account_id IN (${PROFILE_ACCOUNTS}) ORDER BY id`,
+      profileId,
+    )
+      .map((r) => ({ iban: textOrNull(r, "payment_iban"), text: textOrNull(r, "payment_text") }))
+      .filter((l) => l.iban || l.text)
+      .map((l) => ({
+        category: core.LOANS_CATEGORY,
+        counterpartyIban: l.iban || null,
+        text: normalizeText(l.text) || null,
+      }));
   }
 }
 

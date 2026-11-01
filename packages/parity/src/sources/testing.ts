@@ -25,6 +25,10 @@ CREATE TABLE transactions (id INTEGER PRIMARY KEY, account_id INTEGER, booking_d
   counterparty_iban VARCHAR, description VARCHAR, reference VARCHAR, source VARCHAR(12),
   dedup_hash VARCHAR, occurrence INTEGER, transfer_group_id VARCHAR, is_internal_transfer BOOLEAN,
   category VARCHAR, category_source VARCHAR);
+CREATE TABLE category_rules (id INTEGER PRIMARY KEY, merchant_key VARCHAR, category VARCHAR,
+  source VARCHAR, locked BOOLEAN, created_at DATETIME, profile_id INTEGER);
+CREATE TABLE loans (id INTEGER PRIMARY KEY, account_id INTEGER, payment_iban VARCHAR,
+  payment_text VARCHAR);
 CREATE TABLE inv_transactions (id INTEGER PRIMARY KEY, account_id INTEGER, type VARCHAR,
   trade_date DATE, settle_date DATE, instrument_id INTEGER, quantity VARCHAR, price VARCHAR,
   currency VARCHAR, gross_amount VARCHAR, fee VARCHAR, tax VARCHAR, cash_amount VARCHAR,

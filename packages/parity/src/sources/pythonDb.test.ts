@@ -80,6 +80,30 @@ describe("PythonDb", () => {
     });
   });
 
+  it("category rules and loan payment patterns are profile-scoped, with Python's semantics", () => {
+    ds = syntheticDataset(TWO_PROFILES);
+    ds.exec(`INSERT INTO category_rules VALUES
+      (1, 'SKLEP TEST', 'shopping', 'manual', 1, NULL, 1),
+      (2, 'KAWA TEST', 'dining', 'llm', 0, NULL, 2),
+      (3, '', 'travel', 'llm', 0, NULL, 1);
+      INSERT INTO loans VALUES (1, 3, '99 1600 0000 0000 0000 0000 0999', NULL),
+      (2, 3, '', 'spłata raty'), (3, 3, '', ''), (4, 4, NULL, 'Umowa 7'), (5, 5, 'X', NULL);`);
+    withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, (db) => {
+      expect(db.categoryRules(1)).toEqual([
+        { merchantKey: "SKLEP TEST", category: "shopping", source: "manual", locked: true },
+        { merchantKey: "", category: "travel", source: "llm", locked: false },
+      ]);
+      expect(db.loanPaymentPatterns(1)).toEqual([
+        { category: "loans", counterpartyIban: "99 1600 0000 0000 0000 0000 0999", text: null },
+        { category: "loans", counterpartyIban: null, text: "SPLATA RATY" },
+        { category: "loans", counterpartyIban: null, text: "UMOWA 7" }, // removed account's loan
+      ]);
+      expect(db.loanPaymentPatterns(2)).toEqual([
+        { category: "loans", counterpartyIban: "X", text: null },
+      ]);
+    });
+  });
+
   it("sqlDriver reads the copy read-only and close closes it", () => {
     ds = syntheticDataset(TWO_PROFILES);
     const before = manifest(ds.dir);
