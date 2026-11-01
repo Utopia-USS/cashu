@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scripted synthetic writes of the bridge harness (S31a spec 9.3 steps 3, 5, 7).
 
-    .venv/bin/python parity/python/bridge_writes.py --dataset lab|demo --phase A|B|C [--part 1|2|3]
+    .venv/bin/python parity/python/bridge_writes.py --dataset lab|demo --phase A|B|C|R|M [--part 1|2|3]
 
 Runs on the CURRENT data dir, which must be a run copy inside ``~/cashu-lab/parity/`` (never a dataset
 source): the harness starts it under golden.py ``safe_env`` with ``CASHU_DATA_DIR`` = the run's
@@ -18,7 +18,9 @@ traceback goes to ``<run>/bridge-writes.log``) and exits 1.
 
 Phases (spec 9.3): A = the main set (lab: investments; demo adds the budget, assets and loans writes and
 a small synthetic mBank CSV import written under the run dir); B = six more of the same kinds, in three parts of two (``--part``, one per crash point of the kill test); C = one
-local edit of the alert whose title phase A edited (the inbound-then-local sequence).
+local edit of the alert whose title phase A edited (the inbound-then-local sequence); R = an
+overlapping broker re-import (2 txns, after C); M = a merge of an instrument phase A watched, already
+shipped (1 txn, after R).
 """
 
 from __future__ import annotations
@@ -668,7 +670,114 @@ def phase_c(r: Run) -> None:
     r.step("alert_edit_c", lambda r: edit_alert(r, "bridge-test-title-c", None, "alert_edit_c"))
 
 
-PHASES = {"A": phase_a, "B": phase_b, "C": phase_c}
+# --------------------------------------------------------------------------- #
+# Phase R: an overlapping broker re-import; phase M: a merge of a shipped instrument
+# --------------------------------------------------------------------------- #
+
+BROKER_HEADER = (
+    "format_version,record,date,time,type,external_ref,symbol,isin,name,exchange,quantity,price,"
+    "currency,gross_amount,fee,tax,cash_amount,cash_currency,fx_rate,split_ratio,source"
+)
+
+
+def _broker_file(r: Run, second: bool) -> bytes:
+    """A synthetic export in cashU's own broker format: two instruments bought, their positions on
+    day D; the second file repeats every row of the first (D positions identical) and adds one buy
+    and the positions of a later day D2."""
+    d1 = (r.today - dt.timedelta(days=10)).isoformat()
+    d2 = (r.today - dt.timedelta(days=3)).isoformat()
+    t0 = (r.today - dt.timedelta(days=20)).isoformat()
+    rows = [
+        f"1,txn,{t0},09:00,deposit,BRIDGE-TEST-1,,,,,,,PLN,,,,10000.00,,,,",
+        f"1,txn,{t0},10:00,buy,BRIDGE-TEST-2,BRTA,,BRIDGE TEST 5 SA,XWAR,10,100.00,PLN,1000.00,,,-1000.00,,,,",
+        f"1,txn,{t0},11:00,buy,BRIDGE-TEST-3,BRTB,,BRIDGE TEST 6 SA,XWAR,20,50.00,PLN,1000.00,,,-1000.00,,,,",
+        f"1,position,{d1},,,,BRTA,,BRIDGE TEST 5 SA,XWAR,10,,PLN,,,,,,,,",
+        f"1,position,{d1},,,,BRTB,,BRIDGE TEST 6 SA,XWAR,20,,PLN,,,,,,,,",
+    ]
+    if second:
+        rows += [
+            f"1,txn,{d1},10:00,buy,BRIDGE-TEST-4,BRTA,,BRIDGE TEST 5 SA,XWAR,5,100.00,PLN,500.00,,,-500.00,,,,",
+            f"1,position,{d2},,,,BRTA,,BRIDGE TEST 5 SA,XWAR,15,,PLN,,,,,,,,",
+            f"1,position,{d2},,,,BRTB,,BRIDGE TEST 6 SA,XWAR,20,,PLN,,,,,,,,",
+        ]
+    return ("\n".join([BROKER_HEADER, *rows]) + "\n").encode("utf-8")
+
+
+def broker_reimport(r: Run) -> None:
+    """Two imports through the real importer (preview, then commit: the app's import flow) into the
+    profile's lowest-id brokerage account; the second overlaps the first."""
+    from cashu.core.models import Profile
+    from cashu.modules.investments.importing import ImportFile
+    from cashu.modules.investments.service import imports
+
+    aid = _account(r, "brokerage")
+    for n, second in ((1, False), (2, True)):
+        content = _broker_file(r, second)
+
+        def write(content=content, n=n) -> None:
+            with _session() as s:
+                profile = s.get(Profile, r.profile.id)
+                plan = imports.preview(
+                    s, profile, imports.ImportRequest(ImportFile(f"bridge-test-{n}.csv", content), aid)
+                )
+            if not plan.can_commit:
+                raise RuntimeError("the import preview refused the synthetic file")
+            imports.commit(plan)
+
+        r.txn(f"broker_import_{n}", write)
+
+
+def phase_r(r: Run) -> None:
+    r.step("broker_reimport", broker_reimport)
+
+
+def merge_shipped_instrument(r: Run) -> None:
+    """Merge the instrument phase A watched (already shipped; else the profile's lowest-id
+    instrument) into the lowest-id other instrument of the same currency without an ISIN conflict,
+    through ``store.instrument_merge`` (the ``cashu invest instruments merge`` path: a dry run
+    first, then the merge in one transaction)."""
+    from sqlmodel import select
+
+    from cashu.modules.investments.models import InvInstrument, InvWatchlistItem
+    from cashu.modules.investments.store import instrument_merge, instruments
+
+    with _session() as s:
+        source = s.exec(
+            select(InvWatchlistItem.instrument_id)
+            .where(InvWatchlistItem.profile_id == r.profile.id, InvWatchlistItem.note == "bridge-test-watch")
+            .order_by(InvWatchlistItem.id)
+        ).first()
+        if source is None:
+            known = sorted(instruments.profile_instrument_ids(s, r.profile.id))
+            if not known:
+                raise Skip("no-instrument")
+            source = known[0]
+        src = s.get(InvInstrument, source)
+        target = None
+        for inst in s.exec(select(InvInstrument).order_by(InvInstrument.id)).all():
+            if inst.id == source or (inst.currency or "").upper() != (src.currency or "").upper():
+                continue
+            if src.isin and inst.isin and src.isin.upper() != inst.isin.upper():
+                continue
+            target = inst.id
+            break
+    if target is None:
+        raise Skip("no-merge-target")
+    with _session() as s:
+        instrument_merge.merge_instruments(s, source, target, dry_run=True)
+
+    def write() -> None:
+        with _session() as s:
+            instrument_merge.merge_instruments(s, source, target)
+
+    r.txn("instrument_merge", write)
+
+
+def phase_m(r: Run) -> None:
+    r.step("instrument_merge", merge_shipped_instrument)
+
+
+PHASES = {"A": phase_a, "B": phase_b, "C": phase_c, "R": phase_r, "M": phase_m}
 
 
 # --------------------------------------------------------------------------- #
