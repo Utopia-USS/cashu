@@ -120,7 +120,11 @@ function settleDet(row: LogicalRow, events: readonly EventDraft[], vm: VaultMapp
  * The events of one merged row in one vault. A row of a shared table (instruments, aliases) is
  * mapped only in a vault that holds its instrument; the caller decides that (`plan.ts`).
  */
-export function mapRow(row: LogicalRow, vm: VaultMapping): MappedRow {
+export function mapRow(
+  row: LogicalRow,
+  vm: VaultMapping,
+  txn: readonly LogicalRow[] = [row],
+): MappedRow {
   const bridge = bridgeOf(row.table);
   const profileId = vm.input.profileId;
   const changed = new Set(Object.keys(row.fields));
@@ -130,7 +134,7 @@ export function mapRow(row: LogicalRow, vm: VaultMapping): MappedRow {
     const gid = insertGid(bridge, row, vm) ?? "";
     const post = decoded(row, row.post ?? row.fields, profileId);
     if (!post.ok) throw new BridgeBlock(post.reason);
-    const change: RowChange<never> = { row, gid, post: post.row, pre: undefined, changed };
+    const change: RowChange<never> = { row, gid, post: post.row, pre: undefined, changed, txn };
     events = settleDet(row, bridge.insert(change, vm.ctx), vm);
   } else {
     const gid = row.gid ?? vm.existing(row.table, row.localId);
@@ -151,6 +155,7 @@ export function mapRow(row: LogicalRow, vm: VaultMapping): MappedRow {
         post: post.row,
         pre: pre.ok ? pre.row : undefined,
         changed,
+        txn,
       };
       events = bridge.update(change, vm.ctx);
     } else if (row.op === "delete") {
@@ -162,6 +167,7 @@ export function mapRow(row: LogicalRow, vm: VaultMapping): MappedRow {
         post: undefined,
         pre: pre.ok ? pre.row : undefined,
         changed,
+        txn,
       };
       events = bridge.delete(change, vm.ctx);
     } else {
@@ -173,6 +179,7 @@ export function mapRow(row: LogicalRow, vm: VaultMapping): MappedRow {
         post: undefined,
         pre: undefined,
         changed,
+        txn,
       };
       events = handler(change, vm.ctx);
     }

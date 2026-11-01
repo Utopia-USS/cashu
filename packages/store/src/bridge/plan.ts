@@ -167,7 +167,7 @@ class Planner {
         const ids = instrumentsOf(row);
         const holders = this.#states.filter((s) => ids.some((id) => s.vm.holdsInstrument(id)));
         if (holders.length === 0) this.counts.sharedUnheld += 1;
-        for (const s of holders) push(s, this.#mapped(row, s));
+        for (const s of holders) push(s, this.#mapped(row, s, logical));
         continue;
       }
       const s = this.#byProfile.get(row.profileId);
@@ -175,7 +175,7 @@ class Planner {
         this.counts.unlinked += 1;
         continue;
       }
-      push(s, this.#mapped(row, s));
+      push(s, this.#mapped(row, s, logical));
     }
     // Wire events per vault, then the frame check over every vault before anything is kept.
     const wired = new Map<VaultState, { events: UnstampedEvent[]; carries: CarriedColumns[][] }>();
@@ -200,8 +200,8 @@ class Planner {
   }
 
   /** One row's events in one vault, after the closure snapshot its references need. */
-  #mapped(row: LogicalRow, s: VaultState): Drafted[] {
-    const mapped = mapRow(row, s.vm);
+  #mapped(row: LogicalRow, s: VaultState, txn: readonly LogicalRow[]): Drafted[] {
+    const mapped = mapRow(row, s.vm, txn);
     const closure = s.vm.closureEvents();
     this.counts.closure += closure.filter((r) => r.table === "inv_instruments").length;
     const at = atOf(row.ts);

@@ -28,6 +28,8 @@ export interface RowChange<R> {
   readonly pre: R | undefined;
   /** Python columns of the merged `fields`. */
   readonly changed: ReadonlySet<string>;
+  /** Every logical row of the same Python transaction (e.g. a decision's signal links). */
+  readonly txn: readonly LogicalRow[];
 }
 
 export type Handler<R> = (change: RowChange<R>, ctx: MapContext) => readonly EventDraft[];
