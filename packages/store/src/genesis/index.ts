@@ -19,8 +19,7 @@
 // - `deviceLocal`: the D-G10 sidecar (notification log, connector fetch state);
 // - `slug`: in memory only, to name the vault's folder; never printed or reported.
 // `report` holds counts only (never values or slugs). Refusals throw `GenesisError` (exit 65):
-// an unsupported schema, sync state in the source (`sync_state_present`), alert tags the log cannot
-// carry yet (`unported_field`), a profile without
+// an unsupported schema, sync state in the source (`sync_state_present`), a profile without
 // `VaultKeys` (`missing_keys`), `clock_skew`, `recon_collision`, two rows of one table with one gid
 // (`gid_collision`), and under `strict` an event failing `parseEvent` / `detPartsOf`
 // (`invalid_event`), an id no rule rewrites (`unmapped_id_key`) or a strict counter (`bad_*`,

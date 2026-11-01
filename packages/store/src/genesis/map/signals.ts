@@ -74,7 +74,10 @@ export function mapAlert(r: AlertRow, ctx: MapContext): RowEvents | undefined {
     createdBy: r.createdBy,
     cooldownDays: r.cooldownDays,
     expiresAt: r.expiresAt,
+    // Only when set, so an untagged alert's create stays the v1 payload (byte-identical genesis).
+    ...(r.tag === null || r.tag === "" ? {} : { tag: r.tag }),
   };
+  if (r.tag === "") ctx.count("alerts", "empty_tag");
   const events = [event("alert.created", gid, config, stamps)];
   if (r.status === "muted") {
     events.push(event("alert.statusSet", gid, { status: "muted", snoozedUntil: null }, stamps));

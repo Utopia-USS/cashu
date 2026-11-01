@@ -159,6 +159,7 @@ export const INV_STATE_TABLES: InvStateTables = {
       createdAt: ts,
       updatedAt: ts,
       deletedAt: tsN,
+      tag: textN,
     },
   },
   invPlannedDeposits: {

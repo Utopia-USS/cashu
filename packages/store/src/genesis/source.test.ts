@@ -30,7 +30,12 @@ describe("readPythonSource: schema", () => {
     "0027_alert_tag",
     "0028_sync_outbox",
   ])("accepts %s", (version) => {
-    const driver = pythonDb(version === "0025_topic_view_sources" ? "0025" : "0026");
+    // 0027 on has `alerts.tag`: those revisions read a database that has the column.
+    const ddl = {
+      "0025_topic_view_sources": "0025",
+      "0026_thesis_exit_plan_changed_at": "0026",
+    } as const;
+    const driver = pythonDb(ddl[version as keyof typeof ddl] ?? "0029");
     driver.prepare("UPDATE alembic_version SET version_num = ?").run(version);
     expect(read(driver).schema).toBe(version);
   });
@@ -84,19 +89,23 @@ describe("readPythonSource: schema", () => {
     expect(refusal(() => read(unacked))?.message).toBe("sync state present: unacked sync_outbox 1");
   });
 
-  it("refuses alert tags the event log cannot carry yet, naming the count only", () => {
+  it("reads alert tags (0027 on) and NULL before 0027, never refusing them", () => {
     const driver = pythonDb("0029");
     const rows = new PythonRows(driver);
     const tag = (id: number, value: string | null) =>
       driver.prepare("UPDATE alerts SET tag = ? WHERE id = ?").run(value, id);
     tag(rows.insert("alerts"), null);
-    tag(rows.insert("alerts"), " ");
-    expect(read(driver).schema).toBe("0029_sync_inbound");
     tag(rows.insert("alerts"), "wydarzenie");
-    const e = refusal(() => read(driver));
-    expect(e?.code).toBe("unported_field");
-    expect(e?.exitCode).toBe(65);
-    expect(e?.message).toBe("alert tags present: alerts.tag 1");
+    expect(read(driver).alerts.map((a) => a.tag)).toEqual([null, "wydarzenie"]);
+    const old = pythonDb("0026");
+    new PythonRows(old).insert("alerts");
+    expect(read(old).alerts.map((a) => a.tag)).toEqual([null]);
+  });
+
+  it("refuses a 0027+ database whose alerts table lacks the tag column", () => {
+    const driver = pythonDb("0026");
+    driver.prepare("UPDATE alembic_version SET version_num = ?").run("0027_alert_tag");
+    expect(refusal(() => read(driver))?.message).toBe("missing column alerts.tag");
   });
 
   it.each(["0024_topic_market_view", "0030_future"])("refuses %s with exit code 65", (version) => {

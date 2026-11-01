@@ -23,8 +23,9 @@ export interface GenesisFiles {
 }
 
 /**
- * Alembic revisions genesis reads (impl notes, change 2): 0027 adds `alerts.tag` (refused while set,
- * `refuseAlertTags`), 0028 / 0029 add only sync_* tables, 0030 only a sync_* column.
+ * Alembic revisions genesis reads (impl notes, change 2): 0027 adds `alerts.tag` (read as NULL
+ * before it, carried by `alert.created` / `alert.updated`), 0028 / 0029 add only sync_* tables, 0030
+ * only a sync_* column.
  */
 const SCHEMA_VERSIONS = [
   "0025_topic_view_sources",
@@ -66,6 +67,12 @@ function readSchemaVersion(driver: SqlDriver): SchemaVersion {
 const EXIT_PLAN_BACKFILL =
   "CASE WHEN exit_plan IS NOT NULL AND exit_plan != '' THEN updated_at ELSE NULL END";
 
+/** Revisions before 0027_alert_tag: an alert has no tag there. */
+const PRE_ALERT_TAG: readonly SchemaVersion[] = [
+  "0025_topic_view_sources",
+  "0026_thesis_exit_plan_changed_at",
+];
+
 /** The SELECT expression of each spec column, from the columns the table actually has. */
 function selectList(
   driver: SqlDriver,
@@ -86,6 +93,9 @@ function selectList(
         schema === "0025_topic_view_sources"
       ) {
         return `${EXIT_PLAN_BACKFILL} AS ${quote(column)}`;
+      }
+      if (spec.table === "alerts" && column === "tag" && PRE_ALERT_TAG.includes(schema)) {
+        return `NULL AS ${quote(column)}`;
       }
       throw new GenesisError("unsupported_schema", `missing column ${spec.table}.${column}`);
     })
@@ -187,24 +197,9 @@ function refuseSyncState(driver: SqlDriver): void {
 }
 
 /**
- * TRANSITIONAL(S16): the event log has no alert tag yet (migration 0027_alert_tag added
- * `alerts.tag` on the Python side), so a database where any alert carries one is refused instead of
- * dropping the tags. Removed when `alert.created` / the alert patch carry the tag and genesis maps it.
- */
-function refuseAlertTags(driver: SqlDriver): void {
-  if (!columnsOf(driver, "alerts").has("tag")) return;
-  const n =
-    driver
-      .prepare("SELECT COUNT(*) AS n FROM alerts WHERE tag IS NOT NULL AND TRIM(tag) != ''")
-      .get<{ n: number }>()?.n ?? 0;
-  if (n > 0) throw new GenesisError("unported_field", `alert tags present: alerts.tag ${n}`);
-}
-
-/**
  * Reads every table genesis needs from a copy of the Python database. Throws `GenesisError`
  * (`unsupported_schema`) for an Alembic version outside 0025-0029, a missing table or column,
- * `sync_state_present` for a database that already holds sync state (`refuseSyncState`) and
- * `unported_field` for a stored value the event log cannot carry yet (`refuseAlertTags`).
+ * and `sync_state_present` for a database that already holds sync state (`refuseSyncState`).
  */
 export function readPythonSource(
   driver: SqlDriver,
@@ -214,12 +209,8 @@ export function readPythonSource(
 ): PythonSource {
   const schema = readSchemaVersion(driver);
   // The S31a bridge reads the live rows of a synced database (its phase-1 inputs): sync state is
-  // expected there, and an alert tag blocks the row that carries it in the bridge instead of the
-  // whole read. Genesis itself always refuses both.
-  if (options.liveSyncState !== true) {
-    refuseSyncState(driver);
-    refuseAlertTags(driver);
-  }
+  // expected there. Genesis itself always refuses it.
+  if (options.liveSyncState !== true) refuseSyncState(driver);
   const read = <K extends keyof PythonTables>(k: K): PythonTables[K][number][] =>
     readTable(driver, TABLES[k], schema, counters);
   return {

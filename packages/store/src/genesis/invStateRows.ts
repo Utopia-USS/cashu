@@ -112,6 +112,8 @@ export interface AlertRow {
   readonly createdAt: Ts;
   readonly updatedAt: Ts;
   readonly deletedAt: Ts | null;
+  /** Owner / agent label (Alembic 0027); null before 0027 and when unset. */
+  readonly tag: string | null;
 }
 
 export interface InvPlannedDepositRow {
