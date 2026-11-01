@@ -17,6 +17,8 @@ import { pickLabel, type UiLang } from "../../core/i18n.js";
 import { PyValueError } from "../../dates.js";
 import { pyStrip } from "../../text.js";
 import { SignalSeverity, severityRank } from "../domain/enums.js";
+import { asInstrumentId } from "../domain/values.js";
+import type { SignalCandidate } from "../rules/index.js";
 import { type Instant, instantDate } from "./instant.js";
 import { researchDedupKey, researchRuleId } from "./keys.js";
 import { CANDIDATE_KIND, isoWeek } from "./scoring.js";
@@ -186,21 +188,8 @@ const POLARITIES = new Set(["positive", "negative", "neutral"]);
 /**
  * What a research signal wants to become (or refresh) as a stored signal: the fields of the rules'
  * `SignalCandidate`.
- *
- * TRANSITIONAL(S15b): replace with the rules engine's `SignalCandidate` / `SignalPolarity` once S15b
- * ports `rules/outcomes.py` and `rules/polarity.py`.
  */
-export interface ResearchSignalCandidate {
-  readonly ruleId: string;
-  readonly kind: string;
-  readonly dedupKey: string;
-  readonly severity: SignalSeverity;
-  readonly message: string;
-  readonly instrumentId: string | null;
-  readonly accountId: null;
-  readonly payload: Readonly<Record<string, unknown>>;
-  readonly polarity: "positive" | "negative" | "neutral";
-}
+export type ResearchSignalCandidate = SignalCandidate;
 
 /** The signal candidate of `key` from its notes (null when no note qualifies). */
 export function candidateFor(
@@ -232,7 +221,7 @@ export function candidateFor(
     dedupKey: key,
     severity,
     message,
-    instrumentId: lead.instrumentId,
+    instrumentId: lead.instrumentId === null ? null : asInstrumentId(lead.instrumentId),
     accountId: null,
     payload: {
       note_id: lead.id,

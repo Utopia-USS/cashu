@@ -156,6 +156,8 @@ of workspace TypeScript to `./x.ts`.
 | `investments.allocation`      | demo, lab | as `investments.valuation`                                                                                                                                          |
 | `investments.performance`     | demo, lab | investments rows, proxy lookup by ISIN / alias (`db.investments`); strategy state, policy, plan, benchmark from the TS strategy loader                              |
 | `investments.strategy_loader` | demo, lab | `profiles/<slug>/strategy.{yaml,md}` of the copy (`db.files()`), the newest `inv_strategy_versions` row: state, digest, load result; the shipped templates          |
+| `investments.rules`           | demo, lab | native strategy/context/engine and all nine pure kinds over the copied portfolio inputs, without Python outcome inputs                                              |
+| `investments.signals`         | demo, lab | typed copied-source signal, run, decision and link rows: native open/history/all serialization, labels, snooze/current flags and payload/message helpers            |
 | `investments.import_plan`     | demo, lab | import batches, the account's mapping, stored instruments / aliases / hashes (`db.investments`); the archived files through `db.dataFile` (copied into the run dir) |
 
 `investments/portfolioState.ts` is the port of `service/portfolio.build`: rows -> domain values as the
@@ -163,9 +165,15 @@ Python store converts them (`investments/rows.ts`, domain ids are the app's `str
 portfolio math breaks ties in Python `str` order of ids; `serialize.ts` maps them to natural keys when
 writing), then `buildSnapshot` -> `valuePortfolio` -> `allocate` from `@cashu/domain`. Floats Python
 writes as floats are wrapped with `pyFloat()` (`output.ts`). Not produced here: `investments.allocation_view`
-(the allocation_drift rule, S15b, and the views, S22a), `investments.positions` / `position_detail` (views,
+(the views, S22a; the pure allocation_drift rule is already ported), `investments.positions` / `position_detail` (views,
 S22a; their lots and realized trades are the same values `investments.valuation` already checks:
 `snapshot.holdings[].lots`, `snapshot.realized`, `valued.realized`).
+
+`investments/signals.ts` genuinely computes the stored signal views from typed copied-source rows;
+it never consumes Python result trees. Dataset parity checks the existing open/history/all views,
+not a lifecycle rerun. Independent synthetic Python differential cases and engine-to-lifecycle-to-store
+tests prove reconciliation and persistence, including canonical merged identities and one command
+batch. This distinction keeps stored-view parity separate from the lifecycle execution proof.
 
 `investments/performance.ts` is the port of `performance/service.load` (rows -> domain values as
 `rows.ts`, `find_proxy` over `instrumentIdByIsin` / `instrumentIdByAlias`, bars and rates from 14 days

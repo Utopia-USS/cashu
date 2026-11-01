@@ -1,4 +1,4 @@
-/** Pure findings and checked scopes; persistence and lifecycle belong to S15b. */
+/** Pure findings and checked scopes consumed by the lifecycle; persistence lives in the store. */
 import type { SignalSeverity } from "../domain/enums.js";
 import type { AccountId, InstrumentId } from "../domain/values.js";
 import type { RuleSpec } from "./config.js";

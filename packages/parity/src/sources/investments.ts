@@ -8,6 +8,7 @@
  * the stored text (`DecimalText`), timestamps the stored naive-UTC text, JSON lists are parsed.
  */
 
+import { isRecord, parsePyJson } from "@cashu/domain";
 import {
   bool,
   boolOrNull,
@@ -21,6 +22,57 @@ import {
 
 type Param = string | number | bigint | null;
 type Query = (sql: string, ...params: Param[]) => Row[];
+
+/** JSON keeps Python integers distinct from floats for canonical stored payload serialization. */
+function payload(row: Row): Readonly<Record<string, unknown>> | null {
+  const raw = textOrNull(row, "payload");
+  if (raw === null) return null;
+  const value = parsePyJson(raw, (literal, integer) =>
+    integer ? BigInt(literal) : Number(literal),
+  );
+  if (value === null) return null;
+  if (!isRecord(value)) throw new Error("signal payload is not a JSON object");
+  return value;
+}
+
+export interface InvSignalRow {
+  readonly id: number;
+  readonly ruleId: string;
+  readonly kind: string;
+  readonly dedupKey: string;
+  readonly severity: string;
+  readonly polarity: string;
+  readonly status: string;
+  readonly message: string;
+  readonly instrumentId: number | null;
+  readonly accountId: number | null;
+  readonly payload: Readonly<Record<string, unknown>> | null;
+  readonly firstSeenAt: string;
+  readonly lastSeenAt: string;
+  readonly acknowledgedAt: string | null;
+  readonly closedAt: string | null;
+  readonly snoozedUntil: string | null;
+  readonly lastRunId: number | null;
+}
+
+export interface InvSignalRuleRunRow {
+  readonly id: number;
+  readonly status: string;
+  readonly startedAt: string;
+}
+
+export interface InvSignalDecisionRow {
+  readonly id: number;
+  readonly signalId: number | null;
+  readonly instrumentId: number | null;
+  readonly accountId: number | null;
+  readonly action: string;
+  readonly quantity: string | null;
+  readonly price: string | null;
+  readonly currency: string | null;
+  readonly reason: string | null;
+  readonly createdAt: string;
+}
 
 /** Account type id owned by the investments module (`store/transactions.py:BROKERAGE`). */
 const BROKERAGE = "brokerage";
@@ -160,6 +212,76 @@ export class InvestmentsReader {
   constructor(query: Query, accounts: (profileId: number) => readonly ProfileAccount[]) {
     this.query = query;
     this.accounts = accounts;
+  }
+
+  /** Stored signals in source-id descending order, never lifecycle evaluation results. */
+  signals(profileId: number): InvSignalRow[] {
+    return this.query(
+      `SELECT id, rule_id, kind, dedup_key, severity, polarity, status, message,
+      instrument_id, account_id, payload, first_seen_at, last_seen_at, acknowledged_at,
+      closed_at, snoozed_until, last_run_id FROM inv_signals WHERE profile_id = ? ORDER BY id DESC`,
+      profileId,
+    ).map((r) => ({
+      id: int(r, "id"),
+      ruleId: text(r, "rule_id"),
+      kind: text(r, "kind"),
+      dedupKey: text(r, "dedup_key"),
+      severity: text(r, "severity"),
+      polarity: text(r, "polarity"),
+      status: text(r, "status"),
+      message: text(r, "message"),
+      instrumentId: intOrNull(r, "instrument_id"),
+      accountId: intOrNull(r, "account_id"),
+      payload: payload(r),
+      firstSeenAt: text(r, "first_seen_at"),
+      lastSeenAt: text(r, "last_seen_at"),
+      acknowledgedAt: textOrNull(r, "acknowledged_at"),
+      closedAt: textOrNull(r, "closed_at"),
+      snoozedUntil: textOrNull(r, "snoozed_until"),
+      lastRunId: intOrNull(r, "last_run_id"),
+    }));
+  }
+
+  /** Newest first; failed runs remain visible so the consumer must select an ok/partial run. */
+  signalRuleRuns(profileId: number): InvSignalRuleRunRow[] {
+    return this.query(
+      "SELECT id, status, started_at FROM inv_rule_runs WHERE profile_id = ? ORDER BY started_at DESC, id DESC",
+      profileId,
+    ).map((r) => ({
+      id: int(r, "id"),
+      status: text(r, "status"),
+      startedAt: text(r, "started_at"),
+    }));
+  }
+
+  signalDecisions(profileId: number): InvSignalDecisionRow[] {
+    return this.query(
+      `SELECT id, signal_id, instrument_id, account_id, action, quantity, price,
+      currency, reason, created_at FROM inv_decisions WHERE profile_id = ? ORDER BY created_at DESC, id DESC`,
+      profileId,
+    ).map((r) => ({
+      id: int(r, "id"),
+      signalId: intOrNull(r, "signal_id"),
+      instrumentId: intOrNull(r, "instrument_id"),
+      accountId: intOrNull(r, "account_id"),
+      action: text(r, "action"),
+      quantity: textOrNull(r, "quantity"),
+      price: textOrNull(r, "price"),
+      currency: textOrNull(r, "currency"),
+      reason: textOrNull(r, "reason"),
+      createdAt: text(r, "created_at"),
+    }));
+  }
+
+  /** Scope links through their owning decision, as the Python journal does. */
+  decisionSignalLinks(
+    profileId: number,
+  ): { readonly decisionId: number; readonly signalId: number }[] {
+    return this.query(
+      `SELECT l.decision_id, l.signal_id FROM inv_decision_signals l
+      JOIN inv_decisions d ON d.id = l.decision_id WHERE d.profile_id = ? ORDER BY l.decision_id, l.signal_id`,
+      profileId,
+    ).map((r) => ({ decisionId: int(r, "decision_id"), signalId: int(r, "signal_id") }));
   }
 
   /** The profile's brokerage accounts, oldest first (removed ones included). */

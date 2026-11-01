@@ -181,6 +181,9 @@ export const applySignalActions = defineCommand({
   },
 });
 
+/** Validated persistence DTO, shared with the pure lifecycle adapter. */
+export type SignalActionsInput = z.output<typeof applySignalActions.input>;
+
 /** Python `snooze`, on the signal's episode. Shared by the commands that snooze in their own batch. */
 export function snoozeSignal(ctx: CommandContext, signal: SignalView, until: string | null): void {
   ctx.emit("signal.snoozed", signal.gid, { until });

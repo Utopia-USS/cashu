@@ -1,8 +1,8 @@
 // The model recommendation write (Python `api.py` `PUT instruments/{id}/plan` and the MCP
 // `set_recommendation` path): the instrument must be one the vault references, `held` comes from the
 // vault's transactions on the caller's day, then `setInstrumentPlan` (S22d) validates and writes.
-// The plan checks Python re-runs right after (`plans.sync_instrument`, signal lifecycle) wait for the
-// rules engine (S15b): the next daily check catches up until then.
+// Plan-check evaluators and immediate recomputation after a write (`plans.sync_instrument`) remain
+// S16 / S22c. The generic signal reconciler does not evaluate those checks or schedule a daily pass.
 import {
   type CommandEnv,
   type CommandOutcome,

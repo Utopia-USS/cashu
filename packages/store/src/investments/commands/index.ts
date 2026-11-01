@@ -10,6 +10,8 @@ export * from "./manual.js";
 export * from "./merge.js";
 export * from "./planned.js";
 export * from "./reviews.js";
+export * from "./ruleSignals.js";
+export * from "./signalReconciliation.js";
 export * from "./signals.js";
 export * from "./strategy.js";
 export * from "./watchlist.js";

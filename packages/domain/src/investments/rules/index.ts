@@ -1,8 +1,6 @@
 /**
- * Investments rules (`rules/__init__.py`), the parsing side the strategy loader needs: the catalog of
- * rule kinds with their params, the param reader, the policies and polarity, and the compile front-end
- * and evaluation of custom expressions, all built-in evaluators and the pure engine. Signal
- * persistence and lifecycle are separate from these pure computations.
+ * Investments rules (`rules/__init__.py`): parsed catalog, policies, polarity, expression compiler
+ * and evaluator, built-in evaluators, engine and pure signal lifecycle. Persistence lives in store.
  */
 
 export { BUILT_IN_KINDS, RuleCatalog } from "./catalog.js";
@@ -30,6 +28,7 @@ export {
   readRebalancePolicy,
   rebalanceToRaw,
 } from "./kinds/allocationDrift.js";
+export { driftBucketGeneric, withBucketGeneric } from "./kinds/allocationDriftRead.js";
 export { CashLevelParams, cashLevelRule } from "./kinds/cashLevel.js";
 export {
   CONTRIBUTION_GAP,
@@ -67,6 +66,21 @@ export {
   lossFromCostRule,
   UnrealizedThresholdParams,
 } from "./kinds/unrealizedFromCost.js";
+export {
+  type ClosedSignal,
+  type CreateSignal,
+  type EscalateSignal,
+  type ExpireSignal,
+  type OpenSignal,
+  type ReconcileSignalsInput,
+  type RefreshSignal,
+  type ResolveSignal,
+  reconcileSignals,
+  type SignalAction,
+  SignalReconciliation,
+  type SuppressCandidate,
+  UNVERIFIED,
+} from "./lifecycle.js";
 export {
   Fired,
   NotFired,

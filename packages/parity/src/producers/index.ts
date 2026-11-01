@@ -19,6 +19,7 @@ import { produceImportPlan } from "./investments/importPlan.ts";
 import { producePerformance } from "./investments/performance.ts";
 import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
 import { produceRules } from "./investments/rules.ts";
+import { produceSignals } from "./investments/signals.ts";
 import { strategyInputs } from "./investments/strategy.ts";
 import { produceStrategyLoader } from "./investments/strategyLoader.ts";
 import { produceLoansValuation } from "./loans/valuation.ts";
@@ -164,6 +165,12 @@ export const PRODUCERS: readonly Producer[] = [
     datasets: ["demo", "lab"],
     inputs: [],
     produce: produceStrategyLoader,
+  },
+  {
+    check: "investments.signals",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceSignals,
   },
   {
     check: "investments.import_plan",

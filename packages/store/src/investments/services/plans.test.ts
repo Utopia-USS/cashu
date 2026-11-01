@@ -2,7 +2,7 @@
 // unknown value, an instrument outside the vault and a held-only plan on an instrument not held, the
 // stored value kept when it goes stale, per-vault plans. Translates the store-level parts of
 // tests/investments/persistence/test_p1_plan.py (views of the plan: S22a; the plan checks of the daily
-// run and right after a write: S15b / S22c; MCP: S38). Synthetic data only.
+// run and right after a write: S16 / S22c; MCP: S38). Synthetic data only.
 import { sha256Hex } from "@cashu/domain";
 import { describe, expect, it } from "vitest";
 import { storeWriter } from "../../command.js";
