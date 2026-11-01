@@ -20,8 +20,14 @@ profile. A change that breaks a budget needs a measurement and the lead's OK, no
 | Tap / click to visual response | <= 100 ms |
 | Scrolling the 60k list | no dropped frames > 1% in a 10 s fling at 60 Hz (120 Hz on ProMotion) |
 | Mobile memory, steady state with 60k transactions | <= 250 MB |
-| Bundles | mobile JS (Hermes bytecode) <= 4 MB; desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
+| Bundles | mobile JS (Hermes bytecode) <= 6.9 MB ceiling, target 6.0 MB (see note); desktop renderer initial chunk <= 1.5 MB minified, routes lazy |
 | Render regressions on key screens (Reassure) | <= 10% more renders or render time than the baseline |
+
+Mobile bundle note (lead, 2026-11-01, from S41b measurements): the first 4 MB budget was a guess. React Native +
+expo-router + Reanimated alone are about 4.4 MB of Hermes bytecode, so the target is 6.0 MB = framework baseline plus
+at most 1.6 MB of our own code and libraries. The ceiling is a RATCHET: it starts at the measured 6.9 MB and may only be
+lowered (each reduction lowers it in the same commit); raising it needs the lead. The user-facing gate stays cold start
+(p50 <= 1.5 s), which the app already meets on the iOS simulator (about 1.17 s).
 
 ## Rules that keep the budgets
 
