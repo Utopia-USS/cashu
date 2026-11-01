@@ -145,3 +145,19 @@ export function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
   }
   return out;
 }
+
+/** Engine frame defaults (`SyncEngineOptions.maxFrameEvents` / `maxFrameBytes`). */
+export const DEFAULT_MAX_FRAME_EVENTS = 1000;
+export const DEFAULT_MAX_FRAME_BYTES = 1024 * 1024;
+/** What stamping adds to an event's JSON: `,"h":"<47-character HLC>"`. */
+const STAMP_JSON_BYTES = 54;
+
+/** The size measure the engine splits frames by, for events not stamped yet. */
+export function frameLoad(events: readonly Readonly<Record<string, unknown>>[]): {
+  readonly events: number;
+  readonly bytes: number;
+} {
+  let bytes = 0;
+  for (const e of events) bytes += JSON.stringify(e).length + ("h" in e ? 0 : STAMP_JSON_BYTES);
+  return { events: events.length, bytes };
+}

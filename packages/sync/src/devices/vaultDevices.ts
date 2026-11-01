@@ -70,6 +70,8 @@ export interface VaultDevicesOptions {
   /** Shared with the pairing joiner (JoinerOptions) so the welcome's registry is verified once. */
   readonly verify?: StatementVerifier;
   readonly certificateCache?: CertificateCache;
+  /** The engine's frame caps when they are not the defaults (a prepared batch fits one frame). */
+  readonly frameLimits?: { readonly events: number; readonly bytes: number };
 }
 
 export interface IngestReport {
@@ -250,6 +252,7 @@ export class VaultDevices {
     return {
       ...ctx,
       ...(this.#o.rateLimit ? { rateLimit: this.#o.rateLimit } : {}),
+      ...(this.#o.frameLimits ? { frameLimits: this.#o.frameLimits } : {}),
       ...(this.#recovering ? { recoveryEpochCap: this.#recovering.highestRecoveryEpoch + 1 } : {}),
       ...(this.#history.previous.length > 0
         ? { previousRecoveryKeys: this.#history.previous.map((p) => p.keys) }

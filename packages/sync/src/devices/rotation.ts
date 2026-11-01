@@ -33,6 +33,7 @@ import {
   type UnwrapOptions,
   wrapKeys,
 } from "../crypto/index.js";
+import { DEFAULT_MAX_FRAME_BYTES, DEFAULT_MAX_FRAME_EVENTS, frameLoad } from "../segment.js";
 import { unwrapFromTrusted } from "./acceptance.js";
 import {
   buildDeviceAdded,
@@ -69,6 +70,11 @@ export interface KeyContext {
   readonly recoveryEpochCap?: number;
   /** Recovery keys this ring pinned before its current ones (n1): wraps still pinning one merge. */
   readonly previousRecoveryKeys?: readonly RecoveryPublicKeys[];
+  /**
+   * The engine's frame caps (default the engine defaults): a prepared batch must fit ONE frame, so
+   * the engine never splits it into a frame group whose tail could be missing (`incomplete_batch`).
+   */
+  readonly frameLimits?: { readonly events: number; readonly bytes: number };
 }
 
 export type EpochRefusal = "epoch_above_revocations" | "rate_limited";
@@ -286,6 +292,16 @@ export type PrepareResult =
   | { readonly ok: true; readonly change: PreparedChange }
   | { readonly ok: false; readonly reason: "not_trusted" | "no_effect" }
   /**
+   * The batch would not fit one frame (`KeyContext.frameLimits`): nothing is written (a revocation
+   * split over a frame group could sit in `incomplete_batch`). Fewer targets or re-certifications.
+   */
+  | {
+      readonly ok: false;
+      readonly reason: "batch_too_large";
+      readonly events: number;
+      readonly bytes: number;
+    }
+  /**
    * H2: revoking another device needs the recovery words, or that device's consent (it is in the
    * owner's hands: `consentToRevocation` on it). `unconsented` lists the targets lacking both.
    */
@@ -361,13 +377,23 @@ function rotateOnClone(
   }
 }
 
+/** The change, or `batch_too_large` (the change discarded) when its events do not fit one frame. */
+function oneFrame(ctx: KeyContext, change: PreparedChange): PrepareResult {
+  const load = frameLoad(change.events);
+  const limits = ctx.frameLimits ?? {
+    events: DEFAULT_MAX_FRAME_EVENTS,
+    bytes: DEFAULT_MAX_FRAME_BYTES,
+  };
+  if (load.events <= limits.events && load.bytes <= limits.bytes) return { ok: true, change };
+  change.discard();
+  return { ok: false, reason: "batch_too_large", events: load.events, bytes: load.bytes };
+}
+
 /** A plain rotation (the S29 rule, or recovery): wraps the new key for every trusted device. */
 export function prepareRotation(ctx: KeyContext, eid: string): PrepareResult {
   if (!ctx.registry.isTrusted(ctx.identity.deviceId)) return { ok: false, reason: "not_trusted" };
-  return {
-    ok: true,
-    change: rotateOnClone(ctx, ctx.registry.trusted, ctx.registry.revocationCount, eid, []),
-  };
+  const change = rotateOnClone(ctx, ctx.registry.trusted, ctx.registry.revocationCount, eid, []);
+  return oneFrame(ctx, change);
 }
 
 /**
@@ -504,17 +530,10 @@ export function prepareRevocation(
       },
       discard: () => undefined,
     };
-    return { ok: true, change };
+    return oneFrame(ctx, change);
   }
-  return {
-    ok: true,
-    change: rotateOnClone(
-      ctx,
-      after,
-      preview.revocationCount,
-      eids.rotate,
-      [revoked, ...adds],
-      affected,
-    ),
-  };
+  return oneFrame(
+    ctx,
+    rotateOnClone(ctx, after, preview.revocationCount, eids.rotate, [revoked, ...adds], affected),
+  );
 }

@@ -66,6 +66,8 @@ import {
 import { queueTask } from "./runtime.js";
 import {
   concatBytes,
+  DEFAULT_MAX_FRAME_BYTES,
+  DEFAULT_MAX_FRAME_EVENTS,
   decodePayload,
   encodePayload,
   frameBytes,
@@ -271,8 +273,8 @@ class OwnLogEngine implements SyncEngine {
       ...(o.maxDriftMs === undefined ? {} : { maxDriftMs: o.maxDriftMs }),
       ...(restored ? { restore: restored } : {}),
     });
-    this.#maxFrameEvents = Math.max(1, o.maxFrameEvents ?? 1000);
-    this.#maxFrameBytes = Math.max(1, o.maxFrameBytes ?? 1024 * 1024);
+    this.#maxFrameEvents = Math.max(1, o.maxFrameEvents ?? DEFAULT_MAX_FRAME_EVENTS);
+    this.#maxFrameBytes = Math.max(1, o.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES);
     this.#maxSegmentBytes = Math.max(1, o.maxSegmentBytes ?? 4 * 1024 * 1024);
     this.#maxBatchEvents = Math.max(1, o.maxBatchEvents ?? DEFAULT_MAX_BATCH_EVENTS);
     this.#maxBatchBytes = Math.max(1, o.maxBatchBytes ?? DEFAULT_MAX_BATCH_BYTES);
