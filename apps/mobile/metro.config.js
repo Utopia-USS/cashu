@@ -2,8 +2,11 @@
 // compiles the one token source, packages/ui's Tailwind v4 theme (S50), into React Native styles.
 const { getDefaultConfig } = require("expo/metro-config");
 const { withUniwindConfig } = require("uniwind/metro");
+const { basename, dirname, join } = require("node:path");
 
 const config = getDefaultConfig(__dirname);
+const zodLocalesDirectory = dirname(require.resolve("zod/v4/locales"));
+const mobileZodLocales = join(__dirname, "src/platform/zodLocales.ts");
 
 // The workspace packages are TypeScript sources written for `moduleResolution: NodeNext`, so their
 // relative imports name the emitted file (`./catalog.js` for catalog.ts). TypeScript and Node resolve
@@ -21,7 +24,18 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       // not a TypeScript source: fall through to the import as written
     }
   }
-  return context.resolveRequest(context, moduleName, platform);
+  const resolved = context.resolveRequest(context, moduleName, platform);
+  // Zod's core and classic barrels export every locale. Metro keeps the namespace, even though
+  // validation errors use only the default English map. Keep that exact map via its public subpath.
+  // https://zod.dev/error-customization#internationalization
+  if (
+    resolved.type === "sourceFile" &&
+    dirname(resolved.filePath) === zodLocalesDirectory &&
+    /^index\.(?:c?js|ts)$/.test(basename(resolved.filePath))
+  ) {
+    return { type: "sourceFile", filePath: mobileZodLocales };
+  }
+  return resolved;
 };
 
 module.exports = withUniwindConfig(config, {

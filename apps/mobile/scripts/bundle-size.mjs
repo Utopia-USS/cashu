@@ -1,5 +1,5 @@
 // The mobile JS bundle budget (cashu-ts-architecture references/performance.md, "Bundles": Hermes
-// bytecode <= 4 MB). Exports the production bundle per platform with `expo export` (the same Metro
+// bytecode within the measured ratchet ceiling). Exports the production bundle per platform with `expo export` (the same Metro
 // build a Release app embeds), reads the .hbc size and exits 1 above the budget. The budget number is
 // read from performance.md itself, so the doc stays the one source; changing it needs the lead.
 //   usage: node scripts/bundle-size.mjs [--platform ios|android] [--report]
@@ -101,11 +101,17 @@ function report(platform) {
     );
     const code = readFileSync(js, "utf8");
     const byOwner = new Map();
-    for (const [source, bytes] of bytesPerSource(code, JSON.parse(readFileSync(`${js}.map`)))) {
+    const sources = bytesPerSource(code, JSON.parse(readFileSync(`${js}.map`)));
+    for (const [source, bytes] of sources) {
       const key = owner(source);
       byOwner.set(key, (byOwner.get(key) ?? 0) + bytes);
     }
     console.log(`  plain JS ${code.length} B; largest owners (kB of minified JS):`);
+    const locales = sources
+      .map(([source]) => source.match(/zod\/v4\/locales\/([^/]+)$/)?.[1])
+      .filter(Boolean)
+      .sort();
+    console.log(`  Zod locale modules: ${locales.join(", ") || "none"}`);
     for (const [key, bytes] of [...byOwner].sort((a, b) => b[1] - a[1]).slice(0, 30))
       console.log(`  ${String(Math.round(bytes / 1024)).padStart(6)}  ${key}`);
   } finally {
