@@ -65,9 +65,9 @@ export function accountByIbanKey(read: Read, key: string): AccountView | undefin
 }
 
 /**
- * Python `own_ibans` over the view: the identity IBAN keys of every account of the vault (removed
- * ones included). Transfer matching reads these, never the raw `iban` column, so a number failing
- * the checksum never makes a transaction internal (rule 5, events.md 6.4 N5).
+ * The identity IBAN keys of every account of the vault (removed ones included; checksum-valid only,
+ * N2). Not the match set of transfers and categories: those use Python's `own_ibans` over the raw
+ * `iban` column (lead decision D-08.1, events.md 6.4; `budgetEngineContext`).
  */
 export function ownIbanKeys(read: Read): Set<string> {
   return new Set(

@@ -346,9 +346,11 @@ one row, in `(hlc, eid)` order, with the table's normal rule:
   `account.renamed` of any member, else the **root's own** opened name (N4), so an older CSV account
   folding into an Open Banking account does not rename it. Internal transfers match by counterparty
   IBAN only (rule 5), against every `iban:` key of the resolved account (at most one per component by
-  N2, so the CSV NRB and the Open Banking IBAN of one account both match it; N5): the own-IBAN set is
-  the vault's `iban_key` values (`ownIbanKeys`), never the raw `iban` column, so a number failing the
-  checksum never makes a transaction internal.
+  N2, so the CSV NRB and the Open Banking IBAN of one account both match it; N5). The own-IBAN set
+  that transfers and categories match is Python's `own_ibans` (lead decision D-08.1): `iban_key` of
+  the raw `iban` column of every account, removed ones included, checksum or not. Matching never
+  fuses accounts, so N2's safety argument does not apply; the signal stays the counterparty IBAN
+  only (rule 5). `iban_key` (valid only) is identity, never the match set.
 
 ### 6.5 Cross-entity effects
 
@@ -540,8 +542,12 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   `budget/cash.py:delete_cash_transaction`).
 - `txn.deleted` `{}`: TOMB, only for cash expenses. Deleting a mirror leg emits `txn.categoryCleared`
   on the source bank transaction.
-- Effective category (DERIVED, S08/S09): `manual_txn` claim > structural transfer / locked merchant
-  rule / loan pattern (`engine.owner_decision`) > `llm_full` claim > engine.
+- Effective category (DERIVED, S09 / S24c): a row on a cash account shows its claim, else none
+  (D-09.4); otherwise `manual_txn` claim > structural transfer / locked merchant rule / loan pattern
+  (`engine.owner_decision`) > `llm_full` / `llm_fallback` claim > engine. The view is a full
+  deterministic recompute over the current set (S24 D-24.1, Python `categorize_all(use_llm=False)`
+  after a fresh transfer match); the subscription payees come from the recurring grouping over the
+  non-internal rows with the claims as decided categories, never the derived column.
 - `categoryRule.set` `{merchantKey, category, source: manual|llm, locked}`; GUARD: `llm` is a no-op
   while the folded rule is locked.
 - `importBatch.recorded` `{source, bank|null, account@|null, filename|null, startedAt,
@@ -800,7 +806,7 @@ Lease state never enters the view fold (6.2 LEADER), so the reference fold does 
 | Column | Recomputed from |
 |---|---|
 | `transactions.is_internal_transfer`, `transfer_group_id` | the resolved account set, counterparty IBAN only (rule 5) |
-| `transactions.category`, `category_source` | claims + rules + engine (8.3), rule categories on every device (D8) |
+| `transactions.category`, `category_source` | claims + rules + payment patterns + recurring payees + engine (8.3), full recompute (S24 D-24.1), rule categories on every device (D8) |
 | cash mirror legs (`cashleg:<@txn>`, `raw.cash_leg_of`) | the folded `manual_txn` claim `cash_withdrawal` of a row not on a cash account, while the cash pool account `cash:<CUR>` is open (S24 D-24.3; a locked merchant rule to `cash_withdrawal` makes no leg) |
 | account key parking (`<key>~<@account>`) | per (bank, external id) group: live accounts hold the key (several live all show it, m12), else the latest opened (fold order of its first open); every other member is parked (S24 D-24.7) |
 | `alerts.status` (effective) | 8.7 |
