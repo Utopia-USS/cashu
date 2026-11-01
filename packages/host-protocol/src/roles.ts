@@ -4,7 +4,7 @@ import type { ClientFrame, Role } from "./messages.js";
 
 const NAMESPACE: Readonly<Record<Role, string | undefined>> = {
   ui: undefined,
-  mcp: undefined,
+  mcp: "mcp.",
   cli: "cli.",
   admin: "admin.",
 };

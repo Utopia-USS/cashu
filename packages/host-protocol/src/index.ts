@@ -1,7 +1,8 @@
 // @cashu/host-protocol: the protocol between the local host process (one per data dir) and its
 // clients (Electron main, the `cashu` shim for CLI and MCP, tests). Platform free: frames are bytes,
 // nonces come in as parameters; the socket, files and randomness live in @cashu/node-host.
-// The store channel v2 (JSON value codec, idempotency keys) is the `./store` subpath.
+// The store channel v2 (JSON value codec, idempotency keys) is the `./store` subpath; the shim's
+// `cli.*` methods and `mcp` session notes are cli.ts and mcp.ts.
 export {
   type AdminStatus,
   adminHandoverParamsSchema,
@@ -11,6 +12,24 @@ export {
   adminStopParamsSchema,
   adminStopResultSchema,
 } from "./admin.js";
+export {
+  CLI_ENV_KEYS,
+  CLI_INTERRUPTED_EXIT,
+  CLI_STDIN_CHUNK,
+  type CliAnswerParams,
+  type CliExecParams,
+  type CliExecResult,
+  type CliOutNote,
+  type CliPromptNote,
+  type CliStdinParams,
+  cliAnswerParamsSchema,
+  cliExecParamsSchema,
+  cliExecResultSchema,
+  cliOutNoteSchema,
+  cliPromptNoteSchema,
+  cliStdinNoteSchema,
+  cliStdinParamsSchema,
+} from "./cli.js";
 export { DISCOVERY_FORMAT, discoverySchema, type HostDiscovery } from "./discovery.js";
 export {
   encodeFrame,
@@ -44,6 +63,14 @@ export {
   refusal,
   type SessionBinding,
 } from "./handshake.js";
+export {
+  type McpExitNote,
+  type McpOpenParams,
+  type McpStderrNote,
+  mcpExitNoteSchema,
+  mcpOpenParamsSchema,
+  mcpStderrNoteSchema,
+} from "./mcp.js";
 export {
   type Auth,
   type CallError,

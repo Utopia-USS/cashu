@@ -21,7 +21,7 @@ export const ROLES = ["ui", "mcp", "cli", "admin"] as const;
 export const roleSchema = z.enum(ROLES);
 /**
  * - `ui`: the store channel only (registered query / command ids, named vaults);
- * - `mcp`: MCP lines for exactly one profile, fixed at hello;
+ * - `mcp`: MCP lines for exactly one profile, fixed at hello, and `mcp.*` requests (`mcp.open`);
  * - `cli`: `cli.*` requests only;
  * - `admin`: `admin.*` requests (status, stop).
  * Least privilege for our own clients, not a boundary against same-user code.

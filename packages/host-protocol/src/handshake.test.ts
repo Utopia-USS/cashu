@@ -144,6 +144,7 @@ describe("roles", () => {
   const frames: Record<string, ClientFrame> = {
     store: { t: "store", m: { t: "unsub", sid: 1 } },
     mcp: { t: "mcp", line: "{}" },
+    mcpOpen: { t: "req", id: 1, method: "mcp.open", params: {} },
     cliExec: { t: "req", id: 1, method: "cli.exec", params: {} },
     adminStatus: { t: "req", id: 1, method: "admin.status", params: {} },
     cancel: { t: "cancel", id: 1 },
@@ -155,7 +156,7 @@ describe("roles", () => {
 
   it("binds each role to its frames", () => {
     expect(allowed("ui")).toEqual(["store"]);
-    expect(allowed("mcp")).toEqual(["mcp"]);
+    expect(allowed("mcp")).toEqual(["mcp", "mcpOpen", "cancel"]);
     expect(allowed("cli")).toEqual(["cliExec", "cancel"]);
     expect(allowed("admin")).toEqual(["adminStatus", "cancel"]);
   });
