@@ -539,6 +539,32 @@ async function main(argv: readonly string[]): Promise<number> {
       ),
     });
     daemon(c, ["run", "--once"], "phaseC");
+    // The scenarios the first milestone avoided (review F2): an overlapping broker re-import, then a
+    // merge of an instrument the vault already holds; each shipped by `run --once`.
+    for (const phase of ["R", "M"] as const) {
+      const writes = lastJson(
+        python(
+          c,
+          [
+            join(REPO, "parity", "python", "bridge_writes.py"),
+            "--dataset",
+            dataset,
+            "--phase",
+            phase,
+          ],
+          true,
+          `phase ${phase}`,
+        ),
+      );
+      daemon(c, ["run", "--once"], `phase${phase}`);
+      say({
+        step: `phase${phase}`,
+        txns: writes.txns,
+        skipped: writes.skipped,
+        pending: pending(c),
+        ...shipTotals(c.daemonLines, `phase${phase}`),
+      });
+    }
     await stale.close();
     await current.close();
 
