@@ -162,6 +162,7 @@ export interface TransactionRow {
   readonly counterpartyIban: string | null;
   readonly description: string | null;
   readonly reference: string | null;
+  readonly bankTransactionId: string | null;
   readonly source: string;
   readonly dedupHash: string;
   readonly occurrence: number;
@@ -388,7 +389,7 @@ export class PythonDb implements SqlRows {
   transactions(profileId: number): TransactionRow[] {
     return this.objects(
       `SELECT id, account_id, booking_date, value_date, amount, currency, counterparty_name,
-              counterparty_iban, description, reference, source, dedup_hash, occurrence,
+              counterparty_iban, description, reference, bank_transaction_id, source, dedup_hash, occurrence,
               transfer_group_id, is_internal_transfer, category, category_source
        FROM transactions WHERE account_id IN (${PROFILE_ACCOUNTS}) ORDER BY account_id, id`,
       profileId,
@@ -403,6 +404,7 @@ export class PythonDb implements SqlRows {
       counterpartyIban: textOrNull(r, "counterparty_iban"),
       description: textOrNull(r, "description"),
       reference: textOrNull(r, "reference"),
+      bankTransactionId: textOrNull(r, "bank_transaction_id"),
       source: source(r, "source"),
       dedupHash: text(r, "dedup_hash"),
       occurrence: int(r, "occurrence"),

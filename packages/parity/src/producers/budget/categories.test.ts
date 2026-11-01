@@ -18,19 +18,19 @@ INSERT INTO accounts VALUES
   (3, 'pekao', 'Konto Test', '10000000000000000000000003', 'csv:3', 'PLN', 'savings', 1, NULL, 1, NULL),
   (4, 'manual', 'Kredyt Test', NULL, 'manual:k', 'PLN', 'loan', 1, NULL, 1, NULL),
   (5, 'mbank', 'Konto Test', '10000000000000000000000005', 'csv:5', 'PLN', 'checking', 1, NULL, 2, NULL);
-INSERT INTO loans VALUES (1, 4, '99 1600 0000 0000 0000 0000 0999', NULL);
+INSERT INTO loans (id, account_id, payment_iban, payment_text) VALUES (1, 4, '99 1600 0000 0000 0000 0000 0999', NULL);
 INSERT INTO category_rules VALUES (1, 'SKLEP LOCKED TEST', 'gifts', 'manual', 1, NULL, 1);
 INSERT INTO transactions VALUES
-  (1, 1, '2026-05-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h1', 0, NULL, 0, NULL, NULL),
-  (2, 1, '2026-06-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h2', 0, NULL, 0, NULL, NULL),
-  (3, 1, '2026-07-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h3', 0, NULL, 0, NULL, NULL),
-  (4, 1, '2026-07-10', NULL, '-1081.94', 'PLN', 'FINANSE TEST', '99160000000000000000000999', 'P', 'P', 'CSV', 'h4', 0, NULL, 0, 'other', 'default'),
-  (5, 1, '2026-07-11', NULL, '-100.00', 'PLN', NULL, '10000000000000000000000003', 'P', 'P', 'CSV', 'h5', 0, NULL, 0, NULL, NULL),
-  (6, 3, '2026-07-11', NULL, '100.00', 'PLN', NULL, NULL, 'P', 'P', 'CSV', 'h6', 0, NULL, 0, NULL, NULL),
-  (7, 1, '2026-07-12', NULL, '-9.00', 'PLN', 'SKLEP LOCKED TEST', NULL, NULL, NULL, 'CSV', 'h7', 0, NULL, 0, 'travel', 'llm_full'),
-  (8, 1, '2026-07-13', NULL, '-9.00', 'PLN', 'ZABKA', NULL, NULL, NULL, 'CSV', 'h8', 0, NULL, 0, 'dining', 'manual_txn'),
-  (9, 2, '2026-07-14', NULL, '-5.00', 'PLN', NULL, NULL, 'KAWA', NULL, 'MANUAL', 'h9', 0, NULL, 0, 'other', 'default'),
-  (10, 5, '2026-07-14', NULL, '-5.00', 'PLN', NULL, NULL, 'NETFLIX.COM', NULL, 'CSV', 'h10', 0, NULL, 0, NULL, NULL);
+  (1, 1, '2026-05-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h1', 0, NULL, 0, NULL, NULL, NULL),
+  (2, 1, '2026-06-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h2', 0, NULL, 0, NULL, NULL, NULL),
+  (3, 1, '2026-07-07', NULL, '-43.00', 'PLN', NULL, NULL, 'NETFLIX.COM', 'NETFLIX.COM', 'CSV', 'h3', 0, NULL, 0, NULL, NULL, NULL),
+  (4, 1, '2026-07-10', NULL, '-1081.94', 'PLN', 'FINANSE TEST', '99160000000000000000000999', 'P', 'P', 'CSV', 'h4', 0, NULL, 0, 'other', 'default', NULL),
+  (5, 1, '2026-07-11', NULL, '-100.00', 'PLN', NULL, '10000000000000000000000003', 'P', 'P', 'CSV', 'h5', 0, NULL, 0, NULL, NULL, NULL),
+  (6, 3, '2026-07-11', NULL, '100.00', 'PLN', NULL, NULL, 'P', 'P', 'CSV', 'h6', 0, NULL, 0, NULL, NULL, NULL),
+  (7, 1, '2026-07-12', NULL, '-9.00', 'PLN', 'SKLEP LOCKED TEST', NULL, NULL, NULL, 'CSV', 'h7', 0, NULL, 0, 'travel', 'llm_full', NULL),
+  (8, 1, '2026-07-13', NULL, '-9.00', 'PLN', 'ZABKA', NULL, NULL, NULL, 'CSV', 'h8', 0, NULL, 0, 'dining', 'manual_txn', NULL),
+  (9, 2, '2026-07-14', NULL, '-5.00', 'PLN', NULL, NULL, 'KAWA', NULL, 'MANUAL', 'h9', 0, NULL, 0, 'other', 'default', NULL),
+  (10, 5, '2026-07-14', NULL, '-5.00', 'PLN', NULL, NULL, 'NETFLIX.COM', NULL, 'CSV', 'h10', 0, NULL, 0, NULL, NULL, NULL);
 `;
 
 describe("budget.categories producer", () => {

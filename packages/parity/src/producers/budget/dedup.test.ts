@@ -19,15 +19,15 @@ INSERT INTO accounts VALUES
   (2, 'mbank', 'Konto Test', NULL, 'csv:2', 'PLN', 'checking', 1, NULL, 2, NULL);
 INSERT INTO transactions VALUES
   (1, 1, '2026-08-03', NULL, '-5.00', 'PLN', 'SKLEP TEST', NULL, 'KARTA TEST', 'r1', 'CSV',
-   '${v1(1, KEY)}', 0, NULL, 0, NULL, NULL),
+   '${v1(1, KEY)}', 0, NULL, 0, NULL, NULL, NULL),
   (2, 1, '2026-08-03', NULL, '-5.00', 'PLN', 'SKLEP TEST', NULL, 'KARTA TEST', 'r1', 'OPEN_BANKING',
-   '${v1(1, KEY)}', 1, NULL, 0, NULL, NULL),
+   '${v1(1, KEY)}', 1, NULL, 0, NULL, NULL, NULL),
   (3, 1, '2026-08-04', NULL, '-1.00', 'PLN', NULL, NULL, 'GOTOWKA', NULL, 'MANUAL', 'cashleg:1', 0,
-   NULL, 0, NULL, NULL),
+   NULL, 0, NULL, NULL, NULL),
   (4, 1, '2026-08-05', NULL, '-2.00', 'PLN', NULL, NULL, 'X', NULL, 'CSV', '${"0".repeat(40)}', 0,
-   NULL, 0, NULL, NULL),
+   NULL, 0, NULL, NULL, NULL),
   (5, 2, '2026-08-03', NULL, '-5.00', 'PLN', 'SKLEP TEST', NULL, 'KARTA TEST', 'r1', 'CSV',
-   '${v1(2, KEY)}', 0, NULL, 0, NULL, NULL);
+   '${v1(2, KEY)}', 0, NULL, 0, NULL, NULL, NULL);
 `;
 
 describe("budget.dedup producer", () => {

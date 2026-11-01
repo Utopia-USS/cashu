@@ -2,13 +2,14 @@
 /**
  * TRANSITIONAL(S14): reader of the strategy bridge (`strategy_bridge.py`), the strategy values the
  * portfolio pipeline takes from a profile until the TS strategy loader lands (S14): base currency,
- * data-quality thresholds, allocation plan, and for performance the strategy state and benchmark.
+ * data-quality thresholds, allocation plan, for performance the strategy state and benchmark, and for
+ * the budget month close the contributions plan.
  * Delete with the bridge script.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { investments as inv } from "@cashu/domain";
+import { D, type Decimal, investments as inv } from "@cashu/domain";
 import { bridgeStrategyRoot, type Dataset } from "../../sources/index.ts";
 
 interface BridgeMatch {
@@ -23,6 +24,10 @@ interface BridgeProfile {
   readonly data: { readonly max_price_age_days: number; readonly max_fx_age_days: number };
   readonly state: StrategyStateName;
   readonly benchmark: { readonly name: string; readonly proxy: string } | null;
+  readonly contributions: {
+    readonly monthly_amount: string;
+    readonly day_of_month: number | null;
+  } | null;
   readonly strategy: {
     readonly base_currency: string;
     readonly buckets: readonly { readonly bucket: string; readonly match: BridgeMatch }[];
@@ -44,6 +49,11 @@ export interface StrategyInputs {
   /** `DataQualityPolicy.max_price_age_days` (the strategy's or the default). */
   readonly maxPriceAgeDays: number;
   readonly maxFxAgeDays: number;
+  /** `config.contributions` (the valid or partial config), null without one. */
+  readonly contributions: {
+    readonly monthlyAmount: Decimal;
+    readonly dayOfMonth: number | null;
+  } | null;
   /** null without a valid strategy (`strategy is None`). */
   readonly strategy: {
     readonly baseCurrency: inv.Currency;
@@ -75,6 +85,13 @@ export function readStrategyBridge(dataset: Dataset, root?: string): StrategyBri
       benchmark: p.benchmark === null ? null : { id: p.benchmark.name, proxy: p.benchmark.proxy },
       maxPriceAgeDays: p.data.max_price_age_days,
       maxFxAgeDays: p.data.max_fx_age_days,
+      contributions:
+        p.contributions === null
+          ? null
+          : {
+              monthlyAmount: D(p.contributions.monthly_amount),
+              dayOfMonth: p.contributions.day_of_month,
+            },
       strategy:
         p.strategy === null
           ? null

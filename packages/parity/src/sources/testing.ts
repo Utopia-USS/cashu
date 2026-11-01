@@ -24,7 +24,7 @@ CREATE TABLE transactions (id INTEGER PRIMARY KEY, account_id INTEGER, booking_d
   value_date DATE, amount VARCHAR, currency VARCHAR, counterparty_name VARCHAR,
   counterparty_iban VARCHAR, description VARCHAR, reference VARCHAR, source VARCHAR(12),
   dedup_hash VARCHAR, occurrence INTEGER, transfer_group_id VARCHAR, is_internal_transfer BOOLEAN,
-  category VARCHAR, category_source VARCHAR);
+  category VARCHAR, category_source VARCHAR, bank_transaction_id VARCHAR);
 CREATE TABLE category_rules (id INTEGER PRIMARY KEY, merchant_key VARCHAR, category VARCHAR,
   source VARCHAR, locked BOOLEAN, created_at DATETIME, profile_id INTEGER);
 CREATE TABLE loans (id INTEGER PRIMARY KEY, account_id INTEGER, payment_iban VARCHAR,
@@ -125,13 +125,13 @@ INSERT INTO balances VALUES
   (5, 5, '2026-09-01', '700.00', 'EUR', 'CSV', NULL);
 INSERT INTO transactions VALUES
   (1, 2, '2026-08-02', NULL, '200.00', 'PLN', NULL, NULL, 'WYPLATA TEST', NULL, 'MANUAL', 'h1', 1,
-   NULL, 0, 'cash', 'manual'),
+   NULL, 0, 'cash', 'manual', NULL),
   (2, 2, '2026-08-01', NULL, '-20.50', 'PLN', NULL, NULL, 'SKLEP TEST', NULL, 'MANUAL', 'h2', 1,
-   NULL, 0, 'groceries', 'manual'),
+   NULL, 0, 'groceries', 'manual', NULL),
   (3, 1, '2026-08-03', '2026-08-03', '-5.00', 'PLN', 'SKLEP TEST', NULL, 'KARTA TEST', 'r1', 'CSV',
-   'h3', 1, NULL, 0, 'other', 'default'),
+   'h3', 1, NULL, 0, 'other', 'default', 'NR TEST 1'),
   (4, 5, '2026-08-03', NULL, '-1.00', 'EUR', NULL, NULL, 'KAWA TEST', NULL, 'CSV', 'h4', 1, NULL, 1,
-   NULL, NULL);
+   NULL, NULL, NULL);
 `;
 
 /**

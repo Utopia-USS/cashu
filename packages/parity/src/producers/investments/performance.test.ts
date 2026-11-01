@@ -20,6 +20,7 @@ const NO_STRATEGY: StrategyInputs = {
   benchmark: null,
   maxPriceAgeDays: 5,
   maxFxAgeDays: 10,
+  contributions: null,
   strategy: null,
 };
 

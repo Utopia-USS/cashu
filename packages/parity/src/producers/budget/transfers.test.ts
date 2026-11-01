@@ -20,12 +20,12 @@ INSERT INTO accounts VALUES
   (4, 'mbank', 'Konto Test', '10000000000000000000000004', 'csv:4', 'PLN', 'checking', 1, NULL, 2, NULL);
 INSERT INTO transactions VALUES
   (2, 3, '2026-08-03', NULL, '100.00', 'PLN', NULL, '10000000000000000000000001', 'P', NULL, 'CSV',
-   'h2', 0, NULL, 0, NULL, NULL),
-  (4, 2, '2026-08-03', NULL, '100.00', 'PLN', NULL, NULL, 'P', NULL, 'CSV', 'h4', 0, 'g1', 1, NULL, NULL),
+   'h2', 0, NULL, 0, NULL, NULL, NULL),
+  (4, 2, '2026-08-03', NULL, '100.00', 'PLN', NULL, NULL, 'P', NULL, 'CSV', 'h4', 0, 'g1', 1, NULL, NULL, NULL),
   (5, 1, '2026-08-03', NULL, '-100.00', 'PLN', NULL, 'PL10 0000 0000 0000 0000 0000 0002', 'P', NULL,
-   'CSV', 'h5', 0, 'g1', 1, NULL, NULL),
+   'CSV', 'h5', 0, 'g1', 1, NULL, NULL, NULL),
   (6, 4, '2026-08-03', NULL, '-100.00', 'PLN', NULL, '10000000000000000000000001', 'P', NULL, 'CSV',
-   'h6', 0, NULL, 0, NULL, NULL);
+   'h6', 0, NULL, 0, NULL, NULL, NULL);
 `;
 
 describe("budget.transfers producer", () => {

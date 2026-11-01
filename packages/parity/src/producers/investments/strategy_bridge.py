@@ -8,7 +8,8 @@ ported yet, so this script exports per profile exactly the strategy values ``bui
 currency, the data-quality thresholds (``strategy.data`` or the ``DataQualityPolicy()`` defaults)
 and the allocation plan (buckets in declaration order, targets in their dict order); for the
 performance producer also the strategy state and the benchmark (its id as ``name``: canon.py would
-treat an ``id`` field as a row id). Instrument
+treat an ``id`` field as a row id); for the budget month close the contributions plan
+(``budget/investing_link.planned_contribution``: monthly amount as Decimal text, day of month). Instrument
 ids in bucket matches stay the app's domain ids (``str(pk)``), the ids the TS pipeline uses.
 
     .venv/bin/python packages/parity/src/producers/investments/strategy_bridge.py --dataset demo
@@ -71,7 +72,14 @@ def strategies(ctx) -> dict:
             "state": loaded.state,
             "benchmark": None if bench is None else {"name": bench.id, "proxy": bench.proxy},
             "strategy": None,
+            "contributions": None,
         }
+        plan = config.contributions if config is not None else None
+        if plan is not None:
+            entry["contributions"] = {
+                "monthly_amount": str(plan.monthly_amount),
+                "day_of_month": plan.day_of_month,
+            }
         if config is not None:
             entry["strategy"] = {
                 "base_currency": str(config.base_currency),

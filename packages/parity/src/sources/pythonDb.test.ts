@@ -77,6 +77,8 @@ describe("PythonDb", () => {
       expect(removed).toMatchObject({ active: true, removedAt: "2026-06-01 10:00:00", iban: null });
       const [eur] = db.transactions(2);
       expect(eur).toMatchObject({ amount: "-1.00", isInternalTransfer: true, category: null });
+      expect(eur?.bankTransactionId).toBeNull();
+      expect(db.transactions(1)[0]?.bankTransactionId).toBe("NR TEST 1");
     });
   });
 

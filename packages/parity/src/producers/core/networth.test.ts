@@ -21,9 +21,9 @@ INSERT INTO balances VALUES
   (4, 4, '2025-06-01', '10.00', 'EUR', 'MANUAL', NULL);
 INSERT INTO transactions VALUES
   (1, 2, '2026-08-02', NULL, '200.00', 'PLN', NULL, NULL, 'WYPLATA TEST', NULL, 'MANUAL', 'h1', 1,
-   NULL, 0, 'cash', 'manual'),
+   NULL, 0, 'cash', 'manual', NULL),
   (2, 2, '2026-08-01', NULL, '-20.50', 'PLN', NULL, NULL, 'SKLEP TEST', NULL, 'MANUAL', 'h2', 1,
-   NULL, 0, 'groceries', 'manual');
+   NULL, 0, 'groceries', 'manual', NULL);
 `;
 
 describe("core.networth producer", () => {
