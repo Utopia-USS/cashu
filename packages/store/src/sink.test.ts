@@ -141,4 +141,54 @@ describe("Store as EventSink", () => {
     const second = sa.foreignEvents(first.last?.seq ?? 0, new Set([A]), 1);
     expect([...first.events, ...second.events].map((e) => e.eid)).toEqual([foreign]);
   });
+
+  it("skips sync statements (device.*, lease.*): not folded, held, parked or rejected (S29c-B3)", async () => {
+    const remote = new MemoryTransport();
+    const clock = new ManualClock(T0);
+    const sa = openTestStore();
+    const sb = openTestStore();
+    const a = await device(A, remote, sa, clock);
+    const b = await device(B, remote, sb, clock);
+    const statement = (t: string, n: number) => ({
+      t,
+      v: 1,
+      i: testUlid("01JF", n),
+      d: { device: A, signer: A, sig: "00" },
+    });
+    await a.write([
+      statement("device.added", 1),
+      statement("lease.renewed", 2),
+      {
+        t: "categoryRule.set",
+        v: 1,
+        i: testUlid("01JE", 9),
+        g: RULE,
+        a: at(T0),
+        d: { merchantKey: "SKLEP TESTOWY", category: "groceries", source: "manual", locked: true },
+      },
+    ]);
+    await a.sync();
+    const pulled = await b.sync();
+    expect(pulled.pulledFrames).toBe(1);
+    expect(pulled.needsUpgrade).toBe(false);
+    expect(pulled.parked).toBe(0);
+    for (const s of [sa, sb]) {
+      expect(s.needsUpgrade()).toBe(false);
+      expect(s.read("SELECT type FROM event_log")).toEqual([{ type: "categoryRule.set" }]);
+      expect(s.read("SELECT COUNT(*) AS n FROM event_rejects")).toEqual([{ n: 0 }]);
+      expect(s.read("SELECT category FROM category_rules")).toEqual([{ category: "groceries" }]);
+    }
+    const direct = openTestStore().applyWire({
+      device: A,
+      events: [statement("device.revoked", 3)],
+      cursor: { seg: 1, offset: 10 },
+    });
+    expect(direct).toMatchObject({ statements: 1, applied: 0, parked: 0, rejected: [] });
+    // snapshot.* (S32) is not defined: an unknown statement-like type is not skipped.
+    const unknown = openTestStore().applyWire({
+      device: A,
+      events: [{ ...statement("snapshot.made", 4), g: ACC, a: at(T0), h: undefined }],
+    });
+    expect(unknown.statements).toBe(0);
+  });
 });

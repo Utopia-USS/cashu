@@ -761,6 +761,11 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 `revoked`, `keysRotated`, `recoveryChanged`. Reserved `lease.*`: `claimed`, `renewed`, `released`,
 `pinned`, `fetched`.
 
+The store skips `device.*` and `lease.*` events (`packages/store/src/statements.ts`): they are sync
+statements the frame gate reads from the encrypted log, so a store neither folds, holds, parks nor
+rejects them, and a batch that carries them (a genesis device's announcement and retirement) needs
+no upgrade. `snapshot.*` stays parked until S32 defines it.
+
 Every lease event carries `at` (the writer's wall clock, within 5 minutes of the event's own HLC
 wall), `watermark: {<device id>: {seg, offset}}` (per writer device, 32 lower-case hex, the cursor up
 to which the writer had applied that device's stream: cursors, not HLCs, because a stream's cursor

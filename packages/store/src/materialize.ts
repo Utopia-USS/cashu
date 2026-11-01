@@ -49,6 +49,7 @@ import { EventRegistry, ModuleRegistry, type StoreModule, type ViewDefs } from "
 import { createTableSql, type TableDef } from "./sql/ddl.js";
 import type { SqlDriver, SqlValue } from "./sql/driver.js";
 import { SYSTEM_SCHEMA_VERSION, SYSTEM_TABLES } from "./sql/system.js";
+import { isSyncStatement } from "./statements.js";
 import { ChangeHub, type TablesListener } from "./subscribe.js";
 
 export interface StoreOptions {
@@ -88,6 +89,8 @@ export interface ApplyResult {
   readonly touchedTables: ReadonlySet<string>;
   /** This apply parked events: the reader is behind a writer (events.md 7). */
   readonly needsUpgrade: boolean;
+  /** Sync statements (`device.*`, `lease.*`) skipped: the device layer reads them from the log. */
+  readonly statements: number;
 }
 
 const META_VAULT = "vault";
@@ -324,8 +327,10 @@ export class Store {
 
   /** Apply one wire-form batch read from a device's segments (S28a `InboundBatch`). */
   applyWire(batch: WireBatch): ApplyResult {
-    const raws = batch.events.map((w) => fromWire(w, { vault: this.vault, device: batch.device }));
-    return this.#apply(raws, batch.device, batch.cursor);
+    const view = batch.events.filter((w) => !isSyncStatement(w));
+    const raws = view.map((w) => fromWire(w, { vault: this.vault, device: batch.device }));
+    const statements = batch.events.length - view.length;
+    return { ...this.#apply(raws, batch.device, batch.cursor), statements };
   }
 
   /** Apply logical-form envelopes (genesis, tests, the in-process writer). */
@@ -335,7 +340,7 @@ export class Store {
 
   #apply(raws: readonly unknown[], device: string | null, cursor?: SegmentCursor): ApplyResult {
     const touched = new TouchedTables(this.#internal);
-    let result: Omit<ApplyResult, "touchedTables"> | undefined;
+    let result: Omit<ApplyResult, "touchedTables" | "statements"> | undefined;
     this.driver.transaction(() => {
       result = this.#applyInTransaction(raws, device, touched);
       if (device !== null && cursor) {
@@ -347,7 +352,11 @@ export class Store {
           .run(device, cursor.seg, cursor.offset);
       }
     });
-    const out = { ...(result as Omit<ApplyResult, "touchedTables">), touchedTables: touched.set };
+    const out = {
+      ...(result as Omit<ApplyResult, "touchedTables" | "statements">),
+      touchedTables: touched.set,
+      statements: 0,
+    };
     this.#hub.notify(touched.set);
     return out;
   }
@@ -356,7 +365,7 @@ export class Store {
     raws: readonly unknown[],
     device: string | null,
     touched: TouchedTables,
-  ): Omit<ApplyResult, "touchedTables"> {
+  ): Omit<ApplyResult, "touchedTables" | "statements"> {
     const rejected: { eid?: string; error: string }[] = [];
     const conflicts: string[] = [];
     const fresh: FoldEvent[] = [];
