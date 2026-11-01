@@ -9,6 +9,7 @@
  * for that file and its API body: the same validation, the same English messages.
  */
 
+import { decodeStrict } from "../../codecs.js";
 import { D, type Decimal, DecimalError, floatRepr } from "../../decimal.js";
 import { pyStrip, pyUpper } from "../../text.js";
 
@@ -175,11 +176,14 @@ export function parseBudgetSettings(raw: unknown): SettingsParse {
  */
 export function loadBudgetSettings(bytes: Uint8Array | null): BudgetSettings<number> {
   if (bytes === null) return defaultBudgetSettings();
+  // The pure decoder (no `TextDecoder`: the domain is platform-free): strict UTF-8 that keeps a BOM
+  // like `read_text(encoding="utf-8")`, after which `json.loads` / `JSON.parse` refuse it.
+  const decoded = decodeStrict(bytes, "utf-8");
+  if (!decoded.ok) return defaultBudgetSettings();
   let raw: unknown;
   try {
-    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     // PARITY: Python's `json.loads` also takes NaN / Infinity literals (an invalid value anyway).
-    raw = JSON.parse(text);
+    raw = JSON.parse(decoded.text);
   } catch {
     return defaultBudgetSettings();
   }

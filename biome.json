@@ -131,6 +131,18 @@
       "linter": {
         "rules": {
           "style": {
+            "noRestrictedGlobals": {
+              "level": "error",
+              "options": {
+                "deniedGlobals": {
+                  "TextDecoder": "packages/domain is platform-free (Hermes has no reliable TextDecoder): decode with codecs.ts `decodeStrict` / `decodeReplace`.",
+                  "TextEncoder": "packages/domain is platform-free (Hermes has no reliable TextEncoder): encode with codecs.ts `encodeUtf8`.",
+                  "Buffer": "packages/domain is platform-free: Node's Buffer does not exist on Hermes. Use Uint8Array and the codecs / sha helpers.",
+                  "atob": "packages/domain is platform-free: atob / btoa are not reliable on Hermes. Use a pure base64 helper.",
+                  "btoa": "packages/domain is platform-free: atob / btoa are not reliable on Hermes. Use a pure base64 helper."
+                }
+              }
+            },
             "noRestrictedImports": {
               "level": "error",
               "options": {
