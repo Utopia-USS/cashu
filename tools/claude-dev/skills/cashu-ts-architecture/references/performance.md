@@ -6,8 +6,9 @@ tags: performance, budgets, virtualization, react-compiler, startup
 
 # Performance budgets
 
-Proposed numbers (S51, to be confirmed by the first measurements on real hardware). Reference
-devices: iPhone 13 class for mobile, an M1 MacBook Air for desktop. Data: the 60k-transaction synthetic
+Proposed numbers (S51, to be confirmed by the first measurements on real hardware; the physical
+iPhone / Android runs belong to S41g, so far only the iOS simulator and an M-series Mac have measured).
+Reference devices: iPhone 13 class for mobile, an M1 MacBook Air for desktop. Data: the 60k-transaction synthetic
 profile. A change that breaks a budget needs a measurement and the lead's OK, not a new number.
 
 | Budget | Target |
@@ -15,6 +16,7 @@ profile. A change that breaks a budget needs a measurement and the lead's OK, no
 | Mobile cold start to first data on screen (snapshot present) | p50 <= 1.5 s, p95 <= 2.5 s |
 | Desktop window shown to first data | <= 1.0 s after the utility process is ready |
 | Snapshot load (mobile) / full rebuild from the log | <= 0.5 s / <= 10 s desktop, <= 30 s mobile in the background |
+| Store apply (lead, 2026-10-31): first sync / genesis of ~5 years (~64k events) / a day's events / rebuild after an upgrade | desktop <= 10 s, phone <= 30 s with progress / <= 100 ms / desktop <= 3 s; measured on an idle machine |
 | One live query on a UI-facing thread | <= 8 ms per run (half a 60 Hz frame); slower moves to a derived table or off-thread |
 | Local command to updated UI | p95 <= 50 ms (no perceptible lag below 100 ms) |
 | Tap / click to visual response | <= 100 ms |
@@ -55,8 +57,10 @@ query runs (the store logs runs over budget in development).
 
 ## Store apply and rebuild against the spike (S23b)
 
-Gate (lead decision): bulk apply and full rebuild within 2x of the own-log spike, measured in the same
-run. Workload: `packages/store/src/perf.test.ts` (64,203 events: 60k imports, 2k re-imports, 1,900
+The first gate, "bulk apply and full rebuild within 2x of the own-log spike", is RETIRED (lead,
+2026-10-31): the store does more work per event than the spike (gid index, view ids, natural keys,
+zod validation, keyed HMAC), so the gate is the user-facing store budgets in the table above, measured
+on an idle machine. The spike numbers below stay as a reference. Workload: `packages/store/src/perf.test.ts` (64,203 events: 60k imports, 2k re-imports, 1,900
 rule edits, 300 decisions, 1,000-event apply batches, one transaction each) vs
 `spike/own-log/bench.mjs`; harness `~/cashu-lab/bench/s23b-same-run.sh` (interleaved rounds, medians,
 wall ms; file mode with WAL + synchronous NORMAL, the store's own pragmas and the spike's, is the
@@ -73,9 +77,12 @@ gate). M-series Mac; the load average is given per step because other sessions s
 | Compact log copy (DB 80.5 -> 62.4 MB) | 93-115 | 759 / 475 | 4,850 / 1,115 | 3,299 / 1,017 | 6.4 / 2.35 |
 | After (WAL pragmas in the store, 5 rounds) | 119-147 | 751 / 458 | 5,319 / 1,212 | 3,229 / 1,050 | 7.1 / 2.65 |
 
-Not met. From the cash-leg step on the machine was shared (load average 70-150), which slows the
-store's longer runs more than the spike's short ones: single rounds of one step spread by 30-40%, so
-read the late rows as ranges and re-measure on an idle machine before a decision. Where the bulk time goes (CPU profile): SQLite B-tree work of the inserts dominates; a
+Against the retired 2x gate this was not met; against the user budgets it is (see S24a below:
+bulk 5.4-7.2 s <= 10 s, rebuild ~1.2 s <= 3 s, a day 48-51 ms <= 100 ms). From the cash-leg step on
+the machine was shared (load average 70-150), which slows the store's longer runs more than the
+spike's short ones: single rounds of one step spread by 30-40%, so
+read the late rows as ranges; the idle-machine re-measure is part of S29c-B3 (one transaction per sync
+pull). Where the bulk time goes (CPU profile): SQLite B-tree work of the inserts dominates; a
 transaction import still inserts into five random-key B-trees (the log's gid index, `view_ids`, the
 transaction's gid, its (account, hash, occurrence) key, its booking date) where the spike inserts into
 two, plus zod validation and the gid check (one HMAC). File mode adds the WAL page writes of those
