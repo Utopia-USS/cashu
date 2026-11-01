@@ -6,6 +6,8 @@
 // Standard input is never read before the host asks for it: a delegated command inherits fd 0, and
 // bytes the shim had buffered would be lost to it. For the same reason a `delegate` reply after the
 // shim touched stdin or printed output is refused as a protocol error.
+
+import { userInfo } from "node:os";
 import { isatty } from "node:tty";
 import {
   CLI_ENV_KEYS,
@@ -62,10 +64,12 @@ function execParams(options: ExecOptions): CliExecParams {
   // A terminal that reports no size (0, e.g. a fresh pty) sends none.
   const columns = options.terminal.columns() || undefined;
   const rows = options.terminal.rows() || undefined;
+  const home = options.env.HOME ?? userInfo().homedir;
   const compatible = options.env.TTY_COMPATIBLE;
   return {
     argv: [...options.argv],
     cwd: options.cwd,
+    paths: { home },
     env: forwardedEnv(options.env),
     tty: {
       stdin: isatty(0),

@@ -57,7 +57,16 @@ describe("cli.exec", () => {
   });
 });
 
-it("carries optional caller terminal context without forwarding unlisted environment", () => {
+it("carries optional caller path/terminal context without forwarding HOME as environment", () => {
+  const paths = { home: "/caller/home" };
+  expect(cliExecParamsSchema.parse({ ...exec, paths }).paths).toEqual(paths);
+  expect(cliExecParamsSchema.parse({ ...exec, paths: { home: "" } }).paths?.home).toBe("");
+  expect(cliExecParamsSchema.safeParse({ ...exec, paths: { home: "bad\u0000path" } }).success).toBe(
+    false,
+  );
+  expect(cliExecParamsSchema.safeParse({ ...exec, env: { HOME: "/caller/home" } }).success).toBe(
+    false,
+  );
   const tty = { ...exec.tty, compatible: false, unicodeVersion: "17.0.0" };
   expect(cliExecParamsSchema.parse({ ...exec, tty }).tty).toEqual(tty);
 });

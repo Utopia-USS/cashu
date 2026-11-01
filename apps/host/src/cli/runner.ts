@@ -92,6 +92,7 @@ export function serveCliSession(session: HostSession, deps: CliRunnerDeps): void
     const t = translatorFor(params, deps.dataDir);
     const io: CommandIo = {
       cwd: params.cwd,
+      ...(params.paths === undefined ? {} : { paths: params.paths }),
       env: params.env,
       tty: params.tty,
       signal: abort.signal,

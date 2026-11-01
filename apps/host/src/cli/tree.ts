@@ -12,6 +12,7 @@ import { Command, CommanderError } from "commander";
 export interface CommandIo {
   /** The shim's working directory: relative file arguments resolve against it. */
   readonly cwd: string;
+  readonly paths?: { readonly home: string };
   /** The forwarded environment subset (CASHU_*, locale, colour). */
   readonly env: Readonly<Record<string, string>>;
   readonly tty: {

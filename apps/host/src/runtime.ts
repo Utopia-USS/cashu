@@ -59,6 +59,11 @@ export function currentRuntime(): HostRuntime {
   };
 }
 
+/** Source skills today; packaged builds supply their bundled resource path explicitly (S47). */
+export function shippedSkillsSource(rt: HostRuntime): string | undefined {
+  return rt.checkout === undefined ? undefined : join(rt.checkout, ".claude", "skills");
+}
+
 /** The `cashu` shim of this build. */
 export function shimProgram(rt: HostRuntime): Program {
   if (rt.checkout !== undefined) {

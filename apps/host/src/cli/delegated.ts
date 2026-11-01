@@ -17,7 +17,6 @@ export const DELEGATED: Readonly<Record<string, string>> = {
   "set-account-name": "S39a",
   "set-account-type": "S39a",
   "set-balance": "S39a",
-  skills: "S39a",
   stats: "S39a",
   sync: "S39a",
   // TRANSITIONAL(S39b): budget CLI and the Enable Banking client

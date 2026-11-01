@@ -152,6 +152,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const ported =
     options.ported ??
     portedCommands({
+      runtime,
       now,
       ...(python === undefined ? { nativeStores: stores } : {}),
     });

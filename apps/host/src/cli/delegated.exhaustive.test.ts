@@ -16,9 +16,11 @@ describe.skipIf(!HAS_PYTHON)("delegated commands (Python oracle)", () => {
     )
       .trim()
       .split("\n");
-    expect(Object.keys(DELEGATED).sort()).toEqual(names);
     const ported = portedCommands().map((c) => c.name);
-    for (const name of ported) expect(names).not.toContain(name);
+    // Genesis is a migration-only native command, not part of the Python product tree.
+    const nativeProduct = ported.filter((name) => name !== "genesis");
+    expect([...Object.keys(DELEGATED), ...nativeProduct].sort()).toEqual(names);
+    for (const name of ported) expect(Object.hasOwn(DELEGATED, name)).toBe(false);
     expect(new Set(Object.values(DELEGATED))).toEqual(
       new Set(["S39a", "S39b", "S39c", "S39d", "S39e", "S39f"]),
     );
