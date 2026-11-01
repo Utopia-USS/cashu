@@ -19,7 +19,7 @@ import { openTestStore } from "./store.js";
 
 const DEVICES = ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"] as const;
 
-function nrb(bban24: string): string {
+export function nrb(bban24: string): string {
   const check = 98n - (BigInt(`${bban24}252100`) % 97n);
   return `${check.toString().padStart(2, "0")}${bban24}`;
 }
@@ -44,7 +44,7 @@ const MERCHANTS = ["SPOTIFY DEMO", "SKLEP RYBKA", "BIEDRONKA 12", null] as const
 const RULE_KEYS = ["SPOTIFY DEMO", "SKLEP RYBKA", "BIEDRONKA 12"] as const;
 const EXPENSES = ["X1", "X2"] as const;
 
-type Step = { type: string; gid: string; data: Record<string, unknown> };
+export type Step = { type: string; gid: string; data: Record<string, unknown> };
 
 const opened = (gid: string, data: Record<string, unknown>): Step => ({
   type: "account.opened",
@@ -191,44 +191,47 @@ const series: fc.Arbitrary<Step[]> = fc
   );
 
 /** A script with walls that mostly increase and sometimes repeat (concurrent devices). */
-const script = fc
-  .array(
-    fc.record({
-      steps: fc.oneof(
-        { weight: 4, arbitrary: step.map((x) => [x]) },
-        { weight: 1, arbitrary: series },
+export const scriptOf = (step: fc.Arbitrary<Step>, series: fc.Arbitrary<Step[]>) =>
+  fc
+    .array(
+      fc.record({
+        steps: fc.oneof(
+          { weight: 4, arbitrary: step.map((x) => [x]) },
+          { weight: 1, arbitrary: series },
+        ),
+        device: fc.nat(1),
+        concurrent: fc.boolean(),
+      }),
+      { minLength: 1, maxLength: 24 },
+    )
+    .map((groups) =>
+      groups.flatMap(({ steps, device, concurrent }) =>
+        steps.map((s) => ({ step: s, device, concurrent })),
       ),
-      device: fc.nat(1),
-      concurrent: fc.boolean(),
-    }),
-    { minLength: 1, maxLength: 24 },
-  )
-  .map((groups) =>
-    groups.flatMap(({ steps, device, concurrent }) =>
-      steps.map((s) => ({ step: s, device, concurrent })),
-    ),
-  )
-  .map((items) => {
-    let wall = 0;
-    return items.map(({ step: s, device, concurrent }, i): RefEvent => {
-      if (!concurrent) wall += 1;
-      return complete({
-        eid: `01JE${String(i + 1).padStart(22, "0")}`,
-        hlc: formatHlc({
-          wall: 1_793_448_000_000 + wall,
-          counter: i + 1,
-          device: DEVICES[device] ?? DEVICES[0],
-        }),
-        at: new Date(1_793_448_000_000 + wall).toISOString(),
-        type: s.type,
-        gid: s.gid,
-        data: s.data,
+    )
+    .map((items) => {
+      let wall = 0;
+      return items.map(({ step: s, device, concurrent }, i): RefEvent => {
+        if (!concurrent) wall += 1;
+        return complete({
+          eid: `01JE${String(i + 1).padStart(22, "0")}`,
+          hlc: formatHlc({
+            wall: 1_793_448_000_000 + wall,
+            counter: i + 1,
+            device: DEVICES[device] ?? DEVICES[0],
+          }),
+          at: new Date(1_793_448_000_000 + wall).toISOString(),
+          type: s.type,
+          gid: s.gid,
+          data: s.data,
+        });
       });
     });
-  });
+
+const script = scriptOf(step, series);
 
 /** Deliver in a seeded order with duplicates and random batches; `each` runs after every batch. */
-function deliver(
+export function deliver(
   events: RefEvent[],
   seed: number,
   each?: (s: ReturnType<typeof openTestStore>) => void,
