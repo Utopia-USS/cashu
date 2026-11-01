@@ -21,6 +21,20 @@ describe("native self-test diagnostics", () => {
     expect(screen.queryByText("Self-test failed")).not.toBeOnTheScreen();
   });
 
+  it("renders an unclassified storage error as a KeyStore failure without raw details", async () => {
+    const result = await runCryptoSelfTest({
+      lib: await runtime(),
+      keyStore: () => {
+        throw new Error("synthetic storage detail");
+      },
+    });
+    await render(<CryptoView {...result} webCryptoRandom />);
+    expect(screen.getByText("Self-test failed")).toBeOnTheScreen();
+    expect(screen.getByText("FAIL keystore_unavailable")).toBeOnTheScreen();
+    expect(screen.queryByText("FAIL unsupported_runtime")).not.toBeOnTheScreen();
+    expect(screen.queryByText(/synthetic storage detail/)).not.toBeOnTheScreen();
+  });
+
   it.each([
     ["subclass", () => new TypeError("synthetic backend detail")],
     ["non-Error", () => ({ message: "synthetic backend detail" })],

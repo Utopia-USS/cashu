@@ -30,18 +30,22 @@ selected checks and branch-specific output directories. Shared lab outputs are w
 `lab/ts-stack`; a stale-input comparison is not acceptance evidence.
 
 Desktop development still requires the Python environment and built legacy SPA described below.
-Seed the default synthetic demo directory once, then launch the shell:
+Choose a fresh writable absolute directory for the synthetic demo, replacing the placeholder below.
+Seed it once, then launch the shell with explicit data/workspace roots:
 
 ```bash
-.venv/bin/python scripts/demo_data.py --data-dir ~/cashu-lab/desktop-demo
-pnpm --filter @cashu/desktop dev
+CASHU_DEMO_ROOT=/absolute/path/to/synthetic-demo
+.venv/bin/python scripts/demo_data.py --data-dir "$CASHU_DEMO_ROOT/data"
+CASHU_DATA_DIR="$CASHU_DEMO_ROOT/data" CASHU_WORKSPACES_DIR="$CASHU_DEMO_ROOT/workspaces" \
+  CASHU_DESKTOP_ALLOWED_DATA_ROOT="$CASHU_DEMO_ROOT" pnpm --filter @cashu/desktop dev
 ```
 
-The launcher builds Electron, defaults data/workspaces to the lab's demo directories and starts the
-Python sidecar; the renderer still uses the legacy SPA. A page that asks for a store port gets one that
+The launcher builds Electron and starts the Python sidecar; the renderer still uses the legacy SPA.
+The data/workspace defaults are overridden above. A page that asks for a store port gets one that
 main relays to the data dir's local host (`apps/host`), started on demand on a synthetic demo vault in
-`<data dir>/stores`; it outlives the window and exits after 10 idle minutes (stop it earlier with
-`node --experimental-strip-types --import ./tools/node-ts/resolveTs.ts apps/host/src/cli.ts stop --data-dir <dir>`). Mobile uses a native development client with SQLite and Sodium adapters;
+`<data dir>/stores`; it outlives the window and exits after 10 idle minutes. Stop it earlier with
+`node --experimental-strip-types --import ./tools/node-ts/resolveTs.ts apps/host/src/cli.ts stop --data-dir "$CASHU_DEMO_ROOT/data"`.
+Mobile uses a native development client with SQLite and Sodium adapters;
 build it locally for the chosen simulator/emulator before using the dev-client bundler.
 
 ## Running and verifying

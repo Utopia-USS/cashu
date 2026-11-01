@@ -4,11 +4,14 @@ The UI uses `lang()`, `catalog()` and `tr({ pl, en })` from `@cashu/i18n` with i
 `LanguageSource` (S33). Backend work uses an explicit `Translator` (S34). Never change the UI's
 global language to service a request: two requests can overlap across an `await`.
 
-`pnpm arch:check` enforces this in API, MCP, store, sync and market packages, CLI/sync workers and
-Electron main/preload/utility code: no root `tr` import or re-export, including aliases. Backend
-imports of the root namespace (static/dynamic/CommonJS) are also rejected because they expose `tr`;
-use explicit named imports of `Translator`, `createTranslator` and pure helpers. Renderer, UI logic
-and legacy frontend code retain the ambient UI helper. Test-only files are outside this production rule.
+`pnpm arch:check` enforces this in API, MCP, store, sync and market packages, CLI/relay/sync workers and
+Electron main/preload/utility code. Backend runtime imports/re-exports have an explicit allowlist:
+`createTranslator`, `createBackendI18n`, `parseLang`, `LANG_ENV`, `LANG_HEADER`, `LANGS`, `FALLBACK_LANG`,
+`matchLang`, `plCount`, `plForm`, `enCount`, `enForm` and `normalizeNumberInput`. Type-only root imports
+are allowed too. All other runtime exports (including `lang`, `setLanguage`, `catalog` and `tr`), UI
+catalog subpaths, side-effect imports and namespace/dynamic/CommonJS access are rejected. New helpers
+need an explicit purity review before joining this list. Renderer, UI logic and legacy frontend code
+retain the ambient UI helpers. Test-only files are outside this production rule.
 
 ## App and request language
 
@@ -30,17 +33,21 @@ framework APIs. The adapter reads:
 `appLanguage()` re-reads the environment override and stored choice, then uses the cached OS choice
 and finally English, in that order. It does not cache a worker's effective language forever.
 
-At the HTTP / websocket boundary, use the framework's case-insensitive header getter:
+At the HTTP / websocket boundary, preserve raw header lines. For a Node `IncomingMessage` adapter:
 
 ```ts
 import { LANG_HEADER } from "@cashu/i18n";
 
-const context = backendI18n.forRequest(request.headers.get(LANG_HEADER));
+const context = backendI18n.forRequest(nodeRequest.headersDistinct[LANG_HEADER]);
 return handleRequest(context);
 ```
 
-`forRequest` takes only the first value of a Fetch-joined duplicate header (`pl, en` means `pl`),
-matching Python's first header line, then normalizes it (`en-GB`, `pl_PL.UTF-8`, etc.), remembers it for the worker
+`forRequest` accepts one raw string or an array of raw values in wire order. It takes the first raw
+line, matching Python's `Headers.get`, then normalizes it (`en-GB`, `pl_PL.UTF-8`, etc.). Two raw lines
+`["pl", "en"]` select Polish, while the single line `"pl, en"` is invalid and uses the app language.
+A Fetch getter joins duplicates, so its string cannot distinguish those cases: capture the raw
+values in the host adapter before constructing a Fetch request, never reconstruct them by splitting
+commas. A valid value is remembered for the worker
 and returns an immutable context. A request header outranks even CASHU_LANG, matching Python's
 request ContextVar. Missing / invalid headers use `appLanguage()` without writing. Consecutive
 identical header choices do not cause repeated writes. Failed reads use the next fallback;

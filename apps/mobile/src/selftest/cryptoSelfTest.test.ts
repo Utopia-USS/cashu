@@ -103,4 +103,25 @@ describe("crypto self-test", () => {
       code: "mismatch",
     });
   });
+
+  it.each(["factory", "get", "set", "delete"] as const)(
+    "classifies a plain KeyStore %s failure separately from the crypto runtime",
+    async (operation) => {
+      const r = await runCryptoSelfTest({
+        lib: await lib(),
+        keyStore: (sodium) => {
+          const fail = async () => {
+            throw new Error("synthetic storage detail");
+          };
+          if (operation === "factory") throw new Error("synthetic storage detail");
+          return { ...memoryKeyStore(sodium), [operation]: fail };
+        },
+      });
+      expect(r.ok).toBe(false);
+      expect(r.nativeAead).toBe("supported");
+      expect(r.checks.filter((c) => !c.ok)).toEqual([
+        { name: "keyStore", ok: false, code: "keystore_unavailable" },
+      ]);
+    },
+  );
 });

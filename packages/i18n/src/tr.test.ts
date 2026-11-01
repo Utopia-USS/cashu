@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { lang, setLanguageForTests } from "./lang.js";
 import { enCount, plCount } from "./plural.js";
+import { REQUEST_HEADER_VECTORS } from "./testing/requestHeaders.js";
 import {
   type BackendLanguageSource,
   createBackendI18n,
@@ -167,14 +168,18 @@ describe("backend boundaries and request isolation", () => {
     expect(lookups).toBe(1);
   });
 
-  it.each([
-    ["pl, en", "pl"],
-    ["en-GB, pl", "en"],
-    ["de, pl", "en"],
-    [", pl", "en"],
-  ])("uses only the first duplicate request header: %s", (header, expected) => {
-    const { backend } = settings();
-    expect(backend.forRequest(header).language).toBe(expected);
+  // Real Python LanguageMiddleware vectors, including invalid comma values vs duplicate raw lines.
+  it.each(REQUEST_HEADER_VECTORS)("matches Python request headers: $name", (vector) => {
+    const { state, backend } = settings();
+    state.environment = vector.app;
+    expect(backend.forRequest(vector.lines).language).toBe(vector.language);
+    expect(state.writes).toEqual(vector.writes);
+    if (vector.lines.length <= 1) {
+      const single = settings();
+      single.state.environment = vector.app;
+      expect(single.backend.forRequest(vector.lines[0]).language).toBe(vector.language);
+      expect(single.state.writes).toEqual(vector.writes);
+    }
   });
 
   it("lets the request outrank the environment pin and ignores invalid headers without writing", () => {
@@ -182,7 +187,7 @@ describe("backend boundaries and request isolation", () => {
     state.environment = "pl";
     expect(backend.forRequest("en-GB").language).toBe("en");
     expect(backend.appLanguage()).toBe("pl");
-    for (const header of [null, undefined, "de", "", 1, {}, ["en"]]) {
+    for (const header of [null, undefined, "de", "", 1, {}, [1], [["en"]]]) {
       expect(backend.forRequest(header).language).toBe("pl");
     }
     expect(state.writes).toEqual(["en"]);

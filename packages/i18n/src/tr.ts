@@ -52,8 +52,10 @@ export interface BackendLanguageSource {
 export interface BackendI18n {
   /** Outside a request: environment override, remembered language, OS, English. Re-read on each run. */
   appLanguage(): Lang;
-  /** Pass the X-Cashu-Lang header value (HTTP or websocket). Valid headers are remembered best effort;
-   * invalid / missing headers fall back to appLanguage(). The returned context never changes. */
+  /** Pass one raw X-Cashu-Lang value, or raw duplicate values in wire order (HTTP or websocket).
+   * Only the first raw line counts; never split a comma-containing line or use a Fetch-joined value
+   * to reconstruct duplicates. Valid headers are remembered best effort; invalid / missing headers
+   * fall back to appLanguage(). The returned context never changes. */
   forRequest(headerValue?: unknown): Translator;
 }
 
@@ -98,8 +100,8 @@ export function createBackendI18n(source: BackendLanguageSource): BackendI18n {
   return Object.freeze({
     appLanguage,
     forRequest(headerValue?: unknown): Translator {
-      // Fetch joins duplicate header lines; Python's Headers.get returns only the first line.
-      const firstValue = typeof headerValue === "string" ? headerValue.split(",")[0] : headerValue;
+      // Python Headers.get selects the first raw line, then parse_lang parses that whole value.
+      const firstValue = Array.isArray(headerValue) ? headerValue[0] : headerValue;
       const requested = parseLang(firstValue);
       if (requested !== null) remember(requested);
       return createTranslator(requested ?? appLanguage());

@@ -38,8 +38,10 @@ export interface CryptoSelfTestDeps {
   readonly keyStore: (sodium: crypto.Sodium) => crypto.KeyStore;
 }
 
-const codeOf = (e: unknown): string =>
-  e instanceof crypto.CryptoError ? e.code : "unsupported_runtime";
+const codeOf = (
+  e: unknown,
+  fallback: "unsupported_runtime" | "keystore_unavailable" = "unsupported_runtime",
+): string => (e instanceof crypto.CryptoError ? e.code : fallback);
 
 const equal = (a: Uint8Array, b: Uint8Array) =>
   a.length === b.length && a.every((v, i) => v === b[i]);
@@ -139,7 +141,7 @@ export async function runCryptoSelfTest(deps: CryptoSelfTestDeps): Promise<Crypt
     const gone = await store.get(SELFTEST_ITEM);
     add("keyStore", back && equal(back, value) && gone === null ? undefined : "mismatch");
   } catch (e) {
-    add("keyStore", codeOf(e));
+    add("keyStore", codeOf(e, "keystore_unavailable"));
   }
 
   let nativeAead = "supported";
