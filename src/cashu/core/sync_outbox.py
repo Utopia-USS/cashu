@@ -54,6 +54,7 @@ from typing import Any
 
 from sqlalchemy import JSON, Integer, and_, delete, func, insert, inspect, or_, select, update
 from sqlalchemy.orm import object_mapper
+from sqlalchemy.sql import ClauseElement
 
 from . import sync_keys
 from .env import env
@@ -803,6 +804,9 @@ def prepare_flush(session) -> None:
         if any(_table_of(o) in SPECS for o in (*session.new, *session.dirty, *session.deleted)):
             _guard(session)
         return
+    for obj in (*session.new, *session.dirty):
+        if _table_of(obj) in SPECS:
+            _refuse_sql_expressions(obj)
     for obj in (*session.dirty, *session.deleted):
         if _table_of(obj) not in SPECS:
             continue
@@ -812,6 +816,19 @@ def prepare_flush(session) -> None:
         for prop in state.mapper.column_attrs:
             if prop.key not in state.dict:
                 getattr(obj, prop.key)  # loads every expired column in one SELECT
+
+
+def _refuse_sql_expressions(obj) -> None:
+    """Fail closed (S31a F3): a column set to a SQL expression (``row.n = Table.n + 1``) is computed by
+    SQLite and expired by the flush, so the capture would see no history and no value: the change
+    would reach the database but never the log. Refused before any SQL; assign the value instead."""
+    state = inspect(obj)
+    for prop in state.mapper.column_attrs:
+        if isinstance(state.dict.get(prop.key), ClauseElement):
+            raise SyncCaptureError(
+                f"{_table_of(obj)}.{prop.columns[0].name} is set to a SQL expression, which the sync "
+                "outbox cannot capture; assign the computed value"
+            )
 
 
 def capture_flush(session) -> None:

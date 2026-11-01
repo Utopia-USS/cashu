@@ -457,6 +457,25 @@ def test_post_reads_back_a_column_missing_from_the_flushed_state(db_engine, sync
     assert post == stored("watchlist_items", str(item)) and post["added_at"]
 
 
+def test_a_sql_expression_assignment_to_a_synced_column_is_refused(db_engine, sync_on):
+    """F3: ``row.col = Table.col + ...`` is expired by the flush and leaves no history, so the change
+    would be lost from the log: the write fails closed instead, and nothing is written."""
+    pid = new_profile("Expr")
+    inst = new_instrument()
+    item = watch(pid, inst, note="n")
+    other = new_instrument("Other")
+    start = outbox_count()
+    with pytest.raises(sync_outbox.SyncCaptureError, match="SQL expression"), get_session() as s:
+        row = s.get(InvWatchlistItem, item)
+        row.note = InvWatchlistItem.note + "x"
+        s.add(row)
+    with pytest.raises(sync_outbox.SyncCaptureError), get_session() as s:
+        s.add(InvWatchlistItem(profile_id=pid, instrument_id=other, note=func.lower("X"), tags=[]))
+    with get_session() as s:
+        assert s.get(InvWatchlistItem, item).note == "n"
+    assert outbox_count() == start
+
+
 def test_derived_only_changes_record_nothing(db_engine, sync_on):
     pid = new_profile("Derived")
     inst = new_instrument()
