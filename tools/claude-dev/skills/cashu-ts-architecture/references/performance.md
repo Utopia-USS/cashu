@@ -115,6 +115,24 @@ imports; now `+type`), and rows addressed by `dedup_hash` alone scan `transactio
 addressed by gid). The derived oracle (`Store.rederive`, every deriver's deriveAll) costs ~1 s at this
 size: tests only.
 
+## Rebuild after an app update (S23d)
+
+`Store.open` compares each view component's recorded version and DDL fingerprint (`view_defs`) and
+rebuilds only what the upgrade rule in `packages/store/src/rebuild.ts` selects; before S23d every
+definitions change rebuilt the whole view with the refs re-indexed. Same workload and run as S24a
+(`perf.test.ts`, 66,534 events), CPU ms, 2 memory runs and 1 file run, load average 50-100 (shared
+machine):
+
+| Open | Memory | File (WAL) | Budget |
+|---|---|---|---|
+| unchanged definitions (median of 5 reopens) | 1-2 | 2 | (none: one extra `store_meta` read vs before) |
+| before: any definitions change (whole view + refs) | 1,244-1,634 | 2,085 | desktop <= 3 s |
+| after: `budget.category_rules` bumped (partial) | 13-25 | 14 | |
+| after: `budget.transactions` bumped (whole view: it indexes refs) | 1,354-1,615 | 1,743 | desktop <= 3 s |
+
+The upgrade (DDL, rebuild, new record) is one transaction, so its cost is all inside the open; the
+UI gets `StoreOptions.onRebuild` progress (`start`, `step`, `fold` every 4,096 events, `done`).
+
 ## Investments vault (S25)
 
 Workload: `packages/store/src/investments/perf.test.ts` with `CASHU_PERF=1` (30,133 events: 5k inv

@@ -126,6 +126,11 @@ and `synchronous = NORMAL`, and commits once per apply batch (no flush per commi
   not closed cleanly, by `PRAGMA quick_check` on open. `Store.openOrRecover` then deletes the
   database and opens an empty one without cursors; the carrier replays the whole log into it
   (`recovery.test.ts`). An error raised later by an apply is handled the same way.
+- **An app update that changes definitions** (a materializer / identity / deriver version, view DDL,
+  event versions) rebuilds on open what `planViewUpgrade` selects, in ONE transaction with the DDL
+  and the new definitions record: a crash mid-rebuild rolls it all back, the next open starts it
+  again, and a half-rebuilt view is never committed (`view-upgrade.test.ts`, incl. the on-disk state
+  of a kill mid-fold).
 - Limit: SQLite has no page checksums, so damage confined to cell contents can pass `quick_check`.
   On honest storage it cannot happen (the main file is written only at checkpoints, after the WAL is
   synced); otherwise "rebuild the view" (discard and replay) is the owner's remedy.
