@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { catalog, tr } from "./catalog.js";
+import { catalog } from "./catalog.js";
 import {
   inEveryLang,
   installLanguageSource,
@@ -10,6 +10,7 @@ import {
   pinnedLang,
   setLanguage,
 } from "./lang.js";
+import { tr } from "./tr.js";
 
 function source(pin: string | null, tags: string[]): LanguageSource & { pins: (Lang | null)[] } {
   const pins: (Lang | null)[] = [];

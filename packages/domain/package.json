@@ -10,7 +10,8 @@
     "./core": "./src/core/index.ts",
     "./investments": "./src/investments/index.ts",
     "./investments/importing": "./src/investments/importing/index.ts",
-    "./investments/macro": "./src/investments/macro/index.ts"
+    "./investments/macro": "./src/investments/macro/index.ts",
+    "./text": "./src/text.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

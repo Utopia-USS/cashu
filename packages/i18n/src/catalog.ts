@@ -23,7 +23,3 @@ export function catalog<T extends Record<string, unknown>>(
   Object.defineProperty(out, ENTRIES, { value: entries });
   return out;
 }
-
-/** One inline text when a catalog entry would be overkill (a single use in a pure helper):
- * `tr({ pl: "Brak danych", en: "No data" })`. Prefer catalogs. */
-export const tr = <T>(variants: { [L in Lang]: T }): T => variants[lang()];

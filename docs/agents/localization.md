@@ -84,6 +84,11 @@ UI shows, a notification.
 
 ## Backend rules
 
+The TypeScript backend uses an explicit immutable `Translator` from `@cashu/i18n` for each request
+or worker run; the root `tr()` remains the app-global UI helper. See
+[`packages/i18n/README.md`](../../packages/i18n/README.md) for the injected settings / OS adapter,
+header precedence, MCP's Polish context and the mechanical `context.tr({ pl, en })` module pattern.
+
 1. **Texts rendered for the UI use `cashu.core.i18n`.** `tr(pl=..., en=...)` returns the variant of
    the current language: the request's `X-Cashu-Lang` (set by `LanguageMiddleware`), else the app
    language. Plurals: `pl_count` / `pl_form`, `en_count` / `en_form`. Tests:

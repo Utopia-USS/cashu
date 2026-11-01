@@ -80,6 +80,9 @@
     "./loans/Start.strings": "./src/loans/Start.strings.ts",
     "./loans/index.strings": "./src/loans/index.strings.ts"
   },
+  "dependencies": {
+    "@cashu/domain": "workspace:*"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",

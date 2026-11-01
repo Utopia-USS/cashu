@@ -228,7 +228,11 @@ importers:
 
   packages/domain: {}
 
-  packages/i18n: {}
+  packages/i18n:
+    dependencies:
+      '@cashu/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/market:
     dependencies:
