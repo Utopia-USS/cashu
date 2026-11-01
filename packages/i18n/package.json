@@ -33,6 +33,7 @@
     "./core/components/CashCard.strings": "./src/core/components/CashCard.strings.ts",
     "./core/components/ScrollableChart.strings": "./src/core/components/ScrollableChart.strings.ts",
     "./core/connectors.strings": "./src/core/connectors.strings.ts",
+    "./core/hostConnection.strings": "./src/core/hostConnection.strings.ts",
     "./core/overview/CoreWidgets.strings": "./src/core/overview/CoreWidgets.strings.ts",
     "./core/overview/NetWorthWidget.strings": "./src/core/overview/NetWorthWidget.strings.ts",
     "./core/setupSteps.strings": "./src/core/setupSteps.strings.ts",
