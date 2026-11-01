@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeText } from "../../text.js";
-import { type CloudRow, cloudMerchants, hasP2pMarker } from "./cloudGate.js";
+import { type CloudRow, cloudMerchants, hasIdentifierDigits, hasP2pMarker } from "./cloudGate.js";
 import { txnMerchantKey } from "./engine.js";
 import {
   bareRow,
@@ -77,5 +77,29 @@ describe("cloud gate pieces", () => {
     expect(cloudMerchants([{ ...base, source: "keyword" }])).toEqual([]);
     expect(cloudMerchants([{ ...base, counterpartyIban: "  " }])).toEqual(["ZABKA Z1234 KRAKOW"]);
     expect(cloudMerchants([{ ...base, counterpartyIban: "PL61" }])).toEqual([]);
+  });
+});
+
+// PRIVACY(D-09.5) F2: account, card and phone numbers never reach the cloud.
+describe("identifier digits (9+ in a run, separators ignored)", () => {
+  it.each([
+    ["ZWROT 61109010140000071219812874", true],
+    ["PRZELEW 48 123 456 789", true],
+    ["(22) 123-45-67 TEST", true],
+    ["KARTA 1234/5678/9", true],
+    ["SKLEP 12345678", false],
+    ["ZABKA Z1234 KRAKOW 5678", false],
+    ["DATA 2026-01-01 12345", true], // no date exemption here: fail closed
+    ["NR 1234 SKLEP 56789", false],
+    ["\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669", true],
+  ])("%s -> %s", (text, want) => {
+    expect(hasIdentifierDigits(text)).toBe(want);
+  });
+
+  it("a merchant key with an account number is not eligible", () => {
+    const base = CARD_MERCHANTS[0] as CloudRow;
+    expect(cloudMerchants([{ ...base, reference: "ZWROT 61109010140000071219812874" }])).toEqual(
+      [],
+    );
   });
 });

@@ -1,7 +1,7 @@
 /** Checks of the LLM vectors (`budget-categorize-llm`, reclassify scenarios), tests only. */
 import { looksLikePerson } from "../../../core/index.js";
 import type { Mismatches } from "../../../testing/vectors.js";
-import { type CloudMerchant, cloudMerchants } from "../cloudGate.js";
+import { type CloudMerchant, cloudMerchants, isCloudSafeString } from "../cloudGate.js";
 import { categorizeAll } from "../effective.js";
 import { categorize, txnMerchantKey } from "../engine.js";
 import type { Answer } from "../llm/port.js";
@@ -164,13 +164,14 @@ export function checkMerchantCases(
     c.merchantCases++;
     for (const [mk, isPerson] of Object.entries(personLike))
       m.check(`#${n} person ${mk}`, looksLikePerson(mk), isPerson);
-    const hasPerson = Object.values(personLike).some(Boolean);
+    // PRIVACY(D-09.5): person-like strings and identifier digits never reach a cloud batch.
+    const hasPerson = merchants.some((mk) => mk !== "" && !isCloudSafeString(mk));
     const batches = tsBatches(backend, merchants, keys);
     if (backend === "anthropic" && hasPerson) {
       c.personCases++;
       // FIX(Q12): no person-like merchant in any cloud batch.
       for (const b of batches)
-        for (const mk of b.ids.values()) m.check(`#${n} person sent`, looksLikePerson(mk), false);
+        for (const mk of b.ids.values()) m.check(`#${n} unsafe sent`, isCloudSafeString(mk), true);
     } else {
       // An aborted Python call (Q11) sent only the batches before the failing one.
       const sent = "error" in result ? batches.slice(0, requests.length) : batches;

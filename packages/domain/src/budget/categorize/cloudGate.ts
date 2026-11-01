@@ -64,11 +64,28 @@ export function hasP2pMarker(text: string): boolean {
 }
 
 /**
+ * Digit groups joined by 1-5 characters that are neither letters nor digits (spaces, dashes,
+ * slashes, brackets), like the MCP identifier rule (`core/mcp/redaction.py` `_RUN`).
+ */
+const DIGIT_RUN = /(?<!\p{Nd})\p{Nd}+(?:[^\p{L}\p{N}]{1,5}\p{Nd}+)*/gu;
+const DIGIT = /\p{Nd}/gu;
+
+/**
+ * PRIVACY(D-09.5): true when the string carries 9+ digits in one run once spaces and separators
+ * between digit groups are ignored: an account, card or phone number (`ZWROT 61109010140000071219812874`,
+ * `48 123 456 789`).
+ */
+export function hasIdentifierDigits(text: string): boolean {
+  for (const m of text.matchAll(DIGIT_RUN)) if ((m[0].match(DIGIT)?.length ?? 0) >= 9) return true;
+  return false;
+}
+
+/**
  * PRIVACY(D-09.5): whether one merchant string may be sent on its own merits (the per-string
- * filters, applied again by the request builder): not person-like.
+ * filters, applied again by the request builder): not person-like, no identifier digits.
  */
 export function isCloudSafeString(merchant: string): boolean {
-  return !!merchant && !looksLikePerson(merchant);
+  return !!merchant && !looksLikePerson(merchant) && !hasIdentifierDigits(merchant);
 }
 
 export interface CloudRow extends EngineTxn {
