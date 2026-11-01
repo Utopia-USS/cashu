@@ -93,6 +93,13 @@ const DEFAULTS: Record<string, Record<string, unknown>> = {
     marketValue: null,
     batch: null,
   },
+  "position.snapshotUpdated": {
+    quantity: "10",
+    currency: "PLN",
+    avgPrice: null,
+    marketValue: null,
+    batch: null,
+  },
   "instrumentRename.recorded": { note: null, batch: null },
   "strategy.versionSaved": { yamlText: "cele: []", mdText: null, state: "valid", issues: [] },
   "ruleRun.finished": {

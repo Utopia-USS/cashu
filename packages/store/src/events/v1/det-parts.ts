@@ -44,6 +44,7 @@ export function detPartsOf(
       if (s(data.dedupHash).startsWith("manual:")) return undefined;
       return det("inv_transactions", s(data.account), s(data.dedupHash));
     case "position.snapshotImported":
+    case "position.snapshotUpdated":
       return det("inv_position_snapshots", s(data.account), s(data.instrument), s(data.asOf));
     case "instrumentRename.recorded":
       return det("inv_instrument_renames", s(data.date), s(data.old), s(data.new));

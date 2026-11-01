@@ -82,6 +82,18 @@ const instrumentFields = {
   status: z.enum(INSTRUMENT_STATUSES),
 };
 
+/** A broker position snapshot: CREATE (first import) and its LWW update (re-import, S31c). */
+const positionSnapshot = {
+  account: gid,
+  instrument: gid,
+  asOf: calendarDate,
+  quantity: decimal,
+  currency: assetCurrency,
+  avgPrice: decimal.nullable(),
+  marketValue: decimal.nullable(),
+  batch: gid.nullable(),
+};
+
 export const investmentsEvents = {
   "invAccount.settingsSet": keyedPatch(
     { account: gid },
@@ -136,16 +148,13 @@ export const investmentsEvents = {
     message: "manual entries (and only they) use dedupHash manual:<gid>",
   }),
 
-  "position.snapshotImported": payload({
-    account: gid,
-    instrument: gid,
-    asOf: calendarDate,
-    quantity: decimal,
-    currency: assetCurrency,
-    avgPrice: decimal.nullable(),
-    marketValue: decimal.nullable(),
-    batch: gid.nullable(),
-  }),
+  "position.snapshotImported": payload(positionSnapshot),
+  /**
+   * A re-import with changed figures for a held (account, instrument, asOf) (S31c): the whole
+   * snapshot again, LWW on the row key (Python's upsert keeps the newest import's figures, batch and
+   * time).
+   */
+  "position.snapshotUpdated": payload(positionSnapshot),
 
   "instrumentRename.recorded": payload({
     date: calendarDate,

@@ -105,6 +105,7 @@ export const META: Record<EventType, EventMeta> = {
   "invImport.recorded": m("inv_import_batches", "APPEND", "ULID"),
   "invTxn.imported": m("inv_transactions", "CREATE", "DET"),
   "position.snapshotImported": m("inv_position_snapshots", "CREATE", "DET"),
+  "position.snapshotUpdated": m("inv_position_snapshots", "LWW-F", "DET"),
   "instrumentRename.recorded": m("inv_instrument_renames", "CREATE", "DET"),
   "valuation.set": m("inv_manual_valuations", "LWW-F", "DET"),
   "instrument.created": m("inv_instruments", "CREATE", "DET-or-ULID"),

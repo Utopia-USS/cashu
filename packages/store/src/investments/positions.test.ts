@@ -34,6 +34,55 @@ describe("inv_position_snapshots", () => {
     ]);
   });
 
+  it("S31c: overlapping re-imports with changed figures: the newest update wins in every order", () => {
+    const a = new Events();
+    const b = new Events(DEV_B, "01JB");
+    const i = instrument(a, ["xtb", "AAA"], {}, { wall: 1 });
+    const g = det("inv_position_snapshots", ACC, i.gid, "2026-03-31");
+    const snap = (q: string, mv: string) => ({
+      account: ACC,
+      instrument: i.gid,
+      asOf: "2026-03-31",
+      quantity: q,
+      marketValue: mv,
+    });
+    const events = [
+      account(a, ACC, [], { wall: 0 }),
+      ...i.events,
+      a.make("position.snapshotImported", g, snap("10", "100.00"), { wall: 10 }),
+      a.make("position.snapshotUpdated", g, snap("12", "120.00"), { wall: 20 }),
+      // a second device's later re-import of the same day (a moved market value)
+      b.make("position.snapshotUpdated", g, snap("12", "126.00"), { wall: 30 }),
+      // a re-delivered first import (same gid, a fresh eid): CREATE, ignored
+      b.make("position.snapshotImported", g, snap("10", "100.00"), { wall: 40 }),
+    ];
+    converge(events, (store) => {
+      const all = rows(store, "inv_position_snapshots");
+      expect(all.map((r) => [r.gid, r.quantity, r.market_value])).toEqual([[g, "12", "126.00"]]);
+      expect(all[0]?.created_at).toBe("2026-10-31 12:00:00.030000");
+    });
+  });
+
+  it("S31c: an update held before its create creates the row; the create then changes nothing", () => {
+    const ev = new Events();
+    const i = instrument(ev, ["xtb", "AAA"], {}, { wall: 1 });
+    const g = det("inv_position_snapshots", ACC, i.gid, "2026-03-31");
+    const base = { account: ACC, instrument: i.gid, asOf: "2026-03-31" };
+    const store = openTestStore();
+    store.applyEnvelopes([account(ev, ACC, [], { wall: 0 }), ...i.events]);
+    const update = ev.make("position.snapshotUpdated", g, { ...base, quantity: "7" }, { wall: 20 });
+    const create = ev.make(
+      "position.snapshotImported",
+      g,
+      { ...base, quantity: "5" },
+      { wall: 10 },
+    );
+    store.applyEnvelopes([update]);
+    expect(rows(store, "inv_position_snapshots").map((r) => r.quantity)).toEqual(["7"]);
+    store.applyEnvelopes([create]);
+    expect(rows(store, "inv_position_snapshots").map((r) => r.quantity)).toEqual(["7"]);
+  });
+
   it("I3: snapshots under two instrument gids that later merge keep the first applied", () => {
     const a = new Events();
     const b = new Events(DEV_B, "01JB");

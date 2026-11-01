@@ -2,6 +2,9 @@
 //
 // Snapshots: CREATE on (resolve(account), resolve(instrument), asOf); the first applied member wins
 // a merge collision (Python keeps the target's, lead R-2 parity note); row gid = anchor.
+// `position.snapshotUpdated` (S31c, a re-import with changed figures) is LWW on the same row key:
+// it replaces the figures, batch and created_at (Python's upsert), creating the row when no create
+// is held yet; in fold order a create after it is ignored (the row exists), an older update loses.
 // Renames: CREATE on (date, resolve(old), resolve(new)); the row is not shown while both ends resolve
 // to one instrument (events.md 6.4), so a merge of the two hides it and nothing else changes.
 import { ACCOUNTS } from "../core/accounts.js";
@@ -48,9 +51,9 @@ function snapshotKey(ctx: FoldContext, d: Readonly<Record<string, unknown>>) {
 
 export const positionsMaterializer: Materializer = {
   id: "investments.positions",
-  version: 1,
+  version: 2,
   tables: [snapshots],
-  handles: ["position.snapshotImported"],
+  handles: ["position.snapshotImported", "position.snapshotUpdated"],
   identity: [ACCOUNTS, INSTRUMENTS],
   partitions: (e, ctx) => [snapshotKey(ctx, e.data).partition],
   clear(partitions, ctx) {
@@ -69,11 +72,7 @@ export const positionsMaterializer: Materializer = {
     const d = e.data;
     const k = snapshotKey(ctx, d);
     ctx.members.add(k.partition, e.gid);
-    ctx.sql.insert(
-      snapshots.name,
-      `INSERT OR IGNORE INTO inv_position_snapshots (id, gid, account_id, instrument_id, as_of, quantity,
-         currency, avg_price, market_value, import_batch_id, created_at)`,
-      "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    const values = [
       ctx.id(e.gid),
       e.gid,
       ctx.id(k.account),
@@ -85,6 +84,27 @@ export const positionsMaterializer: Materializer = {
       str(d.marketValue),
       refId(ctx, d.batch),
       ctx.time(e, "created_at"),
+    ];
+    if (e.type === "position.snapshotUpdated") {
+      ctx.sql.write(
+        snapshots.name,
+        `INSERT INTO inv_position_snapshots (id, gid, account_id, instrument_id, as_of, quantity,
+           currency, avg_price, market_value, import_batch_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (account_id, instrument_id, as_of) DO UPDATE SET quantity = excluded.quantity,
+           currency = excluded.currency, avg_price = excluded.avg_price,
+           market_value = excluded.market_value, import_batch_id = excluded.import_batch_id,
+           created_at = excluded.created_at`,
+        ...values,
+      );
+      return;
+    }
+    ctx.sql.insert(
+      snapshots.name,
+      `INSERT OR IGNORE INTO inv_position_snapshots (id, gid, account_id, instrument_id, as_of, quantity,
+         currency, avg_price, market_value, import_batch_id, created_at)`,
+      "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ...values,
     );
   },
 };

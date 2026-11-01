@@ -160,6 +160,16 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
     marketValue: null,
     batch: null,
   },
+  "position.snapshotUpdated": {
+    account: ACC,
+    instrument: INST,
+    asOf: "2026-02-28",
+    quantity: "12",
+    currency: "PLN",
+    avgPrice: "12.5",
+    marketValue: "150.00",
+    batch: ULID_A,
+  },
   "instrumentRename.recorded": {
     date: "2026-03-01",
     old: INST,
