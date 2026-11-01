@@ -29,6 +29,7 @@ const BOOLEAN_COLUMNS: ReadonlySet<string> = new Set([
   "inv_instruments.needs_classification",
   "inv_instrument_aliases.guessed",
   "inv_topic_theses.draft",
+  "transactions.is_internal_transfer",
 ]);
 
 /** Compared values that are no view column (store.py `PSEUDO_COLUMNS`). */
@@ -87,6 +88,10 @@ function columnValue(
   if (table === "inv_import_batches" && column === "archive_path") return archiveBlob(value);
   if (table === "inv_signals" && column === "dedup_key") return keys.dedupKey(value);
   if (table === "inv_signals" && column === "rule_id") return keys.ruleId(value);
+  // the group id is the outflow row's gid (D-24.2): its natural key, as store.py reads Python's group
+  if (table === "transactions" && column === "transfer_group_id") {
+    return value === null || value === undefined ? null : keys.ref("transactions", value);
+  }
   if (BOOLEAN_COLUMNS.has(`${table}.${column}`)) return bool(value);
   if (col.type === "INTEGER") return int(value);
   if (isTimestamp(column)) return timestamp(value);

@@ -11,8 +11,7 @@ producers/store``) rebuilds the same tree from the genesis log, so this file fix
 - Excluded columns (``EXCLUDED`` below, with the reason; the run fails when a model column is in
   neither list): ``id``, ``profile_id``, device-local connector fetch state, the id-coupled hashes
   (``dedup_hash``: v2 replaces them, compared through the genesis counters) and the DERIVED columns
-  whose deriving scope has not landed (transfer columns until S24, alert effective ``status`` until
-  S25). Stamped derived columns (``enabled_at``, ``plan_at``, ``added_at``, ``core_changed_at``,
+  whose deriving scope has not landed (alert effective ``status`` until S25). Stamped derived columns (``enabled_at``, ``plan_at``, ``added_at``, ``core_changed_at``,
   ``exit_plan_changed_at``, ``acknowledged_at``, ``loans.updated_at`` ...) are compared.
 - Rows read through the ORM (the run copy, migrated to head by golden.py), scoped per spec 2.4:
   ``profile_id``; through the account for the account-scoped tables; ``inv_decision_signals`` through
@@ -39,9 +38,12 @@ producers/store``) rebuilds the same tree from the genesis log, so this file fix
     (parking is derived in the view, gid.md 4.3).
   - ``transactions``: cash mirror legs (``dedup_hash`` ``cashleg:...`` or ``raw.cash_leg_of`` set) are
     DERIVED rows: left out, except a leg whose ``category_source`` is ``manual_txn`` (a manual claim,
-    spec 4.2). ``category`` / ``category_source`` are the D-24.1 recompute (``_recompute_categories``:
-    a fresh transfer match and ``categorize_all(use_llm=False)``, rolled back), as every device
-    derives them (events.md 8.3, D8); a cash-account row keeps a decided category, else none (D-09.4).
+    spec 4.2). ``category`` / ``category_source``, ``is_internal_transfer`` and ``transfer_group_id``
+    are the D-24.1 recompute (``_recompute_derived``: a fresh transfer match and
+    ``categorize_all(use_llm=False)``, rolled back), as every device derives them (events.md 8.3 / 9,
+    D8); a cash-account row keeps a decided category, else none (D-09.4). ``transfer_group_id`` (a
+    random uuid4 in Python) reads the natural key of the group's outflow row, the row whose gid the
+    view uses as the group id (D-24.2).
   - ``inv_import_batches.archive_path`` reads ``{sha256, ext}`` when the archive file is in the copy and
     its bytes hash to both the name's digest and ``file_sha256`` (spec 4.4), else null.
   - ``proposals.status``: ``applying`` (a device-local lock) reads ``pending`` (spec 4.10).
@@ -99,6 +101,8 @@ ROUNDTRIP_COLUMNS: dict[str, tuple[str, ...]] = {
         "bank_transaction_id",
         "source",
         "occurrence",
+        "transfer_group_id",
+        "is_internal_transfer",
         "category",
         "category_source",
         "raw",
@@ -414,7 +418,6 @@ ROUNDTRIP_COLUMNS: dict[str, tuple[str, ...]] = {
 
 _ID = "row id: the TS side has gids; references compare as natural keys"
 _PROFILE = "the vault is the profile"
-_DERIVED_S24 = "DERIVED (events.md 9), compared once S24b derives it"
 
 # table -> column -> why it is not compared. Every model column is in ROUNDTRIP_COLUMNS or here.
 EXCLUDED: dict[str, dict[str, str]] = {
@@ -425,8 +428,6 @@ EXCLUDED: dict[str, dict[str, str]] = {
     "transactions": {
         "id": _ID,
         "dedup_hash": "id-coupled hash: v2 replaces it, compared through the genesis counters",
-        "transfer_group_id": _DERIVED_S24,
-        "is_internal_transfer": _DERIVED_S24,
     },
     "category_rules": {"id": _ID, "profile_id": _PROFILE},
     "import_batches": {"id": _ID, "profile_id": _PROFILE},
@@ -646,12 +647,14 @@ def _guard_schema(ctx: Ctx) -> None:
 _DECIDED = frozenset({"manual_txn", "llm_full", "llm_fallback", "cash_leg"})
 
 
-def _recompute_categories(ctx: Ctx, txns: list[dict]) -> None:
-    """``category`` / ``category_source`` as the view derives them (D-24.1): per profile, a fresh
-    transfer match and ``categorize_all(use_llm=False)`` inside a savepoint that is rolled back (the
-    copy leaves as it came in); a row on a cash account keeps a decided category, else none (D-09.4).
-    The other columns were read before. Drift from the stored values is reported per kind by the
-    ``budget.categories`` / ``budget.transfers`` checks (same recompute), counts only."""
+def _recompute_derived(ctx: Ctx, txns: list[dict]) -> None:
+    """The derived columns as the view derives them (D-24.1): per profile, a fresh transfer match and
+    ``categorize_all(use_llm=False)`` inside a savepoint that is rolled back (the copy leaves as it
+    came in). ``category`` / ``category_source``: a row on a cash account keeps a decided category,
+    else none (D-09.4). ``is_internal_transfer`` / ``transfer_group_id``: the recomputed pairing, the
+    group id read as the natural key of its outflow row (D-24.2). The other columns were read before.
+    Drift from the stored values is reported per kind by the ``budget.categories`` /
+    ``budget.transfers`` checks (same recompute), counts only."""
     from cashu.modules.budget import service
     from cashu.modules.budget.cash import cash_account_ids
     from cashu.modules.budget.ingestion.transfers import (
@@ -662,6 +665,7 @@ def _recompute_categories(ctx: Ctx, txns: list[dict]) -> None:
     from cashu.modules.budget.queries import transactions
 
     result: dict[int, tuple[str | None, str | None]] = {}
+    transfer: dict[int, tuple[bool, str | None]] = {}
     cash: set[int] = set()
     savepoint = ctx.session.begin_nested()
     try:
@@ -673,8 +677,16 @@ def _recompute_categories(ctx: Ctx, txns: list[dict]) -> None:
             ctx.session.flush()
             service.categorize_all(ctx.session, use_llm=False, profile_id=p.id)
             ctx.session.flush()
-            for t in ctx.session.exec(transactions(p.id).order_by(Transaction.id)).all():
+            rows = ctx.session.exec(transactions(p.id).order_by(Transaction.id)).all()
+            outflow: dict[str, int] = {}
+            for t in rows:
                 result[t.id] = (t.category, t.category_source)
+                if t.transfer_group_id is not None and t.amount < 0:
+                    outflow[t.transfer_group_id] = t.id
+            for t in rows:
+                group = t.transfer_group_id
+                key = None if group is None else ctx.ids.key("transactions", outflow[group])
+                transfer[t.id] = (bool(t.is_internal_transfer), key)
     finally:
         savepoint.rollback()
     for row in txns:
@@ -683,6 +695,8 @@ def _recompute_categories(ctx: Ctx, txns: list[dict]) -> None:
                 row["category"] = row["category_source"] = None
         elif row["id"] in result:
             row["category"], row["category_source"] = result[row["id"]]
+        if row["id"] in transfer:
+            row["is_internal_transfer"], row["transfer_group_id"] = transfer[row["id"]]
 
 
 def _source(ctx: Ctx) -> _Source:
@@ -691,7 +705,7 @@ def _source(ctx: Ctx) -> _Source:
         return cached
     _guard_schema(ctx)
     rows = _read(ctx)
-    _recompute_categories(ctx, rows["transactions"])
+    _recompute_derived(ctx, rows["transactions"])
     profile_ids = {r["id"] for r in rows["profiles"]}
     account_profile = {r["id"]: r["profile_id"] for r in rows["accounts"]}
     decision_profile = {r["id"]: r["profile_id"] for r in rows["inv_decisions"]}

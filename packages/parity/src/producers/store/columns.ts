@@ -6,8 +6,8 @@
  * legs, derived categories, parked account keys, archive and staged blobs, `applying` proposals).
  *
  * Left out of every table: `id`, `profile_id`, device-local connector fetch state, the id-coupled
- * `dedup_hash` columns and the DERIVED columns whose deriving scope has not landed (transactions
- * `transfer_group_id` / `is_internal_transfer` until S24). Alerts `status` / `snoozed_until` are the
+ * `dedup_hash` columns. Transactions `transfer_group_id` reads the natural key of the group's outflow
+ * row (the view's group id is that row's gid, D-24.2). Alerts `status` / `snoozed_until` are the
  * effective values at the dataset's `as_of` 00:00 UTC (lead decision). `inv_decisions`
  * carries the pseudo-column `signals` (its `inv_decision_signals` links, natural keys, sorted).
  */
@@ -39,6 +39,8 @@ export const ROUNDTRIP_COLUMNS: Readonly<Record<string, readonly string[]>> = Ob
     "bank_transaction_id",
     "source",
     "occurrence",
+    "transfer_group_id",
+    "is_internal_transfer",
     "category",
     "category_source",
     "raw",

@@ -43,7 +43,7 @@ describe("ROUNDTRIP_COLUMNS", () => {
         expect(columns, table).not.toContain(banned);
       }
     }
-    expect(ROUNDTRIP_COLUMNS.transactions).not.toContain("is_internal_transfer");
+    expect(ROUNDTRIP_COLUMNS.transactions).toContain("is_internal_transfer"); // derived (S24b)
     expect(ROUNDTRIP_COLUMNS.alerts).toContain("status"); // effective status (lead decision)
     expect(ROUNDTRIP_COLUMNS.inv_decisions).toContain("signals");
   });
