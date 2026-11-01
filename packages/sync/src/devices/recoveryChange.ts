@@ -97,6 +97,8 @@ export function buildRecoveryChange(
   current: RecoveryIdentity,
   next: RecoveryIdentity,
   eid: string,
+  /** Other recovery-signed statements the changer accepted (the lease chain's recovery pins). */
+  alsoRatify: readonly string[] = [],
 ): UnstampedEvent {
   if (!sameRecoveryKeys(current.publicKeys, ring.recovery)) {
     throw new RangeError("the current recovery words do not match the pinned recovery key");
@@ -117,9 +119,10 @@ export function buildRecoveryChange(
           ring.vaultId,
         ),
       );
-    const ratified = registry.events
-      .filter((e) => e.data.signer === RECOVERY_SIGNER_ID)
-      .map((e) => e.eid);
+    const ratified = [
+      ...registry.events.filter((e) => e.data.signer === RECOVERY_SIGNER_ID).map((e) => e.eid),
+      ...alsoRatify,
+    ];
     return buildRecoveryChanged(identity, current, ring.vaultId, eid, {
       from: ring.recovery,
       to: next.publicKeys,

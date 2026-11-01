@@ -373,6 +373,7 @@ export class VaultDevices {
       current,
       next,
       eid,
+      this.#lease.recoveryPins,
     );
   }
 

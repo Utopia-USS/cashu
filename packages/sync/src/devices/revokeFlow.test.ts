@@ -24,6 +24,7 @@ import {
   type Batch,
   createSimVault,
   newEid,
+  optInAutoHandover,
   pairDevice,
   prepareConsented,
   type SimDevice,
@@ -43,6 +44,8 @@ async function household() {
   const phone = await pairDevice(desk, "phone");
   const laptop = await pairDevice(desk, "laptop");
   const b = await pairDevice(a, "tablet");
+  syncAll([a, desk, phone, laptop, b]);
+  optInAutoHandover(a); // the phone's raw claim below is a mode-auto event
   syncAll([a, desk, phone, laptop, b]);
   return { vault, a, desk, phone, laptop, b };
 }

@@ -11,7 +11,7 @@
 // is the longest prefix that passes `guard.check`; when an ingest reports rejected frames, the
 // device drops that writer's data after the reported position and re-applies from there.
 
-import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
+import type { LeaseTransport, SegmentCursor, UnstampedEvent } from "../carrier.js";
 import { START_CURSOR } from "../carrier.js";
 import {
   CertificateCache,
@@ -31,10 +31,11 @@ import {
   buildDeviceRevoked,
   consentToRevocation,
   type LogEvent,
+  pinConfirmationText,
   type RevokedEntry,
 } from "./events.js";
 import type { FrameRejection, KeyOrder } from "./guard.js";
-import type { LeaseLocal, OwnLeaseRecord } from "./lease.js";
+import { creatorPin, type LeaseLocal, type OwnLeaseRecord, pinEventFor } from "./lease.js";
 import { PairingInviter, PairingJoiner } from "./pairing.js";
 import { type PairingLink, runInviter, runJoiner } from "./pairingLink.js";
 import { comparePositions } from "./positions.js";
@@ -76,16 +77,92 @@ export interface Batch {
   readonly key: KeyOrder;
 }
 
+/**
+ * How a simulated remote shows a published batch to OTHER devices (S29c R4): at once
+ * (`linearizable`), within `maxDelayMs` (`bounded`, a relay that keeps its declared bound), or after
+ * any delay up to `maxDelayMs` with a share of batches held back until `flush()` (`eventual`, a
+ * synced folder: no bound is declared). Delays are drawn per reader and batch from a seeded PRNG;
+ * a later batch of a stream is never visible before an earlier one.
+ */
+export type SimVisibility =
+  | { readonly kind: "linearizable" }
+  | { readonly kind: "bounded"; readonly maxDelayMs: number }
+  | { readonly kind: "eventual"; readonly maxDelayMs: number; readonly stallRate?: number };
+
 export class SimRemote {
   readonly batches = new Map<string, Batch[]>();
+  readonly visibility: SimVisibility;
   /** Simulated true time, ms. */
   time = START_TIME;
+  readonly #publishedAt = new Map<Batch, number>();
+  readonly #visibleAt = new Map<string, number>();
+  readonly #rand: () => number;
+  #flushed = false;
+
+  constructor(options: { visibility?: SimVisibility; seed?: number } = {}) {
+    this.visibility = options.visibility ?? { kind: "linearizable" };
+    this.#rand = mulberry32(options.seed ?? 1);
+  }
 
   publish(batch: Batch): void {
     const list = this.batches.get(batch.device) ?? [];
-    if (!list.some((b) => b.cursor.offset === batch.cursor.offset)) list.push(batch);
+    if (!list.some((b) => b.cursor.offset === batch.cursor.offset)) {
+      list.push(batch);
+      this.#publishedAt.set(batch, this.time);
+    }
     list.sort((x, y) => comparePositions(x.cursor, y.cursor));
     this.batches.set(batch.device, list);
+  }
+
+  /** Every published batch becomes visible to every reader (the "eventually") until `unflush`. */
+  flush(): void {
+    this.#flushed = true;
+  }
+
+  /** Back to the visibility model for what is published from now on (earlier batches stay seen). */
+  unflush(): void {
+    for (const list of this.batches.values()) for (const b of list) this.#publishedAt.delete(b);
+    this.#flushed = false;
+  }
+
+  /** Whether `reader` sees `batch` now (its own batches and replaced ones always). */
+  visibleTo(reader: string, batch: Batch): boolean {
+    return this.#flushed || this.#visibleAtFor(reader, batch) <= this.time;
+  }
+
+  /** What the remote's transport declares, as the engine would report it after a pass. */
+  report(lastPullAt: number | undefined, lastPushAt: number | undefined): LeaseTransport {
+    const v = this.visibility;
+    if (v.kind === "eventual" || lastPullAt === undefined) return { kind: "eventual" };
+    return {
+      kind: "bounded",
+      propagationMs: v.kind === "bounded" ? v.maxDelayMs : 0,
+      lastPullAt,
+      lastPushAt: lastPushAt ?? lastPullAt,
+    };
+  }
+
+  #visibleAtFor(reader: string, batch: Batch): number {
+    const published = this.#publishedAt.get(batch);
+    if (published === undefined || reader === batch.device) return Number.NEGATIVE_INFINITY;
+    const key = `${reader}|${batch.device}|${batch.cursor.offset}`;
+    const known = this.#visibleAt.get(key);
+    if (known !== undefined) return known;
+    const v = this.visibility;
+    let at = published;
+    if (v.kind !== "linearizable") {
+      const stalled = v.kind === "eventual" && this.#rand() < (v.stallRate ?? 0);
+      at = stalled
+        ? Number.POSITIVE_INFINITY
+        : published + Math.floor(this.#rand() * (v.maxDelayMs + 1));
+    }
+    // Per-stream order: never before the previous batch of the same stream.
+    const list = this.batches.get(batch.device) ?? [];
+    const i = list.indexOf(batch);
+    const before = i > 0 ? (list[i - 1] as Batch) : undefined;
+    if (before) at = Math.max(at, this.#visibleAtFor(reader, before));
+    this.#visibleAt.set(key, at);
+    return at;
   }
 
   /** Untrusted storage replaces a stored batch (a device rewriting its own frame, review A1b). */
@@ -119,6 +196,12 @@ export class SimDevice {
   readonly certificateCache = new CertificateCache();
   skewMs: number;
   lastPullAt: number | undefined;
+  lastPushAt: number | undefined;
+  /**
+   * Test-only: this device believes its transport is linearizable whatever the remote does (the
+   * rule-6 control: an eventual remote treated as bounded must break the property).
+   */
+  assumeBounded = false;
   /** The vault's recovery words, as the owner knows them (the honest revoke helpers fall back to them). */
   words: RecoveryIdentity | undefined;
   devices!: VaultDevices;
@@ -218,6 +301,7 @@ export class SimDevice {
       }
     }
     this.#pushed = this.stream.length;
+    this.lastPushAt = this.now();
   }
 
   /** Downloads every batch not downloaded yet, in per-device order (`filter` false stops a stream). */
@@ -228,7 +312,7 @@ export class SimDevice {
       const last = have[have.length - 1]?.cursor;
       for (const b of this.remote.batches.get(device) ?? []) {
         if (last && comparePositions(b.cursor, last) <= 0) continue;
-        if (!filter(b)) break;
+        if (!filter(b) || !this.remote.visibleTo(this.id, b)) break;
         this.#download(b);
       }
     }
@@ -323,6 +407,14 @@ export class SimDevice {
       me: this.id,
       now: this.now(),
       lastPullAt: this.lastPullAt,
+      transport: this.assumeBounded
+        ? {
+            kind: "bounded",
+            propagationMs: 0,
+            lastPullAt: this.lastPullAt ?? 0,
+            lastPushAt: this.lastPushAt ?? 0,
+          }
+        : this.remote.report(this.lastPullAt, this.lastPushAt),
       own: (eid: string) => this.own.get(eid),
       firstSeen: (eid: string) => this.devices.firstSeen(eid),
       clockOk: this.clockOk(),
@@ -352,6 +444,7 @@ export function createSimVault(remote = new SimRemote(), skewMs = 0): SimVault {
     signPublicKey: creator.identity.signPublicKey,
     boxPublicKey: creator.identity.box.publicKey,
   };
+  // The creator announces itself and, in the same batch, the creator pin (the fetch leader, D3).
   creator.write([
     buildDeviceAdded(
       creator.identity,
@@ -361,6 +454,7 @@ export function createSimVault(remote = new SimRemote(), skewMs = 0): SimVault {
       "creator",
       vault.creatorCertificate,
     ),
+    creatorPin(creator.identity, recovery, vault.ring.vaultId, newEid(), creator.now()),
   ]);
   creator.push();
   return {
@@ -473,6 +567,27 @@ export async function pairDevice(inviter: SimDevice, name: string, skewMs = 0): 
 }
 
 export { START_CURSOR };
+
+/**
+ * The owner opts into automatic handover on `d` (typed confirmation, forced: tests that write raw
+ * claims start from here). `d`'s remote must declare bounded propagation.
+ */
+export function optInAutoHandover(d: SimDevice): void {
+  const write = {
+    identity: d.identity,
+    vaultId: d.ring.vaultId,
+    eid: newEid(),
+    now: d.now(),
+    applied: d.applied,
+  };
+  const request = {
+    mode: "auto" as const,
+    leader: null,
+    force: true,
+    confirmation: { kind: "typed" as const, text: pinConfirmationText("auto", null, true) },
+  };
+  d.write([pinEventFor(d.devices.lease, write, request, d.local())]);
+}
 
 /** A small seeded PRNG for reproducible schedules (tests only). */
 export function mulberry32(seed: number): () => number {

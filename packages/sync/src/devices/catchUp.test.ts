@@ -25,6 +25,7 @@ import { catchUpMissing, foldLease, type LeaseView } from "./lease.js";
 import {
   createSimVault,
   newEid,
+  optInAutoHandover,
   pairDevice,
   prepareConsented,
   type SimDevice,
@@ -79,6 +80,8 @@ async function vault() {
   const b = await pairDevice(a, "phone");
   const c = await pairDevice(a, "laptop");
   const r = await pairDevice(a, "tablet");
+  syncAll([a, b, c, r]);
+  optInAutoHandover(a); // the raw claims below are mode-auto events
   syncAll([a, b, c, r]);
   return { ...v, a, b, c, r };
 }

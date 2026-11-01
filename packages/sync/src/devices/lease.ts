@@ -1,81 +1,65 @@
 // The fetch lease (CLAUDE.md data-safety rule 6: one PSD2 fetcher per vault; events.md LEADER and
 // 8.3 M6). Two parts:
 //
-// 1. A pure fold over the signed lease events, the same on every device holding the same set: a
-//    compare-and-set chain built from the `prev` links. Every lease event names `prev`, the eid of
-//    the last valid lease event its writer saw. Starting from `prev = null`, the chain follows the
-//    valid children of the current head; when several children are valid (concurrent events with
-//    the same `prev`), the first by (hlc, eid) wins, which is only the deterministic tie-break: the
-//    chain itself follows causality (`prev`), so an event stamped with a wrong clock never falls out
-//    of it. `lease.claimed` starts a term (any trusted device), `lease.renewed` extends the holder's
-//    term, `lease.released` ends it. Durations are bounded: `until - at <= MAX_LEASE_TTL_MS`, and the
-//    writer's `at` must agree with the HLC its own engine stamped on the event (`LEASE_CLOCK_
-//    TOLERANCE_MS`, the emit guard of events.md 3.3 re-checked at every lease event). No local clock
-//    enters the fold, so after convergence every device computes the same holder.
-// 2. A per-device belief and step function. A holder acts as leader (LEADER events, PSD2 fetches)
-//    only while: its claim was published within the publish deadline and a pull at least the settle
-//    period later still showed its term; it pulled within the publish deadline BEFORE this action
-//    (so a pre-emption published at least a settle period earlier is always seen); its own clock is
-//    not suspect (HLC warnings); and `now < until - maxSkew`. Rule 6 then holds whatever the clocks
-//    say: a device that pre-empts (or claims concurrently) acts only a settle period after
-//    publishing, and every holder pulls within the publish deadline before each action, so the
-//    earlier holder sees the newer term and stops first (as long as the remote shows a published
-//    event to every later pull, and one leader action completes within settle - deadline).
-//    Clocks only decide liveness: others claim at `min(until, firstSeen + (until - at)) + maxSkew`,
-//    so a holder whose clock runs days ahead cannot block fetching for longer than one term.
+// 1. A pure fold over the signed lease events (leaseFold.ts): the compare-and-set chain, its mode
+//    and its leader, the same on every device holding the same set.
+// 2. A per-device belief and step function (this file). Rule 6 rests on exactly one of (S29c R4,
+//    lead decision D3):
+//    a) mode `pinned` (the default on EVERY backend, pinned to the vault's creator at creation):
+//       exactly one designated device acts, changed only by an explicit owner action (a device-signed
+//       pin after the owner typed the confirmation, or a recovery-signed one), and the new leader
+//       acts only after the old one acknowledged (`pendingFrom`). This needs no propagation bound, so
+//       it is safe over a synced folder. Only an owner-confirmed `force` re-pin skips the
+//       acknowledgement (D4): then the old leader, if it is still alive and has not seen the pin, may
+//       act once more.
+//    b) mode `auto` (an owner opt-in): terms with claims, renewals and a settle period, used ONLY
+//       over a transport that declares bounded propagation (carrier.ts `Transport.consistency`,
+//       proven by the propagation conformance check) and whose bound the config covers:
+//       settle >= skew + publish deadline + propagation bound. A holder acts only while its claim
+//       was published within the publish deadline and a pull at least the settle period later still
+//       showed its term, it pulled within the publish deadline BEFORE this action (so a pre-emption
+//       published at least a settle period earlier is visible to that pull), its own clock is not
+//       suspect, and `now < until - maxSkew`. Clocks only decide liveness: others claim at
+//       `min(until, firstSeen + (until - at)) + maxSkew`, so a holder whose clock runs days ahead
+//       cannot block fetching for longer than one term. Over an eventual transport nobody holds in
+//       auto mode (`unsupported_transport`).
 //
 // The catch-up watermark (M6): lease events carry, per writer device, the cursor up to which their
-// writer had applied that device's stream. A holder runs newest-day imports only after it applied,
-// for every device, the HIGHEST valid cursor any lease event in the chain names (cumulative, not
-// only the previous holder's; catchUp.ts: registered devices only, capped at a revoked device's cut,
-// conflicted devices dropped, minus owner waivers). Imports a holder made after its last lease event
-// are not covered (a holder must not import while it cannot publish).
+// writer had applied that device's stream. A leader runs newest-day imports only after it applied,
+// for every device, the HIGHEST valid cursor any lease event in the chain names (cumulative;
+// catchUp.ts: registered devices only, capped at a revoked device's cut, conflicted devices dropped,
+// minus owner waivers). Imports a leader made after its last lease event are not covered (a leader
+// must not import while it cannot publish); the hand-over ack carries the old leader's watermark.
 
-import type { SegmentCursor, UnstampedEvent } from "../carrier.js";
-import { type DeviceIdentity, isDeviceId } from "../crypto/index.js";
-import { DEFAULT_MAX_DRIFT_MS, parseHlc } from "../hlc.js";
-import { accepted } from "./acceptance.js";
-import { canonicalJson, fromHex, isCanonicalValue } from "./bytes.js";
-import {
-  behindNeed,
-  CatchUpFold,
-  type DroppedWatermarkEntry,
-  type RefusedWaiver,
-} from "./catchUp.js";
+import type { LeaseTransport, SegmentCursor, UnstampedEvent } from "../carrier.js";
+import { type DeviceIdentity, isDeviceId, type RecoveryIdentity } from "../crypto/index.js";
+import { DEFAULT_MAX_DRIFT_MS } from "../hlc.js";
+import { behindNeed } from "./catchUp.js";
 import {
   buildLeaseClaim,
+  buildLeaseFetched,
+  buildLeasePin,
   buildLeaseRelease,
   buildLeaseRenewal,
-  decodeLeaseClaim,
-  decodeLeaseRelease,
-  decodeLeaseRenewal,
-  LEASE_CLAIMED,
-  LEASE_RELEASED,
-  LEASE_RENEWED,
-  type LeaseClaimData,
-  type LeaseReleaseData,
-  type LeaseRenewData,
-  type LogEvent,
-  statementBody,
+  type PinRequest,
   type WaiveRequest,
   type Watermark,
 } from "./events.js";
-import { comparePositions } from "./positions.js";
-import type { Registry } from "./registry.js";
-import { type StatementVerifier, verifyStatement } from "./statements.js";
-import { cmp, push } from "./util.js";
+import { type LeaseView, MAX_LEASE_TTL_MS } from "./leaseFold.js";
+import { cmp } from "./util.js";
+
+export {
+  foldLease,
+  isLeaseEvent,
+  LEASE_CLOCK_TOLERANCE_MS,
+  type LeaseIgnoredReason,
+  type LeaseTermEntry,
+  type LeaseView,
+  MAX_LEASE_TTL_MS,
+} from "./leaseFold.js";
 
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
-
-/**
- * The longest term one claim or renewal may hold: 24 hours. PSD2 fetching runs about once a day
- * (CLAUDE.md rule 6), so a longer term buys nothing, and this bounds how long a holder that dies (or
- * whose clock is wrong) can keep everyone else from fetching: at most one term plus the skew margin.
- */
-export const MAX_LEASE_TTL_MS = 24 * HOUR;
-/** A lease event's `at` must lie within this of its own HLC wall (events.md 3.3: 5 minutes). */
-export const LEASE_CLOCK_TOLERANCE_MS = DEFAULT_MAX_DRIFT_MS;
 
 export interface LeaseConfig {
   /** How long a claim or renewal holds (writer's clock); at most MAX_LEASE_TTL_MS. */
@@ -89,264 +73,42 @@ export interface LeaseConfig {
    * holder acts only within this time after its last pull.
    */
   readonly publishDeadlineMs: number;
+  /**
+   * Mode auto: the largest propagation bound of a transport this config covers (the relay's
+   * declared bound). A device whose transport declares more is `unsupported_transport`.
+   */
+  readonly propagationMs: number;
   /** After publishing a claim, a pull at least this much later must still show it as head. */
   readonly settleMs: number;
 }
 
 export const DEFAULT_LEASE_CONFIG: LeaseConfig = leaseConfig({});
 
-/** Validated config; the settle period must cover the skew plus the publish deadline. */
+/** Validated config; the settle period must cover the skew, the publish deadline and propagation. */
 export function leaseConfig(overrides: Partial<LeaseConfig>): LeaseConfig {
   const maxSkewMs = overrides.maxSkewMs ?? DEFAULT_MAX_DRIFT_MS;
   const publishDeadlineMs = overrides.publishDeadlineMs ?? 60_000;
+  const propagationMs = overrides.propagationMs ?? 0;
   const config: LeaseConfig = {
     ttlMs: overrides.ttlMs ?? MAX_LEASE_TTL_MS,
     renewBeforeMs: overrides.renewBeforeMs ?? 12 * HOUR,
     maxSkewMs,
     publishDeadlineMs,
-    settleMs: overrides.settleMs ?? maxSkewMs + publishDeadlineMs + 60_000,
+    propagationMs,
+    settleMs: overrides.settleMs ?? maxSkewMs + publishDeadlineMs + propagationMs + 60_000,
   };
   const ok =
     Object.values(config).every((v) => Number.isSafeInteger(v) && v >= 0) &&
     config.ttlMs <= MAX_LEASE_TTL_MS &&
-    config.settleMs >= config.maxSkewMs + config.publishDeadlineMs &&
+    config.settleMs >= config.maxSkewMs + config.publishDeadlineMs + config.propagationMs &&
     config.renewBeforeMs > 0 &&
     config.ttlMs > config.renewBeforeMs + 2 * config.maxSkewMs + config.settleMs;
   if (!ok) {
     throw new RangeError(
-      "lease config: ttl <= 24 h, settle >= skew + deadline, ttl > renew + 2 skew + settle",
+      "lease config: ttl <= 24 h, settle >= skew + deadline + propagation, ttl > renew + 2 skew + settle",
     );
   }
   return config;
-}
-
-export interface LeaseTermEntry {
-  readonly eid: string;
-  readonly kind: "claimed" | "renewed";
-  /** The writer's clock when it wrote the event. */
-  readonly at: number;
-  readonly until: number;
-}
-
-export type LeaseIgnoredReason =
-  | "malformed"
-  | "duplicate_eid"
-  | "writer_mismatch"
-  | "untrusted_writer"
-  | "bad_signature"
-  | "clock_mismatch"
-  | "term_too_long"
-  | "stale_prev"
-  | "not_holder";
-
-export interface LeaseView {
-  /** Eid of the last valid lease event (what the next event must name as `prev`). */
-  readonly head: string | null;
-  readonly holder: string | null;
-  readonly released: boolean;
-  /** No holder, released, or the holder is no longer trusted (revoked, conflicted): anyone may claim. */
-  readonly free: boolean;
-  /** Latest `until` of the current term (0 when there is none). */
-  readonly until: number;
-  /** The current term: its claim, then its renewals. */
-  readonly term: readonly LeaseTermEntry[];
-  /** The holder's latest watermark. */
-  readonly watermark: Watermark;
-  /**
-   * Pointwise highest VALID cursor named by the lease events of the chain (catchUp.ts): apply up to
-   * it before newest-day imports.
-   */
-  readonly catchUp: Watermark;
-  /** Per device in `catchUp`: the eid of the lease event that set it (UI: who requires it). */
-  readonly catchUpSources: ReadonlyMap<string, string>;
-  /** Watermark entries that never count (unknown or untrusted device). */
-  readonly catchUpDropped: readonly DroppedWatermarkEntry[];
-  /** Waivers without the owner's confirmation (refused; the events still count otherwise). */
-  readonly waiversRefused: readonly RefusedWaiver[];
-  readonly ignored: readonly { readonly eid: string; readonly reason: LeaseIgnoredReason }[];
-}
-
-const LEASE_TYPES = new Set<string>([LEASE_CLAIMED, LEASE_RENEWED, LEASE_RELEASED]);
-
-export function isLeaseEvent(event: LogEvent): boolean {
-  return LEASE_TYPES.has(event.type);
-}
-
-type DecodedLease =
-  | ({ readonly kind: "claimed" } & LeaseClaimData)
-  | ({ readonly kind: "renewed" } & LeaseRenewData)
-  | ({ readonly kind: "released" } & LeaseReleaseData);
-
-function decodeLease(event: LogEvent): DecodedLease | undefined {
-  if (event.v !== 1) return undefined;
-  if (event.type === LEASE_CLAIMED) {
-    const d = decodeLeaseClaim(event.data);
-    return d && { kind: "claimed", ...d };
-  }
-  if (event.type === LEASE_RENEWED) {
-    const d = decodeLeaseRenewal(event.data);
-    return d && { kind: "renewed", ...d };
-  }
-  const d = decodeLeaseRelease(event.data);
-  return d && { kind: "released", ...d };
-}
-
-interface Candidate {
-  readonly event: LogEvent;
-  readonly d: DecodedLease;
-}
-
-/** Folds the lease events of a vault (other types are skipped). Never throws on log content. */
-export function foldLease(
-  registry: Registry,
-  events: readonly LogEvent[],
-  verify: StatementVerifier = verifyStatement,
-): LeaseView {
-  const ignored: { eid: string; reason: LeaseIgnoredReason }[] = [];
-  const reasons = new Map<string, LeaseIgnoredReason>();
-
-  // Well-formed events whose own fields are consistent; signatures are checked lazily on the walk.
-  const byEid = new Map<string, Candidate[]>();
-  for (const event of events) {
-    if (!isLeaseEvent(event)) continue;
-    const d = decodeLease(event);
-    if (!d) {
-      reasons.set(event.eid, "malformed");
-      continue;
-    }
-    if (d.device !== event.writer) {
-      reasons.set(event.eid, "writer_mismatch");
-      continue;
-    }
-    if (Math.abs(d.at - parseHlc(event.hlc).wall) > LEASE_CLOCK_TOLERANCE_MS) {
-      reasons.set(event.eid, "clock_mismatch");
-      continue;
-    }
-    if (d.kind !== "released" && !(d.until > d.at && d.until - d.at <= MAX_LEASE_TTL_MS)) {
-      reasons.set(event.eid, "term_too_long");
-      continue;
-    }
-    push(byEid, event.eid, { event, d });
-  }
-
-  // Signature check (cached per candidate): the writer's trusted key, or its key before its cut.
-  const checked = new Map<Candidate, boolean>();
-  const authentic = (c: Candidate): boolean => {
-    let ok = checked.get(c);
-    if (ok === undefined) {
-      const keys = registry.statementKeys(c.event.writer, c.event.position);
-      const body = statementBody(registry.vaultId, c.event.type, c.event.eid, c.event.data);
-      ok = accepted(verify, "cashu/lease/v1", body, fromHex(c.d.sig), {
-        kind: "statement",
-        keys: registry.decisionKeys,
-        device: c.event.writer,
-        position: c.event.position,
-        revoked: registry.revoked,
-      });
-      checked.set(c, ok);
-      if (!ok) reasons.set(c.event.eid, keys.length === 0 ? "untrusted_writer" : "bad_signature");
-    }
-    return ok;
-  };
-
-  // One copy per eid: the authentic copy earliest in its writer's stream (a replay sits later).
-  const unique = new Map<string, Candidate | undefined>();
-  const duplicates = new Set<string>();
-  const resolve = (eid: string): Candidate | undefined => {
-    if (unique.has(eid)) return unique.get(eid);
-    const copies = (byEid.get(eid) ?? []).filter(authentic);
-    const contents = new Set(copies.map((c) => contentOf(c.event)));
-    if (contents.size > 1) {
-      duplicates.add(eid);
-      ignored.push({ eid, reason: "duplicate_eid" });
-    }
-    const best = copies.sort(
-      (a, b) =>
-        cmp(contentOf(a.event), contentOf(b.event)) ||
-        comparePositions(a.event.position, b.event.position),
-    )[0];
-    unique.set(eid, best);
-    return best;
-  };
-
-  const children = new Map<string | null, string[]>();
-  for (const [eid, copies] of byEid) {
-    for (const prev of new Set(copies.map((c) => c.d.prev))) push(children, prev, eid);
-  }
-  // Tie-break between concurrent children: the lowest HLC any copy carries, then the eid.
-  const tie = new Map<string, string>();
-  for (const [eid, copies] of byEid) {
-    tie.set(eid, copies.map((c) => c.event.hlc).sort()[0] as string);
-  }
-  const order = (a: string, b: string) =>
-    cmp(tie.get(a) as string, tie.get(b) as string) || cmp(a, b);
-
-  let head: string | null = null;
-  let holder: string | null = null;
-  let released = false;
-  let until = 0;
-  let term: LeaseTermEntry[] = [];
-  let watermark: Watermark = {};
-  const catchUp = new CatchUpFold(registry, verify);
-  const onChain = new Set<string>();
-
-  for (;;) {
-    let next: Candidate | undefined;
-    for (const eid of (children.get(head) ?? []).sort(order)) {
-      if (onChain.has(eid)) continue;
-      const c = resolve(eid);
-      if (!c || c.d.prev !== head) continue;
-      if (c.d.kind !== "claimed" && (c.d.device !== holder || released)) {
-        reasons.set(eid, "not_holder");
-        continue;
-      }
-      next = c;
-      break;
-    }
-    if (!next) break;
-    const { event, d } = next;
-    if (d.kind === "claimed") {
-      holder = d.device;
-      released = false;
-      until = d.until;
-      term = [{ eid: event.eid, kind: "claimed", at: d.at, until: d.until }];
-    } else if (d.kind === "renewed") {
-      until = d.until;
-      term = [...term, { eid: event.eid, kind: "renewed", at: d.at, until: d.until }];
-    } else {
-      released = true;
-    }
-    watermark = d.watermark;
-    catchUp.add(event.eid, event.writer, d.watermark, d.kind === "released" ? undefined : d.waive);
-    head = event.eid;
-    onChain.add(event.eid);
-  }
-
-  for (const eid of byEid.keys()) {
-    if (!onChain.has(eid) && !duplicates.has(eid)) {
-      reasons.set(eid, reasons.get(eid) ?? "stale_prev");
-    }
-  }
-  for (const [eid, reason] of [...reasons].sort(([a], [b]) => cmp(a, b))) {
-    if (!onChain.has(eid)) ignored.push({ eid, reason });
-  }
-
-  const free = holder === null || released || !registry.isTrusted(holder);
-  const required = catchUp.result();
-  return {
-    head,
-    holder,
-    released,
-    free,
-    until,
-    term,
-    watermark,
-    catchUp: required.need,
-    catchUpSources: required.sources,
-    catchUpDropped: required.dropped,
-    waiversRefused: required.waiversRefused,
-    ignored,
-  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -356,7 +118,10 @@ export function foldLease(
 export interface OwnLeaseRecord {
   /** Local clock when the event was written. */
   readonly writtenAt: number;
-  /** Local clock when a sync pass pushed it to a remote; undefined while unpublished. */
+  /**
+   * Local clock when a sync pass pushed it (mode auto: through the bounded remotes, the engine's
+   * `leaseTransport().lastPushAt` of that pass); undefined while unpublished.
+   */
   readonly publishedAt?: number;
 }
 
@@ -365,6 +130,11 @@ export interface LeaseLocal {
   readonly now: number;
   /** Local clock when the last pass that pulled from a remote finished (undefined: never). */
   readonly lastPullAt: number | undefined;
+  /**
+   * The engine's report of the last pass (`SyncEngine.leaseTransport()`): mode auto runs only while
+   * it is `bounded`, and then uses its pull time.
+   */
+  readonly transport: LeaseTransport;
   readonly own: (eid: string) => OwnLeaseRecord | undefined;
   /**
    * Local clock when this device first ingested a lease event (undefined: unknown, for example
@@ -379,6 +149,21 @@ export interface LeaseLocal {
   readonly clockOk: boolean;
 }
 
+/** Mode auto is usable here: the last pass reached every bounded remote, within the config's bound. */
+export function supportsAutoHandover(
+  local: Pick<LeaseLocal, "transport">,
+  config: LeaseConfig,
+): boolean {
+  return (
+    local.transport.kind === "bounded" && local.transport.propagationMs <= config.propagationMs
+  );
+}
+
+/** In mode auto, only pulls through the bounded remotes count. */
+function autoPullAt(local: LeaseLocal): number | undefined {
+  return local.transport.kind === "bounded" ? local.transport.lastPullAt : undefined;
+}
+
 function timely(record: OwnLeaseRecord | undefined, config: LeaseConfig): boolean {
   return (
     record?.publishedAt !== undefined &&
@@ -388,7 +173,7 @@ function timely(record: OwnLeaseRecord | undefined, config: LeaseConfig): boolea
 }
 
 function myTerm(view: LeaseView, local: LeaseLocal): boolean {
-  return !view.free && view.holder === local.me && view.term.length > 0;
+  return view.mode === "auto" && !view.free && view.holder === local.me && view.term.length > 0;
 }
 
 /** The `until` this device may rely on: its term events that were published in time. */
@@ -403,20 +188,24 @@ function effectiveUntil(view: LeaseView, local: LeaseLocal, config: LeaseConfig)
 function settled(view: LeaseView, local: LeaseLocal, config: LeaseConfig): boolean {
   const claim = view.term[0];
   const record = claim && local.own(claim.eid);
+  const pullAt = autoPullAt(local);
   return (
     record !== undefined &&
     timely(record, config) &&
-    local.lastPullAt !== undefined &&
+    pullAt !== undefined &&
     record.publishedAt !== undefined &&
-    local.lastPullAt >= record.publishedAt + config.settleMs
+    pullAt >= record.publishedAt + config.settleMs
   );
 }
 
-function pulledRecently(local: LeaseLocal, config: LeaseConfig): boolean {
+function pulledRecently(pullAt: number | undefined, now: number, config: LeaseConfig): boolean {
+  return pullAt !== undefined && pullAt <= now && now - pullAt <= config.publishDeadlineMs;
+}
+
+/** Mode pinned: this device is the designated leader and nobody has to hand over first. */
+function pinnedLeader(view: LeaseView, local: LeaseLocal): boolean {
   return (
-    local.lastPullAt !== undefined &&
-    local.lastPullAt <= local.now &&
-    local.now - local.lastPullAt <= config.publishDeadlineMs
+    view.mode === "pinned" && !view.free && view.pinned === local.me && view.pendingFrom === null
   );
 }
 
@@ -429,11 +218,16 @@ export function holdsLease(
   local: LeaseLocal,
   config: LeaseConfig = DEFAULT_LEASE_CONFIG,
 ): boolean {
+  if (!local.clockOk) return false;
+  if (view.mode === "pinned") {
+    return pinnedLeader(view, local) && pulledRecently(local.lastPullAt, local.now, config);
+  }
   return (
-    local.clockOk &&
+    supportsAutoHandover(local, config) &&
+    view.pendingFrom === null &&
     myTerm(view, local) &&
     settled(view, local, config) &&
-    pulledRecently(local, config) &&
+    pulledRecently(autoPullAt(local), local.now, config) &&
     local.now < effectiveUntil(view, local, config) - config.maxSkewMs
   );
 }
@@ -451,7 +245,9 @@ export function termEndFor(view: LeaseView, local: LeaseLocal): number {
 }
 
 export type LeaseStep =
-  /** This device holds the lease; renew at `renewAt`. */
+  /** Mode pinned: this device is the designated leader; fetch when due, then write `fetched`. */
+  | { readonly kind: "lead" }
+  /** Mode auto: this device holds the lease; renew at `renewAt`. */
   | { readonly kind: "hold"; readonly until: number; readonly renewAt: number }
   | { readonly kind: "renew" }
   | { readonly kind: "claim" }
@@ -459,15 +255,22 @@ export type LeaseStep =
   | { readonly kind: "publish" }
   /** The own claim is pushed; pull again at or after `until` before acting. */
   | { readonly kind: "settle"; readonly until: number }
-  /** The own term cannot be relied on (published too late, record lost, not eligible, bad clock). */
+  /**
+   * Write a `lease.released`: the own term cannot be relied on (published too late, record lost,
+   * not eligible, bad clock), or the owner moved the leadership and this device must hand over.
+   */
   | { readonly kind: "release" }
+  /** The owner moved the leadership; `from` has to acknowledge before anyone acts (or a force re-pin). */
+  | { readonly kind: "handover_wait"; readonly from: string }
+  /** Mode auto, but this device's transport declares no (covered) propagation bound: pin a leader. */
+  | { readonly kind: "unsupported_transport" }
   /** Another device holds the lease; it may be claimed at `until`. */
   | { readonly kind: "wait"; readonly until: number }
   | { readonly kind: "idle" };
 
 /**
- * What this device should do next. `eligible` = this device is configured to fetch (rule 6: the
- * owner picks fetchers; a phone may opt out).
+ * What this device should do next. `eligible` = this device is configured to fetch (mode auto: the
+ * owner picks fetchers; a phone may opt out). In mode pinned the pin alone decides.
  */
 export function nextLeaseStep(
   view: LeaseView,
@@ -475,8 +278,19 @@ export function nextLeaseStep(
   eligible: boolean,
   config: LeaseConfig = DEFAULT_LEASE_CONFIG,
 ): LeaseStep {
+  if (view.pendingFrom === local.me) return { kind: "release" }; // the hand-over ack
+  if (view.mode === "pinned") {
+    if (view.free || view.pinned !== local.me) return { kind: "idle" };
+    if (view.pendingFrom !== null) return { kind: "handover_wait", from: view.pendingFrom };
+    return local.clockOk ? { kind: "lead" } : { kind: "idle" };
+  }
+  if (myTerm(view, local) && (!eligible || !local.clockOk)) {
+    return view.released ? { kind: "idle" } : { kind: "release" };
+  }
+  if (!eligible || !local.clockOk) return { kind: "idle" };
+  if (!supportsAutoHandover(local, config)) return { kind: "unsupported_transport" };
+  if (view.pendingFrom !== null) return { kind: "handover_wait", from: view.pendingFrom };
   if (myTerm(view, local)) {
-    if (!eligible || !local.clockOk) return view.released ? { kind: "idle" } : { kind: "release" };
     const claim = view.term[0];
     const record = claim && local.own(claim.eid);
     if (!record) return { kind: "release" };
@@ -500,7 +314,6 @@ export function nextLeaseStep(
     // term settles like any claim, and no other device may claim before this term's end + skew.
     return { kind: "claim" };
   }
-  if (!eligible || !local.clockOk) return { kind: "idle" };
   if (view.free) return { kind: "claim" };
   const claimAt = termEndFor(view, local) + config.maxSkewMs;
   return local.now >= claimAt ? { kind: "claim" } : { kind: "wait", until: claimAt };
@@ -554,15 +367,21 @@ export interface LeaseWrite {
   readonly waive?: WaiveRequest;
 }
 
-/** The event for a `claim` / `renew` / `release` step; record it as an own lease event when written. */
+/**
+ * The event for a `claim` / `renew` / `release` step, or the leader's `fetched` report after a
+ * completed fetch; record it as an own lease event when written.
+ */
 export function leaseEventFor(
-  step: "claim" | "renew" | "release",
+  step: "claim" | "renew" | "release" | "fetched",
   view: LeaseView,
   write: LeaseWrite,
   config: LeaseConfig = DEFAULT_LEASE_CONFIG,
 ): UnstampedEvent {
   const watermark = watermarkOf(write.applied);
+  const me = write.identity.deviceId;
   if (step === "claim") {
+    if (view.head === null)
+      throw new RangeError("a vault's lease chain starts with the creator pin");
     return buildLeaseClaim(write.identity, write.vaultId, write.eid, {
       at: write.now,
       until: write.now + config.ttlMs,
@@ -571,25 +390,73 @@ export function leaseEventFor(
       ...(write.waive ? { waive: write.waive } : {}),
     });
   }
-  if (view.head === null || view.holder !== write.identity.deviceId) {
-    throw new RangeError("only the holder renews or releases");
+  const head = view.head;
+  const acking = view.pendingFrom === me;
+  const leading = view.holder === me && !view.free && view.pendingFrom === null;
+  if (head === null || !(step === "release" ? acking || view.holder === me : leading)) {
+    throw new RangeError("only the leader renews or reports; only it or a pending leader releases");
   }
   if (step === "renew") {
     return buildLeaseRenewal(write.identity, write.vaultId, write.eid, {
       at: write.now,
       until: write.now + config.ttlMs,
       watermark,
-      prev: view.head,
+      prev: head,
       ...(write.waive ? { waive: write.waive } : {}),
     });
   }
-  return buildLeaseRelease(write.identity, write.vaultId, write.eid, {
-    at: write.now,
-    watermark,
-    prev: view.head,
-  });
+  const fields = { at: write.now, watermark, prev: head };
+  return step === "fetched"
+    ? buildLeaseFetched(write.identity, write.vaultId, write.eid, fields)
+    : buildLeaseRelease(write.identity, write.vaultId, write.eid, fields);
 }
 
-function contentOf(e: LogEvent): string {
-  return isCanonicalValue(e.data) ? canonicalJson(e.data) : `${e.eid}:?`;
+/**
+ * The owner's pin (an explicit owner action only: the typed confirmation or the recovery words).
+ * Opting into mode auto needs this device's transport to declare a bound the config covers (the UI
+ * offers it only with a relay configured).
+ */
+export function pinEventFor(
+  view: LeaseView,
+  write: LeaseWrite,
+  pin: PinRequest,
+  local: Pick<LeaseLocal, "transport">,
+  config: LeaseConfig = DEFAULT_LEASE_CONFIG,
+): UnstampedEvent {
+  if (pin.mode === "auto" && !supportsAutoHandover(local, config)) {
+    throw new RangeError("automatic handover needs a relay declaring bounded propagation");
+  }
+  if (view.head === null) throw new RangeError("a vault's lease chain starts with the creator pin");
+  return buildLeasePin(
+    write.identity,
+    write.vaultId,
+    write.eid,
+    { at: write.now, watermark: watermarkOf(write.applied), prev: view.head },
+    pin,
+  );
+}
+
+/**
+ * The vault's first lease event, written at vault creation next to the creator's `device.added`:
+ * the creator is the pinned fetch leader (D3), signed with the recovery words then on screen.
+ */
+export function creatorPin(
+  creator: DeviceIdentity,
+  recovery: RecoveryIdentity,
+  vaultId: string,
+  eid: string,
+  now: number,
+): UnstampedEvent {
+  return buildLeasePin(
+    creator,
+    vaultId,
+    eid,
+    { at: now, watermark: {}, prev: null },
+    {
+      mode: "pinned",
+      leader: creator.deviceId,
+      force: false,
+      confirmation: { kind: "recovery", recovery },
+    },
+  );
 }

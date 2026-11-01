@@ -39,6 +39,8 @@ export const KEYS_ROTATED = "device.keysRotated";
 export const LEASE_CLAIMED = "lease.claimed";
 export const LEASE_RENEWED = "lease.renewed";
 export const LEASE_RELEASED = "lease.released";
+export const LEASE_PINNED = "lease.pinned";
+export const LEASE_FETCHED = "lease.fetched";
 export const RECOVERY_CHANGED = "device.recoveryChanged";
 
 /** Every event type this module defines is at schema version 1. */
@@ -264,6 +266,65 @@ export interface LeaseReleaseData {
   readonly sig: string;
 }
 
+/**
+ * The owner designates the fetch leader (`mode: "pinned"`, `leader` = a device id) or opts into
+ * automatic handover (`mode: "auto"`, `leader: null`; lease.ts uses it only over a transport that
+ * declares bounded propagation). Written ONLY from an explicit owner action; the vault's first lease
+ * event (`prev: null`) is the creator's pin, signed with the recovery words at vault creation.
+ * Signed by the writer device after the owner TYPED `pinConfirmationText` (`text`; an accident guard
+ * like the waiver's typed path, not an authorization: S44 sets it only from what the owner typed),
+ * or by the recovery identity (`signer` = RECOVERY_SIGNER_ID, no `text`; any device may carry it).
+ * `force`: the owner confirmed the previous leader is gone, so the new leader does not wait for its
+ * hand-over (lease.ts; the UI warns that a still-running old leader may fetch once more).
+ */
+export interface LeasePinnedData {
+  readonly mode: "pinned" | "auto";
+  readonly leader: string | null;
+  readonly force: boolean;
+  /** The writer's wall clock (ms), within 5 minutes of the event's own HLC wall. */
+  readonly at: number;
+  readonly watermark: Watermark;
+  /** Eid of the last valid lease event the writer saw; null only for the creator's pin. */
+  readonly prev: string | null;
+  /** The writer device, or RECOVERY_SIGNER_ID. */
+  readonly signer: string;
+  /** What the owner typed (device-signed pins only). */
+  readonly text?: string;
+  readonly sig: string;
+}
+
+/** The fetch leader reports a completed fetch (liveness, lease.ts `leaderLiveness`). */
+export interface LeaseFetchedData {
+  readonly device: string;
+  readonly at: number;
+  readonly watermark: Watermark;
+  readonly prev: string;
+  readonly sig: string;
+}
+
+/** What a writer asks for when it pins: the owner's typed text, or the recovery identity. */
+export interface PinRequest {
+  readonly mode: "pinned" | "auto";
+  readonly leader: string | null;
+  readonly force: boolean;
+  readonly confirmation:
+    | { readonly kind: "typed"; readonly text: string }
+    | { readonly kind: "recovery"; readonly recovery: RecoveryIdentity };
+}
+
+/**
+ * The text the owner types to confirm a pin: the first 8 hex digits of the new leader (or `auto`),
+ * plus ` force` when the previous leader's hand-over is skipped.
+ */
+export function pinConfirmationText(
+  mode: "pinned" | "auto",
+  leader: string | null,
+  force: boolean,
+): string {
+  const what = mode === "auto" ? "auto" : (leader ?? "").slice(0, 8);
+  return force ? `${what} force` : what;
+}
+
 /** Recovery public keys as a statement carries them (lowercase hex). */
 export interface RecoveryKeysHex {
   readonly box: string;
@@ -460,6 +521,58 @@ export function buildLeaseRelease(
   fields: { at: number; watermark: Watermark; prev: string },
 ): UnstampedEvent {
   return signed(identity, "cashu/lease/v1", vaultId, LEASE_RELEASED, eid, {
+    device: identity.deviceId,
+    at: fields.at,
+    watermark: watermarkJson(fields.watermark),
+    prev: fields.prev,
+  });
+}
+
+/**
+ * A `lease.pinned` statement written by `writer` (the device whose stream carries it), signed by
+ * the writer after the owner typed the confirmation, or by the recovery identity.
+ */
+export function buildLeasePin(
+  writer: DeviceIdentity,
+  vaultId: string,
+  eid: string,
+  fields: { at: number; watermark: Watermark; prev: string | null },
+  pin: PinRequest,
+): UnstampedEvent {
+  if (
+    pin.mode === "pinned" ? pin.leader === null || !isDeviceId(pin.leader) : pin.leader !== null
+  ) {
+    throw new RangeError("a pin names a device id in mode pinned and null in mode auto");
+  }
+  const base = {
+    mode: pin.mode,
+    leader: pin.leader,
+    force: pin.force,
+    at: fields.at,
+    watermark: watermarkJson(fields.watermark),
+    prev: fields.prev,
+  };
+  const c = pin.confirmation;
+  if (c.kind === "recovery") {
+    return signed(c.recovery, "cashu/lease/v1", vaultId, LEASE_PINNED, eid, {
+      ...base,
+      signer: RECOVERY_SIGNER_ID,
+    });
+  }
+  return signed(writer, "cashu/lease/v1", vaultId, LEASE_PINNED, eid, {
+    ...base,
+    signer: writer.deviceId,
+    text: c.text,
+  });
+}
+
+export function buildLeaseFetched(
+  identity: DeviceIdentity,
+  vaultId: string,
+  eid: string,
+  fields: { at: number; watermark: Watermark; prev: string },
+): UnstampedEvent {
+  return signed(identity, "cashu/lease/v1", vaultId, LEASE_FETCHED, eid, {
     device: identity.deviceId,
     at: fields.at,
     watermark: watermarkJson(fields.watermark),
@@ -784,6 +897,47 @@ export function decodeLeaseRelease(
     return undefined;
   }
   return { device, at, watermark: decodeWatermark(watermark), prev, sig };
+}
+
+export function decodeLeasePin(
+  data: Readonly<Record<string, unknown>>,
+): LeasePinnedData | undefined {
+  const keys = ["mode", "leader", "force", "at", "watermark", "prev", "signer", "sig"];
+  const typed = hasExactly(data, [...keys, "text"]);
+  if (!typed && !hasExactly(data, keys)) return undefined;
+  const { mode, leader, force, at, watermark, prev, signer, text, sig } = data;
+  if (
+    !(mode === "pinned" || mode === "auto") ||
+    !(mode === "pinned" ? typeof leader === "string" && isDeviceId(leader) : leader === null) ||
+    typeof force !== "boolean" ||
+    !isTime(at) ||
+    !isWatermark(watermark) ||
+    !(prev === null || isUlid(prev)) ||
+    !isSignerId(signer) ||
+    // A device signs with the owner's typed text; the recovery identity signs without one.
+    typed !== (signer !== RECOVERY_SIGNER_ID) ||
+    (typed && (typeof text !== "string" || text.length > 64)) ||
+    !isSig(sig)
+  ) {
+    return undefined;
+  }
+  return {
+    mode,
+    leader: leader as string | null,
+    force,
+    at,
+    watermark: decodeWatermark(watermark),
+    prev,
+    signer,
+    ...(typed ? { text: text as string } : {}),
+    sig,
+  };
+}
+
+export function decodeLeaseFetched(
+  data: Readonly<Record<string, unknown>>,
+): LeaseFetchedData | undefined {
+  return decodeLeaseRelease(data);
 }
 
 export function decodeRecoveryChanged(

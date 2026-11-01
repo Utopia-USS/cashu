@@ -71,6 +71,7 @@ import {
   type Decoded,
   type IgnoredStatement,
   MAX_CERTS_PER_ISSUER,
+  type PreviousRecoveryKey,
   type Revocation,
   type TrustRoot,
 } from "./registryTypes.js";
@@ -143,6 +144,7 @@ export class Registry {
   readonly #keys: DecisionKeys;
   readonly #windows: ReadonlyMap<string, number>;
   readonly #retired: ReadonlySet<string>;
+  readonly #previousRecovery: readonly PreviousRecoveryKey[];
 
   /** Not public API: use `foldRegistry`. */
   constructor(parts: {
@@ -164,6 +166,7 @@ export class Registry {
   }) {
     this.vaultId = parts.root.vaultId;
     this.recovery = parts.root.recovery;
+    this.#previousRecovery = parts.root.previous ?? [];
     this.#index = parts.index;
     this.trusted = parts.trusted;
     this.conflicts = parts.conflicts;
@@ -178,6 +181,17 @@ export class Registry {
     this.#keys = parts.keys;
     this.#windows = parts.windows;
     this.#retired = parts.retired;
+  }
+
+  /**
+   * The recovery signing keys a recovery-signed statement `eid` may verify with: the pinned key,
+   * plus a replaced one when its change ratified `eid` (a leaked old phrase signs nothing new).
+   */
+  recoverySignKeysFor(eid: string): readonly Uint8Array[] {
+    return [
+      this.recovery.signPublicKey,
+      ...this.#previousRecovery.filter((p) => p.ratified.has(eid)).map((p) => p.keys.signPublicKey),
+    ];
   }
 
   isTrusted(deviceId: string): boolean {

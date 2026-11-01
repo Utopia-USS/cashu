@@ -12,7 +12,14 @@ import {
 } from "./lease.js";
 import { advance, config, decide, devices, holds, MIN, rule6Run, tick, view } from "./leaseSim.js";
 import { comparePositions } from "./positions.js";
-import { createSimVault, newEid, pairDevice, prepareConsented, sodium } from "./testkit.js";
+import {
+  createSimVault,
+  newEid,
+  optInAutoHandover,
+  pairDevice,
+  prepareConsented,
+  sodium,
+} from "./testkit.js";
 
 /** The devices a holder still has to catch up with. */
 function missing(v: LeaseView, applied: ReadonlyMap<string, SegmentCursor>): string[] {
@@ -259,6 +266,8 @@ describe("fetch lease", () => {
     const all = [a, b, c, d, e];
     c.write([{ t: "note.added", v: 1, i: newEid(), d: {} }]); // everyone applies this one
     for (let i = 0; i < 2; i++) for (const x of all) x.sync();
+    optInAutoHandover(a);
+    for (let i = 0; i < 2; i++) for (const x of all) x.sync();
     vault.remote.time += 30 * MIN;
     // C writes; A applies it, holds and releases with C's cursor in its watermark.
     c.write([{ t: "note.added", v: 1, i: newEid(), d: {} }]);
@@ -325,10 +334,12 @@ describe("fetch lease", () => {
     tick(a);
     const claim = view(a).term[0];
     const events = a.stream.flatMap((s) => s.events);
+    const pins = events.filter((e) => e.type === "lease.pinned");
     const lease = events.filter((e) => e.type === "lease.claimed");
     const forged = lease.map((e) => ({ ...e, eid: newEid(), writer: b.id }));
     const tampered = lease.map((e) => ({ ...e, data: { ...e.data, watermark: {} } }));
-    const v = foldLease(a.devices.registry, [...forged, ...tampered]);
+    const v = foldLease(a.devices.registry, [...pins, ...forged, ...tampered]);
+    expect(v.mode).toBe("auto");
     expect(v.holder).toBeNull();
     expect(v.ignored.map((i) => i.reason).sort()).toEqual(["bad_signature", "writer_mismatch"]);
     expect(claim).toBeDefined();
