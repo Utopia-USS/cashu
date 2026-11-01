@@ -45,6 +45,9 @@ export {
   startHost,
 } from "./host/server.js";
 export { type SpawnHostOptions, spawnDetachedHost } from "./host/spawn.js";
+// TRANSITIONAL(S56c): the sync daemon still opens its databases through this root re-export; the
+// driver's entry is `@cashu/node-host/sqlite`, which depcruise `only-host-opens-stores` keeps to
+// apps/host. Remove these lines when S56c moves the daemon's loop into the host.
 export {
   ExclusiveOpenError,
   type NodeSqliteOptions,
