@@ -1,0 +1,13 @@
+{"meta": {"name": "strategy-frontmatter", "count": 12, "layout": "[md_text, fields, body]", "generator": "parity/python/vectors_yaml_safe_load.py", "python": "3.14.6", "pyyaml": "6.0.3"}}
+["# Bez frontmatter\n\nTekst.\n",{},"# Bez frontmatter\n\nTekst.\n"]
+["---\ntitle: Plan IKE\nstatus: draft\ndescription: Krótki opis\n---\n# Nagłówek\n\nTreść.\n",{"title":"Plan IKE","status":"draft","description":"Krótki opis"},"# Nagłówek\n\nTreść.\n"]
+["---\r\ntitle: CRLF\r\n---\r\nbody\r\n",{"title":"CRLF"},"body\r\n"]
+["---\ntitle: brak końca\n# Nagłówek\n",{},"---\ntitle: brak końca\n# Nagłówek\n"]
+["---\ntitle: [nie zamknięta\n---\nbody\n",{},"---\ntitle: [nie zamknięta\n---\nbody\n"]
+["---\n- lista\n- nie mapa\n---\nbody\n",{},"---\n- lista\n- nie mapa\n---\nbody\n"]
+["---\ntitle: '  spacje  '\nempty: ''\nnumber: 7\nflag: yes\nratio: 0.5\nnone: ~\nlist: [a]\nwhen: 2026-11-01\n---\nbody",{"title":"spacje","number":"7","flag":"True","ratio":"0.5"},"body"]
+["---\ntitle: !foo x\n---\nbody\n",{},"---\ntitle: !foo x\n---\nbody\n"]
+["---\n1: liczba\ntrue: prawda\n---\n",{"1":"prawda"},""]
+["---\n---\nbody\n",{},"---\n---\nbody\n"]
+["---\ntitle: x\n---",{"title":"x"},""]
+["  ---\ntitle: x\n---\nbody\n",{},"  ---\ntitle: x\n---\nbody\n"]

@@ -4,9 +4,7 @@
  * custom tags, deep nesting and oversized input are rejected with a location.
  */
 
-import { constructScalar } from "../../pyYaml/constructor.js";
 import { composeYaml, walkYamlEvents, type YamlError, type YamlNode } from "../../pyYaml/index.js";
-import type { PyPlain, PyPlainMap } from "../../pyYaml/plain.js";
 import { pyIsDigit, pyLen, pySplitlines, pyStrip, unicodeDecimal } from "../../text.js";
 
 /** Largest strategy.yaml accepted (a real one is a few kB). */
@@ -27,7 +25,6 @@ const MAP_TAG = "tag:yaml.org,2002:map";
 const SEQ_TAG = "tag:yaml.org,2002:seq";
 const MERGE_TAG = "tag:yaml.org,2002:merge";
 const NULL_TAG = "tag:yaml.org,2002:null";
-const STR_TAG = "tag:yaml.org,2002:str";
 
 export type MappingNode = Extract<YamlNode, { kind: "mapping" }>;
 
@@ -198,20 +195,7 @@ export function get(node: MappingNode, key: string): YamlNode | null {
   return null;
 }
 
-/** `to_plain`: the Python value of `node` (a str-tagged scalar stays text; a failed construct too). */
-export function toPlain(node: YamlNode): PyPlain {
-  if (node.kind === "mapping") return plainMap(node);
-  if (node.kind === "sequence") return node.value.map(toPlain);
-  if (node.tag === STR_TAG) return node.value;
-  const built = constructScalar(node);
-  return built.ok ? built.value : node.value;
-}
-
-export function plainMap(node: MappingNode): PyPlainMap {
-  const out = new Map<string, PyPlain>();
-  for (const [keyNode, value] of node.value) out.set(keyText(keyNode), toPlain(value));
-  return out;
-}
+export { plainMap, toPlain } from "../../pyYaml/plainTree.js";
 
 /** The steps of a `locate` key (`a.b`, `tags[1]`), or null when an index is not a number. */
 function locateSteps(key: string): (string | number)[] | null {

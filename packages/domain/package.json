@@ -15,6 +15,7 @@
     "./investments/rules": "./src/investments/rules/index.ts",
     "./investments/strategy": "./src/investments/strategy/index.ts",
     "./loans": "./src/loans/index.ts",
+    "./pyYaml": "./src/pyYaml/public.ts",
     "./text": "./src/text.ts"
   },
   "scripts": {
