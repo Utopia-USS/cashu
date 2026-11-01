@@ -21,32 +21,27 @@ import { produceAllocation, produceValuation } from "./investments/portfolio.ts"
 import { strategyInputs } from "./investments/strategy.ts";
 import { produceStrategyLoader } from "./investments/strategyLoader.ts";
 import { produceLoansValuation } from "./loans/valuation.ts";
-import { guardBridgeDir, readGuardBridge } from "./mcp/guardBridge.ts";
 import { produceMcpRead, rawGoldenDir } from "./mcp/privacy.ts";
+import { produceMcpToolSchemas } from "./mcp/toolSchemas.ts";
 import type { OutValue } from "./output.ts";
 import { produceStoreTable, STORE_TABLES } from "./store/tables.ts";
 
 /**
- * Where the producers read their Python-side inputs (`pnpm parity:produce --golden-root /
- * --bridge-mcp`).
+ * Where the producers read their Python-side inputs (`pnpm parity:produce --golden-root`).
  */
 export interface ProduceInputs {
   /** The Python golden root (`golden.py --out`); the MCP producers read `<root>/lab/mcp.read_raw.json`. */
   readonly goldenRoot: string;
-  /** The guard bridge root (`guard_bridge.py --out`). */
-  readonly bridgeMcpRoot: string;
 }
 
 /** The Python-side dirs a producer reads; their commits go into the TS index (staleness guard). */
-export type InputName = "golden" | "bridge-mcp";
+export type InputName = "golden";
 
 /** The dir an input is read from for a dataset (where its producer wrote its `index.json`). */
 export function inputDir(name: InputName, dataset: Dataset, inputs: ProduceInputs): string {
   switch (name) {
     case "golden":
       return rawGoldenDir(dataset, inputs.goldenRoot);
-    case "bridge-mcp":
-      return guardBridgeDir(dataset, inputs.bridgeMcpRoot);
   }
 }
 
@@ -61,6 +56,12 @@ export interface Producer {
 }
 
 export const PRODUCERS: readonly Producer[] = [
+  {
+    check: "mcp.tool_schemas",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceMcpToolSchemas,
+  },
   {
     check: "core.networth",
     datasets: ["demo", "lab"],
@@ -166,26 +167,14 @@ export const PRODUCERS: readonly Producer[] = [
   {
     check: "mcp.read_strict",
     datasets: ["demo", "lab"],
-    inputs: ["golden", "bridge-mcp"],
-    produce: (db, inputs) =>
-      produceMcpRead(
-        db,
-        "strict",
-        readGuardBridge(db.dataset, inputs.bridgeMcpRoot),
-        inputs.goldenRoot,
-      ),
+    inputs: ["golden"],
+    produce: (db, inputs) => produceMcpRead(db, "strict", inputs.goldenRoot),
   },
   {
     check: "mcp.read_amounts",
     datasets: ["demo", "lab"],
-    inputs: ["golden", "bridge-mcp"],
-    produce: (db, inputs) =>
-      produceMcpRead(
-        db,
-        "amounts",
-        readGuardBridge(db.dataset, inputs.bridgeMcpRoot),
-        inputs.goldenRoot,
-      ),
+    inputs: ["golden"],
+    produce: (db, inputs) => produceMcpRead(db, "amounts", inputs.goldenRoot),
   },
   // S26 genesis roundtrip: one check per synced table (store/tables.ts), no Python-side inputs.
   ...STORE_TABLES.map(

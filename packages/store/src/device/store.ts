@@ -9,14 +9,27 @@ import type { CommandResult } from "../command.js";
 import type { QuerySource } from "../query.js";
 import type { SqlDriver, SqlValue } from "../sql/driver.js";
 import { ChangeHub, type TablesListener } from "../subscribe.js";
+import type { McpAuditFinish, McpAuditStart } from "./audit-types.js";
 
 /** Device-local tables (a closed set: `tablesRead` is exact). */
-export const DEVICE_TABLES = ["device_settings"] as const;
+export const DEVICE_TABLES = ["device_settings", "mcp_calls"] as const;
 
 const DDL = `CREATE TABLE IF NOT EXISTS device_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
-) WITHOUT ROWID`;
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS mcp_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  vault TEXT NOT NULL,
+  tool TEXT NOT NULL,
+  privacy TEXT NOT NULL DEFAULT 'strict',
+  called_at TEXT NOT NULL,
+  args TEXT NOT NULL,
+  outcome TEXT NOT NULL DEFAULT 'started',
+  error_kind TEXT,
+  duration_ms INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS mcp_calls_vault ON mcp_calls(vault, id)`;
 
 /** Thrown inside the transaction to roll back a refused command (never escapes `run`). */
 class RefusedRollback extends Error {}
@@ -29,6 +42,8 @@ export interface DeviceCommandContext {
   read<R>(sql: string, ...params: SqlValue[]): R[];
   /** Set (or with `null` clear) one device setting. */
   setSetting(key: DeviceSettingKey, value: string | null): void;
+  startMcpCall(input: McpAuditStart): number;
+  finishMcpCall(input: McpAuditFinish): boolean;
 }
 
 /** A write to device-local state: zod input, then a decision on the device tables. */
@@ -95,6 +110,29 @@ export class DeviceStore implements QuerySource {
         result = cmd.run(
           {
             read: (sql, ...params) => this.read(sql, ...params),
+            startMcpCall: (input) => {
+              const row = this.driver
+                .prepare("INSERT INTO mcp_calls (vault, tool, called_at, args) VALUES (?, ?, ?, ?)")
+                .run(input.vault, input.tool, input.calledAt, JSON.stringify(input.args));
+              touched.add("mcp_calls");
+              return row.lastInsertRowid;
+            },
+            finishMcpCall: (input) => {
+              const row = this.driver
+                .prepare(
+                  "UPDATE mcp_calls SET privacy = ?, outcome = ?, error_kind = ?, duration_ms = ? WHERE id = ? AND vault = ? AND outcome = 'started'",
+                )
+                .run(
+                  input.privacy,
+                  input.outcome,
+                  input.errorKind,
+                  input.durationMs,
+                  input.id,
+                  input.vault,
+                );
+              if (row.changes > 0) touched.add("mcp_calls");
+              return row.changes > 0;
+            },
             setSetting: (key, value) => {
               if (value === null) {
                 this.driver.prepare("DELETE FROM device_settings WHERE key = ?").run(key);

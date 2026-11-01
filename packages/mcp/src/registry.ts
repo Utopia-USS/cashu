@@ -129,6 +129,9 @@ export type ToolSpecInit<Store> = Pick<
 > &
   Partial<Omit<ToolSpec<Store>, "name" | "module" | "description" | "handler">>;
 
+/** Registry metadata alone cannot accidentally be invoked as a native handler. */
+export type ToolMetadata = Omit<ToolSpec, "handler">;
+
 export function toolSpec<Store>(init: ToolSpecInit<Store>): ToolSpec<Store> {
   return {
     properties: {},
@@ -143,20 +146,28 @@ export function toolSpec<Store>(init: ToolSpecInit<Store>): ToolSpec<Store> {
 }
 
 /** Listed and callable for a profile with these modules enabled. */
-export function enabledIn(spec: ToolSpec<never>, enabled: ReadonlySet<string>): boolean {
+export function enabledIn(
+  spec: Pick<ToolSpec, "module" | "also">,
+  enabled: ReadonlySet<string>,
+): boolean {
   return (
     spec.module === "core" || enabled.has(spec.module) || spec.also.some((m) => enabled.has(m))
   );
 }
 
 /** The module the tool is listed under for this profile (the first enabled one). */
-export function listedModule(spec: ToolSpec<never>, enabled: ReadonlySet<string>): string {
+export function listedModule(
+  spec: Pick<ToolSpec, "module" | "also">,
+  enabled: ReadonlySet<string>,
+): string {
   if (spec.module === "core" || enabled.has(spec.module)) return spec.module;
   return spec.also.find((m) => enabled.has(m)) ?? spec.module;
 }
 
 /** The JSON Schema the server lists for the tool. */
-export function inputSchema(spec: ToolSpec<never>): Record<string, unknown> {
+export function inputSchema(
+  spec: Pick<ToolSpec, "properties" | "required" | "nullable">,
+): Record<string, unknown> {
   const properties: Record<string, unknown> = { ...spec.properties };
   for (const name of spec.nullable) {
     const schema: Record<string, unknown> = { ...(spec.properties[name] as PropertySchema) };

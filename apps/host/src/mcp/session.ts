@@ -20,6 +20,8 @@ export interface McpBackend {
   onExit(handler: (code: number) => void): void;
   /** Stops the server; resolves when it is gone. */
   close(): Promise<void>;
+  /** Refuse and flush queued work before the host closes a replaced bundle. */
+  prepareHandover?(): Promise<void>;
 }
 
 export interface McpSessionDeps {

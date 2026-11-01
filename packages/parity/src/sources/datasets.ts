@@ -31,11 +31,6 @@ export function goldenRoot(env: Record<string, string | undefined> = process.env
   return join(labRoot(env), "parity", "out");
 }
 
-/** The shared guard bridge root (`guard_bridge.py --out` default): `<lab>/parity/bridge-mcp`. */
-export function bridgeMcpRoot(env: Record<string, string | undefined> = process.env): string {
-  return join(labRoot(env), "parity", "bridge-mcp");
-}
-
 /** The dataset's source dir (golden.py `DATASETS`): never opened directly, only copied. */
 export function datasetDir(dataset: Dataset, root: string = labRoot()): string {
   return dataset === "lab" ? join(root, "data") : join(root, "parity", "demo-data");

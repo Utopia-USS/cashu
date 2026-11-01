@@ -3,12 +3,9 @@
 // move tools into the host one group at a time, and the session then merges the lists (TS tools win
 // by name). The Python registry is checked against this table (python.test.ts), so a tool added in
 // Python cannot go unassigned.
+import { mcpToolMetadata } from "@cashu/mcp";
+
 export const PYTHON_TOOLS: Readonly<Record<string, string>> = {
-  // TRANSITIONAL(S38a): server core and core tools
-  profile_overview: "S38a",
-  setup_status: "S38a",
-  networth_breakdown: "S38a",
-  mark_review_done: "S38a",
   // TRANSITIONAL(S38b): budget and loans tools
   spending_breakdown: "S38b",
   cashflow_summary: "S38b",
@@ -56,3 +53,6 @@ export const PYTHON_TOOLS: Readonly<Record<string, string>> = {
   propose_connector: "S38f",
   connectors: "S38f",
 };
+
+/** Complete provider order and module ownership, including native core tools. */
+export const TOOL_INVENTORY = mcpToolMetadata();

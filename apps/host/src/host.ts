@@ -11,7 +11,9 @@
 //      was replaced (handover); a signal or `admin.stop` exits 0.
 // Everything is logged as codes and counts (log.ts). A clean exit clears the crash record.
 import { homedir } from "node:os";
+import type { market } from "@cashu/domain/investments";
 import { type AdminStatus, HOST_PROTOCOL } from "@cashu/host-protocol";
+import { coreTools, NativeMcpServer } from "@cashu/mcp";
 import {
   type HostPathEnv,
   type HostSession,
@@ -19,6 +21,7 @@ import {
   refusePaths,
   startHost,
 } from "@cashu/node-host";
+import { mcpProfile } from "@cashu/store/core";
 import { handleAdmin } from "./admin.js";
 import { HANDOVER_EXIT, watchBundle } from "./bundle.js";
 import { DELEGATED } from "./cli/delegated.js";
@@ -29,8 +32,11 @@ import { recordStart, type StartRecord } from "./crashLoop.js";
 import { writeLauncher } from "./launcher.js";
 import { takeWriterLease, type WriterLease } from "./lease.js";
 import { errorName, fileLog, type HostLog } from "./log.js";
+import { compositeBackend } from "./mcp/composite.js";
+import { nativeRuntime } from "./mcp/native.js";
 import { startPythonMcp } from "./mcp/python.js";
 import { type McpBackend, serveMcpSession } from "./mcp/session.js";
+import { TOOL_INVENTORY } from "./mcp/tools.js";
 import { SERVED_COMMANDS, SERVED_QUERIES } from "./registry.js";
 import {
   currentRuntime,
@@ -74,6 +80,9 @@ export interface LocalHostOptions {
   readonly ported?: readonly PortedCommand[];
   /** Write `<data dir>/bin/cashu` at start (default true). */
   readonly launcher?: boolean;
+  /** Device cache dependency, also used by synthetic oracle fixtures. */
+  readonly mcpPrices?: market.PriceCache;
+  readonly mcpFxNewest?: () => string | null;
 }
 
 export interface LocalHost {
@@ -170,6 +179,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   let stopping: Promise<number> | undefined;
   let idleTimer: NodeJS.Timeout | undefined;
   let sessions = 0;
+  let bundleReplaced = false;
 
   const status = (): AdminStatus => ({
     pid: process.pid,
@@ -191,6 +201,8 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       server.beginStop();
       stopBundle();
       if (idleTimer !== undefined) clearTimeout(idleTimer);
+      if (reason === "handover")
+        await Promise.all([...mcpServers].map((b) => b.prepareHandover?.()));
       await Promise.all([...mcpServers].map((b) => b.close()));
       await stores.drain();
       stores.close();
@@ -224,6 +236,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       ? () => {}
       : watchBundle(options.bundlePath, options.bundleCheckMs ?? DEFAULT_BUNDLE_CHECK_MS, () => {
           log.info("host.bundle-replaced");
+          bundleReplaced = true;
           void stop("handover");
         });
 
@@ -286,16 +299,50 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       case "mcp":
         serveMcpSession(session, {
           log,
-          start: (profile, open) =>
-            python === undefined
-              ? undefined
-              : startPythonMcp({
-                  program: python,
-                  dataDir: server.paths.dataDir,
-                  profile,
-                  open,
-                  env: runtime.env,
-                }),
+          start: (profile, open) => {
+            const vault = [...stores.vaults.values()].find(
+              (v) => mcpProfile(v.store.read.bind(v.store))?.slug === profile,
+            );
+            const child =
+              python === undefined
+                ? undefined
+                : startPythonMcp({
+                    program: python,
+                    dataDir: server.paths.dataDir,
+                    profile,
+                    open,
+                    env: runtime.env,
+                  });
+            // TRANSITIONAL(S53b): a profile with no native vault is still owned wholly by Python.
+            // Never take this path for a native profile after a policy or bridge failure.
+            if (vault === undefined) return child;
+            // TRANSITIONAL(S22c): cached-market reads remain on the legacy source until a real
+            // device cache is supplied. The restrictive bridge still enforces this vault's policy.
+            const tools = coreTools().filter((tool) =>
+              tool.name === "profile_overview"
+                ? options.mcpPrices !== undefined && options.mcpFxNewest !== undefined
+                : tool.name !== "networth_breakdown" || options.mcpPrices !== undefined,
+            );
+            const inventory =
+              child === undefined
+                ? TOOL_INVENTORY.filter((entry) => tools.some((tool) => tool.name === entry.name))
+                : TOOL_INVENTORY;
+            const native = new NativeMcpServer(
+              nativeRuntime({
+                stores,
+                vault,
+                dataDir: server.paths.dataDir,
+                now,
+                replaced: () => bundleReplaced,
+                log,
+                inventory,
+                prices: options.mcpPrices ?? null,
+                fxNewest: options.mcpFxNewest,
+              }),
+              tools,
+            );
+            return compositeBackend({ native, python: child, inventory, profile });
+          },
           track: (backend) => {
             mcpServers.add(backend);
             return () => mcpServers.delete(backend);

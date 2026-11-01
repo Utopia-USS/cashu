@@ -11,7 +11,6 @@
     "S28d": "hold: relay transport (owner decision D13)",
     "S29c-B4": "queued: revoke cut warning/never-synced confirmation and head gossip; before real multi-device use",
     "S32": "planned: view snapshot publisher (phone stop-gap)",
-    "S38a": "planned: MCP server core and core tools",
     "S38b": "planned: MCP budget and loans tools",
     "S38c": "planned: MCP investments read tools",
     "S38d": "planned: MCP investments write, alerts and watchlist tools",

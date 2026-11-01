@@ -20,16 +20,24 @@ stale inputs (below).
 Defaults: lab goldens `~/cashu-lab/parity/out/lab` (`$CASHU_LAB_DIR` moves the lab root), demo
 goldens `parity/golden-demo`, actual `~/cashu-lab/parity/ts-out/<dataset>`.
 
-Branch runs: the shared `~/cashu-lab/parity/out`, `bridge-mcp` and `ts-out` dirs are written from
+Branch runs: the shared `~/cashu-lab/parity/out` and `ts-out` dirs are written from
 lab/ts-stack HEAD only. A branch writes its own set and points every step at it:
 
 ```bash
-B=~/cashu-lab/parity/out-<branch>
-.venv/bin/python parity/python/golden.py --dataset lab --out $B             # $B/lab, index.json records the commit
-.venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset lab --out $B/bridge-mcp
-pnpm parity:produce --dataset lab --golden-root $B --bridge-mcp $B/bridge-mcp --out $B/ts-out/lab
-pnpm parity --dataset lab --out $B --actual $B/ts-out/lab                    # golden = $B/lab
+PARITY_BRANCH_ROOT=~/cashu-lab/parity/out-<branch>
+.venv/bin/python parity/python/golden.py --dataset lab --out $PARITY_BRANCH_ROOT
+pnpm parity:produce --dataset lab --golden-root $PARITY_BRANCH_ROOT --out $PARITY_BRANCH_ROOT/ts-out/lab
+pnpm parity --dataset lab --out $PARITY_BRANCH_ROOT --actual $PARITY_BRANCH_ROOT/ts-out/lab
 ```
+
+MCP name sources now come from the real native providers over genesis-folded vaults; the guard
+bridge and `--bridge-mcp` option are removed. Privacy checks still replay the Python raw labelled
+trees for all read tools, including the native core reads: these checks prove provider/redactor
+equivalence, while focused handler and real host tests cover native core execution separately.
+`mcp.tool_schemas` uses native core specs plus the
+generated contracts of tools still delegated to Python, with native module gating. Host integration
+tests compare the complete actual SDK tool list. Regenerate delegated contracts with
+`scripts/gen_mcp_tool_metadata.py` when Python registry metadata changes, then format/check normally.
 
 ## Staleness guard
 
@@ -38,10 +46,10 @@ checks that first (`src/staleness.ts`). The commit under test is the git HEAD of
 runs from. Every producer records its source commit and `dirty` (tracked files differed from HEAD)
 in its `index.json`:
 
-- `golden.py`, `guard_bridge.py`: `commit` / `dirty` at
+- `golden.py`: `commit` / `dirty` at
   the top of the dir's index (`golden.child_env`).
 - `pnpm parity:produce`: per check in the TS output dir's index, with the Python-side dirs the check
-  read (`inputs`: `golden`, `bridge-mcp`) and the commits their indexes
+  read (`inputs`: `golden`) and the commits their indexes
   recorded at that moment. A `--check` run updates only its own entries; a failed check's old file
   and entry are removed.
 

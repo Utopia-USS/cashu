@@ -37,6 +37,7 @@ from ..db import get_session
 from ..i18n import use_language
 from ..models import Profile
 from . import audit
+from .host_policy import NativeGuardSources, augment_guard, parse_guard_sources
 from .redaction import LeakDetected, Redactor, UnlabelledValue, leak_check, scrub_text
 from .registry import ToolContext, ToolError, ToolSpec, all_tools, validate_arguments
 
@@ -55,6 +56,15 @@ APP_UPDATED = (
 )
 EXIT_DELAY_S = 1.0  # time for the refusal to reach the client before the process exits
 
+# TRANSITIONAL(S38f): restrictive policy bridge for tools still delegated by the native host.
+PRIVACY_CEILING_META = "cashu/privacyCeiling"
+EFFECTIVE_PRIVACY_META = "cashu/effectivePrivacy"
+HOST_POLICY_CAPABILITY = "cashu/hostPolicyV1"
+NAME_GUARD_META = "cashu/nameGuard"
+NAME_GUARD_APPLIED_META = "cashu/nameGuardApplied"
+_NO_CEILING = object()
+_NO_GUARD = object()
+
 
 @dataclass
 class CallResult:
@@ -62,6 +72,8 @@ class CallResult:
     data: dict[str, Any] | None = None
     error: str | None = None
     error_kind: str | None = None
+    effective_privacy: str = "strict"
+    name_guard_applied: bool = False
 
 
 class CashuMcp:
@@ -86,7 +98,7 @@ class CashuMcp:
             return cls(profile.id)
 
     def today(self) -> dt.date:
-        return self._today or dt.date.today()  # noqa: DTZ011 - naive local date, like booking dates
+        return self._today or dt.date.today()  # naive local date, like booking dates
 
     def _profile(self, s: Session) -> Profile | None:
         return s.get(Profile, self.profile_id)
@@ -106,7 +118,14 @@ class CashuMcp:
                 return []
             return self._available(s, profile)
 
-    def call(self, name: str, arguments: dict[str, Any] | None = None) -> CallResult:
+    def call(
+        self,
+        name: str,
+        arguments: dict[str, Any] | None = None,
+        *,
+        privacy_ceiling: object = _NO_CEILING,
+        name_guard: object = _NO_GUARD,
+    ) -> CallResult:
         """Run one tool call. The audit row is written BEFORE the tool runs (no audit, no call) and
         completed afterwards with the outcome and the duration."""
         if self._replaced():
@@ -137,7 +156,29 @@ class CashuMcp:
         result: CallResult
         try:
             with use_language("pl"):  # MCP output stays Polish whatever the app language
-                result, privacy = self._call(spec, name, arguments)
+                if privacy_ceiling is not _NO_CEILING and (
+                    not isinstance(privacy_ceiling, str)
+                    or privacy_ceiling not in ("strict", "amounts")
+                ):
+                    result = CallResult(
+                        False,
+                        error="the call was not run: invalid host privacy policy",
+                        error_kind="invalid_privacy_ceiling",
+                    )
+                else:
+                    ceiling = privacy_ceiling if isinstance(privacy_ceiling, str) else None
+                    try:
+                        sources = (
+                            parse_guard_sources(name_guard) if name_guard is not _NO_GUARD else None
+                        )
+                    except ValueError:
+                        result = CallResult(
+                            False,
+                            error="the call was not run: invalid host name guard",
+                            error_kind="invalid_name_guard",
+                        )
+                    else:
+                        result, privacy = self._call(spec, name, arguments, ceiling, sources)
         except Exception:  # noqa: BLE001 - never crash the server; never send exception text
             _log.exception("MCP tool %s failed", name)
             result = CallResult(
@@ -147,10 +188,16 @@ class CashuMcp:
         audit.finish(
             call_id, privacy, outcome, result.error_kind, int((time.monotonic() - started) * 1000)
         )
+        result.effective_privacy = privacy
         return result
 
     def _call(
-        self, spec: ToolSpec | None, name: str, arguments: dict[str, Any] | None
+        self,
+        spec: ToolSpec | None,
+        name: str,
+        arguments: dict[str, Any] | None,
+        privacy_ceiling: str | None = None,
+        guard_sources: NativeGuardSources | None = None,
     ) -> tuple[CallResult, str]:
         with get_session() as s:
             profile = self._profile(s)
@@ -161,6 +208,8 @@ class CashuMcp:
                     error_kind="profile_missing",
                 ), "strict"
             privacy = "amounts" if profile.mcp_privacy == "amounts" else "strict"
+            if privacy_ceiling == "strict":
+                privacy = "strict"
             if spec is None:
                 return CallResult(False, error="unknown tool", error_kind="unknown_tool"), privacy
             if spec not in self._available(s, profile):
@@ -170,9 +219,13 @@ class CashuMcp:
                     "enabled for this profile",
                     error_kind="module_disabled",
                 ), privacy
+            bridge_guard = None
             try:
-                args = validate_arguments(spec, arguments)
                 ctx = ToolContext(s, profile, privacy, self.today())
+                if guard_sources is not None:
+                    bridge_guard = augment_guard(ctx.guard, guard_sources, strict=ctx.strict)
+                    ctx.guard = bridge_guard
+                args = validate_arguments(spec, arguments)
                 tree = spec.handler(ctx, **args)
                 redactor = Redactor(privacy, ctx.guard)
                 data = redactor.apply(tree)
@@ -183,13 +236,25 @@ class CashuMcp:
                 )
             except ToolError as e:
                 s.rollback()
-                message = scrub_text(str(e), strict=not e.system, guard=_safe_guard(s, profile))
+                if guard_sources is not None and bridge_guard is None:
+                    message = "the error text was withheld by the privacy check"
+                else:
+                    message = scrub_text(
+                        str(e),
+                        strict=not e.system,
+                        guard=bridge_guard if bridge_guard is not None else _safe_guard(s, profile),
+                    )
                 try:
                     leak_check({"error": message}, strict=True)
                 except LeakDetected:  # error text goes through the same final check (F13)
                     _log.error("MCP tool %s: error text withheld by the privacy check", name)
                     message = "the error text was withheld by the privacy check"
-                return CallResult(False, error=message, error_kind=e.kind), privacy
+                return CallResult(
+                    False,
+                    error=message,
+                    error_kind=e.kind,
+                    name_guard_applied=bridge_guard is not None,
+                ), privacy
             except LeakDetected:
                 s.rollback()
                 _log.error("MCP tool %s: response withheld by the privacy check", name)
@@ -197,6 +262,7 @@ class CashuMcp:
                     False,
                     error="the answer was withheld by the privacy check (nothing was sent or saved)",
                     error_kind="privacy_check",
+                    name_guard_applied=bridge_guard is not None,
                 ), privacy
             except UnlabelledValue:
                 s.rollback()
@@ -205,11 +271,19 @@ class CashuMcp:
                     False,
                     error="the answer was withheld by the privacy check (nothing was sent or saved)",
                     error_kind="unlabelled",
+                    name_guard_applied=bridge_guard is not None,
                 ), privacy
-            return CallResult(True, data=data), privacy
+            return CallResult(True, data=data, name_guard_applied=bridge_guard is not None), privacy
 
 
-_REFUSED = {"privacy_check", "unlabelled", "module_disabled", "profile_missing"}
+_REFUSED = {
+    "privacy_check",
+    "unlabelled",
+    "module_disabled",
+    "profile_missing",
+    "invalid_privacy_ceiling",
+    "invalid_name_guard",
+}
 
 
 def _safe_guard(s: Session, profile: Profile):
@@ -227,9 +301,29 @@ def _safe_guard(s: Session, profile: Profile):
 
 
 def build_server(host: CashuMcp, name: str):
+    from functools import partial
+
     import anyio
     import mcp_types as types
     from mcp.server import Server
+
+    class HostPolicyServer(Server):
+        # Both initialize and modern discovery obtain capabilities through this SDK hook.
+        def get_capabilities(
+            self,
+            notification_options=None,
+            experimental_capabilities=None,
+            extensions=None,
+            *,
+            protocol_version=None,
+        ):
+            capabilities = {
+                **(experimental_capabilities or {}),
+                HOST_POLICY_CAPABILITY: {"privacyCeiling": True, "nameGuard": True},
+            }
+            return super().get_capabilities(
+                notification_options, capabilities, extensions, protocol_version=protocol_version
+            )
 
     async def on_list_tools(_ctx, _params) -> types.ListToolsResult:
         specs = await anyio.to_thread.run_sync(host.list_tools)
@@ -252,19 +346,36 @@ def build_server(host: CashuMcp, name: str):
         )
 
     async def on_call_tool(_ctx, params: types.CallToolRequestParams) -> types.CallToolResult:
-        result = await anyio.to_thread.run_sync(host.call, params.name, params.arguments or {})
+        ceiling = (params.meta or {}).get(PRIVACY_CEILING_META, _NO_CEILING)
+        guard = (params.meta or {}).get(NAME_GUARD_META, _NO_GUARD)
+        result = await anyio.to_thread.run_sync(
+            partial(
+                host.call,
+                params.name,
+                params.arguments or {},
+                privacy_ceiling=ceiling,
+                name_guard=guard,
+            )
+        )
+        meta = (
+            {EFFECTIVE_PRIVACY_META: result.effective_privacy}
+            if ceiling is not _NO_CEILING or guard is not _NO_GUARD
+            else None
+        )
+        if guard is not _NO_GUARD:
+            meta[NAME_GUARD_APPLIED_META] = result.name_guard_applied
         if host.stopping:
             _exit_soon()
         if not result.ok:
             return types.CallToolResult(
-                content=[types.TextContent(text=result.error or "error")], is_error=True
+                content=[types.TextContent(text=result.error or "error")], is_error=True, meta=meta
             )
         text = json.dumps(result.data, ensure_ascii=False, indent=1)
         return types.CallToolResult(
-            content=[types.TextContent(text=text)], structured_content=result.data
+            content=[types.TextContent(text=text)], structured_content=result.data, meta=meta
         )
 
-    return Server(
+    return HostPolicyServer(
         name,
         version=__version__,
         instructions=INSTRUCTIONS,

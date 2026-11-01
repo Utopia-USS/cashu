@@ -84,6 +84,9 @@ importers:
       '@cashu/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@cashu/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@cashu/node-host':
         specifier: workspace:*
         version: link:../../packages/node-host
@@ -308,6 +311,16 @@ importers:
       '@cashu/domain':
         specifier: workspace:*
         version: link:../domain
+      '@cashu/store':
+        specifier: workspace:*
+        version: link:../store
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
+      better-sqlite3:
+        specifier: 13.0.3
+        version: 13.0.3
 
   packages/node-host:
     dependencies:

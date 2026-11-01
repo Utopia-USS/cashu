@@ -214,3 +214,175 @@ def test_digit_label_override_never_reaches_the_agent_in_strict_mode(host, label
     positions = mcp.call("positions", {}).data
     (row,) = [p for p in positions["positions"] if p.get("symbol") == "PKO"]
     assert row["name"] == market_name
+
+
+@pytest.mark.parametrize(
+    ("stored", "ceiling", "effective"),
+    [
+        ("amounts", "strict", "strict"),
+        ("strict", "amounts", "strict"),
+        ("amounts", "amounts", "amounts"),
+        ("strict", "strict", "strict"),
+    ],
+)
+def test_host_ceiling_clamps_the_same_call_that_creates_a_custom_alert(
+    host, stored, ceiling, effective
+):
+    """The delegated policy must reach the handler and redactor, without changing stored settings."""
+    from sqlmodel import select
+
+    from cashu.core.agent_models import McpCall
+
+    pid, mcp = host
+    _privacy(pid, stored)
+    result = mcp.call(
+        "add_alert",
+        {
+            "kind": "custom",
+            "params": {"expression": BUFFER},
+            "polarity": "negative",
+            "severity": "info",
+            "title": "host ceiling",
+        },
+        privacy_ceiling=ceiling,
+    )
+    assert result.ok, result.error
+    expected = BUFFER if effective == "amounts" else "cash_value > [amount] and cash_weight < 99%"
+    assert result.data["alert"]["params"]["expression"] == expected
+    assert result.effective_privacy == effective
+    with get_session() as s:
+        assert s.get(Profile, pid).mcp_privacy == stored
+        assert s.exec(select(McpCall).where(McpCall.profile_id == pid)).one().privacy == effective
+    # The next ordinary Python call retains its own DB policy, not the previous host ceiling.
+    ordinary = mcp.call("profile_overview", {})
+    assert ordinary.ok and ordinary.data["privacy"] == stored
+
+
+def test_host_ceiling_rereads_python_policy_and_applies_name_aliases(host):
+    pid, mcp = host
+    _rename(pid, "PKO", LABEL)
+    _privacy(pid, "amounts")
+    hidden = mcp.call("positions", {}, privacy_ceiling="strict")
+    assert hidden.ok and LABEL not in json.dumps(hidden.data, ensure_ascii=False)
+    shown = mcp.call("positions", {}, privacy_ceiling="amounts")
+    assert shown.ok and LABEL in json.dumps(shown.data, ensure_ascii=False)
+    _privacy(pid, "strict")
+    hidden_again = mcp.call("positions", {}, privacy_ceiling="amounts")
+    assert hidden_again.ok and LABEL not in json.dumps(hidden_again.data, ensure_ascii=False)
+    assert hidden_again.effective_privacy == "strict"
+
+
+@pytest.mark.parametrize("ceiling", [None, "relaxed", "", True, 1, [], {"profile": 2}])
+def test_malformed_host_ceiling_refuses_before_the_handler(host, ceiling):
+    from sqlmodel import select
+
+    from cashu.core.agent_models import McpCall, Review
+    from cashu.core.mcp.registry import ToolSpec
+
+    pid, mcp = host
+    _privacy(pid, "amounts")
+
+    def must_not_run(_ctx):
+        pytest.fail("invalid policy metadata reached a write handler")
+
+    mcp._tools["mark_review_done"] = ToolSpec(
+        "mark_review_done", "core", "synthetic", must_not_run, write=True
+    )
+    result = mcp.call("mark_review_done", {}, privacy_ceiling=ceiling)
+    assert not result.ok and result.error_kind == "invalid_privacy_ceiling"
+    assert result.effective_privacy == "strict"
+    with get_session() as s:
+        assert s.exec(select(Review).where(Review.profile_id == pid)).all() == []
+        logged = s.exec(select(McpCall).where(McpCall.profile_id == pid)).one()
+        assert logged.outcome == "refused" and logged.privacy == "strict"
+        assert logged.args == {}  # policy metadata is never an argument or audit value
+
+
+def test_host_ceiling_sdk_negotiation_metadata_and_profile_binding(host):
+    import anyio
+    from mcp import Client
+
+    from cashu.core.mcp.server import build_server
+
+    pid, mcp = host
+    _privacy(pid, "amounts")
+    other, _slug = seed_profile("Synthetic second profile")
+    _privacy(other, "strict")
+    server = build_server(mcp, "synthetic-host-policy")
+    assert server.create_initialization_options().capabilities.experimental[
+        "cashu/hostPolicyV1"
+    ] == {"privacyCeiling": True, "nameGuard": True}
+
+    async def exercise():
+        async with Client(server) as client:
+            assert client.server_capabilities.experimental["cashu/hostPolicyV1"] == {
+                "privacyCeiling": True,
+                "nameGuard": True,
+            }
+            tools = await client.list_tools()
+            assert all(
+                "cashu/privacyCeiling" not in t.input_schema["properties"] for t in tools.tools
+            )
+            ordinary = await client.call_tool("profile_overview", {})
+            assert ordinary.structured_content["privacy"] == "amounts"
+            assert "cashu/effectivePrivacy" not in (ordinary.meta or {})
+            strict = await client.call_tool(
+                "profile_overview", {}, meta={"cashu/privacyCeiling": "strict"}
+            )
+            assert strict.structured_content["privacy"] == "strict"
+            assert strict.meta["cashu/effectivePrivacy"] == "strict"
+            # Extra metadata cannot rebind this server to the other profile.
+            same = await client.call_tool(
+                "profile_overview",
+                {},
+                meta={"cashu/privacyCeiling": "amounts", "profile": other},
+            )
+            assert same.structured_content["privacy"] == "amounts"
+            assert same.meta["cashu/effectivePrivacy"] == "amounts"
+            _privacy(pid, "strict")
+            clamped = await client.call_tool(
+                "profile_overview", {}, meta={"cashu/privacyCeiling": "amounts"}
+            )
+            assert clamped.structured_content["privacy"] == "strict"
+            assert clamped.meta["cashu/effectivePrivacy"] == "strict"
+            for invalid in ("relaxed", {"profile": other}):
+                refused = await client.call_tool(
+                    "mark_review_done",
+                    {"module": "budget"},
+                    meta={"cashu/privacyCeiling": invalid},
+                )
+                assert refused.is_error
+                assert refused.meta["cashu/effectivePrivacy"] == "strict"
+
+    anyio.run(exercise)
+
+
+def test_host_ceiling_explicit_null_survives_server_params_validation(host):
+    """The SDK client omits null extra-meta values; raw host JSON can still supply explicit null."""
+    import anyio
+
+    from cashu.core.mcp.registry import ToolSpec
+    from cashu.core.mcp.server import build_server
+
+    _pid, mcp = host
+
+    def must_not_run(_ctx):
+        pytest.fail("explicit null policy reached a write handler")
+
+    mcp._tools["mark_review_done"] = ToolSpec(
+        "mark_review_done", "core", "synthetic", must_not_run, write=True
+    )
+    server = build_server(mcp, "synthetic-host-policy")
+    entry = server._request_handlers["tools/call"]
+    params = entry.params_type.model_validate(
+        {"name": "mark_review_done", "arguments": {}, "_meta": {"cashu/privacyCeiling": None}},
+        by_name=False,
+    )
+    assert params.meta["cashu/privacyCeiling"] is None
+
+    async def exercise():
+        result = await entry.handler(None, params)
+        assert result.is_error
+        assert result.meta["cashu/effectivePrivacy"] == "strict"
+
+    anyio.run(exercise)
