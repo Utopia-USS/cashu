@@ -7,7 +7,7 @@
 // Every Python column a row changed is associated with the event that carries it (the ack clocks,
 // spec 4.7).
 import { detPartsOf } from "../events/v1/det-parts.js";
-import type { EventDraft } from "../genesis/map/context.js";
+import { type EventDraft, event, stampsOf } from "../genesis/map/context.js";
 import { decodeValues } from "./decode.js";
 import { agentBridges } from "./map/agent.js";
 import { assetsLoansBridges } from "./map/assetsLoans.js";
@@ -187,6 +187,30 @@ function throughMerge(row: LogicalRow, txn: readonly LogicalRow[]): LogicalRow |
 }
 
 /**
+ * After `instrument.merged`, the target's name re-asserted with the target's own stamps: the merged
+ * row is the target's (Python keeps its row and `updated_at`), while the fold takes the row time of
+ * the latest member event, which can be the source's create.
+ */
+function targetState(
+  row: LogicalRow,
+  vm: VaultMapping,
+  events: readonly EventDraft[],
+): EventDraft[] {
+  const merged = events.find((e) => e.type === "instrument.merged");
+  const target = merged?.data.target;
+  const live = vm.liveInstrument(String(row.key?.target ?? ""));
+  if (typeof target !== "string" || live === undefined) return [];
+  return [
+    event(
+      "instrument.updated",
+      target,
+      { name: live.name },
+      stampsOf(live, ["createdAt", "updatedAt"]),
+    ),
+  ];
+}
+
+/**
  * The events of one merged row in one vault. A row of a shared table (instruments, aliases) is
  * mapped only in a vault that holds its instrument; the caller decides that (`plan.ts`).
  */
@@ -299,6 +323,7 @@ export function mapRow(
         vaultProfileId: profileId,
       };
       events = handler(change, vm.ctx);
+      if (row.op === "merge") events = [...events, ...targetState(row, vm, events)];
     }
   }
   if (events.length === 0) return NOTHING;

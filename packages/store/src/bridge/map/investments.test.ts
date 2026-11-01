@@ -42,8 +42,9 @@ const instrumentRow = (o: Partial<InvInstrumentRow> = {}): InvInstrumentRow => (
   needsClassification: false,
   valuationMode: "market",
   status: "active",
-  createdAt: T0,
-  updatedAt: T0,
+  // genesis rows hold decoded timestamps (ISO, Z)
+  createdAt: "2026-03-01T10:00:00.000000Z",
+  updatedAt: "2026-03-01T10:00:00.000000Z",
   ...o,
 });
 
@@ -483,6 +484,8 @@ describe("shared instruments and aliases", () => {
     const { events } = shipped([merge]);
     expect(events.map((e) => [e.t, e.g, e.d.source, e.d.target, e.d.reason])).toEqual([
       ["instrument.merged", OTHER_INSTRUMENT_GID, OTHER_INSTRUMENT_GID, INSTRUMENT_GID, "owner"],
+      // the merged row is the target's: its name with the target's own stamps
+      ["instrument.updated", INSTRUMENT_GID, undefined, undefined, undefined],
     ]);
     // Python dropped the source mapping at emit time and the source row is gone from the live rows.
     const r = plan({

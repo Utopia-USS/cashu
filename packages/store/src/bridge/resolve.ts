@@ -25,6 +25,7 @@ import type { MapContext, RowEvents } from "../genesis/map/context.js";
 import { mapInstruments } from "../genesis/map/investments.js";
 import { GenesisCounters, GenesisError } from "../genesis/report.js";
 import { Rewriter } from "../genesis/rewrite.js";
+import type { InvInstrumentRow } from "../genesis/rows.js";
 import type { GenesisFiles, ProfileScope } from "../genesis/source.js";
 import type { DetGid, VaultSalt } from "../gid.js";
 import { detGidFor } from "../gid.js";
@@ -180,6 +181,12 @@ export class VaultMapping {
     }
     this.#missing.add(id);
     return gid;
+  }
+
+  /** The live Python row of a (shared) instrument, undefined when it is gone. */
+  liveInstrument(localId: string): InvInstrumentRow | undefined {
+    this.#current ??= this.input.current();
+    return this.#current.global.instruments.find((i) => i.id === Number(localId));
   }
 
   /** Whether the vault holds the instrument (its gid is mapped or was shipped in this plan). */

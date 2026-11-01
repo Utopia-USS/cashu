@@ -39,6 +39,51 @@ const watchPost = (o: Record<string, unknown>) => ({
   ...o,
 });
 
+const TS = "2026-03-01T10:00:00.000000Z"; // decoded form (genesis readers)
+const empty = Object.fromEntries(Object.keys(TABLES).map((k) => [k, []]));
+const target = {
+  id: 4,
+  name: "Syn Target",
+  currency: "USD",
+  assetClass: "etf",
+  symbol: "TGT",
+  isin: null,
+  mic: null,
+  region: null,
+  sector: null,
+  tags: [],
+  needsClassification: false,
+  valuationMode: "market",
+  status: "active",
+  createdAt: TS,
+  updatedAt: TS,
+};
+const alias = (id: number, namespace: string, value: string) => ({
+  id,
+  instrumentId: 4,
+  namespace,
+  value,
+  guessed: false,
+  createdAt: TS,
+});
+const current = (): CurrentRows => ({
+  scope: {
+    ...empty,
+    profile: {
+      id: 1,
+      slug: "syn",
+      name: "Syn",
+      baseCurrency: "PLN",
+      mcpPrivacy: "strict",
+      createdAt: T0,
+    },
+  } as unknown as CurrentRows["scope"],
+  global: {
+    instruments: [target],
+    aliases: [alias(11, "yahoo", "TGT"), alias(12, "isin", "XS0000000001")],
+  },
+});
+
 describe("instrument merge transaction", () => {
   it("ships instrument.merged from the key's gids and drops what the redirect covers", () => {
     const rows = [
@@ -78,11 +123,12 @@ describe("instrument merge transaction", () => {
         post: watchPost({ note: "syn src" }),
       }),
     ];
-    const r = plan({ rows, vaults: [vaultInput(ids)], ports: testPorts() });
+    const r = plan({ rows, vaults: [vaultInput(ids, current)], ports: testPorts() });
     if (!r.ok) throw new Error(`blocked: ${r.reason}`);
     const events = r.plan.batches.flatMap((b) => b.events);
     expect(events.map((e) => [e.t, e.g])).toEqual([
       ["instrument.merged", SRC],
+      ["instrument.updated", TGT],
       ["watchlist.updated", WATCH_T],
     ]);
     expect(events[0]?.d).toMatchObject({ source: SRC, target: TGT, reason: "owner" });
@@ -100,57 +146,13 @@ describe("instrument merge transaction", () => {
         fields: { id: 7, instrument_id: 3 },
       }),
     ];
-    const r = plan({ rows, vaults: [vaultInput(ids)], ports: testPorts() });
+    const r = plan({ rows, vaults: [vaultInput(ids, current)], ports: testPorts() });
     expect(r.ok).toBe(false);
   });
 });
 
 describe("a merge in a vault that holds one side", () => {
   it("ships the target's own identity and snapshot, then folds the source into it", () => {
-    const TS = "2026-03-01T10:00:00.000000Z"; // decoded form (genesis readers)
-    const empty = Object.fromEntries(Object.keys(TABLES).map((k) => [k, []]));
-    const target = {
-      id: 4,
-      name: "Syn Target",
-      currency: "USD",
-      assetClass: "etf",
-      symbol: "TGT",
-      isin: null,
-      mic: null,
-      region: null,
-      sector: null,
-      tags: [],
-      needsClassification: false,
-      valuationMode: "market",
-      status: "active",
-      createdAt: TS,
-      updatedAt: TS,
-    };
-    const alias = (id: number, namespace: string, value: string) => ({
-      id,
-      instrumentId: 4,
-      namespace,
-      value,
-      guessed: false,
-      createdAt: TS,
-    });
-    const current = (): CurrentRows => ({
-      scope: {
-        ...empty,
-        profile: {
-          id: 1,
-          slug: "syn",
-          name: "Syn",
-          baseCurrency: "PLN",
-          mcpPrivacy: "strict",
-          createdAt: T0,
-        },
-      } as unknown as CurrentRows["scope"],
-      global: {
-        instruments: [target],
-        aliases: [alias(11, "yahoo", "TGT"), alias(12, "isin", "XS0000000001")],
-      },
-    });
     const only = outboxRow({
       table: "inv_instruments",
       localId: "3",
@@ -187,6 +189,7 @@ describe("a merge in a vault that holds one side", () => {
       ["instrument.created", ownGid],
       ["instrument.aliasAdded", DET("inv_instrument_aliases", ["yahoo", "TGT"])],
       ["instrument.merged", SRC],
+      ["instrument.updated", ownGid],
     ]);
     expect(events[2]?.d).toMatchObject({ source: SRC, target: ownGid });
     expect(r.plan.batches[0]?.gids.map((g) => [g.table, g.localId])).toContainEqual([
