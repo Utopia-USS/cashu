@@ -39,9 +39,9 @@ producers/store``) rebuilds the same tree from the genesis log, so this file fix
     (parking is derived in the view, gid.md 4.3).
   - ``transactions``: cash mirror legs (``dedup_hash`` ``cashleg:...`` or ``raw.cash_leg_of`` set) are
     DERIVED rows: left out, except a leg whose ``category_source`` is ``manual_txn`` (a manual claim,
-    spec 4.2). ``category`` / ``category_source`` are compared only for the claim sources
-    (``sync_outbox.CLAIM_SOURCES``); rule / keyword / default / engine categories are derived on every
-    device (events.md 8.3, D8) and read null until S24.
+    spec 4.2). ``category`` / ``category_source`` are the D-24.1 recompute (``_recompute_categories``:
+    a fresh transfer match and ``categorize_all(use_llm=False)``, rolled back), as every device
+    derives them (events.md 8.3, D8); a cash-account row keeps a decided category, else none (D-09.4).
   - ``inv_import_batches.archive_path`` reads ``{sha256, ext}`` when the archive file is in the copy and
     its bytes hash to both the name's digest and ``file_sha256`` (spec 4.4), else null.
   - ``proposals.status``: ``applying`` (a device-local lock) reads ``pending`` (spec 4.10).
@@ -414,7 +414,7 @@ ROUNDTRIP_COLUMNS: dict[str, tuple[str, ...]] = {
 
 _ID = "row id: the TS side has gids; references compare as natural keys"
 _PROFILE = "the vault is the profile"
-_DERIVED_S24 = "DERIVED (events.md 9), compared once S24 derives it"
+_DERIVED_S24 = "DERIVED (events.md 9), compared once S24b derives it"
 
 # table -> column -> why it is not compared. Every model column is in ROUNDTRIP_COLUMNS or here.
 EXCLUDED: dict[str, dict[str, str]] = {
@@ -642,12 +642,56 @@ def _guard_schema(ctx: Ctx) -> None:
             )
 
 
+# Category sources a cash-account row keeps as a claim (D-09.4: other rows there get no category).
+_DECIDED = frozenset({"manual_txn", "llm_full", "llm_fallback", "cash_leg"})
+
+
+def _recompute_categories(ctx: Ctx, txns: list[dict]) -> None:
+    """``category`` / ``category_source`` as the view derives them (D-24.1): per profile, a fresh
+    transfer match and ``categorize_all(use_llm=False)`` inside a savepoint that is rolled back (the
+    copy leaves as it came in); a row on a cash account keeps a decided category, else none (D-09.4).
+    The other columns were read before. Drift from the stored values is reported per kind by the
+    ``budget.categories`` / ``budget.transfers`` checks (same recompute), counts only."""
+    from cashu.modules.budget import service
+    from cashu.modules.budget.cash import cash_account_ids
+    from cashu.modules.budget.ingestion.transfers import (
+        match_internal_transfers,
+        reset_transfer_matches,
+    )
+    from cashu.modules.budget.models import Transaction
+    from cashu.modules.budget.queries import transactions
+
+    result: dict[int, tuple[str | None, str | None]] = {}
+    cash: set[int] = set()
+    savepoint = ctx.session.begin_nested()
+    try:
+        for p in ctx.profiles:
+            cash |= cash_account_ids(ctx.session, p.id)
+            reset_transfer_matches(ctx.session, profile_id=p.id)
+            ctx.session.flush()
+            match_internal_transfers(ctx.session, profile_id=p.id)
+            ctx.session.flush()
+            service.categorize_all(ctx.session, use_llm=False, profile_id=p.id)
+            ctx.session.flush()
+            for t in ctx.session.exec(transactions(p.id).order_by(Transaction.id)).all():
+                result[t.id] = (t.category, t.category_source)
+    finally:
+        savepoint.rollback()
+    for row in txns:
+        if row["account_id"] in cash:
+            if row["category_source"] not in _DECIDED:
+                row["category"] = row["category_source"] = None
+        elif row["id"] in result:
+            row["category"], row["category_source"] = result[row["id"]]
+
+
 def _source(ctx: Ctx) -> _Source:
     cached = ctx.cache.get("store.source")
     if cached is not None:
         return cached
     _guard_schema(ctx)
     rows = _read(ctx)
+    _recompute_categories(ctx, rows["transactions"])
     profile_ids = {r["id"] for r in rows["profiles"]}
     account_profile = {r["id"]: r["profile_id"] for r in rows["accounts"]}
     decision_profile = {r["id"]: r["profile_id"] for r in rows["inv_decisions"]}
@@ -1055,14 +1099,10 @@ def _effective_alert(row: dict, as_of: dt.date) -> tuple[str, dt.datetime | None
 
 def _project(ctx: Ctx, refs: _Refs, table: str, row: dict, extra: dict) -> dict | None:
     """The canonical row, or None when it is left out (a derived row, a dangling SKIP ref)."""
-    from cashu.core.sync_outbox import CLAIM_SOURCES
-
     row = dict(row)
     if table == "transactions":
         if _cash_leg(row) and row["category_source"] != "manual_txn":
             return None  # a derived cash mirror leg
-        if row["category_source"] not in CLAIM_SOURCES:
-            row["category"] = row["category_source"] = None
     elif table == "accounts":
         ext = row["external_id"]
         if isinstance(ext, str) and ext.endswith(f"~{row['id']}"):
