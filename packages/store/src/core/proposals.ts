@@ -1,6 +1,9 @@
 // Proposals (events.md 8.10): CREATE; terminal transitions are first-writer-wins. The engine's
 // suppression stage already turned FWW losers (and their caused side effects) into suppressed
-// events, so the applied terminal is the winner.
+// events, so the applied terminal is the winner. A rejection stores its note as the result
+// (`{note}`, `{}` without one: Python `reject`). `proposal.applyFailed` (S31c) is the execution
+// result after the decision: approved -> failed with its result, review time kept (Python `_finish`),
+// a no-op unless the row is approved; the engine revokes what the approval caused (events.md 6.6).
 import type { Materializer } from "../engine/types.js";
 import type { TableDef } from "../sql/ddl.js";
 import { sqlJson } from "../sql/values.js";
@@ -22,9 +25,15 @@ const table: TableDef = {
 
 export const proposalsMaterializer: Materializer = {
   id: "core.proposals",
-  version: 1,
+  version: 2,
   tables: [table],
-  handles: ["proposal.created", "proposal.approved", "proposal.rejected", "proposal.failed"],
+  handles: [
+    "proposal.created",
+    "proposal.approved",
+    "proposal.rejected",
+    "proposal.failed",
+    "proposal.applyFailed",
+  ],
   partitions: (e) => [e.gid],
   clear(gids, ctx) {
     for (const g of gids) ctx.sql.write(table.name, "DELETE FROM proposals WHERE gid = ?", g);
@@ -47,8 +56,23 @@ export const proposalsMaterializer: Materializer = {
       );
       return;
     }
+    if (e.type === "proposal.applyFailed") {
+      ctx.sql.write(
+        table.name,
+        "UPDATE proposals SET status = 'failed', result = ? WHERE gid = ? AND status = 'approved'",
+        sqlJson(d.result ?? {}),
+        e.gid,
+      );
+      return;
+    }
     const status = e.type.slice("proposal.".length);
-    const result = "result" in d ? sqlJson(d.result) : null;
+    const note = typeof d.note === "string" && d.note !== "" ? d.note : null;
+    const result =
+      e.type === "proposal.rejected"
+        ? sqlJson(note === null ? {} : { note })
+        : "result" in d
+          ? sqlJson(d.result)
+          : null;
     ctx.sql.write(
       table.name,
       `UPDATE proposals SET status = ?, result = COALESCE(?, result), reviewed_at = ?

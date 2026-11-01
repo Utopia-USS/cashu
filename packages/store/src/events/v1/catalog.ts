@@ -51,13 +51,26 @@ export interface EventMeta {
   rule: Rule;
   gid: GidStrategy;
   emitter: Emitter;
+  /**
+   * Causal revocation (events.md 6.6): a held event of this type revokes the side effects caused by
+   * the earlier event of type `revokesCausesOf` with the same gid (they are suppressed); that event
+   * itself stays applied. `proposal.applyFailed` revokes what `proposal.approved` caused.
+   */
+  revokesCausesOf?: string;
 }
 
-const m = (table: string, rule: Rule, gid: GidStrategy, emitter: Emitter = "any"): EventMeta => ({
+const m = (
+  table: string,
+  rule: Rule,
+  gid: GidStrategy,
+  emitter: Emitter = "any",
+  revokesCausesOf?: string,
+): EventMeta => ({
   table,
   rule,
   gid,
   emitter,
+  ...(revokesCausesOf === undefined ? {} : { revokesCausesOf }),
 });
 
 export const PAYLOADS = {
@@ -163,6 +176,14 @@ export const META: Record<EventType, EventMeta> = {
   "proposal.approved": m("proposals", "FWW", "ULID", "leader-for-imports"),
   "proposal.rejected": m("proposals", "FWW", "ULID", "leader-for-imports"),
   "proposal.failed": m("proposals", "FWW", "ULID", "leader-for-imports"),
+  // The execution result after an approval (S31c): not FWW (the decision is), GUARD on approved.
+  "proposal.applyFailed": m(
+    "proposals",
+    "GUARD",
+    "ULID",
+    "leader-for-imports",
+    "proposal.approved",
+  ),
   "connectorBinding.set": m("connector_bindings", "LWW-F", "DET"),
   "connectorBinding.removed": m("connector_bindings", "SOFT", "DET"),
   "connectorBinding.cursorAdvanced": m("connector_bindings", "LWW-F", "DET", "leader"),

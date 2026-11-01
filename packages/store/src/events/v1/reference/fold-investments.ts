@@ -35,7 +35,14 @@ export const INV_REF_TABLES = [
 ] as const;
 
 const TOPIC_DRAFT_COOLDOWN_MS = 90 * 86_400_000;
-const FWW = new Set(["plannedDeposit.cancelled", "plannedDeposit.booked"]);
+const FWW = new Set([
+  "plannedDeposit.cancelled",
+  "plannedDeposit.booked",
+  // Proposal decisions: an investments row caused by a losing approval is suppressed (6.6).
+  "proposal.approved",
+  "proposal.rejected",
+  "proposal.failed",
+]);
 
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
@@ -90,6 +97,16 @@ function applied(evs: readonly RefEvent[]): RefEvent[] {
     if (decided.has(e.gid)) losers.add(e.eid);
     else decided.add(e.gid);
   }
+  // Causal revocation (events.md 6.6, S31c): a later `proposal.applyFailed` of the approval's gid.
+  const index = new Map(evs.map((e, i) => [e.eid, i]));
+  const revoked = (c: RefEvent): boolean =>
+    c.type === "proposal.approved" &&
+    evs.some(
+      (r) =>
+        r.type === "proposal.applyFailed" &&
+        r.gid === c.gid &&
+        (index.get(r.eid) ?? -1) > (index.get(c.eid) ?? -1),
+    );
   const memo = new Map<string, boolean>();
   const ok = (e: RefEvent): boolean => {
     const known = memo.get(e.eid);
@@ -97,7 +114,7 @@ function applied(evs: readonly RefEvent[]): RefEvent[] {
     let r = !losers.has(e.eid);
     if (r && e.cause !== undefined) {
       const c = present.get(e.cause);
-      r = c !== undefined && ok(c);
+      r = c !== undefined && ok(c) && !revoked(c);
     }
     memo.set(e.eid, r);
     return r;

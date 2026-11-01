@@ -29,7 +29,7 @@ import {
 import { type FoldDeps, LazyRefs, MaterializerRunner } from "./engine/fold.js";
 import { conflictsKey, IdentityService } from "./engine/identity.js";
 import { deviceOf, EventLog, type LogRow, storedBody } from "./engine/log.js";
-import { type StateFlip, updateSuppression } from "./engine/suppression.js";
+import { type StateFlip, type SuppressionRules, updateSuppression } from "./engine/suppression.js";
 import type { FoldEvent, ViewSql } from "./engine/types.js";
 import { type Decoded, decodeEnvelope, envelopeExtra } from "./envelope.js";
 import { detPartsOf } from "./events/v1/det-parts.js";
@@ -117,7 +117,7 @@ export class Store {
   readonly #identity: IdentityService;
   readonly #runners: readonly MaterializerRunner[];
   readonly #runnerByType = new Map<string, MaterializerRunner[]>();
-  readonly #fww: ReadonlySet<string>;
+  readonly #suppression: SuppressionRules;
   readonly #internal: ReadonlySet<string>;
   readonly #publicTables: readonly TableDef[];
   readonly #hub = new ChangeHub();
@@ -129,7 +129,7 @@ export class Store {
     this.driver = opts.driver;
     this.events = events;
     this.modules = modules;
-    this.#fww = events.fwwTypes();
+    this.#suppression = events.suppressionRules();
     this.#stmts = new StatementCache(opts.driver);
     this.#log = new EventLog(opts.driver);
     this.#ids = new ViewIds(this.#stmts);
@@ -400,7 +400,7 @@ export class Store {
     }
     this.#log.addRefs(refs);
 
-    const flips = fresh.length > 0 ? updateSuppression(this.#log, fresh, this.#fww) : [];
+    const flips = fresh.length > 0 ? updateSuppression(this.#log, fresh, this.#suppression) : [];
     const applied = flips.filter((f) => f.from === "new" && f.to === "applied").length;
     const suppressed = flips.filter((f) => f.from === "new" && f.to === "suppressed").length;
     this.#fold(flips, touched);
@@ -554,7 +554,7 @@ export class Store {
           events: this.events,
           identity: this.#identity,
           runners: this.#runners,
-          fww: this.#fww,
+          suppression: this.#suppression,
           det: this.deps.det,
           lazyRefs: this.deps.lazyRefs,
           sql: viewSql(this.#stmts, touched),

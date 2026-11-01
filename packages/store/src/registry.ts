@@ -7,6 +7,7 @@ import type { market } from "@cashu/domain/investments";
 import type { z } from "zod";
 import { canonicalJson } from "./canonical.js";
 import { membersTable } from "./engine/fold.js";
+import type { SuppressionRules } from "./engine/suppression.js";
 import {
   CONTRIBUTIONS,
   type Deriver,
@@ -108,6 +109,15 @@ export class EventRegistry {
     return new Set(
       [...this.#defs.values()].filter((d) => d.meta.rule === "FWW").map((d) => d.type),
     );
+  }
+
+  /** FWW types and causal revokers (events.md 6.6): the suppression stage's inputs. */
+  suppressionRules(): SuppressionRules {
+    const revokers = new Map<string, string>();
+    for (const d of this.#defs.values()) {
+      if (d.meta.revokesCausesOf !== undefined) revokers.set(d.type, d.meta.revokesCausesOf);
+    }
+    return { fww: this.fwwTypes(), revokers };
   }
 
   /** Changes whenever a type's current version changes: a stored log must then be re-decoded. */

@@ -29,6 +29,13 @@ export const agentEvents = {
   "proposal.approved": payload({ result: jsonObject }),
   "proposal.rejected": payload({ note: z.string().nullable() }),
   "proposal.failed": payload({ result: jsonObject }),
+  /**
+   * The approved change could not be completed after the decision (Python `_finish`: the strategy
+   * files could not be written, the recorded version is undone): status approved -> failed with
+   * this result (GUARD: only while approved; FWW stays on the decision). It revokes the approval's
+   * caused side effects (events.md 6.6).
+   */
+  "proposal.applyFailed": payload({ result: jsonObject }),
 
   "connectorBinding.set": payload({
     account: gid,

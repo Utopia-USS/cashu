@@ -365,6 +365,12 @@ one row, in `(hlc, eid)` order, with the table's normal rule:
 - An event with `cause` = E is applied only if E is held, applied and not an FWW loser. A parked E
   (section 7, including `invalid-gid`) is not applied.
   Suppression is part of the fold: an event arriving later can flip it.
+- Causal revocation (S31c): an event type may revoke the side effects of another type on the same
+  gid (catalog `revokesCausesOf`). An event with `cause` = E is also suppressed when a held revoker
+  of E's type and gid sorts after E; E itself stays applied. `proposal.applyFailed` revokes what
+  `proposal.approved` caused: first-writer-wins decides the DECISION, the execution result after it
+  can still undo the approved change (Python `_finish` undoes the recorded strategy version when the
+  files cannot be written). A revoker carries no `cause`.
 - An FWW loser MUST NOT have done anything outside the log that the log cannot undo. Therefore:
   - connector fetch cursors live in the log (`connectorBinding.cursorAdvanced`, caused by the
     approval or auto-commit batch, M5): a suppressed approval rolls the cursor back, and the next
@@ -466,7 +472,7 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
 | inv_rule_runs | `ruleRun.finished` | ULID | APPEND, LEADER (D5: the view keeps the last N) |
 | inv_decisions + inv_decision_signals | `decision.recorded`, `decision.undone` | ULID | APPEND; links embedded; undo TOMB |
 | reviews | `review.done`, `review.undone` | ULID | APPEND; undo TOMB |
-| proposals | `proposal.created`, `proposal.approved`, `proposal.rejected`, `proposal.failed` | ULID | CREATE; terminal FWW; caused side effects (6.6); import-like kinds leader-only |
+| proposals | `proposal.created`, `proposal.approved`, `proposal.rejected`, `proposal.failed`, `proposal.applyFailed` | ULID | CREATE; terminal FWW; caused side effects (6.6); `applyFailed` GUARD (approved only) + revokes the approval's caused events (6.6); import-like kinds leader-only |
 | research_runs | `researchRun.started`, `researchRun.finished` | ULID | APPEND; finish FWW on the status (8.9) |
 | research_notes | `note.added`, `note.read`, `note.dismissed`, `note.restored`, `note.candidateUpdated`, `note.signalLinked` | ULID | APPEND; read / dismissed / candidate / signal link LWW-F |
 | connector_bindings | `connectorBinding.set`, `connectorBinding.removed`, `connectorBinding.cursorAdvanced` | DET(account, connector_id) | LWW-F on the row key; removed SOFT (M1); cursor LWW, LEADER, caused (M5) |
@@ -728,7 +734,12 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 - `proposal.created` `{kind: strategy|custom_rule|import|budget_import, summary, reason|null, payload,
   source}`; `payload` uses gids and blob refs (`account@`, `blob: {sha256, ext}`, never `account_id` or
   `staged`). `proposal.approved {result}` / `rejected {note|null}` / `failed {result}`: terminal FWW;
-  side-effect events in the approval batch carry `cause`. Approval is desktop only (D14); for
+  side-effect events in the approval batch carry `cause`. `rejected.note` is the owner's note (Python
+  `result.note`, view `result = {note}`, `{}` without one). `proposal.applyFailed {result}` (S31c):
+  the approved change could not be completed after the decision (Python `approved -> failed`): GUARD,
+  only while the folded status is `approved`, sets `failed` and `result`, keeps `reviewed_at`; not FWW
+  (it follows the decision, it does not compete with it) and it revokes the approval's caused events
+  (6.6), so the strategy version the approval recorded leaves the view as it left Python. Approval is desktop only (D14); for
   `import` and `budget_import` all three terminal types are emitted by the lease holder only (O3, O4).
   `applying` is a device-local lock state.
 - `connectorBinding.set` `{account@, connectorId, params, autoCommit}` (creates or re-creates);

@@ -58,6 +58,8 @@ function ordered(events: readonly RefEvent[]): RefEvent[] {
 // --------------------------------------------------------------------------------------------- //
 
 const PROPOSAL_TERMINALS = new Set(["proposal.approved", "proposal.rejected", "proposal.failed"]);
+/** Causal revocation (S31c): an execution failure after the approval revokes what it caused. */
+const REVOKES: Readonly<Record<string, string>> = { "proposal.applyFailed": "proposal.approved" };
 
 function appliedEvents(evs: readonly RefEvent[]): RefEvent[] {
   const present = new Map(evs.map((e) => [e.eid, e]));
@@ -68,6 +70,15 @@ function appliedEvents(evs: readonly RefEvent[]): RefEvent[] {
     if (decided.has(e.gid)) losers.add(e.eid);
     else decided.add(e.gid);
   }
+  // `evs` is in fold order: a cause is revoked by a revoker of its type and gid at a later index.
+  const index = new Map(evs.map((e, i) => [e.eid, i]));
+  const revoked = (c: RefEvent): boolean =>
+    evs.some(
+      (r) =>
+        REVOKES[r.type] === c.type &&
+        r.gid === c.gid &&
+        (index.get(r.eid) ?? -1) > (index.get(c.eid) ?? -1),
+    );
   const memo = new Map<string, boolean>();
   const applied = (e: RefEvent): boolean => {
     const known = memo.get(e.eid);
@@ -75,7 +86,7 @@ function appliedEvents(evs: readonly RefEvent[]): RefEvent[] {
     let ok = !losers.has(e.eid);
     if (ok && e.cause !== undefined) {
       const c = present.get(e.cause);
-      ok = c !== undefined && applied(c); // a cause not (yet) held parks the event
+      ok = c !== undefined && applied(c) && !revoked(c); // a cause not (yet) held parks the event
     }
     memo.set(e.eid, ok);
     return ok;
@@ -675,6 +686,9 @@ export function materialize(input: readonly RefEvent[], det: RefDet): RefView {
       case "proposal.rejected":
       case "proposal.failed":
         if (proposals.has(e.gid)) proposals.set(e.gid, e.type.slice("proposal.".length));
+        break;
+      case "proposal.applyFailed": // GUARD: only after an applied approval
+        if (proposals.get(e.gid) === "approved") proposals.set(e.gid, "failed");
         break;
 
       case "connectorBinding.set": {

@@ -6,6 +6,85 @@ import { converge, DEV_B, Events, rows, ulid } from "./testing/kit.js";
 const SHA_A = "a".repeat(64);
 const SHA_B = "b".repeat(64);
 
+describe("proposal outcomes and the strategy version an approval caused (S31c)", () => {
+  const fixture = () => {
+    const a = new Events();
+    const b = new Events(DEV_B, "01JB");
+    const proposal = ulid(50);
+    const created = a.make(
+      "proposal.created",
+      proposal,
+      { kind: "strategy", summary: "s", reason: null, payload: {}, source: "mcp" },
+      { wall: 5 },
+    );
+    const approved = a.make(
+      "proposal.approved",
+      proposal,
+      { result: { version: 2 } },
+      { wall: 30 },
+    );
+    const caused = a.make(
+      "strategy.versionSaved",
+      ulid(2),
+      { sha256: SHA_B },
+      { wall: 31, cause: approved.eid },
+    );
+    const failed = a.make(
+      "proposal.applyFailed",
+      proposal,
+      { result: { error_code: "write_failed" } },
+      { wall: 40 },
+    );
+    const before = a.make("strategy.versionSaved", ulid(1), { sha256: SHA_A }, { wall: 10 });
+    const proposalRow = (store: Parameters<Parameters<typeof converge>[1]>[0]) =>
+      store.read<{ status: string; result: string; reviewed_at: string }>(
+        "SELECT status, result, reviewed_at FROM proposals",
+      );
+    const rejected = b.make("proposal.rejected", proposal, { note: "nie teraz" }, { wall: 20 });
+    return { before, created, approved, caused, failed, rejected, proposalRow };
+  };
+
+  it("an approval whose files could not be written revokes its version, in every order", () => {
+    const { before, created, approved, caused, failed, proposalRow } = fixture();
+    converge([before, created, approved, caused, failed], (store) => {
+      expect(rows(store, "inv_strategy_versions").map((v) => [v.gid, v.version])).toEqual([
+        [ulid(1), 1],
+      ]);
+      expect(proposalRow(store)).toEqual([
+        {
+          status: "failed",
+          result: JSON.stringify({ error_code: "write_failed" }),
+          reviewed_at: "2026-10-31 12:00:00.030000",
+        },
+      ]);
+    });
+  });
+
+  it("without the failure the approved version stands", () => {
+    const { before, created, approved, caused } = fixture();
+    converge([before, created, approved, caused], (store) => {
+      expect(rows(store, "inv_strategy_versions").map((v) => v.gid)).toEqual([ulid(1), ulid(2)]);
+    });
+  });
+
+  it("an earlier concurrent rejection wins the decision: the approval's version loses", () => {
+    const { before, created, approved, caused, rejected } = fixture();
+    converge([before, created, rejected, approved, caused], (store) => {
+      expect(rows(store, "inv_strategy_versions").map((v) => v.gid)).toEqual([ulid(1)]);
+    });
+  });
+
+  it("after a winning rejection the failure is a no-op and the note stays", () => {
+    const { before, created, approved, caused, failed, rejected, proposalRow } = fixture();
+    converge([before, created, rejected, approved, caused, failed], (store) => {
+      expect(rows(store, "inv_strategy_versions").map((v) => v.gid)).toEqual([ulid(1)]);
+      expect(proposalRow(store).map((p) => [p.status, p.result])).toEqual([
+        ["rejected", JSON.stringify({ note: "nie teraz" })],
+      ]);
+    });
+  });
+});
+
 describe("inv_strategy_versions", () => {
   it("numbers versions in order; a version equal to the current sha is a no-op", () => {
     const store = openTestStore();

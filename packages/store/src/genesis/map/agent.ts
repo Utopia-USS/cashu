@@ -3,6 +3,7 @@
 // their own tables), connector bindings with their cursor, and the device-local sidecar (the
 // notification log and the connector fetch state never enter the log).
 
+import { isJsonObject } from "../idFields.js";
 import type { InvNotificationRow } from "../invStateRows.js";
 import type { ConnectorBindingRow, ProposalRow, ReviewRow } from "../rows.js";
 import {
@@ -29,7 +30,7 @@ export function mapReview(r: ReviewRow, ctx: MapContext): RowEvents | undefined 
 
 /**
  * `proposal.created` (payload ids and staged paths rewritten, 6.5), then the terminal event of an
- * approved / rejected / failed proposal. `applying` is a device-local lock: the proposal stays
+ * approved / rejected (with the owner's note) / failed proposal. `applying` is a device-local lock: the proposal stays
  * pending (D-G9, counted `applying_as_pending`); another status is `bad_enum`.
  */
 export function mapProposal(r: ProposalRow, ctx: MapContext): RowEvents | undefined {
@@ -58,9 +59,13 @@ export function mapProposal(r: ProposalRow, ctx: MapContext): RowEvents | undefi
       events.push(event(type, gid, result, stamps));
       break;
     }
-    case "rejected":
-      events.push(event("proposal.rejected", gid, { note: null }, stamps));
+    case "rejected": {
+      // Python `reject` keeps the owner's note as `result.note` (S31c).
+      const note = isJsonObject(r.result) ? r.result.note : undefined;
+      const data = { note: typeof note === "string" && note !== "" ? note : null };
+      events.push(event("proposal.rejected", gid, data, stamps));
       break;
+    }
     default:
       ctx.count(t, "bad_enum");
       return undefined;

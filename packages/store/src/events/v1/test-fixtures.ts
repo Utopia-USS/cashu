@@ -360,6 +360,7 @@ export const VALID_SAMPLES: Record<EventType, Record<string, unknown>> = {
   "proposal.approved": { result: { batch: ULID_A } },
   "proposal.rejected": { note: null },
   "proposal.failed": { result: { code: "staged_missing" } },
+  "proposal.applyFailed": { result: { error_code: "write_failed" } },
   "connectorBinding.set": {
     account: ACC,
     connectorId: "example-broker",

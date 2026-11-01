@@ -6,7 +6,7 @@
 import type { LazyRefs, MaterializerRunner } from "./engine/fold.js";
 import type { IdentityService } from "./engine/identity.js";
 import { type EventLog, type LogRow, storedBody } from "./engine/log.js";
-import { recomputeAllSuppression } from "./engine/suppression.js";
+import { recomputeAllSuppression, type SuppressionRules } from "./engine/suppression.js";
 import type { ViewSql } from "./engine/types.js";
 import type { Decoded } from "./envelope.js";
 import { decodeEnvelope } from "./envelope.js";
@@ -21,7 +21,7 @@ export interface RebuildContext {
   readonly events: EventRegistry;
   readonly identity: IdentityService;
   readonly runners: readonly MaterializerRunner[];
-  readonly fww: ReadonlySet<string>;
+  readonly suppression: SuppressionRules;
   readonly det: DetGid;
   readonly lazyRefs: LazyRefs;
   /** Writes through it are reported as touched. */
@@ -48,7 +48,7 @@ export function rebuildView(
     "DELETE FROM materializer_state; DELETE FROM identity_roots; DELETE FROM identity_accepted;",
   );
   // view_ids stay: ids are view-local and stable, and keeping them spares a lookup per row.
-  recomputeAllSuppression(ctx.log, ctx.fww);
+  recomputeAllSuppression(ctx.log, ctx.suppression);
   if (options.redecode === true || options.reindex === true) reindexRefs(ctx);
   ctx.identity.recompute(ctx.log, ctx.sql, true);
   for (const r of ctx.runners) r.refoldAll(ctx.sql);
