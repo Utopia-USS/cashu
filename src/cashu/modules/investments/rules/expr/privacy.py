@@ -3,7 +3,8 @@
 A custom condition such as ``cash_value < 800`` carries the owner's buffer in its literal. A literal is
 kept only when it is clearly not money:
 
-- a percent literal (``20%``);
+- a small percent literal (``20%``, ``12.5%``: at most 3 integer digits, S37fix3 E1; ``80000%`` is
+  800 and counts like a bare number);
 - a literal argument of a metric function (a window length, ``drawdown_from_high(252)``);
 - a literal inside a comparison whose metrics are all ratios, percentage points, days or counts
   (``weight < 0.03``, ``days_since_last_deposit > 45``), or prices of a public instrument (a market
@@ -14,7 +15,7 @@ kept only when it is clearly not money:
 
 Everything else is treated as an amount: a comparison with any amount metric (``cash_value``,
 ``total_value``, ``value``, ...), with an owner-named instrument's price, or without a metric. An
-expression that does not parse loses every bare number.
+expression that does not parse loses every number, glued to letters too, except a small percent.
 """
 
 from __future__ import annotations
@@ -27,7 +28,13 @@ from .parser import Binary, Call, Compare, Name, Node, Number, children, parse
 
 AMOUNT_PLACEHOLDER = "[amount]"
 _NON_MONEY = frozenset({Unit.RATIO, Unit.PP, Unit.DAYS, Unit.COUNT, Unit.FLAG, Unit.TEXT})
-_BARE_NUMBER = re.compile(r"(?<![\w.])\d+(?:\.\d+)?|(?<![\w.])\.\d+")
+# S37fix3 E2: in an expression that does not parse, a number glued to letters ("800k", "800PLN",
+# "_800000") is a number too (the N9 rule of free text)
+# S37fix3: an exponent or "_" groups make one number ("1e4%", "1_000%"), never a small percent
+_BARE_NUMBER = re.compile(
+    r"(?<![\d.])\d+(?:_\d+)*(?:\.\d+)?(?:[eE][-+]?\d+)?|(?<![\w.])\.\d+(?:[eE][-+]?\d+)?"
+)
+_SMALL_NUMBER = re.compile(r"\d{1,3}(?:\.\d+)?|\.\d+")
 
 
 def _units(node: Node) -> list[Unit | None]:
@@ -56,6 +63,15 @@ def _numbers(node: Node) -> list[Number]:
     return out
 
 
+_PERCENT_DIGITS = 3
+
+
+def _small_percent(n: Number) -> bool:
+    """A percent literal with at most 3 integer digits (S37fix3 E1, the R1 / N1 rule of free text):
+    ``20%``, ``12.5%``, ``.5%``; ``80000%`` (= 800) and ``12000000%`` are amounts like bare numbers."""
+    return n.text.endswith("%") and len(n.text[:-1].split(".")[0]) <= _PERCENT_DIGITS
+
+
 _SCALE_OK = frozenset({1, 100})
 """Literal factors that keep a non-price metric in its unit (``weight * 100 > 5``)."""
 
@@ -66,7 +82,7 @@ def _scaled(node: Node) -> bool:
     5000``: a position size), or a literal other than 1 / 100 multiplying or dividing any metric
     (``weight * 120000 > 900``: the owner's total value), or literals multiplied / divided by each
     other with no metric between them (``weight > 900 / 120000``, ``last_close > 5000 / 40``; F7
-    re-review B4) unless every one of them is 1, 100 or a percent. Conservative: false positives only
+    re-review B4) unless every one of them is 1, 100 or a small percent. Conservative: false positives only
     scrub a literal that was safe."""
     stack = [node]
     while stack:
@@ -79,7 +95,7 @@ def _scaled(node: Node) -> bool:
                 and not _units(current.left)
                 and not _units(current.right)
                 and any(
-                    n.value not in _SCALE_OK and not n.text.endswith("%") for n in _numbers(current)
+                    n.value not in _SCALE_OK and not _small_percent(n) for n in _numbers(current)
                 )
             ):
                 return True
@@ -90,7 +106,7 @@ def _scaled(node: Node) -> bool:
                 if Unit.PRICE in units:
                     return True
                 if current.op in ("*", "/") and any(
-                    n.value not in _SCALE_OK and not n.text.endswith("%") for n in literals
+                    n.value not in _SCALE_OK and not _small_percent(n) for n in literals
                 ):
                     return True
         stack.extend(children(current))
@@ -121,9 +137,9 @@ def amount_literals(source: str, *, private_prices: bool = False) -> list[Number
         node, in_compare = stack.pop()
         if isinstance(node, Compare):
             safe = _safe(_units(node), private_prices) and not _scaled(node)
-            flagged.extend(n for n in _numbers(node) if not safe and not n.text.endswith("%"))
+            flagged.extend(n for n in _numbers(node) if not safe and not _small_percent(n))
             continue
-        if isinstance(node, Number) and not in_compare and not node.text.endswith("%"):
+        if isinstance(node, Number) and not in_compare and not _small_percent(node):
             flagged.append(node)  # a bare literal outside any comparison: no context
             continue
         if isinstance(node, Call):
@@ -139,7 +155,12 @@ def scrub_amount_literals(
     flagged = amount_literals(source, private_prices=private_prices)
     if flagged is None:
         return _BARE_NUMBER.sub(
-            lambda m: m.group(0) if source[m.end() : m.end() + 1] == "%" else placeholder, source
+            lambda m: (
+                m.group(0)
+                if source[m.end() : m.end() + 1] == "%" and _SMALL_NUMBER.fullmatch(m.group(0))
+                else placeholder
+            ),
+            source,
         )
     out = source
     for number in sorted(flagged, key=lambda n: n.column, reverse=True):

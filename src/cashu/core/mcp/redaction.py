@@ -11,6 +11,9 @@
   known person names always; in ``strict`` every number with 2+ significant digits except dates;
 - ``percent`` / ``level`` / ``count`` / ``ref`` / ``flag`` / ``date`` -> type-checked and sent.
 
+Every scrubbed string is cut to ``MAX_SCRUB_CHARS`` (200 000) characters first and every rule runs in
+linear time (S37fix3), so one long string cannot stall a call.
+
 A raw (unlabelled) leaf raises :class:`UnlabelledValue`: the call fails closed. After redaction,
 ``leak_check`` scans the result once more (identifier-like strings and 10+ digit numbers in any mode;
 in ``strict`` also any number under a money-like key) and raises :class:`LeakDetected` instead of sending.
@@ -22,7 +25,9 @@ import datetime as dt
 import json
 import re
 import unicodedata
+from bisect import bisect_left, bisect_right
 from decimal import Decimal
+from functools import lru_cache
 from typing import Any
 
 from .labels import Labelled, Sensitivity, market_ok
@@ -57,6 +62,7 @@ _LINE_SPACE = frozenset("\t\n\r\x0b\x0c\x1c\x1d\x1e\x1f\x85\u2028\u2029")
 _REMOVED = frozenset("\u00ad")
 
 
+@lru_cache(maxsize=4096)  # S37fix3: a pure function of one character, called per character
 def _norm_char(ch: str) -> str:
     if ch in _REMOVED:
         return ""
@@ -85,17 +91,18 @@ class _Work:
 
     def __init__(self, text: str) -> None:
         self.orig = text
-        chars: list[str] = []
-        src: list[int | None] = []
-        self.removed: list[bool] = []
-        for i, ch in enumerate(text):
-            n = _norm_char(ch)
-            self.removed.append(n == "")
-            chars.append(n)
-            src.extend([i] * len(n))
+        chars = [_norm_char(ch) for ch in text]
+        self.removed: list[bool] = [n == "" for n in chars]
         self.text = "".join(chars)
+        if len(self.text) == len(text) and not any(self.removed):
+            src: list[int | None] = list(range(len(text)))  # one character for one (S37fix3: fast)
+        else:
+            src = []
+            for i, n in enumerate(chars):
+                src.extend([i] * len(n))
         self.src = src
         self.touched: set[int] = set()
+        self.changed = False
 
     def sub(self, pattern: re.Pattern, repl, *, mark: bool = True) -> None:
         """``pattern.sub`` on the normalized text; ``repl`` is a string or a function returning the
@@ -120,12 +127,15 @@ class _Work:
             last = m.end()
         if not out:
             return
+        self.changed = True
         out.append(self.text[last:])
         src.extend(self.src[last:])
         self.text = "".join(out)
         self.src = src
 
     def render(self) -> str:
+        if not self.changed:
+            return self.orig  # nothing replaced: the original text as it is
         out: list[str] = []
         prev: int | None = None
         for k, c in enumerate(self.text):
@@ -174,8 +184,10 @@ _ID_SEP = r"(?: ?[/_-]{1,2} ?| {1,3}|[.,])"
 _IBAN = re.compile(
     rf"\b[A-Z]{{2}}\d{{2}}(?:{_ID_SEP}?[A-Z0-9]{{4}}){{3,8}}(?:{_ID_SEP}?[A-Z0-9]{{1,4}})?\b"
 )
+# S37fix3: a run of mask characters is taken whole (possessive), never split between the groups: a
+# long "xxxx..." word took polynomial time
 _MASKED_CARD = re.compile(
-    rf"(?<![\w*•])(?:\d{{1,6}}{_ID_SEP}?)?(?:[*xX•]{{2,}}{_ID_SEP}?){{1,4}}\d{{2,6}}(?!\d)"
+    rf"(?<![\w*•])(?:\d{{1,6}}{_ID_SEP}?)?(?:[*xX•]{{2,}}+{_ID_SEP}?){{1,4}}\d{{2,6}}(?!\d)"
 )
 # grouped thousands with a decimal part, one separator throughout, at most 14 digits
 _AMOUNT_FORMAT = re.compile(r"(?=(?:\D*\d){9,14}\D*$)\d{1,3}([ .,'])\d{3}(?:\1\d{3})*[.,]\d{1,2}")
@@ -195,7 +207,10 @@ _ACCOUNT_WORD = re.compile(
     r"(?i:\b(?:konto|konta|rachunek|rachunku|account|acct|acc|nr|numer|no)(?:\b\.?|(?=\d))[ :#]{0,3})"
     r"(?:nr\.? ?)?(\d[\d -]{4,}\d)"
 )
-_EMAIL = re.compile(r"[\w.+-]+(?:@|\(at\)|\[at\])[\w-]+(?:\.[\w-]+)+")
+# S37fix3: an address starts only where a run of address characters starts (no rescan of a long word
+# from each of its letters: linear time); addresses chained right after one ("a@b.pl+c@d.pl") join it
+_EMAIL_ONE = r"(?:@|\(at\)|\[at\])[\w-]+(?:\.[\w-]+)+"
+_EMAIL = re.compile(rf"(?<![\w.+-])[\w.+-]+{_EMAIL_ONE}(?:[.+][\w.+-]*{_EMAIL_ONE})*")
 # Money (strict): a number next to a currency (any upper-case 3-letter code, Polish / English words,
 # symbols), after a money word, with a multiplier (12 tys., 100k), grouped thousands, decimals; then
 # every other number with 2+ significant digits (D3).
@@ -211,9 +226,12 @@ _NUM = rf"[-+]?\d(?:[\d{_GROUP}]*\d)?"
 _MONEY_CUR = re.compile(rf"(?:{_NUM} ?{_CUR}(?![A-Za-z]))|(?:(?<![A-Za-z]){_CUR} ?{_NUM})")
 # S37fix2 W1 / W2: a scale word takes the whole number before it, digit groups included, across any
 # run of spaces ("2 tysiące", "3  miliony", "1,5 mln", "2 500 tysięcy", "5k", "2 tyś")
+# S37fix3: the other number of a range or an alternative joins it ("2-3 tys.", "2 do 3 tysięcy")
+_RANGE_JOIN = r"(?:\s*[-/]\s*|\s+(?i:lub|albo|do|or|to)\s+)"
 _MULTIPLIED = re.compile(
-    rf"(?<![\w.,])[-+]?\d+(?:{_G}\d+)*\s*"
-    r"(?i:ty[sś]\.?|tysi[aąeę]c\w*|milion\w*|miliard\w*|bilion\w*|mln|mld|k|m|mn|bn)(?![\w])"
+    rf"(?<![\w.,])(?:[-+]?\d+(?:{_G}\d+)*{_RANGE_JOIN})?[-+]?\d+(?:{_G}\d+)*\s*"
+    r"(?i:ty[sś]\.?|tysi[aąeę]c\w*|milion\w*|miliard\w*|bilion\w*|mln|mld|k|m|mn|bn"
+    r"|thousands?|millions?|billions?)(?![\w])"
 )
 _GROUPED = re.compile(
     r"(?<![\w.,])[-+]?\d{1,3}(?:(?:[ ']\d{3})+|(?:,\d{3})+|(?:\.\d{3}){2,})(?:[.,]\d+)?"
@@ -229,7 +247,8 @@ _MONEY_WORD = re.compile(
 )
 # S37fix2 N9: a number glued after letters ("kwota950", "nr1500") is a number too; a sign counts only
 # when no letter or digit stands before it ("COVID-19" keeps its dash)
-_ANY_NUMBER = re.compile(r"(?:(?<!\w)[-+])?(?<!\d)\d+(?:[.,]\d+)*")
+# S37fix3: an exponent is part of the number ("1e4%" is 10 000, not "1" and a kept "4%")
+_ANY_NUMBER = re.compile(r"(?:(?<!\w)[-+])?(?<!\d)\d+(?:[.,]\d+)*(?:[eE][-+]?\d+)?")
 # S37fix2 N10: digit groups joined by one grouping character ("2 000", "3 000 %", "2_000 x", "5•0000")
 # are one number, masked whole by its significant digits, before a percent sign too
 _GROUPED_ANY = re.compile(rf"(?:(?<!\w)[-+])?(?<!\d)\d+(?:{_G}\d+)+")
@@ -258,17 +277,23 @@ _NUMBER_WORDS_SMALL = (
     r"paroma|one|two|three|four|five|six|seven|eight|"
     r"nine|ten|half"
 )
-_NUMBER_WORDS_AFTER = r"ko[lł][oa]|bańk(?:a|i|ę|ą)|baniek|patyk\w*"
-_NUMBER_WORD = rf"(?:{_NUMBER_WORDS_BIG}|{_NUMBER_WORDS_SMALL})(?!\w)"
-_WORD_AFTER = rf"(?:{_NUMBER_WORDS_BIG}|{_NUMBER_WORDS_SMALL}|{_NUMBER_WORDS_AFTER})(?!\w)"
-_WORD_JOIN = r"(?:\s+(?:i|and)\s+|\s*[,-]\s*|\s+)"
-_DIGITS_BEFORE = rf"(?<![\w.,])[-+]?\d+(?:{_G}\d+)*{_WORD_JOIN}"
+# S37fix3: slang after a number also in English ("2 grand"); a scale abbreviation glued to a number
+# word ("dwatys", "pięćmln") is a scale word; a number in digits may be glued to the words ("2koła",
+# "2stówy"); words of a range or an alternative join the run ("dwa lub trzy tysiące")
+_NUMBER_WORDS_AFTER = r"ko[lł][oa]|bańk(?:a|i|ę|ą)|baniek|patyk\w*|grands?"
+_GLUED_SCALE = rf"(?:{_NUMBER_WORDS_SMALL})(?:ty[sś]\.?|mln\.?|mld\.?)"
+_NUMBER_WORD = rf"(?:{_NUMBER_WORDS_BIG}|{_GLUED_SCALE}|{_NUMBER_WORDS_SMALL})(?!\w)"
+_WORD_AFTER = (
+    rf"(?:{_NUMBER_WORDS_BIG}|{_GLUED_SCALE}|{_NUMBER_WORDS_SMALL}|{_NUMBER_WORDS_AFTER})(?!\w)"
+)
+_WORD_JOIN = r"(?:\s+(?:i|and|lub|albo|do|or|to|x)\s+|\s*[,/-]\s*|\s+)"
+_DIGITS_BEFORE = rf"(?<![\w.,])[-+]?\d+(?:{_G}\d+)*{_WORD_JOIN}?"
 _NUMBER_WORDS = re.compile(
     rf"(?i:(?:{_DIGITS_BEFORE}|(?<!\w)){_NUMBER_WORD}(?:{_WORD_JOIN}{_WORD_AFTER})*"
     rf"|{_DIGITS_BEFORE}(?:{_NUMBER_WORDS_AFTER})(?!\w)(?:{_WORD_JOIN}{_WORD_AFTER})*)"
 )
 _BIG_NUMBER_WORD = re.compile(
-    rf"(?i:(?<!\w)(?:{_NUMBER_WORDS_BIG}|{_NUMBER_WORDS_AFTER})(?!\w))"
+    rf"(?i:(?:(?<!\w)|(?<=\d))(?:{_NUMBER_WORDS_BIG}|{_GLUED_SCALE}|{_NUMBER_WORDS_AFTER})(?!\w))"
 )
 # Kept in strict free text (S37fix R1, R2, N1, N5): a number with at most 3 integer digits and no
 # grouping right before a percent sign / percentage points (a decimal part of 1-2 digits allowed) or a
@@ -284,7 +309,11 @@ _KEPT_PERCENT = re.compile(
     rf"{_NOT_GROUPED}[-+]?\d{{1,3}}(?:[.,]\d{{1,2}})?(?!{_G}\d|\d)"
     r"(?= ?(?:%|pp\b|p\.p\.|pkt proc\.))"
 )
-_KEPT_UNIT = re.compile(rf"{_NOT_GROUPED}[-+]?\d{{1,3}}(?= ?(?i:{_KEPT_UNITS})(?!\w))")
+# S37fix3: "2 x tysiąc" is an amount, not a multiplier
+_KEPT_UNIT = re.compile(
+    rf"{_NOT_GROUPED}[-+]?\d{{1,3}}(?= ?(?i:{_KEPT_UNITS})(?!\w))"
+    rf"(?! ?(?i:x\s+(?:{_NUMBER_WORDS_BIG}|{_GLUED_SCALE}))(?!\w))"
+)
 _KEPT_POSITION = re.compile(
     r"((?i:\b(?:line|row|linia|linii|wiersz|wiersza|pozycja|pozycji)) )(\d{1,3})"
     rf"(?![\d\w]|{_G}\d)"
@@ -293,10 +322,12 @@ _CURRENCY_WORDS = (
     r"zł|zl|złot\w*|zlot\w*|grosz\w*|gr|pln|eur|euro|usd|chf|gbp|dolar\w*|funt\w*|frank\w*"
 )
 _CURRENCY_BEFORE = re.compile(rf"(?:(?i:\b(?:{_CURRENCY_WORDS}))|[$€£]|\b[A-Z]{{3}}) {{0,3}}[-+]?$")
+# matched at the end of the number (``match(text, end)``: no slice of the rest of the text)
 _CURRENCY_AFTER = re.compile(
-    rf"^ {{0,3}}(?:(?:%|pp\b|p\.p\.|pkt proc\.|(?i:{_KEPT_UNITS}))(?!\w))? {{0,3}}"
+    rf" {{0,3}}(?:(?:%|pp\b|p\.p\.|pkt proc\.|(?i:{_KEPT_UNITS}))(?!\w))? {{0,3}}"
     rf"(?:(?i:(?:{_CURRENCY_WORDS}))(?!\w)|[$€£]|[A-Z]{{3}}(?![A-Za-z]))"
 )
+_WORD_CHAR = re.compile(r"\w")
 _ISIN = re.compile(r"\b[A-Z]{2}[A-Z0-9]{9}\d\b")
 # A protected date / ISIN is swapped for NUL + its index + NUL while the number rules run. The index is
 # written in private-use characters, not digits, so no number rule (``_MONEY_WORD`` after "[amount]",
@@ -345,9 +376,14 @@ def _protect_dates(work: _Work, isins: frozenset[str] = frozenset()) -> list[tup
 
 def _protect_kept_numbers(work: _Work, saved: list[tuple[str, list]]) -> None:
     def near_currency(start: int, end: int) -> bool:
-        return bool(
-            _CURRENCY_BEFORE.search(work.text[:start]) or _CURRENCY_AFTER.match(work.text[end:])
-        )
+        # S37fix3 D1: only the window the rule can reach is read (a currency ends at most 4
+        # characters before the number; the window goes back to the start of the word there), never
+        # the whole text before each number, so many kept numbers stay linear
+        text = work.text
+        window = max(0, start - 5)
+        while window > 0 and _WORD_CHAR.match(text, window - 1):
+            window -= 1
+        return bool(_CURRENCY_BEFORE.search(text[window:start]) or _CURRENCY_AFTER.match(text, end))
 
     def keep(m: re.Match):
         if near_currency(m.start(), m.end()):
@@ -410,14 +446,51 @@ def _significant(m: re.Match) -> str | None:
 # a link (public source): a number glued to letters in it ("/p11/") is part of a path, not an amount
 # S37fix2 W3: only a link that starts the text or follows a space, "(", "<" or a quote ("xhttps://"
 # is not a link)
-_IN_LINK = re.compile(r"(?:^|(?<=[\s(<\"'“”„‘’«»]))(?:https?://|www\.)\S*$")
+# S37fix3: a glued number with 4+ digits is masked inside a link too ("https://x.pl/a4532b"); the link
+# test reads an index of the text built once per pass (link starts and spaces), never a rescan of
+# the text before each number, so a long text of glued numbers stays linear
+_LINK_START = re.compile(r"(?:^|(?<=[\s(<\"'“”„‘’«»]))(?:https?://|www\.)")
+_SPACE = re.compile(r"\s")
+_LINK_DIGITS = 4
 
 
-def _any_number(m: re.Match) -> str | None:
-    start = m.start()
-    if start > 0 and m.string[start - 1].isalpha() and _IN_LINK.search(m.string[:start]):
-        return None
-    return _significant(m)
+class _LinkIndex:
+    """Where the links of a text start, to tell whether a position lies inside one: a link start
+    (``https://``, ``http://``, ``www.``) ends before the position, with no space after it."""
+
+    def __init__(self, text: str) -> None:
+        found = sorted((m.end(), m.start()) for m in _LINK_START.finditer(text))
+        self.ends = [end for end, _ in found]
+        self.starts: list[int] = []  # the latest link start among the first k links by end
+        latest = -1
+        for _, start in found:
+            latest = max(latest, start)
+            self.starts.append(latest)
+        self.spaces = [m.start() for m in _SPACE.finditer(text)]
+
+    def inside(self, position: int) -> bool:
+        k = bisect_right(self.ends, position)
+        if not k:
+            return False
+        j = bisect_left(self.spaces, position)
+        return (self.spaces[j - 1] if j else -1) < self.starts[k - 1]
+
+
+def _any_number_in(text: str):
+    """The ``_ANY_NUMBER`` replacement for one pass over ``text``."""
+    links: _LinkIndex | None = None
+
+    def any_number(m: re.Match) -> str | None:
+        nonlocal links
+        start = m.start()
+        if start > 0 and text[start - 1].isalpha() and _digit_count(m.group(0)) < _LINK_DIGITS:
+            if links is None:
+                links = _LinkIndex(text)
+            if links.inside(start):
+                return None
+        return _significant(m)
+
+    return any_number
 
 
 def _number_words(m: re.Match) -> str | None:
@@ -428,10 +501,31 @@ def _keep_prefix(replacement: str):
     return lambda m: m.group(0)[: m.start(1) - m.start(0)] + replacement
 
 
+# S37fix3: every scrubbed string is cut to MAX_SCRUB_CHARS characters (the longest tool argument,
+# ``registry.MAX_STRING``) before any rule reads it, and the rules run in linear time, so one long
+# string cannot stall a call. The cut drops the word it splits and any digits or separators before
+# it (no half of a number is left to slip under a threshold), then the whole word before that (the
+# first half of a name split by the cut), and appends TRUNCATED.
+MAX_SCRUB_CHARS = 200_000
+TRUNCATED = " [truncated]"
+
+
+def _cap(text: str) -> tuple[str, bool]:
+    if len(text) <= MAX_SCRUB_CHARS:
+        return text, False
+    end = MAX_SCRUB_CHARS
+    for _ in range(2):  # the split word, then the word before it (half of a name, S37fix3)
+        while end > 0 and not text[end - 1].isspace():
+            end -= 1
+        while end > 0 and not text[end - 1].isalpha():
+            end -= 1
+    return text[:end], True
+
+
 def scrub_text(text: str | None, *, strict: bool, guard: NameGuard | None = None) -> str | None:
     if text is None:
         return None
-    text = str(text)
+    text, cut = _cap(str(text))
     if strict and guard is not None:
         # first, before any rewriting: an alias with a number ("IKE Oli 2030") must still match
         # the owner's label as typed (F7 review R6)
@@ -455,12 +549,12 @@ def scrub_text(text: str | None, *, strict: bool, guard: NameGuard | None = None
         work.sub(_GROUPED_ANY, _significant)  # before the decimal rule: "1.2.3" is one number
         work.sub(_GROUPED, "[amount]")
         work.sub(_DECIMAL, "[amount]")
-        work.sub(_ANY_NUMBER, _any_number)
+        work.sub(_ANY_NUMBER, _any_number_in(work.text))
     _restore_dates(work, dates)
     text = work.render()
     if guard is not None:
         text = guard.mask(text)
-    return text
+    return text + TRUNCATED if cut else text
 
 
 def identifier_in(text: str, isins: frozenset[str] | set[str] = frozenset()) -> bool:

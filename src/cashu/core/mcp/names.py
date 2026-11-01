@@ -21,8 +21,10 @@ import importlib
 import re
 import secrets
 import unicodedata
+from bisect import bisect_left
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from functools import lru_cache
 from itertools import permutations
 
 from sqlmodel import Session, select
@@ -125,6 +127,7 @@ _SUFFIX = "(?:" + "|".join(_SUFFIXES) + ")"
 _STEM_SUFFIX = "(?:" + "|".join(s for s in _SUFFIXES if not s.startswith("OW")) + ")"
 
 
+@lru_cache(maxsize=4096)  # S37fix3: a pure function of one character, called per character
 def _mask_fold_char(ch: str) -> str:
     """One character folded for name matching: soft hyphen removed, spaces and zero-width
     characters to a space, lookalike letters to Latin, then :func:`fold`."""
@@ -402,6 +405,9 @@ class NameGuard:
         if not text or not self.names:
             return text
         folds = _mask_folds(text)
+        # masked spans, sorted and never overlapping (S37fix3: an overlap test looks at one neighbour,
+        # so a text full of names stays linear)
+        starts: list[int] = []
         spans: list[tuple[int, int]] = []
         for term in sorted(self.names, key=lambda t: (-len(t), t)):
             if not term.split():
@@ -415,16 +421,25 @@ class NameGuard:
                 pos = 0
                 while (m := pattern.search(folded, pos)) is not None:
                     start, end = index[m.start()], index[m.end() - 1] + 1
-                    if any(s < end and start < e for s, e in spans):
+                    at = bisect_left(starts, end)  # spans[:at] start before ``end``
+                    if at and spans[at - 1][1] > start:
                         # overlaps a name already masked: look again one character on, so a
                         # later occurrence is not lost inside the rejected match
                         pos = m.start() + 1
                         continue
-                    spans.append((start, end))
+                    starts.insert(at, start)
+                    spans.insert(at, (start, end))
                     pos = m.end()
-        for start, end in sorted(spans, reverse=True):
-            text = text[:start] + "[name]" + text[end:]
-        return text
+        if not spans:
+            return text
+        out: list[str] = []
+        last = 0
+        for start, end in spans:
+            out.append(text[last:start])
+            out.append("[name]")
+            last = end
+        out.append(text[last:])
+        return "".join(out)
 
 
 def is_payee_ref(value: str | None) -> bool:
