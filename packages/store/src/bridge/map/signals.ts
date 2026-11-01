@@ -3,7 +3,8 @@
 // Bridges of rule runs, alerts and signals (S31a spec 4.4 table; events.md 8.7, 11; S25-python-emits).
 // Inserts are the genesis snapshot (`mapRuleRun`, `mapAlert`, `mapSignals`); updates take every
 // payload field from the genesis snapshot of `post` (and of `pre` for the old payload):
-// - alerts: config columns -> `alert.updated` (changed fields); owner status -> `alert.statusSet`;
+// - alerts: config columns (the tag included) -> `alert.updated` (changed fields); owner status ->
+//   `alert.statusSet`;
 //   `deleted_at` X -> null -> `alert.restored` (`rearm` with triggered -> active in the same row);
 //   runtime (`last_*`, triggered <-> active alone) -> `alert.evaluated` (leader); -> X `alert.deleted`;
 // - signals: a severity rank up -> `signal.escalated` (`reactivate` from P-C's kept prev status),
@@ -76,6 +77,7 @@ const ALERT_CONFIG: readonly (readonly [string, string])[] = [
   ["severity", "severity"],
   ["cooldown_days", "cooldownDays"],
   ["expires_at", "expiresAt"],
+  ["tag", "tag"],
 ];
 const ALERT_RUNTIME = ["last_triggered_at", "last_checked_at", "last_value"];
 const OWNER_STATUSES: readonly string[] = ["muted", "snoozed"];
@@ -93,7 +95,7 @@ function alertSnapshot(row: AlertRow, ctx: MapContext): readonly EventDraft[] {
 }
 
 function alertUpdate(c: RowChange<AlertRow>, ctx: MapContext): readonly EventDraft[] {
-  refuseChanged(c, "alerts", ["instrument_id", "scope", "kind", "source", "created_by", "tag"]);
+  refuseChanged(c, "alerts", ["instrument_id", "scope", "kind", "source", "created_by"]);
   const post = need(c.post);
   const pre = need(c.pre);
   const snap = alertSnapshot(post, ctx);
@@ -101,7 +103,9 @@ function alertUpdate(c: RowChange<AlertRow>, ctx: MapContext): readonly EventDra
   const out: EventDraft[] = [];
   const config = ALERT_CONFIG.filter(([col]) => c.changed.has(col)).map(([, key]) => key);
   if (config.length > 0) {
-    out.push(derived(created, "alert.updated", fieldsOf(created.data, config)));
+    // The snapshot leaves an unset tag out of `alert.created`; the patch carries its clear as null.
+    const data = { tag: null, ...created.data };
+    out.push(derived(created, "alert.updated", fieldsOf(data, config)));
   }
   const restoring = pre.deletedAt !== null && post.deletedAt === null;
   const rearm = restoring && pre.status === "triggered" && post.status === "active";
@@ -158,16 +162,8 @@ const alerts: TableBridge<AlertRow> = {
     ...carried(["alert.statusSet"], "snoozed_until"),
     ...carried(["alert.evaluated"], ...ALERT_RUNTIME),
     ...carried(["alert.deleted", "alert.restored"], "deleted_at"),
-    // TRANSITIONAL(S16): set or changed, it blocks the row (insert / update above); never shipped half.
-    tag: { notShipped: "no catalog field yet (S16); a tagged alert blocks the loop (D4)" },
   },
-  insert: (c, ctx) => {
-    // TRANSITIONAL(S16): the catalog has no alert tag yet; a tagged alert blocks like genesis refuses.
-    if (c.row.post?.tag !== null && c.row.post?.tag !== undefined) {
-      throw new BridgeBlock("unsupported:alerts:tag");
-    }
-    return alertSnapshot(need(c.post), ctx);
-  },
+  insert: (c, ctx) => alertSnapshot(need(c.post), ctx),
   update: alertUpdate,
 };
 

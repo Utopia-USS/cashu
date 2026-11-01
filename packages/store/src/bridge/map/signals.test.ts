@@ -36,6 +36,7 @@ const alertPost = (o: Record<string, unknown> = {}) => ({
   created_at: T0,
   updated_at: T1,
   deleted_at: null,
+  tag: null,
   ...o,
 });
 
@@ -317,38 +318,61 @@ describe("signals", () => {
   });
 });
 
-describe("alert tags (TRANSITIONAL(S16))", () => {
-  it("block a tagged alert insert and a tag change instead of shipping them half", () => {
-    const insert = plan({
-      rows: [
-        outboxRow({
+describe("alert tags (Alembic 0027, S31c)", () => {
+  it("a tagged insert ships the tag in alert.created; an untagged one leaves it out", () => {
+    const insert = (tag: string | null) =>
+      shipped([
+        {
           table: "alerts",
           localId: "5",
           op: "insert",
           gid: ALERT_GID,
-          fields: alertPost({ tag: "x" }),
-          post: alertPost({ tag: "x" }),
-        }),
-      ],
-      vaults: [vaultInput(ids)],
-      ports: testPorts(),
-    });
-    expect(insert).toMatchObject({ ok: false, reason: "unsupported:alerts:tag" });
-    const update = plan({
-      rows: [
-        outboxRow({
+          fields: alertPost({ tag }),
+          post: alertPost({ tag }),
+        },
+      ]).events.find((e) => e.t === "alert.created")?.d;
+    expect(insert("wydarzenie")).toMatchObject({ tag: "wydarzenie" });
+    expect(insert(null)).not.toHaveProperty("tag");
+  });
+
+  it("a tag set, change and clear is alert.updated with the tag only (null clears)", () => {
+    const update = (prev: string | null, next: string | null) =>
+      shipped([
+        {
           table: "alerts",
           localId: "5",
           op: "update",
           gid: ALERT_GID,
-          fields: { tag: "x" },
-          prev: { tag: null },
-          post: alertPost({ tag: "x" }),
-        }),
-      ],
-      vaults: [vaultInput(ids)],
-      ports: testPorts(),
-    });
-    expect(update).toMatchObject({ ok: false, reason: "immutable:alerts:tag" });
+          fields: { tag: next },
+          prev: { tag: prev },
+          post: alertPost({ tag: next }),
+        },
+      ]).events;
+    for (const [prev, next] of [
+      [null, "cena"],
+      ["cena", "rsi"],
+      ["rsi", null],
+    ] as const) {
+      const events = update(prev, next);
+      expect(events.map((e) => e.t)).toEqual(["alert.updated"]);
+      const { stamps: _stamps, ...patch } = events[0]?.d ?? {};
+      expect(patch).toEqual({ tag: next });
+    }
+  });
+
+  it("a tag edited together with the title travels in one patch", () => {
+    const { events } = shipped([
+      {
+        table: "alerts",
+        localId: "5",
+        op: "update",
+        gid: ALERT_GID,
+        fields: { title: "nowy", tag: "cena" },
+        prev: { title: "syn alert", tag: null },
+        post: alertPost({ title: "nowy", tag: "cena" }),
+      },
+    ]);
+    expect(events.map((e) => e.t)).toEqual(["alert.updated"]);
+    expect(events[0]?.d).toMatchObject({ title: "nowy", tag: "cena" });
   });
 });

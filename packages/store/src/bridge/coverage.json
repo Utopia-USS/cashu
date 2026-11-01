@@ -41,7 +41,7 @@
         "snoozed_until": ["alert.statusSet"],
         "source": ["alert.created"],
         "status": ["alert.evaluated", "alert.restored", "alert.statusSet"],
-        "tag": "not shipped: no catalog field yet (S16); a tagged alert blocks the loop (D4)",
+        "tag": ["alert.created", "alert.updated"],
         "title": ["alert.created", "alert.updated"]
       },
       "ops": ["insert", "update"]
