@@ -35,6 +35,19 @@ export const ALERT_OWNER_STATUSES = ["active", "muted", "snoozed"] as const;
 export const ALERT_SOURCES = ["user", "agent"] as const;
 /** Known alert creators (informational, open set). */
 export const KNOWN_ALERT_CREATORS = ["app", "cli", "mcp"] as const;
+/** Python `alerts.catalog.MAX_TAG_LENGTH` (characters, i.e. code points). */
+export const MAX_ALERT_TAG_LENGTH = 24;
+
+/**
+ * An alert's label (Python `validate_tag` output, Alembic 0027): non-empty, at most
+ * MAX_ALERT_TAG_LENGTH characters. Null = no label (the UI derives one from the kind).
+ */
+const alertTag = z
+  .string()
+  .min(1)
+  .refine((t) => [...t].length <= MAX_ALERT_TAG_LENGTH, {
+    message: `an alert tag has at most ${MAX_ALERT_TAG_LENGTH} characters`,
+  });
 
 /**
  * A v2 dedup key (gid.md section 5 and 6): `<rule>[|i:<gid>][|a:<gid>][|s:<scope>]`,
@@ -139,6 +152,9 @@ export const signalsEvents = {
     createdBy: key,
     cooldownDays: z.int().min(0).nullable(),
     expiresAt: timestamp.nullable(),
+  }).extend({
+    /** The alert's label (Alembic 0027, S31c); absent = none (a v1 create before tags). */
+    tag: alertTag.nullable().optional(),
   }),
   "alert.updated": patchOf({
     title: nonEmpty,
@@ -148,6 +164,8 @@ export const signalsEvents = {
     severity: z.enum(SIGNAL_SEVERITIES),
     cooldownDays: z.int().min(0).nullable(),
     expiresAt: timestamp.nullable(),
+    /** Set (null = clear) the label (S31c); absent = keep, like every patch field. */
+    tag: alertTag.nullable(),
   }),
   "alert.statusSet": payload({
     status: z.enum(ALERT_OWNER_STATUSES),

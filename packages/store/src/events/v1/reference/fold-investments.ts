@@ -392,6 +392,7 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
             created_at: time(e, "created_at"),
             updated_at: time(e, "updated_at"),
             deleted_at: null,
+            tag: d.tag ?? null,
             owner: "active",
             triggered: false,
           });
@@ -412,6 +413,7 @@ export function materializeInvestments(input: readonly RefEvent[], det: RefDet):
             polarity: "polarity",
             severity: "severity",
             cooldownDays: "cooldown_days",
+            tag: "tag",
           };
           for (const [f, c] of Object.entries(cols)) if (f in d) a[c] = d[f] ?? null;
           if ("expiresAt" in d) a.expires_at = maybeTime(e, "expires_at", d.expiresAt);

@@ -6,8 +6,8 @@
 // (`@cashu/domain`), never the raw column.
 //
 // | event      | effect |
-// | created    | CREATE: config, owner active, not triggered, created_at = updated_at = domain time |
-// | updated    | LWW-F on present config fields; updated_at |
+// | created    | CREATE: config (tag absent = null), owner active, not triggered, created_at = updated_at = domain time |
+// | updated    | LWW-F on present config fields (tag included, S31c); updated_at |
 // | statusSet  | owner := status, snoozed_until := snoozedUntil; muted / snoozed clear triggered (Python
 // |            | overwrites the status), active keeps it; updated_at |
 // | deleted    | deleted_at (SOFT, no updated_at bump, as Python) |
@@ -43,6 +43,7 @@ const table: TableDef = {
     { name: "created_at", type: "TEXT", notNull: true },
     { name: "updated_at", type: "TEXT", notNull: true },
     { name: "deleted_at", type: "TEXT" },
+    { name: "tag", type: "TEXT" },
   ],
   indexes: [{ columns: ["instrument_id"] }, { columns: ["status"] }],
 };
@@ -108,11 +109,12 @@ const CONFIG = {
   polarity: "polarity",
   severity: "severity",
   cooldownDays: "cooldown_days",
+  tag: "tag",
 } as const;
 
 export const alertsMaterializer: Materializer = {
   id: "investments.alerts",
-  version: 1,
+  version: 2,
   tables: [table, state],
   handles: [
     "alert.created",
@@ -145,8 +147,8 @@ export const alertsMaterializer: Materializer = {
         table.name,
         `INSERT INTO alerts (id, gid, instrument_id, scope, kind, params, polarity, severity, title, note,
            source, created_by, status, cooldown_days, expires_at, snoozed_until, last_triggered_at,
-           last_checked_at, last_value, created_at, updated_at, deleted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL)`,
+           last_checked_at, last_value, created_at, updated_at, deleted_at, tag)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, ?)`,
         ctx.id(g),
         g,
         instrumentId(ctx, d.instrument),
@@ -163,6 +165,7 @@ export const alertsMaterializer: Materializer = {
         nullableTime(e, "expires_at", d.expiresAt),
         ctx.time(e, "created_at"),
         ctx.time(e, "updated_at"),
+        str(d.tag),
       );
       return;
     }

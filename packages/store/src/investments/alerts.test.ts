@@ -58,7 +58,25 @@ describe("alerts", () => {
       created_at: "2026-10-31 12:00:00.010000",
       updated_at: "2026-10-31 12:00:00.010000",
       deleted_at: null,
+      tag: null,
     });
+  });
+
+  it("tag (S31c): set on create, LWW in the patch, null clears, absent keeps; same in every order", () => {
+    const ev = new Events();
+    const created = ev.make("alert.created", AL, { tag: "cena" }, { wall: 10 });
+    const retag = ev.make("alert.updated", AL, { tag: "rsi" }, { wall: 20 });
+    const title = ev.make("alert.updated", AL, { title: "Nowy" }, { wall: 30 });
+    converge([created, retag, title], (store) => {
+      expect(row(store, "alerts", AL)).toMatchObject({ tag: "rsi", title: "Nowy" });
+    });
+    const cleared = ev.make("alert.updated", AL, { tag: null }, { wall: 40, device: DEV_B });
+    converge([created, retag, title, cleared], (store) => {
+      expect(row(store, "alerts", AL)).toMatchObject({ tag: null, title: "Nowy" });
+    });
+    const store = openTestStore();
+    store.applyEnvelopes([ev.make("alert.created", ulid(9), {}, { wall: 50 })]);
+    expect(row(store, "alerts", ulid(9))).toMatchObject({ tag: null });
   });
 
   it("updated patches config and bumps updated_at; evaluated sets runtime without a bump", () => {

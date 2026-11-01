@@ -636,7 +636,10 @@ acknowledged:              DERIVED overlay from decisions (6.5)
   {new: @signal[], escalated: @signal[]}, startedAt, finishedAt|null}`; `trigger` is an open label
   (`worker`, `api`, `cli`, `app`).
 - `alert.created` `{instrument@|null, scope, kind, params, polarity, severity, title, note|null,
-  source: user|agent, createdBy, cooldownDays|null, expiresAt|null}`; `alert.updated` (patch);
+  source: user|agent, createdBy, cooldownDays|null, expiresAt|null, tag?: string|null}`;
+  `alert.updated` (patch, `tag` included: null clears it). `tag` (S31c, Python `alerts.tag`, Alembic
+  0027) is the owner's or agent's label: non-empty, at most 24 characters (Python `validate_tag`
+  output); absent on a create = none, so a v1 create still means "no tag";
   `alert.statusSet` `{status: active|muted|snoozed, snoozedUntil|null}` (owner state);
   `alert.deleted` / `alert.restored {rearm?: true}` (SOFT; `rearm` also clears the triggered register:
   Python re-arms a restored alert whose signal was not reopened, S25-F6); `alert.evaluated` (LEADER)
