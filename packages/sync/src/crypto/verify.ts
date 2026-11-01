@@ -3,9 +3,10 @@
 // throw differently: react-native-libsodium on Android arrives as "Exception in HostFunction: ...".
 // So `sodium.ts` never reads an error message: when a backend throws, these functions decide from the
 // inputs alone whether a correct implementation would have refused them. They run only on that
-// failure path, never on a successful open.
+// failure path, never on a successful open; the AEAD one computes only the tag.
 
-import { xchacha20, xchacha20poly1305 } from "@noble/ciphers/chacha.js";
+import { poly1305 } from "@noble/ciphers/_poly1305.js";
+import { xchacha20 } from "@noble/ciphers/chacha.js";
 import { hsalsa, xsalsa20, xsalsa20poly1305 } from "@noble/ciphers/salsa.js";
 import { equalBytes, u8, u32 } from "@noble/ciphers/utils.js";
 import { x25519 } from "@noble/curves/ed25519.js";
@@ -15,9 +16,17 @@ const TAG = 16;
 const POLY_KEY = 32;
 const X25519_BYTES = 32;
 
+const ZEROS16 = new Uint8Array(16);
+
 /**
  * True when `cipher` (ciphertext || tag) authenticates as XChaCha20-Poly1305 (IETF) under `key`,
  * `nonce` and `aad`. Inputs must be well formed (32-byte key, 24-byte nonce, at least a tag).
+ *
+ * Tag only (S29c-B3): it recomputes the Poly1305 tag over the ciphertext as it stands (RFC 8439
+ * 2.8: one-time key = the first 32 keystream bytes of block 0; MAC over aad, pad16, ciphertext,
+ * pad16, the two lengths) and compares it in constant time. Nothing is decrypted and nothing the
+ * size of the frame is allocated, so a tampered 64 MiB frame costs one Poly1305 pass, not a
+ * decrypt plus a re-encrypt.
  */
 export function aeadAuthentic(
   cipher: Uint8Array,
@@ -25,11 +34,21 @@ export function aeadAuthentic(
   nonce: Uint8Array,
   key: Uint8Array,
 ): boolean {
-  // Decrypt without checking (the IETF AEAD encrypts from block 1), re-encrypt with the tag and
-  // compare: the result equals `cipher` exactly when its tag is the right one.
   const body = cipher.subarray(0, cipher.length - TAG);
-  const guess = xchacha20(key, nonce, body, undefined, 1);
-  return equalBytes(xchacha20poly1305(key, nonce, aad).encrypt(guess), cipher);
+  const oneTime = xchacha20(key, nonce, new Uint8Array(POLY_KEY));
+  const lengths = new Uint8Array(16);
+  const view = new DataView(lengths.buffer);
+  view.setBigUint64(0, BigInt(aad.length), true);
+  view.setBigUint64(8, BigInt(body.length), true);
+  const mac = poly1305.create(oneTime);
+  mac.update(aad);
+  if (aad.length % 16) mac.update(ZEROS16.subarray(aad.length % 16));
+  mac.update(body);
+  if (body.length % 16) mac.update(ZEROS16.subarray(body.length % 16));
+  mac.update(lengths);
+  const tag = mac.digest();
+  oneTime.fill(0);
+  return equalBytes(tag, cipher.subarray(cipher.length - TAG));
 }
 
 /**

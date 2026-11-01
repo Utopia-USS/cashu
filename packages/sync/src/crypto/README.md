@@ -527,7 +527,8 @@ Risk list (S29c, after phase B2):
   value, a verify path or probe that throws, a throw on authentic input, a runtime that throws for
   everything - is `unsupported_runtime`, so a broken runtime is never reported as tampered data and
   tampered data on a working runtime never as a runtime fault. The verify paths run only on the failure
-  path. The self-test checks that a tampered AEAD and a tampered box are recognised on the running
+  path, and the AEAD one recomputes only the Poly1305 tag (S29c-B3): no decryption and no buffer the size
+  of the frame, so a tampered 64 MiB frame costs one MAC pass (`verify.tagonly.test.ts`). The self-test checks that a tampered AEAD and a tampered box are recognised on the running
   library, that the verify paths agree with the known answers (including a box sealed by
   libsodium-wrappers), that two random draws differ and are not zero, and covers @noble's Ed25519 (RFC
   8032 test 1) and X25519 (must agree with libsodium's seed key pair). `sodium.classify.test.ts` covers
