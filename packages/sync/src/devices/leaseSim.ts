@@ -4,7 +4,7 @@
 
 import { expect } from "vitest";
 import type { RecoveryIdentity } from "../crypto/index.js";
-import { type PinRequest, pinConfirmationText } from "./events.js";
+import { buildLeasePin, type PinRequest, pinConfirmationText } from "./events.js";
 import {
   foldLease,
   holdsLease,
@@ -17,6 +17,7 @@ import {
 } from "./lease.js";
 import {
   createSimVault,
+  hlcAt,
   mulberry32,
   newEid,
   pairDevice,
@@ -306,4 +307,61 @@ export async function pinnedRun(
   expect(new Set(views.map((v) => v.pinned)).size).toBe(1);
   expect(all.filter(holds).length).toBeLessThanOrEqual(1);
   return { moves, leaders: leaders.size, overlaps };
+}
+
+/**
+ * One seeded schedule of the S1 property (sibling pins): the owner moves the leader from the
+ * creator A to C; at a random minute B pins ITSELF on the same `prev`, stamped up to 10 minutes
+ * earlier (a backdating device, or an offline tablet's pin arriving late). Devices sync at random
+ * over a synced folder (seeded delays up to 30 minutes). Never two holders; afterwards everyone
+ * agrees on the leader the old one acknowledged first.
+ */
+export async function siblingRun(run: number): Promise<{ overlaps: number; acks: number }> {
+  const rand = mulberry32(104_729 * (run + 1));
+  const { a, b, c, remote } = await devices([0, 0, 0], {
+    mode: "pinned",
+    visibility: { kind: "eventual", maxDelayMs: 30 * MIN },
+    seed: run + 101,
+  });
+  const all = [a, b, c];
+  remote.flush();
+  for (let i = 0; i < 2; i++) for (const d of all) d.sync();
+  remote.unflush();
+  const root = view(b).head as string;
+  pin(b, "pinned", c);
+  const wall = b.now() - 1 - Math.floor(rand() * 10 * MIN);
+  const attackAt = 1 + Math.floor(rand() * 40);
+  let overlaps = 0;
+  let acks = 0;
+  for (let minute = 0; minute < 150; minute++) {
+    if (minute === attackAt) {
+      const text = pinConfirmationText("pinned", b.id, false);
+      b.write(
+        [
+          buildLeasePin(
+            b.identity,
+            b.ring.vaultId,
+            newEid(),
+            { at: wall, watermark: {}, prev: root },
+            { mode: "pinned", leader: b.id, force: false, confirmation: { kind: "typed", text } },
+          ),
+        ],
+        { hlc: () => hlcAt(b.id, wall) },
+      );
+    }
+    for (const d of all) {
+      if (rand() < 0.5) d.sync();
+      else d.pull(() => false); // awake, but sees nothing new this minute
+      if (decide(d) === "release") acks += 1;
+      d.push();
+    }
+    const holding = all.filter(holds).length;
+    if (holding > 1) overlaps += 1;
+    expect(holding, `run ${run} minute ${minute}`).toBeLessThanOrEqual(1);
+    advance(a, MIN);
+  }
+  remote.flush();
+  for (let i = 0; i < 3; i++) for (const d of all) d.sync();
+  expect(new Set(all.map((d) => view(d).pinned)).size).toBe(1);
+  return { overlaps, acks };
 }

@@ -376,6 +376,24 @@ and has not seen the pin may fetch once more (the property tests assert every ov
 that). Residual: a pin naming a device nobody knows (an owner mistake, or a stolen device) is valid
 on the chain and leaves the vault leaderless (no fetching, never two fetchers) until a re-pin.
 
+Sibling pins (S1, review): pins written on the same chain head (an offline tablet's pin arriving
+late, or a device backdating its stamp) are ordered by which one the OLD leader acknowledged first in
+its own stream (writing a pin itself counts), never by timestamps; once it handed over, no sibling
+can make it hand over again (its later acknowledgements are stale). Without an old leader to hear
+from (a leaderless vault) or with force, two concurrent owner pins can each lead on devices that have
+seen only one of them until the chain converges, the same class as a force re-pin.
+
+Risks (pinned leader):
+
+- A stolen but still trusted leader can write `lease.fetched` reports without fetching, so the 36 h
+  warning stays silent while nothing is fetched (or it fetches for the thief). Mitigation: revoke it
+  (recovery words) or re-pin another device; a revoked leader leaves the vault leaderless and the
+  warning shows at once.
+- Migration (S48): vaults created before B1 have no recovery-signed root pin, so their lease chain is
+  empty and they stay leaderless (nobody fetches, never two). The migration writes the creator pin
+  with the recovery words (`creatorPin`, or a recovery-signed pin naming the device the owner picks)
+  before the first fetch on the new stack.
+
 S44 UX:
 
 - Settings > fetching shows the leader ("this Mac fetches from your banks"). "Make this device the

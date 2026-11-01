@@ -3,7 +3,8 @@
 // `prev` links: every lease event names `prev`, the eid of the last valid lease event its writer saw.
 // The chain starts at the creator's recovery-signed pin (`prev = null`; nothing else may root it) and
 // follows the valid children of the current head. When several children are valid, an owner pin wins
-// over the others, then the first by (hlc, eid) (only the deterministic tie-break: the chain follows
+// over the others; among sibling pins, the one the leader in charge acknowledged first in its own
+// stream (S1); otherwise the first by (hlc, eid) (only the deterministic tie-break: the chain follows
 // causality, so an event stamped with a wrong clock never falls out of it).
 //
 // Modes (S29c R4, lead decision D3). The owner's `lease.pinned` sets the mode:
@@ -20,6 +21,7 @@
 // are bounded (`until - at <= MAX_LEASE_TTL_MS`) and every `at` must agree with its event's HLC wall
 // (`LEASE_CLOCK_TOLERANCE_MS`). No local clock enters the fold.
 
+import type { SegmentCursor } from "../carrier.js";
 import { RECOVERY_SIGNER_ID } from "../crypto/index.js";
 import { DEFAULT_MAX_DRIFT_MS, parseHlc } from "../hlc.js";
 import { accepted, type KeySource } from "./acceptance.js";
@@ -342,9 +344,41 @@ export function foldLease(
     }
   };
 
+  /**
+   * S1: among sibling pins (same `prev`), the one the leader in charge acknowledged FIRST in its own
+   * stream wins (writing a pin itself counts as acknowledging it), whatever their timestamps. So once
+   * the old leader handed over, a sibling stamped earlier (an offline tablet's pin arriving late, or
+   * a backdating device) can never make it hand over a second time; its later acks are stale.
+   */
+  const ackedBy = (leader: string | null, eid: string): SegmentCursor | undefined => {
+    const c = leader === null ? undefined : resolve(eid);
+    if (c?.d.kind !== "pinned") return undefined;
+    const acks = (children.get(eid) ?? [])
+      .map(resolve)
+      .filter((r): r is Candidate => r?.d.kind === "released" && r.event.writer === leader)
+      .map((r) => r.event.position);
+    if (c.event.writer === leader) acks.push(c.event.position);
+    return acks.sort(comparePositions)[0];
+  };
+  const siblingOrder = (leader: string | null) => {
+    const at = new Map<string, SegmentCursor | undefined>();
+    const ack = (eid: string) => {
+      if (!at.has(eid)) at.set(eid, ackedBy(leader, eid));
+      return at.get(eid);
+    };
+    return (x: string, y: string): number => {
+      const ax = ack(x);
+      const ay = ack(y);
+      if (ax && ay) return comparePositions(ax, ay) || order(x, y);
+      if (ax || ay) return ax ? -1 : 1;
+      return order(x, y);
+    };
+  };
+
   for (;;) {
     let next: Candidate | undefined;
-    for (const eid of (children.get(head) ?? []).sort(order)) {
+    const leaderNow = activeLeader();
+    for (const eid of (children.get(head) ?? []).sort(siblingOrder(leaderNow))) {
       if (onChain.has(eid)) continue;
       const c = resolve(eid);
       if (!c || c.d.prev !== head) continue;

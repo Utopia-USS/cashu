@@ -20,10 +20,11 @@ import {
   pin,
   pinnedRun,
   rule6Run,
+  siblingRun,
   view,
   visibilityOf,
 } from "./leaseSim.js";
-import { newEid, prepareConsented, type SimDevice, sodium } from "./testkit.js";
+import { hlcAt, newEid, prepareConsented, type SimDevice, sodium } from "./testkit.js";
 
 const BACKENDS: readonly Backend[] = ["linearizable", "bounded", "eventual"];
 
@@ -236,6 +237,76 @@ describe("R4: re-pin attacks are ignored", () => {
   });
 });
 
+/** A typed pin by `d` naming `leader` on top of `prev`, stamped (HLC and `at`) at `wall`. */
+function pinAt(d: SimDevice, leader: SimDevice, prev: string, wall: number): string {
+  const eid = newEid();
+  const text = pinConfirmationText("pinned", leader.id, false);
+  d.write(
+    [
+      buildLeasePin(
+        d.identity,
+        d.ring.vaultId,
+        eid,
+        { at: wall, watermark: {}, prev },
+        { mode: "pinned", leader: leader.id, force: false, confirmation: { kind: "typed", text } },
+      ),
+    ],
+    { hlc: () => hlcAt(d.id, wall) },
+  );
+  return eid;
+}
+
+describe("S1: sibling pins never make the old leader hand over twice", () => {
+  it("a backdated sibling pin does not win after the old leader acknowledged another", async () => {
+    const { a, b, c, remote } = await devices([0, 0, 0], { mode: "pinned" });
+    remote.flush();
+    syncAll([a, b, c]);
+    const root = view(b).head as string;
+    pin(b, "pinned", c); // the owner moves the leader to the laptop
+    syncAll([a, b, c]);
+    expect(decide(a)).toBe("release");
+    syncAll([a, b, c]);
+    expect([a, b, c].filter(holds)).toEqual([c]);
+    // A trusted device writes a sibling of that pin (same `prev`), stamped earlier, naming itself.
+    const sibling = pinAt(b, b, root, b.now() - 2 * MIN);
+    b.push();
+    a.pull();
+    expect(decide(a)).toBe("idle"); // A acknowledged the laptop's pin first: no second hand-over
+    a.push();
+    b.pull();
+    c.pull(() => false); // the laptop has not seen any of it
+    expect([a, b, c].filter(holds)).toEqual([c]);
+    syncAll([a, b, c]);
+    for (const d of [a, b, c]) expect(view(d).pinned, d.name).toBe(c.id);
+    expect(reasonOf(a, sibling)).toBe("stale_prev");
+  });
+
+  it("an offline tablet's earlier pin arriving later does not move the leader again", async () => {
+    const { a, b, c, remote } = await devices([0, 0, 0], { mode: "pinned" });
+    remote.flush();
+    syncAll([a, b, c]);
+    pin(c, "pinned", c); // on the tablet, offline: not pushed
+    remote.time += MIN;
+    pin(b, "pinned", b); // later, on the phone
+    b.push();
+    a.pull();
+    expect(decide(a)).toBe("release");
+    a.push();
+    b.pull();
+    expect(holds(b)).toBe(true);
+    // The tablet comes online.
+    c.sync();
+    a.pull();
+    expect(decide(a)).toBe("idle");
+    a.push();
+    c.pull();
+    b.pull(() => false);
+    expect([a, b, c].filter(holds)).toEqual([b]);
+    syncAll([a, b, c]);
+    for (const d of [a, b, c]) expect(view(d).pinned, d.name).toBe(b.id);
+  });
+});
+
 describe("R4: automatic handover is an owner opt-in, only over a bounded transport", () => {
   it("cannot be opted into over a synced folder", async () => {
     const { a } = await devices([0, 0, 0], {
@@ -307,6 +378,13 @@ describe("R4: rule 6 on both backend kinds (one schedule each)", () => {
       expect(r.overlaps).toBe(0);
       expect(r.leaders).toBeGreaterThan(1);
     }
+  });
+
+  it("S1: a staged backdated sibling pin over a synced folder: never two holders", async () => {
+    // Schedule 7 is one where the old rule (earliest stamp wins) made two devices fetch.
+    const r = await siblingRun(7);
+    expect(r.overlaps).toBe(0);
+    expect(r.acks).toBe(1); // the old leader handed over exactly once
   });
 
   it("forced re-pins: every overlap is a holder that has not seen the forced pin", async () => {
