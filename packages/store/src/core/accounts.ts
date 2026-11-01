@@ -6,10 +6,11 @@
 // component's first accepted claim (the one that set its `iban:` key), else the first non-null `iban`
 // of its opens / identifications in fold order (fill-if-null, Python `get_or_create_account`), so a
 // number failing the checksum is still shown and exported (no data loss); `iban_key` = the key of the
-// accepted IBAN only (null when the component holds none): identity lookups and transfer matching
-// read it, never `iban` (rule 5, N2); `iban_match` = Python `iban_key` of the raw `iban` (no checksum,
-// null when empty): the match key of internal transfers and own-IBAN categories (D-08.1, rule 5:
-// counterparty IBAN only), indexed, kept on removed accounts too; `external_id` = first non-null; `type` = latest `account.typeSet`, else the first applied open's;
+// accepted IBAN only (null when the component holds none): identity lookups and merges read it, never
+// `iban` (N2); `iban_match` = Python `iban_key` of the raw `iban` (no checksum, null when empty): the
+// match key of internal transfers and own-IBAN categories (D-08.1, rule 5: counterparty IBAN only),
+// indexed, kept on removed accounts too; `external_id` = first non-null; `type` = latest
+// `account.typeSet`, else the first applied open's;
 // `name` = latest explicit rename of any member, else the root's own opened name, else the first
 // applied open's (N4); `removed_at` = SOFT register.
 // Key parking (S24 D-24.7, gid.md 4.3, events.md 9: DERIVED): the accounts of one (bank, external_id)

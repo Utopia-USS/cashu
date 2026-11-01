@@ -171,6 +171,37 @@ describe("budget.transfers deriver", () => {
     expect(flags(store, names, "in")).toEqual([1, names.gid("T-out")]);
   });
 
+  it("pairs across currencies, as Python does (the amount key carries no currency)", () => {
+    const { store, names } = history([
+      A1,
+      [
+        "account.opened",
+        "E1",
+        { iban: RAW, currency: "EUR", externalId: "e1", keys: ["ext:mbank:e1"] },
+      ],
+      imp("out", "A1", "-100.00", "2026-10-01", RAW),
+      [
+        "txn.imported",
+        "T-in",
+        {
+          account: "E1",
+          dedupHash: "in",
+          occurrence: 0,
+          amount: "100.00",
+          currency: "EUR",
+          bookingDate: "2026-10-01",
+          counterpartyName: "PRZELEW",
+          counterpartyIban: null,
+        },
+      ],
+    ]);
+    expect(store.read("SELECT currency FROM transactions ORDER BY currency")).toEqual([
+      { currency: "EUR" },
+      { currency: "PLN" },
+    ]);
+    expect(flags(store, names, "in")).toEqual([1, names.gid("T-out")]);
+  });
+
   it("an inflow without the IBAN pairs through the outflow's counterparty, either direction", () => {
     const { store, names } = history([
       A1,
