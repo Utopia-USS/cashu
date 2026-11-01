@@ -712,6 +712,27 @@ def test_det_gids_need_the_keychain_salt_and_known_references(db_engine, sync_on
     assert prof["gid"] == VAULT and prof["fields"] == {"name": "Det 2"}
 
 
+def test_det_gid_parts_use_the_stored_enum_value(db_engine, sync_on):
+    """S31a: a str-mixin enum column (``Source.MANUAL``) is a DET part by its stored value, the text
+    genesis and the TS shipper read; ``str()`` of the member gave another gid."""
+    from cashu.core.models import Source
+
+    pid = new_profile("Enum", ("budget",))
+    acc_gid = "fc9daa13-f073-8a72-8cd0-c1345436bc06"
+    with get_session() as s:
+        acc = accounts.get_or_create_account(s, bank="mbank", iban="99114000000000000000000042", name="K", profile_id=pid)
+        acc_id = acc.id
+        sync_outbox.link_vault(s, pid, VAULT)
+        s.add(SyncId(profile_id=pid, table_name="accounts", local_id=str(acc_id), gid=acc_gid, source="genesis"))
+    keyring.set_password("cashu", f"cashu.vault.{VAULT}.gidsalt", TEST_SALT.hex())
+    sync_keys.forget_cached_salts()
+    with get_session() as s:
+        accounts.upsert_balance(s, s.get(Account, acc_id), dt.date(2026, 1, 31), Decimal("5.00"), source=Source.MANUAL)
+    [row] = outbox(table_name="balances", op="insert")
+    expected = sync_keys.det_gid(sync_keys.Salt(TEST_SALT), "balances", [acc_gid, "2026-01-31", "MANUAL"])
+    assert row["gid"] == expected
+
+
 def test_inbound_rows_are_tagged(db_engine, sync_on):
     pid = new_profile("Inbound")
     inst = new_instrument()

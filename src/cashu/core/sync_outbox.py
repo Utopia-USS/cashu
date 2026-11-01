@@ -525,7 +525,11 @@ def _det_gid(conn, st: _State, table_name: str, row: dict, profile_id: int | Non
         elif part[0] == "date":
             parts.append(value.isoformat() if isinstance(value, dt.date) else str(value)[:10])
         else:
-            parts.append(str(value))
+            # The stored text, as genesis and the shipper read it (the column's bind encoding): an
+            # Enum column stores the member NAME ("MANUAL"), while str() of a str-mixin member gives
+            # "Source.MANUAL" and .value "manual" (S31a: Python's DET gid then differed from TS).
+            column = IDS.metadata.tables[table_name].c[part[1]]
+            parts.append(str(_encoder(column, conn.dialect)(value)))
     return sync_keys.det_gid(salt, spec.det_table or table_name, parts)
 
 
