@@ -343,6 +343,62 @@ re-certify (review W1, lead decision: default none).
   inside the batch (a truncated frame, a partial group, storage dropping the tail) can delay the
   revocation, never revoke without re-certifying.
 
+### S29c: the pinned fetch leader (R4, lead decision D3 / D4; contract for the S44 UI)
+
+Rule 6 (one PSD2 fetcher per vault) must not rest on an unstated linearizable remote. It rests on
+exactly one of (devices/lease.ts header, events.md 8.11):
+
+- **(a) mode pinned**, the default on EVERY backend: exactly one designated device, the creator from
+  vault creation on (its recovery-signed pin is the lease chain's root, written next to its
+  `device.added`). The leader changes only by an explicit owner action, a `lease.pinned` statement
+  signed by a device after the owner typed the confirmation (`pinConfirmationText`) or signed by the
+  recovery words, and the new leader acts only after the old one acknowledged (`pendingFrom`, a
+  `lease.released`). Every signature goes through the single gate (devices/acceptance.ts): `statement`
+  keys for a device-signed pin (a revoked device's pins after its cut never count), `recovery` keys
+  for a recovery-signed one (a replaced key only for pins its change ratified: `buildRecoveryChange`
+  ratifies the chain's recovery pins, so a leaked old phrase pins nothing). Needs no propagation
+  bound: the old leader acknowledges only after it saw the pin, and from then on it never acts.
+- **(b) mode auto**, an owner opt-in pin: claims, renewals and the settle period, used by a device
+  only while its transport declares bounded propagation (carrier.ts `Transport.consistency`; the
+  engine's `leaseTransport()` is `bounded` only while every bounded remote was reachable in the last
+  pass) and its config covers the bound: `settle >= skew + publish deadline + propagation`. A relay
+  may declare `bounded` only when `checkPropagationClaim` (testing/propagation.ts, run by the carrier
+  contract suite) passes for it; a Cloudflare variant must use strongly consistent storage (Durable
+  Objects / R2), never KV. Folder transports declare `eventual`: over them nobody holds in this mode
+  (`unsupported_transport`). All auto-mode devices must share the relay (a device on another relay is
+  not covered by its bound).
+
+The typed confirmation is an ACCIDENT GUARD, not an authorization (as for waivers): the text is
+computable, so a stolen, not yet revoked device can pin itself. Revoking it (recovery words by default)
+stops its later pins; a pin naming it then leaves the vault leaderless until the owner re-pins. A
+force re-pin (D4) is the only way to two simultaneous leaders: an old leader that is in fact alive
+and has not seen the pin may fetch once more (the property tests assert every overlap is exactly
+that). Residual: a pin naming a device nobody knows (an owner mistake, or a stolen device) is valid
+on the chain and leaves the vault leaderless (no fetching, never two fetchers) until a re-pin.
+
+S44 UX:
+
+- Settings > fetching shows the leader ("this Mac fetches from your banks"). "Make this device the
+  fetcher" asks the owner to TYPE the short id shown (`pinConfirmationText`); the UI sets `text` only
+  from what was typed. The recovery-words path is offered on a trusted device only (the words rule
+  above).
+- After a re-pin the new leader shows "waiting for <old device> to hand over" (`handover_wait`) and
+  the old device writes its acknowledgement on its next sync by itself. The safe path comes first:
+  wait, or revoke the old device. Only then the UI offers force, with the warning "if <old device> is
+  still running somewhere, it may fetch once more" (`RepinAction.mayStillRun`) and a typed
+  `<id> force`.
+- Liveness (`leaderLiveness`, devices/liveness.ts): every device shows a warning when the pinned
+  leader has not reported a fetch (`lease.fetched`, written by the leader after each completed fetch)
+  for more than 36 hours, measured from its last report, else from its pin, never later than when
+  this device first saw that event (a leader whose clock runs ahead cannot look fresh). States: `ok`,
+  `silent`, `leaderless` (revoked or unknown leader: warn at once, no force needed), and
+  `handover_pending` (warn after 36 hours, force offered naming the old leader). The warning carries
+  the re-pin action (`candidates`, `force`, `mayStillRun`). The app suppresses it while the vault has
+  no bank connection that fetches (nothing to miss) and checks it on each sync with the device clock.
+- Automatic handover is offered only when a relay remote is configured and its declaration passed
+  conformance; on a folder-only vault the toggle is not shown, and a device whose relay is offline
+  shows "automatic handover needs the relay; pin a fetcher" (`unsupported_transport`).
+
 ### Key storage
 
 - `KeyStore` adapters: `createSafeStorageKeyStore(safeStorage, files)` (desktop; refuses Linux

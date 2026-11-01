@@ -249,7 +249,7 @@ changes identity resolution (6.4) or causal suppression (6.6).
 | **GUARD** | precedence register | LWW-F whose reducer first checks a condition against the folded state. |
 | **IDENTITY** | identity claim / merge | Feeds identity resolution (6.4). |
 | **EPISODE** | signal episode fold | Signal lifecycle per resolved dedup key (8.7). |
-| **LEADER** | emit constraint | Only the current fetch-lease holder emits it. Reducers accept it from any device; convergence never depends on lease state. |
+| **LEADER** | emit constraint | Only the current fetch leader emits it (`holdsLease` true right before: the pinned leader, or in mode auto the settled holder, 8.11). Reducers accept it from any device; convergence never depends on lease state. |
 | **DERIVED** | not an event | Recomputed after apply (section 9). Never in a payload except as a genesis stamp (4.4); never captured by the outbox. |
 
 ### 6.3 Tombstones, soft deletes, windows
@@ -509,9 +509,13 @@ Payload fields in camelCase; `@x` = gid reference to x. Every payload also accep
   Union by row key reproduces Python's multiset rule for the content path (max multiplicity).
 - **Newest-day-rule imports** (Open Banking, connectors, cashu-format documents) depend on the view
   at import time and MUST be emitted by the lease holder only. A non-leader that receives a
-  cashu-format document creates an `import`-like proposal instead (O3). A new lease holder MUST NOT run
-  them before it has applied, for every writer device, that device's events up to the previous
-  holder's last watermark (M6; lease events carry a per-device `watermark`, 8.11, S29).
+  cashu-format document creates an `import`-like proposal instead (O3). A new leader MUST NOT run them
+  before it has applied, for every device, the highest VALID cursor any lease event of the chain
+  names (M6; `catchUpMissing` in `packages/sync/src/devices/lease.ts`, validated by `catchUp.ts`:
+  registered devices only, capped at a revoked device's cut, conflicted devices dropped, minus owner
+  waivers; R3b adds signed heads). Imports a leader made after its last lease event are not covered (a
+  leader must not import while it cannot publish); the hand-over acknowledgement and the leader's
+  `lease.fetched` reports carry its watermark.
 - `txn.cashExpenseAdded` (ULID) `{account@ (cash account), bookingDate, amount (< 0), currency, title,
   category}`. View: `source = manual`, `category_source = manual_txn`, `dedup_hash = "cashexp:" + gid`.
 - `txn.categorySet` `{category, source: manual_txn|llm_full|llm_fallback}`: a per-transaction claim
@@ -717,15 +721,39 @@ acknowledged:              DERIVED overlay from decisions (6.5)
 
 ### 8.11 Reserved
 
-`device.*`, `lease.*` (S29) and `snapshot.*` (S32) are defined by those scopes (schemas and fold:
-`packages/sync/src/devices/events.ts`, `lease.ts`). Requirement on S29 from this spec: lease claims,
-renewals and releases carry `watermark: {<device id>: hlc}`, per writer device (32 lower-case hex) the
-highest HLC of that device's own stream the holder had applied. One HLC for the whole log cannot be
-checked: events of different devices interleave in HLC order but arrive per device stream, so
-"applied up to hlc X" says nothing about a slower device's gap. A device's own stream is in HLC order,
-so the per-device check `applied[d] >= watermark[d]` for every trusted writer `d` is exact (a revoked
-writer's stream ends at its cut). Used by 8.3 (M6). Lease state never enters the view fold (6.2
-LEADER), so the reference fold does not model it.
+`device.*`, `lease.*` (S29) and `snapshot.*` (S32) are defined by those scopes (schemas and folds:
+`packages/sync/src/devices/events.ts`, `leaseFold.ts`, `lease.ts`). Reserved `device.*`: `added`,
+`revoked`, `keysRotated`, `recoveryChanged`. Reserved `lease.*`: `claimed`, `renewed`, `released`,
+`pinned`, `fetched`.
+
+Every lease event carries `at` (the writer's wall clock, within 5 minutes of the event's own HLC
+wall), `watermark: {<device id>: {seg, offset}}` (per writer device, 32 lower-case hex, the cursor up
+to which the writer had applied that device's stream: cursors, not HLCs, because a stream's cursor
+order is exact; R3b turns them into signed heads) and `prev` (the eid of the last valid lease event the
+writer saw). The events form one compare-and-set chain from `prev = null`; concurrent children are
+ordered owner pins first, then by `(hlc, eid)`. Only a recovery-signed `lease.pinned` may have
+`prev = null`: vault creation writes it next to the creator's `device.added`, pinning the creator.
+
+The fetch leader (S29c R4; rule 6 must not rest on an unstated linearizable remote):
+
+- **Mode `pinned`** (the default on every backend): `lease.pinned {mode: "pinned", leader, force}`
+  designates exactly one device. It is written only from an explicit owner action: signed by the
+  writing device after the owner typed `pinConfirmationText` (`text`; an accident guard), or signed by
+  the recovery identity (`signer` = the recovery id; any device may carry it). A pin by a device after
+  its revocation cut never counts. When another device could still act (the previous leader), it
+  becomes `pendingFrom` and must acknowledge with a `lease.released` before the new leader acts,
+  unless it wrote the pin itself or the owner confirmed `force` (the previous leader is gone; it may
+  fetch once more if it is in fact still running). Claims and renewals are ignored. This needs no
+  propagation bound, so it is safe on a synced folder.
+- **Mode `auto`** (an owner opt-in, `lease.pinned {mode: "auto", leader: null}`): claims start a term,
+  renewals extend it (`0 < until - at <= 24 h`, optional `waive`), releases end it. A device uses it
+  only while its transport declares bounded propagation (`Transport.consistency`, proven by the
+  carrier contract's propagation check) and its config covers the bound: `settle >= skew + publish
+  deadline + propagation`. Over an eventual transport nobody holds in this mode.
+- The leader reports each completed fetch with `lease.fetched`; every device warns the owner when the
+  pinned leader has been silent for more than 36 hours (`leaderLiveness`).
+
+Lease state never enters the view fold (6.2 LEADER), so the reference fold does not model it.
 
 ## 9. Derived columns (never in a payload except as genesis stamps)
 
