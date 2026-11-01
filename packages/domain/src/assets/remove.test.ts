@@ -3,7 +3,8 @@
 // and in the history and from the loans list, kept for a restore; loans follow the same name re-use rule)
 // over an in-memory profile seeded like conftest.seed_demo's positions. The HTTP status codes, routes and
 // the accounts / summary endpoints are the API layer's; name-key parking itself is core's (the profile
-// stand-in parks like `core.accounts.park_removed_key`, the store's parking scenarios cover the real one).
+// stand-in parks like `core.accounts.park_removed_key`, the store's parking scenarios cover the real one),
+// so test_a_new_position_with_a_removed_name_starts_fresh (key parking and unparking) is not translated here.
 
 import { describe, expect, it } from "vitest";
 import { netWorth, netWorthComponentSeries } from "../core/networth.js";

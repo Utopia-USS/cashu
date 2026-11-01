@@ -3,7 +3,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { withPythonDb } from "../../sources/index.ts";
 import { INVESTMENTS, type SyntheticDataset, syntheticDataset } from "../../sources/testing.ts";
-import type { BridgeFile } from "../core/bridge.ts";
 import { produceNetworth } from "../core/networth.ts";
 import { dumps } from "../output.ts";
 
@@ -18,10 +17,8 @@ describe("brokerage contributor in core.networth", () => {
     const out = withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, (db) => {
       const p1 = db.keys.key("profiles", 1);
       const p2 = db.keys.key("profiles", 2);
-      const empty = { year_ago: "2025-10-01", modules: {} };
-      const bridge: BridgeFile = { [p1]: empty, [p2]: empty };
       return {
-        tree: JSON.parse(dumps(produceNetworth(db, bridge))) as Tree,
+        tree: JSON.parse(dumps(produceNetworth(db))) as Tree,
         p1,
         p2,
         broker1: db.keys.key("accounts", 1),

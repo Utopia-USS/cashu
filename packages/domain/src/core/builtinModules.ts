@@ -1,11 +1,12 @@
 /**
  * The declarative specs of the four built-in modules (`modules/<id>/module.py` `MODULE`).
  *
- * Python keeps each spec inside its module; until the module ports land (budget S07-S10, assets and
- * loans S11, investments S13) the manifests live here, so core can build the registries net worth
- * depends on. A module port moves its entry to `src/<module>/module.ts` and this file then only
- * lists them. Names and labels are UI data (Polish + English); the loans installment phrases are
- * Polish matching data, verbatim from `modules/loans/patterns.py` (`INSTALLMENT_PHRASES`).
+ * Python keeps each spec inside its module. Here core builds the registries net worth depends on and
+ * core may not import a module, so the manifests live in this file until the registry composition
+ * moves above core; then each moves to `src/<module>/module.ts` and this file only lists them. Names
+ * and labels are UI data (Polish + English); the loans installment phrases are Polish matching data,
+ * verbatim from `modules/loans/patterns.py` (`INSTALLMENT_PHRASES`, byte-hash checked in
+ * `loans/matchingData.test.ts`); their public home is `loans/patterns.ts`.
  */
 
 import { accountType, netWorthBucket } from "./accountTypes.js";

@@ -4,48 +4,26 @@
  * the raw `MonthClose` and as the API view (`as_dict`, amounts as Python floats).
  *
  * Inputs: the profile's rows (`book.ts`), `profiles/<slug>/budget.json` from the dataset copy
- * (`budget.loadBudgetSettings`), the balances through `core.latestBalancePerAccount` (budget's cash
- * pool and the brokerage contributors), the enabled modules and, for a profile with investments, the
+ * (`budget.loadBudgetSettings`), the balances through `core.latestBalancePerAccount` (every module's
+ * contributor, `../core/book.ts`), the enabled modules and, for a profile with investments, the
  * strategy's contributions plan from the strategy bridge (TRANSITIONAL(S14): read from the TS strategy
  * loader once it lands, with the bridge).
  */
 
-import { budget, core, D, type Decimal } from "@cashu/domain";
+import { budget, core, type Decimal } from "@cashu/domain";
 import type { PythonDb } from "../../sources/index.ts";
-import { brokerageContributor } from "../investments/brokerage.ts";
+import { profileBook } from "../core/book.ts";
 import type { StrategyBridge } from "../investments/strategyBridge.ts";
 import { type OutValue, pyFloat } from "../output.ts";
 import { budgetBook } from "./book.ts";
 
 const REGISTRY = core.builtinRegistry();
-/**
- * TRANSITIONAL(S11): the loans / assets contributors are not ported yet; a cushion account of their
- * types would be valued from snapshots instead of by its module, so such a close is refused.
- */
-const UNPORTED_TYPES: ReadonlySet<string> = new Set(
-  ["loans", "assets"].flatMap((m) => core.getModule(REGISTRY, m).accountTypes.map((t) => t.id)),
-);
 
-function balancesOf(db: PythonDb, profileId: number, book: budget.BudgetBook): budget.CushionEnv {
-  const balances = new Map<string, core.BalanceSnapshot[]>();
-  for (const b of db.balances(profileId)) {
-    const id = db.keys.key("accounts", b.accountId);
-    const list = balances.get(id) ?? [];
-    list.push({ date: b.date, amount: D(b.amount), source: b.source });
-    balances.set(id, list);
-  }
-  const nw: core.NetWorthBook = {
-    accounts: book.accounts,
-    balances,
-    contributors: core.orderContributors(REGISTRY, {
-      budget: budget.cashContributor(book.transactions),
-      investments: brokerageContributor(db, profileId),
-    }),
-    types: REGISTRY.accountTypes,
-    today: db.asOf,
-  };
+/** The balances as net worth sees them: every account valued by its module (`../core/book.ts`). */
+function balancesOf(db: PythonDb, profileId: number): budget.CushionEnv {
+  const { book } = profileBook(db, REGISTRY, profileId);
   return {
-    latestAt: (asOf) => core.latestBalancePerAccount(nw, asOf),
+    latestAt: (asOf) => core.latestBalancePerAccount(book, asOf),
     types: REGISTRY.accountTypes,
   };
 }
@@ -199,15 +177,6 @@ function profileOut(
       accountIds: stored.cushion.accountIds.map((id) => db.keys.key("accounts", id)),
     },
   };
-  if (settings.cushion.enabled) {
-    const currency = settings.cushion.currency || book.baseCurrency;
-    const unported = budget
-      .cushionAccounts(book, settings.cushion, currency)
-      .filter((a) => UNPORTED_TYPES.has(a.type));
-    if (unported.length > 0) {
-      throw new Error("a cushion account is valued by the loans / assets module (not ported, S11)");
-    }
-  }
   const investmentsEnabled = db.enabledModules(profile.id).includes("investments");
   let planned: budget.PlannedContribution | null = null;
   if (investmentsEnabled) {
@@ -221,7 +190,7 @@ function profileOut(
         : { baseCurrency: s.strategy.baseCurrency, contributions: s.contributions },
     );
   }
-  const env = balancesOf(db, profile.id, book);
+  const env = balancesOf(db, profile.id);
   const close = (year: number | null, month: number | null) =>
     budget.monthClose(book, {
       year,

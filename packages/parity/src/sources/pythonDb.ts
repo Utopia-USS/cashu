@@ -38,11 +38,12 @@ import {
 } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { core, normalizeText } from "@cashu/domain";
+import { type core, loans } from "@cashu/domain";
 import type { SqlDriver } from "@cashu/store";
 import { type Dataset, datasetAsOf, datasetDir, labRoot } from "./datasets.ts";
 import { bool, int, type Row, text, textOrNull } from "./decode.ts";
 import { InvestmentsReader } from "./investments.ts";
+import { LoansAssetsReader } from "./loansAssets.ts";
 import { NaturalKeys, type SqlRows, type SqlValue } from "./naturalKeys.ts";
 import { openReadOnlyDriver } from "./nodeSqliteDriver.ts";
 
@@ -216,6 +217,8 @@ export class PythonDb implements SqlRows {
   readonly keys: NaturalKeys;
   /** Typed readers of the investments module's tables (`investments.ts`). */
   readonly investments: InvestmentsReader;
+  /** Typed readers of the loans and assets modules' tables (`loansAssets.ts`). */
+  readonly loansAssets: LoansAssetsReader;
   private readonly db: DatabaseSync;
   private readonly sourceDir: string;
   private readonly runDir: string;
@@ -251,6 +254,7 @@ export class PythonDb implements SqlRows {
       (sql, ...params) => this.objects(sql, ...params),
       (profileId) => this.accounts(profileId, { includeRemoved: true }),
     );
+    this.loansAssets = new LoansAssetsReader((sql, ...params) => this.objects(sql, ...params));
   }
 
   static open(opts: OpenOptions): PythonDb {
@@ -433,17 +437,7 @@ export class PythonDb implements SqlRows {
    * too) with a truthy lender IBAN or title phrase; the phrase normalized, empty ones as null.
    */
   loanPaymentPatterns(profileId: number): core.PaymentPattern[] {
-    return this.objects(
-      `SELECT payment_iban, payment_text FROM loans WHERE account_id IN (${PROFILE_ACCOUNTS}) ORDER BY id`,
-      profileId,
-    )
-      .map((r) => ({ iban: textOrNull(r, "payment_iban"), text: textOrNull(r, "payment_text") }))
-      .filter((l) => l.iban || l.text)
-      .map((l) => ({
-        category: core.LOANS_CATEGORY,
-        counterpartyIban: l.iban || null,
-        text: normalizeText(l.text) || null,
-      }));
+    return loans.paymentPatterns(this.loansAssets.loans(profileId));
   }
 }
 

@@ -88,7 +88,7 @@ describe("PythonDb", () => {
       (1, 'SKLEP TEST', 'shopping', 'manual', 1, NULL, 1),
       (2, 'KAWA TEST', 'dining', 'llm', 0, NULL, 2),
       (3, '', 'travel', 'llm', 0, NULL, 1);
-      INSERT INTO loans VALUES (1, 3, '99 1600 0000 0000 0000 0000 0999', NULL),
+      INSERT INTO loans (id, account_id, payment_iban, payment_text) VALUES (1, 3, '99 1600 0000 0000 0000 0000 0999', NULL),
       (2, 3, '', 'spłata raty'), (3, 3, '', ''), (4, 4, NULL, 'Umowa 7'), (5, 5, 'X', NULL);`);
     withPythonDb({ dataset: "demo", sourceDir: ds.dir, runRoot: ds.runRoot }, (db) => {
       expect(db.categoryRules(1)).toEqual([

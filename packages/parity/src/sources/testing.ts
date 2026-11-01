@@ -27,8 +27,14 @@ CREATE TABLE transactions (id INTEGER PRIMARY KEY, account_id INTEGER, booking_d
   category VARCHAR, category_source VARCHAR, bank_transaction_id VARCHAR);
 CREATE TABLE category_rules (id INTEGER PRIMARY KEY, merchant_key VARCHAR, category VARCHAR,
   source VARCHAR, locked BOOLEAN, created_at DATETIME, profile_id INTEGER);
-CREATE TABLE loans (id INTEGER PRIMARY KEY, account_id INTEGER, payment_iban VARCHAR,
-  payment_text VARCHAR);
+CREATE TABLE loans (id INTEGER PRIMARY KEY, account_id INTEGER, principal VARCHAR DEFAULT '1000',
+  annual_rate VARCHAR DEFAULT '5', term_months INTEGER DEFAULT 12, start_date DATE DEFAULT '2026-01-01',
+  origination_date DATE, created_at DATETIME DEFAULT '2026-01-01 00:00:00.000000',
+  updated_at DATETIME DEFAULT '2026-01-01 00:00:00.000000', payment_iban VARCHAR, payment_text VARCHAR);
+CREATE TABLE depreciations (id INTEGER PRIMARY KEY, account_id INTEGER, purchase_price VARCHAR,
+  purchase_date DATE, annual_rate VARCHAR, floor VARCHAR, created_at DATETIME);
+CREATE TABLE asset_details (id INTEGER PRIMARY KEY, account_id INTEGER, note VARCHAR,
+  created_at DATETIME, updated_at DATETIME);
 CREATE TABLE inv_transactions (id INTEGER PRIMARY KEY, account_id INTEGER, type VARCHAR,
   trade_date DATE, settle_date DATE, instrument_id INTEGER, quantity VARCHAR, price VARCHAR,
   currency VARCHAR, gross_amount VARCHAR, fee VARCHAR, tax VARCHAR, cash_amount VARCHAR,

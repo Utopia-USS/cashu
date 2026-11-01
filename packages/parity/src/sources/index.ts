@@ -3,7 +3,6 @@
 export type { Dataset } from "./datasets.ts";
 export {
   bridgeMcpRoot,
-  bridgeRoot,
   bridgeStrategyRoot,
   DATASET_CLOCKS,
   datasetAsOf,
@@ -22,6 +21,12 @@ export type {
   InvRenameRow,
   InvTransactionRow,
 } from "./investments.ts";
+export type {
+  AssetDetailRow,
+  DepreciationRow,
+  LoanRow,
+  RecordedBalanceRow,
+} from "./loansAssets.ts";
 export type { KeySpec, SqlRows, SqlValue } from "./naturalKeys.ts";
 export { digest, NaturalKeys, SPECS } from "./naturalKeys.ts";
 export type {

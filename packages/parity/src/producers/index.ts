@@ -5,32 +5,32 @@
  */
 
 import type { Dataset, PythonDb } from "../sources/index.ts";
+import { produceAssetsDepreciation } from "./assets/depreciation.ts";
 import { produceBudgetAnalytics } from "./budget/analytics.ts";
 import { produceBudgetCategories } from "./budget/categories.ts";
 import { produceBudgetDedup } from "./budget/dedup.ts";
 import { produceIngestFixtures } from "./budget/ingestFixtures.ts";
 import { produceBudgetMonthClose } from "./budget/monthClose.ts";
 import { produceBudgetTransfers } from "./budget/transfers.ts";
-import { bridgeDir, readBridge } from "./core/bridge.ts";
 import { produceNetworth } from "./core/networth.ts";
+import { produceNetworthSeries } from "./core/networthSeries.ts";
 import { produceImportPlan } from "./investments/importPlan.ts";
 import { producePerformance } from "./investments/performance.ts";
 import { produceAllocation, produceValuation } from "./investments/portfolio.ts";
 import { readStrategyBridge, strategyBridgeDir } from "./investments/strategyBridge.ts";
+import { produceLoansValuation } from "./loans/valuation.ts";
 import { guardBridgeDir, readGuardBridge } from "./mcp/guardBridge.ts";
 import { produceMcpRead, rawGoldenDir } from "./mcp/privacy.ts";
 import type { OutValue } from "./output.ts";
 import { produceStoreTable, STORE_TABLES } from "./store/tables.ts";
 
 /**
- * Where the producers read their Python-side inputs (`pnpm parity:produce --golden-root / --bridge /
+ * Where the producers read their Python-side inputs (`pnpm parity:produce --golden-root /
  * --bridge-strategy / --bridge-mcp`).
  */
 export interface ProduceInputs {
   /** The Python golden root (`golden.py --out`); the MCP producers read `<root>/lab/mcp.read_raw.json`. */
   readonly goldenRoot: string;
-  /** The networth bridge root (`networth_bridge.py --out`). */
-  readonly bridgeRoot: string;
   /** The strategy bridge root (`strategy_bridge.py --out`). */
   readonly bridgeStrategyRoot: string;
   /** The guard bridge root (`guard_bridge.py --out`). */
@@ -38,15 +38,13 @@ export interface ProduceInputs {
 }
 
 /** The Python-side dirs a producer reads; their commits go into the TS index (staleness guard). */
-export type InputName = "golden" | "bridge" | "bridge-strategy" | "bridge-mcp";
+export type InputName = "golden" | "bridge-strategy" | "bridge-mcp";
 
 /** The dir an input is read from for a dataset (where its producer wrote its `index.json`). */
 export function inputDir(name: InputName, dataset: Dataset, inputs: ProduceInputs): string {
   switch (name) {
     case "golden":
       return rawGoldenDir(dataset, inputs.goldenRoot);
-    case "bridge":
-      return bridgeDir(dataset, inputs.bridgeRoot);
     case "bridge-strategy":
       return strategyBridgeDir(dataset, inputs.bridgeStrategyRoot);
     case "bridge-mcp":
@@ -68,8 +66,26 @@ export const PRODUCERS: readonly Producer[] = [
   {
     check: "core.networth",
     datasets: ["demo", "lab"],
-    inputs: ["bridge"],
-    produce: (db, inputs) => produceNetworth(db, readBridge(db.dataset, inputs.bridgeRoot)),
+    inputs: [],
+    produce: produceNetworth,
+  },
+  {
+    check: "core.networth_series",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceNetworthSeries,
+  },
+  {
+    check: "loans.valuation",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceLoansValuation,
+  },
+  {
+    check: "assets.depreciation",
+    datasets: ["demo", "lab"],
+    inputs: [],
+    produce: produceAssetsDepreciation,
   },
   {
     check: "budget.dedup",

@@ -20,16 +20,15 @@ stale inputs (below).
 Defaults: lab goldens `~/cashu-lab/parity/out/lab` (`$CASHU_LAB_DIR` moves the lab root), demo
 goldens `parity/golden-demo`, actual `~/cashu-lab/parity/ts-out/<dataset>`.
 
-Branch runs: the shared `~/cashu-lab/parity/out`, `bridge`, `bridge-strategy`, `bridge-mcp` and `ts-out` dirs are written from
+Branch runs: the shared `~/cashu-lab/parity/out`, `bridge-strategy`, `bridge-mcp` and `ts-out` dirs are written from
 lab/ts-stack HEAD only. A branch writes its own set and points every step at it:
 
 ```bash
 B=~/cashu-lab/parity/out-<branch>
 .venv/bin/python parity/python/golden.py --dataset lab --out $B             # $B/lab, index.json records the commit
-.venv/bin/python packages/parity/src/producers/core/networth_bridge.py --dataset lab --out $B/bridge
 .venv/bin/python packages/parity/src/producers/investments/strategy_bridge.py --dataset lab --out $B/bridge-strategy
 .venv/bin/python packages/parity/src/producers/mcp/guard_bridge.py --dataset lab --out $B/bridge-mcp
-pnpm parity:produce --dataset lab --golden-root $B --bridge $B/bridge --bridge-strategy $B/bridge-strategy \
+pnpm parity:produce --dataset lab --golden-root $B --bridge-strategy $B/bridge-strategy \
   --bridge-mcp $B/bridge-mcp --out $B/ts-out/lab
 pnpm parity --dataset lab --out $B --actual $B/ts-out/lab                    # golden = $B/lab
 ```
@@ -41,10 +40,10 @@ checks that first (`src/staleness.ts`). The commit under test is the git HEAD of
 runs from. Every producer records its source commit and `dirty` (tracked files differed from HEAD)
 in its `index.json`:
 
-- `golden.py`, `guard_bridge.py`, `networth_bridge.py`, `strategy_bridge.py`: `commit` / `dirty` at
+- `golden.py`, `guard_bridge.py`, `strategy_bridge.py`: `commit` / `dirty` at
   the top of the dir's index (`golden.child_env`).
 - `pnpm parity:produce`: per check in the TS output dir's index, with the Python-side dirs the check
-  read (`inputs`: `golden`, `bridge`, `bridge-strategy`, `bridge-mcp`) and the commits their indexes
+  read (`inputs`: `golden`, `bridge-strategy`, `bridge-mcp`) and the commits their indexes
   recorded at that moment. A `--check` run updates only its own entries; a failed check's old file
   and entry are removed.
 
@@ -107,7 +106,9 @@ producer never opens SQLite itself and never carries its own reader.
   `enabledModules(profileId)`, `accounts(profileId, { includeRemoved })`, `balances(profileId)`,
   `transactions(profileId)`; the investments tables under `db.investments` (`src/sources/investments.ts`):
   `brokerageAccounts`, `transactions`, `renames`, `manualValuations`, `profileInstruments` (profile-scoped)
-  and the shared reference data `instruments`, `aliases`, `priceBars`, `fxRates`. Every reader of profile data takes the profile id. Decimals stay the
+  and the shared reference data `instruments`, `aliases`, `priceBars`, `fxRates`. The loans and assets tables under
+  `db.loansAssets` (`src/sources/loansAssets.ts`): `loans`, `depreciations`, `assetDetails` and
+  `loanAccountBalances` (with `created_at`), scoped through the profile's accounts (removed ones too). Every reader of profile data takes the profile id. Decimals stay the
   stored text (`"12.50"`, parse with `D()` from `@cashu/domain`), enums stored by NAME come back as
   their values (`balances.source` `CSV` -> `"csv"`), booleans as booleans.
 - `db.keys.key(table, id)`: the goldens' natural keys (`src/sources/naturalKeys.ts`, a verbatim copy of
@@ -129,7 +130,10 @@ of workspace TypeScript to `./x.ts`.
 
 | Check                     | Datasets  | Inputs                                                                                                                                                              |
 | ------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core.networth`           | demo, lab | accounts, balances, cash-pool transactions, investments rows (`PythonDb`); loans / assets contributors from the bridge                                              |
+| `core.networth`           | demo, lab | accounts, balances, cash-pool transactions, loans, curves, investments rows (`PythonDb`): every module contributor in TS (`core/book.ts`)                           |
+| `core.networth_series`    | demo, lab | as `core.networth`; daily total, weekly liquid and monthly components per currency of the profile's accounts                                                        |
+| `loans.valuation`         | demo, lab | loans and the loan accounts' balances with `created_at` (`db.loansAssets`): `@cashu/domain` loans                                                                   |
+| `assets.depreciation`     | demo, lab | as `core.networth` plus curves and notes (`db.loansAssets`): the manual positions list and each curve at the probe dates                                            |
 | `budget.dedup`            | demo      | stored transactions (`db.transactions`): v2 hash and occurrence through `@cashu/domain` budget, v1 with `node:crypto`                                               |
 | `budget.ingest_fixtures`  | demo      | the synthetic CSV fixtures of `packages/domain/test/fixtures/budget-csv` (not dataset state)                                                                        |
 | `budget.transfers`        | demo      | stored transactions in id order and every account incl. removed (`db.transactions`, `db.accounts`): `budget.matchTransfers`, drift from the stored groups           |
@@ -175,23 +179,12 @@ performance also the strategy state and the benchmark id / proxy) to
 
 Delete it (and `strategyBridge.ts`) when the TS strategy loader lands; both carry the S14 transitional marker.
 
-### Temporary bridge for contributors not ported yet
+### Net worth: every contributor in TS
 
-Net worth asks every module's contributor. The investments contributor is the domain
-`BrokerageContributor` (S13) over the profile's investments rows (`investments/brokerage.ts`). Until
-loans and assets (S11) are ported, `src/producers/core/networth_bridge.py` exports only those
-contributors' results (accounts
-each values, `latest()` now and at as_of - 365 days), through golden.py's harness (run copy, offline,
-frozen clock), to `<lab>/parity/bridge/<dataset>/core.networth_contributors.json`:
-
-```bash
-.venv/bin/python packages/parity/src/producers/core/networth_bridge.py --dataset demo
-```
-
+Net worth asks every module's contributor; all four run in TS over the source's rows (`core/book.ts`):
+budget's cash pool (`budget.cashContributor`, S08), assets' depreciation curves
+(`assets.assetsContributor`, S11), loans' amortization anchored on balances recorded after the terms
+(`loans.loansContributor`, S11) and investments' brokerage valuation (`BrokerageContributor`, S13).
 Everything core owns (balance snapshots and their source rank, contributor precedence, signs, per
-currency totals, breakdown) is recomputed in TS; the cash pool runs through budget's domain
-contributor (`budget.cashContributor`, S08). When a module's TS contributor lands,
-drop it from `BRIDGED` / `BRIDGED_MODULES`; delete the bridge with the last one.
-
-`core.networth` runs on `demo` and `lab`. `core.networth_series` needs `at()` / `axisDates()` of the
-bridged contributors, so it waits for S11 (the brokerage contributor has them since S13).
+currency totals, breakdown, the history series) is `@cashu/domain` core. The temporary Python bridge
+that supplied the loans / assets values until S11 is gone.

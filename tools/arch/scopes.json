@@ -4,7 +4,6 @@
     "S06b": "planned: core read models (net-worth series, shell summary, module setup state)",
     "S09b": "planned: LLM HTTP clients (ollama, anthropic merchant-only)",
     "S10": "planned: budget analytics",
-    "S11": "planned: loans and assets (removes the net-worth bridge)",
     "S14": "planned: investments strategy loader (removes the strategy bridge)",
     "S15a": "planned: safe rule expressions",
     "S15b": "planned: rule kinds, engine, signal lifecycle",
