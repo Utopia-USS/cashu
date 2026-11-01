@@ -9,12 +9,14 @@ const ACCOUNT = "01JQ0000000000000000000020";
 const REVIEW = "01JQ0000000000000000000021";
 const PROPOSAL = "01JQ0000000000000000000022";
 const BINDING = DET("connector_bindings", [ACCOUNT, "syn-conn"]);
+const VERSION = "01JQ0000000000000000000023";
 
 const ids = idsOf({
   "accounts|1": ACCOUNT,
   "reviews|5": REVIEW,
   "proposals|9": PROPOSAL,
   "connector_bindings|3": BINDING,
+  "inv_strategy_versions|4": VERSION,
 });
 
 type Row = Parameters<typeof outboxRow>[0];
@@ -134,7 +136,14 @@ describe("proposals", () => {
         { status: "pending", reviewed_at: null, result: {} },
       ),
     ]);
-    expect(rejected.types).toEqual(["proposal.rejected"]);
+    expect(rejected.events.map((e) => [e.t, e.d.note])).toEqual([["proposal.rejected", "no"]]);
+    const silent = shipped([
+      proposalUpdate(
+        { status: "rejected", reviewed_at: T1 },
+        { status: "pending", reviewed_at: null },
+      ),
+    ]);
+    expect(silent.events.map((e) => e.d.note)).toEqual([null]);
     const failed = shipped([
       proposalUpdate(
         { status: "failed", reviewed_at: T1, result: { error_code: "interrupted" } },
@@ -144,6 +153,45 @@ describe("proposals", () => {
     expect(failed.events.map((e) => [e.t, e.d.result])).toEqual([
       ["proposal.failed", { error_code: "interrupted" }],
     ]);
+  });
+
+  it("approved -> failed is proposal.applyFailed; the undone strategy version ships nothing", () => {
+    const versionRow = {
+      id: 4,
+      profile_id: 1,
+      version: 2,
+      sha256: "b".repeat(64),
+      yaml_text: "cele: []",
+      md_text: null,
+      state: "valid",
+      issues: [],
+      created_at: T1,
+    };
+    const undo: Row = {
+      table: "inv_strategy_versions",
+      localId: "4",
+      op: "delete",
+      gid: VERSION,
+      fields: versionRow,
+    };
+    const fail = update(
+      "proposals",
+      "9",
+      proposalPost({ status: "approved", reviewed_at: T1 }),
+      { status: "failed", result: { error_code: "write_failed" } },
+      { status: "approved", result: { version: 2 } },
+      PROPOSAL,
+    );
+    const { plan: p, events } = shipped([fail, undo]);
+    expect(events.map((e) => [e.t, e.g, e.d.result, e.c])).toEqual([
+      ["proposal.applyFailed", PROPOSAL, { error_code: "write_failed" }, undefined],
+    ]);
+    expect(p.counts.noEvent).toBe(1);
+    // A version delete outside such a transaction has no catalog event.
+    expect(run([undo])).toMatchObject({
+      ok: false,
+      reason: "no-delete-event:inv_strategy_versions",
+    });
   });
 
   it("releasing the device-local applying lock ships nothing", () => {

@@ -359,7 +359,7 @@
         "state": ["strategy.versionSaved"],
         "yaml_text": ["strategy.versionSaved"]
       },
-      "ops": ["insert", "update"]
+      "ops": ["insert", "update", "delete"]
     },
     "inv_theses": {
       "gid": "ulid",
@@ -485,15 +485,28 @@
         "payload": ["proposal.created"],
         "profile_id": ["proposal.created"],
         "reason": ["proposal.created"],
-        "result": ["proposal.approved", "proposal.created", "proposal.failed", "proposal.rejected"],
+        "result": [
+          "proposal.applyFailed",
+          "proposal.approved",
+          "proposal.created",
+          "proposal.failed",
+          "proposal.rejected"
+        ],
         "reviewed_at": [
+          "proposal.applyFailed",
           "proposal.approved",
           "proposal.created",
           "proposal.failed",
           "proposal.rejected"
         ],
         "source": ["proposal.created"],
-        "status": ["proposal.approved", "proposal.created", "proposal.failed", "proposal.rejected"],
+        "status": [
+          "proposal.applyFailed",
+          "proposal.approved",
+          "proposal.created",
+          "proposal.failed",
+          "proposal.rejected"
+        ],
         "summary": ["proposal.created"]
       },
       "ops": ["insert", "update"]

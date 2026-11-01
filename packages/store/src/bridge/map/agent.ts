@@ -4,9 +4,10 @@
 // Inserts are the genesis snapshot (`mapReview`, `mapProposal`, `mapConnectorBinding`); updates take
 // every payload field from the genesis snapshot of `post`:
 // - reviews: append only; the explicit `undo` (`core/reviews.py:undo`) -> `review.undone`;
-// - proposals: status to approved / rejected / failed -> the terminal event (the planner links the
-//   transaction's other events to it, spec 6.6); `applying` is a device-local lock (Python's filter
-//   drops pending -> applying, applying -> pending ships no event);
+// - proposals: status to approved / rejected (with the note) / failed -> the terminal event (the
+//   planner links the transaction's other events to it, spec 6.6); approved -> failed (the change
+//   could not be completed after the decision) -> `proposal.applyFailed` (S31c); `applying` is a
+//   device-local lock (Python's filter drops pending -> applying, applying -> pending ships no event);
 // - connector bindings: params / auto-commit -> `connectorBinding.set` (whole value); `cursor` ->
 //   `connectorBinding.cursorAdvanced` (leader); delete -> `connectorBinding.removed`. The fetch
 //   state (`last_*`, `backoff_until`) is leader-local and never reaches the outbox.
@@ -89,8 +90,15 @@ function proposalUpdate(c: RowChange<ProposalRow>, ctx: MapContext): readonly Ev
     refuseChanged(c, PROPOSALS, ["result", "reviewed_at"]);
     return [];
   }
+  const snapshot = proposalSnapshot(post, ctx);
+  if (c.pre?.status === "approved" && post.status === "failed") {
+    // The approved change could not be completed (Python `_finish`): the execution result, not a
+    // second decision (S31c); it revokes the approval's caused side effects (events.md 6.6).
+    const failed = pick(PROPOSALS, snapshot, "proposal.failed");
+    return [derived(failed, "proposal.applyFailed", { result: failed.data.result })];
+  }
   const terminal = TERMINAL[post.status];
-  if (terminal !== undefined) return [pick(PROPOSALS, proposalSnapshot(post, ctx), terminal)];
+  if (terminal !== undefined) return [pick(PROPOSALS, snapshot, terminal)];
   // applying -> pending: the device-local lock released, nothing was decided.
   if (post.status === "pending" && !anyChanged(c, "result", "reviewed_at")) return [];
   throw new BridgeBlock(`immutable:${PROPOSALS}:status`);
@@ -111,7 +119,12 @@ const proposals: TableBridge<ProposalRow> = {
       "source",
       "created_at",
     ),
-    ...carried(["proposal.created", ...TERMINAL_EVENTS], "status", "result", "reviewed_at"),
+    ...carried(
+      ["proposal.created", ...TERMINAL_EVENTS, "proposal.applyFailed"],
+      "status",
+      "result",
+      "reviewed_at",
+    ),
   },
   insert: (c, ctx) => proposalSnapshot(need(c.post), ctx),
   update: proposalUpdate,
