@@ -263,10 +263,14 @@ def test_category_rule_set_pins_the_merchant(world):
     pid = world["pid"]
     gid = sync_keys.det_gid(sync_keys.Salt(TEST_SALT), "category_rules", ["SKLEP TESTOWY"])
     data = {"merchantKey": "SKLEP TESTOWY", "category": "restaurants", "source": "manual", "locked": True}
-    assert only(apply(event("categoryRule.set", gid, data), pid=pid), "applied")
+    ms = now_ms() + 120_000
+    assert only(apply(event("categoryRule.set", gid, data, ms=ms), pid=pid), "applied")
     with get_session() as s:
         rule = s.exec(select(CategoryRule).where(CategoryRule.profile_id == pid)).one()
         assert (rule.merchant_key, rule.category, rule.source, rule.locked) == ("SKLEP TESTOWY", "restaurants", "manual", True)
+        # S31a: a rule the event creates carries the event's domain time, as the TS fold does
+        expected = dt.datetime.fromtimestamp(ms / 1000, dt.UTC).replace(tzinfo=None)
+        assert rule.created_at.replace(tzinfo=None) == expected
         t = s.get(Transaction, world["ids"]["transactions"])
         assert (t.category, t.category_source) == ("restaurants", "manual")  # re-applied to its rows
         mapped = s.exec(select(SyncId).where(SyncId.table_name == "category_rules")).one()

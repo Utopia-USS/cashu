@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import datetime as dt
 import enum
+import json
 import re
 import uuid
 import weakref
@@ -402,6 +403,17 @@ def _plain(value: Any) -> Any:
     return str(value)
 
 
+def _is_json(column) -> bool:
+    typ = column.type
+    return isinstance(typ, JSON) or isinstance(getattr(typ, "impl", None), JSON)
+
+
+def _pk_bind(column, value: Any, dialect) -> Any:
+    """A primary key value as the driver binds it (the column's bind processor)."""
+    proc = column.type.dialect_impl(dialect).bind_processor(dialect)
+    return proc(value) if proc is not None else value
+
+
 def _encoder(column, dialect) -> Callable[[Any], Any]:
     """The column's value as SQLite stores it (the same text genesis reads from the database)."""
     k = (id(column), dialect.name)
@@ -621,21 +633,36 @@ class _Capture:
 
     def post(self, table, row: dict) -> dict:
         """The whole row after an insert / update as stored (S31a P-B): every column but
-        ``profile_id``, derived and excluded ones included, encoded like ``fields``. ``row`` is the
-        flushed object's state (Python-side defaults are in it); a column missing from it (expired by
-        the flush: a server-side default or a SQL expression) is read back from the row itself, so
-        every value equals the stored text."""
-        missing = [c for c in table.columns if c.name not in row]
+        ``profile_id``, derived and excluded ones included. Read back from the row itself, at the
+        driver level, so every value is what SQLite holds (its type affinity applied: a NUMERIC column
+        bound as ``"95000.0"`` is stored as the integer 95000, which genesis reads) and not the bound
+        value; JSON columns are parsed. Falls back to the flushed object's state when the row cannot
+        be read (it has no primary key value)."""
         pk = list(table.primary_key.columns)
-        if missing and all(row.get(c.name) is not None for c in pk):
-            current = self.conn.execute(
-                select(*missing).where(and_(*(c == row[c.name] for c in pk)))
-            ).first()
-            if current is not None:
-                row = {**row, **dict(current._mapping)}
-        return {
-            c.name: _encoder(c, self.dialect)(row.get(c.name)) for c in table.columns if c.name != "profile_id"
-        }
+        stored = None
+        if all(row.get(c.name) is not None for c in pk):
+            where = " AND ".join(f'"{c.name}" = ?' for c in pk)
+            params = tuple(_pk_bind(c, row[c.name], self.dialect) for c in pk)
+            stored = (
+                self.conn.exec_driver_sql(f'SELECT * FROM "{table.name}" WHERE {where}', params)
+                .mappings()
+                .first()
+            )
+        if stored is None:
+            return {
+                c.name: _encoder(c, self.dialect)(row.get(c.name))
+                for c in table.columns
+                if c.name != "profile_id"
+            }
+        out: dict = {}
+        for c in table.columns:
+            if c.name == "profile_id":
+                continue
+            value = stored.get(c.name)
+            if _is_json(c) and isinstance(value, str):
+                value = json.loads(value)
+            out[c.name] = value
+        return out
 
     def insert(self, table, row: dict) -> None:
         name = table.name

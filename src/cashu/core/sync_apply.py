@@ -493,11 +493,24 @@ def _category_rule_set(ctx: _Ctx) -> Outcome:
 
         if len(ctx.winners("category_rules", rule.id, cols, counts)) < len(cols):
             return Outcome("lost", "older")
+    created = rule is None
     with ctx.inbound(bind={"category_rules": ctx.ev.gid}):
         if source == "manual" and locked:
             budget.recategorize_merchant(ctx.s, merchant, category, profile_id=ctx.pid)
         else:
             upsert_rule(ctx.s, merchant, category, source=source, locked=locked, profile_id=ctx.pid)
+        if created:
+            # A rule the event creates is created at the event's domain time (events.md 4.4), as the
+            # TS fold stamps it, not at the moment this device applied it (S31a milestone parity).
+            new = ctx.s.exec(
+                select(CategoryRule).where(
+                    CategoryRule.profile_id == ctx.pid, CategoryRule.merchant_key == merchant
+                )
+            ).first()
+            if new is not None:
+                new.created_at = ctx.time("created_at")
+                ctx.s.add(new)
+                ctx.s.flush()
     rule = ctx.s.exec(
         select(CategoryRule).where(CategoryRule.profile_id == ctx.pid, CategoryRule.merchant_key == merchant)
     ).one()
