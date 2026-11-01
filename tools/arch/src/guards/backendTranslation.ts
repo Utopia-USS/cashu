@@ -22,7 +22,7 @@ function i18nEntry(node: ts.Node | undefined): "root" | "subpath" | null {
 }
 
 // New runtime exports require a deliberate review before backend use. Type-only imports are erased.
-const BACKEND_SAFE = new Set([
+export const BACKEND_SAFE = new Set([
   "createTranslator",
   "createBackendI18n",
   "parseLang",
@@ -35,7 +35,7 @@ const BACKEND_SAFE = new Set([
   "plForm",
   "enCount",
   "enForm",
-  "normalizeNumberInput",
+  "normalizeNumberInputForLanguage",
 ]);
 
 function importsAmbient(elements: readonly (ts.ImportSpecifier | ts.ExportSpecifier)[]): boolean {

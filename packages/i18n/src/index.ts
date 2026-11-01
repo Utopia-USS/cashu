@@ -19,6 +19,7 @@ export {
   setLanguageForTests,
 } from "./lang.js";
 export { normalizeNumberInput } from "./number.js";
+export { normalizeNumberInputForLanguage } from "./numberInput.js";
 export { enCount, enForm, plCount, plForm } from "./plural.js";
 export {
   type BackendI18n,

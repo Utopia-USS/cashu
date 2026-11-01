@@ -1,6 +1,71 @@
+import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { listFiles, readRepoFile } from "../repo.ts";
-import { ambientTranslationLines, isBackendTranslationFile } from "./backendTranslation.ts";
+import { listFiles, REPO_ROOT, readRepoFile } from "../repo.ts";
+import {
+  ambientTranslationLines,
+  BACKEND_SAFE,
+  isBackendTranslationFile,
+} from "./backendTranslation.ts";
+
+it("every backend-safe export is transitively independent of ambient UI language", () => {
+  const root = join(REPO_ROOT, "packages/i18n/src");
+  const prefix = `${root.replaceAll("\\", "/")}/`;
+  const entry = join(root, "index.ts");
+  const program = ts.createProgram([entry], {
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    noLib: true,
+    types: [],
+  });
+  const checker = program.getTypeChecker();
+  const index = program.getSourceFile(entry);
+  const language = program.getSourceFile(join(root, "lang.ts"));
+  const module = index && checker.getSymbolAtLocation(index);
+  if (!module || !language) throw new Error("Cannot resolve the actual i18n public exports");
+  const ambient = new Set<ts.Node>();
+  for (const statement of language.statements) {
+    if (
+      ts.isVariableStatement(statement) &&
+      !(statement.declarationList.flags & ts.NodeFlags.Const)
+    ) {
+      for (const declaration of statement.declarationList.declarations) ambient.add(declaration);
+    }
+  }
+  expect(ambient.size).toBeGreaterThan(0);
+  const violations = new Set<string>();
+  const exports = checker.getExportsOfModule(module);
+  for (const name of BACKEND_SAFE) {
+    const entry = exports.find((symbol) => symbol.name === name);
+    if (!entry) throw new Error(`Missing backend-safe export: ${name}`);
+    const seen = new Set<ts.Node>();
+    const visitSymbol = (symbol: ts.Symbol) => {
+      const target =
+        symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+      for (const declaration of target.declarations ?? []) {
+        if (declaration.getSourceFile().fileName.replaceAll("\\", "/").startsWith(prefix))
+          visit(declaration);
+      }
+    };
+    const visit = (node: ts.Node): void => {
+      if (seen.has(node)) return;
+      seen.add(node);
+      if (ambient.has(node)) {
+        violations.add(`${name} -> ${node.getText(language)}`);
+        return;
+      }
+      if (ts.isIdentifier(node)) {
+        const symbol = checker.getSymbolAtLocation(node);
+        if (symbol) visitSymbol(symbol);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visitSymbol(entry);
+  }
+  expect([...violations], "Backend-safe exports must not reach lang.ts mutable UI state").toEqual(
+    [],
+  );
+});
 
 describe("backend translation import detector", () => {
   it.each([
@@ -8,6 +73,7 @@ describe("backend translation import detector", () => {
     'import { tr as translate } from "@cashu/i18n";',
     'import { lang, setLanguage } from "@cashu/i18n";',
     'import { catalog as texts } from "@cashu/i18n";',
+    'import { normalizeNumberInput } from "@cashu/i18n";',
     'import { pinnedLang, intlLocale, inEveryLang, installLanguageSource } from "@cashu/i18n";',
     'import { futureAmbientHelper } from "@cashu/i18n";',
     'import { S } from "@cashu/i18n/budget/importSources.strings";',
@@ -39,8 +105,8 @@ describe("backend translation import detector", () => {
     'export { createTranslator } from "@cashu/i18n";',
     'import { createTranslator as tr } from "@cashu/i18n";',
     'import { createBackendI18n, LANG_ENV, LANG_HEADER, LANGS, FALLBACK_LANG, matchLang } from "@cashu/i18n";',
-    'import { plForm, enForm, enCount, normalizeNumberInput } from "@cashu/i18n";',
-    'export { normalizeNumberInput as parseAmount } from "@cashu/i18n";',
+    'import { plForm, enForm, enCount, normalizeNumberInputForLanguage } from "@cashu/i18n";',
+    'export { normalizeNumberInputForLanguage as parseAmount } from "@cashu/i18n";',
     'const text = "import { tr } from @cashu/i18n";',
     '// import { tr } from "@cashu/i18n";',
     "const tr = (value: string) => value;",

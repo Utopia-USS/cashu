@@ -7,11 +7,16 @@ global language to service a request: two requests can overlap across an `await`
 `pnpm arch:check` enforces this in API, MCP, store, sync and market packages, CLI/relay/sync workers and
 Electron main/preload/utility code. Backend runtime imports/re-exports have an explicit allowlist:
 `createTranslator`, `createBackendI18n`, `parseLang`, `LANG_ENV`, `LANG_HEADER`, `LANGS`, `FALLBACK_LANG`,
-`matchLang`, `plCount`, `plForm`, `enCount`, `enForm` and `normalizeNumberInput`. Type-only root imports
+`matchLang`, `plCount`, `plForm`, `enCount`, `enForm` and `normalizeNumberInputForLanguage`. Type-only root imports
 are allowed too. All other runtime exports (including `lang`, `setLanguage`, `catalog` and `tr`), UI
 catalog subpaths, side-effect imports and namespace/dynamic/CommonJS access are rejected. New helpers
 need an explicit purity review before joining this list. Renderer, UI logic and legacy frontend code
 retain the ambient UI helpers. Test-only files are outside this production rule.
+
+Backend number input uses `normalizeNumberInputForLanguage(text, context.language)`. The existing
+`normalizeNumberInput(text)` is a thin UI wrapper reading `lang()` and is forbidden in backend code.
+The guard's regression test follows every allowlisted export's local symbol dependencies and rejects
+any path to the mutable UI language state, including reads hidden behind another helper.
 
 ## App and request language
 
