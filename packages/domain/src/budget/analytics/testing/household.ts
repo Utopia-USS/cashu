@@ -12,6 +12,7 @@ import {
   builtinRegistry,
   latestBalancePerAccount,
   type NetWorthBook,
+  type NetWorthContributor,
   orderContributors,
   ownIbans,
   textRules,
@@ -328,6 +329,27 @@ export class Household {
       today,
     };
     return { latestAt: (asOf) => latestBalancePerAccount(nw, asOf), types: REGISTRY.accountTypes };
+  }
+
+  /**
+   * The household's `NetWorthBook`: its accounts and balances, the cash pool's contributor and the
+   * other modules' contributors the caller passes (loans, assets, investments).
+   */
+  netWorthBook(
+    today: IsoDate,
+    others: Readonly<Record<string, NetWorthContributor>> = {},
+  ): NetWorthBook {
+    const book = this.book();
+    return {
+      accounts: book.accounts,
+      balances: this.balances,
+      contributors: orderContributors(REGISTRY, {
+        ...others,
+        budget: cashContributor(book.transactions),
+      }),
+      types: REGISTRY.accountTypes,
+      today,
+    };
   }
 
   /** The engine context `recurringPayments` reads. */

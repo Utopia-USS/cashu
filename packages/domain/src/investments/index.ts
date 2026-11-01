@@ -13,3 +13,5 @@ export * from "./networth.js";
 export * as performance from "./performance/index.js";
 export * from "./portfolio/index.js";
 export * as research from "./research/index.js";
+export * from "./setup.js";
+export * from "./setup.strings.js";
