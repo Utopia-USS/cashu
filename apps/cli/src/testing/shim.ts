@@ -26,6 +26,11 @@ export interface ShimRun {
 
 const hostDirs = new Set<string>();
 
+/** Registers a data dir whose host a test started some other way (stopped by `stopHosts`). */
+export function trackHostDir(dataDir: string): void {
+  hostDirs.add(dataDir);
+}
+
 export function spawnShim(
   args: readonly string[],
   env: NodeJS.ProcessEnv,

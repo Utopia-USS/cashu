@@ -18,6 +18,7 @@ import {
   runShim,
   spawnShim,
   stopHosts,
+  trackHostDir,
 } from "./testing/shim.js";
 
 afterEach(async () => {
@@ -70,6 +71,7 @@ describe("cashu shim: delegation", () => {
     "hands the delegated command the shim's terminal",
     async () => {
       const e = env();
+      trackHostDir(e.CASHU_DATA_DIR as string);
       const pty = spawnSync(
         "python3",
         ["-c", "import pty, sys; pty.spawn(sys.argv[1:])", process.execPath, ...NODE_ARGS, "show"],
