@@ -5,7 +5,18 @@
 //
 // Python's gid salt goes to the lab `FileKeyring` backend (parity/python/lab_keyring.py) in its own
 // file: `{format: 1, entries: {<service>: {<account>: <password>}}}`.
-import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  writeSync,
+} from "node:fs";
+import { dirname } from "node:path";
 import type { crypto } from "@cashu/sync";
 import { z } from "zod";
 
@@ -19,11 +30,31 @@ const keyringSchema = z.strictObject({
   entries: z.record(z.string(), z.record(z.string(), z.string())),
 });
 
+/**
+ * Writes `text` to `path` durably: temp file 0600, fsync, atomic rename, fsync of the directory (a
+ * crash right after `init` must not lose the only copy of a vault ring; review F8). The directory is
+ * kept private (0700).
+ */
 function writePrivate(path: string, text: string): void {
+  const dir = dirname(path);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
   const tmp = `${path}.tmp`;
-  writeFileSync(tmp, text, { mode: 0o600 });
+  const fd = openSync(tmp, "w", 0o600);
+  try {
+    writeSync(fd, text);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
   chmodSync(tmp, 0o600);
   renameSync(tmp, path);
+  const dfd = openSync(dir, "r");
+  try {
+    fsyncSync(dfd);
+  } finally {
+    closeSync(dfd);
+  }
 }
 
 /** A `KeyStore` over one 0600 JSON file. */

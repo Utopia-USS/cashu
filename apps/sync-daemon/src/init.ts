@@ -114,6 +114,10 @@ export async function initVaults(d: InitDeps): Promise<void> {
       const pusher = await genesisEngine(vault, v.wall, remotes);
       await pusher.sync();
       await pusher.close();
+      // The genesis log carries the cushion of budget.json: record it as shipped, so the first loop
+      // iteration does not re-ship it as a new local write stamped now (review F5).
+      const cushion = bridge.cushionValue(d.reader.files, v.slug);
+      if (cushion !== undefined) vault.state.setCushionShipped(cushion);
       vault.state.setGenesis({ status: "done", chunksWritten: chunks.length, wall: v.wall });
       d.out({
         step: "init",

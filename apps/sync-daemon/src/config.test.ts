@@ -1,7 +1,7 @@
 // Refusals before anything is opened (S31a spec 2.3, D5 / D6): the owner's real data dir, workspaces
 // and app, git work trees, outputs inside the data dir, lab key files outside the lab root; a live
 // lock; init on a database that already holds a linked vault. Fake home dirs, synthetic data only.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RefusalError } from "@cashu/node-host";
@@ -11,6 +11,7 @@ import { loadConfig } from "./config.js";
 import { InitRefusedError, initVaults } from "./init.js";
 import { labFileKeyStore } from "./keys/labFile.js";
 import { acquireLock, LockedError } from "./lock.js";
+import { main } from "./main.js";
 import { PythonReader } from "./python/reader.js";
 import { SyntheticPython } from "./testing/python.js";
 
@@ -120,5 +121,34 @@ describe("initVaults", () => {
     ).rejects.toThrow(InitRefusedError);
     reader.close();
     py.close();
+  });
+});
+
+describe("run and the lab key file (review F6, F8)", () => {
+  it("refuses `run` without a linked vault instead of spinning", async () => {
+    const { h, lab } = home();
+    const py = new SyntheticPython();
+    roots.push(py.dir);
+    py.profile(1, "syn-1");
+    const path = configFile(h, lab, { dataDir: py.dir });
+    const err: string[] = [];
+    const code = await main({
+      argv: ["run", "--once", "--config", path],
+      home: h,
+      out: () => undefined,
+      err: (l) => err.push(l),
+    });
+    expect(code).toBe(64);
+    expect(err.join("\n")).toContain("no linked vault");
+    py.close();
+  });
+
+  it("keeps the lab key file 0600 in a 0700 directory", async () => {
+    const { lab } = home();
+    const path = join(lab, "keys", "k.json");
+    await labFileKeyStore(path).set("cashu.test", new Uint8Array([1, 2, 3]));
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(join(lab, "keys")).mode & 0o777).toBe(0o700);
+    expect(await labFileKeyStore(path).get("cashu.test")).toEqual(new Uint8Array([1, 2, 3]));
   });
 });

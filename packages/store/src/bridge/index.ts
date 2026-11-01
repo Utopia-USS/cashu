@@ -7,7 +7,7 @@
 // come in through `BridgePorts`), so the lab daemon and later the desktop utility process run the
 // same code. Exported as the package subpath `@cashu/store/bridge` (lab / desktop hosts only).
 export { type Coverage, coverage, type TableCoverage } from "./coverage.js";
-export { type CushionShip, cushionShip } from "./cushion.js";
+export { type CushionShip, cushionShip, cushionValue } from "./cushion.js";
 export { readLiveRows } from "./live.js";
 export { BridgeBlock } from "./map/types.js";
 export type { LogicalRow } from "./merge.js";

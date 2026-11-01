@@ -19,6 +19,12 @@ export interface CushionShip {
   readonly events: readonly UnstampedEvent[];
 }
 
+/** Canonical JSON of the cushion in the file, undefined for a missing or invalid file. */
+export function cushionValue(files: VaultInput["files"], slug: string): string | undefined {
+  const file = readCushion(files, slug);
+  return file.kind === "ok" ? canonicalJson(file.cushion) : undefined;
+}
+
 /**
  * The cushion events of one vault when the file's value differs from `lastShipped` (canonical JSON),
  * else undefined. `at` is the ship time (ISO, `Z`).

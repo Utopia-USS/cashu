@@ -63,6 +63,11 @@ async function run(config: DaemonConfig, env: MainEnv, once: boolean): Promise<n
   const sodium = await crypto.loadNodeSodium();
   const reader = new PythonReader(config.dataDir);
   const vaults = await openLinked(config, reader, sodium);
+  if (vaults.length === 0) {
+    // Without a vault nothing can ship or be acked: refuse instead of spinning (review F6).
+    reader.close();
+    throw new RefusalError("no linked vault: run `init` first");
+  }
   const slugs = new Map(reader.profiles().map((p) => [p.id, p.slug]));
   const loop = new Loop({
     reader,
