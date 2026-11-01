@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { createKeyring, createRecoveryKey, loadNodeSodium } from "../../crypto/index.js";
+import {
+  createDeviceIdentity,
+  createKeyring,
+  createRecoveryKey,
+  loadNodeSodium,
+} from "../../crypto/index.js";
 import { TransportError } from "../../errors.js";
 import { MemoryTransport } from "../../memory.js";
 import { frameBytes, scanFrames } from "../../segment.js";
 import { testSigners } from "../../testing/signers.js";
 import { createOwnLogCarrier } from "./carrier.js";
+import { createOwnLogCodec } from "./codec.js";
 import { encodeRecord, MANIFEST_SEG } from "./manifest.js";
 
 const sodium = await loadNodeSodium();
@@ -157,6 +163,25 @@ describe("own-log carrier (manifest gating)", () => {
     expect(second.reader.status(VAULT)[0]?.held).toEqual({ seg: 1, reason: "conflict" });
     const err = await second.writer.append(VAULT, A, 2, 3, bytes(1)).catch((e) => e);
     expect(err).toBeUndefined();
+  });
+
+  it("a manifest record a key holder signed for another writer is rejected (S29c B2)", async () => {
+    const { raw, writer, reader } = setup();
+    await writer.append(VAULT, A, 1, 0, bytes(10));
+    // Sealed with the vault's data key at A's real position, but signed by a key nobody certified.
+    const impostor = createOwnLogCodec({ sodium, ring, signer: createDeviceIdentity(sodium, A) });
+    const record = await impostor.seal(
+      encodeRecord({ kind: "closed", seg: 1, size: 4 }),
+      { vault: VAULT, device: A, seg: MANIFEST_SEG, offset: 0 },
+      impostor.genesis(VAULT, A, 0),
+    );
+    await raw.append(VAULT, A, MANIFEST_SEG, 0, frameBytes(record.sealed));
+    await raw.append(VAULT, A, 2, 0, bytes(3));
+    expect(await view(reader)).toEqual(["1:10"]);
+    expect(reader.status(VAULT)[0]).toMatchObject({
+      held: { seg: 2, reason: "awaiting-manifest" },
+      manifestRejected: { offset: 0, code: "bad_head_signature" },
+    });
   });
 
   it("refuses to create a segment whose predecessor does not exist", async () => {

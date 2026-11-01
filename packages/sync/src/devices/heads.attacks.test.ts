@@ -3,7 +3,14 @@
 // heads.attacks.exhaustive.test.ts.
 
 import { describe, expect, it } from "vitest";
-import { certifyDevice, createDeviceIdentity, genesisChain, signHead } from "../crypto/index.js";
+import { START_CURSOR as START } from "../carrier.js";
+import {
+  certifyDevice,
+  createDeviceIdentity,
+  decodeHead,
+  genesisChain,
+  signHead,
+} from "../crypto/index.js";
 import { buildDeviceAdded, buildDeviceRevoked, type LogEvent } from "./events.js";
 import { StreamIndex } from "./heads.js";
 import { forgeryRun, fourDevices, marked, rewriteRun } from "./headsSim.js";
@@ -12,6 +19,7 @@ import {
   chainOf,
   forgeBatch,
   newEid,
+  optInAutoHandover,
   revokedWithConsent,
   revokeWithConsent,
   sodium,
@@ -111,6 +119,27 @@ describe("signed heads close the rewrite and forgery classes", () => {
     expect(c.gate.behind()).toEqual([]);
     c.rebuild((batch) => batch.device !== r.id || batch.cursor.offset <= firstEnd);
     expect(c.gate.behind()).toEqual([{ device: r.id, attested: cut, held: r.stream[0]?.cursor }]);
+  });
+
+  it("cut-before-ack rules: the flow never cuts below the target's last lease event; consent cuts at its own end", async () => {
+    const { a, b, r, c } = await fourDevices();
+    r.write([note()]);
+    optInAutoHandover(r); // a lease statement of R (any lease event: an acknowledgement, a pin)
+    r.write([note()]);
+    syncAll([a, b, r, c]);
+    const lease = r.stream[1]?.cursor;
+    // Rule 1: even from a stale applied cursor, the proposed cut covers R's lease event, with R's
+    // signed head there.
+    const entry = a.gate.revocationEntry(r.id, { seg: 1, offset: 0 });
+    expect(entry.cut).toEqual(lease);
+    expect(decodeHead(entry.head)?.offset).toBe(lease?.offset);
+    expect(a.gate.revocationEntry(r.id, r.stream[2]?.cursor ?? lease ?? START).cut).toEqual(
+      r.stream[2]?.cursor,
+    );
+    // Rule 2: the target's own entry is its last position, with its own head.
+    const own = r.gate.ownEntry();
+    expect(own.cut).toEqual(r.stream.at(-1)?.cursor);
+    expect(decodeHead(own.head)?.device).toBe(r.id);
   });
 
   it("a device id reused on a second install (two signed histories) is frozen at the agreed prefix", () => {

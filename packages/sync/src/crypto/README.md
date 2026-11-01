@@ -19,8 +19,11 @@ Test helpers that must never reach the app (`InMemoryKeyStore`) live on the `@ca
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Subkeys     | `frameKey = BLAKE2b-256(key = data key, "cashu/subkey/frame/v2")`, `kidKey = BLAKE2b-256(key = data key, "cashu/subkey/kid/v2")`; the raw data key is used for nothing else    |
 | Key id      | `hex(BLAKE2b-128(key = kidKey, "cashu/kid/v2" \| lp(vault id) \| u32 generation \| u32 epoch))`; always computed, never accepted                                               |
-| Frame       | `0x02` \| key id (16) \| nonce (24) \| XChaCha20-Poly1305(frameKey) ciphertext + tag (16)                                                                                      |
-| Frame AAD   | `"cashu/frame/v2"` \| `0x02` \| key id \| lp(vault id) \| lp(device id) \| u32 segment \| u64 offset                                                                           |
+| Frame       | `0x03` \| key id (16) \| nonce (24) \| XChaCha20-Poly1305(frameKey) ciphertext + tag (16) \| head signature (64); v2 (unsigned) is gone (S29c D7)                             |
+| Frame AAD   | `"cashu/frame/v3"` \| `0x03` \| key id \| lp(vault id) \| lp(device id) \| u32 segment \| u64 offset                                                                           |
+| Digest      | `BLAKE2b-256("cashu/frame-digest/v1" \| frame bytes without the signature)`                                                                                                     |
+| Chain       | `chain(0) = BLAKE2b-256("cashu/chain/v1/genesis" \| lp(vault) \| lp(device) \| u8 stream)`; `chain(f) = BLAKE2b-256("cashu/chain/v1" \| lp(vault) \| lp(device) \| u8 stream \| u32 seg \| u64 start \| u64 end \| chain(prev) \| digest(f))` |
+| Head        | body `lp(vault) \| lp(device) \| u8 stream \| u32 seg \| u64 end \| chain(f)`, Ed25519 over `"cashu/head/v1" \| body` by the writer; encoded `device (16) \| u8 stream \| u32 seg \| u64 end \| chain (32) \| sig (64)` |
 | Frame plain | u32 length \| data \| zero padding to Padme(length + 4); max 64 MiB of data                                                                                                    |
 | Key payload | `"cashu/keys/v3"` \| lp(vault id) \| recovery box pk (32) \| recovery sign pk (32) \| gid salt (32) \| u32 count \| (u32 generation \| u32 epoch \| key 32)*                   |
 | Signed wrap | `0x03` \| sender device id (16) \| Ed25519 signature (64) \| u16 count \| recipient ids (16 each) \| `crypto_box_seal(payload, recipient box pk)`                              |
@@ -40,41 +43,38 @@ test).
 Every signature has its own context (`"cashu/wrap/v3"`, `"cashu/cert/v1"`, and for S29's statements
 `"cashu/registry/v1"`, `"cashu/lease/v1"`, `"cashu/pairing/v1"`); no context is a prefix of another, an
 unknown context is refused (`RangeError`), and nothing signs raw caller bytes. `verifyContextSignature`
-checks `context | body`; `verifySignature` is the raw strict check. S28d frame signatures must add a
-new context that neither extends nor is a prefix of these (for example `"cashu/frame-sig/v1"`).
+checks `context | body`; `verifySignature` is the raw strict check. Frame heads (S29c phase B2) sign
+under `"cashu/head/v1"`, which neither extends nor is a prefix of the others (signing.test.ts).
 
 ## What consumers rely on
 
 ### S28b (carrier)
 
-- `sealFrame` / `openFrame(sodium, ring, frame, {vaultId, deviceId, segment, offset}, policy?)` per frame;
-  the carrier adds the u32 length prefix of each frame in a segment file. `frameKeyId` tells which
-  key a frame needs before trying it. Errors are `CryptoError` with a `code`; a frame that fails is
-  rejected, never partly applied.
-- **Revocation stops a revoked device from READING new data only.** It still holds old keys, and old
-  keys stay in every ring to read history, so without more it can keep WRITING frames that open. Until
-  per-device frame signatures land (S28d), the carrier must enforce a per-device generation floor
-  through the policy hook: `openFrame(..., { minGeneration })` or `{ acceptKid: (entry) => ... }`, both
-  checked before decrypting (`key_not_allowed`). A revoked device can write under ANY device id (the
-  frame AAD names the writer but only a key authenticates it), so the floor applies to every writer id:
-  after a revocation, frames under a generation below the revocation key are rejected from every
-  writer once that writer has written at the new generation. Between the revocation and a writer's
-  first frame at the new generation the floor cannot tell a revoked device from that writer; only
-  per-device frame signatures (S28d) close that window.
-- Frame version 2 means "Padme v1 padding, no codec". Compression stays the carrier's, but the codec
+- `sealFrame(sodium, ring, plain, {vaultId, deviceId, segment, offset, prev}, signer)` /
+  `openFrame(sodium, ring, frame, ctx)` per frame (v3, S29c phase B2): `prev` is the chain of the
+  writer's previous frame in the stream (`genesisChain` before the first), `signer` the writer's own
+  identity (it signs only its own frames). `openFrame` returns the plaintext and the head with the
+  frame's signature UNVERIFIED: only the device registry knows the writer's keys, so devices/ checks
+  it (the frame gate, below). `frameChain` recomputes a frame's chain from its bytes (no key), and
+  `frameKeyId` tells which key a frame needs. Errors are `CryptoError` with a `code`; a frame that
+  fails is rejected, never partly applied.
+- **Revocation stops a revoked device from READING new data only.** It still holds old keys and can
+  AEAD-seal frames that open, but since S29c phase B2 it can no longer SIGN another writer's frames:
+  every frame carries its writer's signed head, so the S28b per-writer generation floor and the
+  frame policy hook are gone (lead decision D6; one mechanism, not three).
+- Frame version 3 means "Padme v1 padding, no codec, signed head". Compression stays the carrier's, but the codec
   must then be recorded in the version byte / AAD and the decompressed size capped (a key holder, e.g.
   a revoked device, could otherwise ship a zip bomb). `frameSize(n)` gives the ciphertext size.
 - Gids: `ring.gidSalt()` is the HMAC-SHA256 key for deterministic gids (event spec v1.1). It is
   generated with the vault, travels only inside the authenticated key payload, is never rotated and is
   never derived from a data key; a payload with another salt is refused (`gid_salt_mismatch`).
-- Not covered by frame-level AEAD (m10, tracked for S28b / S28d): truncation, rollback or withholding
-  of whole frames or segments by storage, and forks if a reinstalled device reuses its device id and
-  rewrites offsets. These need signed per-device heads (segment, offset, hash chain) and a fresh
-  device id per install (never restore a device identity onto another install).
-- **Revocation depends on freshness**: storage colluding with a revoked device can withhold the
-  revocation and its rotation wraps from an honest device indefinitely, and that device keeps wrapping
-  new keys for the revoked one. Revocation is effective only once S28b / S28d signed heads let a device
-  detect what it has not seen.
+- Truncation, rollback, reorder, splice and rewrites of a device's stream (m10) and forks of a
+  reused device id: see "S29c phase B2: signed heads" below for what the chain and the heads detect
+  and what remains (withholding without any later attestation, D10).
+- **Revocation depends on freshness**: storage colluding with a revoked device can still withhold the
+  revocation and its rotation wraps from an honest device that never sees any later head of the
+  revoker (head gossip is deferred, D10); the revoker's later heads in other statements (cuts) show
+  a withheld tail (`DeviceFrameGate.behind`).
 
 ### S29 (pairing, registry, rotation, revocation)
 
@@ -199,10 +199,10 @@ new context that neither extends nor is a prefix of these (for example `"cashu/f
   oldest dropped first). `parseCertificate`, `isSignedBy` and `wrapSenderId` read without trusting.
 - Residual risks the registry documents (devices/registry.ts, revocations.ts): positions cannot tell who
   revoked first, so a revoked device that revokes its revoker after its cut takes it down too (fail
-  closed; the owner's recovery words raise the honest device's cut and re-certify); a rewrite of a
-  device's own pre-cut frame is only seen by devices that read it (fresh joiners, rebuilds) until S28d
-  signed heads; a revoked device can still forge a trusted writer's frames at positions that writer has
-  not reached until it writes at the new key (S28d per-device frame signatures).
+  closed; the owner's recovery words raise the honest device's cut and re-certify). CLOSED by S29c
+  phase B2: the rewrite of a device's own pre-cut frame (A1b; a cut commits to the target's signed
+  head, a joiner or rebuild that reads the rewrite sees a fork) and a revoked device forging a trusted
+  writer's frames (only the writer signs its heads).
 - Device-limit crowding (S29c review, minor): `maxDevices` (MAX_DEVICES = 1024) admits ids breadth first,
   each BFS level sorted by key. A still-trusted malicious device can certify 64 puppets
   (MAX_CERTS_PER_ISSUER), each writing under its own id and certifying 64 more: about 4096 nodes at one
@@ -294,11 +294,11 @@ the sweep in decisionKeys.property.exhaustive.test.ts).
 - Residual: a still-trusted (stolen, not yet revoked) device can certify a second key pair for
   another device and forge that device's consent; the target is then conflicted (untrusted) anyway.
   Revoking the thief with the words ends it.
-- Residual (phase B): a forged self-revocation of an honest device, written into a REWRITTEN early
-  frame of its stream with a key minted for it, can still make it undecided (both it and its
-  revoker revoked, fail closed) with its history after that position cut. That is the A1b rewrite
-  class; signed heads close it, and the fixed self-revocation cut already caps it at the rewritten
-  position.
+- CLOSED by S29c phase B2: a forged self-revocation of an honest device, written into a REWRITTEN
+  early frame of its stream with a key minted for it. The frame's head must verify under the key
+  the stream is bound to, and a device with two certified key pairs binds only to the key its trust
+  resolves; the forgery is never ingested. What remains is the stream waiting at the forgery on a
+  device that reads it, which is withholding (D10).
 
 ### S29c: asking for the recovery words (S44 UX rule)
 
@@ -416,6 +416,79 @@ S44 UX:
 - Automatic handover is offered only when a relay remote is configured and its declaration passed
   conformance; on a folder-only vault the toggle is not shown, and a device whose relay is offline
   shows "automatic handover needs the relay; pin a fetcher" (`unsupported_transport`).
+
+### S29c phase B2: signed heads and per-device frame signatures
+
+Every frame ends with its writer's signed head over the writer's hash chain (head.ts, formats
+above): an Ed25519 statement of the writer about its whole stream up to that frame. Stream 0 is the
+carrier's manifest, stream 1 the data segments (the data chain runs across segments, so a reader
+holding segment N's first frame knows N - 1's final chain).
+
+- **Verification** (devices/gate.ts, `DeviceFrameGate`, the engine's and the carrier's
+  `FrameGate`): the codec recomputes the chain from the frame the reader holds before it; the gate
+  checks the signature through devices/acceptance.ts (`acceptedHead`, source `author`: the keys
+  certified for the writer through any chain from the recovery key, revocations ignored). A head
+  signature says WHO wrote a frame, never what counts: data is judged by revocation cuts and fork
+  freezes (guard.ts), statements by decision keys, as before.
+- **One key per stream**: the key that verified a stream's first frame is the only key any later
+  frame of it may use (an honest device has one identity per install). A device with two certified
+  key pairs (a thief minted one) binds only to the key its trust resolves, else its stream waits.
+  A stream's first frame may introduce its writer with a recovery-issued certificate it carries in
+  the writer's own `device.added` (creator, genesis device, a device restored from the words: S44
+  contract, a restored device writes that announcement in its first frame).
+- **No key known**: the frame waits (`writer-unknown`), is neither copied to the local log nor
+  ingested, and is retried after the next registry change (the engine pulls again in the same pass).
+- **Cuts commit to a stream hash**: a revocation entry carries the target's signed head AT the cut
+  (`RevokedEntry.head`, devices/events.ts; it is inside the signed statement and the consent body).
+  A reader whose copy of the target's stream has another chain at the cut, or that holds two of the
+  writer's heads at one position with different chains, holds a proven FORK: the writer is frozen
+  at the agreed prefix (lead decision D5: the highest attested end whose chain matches, else the
+  start), its later data and statements never count, and `DeviceFrameGate.forks()` lists it for the
+  owner (S44: an alert with the evidence; the owner revokes it). Only the writer's own key can make
+  two heads, so a fork is the writer's fault or a device identity restored onto a second install.
+- **Behind**: a genuine attested head beyond what a reader holds shows a truncated or withheld tail
+  (`DeviceFrameGate.behind()`); reported, never frozen.
+- **Genesis device** (lead decision): the genesis stream is written by a dedicated identity created
+  with the vault and certified by the recovery key (devices/genesis.ts); it introduces itself in its
+  first frame and retires itself with its last batch (a self-revocation, cut fixed at its own
+  position), and its key is wiped: a later genesis frame, whoever kept the key, is rejected.
+- **D8**: when the registry or a freeze stops accepting data the view already holds, the engine
+  finishes the pass with a full rebuild (`SyncResult.rebuilt`). After a restart the engine replays
+  the local log into a fresh gate (statements first, then data), because the devices state is not
+  persisted yet (S29c spec 11.3, follow-up); a gate without statement state skips it.
+
+Revoke flow, cut-before-ack rules (B1 review; contract for the revoke API and S44):
+
+1. When the target is or was the acknowledging fetch leader, the flow syncs first and never proposes
+   a cut below the target's last lease event it holds (`DeviceFrameGate.revocationEntry`: the cut is
+   the revoker's applied cursor, raised to that lease event).
+2. On the consent path the cut is the target's own last stream position, with its own head
+   (`DeviceFrameGate.ownEntry()` on the target, which signs the consent over it).
+
+Risk list (S29c, after phase B2):
+
+- CLOSED: rewritten frames of a device's own stream (A1b), a revoked device forging a trusted
+  writer's frames (m6), the forged self-revocation through a minted key, truncation of a closed
+  segment and reorder / splice (the chain), the rewritten-frame precondition of P2 / V2.
+- Residual, D10 (head gossip deferred): withholding is detected only through heads other statements
+  carry (revocation cuts today). Storage that withholds a device's whole tail, or replaces a
+  device's ENTIRE stream from its first frame under a key minted while the thief was trusted, looks
+  like a device that has not synced, to a reader that holds no later attested head of it. The
+  stream-key and conflict rules keep such a stream from counting while the thief is undecided;
+  mitigation: the caps above, revoking the thief with the words, and head gossip later.
+- Residual, cut before an acknowledgement (honest, B1 review): an owner revoking the old leader with
+  the words from a device that has not pulled its acknowledgement yet can place the cut before it,
+  voiding the hand-over while a stale sibling pin exists. The two flow rules above exclude it in the
+  flows; a cut typed by hand below the held lease events is the only remaining way.
+- Residual: the devices state is rebuilt from the log at every start (replay cost ~ a view rebuild)
+  until its persistence lands (spec 11.3).
+- Residual: frame authenticity uses every key ever certified for the writer, minus the certificates
+  a revoked writer logged after its cut (second pass). A puppet certified after its revoker's cut
+  can therefore have frames ingested before the revocation arrives and not after; its statements
+  carry no decision weight either way (its chain runs through the revoked device), so trust and
+  revocations do not depend on it; the registered set (and MAX_DEVICES admission) can differ until
+  a rebuild, which processes the log in one order. Follow-up: judge authenticity against the
+  closure before the second pass, which only grows with the log.
 
 ### Key storage
 

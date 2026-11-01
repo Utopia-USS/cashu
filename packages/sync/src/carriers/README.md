@@ -5,23 +5,24 @@ stamping, frames, frame groups, cursors and replication; this folder adds what m
 storage. Wiring per device and vault:
 
 ```ts
-const codec = createOwnLogCodec({ sodium, ring, floor }); // envelope + S27 frame
+const codec = createOwnLogCodec({ sodium, ring, signer: identity }); // envelope + S27 frame v3
+const gate = new DeviceFrameGate(vaultDevices, { sodium }); // devices/gate.ts: signed heads, cuts
 const folder = new FolderTransport({ fs: appFolderFs, owner: device }); // the synced directory
-const remote = createOwnLogCarrier({ transport: folder, codec, device });
-createSyncEngine({ vault, device, local, remotes: [remote], codec, sink, clockStore });
+const remote = createOwnLogCarrier({ transport: folder, codec, gate, device });
+createSyncEngine({ vault, device, local, remotes: [remote], codec, gate, sink, clockStore });
 ```
 
 ## Formats (all integers big-endian)
 
-| What            | Bytes                                                                                                                                  |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Folder layout   | `<vault>/<device>/<seq>.seg`, `<seq>` zero-padded to 6 digits, `000000.seg` = the manifest stream                                      |
-| Segment         | `frame*`, frame = `u32 length \| sealed` (segment.ts)                                                                                  |
-| Sealed          | S27 frame v2: `0x02 \| kid \| nonce \| XChaCha20-Poly1305(Padme(envelope))`, AAD binds vault, device, segment, offset                  |
-| Envelope        | `0x00 \| body` (stored) or `0x01 \| u32 body length \| raw DEFLATE(body)`; body = the engine payload `{"f":1,"e":[...],"p"?}`          |
-| Manifest record | segment 0 frames, same sealing; plaintext JSON `{"m":1,"k":"closed","s":N,"z":bytes}` / `"snapshot"` (`s`,`o`,`r`) / `"retired"` (`s`) |
+| What            | Bytes                                                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Folder layout   | `<vault>/<device>/<seq>.seg`, `<seq>` zero-padded to 6 digits, `000000.seg` = the manifest stream                                                                                           |
+| Segment         | `frame*`, frame = `u32 length \| sealed` (segment.ts)                                                                                                                                       |
+| Sealed          | S27 frame v3: `0x03 \| kid \| nonce \| XChaCha20-Poly1305(Padme(envelope)) \| head signature`, AAD binds vault, device, segment, offset; the head binds the writer's chain (crypto/head.ts) |
+| Envelope        | `0x00 \| body` (stored) or `0x01 \| u32 body length \| raw DEFLATE(body)`; body = the engine payload `{"f":1,"e":[...],"p"?}`                                                               |
+| Manifest record | segment 0 frames, same sealing; plaintext JSON `{"m":1,"k":"closed","s":N,"z":bytes}` / `"snapshot"` (`s`,`o`,`r`) / `"retired"` (`s`)                                                      |
 
-- The codec byte lives inside the authenticated plaintext (S27 v2 = "no codec"), so a frame never
+- The codec byte lives inside the authenticated plaintext (S27 v3 = "no codec"), so a frame never
   opens under two interpretations. Inflation stops once output passes the declared length (cap 64 MiB):
   no zip bomb from a key holder. An unknown codec byte is `frame-format` (engine: needs upgrade).
 - Compression runs before encryption; Padme bounds the size leak (crypto README m9). On the spike
@@ -40,14 +41,16 @@ createSyncEngine({ vault, device, local, remotes: [remote], codec, sink, clockSt
   into the longest (the writer deletes them on its next append); diverging versions (a cloned device id)
   expose only the common prefix and are reported as forks. iCloud placeholders (`.x.seg.icloud`) are
   reported as evicted. An unreachable folder must surface as `TransportError("unavailable")` (port contract).
-- **Writer key floor** (`WriterKeyFloor`, crypto README "S28b"): after `raise(revocationGeneration)`,
-  a writer's frames under older keys are refused once that writer has written at the floor (positional,
-  history stays readable). S29 persists `state()`.
+- **Signed heads** (S29c phase B2): every frame, manifest records included, carries its writer's
+  signed head over its stream's hash chain; the engine and the carrier hand each head to the
+  `FrameGate`, so a key holder that is not the writer cannot forge a frame, and a stale earlier
+  segment can no longer be skipped even without the manifest gate (segment N's first frame links to
+  N - 1's last). The S28b writer key floor is gone (D6).
 - **Compaction hooks** (S32 builds compaction): `markSnapshot`, `retireBefore`, `snapshots`, and the
   reader option `resumeFrom` to start a stream at an installed snapshot.
 
 ## Not covered here (owners)
 
-- Per-device signed heads / frame signatures (withholding, truncation of a whole tail, forks): S28d.
+- Withholding of a whole tail with no later head attested anywhere (head gossip, S29c D10).
 - The desktop `FolderFs` adapter (Node `fs`) belongs to the app; `testing/node-fs.ts` is the test one.
 - iOS ubiquity container (download of evicted files, change notifications): risk R7.
