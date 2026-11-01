@@ -3,7 +3,7 @@
   "extends": ["//"],
   "tasks": {
     "typecheck": {
-      "inputs": ["app/**", "src/**", "tsconfig.json", "package.json", "uniwind-types.d.ts"]
+      "inputs": ["app/**", "src/**", "tsconfig.json", "package.json"]
     },
     "lint": {
       "inputs": ["app/**", "src/**", "*.js", "*.json", "../../biome.json"]

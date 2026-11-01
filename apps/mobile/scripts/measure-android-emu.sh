@@ -21,21 +21,29 @@ adb install -r "$APK" >/dev/null
 adb logcat -c
 launches="$OUT/launches-android.jsonl"
 : > "$launches"
+: > "$OUT/am-start.txt"
 echo "first launch (fixture load)"
 echo "{\"kind\":\"launch\",\"first\":true,\"at\":$(dnow)}" >> "$launches"
 adb shell am start -W -n "$PKG/.MainActivity" | grep -E "TotalTime" || true
-sleep 15
+# wait until the fixture is loaded and the first data frame logged (a slow emulator can take minutes)
+for _ in $(seq 1 120); do adb logcat -d -s ReactNativeJS:V | grep -q 'S41BENCH.*"startup"' && break; sleep 3; done
+sleep 3
 for i in $(seq 1 "$RUNS"); do
   echo "cold launch $i/$RUNS"
   adb shell am force-stop "$PKG"
   sleep 2
   echo "{\"kind\":\"launch\",\"at\":$(dnow)}" >> "$launches"
+  before=$(adb logcat -d -s ReactNativeJS:V | grep -c 'S41BENCH.*"startup"' || true)
   adb shell am start -W -n "$PKG/.MainActivity" | grep -E "TotalTime" | tee -a "$OUT/am-start.txt" || true
-  sleep 6
+  for _ in $(seq 1 60); do
+    [ "$(adb logcat -d -s ReactNativeJS:V | grep -c 'S41BENCH.*"startup"' || true)" -gt "$before" ] && break
+    sleep 1
+  done
+  sleep 2
 done
 echo "list benchmark (about 55 s)"
 adb shell "am start -a android.intent.action.VIEW -d 'cashu://bench?autorun=1' $PKG" >/dev/null
-sleep 58
+for _ in $(seq 1 120); do adb logcat -d -s ReactNativeJS:V | grep -q "S41BENCH.*\"mount\"" && break; sleep 2; done
 adb exec-out screencap -p > "$OUT/bench-android.png"
 adb logcat -d -s ReactNativeJS:V | sed -n 's/.*S41BENCH //p' > "$OUT/results-android.jsonl"
 node "$HERE/summarize-bench.mjs" "$launches" "$OUT/results-android.jsonl"

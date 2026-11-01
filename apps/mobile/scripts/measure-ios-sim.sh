@@ -28,14 +28,18 @@ launches="$OUT/launches.jsonl"
 echo "first launch (fixture load)"
 echo "{\"kind\":\"launch\",\"first\":true,\"at\":$(now)}" >> "$launches"
 xcrun simctl launch "$DEV" "$BUNDLE" >/dev/null
-sleep 15
+# wait until the fixture is loaded and the first data frame logged
+for _ in $(seq 1 120); do grep -q '"kind":"startup"' "$LOG" 2>/dev/null && break; sleep 2; done
+sleep 3
 for i in $(seq 1 "$RUNS"); do
   echo "cold launch $i/$RUNS"
   xcrun simctl terminate "$DEV" "$BUNDLE" 2>/dev/null || true
   sleep 2
   echo "{\"kind\":\"launch\",\"at\":$(now)}" >> "$launches"
+  before=$(grep -c '"kind":"startup"' "$LOG" || true)
   xcrun simctl launch "$DEV" "$BUNDLE" >/dev/null
-  sleep 6
+  for _ in $(seq 1 60); do [ "$(grep -c '"kind":"startup"' "$LOG" || true)" -gt "$before" ] && break; sleep 1; done
+  sleep 2
 done
 echo "list benchmark (about 55 s)"
 xcrun simctl openurl "$DEV" "cashu://bench?autorun=1"
