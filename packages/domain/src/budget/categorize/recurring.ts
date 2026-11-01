@@ -55,6 +55,74 @@ export interface RecurringOptions {
 type Categorize = (t: EngineTxn, subscriptionKeys: ReadonlySet<string>) => Categorization;
 const NO_KEYS: ReadonlySet<string> = new Set();
 
+/** A row's recurring group: payee, currency and the `.2f` outflow amount (analytics.py:318-330). */
+export interface RecurringMember {
+  readonly payee: string;
+  readonly currency: string;
+  readonly amountKey: string;
+}
+
+/**
+ * @package The group a row counts in for `detect_recurring`, or null: inflows, rows without a payee
+ * and rows whose decided category (else the engine's without the recurring signal) is in
+ * `notSubscription` count in none.
+ */
+export function recurringMemberWith(
+  t: RecurringRow,
+  notSubscription: ReadonlySet<string>,
+  categorizeRow: Categorize,
+): RecurringMember | null {
+  if (t.amount.gte(ZERO)) return null; // subscriptions are outflows
+  const payee = txnMerchantKey(t);
+  if (!payee) return null;
+  const d = t.decided;
+  const cat =
+    d && TXN_DECIDED_SOURCES.has(d.source) && d.category
+      ? d.category
+      : categorizeRow(t, NO_KEYS).category;
+  if (notSubscription.has(cat)) return null;
+  // Python `f"{-t.amount:.2f}"`: the negation rounds to the context (28 digits) first.
+  return { payee, currency: t.currency, amountKey: format2(t.amount.neg()) };
+}
+
+/** What a qualifying group's dates give (`RecurringCandidate` without payee, amount, currency). */
+export interface RecurringDates {
+  readonly occurrences: number;
+  readonly monthsCovered: number;
+  readonly medianGapDays: number;
+  readonly lastDate: IsoDate;
+}
+
+/**
+ * Whether one group's booking dates (any order) qualify: `minOccurrences` rows and an upper median of
+ * the positive gaps in [`minGap`, `maxGap`] days; null when they do not.
+ */
+export function recurringDates(
+  groupDates: readonly IsoDate[],
+  opts: RecurringOptions = {},
+): RecurringDates | null {
+  const minOccurrences = opts.minOccurrences ?? 3;
+  const minGap = opts.minGap ?? 24;
+  const maxGap = opts.maxGap ?? 37;
+  if (groupDates.length < minOccurrences) return null;
+  const dates = [...groupDates].sort();
+  const gaps: number[] = [];
+  for (let i = 0; i + 1 < dates.length; i++) {
+    const gap = toOrdinal(dates[i + 1] as string) - toOrdinal(dates[i] as string);
+    if (gap > 0) gaps.push(gap);
+  }
+  if (gaps.length === 0) return null;
+  // PARITY(Q20): the upper median of the positive gaps.
+  const median = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] as number;
+  if (!(minGap <= median && median <= maxGap)) return null;
+  return {
+    occurrences: dates.length,
+    monthsCovered: new Set(dates.map((d) => d.slice(0, 7))).size,
+    medianGapDays: median,
+    lastDate: dates.at(-1) as string,
+  };
+}
+
 /** @package `detectRecurring` with the categorizer to use for undecided rows (plain or memoized). */
 export function detectRecurringWith(
   rows: readonly RecurringRow[],
@@ -62,54 +130,30 @@ export function detectRecurringWith(
   opts: RecurringOptions,
   categorizeRow: Categorize,
 ): RecurringCandidate[] {
-  const minOccurrences = opts.minOccurrences ?? 3;
-  const minGap = opts.minGap ?? 24;
-  const maxGap = opts.maxGap ?? 37;
-  const groups = new Map<
-    string,
-    { payee: string; currency: string; amountKey: string; dates: IsoDate[] }
-  >();
+  const groups = new Map<string, { member: RecurringMember; dates: IsoDate[] }>();
   for (const t of rows) {
-    if (t.amount.gte(ZERO)) continue; // subscriptions are outflows
-    const payee = txnMerchantKey(t);
-    if (!payee) continue;
-    const d = t.decided;
-    const cat =
-      d && TXN_DECIDED_SOURCES.has(d.source) && d.category
-        ? d.category
-        : categorizeRow(t, NO_KEYS).category;
-    if (notSubscription.has(cat)) continue;
-    // Python `f"{-t.amount:.2f}"`: the negation rounds to the context (28 digits) first.
-    const amountKey = format2(t.amount.neg());
-    const key = JSON.stringify([payee, t.currency, amountKey]);
+    const member = recurringMemberWith(t, notSubscription, categorizeRow);
+    if (member === null) continue;
+    const key = JSON.stringify([member.payee, member.currency, member.amountKey]);
     let g = groups.get(key);
     if (g === undefined) {
-      g = { payee, currency: t.currency, amountKey, dates: [] };
+      g = { member, dates: [] };
       groups.set(key, g);
     }
     g.dates.push(t.bookingDate);
   }
   const out: RecurringCandidate[] = [];
   for (const g of groups.values()) {
-    if (g.dates.length < minOccurrences) continue;
-    const dates = [...g.dates].sort();
-    const gaps: number[] = [];
-    for (let i = 0; i + 1 < dates.length; i++) {
-      const gap = toOrdinal(dates[i + 1] as string) - toOrdinal(dates[i] as string);
-      if (gap > 0) gaps.push(gap);
-    }
-    if (gaps.length === 0) continue;
-    // PARITY(Q20): the upper median of the positive gaps.
-    const median = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] as number;
-    if (!(minGap <= median && median <= maxGap)) continue;
+    const q = recurringDates(g.dates, opts);
+    if (q === null) continue;
     out.push({
-      counterparty: g.payee,
-      typicalAmount: D(g.amountKey),
-      occurrences: dates.length,
-      monthsCovered: new Set(dates.map((d) => d.slice(0, 7))).size,
-      medianGapDays: median,
-      lastDate: dates.at(-1) as string,
-      currency: g.currency,
+      counterparty: g.member.payee,
+      typicalAmount: D(g.member.amountKey),
+      occurrences: q.occurrences,
+      monthsCovered: q.monthsCovered,
+      medianGapDays: q.medianGapDays,
+      lastDate: q.lastDate,
+      currency: g.member.currency,
     });
   }
   // Stable: equal last dates keep first-seen order (Q21, the caller's row order).

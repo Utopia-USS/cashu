@@ -10,7 +10,7 @@ import {
   effectiveCategory,
 } from "./effective.js";
 import type { EngineContext } from "./engine.js";
-import { detectRecurring, subscriptionPayees } from "./recurring.js";
+import { detectRecurring, recurringDates, subscriptionPayees } from "./recurring.js";
 import { rulesByMerchant } from "./rules.js";
 import { contextFrom, EMPTY_CONTEXT } from "./testing/engineRows.js";
 import { monthly, row } from "./testing/rows.js";
@@ -334,6 +334,30 @@ describe("determinism and the memoized categorizer", () => {
     const first = run(rows).results;
     const again = run(rows.map((r) => ({ ...r, claim: r.claim }))).results;
     expect(again).toEqual(first);
+  });
+
+  it("recurringMember + recurringDates per group reproduce detectRecurring (the store's groups)", () => {
+    const c = createCategorizer(EMPTY_CONTEXT);
+    const groups = new Map<string, { payee: string; dates: string[] }>();
+    for (const r of rows) {
+      const m = c.recurringMember(r, NOT_SUBSCRIPTION);
+      if (m === null) continue;
+      const key = JSON.stringify([m.payee, m.currency, m.amountKey]);
+      const g = groups.get(key) ?? { payee: m.payee, dates: [] };
+      g.dates.push(r.bookingDate);
+      groups.set(key, g);
+    }
+    const flagged = new Set(
+      [...groups.values()].filter((g) => recurringDates(g.dates) !== null).map((g) => g.payee),
+    );
+    expect(flagged).toEqual(run(rows).subscriptionPayees);
+    expect(recurringDates(["2026-01-05", "2026-02-05"])).toBeNull();
+    expect(recurringDates(["2026-03-05", "2026-01-05", "2026-02-05"])).toEqual({
+      occurrences: 3,
+      monthsCovered: 3,
+      medianGapDays: 31,
+      lastDate: "2026-03-05",
+    });
   });
 
   it("createCategorizer equals the plain functions", () => {

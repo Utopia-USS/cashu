@@ -15,8 +15,10 @@ import {
 import {
   detectRecurringWith,
   type RecurringCandidate,
+  type RecurringMember,
   type RecurringOptions,
   type RecurringRow,
+  recurringMemberWith,
   subscriptionPayees,
 } from "./recurring.js";
 import { applySeedRules, applyTextRules } from "./taxonomy.js";
@@ -48,6 +50,11 @@ export interface Categorizer {
     notSubscription: ReadonlySet<string>,
     opts?: RecurringOptions,
   ): RecurringCandidate[];
+  /**
+   * The recurring group `row` counts in (`detectRecurring` per row), or null; a store keeps the
+   * groups to re-check only the ones its changes touch (S24c).
+   */
+  recurringMember(row: CategorizeRow, notSubscription: ReadonlySet<string>): RecurringMember | null;
 }
 
 const asRecurring = (row: CategorizeRow): RecurringRow => ({ ...row, decided: row.claim });
@@ -98,6 +105,8 @@ export function createCategorizer(ctx: EngineContext): Categorizer {
     },
     detectRecurring: (rows, notSubscription, opts = {}) =>
       detectRecurringWith(rows.map(asRecurring), notSubscription, opts, categorize),
+    recurringMember: (row, notSubscription) =>
+      recurringMemberWith(asRecurring(row), notSubscription, categorize),
   };
 }
 

@@ -79,8 +79,11 @@ export {
   detectRecurring,
   NOT_SUBSCRIPTION_CATEGORIES,
   type RecurringCandidate,
+  type RecurringDates,
+  type RecurringMember,
   type RecurringOptions,
   type RecurringRow,
+  recurringDates,
   subscriptionPayees,
   TXN_DECIDED_SOURCES,
 } from "./recurring.js";
