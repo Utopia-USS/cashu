@@ -149,6 +149,11 @@ export interface DedupIdentityV2 {
   readonly accountGid: string;
   /** The gid of an instrument (stored or planned), read only by the `gid:` step of the key. */
   readonly instrumentGid: (instrumentId: InstrumentId) => string;
+  /**
+   * The gids a stored instrument had before merges folded them into its gid (the store's identity
+   * record; none for a planned one): rows stored under `gid:<former>` stay duplicates after a merge.
+   */
+  readonly formerGids?: (instrumentId: InstrumentId) => readonly string[];
 }
 
 export interface PlanImportOptions {
@@ -416,6 +421,7 @@ function candidateKeysOf(
     subject: { ...committedInstrument(resolver, instrumentId), symbol: current?.symbol ?? null },
     brokerId,
     gid: identity.instrumentGid(instrumentId),
+    formerGids: resolver.isPlanned(instrumentId) ? [] : (identity.formerGids?.(instrumentId) ?? []),
     rowSymbol: hint.brokerSymbol,
     rowIsin: hint.isin,
     free: (namespace, value) => {

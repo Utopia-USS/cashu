@@ -95,6 +95,11 @@ export interface CandidateKeyInput {
   /** The import's broker id (alias namespace). */
   readonly brokerId: string;
   readonly gid: string;
+  /**
+   * Gids the instrument had before an owner merge or an alias claim folded them into `gid` (the
+   * store's identity record): a row stored under one of them as `gid:<former>` is the same instrument.
+   */
+  readonly formerGids?: readonly string[];
   /** The row's broker symbol as the resolver reads it (the symbol, else the name), stripped. */
   readonly rowSymbol: string | null;
   /** The row's ISIN, stripped and upper-cased. */
@@ -112,7 +117,7 @@ export interface CandidateKeyInput {
  * without repeats: each own alias in the broker's equivalent namespaces under the canonical name and
  * under the name it is stored with (legacy name: `finanse:` keys of the pre-S17d genesis rule), each
  * `isin` alias, the ISIN column, the display ticker and the row's own symbol and ISIN (the gid.md 4.6
- * hint rule) when no other instrument owns them, and the gid.
+ * hint rule) when no other instrument owns them, the gid and the gids merged into it.
  */
 export function candidateInstrumentKeys(input: CandidateKeyInput): readonly string[] {
   const { subject, brokerId } = input;
@@ -135,5 +140,6 @@ export function candidateInstrumentKeys(input: CandidateKeyInput): readonly stri
     keys.add(`isin:${input.rowIsin}`);
   }
   keys.add(reconciliationInstrumentKey(input.gid));
+  for (const former of input.formerGids ?? []) keys.add(reconciliationInstrumentKey(former));
   return Object.freeze([...keys]);
 }

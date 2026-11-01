@@ -195,6 +195,19 @@ describe("candidateInstrumentKeys", () => {
     ]);
   });
 
+  it("adds the gids merged into the instrument as gid keys (the store's merge record)", () => {
+    const keys = candidateInstrumentKeys({
+      subject: { aliases: [], isin: null, symbol: null },
+      brokerId: "xtb",
+      gid: "G1",
+      formerGids: ["G0", "G1", "G2"],
+      rowSymbol: null,
+      rowIsin: null,
+      free,
+    });
+    expect(keys).toEqual(["gid:G1", "gid:G0", "gid:G2"]);
+  });
+
   it("keeps a ticker or row hint another instrument owns out of the candidates", () => {
     const keys = candidateInstrumentKeys({
       subject: { aliases: [alias("xtb", "S")], isin: null, symbol: "PKN" },
