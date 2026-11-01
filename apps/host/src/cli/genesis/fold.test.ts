@@ -1,27 +1,25 @@
 // `--fold` invariants (S26 spec 8.4) on the synthetic data dir: a clean log folds with one view row
 // per exported row; a row the export does not list, a missing row and an invalid-gid event fail.
 import { join } from "node:path";
-import { betterSqlite3Driver } from "@cashu/store";
+import { openNodeSqlite } from "@cashu/node-host/sqlite";
 import * as genesis from "@cashu/store/genesis";
-import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { runFiles } from "./copy.ts";
-import { FoldError, foldVault } from "./fold.ts";
-import { initKeys } from "./keys.ts";
-import { tempDir, writePythonDataDir } from "./testing/pythonDataDir.ts";
+import { runFiles } from "./copy.js";
+import { FoldError, foldVault } from "./fold.js";
+import { initKeys } from "./keys.js";
+import { tempDir, writePythonDataDir } from "./testing/pythonDataDir.js";
 
 function exported() {
   const base = tempDir("fold");
   const data = join(base, "data");
   writePythonDataDir(data);
-  const db = new Database(join(data, "cashu.db"), { readonly: true });
+  const db = openNodeSqlite(join(data, "cashu.db"), { readOnly: true });
   try {
     const keys = initKeys(join(base, "keys.json"), ["ala", "olek"]);
-    const result = genesis.genesis(
-      { driver: betterSqlite3Driver(db), files: runFiles(data) },
-      keys,
-      { strict: true, now: Date.parse("2026-06-01T00:00:00Z") },
-    );
+    const result = genesis.genesis({ driver: db, files: runFiles(data) }, keys, {
+      strict: true,
+      now: Date.parse("2026-06-01T00:00:00Z"),
+    });
     const vault = result.vaults[0];
     const k = vault === undefined ? undefined : keys.get(vault.slug);
     if (vault === undefined || k === undefined) throw new Error("no vault");

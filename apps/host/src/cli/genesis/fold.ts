@@ -4,9 +4,9 @@
 // no unknown events (incl. `invalid-gid` parks) and one view row per exported source row.
 
 import { writeFileSync } from "node:fs";
-import { betterSqlite3Driver, builtinModules, Store, viewHash } from "@cashu/store";
+import { openNodeSqlite } from "@cashu/node-host/sqlite";
+import { builtinModules, Store, viewHash } from "@cashu/store";
 import * as genesis from "@cashu/store/genesis";
-import Database from "better-sqlite3";
 
 /** A fold invariant failed (exit 65); the message carries counts only. */
 export class FoldError extends Error {
@@ -88,7 +88,7 @@ export function foldVault(
   // Created empty and private first: SQLite keeps the mode of an existing file.
   writeFileSync(path, "", { mode: 0o600, flag: "wx" });
   const store = Store.open({
-    driver: betterSqlite3Driver(new Database(path)),
+    driver: openNodeSqlite(path),
     vault: vault.vault,
     salt: keys.salt,
     modules: builtinModules(),

@@ -4,8 +4,9 @@
 //      HostBusyError, exit 3),
 //   2. records its start (crash-loop detection: after repeated crashes it runs in safe mode),
 //   3. opens the stores under the writer lease (exclusive SQLite opens; damaged views recovered),
-//   4. serves sessions by role: `ui` gets the store channel v2, `admin` gets status / stop / handover;
-//      `cli` and `mcp` are refused until their services land (S56d),
+//   4. serves sessions by role: `ui` gets the store channel v2, `admin` gets status / stop / handover,
+//      `cli` the hosted command tree (cli/runner.ts), `mcp` an MCP server for its profile (mcp/session.ts);
+//      writes the stable launcher `<data dir>/bin/cashu` (launcher.ts),
 //   5. lingers while idle (no session, no queued write) and then exits 0; exits 75 when its bundle
 //      was replaced (handover); a signal or `admin.stop` exits 0.
 // Everything is logged as codes and counts (log.ts). A clean exit clears the crash record.
@@ -20,10 +21,24 @@ import {
 } from "@cashu/node-host";
 import { handleAdmin } from "./admin.js";
 import { HANDOVER_EXIT, watchBundle } from "./bundle.js";
+import { DELEGATED } from "./cli/delegated.js";
+import { portedCommands } from "./cli/ported.js";
+import { serveCliSession } from "./cli/runner.js";
+import type { PortedCommand } from "./cli/tree.js";
 import { recordStart, type StartRecord } from "./crashLoop.js";
+import { writeLauncher } from "./launcher.js";
 import { takeWriterLease, type WriterLease } from "./lease.js";
 import { errorName, fileLog, type HostLog } from "./log.js";
+import { startPythonMcp } from "./mcp/python.js";
+import { type McpBackend, serveMcpSession } from "./mcp/session.js";
 import { SERVED_COMMANDS, SERVED_QUERIES } from "./registry.js";
+import {
+  currentRuntime,
+  type HostRuntime,
+  type Program,
+  pythonProgram,
+  shimProgram,
+} from "./runtime.js";
 import { serveStoreChannel } from "./storeChannel.js";
 import { type HostStores, openHostStores } from "./stores.js";
 
@@ -51,6 +66,14 @@ export interface LocalHostOptions {
   readonly maxInFlight?: number;
   /** Fault tests only: runs after a command committed, before its reply. */
   readonly afterCommit?: () => void;
+  /** Where this host runs from (default: this process); picks the shim and the Python CLI. */
+  readonly runtime?: HostRuntime;
+  /** TRANSITIONAL(S49): the Python CLI for delegated commands and MCP sessions (null: none). */
+  readonly python?: Program | null;
+  /** The commands run in the host (default: `portedCommands()`). */
+  readonly ported?: readonly PortedCommand[];
+  /** Write `<data dir>/bin/cashu` at start (default true). */
+  readonly launcher?: boolean;
 }
 
 export interface LocalHost {
@@ -87,7 +110,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
   const server = await startHost({
     dataDir: options.dataDir,
     build,
-    features: ["store.v2", "admin.handover"],
+    features: ["store.v2", "admin.handover", "cli.exec", "mcp.lines"],
     ...(options.pathEnv === undefined ? {} : { pathEnv: options.pathEnv }),
     onSession: (session) => dispatch(session),
   });
@@ -106,6 +129,19 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
     throw error;
   }
   const safeMode = record.safeMode;
+  const runtime = options.runtime ?? currentRuntime();
+  const python =
+    options.python === undefined ? pythonProgram(runtime) : (options.python ?? undefined);
+  const ported = options.ported ?? portedCommands();
+  if (options.launcher ?? true) {
+    try {
+      if (writeLauncher(server.paths.dataDir, shimProgram(runtime)))
+        log.info("host.launcher-written");
+    } catch (error) {
+      log.warn("host.launcher-failed", { error: errorName(error) });
+    }
+  }
+  const mcpServers = new Set<McpBackend>();
   log.info("host.started", {
     pid: process.pid,
     build,
@@ -144,6 +180,7 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
       server.beginStop();
       stopBundle();
       if (idleTimer !== undefined) clearTimeout(idleTimer);
+      await Promise.all([...mcpServers].map((b) => b.close()));
       await stores.drain();
       stores.close();
       // Before the lock goes: a successor host records its own start after taking the lock.
@@ -227,19 +264,32 @@ export async function startLocalHost(options: LocalHostOptions): Promise<LocalHo
         handleAdmin(session, { status, stop, log });
         return;
       case "cli":
-        // The CLI runner and MCP sessions move into the host with the thin clients (S56d).
-        session.onFrame((frame) => {
-          if (frame.t !== "req") return session.close();
-          session.send({
-            t: "res",
-            id: frame.id,
-            outcome: { ok: false, error: { code: "unknown-method", message: frame.method } },
-          });
+        serveCliSession(session, {
+          dataDir: server.paths.dataDir,
+          ported,
+          delegated: DELEGATED,
+          python,
+          log,
         });
         return;
       case "mcp":
-        log.info("host.session-refused", { role: session.role });
-        session.close();
+        serveMcpSession(session, {
+          log,
+          start: (profile, open) =>
+            python === undefined
+              ? undefined
+              : startPythonMcp({
+                  program: python,
+                  dataDir: server.paths.dataDir,
+                  profile,
+                  open,
+                  env: runtime.env,
+                }),
+          track: (backend) => {
+            mcpServers.add(backend);
+            return () => mcpServers.delete(backend);
+          },
+        });
         return;
     }
   };

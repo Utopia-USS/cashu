@@ -1,16 +1,16 @@
-// A synthetic Python data dir for the CLI tests (S26 spec 10 `apps/cli/src/genesis/*.test.ts`):
+// A synthetic Python data dir for the genesis tests (S26 spec 10, moved from apps/cli with S56d):
 // `cashu.db` at schema 0025 built from the committed Alembic DDL of the store's genesis tests, two
 // profiles with a few rows each, side files the run copies and a file it does not. Synthetic only.
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Database from "better-sqlite3";
-import type { CliEnv } from "../command.ts";
+import { DatabaseSync } from "node:sqlite";
+import type { CliEnv } from "../command.js";
 
 // The schema-only DDL of Alembic revision 0025, committed with the store's genesis test helpers
 // (read as a file: the store does not export its test code).
 const DDL_0025 = new URL(
-  "../../../../../packages/store/src/genesis/testing/python-schema/0025.sql",
+  "../../../../../../packages/store/src/genesis/testing/python-schema/0025.sql",
   import.meta.url,
 );
 
@@ -22,7 +22,7 @@ export const SECRETS = ["ala", "olek", "Ala Syntetyczna", "Olek Syntetyczny", "K
 /** Writes the synthetic data dir into `dir` (created). */
 export function writePythonDataDir(dir: string): void {
   mkdirSync(dir, { recursive: true });
-  const db = new Database(join(dir, "cashu.db"));
+  const db = new DatabaseSync(join(dir, "cashu.db"));
   try {
     db.exec(readFileSync(DDL_0025, "utf8"));
     db.prepare("INSERT INTO alembic_version (version_num) VALUES (?)").run(
@@ -64,7 +64,7 @@ export function writePythonDataDir(dir: string): void {
 }
 
 /** A fresh temp dir. */
-export const tempDir = (prefix: string) => mkdtempSync(join(tmpdir(), `cashu-cli-${prefix}-`));
+export const tempDir = (prefix: string) => mkdtempSync(join(tmpdir(), `cashu-genesis-${prefix}-`));
 
 /** A `CliEnv` with a fake home and its own temp dir; stdout and stderr lines are collected. */
 export function testEnv(home: string): CliEnv & {
@@ -76,7 +76,7 @@ export function testEnv(home: string): CliEnv & {
   return {
     home,
     tmpDir: tempDir("tmp"),
-    pid: 4242,
+    runId: "4242-1",
     now: () => Date.UTC(2026, 9, 31),
     stdout: (line) => out.push(line),
     stderr: (line) => err.push(line),

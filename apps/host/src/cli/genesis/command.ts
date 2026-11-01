@@ -1,6 +1,7 @@
-// `cashu-next genesis --data-dir X --out Y --keys K [--init-keys] [--fold] [--no-strict] [--keep-run]`
+// `cashu genesis --data-dir X --out Y --keys K [--init-keys] [--fold] [--no-strict] [--keep-run]`
 // (S26 spec 9.4): the genesis event log of every profile of a Python data dir, for lab and dev runs.
-// Order: refusals (exit 64, nothing read yet), source manifest, copy into `<tmp>/genesis-run-<pid>/`,
+// A host command (S56d): the shim forwards the argv, the host runs it (only the host opens stores).
+// Order: refusals (exit 64, nothing read yet), source manifest, copy into `<tmp>/genesis-run-<run>/`,
 // manifest again (the copy is consistent), `PRAGMA quick_check` on the read-only copy, keys, genesis,
 // the out dir, the optional fold, the source manifest a last time. stdout carries counts, short
 // hashes and the exit status; never slugs, names, values, vault ids or salts. Exit codes: 0 ok,
@@ -9,26 +10,27 @@ import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { isAbsolute, join, normalize } from "node:path";
 import { parseArgs } from "node:util";
 import { RefusalError, refusePaths, resolveReal } from "@cashu/node-host";
-import { betterSqlite3Driver } from "@cashu/store";
+import { openNodeSqlite } from "@cashu/node-host/sqlite";
+import type { SqlDriver } from "@cashu/store";
 import * as genesis from "@cashu/store/genesis";
-import Database from "better-sqlite3";
-import { assertUnchanged, copyRun, manifest, runFiles, SourceChangedError } from "./copy.ts";
-import { FoldError, foldVault } from "./fold.ts";
-import { initKeys, KeysFileError, readKeys } from "./keys.ts";
-import { createOut, type VaultSummary, vaultDir, writeManifest, writeVault } from "./write.ts";
+import { assertUnchanged, copyRun, manifest, runFiles, SourceChangedError } from "./copy.js";
+import { FoldError, foldVault } from "./fold.js";
+import { initKeys, KeysFileError, readKeys } from "./keys.js";
+import { createOut, type VaultSummary, vaultDir, writeManifest, writeVault } from "./write.js";
 
 /** The process surroundings of a run, injected so tests use a fake home and temp dir. */
 export interface CliEnv {
   readonly home: string;
   readonly tmpDir: string;
-  readonly pid: number;
+  /** Names this run's private copy (`genesis-run-<runId>`): unique among the host's runs. */
+  readonly runId: string;
   readonly now: () => number;
   readonly stdout: (line: string) => void;
   readonly stderr: (line: string) => void;
 }
 
 const USAGE =
-  "usage: cashu-next genesis --data-dir <dir> --out <new dir> --keys <file> [--init-keys] [--fold] [--no-strict] [--keep-run]\n" +
+  "usage: cashu genesis --data-dir <dir> --out <new dir> --keys <file> [--init-keys] [--fold] [--no-strict] [--keep-run]\n" +
   "       (absolute paths only)";
 
 /** A data or genesis error found by the command itself (exit 65). */
@@ -116,18 +118,19 @@ function checkTargets(o: Options): void {
   }
 }
 
-function quickCheck(db: Database.Database): void {
-  const rows = db.prepare("PRAGMA quick_check").all() as { quick_check?: unknown }[];
+function quickCheck(db: SqlDriver): void {
+  const rows = db.prepare("PRAGMA quick_check").all<{ quick_check?: unknown }>();
   if (rows.length !== 1 || rows[0]?.quick_check !== "ok") {
     throw new DataError(`the database copy fails PRAGMA quick_check (${rows.length} problems)`);
   }
 }
 
-function profileSlugs(db: Database.Database): string[] {
+function profileSlugs(db: SqlDriver): string[] {
   try {
-    return (db.prepare("SELECT slug FROM profiles ORDER BY id").all() as { slug: string }[]).map(
-      (r) => r.slug,
-    );
+    return db
+      .prepare("SELECT slug FROM profiles ORDER BY id")
+      .all<{ slug: string }>()
+      .map((r) => r.slug);
   } catch {
     throw new DataError("the database copy has no readable profiles table");
   }
@@ -147,25 +150,26 @@ function run(o: Options, env: CliEnv): void {
   const say = env.stdout;
   const before = manifest(o.dataDir);
   say(`genesis: source ${before.files} files, sha256 ${short(before.sha256)}`);
-  const runDir = join(env.tmpDir, `genesis-run-${env.pid}`);
+  const runDir = join(env.tmpDir, `genesis-run-${env.runId}`);
   rmSync(runDir, { recursive: true, force: true });
   const outExisted = existsSync(o.out);
-  let db: Database.Database | undefined;
+  let db: SqlDriver | undefined;
   let keysCreated = false;
   let done = false;
   try {
     copyRun(o.dataDir, runDir);
     assertUnchanged(before, manifest(o.dataDir));
-    db = new Database(join(runDir, "cashu.db"), { readonly: true, fileMustExist: true });
+    const copy = join(runDir, "cashu.db");
+    if (!existsSync(copy)) throw new DataError("the run copy has no cashu.db");
+    db = openNodeSqlite(copy, { readOnly: true });
     quickCheck(db);
     const keys = o.initKeys ? initKeys(o.keys, profileSlugs(db)) : readKeys(o.keys);
     keysCreated = o.initKeys;
     if (o.initKeys) say(`genesis: keys created for ${keys.size} vaults (mode 0600)`);
-    const result = genesis.genesis(
-      { driver: betterSqlite3Driver(db), files: runFiles(runDir) },
-      keys,
-      { strict: o.strict, now: env.now() },
-    );
+    const result = genesis.genesis({ driver: db, files: runFiles(runDir) }, keys, {
+      strict: o.strict,
+      now: env.now(),
+    });
     say(
       `genesis: schema ${result.schema}, ${result.vaults.length} vaults, strict ${o.strict ? "on" : "off"}`,
     );
@@ -219,7 +223,7 @@ const exitCodeOf = (e: unknown): number | undefined =>
     ? e.exitCode
     : undefined;
 
-/** Runs `cashu-next genesis` with `argv` (after the command name); returns the exit code. */
+/** Runs `cashu genesis` with `argv` (after the command name); returns the exit code. */
 export function genesisCommand(argv: readonly string[], env: CliEnv): number {
   let code = 0;
   try {

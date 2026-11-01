@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalJson } from "@cashu/store";
 import type * as genesis from "@cashu/store/genesis";
-import type { SourceManifest } from "./copy.ts";
+import type { SourceManifest } from "./copy.js";
 
 const DIR_MODE = 0o700;
 const FILE_MODE = 0o600;

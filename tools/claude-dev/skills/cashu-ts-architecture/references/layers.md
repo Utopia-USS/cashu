@@ -85,15 +85,15 @@ client over an authenticated Unix socket (`@cashu/host-protocol`, platform glue 
 | Local host (`apps/host`, S56a2; one per data dir, started on demand by its first client, lingers when idle) | holds the machine lock (`run/host.lock.db`) for life; vault and device stores (exclusive SQLite open that requires the lock), materializer, sync, the worker, MCP sessions, the CLI command tree; keys through the OS keychain module | every client over `<data dir>/run/host.sock` (0600, never TCP): length-prefixed JSON frames, mutual HMAC handshake, role-bound sessions (`ui`, `mcp`, `cli`, `admin`) |
 | Electron main (`apps/desktop`) | windows, tray, menus, deep links, auto-update; one host session per renderer frame (`HostRelay`), relayed without parsing; starts the host when none answers (detached, Electron in Node mode) | renderer over the typed preload bridge and its store MessagePort; the host as a `ui` client |
 | Electron renderer (sandboxed, `contextIsolation`) | React UI only; never opens SQLite | the host's store channel v2 (`@cashu/host-protocol/store`) through main's relay |
-| `cashu` shim (CLI, `cashu mcp`; S56d) | data dir resolution, connect-or-start, stdio / argv relay | the host as a `cli` or `mcp` client |
+| `cashu` shim (`apps/cli`; CLI, `cashu mcp`) | data dir resolution (Python's rules incl. `.env.dev`), connect-or-start, argv / stdio relay; runs the Python CLI itself when the host answers `delegate` (TRANSITIONAL(S49)) | the host as a `cli` or `mcp` client (`cli.exec`, `mcp.open` + lines) |
 | Expo app (Hermes) | UI and the store engine in-process (sync SQLite driver) | the relay / folder transport |
 
 Only the host (and the Expo app, in-process) opens stores. depcruise `only-host-opens-stores`: an app
 other than `apps/host` and `apps/mobile` imports no SQLite binding (`node:sqlite`, `better-sqlite3`,
 `expo-sqlite`, op-sqlite) and not node-host's driver entry (`@cashu/node-host/sqlite`); test code is
 exempt. Marked exceptions until their scopes land: the
-sync daemon's harness and its use of node-host's root re-export of the driver (TRANSITIONAL(S56c)),
-`cashu-next genesis` (TRANSITIONAL(S56d)). Inside the host, a store file opens only under the
+sync daemon's harness and its use of node-host's root re-export of the driver (TRANSITIONAL(S56c)).
+`cashu genesis` runs in the host (apps/host `cli/genesis`, S56d). Inside the host, a store file opens only under the
 `WriterLease` (apps/host `lease.ts`), which wraps the held machine lock that the exclusive open
 (`openNodeSqlite(path, { exclusive })`) requires.
 

@@ -4,8 +4,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertUnchanged, copyRun, manifest, runFiles, SourceChangedError } from "./copy.ts";
-import { tempDir, writePythonDataDir } from "./testing/pythonDataDir.ts";
+import { assertUnchanged, copyRun, manifest, runFiles, SourceChangedError } from "./copy.js";
+import { tempDir, writePythonDataDir } from "./testing/pythonDataDir.js";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 

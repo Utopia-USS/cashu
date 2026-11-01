@@ -1,14 +1,17 @@
-// `cashu-next genesis` end to end on a synthetic data dir (S26 spec 9.4, 10, 13 G5): refusals before
+// `cashu genesis` end to end on a synthetic data dir (S26 spec 9.4, 10, 13 G5): refusals before
 // anything is read, the out dir layout, idempotency, `--fold` invariants, the source left untouched
 // and stdout free of slugs and names.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { main } from "../index.ts";
-import { manifest } from "./copy.ts";
-import { SECRETS, tempDir, testEnv, writePythonDataDir } from "./testing/pythonDataDir.ts";
+import { type CliEnv, genesisCommand } from "./command.js";
+import { manifest } from "./copy.js";
+import { SECRETS, tempDir, testEnv, writePythonDataDir } from "./testing/pythonDataDir.js";
+
+/** The argv as typed after `cashu` (the host's tree hands genesis what follows its name). */
+const main = (argv: readonly string[], env: CliEnv) => genesisCommand(argv.slice(1), env);
 
 function setup() {
   const base = tempDir("cmd");
@@ -16,7 +19,7 @@ function setup() {
   writePythonDataDir(data);
   const env = testEnv(join(base, "home"));
   mkdirSync(env.home);
-  const runDir = join(env.tmpDir, `genesis-run-${env.pid}`);
+  const runDir = join(env.tmpDir, `genesis-run-${env.runId}`);
   return { base, data, env, runDir, keys: join(base, "keys.json") };
 }
 
@@ -191,7 +194,7 @@ describe("genesis command runs", () => {
       expect(v.view_hash).toMatch(/^[0-9a-f]{64}$/);
       expect(mb.vaults[i].view_hash).toBe(v.view_hash);
       expect(statSync(join(a, `vault-${i}`, "view.sqlite")).mode & 0o777).toBe(0o600);
-      const view = new Database(join(a, `vault-${i}`, "view.sqlite"), { readonly: true });
+      const view = new DatabaseSync(join(a, `vault-${i}`, "view.sqlite"), { readOnly: true });
       const accounts = view.prepare("SELECT COUNT(*) AS n FROM accounts").get() as { n: number };
       view.close();
       expect(accounts.n).toBe(1);
@@ -227,7 +230,7 @@ describe("genesis command failures (exit 65)", () => {
 
   it("fails on an unsupported schema and removes the keys it just created", () => {
     const s = setup();
-    const db = new Database(join(s.data, "cashu.db"));
+    const db = new DatabaseSync(join(s.data, "cashu.db"));
     db.prepare("UPDATE alembic_version SET version_num = ?").run("0024_older");
     db.close();
     expect(main(genesisArgs(s, join(s.base, "o"), "--init-keys"), s.env)).toBe(65);

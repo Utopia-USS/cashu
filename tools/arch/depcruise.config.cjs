@@ -109,8 +109,6 @@ module.exports = {
           "^apps/(host|mobile)/",
           // TRANSITIONAL(S56c): the lab outbox bridge harness; S56c moves the bridge loop into the host.
           "^apps/sync-daemon/src/harness/main\\.ts$",
-          // TRANSITIONAL(S56d): `cashu-next genesis` builds vault stores from the Python data dir; with the thin clients it runs as a host command.
-          "^apps/cli/src/genesis/(command|fold)\\.ts$",
         ],
       },
       to: { path: SQLITE_OPENERS },

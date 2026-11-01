@@ -3,11 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "description": "The `cashu` command: a thin client of the data dir's local host (CLI and `cashu mcp`); the commands themselves run in the host.",
   "exports": {
     ".": "./src/index.ts"
   },
   "bin": {
-    "cashu-next": "./src/index.ts"
+    "cashu": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -16,12 +17,9 @@
     "test:exhaustive": "CASHU_TEST_TIER=exhaustive vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@cashu/node-host": "workspace:*",
-    "@cashu/store": "workspace:*",
-    "better-sqlite3": "13.0.3",
-    "zod": "^4.6.7"
-  },
-  "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0"
+    "@cashu/domain": "workspace:*",
+    "@cashu/host-protocol": "workspace:*",
+    "@cashu/i18n": "workspace:*",
+    "@cashu/node-host": "workspace:*"
   }
 }

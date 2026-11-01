@@ -2,8 +2,8 @@
 import { chmodSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { initKeys, KeysFileError, readKeys } from "./keys.ts";
-import { tempDir } from "./testing/pythonDataDir.ts";
+import { initKeys, KeysFileError, readKeys } from "./keys.js";
+import { tempDir } from "./testing/pythonDataDir.js";
 
 describe("genesis keys file", () => {
   it("creates a 0600 format 1 file with a 32-hex vault id and a 64-hex salt per slug", () => {
