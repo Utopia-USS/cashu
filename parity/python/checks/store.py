@@ -307,6 +307,7 @@ ROUNDTRIP_COLUMNS: dict[str, tuple[str, ...]] = {
         "created_at",
         "updated_at",
         "deleted_at",
+        "tag",
     ),
     "inv_planned_deposits": (
         "account_id",
@@ -448,13 +449,7 @@ EXCLUDED: dict[str, dict[str, str]] = {
     "inv_theses": {"id": _ID, "profile_id": _PROFILE},
     "inv_topic_theses": {"id": _ID, "profile_id": _PROFILE},
     "watchlist_items": {"id": _ID, "profile_id": _PROFILE},
-    "alerts": {
-        "id": _ID,
-        "profile_id": _PROFILE,
-        # TRANSITIONAL(S16): the event log has no alert tag yet; genesis refuses a tagged alert and
-        # the S31a bridge blocks one, so a compared alert has none (`_guard_schema` asserts it).
-        "tag": "no catalog field yet (S16); every compared alert has tag NULL (asserted)",
-    },
+    "alerts": {"id": _ID, "profile_id": _PROFILE},
     "inv_planned_deposits": {"id": _ID, "profile_id": _PROFILE},
     "inv_signals": {"id": _ID, "profile_id": _PROFILE},
     "inv_rule_runs": {"id": _ID, "profile_id": _PROFILE},
@@ -637,15 +632,6 @@ def _guard_schema(ctx: Ctx) -> None:
             f"extra {sorted(set(ROUNDTRIP_COLUMNS) - expected)}"
         )
     mappers = _mappers()
-    from sqlalchemy import func, select
-
-    alert = mappers["alerts"].class_
-    if "tag" in {a.key for a in mappers["alerts"].column_attrs}:
-        tagged = ctx.session.execute(
-            select(func.count()).select_from(alert).where(alert.tag.is_not(None))
-        ).scalar()
-        if tagged:
-            raise RuntimeError(f"alerts: {tagged} tagged alert(s); the tag is not compared until S16")
     for table, columns in ROUNDTRIP_COLUMNS.items():
         model = {a.columns[0].name for a in mappers[table].column_attrs}
         listed = (set(columns) - PSEUDO_COLUMNS.get(table, frozenset())) | set(EXCLUDED[table])

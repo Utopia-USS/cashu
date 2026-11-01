@@ -240,6 +240,7 @@ export const ROUNDTRIP_COLUMNS: Readonly<Record<string, readonly string[]>> = Ob
     "created_at",
     "updated_at",
     "deleted_at",
+    "tag",
   ],
   inv_planned_deposits: [
     "account_id",
