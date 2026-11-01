@@ -8,12 +8,18 @@
 // - the causal link of a transaction's side events to its `proposal.*` / `note.candidateUpdated`;
 // - the leader filter (TRANSITIONAL(S29c-B1) port): leader-only events dropped on a non-leader;
 // - every event validated (`parseEvent` + the DET self-check, genesis `checkEvent`);
-// - ONE frame per vault per plan (TRANSITIONAL(S29c-B3)): the engine would split a larger batch into
-//   a frame group, and a crash between its appends tears the device's stream for good. Transactions
-//   are added while they fit; a first transaction that alone does not fit blocks `needs-batch-append`.
+// - ONE engine write per vault per plan, bounded by the engine's sink transaction caps (25k events,
+//   32 MiB): the engine appends every frame of a write atomically (S29c-B3), so a write of many
+//   frames (a large import) is as crash safe as one frame. Transactions are added while the write
+//   stays within the caps; the first transaction is always planned whole, however large (an outbox
+//   transaction is never split across writes).
 // `through` = the last outbox id of the planned transactions; the ack plan (`ackEntries`) turns each
 // event's carried columns into field clocks once the write stamped the HLCs.
-import type { UnstampedEvent } from "@cashu/sync";
+import {
+  DEFAULT_MAX_BATCH_BYTES,
+  DEFAULT_MAX_BATCH_EVENTS,
+  type UnstampedEvent,
+} from "@cashu/sync";
 import { META } from "../events/v1/catalog.js";
 import { formatHlc } from "../events/v1/hlc-format.js";
 import { genesisDevice } from "../genesis/clock.js";
@@ -28,6 +34,9 @@ import { type AckGid, type BridgePorts, type VaultInput, VaultMapping } from "./
 /** Engine frame defaults (`createSyncEngine` `maxFrameEvents` / `maxFrameBytes`). */
 export const FRAME_EVENTS = 1000;
 export const FRAME_BYTES = 1024 * 1024;
+/** One plan's write per vault: within the engine's sink transaction caps (D12). */
+const WRITE_EVENTS = DEFAULT_MAX_BATCH_EVENTS;
+const WRITE_BYTES = DEFAULT_MAX_BATCH_BYTES;
 /** `,"h":"<47-char HLC>"`: what the engine's stamp adds to each event's JSON. */
 const HLC_JSON = 54;
 
@@ -38,7 +47,7 @@ export interface CarriedColumns {
   readonly columns: readonly string[];
 }
 
-/** One vault's share of a plan: one frame. */
+/** One vault's share of a plan: one engine write (one or more frames, appended atomically). */
 export interface VaultBatch {
   readonly ordinal: number;
   readonly profileId: number;
@@ -82,8 +91,9 @@ export interface PlanInput {
   /** Every linked vault, ordinal order. */
   readonly vaults: readonly VaultInput[];
   readonly ports: BridgePorts;
-  readonly maxFrameEvents?: number;
-  readonly maxFrameBytes?: number;
+  /** Caps of one vault's write (default `WRITE_EVENTS` / `WRITE_BYTES`). */
+  readonly maxWriteEvents?: number;
+  readonly maxWriteBytes?: number;
 }
 
 interface Drafted {
@@ -166,11 +176,14 @@ class Planner {
       approvals: new Map(),
     }));
     this.#byProfile = new Map(this.#states.map((s) => [s.vm.input.profileId, s]));
-    this.#maxEvents = input.maxFrameEvents ?? FRAME_EVENTS;
-    this.#maxBytes = input.maxFrameBytes ?? FRAME_BYTES;
+    this.#maxEvents = input.maxWriteEvents ?? WRITE_EVENTS;
+    this.#maxBytes = input.maxWriteBytes ?? WRITE_BYTES;
   }
 
-  /** Plans one transaction; false when a vault's frame would overflow (nothing of it kept). */
+  /**
+   * Plans one transaction; false when a vault's write would overflow (nothing of it kept). The first
+   * transaction always fits.
+   */
   addTxn(rows: readonly OutboxRow[]): boolean {
     const drafted = new Map<VaultState, Drafted[]>();
     const push = (s: VaultState, items: readonly Drafted[]) => {
@@ -204,16 +217,16 @@ class Planner {
       }
       push(s, this.#mapped(row, s, logical));
     }
-    // Wire events per vault, then the frame check over every vault before anything is kept.
+    // Wire events per vault, then the write check over every vault before anything is kept.
     const wired = new Map<VaultState, { events: UnstampedEvent[]; carries: CarriedColumns[][] }>();
     for (const [s, items] of drafted) {
       wired.set(s, this.#wire(s, items));
     }
     for (const [s, w] of wired) {
       const bytes = w.events.reduce((n, e) => n + JSON.stringify(e).length + HLC_JSON, 0);
-      if (s.events.length + w.events.length > this.#maxEvents || s.bytes + bytes > this.#maxBytes) {
-        return false;
-      }
+      const over =
+        s.events.length + w.events.length > this.#maxEvents || s.bytes + bytes > this.#maxBytes;
+      if (over && this.counts.txns > 0) return false;
     }
     for (const [s, w] of wired) {
       for (const e of w.events) {
@@ -344,7 +357,7 @@ function planTxns(input: PlanInput, txns: readonly (readonly OutboxRow[])[]) {
 }
 
 /**
- * The plan of the given complete transactions (as many as fit one frame per vault), or the block
+ * The plan of the given complete transactions (as many as fit one write per vault), or the block
  * that stops the loop (D4: never skipped, never acked). Deterministic but for the injected ULIDs.
  */
 export function plan(input: PlanInput): PlanResult {
@@ -352,9 +365,6 @@ export function plan(input: PlanInput): PlanResult {
   const firstId = input.rows[0]?.id ?? 0;
   try {
     let { planner, planned } = planTxns(input, txns);
-    if (planned === 0 && txns.length > 0) {
-      return { ok: false, reason: "needs-batch-append", through: firstId };
-    }
     if (planned < txns.length) {
       // A plan cut at an overflowing transaction is planned again without it, so no state of the
       // dropped transaction (computed gids, closure) leaks into the kept one.

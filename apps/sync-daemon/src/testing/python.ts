@@ -73,13 +73,17 @@ export class SyntheticPython {
       .run(profileId, vaultId, T0);
   }
 
-  /** An alert title edit of `alertId` in its own transaction; returns the outbox id. */
+  /**
+   * An alert title edit of `alertId`, in its own transaction unless `txn` names a shared one (a bulk
+   * change such as an import); returns the outbox id.
+   */
   editAlert(
     profileId: number,
     alertId: number,
     gid: string,
     title: string,
     o: Record<string, unknown> = {},
+    txn?: string,
   ): number {
     this.#id += 1;
     const fields = { title, ...o };
@@ -91,7 +95,7 @@ export class SyntheticPython {
       .run(
         this.#id,
         "2026-03-02 11:00:00.000000",
-        `txn-${this.#id}`,
+        txn ?? `txn-${this.#id}`,
         profileId,
         String(alertId),
         gid,

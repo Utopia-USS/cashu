@@ -226,6 +226,28 @@ describe("the loop", () => {
     await second.close();
   });
 
+  it("ships a large import (one transaction, several frames) as one atomic write (S29c-B3)", async () => {
+    const w = await world(1);
+    const rows = 2500;
+    for (let i = 0; i < rows; i++) {
+      const gid = `01JQ${String(i + 1).padStart(22, "0")}`;
+      w.py.editAlert(1, 100 + i, gid, `bulk-${i}`, {}, "txn-import");
+    }
+    w.py.editAlert(1, 5, GID_A, "after-import");
+    const run = await runLoop(w);
+    expect(run.crashed).toBe(false);
+    expect(w.py.pending()).toBe(0);
+    const [v] = run.vaults;
+    if (v === undefined) throw new Error("vault");
+    expect(logOf(v)).toMatchObject({ count: rows + 1, distinct: rows + 1 });
+    // The import went out as one frame group in one write: its frames sit in one segment, and a
+    // reader that opens the vault from the log applies it as one batch.
+    const segs = (await v.local.list(v.vaultId)).filter((s) => s.device === v.device);
+    expect(segs.map((s) => s.seg)).toEqual([1]);
+    expect(run.cli.acks.map((a) => a.through)).toEqual([rows, rows + 1]);
+    await run.close();
+  });
+
   it("D4: an unmappable row stops the loop; nothing is written or acked", async () => {
     const w = await world(1);
     w.py.editAlert(1, 5, GID_A, "bridge-test-1", { kind: "new_high" });

@@ -1,7 +1,7 @@
 // TRANSITIONAL(S49): the lab / dev host of the outbox bridge (S31a spec 2.4, 5.5, 6).
 //
 // The daemon's one serialized loop over every linked vault: recover an open intent, ship the Python
-// outbox (plan -> intents durable -> one frame per vault -> ack with field clocks -> clear), sync
+// outbox (plan -> intents durable -> one write per vault -> ack with field clocks -> clear), sync
 // (push own bytes, pull and fold foreign frames), pipe the other devices' events to Python. The steps
 // never interleave: nothing is piped while a shipped row is unacked (spec 2.4 invariant), so Python's
 // "an unacked local write beats any inbound event" is exact.

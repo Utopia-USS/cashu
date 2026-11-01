@@ -6,7 +6,13 @@ export * from "./carrier.js";
 export * from "./carriers/index.js";
 export * as crypto from "./crypto/index.js";
 export * as devices from "./devices/index.js";
-export { createSyncEngine, type SyncEngineOptions, VAULT_RE } from "./engine.js";
+export {
+  createSyncEngine,
+  DEFAULT_MAX_BATCH_BYTES,
+  DEFAULT_MAX_BATCH_EVENTS,
+  type SyncEngineOptions,
+  VAULT_RE,
+} from "./engine.js";
 export * from "./errors.js";
 export * from "./hlc.js";
 export { MemoryClockStore, MemoryTransport } from "./memory.js";
