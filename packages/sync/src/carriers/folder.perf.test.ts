@@ -9,6 +9,11 @@
 // the scheduler, not the carrier. Wall and CPU numbers are printed and recorded in the S28b checkpoint. Spike own-log reference (Node 23.9, M-series):
 // bulk write + apply 453-483 ms, new device build 315-320 ms, full rebuild 324-329 ms, cold start
 // 33-36 ms, incremental 10 edits 0.3 ms / 1000 tx 3.6 ms, log 16.0 MB uncompressed.
+// Signed heads (S29c-B3, performance.md): every head signature made (`identity.sign` under
+// `cashu/head/v1`) and every head signature checked (the gate's misses; a frame is checked once even
+// though the engine asks on pull and on apply, as the production gate memoizes) is counted with its
+// CPU time, so the per-frame sign / verify cost of the @noble Ed25519 path (the phone's too) is part
+// of the printed results.
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,12 +22,18 @@ import type {
   ApplyOutcome,
   DeviceId,
   EventSink,
+  FrameGate,
   InboundBatch,
   SegmentCursor,
   Transport,
   UnstampedEvent,
 } from "../carrier.js";
-import { createKeyring, createRecoveryKey, loadNodeSodium } from "../crypto/index.js";
+import {
+  createKeyring,
+  createRecoveryKey,
+  loadNodeSodium,
+  verifyHeadSignature,
+} from "../crypto/index.js";
 import { createSyncEngine } from "../engine.js";
 import { MemoryClockStore, MemoryTransport } from "../memory.js";
 import { ManualClock } from "../testing/index.js";
@@ -154,6 +165,19 @@ class CountingSink implements EventSink {
   }
 }
 
+const cpuUs = () => {
+  const u = process.threadCpuUsage();
+  return u.user + u.system;
+};
+
+/** Head signatures made and checked, with their CPU time (microseconds). */
+interface HeadStats {
+  signs: number;
+  signUs: number;
+  verifies: number;
+  verifyUs: number;
+}
+
 /** The result, the wall time and this thread's CPU time (ms) of `fn`. */
 async function time<T>(fn: () => Promise<T>): Promise<[T, number, number]> {
   const t = performance.now();
@@ -185,6 +209,37 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
     const signers = testSigners(sodium, ring);
     const folder = new NodeFolderFs(await tempDir("folder"));
     const results: Record<string, number> = {};
+    const heads: HeadStats = { signs: 0, signUs: 0, verifies: 0, verifyUs: 0 };
+    for (const id of [A, B, C]) {
+      const identity = signers.identityOf(id);
+      const sign = identity.sign.bind(identity);
+      identity.sign = (context, body) => {
+        const t = cpuUs();
+        const sig = sign(context, body);
+        if (context === "cashu/head/v1") {
+          heads.signUs += cpuUs() - t;
+          heads.signs += 1;
+        }
+        return sig;
+      };
+    }
+    // The test gate's checks, memoized per head like the production gate, misses measured.
+    const checked = new Map<string, boolean>();
+    const gate: FrameGate = {
+      ...signers.gateFor(A),
+      authenticate(head) {
+        const key = `${head.device}|${head.stream}|${head.seg}|${head.offset}|${head.sig.join(",")}`;
+        let ok = checked.get(key);
+        if (ok === undefined) {
+          const t = cpuUs();
+          ok = verifyHeadSignature(VAULT, head, signers.identityOf(head.device).signPublicKey);
+          heads.verifyUs += cpuUs() - t;
+          heads.verifies += 1;
+          checked.set(key, ok);
+        }
+        return ok ? { ok: true } : { ok: false, wait: false, code: "bad_head_signature" };
+      },
+    };
 
     const device = async (
       id: DeviceId,
@@ -193,7 +248,6 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
       clock = new MemoryClockStore(),
     ) => {
       const codec = signers.codecFor(id);
-      const gate = signers.gateFor(id);
       const remote = createOwnLogCarrier({
         transport: new FolderTransport({ fs: folder, owner: id }),
         codec,
@@ -285,6 +339,12 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
     results.coldStart_cpu_ms = coldCpu;
     await reopened.close();
 
+    results.headSigns = heads.signs;
+    results.headSign_cpu_ms = Math.round(heads.signUs / 100) / 10;
+    results.headSign_us_per_frame = Math.round(heads.signUs / Math.max(1, heads.signs));
+    results.headVerifies = heads.verifies;
+    results.headVerify_cpu_ms = Math.round(heads.verifyUs / 100) / 10;
+    results.headVerify_us_per_frame = Math.round(heads.verifyUs / Math.max(1, heads.verifies));
     console.log(`S28b perf ${JSON.stringify(results)}`);
     // Ceilings: 5x the spike's own-log numbers (CI headroom); the target (2x) is checked on the
     // reference machine and recorded in the checkpoint.
@@ -293,5 +353,12 @@ describe("folder carrier performance (spike workload, 64,340 events)", () => {
     expect(rebuildCpu).toBeLessThan(5 * 329);
     expect(coldCpu).toBeLessThan(5 * 36);
     expect(results.logBytes).toBeLessThan(16_035_578 / 3);
+    // Every frame written was signed once and every frame of another device checked once.
+    expect(heads.signs).toBeGreaterThanOrEqual(results.bulkFrames);
+    expect(heads.verifies).toBeGreaterThanOrEqual(results.bulkFrames);
+    // Ceilings (CI headroom; the measured numbers are in performance.md): 5 ms per sign, 10 ms
+    // per check, of this thread's CPU.
+    expect(results.headSign_us_per_frame).toBeLessThan(5_000);
+    expect(results.headVerify_us_per_frame).toBeLessThan(10_000);
   });
 });

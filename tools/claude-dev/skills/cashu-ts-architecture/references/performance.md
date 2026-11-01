@@ -81,8 +81,8 @@ Against the retired 2x gate this was not met; against the user budgets it is (se
 bulk 5.4-7.2 s <= 10 s, rebuild ~1.2 s <= 3 s, a day 48-51 ms <= 100 ms). From the cash-leg step on
 the machine was shared (load average 70-150), which slows the store's longer runs more than the
 spike's short ones: single rounds of one step spread by 30-40%, so
-read the late rows as ranges; the idle-machine re-measure is part of S29c-B3 (one transaction per sync
-pull). Where the bulk time goes (CPU profile): SQLite B-tree work of the inserts dominates; a
+read the late rows as ranges; the idle-machine re-measure (one transaction per sync pull, S29c-B3) is
+pending, see "Signed heads and the batch API" below. Where the bulk time goes (CPU profile): SQLite B-tree work of the inserts dominates; a
 transaction import still inserts into five random-key B-trees (the log's gid index, `view_ids`, the
 transaction's gid, its (account, hash, occurrence) key, its booking date) where the spike inserts into
 two, plus zod validation and the gid check (one HMAC). File mode adds the WAL page writes of those
@@ -94,6 +94,26 @@ append-only table instead of the live schema order; same bytes on disk. Interlea
 one run, 3 rounds each, CPU ms medians, memory mode, load average 128-210: S24a workload bulk 3,300 ->
 3,174, rebuild 1,145 -> 1,112; S25 workload bulk 868 -> 818, rebuild 328 -> 336, owner merge 283 ->
 287 (all within noise).
+
+## Signed heads and the batch API (S29c-B3)
+
+Every frame carries its writer's Ed25519 head signature (S29c-B2): a write signs one head per frame,
+and a reader checks each foreign frame's head once (the gate memoizes; the engine asks on pull and on
+apply). Both run on @noble/curves, the same code as on the phone (Hermes is slower by a factor that
+S41g measures on a device). The carrier harness `packages/sync/src/carriers/folder.perf.test.ts`
+counts every head signature made and checked with its CPU time and prints `headSigns`,
+`headSign_cpu_ms`, `headSign_us_per_frame`, `headVerifies`, `headVerify_cpu_ms` and
+`headVerify_us_per_frame` next to the S28b numbers (ceilings 5 ms per sign and 10 ms per check, CI
+headroom). Per 64k-event first sync at 1,000 events per frame that is ~65 checks, so the cost per pull
+is small; many tiny frames (one per command) are where it adds up.
+
+Since S29c-B3 a sync pass reaches the store in one transaction (`EventSink.applyBatches`, chunked at
+25,000 events or 32 MiB of plaintext), and a write appends all its frames in one atomic append.
+
+| Measurement | Status |
+|---|---|
+| Head sign / verify per frame (counts, CPU ms) | pending: the machine was shared (load average 35-60) during S29c-B3; run on an idle machine (load average below 20, announced first) |
+| Store bulk apply, one transaction per pull vs one per batch; noble vs node HMAC | pending, same reason |
 
 ## Core and budget vault (S24a)
 
