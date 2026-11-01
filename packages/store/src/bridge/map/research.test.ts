@@ -363,3 +363,18 @@ describe("research_notes", () => {
     });
   });
 });
+
+describe("candidate accept causes (spec 6.6, plan.ts)", () => {
+  it("puts note.candidateUpdated before the side events it causes, so the store applies them", () => {
+    const { events } = shipped([
+      watchUpdate({ note: "kandydat" }, { note: "syn note" }),
+      noteUpdate(
+        { details: { reason: "syn", watchlist_item_id: 4 } },
+        { details: { reason: "syn" } },
+      ),
+    ]);
+    expect(events.map((e) => e.t)).toEqual(["note.candidateUpdated", "watchlist.updated"]);
+    expect(events[1]?.c).toBe(events[0]?.i);
+    expect(events[0]?.c).toBeUndefined();
+  });
+});
