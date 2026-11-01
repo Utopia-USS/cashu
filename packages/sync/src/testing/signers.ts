@@ -31,13 +31,19 @@ export function testSigners(sodium: Sodium, ring: Keyring): TestSigners {
     }
     return identity;
   };
+  // The engine checks a frame when it pulls it and again when it applies it: remember results.
+  const verified = new Map<string, boolean>();
   const gate: FrameGate = {
     authenticate(head) {
       const identity = identities.get(head.device);
       if (!identity) return { ok: false, wait: true, code: "writer-unknown" };
-      return verifyHeadSignature(ring.vaultId, head, identity.signPublicKey)
-        ? { ok: true }
-        : { ok: false, wait: false, code: "bad_head_signature" };
+      const key = `${head.device}|${head.stream}|${head.seg}|${head.offset}|${head.chain.join(",")}|${head.sig.join(",")}`;
+      let ok = verified.get(key);
+      if (ok === undefined) {
+        ok = verifyHeadSignature(ring.vaultId, head, identity.signPublicKey);
+        verified.set(key, ok);
+      }
+      return ok ? { ok: true } : { ok: false, wait: false, code: "bad_head_signature" };
     },
     accept: () => ({ verdict: { ok: true }, changed: false }),
     observe() {},
